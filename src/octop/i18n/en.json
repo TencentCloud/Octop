@@ -496,6 +496,8 @@
     "INVITE_INVALID": "This invite code is invalid.",
     "INVITE_ROLE_MISSING": "The role on this invite was deleted or renamed, so the account cannot be created.",
     "USER_ROLE_IN_USE": "This role is still assigned to users. Reassign them before deleting it.",
+    "USER_ROLE_ID_INVALID": "Role ID must be 1-64 letters or underscores, and cannot start or end with an underscore.",
+    "USER_ROLE_ID_TAKEN": "This role ID is already in use.",
     "INVITE_USED": "This invite code has already been used.",
     "INVITE_EXPIRED": "This invite code has expired.",
     "INVITE_REVOKED": "This invite code has been revoked.",

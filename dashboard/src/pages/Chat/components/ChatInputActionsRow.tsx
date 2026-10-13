@@ -497,7 +497,12 @@ export default function ChatInputActionsRow({
         >
           <ChevronLeft size={16} />
         </button>
-        <span>{reasoningModel ? modelOptionLabel(reasoningModel) : ""}</span>
+        <Tooltip
+          title={reasoningModel ? modelOptionLabel(reasoningModel) : ""}
+          mouseEnterDelay={0.4}
+        >
+          <span>{reasoningModel ? modelOptionLabel(reasoningModel) : ""}</span>
+        </Tooltip>
       </div>
       {reasoningModelCapability.adapter === "status_only" ? (
         <div className={styles.reasoningStatusRow}>
@@ -621,9 +626,15 @@ export default function ChatInputActionsRow({
                       alt=""
                       className={styles.modelMenuIcon}
                     />
-                    <span className={styles.modelMenuLabel}>
-                      {modelOptionLabel(model)}
-                    </span>
+                    <Tooltip
+                      title={modelOptionLabel(model)}
+                      mouseEnterDelay={0.4}
+                      placement="top"
+                    >
+                      <span className={styles.modelMenuLabel}>
+                        {modelOptionLabel(model)}
+                      </span>
+                    </Tooltip>
                   </button>
                   {capability && onReasoningChange && (
                     <button
@@ -751,9 +762,11 @@ export default function ChatInputActionsRow({
             <span>{t("chat.selectModel", "Model")}</span>
           </span>
           <span className={styles.mobileOverflowItemMeta}>
-            <span className={styles.mobileOverflowItemMetaLabel}>
-              {selectedModelTriggerLabel}
-            </span>
+            <Tooltip title={selectedModelTriggerLabel} mouseEnterDelay={0.4}>
+              <span className={styles.mobileOverflowItemMetaLabel}>
+                {selectedModelTriggerLabel}
+              </span>
+            </Tooltip>
             <ChevronRight size={16} />
           </span>
         </button>

@@ -191,6 +191,10 @@ class HitlResumeBody(BaseModel):
         default=None,
         description="Optional thread-scoped tool-approval bypass applied before resume.",
     )
+    pending_id: str | None = Field(
+        default=None,
+        description="Approval card to resume. Required when several cards are open.",
+    )
 
     @field_validator("decisions")
     @classmethod

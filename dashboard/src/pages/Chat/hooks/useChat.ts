@@ -1167,6 +1167,7 @@ export function useChat(
       storeKey?: string,
       dismissed?: boolean,
       hitlPolicy?: HitlSessionPolicy,
+      pendingId?: string,
     ) => {
       if (!agentId) return;
       const key = storeKey || stableSessionId;
@@ -1183,6 +1184,7 @@ export function useChat(
         },
         dismissed,
         hitlPolicy,
+        pendingId,
       );
     },
     [agentId, stableSessionId, refreshHistory],

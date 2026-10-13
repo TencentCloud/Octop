@@ -124,6 +124,32 @@ async def iter_dashboard_hitl_resume_sse(
     reload / refresh can reinject the approval card (same as the initial turn).
     """
     rejected = any(isinstance(d, dict) and d.get("type") == "reject" for d in decisions)
+    if pending is not None and pending.resume_agent_id:
+        from octop.i18n.domains.slash import tr as slash_tr  # noqa: PLC0415
+        from octop.infra.utils.locale import normalize_locale  # noqa: PLC0415
+
+        teams = getattr(processor, "teams", None)
+        deliver = getattr(teams, "deliver_member_hitl", None) if teams is not None else None
+        handed = hitl_coordinator.hand_member_pause(
+            pending,
+            decisions,
+            deliver=deliver if callable(deliver) else None,
+            rejected=rejected,
+        )
+        if handed:
+            # The member job keeps streaming on the room socket. A normal
+            # ``done`` makes the dashboard reload history immediately, which
+            # drops the live member answer before fan-in has saved it.
+            yield format_sse(
+                "chunk",
+                {"type": "done", "team_member_continuing": True},
+            )
+            return
+        yield format_sse(
+            "chunk",
+            {"type": "error", "message": slash_tr("hitl.expired", normalize_locale(locale))},
+        )
+        return
     hitl_ctx = HitlStreamContext(
         thread_id=thread_id,
         agent_id=agent_id,
@@ -198,11 +224,26 @@ async def resume_hitl(
     assert_agent_access(server, agent_id, user)
     processor = server.app_runtime.gateway.processor
     hitl_coordinator = processor.hitl_coordinator
+    requested_id = (body.pending_id or "").strip()
     pending = hitl_coordinator.store.resolve_pending_for_thread(
         body.thread_id,
         agent_id=agent_id,
         user_id=user.id,
+        pending_id=requested_id or None,
     )
+    if requested_id and pending is None:
+        from octop.i18n.domains.slash import tr as slash_tr  # noqa: PLC0415
+        from octop.infra.utils.locale import normalize_locale  # noqa: PLC0415
+
+        locale = normalize_locale(resolve_request_locale(request))
+
+        async def missing() -> AsyncIterator[str]:
+            yield format_sse(
+                "chunk",
+                {"type": "error", "message": slash_tr("hitl.expired", locale)},
+            )
+
+        return StreamingResponse(missing(), media_type="text/event-stream")
     session_key, channel_type = _dashboard_hitl_stream_context(
         server,
         agent_id=agent_id,
