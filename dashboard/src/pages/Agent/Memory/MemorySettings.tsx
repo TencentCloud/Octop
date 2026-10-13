@@ -13,7 +13,13 @@ import {
 } from "antd";
 import { message } from "@/utils/antdMessage";
 
-import { Brain, Cpu, Database, Sparkles } from "lucide-react";
+import {
+  Brain,
+  Cpu,
+  Database,
+  SlidersHorizontal,
+  Sparkles,
+} from "lucide-react";
 import { useTranslation } from "react-i18next";
 
 import {
@@ -37,6 +43,10 @@ interface Props {
 
 const MIN_IDLE_MINUTES = 1;
 const MIN_INTERVAL_HOURS = 0.1;
+/** 0 means "automatic" on the wire: the backend normalizes it back to null. */
+const AUTO_SENTINEL = 0;
+const MAX_AUX_TIMEOUT_S = 7 * 24 * 3600;
+const MAX_AUX_TOKENS = 65536;
 
 export default function MemorySettings({ agentId }: Props) {
   const { t } = useTranslation();
@@ -50,6 +60,10 @@ export default function MemorySettings({ agentId }: Props) {
   const [auxModel, setAuxModel] = useState<string>(MODEL_AUTO_VALUE);
   const [models, setModels] = useState<ModelPickerOption[]>([]);
   const [modelsLoading, setModelsLoading] = useState(false);
+  const [extractMaxTokens, setExtractMaxTokens] =
+    useState<number>(AUTO_SENTINEL);
+  const [lightTimeoutS, setLightTimeoutS] = useState<number>(AUTO_SENTINEL);
+  const [heavyTimeoutS, setHeavyTimeoutS] = useState<number>(AUTO_SENTINEL);
 
   useEffect(() => {
     let cancelled = false;
@@ -82,6 +96,23 @@ export default function MemorySettings({ agentId }: Props) {
     );
     setIntervalHours(
       Math.round((cfg.extract_interval_seconds / 3600) * 10) / 10,
+    );
+    setExtractMaxTokens(
+      typeof cfg.extract_max_tokens === "number" && cfg.extract_max_tokens > 0
+        ? cfg.extract_max_tokens
+        : AUTO_SENTINEL,
+    );
+    setLightTimeoutS(
+      typeof cfg.extract_light_timeout_s === "number" &&
+        cfg.extract_light_timeout_s > 0
+        ? cfg.extract_light_timeout_s
+        : AUTO_SENTINEL,
+    );
+    setHeavyTimeoutS(
+      typeof cfg.extract_heavy_timeout_s === "number" &&
+        cfg.extract_heavy_timeout_s > 0
+        ? cfg.extract_heavy_timeout_s
+        : AUTO_SENTINEL,
     );
   }, []);
 
@@ -118,6 +149,12 @@ export default function MemorySettings({ agentId }: Props) {
         ),
         extract_interval_seconds: Math.round(intervalHours * 3600),
         aux_model: defaultModelFromForm(auxModel) ?? "",
+        extract_max_tokens:
+          extractMaxTokens > 0 ? extractMaxTokens : AUTO_SENTINEL,
+        extract_light_timeout_s:
+          lightTimeoutS > 0 ? lightTimeoutS : AUTO_SENTINEL,
+        extract_heavy_timeout_s:
+          heavyTimeoutS > 0 ? heavyTimeoutS : AUTO_SENTINEL,
       });
       applyConfig(cfg);
       message.success(t("memory.settings.saved", "已保存，agent 将自动重载"));
@@ -336,6 +373,95 @@ export default function MemorySettings({ agentId }: Props) {
             showSearch
             optionFilterProp="label"
           />
+        </fieldset>
+      </Card>
+
+      <Card
+        className={`${styles.settingCard} ${
+          !memoryEnabled ? styles.cardDisabled : ""
+        }`}
+      >
+        <div className={styles.sectionHeading}>
+          <span className={styles.settingIcon}>
+            <SlidersHorizontal size={18} />
+          </span>
+          <div>
+            <div className={styles.settingTitle}>
+              {t("memory.settings.advancedTitle", "提炼调用参数")}
+            </div>
+            <div className={styles.settingDescription}>
+              {t(
+                "memory.settings.advancedDescription",
+                "限制单次记忆提炼的生成量和等待时间，0 表示自动。与上方的提炼时机相互独立。",
+              )}
+            </div>
+          </div>
+        </div>
+        <fieldset className={styles.strategyFields} disabled={!memoryEnabled}>
+          <Space direction="vertical" size={14}>
+            <div className={styles.timeControl}>
+              <span>
+                {t("memory.settings.maxTokensLabel", "单次提炼最多生成")}
+              </span>
+              <InputNumber
+                min={0}
+                max={MAX_AUX_TOKENS}
+                value={extractMaxTokens}
+                onChange={(value) =>
+                  setExtractMaxTokens(Math.max(0, value ?? AUTO_SENTINEL))
+                }
+              />
+              <span>
+                {t("memory.settings.maxTokensSuffix", "token（0 为自动）")}
+              </span>
+            </div>
+            <div className={styles.timeControl}>
+              <span>
+                {t("memory.settings.lightTimeoutLabel", "单次提炼等待上限")}
+              </span>
+              <InputNumber
+                min={0}
+                max={MAX_AUX_TIMEOUT_S}
+                value={lightTimeoutS}
+                onChange={(value) =>
+                  setLightTimeoutS(Math.max(0, value ?? AUTO_SENTINEL))
+                }
+              />
+              <span>
+                {t(
+                  "memory.settings.lightTimeoutSuffix",
+                  "秒（0 为自动，默认 120 秒；最小 30 秒）",
+                )}
+              </span>
+            </div>
+            <div className={styles.timeControl}>
+              <span>
+                {t("memory.settings.heavyTimeoutLabel", "批量整理等待上限")}
+              </span>
+              <InputNumber
+                min={0}
+                max={MAX_AUX_TIMEOUT_S}
+                value={heavyTimeoutS}
+                onChange={(value) =>
+                  setHeavyTimeoutS(Math.max(0, value ?? AUTO_SENTINEL))
+                }
+              />
+              <span>
+                {t(
+                  "memory.settings.heavyTimeoutSuffix",
+                  "秒（0 为自动，默认 300 秒）",
+                )}
+              </span>
+            </div>
+            <Alert
+              type="info"
+              showIcon
+              message={t(
+                "memory.settings.timeoutVsIdleNote",
+                "“对话空闲 X 分钟后提炼”只决定何时开始提炼；这里的等待上限决定单次提炼最多等多久。使用深度思考的本地模型时，建议同时设置输出预算和等待上限，避免提炼一直超时。",
+              )}
+            />
+          </Space>
         </fieldset>
       </Card>
 

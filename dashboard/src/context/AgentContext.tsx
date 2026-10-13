@@ -146,6 +146,41 @@ function sameMemberIds(left?: string[], right?: string[]): boolean {
   return a.length === b.length && a.every((id, index) => id === b[index]);
 }
 
+/** True when a silent agent refresh would not change chat composer defaults. */
+export function agentsSnapshotEqual(
+  prev: OctopAgent[],
+  next: OctopAgent[],
+): boolean {
+  return (
+    prev.length === next.length &&
+    prev.every((a, i) => {
+      const b = next[i];
+      return (
+        a.agent_id === b.agent_id &&
+        a.state === b.state &&
+        a.unread_count === b.unread_count &&
+        a.bootstrap_pending === b.bootstrap_pending &&
+        a.name === b.name &&
+        a.icon === b.icon &&
+        a.icon_name === b.icon_name &&
+        a.icon_url === b.icon_url &&
+        a.color === b.color &&
+        a.kind === b.kind &&
+        a.bridge === b.bridge &&
+        a.is_owner === b.is_owner &&
+        a.bridge_connection_id === b.bridge_connection_id &&
+        a.bridge_connection_name === b.bridge_connection_name &&
+        a.bridge_disconnected === b.bridge_disconnected &&
+        a.bridge_inbound === b.bridge_inbound &&
+        a.default_model === b.default_model &&
+        sameMemberIds(a.member_ids, b.member_ids) &&
+        sameMemberIds(a.knowledge_base_ids, b.knowledge_base_ids) &&
+        sameMemberIds(a.mcp_servers, b.mcp_servers)
+      );
+    })
+  );
+}
+
 /**
  * Shared projection used by the chat composer (`ChatInput` /
  * ``composerLookups``). Keeps the lightweight ``ChatAgentOption`` shape
@@ -284,6 +319,8 @@ function mapBridgeAgent(
     kind?: string | null;
     state?: string | null;
     member_ids?: unknown;
+    is_owner?: boolean;
+    is_shared?: boolean;
   },
   conn: {
     connection_id: string;
@@ -321,8 +358,8 @@ function mapBridgeAgent(
     kind: agent.kind === "team" ? "team" : "expert",
     member_ids: memberIds,
     bridge: true,
-    is_owner: true,
-    is_shared: false,
+    is_owner: agent.is_owner !== false,
+    is_shared: agent.is_shared === true,
     bridge_disconnected: false,
     bridge_inbound: Boolean(conn.inbound) || conn.has_password === false,
     bridge_connection_id: conn.connection_id,
@@ -372,32 +409,7 @@ export function AgentProvider({ children }: { children: ReactNode }) {
             list,
             liveConnectionIds,
           );
-          if (
-            !options?.force &&
-            prev.length === merged.length &&
-            prev.every((a, i) => {
-              const b = merged[i];
-              return (
-                a.agent_id === b.agent_id &&
-                a.state === b.state &&
-                a.unread_count === b.unread_count &&
-                a.bootstrap_pending === b.bootstrap_pending &&
-                a.name === b.name &&
-                a.icon === b.icon &&
-                a.icon_name === b.icon_name &&
-                a.icon_url === b.icon_url &&
-                a.color === b.color &&
-                a.kind === b.kind &&
-                a.bridge === b.bridge &&
-                a.is_owner === b.is_owner &&
-                a.bridge_connection_id === b.bridge_connection_id &&
-                a.bridge_connection_name === b.bridge_connection_name &&
-                a.bridge_disconnected === b.bridge_disconnected &&
-                a.bridge_inbound === b.bridge_inbound &&
-                sameMemberIds(a.member_ids, b.member_ids)
-              );
-            })
-          ) {
+          if (!options?.force && agentsSnapshotEqual(prev, merged)) {
             merged = prev;
             return prev; // nothing changed — keep the same reference
           }

@@ -1,4 +1,4 @@
-"""``voice.*`` — probe and Tencent provider error copy."""
+"""``voice.*`` — probe, realtime and Tencent provider error copy."""
 
 from __future__ import annotations
 
@@ -36,3 +36,26 @@ def format_voice_probe_error(exc: BaseException, locale: str | Locale) -> str:
     if sep and lookup(f"voice.tencent.{code}", locale) is not None:
         return tr(f"voice.tencent.{code}", locale)
     return raw
+
+
+#: Realtime ASR error codes worth their own copy; anything else falls back to
+#: ``voice.realtime.error_unknown``.
+_ASR_ERROR_KEYS = {
+    4002: "error_4002",
+    4003: "error_4003",
+    4004: "error_4004",
+    4005: "error_4005",
+    4006: "error_4006",
+    4007: "error_4007",
+    4008: "error_4008",
+    4009: "error_4009",
+    5000: "error_5000",
+    5001: "error_5000",
+    5002: "error_5000",
+}
+
+
+def realtime_error_message(tencent_code: int | None, locale: str | Locale) -> str:
+    """Localized copy for a realtime ASR failure code (``None`` = unknown)."""
+    suffix = _ASR_ERROR_KEYS.get(int(tencent_code or 0), "error_unknown")
+    return tr(f"voice.realtime.{suffix}", locale)

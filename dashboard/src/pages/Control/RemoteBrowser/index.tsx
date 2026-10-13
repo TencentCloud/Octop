@@ -1602,7 +1602,7 @@ export default function RemoteBrowserPage({
       title={t("pageShell.browser.title", "浏览器 AI+")}
       subtitle={t(
         "pageShell.browser.subtitle",
-        "基于 Chromium 的无头浏览器会话",
+        "查看并操控远端无头浏览器，实时接管专家的网页操作",
       )}
       fill
     >

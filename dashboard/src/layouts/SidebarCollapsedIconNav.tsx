@@ -79,7 +79,7 @@ export default function SidebarCollapsedIconNav({
                 <span
                   className={`${styles.navUpdateBadge} ${styles.navUpdateBadgeCollapsed}`}
                 >
-                  新
+                  {t("nav.newVersionBadgeShort", "新")}
                 </span>
               ) : null}
               {item.badge && (

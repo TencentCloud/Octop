@@ -23,11 +23,13 @@ TIMEOUT_NETWORK = f"{_PREFIX}stream_errors.timeout_network"
 PROVIDER_UNAVAILABLE = f"{_PREFIX}stream_errors.provider_unavailable"
 MODEL_CALL_FAILED = f"{_PREFIX}stream_errors.model_call_failed"
 PATH_OUTSIDE_ROOT = f"{_PREFIX}stream_errors.path_outside_root"
+INVALID_REQUEST = f"{_PREFIX}stream_errors.invalid_request"
 
 __all__ = [
     "AUTH",
     "CONTEXT_LENGTH",
     "INSUFFICIENT_BALANCE",
+    "INVALID_REQUEST",
     "MODEL_CALL_FAILED",
     "MODEL_RETRY_FAILURE_MARK",
     "PATH_OUTSIDE_ROOT",
@@ -144,6 +146,14 @@ def classify_stream_error_message(message: str) -> str | None:
         or ("unauthorized" in lower and ("api" in lower or "key" in lower))
     ):
         return AUTH
+
+    if (
+        "error code: 422" in lower
+        or "http 422" in lower
+        or "check open ai req parameter" in lower
+        or "input validation error" in lower
+    ):
+        return INVALID_REQUEST
 
     if (
         "context_length_exceeded" in lower

@@ -43,6 +43,10 @@ import {
   parseHitlSessionPolicy,
 } from "./utils/hitlSessionPolicy";
 import { useChatContextWindow } from "./hooks/useChatContextWindow";
+import {
+  disableProviderStreamUsage,
+  providerIdForTurn,
+} from "../../utils/disableProviderStreamUsage";
 import { useBrowserToolDetection } from "./hooks/useBrowserToolDetection";
 import { useSkillRecordingWorkflow } from "./hooks/useSkillRecordingWorkflow";
 import { listDockFilePathsForTree } from "./utils/dockFilePath";
@@ -807,9 +811,22 @@ function ChatPageInner() {
     [handleSend, t],
   );
 
-  const shouldDeferQueueFlush = useCallback((threadId: string) => {
-    return hasPendingHitl(chatStore.getSnapshot(threadId).messages);
-  }, []);
+  const membersStillTalking =
+    isTeamChat &&
+    liveSpeakers.some(
+      (id) => id.trim() && id !== (activeAgent?.agent_id ?? ""),
+    );
+
+  const shouldDeferQueueFlush = useCallback(
+    (threadId: string) => {
+      const snap = chatStore.getSnapshot(threadId);
+      if (hasPendingHitl(snap.messages)) return true;
+      if (!isTeamChat) return false;
+      const hostId = activeAgent?.agent_id ?? "";
+      return snap.liveSpeakers.some((id) => id.trim() && id !== hostId);
+    },
+    [activeAgent?.agent_id, isTeamChat],
+  );
 
   const {
     items: queuedItems,
@@ -820,7 +837,7 @@ function ChatPageInner() {
   } = useChatMessageQueue({
     agentId: resolvedAgentId,
     threadId: activeThreadId,
-    isStreaming,
+    isStreaming: isStreaming || membersStillTalking,
     onFlush: flushQueuedItem,
     shouldDeferFlush: shouldDeferQueueFlush,
   });
@@ -890,6 +907,7 @@ function ChatPageInner() {
     (
       decisions: Array<{ type: string; message?: string }>,
       policy?: HitlSessionPolicy,
+      pendingId?: string,
     ) => {
       if (policy) {
         const next =
@@ -901,10 +919,22 @@ function ChatPageInner() {
           autoResumedApprovalRef.current = `${activeThreadId}:${pending.messageId}`;
         }
         handleHitlPolicyChange(next, { persist: false });
-        resumeHitl(decisions, activeThreadId ?? undefined, undefined, next);
+        resumeHitl(
+          decisions,
+          activeThreadId ?? undefined,
+          undefined,
+          next,
+          pendingId ?? pending?.pendingId,
+        );
         return;
       }
-      resumeHitl(decisions, activeThreadId ?? undefined);
+      resumeHitl(
+        decisions,
+        activeThreadId ?? undefined,
+        undefined,
+        undefined,
+        pendingId,
+      );
     },
     [resumeHitl, activeThreadId, handleHitlPolicyChange, hitlPolicy, messages],
   );
@@ -922,6 +952,7 @@ function ChatPageInner() {
         activeThreadId ?? undefined,
         undefined,
         policy,
+        pending.pendingId,
       );
     },
     [handleHitlPolicyChange, messages, resumeHitl, activeThreadId],
@@ -945,6 +976,7 @@ function ChatPageInner() {
       activeThreadId,
       undefined,
       sessionPolicy,
+      pending.pendingId,
     );
   }, [
     composerSession?.hitlPolicy,
@@ -1010,6 +1042,41 @@ function ChatPageInner() {
     },
     [messages, wrappedHandleSend, hasPendingHitlPause, t],
   );
+
+  const handleDisableStreamUsage = useCallback(async () => {
+    let lastUserModel: string | null = null;
+    for (let i = messages.length - 1; i >= 0; i -= 1) {
+      if (messages[i].role === "user") {
+        lastUserModel = messages[i].composerContext?.model ?? null;
+        break;
+      }
+    }
+    const providerId = providerIdForTurn(availableModels, [
+      lastUserModel,
+      selectedModel,
+      activeAgent?.default_model,
+      activeModelRef,
+    ]);
+    if (providerId == null) {
+      antMessage.error(t("chat.disableStreamUsageFailed"));
+      return false;
+    }
+    try {
+      await disableProviderStreamUsage(providerId);
+      antMessage.success(t("chat.disableStreamUsageSuccess"));
+      return true;
+    } catch {
+      antMessage.error(t("chat.disableStreamUsageFailed"));
+      return false;
+    }
+  }, [
+    availableModels,
+    selectedModel,
+    activeAgent?.default_model,
+    activeModelRef,
+    messages,
+    t,
+  ]);
 
   // Edit user message: truncate history from that message onwards, replace
   // its content, and re-send — mirrors Claude / ChatGPT "edit message" behaviour.
@@ -1425,6 +1492,7 @@ function ChatPageInner() {
                     thinkingStartedAt={thinkingStartedAt}
                     sessionKey={activeThreadId ?? undefined}
                     onRegenerate={handleRegenerate}
+                    onDisableStreamUsage={handleDisableStreamUsage}
                     onEditUserMessage={handleEditUserMessage}
                     onForkAssistantMessage={handleForkAssistantMessage}
                     forkDisabled={forkDisabled}
@@ -1696,6 +1764,7 @@ function ChatPageInner() {
               onCancel={cancelStream}
               onNewChat={handleNewChat}
               isStreaming={isStreaming}
+              holdSend={membersStillTalking}
               isTeam={isTeamChat}
               disabled={!agentChatReady || noAgents || memoryMaintBlocking}
               initialText={prefillInputRef.current}

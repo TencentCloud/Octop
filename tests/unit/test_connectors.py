@@ -158,7 +158,8 @@ def test_oauth2_accepts_token_alias_for_access_token():
 def test_build_dida365_remote_spec():
     entry = get_catalog_entry("dida365")
     assert entry is not None
-    assert entry.name == "滴答清单"
+    assert entry.name.resolve("zh") == "滴答清单"
+    assert entry.name.resolve("en") == "TickTick"
     assert entry.auth_kind == "oauth2"
     spec = build_http_mcp_spec(
         entry=entry,
@@ -197,6 +198,43 @@ def test_weknora_catalog_and_credentials():
     assert payload["tenant_id"] == "tenant-1"
     assert payload["knowledge_base_ids"] == ["kb-1", "kb-2"]
     assert payload["internal_token"]
+
+
+def test_obsidian_cli_catalog_and_credentials(tmp_path: Path):
+    from octop.infra.connectors.catalog import list_catalog
+
+    entry = get_catalog_entry("obsidian-cli")
+    assert entry is not None
+    assert entry.mcp_mode == "gateway"
+    assert entry.auth_kind == "custom_fields"
+    assert entry.category == "knowledge"
+    kinds = [item.kind for item in list_catalog()]
+    assert kinds.index("obsidian-cli") < kinds.index("weknora")
+    assert kinds[-2:] == ["weknora", "dify"]
+
+    binary = tmp_path / "obsidian"
+    binary.write_text("", encoding="utf-8")
+    payload = validate_create_credentials(
+        "obsidian-cli",
+        {"vault": "My Vault", "binary_path": str(binary)},
+    )
+    assert payload["vault"] == "My Vault"
+    assert payload["binary_path"] == str(binary)
+    assert payload["internal_token"]
+
+    bare = validate_create_credentials("obsidian-cli", {"vault": "Notes", "binary_path": "  "})
+    assert bare["vault"] == "Notes"
+    assert "binary_path" not in bare
+
+    with pytest.raises(ValueError, match="vault is required"):
+        validate_create_credentials("obsidian-cli", {"vault": "  "})
+    with pytest.raises(ValueError, match="cannot contain newlines"):
+        validate_create_credentials("obsidian-cli", {"vault": "A\nB"})
+    with pytest.raises(ValueError, match="existing file"):
+        validate_create_credentials(
+            "obsidian-cli",
+            {"vault": "Notes", "binary_path": str(tmp_path / "missing")},
+        )
 
 
 def test_weknora_rejects_non_https_remote_url():
@@ -1180,7 +1218,8 @@ def test_build_tencent_meeting_remote_spec():
 def test_build_tencent_ardot_remote_spec():
     entry = get_catalog_entry("tencent-ardot")
     assert entry is not None
-    assert entry.name == "腾讯设计 Ardot"
+    assert entry.name.resolve("zh") == "腾讯设计 Ardot"
+    assert entry.name.resolve("en") == "Tencent Ardot"
     assert entry.auth_kind == "oauth2"
     spec = build_http_mcp_spec(
         entry=entry,

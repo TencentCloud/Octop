@@ -43,6 +43,7 @@ interface AssistantTurnViewProps {
    */
   liveSpeakers?: ReadonlyArray<string>;
   onRegenerate?: (messageId: string) => void;
+  onDisableStreamUsage?: () => Promise<boolean>;
   onEditUserMessage?: (messageId: string, newText: string) => void;
   onForkAssistantMessage?: (messageId: string) => void;
   forkDisabled?: boolean;
@@ -82,6 +83,7 @@ export default function AssistantTurnView({
   isTurnInProgress = false,
   liveSpeakers = [],
   onRegenerate,
+  onDisableStreamUsage,
   onEditUserMessage,
   onForkAssistantMessage,
   forkDisabled,
@@ -221,6 +223,25 @@ export default function AssistantTurnView({
                 ) : null}
               </>
             ) : null}
+            {split.answerMessage ? (
+              <div className={styles.assistantTurnAnswer}>
+                <MessageBubble
+                  message={toAnswerOnlyMessage(split.answerMessage)}
+                  agentId={agentId}
+                  showAvatar={!showProcess}
+                  groupPosition="only"
+                  onRegenerate={onRegenerate}
+                  onDisableStreamUsage={onDisableStreamUsage}
+                  onEditUserMessage={onEditUserMessage}
+                  onForkAssistantMessage={onForkAssistantMessage}
+                  forkDisabled={forkDisabled}
+                  forkDisabledHint={forkDisabledHint}
+                  onRunShellCommand={onRunShellCommand}
+                  shellCommandDisabled={shellCommandDisabled}
+                  shellCommandDisabledTitle={shellCommandDisabledTitle}
+                />
+              </div>
+            ) : null}
             <MessageBubble
               message={hitl}
               agentId={agentId}
@@ -271,6 +292,7 @@ export default function AssistantTurnView({
             agentId={agentId}
             showAvatar={firstSummaryIdx < 0 && !trailingHasSummary}
             onRegenerate={onRegenerate}
+            onDisableStreamUsage={onDisableStreamUsage}
             onEditUserMessage={onEditUserMessage}
             onForkAssistantMessage={onForkAssistantMessage}
             forkDisabled={forkDisabled}

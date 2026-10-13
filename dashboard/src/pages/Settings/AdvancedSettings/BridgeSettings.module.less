@@ -12,6 +12,8 @@
   gap: 8px;
   margin-bottom: 16px;
   min-height: 32px;
+  min-width: 0;
+  max-width: 100%;
 }
 
 .pageToolbarActions {
@@ -20,6 +22,8 @@
   flex-wrap: wrap;
   gap: 8px;
   margin-left: auto;
+  min-width: 0;
+  max-width: 100%;
 }
 
 /* ── Toolbar (storage-style) ───────────────────────────────────── */
@@ -50,9 +54,14 @@
   row-gap: 16px;
   column-gap: 12px;
   padding: 16px 0 24px;
+  width: 100%;
+  min-width: 0;
 
+  /* `1fr` is minmax(auto, 1fr): a long peer URL or the action row keeps
+     the track wider than the viewport, and PageShell clips overflow-x
+     on mobile so the card's right edge (status + buttons) disappears. */
   @media (max-width: 767px) {
-    grid-template-columns: 1fr;
+    grid-template-columns: minmax(0, 1fr);
     gap: 12px;
   }
 }
@@ -66,6 +75,9 @@
   flex-direction: column;
   gap: 10px;
   height: 100%;
+  min-width: 0;
+  max-width: 100%;
+  box-sizing: border-box;
   color: var(--fn-text-primary, #111827);
   transition: border-color 0.2s;
 
@@ -78,6 +90,7 @@
   display: flex;
   align-items: center;
   gap: 10px;
+  min-width: 0;
 }
 
 .backendCardIcon {
@@ -123,6 +136,7 @@
   flex-direction: column;
   gap: 0;
   flex: 1;
+  min-width: 0;
   min-height: 0;
 }
 
@@ -130,6 +144,8 @@
   display: flex;
   align-items: baseline;
   gap: 4px;
+  min-width: 0;
+  max-width: 100%;
 }
 
 .infoLabel {
@@ -144,6 +160,7 @@
   text-overflow: ellipsis;
   white-space: nowrap;
   flex: 1;
+  min-width: 0;
 }
 
 .backendCardNote {
@@ -159,10 +176,13 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
+  flex-wrap: wrap;
   border-top: 1px solid var(--fn-border-secondary, #e5e7eb);
   padding-top: 10px;
   margin-top: auto;
   gap: 8px;
+  min-width: 0;
+  max-width: 100%;
 }
 
 .backendActionsLeft {
@@ -174,8 +194,11 @@
 
 .backendActionsRight {
   display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
   gap: 2px;
-  flex-shrink: 0;
+  margin-left: auto;
+  max-width: 100%;
 }
 
 .autoReconnectInline {

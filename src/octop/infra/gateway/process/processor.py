@@ -84,6 +84,7 @@ from octop.infra.users.preferences import (
     get_preferred_model_from_json,
 )
 from octop.infra.utils.locale import resolve_user_locale
+from octop.infra.utils.turn_failure import log_failed_tool_results, log_turn_failure
 from octop.infra.utils.ulid import new_ulid
 
 if TYPE_CHECKING:
@@ -183,6 +184,7 @@ class GlobalProcessor:
             user_repo=user_repo,
             thread_message_repo=thread_message_repo,
             gateway=gateway,
+            hitl_coordinator=self._hitl,
         )
 
     async def _begin_history(
@@ -651,6 +653,7 @@ class GlobalProcessor:
                 outcome=slash_outcome,
                 history_factory=self._begin_history,
                 history_finalize=self._complete_resumed_history,
+                member_hitl=self.teams.deliver_member_hitl,
             ):
                 yield ev
             if slash_outcome.completed_turn:
@@ -699,6 +702,7 @@ class GlobalProcessor:
                         usage_tracker=usage_tracker,
                         history_tracker=history_tracker,
                         outcome=answer_outcome,
+                        member_hitl=self.teams.deliver_member_hitl,
                     ):
                         yield ev
                 finally:
@@ -853,7 +857,9 @@ class GlobalProcessor:
             stream_ok = True
             hitl_paused = projection_state.hitl_paused
         except Exception as exc:
-            await self._record_stream_error(user_id=user_id, agent_id=agent_id, exc=exc)
+            await self._record_stream_error(
+                user_id=user_id, agent_id=agent_id, thread_id=thread_id, exc=exc
+            )
             message, error_code = _stream_error(exc, locale)
             if error_code:
                 message = f"[{error_code}] {message}"
@@ -950,6 +956,7 @@ class GlobalProcessor:
                 outcome=slash_outcome,
                 history_factory=self._begin_history,
                 history_finalize=self._complete_resumed_history,
+                member_hitl=self.teams.deliver_member_hitl,
             ):
                 for frame in message_event_to_cli_chunks(ev):
                     yield _maybe_stamp_team_host(frame, agent_id, team_host)
@@ -1000,6 +1007,7 @@ class GlobalProcessor:
                         usage_tracker=usage_tracker,
                         history_tracker=history_tracker,
                         outcome=answer_outcome,
+                        member_hitl=self.teams.deliver_member_hitl,
                     ):
                         for frame in message_event_to_cli_chunks(ev):
                             yield _maybe_stamp_team_host(frame, agent_id, team_host)
@@ -1060,6 +1068,7 @@ class GlobalProcessor:
                 response_lines=slash_lines,
             )
             self._hitl.expire_pending_for_thread(thread_id, agent_id=agent_id, user_id=user_id)
+            self.teams.cancel_member_hitl(thread_id)
             self._touch_thread_after_turn(thread_id, msg.text)
             for line in slash_lines:
                 yield _maybe_stamp_team_host(
@@ -1088,6 +1097,7 @@ class GlobalProcessor:
             )
 
         self._hitl.expire_pending_for_thread(thread_id, agent_id=agent_id, user_id=user_id)
+        self.teams.cancel_member_hitl(thread_id)
         request = await self._build_dashboard_request(
             msg,
             agent_id=agent_id,
@@ -1129,6 +1139,7 @@ class GlobalProcessor:
         saw_tool_call = False
         emitted_media_ids: set[str] = set()
         emitted_attachment_keys: set[str] = set()
+        emitted_tool_error_ids: set[str] = set()
 
         try:
             async for chunk in self._agent_manager.stream(agent_id, request):
@@ -1168,6 +1179,13 @@ class GlobalProcessor:
                 if chunk.get("type") == "tool_call_chunk":
                     saw_tool_call = True
                 if chunk.get("type") == "tool_result":
+                    log_failed_tool_results(
+                        chunk,
+                        agent_id=agent_id,
+                        thread_id=thread_id,
+                        seen=emitted_tool_error_ids,
+                        live=saw_tool_call,
+                    )
                     if harness_workspace is not None:
                         chunk = await enrich_tool_result_with_backend(
                             chunk,
@@ -1198,7 +1216,9 @@ class GlobalProcessor:
                 yield _maybe_stamp_team_host(chunk, agent_id, team_host)
             stream_ok = True
         except Exception as exc:
-            await self._record_stream_error(user_id=user_id, agent_id=agent_id, exc=exc)
+            await self._record_stream_error(
+                user_id=user_id, agent_id=agent_id, thread_id=thread_id, exc=exc
+            )
             message, error_code = _stream_error(exc, locale)
             payload: dict[str, Any] = {"type": "error", "message": message}
             if error_code:
@@ -1240,6 +1260,8 @@ class GlobalProcessor:
         persist_failed_turn = False
         traj_on = self._agent_trajectory_enabled(agent_id)
         team_host = is_team_agent(self._agent_manager.get_row(agent_id))
+        saw_tool_call = False
+        emitted_tool_error_ids: set[str] = set()
         try:
             async for chunk in self._agent_manager.resume_hitl(
                 agent_id,
@@ -1257,10 +1279,22 @@ class GlobalProcessor:
                     chunk=chunk,
                     enabled=traj_on,
                 )
+                if chunk.get("type") == "tool_call_chunk":
+                    saw_tool_call = True
+                if chunk.get("type") == "tool_result":
+                    log_failed_tool_results(
+                        chunk,
+                        agent_id=agent_id,
+                        thread_id=thread_id,
+                        seen=emitted_tool_error_ids,
+                        live=saw_tool_call,
+                    )
                 yield _maybe_stamp_team_host(chunk, agent_id, team_host)
             completed = True
         except Exception as exc:
-            await self._record_stream_error(user_id=user_id, agent_id=agent_id, exc=exc)
+            await self._record_stream_error(
+                user_id=user_id, agent_id=agent_id, thread_id=thread_id, exc=exc
+            )
             locale = resolve_user_locale(
                 user_repo=self._user_repo,
                 user_id=user_id,
@@ -1591,11 +1625,25 @@ class GlobalProcessor:
             return None
         return merged
 
-    async def _record_stream_error(self, *, user_id: int, agent_id: str, exc: Exception) -> None:
+    async def _record_stream_error(
+        self,
+        *,
+        user_id: int,
+        agent_id: str,
+        exc: Exception,
+        thread_id: str = "",
+    ) -> None:
         from octop.infra.metrics import METRICS as _M  # noqa: PLC0415
 
         _M.inc("stream_errors_total")
-        logger.exception("agent.stream failed for agent %s", agent_id)
+        log_turn_failure(
+            "stream",
+            detail=str(exc),
+            agent_id=agent_id,
+            thread_id=thread_id,
+            exc=exc,
+            level=logging.ERROR,
+        )
         user_row = self._user_repo.get(user_id)
         actor = user_row.username if user_row else str(user_id)
         self._audit_repo.write(

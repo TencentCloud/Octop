@@ -136,8 +136,7 @@ jobs:
           if-no-files-found: error
 
   native:
-    # 即使原生版构建失败也不阻塞整体发布：Docker 版（fpk）始终会发布。
-    continue-on-error: true
+    # 失败时 workflow 变红；release 仍因 if: always() 会挂上已有的 Docker .fpk。
     needs: version
     runs-on: ubuntu-latest
     outputs:
@@ -209,6 +208,7 @@ jobs:
         env:
           UV_PYTHON_INSTALL_DIR: ${{ github.workspace }}/.uv-python
         run: |
+          set -euo pipefail
           set -x
           LOG="${{ github.workspace }}/native-install.log"
           : > "$LOG"
@@ -233,7 +233,7 @@ jobs:
               "$SP/octop_harness/backends/storage_errors.py"
             bash "${{ github.workspace }}/scripts/fnos/slim-site-packages.sh" "$SP"
             PYTHONPATH="$SP" python3.12 \
-              -c "import octop, mcp, langchain_mcp_adapters; from octop.launch import run_foreground_blocking; from octop_harness.backends.storage_errors import classify_storage_error; print('octop', octop.__version__, '| mcp', mcp.__version__, '| lcma', langchain_mcp_adapters.__version__, '| storage_errors', classify_storage_error.__name__)"
+              -c "import octop, mcp, langchain_mcp_adapters; from octop.launch import run_foreground_blocking; from octop_harness.backends.storage_errors import classify_storage_error; print('octop', octop.__version__, '| mcp', mcp.__name__, '| lcma', langchain_mcp_adapters.__name__, '| storage_errors', classify_storage_error.__name__)"
           } 2>&1 | tee -a "$LOG"
 
       - name: Build native FPK
@@ -263,7 +263,6 @@ jobs:
 
   # 在 ARM runner 上安装 aarch64 扩展（.so），fnpack 只有 linux-amd64，打包放到下一 job。
   native-arm64:
-    continue-on-error: true
     needs: version
     runs-on: ubuntu-24.04-arm
     outputs:
@@ -329,6 +328,7 @@ jobs:
         env:
           UV_PYTHON_INSTALL_DIR: ${{ github.workspace }}/.uv-python
         run: |
+          set -euo pipefail
           set -x
           LOG="${{ github.workspace }}/native-arm64-install.log"
           : > "$LOG"
@@ -338,8 +338,9 @@ jobs:
             uname -m
             python3.12 -c "import platform; print(platform.machine())"
             python3 -m pip install --quiet uv
+            # esdk-obs-python is sdist-only; --only-binary :all: fails the resolver.
             python3 -m uv pip install --python python3.12 \
-              --target "$SP" --no-cache --only-binary :all: \
+              --target "$SP" --no-cache \
               "$(ls dist/octop-*.whl | head -1)"
             rm -rf "$SP/mcp" "$SP"/mcp-*.dist-info \
                    "$SP/langchain_mcp_adapters" "$SP"/langchain_mcp_adapters-*.dist-info
@@ -357,7 +358,7 @@ jobs:
               "$SP/octop_harness/backends/storage_errors.py"
             bash "${{ github.workspace }}/scripts/fnos/slim-site-packages.sh" "$SP"
             PYTHONPATH="$SP" python3.12 \
-              -c "import octop, mcp, langchain_mcp_adapters; from octop.launch import run_foreground_blocking; from octop_harness.backends.storage_errors import classify_storage_error; print('octop', octop.__version__, '| mcp', mcp.__version__, '| lcma', langchain_mcp_adapters.__version__, '| storage_errors', classify_storage_error.__name__)"
+              -c "import octop, mcp, langchain_mcp_adapters; from octop.launch import run_foreground_blocking; from octop_harness.backends.storage_errors import classify_storage_error; print('octop', octop.__version__, '| mcp', mcp.__name__, '| lcma', langchain_mcp_adapters.__name__, '| storage_errors', classify_storage_error.__name__)"
           } 2>&1 | tee -a "$LOG"
 
       - name: Upload aarch64 site-packages
@@ -377,7 +378,6 @@ jobs:
           if-no-files-found: ignore
 
   native-arm64-pack:
-    continue-on-error: true
     needs: [version, native-arm64]
     if: needs.native-arm64.outputs.site_packages_ok == 'true'
     runs-on: ubuntu-latest
@@ -419,7 +419,7 @@ jobs:
           if-no-files-found: error
 
   release:
-    # 即使原生版失败（continue-on-error）也要发布 Docker 版。
+    # native / native-arm64 失败时仍运行，把已经打好的 .fpk 挂到 Release。
     if: always()
     needs: [fpk, native, native-arm64-pack, version]
     runs-on: ubuntu-latest

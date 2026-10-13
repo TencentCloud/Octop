@@ -60,6 +60,12 @@ import {
   isGuidedConnector,
 } from "./guidedConnectorUtils";
 import { oauthCallbackSupported } from "./oauthCallback";
+import {
+  isAuthPopupBlocked,
+  navigateAuthWindow,
+  openExternalBrowserUrl,
+  tryOpenAuthPopup,
+} from "./openAuthWindow";
 import { useConnectorInstances } from "./useConnectors";
 import styles from "./index.module.less";
 
@@ -301,7 +307,9 @@ function configuredExtra(
 }
 
 function isHostCliConnector(kind: string): boolean {
-  return ["feishu-cli", "wecom-cli", "agently-cli"].includes(kind);
+  return ["feishu-cli", "wecom-cli", "agently-cli", "obsidian-cli"].includes(
+    kind,
+  );
 }
 
 function ConnectorConfigDrawer({
@@ -449,12 +457,12 @@ function ConnectorConfigDrawer({
 
   const openUrl = (url: string | null | undefined) => {
     if (!url) return;
-    window.open(url, "octop-connector-auth", "width=720,height=800");
+    openExternalBrowserUrl(url);
   };
 
   /** Open sync under the click gesture so popup blockers don't swallow async opens. */
   const openAuthPopupPlaceholder = (): Window | null => {
-    const popup = window.open(
+    const popup = tryOpenAuthPopup(
       "about:blank",
       "octop-connector-auth",
       "width=720,height=800",
@@ -469,23 +477,6 @@ function ConnectorConfigDrawer({
       }
     }
     return popup;
-  };
-
-  const navigateAuthPopup = (
-    popup: Window | null,
-    url: string | null | undefined,
-  ) => {
-    if (!url) return;
-    if (popup && !popup.closed) {
-      try {
-        popup.location.replace(url);
-        popup.focus();
-        return;
-      } catch {
-        // Fall through to a fresh open.
-      }
-    }
-    openUrl(url);
   };
 
   const handleOpenAuthorize = async () => {
@@ -635,7 +626,7 @@ function ConnectorConfigDrawer({
       form.setFieldsValue({ cli_config_key: started.cli_config_key });
       setFeishuUserAuth(started);
       setFeishuUserReady(false);
-      navigateAuthPopup(popup, started.verification_url);
+      navigateAuthWindow(popup, started.verification_url);
       message.success(
         t(
           "connectors.feishuUserAuthStarted",
@@ -853,8 +844,8 @@ function ConnectorConfigDrawer({
 
   const handleOAuth = async () => {
     if (!entry || authorizing) return;
-    const popup = window.open("", "octop-oauth", "width=520,height=720");
-    if (!popup) {
+    const popup = tryOpenAuthPopup("", "octop-oauth", "width=520,height=720");
+    if (isAuthPopupBlocked(popup)) {
       message.error(
         t(
           "connectors.oauthPopupBlocked",
@@ -881,7 +872,7 @@ function ConnectorConfigDrawer({
       settled = true;
       cleanup();
       try {
-        popup.close();
+        popup?.close();
       } catch {
         // ignore
       }
@@ -980,7 +971,7 @@ function ConnectorConfigDrawer({
           settled = true;
           cleanup();
           try {
-            popup.close();
+            popup?.close();
           } catch {
             // ignore
           }
@@ -991,11 +982,11 @@ function ConnectorConfigDrawer({
         },
         5 * 60 * 1000,
       );
-      popup.location.replace(authorize_url);
+      navigateAuthWindow(popup, authorize_url);
     } catch (e) {
       cleanup();
       try {
-        popup.close();
+        popup?.close();
       } catch {
         // ignore
       }
@@ -1542,6 +1533,21 @@ function ConnectorConfigDrawer({
           </div>
         )}
 
+        {entry?.kind === "obsidian-cli" && (
+          <div className={styles.cliInstallHint}>
+            <a
+              href="https://obsidian.md/zh/cli"
+              target="_blank"
+              rel="noreferrer"
+            >
+              {t(
+                "connectors.obsidianCliGuide",
+                "Obsidian-cli官方安装指引：https://obsidian.md/zh/cli",
+              )}
+            </a>
+          </div>
+        )}
+
         {open && entry.kind === "agently-cli" && instance && (
           <AgentlyAuth
             key={instance.instance_id}
@@ -2058,7 +2064,7 @@ function ConnectorConfigDrawer({
                 <Select
                   options={MAIL_PROVIDERS.map((item) => ({
                     value: item.id,
-                    label: item.label,
+                    label: t(`connectors.mailProviders.${item.id}`),
                   }))}
                 />
               </Form.Item>

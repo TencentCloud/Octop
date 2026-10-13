@@ -13,8 +13,16 @@ def test_allows_agent_list_get() -> None:
 
 def test_allows_agent_resource_paths() -> None:
     assert is_tunnel_path_allowed("GET", "/api/agents/01ABC")
+    assert is_tunnel_path_allowed("PATCH", "/api/agents/01ABC")
+    assert is_tunnel_path_allowed("DELETE", "/api/agents/01ABC")
+    assert is_tunnel_path_allowed("DELETE", "/api/agents/bridge:cid:01ABC")
+    assert is_tunnel_path_allowed("DELETE", "/api/agents/01ABC/files/SOUL.md")
+    assert is_tunnel_path_allowed("DELETE", "/api/agents/01ABC/avatar")
     assert is_tunnel_path_allowed("GET", "/api/agents/01ABC/threads")
     assert is_tunnel_path_allowed("POST", "/api/agents/01ABC/uploads")
+    assert is_tunnel_path_allowed("POST", "/api/agents/01ABC/upload")
+    assert is_tunnel_path_allowed("POST", "/api/agents/bridge:cid:01ABC/upload")
+    assert is_tunnel_path_allowed("GET", "/api/agents/01ABC/media/preview")
     assert is_tunnel_path_allowed("GET", "/api/agents/bridge:cid:aid/avatar")
     assert is_tunnel_path_allowed("GET", "/api/agents/01ABC/history/versions")
 

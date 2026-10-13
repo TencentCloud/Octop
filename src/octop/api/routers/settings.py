@@ -2,16 +2,24 @@
 
 from __future__ import annotations
 
+import asyncio
 from typing import Any, Literal
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, File, Request, UploadFile
 from pydantic import BaseModel, Field
 
 from octop.api.deps import current_user, get_server, require_permission
 from octop.config import OctopConfig
 from octop.infra.agents.security import tool_execution_may_pause
 from octop.infra.auth.captcha import current_env, load_view, save_settings
+from octop.infra.errors import ErrorCode, OctopError
 from octop.infra.users.identity import User
+from octop.infra.utils.user_downloads import (
+    is_local_dashboard_request,
+    reveal_download,
+    sanitize_download_filename,
+    save_user_download,
+)
 
 router = APIRouter()
 
@@ -85,6 +93,36 @@ async def get_hitl_settings(
         tool_guard_require_approval=guard_require,
         show_approval_ui=tool_execution_may_pause(policy),
     )
+
+
+class LocalDownloadResponse(BaseModel):
+    path: str = Field(description="Absolute path written under the host Downloads folder.")
+    filename: str = Field(description="Final filename, unique if the name already existed.")
+
+
+@router.post(
+    "/downloads/local",
+    summary="Save a file to the host Downloads folder",
+    response_model=LocalDownloadResponse,
+)
+async def save_local_download(
+    request: Request,
+    file: UploadFile = File(...),  # noqa: B008
+    user: Any = Depends(current_user),
+    server: Any = Depends(get_server),
+) -> LocalDownloadResponse:
+    """Write an already-fetched blob to ~/Downloads. Desktop WebViews cannot use <a download>."""
+    _ = user
+    if not is_local_dashboard_request(request):
+        raise OctopError(
+            ErrorCode.LOCAL_DOWNLOAD_UNAVAILABLE,
+            "local download is only available on this computer",
+        )
+    data = await file.read()
+    filename = sanitize_download_filename(file.filename)
+    path = await asyncio.to_thread(save_user_download, filename, data)
+    await asyncio.to_thread(reveal_download, path)
+    return LocalDownloadResponse(path=str(path), filename=path.name)
 
 
 class MobileCapabilitiesResponse(BaseModel):

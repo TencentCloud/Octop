@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import json
 import os
 import threading
@@ -606,6 +607,72 @@ def test_memory_extract_settings_skips_aux_model_on_legacy_harness() -> None:
     assert settings == {}
 
 
+def test_memory_extract_settings_forwards_aux_call_options() -> None:
+    settings = _memory_extract_settings(
+        {
+            "memory": {
+                "extract_light_timeout_s": 42,
+                "extract_heavy_timeout_s": 90,
+                "extract_max_tokens": 1024,
+                "extract_extra_body": {"chat_template_kwargs": {"enable_thinking": False}},
+            }
+        },
+        supported_fields=frozenset(
+            {
+                "memory_aux_light_timeout_s",
+                "memory_aux_heavy_timeout_s",
+                "memory_aux_max_tokens",
+                "memory_aux_extra_body",
+            }
+        ),
+    )
+    assert settings == {
+        "memory_aux_light_timeout_s": 42.0,
+        "memory_aux_heavy_timeout_s": 90.0,
+        "memory_aux_max_tokens": 1024,
+        "memory_aux_extra_body": {"chat_template_kwargs": {"enable_thinking": False}},
+    }
+
+
+def test_memory_extract_settings_skips_aux_call_options_on_legacy_harness() -> None:
+    # Older octop-harness releases predate the aux call options; the stored
+    # values must be ignored (not rejected) so hot reload keeps working.
+    settings = _memory_extract_settings(
+        {
+            "memory": {
+                "extract_light_timeout_s": 42,
+                "extract_max_tokens": 1024,
+                "extract_extra_body": {"enable_thinking": False},
+            }
+        },
+        supported_fields=frozenset({"memory_enabled"}),
+    )
+    assert settings == {}
+
+
+def test_memory_extract_settings_ignores_unset_aux_call_options() -> None:
+    # None / zero / empty values fall through to the harness defaults.
+    settings = _memory_extract_settings(
+        {
+            "memory": {
+                "extract_light_timeout_s": None,
+                "extract_heavy_timeout_s": 0,
+                "extract_max_tokens": 0,
+                "extract_extra_body": {},
+            }
+        },
+        supported_fields=frozenset(
+            {
+                "memory_aux_light_timeout_s",
+                "memory_aux_heavy_timeout_s",
+                "memory_aux_max_tokens",
+                "memory_aux_extra_body",
+            }
+        ),
+    )
+    assert settings == {}
+
+
 def test_build_harness_config_accepts_memory_extract_settings(manager: AgentManager) -> None:
     row = _row(
         config_json=json.dumps(
@@ -896,13 +963,59 @@ def test_is_bootstrapped_assumes_true_when_backend_check_fails(manager: AgentMan
 
 
 @pytest.mark.asyncio
-async def test_delete_thread_checkpoint_returns_false_when_agent_not_running(
-    manager: AgentManager,
+async def test_delete_thread_checkpoint_missing_agent_raises(manager: AgentManager) -> None:
+    with pytest.raises(OctopError) as exc:
+        await manager.delete_thread_checkpoint("NOPE", "thr_1")
+    assert exc.value.code == ErrorCode.AGENT_NOT_FOUND
+
+
+@pytest.mark.asyncio
+async def test_delete_thread_checkpoint_also_clears_configured_store(
+    manager: AgentManager, monkeypatch: Any
 ) -> None:
-    # Fresh fixture has no _harness_manager wired up — get_agent raises
-    # OctopError, which must be swallowed (checkpoint cleanup is best-effort).
-    result = await manager.delete_thread_checkpoint("NOPE", "thr_1")
-    assert result is False
+    """A live checkpointer delete must not skip the SQLite or Postgres store."""
+    user_id = manager._repos.user_repo.create(username="alice", password_hash="x", role="admin")
+    manager._repos.agent_repo.create(agent_id="AGT1", user_id=user_id, name="a")
+    agent = MagicMock()
+    agent.adelete_thread = AsyncMock(return_value=True)
+    harness_manager = MagicMock()
+    harness_manager.get_agent.return_value = MagicMock(agent=agent)
+    manager._harness_manager = harness_manager
+    seen: dict[str, str] = {}
+
+    def _capture(**kwargs: Any) -> None:
+        seen["thread_id"] = kwargs["thread_id"]
+
+    monkeypatch.setattr(
+        "octop.infra.agents.memory.thread_cleanup.delete_thread_from_agent_stores",
+        _capture,
+    )
+
+    await manager.delete_thread_checkpoint("AGT1", "thr_1")
+
+    agent.adelete_thread.assert_awaited_once_with("thr_1")
+    assert seen["thread_id"] == "thr_1"
+
+
+@pytest.mark.asyncio
+async def test_delete_removes_every_agent_directory(manager: AgentManager) -> None:
+    agent_id = "AGT_DIRS"
+    manager._repos.agent_repo.create(agent_id=agent_id, user_id=None, name="dirs")
+    agents = manager._paths.agent_workspace(agent_id)
+    scoped = manager._paths.root / "workspaces" / agent_id
+    agents.mkdir(parents=True)
+    scoped.mkdir(parents=True)
+    (agents / "a.txt").write_text("a", encoding="utf-8")
+    (scoped / "b.txt").write_text("b", encoding="utf-8")
+    harness_manager = MagicMock()
+    harness_manager.aremove_agent = AsyncMock()
+    manager._harness_manager = harness_manager
+
+    await manager.delete(agent_id)
+
+    assert not agents.exists()
+    assert not scoped.exists()
+    assert manager.get_row(agent_id) is None
 
 
 @pytest.mark.asyncio
@@ -917,12 +1030,12 @@ async def test_delete_thread_checkpoint_delegates_to_harness_adelete_thread(
 
     result = await manager.delete_thread_checkpoint("AGT1", "thr_1")
 
-    assert result is True
+    assert result is None
     agent.adelete_thread.assert_awaited_once_with("thr_1")
 
 
 @pytest.mark.asyncio
-async def test_delete_thread_checkpoint_returns_false_when_harness_lacks_adelete_thread(
+async def test_delete_thread_checkpoint_opens_store_when_harness_cannot_delete(
     manager: AgentManager,
 ) -> None:
     agent = MagicMock(spec=[])  # no adelete_thread attribute at all
@@ -932,7 +1045,7 @@ async def test_delete_thread_checkpoint_returns_false_when_harness_lacks_adelete
 
     result = await manager.delete_thread_checkpoint("AGT1", "thr_1")
 
-    assert result is False
+    assert result is None
 
 
 @pytest.mark.asyncio
@@ -946,8 +1059,9 @@ async def test_delete_thread_checkpoint_propagates_unexpected_errors(
     harness_manager.get_agent.return_value = MagicMock(agent=agent)
     manager._harness_manager = harness_manager
 
-    with pytest.raises(RuntimeError, match="db unavailable"):
+    with pytest.raises(OctopError) as exc:
         await manager.delete_thread_checkpoint("AGT1", "thr_1")
+    assert exc.value.code == ErrorCode.CHECKPOINT_DELETE_FAILED
 
 
 @pytest.mark.asyncio
@@ -1050,6 +1164,98 @@ async def test_reload_agent_clears_bootstrap_refresh_pending(manager: AgentManag
 
     assert agent_id not in manager._bootstrap_graph_refresh_pending
     harness_manager.aremove_agent.assert_awaited_once_with(agent_id)
+
+
+@pytest.mark.asyncio
+async def test_compact_now_runs_when_idle(manager: AgentManager, monkeypatch: Any) -> None:
+    seen: list[str] = []
+
+    def _sync(agent_id: str) -> bool:
+        seen.append(agent_id)
+        return True
+
+    monkeypatch.setattr(manager, "_compact_agent_database_sync", _sync)
+    assert await manager.compact_agent_database("AGT1") is True
+    assert seen == ["AGT1"]
+    assert "AGT1" not in manager._reclaim_pending
+
+
+@pytest.mark.asyncio
+async def test_compact_now_defers_while_a_turn_is_running(
+    manager: AgentManager, monkeypatch: Any
+) -> None:
+    manager._active_invocations["AGT1"] = 1
+    monkeypatch.setattr(manager, "_compact_agent_database_sync", lambda _agent_id: True)
+    try:
+        assert await manager.compact_agent_database("AGT1", wait_s=0) is False
+        assert "AGT1" in manager._reclaim_pending
+    finally:
+        manager._reclaim_pending.clear()
+        task = manager._reclaim_task
+        if task is not None and not task.done():
+            task.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await task
+
+
+@pytest.mark.asyncio
+async def test_delete_purges_memory_before_removing_row(
+    manager: AgentManager, monkeypatch: Any
+) -> None:
+    """Checkpoints and memory are removed while the agent row still exists."""
+    user_id = manager._repos.user_repo.create(username="alice", password_hash="x", role="admin")
+    agent_id = "AGT_PURGE"
+    manager._repos.agent_repo.create(agent_id=agent_id, user_id=user_id, name="purge")
+    manager._repos.thread_repo.insert(
+        thread_id="thr_purge",
+        agent_id=agent_id,
+        user_id=user_id,
+        channel_type="dashboard",
+        session_key="purge",
+    )
+    seen: dict[str, Any] = {}
+
+    def _capture(**kwargs: Any) -> None:
+        seen["threads"] = set(kwargs["thread_ids"])
+        seen["row_still_present"] = manager.get_row(agent_id) is not None
+
+    monkeypatch.setattr(
+        "octop.infra.agents.memory.thread_cleanup.delete_agent_memory_and_checkpoints",
+        _capture,
+    )
+    harness_manager = MagicMock()
+    harness_manager.aremove_agent = AsyncMock()
+    manager._harness_manager = harness_manager
+
+    await manager.delete(agent_id)
+
+    assert seen["threads"] == {"thr_purge"}
+    assert seen["row_still_present"] is True
+    assert manager.get_row(agent_id) is None
+
+
+@pytest.mark.asyncio
+async def test_delete_keeps_row_when_memory_purge_fails(
+    manager: AgentManager, monkeypatch: Any
+) -> None:
+    agent_id = "AGT_PURGE_FAIL"
+    manager._repos.agent_repo.create(agent_id=agent_id, user_id=None, name="purge-fail")
+    harness_manager = MagicMock()
+    harness_manager.aremove_agent = AsyncMock()
+    manager._harness_manager = harness_manager
+
+    def _boom(**kwargs: Any) -> None:
+        raise RuntimeError("store locked")
+
+    monkeypatch.setattr(
+        "octop.infra.agents.memory.thread_cleanup.delete_agent_memory_and_checkpoints",
+        _boom,
+    )
+
+    with pytest.raises(RuntimeError, match="store locked"):
+        await manager.delete(agent_id)
+
+    assert manager.get_row(agent_id) is not None
 
 
 @pytest.mark.asyncio
