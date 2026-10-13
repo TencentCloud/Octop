@@ -44,6 +44,12 @@ _STARTUP_GRACE_SECONDS = 5.0
 _STOP_POLL_ATTEMPTS = 30
 _STOP_POLL_DELAY_SECONDS = 1.0
 
+# launchd may report the process stopped before releasing its service label.
+# A bootstrap during that window fails with error 5 (I/O error), so wait up to
+# five seconds for ``launchctl print`` to stop finding the old registration.
+_LAUNCHD_UNLOAD_POLL_ATTEMPTS = 10
+_LAUNCHD_UNLOAD_POLL_DELAY_SECONDS = 0.5
+
 # Default retry budget for HTTP health probes.  With a 5s grace the total
 # worst-case wait is 5 + 10*1.5 = 20s.
 DEFAULT_HEALTH_ATTEMPTS = 10
@@ -736,6 +742,27 @@ def _wait_for_stop(runtime: ServiceRuntime) -> None:
     logger.warning("service did not stop within %ds — proceeding anyway", _STOP_POLL_ATTEMPTS)
 
 
+def _wait_for_launchd_unload(runtime: ServiceRuntime) -> None:
+    """Wait until launchd releases the service label after ``bootout``.
+
+    Process exit and launchd registration removal are separate asynchronous
+    steps.  ``bootstrap`` must wait for the latter or it can fail with
+    ``Bootstrap failed: 5: Input/output error`` even though the old process is
+    already inactive.
+    """
+    target = launchd_domain(runtime.scope)
+    for _ in range(_LAUNCHD_UNLOAD_POLL_ATTEMPTS):
+        proc = _launchctl_run(runtime.scope, "print", target)
+        if proc.returncode != 0:
+            return
+        time.sleep(_LAUNCHD_UNLOAD_POLL_DELAY_SECONDS)
+    logger.warning(
+        "launchd service %s remained loaded after %.1fs — proceeding anyway",
+        target,
+        _LAUNCHD_UNLOAD_POLL_ATTEMPTS * _LAUNCHD_UNLOAD_POLL_DELAY_SECONDS,
+    )
+
+
 def _wait_for_startup() -> None:
     """Give the service a moment to bind the port before health checks begin.
 
@@ -811,6 +838,7 @@ def restart_service(runtime: ServiceRuntime) -> None:
     proc = _launchctl_run(runtime.scope, "bootout", launchd_domain(runtime.scope))
     _cmd_ok(proc, "restart bootout failed")
     _wait_for_stop(runtime)
+    _wait_for_launchd_unload(runtime)
     _launchd_bootstrap(runtime)
     _wait_for_startup()
 
