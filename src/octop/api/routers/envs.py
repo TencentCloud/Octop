@@ -12,6 +12,7 @@ from fastapi import APIRouter, Body, Depends
 from octop.api.deps import get_server, require_permission
 from octop.infra.errors import ErrorCode, OctopError
 from octop.infra.utils.env_file import (
+    _is_protected_env_key,
     apply_env_file_replace,
     env_file_path,
     list_env_items,
@@ -43,6 +44,29 @@ def _restore_secret_sentinel(cleaned: dict[str, str], previous: dict[str, str]) 
             cleaned[key] = previous[key]
         else:
             cleaned.pop(key, None)
+
+
+def _validate_env_key(key: str) -> str:
+    """Return the normalized key, rejecting names Octop reserves for itself.
+
+    ``HOME`` / ``USER`` / ``SHELL`` and every ``OCTOP_*`` name identify the Octop
+    process and its agent sandboxes. ``overlay_stdio_spec_env`` already refuses to
+    forward them to MCP stdio servers; the Admin env file feeds the same process
+    environment through ``apply_env_file_replace``, so it has to refuse them too —
+    otherwise saving ``OCTOP_AUTH_DIR`` here re-points every agent subprocess.
+    The captcha secrets are the one reserved pair this endpoint owns end to end,
+    so they stay writable (redacted on read, sentinel-restored on write).
+    """
+    k = key.strip()
+    if not k:
+        raise OctopError(ErrorCode.SLASH_BAD_ARGS, "env key cannot be empty")
+    if not _KEY_RE.match(k):
+        raise OctopError(ErrorCode.SLASH_BAD_ARGS, f"invalid env key: {k!r}")
+    if _is_protected_env_key(k) and k not in _CAPTCHA_SECRET_KEYS:
+        raise OctopError(
+            ErrorCode.SLASH_BAD_ARGS, f"{k!r} is reserved by Octop and cannot be set here"
+        )
+    return k
 
 
 def _after_env_sync(server: Any, previous: dict[str, str], new: dict[str, str]) -> None:
@@ -96,12 +120,7 @@ async def batch_save_envs(
 ) -> list[dict[str, str]]:
     cleaned: dict[str, str] = {}
     for key, value in body.items():
-        k = key.strip()
-        if not k:
-            raise OctopError(ErrorCode.SLASH_BAD_ARGS, "env key cannot be empty")
-        if not _KEY_RE.match(k):
-            raise OctopError(ErrorCode.SLASH_BAD_ARGS, f"invalid env key: {k!r}")
-        cleaned[k] = str(value)
+        cleaned[_validate_env_key(key)] = str(value)
     path = env_file_path(server.paths.root)
     previous = load_env_file(path)
     _restore_secret_sentinel(cleaned, previous)
@@ -121,9 +140,7 @@ async def delete_env(
     _: Any = Depends(require_permission("envs")),
     server: Any = Depends(get_server),
 ) -> list[dict[str, str]]:
-    k = key.strip()
-    if not _KEY_RE.match(k):
-        raise OctopError(ErrorCode.SLASH_BAD_ARGS, f"invalid env key: {k!r}")
+    k = _validate_env_key(key)
     path = env_file_path(server.paths.root)
     previous = load_env_file(path)
     values = dict(previous)
