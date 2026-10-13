@@ -1021,7 +1021,13 @@ class BridgeManager:
         except OctopError:
             advertise_base = "http://127.0.0.1"
 
-        if is_self_peer_url(advertise_base, self._advertise_base_url):
+        # Default installs advertise http://127.0.0.1:<port>. That URL is shared
+        # by every instance on the same port, so it is not proof this socket
+        # looped back to us. Outbound dials already reject a loopback self URL.
+        # A non-loopback advertise URL (explicit bind address) still is.
+        if is_self_peer_url(advertise_base, self._advertise_base_url) and _advertise_host_label(
+            self._advertise_base_url
+        ):
             await websocket.close(code=4004, reason="self connect")
             return
 
