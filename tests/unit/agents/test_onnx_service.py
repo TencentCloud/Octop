@@ -278,6 +278,24 @@ def test_embed_texts_returns_vectors(monkeypatch) -> None:
     assert len(vectors) == 1 and len(vectors[0]) == 3
 
 
+def test_build_text_embedding_repairs_old_cos_mirror_ref(monkeypatch) -> None:
+    """Upgraded installs keep the pre-#1341 ``cos-mirror\\n`` ref until the model loads."""
+    from octop.infra.agents.providers import onnx_service as mod
+
+    ref = mod.embedding_models_dir() / "models--Qdrant--bge-small-zh-v1.5" / "refs" / "main"
+    ref.parent.mkdir(parents=True)
+    ref.write_bytes(b"cos-mirror\n")
+    seen: list[bytes] = []
+
+    class FakeTextEmbedding:
+        def __init__(self, **_kwargs) -> None:
+            seen.append(ref.read_bytes())
+
+    monkeypatch.setitem(sys.modules, "fastembed", SimpleNamespace(TextEmbedding=FakeTextEmbedding))
+    mod._build_text_embedding("BAAI/bge-small-zh-v1.5")
+    assert seen == [b"cos-mirror"]
+
+
 def test_embed_texts_empty_input(monkeypatch) -> None:
     from octop.infra.agents.providers import onnx_service as mod
 

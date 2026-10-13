@@ -349,6 +349,32 @@ def hf_cache_snapshot_dir(cache_dir: Path, hf_repo: str, *, revision: str = COS_
     return dest
 
 
+def repair_cos_mirror_ref(cache_dir: Path, hf_repo: str, *, revision: str = COS_REVISION) -> bool:
+    """Strip the trailing newline older releases wrote after the COS revision in ``refs/main``.
+
+    ``huggingface_hub`` reads the ref verbatim, so ``"cos-mirror\\n"`` never resolves
+    offline and loading falls back to the network (#1341). Caches downloaded
+    before the fix are already marked as downloaded and never pass through
+    :func:`hf_cache_snapshot_dir` again, so repair them where the model is
+    loaded. Any other ref content, such as a commit hash ``huggingface_hub``
+    wrote itself, is left alone. Returns True when the ref was rewritten.
+    """
+    ref = cache_dir / ("models--" + hf_repo.replace("/", "--")) / "refs" / "main"
+    try:
+        raw = ref.read_text(encoding="utf-8")
+    except OSError:
+        return False
+    if raw == revision or raw.strip() != revision:
+        return False
+    try:
+        ref.write_text(revision, encoding="utf-8")
+    except OSError:
+        logger.warning("Could not repair HF cache ref %s", ref, exc_info=True)
+        return False
+    logger.info("Repaired HF cache ref %s", ref)
+    return True
+
+
 def _download_http_file(
     client: httpx.Client,
     url: str,
