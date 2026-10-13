@@ -1,0 +1,76 @@
+"""DingTalk Workspace CLI gateway — one tool passing argv to ``dws``."""
+
+from __future__ import annotations
+
+import os
+from typing import Any
+
+from octop.infra.connectors.gateway.cli_dirs import resolve_cli_config_key
+from octop.infra.connectors.gateway.cli_runner import resolve_binary, run_cli
+from octop.infra.utils.paths import PathLayout
+
+_KIND = "dingtalk-cli"
+_TIMEOUT_S = 60.0
+# Interactive / self-modifying subcommands: they hang headless or touch the host.
+_DENIED = frozenset({"auth", "upgrade", "skill", "connect", "completion"})
+
+TOOLS: list[dict[str, Any]] = [
+    {
+        "name": "dws",
+        "description": (
+            "Run a DingTalk Workspace CLI (dws) command via Octop Connectors. "
+            "args is the argv after `dws`, e.g. "
+            '["contact","user","search","--query","Alice","-f","json"]. '
+            'Use ["--help"] or [<product>,"--help"] to discover commands. '
+            "On auth errors, tell the user to authorize the DingTalk connector in Octop — "
+            "never run shell/CLI commands."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "args": {"type": "array", "items": {"type": "string"}},
+            },
+            "required": ["args"],
+        },
+    },
+]
+
+
+def list_tools() -> list[dict[str, Any]]:
+    return TOOLS
+
+
+def call_tool(creds: dict[str, Any], name: str, args: dict[str, Any]) -> str:
+    if name != "dws":
+        raise ValueError(f"unknown DingTalk CLI tool: {name}")
+    argv = args.get("args")
+    if not isinstance(argv, list) or not argv or not all(isinstance(a, str) for a in argv):
+        raise ValueError("args must be a non-empty array of strings")
+    if argv[0] in _DENIED:
+        raise ValueError(
+            f"dws {argv[0]!r} is not available through Octop. 禁止建议或执行任何终端命令。"
+        )
+    return run_cli([resolve_binary("dws"), *argv], env=prepare_env(creds), timeout_s=_TIMEOUT_S)
+
+
+def probe_credentials(creds: dict[str, Any]) -> None:
+    # Runs before the instance is saved; user login is authorized afterwards in Connectors.
+    run_cli([resolve_binary("dws"), "version"], env=prepare_env(creds), timeout_s=_TIMEOUT_S)
+
+
+def prepare_env(creds: dict[str, Any]) -> dict[str, str]:
+    client_id = str(creds.get("client_id") or "").strip()
+    client_secret = str(creds.get("client_secret") or "").strip()
+    if not client_id or not client_secret:
+        raise ValueError("DingTalk client_id and client_secret are required")
+    config_dir = PathLayout.from_env().ensure_connector_cli_instance_dir(
+        _KIND, resolve_cli_config_key(creds)
+    )
+    env = os.environ.copy()
+    env.update(
+        DWS_CONFIG_DIR=str(config_dir),
+        DWS_CLIENT_ID=client_id,
+        DWS_CLIENT_SECRET=client_secret,
+        DWS_DISABLE_KEYCHAIN="1",
+    )
+    return env

@@ -307,9 +307,13 @@ function configuredExtra(
 }
 
 function isHostCliConnector(kind: string): boolean {
-  return ["feishu-cli", "wecom-cli", "agently-cli", "obsidian-cli"].includes(
-    kind,
-  );
+  return [
+    "feishu-cli",
+    "wecom-cli",
+    "agently-cli",
+    "obsidian-cli",
+    "dingtalk-cli",
+  ].includes(kind);
 }
 
 function ConnectorConfigDrawer({
@@ -1139,7 +1143,7 @@ function ConnectorConfigDrawer({
           default_open: values.default_open === true,
           shared: values.shared === true,
         });
-        if (entry.kind === "agently-cli") {
+        if (entry.kind === "agently-cli" || entry.kind === "dingtalk-cli") {
           clearFormDraft(draftScope);
           message.success(t("connectors.createSuccess", "连接器已创建"));
           onSaved(created);
@@ -1548,26 +1552,29 @@ function ConnectorConfigDrawer({
           </div>
         )}
 
-        {open && entry.kind === "agently-cli" && instance && (
-          <AgentlyAuth
-            key={instance.instance_id}
-            instanceId={instance.instance_id}
-            installed={cliInfo?.installed === true}
-            onChanged={() => {
-              void connectorsApi
-                .getInstance(instance.instance_id)
-                .then((detail) =>
-                  setInstanceDetail((current) =>
-                    current?.instance_id === detail.instance_id
-                      ? detail
-                      : current,
-                  ),
-                )
-                .catch(() => undefined);
-              onSaved();
-            }}
-          />
-        )}
+        {open &&
+          (entry.kind === "agently-cli" || entry.kind === "dingtalk-cli") &&
+          instance && (
+            <AgentlyAuth
+              key={instance.instance_id}
+              kind={entry.kind}
+              instanceId={instance.instance_id}
+              installed={cliInfo?.installed === true}
+              onChanged={() => {
+                void connectorsApi
+                  .getInstance(instance.instance_id)
+                  .then((detail) =>
+                    setInstanceDetail((current) =>
+                      current?.instance_id === detail.instance_id
+                        ? detail
+                        : current,
+                    ),
+                  )
+                  .catch(() => undefined);
+                onSaved();
+              }}
+            />
+          )}
 
         <Form
           form={form}

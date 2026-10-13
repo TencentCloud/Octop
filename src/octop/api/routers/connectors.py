@@ -953,7 +953,10 @@ async def delete_instance(
     _assert_can_manage_connector(inst, user)
     user_id = inst.user_id
     cli_creds: dict[str, Any] | None = None
-    if inst.kind in ("feishu-cli", "wecom-cli", "agently-cli") and inst.has_credentials:
+    if (
+        inst.kind in ("feishu-cli", "wecom-cli", "agently-cli", "dingtalk-cli")
+        and inst.has_credentials
+    ):
         try:
             cli_creds = _connector_service(server).decrypt(instance_id)
         except Exception:
@@ -1183,8 +1186,11 @@ class FeishuUserAuthInstanceCompleteBody(BaseModel):
 @router.post(
     "/connector-instances/{instance_id}/agently-auth/start",
     response_model=AgentlyAuthResponse,
-    summary="Start Agent Mail device authorization",
-    description="Owner only. Starts one bounded background login for this saved instance.",
+    summary="Start CLI device authorization",
+    description=(
+        "Owner only. Agent Mail or DingTalk CLI instances. "
+        "Starts one bounded background login for this saved instance."
+    ),
 )
 async def agently_auth_start(
     instance_id: str,
@@ -1201,8 +1207,11 @@ async def agently_auth_start(
 @router.get(
     "/connector-instances/{instance_id}/agently-auth/status",
     response_model=AgentlyAuthResponse,
-    summary="Read Agent Mail authorization status",
-    description="Owner only. Poll a device login or check stored authorization without exposing tokens.",
+    summary="Read CLI authorization status",
+    description=(
+        "Owner only. Agent Mail or DingTalk CLI instances. "
+        "Poll a device login or check stored authorization without exposing tokens."
+    ),
 )
 async def agently_auth_status(
     instance_id: str,
@@ -1222,8 +1231,11 @@ async def agently_auth_status(
 @router.post(
     "/connector-instances/{instance_id}/agently-auth/logout",
     response_model=AgentlyAuthResponse,
-    summary="Log out of Agent Mail",
-    description="Owner only. Cancels pending login, clears the CLI grant and attempts revocation.",
+    summary="Log out of a CLI connector",
+    description=(
+        "Owner only. Agent Mail or DingTalk CLI instances. "
+        "Cancels pending login, clears the CLI grant and attempts revocation."
+    ),
 )
 async def agently_auth_logout(
     instance_id: str,
@@ -1242,8 +1254,11 @@ async def agently_auth_logout(
 @router.post(
     "/connector-instances/{instance_id}/agently-auth/refresh",
     response_model=AgentlyAuthResponse,
-    summary="Refresh Agent Mail authorization",
-    description="Owner only. Refreshes the saved CLI grant and returns sanitized authorization status.",
+    summary="Refresh CLI authorization",
+    description=(
+        "Owner only. Agent Mail or DingTalk CLI instances. "
+        "Refreshes the saved CLI grant and returns sanitized authorization status."
+    ),
 )
 async def agently_auth_refresh(
     instance_id: str,
