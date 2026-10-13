@@ -103,6 +103,7 @@ import {
 import { setPendingAttachKnowledgeBaseId } from "../Chat/utils/pendingAttachKnowledgeBase";
 import skillStyles from "../Agent/Skills/index.module.less";
 import { KNOWLEDGE_ICON_NAMES, knowledgeIconForName } from "./knowledgeIcons";
+import { effectiveDocumentLimit } from "./documentLimit";
 import {
   isDirectKnowledgeChild,
   joinKnowledgePath,
@@ -695,8 +696,11 @@ export default function KnowledgeBasesPage() {
     : 0;
   const atBaseLimit = ownedBaseCount >= limits.max_bases_per_owner;
   const fileCount = documents.filter((document) => !document.is_dir).length;
-  const isAtDocumentLimit =
-    fileCount >= (selected?.max_documents ?? limits.max_docs_per_kb);
+  const documentLimit = effectiveDocumentLimit(
+    selected?.max_documents,
+    limits.max_docs_per_kb,
+  );
+  const isAtDocumentLimit = fileCount >= documentLimit;
   const folderEntries = documents
     .filter((document) =>
       isDirectKnowledgeChild(document.path || document.filename, currentFolder),
@@ -1287,14 +1291,13 @@ export default function KnowledgeBasesPage() {
 
   const uploadDocuments = async (files: FileList | File[] | null) => {
     if (!selected || !files || !usable || isAtDocumentLimit) return;
-    const remaining = Math.max(
-      0,
-      (selected?.max_documents ?? limits.max_docs_per_kb) - fileCount,
-    );
     const incoming = Array.from(files);
     const matched = incoming.filter((file) =>
       fileMatchesAccept(file, supportedDocumentTypes),
     );
+    const remaining = Number.isFinite(documentLimit)
+      ? Math.max(0, documentLimit - fileCount)
+      : matched.length;
     const skippedType = incoming.length - matched.length;
     if (skippedType > 0) {
       message.warning(
@@ -1306,7 +1309,7 @@ export default function KnowledgeBasesPage() {
     if (matched.length > remaining) {
       message.warning(
         t("knowledgeBases.documentLimitReached", {
-          count: selected?.max_documents ?? limits.max_docs_per_kb,
+          count: documentLimit,
         }),
       );
     }
@@ -2202,8 +2205,9 @@ export default function KnowledgeBasesPage() {
                       <span className={skillStyles.gridCount}>
                         {t("knowledgeBases.documentLimit", {
                           count: fileCount,
-                          max:
-                            selected?.max_documents ?? limits.max_docs_per_kb,
+                          max: Number.isFinite(documentLimit)
+                            ? documentLimit
+                            : t("knowledgeBases.unlimited"),
                         })}
                       </span>
                       <div className={skillStyles.gridToolbarRight}>
@@ -2363,8 +2367,7 @@ export default function KnowledgeBasesPage() {
                         type="info"
                         showIcon
                         message={t("knowledgeBases.documentLimitReached", {
-                          count:
-                            selected?.max_documents ?? limits.max_docs_per_kb,
+                          count: documentLimit,
                         })}
                       />
                     ) : null}
