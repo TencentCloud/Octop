@@ -21,7 +21,7 @@ AuthKind = Literal[
 ]
 CredentialFieldType = Literal["text", "password", "url", "tags"]
 RemoteTransport = Literal["raw_http", "streamable_http", "sse"]
-McpMode = Literal["remote", "gateway", "internal"]
+McpMode = Literal["remote", "gateway", "internal", "stdio"]
 ConnectorCategory = Literal[
     "office",
     "knowledge",
