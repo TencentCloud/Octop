@@ -218,27 +218,18 @@ def _install_hooks(target, host):
 
 
 def _entry(transport=None):
-    # 两种模式，凭据各带各的：
-    #   直连（条目落在实例挂载点）：带**实例共享 token**；header 名由 ``OCTOP_TOKEN_HEADER``
-    #   决定（缺省 ``Authorization`` → ``Bearer <token>``），身份只能靠 ``X-Octop-User-Id``
-    #   头表达。
-    #   OAuth 前置（条目指向代理）：必须带**个人令牌**；header 名由 ``OCTOP_ENTRY_TOKEN_HEADER``
-    #   决定（缺省 ``Authorization``），身份由代理按令牌重写，所以条目不写 ``X-Octop-User-Id``。
+    # 条目与 hooks 共用同一份凭据：**实例共享 token**；header 名由 ``OCTOP_TOKEN_HEADER``
+    # 决定（缺省 ``Authorization`` → ``Bearer <token>``）。「谁问的」靠 ``X-Octop-User-Id`` 头。
     headers = {"X-Octop-Agent-Id": AGENT}
-    if OAUTH_ENTRY:
-        if ENTRY_TOKEN:
-            header = ENTRY_TOKEN_HEADER or "Authorization"
-            headers[header] = f"Bearer {ENTRY_TOKEN}" if header == "Authorization" else ENTRY_TOKEN
-    else:
-        headers[TOKEN_HEADER] = f"Bearer {TOKEN}" if TOKEN_HEADER == "Authorization" else TOKEN
-        if USER_ID:
-            headers["X-Octop-User-Id"] = USER_ID  # 「谁问的」靠这个头，不靠 token 解析
+    headers[TOKEN_HEADER] = f"Bearer {TOKEN}" if TOKEN_HEADER == "Authorization" else TOKEN
+    if USER_ID:
+        headers["X-Octop-User-Id"] = USER_ID  # 「谁问的」靠这个头，不靠 token 解析
     entry = {"type": transport or "http", "url": ENTRY_URL, "headers": headers}
     return entry
 
 
 def _octop_servers(servers):
-    """配置里已有的 octop memory 服务名——``local`` / ``prod`` / ``oauth`` / ``test`` 都算。"""
+    """配置里已有的 octop memory 服务名——``local`` / ``prod`` / ``test`` 这类后缀都算。"""
     return [name for name in servers if str(name).replace("_", "-").startswith("octop-memory")]
 
 
@@ -369,7 +360,7 @@ def do_kiro():
       ``~/.kiro/sessions/<workspace>/<sessionId>/messages.jsonl`` 提交进 L0 —— Kiro 侧
       最有价值的就是**原始的用户/助手消息**，绝不能让模型自己总结（早期版本在共享 token
       下退化为 ``agent`` 提示词，结果是"AI 复述"进 L0）。共享 token 下"谁问的"由脚本带的
-      ``X-Octop-User-Id``（安装时的 ``OCTOP_USER_ID``）表达，不再需要额外的个人令牌。
+      ``X-Octop-User-Id``（安装时的 ``OCTOP_USER_ID``）表达，不存在第二份额外凭据。
     """
     _merge_mcp(home / ".kiro" / "settings" / "mcp.json", transport="streamable_http")
     _install_hooks(KIRO_DIR, "kiro")
@@ -623,8 +614,6 @@ def do_dsh():
         print("  ! 没自动装进 profile，手动两步：")
         print(f"      1) 在 {profile_dir} 执行：pnpm add {bundle}")
         print(f"      2) 把 {name} 加进该目录 package.json 的 dsh.profile.bundles，然后重启 DSH")
-    if OAUTH_ENTRY:
-        print("      · DSH 侧这条目带个人令牌（OAuth 前置），静态凭据由代理校验")
     print("  · DSH 的 MCP 服务请在它的 MCP 面板/CLI 里添加（该条目由 DSH 自己管理）：")
     print(f"      url: {URL}")
     print(f"      headers: {json.dumps(_entry()['headers'], ensure_ascii=False)}")
@@ -635,49 +624,19 @@ URL = os.environ["OCTOP_URL"]
 HOOK_URL = os.environ.get("OCTOP_HOOK_URL") or URL   # hooks 实际 POST 的地址（直连）
 TOKEN = os.environ["OCTOP_TOKEN"]
 TOKEN_HEADER = os.environ["OCTOP_TOKEN_HEADER"]
-# 条目专属凭据（只有 OAuth 前置用得到）：hooks 打实例、客户端条目打代理，两个凭据可以不同。
-ENTRY_TOKEN = os.environ.get("OCTOP_ENTRY_TOKEN", "").strip()
-ENTRY_TOKEN_HEADER = os.environ.get("OCTOP_ENTRY_TOKEN_HEADER", "").strip()
 NODE = os.environ.get("OCTOP_NODE") or "node"  # 安装时解析出的绝对路径（非 login shell 也能跑）
-# 用户标识：token 的唯一作用是让服务端知道「谁问的」，直连端点时只能靠这个头。
+# 用户标识：token 的唯一作用是让服务端知道「谁问的」，只能靠这个头表达。
 # 建议填域账号：HTTP header 只能是 ASCII，Node 的 fetch 对非 ASCII 直接抛错（hook 会崩）。
 USER_ID = os.environ.get("OCTOP_USER_ID", "").strip()
 if USER_ID and not USER_ID.isascii():
     print(f"  ! 用户标识「{USER_ID}」含非 ASCII 字符：header 传不了（hook 会直接报错），已忽略")
     print("      · 请填域账号（如 alice）；要中文显示名需服务端支持 percent 解码")
     USER_ID = ""
-# MCP 条目只有两种模式：**OAuth（默认）** 或 直连 MCP token（明确不要 OAuth 时）。
-#   OCTOP_DISABLE_OAUTH=true（1/yes）→ 直连：条目写 X-Octop-Agent-Id + 实例共享 token
-#   不传 / false（0/no）              → OAuth：条目只留 X-Octop-Agent-Id，Authorization 由客户端临时注入
-_DISABLE_OAUTH = (os.environ.get("OCTOP_DISABLE_OAUTH") or "").strip().lower()
-if _DISABLE_OAUTH in ("", "0", "false", "no"):
-    OAUTH_ENTRY = True
-elif _DISABLE_OAUTH in ("1", "true", "yes"):
-    OAUTH_ENTRY = False
-else:
-    raise SystemExit(
-        f"OCTOP_DISABLE_OAUTH 只能填 true/false（1/0），收到 {_DISABLE_OAUTH!r}"
-    )
 
-# 模式与地址是配对的：OAuth 只能打代理（静态 token 在那儿会被 401），直连必须打 octop 实例
-# 自己的挂载点（代理不做静态 token）。所以由模式决定条目地址，而不是由地址猜模式。
-if OAUTH_ENTRY and URL == HOOK_URL:
-    # 部署没声明 OAuth 前置地址 → OAuth 条目点的是实例挂载点、又没凭据，必然 401。
-    # 这时按直连模式生成（实例 token 走 Authorization，身份靠 X-Octop-User-Id）。
-    print("  · 本实例未声明 OAuth 前置地址（memory_public_mcp_url / ?url=）→ 按直连模式生成条目")
-    OAUTH_ENTRY = False
-
-if OAUTH_ENTRY:
-    ENTRY_URL = URL  # 部署声明的代理地址（memory_public_mcp_url / ?url=）
-    NAME = os.environ["OCTOP_SERVER_NAME"]
-    if not ENTRY_TOKEN:
-        print("  ! OAuth 前置必须带个人令牌，但没拿到：条目调用会 401")
-        print("      · 重跑并设 OCTOP_ENTRY_TOKEN=<token>")
-else:
-    ENTRY_URL = HOOK_URL  # 直连不认识代理，声明了也不用
-    NAME = os.environ["OCTOP_SERVER_NAME_DIRECT"]
-    if URL != HOOK_URL:
-        print(f"  · 直连模式忽略声明的代理地址 {URL}，条目指向实例 {HOOK_URL}")
+# 条目地址默认 = 实例挂载点；部署可用 ?url= / OCTOP_MEMORY_PUBLIC_MCP_URL 把它指向公网
+# ingress（hooks 仍打 HOOK_URL）。凭据不分模式：条目与 hooks 都用实例共享 token。
+ENTRY_URL = URL
+NAME = os.environ["OCTOP_SERVER_NAME"]
 
 
 def hook_command(script_path):
@@ -736,19 +695,9 @@ for terminal in os.environ["OCTOP_TERMINALS"].split(","):
 
 print("  · hook 角色：用户提交时召回（CC / DSH / Codex 的 UserPromptSubmit，Cursor 的 beforeSubmitPrompt）；")
 print("    回合结束时上报（Stop / Cursor 的 stop）")
-how = (
-    f"OAuth 前置：条目带个人令牌（{ENTRY_TOKEN_HEADER or 'Authorization'}）"
-    if OAUTH_ENTRY
-    else f"直连 MCP token：条目写 {TOKEN_HEADER}"
-)
-print(f"  · hooks 直连 {HOOK_URL}；客户端 MCP 条目指向 {ENTRY_URL}（{how}）")
+print(f"  · hooks 打 {HOOK_URL}；客户端 MCP 条目指向 {ENTRY_URL}（实例共享 token：写 {TOKEN_HEADER}）")
 if USER_ID:
-    where = (
-        "只写进 hooks 的 X-Octop-User-Id；条目身份由代理按令牌重写"
-        if OAUTH_ENTRY
-        else "写进条目 X-Octop-User-Id 与 hooks"
-    )
-    print(f"  · 用户标识：{USER_ID}（{where}）")
+    print(f"  · 用户标识：{USER_ID}（写进条目 X-Octop-User-Id 与 hooks）")
 print("  · octop memory 接入完成（可重复执行，不会影响其它 MCP/hook 条目）")
 '''.strip()
 
@@ -798,15 +747,14 @@ def render_setup_script(
 ) -> str:
     """Render the interactive installer.
 
-    ``mcp_url`` 是登记进客户端 MCP 条目的地址；``hook_url`` 是 hooks 真正 POST 的地址，
-    默认同 ``mcp_url``。两者不同 = 条目走 OAuth 前置（客户端自己授权，条目不写凭据）；
-    MCP 条目默认 **OAuth**（条目不写凭据，Authorization 由客户端临时注入）；明确不要 OAuth 时
-    用 ``OCTOP_DISABLE_OAUTH=true`` 走直连 MCP token。
+    ``mcp_url`` 是登记进客户端 MCP 条目的地址（唯一对外地址）；``hook_url`` 是 hooks 真正
+    POST 的地址，默认同 ``mcp_url``。两者不同时，条目走部署声明的公网 ingress、hooks 打实例
+    挂载点，但凭据仍是同一个**实例共享 token**。
 
     ``default_token`` 是部署内置的默认凭据（实例发布时设置了 ``OCTOP_MEMORY_MCP_TOKEN``）：
     脚本把它当 ``OCTOP_MEMORY_TOKEN`` 的兜底，于是用户只需要专家 ID（可选用户标识）。
-    为空时照旧在安装时问 token；header 名由 ``OCTOP_TOKEN_HEADER`` /
-    ``OCTOP_ENTRY_TOKEN_HEADER`` 决定，缺省 ``Authorization``（此时值写成 ``Bearer <token>``）。
+    为空时在安装时问一次；header 名由 ``OCTOP_TOKEN_HEADER`` 决定，缺省 ``Authorization``
+    （此时值写成 ``Bearer <token>``）。
     ``agent_id`` 和 ``terminals``（逗号清单）只是给自动化预填提示用。
     """
     hook_url = hook_url or mcp_url
@@ -839,11 +787,6 @@ KIRO_DIR='{HOOKS_DIRS["kiro"]}'
 DSH_DIR='{HOOKS_DIRS["dsh"]}'
 CODEX_DIR='{HOOKS_DIRS["codex"]}'
 CURSOR_DIR='{HOOKS_DIRS["cursor"]}'
-
-# hooks 与「客户端 MCP 条目」可以是两个地址（默认同一个）：条目可以走 OAuth 前置
-# （客户端自己授权，条目里不写凭据），hooks 永远直连本实例。
-SPLIT=0
-[ "$URL" = "$HOOK_URL" ] || SPLIT=1
 
 # ---- 1) 检测本机装了哪些终端（目录或命令任一命中）
 have_claude=0; have_kiro=0; have_dsh=0; have_codex=0; have_cursor=0
@@ -952,28 +895,15 @@ case "$URL_HOST" in
   127.0.0.1|localhost) IS_LOCAL=1 ;;
 esac
 
-# ---- 3) 凭据：hooks 与「客户端 MCP 条目」各带各的
-# 模式：部署声明了 OAuth 前置地址（SPLIT=1）且没显式 OCTOP_DISABLE_OAUTH=true → OAuth 前置；
-# 其余（含"没声明代理地址"）→ 直连。
-MODE=direct
-if [ "$SPLIT" = 1 ]; then
-  case "${{OCTOP_DISABLE_OAUTH:-}}" in
-    1|true|yes) MODE=direct ;;
-    *)          MODE=oauth ;;
-  esac
-fi
-
-# hooks 的凭据永远是「实例共享 token」（部署内置的 DEFAULT_TOKEN 就是它），与模式无关。
+# ---- 3) 凭据：hooks 与客户端 MCP 条目共用同一个「实例共享 token」
 TOKEN="${{OCTOP_MEMORY_TOKEN:-}}"
 {default_token_block}
 if [ -z "$TOKEN" ] && [ "$HAS_TTY" = 1 ]; then
   stty -echo < /dev/tty 2>/dev/null || true
-  if [ "$SPLIT" = 1 ]; then
-    printf '共享 token（hook 直连端点 %s 用，通常是 octopoctop）: ' "$HOOK_URL" > /dev/tty
-  elif [ "$IS_LOCAL" = 1 ]; then
-    printf '共享 token（本机实例，走 Authorization: Bearer）: ' > /dev/tty
+  if [ "$IS_LOCAL" = 1 ]; then
+    printf '实例共享 token（本机实例，走 Authorization: Bearer）: ' > /dev/tty
   else
-    printf '共享 token（云上实例）: ' > /dev/tty
+    printf '实例共享 token（云上实例）: ' > /dev/tty
   fi
   read -r _t < /dev/tty || _t=''
   stty echo < /dev/tty 2>/dev/null || true
@@ -983,34 +913,7 @@ fi
 [ -n "$TOKEN" ] || {{ echo "缺少 token：非交互运行时请设 OCTOP_MEMORY_TOKEN=<token>" >&2; exit 1; }}
 # header 名可配（缺省 Authorization）；header 是 Authorization 时值写成 ``Bearer <token>``。
 TOKEN_HEADER="${{OCTOP_TOKEN_HEADER:-Authorization}}"
-
-# 条目凭据：只有 OAuth 前置（条目指向代理）才需要，且**必须**给个人令牌。没给就当场问；
-# 非交互（CI）拿不到就报错，不写一个必然 401 的条目。
-ENTRY_TOKEN=''
-ENTRY_TOKEN_HEADER=''
-if [ "$MODE" = oauth ]; then
-  ENTRY_TOKEN="${{OCTOP_ENTRY_TOKEN:-}}"
-  if [ -z "$ENTRY_TOKEN" ] && [ "$HAS_TTY" = 1 ]; then
-    stty -echo < /dev/tty 2>/dev/null || true
-    printf '个人令牌（OAuth 前置必须；不回显）: ' > /dev/tty
-    read -r _et < /dev/tty || _et=''
-    stty echo < /dev/tty 2>/dev/null || true
-    printf '\n' > /dev/tty
-    if [ -n "$_et" ]; then ENTRY_TOKEN="$_et"; fi
-  fi
-  if [ -z "$ENTRY_TOKEN" ]; then
-    echo "  ! OAuth 前置（${{URL}}）必须带个人令牌：请设 OCTOP_ENTRY_TOKEN=<token> 后重跑" >&2
-    exit 1
-  fi
-  ENTRY_TOKEN_HEADER="${{OCTOP_ENTRY_TOKEN_HEADER:-Authorization}}"
-fi
-echo "  · hook 直连：$HOOK_URL$([ "$IS_LOCAL" = 1 ] && echo '（本机实例）' || true)"
-if [ "$MODE" = oauth ]; then
-  echo "  · 客户端 MCP 条目：${{URL}}（OAuth 前置：带个人令牌 ${{ENTRY_TOKEN_HEADER}}）"
-else
-  echo "  · 客户端 MCP 条目：${{HOOK_URL}}（直连 MCP token：写 ${{TOKEN_HEADER}}）"
-fi
-echo "  · 认证方式：$TOKEN_HEADER"
+echo "  · 客户端 MCP 条目与 hooks：${{URL}}（实例共享 token：写 ${{TOKEN_HEADER}}）"
 
 AGENT="${{OCTOP_AGENT_ID:-}}"
 if [ -z "$AGENT" ]; then
@@ -1022,8 +925,7 @@ if [ -z "$AGENT" ]; then
 fi
 [ -n "$AGENT" ] || {{ echo "缺少专家 ID：非交互运行时请设 OCTOP_AGENT_ID=<id>" >&2; exit 1; }}
 
-# 用户标识（建议域账号）：直连时「谁问的」只能靠 X-Octop-User-Id（条目和 hooks 都写它）；
-# OAuth 前置时条目身份由代理按令牌重写，但 hooks 仍靠这个头 —— 两种模式都问一次。
+# 用户标识（建议域账号）：「谁问的」只能靠 X-Octop-User-Id，条目和 hooks 都写它。
 USER_ID="${{OCTOP_USER_ID:-}}"
 if [ -z "$USER_ID" ] && [ "$HAS_TTY" = 1 ]; then
   USER_ID="$(ask "用户标识（建议填域账号，如 alice；写进 X-Octop-User-Id 标记谁问的）: " "")"
@@ -1088,9 +990,7 @@ fi
 
 # ---- 5) 各终端各自安装 hook 脚本 + 合并其配置
 OCTOP_URL="$URL" OCTOP_HOOK_URL="$HOOK_URL" OCTOP_TOKEN="$TOKEN" OCTOP_TOKEN_HEADER="$TOKEN_HEADER" \\
-OCTOP_ENTRY_TOKEN="$ENTRY_TOKEN" OCTOP_ENTRY_TOKEN_HEADER="$ENTRY_TOKEN_HEADER" \\
 OCTOP_AGENT="$AGENT" OCTOP_SERVER_NAME='{_server_name(mcp_url)}' \\
-OCTOP_SERVER_NAME_DIRECT='{_server_name(hook_url)}' \\
 OCTOP_USER_ID="$USER_ID" \\
 OCTOP_CC_DIR="$CC_DIR" OCTOP_KIRO_DIR="$KIRO_DIR" OCTOP_DSH_DIR="$DSH_DIR" \\
 OCTOP_CODEX_DIR="$CODEX_DIR" OCTOP_CURSOR_DIR="$CURSOR_DIR" \\

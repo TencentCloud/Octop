@@ -48,20 +48,19 @@ def test_installer_asks_instead_of_demanding_parameters() -> None:
     assert script.count("< /dev/tty") >= 3  # 探测 + 选择 + token + 专家 ID
     assert "要配置哪些？" in script
     assert "专家 ID: " in script
-    # 凭据提示按目标分流：本机实例与云端都问实例共享 token
-    assert "共享 token（本机实例，走 Authorization: Bearer）" in script
-    assert "共享 token（云上实例）: " in script
+    # 凭据提示按目标分流：本机实例与云端都问同一个实例共享 token
+    assert "实例共享 token（本机实例，走 Authorization: Bearer）" in script
+    assert "实例共享 token（云上实例）: " in script
     assert "stty -echo" in script  # 不回显
     # 没有 tty 时不盲读 stdin，而是明确要求环境变量
-    # hooks 的凭据是实例共享 token；缺凭据时明确报错
     assert 'TOKEN="${OCTOP_MEMORY_TOKEN:-}"' in script
-    assert 'ENTRY_TOKEN="${OCTOP_ENTRY_TOKEN:-}"' in script
     assert "非交互运行时请设 OCTOP_MEMORY_TOKEN" in script
     assert "非交互运行时请设 OCTOP_AGENT_ID" in script
-    # OAuth 前置必须有个人令牌，没有就当场问 / 非交互直接报错
-    assert "个人令牌（OAuth 前置必须；不回显）: " in script
-    assert "必须带个人令牌" in script
-    # 直连模式会问用户标识（写进 X-Octop-User-Id）
+    # 只有一份凭据：不再有 OAuth 前置 / 个人令牌这套东西
+    assert "OCTOP_ENTRY_TOKEN" not in script
+    assert "OCTOP_DISABLE_OAUTH" not in script
+    assert "个人令牌" not in script
+    # 会问用户标识（写进 X-Octop-User-Id）
     assert "用户标识（建议填域账号，如 alice" in script
 
 
@@ -84,9 +83,9 @@ def test_installer_embeds_no_credential() -> None:
 
     assert "DEFAULT_TOKEN=" not in script
     assert "Bearer " in script  # 只在运行时按输入拼头，不是写死的 token
-    # header 名可配、缺省 Authorization（不再按 token 前缀猜方言）
+    # header 名可配、缺省 Authorization（不再按 token 前缀猜方言，也没有第二份凭据）
     assert 'TOKEN_HEADER="${OCTOP_TOKEN_HEADER:-Authorization}"' in script
-    assert 'ENTRY_TOKEN_HEADER="${OCTOP_ENTRY_TOKEN_HEADER:-Authorization}"' in script
+    assert "OCTOP_ENTRY_TOKEN" not in script
 
 
 def test_known_values_only_prefill_prompts() -> None:
@@ -305,14 +304,14 @@ def test_loopback_targets_use_the_configured_header() -> None:
     """本机实例的共享 token 缺省走 ``Authorization: Bearer``；header 名可配、不猜前缀。"""
     script = _script()
 
-    # 判据用 hooks 真正要打的地址（拆分模式下不是「客户端条目」那个地址）
+    # 判据用 hooks 真正要打的地址
     assert 'URL_HOST="$(printf \'%s\' "$HOOK_URL"' in script
     assert "127.0.0.1|localhost) IS_LOCAL=1" in script
-    assert "共享 token（本机实例，走 Authorization: Bearer）" in script  # 本机问共享 token
-    assert "共享 token（云上实例）: " in script  # 云端也问实例共享 token
+    assert "实例共享 token（本机实例，走 Authorization: Bearer）" in script
+    assert "实例共享 token（云上实例）: " in script
     # 不再有 token 前缀方言判定或硬编码 header 名
     assert 'TOKEN_HEADER="${OCTOP_TOKEN_HEADER:-Authorization}"' in script
-    assert "hook 直连：" in script
+    assert "客户端 MCP 条目与 hooks：" in script
 
 
 def test_node_is_resolved_to_an_absolute_path() -> None:
@@ -568,11 +567,11 @@ def _run_terminals(tmp_path, terminals: str, prepare=None, extra_env=None):
 
 
 def test_user_id_is_written_and_sent_only_when_given(tmp_path) -> None:
-    """OAuth/个人令牌只是拿用户身份；直连端点时只能靠 X-Octop-User-Id 标「谁问的」。"""
+    """「谁问的」只能靠 X-Octop-User-Id 表达：给了就写，没给就不写。"""
     home = _run_terminals(
         tmp_path / "with-id",
         "claude-code",
-        extra_env={"OCTOP_USER_ID": "alice", "OCTOP_DISABLE_OAUTH": "true"},
+        extra_env={"OCTOP_USER_ID": "alice"},
     )
     config = json.loads((home / ".claude/hooks-events/config.json").read_text(encoding="utf-8"))
     assert config["userId"] == "alice"
@@ -586,7 +585,7 @@ def test_user_id_is_written_and_sent_only_when_given(tmp_path) -> None:
     home2 = _run_terminals(
         tmp_path / "anonymous",
         "claude-code",
-        extra_env={"OCTOP_USER_ID": "", "OCTOP_DISABLE_OAUTH": "true"},
+        extra_env={"OCTOP_USER_ID": ""},
     )
     config2 = json.loads((home2 / ".claude/hooks-events/config.json").read_text(encoding="utf-8"))
     assert "userId" not in config2
@@ -596,9 +595,9 @@ def test_user_id_is_written_and_sent_only_when_given(tmp_path) -> None:
     assert "X-Octop-User-Id" not in entry2["headers"]
 
 
-def test_direct_entry_uses_authorization_bearer(tmp_path) -> None:
-    """直连条目缺省是 ``X-Octop-Agent-Id`` + ``Authorization: Bearer <token>``。"""
-    home = _run_terminals(tmp_path, "claude-code", extra_env={"OCTOP_DISABLE_OAUTH": "true"})
+def test_entry_uses_authorization_bearer(tmp_path) -> None:
+    """条目缺省是 ``X-Octop-Agent-Id`` + ``Authorization: Bearer <token>``。"""
+    home = _run_terminals(tmp_path, "claude-code")
     entry = json.loads((home / ".claude.json").read_text(encoding="utf-8"))["mcpServers"][
         "octop-memory-local"
     ]
@@ -621,7 +620,6 @@ def test_direct_entry_uses_authorization_bearer(tmp_path) -> None:
             "OCTOP_MEMORY_TOKEN": "shared-token",
             "OCTOP_TOKEN_HEADER": "X-Octop-Memory-Token",
             "OCTOP_AGENT_ID": "AGT1",
-            "OCTOP_DISABLE_OAUTH": "true",
         },
         capture_output=True,
         text=True,
@@ -649,8 +647,7 @@ def test_non_ascii_user_id_is_ignored(tmp_path) -> None:
             "OCTOP_TERMINALS": "claude-code",
             "OCTOP_MEMORY_TOKEN": "fake-token",
             "OCTOP_AGENT_ID": "AGT1",
-            "OCTOP_USER_ID": "齐金龙",
-            "OCTOP_DISABLE_OAUTH": "true",  # 直连模式才会把 X-Octop-User-Id 写进条目
+            "OCTOP_USER_ID": "用户甲",
         },
         capture_output=True,
         text=True,
@@ -667,101 +664,17 @@ def test_non_ascii_user_id_is_ignored(tmp_path) -> None:
     assert "X-Octop-User-Id" not in entry["headers"]
 
 
-def test_disable_oauth_defaults_to_oauth_and_opt_out_switches_to_direct(tmp_path) -> None:
-    """两种模式：**默认 OAuth**（条目不写凭据）；明确不要 OAuth 用 ``OCTOP_DISABLE_OAUTH=true``。"""
-    local = "http://127.0.0.1:8088/mcp/memory/"
-    proxy = "https://octop-memory-oauth.example.com/mcp"
-    instance = "https://octop.example.com/mcp/memory/"
+def test_declared_public_url_becomes_the_entry_address(tmp_path) -> None:
+    """条目地址与 hooks 地址可以分开：条目走部署声明的公网地址，hooks 打实例挂载点。
 
-    def install(name: str, mcp_url: str, *, hook_url: str = "", flag: str = "", extra=None):
-        home = tmp_path / name
-        (home / ".claude").mkdir(parents=True)
-        script = tmp_path / f"{name}.sh"
-        script.write_text(_script(mcp_url=mcp_url, hook_url=hook_url), encoding="utf-8")
-        env = {
-            **os.environ,
-            "HOME": str(home),
-            "OCTOP_TERMINALS": "claude-code",
-            "OCTOP_MEMORY_TOKEN": "shared-token",
-            "OCTOP_AGENT_ID": "AGT1",
-            "OCTOP_USER_ID": "alice",
-            **(extra or {}),
-        }
-        if flag:
-            env["OCTOP_DISABLE_OAUTH"] = flag
-        result = subprocess.run(
-            ["sh", str(script)], env=env, capture_output=True, text=True, timeout=180
-        )
-        entry = None
-        cfg = home / ".claude.json"
-        if cfg.exists():
-            servers = json.loads(cfg.read_text(encoding="utf-8"))["mcpServers"]
-            entry = list(servers.values())[0] if servers else None
-        return entry, result
-
-    # 没声明代理地址（默认 OAuth）→ 回退直连：Authorization + agentId + userId
-    entry, result = install("no-proxy", local)
-    assert result.returncode == 0, result.stdout + result.stderr
-    assert entry is not None and entry["headers"] == {
-        "X-Octop-Agent-Id": "AGT1",
-        "Authorization": "Bearer shared-token",
-        "X-Octop-User-Id": "alice",
-    }
-    assert "未声明 OAuth 前置地址" in result.stdout
-
-    # 显式 OCTOP_DISABLE_OAUTH=true：同样是直连
-    entry, result = install("direct", local, flag="true")
-    assert result.returncode == 0, result.stdout + result.stderr
-    assert entry["headers"]["Authorization"] == "Bearer shared-token"
-    assert "直连 MCP token" in result.stdout
-
-    # 声明了代理但没给个人令牌（非交互）→ 明确失败，不写一个必然 401 的条目
-    entry, result = install("oauth-no-token", proxy, hook_url=instance)
-    assert result.returncode != 0
-    assert "必须带个人令牌" in result.stderr
-    assert entry is None
-
-    # 声明了代理 + 个人令牌 → OAuth 前置条目缺省带 ``Authorization: Bearer``，不写 userId
-    entry, result = install(
-        "oauth", proxy, hook_url=instance, extra={"OCTOP_ENTRY_TOKEN": "personal-token"}
-    )
-    assert result.returncode == 0, result.stdout + result.stderr
-    assert entry["url"] == proxy
-    assert entry["headers"] == {
-        "X-Octop-Agent-Id": "AGT1",
-        "Authorization": "Bearer personal-token",
-    }
-    hooks_cfg = json.loads(
-        (tmp_path / "oauth/.claude/hooks-events/config.json").read_text(encoding="utf-8")
-    )
-    assert hooks_cfg["token"] == "shared-token"  # hooks 用实例共享 token，不是那把个人令牌
-    assert hooks_cfg["tokenHeader"] == "Authorization"
-
-    # 条目 header 名也可配：非 Authorization 时原样写该 header
-    entry, result = install(
-        "oauth-custom",
-        proxy,
-        hook_url=instance,
-        extra={
-            "OCTOP_ENTRY_TOKEN": "personal-token",
-            "OCTOP_ENTRY_TOKEN_HEADER": "X-Octop-Memory-Token",
-        },
-    )
-    assert result.returncode == 0, result.stdout + result.stderr
-    assert entry["headers"] == {
-        "X-Octop-Agent-Id": "AGT1",
-        "X-Octop-Memory-Token": "personal-token",
-    }
-
-
-def test_direct_mode_ignores_the_declared_oauth_proxy_address(tmp_path) -> None:
-    """模式和地址配对：OAuth 走代理；直连不认识代理 → 条目落在实例自己的挂载点。"""
-    proxy = "https://octop-memory-oauth.example.com/mcp"
+    两份地址共用同一个**实例共享 token**（不再有个人令牌 / OAuth 模式）。
+    """
+    public = "https://octop-memory.example.com/mcp/memory/"
     direct = "https://octop.example.com/mcp/memory/"
     home = tmp_path / "home"
     (home / ".claude").mkdir(parents=True)
     script = tmp_path / "setup.sh"
-    script.write_text(_script(mcp_url=proxy, hook_url=direct), encoding="utf-8")
+    script.write_text(_script(mcp_url=public, hook_url=direct), encoding="utf-8")
     result = subprocess.run(
         ["sh", str(script)],
         env={
@@ -770,7 +683,7 @@ def test_direct_mode_ignores_the_declared_oauth_proxy_address(tmp_path) -> None:
             "OCTOP_TERMINALS": "claude-code",
             "OCTOP_MEMORY_TOKEN": "shared-token",
             "OCTOP_AGENT_ID": "AGT1",
-            "OCTOP_DISABLE_OAUTH": "true",
+            "OCTOP_USER_ID": "alice",
         },
         capture_output=True,
         text=True,
@@ -780,14 +693,19 @@ def test_direct_mode_ignores_the_declared_oauth_proxy_address(tmp_path) -> None:
     assert result.returncode == 0, result.stdout + result.stderr
     servers = json.loads((home / ".claude.json").read_text(encoding="utf-8"))["mcpServers"]
     name, entry = next(iter(servers.items()))
-    assert name == "octop-memory"  # 名字跟着实际条目地址
-    assert entry["url"] == direct  # 声明了代理也不去：直连只打实例
-    assert entry["headers"]["Authorization"] == "Bearer shared-token"
-    assert "忽略声明的代理地址" in result.stdout
+    assert name == "octop-memory"
+    assert entry["url"] == public
+    assert entry["headers"] == {
+        "X-Octop-Agent-Id": "AGT1",
+        "Authorization": "Bearer shared-token",
+        "X-Octop-User-Id": "alice",
+    }
+    config = json.loads((home / ".claude/hooks-events/config.json").read_text(encoding="utf-8"))
+    assert config["url"] == direct and config["token"] == "shared-token"
 
 
-def test_oauth_mode_without_a_declared_proxy_falls_back_to_direct(tmp_path) -> None:
-    """实例没声明 OAuth 前置地址 → 不再写一个没凭据的条目，直接按直连生成。"""
+def test_entry_defaults_to_the_instance_mount(tmp_path) -> None:
+    """没有声明公网地址时，条目与 hooks 都落在实例自己的挂载点。"""
     instance = "https://octop.example.com/mcp/memory/"
     home = tmp_path / "home"
     (home / ".claude").mkdir(parents=True)
@@ -809,10 +727,9 @@ def test_oauth_mode_without_a_declared_proxy_falls_back_to_direct(tmp_path) -> N
     )
 
     assert result.returncode == 0, result.stdout + result.stderr
-    assert "未声明 OAuth 前置地址" in result.stdout
     servers = json.loads((home / ".claude.json").read_text(encoding="utf-8"))["mcpServers"]
     entry = next(iter(servers.values()))
-    assert entry["url"] == instance  # 条目落在实例自己的挂载点
+    assert entry["url"] == instance
     assert entry["headers"] == {
         "X-Octop-Agent-Id": "AGT1",
         "Authorization": "Bearer shared-token",
@@ -820,42 +737,16 @@ def test_oauth_mode_without_a_declared_proxy_falls_back_to_direct(tmp_path) -> N
     }
 
 
-def test_invalid_disable_oauth_value_fails_before_writing_anything(tmp_path) -> None:
-    script = tmp_path / "setup.sh"
-    script.write_text(_script(), encoding="utf-8")
-    home = tmp_path / "home"
-    (home / ".claude").mkdir(parents=True)
-    result = subprocess.run(
-        ["sh", str(script)],
-        env={
-            **os.environ,
-            "HOME": str(home),
-            "OCTOP_TERMINALS": "claude-code",
-            "OCTOP_MEMORY_TOKEN": "t",
-            "OCTOP_AGENT_ID": "AGT1",
-            "OCTOP_DISABLE_OAUTH": "maybe",
-        },
-        capture_output=True,
-        text=True,
-        timeout=180,
-    )
+def test_split_urls_keep_one_shared_token(tmp_path) -> None:
+    """条目与 hooks 地址不同也只有一个凭据：实例共享 token（不再有个人令牌）。
 
-    assert result.returncode != 0
-    assert "OCTOP_DISABLE_OAUTH 只能填 true/false" in result.stderr
-    assert not (home / ".claude.json").exists()
-
-
-def test_split_urls_put_the_entry_into_oauth_mode(tmp_path) -> None:
-    """条目地址 ≠ hooks 地址 = 条目走 OAuth 前置：带**个人令牌**，客户端授权交给代理。
-
-    hooks 仍打实例（共享 token + ``X-Octop-User-Id``）；条目只带代理认的个人令牌，
-    header 名由 ``OCTOP_ENTRY_TOKEN_HEADER`` 决定（缺省 ``Authorization``），身份由代理按
-    令牌重写，所以不写 ``X-Octop-User-Id``。
+    hooks 打实例（共享 token + ``X-Octop-User-Id``）；条目走部署声明的公网地址，
+    用的是同一份共享 token——由 ingress 原样转发。
     """
-    oauth = "https://octop-memory-oauth.example.com/mcp"
+    public = "https://octop-memory.example.com/mcp/memory/"
     direct = "https://octop.example.com/mcp/memory/"
     script = tmp_path / "setup.sh"
-    script.write_text(_script(mcp_url=oauth, hook_url=direct), encoding="utf-8")
+    script.write_text(_script(mcp_url=public, hook_url=direct), encoding="utf-8")
     home = tmp_path / "home"
     (home / ".claude").mkdir(parents=True)
     result = subprocess.run(
@@ -865,8 +756,6 @@ def test_split_urls_put_the_entry_into_oauth_mode(tmp_path) -> None:
             "HOME": str(home),
             "OCTOP_TERMINALS": "claude-code",
             "OCTOP_MEMORY_TOKEN": "shared-token",
-            "OCTOP_ENTRY_TOKEN": "personal-token",
-            "OCTOP_ENTRY_TOKEN_HEADER": "X-Octop-Memory-Token",
             "OCTOP_AGENT_ID": "AGT1",
             "OCTOP_USER_ID": "alice",
         },
@@ -877,19 +766,19 @@ def test_split_urls_put_the_entry_into_oauth_mode(tmp_path) -> None:
 
     assert result.returncode == 0, result.stdout + result.stderr
     config = json.loads((home / ".claude/hooks-events/config.json").read_text(encoding="utf-8"))
-    assert config["url"] == direct  # hooks 直连
+    assert config["url"] == direct  # hooks 直连实例
     assert config["token"] == "shared-token" and config["userId"] == "alice"
 
     entry = json.loads((home / ".claude.json").read_text(encoding="utf-8"))["mcpServers"][
         "octop-memory"
     ]
-    assert entry["url"] == oauth
+    assert entry["url"] == public
     assert entry["headers"] == {
         "X-Octop-Agent-Id": "AGT1",
-        "X-Octop-Memory-Token": "personal-token",
+        "Authorization": "Bearer shared-token",
+        "X-Octop-User-Id": "alice",
     }
-    assert "OAuth 前置" in result.stdout
-    assert "hook 直连" in result.stdout
+    assert "实例共享 token" in result.stdout
 
 
 def test_builtin_default_token_saves_the_prompt(tmp_path) -> None:

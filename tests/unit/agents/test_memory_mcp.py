@@ -1546,7 +1546,7 @@ async def test_installer_bakes_the_instance_token_as_the_default(monkeypatch):
 
     assert "DEFAULT_TOKEN='octopoctop'" in body
     assert 'TOKEN="${OCTOP_MEMORY_TOKEN:-}"' in body  # 现场变量仍可覆盖
-    assert 'ENTRY_TOKEN="${OCTOP_ENTRY_TOKEN:-}"' in body
+    assert "OCTOP_ENTRY_TOKEN" not in body  # 只有一份凭据
 
 
 @pytest.mark.asyncio
@@ -1558,11 +1558,9 @@ async def test_installer_defaults_to_the_host_it_was_fetched_from():
 
 @pytest.mark.asyncio
 async def test_installer_url_query_wins_over_the_default():
-    _, body = await _run_installer(
-        _installer_scope("url=https://octop-memory-oauth.example.com/mcp")
-    )
+    _, body = await _run_installer(_installer_scope("url=https://octop-memory.example.com/mcp"))
 
-    assert "URL='https://octop-memory-oauth.example.com/mcp'" in body
+    assert "URL='https://octop-memory.example.com/mcp'" in body
     assert "OCTOP_SERVER_NAME='octop-memory'" in body
 
 
@@ -1643,13 +1641,13 @@ async def test_installer_defaults_to_the_deployment_config(monkeypatch, tmp_path
     monkeypatch.delenv("OCTOP_MEMORY_PUBLIC_MCP_URL", raising=False)
     monkeypatch.setenv("OCTOP_HOME", str(tmp_path))
     (tmp_path / "config.json").write_text(
-        json.dumps({"memory_public_mcp_url": "https://octop-memory-oauth.example.com/mcp"}),
+        json.dumps({"memory_public_mcp_url": "https://octop-memory.example.com/mcp"}),
         encoding="utf-8",
     )
 
     _, body = await _run_installer(_installer_scope())
 
-    assert "URL='https://octop-memory-oauth.example.com/mcp'" in body
+    assert "URL='https://octop-memory.example.com/mcp'" in body
 
 
 @pytest.mark.asyncio
@@ -1689,8 +1687,8 @@ async def test_installer_defaults_to_this_instance_for_any_host(monkeypatch, hos
 
 @pytest.mark.asyncio
 async def test_installer_splits_the_client_entry_from_the_hook_target(monkeypatch):
-    """条目可以是自建 OAuth 代理（客户端自己授权），hooks 必须拿本实例的直连挂载点。"""
-    monkeypatch.setenv("OCTOP_MEMORY_PUBLIC_MCP_URL", "https://octop-memory-oauth.example.com/mcp")
+    """条目地址可以被部署指到公网入口，hooks 仍拿本实例的直连挂载点（凭据同一份共享 token）。"""
+    monkeypatch.setenv("OCTOP_MEMORY_PUBLIC_MCP_URL", "https://octop-memory.example.com/mcp")
     scope = _installer_scope()
     scope["headers"] = [
         (b"host", _EXTERNAL_HOST.encode()),
@@ -1699,7 +1697,7 @@ async def test_installer_splits_the_client_entry_from_the_hook_target(monkeypatc
 
     _, body = await _run_installer(scope)
 
-    assert "URL='https://octop-memory-oauth.example.com/mcp'" in body
+    assert "URL='https://octop-memory.example.com/mcp'" in body
     assert f"HOOK_URL='https://{_EXTERNAL_HOST}/mcp/memory/'" in body
 
 

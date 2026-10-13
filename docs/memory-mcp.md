@@ -39,7 +39,6 @@ curl -fLsS "https://<octop-host>/mcp/memory/setup" \
     OCTOP_TERMINALS='claude-code,kiro' \
     OCTOP_MEMORY_TOKEN='<共享 token>' \
     OCTOP_USER_ID='<你的域账号>' \
-    OCTOP_DISABLE_OAUTH=true \
     sh
 ```
 
@@ -48,18 +47,14 @@ curl -fLsS "https://<octop-host>/mcp/memory/setup" \
 | `OCTOP_AGENT_ID` / `OCTOP_TERMINALS` | 等价于 `?agent=` / `?terminals=`；缺专家 ID 会直接报错退出 |
 | `OCTOP_MEMORY_TOKEN` | 覆盖部署内置的默认凭据（即 `OCTOP_MEMORY_MCP_TOKEN` 的值） |
 | `OCTOP_USER_ID` | 写进 `X-Octop-User-Id`，决定记忆里"谁说的"；**建议域账号**（HTTP 头只能 ASCII，中文会被忽略） |
-| `OCTOP_DISABLE_OAUTH=true` | 直连实例挂载点（条目写 `Authorization: Bearer <token>`），不走 OAuth 前置 |
 | `OCTOP_TOKEN_HEADER` | hooks 用的鉴权头名，缺省 `Authorization` |
-| `OCTOP_ENTRY_TOKEN` + `OCTOP_ENTRY_TOKEN_HEADER` | 仅当条目要指向自建 OAuth 前置时的个人令牌与其头名（缺省 `Authorization`） |
 
 ### 装完自检 / 卸载
 
-> **凭据只要一个**：直连模式（自建实例的默认形态）只需要**实例共享 token**，也就是服务端
-> `OCTOP_MEMORY_MCP_TOKEN` 的值——它由安装器内置成默认凭据，正常无需手传，要覆盖才设
-> `OCTOP_MEMORY_TOKEN`。**不需要"每人的个人令牌"**。只有当 `?url=` /
-> `OCTOP_MEMORY_PUBLIC_MCP_URL` 把客户端条目指向**自建 OAuth 前置**、且未设
-> `OCTOP_DISABLE_OAUTH=true` 时，才需要个人令牌 `OCTOP_ENTRY_TOKEN`（那时代理按令牌识别调用人，
-> 没法靠共享 token 区分"谁问的"）；没声明 OAuth 前置时脚本会自动降级为直连。
+> **凭据只有一份**：**实例共享 token**，也就是服务端 `OCTOP_MEMORY_MCP_TOKEN` 的值。
+> 它由安装器内置成默认凭据，正常无需手传，要覆盖才设 `OCTOP_MEMORY_TOKEN`；hooks 与客户端
+> MCP 条目用的是同一份，没有"每人的个人令牌"这种东西。`?url=` / `OCTOP_MEMORY_PUBLIC_MCP_URL`
+> 只改变**条目地址**（指向自建的公网入口），不改凭据。
 
 ```bash
 # 1) 端点活着：不带 token 应 401（挂载了才可能 401，未挂载是 404）
@@ -547,9 +542,8 @@ curl -fsSL "https://<octop-host>/mcp/memory/setup" | sh
 
 - **不发放凭据**：token 由运行脚本的人当场输入（读 `/dev/tty`，不回显）；可用
   `OCTOP_MEMORY_TOKEN` 预置。部署若已设 `OCTOP_MEMORY_MCP_TOKEN`，该值会内置成脚本默认凭据。
-- 鉴权头由环境变量决定：`OCTOP_TOKEN_HEADER`（hooks 侧，缺省 `Authorization` → `Bearer <token>`）；
-  `OCTOP_ENTRY_TOKEN` + `OCTOP_ENTRY_TOKEN_HEADER`（仅当条目指向自建 OAuth 前置时使用，缺省
-  同样是 `Authorization`）。
+- 鉴权头由 `OCTOP_TOKEN_HEADER` 决定，缺省 `Authorization`（此时值写成 `Bearer <token>`）；
+  hooks 与条目共用这一份凭据。
 - 每个终端各写自己的 hooks 目录与配置文件：Claude Code `~/.claude/hooks-events` +
   `settings.json`、Kiro `~/.kiro/hooks`、DSH `~/.dsh/hooks/octop-hooks.json`、
   Codex `~/.codex/hooks` + `config.toml`、Cursor `~/.cursor/hooks` + `hooks.json`；
@@ -567,9 +561,8 @@ curl -fsSL "https://<octop-host>/mcp/memory/setup" | sh
 | `OCTOP_MEMORY_MCP_TOKEN` | 必填。未设置时 `/mcp/memory` 不挂载（fail-closed）；同时作为 §4.7 安装器脚本的默认凭据 |
 | `X-Octop-Agent-Id` | 每个请求必填，指向一个存在且启用的专家 |
 | `X-Octop-User-Id` | 可选；用于把发送者写进记忆正文（§1.3） |
-| `OCTOP_MEMORY_PUBLIC_MCP_URL` / `config.json: memory_public_mcp_url` | 可选。把客户端 MCP **条目**指向自建的 OAuth 前置（hooks 仍打本实例挂载点）；不配则条目 = 本实例挂载点。安装器也可用 `?url=` 单次覆盖 |
+| `OCTOP_MEMORY_PUBLIC_MCP_URL` / `config.json: memory_public_mcp_url` | 可选。把客户端 MCP **条目**指向自建的公网入口（hooks 仍打本实例挂载点，凭据同一份）；不配则条目 = 本实例挂载点。安装器也可用 `?url=` 单次覆盖 |
 | `OCTOP_TOKEN_HEADER` | 可选。安装器生成的 hooks 使用的鉴权头名，缺省 `Authorization`（值写成 `Bearer <token>`） |
-| `OCTOP_ENTRY_TOKEN` / `OCTOP_ENTRY_TOKEN_HEADER` | 可选。条目指向 OAuth 前置时的个人令牌与头名，缺省 `Authorization` |
 | 记忆后端 | 由专家配置 `memory.backend` 决定：默认 SQLite（`memory.sqlite`）；PostgreSQL 控制面下默认复用控制面 DSN（每专家 schema） |
 
 开启步骤：

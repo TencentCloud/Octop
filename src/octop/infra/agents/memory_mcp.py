@@ -1720,7 +1720,7 @@ def _default_mcp_url(scheme: str, host: str) -> str:
     """客户端条目默认该连的地址：本实例自己的挂载点。
 
     ``?url=`` / ``OCTOP_MEMORY_PUBLIC_MCP_URL`` / ``memory_public_mcp_url`` 仍是**显式覆盖**，
-    部署可以用它把客户端条目指向自建的 OAuth 前置。
+    部署可以用它把客户端条目指向自建的公网入口。
     """
     return _host_mount_url(scheme, host)
 
@@ -1773,9 +1773,9 @@ class _InstallerApp:
         }
         scheme = headers.get("x-forwarded-proto", "").split(",")[0].strip().lower()
         host = headers.get("host", "127.0.0.1")
-        # hooks 走本实例的直连挂载点（脚本没有客户端的 OAuth 凭据）；mcp_url 是登记进
-        # 客户端 MCP 条目的地址，缺省就是本实例的挂载点（部署可用 ?url= / memory_public_mcp_url
-        # 指向自建的 OAuth 前置，客户端自己授权）；与 hook_url 不同即进入该模式。
+        # hooks 走本实例的直连挂载点；mcp_url 是登记进客户端 MCP 条目的地址，缺省就是本实例
+        # 的挂载点（部署可用 ?url= / memory_public_mcp_url 指向自建的公网入口）。两份地址共用
+        # 同一份实例共享 token。
         instance_url = _host_mount_url(scheme, host)
         script = render_setup_script(
             mcp_url=query.get("url") or _public_mcp_url() or _default_mcp_url(scheme, host),
