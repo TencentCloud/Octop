@@ -36,6 +36,7 @@ import {
 } from "../../../utils/messageParser";
 import { useIsMobile } from "../../../hooks/useIsMobile";
 import { useServerTimezone } from "../../../hooks/useServerTimezone";
+import { createDetailRequestGate } from "../../../utils/detailRequestGate";
 import {
   confirmDeleteConversation,
   deleteConversation,
@@ -169,6 +170,7 @@ export default function ConversationRecords({
   const [messages, setMessages] = useState<HistoryMessage[]>([]);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
   const scrollHeightBeforePrependRef = useRef<number | null>(null);
+  const historyRequestGate = useRef(createDetailRequestGate());
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [cardPage, setCardPage] = useState(1);
   const [cardPageSize, setCardPageSize] = useState(THREAD_LIST_PAGE_SIZE);
@@ -195,9 +197,17 @@ export default function ConversationRecords({
     scrollHeightBeforePrependRef.current = null;
   }, []);
 
+  useLayoutEffect(() => {
+    const gate = historyRequestGate.current;
+    return () => {
+      gate.begin();
+    };
+  }, [agentId, loadThreads]);
+
   useEffect(() => {
     setSelectedThread(null);
     setDrawerOpen(false);
+    setHistoryLoading(false);
     resetHistoryState();
     setCardPage(1);
     void loadThreads();
@@ -220,20 +230,25 @@ export default function ConversationRecords({
 
   const openThread = useCallback(
     async (thread: OctopThread) => {
+      const requestId = historyRequestGate.current.begin();
       setSelectedThread(thread);
       setDrawerOpen(true);
       setHistoryLoading(true);
       resetHistoryState();
       try {
         const page = await fetchThreadHistory(thread.thread_id, 0);
+        if (!historyRequestGate.current.isCurrent(requestId)) return;
         setMessages(page.messages);
         setHistoryHasMore(page.hasMore);
         setHistoryNextOffset(page.nextOffset);
       } catch {
+        if (!historyRequestGate.current.isCurrent(requestId)) return;
         resetHistoryState();
         message.error(t("memory.conversationLoadFailed"));
       } finally {
-        setHistoryLoading(false);
+        if (historyRequestGate.current.isCurrent(requestId)) {
+          setHistoryLoading(false);
+        }
       }
     },
     [fetchThreadHistory, resetHistoryState, t],
@@ -249,6 +264,7 @@ export default function ConversationRecords({
       return;
     }
 
+    const requestId = historyRequestGate.current.begin();
     const drawerBody =
       messagesContainerRef.current?.closest(".ant-drawer-body");
     if (drawerBody instanceof HTMLElement) {
@@ -261,14 +277,18 @@ export default function ConversationRecords({
         selectedThread.thread_id,
         historyNextOffset,
       );
+      if (!historyRequestGate.current.isCurrent(requestId)) return;
       setMessages((prev) => [...page.messages, ...prev]);
       setHistoryHasMore(page.hasMore);
       setHistoryNextOffset(page.nextOffset);
     } catch {
+      if (!historyRequestGate.current.isCurrent(requestId)) return;
       scrollHeightBeforePrependRef.current = null;
       message.error(t("memory.conversationLoadFailed"));
     } finally {
-      setHistoryLoadingMore(false);
+      if (historyRequestGate.current.isCurrent(requestId)) {
+        setHistoryLoadingMore(false);
+      }
     }
   }, [
     selectedThread,
@@ -293,8 +313,10 @@ export default function ConversationRecords({
   }, [messages]);
 
   const closeDrawer = useCallback(() => {
+    historyRequestGate.current.begin();
     setDrawerOpen(false);
     setSelectedThread(null);
+    setHistoryLoading(false);
     resetHistoryState();
   }, [resetHistoryState]);
 
