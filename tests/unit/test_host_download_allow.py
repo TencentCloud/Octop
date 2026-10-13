@@ -55,6 +55,13 @@ def test_denied_harness_browser(tmp_path: Path) -> None:
     assert is_allowed_host_download_abs_path(str(path), workspace=tmp_path) is False
 
 
+def test_denied_octop_browser(tmp_path: Path) -> None:
+    path = tmp_path / ".octop-browser" / "screenshots" / "x.png"
+    path.parent.mkdir(parents=True)
+    path.write_bytes(b"x")
+    assert is_allowed_host_download_abs_path(str(path), workspace=tmp_path) is False
+
+
 def test_file_url_windows_drive_decodes_unicode() -> None:
     """file:///C:/… must unquote and match native Path form (Windows CI)."""
     url = "file:///C:/Users/me/out/%E4%BF%9D%E6%8A%A4.pptx"

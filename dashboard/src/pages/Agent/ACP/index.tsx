@@ -1,15 +1,17 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { App, Button, Empty, Form, Switch } from "antd";
+import { Alert, App, Button, Empty, Form, Switch } from "antd";
 
 import { useTranslation } from "react-i18next";
 import PageShell from "../../../layouts/PageShell";
 import { CardSkeleton } from "../../../components/Skeleton";
+import PeerOnlyRemoteAlert from "../../../components/PeerOnlyRemoteAlert";
 import { acpApi } from "../../../api/modules/acp";
 import {
   ACP_DEFAULT_STDIO_BUFFER_LIMIT_BYTES,
   type ACPRunnerConfig,
 } from "../../../api/types/acp";
 import { useAgent } from "../../../context/AgentContext";
+import { blocksAcpOutboundFromConfig } from "../../Experts/components/agentBackendForm";
 import { ACPCard } from "./components/ACPCard";
 import {
   ACPDrawer,
@@ -22,10 +24,20 @@ import styles from "./index.module.less";
 
 const EMPTY_RUNNERS: Record<string, ACPRunnerConfig> = {};
 
-export default function ACPPage() {
+interface ACPPanelProps {
+  /** When set (Experts tools drawer), use this agent instead of the chat selection. */
+  agentId?: string | null;
+}
+
+/** ACP runners manager — shared by `/acp` and Personalization → Tools. */
+export function ACPPanel({ agentId: agentIdProp }: ACPPanelProps = {}) {
   const { t } = useTranslation();
   const { modal, message } = App.useApp();
-  const { activeAgentId } = useAgent();
+  const { activeAgentId: contextAgentId, agents } = useAgent();
+  const activeAgentId =
+    agentIdProp !== undefined ? agentIdProp : contextAgentId;
+  /** Only the Experts tools drawer should tunnel account-global ACP runners. */
+  const runnersScopeId = agentIdProp;
   const [runners, setRunners] =
     useState<Record<string, ACPRunnerConfig>>(EMPTY_RUNNERS);
   const [toolEnabled, setToolEnabled] = useState(false);
@@ -41,6 +53,17 @@ export default function ACPPage() {
   const [form] = Form.useForm();
   const activeAgentIdRef = useRef(activeAgentId);
 
+  const activeAgent = useMemo(
+    () => agents.find((row) => row.agent_id === activeAgentId) ?? null,
+    [agents, activeAgentId],
+  );
+  const outboundBlocked = blocksAcpOutboundFromConfig(
+    activeAgent?.config ?? null,
+  );
+  // Under directory sandbox: lock runner enable/edit only. The per-agent
+  // acp_runner tool toggle stays available (host-spawned runners may already
+  // be enabled for other agents on this account).
+
   useEffect(() => {
     activeAgentIdRef.current = activeAgentId;
   }, [activeAgentId]);
@@ -50,7 +73,7 @@ export default function ACPPage() {
     setRunnersLoading(true);
     void (async () => {
       try {
-        const data = await acpApi.getGlobalRunners();
+        const data = await acpApi.getGlobalRunners(runnersScopeId);
         if (!cancelled) {
           setRunners(data.runners || EMPTY_RUNNERS);
         }
@@ -67,7 +90,7 @@ export default function ACPPage() {
     return () => {
       cancelled = true;
     };
-  }, [t]);
+  }, [t, runnersScopeId]);
 
   useEffect(() => {
     if (!activeAgentId) {
@@ -123,11 +146,11 @@ export default function ACPPage() {
 
   const persistRunners = useCallback(
     async (next: Record<string, ACPRunnerConfig>) => {
-      const saved = await acpApi.updateGlobalRunners(next);
+      const saved = await acpApi.updateGlobalRunners(next, runnersScopeId);
       setRunners(saved.runners || EMPTY_RUNNERS);
       return saved.runners;
     },
-    [],
+    [runnersScopeId],
   );
 
   const persistToolEnabled = useCallback(
@@ -156,7 +179,8 @@ export default function ACPPage() {
   };
 
   const handleToggleEnabled = async (runnerKey: string, checked: boolean) => {
-    if (runnersLoading) return;
+    // Runners are account-global; only block *enabling* under sandbox.
+    if (runnersLoading || (outboundBlocked && checked)) return;
     const runner = runners[runnerKey];
     if (!runner) return;
     if (!runner.command?.trim() && checked) {
@@ -179,6 +203,7 @@ export default function ACPPage() {
   };
 
   const openEdit = (key: string) => {
+    if (outboundBlocked) return;
     const cfg = runners[key];
     setIsCreateMode(false);
     setActiveKey(key);
@@ -248,29 +273,41 @@ export default function ACPPage() {
     });
   };
 
+  const toolToggleDisabled = !activeAgentId || toolLoading;
+
   const toolSwitch = (
     <Switch
       key={activeAgentId ?? "none"}
       checked={toolEnabled}
       loading={toolLoading || toolToggleLoading}
-      disabled={!activeAgentId || toolLoading}
+      disabled={toolToggleDisabled}
       onChange={handleToolToggle}
     />
   );
 
   return (
-    <PageShell
-      title={t("pageShell.acp.title")}
-      subtitle={t("pageShell.acp.subtitle")}
-      agentScoped
-      actions={
+    <>
+      {agentIdProp === undefined ? (
+        <PeerOnlyRemoteAlert hintKey="peerOnlyAcp" />
+      ) : null}
+      <div className={styles.toolbar}>
+        <div className={styles.toolbarText}>
+          <div className={styles.description}>{t("acp.description")}</div>
+          <p className={styles.scopeHint}>{t("acp.globalRunnersHint")}</p>
+        </div>
         <Button type="primary" onClick={openCreate}>
           {t("acp.create")}
         </Button>
-      }
-    >
-      <div className={styles.description}>{t("acp.description")}</div>
-      <p className={styles.scopeHint}>{t("acp.globalRunnersHint")}</p>
+      </div>
+
+      {activeAgentId && outboundBlocked ? (
+        <Alert
+          type="info"
+          showIcon
+          className={styles.outboundBlockedAlert}
+          message={t("acp.outboundBlockedHint")}
+        />
+      ) : null}
 
       {runnersLoading && cards.length === 0 ? (
         <CardSkeleton count={4} />
@@ -283,6 +320,7 @@ export default function ACPPage() {
               config={cfg}
               isHover={hoverKey === key}
               toggleLoading={toggleLoadingKey === key}
+              interactionDisabled={outboundBlocked}
               onClick={() => openEdit(key)}
               onMouseEnter={() => setHoverKey(key)}
               onMouseLeave={() => setHoverKey(null)}
@@ -323,6 +361,20 @@ export default function ACPPage() {
         onSubmit={handleSubmit}
         onDelete={handleDelete}
       />
+    </>
+  );
+}
+
+/** Standalone ACP page (sidebar Control entry). */
+export default function ACPPage() {
+  const { t } = useTranslation();
+  return (
+    <PageShell
+      title={t("pageShell.acp.title")}
+      subtitle={t("pageShell.acp.subtitle")}
+      agentScoped
+    >
+      <ACPPanel />
     </PageShell>
   );
 }

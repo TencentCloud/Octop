@@ -1,0 +1,13 @@
+id: sports-scores
+version: 0.1.0
+name: 赛况
+description: 英超等联赛近期比分（TheSportsDB）
+icon: icon.svg
+group: news
+kind: tool
+entry: main.py
+requires:
+  - httpx>=0.27
+ui:
+  entry: ui/index.js
+  manifest: ui/manifest.json

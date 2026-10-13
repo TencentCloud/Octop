@@ -2,8 +2,13 @@
 
 from __future__ import annotations
 
+import json
+import os
+import re
+from html import escape
 from pathlib import Path
 from unittest.mock import AsyncMock, patch
+from urllib.parse import parse_qs, urlsplit
 
 import pytest
 
@@ -30,6 +35,7 @@ async def test_catalog(env):
     assert "figma" not in kinds
     assert "baidu-netdisk" not in kinds
     for kind in (
+        "openalex",
         "tencent-meeting",
         "tencent-lexiang",
         "notion",
@@ -44,18 +50,66 @@ async def test_catalog(env):
         "baidu-map",
         "ctrip-wendao",
         "meituan-travel",
+        "didi",
         "yuandian",
+        "qcc",
     ):
         entry = next(e for e in r.json() if e["kind"] == kind)
         assert entry["phase"] == "available", kind
     docs = next(e for e in r.json() if e["kind"] == "tencent-docs")
     assert docs.get("color")
     assert docs.get("quick_auth_url")
+    assert docs["category"] == "office"
     assert "tools" not in docs
     weiyun = next(e for e in r.json() if e["kind"] == "tencent-weiyun")
     assert weiyun["auth_kind"] == "personal_token"
     assert weiyun["mcp_mode"] == "remote"
+    assert weiyun["category"] == "office"
     assert weiyun.get("quick_auth_url") == "https://www.weiyun.com/act/openclaw"
+    qcc = next(e for e in r.json() if e["kind"] == "qcc")
+    assert qcc["auth_kind"] == "oauth2"
+    assert qcc["mcp_mode"] == "internal"
+    assert qcc["oauth_mode"] == "dynamic"
+    assert qcc["oauth_ready"] is True
+    assert qcc["category"] == "professional"
+    openalex = next(e for e in r.json() if e["kind"] == "openalex")
+    assert openalex == {
+        "kind": "openalex",
+        "name": "OpenAlex",
+        "description": "官方 MCP：检索学术文献、引文、研究实体与统计分析",
+        "auth_kind": "oauth2",
+        "doc_url": "https://help.openalex.org/access/connector/",
+        "icon": "openalex",
+        "color": "#1f6feb",
+        "phase": "available",
+        "mcp_mode": "remote",
+        "category": "knowledge",
+        "quick_auth_url": None,
+        "login_url": None,
+        "guide_url": "https://help.openalex.org/access/connector/",
+        "manual_url": "https://help.openalex.org/access/connector/",
+        "auth_hint": "点击「一键授权」登录 OpenAlex（桌面端请用系统浏览器）；查询将使用你自己的 API Key 与每日预算。",
+        "oauth_mode": "dynamic",
+        "oauth_ready": True,
+        "credential_fields": [],
+        "supports_quick_auth": True,
+    }
+
+
+async def test_catalog_localizes_with_accept_language(env):
+    c, _, auth, _ = env
+    r = await c.get("/api/connectors/catalog", headers={**auth, "Accept-Language": "en"})
+    assert r.status_code == 200
+    openalex = next(e for e in r.json() if e["kind"] == "openalex")
+    assert openalex["name"] == "OpenAlex"
+    assert openalex["description"].startswith("Official MCP")
+    assert "system browser" in (openalex["auth_hint"] or "")
+
+    r = await c.get("/api/connectors/catalog", headers={**auth, "Accept-Language": "zh"})
+    assert r.status_code == 200
+    openalex = next(e for e in r.json() if e["kind"] == "openalex")
+    assert openalex["description"].startswith("官方 MCP")
+    assert "系统浏览器" in (openalex["auth_hint"] or "")
 
 
 async def test_create_tencent_instance(env):
@@ -367,7 +421,8 @@ async def test_auth_info(env):
     assert data["auth_hint"]
 
 
-async def test_oauth_start_public_http_notion_error_is_actionable(tmp_octop_home: Path):
+@pytest.mark.parametrize("kind", ["notion", "qcc"])
+async def test_oauth_start_public_http_notion_error_is_actionable(tmp_octop_home: Path, kind: str):
     write_octop_config(tmp_octop_home)
     async with octop_client(tmp_octop_home) as (c, _srv):
         await bootstrap_admin(c, tmp_octop_home)
@@ -375,14 +430,14 @@ async def test_oauth_start_public_http_notion_error_is_actionable(tmp_octop_home
         mocked_start = AsyncMock()
         with patch("octop.api.routers.connectors.start_oauth_for_target", mocked_start):
             r = await c.post(
-                "/api/connectors/oauth/notion/start",
+                f"/api/connectors/oauth/{kind}/start",
                 headers={**auth, "host": "58.87.70.170"},
                 json={"redirect_after": "/connectors"},
             )
     assert r.status_code == 400
     body = r.json()
     assert body["error"]["code"] == "CONNECTOR_OAUTH_HTTPS_REQUIRED"
-    assert "Notion" in body["error"]["message"]
+    assert "OAuth" in body["error"]["message"]
     assert "HTTPS" in body["error"]["message"]
     mocked_start.assert_not_awaited()
 
@@ -416,8 +471,63 @@ async def test_catalog_weknora_dify_last(env):
     assert "feishu-cli" in kinds
     assert "wecom-cli" in kinds
     assert kinds.index("feishu-cli") < kinds.index("weknora")
+    assert kinds.index("obsidian-cli") < kinds.index("weknora")
     assert kinds.index("wecom-cli") < kinds.index("dify")
+    assert kinds.index("didi") < kinds.index("weknora")
     assert kinds[-2:] == ["weknora", "dify"]
+
+
+async def test_obsidian_cli_install_registers_binary(
+    env, monkeypatch: pytest.MonkeyPatch, tmp_path
+):
+    c, _, auth, _ = env
+    home = tmp_path / "home"
+    source = tmp_path / "Obsidian.app" / "Contents" / "MacOS" / "obsidian-cli"
+    source.parent.mkdir(parents=True)
+    source.write_text("obsidian", encoding="utf-8")
+    monkeypatch.setenv("HOME", str(home))
+    monkeypatch.setenv("USERPROFILE", str(home))
+    monkeypatch.setenv("PATH", os.environ.get("PATH", ""))
+    monkeypatch.setattr(
+        "octop.infra.connectors.gateway.cli_install.obsidian_bundle_candidates",
+        lambda: [str(source)],
+    )
+    monkeypatch.setattr(
+        "octop.infra.connectors.gateway.cli_install._prefix_writable",
+        lambda _prefix: False,
+    )
+    monkeypatch.setattr(
+        "octop.infra.connectors.gateway.cli_install._read_version",
+        lambda _path: "1.12.7",
+    )
+    dest_name = "obsidian.exe" if os.name == "nt" else "obsidian"
+    dest = home / ".local" / "bin" / dest_name
+
+    def _which(name: str) -> str | None:
+        if name == "obsidian" and dest.is_file():
+            return str(dest)
+        return None
+
+    monkeypatch.setattr(
+        "octop.infra.connectors.gateway.cli_install.shutil.which",
+        _which,
+    )
+
+    status = await c.get("/api/connectors/obsidian-cli/cli-status", headers=auth)
+    assert status.status_code == 200
+    body = status.json()
+    assert body["installed"] is False
+    assert body["binary"] == "obsidian"
+    assert body["install_command"]
+    assert "npm" not in body["install_command"]
+
+    installed = await c.post("/api/connectors/obsidian-cli/install-cli", headers=auth)
+    assert installed.status_code == 200
+    payload = installed.json()
+    assert payload["ok"] is True
+    assert payload["already_installed"] is False
+    assert payload["installed"] is True
+    assert dest.is_file()
 
 
 async def test_install_cli_forbidden_for_non_admin(env):
@@ -661,3 +771,142 @@ async def test_custom_mcp_oauth_start_unified(env):
     call_kwargs = mocked_start.await_args.kwargs
     assert call_kwargs["target"] == {"type": "custom_mcp", "server_name": "oauth-srv"}
     assert call_kwargs["mcp_url"] == "https://mcp.example.com/mcp"
+
+
+@pytest.mark.parametrize("oauth", [False, True])
+async def test_qcc_gateway_auth_five_resources_and_disconnect(env, monkeypatch, oauth):
+    from octop.api.routers.internal_mcp import _service
+    from octop.infra.connectors import qcc
+
+    c, srv, auth, _ = env
+    revoke = AsyncMock()
+    monkeypatch.setattr(qcc, "revoke", revoke)
+    credentials = (
+        {
+            "access_token": "synthetic",
+            "refresh_token": "refresh",
+            "oauth_client_id": "client",
+            "expires_at": 9999999999,
+        }
+        if oauth
+        else {"api_key": "synthetic"}
+    )
+    created = await c.post(
+        "/api/connector-instances",
+        headers=auth,
+        json={
+            "kind": "qcc",
+            "display_name": "QCC",
+            "credentials": credentials,
+        },
+    )
+    assert created.status_code == 201
+    instance_id = created.json()["instance_id"]
+    svc = _service(srv)
+    token = svc.decrypt(instance_id)["internal_token"]
+    path = f"/api/internal/mcp/qcc/{instance_id}"
+    request = AsyncMock(
+        return_value={"tools": [{"name": "lookup", "inputSchema": {"type": "object"}}]}
+    )
+    monkeypatch.setattr(qcc, "request_resource", request)
+    bad = await c.post(path, params={"token": "wrong"}, json={"id": 1, "method": "tools/list"})
+    assert bad.status_code == 401
+    request.assert_not_awaited()
+    listed = await c.post(path, params={"token": token}, json={"id": 1, "method": "tools/list"})
+    assert listed.status_code == 200
+    assert {t["name"] for t in listed.json()["result"]["tools"]} == {
+        f"{r}__lookup" for r in qcc.RESOURCES
+    }
+    other = await create_user(c, auth, username="qcc_reader")
+    denied = await c.delete(f"/api/connector-instances/{instance_id}", headers=other)
+    assert denied.status_code == 403
+    deleted = await c.delete(f"/api/connector-instances/{instance_id}", headers=auth)
+    assert deleted.status_code == 204
+    assert revoke.await_count == int(oauth)
+    gone = await c.post(path, params={"token": token}, json={"id": 2, "method": "tools/list"})
+    assert gone.status_code == 404
+
+
+@pytest.mark.parametrize(
+    ("redirect_after", "expected_path"),
+    [
+        ("/connectors", "/connectors"),
+        ("/connectors?tab=custom&empty=#oauth", "/connectors"),
+        ("/connectors?oauth_state=stale", "/connectors"),
+        ("/x'+alert(document.cookie)+'", "/x'+alert(document.cookie)+'"),
+        ("/</script><script>alert(1)</script>", "/</script><script>alert(1)</script>"),
+        ("https://attacker.example", "/connectors"),
+        ("//attacker.example", "/connectors"),
+        ("/\\attacker.example", "/connectors"),
+        ("/\n/attacker.example", "/connectors"),
+        ("/\r/attacker.example", "/connectors"),
+        ("/\t/attacker.example", "/connectors"),
+        ("javascript:alert(1)", "/connectors"),
+    ],
+)
+async def test_oauth_callback_safely_renders_stored_redirect(env, redirect_after, expected_path):
+    c, srv, auth, _ = env
+    user_id = await resolve_user_id(c, auth, "admin")
+    state_id = new_ulid()
+    srv.services.repos.connector_repo.create_oauth_state(
+        state_id=state_id,
+        state=state_id,
+        user_id=user_id,
+        kind="notion",
+        code_verifier="verifier",
+        redirect_after=redirect_after,
+    )
+    with patch(
+        "octop.api.routers.connectors.exchange_oauth_code",
+        new_callable=AsyncMock,
+        return_value={"access_token": "test-token"},
+    ):
+        response = await c.get(
+            "/api/connectors/oauth/callback", params={"code": "code", "state": state_id}
+        )
+    assert response.status_code == 200
+    # A tag payload must stay inside one JSON string, not create another script.
+    assert response.text.count("<script>") == response.text.count("</script>") == 1
+    assignment = re.search(r"window.location.href = (.*);", response.text)
+    assert assignment is not None
+    target = urlsplit(json.loads(assignment.group(1)))
+    assert not target.scheme and not target.netloc
+    assert target.path == expected_path
+    query = parse_qs(target.query, keep_blank_values=True)
+    assert query["oauth_state"] == [state_id]
+    if "tab=custom" in redirect_after:
+        assert query["tab"] == ["custom"]
+        assert query["empty"] == [""]
+        assert target.fragment == "oauth"
+    assert "}, window.location.origin);" in response.text
+    pending = await c.get(f"/api/connectors/oauth/pending/{state_id}", headers=auth)
+    assert pending.status_code == 200
+    assert pending.json()["tokens"]["access_token"] == "test-token"
+
+
+@pytest.mark.parametrize("exchange_error", [False, True])
+async def test_oauth_callback_escapes_error_html(env, exchange_error):
+    c, srv, auth, _ = env
+    payload = '<img src=x onerror="alert(1)">'
+    user_id = await resolve_user_id(c, auth, "admin")
+    state_id = new_ulid()
+    srv.services.repos.connector_repo.create_oauth_state(
+        state_id=state_id,
+        state=state_id,
+        user_id=user_id,
+        kind="notion",
+        code_verifier="verifier",
+        redirect_after="/connectors",
+    )
+    with patch(
+        "octop.api.routers.connectors.exchange_oauth_code",
+        new_callable=AsyncMock,
+        side_effect=ValueError(payload),
+    ):
+        response = await c.get(
+            "/api/connectors/oauth/callback",
+            params={"code": "code", "state": state_id} if exchange_error else {"error": payload},
+        )
+    assert response.status_code == 400
+    assert payload not in response.text
+    assert escape(payload) in response.text

@@ -5,6 +5,7 @@ import Markdown from "../../../components/Markdown/LazyMarkdown";
 import type { AssistantTurnSplit } from "../utils/messageContent";
 import { countProcessStats } from "../utils/messageContent";
 import { ToolDetailsInline } from "./MessageBubble";
+import { useCollapseThinking } from "../hooks/useCollapseThinking";
 import styles from "../index.module.less";
 
 interface AssistantProcessSummaryProps {
@@ -16,9 +17,50 @@ interface AssistantProcessSummaryProps {
    */
   statsSplit?: AssistantTurnSplit;
   isStreaming?: boolean;
+  /** Team rooms default to collapsed thinking; solo stays expanded. */
+  isTeam?: boolean;
   onAcpPermissionSelect?: (message: string) => void;
   hideToolMedia?: boolean;
   agentId?: string | null;
+}
+
+function resolveLiveProcessHint(
+  split: AssistantTurnSplit,
+  isStreaming: boolean,
+  t: (key: string, opts?: Record<string, unknown>) => string,
+): string | null {
+  if (!isStreaming) return null;
+
+  const runningTool = split.processSteps.find(
+    (step) =>
+      step.kind === "tool" &&
+      step.message.status === "streaming" &&
+      !step.message.toolData?.output,
+  );
+  if (runningTool && runningTool.kind === "tool") {
+    return t("chat.processRunningTools", {
+      defaultValue: "正在调用工具",
+    });
+  }
+
+  const thinkingLive = split.processSteps.some(
+    (step) => step.kind === "thinking" && step.item.isStreaming,
+  );
+  if (thinkingLive) {
+    return t("chat.processThinkingLive", { defaultValue: "深度思考中" });
+  }
+
+  // Tool finished, next tokens not yet — keep the fold "alive" so it does
+  // not look stuck on a static count between ReAct rounds.
+  const hasProcess =
+    split.tools.length > 0 ||
+    split.thinkings.length > 0 ||
+    split.processSteps.length > 0;
+  if (hasProcess) {
+    return t("chat.processOrganizing", { defaultValue: "整理结果中" });
+  }
+
+  return null;
 }
 
 /** Foldable thinking + plain tools only (no rich plugin UI). */
@@ -26,26 +68,47 @@ function AssistantProcessSummary({
   split,
   statsSplit,
   isStreaming = false,
+  isTeam = false,
   onAcpPermissionSelect,
   hideToolMedia = false,
   agentId = null,
 }: AssistantProcessSummaryProps) {
   const { t } = useTranslation();
-  const [expanded, setExpanded] = useState(isStreaming);
+  const [collapseThinking] = useCollapseThinking(isTeam);
+  const [expanded, setExpanded] = useState(isStreaming && !collapseThinking);
   const prevStreaming = useRef(isStreaming);
+  const prevCollapseThinking = useRef(collapseThinking);
   const { toolCount, thinkingCount } = useMemo(
     () => countProcessStats(statsSplit ?? split),
     [statsSplit, split],
   );
+  const liveHint = useMemo(
+    () => resolveLiveProcessHint(split, isStreaming, t),
+    [split, isStreaming, t],
+  );
 
-  // Follow the stream: expand while generating, collapse once the turn ends.
-  // Manual toggles hold until the next streaming transition; history renders
-  // with isStreaming=false and therefore stays collapsed.
+  // Manual toggles hold until streaming or the display preference changes.
+  // History stays collapsed, and generation respects the saved preference.
+  // Only collapse when streaming ends — never flicker closed between tool rounds.
   useEffect(() => {
-    if (prevStreaming.current === isStreaming) return;
+    if (
+      prevStreaming.current === isStreaming &&
+      prevCollapseThinking.current === collapseThinking
+    )
+      return;
+    const wasStreaming = prevStreaming.current;
     prevStreaming.current = isStreaming;
-    setExpanded(isStreaming);
-  }, [isStreaming]);
+    prevCollapseThinking.current = collapseThinking;
+    if (isStreaming) {
+      setExpanded(!collapseThinking);
+      return;
+    }
+    if (wasStreaming) {
+      setExpanded(false);
+    } else if (collapseThinking) {
+      setExpanded(false);
+    }
+  }, [isStreaming, collapseThinking]);
 
   if (toolCount === 0 && thinkingCount === 0) return null;
 
@@ -70,11 +133,25 @@ function AssistantProcessSummary({
     <div className={styles.processSummary}>
       <button
         type="button"
-        className={styles.processSummaryToggle}
+        className={`${styles.processSummaryToggle}${
+          liveHint ? ` ${styles.processSummaryToggleLive}` : ""
+        }`}
         onClick={() => setExpanded((v) => !v)}
         aria-expanded={expanded}
+        aria-busy={liveHint ? true : undefined}
       >
-        <span className={styles.processSummaryText}>{summaryText}</span>
+        <span className={styles.processSummaryText}>
+          {liveHint ? (
+            <span className={styles.processLiveHint} aria-live="polite">
+              <span className={styles.thinkingDot} />
+              <span className={styles.thinkingDot} />
+              <span className={styles.thinkingDot} />
+              <span className={styles.processLiveLabel}>{liveHint}</span>
+            </span>
+          ) : (
+            summaryText
+          )}
+        </span>
         <ChevronRight
           size={14}
           className={`${styles.processSummaryChevron} ${

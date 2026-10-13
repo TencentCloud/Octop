@@ -2,6 +2,8 @@ import { createGlobalStyle } from "antd-style";
 import { ConfigProvider, theme as antdTheme } from "antd";
 import zhCN from "antd/locale/zh_CN";
 import enUS from "antd/locale/en_US";
+import dayjs from "dayjs";
+import "dayjs/locale/zh-cn";
 import { useEffect } from "react";
 import DesktopWindowControls from "./components/DesktopWindowControls";
 import {
@@ -47,9 +49,10 @@ function ThemedApp() {
   const brandTokens = brandTokensFor(palette, isDark, customColor);
   // Make antd built-ins (Popconfirm OK/Cancel, Modal default footer, Empty,
   // Pagination, DatePicker, Table… ) follow the current UI language.
-  const antdLocale = i18n.language?.toLowerCase().startsWith("zh")
-    ? zhCN
-    : enUS;
+  // DatePicker month/weekday labels come from dayjs — keep it in sync too.
+  const isZh = i18n.language?.toLowerCase().startsWith("zh") ?? false;
+  const antdLocale = isZh ? zhCN : enUS;
+  dayjs.locale(isZh ? "zh-cn" : "en");
 
   useUnauthorizedRedirect();
 
@@ -80,7 +83,7 @@ function ThemedApp() {
             colorBgContainer: "#0f1117",
             colorBgElevated: "#1a1c28",
             colorBgLayout: "#0b0d14",
-            colorBgSpotlight: "rgba(255, 255, 255, 0.08)",
+            colorBgSpotlight: "rgba(0, 0, 0, 0.85)",
             colorBgMask: "rgba(5, 5, 8, 0.80)",
             colorBorder: "rgba(255,255,255,0.08)",
             colorBorderSecondary: "rgba(255,255,255,0.05)",
@@ -111,6 +114,7 @@ function ThemedApp() {
           DatePicker: { colorBgBase: "#0f1117" },
           Segmented: { itemSelectedBg: "#1a1c28" },
           Card: { colorBgContainer: "#161822" },
+          Tooltip: { colorBgSpotlight: "#424242" },
         }
       : {},
   };
@@ -155,7 +159,10 @@ function ThemedApp() {
 
 function App() {
   return (
-    <BrowserRouter>
+    // `useTransitions` off: with router transitions on, React keeps the old
+    // page mounted while a lazy route chunk downloads and never renders the
+    // Suspense fallback, so a nav click looks like it did nothing.
+    <BrowserRouter useTransitions={false}>
       <GlobalErrorBoundary>
         <GlobalStyle />
         <ThemeProvider>

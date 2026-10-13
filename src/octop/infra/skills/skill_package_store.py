@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 import shutil
 import sqlite3
 from pathlib import Path
@@ -24,6 +25,17 @@ from octop.infra.users.identity import User
 from octop.infra.utils.frontmatter import parse_frontmatter
 from octop.infra.utils.locale import Locale
 from octop.infra.utils.ulid import new_short_id
+
+logger = logging.getLogger(__name__)
+
+
+COPY_POLICIES = ("snapshot", "lock", "deny")
+
+
+def normalize_copy_policy(value: object) -> str:
+    """Clamp a stored/configured copy policy to the supported set (#770)."""
+    text = str(value or "").strip().lower()
+    return text if text in COPY_POLICIES else "snapshot"
 
 
 def is_skill_package_name_conflict(exc: BaseException) -> bool:
@@ -100,7 +112,32 @@ class SkillPackageStore:
             manifest = skill_dir / "SKILL.md"
             try:
                 text = manifest.read_text(encoding="utf-8")
-            except (OSError, UnicodeDecodeError):
+            except UnicodeDecodeError:
+                from octop.infra.utils.utf8_text import repair_skill_manifest_file
+
+                repaired = repair_skill_manifest_file(manifest)
+                if repaired is None:
+                    logger.warning(
+                        "skipping package skill %s/%s: SKILL.md is not valid UTF-8",
+                        pack_id,
+                        skill_dir.name,
+                    )
+                    summaries.append(
+                        {
+                            "slug": skill_dir.name,
+                            "name": skill_dir.name,
+                            "description": "",
+                            "path": f"skills/{skill_dir.name}/SKILL.md",
+                            "kind": "package",
+                            "package_id": pack_id,
+                            "enabled": False,
+                            "corrupt": True,
+                            "error": "invalid_utf8",
+                        }
+                    )
+                    continue
+                text = repaired
+            except OSError:
                 continue
             metadata, _ = parse_frontmatter(text)
             if metadata.get("removed"):
@@ -155,9 +192,24 @@ class SkillPackageStore:
         shutil.rmtree(self.root / pack_id, ignore_errors=True)
 
     def assert_can_mutate(self, row: SkillPackageRow, user: User) -> None:
-        if user.is_admin or str(user.id) == row.created_by:
+        if self.can_mutate(row, user):
             return
         raise OctopError(ErrorCode.FORBIDDEN, "skill package can only be modified by its creator")
+
+    def can_copy(self, row: SkillPackageRow, user: User) -> bool:
+        """Whether *user* may copy this package's skills into a workspace (#770)."""
+        return self.can_mutate(row, user) or normalize_copy_policy(row.copy_policy) != "deny"
+
+    def assert_can_copy(self, row: SkillPackageRow, user: User) -> None:
+        if self.can_copy(row, user):
+            return
+        raise OctopError(
+            ErrorCode.SKILL_PACKAGE_COPY_DENIED,
+            f"skill package {row.id!r} does not allow copying",
+        )
+
+    def can_mutate(self, row: SkillPackageRow, user: User) -> bool:
+        return user.is_admin or str(user.id) == row.created_by
 
     def _update_skill_count(self, pack_id: str) -> None:
         self.repo.update_skill_count(pack_id, len(self.list_skill_summaries(pack_id)))

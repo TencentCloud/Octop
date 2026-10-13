@@ -18,6 +18,8 @@ from octop.infra.users.preferences import (
     get_model_reasoning_from_json,
     get_preferred_model_from_json,
     get_remote_browser_bookmarks_from_json,
+    get_sidebar_nav_from_json,
+    merge_sidebar_nav_json,
     parse_preferences_json,
 )
 from octop.infra.utils.locale import normalize_locale
@@ -35,6 +37,25 @@ class ModelReasoningPreferenceModel(BaseModel):
     effort: str | None = None
 
 
+class SidebarNavGroupModel(BaseModel):
+    id: str = Field(description="Built-in id (`settings`, `control`, `admin`) or `c_` + hex.")
+    name: str | None = Field(
+        default=None,
+        description="Custom title. Omit to keep a built-in group's translated label.",
+    )
+
+
+class SidebarNavItemModel(BaseModel):
+    key: str = Field(description="Nav item key.")
+    group: str | None = Field(default=None, description="Group id. Omit when ungrouped or hidden.")
+    hidden: bool = Field(default=False, description="When true, the item stays out of the sidebar.")
+
+
+class SidebarNavLayoutModel(BaseModel):
+    groups: list[SidebarNavGroupModel] = Field(default_factory=list)
+    items: list[SidebarNavItemModel] = Field(default_factory=list)
+
+
 class PreferencesResponse(BaseModel):
     locale: str = Field(description="UI locale: `zh` or `en`.")
     remote_browser_bookmarks: list[RemoteBrowserBookmarkModel] = Field(
@@ -50,6 +71,10 @@ class PreferencesResponse(BaseModel):
         description="Per-model reasoning defaults for this user.",
     )
     timezone: str | None = Field(default=None, description="Preferred IANA timezone.")
+    sidebar_nav: SidebarNavLayoutModel | None = Field(
+        default=None,
+        description="Custom sidebar layout. Null means the user has not customized navigation.",
+    )
 
 
 class PatchPreferencesBody(BaseModel):
@@ -61,11 +86,22 @@ class PatchPreferencesBody(BaseModel):
     preferred_model: str | None = None
     model_reasoning: dict[str, ModelReasoningPreferenceModel] | None = None
     timezone: str | None = None
+    sidebar_nav: SidebarNavLayoutModel | None = Field(
+        default=None,
+        description="Replace the sidebar layout. Null clears it and restores the default nav.",
+    )
 
     @model_validator(mode="after")
     def at_least_one_field(self) -> Self:
         if not self.model_fields_set.intersection(
-            {"locale", "remote_browser_bookmarks", "preferred_model", "model_reasoning", "timezone"}
+            {
+                "locale",
+                "remote_browser_bookmarks",
+                "preferred_model",
+                "model_reasoning",
+                "timezone",
+                "sidebar_nav",
+            }
         ):
             raise ValueError("at least one preference field is required")
         if (
@@ -97,7 +133,15 @@ def _response(row: Any) -> PreferencesResponse:
             for ref, pref in get_model_reasoning_from_json(raw).items()
         },
         timezone=parse_preferences_json(raw).get(PREFERENCES_KEY_TIMEZONE),
+        sidebar_nav=_sidebar_nav_response(raw),
     )
+
+
+def _sidebar_nav_response(raw: str | None) -> SidebarNavLayoutModel | None:
+    payload = get_sidebar_nav_from_json(raw)
+    if payload is None:
+        return None
+    return SidebarNavLayoutModel.model_validate(payload)
 
 
 @router.get("/preferences", summary="Current user preferences", response_model=PreferencesResponse)
@@ -162,5 +206,10 @@ async def patch_preferences(
         else:
             data.pop(PREFERENCES_KEY_TIMEZONE, None)
         server.services.user_repo.set_preferences_json(user.id, json.dumps(data))
+    if "sidebar_nav" in body.model_fields_set:
+        row = server.services.user_repo.get(user.id)
+        layout = None if body.sidebar_nav is None else body.sidebar_nav.model_dump()
+        merged = merge_sidebar_nav_json(row.preferences_json if row else None, layout)
+        server.services.user_repo.set_preferences_json(user.id, merged)
     row = server.services.user_repo.get(user.id)
     return _response(row)

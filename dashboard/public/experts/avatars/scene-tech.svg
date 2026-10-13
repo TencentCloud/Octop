@@ -1,0 +1,28 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" role="img" aria-label="scene-tech">
+  <defs>
+    <linearGradient id="bg-scene-tech" x1="20" y1="8" x2="110" y2="120" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#E2E8F0"/>
+      <stop offset="1" stop-color="#CBD5E1"/>
+    </linearGradient>
+  </defs>
+  <rect width="128" height="128" rx="32" fill="url(#bg-scene-tech)"/>
+  <path d="M26 118 Q28 94 48 88 Q64 84 80 88 Q100 94 102 118 Z" fill="#334155"/>
+  <path d="M48 88 Q64 96 80 88 L78 118 H50 Z" fill="#1E293B" opacity="0.28"/>
+  <path d="M28 60 Q26 30 50 22 Q64 16 78 22 Q102 30 100 60 Q88 34 64 32 Q40 34 28 60Z" fill="#0F172A"/><circle cx="40" cy="30" r="7" fill="#0F172A"/><circle cx="78" cy="26" r="6" fill="#0F172A"/>
+  <rect x="56" y="86" width="16" height="14" rx="6" fill="#C9956C"/>
+  <ellipse cx="64" cy="64" rx="28" ry="30" fill="#C9956C"/>
+  <ellipse cx="36" cy="66" rx="5" ry="7" fill="#C9956C"/>
+  <ellipse cx="92" cy="66" rx="5" ry="7" fill="#C9956C"/>
+  <path d="M42 48 Q56 56 70 48 Q64 44 54 44 Q46 44 42 48Z" fill="#0F172A"/>
+  <ellipse cx="52" cy="62" rx="3.2" ry="3.8" fill="#0F172A"/>
+  <ellipse cx="76" cy="62" rx="3.2" ry="3.8" fill="#0F172A"/>
+  <circle cx="53.2" cy="60.8" r="1.1" fill="#fff" opacity="0.95"/>
+  <circle cx="77.2" cy="60.8" r="1.1" fill="#fff" opacity="0.95"/>
+  <path d="M46 54 Q52 51 58 54" fill="none" stroke="#0F172A" stroke-width="2" stroke-linecap="round" opacity="0.5"/>
+  <path d="M70 54 Q76 51 82 54" fill="none" stroke="#0F172A" stroke-width="2" stroke-linecap="round" opacity="0.5"/>
+  <path d="M64 64 Q66 70 62 72" fill="none" stroke="#C08457" stroke-width="2" stroke-linecap="round" opacity="0.5"/>
+  <path d="M52 74 Q64 82 76 74" fill="none" stroke="#B45309" stroke-width="2.4" stroke-linecap="round"/>
+  <circle cx="44" cy="72" r="4" fill="#F9A8D4" opacity="0.32"/>
+  <circle cx="84" cy="72" r="4" fill="#F9A8D4" opacity="0.32"/>
+  <g transform="translate(86,88)" fill="none" stroke="#0F172A" stroke-width="2.5" stroke-linecap="round"><path d="M8 4 L2 12 L8 20"/><path d="M14 4 L20 12 L14 20"/></g>
+</svg>

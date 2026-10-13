@@ -1,8 +1,8 @@
 /**
- * CustomProviderModal — create a new custom provider.
+ * CustomProviderModal — create a new custom provider (right-side drawer).
  */
 import { useEffect, useMemo, useState } from "react";
-import { Button, Divider, Form, Input, Modal, Select } from "antd";
+import { Button, Divider, Drawer, Form, Input, Select } from "antd";
 import { message } from "@/utils/antdMessage";
 
 import { Download, Zap } from "lucide-react";
@@ -12,6 +12,8 @@ import type { ProviderModel, ProviderRow } from "../../useProviders";
 import { isEmbeddingModel } from "../../useProviders";
 import { fetchProviderModels, testProviderDraft } from "../../providerApi";
 import { ModelListEditor } from "./ModelListEditor";
+import { StreamUsageAdvanced } from "../StreamUsageAdvanced";
+import { TestStreamHint } from "../TestStreamHint";
 import styles from "../../index.module.less";
 
 interface CustomProviderModalProps {
@@ -44,8 +46,11 @@ export function CustomProviderModal({
     base_url?: string;
     api_key?: string;
     note?: string;
+    stream_usage?: boolean;
   }>();
+  const name = Form.useWatch("name", form) as string | undefined;
   const kind = Form.useWatch("kind", form) as string | undefined;
+  const baseUrl = Form.useWatch("base_url", form) as string | undefined;
   const apiKey = Form.useWatch("api_key", form) as string | undefined;
   const [models, setModels] = useState<ProviderModel[]>([]);
   const canTest = !!apiKey?.trim();
@@ -53,21 +58,21 @@ export function CustomProviderModal({
   const draftProvider = useMemo<ProviderRow>(
     () => ({
       id: 0,
-      name: (form.getFieldValue("name") as string | undefined) || "draft",
-      kind: (form.getFieldValue("kind") as string | undefined) || "openai",
-      base_url: (form.getFieldValue("base_url") as string | undefined) || null,
-      api_key: (form.getFieldValue("api_key") as string | undefined) || null,
+      name: name || "draft",
+      kind: kind || "openai",
+      base_url: baseUrl || null,
+      api_key: apiKey || null,
       models,
       note: null,
       enabled: true,
     }),
-    [form, models],
+    [apiKey, baseUrl, kind, models, name],
   );
 
   useEffect(() => {
     if (open) {
       form.resetFields();
-      form.setFieldsValue({ kind: "openai" });
+      form.setFieldsValue({ kind: "openai", stream_usage: false });
       setModels([]);
     }
   }, [open, form]);
@@ -182,6 +187,9 @@ export function CustomProviderModal({
           api_key: (values.api_key as string | undefined)?.trim() || null,
           models: modelEntries.length > 0 ? modelEntries : [],
           note: (values.note as string | undefined)?.trim() || null,
+          ...((values.kind as string) === "openai"
+            ? { stream_usage: values.stream_usage === true }
+            : {}),
         }),
       });
       message.success(
@@ -202,16 +210,13 @@ export function CustomProviderModal({
   };
 
   return (
-    <Modal
+    <Drawer
       title={t("models.addCustomProvider")}
       open={open}
-      onCancel={onClose}
-      onOk={handleSubmit}
-      confirmLoading={saving}
-      okText={t("common.create")}
-      cancelText={t("common.cancel")}
+      onClose={onClose}
       destroyOnHidden
       width={560}
+      placement="right"
       footer={
         <div className={styles.modalFooter}>
           <div className={styles.modalFooterLeft} />
@@ -284,6 +289,8 @@ export function CustomProviderModal({
         <Form.Item name="note" label={t("models.noteLabel")}>
           <Input.TextArea rows={2} placeholder={t("models.notePlaceholder")} />
         </Form.Item>
+
+        {kind === "openai" ? <StreamUsageAdvanced /> : null}
       </Form>
 
       <div style={{ marginBottom: 16 }}>
@@ -310,7 +317,7 @@ export function CustomProviderModal({
                     : "";
                 message.success(
                   t("models.testConnectionSuccess", {
-                    name: (form.getFieldValue("name") as string) || "draft",
+                    name: name || "draft",
                     latency,
                   }),
                 );
@@ -339,6 +346,7 @@ export function CustomProviderModal({
             {t("models.fetchModels")}
           </Button>
         )}
+        {kind === "openai" ? <TestStreamHint /> : null}
       </div>
 
       <Divider orientation="left" style={{ fontSize: 13 }}>
@@ -352,6 +360,6 @@ export function CustomProviderModal({
         canTest={canTest}
         onTestModel={(modelId) => testDraftModel(modelId)}
       />
-    </Modal>
+    </Drawer>
   );
 }

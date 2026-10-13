@@ -1,28 +1,41 @@
-"""Copy packaged plugins into the user plugins directory, globally disabled."""
+"""Upgrade already-installed bundled plugins from the in-tree catalog.
+
+New plugins are installed via the marketplace (copy today; remote ZIP later),
+not by seed. Seed only refreshes local copies when the catalog version is newer.
+"""
 
 from __future__ import annotations
 
-import json
 import shutil
 from pathlib import Path
 from typing import Any
 
 import yaml
 
+from octop.infra.errors import corrupt_config_error
+from octop.infra.utils.json_file import (
+    JsonFileCorruptError,
+    read_json_object,
+    write_json_atomic,
+)
+
 
 def _read_config(config_path: Path) -> dict[str, Any]:
-    if not config_path.is_file():
-        return {}
+    """Load ``config.json`` for merging; ``{}`` when absent.
+
+    A corrupt file raises instead of reading as empty: ``seed_bundled_plugins``
+    always writes back, so merging into ``{}`` would destroy every other setting
+    (issue #730).
+    """
     try:
-        raw = json.loads(config_path.read_text(encoding="utf-8"))
-    except Exception:
-        return {}
-    return raw if isinstance(raw, dict) else {}
+        data = read_json_object(config_path)
+    except JsonFileCorruptError as exc:
+        raise corrupt_config_error(exc.path, exc.detail) from exc
+    return data if data is not None else {}
 
 
 def _write_config(config_path: Path, data: dict[str, Any]) -> None:
-    config_path.parent.mkdir(parents=True, exist_ok=True)
-    config_path.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
+    write_json_atomic(config_path, data)
 
 
 def _plugin_version(plugin_dir: Path) -> tuple[int, ...]:
@@ -49,18 +62,19 @@ def seed_bundled_plugins(
     plugins_dir: Path,
     config_path: Path,
 ) -> list[str]:
-    """Copy missing bundled plugins into ``plugins_dir``, globally disabled.
+    """Upgrade already-installed bundled plugins when the catalog version is newer.
 
-    An id listed in ``bundled_plugins_seeded`` is never re-created after
-    uninstall. Existing dest dirs are overwritten only when the bundled
-    ``plugin.yaml`` version is newer (enabled flag is preserved).
+    New plugins are **not** auto-copied. Install them from the plugin marketplace
+    (``PluginManager.install_from_market``), which copies from the in-tree
+    catalog today and will fetch remote ZIPs later.
+
+    Existing dest dirs are overwritten only when the bundled ``plugin.yaml``
+    version is newer (enabled flag is preserved). Does not write config when
+    nothing was upgraded.
     """
     if not bundled_root.is_dir():
         return []
     data = _read_config(config_path)
-    seeded_raw = data.get("bundled_plugins_seeded")
-    seeded: list[str] = [str(x) for x in seeded_raw] if isinstance(seeded_raw, list) else []
-    seeded_set = set(seeded)
     plugins_cfg = data.get("plugins")
     if not isinstance(plugins_cfg, dict):
         plugins_cfg = {}
@@ -75,33 +89,19 @@ def seed_bundled_plugins(
             continue
         plugin_id = child.name
         dest = plugins_dir / plugin_id
-        if dest.exists():
-            if _plugin_version(child) > _plugin_version(dest):
-                enabled_entry = plugins_cfg.get(plugin_id)
-                shutil.rmtree(dest)
-                shutil.copytree(child, dest)
-                copied.append(plugin_id)
-                if isinstance(enabled_entry, dict):
-                    plugins_cfg[plugin_id] = dict(enabled_entry)
-            if plugin_id not in seeded_set:
-                seeded.append(plugin_id)
-                seeded_set.add(plugin_id)
-                entry = plugins_cfg.get(plugin_id)
-                if not isinstance(entry, dict):
-                    plugins_cfg[plugin_id] = {"enabled": False}
+        if not dest.exists():
             continue
-        if plugin_id in seeded_set:
+        if _plugin_version(child) <= _plugin_version(dest):
             continue
+        enabled_entry = plugins_cfg.get(plugin_id)
+        shutil.rmtree(dest)
         shutil.copytree(child, dest)
-        existing = plugins_cfg.get(plugin_id)
-        plugin_entry: dict[str, Any] = dict(existing) if isinstance(existing, dict) else {}
-        plugin_entry["enabled"] = False
-        plugins_cfg[plugin_id] = plugin_entry
-        seeded.append(plugin_id)
-        seeded_set.add(plugin_id)
         copied.append(plugin_id)
+        if isinstance(enabled_entry, dict):
+            plugins_cfg[plugin_id] = dict(enabled_entry)
 
-    data["bundled_plugins_seeded"] = seeded
+    if not copied:
+        return []
     data["plugins"] = plugins_cfg
     _write_config(config_path, data)
     return copied

@@ -14,20 +14,21 @@ from octop.api.common.agent_runtime import AgentRuntimeFields, runtime_field_upd
 from octop.api.common.validators import assert_user_backend_root_dirs
 from octop.api.common.workspace import require_agent_workspace
 from octop.api.deps import current_user, get_server
-from octop.infra.agents.avatar import (
+from octop.infra.agents.experts.avatar import (
     agent_avatar_api_path,
     delete_workspace_avatar,
     display_agent_icon_url,
     read_workspace_avatar,
     write_workspace_avatar,
 )
-from octop.infra.agents.profile import (
+from octop.infra.agents.settings.profile import (
+    id_list_from_row,
     parse_config_json,
-    parse_skill_package_ids_json,
+    parse_id_list_json,
     strip_profile_config,
     welcome_from_row,
 )
-from octop.infra.agents.runtime_limits import (
+from octop.infra.agents.settings.runtime_limits import (
     AGENT_RUNTIME_CONFIG_KEYS,
     agent_runtime_values,
 )
@@ -54,6 +55,8 @@ class AgentCreateBody(AgentRuntimeFields):
     icon_url: str | None = None
     welcome_message: str | None = None
     skill_package_ids: list[str] | None = None
+    knowledge_base_ids: list[str] | None = None
+    mcp_servers: list[str] | None = None
 
 
 class AgentPatchBody(AgentRuntimeFields):
@@ -71,6 +74,8 @@ class AgentPatchBody(AgentRuntimeFields):
     icon_url: str | None = None
     welcome_message: str | None = None
     skill_package_ids: list[str] | None = None
+    knowledge_base_ids: list[str] | None = None
+    mcp_servers: list[str] | None = None
 
 
 def _attach_unread_counts(
@@ -89,6 +94,12 @@ def _bootstrap_pending_for(server: Any, agent_id: str) -> bool:
 
 def _memory_maintenance_status(server: Any, agent_id: str) -> dict[str, Any] | None:
     """Phase snapshot while this agent's SQLite is being slimmed. None if idle/unloaded."""
+    runtime = server.app_runtime
+    coordinator = runtime.agent_registry.memory_slim if runtime is not None else None
+    if coordinator is not None:
+        current = coordinator.status(agent_id)
+        if isinstance(current, dict):
+            return current
     try:
         agent = server.app_runtime.agent_registry.get_agent(agent_id)
     except OctopError:
@@ -116,12 +127,22 @@ def _owner_username(server: Any, row: Any) -> str | None:
     return owner.username if owner is not None else None
 
 
+def _agent_icon_url(row: Any, cfg: dict[str, Any]) -> str | None:
+    stored = row.icon_url or cfg.get("icon_url")
+    if getattr(row, "kind", None) != "team":
+        return stored
+    from octop.infra.agents.teams import team_icon_url  # noqa: PLC0415
+
+    return team_icon_url(stored)
+
+
 def _row_dict(
     row: Any,
     *,
     viewer_user_id: int | None = None,
     owner_username: str | None = None,
     bootstrap_pending: bool | None = None,
+    server: Any | None = None,
 ) -> dict[str, Any]:
     cfg = parse_config_json(row.config_json)
     public_cfg = {
@@ -129,7 +150,7 @@ def _row_dict(
         for key, value in strip_profile_config(cfg).items()
         if key not in AGENT_RUNTIME_CONFIG_KEYS
     }
-    packages = parse_skill_package_ids_json(row.skill_package_ids)
+    packages = parse_id_list_json(row.skill_package_ids)
     if packages is None:
         raw_packages = cfg.get("skill_package_ids")
         packages = (
@@ -154,18 +175,32 @@ def _row_dict(
         "icon_name": row.icon_name or cfg.get("icon_name"),
         "icon_url": display_agent_icon_url(
             agent_id=row.agent_id,
-            stored=row.icon_url or cfg.get("icon_url"),
+            stored=_agent_icon_url(row, cfg),
             updated_at=getattr(row, "updated_at", None),
         ),
         "color": row.color or cfg.get("color"),
         "skill_package_ids": packages,
+        "knowledge_base_ids": id_list_from_row(row, "knowledge_base_ids"),
+        "mcp_servers": (
+            []
+            if (getattr(row, "kind", None) or "expert") == "team"
+            else id_list_from_row(row, "mcp_servers")
+        ),
         "published_expert_id": row.published_expert_id,
         "welcome_message": welcome_from_row(row),
         "is_shared": bool(int(getattr(row, "is_shared", 0) or 0)),
         "is_owner": row.user_id is not None and row.user_id == viewer_user_id,
         "owner_username": owner_username,
+        "kind": getattr(row, "kind", None) or "expert",
         **agent_runtime_values(cfg),
     }
+    if payload["kind"] == "team":
+        registry = getattr(getattr(server, "app_runtime", None), "agent_registry", None)
+        teams = getattr(registry, "teams", None)
+        if teams is not None:
+            payload["member_ids"] = teams.visible_member_ids(row.agent_id)
+        else:
+            payload["member_ids"] = []
     if bootstrap_pending is not None:
         payload["bootstrap_pending"] = bootstrap_pending
     return payload
@@ -209,6 +244,7 @@ async def list_agents(
                 viewer_user_id=user.id,
                 owner_username=username_by_id.get(r.user_id) if r.user_id is not None else None,
                 bootstrap_pending=_bootstrap_pending_for(server, r.agent_id),
+                server=server,
             )
             for r in rows
         ]
@@ -235,6 +271,7 @@ async def list_agents(
                     shared_owner_username_by_id.get(r.user_id) if r.user_id is not None else None
                 ),
                 bootstrap_pending=_bootstrap_pending_for(server, r.agent_id),
+                server=server,
             )
             for r in rows
         ],
@@ -252,7 +289,23 @@ async def create_agent(
 
     assert server.app_runtime is not None
     if isinstance(body.config, dict):
-        assert_user_backend_root_dirs(user, body.config.get("backend"))
+        assert_user_backend_root_dirs(
+            user,
+            body.config.get("backend"),
+            policy_repo=server.services.user_policy_repo,
+        )
+    knowledge_ids = (
+        server.app_runtime.agent_registry.validate_knowledge_base_ids(
+            user.id, body.knowledge_base_ids
+        )
+        if body.knowledge_base_ids is not None
+        else None
+    )
+    mcp_servers = (
+        server.app_runtime.agent_registry.validate_mcp_servers(user.id, body.mcp_servers)
+        if body.mcp_servers is not None
+        else None
+    )
     spec = AgentCreateSpec(
         name=body.name,
         user_id=user.id,
@@ -270,6 +323,8 @@ async def create_agent(
         icon_url=body.icon_url,
         skill_package_ids=body.skill_package_ids,
         welcome_message=body.welcome_message,
+        knowledge_base_ids=knowledge_ids,
+        mcp_servers=mcp_servers,
     )
     row = await server.app_runtime.agent_registry.create(spec)
     return _row_dict(
@@ -277,6 +332,7 @@ async def create_agent(
         viewer_user_id=user.id,
         owner_username=user.username,
         bootstrap_pending=_bootstrap_pending_for(server, row.agent_id),
+        server=server,
     )
 
 
@@ -312,6 +368,7 @@ async def get_agent(
         viewer_user_id=user.id,
         owner_username=_owner_username(server, row),
         bootstrap_pending=_bootstrap_pending_for(server, agent_id),
+        server=server,
     )
 
 
@@ -332,7 +389,11 @@ async def patch_agent(
         raise OctopError(ErrorCode.AGENT_NOT_FOUND, f"agent {agent_id!r} not found")
     _assert_agent_owner(row, user)
     if body.config is not None and isinstance(body.config, dict):
-        assert_user_backend_root_dirs(user, body.config.get("backend"))
+        assert_user_backend_root_dirs(
+            user,
+            body.config.get("backend"),
+            policy_repo=server.services.user_policy_repo,
+        )
     updates = {
         key: value
         for key, value in body.model_dump(exclude_unset=True).items()
@@ -342,6 +403,8 @@ async def patch_agent(
             "is_shared",
             "welcome_message",
             "skill_package_ids",
+            "knowledge_base_ids",
+            "mcp_servers",
         }
     }
     if body.config is not None:
@@ -357,6 +420,18 @@ async def patch_agent(
         refreshed = server.app_runtime.agent_registry.get_row(agent_id)
         if refreshed is not None:
             row = refreshed
+    if body.knowledge_base_ids is not None:
+        server.app_runtime.agent_registry.persist_knowledge_base_ids(
+            agent_id, body.knowledge_base_ids
+        )
+        refreshed = server.app_runtime.agent_registry.get_row(agent_id)
+        if refreshed is not None:
+            row = refreshed
+    if body.mcp_servers is not None:
+        server.app_runtime.agent_registry.persist_mcp_servers(agent_id, body.mcp_servers)
+        refreshed = server.app_runtime.agent_registry.get_row(agent_id)
+        if refreshed is not None:
+            row = refreshed
     if body.is_shared is not None:
         row = await server.app_runtime.agent_registry.set_shared(agent_id, body.is_shared)
     return _row_dict(
@@ -364,6 +439,7 @@ async def patch_agent(
         viewer_user_id=user.id,
         owner_username=user.username,
         bootstrap_pending=_bootstrap_pending_for(server, agent_id),
+        server=server,
     )
 
 

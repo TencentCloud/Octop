@@ -1,9 +1,17 @@
 .wrap {
   display: flex;
-  flex-direction: row;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 8px;
+  min-width: 0;
+  width: 100%;
+}
+
+.row {
+  display: flex;
   align-items: center;
-  flex-wrap: wrap;
-  gap: 10px 12px;
+  gap: 12px;
+  min-width: 0;
 }
 
 .label {
@@ -16,11 +24,80 @@
 }
 
 .bar {
+  position: relative;
   display: flex;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   align-items: center;
   gap: 6px;
   min-width: 0;
+  flex: 1;
+  overflow: hidden;
+}
+
+.measure {
+  position: absolute;
+  left: 0;
+  top: 0;
+  display: flex;
+  flex-wrap: nowrap;
+  align-items: center;
+  gap: 6px 14px;
+  visibility: hidden;
+  pointer-events: none;
+}
+
+.track {
+  display: flex;
+  flex-wrap: nowrap;
+  align-items: center;
+  gap: 6px 14px;
+  min-width: 0;
+}
+
+.group {
+  display: flex;
+  flex-wrap: nowrap;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.groupLabel {
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--fn-text-tertiary);
+  letter-spacing: 0.02em;
+  flex-shrink: 0;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.moreBtn {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  height: 26px;
+  padding: 0 4px;
+  border: none;
+  background: none;
+  color: var(--fn-text-tertiary);
+  font-size: 12px;
+  line-height: 1;
+  cursor: pointer;
+  flex-shrink: 0;
+
+  &:hover {
+    color: var(--fn-text-secondary);
+  }
+}
+
+.moreMenu {
+  max-height: 360px;
+  overflow-y: auto;
+}
+
+.chipDisconnected {
+  opacity: 0.65;
 }
 
 .chip {
@@ -39,7 +116,7 @@
     border-color 0.15s,
     background 0.15s,
     box-shadow 0.15s;
-  max-width: 200px;
+  max-width: 228px;
   height: 26px;
 
   &:hover {
@@ -73,8 +150,11 @@
   flex-shrink: 0;
   color: var(--chip-accent, #2563eb);
   line-height: 0;
+  border-radius: 50%;
+  overflow: hidden;
 
-  svg {
+  svg,
+  img {
     display: block;
   }
 }
@@ -132,8 +212,11 @@
   height: 14px;
   flex-shrink: 0;
   line-height: 0;
+  border-radius: 50%;
+  overflow: hidden;
 
-  svg {
+  svg,
+  img {
     display: block;
   }
 }
@@ -165,4 +248,10 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.hint {
+  font-size: 12px;
+  color: var(--fn-text-tertiary);
+  line-height: 1.3;
 }

@@ -215,8 +215,11 @@ async def list_backups(
     _: Any = Depends(require_permission("backup")),
     server: Any = Depends(get_server),
 ) -> dict[str, Any]:
-    """List ``.tar.gz`` files in ``~/.octop/backups/``."""
-    files = list_backup_files(server.paths)
+    """List ``.tar.gz`` files in ``~/.octop/backups/``.
+
+    Disk/manifest peek runs in a worker thread so the event loop stays free.
+    """
+    files = await asyncio.to_thread(list_backup_files, server.paths)
     return {
         "dir": str(server.paths.backups_dir),
         "items": [f.to_dict() for f in files],

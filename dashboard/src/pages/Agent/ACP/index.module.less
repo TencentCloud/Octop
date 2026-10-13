@@ -18,11 +18,30 @@
   border-top: 1px solid var(--fn-border-subtle, rgba(0, 0, 0, 0.06));
 }
 
+.outboundBlockedAlert {
+  margin: 0 0 16px;
+}
+
+.runnerCardDisabled {
+  opacity: 0.55;
+  pointer-events: auto;
+  cursor: default;
+}
+
 .toolbar {
   display: flex;
-  justify-content: flex-end;
+  justify-content: space-between;
   align-items: center;
+  gap: 12px;
   margin-bottom: 20px;
+}
+
+.toolbarText {
+  min-width: 0;
+
+  > p:last-child {
+    margin-bottom: 0;
+  }
 }
 
 .toolToggle {
@@ -31,6 +50,10 @@
   gap: 8px;
   font-size: 14px;
   color: var(--fn-text-secondary);
+}
+
+.toolToggleDisabled {
+  opacity: 0.55;
 }
 
 .drawerHint {

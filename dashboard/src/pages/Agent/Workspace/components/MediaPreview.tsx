@@ -33,22 +33,27 @@ function MediaFallback({ label }: { label: string }) {
 }
 
 function useWorkspaceBlob(
-  agentId: string,
+  agentId: string | undefined,
   path: string,
   filename: string,
   toBlob: (blob: Blob, filename: string) => Blob,
   refreshToken = 0,
   fromWorkspace = true,
+  fetchUrl?: string,
 ) {
   const [src, setSrc] = useState("");
   const objectUrlRef = useRef<string | undefined>(undefined);
 
   const apiPath = useMemo(() => {
-    const source = toMediaPreviewSource(path, { agentId, fromWorkspace });
+    if (fetchUrl) return fetchUrl;
+    const source = toMediaPreviewSource(path, {
+      agentId: agentId ?? "",
+      fromWorkspace,
+    });
     return `/agents/${encodeURIComponent(
-      agentId,
+      agentId ?? "",
     )}/media/preview?${new URLSearchParams({ source }).toString()}`;
-  }, [agentId, path, fromWorkspace]);
+  }, [agentId, path, fromWorkspace, fetchUrl]);
 
   useLayoutEffect(() => {
     let cancelled = false;
@@ -99,12 +104,14 @@ function WorkspaceImage({
   filename,
   refreshToken = 0,
   fromWorkspace = true,
+  fetchUrl,
 }: {
-  agentId: string;
+  agentId?: string;
   path: string;
   filename: string;
   refreshToken?: number;
   fromWorkspace?: boolean;
+  fetchUrl?: string;
 }) {
   const { t } = useTranslation();
   const src = useWorkspaceBlob(
@@ -114,6 +121,7 @@ function WorkspaceImage({
     asImageBlob,
     refreshToken,
     fromWorkspace,
+    fetchUrl,
   );
 
   if (src === "missing") {
@@ -147,12 +155,14 @@ function WorkspaceVideo({
   filename,
   refreshToken = 0,
   fromWorkspace = true,
+  fetchUrl,
 }: {
-  agentId: string;
+  agentId?: string;
   path: string;
   filename: string;
   refreshToken?: number;
   fromWorkspace?: boolean;
+  fetchUrl?: string;
 }) {
   const { t } = useTranslation();
   const toBlob = useMemo(
@@ -169,6 +179,7 @@ function WorkspaceVideo({
     toBlob,
     refreshToken,
     fromWorkspace,
+    fetchUrl,
   );
 
   if (src === "missing") {
@@ -208,12 +219,14 @@ function WorkspaceAudio({
   filename,
   refreshToken = 0,
   fromWorkspace = true,
+  fetchUrl,
 }: {
-  agentId: string;
+  agentId?: string;
   path: string;
   filename: string;
   refreshToken?: number;
   fromWorkspace?: boolean;
+  fetchUrl?: string;
 }) {
   const { t } = useTranslation();
   const toBlob = useMemo(
@@ -230,6 +243,7 @@ function WorkspaceAudio({
     toBlob,
     refreshToken,
     fromWorkspace,
+    fetchUrl,
   );
 
   if (src === "missing") {
@@ -268,13 +282,15 @@ export default function MediaPreview({
   kind,
   refreshToken = 0,
   fromWorkspace = true,
+  fetchUrl,
 }: {
-  agentId: string;
+  agentId?: string;
   path: string;
   kind: MediaKind;
   refreshToken?: number;
   /** Workspace tree paths use leading ``/`` as workspace-relative keys. */
   fromWorkspace?: boolean;
+  fetchUrl?: string;
 }) {
   const filename = path.split("/").filter(Boolean).pop() || path;
 
@@ -287,6 +303,7 @@ export default function MediaPreview({
           filename={filename}
           refreshToken={refreshToken}
           fromWorkspace={fromWorkspace}
+          fetchUrl={fetchUrl}
         />
       );
     case "video":
@@ -297,6 +314,7 @@ export default function MediaPreview({
           filename={filename}
           refreshToken={refreshToken}
           fromWorkspace={fromWorkspace}
+          fetchUrl={fetchUrl}
         />
       );
     case "audio":
@@ -307,6 +325,7 @@ export default function MediaPreview({
           filename={filename}
           refreshToken={refreshToken}
           fromWorkspace={fromWorkspace}
+          fetchUrl={fetchUrl}
         />
       );
     default:

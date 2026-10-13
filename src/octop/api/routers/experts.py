@@ -12,7 +12,8 @@ POST /api/experts/hub/{slug}/install → create agent from market expert
 from __future__ import annotations
 
 import asyncio
-from typing import Any
+import json
+from typing import Any, Literal
 
 from fastapi import APIRouter, Depends, Response
 from pydantic import BaseModel, Field
@@ -21,17 +22,26 @@ from octop.api.common.agent import require_agent_owner_row, user_owns_agent
 from octop.api.common.agent_runtime import AgentRuntimeFields, runtime_field_updates
 from octop.api.common.validators import assert_user_backend_root_dirs
 from octop.api.deps import current_user, get_server
-from octop.infra.agents.avatar import (
+from octop.infra.agents.experts.avatar import (
     display_published_expert_icon_url,
+    public_portrait_icon_url,
     read_snapshot_avatar,
 )
 from octop.infra.agents.experts.catalog import (
     MANIFEST_FILENAME,
+    apply_workspace_quick_prompts,
     build_create_spec_from_expert,
     discover_seed_paths,
     preview_file_paths,
     preview_paths_from_expert_dir,
     read_text_file_contents,
+)
+from octop.infra.agents.experts.composer_files import (
+    ComposerApplyReport,
+    ComposerSkillCopy,
+    ComposerWorkspacePatch,
+    apply_composer_workspace_patch,
+    composer_plan_from_payload,
 )
 from octop.infra.agents.experts.market_creation import (
     SkillHubMarketAgentCreateOptions,
@@ -42,7 +52,7 @@ from octop.infra.agents.experts.market_creation import (
 from octop.infra.agents.experts.published_creation import (
     PublishedExpertInstallOptions,
     require_published_expert,
-    snapshot_welcome_message,
+    snapshot_welcome_payload,
 )
 from octop.infra.agents.experts.published_creation import (
     install_published_expert as install_published_expert_agent,
@@ -63,10 +73,29 @@ from octop.infra.agents.experts.skillhub_market import (
     fetch_skillset,
 )
 from octop.infra.errors import ErrorCode, OctopError
-from octop.infra.trajectory.settings import apply_enable_trajectory
+from octop.infra.history.trajectory.settings import apply_enable_trajectory
 from octop.infra.utils.locale import resolve_user_locale
 
 router = APIRouter()
+
+
+def _validated_session_defaults(
+    registry: Any,
+    user_id: int,
+    *,
+    knowledge_base_ids: list[str] | None,
+    mcp_servers: list[str] | None,
+) -> tuple[list[str] | None, list[str] | None]:
+    kb_ids = (
+        registry.validate_knowledge_base_ids(user_id, knowledge_base_ids)
+        if knowledge_base_ids is not None
+        else None
+    )
+    servers = (
+        registry.validate_mcp_servers(user_id, mcp_servers) if mcp_servers is not None else None
+    )
+    return kb_ids, servers
+
 
 _SAFE_MARKET_REASONS: dict[SkillHubMarketErrorKind, str] = {
     SkillHubMarketErrorKind.NOT_FOUND: "expert not found",
@@ -80,6 +109,24 @@ _SAFE_MARKET_REASONS: dict[SkillHubMarketErrorKind, str] = {
 }
 
 
+class ComposerFileOverrideBody(BaseModel):
+    name: str
+    content: str = ""
+
+
+class ComposerHubSkillBody(BaseModel):
+    skill_name: str
+    display_name: str = ""
+    icon_url: str = ""
+    label: dict[str, str] | None = None
+    summary: dict[str, str] | None = None
+
+
+class ComposerCopySkillBody(BaseModel):
+    agent_id: str
+    slug: str
+
+
 class FromExpertBody(AgentRuntimeFields):
     name: str | None = None
     description: str | None = None
@@ -87,6 +134,8 @@ class FromExpertBody(AgentRuntimeFields):
     default_model: str | None = None
     backend: dict[str, Any] | None = None
     skill_package_ids: list[str] | None = None
+    knowledge_base_ids: list[str] | None = None
+    mcp_servers: list[str] | None = None
     color: str | None = None
     agent_id: str | None = Field(
         default=None,
@@ -95,6 +144,15 @@ class FromExpertBody(AgentRuntimeFields):
     )
     welcome_message: str | None = None
     enable_trajectory: bool = True
+    conversation_mode: Literal["ask", "plan", "craft"] | None = Field(
+        default=None,
+        description="Default Ask/Plan/Craft mode for new conversations; craft when omitted",
+    )
+    file_overrides: list[ComposerFileOverrideBody] | None = None
+    omit_files: list[str] | None = None
+    hub_skills: list[ComposerHubSkillBody] | None = None
+    copy_skills: list[ComposerCopySkillBody] | None = None
+    quick_prompts: list[QuickPromptResponse] | None = None
 
 
 class PublishExpertBody(BaseModel):
@@ -121,6 +179,8 @@ class InstallPublishedExpertBody(AgentRuntimeFields):
     default_model: str | None = None
     backend: dict[str, Any] | None = None
     skill_package_ids: list[str] | None = None
+    knowledge_base_ids: list[str] | None = None
+    mcp_servers: list[str] | None = None
     color: str | None = None
     agent_id: str | None = Field(
         default=None,
@@ -129,6 +189,90 @@ class InstallPublishedExpertBody(AgentRuntimeFields):
     )
     welcome_message: str | None = None
     enable_trajectory: bool = True
+    conversation_mode: Literal["ask", "plan", "craft"] | None = Field(
+        default=None,
+        description="Default Ask/Plan/Craft mode for new conversations; craft when omitted",
+    )
+    file_overrides: list[ComposerFileOverrideBody] | None = None
+    omit_files: list[str] | None = None
+    hub_skills: list[ComposerHubSkillBody] | None = None
+    copy_skills: list[ComposerCopySkillBody] | None = None
+    quick_prompts: list[QuickPromptResponse] | None = None
+
+
+def _composer_plan_from_body(
+    body: FromExpertBody | InstallPublishedExpertBody,
+) -> tuple[ComposerWorkspacePatch, tuple[ComposerSkillCopy, ...]]:
+    return composer_plan_from_payload(
+        file_overrides=[item.model_dump() for item in (body.file_overrides or [])],
+        omit_files=body.omit_files,
+        hub_skills=[item.model_dump() for item in (body.hub_skills or [])],
+        copy_skills=[item.model_dump() for item in (body.copy_skills or [])],
+    )
+
+
+def _resolve_composer_copies(
+    copies: tuple[ComposerSkillCopy, ...],
+    *,
+    user: Any,
+    server: Any,
+    report: ComposerApplyReport,
+) -> tuple[tuple[str, Any], ...]:
+    resolved: list[tuple[str, Any]] = []
+    seen: set[str] = set()
+    for item in copies:
+        if item.slug in seen:
+            continue
+        seen.add(item.slug)
+        try:
+            require_agent_owner_row(item.agent_id, user=user, as_user=None, server=server)
+        except OctopError:
+            report.copy_skill_errors.append(item.slug)
+            continue
+        src = server.app_runtime.agent_registry.workspace_for_agent(item.agent_id)
+        if src is None:
+            report.copy_skill_errors.append(item.slug)
+            continue
+        resolved.append((item.slug, src))
+    return tuple(resolved)
+
+
+def _composer_apply(
+    body: FromExpertBody | InstallPublishedExpertBody,
+    *,
+    user: Any,
+    server: Any,
+) -> tuple[ComposerWorkspacePatch, tuple[tuple[str, Any], ...], ComposerApplyReport]:
+    patch, copies = _composer_plan_from_body(body)
+    report = ComposerApplyReport()
+    resolved = _resolve_composer_copies(copies, user=user, server=server, report=report)
+    return patch, resolved, report
+
+
+def _quick_prompts_from_body(
+    body: FromExpertBody | InstallPublishedExpertBody,
+) -> list[dict[str, Any]] | None:
+    if body.quick_prompts is None:
+        return None
+    return [_quick_prompt_body_dict(item) for item in body.quick_prompts]
+
+
+def _composer_initializer(
+    patch: ComposerWorkspacePatch,
+    copies: tuple[tuple[str, Any], ...] = (),
+    report: ComposerApplyReport | None = None,
+    quick_prompts: list[dict[str, Any]] | None = None,
+) -> Any:
+    if patch.is_empty() and not copies and quick_prompts is None:
+        return None
+
+    async def _apply(_row: Any, workspace: Any) -> None:
+        if not patch.is_empty() or copies:
+            await apply_composer_workspace_patch(workspace, patch, copies=copies, report=report)
+        if quick_prompts is not None:
+            await apply_workspace_quick_prompts(workspace, quick_prompts)
+
+    return _apply
 
 
 class LocalizedTextResponse(BaseModel):
@@ -159,6 +303,7 @@ class ExpertHubItemResponse(BaseModel):
     source: str = "skillhub"
     content: LocalizedTextResponse | None = None
     quick_prompts: list[QuickPromptResponse] | None = None
+    task_examples: dict[str, list[str]] | None = None
 
 
 class ExpertHubListResponse(BaseModel):
@@ -187,6 +332,8 @@ class MarketCreateResponse(BaseModel):
     color: str | None = None
     market: MarketCreateSourceResponse
     bootstrap_pending: bool
+    hub_skill_errors: list[str] = Field(default_factory=list)
+    copy_skill_errors: list[str] = Field(default_factory=list)
 
 
 def _quick_prompt_dict(p: Any) -> dict[str, Any]:
@@ -227,8 +374,10 @@ def _summary_dict(s: Any) -> dict[str, Any]:
             "en": s.welcome_message_en,
         },
         "icon_name": s.icon_name,
+        "icon_url": getattr(s, "icon_url", None),
         "color": s.color,
         "quick_prompts": [_quick_prompt_dict(p) for p in getattr(s, "quick_prompts", ())],
+        "task_examples": getattr(s, "task_examples", None),
     }
 
 
@@ -288,6 +437,21 @@ def _published_creator_username(server: Any, created_by: str) -> str | None:
     return user.username if user is not None else None
 
 
+def _published_manifest_icon_url(snapshot_dir: Any) -> str | None:
+    manifest_path = snapshot_dir / MANIFEST_FILENAME
+    if not manifest_path.is_file():
+        return None
+    try:
+        data = json.loads(manifest_path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError):
+        return None
+    if not isinstance(data, dict):
+        return None
+    return public_portrait_icon_url(
+        data.get("icon_url") if isinstance(data.get("icon_url"), str) else None
+    )
+
+
 def _published_summary_dict(row: Any, server: Any) -> dict[str, Any]:
     snapshot_dir = _published_snapshot_dir(server, row.id)
     return {
@@ -303,6 +467,7 @@ def _published_summary_dict(row: Any, server: Any) -> dict[str, Any]:
             expert_id=row.id,
             snapshot_dir=snapshot_dir,
             updated_at=row.updated_at,
+            fallback_icon_url=_published_manifest_icon_url(snapshot_dir),
         ),
         "color": row.color or None,
         "created_at": row.created_at,
@@ -358,10 +523,11 @@ async def get_published_expert(
     files = await asyncio.to_thread(discover_seed_paths, snapshot_dir)
     if (snapshot_dir / MANIFEST_FILENAME).is_file():
         files.insert(0, MANIFEST_FILENAME)
-    welcome_zh, welcome_en = await asyncio.to_thread(snapshot_welcome_message, snapshot_dir)
+    welcome_payload = await asyncio.to_thread(snapshot_welcome_payload, snapshot_dir)
     return {
         **_published_summary_dict(row, server),
-        "welcome_message": {"zh": welcome_zh, "en": welcome_en},
+        "welcome_message": welcome_payload["welcome_message"],
+        "quick_prompts": welcome_payload["quick_prompts"],
         "files": files,
         "file_contents": await asyncio.to_thread(
             read_text_file_contents,
@@ -482,8 +648,19 @@ async def install_published_expert(
     """Create a private agent and seed it from the immutable published snapshot."""
     assert server.app_runtime is not None
     assert server.services is not None
-    assert_user_backend_root_dirs(user, body.backend)
-    return await install_published_expert_agent(
+    assert_user_backend_root_dirs(
+        user,
+        body.backend,
+        policy_repo=server.services.user_policy_repo,
+    )
+    kb_ids, servers = _validated_session_defaults(
+        server.app_runtime.agent_registry,
+        user.id,
+        knowledge_base_ids=body.knowledge_base_ids,
+        mcp_servers=body.mcp_servers,
+    )
+    patch, copies, report = _composer_apply(body, user=user, server=server)
+    result = await install_published_expert_agent(
         services=server.services,
         registry=server.app_runtime.agent_registry,
         user=user,
@@ -495,13 +672,22 @@ async def install_published_expert(
             default_model=body.default_model,
             backend=body.backend,
             skill_package_ids=body.skill_package_ids,
+            knowledge_base_ids=kb_ids,
+            mcp_servers=servers,
             color=body.color,
             agent_id=body.agent_id,
             welcome_message=body.welcome_message,
             runtime_config=runtime_field_updates(body, exclude_unset=True),
             enable_trajectory=body.enable_trajectory,
+            conversation_mode=body.conversation_mode,
+            workspace_patch=patch,
+            composer_copies=copies,
+            composer_report=report,
+            quick_prompts=_quick_prompts_from_body(body),
         ),
     )
+    result.update(report.as_api_fields())
+    return result
 
 
 @router.get("/experts")
@@ -567,7 +753,11 @@ async def install_expert_hub_item(
 ) -> dict[str, Any]:
     """Create an agent from a SkillHub skillset-backed expert template."""
     assert server.app_runtime is not None
-    assert_user_backend_root_dirs(user, body.backend)
+    assert_user_backend_root_dirs(
+        user,
+        body.backend,
+        policy_repo=server.services.user_policy_repo,
+    )
     package_ids = (
         server.app_runtime.agent_registry.validate_skill_package_ids(body.skill_package_ids)
         if body.skill_package_ids is not None
@@ -575,6 +765,13 @@ async def install_expert_hub_item(
     )
     if package_ids:
         server.app_runtime.agent_registry.assert_backend_supports_skill_packages(body.backend)
+    kb_ids, servers = _validated_session_defaults(
+        server.app_runtime.agent_registry,
+        user.id,
+        knowledge_base_ids=body.knowledge_base_ids,
+        mcp_servers=body.mcp_servers,
+    )
+    patch, copies, report = _composer_apply(body, user=user, server=server)
     try:
         result = await create_skillhub_market_agent(
             server=server,
@@ -590,7 +787,14 @@ async def install_expert_hub_item(
                 agent_id=body.agent_id,
                 welcome_message=body.welcome_message,
                 skill_package_ids=package_ids,
+                knowledge_base_ids=kb_ids,
+                mcp_servers=servers,
                 enable_trajectory=body.enable_trajectory,
+                conversation_mode=body.conversation_mode,
+                workspace_patch=patch,
+                composer_copies=copies,
+                composer_report=report,
+                quick_prompts=_quick_prompts_from_body(body),
                 **runtime_field_updates(body, exclude_unset=False),
             ),
         )
@@ -617,6 +821,7 @@ async def install_expert_hub_item(
             "welcome_enrichment": result.welcome_enrichment,
         },
         "bootstrap_pending": not server.app_runtime.agent_registry.is_bootstrapped(row.agent_id),
+        **report.as_api_fields(),
     }
 
 
@@ -646,7 +851,11 @@ async def create_agent_from_expert(
     if expert is None:
         raise OctopError(ErrorCode.NOT_FOUND, f"expert {expert_id!r} not found")
     assert server.app_runtime is not None
-    assert_user_backend_root_dirs(user, body.backend)
+    assert_user_backend_root_dirs(
+        user,
+        body.backend,
+        policy_repo=server.services.user_policy_repo,
+    )
     package_ids = (
         server.app_runtime.agent_registry.validate_skill_package_ids(body.skill_package_ids)
         if body.skill_package_ids is not None
@@ -654,6 +863,12 @@ async def create_agent_from_expert(
     )
     if package_ids:
         server.app_runtime.agent_registry.assert_backend_supports_skill_packages(body.backend)
+    kb_ids, servers = _validated_session_defaults(
+        server.app_runtime.agent_registry,
+        user.id,
+        knowledge_base_ids=body.knowledge_base_ids,
+        mcp_servers=body.mcp_servers,
+    )
 
     config_extra: dict[str, Any] = {}
     if body.providers:
@@ -661,6 +876,8 @@ async def create_agent_from_expert(
     if body.backend:
         config_extra["backend"] = body.backend
     apply_enable_trajectory(config_extra, body.enable_trajectory)
+    if body.conversation_mode:
+        config_extra["conversation_mode"] = body.conversation_mode
 
     locale = resolve_user_locale(
         user_repo=server.services.user_repo,
@@ -680,8 +897,20 @@ async def create_agent_from_expert(
         color=body.color,
         welcome_message=body.welcome_message,
         skill_package_ids=package_ids,
+        knowledge_base_ids=kb_ids,
+        mcp_servers=servers,
     )
-    row = await server.app_runtime.agent_registry.create(spec, defer_bootstrap=True)
+    patch, copies, report = _composer_apply(body, user=user, server=server)
+    row = await server.app_runtime.agent_registry.create(
+        spec,
+        defer_bootstrap=True,
+        workspace_initializer=_composer_initializer(
+            patch,
+            copies,
+            report,
+            quick_prompts=_quick_prompts_from_body(body),
+        ),
+    )
     return {
         "id": row.id,
         "agent_id": row.agent_id,
@@ -695,4 +924,5 @@ async def create_agent_from_expert(
         "icon_url": row.icon_url,
         "color": row.color or expert.summary.color,
         "bootstrap_pending": not server.app_runtime.agent_registry.is_bootstrapped(row.agent_id),
+        **report.as_api_fields(),
     }

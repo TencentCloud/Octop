@@ -11,10 +11,10 @@ from pathlib import Path, PurePosixPath
 from typing import Any
 from uuid import uuid4
 
-from harness_agent.backends.workspace import BackendWorkspace
+from octop_harness.backends.workspace import BackendWorkspace
 
-from octop.infra.agents.avatar import copy_workspace_avatar_to_dir
 from octop.infra.agents.builtin_skills import OCTOP_BUILTIN_SKILLS_ROOT
+from octop.infra.agents.experts.avatar import copy_workspace_avatar_to_dir
 from octop.infra.agents.experts.catalog import (
     MANIFEST_FILENAME,
     read_workspace_manifest_bytes,
@@ -72,6 +72,8 @@ class PublishedExpertSnapshotMeta:
     welcome_message_zh: str
     welcome_message_en: str
     quick_prompts: tuple[dict[str, Any], ...] = ()
+    task_examples: dict[str, list[str]] | None = None
+    icon_url: str | None = None
 
 
 def assert_can_mutate_published(row: PublishedExpertRow, user: User) -> None:
@@ -218,10 +220,14 @@ def _manifest_from_metadata(
         data["prompt_files"] = prompt_files
     if metadata.icon_name:
         data["icon_name"] = metadata.icon_name
+    if metadata.icon_url:
+        data["icon_url"] = metadata.icon_url
     if metadata.color:
         data["color"] = metadata.color
     if metadata.quick_prompts:
         data["quick_prompts"] = list(metadata.quick_prompts)
+    if metadata.task_examples is not None:
+        data["task_examples"] = metadata.task_examples
     return json.dumps(data, ensure_ascii=False).encode("utf-8")
 
 

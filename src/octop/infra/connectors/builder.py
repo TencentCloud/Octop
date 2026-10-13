@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 import re
 import secrets
 from typing import Any
@@ -11,7 +12,9 @@ from octop.config import OctopConfig
 from octop.infra.connectors.catalog import (
     ConnectorCatalogEntry,
     get_catalog_entry,
+    is_inprocess_gateway,
     is_mcp_oauth_remote,
+    uses_internal_http_mcp,
 )
 from octop.infra.connectors.custom_mcp import validate_mcp_http_url
 from octop.infra.connectors.mail_servers import resolve_mail_servers
@@ -19,6 +22,8 @@ from octop.infra.utils.ulid import new_ulid
 
 # MCP Streamable HTTP transport (Notion, etc.) requires both content types.
 _MCP_STREAMABLE_HTTP_ACCEPT = "application/json, text/event-stream"
+
+DIDI_MCP_BASE_URL = "https://mcp.didichuxing.com/mcp-servers"
 
 
 def _mcp_http_headers() -> dict[str, str]:
@@ -55,6 +60,22 @@ def mcp_server_name(kind: str, instance_id: str) -> str:
     return f"{kind}__{instance_id}"
 
 
+def _internal_mcp_uses_https(config: OctopConfig) -> bool:
+    """True when the API listener is HTTPS (not the ACME/redirect companion)."""
+    return bool(config.tls.enabled and config.tls.cert_file and config.tls.key_file)
+
+
+def _internal_mcp_https_client_factory(
+    headers: dict[str, str] | None = None,
+    timeout: Any = None,
+    auth: Any = None,
+) -> Any:
+    """Loopback HTTPS often uses a public-name cert; skip hostname verification."""
+    import httpx
+
+    return httpx.AsyncClient(headers=headers, timeout=timeout, auth=auth, verify=False)
+
+
 def internal_mcp_url(
     *,
     config: OctopConfig,
@@ -64,9 +85,8 @@ def internal_mcp_url(
 ) -> str:
     host = config.bind_host if config.bind_host not in ("0.0.0.0", "::") else "127.0.0.1"
     token_q = quote(internal_token, safe="")
-    return (
-        f"http://{host}:{config.port}/api/internal/mcp/{gateway_kind}/{instance_id}?token={token_q}"
-    )
+    scheme = "https" if _internal_mcp_uses_https(config) else "http"
+    return f"{scheme}://{host}:{config.port}/api/internal/mcp/{gateway_kind}/{instance_id}?token={token_q}"
 
 
 def new_internal_token() -> str:
@@ -86,6 +106,13 @@ def build_http_mcp_spec(
 
 
 def _build_remote_spec(entry: ConnectorCatalogEntry, creds: dict[str, Any]) -> dict[str, Any]:
+    if entry.kind == "didi":
+        api_key = str(creds.get("api_key") or "").strip()
+        return {
+            "transport": "http",
+            "url": f"{DIDI_MCP_BASE_URL}?key={quote(api_key, safe='')}",
+            "headers": _mcp_http_headers(),
+        }
     if entry.kind == "dify":
         url = validate_mcp_http_url(str(creds.get("mcp_url") or ""))
         return {
@@ -197,7 +224,33 @@ def _build_gateway_spec(
         instance_id=instance_id,
         internal_token=internal_token,
     )
-    return {"transport": "http", "url": url}
+    spec: dict[str, Any] = {"transport": "http", "url": url}
+    if url.startswith("https://"):
+        spec["httpx_client_factory"] = _internal_mcp_https_client_factory
+    return spec
+
+
+def _reject_obsidian_control_chars(field: str, value: str) -> None:
+    if any(char in value for char in "\n\r\x00"):
+        raise ValueError(f"{field} cannot contain newlines")
+
+
+def _obsidian_cli_credentials(credentials: dict[str, Any]) -> dict[str, Any]:
+    vault = str(credentials.get("vault") or "").strip()
+    _reject_obsidian_control_chars("vault", vault)
+    if not vault:
+        raise ValueError("vault is required for Obsidian CLI")
+    out: dict[str, Any] = {
+        "vault": vault,
+        "internal_token": new_internal_token(),
+    }
+    binary_path = str(credentials.get("binary_path") or "").strip()
+    if binary_path:
+        _reject_obsidian_control_chars("binary_path", binary_path)
+        if not os.path.isfile(binary_path):
+            raise ValueError("binary_path must be an existing file")
+        out["binary_path"] = binary_path
+    return out
 
 
 def validate_create_credentials(
@@ -219,6 +272,16 @@ def validate_create_credentials(
             raise ValueError("token is required")
         return {"token": token}
 
+    # QCC supports OAuth and API Key. Prefer an explicit api_key when no
+    # access_token is present (callers drop OAuth fields when switching modes).
+    if kind == "qcc":
+        api_key = str(credentials.get("api_key") or "").strip()
+        if api_key and not str(credentials.get("access_token") or "").strip():
+            return {
+                "api_key": api_key,
+                "internal_token": new_internal_token(),
+            }
+
     if entry.auth_kind == "oauth2":
         access_token = str(
             credentials.get("access_token") or credentials.get("token") or ""
@@ -236,7 +299,7 @@ def validate_create_credentials(
             out["oauth_client_secret"] = str(credentials["oauth_client_secret"])
         if credentials.get("openid"):
             out["openid"] = str(credentials["openid"])
-        if entry.mcp_mode == "gateway":
+        if is_inprocess_gateway(entry) or uses_internal_http_mcp(entry):
             out["internal_token"] = new_internal_token()
         return out
 
@@ -314,6 +377,8 @@ def validate_create_credentials(
             raise ValueError(
                 "元典需使用 sk_ 开头的 API Key，请登录 https://open.chineselaw.com/profile 获取"
             )
+        if entry.kind == "didi":
+            return {"api_key": api_key}
         internal_token = new_internal_token()
         out = {"api_key": api_key, "internal_token": internal_token}
         if entry.kind == "tencent-ima":
@@ -383,6 +448,11 @@ def validate_create_credentials(
         }
 
     if entry.auth_kind == "custom_fields":
+        if entry.kind == "agently-cli":
+            # A caller must never select another instance's CLI credential directory.
+            return {"internal_token": new_internal_token(), "cli_config_key": new_ulid()}
+        if entry.kind == "obsidian-cli":
+            return _obsidian_cli_credentials(credentials)
         if entry.kind == "weknora":
             base_url = normalize_weknora_base_url(str(credentials.get("base_url") or ""))
             out = {
@@ -425,6 +495,8 @@ def _redact_mcp_configs_for_log(configs: dict[str, Any]) -> dict[str, Any]:
             entry["url"] = url.split("token=", 1)[0] + "token=***"
         elif "/mcp/server/" in url:
             entry["url"] = re.sub(r"(/mcp/server/)[^/?#]+", r"\1***", url)
+        elif "key=" in url:
+            entry["url"] = re.sub(r"([?&]key=)[^&]*", r"\1***", url)
         headers = entry.get("headers")
         if isinstance(headers, dict):
             redacted = dict(headers)
@@ -432,6 +504,9 @@ def _redact_mcp_configs_for_log(configs: dict[str, Any]) -> dict[str, Any]:
                 if key in redacted:
                     redacted[key] = "***"
             entry["headers"] = redacted
+        for key, value in list(entry.items()):
+            if callable(value):
+                entry[key] = f"<callable {getattr(value, '__name__', type(value).__name__)}>"
         out[name] = entry
     return out
 
@@ -480,7 +555,7 @@ def build_mcp_server_configs_for_user(
         )
     for inst, entry, creds in _iter_active_connectors(svc, connector_repo, user_id):
         try:
-            if entry.mcp_mode == "gateway":
+            if is_inprocess_gateway(entry):
                 # Name-only placeholder: harness skips specs without ``transport``;
                 # tools are injected in-process in AgentManager._post_start_agent.
                 configs[inst.mcp_server_name] = {}
@@ -530,18 +605,18 @@ def build_mcp_server_configs_for_user(
 
 
 def gateway_mcp_server_names(*, connector_repo: Any, user_id: int) -> set[str]:
-    """MCP server names of *user_id*'s active gateway-mode connector instances.
+    """MCP server names of in-process gateway connectors for *user_id*.
 
-    Gateway connectors carry no HTTP transport: their tools are built in-process
-    from stored credentials, so callers can attach them to a live agent instead
-    of rebuilding it.
+    ``mcp_mode=gateway`` has no HTTP transport: tools are injected from Python
+    adapters. ``internal`` aggregators (e.g. QCC) are not included — harness
+    loads those via ``/api/internal/mcp``.
     """
     names: set[str] = set()
     for inst in connector_repo.list_visible(user_id):
         if inst.status != "active":
             continue
         entry = get_catalog_entry(inst.kind)
-        if entry is not None and entry.mcp_mode == "gateway":
+        if entry is not None and is_inprocess_gateway(entry):
             names.add(inst.mcp_server_name)
     return names
 
@@ -558,15 +633,24 @@ def inject_missing_gateway_tools(
     """Register gateway tools in-process when HTTP MCP load did not produce them."""
     import logging
 
-    from harness_agent.mcp import mcp_tool_names
+    from octop_harness.mcp import mcp_tool_names
 
     from octop.infra.connectors.gateway import build_gateway_langchain_tools
 
     logger = logging.getLogger(__name__)
     tool_set = mcp_tool_names(getattr(agent, "_mcp_tools", []))
     extra: list[Any] = []
+    wanted = {str(name) for name in mcp_server_configs if str(name).strip()}
+    if not wanted:
+        logger.info(
+            "gateway MCP injection skipped for agent %s: no mcp_server_configs",
+            agent_id,
+        )
+        return
     for inst, entry, creds in _iter_active_connectors(svc, connector_repo, user_id):
-        if entry.mcp_mode != "gateway":
+        if not is_inprocess_gateway(entry):
+            continue
+        if inst.mcp_server_name not in wanted:
             continue
         if any(str(t).startswith(f"{inst.mcp_server_name}_") for t in tool_set):
             continue
@@ -584,7 +668,7 @@ def inject_missing_gateway_tools(
             for inst in connector_repo.list_visible(user_id)
             if inst.status == "active"
             and (entry := get_catalog_entry(inst.kind)) is not None
-            and entry.mcp_mode == "gateway"
+            and is_inprocess_gateway(entry)
         ]
         http_loaded = [
             n for n in gateway_names if any(str(t).startswith(f"{n}_") for t in tool_set)

@@ -49,7 +49,8 @@ fi
 echo "starting octop --reload on port ${PORT}"
 (
   cd "$REPO"
-  exec env OCTOP_DESKTOP=1 uv run octop run --reload --host 127.0.0.1 --port "$PORT"
+  # Env overrides apply for this process and are not written back to config.json.
+  exec env OCTOP_DESKTOP=1 OCTOP_BIND_HOST=127.0.0.1 OCTOP_PORT="$PORT" uv run octop run --reload
 ) &
 octop_pid=$!
 

@@ -6,7 +6,12 @@ import re
 from typing import Any, Literal
 from urllib.parse import urlparse
 
-from octop.infra.utils.ssrf_guard import UnsafeOutboundUrl, validate_https_url
+from octop.infra.errors import ErrorCode, OctopError
+from octop.infra.utils.ssrf_guard import (
+    UnsafeOutboundUrl,
+    is_private_or_local_host,
+    validate_https_url,
+)
 
 CUSTOM_MCP_KIND = "custom-mcp"
 CUSTOM_MCP_DISPLAY_NAME = "自定义 MCP"
@@ -113,30 +118,51 @@ def _normalize_args(raw: Any) -> list[str]:
 def validate_mcp_http_url(url: str) -> str:
     """Validate a user-configured MCP/connector URL.
 
-    Local loopback deployments may use HTTP. Remote deployments must use
-    public HTTPS and pass the shared SSRF guard.
+    Loopback and LAN (private / link-local) hosts may use HTTP or HTTPS with no
+    SSRF restriction — operators deliberately point connectors at local MCP
+    servers. Public remote hosts must use HTTPS and pass the shared SSRF guard
+    (literal private/reserved IPs rejected).
     """
     text = url.strip()
     if not text:
-        raise ValueError("url is required")
+        raise OctopError(
+            ErrorCode.CONNECTOR_MCP_URL_INVALID,
+            "url is required",
+            details={"reason": "url is required"},
+        )
     parsed = urlparse(text)
     if parsed.scheme not in ("http", "https"):
-        raise ValueError("url must be http or https")
+        raise OctopError(
+            ErrorCode.CONNECTOR_MCP_URL_INVALID,
+            "url must be http or https",
+            details={"reason": "url must be http or https"},
+        )
     host = (parsed.hostname or "").lower().rstrip(".")
     if not host:
-        raise ValueError("url missing hostname")
+        raise OctopError(
+            ErrorCode.CONNECTOR_MCP_URL_INVALID,
+            "url missing hostname",
+            details={"reason": "url missing hostname"},
+        )
 
-    # Loopback HTTP/HTTPS is allowed for local MCP servers (stdio alternative).
-    if host in {"localhost", "127.0.0.1", "::1"}:
+    # Local / LAN MCP: allow http(s) without the outbound SSRF private-IP ban.
+    if is_private_or_local_host(host):
         return text
 
-    # Public remote MCP: HTTPS only + existing SSRF guards (no private IPs).
+    # Public remote MCP: HTTPS only + existing SSRF guards.
     if parsed.scheme != "https":
-        raise ValueError("non-local url must use https")
+        raise OctopError(
+            ErrorCode.CONNECTOR_MCP_HTTPS_REQUIRED,
+            "public MCP server URLs must use https",
+        )
     try:
         validate_https_url(text, field="url")
     except UnsafeOutboundUrl as exc:
-        raise ValueError(str(exc)) from exc
+        raise OctopError(
+            ErrorCode.CONNECTOR_MCP_URL_INVALID,
+            str(exc),
+            details={"reason": str(exc)},
+        ) from exc
     return text
 
 

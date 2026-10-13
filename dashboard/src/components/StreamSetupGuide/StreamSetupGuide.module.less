@@ -27,6 +27,48 @@
   width: min(100%, 480px);
 }
 
+/* Tasks-like empty tip: no card border / shadow / fill. */
+.plain {
+  box-sizing: border-box;
+  width: 100%;
+  height: 100%;
+  align-items: flex-start;
+  justify-content: center;
+  padding: 64px 24px 48px;
+}
+
+.plain .card {
+  width: min(100%, 440px);
+  padding: 0;
+  background: transparent;
+  border: none;
+  border-radius: 0;
+  box-shadow: none;
+  gap: 12px;
+}
+
+.plain.wide .card {
+  width: min(100%, 440px);
+}
+
+.plain .title {
+  font-size: 18px;
+  margin-top: 8px;
+}
+
+.plain .description {
+  margin-bottom: 8px;
+}
+
+.plain .steps {
+  margin-top: 8px;
+  margin-bottom: 8px;
+}
+
+.plain .actions {
+  margin-top: 12px;
+}
+
 .icon {
   display: flex;
   align-items: center;
@@ -109,20 +151,43 @@
   margin-top: 4px;
 }
 
+.actionTooltipWrap {
+  display: inline-flex;
+}
+
 @media (max-width: 767px) {
   .wrap {
-    padding: 16px;
+    align-items: flex-start;
+    padding: 12px 16px 16px;
+  }
+
+  .plain {
+    padding: 12px 16px 24px;
   }
 
   .card {
-    padding: 28px 20px 24px;
+    padding: 20px 16px 20px;
+  }
+
+  .plain .card {
+    padding: 0;
+  }
+
+  .plain .title {
+    margin-top: 0;
   }
 
   .actions {
-    flex-direction: column;
+    display: grid;
+    grid-template-columns: 1fr;
 
     :global(.ant-btn) {
       width: 100%;
     }
+  }
+
+  .actionTooltipWrap {
+    display: block;
+    width: 100%;
   }
 }

@@ -38,6 +38,7 @@ export interface FetchProviderModelsParams {
   api_key?: string;
   base_url?: string | null;
   extra_json?: string | null;
+  name?: string | null;
 }
 
 export interface FetchedProviderModel {
@@ -61,6 +62,7 @@ export async function fetchProviderModels(
       api_key: params.api_key?.trim() || null,
       base_url: params.base_url?.trim() || null,
       extra_json: params.extra_json ?? null,
+      name: params.name?.trim() || null,
     }),
   });
 }

@@ -25,22 +25,40 @@ from urllib.error import HTTPError, URLError
 from urllib.parse import quote, urlencode
 from urllib.request import Request, urlopen
 
+from octop.infra.agents.experts.catalog import (
+    default_task_examples,
+    scene_expert_avatar_url,
+    snap_task_examples,
+)
+from octop.infra.skills.install import valid_skillhub_icon_url
+from octop.infra.skills.skillhub_common import (
+    DEFAULT_SKILLHUB_HOST,
+    HTTP_READ_CHUNK,
+    MAX_HTTP_BYTES,
+    MAX_ZIP_COMPRESSION_RATIO,
+    MAX_ZIP_ENTRIES,
+    MAX_ZIP_UNCOMPRESSED_BYTES,
+)
 from octop.infra.utils.ssl_errors import looks_like_ssl_error
+from octop.infra.utils.utf8_text import (
+    InvalidSkillManifestEncodingError,
+    coerce_utf8_text_bytes,
+)
 
 logger = logging.getLogger(__name__)
 
 MARKET_EXPERT_PREFIX = "skillhub-skillset-"
-DEFAULT_SKILLHUB_HOST = "https://api.skillhub.cn"
 _HTTP_TIMEOUT = 30
 _SKILLSET_PAGE_SIZE = 100
 _MAX_SKILLSET_PAGES = 20
 _MAX_WORKFLOW_QUICK_PROMPTS = 6
+_MAX_TASK_EXAMPLES = 6
 _SKILLSET_LIST_CACHE_TTL_SECONDS = 300.0
-_MAX_HTTP_BYTES = 32 * 1024 * 1024
-_MAX_ZIP_ENTRIES = 2_000
-_MAX_ZIP_UNCOMPRESSED_BYTES = 64 * 1024 * 1024
-_MAX_ZIP_COMPRESSION_RATIO = 100.0
-_HTTP_READ_CHUNK = 64 * 1024
+_MAX_HTTP_BYTES = MAX_HTTP_BYTES
+_MAX_ZIP_ENTRIES = MAX_ZIP_ENTRIES
+_MAX_ZIP_UNCOMPRESSED_BYTES = MAX_ZIP_UNCOMPRESSED_BYTES
+_MAX_ZIP_COMPRESSION_RATIO = MAX_ZIP_COMPRESSION_RATIO
+_HTTP_READ_CHUNK = HTTP_READ_CHUNK
 # Product nav order for expert market scene tabs (matches dashboard copy).
 _SCENE_ORDER = (
     "ecommerce",
@@ -133,12 +151,13 @@ class SkillHubSkillset:
             },
             "scene": self.scene,
             "sub_scene": self.sub_scene,
-            "icon_url": self.icon_url or None,
+            "icon_url": skillhub_portrait_url(self),
             "icon_name": _scene_icon_name(self.scene),
             "color": _scene_color(self.scene),
             "skill_slugs": list(self.skill_slugs),
             "skill_count": self.skill_count or len(self.skill_slugs),
             "source": "skillhub",
+            "task_examples": task_examples_for_skillset(self),
         }
         if include_content:
             out["content"] = {"zh": self.content, "en": self.content_en}
@@ -158,6 +177,14 @@ _install_locks: dict[str, threading.Lock] = {}
 
 def market_expert_id(slug: str) -> str:
     return f"{MARKET_EXPERT_PREFIX}{slug}"
+
+
+def skillhub_portrait_url(item: SkillHubSkillset) -> str | None:
+    """Prefer SkillHub CDN ``iconUrl``; fall back to a bundled scene portrait."""
+    upstream = str(item.icon_url or "").strip()
+    if upstream and valid_skillhub_icon_url(upstream):
+        return upstream
+    return scene_expert_avatar_url(item.scene)
 
 
 def validate_skillset_slug(slug: str) -> str:
@@ -567,11 +594,6 @@ def _download_skillset_package(slug: str) -> bytes:
     return _http_get(url, accept="application/zip,*/*")
 
 
-def _download_skill_package(slug: str) -> bytes:
-    url = _api_url("/api/v1/download", params={"slug": slug})
-    return _http_get(url, accept="application/zip,*/*")
-
-
 def _parse_skillset_package(
     zip_bytes: bytes,
     *,
@@ -674,17 +696,47 @@ def _write_expert_template(
 
 
 def _download_skill_into_template(*, skill_slug: str, expert_dir: Path) -> None:
+    """Fetch one skill package via the shared ``skills.skillhub_market`` client."""
     validate_skillset_slug(skill_slug)
-    zip_bytes = _download_skill_package(skill_slug)
+    from octop.infra.skills.skillhub_market import (  # noqa: PLC0415
+        SkillHubMarketError as SkillDownloadError,
+    )
+    from octop.infra.skills.skillhub_market import (
+        SkillHubMarketTimeout,
+        SkillHubPackageError,
+        SkillHubPackageTooLarge,
+        download_skillhub_package_files,
+    )
+
     target_dir = expert_dir / "skills" / skill_slug
     target_dir.mkdir(parents=True, exist_ok=True)
     try:
-        _extract_zip(zip_bytes, target_dir)
-    except zipfile.BadZipFile as exc:
+        files = download_skillhub_package_files(skill_slug)
+    except SkillHubMarketTimeout as exc:
         raise SkillHubMarketError(
-            f"SkillHub skill package {skill_slug!r} is not a valid zip",
+            str(exc),
+            kind=SkillHubMarketErrorKind.UPSTREAM_TIMEOUT,
+        ) from exc
+    except SkillHubPackageTooLarge as exc:
+        raise SkillHubMarketError(
+            str(exc),
+            kind=SkillHubMarketErrorKind.PACKAGE_TOO_LARGE,
+        ) from exc
+    except SkillHubPackageError as exc:
+        raise SkillHubMarketError(
+            str(exc),
             kind=SkillHubMarketErrorKind.PACKAGE_INVALID,
         ) from exc
+    except SkillDownloadError as exc:
+        raise SkillHubMarketError(
+            str(exc),
+            kind=SkillHubMarketErrorKind.UPSTREAM_FAILED,
+        ) from exc
+
+    for rel, payload in files:
+        dest = target_dir / rel
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        dest.write_bytes(payload)
 
 
 def _extract_zip(zip_bytes: bytes, target_dir: Path) -> None:
@@ -698,7 +750,15 @@ def _extract_zip(zip_bytes: bytes, target_dir: Path) -> None:
             dest = target_dir / member.filename
             dest.parent.mkdir(parents=True, exist_ok=True)
             with zf.open(member) as src:
-                dest.write_bytes(_read_zip_member_limited(src, member))
+                payload = _read_zip_member_limited(src, member)
+                try:
+                    payload = coerce_utf8_text_bytes(payload, path=member.filename)
+                except InvalidSkillManifestEncodingError as exc:
+                    raise SkillHubMarketError(
+                        str(exc),
+                        kind=SkillHubMarketErrorKind.PACKAGE_INVALID,
+                    ) from exc
+                dest.write_bytes(payload)
 
 
 def _read_zip_member_limited(src: Any, member: zipfile.ZipInfo) -> bytes:
@@ -864,9 +924,11 @@ def _expert_manifest(
             ),
         },
         "icon_name": _scene_icon_name(item.scene),
+        "icon_url": skillhub_portrait_url(item),
         "color": _scene_color(item.scene),
         "prompt_files": ["SOUL.md"],
         "quick_prompts": quick_prompts_for_skillset(item, skillset_prompt),
+        "task_examples": task_examples_for_skillset(item, skillset_prompt),
         "source": {
             "type": "skillhub",
             "kind": "skillset",
@@ -993,6 +1055,53 @@ def quick_prompts_for_skillset(
 ) -> list[dict[str, Any]]:
     prompts = _workflow_quick_prompts(item, workflow_prompt or item.content)
     return _ensure_min_quick_prompts(item, prompts)
+
+
+def task_examples_for_skillset(
+    item: SkillHubSkillset,
+    workflow_prompt: str | None = None,
+) -> dict[str, list[str]]:
+    """Scheduled-task starter prompts for the tasks-page empty state."""
+    generated = _workflow_task_examples(item, workflow_prompt or item.content)
+    defaults = default_task_examples(_expert_label_zh(item), _expert_label_en(item))
+    return snap_task_examples(
+        list(generated["zh"]),
+        list(generated["en"]),
+        fillers_zh=defaults["zh"],
+        fillers_en=defaults["en"],
+    )
+
+
+_TASK_EXAMPLE_SCHEDULES = (
+    ("每天「09:00」", "Every day at 09:00"),
+    ("每个工作日「18:00」", "Every weekday at 18:00"),
+    ("每周一「10:00」", "Every Monday at 10:00"),
+    ("每周五「17:00」", "Every Friday at 17:00"),
+    ("每天「08:00」", "Every day at 08:00"),
+    ("每月 1 日「09:30」", "On the 1st of each month at 09:30"),
+)
+
+
+def _workflow_task_examples(
+    item: SkillHubSkillset,
+    workflow_prompt: str,
+) -> dict[str, list[str]]:
+    steps = _workflow_steps(workflow_prompt)
+    zh: list[str] = []
+    en: list[str] = []
+    for idx, step in enumerate(steps[:_MAX_TASK_EXAMPLES]):
+        title = _clip_text(step["title"], 16)
+        if not title:
+            continue
+        zh_sched, en_sched = _TASK_EXAMPLE_SCHEDULES[idx % len(_TASK_EXAMPLE_SCHEDULES)]
+        enable_zh = "，任务创建后立即启用" if not zh else ""
+        enable_en = " — enable immediately" if not en else ""
+        zh.append(f"{zh_sched}帮我完成「{title}」并把结果发给我{enable_zh}")
+        en.append(
+            f"{en_sched}, help me complete “{_english_step_title(title, idx)}” "
+            f"and send the result{enable_en}"
+        )
+    return {"zh": zh, "en": en}
 
 
 def _ensure_min_quick_prompts(

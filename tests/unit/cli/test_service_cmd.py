@@ -55,7 +55,9 @@ def test_service_start_installs_and_starts(monkeypatch: pytest.MonkeyPatch, tmp_
         "install_service",
         lambda rt, force=False: calls.append(f"install:{force}"),
     )
-    monkeypatch.setattr(service_cmd, "start_service", lambda rt: calls.append("start"))
+    monkeypatch.setattr(
+        service_cmd, "start_service", lambda rt, apply_unit=False: calls.append("start")
+    )
     monkeypatch.setattr(
         service_cmd,
         "collect_service_status",
@@ -77,6 +79,40 @@ def test_service_start_installs_and_starts(monkeypatch: pytest.MonkeyPatch, tmp_
     assert "active=True" in result.output
 
 
+def test_service_start_applies_unit_when_rewritten(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """Rewriting the unit (e.g. LimitNOFILE) must bounce systemd so the new cap applies."""
+    import octop.cli.commands.service as service_cmd
+
+    runtime = _runtime(tmp_path)
+    applied: list[bool] = []
+
+    monkeypatch.setattr(service_cmd, "build_runtime", lambda **kw: runtime)
+    monkeypatch.setattr(service_cmd, "install_service", lambda rt, force=False: True)
+    monkeypatch.setattr(
+        service_cmd, "start_service", lambda rt, apply_unit=False: applied.append(apply_unit)
+    )
+    monkeypatch.setattr(
+        service_cmd,
+        "collect_service_status",
+        lambda rt, check_health=True, health_retries=1, health_delay_seconds=1.5: ServiceStatus(
+            mode="systemd",
+            installed=True,
+            active=True,
+            enabled=True,
+            detail="active",
+            health_ok=True,
+            health_detail="{'ok': true}",
+        ),
+    )
+
+    runner = CliRunner()
+    result = runner.invoke(cli, ["service", "start"])
+    assert result.exit_code == 0, result.output
+    assert applied == [True]
+
+
 def test_service_start_emits_diagnostic_hint_when_health_unreachable(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
@@ -87,7 +123,7 @@ def test_service_start_emits_diagnostic_hint_when_health_unreachable(
     runtime = _runtime(tmp_path)
     monkeypatch.setattr(service_cmd, "build_runtime", lambda **kw: runtime)
     monkeypatch.setattr(service_cmd, "install_service", lambda rt, force=False: None)
-    monkeypatch.setattr(service_cmd, "start_service", lambda rt: None)
+    monkeypatch.setattr(service_cmd, "start_service", lambda rt, apply_unit=False: None)
     monkeypatch.setattr(
         service_cmd,
         "collect_service_status",
@@ -150,7 +186,7 @@ def test_service_start_forwards_user_scope(monkeypatch: pytest.MonkeyPatch, tmp_
 
     monkeypatch.setattr(service_cmd, "build_runtime", _fake_build_runtime)
     monkeypatch.setattr(service_cmd, "install_service", lambda rt, force=False: None)
-    monkeypatch.setattr(service_cmd, "start_service", lambda rt: None)
+    monkeypatch.setattr(service_cmd, "start_service", lambda rt, apply_unit=False: None)
     monkeypatch.setattr(
         service_cmd,
         "collect_service_status",

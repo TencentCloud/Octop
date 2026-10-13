@@ -7,6 +7,7 @@ from typing import Any
 import httpx
 
 from octop.infra.agents.providers.onnx_service import embed_texts
+from octop.infra.agents.providers.opencode_session import ensure_opencode_session_header
 from octop.infra.agents.providers.probe import provider_headers
 
 # Remote OpenAI-compatible embedding APIs cap the number of inputs per request.
@@ -26,7 +27,11 @@ def embed_knowledge_texts(services: Any, texts: list[str]) -> list[list[float]]:
     if provider is None or not provider.base_url or not provider.api_key:
         raise RuntimeError("knowledge remote embedding provider is not ready")
     headers: dict[str, str] = {"Authorization": f"Bearer {provider.api_key}"}
-    extra = provider_headers(provider)
+    extra = ensure_opencode_session_header(
+        getattr(provider, "name", None),
+        provider_headers(provider),
+        base_url=provider.base_url,
+    )
     if extra:
         headers.update(extra)
     with httpx.Client(timeout=60.0) as client:

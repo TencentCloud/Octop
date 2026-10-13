@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import contextlib
 import os
+import shutil
 import uuid
 from pathlib import Path
 from typing import Any, Literal
@@ -14,6 +15,7 @@ ProbeCode = Literal[
     "write_failed",
     "not_allowed",
     "outside_home",
+    "outside_root",
 ]
 
 _MAX_LIST_ENTRIES = 1000
@@ -22,6 +24,7 @@ _MAX_LIST_ENTRIES = 1000
 _DENIED_PREFIXES_POSIX = ("/proc", "/sys", "/dev", "/etc", "/root")
 
 _OUTSIDE_HOME_MSG = "path outside home"
+_OUTSIDE_ROOT_MSG = "path outside allowed workspace root"
 _NOT_ALLOWED_MSG = "path not allowed"
 
 
@@ -35,19 +38,78 @@ def host_home_dir() -> Path:
     return Path(os.path.realpath(os.path.expanduser(str(Path.home()))))
 
 
-def host_fs_tree_root(*, allow_outside_home: bool) -> str:
-    """Browse-tree root for the root_dir picker.
+def host_fs_tree_root() -> str:
+    """Browse-tree / UI default root for unrestricted users.
 
-    When *allow_outside_home* is true (current API default for all users):
-    host ``/`` on POSIX, or the home drive root (e.g. ``C:/``) on Windows.
-    Otherwise: the process home directory (legacy helper mode).
+    Host ``/`` on POSIX, or the home drive root (e.g. ``C:/``) on Windows.
+    Policy-restricted callers should use the jail path instead.
     """
-    home = host_home_dir()
-    if not allow_outside_home:
-        return host_path_text(home)
     if os.name == "posix":
         return "/"
-    return host_path_text(Path(home.anchor))
+    return host_path_text(Path(host_home_dir().anchor))
+
+
+def _ready_drive_roots() -> list[str]:
+    """Every ready Windows drive root, POSIX-serialized (``C:/``)."""
+    return [
+        f"{chr(ord('A') + index)}:/"
+        for index in range(26)
+        if os.path.isdir(f"{chr(ord('A') + index)}:\\")
+    ]
+
+
+def host_browse_roots() -> list[str]:
+    """Browse-tree roots for unrestricted users.
+
+    Host ``/`` on POSIX; every ready drive root on Windows. Enumerating drives
+    (rather than deriving a single root from :func:`host_fs_tree_root`) keeps a
+    user whose home lives on ``C:`` from being unable to browse ``D:``.
+
+    Drive probing uses ``os.path.isdir`` rather than ``GetLogicalDrives`` so it
+    also covers mapped network drives and stays correct without a ctypes call.
+    """
+    if os.name == "posix":
+        return ["/"]
+    roots = _ready_drive_roots()
+    # No ready drive (rare, e.g. a locked-down host) — fall back to the home
+    # anchor so the picker still has exactly one usable root.
+    return roots or [host_path_text(Path(host_home_dir().anchor))]
+
+
+def _bwrap_on_path() -> bool:
+    return shutil.which("bwrap") is not None
+
+
+def host_jail_enforced() -> bool:
+    """True when a non-root ``root_dir`` gets real OS-level confinement.
+
+    Only Linux + bubblewrap qualifies (see :mod:`octop.infra.utils.bwrap`).
+    Elsewhere ``root_dir`` bounds the agent's *tool* paths, but the agent
+    process still runs with the server user's own filesystem access — so the
+    UI must not describe it as a sandbox.
+    """
+    if os.name != "posix":
+        return False
+    return _bwrap_on_path()
+
+
+def running_in_container() -> bool:
+    """True when the Octop process appears to run inside a container.
+
+    Used so Docker (and Podman) deployments ignore host ``workspace_root_dir``
+    policy (the container is already the isolation boundary) and so the UI can
+    surface container-specific copy.
+
+    Override with ``OCTOP_IN_CONTAINER=1|0`` (also ``true``/``false``).
+    """
+    forced = os.environ.get("OCTOP_IN_CONTAINER", "").strip().lower()
+    if forced in {"1", "true", "yes", "on"}:
+        return True
+    if forced in {"0", "false", "no", "off"}:
+        return False
+    if os.name != "posix":
+        return False
+    return Path("/.dockerenv").is_file() or Path("/run/.containerenv").is_file()
 
 
 def _path_within_base(resolved: str, base: str) -> bool:
@@ -88,8 +150,8 @@ def _is_denied_host_path(resolved: Path) -> bool:
     if os.name != "posix":
         return False
     # Process home may coincide with a denylist prefix (uid 0 → ``/root``).
-    # The UI defaults ``root_dir`` to home, so home and its subdirs must stay
-    # selectable; ``/root`` remains denied for non-root process homes.
+    # The UI defaults ``root_dir`` to filesystem root, so home and its subdirs
+    # must stay selectable; ``/root`` remains denied for non-root process homes.
     if is_within_host_home(resolved):
         return False
     text = resolved.as_posix()
@@ -100,7 +162,19 @@ def _is_denied_host_path(resolved: Path) -> bool:
     return any(text == denied or text.startswith(f"{denied}/") for denied in _DENIED_PREFIXES_POSIX)
 
 
-def assert_safe_host_path(path: str, *, restrict_to_home: bool = False) -> Path:
+def _within_restrict_root(resolved_s: str, restrict_to_root: str | None) -> bool:
+    if not restrict_to_root or not str(restrict_to_root).strip():
+        return True
+    base = os.fspath(normalize_host_path(str(restrict_to_root).strip()))
+    return _path_within_base(resolved_s, base)
+
+
+def assert_safe_host_path(
+    path: str,
+    *,
+    restrict_to_home: bool = False,
+    restrict_to_root: str | None = None,
+) -> Path:
     """Resolve *path* and reject traversal tricks / disallowed host locations.
 
     When *restrict_to_home* is true, only the process home directory and its
@@ -133,12 +207,21 @@ def assert_safe_host_path(path: str, *, restrict_to_home: bool = False) -> Path:
         base = _browse_tree_base()
         if not _path_within_base(resolved_s, base):
             raise ValueError(_OUTSIDE_HOME_MSG)
+    if restrict_to_root and not _within_restrict_root(resolved_s, restrict_to_root):
+        raise ValueError(_OUTSIDE_ROOT_MSG)
     return resolved
 
 
-def list_host_subdirs(path: str, *, restrict_to_home: bool = False) -> list[dict[str, Any]]:
+def list_host_subdirs(
+    path: str,
+    *,
+    restrict_to_home: bool = False,
+    restrict_to_root: str | None = None,
+) -> list[dict[str, Any]]:
     """List readable child directories under *path*."""
-    root = assert_safe_host_path(path, restrict_to_home=restrict_to_home)
+    root = assert_safe_host_path(
+        path, restrict_to_home=restrict_to_home, restrict_to_root=restrict_to_root
+    )
     if not root.is_dir():
         raise ValueError(f"not a directory: {path}")
 
@@ -161,6 +244,10 @@ def list_host_subdirs(path: str, *, restrict_to_home: bool = False) -> list[dict
                 continue
             if restrict_to_home and not is_within_host_home(resolved):
                 continue
+            if restrict_to_root and not _within_restrict_root(
+                os.fspath(resolved), restrict_to_root
+            ):
+                continue
             if not os.access(resolved, os.R_OK | os.X_OK):
                 continue
         except OSError:
@@ -169,14 +256,23 @@ def list_host_subdirs(path: str, *, restrict_to_home: bool = False) -> list[dict
     return entries
 
 
-def probe_host_root_dir(path: str, *, restrict_to_home: bool = False) -> dict[str, Any]:
+def probe_host_root_dir(
+    path: str,
+    *,
+    restrict_to_home: bool = False,
+    restrict_to_root: str | None = None,
+) -> dict[str, Any]:
     """Verify *path* exists; write-probe only when not filesystem root ``/``."""
     try:
-        root = assert_safe_host_path(path, restrict_to_home=restrict_to_home)
+        root = assert_safe_host_path(
+            path, restrict_to_home=restrict_to_home, restrict_to_root=restrict_to_root
+        )
     except ValueError as exc:
         message = str(exc)
         if _OUTSIDE_HOME_MSG in message:
             code: ProbeCode = "outside_home"
+        elif _OUTSIDE_ROOT_MSG in message:
+            code = "outside_root"
         elif _NOT_ALLOWED_MSG in message:
             code = "not_allowed"
         else:
@@ -226,16 +322,24 @@ def _unique_child_name(parent: Path, base_name: str) -> str:
 
 
 def mkdir_host_subdir(
-    parent: str, *, base_name: str = "New Folder", restrict_to_home: bool = False
+    parent: str,
+    *,
+    base_name: str = "New Folder",
+    restrict_to_home: bool = False,
+    restrict_to_root: str | None = None,
 ) -> dict[str, Any]:
     """Create a child directory under *parent* with an unused name from *base_name*."""
-    root = assert_safe_host_path(parent, restrict_to_home=restrict_to_home)
+    root = assert_safe_host_path(
+        parent, restrict_to_home=restrict_to_home, restrict_to_root=restrict_to_root
+    )
     if not root.is_dir():
         raise ValueError(f"not a directory: {parent}")
     name = _unique_child_name(root, _validate_dir_basename(base_name))
     target = root / name
     # Re-check after composing path (deny creating into denied prefixes).
-    assert_safe_host_path(str(target), restrict_to_home=restrict_to_home)
+    assert_safe_host_path(
+        str(target), restrict_to_home=restrict_to_home, restrict_to_root=restrict_to_root
+    )
     try:
         target.mkdir(exist_ok=False)
     except OSError as exc:
@@ -243,14 +347,24 @@ def mkdir_host_subdir(
     return {"path": host_path_text(target), "name": name}
 
 
-def rename_host_dir(path: str, new_name: str, *, restrict_to_home: bool = False) -> dict[str, Any]:
+def rename_host_dir(
+    path: str,
+    new_name: str,
+    *,
+    restrict_to_home: bool = False,
+    restrict_to_root: str | None = None,
+) -> dict[str, Any]:
     """Rename a host directory in place (basename only)."""
-    source = assert_safe_host_path(path, restrict_to_home=restrict_to_home)
+    source = assert_safe_host_path(
+        path, restrict_to_home=restrict_to_home, restrict_to_root=restrict_to_root
+    )
     if not source.is_dir():
         raise ValueError(f"not a directory: {path}")
     name = _validate_dir_basename(new_name)
     target = source.parent / name
-    assert_safe_host_path(str(target), restrict_to_home=restrict_to_home)
+    assert_safe_host_path(
+        str(target), restrict_to_home=restrict_to_home, restrict_to_root=restrict_to_root
+    )
     if target.exists():
         raise ValueError("already exists")
     try:

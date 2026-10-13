@@ -7,6 +7,8 @@ export type KnowledgeCitation = {
   kbName: string;
   docId: string;
   filename: string;
+  /** Workspace-relative path inside the KB when present (new markers). */
+  path?: string;
 };
 
 const CITATIONS_MARKER_RE =
@@ -17,11 +19,13 @@ function asCitation(raw: unknown): KnowledgeCitation | null {
   const row = raw as Record<string, unknown>;
   const docId = String(row.doc_id ?? row.docId ?? "").trim();
   if (!docId) return null;
+  const path = String(row.path ?? "").trim();
   return {
     kbId: String(row.kb_id ?? row.kbId ?? "").trim(),
     kbName: String(row.kb_name ?? row.kbName ?? "").trim(),
     docId,
     filename: String(row.filename ?? "").trim() || docId,
+    ...(path ? { path } : {}),
   };
 }
 

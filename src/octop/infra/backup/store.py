@@ -129,18 +129,28 @@ class BackupContentFlags:
 
 
 _FULL_CONTENTS = BackupContentFlags()
+_MANIFEST_MEMBER_NAMES = frozenset({"manifest.json", "./manifest.json"})
 
 
 def peek_backup_contents(path: Path) -> BackupContentFlags:
-    """Read ``manifest.json`` from an archive.
+    """Read ``manifest.json`` from the start of an archive.
 
-    Unreadable archives default to all-included. Legacy archives that omit
-    ``includes_plugins`` / ``includes_knowledge`` keep those live directories
-    on restore.
+    Octop writes ``manifest.json`` as the first tar member. Only that member
+    is read so listing multi-GB ``.tar.gz`` backups stays cheap. Looking up the
+    member by name would force ``tarfile`` to scan the whole archive.
+
+    Unreadable archives, or archives whose first member is not the manifest,
+    default to all-included — we deliberately do not scan further. Legacy
+    archives that omit ``includes_plugins`` / ``includes_knowledge`` keep those
+    live directories on restore.
     """
     try:
         with tarfile.open(path, mode="r:*") as tf:
-            member = tf.extractfile("manifest.json")
+            # Stream the first member only — never getmember()/getmembers().
+            info = tf.next()
+            if info is None or info.name not in _MANIFEST_MEMBER_NAMES:
+                return _FULL_CONTENTS
+            member = tf.extractfile(info)
             if member is None:
                 return _FULL_CONTENTS
             raw: Any = json.loads(member.read().decode("utf-8"))

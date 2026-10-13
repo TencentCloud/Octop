@@ -9,7 +9,8 @@
 .cardGrid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
-  gap: 20px;
+  row-gap: 16px;
+  column-gap: 12px;
   padding: 20px 0 40px;
 
   @media (max-width: 767px) {
@@ -80,21 +81,34 @@
 
 .backendCard {
   background: var(--fn-bg-primary);
-  border: 1px solid var(--fn-card-border-normal);
+  border: 2px solid var(--fn-card-border-normal);
   border-radius: var(--fn-radius-lg);
   padding: 16px;
   display: flex;
   flex-direction: column;
   gap: 10px;
   height: 100%;
-  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.05);
   transition:
-    box-shadow 0.2s,
-    transform 0.2s;
+    border-color 0.2s,
+    background 0.2s,
+    transform 0.2s,
+    box-shadow 0.2s;
 
   &:hover {
-    box-shadow: var(--fn-shadow-md);
-    transform: translateY(-1px);
+    border-color: var(--catalog-accent, var(--fn-color-brand));
+    background: color-mix(
+      in srgb,
+      var(--catalog-accent, var(--fn-color-brand)) 4%,
+      var(--fn-bg-primary)
+    );
+    transform: translateY(-2px);
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.1);
+  }
+
+  @media (max-width: 640px) {
+    &:hover {
+      transform: none;
+    }
   }
 }
 
@@ -112,6 +126,8 @@
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
+  overflow: hidden;
+  background: transparent;
 }
 
 .backendCardTitle {
@@ -120,8 +136,9 @@
 }
 
 .backendCardName {
-  font-size: 14px;
-  font-weight: 600;
+  font-size: 18px;
+  font-weight: 700;
+  line-height: 1.35;
   color: var(--fn-text-primary);
   white-space: nowrap;
   overflow: hidden;
@@ -298,7 +315,7 @@
     box-shadow: 0 0 0 3px var(--fn-color-brand);
   }
   100% {
-    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.05);
+    box-shadow: none;
   }
 }
 
@@ -341,6 +358,19 @@
 }
 
 /* ── Browse drawer ─────────────────────────────────────────────── */
+
+.browsePreviewBody {
+  max-height: 70vh;
+  overflow: auto;
+}
+
+.browsePreviewFill {
+  height: 70vh;
+  min-height: 320px;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
 
 .browseRefreshBtn {
   display: inline-flex;

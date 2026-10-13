@@ -166,6 +166,43 @@ def test_backup_packs_config_workspace_dir(layout: PathLayout, tmp_path: Path) -
     assert not (layout.agent_workspace("agent01") / "SOUL.md").exists()
 
 
+def test_backup_skips_unwritable_workspace_dir(layout: PathLayout, tmp_path: Path) -> None:
+    """Stale host paths (e.g. former /root/.octop/agents/…) must not abort backup."""
+    pool = SqlitePool(layout.db)
+    run_migrations(pool)
+    reachable = layout.ensure_agent_workspace("ok01")
+    (reachable / "keep.txt").write_text("ok", encoding="utf-8")
+    blocker = tmp_path / "not-a-dir"
+    blocker.write_text("x", encoding="utf-8")
+    stale = blocker / "YZQ7X4"
+
+    class OkRow:
+        agent_id = "ok01"
+        name = "Ok"
+
+    class StaleRow:
+        agent_id = "YZQ7X4"
+        name = "Stale"
+        config_json = json.dumps({"workspace_dir": str(stale)})
+
+    archive = tmp_path / "skip-stale-ws.tar.gz"
+    create_system_backup(
+        paths=layout,
+        agent_rows=[StaleRow(), OkRow()],
+        pool=pool,
+        db_config=DatabaseConfig(),
+        dest=archive,
+    )
+    pool.close()
+
+    assert archive.is_file()
+    assert not stale.exists()
+    with tarfile.open(archive, mode="r:gz") as tf:
+        names = tf.getnames()
+    assert "workspaces/ok01/keep.txt" in names
+    assert not any(name.startswith("workspaces/YZQ7X4/") for name in names)
+
+
 def test_backup_skips_junk_directories(layout: PathLayout, tmp_path: Path) -> None:
     pool = SqlitePool(layout.db)
     run_migrations(pool)
@@ -1141,7 +1178,7 @@ def test_restore_repairs_old_physical_schema_with_current_watermark(tmp_path: Pa
             "SELECT instance_id, shared FROM connectors WHERE instance_id = 'instance-1'"
         ).fetchone()
 
-    assert result["schema_version"] == 13
+    assert result["schema_version"] == 20
     assert "shared" in columns
     assert connector is not None
     assert connector["shared"] == 0
@@ -1195,7 +1232,7 @@ def test_refuse_newer_schema_backup_before_database_replace(
     assert excinfo.value.code == ErrorCode.BACKUP_SCHEMA_INCOMPATIBLE
     assert excinfo.value.details == {
         "archive_schema_version": 999,
-        "runtime_schema_version": 13,
+        "runtime_schema_version": 20,
     }
     with pool.connect() as conn:
         assert (

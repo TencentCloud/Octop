@@ -116,5 +116,23 @@
       "color": "#fff1f2",
       "icon_name": "wrench"
     }
-  ]
+  ],
+  "task_examples": {
+    "zh": [
+      "每天「09:00」做系统健康检查（CPU / 内存 / 磁盘 / 关键服务），有异常再通知我，任务创建后立即启用",
+      "每「2 小时」检查磁盘使用率和系统负载，超过阈值立即告警，从今天开始持续生效",
+      "每周一「09:30」汇总上周系统错误日志和修复建议",
+      "每个工作日「18:00」复盘当天告警，区分已恢复和仍异常的项",
+      "每月 1 日「09:30」输出容量趋势：磁盘、内存和近期增长",
+      "每周五「16:00」检查关键服务重启记录，列出反复异常的项"
+    ],
+    "en": [
+      "Every day at 09:00, run a system health check (CPU / memory / disk / key services) and notify me only on anomalies — enable immediately",
+      "Every 2 hours, check disk usage and load; alert immediately if thresholds are exceeded, starting today",
+      "Every Monday at 09:30, summarize last week's system error logs and suggested fixes",
+      "Every weekday at 18:00, recap today's alerts and separate recovered items from still-open ones",
+      "On the 1st of each month at 09:30, send a capacity trend: disk, memory, and recent growth",
+      "Every Friday at 16:00, review key-service restarts and list recurring faults"
+    ]
+  }
 }

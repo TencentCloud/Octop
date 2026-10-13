@@ -11,15 +11,28 @@ import {
   PinOff,
   GitFork,
   ChevronRight,
+  MessageSquarePlus,
 } from "lucide-react";
 import type { OctopAgent } from "../../../context/AgentContext";
 import { ExpertIcon } from "../../Experts/components/iconForName";
 import { octopThreadsApi } from "../../../api/modules/octopThreads";
-import { showConfirmModal } from "../../../utils/confirmModal";
+import {
+  confirmDeleteConversation,
+  deleteConversation,
+} from "../utils/deleteConversation";
 import { isAgentChatReady } from "../../../utils/agentError";
 import { sortSessions, toSession, type Session } from "../hooks/useSessions";
 import { formatThreadTitle } from "../utils/threadTitle";
 import { onSessionEvent } from "../hooks/chatStore";
+import { useSessionWorkIds } from "../hooks/useSessionWorkIds";
+import {
+  resolveSessionWorkStatus,
+  type SessionWorkStatus,
+} from "../utils/sessionWorkStatus";
+import SharedExpertHint from "./SharedExpertHint";
+import RemoteExpertHint from "./RemoteExpertHint";
+import SessionWorkStatusIcon from "./SessionWorkStatusIcon";
+import TeamChatBadge from "./TeamChatBadge";
 import styles from "../index.module.less";
 
 /** Default preview size per expert in minimal nav (matches session page size). */
@@ -57,7 +70,12 @@ interface MinimalAgentSessionNavProps {
   activeSessions: Session[];
   onSelect: (sessionId: string, agentId: string) => void;
   onAgentSelect: (agentId: string) => void;
-  onDeleteActive: (id: string) => void;
+  /** Start a fresh (unsaved) chat with the given expert. */
+  onNewChat: (agentId: string) => void;
+  onDeleteActive: (
+    id: string,
+    compact: boolean,
+  ) => void | Promise<boolean | void>;
   onRenameActive: (id: string, name: string) => void;
   onPinActive: (id: string, pinned: boolean) => void;
   onFork: (id: string, agentId?: string | null) => void;
@@ -81,6 +99,7 @@ function AgentUnreadBadge({ count }: { count: number }) {
 const PreviewSessionRow = memo(function PreviewSessionRow({
   session,
   isActive,
+  workStatus,
   onSelect,
   onDelete,
   onRename,
@@ -91,8 +110,9 @@ const PreviewSessionRow = memo(function PreviewSessionRow({
 }: {
   session: Session;
   isActive: boolean;
+  workStatus: SessionWorkStatus;
   onSelect: (id: string) => void;
-  onDelete: (id: string) => void;
+  onDelete: (id: string, compact: boolean) => void | Promise<boolean | void>;
   onRename: (id: string, name: string) => void;
   onPin: (id: string, pinned: boolean) => void;
   onFork: (id: string) => void;
@@ -169,14 +189,8 @@ const PreviewSessionRow = memo(function PreviewSessionRow({
       danger: true,
       onClick: ({ domEvent }) => {
         domEvent.stopPropagation();
-        showConfirmModal({
-          title: t("chat.deleteSessionConfirm"),
-          okText: t("common.delete"),
-          cancelText: t("common.cancel"),
-          okButtonProps: { danger: true },
-          onOk: () => {
-            onDelete(session.id);
-          },
+        confirmDeleteConversation(t, (compact) => {
+          void onDelete(session.id, compact);
         });
       },
     },
@@ -214,6 +228,9 @@ const PreviewSessionRow = memo(function PreviewSessionRow({
         />
       ) : (
         <>
+          <span className={styles.sessionRowLead}>
+            <SessionWorkStatusIcon status={workStatus} />
+          </span>
           <span className={styles.sessionRowTitle}>{session.name}</span>
           {session.pinned ? (
             <span
@@ -250,6 +267,7 @@ export default function MinimalAgentSessionNav({
   activeSessions,
   onSelect,
   onAgentSelect,
+  onNewChat,
   onDeleteActive,
   onRenameActive,
   onPinActive,
@@ -260,6 +278,7 @@ export default function MinimalAgentSessionNav({
   const { t } = useTranslation();
   const navigate = useNavigate();
   const [byAgent, setByAgent] = useState<Record<string, Session[]>>({});
+  const liveWorkingIds = useSessionWorkIds();
   const [loading, setLoading] = useState(false);
   const [collapsedFolders, setCollapsedFolders] = useState<Set<string>>(() =>
     loadCollapsedFolders(),
@@ -313,6 +332,23 @@ export default function MinimalAgentSessionNav({
     },
     [onAgentSelect],
   );
+
+  const refreshAgentPreview = useCallback(async (agentId: string) => {
+    if (!agentId) return;
+    try {
+      const rows = await octopThreadsApi.list(
+        agentId,
+        MINIMAL_AGENT_SESSION_PREVIEW,
+      );
+      const list = sortSessions(rows.map(toSession)).slice(
+        0,
+        MINIMAL_AGENT_SESSION_PREVIEW,
+      );
+      setByAgent((prev) => ({ ...prev, [agentId]: list }));
+    } catch {
+      /* ignore */
+    }
+  }, []);
 
   // Fetch preview threads for every expert (independent of classic session store).
   useEffect(() => {
@@ -369,17 +405,21 @@ export default function MinimalAgentSessionNav({
 
   useEffect(() => {
     return onSessionEvent((event) => {
-      if (event.kind !== "sessionDeleted") return;
-      const { sessionId } = event;
-      setByAgent((prev) => {
-        const next: Record<string, Session[]> = {};
-        for (const [aid, list] of Object.entries(prev)) {
-          next[aid] = list.filter((s) => s.id !== sessionId);
-        }
-        return next;
-      });
+      if (event.kind === "sessionDeleted") {
+        const { sessionId } = event;
+        setByAgent((prev) => {
+          const next: Record<string, Session[]> = {};
+          for (const [aid, list] of Object.entries(prev)) {
+            next[aid] = list.filter((s) => s.id !== sessionId);
+          }
+          return next;
+        });
+        return;
+      }
+      const target = event.agentId || activeAgentId;
+      if (target) void refreshAgentPreview(target);
     });
-  }, []);
+  }, [activeAgentId, refreshAgentPreview]);
 
   const patchLocal = useCallback(
     (agentId: string, updater: (prev: Session[]) => Session[]) => {
@@ -395,20 +435,18 @@ export default function MinimalAgentSessionNav({
   );
 
   const handleDelete = useCallback(
-    async (agentId: string, sessionId: string) => {
+    async (agentId: string, sessionId: string, compact: boolean) => {
       if (agentId === activeAgentId) {
-        onDeleteActive(sessionId);
+        const deleted = await onDeleteActive(sessionId, compact);
+        if (deleted === false) return;
         patchLocal(agentId, (prev) => prev.filter((s) => s.id !== sessionId));
         return;
       }
-      try {
-        await octopThreadsApi.delete(agentId, sessionId);
-        patchLocal(agentId, (prev) => prev.filter((s) => s.id !== sessionId));
-      } catch {
-        /* ignore */
-      }
+      const deleted = await deleteConversation(agentId, sessionId, compact, t);
+      if (!deleted) return;
+      patchLocal(agentId, (prev) => prev.filter((s) => s.id !== sessionId));
     },
-    [activeAgentId, onDeleteActive, patchLocal],
+    [activeAgentId, onDeleteActive, patchLocal, t],
   );
 
   const handleRename = useCallback(
@@ -470,44 +508,61 @@ export default function MinimalAgentSessionNav({
         return (
           <section key={agent.agent_id} className={styles.minimalAgentSection}>
             <div className={styles.minimalAgentHeader}>
-              <button
-                type="button"
-                className={styles.minimalAgentFolderBtn}
-                onClick={() => openFolderAndSelect(agent.agent_id)}
-              >
+              <span className={styles.minimalAgentIconSlot}>
                 <span
                   className={styles.minimalAgentAvatar}
                   style={{
                     color: agent.color || "var(--fn-text-tertiary)",
                     background: `${agent.color || "#6366f1"}14`,
                   }}
+                  aria-hidden
                 >
                   <ExpertIcon
                     iconUrl={agent.icon_url}
                     iconName={agent.icon_name}
-                    size={14}
+                    size={agent.icon_url?.trim() ? 22 : 14}
                   />
                 </span>
-                <span className={styles.minimalAgentName}>{agent.name}</span>
+                <button
+                  type="button"
+                  className={styles.minimalAgentChevronBtn}
+                  aria-expanded={expanded}
+                  aria-label={
+                    expanded ? t("nav.collapseSidebar") : t("nav.expandSidebar")
+                  }
+                  onClick={() => toggleFolder(agent.agent_id)}
+                >
+                  <ChevronRight
+                    size={14}
+                    strokeWidth={2}
+                    className={`${styles.minimalAgentChevron} ${
+                      expanded ? styles.minimalAgentChevronOpen : ""
+                    }`}
+                    aria-hidden
+                  />
+                </button>
+              </span>
+              <button
+                type="button"
+                className={styles.minimalAgentFolderBtn}
+                onClick={() => openFolderAndSelect(agent.agent_id)}
+              >
+                <span className={styles.agentNameCluster}>
+                  <span className={styles.minimalAgentName}>{agent.name}</span>
+                  <TeamChatBadge agent={agent} />
+                  <SharedExpertHint agent={agent} />
+                  <RemoteExpertHint agent={agent} />
+                </span>
                 <AgentUnreadBadge count={agent.unread_count ?? 0} />
               </button>
               <button
                 type="button"
-                className={styles.minimalAgentChevronBtn}
-                aria-expanded={expanded}
-                aria-label={
-                  expanded ? t("nav.collapseSidebar") : t("nav.expandSidebar")
-                }
-                onClick={() => toggleFolder(agent.agent_id)}
+                className={styles.minimalAgentNewChatBtn}
+                aria-label={t("chatWelcome.newChat")}
+                title={t("chatWelcome.newChat")}
+                onClick={() => onNewChat(agent.agent_id)}
               >
-                <ChevronRight
-                  size={14}
-                  strokeWidth={2}
-                  className={`${styles.minimalAgentChevron} ${
-                    expanded ? styles.minimalAgentChevronOpen : ""
-                  }`}
-                  aria-hidden
-                />
+                <MessageSquarePlus size={14} strokeWidth={1.75} aria-hidden />
               </button>
             </div>
 
@@ -531,8 +586,14 @@ export default function MinimalAgentSessionNav({
                       key={session.id}
                       session={session}
                       isActive={session.id === activeId}
+                      workStatus={resolveSessionWorkStatus(
+                        session,
+                        liveWorkingIds,
+                      )}
                       onSelect={(id) => onSelect(id, agent.agent_id)}
-                      onDelete={(id) => void handleDelete(agent.agent_id, id)}
+                      onDelete={(id, compact) =>
+                        void handleDelete(agent.agent_id, id, compact)
+                      }
                       onRename={(id, name) =>
                         handleRename(agent.agent_id, id, name)
                       }

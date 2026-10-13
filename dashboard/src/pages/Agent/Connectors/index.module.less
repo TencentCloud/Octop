@@ -28,7 +28,8 @@
 .typeGrid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
-  gap: 16px;
+  row-gap: 16px;
+  column-gap: 12px;
   /* Extra room for 2px border + hover translateY(-2px) inside overflow. */
   padding-top: 4px;
   padding-bottom: 4px;
@@ -37,16 +38,20 @@
 .instanceGrid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
-  gap: 16px;
+  row-gap: 16px;
+  column-gap: 12px;
 }
 
-.emptyGuideMascot {
-  display: block;
-  width: 120px;
-  height: 120px;
-  object-fit: contain;
-  user-select: none;
-  -webkit-user-drag: none;
+.emptyLayout {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+  overflow: auto;
+}
+
+.emptyGuide {
+  flex: 1;
 }
 
 /* ── Type Card (service catalog) ───────────────────────────────── */
@@ -138,6 +143,26 @@
   min-height: 44px;
 }
 
+.typeCardTitleCol {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+  min-width: 0;
+  flex: 1;
+}
+
+.categoryChip {
+  display: inline-flex;
+  align-items: center;
+  flex-shrink: 0;
+  padding: 0 7px;
+  border-radius: 9px;
+  font-size: 10px;
+  font-weight: 500;
+  line-height: 18px;
+}
+
 .typeCardIconLarge {
   width: 44px;
   height: 44px;
@@ -184,6 +209,11 @@
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+.typeCardTitleCol .typeCardTitle {
+  flex: none;
+  width: 100%;
 }
 
 .typeCardDesc {
@@ -559,6 +589,28 @@
   color: var(--fn-text-primary);
 }
 
+.agentlyAuthBox {
+  border: 1px solid var(--fn-card-border-normal);
+
+  .quickAuthBar {
+    margin-bottom: 0;
+
+    > button,
+    > a {
+      padding-inline: 10px;
+    }
+  }
+}
+
+.agentlyAuthSuccess {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--fn-color-success, #389e0d);
+}
+
 .feishuUserAuthWhy {
   margin: 0;
   font-size: 12px;
@@ -605,15 +657,6 @@
 
 /* ── Tabs ──────────────────────────────────────────────────────── */
 
-.tabBar {
-  display: flex;
-  gap: 0;
-  margin-bottom: 16px;
-  border-bottom: 1px solid var(--fn-border-secondary);
-  flex-shrink: 0;
-  background: var(--fn-bg-container, var(--fn-bg-elevated));
-}
-
 .listToolbar {
   display: flex;
   align-items: center;
@@ -628,30 +671,6 @@
   line-height: 1.4;
   color: var(--fn-text-secondary);
   min-width: 0;
-}
-
-.tab {
-  padding: 10px 20px;
-  font-size: 14px;
-  font-weight: 500;
-  color: var(--fn-text-secondary);
-  background: transparent;
-  border: none;
-  border-bottom: 2px solid transparent;
-  cursor: pointer;
-  transition:
-    color 0.15s ease,
-    border-color 0.15s ease;
-  margin-bottom: -1px;
-
-  &:hover {
-    color: var(--fn-text-primary);
-  }
-
-  &.active {
-    color: var(--fn-color-brand);
-    border-bottom-color: var(--fn-color-brand);
-  }
 }
 
 /* ── Custom MCP tab ────────────────────────────────────────────── */
@@ -810,7 +829,8 @@
 .customMcpGrid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
-  gap: 14px;
+  row-gap: 14px;
+  column-gap: 12px;
 }
 
 .customMcpServerCard {

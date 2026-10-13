@@ -4,15 +4,15 @@ from __future__ import annotations
 
 import json
 import os
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 import pytest
 
 from octop.config import OctopConfig
 from octop.infra.agents.experts.catalog import ExpertCatalog, default_library_root
-from octop.infra.agents.manager import AgentManager
+from octop.infra.agents.manager import AgentCreateSpec, AgentManager
 from octop.infra.db.migrate import run_migrations
 from octop.infra.db.pool import SqlitePool
 from octop.infra.db.services import build_shared_services
@@ -112,6 +112,20 @@ async def live_agent_manager(
         paths=services.paths,
         expert_catalog=catalog,
     )
+    # Real HarnessAgentManager starts memory GC on a daemon thread. Live
+    # tests create/delete many agents quickly; closing SQLite while GC is
+    # in ``list_candidates`` segfaults (see AgentManager._quiesce_octop_memory).
+    # These tests do not exercise memory — keep it off.
+    _create = manager.create
+
+    async def _create_without_memory(spec: AgentCreateSpec, **kwargs: Any) -> Any:
+        cfg = dict(spec.config)
+        memory = dict(cfg["memory"]) if isinstance(cfg.get("memory"), dict) else {}
+        memory.setdefault("memory_enabled", False)
+        cfg["memory"] = memory
+        return await _create(replace(spec, config=cfg), **kwargs)
+
+    manager.create = _create_without_memory  # type: ignore[method-assign]
     await manager.boot()
     try:
         yield manager

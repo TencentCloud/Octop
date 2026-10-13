@@ -825,3 +825,161 @@ async def test_reinstall_overwrite_clears_skills_disabled(env: Any) -> None:
     rows = (await c.get(f"/api/agents/{aid}/skills", headers=auth)).json()
     row = next(item for item in rows if item["slug"] == "zip-demo")
     assert row["enabled"] is True
+
+
+async def test_copy_workspace_skill_between_agents(env: Any) -> None:
+    c, srv, auth, dest_id = env
+    source = await c.post(
+        "/api/agents/from-expert/default",
+        headers=auth,
+        json={"name": "copy-api-src"},
+    )
+    assert source.status_code == 201, source.text
+    src_id = source.json()["agent_id"]
+    src_ws = srv.app_runtime.agent_registry.workspace_for_agent(src_id)
+    if src_ws is None:
+        pytest.skip("workspace not available before bootstrap")
+    await src_ws.aupload_many(
+        [
+            ("skills/pack-demo/SKILL.md", b"---\nname: pack-demo\n---\n# Pack\n"),
+            ("skills/pack-demo/refs/note.md", b"keep me"),
+        ]
+    )
+
+    copied = await c.post(
+        f"/api/agents/{dest_id}/skills/copy",
+        headers=auth,
+        json={"source_agent_id": src_id, "slug": "pack-demo", "overwrite": True},
+    )
+    assert copied.status_code == 201, copied.text
+    dest = srv.app_runtime.agent_registry.get_agent(dest_id)
+    assert await dest.workspace.aread_text("skills/pack-demo/refs/note.md") == "keep me"
+
+
+async def test_copy_package_skills_to_workspace_is_an_independent_snapshot(env: Any) -> None:
+    c, srv, auth, aid = env
+    package_id = (
+        await c.post(
+            "/api/skill-packages",
+            headers=auth,
+            json={"name": "Copy source"},
+        )
+    ).json()["id"]
+    original = "---\nname: Package Demo\ndescription: original\n---\n\n# Original\n"
+    created = await c.post(
+        f"/api/skill-packages/{package_id}/skills",
+        headers=auth,
+        json={
+            "name": "package-demo",
+            "files": [
+                {"path": "SKILL.md", "content_base64": _b64(original)},
+                {"path": "references/guide.txt", "content_base64": _b64("guide-v1")},
+            ],
+        },
+    )
+    assert created.status_code == 200, created.text
+
+    copied = await c.post(
+        f"/api/agents/{aid}/skill-packages/{package_id}/copy",
+        headers=auth,
+        json={"skill_slugs": ["package-demo"]},
+    )
+    assert copied.status_code == 200, copied.text
+    assert copied.json() == {"copied": ["package-demo"]}
+
+    agent = srv.app_runtime.agent_registry.get_agent(aid)
+    assert await agent.workspace.aread_text("skills/package-demo/SKILL.md") == original
+    assert (
+        await agent.workspace.aread_text("skills/package-demo/references/guide.txt") == "guide-v1"
+    )
+
+    await srv.app_runtime.agent_registry.persist_skills_disabled(
+        aid,
+        {"package-demo", "Package Demo"},
+    )
+
+    changed = "---\nname: Package Demo Updated\ndescription: changed\n---\n\n# Changed\n"
+    updated = await c.put(
+        f"/api/skill-packages/{package_id}/skills/package-demo",
+        headers=auth,
+        json={"content": changed},
+    )
+    assert updated.status_code == 200, updated.text
+    assert await agent.workspace.aread_text("skills/package-demo/SKILL.md") == original
+
+    conflict = await c.post(
+        f"/api/agents/{aid}/skill-packages/{package_id}/copy",
+        headers=auth,
+        json={"skill_slugs": ["package-demo"]},
+    )
+    assert conflict.status_code == 409, conflict.text
+    assert conflict.json()["error"]["code"] == "SKILL_ALREADY_EXISTS"
+
+    replaced = await c.post(
+        f"/api/agents/{aid}/skill-packages/{package_id}/copy",
+        headers=auth,
+        json={"skill_slugs": ["package-demo"], "overwrite": True},
+    )
+    assert replaced.status_code == 200, replaced.text
+    assert await agent.workspace.aread_text("skills/package-demo/SKILL.md") == changed
+    assert await agent.workspace.aread_text("skills/package-demo/references/guide.txt") is None
+    config = srv.app_runtime.agent_registry.get_config(aid)
+    assert "package-demo" not in set(config.get("skills_disabled") or [])
+    assert "Package Demo" not in set(config.get("skills_disabled") or [])
+
+
+async def test_push_workspace_skill_to_package_copies_all_files(env: Any) -> None:
+    c, srv, auth, aid = env
+    manifest = "---\nname: workspace-demo\ndescription: workspace\n---\n\n# Workspace\n"
+    created_skill = await c.post(
+        f"/api/agents/{aid}/skills",
+        headers=auth,
+        json={
+            "name": "workspace-demo",
+            "files": [
+                {"path": "SKILL.md", "content_base64": _b64(manifest)},
+                {"path": "scripts/run.sh", "content_base64": _b64("echo one\n")},
+            ],
+        },
+    )
+    assert created_skill.status_code == 201, created_skill.text
+    package_id = (
+        await c.post(
+            "/api/skill-packages",
+            headers=auth,
+            json={"name": "Push target"},
+        )
+    ).json()["id"]
+
+    pushed = await c.post(
+        f"/api/agents/{aid}/skills/workspace-demo/push-to-package",
+        headers=auth,
+        json={"package_id": package_id},
+    )
+    assert pushed.status_code == 200, pushed.text
+    assert pushed.json() == {"package_id": package_id, "slug": "workspace-demo"}
+
+    package_root = srv.paths.skill_packages_dir / package_id / "skills"
+    assert (package_root / "workspace-demo" / "SKILL.md").read_text() == manifest
+    assert (package_root / "workspace-demo" / "scripts" / "run.sh").read_text() == "echo one\n"
+
+    conflict = await c.post(
+        f"/api/agents/{aid}/skills/workspace-demo/push-to-package",
+        headers=auth,
+        json={"package_id": package_id},
+    )
+    assert conflict.status_code == 409, conflict.text
+    assert conflict.json()["error"]["code"] == "SKILL_ALREADY_EXISTS"
+
+    agent = srv.app_runtime.agent_registry.get_agent(aid)
+    await agent.workspace.aupload_bytes(
+        "skills/workspace-demo/scripts/run.sh",
+        b"echo two\n",
+    )
+    replaced = await c.post(
+        f"/api/agents/{aid}/skills/workspace-demo/push-to-package",
+        headers=auth,
+        json={"package_id": package_id, "overwrite": True},
+    )
+    assert replaced.status_code == 200, replaced.text
+    assert (package_root / "workspace-demo" / "scripts" / "run.sh").read_text() == "echo two\n"

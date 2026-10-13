@@ -2,7 +2,12 @@ import { useCallback, useEffect } from "react";
 import type { TFunction } from "i18next";
 import { useNavigate } from "react-router-dom";
 import type { ChatAttachment, UserComposerContext } from "./useChat";
-import { isPendingThread, type Session } from "./useSessions";
+import {
+  isPendingThread,
+  syncSessionHitlPolicy,
+  type Session,
+} from "./useSessions";
+import type { HitlSessionPolicy } from "../utils/hitlSessionPolicy";
 import * as chatStore from "./chatStore";
 import { EMPTY_CHAT_SESSION_KEY, PENDING_THREAD_ID } from "../constants";
 import { clipThreadTitle } from "../utils/threadTitle";
@@ -13,6 +18,7 @@ import {
   buildUserMessage,
   resolveTurnModelRef,
 } from "../utils/chatMessages";
+import { parseSkillSlugsInText } from "../utils/skillSlash";
 
 interface UseChatSendParams {
   resolvedAgentId: string | null | undefined;
@@ -22,10 +28,11 @@ interface UseChatSendParams {
   selectedModel: string | null;
   selectedConnectors: string[];
   selectedKnowledgeBaseIds: string[];
-  selectedSkills: string[];
-  selectedTargetAgents: string[];
+  selectedTargetAgents?: string[];
   reasoningMode: "auto" | "enabled" | "disabled";
   reasoningEffort: string | null;
+  conversationMode?: "ask" | "plan" | "craft";
+  hitlPolicy?: HitlSessionPolicy;
   defaultModel?: string | null;
   sendMessage: (
     text: string,
@@ -36,11 +43,12 @@ interface UseChatSendParams {
     modelRef?: string | null,
     mcpServers?: string[] | null,
     knowledgeBaseIds?: string[] | null,
-    skills?: string[] | null,
     targetAgentIds?: string[] | null,
     composerContext?: UserComposerContext,
     reasoningMode?: "auto" | "enabled" | "disabled",
     reasoningEffort?: string | null,
+    conversationMode?: "ask" | "plan" | "craft" | null,
+    hitlPolicy?: HitlSessionPolicy | null,
   ) => void;
   createSession: () => { session: Session; resolvedId: Promise<string> };
   renameSession: (id: string, name: string) => void;
@@ -58,7 +66,6 @@ export type ChatSendOverrides = {
   selectedModel?: string | null;
   selectedConnectors?: string[];
   selectedKnowledgeBaseIds?: string[];
-  selectedSkills?: string[];
   selectedTargetAgents?: string[];
   composerContext?: UserComposerContext;
   modelRef?: string | null;
@@ -66,6 +73,8 @@ export type ChatSendOverrides = {
   threadId?: string | null;
   /** Send as this agent instead of the active one (queued flush). */
   agentId?: string | null;
+  conversationMode?: "ask" | "plan" | "craft";
+  hitlPolicy?: HitlSessionPolicy;
 };
 
 export function useChatSend({
@@ -76,10 +85,11 @@ export function useChatSend({
   selectedModel,
   selectedConnectors,
   selectedKnowledgeBaseIds,
-  selectedSkills,
-  selectedTargetAgents,
+  selectedTargetAgents = [],
   reasoningMode,
   reasoningEffort,
+  conversationMode = "craft",
+  hitlPolicy,
   defaultModel,
   sendMessage,
   createSession,
@@ -112,12 +122,17 @@ export function useChatSend({
         }
       };
 
-      const skills = overrides?.selectedSkills ?? selectedSkills;
-      const connectors = overrides?.selectedConnectors ?? selectedConnectors;
+      const mode = overrides?.conversationMode ?? conversationMode;
+      const policy = overrides?.hitlPolicy ?? hitlPolicy;
+      const restricted = mode === "ask" || mode === "plan";
+      const connectors = restricted
+        ? []
+        : overrides?.selectedConnectors ?? selectedConnectors;
       const knowledgeBaseIds =
         overrides?.selectedKnowledgeBaseIds ?? selectedKnowledgeBaseIds;
-      const targetAgents =
-        overrides?.selectedTargetAgents ?? selectedTargetAgents;
+      const targetAgents = restricted
+        ? []
+        : overrides?.selectedTargetAgents ?? selectedTargetAgents;
       const modelSelection =
         overrides?.selectedModel !== undefined
           ? overrides.selectedModel
@@ -126,7 +141,7 @@ export function useChatSend({
       const composerContext =
         overrides?.composerContext ??
         buildComposerContext({
-          skills,
+          skills: restricted ? [] : parseSkillSlugsInText(trimmed),
           connectors,
           knowledgeBaseIds,
           targetAgents,
@@ -153,11 +168,12 @@ export function useChatSend({
           modelOverride,
           connectors,
           knowledgeBaseIds,
-          skills,
           targetAgents,
           composerContext,
           composerContext?.reasoningMode ?? reasoningMode,
           composerContext?.reasoningEffort ?? reasoningEffort,
+          mode,
+          policy,
         );
       };
 
@@ -199,7 +215,11 @@ export function useChatSend({
         const currentSnap = chatStore.getSnapshot(PENDING_THREAD_ID);
         const hadMessages = currentSnap.messages.length > 1;
         chatStore.renameSessionKey(PENDING_THREAD_ID, tid);
-        maybeRenameNewThread(tid, hadMessages);
+        // ``sessions`` in this closure predates the thread just created, so the
+        // name lookup in maybeRenameNewThread always misses here. A freshly
+        // created thread has no title yet — rename it straight away.
+        if (!hadMessages) renameSession(tid, deriveThreadTitle(trimmed));
+        if (policy) syncSessionHitlPolicy(tid, policy);
         chatStore.sendTurn(
           tid,
           trimmed,
@@ -211,10 +231,11 @@ export function useChatSend({
           tid,
           connectors,
           knowledgeBaseIds,
-          skills,
           targetAgents,
           composerContext?.reasoningMode ?? reasoningMode,
           composerContext?.reasoningEffort ?? reasoningEffort,
+          mode,
+          policy,
         );
         navigate(`/chat/${agent}/${tid}`, { replace: true });
       });
@@ -232,10 +253,11 @@ export function useChatSend({
       selectedModel,
       selectedConnectors,
       selectedKnowledgeBaseIds,
-      selectedSkills,
       selectedTargetAgents,
       reasoningMode,
       reasoningEffort,
+      conversationMode,
+      hitlPolicy,
       defaultModel,
       t,
     ],
@@ -285,7 +307,7 @@ export function useChatSend({
               const pushMsg = {
                 id: generateId(),
                 role: "assistant" as const,
-                content: `🎬 录制已开始！请在浏览器中进行你想要自动化的操作。\n\n操作完成后，输入"结束"即可结束录制，系统将自动生成技能脚本。`,
+                content: t("skillRecord.recordingStartedMessage"),
                 timestamp: Date.now(),
                 status: "done" as const,
               };
@@ -306,7 +328,7 @@ export function useChatSend({
     window.addEventListener("octop:pending-chat-message", handler);
     return () =>
       window.removeEventListener("octop:pending-chat-message", handler);
-  }, [handleSend, activeThreadId, onAutoRecordingStarted]);
+  }, [handleSend, activeThreadId, onAutoRecordingStarted, t]);
 
   return { handleSend };
 }

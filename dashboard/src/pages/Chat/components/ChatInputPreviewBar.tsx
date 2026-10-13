@@ -3,29 +3,21 @@ import { X, FileText, Cpu } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { useAuthImageSrc } from "../../../hooks/useAuthImageSrc";
 import type { ChatAttachment } from "../hooks/useChat";
-import type { SkillSpec } from "../../Agent/Skills/useSkills";
 import type { KnowledgeBase } from "../../../api/modules/knowledgeBases";
-import type { ChatAgentOption } from "./ExpertAgentAvatar";
-import ExpertAgentAvatar from "./ExpertAgentAvatar";
 import { ConnectorLogo } from "../../Agent/Connectors/connectorDefs";
 import { knowledgeIconForName } from "../../KnowledgeBases/knowledgeIcons";
 import { inferKindFromNameAndMime } from "../utils/chatAttachments";
 import { ChatMediaPlayer } from "./ChatMediaPlayer";
 import ContextChip from "./ContextChip";
-import { skillChipIcon } from "../utils/skillChipIcon";
-import { useSkillDisplayName } from "../../Agent/Skills/skillDisplayNames";
 import { modelShortLabel } from "../../../utils/modelOptions";
 import styles from "../index.module.less";
 
 interface ChatInputPreviewBarProps {
   attachments: ChatAttachment[];
   uploading: boolean;
-  selectedSkills: string[];
   selectedConnectors: string[];
   selectedKnowledgeBaseIds: string[];
-  selectedTargetAgents: string[];
   selectedModel?: string | null;
-  availableSkills?: SkillSpec[];
   availableConnectors?: {
     mcp_server_name: string;
     label: string;
@@ -33,12 +25,9 @@ interface ChatInputPreviewBarProps {
     default_open?: boolean;
   }[];
   availableKnowledgeBases?: KnowledgeBase[];
-  availableAgents: ChatAgentOption[];
   onRemoveAttachment: (index: number) => void;
-  onSkillsChange?: (names: string[]) => void;
   onConnectorsChange?: (names: string[]) => void;
   onKnowledgeBaseIdsChange?: (ids: string[]) => void;
-  onTargetAgentsChange?: (ids: string[]) => void;
   onModelChange?: (model: string | null) => void;
 }
 
@@ -101,25 +90,18 @@ function ComposerImagePreview({
 export default function ChatInputPreviewBar({
   attachments,
   uploading,
-  selectedSkills,
   selectedConnectors,
   selectedKnowledgeBaseIds,
-  selectedTargetAgents,
-  availableSkills,
   availableConnectors,
   availableKnowledgeBases,
-  availableAgents,
   onRemoveAttachment,
-  onSkillsChange,
   onConnectorsChange,
   onKnowledgeBaseIdsChange,
-  onTargetAgentsChange,
   selectedModel,
   onModelChange,
 }: ChatInputPreviewBarProps) {
-  const skillDisplayName = useSkillDisplayName();
   // Show the chip whenever a model is explicitly selected, mirroring how
-  // skills / experts / connectors behave — not only when it differs from the
+  // connectors behave — not only when it differs from the
   // agent default (that was the old "override" behavior).
   const selectedModelValue = (selectedModel || "").trim();
   const showModelChip = selectedModelValue.length > 0 && !!onModelChange;
@@ -129,8 +111,6 @@ export default function ChatInputPreviewBar({
     uploading ||
     selectedConnectors.length > 0 ||
     selectedKnowledgeBaseIds.length > 0 ||
-    selectedSkills.length > 0 ||
-    selectedTargetAgents.length > 0 ||
     showModelChip;
 
   if (!hasContent) return null;
@@ -238,23 +218,6 @@ export default function ChatInputPreviewBar({
           </div>
         </div>
       )}
-      {availableSkills &&
-        onSkillsChange &&
-        selectedSkills.map((slug) => {
-          const skill = availableSkills.find((s) => s.slug === slug);
-          if (!skill) return null;
-          return (
-            <ContextChip
-              key={slug}
-              variant="skill"
-              icon={skillChipIcon(skill)}
-              label={skillDisplayName(skill)}
-              onRemove={() =>
-                onSkillsChange(selectedSkills.filter((n) => n !== slug))
-              }
-            />
-          );
-        })}
       {availableConnectors &&
         onConnectorsChange &&
         selectedConnectors.map((name) => {
@@ -288,32 +251,6 @@ export default function ChatInputPreviewBar({
               onRemove={() =>
                 onKnowledgeBaseIdsChange(
                   selectedKnowledgeBaseIds.filter((baseId) => baseId !== id),
-                )
-              }
-            />
-          );
-        })}
-      {onTargetAgentsChange &&
-        selectedTargetAgents.map((id) => {
-          const a = availableAgents.find((x) => x.agent_id === id);
-          if (!a) return null;
-          return (
-            <ContextChip
-              key={id}
-              variant="expert"
-              icon={
-                <ExpertAgentAvatar
-                  iconName={a.icon_name}
-                  iconUrl={a.icon_url}
-                  color={a.color}
-                  size={18}
-                  iconSize={10}
-                />
-              }
-              label={a.name}
-              onRemove={() =>
-                onTargetAgentsChange(
-                  selectedTargetAgents.filter((x) => x !== id),
                 )
               }
             />

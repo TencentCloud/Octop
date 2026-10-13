@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+import contextlib
 import json
 from pathlib import Path
+from typing import Any
 
 import pytest
 from click.testing import CliRunner
@@ -101,6 +103,52 @@ def test_run_cli_args_override_config(monkeypatch: pytest.MonkeyPatch, tmp_path:
     assert captured["port"] == 8080
 
 
+def test_run_rejects_unbindable_port_before_saving_config(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """``--port 70000`` is a usage error: uvicorn can never bind it.
+
+    Before the range check, Click accepted the value, ``_save_configfile_overrides``
+    persisted it, and uvicorn died in ``socket.bind`` with ``OverflowError`` — so
+    every later ``octop run`` inherited the unusable port from config.json.
+    """
+    _patch_home(monkeypatch, tmp_path)
+
+    def _fake(**_kw: object) -> None:
+        raise AssertionError("uvicorn must not be started")
+
+    import octop.cli.commands.run as run_cmd
+
+    monkeypatch.setattr(run_cmd, "_run_uvicorn", _fake)
+
+    runner = CliRunner()
+    for value in ("70000", "-1"):
+        r = runner.invoke(cli, ["run", "--port", value])
+        assert r.exit_code != 0, _all_output(r)
+        assert "is not in the range" in _all_output(r)
+    assert not (tmp_path / "config.json").exists()
+
+
+def test_run_accepts_zero_port_as_os_assigned(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """Port 0 is the "let the OS pick a free port" request, so it stays valid."""
+    _patch_home(monkeypatch, tmp_path)
+    captured: dict[str, object] = {}
+
+    def _fake(**kw: object) -> None:
+        captured.update(kw)
+
+    import octop.cli.commands.run as run_cmd
+
+    monkeypatch.setattr(run_cmd, "_run_uvicorn", _fake)
+
+    runner = CliRunner()
+    r = runner.invoke(cli, ["run", "--port", "0"])
+    assert r.exit_code == 0, r.output
+    assert captured["port"] == 0
+
+
 def test_run_writes_config_before_uvicorn_starts(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
@@ -182,10 +230,22 @@ def test_run_merges_with_existing_config(monkeypatch: pytest.MonkeyPatch, tmp_pa
     assert data == {"theme": "dark", "bind_host": "0.0.0.0", "port": 80}
 
 
-def test_run_handles_corrupt_config_without_crashing(
+def _all_output(result: Any) -> str:
+    """stdout + stderr across click versions (8.2+ can separate the streams)."""
+    text = result.output or ""
+    with contextlib.suppress(ValueError, AttributeError):
+        text += result.stderr
+    return text
+
+
+def test_run_reports_corrupt_config_cleanly(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """A malformed config.json must not block the run command."""
+    """A malformed config.json must fail cleanly, not with a traceback (#730).
+
+    The command cannot guess the ~18 settings the file holds, and boot would die
+    in ``load_config`` anyway, so the CLI names the file and position and stops.
+    """
     _patch_home(monkeypatch, tmp_path)
     (tmp_path / "config.json").write_text("{not valid json", encoding="utf-8")
 
@@ -200,22 +260,28 @@ def test_run_handles_corrupt_config_without_crashing(
 
     runner = CliRunner()
     r = runner.invoke(cli, ["run", "--port", "80"])
-    assert r.exit_code == 0, r.output
-    # Falls back to launch defaults for host, CLI for port.
-    assert captured["port"] == 80
-    assert captured["host"] is None
+    assert r.exit_code == 1, _all_output(r)
+    # Never starts with the settings it could not read.
+    assert captured == {}
+    out = _all_output(r)
+    assert "Traceback" not in out
+    assert "not valid JSON" in out
 
 
-def test_run_overwrites_corrupt_config_with_resolved_values(
+def test_run_does_not_overwrite_corrupt_config(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """A corrupt config.json is replaced with the resolved values on save.
+    """A corrupt config.json is preserved byte-for-byte, never rewritten as empty.
 
-    Documents the deliberate ``read-merge-write`` contract: a malformed file
-    is treated as empty, so the next run rewrites it cleanly.
+    Supersedes the old "treat a malformed file as empty so the next run rewrites
+    it cleanly" contract. That rewrite destroyed every other setting: one
+    trailing comma plus ``octop run --port`` wiped the ``database`` section and
+    silently flipped a PostgreSQL instance back to a greenfield SQLite one, with
+    no warning in the log (issue #730).
     """
     _patch_home(monkeypatch, tmp_path)
-    (tmp_path / "config.json").write_text("{not valid json", encoding="utf-8")
+    corrupt = '{"bind_host": "0.0.0.0", "database": {"driver": "postgresql"},}'
+    (tmp_path / "config.json").write_text(corrupt, encoding="utf-8")
 
     def _fake(**_kw: object) -> None:
         return None
@@ -226,11 +292,8 @@ def test_run_overwrites_corrupt_config_with_resolved_values(
 
     runner = CliRunner()
     r = runner.invoke(cli, ["run", "--host", "0.0.0.0", "--port", "80"])
-    assert r.exit_code == 0, r.output
-
-    config_path = tmp_path / "config.json"
-    data = json.loads(config_path.read_text(encoding="utf-8"))
-    assert data == {"bind_host": "0.0.0.0", "port": 80}
+    assert r.exit_code == 1, _all_output(r)
+    assert (tmp_path / "config.json").read_text(encoding="utf-8") == corrupt
 
 
 def test_run_port_zero_not_overridden_by_config(

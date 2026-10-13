@@ -16,10 +16,14 @@ from langchain_core.runnables import RunnableConfig
 
 from octop.api.common.agent_workspace import resolve_agent_workspace_dir
 from octop.i18n.domains.attachment import attachment_empty_image
-from octop.infra.agents.context_breakdown import usage_dict_from_message
+from octop.infra.agents.threads.context_breakdown import usage_dict_from_message
 from octop.infra.gateway.process.message_keys import (
+    CHECKPOINT_TS_KEY,
     COMPOSER_CTX_KEY,
     INBOUND_ATTACHMENTS_KEY,
+    STREAM_ERROR_CODE_KEY,
+    STREAM_ERROR_FLAG,
+    parse_checkpoint_ts_ms,
 )
 from octop.infra.utils.llm_text import strip_thinking as _strip_thinking
 from octop.infra.utils.locale import normalize_locale
@@ -33,7 +37,7 @@ _THINKING_CAPTURE_RE = re.compile(
 
 # Matches the lightweight placeholder that ``MediaOffloadMiddleware`` writes
 # into LangGraph state for already-offloaded inline images / audio. Format
-# (see harness_agent.middleware.media_offload._placeholder_text_block):
+# (see octop_harness.middleware.media_offload._placeholder_text_block):
 #   [<btype> offloaded: sha=<short_sha> path=<path> size=<n>B mime=<m>;
 #   use read_file to retrieve bytes]
 # We strip these on history serialization because the original bytes are
@@ -45,9 +49,6 @@ _OFFLOAD_PLACEHOLDER_RE = re.compile(
     r"^\s*\[\s*(?:image|audio)\s+offloaded\s*:",
     re.IGNORECASE,
 )
-
-# Must match harness_agent.agent.CHECKPOINT_TS_KEY (epoch-ms in additional_kwargs).
-CHECKPOINT_TS_KEY = "checkpoint_ts"
 
 HISTORY_DEFAULT_LIMIT = 25
 HISTORY_MAX_LIMIT = 200
@@ -314,10 +315,6 @@ def _slice_message_page(
     return page, has_more
 
 
-def _epoch_to_ms(raw: int | float) -> int:
-    return int(raw) if raw > 1_000_000_000_000 else int(raw * 1000)
-
-
 async def _load_checkpoint_messages(
     harness: Any,
     thread_id: str,
@@ -425,7 +422,16 @@ def _isolated_sqlite_checkpoint_messages(
     try:
         conn.execute("PRAGMA query_only = ON")
         conn.execute("PRAGMA busy_timeout = 5000")
-        isolated = SqliteSaver(conn=conn, serde=getattr(disk_saver, "serde", None))
+        serde = getattr(disk_saver, "serde", None)
+        rebind = getattr(serde, "with_connection", None)
+        if callable(rebind):
+            serde = rebind(conn)
+        isolated = SqliteSaver(conn=conn, serde=serde)
+        # This is an existing database: skip setup DDL/executescript, which
+        # would end the read transaction. Rows and referenced bodies must come
+        # from this connection's same snapshot, never the live saver/cache.
+        isolated.is_setup = True
+        conn.execute("BEGIN")
         config: RunnableConfig = {"configurable": {"thread_id": thread_id}}
         for checkpoint_tuple in isolated.list(config, limit=1):
             messages = checkpoint_tuple.checkpoint.get("channel_values", {}).get("messages", [])
@@ -463,7 +469,11 @@ def _load_projected_thread_messages(
                 exc_info=True,
             )
             continue
-        entry = _serialize_history_message(message, user=user)
+        entry = _serialize_history_message(
+            message,
+            user=user,
+            fallback_created_at=row.created_at,
+        )
         if entry is not None:
             out.append(entry)
     return _enrich_history_tool_media(out, agent_id=agent_id), has_more
@@ -477,6 +487,11 @@ async def _backfill_thread_projection(
     user: Any,
 ) -> None:
     """Decode one legacy checkpoint off-request and atomically publish it."""
+    from octop.infra.history.service import HistoryArchive  # noqa: PLC0415
+
+    archive = getattr(server.app_runtime, "history_archive", None)
+    if isinstance(archive, HistoryArchive):
+        raise ValueError("History backfill is disabled while versioned history is in use")
     repo = server.services.thread_message_repo
     registry = server.app_runtime.agent_registry
     reserve = getattr(registry, "try_begin_history_backfill", None)
@@ -510,7 +525,7 @@ async def _backfill_thread_projection(
                 user=user,
             )
             raw = session_rows
-        from octop.infra.gateway.process.history_projection import message_inputs  # noqa: PLC0415
+        from octop.infra.history.projection import message_inputs  # noqa: PLC0415
 
         projected = await asyncio.to_thread(message_inputs, list(raw))
         await asyncio.to_thread(repo.replace_all, thread_id, projected)
@@ -532,7 +547,11 @@ def _enrich_history_tool_media(
     *,
     agent_id: str,
 ) -> list[dict[str, Any]]:
-    """Attach preview URLs for tool media without disk I/O."""
+    """Attach preview URLs for tool media without disk I/O.
+
+    Prefer each entry's ``agent_id`` (team speaker) so member tool media
+    resolves against the producer workspace, not the room host.
+    """
     from octop.infra.gateway.media.tool_media import enrich_tool_output_string_sync  # noqa: PLC0415
 
     enriched: list[dict[str, Any]] = []
@@ -541,6 +560,8 @@ def _enrich_history_tool_media(
         if not isinstance(content, list):
             enriched.append(entry)
             continue
+        owner = entry.get("agent_id")
+        media_agent = owner.strip() if isinstance(owner, str) and owner.strip() else agent_id
         blocks: list[Any] = []
         changed = False
         for block in content:
@@ -551,7 +572,7 @@ def _enrich_history_tool_media(
             if not isinstance(output, str) or not output.strip():
                 blocks.append(block)
                 continue
-            new_output = enrich_tool_output_string_sync(output, agent_id=agent_id)
+            new_output = enrich_tool_output_string_sync(output, agent_id=media_agent)
             if new_output != output:
                 blocks.append({**block, "output": new_output})
                 changed = True
@@ -572,11 +593,30 @@ def _extract_message_timestamp_ms(msg: Any) -> int | None:
     if not isinstance(additional_kwargs, dict):
         return None
     raw = additional_kwargs.get(CHECKPOINT_TS_KEY)
-    if isinstance(raw, int | float) and raw > 0:
-        return _epoch_to_ms(raw)
+    parsed = parse_checkpoint_ts_ms(raw)
+    if parsed is not None:
+        return parsed
     if isinstance(raw, str) and raw.strip():
         return _ts_to_ms(_parse_jsonl_ts(raw))
     return None
+
+
+def _history_timestamp_ms(msg: Any, fallback_created_at: int | None = None) -> int | None:
+    ts_ms = _extract_message_timestamp_ms(msg)
+    if ts_ms is not None:
+        return ts_ms
+    return parse_checkpoint_ts_ms(fallback_created_at)
+
+
+def _apply_history_timestamp(
+    entry: dict[str, Any],
+    msg: Any,
+    fallback_created_at: int | None = None,
+) -> dict[str, Any]:
+    ts_ms = _history_timestamp_ms(msg, fallback_created_at)
+    if ts_ms is not None:
+        entry["timestamp"] = ts_ms
+    return entry
 
 
 def _parse_jsonl_ts(ts: str | None) -> float | None:
@@ -878,7 +918,12 @@ def _split_string_thinking(text: str) -> list[dict[str, Any]]:
     return blocks
 
 
-def _serialize_history_message(msg: Any, *, user: Any = None) -> dict[str, Any] | None:
+def _serialize_history_message(
+    msg: Any,
+    *,
+    user: Any = None,
+    fallback_created_at: int | None = None,
+) -> dict[str, Any] | None:
     """Project a LangGraph checkpoint message into dashboard history shape."""
     role = _message_role(msg)
     if role in ("system", ""):
@@ -901,16 +946,19 @@ def _serialize_history_message(msg: Any, *, user: Any = None) -> dict[str, Any] 
             "name": str(_msg_attr(msg, "name") or ""),
             "output": output,
         }
+        artifact = _msg_attr(msg, "artifact")
+        if artifact is not None:
+            result_block["artifact"] = artifact
         if _msg_attr(msg, "status") == "error":
             result_block["error_code"] = "tool_error"
         blocks = [result_block]
         entry: dict[str, Any] = {"role": "tool", "content": blocks}
         if mid:
             entry["id"] = mid
-        ts_ms = _extract_message_timestamp_ms(msg)
-        if ts_ms is not None:
-            entry["timestamp"] = ts_ms
-        return entry
+        speaker = additional_kwargs.get("speaker_agent_id")
+        if isinstance(speaker, str) and speaker.strip():
+            entry["agent_id"] = speaker.strip()
+        return _apply_history_timestamp(entry, msg, fallback_created_at)
 
     content = _msg_attr(msg, "content", "")
     blocks = _content_blocks_from_raw(content, additional_kwargs)
@@ -964,10 +1012,22 @@ def _serialize_history_message(msg: Any, *, user: Any = None) -> dict[str, Any] 
             entry["composer_context"] = raw_ctx
         if has_user_attachments:
             entry["inbound_attachments"] = raw_att
-    ts_ms = _extract_message_timestamp_ms(msg)
-    if ts_ms is not None:
-        entry["timestamp"] = ts_ms
-    return entry
+    if additional_kwargs.get(STREAM_ERROR_FLAG):
+        entry["status"] = "error"
+        code = additional_kwargs.get(STREAM_ERROR_CODE_KEY)
+        if code:
+            entry["error_code"] = str(code)
+    speaker = additional_kwargs.get("speaker_agent_id")
+    if isinstance(speaker, str) and speaker.strip():
+        entry["agent_id"] = speaker.strip()
+    if additional_kwargs.get("team_wrapup"):
+        entry["team_wrapup"] = True
+    edited = additional_kwargs.get("edited_files")
+    if isinstance(edited, list):
+        cleaned = [path.strip() for path in edited if isinstance(path, str) and path.strip()]
+        if cleaned:
+            entry["edited_files"] = cleaned
+    return _apply_history_timestamp(entry, msg, fallback_created_at)
 
 
 def _message_content(msg: Any) -> str:

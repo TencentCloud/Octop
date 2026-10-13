@@ -153,7 +153,7 @@ if (-not (Test-Path $VenvPython)) { Stop-WithError "Failed to create virtual env
 $pyVersion = & $VenvPython --version 2>&1
 Write-Info "Python environment ready ($pyVersion)"
 
-# TEMP: mcp 2.x breaks langchain-mcp-adapters; pin until published octop pulls harness-agent>=0.9.18.
+# TEMP: mcp 2.x breaks langchain-mcp-adapters; pin until published octop pulls octop-harness>=0.9.18.
 function Pin-McpCompat {
     Write-Info "Pinning mcp<2 (langchain-mcp-adapters compat; temporary)..."
     uv pip install "mcp>=1.27.1,<2" --python $VenvPython --quiet
@@ -255,9 +255,9 @@ if (-not $script:ConsoleAvailable) {
 }
 
 function Find-SystemChrome {
-    # Prefer harness-browser's detector (same path used at runtime)
+    # Prefer octop-browser's detector (same path used at runtime)
     try {
-        $p = & $VenvPython -c "from harness_browser.cdp.launcher import find_chrome; p=find_chrome(); print(p or '', end='')" 2>$null
+        $p = & $VenvPython -c "from octop_browser.cdp.launcher import find_chrome; p=find_chrome(); print(p or '', end='')" 2>$null
         if ($p) { return $p }
     } catch { }
     # Common commands

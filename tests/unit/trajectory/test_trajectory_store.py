@@ -11,8 +11,8 @@ from octop.infra.db.repos.agents import AgentRepo
 from octop.infra.db.repos.threads import ThreadRepo
 from octop.infra.db.repos.trajectory_events import TrajectoryEventRepo
 from octop.infra.db.repos.users import UserRepo
-from octop.infra.trajectory.store import TrajectoryStore
-from octop.infra.trajectory.types import TrajectoryEvent
+from octop.infra.history.trajectory.store import TrajectoryStore
+from octop.infra.history.trajectory.types import TrajectoryEvent
 
 
 def _seed_threads(db: SqlitePool, *thread_ids: str, agent_id: str = "A1") -> None:
@@ -74,7 +74,7 @@ def test_append_is_idempotent_on_duplicate_event_id(tmp_path: Path) -> None:
 
 
 def test_append_clips_oversized_payload_and_summary(tmp_path: Path) -> None:
-    from octop.infra.trajectory.settings import PAYLOAD_MAX_CHARS, SUMMARY_MAX_CHARS
+    from octop.infra.history.trajectory.settings import PAYLOAD_MAX_CHARS, SUMMARY_MAX_CHARS
 
     store = _store(tmp_path)
     huge = "x" * (PAYLOAD_MAX_CHARS + 50)

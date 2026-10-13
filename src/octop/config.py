@@ -133,6 +133,7 @@ class OctopConfig:
     default_timezone: str = "Asia/Shanghai"
     enable_dashboard: bool = True
     enable_api_docs: bool = False
+    history_v2_enabled: bool = False
     require_setup_password: bool = True
     database: DatabaseConfig = field(default_factory=DatabaseConfig)
     # False when config.json omits ``database`` (use PathLayout.db unless env overrides).
@@ -391,11 +392,53 @@ def _apply_database_env(merged_db: dict[str, Any]) -> dict[str, Any]:
     return out
 
 
+def env_bind_overrides() -> tuple[str | None, int | None]:
+    """``OCTOP_BIND_HOST`` / ``OCTOP_PORT`` overrides shared by config and CLI.
+
+    An invalid ``OCTOP_PORT`` logs a warning and yields no override, so the
+    file/default value wins — same fallback semantics as ``load_config``.
+    """
+    host = os.environ.get("OCTOP_BIND_HOST") or None
+    port: int | None = None
+    if v := os.environ.get("OCTOP_PORT"):
+        try:
+            port = int(v)
+        except ValueError:
+            # Do not log the raw env value.
+            logger.warning("env %s is not int; ignoring override", "OCTOP_PORT")
+        # ``resolve_bind`` reads port 0 as "let the OS pick a free port", so the
+        # bindable range here is 0-65535. Anything outside it outranks a valid
+        # config.json port and kills startup inside ``socket.bind`` with a bare
+        # ``OverflowError``, which names neither the key nor the value.
+        if port is not None and not 0 <= port <= 65535:
+            logger.warning("env %s is out of range; ignoring override", "OCTOP_PORT")
+            port = None
+    return host, port
+
+
 def load_config(path: Path) -> OctopConfig:
-    """Load ``config.json``; write defaults if absent. Apply env overrides."""
+    """Load ``config.json``; write defaults if absent. Apply env overrides.
+
+    A corrupt file raises with the path and parser position named, and is never
+    treated as empty: this is the same policy as ``infra/utils/json_file.py``,
+    duplicated here because ``octop.config`` must stay free of ``infra`` imports
+    (AGENTS.md §5). The message never echoes file contents — they hold database
+    credentials.
+    """
     file_defaults = _defaults_for_file()
     if path.exists():
-        raw = json.loads(path.read_text(encoding="utf-8"))
+        try:
+            raw = json.loads(path.read_text(encoding="utf-8"))
+        except json.JSONDecodeError as exc:
+            raise ValueError(
+                f"{path} is not valid JSON (line {exc.lineno}, column {exc.colno});"
+                " fix it and retry — no settings were changed"
+            ) from exc
+        if not isinstance(raw, dict):
+            raise ValueError(
+                f"{path} must contain a JSON object, got {type(raw).__name__};"
+                " fix it and retry — no settings were changed"
+            )
         database_in_file = "database" in raw
     else:
         path.parent.mkdir(parents=True, exist_ok=True)
@@ -415,10 +458,11 @@ def load_config(path: Path) -> OctopConfig:
     }
     merged_db = _apply_database_env(merged_db)
 
-    if v := os.environ.get("OCTOP_BIND_HOST"):
-        merged["bind_host"] = v
-    if v := os.environ.get("OCTOP_PORT"):
-        merged["port"] = _coerce_int("OCTOP_PORT", v, merged["port"])
+    env_host, env_port = env_bind_overrides()
+    if env_host is not None:
+        merged["bind_host"] = env_host
+    if env_port is not None:
+        merged["port"] = env_port
     if v := os.environ.get("OCTOP_LOG_LEVEL"):
         merged["log_level"] = v
     if v := os.environ.get("OCTOP_ACCESS_TOKEN_TTL"):
@@ -563,6 +607,13 @@ def load_config(path: Path) -> OctopConfig:
         default_timezone=str(merged.get("default_timezone") or "Asia/Shanghai"),
         enable_dashboard=bool(merged["enable_dashboard"]),
         enable_api_docs=bool(merged["enable_api_docs"]),
+        history_v2_enabled=_coerce_bool(
+            "OCTOP_HISTORY_V2_ENABLED",
+            os.environ.get(
+                "OCTOP_HISTORY_V2_ENABLED", str(merged.get("history_v2_enabled", False))
+            ),
+            False,
+        ),
         require_setup_password=bool(merged["require_setup_password"]),
         database=parse_database_config(merged_db),
         database_in_file=database_in_file,

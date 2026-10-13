@@ -10,11 +10,10 @@ import type {
   TokenUsage,
   CallEntry,
 } from "../../../api/types";
+import type { HitlSessionPolicy } from "../../../api/types/hitl";
+import type { ThreadArtifact } from "../../../api/modules/octopThreads";
 import * as chatStore from "./chatStore";
-import {
-  shouldProbeActiveTurn,
-  shouldBlockHistoryRefresh,
-} from "./wsResumeGate";
+import { shouldBlockHistoryRefresh } from "./wsResumeGate";
 import {
   generateId,
   extractToolData,
@@ -31,6 +30,8 @@ import {
   parseToolExecutionFeedback,
 } from "../../../utils/toolMediaBlocks";
 import { injectPendingHitlMessage } from "../../../utils/injectPendingHitlMessage";
+import { promoteAskUserToolMessage } from "../utils/pendingHitl";
+import { rewritePeerSpeakerId } from "../../../utils/remoteExpert";
 import type {
   ChatAttachment,
   ChatMessage,
@@ -453,13 +454,36 @@ function convertCallEntries(entries: CallEntry[]): ChatMessage[] {
               source: "tool_result",
               retryable: toolFeedback?.retryable,
             }
+          : entry.status === "error"
+          ? {
+              code:
+                typeof entry.error_code === "string" && entry.error_code
+                  ? entry.error_code
+                  : "stream_error",
+              source: "history",
+            }
           : undefined,
       _toolKind: tool?.kind,
       status:
         tool?.kind === "result" && (toolFeedback?.isError || toolErrorCode)
           ? "error"
+          : entry.status === "error"
+          ? "error"
           : "done",
       timestamp: resolveEntryTimestamp(entry),
+      speakerAgentId:
+        typeof entry.speaker_agent_id === "string" &&
+        entry.speaker_agent_id.trim()
+          ? entry.speaker_agent_id.trim()
+          : undefined,
+      teamWrapup: Boolean(entry.team_wrapup),
+      editedFiles: Array.isArray(entry.edited_files)
+        ? entry.edited_files
+            .filter(
+              (p): p is string => typeof p === "string" && p.trim().length > 0,
+            )
+            .map((p) => p.trim())
+        : undefined,
     };
   });
 
@@ -485,6 +509,9 @@ function convertCallEntries(entries: CallEntry[]): ChatMessage[] {
             output: current.toolData?.output,
             errorCode: current.toolData?.errorCode,
             returnCode: current.toolData?.returnCode,
+            ...(current.toolData?.artifact != null
+              ? { artifact: current.toolData.artifact }
+              : {}),
           },
           status: current.status,
           errorInfo: current.errorInfo,
@@ -615,7 +642,7 @@ function convertCallEntries(entries: CallEntry[]): ChatMessage[] {
   }
   flushTurn();
 
-  return merged;
+  return merged.map(promoteAskUserToolMessage);
 }
 
 function toHistoryContentBlocks(content: unknown): unknown[] {
@@ -643,6 +670,11 @@ export function convertHistoryMessages(
     timestamp?: number;
     composer_context?: unknown;
     inbound_attachments?: unknown;
+    status?: string;
+    error_code?: string;
+    agent_id?: string;
+    team_wrapup?: boolean;
+    edited_files?: string[];
   }>,
   agentId?: string,
 ): ChatMessage[] {
@@ -663,12 +695,32 @@ export function convertHistoryMessages(
       timestamp:
         typeof message.timestamp === "number" ? message.timestamp : undefined,
       metadata: Object.keys(meta).length > 0 ? meta : undefined,
+      status: message.status,
+      error_code: message.error_code,
+      speaker_agent_id:
+        typeof message.agent_id === "string" && message.agent_id.trim()
+          ? message.agent_id.trim()
+          : undefined,
+      team_wrapup: message.team_wrapup === true,
+      edited_files: Array.isArray(message.edited_files)
+        ? message.edited_files.filter(
+            (p): p is string => typeof p === "string" && p.trim().length > 0,
+          )
+        : undefined,
     };
   });
   const converted = convertCallEntries(entries).filter(
     isDisplayableHistoryMessage,
   );
-  return agentId ? enrichAttachmentPreviewUrls(converted, agentId) : converted;
+  const rewritten = agentId
+    ? converted.map((message) => {
+        const speaker = rewritePeerSpeakerId(agentId, message.speakerAgentId);
+        return speaker && speaker !== message.speakerAgentId
+          ? { ...message, speakerAgentId: speaker }
+          : message;
+      })
+    : converted;
+  return agentId ? enrichAttachmentPreviewUrls(rewritten, agentId) : rewritten;
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────
@@ -676,72 +728,71 @@ export function convertHistoryMessages(
 async function loadThreadHistory(
   agentId: string,
   threadId: string,
-  params: { limit?: number; offset?: number } = {},
+  params: { limit?: number; offset?: number; cursor?: string | null } = {},
 ): Promise<{
   messages: ChatMessage[];
   hasMore: boolean;
   nextOffset: number;
+  nextCursor: string | null;
   turnActive: boolean;
-  artifacts: string[];
+  artifacts: ThreadArtifact[];
   projectionLoading: boolean;
   retryAfterMs: number;
 }> {
-  try {
-    const { octopThreadsApi, CHAT_HISTORY_PAGE_SIZE } = await import(
-      "../../../api/modules/octopThreads"
+  const { octopThreadsApi, CHAT_HISTORY_PAGE_SIZE, normalizeThreadArtifacts } =
+    await import("../../../api/modules/octopThreads");
+  const {
+    syncSessionArtifacts,
+    syncSessionConversationMode,
+    syncSessionHitlPolicy,
+  } = await import("./useSessions");
+  const limit = params.limit ?? CHAT_HISTORY_PAGE_SIZE;
+  const offset = params.offset ?? 0;
+  const history = await octopThreadsApi.history(agentId, threadId, {
+    limit,
+    offset,
+    cursor: params.cursor,
+  });
+  const artifacts = normalizeThreadArtifacts(
+    history.artifacts,
+    agentId,
+    history.artifact_refs,
+  );
+  if (offset === 0) {
+    syncSessionArtifacts(threadId, artifacts);
+    syncSessionConversationMode(
+      threadId,
+      history.conversation_mode,
+      history.pending_plan_path,
     );
-    const { syncSessionArtifacts } = await import("./useSessions");
-    const limit = params.limit ?? CHAT_HISTORY_PAGE_SIZE;
-    const offset = params.offset ?? 0;
-    const history = await octopThreadsApi.history(agentId, threadId, {
-      limit,
-      offset,
-    });
-    const artifacts = Array.isArray(history.artifacts)
-      ? history.artifacts.filter(
-          (path): path is string =>
-            typeof path === "string" && path.trim().length > 0,
-        )
-      : [];
-    if (offset === 0) {
-      syncSessionArtifacts(threadId, artifacts);
-    }
-    const messages = injectPendingHitlMessage(
-      convertHistoryMessages(
-        history.messages.filter(
-          (message) =>
-            message.role === "user" ||
-            message.role === "assistant" ||
-            message.role === "tool",
-        ),
-        agentId,
-      ),
-      history.hitl_pending,
-    );
-    return {
-      messages,
-      hasMore: Boolean(history.has_more),
-      nextOffset: offset + limit,
-      turnActive: Boolean(history.turn_active),
-      artifacts,
-      projectionLoading: Boolean(history.history_loading),
-      retryAfterMs:
-        typeof history.history_retry_after_ms === "number"
-          ? history.history_retry_after_ms
-          : 1500,
-    };
-  } catch (err) {
-    console.error("loadThreadHistory failed", err);
-    return {
-      messages: [],
-      hasMore: false,
-      nextOffset: 0,
-      turnActive: false,
-      artifacts: [],
-      projectionLoading: false,
-      retryAfterMs: 1500,
-    };
+    syncSessionHitlPolicy(threadId, history.hitl_policy);
+    chatStore.setPendingPlanPath(threadId, history.pending_plan_path);
   }
+  const messages = injectPendingHitlMessage(
+    convertHistoryMessages(
+      history.messages.filter(
+        (message) =>
+          message.role === "user" ||
+          message.role === "assistant" ||
+          message.role === "tool",
+      ),
+      agentId,
+    ),
+    history.hitl_pending,
+  );
+  return {
+    messages,
+    hasMore: Boolean(history.has_more),
+    nextOffset: offset + limit,
+    nextCursor: history.next_cursor ?? null,
+    turnActive: Boolean(history.turn_active),
+    artifacts,
+    projectionLoading: Boolean(history.history_loading),
+    retryAfterMs:
+      typeof history.history_retry_after_ms === "number"
+        ? history.history_retry_after_ms
+        : 1500,
+  };
 }
 
 // ── The hook ──────────────────────────────────────────────────────────────
@@ -754,8 +805,19 @@ async function loadThreadHistory(
 export function useChat(
   sessionId: string | null,
   agentId: string | null = null,
+  isTeamRoom = false,
 ) {
   const stableSessionId = sessionId || "__empty__";
+  useEffect(() => {
+    chatStore.setSessionTeamRoom(stableSessionId, isTeamRoom);
+  }, [stableSessionId, isTeamRoom]);
+  const [historyError, setHistoryError] = useState(false);
+  const failedHistoryOperation = useRef<"initial" | "older" | "latest">(
+    "initial",
+  );
+  useEffect(() => {
+    setHistoryError(false);
+  }, [stableSessionId]);
 
   // Resume reconnect only for the thread the user is looking at.
   useEffect(() => {
@@ -787,6 +849,8 @@ export function useChat(
     historyHasMore,
     historyLoadingMore,
     historyHydrated,
+    pendingPlanPath,
+    liveSpeakers,
   } = useSyncExternalStore(subscribeStore, getStoreSnapshot);
 
   const [historyLoading, setHistoryLoading] = useState(false);
@@ -816,11 +880,12 @@ export function useChat(
       modelRef?: string | null,
       mcpServers?: string[] | null,
       knowledgeBaseIds?: string[] | null,
-      skills?: string[] | null,
       targetAgentIds?: string[] | null,
       composerContext?: UserComposerContext,
       reasoningMode?: "auto" | "enabled" | "disabled",
       reasoningEffort?: string | null,
+      conversationMode?: "ask" | "plan" | "craft" | null,
+      hitlPolicy?: HitlSessionPolicy | null,
     ) => {
       const key = storeKey || stableSessionId;
 
@@ -850,10 +915,11 @@ export function useChat(
         threadIdForApi,
         mcpServers,
         knowledgeBaseIds,
-        skills,
         targetAgentIds,
         reasoningMode,
         reasoningEffort,
+        conversationMode,
+        hitlPolicy,
       );
     },
     [stableSessionId],
@@ -874,10 +940,19 @@ export function useChat(
       }
 
       // Already have local history: only re-probe when we still expect a stream.
-      if (snap.messages.length > 0 || snap.historyHydrated) {
-        if (shouldProbeActiveTurn({ isStreaming: snap.isStreaming })) {
-          attachAfterHistory(key, targetThreadId);
-        }
+      // A server push (cron, IM) marks history stale and forces a refetch.
+      // An empty cached page is never trusted: a background turn (cron, IM,
+      // another tab) may have written the first messages since we hydrated,
+      // and nothing would refetch them before a page reload.
+      const liveTurn =
+        snap.isStreaming || (isTeamRoom && chatStore.hasLiveSocket(key));
+      if (
+        (snap.messages.length > 0 || liveTurn) &&
+        !chatStore.isHistoryStale(key)
+      ) {
+        // Always listen after hydrate so late team / inbox replies land here,
+        // not only when a turn is already marked active.
+        attachAfterHistory(key, targetThreadId);
         return;
       }
 
@@ -907,14 +982,14 @@ export function useChat(
         chatStore.setHistoryPage(key, loaded.messages, {
           hasMore: loaded.hasMore,
           nextOffset: loaded.nextOffset,
+          nextCursor: loaded.nextCursor,
         });
-        if (
-          shouldProbeActiveTurn({
-            isStreaming: false,
-            turnActive: loaded.turnActive,
-          })
-        ) {
-          attachAfterHistory(key, targetThreadId);
+        setHistoryError(false);
+        attachAfterHistory(key, targetThreadId);
+      } catch {
+        if (loadGenRef.current === gen) {
+          failedHistoryOperation.current = "initial";
+          setHistoryError(true);
         }
       } finally {
         if (loadGenRef.current === gen) {
@@ -922,7 +997,7 @@ export function useChat(
         }
       }
     },
-    [agentId, attachAfterHistory],
+    [agentId, attachAfterHistory, isTeamRoom],
   );
 
   const loadMoreHistory = useCallback(async (): Promise<boolean> => {
@@ -941,15 +1016,31 @@ export function useChat(
     loadMoreInFlightRef.current = true;
     chatStore.setHistoryLoadingMore(key, true);
     const offset = snap.historyNextOffset;
+    const gen = loadGenRef.current;
 
     try {
       const {
         messages: older,
         hasMore,
         nextOffset,
-      } = await loadThreadHistory(agentId, stableSessionId, { offset });
-      chatStore.prependHistoryMessages(key, older, { hasMore, nextOffset });
+        nextCursor,
+      } = await loadThreadHistory(agentId, stableSessionId, {
+        offset,
+        cursor: snap.historyNextCursor,
+      });
+      chatStore.prependHistoryMessages(key, older, {
+        hasMore,
+        nextOffset,
+        nextCursor,
+      });
+      if (loadGenRef.current === gen) setHistoryError(false);
       return true;
+    } catch {
+      if (loadGenRef.current === gen) {
+        failedHistoryOperation.current = "older";
+        setHistoryError(true);
+      }
+      return false;
     } finally {
       loadMoreInFlightRef.current = false;
       chatStore.setHistoryLoadingMore(key, false);
@@ -991,6 +1082,7 @@ export function useChat(
           messages: latest,
           hasMore,
           nextOffset,
+          nextCursor,
         } = await loadThreadHistory(agentId, key, { offset: 0 });
         // Stale after a concurrent loadHistory / newer refresh — drop apply only.
         if (loadGenRef.current !== gen) return;
@@ -1007,7 +1099,15 @@ export function useChat(
           hasMore: olderPrefix.length > 0 ? snap.historyHasMore : hasMore,
           nextOffset:
             olderPrefix.length > 0 ? snap.historyNextOffset : nextOffset,
+          nextCursor:
+            olderPrefix.length > 0 ? snap.historyNextCursor : nextCursor,
         });
+        setHistoryError(false);
+      } catch {
+        if (loadGenRef.current === gen) {
+          failedHistoryOperation.current = "latest";
+          setHistoryError(true);
+        }
       } finally {
         refreshInFlightRef.current = false;
         setHistoryRefreshing(false);
@@ -1015,6 +1115,13 @@ export function useChat(
     },
     [agentId, stableSessionId, historyRefreshing, historyLoading],
   );
+
+  const retryHistory = useCallback(async () => {
+    if (failedHistoryOperation.current === "older") await loadMoreHistory();
+    else if (failedHistoryOperation.current === "latest")
+      await refreshHistory();
+    else await loadHistory(stableSessionId);
+  }, [loadMoreHistory, refreshHistory, loadHistory, stableSessionId]);
 
   /**
    * Edit a historical user message: truncate everything from that message
@@ -1059,6 +1166,8 @@ export function useChat(
       decisions: Array<{ type: string; message?: string }>,
       storeKey?: string,
       dismissed?: boolean,
+      hitlPolicy?: HitlSessionPolicy,
+      pendingId?: string,
     ) => {
       if (!agentId) return;
       const key = storeKey || stableSessionId;
@@ -1074,6 +1183,8 @@ export function useChat(
           void refreshHistory(threadId);
         },
         dismissed,
+        hitlPolicy,
+        pendingId,
       );
     },
     [agentId, stableSessionId, refreshHistory],
@@ -1086,16 +1197,20 @@ export function useChat(
     runUsage,
     contextUsage,
     historyLoading,
+    historyError,
     historyHasMore,
     historyLoadingMore,
     historyRefreshing,
     historyHydrated,
+    pendingPlanPath,
+    liveSpeakers,
     sendMessage,
     editAndResend,
     cancelStream,
     loadHistory,
     loadMoreHistory,
     refreshHistory,
+    retryHistory,
     clearMessages,
     resumeHitl,
   };

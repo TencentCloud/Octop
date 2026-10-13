@@ -18,6 +18,12 @@ import { makeAtom, listAtomsResp } from "../../../test/memoryFixtures";
 vi.mock("../../../api/modules/memoryDashboard", () => ({
   memoryDashboardApi: {
     listAtoms: vi.fn(),
+    listEntities: vi
+      .fn()
+      .mockResolvedValue({ items: [], total: 0, has_more: false }),
+    listJournal: vi
+      .fn()
+      .mockResolvedValue({ items: [], total: 0, has_more: false }),
   },
   isAtomDeprecated: (a: { deprecated_at?: string | null }) =>
     a.deprecated_at != null,
@@ -127,5 +133,49 @@ describe("<AtomsList />", () => {
         screen.getAllByText(/每天早上都喝美式咖啡/).length,
       ).toBeGreaterThanOrEqual(1);
     });
+  });
+
+  it("shows the audit record instead of presenting old evidence as the corrected assertion", async () => {
+    api.listAtoms.mockResolvedValue(
+      listAtomsResp([
+        makeAtom({
+          id: "atom-corrected",
+          assertion: "用户喜欢喝拿铁。",
+          verbatim_quote: "我每天早上都喝美式咖啡",
+        }),
+      ]),
+    );
+    api.listJournal.mockResolvedValue({
+      items: [
+        {
+          id: "journal-edit",
+          timestamp: "2026-09-07T08:00:00Z",
+          action: "user_edit",
+          actor: "user",
+          target_atom_id: "atom-corrected",
+          before: { assertion: "用户喜欢喝美式咖啡。", atom_id: "atom-old" },
+          after: { assertion: "用户喜欢喝拿铁。", atom_id: "atom-corrected" },
+        },
+      ],
+      total: 1,
+      has_more: false,
+    });
+
+    const user = userEvent.setup();
+    render(<AtomsList agentId="ZYWZTD" />);
+    await user.click(await screen.findByText("用户喜欢喝拿铁。"));
+
+    await waitFor(() => {
+      expect(api.listJournal).toHaveBeenCalledWith("ZYWZTD", {
+        action: "user_edit",
+        target_atom_id: "atom-corrected",
+        limit: 1,
+      });
+    });
+    expect(await screen.findByText(/人工修正的记忆/)).toBeInTheDocument();
+    expect(
+      screen.getByText("修正前：用户喜欢喝美式咖啡。"),
+    ).toBeInTheDocument();
+    expect(screen.getByText(/原始来源上下文：/)).toBeInTheDocument();
   });
 });

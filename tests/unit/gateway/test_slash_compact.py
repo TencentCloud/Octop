@@ -6,7 +6,7 @@ from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
-from harness_agent.compaction import CompactResult
+from octop_harness.compaction import CompactResult
 
 from octop.config import OctopConfig
 from octop.infra.agents.manager import AgentManager
@@ -19,7 +19,7 @@ from octop.infra.db.repos.users import UserRepo
 from octop.infra.db.services import build_shared_services
 from octop.infra.gateway.slash import BufferSink, SlashCommand, build_default_dispatcher
 from octop.infra.gateway.slash.ctx import SlashCtx
-from octop.infra.gateway.slash.handlers.composite import cmd_compact
+from octop.infra.gateway.slash.handlers.composite import _short_offload_path, cmd_compact
 from octop.infra.gateway.threads import ThreadRegistry
 from octop.infra.utils.paths import PathLayout
 
@@ -114,7 +114,7 @@ async def test_cmd_compact_shows_octop_relative_offload_path(ctx, dispatcher) ->
             ok=True,
             summarized_count=3,
             preserved_count=4,
-            file_path=f"/home/wally/.octop/workspaces/X/.octop/conversation_history/{tid}.md",
+            file_path=f"/Users/wally/.octop/workspaces/X/.octop/conversation_history/{tid}.md",
             reason="ok",
         )
     )
@@ -125,7 +125,97 @@ async def test_cmd_compact_shows_octop_relative_offload_path(ctx, dispatcher) ->
 
     text = "\n".join(sink.lines)
     assert ".octop/conversation_history/" in text
-    assert "/home/wally" not in text
+    assert "/Users/wally" not in text
+    assert "/home/" not in text
+
+
+def test_short_offload_path_hides_windows_macos_and_linux_hosts() -> None:
+    tid = "thr_win"
+    cases = (
+        rf"C:\Users\wally\.octop\workspaces\X\.octop\conversation_history\{tid}.md",
+        rf"\\?\C:\Users\wally\.octop\workspaces\X\.octop\conversation_history\{tid}.md",
+        f"/home/wally/.octop/workspaces/X/.octop/conversation_history/{tid}.md",
+        f"/Users/wally/.octop/workspaces/X/.octop/conversation_history/{tid}.md",
+        f"C:/Users/wally/.octop/conversation_history/{tid}.md",
+    )
+    for raw in cases:
+        got = _short_offload_path(raw)
+        assert got == f".octop/conversation_history/{tid}.md"
+        assert "\\" not in got
+        assert "C:" not in got
+        assert "/Users/" not in got
+        assert "/home/" not in got
+    assert (
+        _short_offload_path(rf"D:\data\conversation_history\{tid}.md")
+        == f"conversation_history/{tid}.md"
+    )
+
+
+@pytest.mark.asyncio
+async def test_cmd_compact_shows_windows_offload_path(ctx, dispatcher) -> None:
+    await ctx.thread_registry.get_or_create_by_key(
+        session_key=ctx.session_key,
+        agent_id=ctx.agent_id,
+        user_id=ctx.user_id,
+        channel_type=ctx.channel_type,
+    )
+    tid = ctx.thread_registry.get_bound_thread_id(ctx.session_key)
+    assert tid
+
+    harness = MagicMock()
+    harness.acompact_conversation = AsyncMock(
+        return_value=CompactResult(
+            ok=True,
+            summarized_count=3,
+            preserved_count=4,
+            file_path=rf"C:\Users\wally\.octop\workspaces\X\.octop\conversation_history\{tid}.md",
+            reason="ok",
+        )
+    )
+    ctx.agent_manager.get_agent = MagicMock(return_value=harness)
+
+    sink = BufferSink()
+    await cmd_compact(dispatcher, SlashCommand("compact", ""), ctx, sink)
+
+    text = "\n".join(sink.lines)
+    assert ".octop/conversation_history/" in text
+    assert "C:" not in text
+    assert "Users\\wally" not in text
+    assert "Users/wally" not in text
+
+
+@pytest.mark.asyncio
+async def test_cmd_compact_prefers_display_path_over_host_file_path(ctx, dispatcher) -> None:
+    await ctx.thread_registry.get_or_create_by_key(
+        session_key=ctx.session_key,
+        agent_id=ctx.agent_id,
+        user_id=ctx.user_id,
+        channel_type=ctx.channel_type,
+    )
+    tid = ctx.thread_registry.get_bound_thread_id(ctx.session_key)
+    assert tid
+
+    harness = MagicMock()
+    harness.acompact_conversation = AsyncMock(
+        return_value=CompactResult(
+            ok=True,
+            summarized_count=3,
+            preserved_count=4,
+            file_path=rf"C:\Users\wally\.octop\workspaces\X\.octop\conversation_history\{tid}.md",
+            display_path=f".octop/conversation_history/{tid}.md",
+            reason="ok",
+        )
+    )
+    ctx.agent_manager.get_agent = MagicMock(return_value=harness)
+
+    sink = BufferSink()
+    await cmd_compact(dispatcher, SlashCommand("compact", ""), ctx, sink)
+
+    text = "\n".join(sink.lines)
+    assert f".octop/conversation_history/{tid}.md" in text
+    assert "C:" not in text
+    assert "/Users/" not in text
+    assert "/home/" not in text
 
 
 @pytest.mark.asyncio

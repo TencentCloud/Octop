@@ -7,6 +7,7 @@ import json
 import re
 import urllib.error
 import zipfile
+from pathlib import Path
 from typing import Any
 
 import pytest
@@ -48,6 +49,40 @@ def test_skillhub_manifest_welcome_summarizes_capability() -> None:
     assert "…" not in manifest["welcome_message"]["zh"]
     assert manifest["welcome_message"]["en"] == ("Expand ideas into serialization-ready outlines")
     assert "Pick a card" not in manifest["welcome_message"]["en"]
+    assert manifest["icon_url"] == "/experts/avatars/scene-media.svg"
+
+
+def test_skillhub_portrait_prefers_upstream_icon_url() -> None:
+    from octop.infra.agents.experts.skillhub_market import (
+        SkillHubSkillset,
+        _expert_manifest,
+        skillhub_portrait_url,
+    )
+
+    item = SkillHubSkillset(
+        slug="healthcare-nursing-plan",
+        display_name="护理计划",
+        display_name_en="Nursing Plan",
+        summary="制定护理计划",
+        summary_en="Draft nursing plans",
+        scene="healthcare",
+        icon_url="https://cdn.skillhub.cn/icons/nursing.png",
+    )
+    assert skillhub_portrait_url(item) == "https://cdn.skillhub.cn/icons/nursing.png"
+    assert _expert_manifest(item, ["nursing"])["icon_url"] == (
+        "https://cdn.skillhub.cn/icons/nursing.png"
+    )
+    assert item.api_dict()["icon_url"] == "https://cdn.skillhub.cn/icons/nursing.png"
+
+    no_icon = SkillHubSkillset(
+        slug="healthcare-nursing-plan",
+        display_name="护理计划",
+        display_name_en="Nursing Plan",
+        summary="制定护理计划",
+        summary_en="Draft nursing plans",
+        scene="healthcare",
+    )
+    assert skillhub_portrait_url(no_icon) == "/experts/avatars/scene-healthcare.svg"
 
 
 def test_skillhub_manifest_welcome_keeps_chinese_when_summary_is_english() -> None:
@@ -183,6 +218,112 @@ def test_skillhub_manifest_keeps_up_to_six_workflow_quick_prompts() -> None:
     assert manifest["quick_prompts"][-1]["title"]["zh"] == "步骤标题 6"
 
 
+def test_skillhub_manifest_defaults_task_examples_without_workflow() -> None:
+    from octop.infra.agents.experts.skillhub_market import (
+        SkillHubSkillset,
+        _expert_manifest,
+    )
+
+    item = SkillHubSkillset(
+        slug="tech-test-automation",
+        display_name="技术测试自动化",
+        display_name_en="Tech Test Automation",
+        scene="tech",
+    )
+
+    manifest = _expert_manifest(item, ["playwright"])
+    examples = manifest["task_examples"]
+
+    assert len(examples["zh"]) == 3
+    assert len(examples["en"]) == 3
+    assert "技术测试自动化专家" in examples["zh"][0]
+    assert "09:00" in examples["zh"][0]
+    assert "任务创建后立即启用" in examples["zh"][0]
+    assert "Tech Test Automation Expert" in examples["en"][0]
+    assert "09:00" in examples["en"][0]
+
+
+def test_skillhub_manifest_generates_workflow_task_examples() -> None:
+    from octop.infra.agents.experts.skillhub_market import (
+        SkillHubSkillset,
+        _expert_manifest,
+    )
+
+    item = SkillHubSkillset(
+        slug="media-storyboard-design",
+        display_name="分镜设计",
+        scene="media",
+        content="""# 分镜设计工作流
+
+## 步骤 1：剧本到分镜表格转换（获取层）
+- 将剧本文本解析为结构化分镜表格
+
+输出标准分镜表格和拍摄计划。
+
+## 步骤 2：电影感镜头运动设计（获取层）
+- 为每个分镜设计镜头运动方案
+
+输出镜头运动设计方案和机位规划。
+""",
+    )
+
+    manifest = _expert_manifest(item, ["script-to-storyboard"])
+    examples = manifest["task_examples"]
+
+    assert len(examples["zh"]) == 3
+    assert len(examples["zh"]) == len(examples["en"])
+    assert examples["zh"][0].startswith("每天「09:00」")
+    assert "剧本到分镜表格转换" in examples["zh"][0]
+    assert "任务创建后立即启用" in examples["zh"][0]
+    assert "电影感镜头运动设计" in examples["zh"][1]
+    assert "18:00" in examples["zh"][1]
+    assert "enable immediately" in examples["en"][0]
+    assert not _has_cjk(examples["en"][0])
+
+
+def test_skillhub_manifest_keeps_up_to_six_task_examples() -> None:
+    from octop.infra.agents.experts.skillhub_market import (
+        SkillHubSkillset,
+        _expert_manifest,
+    )
+
+    workflow = "# 工作流\n\n" + "\n\n".join(
+        f"## 步骤 {idx}：步骤标题 {idx}（处理层）\n- 执行动作 {idx}\n\n输出交付物 {idx}。"
+        for idx in range(1, 11)
+    )
+    item = SkillHubSkillset(
+        slug="demo",
+        display_name="演示专家",
+        scene="tech",
+        content=workflow,
+    )
+
+    examples = _expert_manifest(item, ["demo"])["task_examples"]
+
+    assert len(examples["zh"]) == 6
+    assert "步骤标题 1" in examples["zh"][0]
+    assert "步骤标题 6" in examples["zh"][-1]
+
+
+def test_skillhub_api_dict_includes_task_examples_with_content() -> None:
+    from octop.infra.agents.experts.skillhub_market import SkillHubSkillset
+
+    item = SkillHubSkillset(
+        slug="demo",
+        display_name="演示",
+        display_name_en="Demo",
+        scene="tech",
+        content="## 步骤 1：巡检集群\n输出健康报告。",
+    )
+
+    preview = item.api_dict(include_content=True)
+    listing = item.api_dict()
+
+    assert len(listing["task_examples"]["zh"]) == 3
+    assert preview["task_examples"]["zh"][0].startswith("每天「09:00」")
+    assert "巡检集群" in preview["task_examples"]["zh"][0]
+
+
 def test_browse_skillsets_filters_by_scene(monkeypatch) -> None:
     from octop.infra.agents.experts import skillhub_market
 
@@ -304,6 +445,37 @@ def test_parse_skillset_package_prefers_matching_skillsets_prompt() -> None:
 
     assert parsed_manifest == manifest
     assert prompt == "# Target workflow\n"
+
+
+def test_extract_zip_repairs_invalid_utf8_skill_md(tmp_path: Path) -> None:
+    from octop.infra.agents.experts.skillhub_market import _extract_zip
+
+    corrupted = "---\nname: humanizer\n---\n每句 ".encode() + b"\xe2j$" + "15 字\n".encode()
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w") as zf:
+        zf.writestr("SKILL.md", corrupted)
+
+    target = tmp_path / "skill"
+    _extract_zip(buf.getvalue(), target)
+
+    text = (target / "SKILL.md").read_text(encoding="utf-8")
+    assert text == "---\nname: humanizer\n---\n每句 ≤15 字\n"
+
+
+def test_extract_zip_rejects_unrepairable_skill_md(tmp_path: Path) -> None:
+    from octop.infra.agents.experts.skillhub_market import (
+        SkillHubMarketError,
+        SkillHubMarketErrorKind,
+        _extract_zip,
+    )
+
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w") as zf:
+        zf.writestr("SKILL.md", b"---\nname: bad\n---\n\xff\xfe")
+
+    with pytest.raises(SkillHubMarketError) as exc_info:
+        _extract_zip(buf.getvalue(), tmp_path / "skill")
+    assert exc_info.value.kind == SkillHubMarketErrorKind.PACKAGE_INVALID
 
 
 def test_parse_skillset_package_uses_identify_for_single_skillset() -> None:
@@ -481,7 +653,7 @@ def test_map_skillhub_not_found() -> None:
 
 class _Response:
     def __init__(self, payload: dict[str, Any]) -> None:
-        self._payload = payload
+        self._stream = io.BytesIO(json.dumps(payload).encode())
 
     def __enter__(self) -> _Response:
         return self
@@ -489,8 +661,8 @@ class _Response:
     def __exit__(self, *_args: object) -> None:
         return None
 
-    def read(self) -> bytes:
-        return json.dumps(self._payload).encode()
+    def read(self, size: int = -1) -> bytes:
+        return self._stream.read(size)
 
 
 def test_fetch_ranking_json_uses_showcase_endpoint(monkeypatch: pytest.MonkeyPatch) -> None:

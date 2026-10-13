@@ -1,0 +1,13 @@
+id: air-quality
+version: 0.1.0
+name: 空气质量
+description: 查询城市 PM2.5 与 AQI 指数
+icon: icon.svg
+group: lifestyle
+kind: tool
+entry: main.py
+requires:
+  - httpx>=0.27
+ui:
+  entry: ui/index.js
+  manifest: ui/manifest.json

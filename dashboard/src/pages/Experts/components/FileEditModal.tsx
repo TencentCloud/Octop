@@ -1,37 +1,55 @@
 // dashboard/src/pages/Experts/components/FileEditModal.tsx
 import { lazy, Suspense, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Modal, Spin } from "antd";
+import { Button, Drawer, Spin } from "antd";
 import { message } from "@/utils/antdMessage";
 
 import { request } from "../../../api/request";
+import { useTheme } from "../../../context/ThemeContext";
 import { withFromWorkspace } from "../../../utils/fromWorkspace";
 
 const MonacoEditor = lazy(() => import("@monaco-editor/react"));
 
 interface FileEditModalProps {
   open: boolean;
-  agentId: string;
+  agentId?: string;
   /** Workspace path, e.g. "/SOUL.md" */
   filePath: string | null;
+  /** When set, edit this value in memory instead of loading from the workspace. */
+  localValue?: string;
   onClose: () => void;
   onSaved: () => void;
+  onLocalSave?: (content: string) => void;
+}
+
+function fileEditDrawerWidth(): number {
+  if (typeof window === "undefined") return 880;
+  return Math.min(880, window.innerWidth - 16);
 }
 
 export default function FileEditModal({
   open,
   agentId,
   filePath,
+  localValue,
   onClose,
   onSaved,
+  onLocalSave,
 }: FileEditModalProps) {
   const { t } = useTranslation();
+  const { isDark } = useTheme();
   const [value, setValue] = useState<string>("");
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
-    if (!open || !agentId || !filePath) return;
+    if (!open || !filePath) return;
+    if (onLocalSave) {
+      setValue(localValue ?? "");
+      setLoading(false);
+      return;
+    }
+    if (!agentId) return;
     let cancelled = false;
     setLoading(true);
     setValue("");
@@ -56,12 +74,20 @@ export default function FileEditModal({
     return () => {
       cancelled = true;
     };
-  }, [open, agentId, filePath]);
+  }, [open, agentId, filePath, localValue, onLocalSave]);
 
   const handleSave = async () => {
     if (!filePath) return;
-    setSaving(true);
     const filename = filePath.replace(/^\//, "");
+    if (onLocalSave) {
+      onLocalSave(value);
+      message.success(t("experts.fileSaved", { filename }));
+      onSaved();
+      onClose();
+      return;
+    }
+    if (!agentId) return;
+    setSaving(true);
     try {
       await request(
         withFromWorkspace(
@@ -87,18 +113,42 @@ export default function FileEditModal({
     : "";
 
   return (
-    <Modal
+    <Drawer
       open={open}
+      placement="right"
       title={title}
-      width="min(860px, 90vw)"
-      style={{ top: 40 }}
-      styles={{ body: { height: "60vh", padding: 0, overflow: "hidden" } }}
-      onCancel={onClose}
-      onOk={handleSave}
-      okText={t("common.save")}
-      cancelText={t("common.cancel")}
-      confirmLoading={saving}
+      width={fileEditDrawerWidth()}
+      onClose={onClose}
       destroyOnHidden
+      styles={{
+        body: {
+          padding: 0,
+          display: "flex",
+          flexDirection: "column",
+          overflow: "hidden",
+        },
+        footer: { padding: "12px 20px" },
+      }}
+      footer={
+        <div
+          style={{
+            display: "flex",
+            justifyContent: "flex-end",
+            gap: 8,
+          }}
+        >
+          <Button onClick={onClose} disabled={saving}>
+            {t("common.cancel")}
+          </Button>
+          <Button
+            type="primary"
+            loading={saving}
+            onClick={() => void handleSave()}
+          >
+            {t("common.save")}
+          </Button>
+        </div>
+      }
     >
       {loading ? (
         <div
@@ -106,7 +156,8 @@ export default function FileEditModal({
             display: "flex",
             alignItems: "center",
             justifyContent: "center",
-            height: "100%",
+            flex: 1,
+            minHeight: 240,
           }}
         >
           <Spin />
@@ -119,28 +170,32 @@ export default function FileEditModal({
                 display: "flex",
                 alignItems: "center",
                 justifyContent: "center",
-                height: "100%",
+                flex: 1,
+                minHeight: 240,
               }}
             >
               <Spin tip="Loading editor…" />
             </div>
           }
         >
-          <MonacoEditor
-            height="100%"
-            language="markdown"
-            value={value}
-            onChange={(v) => setValue(v ?? "")}
-            options={{
-              minimap: { enabled: false },
-              wordWrap: "on",
-              fontSize: 13,
-              lineNumbers: "on",
-              scrollBeyondLastLine: false,
-            }}
-          />
+          <div style={{ flex: 1, minHeight: 0, height: "100%" }}>
+            <MonacoEditor
+              height="100%"
+              language="markdown"
+              theme={isDark ? "vs-dark" : "light"}
+              value={value}
+              onChange={(v) => setValue(v ?? "")}
+              options={{
+                minimap: { enabled: false },
+                wordWrap: "on",
+                fontSize: 13,
+                lineNumbers: "on",
+                scrollBeyondLastLine: false,
+              }}
+            />
+          </div>
         </Suspense>
       )}
-    </Modal>
+    </Drawer>
   );
 }

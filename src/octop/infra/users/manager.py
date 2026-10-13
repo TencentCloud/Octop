@@ -10,6 +10,7 @@ import re
 import shutil
 import sqlite3
 import time
+from pathlib import Path
 from typing import Any
 
 try:
@@ -17,6 +18,7 @@ try:
 except ImportError:  # pragma: no cover - optional PostgreSQL driver
     pg_errors = None  # type: ignore[assignment]
 
+from octop.infra.db.repos._base import UNSET
 from octop.infra.db.repos.audit import ACTOR_ADMIN
 from octop.infra.db.repos.users import UserRepo
 from octop.infra.db.services import SharedServices
@@ -105,7 +107,7 @@ class UserManager:
                 user = User(
                     id=row.id,
                     username=row.username,
-                    role=Role(row.role),
+                    role=str(row.role),
                     display_name=row.display_name,
                     locale=normalize_locale(row.locale),
                     permissions=list(row.permissions),
@@ -123,11 +125,12 @@ class UserManager:
         *,
         username: str,
         password: str,
-        role: Role,
+        role: Role | str,
         display_name: str | None = None,
         locale: str | None = None,
         permissions: builtins.list[str] | None = None,
         email: str | None = None,
+        role_name: str | None = None,
     ) -> User:
         if not username:
             raise OctopError(ErrorCode.USERNAME_TAKEN, "username must not be empty")
@@ -138,6 +141,7 @@ class UserManager:
         except ValueError as exc:
             raise OctopError(ErrorCode.FORBIDDEN, str(exc), status=400) from exc
         normalized_email = parse_optional_email(email)
+        role_id = str(role)
         async with self._lock:
             if self._services.user_repo.get_by_username(username) is not None:
                 raise OctopError(
@@ -156,11 +160,12 @@ class UserManager:
                 uid = self._services.user_repo.create(
                     username=username,
                     password_hash=hash_password(password),
-                    role=role.value,
+                    role=role_id,
                     display_name=display_name,
                     locale=loc,
                     email=normalized_email,
                     permissions=keys,
+                    role_name=role_name,
                 )
             except Exception as exc:
                 if _is_unique_violation(exc) and normalized_email is not None:
@@ -172,7 +177,7 @@ class UserManager:
             user = User(
                 id=uid,
                 username=username,
-                role=role,
+                role=role_id,
                 display_name=display_name,
                 locale=loc,
                 permissions=keys,
@@ -246,6 +251,13 @@ class UserManager:
             display_name = _claim_display_name(claims)
 
             if row is None:
+                from octop.infra.db.repos.user_roles import seeded_user_role_assignment
+
+                assignment = seeded_user_role_assignment(self._services.db)
+                sso_role_id = assignment[0] if assignment else Role.USER
+                sso_role_name = assignment[1] if assignment else None
+                sso_permissions = list(assignment[2]) if assignment else []
+                sso_policies = list(assignment[3]) if assignment else []
                 for attempt in range(3):
                     if (
                         email is not None
@@ -257,11 +269,18 @@ class UserManager:
                         uid = self._services.user_repo.create(
                             username=username,
                             password_hash=None,
-                            role=Role.USER.value,
+                            role=sso_role_id,
                             display_name=display_name,
                             email=email,
                             sso_provider_id=provider_id,
                             sso_subject=subject,
+                            permissions=sso_permissions,
+                            role_name=sso_role_name,
+                        )
+                        if sso_policies:
+                            self._services.user_policy_repo.merge(uid, dict(sso_policies))
+                        self._services.user_repo.upsert_sso_identity(
+                            uid, provider_id=provider_id, subject=subject
                         )
                     except Exception as exc:
                         if not _is_unique_violation(exc):
@@ -276,9 +295,9 @@ class UserManager:
                         user = User(
                             id=uid,
                             username=username,
-                            role=Role.USER,
+                            role=sso_role_id,
                             display_name=display_name,
-                            permissions=[],
+                            permissions=list(sso_permissions),
                         )
                         self._users[username] = user
                         self._services.audit_repo.write(
@@ -296,23 +315,140 @@ class UserManager:
             self._services.user_repo.update_sso_profile(
                 row.id,
                 email=email,
-                display_name=display_name,
             )
             cached_user = self._users.get(row.username)
             if cached_user is None:
                 user = User(
                     id=row.id,
                     username=row.username,
-                    role=Role(row.role),
-                    display_name=display_name if display_name is not None else row.display_name,
+                    role=str(row.role),
+                    display_name=row.display_name,
                     locale=normalize_locale(row.locale),
                     permissions=list(row.permissions),
                 )
                 self._users[row.username] = user
                 return user
-            if display_name is not None:
-                cached_user.display_name = display_name
             return cached_user
+
+    async def bind_sso_identity(
+        self,
+        *,
+        user_id: int,
+        provider_id: int,
+        subject: str,
+        claims: dict[str, Any],
+    ) -> User:
+        async with self._lock:
+            row = self._services.user_repo.get(user_id)
+            if row is None:
+                raise OctopError(ErrorCode.NOT_FOUND, "user not found")
+            if row.disabled:
+                raise OctopError(ErrorCode.USER_DISABLED, "user is disabled")
+            owner = self._services.user_repo.get_by_sso(provider_id, subject)
+            if owner is not None and owner.id != row.id:
+                raise OctopError(
+                    ErrorCode.SSO_IDENTITY_TAKEN,
+                    "this identity is already linked to another user",
+                )
+            email = _normalized_claim_email(claims)
+            if email is not None:
+                email_owner = self._services.user_repo.get_by_email(email)
+                if email_owner is not None and email_owner.id != row.id:
+                    email = None
+            try:
+                self._services.user_repo.upsert_sso_identity(
+                    row.id, provider_id=provider_id, subject=subject
+                )
+            except Exception as exc:
+                if _is_unique_violation(exc):
+                    raise OctopError(
+                        ErrorCode.SSO_IDENTITY_TAKEN,
+                        "this identity is already linked to another user",
+                    ) from exc
+                raise
+            self._services.user_repo.update_sso_profile(
+                row.id,
+                email=email,
+            )
+            self._services.audit_repo.write(
+                actor=row.username, action="user.sso_bind", target=row.username
+            )
+            cached = self._users.get(row.username)
+            if cached is None:
+                cached = User(
+                    id=row.id,
+                    username=row.username,
+                    role=str(row.role),
+                    display_name=row.display_name,
+                    locale=normalize_locale(row.locale),
+                    permissions=list(row.permissions),
+                )
+                self._users[row.username] = cached
+            return cached
+
+    async def unbind_sso_identity(self, *, user_id: int, kind: str) -> User:
+        async with self._lock:
+            row = self._services.user_repo.get(user_id)
+            if row is None:
+                raise OctopError(ErrorCode.NOT_FOUND, "user not found")
+            provider = self._services.sso_repo.get_by_kind(kind)
+            if provider is None:
+                raise OctopError(ErrorCode.NOT_FOUND, f"SSO provider {kind!r} not configured")
+            identities = self._services.user_repo.list_sso_identities(row.id)
+            linked = next((item for item in identities if item.provider_id == provider.id), None)
+            if linked is None:
+                return self._cached_or_row_user(row)
+            remaining = [item for item in identities if item.provider_id != provider.id]
+            if row.password_hash is None and not remaining:
+                raise OctopError(
+                    ErrorCode.SSO_UNBIND_REQUIRES_PASSWORD,
+                    "set a password before unlinking single sign-on",
+                )
+            self._services.user_repo.remove_sso_identity(row.id, provider_id=provider.id)
+            self._services.audit_repo.write(
+                actor=row.username, action="user.sso_unbind", target=row.username
+            )
+            return self._cached_or_row_user(row)
+
+    def list_sso_identities(self, user_id: int) -> builtins.list[Any]:
+        return self._services.user_repo.list_sso_identities(user_id)
+
+    def _cached_or_row_user(self, row: Any) -> User:
+        cached = self._users.get(row.username)
+        if cached is not None:
+            return cached
+        user = User(
+            id=row.id,
+            username=row.username,
+            role=str(row.role),
+            display_name=row.display_name,
+            locale=normalize_locale(row.locale),
+            permissions=list(row.permissions),
+        )
+        self._users[row.username] = user
+        return user
+
+    def raise_if_login_locked(self, username: str) -> None:
+        identifier = (username or "").strip()
+        if not identifier:
+            return
+        row = self._services.user_repo.get_by_username(identifier)
+        if row is None:
+            email = normalize_email(identifier)
+            if email is not None:
+                row = self._services.user_repo.get_by_email(email)
+        if row is None:
+            return
+        now = int(time.time())
+        locked_until = int(row.login_locked_until or 0)
+        if locked_until > now:
+            retry_after = locked_until - now
+            minutes = max(1, (retry_after + 59) // 60)
+            raise OctopError(
+                ErrorCode.LOGIN_LOCKED,
+                "account temporarily locked",
+                details={"retry_after_seconds": retry_after, "minutes": minutes},
+            )
 
     async def authenticate(self, username: str, password: str) -> User | None:
         identifier = (username or "").strip()
@@ -363,7 +499,7 @@ class UserManager:
             user = User(
                 id=row.id,
                 username=row.username,
-                role=Role(row.role),
+                role=str(row.role),
                 display_name=row.display_name,
                 locale=normalize_locale(row.locale),
                 permissions=list(row.permissions),
@@ -374,7 +510,16 @@ class UserManager:
 
     async def change_password(self, username: str, old: str, new: str) -> None:
         row = self._services.user_repo.get_by_username(username)
-        if row is None or not row.password_hash or not verify_password(old, row.password_hash):
+        if row is None:
+            raise OctopError(ErrorCode.AUTH_FAILED, "current password incorrect")
+        if not row.password_hash:
+            # Accounts provisioned from a directory (or SSO) never hold a local
+            # password, so "current password incorrect" would be misleading.
+            raise OctopError(
+                ErrorCode.PASSWORD_NOT_SET,
+                "this account has no local password to change",
+            )
+        if not verify_password(old, row.password_hash):
             raise OctopError(ErrorCode.AUTH_FAILED, "current password incorrect")
         validate_password_policy(new, old_password=old)
         self._services.user_repo.set_password_hash(row.id, hash_password(new))
@@ -415,20 +560,88 @@ class UserManager:
             payload=",".join(keys),
         )
 
-    async def set_role(self, username: str, role: Role) -> None:
+    async def set_resource_policy(
+        self,
+        username: str,
+        *,
+        workspace_root_dir: Any = UNSET,
+        token_quota: Any = UNSET,
+        max_agents: Any = UNSET,
+    ) -> None:
+        from octop.infra.users.resource_policy import (
+            POLICY_MAX_AGENTS,
+            POLICY_TOKEN_QUOTA,
+            POLICY_WORKSPACE_ROOT_DIR,
+            normalize_max_agents,
+            normalize_token_quota,
+            normalize_workspace_root_dir,
+        )
+
         row = self._services.user_repo.get_by_username(username)
         if row is None:
             raise OctopError(ErrorCode.NOT_FOUND, "user not found")
-        self._services.user_repo.set_role(row.id, role.value)
+        updates: dict[str, str | None] = {}
+        root_arg: Any = UNSET
+        quota_arg: Any = UNSET
+        max_agents_arg: Any = UNSET
+        if workspace_root_dir is not UNSET:
+            root_arg = normalize_workspace_root_dir(workspace_root_dir)
+            updates[POLICY_WORKSPACE_ROOT_DIR] = root_arg
+        if token_quota is not UNSET:
+            quota_arg = normalize_token_quota(token_quota)
+            updates[POLICY_TOKEN_QUOTA] = None if quota_arg is None else str(quota_arg)
+        if max_agents is not UNSET:
+            max_agents_arg = normalize_max_agents(max_agents)
+            updates[POLICY_MAX_AGENTS] = None if max_agents_arg is None else str(max_agents_arg)
+        if not updates:
+            return
+        self._services.user_policy_repo.merge(row.id, updates)
+        if workspace_root_dir is not UNSET:
+            self._services.audit_repo.write(
+                actor=ACTOR_ADMIN,
+                action="user.set_workspace_root_dir",
+                target=username,
+                payload=root_arg or "",
+            )
+        if token_quota is not UNSET:
+            self._services.audit_repo.write(
+                actor=ACTOR_ADMIN,
+                action="user.set_token_quota",
+                target=username,
+                payload=str(quota_arg) if quota_arg is not None else "",
+            )
+        if max_agents is not UNSET:
+            self._services.audit_repo.write(
+                actor=ACTOR_ADMIN,
+                action="user.set_max_agents",
+                target=username,
+                payload=str(max_agents_arg) if max_agents_arg is not None else "",
+            )
+
+    async def set_workspace_root_dir(self, username: str, workspace_root_dir: str | None) -> None:
+        await self.set_resource_policy(username, workspace_root_dir=workspace_root_dir)
+
+    async def set_token_quota(self, username: str, token_quota: int | None) -> None:
+        await self.set_resource_policy(username, token_quota=token_quota)
+
+    async def set_max_agents(self, username: str, max_agents: int | None) -> None:
+        await self.set_resource_policy(username, max_agents=max_agents)
+
+    async def set_role(self, username: str, role: Role | str) -> None:
+        row = self._services.user_repo.get_by_username(username)
+        if row is None:
+            raise OctopError(ErrorCode.NOT_FOUND, "user not found")
+        role_id = str(role)
+        self._services.user_repo.set_role(row.id, role_id)
         async with self._lock:
             current = self._users.get(username)
             if current is not None:
-                current.role = role
+                current.role = role_id
         self._services.audit_repo.write(
             actor=ACTOR_ADMIN,
             action="user.set_role",
             target=username,
-            payload=role.value,
+            payload=role_id,
         )
 
     async def set_display_name(self, username: str, display_name: str | None) -> None:
@@ -532,7 +745,7 @@ class UserManager:
         user = User(
             id=row.id,
             username=row.username,
-            role=Role(row.role),
+            role=str(row.role),
             display_name=row.display_name,
             locale=normalize_locale(row.locale),
             permissions=list(row.permissions),
@@ -550,17 +763,125 @@ class UserManager:
             actor=ACTOR_ADMIN, action="user.unlock_login", target=username
         )
 
-    async def remove(self, username: str) -> None:
+    async def remove(self, username: str, *, agent_manager: Any | None = None) -> None:
+        """Delete the user, their agents' workspaces, and checkpoint data.
+
+        Owned agent directories are removed before the user row, so a
+        filesystem failure leaves the account in place and retryable.
+        Threads this user opened on someone else's agent lose their
+        checkpoints first; the thread rows then follow the user delete.
+        ``agent_manager`` unloads a running harness before the workspace
+        is removed. Without it (CLI), only the on-disk store is cleaned.
+        """
         row = self._services.user_repo.get_by_username(username)
         if row is None:
             raise OctopError(ErrorCode.NOT_FOUND, "user not found")
+        owned = self._services.agent_repo.list_by_user(row.id)
+        owned_ids = {agent.agent_id for agent in owned}
+        if agent_manager is not None:
+            agent_manager.assert_agents_deletable([agent.agent_id for agent in owned])
+        await self._delete_foreign_checkpoints(row.id, owned_ids, agent_manager)
+        workspaces = self._owned_workspaces(owned)
+        if agent_manager is not None:
+            for agent in owned:
+                await agent_manager.delete(agent.agent_id)
+        else:
+            await asyncio.to_thread(self._purge_owned_stores, owned)
+            await asyncio.to_thread(self._remove_owned_dirs, owned)
+        await asyncio.to_thread(self._remove_paths, workspaces)
         async with self._lock:
             self._users.pop(username, None)
-        user_dir = self._services.paths.user_dir(row.username)
-        try:
-            if user_dir.exists():
-                shutil.rmtree(user_dir)
-        except OSError:
-            logger.exception("rmtree failed for %s; user removed from DB anyway", user_dir)
+        await asyncio.to_thread(self._remove_user_files, row.id, row.username)
         self._services.user_repo.delete(row.id)
         self._services.audit_repo.write(actor=ACTOR_ADMIN, action="user.delete", target=username)
+
+    def _purge_owned_stores(self, owned: builtins.list[Any]) -> None:
+        """CLI user delete has no harness. Still drop each agent's memory store."""
+        from octop.infra.agents.memory.thread_cleanup import (
+            agent_config_from_row,
+            delete_agent_memory_and_checkpoints,
+            workspace_for_agent_row,
+        )
+
+        for agent in owned:
+            delete_agent_memory_and_checkpoints(
+                agent_id=agent.agent_id,
+                thread_ids=self._services.thread_repo.list_ids_for_agent(agent.agent_id),
+                cfg=agent_config_from_row(agent),
+                octop_config=self._services.config,
+                workspace_dir=workspace_for_agent_row(agent, paths=self._services.paths),
+                paths=self._services.paths,
+            )
+
+    def _remove_owned_dirs(self, owned: builtins.list[Any]) -> None:
+        from octop.infra.agents.memory.thread_cleanup import agent_config_from_row
+        from octop.infra.agents.workspace.dir import remove_agent_host_dirs
+
+        for agent in owned:
+            remove_agent_host_dirs(
+                agent_config_from_row(agent),
+                paths=self._services.paths,
+                agent_id=agent.agent_id,
+            )
+
+    def _owned_workspaces(self, owned: builtins.list[Any]) -> builtins.list[Path]:
+        from octop.infra.agents.memory.thread_cleanup import workspace_for_agent_row
+
+        return [workspace_for_agent_row(agent, paths=self._services.paths) for agent in owned]
+
+    async def _delete_foreign_checkpoints(
+        self,
+        user_id: int,
+        owned_ids: set[str],
+        agent_manager: Any | None,
+    ) -> None:
+        foreign = [
+            pair
+            for pair in self._services.thread_repo.list_for_user(user_id)
+            if pair[0] not in owned_ids
+        ]
+        if not foreign:
+            return
+        if agent_manager is not None:
+            for agent_id, thread_id in foreign:
+                await agent_manager.delete_thread_checkpoint(agent_id, thread_id)
+            return
+        await asyncio.to_thread(self._delete_foreign_checkpoints_offline, foreign)
+
+    def _delete_foreign_checkpoints_offline(self, foreign: builtins.list[tuple[str, str]]) -> None:
+        from octop.infra.agents.memory.thread_cleanup import (
+            agent_config_from_row,
+            delete_stored_thread,
+            workspace_for_agent_row,
+        )
+
+        for agent_id, thread_id in foreign:
+            agent = self._services.agent_repo.get(agent_id)
+            if agent is None:
+                continue
+            delete_stored_thread(
+                agent_id=agent_id,
+                thread_id=thread_id,
+                cfg=agent_config_from_row(agent),
+                octop_config=self._services.config,
+                workspace_dir=workspace_for_agent_row(agent, paths=self._services.paths),
+            )
+
+    def _remove_paths(self, paths: builtins.list[Path]) -> None:
+        for path in paths:
+            if not path.exists():
+                continue
+            try:
+                shutil.rmtree(path)
+            except OSError as exc:
+                logger.exception("rmtree failed for %s", path)
+                raise OctopError(
+                    ErrorCode.CHECKPOINT_DELETE_FAILED,
+                    f"could not remove {path}",
+                ) from exc
+
+    def _remove_user_files(self, user_id: int, username: str) -> None:
+        from octop.infra.users.profile_avatar import delete_profile_avatar
+
+        self._remove_paths([self._services.paths.user_dir(username)])
+        delete_profile_avatar(self._services.paths.user_avatars_dir, str(user_id))

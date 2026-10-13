@@ -3,6 +3,7 @@ import { Cpu } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import type { UserComposerContext } from "../hooks/useChat";
 import type { SkillSpec } from "../../Agent/Skills/useSkills";
+import { useSkillDisplayName } from "../../Agent/Skills/skillDisplayNames";
 import type { KnowledgeBase } from "../../../api/modules/knowledgeBases";
 import type { ChatAgentOption } from "./ExpertAgentAvatar";
 import ExpertAgentAvatar from "./ExpertAgentAvatar";
@@ -25,11 +26,23 @@ interface UserMessageComposerTagsProps {
   lookups?: ComposerTagLookups;
 }
 
+export function hasUserComposerTags(context?: UserComposerContext): boolean {
+  if (!context) return false;
+  return Boolean(
+    context.skills?.length ||
+      context.connectors?.length ||
+      context.knowledgeBaseIds?.length ||
+      context.targetAgents?.length ||
+      context.model,
+  );
+}
+
 export default function UserMessageComposerTags({
   context,
   lookups,
 }: UserMessageComposerTagsProps) {
   const { t } = useTranslation();
+  const skillDisplayName = useSkillDisplayName();
 
   const tags = useMemo(() => {
     if (!context) return [];
@@ -42,12 +55,16 @@ export default function UserMessageComposerTags({
     }> = [];
 
     for (const slug of context.skills ?? []) {
-      const skill = lookups?.skills?.find((s) => s.slug === slug);
+      const skill = lookups?.skills?.find(
+        (s) => s.slug.toLowerCase() === slug.toLowerCase(),
+      );
       items.push({
         key: `skill-${slug}`,
         variant: "skill",
         icon: skill ? skillChipIcon(skill) : "✦",
-        label: skill?.name || slug,
+        label: skill
+          ? skillDisplayName(skill)
+          : skillDisplayName({ slug, name: slug }),
       });
     }
 
@@ -108,7 +125,7 @@ export default function UserMessageComposerTags({
     }
 
     return items;
-  }, [context, lookups]);
+  }, [context, lookups, skillDisplayName]);
 
   if (tags.length === 0) return null;
 

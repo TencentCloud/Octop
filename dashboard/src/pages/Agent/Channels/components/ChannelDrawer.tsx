@@ -25,6 +25,7 @@ import {
   CHANNEL_LABEL_KEYS,
   CHANNEL_URLS,
   DEFAULT_CHANNEL_DISPLAY_CONFIG,
+  applyQqChannelSaveConfig,
   DEFAULT_QQ_GROUP_CONTEXT_CONFIG,
   normalizeChannelFieldValue,
   normalizeQqGroupContextConfig,
@@ -159,8 +160,29 @@ interface ChannelDrawerProps {
   agentId: string;
 }
 
-function FormItemForField({ field }: { field: ChannelField }) {
+function FormItemForField({
+  field,
+  disabled = false,
+}: {
+  field: ChannelField;
+  disabled?: boolean;
+}) {
   const { t } = useTranslation();
+  const label = field.label.startsWith("channels.")
+    ? t(field.label)
+    : field.label;
+  if (field.type === "switch") {
+    return (
+      <Form.Item
+        name={field.name}
+        label={label}
+        valuePropName="checked"
+        extra={field.helpKey ? t(field.helpKey) : undefined}
+      >
+        <Switch />
+      </Form.Item>
+    );
+  }
   const Input1 =
     field.type === "password"
       ? Input.Password
@@ -171,7 +193,7 @@ function FormItemForField({ field }: { field: ChannelField }) {
     ? [
         {
           required: true,
-          message: t("channels.fieldRequired", { label: field.label }),
+          message: t("channels.fieldRequired", { label }),
         },
       ]
     : [];
@@ -189,9 +211,24 @@ function FormItemForField({ field }: { field: ChannelField }) {
       },
     });
   }
+  if (
+    field.name === "allowed_channel_ids" ||
+    field.name === "allowed_user_ids"
+  ) {
+    rules.push({
+      validator: async (_: unknown, value: unknown) => {
+        try {
+          normalizeChannelFieldValue(field.name, value);
+        } catch {
+          throw new Error(t("channels.discordInvalidIds"));
+        }
+      },
+    });
+  }
   return (
-    <Form.Item name={field.name} label={field.label} rules={rules}>
+    <Form.Item name={field.name} label={label} rules={rules}>
       <Input1
+        disabled={disabled}
         placeholder={field.placeholder}
         {...(field.type === "textarea" || field.type === "json"
           ? { rows: 5 }
@@ -407,9 +444,12 @@ function QqGroupContextPolicyFields({
 
 function DisplaySettingsFields() {
   const { t } = useTranslation();
+  const kind = Form.useWatch("kind");
+  const isQq = kind === "qq";
   const responseMode =
     Form.useWatch("response_mode") ??
     DEFAULT_CHANNEL_DISPLAY_CONFIG.response_mode;
+  const disableStreamToggles = !isQq && responseMode === "invoke";
   return (
     <div className={styles.displaySettings}>
       <div className={styles.displaySettingsTitle}>
@@ -423,39 +463,43 @@ function DisplaySettingsFields() {
       >
         <Switch />
       </Form.Item>
-      <Form.Item
-        name="response_mode"
-        label={t("channels.responseMode")}
-        tooltip={t("channels.responseModeDesc")}
-      >
-        <Segmented
-          options={[
-            {
-              label: t("channels.responseModeInvoke"),
-              value: "invoke",
-            },
-            {
-              label: t("channels.responseModeStream"),
-              value: "stream",
-            },
-          ]}
-        />
-      </Form.Item>
+      {!isQq && (
+        <Form.Item
+          name="response_mode"
+          label={t("channels.responseMode")}
+          tooltip={t("channels.responseModeDesc")}
+        >
+          <Segmented
+            options={[
+              {
+                label: t("channels.responseModeInvoke"),
+                value: "invoke",
+              },
+              {
+                label: t("channels.responseModeStream"),
+                value: "stream",
+              },
+            ]}
+          />
+        </Form.Item>
+      )}
       <Form.Item
         name="show_thinking"
         label={t("channels.showThinking")}
         tooltip={t("channels.showThinkingDesc")}
         valuePropName="checked"
       >
-        <Switch disabled={responseMode === "invoke"} />
+        <Switch disabled={disableStreamToggles} />
       </Form.Item>
       <Form.Item
         name="show_tool_hints"
         label={t("channels.showToolHints")}
-        tooltip={t("channels.showToolHintsDesc")}
+        tooltip={t(
+          isQq ? "channels.showToolHintsQqDesc" : "channels.showToolHintsDesc",
+        )}
         valuePropName="checked"
       >
-        <Switch disabled={responseMode === "invoke"} />
+        <Switch disabled={disableStreamToggles} />
       </Form.Item>
     </div>
   );
@@ -478,6 +522,8 @@ export function ChannelDrawer({
   agentId,
 }: ChannelDrawerProps) {
   const { t } = useTranslation();
+  const allowAllDiscordChannels =
+    Form.useWatch("allow_all_channels", form) !== false;
   const isEdit = editing !== null;
   const [selectedKind, setSelectedKind] = useState<ChannelKey>(
     initialValues?.kind ?? "feishu",
@@ -922,11 +968,12 @@ export function ChannelDrawer({
   }, [form]);
 
   const mergeDisplayConfig = useCallback(
-    (config: Record<string, unknown>) => ({
-      ...config,
-      ...getDisplayConfig(),
-    }),
-    [getDisplayConfig],
+    (config: Record<string, unknown>) => {
+      const next = { ...config, ...getDisplayConfig() };
+      applyQqChannelSaveConfig(next, selectedKind);
+      return next;
+    },
+    [getDisplayConfig, selectedKind],
   );
 
   const getQqGroupContextConfig = useCallback(
@@ -1130,7 +1177,15 @@ export function ChannelDrawer({
     };
     if (hasSchema) {
       for (const [k, v] of Object.entries(rest)) {
-        if (k === "name" || v === undefined || v === null || v === "") continue;
+        if (
+          k === "name" ||
+          k === "c2c_streaming" ||
+          v === undefined ||
+          v === null ||
+          v === ""
+        ) {
+          continue;
+        }
         config[k] = normalizeChannelFieldValue(k, v);
       }
     } else if (__raw_config !== undefined) {
@@ -1155,6 +1210,7 @@ export function ChannelDrawer({
       show_tool_hints:
         show_tool_hints ?? DEFAULT_CHANNEL_DISPLAY_CONFIG.show_tool_hints,
     };
+    applyQqChannelSaveConfig(config, kind);
     void (async () => {
       const ok = await onSubmit(kind, kind, config, values.enabled ?? false);
       if (ok) clearFormDraft(draftScope);
@@ -1764,6 +1820,9 @@ export function ChannelDrawer({
             />
           )}
 
+          <Form.Item name="kind" hidden>
+            <Input />
+          </Form.Item>
           {selectedKind === "qq" && <QqGroupContextPolicyFields form={form} />}
 
           {(configMode === "quick" || isQuickOnly) &&
@@ -1820,8 +1879,26 @@ export function ChannelDrawer({
                 </Form.Item>
               )}
 
+              {selectedKind === "discord" && (
+                <Alert
+                  type="info"
+                  showIcon
+                  message={t("channels.discordSetupHelp")}
+                  style={{ marginBottom: 16 }}
+                />
+              )}
               {hasSchema ? (
-                fields!.map((f) => <FormItemForField key={f.name} field={f} />)
+                fields!.map((f) => (
+                  <FormItemForField
+                    key={f.name}
+                    field={f}
+                    disabled={
+                      selectedKind === "discord" &&
+                      f.name === "allowed_channel_ids" &&
+                      allowAllDiscordChannels
+                    }
+                  />
+                ))
               ) : (
                 <Form.Item
                   name="__raw_config"

@@ -1,7 +1,16 @@
 // dashboard/src/pages/Experts/components/CreateFromExpertDrawer.tsx
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Alert, Collapse, Drawer, Form, Input, Select, Spin } from "antd";
+import {
+  Alert,
+  Button,
+  Collapse,
+  Drawer,
+  Form,
+  Input,
+  Select,
+  Spin,
+} from "antd";
 import { message } from "@/utils/antdMessage";
 
 import { request } from "../../../api/request";
@@ -39,6 +48,11 @@ import {
   defaultModelFromForm,
   MODEL_AUTO_VALUE,
 } from "../../../utils/modelOptions";
+import {
+  CONVERSATION_MODES,
+  DEFAULT_CONVERSATION_MODE,
+  type ConversationMode,
+} from "../../Chat/utils/conversationMode";
 import type { ExpertSummary } from "./ExpertCard";
 import { groupExpertFiles, type NamedFileContent } from "./expertFileGroups";
 import { metaForFile } from "./iconForName";
@@ -57,6 +71,29 @@ import {
 } from "./agentBackendForm";
 import AgentBackendFields from "./AgentBackendFields";
 import ExpertAvatarPicker from "./ExpertAvatarPicker";
+import ExpertComposerDefaultsFields from "./ExpertComposerDefaultsFields";
+import WelcomeConfig, { type WelcomeConfigRef } from "./WelcomeConfig";
+import {
+  normalizeQuickPrompts,
+  serializeQuickPrompts,
+  shouldWriteWelcomeManifest,
+  type QuickPrompt,
+} from "./welcomeManifest";
+import FileEditModal from "./FileEditModal";
+import SkillSourcePickerModal, {
+  type PickedAgentSkill,
+  type PickedHubSkill,
+} from "./SkillSourcePickerModal";
+import SubagentSourcePickerModal, {
+  type PickedCatalogSubagent,
+} from "./SubagentSourcePickerModal";
+import {
+  diffComposerFiles,
+  ensurePromptFiles,
+  removeComposerSkill,
+  removeComposerSubagent,
+  upsertComposerFile,
+} from "./composerFiles";
 import styles from "../index.module.less";
 
 type FileContent = NamedFileContent;
@@ -64,6 +101,7 @@ type FileContent = NamedFileContent;
 interface ExpertDetail {
   file_contents?: FileContent[];
   welcome_message?: { zh?: string; en?: string };
+  quick_prompts?: QuickPrompt[];
 }
 
 export type CreateFromTemplateSource =
@@ -125,16 +163,46 @@ function sourceDefaults(
   };
 }
 
+function warnComposerPartial(
+  body: { hub_skill_errors?: string[]; copy_skill_errors?: string[] },
+  t: (key: string, opts?: Record<string, string>) => string,
+) {
+  if (body.hub_skill_errors?.length) {
+    message.warning(
+      t("experts.hubSkillsPartial", {
+        names: body.hub_skill_errors.join(", "),
+      }),
+    );
+  }
+  if (body.copy_skill_errors?.length) {
+    message.warning(
+      t("experts.copySkillsPartial", {
+        names: body.copy_skill_errors.join(", "),
+      }),
+    );
+  }
+}
+
+function sourceQuickPrompts(source: CreateFromTemplateSource): QuickPrompt[] {
+  return normalizeQuickPrompts(source.expert.quick_prompts);
+}
+
 function sourceIcon(source: CreateFromTemplateSource | null): {
   iconUrl: string | null;
   iconName: string | null;
 } {
   if (!source) return { iconUrl: null, iconName: null };
   if (source.kind === "builtin") {
-    return { iconUrl: null, iconName: source.expert.icon_name ?? null };
+    return {
+      iconUrl: source.expert.icon_url ?? null,
+      iconName: source.expert.icon_name ?? null,
+    };
   }
   if (source.kind === "published") {
-    return { iconUrl: null, iconName: source.expert.icon_name };
+    return {
+      iconUrl: source.expert.icon_url ?? null,
+      iconName: source.expert.icon_name,
+    };
   }
   return {
     iconUrl: source.expert.icon_url ?? null,
@@ -157,10 +225,13 @@ export default function CreateFromExpertDrawer({
       agent_id?: string;
       welcome_message?: string;
       default_model: string;
+      conversation_mode: ConversationMode;
       backend_choice: string;
       composite_default: string;
       root_dir?: string;
       skill_package_ids?: string[];
+      knowledge_base_ids?: string[];
+      mcp_servers?: string[];
       enable_trajectory?: boolean;
     } & AgentRuntimeFormValues
   >();
@@ -172,12 +243,29 @@ export default function CreateFromExpertDrawer({
   const [pathMappings, setPathMappings] = useState<PathMapping[]>([]);
 
   const [fileContents, setFileContents] = useState<FileContent[]>([]);
+  const [originalFileContents, setOriginalFileContents] = useState<
+    FileContent[]
+  >([]);
+  const [pendingHubSkills, setPendingHubSkills] = useState<PickedHubSkill[]>(
+    [],
+  );
+  const [pendingCopySkills, setPendingCopySkills] = useState<
+    { agent_id: string; slug: string }[]
+  >([]);
+  const [skillPickerOpen, setSkillPickerOpen] = useState(false);
+  const [subagentPickerOpen, setSubagentPickerOpen] = useState(false);
+  const [localEditPath, setLocalEditPath] = useState<string | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
   const [skillPackages, setSkillPackages] = useState<SkillPackage[]>([]);
   const [skillPackagesLoading, setSkillPackagesLoading] = useState(false);
   const [colorPalette, setColorPalette] = useState<string>("rose");
   const [avatarFile, setAvatarFile] = useState<File | null>(null);
   const [avatarPreview, setAvatarPreview] = useState<string | null>(null);
+  const [detailPrompts, setDetailPrompts] = useState<QuickPrompt[] | null>(
+    null,
+  );
+  const [promptsSourceKey, setPromptsSourceKey] = useState("");
+  const welcomeConfigRef = useRef<WelcomeConfigRef>(null);
 
   const backendChoice =
     Form.useWatch("backend_choice", form) ?? DEFAULT_BACKEND;
@@ -198,6 +286,15 @@ export default function CreateFromExpertDrawer({
     if (source.kind === "published") return `published:${source.expert.id}`;
     return `market:${source.expert.slug}`;
   }, [source]);
+  const listPrompts = useMemo(
+    () => (source ? sourceQuickPrompts(source) : []),
+    [source],
+  );
+  if (promptsSourceKey !== sourceKey) {
+    setPromptsSourceKey(sourceKey);
+    setDetailPrompts(null);
+  }
+  const templatePrompts = detailPrompts ?? listPrompts;
 
   useEffect(() => {
     if (!open || !source) return;
@@ -217,14 +314,23 @@ export default function CreateFromExpertDrawer({
       agent_id: undefined,
       welcome_message: defaults.welcome_message,
       default_model: MODEL_AUTO_VALUE,
+      conversation_mode: DEFAULT_CONVERSATION_MODE,
       backend_choice: DEFAULT_BACKEND,
       composite_default: DEFAULT_BACKEND,
       skill_package_ids: [],
+      knowledge_base_ids: [],
+      mcp_servers: [],
       enable_trajectory: true,
     });
 
+    setPendingHubSkills([]);
+    setPendingCopySkills([]);
+    setLocalEditPath(null);
+    setSubagentPickerOpen(false);
+    setDetailPrompts(null);
     if (source.kind === "market") {
-      setFileContents([]);
+      setFileContents(ensurePromptFiles([]));
+      setOriginalFileContents([]);
       setDetailLoading(false);
       return;
     }
@@ -237,7 +343,10 @@ export default function CreateFromExpertDrawer({
     request<ExpertDetail>(detailPath)
       .then((data) => {
         if (cancelled) return;
-        setFileContents(data.file_contents ?? []);
+        const files = data.file_contents ?? [];
+        setFileContents(ensurePromptFiles(files));
+        setOriginalFileContents(files);
+        setDetailPrompts(normalizeQuickPrompts(data.quick_prompts));
         const welcome = data.welcome_message;
         const welcomeText = pickLocale(welcome, lang);
         if (welcomeText) {
@@ -247,7 +356,10 @@ export default function CreateFromExpertDrawer({
         }
       })
       .catch(() => {
-        if (!cancelled) setFileContents([]);
+        if (!cancelled) {
+          setFileContents([]);
+          setOriginalFileContents([]);
+        }
       })
       .finally(() => {
         if (!cancelled) setDetailLoading(false);
@@ -321,6 +433,16 @@ export default function CreateFromExpertDrawer({
       );
 
       const welcomeText = (stored.welcome_message ?? "").trim();
+      const composerPatch = diffComposerFiles(
+        originalFileContents,
+        fileContents,
+      );
+      const welcomeSnap = welcomeConfigRef.current?.getSnapshot();
+      const pageConfigPrompts =
+        welcomeSnap &&
+        shouldWriteWelcomeManifest(welcomeSnap.status, welcomeSnap.dirty)
+          ? serializeQuickPrompts(welcomeSnap.data.quick_prompts)
+          : undefined;
       const payload = {
         name: values.name,
         description: values.description || undefined,
@@ -330,15 +452,34 @@ export default function CreateFromExpertDrawer({
         skill_package_ids: skillPackagesSupported
           ? values.skill_package_ids ?? []
           : [],
+        knowledge_base_ids: values.knowledge_base_ids ?? [],
+        mcp_servers: values.mcp_servers ?? [],
         color: isCuratedPalette(colorPalette)
           ? expertPaletteColor(colorPalette)
           : colorPalette,
         ...(welcomeText ? { welcome_message: welcomeText } : {}),
         ...buildAgentRuntimeRequest(values),
         enable_trajectory: values.enable_trajectory === true,
+        conversation_mode: values.conversation_mode,
+        ...(composerPatch.file_overrides.length
+          ? { file_overrides: composerPatch.file_overrides }
+          : {}),
+        ...(composerPatch.omit_files.length
+          ? { omit_files: composerPatch.omit_files }
+          : {}),
+        ...(pendingHubSkills.length ? { hub_skills: pendingHubSkills } : {}),
+        ...(pendingCopySkills.length ? { copy_skills: pendingCopySkills } : {}),
+        ...(pageConfigPrompts !== undefined
+          ? { quick_prompts: pageConfigPrompts }
+          : {}),
       };
 
-      let body: { agent_id: string; name: string };
+      let body: {
+        agent_id: string;
+        name: string;
+        hub_skill_errors?: string[];
+        copy_skill_errors?: string[];
+      };
       if (source.kind === "builtin") {
         body = await request<{ agent_id: string; name: string }>(
           `/agents/from-expert/${encodeURIComponent(source.expert.id)}`,
@@ -354,7 +495,12 @@ export default function CreateFromExpertDrawer({
           source.expert.slug,
           payload,
         );
-        body = { agent_id: created.agent_id, name: created.name };
+        body = {
+          agent_id: created.agent_id,
+          name: created.name,
+          hub_skill_errors: created.hub_skill_errors,
+          copy_skill_errors: created.copy_skill_errors,
+        };
         const enrichment = created.market?.welcome_enrichment;
         if (enrichment === "pending") {
           message.success(
@@ -370,6 +516,7 @@ export default function CreateFromExpertDrawer({
       if (source.kind !== "market") {
         message.success(t("experts.agentCreated", { name: body.name }));
       }
+      warnComposerPartial(body, t);
       if (avatarFile) {
         try {
           await octopAgentsApi.uploadAvatar(body.agent_id, avatarFile);
@@ -413,7 +560,53 @@ export default function CreateFromExpertDrawer({
 
   const { configFiles, skillGroups, subagentFiles } =
     groupExpertFiles(fileContents);
-  const showFilePreview = source?.kind !== "market";
+  const showFilePreview = true;
+  const selectedSkillSlugs = useMemo(() => {
+    const slugs = new Set(skillGroups.map((group) => group.name));
+    for (const skill of pendingHubSkills) slugs.add(skill.skill_name);
+    for (const skill of pendingCopySkills) slugs.add(skill.slug);
+    return slugs;
+  }, [pendingCopySkills, pendingHubSkills, skillGroups]);
+
+  const localEditFile = localEditPath
+    ? fileContents.find((file) => file.name === localEditPath) ?? null
+    : null;
+
+  const handlePickHubSkill = (skill: PickedHubSkill) => {
+    setPendingHubSkills((prev) =>
+      prev.some((item) => item.skill_name === skill.skill_name)
+        ? prev
+        : [...prev, skill],
+    );
+  };
+
+  const handlePickAgentSkill = (skill: PickedAgentSkill) => {
+    setPendingCopySkills((prev) =>
+      prev.some((item) => item.slug === skill.slug)
+        ? prev
+        : [...prev, { agent_id: skill.agent_id, slug: skill.slug }],
+    );
+    setFileContents((prev) =>
+      upsertComposerFile(prev, {
+        name: `skills/${skill.slug}/SKILL.md`,
+        content: skill.content,
+      }),
+    );
+  };
+
+  const handlePickCatalogSubagent = (subagent: PickedCatalogSubagent) => {
+    setFileContents((prev) =>
+      upsertComposerFile(prev, {
+        name: `agents/${subagent.slug}.md`,
+        content: subagent.content,
+      }),
+    );
+  };
+
+  const selectedSubagentSlugs = useMemo(
+    () => new Set(subagentFiles.map((item) => item.slug)),
+    [subagentFiles],
+  );
 
   const title = source
     ? t("experts.createDrawerTitle", {
@@ -425,7 +618,7 @@ export default function CreateFromExpertDrawer({
     <Drawer
       open={open}
       title={title}
-      width={520}
+      width={640}
       onClose={onClose}
       destroyOnHidden
       footer={
@@ -450,7 +643,7 @@ export default function CreateFromExpertDrawer({
           showIcon
           message={t("experts.noModelsWarning")}
           action={
-            <a href="/admin/providers" style={{ whiteSpace: "nowrap" }}>
+            <a href="/admin/models" style={{ whiteSpace: "nowrap" }}>
               {t("experts.goToAdmin")}
             </a>
           }
@@ -513,6 +706,29 @@ export default function CreateFromExpertDrawer({
           />
         </Form.Item>
 
+        <Collapse
+          ghost
+          items={[
+            {
+              key: "pageConfig",
+              label: t("experts.pageConfigTitle"),
+              children:
+                detailLoading && templatePrompts.length === 0 ? (
+                  <div className={styles.welcomeConfigLoading}>
+                    {t("common.loading")}
+                  </div>
+                ) : (
+                  <WelcomeConfig
+                    key={sourceKey}
+                    ref={welcomeConfigRef}
+                    initialPrompts={templatePrompts}
+                    disabled={detailLoading || submitting}
+                  />
+                ),
+            },
+          ]}
+        />
+
         <Form.Item label={t("experts.avatar")}>
           <ExpertAvatarPicker
             iconUrl={avatarPreview ?? sourceIcon(source).iconUrl}
@@ -546,6 +762,20 @@ export default function CreateFromExpertDrawer({
 
         <Form.Item label={t("experts.color")} extra={t("experts.colorHint")}>
           <ExpertColorPicker value={colorPalette} onChange={setColorPalette} />
+        </Form.Item>
+
+        <Form.Item
+          name="conversation_mode"
+          label={t("experts.defaultModeLabel")}
+          tooltip={t("experts.defaultModeHint")}
+          initialValue={DEFAULT_CONVERSATION_MODE}
+        >
+          <Select
+            options={CONVERSATION_MODES.map((mode) => ({
+              value: mode,
+              label: t(`chat.conversationMode.${mode}`),
+            }))}
+          />
         </Form.Item>
 
         <Form.Item
@@ -599,6 +829,7 @@ export default function CreateFromExpertDrawer({
             placeholder={t("experts.skillPackagesPlaceholder")}
           />
         </Form.Item>
+        <ExpertComposerDefaultsFields />
 
         <Collapse
           ghost
@@ -618,281 +849,493 @@ export default function CreateFromExpertDrawer({
             <Spin size="small" />
           </div>
         ) : (
-          <>
-            {configFiles.length > 0 && (
-              <div style={{ marginTop: 8 }}>
-                <div style={{ fontSize: 13, fontWeight: 500, marginBottom: 8 }}>
-                  {t("experts.mdFilesTitle")}
-                </div>
-                <p
-                  style={{
-                    fontSize: 12,
-                    color: "var(--fn-text-tertiary)",
-                    margin: "0 0 8px",
-                  }}
-                >
-                  {t("experts.mdFilesHint")}
-                </p>
-                <Collapse
-                  size="small"
-                  items={configFiles.map((f) => {
-                    const meta = metaForFile(f.name, t);
-                    return {
-                      key: f.name,
-                      label: (
-                        <span
-                          style={{
-                            display: "inline-flex",
-                            alignItems: "baseline",
-                            gap: 8,
-                          }}
-                        >
-                          <span style={{ fontWeight: 500 }}>{meta.label}</span>
-                          <span
-                            style={{
-                              fontSize: 11,
-                              color:
-                                "var(--fn-text-quaternary, var(--fn-text-tertiary))",
-                            }}
-                          >
-                            {f.name}
-                          </span>
-                        </span>
-                      ),
-                      children: (
-                        <pre
-                          style={{
-                            fontSize: 12,
-                            maxHeight: 200,
-                            overflowY: "auto",
-                            background: "var(--fn-bg-secondary, #f5f5f5)",
-                            padding: 8,
-                            borderRadius: 4,
-                            margin: 0,
-                            whiteSpace: "pre-wrap",
-                            wordBreak: "break-word",
-                          }}
-                        >
-                          {f.content}
-                        </pre>
-                      ),
-                    };
-                  })}
-                />
-              </div>
-            )}
-
-            <div style={{ marginTop: 16 }}>
-              <div style={{ fontSize: 13, fontWeight: 500, marginBottom: 8 }}>
-                {t("experts.skillFilesTitle", { count: skillGroups.length })}
-              </div>
-              <p
-                style={{
-                  fontSize: 12,
-                  color: "var(--fn-text-tertiary)",
-                  margin: "0 0 8px",
-                }}
-              >
-                {t("experts.skillFilesHint")}
-              </p>
-              {skillGroups.length === 0 ? (
-                <div
-                  style={{
-                    fontSize: 13,
-                    color: "var(--fn-text-tertiary)",
-                    padding: "4px 0",
-                  }}
-                >
-                  {t("experts.noSkillFiles")}
-                </div>
-              ) : (
-                <Collapse
-                  size="small"
-                  items={skillGroups.map((group) => ({
-                    key: group.name,
-                    label: (
-                      <span
+          <Collapse
+            ghost
+            className={styles.drawerCollapse}
+            defaultActiveKey={["configFiles", "skills", "subagents"]}
+            style={{ marginTop: 8, width: "100%" }}
+            items={[
+              {
+                key: "configFiles",
+                label: t("experts.mdFilesTitle"),
+                children: (
+                  <>
+                    <p
+                      style={{
+                        fontSize: 12,
+                        color: "var(--fn-text-tertiary)",
+                        margin: "0 0 8px",
+                      }}
+                    >
+                      {t("experts.mdFilesEditHint")}
+                    </p>
+                    {configFiles.length === 0 ? (
+                      <div
                         style={{
-                          display: "inline-flex",
-                          alignItems: "baseline",
-                          gap: 8,
+                          fontSize: 13,
+                          color: "var(--fn-text-tertiary)",
+                          padding: "4px 0",
                         }}
                       >
-                        <span style={{ fontWeight: 500 }}>
-                          {group.emoji} {group.displayName}
-                        </span>
-                        <span
-                          style={{
-                            fontSize: 11,
-                            color:
-                              "var(--fn-text-quaternary, var(--fn-text-tertiary))",
-                          }}
-                        >
-                          skills/{group.name}/
-                        </span>
-                      </span>
-                    ),
-                    children: (
-                      <>
-                        {group.description ? (
-                          <p
-                            style={{
-                              fontSize: 12,
-                              color: "var(--fn-text-secondary)",
-                              margin: "0 0 8px",
-                            }}
-                          >
-                            {group.description}
-                          </p>
-                        ) : null}
-                        <Collapse
-                          size="small"
-                          items={group.files.map((f) => {
-                            const skillBasename = f.name.replace(
-                              `skills/${group.name}/`,
-                              "",
-                            );
-                            const skillMeta = metaForFile(skillBasename, t);
-                            return {
-                              key: f.name,
-                              label: (
+                        {t("experts.noWorkspaceFiles")}
+                      </div>
+                    ) : (
+                      <Collapse
+                        size="small"
+                        items={configFiles.map((f) => {
+                          const meta = metaForFile(f.name, t);
+                          return {
+                            key: f.name,
+                            label: (
+                              <span
+                                style={{
+                                  display: "inline-flex",
+                                  alignItems: "baseline",
+                                  gap: 8,
+                                }}
+                              >
+                                <span style={{ fontWeight: 500 }}>
+                                  {meta.label}
+                                </span>
                                 <span
                                   style={{
-                                    display: "inline-flex",
-                                    alignItems: "baseline",
-                                    gap: 8,
+                                    fontSize: 11,
+                                    color:
+                                      "var(--fn-text-quaternary, var(--fn-text-tertiary))",
                                   }}
                                 >
-                                  <span style={{ fontWeight: 500 }}>
-                                    {skillMeta.label}
-                                  </span>
-                                  <span
-                                    style={{
-                                      fontSize: 11,
-                                      color:
-                                        "var(--fn-text-quaternary, var(--fn-text-tertiary))",
-                                    }}
-                                  >
-                                    {skillBasename}
-                                  </span>
+                                  {f.name}
                                 </span>
-                              ),
-                              children: (
-                                <pre
-                                  style={{
-                                    fontSize: 12,
-                                    maxHeight: 200,
-                                    overflowY: "auto",
-                                    background:
-                                      "var(--fn-bg-secondary, #f5f5f5)",
-                                    padding: 8,
-                                    borderRadius: 4,
-                                    margin: 0,
-                                    whiteSpace: "pre-wrap",
-                                    wordBreak: "break-word",
-                                  }}
-                                >
-                                  {f.content}
-                                </pre>
-                              ),
-                            };
-                          })}
-                        />
-                      </>
-                    ),
-                  }))}
-                />
-              )}
-            </div>
-
-            <div style={{ marginTop: 16 }}>
-              <div style={{ fontSize: 13, fontWeight: 500, marginBottom: 8 }}>
-                {t("experts.subagentFilesTitle", {
-                  count: subagentFiles.length,
-                })}
-              </div>
-              <p
-                style={{
-                  fontSize: 12,
-                  color: "var(--fn-text-tertiary)",
-                  margin: "0 0 8px",
-                }}
-              >
-                {t("experts.subagentTemplateHint")}
-              </p>
-              {subagentFiles.length === 0 ? (
-                <div
-                  style={{
-                    fontSize: 13,
-                    color: "var(--fn-text-tertiary)",
-                    padding: "4px 0",
-                  }}
-                >
-                  {t("experts.noSubagentFiles")}
-                </div>
-              ) : (
-                <Collapse
-                  size="small"
-                  items={subagentFiles.map((subagent) => ({
-                    key: subagent.slug,
-                    label: (
-                      <span
+                              </span>
+                            ),
+                            extra: (
+                              <Button
+                                type="link"
+                                size="small"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setLocalEditPath(f.name);
+                                }}
+                              >
+                                {t("experts.editFile")}
+                              </Button>
+                            ),
+                            children: (
+                              <pre
+                                style={{
+                                  fontSize: 12,
+                                  maxHeight: 200,
+                                  overflowY: "auto",
+                                  background: "var(--fn-bg-secondary, #f5f5f5)",
+                                  padding: 8,
+                                  borderRadius: 4,
+                                  margin: 0,
+                                  whiteSpace: "pre-wrap",
+                                  wordBreak: "break-word",
+                                }}
+                              >
+                                {f.content}
+                              </pre>
+                            ),
+                          };
+                        })}
+                      />
+                    )}
+                  </>
+                ),
+              },
+              {
+                key: "skills",
+                label: (
+                  <div
+                    style={{
+                      display: "flex",
+                      justifyContent: "space-between",
+                      alignItems: "center",
+                      width: "100%",
+                    }}
+                  >
+                    <span>
+                      {t("experts.skillFilesTitle", {
+                        count: skillGroups.length + pendingHubSkills.length,
+                      })}
+                    </span>
+                    <Button
+                      type="link"
+                      size="small"
+                      style={{ padding: 0, height: "auto" }}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setSkillPickerOpen(true);
+                      }}
+                    >
+                      {t("experts.addSkill")}
+                    </Button>
+                  </div>
+                ),
+                children: (
+                  <>
+                    <p
+                      style={{
+                        fontSize: 12,
+                        color: "var(--fn-text-tertiary)",
+                        margin: "0 0 8px",
+                      }}
+                    >
+                      {t("experts.skillFilesEditHint")}
+                    </p>
+                    {skillGroups.length === 0 &&
+                    pendingHubSkills.length === 0 ? (
+                      <div
                         style={{
-                          display: "inline-flex",
-                          alignItems: "baseline",
-                          gap: 8,
+                          fontSize: 13,
+                          color: "var(--fn-text-tertiary)",
+                          padding: "4px 0",
                         }}
                       >
-                        <span style={{ fontWeight: 500 }}>
-                          {subagent.emoji} {subagent.name}
-                        </span>
-                        <span
-                          style={{
-                            fontSize: 11,
-                            color:
-                              "var(--fn-text-quaternary, var(--fn-text-tertiary))",
-                          }}
-                        >
-                          agents/{subagent.slug}.md
-                        </span>
-                      </span>
-                    ),
-                    children: (
-                      <>
-                        {subagent.description ? (
-                          <p
-                            style={{
-                              fontSize: 12,
-                              color: "var(--fn-text-secondary)",
-                              margin: "0 0 8px",
-                            }}
+                        {t("experts.noSkillFiles")}
+                      </div>
+                    ) : (
+                      <Collapse
+                        size="small"
+                        items={skillGroups.map((group) => ({
+                          key: group.name,
+                          label: (
+                            <span
+                              style={{
+                                display: "inline-flex",
+                                alignItems: "baseline",
+                                gap: 8,
+                              }}
+                            >
+                              <span style={{ fontWeight: 500 }}>
+                                {group.emoji} {group.displayName}
+                              </span>
+                              <span
+                                style={{
+                                  fontSize: 11,
+                                  color:
+                                    "var(--fn-text-quaternary, var(--fn-text-tertiary))",
+                                }}
+                              >
+                                skills/{group.name}/
+                              </span>
+                            </span>
+                          ),
+                          extra: (
+                            <Button
+                              type="link"
+                              size="small"
+                              danger
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setFileContents((prev) =>
+                                  removeComposerSkill(prev, group.name),
+                                );
+                                setPendingCopySkills((prev) =>
+                                  prev.filter(
+                                    (item) => item.slug !== group.name,
+                                  ),
+                                );
+                              }}
+                            >
+                              {t("common.delete")}
+                            </Button>
+                          ),
+                          children: (
+                            <>
+                              {group.description ? (
+                                <p
+                                  style={{
+                                    fontSize: 12,
+                                    color: "var(--fn-text-secondary)",
+                                    margin: "0 0 8px",
+                                  }}
+                                >
+                                  {group.description}
+                                </p>
+                              ) : null}
+                              <Collapse
+                                size="small"
+                                items={group.files.map((f) => {
+                                  const skillBasename = f.name.replace(
+                                    `skills/${group.name}/`,
+                                    "",
+                                  );
+                                  const skillMeta = metaForFile(
+                                    skillBasename,
+                                    t,
+                                  );
+                                  return {
+                                    key: f.name,
+                                    label: (
+                                      <span
+                                        style={{
+                                          display: "inline-flex",
+                                          alignItems: "baseline",
+                                          gap: 8,
+                                        }}
+                                      >
+                                        <span style={{ fontWeight: 500 }}>
+                                          {skillMeta.label}
+                                        </span>
+                                        <span
+                                          style={{
+                                            fontSize: 11,
+                                            color:
+                                              "var(--fn-text-quaternary, var(--fn-text-tertiary))",
+                                          }}
+                                        >
+                                          {skillBasename}
+                                        </span>
+                                      </span>
+                                    ),
+                                    extra: (
+                                      <Button
+                                        type="link"
+                                        size="small"
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          setLocalEditPath(f.name);
+                                        }}
+                                      >
+                                        {t("experts.editFile")}
+                                      </Button>
+                                    ),
+                                    children: (
+                                      <pre
+                                        style={{
+                                          fontSize: 12,
+                                          maxHeight: 200,
+                                          overflowY: "auto",
+                                          background:
+                                            "var(--fn-bg-secondary, #f5f5f5)",
+                                          padding: 8,
+                                          borderRadius: 4,
+                                          margin: 0,
+                                          whiteSpace: "pre-wrap",
+                                          wordBreak: "break-word",
+                                        }}
+                                      >
+                                        {f.content}
+                                      </pre>
+                                    ),
+                                  };
+                                })}
+                              />
+                            </>
+                          ),
+                        }))}
+                      />
+                    )}
+                    {pendingHubSkills.length > 0 ? (
+                      <div className={styles.fileList} style={{ marginTop: 8 }}>
+                        {pendingHubSkills.map((skill) => (
+                          <div
+                            key={skill.skill_name}
+                            className={styles.fileItem}
                           >
-                            {subagent.description}
-                          </p>
-                        ) : null}
-                        <pre
-                          style={{
-                            fontSize: 12,
-                            maxHeight: 200,
-                            overflowY: "auto",
-                            background: "var(--fn-bg-secondary, #f5f5f5)",
-                            padding: 8,
-                            borderRadius: 4,
-                            margin: 0,
-                            whiteSpace: "pre-wrap",
-                            wordBreak: "break-word",
-                          }}
-                        >
-                          {subagent.file.content}
-                        </pre>
-                      </>
-                    ),
-                  }))}
-                />
-              )}
-            </div>
-          </>
+                            <div className={styles.fileItemMain}>
+                              <div className={styles.fileMeta}>
+                                <div className={styles.fileLabel}>
+                                  {skill.display_name || skill.skill_name}
+                                </div>
+                                <div className={styles.filePath}>
+                                  {t("experts.hubSkillPending")}
+                                </div>
+                              </div>
+                            </div>
+                            <Button
+                              type="link"
+                              size="small"
+                              danger
+                              onClick={() =>
+                                setPendingHubSkills((prev) =>
+                                  prev.filter(
+                                    (item) =>
+                                      item.skill_name !== skill.skill_name,
+                                  ),
+                                )
+                              }
+                            >
+                              {t("common.delete")}
+                            </Button>
+                          </div>
+                        ))}
+                      </div>
+                    ) : null}
+                  </>
+                ),
+              },
+              {
+                key: "subagents",
+                label: (
+                  <div
+                    style={{
+                      display: "flex",
+                      justifyContent: "space-between",
+                      alignItems: "center",
+                      width: "100%",
+                    }}
+                  >
+                    <span>
+                      {t("experts.subagentFilesTitle", {
+                        count: subagentFiles.length,
+                      })}
+                    </span>
+                    <Button
+                      type="link"
+                      size="small"
+                      style={{ padding: 0, height: "auto" }}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setSubagentPickerOpen(true);
+                      }}
+                    >
+                      {t("experts.addSubagent")}
+                    </Button>
+                  </div>
+                ),
+                children: (
+                  <>
+                    <p
+                      style={{
+                        fontSize: 12,
+                        color: "var(--fn-text-tertiary)",
+                        margin: "0 0 8px",
+                      }}
+                    >
+                      {t("experts.subagentFilesEditHint")}
+                    </p>
+                    {subagentFiles.length === 0 ? (
+                      <div
+                        style={{
+                          fontSize: 13,
+                          color: "var(--fn-text-tertiary)",
+                          padding: "4px 0",
+                        }}
+                      >
+                        {t("experts.noSubagentFiles")}
+                      </div>
+                    ) : (
+                      <Collapse
+                        size="small"
+                        items={subagentFiles.map((subagent) => ({
+                          key: subagent.slug,
+                          label: (
+                            <span
+                              style={{
+                                display: "inline-flex",
+                                alignItems: "baseline",
+                                gap: 8,
+                              }}
+                            >
+                              <span style={{ fontWeight: 500 }}>
+                                {subagent.emoji} {subagent.name}
+                              </span>
+                              <span
+                                style={{
+                                  fontSize: 11,
+                                  color:
+                                    "var(--fn-text-quaternary, var(--fn-text-tertiary))",
+                                }}
+                              >
+                                agents/{subagent.slug}.md
+                              </span>
+                            </span>
+                          ),
+                          extra: (
+                            <span style={{ display: "inline-flex", gap: 4 }}>
+                              <Button
+                                type="link"
+                                size="small"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setLocalEditPath(subagent.file.name);
+                                }}
+                              >
+                                {t("experts.editFile")}
+                              </Button>
+                              <Button
+                                type="link"
+                                size="small"
+                                danger
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setFileContents((prev) =>
+                                    removeComposerSubagent(prev, subagent.slug),
+                                  );
+                                }}
+                              >
+                                {t("common.delete")}
+                              </Button>
+                            </span>
+                          ),
+                          children: (
+                            <>
+                              {subagent.description ? (
+                                <p
+                                  style={{
+                                    fontSize: 12,
+                                    color: "var(--fn-text-secondary)",
+                                    margin: "0 0 8px",
+                                  }}
+                                >
+                                  {subagent.description}
+                                </p>
+                              ) : null}
+                              <pre
+                                style={{
+                                  fontSize: 12,
+                                  maxHeight: 200,
+                                  overflowY: "auto",
+                                  background: "var(--fn-bg-secondary, #f5f5f5)",
+                                  padding: 8,
+                                  borderRadius: 4,
+                                  margin: 0,
+                                  whiteSpace: "pre-wrap",
+                                  wordBreak: "break-word",
+                                }}
+                              >
+                                {subagent.file.content}
+                              </pre>
+                            </>
+                          ),
+                        }))}
+                      />
+                    )}
+                  </>
+                ),
+              },
+            ]}
+          />
         ))}
+      <SkillSourcePickerModal
+        open={skillPickerOpen}
+        excludeSlugs={selectedSkillSlugs}
+        onClose={() => setSkillPickerOpen(false)}
+        onPickHub={handlePickHubSkill}
+        onPickAgentSkill={handlePickAgentSkill}
+      />
+      <SubagentSourcePickerModal
+        open={subagentPickerOpen}
+        excludeSlugs={selectedSubagentSlugs}
+        onClose={() => setSubagentPickerOpen(false)}
+        onPick={handlePickCatalogSubagent}
+      />
+      <FileEditModal
+        open={!!localEditPath}
+        filePath={localEditPath}
+        localValue={localEditFile?.content ?? ""}
+        onClose={() => setLocalEditPath(null)}
+        onSaved={() => undefined}
+        onLocalSave={(content) => {
+          if (!localEditPath) return;
+          setFileContents((prev) =>
+            upsertComposerFile(prev, { name: localEditPath, content }),
+          );
+        }}
+      />
     </Drawer>
   );
 }

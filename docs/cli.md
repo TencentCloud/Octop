@@ -23,6 +23,7 @@ Commands:
   admin      Admin commands.
   agent      Agent lifecycle commands.
   backup     Export and restore Octop backups.
+  bridge     Manage remote Octop bridge peers.
   chat       [deprecated] Alias for `octop chats`.
   chats      Chat REPL and session management.
   channel    Channel management commands.
@@ -56,13 +57,14 @@ Commands:
 
 ## Transport layers
 
-Octop commands pick one of three transports:
+Octop commands pick one of these transports:
 
 | Layer | When | Login? | Examples |
 |-------|------|--------|----------|
-| **Offline** (local DB only) | Need to read/write `~/.octop` without a running server | No | `init`, `backup`, `plugin`, `agent list`, `chats list/get/create/update/delete`, `cron list`, `user *`, `admin overview/audit`, `models presets/list/active` |
+| **Offline** (local DB only) | Need to read/write `~/.octop` without a running server | No | `init`, `backup`, `plugin`, `agent list`, `chats list/get/create/update/delete`, `cron list`, `user *`, `admin overview/audit`, `models presets/list/active`, `bridge list/get` |
 | **Attach** (HTTP / WS) | Need a live `octop run` process (IM, streams, model pulls) | Yes (`octop user login`) | `chats send/repl`, `channel test/probe`, `models ollama-*`, `skills enable/disable`, `provider test` |
 | **Embedded** (in-process) | CLI boots `OctopServer` for a single command | No | `octop acp`, `octop chats repl`, `octop chats send` (defaults to embedded), `octop agent create/from-expert/start/stop/reload` |
+| **Embedded (bridge)** | In-process `BridgeManager` (no full server); CLI cannot keep the WS after exit | No | `bridge probe/create/patch/delete/connect/disconnect/agents` |
 
 The dashboards and HTTP callers manage their own JWTs and do **not**
 share `~/.octop/cli_state.json`.
@@ -98,7 +100,7 @@ Usage: octop run [OPTIONS]
 
 Options:
   --host TEXT                 Override OCTOP_BIND_HOST.
-  --port INTEGER              Override OCTOP_PORT.
+  --port INTEGER RANGE        Override OCTOP_PORT (0-65535, 0 = OS-assigned).
   --reload / --no-reload      Enable uvicorn auto-reload (dev only).
   --ssl / --no-ssl            Enable HTTPS with a self-signed cert (or a real one).
   --certfile PATH             TLS certificate (PEM).
@@ -128,6 +130,15 @@ Commands:
 
 `status` probes the HTTP health endpoint and prints journal/log hints
 on failure.
+
+On Linux, `start` and `restart` install a systemd drop-in
+(`octop.service.d/10-nofile.conf`) with `LimitNOFILE=65535` (user
+units are capped to the process hard rlimit so systemd cannot fail to
+spawn). The main unit file is not rewritten unless it is missing or
+you pass `--force-install`. `restart` always runs `systemctl restart`
+even if writing the drop-in fails, so an upgrade that only restarts
+still comes back. To undo: delete the drop-in, then
+`systemctl daemon-reload && systemctl restart octop`.
 
 ## `octop user`
 
@@ -198,6 +209,36 @@ Commands:
 
 `octop chat` is a deprecated alias that prints a stderr warning and
 forwards to `chats`.
+
+## `octop bridge`
+
+User-scoped Octop-to-Octop peer links (same surface as Dashboard **远程桥接**).
+`--user` / pinned `default_user` selects the local owner. `--peer-user` is
+the **remote** login. `probe` talks HTTP only; `create --connect` /
+`connect` / `agents` verify the Bridge WebSocket then close it — start
+`octop run` to keep a link alive (auto-reconnect).
+
+```
+Usage: octop bridge [OPTIONS] COMMAND [ARGS]...
+
+  Manage remote Octop bridge peers (add / edit / probe / connect).
+
+Commands:
+  list        List saved bridge connections.
+  get         Show one saved connection.
+  probe       Test peer credentials (login + list experts).
+  create      Add a peer (optional Bridge WS handshake).
+  patch       Update name / notes / icon / credentials / auto-reconnect.
+  delete      Delete a saved connection.
+  connect     Dial and verify Bridge WS, then close the CLI session.
+  disconnect  Mark a connection disconnected in the local DB.
+  agents      Dial, list remote experts via the tunnel, then close.
+```
+
+`probe` without `CONNECTION_ID` requires `--url` and `--peer-user`.
+`probe CONNECTION_ID` reuses the stored password when `--peer-password`
+is omitted. `create` always needs the remote password: pass
+`--peer-password` or type it at the hidden prompt.
 
 ## `octop channel`
 
@@ -272,7 +313,7 @@ Usage: octop models [OPTIONS] COMMAND [ARGS]...
   Model catalog and active-model settings.
 
 Commands:
-  presets       List built-in provider templates from harness-agent.
+  presets       List built-in provider templates from octop-harness.
   list          List all resolved models across enabled providers.
   active        Show or set the global default model (admin).
   config        Interactively create a provider from presets and set the active model.
@@ -315,6 +356,27 @@ Commands:
   providers            Global (admin) providers.
   rotate-jwt-secret    Rotate the JWT secret directly via the local DB.
 ```
+
+## `octop captcha`
+
+Login captcha maintenance against the local database. Works fully offline
+(edits the SQLite settings row directly) — the escape hatch for when a
+misconfigured captcha provider (wrong keys, unreachable vendor, hostname
+not allowlisted) locks everyone out of the dashboard, since the settings
+UI itself requires login to reach.
+
+```
+Usage: octop captcha [OPTIONS] COMMAND [ARGS]...
+
+  Login captcha maintenance against the local database.
+
+Commands:
+  reset    Clear stored captcha settings so login falls back to the slider default.
+```
+
+Boot-env captcha (`OCTOP_CAPTCHA_*`) is not touched by `reset` — unset
+those in the environment file if they are the actual lockout cause.
+Restart `octop run` (if already running) for the change to apply.
 
 ## `octop backup`
 

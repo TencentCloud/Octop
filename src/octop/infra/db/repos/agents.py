@@ -3,9 +3,37 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import datetime
 
 from octop.infra.db.pool import DatabasePool
 from octop.infra.db.repos._base import UNSET, DbRow, bool_int, map_rows, now_ts, optional_updates
+
+
+def _unix_ts(value: object) -> int:
+    """Coerce a DB timestamp to unix seconds.
+
+    ``agents.created_at`` / ``updated_at`` are INTEGER, but SQLite will store
+    a text datetime if one was written. Listing must not crash on that.
+    """
+    if value is None:
+        return 0
+    if isinstance(value, bool):
+        return int(value)
+    if isinstance(value, int):
+        return value
+    if isinstance(value, float):
+        return int(value)
+    text = str(value).strip()
+    if not text:
+        return 0
+    try:
+        return int(text)
+    except ValueError:
+        pass
+    try:
+        return int(datetime.fromisoformat(text.replace("Z", "+00:00")).timestamp())
+    except ValueError:
+        return 0
 
 
 def _opt_str(r: DbRow, key: str) -> str | None:
@@ -44,6 +72,9 @@ class AgentRow:
     skill_package_ids: str | None = None
     published_expert_id: str | None = None
     welcome_message: str | None = None
+    knowledge_base_ids: str | None = None
+    mcp_servers: str | None = None
+    kind: str = "expert"
 
     @classmethod
     def from_row(cls, r: DbRow) -> AgentRow:
@@ -51,6 +82,13 @@ class AgentRow:
             is_shared = int(r["is_shared"])
         except KeyError:
             is_shared = 0
+        try:
+            kind_raw = r["kind"]
+        except (KeyError, IndexError):
+            kind_raw = None
+        kind = str(kind_raw).strip() if kind_raw else "expert"
+        if kind not in {"expert", "team"}:
+            kind = "expert"
         return cls(
             id=r["id"],
             agent_id=r["agent_id"],
@@ -64,8 +102,8 @@ class AgentRow:
             config_json=r["config_json"],
             last_state=r["last_state"],
             last_error=r["last_error"],
-            created_at=r["created_at"],
-            updated_at=r["updated_at"],
+            created_at=_unix_ts(r["created_at"]),
+            updated_at=_unix_ts(r["updated_at"]),
             icon=r["icon"],
             template_name=r["template_name"],
             is_shared=is_shared,
@@ -75,6 +113,9 @@ class AgentRow:
             skill_package_ids=_opt_str(r, "skill_package_ids"),
             published_expert_id=_opt_str(r, "published_expert_id"),
             welcome_message=_opt_str(r, "welcome_message"),
+            knowledge_base_ids=_opt_str(r, "knowledge_base_ids"),
+            mcp_servers=_opt_str(r, "mcp_servers"),
+            kind=kind,
         )
 
 
@@ -101,16 +142,20 @@ class AgentRepo:
         skill_package_ids: str | None = None,
         published_expert_id: str | None = None,
         welcome_message: str | None = None,
+        knowledge_base_ids: str | None = None,
+        mcp_servers: str | None = None,
+        kind: str = "expert",
     ) -> str:
         ts = now_ts()
+        agent_kind = kind if kind in {"expert", "team"} else "expert"
         with self._db.transaction() as conn:
             conn.execute(
                 "INSERT INTO agents(agent_id, user_id, name, description, "
                 "persona_mbti, default_model, system_prompt, enabled, config_json, icon, "
                 "template_name, color, icon_name, icon_url, skill_package_ids, "
-                "published_expert_id, welcome_message, "
-                "created_at, updated_at) "
-                "VALUES (?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                "published_expert_id, welcome_message, knowledge_base_ids, mcp_servers, "
+                "kind, created_at, updated_at) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                 (
                     agent_id,
                     user_id,
@@ -128,6 +173,9 @@ class AgentRepo:
                     skill_package_ids,
                     published_expert_id,
                     welcome_message,
+                    knowledge_base_ids,
+                    mcp_servers,
+                    agent_kind,
                     ts,
                     ts,
                 ),
@@ -147,6 +195,24 @@ class AgentRepo:
         with self._db.connect() as conn:
             rows = conn.execute(sql, (user_id,)).fetchall()
         return map_rows(rows, AgentRow)
+
+    def count_by_user(
+        self,
+        user_id: int,
+        *,
+        kind: str | None = None,
+        include_disabled: bool = True,
+    ) -> int:
+        sql = "SELECT COUNT(*) AS c FROM agents WHERE user_id = ?"
+        params: list[object] = [user_id]
+        if kind is not None:
+            sql += " AND kind = ?"
+            params.append(kind)
+        if not include_disabled:
+            sql += " AND enabled = 1"
+        with self._db.connect() as conn:
+            row = conn.execute(sql, params).fetchone()
+        return int(row["c"]) if row is not None else 0
 
     def list_all(self, *, include_disabled: bool = True) -> list[AgentRow]:
         sql = "SELECT * FROM agents"
@@ -208,6 +274,8 @@ class AgentRepo:
         skill_package_ids: str | None | object = UNSET,
         published_expert_id: str | None | object = UNSET,
         welcome_message: str | None | object = UNSET,
+        knowledge_base_ids: str | None | object = UNSET,
+        mcp_servers: str | None | object = UNSET,
     ) -> None:
         fields, params = optional_updates(
             [
@@ -225,6 +293,8 @@ class AgentRepo:
                 ("skill_package_ids", skill_package_ids),
                 ("published_expert_id", published_expert_id),
                 ("welcome_message", welcome_message),
+                ("knowledge_base_ids", knowledge_base_ids),
+                ("mcp_servers", mcp_servers),
             ]
         )
         if not fields:
@@ -237,4 +307,6 @@ class AgentRepo:
 
     def delete(self, agent_id: str) -> None:
         with self._db.transaction() as conn:
+            # No foreign key. Thread and usage rows cascade from ``agents``.
+            conn.execute("DELETE FROM care_push_records WHERE agent_id = ?", (agent_id,))
             conn.execute("DELETE FROM agents WHERE agent_id = ?", (agent_id,))

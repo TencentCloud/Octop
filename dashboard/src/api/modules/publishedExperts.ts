@@ -14,6 +14,13 @@ export interface PublishedExpert {
   created_at: string;
   updated_at: string;
   welcome_message?: { zh?: string; en?: string };
+  quick_prompts?: {
+    title?: { zh?: string; en?: string };
+    description?: { zh?: string; en?: string };
+    prompt?: { zh?: string; en?: string };
+    color?: string;
+    icon_name?: string | null;
+  }[];
 }
 
 export interface PublishExpertBody {
@@ -32,6 +39,8 @@ export interface InstallPublishedExpertBody {
   default_model?: string;
   backend?: Record<string, unknown>;
   skill_package_ids?: string[];
+  knowledge_base_ids?: string[];
+  mcp_servers?: string[];
   color?: string;
   welcome_message?: string;
   max_iters?: number | null;
@@ -40,6 +49,23 @@ export interface InstallPublishedExpertBody {
   top_p?: number | null;
   max_tokens?: number | null;
   enable_trajectory?: boolean;
+  file_overrides?: { name: string; content: string }[];
+  omit_files?: string[];
+  hub_skills?: {
+    skill_name: string;
+    display_name?: string;
+    icon_url?: string;
+    label?: { zh?: string; en?: string };
+    summary?: { zh?: string; en?: string };
+  }[];
+  copy_skills?: { agent_id: string; slug: string }[];
+  quick_prompts?: {
+    title: { zh?: string; en?: string };
+    description: { zh?: string; en?: string };
+    prompt: { zh?: string; en?: string };
+    color?: string;
+    icon_name?: string | null;
+  }[];
 }
 
 export interface InstalledPublishedExpert {
@@ -49,6 +75,8 @@ export interface InstalledPublishedExpert {
   state: string;
   published_expert_id: string;
   bootstrap_pending: boolean;
+  hub_skill_errors?: string[];
+  copy_skill_errors?: string[];
 }
 
 const publishedPath = (expertId: string) =>

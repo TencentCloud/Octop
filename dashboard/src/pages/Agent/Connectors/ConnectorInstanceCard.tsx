@@ -1,4 +1,4 @@
-import { App, Switch, Tag, Tooltip } from "antd";
+import { App, Switch, Tag, Tooltip, Typography } from "antd";
 
 import { Trash2 } from "lucide-react";
 import { useTranslation } from "react-i18next";
@@ -85,12 +85,13 @@ export function ConnectorInstanceCard({
               size={40}
             />
           </div>
-          <div className={styles.typeCardTitle}>{instance.display_name}</div>
-          <div
-            className={styles.instanceCardHeaderActions}
-            onClick={(e) => e.stopPropagation()}
-            onKeyDown={(e) => e.stopPropagation()}
-          >
+          <div className={styles.typeCardTitleCol}>
+            <Typography.Text
+              className={styles.typeCardTitle}
+              ellipsis={{ tooltip: instance.display_name }}
+            >
+              {instance.display_name}
+            </Typography.Text>
             {instance.shared ? (
               <Tag color="blue" className={styles.instanceCardTag}>
                 {isOwner || !ownerLabel
@@ -101,6 +102,12 @@ export function ConnectorInstanceCard({
                     })}
               </Tag>
             ) : null}
+          </div>
+          <div
+            className={styles.instanceCardHeaderActions}
+            onClick={(e) => e.stopPropagation()}
+            onKeyDown={(e) => e.stopPropagation()}
+          >
             {instance.can_manage ? (
               <Switch
                 size="small"

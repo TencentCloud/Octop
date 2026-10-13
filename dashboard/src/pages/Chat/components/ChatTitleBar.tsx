@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Dropdown } from "antd";
+import { Dropdown, Switch } from "antd";
 import type { MenuProps } from "antd";
 import { useTranslation } from "react-i18next";
 import {
@@ -10,11 +10,13 @@ import {
   Trash2,
   GitFork,
 } from "lucide-react";
-import { showConfirmModal } from "../../../utils/confirmModal";
+import { confirmDeleteConversation } from "../utils/deleteConversation";
 import type { Session } from "../hooks/useSessions";
 import SessionChannelIcon from "./SessionChannelIcon";
+import TeamChatBadge from "./TeamChatBadge";
 import styles from "../index.module.less";
 import { DESKTOP_DRAG_REGION_CLASS } from "../../../utils/desktopChrome";
+import { useCollapseThinking } from "../hooks/useCollapseThinking";
 
 interface ChatTitleBarProps {
   session: Session;
@@ -22,9 +24,10 @@ interface ChatTitleBarProps {
   onRename: (id: string, name: string) => void;
   onPin: (id: string, pinned: boolean) => void;
   onFork: (id: string) => void;
-  onDelete: (id: string) => void;
+  onDelete: (id: string, compact: boolean) => void | Promise<boolean | void>;
   forkDisabled?: boolean;
   forkDisabledHint?: string;
+  isTeam?: boolean;
 }
 
 export default function ChatTitleBar({
@@ -36,8 +39,10 @@ export default function ChatTitleBar({
   onDelete,
   forkDisabled,
   forkDisabledHint,
+  isTeam = false,
 }: ChatTitleBarProps) {
   const { t } = useTranslation();
+  const [collapseThinking, setCollapseThinking] = useCollapseThinking(isTeam);
   const [isEditing, setIsEditing] = useState(false);
   const [editValue, setEditValue] = useState(title);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -66,6 +71,21 @@ export default function ChatTitleBar({
   const menuItems: MenuProps["items"] = useMemo(
     () => [
       {
+        key: "collapse-thinking",
+        label: t("chat.collapseThinking"),
+        title: t("chat.collapseThinkingHint"),
+        icon: (
+          <Switch
+            size="small"
+            checked={collapseThinking}
+            tabIndex={-1}
+            aria-label={t("chat.collapseThinking")}
+          />
+        ),
+        onClick: () => setCollapseThinking(!collapseThinking),
+      },
+      { type: "divider" },
+      {
         key: "pin",
         label: session.pinned
           ? t("chat.unpin", "取消置顶")
@@ -87,19 +107,15 @@ export default function ChatTitleBar({
         icon: <Trash2 size={14} />,
         danger: true,
         onClick: () => {
-          showConfirmModal({
-            title: t("chat.deleteSessionConfirm"),
-            okText: t("common.delete"),
-            cancelText: t("common.cancel"),
-            okButtonProps: { danger: true },
-            onOk: () => {
-              onDelete(session.id);
-            },
+          confirmDeleteConversation(t, (compact) => {
+            void onDelete(session.id, compact);
           });
         },
       },
     ],
     [
+      collapseThinking,
+      setCollapseThinking,
       session.id,
       session.pinned,
       onPin,
@@ -141,6 +157,7 @@ export default function ChatTitleBar({
             <h1 className={styles.chatTitleText} title={title}>
               {title}
             </h1>
+            <TeamChatBadge show={isTeam} />
             {session.pinned ? (
               <Pin
                 size={13}

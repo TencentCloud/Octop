@@ -4,6 +4,9 @@ import { request } from "../../../api/request";
 export type MemoryMaintenancePhase =
   | "idle"
   | "queued"
+  | "waiting"
+  | "backing_up"
+  | "deduplicating"
   | "pruning"
   | "compacting"
   | "done"
@@ -11,41 +14,63 @@ export type MemoryMaintenancePhase =
 
 export interface MemoryMaintenanceStatus {
   phase: MemoryMaintenancePhase | string;
+  kind?: string;
   percent?: number;
   detail?: string | null;
   file_bytes?: number | null;
   started_at?: number | null;
   updated_at?: number | null;
   skipped_reason?: string | null;
+  scanned?: number;
+  total?: number;
 }
 
-const VISIBLE = new Set(["queued", "pruning", "compacting"]);
-const BLOCKING = new Set(["pruning", "compacting"]);
+const VISIBLE = new Set([
+  "queued",
+  "waiting",
+  "backing_up",
+  "deduplicating",
+  "pruning",
+  "compacting",
+]);
+const BLOCKING = new Set([
+  "backing_up",
+  "deduplicating",
+  "pruning",
+  "compacting",
+]);
 
 export function useMemoryMaintenance(
   agentId: string | null | undefined,
   enabled: boolean,
 ) {
   const [status, setStatus] = useState<MemoryMaintenanceStatus | null>(null);
+  const [connectionLost, setConnectionLost] = useState(false);
+  const bridgeAgent = Boolean(agentId?.startsWith("bridge:"));
 
   useEffect(() => {
-    if (!agentId || !enabled) {
-      setStatus(null);
+    setStatus(null);
+    setConnectionLost(false);
+    // Bridge shadows have no local harness status / memory maintenance.
+    if (!agentId || !enabled || bridgeAgent) {
       return;
     }
     let stop = false;
     let timer: number | null = null;
     const pull = async () => {
-      let nextDelay = 10_000;
+      const nextDelay = 2000;
       try {
         const row = await request<{
           memory_maintenance?: MemoryMaintenanceStatus | null;
         }>(`/agents/${agentId}/status`);
         const next = row.memory_maintenance ?? null;
-        if (!stop) setStatus(next);
-        if (next && VISIBLE.has(next.phase)) nextDelay = 2000;
+        if (!stop) {
+          setStatus(next);
+          setConnectionLost(false);
+        }
       } catch {
         // Keep the last known state; a later single-flight poll can recover.
+        if (!stop) setConnectionLost(true);
       } finally {
         if (!stop) timer = window.setTimeout(pull, nextDelay);
       }
@@ -55,12 +80,16 @@ export function useMemoryMaintenance(
       stop = true;
       if (timer != null) window.clearTimeout(timer);
     };
-  }, [agentId, enabled]);
+  }, [agentId, enabled, bridgeAgent]);
 
   const phase = status?.phase ?? "idle";
   return {
     status,
-    visible: VISIBLE.has(phase),
+    visible:
+      VISIBLE.has(phase) ||
+      (status?.kind === "memory_slim" &&
+        ["done", "failed", "skipped"].includes(phase)),
     blocking: BLOCKING.has(phase),
+    connectionLost,
   };
 }

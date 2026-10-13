@@ -74,6 +74,11 @@ otherwise extracts the matching zip shipped with the desktop package (embedded
 in the Windows and Linux binaries, under `Contents/Resources` on macOS). The
 Wails shell never downloads Octop. For local runtime debugging, set
 `OCTOP_DESKTOP_PORTABLE_ZIP=/absolute/path/Octop-portable-<plat>-<version>.zip`.
+On later launches, a newer bundled portable version replaces the extracted
+runtime after creating a consistent SQLite backup under `~/.octop/backups/`.
+The upgraded Octop process then applies the normal database migrations during
+startup. Newer extracted runtimes are never downgraded; PostgreSQL remains
+externally managed and is not copied by the desktop shell.
 
 GitHub Release names follow `Octop-<kind>-<os>-<arch>-<version>.<ext>`:
 

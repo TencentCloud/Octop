@@ -21,9 +21,12 @@ export {
   CHANNEL_DISPLAY_CONFIG_KEYS,
   DEFAULT_CHANNEL_DISPLAY_CONFIG,
   DEFAULT_QQ_GROUP_CONTEXT_CONFIG,
+  applyQqChannelSaveConfig,
   normalizeChannelFieldValue,
   normalizeQqGroupContextConfig,
   hasRequiredCredentials,
+  partitionChannelKeys,
+  isCollapsedChannelKey,
   type ChannelKey,
   type ChannelField,
 } from "./constants";

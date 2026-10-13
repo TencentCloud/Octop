@@ -30,6 +30,7 @@ export const StorageTypeCard = memo(function StorageTypeCard({
       description={t(typeDef.descKey)}
       hint={t("storage.clickToConfigure")}
       icon={typeDef.icon}
+      plainIcon
       tag={
         group ? (
           <span

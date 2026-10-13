@@ -2,7 +2,7 @@
 /* ---------- Chat input ---------- */
 .runUsageBar {
   max-width: var(--chat-column-max, 960px);
-  width: calc(100% - 48px);
+  width: calc(100% - 2 * var(--chat-column-pad-x, 32px));
   margin: 0 auto 6px;
   padding: 0 2px;
   display: flex;
@@ -20,32 +20,46 @@
 
 .askQuestionDock {
   flex-shrink: 0;
-  padding: 0 20px 8px;
+  /* Match .chatInput horizontal gutters so the card lines up with the composer. */
+  padding: 0 var(--chat-column-pad-x, 24px) 8px;
   background: var(--fn-bg-elevated, #fff);
+  box-sizing: border-box;
 
   @media (max-width: 767px) {
-    padding: 0 12px 6px;
+    padding: 0 var(--chat-column-pad-x-narrow, 12px) 6px;
   }
 }
 
-.askQuestionDockInner {
+.askQuestionDockInner,
+.modelConfigDockInner {
   width: 100%;
   max-width: var(--chat-column-max, 960px);
   margin: 0 auto;
+  box-sizing: border-box;
+}
+
+.modelConfigDock {
+  flex-shrink: 0;
+  padding: 0 var(--chat-column-pad-x, 24px) 8px;
+  background: var(--fn-bg-elevated, #fff);
+  box-sizing: border-box;
+
+  @media (max-width: 767px) {
+    padding: 0 var(--chat-column-pad-x-narrow, 12px) 6px;
+  }
 }
 
 .chatInput {
   flex-shrink: 0;
-  padding: 16px 24px 20px;
+  padding: 16px var(--chat-column-pad-x, 32px) 20px;
   background: var(--fn-bg-elevated, #fff);
 
   @media (max-width: 767px) {
-    padding: 12px 12px calc(14px + env(safe-area-inset-bottom, 0px));
-    /* In PWA standalone mode the layout viewport does not shrink when the
-       soft keyboard opens. --keyboard-offset is set by the useKeyboardOffset
-       hook (visualViewport API) so we nudge the input area above the keyboard. */
+    padding: 6px 12px 6px;
+    /* Shell now paints under the home indicator. Keep buttons above it
+       (or above the keyboard); do not add both. */
     padding-bottom: calc(
-      14px + env(safe-area-inset-bottom, 0px) + var(--keyboard-offset, 0px)
+      6px + max(env(safe-area-inset-bottom, 0px), var(--keyboard-offset, 0px))
     );
     transition: padding-bottom 0.15s ease;
   }
@@ -62,6 +76,7 @@
 }
 
 .inputWrapper {
+  position: relative;
   max-width: var(--chat-column-max, 960px);
   min-width: 280px;
   margin: 0 auto;
@@ -94,7 +109,7 @@
 .actionsRow {
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  justify-content: flex-start;
   padding-top: 6px;
   border-top: 1px solid var(--fn-border-secondary);
   margin-top: 4px;
@@ -106,19 +121,69 @@
   align-items: center;
   gap: 8px;
   min-width: 0;
-  flex: 1;
+  flex: 0 0 auto;
+  order: 1;
   padding-top: 4px;
   padding-right: 2px;
 }
 
+.modeHint {
+  margin: 0 0 0 16px;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  flex: 0 1 auto;
+  order: 2;
+  min-width: 0;
+  overflow: hidden;
+  color: var(--fn-text-quaternary);
+  font-size: 12px;
+  line-height: 1.3;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  pointer-events: none;
+  user-select: none;
+
+  svg {
+    flex-shrink: 0;
+  }
+
+  span {
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+}
+
+.actionsRowCompact {
+  flex-wrap: wrap;
+  gap: 4px;
+
+  .modeHint {
+    order: 0;
+    flex: 1 0 100%;
+    margin-left: 0;
+    padding-top: 0;
+    padding-bottom: 2px;
+  }
+}
+
 @media (max-width: 767px) {
   .actionsRow {
+    flex-wrap: wrap;
     gap: 4px;
+  }
+
+  .modeHint {
+    order: 0;
+    flex: 1 0 100%;
+    margin-left: 0;
+    padding-top: 0;
+    padding-bottom: 2px;
   }
 
   .secondaryActions {
     gap: 4px;
-    flex: 1;
+    flex: 1 1 auto;
     min-width: 0;
     overflow-x: auto;
     overflow-y: visible;
@@ -164,6 +229,8 @@
   align-items: center;
   gap: 6px;
   flex-shrink: 0;
+  order: 3;
+  margin-left: auto;
 }
 
 .secondaryBtn {
@@ -283,6 +350,21 @@
   background: #d97706;
 }
 
+.secondaryBtnSubagentActive {
+  color: #0f766e !important;
+  background: rgba(13, 148, 136, 0.14) !important;
+  box-shadow: inset 0 0 0 1.5px rgba(13, 148, 136, 0.4);
+
+  &:hover {
+    color: #115e59 !important;
+    background: rgba(13, 148, 136, 0.22) !important;
+  }
+}
+
+.toolbarBadgeSubagent {
+  background: #0d9488;
+}
+
 .newChatBtn {
   display: inline-flex;
   align-items: center;
@@ -323,28 +405,28 @@
   padding: 0;
 }
 
+/* App uses ConfigProvider prefixCls="octop"; keep ant-* as fallback. */
 .contextUsagePopover {
-  :global(.ant-popover-inner) {
+  :global(.ant-popover-inner),
+  :global(.octop-popover-inner) {
     padding: 0;
-    background: transparent;
-    box-shadow: none;
+    border-radius: 12px;
+    background: var(--fn-bg-elevated, #1f1f1f);
+  }
+
+  :global(.ant-popover-arrow)::before,
+  :global(.octop-popover-arrow)::before {
+    background: var(--fn-bg-elevated, #1f1f1f);
   }
 }
 
 .contextUsagePanel {
   width: 280px;
   padding: 14px 16px;
-  border-radius: 12px;
-  background: var(--fn-bg-elevated, #1f1f1f);
-  border: 1px solid var(--fn-border-secondary, rgba(255, 255, 255, 0.08));
-  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.28);
 
   @media (max-width: 767px) {
     width: 100%;
     padding: 0;
-    border: none;
-    box-shadow: none;
-    background: transparent;
   }
 }
 
@@ -524,7 +606,7 @@
 /* ---------- Queued messages (while streaming) ---------- */
 .queuedMessages {
   max-width: var(--chat-column-max, 960px);
-  width: calc(100% - 48px);
+  width: calc(100% - 2 * var(--chat-column-pad-x, 32px));
   margin: 0 auto 8px;
   display: flex;
   flex-direction: column;
@@ -794,11 +876,39 @@
   }
 }
 
+.dropOverlay {
+  position: absolute;
+  inset: 0;
+  z-index: 5;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 12px;
+  border-radius: inherit;
+  border: 1.5px dashed var(--fn-color-brand);
+  background: color-mix(
+    in srgb,
+    var(--fn-bg-primary) 82%,
+    var(--fn-color-brand)
+  );
+  color: var(--fn-color-brand);
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.4;
+  text-align: center;
+  pointer-events: none;
+  user-select: none;
+}
+
 /* A right-docked workspace can narrow the chat without narrowing the viewport.
    Respond to the chat column itself so composer controls remain usable. */
 @container chat-main (max-width: 560px) {
   .chatInput {
     padding-inline: 12px;
+  }
+
+  .askQuestionDock {
+    padding-inline: var(--chat-column-pad-x-narrow, 12px);
   }
 
   .inputWrapper {
@@ -807,11 +917,20 @@
   }
 
   .actionsRow {
+    flex-wrap: wrap;
     gap: 4px;
   }
 
+  .modeHint {
+    order: 0;
+    flex: 1 0 100%;
+    margin-left: 0;
+    padding-top: 0;
+    padding-bottom: 2px;
+  }
+
   .secondaryActions {
-    flex: 0 1 auto;
+    flex: 1 1 auto;
     padding-right: 0;
     overflow-x: auto;
     scrollbar-width: none;
@@ -831,9 +950,5 @@
   .sendBtn {
     width: 28px;
     height: 28px;
-  }
-
-  .modelPickerBtn {
-    max-width: 104px;
   }
 }

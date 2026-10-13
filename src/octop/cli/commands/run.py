@@ -2,14 +2,16 @@
 
 from __future__ import annotations
 
-import contextlib
-import json
-import os
-import tempfile
-from pathlib import Path
-
 import click
 
+from octop.cli.support.errors import fail_octop
+from octop.config import env_bind_overrides
+from octop.infra.errors import OctopError, corrupt_config_error
+from octop.infra.utils.json_file import (
+    JsonFileCorruptError,
+    read_json_object,
+    write_json_atomic,
+)
 from octop.infra.utils.paths import PathLayout
 
 
@@ -68,71 +70,76 @@ def _maybe_generate_self_signed(
 
 
 def _load_configfile_overrides() -> tuple[str | None, int | None]:
-    cfg_path = PathLayout.from_env().config
-    if not cfg_path.exists():
-        return None, None
-    with contextlib.suppress(OSError, json.JSONDecodeError):
-        data = json.loads(cfg_path.read_text(encoding="utf-8"))
-        if isinstance(data, dict):
-            # Prefer new key "bind_host"; fall back to legacy "host" for old configs.
-            host = data.get("bind_host") or data.get("host")
-            port = data.get("port")
-            return (
-                host if isinstance(host, str) else None,
-                port if isinstance(port, int) and not isinstance(port, bool) else None,
-            )
-    return None, None
+    """Read ``bind_host`` / ``port`` from ``config.json``.
 
-
-def _atomic_write_json(path: Path, data: dict[str, object]) -> None:
-    """Write JSON atomically: temp file + ``os.replace`` to avoid torn writes.
-
-    Uses ``os.write`` with pre-encoded bytes (instead of ``os.fdopen``) so the
-    file descriptor is owned and closed deterministically, even if encoding
-    is unavailable or the process is interrupted mid-write.
+    An absent or unreadable file falls back to the launch defaults, but a
+    *corrupt* one raises: silently ignoring it would bind defaults while
+    discarding every other setting, and boot would then die with a bare
+    ``JSONDecodeError`` traceback instead of an actionable message.
     """
-    payload = (json.dumps(data, indent=2) + "\n").encode("utf-8")
-    fd, tmp_name = tempfile.mkstemp(dir=path.parent, prefix=".config.", suffix=".tmp")
+    cfg_path = PathLayout.from_env().config
     try:
-        try:
-            os.write(fd, payload)
-        finally:
-            # Always close — covers the case where ``os.write`` itself raises
-            # (disk full, EIO, EPIPE) so the fd does not leak.
-            os.close(fd)
-        os.replace(tmp_name, path)
-    except BaseException:  # also covers KeyboardInterrupt / SystemExit
-        # Best-effort cleanup of the temp file on any failure path.
-        with contextlib.suppress(OSError):
-            os.unlink(tmp_name)
-        raise
+        data = read_json_object(cfg_path)
+    except JsonFileCorruptError as exc:
+        raise corrupt_config_error(exc.path, exc.detail) from exc
+    except OSError:
+        return None, None
+    if data is None:
+        return None, None
+    # Prefer new key "bind_host"; fall back to legacy "host" for old configs.
+    host = data.get("bind_host") or data.get("host")
+    port = data.get("port")
+    return (
+        host if isinstance(host, str) else None,
+        port if isinstance(port, int) and not isinstance(port, bool) else None,
+    )
+
+
+def resolve_bind(host: str | None, port: int | None) -> tuple[str | None, int | None]:
+    """Resolve the uvicorn bind address: CLI flag > env > config.json."""
+    cfg_host, cfg_port = _load_configfile_overrides()
+    env_host, env_port = env_bind_overrides()
+    # Use ``is not None`` (not ``or``) so falsy-but-valid values like port=0
+    # (OS-assigned random port) and host="0" are not silently overridden.
+    resolved_host = host if host is not None else env_host if env_host is not None else cfg_host
+    resolved_port = port if port is not None else env_port if env_port is not None else cfg_port
+    return resolved_host, resolved_port
 
 
 def _save_configfile_overrides(host: str | None, port: int | None) -> None:
-    """Persist resolved host/port to config.json (read-merge-write, atomic)."""
+    """Persist resolved host/port to config.json (read-merge-write, atomic).
+
+    A corrupt config.json is a hard error, never an empty base: merging into
+    ``{}`` and writing back destroys every other setting (issue #730 — one
+    trailing comma plus ``octop run --port`` wiped the ``database`` section and
+    silently flipped a PostgreSQL instance back to greenfield SQLite).
+    """
     paths = PathLayout.from_env()
     paths.ensure_root()
     cfg_path = paths.config
-    data: dict[str, object] = {}
-    if cfg_path.exists():
-        with contextlib.suppress(OSError, json.JSONDecodeError):
-            loaded = json.loads(cfg_path.read_text(encoding="utf-8"))
-            if isinstance(loaded, dict):
-                data = loaded
+    try:
+        data = read_json_object(cfg_path)
+    except JsonFileCorruptError as exc:
+        raise corrupt_config_error(exc.path, exc.detail) from exc
+    if data is None:
+        data = {}
     if host is not None:
         data["bind_host"] = host
     if port is not None:
         data["port"] = port
     click.echo(f"Saved config to {cfg_path}")
     try:
-        _atomic_write_json(cfg_path, data)
+        write_json_atomic(cfg_path, data)
     except OSError as exc:
         click.echo(f"Warning: could not save config.json: {exc}", err=True)
 
 
 @click.command("run")
 @click.option("--host", default=None, help="Override bind host")
-@click.option("--port", default=None, type=int, help="Override port")
+# 0-65535, not 1-65535: ``resolve_bind`` reads port 0 as "let the OS pick a free
+# port". Without a range the value is persisted to config.json before uvicorn
+# dies in ``socket.bind``, so every later start inherits the unusable port.
+@click.option("--port", default=None, type=click.IntRange(0, 65535), help="Override port")
 @click.option("--reload", is_flag=True, default=False, help="Enable uvicorn auto-reload (dev).")
 @click.option("--workers", default=1, type=int, help="Worker process count (default 1).")
 @click.option(
@@ -163,19 +170,18 @@ def run(
     """Run octop-server in the foreground.
 
     Host and port are resolved with the following precedence: explicit CLI
-    flags > ``~/.octop/config.json`` > launch defaults. When ``--host`` or
-    ``--port`` is passed on the CLI, that override is persisted to
-    ``config.json`` immediately before uvicorn starts.
+    flags > ``OCTOP_BIND_HOST``/``OCTOP_PORT`` env > ``~/.octop/config.json``
+    > launch defaults. When ``--host`` or ``--port`` is passed on the CLI,
+    that override is persisted to ``config.json`` immediately before uvicorn
+    starts.
     """
     cli_host, cli_port = host, port
-    cfg_host, cfg_port = _load_configfile_overrides()
-    # Use ``is not None`` (not ``or``) so falsy-but-valid values like port=0
-    # (OS-assigned random port) and host="0" are not silently overridden by
-    # the config-file fallback.
-    host = host if host is not None else cfg_host
-    port = port if port is not None else cfg_port
-    if cli_host is not None or cli_port is not None:
-        _save_configfile_overrides(cli_host, cli_port)
+    try:
+        host, port = resolve_bind(host, port)
+        if cli_host is not None or cli_port is not None:
+            _save_configfile_overrides(cli_host, cli_port)
+    except OctopError as exc:
+        fail_octop(exc)
     certfile, keyfile = _maybe_generate_self_signed(ssl, ssl_certfile, ssl_keyfile)
     _run_uvicorn(
         host=host,

@@ -1,4 +1,9 @@
-import { clearSetupRequired, markSetupRequired, request } from "../request";
+import {
+  clearSetupRequired,
+  markSetupRequired,
+  request,
+  requestUpload,
+} from "../request";
 
 /**
  * Auth + setup module — adapted to octop's multi-user backend.
@@ -38,14 +43,28 @@ export interface AuthStatus {
   database_driver?: string | null;
 }
 
+export interface SsoIdentity {
+  kind: string;
+}
+
 export interface OctopUser {
   id: number;
   username: string;
-  role: "admin" | "user";
+  /** Role-template public id: admin | user | custom ULID. */
+  role: string;
   display_name: string | null;
   locale: string;
   /** Module permission keys; admin responses include the full catalog. */
   permissions?: string[];
+  sso_linked?: boolean;
+  sso_kind?: string | null;
+  /** Linked SSO providers (multi-identity). */
+  sso_identities?: SsoIdentity[];
+  has_password?: boolean;
+  /** Preset character id. Empty means the built-in default portrait. */
+  avatar_icon?: string | null;
+  /** Uploaded portrait. Shown ahead of the preset when present. */
+  avatar_url?: string | null;
 }
 
 export interface LoginResponse {
@@ -57,7 +76,28 @@ export interface LoginResponse {
   token: string;
 }
 
+export interface PublicCaptcha {
+  provider: string;
+  site_key?: string;
+}
+
 export interface OidcStatus {
+  enabled: boolean;
+  display_name: string;
+}
+
+export interface OauthProviderStatus {
+  kind: string;
+  display_name: string;
+  enabled: boolean;
+}
+
+export interface OauthStatus {
+  providers: OauthProviderStatus[];
+}
+
+/** Public LDAP login availability probe (no auth required). */
+export interface LdapStatus {
   enabled: boolean;
   display_name: string;
 }
@@ -144,11 +184,22 @@ export const authApi = {
     return result;
   },
 
+  /** Public captcha widget config for the login form. */
+  getCaptcha: () => request<PublicCaptcha>("/auth/captcha"),
+
   /** Login — octop uses username + password. */
-  login: async (username: string, password: string): Promise<LoginResponse> => {
+  login: async (
+    username: string,
+    password: string,
+    captchaToken?: string,
+  ): Promise<LoginResponse> => {
     const raw = await request<RawLoginResponse>("/auth/login", {
       method: "POST",
-      body: JSON.stringify({ username, password }),
+      body: JSON.stringify(
+        captchaToken
+          ? { username, password, captcha_token: captchaToken }
+          : { username, password },
+      ),
     });
     return { ...raw, token: raw.access_token };
   },
@@ -156,11 +207,38 @@ export const authApi = {
   /** Return whether the configured OIDC provider can accept logins. */
   getOidcStatus: () => request<OidcStatus>("/auth/oidc/status"),
 
+  /** Return enabled dashboard SSO providers for the login page. */
+  getOauthStatus: () => request<OauthStatus>("/auth/oauth/status"),
+
+  /** Return whether directory (LDAP) logins are available, and its label. */
+  getLdapStatus: () => request<LdapStatus>("/auth/ldap/status"),
+
   /** Start an OIDC authorization-code login flow. */
   startOidc: (redirect_after?: string) =>
     request<{ authorization_url: string }>("/auth/oidc/start", {
       method: "POST",
       body: JSON.stringify({ redirect_after }),
+    }),
+
+  /** Start an OAuth/OIDC authorization-code login flow by provider kind. */
+  startOauth: (kind: string, redirect_after?: string) =>
+    request<{ authorization_url: string }>("/auth/oauth/start", {
+      method: "POST",
+      body: JSON.stringify({ kind, redirect_after }),
+    }),
+
+  /** Start an OAuth flow that binds the identity to the current user. */
+  startOauthBind: (kind: string, redirect_after?: string) =>
+    request<{ authorization_url: string }>("/auth/oauth/bind/start", {
+      method: "POST",
+      body: JSON.stringify({ kind, redirect_after }),
+    }),
+
+  /** Unlink one SSO identity by kind. Requires a local password when it is the last login method. */
+  unbindOauth: (kind: string) =>
+    request<OctopUser>("/auth/oauth/unbind", {
+      method: "POST",
+      body: JSON.stringify({ kind }),
     }),
 
   /** Exchange the one-time browser code for the standard JWT login response. */
@@ -195,6 +273,24 @@ export const authApi = {
       method: "PATCH",
       body: JSON.stringify({ display_name: displayName }),
     }),
+
+  /** Choose a preset icon. Null restores the built-in default and clears an upload. */
+  setAvatarIcon: (icon: string | null) =>
+    request<OctopUser>("/auth/me", {
+      method: "PATCH",
+      body: JSON.stringify({ avatar_icon: icon }),
+    }),
+
+  uploadAvatar: (file: File) => {
+    const body = new FormData();
+    body.append("file", file);
+    return requestUpload<{ avatar_url: string | null }>(
+      "/auth/me/avatar",
+      body,
+    );
+  },
+
+  deleteAvatar: () => request<void>("/auth/me/avatar", { method: "DELETE" }),
 
   // --- Legacy stubs kept so finnie-era components compile ----------------
   // These call paths are removed in octop's data model; the actual

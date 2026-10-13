@@ -1,6 +1,10 @@
 html,
 body {
+  /* lvh = largest viewport (behind the home indicator). dvh stops short. */
   height: 100%;
+  height: 100lvh;
+  min-height: 100lvh;
+  min-height: -webkit-fill-available;
   overflow: hidden;
   margin: 0;
   padding: 0;
@@ -10,10 +14,17 @@ body {
   -moz-osx-font-smoothing: grayscale;
   -webkit-tap-highlight-color: transparent;
   overscroll-behavior: none;
+  /* Override index.html boot gray (#f7f8fa) so iOS PWA letterboxing
+     below 100dvh is not a stray gray strip. */
+  background: var(--fn-bg-layout, #f5f6f8);
 }
 
 html {
   --window-controls-inset-end: 0px;
+  --safe-area-top: env(safe-area-inset-top, 0px);
+  --safe-area-right: env(safe-area-inset-right, 0px);
+  --safe-area-bottom: env(safe-area-inset-bottom, 0px);
+  --safe-area-left: env(safe-area-inset-left, 0px);
 }
 
 /* Wails v3 frameless drag: the element under the cursor must set this. */
@@ -55,9 +66,33 @@ html[data-octop-desktop-chrome] .ant-drawer-right .ant-drawer-close {
 }
 
 #root {
-  height: 100%;
+  /* Pin to the layout viewport. With viewport-fit=cover this includes
+     the iOS home-indicator band; 100dvh does not. */
+  position: fixed;
+  inset: 0;
+  height: auto;
+  width: auto;
   overflow: hidden;
   overscroll-behavior: none;
+}
+
+/* ConfigProvider prefixCls="octop" → antd <App> is .octop-app.
+   Without an explicit height, MainLayout's height:100% cannot fill #root. */
+.octop-app,
+.ant-app {
+  height: 100%;
+}
+
+/* Chat paints to the screen edge; don't leak page-layout gray under the
+   composer or in the iOS home-indicator letterbox. */
+html.octop-chat-open,
+html.octop-chat-open body,
+html.octop-chat-open #root {
+  background: var(--fn-bg-elevated, #fff);
+}
+
+html.octop-chat-open .page-container {
+  background: var(--fn-bg-elevated, #fff);
 }
 
 /* ---- Global touch & interaction fixes ---- */
@@ -366,7 +401,27 @@ html[data-theme="dark"] .octop-ant-switch-checked {
   .ant-modal,
   [class*="-modal"] {
     max-width: calc(100vw - 24px) !important;
-    margin: 12px auto !important;
+    margin: max(12px, env(safe-area-inset-top, 0px)) auto
+      max(12px, env(safe-area-inset-bottom, 0px)) !important;
+  }
+
+  /* Edge drawers (not bottom sheets): keep chrome out of the iOS PWA insets. */
+  .ant-drawer-left .ant-drawer-header,
+  .ant-drawer-right .ant-drawer-header,
+  .ant-drawer-top .ant-drawer-header,
+  .octop-drawer-left .octop-drawer-header,
+  .octop-drawer-right .octop-drawer-header,
+  .octop-drawer-top .octop-drawer-header {
+    padding-top: max(16px, env(safe-area-inset-top, 0px));
+  }
+
+  .ant-drawer-left .ant-drawer-footer,
+  .ant-drawer-right .ant-drawer-footer,
+  .ant-drawer-bottom .ant-drawer-footer,
+  .octop-drawer-left .octop-drawer-footer,
+  .octop-drawer-right .octop-drawer-footer,
+  .octop-drawer-bottom .octop-drawer-footer {
+    padding-bottom: max(10px, env(safe-area-inset-bottom, 0px));
   }
 
   .ant-modal-content,

@@ -1,2 +1,34 @@
 #!/bin/bash
+#
+# Octop 本地版 — 安装前回调
+# 预校验安装向导：用户名、密码/确认、可选邮箱。无效输入在此拦截。
+#
+set -euo pipefail
+
+_OCTOP_COMMON="$(dirname "$0")/common.sh"
+[ -f "$_OCTOP_COMMON" ] || _OCTOP_COMMON="/var/apps/octop-native/cmd/common.sh"
+[ -f "$_OCTOP_COMMON" ] && source "$_OCTOP_COMMON"
+
+fail_init() {
+    echo "[octop-native] $1" > "${TRIM_TEMP_LOGFILE:-/dev/null}" 2>&1 || true
+    echo "[octop-native] $1" >&2 || true
+    exit 1
+}
+
+if type octop_assert_native_arch >/dev/null 2>&1; then
+    if ! REASON="$(octop_assert_native_arch)"; then
+        fail_init "$REASON"
+    fi
+fi
+
+ADMIN_USER="$(octop_sanitize_value "${wizard_admin_username:-}")"
+ADMIN_DISPLAY="$(octop_sanitize_value "${wizard_admin_display_name:-}")"
+ADMIN_EMAIL="$(octop_sanitize_value "${wizard_admin_email:-}")"
+WIZARD_PASSWORD="$(octop_sanitize_value "${wizard_admin_password:-}")"
+WIZARD_CONFIRM="$(octop_sanitize_value "${wizard_admin_password_confirm:-}")"
+
+if ! REASON="$(octop_validate_install_fields "$ADMIN_USER" "$WIZARD_PASSWORD" "$WIZARD_CONFIRM" "$ADMIN_EMAIL" "$ADMIN_DISPLAY" 2>&1)"; then
+    fail_init "$REASON"
+fi
+
 exit 0

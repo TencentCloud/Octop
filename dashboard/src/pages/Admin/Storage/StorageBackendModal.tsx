@@ -27,6 +27,7 @@ import {
   type StorageBackendRow,
 } from "./useStorageBackends";
 import { DockerEnvFooter } from "./DockerEnvFooter";
+import { storageProbeMessage } from "./storageProbeMessage";
 
 interface StorageBackendDrawerProps {
   open: boolean;
@@ -180,7 +181,10 @@ export function StorageBackendDrawer({
         body.config_json = JSON.stringify(cfg);
       }
 
-      const backendName = isEdit ? editing!.name : values.name.trim();
+      const backendName = values.name.trim();
+      if (isEdit) {
+        body.name = backendName;
+      }
 
       let backendId: number | undefined = isEdit ? editing!.id : undefined;
 
@@ -225,15 +229,13 @@ export function StorageBackendDrawer({
           }>(`/admin/storage-backends/${backendId}/test`, { method: "POST" });
           hide();
           if (result.ok) {
-            const msg = result.message_key
-              ? t(
-                  `storage.${result.message_key}`,
-                  result.message || t("storage.testSuccess"),
-                )
-              : result.message || t("storage.testSuccess");
-            message.success(msg);
+            message.success(
+              storageProbeMessage(result, t, "storage.testSuccess"),
+            );
           } else {
-            message.warning(result.message || t("storage.testFailed"));
+            message.warning(
+              storageProbeMessage(result, t, "storage.testFailed"),
+            );
           }
         } catch (err) {
           hide();
@@ -341,15 +343,9 @@ export function StorageBackendDrawer({
         body: JSON.stringify(body),
       });
       if (result.ok) {
-        const msg = result.message_key
-          ? t(
-              `storage.${result.message_key}`,
-              result.message || t("storage.testSuccess"),
-            )
-          : result.message || t("storage.testSuccess");
-        message.success(msg);
+        message.success(storageProbeMessage(result, t, "storage.testSuccess"));
       } else {
-        message.error(result.message || t("storage.testFailed"));
+        message.error(storageProbeMessage(result, t, "storage.testFailed"));
       }
     } catch (err) {
       if (err && typeof err === "object" && "errorFields" in err) return;
@@ -406,16 +402,14 @@ export function StorageBackendDrawer({
           }
         }}
       >
-        {/* Name — create only */}
-        {!isEdit && (
-          <Form.Item
-            name="name"
-            label={t("storage.nameLabel")}
-            rules={[{ required: true, message: t("storage.pleaseEnterName") }]}
-          >
-            <Input placeholder={t("storage.namePlaceholder")} />
-          </Form.Item>
-        )}
+        {/* Name */}
+        <Form.Item
+          name="name"
+          label={t("storage.nameLabel")}
+          rules={[{ required: true, message: t("storage.pleaseEnterName") }]}
+        >
+          <Input placeholder={t("storage.namePlaceholder")} />
+        </Form.Item>
 
         {/* Kind selector — locked when editing or presetKind provided */}
         <Form.Item
@@ -625,7 +619,7 @@ export function StorageBackendDrawer({
                 >
                   <Input.TextArea
                     rows={5}
-                    placeholder='{"path_style": true}'
+                    placeholder='{"addressing_style": "path"}'
                     style={{ fontFamily: "monospace", fontSize: 12 }}
                   />
                 </Form.Item>

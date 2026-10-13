@@ -80,7 +80,7 @@ export function SkillsetFromHubDrawer({
       open={open}
       onClose={onClose}
       width={720}
-      destroyOnClose
+      destroyOnHidden
     >
       <Typography.Paragraph type="secondary" className={styles.hint}>
         {t("skillPackages.fromSkillHubHint")}

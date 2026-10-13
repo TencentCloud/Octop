@@ -5,7 +5,7 @@
  * Configured: segmented tabs switch between site-specific ProviderCards.
  */
 import { useMemo, useState } from "react";
-import { Card, Modal, Tag } from "antd";
+import { Card, Drawer, Tag } from "antd";
 import { useTranslation } from "react-i18next";
 import type { ProviderPreset, ProviderRow } from "../../useProviders";
 import {
@@ -31,7 +31,7 @@ interface PresetGroupCardProps {
   onMouseLeave: () => void;
 }
 
-function VariantPickerModal({
+function VariantPickerDrawer({
   group,
   providers,
   open,
@@ -47,12 +47,14 @@ function VariantPickerModal({
   const { t } = useTranslation();
 
   return (
-    <Modal
+    <Drawer
       title={t("models.selectVariant", { name: group.groupName })}
       open={open}
       footer={null}
-      onCancel={onClose}
+      onClose={onClose}
       destroyOnHidden
+      width={480}
+      placement="right"
     >
       <div className={styles.variantList}>
         {group.presets.map((preset) => {
@@ -84,7 +86,7 @@ function VariantPickerModal({
           );
         })}
       </div>
-    </Modal>
+    </Drawer>
   );
 }
 
@@ -118,9 +120,9 @@ export function PresetGroupCard({
   const logo =
     getProviderLogo(presetLogoId(group.presets[0])) ?? customProviderLogo;
 
-  const variantModal = (
+  const variantDrawer = (
     <>
-      <VariantPickerModal
+      <VariantPickerDrawer
         group={group}
         providers={providers}
         open={variantPickerOpen}
@@ -190,7 +192,7 @@ export function PresetGroupCard({
             {t("models.addSiteVariant")}
           </button>
         </div>
-        {variantModal}
+        {variantDrawer}
       </div>
     );
   }
@@ -257,7 +259,7 @@ export function PresetGroupCard({
           </div>
         </div>
       </Card>
-      {variantModal}
+      {variantDrawer}
     </>
   );
 }

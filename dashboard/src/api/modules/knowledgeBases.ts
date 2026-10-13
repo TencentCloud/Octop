@@ -1,4 +1,9 @@
-import { request, requestUpload } from "../request";
+import {
+  bridgeAgentHeaders,
+  request,
+  requestBlob,
+  requestUpload,
+} from "../request";
 
 export interface KnowledgeLimits {
   max_bases_per_owner: number;
@@ -69,6 +74,8 @@ export interface KnowledgeDocument {
   chunk_count: number;
   created_at: number;
   updated_at: number;
+  /** True when the uploaded original still exists on disk. */
+  has_original?: boolean;
 }
 
 export interface KnowledgeOnnxModel {
@@ -112,8 +119,10 @@ export const DEFAULT_KNOWLEDGE_LIMITS: KnowledgeLimits = {
 };
 
 export const knowledgeBasesApi = {
-  getCapability: () =>
-    request<KnowledgeCapability>("/knowledge-bases/capability"),
+  getCapability: (agentId?: string | null) =>
+    request<KnowledgeCapability>("/knowledge-bases/capability", {
+      headers: bridgeAgentHeaders(agentId),
+    }),
 
   setFeature: (body: {
     enabled: boolean;
@@ -130,7 +139,10 @@ export const knowledgeBasesApi = {
       body: JSON.stringify(body),
     }),
 
-  list: () => request<KnowledgeBase[]>("/knowledge-bases"),
+  list: (agentId?: string | null) =>
+    request<KnowledgeBase[]>("/knowledge-bases", {
+      headers: bridgeAgentHeaders(agentId),
+    }),
   getEmbeddingOptions: (opts?: { allOnnx?: boolean }) =>
     request<KnowledgeEmbeddingOptions>(
       opts?.allOnnx
@@ -283,6 +295,20 @@ export const knowledgeBasesApi = {
   previewDocument: (id: string, documentId: string) =>
     request<{ id: string; filename: string; text: string }>(
       `/knowledge-bases/${id}/documents/${documentId}/preview`,
+    ),
+
+  /** Authenticated original-file bytes (download or preview). */
+  fetchDocumentFile: (
+    id: string,
+    documentId: string,
+    disposition: "attachment" | "inline" = "attachment",
+    onProgress?: (loaded: number, total: number) => void,
+    signal?: AbortSignal,
+  ) =>
+    requestBlob(
+      `/knowledge-bases/${id}/documents/${documentId}/file?disposition=${disposition}`,
+      { signal },
+      onProgress,
     ),
 
   reindex: (id: string) =>

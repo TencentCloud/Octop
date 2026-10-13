@@ -1,0 +1,3 @@
+{
+  "renderers": [{ "id": "air_quality_card", "tools": ["get_air_quality"] }]
+}

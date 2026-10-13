@@ -11,12 +11,14 @@ from langchain_core.messages import AIMessage, HumanMessage
 from octop.i18n import tr
 from octop.infra.cron.task_type import CronTaskType, normalize_cron_task_type
 from octop.infra.gateway.process import build_harness_request
-from octop.infra.gateway.process.history_projection import TurnHistoryTracker, message_inputs
 from octop.infra.gateway.process.message_keys import COMPOSER_CTX_KEY, build_composer_context
 from octop.infra.gateway.process.usage_record import UsageTracker, record_turn_usage
 from octop.infra.gateway.threads import ThreadRegistry
+from octop.infra.history.projection import TurnHistoryTracker, message_inputs
+from octop.infra.knowledge.default_open import stamp_turn_knowledge_config
 from octop.infra.utils.llm_text import strip_thinking
 from octop.infra.utils.locale import resolve_user_locale
+from octop.infra.utils.turn_failure import log_failed_tool_results
 from octop.infra.utils.ulid import new_ulid
 
 if TYPE_CHECKING:
@@ -138,20 +140,39 @@ class CronDeliveryService:
         usage = UsageTracker()
         parts: list[str] = []
         interaction_required = False
-        async for chunk in self._agent_manager.stream(command.agent_id, request):
-            tracker.observe(chunk)
-            usage.observe(chunk)
-            if chunk.get("type") in ("token", "delta"):
-                parts.append(str(chunk.get("content") or chunk.get("text") or ""))
-            elif chunk.get("type") == "hitl_required":
-                interaction_required = True
-        if interaction_required:
-            raise RuntimeError("cron agent run requires user interaction")
+        saw_tool_call = False
+        emitted_tool_error_ids: set[str] = set()
+        try:
+            from octop.infra.connectors.gateway.adapters.agently_cli import write_scope
 
-        outbound = strip_thinking("".join(parts)).strip()
-        if not outbound:
-            raise RuntimeError("cron agent run produced no visible response")
-        self._project_best_effort(session.thread_id, tracker.inputs)
+            with write_scope(allowed=False):
+                async for chunk in self._agent_manager.stream(command.agent_id, request):
+                    tracker.observe(chunk)
+                    usage.observe(chunk)
+                    kind = chunk.get("type")
+                    if kind == "tool_call_chunk":
+                        saw_tool_call = True
+                    elif kind == "tool_result":
+                        log_failed_tool_results(
+                            chunk,
+                            agent_id=command.agent_id,
+                            thread_id=session.thread_id,
+                            seen=emitted_tool_error_ids,
+                            live=saw_tool_call,
+                        )
+                    if kind in ("token", "delta"):
+                        parts.append(str(chunk.get("content") or chunk.get("text") or ""))
+                    elif kind == "hitl_required":
+                        interaction_required = True
+            if interaction_required:
+                raise RuntimeError("cron agent run requires user interaction")
+            outbound = strip_thinking("".join(parts)).strip()
+            if not outbound:
+                raise RuntimeError("cron agent run produced no visible response")
+        finally:
+            # ``fresh_thread`` already put an empty thread on the session, so a run
+            # that raised before this left a conversation with no rows at all.
+            self._project_best_effort(session.thread_id, tracker.inputs)
         if usage.usage is not None:
             record_turn_usage(
                 self._repos.usage_repo,
@@ -173,25 +194,33 @@ class CronDeliveryService:
         command: CronDeliveryCommand,
         session: SessionRow,
     ) -> dict[str, Any]:
-        servers = [name.strip() for name in command.mcp_servers if name.strip()]
-        if servers:
-            servers = (
-                self._agent_manager.merge_turn_mcp_servers(
-                    session.user_id,
-                    servers,
-                    apply_defaults=False,
-                )
-                or []
-            )
+        from octop.infra.agents.teams import is_team_agent
+
+        if is_team_agent(self._agent_manager.get_row(command.agent_id)):
+            servers: list[str] = []
         else:
-            servers = (
-                self._agent_manager.merge_turn_mcp_servers(
-                    session.user_id,
-                    None,
-                    apply_defaults=True,
+            servers = [name.strip() for name in command.mcp_servers if name.strip()]
+            extra_defaults = self._agent_manager.default_mcp_servers(command.agent_id)
+            if servers:
+                servers = (
+                    self._agent_manager.merge_turn_mcp_servers(
+                        session.user_id,
+                        servers,
+                        apply_defaults=False,
+                        extra_defaults=extra_defaults,
+                    )
+                    or []
                 )
-                or []
-            )
+            else:
+                servers = (
+                    self._agent_manager.merge_turn_mcp_servers(
+                        session.user_id,
+                        None,
+                        apply_defaults=True,
+                        extra_defaults=extra_defaults,
+                    )
+                    or []
+                )
         if servers:
             failed = await self._agent_manager.prepare_chat_mcp(
                 command.agent_id,
@@ -223,7 +252,35 @@ class CronDeliveryService:
         )
         if servers:
             request["mcp_servers"] = servers
+        self._attach_turn_knowledge_config(request, command, session)
         return request
+
+    def _attach_turn_knowledge_config(
+        self,
+        request: dict[str, Any],
+        command: CronDeliveryCommand,
+        session: SessionRow,
+    ) -> None:
+        user_row = self._repos.user_repo.get(session.user_id)
+        is_admin = str(getattr(user_row, "role", "") or "") == "admin"
+        knowledge_repo = self._repos.knowledge_repo
+        bases = (
+            knowledge_repo.list_all() if is_admin else knowledge_repo.list_visible(session.user_id)
+        )
+        locale = resolve_user_locale(
+            user_repo=self._repos.user_repo,
+            user_id=session.user_id,
+            channel_type=session.channel_type,
+        )
+        stamp_turn_knowledge_config(
+            request,
+            visible_bases=bases,
+            explicit_ids=None,
+            owner_user_id=session.user_id,
+            extra_ids=self._agent_manager.default_knowledge_base_ids(command.agent_id),
+            is_admin=is_admin,
+            locale=locale,
+        )
 
     def _project_best_effort(
         self,

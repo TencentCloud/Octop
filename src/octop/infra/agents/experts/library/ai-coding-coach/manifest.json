@@ -66,5 +66,17 @@
       "color": "#fef3c7",
       "icon_name": "git-compare"
     }
-  ]
+  ],
+  "task_examples": {
+    "zh": [
+      "每个工作日「09:30」推送一条可立即练习的 AI 编程技巧（结合我常用的 Cursor / Claude Code），任务创建后立即启用",
+      "每周五「17:30」复盘本周我在 AI 编程上卡住的问题，给出下周练习计划",
+      "每月最后一天「20:00」整理一份本月工具与提示词最佳实践清单"
+    ],
+    "en": [
+      "Every weekday at 09:30, send one AI coding technique I can practice immediately (Cursor / Claude Code) — enable immediately",
+      "Every Friday at 17:30, recap where I got stuck with AI coding this week and outline next week's drills",
+      "On the last day of each month at 20:00, compile this month's tool and prompting best-practices list"
+    ]
+  }
 }

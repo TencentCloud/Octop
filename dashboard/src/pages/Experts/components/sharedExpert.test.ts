@@ -1,8 +1,11 @@
 import { describe, expect, it } from "vitest";
 import {
+  chatSkillCatalogAgentId,
   isOwnedExpert,
   isSharedExpertViewer,
   ownedExperts,
+  ownedSoloExperts,
+  ownedTeamAgents,
 } from "../../../utils/sharedExpert";
 
 describe("isSharedExpertViewer", () => {
@@ -22,6 +25,25 @@ describe("isSharedExpertViewer", () => {
   });
 });
 
+describe("chatSkillCatalogAgentId", () => {
+  it("loads skills for a ready shared expert viewed by a non-owner", () => {
+    const shared = {
+      agent_id: "shared",
+      is_shared: true,
+      is_owner: false,
+    };
+    expect(isSharedExpertViewer(shared)).toBe(true);
+    expect(chatSkillCatalogAgentId(shared.agent_id, true, false)).toBe(
+      "shared",
+    );
+  });
+
+  it("waits until the expert is ready and agent loading has finished", () => {
+    expect(chatSkillCatalogAgentId("shared", false, false)).toBeNull();
+    expect(chatSkillCatalogAgentId("shared", true, true)).toBeNull();
+  });
+});
+
 describe("ownedExperts", () => {
   it("keeps owned experts and drops shared viewers for manage pages", () => {
     const agents = [
@@ -35,5 +57,31 @@ describe("ownedExperts", () => {
     ]);
     expect(isOwnedExpert(agents[1]!)).toBe(false);
     expect(isOwnedExpert(agents[0]!)).toBe(true);
+  });
+});
+
+describe("ownedSoloExperts", () => {
+  it("drops team hosts from expert pickers", () => {
+    const agents = [
+      { agent_id: "writer", is_owner: true, kind: "expert" },
+      { agent_id: "crew", is_owner: true, kind: "team" },
+    ];
+    expect(ownedSoloExperts(agents).map((a) => a.agent_id)).toEqual(["writer"]);
+  });
+});
+
+describe("ownedTeamAgents", () => {
+  it("keeps owned team hosts only", () => {
+    const agents = [
+      { agent_id: "writer", is_owner: true, kind: "expert" },
+      { agent_id: "crew", is_owner: true, kind: "team" },
+      {
+        agent_id: "shared-crew",
+        is_shared: true,
+        is_owner: false,
+        kind: "team",
+      },
+    ];
+    expect(ownedTeamAgents(agents).map((a) => a.agent_id)).toEqual(["crew"]);
   });
 });

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import gzip
 import logging
 import os
@@ -11,7 +12,7 @@ from contextlib import suppress
 from dataclasses import dataclass
 from logging.handlers import TimedRotatingFileHandler
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from octop.config import OctopConfig, load_config
 from octop.infra.agents.experts.catalog import ExpertCatalog, default_library_root
@@ -33,8 +34,11 @@ from octop.infra.users.manager import UserManager
 from octop.infra.utils.paths import PathLayout
 
 if TYPE_CHECKING:
+    from octop.infra.auth.ldap.service import LdapAuthService
+    from octop.infra.auth.ldap.throttle import LdapBindThrottle
     from octop.infra.auth.sso.service import SsoService
-    from octop.infra.trajectory.service import TrajectoryService
+    from octop.infra.db.services import SharedServices
+    from octop.infra.history.trajectory.service import TrajectoryService
 
 logger = logging.getLogger(__name__)
 
@@ -215,12 +219,16 @@ class AppRuntime:
     user_manager: UserManager
     proactive_scheduler: ProactiveCareScheduler
     trajectory_service: TrajectoryService | None = None
+    history_archive: Any | None = None
+    bridge_manager: Any | None = None
 
     def replace_services(self, services: SharedServices, config: OctopConfig) -> None:
         """Retarget all runtime singletons onto a new SharedServices / config.
 
         Used when the setup wizard hot-swaps the control-plane DB while empty.
         """
+        if self.history_archive is not None:
+            raise ValueError("Restart the server to rebind a database with versioned history")
         self.user_manager.replace_services(services)
         self.agent_registry.replace_persistence(services.repos, config)
         self.gateway.replace_repos(services.repos)
@@ -231,7 +239,7 @@ class AppRuntime:
             care_push_repo=services.repos.care_push_repo,
         )
         if self.trajectory_service is not None:
-            from octop.infra.trajectory.store import TrajectoryStore  # noqa: PLC0415
+            from octop.infra.history.trajectory.store import TrajectoryStore  # noqa: PLC0415
 
             self.trajectory_service.replace_store(TrajectoryStore(services.trajectory_event_repo))
 
@@ -250,6 +258,9 @@ class OctopServer:
         self._started = False
         self._started_at: int | None = None
         self._sso_service: SsoService | None = None
+        self._ldap_service: LdapAuthService | None = None
+        self._ldap_bind_throttle: LdapBindThrottle | None = None
+        self._ldap_bind_throttle_services: SharedServices | None = None
 
     # Backward compat: expose user_manager directly
     @property
@@ -270,6 +281,43 @@ class OctopServer:
         ):
             self._sso_service = SsoServiceCls(self.services, self.user_manager)
         return self._sso_service
+
+    @property
+    def ldap_service(self) -> LdapAuthService:
+        """Process-level LDAP service, rebound whenever services are swapped."""
+        from octop.infra.auth.ldap.service import (
+            LdapAuthService as LdapAuthServiceCls,  # noqa: PLC0415
+        )
+
+        if self.services is None or self.user_manager is None:
+            raise RuntimeError("LDAP service requires a started server with user manager")
+        if (
+            self._ldap_service is None
+            or getattr(self._ldap_service, "_services", None) is not self.services
+            or getattr(self._ldap_service, "_user_manager", None) is not self.user_manager
+        ):
+            self._ldap_service = LdapAuthServiceCls(self.services, self.user_manager)
+        return self._ldap_service
+
+    @property
+    def ldap_bind_throttle(self) -> LdapBindThrottle:
+        """Process-level brute-force backoff for directory binds."""
+        from octop.infra.auth.ldap.throttle import LdapBindThrottle as ThrottleCls  # noqa: PLC0415
+
+        if self.services is None:
+            raise RuntimeError("LDAP throttle requires a started server")
+        if (
+            self._ldap_bind_throttle is None
+            or self._ldap_bind_throttle_services is not self.services
+        ):
+            config = self.services.config
+            self._ldap_bind_throttle = ThrottleCls(
+                max_attempts=config.login_max_attempts,
+                window_seconds=60,
+                block_seconds=config.login_lockout_seconds,
+            )
+            self._ldap_bind_throttle_services = self.services
+        return self._ldap_bind_throttle
 
     @property
     def database_bound(self) -> bool:
@@ -319,6 +367,9 @@ class OctopServer:
         db = open_database(config, self.paths)
         run_migrations(db)
         self.services = build_shared_services(db=db, paths=self.paths, config=config)
+        from octop.infra.auth.captcha import boot_from_services  # noqa: PLC0415
+
+        boot_from_services(self.services.settings_repo, self.services.secret_repo)
         self._ensure_jwt_secret()
         await self._boot_runtime(config)
         self._started = True
@@ -343,6 +394,9 @@ class OctopServer:
             db.close()
             raise
         self.services = build_shared_services(db=db, paths=self.paths, config=config)
+        from octop.infra.auth.captcha import boot_from_services  # noqa: PLC0415
+
+        boot_from_services(self.services.settings_repo, self.services.secret_repo)
         self._ensure_jwt_secret()
         await self._boot_runtime(config)
         logger.info(
@@ -377,12 +431,36 @@ class OctopServer:
             plugin_manager=self.plugin_manager,
         )
 
-        from octop.infra.trajectory.live import TrajectoryLiveBus  # noqa: PLC0415
-        from octop.infra.trajectory.service import TrajectoryService  # noqa: PLC0415
-        from octop.infra.trajectory.store import TrajectoryStore  # noqa: PLC0415
+        from octop.infra.history.trajectory.live import TrajectoryLiveBus  # noqa: PLC0415
+        from octop.infra.history.trajectory.service import TrajectoryService  # noqa: PLC0415
+        from octop.infra.history.trajectory.store import TrajectoryStore  # noqa: PLC0415
 
+        history_archive = None
+        trajectory_store = TrajectoryStore(self.services.trajectory_event_repo)
+        archive_path = self.paths.root / "history_v2.sqlite"
+        if (
+            config.history_v2_enabled
+            or archive_path.exists()
+            or archive_path.with_suffix(".required").exists()
+        ):
+            from octop.infra.history.service import HistoryArchive  # noqa: PLC0415
+            from octop.infra.history.store import HistoryStore  # noqa: PLC0415
+            from octop.infra.history.trajectory_compat import (
+                ArchiveTrajectoryStore,  # noqa: PLC0415
+            )
+
+            identity = str(config.database.resolve_sqlite_path(self.paths.root).resolve())
+            if not config.database.is_sqlite:
+                raise ValueError("Versioned history currently requires the SQLite control plane")
+            history_archive = HistoryArchive(
+                HistoryStore(archive_path, identity=identity),
+                self.services.thread_message_repo,
+                self.services.trajectory_event_repo,
+                enabled=config.history_v2_enabled,
+            )
+            trajectory_store = ArchiveTrajectoryStore(history_archive)
         trajectory_service = TrajectoryService(
-            TrajectoryStore(self.services.trajectory_event_repo),
+            trajectory_store,
             TrajectoryLiveBus(),
         )
 
@@ -390,6 +468,7 @@ class OctopServer:
             agent_manager=registry,
             repos=self.services.repos,
             trajectory_service=trajectory_service,
+            history_archive=history_archive,
         )
         await gateway.boot()
 
@@ -427,7 +506,10 @@ class OctopServer:
         install_auto_backup_job(cron_mgr, server=self)
 
         registry.set_cron_manager(cron_mgr)
-        registry.set_team_processor(gateway.processor)
+        registry.set_team_processor(gateway.processor.teams)
+        hitl_session_store = gateway.processor.hitl_coordinator.session_policies
+        hitl_session_store.replace_repo(self.services.repos.thread_repo)
+        registry.set_hitl_session_store(hitl_session_store)
 
         care_service = ProactiveCareService(
             gateway=gateway,
@@ -446,11 +528,41 @@ class OctopServer:
         registry.set_proactive_scheduler(proactive_scheduler)
 
         await registry.boot()
+        registry.schedule_idle_reclaim_sweep()
         await gateway.refresh_media_backends()
 
         user_mgr = UserManager(self.services)
         await user_mgr.boot()
         await proactive_scheduler.start_all()
+
+        from octop.infra.auth.tokens import sign_token
+        from octop.infra.bridge.manager import BridgeManager, public_base_url_from_config
+
+        services = self.services
+        if services is None:
+            raise RuntimeError("shared services not ready for bridge")
+
+        def _sign_user_token(user: Any) -> str:
+            secret = services.secret_repo.get("jwt")
+            if secret is None:
+                raise RuntimeError("jwt secret missing")
+            ttl = services.config.access_token_ttl_seconds
+            return sign_token(
+                secret,
+                sub=int(user.id),
+                uname=str(user.username),
+                role=str(user.role),
+                ttl_seconds=ttl,
+            )
+
+        advertise = public_base_url_from_config(config.bind_host, config.port)
+        bridge_mgr = BridgeManager(
+            bridge_repo=services.bridge_connection_repo,
+            secret_repo=services.secret_repo,
+            user_repo=services.user_repo,
+            advertise_base_url=advertise,
+            token_signer=_sign_user_token,
+        )
 
         self.app_runtime = AppRuntime(
             agent_registry=registry,
@@ -459,10 +571,19 @@ class OctopServer:
             user_manager=user_mgr,
             proactive_scheduler=proactive_scheduler,
             trajectory_service=trajectory_service,
+            history_archive=history_archive,
+            bridge_manager=bridge_mgr,
         )
         from octop.infra.knowledge.jobs import resume_pending_index_jobs  # noqa: PLC0415
 
         resume_pending_index_jobs(self.services)
+
+        # Resume Bridge links that opted into auto-reconnect (best-effort).
+        async def _resume_bridges() -> None:
+            with suppress(Exception):
+                await bridge_mgr.resume_auto_connections()
+
+        asyncio.create_task(_resume_bridges(), name="bridge-auto-resume")
 
     def _emit_wizard_password(self, *, user_count: int) -> None:
         config = self.config
@@ -498,6 +619,9 @@ class OctopServer:
         if not self._started:
             return
         try:
+            from octop.infra.connectors.gateway import agently_auth
+
+            await agently_auth.close()
             if self.app_runtime is not None:
                 rt = self.app_runtime
                 await rt.proactive_scheduler.shutdown()
@@ -505,6 +629,11 @@ class OctopServer:
                 await rt.gateway.shutdown()
                 await rt.agent_registry.shutdown()
                 await rt.user_manager.shutdown_all()
+                if rt.history_archive is not None:
+                    rt.history_archive.store.close()
+            from octop.infra.backend.browse import dispose_all_browse_sessions
+
+            dispose_all_browse_sessions()
         finally:
             if self.services is not None:
                 self.services.db.close()
@@ -547,6 +676,11 @@ class OctopServer:
 
         level = os.environ.get("OCTOP_LOG_LEVEL", "info").upper()
         root.setLevel(getattr(logging, level, logging.INFO))
+        if root.level > logging.DEBUG:
+            # httpx logs full request URLs at INFO, leaking query-string
+            # secrets (OAuth access_token, corpsecret) into the log file.
+            logging.getLogger("httpx").setLevel(logging.WARNING)
+            logging.getLogger("httpcore").setLevel(logging.WARNING)
 
     def _ensure_jwt_secret(self) -> None:
         assert self.services is not None

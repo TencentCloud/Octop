@@ -6,6 +6,11 @@ import { partitionPinnedTools } from "../../../plugins/toolRenderers/isPinnedToo
 import { useToolRendererVersion } from "../../../plugins/toolRenderers";
 import AssistantProcessSummary from "./AssistantProcessSummary";
 import { ToolDetailsInline } from "./MessageBubble";
+import { ExpertMessageAvatar } from "./MessageSender";
+import { useAgent } from "../../../context/AgentContext";
+import { isTeamAgent, isTeamHostSpeaker } from "../../../utils/teamAgent";
+import { rewritePeerSpeakerId } from "../../../utils/remoteExpert";
+import { useTranslation } from "react-i18next";
 import styles from "../index.module.less";
 
 interface TurnProcessBlocksProps {
@@ -14,6 +19,8 @@ interface TurnProcessBlocksProps {
   onAcpPermissionSelect?: (message: string) => void;
   hideToolMedia: boolean;
   agentId: string | null;
+  /** One expert avatar per turn — only the first process row should show it. */
+  showAvatar?: boolean;
 }
 
 function hasFoldContent(split: AssistantTurnSplit): boolean {
@@ -28,7 +35,27 @@ export function TurnProcessBlocks({
   onAcpPermissionSelect,
   hideToolMedia,
   agentId,
+  showAvatar = false,
 }: TurnProcessBlocksProps) {
+  const { t } = useTranslation();
+  const { agents, activeAgent } = useAgent();
+  const isTeamRoom = isTeamAgent(activeAgent);
+  const speakerId =
+    rewritePeerSpeakerId(activeAgent?.agent_id, agentId) || agentId;
+  const hostSpeaker = isTeamHostSpeaker(
+    isTeamRoom,
+    speakerId,
+    activeAgent?.agent_id,
+  );
+  const expert =
+    (speakerId && agents.find((item) => item.agent_id === speakerId)) ||
+    (!isTeamRoom || hostSpeaker ? activeAgent : undefined);
+  const avatarTooltip = hostSpeaker
+    ? t("chat.teamHostHover", { name: activeAgent?.name || expert?.name || "" })
+    : expert?.name || undefined;
+  const avatarProfileId = hostSpeaker
+    ? activeAgent?.agent_id
+    : speakerId || undefined;
   const rendererVersion = useToolRendererVersion();
   const { pinned, folded } = useMemo(
     () => partitionPinnedTools(split),
@@ -43,10 +70,23 @@ export function TurnProcessBlocks({
     <>
       {showFold ? (
         <div className={styles.processSummaryRow}>
+          {showAvatar && (expert || avatarProfileId) ? (
+            <div className={styles.avatarCol}>
+              <ExpertMessageAvatar
+                name={expert?.name || avatarProfileId}
+                color={expert?.color}
+                iconName={expert?.icon_name}
+                iconUrl={expert?.icon_url}
+                tooltip={avatarTooltip}
+                profileAgentId={avatarProfileId}
+              />
+            </div>
+          ) : null}
           <AssistantProcessSummary
             split={folded}
             statsSplit={split}
             isStreaming={isStreaming}
+            isTeam={isTeamRoom}
             onAcpPermissionSelect={onAcpPermissionSelect}
             hideToolMedia={hideToolMedia}
             agentId={agentId}
@@ -54,20 +94,22 @@ export function TurnProcessBlocks({
         </div>
       ) : null}
       {pinned.length > 0 ? (
-        <div className={styles.pinnedToolResults} data-octop-pinned-tools="">
-          {pinned.map((message: ChatMessage) =>
-            message.toolData ? (
-              <div key={message.id} className={styles.pinnedToolResultItem}>
-                <ToolDetailsInline
-                  toolData={message.toolData}
-                  isStreaming={message.status === "streaming" && isStreaming}
-                  onAcpPermissionSelect={onAcpPermissionSelect}
-                  hideMediaPreview={hideToolMedia}
-                  agentId={agentId}
-                />
-              </div>
-            ) : null,
-          )}
+        <div className={styles.turnInset}>
+          <div className={styles.pinnedToolResults} data-octop-pinned-tools="">
+            {pinned.map((message: ChatMessage) =>
+              message.toolData ? (
+                <div key={message.id} className={styles.pinnedToolResultItem}>
+                  <ToolDetailsInline
+                    toolData={message.toolData}
+                    isStreaming={message.status === "streaming" && isStreaming}
+                    onAcpPermissionSelect={onAcpPermissionSelect}
+                    hideMediaPreview={hideToolMedia}
+                    agentId={agentId}
+                  />
+                </div>
+              ) : null,
+            )}
+          </div>
         </div>
       ) : null}
     </>
@@ -77,4 +119,9 @@ export function TurnProcessBlocks({
 export function turnHasVisibleProcess(split: AssistantTurnSplit): boolean {
   const { pinned, folded } = partitionPinnedTools(split);
   return hasFoldContent(folded) || pinned.length > 0;
+}
+
+/** True when the foldable「已调用 N 次工具 / 深度思考」row will render. */
+export function turnHasProcessSummary(split: AssistantTurnSplit): boolean {
+  return hasFoldContent(partitionPinnedTools(split).folded);
 }

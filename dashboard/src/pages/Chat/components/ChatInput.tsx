@@ -3,6 +3,7 @@ import {
   useRef,
   useCallback,
   useEffect,
+  useMemo,
   forwardRef,
   useImperativeHandle,
 } from "react";
@@ -10,6 +11,11 @@ import { useTranslation } from "react-i18next";
 import { App } from "antd";
 
 import { useIsMobile } from "../../../hooks/useIsMobile";
+import {
+  isPwaDisplay,
+  needsComposerVisualViewportFix,
+} from "../../../hooks/viewport";
+import { useKeepInVisualViewport } from "../../../hooks/useKeepInVisualViewport";
 import { useSlashCommands } from "../../../hooks/useSlashCommands";
 import SlashCommandMenu from "./SlashCommandMenu";
 import { agentChatApi } from "../../../api/modules/agentChat";
@@ -18,15 +24,27 @@ import type { ResolvedModel } from "../../../api/types";
 import type { KnowledgeBase } from "../../../api/modules/knowledgeBases";
 import type { SkillSpec } from "../../Agent/Skills/useSkills";
 import type { ChatAgentOption } from "./ExpertAgentAvatar";
+import type { AgentSubagentSummary } from "../../../api/modules/subagents";
 import MentionPickerMenu from "./MentionPickerMenu";
 import ChatInputPreviewBar from "./ChatInputPreviewBar";
 import ChatInputActionsRow from "./ChatInputActionsRow";
 import ChatQueuedMessages from "./ChatQueuedMessages";
 import { useVoiceInput } from "../../../hooks/useVoiceInput";
-import { useKeyboardOffset } from "../../../hooks/useKeyboardOffset";
 import { useChatAttachments } from "../hooks/useChatAttachments";
 import { useSlashMentionInput } from "../hooks/useSlashMentionInput";
 import { stripThinkingTags } from "../utils/chatAttachments";
+import { isSlashCommandText } from "../utils/slashText";
+import {
+  ensureExpertMentions,
+  toggleExpertMention,
+} from "../utils/expertMention";
+import {
+  insertSkillSlash,
+  materializeSkillSlashes,
+  parseSkillSlugsInText,
+  type SkillTokenRef,
+} from "../utils/skillSlash";
+import { useSkillDisplayName } from "../../Agent/Skills/skillDisplayNames";
 import {
   consumePendingPrefillAttachments,
   readInputDraft,
@@ -40,12 +58,14 @@ import type {
   EnqueueChatItemInput,
   QueuedChatItem,
 } from "../hooks/useChatMessageQueue";
+import type { HitlSessionPolicy } from "../utils/hitlSessionPolicy";
 import styles from "../index.module.less";
 
 /** Imperative handle exposed via ref for programmatic text injection. */
 export interface ChatInputHandle {
   setPrefillText: (text: string) => void;
   setPrefillComposer: (text: string, attachments?: ChatAttachment[]) => void;
+  focusComposer: () => void;
 }
 
 interface ChatInputProps {
@@ -65,6 +85,13 @@ interface ChatInputProps {
   onStopBrowserRecording?: () => void;
   onReplayBrowserRecording?: () => void;
   isStreaming: boolean;
+  /**
+   * Team members are still producing. Queue the next message instead of
+   * starting another host turn on top of them.
+   */
+  holdSend?: boolean;
+  /** Team room: the host turn itself can still be interrupted while it is the only speaker. */
+  isTeam?: boolean;
   disabled?: boolean;
   /** Pre-fill the input with this text on mount (e.g. navigated from another page). */
   initialText?: string;
@@ -79,6 +106,10 @@ interface ChatInputProps {
     mode: "auto" | "enabled" | "disabled",
     effort: string | null,
   ) => void;
+  conversationMode?: "ask" | "plan" | "craft";
+  onConversationModeChange?: (mode: "ask" | "plan" | "craft") => void;
+  hitlPolicy?: HitlSessionPolicy;
+  onHitlPolicyChange?: (policy: HitlSessionPolicy) => void;
   availableConnectors?: {
     mcp_server_name: string;
     label: string;
@@ -90,8 +121,6 @@ interface ChatInputProps {
   selectedKnowledgeBaseIds?: string[];
   onKnowledgeBaseIdsChange?: (ids: string[]) => void;
   availableSkills?: SkillSpec[];
-  selectedSkills?: string[];
-  onSkillsChange?: (names: string[]) => void;
   availableAgents?: ChatAgentOption[];
   /**
    * Subset of experts the user can currently pick — only running ones
@@ -100,8 +129,7 @@ interface ChatInputProps {
    * expert is guaranteed to be running.
    */
   availableExperts?: ChatAgentOption[];
-  selectedTargetAgents?: string[];
-  onTargetAgentsChange?: (ids: string[]) => void;
+  availableSubagents?: AgentSubagentSummary[];
   agentId?: string | null;
   threadId?: string | null;
   defaultModel?: string | null;
@@ -127,6 +155,8 @@ const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
       onStopBrowserRecording,
       onReplayBrowserRecording,
       isStreaming,
+      holdSend = false,
+      isTeam = false,
       disabled,
       initialText = "",
       onComposerCleared,
@@ -136,6 +166,10 @@ const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
       reasoningMode = "auto",
       reasoningEffort = null,
       onReasoningChange,
+      conversationMode = "craft",
+      onConversationModeChange,
+      hitlPolicy,
+      onHitlPolicyChange,
       availableConnectors,
       selectedConnectors = [],
       onConnectorsChange,
@@ -143,16 +177,13 @@ const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
       selectedKnowledgeBaseIds = [],
       onKnowledgeBaseIdsChange,
       availableSkills,
-      selectedSkills = [],
-      onSkillsChange,
       availableAgents = [],
       // Default ``availableExperts`` to the full projection so older callers
       // (and tests) keep working. Production callers in ``Chat/index.tsx``
       // explicitly pass the filtered list — keep that explicit to avoid
       // accidentally re-surfacing stopped experts in the @-picker.
       availableExperts = availableAgents,
-      selectedTargetAgents = [],
-      onTargetAgentsChange,
+      availableSubagents = [],
       agentId,
       threadId,
       defaultModel,
@@ -164,8 +195,28 @@ const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
     const { t, i18n } = useTranslation();
     const { modal, message: antMessage } = App.useApp();
     const { commands: slashCommands, labelFor } = useSlashCommands("ui");
+    const skillDisplayName = useSkillDisplayName();
     const isMobile = useIsMobile();
-    useKeyboardOffset();
+    const shellRef = useRef<HTMLDivElement>(null);
+    const [nativeDropActive, setNativeDropActive] = useState(false);
+    useEffect(() => {
+      const el = shellRef.current;
+      if (!el) return;
+      const sync = () => {
+        setNativeDropActive(el.classList.contains("file-drop-target-active"));
+      };
+      const observer = new MutationObserver(sync);
+      observer.observe(el, {
+        attributes: true,
+        attributeFilter: ["class"],
+      });
+      return () => observer.disconnect();
+    }, []);
+    const keepComposerInView =
+      typeof window !== "undefined" &&
+      !isPwaDisplay() &&
+      (isMobile || needsComposerVisualViewportFix());
+    useKeepInVisualViewport(shellRef, keepComposerInView);
     const [text, setText] = useState(
       () => initialText || readInputDraft(agentId, threadId),
     );
@@ -178,9 +229,24 @@ const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
     // (parent may still hold the prefill string in a ref across the next render).
     const ignoreInitialTextRef = useRef<string | null>(null);
 
-    const handleVoiceText = useCallback(
+    const setComposerText = useCallback((value: string) => {
+      userHasEditedRef.current = true;
+      setText(value);
+    }, []);
+
+    const textRef = useRef(text);
+    useEffect(() => {
+      textRef.current = text;
+    }, [text]);
+    // Text that existed before the current voice session started; the session's
+    // (possibly still refining) transcript is appended to it on every update.
+    const voiceBaselineRef = useRef("");
+
+    const applyVoiceText = useCallback(
       (spoken: string) => {
-        setText((prev) => (prev.trim() ? `${prev.trim()} ${spoken}` : spoken));
+        const base = voiceBaselineRef.current.trim();
+        const next = spoken.trim();
+        setText(base ? (next ? `${base} ${next}` : base) : next);
         userHasEditedRef.current = true;
         onUserInput?.();
       },
@@ -189,15 +255,26 @@ const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
     const {
       recording,
       transcribing,
+      realtime: realtimeVoice,
+      start: startVoice,
+      stop: stopVoice,
       toggle: toggleVoice,
-    } = useVoiceInput(handleVoiceText);
+    } = useVoiceInput({
+      onStart: () => {
+        voiceBaselineRef.current = textRef.current;
+      },
+      onInterim: applyVoiceText,
+      onText: applyVoiceText,
+    });
     const textareaRef = useRef<HTMLTextAreaElement>(null);
     const {
       attachments,
       uploading,
       dragOver,
       fileInputRef,
+      folderInputRef,
       handleFileSelect,
+      handleFolderSelect,
       handleFileChange,
       removeAttachment,
       clearAttachments,
@@ -250,6 +327,12 @@ const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
             }
           }, 50);
         },
+        focusComposer: () => {
+          const el = textareaRef.current;
+          if (!el) return;
+          el.focus();
+          el.setSelectionRange(el.value.length, el.value.length);
+        },
       }),
       [clearAttachments, restoreAttachments],
     );
@@ -300,7 +383,7 @@ const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
       userHasEditedRef.current = false;
       ignoreInitialTextRef.current = null;
       prevInitialTextRef.current = "";
-      setText(initialText || readInputDraft(agentId, threadId));
+      setText(readInputDraft(agentId, threadId));
       const pendingAttachments = consumePendingPrefillAttachments();
       if (pendingAttachments.length > 0) {
         restoreAttachments(pendingAttachments);
@@ -335,6 +418,8 @@ const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
       slashPickerGroups,
       slashMenuItems,
       mentionItems,
+      filesLoading,
+      filesError,
       runSlashCommand,
       matchSlashCommand,
       handleMentionSelect,
@@ -343,7 +428,7 @@ const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
       handleKeyDown,
     } = useSlashMentionInput({
       text,
-      setText,
+      setText: setComposerText,
       textareaRef,
       slashCommands,
       labelFor,
@@ -351,13 +436,10 @@ const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
       availableSkills,
       availableConnectors,
       availableExperts,
+      availableSubagents,
       agentId,
-      selectedSkills,
       selectedConnectors,
-      selectedTargetAgents,
-      onSkillsChange,
       onConnectorsChange,
-      onTargetAgentsChange,
       onSend,
       onNewChat,
       onCancel,
@@ -365,6 +447,70 @@ const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
       onSubmitRef: submitRef,
       enterToSend: !isMobile,
     });
+
+    const skillTokenRefs = useMemo<SkillTokenRef[]>(
+      () =>
+        (availableSkills ?? []).map((skill) => ({
+          slug: skill.slug,
+          label: skillDisplayName(skill),
+          emoji: skill.emoji,
+        })),
+      [availableSkills, skillDisplayName],
+    );
+
+    const insertSkillCommand = useCallback(
+      (slug: string) => {
+        userHasEditedRef.current = true;
+        const ref =
+          skillTokenRefs.find(
+            (item) => item.slug.toLowerCase() === slug.toLowerCase(),
+          ) ?? ({ slug } satisfies SkillTokenRef);
+        const next = insertSkillSlash(text, ref);
+        setText(next);
+        requestAnimationFrame(() => {
+          const el = textareaRef.current;
+          if (!el) return;
+          el.focus();
+          el.setSelectionRange(next.length, next.length);
+        });
+      },
+      [text, skillTokenRefs],
+    );
+
+    const selectedSkillSlugs = useMemo(
+      () => parseSkillSlugsInText(text, skillTokenRefs),
+      [text, skillTokenRefs],
+    );
+
+    const insertExpertMention = useCallback(
+      (agent: ChatAgentOption) => {
+        userHasEditedRef.current = true;
+        const next = toggleExpertMention(text, agent.name);
+        setText(next.text);
+        requestAnimationFrame(() => {
+          const el = textareaRef.current;
+          if (!el) return;
+          el.focus();
+          el.setSelectionRange(next.cursor, next.cursor);
+        });
+      },
+      [text],
+    );
+
+    const insertSubagentMention = useCallback(
+      (subagent: AgentSubagentSummary) => {
+        userHasEditedRef.current = true;
+        const next = toggleExpertMention(text, subagent.slug);
+        setText(next.text);
+        requestAnimationFrame(() => {
+          const el = textareaRef.current;
+          if (!el) return;
+          el.focus();
+          el.setSelectionRange(next.cursor, next.cursor);
+        });
+      },
+      [text],
+    );
 
     const resetComposerAfterSubmit = useCallback(
       (prevHeight: number, submittedText: string) => {
@@ -402,26 +548,26 @@ const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
     const submitMessage = useCallback(() => {
       const trimmed = text.trim();
       if ((!trimmed && attachments.length === 0) || disabled) return;
-      const slashItem = matchSlashCommand(trimmed);
+      const wireText = materializeSkillSlashes(trimmed, skillTokenRefs).trim();
+      const slashItem = matchSlashCommand(wireText);
       if (slashItem && slashItem.spec.client_action !== "none") {
         // Slash actions are never queued — run immediately or leave input alone.
-        if (isStreaming) return;
+        if (isStreaming || holdSend) return;
         runSlashCommand(slashItem);
         return;
       }
       const ta = textareaRef.current;
       const prevHeight = ta ? ta.getBoundingClientRect().height : 0;
 
-      if (isStreaming) {
+      if ((isStreaming && !isTeam) || holdSend) {
         if (!onQueue) return;
         const result = onQueue({
-          text: trimmed,
+          text: wireText,
           attachments: attachments.length > 0 ? attachments : undefined,
           composerContext: buildComposerContext({
-            skills: selectedSkills,
+            skills: selectedSkillSlugs,
             connectors: selectedConnectors,
             knowledgeBaseIds: selectedKnowledgeBaseIds,
-            targetAgents: selectedTargetAgents,
             selectedModel,
             reasoningMode,
             reasoningEffort,
@@ -437,7 +583,7 @@ const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
         return;
       }
 
-      onSend(trimmed, attachments.length > 0 ? attachments : undefined);
+      onSend(wireText, attachments.length > 0 ? attachments : undefined);
       resetComposerAfterSubmit(prevHeight, trimmed);
     }, [
       text,
@@ -446,12 +592,15 @@ const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
       onQueue,
       disabled,
       isStreaming,
+      holdSend,
+      isTeam,
       matchSlashCommand,
       runSlashCommand,
       resetComposerAfterSubmit,
-      selectedSkills,
       selectedConnectors,
-      selectedTargetAgents,
+      selectedKnowledgeBaseIds,
+      selectedSkillSlugs,
+      skillTokenRefs,
       selectedModel,
       reasoningMode,
       reasoningEffort,
@@ -468,14 +617,20 @@ const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
           const item = onReclaimQueued(id);
           if (!item) return;
           userHasEditedRef.current = true;
-          setText(item.text);
-          restoreAttachments(item.attachments ?? []);
           const ctx = item.composerContext;
+          const restoredText =
+            ctx?.targetAgents && ctx.targetAgents.length > 0
+              ? ensureExpertMentions(
+                  item.text,
+                  ctx.targetAgents,
+                  availableAgents,
+                )
+              : item.text;
+          setText(restoredText);
+          restoreAttachments(item.attachments ?? []);
           if (ctx) {
-            onSkillsChange?.(ctx.skills ?? []);
             onConnectorsChange?.(ctx.connectors ?? []);
             onKnowledgeBaseIdsChange?.(ctx.knowledgeBaseIds ?? []);
-            onTargetAgentsChange?.(ctx.targetAgents ?? []);
             if (ctx.model !== undefined) {
               onModelChange?.(ctx.model);
             } else if (item.modelRef !== undefined) {
@@ -517,12 +672,11 @@ const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
         text,
         attachments.length,
         t,
-        onSkillsChange,
         onConnectorsChange,
         onKnowledgeBaseIdsChange,
-        onTargetAgentsChange,
         onModelChange,
         onReasoningChange,
+        availableAgents,
       ],
     );
 
@@ -579,7 +733,15 @@ const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
 
     const handlePolish = useCallback(async () => {
       const draft = text.trim();
-      if (!draft || !agentId || polishing || isStreaming || disabled) return;
+      if (
+        !draft ||
+        !agentId ||
+        polishing ||
+        isStreaming ||
+        holdSend ||
+        disabled
+      )
+        return;
       setPolishing(true);
       try {
         const result = await agentChatApi.polish(agentId, draft, selectedModel);
@@ -604,15 +766,29 @@ const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
       } finally {
         setPolishing(false);
       }
-    }, [text, agentId, polishing, isStreaming, disabled, selectedModel, t]);
+    }, [
+      text,
+      agentId,
+      polishing,
+      isStreaming,
+      holdSend,
+      disabled,
+      selectedModel,
+      t,
+    ]);
 
     const canSend = Boolean(
       (text.trim() || attachments.length > 0) && !disabled,
     );
+    const showDrop = dragOver || nativeDropActive;
 
     return (
       <div
-        className={`${styles.chatInput} ${dragOver ? styles.dropActive : ""}`}
+        ref={shellRef}
+        id="octop-chat-file-drop"
+        data-file-drop-target=""
+        data-octop-chat-drop="1"
+        className={`${styles.chatInput} ${showDrop ? styles.dropActive : ""}`}
         onDragEnter={handleDragEnter}
         onDragLeave={handleDragLeave}
         onDragOver={handleDragOver}
@@ -626,23 +802,22 @@ const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
           />
         )}
         <div className={styles.inputWrapper}>
+          {showDrop && (
+            <div className={styles.dropOverlay} data-testid="chat-drop-overlay">
+              {t("upload.dropHint", "Drop files or a folder to upload")}
+            </div>
+          )}
           <ChatInputPreviewBar
             attachments={attachments}
             uploading={uploading}
-            selectedSkills={selectedSkills}
             selectedConnectors={selectedConnectors}
-            selectedTargetAgents={selectedTargetAgents}
             selectedModel={selectedModel}
-            availableSkills={availableSkills}
             availableConnectors={availableConnectors}
             availableKnowledgeBases={availableKnowledgeBases}
-            availableAgents={availableAgents}
             onRemoveAttachment={removeAttachment}
-            onSkillsChange={onSkillsChange}
             onConnectorsChange={onConnectorsChange}
             selectedKnowledgeBaseIds={selectedKnowledgeBaseIds}
             onKnowledgeBaseIdsChange={onKnowledgeBaseIdsChange}
-            onTargetAgentsChange={onTargetAgentsChange}
             onModelChange={onModelChange}
           />
 
@@ -671,7 +846,7 @@ const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
             just surfaces a small inline pill so the user sees they're
             issuing a command, not a regular message.
           */}
-            {text.startsWith("/") && (
+            {isSlashCommandText(text) && (
               <span
                 data-testid="slash-badge"
                 style={{
@@ -699,12 +874,14 @@ const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
             )}
           </div>
 
-          {mentionMenuOpen && mentionItems.length > 0 && (
+          {mentionMenuOpen && (
             <MentionPickerMenu
+              items={mentionItems}
               query={mentionQuery}
-              skills={availableSkills ?? []}
-              connectors={availableConnectors ?? []}
               agents={mentionAgents}
+              subagents={availableSubagents}
+              filesLoading={filesLoading}
+              filesError={filesError}
               activeIndex={mentionMenuIndex}
               onSelect={handleMentionSelect}
               onHover={setMentionMenuIndex}
@@ -742,7 +919,8 @@ const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
 
           <ChatInputActionsRow
             isMobile={isMobile}
-            isStreaming={isStreaming}
+            isStreaming={isStreaming || holdSend}
+            isTeam={isTeam}
             disabled={disabled}
             canSend={canSend}
             text={text}
@@ -750,6 +928,9 @@ const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
             uploading={uploading}
             recording={recording}
             transcribing={transcribing}
+            voiceHoldToTalk={realtimeVoice}
+            onVoiceStart={() => void startVoice()}
+            onVoiceStop={() => void stopVoice()}
             browserRecording={browserRecording}
             browserReplayBusy={browserReplayBusy}
             browserLastRecordingId={browserLastRecordingId}
@@ -766,6 +947,10 @@ const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
             reasoningMode={reasoningMode}
             reasoningEffort={reasoningEffort}
             onReasoningChange={onReasoningChange}
+            conversationMode={conversationMode}
+            onConversationModeChange={onConversationModeChange}
+            hitlPolicy={hitlPolicy}
+            onHitlPolicyChange={onHitlPolicyChange}
             defaultModel={defaultModel}
             availableConnectors={availableConnectors}
             selectedConnectors={selectedConnectors}
@@ -774,17 +959,18 @@ const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
             selectedKnowledgeBaseIds={selectedKnowledgeBaseIds}
             onKnowledgeBaseIdsChange={onKnowledgeBaseIdsChange}
             availableSkills={availableSkills}
-            selectedSkills={selectedSkills}
-            onSkillsChange={onSkillsChange}
+            onInsertSkillCommand={insertSkillCommand}
             availableExperts={availableExperts.filter(
               (a) => a.agent_id !== agentId,
             )}
-            selectedTargetAgents={selectedTargetAgents}
-            onTargetAgentsChange={onTargetAgentsChange}
+            onInsertExpertMention={insertExpertMention}
+            availableSubagents={availableSubagents}
+            onInsertSubagentMention={insertSubagentMention}
             slashPickerGroups={slashPickerGroups}
             slashMenuItems={slashMenuItems}
             onSlashShortcutSelect={handleSlashSelect}
             onFileSelect={handleFileSelect}
+            onFolderSelect={handleFolderSelect}
             onNewChat={onNewChat}
             onPolish={() => void handlePolish()}
             onToggleVoice={() => toggleVoice()}
@@ -794,6 +980,13 @@ const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
 
           <input
             ref={fileInputRef}
+            type="file"
+            multiple
+            style={{ display: "none" }}
+            onChange={handleFileChange}
+          />
+          <input
+            ref={folderInputRef}
             type="file"
             multiple
             style={{ display: "none" }}

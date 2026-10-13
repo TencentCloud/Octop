@@ -119,6 +119,10 @@ async def test_generate_and_apply_skillhub_manifest_assets(tmp_path) -> None:
     assert data["quick_prompts"][0]["title"]["en"] == "Card 1"
     assert data["skillhub"]["manifest_generated"]["model"] == "p/model"
     assert data["skillhub"]["welcome_generated"]["model"] == "p/model"
+    assert len(data["task_examples"]["zh"]) == 3
+    assert len(data["task_examples"]["en"]) == 3
+    assert "测试工作流专家" in data["task_examples"]["zh"][0]
+    assert "09:00" in data["task_examples"]["zh"][0]
 
     catalog = ExpertCatalog(tmp_path)
     catalog.refresh()
@@ -292,3 +296,108 @@ def test_normalize_manifest_assets_pads_to_six_quick_prompts() -> None:
     assert len(assets["quick_prompts"]) == 6
     assert assets["quick_prompts"][0]["title"]["zh"] == "启动任务"
     assert assets["quick_prompts"][3]["title"]["zh"] == "继续推进 4"
+
+
+def test_normalize_manifest_assets_pads_task_examples() -> None:
+    from octop.infra.agents.experts.manifest_generator import normalize_manifest_assets
+
+    payload = _generated_payload()
+    payload["task_examples"] = {
+        "zh": ["每天「08:00」推送测试早报"],
+        "en": ["Every day at 08:00, push a test briefing"],
+    }
+
+    assets = normalize_manifest_assets(
+        payload,
+        fallback_name_zh="测试工作流专家",
+        fallback_name_en="Test Workflow Expert",
+    )
+
+    assert len(assets["task_examples"]["zh"]) == 3
+    assert len(assets["task_examples"]["en"]) == 3
+    assert assets["task_examples"]["zh"][0] == "每天「08:00」推送测试早报"
+    assert "测试工作流专家" in assets["task_examples"]["zh"][1]
+
+
+def test_normalize_manifest_assets_pads_four_task_examples_to_six() -> None:
+    from octop.infra.agents.experts.manifest_generator import normalize_manifest_assets
+
+    payload = _generated_payload()
+    payload["task_examples"] = {
+        "zh": [f"每天「0{idx}:00」跑第 {idx} 项巡检" for idx in range(1, 5)],
+        "en": [f"Every day at 0{idx}:00, run patrol {idx}" for idx in range(1, 5)],
+    }
+
+    assets = normalize_manifest_assets(
+        payload,
+        fallback_name_zh="测试工作流专家",
+        fallback_name_en="Test Workflow Expert",
+    )
+
+    assert len(assets["task_examples"]["zh"]) == 6
+    assert len(assets["task_examples"]["en"]) == 6
+    assert assets["task_examples"]["zh"][0] == "每天「01:00」跑第 1 项巡检"
+    assert "测试工作流专家" in assets["task_examples"]["zh"][4]
+
+
+def test_normalize_manifest_assets_keeps_at_most_six_task_examples() -> None:
+    from octop.infra.agents.experts.manifest_generator import normalize_manifest_assets
+
+    payload = _generated_payload()
+    payload["task_examples"] = {
+        "zh": [f"每天「0{idx}:00」跑第 {idx} 项巡检" for idx in range(1, 9)],
+        "en": [f"Every day at 0{idx}:00, run patrol {idx}" for idx in range(1, 9)],
+    }
+
+    assets = normalize_manifest_assets(
+        payload,
+        fallback_name_zh="专家",
+        fallback_name_en="Expert",
+    )
+
+    assert assets["task_examples"]["zh"] == [
+        f"每天「0{idx}:00」跑第 {idx} 项巡检" for idx in range(1, 7)
+    ]
+    assert len(assets["task_examples"]["en"]) == 6
+
+
+def test_collect_skill_context_reads_frontmatter_like_every_other_reader(tmp_path) -> None:
+    """Skill metadata must go through the shared frontmatter parser.
+
+    The private copy in this module only recognised a literal ``---\\n`` first line
+    and split every line on ``:``. Two shapes that the shared parser handles
+    therefore reached the generator prompt as a skill without a description:
+
+    * a folded block scalar (``description: >-``), which collapsed to the literal
+      ``'>-'`` — exactly the style the bundled expert skills use;
+    * a file whose frontmatter fence is preceded by an HTML comment, which hid the
+      whole block and left the raw ``---`` fence inside the excerpt.
+    """
+    from octop.infra.agents.experts.manifest_generator import collect_skill_context
+
+    expert_dir = tmp_path / "expert"
+    (expert_dir / "skills" / "folded").mkdir(parents=True)
+    (expert_dir / "skills" / "folded" / "SKILL.md").write_text(
+        "---\nname: Folded\ndescription: >-\n  Line one\n  line two.\n---\n# Body\n",
+        encoding="utf-8",
+    )
+    (expert_dir / "skills" / "commented").mkdir(parents=True)
+    (expert_dir / "skills" / "commented" / "SKILL.md").write_text(
+        "<!-- generated -->\n---\nname: Commented\ndescription: After comment\n---\n# Body\n",
+        encoding="utf-8",
+    )
+
+    context = {
+        item["slug"]: item
+        for item in collect_skill_context(
+            expert_dir,
+            skill_slugs=["commented"],
+            main_skill_slug="folded",
+        )
+    }
+
+    assert context["folded"]["name"] == "Folded"
+    assert context["folded"]["description"] == "Line one line two."
+    assert context["commented"]["name"] == "Commented"
+    assert context["commented"]["description"] == "After comment"
+    assert "---" not in context["commented"]["excerpt"]

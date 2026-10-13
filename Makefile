@@ -70,7 +70,7 @@ help:
 	@echo "Quality targets (frontend):"
 	@echo "  lint-frontend    ESLint + Prettier check"
 	@echo "  format-frontend  Prettier write"
-	@echo "  typecheck-frontend  tsc --noEmit"
+	@echo "  typecheck-frontend  tsc -b (project references)"
 	@echo ""
 	@echo "Quality targets (full stack):"
 	@echo "  lint-all         lint + lint-frontend"
@@ -83,7 +83,6 @@ help:
 	@echo "  install          Install Python dev dependencies (alias: install-dev)"
 	@echo "  install-dev      uv sync / pip install -e \".[dev]\""
 	@echo "  install-tools    Install build + twine for publishing"
-	@echo "  docs-cli         Regenerate docs/cli.md from Click commands"
 	@echo "  clean            Remove build artifacts and caches"
 	@echo "  clean-online     Remove the .venv-online environment"
 	@echo "  version          Show current project version"
@@ -274,7 +273,7 @@ format-frontend:
 .PHONY: typecheck-frontend
 typecheck-frontend:
 	@echo "[typecheck-frontend] tsc..."
-	cd $(DASHBOARD_DIR) && npx tsc --noEmit
+	cd $(DASHBOARD_DIR) && npx tsc -b
 
 # ─── Quality (full stack) ────────────────────────────────────────────────────
 
@@ -313,10 +312,6 @@ endif
 install-tools:
 	$(PIP) install --quiet build twine
 	@echo "[install-tools] build and twine installed."
-
-.PHONY: docs-cli
-docs-cli:
-	@$(PYTHON) scripts/regen_cli_docs.py
 
 .PHONY: clean
 clean:

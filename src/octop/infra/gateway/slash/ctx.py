@@ -40,6 +40,7 @@ class SlashCtx:
     locale: str = "zh"
     """Dashboard composer / turn ``metadata.model`` (``provider/model``), if any."""
     model_ref: str | None = None
+    default_timezone: str = "Asia/Shanghai"
 
 
 def lang_of(ctx: SlashCtx) -> Locale:
@@ -103,6 +104,7 @@ def build_slash_ctx(
     server_started_at: int | None = None,
     user_locale: str | None = None,
     channel_metadata: dict[str, object] | None = None,
+    default_timezone: str | None = None,
 ) -> SlashCtx:
     """Build SlashCtx for GlobalProcessor or other gateway entry points."""
     meta = getattr(gateway, "slash_meta", None) if gateway is not None else None
@@ -136,6 +138,11 @@ def build_slash_ctx(
                 raw_model = composer.get("model")
         if isinstance(raw_model, str) and raw_model.strip():
             model_ref = raw_model.strip()
+    timezone = (default_timezone or "").strip()
+    if not timezone and agent_manager is not None:
+        timezone = (agent_manager.octop_config.default_timezone or "").strip()
+    if not timezone:
+        timezone = "Asia/Shanghai"
     return SlashCtx(
         agent_id=agent_id,
         user_id=user_id,
@@ -158,4 +165,5 @@ def build_slash_ctx(
         octop_version=octop_version or (meta.version if meta else None),
         server_started_at=server_started_at or (meta.started_at if meta else None),
         model_ref=model_ref,
+        default_timezone=timezone,
     )

@@ -156,3 +156,136 @@ def test_peek_backup_contents_reads_manifest(tmp_path: Path) -> None:
     assert item.includes_plugins is False
     assert item.includes_knowledge is False
     assert item.includes_chats is False
+
+
+def _write_tar_gz_with_members(path: Path, members: list[tuple[str, bytes]]) -> None:
+    import io
+    import tarfile
+
+    with tarfile.open(path, mode="w:gz") as tf:
+        for name, payload in members:
+            info = tarfile.TarInfo(name=name)
+            info.size = len(payload)
+            tf.addfile(info, io.BytesIO(payload))
+
+
+def _minimal_manifest_json(**flags: bool) -> bytes:
+    import json
+
+    payload = {
+        "manifest_version": 1,
+        "octop_version": "0.0.0-test",
+        "schema_version": 1,
+        "created_at": "2026-01-01T00:00:00+00:00",
+        "home": "/tmp",
+        "db_file": "db/octop.db",
+        "agents": [],
+        "includes_config": flags.get("includes_config", True),
+        "includes_env": False,
+        "includes_skill_packages": flags.get("includes_skill_packages", True),
+        "includes_plugins": flags.get("includes_plugins", False),
+        "includes_knowledge": flags.get("includes_knowledge", False),
+        "includes_chats": flags.get("includes_chats", True),
+    }
+    return json.dumps(payload).encode("utf-8")
+
+
+def test_peek_reads_first_member_manifest_only(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Peek must not scan past the first member (full-scan would read the blob)."""
+    import builtins
+    import os
+    import time
+
+    archive = tmp_path / "first-member.tar.gz"
+    # Incompressible so the gzip stays large; a full member scan would read most of it.
+    blob = os.urandom(4 * 1024 * 1024)
+    _write_tar_gz_with_members(
+        archive,
+        [
+            (
+                "manifest.json",
+                _minimal_manifest_json(
+                    includes_config=False,
+                    includes_skill_packages=False,
+                    includes_plugins=False,
+                    includes_knowledge=False,
+                    includes_chats=False,
+                ),
+            ),
+            ("payload.bin", blob),
+        ],
+    )
+    archive_size = archive.stat().st_size
+    assert archive_size > 2 * 1024 * 1024
+
+    bytes_read = 0
+    real_open = builtins.open
+
+    def counting_open(file, mode="r", *args, **kwargs):  # noqa: ANN001
+        nonlocal bytes_read
+        handle = real_open(file, mode, *args, **kwargs)
+        if "b" not in mode:
+            return handle
+        try:
+            if Path(file).resolve() != archive.resolve():
+                return handle
+        except (TypeError, OSError, ValueError):
+            return handle
+
+        class _CountingReader:
+            def __init__(self, raw: object) -> None:
+                self._raw = raw
+
+            def read(self, size: int = -1) -> bytes:
+                nonlocal bytes_read
+                data = self._raw.read(size)  # type: ignore[attr-defined]
+                bytes_read += len(data)
+                return bytes(data)
+
+            def __getattr__(self, name: str) -> object:
+                return getattr(self._raw, name)
+
+            def __enter__(self) -> _CountingReader:
+                return self
+
+            def __exit__(self, *exc: object) -> None:
+                close = getattr(self._raw, "close", None)
+                if callable(close):
+                    close()
+
+        return _CountingReader(handle)
+
+    monkeypatch.setattr(builtins, "open", counting_open)
+    started = time.perf_counter()
+    flags = peek_backup_contents(archive)
+    elapsed = time.perf_counter() - started
+
+    assert flags == BackupContentFlags(
+        includes_config=False,
+        includes_workspaces=False,
+        includes_skill_packages=False,
+        includes_plugins=False,
+        includes_knowledge=False,
+        includes_chats=False,
+    )
+    # First-member peek should read far less than the on-disk archive size.
+    assert bytes_read < archive_size // 4
+    assert elapsed < 2.0
+
+
+def test_peek_skips_scan_when_manifest_not_first(tmp_path: Path) -> None:
+    archive = tmp_path / "manifest-second.tar.gz"
+    _write_tar_gz_with_members(
+        archive,
+        [
+            ("readme.txt", b"not a manifest"),
+            (
+                "manifest.json",
+                _minimal_manifest_json(includes_config=False, includes_chats=False),
+            ),
+        ],
+    )
+    # Deliberately no deep scan: treat as full contents.
+    assert peek_backup_contents(archive) == BackupContentFlags()

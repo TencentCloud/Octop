@@ -8,7 +8,8 @@ Security notes:
   ``/etc``, ``/root`` on POSIX). The process home is never denied (so uid 0
   with home ``/root`` can use the default picker path).
 - All authenticated users may browse from host root ``/`` (denylist still applies).
-  The UI default ``root_dir`` remains the process home directory.
+  The UI default ``root_dir`` is host filesystem root (POSIX ``/``), unless the
+  user has a ``workspace_root_dir`` policy jail.
 - Directory listing is capped and skips unreadable entries.
 - Write probe creates a short-lived dotfile only for non-``/`` selections.
 - mkdir / rename only allow basename-safe names under already-browsable parents.
@@ -22,23 +23,35 @@ from typing import Any
 from fastapi import APIRouter, Depends, Query
 from pydantic import BaseModel, Field
 
-from octop.api.deps import current_user
+from octop.api.deps import current_user, get_server
 from octop.infra.errors import ErrorCode, OctopError
 from octop.infra.users.identity import User
+from octop.infra.users.resource_policy import (
+    POLICY_WORKSPACE_ROOT_DIR,
+    effective_workspace_root_dir,
+)
 from octop.infra.utils.bwrap import ensure_bubblewrap
 from octop.infra.utils.docker_env import docker_status, ensure_docker
 from octop.infra.utils.host_dirs import (
     assert_safe_host_path,
+    host_browse_roots,
     host_fs_tree_root,
-    host_home_dir,
+    host_jail_enforced,
     host_path_text,
     list_host_subdirs,
     mkdir_host_subdir,
     probe_host_root_dir,
     rename_host_dir,
+    running_in_container,
 )
 
 router = APIRouter()
+
+
+def _user_workspace_root(server: Any, user: User) -> str | None:
+    return effective_workspace_root_dir(
+        server.services.user_policy_repo.get(user.id, POLICY_WORKSPACE_ROOT_DIR)
+    )
 
 
 class ProbeBody(BaseModel):
@@ -63,27 +76,74 @@ class RenameBody(BaseModel):
     summary="Default root_dir picker bounds for the current user",
 )
 async def filesystem_defaults(
-    _: User = Depends(current_user),
+    user: User = Depends(current_user),
+    server: Any = Depends(get_server),
 ) -> dict[str, Any]:
-    """Return the process home path and browse-tree root (host ``/`` on POSIX)."""
-    home = host_path_text(host_home_dir())
+    """Return browse-tree / default root_dir for the current user.
+
+    Unrestricted users get filesystem root; a workspace-root policy jail sets
+    both ``default_root_dir`` and ``tree_root`` to that path.
+
+    ``browse_roots`` is the *list* of tree roots the picker may show — every
+    ready drive on Windows, not just the one holding the server's home
+    directory. ``jail_enforced`` reports whether a non-root ``root_dir`` really
+    gets OS-level confinement (Linux + bubblewrap) or only bounds the agent's
+    tool paths, so the UI does not promise a sandbox it cannot deliver.
+    """
+    in_container = running_in_container()
+    allowed = _user_workspace_root(server, user)
+    if allowed:
+        return {
+            "default_root_dir": allowed,
+            "tree_root": allowed,
+            "browse_roots": [allowed],
+            "jail_enforced": host_jail_enforced(),
+            "in_container": in_container,
+        }
+    root = host_fs_tree_root()
     return {
-        "home": home,
-        "default_root_dir": home,
-        "allow_outside_home": True,
-        "tree_root": host_fs_tree_root(allow_outside_home=True),
+        "default_root_dir": root,
+        "tree_root": root,
+        "browse_roots": host_browse_roots(),
+        "jail_enforced": host_jail_enforced(),
+        "in_container": in_container,
     }
+
+
+@router.get(
+    "/roots",
+    summary="Browse-tree roots available to the current user",
+)
+async def filesystem_roots(
+    user: User = Depends(current_user),
+    server: Any = Depends(get_server),
+) -> dict[str, Any]:
+    """List the roots the root_dir picker may browse.
+
+    A workspace-root policy jail collapses this to that single path; otherwise
+    unrestricted users get host ``/`` (POSIX) or every ready Windows drive.
+    """
+    allowed = _user_workspace_root(server, user)
+    roots = [allowed] if allowed else host_browse_roots()
+    return {"roots": roots}
 
 
 @router.get("/dirs")
 async def list_host_dirs(
     path: str = Query("/", description="Absolute host directory to list"),
-    _: User = Depends(current_user),
+    user: User = Depends(current_user),
+    server: Any = Depends(get_server),
 ) -> dict[str, Any]:
     """Single-level directory listing for lazy folder pickers."""
+    allowed = _user_workspace_root(server, user)
     try:
-        entries = await asyncio.to_thread(list_host_subdirs, path, restrict_to_home=False)
-        resolved = assert_safe_host_path(path, restrict_to_home=False)
+        entries = await asyncio.to_thread(
+            list_host_subdirs,
+            path,
+            restrict_to_home=False,
+            restrict_to_root=allowed,
+        )
+        resolved = assert_safe_host_path(path, restrict_to_home=False, restrict_to_root=allowed)
     except ValueError as exc:
         raise OctopError(ErrorCode.WORKSPACE_OP_UNSUPPORTED, str(exc)) from exc
     return {"path": host_path_text(resolved), "entries": entries}
@@ -92,13 +152,16 @@ async def list_host_dirs(
 @router.post("/probe")
 async def probe_host_dir(
     body: ProbeBody,
-    _: User = Depends(current_user),
+    user: User = Depends(current_user),
+    server: Any = Depends(get_server),
 ) -> dict[str, Any]:
     """Check whether Octop can use *path* as a local backend root_dir."""
+    allowed = _user_workspace_root(server, user)
     return await asyncio.to_thread(
         probe_host_root_dir,
         body.path,
         restrict_to_home=False,
+        restrict_to_root=allowed,
     )
 
 
@@ -150,15 +213,18 @@ async def post_ensure_docker(
 @router.post("/mkdir")
 async def mkdir_host_dir(
     body: MkdirBody,
-    _: User = Depends(current_user),
+    user: User = Depends(current_user),
+    server: Any = Depends(get_server),
 ) -> dict[str, Any]:
     """Create a child directory under *path* for root_dir pickers."""
+    allowed = _user_workspace_root(server, user)
     try:
         return await asyncio.to_thread(
             mkdir_host_subdir,
             body.path,
             base_name=body.base_name,
             restrict_to_home=False,
+            restrict_to_root=allowed,
         )
     except ValueError as exc:
         raise OctopError(ErrorCode.WORKSPACE_OP_UNSUPPORTED, str(exc)) from exc
@@ -167,15 +233,18 @@ async def mkdir_host_dir(
 @router.post("/rename")
 async def rename_host_directory(
     body: RenameBody,
-    _: User = Depends(current_user),
+    user: User = Depends(current_user),
+    server: Any = Depends(get_server),
 ) -> dict[str, Any]:
     """Rename a host directory (basename only) for root_dir pickers."""
+    allowed = _user_workspace_root(server, user)
     try:
         return await asyncio.to_thread(
             rename_host_dir,
             body.path,
             body.new_name,
             restrict_to_home=False,
+            restrict_to_root=allowed,
         )
     except ValueError as exc:
         raise OctopError(ErrorCode.WORKSPACE_OP_UNSUPPORTED, str(exc)) from exc

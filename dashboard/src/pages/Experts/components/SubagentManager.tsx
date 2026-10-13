@@ -11,9 +11,37 @@ import {
 } from "react";
 import { Alert, App, Empty, Form, Input, Spin, Tabs } from "antd";
 
-import { CircleCheck, Download, Plus, RefreshCw, Search } from "lucide-react";
-import { Eye, Pencil, Trash2 } from "lucide-react";
+import type { LucideIcon } from "lucide-react";
+import {
+  Box,
+  Boxes,
+  CircleCheck,
+  ClipboardList,
+  Code,
+  DollarSign,
+  Download,
+  Eye,
+  FlaskConical,
+  Gamepad2,
+  GraduationCap,
+  Layers,
+  LayoutGrid,
+  LifeBuoy,
+  Map,
+  Megaphone,
+  Pencil,
+  PenTool,
+  Plus,
+  RefreshCw,
+  Search,
+  ShieldCheck,
+  Sparkles,
+  Target,
+  Trash2,
+  TrendingUp,
+} from "lucide-react";
 import { useTranslation } from "react-i18next";
+import TabLabel from "../../../components/TabLabel";
 import {
   installSubagent,
   listAgentSubagents,
@@ -46,6 +74,29 @@ import styles from "../index.module.less";
 const INSTALLED_TAB = "installed";
 const ALL_TAB = "all";
 
+const DIVISION_ICONS: Record<string, LucideIcon> = {
+  Box,
+  Boxes,
+  ClipboardList,
+  Code,
+  DollarSign,
+  FlaskConical,
+  Gamepad2,
+  GraduationCap,
+  LifeBuoy,
+  Map,
+  Megaphone,
+  PenTool,
+  ShieldCheck,
+  Sparkles,
+  Target,
+  TrendingUp,
+};
+
+function tabIcon(name: string | null | undefined): LucideIcon {
+  return (name && DIVISION_ICONS[name]) || Layers;
+}
+
 function subagentFilePath(path: string): string {
   return path.startsWith("/") ? path : `/${path}`;
 }
@@ -59,6 +110,8 @@ export interface SubagentManagerProps {
   onInstalled?: () => void;
   /** Fill parent height with internal scroll (mobile subagents page). */
   fillHeight?: boolean;
+  /** Opening tab: installed list or the full catalog. */
+  initialTab?: string;
 }
 
 export default function SubagentManager({
@@ -67,6 +120,7 @@ export default function SubagentManager({
   installedSlugs: initialInstalled,
   onInstalled,
   fillHeight = false,
+  initialTab = INSTALLED_TAB,
 }: SubagentManagerProps) {
   const { t, i18n } = useTranslation();
   const { modal, message } = App.useApp();
@@ -78,7 +132,7 @@ export default function SubagentManager({
   >([]);
   const [loading, setLoading] = useState(false);
   const [loadingInstalled, setLoadingInstalled] = useState(false);
-  const [activeTab, setActiveTab] = useState(INSTALLED_TAB);
+  const [activeTab, setActiveTab] = useState(initialTab);
   const [search, setSearch] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
   const [installingSlug, setInstallingSlug] = useState<string | null>(null);
@@ -134,8 +188,8 @@ export default function SubagentManager({
     setLoading(true);
     try {
       const [divs, rows] = await Promise.all([
-        listSubagentDivisions(),
-        listSubagentCatalog(),
+        listSubagentDivisions(agentId),
+        listSubagentCatalog(undefined, agentId),
       ]);
       setDivisions(divs);
       setAllItems(rows);
@@ -144,15 +198,15 @@ export default function SubagentManager({
     } finally {
       setLoading(false);
     }
-  }, [t]);
+  }, [agentId, t]);
 
   useEffect(() => {
-    setActiveTab(INSTALLED_TAB);
+    setActiveTab(initialTab);
     setSearch("");
     setDebouncedSearch("");
     void loadCatalog();
     void loadInstalled();
-  }, [agentId, loadCatalog, loadInstalled]);
+  }, [agentId, initialTab, loadCatalog, loadInstalled]);
 
   const itemName = useCallback(
     (item: SubagentCatalogItem) => pickLocale(item.name, lang),
@@ -215,16 +269,27 @@ export default function SubagentManager({
     () => [
       {
         key: INSTALLED_TAB,
-        label: t("subagents.installedTab"),
+        label: (
+          <TabLabel icon={CircleCheck}>{t("subagents.installedTab")}</TabLabel>
+        ),
       },
       {
         key: ALL_TAB,
-        label: t("subagents.allDivisions"),
+        label: (
+          <TabLabel icon={LayoutGrid}>{t("subagents.allDivisions")}</TabLabel>
+        ),
       },
-      ...divisions.map((d) => ({
-        key: d.id,
-        label: `${divisionLabel(d.id, d.label, d.labels)} (${d.count})`,
-      })),
+      ...divisions.map((d) => {
+        const Icon = tabIcon(d.icon);
+        return {
+          key: d.id,
+          label: (
+            <TabLabel icon={Icon}>
+              {`${divisionLabel(d.id, d.label, d.labels)} (${d.count})`}
+            </TabLabel>
+          ),
+        };
+      }),
     ],
     [divisions, divisionLabel, t],
   );
@@ -599,6 +664,7 @@ export default function SubagentManager({
         open={previewItem !== null}
         slug={previewItem?.slug ?? null}
         title={previewItem ? itemName(previewItem) : ""}
+        agentId={agentId}
         onClose={() => setPreviewItem(null)}
       />
     </>

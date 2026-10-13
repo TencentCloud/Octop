@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Collapse } from "antd";
+import { App, Collapse, Switch } from "antd";
 import {
   BookOpen,
   CheckCircle,
+  Info,
   RefreshCw,
   XCircle,
   AlertTriangle,
@@ -30,7 +31,9 @@ const UPGRADE_GUIDE_CODE = {
   installerWin: `irm https://finnie-1258344699.cos.ap-guangzhou.myqcloud.com/octop/install.ps1 | iex`,
   cli: `octop update
 # or non-interactive:
-octop update --yes`,
+octop update --yes
+# pre-release (beta) requires --allow-prerelease:
+# octop update --allow-prerelease --yes`,
   pip: `pip install -U octop
 # optional extras, e.g. browser automation:
 # pip install -U "octop[browser]"`,
@@ -146,13 +149,16 @@ function UpgradeGuide() {
 
 export default function UpdateConfig() {
   const { t } = useTranslation();
+  const { modal } = App.useApp();
   const [status, setStatus] = useState<UpdateStatus | null>(null);
+  const [savingStableOnly, setSavingStableOnly] = useState(false);
   const [checking, setChecking] = useState(false);
   const [upgrading, setUpgrading] = useState(false);
   const [progress, setProgress] = useState<UpgradeProgress | null>(null);
   const { restartPhase, isRestarting, requestRestart, executeRestart } =
     useServiceRestartContext();
   const pollTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const pollFailRef = useRef(0);
   const autoRestartedRef = useRef(false);
 
   useEffect(() => {
@@ -179,7 +185,6 @@ export default function UpdateConfig() {
     setChecking(true);
     try {
       const result = await updateApi.checkForUpdates();
-      storeUpdateStatus(result);
       setStatus(result);
     } catch {
       // network error – keep existing status
@@ -191,6 +196,7 @@ export default function UpdateConfig() {
   const pollProgress = useCallback(async (taskId: string) => {
     try {
       const prog = await updateApi.getUpgradeProgress(taskId);
+      pollFailRef.current = 0;
       setProgress(prog);
       if (prog.status === "running") {
         pollTimerRef.current = setTimeout(() => pollProgress(taskId), 800);
@@ -207,17 +213,47 @@ export default function UpdateConfig() {
             .catch(() => {});
         }
       }
-    } catch {
+    } catch (err: unknown) {
+      pollFailRef.current += 1;
+      if (pollFailRef.current < 5) {
+        pollTimerRef.current = setTimeout(() => pollProgress(taskId), 800);
+        return;
+      }
       setUpgrading(false);
+      const message = err instanceof Error ? err.message : String(err);
+      setProgress({
+        task_id: taskId,
+        status: "error",
+        stage: "error",
+        percent: null,
+        new_version: null,
+        success: false,
+        error: message,
+        mirror_errors: null,
+      });
     }
   }, []);
 
-  const handleUpgrade = useCallback(async () => {
+  const handleStableOnlyChange = useCallback(async (checked: boolean) => {
+    setSavingStableOnly(true);
+    try {
+      const next = await updateApi.patchSettings(checked);
+      storeUpdateStatus(next);
+      setStatus(next);
+    } catch {
+      // keep current switch state from last successful status
+    } finally {
+      setSavingStableOnly(false);
+    }
+  }, []);
+
+  const runUpgrade = useCallback(async () => {
     setUpgrading(true);
     setProgress(null);
+    pollFailRef.current = 0;
     autoRestartedRef.current = false;
     try {
-      const started = await updateApi.triggerUpgrade();
+      const started = await updateApi.triggerUpgrade(status?.latest_version);
       setProgress({
         task_id: started.task_id,
         status: "running",
@@ -243,7 +279,23 @@ export default function UpdateConfig() {
         mirror_errors: null,
       });
     }
-  }, [pollProgress]);
+  }, [pollProgress, status?.latest_version]);
+
+  const handleUpgrade = useCallback(() => {
+    if (status?.latest_is_prerelease) {
+      modal.confirm({
+        title: t("advancedSettings.update.prereleaseConfirmTitle"),
+        content: t("advancedSettings.update.prereleaseConfirmBody", {
+          version: status.latest_version,
+        }),
+        okText: t("advancedSettings.update.upgradeButton"),
+        cancelText: t("advancedSettings.update.prereleaseConfirmCancel"),
+        onOk: () => runUpgrade(),
+      });
+      return;
+    }
+    void runUpgrade();
+  }, [modal, runUpgrade, status, t]);
 
   const stageLabel = (stage: string | null) => {
     switch (stage) {
@@ -289,6 +341,22 @@ export default function UpdateConfig() {
             {t("advancedSettings.update.panelDesc")}
           </p>
 
+          <div className={styles.stableOnlyRow}>
+            <Switch
+              checked={status?.stable_only !== false}
+              onChange={(checked) => void handleStableOnlyChange(checked)}
+              disabled={savingStableOnly || checking || upgrading}
+            />
+            <div className={styles.stableOnlyCopy}>
+              <p className={styles.stableOnlyLabel}>
+                {t("advancedSettings.update.stableOnlyLabel")}
+              </p>
+              <p className={styles.stableOnlyHint}>
+                {t("advancedSettings.update.stableOnlyHint")}
+              </p>
+            </div>
+          </div>
+
           <div className={styles.versionGrid}>
             <div className={styles.versionCard}>
               <span className={styles.versionLabel}>
@@ -309,13 +377,31 @@ export default function UpdateConfig() {
                   </span>
                 )}
               </span>
-              {status?.has_update && (
-                <span className={styles.badge}>
-                  {t("advancedSettings.update.updateAvailable")}
-                </span>
-              )}
+              <div className={styles.versionBadges}>
+                {status?.latest_is_prerelease && status?.latest_version && (
+                  <span className={styles.betaBadge}>
+                    {t("advancedSettings.update.prereleaseBadge")}
+                  </span>
+                )}
+                {status?.has_update && (
+                  <span className={styles.badge}>
+                    {t("advancedSettings.update.updateAvailable")}
+                  </span>
+                )}
+              </div>
             </div>
           </div>
+
+          {status?.latest_is_prerelease && status.latest_version && (
+            <div className={`${styles.alert} ${styles.alertWarn}`}>
+              <AlertTriangle size={15} />
+              <span>
+                {t("advancedSettings.update.prereleaseHint", {
+                  version: status.latest_version,
+                })}
+              </span>
+            </div>
+          )}
 
           {status?.is_editable && (
             <div className={`${styles.alert} ${styles.alertWarn}`}>
@@ -327,7 +413,24 @@ export default function UpdateConfig() {
           {status?.error && (
             <div className={`${styles.alert} ${styles.alertError}`}>
               <XCircle size={15} />
-              <span>{status.error}</span>
+              <span>
+                {status.error_code
+                  ? t(`advancedSettings.update.errors.${status.error_code}`, {
+                      defaultValue: status.error,
+                    })
+                  : status.error}
+              </span>
+            </div>
+          )}
+
+          {status?.source && status.source !== "pypi.org" && !status.error && (
+            <div className={`${styles.alert} ${styles.alertInfo}`}>
+              <Info size={15} />
+              <span>
+                {t("advancedSettings.update.mirrorSource", {
+                  source: status.source,
+                })}
+              </span>
             </div>
           )}
 
@@ -443,6 +546,21 @@ export default function UpdateConfig() {
                       {t("advancedSettings.update.upgradeFailed")}:{" "}
                       {progress.error}
                     </p>
+                    {progress.mirror_errors &&
+                      progress.mirror_errors.length > 0 && (
+                        <div className={styles.mirrorErrors}>
+                          <p className={styles.mirrorErrorsTitle}>
+                            {t("advancedSettings.update.mirrorErrorsTitle")}
+                          </p>
+                          <ul className={styles.mirrorErrorsList}>
+                            {progress.mirror_errors.map((err) => (
+                              <li key={err}>
+                                <code>{err}</code>
+                              </li>
+                            ))}
+                          </ul>
+                        </div>
+                      )}
                     <p className={styles.manualHint}>
                       {t("advancedSettings.update.manualUpgradeHint")}
                     </p>

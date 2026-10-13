@@ -6,7 +6,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from harness_gateway.models import (
+from octop_gateway.models import (
     ChannelSubject,
     ContentPart,
     FileContent,
@@ -332,6 +332,10 @@ def build_dashboard_inbound(
         metadata["reasoning_mode"] = turn.reasoning_mode
     if turn.reasoning_effort:
         metadata["reasoning_effort"] = turn.reasoning_effort
+    if turn.conversation_mode:
+        metadata["conversation_mode"] = turn.conversation_mode
+    if turn.hitl_policy is not None:
+        metadata["hitl_policy"] = turn.hitl_policy.model_dump()
     if prepared.composer_context:
         metadata[COMPOSER_CTX_KEY] = prepared.composer_context
     if prepared.inbound_attachments:

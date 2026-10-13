@@ -16,8 +16,10 @@ import {
 import { useTranslation } from "react-i18next";
 import { useNavigate } from "react-router-dom";
 import type { ChatAttachment, ChatMessage } from "../hooks/useChat";
-import type { ComposerTagLookups } from "./UserMessageComposerTags";
-import UserMessageComposerTags from "./UserMessageComposerTags";
+import UserMessageComposerTags, {
+  hasUserComposerTags,
+  type ComposerTagLookups,
+} from "./UserMessageComposerTags";
 import { deriveMessageContent } from "../utils/messageContent";
 import { inferKindFromNameAndMime } from "../utils/chatAttachments";
 import { ChatMediaPlayer } from "./ChatMediaPlayer";
@@ -35,18 +37,32 @@ import { prepareSpeechText } from "../../../utils/plainTextForSpeech";
 import {
   chatStreamErrorAction,
   formatChatStreamError,
-  isChatStreamError,
 } from "../../../utils/chatStreamError";
 import { MessageFileCard } from "./MessageFileCard";
 import AskQuestionCard from "./AskQuestionCard";
 import HitlApprovalCard from "./HitlApprovalCard";
-import { extractAskQuestions, isAskHitl } from "../../../api/types/hitl";
+import MessageSender, { ExpertMessageAvatar } from "./MessageSender";
+import { useCurrentUser } from "../../../hooks/useCurrentUser";
+import { useAgent } from "../../../context/AgentContext";
+import {
+  isTeamAgent,
+  isTeamHostSpeaker as isTeamHostSpeakerId,
+} from "../../../utils/teamAgent";
+import { rewritePeerSpeakerId } from "../../../utils/remoteExpert";
+import { accountDisplayName } from "../utils/accountDisplayName";
+import { ProfileAvatar } from "../../Admin/Users/ProfileAvatar";
+import {
+  extractAskQuestions,
+  isAskHitl,
+  type HitlDecisionHandler,
+} from "../../../api/types/hitl";
 import styles from "../index.module.less";
 import {
   DefaultToolRenderer,
   builtinPluginHost,
   createPluginUiHost,
   parseOctopToolOutput,
+  resolvePluginUiData,
   resolveToolRenderer,
   useToolRendererVersion,
   type ToolRenderProps,
@@ -65,18 +81,20 @@ interface MessageBubbleProps {
   agentId?: string | null;
   composerLookups?: ComposerTagLookups;
   onRegenerate?: (messageId: string) => void;
+  /** Turn off streamed token usage then retry (invalid_request / MindIE). */
+  onDisableStreamUsage?: () => Promise<boolean>;
   onEditUserMessage?: (messageId: string, newText: string) => void;
   onForkAssistantMessage?: (messageId: string) => void;
   forkDisabled?: boolean;
   forkDisabledHint?: string;
-  onHitlDecision?: (
-    decisions: Array<{ type: string; message?: string }>,
-  ) => void;
+  onHitlDecision?: HitlDecisionHandler;
 
   /** When true, the outer bubble uses reduced spacing (part of a group). */
   compact?: boolean;
   /** Position within an assistant group — controls border-radius & meta visibility. */
   groupPosition?: "first" | "middle" | "last" | "only";
+  /** Assistant avatar. Hide when the turn already shows one on the process row. */
+  showAvatar?: boolean;
   onRunShellCommand?: (code: string) => void;
   shellCommandDisabled?: boolean;
   shellCommandDisabledTitle?: string;
@@ -362,6 +380,11 @@ export function ToolDetailsInline({
     () => parseOctopToolOutput(toolData.output),
     [toolData.output],
   );
+  // Offloaded octop_ui payloads: explicit data wins; data_ref → artifact.
+  const resolvedData = useMemo(
+    () => resolvePluginUiData(parsed, toolData.artifact, toolData.output),
+    [parsed, toolData.artifact, toolData.output],
+  );
   const pluginId =
     toolData.pluginId ?? lookupPluginIdForTool(toolData.name) ?? "builtin";
 
@@ -398,12 +421,7 @@ export function ToolDetailsInline({
     callId: toolData.callId,
     status,
     args,
-    data:
-      parsed.data !== undefined
-        ? parsed.data
-        : parsed.isJson
-        ? parsed.raw
-        : toolData.output,
+    data: resolvedData,
     textFallback: parsed.text,
     host:
       registration && registration.pluginId !== "builtin"
@@ -517,6 +535,7 @@ function MessageBubble({
   agentId = null,
   composerLookups,
   onRegenerate,
+  onDisableStreamUsage,
   onEditUserMessage,
   onForkAssistantMessage,
   forkDisabled,
@@ -524,6 +543,7 @@ function MessageBubble({
   onHitlDecision,
   compact,
   groupPosition = "only",
+  showAvatar = true,
   onRunShellCommand,
   shellCommandDisabled,
   shellCommandDisabledTitle,
@@ -531,6 +551,32 @@ function MessageBubble({
   const { t } = useTranslation();
   const navigate = useNavigate();
   const serverTimezone = useServerTimezone();
+  const user = useCurrentUser();
+  const { agents, activeAgent } = useAgent();
+  const isTeamRoom = isTeamAgent(activeAgent);
+  const speakerId =
+    rewritePeerSpeakerId(
+      activeAgent?.agent_id,
+      message.speakerAgentId || agentId,
+    ) ||
+    message.speakerAgentId ||
+    agentId;
+  const isTeamHostSpeaker = isTeamHostSpeakerId(
+    isTeamRoom,
+    speakerId,
+    activeAgent?.agent_id,
+  );
+  const expert = useMemo(
+    () =>
+      (speakerId && agents.find((item) => item.agent_id === speakerId)) ||
+      (isTeamHostSpeaker || !isTeamRoom ? activeAgent : undefined),
+    [speakerId, agents, activeAgent, isTeamHostSpeaker, isTeamRoom],
+  );
+  const avatarTooltip = isTeamHostSpeaker
+    ? t("chat.teamHostHover", { name: activeAgent?.name || expert?.name || "" })
+    : expert?.name;
+  const avatarProfileId = isTeamHostSpeaker ? activeAgent?.agent_id : speakerId;
+  const userName = accountDisplayName(user);
 
   const [isEditing, setIsEditing] = useState(false);
   const [editText, setEditText] = useState(message.content);
@@ -586,52 +632,50 @@ function MessageBubble({
     const actions = message.hitlData.action_requests ?? [];
     const hitlStatus = message.hitlData.status ?? "pending";
     if (isAskHitl(actions)) {
-      // Pending questions are rendered in ChatPage's composer dock so they
-      // stay immediately above the input even when message history scrolls.
-      if (hitlStatus === "pending") return null;
+      // Recoverable pending questions stay in ChatPage's composer dock.
+      // Reconstructed history without pending_id stays in the transcript.
+      if (hitlStatus === "pending" && message.hitlData.pending_id) return null;
       const questions = extractAskQuestions(actions);
       return (
         <div
-          className={`${styles.bubble} ${styles.assistantBubble} ${
-            compact ? styles.compact : ""
+          className={`${styles.messageBubble} ${styles.assistantBubble} ${
+            compact ? styles.compactBubble : ""
           }`}
         >
-          <AskQuestionCard
-            questions={questions}
-            status={hitlStatus}
-            onSubmit={
-              onHitlDecision
-                ? (answer) =>
-                    onHitlDecision(
-                      actions.map(() => ({ type: "respond", message: answer })),
-                    )
-                : undefined
-            }
-          />
+          <div className={styles.bubbleContent}>
+            <AskQuestionCard questions={questions} status={hitlStatus} />
+          </div>
         </div>
       );
     }
     return (
       <div
-        className={`${styles.bubble} ${styles.assistantBubble} ${
-          compact ? styles.compact : ""
+        className={`${styles.messageBubble} ${styles.assistantBubble} ${
+          compact ? styles.compactBubble : ""
         }`}
       >
-        <HitlApprovalCard
-          actions={actions}
-          status={hitlStatus}
-          onDecision={onHitlDecision}
-        />
+        <div className={styles.bubbleContent}>
+          <HitlApprovalCard
+            actions={actions}
+            status={hitlStatus}
+            resolution={message.hitlData.resolution}
+            pendingId={message.hitlData.pending_id}
+            speakerName={
+              isTeamRoom && !isTeamHostSpeaker ? expert?.name : undefined
+            }
+            onDecision={onHitlDecision}
+          />
+        </div>
       </div>
     );
   }
 
   const isUser = message.role === "user";
+  const showUserComposerTags =
+    isUser && !isEditing && hasUserComposerTags(message.composerContext);
   const isStreaming = message.status === "streaming";
   const hasToolData = !!message.toolData;
-  const looksLikeStreamError =
-    !isUser && !hasToolData && !isStreaming && isChatStreamError(textContent);
-  const isError = message.status === "error" || looksLikeStreamError;
+  const isError = message.status === "error";
   const errorBodyText = isError
     ? formatChatStreamError(textContent, t)
     : textContent;
@@ -695,57 +739,88 @@ function MessageBubble({
         : ""
       : "";
 
+  const showSender =
+    (isUser || groupPosition === "first" || groupPosition === "only") &&
+    (isUser || showAvatar);
+  const senderAvatar = !showSender ? null : isUser ? (
+    <MessageSender
+      name={userName}
+      avatar={
+        <ProfileAvatar
+          url={user?.avatar_url}
+          icon={user?.avatar_icon}
+          kind="user"
+          className={styles.msgUserAvatar}
+        />
+      }
+    />
+  ) : expert || avatarProfileId ? (
+    <ExpertMessageAvatar
+      name={expert?.name || avatarProfileId}
+      color={expert?.color}
+      iconName={expert?.icon_name}
+      iconUrl={expert?.icon_url}
+      tooltip={avatarTooltip}
+      profileAgentId={avatarProfileId}
+    />
+  ) : null;
+
   return (
     <div
       className={`${styles.messageBubble} ${
         isUser ? styles.userBubble : styles.assistantBubble
-      } ${isError ? styles.errorBubble : ""} ${
-        compact ? styles.compactBubble : ""
-      }`}
+      } ${showUserComposerTags ? styles.userBubbleWithTags : ""} ${
+        isError ? styles.errorBubble : ""
+      } ${compact ? styles.compactBubble : ""}`}
     >
+      {!isUser && senderAvatar ? (
+        <div className={styles.avatarCol}>{senderAvatar}</div>
+      ) : null}
+      {showUserComposerTags ? (
+        <UserMessageComposerTags
+          context={message.composerContext}
+          lookups={composerLookups}
+        />
+      ) : null}
       <div className={styles.bubbleContent}>
         {isUser ? (
           <div className={styles.userMsgRow}>
-            {isEditing ? (
-              <div className={styles.editArea}>
-                <textarea
-                  ref={editTextareaRef}
-                  className={styles.editTextarea}
-                  value={editText}
-                  onChange={(e) => setEditText(e.target.value)}
-                  autoFocus
-                  rows={4}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter" && !e.shiftKey) {
-                      e.preventDefault();
-                      handleEditSubmit();
-                    }
-                    if (e.key === "Escape") handleEditCancel();
-                  }}
-                />
-                <div className={styles.editActions}>
-                  <button
-                    className={styles.editSaveBtn}
-                    onClick={handleEditSubmit}
-                    type="button"
-                  >
-                    {t("common.save", "保存并重新发送")}
-                  </button>
-                  <button
-                    className={styles.editCancelBtn}
-                    onClick={handleEditCancel}
-                    type="button"
-                  >
-                    {t("common.cancel", "取消")}
-                  </button>
+            <div className={styles.userMsgColumn}>
+              {isEditing ? (
+                <div className={styles.editArea}>
+                  <textarea
+                    ref={editTextareaRef}
+                    className={styles.editTextarea}
+                    value={editText}
+                    onChange={(e) => setEditText(e.target.value)}
+                    autoFocus
+                    rows={4}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" && !e.shiftKey) {
+                        e.preventDefault();
+                        handleEditSubmit();
+                      }
+                      if (e.key === "Escape") handleEditCancel();
+                    }}
+                  />
+                  <div className={styles.editActions}>
+                    <button
+                      className={styles.editSaveBtn}
+                      onClick={handleEditSubmit}
+                      type="button"
+                    >
+                      {t("common.save", "保存并重新发送")}
+                    </button>
+                    <button
+                      className={styles.editCancelBtn}
+                      onClick={handleEditCancel}
+                      type="button"
+                    >
+                      {t("common.cancel", "取消")}
+                    </button>
+                  </div>
                 </div>
-              </div>
-            ) : (
-              <div className={styles.userMsgColumn}>
-                <UserMessageComposerTags
-                  context={message.composerContext}
-                  lookups={composerLookups}
-                />
+              ) : (
                 <div className={styles.userText}>
                   {imageAttachments.length > 0 && (
                     <ImageGallery images={imageAttachments} agentId={agentId} />
@@ -788,29 +863,8 @@ function MessageBubble({
                   )}
                   {message.content && <div>{message.content}</div>}
                 </div>
-                {(message.content || onEditUserMessage) && (
-                  <div className={styles.userMsgActions} role="group">
-                    {message.content ? (
-                      <CopyButton text={message.content} />
-                    ) : null}
-                    {onEditUserMessage ? (
-                      <button
-                        className={styles.msgActionBtn}
-                        onClick={() => {
-                          setEditText(message.content);
-                          setIsEditing(true);
-                        }}
-                        title={t("common.edit")}
-                        type="button"
-                        aria-label={t("common.edit")}
-                      >
-                        <Pencil size={14} />
-                      </button>
-                    ) : null}
-                  </div>
-                )}
-              </div>
-            )}
+              )}
+            </div>
           </div>
         ) : (
           <>
@@ -836,7 +890,21 @@ function MessageBubble({
                 )}
                 {(errorAction || onRegenerate) && (
                   <div className={styles.errorActionRow}>
-                    {errorAction && (
+                    {errorAction?.fix === "disable_stream_usage" &&
+                    onDisableStreamUsage ? (
+                      <button
+                        className={styles.errorRetryBtn}
+                        onClick={() => {
+                          void onDisableStreamUsage().then((ok) => {
+                            if (ok) onRegenerate?.(message.id);
+                          });
+                        }}
+                        type="button"
+                      >
+                        <RotateCcw size={13} />
+                        {t(errorAction.labelKey)}
+                      </button>
+                    ) : errorAction ? (
                       <button
                         className={styles.errorConfigBtn}
                         onClick={() => navigate(errorAction.path)}
@@ -845,7 +913,7 @@ function MessageBubble({
                         <Settings size={13} />
                         {t(errorAction.labelKey)}
                       </button>
-                    )}
+                    ) : null}
                     {onRegenerate && (
                       <button
                         className={styles.errorRetryBtn}
@@ -913,15 +981,42 @@ function MessageBubble({
             )}
           </>
         )}
-        {/* Meta row: only show on the last message in a group (or standalone messages) */}
+        {/* Meta row: last-in-group only. User copy/edit sit left of the timestamp. */}
         {isLastInGroup &&
           !hasToolData &&
-          (message.timestamp > 0 || usageParts.length > 0) && (
+          (message.timestamp > 0 ||
+            usageParts.length > 0 ||
+            (isUser &&
+              !isEditing &&
+              Boolean(message.content || onEditUserMessage))) && (
             <div
               className={`${styles.msgMetaRow} ${
                 isUser ? styles.msgMetaRowRight : ""
               }`}
             >
+              {isUser &&
+                !isEditing &&
+                (message.content || onEditUserMessage) && (
+                  <div className={styles.userMsgActions} role="group">
+                    {message.content ? (
+                      <CopyButton text={message.content} />
+                    ) : null}
+                    {onEditUserMessage ? (
+                      <button
+                        className={styles.msgActionBtn}
+                        onClick={() => {
+                          setEditText(message.content);
+                          setIsEditing(true);
+                        }}
+                        title={t("common.edit")}
+                        type="button"
+                        aria-label={t("common.edit")}
+                      >
+                        <Pencil size={14} />
+                      </button>
+                    ) : null}
+                  </div>
+                )}
               {message.timestamp > 0 && (
                 <div
                   className={`${styles.msgTime} ${
@@ -983,6 +1078,9 @@ function MessageBubble({
             </div>
           )}
       </div>
+      {isUser && senderAvatar ? (
+        <div className={styles.avatarCol}>{senderAvatar}</div>
+      ) : null}
     </div>
   );
 }

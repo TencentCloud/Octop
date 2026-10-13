@@ -57,8 +57,15 @@ export function formatAgentError(
   return error;
 }
 
-/** Expert harness runtime is loaded (`running`); not storage-backend config. */
-export function isAgentChatReady(state: string | null | undefined): boolean {
+/** Expert harness runtime is loaded (`running`); not storage-backend config.
+ *  Bridge shadow experts are treated as ready while the remote link is live
+ *  (their ``state`` is forced to ``running`` when the connection is connected).
+ */
+export function isAgentChatReady(
+  state: string | null | undefined,
+  agent?: { bridge?: boolean; bridge_disconnected?: boolean } | null,
+): boolean {
+  if (agent?.bridge) return !agent.bridge_disconnected;
   return state === "running";
 }
 

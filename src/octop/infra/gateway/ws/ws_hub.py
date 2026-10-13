@@ -111,6 +111,11 @@ class WebSocketHub:
     def is_turn_active(self, thread_id: str) -> bool:
         return thread_id.strip() in self._active_turns
 
+    def has_subscribers(self, thread_id: str) -> bool:
+        """True when at least one Dashboard socket is bound to *thread_id*."""
+        tid = thread_id.strip()
+        return bool(tid and self._thread_subscribers.get(tid))
+
     async def push(self, connection_id: str, frame: dict[str, Any]) -> None:
         send_fn = self._connections.get(connection_id)
         if send_fn is None:

@@ -55,6 +55,53 @@
   color: var(--fn-text-secondary);
 }
 
+.stableOnlyRow {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.stableOnlyCopy {
+  min-width: 0;
+}
+
+.stableOnlyLabel {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--fn-text-primary);
+  line-height: 1.4;
+}
+
+.stableOnlyHint {
+  margin: 4px 0 0;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--fn-text-secondary);
+}
+
+.versionBadges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.betaBadge {
+  display: inline-block;
+  font-size: 11px;
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: 100px;
+  background: color-mix(in srgb, #f59e0b 16%, transparent);
+  color: #92400e;
+  width: fit-content;
+
+  @media (prefers-color-scheme: dark) {
+    color: #fcd34d;
+  }
+}
+
 /* ── Version cards ── */
 
 .versionGrid {
@@ -299,6 +346,31 @@ code {
   margin-top: 6px;
   font-size: 12px;
   opacity: 0.75;
+}
+
+.mirrorErrors {
+  margin-top: 8px;
+}
+
+.mirrorErrorsTitle {
+  margin: 0 0 4px;
+  font-size: 12px;
+  font-weight: 600;
+  opacity: 0.9;
+}
+
+.mirrorErrorsList {
+  margin: 0;
+  padding-left: 18px;
+  font-size: 12px;
+  line-height: 1.45;
+  opacity: 0.85;
+  word-break: break-word;
+
+  code {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 11px;
+  }
 }
 
 .restartSubHint {

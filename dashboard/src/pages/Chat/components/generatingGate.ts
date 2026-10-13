@@ -1,12 +1,21 @@
 /**
  * Whether the chat footer should show the unified "generating" indicator.
  * One bottom status for the whole turn (no separate thinking / continuing).
+ *
+ * Team rooms clear ``isStreaming`` when the host unlocks the composer, but
+ * members may still be generating — ``hasLiveSpeakers`` keeps the footer up.
+ *
+ * Stop/cancel lives only on the composer send button — this footer is status
+ * text only, so it can stay visible for the entire live turn.
  */
 export function shouldShowGenerating(opts: {
   isStreaming: boolean;
   loading?: boolean;
+  /** Speakers still producing tokens/tools after the host turn settled. */
+  hasLiveSpeakers?: boolean;
 }): boolean {
-  return Boolean(opts.isStreaming && !opts.loading);
+  const live = Boolean(opts.isStreaming) || Boolean(opts.hasLiveSpeakers);
+  return Boolean(live && !opts.loading);
 }
 
 /**
@@ -17,10 +26,20 @@ export function chatGeneratingPhase(opts: {
   isStreaming: boolean;
   loading?: boolean;
   lastMessageRole?: string | null;
-}): { showFooter: boolean; showElapsed: boolean } {
+  hasLiveSpeakers?: boolean;
+}): {
+  showFooter: boolean;
+  showElapsed: boolean;
+  membersOnly: boolean;
+} {
   const showFooter = shouldShowGenerating(opts);
-  const showElapsed = Boolean(
-    showFooter && (!opts.lastMessageRole || opts.lastMessageRole === "user"),
+  const membersOnly = Boolean(
+    showFooter && !opts.isStreaming && opts.hasLiveSpeakers,
   );
-  return { showFooter, showElapsed };
+  const showElapsed = Boolean(
+    showFooter &&
+      !membersOnly &&
+      (!opts.lastMessageRole || opts.lastMessageRole === "user"),
+  );
+  return { showFooter, showElapsed, membersOnly };
 }

@@ -129,8 +129,23 @@ def build_app(server: OctopServer) -> FastAPI:
             expose_headers=[ACCESS_TOKEN_RESPONSE_HEADER],
         )
 
+    from octop.api.middleware.bridge_proxy import install as install_bridge_proxy
+
+    # Bridge proxy must sit inside JWT auth so ``request.state.octop_user`` is set
+    # (Starlette runs the last-added middleware first).
+    install_bridge_proxy(app, server)
     install_jwt_auth(app, server)
     install_setup_lockdown(app, server)
+
+    if server.app_runtime is not None and server.app_runtime.bridge_manager is not None:
+        from octop.api.bridge_peer import prepare_peer_dashboard_turn
+        from octop.api.routers.browser.stream import run_browser_stream_session
+
+        server.app_runtime.bridge_manager.bind_asgi_app(
+            app,
+            peer_turn_runner=prepare_peer_dashboard_turn,
+            peer_browser_runner=run_browser_stream_session,
+        )
 
     from octop.infra.setup.tls.challenge import challenge_store
 
@@ -148,8 +163,11 @@ def build_app(server: OctopServer) -> FastAPI:
         agent_tools,
         agents,
         auth,
+        auth_ldap,
+        auth_oauth,
         auth_oidc,
         backup,
+        bridge,
         browser,
         channels,
         chat,
@@ -181,10 +199,12 @@ def build_app(server: OctopServer) -> FastAPI:
         skills,
         slash,
         subagents,
+        teams,
         terminal,
         update,
         uploads,
         usage,
+        user_roles,
         users,
         voice,
         workspace,
@@ -204,11 +224,14 @@ def build_app(server: OctopServer) -> FastAPI:
             _RouterMount(setup.router, "/api", ["setup"]),
             _RouterMount(auth.router, "/api/auth", ["auth"]),
             _RouterMount(auth_oidc.router, "/api/auth", ["auth"]),
+            _RouterMount(auth_oauth.router, "/api/auth", ["auth"]),
+            _RouterMount(auth_ldap.router, "/api/auth", ["auth"]),
             _RouterMount(invites.public_router, "/api/auth/invite", ["auth"]),
             _RouterMount(preferences.router, "/api", ["auth"]),
             _RouterMount(i18n.router, "/api", ["i18n"]),
             _RouterMount(health.router, "/api/health", ["health"]),
             _RouterMount(invites.admin_router, "/api/users/invites", ["users"]),
+            _RouterMount(user_roles.router, "/api/users/roles", ["users"]),
             _RouterMount(users.router, "/api/users", ["users"]),
             _RouterMount(agents.router, "/api/agents", ["agents"]),
             _RouterMount(agent_tools.router, "/api", ["agents"]),
@@ -216,6 +239,7 @@ def build_app(server: OctopServer) -> FastAPI:
             _RouterMount(chat.router, "/api", ["chat"]),
             _RouterMount(slash.router, "/api", ["slash"]),
             _RouterMount(connectors.router, "/api", ["connectors"]),
+            _RouterMount(bridge.router, "/api", ["bridge"]),
             _RouterMount(knowledge_bases.router, "/api", ["knowledge"]),
             _RouterMount(internal_mcp.router, "/api", ["internal-mcp"]),
             _RouterMount(channels.router, "/api", ["channels"]),
@@ -244,6 +268,7 @@ def build_app(server: OctopServer) -> FastAPI:
             _RouterMount(filesystem_router, "/api/filesystem", ["filesystem"]),
             _RouterMount(mbti.router, "/api", ["mbti"]),
             _RouterMount(experts.router, "/api", ["experts"]),
+            _RouterMount(teams.router, "/api", ["teams"]),
             _RouterMount(workspace.router, "/api", ["workspace"]),
             _RouterMount(agent_files.router, "/api", ["agent_files"]),
             _RouterMount(memory.router, "/api", ["memory"]),

@@ -48,4 +48,20 @@ describe("ChatTitleBar", () => {
 
     expect(container.querySelector(".octop-desktop-drag")).not.toBeNull();
   });
+
+  it("shows a team badge next to the title for group chats", () => {
+    render(
+      <ChatTitleBar
+        session={session}
+        title="Weekly recap"
+        onRename={noop}
+        onPin={noop}
+        onFork={noop}
+        onDelete={noop}
+        isTeam
+      />,
+    );
+
+    expect(screen.getByLabelText("chat.teamBadge")).toBeInTheDocument();
+  });
 });

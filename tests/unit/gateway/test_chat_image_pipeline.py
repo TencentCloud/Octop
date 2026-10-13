@@ -10,8 +10,8 @@ from typing import Any
 
 import pytest
 from deepagents.backends.local_shell import LocalShellBackend
-from harness_agent.backends.workspace import BackendWorkspace
-from harness_gateway.models import InboundMessage
+from octop_gateway.models import InboundMessage
+from octop_harness.backends.workspace import BackendWorkspace
 
 from octop.api.common.attachments import save_attachment
 from octop.api.routers.chat.models import ChatTurnBody
@@ -173,7 +173,7 @@ async def test_file_in_workspace_preview_only_drops_image_for_llm() -> None:
 @pytest.mark.asyncio
 async def test_default_backend_materialize_still_inlines_image() -> None:
     """Production default backend: path ref in content; expand yields vision bytes."""
-    from harness_agent.backends import resolve_backend
+    from octop_harness.backends import resolve_backend
 
     with tempfile.TemporaryDirectory() as ws_dir:
         workspace = BackendWorkspace(

@@ -1,7 +1,7 @@
 import { memo, useCallback, useMemo, useState, useRef, useEffect } from "react";
 import { useTranslation } from "react-i18next";
 import { useNavigate } from "react-router-dom";
-import { Dropdown, Tooltip } from "antd";
+import { Dropdown } from "antd";
 import type { MenuProps } from "antd";
 import {
   Pencil,
@@ -9,17 +9,28 @@ import {
   Trash2,
   Pin,
   PinOff,
+  MessageSquarePlus,
   Search,
-  Users,
   GitFork,
+  Eye,
+  EyeOff,
 } from "lucide-react";
 import type { Session } from "../hooks/useSessions";
 import type { OctopAgent } from "../../../context/AgentContext";
 import { isAgentChatReady } from "../../../utils/agentError";
-import { isSharedExpertViewer } from "../../../utils/sharedExpert";
-import { showConfirmModal } from "../../../utils/confirmModal";
+import { confirmDeleteConversation } from "../utils/deleteConversation";
 import { ExpertIcon } from "../../Experts/components/iconForName";
+import { useHiddenSharedExperts } from "../hooks/useHiddenSharedExperts";
 import SessionChannelIcon from "./SessionChannelIcon";
+import SessionWorkStatusIcon from "./SessionWorkStatusIcon";
+import SharedExpertHint from "./SharedExpertHint";
+import RemoteExpertHint from "./RemoteExpertHint";
+import TeamChatBadge from "./TeamChatBadge";
+import { useSessionWorkIds } from "../hooks/useSessionWorkIds";
+import {
+  resolveSessionWorkStatus,
+  type SessionWorkStatus,
+} from "../utils/sessionWorkStatus";
 import styles from "../index.module.less";
 
 function AgentUnreadBadge({ count }: { count: number }) {
@@ -35,30 +46,12 @@ function AgentUnreadBadge({ count }: { count: number }) {
   );
 }
 
-function SharedExpertHint({ agent }: { agent: OctopAgent }) {
-  const { t } = useTranslation();
-  if (!isSharedExpertViewer(agent)) return null;
-  const tip = t("chat.sharedExpert.banner", {
-    name: agent.owner_username || "—",
-  });
-  return (
-    <Tooltip title={tip} mouseEnterDelay={0.35}>
-      <span
-        className={styles.sharedExpertHint}
-        aria-label={tip}
-        onClick={(event) => event.stopPropagation()}
-      >
-        <Users size={12} strokeWidth={2} aria-hidden />
-      </span>
-    </Tooltip>
-  );
-}
-
 interface SessionItemProps {
   session: Session;
   isActive: boolean;
+  workStatus?: SessionWorkStatus;
   onSelect: (id: string) => void;
-  onDelete: (id: string) => void;
+  onDelete: (id: string, compact: boolean) => void | Promise<boolean | void>;
   onRename: (id: string, name: string) => void;
   onPin: (id: string, pinned: boolean) => void;
   onFork: (id: string) => void;
@@ -69,6 +62,7 @@ interface SessionItemProps {
 const SessionItem = memo(function SessionItem({
   session,
   isActive,
+  workStatus = "idle",
   onSelect,
   onDelete,
   onRename,
@@ -147,14 +141,8 @@ const SessionItem = memo(function SessionItem({
       danger: true,
       onClick: ({ domEvent }) => {
         domEvent.stopPropagation();
-        showConfirmModal({
-          title: t("chat.deleteSessionConfirm"),
-          okText: t("common.delete"),
-          cancelText: t("common.cancel"),
-          okButtonProps: { danger: true },
-          onOk: () => {
-            onDelete(session.id);
-          },
+        confirmDeleteConversation(t, (compact) => {
+          void onDelete(session.id, compact);
         });
       },
     },
@@ -174,11 +162,17 @@ const SessionItem = memo(function SessionItem({
         if (e.key === "Enter" && !isEditing) onSelect(session.id);
       }}
     >
-      <SessionChannelIcon
-        channelType={session.channelType}
-        size={12}
-        className={styles.sessionRowIcon}
-      />
+      <span className={styles.sessionRowLead}>
+        {workStatus !== "idle" ? (
+          <SessionWorkStatusIcon status={workStatus} />
+        ) : (
+          <SessionChannelIcon
+            channelType={session.channelType}
+            size={12}
+            className={styles.sessionRowIcon}
+          />
+        )}
+      </span>
       {isEditing ? (
         <input
           ref={inputRef}
@@ -236,12 +230,15 @@ interface AgentCardProps {
   onLoadMore: () => void;
   onFetchAllSessions: () => void;
   onSelect: (sessionId: string, agentId: string) => void;
-  onDelete: (id: string) => void;
+  onNewChat: (agentId: string) => void;
+  onDelete: (id: string, compact: boolean) => void | Promise<boolean | void>;
   onRename: (id: string, name: string) => void;
   onPin: (id: string, pinned: boolean) => void;
   onFork: (id: string) => void;
   activeForkDisabled?: boolean;
   activeForkDisabledHint?: string;
+  onHide?: () => void;
+  liveWorkingIds: ReadonlySet<string>;
 }
 
 function ActiveAgentCard({
@@ -254,12 +251,15 @@ function ActiveAgentCard({
   onLoadMore,
   onFetchAllSessions,
   onSelect,
+  onNewChat,
   onDelete,
   onRename,
   onPin,
   onFork,
   activeForkDisabled,
   activeForkDisabledHint,
+  onHide,
+  liveWorkingIds,
 }: AgentCardProps) {
   const { t } = useTranslation();
   const accent = agent.color || "#6366f1";
@@ -305,14 +305,44 @@ function ActiveAgentCard({
           <ExpertIcon
             iconUrl={agent.icon_url}
             iconName={agent.icon_name}
-            size={16}
+            size={agent.icon_url?.trim() ? 28 : 16}
           />
         </div>
         <div className={styles.agentCardInfo}>
           <div className={styles.agentCardNameRow}>
-            <div className={styles.agentCardName}>{agent.name}</div>
-            <SharedExpertHint agent={agent} />
+            <div className={styles.agentNameCluster}>
+              <div className={styles.agentCardName}>{agent.name}</div>
+              <TeamChatBadge agent={agent} />
+              <SharedExpertHint agent={agent} />
+              <RemoteExpertHint agent={agent} />
+            </div>
             <AgentUnreadBadge count={agent.unread_count ?? 0} />
+            <button
+              type="button"
+              className={styles.agentNewChatBtn}
+              aria-label={t("chatWelcome.newChat")}
+              title={t("chatWelcome.newChat")}
+              onClick={(e) => {
+                e.stopPropagation();
+                onNewChat(agent.agent_id);
+              }}
+            >
+              <MessageSquarePlus size={14} strokeWidth={1.75} aria-hidden />
+            </button>
+            {onHide ? (
+              <button
+                type="button"
+                className={styles.agentHideBtn}
+                aria-label={t("chat.expertHide")}
+                title={t("chat.expertHide")}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onHide();
+                }}
+              >
+                <EyeOff size={14} aria-hidden />
+              </button>
+            ) : null}
           </div>
           {agent.description ? (
             <div className={styles.agentCardDesc}>{agent.description}</div>
@@ -344,6 +374,7 @@ function ActiveAgentCard({
                 key={s.id}
                 session={s}
                 isActive={activeId === s.id}
+                workStatus={resolveSessionWorkStatus(s, liveWorkingIds)}
                 onSelect={(id) => onSelect(id, agent.agent_id)}
                 onDelete={onDelete}
                 onRename={onRename}
@@ -379,32 +410,95 @@ function ActiveAgentCard({
 interface AgentRowProps {
   agent: OctopAgent;
   onSelect: () => void;
+  onNewChat?: () => void;
+  onHide?: () => void;
+  onUnhide?: () => void;
 }
 
-function InactiveAgentRow({ agent, onSelect }: AgentRowProps) {
+function InactiveAgentRow({
+  agent,
+  onSelect,
+  onNewChat,
+  onHide,
+  onUnhide,
+}: AgentRowProps) {
+  const { t } = useTranslation();
   const accent = agent.color || "#6366f1";
 
   return (
-    <button type="button" className={styles.agentRow} onClick={onSelect}>
+    <div className={styles.agentRowWrap}>
       <div
-        className={styles.agentRowAvatar}
-        style={{ color: accent, background: `${accent}12` }}
+        className={styles.agentRow}
+        onClick={onSelect}
+        role="button"
+        tabIndex={0}
+        onKeyDown={(e) => {
+          if (e.key === "Enter" || e.key === " ") {
+            e.preventDefault();
+            onSelect();
+          }
+        }}
       >
-        <ExpertIcon
-          iconUrl={agent.icon_url}
-          iconName={agent.icon_name}
-          size={14}
-        />
-      </div>
-      <div className={styles.agentRowInfo}>
-        <div className={styles.agentRowNameRow}>
-          <div className={styles.agentRowName}>{agent.name}</div>
-          <SharedExpertHint agent={agent} />
-          <AgentUnreadBadge count={agent.unread_count ?? 0} />
+        <div
+          className={styles.agentRowAvatar}
+          style={{ color: accent, background: `${accent}12` }}
+        >
+          <ExpertIcon
+            iconUrl={agent.icon_url}
+            iconName={agent.icon_name}
+            size={agent.icon_url?.trim() ? 26 : 14}
+          />
         </div>
-        <div className={styles.agentRowDesc}>{agent.description || "—"}</div>
+        <div className={styles.agentRowInfo}>
+          <div className={styles.agentRowNameRow}>
+            <div className={styles.agentNameCluster}>
+              <div className={styles.agentRowName}>{agent.name}</div>
+              <TeamChatBadge agent={agent} />
+              <SharedExpertHint agent={agent} />
+              <RemoteExpertHint agent={agent} />
+            </div>
+            <AgentUnreadBadge count={agent.unread_count ?? 0} />
+            {onNewChat ? (
+              <button
+                type="button"
+                className={styles.agentNewChatBtn}
+                aria-label={t("chatWelcome.newChat")}
+                title={t("chatWelcome.newChat")}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onNewChat();
+                }}
+              >
+                <MessageSquarePlus size={14} strokeWidth={1.75} aria-hidden />
+              </button>
+            ) : null}
+          </div>
+          <div className={styles.agentRowDesc}>{agent.description || "—"}</div>
+        </div>
       </div>
-    </button>
+      {onHide ? (
+        <button
+          type="button"
+          className={styles.agentHideBtn}
+          aria-label={t("chat.expertHide")}
+          title={t("chat.expertHide")}
+          onClick={onHide}
+        >
+          <EyeOff size={14} aria-hidden />
+        </button>
+      ) : null}
+      {onUnhide ? (
+        <button
+          type="button"
+          className={styles.agentHideBtn}
+          aria-label={t("chat.expertUnhide")}
+          title={t("chat.expertUnhide")}
+          onClick={onUnhide}
+        >
+          <Eye size={14} aria-hidden />
+        </button>
+      ) : null}
+    </div>
   );
 }
 
@@ -419,7 +513,8 @@ interface SessionListProps {
   onFetchAllSessions: () => void;
   onSelect: (sessionId: string, agentId: string) => void;
   onAgentSelect: (agentId: string) => void;
-  onDelete: (id: string) => void;
+  onNewChat: (agentId: string) => void;
+  onDelete: (id: string, compact: boolean) => void | Promise<boolean | void>;
   onRename: (id: string, name: string) => void;
   onPin: (id: string, pinned: boolean) => void;
   onFork: (id: string) => void;
@@ -438,6 +533,7 @@ export default function SessionList({
   onFetchAllSessions,
   onSelect,
   onAgentSelect,
+  onNewChat,
   onDelete,
   onRename,
   onPin,
@@ -447,16 +543,32 @@ export default function SessionList({
 }: SessionListProps) {
   const { t } = useTranslation();
   const navigate = useNavigate();
+  const liveWorkingIds = useSessionWorkIds();
   const [searchQuery, setSearchQuery] = useState("");
+  const [showingHidden, setShowingHidden] = useState(false);
+  const { filterVisible, pickHidden, hide, unhide, canHide } =
+    useHiddenSharedExperts();
 
-  const sortedAgents = useMemo(
-    () => [...agents].sort((a, b) => b.id - a.id),
-    [agents],
+  const hiddenAgents = useMemo(
+    () => [...pickHidden(agents)].sort((a, b) => b.id - a.id),
+    [agents, pickHidden],
   );
 
+  const sortedAgents = useMemo(() => {
+    const visible = filterVisible(agents, {
+      keepAgentIds: activeAgentId ? [activeAgentId] : [],
+    });
+    return [...visible].sort((a, b) => b.id - a.id);
+  }, [agents, filterVisible, activeAgentId]);
+
+  // Leave the hidden-only view once nothing remains hidden.
+  const viewingHidden = showingHidden && hiddenAgents.length > 0;
+  const agentsToRender = viewingHidden ? hiddenAgents : sortedAgents;
+
   const expandedAgentId = useMemo(
-    () => activeAgentId ?? sortedAgents[0]?.agent_id ?? null,
-    [activeAgentId, sortedAgents],
+    () =>
+      viewingHidden ? null : activeAgentId ?? sortedAgents[0]?.agent_id ?? null,
+    [activeAgentId, sortedAgents, viewingHidden],
   );
   const activeAgent = useMemo(
     () => sortedAgents.find((a) => a.agent_id === expandedAgentId) ?? null,
@@ -499,38 +611,71 @@ export default function SessionList({
         </div>
       ) : (
         <div className={styles.sessionItems}>
-          {sortedAgents.map((agent) => {
-            const expanded = agent.agent_id === expandedAgentId;
-            if (expanded) {
-              return (
-                <ActiveAgentCard
+          {viewingHidden
+            ? hiddenAgents.map((agent) => (
+                <InactiveAgentRow
                   key={agent.agent_id}
                   agent={agent}
-                  sessions={sessions}
-                  activeId={activeId}
-                  searchQuery={searchQuery}
-                  hasMore={hasMore}
-                  loadingMore={loadingMore}
-                  onLoadMore={onLoadMore}
-                  onFetchAllSessions={onFetchAllSessions}
-                  onSelect={onSelect}
-                  onDelete={onDelete}
-                  onRename={onRename}
-                  onPin={onPin}
-                  onFork={onFork}
-                  activeForkDisabled={activeForkDisabled}
-                  activeForkDisabledHint={activeForkDisabledHint}
+                  onSelect={() => {
+                    unhide(agent.agent_id);
+                    setShowingHidden(false);
+                    onAgentSelect(agent.agent_id);
+                  }}
+                  onUnhide={() => unhide(agent.agent_id)}
                 />
-              );
-            }
-            return (
-              <InactiveAgentRow
-                key={agent.agent_id}
-                agent={agent}
-                onSelect={() => onAgentSelect(agent.agent_id)}
-              />
-            );
-          })}
+              ))
+            : agentsToRender.map((agent) => {
+                const expanded = agent.agent_id === expandedAgentId;
+                if (expanded) {
+                  return (
+                    <ActiveAgentCard
+                      key={agent.agent_id}
+                      agent={agent}
+                      sessions={sessions}
+                      activeId={activeId}
+                      searchQuery={searchQuery}
+                      hasMore={hasMore}
+                      loadingMore={loadingMore}
+                      onLoadMore={onLoadMore}
+                      onFetchAllSessions={onFetchAllSessions}
+                      onSelect={onSelect}
+                      onNewChat={onNewChat}
+                      onDelete={onDelete}
+                      onRename={onRename}
+                      onPin={onPin}
+                      onFork={onFork}
+                      activeForkDisabled={activeForkDisabled}
+                      activeForkDisabledHint={activeForkDisabledHint}
+                      onHide={
+                        canHide(agent) ? () => hide(agent.agent_id) : undefined
+                      }
+                      liveWorkingIds={liveWorkingIds}
+                    />
+                  );
+                }
+                return (
+                  <InactiveAgentRow
+                    key={agent.agent_id}
+                    agent={agent}
+                    onSelect={() => onAgentSelect(agent.agent_id)}
+                    onNewChat={() => onNewChat(agent.agent_id)}
+                    onHide={
+                      canHide(agent) ? () => hide(agent.agent_id) : undefined
+                    }
+                  />
+                );
+              })}
+          {hiddenAgents.length > 0 ? (
+            <button
+              type="button"
+              className={styles.expertHiddenToggle}
+              onClick={() => setShowingHidden((v) => !v)}
+            >
+              {viewingHidden
+                ? t("chat.expertListShowVisible")
+                : t("chat.expertListHidden", { count: hiddenAgents.length })}
+            </button>
+          ) : null}
         </div>
       )}
     </div>

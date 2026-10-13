@@ -18,6 +18,15 @@ class ThreadRegistry:
     CHAT_TYPE_DM = "dm"
     CHAT_TYPE_GROUP = "group"
 
+    @classmethod
+    def is_virtual_channel(cls, channel_type: str) -> bool:
+        """Dashboard and CLI are in-process; they are not IM outbound targets."""
+        return channel_type in {cls.CHANNEL_DASHBOARD, cls.CHANNEL_CLI}
+
+    @classmethod
+    def is_im_session(cls, session: SessionRow) -> bool:
+        return bool(session.channel_id) and not cls.is_virtual_channel(session.channel_type)
+
     @staticmethod
     def make_key(
         *,
@@ -28,6 +37,46 @@ class ThreadRegistry:
     ) -> str:
         """Globally unique session key: agent:channel:subject:chat_type."""
         return f"{agent_id}:{channel_type}:{channel_subject_id}:{channel_chat_type}"
+
+    @staticmethod
+    def peer_session_key(source_session_key: str, agent_id: str) -> str | None:
+        """Rewrite the agent segment of a session key; keep channel / subject / chat type."""
+        parts = source_session_key.split(":", 3)
+        if len(parts) != 4:
+            return None
+        _src_agent, channel_type, subject_id, chat_type = parts
+        if not channel_type or not subject_id or not chat_type:
+            return None
+        return ThreadRegistry.make_key(
+            agent_id=agent_id,
+            channel_type=channel_type,
+            channel_subject_id=subject_id,
+            channel_chat_type=chat_type,
+        )
+
+    @staticmethod
+    def peer_room_session_key(
+        source_session_key: str,
+        agent_id: str,
+        *,
+        room_thread_id: str,
+        group: bool,
+    ) -> str | None:
+        """Session for a peer thread that must not collide with the callee's 1:1 DM."""
+        parts = source_session_key.split(":", 3)
+        if len(parts) != 4:
+            return None
+        _src_agent, channel_type, subject_id, _chat = parts
+        room = room_thread_id.strip()
+        if not channel_type or not subject_id or not room:
+            return None
+        kind = "team" if group else "peer"
+        return ThreadRegistry.make_key(
+            agent_id=agent_id,
+            channel_type=channel_type,
+            channel_subject_id=subject_id,
+            channel_chat_type=f"{kind}:{room}",
+        )
 
     @staticmethod
     def dashboard_key(*, agent_id: str, user_id: int) -> str:
@@ -106,14 +155,14 @@ class ThreadRegistry:
             channel_chat_type=channel_chat_type,
         )
         row = self._sessions.get(session_key)
-        if row is not None:
+        if row is not None and self._threads.get(row.thread_id) is not None:
             self._refresh_session_if_needed(
                 row, channel_id=channel_id, channel_metadata=channel_metadata
             )
             return row.thread_id
         async with self._lock:
             row = self._sessions.get(session_key)
-            if row is not None:
+            if row is not None and self._threads.get(row.thread_id) is not None:
                 self._refresh_session_if_needed(
                     row, channel_id=channel_id, channel_metadata=channel_metadata
                 )
@@ -162,10 +211,13 @@ class ThreadRegistry:
             if row.agent_id != agent_id:
                 msg = f"session {session_key!r} belongs to agent {row.agent_id!r}, not {agent_id!r}"
                 raise ValueError(msg)
-            self._refresh_session_if_needed(
-                row, channel_id=channel_channel_id, channel_metadata=channel_metadata
-            )
-            return row.thread_id
+            if self._threads.get(row.thread_id) is not None:
+                self._refresh_session_if_needed(
+                    row, channel_id=channel_channel_id, channel_metadata=channel_metadata
+                )
+                return row.thread_id
+            # Bound thread was deleted: fall through so get_or_create rebinds
+            # this session to a fresh thread instead of returning a dead id.
         parts = session_key.split(":", 3)
         subject_id = parts[2] if len(parts) >= 3 else str(user_id)
         return await self.get_or_create(
@@ -179,11 +231,29 @@ class ThreadRegistry:
         )
 
     def get_bound_thread_id(self, session_key: str) -> str | None:
+        """Return the live thread bound to *session_key*, or None when unbound.
+
+        A session whose thread was deleted reads as unbound so callers fall
+        back to the create path instead of writing turns to a dead thread.
+        """
         row = self._sessions.get(session_key)
-        return row.thread_id if row else None
+        if row is None or self._threads.get(row.thread_id) is None:
+            return None
+        return row.thread_id
 
     def get_session(self, session_key: str) -> SessionRow | None:
         return self._sessions.get(session_key)
+
+    def sessions_for_thread(self, thread_id: str) -> list[SessionRow]:
+        """Return every session still bound to *thread_id*."""
+        tid = str(thread_id or "").strip()
+        if not tid:
+            return []
+        return self._sessions.list_by_thread(tid)
+
+    def im_sessions_for_thread(self, thread_id: str) -> list[SessionRow]:
+        """IM sessions bound to *thread_id* (excludes dashboard / CLI)."""
+        return [row for row in self.sessions_for_thread(thread_id) if self.is_im_session(row)]
 
     async def rebind(self, *, session_key: str, thread_id: str, agent_id: str) -> None:
         row = self._threads.get(thread_id)
@@ -319,19 +389,31 @@ class ThreadRegistry:
         model_ref: str | None | object = ...,
         reasoning_mode: str | None | object = ...,
         reasoning_effort: str | None | object = ...,
+        conversation_mode: str | None | object = ...,
+        pending_plan_path: str | None | object = ...,
+        hitl_policy: str | None | object = ...,
     ) -> None:
         self._threads.update_composer(
             thread_id,
             model_ref=model_ref,
             reasoning_mode=reasoning_mode,
             reasoning_effort=reasoning_effort,
+            conversation_mode=conversation_mode,
+            pending_plan_path=pending_plan_path,
+            hitl_policy=hitl_policy,
         )
 
     def touch_last_active(self, thread_id: str) -> None:
         self._threads.touch_last_active(thread_id)
 
-    def append_artifacts(self, thread_id: str, paths: list[str] | tuple[str, ...]) -> None:
-        self._threads.append_artifacts(thread_id, paths)
+    def append_artifacts(
+        self,
+        thread_id: str,
+        paths: list[str] | tuple[str, ...],
+        *,
+        agent_id: str = "",
+    ) -> None:
+        self._threads.append_artifacts(thread_id, paths, agent_id=agent_id)
 
     def get_thread(self, thread_id: str) -> ThreadRow | None:
         return self._threads.get(thread_id)
@@ -366,8 +448,31 @@ class ThreadRegistry:
         )
         return tid
 
+    def ensure_thread(
+        self,
+        *,
+        thread_id: str,
+        agent_id: str,
+        user_id: int,
+        channel_type: str,
+        session_key: str,
+    ) -> str:
+        """Insert *thread_id* if missing. Does not rebind the active session."""
+        existing = self.get_thread(thread_id)
+        if existing is not None:
+            return existing.thread_id
+        return self.create_thread(
+            agent_id=agent_id,
+            user_id=user_id,
+            channel_type=channel_type,
+            session_key=session_key,
+            thread_id=thread_id,
+            last_active=0,
+        )
+
     def delete_thread(self, thread_id: str) -> None:
         self._threads.delete(thread_id)
+        self._sessions.delete_for_thread(thread_id)
 
     def increment_unread(self, session_key: str, *, delta: int = 1) -> None:
         self._sessions.increment_unread(session_key, delta=delta)

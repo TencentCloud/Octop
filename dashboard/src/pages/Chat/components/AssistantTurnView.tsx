@@ -1,6 +1,7 @@
 import { useMemo } from "react";
 import { ChevronRight, FilePen, Globe } from "lucide-react";
 import { useTranslation } from "react-i18next";
+import type { HitlDecisionHandler } from "../../../api/types/hitl";
 import type { ChatMessage } from "../hooks/useChat";
 import {
   splitAssistantTurn,
@@ -19,10 +20,15 @@ import {
 } from "../../../utils/parseWriteTodos";
 import MessageBubble from "./MessageBubble";
 import { ToolMediaStrip } from "./ToolMediaStrip";
-import { TurnProcessBlocks, turnHasVisibleProcess } from "./TurnProcessBlocks";
+import {
+  TurnProcessBlocks,
+  turnHasProcessSummary,
+  turnHasVisibleProcess,
+} from "./TurnProcessBlocks";
 import { collectTurnToolMedia } from "../../../utils/collectTurnToolMedia";
 import { collectTurnKnowledgeCitations } from "../../../utils/collectTurnKnowledgeCitations";
 import { KnowledgeCitationsStrip } from "./KnowledgeCitationsStrip";
+import { messageSpeakerId } from "../utils/messageGrouping";
 import styles from "../index.module.less";
 
 interface AssistantTurnViewProps {
@@ -31,15 +37,19 @@ interface AssistantTurnViewProps {
   isStreaming?: boolean;
   /** True while this assistant turn is still being generated (incl. between tool calls). */
   isTurnInProgress?: boolean;
+  /**
+   * Speakers still generating in the session store (survives tool gaps after
+   * the composer unlocks). Empty string = unlabeled host.
+   */
+  liveSpeakers?: ReadonlyArray<string>;
   onRegenerate?: (messageId: string) => void;
+  onDisableStreamUsage?: () => Promise<boolean>;
   onEditUserMessage?: (messageId: string, newText: string) => void;
   onForkAssistantMessage?: (messageId: string) => void;
   forkDisabled?: boolean;
   forkDisabledHint?: string;
   onAcpPermissionSelect?: (message: string) => void;
-  onHitlDecision?: (
-    decisions: Array<{ type: string; message?: string }>,
-  ) => void;
+  onHitlDecision?: HitlDecisionHandler;
   onOpenBrowser?: () => void;
   onEditFile?: () => void;
   onRunShellCommand?: (code: string) => void;
@@ -54,12 +64,26 @@ function hasProcessContent(
   return turnHasVisibleProcess(split);
 }
 
+/** True when any message in this turn belongs to a still-live speaker. */
+function turnHasLiveSpeaker(
+  messages: ChatMessage[],
+  liveSpeakers: ReadonlyArray<string>,
+): boolean {
+  if (liveSpeakers.length === 0) return false;
+  const live = new Set(liveSpeakers);
+  for (const message of messages) {
+    if (live.has(messageSpeakerId(message))) return true;
+  }
+  return false;
+}
+
 export default function AssistantTurnView({
   messages,
   agentId: agentIdProp,
-  isStreaming = false,
   isTurnInProgress = false,
+  liveSpeakers = [],
   onRegenerate,
+  onDisableStreamUsage,
   onEditUserMessage,
   onForkAssistantMessage,
   forkDisabled,
@@ -76,6 +100,12 @@ export default function AssistantTurnView({
   const { t } = useTranslation();
   const { activeAgentId } = useAgent();
   const agentId = agentIdProp ?? activeAgentId;
+  const speakerAgentId =
+    messages.map((item) => messageSpeakerId(item)).find(Boolean) || agentId;
+
+  const speakerLive = turnHasLiveSpeaker(messages, liveSpeakers);
+  const hasStreamingMsg = messages.some((m) => m.status === "streaming");
+  const turnStreaming = isTurnInProgress || hasStreamingMsg || speakerLive;
 
   const hitlLayout = useMemo(
     () => layoutAssistantTurnHitl(messages),
@@ -83,33 +113,38 @@ export default function AssistantTurnView({
   );
   const hasPendingHitl = messages.some((m) => m.hitlData?.status === "pending");
 
+  const splitOpts = useMemo(
+    () => ({ joinAnswerFragments: turnStreaming }),
+    [turnStreaming],
+  );
+
   const segmentProcess = useMemo(
     () =>
       hitlLayout.segments.map((seg) => ({
-        split: splitAssistantTurn(seg.processMessages),
+        split: splitAssistantTurn(seg.processMessages, splitOpts),
         hitl: seg.hitlMessage,
       })),
-    [hitlLayout],
+    [hitlLayout, splitOpts],
   );
   const trailingSplit = useMemo(
-    () => splitAssistantTurn(hitlLayout.trailingMessages),
-    [hitlLayout],
+    () => splitAssistantTurn(hitlLayout.trailingMessages, splitOpts),
+    [hitlLayout, splitOpts],
   );
 
-  const fullSplit = useMemo(() => splitAssistantTurn(messages), [messages]);
+  const fullSplit = useMemo(
+    () => splitAssistantTurn(messages, splitOpts),
+    [messages, splitOpts],
+  );
 
   const toolMedia = useMemo(
-    () => collectTurnToolMedia(fullSplit, agentId),
-    [fullSplit, agentId],
+    () => collectTurnToolMedia(fullSplit, speakerAgentId),
+    [fullSplit, speakerAgentId],
   );
   const knowledgeCitations = useMemo(
     () => collectTurnKnowledgeCitations(fullSplit),
     [fullSplit],
   );
 
-  const turnStreaming =
-    isTurnInProgress ||
-    (isStreaming && messages.some((m) => m.status === "streaming"));
   const usedBrowser = turnUsedBrowserTool(fullSplit);
   const showOpenBrowser = usedBrowser && !!onOpenBrowser;
   const usedFileTool = turnUsedFileTool(fullSplit);
@@ -139,8 +174,13 @@ export default function AssistantTurnView({
   const firstProcessSegmentIdx = compactProcess
     ? -1
     : segmentProcess.findIndex(({ split }) => hasProcessContent(split));
+  const firstSummaryIdx = compactProcess
+    ? -1
+    : segmentProcess.findIndex(({ split }) => turnHasProcessSummary(split));
   const showTrailingProcess =
     !compactProcess && hasProcessContent(trailingSplit);
+  const trailingHasSummary =
+    !compactProcess && turnHasProcessSummary(trailingSplit);
   const anyProcessShown = firstProcessSegmentIdx >= 0 || showTrailingProcess;
 
   const todoPanel =
@@ -153,9 +193,11 @@ export default function AssistantTurnView({
     ) : null;
   const todoAtTop = todoPanel && !anyProcessShown ? todoPanel : null;
 
+  const isWrapupTurn = messages.some((item) => item.teamWrapup);
+
   return (
     <div className={styles.assistantTurn}>
-      {todoAtTop}
+      {todoAtTop ? <div className={styles.turnInset}>{todoAtTop}</div> : null}
       {segmentProcess.map(({ split, hitl }, idx) => {
         const showProcess = !compactProcess && hasProcessContent(split);
         // Freeze process spinner while a pending approval card is open.
@@ -173,13 +215,36 @@ export default function AssistantTurnView({
                   isStreaming={processStreaming}
                   onAcpPermissionSelect={onAcpPermissionSelect}
                   hideToolMedia={hasToolMedia}
-                  agentId={agentId}
+                  agentId={speakerAgentId}
+                  showAvatar={idx === firstSummaryIdx}
                 />
-                {todoPanel && idx === firstProcessSegmentIdx ? todoPanel : null}
+                {todoPanel && idx === firstProcessSegmentIdx ? (
+                  <div className={styles.turnInset}>{todoPanel}</div>
+                ) : null}
               </>
+            ) : null}
+            {split.answerMessage ? (
+              <div className={styles.assistantTurnAnswer}>
+                <MessageBubble
+                  message={toAnswerOnlyMessage(split.answerMessage)}
+                  agentId={agentId}
+                  showAvatar={!showProcess}
+                  groupPosition="only"
+                  onRegenerate={onRegenerate}
+                  onDisableStreamUsage={onDisableStreamUsage}
+                  onEditUserMessage={onEditUserMessage}
+                  onForkAssistantMessage={onForkAssistantMessage}
+                  forkDisabled={forkDisabled}
+                  forkDisabledHint={forkDisabledHint}
+                  onRunShellCommand={onRunShellCommand}
+                  shellCommandDisabled={shellCommandDisabled}
+                  shellCommandDisabledTitle={shellCommandDisabledTitle}
+                />
+              </div>
             ) : null}
             <MessageBubble
               message={hitl}
+              agentId={agentId}
               onHitlDecision={onHitlDecision}
               groupPosition="only"
             />
@@ -193,24 +258,41 @@ export default function AssistantTurnView({
             isStreaming={turnStreaming && !hasPendingHitl}
             onAcpPermissionSelect={onAcpPermissionSelect}
             hideToolMedia={hasToolMedia}
-            agentId={agentId}
+            agentId={speakerAgentId}
+            showAvatar={firstSummaryIdx < 0 && trailingHasSummary}
           />
-          {todoPanel && firstProcessSegmentIdx < 0 ? todoPanel : null}
+          {todoPanel && firstProcessSegmentIdx < 0 ? (
+            <div className={styles.turnInset}>{todoPanel}</div>
+          ) : null}
         </>
       ) : null}
       {hasToolMedia && (
-        <ToolMediaStrip
-          images={toolMedia.images}
-          videos={toolMedia.videos}
-          files={toolMedia.files}
-          agentId={agentId}
-        />
+        <div className={styles.turnInset}>
+          <ToolMediaStrip
+            images={toolMedia.images}
+            videos={toolMedia.videos}
+            files={toolMedia.files}
+            agentId={speakerAgentId}
+          />
+        </div>
       )}
       {trailingSplit.answerMessage ? (
-        <div className={styles.assistantTurnAnswer}>
+        <div
+          className={`${styles.assistantTurnAnswer}${
+            isWrapupTurn ? ` ${styles.teamWrapupTurn}` : ""
+          }`}
+        >
+          {isWrapupTurn ? (
+            <span className={styles.teamWrapupBadge}>
+              {t("chat.teamWrapupBadge", { defaultValue: "主持人总结" })}
+            </span>
+          ) : null}
           <MessageBubble
             message={toAnswerOnlyMessage(trailingSplit.answerMessage)}
+            agentId={agentId}
+            showAvatar={firstSummaryIdx < 0 && !trailingHasSummary}
             onRegenerate={onRegenerate}
+            onDisableStreamUsage={onDisableStreamUsage}
             onEditUserMessage={onEditUserMessage}
             onForkAssistantMessage={onForkAssistantMessage}
             forkDisabled={forkDisabled}
@@ -222,60 +304,68 @@ export default function AssistantTurnView({
           />
         </div>
       ) : null}
-      <KnowledgeCitationsStrip citations={knowledgeCitations} />
+      {knowledgeCitations.length > 0 ? (
+        <div className={styles.turnInset}>
+          <KnowledgeCitationsStrip citations={knowledgeCitations} />
+        </div>
+      ) : null}
       {showOpenBrowser && (
-        <button
-          type="button"
-          className={`${styles.openBrowserPrompt} ${
-            turnStreaming ? styles.openBrowserPromptActive : ""
-          }`}
-          onClick={onOpenBrowser}
-          aria-label={t("chat.openBrowser")}
-        >
-          <Globe
-            size={16}
-            strokeWidth={2}
-            className={styles.openBrowserPromptIcon}
-            aria-hidden="true"
-          />
-          <span>{t("chat.openBrowser")}</span>
-          <ChevronRight
-            size={14}
-            className={styles.openBrowserPromptArrow}
-            aria-hidden="true"
-          />
-        </button>
+        <div className={styles.turnInset}>
+          <button
+            type="button"
+            className={`${styles.openBrowserPrompt} ${
+              turnStreaming ? styles.openBrowserPromptActive : ""
+            }`}
+            onClick={onOpenBrowser}
+            aria-label={t("chat.openBrowser")}
+          >
+            <Globe
+              size={16}
+              strokeWidth={2}
+              className={styles.openBrowserPromptIcon}
+              aria-hidden="true"
+            />
+            <span>{t("chat.openBrowser")}</span>
+            <ChevronRight
+              size={14}
+              className={styles.openBrowserPromptArrow}
+              aria-hidden="true"
+            />
+          </button>
+        </div>
       )}
       {showEditFile && (
-        <button
-          type="button"
-          className={`${styles.openBrowserPrompt} ${
-            turnStreaming ? styles.openBrowserPromptActive : ""
-          }`}
-          onClick={onEditFile}
-          aria-label={t("chat.editFileCard", {
-            count: Math.max(turnFileCount, 1),
-            defaultValue: "编辑了{{count}}个文件",
-          })}
-        >
-          <FilePen
-            size={16}
-            strokeWidth={2}
-            className={styles.openBrowserPromptIcon}
-            aria-hidden="true"
-          />
-          <span>
-            {t("chat.editFileCard", {
+        <div className={styles.turnInset}>
+          <button
+            type="button"
+            className={`${styles.openBrowserPrompt} ${
+              turnStreaming ? styles.openBrowserPromptActive : ""
+            }`}
+            onClick={onEditFile}
+            aria-label={t("chat.editFileCard", {
               count: Math.max(turnFileCount, 1),
               defaultValue: "编辑了{{count}}个文件",
             })}
-          </span>
-          <ChevronRight
-            size={14}
-            className={styles.openBrowserPromptArrow}
-            aria-hidden="true"
-          />
-        </button>
+          >
+            <FilePen
+              size={16}
+              strokeWidth={2}
+              className={styles.openBrowserPromptIcon}
+              aria-hidden="true"
+            />
+            <span>
+              {t("chat.editFileCard", {
+                count: Math.max(turnFileCount, 1),
+                defaultValue: "编辑了{{count}}个文件",
+              })}
+            </span>
+            <ChevronRight
+              size={14}
+              className={styles.openBrowserPromptArrow}
+              aria-hidden="true"
+            />
+          </button>
+        </div>
       )}
     </div>
   );

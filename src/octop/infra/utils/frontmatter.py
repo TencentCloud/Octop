@@ -32,8 +32,10 @@ def _find_frontmatter(text: str) -> tuple[int, int] | None:
                 break
             # Skip HTML comment blocks: <!-- ... -->
             if line.startswith("<!--"):
-                # Find the closing -->
-                close = text.find("-->", nxt)
+                # Find the closing -->. Search from the line start: a one-line
+                # comment closes on its own line, which the earlier search
+                # (starting after the newline) missed.
+                close = text.find("-->", idx)
                 if close == -1:
                     return None
                 idx = close + 3

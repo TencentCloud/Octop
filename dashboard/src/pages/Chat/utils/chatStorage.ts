@@ -1,5 +1,4 @@
 export const CONNECTORS_STORAGE_PREFIX = "octop:chat-connectors:";
-export const SKILLS_STORAGE_PREFIX = "octop:chat-skills:";
 
 function loadSavedStringList(key: string): string[] {
   try {
@@ -29,10 +28,6 @@ export function hasSavedConnectors(agentId: string): boolean {
   }
 }
 
-export function loadSavedSkills(agentId: string): string[] {
-  return loadSavedStringList(`${SKILLS_STORAGE_PREFIX}${agentId}`);
-}
-
 export function saveConnectors(agentId: string, names: string[]): void {
   try {
     localStorage.setItem(
@@ -44,11 +39,28 @@ export function saveConnectors(agentId: string, names: string[]): void {
   }
 }
 
-export function saveSkills(agentId: string, names: string[]): void {
+export const KNOWLEDGE_STORAGE_PREFIX = "octop:chat-knowledge:";
+
+export function loadSavedKnowledgeBaseIds(agentId: string): string[] {
+  return loadSavedStringList(`${KNOWLEDGE_STORAGE_PREFIX}${agentId}`);
+}
+
+/** True when the user has an explicit saved preference (including empty). */
+export function hasSavedKnowledgeBaseIds(agentId: string): boolean {
+  try {
+    return (
+      localStorage.getItem(`${KNOWLEDGE_STORAGE_PREFIX}${agentId}`) != null
+    );
+  } catch {
+    return false;
+  }
+}
+
+export function saveKnowledgeBaseIds(agentId: string, ids: string[]): void {
   try {
     localStorage.setItem(
-      `${SKILLS_STORAGE_PREFIX}${agentId}`,
-      JSON.stringify(names),
+      `${KNOWLEDGE_STORAGE_PREFIX}${agentId}`,
+      JSON.stringify(ids),
     );
   } catch {
     /* ignore */

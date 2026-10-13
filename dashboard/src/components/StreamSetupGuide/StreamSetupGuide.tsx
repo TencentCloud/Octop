@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 import { Button, Tooltip } from "antd";
 
+import { useIsMobile } from "../../hooks/useIsMobile";
 import styles from "./StreamSetupGuide.module.less";
 
 export interface SetupGuideStep {
@@ -21,7 +22,7 @@ export interface SetupGuideAction {
 
 interface StreamSetupGuideProps {
   icon: ReactNode;
-  title: string;
+  title?: string;
   description?: string;
   steps: SetupGuideStep[];
   primaryAction?: SetupGuideAction;
@@ -31,11 +32,19 @@ interface StreamSetupGuideProps {
   className?: string;
   /** Widen the card for longer explanatory copy. */
   wide?: boolean;
+  /**
+   * Borderless tip layout (no card chrome), closer to Tasks empty state.
+   * Prefer for page-level empty guides that sit directly in PageShell.
+   */
+  plain?: boolean;
 }
 
 function ActionButton({ action }: { action: SetupGuideAction }) {
+  const isMobile = useIsMobile();
   const button = (
     <Button
+      block={isMobile}
+      autoInsertSpace={false}
       type={action.type ?? "primary"}
       danger={action.danger}
       icon={action.icon}
@@ -47,7 +56,12 @@ function ActionButton({ action }: { action: SetupGuideAction }) {
     </Button>
   );
   if (!action.title) return button;
-  return <Tooltip title={action.title}>{button}</Tooltip>;
+  // Span wrapper so tooltips still work on disabled buttons.
+  return (
+    <Tooltip title={action.title}>
+      <span className={styles.actionTooltipWrap}>{button}</span>
+    </Tooltip>
+  );
 }
 
 export default function StreamSetupGuide({
@@ -60,9 +74,15 @@ export default function StreamSetupGuide({
   extraAction,
   className,
   wide,
+  plain,
 }: StreamSetupGuideProps) {
   const hasActions = primaryAction || secondaryAction || extraAction;
-  const wrapClass = [styles.wrap, wide ? styles.wide : "", className ?? ""]
+  const wrapClass = [
+    styles.wrap,
+    wide ? styles.wide : "",
+    plain ? styles.plain : "",
+    className ?? "",
+  ]
     .filter(Boolean)
     .join(" ");
 
@@ -70,7 +90,7 @@ export default function StreamSetupGuide({
     <div className={wrapClass}>
       <div className={styles.card}>
         <div className={styles.icon}>{icon}</div>
-        <h3 className={styles.title}>{title}</h3>
+        {title ? <h3 className={styles.title}>{title}</h3> : null}
         {description ? (
           <p className={styles.description}>{description}</p>
         ) : null}

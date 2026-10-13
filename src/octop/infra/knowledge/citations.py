@@ -16,6 +16,7 @@ class KnowledgeCitation(TypedDict):
     kb_name: str
     doc_id: str
     filename: str
+    path: str
 
 
 def citations_from_ranked(ranked: Sequence[tuple[Any, Any, Any]]) -> list[KnowledgeCitation]:
@@ -33,6 +34,7 @@ def citations_from_ranked(ranked: Sequence[tuple[Any, Any, Any]]) -> list[Knowle
                 "kb_name": str(getattr(base, "name", "") or ""),
                 "doc_id": doc_id,
                 "filename": str(getattr(document, "filename", "") or doc_id),
+                "path": str(getattr(document, "path", "") or ""),
             }
         )
     return out

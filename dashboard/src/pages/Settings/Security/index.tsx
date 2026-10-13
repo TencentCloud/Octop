@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { Button, Form, Input, Modal, Select, Switch, Typography } from "antd";
 import { message } from "@/utils/antdMessage";
 import {
@@ -20,7 +20,7 @@ import {
 } from "../../../api/modules/security";
 import { TabPanelHeader } from "../AdvancedSettings/TabPanelHeader";
 import tabStyles from "../AdvancedSettings/tabContent.module.less";
-import SettingsTabBar from "../shared/SettingsTabBar";
+import TabBar, { type TabBarItem } from "../../../components/TabLabel/TabBar";
 import AuditLogPanel from "./AuditLogPanel";
 import HitlToolsPicker from "./HitlToolsPicker";
 import ToolGuardRulesPanel from "./ToolGuardRulesPanel";
@@ -41,41 +41,13 @@ type SecurityTabKey =
   | "skill_scan"
   | "audit";
 
-const TABS: {
-  key: SecurityTabKey;
-  labelKey: string;
-  icon: ReactNode;
-}[] = [
-  {
-    key: "hitl",
-    labelKey: "security.tabHitl",
-    icon: <UserCheck size={15} />,
-  },
-  {
-    key: "filesystem",
-    labelKey: "security.tabFilesystem",
-    icon: <FolderLock size={15} />,
-  },
-  {
-    key: "pii",
-    labelKey: "security.tabPii",
-    icon: <EyeOff size={15} />,
-  },
-  {
-    key: "tool_guard",
-    labelKey: "security.tabToolGuard",
-    icon: <ShieldAlert size={15} />,
-  },
-  {
-    key: "skill_scan",
-    labelKey: "security.tabSkillScan",
-    icon: <FileSearch size={15} />,
-  },
-  {
-    key: "audit",
-    labelKey: "security.tabAudit",
-    icon: <ScrollText size={15} />,
-  },
+const TABS: TabBarItem<SecurityTabKey>[] = [
+  { key: "hitl", labelKey: "security.tabHitl", icon: UserCheck },
+  { key: "filesystem", labelKey: "security.tabFilesystem", icon: FolderLock },
+  { key: "pii", labelKey: "security.tabPii", icon: EyeOff },
+  { key: "tool_guard", labelKey: "security.tabToolGuard", icon: ShieldAlert },
+  { key: "skill_scan", labelKey: "security.tabSkillScan", icon: FileSearch },
+  { key: "audit", labelKey: "security.tabAudit", icon: ScrollText },
 ];
 
 function parseTab(raw: string | null): SecurityTabKey {
@@ -424,11 +396,7 @@ export default function SecuritySettingsPage() {
       title={t("pageShell.security.title")}
       subtitle={t("pageShell.security.subtitle")}
       tabBar={
-        <SettingsTabBar
-          tabs={allowedTabs}
-          activeKey={activeTab}
-          onChange={selectTab}
-        />
+        <TabBar tabs={allowedTabs} activeKey={activeTab} onChange={selectTab} />
       }
     >
       {activeTab === "audit" ? (

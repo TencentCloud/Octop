@@ -24,6 +24,8 @@ async def test_list_experts_returns_bundled_library(env: Any) -> None:
     assert len(rows) >= 1
     sample = next(r for r in rows if r["id"] == "general-assistant")
     assert "label" in sample and "zh" in sample["label"] and "en" in sample["label"]
+    assert sample["task_examples"]["zh"]
+    assert len(sample["task_examples"]["zh"]) == 3
 
 
 async def test_get_expert_includes_prompt_files(env: Any) -> None:
@@ -32,9 +34,8 @@ async def test_get_expert_includes_prompt_files(env: Any) -> None:
     assert r.status_code == 200
     body = r.json()
     assert body["id"] == "default"
-    assert body["files"]
-    assert isinstance(body["prompt_files"], list)
-    assert body["prompt_files"]
+    assert body["files"] == ["AGENTS.md"]
+    assert body["prompt_files"] == ["AGENTS.md"]
 
 
 async def test_get_unknown_expert_404(env: Any) -> None:
@@ -75,6 +76,112 @@ async def test_create_agent_from_expert(env: Any) -> None:
     detail_row = (await c.get(f"/api/agents/{new_id}", headers=auth)).json()
     assert detail_row["name"] == "default-bot"
     assert detail_row.get("system_prompt") in (None, "")
+
+
+async def test_create_agent_from_expert_applies_file_overrides(env: Any) -> None:
+    c, srv, auth = env
+    created = await c.post(
+        "/api/agents/from-expert/default",
+        headers=auth,
+        json={
+            "name": "prompt-edited-bot",
+            "file_overrides": [{"name": "AGENTS.md", "content": "custom agents guide"}],
+            "omit_files": ["skills/does-not-exist"],
+        },
+    )
+    assert created.status_code == 201, created.text
+    agent_id = created.json()["agent_id"]
+    workspace = srv.app_runtime.agent_registry.workspace_for_agent(agent_id)
+    if workspace is None:
+        pytest.skip("workspace not available before bootstrap")
+    text = await workspace.aread_text("AGENTS.md")
+    assert text == "custom agents guide"
+
+
+async def test_create_agent_from_expert_applies_quick_prompts(env: Any) -> None:
+    c, srv, auth = env
+    created = await c.post(
+        "/api/agents/from-expert/default",
+        headers=auth,
+        json={
+            "name": "page-config-bot",
+            "quick_prompts": [
+                {
+                    "title": {"zh": "创建卡", "en": "Create card"},
+                    "description": {"zh": "描述", "en": "Desc"},
+                    "prompt": {"zh": "请开始", "en": "Start"},
+                    "color": "#fff7ed",
+                    "icon_name": "zap",
+                }
+            ],
+        },
+    )
+    assert created.status_code == 201, created.text
+    agent_id = created.json()["agent_id"]
+    workspace = srv.app_runtime.agent_registry.workspace_for_agent(agent_id)
+    if workspace is None:
+        pytest.skip("workspace not available before bootstrap")
+    from octop.infra.agents.experts.catalog import (
+        WORKSPACE_MANIFEST_PATH,
+        read_workspace_manifest_data,
+    )
+
+    data = await read_workspace_manifest_data(workspace)
+    assert data is not None
+    assert data.get("quick_prompts")
+    assert data["quick_prompts"][0]["title"]["zh"] == "创建卡"
+    # Seeded template keys must survive a page-config overlay.
+    text = await workspace.aread_text(WORKSPACE_MANIFEST_PATH)
+    assert text is not None
+    assert "创建卡" in text
+
+
+async def test_create_agent_from_expert_copies_full_skill_dir(env: Any) -> None:
+    c, srv, auth = env
+    source = await c.post(
+        "/api/agents/from-expert/default",
+        headers=auth,
+        json={"name": "copy-skill-src"},
+    )
+    assert source.status_code == 201, source.text
+    src_id = source.json()["agent_id"]
+    src_ws = srv.app_runtime.agent_registry.workspace_for_agent(src_id)
+    if src_ws is None:
+        pytest.skip("workspace not available before bootstrap")
+    await src_ws.aupload_many(
+        [
+            ("skills/pack-demo/SKILL.md", b"---\nname: pack-demo\n---\n# Pack\n"),
+            ("skills/pack-demo/refs/note.md", b"keep me"),
+        ]
+    )
+
+    created = await c.post(
+        "/api/agents/from-expert/default",
+        headers=auth,
+        json={
+            "name": "copy-skill-dest",
+            "copy_skills": [{"agent_id": src_id, "slug": "pack-demo"}],
+        },
+    )
+    assert created.status_code == 201, created.text
+    assert created.json().get("copy_skill_errors") in (None, [])
+    dest_ws = srv.app_runtime.agent_registry.workspace_for_agent(created.json()["agent_id"])
+    if dest_ws is None:
+        pytest.skip("workspace not available before bootstrap")
+    assert await dest_ws.aread_text("skills/pack-demo/refs/note.md") == "keep me"
+
+
+async def test_create_agent_from_expert_rejects_unsafe_override_path(env: Any) -> None:
+    c, _srv, auth = env
+    created = await c.post(
+        "/api/agents/from-expert/default",
+        headers=auth,
+        json={
+            "name": "unsafe-override-bot",
+            "file_overrides": [{"name": "../secret", "content": "nope"}],
+        },
+    )
+    assert created.status_code == 400, created.text
 
 
 async def test_create_agent_from_expert_duplicate_name_409(env: Any) -> None:
@@ -249,7 +356,8 @@ async def test_get_expert_includes_file_contents(env: Any) -> None:
     body = r.json()
     assert "file_contents" in body
     assert isinstance(body["file_contents"], list)
-    assert len(body["file_contents"]) > 0
+    names = {item["name"] for item in body["file_contents"]}
+    assert names == {"AGENTS.md"}
     first = body["file_contents"][0]
     assert "name" in first and "content" in first
     assert isinstance(first["content"], str) and first["content"]
@@ -323,3 +431,117 @@ async def test_create_from_expert_stores_backend(env: Any) -> None:
     rows = (await c.get("/api/agents", headers=auth)).json()
     agent = next(a for a in rows if a["id"] == agent_id)
     assert agent["config"].get("backend") == backend_spec
+
+
+async def test_create_agent_from_expert_stores_composer_defaults(env: Any) -> None:
+    c, server, auth = env
+    kb = server.services.knowledge_repo.create_base(owner_user_id=1, name="Policies")
+    connector = await c.post(
+        "/api/connector-instances",
+        headers=auth,
+        json={
+            "kind": "tencent-docs",
+            "display_name": "Docs",
+            "credentials": {"token": "test-token"},
+        },
+    )
+    assert connector.status_code == 201, connector.text
+    mcp_name = connector.json()["mcp_server_name"]
+
+    created = await c.post(
+        "/api/agents/from-expert/default",
+        headers=auth,
+        json={
+            "name": "composer-defaults-expert",
+            "knowledge_base_ids": [kb.id],
+            "mcp_servers": [mcp_name],
+        },
+    )
+    assert created.status_code == 201, created.text
+    body = created.json()
+    detail = (await c.get(f"/api/agents/{body['agent_id']}", headers=auth)).json()
+    assert detail["knowledge_base_ids"] == [kb.id]
+    assert detail["mcp_servers"] == [mcp_name]
+    assert "knowledge_base_ids" not in (detail.get("config") or {})
+    assert "mcp_servers" not in (detail.get("config") or {})
+
+
+async def test_create_agent_from_expert_rejects_unknown_knowledge_base(env: Any) -> None:
+    c, _server, auth = env
+    agents_before = (await c.get("/api/agents", headers=auth)).json()
+
+    created = await c.post(
+        "/api/agents/from-expert/default",
+        headers=auth,
+        json={"name": "missing-kb-expert", "knowledge_base_ids": ["MISSING"]},
+    )
+
+    assert created.status_code == 404, created.text
+    assert created.json()["error"]["code"] == "KNOWLEDGE_NOT_FOUND"
+    agents_after = (await c.get("/api/agents", headers=auth)).json()
+    assert {agent["agent_id"] for agent in agents_after} == {
+        agent["agent_id"] for agent in agents_before
+    }
+
+
+async def test_create_agent_from_expert_rejects_unknown_connector(env: Any) -> None:
+    c, _server, auth = env
+    agents_before = (await c.get("/api/agents", headers=auth)).json()
+
+    created = await c.post(
+        "/api/agents/from-expert/default",
+        headers=auth,
+        json={"name": "missing-connector-expert", "mcp_servers": ["unknown__instance"]},
+    )
+
+    assert created.status_code == 400, created.text
+    assert created.json()["error"]["code"] == "CONNECTOR_NOT_BOUND"
+    agents_after = (await c.get("/api/agents", headers=auth)).json()
+    assert {agent["agent_id"] for agent in agents_after} == {
+        agent["agent_id"] for agent in agents_before
+    }
+
+
+async def test_patch_agent_composer_defaults(env: Any) -> None:
+    c, server, auth = env
+    kb = server.services.knowledge_repo.create_base(owner_user_id=1, name="Handbook")
+    connector = await c.post(
+        "/api/connector-instances",
+        headers=auth,
+        json={
+            "kind": "tencent-docs",
+            "display_name": "Wiki",
+            "credentials": {"token": "test-token"},
+        },
+    )
+    assert connector.status_code == 201, connector.text
+    mcp_name = connector.json()["mcp_server_name"]
+
+    created = await c.post(
+        "/api/agents/from-expert/default",
+        headers=auth,
+        json={"name": "patch-composer-defaults"},
+    )
+    assert created.status_code == 201, created.text
+    agent_id = created.json()["agent_id"]
+    detail = (await c.get(f"/api/agents/{agent_id}", headers=auth)).json()
+    assert detail["knowledge_base_ids"] == []
+    assert detail["mcp_servers"] == []
+
+    patched = await c.patch(
+        f"/api/agents/{agent_id}",
+        headers=auth,
+        json={"knowledge_base_ids": [kb.id], "mcp_servers": [mcp_name]},
+    )
+    assert patched.status_code == 200, patched.text
+    assert patched.json()["knowledge_base_ids"] == [kb.id]
+    assert patched.json()["mcp_servers"] == [mcp_name]
+
+    cleared = await c.patch(
+        f"/api/agents/{agent_id}",
+        headers=auth,
+        json={"knowledge_base_ids": [], "mcp_servers": []},
+    )
+    assert cleared.status_code == 200, cleared.text
+    assert cleared.json()["knowledge_base_ids"] == []
+    assert cleared.json()["mcp_servers"] == []

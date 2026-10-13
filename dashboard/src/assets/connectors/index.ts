@@ -1,12 +1,17 @@
 import tencentArdot from "./tencent-ardot.png";
 import baiduMap from "./baidu-map.png";
 import ctripWendao from "./ctrip-wendao.png";
+import didi from "./didi.svg";
 import dida365 from "./dida365.png";
 import dify from "./dify.svg";
+import agentlyCli from "./agently-cli.png";
 import feishuCli from "./feishu-cli.png";
 import fliggy from "./fliggy.png";
 import meituanTravel from "./meituan-travel.png";
 import notion from "./notion.png";
+import obsidianCli from "./obsidian-cli.svg";
+import openalex from "./openalex.svg";
+import qcc from "./qcc.png";
 import qqMail from "./qq-mail.png";
 import qqMusic from "./qq-music.png";
 import tencentDocs from "./tencent-docs.png";
@@ -29,14 +34,19 @@ export const CONNECTOR_LOGOS: Record<string, string> = {
   "qq-music": qqMusic,
   fliggy,
   "ctrip-wendao": ctripWendao,
+  didi,
   "meituan-travel": meituanTravel,
   yuandian,
   "tencent-ima": tencentIma,
+  "agently-cli": agentlyCli,
   "feishu-cli": feishuCli,
   "wecom-cli": wecomCli,
   "tencent-lexiang": tencentLexiang,
   "tencent-meeting": tencentMeeting,
   notion,
+  "obsidian-cli": obsidianCli,
+  openalex,
+  qcc,
   dida365: dida365,
   dify,
   "tencent-news": tencentNews,

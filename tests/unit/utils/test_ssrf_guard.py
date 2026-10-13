@@ -7,6 +7,7 @@ import pytest
 from octop.infra.utils.ssrf_guard import (
     UnsafeOutboundUrl,
     host_allowed_for_issuer,
+    is_private_or_local_host,
     issuer_base_domain,
     validate_https_url,
 )
@@ -14,6 +15,24 @@ from octop.infra.utils.ssrf_guard import (
 
 def test_issuer_base_domain() -> None:
     assert issuer_base_domain("https://mcp.notion.com") == "notion.com"
+
+
+@pytest.mark.parametrize(
+    ("host", "expected"),
+    [
+        ("localhost", True),
+        ("127.0.0.1", True),
+        ("::1", True),
+        ("10.0.0.1", True),
+        ("192.168.1.1", True),
+        ("host.docker.internal", True),
+        ("nas.local", True),
+        ("mcp.example.com", False),
+        ("8.8.8.8", False),
+    ],
+)
+def test_is_private_or_local_host(host: str, expected: bool) -> None:
+    assert is_private_or_local_host(host) is expected
 
 
 @pytest.mark.parametrize(

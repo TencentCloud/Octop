@@ -28,6 +28,11 @@ import { isAgentChatReady } from "../../../utils/agentError";
 import { useAgentFormResources } from "../../../hooks/useAgentFormResources";
 import { octopAgentsApi } from "../../../api/modules/octopAgents";
 import { useAgent, type OctopAgent } from "../../../context/AgentContext";
+import {
+  CONVERSATION_MODES,
+  parseConversationMode,
+  type ConversationMode,
+} from "../../Chat/utils/conversationMode";
 import ExpertAvatarPicker from "./ExpertAvatarPicker";
 import WorkspaceDrawer from "../../Agent/Workspace/components/WorkspaceDrawer";
 import {
@@ -49,6 +54,8 @@ import {
   omitAgentRuntimeConfig,
   readAgentRuntimeFormValues,
 } from "../../../utils/agentRuntimeConfig";
+import { isBridgeAgentId } from "../../../utils/remoteExpert";
+import EditExpertDrawerTitle from "./EditExpertDrawerTitle";
 import { useSkillDisplayName } from "../../Agent/Skills/skillDisplayNames";
 import { DEFAULT_SKILL_EMOJI } from "../../Agent/Skills/skillMarkdown";
 import FileEditModal from "./FileEditModal";
@@ -75,6 +82,8 @@ import {
   type PathMapping,
 } from "./agentBackendForm";
 import AgentBackendFields from "./AgentBackendFields";
+import ExpertComposerDefaultsFields from "./ExpertComposerDefaultsFields";
+import SkillCatalogDrawer from "./SkillCatalogDrawer";
 import SubagentCatalogDrawer from "./SubagentCatalogDrawer";
 import styles from "../index.module.less";
 
@@ -91,6 +100,8 @@ interface AgentDetail {
   top_p?: number | null;
   max_tokens?: number | null;
   welcome_message?: string | null;
+  knowledge_base_ids?: string[];
+  mcp_servers?: string[];
   config?: Record<string, unknown>;
 }
 
@@ -102,6 +113,8 @@ interface SkillSummary {
   kind?: "builtin" | "workspace";
   emoji?: string;
   icon_url?: string;
+  corrupt?: boolean;
+  error?: string;
 }
 
 interface SubagentSummary {
@@ -126,6 +139,7 @@ interface EditFormValues {
   welcome_message?: string;
   is_shared?: boolean;
   default_model: string;
+  conversation_mode: ConversationMode;
   backend_choice: string;
   composite_default: string;
   root_dir?: string;
@@ -135,6 +149,8 @@ interface EditFormValues {
   top_p?: number;
   max_tokens?: number;
   enable_trajectory?: boolean;
+  knowledge_base_ids?: string[];
+  mcp_servers?: string[];
 }
 
 interface EditAgentDrawerProps {
@@ -221,8 +237,9 @@ function EditAgentDrawerBody({
   const [workspaceFiles, setWorkspaceFiles] = useState<string[]>([]);
   const [agentSkills, setAgentSkills] = useState<SkillSummary[]>([]);
   const [agentSubagents, setAgentSubagents] = useState<SubagentSummary[]>([]);
+  const remote = Boolean(agent.bridge) || isBridgeAgentId(agent.agent_id);
   const { models, modelsLoading, backends, backendsLoading } =
-    useAgentFormResources(true);
+    useAgentFormResources(true, agent.agent_id);
   const [pathMappings, setPathMappings] = useState<PathMapping[]>([]);
   const [agentConfig, setAgentConfig] = useState<Record<string, unknown>>({});
   const [colorPalette, setColorPalette] = useState<string>(
@@ -243,6 +260,7 @@ function EditAgentDrawerBody({
   );
   const [listRenameSaving, setListRenameSaving] = useState(false);
   const [subagentCatalogOpen, setSubagentCatalogOpen] = useState(false);
+  const [skillCatalogOpen, setSkillCatalogOpen] = useState(false);
   const welcomeConfigRef = useRef<WelcomeConfigRef>(null);
 
   const installedSubagentSlugs = useMemo(
@@ -298,11 +316,16 @@ function EditAgentDrawerBody({
             typeof ag.welcome_message === "string" ? ag.welcome_message : "",
           is_shared: agent.is_shared ?? false,
           default_model: defaultModelToForm(ag.default_model),
+          conversation_mode: parseConversationMode(cfg.conversation_mode),
           backend_choice: parsedBackend.backendChoice,
           composite_default: parsedBackend.compositeDefault,
           root_dir: parsedBackend.rootDir,
           ...readAgentRuntimeFormValues(ag),
           enable_trajectory: cfg.enable_trajectory !== false,
+          knowledge_base_ids: Array.isArray(ag.knowledge_base_ids)
+            ? ag.knowledge_base_ids
+            : [],
+          mcp_servers: Array.isArray(ag.mcp_servers) ? ag.mcp_servers : [],
         });
         setLoading(false);
 
@@ -328,7 +351,21 @@ function EditAgentDrawerBody({
 
           void request<SkillSummary[]>(`/agents/${agent.agent_id}/skills`)
             .then((skills) => {
-              if (!cancelled) setAgentSkills(workspaceSkills(skills));
+              if (cancelled) return;
+              const list = skills || [];
+              const corrupt = list.filter((skill) => skill.corrupt);
+              if (corrupt.length > 0) {
+                message.warning(
+                  t("skills.corruptSkipped", {
+                    slugs: corrupt
+                      .map((skill) => skill.slug ?? skill.name)
+                      .join(", "),
+                  }),
+                );
+              }
+              setAgentSkills(
+                workspaceSkills(list.filter((skill) => !skill.corrupt)),
+              );
             })
             .catch(() => {
               if (!cancelled) setAgentSkills([]);
@@ -352,7 +389,7 @@ function EditAgentDrawerBody({
     return () => {
       cancelled = true;
     };
-  }, [agent.agent_id, agent.state, form, t]);
+  }, [agent.agent_id, agent.state, form, message, t]);
 
   const handleSave = useCallback(async () => {
     const values = await form.validateFields();
@@ -363,7 +400,7 @@ function EditAgentDrawerBody({
         return;
       }
     }
-    if (shouldProbeRootDir(values.backend_choice, values.root_dir)) {
+    if (!remote && shouldProbeRootDir(values.backend_choice, values.root_dir)) {
       const probe = await probeRootDir(values.root_dir ?? "/");
       if (!probe.ok) {
         message.error(
@@ -377,7 +414,10 @@ function EditAgentDrawerBody({
     setSaving(true);
     let bwrapToast: { kind: "success" | "warning"; text: string } | null = null;
     try {
-      if (shouldProbeRootDir(values.backend_choice, values.root_dir)) {
+      if (
+        !remote &&
+        shouldProbeRootDir(values.backend_choice, values.root_dir)
+      ) {
         const bwrap = await ensureBubblewrapAfterProbe();
         const kind = ensureBwrapToastKind(bwrap.status);
         if (kind !== "none") {
@@ -399,6 +439,7 @@ function EditAgentDrawerBody({
         ...agentConfig,
         backend: backendSpec,
         enable_trajectory: values.enable_trajectory === true,
+        conversation_mode: values.conversation_mode,
       });
       delete nextConfig.color;
       delete nextConfig.icon_name;
@@ -407,6 +448,8 @@ function EditAgentDrawerBody({
       delete nextConfig.skill_package_ids;
       delete nextConfig.published_expert_id;
       delete nextConfig.welcome_message;
+      delete nextConfig.knowledge_base_ids;
+      delete nextConfig.mcp_servers;
 
       // Persist page config before PATCH. Workspace I/O survives the
       // background harness reload; skip when the editor is still loading
@@ -444,11 +487,13 @@ function EditAgentDrawerBody({
           color: nextColor,
           config: nextConfig,
           welcome_message: stored.welcome_message ?? "",
+          knowledge_base_ids: stored.knowledge_base_ids ?? [],
+          mcp_servers: stored.mcp_servers ?? [],
           ...buildAgentRuntimeRequest(values, { clearMissing: true }),
         }),
       });
 
-      if (!skillPackagesSupported) {
+      if (!remote && !skillPackagesSupported) {
         try {
           await skillPackagesApi.replaceMounted(agent.agent_id, []);
         } catch (pkgErr) {
@@ -484,6 +529,7 @@ function EditAgentDrawerBody({
     agent.agent_id,
     agent.state,
     agentConfig,
+    remote,
     colorPalette,
     form,
     iconUrl,
@@ -665,6 +711,14 @@ function EditAgentDrawerBody({
         </div>
       ) : (
         <>
+          {remote ? (
+            <Alert
+              type="info"
+              showIcon
+              message={t("chat.remoteExpert.editBanner")}
+              style={{ marginBottom: 16 }}
+            />
+          ) : null}
           <div className={styles.drawerSection} style={{ marginBottom: 0 }}>
             <div className={styles.drawerSectionTitle}>
               {t("experts.basicInfo")}
@@ -768,6 +822,18 @@ function EditAgentDrawerBody({
                 <Switch />
               </Form.Item>
               <Form.Item
+                name="conversation_mode"
+                label={t("experts.defaultModeLabel")}
+                tooltip={t("experts.defaultModeHint")}
+              >
+                <Select
+                  options={CONVERSATION_MODES.map((mode) => ({
+                    value: mode,
+                    label: t(`chat.conversationMode.${mode}`),
+                  }))}
+                />
+              </Form.Item>
+              <Form.Item
                 name="default_model"
                 label={t("experts.defaultModelLabel")}
               >
@@ -794,11 +860,13 @@ function EditAgentDrawerBody({
                 pathMappings={pathMappings}
                 rootDirMode="edit"
                 disabled
+                skipHostFilesystem={remote}
                 onAddPathMapping={addPathMapping}
                 onRemovePathMapping={removePathMapping}
                 onUpdatePathMapping={updatePathMapping}
               />
               <AgentTrajectoryField />
+              <ExpertComposerDefaultsFields agentId={agent.agent_id} />
               {!skillPackagesSupported ? (
                 <Alert
                   type="info"
@@ -973,9 +1041,33 @@ function EditAgentDrawerBody({
                   },
                   {
                     key: "skills",
-                    label: t("experts.skillFilesTitle", {
-                      count: agentSkills.length,
-                    }),
+                    label: (
+                      <div
+                        style={{
+                          display: "flex",
+                          justifyContent: "space-between",
+                          alignItems: "center",
+                          width: "100%",
+                        }}
+                      >
+                        <span>
+                          {t("experts.skillFilesTitle", {
+                            count: agentSkills.length,
+                          })}
+                        </span>
+                        <Button
+                          type="link"
+                          size="small"
+                          style={{ padding: 0, height: "auto" }}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setSkillCatalogOpen(true);
+                          }}
+                        >
+                          {t("experts.manageSkills")}
+                        </Button>
+                      </div>
+                    ),
                     children: (
                       <>
                         <p
@@ -985,7 +1077,7 @@ function EditAgentDrawerBody({
                             margin: "0 0 8px",
                           }}
                         >
-                          {t("experts.skillFilesHint")}
+                          {t("experts.skillFilesEditHint")}
                         </p>
                         <div className={styles.fileList}>
                           {agentSkills.length === 0 ? (
@@ -1228,6 +1320,14 @@ function EditAgentDrawerBody({
           void reloadSubagents();
         }}
       />
+      <SkillCatalogDrawer
+        agentId={agent.agent_id}
+        open={skillCatalogOpen}
+        onClose={() => {
+          setSkillCatalogOpen(false);
+          void reloadSkills();
+        }}
+      />
       <Modal
         title={t("workspace.rename")}
         open={listRenameOpen}
@@ -1276,7 +1376,7 @@ export default function EditAgentDrawer({
   return (
     <Drawer
       open={open}
-      title={t("experts.editExpert")}
+      title={<EditExpertDrawerTitle agent={agent} />}
       width={520}
       onClose={onClose}
       destroyOnHidden

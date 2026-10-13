@@ -24,6 +24,7 @@ from octop.infra.connectors.catalog import (
 from octop.infra.connectors.gateway.protocol import handle_mcp_request
 from octop.infra.connectors.gateway.registry import probe_gateway_credentials
 from octop.infra.connectors.oauth.discovery import discover_oauth_from_mcp_url
+from octop.infra.errors import OctopError
 from octop.infra.utils.ssrf_guard import UnsafeOutboundUrl, safe_request
 
 logger = logging.getLogger(__name__)
@@ -332,38 +333,69 @@ async def probe_streamable_http_mcp(
     *,
     kind: str,
 ) -> dict[str, Any]:
-    """Probe Notion/Figma-style remote MCP via Streamable HTTP (session + SSE)."""
+    """Probe Notion/Figma-style remote MCP via Streamable HTTP (session + SSE).
+
+    A single retry tolerates transient connection drops (e.g. a proxy or the
+    upstream closing the session on the first ``initialize``), matching
+    :func:`_probe_mcp_sse`. Auth rejections (HTTP 401/403) are definitive and
+    returned immediately so a bad key is never masked by a retry.
+    """
     from mcp import ClientSession
     from mcp.client.streamable_http import streamablehttp_client
 
-    try:
-        async with (
-            streamablehttp_client(url, headers=headers, timeout=20, sse_read_timeout=20) as (
-                read,
-                write,
-                _get_session_id,
-            ),
-            ClientSession(read, write) as session,
-        ):
-            await session.initialize()
-            listed = await session.list_tools()
-            tools = normalize_tools(
-                [{"name": t.name, "description": t.description or ""} for t in listed.tools]
-            )
-            return {"ok": True, "tool_count": len(tools), "tools": tools}
-    except httpx.HTTPStatusError as exc:
-        return _probe_mcp_http_error(exc, kind=kind)
-    except McpError as exc:
-        return _probe_mcp_mcp_error(exc, kind=kind)
-    except BaseExceptionGroup as exc:
-        result = _unwrap_probe_exception_group(exc, kind=kind)
-        if result is not None:
-            return result
-        logger.exception("streamable HTTP MCP probe failed for %s", kind)
-        return {"ok": False, "error": str(exc)}
-    except Exception as exc:
-        logger.exception("streamable HTTP MCP probe failed for %s", kind)
-        return {"ok": False, "error": str(exc)}
+    for attempt in range(2):
+        try:
+            async with (
+                streamablehttp_client(url, headers=headers, timeout=20, sse_read_timeout=20) as (
+                    read,
+                    write,
+                    _get_session_id,
+                ),
+                ClientSession(read, write) as session,
+            ):
+                await session.initialize()
+                listed = await session.list_tools()
+                tools = normalize_tools(
+                    [{"name": t.name, "description": t.description or ""} for t in listed.tools]
+                )
+                return {"ok": True, "tool_count": len(tools), "tools": tools}
+        except httpx.HTTPStatusError as exc:
+            result = _probe_mcp_http_error(exc, kind=kind)
+            if result.get("error_type") != "connection" or attempt > 0:
+                return result
+            logger.warning("%s streamable HTTP probe connection failure, retrying: %s", kind, exc)
+            continue
+        except McpError as exc:
+            result = _probe_mcp_mcp_error(exc, kind=kind)
+            if result.get("error_type") != "connection" or attempt > 0:
+                return result
+            logger.warning("%s streamable HTTP probe connection failure, retrying: %s", kind, exc)
+            continue
+        except BaseExceptionGroup as exc:
+            unwrapped = _unwrap_probe_exception_group(exc, kind=kind)
+            if unwrapped is not None:
+                if unwrapped.get("error_type") != "connection" or attempt > 0:
+                    return unwrapped
+                logger.warning(
+                    "%s streamable HTTP probe connection failure, retrying: %s", kind, exc
+                )
+                continue
+            if attempt == 0:
+                logger.warning(
+                    "%s streamable HTTP probe transient failure, retrying: %s", kind, exc
+                )
+                continue
+            logger.exception("streamable HTTP MCP probe failed for %s", kind)
+            return {"ok": False, "error": str(exc)}
+        except Exception as exc:
+            if attempt == 0:
+                logger.warning(
+                    "%s streamable HTTP probe transient failure, retrying: %s", kind, exc
+                )
+                continue
+            logger.exception("streamable HTTP MCP probe failed for %s", kind)
+            return {"ok": False, "error": str(exc)}
+    return {"ok": False, "error": "streamable HTTP probe failed after retry"}
 
 
 async def probe_connector(
@@ -373,6 +405,11 @@ async def probe_connector(
     instance_id: str,
     config: OctopConfig,
 ) -> dict[str, Any]:
+    if entry.kind == "qcc":
+        from octop.infra.connectors.qcc import bearer_token, probe
+
+        return await probe(bearer_token(cred_payload))
+
     if entry.mcp_mode == "gateway":
         try:
             await asyncio.to_thread(probe_gateway_credentials, entry.kind, cred_payload)
@@ -500,8 +537,15 @@ async def probe_custom_mcp_server(spec: dict[str, Any]) -> dict[str, Any]:
 
     try:
         normalized = normalize_server_spec("probe", spec)
+    except OctopError as exc:
+        return {
+            "ok": False,
+            "error": exc.message,
+            "error_code": exc.code.value,
+            "error_type": "validation",
+        }
     except ValueError as exc:
-        return {"ok": False, "error": str(exc)}
+        return {"ok": False, "error": str(exc), "error_type": "validation"}
 
     connection = harness_spec_for_server(normalized)
     transport = str(connection.get("transport") or "")

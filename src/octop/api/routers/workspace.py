@@ -8,7 +8,7 @@ from typing import Any, Literal
 
 from fastapi import APIRouter, Depends, File, Query, UploadFile
 from fastapi.responses import Response, StreamingResponse
-from harness_agent.backends.utils import BackendOperationNotSupportedError
+from octop_harness.backends.utils import BackendOperationNotSupportedError
 from pydantic import BaseModel
 
 from octop.api.common.agent_workspace import resolve_agent_workspace_dir
@@ -17,10 +17,12 @@ from octop.api.common.workspace import (
     coerce_read_content,
     file_info_to_dict,
     reanchor_entry_path,
+    require_agent_workspace,
     require_running_workspace,
     workspace_api_path,
 )
 from octop.api.deps import current_user, get_server
+from octop.infra.backend.tree_listing import dedupe_tree_rows
 from octop.infra.backup.workspace_archive import export_workspace_zip, import_workspace_zip
 from octop.infra.errors import ErrorCode, OctopError
 from octop.infra.gateway.media.backend_files import (
@@ -138,7 +140,7 @@ async def list_tree(
     if not is_host_absolute_path(io_path):
         for row in rows:
             row["path"] = reanchor_entry_path(str(row.get("path") or ""), parent=io_path)
-    return rows
+    return dedupe_tree_rows(rows, parent=io_path)
 
 
 class WriteFileBody(BaseModel):
@@ -161,7 +163,7 @@ async def read_file(
     server: Any = Depends(get_server),
 ) -> dict[str, Any]:
     """Read a UTF-8 text file."""
-    ws = await require_running_workspace(agent_id, user=user, as_user=as_user, server=server)
+    ws = await require_agent_workspace(agent_id, user=user, as_user=as_user, server=server)
     content = await ws.aread_text(_workspace_io_path(path, from_workspace=from_workspace))
     if content is None:
         raise OctopError(ErrorCode.NOT_FOUND, f"cannot read {path!r}")
@@ -339,9 +341,9 @@ async def download_file(
     See ``from_workspace``: workspace UI uses true; chat/tool downloads use false.
     ``file://`` and other host-absolute paths are allowed for agent/OS tool
     outputs (Desktop, ``~/.octop/agents/…``, workspace tree) but denied for
-    sensitive system roots (``/etc``, ``.harness-browser``, Windows system dirs).
+    sensitive system roots (``/etc``, ``.harness-browser``, ``.octop-browser``, Windows system dirs).
     """
-    ws = await require_running_workspace(agent_id, user=user, as_user=as_user, server=server)
+    ws = await require_agent_workspace(agent_id, user=user, as_user=as_user, server=server)
     io_path = _workspace_io_path(path, from_workspace=from_workspace)
     if is_host_absolute_path(io_path) and not is_allowed_host_download_abs_path(
         io_path,
@@ -375,7 +377,7 @@ async def read_doc(
 ) -> dict[str, Any]:
     """Read an editable document (e.g. ``.docx``) as Markdown for online editing."""
     converter = _ensure_editable_doc(path)
-    ws = await require_running_workspace(agent_id, user=user, as_user=as_user, server=server)
+    ws = await require_agent_workspace(agent_id, user=user, as_user=as_user, server=server)
     io_path = _workspace_io_path(path, from_workspace=from_workspace)
     try:
         blob = await ws.adownload_bytes(io_path)
@@ -448,10 +450,18 @@ async def preview_media(
         raise OctopError(ErrorCode.NOT_FOUND, "preview not available for this source")
     data, mime = payload
 
+    # The source bytes are user-controlled (uploads, tool outputs). Serving them
+    # inline without a sandbox CSP would let a navigated SVG (any image/* type)
+    # run scripts on this origin; "sandbox" keeps image/video previews working
+    # while disabling script execution in the document itself.
     return StreamingResponse(
         iter([data]),
         media_type=mime,
-        headers={"Content-Disposition": "inline"},
+        headers={
+            "Content-Disposition": "inline",
+            "Content-Security-Policy": "sandbox",
+            "X-Content-Type-Options": "nosniff",
+        },
     )
 
 

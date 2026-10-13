@@ -4,6 +4,7 @@ from __future__ import annotations
 
 # command name -> (relative module path, attribute name, short help)
 COMMANDS: dict[str, tuple[str, str, str]] = {
+    "memory": (".commands.memory", "memory", "Live memory maintenance (backup and slim)."),
     "init": (".commands.init", "init", "Bootstrap an Octop server install."),
     "run": (".commands.run", "run", "Run octop-server in the foreground."),
     "service": (
@@ -21,11 +22,17 @@ COMMANDS: dict[str, tuple[str, str, str]] = {
     "models": (".commands.models", "models", "Provider presets and resolved models."),
     "skills": (".commands.skills", "skills", "Per-agent skill enable/disable."),
     "admin": (".commands.admin", "admin", "Admin commands."),
+    "captcha": (
+        ".commands.captcha",
+        "captcha",
+        "Login captcha maintenance (lockout escape hatch).",
+    ),
     "version": (".commands.version", "version", "Show the installed octop version."),
     "completion": (".commands.completion", "completion", "Shell completion utilities."),
     "update": (".commands.update", "update", "Check for and install a newer Octop release."),
     "clean": (".commands.clean", "clean", "Remove CLI state or wipe all of ~/.octop."),
     "backup": (".commands.backup", "backup", "Export and restore Octop backups."),
+    "bridge": (".commands.bridge", "bridge", "Manage remote Octop bridge peers."),
     "acp": (".commands.acp", "acp_cmd", "Run Octop agent as ACP server (stdio)."),
     "plugin": (".commands.plugin", "plugin", "Install and manage plugins."),
 }

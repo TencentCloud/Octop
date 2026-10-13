@@ -59,7 +59,14 @@ class SqlitePool:
     @contextmanager
     def transaction(self) -> Iterator[sqlite3.Connection]:
         with self._lock:
-            self._conn.execute("BEGIN")
+            # BEGIN IMMEDIATE, not a deferred BEGIN. A transaction that reads first and writes
+            # later only takes the write lock at that first write, so another connection — a
+            # second worker process (``octop run --workers N``), or a CLI run against a running
+            # server — can commit in between. SQLite then rejects our write with
+            # SQLITE_BUSY_SNAPSHOT ("database is locked") *immediately*; the 5s busy timeout
+            # cannot wait that out. Taking the write lock up front makes the competing writer
+            # wait instead of aborting us.
+            self._conn.execute("BEGIN IMMEDIATE")
             try:
                 yield self._conn
                 self._conn.execute("COMMIT")

@@ -9,6 +9,11 @@ export interface OctopCronSettings {
   timezone: string;
 }
 
+export interface CronTaskExamples {
+  zh?: string[];
+  en?: string[];
+}
+
 export const octopCronApi = {
   settings: () => request<OctopCronSettings>("/cron/settings"),
 

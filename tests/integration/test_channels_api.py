@@ -20,19 +20,31 @@ async def env(env_alice_bob_agent):
 # --- CRUD cycle ---------------------------------------------------------------
 
 
-async def test_create_lists_get_patch_delete_cycle(env: Any) -> None:
+@pytest.mark.parametrize(
+    "kind,config",
+    [
+        ("feishu", {"app_id": "x"}),
+        ("discord", {"bot_token": "fake", "allowed_channel_ids": ["200"]}),
+        ("discord", {"bot_token": "fake", "allow_all_channels": True}),
+        (
+            "discord",
+            {"bot_token": "fake", "allow_all_channels": False, "allowed_channel_ids": ["200"]},
+        ),
+    ],
+)
+async def test_create_lists_get_patch_delete_cycle(env: Any, kind: str, config: dict) -> None:
     c, _srv, alice_auth, _bob_auth, aid = env
 
     # CREATE
     r = await c.post(
         f"/api/agents/{aid}/channels",
         headers=alice_auth,
-        json={"kind": "feishu", "name": "main", "config": {"app_id": "x"}},
+        json={"kind": kind, "name": "main", "config": config},
     )
     assert r.status_code == 201, r.text
     body = r.json()
     cid = body["id"]
-    assert body["kind"] == "feishu"
+    assert body["kind"] == kind
     assert body["name"] == "main"
     assert body["enabled"] is True
     assert body["agent_id"] == aid
@@ -48,7 +60,7 @@ async def test_create_lists_get_patch_delete_cycle(env: Any) -> None:
     assert r.status_code == 200
     body = r.json()
     assert body["id"] == cid
-    assert body["config"] == {"app_id": "x"}
+    assert body["config"] == config
 
     # PATCH name + enabled
     r = await c.patch(

@@ -115,3 +115,39 @@ def test_malformed_cron_raises():
 def test_cron_rejects_invalid_weekday(weekday: str):
     with pytest.raises(OctopError):
         build_trigger(f"cron:0 9 * * {weekday}")
+
+
+@pytest.mark.parametrize("spec", ["interval:0", "interval:-5", "interval:-1"])
+def test_interval_rejects_non_positive_seconds(spec: str) -> None:
+    """A zero or negative interval is an unbounded hot loop, not a schedule."""
+    with pytest.raises(OctopError, match="positive integer"):
+        build_trigger(spec)
+
+
+def test_cron_trigger_uses_requested_timezone() -> None:
+    """A built cron trigger must run on the requested zone, not the host OS zone.
+
+    APScheduler only injects the scheduler timezone for string trigger specs; a pre-built
+    ``CronTrigger`` keeps whatever zone it was constructed with, and falls back to the host
+    local zone when none is given.
+    """
+    trig = build_trigger("cron:0 9 * * *", timezone="America/New_York")
+    assert isinstance(trig, CronTrigger)
+    assert str(trig.timezone) == "America/New_York"
+
+    fire = trig.get_next_fire_time(None, dt.datetime(2026, 1, 1, tzinfo=dt.UTC))
+    # 09:00 in New York (EST, UTC-5) is 14:00 UTC.
+    assert fire == dt.datetime(2026, 1, 1, 14, 0, tzinfo=dt.UTC)
+
+
+def test_date_trigger_uses_requested_timezone() -> None:
+    """Naive ``date:`` ISO times are wall-clock in the requested zone, not the host OS zone."""
+    trig = build_trigger("date:2026-12-31T09:00:00", timezone="Asia/Shanghai")
+    assert isinstance(trig, DateTrigger)
+    assert (trig.run_date.hour, trig.run_date.utcoffset()) == (9, dt.timedelta(hours=8))
+
+
+def test_interval_one_second_is_accepted() -> None:
+    trig = build_trigger("interval:1")
+    assert isinstance(trig, IntervalTrigger)
+    assert trig.interval == dt.timedelta(seconds=1)

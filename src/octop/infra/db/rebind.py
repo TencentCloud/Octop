@@ -114,6 +114,12 @@ def rebind_control_plane(server: OctopServer) -> None:
             status=410,
         )
 
+    from octop.infra.history.service import HistoryArchive
+
+    if isinstance(getattr(server.app_runtime, "history_archive", None), HistoryArchive):
+        raise OctopError(
+            ErrorCode.SLASH_BAD_ARGS, "Restart to rebind a database with versioned history"
+        )
     config = load_config(server.paths.config)
     old_db = server.services.db
     new_db = open_database(config, server.paths)

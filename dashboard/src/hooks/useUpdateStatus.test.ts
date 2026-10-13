@@ -26,6 +26,8 @@ const sample: UpdateStatus = {
   is_editable: false,
   service_mode: null,
   error: null,
+  error_code: null,
+  source: null,
   last_check_time: "2026-07-14T00:00:00Z",
   release_notes: null,
 };
@@ -55,6 +57,27 @@ describe("useUpdateStatus", () => {
     expect(getUpdateStatus).toHaveBeenCalledTimes(1);
     expect(result.current.hasUpdate).toBe(true);
     expect(result.current.status?.latest_version).toBe("0.9.7");
+  });
+
+  it("probes on mount even when the local cache is still fresh", async () => {
+    storeUpdateStatus({
+      ...sample,
+      current_version: "0.9.0",
+      latest_version: "0.9.0",
+      has_update: false,
+    });
+    getUpdateStatus.mockResolvedValue(sample);
+    const { result } = renderHook(() => useUpdateStatus());
+
+    expect(result.current.status?.current_version).toBe("0.9.0");
+
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    expect(getUpdateStatus).toHaveBeenCalledTimes(1);
+    expect(result.current.status?.current_version).toBe("0.9.6");
+    expect(result.current.hasUpdate).toBe(true);
   });
 
   it("re-probes after TTL via the poll interval", async () => {
@@ -98,5 +121,23 @@ describe("useUpdateStatus", () => {
 
   it("listens for the shared change event name", () => {
     expect(UPDATE_STATUS_CHANGED_EVENT).toBe("octop:update-status-changed");
+  });
+
+  it("trusts server has_update for chrome reminders", async () => {
+    getUpdateStatus.mockResolvedValue({
+      ...sample,
+      latest_version: "0.9.33",
+      has_update: true,
+      stable_only: true,
+      latest_is_prerelease: false,
+    });
+    const { result } = renderHook(() => useUpdateStatus());
+
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    expect(result.current.hasUpdate).toBe(true);
+    expect(result.current.status?.latest_version).toBe("0.9.33");
   });
 });

@@ -124,17 +124,27 @@ def test_shared_custom_server_uses_collision_safe_name_for_viewer(
     assert svc.list_default_open_mcp_server_names(viewer_id) == []
 
 
-def test_rejects_http_scheme_and_private_host():
-    with pytest.raises(ValueError, match="https"):
+def test_rejects_public_http_and_allows_lan():
+    from octop.infra.errors import ErrorCode, OctopError
+
+    with pytest.raises(OctopError) as http_exc:
         normalize_server_spec(
             "bad",
             {"transport": "streamable_http", "url": "http://example.com/mcp"},
         )
-    with pytest.raises(ValueError, match="private|not allowed|blocked"):
-        normalize_server_spec(
-            "bad",
-            {"transport": "streamable_http", "url": "https://10.0.0.1/mcp"},
+    assert http_exc.value.code is ErrorCode.CONNECTOR_MCP_HTTPS_REQUIRED
+
+    for url in (
+        "http://10.0.0.1/mcp",
+        "https://192.168.1.10:8443/mcp",
+        "http://host.docker.internal:3000/mcp",
+        "http://nas.local/mcp",
+    ):
+        spec = normalize_server_spec(
+            "lan",
+            {"transport": "streamable_http", "url": url},
         )
+        assert spec["url"] == url
 
 
 def test_allows_loopback_http_and_https():
@@ -148,6 +158,16 @@ def test_allows_loopback_http_and_https():
             {"transport": "streamable_http", "url": url},
         )
         assert spec["url"] == url
+
+
+def test_mcp_url_invalid_error_code():
+    from octop.infra.connectors.custom_mcp import validate_mcp_http_url
+    from octop.infra.errors import ErrorCode, OctopError
+
+    with pytest.raises(OctopError) as exc:
+        validate_mcp_http_url("ftp://example.com/mcp")
+    assert exc.value.code is ErrorCode.CONNECTOR_MCP_URL_INVALID
+    assert exc.value.details.get("reason") == "url must be http or https"
 
 
 def test_validate_servers_map_reserved_and_duplicate():

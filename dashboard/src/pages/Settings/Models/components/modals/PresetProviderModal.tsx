@@ -1,9 +1,9 @@
 /**
- * PresetProviderModal — create a cloud provider from a built-in preset.
+ * PresetProviderModal — create a cloud provider from a built-in preset (right-side drawer).
  * Local runtimes (Ollama / ONNX) use LocalServiceCard + ProviderConfigModal instead.
  */
 import { useEffect, useMemo, useState } from "react";
-import { Button, Divider, Form, Input, Modal } from "antd";
+import { Button, Divider, Drawer, Form, Input } from "antd";
 import { message } from "@/utils/antdMessage";
 
 import { Download, Zap } from "lucide-react";
@@ -19,6 +19,8 @@ import { isEmbeddingModel } from "../../useProviders";
 import { CodexOAuthConnect } from "../CodexOAuthConnect";
 import { fetchProviderModels, testProviderDraft } from "../../providerApi";
 import { ModelListEditor } from "./ModelListEditor";
+import { StreamUsageAdvanced } from "../StreamUsageAdvanced";
+import { TestStreamHint } from "../TestStreamHint";
 import styles from "../../index.module.less";
 
 interface PresetProviderModalProps {
@@ -33,6 +35,7 @@ interface PresetForm {
   base_url: string;
   api_key?: string;
   kind: string;
+  stream_usage?: boolean;
 }
 
 export function PresetProviderModal({
@@ -91,6 +94,7 @@ export function PresetProviderModal({
         name: preset.name,
         base_url: preset.base_url,
         kind: preset.protocol,
+        stream_usage: preset.protocol === "openai",
       });
     }
   }, [open, preset, form, t]);
@@ -109,6 +113,7 @@ export function PresetProviderModal({
         kind: "openai",
         api_key: key,
         base_url: values.base_url?.trim() || preset.base_url,
+        name: preset.id,
       });
       if (!result.ok) {
         message.error(
@@ -222,6 +227,9 @@ export function PresetProviderModal({
           base_url: values.base_url?.trim() || null,
           api_key: values.api_key?.trim() || null,
           models: draftModels,
+          ...(preset.protocol === "openai"
+            ? { stream_usage: values.stream_usage !== false }
+            : {}),
         }),
       });
       message.success(
@@ -248,16 +256,13 @@ export function PresetProviderModal({
     : "sk-...";
 
   return (
-    <Modal
+    <Drawer
       title={t("models.setupPreset", { name: preset.name })}
       open={open}
-      onCancel={onClose}
-      onOk={isCodexOAuth ? undefined : handleSubmit}
-      confirmLoading={saving}
-      okText={t("common.create")}
-      cancelText={t("common.cancel")}
+      onClose={onClose}
       destroyOnHidden
       width={640}
+      placement="right"
       footer={
         isCodexOAuth ? (
           <Button onClick={onClose}>{t("common.cancel")}</Button>
@@ -323,6 +328,8 @@ export function PresetProviderModal({
                 visibilityToggle
               />
             </Form.Item>
+
+            {preset.protocol === "openai" ? <StreamUsageAdvanced /> : null}
           </Form>
 
           <div style={{ marginBottom: 16 }}>
@@ -341,6 +348,7 @@ export function PresetProviderModal({
             >
               {t("models.fetchModels")}
             </Button>
+            {preset.protocol === "openai" ? <TestStreamHint /> : null}
           </div>
 
           <Divider orientation="left" style={{ fontSize: 13 }}>
@@ -356,6 +364,6 @@ export function PresetProviderModal({
           />
         </>
       )}
-    </Modal>
+    </Drawer>
   );
 }

@@ -27,7 +27,12 @@ interface ChatSidebarPanelProps {
   onFetchAllSessions: () => void;
   onSelectSession: (sessionId: string, agentId: string) => void;
   onAgentSelect: (agentId: string) => void;
-  onDeleteSession: (id: string) => void;
+  /** Start a fresh chat from an expert row (classic + minimal). */
+  onNewChatWithAgent: (agentId: string) => void;
+  onDeleteSession: (
+    id: string,
+    compact: boolean,
+  ) => void | Promise<boolean | void>;
   onRenameSession: (id: string, name: string) => void;
   onPinSession: (id: string, pinned: boolean) => void;
   onForkSession: (id: string, agentId?: string | null) => void;
@@ -60,6 +65,7 @@ export default function ChatSidebarPanel({
   onFetchAllSessions,
   onSelectSession,
   onAgentSelect,
+  onNewChatWithAgent,
   onDeleteSession,
   onRenameSession,
   onPinSession,
@@ -91,6 +97,7 @@ export default function ChatSidebarPanel({
       activeSessions={sessions}
       onSelect={onSelectSession}
       onAgentSelect={onAgentSelect}
+      onNewChat={onNewChatWithAgent}
       onDeleteActive={onDeleteSession}
       onRenameActive={onRenameSession}
       onPinActive={onPinSession}
@@ -110,6 +117,7 @@ export default function ChatSidebarPanel({
       onFetchAllSessions={onFetchAllSessions}
       onSelect={onSelectSession}
       onAgentSelect={onAgentSelect}
+      onNewChat={onNewChatWithAgent}
       onDelete={onDeleteSession}
       onRename={onRenameSession}
       onPin={onPinSession}

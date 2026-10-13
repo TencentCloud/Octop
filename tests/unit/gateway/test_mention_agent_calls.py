@@ -1,17 +1,18 @@
-"""tests/unit/test_mention_agent_calls.py"""
+"""Team peer discovery after octop-harness dropped apply_mentions intercept."""
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-from harness_agent.config import HarnessAgentConfig, ModelConfig, ProviderConfig
-from harness_agent.manager import HarnessAgentManager
-from harness_agent.messages import first_user_text
+from octop_harness.config import HarnessAgentConfig, ModelConfig, ProviderConfig
+from octop_harness.manager import HarnessAgentManager
+from octop_harness.teams.tools import AskAgentInput, build_team_tools
 
 
-def _config(tmp_path: Path) -> HarnessAgentConfig:
+def _config(tmp_path: Path, *, name: str = "agent") -> HarnessAgentConfig:
     return HarnessAgentConfig(
         workspace_dir=tmp_path,
         providers=[
@@ -23,60 +24,86 @@ def _config(tmp_path: Path) -> HarnessAgentConfig:
             )
         ],
         default_model="openai/gpt-4",
-        name="agent",
+        name=name,
     )
 
 
-def test_first_user_text_string_content() -> None:
-    assert first_user_text([{"role": "user", "content": "hello"}]) == "hello"
+def _mgr(tmp_path: Path) -> HarnessAgentManager:
+    mock_agent = MagicMock()
+    mock_agent.init_workspace.return_value = MagicMock()
+    mock_agent.call = AsyncMock(return_value={"messages": [{"role": "assistant", "content": "ok"}]})
+    with patch("octop_harness.manager.HarnessAgent", return_value=mock_agent):
+        mgr = HarnessAgentManager()
+        mgr.create_agent(
+            _config(tmp_path, name="main"),
+            agent_id="main",
+            metadata={"user_id": 1},
+        )
+        mgr.create_agent(
+            _config(tmp_path / "b", name="researcher"),
+            agent_id="agent-b",
+            metadata={"user_id": 1},
+        )
+    return mgr
 
 
-def test_first_user_text_blocks() -> None:
-    messages = [
-        {
-            "role": "user",
-            "content": [{"type": "text", "text": "hi there"}],
-        }
-    ]
-    assert first_user_text(messages) == "hi there"
+def test_list_peers_excludes_self(tmp_path: Path) -> None:
+    mgr = _mgr(tmp_path)
+    peers = mgr.team.list_peers(1, exclude_agent_id="main")
+    assert [e.agent_id for e in peers] == ["agent-b"]
+
+
+def test_resolve_peer_matches_at_name(tmp_path: Path) -> None:
+    mgr = _mgr(tmp_path)
+    entry = mgr.team.resolve_peer(1, "@researcher", exclude_agent_id="main")
+    assert entry is not None
+    assert entry.agent_id == "agent-b"
+
+
+def test_resolve_peer_matches_octop_display_name(tmp_path: Path) -> None:
+    mock_agent = MagicMock()
+    mock_agent.init_workspace.return_value = MagicMock()
+    mock_agent.call = AsyncMock(return_value={"messages": [{"role": "assistant", "content": "ok"}]})
+    with patch("octop_harness.manager.HarnessAgent", return_value=mock_agent):
+        mgr = HarnessAgentManager()
+        mgr.create_agent(
+            _config(tmp_path, name="agent_host01"),
+            agent_id="host01",
+            metadata={"user_id": 1},
+        )
+        mgr.create_agent(
+            _config(tmp_path / "c", name="agent_clin01"),
+            agent_id="clin01",
+            metadata={"user_id": 1, "display_name": "临床辅助专家"},
+        )
+    entry = mgr.team.resolve_peer(1, "临床辅助专家", exclude_agent_id="host01")
+    assert entry is not None
+    assert entry.agent_id == "clin01"
+    assert mgr.team.peer_display_name(entry) == "临床辅助专家"
+
+
+def test_ask_agent_schema_uses_expert_field() -> None:
+    props = AskAgentInput.model_json_schema()["properties"]
+    assert "expert" in props
+    assert "agent" not in props
+    assert "agent" not in props["expert"]["description"].lower()
 
 
 @pytest.mark.asyncio
-async def test_apply_mentions_injects_system_message(tmp_path: Path) -> None:
-    mock_agent = MagicMock()
-    mock_agent.init_workspace.return_value = MagicMock()
-    mock_agent.call = AsyncMock(
-        return_value={"messages": [{"role": "assistant", "content": "findings"}]}
-    )
-
-    with patch("harness_agent.manager.HarnessAgent", return_value=mock_agent):
-        mgr = HarnessAgentManager()
-        mgr.create_agent(_config(tmp_path), agent_id="main", metadata={"user_id": 7})
-        mgr.create_agent(_config(tmp_path / "b"), agent_id="agent-b", metadata={"user_id": 7})
-
-    messages = [{"role": "user", "content": "summarize"}]
-    out = await mgr.team.apply_mentions(
-        from_agent_id="main",
-        user_id=7,
-        mention_agent_ids=["agent-b"],
-        prompt="summarize",
-        messages=messages,
-    )
-
-    assert len(out) == 2
-    assert out[0]["role"] == "system"
-    assert "findings" in out[0]["content"]
-    assert out[1] == messages[0]
-
-
-def test_filter_peer_ids(tmp_path: Path) -> None:
-    mock_agent = MagicMock()
-    mock_agent.init_workspace.return_value = MagicMock()
-
-    with patch("harness_agent.manager.HarnessAgent", return_value=mock_agent):
-        mgr = HarnessAgentManager()
-        mgr.create_agent(_config(tmp_path / "a"), agent_id="agent-a", metadata={"user_id": 1})
-        mgr.create_agent(_config(tmp_path / "b"), agent_id="agent-b", metadata={"user_id": 1})
-
-    filtered = mgr.team.filter_peer_ids(1, "agent-a", ["agent-a", "agent-b", "agent-x"])
-    assert filtered == ["agent-b"]
+async def test_ask_agent_accepts_expert_or_legacy_agent_key(tmp_path: Path) -> None:
+    mgr = _mgr(tmp_path)
+    tools = {tool.name: tool for tool in build_team_tools(mgr.team)}
+    runtime = {"configurable": {"agent_id": "main", "user": 1}}
+    with patch("octop_harness.teams.tools.get_config", return_value=runtime):
+        by_expert = json.loads(
+            await tools["ask_agent"].ainvoke({"expert": "researcher", "message": "hi"})
+        )
+        by_legacy = json.loads(
+            await tools["ask_agent"].ainvoke({"agent": "researcher", "message": "hi"})
+        )
+        missing = json.loads(
+            await tools["ask_agent"].ainvoke({"expert": "没有这个人", "message": "hi"})
+        )
+    assert by_expert.get("name") == "researcher"
+    assert by_legacy.get("name") == "researcher"
+    assert missing == {"error": "expert not found: 没有这个人"}

@@ -3,6 +3,7 @@ import type { SlashCommandSpec } from "../api/modules/slash";
 /** Mirrors backend ``CATEGORY_ORDER`` in ``slash/catalog.py``. */
 export const SLASH_CATEGORY_ORDER = [
   "core",
+  "skills",
   "session",
   "media",
   "system",
@@ -13,6 +14,7 @@ export type SlashCategory = (typeof SLASH_CATEGORY_ORDER)[number];
 
 const CATEGORY_LABELS: Record<SlashCategory, { en: string; zh: string }> = {
   core: { en: "Core", zh: "核心命令" },
+  skills: { en: "Skills", zh: "技能" },
   session: { en: "Sessions", zh: "会话管理" },
   media: { en: "Media", zh: "多媒体" },
   system: { en: "System", zh: "系统" },

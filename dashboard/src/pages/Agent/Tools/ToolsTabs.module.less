@@ -1,0 +1,22 @@
+.toolsTabs {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+}
+
+.toolsTabsContent {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding-top: 6px;
+}
+
+/** Used when the ACP panel scrolls in this container (not ToolsPanel). */
+.toolsTabsContentPadded {
+  padding-right: 12px;
+
+  @media (max-width: 767px) {
+    padding-right: 0;
+  }
+}

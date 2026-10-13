@@ -100,20 +100,91 @@ async def test_filesystem_defaults_for_admin(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
+    from octop.infra.utils.host_dirs import (
+        host_browse_roots,
+        host_fs_tree_root,
+        host_jail_enforced,
+    )
+
+    client, auth = env_admin_client
+    home = tmp_path / "os_home"
+    home.mkdir()
+    monkeypatch.setattr("octop.infra.utils.host_dirs.Path.home", lambda: home)
+    monkeypatch.setenv("OCTOP_IN_CONTAINER", "0")
+
+    r = await client.get("/api/filesystem/defaults", headers=auth)
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["default_root_dir"] == host_fs_tree_root()
+    assert body["tree_root"] == host_fs_tree_root()
+    assert body["browse_roots"] == host_browse_roots()
+    assert body["jail_enforced"] == host_jail_enforced()
+    assert body["in_container"] is False
+    assert "home" not in body
+    assert "allow_outside_home" not in body
+
+
+@pytest.mark.asyncio
+async def test_filesystem_roots_lists_every_drive_not_just_home_drive(
+    env_admin_client: tuple[httpx.AsyncClient, dict[str, str]],
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """Regression: the picker used to be pinned to the home drive's root.
+
+    ``host_fs_tree_root`` derives a single root from ``Path.home()``, so a user
+    whose profile lives on ``C:`` could not browse ``D:`` at all. The roots list
+    must enumerate drives independently of where home happens to be.
+    """
+    client, auth = env_admin_client
+    home = tmp_path / "os_home"
+    home.mkdir()
+    monkeypatch.setattr("octop.infra.utils.host_dirs.Path.home", lambda: home)
+    monkeypatch.setenv("OCTOP_IN_CONTAINER", "0")
+
+    r = await client.get("/api/filesystem/roots", headers=auth)
+    assert r.status_code == 200, r.text
+    roots = r.json()["roots"]
+    assert roots, "roots must never be empty — the picker needs a usable root"
+    from octop.infra.utils.host_dirs import host_browse_roots
+
+    assert roots == host_browse_roots()
+    # Every entry is an absolute, POSIX-serialized path the /dirs API accepts.
+    for root in roots:
+        assert root.startswith("/") or root.endswith(":/")
+
+
+@pytest.mark.asyncio
+async def test_filesystem_roots_requires_auth(
+    env: tuple[httpx.AsyncClient, Any, dict[str, str]],
+) -> None:
+    client, _srv, _auth = env
+    r = await client.get("/api/filesystem/roots")
+    assert r.status_code == 401, r.text
+
+
+@pytest.mark.asyncio
+async def test_filesystem_defaults_in_container(
+    env_admin_client: tuple[httpx.AsyncClient, dict[str, str]],
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
     from octop.infra.utils.host_dirs import host_fs_tree_root
 
     client, auth = env_admin_client
     home = tmp_path / "os_home"
     home.mkdir()
     monkeypatch.setattr("octop.infra.utils.host_dirs.Path.home", lambda: home)
+    monkeypatch.setenv("OCTOP_IN_CONTAINER", "1")
 
     r = await client.get("/api/filesystem/defaults", headers=auth)
     assert r.status_code == 200, r.text
     body = r.json()
-    assert body["home"] == home.resolve().as_posix()
-    assert body["default_root_dir"] == home.resolve().as_posix()
-    assert body["allow_outside_home"] is True
-    assert body["tree_root"] == host_fs_tree_root(allow_outside_home=True)
+    assert body["default_root_dir"] == host_fs_tree_root()
+    assert body["tree_root"] == host_fs_tree_root()
+    assert body["in_container"] is True
+    assert "home" not in body
+    assert "allow_outside_home" not in body
 
 
 @pytest.mark.asyncio
@@ -131,15 +202,18 @@ async def test_non_admin_can_list_outside_home(
     outside = tmp_path / "outside"
     outside.mkdir()
     monkeypatch.setattr("octop.infra.utils.host_dirs.Path.home", lambda: home)
+    monkeypatch.setenv("OCTOP_IN_CONTAINER", "0")
 
     user_auth = await create_user(client, admin_auth, username="alice", password="TestPass12")
 
     defaults = await client.get("/api/filesystem/defaults", headers=user_auth)
     assert defaults.status_code == 200, defaults.text
     body = defaults.json()
-    assert body["allow_outside_home"] is True
-    assert body["default_root_dir"] == home.resolve().as_posix()
-    assert body["tree_root"] == host_fs_tree_root(allow_outside_home=True)
+    assert body["default_root_dir"] == host_fs_tree_root()
+    assert body["tree_root"] == host_fs_tree_root()
+    assert body["in_container"] is False
+    assert "home" not in body
+    assert "allow_outside_home" not in body
 
     listed = await client.get(
         f"/api/filesystem/dirs?path={outside.as_posix()}",
@@ -276,3 +350,66 @@ async def test_rename_host_dir_renames_child(
     assert body["name"] == "workspace"
     assert (tmp_path / "workspace").is_dir()
     assert not target.exists()
+
+
+@pytest.mark.asyncio
+async def test_filesystem_respects_user_workspace_root(
+    env: tuple[httpx.AsyncClient, Any, dict[str, str]],
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("OCTOP_IN_CONTAINER", "0")
+    from tests.support.auth import TEST_PASSWORD, create_user
+
+    client, _srv, admin_auth = env
+    jail = tmp_path / "jail"
+    nested = jail / "ok"
+    outside = tmp_path / "outside"
+    jail.mkdir()
+    nested.mkdir()
+    outside.mkdir()
+
+    user_auth = await create_user(client, admin_auth, username="fs_policy", password=TEST_PASSWORD)
+    listed = (await client.get("/api/users", headers=admin_auth)).json()
+    uid = next(u["id"] for u in listed if u["username"] == "fs_policy")
+    patched = await client.patch(
+        f"/api/users/{uid}",
+        headers=admin_auth,
+        json={"workspace_root_dir": jail.as_posix()},
+    )
+    assert patched.status_code == 200, patched.text
+
+    defaults = await client.get("/api/filesystem/defaults", headers=user_auth)
+    assert defaults.status_code == 200, defaults.text
+    body = defaults.json()
+    assert body["tree_root"] == jail.resolve().as_posix()
+    assert body["default_root_dir"] == jail.resolve().as_posix()
+    # A policy jail collapses the picker to exactly that one path.
+    assert body["browse_roots"] == [jail.resolve().as_posix()]
+    assert "home" not in body
+    assert "allow_outside_home" not in body
+
+    jailed_roots = await client.get("/api/filesystem/roots", headers=user_auth)
+    assert jailed_roots.status_code == 200, jailed_roots.text
+    assert jailed_roots.json()["roots"] == [jail.resolve().as_posix()]
+
+    inside = await client.get(
+        f"/api/filesystem/dirs?path={nested.as_posix()}",
+        headers=user_auth,
+    )
+    assert inside.status_code == 200, inside.text
+
+    listed_out = await client.get(
+        f"/api/filesystem/dirs?path={outside.as_posix()}",
+        headers=user_auth,
+    )
+    assert listed_out.status_code == 400, listed_out.text
+
+    probe = await client.post(
+        "/api/filesystem/probe",
+        headers=user_auth,
+        json={"path": outside.as_posix()},
+    )
+    assert probe.status_code == 200, probe.text
+    assert probe.json()["ok"] is False
+    assert probe.json()["code"] == "outside_root"

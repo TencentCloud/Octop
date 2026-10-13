@@ -401,10 +401,16 @@ class KnowledgeRepo:
             return []
         with self._db.transaction() as conn:
             if document.is_dir:
+                # Match descendants by a case-sensitive prefix, not ``path LIKE '<dir>/%'``:
+                # ``_`` and ``%`` in a folder name are LIKE wildcards (deleting ``a_b`` also
+                # matched ``axb/...``), and SQLite's LIKE is case-insensitive while PostgreSQL's
+                # is not (deleting ``Docs`` also matched ``docs/...``). ``substr`` has the same
+                # meaning on both backends.
+                prefix = f"{document.path}/"
                 rows = conn.execute(
                     "SELECT * FROM knowledge_documents WHERE kb_id = ? AND "
-                    "(path = ? OR path LIKE ?)",
-                    (document.kb_id, document.path, f"{document.path}/%"),
+                    "(path = ? OR substr(path, 1, ?) = ?)",
+                    (document.kb_id, document.path, len(prefix), prefix),
                 ).fetchall()
             else:
                 rows = conn.execute(

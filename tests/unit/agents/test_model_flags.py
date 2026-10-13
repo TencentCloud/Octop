@@ -56,9 +56,10 @@ def test_is_local_runtime_provider() -> None:
 
     assert is_local_runtime_provider(provider_api_key="onnx")
     assert is_local_runtime_provider(provider_name="ONNX (Local)")
+    assert is_local_runtime_provider(provider_name="  ONNX (Local)  ")
     assert is_local_runtime_provider(provider_api_key="ollama")
     assert is_local_runtime_provider(provider_name="Ollama (Local)")
-    assert is_local_runtime_provider(provider_base_url="http://127.0.0.1:11434")
+    assert is_local_runtime_provider(provider_name="  ollama (local)  ")
     assert not is_local_runtime_provider(
         provider_name="OpenAI",
         provider_api_key="sk-x",
@@ -69,6 +70,43 @@ def test_is_local_runtime_provider() -> None:
         provider_api_key="sk-x",
         provider_base_url="https://proxy.example/v1",
     )
+
+
+def test_is_ollama_local_provider_is_identity_only() -> None:
+    from octop.infra.agents.providers.model_flags import is_ollama_local_provider
+
+    assert is_ollama_local_provider(provider_api_key="ollama")
+    assert is_ollama_local_provider(provider_name="Ollama (Local)")
+    assert not is_ollama_local_provider(
+        provider_name="home-ollama",
+        provider_api_key="sk-x",
+        provider_base_url="http://127.0.0.1:11434",
+    )
+    assert not is_ollama_local_provider(
+        provider_name="docker-ollama",
+        provider_api_key="sk-x",
+        provider_base_url="http://ollama",
+    )
+    assert not is_ollama_local_provider(provider_base_url="http://127.0.0.1:11434")
+    assert not is_ollama_local_provider(provider_base_url=None)
+    assert not is_ollama_local_provider(provider_base_url="")
+
+
+def test_custom_local_url_is_not_a_protected_runtime() -> None:
+    from octop.infra.agents.providers.model_flags import is_local_runtime_provider
+
+    for url in (
+        "http://127.0.0.1:8000/v1",
+        "http://192.168.1.10:3000/v1",
+        "http://127.0.0.1:11434",
+        "http://ollama:11434",
+        "http://192.168.1.10:11434/v1",
+    ):
+        assert not is_local_runtime_provider(
+            provider_name="my-local-llm",
+            provider_api_key="sk-local",
+            provider_base_url=url,
+        ), url
 
 
 def test_chat_eligible_excludes_embedding() -> None:

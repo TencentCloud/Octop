@@ -3,10 +3,10 @@
 End-to-end smoke: build a real OctopServer with a main agent, seed a
 small graph (entity / candidate / atom / episode / journal) directly
 into the agent memory SQLite (``.octop/memory.sqlite`` for new agents)
-via ``harness_memory.Memory``, then drive the FastAPI router and assert
+via ``octop_memory.Memory``, then drive the FastAPI router and assert
 the JSON shapes.
 
-We bypass the harness-agent middleware (``capture`` / ``extract``)
+We bypass the octop-harness middleware (``capture`` / ``extract``)
 because the dashboard surface is purely read-side; this keeps the
 test fast and deterministic without an LLM.
 """
@@ -18,13 +18,13 @@ from typing import Any
 
 import pytest
 
-# `harness_memory` is an optional dependency (lazy-imported by the app); the
+# `octop_memory` is an optional dependency (lazy-imported by the app); the
 # real package is not part of the base install, so skip these integration
 # tests when it is unavailable rather than failing the whole suite. The app
 # reaches memory through the JSON-RPC bridge, so gate on that exact import
-# target (the old ``harness_memory.lightclaw`` name no longer exists and made
+# target (the old ``octop_memory.lightclaw`` name no longer exists and made
 # this whole file silently skip).
-pytest.importorskip("harness_memory.adapters.bridge.handlers")
+pytest.importorskip("octop_memory.adapters.bridge.handlers")
 
 from octop.api.common.memory_client import (
     invalidate_cached_memory,
@@ -39,8 +39,8 @@ def _now() -> datetime:
 
 def _seed_memory(srv: Any, agent_id: str) -> None:
     """Populate the agent's memory.sqlite with one row per layer."""
-    from harness_memory.core import Memory  # noqa: PLC0415
-    from harness_memory.types import (  # noqa: PLC0415
+    from octop_memory.core import Memory  # noqa: PLC0415
+    from octop_memory.types import (  # noqa: PLC0415
         AtomCard,
         Candidate,
         Entity,
@@ -272,6 +272,64 @@ async def test_deprecate_atom_round_trip(env_with_main_agent) -> None:
 
 
 @pytest.mark.asyncio
+async def test_create_and_replace_atom_round_trip(env_with_main_agent) -> None:
+    client, srv, auth, aid = env_with_main_agent
+    _seed_memory(srv, aid)
+
+    created = await client.post(
+        f"/api/agents/{aid}/memory/atoms",
+        headers=auth,
+        json={
+            "assertion": "喜欢早起跑步",
+            "entity_name": "作息",
+            "entity_type": "Fact",
+            "kind": "Preference",
+            "actor": "rule",
+        },
+    )
+    assert created.status_code == 200, created.text
+    body = created.json()
+    assert body["status"] == "created"
+    assert body["created_entity"] is True
+    atom_id = body["atom"]["id"]
+    assert body["atom"]["assertion"] == "喜欢早起跑步"
+
+    create_journal = await client.post(
+        f"/api/agents/{aid}/memory/journal/list",
+        headers=auth,
+        json={"action": "create", "target_atom_id": atom_id},
+    )
+    assert create_journal.status_code == 200
+    assert create_journal.json()["items"][0]["actor"] == "user"
+
+    replaced = await client.post(
+        f"/api/agents/{aid}/memory/atoms/{atom_id}:replace",
+        headers=auth,
+        json={"assertion": "改成晚上跑步", "actor": "auto"},
+    )
+    assert replaced.status_code == 200, replaced.text
+    assert replaced.json()["status"] == "replaced"
+    assert replaced.json()["atom"]["assertion"] == "改成晚上跑步"
+    assert replaced.json()["old_atom_id"] == atom_id
+
+    replacement_id = replaced.json()["atom"]["id"]
+    edit_journal = await client.post(
+        f"/api/agents/{aid}/memory/journal/list",
+        headers=auth,
+        json={"action": "user_edit", "target_atom_id": replacement_id},
+    )
+    assert edit_journal.status_code == 200
+    assert edit_journal.json()["items"][0]["actor"] == "user"
+
+    again = await client.post(
+        f"/api/agents/{aid}/memory/atoms/{atom_id}:replace",
+        headers=auth,
+        json={"assertion": "这条已经弃用了"},
+    )
+    assert again.status_code == 404
+
+
+@pytest.mark.asyncio
 async def test_list_raw_events(env_with_main_agent) -> None:
     client, srv, auth, aid = env_with_main_agent
     _seed_memory(srv, aid)
@@ -366,6 +424,71 @@ async def test_extract_config_aux_model_roundtrip(env_with_main_agent) -> None:
     )
     assert r4.status_code == 200, r4.text
     assert r4.json()["aux_model"] is None
+
+
+@pytest.mark.asyncio
+async def test_extract_config_aux_call_options_roundtrip(env_with_main_agent) -> None:
+    client, _srv, auth, aid = env_with_main_agent
+
+    # Defaults are unset (None → harness defaults apply).
+    r = await client.get(f"/api/agents/{aid}/memory/extract-config", headers=auth)
+    assert r.status_code == 200, r.text
+    assert r.json()["extract_light_timeout_s"] is None
+    assert r.json()["extract_heavy_timeout_s"] is None
+    assert r.json()["extract_max_tokens"] is None
+    assert r.json()["extract_extra_body"] is None
+
+    # Set all four; a too-short timeout is clamped up to the 30s floor.
+    body = {
+        "extract_light_timeout_s": 5,
+        "extract_heavy_timeout_s": 600,
+        "extract_max_tokens": 1024,
+        "extract_extra_body": {"chat_template_kwargs": {"enable_thinking": False}},
+    }
+    r2 = await client.put(
+        f"/api/agents/{aid}/memory/extract-config",
+        headers=auth,
+        json=body,
+    )
+    assert r2.status_code == 200, r2.text
+    assert r2.json()["extract_light_timeout_s"] == 30.0
+    assert r2.json()["extract_heavy_timeout_s"] == 600.0
+    assert r2.json()["extract_max_tokens"] == 1024
+    assert r2.json()["extract_extra_body"] == {"chat_template_kwargs": {"enable_thinking": False}}
+
+    # Persisted across a GET.
+    r3 = await client.get(f"/api/agents/{aid}/memory/extract-config", headers=auth)
+    assert r3.json()["extract_light_timeout_s"] == 30.0
+    assert r3.json()["extract_max_tokens"] == 1024
+
+    # Zeros / empty object reset each option back to automatic.
+    r4 = await client.put(
+        f"/api/agents/{aid}/memory/extract-config",
+        headers=auth,
+        json={
+            "extract_light_timeout_s": 0,
+            "extract_heavy_timeout_s": 0,
+            "extract_max_tokens": 0,
+            "extract_extra_body": {},
+        },
+    )
+    assert r4.status_code == 200, r4.text
+    assert r4.json()["extract_light_timeout_s"] is None
+    assert r4.json()["extract_heavy_timeout_s"] is None
+    assert r4.json()["extract_max_tokens"] is None
+    assert r4.json()["extract_extra_body"] is None
+
+
+@pytest.mark.asyncio
+async def test_extract_config_rejects_non_object_extra_body(env_with_main_agent) -> None:
+    client, _srv, auth, aid = env_with_main_agent
+    # Pydantic rejects a non-object payload before the handler runs (422).
+    r = await client.put(
+        f"/api/agents/{aid}/memory/extract-config",
+        headers=auth,
+        json={"extract_extra_body": ["not", "an", "object"]},
+    )
+    assert r.status_code == 422, r.text
 
 
 @pytest.mark.asyncio

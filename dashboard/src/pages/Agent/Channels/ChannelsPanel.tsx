@@ -16,11 +16,13 @@ import {
   useChannels,
   CHANNEL_KEYS,
   DEFAULT_CHANNEL_DISPLAY_CONFIG,
+  applyQqChannelSaveConfig,
   CHANNEL_DISPLAY_CONFIG_KEYS,
   CHANNEL_FIELDS,
   DEFAULT_QQ_GROUP_CONTEXT_CONFIG,
   normalizeChannelFieldValue,
   normalizeQqGroupContextConfig,
+  partitionChannelKeys,
   type ChannelKey,
 } from "./components";
 import type { ChannelRow } from "./useChannels";
@@ -51,7 +53,8 @@ function configFromFormValues(
         k === "__raw_config" ||
         k === "response_mode" ||
         k === "show_thinking" ||
-        k === "show_tool_hints"
+        k === "show_tool_hints" ||
+        k === "c2c_streaming"
       ) {
         continue;
       }
@@ -76,6 +79,7 @@ function configFromFormValues(
     show_tool_hints:
       show_tool_hints ?? DEFAULT_CHANNEL_DISPLAY_CONFIG.show_tool_hints,
   };
+  applyQqChannelSaveConfig(config, values.kind);
   return config;
 }
 
@@ -102,6 +106,7 @@ export default function ChannelsPanel({ agentId }: ChannelsPanelProps) {
   } = useChannels(agentId);
 
   const [hoverId, setHoverId] = useState<ChannelKey | null>(null);
+  const [showMoreChannels, setShowMoreChannels] = useState(false);
   const [enableLoadingKey, setEnableLoadingKey] = useState<ChannelKey | null>(
     null,
   );
@@ -133,14 +138,32 @@ export default function ChannelsPanel({ agentId }: ChannelsPanelProps) {
     return map;
   }, [channels]);
 
+  const { featuredChannelKeys, moreChannelKeys } = useMemo(() => {
+    const { featured, more } = partitionChannelKeys(
+      CHANNEL_KEYS,
+      new Set(channelByKind.keys()),
+    );
+    return { featuredChannelKeys: featured, moreChannelKeys: more };
+  }, [channelByKind]);
+
+  const visibleChannelKeys = showMoreChannels
+    ? [...featuredChannelKeys, ...moreChannelKeys]
+    : featuredChannelKeys;
+
   const openCreate = useCallback(
     (kind: ChannelKey) => {
       setEditing(null);
       setLoadingConfig(false);
       const defaults: ChannelFormValues = {
         kind,
-        enabled: false,
+        // Create defaults to ENABLED, matching the server-side create default
+        // (repos/channels.py writes enabled=1) and the QR-bind auto-enable
+        // flows ("channel is usable immediately"). A channel born enabled
+        // needs no follow-up PATCH, so the row keeps a clean single-write
+        // signature and no start/stop churn happens behind the save.
+        enabled: true,
         ...DEFAULT_CHANNEL_DISPLAY_CONFIG,
+        ...(kind === "discord" ? { allow_all_channels: true } : {}),
         ...(kind === "qq"
           ? { group_context: { ...DEFAULT_QQ_GROUP_CONTEXT_CONFIG } }
           : {}),
@@ -172,6 +195,7 @@ export default function ChannelsPanel({ agentId }: ChannelsPanelProps) {
         const formCfg: Record<string, unknown> = {};
         for (const [k, v] of Object.entries(cfg)) {
           if (v === undefined || v === null) continue;
+          if (row.kind === "qq" && k === "show_progress") continue;
           if (
             CHANNEL_DISPLAY_CONFIG_KEYS.includes(
               k as (typeof CHANNEL_DISPLAY_CONFIG_KEYS)[number],
@@ -179,7 +203,13 @@ export default function ChannelsPanel({ agentId }: ChannelsPanelProps) {
           ) {
             continue;
           }
-          if (row.kind === "qq" && k === "group_context") {
+          if (
+            row.kind === "discord" &&
+            (k === "allowed_channel_ids" || k === "allowed_user_ids") &&
+            Array.isArray(v)
+          ) {
+            formCfg[k] = v.join("\n");
+          } else if (row.kind === "qq" && k === "group_context") {
             formCfg[k] = normalizeQqGroupContextConfig(v);
           } else if (typeof v === "string") formCfg[k] = v;
           else if (typeof v === "number" || typeof v === "boolean")
@@ -209,6 +239,9 @@ export default function ChannelsPanel({ agentId }: ChannelsPanelProps) {
               ? cfg.show_tool_hints
               : DEFAULT_CHANNEL_DISPLAY_CONFIG.show_tool_hints,
           ...formCfg,
+          ...(row.kind === "discord"
+            ? { allow_all_channels: cfg.allow_all_channels !== false }
+            : {}),
           __raw_config: JSON.stringify(cfg, null, 2),
         };
         setDrawerInitialValues(next);
@@ -405,7 +438,7 @@ export default function ChannelsPanel({ agentId }: ChannelsPanelProps) {
       ) : (
         <div className={styles.channelsBody}>
           <div className={styles.channelsGrid}>
-            {CHANNEL_KEYS.map((key) => {
+            {visibleChannelKeys.map((key) => {
               const row = channelByKind.get(key);
               return (
                 <ChannelCard
@@ -426,6 +459,20 @@ export default function ChannelsPanel({ agentId }: ChannelsPanelProps) {
               );
             })}
           </div>
+          {moreChannelKeys.length > 0 && (
+            <Button
+              type="link"
+              size="small"
+              className={styles.showMoreChannelsBtn}
+              onClick={() => setShowMoreChannels((v) => !v)}
+            >
+              {showMoreChannels
+                ? t("channels.hideMoreChannels")
+                : t("channels.showMoreChannels", {
+                    count: moreChannelKeys.length,
+                  })}
+            </Button>
+          )}
         </div>
       )}
 

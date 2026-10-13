@@ -2,19 +2,17 @@
  * Layout contract for the global antd Spin indicator (OctopSpinner).
  * antd sizes and positions its default dot from the `dotSize` token, so every
  * geometry rule it derives (box, nested-pattern centering, tip gap) has to be
- * restated from one size variable per Spin size.
+ * restated from the size variable.
  */
 
+/* One ring size for page- and section-level loading (`size` default / large). */
 .octop-spin {
-  --octop-spinner-size: 24px;
-  --octop-spinner-ring-width: 2.5px;
-}
-
-.octop-spin-lg {
   --octop-spinner-size: 48px;
   --octop-spinner-ring-width: 4px;
 }
 
+/* `size="small"` marks spins nested in a control — input suffixes, select
+   dropdowns, inline labels — where a 48px ring would stretch its container. */
 .octop-spin-sm {
   --octop-spinner-size: 18px;
   --octop-spinner-ring-width: 2px;

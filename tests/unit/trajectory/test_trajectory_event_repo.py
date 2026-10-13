@@ -11,7 +11,7 @@ from octop.infra.db.repos.agents import AgentRepo
 from octop.infra.db.repos.threads import ThreadRepo
 from octop.infra.db.repos.trajectory_events import TrajectoryEventRepo
 from octop.infra.db.repos.users import UserRepo
-from octop.infra.trajectory.types import TrajectoryEvent
+from octop.infra.history.trajectory.types import TrajectoryEvent
 
 
 def _seed_threads(db: SqlitePool, *thread_ids: str, agent_id: str = "A1") -> None:

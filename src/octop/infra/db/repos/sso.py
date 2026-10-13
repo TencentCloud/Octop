@@ -1,11 +1,42 @@
-"""OIDC SSO provider and login-state table access."""
+"""SSO provider and login-state table access."""
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+import json
+import sqlite3
+from dataclasses import dataclass, field
+from typing import Any
+
+try:
+    from psycopg import errors as pg_errors
+except ImportError:  # pragma: no cover - optional PostgreSQL driver
+    pg_errors = None  # type: ignore[assignment]
 
 from octop.infra.db.pool import DatabasePool
-from octop.infra.db.repos._base import DbRow, bool_int, insert_returning_id, now_ts
+from octop.infra.db.repos._base import DbRow, bool_int, insert_returning_id, map_rows, now_ts
+
+
+def _is_unique_violation(exc: BaseException) -> bool:
+    if isinstance(exc, sqlite3.IntegrityError):
+        return "unique" in str(exc).lower()
+    return pg_errors is not None and isinstance(exc, pg_errors.UniqueViolation)
+
+
+def _parse_extra(raw: object) -> dict[str, Any]:
+    if isinstance(raw, dict):
+        return dict(raw)
+    if isinstance(raw, str) and raw.strip():
+        try:
+            parsed = json.loads(raw)
+        except (ValueError, TypeError):
+            return {}
+        if isinstance(parsed, dict):
+            return parsed
+    return {}
+
+
+def _extra_json(extra: dict[str, Any] | None) -> str:
+    return json.dumps(extra or {}, ensure_ascii=False)
 
 
 @dataclass(frozen=True)
@@ -20,10 +51,13 @@ class SsoProviderRow:
     dashboard_origin: str | None
     created_at: int
     updated_at: int
+    kind: str = "oidc"
+    extra: dict[str, Any] = field(default_factory=dict)
 
     @classmethod
     def from_row(cls, row: DbRow) -> SsoProviderRow:
         secret = row["client_secret_enc"]
+        keys = set(row.keys())
         return cls(
             id=int(row["id"]),
             enabled=int(row["enabled"]),
@@ -35,6 +69,8 @@ class SsoProviderRow:
             dashboard_origin=row["dashboard_origin"],
             created_at=int(row["created_at"]),
             updated_at=int(row["updated_at"]),
+            kind=str(row["kind"]) if "kind" in keys and row["kind"] else "oidc",
+            extra=_parse_extra(row["extra"] if "extra" in keys else None),
         )
 
 
@@ -72,9 +108,25 @@ class SsoRepo:
         self._db = db
 
     def get_provider(self) -> SsoProviderRow | None:
+        """Return the OIDC provider row (legacy single-provider helper)."""
+        return self.get_by_kind("oidc")
+
+    def get_by_id(self, provider_id: int) -> SsoProviderRow | None:
         with self._db.connect() as conn:
-            row = conn.execute("SELECT * FROM sso_providers ORDER BY id LIMIT 1").fetchone()
+            row = conn.execute(
+                "SELECT * FROM sso_providers WHERE id = ?", (provider_id,)
+            ).fetchone()
         return SsoProviderRow.from_row(row) if row else None
+
+    def get_by_kind(self, kind: str) -> SsoProviderRow | None:
+        with self._db.connect() as conn:
+            row = conn.execute("SELECT * FROM sso_providers WHERE kind = ?", (kind,)).fetchone()
+        return SsoProviderRow.from_row(row) if row else None
+
+    def list(self) -> list[SsoProviderRow]:
+        with self._db.connect() as conn:
+            rows = conn.execute("SELECT * FROM sso_providers ORDER BY id").fetchall()
+        return map_rows(rows, SsoProviderRow)
 
     def upsert_provider(
         self,
@@ -87,54 +139,92 @@ class SsoRepo:
         scopes: str,
         dashboard_origin: str | None,
     ) -> SsoProviderRow:
+        return self.upsert_by_kind(
+            "oidc",
+            enabled=enabled,
+            display_name=display_name,
+            issuer=issuer,
+            client_id=client_id,
+            client_secret_enc=client_secret_enc,
+            scopes=scopes,
+            dashboard_origin=dashboard_origin,
+        )
+
+    def upsert_by_kind(
+        self,
+        kind: str,
+        *,
+        enabled: bool,
+        display_name: str,
+        issuer: str,
+        client_id: str,
+        client_secret_enc: bytes | None,
+        scopes: str,
+        dashboard_origin: str | None,
+        extra: dict[str, Any] | None = None,
+    ) -> SsoProviderRow:
         ts = now_ts()
+        extra_json = _extra_json(extra)
         with self._db.transaction() as conn:
-            existing = conn.execute("SELECT * FROM sso_providers ORDER BY id LIMIT 1").fetchone()
+            existing = conn.execute(
+                "SELECT * FROM sso_providers WHERE kind = ?", (kind,)
+            ).fetchone()
             if existing is None:
-                provider_id = insert_returning_id(
-                    conn,
-                    "INSERT INTO sso_providers("
-                    "enabled, display_name, issuer, client_id, client_secret_enc, scopes, "
-                    "dashboard_origin, created_at, updated_at"
-                    ") VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
-                    (
-                        bool_int(enabled),
-                        display_name,
-                        issuer,
-                        client_id,
-                        client_secret_enc,
-                        scopes,
-                        dashboard_origin,
-                        ts,
-                        ts,
-                    ),
-                )
+                try:
+                    provider_id = insert_returning_id(
+                        conn,
+                        "INSERT INTO sso_providers("
+                        "enabled, display_name, issuer, client_id, client_secret_enc, scopes, "
+                        "dashboard_origin, kind, extra, created_at, updated_at"
+                        ") VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                        (
+                            bool_int(enabled),
+                            display_name,
+                            issuer,
+                            client_id,
+                            client_secret_enc,
+                            scopes,
+                            dashboard_origin,
+                            kind,
+                            extra_json,
+                            ts,
+                            ts,
+                        ),
+                    )
+                except Exception as exc:
+                    if not _is_unique_violation(exc):
+                        raise
+                    existing = conn.execute(
+                        "SELECT * FROM sso_providers WHERE kind = ?", (kind,)
+                    ).fetchone()
+                    if existing is None:
+                        raise
+                    provider_id = self._update_provider(
+                        conn,
+                        int(existing["id"]),
+                        enabled=enabled,
+                        display_name=display_name,
+                        issuer=issuer,
+                        client_id=client_id,
+                        client_secret_enc=client_secret_enc,
+                        scopes=scopes,
+                        dashboard_origin=dashboard_origin,
+                        extra_json=extra_json,
+                        ts=ts,
+                    )
             else:
-                provider_id = int(existing["id"])
-                fields = [
-                    "enabled = ?",
-                    "display_name = ?",
-                    "issuer = ?",
-                    "client_id = ?",
-                    "scopes = ?",
-                    "dashboard_origin = ?",
-                    "updated_at = ?",
-                ]
-                params: list[object] = [
-                    bool_int(enabled),
-                    display_name,
-                    issuer,
-                    client_id,
-                    scopes,
-                    dashboard_origin,
-                    ts,
-                ]
-                if client_secret_enc is not None:
-                    fields.insert(4, "client_secret_enc = ?")
-                    params.insert(4, client_secret_enc)
-                conn.execute(
-                    f"UPDATE sso_providers SET {', '.join(fields)} WHERE id = ?",
-                    (*params, provider_id),
+                provider_id = self._update_provider(
+                    conn,
+                    int(existing["id"]),
+                    enabled=enabled,
+                    display_name=display_name,
+                    issuer=issuer,
+                    client_id=client_id,
+                    client_secret_enc=client_secret_enc,
+                    scopes=scopes,
+                    dashboard_origin=dashboard_origin,
+                    extra_json=extra_json,
+                    ts=ts,
                 )
             row = conn.execute(
                 "SELECT * FROM sso_providers WHERE id = ?", (provider_id,)
@@ -142,6 +232,50 @@ class SsoRepo:
         if row is None:
             raise RuntimeError("SSO provider upsert returned no row")
         return SsoProviderRow.from_row(row)
+
+    @staticmethod
+    def _update_provider(
+        conn: Any,
+        provider_id: int,
+        *,
+        enabled: bool,
+        display_name: str,
+        issuer: str,
+        client_id: str,
+        client_secret_enc: bytes | None,
+        scopes: str,
+        dashboard_origin: str | None,
+        extra_json: str,
+        ts: int,
+    ) -> int:
+        fields = [
+            "enabled = ?",
+            "display_name = ?",
+            "issuer = ?",
+            "client_id = ?",
+            "scopes = ?",
+            "dashboard_origin = ?",
+            "extra = ?",
+            "updated_at = ?",
+        ]
+        params: list[object] = [
+            bool_int(enabled),
+            display_name,
+            issuer,
+            client_id,
+            scopes,
+            dashboard_origin,
+            extra_json,
+            ts,
+        ]
+        if client_secret_enc is not None:
+            fields.insert(4, "client_secret_enc = ?")
+            params.insert(4, client_secret_enc)
+        conn.execute(
+            f"UPDATE sso_providers SET {', '.join(fields)} WHERE id = ?",
+            (*params, provider_id),
+        )
+        return provider_id
 
     def create_login_state(
         self,
@@ -152,13 +286,24 @@ class SsoRepo:
         code_verifier: str,
         redirect_after: str,
         expires_at: int,
+        user_id: int | None = None,
     ) -> None:
         with self._db.transaction() as conn:
             conn.execute(
                 "INSERT INTO sso_login_states("
-                "state, provider_id, nonce, code_verifier, redirect_after, expires_at, created_at"
-                ") VALUES (?, ?, ?, ?, ?, ?, ?)",
-                (state, provider_id, nonce, code_verifier, redirect_after, expires_at, now_ts()),
+                "state, provider_id, nonce, code_verifier, redirect_after, user_id, "
+                "expires_at, created_at"
+                ") VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                (
+                    state,
+                    provider_id,
+                    nonce,
+                    code_verifier,
+                    redirect_after,
+                    user_id,
+                    expires_at,
+                    now_ts(),
+                ),
             )
 
     def take_login_state(self, state: str) -> SsoLoginStateRow | None:

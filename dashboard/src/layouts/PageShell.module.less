@@ -1,5 +1,6 @@
 .agentBar {
   flex-shrink: 0;
+  min-width: 0;
   margin-bottom: 12px;
   padding: 10px 16px;
   background: var(--fn-bg-container, var(--fn-bg-elevated));
@@ -69,6 +70,8 @@
     flex: 1;
     min-height: 0;
     overflow: auto;
+    /* Keep rightmost cards clear of the vertical scrollbar. */
+    padding-right: 12px;
   }
 
   :global(.octop-tabs-content),
@@ -96,6 +99,7 @@
       max-width: 100%;
       overflow-x: hidden;
       overflow-y: visible;
+      padding-right: 0;
     }
   }
 }
@@ -124,11 +128,14 @@
   /* Keep card tops / hover translateY inside the scrollport (margin on
      the tab bar sits outside this box and cannot prevent clipping). */
   padding-top: 8px;
+  /* Keep rightmost cards clear of the vertical scrollbar. */
+  padding-right: 12px;
 
   @media (max-width: 767px) {
     flex: none;
     overflow: visible;
     padding-top: 0;
+    padding-right: 0;
   }
 }
 

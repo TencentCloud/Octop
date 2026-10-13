@@ -1,0 +1,3 @@
+{
+  "renderers": [{ "id": "wiki_summary_card", "tools": ["wiki_summary"] }]
+}

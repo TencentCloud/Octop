@@ -66,5 +66,17 @@
       "color": "#dbeafe",
       "icon_name": "list"
     }
-  ]
+  ],
+  "task_examples": {
+    "zh": [
+      "每个工作日「09:30」提醒我今天的开发任务先写失败测试再动手，任务创建后立即启用",
+      "每周五「16:30」按 explore → plan → TDD → review 复盘本周一个功能",
+      "每天「18:00」检查是否有未完成的审查或验证步骤，列成明日待办"
+    ],
+    "en": [
+      "Every weekday at 09:30, remind me to write a failing test before coding today's task — enable immediately",
+      "Every Friday at 16:30, recap one feature using explore → plan → TDD → review",
+      "Every day at 18:00, check for unfinished review or verify steps and turn them into tomorrow's todos"
+    ]
+  }
 }

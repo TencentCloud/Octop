@@ -2,14 +2,15 @@
 
 from __future__ import annotations
 
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Callable
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Literal
 
-from harness_agent.slash import SlashCommand
-from harness_gateway.models import MessageEvent
+from octop_gateway.models import MessageEvent
+from octop_harness.slash import SlashCommand
 
 from octop.i18n.domains.slash import tr
+from octop.infra.agents.security.hitl_session import HitlSessionPolicyStore
 from octop.infra.gateway.hitl.format import (
     extract_questions,
     format_ask_card,
@@ -110,8 +111,13 @@ def decision_rejection_reason(
 
 
 class HitlChannelCoordinator:
-    def __init__(self, store: HitlPendingStore | None = None) -> None:
+    def __init__(
+        self,
+        store: HitlPendingStore | None = None,
+        session_policies: HitlSessionPolicyStore | None = None,
+    ) -> None:
         self._store = store or HitlPendingStore()
+        self.session_policies = session_policies or HitlSessionPolicyStore()
 
     @property
     def store(self) -> HitlPendingStore:
@@ -122,6 +128,7 @@ class HitlChannelCoordinator:
         raw_request: dict[str, Any],
         *,
         ctx: HitlStreamContext,
+        resume_agent_id: str | None = None,
     ) -> HitlPendingRecord:
         return self._store.register(
             thread_id=ctx.thread_id,
@@ -131,6 +138,7 @@ class HitlChannelCoordinator:
             channel_type=ctx.channel_type,
             action_requests=parse_action_requests(raw_request),
             review_configs=parse_review_configs(raw_request),
+            resume_agent_id=resume_agent_id,
         )
 
     @staticmethod
@@ -145,6 +153,43 @@ class HitlChannelCoordinator:
             return [{"type": "approve"} for _ in range(count)]
         reject_message = message or "Rejected by user"
         return [{"type": "reject", "message": reject_message} for _ in range(count)]
+
+    def hand_member_pause(
+        self,
+        record: HitlPendingRecord,
+        decisions: list[dict[str, Any]],
+        *,
+        deliver: Callable[[str, list[dict[str, Any]]], bool] | None,
+        rejected: bool,
+    ) -> bool | None:
+        """Wake a team member job that owns this pause.
+
+        Returns None when the pause is a normal host turn. True means the
+        member job accepted the decision and the caller must not resume the
+        host graph. False means the job is gone.
+        """
+        if not record.resume_agent_id:
+            return None
+        ok = bool(deliver is not None and deliver(record.pending_id, decisions))
+        self._store.mark_resolved(
+            record.pending_id,
+            ("rejected" if rejected else "approved") if ok else "expired",
+        )
+        return ok
+
+    def expire_pending_for_thread(
+        self,
+        thread_id: str,
+        *,
+        agent_id: str,
+        user_id: int | None = None,
+    ) -> None:
+        """Expire in-memory pauses for a dashboard thread (new turn / interrupt)."""
+        self._store.expire_pending_for_thread(
+            thread_id,
+            agent_id=agent_id,
+            user_id=user_id,
+        )
 
     def resolve_ask_pending(
         self,
@@ -258,6 +303,7 @@ class HitlChannelCoordinator:
         history_tracker: Any | None = None,
         projection_state: Any | None = None,
         outcome: HitlAnswerOutcome | None = None,
+        member_hitl: Callable[[str, list[dict[str, Any]]], bool] | None = None,
     ) -> AsyncIterator[MessageEvent]:
         """Collect one IM answer and resume only after the final question."""
         from octop.infra.gateway.process.stream_project import (
@@ -278,6 +324,18 @@ class HitlChannelCoordinator:
 
         yield MessageEvent.typing()
         decisions = self._answer_decisions(record, resume_message)
+        handed = self.hand_member_pause(
+            record,
+            decisions,
+            deliver=member_hitl,
+            rejected=False,
+        )
+        if handed is not None:
+            if handed:
+                yield MessageEvent.text(tr("hitl.approved_ack", lang))
+            else:
+                yield MessageEvent.error_event(tr("hitl.expired", lang))
+            return
         hitl_ctx = HitlStreamContext(
             thread_id=record.thread_id,
             agent_id=record.agent_id,
@@ -318,6 +376,9 @@ class HitlChannelCoordinator:
         locale: str,
         usage_tracker: UsageTracker | None = None,
         outcome: HitlSlashOutcome | None = None,
+        history_factory: Any | None = None,
+        history_finalize: Any | None = None,
+        member_hitl: Callable[[str, list[dict[str, Any]]], bool] | None = None,
     ) -> AsyncIterator[MessageEvent]:
         lang = normalize_locale(locale)
         if cmd.name == "pending":
@@ -342,6 +403,22 @@ class HitlChannelCoordinator:
             approve=approve,
             message=reject_message,
         )
+        if record is not None:
+            handed = self.hand_member_pause(
+                record,
+                decisions,
+                deliver=member_hitl,
+                rejected=not approve,
+            )
+            if handed is not None:
+                if handed:
+                    ack = (
+                        tr("hitl.approved_ack", lang) if approve else tr("hitl.rejected_ack", lang)
+                    )
+                    yield MessageEvent.text(ack)
+                else:
+                    yield MessageEvent.error_event(tr("hitl.expired", lang))
+                return
         hitl_ctx = HitlStreamContext(
             thread_id=thread_id,
             agent_id=ctx.agent_id,
@@ -355,8 +432,14 @@ class HitlChannelCoordinator:
             project_resume_stream,
         )
 
+        history_tracker = (
+            await history_factory(ctx.agent_id, thread_id, {}, resume=True)
+            if history_factory
+            else None
+        )
         tracker = usage_tracker or UsageTracker()
         projection_state = StreamProjectionState()
+        history_completed = False
         had_output = False
         ack_sent = False
         resolved_status: Literal["approved", "rejected"] | None = (
@@ -369,6 +452,7 @@ class HitlChannelCoordinator:
                 thread_id,
                 decisions,
                 usage_tracker=tracker,
+                history_tracker=history_tracker,
                 locale=lang,
                 projection_state=projection_state,
                 hitl_coordinator=self,
@@ -382,12 +466,17 @@ class HitlChannelCoordinator:
                     ack_sent = True
                 had_output = True
                 yield ev
+            history_completed = True
         except Exception as exc:
             if record is None and not had_output:
                 yield MessageEvent.text(tr("hitl.none_pending", lang))
             else:
                 yield MessageEvent.error_event(tr("hitl.resume_failed", lang, error=str(exc)))
             return
+
+        finally:
+            if history_finalize and history_tracker is not None:
+                await history_finalize(thread_id, history_tracker, completed=history_completed)
 
         if record is None and not had_output and not projection_state.hitl_paused:
             yield MessageEvent.text(tr("hitl.none_pending", lang))

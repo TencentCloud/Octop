@@ -29,10 +29,12 @@ import {
   List,
   Package,
   Plus,
+  Store,
   Trash2,
   Upload,
 } from "lucide-react";
 import { useTranslation } from "react-i18next";
+import { useSearchParams } from "react-router-dom";
 import { pluginsApi, type InstalledPlugin } from "../../../api/modules/plugins";
 import { ResizableTable } from "../../../components/ResizableTable";
 import { CardSkeleton } from "../../../components/Skeleton";
@@ -45,6 +47,9 @@ import { updateToolPluginIndex } from "../../../plugins/toolRenderers/toolPlugin
 import { apiErrorMessage } from "../../../utils/apiError";
 import styles from "./index.module.less";
 import { PluginIconView } from "./PluginIconView";
+import { PluginGroupTag } from "./PluginGroupTag";
+import { PluginCardMeta } from "./PluginCardMeta";
+import { notifyPluginsChanged, PLUGINS_CHANGED_EVENT } from "./pluginsEvents";
 
 const { Text, Paragraph } = Typography;
 
@@ -55,11 +60,20 @@ async function syncPluginUis(rows: InstalledPlugin[]): Promise<void> {
 }
 
 function statusTag(row: InstalledPlugin, t: (key: string) => string) {
-  if (row.error) return <Tag color="error">{t("plugins.statusError")}</Tag>;
+  if (row.error)
+    return (
+      <Tag color="error" bordered={false}>
+        {t("plugins.statusError")}
+      </Tag>
+    );
   if (row.enabled === false)
-    return <Tag color="default">{t("plugins.statusDisabled")}</Tag>;
+    return (
+      <Tag color="default" bordered={false}>
+        {t("plugins.statusDisabled")}
+      </Tag>
+    );
   return (
-    <Tag color={row.loaded ? "success" : "default"}>
+    <Tag color={row.loaded ? "success" : "default"} bordered={false}>
       {row.loaded ? t("plugins.statusLoaded") : t("plugins.statusIdle")}
     </Tag>
   );
@@ -68,6 +82,7 @@ function statusTag(row: InstalledPlugin, t: (key: string) => string) {
 /** Server-wide plugin install, reload, enable, detail, and uninstall surface. */
 export function InstalledPluginsPanel() {
   const { t } = useTranslation();
+  const [, setSearchParams] = useSearchParams();
   const [plugins, setPlugins] = useState<InstalledPlugin[]>([]);
   const [loading, setLoading] = useState(true);
   const [installOpen, setInstallOpen] = useState(false);
@@ -101,6 +116,14 @@ export function InstalledPluginsPanel() {
     void fetchPlugins();
   }, [fetchPlugins]);
 
+  useEffect(() => {
+    const onChanged = () => {
+      void fetchPlugins();
+    };
+    window.addEventListener(PLUGINS_CHANGED_EVENT, onChanged);
+    return () => window.removeEventListener(PLUGINS_CHANGED_EVENT, onChanged);
+  }, [fetchPlugins]);
+
   const handleInstall = async () => {
     const url = installUrl.trim();
     if (!url) return;
@@ -110,6 +133,7 @@ export function InstalledPluginsPanel() {
       message.success(t("plugins.installSuccess"));
       setInstallOpen(false);
       setInstallUrl("");
+      notifyPluginsChanged();
       await fetchPlugins();
     } catch (err) {
       message.error(apiErrorMessage(err, t("plugins.installFailed"), t));
@@ -130,6 +154,7 @@ export function InstalledPluginsPanel() {
     try {
       await pluginsApi.upload(next, overwrite);
       message.success(t("plugins.installSuccess"));
+      notifyPluginsChanged();
       await fetchPlugins();
     } catch (err) {
       message.error(apiErrorMessage(err, t("plugins.installFailed"), t));
@@ -156,6 +181,7 @@ export function InstalledPluginsPanel() {
       await pluginsApi.uninstall(pluginId);
       message.success(t("plugins.uninstallSuccess"));
       if (detail?.id === pluginId) setDetail(null);
+      notifyPluginsChanged();
       await fetchPlugins();
     } catch (err) {
       message.error(apiErrorMessage(err, t("plugins.uninstallFailed"), t));
@@ -224,6 +250,14 @@ export function InstalledPluginsPanel() {
       key: "kind",
       width: 100,
       render: (kind: string | undefined) => <Tag>{kind || "—"}</Tag>,
+    },
+    {
+      title: t("plugins.colGroup"),
+      dataIndex: "group",
+      key: "group",
+      width: 100,
+      render: (group: string | null | undefined) =>
+        group ? <PluginGroupTag group={group} /> : "—",
     },
     {
       title: t("plugins.colStatus"),
@@ -381,7 +415,21 @@ export function InstalledPluginsPanel() {
         ) : plugins.length === 0 ? (
           <Empty
             image={Empty.PRESENTED_IMAGE_SIMPLE}
-            description={t("plugins.empty")}
+            description={
+              <div className={styles.emptyWithAction}>
+                <div>{t("plugins.empty")}</div>
+                <div className={styles.emptyHint}>{t("plugins.emptyHint")}</div>
+                <Button
+                  type="primary"
+                  icon={<Store size={16} />}
+                  onClick={() =>
+                    setSearchParams({ tab: "market" }, { replace: true })
+                  }
+                >
+                  {t("plugins.goToMarket")}
+                </Button>
+              </div>
+            }
           />
         ) : (
           <div className={styles.cardGrid}>
@@ -398,17 +446,19 @@ export function InstalledPluginsPanel() {
                     <div className={styles.cardTop}>
                       <PluginIconView
                         icon={row.icon}
-                        size={48}
+                        size={32}
                         className={styles.cardIcon}
                       />
                       <div className={styles.cardTitleCol}>
                         <h3 className={styles.cardName}>
                           {row.name || row.id}
                         </h3>
-                        <div className={styles.cardChips}>
-                          {row.kind ? <Tag>{row.kind}</Tag> : null}
-                          {statusTag(row, t)}
-                        </div>
+                        <PluginCardMeta
+                          kind={row.kind}
+                          group={row.group}
+                          version={row.version}
+                          trailing={statusTag(row, t)}
+                        />
                       </div>
                     </div>
                     <p className={styles.cardDesc}>
@@ -468,7 +518,23 @@ export function InstalledPluginsPanel() {
             emptyText: (
               <Empty
                 image={Empty.PRESENTED_IMAGE_SIMPLE}
-                description={t("plugins.empty")}
+                description={
+                  <div className={styles.emptyWithAction}>
+                    <div>{t("plugins.empty")}</div>
+                    <div className={styles.emptyHint}>
+                      {t("plugins.emptyHint")}
+                    </div>
+                    <Button
+                      type="primary"
+                      icon={<Store size={16} />}
+                      onClick={() =>
+                        setSearchParams({ tab: "market" }, { replace: true })
+                      }
+                    >
+                      {t("plugins.goToMarket")}
+                    </Button>
+                  </div>
+                }
               />
             ),
           }}
@@ -479,7 +545,7 @@ export function InstalledPluginsPanel() {
         title={
           detail ? (
             <div className={styles.drawerTitleBar}>
-              <PluginIconView icon={detail.icon} size={40} />
+              <PluginIconView icon={detail.icon} size={32} />
               <div className={styles.drawerTitleMeta}>
                 <div className={styles.drawerTitleText}>
                   {detail.name || detail.id}
@@ -512,18 +578,21 @@ export function InstalledPluginsPanel() {
               {detail.description || t("plugins.noDescription")}
             </p>
 
-            <div className={styles.drawerChips}>
-              {detail.kind ? <Tag>{detail.kind}</Tag> : null}
-              {detail.version ? (
-                <Tag>
-                  {t("plugins.colVersion")} {detail.version}
-                </Tag>
-              ) : null}
-              {statusTag(detail, t)}
-              {detail.ui?.entry ? (
-                <Tag color="blue">{t("plugins.hasUi")}</Tag>
-              ) : null}
-            </div>
+            <PluginCardMeta
+              kind={detail.kind}
+              group={detail.group}
+              version={detail.version}
+              trailing={
+                <>
+                  {statusTag(detail, t)}
+                  {detail.ui?.entry ? (
+                    <Tag color="blue" bordered={false}>
+                      {t("plugins.hasUi")}
+                    </Tag>
+                  ) : null}
+                </>
+              }
+            />
 
             <div className={styles.drawerEnableRow}>
               <div className={styles.drawerEnableText}>

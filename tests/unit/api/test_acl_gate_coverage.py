@@ -18,6 +18,7 @@ GATED_FILES = [
     "routers/voice.py",
     "routers/storage_backends.py",
     "routers/envs.py",
+    "routers/settings.py",
     "routers/observability.py",
     "routers/tls.py",
     "routers/auth_oidc.py",

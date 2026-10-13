@@ -9,6 +9,7 @@ from octop.infra.db.pool import DatabasePool
 from octop.infra.db.repos.agents import AgentRepo
 from octop.infra.db.repos.audit import AuditRepo
 from octop.infra.db.repos.backends import BackendRepo
+from octop.infra.db.repos.bridge_connections import BridgeConnectionRepo
 from octop.infra.db.repos.care_push import CarePushRepo
 from octop.infra.db.repos.channels import ChannelRepo
 from octop.infra.db.repos.connectors import ConnectorRepo
@@ -27,6 +28,7 @@ from octop.infra.db.repos.thread_messages import ThreadMessageRepo
 from octop.infra.db.repos.threads import ThreadRepo
 from octop.infra.db.repos.trajectory_events import TrajectoryEventRepo
 from octop.infra.db.repos.usage import UsageRepo
+from octop.infra.db.repos.user_policies import UserPolicyRepo
 from octop.infra.db.repos.users import UserRepo
 from octop.infra.db.repos.voice_providers import VoiceProviderRepo
 from octop.infra.utils.paths import PathLayout
@@ -37,6 +39,7 @@ class RepoBundle:
     db: DatabasePool
 
     user_repo: UserRepo
+    user_policy_repo: UserPolicyRepo
     invite_repo: InviteRepo
     agent_repo: AgentRepo
     provider_repo: ProviderRepo
@@ -51,6 +54,7 @@ class RepoBundle:
     usage_repo: UsageRepo
     settings_repo: SettingsRepo
     storage_backend_repo: BackendRepo
+    bridge_connection_repo: BridgeConnectionRepo
     connector_repo: ConnectorRepo
     skill_package_repo: SkillPackageRepo
     published_expert_repo: PublishedExpertRepo
@@ -65,6 +69,7 @@ class RepoBundle:
         return cls(
             db=db,
             user_repo=UserRepo(db),
+            user_policy_repo=UserPolicyRepo(db),
             invite_repo=InviteRepo(db),
             agent_repo=AgentRepo(db),
             provider_repo=ProviderRepo(db),
@@ -79,6 +84,7 @@ class RepoBundle:
             usage_repo=UsageRepo(db),
             settings_repo=SettingsRepo(db),
             storage_backend_repo=BackendRepo(db),
+            bridge_connection_repo=BridgeConnectionRepo(db),
             connector_repo=ConnectorRepo(db),
             skill_package_repo=SkillPackageRepo(db),
             published_expert_repo=PublishedExpertRepo(db),
@@ -103,6 +109,10 @@ class SharedServices:
     @property
     def user_repo(self) -> UserRepo:
         return self.repos.user_repo
+
+    @property
+    def user_policy_repo(self) -> UserPolicyRepo:
+        return self.repos.user_policy_repo
 
     @property
     def invite_repo(self) -> InviteRepo:
@@ -159,6 +169,10 @@ class SharedServices:
     @property
     def storage_backend_repo(self) -> BackendRepo:
         return self.repos.storage_backend_repo
+
+    @property
+    def bridge_connection_repo(self) -> BridgeConnectionRepo:
+        return self.repos.bridge_connection_repo
 
     @property
     def connector_repo(self) -> ConnectorRepo:

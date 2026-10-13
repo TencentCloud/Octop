@@ -12,6 +12,7 @@ from octop.infra.backend.resolver import (
     collect_named_storage_backend_refs,
     find_agents_using_storage_backend,
     resolve_agent_backend_spec,
+    rewrite_named_storage_backend_refs,
 )
 from octop.infra.db.migrate import run_migrations
 from octop.infra.db.pool import SqlitePool
@@ -87,6 +88,77 @@ def test_storage_backend_kind_agent_resolvable() -> None:
     assert storage_backend_kind_agent_resolvable("filesystem")
     assert storage_backend_kind_agent_resolvable("docker")
     assert storage_backend_kind_agent_resolvable("opensandbox")
+    assert storage_backend_kind_agent_resolvable("postgres")
+
+
+def test_row_to_backend_spec_postgres_discrete_fields() -> None:
+    row = BackendRow(
+        id=1,
+        name="pg",
+        kind="postgres",
+        endpoint="db.internal:5433",
+        access_key="octop",
+        secret_key="p@ss/word#1",
+        bucket="octop",
+        region="agent",
+        config_json='{"table": "files"}',
+        note=None,
+        enabled=1,
+        created_at=0,
+        updated_at=0,
+    )
+    spec = row_to_backend_spec(row)
+    assert spec == {
+        "type": "postgres",
+        "host": "db.internal",
+        "port": 5433,
+        "user": "octop",
+        "password": "p@ss/word#1",
+        "database": "octop",
+        "schema": "agent",
+        "table": "files",
+    }
+    assert "connection_string" not in spec
+
+
+def test_row_to_backend_spec_postgres_parses_uri() -> None:
+    row = BackendRow(
+        id=1,
+        name="pg",
+        kind="postgres",
+        endpoint=None,
+        access_key=None,
+        secret_key=None,
+        bucket=None,
+        region=None,
+        config_json='{"connection_string": "postgresql://alice:s3cret@pg.example:5432/app?sslmode=require"}',
+        note=None,
+        enabled=1,
+        created_at=0,
+        updated_at=0,
+    )
+    spec = row_to_backend_spec(row)
+    assert spec is not None
+    assert spec["host"] == "pg.example"
+    assert spec["port"] == 5432
+    assert spec["user"] == "alice"
+    assert spec["password"] == "s3cret"
+    assert spec["database"] == "app"
+    assert spec["sslmode"] == "require"
+    assert "connection_string" not in spec
+
+
+def test_resolve_inline_postgres_drops_connection_string() -> None:
+    resolved = resolve_agent_backend_spec(
+        {"type": "postgres", "connection_string": "postgresql://u:p@localhost/db"},
+        repo=None,
+    )
+    assert resolved["type"] == "postgres"
+    assert resolved["host"] == "localhost"
+    assert resolved["user"] == "u"
+    assert resolved["password"] == "p"
+    assert resolved["database"] == "db"
+    assert "connection_string" not in resolved
 
 
 def test_row_to_backend_spec_opensandbox() -> None:
@@ -233,3 +305,30 @@ def test_find_agents_using_storage_backend() -> None:
         backend_name="my-cos",
     )
     assert refs == [{"agent_id": "A1", "name": "Alice Bot"}]
+
+
+def test_rewrite_named_storage_backend_refs() -> None:
+    assert rewrite_named_storage_backend_refs(
+        {"type": "named", "name": "old"},
+        old="old",
+        new="new",
+    ) == {"type": "named", "name": "new"}
+    assert rewrite_named_storage_backend_refs("named:old", old="old", new="new") == "named:new"
+    assert rewrite_named_storage_backend_refs(
+        {
+            "type": "composite",
+            "default": {"type": "named", "name": "old"},
+            "routes": {"/data": {"type": "named", "name": "old"}},
+        },
+        old="old",
+        new="new",
+    ) == {
+        "type": "composite",
+        "default": {"type": "named", "name": "new"},
+        "routes": {"/data": {"type": "named", "name": "new"}},
+    }
+    assert rewrite_named_storage_backend_refs(
+        {"type": "named", "name": "keep"},
+        old="old",
+        new="new",
+    ) == {"type": "named", "name": "keep"}

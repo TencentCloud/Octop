@@ -1,40 +1,72 @@
 #!/bin/bash
 #
-# Octop — 配置后回调（重新配置时调用）
-# 逻辑与 install_callback 一致：用新配置重写 .env。
-# 注意：修改管理员密码/账号不会改动已初始化的数据库（仅首次启动生效）；
-#       修改 LLM 密钥与日志级别会在容器重启后生效。
+# Octop — 配置后回调（应用「设置」窗口提交后执行）
+#
+# 只处理管理员改密：两栏都空则保持不变；填了则更新 docker/.env、
+# data-share 引导文件、octop-login.txt 应急备份，容器在运行时
+# docker exec ... octop user passwd。日志与 API Key 请在 Web 控制台配置。
 #
 set -euo pipefail
+
+_OCTOP_COMMON="$(dirname "$0")/common.sh"
+[ -f "$_OCTOP_COMMON" ] || _OCTOP_COMMON="/var/apps/octop/cmd/common.sh"
+[ -f "$_OCTOP_COMMON" ] && source "$_OCTOP_COMMON"
 
 ENV_FILE="${TRIM_APPDEST:-/var/apps/octop/target}/docker/.env"
 mkdir -p "$(dirname "$ENV_FILE")"
 
-ADMIN_USER="${wizard_admin_username:-admin}"
-ADMIN_PASS="${wizard_admin_password:-octop}"
-LOG_LEVEL="${wizard_log_level:-info}"
-OPENAI="${wizard_openai_api_key:-}"
-DASHSCOPE="${wizard_dashscope_api_key:-}"
+# 挂飞牛 data-share（TRIM_DATA_SHARE_PATHS），与 compose 卷一致。
+DATA_DIR="$(octop_prepare_docker_persist "$ENV_FILE")"
+mkdir -p "$DATA_DIR"
 
-sanitize() { printf '%s' "$1" | tr -d '\n\r"'"'"''; }
+CONTAINER="octop"
+LOG="${TRIM_TEMP_LOGFILE:-/dev/null}"
 
-ADMIN_USER=$(sanitize "$ADMIN_USER")
-ADMIN_PASS=$(sanitize "$ADMIN_PASS")
-LOG_LEVEL=$(sanitize "$LOG_LEVEL")
-OPENAI=$(sanitize "$OPENAI")
-DASHSCOPE=$(sanitize "$DASHSCOPE")
+CUR_USER="$(octop_env_get "$ENV_FILE" OCTOP_ADMIN_USERNAME)"
+CUR_PASS="$(octop_env_get "$ENV_FILE" OCTOP_DEFAULT_PASSWORD)"
+CUR_DISPLAY="$(octop_env_get "$ENV_FILE" OCTOP_ADMIN_DISPLAY_NAME)"
+CUR_EMAIL="$(octop_env_get "$ENV_FILE" OCTOP_ADMIN_EMAIL)"
+[ -n "$CUR_USER" ] || CUR_USER="admin"
 
-{
-    echo "OCTOP_PORT=8088"
-    echo "OCTOP_BIND_HOST=0.0.0.0"
-    echo "OCTOP_LOG_LEVEL=${LOG_LEVEL}"
-    echo "OCTOP_ADMIN_USERNAME=${ADMIN_USER}"
-    echo "OCTOP_DEFAULT_PASSWORD=${ADMIN_PASS}"
-    echo "OCTOP_ADMIN_DISPLAY_NAME=Admin"
-    echo "OPENAI_API_KEY=${OPENAI}"
-    echo "DASHSCOPE_API_KEY=${DASHSCOPE}"
-} > "$ENV_FILE"
+WIZARD_PASSWORD="$(octop_sanitize_value "${wizard_admin_password:-}")"
+WIZARD_CONFIRM="$(octop_sanitize_value "${wizard_admin_password_confirm:-}")"
 
-chmod 600 "$ENV_FILE"
-echo "[octop] 配置已更新: $ENV_FILE" > "${TRIM_TEMP_LOGFILE:-/dev/null}" 2>/dev/null || true
+fail_config() {
+    echo "[octop] $1" > "${TRIM_TEMP_LOGFILE:-/dev/null}" 2>&1 || true
+    echo "[octop] $1" >&2 || true
+    exit 1
+}
+
+if ! REASON="$(octop_validate_optional_password_change "$WIZARD_PASSWORD" "$WIZARD_CONFIRM" 2>&1)"; then
+    fail_config "$REASON"
+fi
+
+PASS_CHANGED=0
+if [ -n "$WIZARD_PASSWORD" ]; then
+    ADMIN_PASS="$WIZARD_PASSWORD"
+    PASS_CHANGED=1
+else
+    ADMIN_PASS="$CUR_PASS"
+fi
+
+if [ "$PASS_CHANGED" = "1" ]; then
+    if docker ps --format '{{.Names}}' 2>/dev/null | grep -qx "$CONTAINER" \
+        && docker exec "$CONTAINER" octop user passwd "$CUR_USER" --password "$ADMIN_PASS" > "$LOG" 2>&1; then
+        echo "[octop] 已通过官方 CLI 修改管理员密码" > "$LOG" 2>&1 || true
+    else
+        octop_mark_fnos_passwd_pending "$DATA_DIR"
+        echo "[octop] 提示：容器未运行或在线改密未成功，已记下待下次启动同步。" > "$LOG" 2>&1 || true
+    fi
+    octop_env_set "$ENV_FILE" OCTOP_DEFAULT_PASSWORD "$ADMIN_PASS"
+    octop_persist_docker_env "$ENV_FILE"
+    octop_write_fnos_bootstrap "$DATA_DIR" "$CUR_USER" "$ADMIN_PASS" "$CUR_DISPLAY" "$CUR_EMAIL"
+    octop_distribute_docker_env "$ENV_FILE" "$DATA_DIR"
+    octop_write_login_file "$DATA_DIR" "$CUR_USER" "$ADMIN_PASS" 8088
+fi
+
+WIZARD_TEMPLATE="${TRIM_APPDEST:-/var/apps/octop/target}/wizard/config.template"
+WIZARD_DIR="$(dirname "${TRIM_APPDEST:-/var/apps/octop/target}")/wizard"
+[ -f "$WIZARD_TEMPLATE" ] || WIZARD_TEMPLATE="${TRIM_APPDEST:-/var/apps/octop/target}/../wizard/config"
+octop_render_config_wizard "$WIZARD_TEMPLATE" "$WIZARD_DIR" "$CUR_USER" "$ADMIN_PASS" "$DATA_DIR"
+
 exit 0

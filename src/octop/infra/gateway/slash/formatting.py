@@ -3,6 +3,17 @@
 from __future__ import annotations
 
 import time
+from datetime import datetime
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
+
+
+def format_unix_datetime(ts: int, timezone: str) -> str:
+    """Format unix seconds as ``YYYY-MM-DD HH:MM:SS`` in *timezone*."""
+    try:
+        tz = ZoneInfo(timezone)
+    except ZoneInfoNotFoundError:
+        tz = ZoneInfo("UTC")
+    return datetime.fromtimestamp(int(ts), tz=tz).strftime("%Y-%m-%d %H:%M:%S")
 
 
 def format_duration(seconds: int) -> str:

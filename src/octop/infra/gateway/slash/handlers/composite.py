@@ -7,13 +7,15 @@ import time
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
-from harness_agent.slash import SlashCommand, SlashSink, thread_message_count
+from octop_harness.compaction import display_offload_path
+from octop_harness.slash import SlashCommand, SlashSink, thread_message_count
 
 from octop.i18n.domains.agents import agent_error_message
 from octop.i18n.domains.slash import localized_rows, tr
 from octop.infra.gateway.slash.ctx import SlashCtx, ensure_thread_id, lang_of
 from octop.infra.gateway.slash.formatting import (
     format_duration,
+    format_unix_datetime,
     markdown_kv_block,
     server_uptime_label,
 )
@@ -45,6 +47,11 @@ def _format_slash_user(
     return tr("status.user_fmt", locale, username=row.username, user_id=user_id)
 
 
+def _short_offload_path(raw_path: str) -> str:
+    """Compat wrapper; prefer ``CompactResult.display_path`` from harness."""
+    return display_offload_path(raw_path)
+
+
 def _resolve_agent_row(ctx: SlashCtx) -> Any:
     if ctx.agent_manager is not None:
         return ctx.agent_manager.get_row(ctx.agent_id)
@@ -62,8 +69,6 @@ async def cmd_compact(
     ``conversation_history`` offload via ``_summarization_event``). Unlike
     ``/new``, it does **not** create a fresh thread.
     """
-    from pathlib import Path  # noqa: PLC0415
-
     lang = lang_of(ctx)
     tid = ctx.thread_registry.get_bound_thread_id(ctx.session_key)
     if not tid:
@@ -117,20 +122,18 @@ async def cmd_compact(
 
     count = int(getattr(result, "summarized_count", 0) or 0)
     raw_path = getattr(result, "file_path", None) or ""
-    if raw_path:
-        p = Path(str(raw_path))
-        # Prefer short workspace-relative display over absolute host paths.
-        # Offloads land under ``{system_files_path}/conversation_history/``
-        # (Octop default: ``.octop/conversation_history/``).
-        parts = [part for part in p.parts if part not in ("/", "\\")]
-        if "conversation_history" in parts:
-            idx = parts.index("conversation_history")
-            start = idx - 1 if idx > 0 and parts[idx - 1].startswith(".") else idx
-            short_path = "/".join(parts[start:])
-        else:
-            short_path = f"conversation_history/{p.name}" if p.name else str(raw_path)
+    path = (getattr(result, "display_path", None) or "").strip() or (
+        display_offload_path(raw_path) if raw_path else ""
+    )
+    if path:
         await sink.text(
-            tr("compact.done_offload", lang, count=count, short=tid[-6:], path=short_path)
+            tr(
+                "compact.done_offload",
+                lang,
+                count=count,
+                short=tid[-6:],
+                path=path,
+            )
         )
     else:
         await sink.text(tr("compact.done", lang, count=count, short=tid[-6:]))
@@ -158,7 +161,12 @@ async def cmd_history(
     if row is not None:
         rows.append(("pinned", tr("yes", lang) if row.pinned else tr("no", lang)))
         if row.last_active:
-            rows.append(("last_active", str(row.last_active)))
+            rows.append(
+                (
+                    "last_active",
+                    format_unix_datetime(int(row.last_active), ctx.default_timezone),
+                )
+            )
     override = d.get_thread_model_override(ctx, tid)
     if override:
         rows.append(("model_override", override))
@@ -322,10 +330,36 @@ async def cmd_model(d: SlashDispatcher, cmd: SlashCommand, ctx: SlashCtx, sink: 
     await sink.text(tr("model.set", lang, model=name))
 
 
+async def cmd_mode(d: SlashDispatcher, cmd: SlashCommand, ctx: SlashCtx, sink: SlashSink) -> None:
+    from octop.infra.agents.conversation_mode import parse_conversation_mode
+
+    lang = lang_of(ctx)
+    tid = await ensure_thread_id(ctx)
+    raw = cmd.args.strip().lower()
+    if cmd.name in ("ask", "plan", "craft"):
+        raw = cmd.name
+    if not raw:
+        row = ctx.thread_registry.get_thread(tid)
+        mode = parse_conversation_mode(row.conversation_mode if row is not None else None)
+        await sink.text(tr("mode.current", lang, mode=tr(f"mode.labels.{mode}", lang)))
+        return
+    if raw not in ("ask", "plan", "craft"):
+        await sink.text(tr("mode.usage", lang))
+        return
+    ctx.thread_registry.update_composer(
+        tid,
+        conversation_mode=raw,
+    )
+    if hasattr(sink, "action"):
+        await sink.action("set_conversation_mode", mode=raw)
+    await sink.text(tr("mode.set", lang, mode=tr(f"mode.labels.{raw}", lang)))
+
+
 COMPOSITE_HANDLERS: dict[str, GatewayHandler] = {
     "compact": cmd_compact,
     "history": cmd_history,
     "status": cmd_status,
     "model": cmd_model,
     "models": cmd_model,
+    "mode": cmd_mode,
 }

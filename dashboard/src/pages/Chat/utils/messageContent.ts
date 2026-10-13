@@ -1,14 +1,24 @@
 import type { ChatMessage } from "../hooks/useChat";
 import { isBrowserToolName, isWriteToolName } from "../constants";
 
-const THINKING_TAG_RE = /<think>[\s\S]*?<\/think>/g;
+const THINKING_TAG_RE = /<(?:think|thinking)>[\s\S]*?<\/(?:think|thinking)>/gi;
+const THINKING_OPEN_RE = /<(?:think|thinking)>/i;
+const THINKING_CLOSE_RE = /<\/(?:think|thinking)>/i;
 
-/** Strip `<think>` blocks from visible assistant text. */
+/** Strip `<think>` / `<thinking>` blocks from visible assistant text. */
 export function stripThinkTags(raw: string): string {
   let result = raw.replace(THINKING_TAG_RE, "");
-  const unclosedIdx = result.indexOf("<think>");
-  if (unclosedIdx >= 0) {
-    result = result.slice(0, unclosedIdx);
+  // Orphan closing tag: drop the hidden prefix before it.
+  while (true) {
+    const close = result.search(THINKING_CLOSE_RE);
+    if (close < 0) break;
+    const open = result.search(THINKING_OPEN_RE);
+    if (open >= 0 && open < close) break;
+    result = result.slice(close).replace(THINKING_CLOSE_RE, "");
+  }
+  const unclosed = result.search(THINKING_OPEN_RE);
+  if (unclosed >= 0) {
+    result = result.slice(0, unclosed);
   }
   return result.trim();
 }
@@ -62,30 +72,66 @@ export interface AssistantTurnSplit {
   answerMessage: ChatMessage | null;
 }
 
-export function splitAssistantTurn(
-  messages: ChatMessage[],
-): AssistantTurnSplit {
-  let answerIdx = -1;
-  for (let i = messages.length - 1; i >= 0; i--) {
-    const { textContent } = deriveMessageContent(messages[i]);
-    if (textContent.trim()) {
-      answerIdx = i;
-      break;
+function joinAnswerParts(parts: string[]): string {
+  let out = "";
+  for (const part of parts) {
+    if (!part) continue;
+    if (!out) {
+      out = part;
+      continue;
+    }
+    if (part === out || out.endsWith(part)) continue;
+    if (part.startsWith(out) || part.endsWith(out)) {
+      out = part.length > out.length ? part : out;
+      continue;
+    }
+    const needSpace =
+      !/\s$/u.test(out) &&
+      !/^\s/u.test(part) &&
+      !/^[，。！？、,.!?;:]/u.test(part);
+    out += needSpace ? ` ${part}` : part;
+  }
+  return out;
+}
+
+/** True when a completed tool sits between two visible text bubbles (1:1 ReAct). */
+function hasCompletedToolBetweenTexts(messages: ChatMessage[]): boolean {
+  let sawText = false;
+  let sawToolAfterText = false;
+  for (const msg of messages) {
+    const { textContent } = deriveMessageContent(msg);
+    if (msg.toolData?.output && sawText) {
+      sawToolAfterText = true;
+    }
+    if (!msg.toolData && textContent.trim() && sawToolAfterText) {
+      return true;
+    }
+    if (!msg.toolData && textContent.trim()) {
+      sawText = true;
     }
   }
+  return false;
+}
 
+export function splitAssistantTurn(
+  messages: ChatMessage[],
+  opts?: { joinAnswerFragments?: boolean },
+): AssistantTurnSplit {
   const tools: ChatMessage[] = [];
   const thinkings: ThinkingProcessItem[] = [];
   const processSteps: ProcessStep[] = [];
+  const textParts: string[] = [];
+  let answerTemplate: ChatMessage | null = null;
+  let answerStreaming = false;
 
-  const pushMessageSteps = (msg: ChatMessage, thinkingStreaming = false) => {
-    const { thinkingParts } = deriveMessageContent(msg);
+  for (const msg of messages) {
+    const { thinkingParts, textContent } = deriveMessageContent(msg);
     const thinkingContent = thinkingParts.join("").trim();
     if (thinkingContent) {
       const item: ThinkingProcessItem = {
         messageId: msg.id,
         content: thinkingContent,
-        isStreaming: thinkingStreaming,
+        isStreaming: msg.status === "streaming" && !textContent.trim(),
       };
       thinkings.push(item);
       processSteps.push({ kind: "thinking", item });
@@ -93,26 +139,40 @@ export function splitAssistantTurn(
     if (msg.toolData) {
       tools.push(msg);
       processSteps.push({ kind: "tool", message: msg });
+      continue;
     }
-  };
-
-  if (answerIdx === -1) {
-    for (const msg of messages) {
-      pushMessageSteps(msg, msg.status === "streaming");
+    if (textContent.trim()) {
+      textParts.push(textContent);
+      answerTemplate = msg;
+      answerStreaming = msg.status === "streaming";
     }
-    return { tools, thinkings, processSteps, answerMessage: null };
   }
 
-  for (let i = 0; i < answerIdx; i++) {
-    pushMessageSteps(messages[i]);
-  }
-
-  const answerMessage = messages[answerIdx];
-  pushMessageSteps(
-    answerMessage,
-    answerMessage.status === "streaming" &&
-      !deriveMessageContent(answerMessage).textContent.trim(),
+  // 1:1 ReAct (text → tool → conclusion) keeps the last bubble as the answer
+  // once the turn settles. While generating (or for stamped team speakers),
+  // join fragments so the answer never shrinks mid-flight after a tool round.
+  const teamStamped = messages.some((item) =>
+    Boolean((item.speakerAgentId || "").trim()),
   );
+  const joinFragments =
+    textParts.length > 1 &&
+    (Boolean(opts?.joinAnswerFragments) ||
+      teamStamped ||
+      messages.some((item) => item.teamWrapup) ||
+      !hasCompletedToolBetweenTexts(messages));
+  const answerMessage =
+    answerTemplate && textParts.length > 0
+      ? {
+          ...answerTemplate,
+          content: joinFragments
+            ? joinAnswerParts(textParts)
+            : textParts[textParts.length - 1],
+          contentBlocks: undefined,
+          status: answerStreaming
+            ? ("streaming" as const)
+            : answerTemplate.status,
+        }
+      : null;
 
   return { tools, thinkings, processSteps, answerMessage };
 }
@@ -154,7 +214,10 @@ function messageUsesFileTool(msg: ChatMessage): boolean {
 
 /** True when this assistant turn invoked a workspace file write/edit tool. */
 export function turnUsedFileTool(split: AssistantTurnSplit): boolean {
-  return (split?.tools ?? []).some((msg) => messageUsesFileTool(msg));
+  if ((split?.tools ?? []).some((msg) => messageUsesFileTool(msg))) {
+    return true;
+  }
+  return (split?.answerMessage?.editedFiles?.length ?? 0) > 0;
 }
 
 /** Index of the most recent assistant turn that invoked a browser tool, or -1. */

@@ -26,38 +26,32 @@
 .header {
   display: flex;
   align-items: center;
-  gap: 14px;
+  gap: 10px;
   min-width: 0;
 }
 
 .icon {
-  width: 36px;
-  height: 36px;
-  border-radius: 10px;
+  width: 24px;
+  height: 24px;
+  border-radius: 6px;
   display: flex;
   align-items: center;
   justify-content: center;
   color: var(--push-accent, var(--fn-color-brand));
-  background: color-mix(
-    in srgb,
-    var(--push-accent, var(--fn-color-brand)) 14%,
-    transparent
-  );
   flex-shrink: 0;
 }
 
 .title {
   min-width: 0;
-  font-weight: 600;
+  font-weight: 500;
   font-size: 13px;
   line-height: 1.4;
   color: var(--fn-text-primary);
-  letter-spacing: 0.01em;
 }
 
 .body {
-  margin-top: 4px;
-  padding-left: 50px;
+  margin-top: 2px;
+  padding-left: 34px;
   font-size: 13px;
   line-height: 1.55;
   color: var(--fn-text-secondary);
@@ -70,15 +64,10 @@
 }
 
 :global(html[data-theme="dark"]) .notice {
-  box-shadow:
-    0 12px 32px rgba(0, 0, 0, 0.38),
-    0 2px 8px rgba(0, 0, 0, 0.24) !important;
   border-color: var(--fn-border-primary) !important;
-  border-left-color: var(--push-accent, var(--fn-color-brand)) !important;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3) !important;
 
   &:hover {
-    box-shadow:
-      0 16px 36px rgba(0, 0, 0, 0.46),
-      0 4px 12px rgba(0, 0, 0, 0.28) !important;
+    box-shadow: 0 6px 20px rgba(0, 0, 0, 0.38) !important;
   }
 }

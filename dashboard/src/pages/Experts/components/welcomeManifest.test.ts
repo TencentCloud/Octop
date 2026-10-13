@@ -3,7 +3,9 @@ import { describe, expect, it } from "vitest";
 import {
   filterQuickPrompts,
   mergeWelcomeIntoManifest,
+  normalizeQuickPrompts,
   parseManifestObject,
+  serializeQuickPrompts,
   shouldWriteWelcomeManifest,
 } from "./welcomeManifest";
 import type { QuickPrompt } from "./welcomeManifest";
@@ -104,5 +106,22 @@ describe("filterQuickPrompts", () => {
         prompt({ title: { zh: "", en: "" }, prompt: { zh: "", en: "" } }),
       ]),
     ).toHaveLength(1);
+  });
+});
+
+describe("normalizeQuickPrompts / serializeQuickPrompts", () => {
+  it("fills missing locale fields and drops empty cards on serialize", () => {
+    const normalized = normalizeQuickPrompts([
+      { title: { zh: "卡" }, color: "", icon_name: undefined },
+      { title: { zh: "", en: "" }, prompt: { zh: "", en: "" } },
+    ]);
+    expect(normalized[0]).toEqual({
+      title: { zh: "卡", en: "" },
+      description: { zh: "", en: "" },
+      prompt: { zh: "", en: "" },
+      color: "#e8f4ff",
+      icon_name: null,
+    });
+    expect(serializeQuickPrompts(normalized)).toHaveLength(1);
   });
 });

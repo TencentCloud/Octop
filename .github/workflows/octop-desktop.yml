@@ -234,12 +234,53 @@ jobs:
         if: runner.os == 'Windows'
         shell: pwsh
         run: |
-          choco install nsis --yes --no-progress
-          $nsis = "${env:ProgramFiles(x86)}\NSIS"
-          if (-not (Test-Path "$nsis\makensis.exe")) {
+          $nsisDir = "${env:ProgramFiles(x86)}\NSIS"
+          $makensis = Join-Path $nsisDir "makensis.exe"
+          function Test-Makensis { Test-Path -LiteralPath $makensis }
+
+          if (-not (Test-Makensis)) {
+            $installed = $false
+            for ($i = 1; $i -le 5; $i++) {
+              Write-Host "choco install nsis (attempt $i/5)"
+              try {
+                choco install nsis --yes --no-progress --execution-timeout=600
+              } catch {
+                Write-Warning "choco attempt $i failed: $_"
+              }
+              if (Test-Makensis) { $installed = $true; break }
+              Start-Sleep -Seconds ([Math]::Min(60, 10 * $i))
+            }
+
+            if (-not $installed) {
+              Write-Host "Chocolatey unavailable; downloading NSIS setup from SourceForge"
+              $setup = Join-Path $env:RUNNER_TEMP "nsis-setup.exe"
+              $urls = @(
+                "https://downloads.sourceforge.net/project/nsis/NSIS%203/3.11/nsis-3.11-setup.exe",
+                "https://sourceforge.net/projects/nsis/files/NSIS%203/3.11/nsis-3.11-setup.exe/download"
+              )
+              $downloaded = $false
+              foreach ($url in $urls) {
+                try {
+                  Invoke-WebRequest -Uri $url -OutFile $setup -UseBasicParsing -TimeoutSec 180
+                  if ((Test-Path -LiteralPath $setup) -and ((Get-Item $setup).Length -gt 1MB)) {
+                    $downloaded = $true
+                    break
+                  }
+                } catch {
+                  Write-Warning "NSIS download failed from $url : $_"
+                }
+              }
+              if (-not $downloaded) {
+                throw "NSIS install failed (Chocolatey and direct download)"
+              }
+              Start-Process -FilePath $setup -ArgumentList "/S" -Wait
+            }
+          }
+
+          if (-not (Test-Makensis)) {
             throw "makensis.exe missing after NSIS install"
           }
-          Add-Content -Path $env:GITHUB_PATH -Value $nsis
+          Add-Content -Path $env:GITHUB_PATH -Value $nsisDir
 
       - name: Package desktop app with bundled portable runtime
         working-directory: desktop/src

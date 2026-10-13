@@ -14,7 +14,11 @@ from octop.infra.setup import self_update
 def test_update_check_only_no_install(monkeypatch: pytest.MonkeyPatch) -> None:
     import octop.cli.commands.update as update_cmd
 
-    monkeypatch.setattr(update_cmd, "fetch_latest_pypi_version", lambda: "9.9.9")
+    monkeypatch.setattr(
+        update_cmd,
+        "fetch_pypi_info",
+        lambda: self_update.PyPIInfo(version="9.9.9", latest_stable="9.9.9"),
+    )
     monkeypatch.setattr(update_cmd, "get_local_version", lambda: "0.1.0")
     monkeypatch.setattr(update_cmd, "get_editable_path", lambda: None)
 
@@ -36,7 +40,11 @@ def test_update_check_only_no_install(monkeypatch: pytest.MonkeyPatch) -> None:
 def test_update_yes_runs_upgrade(monkeypatch: pytest.MonkeyPatch) -> None:
     import octop.cli.commands.update as update_cmd
 
-    monkeypatch.setattr(update_cmd, "fetch_latest_pypi_version", lambda: "9.9.9")
+    monkeypatch.setattr(
+        update_cmd,
+        "fetch_pypi_info",
+        lambda: self_update.PyPIInfo(version="9.9.9", latest_stable="9.9.9"),
+    )
     monkeypatch.setattr(update_cmd, "get_local_version", lambda: "0.1.0")
     monkeypatch.setattr(update_cmd, "get_editable_path", lambda: None)
     monkeypatch.setattr(
@@ -47,6 +55,7 @@ def test_update_yes_runs_upgrade(monkeypatch: pytest.MonkeyPatch) -> None:
 
     def _fake_upgrade(**kw):
         called["ran"] = True
+        called["kwargs"] = kw
         return self_update.UpgradeResult(success=True, installed_version="9.9.9")
 
     monkeypatch.setattr(update_cmd, "run_upgrade", _fake_upgrade)
@@ -55,13 +64,19 @@ def test_update_yes_runs_upgrade(monkeypatch: pytest.MonkeyPatch) -> None:
     result = runner.invoke(cli, ["update", "--yes"])
     assert result.exit_code == 0
     assert called.get("ran") is True
+    assert called["kwargs"]["version"] == "9.9.9"
+    assert called["kwargs"]["allow_prerelease"] is False
     assert "/home/user/.octop/venv/bin/python" in result.output
 
 
 def test_update_already_latest(monkeypatch: pytest.MonkeyPatch) -> None:
     import octop.cli.commands.update as update_cmd
 
-    monkeypatch.setattr(update_cmd, "fetch_latest_pypi_version", lambda: "0.1.0")
+    monkeypatch.setattr(
+        update_cmd,
+        "fetch_pypi_info",
+        lambda: self_update.PyPIInfo(version="0.1.0", latest_stable="0.1.0"),
+    )
     monkeypatch.setattr(update_cmd, "get_local_version", lambda: "0.1.0")
     monkeypatch.setattr(update_cmd, "get_editable_path", lambda: None)
 
@@ -81,6 +96,14 @@ def test_build_upgrade_command_uses_managed_venv_python() -> None:
     assert "octop" in cmd
     assert "https://mirror.example/simple" in cmd
     assert "--target" not in cmd
+
+
+def test_build_upgrade_command_pins_version() -> None:
+    python = "/home/user/.octop/venv/bin/python"
+    cmd = self_update.build_upgrade_command("uv", python, version="0.9.33")
+    assert cmd is not None
+    assert "octop==0.9.33" in cmd
+    assert "--prerelease" not in cmd
 
 
 def test_build_upgrade_command_green_packages_target(
@@ -127,10 +150,85 @@ def test_resolve_venv_python_prefers_octop_home(
     assert self_update.resolve_venv_python() == str(venv_python)
 
 
+def test_update_check_skips_prerelease_by_default(monkeypatch: pytest.MonkeyPatch) -> None:
+    import octop.cli.commands.update as update_cmd
+
+    monkeypatch.setattr(
+        update_cmd,
+        "fetch_pypi_info",
+        lambda: self_update.PyPIInfo(version="0.9.34b1", latest_stable="0.1.0"),
+    )
+    monkeypatch.setattr(update_cmd, "get_local_version", lambda: "0.1.0")
+    monkeypatch.setattr(update_cmd, "get_editable_path", lambda: None)
+
+    runner = CliRunner()
+    result = runner.invoke(cli, ["update", "--check"])
+    assert result.exit_code == 0
+    assert "0.1.0" in result.output
+    assert "0.9.34b1" not in result.output
+    assert "up to date" in result.output.lower()
+
+
+def test_update_allow_prerelease_check_shows_prerelease(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import octop.cli.commands.update as update_cmd
+
+    monkeypatch.setattr(
+        update_cmd,
+        "fetch_pypi_info",
+        lambda: self_update.PyPIInfo(version="0.9.34b1", latest_stable="0.1.0"),
+    )
+    monkeypatch.setattr(update_cmd, "get_local_version", lambda: "0.1.0")
+    monkeypatch.setattr(update_cmd, "get_editable_path", lambda: None)
+
+    runner = CliRunner()
+    result = runner.invoke(cli, ["update", "--check", "--allow-prerelease"])
+    assert result.exit_code == 0
+    assert "0.9.34b1" in result.output
+
+
+def test_update_allow_prerelease_installs_prerelease(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import octop.cli.commands.update as update_cmd
+
+    monkeypatch.setattr(
+        update_cmd,
+        "fetch_pypi_info",
+        lambda: self_update.PyPIInfo(version="0.9.34b1", latest_stable="0.1.0"),
+    )
+    monkeypatch.setattr(update_cmd, "get_local_version", lambda: "0.1.0")
+    monkeypatch.setattr(update_cmd, "get_editable_path", lambda: None)
+    monkeypatch.setattr(
+        update_cmd, "resolve_venv_python", lambda: "/home/user/.octop/venv/bin/python"
+    )
+
+    called: dict[str, object] = {}
+
+    def _fake_upgrade(**kw):
+        called["ran"] = True
+        called["kwargs"] = kw
+        return self_update.UpgradeResult(success=True, installed_version="0.9.34b1")
+
+    monkeypatch.setattr(update_cmd, "run_upgrade", _fake_upgrade)
+
+    runner = CliRunner()
+    result = runner.invoke(cli, ["update", "--allow-prerelease", "--yes"])
+    assert result.exit_code == 0
+    assert called.get("ran") is True
+    assert called["kwargs"]["version"] == "0.9.34b1"
+    assert called["kwargs"]["allow_prerelease"] is True
+
+
 def test_update_editable_install_exits_nonzero(monkeypatch: pytest.MonkeyPatch) -> None:
     import octop.cli.commands.update as update_cmd
 
-    monkeypatch.setattr(update_cmd, "fetch_latest_pypi_version", lambda: "9.9.9")
+    monkeypatch.setattr(
+        update_cmd,
+        "fetch_pypi_info",
+        lambda: self_update.PyPIInfo(version="9.9.9", latest_stable="9.9.9"),
+    )
     monkeypatch.setattr(update_cmd, "get_local_version", lambda: "0.1.0")
     monkeypatch.setattr(update_cmd, "get_editable_path", lambda: "/src/orca")
 

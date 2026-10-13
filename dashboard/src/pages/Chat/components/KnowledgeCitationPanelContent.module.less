@@ -1,0 +1,69 @@
+.panel {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-height: 0;
+  height: 100%;
+  padding: 12px;
+  overflow: hidden;
+  box-sizing: border-box;
+}
+
+.centered {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  justify-content: center;
+  min-height: 0;
+  padding: 12px;
+}
+
+.failedText {
+  color: var(--fn-text-tertiary);
+  font-size: 13px;
+}
+
+.richBody {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
+  border: 1px solid var(--fn-border-secondary);
+  border-radius: var(--fn-radius-md);
+  background: var(--fn-bg-container, #fff);
+}
+
+.mdWrap {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.mdToolbar {
+  display: flex;
+  flex: 0 0 auto;
+  justify-content: flex-end;
+  padding: 0 0 6px;
+}
+
+.textBody {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+}
+
+.pre {
+  margin: 0;
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-family: var(--fn-font-mono, ui-monospace, monospace);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.chipHit {
+  display: inline-flex;
+  max-width: 100%;
+}

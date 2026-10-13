@@ -12,7 +12,7 @@ import re
 from typing import Any
 
 import httpx
-from harness_agent.plugins import PluginContext
+from octop_harness.plugins import PluginContext
 
 logger = logging.getLogger("octop.plugins.bilibili_anime")
 

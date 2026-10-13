@@ -158,7 +158,8 @@ def test_oauth2_accepts_token_alias_for_access_token():
 def test_build_dida365_remote_spec():
     entry = get_catalog_entry("dida365")
     assert entry is not None
-    assert entry.name == "滴答清单"
+    assert entry.name.resolve("zh") == "滴答清单"
+    assert entry.name.resolve("en") == "TickTick"
     assert entry.auth_kind == "oauth2"
     spec = build_http_mcp_spec(
         entry=entry,
@@ -199,17 +200,70 @@ def test_weknora_catalog_and_credentials():
     assert payload["internal_token"]
 
 
+def test_obsidian_cli_catalog_and_credentials(tmp_path: Path):
+    from octop.infra.connectors.catalog import list_catalog
+
+    entry = get_catalog_entry("obsidian-cli")
+    assert entry is not None
+    assert entry.mcp_mode == "gateway"
+    assert entry.auth_kind == "custom_fields"
+    assert entry.category == "knowledge"
+    kinds = [item.kind for item in list_catalog()]
+    assert kinds.index("obsidian-cli") < kinds.index("weknora")
+    assert kinds[-2:] == ["weknora", "dify"]
+
+    binary = tmp_path / "obsidian"
+    binary.write_text("", encoding="utf-8")
+    payload = validate_create_credentials(
+        "obsidian-cli",
+        {"vault": "My Vault", "binary_path": str(binary)},
+    )
+    assert payload["vault"] == "My Vault"
+    assert payload["binary_path"] == str(binary)
+    assert payload["internal_token"]
+
+    bare = validate_create_credentials("obsidian-cli", {"vault": "Notes", "binary_path": "  "})
+    assert bare["vault"] == "Notes"
+    assert "binary_path" not in bare
+
+    with pytest.raises(ValueError, match="vault is required"):
+        validate_create_credentials("obsidian-cli", {"vault": "  "})
+    with pytest.raises(ValueError, match="cannot contain newlines"):
+        validate_create_credentials("obsidian-cli", {"vault": "A\nB"})
+    with pytest.raises(ValueError, match="existing file"):
+        validate_create_credentials(
+            "obsidian-cli",
+            {"vault": "Notes", "binary_path": str(tmp_path / "missing")},
+        )
+
+
 def test_weknora_rejects_non_https_remote_url():
-    with pytest.raises(ValueError, match="non-local url must use https"):
+    from octop.infra.errors import ErrorCode, OctopError
+
+    with pytest.raises(OctopError) as exc:
         validate_create_credentials(
             "weknora",
             {"base_url": "http://weknora.example.com", "api_key": "sk-secret"},
         )
+    assert exc.value.code is ErrorCode.CONNECTOR_MCP_HTTPS_REQUIRED
     with pytest.raises(ValueError, match="query string or fragment"):
         validate_create_credentials(
             "weknora",
             {"base_url": "https://weknora.example.com?token=secret"},
         )
+
+
+def test_weknora_allows_lan_http_base_url():
+    payload = validate_create_credentials(
+        "weknora",
+        {
+            "base_url": "http://10.0.0.5:8080/",
+            "api_key": "sk-secret",
+            "tenant_id": "tenant-1",
+            "knowledge_base_ids": "kb-1",
+        },
+    )
+    assert payload["base_url"] == "http://10.0.0.5:8080/api/v1"
 
 
 def test_dify_builds_streamable_http_spec():
@@ -250,6 +304,78 @@ def test_dify_server_code_is_redacted_from_logs():
         }
     )
     assert redacted["dify__x"]["url"] == "https://dify.example.com/mcp/server/***/mcp"
+
+
+def test_didi_builds_streamable_http_spec_from_user_key():
+    entry = get_catalog_entry("didi")
+    assert entry is not None
+    assert entry.auth_kind == "api_key"
+    assert entry.mcp_mode == "remote"
+    assert entry.remote_transport == "streamable_http"
+
+    creds = validate_create_credentials("didi", {"api_key": "mcp key/1"})
+    assert creds == {"api_key": "mcp key/1"}
+    spec = build_http_mcp_spec(
+        entry=entry,
+        instance_id="x",
+        creds=creds,
+        config=OctopConfig(),
+    )
+    assert spec == {
+        "transport": "http",
+        "url": "https://mcp.didichuxing.com/mcp-servers?key=mcp%20key%2F1",
+        "headers": {"Accept": "application/json, text/event-stream"},
+    }
+
+
+def test_didi_requires_api_key():
+    with pytest.raises(ValueError, match="api_key is required"):
+        validate_create_credentials("didi", {})
+
+
+def test_didi_mcp_key_is_redacted_from_logs():
+    from octop.infra.connectors.builder import _redact_mcp_configs_for_log
+
+    redacted = _redact_mcp_configs_for_log(
+        {
+            "didi__x": {
+                "transport": "http",
+                "url": "https://mcp.didichuxing.com/mcp-servers?key=secret-key",
+            }
+        }
+    )
+    assert redacted["didi__x"]["url"] == "https://mcp.didichuxing.com/mcp-servers?key=***"
+
+
+@pytest.mark.asyncio
+async def test_didi_probe_uses_streamable_http(monkeypatch: pytest.MonkeyPatch):
+    from octop.infra.connectors.probe import probe_connector
+
+    seen: dict[str, object] = {}
+
+    async def _probe(url: str, headers: dict[str, str], *, kind: str) -> dict[str, object]:
+        seen.update(url=url, headers=headers, kind=kind)
+        return {
+            "ok": True,
+            "tool_count": 1,
+            "tools": [{"name": "maps_textsearch", "description": ""}],
+        }
+
+    monkeypatch.setattr("octop.infra.connectors.probe.probe_streamable_http_mcp", _probe)
+    entry = get_catalog_entry("didi")
+    assert entry is not None
+    result = await probe_connector(
+        entry,
+        {"api_key": "mcp-key"},
+        instance_id="probe",
+        config=OctopConfig(),
+    )
+    assert result["ok"] is True
+    assert seen == {
+        "url": "https://mcp.didichuxing.com/mcp-servers?key=mcp-key",
+        "headers": {"Accept": "application/json, text/event-stream"},
+        "kind": "didi",
+    }
 
 
 def test_custom_field_preview_redacts_secrets():
@@ -672,6 +798,23 @@ def test_build_gateway_langchain_tools():
     )
     names = {t.name for t in tools}
     assert "tencent-ima__inst1_list_notes" in names
+    assert all(len(name) <= 64 for name in names)
+
+
+def test_build_gateway_langchain_tools_clamps_overlong_prefixed_names():
+    from octop.infra.connectors.gateway.langchain import build_gateway_langchain_tools
+
+    entry = get_catalog_entry("tencent-ima")
+    assert entry is not None
+    tools = build_gateway_langchain_tools(
+        entry=entry,
+        instance_id="inst1",
+        mcp_server_name="x" * 70,
+        creds={"api_key": "k", "client_id": "c"},
+    )
+    assert tools
+    assert all(len(t.name) <= 64 for t in tools)
+    assert all(t.name.replace("_", "").replace("-", "").isalnum() for t in tools)
 
 
 def test_gateway_search_news_passes_query(monkeypatch: pytest.MonkeyPatch):
@@ -823,6 +966,34 @@ def test_catalog_entry_dict_has_no_tools():
     assert entry is not None
     data = catalog_entry_to_dict(entry)
     assert "tools" not in data
+    assert data["category"] == "knowledge"
+
+
+def test_every_catalog_entry_has_category():
+    from octop.infra.connectors.catalog import get_catalog_entry, list_catalog
+
+    allowed = {
+        "office",
+        "knowledge",
+        "travel",
+        "productivity",
+        "media",
+        "professional",
+        "self_hosted",
+    }
+    expected = {
+        "tencent-docs": "office",
+        "didi": "travel",
+        "dify": "self_hosted",
+        "yuandian": "professional",
+        "qq-mail": "productivity",
+    }
+    for entry in list_catalog():
+        assert entry.category in allowed, entry.kind
+    for kind, category in expected.items():
+        entry = get_catalog_entry(kind)
+        assert entry is not None
+        assert entry.category == category
 
 
 def test_oauth_ready_notion():
@@ -937,7 +1108,7 @@ def test_fliggy_exposes_only_nl_search_tools():
 
 
 def test_mcp_args_model_drops_nulls_before_validation():
-    from harness_agent.mcp import mcp_args_model
+    from octop_harness.mcp import mcp_args_model
 
     model = mcp_args_model(
         "search_place",
@@ -1047,7 +1218,8 @@ def test_build_tencent_meeting_remote_spec():
 def test_build_tencent_ardot_remote_spec():
     entry = get_catalog_entry("tencent-ardot")
     assert entry is not None
-    assert entry.name == "腾讯设计 Ardot"
+    assert entry.name.resolve("zh") == "腾讯设计 Ardot"
+    assert entry.name.resolve("en") == "Tencent Ardot"
     assert entry.auth_kind == "oauth2"
     spec = build_http_mcp_spec(
         entry=entry,

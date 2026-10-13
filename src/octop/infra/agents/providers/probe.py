@@ -12,6 +12,7 @@ from typing import Any
 import httpx
 
 from octop.infra.agents.providers import KIND_TO_PROTOCOL
+from octop.infra.agents.providers.opencode_session import ensure_opencode_session_header
 
 logger = logging.getLogger(__name__)
 
@@ -20,17 +21,20 @@ _FETCH_MODELS_TIMEOUT_S = 30.0
 _EMBEDDING_PROBE_TEXT = "ping"
 
 
-def provider_headers(row: Any) -> dict[str, str]:
+def parse_provider_extra(row: Any) -> dict[str, Any]:
+    """Return the provider ``extra_json`` object, or ``{}`` when missing / invalid."""
     raw = getattr(row, "extra_json", None)
-    if not raw:
+    if not isinstance(raw, str) or not raw.strip():
         return {}
     try:
         extra = json.loads(raw)
     except json.JSONDecodeError:
         return {}
-    if not isinstance(extra, dict):
-        return {}
-    headers = extra.get("headers")
+    return extra if isinstance(extra, dict) else {}
+
+
+def provider_headers(row: Any) -> dict[str, str]:
+    headers = parse_provider_extra(row).get("headers")
     return dict(headers) if isinstance(headers, dict) else {}
 
 
@@ -40,12 +44,12 @@ def _is_codex_base_url(base_url: str | None) -> bool:
 
 def build_probe_chat_model(row: Any, *, model_id: str | None = None) -> Any:
     """Construct a chat model from a provider row for probing."""
-    from harness_agent.config import ModelConfig, ProviderConfig
-    from harness_agent.llm.factory import build_chat_model
+    from octop_harness.config import ModelConfig, ProviderConfig
+    from octop_harness.llm.factory import build_chat_model
 
     protocol = KIND_TO_PROTOCOL.get(row.kind, row.kind)
-    headers = provider_headers(row)
     base_url = row.base_url or "https://api.openai.com/v1"
+    headers = ensure_opencode_session_header(row.name, provider_headers(row), base_url=base_url)
     models = row.get_models() if hasattr(row, "get_models") else []
     mid = model_id or (models[0]["id"] if models else "gpt-4o-mini")
     entry = next((m for m in models if m.get("id") == mid), None)
@@ -65,6 +69,8 @@ def build_probe_chat_model(row: Any, *, model_id: str | None = None) -> Any:
             kwargs["default_headers"] = dict(headers)
         return ChatOpenAI(**kwargs)
 
+    from octop.infra.agents.providers.store import resolve_provider_stream_usage
+
     provider = ProviderConfig(
         id=row.name,
         name=row.name,
@@ -72,6 +78,10 @@ def build_probe_chat_model(row: Any, *, model_id: str | None = None) -> Any:
         base_url=base_url,
         api_key=row.api_key or "",
         headers=headers,
+        stream_usage=resolve_provider_stream_usage(
+            provider_name=row.name,
+            extra=parse_provider_extra(row),
+        ),
     )
     return build_chat_model(provider, model)
 
@@ -151,9 +161,10 @@ def _embeddings_url(base_url: str | None) -> str:
 
 def _friendly_probe_error(exc: BaseException | str, *, locale: str) -> str:
     """Map raw provider exceptions / HTTP bodies to localized guidance when known."""
-    from octop.i18n.domains.stream import stream_error_message
+    from octop.i18n.domains.stream import exception_display_message, stream_error_message
 
-    return stream_error_message(str(exc), locale)
+    raw = exception_display_message(exc)
+    return stream_error_message(raw, locale) or raw
 
 
 async def _probe_embedding_endpoint(
@@ -163,9 +174,12 @@ async def _probe_embedding_endpoint(
     started = time.perf_counter()
     url = _embeddings_url(getattr(row, "base_url", None))
     headers: dict[str, str] = {"Authorization": f"Bearer {getattr(row, 'api_key', None) or ''}"}
-    extra = provider_headers(row)
-    if extra:
-        headers.update(extra)
+    extra = ensure_opencode_session_header(
+        getattr(row, "name", None),
+        provider_headers(row),
+        base_url=getattr(row, "base_url", None),
+    )
+    headers.update(extra)
     try:
         async with httpx.AsyncClient(timeout=_FETCH_MODELS_TIMEOUT_S) as client:
             response = await client.post(
@@ -174,7 +188,12 @@ async def _probe_embedding_endpoint(
                 json={"model": model_id, "input": [_EMBEDDING_PROBE_TEXT]},
             )
     except Exception as exc:
-        logger.info("embedding probe failed for %s: %s", getattr(row, "name", "?"), exc)
+        logger.info(
+            "embedding probe failed for %s: %r (%s)",
+            getattr(row, "name", "?"),
+            exc,
+            type(exc).__name__,
+        )
         return {"ok": False, "error": _friendly_probe_error(exc, locale=locale)}
 
     if response.status_code >= 400:
@@ -238,7 +257,12 @@ async def probe_provider_row(
         chat = build_probe_chat_model(row, model_id=mid)
         result = await asyncio.wait_for(chat.ainvoke("ping"), timeout=30.0)
     except Exception as exc:
-        logger.info("provider probe failed for %s: %s", getattr(row, "name", "?"), exc)
+        logger.info(
+            "provider probe failed for %s: %r (%s)",
+            getattr(row, "name", "?"),
+            exc,
+            type(exc).__name__,
+        )
         return {"ok": False, "error": _friendly_probe_error(exc, locale=locale)}
     latency_ms = int((time.perf_counter() - started) * 1000)
     _ = getattr(result, "content", None)
@@ -256,17 +280,24 @@ async def fetch_openai_compatible_models(
     api_key: str,
     extra_headers: dict[str, str] | None = None,
     locale: str = "en",
+    provider_name: str | None = None,
 ) -> dict[str, Any]:
     """List models via OpenAI-compatible ``GET {base}/models``."""
     url = _models_list_url(base_url)
     headers: dict[str, str] = {"Authorization": f"Bearer {api_key}"}
+    extra_headers = ensure_opencode_session_header(provider_name, extra_headers, base_url=base_url)
     if extra_headers:
         headers.update(extra_headers)
     try:
         async with httpx.AsyncClient(timeout=_FETCH_MODELS_TIMEOUT_S) as client:
             response = await client.get(url, headers=headers)
     except Exception as exc:
-        logger.info("provider fetch-models failed for %s: %s", url, exc)
+        logger.info(
+            "provider fetch-models failed for %s: %r (%s)",
+            url,
+            exc,
+            type(exc).__name__,
+        )
         return {"ok": False, "error": _friendly_probe_error(exc, locale=locale)}
 
     if response.status_code >= 400:

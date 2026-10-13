@@ -14,7 +14,7 @@ interface UseChatSessionActionsParams {
   setSidebarOpen: (open: boolean) => void;
   setSelectedModel: (model: string | null) => void;
   setHasBrowserTool: (value: boolean) => void;
-  deleteSession: (id: string) => Promise<boolean>;
+  deleteSession: (id: string, compact: boolean) => Promise<boolean>;
   clearMessages: () => void;
   resetNavForAgentSwitch: () => void;
   markInitialNavDone: (agentId: string) => void;
@@ -43,6 +43,37 @@ export function useChatSessionActions({
     if (!agent) return;
     navigate(`/chat/${agent}`);
   }, [navigate, resolvedAgentId, setSelectedModel, setHasBrowserTool]);
+
+  /**
+   * New chat with an arbitrary expert. Unlike {@link navigateToAgent} this stays
+   * on the empty-chat view instead of jumping to that expert's latest thread.
+   */
+  const handleNewChatWithAgent = useCallback(
+    (agentId: string) => {
+      if (!agentId) return;
+      setSelectedModel(null);
+      setHasBrowserTool(false);
+      if (agentId !== resolvedAgentId) {
+        resetNavForAgentSwitch();
+        setActiveAgent(agentId);
+      }
+      markInitialNavDone(agentId);
+      navigate(`/chat/${agentId}`);
+      chatStore.clearMessages(EMPTY_CHAT_SESSION_KEY);
+      if (isMobile) setSidebarOpen(false);
+    },
+    [
+      navigate,
+      resolvedAgentId,
+      isMobile,
+      setActiveAgent,
+      setSidebarOpen,
+      setSelectedModel,
+      setHasBrowserTool,
+      resetNavForAgentSwitch,
+      markInitialNavDone,
+    ],
+  );
 
   const handleSelectSession = useCallback(
     (id: string) => {
@@ -102,9 +133,9 @@ export function useChatSessionActions({
   );
 
   const handleDeleteSession = useCallback(
-    async (id: string) => {
-      const deleted = await deleteSession(id);
-      if (!deleted) return;
+    async (id: string, compact: boolean) => {
+      const deleted = await deleteSession(id, compact);
+      if (!deleted) return false;
       const agent = resolvedAgentId;
       if (id === activeThreadId && agent) {
         const remaining = sessions.filter((s) => s.id !== id);
@@ -116,6 +147,7 @@ export function useChatSessionActions({
           clearMessages();
         }
       }
+      return true;
     },
     [
       activeThreadId,
@@ -129,6 +161,7 @@ export function useChatSessionActions({
 
   return {
     handleNewChat,
+    handleNewChatWithAgent,
     handleSelectSession,
     navigateToAgent,
     handleDeleteSession,

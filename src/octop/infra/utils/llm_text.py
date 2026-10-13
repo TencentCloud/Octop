@@ -14,8 +14,14 @@ _THINKING_RE = re.compile(
     r"<(?:think|thinking)>[\s\S]*?</(?:think|thinking)>\s*",
     re.IGNORECASE,
 )
+_THINKING_CAPTURE_RE = re.compile(
+    r"<(?:think|thinking)>([\s\S]*?)</(?:think|thinking)>\s*",
+    re.IGNORECASE,
+)
 _THINKING_OPEN_RE = re.compile(r"<(?:think|thinking)>", re.IGNORECASE)
 _THINKING_CLOSE_RE = re.compile(r"</(?:think|thinking)>", re.IGNORECASE)
+
+DEFAULT_THINKING_TEMPLATE = "💭 Thinking: {content}"
 
 
 def strip_thinking(text: str) -> str:
@@ -41,6 +47,38 @@ def strip_thinking(text: str) -> str:
     if open_match is not None:
         cleaned = cleaned[: open_match.start()]
     return cleaned.strip()
+
+
+def prepare_channel_text(
+    text: str,
+    *,
+    show_thinking: bool = False,
+    thinking_template: str = DEFAULT_THINKING_TEMPLATE,
+) -> str:
+    """Format or strip embedded thinking tags for IM channel delivery.
+
+    Mirrors octop-gateway ``BaseChannel._clean_output`` but also handles
+    ``<thinking>`` tags and orphan closing markers. Used for both inbound
+    reply cleaning and proactive ``push_text`` (team wrap-up, cron, …).
+    """
+    if not text:
+        return ""
+    if not show_thinking:
+        return strip_thinking(text)
+
+    def _format_block(match: re.Match[str]) -> str:
+        content = match.group(1).strip()
+        if not content:
+            return ""
+        try:
+            formatted = thinking_template.format(content=content)
+        except (KeyError, IndexError, ValueError):
+            formatted = f"{content}"
+        return f"{formatted}\n\n"
+
+    formatted = _THINKING_CAPTURE_RE.sub(_format_block, text)
+    # Drop malformed leftovers so raw tags never reach the user.
+    return strip_thinking(formatted)
 
 
 def llm_text_content(result: Any) -> str:

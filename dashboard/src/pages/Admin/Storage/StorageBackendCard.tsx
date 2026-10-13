@@ -4,7 +4,7 @@
  * Shows type icon (from STORAGE_TYPE_DEFS), name, kind, bucket/region/key info,
  * enabled toggle, edit and delete actions.
  */
-import { useState } from "react";
+import { useState, type CSSProperties } from "react";
 import { App, Button, Switch, Tooltip } from "antd";
 
 import {
@@ -25,6 +25,7 @@ import {
 } from "./useStorageBackends";
 import { StorageBackendDrawer } from "./StorageBackendModal";
 import { StorageBrowseDrawer } from "./StorageBrowseDrawer";
+import { storageProbeMessage } from "./storageProbeMessage";
 import styles from "./storage.module.less";
 
 interface StorageBackendCardProps {
@@ -81,15 +82,11 @@ export function StorageBackendCard({
           }>(`/admin/storage-backends/${backend.id}/test`, { method: "POST" });
           hide();
           if (result.ok) {
-            const msg = result.message_key
-              ? t(
-                  `storage.${result.message_key}`,
-                  result.message || t("storage.testSuccess"),
-                )
-              : result.message || t("storage.testSuccess");
-            message.success(msg);
+            message.success(
+              storageProbeMessage(result, t, "storage.testSuccess"),
+            );
           } else {
-            message.error(result.message || t("storage.testFailed"));
+            message.error(storageProbeMessage(result, t, "storage.testFailed"));
           }
         } catch (err) {
           hide();
@@ -163,15 +160,9 @@ export function StorageBackendCard({
         message_key?: string;
       }>(`/admin/storage-backends/${backend.id}/test`, { method: "POST" });
       if (result.ok) {
-        const msg = result.message_key
-          ? t(
-              `storage.${result.message_key}`,
-              result.message || t("storage.testSuccess"),
-            )
-          : result.message || t("storage.testSuccess");
-        message.success(msg);
+        message.success(storageProbeMessage(result, t, "storage.testSuccess"));
       } else {
-        message.error(result.message || t("storage.testFailed"));
+        message.error(storageProbeMessage(result, t, "storage.testFailed"));
       }
     } catch (err) {
       message.error(
@@ -188,16 +179,16 @@ export function StorageBackendCard({
         className={`${styles.backendCard} ${
           isNew ? styles.backendCardNew : ""
         }`}
-        style={{ opacity: backend.enabled ? 1 : 0.65 }}
+        style={
+          {
+            opacity: backend.enabled ? 1 : 0.65,
+            "--catalog-accent": accent,
+          } as CSSProperties
+        }
       >
         {/* Header */}
         <div className={styles.backendCardHeader}>
-          <div
-            className={styles.backendCardIcon}
-            style={{ color: accent, background: `${accent}18` }}
-          >
-            {icon}
-          </div>
+          <div className={styles.backendCardIcon}>{icon}</div>
           <div className={styles.backendCardTitle}>
             <div className={styles.backendCardName}>{backend.name}</div>
             <div className={styles.backendCardKind}>

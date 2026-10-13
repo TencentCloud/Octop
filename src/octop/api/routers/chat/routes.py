@@ -16,15 +16,22 @@ from octop.api.routers.chat.sse import format_sse
 from octop.i18n.domains.stream import format_stream_error
 from octop.infra.agents.experts.catalog import (
     default_welcome_payload,
-    read_workspace_manifest_welcome,
+    display_task_examples_for_agent,
+    parse_task_examples,
+    read_workspace_manifest_data,
+    welcome_payload_from_manifest_data,
+    welcome_payload_has_content,
 )
-from octop.infra.agents.profile import welcome_from_row
+from octop.infra.agents.settings.profile import welcome_from_row
+from octop.infra.agents.teams import is_team_agent
+from octop.infra.agents.teams.welcome import team_host_welcome_payload
 from octop.infra.errors import ErrorCode, OctopError
 from octop.infra.gateway.hitl.coordinator import (
     HitlChannelCoordinator,
     HitlStreamContext,
     decision_rejection_reason,
 )
+from octop.infra.gateway.hitl.format import normalize_hitl_request
 from octop.infra.gateway.hitl.store import HitlPendingRecord
 from octop.infra.utils.llm_text import ainvoke_text
 from octop.infra.utils.locale import resolve_request_locale
@@ -59,25 +66,42 @@ async def get_chat_welcome(
     1. Agent row ``welcome_message`` (instance-owned; set at create/edit).
     2. Agent workspace ``.octop/manifest.json`` (seeded at create; quick cards + fallback copy).
     3. Default quick cards (``general-assistant`` or a small built-in set).
+
+    Team hosts keep the team intro and show members' own quick cards — the host
+    is not turned into cards.
     """
     assert_agent_access(server, agent_id, user)
     assert server.app_runtime is not None
     registry = server.app_runtime.agent_registry
     catalog = server.expert_catalog
+    row = registry.get_row(agent_id)
+    if is_team_agent(row):
+        team_payload = await team_host_welcome_payload(row, registry, catalog)
+        return {**team_payload, "task_examples": None}
 
     workspace = registry.workspace_for_agent(agent_id)
     payload: dict[str, Any] | None = None
+    parsed_examples = None
     if workspace is not None:
-        payload = await read_workspace_manifest_welcome(workspace)
+        manifest = await read_workspace_manifest_data(workspace)
+        if manifest is not None:
+            welcome = welcome_payload_from_manifest_data(manifest)
+            if welcome_payload_has_content(welcome):
+                payload = welcome
+            parsed_examples = parse_task_examples(manifest)
 
-    row = registry.get_row(agent_id)
     if payload is None:
         payload = default_welcome_payload(catalog)
 
     db_welcome = welcome_from_row(row) if row is not None else None
     if db_welcome is not None:
         payload = {**payload, "welcome_message": {"zh": db_welcome, "en": db_welcome}}
-    return payload
+    task_examples = display_task_examples_for_agent(
+        parsed=parsed_examples,
+        catalog=catalog,
+        row=row,
+    )
+    return {**payload, "task_examples": task_examples}
 
 
 async def iter_dashboard_hitl_resume_sse(
@@ -100,6 +124,32 @@ async def iter_dashboard_hitl_resume_sse(
     reload / refresh can reinject the approval card (same as the initial turn).
     """
     rejected = any(isinstance(d, dict) and d.get("type") == "reject" for d in decisions)
+    if pending is not None and pending.resume_agent_id:
+        from octop.i18n.domains.slash import tr as slash_tr  # noqa: PLC0415
+        from octop.infra.utils.locale import normalize_locale  # noqa: PLC0415
+
+        teams = getattr(processor, "teams", None)
+        deliver = getattr(teams, "deliver_member_hitl", None) if teams is not None else None
+        handed = hitl_coordinator.hand_member_pause(
+            pending,
+            decisions,
+            deliver=deliver if callable(deliver) else None,
+            rejected=rejected,
+        )
+        if handed:
+            # The member job keeps streaming on the room socket. A normal
+            # ``done`` makes the dashboard reload history immediately, which
+            # drops the live member answer before fan-in has saved it.
+            yield format_sse(
+                "chunk",
+                {"type": "done", "team_member_continuing": True},
+            )
+            return
+        yield format_sse(
+            "chunk",
+            {"type": "error", "message": slash_tr("hitl.expired", normalize_locale(locale))},
+        )
+        return
     hitl_ctx = HitlStreamContext(
         thread_id=thread_id,
         agent_id=agent_id,
@@ -108,6 +158,13 @@ async def iter_dashboard_hitl_resume_sse(
         channel_type=channel_type,
     )
     disconnected = False
+    # Clear the in-memory pause before the (possibly long) resume stream so
+    # history reload cannot reinject the same card while the turn continues.
+    if pending is not None:
+        hitl_coordinator.store.mark_resolved(
+            pending.pending_id,
+            "rejected" if rejected else "approved",
+        )
     try:
         async for chunk in processor.iter_hitl_resume_chunks(
             agent_id=agent_id,
@@ -120,17 +177,19 @@ async def iter_dashboard_hitl_resume_sse(
             if isinstance(chunk, dict) and chunk.get("type") == "hitl_required":
                 request_payload = chunk.get("request")
                 if isinstance(request_payload, dict):
-                    hitl_coordinator.register_from_request(request_payload, ctx=hitl_ctx)
+                    request_payload = normalize_hitl_request(request_payload)
+                    record = hitl_coordinator.register_from_request(request_payload, ctx=hitl_ctx)
+                    request_payload["pending_id"] = record.pending_id
+                    chunk["request"] = request_payload
             if not disconnected:
                 yield format_sse("chunk", chunk)
-        if pending is not None:
-            hitl_coordinator.store.mark_resolved(
-                pending.pending_id,
-                "rejected" if rejected else "approved",
-            )
         if not disconnected:
             yield format_sse("chunk", {"type": "done"})
     except Exception as exc:
+        # Resume failed after we cleared the pause for reinject safety — do not
+        # leave the record looking like a successful approve/reject.
+        if pending is not None:
+            hitl_coordinator.store.mark_resolved(pending.pending_id, "expired")
         yield format_sse(
             "chunk",
             {"type": "error", "message": format_stream_error(exc, locale)},
@@ -165,11 +224,26 @@ async def resume_hitl(
     assert_agent_access(server, agent_id, user)
     processor = server.app_runtime.gateway.processor
     hitl_coordinator = processor.hitl_coordinator
+    requested_id = (body.pending_id or "").strip()
     pending = hitl_coordinator.store.resolve_pending_for_thread(
         body.thread_id,
         agent_id=agent_id,
         user_id=user.id,
+        pending_id=requested_id or None,
     )
+    if requested_id and pending is None:
+        from octop.i18n.domains.slash import tr as slash_tr  # noqa: PLC0415
+        from octop.infra.utils.locale import normalize_locale  # noqa: PLC0415
+
+        locale = normalize_locale(resolve_request_locale(request))
+
+        async def missing() -> AsyncIterator[str]:
+            yield format_sse(
+                "chunk",
+                {"type": "error", "message": slash_tr("hitl.expired", locale)},
+            )
+
+        return StreamingResponse(missing(), media_type="text/event-stream")
     session_key, channel_type = _dashboard_hitl_stream_context(
         server,
         agent_id=agent_id,
@@ -181,6 +255,9 @@ async def resume_hitl(
         reason = decision_rejection_reason(pending, body.decisions)
         if reason is not None:
             raise HTTPException(status_code=400, detail=reason)
+
+    if body.hitl_policy is not None:
+        hitl_coordinator.session_policies.set(body.thread_id, body.hitl_policy.model_dump())
 
     async def gen() -> AsyncIterator[str]:
         async for frame in iter_dashboard_hitl_resume_sse(
@@ -236,9 +313,9 @@ async def polish_prompt(
         )
     except TimeoutError:
         raise OctopError(ErrorCode.INTERNAL_ERROR, "polish request timed out") from None
-    except Exception as exc:
+    except Exception:
         logger.exception("polish failed agent=%s model=%s", agent_id, model_ref)
-        raise OctopError(ErrorCode.INTERNAL_ERROR, str(exc)) from exc
+        raise OctopError(ErrorCode.INTERNAL_ERROR, "polish request failed") from None
 
     if not polished:
         raise OctopError(ErrorCode.INTERNAL_ERROR, "model returned empty polish result")

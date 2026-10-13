@@ -4,6 +4,7 @@ import (
 	"context"
 	"embed"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log"
 	"os"
@@ -35,6 +36,8 @@ type App struct {
 	trayClickMu    sync.Mutex
 	lastTrayClick  time.Time
 	trayClickTimer *time.Timer
+	drops          dropServer
+	ownsListenPort bool
 }
 
 func (a *App) ServiceName() string { return "desktop" }
@@ -46,8 +49,13 @@ func (a *App) ServiceShutdown() error {
 	a.mu.Lock()
 	cmd := a.cmd
 	a.cmd = nil
+	ownsPort := a.ownsListenPort
+	a.ownsListenPort = false
 	a.mu.Unlock()
 	stopOctop(cmd)
+	if ownsPort {
+		clearDesktopPort()
+	}
 	return nil
 }
 
@@ -157,12 +165,12 @@ func (a *App) setStatus(msg string) {
 }
 
 func (a *App) boot() {
-	locale := LocaleZH
+	locale := LocaleEN
 	if a.store != nil {
 		locale = a.store.get().Locale
 	}
 	if url := os.Getenv("OCTOP_DESKTOP_URL"); url != "" {
-		a.setStatus(desktopText(locale, "正在连接 Octop…", "Connecting to Octop…"))
+		a.setStatus(desktopText(locale, copyStatusConnecting))
 		if err := waitHealth(locale, url, 60*time.Second); err != nil {
 			a.setStatus(err.Error())
 			return
@@ -170,8 +178,7 @@ func (a *App) boot() {
 		a.showDashboard(url)
 		return
 	}
-	s := a.store.get()
-	a.setStatus(desktopText(locale, "正在检查运行环境…", "Checking the runtime…"))
+	a.setStatus(desktopText(locale, copyStatusCheckingRuntime))
 	if err := ensurePortable(locale, a.setStatus); err != nil {
 		a.setStatus(err.Error())
 		return
@@ -179,18 +186,52 @@ func (a *App) boot() {
 	root := portableDir()
 	a.mu.Lock()
 	stopOctop(a.cmd)
-	cmd, err := startOctop(root, s.Port)
+	a.cmd = nil
+	a.mu.Unlock()
+	host, preferred := resolveListen()
+	if existing := findRunningDashboard(host, preferred); existing != "" {
+		a.setStatus(desktopText(locale, copyStatusUsingExisting))
+		if err := waitHealth(locale, existing, 30*time.Second); err != nil {
+			a.setStatus(err.Error())
+			return
+		}
+		a.showDashboard(existing)
+		return
+	}
+	port, err := chooseFreePort(host, preferred)
+	if err != nil {
+		var busy noFreePortError
+		var bind cannotBindError
+		switch {
+		case errors.As(err, &busy):
+			a.setStatus(desktopText(locale, copyErrorNoFreePort, busy.From, busy.To))
+		case errors.As(err, &bind):
+			a.setStatus(desktopText(locale, copyErrorCannotBind, bind.Host, bind.Port, bind.Err.Error()))
+		default:
+			a.setStatus(err.Error())
+		}
+		return
+	}
+	a.mu.Lock()
+	cmd, err := startOctop(root, port)
 	a.cmd = cmd
 	a.mu.Unlock()
 	if err != nil {
 		a.setStatus(err.Error())
 		return
 	}
-	base := dashboardURL(s.Port)
-	a.setStatus(desktopText(locale, "正在启动 Octop 服务…", "Starting the Octop service…"))
+	base := dashboardURL(host, port)
+	a.setStatus(desktopText(locale, copyStatusStartingService))
 	if err := waitHealth(locale, base, 2*time.Minute); err != nil {
 		a.setStatus(err.Error())
 		return
+	}
+	if err := writeDesktopPort(port); err != nil {
+		log.Printf("desktop port: %v", err)
+	} else {
+		a.mu.Lock()
+		a.ownsListenPort = true
+		a.mu.Unlock()
 	}
 	a.showDashboard(base)
 }
@@ -206,7 +247,7 @@ func (a *App) showDashboard(base string) {
 		time.Sleep(800 * time.Millisecond)
 		a.applyDashboardPrefs(s)
 	}()
-	a.setStatus(desktopText(s.Locale, "Octop 已就绪", "Octop is ready"))
+	a.setStatus(desktopText(s.Locale, copyStatusReady))
 }
 
 func (a *App) hideToTray() {
@@ -265,6 +306,7 @@ func (a *App) installDragOverlay() {
 		return
 	}
 	a.window.ExecJS(dragOverlayJS())
+	a.window.ExecJS(fileDropJS())
 }
 
 func (a *App) scheduleDragOverlay() {
@@ -314,6 +356,7 @@ func main() {
 	})
 	api.app = app
 	attachOpenURLEventListener(app, api.OpenExternal)
+	attachFileDropEventListener(app, api)
 	app.Event.OnApplicationEvent(events.Common.ApplicationStarted, func(_ *application.ApplicationEvent) {
 		applyAppIcon(app)
 	})
@@ -325,6 +368,7 @@ func main() {
 		URL:                  "/",
 		Frameless:            true,
 		AllowSimpleEventEmit: true,
+		EnableFileDrop:       true,
 		BackgroundColour:     application.NewRGB(247, 248, 250),
 	})
 	api.window = win

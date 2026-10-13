@@ -1,0 +1,3 @@
+{
+  "renderers": [{ "id": "movie_search_card", "tools": ["search_movie"] }]
+}

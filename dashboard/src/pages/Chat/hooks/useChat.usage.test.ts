@@ -71,4 +71,115 @@ describe("history token usage", () => {
       "/api/agents/agent_1/",
     );
   });
+
+  it("keeps a team member speaker on the history bubble", () => {
+    const messages = convertHistoryMessages([
+      { role: "user", content: "ask the doctor", id: "u1" },
+      { role: "assistant", content: "I will ask", id: "h1" },
+      {
+        role: "assistant",
+        content: "please rest",
+        id: "m1",
+        agent_id: "doctor",
+      },
+      {
+        role: "assistant",
+        content: "that is the wrap-up",
+        id: "w1",
+        agent_id: "host",
+        team_wrapup: true,
+      },
+    ]);
+    expect(messages[1]?.speakerAgentId).toBeUndefined();
+    expect(messages[2]?.speakerAgentId).toBe("doctor");
+    expect(messages[3]?.teamWrapup).toBe(true);
+    expect(messages[3]?.speakerAgentId).toBe("host");
+  });
+
+  it("rewrites peer team speakers onto local Bridge shadow ids", () => {
+    const room = "bridge:cid:host";
+    const messages = convertHistoryMessages(
+      [
+        { role: "user", content: "ask the doctor", id: "u1" },
+        {
+          role: "assistant",
+          content: "please rest",
+          id: "m1",
+          agent_id: "doctor",
+        },
+        {
+          role: "assistant",
+          content: "wrap",
+          id: "w1",
+          agent_id: "host",
+        },
+      ],
+      room,
+    );
+    expect(messages[1]?.speakerAgentId).toBe("bridge:cid:doctor");
+    expect(messages[2]?.speakerAgentId).toBe("bridge:cid:host");
+  });
+
+  it("maps stamped edited_files onto history bubbles for the edit card", () => {
+    const messages = convertHistoryMessages([
+      { role: "user", content: "write a plan", id: "u1" },
+      {
+        role: "assistant",
+        content: "done",
+        id: "m1",
+        agent_id: "doctor",
+        edited_files: ["notes/plan.md", ""],
+      },
+    ]);
+    expect(messages[1]?.editedFiles).toEqual(["notes/plan.md"]);
+    expect(messages[1]?.speakerAgentId).toBe("doctor");
+  });
+
+  it("maps persisted stream errors to assistant error bubbles", () => {
+    const messages = convertHistoryMessages([
+      { role: "user", content: "continue this", id: "u1" },
+      { role: "assistant", content: "partial answer", id: "a1" },
+      {
+        role: "assistant",
+        content: "模型服务返回余额或额度不足。",
+        id: "a2",
+        status: "error",
+        error_code: "TOKEN_QUOTA_EXCEEDED",
+      },
+    ]);
+
+    expect(messages).toHaveLength(3);
+    expect(messages[1]?.content).toBe("partial answer");
+    expect(messages[1]?.status).toBe("done");
+    expect(messages[2]?.status).toBe("error");
+    expect(messages[2]?.errorInfo).toMatchObject({
+      code: "TOKEN_QUOTA_EXCEEDED",
+      source: "history",
+    });
+  });
+
+  it("promotes an unanswered ask_user_question tool call into a pending card", () => {
+    const messages = convertHistoryMessages([
+      { role: "user", content: "help me choose", id: "u1" },
+      {
+        role: "assistant",
+        id: "a1",
+        content: [
+          {
+            type: "tool_use",
+            name: "ask_user_question",
+            id: "call-1",
+            input: {
+              questions: [{ question: "Which database?", header: "Storage" }],
+            },
+          },
+        ],
+      },
+    ]);
+    expect(messages[1]?.hitlData?.status).toBe("pending");
+    expect(messages[1]?.hitlData?.action_requests?.[0]?.name).toBe(
+      "ask_user_question",
+    );
+    expect(messages[1]?.status).toBe("done");
+  });
 });

@@ -1,12 +1,12 @@
 {
   "id": "default",
   "label": {
-    "zh": "默认场景",
-    "en": "Default Scene"
+    "zh": "通用专家",
+    "en": "General Expert"
   },
   "description": {
-    "zh": "恢复 Octop 的默认配置 — 通用 AI 助手，无特定场景偏向。适合在使用了其他场景后想回到初始状态时使用。",
-    "en": "Restore Octop to its default configuration — a general-purpose AI assistant with no scene-specific bias. Use this to reset after applying another scene."
+    "zh": "从空白模板开始：只包含一份可编辑的 AGENTS.md，可按需添加技能和子智能体。",
+    "en": "Start from a blank template with a single editable AGENTS.md. Add skills and subagents as needed."
   },
   "welcome_message": {
     "zh": "无论工作还是生活，说出你的想法",
@@ -15,7 +15,18 @@
   "icon_name": "home",
   "color": "#6c757d",
   "prompt_files": [
-    "SOUL.md",
-    "IDENTITY.md"
-  ]
+    "AGENTS.md"
+  ],
+  "task_examples": {
+    "zh": [
+      "每个工作日「09:00」列出今日待办并按优先级排序，任务创建后立即启用",
+      "每周日「20:00」复盘本周完成事项，并给出下周计划",
+      "每天「22:00」提醒我整理明天要处理的三件事，从今天开始持续生效"
+    ],
+    "en": [
+      "Every weekday at 09:00, list today's todos ranked by priority — enable immediately",
+      "Every Sunday at 20:00, recap what got done this week and outline next week's plan",
+      "Every day at 22:00, remind me to pick the three things to handle tomorrow — start today and keep running"
+    ]
+  }
 }

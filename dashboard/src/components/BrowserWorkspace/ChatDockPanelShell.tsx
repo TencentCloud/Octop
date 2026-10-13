@@ -39,6 +39,11 @@ interface ChatDockPanelShellProps {
   title?: React.ReactNode;
   /** Content actions left of the layout/close group (mode, refresh, download…). */
   toolbarActions?: React.ReactNode;
+  /**
+   * True while a portaled overlay (e.g. add-tab menu) is open so popup mask
+   * clicks do not close the dock while the menu is dismissing.
+   */
+  overlayMenuOpen?: boolean;
   children: React.ReactNode;
 }
 
@@ -55,6 +60,9 @@ const POPUP_Z = {
   panel: 1101,
   menu: 2100,
 } as const;
+
+/** z-index for dock dropdowns portaled to ``document.body`` over popup mode. */
+export const CHAT_DOCK_POPUP_MENU_Z = POPUP_Z.menu;
 
 /**
  * Clear drag/placement offsets written outside React.
@@ -117,6 +125,7 @@ const ChatDockPanelShell: React.FC<ChatDockPanelShellProps> = ({
   style,
   title,
   toolbarActions,
+  overlayMenuOpen = false,
   children,
 }) => {
   const { t } = useTranslation();
@@ -349,25 +358,20 @@ const ChatDockPanelShell: React.FC<ChatDockPanelShellProps> = ({
     [mode, popupFullscreen, popupPos, setResizingFlag],
   );
 
+  const blockMaskClose = layoutMenuOpen || overlayMenuOpen || popupFullscreen;
+
   const handleMaskClick = useCallback(() => {
     if (
       suppressMaskCloseRef.current ||
       isPopupDragging ||
       isPopupResizing ||
-      layoutMenuOpen ||
-      popupFullscreen
+      blockMaskClose
     ) {
-      // Fullscreen covers the mask visually; don't close on stray clicks.
+      // Fullscreen / open menus cover the mask visually; don't close on stray clicks.
       return;
     }
     onClose();
-  }, [
-    isPopupDragging,
-    isPopupResizing,
-    layoutMenuOpen,
-    onClose,
-    popupFullscreen,
-  ]);
+  }, [blockMaskClose, isPopupDragging, isPopupResizing, onClose]);
 
   const applyLayoutMode = useCallback(
     (next: PanelMode) => {
@@ -554,11 +558,7 @@ const ChatDockPanelShell: React.FC<ChatDockPanelShellProps> = ({
         }`}
         onClick={handleMaskClick}
         aria-hidden
-        style={
-          layoutMenuOpen || popupFullscreen
-            ? { pointerEvents: "none" }
-            : undefined
-        }
+        style={blockMaskClose ? { pointerEvents: "none" } : undefined}
       />
       {panel}
     </>

@@ -66,6 +66,24 @@ describe("ChatDockPanelShell chrome inset", () => {
     ).toBeNull();
   });
 
+  it("disables popup mask while an overlay menu is open", () => {
+    const onClose = vi.fn();
+    const { container } = render(
+      <DesktopChromeProvider value={null}>
+        <ChatDockPanelShell
+          {...baseProps}
+          mode="popup"
+          onClose={onClose}
+          overlayMenuOpen
+        />
+      </DesktopChromeProvider>,
+    );
+    const mask = container.querySelector("[aria-hidden]") as HTMLElement;
+    expect(mask.style.pointerEvents).toBe("none");
+    mask.click();
+    expect(onClose).not.toHaveBeenCalled();
+  });
+
   it("still inserts the spacer from the Wails bridge when chrome context is missing", () => {
     Object.defineProperty(window, "_wails", {
       configurable: true,

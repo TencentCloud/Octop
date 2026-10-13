@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from octop.infra.trajectory.live import TrajectoryLiveBus
+from octop.infra.history.trajectory.live import TrajectoryLiveBus
 
 
 def test_publish_delivers_to_subscriber() -> None:

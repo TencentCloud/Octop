@@ -29,6 +29,41 @@ describe("skillPackagesApi", () => {
     );
   });
 
+  it("uses the package copy and push endpoints", () => {
+    skillPackagesApi.listWritable();
+    skillPackagesApi.copyToWorkspace("agent-1", "pkg-1", {
+      skill_slugs: ["reader", "writer"],
+      overwrite: true,
+    });
+    skillPackagesApi.pushFromWorkspace("agent-1", "reader skill", {
+      package_id: "pkg-1",
+    });
+
+    expect(request).toHaveBeenNthCalledWith(
+      1,
+      "/skill-packages?writable_only=true",
+    );
+    expect(request).toHaveBeenNthCalledWith(
+      2,
+      "/agents/agent-1/skill-packages/pkg-1/copy",
+      {
+        method: "POST",
+        body: JSON.stringify({
+          skill_slugs: ["reader", "writer"],
+          overwrite: true,
+        }),
+      },
+    );
+    expect(request).toHaveBeenNthCalledWith(
+      3,
+      "/agents/agent-1/skills/reader%20skill/push-to-package",
+      {
+        method: "POST",
+        body: JSON.stringify({ package_id: "pkg-1" }),
+      },
+    );
+  });
+
   it("uses the package and nested skill endpoints", () => {
     skillPackagesApi.create({ name: "starter", description: "Starter skills" });
     skillPackagesApi.update("pkg-1", { name: "renamed" });

@@ -31,21 +31,22 @@ function formatTokenK(n: number): string {
 
 interface ContextWindowRingProps {
   usedTokens: number | null;
+  /** No provider usage_metadata — ring/breakdown are local estimates. */
+  usageEstimated?: boolean;
   maxTokens: number;
   agentId?: string | null;
   threadId?: string | null;
   selectedConnectors?: string[];
-  selectedSkills?: string[];
   isMobile?: boolean;
 }
 
 export default function ContextWindowRing({
   usedTokens,
+  usageEstimated = false,
   maxTokens,
   agentId,
   threadId,
   selectedConnectors = [],
-  selectedSkills = [],
   isMobile = false,
 }: ContextWindowRingProps) {
   const { t } = useTranslation();
@@ -73,9 +74,8 @@ export default function ContextWindowRing({
         threadId ?? "",
         String(max),
         selectedConnectors.join(","),
-        selectedSkills.join(","),
       ].join("|"),
-    [agentId, threadId, max, selectedConnectors, selectedSkills],
+    [agentId, threadId, max, selectedConnectors],
   );
 
   const loadBreakdown = useCallback(
@@ -104,7 +104,6 @@ export default function ContextWindowRing({
           maxTokens: max,
           inputTokens: !haveSegments && hint > 0 ? hint : undefined,
           mcpServers: selectedConnectors,
-          skills: selectedSkills,
         });
         if (data.used_tokens > 0) {
           cacheRef.current = { key: cacheKey, at: Date.now(), data };
@@ -120,7 +119,7 @@ export default function ContextWindowRing({
         if (!opts?.silent) setLoading(false);
       }
     },
-    [agentId, threadId, max, selectedConnectors, selectedSkills, cacheKey],
+    [agentId, threadId, max, selectedConnectors, cacheKey],
   );
 
   // Reset detail cache on thread/filter changes. The ring itself keeps growing
@@ -204,7 +203,9 @@ export default function ContextWindowRing({
         {t("chat.contextWindow.breakdownPercent", { percent: displayPct })}
       </div>
       <div className={styles.contextUsageHint}>
-        {t("chat.contextWindow.breakdownHint")}
+        {usageEstimated
+          ? t("chat.contextWindow.estimateHint")
+          : t("chat.contextWindow.breakdownHint")}
       </div>
       {loading ? (
         <div className={styles.contextUsageLoading}>

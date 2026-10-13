@@ -40,10 +40,11 @@ def test_init_non_interactive_creates_admin(fake_home: Path) -> None:
     assert result.exit_code == 0, result.output
     assert (fake_home / ".octop").is_dir()
     assert (fake_home / ".octop" / "octop.db").is_file()
+    # New catalog plugins are installed via the marketplace, not auto-seeded.
     weather = fake_home / ".octop" / "plugins" / "weather" / "plugin.yaml"
-    assert weather.is_file()
+    assert not weather.is_file()
     cfg = json.loads((fake_home / ".octop" / "config.json").read_text(encoding="utf-8"))
-    assert cfg["plugins"]["weather"]["enabled"] is False
+    assert "weather" not in (cfg.get("plugins") or {})
 
     from octop.infra.db.pool import SqlitePool
     from octop.infra.db.repos.users import UserRepo
@@ -54,6 +55,28 @@ def test_init_non_interactive_creates_admin(fake_home: Path) -> None:
     row = UserRepo(db).get_by_username("alice")
     assert row is not None
     assert row.role == "admin"
+
+
+def test_init_allows_sidecar_files_without_database(fake_home: Path) -> None:
+    """NAS / Docker shares often have login.txt before the first octop.db exists."""
+    home = fake_home / ".octop"
+    home.mkdir()
+    (home / "octop-login.txt").write_text("placeholder\n", encoding="utf-8")
+    runner = CliRunner()
+    result = runner.invoke(
+        cli,
+        [
+            "init",
+            "--admin-username",
+            "alice",
+            "--admin-password",
+            "Wonderland1",
+            "--yes",
+        ],
+    )
+    assert result.exit_code == 0, result.output
+    assert (home / "octop.db").is_file()
+    assert (home / "octop-login.txt").read_text(encoding="utf-8") == "placeholder\n"
 
 
 def test_init_refuses_to_overwrite_without_force(fake_home: Path) -> None:

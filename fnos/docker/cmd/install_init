@@ -1,3 +1,28 @@
 #!/bin/bash
-# Octop — 安装前回调（无特殊处理；docker-project 由应用中心管理）
+#
+# Octop — 安装前回调
+# 预校验安装向导：用户名、密码/确认、可选邮箱。无效输入在此拦截。
+#
+set -euo pipefail
+
+_OCTOP_COMMON="$(dirname "$0")/common.sh"
+[ -f "$_OCTOP_COMMON" ] || _OCTOP_COMMON="/var/apps/octop/cmd/common.sh"
+[ -f "$_OCTOP_COMMON" ] && source "$_OCTOP_COMMON"
+
+fail_init() {
+    echo "[octop] $1" > "${TRIM_TEMP_LOGFILE:-/dev/null}" 2>&1 || true
+    echo "[octop] $1" >&2 || true
+    exit 1
+}
+
+ADMIN_USER="$(octop_sanitize_value "${wizard_admin_username:-}")"
+ADMIN_DISPLAY="$(octop_sanitize_value "${wizard_admin_display_name:-}")"
+ADMIN_EMAIL="$(octop_sanitize_value "${wizard_admin_email:-}")"
+WIZARD_PASSWORD="$(octop_sanitize_value "${wizard_admin_password:-}")"
+WIZARD_CONFIRM="$(octop_sanitize_value "${wizard_admin_password_confirm:-}")"
+
+if ! REASON="$(octop_validate_install_fields "$ADMIN_USER" "$WIZARD_PASSWORD" "$WIZARD_CONFIRM" "$ADMIN_EMAIL" "$ADMIN_DISPLAY" 2>&1)"; then
+    fail_init "$REASON"
+fi
+
 exit 0

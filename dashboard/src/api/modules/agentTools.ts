@@ -12,6 +12,10 @@ export interface ToolSettingsItem {
   disableable: boolean;
   available?: boolean;
   plugin_id?: string | null;
+  /** Display name of the owning plugin (plugin tools only). */
+  plugin_name?: string | null;
+  /** Emoji or image URL from plugin.yaml ``icon`` (plugin tools only). */
+  plugin_icon?: string | null;
 }
 
 export interface ToolSettingsResponse {

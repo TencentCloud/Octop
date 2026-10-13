@@ -1,6 +1,7 @@
 import { request } from "../request";
 import type {
   CreateSkillPackageBody,
+  CopyPackageSkillsBody,
   CreateSkillPackageSkillBody,
   SkillPackage,
   SkillPackageDetail,
@@ -13,6 +14,9 @@ import type {
 export const skillPackagesApi = {
   list: () => request<SkillPackage[]>("/skill-packages"),
 
+  listWritable: () =>
+    request<SkillPackage[]>("/skill-packages?writable_only=true"),
+
   listMounted: (agentId: string) =>
     request<{ package_ids: string[] }>(`/agents/${agentId}/skill-packages`),
 
@@ -21,6 +25,32 @@ export const skillPackagesApi = {
       method: "PUT",
       body: JSON.stringify({ package_ids: packageIds }),
     }),
+
+  copyToWorkspace: (
+    agentId: string,
+    packageId: string,
+    body: CopyPackageSkillsBody,
+  ) =>
+    request<{ copied: string[] }>(
+      `/agents/${agentId}/skill-packages/${packageId}/copy`,
+      {
+        method: "POST",
+        body: JSON.stringify(body),
+      },
+    ),
+
+  pushFromWorkspace: (
+    agentId: string,
+    slug: string,
+    body: { package_id: string; overwrite?: boolean },
+  ) =>
+    request<{ package_id: string; slug: string }>(
+      `/agents/${agentId}/skills/${encodeURIComponent(slug)}/push-to-package`,
+      {
+        method: "POST",
+        body: JSON.stringify(body),
+      },
+    ),
 
   get: (packageId: string) =>
     request<SkillPackageDetail>(`/skill-packages/${packageId}`),

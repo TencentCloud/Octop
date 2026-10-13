@@ -1,5 +1,46 @@
-import type { HitlPendingPayload } from "../types/hitl";
+import type { HitlPendingPayload, HitlSessionPolicy } from "../types/hitl";
 import { request } from "../request";
+
+/** Workspace file produced in a thread; ``agent_id`` is the producer. */
+export type ThreadArtifact = {
+  path: string;
+  agent_id?: string;
+};
+
+/**
+ * Prefer ``artifact_refs``; fall back to legacy ``artifacts`` (strings or
+ * objects) so older servers / clients keep working.
+ */
+export function normalizeThreadArtifacts(
+  raw: unknown,
+  fallbackAgentId?: string | null,
+  refs?: unknown,
+): ThreadArtifact[] {
+  const source = Array.isArray(refs) && refs.length > 0 ? refs : raw;
+  if (!Array.isArray(source)) return [];
+  const out: ThreadArtifact[] = [];
+  const seen = new Set<string>();
+  const fallback = (fallbackAgentId || "").trim();
+  for (const item of source) {
+    let path = "";
+    let agentId = fallback;
+    if (typeof item === "string") {
+      path = item.trim();
+    } else if (item && typeof item === "object") {
+      const row = item as { path?: unknown; agent_id?: unknown };
+      if (typeof row.path === "string") path = row.path.trim();
+      if (typeof row.agent_id === "string" && row.agent_id.trim()) {
+        agentId = row.agent_id.trim();
+      }
+    }
+    if (!path) continue;
+    const key = `${agentId}\0${path}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(agentId ? { path, agent_id: agentId } : { path });
+  }
+  return out;
+}
 
 export interface OctopThread {
   thread_id: string;
@@ -15,7 +56,17 @@ export interface OctopThread {
   model_ref?: string | null;
   reasoning_mode?: "auto" | "enabled" | "disabled" | null;
   reasoning_effort?: string | null;
-  artifacts?: string[];
+  conversation_mode?: "ask" | "plan" | "craft" | null;
+  pending_plan_path?: string | null;
+  hitl_policy?: HitlSessionPolicy | null;
+  /** Legacy path list (compat). Prefer ``artifact_refs`` when present. */
+  artifacts?: Array<string | ThreadArtifact>;
+  /** Structured refs with producer ``agent_id``. */
+  artifact_refs?: ThreadArtifact[];
+  /** True while a turn is still streaming server-side for this thread. */
+  turn_active?: boolean;
+  /** True when this thread is paused on a HITL approval or question. */
+  awaiting_user?: boolean;
 }
 
 export interface OctopThreadHistory {
@@ -26,14 +77,22 @@ export interface OctopThreadHistory {
     id?: string;
     usage?: unknown;
     timestamp?: number;
+    status?: string;
+    error_code?: string;
+    agent_id?: string;
+    team_wrapup?: boolean;
   }>;
   pinned?: boolean;
   model_ref?: string | null;
   reasoning_mode?: "auto" | "enabled" | "disabled" | null;
   reasoning_effort?: string | null;
+  conversation_mode?: "ask" | "plan" | "craft" | null;
+  pending_plan_path?: string | null;
+  hitl_policy?: HitlSessionPolicy | null;
   has_more?: boolean;
   limit?: number;
   offset?: number;
+  next_cursor?: string | null;
   /** Legacy checkpoint is being projected by the bounded background worker. */
   history_loading?: boolean;
   history_status?: "pending" | "queued" | "running" | "ready" | "failed";
@@ -42,7 +101,16 @@ export interface OctopThreadHistory {
   turn_active?: boolean;
   /** Pending tool approval for this thread (survives page reload). */
   hitl_pending?: HitlPendingPayload | null;
-  artifacts?: string[];
+  /** Legacy path list (compat). Prefer ``artifact_refs`` when present. */
+  artifacts?: Array<string | ThreadArtifact>;
+  /** Structured refs with producer ``agent_id``. */
+  artifact_refs?: ThreadArtifact[];
+}
+
+/** Result of deleting a thread when the client asks about compaction. */
+export interface ThreadDeleteResult {
+  compacted?: boolean;
+  scheduled?: boolean;
 }
 
 export interface OctopThreadPatch {
@@ -51,6 +119,8 @@ export interface OctopThreadPatch {
   model_ref?: string | null;
   reasoning_mode?: "auto" | "enabled" | "disabled" | null;
   reasoning_effort?: string | null;
+  conversation_mode?: "ask" | "plan" | "craft" | null;
+  hitl_policy?: HitlSessionPolicy | null;
 }
 
 export type ContextUsageSegmentKey =
@@ -113,14 +183,16 @@ export const octopThreadsApi = {
   history: (
     agentId: string,
     threadId: string,
-    params: { limit?: number; offset?: number } = {},
+    params: { limit?: number; offset?: number; cursor?: string | null } = {},
   ) => {
     const limit = params.limit ?? CHAT_HISTORY_PAGE_SIZE;
     const offset = params.offset ?? 0;
     return request<OctopThreadHistory>(
       `/agents/${encodeURIComponent(agentId)}/threads/${encodeURIComponent(
         threadId,
-      )}/history?limit=${limit}&offset=${offset}`,
+      )}/history?limit=${limit}&offset=${offset}${
+        params.cursor ? `&cursor=${encodeURIComponent(params.cursor)}` : ""
+      }`,
     );
   },
 
@@ -166,6 +238,9 @@ export const octopThreadsApi = {
       model_ref?: string | null;
       reasoning_mode?: "auto" | "enabled" | "disabled" | null;
       reasoning_effort?: string | null;
+      conversation_mode?: "ask" | "plan" | "craft" | null;
+      pending_plan_path?: string | null;
+      hitl_policy?: HitlSessionPolicy | null;
     }>(
       `/agents/${encodeURIComponent(agentId)}/threads/${encodeURIComponent(
         threadId,
@@ -173,11 +248,11 @@ export const octopThreadsApi = {
       { method: "PATCH", body: JSON.stringify(body) },
     ),
 
-  delete: (agentId: string, threadId: string) =>
-    request<void>(
+  delete: (agentId: string, threadId: string, compact: boolean) =>
+    request<ThreadDeleteResult>(
       `/agents/${encodeURIComponent(agentId)}/threads/${encodeURIComponent(
         threadId,
-      )}`,
+      )}?compact=${compact ? "true" : "false"}`,
       { method: "DELETE" },
     ),
 

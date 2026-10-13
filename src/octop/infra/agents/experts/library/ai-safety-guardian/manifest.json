@@ -66,5 +66,17 @@
       "color": "#dbeafe",
       "icon_name": "globe"
     }
-  ]
+  ],
+  "task_examples": {
+    "zh": [
+      "每天「09:00」做一次轻量安全体检：危险命令、敏感文件和环境变量泄露风险，任务创建后立即启用",
+      "每周一「10:00」扫描工作区是否有密钥或个人信息落地，列出待处理项",
+      "每月 1 日「09:30」做一次合规检查摘要（PIPL / 数据出境 / 生成式 AI 标识）"
+    ],
+    "en": [
+      "Every day at 09:00, run a light safety check for dangerous commands, sensitive files, and leaked env vars — enable immediately",
+      "Every Monday at 10:00, scan the workspace for secrets or personal data on disk and list follow-ups",
+      "On the 1st of each month at 09:30, send a compliance summary (PIPL / data export / generative-AI labeling)"
+    ]
+  }
 }

@@ -9,7 +9,7 @@ from typing import Any
 from octop.infra.db.repos.settings import SettingsRepo
 from octop.infra.db.repos.voice_providers import VoiceProviderRepo, VoiceProviderRow
 from octop.infra.errors import ErrorCode, OctopError
-from octop.infra.voice import adapters
+from octop.infra.voice import adapters, realtime
 from octop.infra.voice.presets import is_builtin_preset
 
 
@@ -88,6 +88,35 @@ class VoiceManager:
         name = provider_name or self.get_active()["tts"]
         kind = self.resolve(name).kind
         return "audio/wav" if kind == "mimo" else "audio/mpeg"
+
+    def realtime_stt_config(self) -> realtime.RealtimeConfig | None:
+        """Credentials for streaming STT, or ``None`` when it is not available.
+
+        Streaming only applies to Tencent Cloud, requires the ``realtime_stt``
+        switch on that provider row plus an ``app_id``, and is ignored unless the
+        provider is the active STT service.
+        """
+        try:
+            resolved = self.resolve(self.get_active()["stt"])
+        except OctopError:
+            return None
+        if resolved.kind != "tencent" or resolved.row is None:
+            return None
+        extra = resolved.row.get_extra()
+        if not extra.get("realtime_stt"):
+            return None
+        app_id = str(extra.get("app_id") or "").strip()
+        if not app_id:
+            return None
+        try:
+            secret_id, secret_key = adapters.parse_tencent_credentials(resolved.row)
+        except ValueError:
+            return None
+        return realtime.RealtimeConfig(
+            app_id=app_id,
+            secret_id=secret_id,
+            secret_key=secret_key,
+        )
 
     async def transcribe(
         self,
@@ -182,13 +211,15 @@ class VoiceManager:
             return
         raise OctopError(ErrorCode.VOICE_KIND_UNSUPPORTED, f"unsupported TTS kind {kind!r}")
 
-    async def test_provider(self, provider_id: int, *, mode: str) -> dict[str, Any]:
+    async def test_provider(
+        self, provider_id: int, *, mode: str, locale: str = "en"
+    ) -> dict[str, Any]:
         row = self._repo.get(provider_id)
         if row is None:
             raise OctopError(ErrorCode.NOT_FOUND, "voice provider not found")
         if mode == "stt":
-            return await adapters.test_stt(row, row.kind)
-        return await adapters.test_tts(row, row.kind)
+            return await adapters.test_stt(row, row.kind, locale=locale)
+        return await adapters.test_tts(row, row.kind, locale=locale)
 
     async def test_configuration(
         self,
@@ -200,6 +231,7 @@ class VoiceManager:
         api_key: str | None,
         extra_json: str | None,
         mode: str,
+        locale: str = "en",
     ) -> dict[str, Any]:
         row = VoiceProviderRow(
             id=0,
@@ -215,5 +247,5 @@ class VoiceManager:
             updated_at=0,
         )
         if mode == "stt":
-            return await adapters.test_stt(row, kind)
-        return await adapters.test_tts(row, kind)
+            return await adapters.test_stt(row, kind, locale=locale)
+        return await adapters.test_tts(row, kind, locale=locale)

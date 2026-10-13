@@ -21,6 +21,7 @@ from octop.api.routers.chat.turn import (
     prepare_dashboard_turn,
     turn_has_content,
 )
+from octop.infra.bridge.ids import parse_bridge_agent_id
 from octop.infra.errors import OctopError
 from octop.infra.gateway.ws import WS_CHANNEL_ID
 
@@ -45,6 +46,11 @@ async def dashboard_chat_ws(
         user = resolve_user_from_token(server, token)
     except OctopError as exc:
         await websocket.close(code=4001, reason=f"auth: {exc.code.value}")
+        return
+
+    bridge_ref = parse_bridge_agent_id(agent_id)
+    if bridge_ref is not None:
+        await _bridge_chat_ws(websocket, server=server, user=user, ref=bridge_ref)
         return
 
     assert server.app_runtime is not None  # noqa: S101
@@ -178,6 +184,101 @@ async def dashboard_chat_ws(
         # Disconnect must not cancel an in-flight turn — clients may reconnect and
         # subscribe to continue receiving subsequent chunks (weak stream resume).
         hub.unregister(connection_id)
+        if websocket.application_state == WebSocketState.CONNECTED:
+            with contextlib.suppress(Exception):
+                await websocket.close()
+
+
+async def _bridge_chat_ws(
+    websocket: WebSocket,
+    *,
+    server: Any,
+    user: Any,
+    ref: Any,
+) -> None:
+    """Relay dashboard chat frames to a remote agent over Bridge WS."""
+    rt = server.app_runtime
+    mgr = getattr(rt, "bridge_manager", None) if rt is not None else None
+    if mgr is None:
+        await websocket.close(code=1011, reason="bridge not ready")
+        return
+    try:
+        mgr.get_owned(ref.connection_id, user.id)
+        mgr.require_session(ref.connection_id)
+    except OctopError as exc:
+        await websocket.close(code=1011, reason=str(exc.code.value))
+        return
+
+    await websocket.accept()
+
+    async def send_frame(frame: dict[str, Any]) -> None:
+        if websocket.application_state != WebSocketState.CONNECTED:
+            return
+        await websocket.send_text(
+            json.dumps(frame, ensure_ascii=False, default=json_chunk_default),
+        )
+
+    try:
+        while websocket.application_state == WebSocketState.CONNECTED:
+            raw = await websocket.receive_text()
+            try:
+                payload = json.loads(raw)
+            except json.JSONDecodeError:
+                payload = {"type": "user_turn", "text": raw}
+            if not isinstance(payload, dict):
+                continue
+            msg_type = str(payload.get("type") or "user_turn")
+            if msg_type == "ping":
+                await send_frame({"type": "pong"})
+                continue
+            if msg_type == "subscribe":
+                # History/live resume stays on the peer; acknowledge without local hub.
+                thread_id = str(payload.get("thread_id") or "").strip()
+                await send_frame(
+                    {
+                        "type": "turn_status",
+                        "thread_id": thread_id,
+                        "active": False,
+                    }
+                )
+                continue
+            if msg_type == "cancel":
+                await send_frame({"type": "error", "message": "cancel not supported on bridge yet"})
+                continue
+            if msg_type != "user_turn":
+                await send_frame({"type": "error", "message": f"unknown message type: {msg_type}"})
+                continue
+            try:
+                frame = UserTurnWsFrame.model_validate({**payload, "type": "user_turn"})
+            except ValidationError as exc:
+                await send_frame({"type": "error", "message": str(exc)})
+                await send_frame({"type": "done"})
+                continue
+            turn = frame.to_turn_body()
+            if not turn_has_content(turn):
+                await send_frame({"type": "error", "message": "empty message"})
+                await send_frame({"type": "done"})
+                continue
+            turn_payload = frame.model_dump(exclude_none=True)
+            turn_payload.pop("type", None)
+            try:
+                await mgr.relay_user_turn(
+                    connection_id=ref.connection_id,
+                    owner_user_id=user.id,
+                    remote_agent_id=ref.remote_agent_id,
+                    turn_payload=turn_payload,
+                    on_frame=send_frame,
+                )
+            except OctopError as exc:
+                await send_frame({"type": "error", "message": str(exc)})
+                await send_frame({"type": "done"})
+            except Exception:
+                logger.exception("bridge chat relay failed")
+                await send_frame({"type": "error", "message": "bridge turn failed"})
+                await send_frame({"type": "done"})
+    except WebSocketDisconnect:
+        pass
+    finally:
         if websocket.application_state == WebSocketState.CONNECTED:
             with contextlib.suppress(Exception):
                 await websocket.close()

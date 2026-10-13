@@ -125,6 +125,63 @@ export function isLocalPreset(preset: ProviderPreset): boolean {
   return LOCAL_PRESET_IDS.has(preset.id);
 }
 
+/** Presets / groups hidden behind "更多模型提供商" on admin Models (and setup). */
+const OVERSEAS_PRESET_IDS = new Set([
+  "openai",
+  "openai-codex",
+  "anthropic",
+  "gemini",
+  "groq",
+  "openrouter",
+]);
+
+/** Brand groups that belong in the collapsed "more providers" section. */
+const MORE_PROVIDER_GROUPS = new Set(["opencode"]);
+
+export function isOverseasPreset(preset: ProviderPreset): boolean {
+  if (OVERSEAS_PRESET_IDS.has(preset.id)) return true;
+  if (
+    preset.provider_group &&
+    MORE_PROVIDER_GROUPS.has(preset.provider_group)
+  ) {
+    return true;
+  }
+  return preset.id === "opencode" || preset.id.startsWith("opencode-");
+}
+
+/**
+ * Split cloud presets into default-visible (domestic / already configured)
+ * and collapsed presets shown only after "更多模型提供商"
+ * (overseas clouds + OpenCode).
+ */
+export function partitionCloudPresets(
+  cloudPresets: ProviderPreset[],
+  providers: ProviderRow[],
+): {
+  featured: { grouped: PresetGroup[]; ungrouped: ProviderPreset[] };
+  more: { grouped: PresetGroup[]; ungrouped: ProviderPreset[] };
+  moreCount: number;
+} {
+  const featuredList: ProviderPreset[] = [];
+  const moreList: ProviderPreset[] = [];
+  for (const preset of cloudPresets) {
+    if (
+      !isOverseasPreset(preset) ||
+      findConfiguredProvider(preset, providers)
+    ) {
+      featuredList.push(preset);
+    } else {
+      moreList.push(preset);
+    }
+  }
+  const featured = groupPresets(featuredList);
+  const more = groupPresets(moreList);
+  const moreCount =
+    more.grouped.reduce((n, g) => n + g.presets.length, 0) +
+    more.ungrouped.length;
+  return { featured, more, moreCount };
+}
+
 /** Local providers that do not require a real API key. */
 export function isLocalNoKeyPresetId(presetId: string): boolean {
   return presetId === "ollama" || presetId === "onnx";
@@ -135,13 +192,31 @@ function localPresetApiKey(provider: { api_key?: string | null }): string {
   return (provider.api_key ?? "").trim().toLowerCase();
 }
 
+function providerNameKey(name: string | null | undefined): string {
+  return (name ?? "").trim().toLowerCase();
+}
+
 export function isOnnxProviderRow(provider: {
   name: string;
   api_key?: string | null;
 }): boolean {
   if (localPresetApiKey(provider) === "onnx") return true;
-  const n = provider.name.toLowerCase();
+  const n = providerNameKey(provider.name);
   return n === "onnx" || n === "onnx (local)";
+}
+
+/** URL hint for Ollama management UI — not used for delete protection. */
+export function isOllamaRuntimeUrl(baseUrl?: string | null): boolean {
+  const raw = (baseUrl ?? "").trim().toLowerCase();
+  if (!raw) return false;
+  try {
+    const href = raw.includes("://") ? raw : `http://${raw}`;
+    const parsed = new URL(href);
+    if (parsed.hostname === "ollama") return true;
+    return parsed.port === "11434";
+  } catch {
+    return raw === "ollama";
+  }
 }
 
 export function isOllamaProviderRow(provider: {
@@ -151,13 +226,16 @@ export function isOllamaProviderRow(provider: {
 }): boolean {
   if (isOnnxProviderRow(provider)) return false;
   if (localPresetApiKey(provider) === "ollama") return true;
-  const n = provider.name.toLowerCase();
-  return (
-    n === "ollama" ||
-    n === "ollama (local)" ||
-    (provider.base_url?.includes("11434") ?? false) ||
-    (provider.base_url?.includes("ollama") ?? false)
-  );
+  const n = providerNameKey(provider.name);
+  return n === "ollama" || n === "ollama (local)";
+}
+
+export function looksLikeOllamaProvider(provider: {
+  name: string;
+  base_url?: string | null;
+  api_key?: string | null;
+}): boolean {
+  return isOllamaProviderRow(provider) || isOllamaRuntimeUrl(provider.base_url);
 }
 
 export function isLocalProviderRow(provider: {

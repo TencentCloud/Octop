@@ -14,7 +14,7 @@ import styles from "./index.module.less";
 
 function AgentConfigPage() {
   const { t } = useTranslation();
-  const { activeAgent, activeAgentId } = useAgent();
+  const { activeAgent, activeAgentId, refresh } = useAgent();
   const [form] = Form.useForm();
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -43,6 +43,7 @@ function AgentConfigPage() {
           ...buildAgentRuntimeRequest(values, { clearMissing: true }),
         }),
       });
+      await refresh({ silent: true, force: true });
       message.success(t("agentConfig.saveSuccess"));
     } catch (err) {
       if (err instanceof Error && "errorFields" in err) {

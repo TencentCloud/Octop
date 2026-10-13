@@ -61,4 +61,47 @@ describe("resolveInitialConnectors", () => {
       }),
     ).toEqual(["b"]);
   });
+
+  it("does not keep prev or saved when team hosts force empty defaults", () => {
+    expect(
+      resolveInitialConnectors({
+        prev: ["a"],
+        saved: ["b"],
+        hasSaved: true,
+        defaults: [],
+        allowed,
+        ignorePrev: true,
+        ignoreSaved: true,
+      }),
+    ).toEqual([]);
+  });
+
+  it("re-applies defaults for a new chat even when prev/saved exist", () => {
+    expect(
+      resolveInitialConnectors({
+        prev: ["b"],
+        saved: ["a"],
+        hasSaved: true,
+        defaults: ["a", "c"],
+        allowed,
+        ignorePrev: true,
+        ignoreSaved: true,
+      }),
+    ).toEqual(["a", "c"]);
+  });
+
+  it("keeps an empty opt-out on a new chat after the user edits the composer", () => {
+    expect(
+      resolveInitialConnectors({
+        prev: [],
+        saved: ["a"],
+        hasSaved: true,
+        defaults: ["a", "c"],
+        allowed,
+        ignorePrev: false,
+        ignoreSaved: true,
+        preferPrev: true,
+      }),
+    ).toEqual([]);
+  });
 });

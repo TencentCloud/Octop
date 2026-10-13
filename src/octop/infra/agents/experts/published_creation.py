@@ -10,13 +10,23 @@ from pathlib import Path
 from sqlite3 import IntegrityError as SqliteIntegrityError
 from typing import Any, cast
 
-from psycopg import IntegrityError as PsycopgIntegrityError
+try:
+    from psycopg import IntegrityError as PsycopgIntegrityError
+except ImportError:  # pragma: no cover - optional PostgreSQL driver
+    PsycopgIntegrityError = None  # type: ignore[assignment,misc]
 
-from octop.infra.agents.avatar import bind_workspace_avatar_icon_url
+from octop.infra.agents.experts.avatar import (
+    bind_workspace_avatar_icon_url,
+    public_portrait_icon_url,
+)
 from octop.infra.agents.experts.catalog import (
     MANIFEST_FILENAME,
+    apply_workspace_quick_prompts,
+    parse_task_examples,
+    read_workspace_manifest_task_examples,
     read_workspace_manifest_welcome,
     seed_expert_directory,
+    welcome_payload_from_manifest_data,
 )
 from octop.infra.agents.experts.publish import (
     PublishedExpertSnapshotMeta,
@@ -27,9 +37,13 @@ from octop.infra.agents.experts.publish import (
 from octop.infra.agents.manager import AgentCreateSpec
 from octop.infra.db.repos.published_experts import PublishedExpertRow
 from octop.infra.errors import ErrorCode, OctopError
-from octop.infra.trajectory.settings import apply_enable_trajectory
+from octop.infra.history.trajectory.settings import apply_enable_trajectory
 from octop.infra.users.identity import User
 from octop.infra.utils.ulid import new_ulid
+
+_DB_INTEGRITY_ERRORS: tuple[type[BaseException], ...] = (SqliteIntegrityError,)
+if PsycopgIntegrityError is not None:
+    _DB_INTEGRITY_ERRORS = (SqliteIntegrityError, PsycopgIntegrityError)
 
 
 @dataclass(frozen=True)
@@ -40,12 +54,19 @@ class PublishedExpertInstallOptions:
     default_model: str | None = None
     backend: dict[str, Any] | None = None
     skill_package_ids: list[str] | None = None
+    knowledge_base_ids: list[str] | None = None
+    mcp_servers: list[str] | None = None
     color: str | None = None
     agent_id: str | None = None
     icon_url: str | None = None
     welcome_message: str | None = None
     runtime_config: dict[str, Any] | None = None
     enable_trajectory: bool = True
+    conversation_mode: str | None = None
+    workspace_patch: Any = None
+    composer_copies: tuple[tuple[str, Any], ...] = ()
+    composer_report: Any = None
+    quick_prompts: list[dict[str, Any]] | None = None
 
 
 def _snapshot_dir(services: Any, expert_id: str) -> Path:
@@ -93,6 +114,15 @@ async def _workspace_quick_prompts(workspace: Any) -> tuple[dict[str, Any], ...]
     return _manifest_quick_prompts(payload) if payload is not None else ()
 
 
+def _manifest_task_examples(manifest: dict[str, Any]) -> dict[str, list[str]] | None:
+    return parse_task_examples(manifest)
+
+
+async def _workspace_task_examples(workspace: Any) -> dict[str, list[str]] | None:
+    """Tasks-page examples from the source workspace, so publishing never drops them."""
+    return await read_workspace_manifest_task_examples(workspace)
+
+
 def _agent_color(registry: Any, agent_id: str) -> str | None:
     row = registry.get_row(agent_id)
     if row is not None:
@@ -113,17 +143,21 @@ def _snapshot_meta(
     welcome_message_zh: str = "",
     welcome_message_en: str = "",
     quick_prompts: tuple[dict[str, Any], ...] = (),
+    task_examples: dict[str, list[str]] | None = None,
+    icon_url: str | None = None,
 ) -> PublishedExpertSnapshotMeta:
     return PublishedExpertSnapshotMeta(
         name=name,
         description=description,
         icon_name=(getattr(source, "icon_name", None) or source.icon or None),
+        icon_url=public_portrait_icon_url(icon_url),
         color=color,
         label_zh=name,
         label_en=name,
         welcome_message_zh=welcome_message_zh,
         welcome_message_en=welcome_message_en,
         quick_prompts=quick_prompts,
+        task_examples=task_examples,
     )
 
 
@@ -136,6 +170,11 @@ def require_published_expert(services: Any, expert_id: str) -> PublishedExpertRo
 
 def snapshot_welcome_message(snapshot_dir: Path) -> tuple[str, str]:
     return _manifest_welcome(_read_snapshot_manifest(snapshot_dir))
+
+
+def snapshot_welcome_payload(snapshot_dir: Path) -> dict[str, Any]:
+    """Welcome copy + quick-start cards from a published snapshot manifest."""
+    return welcome_payload_from_manifest_data(_read_snapshot_manifest(snapshot_dir))
 
 
 async def publish_agent_expert(
@@ -151,6 +190,7 @@ async def publish_agent_expert(
     welcome_message_zh: str = "",
     welcome_message_en: str = "",
     quick_prompts: tuple[dict[str, Any], ...] = (),
+    task_examples: dict[str, list[str]] | None = None,
 ) -> PublishedExpertRow:
     """Snapshot an owned agent workspace into a globally installable expert template."""
     repo = services.published_expert_repo
@@ -167,8 +207,12 @@ async def publish_agent_expert(
     snapshot_dir = _snapshot_dir(services, expert_id)
     resolved_description = description or source.description or ""
     resolved_quick_prompts = quick_prompts or await _workspace_quick_prompts(workspace)
+    resolved_task_examples = (
+        task_examples if task_examples is not None else await _workspace_task_examples(workspace)
+    )
     color = _agent_color(registry, source.agent_id) or ""
     icon_name = getattr(source, "icon_name", None) or source.icon or ""
+    source_icon_url = public_portrait_icon_url(getattr(source, "icon_url", None))
     try:
         await export_agent_workspace_to_dir(
             workspace=workspace,
@@ -178,9 +222,11 @@ async def publish_agent_expert(
                 name=name,
                 description=resolved_description,
                 color=color or None,
+                icon_url=source_icon_url,
                 welcome_message_zh=welcome_message_zh,
                 welcome_message_en=welcome_message_en,
                 quick_prompts=resolved_quick_prompts,
+                task_examples=resolved_task_examples,
             ),
             manifest_id=resolved_slug,
         )
@@ -197,7 +243,7 @@ async def publish_agent_expert(
                 color=color,
             ),
         )
-    except (SqliteIntegrityError, PsycopgIntegrityError) as exc:
+    except _DB_INTEGRITY_ERRORS as exc:
         await asyncio.to_thread(shutil.rmtree, snapshot_dir, ignore_errors=True)
         raise OctopError.localized(
             ErrorCode.PUBLISHED_EXPERT_SLUG_TAKEN,
@@ -222,6 +268,7 @@ async def refresh_published_expert(
     welcome_message_zh: str | None = None,
     welcome_message_en: str | None = None,
     quick_prompts: tuple[dict[str, Any], ...] | None = None,
+    task_examples: dict[str, list[str]] | None = None,
 ) -> PublishedExpertRow:
     """Replace a published snapshot using its still-owned source agent workspace."""
     row = require_published_expert(services, expert_id)
@@ -231,10 +278,12 @@ async def refresh_published_expert(
 
     color = _agent_color(registry, source.agent_id) or ""
     icon_name = getattr(source, "icon_name", None) or source.icon or ""
+    source_icon_url = public_portrait_icon_url(getattr(source, "icon_url", None))
     snapshot_dir = _snapshot_dir(services, row.id)
     existing_manifest = await asyncio.to_thread(_read_snapshot_manifest, snapshot_dir)
     existing_welcome_zh, existing_welcome_en = _manifest_welcome(existing_manifest)
     existing_quick_prompts = _manifest_quick_prompts(existing_manifest)
+    existing_task_examples = _manifest_task_examples(existing_manifest)
     resolved_name = name if name is not None else row.name
     resolved_description = description if description is not None else row.description
     resolved_welcome_zh = (
@@ -246,6 +295,12 @@ async def refresh_published_expert(
     resolved_quick_prompts = quick_prompts
     if resolved_quick_prompts is None:
         resolved_quick_prompts = await _workspace_quick_prompts(workspace) or existing_quick_prompts
+    resolved_task_examples = task_examples
+    if resolved_task_examples is None:
+        workspace_examples = await _workspace_task_examples(workspace)
+        resolved_task_examples = (
+            workspace_examples if workspace_examples is not None else existing_task_examples
+        )
     await export_agent_workspace_to_dir(
         workspace=workspace,
         dest=snapshot_dir,
@@ -257,6 +312,8 @@ async def refresh_published_expert(
             welcome_message_zh=resolved_welcome_zh,
             welcome_message_en=resolved_welcome_en,
             quick_prompts=resolved_quick_prompts,
+            task_examples=resolved_task_examples,
+            icon_url=source_icon_url,
         ),
         manifest_id=row.slug,
     )
@@ -288,7 +345,12 @@ async def install_published_expert(
     expert_id: str,
     options: PublishedExpertInstallOptions,
 ) -> dict[str, Any]:
-    """Create a private agent and seed it from the immutable published snapshot."""
+    """Create a private agent and seed it from the immutable published snapshot.
+
+    Composer defaults (knowledge bases / connectors) are installer-owned: the
+    snapshot does not copy them from the publisher's source agent. The installer
+    may pass their own lists on this request.
+    """
     row = require_published_expert(services, expert_id)
     snapshot_dir = _snapshot_dir(services, row.id)
     if not snapshot_dir.is_dir():
@@ -308,10 +370,27 @@ async def install_published_expert(
     if options.backend:
         config_extra["backend"] = options.backend
     apply_enable_trajectory(config_extra, options.enable_trajectory)
+    if options.conversation_mode:
+        config_extra["conversation_mode"] = options.conversation_mode
 
     async def seed_snapshot(created_row: Any, workspace: Any) -> None:
         await seed_expert_directory(expert_dir=snapshot_dir, workspace=workspace)
         await bind_workspace_avatar_icon_url(registry, created_row.agent_id, workspace)
+        patch = options.workspace_patch
+        if patch is not None or options.composer_copies:
+            from octop.infra.agents.experts.composer_files import (
+                ComposerWorkspacePatch,
+                apply_composer_workspace_patch,
+            )
+
+            await apply_composer_workspace_patch(
+                workspace,
+                patch if patch is not None else ComposerWorkspacePatch(),
+                copies=options.composer_copies,
+                report=options.composer_report,
+            )
+        if options.quick_prompts is not None:
+            await apply_workspace_quick_prompts(workspace, options.quick_prompts)
 
     created = await registry.create(
         AgentCreateSpec(
@@ -327,6 +406,8 @@ async def install_published_expert(
             icon_url=options.icon_url,
             color=options.color or row.color or None,
             skill_package_ids=package_ids,
+            knowledge_base_ids=options.knowledge_base_ids,
+            mcp_servers=options.mcp_servers,
             published_expert_id=row.id,
             welcome_message=options.welcome_message,
         ),

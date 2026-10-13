@@ -5,8 +5,8 @@ from __future__ import annotations
 from collections.abc import AsyncIterator
 from typing import Any, Literal
 
-from harness_gateway.channel import MessageProcessor
-from harness_gateway.models import (
+from octop_gateway.channel import MessageProcessor
+from octop_gateway.models import (
     ContentPart,
     InboundMessage,
     MessageEvent,
@@ -26,6 +26,21 @@ def normalize_channel_response_mode(value: Any) -> ChannelResponseMode:
     if isinstance(value, str) and value.strip().lower() == "stream":
         return "stream"
     return DEFAULT_CHANNEL_RESPONSE_MODE
+
+
+def _config_flag(value: Any, *, default: bool) -> bool:
+    if value is None:
+        return default
+    if isinstance(value, str):
+        return value.strip().lower() not in {"0", "false", "no", "off"}
+    return bool(value)
+
+
+def qq_channel_response_mode(config: dict[str, Any]) -> ChannelResponseMode:
+    """QQ C2C stream is on by default. Explicit ``c2c_streaming: false`` opts out."""
+    if _config_flag(config.get("c2c_streaming"), default=True):
+        return "stream"
+    return "invoke"
 
 
 async def collapse_to_invoke_response(
@@ -61,9 +76,13 @@ async def collapse_to_invoke_response(
             continue
 
         if event.type == MessageEventType.TOOL_START:
-            # Assistant text immediately followed by a tool call is progress
-            # narration, not the final answer shown to an IM user.
-            text_buffer = ""
+            # Assistant text immediately followed by a tool call is usually
+            # progress narration. Keep it for ``ask_agent`` so team hosts still
+            # show their dispatch line on invoke-mode channels.
+            meta = event.metadata if isinstance(event.metadata, dict) else {}
+            tool_key = str(meta.get("tool_key") or meta.get("tool_name") or "")
+            if tool_key != "ask_agent":
+                text_buffer = ""
             continue
 
         if event.type in (
@@ -117,4 +136,5 @@ __all__ = [
     "collapse_to_invoke_response",
     "normalize_channel_response_mode",
     "processor_for_response_mode",
+    "qq_channel_response_mode",
 ]

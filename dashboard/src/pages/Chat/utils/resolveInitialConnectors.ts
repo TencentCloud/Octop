@@ -6,12 +6,27 @@ export function resolveInitialConnectors(opts: {
   hasSaved: boolean;
   defaults: string[];
   allowed: Set<string>;
+  /** Ignore in-memory selection (new empty chat should re-apply defaults). */
+  ignorePrev?: boolean;
+  /** Ignore per-agent localStorage (new chats should not reuse last turn). */
+  ignoreSaved?: boolean;
+  /** Trust prev even when empty (user opted out in this session). */
+  preferPrev?: boolean;
 }): string[] {
-  const { prev, saved, hasSaved, defaults, allowed } = opts;
-  if (prev.length > 0) {
+  const {
+    prev,
+    saved,
+    hasSaved,
+    defaults,
+    allowed,
+    ignorePrev,
+    ignoreSaved,
+    preferPrev,
+  } = opts;
+  if (preferPrev || (!ignorePrev && prev.length > 0)) {
     return prev.filter((n) => allowed.has(n));
   }
-  if (hasSaved) {
+  if (!ignoreSaved && hasSaved) {
     return saved.filter((n) => allowed.has(n));
   }
   return defaults.filter((n) => allowed.has(n));

@@ -8,6 +8,10 @@ import { getAuthToken } from "../api/request";
 import { useAgent } from "../context/AgentContext";
 import { ExpertIcon } from "../pages/Experts/components/iconForName";
 import {
+  emitSessionEvent,
+  invalidateHistory,
+} from "../pages/Chat/hooks/chatStore";
+import {
   parseDashboardPushFrame,
   truncatePushText,
 } from "../utils/dashboardPushToast";
@@ -26,9 +30,9 @@ function PushToastIcon({
   return (
     <span className={styles.icon}>
       {iconUrl || iconName ? (
-        <ExpertIcon iconUrl={iconUrl} iconName={iconName} size={18} />
+        <ExpertIcon iconUrl={iconUrl} iconName={iconName} size={16} />
       ) : (
-        <Bell size={18} />
+        <Bell size={16} />
       )}
     </span>
   );
@@ -116,6 +120,16 @@ export function useDashboardPushToast(): void {
         const parsed = parseDashboardPushFrame(raw);
         if (!parsed) return;
         void refreshRef.current({ silent: true });
+        // A proactive run wrote to this thread outside the chat socket. Stale it
+        // here (not in the chat page listener) so the cached page is dropped
+        // even when the push lands while another route is open.
+        invalidateHistory(parsed.thread_id);
+        // Refresh the sidebar and the open thread's history without a reload.
+        emitSessionEvent({
+          kind: "sessionsChanged",
+          sessionId: parsed.thread_id,
+          agentId: parsed.agent_id,
+        });
         const agent = agentsRef.current.find(
           (a) => a.agent_id === parsed.agent_id,
         );
@@ -123,8 +137,9 @@ export function useDashboardPushToast(): void {
         const title = parsed.agent_name
           ? tRef.current("chat.pushToast.title", { name: parsed.agent_name })
           : tRef.current("chat.pushToast.titleFallback");
+        const noticeKey = `dash-push-${parsed.thread_id}-${Date.now()}`;
         notificationRef.current.open({
-          key: `dash-push-${parsed.thread_id}-${Date.now()}`,
+          key: noticeKey,
           placement: "bottomRight",
           className: styles.notice,
           style: {
@@ -145,6 +160,7 @@ export function useDashboardPushToast(): void {
           duration: null,
           closable: true,
           onClick: () => {
+            notificationRef.current.destroy(noticeKey);
             navigateRef.current(`/chat/${parsed.agent_id}/${parsed.thread_id}`);
           },
         });

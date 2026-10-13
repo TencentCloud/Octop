@@ -10,7 +10,7 @@ from octop.api.routers.chat.trajectory import (
     _resume_after_seq,
     _summarize_event,
 )
-from octop.infra.trajectory.types import TrajectoryEvent
+from octop.infra.history.trajectory.types import TrajectoryEvent
 
 
 def _event(

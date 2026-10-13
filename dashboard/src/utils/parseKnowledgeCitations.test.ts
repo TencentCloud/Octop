@@ -29,4 +29,18 @@ describe("parseKnowledgeCitations", () => {
       'x<!--octop-kb-citations:[{"doc_id":"d1","filename":"a.md"},{"doc_id":"d1","filename":"a.md"}]-->';
     expect(parseKnowledgeCitations(raw).citations).toHaveLength(1);
   });
+
+  it("parses optional path", () => {
+    const raw =
+      'x<!--octop-kb-citations:[{"kb_id":"kb1","kb_name":"Docs","doc_id":"d1","filename":"a.md","path":"notes/a.md"}]-->';
+    expect(parseKnowledgeCitations(raw).citations[0]).toMatchObject({
+      path: "notes/a.md",
+    });
+  });
+
+  it("omits path when absent", () => {
+    const raw =
+      'x<!--octop-kb-citations:[{"doc_id":"d1","filename":"a.md"}]-->';
+    expect(parseKnowledgeCitations(raw).citations[0].path).toBeUndefined();
+  });
 });

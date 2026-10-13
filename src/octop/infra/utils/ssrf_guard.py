@@ -6,7 +6,7 @@ import asyncio
 import ipaddress
 import socket
 import typing
-from urllib.parse import urlparse
+from urllib.parse import urlparse, urlunparse
 
 import httpx
 from httpcore._backends.auto import AutoBackend
@@ -15,6 +15,37 @@ from httpcore._backends.base import SOCKET_OPTION, AsyncNetworkStream
 
 class UnsafeOutboundUrl(ValueError):
     """Raised when a URL must not be fetched server-side."""
+
+
+# Hostnames that never refer to a public Internet endpoint (Docker Desktop, etc.).
+_LOCAL_HOSTNAMES = frozenset(
+    {
+        "localhost",
+        "host.docker.internal",
+        "gateway.docker.internal",
+    }
+)
+_LOCAL_HOST_SUFFIXES = (".local", ".localhost", ".internal")
+
+
+def is_private_or_local_host(host: str) -> bool:
+    """True for loopback / RFC1918 / link-local literals and well-known local names.
+
+    Used by MCP connector URL validation so self-hosted LAN endpoints are allowed
+    without weakening the outbound SSRF guard used for OAuth / provider probes.
+    """
+    normalized = host.lower().rstrip(".")
+    if not normalized:
+        return False
+    if normalized in _LOCAL_HOSTNAMES:
+        return True
+    if normalized.endswith(_LOCAL_HOST_SUFFIXES):
+        return True
+    try:
+        addr = ipaddress.ip_address(normalized)
+    except ValueError:
+        return False
+    return addr.is_loopback or addr.is_private or addr.is_link_local
 
 
 def _parse_https_host(url: str) -> tuple[str, int | None]:
@@ -178,8 +209,13 @@ async def safe_request(
     validated IP so a malicious DNS change between validation and connection
     cannot redirect the request to an internal address.
     """
-    host, _port = _parse_https_host(url)
+    parsed = urlparse(url)
+    host, port = _parse_https_host(url)
     pin_ip = await _resolve_validated_ip(url)
+    # Rebuild the request URL from validated components so the outbound call
+    # does not reuse the original user-controlled string (CWE-918 / CodeQL).
+    netloc = f"{host}:{port}" if port is not None else host
+    request_url = urlunparse(("https", netloc, parsed.path or "/", "", parsed.query, ""))
     transport = PinnedIPTransport(host, pin_ip)
     async with httpx.AsyncClient(transport=transport, timeout=timeout) as client:
-        return await client.request(method, url, json=json, data=data, headers=headers)
+        return await client.request(method, request_url, json=json, data=data, headers=headers)

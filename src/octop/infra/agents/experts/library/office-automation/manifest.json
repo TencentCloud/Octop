@@ -115,5 +115,23 @@
       "color": "#f3e8ff",
       "icon_name": "calendar"
     }
-  ]
+  ],
+  "task_examples": {
+    "zh": [
+      "每个工作日「18:00」根据当天会议记录起草日报，发给我确认，任务创建后立即启用",
+      "每周五「17:00」汇总本周待办与文档进展，生成周报大纲",
+      "每个月最后一个工作日「16:00」整理本月合同和表格待办清单发给我",
+      "每个工作日「09:00」把收件箱里待处理的邮件按优先级列成待办",
+      "每周一「10:00」根据日历起草本周会议纪要模板，先放草稿不发送",
+      "每天「12:30」把上午会议待办并入清单，标出今天下午要跟的项"
+    ],
+    "en": [
+      "Every weekday at 18:00, draft a daily report from today's meeting notes and send it for my review — enable immediately",
+      "Every Friday at 17:00, summarize this week's todos and document progress into a weekly-report outline",
+      "On the last weekday of each month at 16:00, compile this month's contract and spreadsheet follow-ups",
+      "Every weekday at 09:00, turn inbox items still needing action into a prioritized todo list",
+      "Every Monday at 10:00, draft this week's meeting-notes templates from the calendar — keep as drafts, do not send",
+      "Every day at 12:30, merge morning meeting follow-ups into the list and flag this afternoon's items"
+    ]
+  }
 }

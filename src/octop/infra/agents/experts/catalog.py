@@ -4,7 +4,8 @@ An *expert* is metadata in ``manifest.json`` plus files on disk under
 ``library/<id>/``. At seed time files (including a copy of ``manifest.json``)
 are written into the agent workspace under ``.octop/manifest.json``.
 ``prompt_files`` in the manifest is metadata for the dashboard only — persona
-text is read from the workspace.
+text is read from the workspace. ``task_examples`` is an optional locale-keyed
+string array shown as empty-state cards on the tasks page.
 
 Templates are discovered at server start by :class:`ExpertCatalog`.
 """
@@ -17,10 +18,11 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, cast
 
-from harness_agent.backends.workspace import BackendWorkspace
+from octop_harness.backends.workspace import BackendWorkspace
 
 from octop.infra.agents.manager import AgentCreateSpec
-from octop.infra.agents.workspace_dir import DEFAULT_SYSTEM_FILES_PATH
+from octop.infra.agents.workspace.dir import DEFAULT_SYSTEM_FILES_PATH
+from octop.infra.errors import ErrorCode, OctopError
 
 logger = logging.getLogger(__name__)
 
@@ -32,6 +34,72 @@ WORKSPACE_MANIFEST_PATH = f"{DEFAULT_SYSTEM_FILES_PATH}/{MANIFEST_FILENAME}"
 
 # Prefer system path; keep root ``manifest.json`` readable for pre-migration agents.
 _WORKSPACE_MANIFEST_READ_PATHS = (WORKSPACE_MANIFEST_PATH, MANIFEST_FILENAME)
+
+# Bundled illustrated portraits live in the dashboard public assets tree.
+_BUILTIN_AVATAR_URL_TEMPLATE = "/experts/avatars/{expert_id}.svg"
+
+# Fallback when the dashboard avatars directory is not on disk (packaged installs).
+_FALLBACK_BUNDLED_AVATAR_IDS = frozenset(
+    {
+        "ai-coding-coach",
+        "ai-safety-guardian",
+        "clinical-learning-subscription",
+        "cvm-ai-doctor",
+        "cvm-cluster-doctor",
+        "default",
+        "general-assistant",
+        "karpathy-knowledge-base",
+        "meituan-living-assistant",
+        "multi-agent-orchestrator",
+        "news-trend",
+        "office-automation",
+        "ops-engineer",
+        "parenting-companion",
+        "stock-assistant",
+        "superpowers-methodology",
+        "tencentcloud-api",
+        "wechat-ops",
+        "scene-academic",
+        "scene-content-creation",
+        "scene-data",
+        "scene-default",
+        "scene-design",
+        "scene-ecommerce",
+        "scene-education",
+        "scene-finance",
+        "scene-healthcare",
+        "scene-hr",
+        "scene-legal",
+        "scene-lifestyle",
+        "scene-marketing",
+        "scene-media",
+        "scene-mysticism",
+        "scene-office",
+        "scene-tech",
+    }
+)
+
+
+def bundled_avatars_dir() -> Path | None:
+    """Locate ``dashboard/public/experts/avatars`` relative to this package."""
+    # catalog.py → experts → agents → infra → octop → src → Octop/
+    for parent in Path(__file__).resolve().parents:
+        candidate = parent / "dashboard" / "public" / "experts" / "avatars"
+        if candidate.is_dir():
+            return candidate
+    return None
+
+
+def discover_bundled_avatar_ids(avatars_dir: Path | None = None) -> frozenset[str]:
+    """Single source of truth: SVG basenames under the public avatars tree."""
+    root = avatars_dir if avatars_dir is not None else bundled_avatars_dir()
+    if root is None or not root.is_dir():
+        return _FALLBACK_BUNDLED_AVATAR_IDS
+    ids = {path.stem for path in root.glob("*.svg") if path.is_file()}
+    return frozenset(ids) if ids else _FALLBACK_BUNDLED_AVATAR_IDS
+
+
+_BUNDLED_AVATAR_IDS = discover_bundled_avatar_ids()
 
 
 @dataclass(frozen=True)
@@ -60,8 +128,10 @@ class ExpertSummary:
     welcome_message_zh: str = ""
     welcome_message_en: str = ""
     icon_name: str | None = None
+    icon_url: str | None = None
     color: str | None = None
     quick_prompts: tuple[ExpertQuickPrompt, ...] = ()
+    task_examples: dict[str, list[str]] | None = None
 
 
 @dataclass(frozen=True)
@@ -274,10 +344,10 @@ def default_welcome_payload(catalog: ExpertCatalog | None = None) -> dict[str, A
     }
 
 
-async def read_workspace_manifest_welcome(
+async def read_workspace_manifest_data(
     workspace: BackendWorkspace,
 ) -> dict[str, Any] | None:
-    """Parse workspace welcome manifest (``.octop/manifest.json``), if present and valid."""
+    """Parse workspace ``.octop/manifest.json`` (legacy root fallback) as a dict."""
     text = await read_workspace_manifest_text(workspace)
     if text is None:
         return None
@@ -286,10 +356,67 @@ async def read_workspace_manifest_welcome(
     except json.JSONDecodeError:
         logger.warning("workspace %s is not valid JSON", WORKSPACE_MANIFEST_PATH)
         return None
-    if not isinstance(data, dict):
+    return data if isinstance(data, dict) else None
+
+
+async def read_workspace_manifest_welcome(
+    workspace: BackendWorkspace,
+) -> dict[str, Any] | None:
+    """Parse workspace welcome manifest (``.octop/manifest.json``), if present and valid."""
+    data = await read_workspace_manifest_data(workspace)
+    if data is None:
         return None
     payload = welcome_payload_from_manifest_data(data)
     return payload if welcome_payload_has_content(payload) else None
+
+
+async def read_workspace_manifest_task_examples(
+    workspace: BackendWorkspace,
+) -> dict[str, list[str]] | None:
+    """Return ``task_examples`` from the workspace manifest, or ``None`` if absent."""
+    data = await read_workspace_manifest_data(workspace)
+    if data is None:
+        return None
+    return parse_task_examples(data)
+
+
+def _quick_prompts_have_content(prompt: ExpertQuickPrompt) -> bool:
+    return bool(prompt.title_zh or prompt.title_en or prompt.prompt_zh or prompt.prompt_en)
+
+
+async def apply_workspace_quick_prompts(
+    workspace: BackendWorkspace,
+    quick_prompts: list[dict[str, Any]],
+) -> None:
+    """Merge installer-owned quick-start cards into workspace ``.octop/manifest.json``.
+
+    Missing file starts from ``{}``. Invalid JSON is refused so a hand-edited
+    manifest is not clobbered during create.
+    """
+    text = await read_workspace_manifest_text(workspace)
+    existing: dict[str, Any] = {}
+    if text is not None and str(text).strip():
+        try:
+            parsed: object = json.loads(text)
+        except json.JSONDecodeError as exc:
+            raise OctopError(
+                ErrorCode.SLASH_BAD_ARGS,
+                "workspace manifest.json is not valid JSON",
+            ) from exc
+        if not isinstance(parsed, dict):
+            raise OctopError(
+                ErrorCode.SLASH_BAD_ARGS,
+                "workspace manifest.json is not a JSON object",
+            )
+        existing = parsed
+    parsed_prompts = _parse_quick_prompts({"quick_prompts": list(quick_prompts)})
+    existing["quick_prompts"] = [
+        _quick_prompt_api_dict(prompt)
+        for prompt in parsed_prompts
+        if _quick_prompts_have_content(prompt)
+    ]
+    payload = json.dumps(existing, ensure_ascii=False, indent=2).encode("utf-8")
+    await workspace.aupload_many([(WORKSPACE_MANIFEST_PATH, payload)])
 
 
 def read_text_file_contents(expert_dir: Path, paths: list[str]) -> list[dict[str, str]]:
@@ -305,6 +432,72 @@ def read_text_file_contents(expert_dir: Path, paths: list[str]) -> list[dict[str
             continue
         out.append({"name": rel, "content": text})
     return out
+
+
+def builtin_expert_avatar_url(expert_id: str) -> str:
+    """Public dashboard URL for a bundled expert portrait."""
+    return _BUILTIN_AVATAR_URL_TEMPLATE.format(expert_id=expert_id)
+
+
+def scene_expert_avatar_url(scene: str | None) -> str | None:
+    """Portrait URL for a SkillHub scene, or None when no bundled art exists."""
+    key = f"scene-{(scene or '').strip().lower()}"
+    if key in _BUNDLED_AVATAR_IDS:
+        return builtin_expert_avatar_url(key)
+    if "scene-default" in _BUNDLED_AVATAR_IDS:
+        return builtin_expert_avatar_url("scene-default")
+    return None
+
+
+def _avatar_id_from_url(url: str) -> str | None:
+    text = url.strip()
+    prefix = "/experts/avatars/"
+    if not text.startswith(prefix) or not text.endswith(".svg"):
+        return None
+    return text[len(prefix) : -len(".svg")]
+
+
+def resolve_expert_icon_url(
+    expert_id: str,
+    manifest_icon_url: Any = None,
+    *,
+    scene: str | None = None,
+) -> str | None:
+    """Resolve a portrait URL only when the asset is known to exist.
+
+    SkillHub market templates reuse scene portraits; unknown ids do **not** get
+    a fabricated ``/experts/avatars/<id>.svg`` path (that 404s in the UI).
+    """
+    text = str(manifest_icon_url or "").strip()
+    if text:
+        avatar_id = _avatar_id_from_url(text)
+        if avatar_id is None:
+            return text  # external CDN / uploaded URL
+        if avatar_id in _BUNDLED_AVATAR_IDS:
+            return text
+        # Stale/missing bundled path — fall through to scene / builtin lookup.
+
+    if expert_id in _BUNDLED_AVATAR_IDS:
+        return builtin_expert_avatar_url(expert_id)
+
+    scene_url = scene_expert_avatar_url(scene)
+    if scene_url:
+        return scene_url
+    return None
+
+
+def _manifest_scene(data: dict[str, Any]) -> str | None:
+    source = data.get("source")
+    if isinstance(source, dict):
+        scene = str(source.get("scene") or "").strip()
+        if scene:
+            return scene
+    skillhub = data.get("skillhub")
+    if isinstance(skillhub, dict):
+        scene = str(skillhub.get("scene") or "").strip()
+        if scene:
+            return scene
+    return None
 
 
 def _read_manifest(path: Path) -> dict[str, Any] | None:
@@ -346,12 +539,205 @@ def _parse_quick_prompts(data: dict[str, Any]) -> tuple[ExpertQuickPrompt, ...]:
     return tuple(out)
 
 
-class ExpertCatalog:
-    """Loads expert templates from a directory tree.
+def _coerce_string_list(raw: Any) -> list[str]:
+    if not isinstance(raw, list):
+        return []
+    out: list[str] = []
+    for item in raw:
+        if isinstance(item, str):
+            text = item.strip()
+            if text:
+                out.append(text)
+    return out
 
-    Construction is cheap (it only validates the root); :meth:`refresh`
-    walks the directory and populates the in-memory cache. Tests can
-    point ``library_root`` at a fixture directory.
+
+def parse_task_examples(data: dict[str, Any]) -> dict[str, list[str]] | None:
+    """Parse ``task_examples`` from a manifest dict.
+
+    Canonical form is locale-keyed string arrays::
+
+        {"zh": ["…"], "en": ["…"]}
+
+    A plain ``["…"]`` list is treated as the same strings for both locales.
+    Missing or invalid values return ``None`` so callers can keep default cards.
+    """
+    if "task_examples" not in data:
+        return None
+    raw = data["task_examples"]
+    if isinstance(raw, list):
+        items = _coerce_string_list(raw)
+        return {"zh": list(items), "en": list(items)}
+    if isinstance(raw, dict):
+        zh_raw = raw.get("zh")
+        en_raw = raw.get("en")
+        if isinstance(zh_raw, list) or isinstance(en_raw, list):
+            return {
+                "zh": _coerce_string_list(zh_raw),
+                "en": _coerce_string_list(en_raw),
+            }
+    return None
+
+
+_TASK_EXAMPLE_COUNT_THREE = 3
+_TASK_EXAMPLE_COUNT_SIX = 6
+
+
+def default_task_examples(label_zh: str, label_en: str) -> dict[str, list[str]]:
+    """Shared bilingual fallbacks for generated / padded ``task_examples``."""
+    return {
+        "zh": [
+            f"每天「09:00」按「{label_zh}」工作流巡检一次，有结果再发给我，任务创建后立即启用",
+            f"每周一「10:00」汇总上周与「{label_zh}」相关的进展和下周计划",
+            "每个工作日「18:00」复盘当天工作，列出待跟进项",
+            f"每周五「17:00」汇总本周与「{label_zh}」相关的交付物和下周安排",
+            f"每天「08:00」按「{label_zh}」工作流推送一条可执行简报",
+            f"每月 1 日「09:30」复盘上月「{label_zh}」进展，列出本月优先项",
+        ],
+        "en": [
+            (
+                f"Every day at 09:00, run the {label_en} workflow once and notify me "
+                "when there is a result — enable immediately"
+            ),
+            f"Every Monday at 10:00, summarize last week's {label_en} progress and next week's plan",
+            "Every weekday at 18:00, recap the day's work and list follow-ups",
+            f"Every Friday at 17:00, recap this week's {label_en} deliverables and next week's plan",
+            f"Every day at 08:00, push one actionable {label_en} briefing",
+            (
+                f"On the 1st of each month at 09:30, recap last month's {label_en} "
+                "progress and list this month's priorities"
+            ),
+        ],
+    }
+
+
+def resolve_display_task_examples(
+    *,
+    parsed: dict[str, list[str]] | None,
+    catalog: ExpertCatalog | None = None,
+    template_name: str | None = None,
+    label_zh: str = "",
+    label_en: str = "",
+) -> dict[str, list[str]]:
+    """Workspace field, then catalog template, then name-based defaults (never null).
+
+    Explicit empty lists in the workspace stay empty (hide suggestion cards).
+    Missing field falls through so different experts no longer share one i18n set.
+    """
+    if parsed is not None:
+        normalized = normalize_task_examples_for_display(parsed)
+        return normalized if normalized is not None else {"zh": [], "en": []}
+    if catalog is not None and template_name:
+        expert = catalog.get(template_name)
+        summary_examples = (
+            getattr(expert.summary, "task_examples", None) if expert is not None else None
+        )
+        if summary_examples is not None:
+            normalized = normalize_task_examples_for_display(summary_examples)
+            if normalized is not None:
+                return normalized
+    zh = (label_zh or label_en or "助手").strip() or "助手"
+    en = (label_en or label_zh or "Assistant").strip() or "Assistant"
+    return normalize_task_examples_for_display(default_task_examples(zh, en)) or {
+        "zh": [],
+        "en": [],
+    }
+
+
+def display_task_examples_for_agent(
+    *,
+    parsed: dict[str, list[str]] | None,
+    catalog: ExpertCatalog | None = None,
+    row: Any | None = None,
+) -> dict[str, list[str]]:
+    """Apply :func:`resolve_display_task_examples` using labels from an agent row."""
+    name = str(getattr(row, "name", "") or "").strip() if row is not None else ""
+    template = (
+        str(getattr(row, "template_name", None) or "").strip() or None if row is not None else None
+    )
+    return resolve_display_task_examples(
+        parsed=parsed,
+        catalog=catalog,
+        template_name=template,
+        label_zh=name,
+        label_en=name,
+    )
+
+
+async def resolve_agent_display_task_examples(
+    *,
+    workspace: BackendWorkspace | None,
+    row: Any | None,
+    catalog: ExpertCatalog | None = None,
+) -> dict[str, list[str]]:
+    """Load workspace ``task_examples``, then catalog / name fallbacks."""
+    parsed = (
+        await read_workspace_manifest_task_examples(workspace) if workspace is not None else None
+    )
+    return display_task_examples_for_agent(parsed=parsed, catalog=catalog, row=row)
+
+
+def normalize_task_examples_for_display(
+    parsed: dict[str, list[str]] | None,
+) -> dict[str, list[str]] | None:
+    """Keep display lists at 3 or 6 entries; 4–5 truncate to 3, extras cap at 6."""
+    if parsed is None:
+        return None
+    zh = list(parsed.get("zh") or [])
+    en = list(parsed.get("en") or [])
+    if not zh and not en:
+        return {"zh": [], "en": []}
+    cap = (
+        _TASK_EXAMPLE_COUNT_SIX
+        if max(len(zh), len(en)) >= _TASK_EXAMPLE_COUNT_SIX
+        else _TASK_EXAMPLE_COUNT_THREE
+    )
+    return {"zh": zh[:cap], "en": en[:cap]}
+
+
+def snap_task_examples(
+    zh: list[str],
+    en: list[str],
+    *,
+    fillers_zh: list[str],
+    fillers_en: list[str],
+    count: int | None = None,
+) -> dict[str, list[str]]:
+    """Keep exactly 3 or 6 bilingual examples (4–5 pad to 6; fewer pad to 3)."""
+    out_zh = [item for item in zh if item][:_TASK_EXAMPLE_COUNT_SIX]
+    out_en = [item for item in en if item][:_TASK_EXAMPLE_COUNT_SIX]
+    if count in (_TASK_EXAMPLE_COUNT_THREE, _TASK_EXAMPLE_COUNT_SIX):
+        target = count
+    else:
+        target = (
+            _TASK_EXAMPLE_COUNT_SIX
+            if max(len(out_zh), len(out_en)) > _TASK_EXAMPLE_COUNT_THREE
+            else _TASK_EXAMPLE_COUNT_THREE
+        )
+
+    def _pad(side: list[str], extras: list[str]) -> None:
+        for item in extras:
+            if len(side) >= target:
+                return
+            if item and item not in side:
+                side.append(item)
+        idx = 0
+        while len(side) < target and extras:
+            side.append(extras[idx % len(extras)])
+            idx += 1
+
+    _pad(out_zh, fillers_zh)
+    _pad(out_en, fillers_en)
+    return {"zh": out_zh[:target], "en": out_en[:target]}
+
+
+class ExpertCatalog:
+    """Loads expert templates from the primary library root.
+
+    Optional ``extra_roots`` (typically ``expert_market/``) hold SkillHub
+    install caches. Those entries stay resolvable via :meth:`get` /
+    :meth:`expert_dir` for create flows, but :meth:`list_summaries` defaults to
+    **bundled** (primary-root) ids only so the library UI never mixes market
+    cache into the builtin tab.
     """
 
     def __init__(self, library_root: Path, extra_roots: list[Path] | None = None) -> None:
@@ -359,6 +745,7 @@ class ExpertCatalog:
         self._extra_roots = list(extra_roots or [])
         self._experts: dict[str, Expert] = {}
         self._expert_dirs: dict[str, Path] = {}
+        self._bundled_ids: set[str] = set()
 
     @property
     def root(self) -> Path:
@@ -370,6 +757,10 @@ class ExpertCatalog:
 
     def expert_dir(self, expert_id: str) -> Path:
         return self._expert_dirs.get(expert_id) or (self._root / expert_id)
+
+    def is_bundled(self, expert_id: str) -> bool:
+        """Return True when *expert_id* comes from the primary library root."""
+        return expert_id in self._bundled_ids
 
     def read_file_contents(
         self,
@@ -388,9 +779,14 @@ class ExpertCatalog:
         """Re-scan the library directory; quietly skip malformed entries."""
         out: dict[str, Expert] = {}
         dirs: dict[str, Path] = {}
+        bundled_ids: set[str] = set()
         for root in self.roots:
             if not root.exists():
                 continue
+            try:
+                from_primary = root.resolve() == self._root.resolve()
+            except OSError:
+                from_primary = root == self._root
             for entry in sorted(root.iterdir()):
                 if not entry.is_dir():
                     continue
@@ -412,9 +808,18 @@ class ExpertCatalog:
                     welcome_message_zh=_coerce_label(data.get("welcome_message"), "zh"),
                     welcome_message_en=_coerce_label(data.get("welcome_message"), "en"),
                     icon_name=data.get("icon_name"),
+                    icon_url=resolve_expert_icon_url(
+                        ex_id,
+                        data.get("icon_url"),
+                        scene=_manifest_scene(data),
+                    ),
                     color=data.get("color"),
                     quick_prompts=_parse_quick_prompts(data),
+                    task_examples=normalize_task_examples_for_display(parse_task_examples(data)),
                 )
+                # Primary library wins on id collision; market cache fills gaps.
+                if ex_id in out and not from_primary:
+                    continue
                 out[ex_id] = Expert(
                     summary=summary,
                     files=seed_paths,
@@ -422,12 +827,33 @@ class ExpertCatalog:
                     quick_prompts=summary.quick_prompts,
                 )
                 dirs[ex_id] = entry
+                if from_primary:
+                    bundled_ids.add(ex_id)
         self._experts = out
         self._expert_dirs = dirs
-        logger.info("expert catalog loaded: %d templates", len(out))
+        self._bundled_ids = bundled_ids
+        logger.info(
+            "expert catalog loaded: %d templates (%d bundled)",
+            len(out),
+            len(bundled_ids),
+        )
 
-    def list_summaries(self) -> list[ExpertSummary]:
-        summaries = [e.summary for e in self._experts.values() if e.summary.id != "default"]
+    def list_summaries(self, *, include_market_cache: bool = False) -> list[ExpertSummary]:
+        """Return expert cards for the library UI.
+
+        By default only **bundled** templates (primary library root) are listed.
+        SkillHub installs are cached under ``expert_market/`` for create/install,
+        but they belong in the market tab (``/experts/hub``), not the builtin
+        library tab.
+        """
+        summaries: list[ExpertSummary] = []
+        for expert in self._experts.values():
+            ex_id = expert.summary.id
+            if ex_id == "default":
+                continue
+            if not include_market_cache and ex_id not in self._bundled_ids:
+                continue
+            summaries.append(expert.summary)
         summaries.sort(key=lambda s: (0 if s.id == "general-assistant" else 1, s.id))
         return summaries
 
@@ -482,6 +908,8 @@ def build_create_spec_from_expert(
     welcome_message: str | None = None,
     published_expert_id: str | None = None,
     skill_package_ids: list[str] | None = None,
+    knowledge_base_ids: list[str] | None = None,
+    mcp_servers: list[str] | None = None,
 ) -> AgentCreateSpec:
     """Build :class:`AgentCreateSpec` for ``AgentManager.create`` from a catalog entry."""
     resolved_name = resolve_expert_agent_name(expert, expert_id, locale=locale, override=name)
@@ -509,6 +937,8 @@ def build_create_spec_from_expert(
     extra.pop("published_expert_id", None)
     extra.pop("welcome_message", None)
     extra.pop("skill_package_ids", None)
+    extra.pop("knowledge_base_ids", None)
+    extra.pop("mcp_servers", None)
     return AgentCreateSpec(
         agent_id=agent_id,
         name=resolved_name,
@@ -520,9 +950,11 @@ def build_create_spec_from_expert(
         icon=icon,
         template_name=expert_id,
         icon_name=icon_name or extra_icon_name or expert.summary.icon_name,
-        icon_url=icon_url or extra_icon_url,
+        icon_url=icon_url or extra_icon_url or expert.summary.icon_url,
         color=color or extra_color or expert.summary.color,
         skill_package_ids=skill_package_ids,
+        knowledge_base_ids=knowledge_base_ids,
+        mcp_servers=mcp_servers,
         published_expert_id=published_expert_id,
         welcome_message=welcome_message,
     )

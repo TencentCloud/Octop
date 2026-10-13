@@ -38,8 +38,11 @@ def env_file_path(root: Path) -> Path:
 
 def parse_env_text(text: str) -> dict[str, str]:
     out: dict[str, str] = {}
-    for raw_line in text.splitlines():
-        line = raw_line.strip()
+    lines = text.splitlines()
+    index = 0
+    while index < len(lines):
+        line = lines[index].strip()
+        index += 1
         if not line or line.startswith("#"):
             continue
         if line.startswith("export "):
@@ -51,8 +54,35 @@ def parse_env_text(text: str) -> dict[str, str]:
         if not key or not _KEY_RE.match(key):
             continue
         value = value.strip()
+        # ``format_env_file`` quotes any value containing whitespace and leaves embedded line
+        # breaks raw, so a multi-line value has to be read back across lines. Only a value with
+        # an *unterminated* quote continues onto the next line; a value that already contains a
+        # closing quote (or no quote at all) is left alone, so a malformed entry cannot swallow
+        # the rest of the file.
+        if value[:1] in {'"', "'"} and value[0] not in value[1:]:
+            quote = value[0]
+            while index < len(lines) and quote not in value[1:]:
+                value = f"{value}\n{lines[index]}"
+                index += 1
+            value = value.strip()
         if len(value) >= 2 and value[0] == value[-1] and value[0] in {'"', "'"}:
+            quote = value[0]
             value = value[1:-1]
+            # format_env_file escapes backslash and double quote inside the
+            # double-quoted values it writes; undo exactly those two escapes so a
+            # value such as a Windows path survives a save/load roundtrip.
+            if quote == '"' and "\\" in value:
+                unescaped: list[str] = []
+                i, n = 0, len(value)
+                while i < n:
+                    c = value[i]
+                    if c == "\\" and i + 1 < n and value[i + 1] in ('"', "\\"):
+                        unescaped.append(value[i + 1])
+                        i += 2
+                    else:
+                        unescaped.append(c)
+                        i += 1
+                value = "".join(unescaped)
         out[key] = value
     return out
 

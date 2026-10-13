@@ -1,6 +1,7 @@
-import { useEffect, useMemo, useState } from "react";
-import { Alert, Drawer, Empty, Spin, Switch } from "antd";
-import { Info } from "lucide-react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { Alert, Checkbox, Drawer, Empty, Modal, Spin, Switch } from "antd";
+import { Copy, Info } from "lucide-react";
+import { message } from "@/utils/antdMessage";
 import { useTranslation } from "react-i18next";
 import { skillPackagesApi } from "../../../../api/modules/skillPackages";
 import type {
@@ -11,7 +12,9 @@ import type {
 import { useAgent } from "../../../../context/AgentContext";
 import { PackageIcon } from "../../../SkillPackages/PackageIcon";
 import { showApiError } from "../../../../utils/showApiToast";
+import { createDetailRequestGate } from "../../../../utils/detailRequestGate";
 import { supportsHostSkillPackagesFromConfig } from "../../../Experts/components/agentBackendForm";
+import { resolveFigurativeSkillIcon } from "../builtinSkillIcon";
 import type { SkillSpec } from "../useSkills";
 import styles from "../index.module.less";
 
@@ -34,14 +37,22 @@ function resolvePackageSkillIcon(
 function PackageSkillIcon({
   iconUrl,
   emoji,
+  slug,
+  name,
 }: {
   iconUrl?: string;
   emoji?: string;
+  slug?: string;
+  name?: string;
 }) {
   if (iconUrl) {
     return (
       <img src={iconUrl} alt="" className={styles.packageSkillRowIconImg} />
     );
+  }
+  const figurative = resolveFigurativeSkillIcon(slug ?? "", emoji, name, 32);
+  if (figurative) {
+    return figurative.node;
   }
   if (emoji) {
     return <span className={styles.packageSkillRowEmoji}>{emoji}</span>;
@@ -73,6 +84,18 @@ export default function SkillPackagesTab({
     null,
   );
   const [detailLoading, setDetailLoading] = useState(false);
+  const [copyPackage, setCopyPackage] = useState<SkillPackageDetail | null>(
+    null,
+  );
+  const [copyModalOpen, setCopyModalOpen] = useState(false);
+  const [copyLoading, setCopyLoading] = useState(false);
+  const [copying, setCopying] = useState(false);
+  const [selectedCopySlugs, setSelectedCopySlugs] = useState<string[]>([]);
+  const [copyOverwrite, setCopyOverwrite] = useState(false);
+  // The drawer and the copy modal fetch the same endpoint for different surfaces,
+  // so each keeps its own gate: one opening must not invalidate the other.
+  const detailRequestGate = useRef(createDetailRequestGate());
+  const copyRequestGate = useRef(createDetailRequestGate());
 
   useEffect(() => {
     let cancelled = false;
@@ -136,17 +159,72 @@ export default function SkillPackagesTab({
   };
 
   const openDetail = async (pack: SkillPackage) => {
+    const requestId = detailRequestGate.current.begin();
     setDetailOpen(true);
     setDetailLoading(true);
     setDetailPackage(null);
     try {
       const detail = await skillPackagesApi.get(pack.id);
+      if (!detailRequestGate.current.isCurrent(requestId)) return;
       setDetailPackage(detail);
     } catch (error) {
+      if (!detailRequestGate.current.isCurrent(requestId)) return;
       showApiError(error, t("skills.packagesLoadFailed"), t);
       setDetailOpen(false);
     } finally {
-      setDetailLoading(false);
+      if (detailRequestGate.current.isCurrent(requestId)) {
+        setDetailLoading(false);
+      }
+    }
+  };
+
+  const openCopyModal = async (pack: SkillPackage) => {
+    const requestId = copyRequestGate.current.begin();
+    setCopyModalOpen(true);
+    setCopyLoading(true);
+    setCopyPackage(null);
+    setSelectedCopySlugs([]);
+    setCopyOverwrite(false);
+    try {
+      const detail = await skillPackagesApi.get(pack.id);
+      if (!copyRequestGate.current.isCurrent(requestId)) return;
+      setCopyPackage(detail);
+      setSelectedCopySlugs(detail.skills.map((skill) => skill.slug));
+    } catch (error) {
+      if (!copyRequestGate.current.isCurrent(requestId)) return;
+      showApiError(error, t("skills.packagesLoadFailed"), t);
+      setCopyModalOpen(false);
+    } finally {
+      if (copyRequestGate.current.isCurrent(requestId)) {
+        setCopyLoading(false);
+      }
+    }
+  };
+
+  const handleCopySkills = async () => {
+    if (!copyPackage || selectedCopySlugs.length === 0) {
+      message.warning(t("skills.selectAtLeastOneSkill"));
+      return;
+    }
+    setCopying(true);
+    try {
+      const result = await skillPackagesApi.copyToWorkspace(
+        agentId,
+        copyPackage.id,
+        {
+          skill_slugs: selectedCopySlugs,
+          overwrite: copyOverwrite,
+        },
+      );
+      await fetchSkills();
+      message.success(
+        t("skills.copySkillsSuccess", { count: result.copied.length }),
+      );
+      setCopyModalOpen(false);
+    } catch (error) {
+      showApiError(error, t("skills.copySkillsFailed"), t);
+    } finally {
+      setCopying(false);
     }
   };
 
@@ -223,6 +301,22 @@ export default function SkillPackagesTab({
                       ) : null}
                     </div>
                   </div>
+                  <div
+                    className={styles.packageCardSwitch}
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    <Switch
+                      checked={mounted}
+                      disabled={!packagesSupported && !mounted}
+                      loading={mountingId === pack.id}
+                      onChange={(checked) => handleToggleMount(pack, checked)}
+                      aria-label={
+                        mounted
+                          ? t("skills.unmountPackage")
+                          : t("skills.mountPackage")
+                      }
+                    />
+                  </div>
                 </div>
 
                 <div
@@ -248,17 +342,20 @@ export default function SkillPackagesTab({
                     className={styles.footerActions}
                     onClick={(e) => e.stopPropagation()}
                   >
-                    <Switch
-                      checked={mounted}
-                      disabled={!packagesSupported && !mounted}
-                      loading={mountingId === pack.id}
-                      onChange={(checked) => handleToggleMount(pack, checked)}
-                      aria-label={
-                        mounted
-                          ? t("skills.unmountPackage")
-                          : t("skills.mountPackage")
+                    <button
+                      type="button"
+                      className={styles.detailBtn}
+                      disabled={pack.can_copy === false}
+                      title={
+                        pack.can_copy === false
+                          ? t("skills.copyDenied")
+                          : undefined
                       }
-                    />
+                      onClick={() => void openCopyModal(pack)}
+                    >
+                      <Copy size={14} />
+                      {t("skills.copySkills")}
+                    </button>
                   </div>
                 </div>
               </div>
@@ -275,7 +372,7 @@ export default function SkillPackagesTab({
           setDetailPackage(null);
         }}
         width={480}
-        destroyOnClose
+        destroyOnHidden
       >
         {detailLoading ? (
           <Spin className={styles.skillPackagesLoading} />
@@ -302,6 +399,12 @@ export default function SkillPackagesTab({
                     installed,
                   );
                   const displayName = packageSkill.name || packageSkill.slug;
+                  const figurative = resolveFigurativeSkillIcon(
+                    packageSkill.slug,
+                    emoji,
+                    displayName,
+                    32,
+                  );
                   const displayDesc =
                     packageSkill.description || t("skills.noDescription");
                   const shadows = workspaceSlugs.has(packageSkill.slug);
@@ -315,10 +418,18 @@ export default function SkillPackagesTab({
                             className={styles.packageSkillRowIcon}
                             style={{
                               color: "#059669",
-                              background: iconUrl ? "transparent" : "#0596691a",
+                              background:
+                                iconUrl || figurative
+                                  ? "transparent"
+                                  : "#0596691a",
                             }}
                           >
-                            <PackageSkillIcon iconUrl={iconUrl} emoji={emoji} />
+                            <PackageSkillIcon
+                              iconUrl={iconUrl}
+                              emoji={emoji}
+                              slug={packageSkill.slug}
+                              name={displayName}
+                            />
                           </div>
                           <div className={styles.packageSkillRowMeta}>
                             <div className={styles.packageSkillRowLabel}>
@@ -360,6 +471,60 @@ export default function SkillPackagesTab({
           </>
         )}
       </Drawer>
+
+      <Modal
+        title={t("skills.copyPackageSkillsTitle", {
+          name: copyPackage?.name ?? "",
+        })}
+        open={copyModalOpen}
+        onCancel={() => setCopyModalOpen(false)}
+        onOk={() => void handleCopySkills()}
+        okText={t("skills.copySkills")}
+        confirmLoading={copying}
+        okButtonProps={{
+          disabled: copyLoading || selectedCopySlugs.length === 0,
+        }}
+        destroyOnHidden
+      >
+        <Alert
+          type="info"
+          showIcon
+          className={styles.skillTransferAlert}
+          message={t("skills.copySnapshotWarning")}
+        />
+        {copyLoading ? (
+          <Spin className={styles.skillPackagesLoading} />
+        ) : copyPackage?.skills.length ? (
+          <Checkbox.Group
+            value={selectedCopySlugs}
+            onChange={(values) =>
+              setSelectedCopySlugs(values.map((value) => String(value)))
+            }
+            className={styles.skillTransferList}
+          >
+            {copyPackage.skills.map((skill) => (
+              <Checkbox key={skill.slug} value={skill.slug}>
+                <span className={styles.skillTransferSkillName}>
+                  {skill.name || skill.slug}
+                </span>
+                <span className={styles.skillTransferSkillSlug}>
+                  {skill.slug}
+                </span>
+              </Checkbox>
+            ))}
+          </Checkbox.Group>
+        ) : (
+          <Empty description={t("skillPackages.emptySkills")} />
+        )}
+        {!copyLoading && copyPackage?.skills.length ? (
+          <Checkbox
+            checked={copyOverwrite}
+            onChange={(event) => setCopyOverwrite(event.target.checked)}
+          >
+            {t("skills.overwriteExisting")}
+          </Checkbox>
+        ) : null}
+      </Modal>
     </>
   );
 }

@@ -1,0 +1,28 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" role="img" aria-label="scene-default">
+  <defs>
+    <linearGradient id="bg-scene-default" x1="20" y1="8" x2="110" y2="120" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#F1F5F9"/>
+      <stop offset="1" stop-color="#E2E8F0"/>
+    </linearGradient>
+  </defs>
+  <rect width="128" height="128" rx="32" fill="url(#bg-scene-default)"/>
+  <path d="M26 118 Q28 94 48 88 Q64 84 80 88 Q100 94 102 118 Z" fill="#64748B"/>
+  <path d="M48 88 Q64 96 80 88 L78 118 H50 Z" fill="#475569" opacity="0.28"/>
+  <path d="M30 58 Q28 30 64 24 Q100 30 98 58 Q92 36 64 34 Q36 36 30 58Z" fill="#334155"/>
+  <rect x="56" y="86" width="16" height="14" rx="6" fill="#E8C4A8"/>
+  <ellipse cx="64" cy="64" rx="28" ry="30" fill="#E8C4A8"/>
+  <ellipse cx="36" cy="66" rx="5" ry="7" fill="#E8C4A8"/>
+  <ellipse cx="92" cy="66" rx="5" ry="7" fill="#E8C4A8"/>
+  
+  <ellipse cx="52" cy="62" rx="3.2" ry="3.8" fill="#0F172A"/>
+  <ellipse cx="76" cy="62" rx="3.2" ry="3.8" fill="#0F172A"/>
+  <circle cx="53.2" cy="60.8" r="1.1" fill="#fff" opacity="0.95"/>
+  <circle cx="77.2" cy="60.8" r="1.1" fill="#fff" opacity="0.95"/>
+  <path d="M46 54 Q52 51 58 54" fill="none" stroke="#0F172A" stroke-width="2" stroke-linecap="round" opacity="0.5"/>
+  <path d="M70 54 Q76 51 82 54" fill="none" stroke="#0F172A" stroke-width="2" stroke-linecap="round" opacity="0.5"/>
+  <path d="M64 64 Q66 70 62 72" fill="none" stroke="#C08457" stroke-width="2" stroke-linecap="round" opacity="0.5"/>
+  <path d="M52 74 Q64 82 76 74" fill="none" stroke="#B45309" stroke-width="2.4" stroke-linecap="round"/>
+  <circle cx="44" cy="72" r="4" fill="#F9A8D4" opacity="0.32"/>
+  <circle cx="84" cy="72" r="4" fill="#F9A8D4" opacity="0.32"/>
+  <path d="M96 100 L104 94 L112 100 V110 H96 Z" fill="#64748B"/>
+</svg>

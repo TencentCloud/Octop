@@ -55,6 +55,42 @@ export function filterQuickPrompts(prompts: QuickPrompt[]): QuickPrompt[] {
   );
 }
 
+export function normalizeQuickPrompts(
+  prompts:
+    | Array<{
+        title?: LocalizedText;
+        description?: LocalizedText;
+        prompt?: LocalizedText;
+        color?: string;
+        icon_name?: string | null;
+      }>
+    | undefined,
+): QuickPrompt[] {
+  return (prompts ?? []).map((prompt) => ({
+    title: { zh: prompt.title?.zh ?? "", en: prompt.title?.en ?? "" },
+    description: {
+      zh: prompt.description?.zh ?? "",
+      en: prompt.description?.en ?? "",
+    },
+    prompt: { zh: prompt.prompt?.zh ?? "", en: prompt.prompt?.en ?? "" },
+    color: prompt.color || "#e8f4ff",
+    icon_name: prompt.icon_name ?? null,
+  }));
+}
+
+export function serializeQuickPrompts(prompts: QuickPrompt[]): QuickPrompt[] {
+  return filterQuickPrompts(prompts).map((prompt) => ({
+    title: { zh: prompt.title?.zh ?? "", en: prompt.title?.en ?? "" },
+    description: {
+      zh: prompt.description?.zh ?? "",
+      en: prompt.description?.en ?? "",
+    },
+    prompt: { zh: prompt.prompt?.zh ?? "", en: prompt.prompt?.en ?? "" },
+    color: prompt.color || "#e8f4ff",
+    icon_name: prompt.icon_name ?? null,
+  }));
+}
+
 /** Merge welcome fields into an existing workspace manifest without dropping other keys. */
 export function mergeWelcomeIntoManifest(
   existing: Record<string, unknown>,

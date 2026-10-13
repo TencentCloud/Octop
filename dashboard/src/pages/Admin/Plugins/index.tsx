@@ -2,7 +2,9 @@ import { useEffect, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { Tabs } from "antd";
+import { Puzzle, Store } from "lucide-react";
 import PageShell from "../../../layouts/PageShell";
+import TabLabel from "../../../components/TabLabel";
 import { InstalledPluginsPanel } from "./InstalledPluginsPanel";
 import { PluginMarketPanel } from "./PluginMarketPanel";
 
@@ -47,12 +49,14 @@ export default function AdminPluginsPage() {
         items={[
           {
             key: "installed",
-            label: t("plugins.tabInstalled"),
+            label: (
+              <TabLabel icon={Puzzle}>{t("plugins.tabInstalled")}</TabLabel>
+            ),
             children: <InstalledPluginsPanel />,
           },
           {
             key: "market",
-            label: t("plugins.tabMarket"),
+            label: <TabLabel icon={Store}>{t("plugins.tabMarket")}</TabLabel>,
             children: <PluginMarketPanel />,
           },
         ]}

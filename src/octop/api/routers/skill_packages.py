@@ -5,10 +5,10 @@ from __future__ import annotations
 import asyncio
 import base64
 from dataclasses import asdict
-from typing import Any
+from typing import Any, Literal
 
 from fastapi import APIRouter, Depends, Request, status
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from octop.api.deps import get_server, require_permission
 from octop.infra.agents.experts.skillhub_market import (
@@ -56,6 +56,10 @@ class UpdateSkillPackageBody(BaseModel):
     description: str | None = None
     icon_name: str | None = None
     icon_url: str | None = None
+    copy_policy: Literal["snapshot", "lock", "deny"] | None = Field(
+        default=None,
+        description="Who may copy this package's skills into a workspace (#770).",
+    )
 
 
 class FromSkillHubBody(BaseModel):
@@ -251,13 +255,20 @@ def _package_skill_or_404(
 
 @router.get("", summary="List global skill packages")
 async def list_skill_packages(
+    writable_only: bool = False,
     server: OctopServer = Depends(get_server),
-    _user: User = Depends(require_permission("skill_packages")),
+    user: User = Depends(require_permission("skill_packages")),
 ) -> list[dict[str, Any]]:
     store = _store(server)
     return [
-        {**_row_public_dict(row), **_creator_fields(server, row.created_by)}
+        {
+            **_row_public_dict(row),
+            **_creator_fields(server, row.created_by),
+            "can_write": store.can_mutate(row, user),
+            "can_copy": store.can_copy(row, user),
+        }
         for row in store.repo.list_all()
+        if not writable_only or store.can_mutate(row, user)
     ]
 
 
@@ -360,16 +371,20 @@ async def get_skill_package(
     package_id: str,
     request: Request,
     server: OctopServer = Depends(get_server),
-    _user: User = Depends(require_permission("skill_packages")),
+    user: User = Depends(require_permission("skill_packages")),
 ) -> dict[str, Any]:
     store = _store(server)
     row = _package_or_404(store, package_id, locale=resolve_request_locale(request))
-    return _package_payload_with_creator(
-        server,
-        store,
-        row,
-        locale=resolve_request_locale(request),
-    )
+    return {
+        **_package_payload_with_creator(
+            server,
+            store,
+            row,
+            locale=resolve_request_locale(request),
+        ),
+        "can_write": store.can_mutate(row, user),
+        "can_copy": store.can_copy(row, user),
+    }
 
 
 @router.patch("/{package_id}", summary="Update global skill package metadata")
@@ -394,6 +409,7 @@ async def update_skill_package(
             description=description,
             icon_name=icon_name,
             icon_url=icon_url,
+            copy_policy=body.copy_policy,
         )
     except Exception as exc:
         if name is not None and is_skill_package_name_conflict(exc):

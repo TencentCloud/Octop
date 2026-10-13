@@ -11,6 +11,7 @@ import { Spin, Tabs } from "antd";
 import { HardDrive, LayoutGrid } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import PageShell from "../../../layouts/PageShell";
+import TabLabel from "../../../components/TabLabel";
 import { OctopEmptyMascot } from "../../../components/EmptyState";
 import StreamSetupGuide from "../../../components/StreamSetupGuide/StreamSetupGuide";
 import {
@@ -167,12 +168,18 @@ export default function AdminStoragePage() {
         items={[
           {
             key: "my",
-            label: t("storage.myStorage"),
+            label: (
+              <TabLabel icon={HardDrive}>{t("storage.myStorage")}</TabLabel>
+            ),
             children: myStorageContent,
           },
           {
             key: "types",
-            label: t("storage.supportedTypes"),
+            label: (
+              <TabLabel icon={LayoutGrid}>
+                {t("storage.supportedTypes")}
+              </TabLabel>
+            ),
             children: typesContent,
           },
         ]}

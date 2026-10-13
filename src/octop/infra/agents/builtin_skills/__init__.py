@@ -14,6 +14,19 @@ _BUILTIN_TOKEN = b"{{OCTOP_BUILTIN_SKILLS}}"
 _PACKAGE = "octop.infra.agents.builtin_skills"
 
 
+def is_octop_builtin_skills_path(rel: str) -> bool:
+    """True for workspace-relative paths inside the Octop-owned built-in Skills root.
+
+    Mirrors the two spellings ``_assert_workspace_mutable`` guards: the API name, and
+    the ``.octop/``-prefixed system location newer agents keep it in.
+    """
+    posix = str(rel).replace("\\", "/").strip("/")
+    for prefix in (OCTOP_BUILTIN_SKILLS_ROOT, f".octop/{OCTOP_BUILTIN_SKILLS_ROOT}"):
+        if posix == prefix or posix.startswith(f"{prefix}/"):
+            return True
+    return False
+
+
 def _collect_files(source: Traversable, prefix: str, out: list[tuple[str, bytes]]) -> None:
     for entry in source.iterdir():
         if entry.name.startswith((".", "__")):
@@ -74,4 +87,8 @@ async def sync_octop_builtin_skills(workspace: Any) -> list[str]:
     return sorted(skill_names)
 
 
-__all__ = ["OCTOP_BUILTIN_SKILLS_ROOT", "sync_octop_builtin_skills"]
+__all__ = [
+    "OCTOP_BUILTIN_SKILLS_ROOT",
+    "is_octop_builtin_skills_path",
+    "sync_octop_builtin_skills",
+]

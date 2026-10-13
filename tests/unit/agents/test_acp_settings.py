@@ -7,7 +7,7 @@ from pathlib import Path
 
 import pytest
 
-from octop.infra.agents.acp_settings import ACPSettingsStore
+from octop.infra.agents.settings.acp import ACPSettingsStore
 from octop.infra.db.migrate import run_migrations
 from octop.infra.db.pool import SqlitePool
 from octop.infra.db.repos.agents import AgentRepo
