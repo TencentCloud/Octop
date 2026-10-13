@@ -32,7 +32,20 @@
         "manage.export_file",
         "manage.search_file",
         "manage.set_privilege",
-        "manage.folder_list"
+        "manage.folder_list",
+        "sheet.get_sheet_info",
+        "sheet.set_cell_value",
+        "sheet.set_range_value",
+        "smartsheet.list_tables",
+        "smartsheet.list_fields",
+        "smartsheet.add_fields",
+        "smartsheet.list_records",
+        "smartsheet.add_records",
+        "smartsheet.update_records",
+        "smartsheet.add_view",
+        "get_content",
+        "query_space_node",
+        "query_space_list"
       ]
     },
     {
