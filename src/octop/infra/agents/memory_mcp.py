@@ -61,7 +61,7 @@ from mcp.server.fastmcp import FastMCP
 from mcp.server.fastmcp.server import Context
 from mcp.server.transport_security import TransportSecuritySettings
 
-from octop.infra.agents.memory_backend import open_memory_kwargs
+from octop.infra.agents.memory.backend import open_memory_kwargs
 from octop.infra.server import OctopServer
 
 logger = logging.getLogger(__name__)
@@ -99,7 +99,7 @@ def _open_memory(server: OctopServer, agent_id: str) -> Any:
     ``infra/`` (no api dependency). Workspace is resolved from the agent
     registry, falling back to the Octop default layout.
     """
-    from harness_memory.core import Memory  # noqa: PLC0415
+    from octop_memory.core import Memory  # noqa: PLC0415
 
     services = server.services
     assert services is not None, "server.services required for memory backend"
@@ -172,7 +172,7 @@ def _pipeline_hits(
     ``atom_only`` keeps just L2 atoms, so the request is widened first —
     otherwise raw hits could crowd the atoms out before the filter runs.
     """
-    from harness_memory.application.runtime import MemoryRuntime  # noqa: PLC0415
+    from octop_memory.application.runtime import MemoryRuntime  # noqa: PLC0415
 
     runtime = MemoryRuntime(memory)
     result = runtime.memory_search(
@@ -284,7 +284,7 @@ def build_memory_mcp(server: OctopServer) -> FastMCP:
             user: 可选调用者 id（覆盖 ``X-Octop-User-Id`` 头）。
             ctx: MCP 注入的上下文（读取 ``X-Octop-User-Id`` 头）。
         """
-        from harness_memory.pipeline.recall import recall_for_prompt  # noqa: PLC0415
+        from octop_memory.pipeline.recall import recall_for_prompt  # noqa: PLC0415
 
         caller = user or _caller_user(ctx)
         memory = _memory()
@@ -339,7 +339,7 @@ def build_memory_mcp(server: OctopServer) -> FastMCP:
             )
         memory = _memory()
         if corpus_value == "raw":
-            from harness_memory.application.path_projection import raw_to_path  # noqa: PLC0415
+            from octop_memory.application.path_projection import raw_to_path  # noqa: PLC0415
 
             hits = [
                 {
@@ -377,7 +377,7 @@ def build_memory_mcp(server: OctopServer) -> FastMCP:
             start: 可选起始行号（1-based）。
             lines: 可选返回行数。
         """
-        from harness_memory.application.runtime import MemoryRuntime  # noqa: PLC0415
+        from octop_memory.application.runtime import MemoryRuntime  # noqa: PLC0415
 
         params: dict[str, Any] = {"path": path}
         if start is not None:
@@ -645,7 +645,7 @@ def build_memory_mcp(server: OctopServer) -> FastMCP:
             limit: 最多返回条数，默认 50。
         """
         memory = _memory()
-        from harness_memory.core import CandidateStatus  # noqa: PLC0415
+        from octop_memory.core import CandidateStatus  # noqa: PLC0415
 
         # ``CandidateStatus`` is a ``typing.Literal`` (not an Enum), so it cannot
         # be instantiated: ``CandidateStatus(status)`` raises ``TypeError``. The

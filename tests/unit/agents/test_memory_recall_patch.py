@@ -1,4 +1,4 @@
-"""Unit tests for the harness_memory recall-quality patch (infra/agents/memory_recall_patch).
+"""Unit tests for the octop_memory recall-quality patch (infra/agents/memory_recall_patch).
 
 The patch monkey-patches three symbols inside the upstream ``harness-memory``
 package at startup, so these tests only assert the wiring contract: the three
@@ -9,8 +9,8 @@ not here.
 
 from __future__ import annotations
 
-import harness_memory.pipeline.recall.multi_source as multi_source
-import harness_memory.pipeline.recall.router as router
+import octop_memory.pipeline.recall.multi_source as multi_source
+import octop_memory.pipeline.recall.router as router
 
 from octop.infra.agents import memory_recall_patch as patch
 

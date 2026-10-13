@@ -1,4 +1,4 @@
-"""Persistent recall-quality patches for ``harness_memory``.
+"""Persistent recall-quality patches for ``octop_memory``.
 
 The upstream ``harness-memory`` package (PyPI) ships a recall pipeline whose
 retrieval quality is poor for multi-person shared-conversation datasets like
@@ -42,7 +42,7 @@ from collections.abc import Sequence
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
-    from harness_memory.pipeline.recall.router import RoutingDecision
+    from octop_memory.pipeline.recall.router import RoutingDecision
 
 logger = logging.getLogger(__name__)
 
@@ -153,7 +153,7 @@ def _patched_route(
     *,
     thread_id: str | None = None,
 ) -> RoutingDecision:
-    from harness_memory.pipeline.recall.router import _orig_route  # noqa: PLC0415
+    from octop_memory.pipeline.recall.router import _orig_route  # noqa: PLC0415
 
     # Re-resolve hints with suffix stripping: try each candidate alias in
     # order, resolve the first hit, and inject it back into the parsed
@@ -330,8 +330,8 @@ def apply_memory_recall_patch() -> None:
         return
 
     try:
-        import harness_memory.pipeline.recall.multi_source as ms  # noqa: PLC0415
-        import harness_memory.pipeline.recall.router as router  # noqa: PLC0415
+        import octop_memory.pipeline.recall.multi_source as ms  # noqa: PLC0415
+        import octop_memory.pipeline.recall.router as router  # noqa: PLC0415
 
         if not hasattr(router, "_orig_route"):
             router._orig_route = router.route

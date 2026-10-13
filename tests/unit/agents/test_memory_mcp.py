@@ -88,7 +88,7 @@ def test_build_registers_eleven_tools(fake_memory):
 
 def test_memory_recall_uses_full_pipeline(fake_memory, monkeypatch, bind_agent):
     """memory_recall runs the full recall pipeline (recall_for_prompt)."""
-    import harness_memory.pipeline.recall as _recall
+    import octop_memory.pipeline.recall as _recall
 
     class _Snippet:
         source_id = "atom-1"
@@ -110,7 +110,7 @@ def test_memory_recall_uses_full_pipeline(fake_memory, monkeypatch, bind_agent):
 
 def test_memory_recall_forwards_session_and_thread(fake_memory, monkeypatch, bind_agent):
     """Hook callers can scope recall to a session/thread (echo guard + co-reference)."""
-    import harness_memory.pipeline.recall as _recall
+    import octop_memory.pipeline.recall as _recall
 
     captured = {}
 
@@ -139,7 +139,7 @@ def test_memory_recall_forwards_session_and_thread(fake_memory, monkeypatch, bin
 
 
 def test_memory_recall_without_scope_passes_none(fake_memory, monkeypatch, bind_agent):
-    import harness_memory.pipeline.recall as _recall
+    import octop_memory.pipeline.recall as _recall
 
     captured = {}
 
@@ -436,7 +436,7 @@ def _stub_runtime(monkeypatch, *, hits=None, get_result=None, captured=None):
                 captured["get_params"] = params
             return dict(get_result or {})
 
-    import harness_memory.application.runtime as _runtime
+    import octop_memory.application.runtime as _runtime
 
     monkeypatch.setattr(_runtime, "MemoryRuntime", _FakeRuntime)
 
@@ -538,7 +538,7 @@ def test_memory_get_returns_hint_for_bad_path(fake_memory, monkeypatch, bind_age
         def memory_get(self, params):
             raise ValueError("path must be non-empty and unpadded: 'nope'")
 
-    import harness_memory.application.runtime as _runtime
+    import octop_memory.application.runtime as _runtime
 
     monkeypatch.setattr(_runtime, "MemoryRuntime", _Boom)
     mcp = mm.build_memory_mcp(mock.MagicMock())
