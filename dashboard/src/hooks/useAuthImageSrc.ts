@@ -14,9 +14,67 @@ type AuthImageCacheEntry = {
   objectUrl?: string;
   refs: number;
   inflight?: Promise<string>;
+  expiresAt?: number;
+  lastUsedAt: number;
 };
 
 const authImageCache = new Map<string, AuthImageCacheEntry>();
+const AUTH_IMAGE_CACHE_TTL_MS = 5 * 60 * 1000;
+const AUTH_IMAGE_CACHE_MAX_ENTRIES = 50;
+let authImageCacheCleanupTimer: ReturnType<typeof setTimeout> | undefined;
+
+function discardCacheEntry(key: string, entry: AuthImageCacheEntry): void {
+  if (entry.objectUrl) {
+    URL.revokeObjectURL(entry.objectUrl);
+  }
+  authImageCache.delete(key);
+}
+
+function pruneAuthImageCache(now: number): void {
+  for (const [key, entry] of authImageCache) {
+    if (
+      entry.refs <= 0 &&
+      !entry.inflight &&
+      entry.expiresAt !== undefined &&
+      entry.expiresAt <= now
+    ) {
+      discardCacheEntry(key, entry);
+    }
+  }
+
+  if (authImageCache.size <= AUTH_IMAGE_CACHE_MAX_ENTRIES) return;
+  const unused = [...authImageCache.entries()]
+    .filter(([, entry]) => entry.refs <= 0 && !entry.inflight)
+    .sort(([, left], [, right]) => left.lastUsedAt - right.lastUsedAt);
+  for (const [key, entry] of unused) {
+    if (authImageCache.size <= AUTH_IMAGE_CACHE_MAX_ENTRIES) break;
+    discardCacheEntry(key, entry);
+  }
+}
+
+function scheduleAuthImageCacheCleanup(now: number): void {
+  if (authImageCacheCleanupTimer !== undefined) {
+    clearTimeout(authImageCacheCleanupTimer);
+    authImageCacheCleanupTimer = undefined;
+  }
+  let nextExpiry: number | undefined;
+  for (const entry of authImageCache.values()) {
+    if (entry.refs > 0 || entry.inflight || entry.expiresAt === undefined) {
+      continue;
+    }
+    nextExpiry = Math.min(nextExpiry ?? entry.expiresAt, entry.expiresAt);
+  }
+  if (nextExpiry === undefined) return;
+  authImageCacheCleanupTimer = setTimeout(
+    () => {
+      authImageCacheCleanupTimer = undefined;
+      const cleanupNow = Date.now();
+      pruneAuthImageCache(cleanupNow);
+      scheduleAuthImageCacheCleanup(cleanupNow);
+    },
+    Math.max(0, nextExpiry - now),
+  );
+}
 
 function apiPathFromUrl(url: string): string {
   if (url.startsWith("http")) {
@@ -47,12 +105,28 @@ export function acquireAuthImageSrc(
   filename?: string,
 ): Promise<string> {
   const key = cacheKey(url, filename);
+  const now = Date.now();
+  pruneAuthImageCache(now);
   let entry = authImageCache.get(key);
+  if (
+    entry &&
+    entry.refs <= 0 &&
+    !entry.inflight &&
+    entry.expiresAt !== undefined &&
+    entry.expiresAt <= now
+  ) {
+    discardCacheEntry(key, entry);
+    entry = undefined;
+  }
   if (!entry) {
-    entry = { refs: 0 };
+    entry = { refs: 0, lastUsedAt: now };
     authImageCache.set(key, entry);
   }
   entry.refs += 1;
+  entry.expiresAt = undefined;
+  entry.lastUsedAt = now;
+  pruneAuthImageCache(now);
+  scheduleAuthImageCacheCleanup(now);
   if (entry.objectUrl) {
     return Promise.resolve(entry.objectUrl);
   }
@@ -63,10 +137,9 @@ export function acquireAuthImageSrc(
         const objectUrl = URL.createObjectURL(blob);
         pending.objectUrl = objectUrl;
         pending.inflight = undefined;
-        if (pending.refs <= 0) {
-          URL.revokeObjectURL(objectUrl);
-          authImageCache.delete(key);
-        }
+        const resolvedAt = Date.now();
+        pruneAuthImageCache(resolvedAt);
+        scheduleAuthImageCacheCleanup(resolvedAt);
         return objectUrl;
       })
       .catch((err: unknown) => {
@@ -74,6 +147,7 @@ export function acquireAuthImageSrc(
         if (pending.refs <= 0) {
           authImageCache.delete(key);
         }
+        scheduleAuthImageCacheCleanup(Date.now());
         throw err;
       });
   }
@@ -87,12 +161,13 @@ export function releaseAuthImageSrc(url: string, filename?: string): void {
   const key = cacheKey(url, filename);
   const entry = authImageCache.get(key);
   if (!entry) return;
-  entry.refs -= 1;
-  if (entry.refs > 0 || entry.inflight) return;
-  if (entry.objectUrl) {
-    URL.revokeObjectURL(entry.objectUrl);
-  }
-  authImageCache.delete(key);
+  entry.refs = Math.max(0, entry.refs - 1);
+  if (entry.refs > 0) return;
+  const now = Date.now();
+  entry.lastUsedAt = now;
+  entry.expiresAt = now + AUTH_IMAGE_CACHE_TTL_MS;
+  pruneAuthImageCache(now);
+  scheduleAuthImageCacheCleanup(now);
 }
 
 function releaseHeld(held: HeldAuthImage | undefined): void {
