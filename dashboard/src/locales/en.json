@@ -3481,6 +3481,7 @@
       "peerUrl": "Peer address",
       "peerUrlPlaceholder": "https://octop.example.com",
       "peerUrlRequired": "Enter the peer Octop address",
+      "peerIp": "Source IP",
       "username": "Username",
       "usernameRequired": "Enter the peer username",
       "password": "Password",
