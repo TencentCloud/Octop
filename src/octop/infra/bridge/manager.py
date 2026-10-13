@@ -3,11 +3,12 @@
 from __future__ import annotations
 
 import asyncio
+import ipaddress
 import json
 import logging
 from contextlib import suppress
 from typing import Any
-from urllib.parse import urljoin, urlsplit
+from urllib.parse import urljoin, urlparse, urlsplit
 
 import httpx
 import websockets
@@ -34,7 +35,15 @@ from octop.infra.bridge.peer_turn import (
     PeerTurnRunner,
     bridge_turn_ws_payload,
 )
-from octop.infra.bridge.transport import BridgeSession
+from octop.infra.bridge.transport import (
+    ADVERTISED_BRIDGE_FEATURES,
+    BRIDGE_TUNNEL_CHUNKED_MAX_BODY_BYTES,
+    BRIDGE_TUNNEL_MAX_BODY_BYTES,
+    BRIDGE_WS_MAX_BYTES,
+    FEATURE_BODY_CHUNKS,
+    BridgeSession,
+    peer_feature_set,
+)
 from octop.infra.db.repos.bridge_connections import BridgeConnectionRepo, BridgeConnectionRow
 from octop.infra.db.repos.secrets import SecretRepo
 from octop.infra.db.repos.users import UserRepo
@@ -60,32 +69,92 @@ def _is_inbound(row: BridgeConnectionRow) -> bool:
 _bridge_turn_ws_payload = bridge_turn_ws_payload
 
 
-def _looks_like_endpoint_label(name: str) -> bool:
-    """True when a display name is an auto-filled URL / IPv4, not a nickname."""
-    n = (name or "").strip()
-    if not n:
-        return True
-    low = n.lower()
-    if low.startswith("http://") or low.startswith("https://"):
-        return True
-    return n.count(".") >= 3 and any(ch.isdigit() for ch in n)
+def _host_label(raw: str) -> str:
+    """Return a host suitable as a peer label, or empty for loopback / blank."""
+    text = (raw or "").strip().strip("[]")
+    if not text or text.lower() == "unknown":
+        return ""
+    if text.count(":") == 1 and "." in text:
+        text = text.split(":", 1)[0].strip()
+    try:
+        addr = ipaddress.ip_address(text)
+    except ValueError:
+        if text.lower() == "localhost":
+            return ""
+        return text[:64]
+    if addr.is_loopback or addr.is_unspecified:
+        return ""
+    return str(addr)
+
+
+def _advertise_host_label(url: str) -> str:
+    raw = (url or "").strip()
+    if not raw:
+        return ""
+    try:
+        host = urlparse(raw).hostname or ""
+    except ValueError:
+        return ""
+    return _host_label(host)
+
+
+def observe_ws_client_host(websocket: Any) -> str:
+    """Peer address of an inbound Bridge socket.
+
+    Trusts ``X-Forwarded-For`` only when the direct peer is loopback (a local
+    reverse proxy). The right-most hop is the one that proxy actually saw.
+    """
+    client = getattr(websocket, "client", None)
+    host = ""
+    if client is not None:
+        raw_host = getattr(client, "host", None)
+        if isinstance(raw_host, str) and raw_host.strip():
+            host = raw_host.strip()
+        elif isinstance(client, (tuple, list)) and client:
+            host = str(client[0]).strip()
+    headers = getattr(websocket, "headers", None)
+    forwarded = ""
+    if headers is not None:
+        raw_fwd = headers.get("x-forwarded-for") or headers.get("X-Forwarded-For")
+        if isinstance(raw_fwd, str) and raw_fwd.strip():
+            hops = [part.strip() for part in raw_fwd.split(",") if part.strip()]
+            forwarded = hops[-1] if hops else ""
+    try:
+        direct = ipaddress.ip_address(host) if host else None
+    except ValueError:
+        direct = None
+    if direct is not None and direct.is_loopback and forwarded:
+        return _host_label(forwarded) or _host_label(host)
+    return _host_label(host)
 
 
 def inbound_default_display_name(
     *,
     connection_id: str,
-    preferred_name: str = "",
+    client_host: str = "",
+    advertise_base_url: str = "",
     peer_username: str = "",
     existing_name: str | None = None,
 ) -> str:
-    """Human label for a reverse (peer-dialed) row — never the advertised URL."""
+    """Local label for a reverse row.
+
+    A name already stored on this side always wins, so renaming here does not
+    follow the initiator and an initiator rename does not overwrite this side.
+    New rows default to the observed client IP (or a non-loopback advertised
+    host), which the owner can edit afterwards.
+    """
     existing = (existing_name or "").strip()
-    if existing and existing != connection_id and not _looks_like_endpoint_label(existing):
-        return existing
-    name = (preferred_name or "").strip() or (peer_username or "").strip() or connection_id
-    if _looks_like_endpoint_label(name):
-        name = (peer_username or "").strip() or connection_id
-    return name
+    if existing:
+        return existing[:64]
+    for candidate in (
+        _host_label(client_host),
+        _advertise_host_label(advertise_base_url),
+        (peer_username or "").strip(),
+        connection_id,
+    ):
+        if candidate:
+            return candidate[:64]
+    return "Remote"
 
 
 def _absolute_peer_url(base_url: str, maybe_path: str | None) -> str | None:
@@ -280,6 +349,7 @@ class BridgeManager:
             "updated_at": row.updated_at,
             "has_password": bool(row.credential_blob),
             "inbound": _is_inbound(row),
+            "peer_client_host": row.peer_client_host,
         }
 
     async def probe_peer(
@@ -828,7 +898,7 @@ class BridgeManager:
             async with websockets.connect(
                 url,
                 open_timeout=20,
-                max_size=32 * 1024 * 1024,
+                max_size=BRIDGE_WS_MAX_BYTES,
                 ping_interval=20,
                 ping_timeout=20,
             ) as ws:
@@ -842,6 +912,7 @@ class BridgeManager:
                     "advertise_base_url": self._advertise_base_url or "http://127.0.0.1",
                     "advertise_username": (local_user.username if local_user is not None else ""),
                     "display_name": owner.display_name if owner else None,
+                    "features": list(ADVERTISED_BRIDGE_FEATURES),
                 }
                 await ws.send(json.dumps(hello, ensure_ascii=False))
 
@@ -861,6 +932,12 @@ class BridgeManager:
                         continue
                     if str(ack.get("type") or "") != "hello_ack":
                         continue
+                    ack_id = str(ack.get("connection_id") or "").strip()
+                    if ack_id and ack_id != connection_id:
+                        raise OctopError(
+                            ErrorCode.BRIDGE_PEER_UNREACHABLE,
+                            "peer rebound this link onto another connection",
+                        )
                     peer_version = int(ack.get("protocol_version") or 0)
                     if peer_version != PROTOCOL_VERSION:
                         raise OctopError(
@@ -876,6 +953,7 @@ class BridgeManager:
                 session = BridgeSession(
                     connection_id=connection_id,
                     send_text=ws.send,
+                    peer_features=peer_feature_set(ack),
                     on_tunnel_request=lambda p: self._handle_inbound_tunnel(connection_id, p),
                     on_turn_frame=lambda p: self._handle_inbound_turn(connection_id, p),
                     on_browser_frame=lambda p: self._handle_inbound_browser(connection_id, p),
@@ -897,7 +975,8 @@ class BridgeManager:
             logger.warning("bridge outbound closed connection=%s: %s", connection_id, exc)
             raise
         finally:
-            await self._unregister_session(connection_id)
+            if session is not None:
+                await self._unregister_session(connection_id, expected=session)
 
     # -- inbound WS (peer dials us) ------------------------------------------
 
@@ -937,7 +1016,6 @@ class BridgeManager:
             return
         advertise_base = str(payload.get("advertise_base_url") or "").strip() or "http://127.0.0.1"
         advertise_user = str(payload.get("advertise_username") or "").strip() or "peer"
-        preferred_name = str(payload.get("display_name") or "").strip()
         try:
             advertise_base = normalize_peer_base_url(advertise_base)
         except OctopError:
@@ -951,16 +1029,18 @@ class BridgeManager:
         if existing is not None and int(existing.owner_user_id) != int(user.id):
             await websocket.close(code=4003, reason="connection owned by another user")
             return
-        by_peer = self._find_peer_link(int(user.id), advertise_base, advertise_user)
-        if existing is None and by_peer is not None:
-            connection_id = by_peer.connection_id
-            existing = by_peer
+        # Do not merge a new connection_id onto an older row that happens to
+        # advertise the same URL and username. Loopback / NAT addresses are not
+        # unique, so several people logging into this account would otherwise
+        # steal one socket and the later link would never stay up.
         if existing is None and self._at_connection_limit(int(user.id)):
             await websocket.close(code=4008, reason="connection limit")
             return
+        client_host = observe_ws_client_host(websocket)
         preferred = inbound_default_display_name(
             connection_id=connection_id,
-            preferred_name=preferred_name,
+            client_host=client_host,
+            advertise_base_url=advertise_base,
             peer_username=advertise_user,
             existing_name=existing.display_name if existing is not None else None,
         )
@@ -977,11 +1057,13 @@ class BridgeManager:
             peer_username=advertise_user,
             display_name=display_name,
             status="connected",
+            peer_client_host=client_host or None,
         )
 
         session = BridgeSession(
             connection_id=connection_id,
             send_text=send_text,
+            peer_features=peer_feature_set(payload),
             on_tunnel_request=lambda p: self._handle_inbound_tunnel(connection_id, p),
             on_turn_frame=lambda p: self._handle_inbound_turn(connection_id, p),
             on_browser_frame=lambda p: self._handle_inbound_browser(connection_id, p),
@@ -995,6 +1077,7 @@ class BridgeManager:
                 "protocol_version": PROTOCOL_VERSION,
                 "connection_id": connection_id,
                 "peer_username": user.username,
+                "features": list(ADVERTISED_BRIDGE_FEATURES),
             }
         )
         try:
@@ -1015,13 +1098,24 @@ class BridgeManager:
             await old.close()
         self._sessions[connection_id] = session
 
-    async def _unregister_session(self, connection_id: str) -> None:
+    async def _unregister_session(
+        self, connection_id: str, *, expected: BridgeSession | None = None
+    ) -> None:
+        current = self._sessions.get(connection_id)
+        if expected is not None and current is not expected:
+            return
         sess = self._sessions.pop(connection_id, None)
         if sess is not None:
             await sess.close()
 
     async def _finalize_inbound(self, connection_id: str, session: BridgeSession | None) -> None:
-        await self._unregister_session(connection_id)
+        """Drop this socket only. A replacement for the same id must stay up."""
+        current = self._sessions.get(connection_id)
+        replaced = current is not None and session is not None and current is not session
+        if not replaced:
+            await self._unregister_session(connection_id, expected=session)
+        if replaced:
+            return
         if session is not None and session.close_reason == "deleted":
             self._repo.delete(connection_id)
             return
@@ -1045,7 +1139,7 @@ class BridgeManager:
                 connection_id,
                 sess.idle_seconds(),
             )
-            await self._unregister_session(connection_id)
+            await self._unregister_session(connection_id, expected=sess)
             sess = None
         if sess is not None and not sess.closed:
             return sess
@@ -1086,6 +1180,18 @@ class BridgeManager:
                 "This action is not available through the remote bridge. Manage it on the peer Octop.",
             )
         sess = await self._require_live_session(connection_id)
+        if body:
+            chunked = FEATURE_BODY_CHUNKS in sess.peer_features
+            limit = (
+                BRIDGE_TUNNEL_CHUNKED_MAX_BODY_BYTES if chunked else BRIDGE_TUNNEL_MAX_BODY_BYTES
+            )
+            if len(body) > limit:
+                max_mb = max(1, limit // (1024 * 1024))
+                raise OctopError(
+                    ErrorCode.ATTACHMENT_TOO_LARGE,
+                    f"file too large (max {max_mb}MB)",
+                    details={"max_mb": max_mb},
+                )
         try:
             result = await sess.tunnel_request(
                 method=method,
@@ -1095,7 +1201,8 @@ class BridgeManager:
                 body=body,
             )
         except (TimeoutError, ConnectionError) as exc:
-            await self._unregister_session(connection_id)
+            # Only drop the socket that failed. A replacement for this id must stay up.
+            await self._unregister_session(connection_id, expected=sess)
             raise self._bridge_link_error(exc) from exc
         if str(result.get("type") or "") == "tunnel.error":
             code_raw = str(result.get("code") or "").strip()
