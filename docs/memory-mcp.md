@@ -7,7 +7,67 @@
 > 当前工具面：**9 个 `memory_*` 工具**（读取 3 个 / 写入 2 个 / 提取与审核 4 个）。
 >
 > 本地终端（Claude Code / Kiro / DSH / Codex / Cursor）可以用服务端自带的**一键安装器**
-> 自动完成「MCP 条目 + hooks（+ DSH 共享记忆预设）」，见 §4.7。
+> 自动完成「MCP 条目 + hooks（+ DSH 共享记忆预设）」，见下方**快速上手**。
+
+---
+
+## 快速上手（curl 一行接入）
+
+前提只有两条：① 服务端已设 `OCTOP_MEMORY_MCP_TOKEN` 并重启（未设置时 `/mcp/memory` 不挂载，
+见 §5）；② 有一个可用的**专家 ID**（即 `X-Octop-Agent-Id`，用 `octop agent list` 查，或用默认专家）。
+
+在**要接入记忆的那台机器**上执行——`terminals` 可多选，逗号分隔：
+
+```bash
+curl -fLsS "https://<octop-host>/mcp/memory/setup?agent=<专家ID>&terminals=claude-code" | sh
+```
+
+脚本会：检测本机装了哪些终端 → 让你勾选 → 问一次 token（部署已配 `OCTOP_MEMORY_MCP_TOKEN`
+时内置，不再问）与用户标识 → 写入每个终端**自己的** hooks 目录与配置，并登记 MCP 条目。
+结尾会打一行 `octop memory 接入完成`，顺便做一次端点自检（`HTTP 200` 即通）。
+
+**可重复执行**：重跑就是升级路径——先清理早期版本的 hook 文件与本安装器的陈旧登记，
+同一端点只保留一条 MCP 条目，不会动你其它的 MCP / hook 条目。
+
+### 零交互（CI / 批量装机 / 脚本化）
+
+`curl | sh` 没有 tty 时不会提问，全部走环境变量或 URL 参数：
+
+```bash
+curl -fLsS "https://<octop-host>/mcp/memory/setup" \
+  | OCTOP_AGENT_ID='<专家ID>' \
+    OCTOP_TERMINALS='claude-code,kiro' \
+    OCTOP_MEMORY_TOKEN='<共享 token>' \
+    OCTOP_USER_ID='<你的域账号>' \
+    OCTOP_DISABLE_OAUTH=true \
+    sh
+```
+
+| 变量 | 作用 |
+|---|---|
+| `OCTOP_AGENT_ID` / `OCTOP_TERMINALS` | 等价于 `?agent=` / `?terminals=`；缺专家 ID 会直接报错退出 |
+| `OCTOP_MEMORY_TOKEN` | 覆盖部署内置的默认凭据（即 `OCTOP_MEMORY_MCP_TOKEN` 的值） |
+| `OCTOP_USER_ID` | 写进 `X-Octop-User-Id`，决定记忆里"谁说的"；**建议域账号**（HTTP 头只能 ASCII，中文会被忽略） |
+| `OCTOP_DISABLE_OAUTH=true` | 直连实例挂载点（条目写 `Authorization: Bearer <token>`），不走 OAuth 前置 |
+| `OCTOP_TOKEN_HEADER` | hooks 用的鉴权头名，缺省 `Authorization` |
+| `OCTOP_ENTRY_TOKEN` + `OCTOP_ENTRY_TOKEN_HEADER` | 仅当条目要指向自建 OAuth 前置时的个人令牌与其头名（缺省 `Authorization`） |
+
+### 装完自检 / 卸载
+
+```bash
+# 1) 端点活着：不带 token 应 401（挂载了才可能 401，未挂载是 404）
+curl -s -o /dev/null -w '%{http_code}\n' -X POST "https://<octop-host>/mcp/memory/" \
+  -H 'Content-Type: application/json' -d '{"jsonrpc":"2.0","id":1,"method":"tools/list"}'
+
+# 2) 重开终端/IDE（Kiro 重载 hooks；Codex 首次需在 codex 里信任该 hook），
+#    然后问一句与本项目相关的问题——模型侧应自动调到 memory_search，命中会注入上下文。
+
+# 卸载（等价于把安装器写过的条目与 hook 文件清掉）
+curl -fLsS "https://<octop-host>/mcp/memory/uninstall" | sh
+```
+
+> 手工接入（不想跑脚本）看 §4.3 Kiro / §4.4 Claude Code / §4.5 DSH / §4.6 其它客户端；
+> 安装器具体写了哪些文件、每个终端的路径与工具清单，见 §4.7。
 
 ---
 
@@ -466,16 +526,16 @@ This preset auto-reads and auto-writes the octop-memory expert store so durable 
 
 ### 4.7 一键安装器（Claude Code / Kiro / DSH / Codex / Cursor）
 
-服务端自带安装器，`curl | sh` 即可完成「检测终端 → 多选终端 → 填专家 ID → 写 MCP 条目 +
-hooks（DSH 另装共享记忆预设）」：
+服务端自带安装器。**命令、零交互变量、自检与卸载见开头的「快速上手」**；这一节是它的实现细节
+（写了哪些文件、地址参数、鉴权头）。
 
 ```bash
 curl -fsSL "https://<octop-host>/mcp/memory/setup" | sh
-# 无人值守可预填查询参数：
-#   ?url=        客户端 MCP 条目的地址（缺省 = 本实例挂载点）
-#   ?hook_url=   hooks 实际 POST 的地址（缺省 = 本实例挂载点）
+# 可预填的参数（等价的环境变量见快速上手）：
 #   ?agent=      专家 ID
 #   ?terminals=  claude-code,kiro,dsh,codex,cursor
+#   ?url=        客户端 MCP 条目的地址（缺省 = 本实例挂载点）
+#   ?hook_url=   hooks 实际 POST 的地址（缺省 = 本实例挂载点）
 ```
 
 - **不发放凭据**：token 由运行脚本的人当场输入（读 `/dev/tty`，不回显）；可用
