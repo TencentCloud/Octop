@@ -496,6 +496,8 @@
     "INVITE_INVALID": "邀请码无效。",
     "INVITE_ROLE_MISSING": "邀请对应的角色已删除或改名，无法完成注册。",
     "USER_ROLE_IN_USE": "仍有用户使用此角色，请先改派后再删除。",
+    "USER_ROLE_ID_INVALID": "角色 ID 须为 1-64 位字母或下划线，且不能以下划线开头或结尾。",
+    "USER_ROLE_ID_TAKEN": "该角色 ID 已被使用。",
     "INVITE_USED": "该邀请码已被使用。",
     "INVITE_EXPIRED": "该邀请码已过期。",
     "INVITE_REVOKED": "该邀请码已被撤销。",
@@ -741,6 +743,7 @@
     "path": "工作区路径：{path}",
     "mime": "MIME：{media_type}",
     "size": "大小：{size} 字节",
+    "extracted_header": "[附件正文：{filename}]",
     "empty_message": "[空消息]",
     "empty_image": "用户发送了图片。",
     "image_unavailable": "[附件] 图片无法加载到模型。"

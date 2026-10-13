@@ -45,14 +45,16 @@ def test_user_has_permission_normal_hit_and_miss() -> None:
 
 def test_baseline_is_settings_group() -> None:
     assert {
-        key for key, p in PERMISSIONS.items() if p.category == "settings"
+        key for key, p in PERMISSIONS.items() if p.category in {"settings", "nav"}
     } == BASELINE_PERMISSIONS
     assert BASELINE_PERMISSIONS
-    assert all(PERMISSIONS[k].category == "settings" for k in BASELINE_PERMISSIONS)
+    assert "experts" in BASELINE_PERMISSIONS
+    assert "tasks" in BASELINE_PERMISSIONS
+    assert "token_usage" in BASELINE_PERMISSIONS
 
 
 def test_categories_match_nav_groups() -> None:
-    allowed = {"settings", "control", "admin"}
+    allowed = {"settings", "control", "admin", "nav"}
     for p in PERMISSIONS.values():
         assert p.category in allowed
     assert {k for k, p in PERMISSIONS.items() if p.category == "settings"} == {
