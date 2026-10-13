@@ -158,7 +158,8 @@ def test_oauth2_accepts_token_alias_for_access_token():
 def test_build_dida365_remote_spec():
     entry = get_catalog_entry("dida365")
     assert entry is not None
-    assert entry.name == "滴答清单"
+    assert entry.name.resolve("zh") == "滴答清单"
+    assert entry.name.resolve("en") == "TickTick"
     assert entry.auth_kind == "oauth2"
     spec = build_http_mcp_spec(
         entry=entry,
@@ -1217,7 +1218,8 @@ def test_build_tencent_meeting_remote_spec():
 def test_build_tencent_ardot_remote_spec():
     entry = get_catalog_entry("tencent-ardot")
     assert entry is not None
-    assert entry.name == "腾讯设计 Ardot"
+    assert entry.name.resolve("zh") == "腾讯设计 Ardot"
+    assert entry.name.resolve("en") == "Tencent Ardot"
     assert entry.auth_kind == "oauth2"
     spec = build_http_mcp_spec(
         entry=entry,

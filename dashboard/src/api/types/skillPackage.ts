@@ -39,6 +39,8 @@ export interface SkillPackageSkillDetail extends SkillPackageSkill {
 
 export interface SkillPackageDetail extends SkillPackage {
   skills: SkillPackageSkill[];
+  /** Skill slugs listed by the skillset whose packages were not published. */
+  skipped_skills?: string[];
 }
 
 export interface CreateSkillPackageBody {

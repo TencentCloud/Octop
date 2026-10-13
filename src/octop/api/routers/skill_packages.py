@@ -363,7 +363,10 @@ async def create_from_skillhub(
         )
     except (SkillHubMarketError, SkillHubDownloadError) as exc:
         raise _map_skillhub_error(exc) from exc
-    return _package_payload_with_creator(server, store, result.row)
+    payload = _package_payload_with_creator(server, store, result.row)
+    if result.skipped_slugs:
+        payload["skipped_skills"] = list(result.skipped_slugs)
+    return payload
 
 
 @router.get("/{package_id}", summary="Get a global skill package and its skills")

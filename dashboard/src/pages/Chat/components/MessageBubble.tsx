@@ -659,6 +659,10 @@ function MessageBubble({
             actions={actions}
             status={hitlStatus}
             resolution={message.hitlData.resolution}
+            pendingId={message.hitlData.pending_id}
+            speakerName={
+              isTeamRoom && !isTeamHostSpeaker ? expert?.name : undefined
+            }
             onDecision={onHitlDecision}
           />
         </div>

@@ -6,9 +6,13 @@ from collections.abc import Sequence
 from typing import Any
 
 from octop_gateway.media import MediaBackend
-from octop_gateway.models import ContentPart, ImageContent, InboundMessage, TextContent
+from octop_gateway.models import ContentPart, FileContent, ImageContent, InboundMessage, TextContent
 
-from octop.i18n.domains.attachment import attachment_empty_image, attachment_empty_message
+from octop.i18n.domains.attachment import (
+    attachment_empty_image,
+    attachment_empty_message,
+    attachment_extracted_body,
+)
 from octop.infra.gateway.media.attachment_hints import (
     VISION_MAX_COUNT,
     content_blocks_need_vision,
@@ -17,6 +21,11 @@ from octop.infra.gateway.media.attachment_hints import (
 )
 from octop.infra.gateway.media.ingress import AgentBackedMediaBackend
 from octop.infra.gateway.process.message_keys import images_from_message
+from octop.infra.utils.anydoc_convert import (
+    extract_markdown,
+    prefers_anydoc,
+    truncate_for_chat,
+)
 from octop.infra.utils.locale import Locale, normalize_locale
 
 
@@ -24,6 +33,34 @@ def _workspace_from_media_backend(media_backend: MediaBackend | None) -> Any:
     if isinstance(media_backend, AgentBackedMediaBackend):
         return media_backend._workspace
     return None
+
+
+async def _extracted_document_texts(
+    msg: InboundMessage,
+    *,
+    media_backend: MediaBackend | None,
+    locale: str | Locale,
+) -> list[str]:
+    """Inline Markdown for OLE office attachments (``.wps`` / ``.doc``) via anydoc."""
+    if media_backend is None or not hasattr(media_backend, "read"):
+        return []
+    blocks: list[str] = []
+    for part in msg.content:
+        if not isinstance(part, FileContent) or not part.local_path:
+            continue
+        filename = part.filename or part.local_path.rsplit("/", 1)[-1]
+        media_type = part.mime_type or ""
+        if not prefers_anydoc(filename=filename, media_type=media_type):
+            continue
+        try:
+            data = await media_backend.read(part.local_path)
+        except Exception:
+            continue
+        markdown = truncate_for_chat(extract_markdown(data, filename=filename))
+        if not markdown:
+            continue
+        blocks.append(attachment_extracted_body(filename=filename, body=markdown, locale=locale))
+    return blocks
 
 
 def _group_turn_text(
@@ -151,7 +188,8 @@ async def build_content_from_message(
             continue
         image_blocks.append(block)
 
-    current_text = "\n\n".join(part for part in [msg.text or "", *file_hints] if part)
+    extracted = await _extracted_document_texts(msg, media_backend=media_backend, locale=locale)
+    current_text = "\n\n".join(part for part in [msg.text or "", *file_hints, *extracted] if part)
     combined_text = _group_turn_text(msg, current_text, workspace=workspace, locale=locale)
 
     if not image_blocks:
