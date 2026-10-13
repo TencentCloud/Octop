@@ -12,6 +12,8 @@ from collections.abc import Awaitable, Callable, Coroutine
 from contextlib import suppress
 from typing import Any
 
+from octop.infra.errors import ErrorCode
+
 logger = logging.getLogger(__name__)
 
 SendText = Callable[[str], Awaitable[None]]
@@ -38,6 +40,8 @@ BODY_CHUNK_RAW_BYTES = 256 * 1024
 # Upper bound once ``body_chunks`` is negotiated. The peer upload route still
 # enforces its own ``max_upload_mb``.
 BRIDGE_TUNNEL_CHUNKED_MAX_BODY_BYTES = 100 * 1024 * 1024
+# A chunked body streams back-to-back; this much silence means the peer gave up.
+_BODY_PART_TTL_SEC = 120.0
 
 # Application data frames reset NAT / L7 idle timers that ignore WS ping opcodes.
 HEARTBEAT_INTERVAL_SEC = 20.0
@@ -346,7 +350,7 @@ class BridgeSession:
             raise
 
     def _ingest_body_frame(self, payload: dict[str, Any]) -> dict[str, Any] | None:
-        """Reassemble chunked tunnel bodies. ``None`` means more frames are coming."""
+        """Reassemble chunked tunnel bodies. ``None`` means drop or wait for more frames."""
         more = bool(payload.get("body_more"))
         if "body_seq" not in payload and not more:
             return payload
@@ -355,7 +359,8 @@ class BridgeSession:
         key = f"{kind}:{req_id}"
         slot = self._body_parts.get(key)
         if slot is None:
-            slot = {"meta": {}, "parts": {}}
+            self._evict_stale_body_parts()
+            slot = {"meta": {}, "parts": {}, "size": 0, "seen": time.monotonic()}
             self._body_parts[key] = slot
         if not slot["meta"]:
             slot["meta"] = {
@@ -367,16 +372,74 @@ class BridgeSession:
         piece = _frame_body(payload)
         if piece:
             parts: dict[int, bytes] = slot["parts"]
+            if seq not in parts:
+                slot["size"] = int(slot["size"]) + len(piece)
             parts[seq] = piece
+        slot["seen"] = time.monotonic()
+        if int(slot["size"]) > BRIDGE_TUNNEL_CHUNKED_MAX_BODY_BYTES:
+            max_mb = max(1, BRIDGE_TUNNEL_CHUNKED_MAX_BODY_BYTES // (1024 * 1024))
+            logger.warning(
+                "bridge session %s: dropping %s %s over %dMB",
+                self.connection_id,
+                kind,
+                req_id,
+                max_mb,
+            )
+            self._body_parts.pop(key, None)
+            self._reject_body_frame(
+                kind, req_id, ErrorCode.ATTACHMENT_TOO_LARGE, f"file too large (max {max_mb}MB)"
+            )
+            return None
         if more:
             return None
-        ordered = slot["parts"]
-        body = b"".join(ordered[i] for i in sorted(ordered))
+        ordered: dict[int, bytes] = slot["parts"]
         self._body_parts.pop(key, None)
+        if sorted(ordered) != list(range(len(ordered))):
+            # Joining what arrived would hand the handler a silently truncated body.
+            logger.warning(
+                "bridge session %s: %s %s is missing chunks (%s)",
+                self.connection_id,
+                kind,
+                req_id,
+                ",".join(str(seq) for seq in sorted(ordered)),
+            )
+            self._reject_body_frame(
+                kind, req_id, ErrorCode.BRIDGE_TUNNEL_FAILED, "tunnel body is incomplete"
+            )
+            return None
+        body = b"".join(ordered[i] for i in range(len(ordered)))
         merged = dict(slot["meta"])
         if body:
             merged["body_b64"] = base64.b64encode(body).decode("ascii")
         return merged
+
+    def _evict_stale_body_parts(self) -> None:
+        """Forget half-bodies whose peer stopped streaming frames.
+
+        A bridge session is kept alive by heartbeats for as long as the link is
+        up, so an aborted upload would otherwise pin its buffer indefinitely.
+        """
+        deadline = time.monotonic() - _BODY_PART_TTL_SEC
+        for key, slot in list(self._body_parts.items()):
+            if float(slot["seen"]) < deadline:
+                self._body_parts.pop(key, None)
+
+    def _reject_body_frame(self, kind: str, req_id: str, code: ErrorCode, message: str) -> None:
+        error_frame: dict[str, Any] = {
+            "type": "tunnel.error",
+            "id": req_id,
+            "code": code.value,
+            "message": message,
+        }
+        if kind == "tunnel.request":
+            self._spawn(
+                self.send_json(error_frame),
+                name=f"bridge-tunnel-body-reject-{req_id or 'unknown'}",
+            )
+            return
+        fut = self._pending.pop(req_id, None)
+        if fut is not None and not fut.done():
+            fut.set_result(error_frame)
 
     def _chunk_body(self, body: bytes | None) -> bool:
         return bool(
