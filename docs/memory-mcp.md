@@ -54,6 +54,13 @@ curl -fLsS "https://<octop-host>/mcp/memory/setup" \
 
 ### 装完自检 / 卸载
 
+> **凭据只要一个**：直连模式（自建实例的默认形态）只需要**实例共享 token**，也就是服务端
+> `OCTOP_MEMORY_MCP_TOKEN` 的值——它由安装器内置成默认凭据，正常无需手传，要覆盖才设
+> `OCTOP_MEMORY_TOKEN`。**不需要"每人的个人令牌"**。只有当 `?url=` /
+> `OCTOP_MEMORY_PUBLIC_MCP_URL` 把客户端条目指向**自建 OAuth 前置**、且未设
+> `OCTOP_DISABLE_OAUTH=true` 时，才需要个人令牌 `OCTOP_ENTRY_TOKEN`（那时代理按令牌识别调用人，
+> 没法靠共享 token 区分"谁问的"）；没声明 OAuth 前置时脚本会自动降级为直连。
+
 ```bash
 # 1) 端点活着：不带 token 应 401（挂载了才可能 401，未挂载是 404）
 curl -s -o /dev/null -w '%{http_code}\n' -X POST "https://<octop-host>/mcp/memory/" \
