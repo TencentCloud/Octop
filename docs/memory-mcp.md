@@ -4,7 +4,10 @@
 > 其他 AI 工具），能力与进程内 `MemoryService` 对齐：外部 agent 可以召回记忆、按路径下钻读全文、
 > 写入新的事件与事实，并能区分"这条记忆是谁说的"。
 >
-> 当前工具面：**11 个 `memory_*` 工具**（读取 4 个 / 写入 3 个 / 提取与审核 4 个）。
+> 当前工具面：**10 个 `memory_*` 工具**（读取 4 个 / 写入 2 个 / 提取与审核 4 个）。
+>
+> 本地终端（Claude Code / Kiro / DSH / Codex / Cursor）可以用服务端自带的**一键安装器**
+> 自动完成「MCP 条目 + hooks（+ DSH 共享记忆预设）」，见 §4.7。
 
 ---
 
@@ -37,7 +40,7 @@
 ### 1.3 调用者归属（`X-Octop-User-Id`）
 
 - 调用者身份通过 `X-Octop-User-Id` 头（或工具的显式 `user` 参数，优先级更高）传递。
-- `memory_capture` / `memory_save` / `memory_update` 会把调用者 id **拼进内容前缀**
+- `memory_capture` / `memory_save` 会把调用者 id **拼进内容前缀**
   `<user>说：…` 后再落库。原因：`AtomCard` 没有 user 列，把发送者写进正文才能随原子一起
   落库、被全文检索命中（查询里带上发送者名字即可命中其记忆）、并在召回时直接可见。
 - 因此**不要把名字重复写进 `content`**；内容已带同名前缀时不会重复拼接；不带该头时保持原文。
@@ -45,7 +48,7 @@
 
 ---
 
-## 2. 工具清单（11 个）
+## 2. 工具清单（10 个）
 
 ### 2.1 读取（4 个）
 
@@ -55,6 +58,12 @@
 | `memory_search` | `query: str`, `max_results: int = 5`, `corpus: str = "all"` | 同一套召回管线，但**不渲染 markdown**，而是给每条命中一个虚拟 `path`，交给 `memory_get` 下钻。`corpus`：`all`/`memory`（原子+原始事件同管线）、`atom`（只要 L2 原子）、`raw`（直接走 L0 全文检索，不受"有原子命中就丢 raw"的兜底影响） |
 | `memory_get` | `path: str`, `start?: int`, `lines?: int` | 把命中路径解析成完整 markdown。支持 `atom/<atom_id>.md`、`page/<entity_id>.md`、`raw/<YYYY-MM-DD>/<event_id>.md`；长内容用 `start`/`lines` 分页（1-based）。路径非法或过期时返回 `{error, hint}` 而不是抛栈 |
 | `memory_raws` | `query?: str`, `session_id?: str`, `host?: str`, `user?: str`, `limit: int = 50` | **原始事件（证据源）**。`query` 走全文检索（写入后立即可见，提取前也能查），其余字段做结构化过滤，按时间倒序返回 |
+
+**按调用者偏好排序**：调用者 id 有值时（`X-Octop-User-Id` 头或显式 `user` 参数），
+`memory_recall` / `memory_search` 把该调用者的命中排在最前、其他人的紧随其后——只调顺序、
+**不过滤**（记忆是专家级共享的）。raw 命中按 raw 的 `user` 列判定，原子/主题页按正文里的
+`<调用者>说：` 前缀判定；命中带 `personal` 布尔，raw 命中还带 `user`，返回体带 `caller`
+与 `personal_hits`。
 
 返回形状：
 
@@ -69,13 +78,12 @@
 { "events": [{ "event_id", "timestamp", "session_id", "user", "event_type", "source", "content" }], "count", "caller" }
 ```
 
-### 2.2 写入（3 个，两条通道）
+### 2.2 写入（2 个，两条通道）
 
 | 工具 | 参数 | 说明 |
 |---|---|---|
-| `memory_capture` | `content: str`, `source: str`, `session_id?: str`, `user?: str` | **记录原始事件（L0）**：走 提取 → 候选 → 晋升 → 原子 的流水线，适合记录对话/事件原文。写入后立即可用 `memory_raws` / `memory_search(corpus="raw")` 查；晋升成原子后才能被 `memory_recall` 召回。`session_id` 缺省派生为 `ext:{source}:{user}`，用于让提取管线按会话分组蒸馏 |
-| `memory_save` | `content: str`, `source: str`, `topic?: str`, `user?: str` | **直接保存事实（L2）**：不经过提取，立即可召回。适合已知的明确事实/约定 |
-| `memory_update` | `atom_id: str`, `new_content: str`, `source: str`, `note: str = "mcp update"`, `user?: str` | **更新记忆**：旧原子标记 deprecated，新事实立刻可召回，并带 `supersedes` 关联。适合纠正过时事实 |
+| `memory_capture` | `content: str`, `source: str`, `session_id?: str`, `assistant?: str`, `thread_id?: str`, `dry_run?: bool`, `extract?: bool`, `tool_events?: str`, `transcript_path?: str`, `user?: str` | **记录原始事件（L0）**：交给「提取 → 候选 → 晋升」流水线，适合记录对话/事件原文。写入后立即可用 `memory_raws` / `memory_search(corpus="raw")` 查；晋升成原子后才能被 `memory_recall` 召回。`source` 既是谁记录的，也决定内容形态：`claude-code` / `kiro` / `dsh` + JSONL（`H4sI` 开头自动按 gzip+base64 解码）走该终端的 transcript 解析，整份 session 文件解析成多条事件；其它 `source` 按「一轮对话」处理，`content` 是用户侧、`assistant` 是助手侧（角色由字段隐含，别把助手产出塞进 `content`）。`tool_events` 决定 transcript 形态落哪些事件：`none`（默认）只落 user/assistant，`calls` 带工具调用（丢输出），`all` 连工具输出一起落。`dry_run` 只解析不写；`extract=False` 先只落 L0，再用 `memory_extract` 受控提取。`transcript_path` 仅供终端 `mcp_tool` hook 直传本机文件（限 `~/.claude/projects` / `~/.kiro/sessions` / `~/.dsh/sessions`；远程部署读不到，请改用 hook 上报 `content`）。`session_id` 缺省派生：一轮对话为 `ext:{source}:{user}`，transcript 为 `cc:<sessionId>` |
+| `memory_save` | `content: str`, `source: str`, `topic?: str`, `supersedes?: str`, `user?: str` | **直接保存事实（L2）**：不经过提取，立即可召回。适合已知的明确事实/约定。`supersedes` 传**旧原子 id** 即完成「更正」：旧原子标记 deprecated，新事实带 `supersedes` 关联——更正事实 = 保存新事实 + 声明它取代谁，不需要单独的更新工具 |
 
 `memory_capture` 是**幂等**的：同一 `session_id` + 同一内容重复写入时不会产生重复 L0 事件，
 返回里带 `duplicate: true` 并复用已有 `event_id`（下游提取因此可以反复重跑）。
@@ -85,14 +93,20 @@
 原因：MCP 写路径直接调 `Memory.add_raw`，绕过了 `MemoryRuntime.capture` 的 `skip_memory_echo`；
 不补这层，hook 注入的召回块会被当作新事件采集，形成"注入 → 采集 → 再召回"的放大环。
 
+transcript 形态还有**原文归档**：上传的整份 session 会另存一份可读 markdown
+（`{workspace}/.octop/memory-sessions/<session_id>.md`，增量追加、重发去重），返回体的
+`session_archive` 给出实际路径。L0 默认只留 user/assistant，工具调用与 thinking 在归档里
+仍可复查；transcript 形态下 hook 自身的读工具输出、注入块也会被丢弃（返回体带
+`skipped_echo` / `skipped_own_results`）。
+
 ### 2.3 提取与审核流水线（4 个）
 
 | 工具 | 参数 | 说明 |
 |---|---|---|
 | `memory_extract` | `session_id?: str`, `limit: int = 100`, `promote: bool = False` | 手动触发提取：取最近 L0 事件 → LLM 类型化提取 → 候选（pending）；`promote=True` 时直接跑晋升检查。复用**该专家进程内**的 `MemoryService`（含其配置的提取模型）；专家未运行/无记忆运行时时返回 `error` |
 | `memory_candidates` | `status?: str`, `session_id?: str`, `limit: int = 50` | 列出 L1 候选（默认 pending）。`status` 可取 `pending` / `promoted` / `rejected` / `needs_review` / `conflict`，非法值报错 |
-| `memory_promote` | `candidate_ids: list[str]`, `importance?: str` | 审核晋升：对指定候选跑 5 项晋升检查，通过则写入 L2 原子并记录 journal |
-| `memory_reject` | `candidate_id: str`, `reason: str = "rejected by external caller"` | 拒绝候选并记录原因（不进原子层，journal 可审计） |
+| `memory_promote` | `candidate_ids: list[str]` | 审核晋升：对指定候选跑 5 项晋升检查，通过则写入 L2 原子并记录 journal；逐条结果与错误分别由 `candidates` / `errors` 返回 |
+| `memory_reject` | `candidate_id: str`, `reason: str = "rejected by external caller"`, `actor?: str` | 拒绝候选并记录原因（不进原子层，journal 可审计） |
 
 ---
 
@@ -102,7 +116,7 @@
 |---|---|---|
 | L0 | 原始事件（原话、证据） | `memory_capture` 写入；`memory_raws` / `memory_search(corpus="raw")` 读取 |
 | L1 | 候选（提取产物，待审核） | `memory_extract` 产生；`memory_candidates` 查看；`memory_promote` / `memory_reject` 裁决 |
-| L2 | 原子（长期记忆，可被召回） | `memory_save` / `memory_update` 直写；`memory_capture` 经流水线晋升；`memory_recall` / `memory_search` 召回 |
+| L2 | 原子（长期记忆，可被召回） | `memory_save` 直写（`supersedes` 做更正）；`memory_capture` 经流水线晋升；`memory_recall` / `memory_search` 召回 |
 | L3 | 主题页（实体页） | 随晋升重新生成；可用 `memory_get(page/<entity_id>.md)` 读取 |
 
 按意图选工具：
@@ -119,7 +133,7 @@
 
 > 下面默认客户端**直连** Octop 的 `/mcp/memory`。如果 Octop 前面还挂了一层网关/代理（例如由代理统一校验调用人身份并注入上游 token），只需把 URL 换成代理端点、按代理要求填它需要的凭证（通常是**一个** token 头）；此时 `Authorization` / `X-Octop-User-Id` 由代理负责，**不要**在客户端重复配置。
 
-> 接入任一客户端都是**两步**：① 配好 MCP 服务器（§4.3 Kiro / §4.4 Claude Code / §4.5 DSH 各自的「配置」段）——这一步只让工具**可用**；② 再配**自动化**（Kiro 与 Claude Code 挂 hooks；DSH 新建并使用「共享记忆」预设）——这一步才会**自动召回、自动沉淀**。只做第 ① 步的话，每次都得手动让模型去调工具。§4.1 / §4.2 是最简的手动自测形态。
+> 接入任一客户端都是**两步**：① 配好 MCP 服务器（§4.3 Kiro / §4.4 Claude Code / §4.5 DSH 各自的「配置」段）——这一步只让工具**可用**；② 再配**自动化**（Kiro 与 Claude Code 挂 hooks；DSH 新建并使用「共享记忆」预设）——这一步才会**自动召回、自动沉淀**。只做第 ① 步的话，每次都得手动让模型去调工具。§4.1 / §4.2 是最简的手动自测形态；**§4.7 的一键安装器把 ① ② 一起做掉**，本地终端优先用它。
 
 ### 4.1 直接 HTTP（curl）
 
@@ -456,15 +470,45 @@ This preset auto-reads and auto-writes the octop-memory expert store so durable 
 
 只支持 stdio 的客户端可以用 `mcp-remote` 这类桥接工具转发到远程端点；`type` 的取值随客户端而异（有的写 `http`，有的写 `streamable-http`），以客户端文档为准。自动化同样取决于该客户端有没有 hooks / 预设机制：只挂服务器通常只解决"工具可用"。
 
+### 4.7 一键安装器（Claude Code / Kiro / DSH / Codex / Cursor）
+
+服务端自带安装器，`curl | sh` 即可完成「检测终端 → 多选终端 → 填专家 ID → 写 MCP 条目 +
+hooks（DSH 另装共享记忆预设）」：
+
+```bash
+curl -fsSL "https://<octop-host>/mcp/memory/setup" | sh
+# 无人值守可预填查询参数：
+#   ?url=        客户端 MCP 条目的地址（缺省 = 本实例挂载点）
+#   ?hook_url=   hooks 实际 POST 的地址（缺省 = 本实例挂载点）
+#   ?agent=      专家 ID
+#   ?terminals=  claude-code,kiro,dsh,codex,cursor
+```
+
+- **不发放凭据**：token 由运行脚本的人当场输入（读 `/dev/tty`，不回显）；可用
+  `OCTOP_MEMORY_TOKEN` 预置。部署若已设 `OCTOP_MEMORY_MCP_TOKEN`，该值会内置成脚本默认凭据。
+- 鉴权头由环境变量决定：`OCTOP_TOKEN_HEADER`（hooks 侧，缺省 `Authorization` → `Bearer <token>`）；
+  `OCTOP_ENTRY_TOKEN` + `OCTOP_ENTRY_TOKEN_HEADER`（仅当条目指向自建 OAuth 前置时使用，缺省
+  同样是 `Authorization`）。
+- 每个终端各写自己的 hooks 目录与配置文件：Claude Code `~/.claude/hooks-events` +
+  `settings.json`、Kiro `~/.kiro/hooks`、DSH `~/.dsh/hooks/octop-hooks.json`、
+  Codex `~/.codex/hooks` + `config.toml`、Cursor `~/.cursor/hooks` + `hooks.json`；
+  各带一份 `config.json`（endpoint / token / 专家）。
+- **可重复执行**：重跑先清理早期版本的 hook 文件与本安装器的陈旧登记，同一端点只保留一条
+  MCP 条目（这是升级路径）。
+- 卸载：`curl -fsSL "https://<octop-host>/mcp/memory/uninstall" | sh`。
+
 ---
 
 ## 5. 部署与配置
 
 | 配置 | 说明 |
 |---|---|
-| `OCTOP_MEMORY_MCP_TOKEN` | 必填。未设置时 `/mcp/memory` 不挂载（fail-closed） |
+| `OCTOP_MEMORY_MCP_TOKEN` | 必填。未设置时 `/mcp/memory` 不挂载（fail-closed）；同时作为 §4.7 安装器脚本的默认凭据 |
 | `X-Octop-Agent-Id` | 每个请求必填，指向一个存在且启用的专家 |
 | `X-Octop-User-Id` | 可选；用于把发送者写进记忆正文（§1.3） |
+| `OCTOP_MEMORY_PUBLIC_MCP_URL` / `config.json: memory_public_mcp_url` | 可选。把客户端 MCP **条目**指向自建的 OAuth 前置（hooks 仍打本实例挂载点）；不配则条目 = 本实例挂载点。安装器也可用 `?url=` 单次覆盖 |
+| `OCTOP_TOKEN_HEADER` | 可选。安装器生成的 hooks 使用的鉴权头名，缺省 `Authorization`（值写成 `Bearer <token>`） |
+| `OCTOP_ENTRY_TOKEN` / `OCTOP_ENTRY_TOKEN_HEADER` | 可选。条目指向 OAuth 前置时的个人令牌与头名，缺省 `Authorization` |
 | 记忆后端 | 由专家配置 `memory.backend` 决定：默认 SQLite（`memory.sqlite`）；PostgreSQL 控制面下默认复用控制面 DSN（每专家 schema） |
 
 开启步骤：
@@ -480,7 +524,7 @@ This preset auto-reads and auto-writes the octop-memory expert store so durable 
 ## 6. 行为契约与边界
 
 - **写入分两条通道**：`memory_capture` 走"提取 → 候选 → 晋升"（学习型记忆，质量由流水线把关）；
-  `memory_save` / `memory_update` 是权威直写（规则/明确事实，立即可召回）。
+  `memory_save`（`supersedes` 更正）是权威直写（规则/明确事实，立即可召回）。
   晋升治理（提取触发、候选审核）保留在服务端，站内会话与外部写入走**同一套**记忆治理路径。
 - **capture 之后 recall 无结果属预期**：内容还在 L0，需要经提取晋升成原子才会被召回；
   想立刻看到请用 `memory_raws` 或 `memory_search(corpus="raw")`。
