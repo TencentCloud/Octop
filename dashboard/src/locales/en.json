@@ -344,6 +344,7 @@
     "deleteSkillConfirm": "Delete this skill?",
     "loadFailed": "Failed to load skill packages",
     "importFailed": "Failed to import skill package from SkillHub",
+    "importedWithSkipped": "{{count}} skills had no published package and were skipped: {{skills}}",
     "saveFailed": "Failed to save changes",
     "deleteFailed": "Failed to delete",
     "created": "Skill package created",

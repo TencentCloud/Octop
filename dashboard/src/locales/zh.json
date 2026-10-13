@@ -344,6 +344,7 @@
     "deleteSkillConfirm": "删除此技能？",
     "loadFailed": "加载技能包失败",
     "importFailed": "从技能市场导入技能包失败",
+    "importedWithSkipped": "有 {{count}} 个技能在市场上没有安装包，已跳过：{{skills}}",
     "saveFailed": "保存失败",
     "deleteFailed": "删除失败",
     "created": "技能包已创建",
