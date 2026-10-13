@@ -713,6 +713,7 @@ async def get_instance(
 @router.post("/connector-instances", status_code=201, summary="Create connector instance")
 async def create_instance(
     body: CreateInstanceBody,
+    request: Request,
     user: Any = Depends(current_user),
     server: Any = Depends(get_server),
 ) -> dict[str, Any]:
@@ -733,7 +734,11 @@ async def create_instance(
     display_name = body.display_name.strip()
     if not display_name:
         raise OctopError(ErrorCode.CONNECTOR_INVALID_CREDENTIALS, "display_name is required")
-    description = body.description.strip() if body.description is not None else entry.description
+    description = (
+        body.description.strip()
+        if body.description is not None
+        else entry.description.resolve(resolve_request_locale(request))
+    )
     if not description:
         raise OctopError(ErrorCode.CONNECTOR_INVALID_CREDENTIALS, "description is required")
     if repo.name_exists(user.id, display_name) or _custom_name_exists(svc, user.id, display_name):
@@ -1330,9 +1335,9 @@ async def auth_info(
     del user
     if get_catalog_entry(kind) is None:
         raise OctopError(ErrorCode.CONNECTOR_KIND_UNSUPPORTED, f"unknown kind {kind!r}")
-    info = auth_info_for_kind(kind, server.services.settings_repo)
-    if kind == "agently-cli":
-        info["auth_hint"] = tr("connector.agently.auth_hint", resolve_request_locale(request))
+    info = auth_info_for_kind(
+        kind, server.services.settings_repo, locale=resolve_request_locale(request)
+    )
     return info
 
 

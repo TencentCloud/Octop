@@ -13,7 +13,13 @@ import {
 } from "antd";
 import { message } from "@/utils/antdMessage";
 
-import { Brain, Cpu, Database, SlidersHorizontal, Sparkles } from "lucide-react";
+import {
+  Brain,
+  Cpu,
+  Database,
+  SlidersHorizontal,
+  Sparkles,
+} from "lucide-react";
 import { useTranslation } from "react-i18next";
 
 import {
@@ -54,7 +60,8 @@ export default function MemorySettings({ agentId }: Props) {
   const [auxModel, setAuxModel] = useState<string>(MODEL_AUTO_VALUE);
   const [models, setModels] = useState<ModelPickerOption[]>([]);
   const [modelsLoading, setModelsLoading] = useState(false);
-  const [extractMaxTokens, setExtractMaxTokens] = useState<number>(AUTO_SENTINEL);
+  const [extractMaxTokens, setExtractMaxTokens] =
+    useState<number>(AUTO_SENTINEL);
   const [lightTimeoutS, setLightTimeoutS] = useState<number>(AUTO_SENTINEL);
   const [heavyTimeoutS, setHeavyTimeoutS] = useState<number>(AUTO_SENTINEL);
 

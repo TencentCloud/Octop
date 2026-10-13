@@ -5,6 +5,7 @@ key grants access to that module's management page and write/configure actions.
 Read access and agent use in chat are never gated. ``admin`` bypasses all.
 
 Categories mirror dashboard nav groups: ``settings`` / ``control`` / ``admin``.
+``nav`` is the ungrouped pages that can be granted (chat stays ungated).
 Admin keys may also carry a ``page`` so the picker can group by page / tab.
 """
 
@@ -48,6 +49,10 @@ def _p(
 
 
 PERMISSIONS: dict[str, PermissionDef] = {
+    # Ungrouped pages. Default-on for new users. Chat is not a permission.
+    "experts": _p("experts", "nav", "专家", "Experts"),
+    "tasks": _p("tasks", "nav", "自动化", "Automation"),
+    "token_usage": _p("token_usage", "nav", "Token 统计", "Token usage"),
     # --- settings (nav.settings) — listed & default-selected for new users ---
     "channels": _p("channels", "settings", "通道", "Channels"),
     "connectors": _p("connectors", "settings", "连接器", "Connectors"),
@@ -217,9 +222,11 @@ PERMISSIONS: dict[str, PermissionDef] = {
 
 ALL_PERMISSION_KEYS: set[str] = set(PERMISSIONS)
 
-# Settings-group keys: shown in the picker and pre-checked for new users.
-# They are still stored explicitly — not silently granted without being written.
-BASELINE_PERMISSIONS: set[str] = {key for key, p in PERMISSIONS.items() if p.category == "settings"}
+# Pre-checked for new users. Stored explicitly — not granted unless written.
+# ``nav`` pages used to be open to everyone, so they stay in the default set.
+BASELINE_PERMISSIONS: set[str] = {
+    key for key, p in PERMISSIONS.items() if p.category in {"settings", "nav"}
+}
 
 
 def user_has_permission(user: PermissionUser, key: str) -> bool:

@@ -29,6 +29,24 @@ from octop.infra.history.trajectory.projector import _tool_result_fields
 logger = logging.getLogger(__name__)
 
 
+def _foreign_turn_speaker(turn: dict[str, Any], chunk: dict[str, Any]) -> bool:
+    """True when a live frame belongs to a different agent than this history turn."""
+    owner = str(turn.get("agent_id") or "").strip()
+    if not owner:
+        return False
+    speaker = ""
+    for key in ("agent_id", "speaker_agent_id", "agent"):
+        raw = chunk.get(key)
+        if not isinstance(raw, str):
+            continue
+        value = raw.strip()
+        if not value or (key == "agent" and value == "agent"):
+            continue
+        speaker = value
+        break
+    return bool(speaker) and speaker != owner
+
+
 def _live_wire(message: Any) -> dict[str, Any] | None:
     item = live_message_input(message)
     if item is None:
@@ -136,6 +154,8 @@ class RecordingTracker(TurnHistoryTracker):
         return self._assistant["data"]  # type: ignore[no-any-return]
 
     def observe(self, chunk: dict[str, Any]) -> None:
+        if _foreign_turn_speaker(self.turn, chunk):
+            return
         super().observe(chunk)
         kind = chunk.get("type")
         if kind in ("state_snapshot", "state_update"):

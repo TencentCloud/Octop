@@ -568,6 +568,15 @@ class AgentManager:
                 if prepare is not None or after is not None:
                     self._harness_manager.team.bind_peer_session(prepare=prepare, after=after)
             self._install_team_host_dispatch()
+            from octop.infra.agents.teams.team_manager import (  # noqa: PLC0415
+                wire_shared_member_peers,
+            )
+
+            wire_shared_member_peers(
+                self._harness_manager.team,
+                load_agent=self.get_row,
+                load_user=self._repos.user_repo.get,
+            )
             self._harness_manager.set_security_policy(self._security.harness_policy())
 
         rows = self._repos.agent_repo.list_all(include_disabled=False)
