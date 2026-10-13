@@ -31,6 +31,7 @@ class MemorySlimCoordinator:
         self._chat_states: dict[str, dict[str, Any]] = {}
         self._chat_phase = "idle"
         self._closing = False
+        self._remove_directories = False
 
     def status(self, agent_id: str) -> dict[str, Any] | None:
         if agent_id in self._chat_states:
@@ -46,7 +47,7 @@ class MemorySlimCoordinator:
         result = []
         for row in registry.list_rows():
             try:
-                self._require_memory(row.agent_id, locale)
+                self._memory_kind(row.agent_id, locale)
             except ValueError:
                 continue
             result.append({"agent_id": row.agent_id, "name": row.name})
@@ -83,16 +84,44 @@ class MemorySlimCoordinator:
         self._require_live_support(locale)
         return memory
 
+    def _memory_kind(self, agent_id: str, locale: str) -> str:
+        """``sqlite`` or ``postgres`` when the live agent has a memory store."""
+        try:
+            agent = self._agent_manager.get_agent(agent_id)
+        except OctopError as exc:
+            raise ValueError(tr("memory_slim.agent_not_running", locale)) from exc
+        memory = getattr(getattr(agent, "_memory_runtime", None), "memory", None)
+        if memory is None:
+            raise ValueError(tr("memory_slim.memory_disabled", locale))
+        backend = type(getattr(memory, "backend", None)).__name__
+        if backend == "SqliteMemoryBackend":
+            return "sqlite"
+        if backend == "PostgresMemoryBackend":
+            return "postgres"
+        raise ValueError(tr("memory_slim.backend_unsupported", locale, backend=backend))
+
     def _check_ready(self, locale: str) -> None:
         if self.task is not None and not self.task.done():
             raise ValueError(tr("memory_slim.busy", locale))
         if self._closing:
             raise ValueError(tr("memory_slim.not_ready", locale))
 
-    def start(self, agent_id: str, *, locale: str = "en") -> None:
+    def orphan_directories(self) -> list[str]:
+        """Host directories whose names match no current agent. Does not delete."""
+        from octop.infra.agents.memory.thread_cleanup import list_deleted_agent_dirs
+
+        repos = getattr(self._agent_manager, "_repos", None)
+        paths = getattr(self._agent_manager, "_paths", None)
+        if repos is None or paths is None:
+            return []
+        live_ids = {str(row.agent_id) for row in repos.agent_repo.list_all(include_disabled=True)}
+        return [str(path) for path in list_deleted_agent_dirs(paths, live_ids)]
+
+    def start(self, agent_id: str, *, locale: str = "en", remove_directories: bool = False) -> None:
         self._check_ready(locale)
         self._chat_owner = None
         self._chat_states = {}
+        self._remove_directories = remove_directories
         self.agent_id = agent_id
         self.state = {"phase": "waiting", "started_at": time.time(), "updated_at": time.time()}
         self.task = asyncio.create_task(self._run(agent_id, locale))
@@ -116,7 +145,7 @@ class MemorySlimCoordinator:
         if not all_agents:
             self._assert_owner(agent_id, user_id, locale)
             # Diagnose the requested agent before filtering the global list.
-            self._require_memory(agent_id, locale)
+            self._memory_kind(agent_id, locale)
         owned = {row.agent_id for row in registry.list_agents(user_id)}
         targets = [
             row
@@ -128,7 +157,13 @@ class MemorySlimCoordinator:
         return targets
 
     def start_chat(
-        self, agent_id: str, user_id: int, *, all_agents: bool = False, locale: str = "en"
+        self,
+        agent_id: str,
+        user_id: int,
+        *,
+        all_agents: bool = False,
+        locale: str = "en",
+        remove_directories: bool = False,
     ) -> int:
         """Start a host-owned queue limited to the authenticated user's own agents."""
         self._check_ready(locale)
@@ -137,6 +172,7 @@ class MemorySlimCoordinator:
             for row in self.preview_chat(agent_id, user_id, all_agents=all_agents, locale=locale)
         ]
         self._chat_owner = user_id
+        self._remove_directories = remove_directories
         self._chat_states = {aid: {"phase": "queued"} for aid in targets}
         self._chat_phase = "running"
         self.agent_id = targets[0]
@@ -210,6 +246,19 @@ class MemorySlimCoordinator:
             reserved = True
             if owner_id is not None:
                 self._assert_owner(agent_id, owner_id, locale)
+            from octop.infra.agents.memory.thread_cleanup import (  # noqa: PLC0415
+                sweep_deleted_residuals,
+            )
+
+            sweep = await asyncio.to_thread(
+                sweep_deleted_residuals,
+                registry,
+                remove_directories=self._remove_directories,
+            )
+            self._update({"phase": "sweeping", "sweep": sweep})
+            if self._memory_kind(agent_id, locale) == "postgres":
+                self._update({"phase": "done", "sweep": sweep, "dedup_skipped": True})
+                return
             memory = self._require_memory(agent_id, locale)
             # Ask the live saver for its actual file; never infer a path from agent_id.
             # Its connection may be busy, so use the existing backend's configured path.
@@ -237,7 +286,7 @@ class MemorySlimCoordinator:
             except asyncio.CancelledError:
                 await worker
                 raise
-            self._update({"phase": "done", "report": report})
+            self._update({"phase": "done", "report": report, "sweep": sweep})
         except asyncio.CancelledError:
             self._update({"phase": "failed", "error": tr("memory_slim.interrupted", locale)})
             raise

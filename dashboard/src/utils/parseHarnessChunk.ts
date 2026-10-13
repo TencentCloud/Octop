@@ -86,6 +86,8 @@ export interface DoneChunk {
   agent_id?: string;
   /** Seal only the wrap-up bubble — do not finish the dispatch turn. */
   team_wrapup?: boolean;
+  /** Member approval was accepted; the answer continues on the room socket. */
+  team_member_continuing?: boolean;
   conversation_mode?: "ask" | "plan" | "craft";
   pending_plan_path?: string | null;
 }
@@ -100,6 +102,9 @@ export interface ErrorChunk {
 export interface HitlRequiredChunk {
   type: "hitl_required";
   request: Record<string, unknown>;
+  /** Team-room speaker asking for this approval. */
+  agent_id?: string;
+  agent?: string;
 }
 
 export interface SlashActionChunk {
@@ -236,6 +241,9 @@ export function parseHarnessChunk(line: string): HarnessChunk | null {
         type: "done",
         agent_id: agentId,
         team_wrapup: obj.team_wrapup === true,
+        ...(obj.team_member_continuing === true
+          ? { team_member_continuing: true as const }
+          : {}),
         conversation_mode:
           obj.conversation_mode === "ask" ||
           obj.conversation_mode === "plan" ||

@@ -324,7 +324,7 @@ octop provider --help     # 供应商增删改查帮助
 ### 5.4 连接器（Connectors）
 
 - 进入 **Connectors** 页面，配置 OAuth 应用与 MCP 网关。
-- 通过连接器接入外部服务（如腾讯文档、微博、新闻等），扩展 Agent 的资源边界。
+- 通过连接器接入外部服务（如腾讯文档、Notion、新闻等），扩展 Agent 的资源边界。完整列表见 [内置连接器](connectors.md)。
 
 ### 5.5 通道（Channels / IM）
 

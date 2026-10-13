@@ -303,6 +303,37 @@ describe("groupConsecutiveAssistantMessages", () => {
     expect(findSpeakerTextToContinue(messages, undefined, "C9EBEC")).toBe(0);
   });
 
+  it("continues the answer that was already on screen, not the approval card", () => {
+    const messages = [
+      msg("assistant", "text", {
+        content: "磁盘还剩 8G",
+        speakerAgentId: "doctor",
+      }),
+      msg("assistant", "card", {
+        speakerAgentId: "doctor",
+        hitlData: {
+          action_requests: [{ name: "execute", args: {} }],
+          status: "approved",
+        },
+      }),
+    ];
+    expect(
+      findSpeakerTextToContinue(messages, "doctor", "host", {
+        teamRoom: true,
+      }),
+    ).toBe(0);
+    const plain = [
+      msg("assistant", "text", { content: "磁盘还剩 8G" }),
+      msg("assistant", "card", {
+        hitlData: {
+          action_requests: [{ name: "execute", args: {} }],
+          status: "approved",
+        },
+      }),
+    ];
+    expect(findSpeakerTextToContinue(plain, undefined, "host")).toBe(0);
+  });
+
   it("merges split member texts into one answer bubble", () => {
     const split = splitAssistantTurn([
       msg("assistant", "m1", {
