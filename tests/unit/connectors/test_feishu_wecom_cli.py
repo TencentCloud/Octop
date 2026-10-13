@@ -146,6 +146,7 @@ def test_feishu_prepare_avoids_external_env(
 
 
 def test_wecom_doc_invokes_cli(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    monkeypatch.setattr(wecom_cli, "_uses_modern_cli", lambda *_a: False)
     captured: dict[str, Any] = {}
 
     monkeypatch.setenv("OCTOP_HOME", str(tmp_path))
@@ -304,6 +305,8 @@ def test_probe_requires_bot_even_when_default_as_user(
 def test_tool_counts() -> None:
     assert {t["name"] for t in wecom_cli.list_tools()} == {
         "doc",
+        "sheet",
+        "smartsheet",
         "schedule",
         "msg",
         "help",
