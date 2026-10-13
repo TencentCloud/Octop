@@ -447,6 +447,8 @@ endpoint (public, mounted directly in `api/app.py`).
 | `POST` | `/agents/{aid}/upload` | user | multipart upload → `{workspace}/inbound/` |
 | `POST` | `/agents/{aid}/files/access-urls` | user | refresh inbound media URLs (signed) |
 | `GET`  | `/agents/{aid}/files/{path}` | owner | read an inbound file |
+| `POST` | `/downloads/link` | user | multipart `file` → `{url, filename, expires_in}`: short-lived link for in-app browsers (WeChat, …) that cannot save `blob:` downloads; capped at `max_upload_mb` |
+| `GET`  | `/downloads/link/{token}` | public (token) | serve that file as an attachment until it expires (10 min); the token is the only credential |
 
 ## Updates, ollama, i18n, plugins, slash, preferences
 
