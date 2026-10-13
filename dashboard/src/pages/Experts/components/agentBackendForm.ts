@@ -1,6 +1,8 @@
 import { request } from "../../../api/request";
 
-export const BUILTIN_BACKENDS = ["local_shell", "filesystem", "state"] as const;
+export const BUILTIN_BACKENDS = ["local_shell", "filesystem"] as const;
+/** Kept so an expert already saved as ``state`` still shows in the editor. */
+export const LEGACY_STATE_BACKEND = "state";
 export const DEFAULT_BACKEND: BuiltinBackend = "local_shell";
 export type BuiltinBackend = (typeof BUILTIN_BACKENDS)[number];
 export type BackendChoice = BuiltinBackend | "composite" | `named:${string}`;
@@ -52,8 +54,8 @@ export function backendRefToSpec(
   if (isNamedBackend(ref)) {
     return { type: "named", name: ref.slice("named:".length) };
   }
-  if (ref === "state") {
-    return { type: "state" };
+  if (ref === LEGACY_STATE_BACKEND) {
+    return { type: LEGACY_STATE_BACKEND };
   }
   if (ref === "local_shell" || ref === "filesystem") {
     return { type: ref, virtual_mode: true, root_dir: rootDir ?? "/" };
@@ -298,7 +300,10 @@ function specToBackendRef(spec: Record<string, unknown>): string {
     const name = spec.name;
     return typeof name === "string" ? `named:${name}` : DEFAULT_BACKEND;
   }
-  if (BUILTIN_BACKENDS.includes(type as BuiltinBackend)) {
+  if (
+    type === LEGACY_STATE_BACKEND ||
+    BUILTIN_BACKENDS.includes(type as BuiltinBackend)
+  ) {
     return type;
   }
   return DEFAULT_BACKEND;
@@ -360,10 +365,10 @@ export function parseBackendSpec(spec: unknown): {
 }
 
 export function builtinLabel(
-  mode: BuiltinBackend,
+  mode: BuiltinBackend | typeof LEGACY_STATE_BACKEND,
   t: (key: string) => string,
 ): string {
-  const keys: Record<BuiltinBackend, string> = {
+  const keys: Record<BuiltinBackend | typeof LEGACY_STATE_BACKEND, string> = {
     local_shell: "experts.backendModes.localShell",
     filesystem: "experts.backendModes.filesystem",
     state: "experts.backendModes.state",

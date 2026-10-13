@@ -19,6 +19,7 @@ def ctx():
     coordinator = MagicMock()
     coordinator.start_chat.return_value = 2
     coordinator.preview_chat.return_value = [{"name": "助手", "agent_id": "mine"}]
+    coordinator.orphan_directories.return_value = []
     return SlashCtx(
         agent_id="mine",
         user_id=1,
@@ -47,7 +48,7 @@ async def test_registered_command_starts_owned_job_and_returns_ack(ctx, command,
     assert "已确认整理 2 个" in "\n".join(lines)
     assert not actions
     ctx.agent_manager.memory_slim.start_chat.assert_called_once_with(
-        "mine", 1, all_agents=all_agents, locale="zh"
+        "mine", 1, all_agents=all_agents, locale="zh", remove_directories=False
     )
 
 
@@ -70,6 +71,47 @@ async def test_missing_or_disabled_user_cannot_start(ctx, user):
         "/memory slim", dispatcher=build_default_dispatcher(), ctx=ctx
     )
     assert handled and "当前登录用户" in "\n".join(lines)
+    ctx.agent_manager.memory_slim.start_chat.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_memory_compact_preview_does_not_run(ctx, monkeypatch):
+    called = False
+
+    def _boom(*_args, **_kwargs):
+        nonlocal called
+        called = True
+
+    monkeypatch.setattr(
+        "octop.infra.agents.memory.compact_store.compact_agent_store",
+        _boom,
+    )
+    handled, lines, _ = await try_handle_slash(
+        "/memory compact", dispatcher=build_default_dispatcher(), ctx=ctx
+    )
+    text = "\n".join(lines)
+    assert handled and "VACUUM FULL" in text
+    assert "/memory compact --confirm" in text
+    assert called is False
+    ctx.agent_manager.memory_slim.start_chat.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_memory_compact_confirm_runs_store(ctx, monkeypatch):
+    stats = SimpleNamespace(
+        bytes_before=19 * 1048576,
+        bytes_after=18 * 1048576 + 800 * 1024,
+        tables_done=3,
+        tables_skipped=(),
+    )
+    monkeypatch.setattr(
+        "octop.infra.agents.memory.compact_store.compact_agent_store",
+        lambda *_args, **_kwargs: stats,
+    )
+    handled, lines, _ = await try_handle_slash(
+        "/memory compact --confirm", dispatcher=build_default_dispatcher(), ctx=ctx
+    )
+    assert handled and "省下" in "\n".join(lines)
     ctx.agent_manager.memory_slim.start_chat.assert_not_called()
 
 
@@ -138,7 +180,9 @@ async def test_existing_agent_manager_context_runs_maintenance_command():
         "/memory slim --confirm", dispatcher=build_default_dispatcher(), ctx=ctx
     )
     assert handled and "已确认整理 1 个" in "\n".join(lines)
-    manager.memory_slim.start_chat.assert_called_once_with("mine", 1, all_agents=False, locale="zh")
+    manager.memory_slim.start_chat.assert_called_once_with(
+        "mine", 1, all_agents=False, locale="zh", remove_directories=False
+    )
 
 
 @pytest.mark.asyncio
