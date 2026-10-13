@@ -119,7 +119,7 @@ async def test_status_reports_wizard_password_exists(env: Any) -> None:
     assert body["setup_required"] is True
     assert body["wizard_password_required"] is True
     assert body["wizard_password_exists"] is True
-    assert body["wizard_password_path"] == str(Path.home() / WIZARD_FILE_NAME)
+    assert "wizard_password_path" not in body  # SEC-17: never expose the secret's path
 
 
 async def test_begin_issues_token_when_password_not_required(tmp_octop_home: Path) -> None:
@@ -130,7 +130,7 @@ async def test_begin_issues_token_when_password_not_required(tmp_octop_home: Pat
         body = r.json()
         assert body["wizard_password_required"] is False
         assert body["wizard_password_exists"] is False
-        assert body["wizard_password_path"] is None
+        assert "wizard_password_path" not in body  # SEC-17
 
         r = await c.post("/api/setup/begin")
         assert r.status_code == 200
@@ -255,20 +255,179 @@ async def test_test_provider_returns_error_for_bad_key(env: Any) -> None:
     assert r.json()["ok"] is False
 
 
-async def test_resume_wizard_after_admin_created(env: Any) -> None:
-    c, _srv, home = env
+async def _fresh_token(env: Any) -> str:
+    """Mint a wizard token. ``verify-password`` is gated on zero users."""
+    c, _srv, _home = env
     pw = read_password(Path.home())
-    tok = (await c.post("/api/setup/verify-password", json={"password": pw})).json()["wizard_token"]
+    return (await c.post("/api/setup/verify-password", json={"password": pw})).json()["wizard_token"]
+
+
+async def _admin_created(env: Any) -> tuple[Any, Any, str]:
+    """Drive the wizard to mid-wizard: admin created, wizard not finished.
+
+    Returns the still-valid wizard token, which must be minted *before*
+    ``initial-admin`` because ``verify-password`` requires zero users.
+    """
+    c, srv, _home = env
+    tok = await _fresh_token(env)
     await c.post(
         "/api/setup/initial-admin",
         json={"username": "admin", "password": "TestPass12"},
         headers={"Authorization": f"Bearer {tok}"},
     )
+    return c, srv, tok
+
+
+async def test_resume_wizard_rejects_anonymous_caller(env: Any) -> None:
+    """SEC-1: ``resume-wizard`` must never mint a token without a credential.
+
+    Reproduces the exploit. Once the admin exists but before ``finish``, an
+    unauthenticated POST used to return a valid wizard token, which then
+    authorises the token-gated ``finish`` endpoint.
+    """
+    c, srv, tok = await _admin_created(env)
+
     r = await c.post("/api/setup/resume-wizard")
+
+    assert r.status_code == 401
+    assert r.json()["error"]["code"] == "SETUP_TOKEN_INVALID"
+    # Nothing usable was minted, and the real token still works.
+    assert srv.wizard_tokens.validate(r.json().get("wizard_token")) is False
+    assert srv.wizard_tokens.validate(tok) is True
+
+
+async def test_resume_wizard_rejects_unknown_bearer(env: Any) -> None:
+    """A wrong guess is rejected and yields no working token."""
+    c, srv, _tok = await _admin_created(env)
+
+    r = await c.post("/api/setup/resume-wizard", headers={"Authorization": "Bearer not-a-token"})
+
+    assert r.status_code == 401
+    assert r.json()["error"]["code"] == "SETUP_TOKEN_INVALID"
+    assert srv.wizard_tokens.validate(r.json().get("wizard_token")) is False
+
+
+async def test_resume_wizard_accepts_existing_wizard_token(env: Any) -> None:
+    """Re-minting is the legitimate use: the caller already holds a token."""
+    c, _srv, tok = await _admin_created(env)
+
+    r = await c.post("/api/setup/resume-wizard", headers={"Authorization": f"Bearer {tok}"})
+
     assert r.status_code == 200
     body = r.json()
     assert isinstance(body["wizard_token"], str)
     assert body["expires_in"] > 0
+
+
+async def test_resume_wizard_accepts_wizard_password(env: Any) -> None:
+    """The wizard password is a credential, so a restart-lost token is recoverable."""
+    c, srv, _tok = await _admin_created(env)
+    # Simulate the operator's situation: the in-memory token is gone (restart),
+    # but the password file on disk is still there.
+    srv.wizard_tokens.clear()
+    pw = read_password(Path.home())
+
+    r = await c.post("/api/setup/resume-wizard", headers={"Authorization": f"Bearer {pw}"})
+
+    assert r.status_code == 200, r.text
+    assert r.json()["wizard_token"]
+    assert srv.wizard_tokens.validate(r.json()["wizard_token"]) is True
+
+
+async def test_resume_wizard_accepts_admin_jwt(env: Any) -> None:
+    """Mid-wizard the browser holds the JWT from /initial-admin; that must work."""
+    c, _srv, _home = env
+    tok = await _fresh_token(env)
+    admin = (
+        await c.post(
+            "/api/setup/initial-admin",
+            json={"username": "admin", "password": "TestPass12"},
+            headers={"Authorization": f"Bearer {tok}"},
+        )
+    ).json()
+
+    r = await c.post(
+        "/api/setup/resume-wizard",
+        headers={"Authorization": f"Bearer {admin['access_token']}"},
+    )
+
+    assert r.status_code == 200
+    assert r.json()["wizard_token"]
+
+
+async def test_resume_wizard_is_rate_limited(env: Any) -> None:
+    """SEC-1: anonymous hammering is bounded, not merely rejected each time."""
+    c, _srv, _tok = await _admin_created(env)
+
+    codes = [
+        (
+            await c.post("/api/setup/resume-wizard", headers={"Authorization": f"Bearer guess-{i}"})
+        ).status_code
+        for i in range(10)
+    ]
+
+    assert 429 in codes, codes
+    assert codes[-1] == 429
+
+
+async def test_resume_wizard_closed_after_finish(env: Any) -> None:
+    """SEC-1: completion is a persisted fact, not a user row count."""
+    c, _srv, tok = await _admin_created(env)
+
+    done = await c.post(
+        "/api/setup/finish", json={"provider_draft": None}, headers={"Authorization": f"Bearer {tok}"}
+    )
+    assert done.status_code == 200, done.text
+
+    r = await c.post("/api/setup/resume-wizard", headers={"Authorization": f"Bearer {tok}"})
+
+    assert r.status_code == 410
+    assert r.json()["error"]["code"] == "SETUP_REQUIRED"
+
+
+async def test_resume_wizard_stays_closed_after_a_user_count_drops_to_one(env: Any) -> None:
+    """The specific regression the row-count heuristic caused.
+
+    The old predicate was ``count() > 1``, so the wizard window was open while
+    the count was 1 -- which is the state a normal completed install is in
+    (``finish`` creates exactly one admin). An operator who later deletes any
+    other account and drops back to 1 re-opened a *finished* wizard, letting
+    ``resume-wizard`` mint a fresh token for ``finish`` again. The persisted
+    flag does not move.
+    """
+    c, srv, tok = await _admin_created(env)
+    done = await c.post(
+        "/api/setup/finish", json={"provider_draft": None}, headers={"Authorization": f"Bearer {tok}"}
+    )
+    assert done.status_code == 200, done.text
+
+    # A second account, then its removal: the count returns to 1.
+    await srv.user_manager.create(username="bob", password="TestPass12", role="user")
+    assert srv.user_manager.count() == 2
+    bob = srv.services.user_repo.get_by_username("bob")
+    assert bob is not None
+    srv.services.user_repo.delete(bob.id)
+    assert srv.user_manager.count() == 1
+
+    r = await c.post("/api/setup/resume-wizard", headers={"Authorization": f"Bearer {tok}"})
+
+    assert r.status_code == 410
+    assert r.json()["error"]["code"] == "SETUP_REQUIRED"
+
+
+async def test_status_does_not_expose_wizard_password_path(env: Any) -> None:
+    """SEC-17: do not hand an unauthenticated caller the secret's absolute path."""
+    c, _srv, _tok = await _admin_created(env)
+
+    r = await c.get("/api/setup/status")
+
+    assert r.status_code == 200
+    body = r.json()
+    assert "wizard_password_path" not in body
+    # The rest of the status contract is unchanged.
+    assert body["wizard_password_required"] in (True, False)
+    assert body["wizard_password_exists"] in (True, False)
+    assert "setup_required" in body
 
 
 async def test_test_provider_accepts_admin_jwt_after_admin_created(env: Any) -> None:
@@ -428,3 +587,4 @@ async def test_finish_rejects_invalid_token_after_admin_exists(env: Any) -> None
         headers={"Authorization": "Bearer faketoken"},
     )
     assert r.status_code == 401
+
