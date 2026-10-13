@@ -5,6 +5,7 @@
 格式遵循 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)，版本号遵循 [语义化版本规范](https://semver.org/spec/v2.0.0.html)。
 
 ## [Unreleased]
+- 云端协同的分块附件传输在接收侧补上校验：超过上限的分块体会被丢弃并回 `ATTACHMENT_TOO_LARGE`，缺块的流不再被拼成一份看似正常的截断文件，对端中途放弃的半截上传也不会长期占住内存
 
 ### 修复
 - 云端协同对端专家的模型、连接器、知识库和对话模式会显示在本端输入框上方
