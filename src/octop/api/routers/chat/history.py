@@ -101,6 +101,7 @@ def _require_thread(
 async def list_threads(
     agent_id: str,
     limit: int = 50,
+    archived: bool = False,
     as_user: int | None = None,
     user: Any = Depends(current_user),
     server: Any = Depends(get_server),
@@ -113,7 +114,12 @@ async def list_threads(
     require_agent_row(agent_id, user=user, as_user=as_user, server=server)
     thread_registry = server.app_runtime.gateway.thread_registry
     effective_uid = as_user if as_user is not None else user.id
-    rows = thread_registry.list_threads(agent_id=agent_id, user_id=effective_uid, limit=limit)
+    rows = thread_registry.list_threads(
+        agent_id=agent_id,
+        user_id=effective_uid,
+        limit=limit,
+        archived=archived,
+    )
     bound = thread_registry.get_bound_thread_id(
         ThreadRegistry.dashboard_key(agent_id=agent_id, user_id=effective_uid)
     )
@@ -133,6 +139,7 @@ async def list_threads(
             "is_active": r.thread_id == bound,
             "has_messages": thread_row_has_messages(r),
             "pinned": r.pinned,
+            "archived": r.archived,
             "model_ref": r.model_ref,
             "reasoning_mode": r.reasoning_mode,
             "reasoning_effort": r.reasoning_effort,
@@ -539,12 +546,14 @@ async def patch_thread(
     if (
         body.title is None
         and body.pinned is None
+        and body.archived is None
         and not body.model_fields_set.intersection(composer_fields)
     ):
         return {
             "thread_id": thread_id,
             "title": row.title,
             "pinned": row.pinned,
+            "archived": row.archived,
             "model_ref": row.model_ref,
             "reasoning_mode": row.reasoning_mode,
             "reasoning_effort": row.reasoning_effort,
@@ -557,6 +566,8 @@ async def patch_thread(
         registry.update_title(thread_id, body.title)
     if body.pinned is not None:
         registry.set_pinned(thread_id, body.pinned)
+    if body.archived is not None:
+        registry.set_archived(thread_id, body.archived)
     model_ref: str | None | object = ...
     reasoning_mode: str | None | object = ...
     reasoning_effort: str | None | object = ...
@@ -600,6 +611,7 @@ async def patch_thread(
         "thread_id": thread_id,
         "title": updated.title,
         "pinned": updated.pinned,
+        "archived": updated.archived,
         "model_ref": updated.model_ref,
         "reasoning_mode": updated.reasoning_mode,
         "reasoning_effort": updated.reasoning_effort,
