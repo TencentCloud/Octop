@@ -349,5 +349,7 @@ async def fetch_openai_compatible_models(
         models.append(
             {"id": mid, "name": name.strip() if isinstance(name, str) and name.strip() else mid}
         )
+    if is_codex and data and not models:
+        return {"ok": False, "error": tr("providers.codex_models_invalid_response", locale)}
     models.sort(key=lambda m: m["id"])
     return {"ok": True, "models": models}

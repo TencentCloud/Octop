@@ -105,7 +105,16 @@ async def test_codex_models_accepts_empty_list(model_server) -> None:
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("model_server", [{"data": []}, {"models": {}}], indirect=True)
+@pytest.mark.parametrize(
+    "model_server",
+    [
+        {"data": []},
+        {"models": {}},
+        {"models": [{"id": "gpt-5.4"}]},
+        {"models": [{"slug": ""}, {"slug": None}, None, 123]},
+    ],
+    indirect=True,
+)
 @pytest.mark.parametrize(
     ("locale", "expected_error"),
     [
