@@ -6,9 +6,8 @@
 #
 # The version directory has no leading v.
 #
-# Required (Actions repository variables; no defaults):
+# Required Actions repository secrets (no defaults):
 #   RELEASE_COS_BUCKET, RELEASE_COS_REGION, RELEASE_COS_ENDPOINT
-# Credentials, from Actions secrets:
 #   RELEASE_COS_SECRET_ID, RELEASE_COS_SECRET_KEY
 set -euo pipefail
 

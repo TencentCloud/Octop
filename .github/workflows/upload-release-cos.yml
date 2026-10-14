@@ -10,10 +10,9 @@ name: Upload release to COS
 # wheel / sdist 不上传。
 # 手工补传：Run workflow，tag=vX.Y.Z；patterns 留空则下载该 Release 的全部 asset。
 #
-# 仓库 Secrets（不是 environment secret）：
+# 仓库 Secrets（不是 environment secret；未设置则上传失败）：
 #   RELEASE_COS_SECRET_ID
 #   RELEASE_COS_SECRET_KEY
-# 仓库 Variables（无默认值，未设置则上传失败）：
 #   RELEASE_COS_BUCKET
 #   RELEASE_COS_REGION
 #   RELEASE_COS_ENDPOINT
@@ -45,6 +44,12 @@ on:
       RELEASE_COS_SECRET_ID:
         required: true
       RELEASE_COS_SECRET_KEY:
+        required: true
+      RELEASE_COS_BUCKET:
+        required: true
+      RELEASE_COS_REGION:
+        required: true
+      RELEASE_COS_ENDPOINT:
         required: true
 
 permissions:
@@ -119,7 +124,7 @@ jobs:
         env:
           RELEASE_COS_SECRET_ID: ${{ secrets.RELEASE_COS_SECRET_ID }}
           RELEASE_COS_SECRET_KEY: ${{ secrets.RELEASE_COS_SECRET_KEY }}
-          RELEASE_COS_BUCKET: ${{ vars.RELEASE_COS_BUCKET }}
-          RELEASE_COS_REGION: ${{ vars.RELEASE_COS_REGION }}
-          RELEASE_COS_ENDPOINT: ${{ vars.RELEASE_COS_ENDPOINT }}
+          RELEASE_COS_BUCKET: ${{ secrets.RELEASE_COS_BUCKET }}
+          RELEASE_COS_REGION: ${{ secrets.RELEASE_COS_REGION }}
+          RELEASE_COS_ENDPOINT: ${{ secrets.RELEASE_COS_ENDPOINT }}
         run: bash scripts/ci/upload_release_cos.sh "${{ inputs.tag }}" release-assets
