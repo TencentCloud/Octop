@@ -288,9 +288,10 @@ async def fetch_openai_compatible_models(
     extra_headers = ensure_opencode_session_header(provider_name, extra_headers, base_url=base_url)
     if extra_headers:
         headers.update(extra_headers)
+    params = {"client_version": "2026.6.9"} if _is_codex_base_url(base_url) else None
     try:
         async with httpx.AsyncClient(timeout=_FETCH_MODELS_TIMEOUT_S) as client:
-            response = await client.get(url, headers=headers)
+            response = await client.get(url, headers=headers, params=params)
     except Exception as exc:
         logger.info(
             "provider fetch-models failed for %s: %r (%s)",
@@ -317,11 +318,18 @@ async def fetch_openai_compatible_models(
             "error": "response is not valid JSON (expected OpenAI-compatible /models)",
         }
 
-    data = payload.get("data") if isinstance(payload, dict) else None
+    if _is_codex_base_url(base_url):
+        data = payload.get("models") if isinstance(payload, dict) else None
+    else:
+        data = payload.get("data") if isinstance(payload, dict) else None
     if not isinstance(data, list):
         return {
             "ok": False,
-            "error": "response is not OpenAI-compatible (expected {data: [{id, …}]})",
+            "error": (
+                "response is not Codex-compatible (expected {models: [{slug, display_name, …}]})"
+                if _is_codex_base_url(base_url)
+                else "response is not OpenAI-compatible (expected {data: [{id, …}]})"
+            ),
         }
 
     models: list[dict[str, str]] = []
@@ -329,13 +337,16 @@ async def fetch_openai_compatible_models(
     for item in data:
         if not isinstance(item, dict):
             continue
-        mid = item.get("id")
+        mid = item.get("slug") if _is_codex_base_url(base_url) else item.get("id")
         if not isinstance(mid, str) or not mid.strip():
             continue
         mid = mid.strip()
         if mid in seen:
             continue
         seen.add(mid)
-        models.append({"id": mid, "name": mid})
+        name = item.get("display_name") if _is_codex_base_url(base_url) else mid
+        models.append(
+            {"id": mid, "name": name.strip() if isinstance(name, str) and name.strip() else mid}
+        )
     models.sort(key=lambda m: m["id"])
     return {"ok": True, "models": models}
