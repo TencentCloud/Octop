@@ -1,9 +1,9 @@
 name: Upload release to COS
 
 # 把某个 v* GitHub Release 上的制品上传到 COS：
-#   ${RELEASE_COS_PREFIX}/<version>/<filename>
-#   https://${RELEASE_COS_BUCKET}.${RELEASE_COS_ENDPOINT}/${RELEASE_COS_PREFIX}/<version>/<filename>
-# version 去掉 tag 的前导 v。RELEASE_COS_PREFIX 是桶根上的产品目录；OctopPet 的 release 用同级目录。
+#   octop/release/<version>/<filename>
+#   https://${RELEASE_COS_BUCKET}.${RELEASE_COS_ENDPOINT}/octop/release/<version>/<filename>
+# version 去掉 tag 的前导 v。
 #
 # 自动：Release / Desktop Package / FnOS 在把自己的制品挂到 GitHub Release 之后
 # 用 workflow_call 调本工作流，patterns 只拉这一批文件，避免重复传大包。
@@ -16,7 +16,6 @@ name: Upload release to COS
 #   RELEASE_COS_BUCKET
 #   RELEASE_COS_REGION
 #   RELEASE_COS_ENDPOINT
-#   RELEASE_COS_PREFIX
 
 on:
   workflow_dispatch:
@@ -122,5 +121,4 @@ jobs:
           RELEASE_COS_BUCKET: ${{ vars.RELEASE_COS_BUCKET }}
           RELEASE_COS_REGION: ${{ vars.RELEASE_COS_REGION }}
           RELEASE_COS_ENDPOINT: ${{ vars.RELEASE_COS_ENDPOINT }}
-          RELEASE_COS_PREFIX: ${{ vars.RELEASE_COS_PREFIX }}
         run: bash scripts/ci/upload_release_cos.sh "${{ inputs.tag }}" release-assets

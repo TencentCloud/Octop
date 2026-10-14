@@ -1,7 +1,7 @@
 name: Octop Desktop Package
 
 # 正式发版：Auto Tag 在打 v* 后与 Release / Docker Publish 一并 dispatch。
-# 产物 upsert 到同一 GitHub Release，再上传到 COS octop/<version>/。
+# 产物 upsert 到同一 GitHub Release，再上传到 COS octop/release/<version>/。
 # 手工补包：workflow_dispatch + release_tag（不必跑在 v* ref 上）。
 # attach_from_run 只挂已有 artifact、不重打。
 

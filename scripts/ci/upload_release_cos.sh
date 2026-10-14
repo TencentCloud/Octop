@@ -1,15 +1,13 @@
 #!/usr/bin/env bash
 # Upload GitHub Release files to
-# cos://${RELEASE_COS_BUCKET}/${RELEASE_COS_PREFIX}/<version>/<filename>.
+# cos://${RELEASE_COS_BUCKET}/octop/release/<version>/<filename>.
 #
 #   scripts/ci/upload_release_cos.sh <version-or-vtag> <src-dir>
 #
-# RELEASE_COS_PREFIX is the bucket-root folder for this product. OctopPet
-# releases use a sibling folder so both can share the bucket. The version
-# directory has no leading v.
+# The version directory has no leading v.
 #
 # Required (Actions repository variables; no defaults):
-#   RELEASE_COS_BUCKET, RELEASE_COS_REGION, RELEASE_COS_ENDPOINT, RELEASE_COS_PREFIX
+#   RELEASE_COS_BUCKET, RELEASE_COS_REGION, RELEASE_COS_ENDPOINT
 # Credentials, from Actions secrets:
 #   RELEASE_COS_SECRET_ID, RELEASE_COS_SECRET_KEY
 set -euo pipefail
@@ -26,7 +24,7 @@ raw_version="$1"
 src_dir="$2"
 
 missing=()
-for name in RELEASE_COS_BUCKET RELEASE_COS_REGION RELEASE_COS_ENDPOINT RELEASE_COS_PREFIX; do
+for name in RELEASE_COS_BUCKET RELEASE_COS_REGION RELEASE_COS_ENDPOINT; do
   if [[ -z "${!name:-}" ]]; then
     missing+=("$name")
   fi
@@ -60,8 +58,8 @@ if [[ ${#files[@]} -eq 0 ]]; then
   exit 1
 fi
 
-public_base="https://${RELEASE_COS_BUCKET}.${RELEASE_COS_ENDPOINT}/${RELEASE_COS_PREFIX}/${version}"
-echo "COS prefix: ${RELEASE_COS_PREFIX}/${version}/ (${#files[@]} files)"
+public_base="https://${RELEASE_COS_BUCKET}.${RELEASE_COS_ENDPOINT}/octop/release/${version}"
+echo "COS prefix: octop/release/${version}/ (${#files[@]} files)"
 for path in "${files[@]}"; do
   name="$(basename "$path")"
   echo "  ${public_base}/${name}"
@@ -144,7 +142,7 @@ PY
 
 for path in "${files[@]}"; do
   name="$(basename "$path")"
-  key="${RELEASE_COS_PREFIX}/${version}/${name}"
+  key="octop/release/${version}/${name}"
   echo "Uploading ${name} -> ${key}"
   "$coscli" --disable-log --init-skip -c "$cfg" -e "$RELEASE_COS_ENDPOINT" \
     cp "$path" "cos://${RELEASE_COS_BUCKET}/${key}" \

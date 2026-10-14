@@ -69,7 +69,7 @@ jobs:
       # exists (reuses Release wheel + waits for GHCR image from Docker Publish).
       # Desktop and FnOS upsert their packages onto the same v* GitHub Release
       # after it exists (FnOS is dispatched from Release.yml). Each of those
-      # workflows then uploads its own assets to COS ${RELEASE_COS_PREFIX}/<version>/.
+      # workflows then uploads its own assets to COS octop/release/<version>/.
       - name: Trigger Release, Docker Publish, and Desktop Package
         if: steps.check_tag.outputs.should_publish == 'true'
         env:
