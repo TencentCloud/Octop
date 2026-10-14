@@ -73,7 +73,7 @@ fi
 work="${RUNNER_TEMP:-${TMPDIR:-/tmp}}"
 coscli="${work}/coscli-${COSCLI_VERSION}"
 cfg="${work}/cos-upload-$$.yaml"
-trap 'rm -f "$cfg"' EXIT
+trap 'rm -f "$cfg" "$cfg".*' EXIT
 
 if [[ ! -x "$coscli" ]]; then
   case "$(uname -s)-$(uname -m)" in
@@ -140,17 +140,45 @@ dest.write_text(text, encoding="utf-8")
 dest.chmod(0o600)
 PY
 
-for path in "${files[@]}"; do
+upload_one() {
+  local path="$1"
+  local name key job_cfg rc
   name="$(basename "$path")"
   key="octop/release/${version}/${name}"
+  job_cfg="${cfg}.${name}"
+  cp "$cfg" "$job_cfg"
+  chmod 600 "$job_cfg"
   echo "Uploading ${name} -> ${key}"
-  "$coscli" --disable-log --init-skip -c "$cfg" -e "$RELEASE_COS_ENDPOINT" \
+  rc=0
+  "$coscli" --disable-log --init-skip -c "$job_cfg" -e "$RELEASE_COS_ENDPOINT" \
     cp "$path" "cos://${RELEASE_COS_BUCKET}/${key}" \
     --acl public-read \
     --fail-output=false \
     --process-log=false \
     --err-retry-num 3 \
-    --err-retry-interval 2
+    --err-retry-interval 2 || rc=$?
+  rm -f "$job_cfg"
+  if [[ "$rc" -ne 0 ]]; then
+    echo "::error::upload failed for ${name}" >&2
+  fi
+  return "$rc"
+}
+
+pids=()
+for path in "${files[@]}"; do
+  upload_one "$path" &
+  pids+=("$!")
 done
+
+failed=0
+for pid in "${pids[@]}"; do
+  if ! wait "$pid"; then
+    failed=1
+  fi
+done
+if [[ "$failed" -ne 0 ]]; then
+  echo "::error::one or more COS uploads failed" >&2
+  exit 1
+fi
 
 echo "Uploaded ${#files[@]} files under ${public_base}/"
