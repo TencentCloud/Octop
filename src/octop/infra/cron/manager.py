@@ -226,6 +226,18 @@ class CronManager:
             self._repos.audit_repo.write(actor=ACTOR_SYSTEM, action="cron.delete", target=cron_id)
             logger.info("CronJob %s deleted", cron_id)
 
+    async def unschedule_agent_jobs(self, agent_id: str) -> None:
+        """Drop every in-process schedule for *agent_id*, leaving DB rows alone.
+
+        ``AgentManager.delete`` calls this before the agent row goes: the
+        ``cron_jobs`` rows cascade away with it, so a schedule left in
+        APScheduler could never be reached — or stopped — through any API
+        again until the process restarted.
+        """
+        async with self._lock:
+            for row in self._repos.cron_repo.list_by_agent(agent_id):
+                await self._unschedule(row.cron_id)
+
     async def run_now(self, cron_id: str, *, wait: bool = False) -> None:
         """Trigger a run; embedded callers wait for bookkeeping and receive failures."""
         row = self._repos.cron_repo.get(cron_id)
