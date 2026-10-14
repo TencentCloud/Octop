@@ -278,6 +278,9 @@ Open **http://127.0.0.1:8088**. With Docker, the first init generates a random a
 # Build and start
 docker compose -f docker/docker-compose.yml up -d
 
+# China mirror when ghcr.io is unreachable (no local build)
+docker compose -f docker/docker-compose.cn.yml up -d
+
 # Or build manually
 bash docker/docker_build.sh
 docker run -d \
@@ -336,7 +339,7 @@ See [`.env.example`](.env.example) for the full list.
 | Local script | macOS / Linux | `bash scripts/install.sh` |
 | Local script | Windows | `scripts\install.bat` or `install.ps1` |
 | PyPI | Any | `pip install octop` (optional extras such as `local-embedding`) |
-| Docker | Any | `docker/docker-compose.yml` |
+| Docker | Any | `docker/docker-compose.yml`; China mirror: `docker/docker-compose.cn.yml` |
 
 All install scripts provision an isolated environment at `~/.octop/venv` and a `~/.octop/bin/octop` wrapper — they do not touch system Python.
 

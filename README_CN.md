@@ -280,6 +280,9 @@ octop service start
 # 构建并启动
 docker compose -f docker/docker-compose.yml up -d
 
+# 官方 GHCR 拉取失败时用国内源（不本地构建）
+docker compose -f docker/docker-compose.cn.yml up -d
+
 # 或手动构建
 bash docker/docker_build.sh
 docker run -d \
@@ -339,7 +342,7 @@ docker run -d \
 | 本地脚本 | macOS / Linux | `bash scripts/install.sh` |
 | 本地脚本 | Windows | `scripts\install.bat` 或 `install.ps1` |
 | PyPI | 全平台 | `pip install octop`（可选 extras 如 `local-embedding`） |
-| Docker | 全平台 | `docker/docker-compose.yml` |
+| Docker | 全平台 | `docker/docker-compose.yml`；国内镜像 `docker/docker-compose.cn.yml` |
 
 所有安装脚本均在 `~/.octop/venv` 创建隔离环境，并通过 `~/.octop/bin/octop` 包装 CLI，不会影响系统 Python。
 
