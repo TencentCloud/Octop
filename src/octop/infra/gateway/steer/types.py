@@ -98,6 +98,7 @@ class SteerAdmitOk:
     client_pending_id: str
     queue_length: int
     message_id: str | None = None
+    preview: str = ""  # the queued item's preview, so live frames match the snapshot
     seq: int | None = None  # allocated only when a new queued event is emitted
     emit_queued: bool = False
 

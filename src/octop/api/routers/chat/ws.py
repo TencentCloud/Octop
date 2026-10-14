@@ -24,7 +24,6 @@ from octop.api.routers.chat.turn import (
 from octop.infra.bridge.ids import parse_bridge_agent_id
 from octop.infra.errors import OctopError
 from octop.infra.gateway.steer import SteerAdmitOk, SteerAdmitReject, SteerCoordinator
-from octop.infra.gateway.steer.types import preview_text
 from octop.infra.gateway.ws import WS_CHANNEL_ID
 
 logger = logging.getLogger(__name__)
@@ -511,7 +510,7 @@ async def _maybe_admit_steer(
                 "pending_id": result.pending_id,
                 "turn_id": result.turn_id,
                 "queue_length": result.queue_length,
-                "preview": preview_text(text),
+                "preview": result.preview,
                 "thread_id": thread_id,
             },
         )
