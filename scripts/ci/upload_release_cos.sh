@@ -47,9 +47,17 @@ fi
 shopt -s nullglob
 files=()
 for path in "$src_dir"/*; do
-  if [[ -f "$path" ]]; then
-    files+=("$path")
+  if [[ ! -f "$path" ]]; then
+    continue
   fi
+  name="$(basename "$path")"
+  # Python wheel and sdist stay on PyPI / GitHub Release. Installer names use an
+  # uppercase Octop- prefix, so this does not drop desktop archives.
+  if [[ "$name" == *.whl || "$name" == octop-*.tar.gz ]]; then
+    echo "Skipping non-installer package: ${name}"
+    continue
+  fi
+  files+=("$path")
 done
 shopt -u nullglob
 

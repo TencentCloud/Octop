@@ -5,8 +5,9 @@ name: Upload release to COS
 #   https://${RELEASE_COS_BUCKET}.${RELEASE_COS_ENDPOINT}/octop/release/<version>/<filename>
 # version 去掉 tag 的前导 v。
 #
-# 自动：Release / Desktop Package / FnOS 在把自己的制品挂到 GitHub Release 之后
+# 自动：Desktop Package / FnOS 在把自己的安装包挂到 GitHub Release 之后
 # 用 workflow_call 调本工作流，patterns 只拉这一批文件，避免重复传大包。
+# wheel / sdist 不上传。
 # 手工补传：Run workflow，tag=vX.Y.Z；patterns 留空则下载该 Release 的全部 asset。
 #
 # 仓库 Secrets（不是 environment secret）：
