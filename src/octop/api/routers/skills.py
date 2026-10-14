@@ -1,14 +1,13 @@
 """Skills router — per-agent ``SKILL.md`` library.
 
-Each agent's skills live under its harness backend at ``/skills/<name>/SKILL.md``
-(matching finnie's convention). This router thinly wraps the workspace
-backend so the dashboard sees a *named* skills view rather than a raw
-file listing:
+Each agent's skills live under its harness workspace at
+``skills/<name>/SKILL.md``. This router thinly wraps the workspace backend so
+the dashboard sees a *named* skills view rather than a raw file listing:
 
   GET    /api/agents/{aid}/skills                 → summaries
   GET    /api/agents/{aid}/skills/{name}          → full detail (frontmatter + body)
   POST   /api/agents/{aid}/skills                 → body { name, content }
-  DELETE /api/agents/{aid}/skills/{name}          → remove SKILL.md
+  DELETE /api/agents/{aid}/skills/{name}          → soft-delete with a marker
   POST   /api/agents/{aid}/skills/{name}/enable
   POST   /api/agents/{aid}/skills/{name}/disable
 
@@ -17,13 +16,11 @@ A skill is considered "enabled" unless its slug is listed in
 that list and hot-sync ``HarnessAgentConfig.skills_disabled`` so
 ``SkillFilterMiddleware`` excludes disabled skills on every turn.
 
-Limitations
------------
-The protocol has no ``delete``: removing a skill rewrites SKILL.md to
-an empty file with the leading frontmatter block ``---\\nremoved: true\\n---``
-so the directory listing still shows the entry but the dashboard knows
-to filter it. This is a deliberate design compromise — protocol-level
-delete is the right long-term answer.
+Deletion semantics
+------------------
+Deleting a workspace skill replaces its SKILL.md with the frontmatter marker
+``---\\nremoved: true\\n---``. Skill resolution and list responses treat that marker
+as absent; other files under the skill directory remain untouched.
 """
 
 from __future__ import annotations
@@ -110,10 +107,9 @@ async def _ctx(
 def _parse_frontmatter(text: str) -> tuple[dict[str, Any], str]:
     """Split a markdown file with optional YAML frontmatter.
 
-    Accepts both ``---``-delimited and ``+++`` (TOML) blocks; we only
-    handle YAML for simplicity since finnie's skills all use YAML.
-    Returns ``(metadata_dict, body)``. Malformed frontmatter is treated
-    as no-frontmatter (the file is its own body).
+    Only ``---``-delimited YAML blocks are recognized. Returns
+    ``(metadata_dict, body)``. Malformed frontmatter is treated as
+    no-frontmatter (the file is its own body).
     """
     if not text.startswith("---\n"):
         return {}, text
