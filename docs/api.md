@@ -111,7 +111,7 @@ does not set these headers itself.
 | Method | Path | Auth | Notes |
 |--------|------|------|-------|
 | `GET`    | `/users` | admin | `[{id, username, role, display_name, email, enabled, ...}]` |
-| `POST`   | `/users` | admin | body `{username, password, role, display_name?, email?, permissions?, workspace_root_dir?, token_quota?}` → `201` |
+| `POST`   | `/users` | admin | body `{username, password, role, display_name?, email?, permissions?, workspace_root_dir?, token_quota?, max_agents?, source_agent_ids?}` → `201` |
 | `GET`    | `/users/{id}` | admin | full user row |
 | `PATCH`  | `/users/{id}` | admin | body subset of `{role, display_name, email, enabled, locale}` |
 | `POST`   | `/users/{id}/reset-password` | admin | body `{new_password}` → `204` |
