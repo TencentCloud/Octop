@@ -716,6 +716,11 @@
       "created": "Created",
       "error": "Error",
       "unknown": "Unknown"
+    },
+    "cli": {
+      "active_model_unset": "No global default model is set. Set one with: octop models active --provider <name> --model <model-id> (agents can also bind their own model).",
+      "model_global": "(global: {model})",
+      "model_unset": "(not set)"
     }
   },
   "agent_errors": {

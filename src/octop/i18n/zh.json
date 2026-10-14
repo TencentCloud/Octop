@@ -716,6 +716,11 @@
       "created": "已创建",
       "error": "异常",
       "unknown": "未知"
+    },
+    "cli": {
+      "active_model_unset": "未设置全局默认模型。用 octop models active --provider <名称> --model <模型ID> 设置；专家也可以单独绑定模型。",
+      "model_global": "（全局：{model}）",
+      "model_unset": "（未设置）"
     }
   },
   "agent_errors": {

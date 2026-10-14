@@ -53,6 +53,7 @@
   grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
   row-gap: 16px;
   column-gap: 12px;
+  align-items: start;
   padding: 16px 0 24px;
   width: 100%;
   min-width: 0;
@@ -74,7 +75,6 @@
   display: flex;
   flex-direction: column;
   gap: 10px;
-  height: 100%;
   min-width: 0;
   max-width: 100%;
   box-sizing: border-box;
@@ -98,8 +98,11 @@
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
-  color: var(--fn-text-secondary);
-  background: none;
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  color: var(--fn-color-brand);
+  background: color-mix(in srgb, var(--fn-color-brand) 10%, transparent);
 }
 
 .backendCardTitle {
@@ -135,9 +138,8 @@
   display: flex;
   flex-direction: column;
   gap: 0;
-  flex: 1;
+  flex: 0 0 auto;
   min-width: 0;
-  min-height: 0;
 }
 
 .infoRow {
@@ -164,12 +166,14 @@
 }
 
 .backendCardNote {
-  font-size: 11px;
-  color: var(--fn-text-tertiary);
-  margin-top: 2px;
+  margin: 0;
+  color: var(--fn-text-secondary, #6b7280);
+  font-size: 12px;
+  line-height: 1.45;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
   overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 
 .backendCardActions {
@@ -179,7 +183,6 @@
   flex-wrap: wrap;
   border-top: 1px solid var(--fn-border-secondary, #e5e7eb);
   padding-top: 10px;
-  margin-top: auto;
   gap: 8px;
   min-width: 0;
   max-width: 100%;
@@ -229,24 +232,38 @@
   font-weight: 500;
   flex-shrink: 0;
   white-space: nowrap;
+  padding: 2px 7px;
+  border-radius: 10px;
+  border: 1px solid var(--fn-border-secondary, #e5e7eb);
+  background: var(--fn-bg-secondary, #f7f8fa);
 }
 
 .statusBadgeOk {
-  color: #52c41a;
+  color: #389e0d;
+  background: color-mix(in srgb, #52c41a 14%, var(--fn-bg-elevated, #fff));
+  border-color: color-mix(
+    in srgb,
+    #52c41a 35%,
+    var(--fn-border-secondary, #e5e7eb)
+  );
 }
 
 .statusBadgeWarn {
   color: #8c8c8c;
-  padding: 2px 7px;
-  border-radius: 10px;
-  background: var(--fn-bg-secondary, #f7f8fa);
-  border: 1px solid var(--fn-border-secondary, #e5e7eb);
 }
 
 .meta {
   margin: 8px 0 0;
   color: var(--fn-text-secondary, #6b7280);
   font-size: 13px;
+  word-break: break-word;
+}
+
+.explain {
+  margin: 12px 0 0;
+  color: var(--fn-text-tertiary, #9ca3af);
+  font-size: 11px;
+  line-height: 1.45;
   word-break: break-word;
 }
 
@@ -321,6 +338,42 @@
   display: flex;
   flex-direction: column;
   gap: 8px;
+}
+
+.agentList {
+  list-style: none;
+  margin: 2px 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.agentList > li + li {
+  border-top: 1px solid var(--fn-border-secondary, #e5e7eb);
+}
+
+.agentRowBtn {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  width: 100%;
+  margin: 0;
+  padding: 8px 4px;
+  text-align: left;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--fn-text-primary, #111827);
+  cursor: pointer;
+  font: inherit;
+}
+
+.agentRowBtn:hover {
+  background: color-mix(
+    in srgb,
+    var(--catalog-accent, var(--fn-color-brand, #e85d75)) 6%,
+    transparent
+  );
 }
 
 .probeItem,
