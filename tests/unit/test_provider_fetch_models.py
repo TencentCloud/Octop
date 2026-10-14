@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from types import SimpleNamespace
 from typing import Any
 from unittest.mock import AsyncMock, patch
 
@@ -9,6 +10,16 @@ import httpx
 import pytest
 
 from octop.infra.agents.providers.probe import fetch_openai_compatible_models
+
+
+@pytest.fixture(autouse=True)
+def _skip_dns_resolution(monkeypatch: pytest.MonkeyPatch) -> None:
+    """SEC-8 added DNS resolution to the probe guard; unit tests stub HTTP."""
+
+    async def _fake_resolve(url: str, *, field: str = "url") -> str:
+        return url
+
+    monkeypatch.setattr("octop.infra.utils.ssrf_guard._resolve_validated_ip", _fake_resolve)
 
 
 def _mock_response(status: int, payload: Any) -> httpx.Response:
@@ -174,3 +185,55 @@ async def test_fetch_models_server_error_friendly() -> None:
     assert result["ok"] is False
     assert "temporarily unavailable" in result["error"].lower()
     assert "503" not in result["error"]
+
+
+@pytest.mark.asyncio
+async def test_fetch_models_rejects_private_base_url(monkeypatch: pytest.MonkeyPatch) -> None:
+    """SEC-8: the SSRF guard must reject private/loopback draft base_urls."""
+    result = await fetch_openai_compatible_models(
+        base_url="http://169.254.169.254/v1",
+        api_key="sk-secret",
+    )
+    assert result["ok"] is False
+    assert "not allowed" in result["error"] or "https" in result["error"].lower()
+
+
+@pytest.mark.asyncio
+async def test_fetch_models_allows_loopback_base_url_for_local_runtimes() -> None:
+    """Loopback is exempt so on-box Ollama/ONNX can still list their models.
+
+    Without the exemption ``GET http://127.0.0.1:11434/v1/models`` is rejected
+    by the guard and local installs cannot be configured at all.
+    """
+    request = httpx.Request("GET", "http://127.0.0.1:11434/v1/models")
+    response = httpx.Response(200, json={"data": [{"id": "llama3"}]}, request=request)
+    get = AsyncMock(return_value=response)
+
+    with patch("octop.infra.agents.providers.probe.httpx.AsyncClient") as client_cls:
+        client_cls.return_value.__aenter__ = AsyncMock(return_value=SimpleNamespace(get=get))
+        client_cls.return_value.__aexit__ = AsyncMock(return_value=None)
+        result = await fetch_openai_compatible_models(
+            base_url="http://127.0.0.1:11434/v1",
+            api_key="",
+        )
+
+    assert result["ok"] is True
+    assert [m["id"] for m in result["models"]] == ["llama3"]
+
+
+@pytest.mark.asyncio
+async def test_fetch_models_rejects_private_rfc1918_base_url() -> None:
+    """Private LAN addresses are NOT loopback and must still be guarded.
+
+    The local-runtime exemption is deliberately loopback-only: a LAN address is
+    a real internal host, which is what the guard is there to stop.
+    """
+    with patch("octop.infra.agents.providers.probe.httpx.AsyncClient") as client_cls:
+        result = await fetch_openai_compatible_models(
+            base_url="https://192.168.1.10:11434/v1",
+            api_key="sk-test",
+        )
+
+    assert result["ok"] is False
+    assert "not allowed" in result["error"]
+    client_cls.assert_not_called()

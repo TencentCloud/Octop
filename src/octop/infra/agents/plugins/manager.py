@@ -116,6 +116,22 @@ def _assert_http_url(url: str) -> None:
             ErrorCode.PLUGIN_INVALID_ARCHIVE,
             "plugin URL must be an http(s) address to a ZIP archive",
         )
+    # SEC-10: a plugin ZIP is executed on the host, so a URL pointing at an
+    # internal service must not pass. Reuses the guard the connectors already
+    # apply to MCP/OAuth endpoints. This covers scheme and literal private IPs;
+    # DNS resolution is covered by the async probe in the install route.
+    from octop.infra.utils.ssrf_guard import (  # noqa: PLC0415
+        UnsafeOutboundUrl,
+        validate_https_url,
+    )
+
+    try:
+        validate_https_url(url, field="plugin URL")
+    except UnsafeOutboundUrl as exc:
+        raise OctopError(
+            ErrorCode.PLUGIN_INVALID_ARCHIVE,
+            f"plugin URL not allowed: {exc}",
+        ) from exc
 
 
 def _assert_zip_magic(archive: Path) -> None:
