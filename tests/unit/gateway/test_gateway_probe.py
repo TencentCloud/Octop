@@ -32,7 +32,7 @@ def _fake_row(channel_id: str = "ch1") -> MagicMock:
     row = MagicMock()
     row.channel_id = channel_id
     row.agent_id = "agent1"
-    row.kind = "feishu"
+    row.kind = "wecom"
     row.name = "main"
     row.config_json = '{"app_id":"x","app_secret":"y"}'
     row.enabled = 1
@@ -73,7 +73,7 @@ async def test_probe_config_without_persisted_row(tmp_path: Path) -> None:
 
     result = await gw.probe_config(
         agent_id="agent1",
-        kind="feishu",
+        kind="wecom",
         config={"app_id": "x", "app_secret": "y"},
     )
 
@@ -82,4 +82,32 @@ async def test_probe_config_without_persisted_row(tmp_path: Path) -> None:
     assert call is not None
     assert call.kwargs["tenant_id"] == "agent1"
     assert call.kwargs["channel_id"] == "__probe__"
-    assert call.args[0] == "feishu"
+    assert call.args[0] == "wecom"
+
+
+@pytest.mark.parametrize("persisted", [False, True])
+async def test_feishu_probe_uses_credentials_without_starting_websocket(
+    tmp_path: Path, persisted: bool
+) -> None:
+    gw = _make_gateway(tmp_path)
+    gw._channel_manager = MagicMock()
+    gw._channel_manager.probe_channel = AsyncMock()
+    row = _fake_row()
+    row.kind = "feishu"
+    with (
+        patch.object(gw, "get_channel", return_value=row),
+        patch(
+            "octop.infra.gateway.gateway.probe_feishu_credentials", new_callable=AsyncMock
+        ) as probe,
+    ):
+        if persisted:
+            result = await gw.probe_channel("ch1")
+        else:
+            result = await gw.probe_config(
+                agent_id="agent1", kind="feishu", config={"app_id": "x", "app_secret": "y"}
+            )
+
+    assert result == {"ok": True}
+    probe.assert_awaited_once()
+    assert probe.await_args.args[0] == {"app_id": "x", "app_secret": "y"}
+    gw._channel_manager.probe_channel.assert_not_awaited()
