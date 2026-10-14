@@ -149,7 +149,7 @@ upload_one() {
   local name key job_cfg job_log rc
   name="$(basename "$path")"
   key="octop/release/${version}/${name}"
-  job_cfg="${cfg}.${name}"
+  job_cfg="${cfg}.${name}.yaml"
   job_log="${log_dir}/${name}"
   cp "$cfg" "$job_cfg"
   chmod 600 "$job_cfg"
