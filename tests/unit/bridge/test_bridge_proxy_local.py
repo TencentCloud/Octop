@@ -54,6 +54,13 @@ def test_other_paths_pass_through() -> None:
     )
 
 
+def test_resolve_upload_path() -> None:
+    target = resolve_tunnel_target("/api/agents/bridge:cid1:aid1/upload")
+    assert target is not None
+    assert target.remote_path == "/api/agents/aid1/upload"
+    assert target.agent_rest == "/upload"
+
+
 def test_resolve_agents_and_plugins_path() -> None:
     agents = resolve_tunnel_target("/api/agents/bridge:cid1:aid1/tool-settings")
     assert agents is not None

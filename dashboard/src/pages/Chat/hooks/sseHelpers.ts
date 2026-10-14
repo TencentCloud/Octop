@@ -140,6 +140,16 @@ export interface SessionStreamState {
    * panels open across tool gaps after the composer has unlocked.
    */
   liveSpeakers: Set<string>;
+  /** Mid-turn steer: ``turn.started`` / ``turn.resumed`` id (issue #1300). */
+  activeTurnId?: string | null;
+  /** Server-acked undrained steers (internal; drives transcript lifecycle). */
+  pendingSteers: Array<{
+    clientPendingId: string;
+    pendingId: string;
+    preview: string;
+    /** Client-only full text (frames carry 200-char previews). */
+    text?: string;
+  }>;
 }
 
 /** Read-only snapshot shape exposed via ``chatStore.getSnapshot``. */
@@ -157,4 +167,5 @@ export interface SessionSnapshot {
   pendingPlanPath?: string | null;
   /** Sorted speaker keys still generating (see SessionStreamState.liveSpeakers). */
   liveSpeakers: string[];
+  activeTurnId?: string | null;
 }
