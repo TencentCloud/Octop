@@ -61,16 +61,15 @@ def probe_credentials(creds: dict[str, Any]) -> None:
 def prepare_env(creds: dict[str, Any]) -> dict[str, str]:
     client_id = str(creds.get("client_id") or "").strip()
     client_secret = str(creds.get("client_secret") or "").strip()
-    if not client_id or not client_secret:
-        raise ValueError("DingTalk client_id and client_secret are required")
     config_dir = PathLayout.from_env().ensure_connector_cli_instance_dir(
         _KIND, resolve_cli_config_key(creds)
     )
     env = os.environ.copy()
-    env.update(
-        DWS_CONFIG_DIR=str(config_dir),
-        DWS_CLIENT_ID=client_id,
-        DWS_CLIENT_SECRET=client_secret,
-        DWS_DISABLE_KEYCHAIN="1",
-    )
+    env.update(DWS_CONFIG_DIR=str(config_dir), DWS_DISABLE_KEYCHAIN="1")
+    # Without a custom app pair, dws logs in through DingTalk's official app;
+    # never inherit a host-wide pair into another user's instance.
+    env.pop("DWS_CLIENT_ID", None)
+    env.pop("DWS_CLIENT_SECRET", None)
+    if client_id and client_secret:
+        env.update(DWS_CLIENT_ID=client_id, DWS_CLIENT_SECRET=client_secret)
     return env

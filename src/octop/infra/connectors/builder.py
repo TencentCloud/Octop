@@ -456,15 +456,19 @@ def validate_create_credentials(
         if entry.kind == "dingtalk-cli":
             client_id = str(credentials.get("client_id") or "").strip()
             client_secret = str(credentials.get("client_secret") or "").strip()
-            if not client_id or not client_secret:
-                raise ValueError("client_id and client_secret are required for DingTalk CLI")
-            return {
-                "client_id": client_id,
-                "client_secret": client_secret,
+            # dws accepts only a complete pair; none means DingTalk's official app.
+            if bool(client_id) != bool(client_secret):
+                raise ValueError(
+                    "client_id and client_secret must be set together for DingTalk CLI"
+                )
+            out = {
                 "internal_token": new_internal_token(),
                 "cli_config_key": str(credentials.get("cli_config_key") or "").strip()
                 or new_ulid(),
             }
+            if client_id:
+                out.update(client_id=client_id, client_secret=client_secret)
+            return out
         if entry.kind == "weknora":
             base_url = normalize_weknora_base_url(str(credentials.get("base_url") or ""))
             out = {

@@ -556,18 +556,24 @@
       "guide_url": "https://github.com/DingTalk-Real-AI/dingtalk-workspace-cli#getting-started",
       "manual_url": "https://open-dev.dingtalk.com/fe/app#/corp/app",
       "auth_hint": {
-        "en": "Enter the AppKey and AppSecret of your DingTalk enterprise app, save, then authorize your DingTalk account; the host must have dws installed",
-        "zh": "填写钉钉企业应用的 AppKey 与 AppSecret，保存后再登录授权钉钉账号；主机需已安装 dws"
+        "en": "Save, then authorize your DingTalk account. AppKey and AppSecret are optional: leave both empty to use DingTalk's official app. The host must have dws installed",
+        "zh": "保存后登录授权钉钉账号。AppKey 与 AppSecret 可选：都留空则使用钉钉官方应用。主机需已安装 dws"
       },
       "credential_fields": [
         {
           "key": "client_id",
-          "label": { "en": "AppKey (Client ID)", "zh": "AppKey（Client ID）" }
+          "label": { "en": "AppKey (Client ID)", "zh": "AppKey（Client ID）" },
+          "required": false,
+          "help": {
+            "en": "Only for a custom DingTalk app; fill both or leave both empty",
+            "zh": "仅自建钉钉应用需要；与 AppSecret 同时填写或同时留空"
+          }
         },
         {
           "key": "client_secret",
           "label": { "en": "AppSecret (Client Secret)", "zh": "AppSecret（Client Secret）" },
           "field_type": "password",
+          "required": false,
           "secret": true
         }
       ]

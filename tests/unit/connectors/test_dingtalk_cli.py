@@ -8,11 +8,21 @@ from octop.infra.connectors.gateway.adapters import dingtalk_cli
 from octop.infra.connectors.gateway.registry import get_gateway_adapter
 
 
-def test_credentials_require_pair_and_get_isolation_key() -> None:
+def test_credentials_are_an_optional_pair_with_isolation_key() -> None:
     with pytest.raises(ValueError, match="client_id and client_secret"):
         validate_create_credentials("dingtalk-cli", {"client_id": "k"})
     out = validate_create_credentials("dingtalk-cli", {"client_id": "k", "client_secret": "s"})
-    assert out["cli_config_key"] and out["internal_token"]
+    assert out["client_id"] == "k" and out["cli_config_key"] and out["internal_token"]
+    official = validate_create_credentials("dingtalk-cli", {})
+    assert "client_id" not in official and official["cli_config_key"]
+
+
+def test_env_uses_official_app_without_pair(monkeypatch, tmp_path) -> None:
+    monkeypatch.setenv("OCTOP_HOME", str(tmp_path))
+    monkeypatch.setenv("DWS_CLIENT_ID", "host-wide")
+    env = dingtalk_cli.prepare_env({"cli_config_key": "inst2"})
+    assert "DWS_CLIENT_ID" not in env and "DWS_CLIENT_SECRET" not in env
+    assert env["DWS_CONFIG_DIR"].endswith("inst2")
 
 
 def test_call_tool_passes_argv_and_isolated_env(monkeypatch, tmp_path) -> None:
