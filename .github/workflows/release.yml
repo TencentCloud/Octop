@@ -3,9 +3,11 @@ name: Release
 # 版本标签 v* → 测包、发 PyPI、建 GitHub Release，再级联：
 #   - Sync Main Into Develop
 #   - Build Octop FPK（复用本 Release 的 wheel；等待 docker-publish 的多架构 GHCR 镜像）
+#   - Upload release to COS（只传本 workflow 的 wheel / sdist 到 octop/<version>/）
 #
 # 与 docker-publish.yml / octop-desktop.yml 并行（由 Auto Tag 同时 dispatch，
-# 或人工 push v* tag 同时触发）。桌面产物由 Desktop Package 挂到同一 GitHub Release。
+# 或人工 push v* tag 同时触发）。桌面产物由 Desktop Package 挂到同一 GitHub Release，
+# 并各自上传到同一个 COS 版本目录。
 
 on:
   push:
@@ -168,3 +170,14 @@ jobs:
           gh workflow run fnos-build-fpk.yml \
             --repo "${{ github.repository }}" \
             --ref "${{ github.ref_name }}"
+
+  upload-cos:
+    name: Upload wheel to COS
+    needs: github-release
+    uses: ./.github/workflows/upload-release-cos.yml
+    with:
+      tag: ${{ github.ref_name }}
+      patterns: "octop-*.whl,octop-*.tar.gz"
+    secrets:
+      RELEASE_COS_SECRET_ID: ${{ secrets.RELEASE_COS_SECRET_ID }}
+      RELEASE_COS_SECRET_KEY: ${{ secrets.RELEASE_COS_SECRET_KEY }}
