@@ -64,9 +64,15 @@
   }
 
   & + &.policySection {
-    margin-top: 20px;
-    padding-top: 20px;
+    margin-top: 32px;
+    padding-top: 28px;
   }
+}
+
+.policySection {
+  margin-top: 32px;
+  padding-top: 28px;
+  border-top: 1px solid var(--fn-border-primary);
 }
 
 .createSectionTitle {
@@ -298,6 +304,24 @@
 .permChipSelected .permChipCheck {
   border-color: var(--fn-color-brand);
   background: var(--fn-color-brand);
+}
+
+.permChipAlways {
+  cursor: default;
+  color: var(--fn-text-secondary);
+  background: var(--fn-bg-secondary, var(--fn-bg-elevated));
+
+  &:hover {
+    border-color: var(--fn-border-primary);
+    background: var(--fn-bg-secondary, var(--fn-bg-elevated));
+  }
+}
+
+.permChipAlwaysTag {
+  flex-shrink: 0;
+  font-size: 11px;
+  line-height: 1.2;
+  color: var(--fn-text-tertiary);
 }
 
 .permChipLabel {

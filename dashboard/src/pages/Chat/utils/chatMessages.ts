@@ -55,16 +55,15 @@ export function normalizeComposerContext(
 /**
  * WS ``model`` field for each turn.
  *
- * Only an explicit composer selection is sent. Agent/user/global defaults are
- * resolved by the backend so they are not mistaken for a sticky override.
+ * Only a composer selection that differs from the expert default is sent.
+ * Matching the expert default (or Auto) is omitted so the backend applies the
+ * live expert setting and does not store it as a sticky thread override.
  */
 export function resolveTurnModelRef(
   selectedModel: string | null | undefined,
   agentDefaultModel: string | null | undefined,
 ): string | null {
-  const selected = (selectedModel || "").trim();
-  void agentDefaultModel;
-  return selected || null;
+  return resolveTurnModelOverride(selectedModel, agentDefaultModel);
 }
 
 /** User picked a model different from the expert default (for UI chips / history). */

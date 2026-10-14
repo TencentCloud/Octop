@@ -103,6 +103,9 @@ export function findSpeakerTextToContinue(
     )
       continue;
     if (message.teamWrapup) continue;
+    // Approval cards are not answer text. Continuing them hides the reply,
+    // because the card renders instead of message content.
+    if (message.hitlData) continue;
     if (message.toolData) {
       const name = message.toolData.name || "";
       const inFlight = skipTools.has(name) && !message.toolData.output;

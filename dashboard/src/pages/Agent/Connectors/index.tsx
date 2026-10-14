@@ -307,7 +307,9 @@ function configuredExtra(
 }
 
 function isHostCliConnector(kind: string): boolean {
-  return ["feishu-cli", "wecom-cli", "agently-cli"].includes(kind);
+  return ["feishu-cli", "wecom-cli", "agently-cli", "obsidian-cli"].includes(
+    kind,
+  );
 }
 
 function ConnectorConfigDrawer({
@@ -1531,6 +1533,21 @@ function ConnectorConfigDrawer({
           </div>
         )}
 
+        {entry?.kind === "obsidian-cli" && (
+          <div className={styles.cliInstallHint}>
+            <a
+              href="https://obsidian.md/zh/cli"
+              target="_blank"
+              rel="noreferrer"
+            >
+              {t(
+                "connectors.obsidianCliGuide",
+                "Obsidian-cli官方安装指引：https://obsidian.md/zh/cli",
+              )}
+            </a>
+          </div>
+        )}
+
         {open && entry.kind === "agently-cli" && instance && (
           <AgentlyAuth
             key={instance.instance_id}
@@ -2047,7 +2064,7 @@ function ConnectorConfigDrawer({
                 <Select
                   options={MAIL_PROVIDERS.map((item) => ({
                     value: item.id,
-                    label: item.label,
+                    label: t(`connectors.mailProviders.${item.id}`),
                   }))}
                 />
               </Form.Item>
