@@ -73,7 +73,11 @@ fi
 work="${RUNNER_TEMP:-${TMPDIR:-/tmp}}"
 coscli="${work}/coscli-${COSCLI_VERSION}"
 cfg="${work}/cos-upload-$$.yaml"
-trap 'rm -f "$cfg" "$cfg".*' EXIT
+log_dir="${work}/coscli-process-$$"
+done_flag="${work}/cos-upload-done-$$"
+mkdir -p "$log_dir"
+rm -f "$done_flag"
+trap 'touch "$done_flag"; rm -f "$cfg" "$cfg".*' EXIT
 
 if [[ ! -x "$coscli" ]]; then
   case "$(uname -s)-$(uname -m)" in
@@ -142,19 +146,22 @@ PY
 
 upload_one() {
   local path="$1"
-  local name key job_cfg rc
+  local name key job_cfg job_log rc
   name="$(basename "$path")"
   key="octop/release/${version}/${name}"
   job_cfg="${cfg}.${name}"
+  job_log="${log_dir}/${name}"
   cp "$cfg" "$job_cfg"
   chmod 600 "$job_cfg"
+  mkdir -p "$job_log"
   echo "Uploading ${name} -> ${key}"
   rc=0
   "$coscli" --disable-log --init-skip -c "$job_cfg" -e "$RELEASE_COS_ENDPOINT" \
     cp "$path" "cos://${RELEASE_COS_BUCKET}/${key}" \
     --acl public-read \
     --fail-output=false \
-    --process-log=false \
+    --process-log=true \
+    --process-log-path "$job_log" \
     --err-retry-num 3 \
     --err-retry-interval 2 || rc=$?
   rm -f "$job_cfg"
@@ -163,6 +170,29 @@ upload_one() {
   fi
   return "$rc"
 }
+
+follow_process_logs() {
+  local seen="${work}/cos-followed-$$"
+  local logfile
+  : > "$seen"
+  while [[ ! -f "$done_flag" ]]; do
+    while IFS= read -r logfile; do
+      [[ -n "$logfile" ]] || continue
+      if grep -Fxq "$logfile" "$seen"; then
+        continue
+      fi
+      printf '%s\n' "$logfile" >> "$seen"
+      echo "---- ${logfile#"${log_dir}/"} ----"
+      tail -n +1 -F "$logfile" &
+    done < <(find "$log_dir" -type f | sort)
+    sleep 2
+  done
+  sleep 1
+  pkill -P "$BASHPID" tail || true
+}
+
+follow_process_logs &
+follower_pid=$!
 
 pids=()
 for path in "${files[@]}"; do
@@ -176,6 +206,8 @@ for pid in "${pids[@]}"; do
     failed=1
   fi
 done
+touch "$done_flag"
+wait "$follower_pid" || true
 if [[ "$failed" -ne 0 ]]; then
   echo "::error::one or more COS uploads failed" >&2
   exit 1
