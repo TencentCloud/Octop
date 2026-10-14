@@ -535,6 +535,124 @@
   display: none;
 }
 
+/* ── Manual ordering: drag handle + drop feedback + pinned divider ───── */
+
+.agentDragHandle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 16px;
+  height: 20px;
+  margin-left: -4px;
+  margin-right: 2px;
+  border-radius: 4px;
+  color: var(--fn-text-quaternary);
+  cursor: grab;
+  touch-action: none;
+  user-select: none;
+  opacity: 0;
+  transition:
+    opacity 0.15s,
+    color 0.15s;
+
+  &:hover {
+    color: var(--fn-text-secondary);
+  }
+
+  &:active {
+    cursor: grabbing;
+  }
+}
+
+.agentRowWrap:hover .agentDragHandle,
+.agentCardActive:hover .agentDragHandle,
+.minimalAgentSection:hover .agentDragHandle,
+.agentDragHandle:focus-visible {
+  opacity: 1;
+}
+
+/* Touch devices never hover — keep the handle reachable. */
+@media (hover: none) {
+  .agentDragHandle {
+    opacity: 1;
+  }
+}
+
+.dragRowActive {
+  opacity: 0.55;
+}
+
+.dragRowDropBefore,
+.dragRowDropAfter {
+  position: relative;
+}
+
+.dragRowDropBefore::before,
+.dragRowDropAfter::after {
+  content: "";
+  position: absolute;
+  left: 6px;
+  right: 6px;
+  height: 2px;
+  border-radius: 1px;
+  background: var(--fn-color-brand);
+  pointer-events: none;
+  z-index: 1;
+}
+
+.dragRowDropBefore::before {
+  top: -1px;
+}
+
+.dragRowDropAfter::after {
+  bottom: -1px;
+}
+
+.pinnedGroupDivider {
+  height: 1px;
+  margin: 4px 10px;
+  background: var(--fn-border-primary, rgba(0, 0, 0, 0.08));
+}
+
+.agentRowMore {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--fn-text-quaternary);
+  cursor: pointer;
+  opacity: 0;
+  transition:
+    opacity 0.15s,
+    background 0.15s,
+    color 0.15s;
+
+  &:hover {
+    background: rgba(0, 0, 0, 0.06);
+    color: var(--fn-text-secondary);
+  }
+}
+
+.agentRowWrap:hover .agentRowMore,
+.agentCardActive:hover .agentRowMore,
+.minimalAgentHeader:hover .agentRowMore,
+.agentRowMore:focus-visible {
+  opacity: 1;
+}
+
+@media (hover: none) {
+  .agentRowMore {
+    opacity: 1;
+  }
+}
+
 .sessionItemNested {
   padding: 6px 8px;
 }

@@ -1,4 +1,4 @@
-import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { memo, useCallback, useEffect, useMemo, useRef, useState, Fragment } from "react";
 import { useTranslation } from "react-i18next";
 import { useNavigate } from "react-router-dom";
 import { Dropdown } from "antd";
@@ -10,6 +10,7 @@ import {
   Pin,
   PinOff,
   GitFork,
+  GripVertical,
   ChevronRight,
   MessageSquarePlus,
 } from "lucide-react";
@@ -23,9 +24,22 @@ import {
 import { isAgentChatReady } from "../../../utils/agentError";
 import { isImeComposing } from "../../../utils/ime";
 import { sortSessions, toSession, type Session } from "../hooks/useSessions";
+import {
+  applyListOrder,
+  groupSequence,
+  joinSequence,
+  moveIdBy,
+  moveIdTo,
+} from "../../../utils/listOrder";
+import { useListOrder } from "../../../hooks/useListOrder";
 import { formatThreadTitle } from "../utils/threadTitle";
 import { onSessionEvent } from "../hooks/chatStore";
 import { useSessionWorkIds } from "../hooks/useSessionWorkIds";
+import { useDragSortReorder } from "../hooks/useDragSortReorder";
+import {
+  agentOrderMenuItems,
+  type AgentOrdering,
+} from "./agentOrderMenu";
 import {
   resolveSessionWorkStatus,
   type SessionWorkStatus,
@@ -294,9 +308,93 @@ export default function MinimalAgentSessionNav({
     [agents],
   );
 
-  const sortedAgents = useMemo(
-    () => [...agents].sort((a, b) => b.id - a.id),
-    [agents],
+  const {
+    state: listOrderState,
+    write: writeListOrderState,
+    togglePin,
+  } = useListOrder();
+  const pinnedSet = useMemo(
+    () => new Set(listOrderState.pinned),
+    [listOrderState.pinned],
+  );
+
+  const sortedAgents = useMemo(() => {
+    const base = [...agents].sort((a, b) => b.id - a.id);
+    return applyListOrder(base, listOrderState, (a) => a.agent_id);
+  }, [agents, listOrderState]);
+
+  // Length of the pinned block at the head of the list.
+  const pinnedCount = useMemo(() => {
+    let n = 0;
+    for (const agent of sortedAgents) {
+      if (!pinnedSet.has(agent.agent_id)) break;
+      n += 1;
+    }
+    return n;
+  }, [sortedAgents, pinnedSet]);
+
+  const drag = useDragSortReorder({
+    enabled: true,
+    onReorder: (fromId, toId, placement) => {
+      const seq = sortedAgents.map((a) => a.agent_id);
+      const next = moveIdTo(seq, fromId, toId, placement);
+      if (!next) return;
+      writeListOrderState({ ...listOrderState, order: next });
+    },
+  });
+
+  const dragRowClass = useCallback(
+    (id: string) => {
+      if (drag.draggingId === id) return styles.dragRowActive;
+      if (drag.draggingId && drag.overId === id) {
+        return drag.placement === "before"
+          ? styles.dragRowDropBefore
+          : styles.dragRowDropAfter;
+      }
+      return "";
+    },
+    [drag],
+  );
+
+  /** Menu 上移/下移: move within the item's own group (pinned ↔ pinned). */
+  const moveAgent = useCallback(
+    (id: string, delta: -1 | 1) => {
+      const seq = sortedAgents.map((a) => a.agent_id);
+      const groups = groupSequence(seq, pinnedSet);
+      const inPinned = pinnedSet.has(id);
+      const nextGroup = moveIdBy(
+        inPinned ? groups.pinnedSeq : groups.restSeq,
+        id,
+        delta,
+      );
+      if (!nextGroup) return; // at group boundary — no-op
+      writeListOrderState({
+        ...listOrderState,
+        order: joinSequence(
+          inPinned
+            ? { ...groups, pinnedSeq: nextGroup }
+            : { ...groups, restSeq: nextGroup },
+        ),
+      });
+    },
+    [sortedAgents, pinnedSet, listOrderState, writeListOrderState],
+  );
+
+  const buildOrdering = useCallback(
+    (agent: OctopAgent): AgentOrdering => {
+      const id = agent.agent_id;
+      return {
+        pinned: pinnedSet.has(id),
+        enabled: true,
+        rowProps: drag.getRowProps(id),
+        handleProps: drag.getHandleProps(id) as AgentOrdering["handleProps"],
+        rowClassName: dragRowClass(id),
+        onTogglePin: () => togglePin(id),
+        onMoveUp: () => moveAgent(id, -1),
+        onMoveDown: () => moveAgent(id, 1),
+      };
+    },
+    [pinnedSet, drag, dragRowClass, moveAgent, togglePin],
   );
 
   // Ensure the active expert folder stays open.
@@ -502,14 +600,37 @@ export default function MinimalAgentSessionNav({
 
   return (
     <div className={`${styles.sessionList} ${styles.minimalAgentNav}`}>
-      {sortedAgents.map((agent) => {
+      {sortedAgents.map((agent, index) => {
         const list = byAgent[agent.agent_id] ?? [];
         const ready = isAgentChatReady(agent.state);
         const expanded = !collapsedFolders.has(agent.agent_id);
+        const ordering = buildOrdering(agent);
+        const showPinnedDivider =
+          index === pinnedCount &&
+          pinnedCount > 0 &&
+          pinnedCount < sortedAgents.length;
 
         return (
-          <section key={agent.agent_id} className={styles.minimalAgentSection}>
+          <Fragment key={agent.agent_id}>
+            {showPinnedDivider ? (
+              <div className={styles.pinnedGroupDivider} role="separator" />
+            ) : null}
+            <section
+              className={`${styles.minimalAgentSection} ${
+                ordering.rowClassName ?? ""
+              }`.trim()}
+              {...(ordering.rowProps ?? {})}
+            >
             <div className={styles.minimalAgentHeader}>
+              {ordering.handleProps ? (
+                <span
+                  className={styles.agentDragHandle}
+                  title={t("chat.dragToSort")}
+                  {...ordering.handleProps}
+                >
+                  <GripVertical size={12} />
+                </span>
+              ) : null}
               <span className={styles.minimalAgentIconSlot}>
                 <span
                   className={styles.minimalAgentAvatar}
@@ -551,12 +672,34 @@ export default function MinimalAgentSessionNav({
               >
                 <span className={styles.agentNameCluster}>
                   <span className={styles.minimalAgentName}>{agent.name}</span>
+                  {ordering.pinned ? (
+                    <span
+                      className={styles.sessionRowPinIndicator}
+                      title={t("chat.unpin")}
+                    >
+                      <Pin size={11} strokeWidth={2} />
+                    </span>
+                  ) : null}
                   <TeamChatBadge agent={agent} />
                   <SharedExpertHint agent={agent} />
                   <RemoteExpertHint agent={agent} />
                 </span>
                 <AgentUnreadBadge count={agent.unread_count ?? 0} />
               </button>
+              <Dropdown
+                menu={{ items: agentOrderMenuItems(t, ordering) }}
+                trigger={["click"]}
+                placement="bottomRight"
+              >
+                <button
+                  type="button"
+                  className={styles.agentRowMore}
+                  aria-label={t("common.more", "More")}
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  <MoreHorizontal size={15} />
+                </button>
+              </Dropdown>
               <button
                 type="button"
                 className={styles.minimalAgentNewChatBtn}
@@ -616,7 +759,8 @@ export default function MinimalAgentSessionNav({
                 )}
               </div>
             ) : null}
-          </section>
+            </section>
+          </Fragment>
         );
       })}
     </div>
