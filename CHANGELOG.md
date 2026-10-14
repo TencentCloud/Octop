@@ -5,6 +5,7 @@
 格式遵循 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)，版本号遵循 [语义化版本规范](https://semver.org/spec/v2.0.0.html)。
 
 ## [Unreleased]
+- 对话中途 Steer 排队气泡：只带附件的 Steer 立刻显示文件名，不再等重连刷新才出现（空白预览）
 - Linux 桌面客户端无边框窗口支持拖拽边缘与角落调整大小。
 
 ### 新增

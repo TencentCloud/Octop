@@ -421,6 +421,7 @@ class SteerCoordinator:
                 pending_id=pending_id,
                 client_pending_id=cpid,
                 queue_length=len(state.queue),
+                preview=item.preview,
                 seq=seq,
                 emit_queued=True,
             )
