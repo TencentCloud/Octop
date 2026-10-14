@@ -54,6 +54,7 @@ import {
   type BridgeProbeResult,
   type BridgeRemoteAgent,
 } from "../../../api/modules/bridge";
+import { inboundPeerAddress, inboundSourceIp } from "./bridgePeerLabel";
 import { TabPanelHeader } from "./TabPanelHeader";
 import styles from "./BridgeSettings.module.less";
 
@@ -130,6 +131,38 @@ function connectionStatusText(
     return t("advancedSettings.bridge.status.offline");
   }
   return t(`advancedSettings.bridge.status.${row.status}`);
+}
+
+function InboundPeerFacts({ row }: { row: BridgeConnection }) {
+  const { t } = useTranslation();
+  const address = inboundPeerAddress(row);
+  const sourceIp = inboundSourceIp(row);
+  return (
+    <>
+      <div className={styles.infoRow}>
+        <span className={styles.infoLabel}>
+          {t("advancedSettings.bridge.peerUrl")}:
+        </span>
+        <span className={styles.infoValue} title={address}>
+          {address || "—"}
+        </span>
+      </div>
+      {sourceIp ? (
+        <div className={styles.infoRow}>
+          <span className={styles.infoLabel}>
+            {t("advancedSettings.bridge.peerIp")}:
+          </span>
+          <span className={styles.infoValue}>{sourceIp}</span>
+        </div>
+      ) : null}
+      <div className={styles.infoRow}>
+        <span className={styles.infoLabel}>
+          {t("advancedSettings.bridge.username")}:
+        </span>
+        <span className={styles.infoValue}>{row.peer_username}</span>
+      </div>
+    </>
+  );
 }
 
 function InboundLockedControl({ children }: { children: ReactNode }) {
@@ -557,11 +590,14 @@ function BridgeConnectionCard({
 
       <div className={styles.backendCardInfo}>
         {isInboundConnection(row) ? (
-          <p className={styles.meta}>
-            {connected
-              ? t("advancedSettings.bridge.inboundHint")
-              : t("advancedSettings.bridge.inboundOfflineHint")}
-          </p>
+          <>
+            <InboundPeerFacts row={row} />
+            <p className={styles.meta}>
+              {connected
+                ? t("advancedSettings.bridge.inboundHint")
+                : t("advancedSettings.bridge.inboundOfflineHint")}
+            </p>
+          </>
         ) : (
           <>
             <div className={styles.infoRow}>
@@ -950,7 +986,8 @@ export default function BridgeSettingsPanel({
         dataIndex: "peer_base_url",
         key: "peer_base_url",
         ellipsis: true,
-        render: (url: string, row) => (isInboundConnection(row) ? "—" : url),
+        render: (url: string, row) =>
+          isInboundConnection(row) ? inboundPeerAddress(row) || "—" : url,
       },
       {
         title: t("advancedSettings.bridge.username"),
@@ -1419,6 +1456,15 @@ export default function BridgeSettingsPanel({
               />
             </Form.Item>
           </div>
+
+          {editTarget && isInboundConnection(editTarget) ? (
+            <div className={styles.createSection}>
+              <div className={styles.createSectionTitle}>
+                {t("advancedSettings.bridge.sectionRemote")}
+              </div>
+              <InboundPeerFacts row={editTarget} />
+            </div>
+          ) : null}
 
           {editTarget && !isInboundConnection(editTarget) ? (
             <div className={styles.createSection}>

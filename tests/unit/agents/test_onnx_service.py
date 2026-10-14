@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import json
 import sys
+import threading
+from concurrent.futures import ThreadPoolExecutor
 from types import SimpleNamespace
 
 import pytest
@@ -26,6 +28,14 @@ from octop.infra.agents.providers.onnx_service import (
     save_config,
     status_payload,
 )
+
+
+@pytest.fixture(autouse=True)
+def isolate_embedding_instance(monkeypatch, tmp_path):
+    from octop.infra.agents.providers import onnx_service as mod
+
+    monkeypatch.setenv("OCTOP_HOME", str(tmp_path))
+    monkeypatch.setattr(mod, "_embedding_instance", None)
 
 
 def test_ui_progress_from_bytes_is_byte_fraction() -> None:
@@ -257,7 +267,8 @@ def test_embed_texts_returns_vectors(monkeypatch) -> None:
     from octop.infra.agents.providers import onnx_service as mod
 
     class FakeEmb:
-        def embed(self, texts):
+        def embed(self, texts, *, batch_size):
+            assert batch_size == 1
             for _ in texts:
                 yield [0.1, 0.2, 0.3]
 
@@ -279,6 +290,114 @@ def test_embed_texts_empty_input(monkeypatch) -> None:
     monkeypatch.setattr(mod, "_build_text_embedding", boom)
     assert mod.embed_texts("BAAI/bge-small-zh-v1.5", []) == []
     assert called["n"] == 0
+
+
+def test_embed_texts_bounds_batches_and_reuses_model(monkeypatch) -> None:
+    from octop.infra.agents.providers import onnx_service as mod
+
+    builds: list[str] = []
+    batches: list[list[str]] = []
+
+    class FakeEmb:
+        def embed(self, texts, *, batch_size):
+            assert batch_size == 1
+            batches.append(list(texts))
+            yield [float(texts[0])]
+
+    def build(model):
+        builds.append(model)
+        return FakeEmb()
+
+    monkeypatch.setattr(mod, "require_local_embedding_deps", lambda: None)
+    monkeypatch.setattr(mod, "assert_catalog_model", lambda model: model)
+    monkeypatch.setattr(mod, "_build_text_embedding", build)
+    texts = [str(i) for i in range(96)]
+    assert mod.embed_texts("model", texts) == [[float(i)] for i in range(96)]
+    assert mod.embed_texts("model", ["100"]) == [[100.0]]
+    assert builds == ["model"]
+    assert all(len(batch) == 1 for batch in batches)
+
+
+def test_embed_texts_serializes_loading_and_inference(monkeypatch) -> None:
+    from octop.infra.agents.providers import onnx_service as mod
+
+    entered = threading.Event()
+    query_entered = threading.Event()
+    release = threading.Event()
+    started = threading.Barrier(3)
+    builds: list[str] = []
+
+    class FakeEmb:
+        def embed(self, texts, *, batch_size):
+            if texts == ["index"]:
+                entered.set()
+                assert release.wait(5)
+            else:
+                query_entered.set()
+                assert release.is_set(), "query inference overlapped indexing"
+            yield [1.0]
+
+    def build(model):
+        builds.append(model)
+        return FakeEmb()
+
+    def query():
+        started.wait(5)
+        return mod.embed_texts("model", ["query"])
+
+    monkeypatch.setattr(mod, "require_local_embedding_deps", lambda: None)
+    monkeypatch.setattr(mod, "assert_catalog_model", lambda model: model)
+    monkeypatch.setattr(mod, "_build_text_embedding", build)
+    with ThreadPoolExecutor(max_workers=3) as executor:
+        first = executor.submit(mod.embed_texts, "model", ["index"])
+        try:
+            assert entered.wait(5)
+            queries = [executor.submit(query) for _ in range(2)]
+            started.wait(5)
+            assert not query_entered.wait(0.1)
+        finally:
+            release.set()
+        assert first.result(5) == [[1.0]]
+        assert [future.result(5) for future in queries] == [[[1.0]], [[1.0]]]
+    assert builds == ["model"]
+
+
+def test_embed_texts_releases_cache_on_model_or_home_change(monkeypatch, tmp_path) -> None:
+    from octop.infra.agents.providers import onnx_service as mod
+
+    builds: list[str] = []
+
+    class FakeEmb:
+        def embed(self, texts, *, batch_size):
+            yield [1.0]
+
+    def build(model):
+        assert mod._embedding_instance is None
+        builds.append(model)
+        return FakeEmb()
+
+    monkeypatch.setattr(mod, "require_local_embedding_deps", lambda: None)
+    monkeypatch.setattr(mod, "assert_catalog_model", lambda model: model)
+    monkeypatch.setattr(mod, "_build_text_embedding", build)
+    mod.embed_texts("first", ["text"])
+    mod.embed_texts("second", ["text"])
+    monkeypatch.setenv("OCTOP_HOME", str(tmp_path / "other"))
+    mod.embed_texts("second", ["text"])
+    assert builds == ["first", "second", "second"]
+    assert mod.delete_downloaded_model("second") is False
+    assert mod._embedding_instance is None
+
+
+def test_embed_texts_rejects_incomplete_batch(monkeypatch) -> None:
+    from octop.infra.agents.providers import onnx_service as mod
+
+    monkeypatch.setattr(mod, "require_local_embedding_deps", lambda: None)
+    monkeypatch.setattr(mod, "assert_catalog_model", lambda model: model)
+    monkeypatch.setattr(
+        mod, "_build_text_embedding", lambda _: SimpleNamespace(embed=lambda *_a, **_kw: [])
+    )
+    with pytest.raises(RuntimeError, match="embedding count mismatch"):
+        mod.embed_texts("model", ["text"])
 
 
 def test_embedding_prerequisites_ok_for_model(monkeypatch) -> None:

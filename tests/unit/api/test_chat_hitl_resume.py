@@ -58,6 +58,7 @@ async def test_dashboard_hitl_resume_registers_followup_hitl_required() -> None:
 
     frames: list[str] = []
     async for frame in iter_dashboard_hitl_resume_sse(
+        server=object(),
         processor=processor,
         hitl_coordinator=hitl,
         agent_id="agent-1",
@@ -116,6 +117,7 @@ async def test_dashboard_hitl_resume_wakes_team_member_without_host_resume() -> 
     processor = SimpleNamespace(teams=SimpleNamespace(deliver_member_hitl=deliver))
     frames: list[str] = []
     async for frame in iter_dashboard_hitl_resume_sse(
+        server=object(),
         processor=processor,
         hitl_coordinator=hitl,
         agent_id="host",
@@ -158,6 +160,7 @@ async def test_dashboard_hitl_resume_expires_when_member_job_is_gone() -> None:
     )
     frames: list[str] = []
     async for frame in iter_dashboard_hitl_resume_sse(
+        server=object(),
         processor=processor,
         hitl_coordinator=hitl,
         agent_id="host",
@@ -194,6 +197,7 @@ async def test_dashboard_hitl_resume_registers_without_prior_pending() -> None:
     hitl = HitlChannelCoordinator()
 
     async for _ in iter_dashboard_hitl_resume_sse(
+        server=object(),
         processor=processor,
         hitl_coordinator=hitl,
         agent_id="agent-1",
@@ -233,6 +237,7 @@ async def test_dashboard_hitl_resume_finishes_after_client_disconnect() -> None:
     frames = [
         frame
         async for frame in iter_dashboard_hitl_resume_sse(
+            server=object(),
             processor=processor,
             hitl_coordinator=hitl,
             agent_id="agent-1",
@@ -272,6 +277,7 @@ async def test_dashboard_hitl_resume_marks_pending_resolved_when_stream_errors()
 
     frames: list[str] = []
     async for frame in iter_dashboard_hitl_resume_sse(
+        server=object(),
         processor=processor,
         hitl_coordinator=hitl,
         agent_id="agent-1",

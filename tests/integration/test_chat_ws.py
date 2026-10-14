@@ -66,7 +66,9 @@ async def _turn_then_rebind(
             }
         )
         first = await ws_a.receive_json()
-        assert first.get("type") == "token"
+        while first.get("type") != "token":
+            # Skip steer protocol frames (turn.started, …) — harness chunks only.
+            first = await ws_a.receive_json()
         assert first.get("content") == "first"
     # A is closed; turn is blocked on gate_release (still active, not cancelled).
 
@@ -125,7 +127,11 @@ async def _turn_with_second_subscriber(
                 "thread_id": thread_id,
             }
         )
-        a_frames.append(await ws_a.receive_json())
+        first = await ws_a.receive_json()
+        while first.get("type") != "token":
+            # Skip steer protocol frames (turn.started, …) — harness chunks only.
+            first = await ws_a.receive_json()
+        a_frames.append(first)
         async with _chat_ws(c, aid, auth) as ws_b:
             await ws_b.send_json({"type": "subscribe", "thread_id": thread_id})
             b_frames.append(await ws_b.receive_json())
