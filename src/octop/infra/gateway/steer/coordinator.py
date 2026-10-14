@@ -7,12 +7,14 @@ between-model drain seam. Drain currently happens at Octop turn boundaries
 
 from __future__ import annotations
 
+import json
 import logging
 import threading
 import time
 from dataclasses import dataclass
 from typing import Any
 
+from octop.infra.gateway.process.message_keys import COMPOSER_CTX_KEY
 from octop.infra.gateway.steer.types import (
     GATEWAY_REJECT_REASONS,
     HITL_PARK_TTL_SECONDS,
@@ -37,6 +39,25 @@ from octop.infra.utils.ulid import new_ulid
 
 logger = logging.getLogger(__name__)
 
+# Copied onto a steer continuation so a parked resume keeps the turn's composer.
+_CONTINUATION_META_KEYS = frozenset(
+    {
+        "session_key",
+        "thread_id",
+        "user_is_admin",
+        "mcp_servers",
+        "knowledge_base_ids",
+        "skills",
+        "model",
+        "reasoning_mode",
+        "reasoning_effort",
+        "conversation_mode",
+        "hitl_policy",
+        "target_agent_ids",
+        COMPOSER_CTX_KEY,
+    }
+)
+
 
 @dataclass(frozen=True)
 class DrainBundle:
@@ -45,6 +66,7 @@ class DrainBundle:
     client_pending_ids: list[str]
     pending_ids: list[str]
     message_id: str
+    content_blocks: tuple[dict[str, Any], ...] = ()
 
 
 @dataclass(frozen=True)
@@ -75,26 +97,38 @@ class SteerCoordinator:
         self._lock = threading.RLock()
         self._by_thread: dict[str, TurnSteerState] = {}
         self._text_cap = text_cap_bytes
+        self._staged_hitl: dict[str, tuple[DrainBundle, int]] = {}
 
-    def begin_turn(self, thread_id: str, *, phase: TurnPhase = "streaming_text") -> tuple[str, int]:
-        """Start a steerable turn; returns ``(turn_id, seq)`` for ``turn.started``."""
+    def begin_turn(
+        self, thread_id: str, *, phase: TurnPhase = "streaming_text"
+    ) -> tuple[str, int, DiscardBundle | None]:
+        """Start a steerable turn.
+
+        Returns ``(turn_id, seq, discarded)``. ``discarded`` is set when a
+        previous queue was still parked (expired HITL, or a missed end).
+        """
         tid = thread_id.strip()
         with self._lock:
-            previous = self._by_thread.get(tid)
+            previous = self._by_thread.pop(tid, None)
+            self._staged_hitl.pop(tid, None)
+            discarded = None
             if previous is not None and previous.queue:
-                # Leaked state (missing end_turn) — replacing it would strand
-                # clients waiting on discard events for those pending items.
+                reason: DiscardReason = (
+                    "park_expired" if self._park_expired(previous) else "turn_cancelled"
+                )
                 logger.warning(
-                    "steer begin_turn replaces live state thread=%s old_turn=%s queued=%d",
+                    "steer begin_turn drops queued state thread=%s old_turn=%s queued=%d reason=%s",
                     tid,
                     previous.turn_id,
                     len(previous.queue),
+                    reason,
                 )
+                discarded = self._discard_locked(previous, reason=reason)
             turn_id = new_ulid()
             state = TurnSteerState(turn_id=turn_id, phase=phase)
             state.last_allocated_seq = 1
             self._by_thread[tid] = state
-            return turn_id, state.last_allocated_seq
+            return turn_id, state.last_allocated_seq, discarded
 
     def set_phase(self, thread_id: str, phase: TurnPhase) -> None:
         with self._lock:
@@ -117,6 +151,7 @@ class SteerCoordinator:
                 last_allocated_seq=state.last_allocated_seq,
                 parked_at=state.parked_at,
                 drained_message_ids=dict(state.drained_message_ids),
+                continuation_meta=dict(state.continuation_meta),
             )
 
     def is_active(self, thread_id: str) -> bool:
@@ -139,6 +174,47 @@ class SteerCoordinator:
             return (
                 state is not None and state.phase == "hitl_paused" and not self._park_expired(state)
             )
+
+    def remember_context(self, thread_id: str, metadata: dict[str, Any] | None) -> None:
+        """Keep composer fields so a later continuation can rebuild the inbound."""
+        if not metadata:
+            return
+        kept: dict[str, Any] = {}
+        for key in _CONTINUATION_META_KEYS:
+            if key not in metadata:
+                continue
+            value = metadata[key]
+            if isinstance(value, list):
+                kept[key] = list(value)
+            elif isinstance(value, dict):
+                kept[key] = dict(value)
+            else:
+                kept[key] = value
+        with self._lock:
+            state = self._by_thread.get(thread_id.strip())
+            if state is not None:
+                state.continuation_meta = kept
+
+    def continuation_metadata(self, thread_id: str) -> dict[str, Any]:
+        with self._lock:
+            state = self._by_thread.get(thread_id.strip())
+            if state is None:
+                return {}
+            return dict(state.continuation_meta)
+
+    def sweep_expired(self, thread_id: str) -> DiscardBundle | None:
+        """Drop an HITL park that outlived the approval window."""
+        tid = thread_id.strip()
+        with self._lock:
+            state = self._by_thread.get(tid)
+            if state is None or not self._park_expired(state):
+                return None
+            self._staged_hitl.pop(tid, None)
+            bundle = None
+            if state.queue:
+                bundle = self._discard_locked(state, reason="park_expired")
+            self._by_thread.pop(tid, None)
+            return bundle
 
     @staticmethod
     def _park_expired(state: TurnSteerState) -> bool:
@@ -204,9 +280,11 @@ class SteerCoordinator:
         expected_turn_id: str | None,
         delivery: Delivery = "auto",
         hitl_paused: bool = False,
+        content_blocks: list[dict[str, Any]] | None = None,
     ) -> AdmitResult | None:
         """Return None when the caller should start a normal new turn (idle)."""
         cleaned = (text or "").strip()
+        blocks = _normalize_blocks(content_blocks)
         with self._lock:
             state = self._by_thread.get(thread_id.strip())
             active = (
@@ -244,17 +322,18 @@ class SteerCoordinator:
             else:
                 cpid = str(client_pending_id).strip()
 
-            if not cleaned:
+            if not cleaned and not blocks:
                 return SteerAdmitReject(
                     reason="empty_input",
                     client_pending_id=cpid,
                     gateway_class=True,
                 )
 
-            if (
-                utf8_len(cleaned) > self._text_cap
-                or queue_sum_bytes(state.queue, extra=cleaned) > self._text_cap
-            ):
+            incoming_bytes = utf8_len(cleaned) + _blocks_bytes(blocks)
+            queued_bytes = queue_sum_bytes(state.queue, extra=cleaned or None)
+            queued_bytes += sum(_blocks_bytes(item.content_blocks) for item in state.queue)
+            queued_bytes += _blocks_bytes(blocks)
+            if incoming_bytes > self._text_cap or queued_bytes > self._text_cap:
                 return SteerAdmitReject(
                     reason="input_too_large",
                     client_pending_id=cpid,
@@ -330,7 +409,8 @@ class SteerCoordinator:
                 client_pending_id=cpid,
                 pending_id=pending_id,
                 text=cleaned,
-                preview=preview_text(cleaned),
+                preview=preview_text(cleaned) or _block_preview(blocks),
+                content_blocks=blocks,
             )
             state.queue.append(item)
             state.known[cpid] = pending_id
@@ -431,12 +511,14 @@ class SteerCoordinator:
             state.continuation_count += 1
             state.phase = "between_model_steps"
             text = coalesce_texts([item.text for item in items])
+            blocks = tuple(block for item in items for block in item.content_blocks)
             return DrainBundle(
                 turn_id=state.turn_id,
                 text=text,
                 client_pending_ids=[item.client_pending_id for item in items],
                 pending_ids=[item.pending_id for item in items],
                 message_id=message_id,
+                content_blocks=blocks,
             )
 
     def drained_event_seq(self, thread_id: str) -> int:
@@ -481,14 +563,22 @@ class SteerCoordinator:
             self._by_thread.pop(thread_id.strip(), None)
             return bundle
 
-    def take_hitl_pending(self, thread_id: str) -> tuple[DrainBundle, int] | None:
-        """Claim steers parked across an HITL pause; returns (bundle, seq)."""
+    def stage_hitl_pending(self, thread_id: str) -> tuple[DrainBundle, int] | None:
+        """Describe parked steers without removing them.
+
+        Call :meth:`commit_staged_hitl` after the continuation is enqueued,
+        or :meth:`release_staged_hitl` if enqueue fails.
+        """
+        tid = thread_id.strip()
         with self._lock:
-            state = self._by_thread.get(thread_id.strip())
+            staged = self._staged_hitl.get(tid)
+            if staged is not None:
+                return staged
+            state = self._by_thread.get(tid)
             if state is None or state.phase != "hitl_paused" or self._park_expired(state):
                 return None
             if not state.queue:
-                self._by_thread.pop(thread_id.strip(), None)
+                self._by_thread.pop(tid, None)
                 return None
             items = list(state.queue)
             message_id = new_ulid()
@@ -499,15 +589,41 @@ class SteerCoordinator:
                 client_pending_ids=[item.client_pending_id for item in items],
                 pending_ids=[item.pending_id for item in items],
                 message_id=message_id,
+                content_blocks=tuple(block for item in items for block in item.content_blocks),
             )
-            # Commit only after the bundle is fully built — a construction
-            # error must not consume the parked items.
-            state.queue.clear()
-            for item in items:
-                state.drained_message_ids[item.client_pending_id] = message_id
+            staged = (bundle, seq)
+            self._staged_hitl[tid] = staged
+            return staged
+
+    def commit_staged_hitl(self, thread_id: str) -> None:
+        """Drop the staged queue after the continuation was accepted."""
+        tid = thread_id.strip()
+        with self._lock:
+            staged = self._staged_hitl.pop(tid, None)
+            state = self._by_thread.get(tid)
+            if staged is None or state is None:
+                return
+            bundle, _seq = staged
+            pending_ids = set(bundle.pending_ids)
+            drained = [item for item in state.queue if item.pending_id in pending_ids]
+            state.queue = [item for item in state.queue if item.pending_id not in pending_ids]
+            for item in drained:
+                state.drained_message_ids[item.client_pending_id] = bundle.message_id
                 state.known[item.client_pending_id] = item.pending_id
-            self._by_thread.pop(thread_id.strip(), None)
-            return bundle, seq
+            self._by_thread.pop(tid, None)
+
+    def release_staged_hitl(self, thread_id: str) -> None:
+        """Forget a staged drain and leave the parked queue in place."""
+        with self._lock:
+            self._staged_hitl.pop(thread_id.strip(), None)
+
+    def take_hitl_pending(self, thread_id: str) -> tuple[DrainBundle, int] | None:
+        """Claim steers parked across an HITL pause; returns (bundle, seq)."""
+        staged = self.stage_hitl_pending(thread_id)
+        if staged is None:
+            return None
+        self.commit_staged_hitl(thread_id)
+        return staged
 
     def mark_cancelling(self, thread_id: str) -> None:
         with self._lock:
@@ -545,3 +661,42 @@ class SteerCoordinator:
     @staticmethod
     def is_gateway_reason(reason: str) -> bool:
         return reason in GATEWAY_REJECT_REASONS
+
+
+def _normalize_blocks(blocks: list[dict[str, Any]] | None) -> tuple[dict[str, Any], ...]:
+    if not blocks:
+        return ()
+    kept: list[dict[str, Any]] = []
+    for block in blocks:
+        if not isinstance(block, dict):
+            continue
+        path = str(block.get("workspace_path") or "").strip()
+        if not path:
+            continue
+        kind = str(block.get("type") or "file")
+        if kind not in ("image", "file"):
+            continue
+        kept.append(
+            {
+                "type": kind,
+                "workspace_path": path,
+                "filename": str(block.get("filename") or "").strip(),
+                "media_type": str(block.get("media_type") or "").strip(),
+            }
+        )
+    return tuple(kept)
+
+
+def _blocks_bytes(blocks: tuple[dict[str, Any], ...]) -> int:
+    if not blocks:
+        return 0
+    return len(json.dumps(list(blocks), ensure_ascii=False, separators=(",", ":")).encode("utf-8"))
+
+
+def _block_preview(blocks: tuple[dict[str, Any], ...]) -> str:
+    if not blocks:
+        return ""
+    name = str(blocks[0].get("filename") or blocks[0].get("workspace_path") or "").strip()
+    if len(blocks) == 1:
+        return name
+    return f"{name} +{len(blocks) - 1}"

@@ -37,6 +37,7 @@ from octop.infra.gateway.hitl.coordinator import (
     HitlChannelCoordinator,
     HitlSlashOutcome,
     HitlStreamContext,
+    iter_with_session_auto_approve,
 )
 from octop.infra.gateway.hitl.format import normalize_hitl_request
 from octop.infra.gateway.hitl.stream_compat import install_harness_hitl_compat
@@ -1151,7 +1152,14 @@ class GlobalProcessor:
         emitted_tool_error_ids: set[str] = set()
 
         try:
-            async for chunk in self._agent_manager.stream(agent_id, request):
+            async for chunk in iter_with_session_auto_approve(
+                self._agent_manager.stream(agent_id, request),
+                thread_id=thread_id,
+                policies=self._hitl.session_policies,
+                resume=lambda next_decisions: self._agent_manager.resume_hitl(
+                    agent_id, thread_id, next_decisions
+                ),
+            ):
                 usage_tracker.observe(chunk)
                 history_tracker.observe(chunk)
                 from octop.infra.history.recorder import flush_tracker  # noqa: PLC0415
@@ -1272,10 +1280,17 @@ class GlobalProcessor:
         saw_tool_call = False
         emitted_tool_error_ids: set[str] = set()
         try:
-            async for chunk in self._agent_manager.resume_hitl(
-                agent_id,
-                thread_id,
-                decisions,
+            async for chunk in iter_with_session_auto_approve(
+                self._agent_manager.resume_hitl(
+                    agent_id,
+                    thread_id,
+                    decisions,
+                ),
+                thread_id=thread_id,
+                policies=self._hitl.session_policies,
+                resume=lambda next_decisions: self._agent_manager.resume_hitl(
+                    agent_id, thread_id, next_decisions
+                ),
             ):
                 usage_tracker.observe(chunk)
                 history_tracker.observe(chunk)
