@@ -489,7 +489,9 @@ jobs:
   upload-cos:
     name: Upload FPK to COS
     needs: [release, version]
-    if: needs.release.result == 'success'
+    # release uses always() because native jobs can be skipped. Without always()
+    # here, that skip cancels this reusable workflow after release succeeded.
+    if: ${{ always() && needs.release.result == 'success' }}
     uses: ./.github/workflows/upload-release-cos.yml
     with:
       tag: ${{ needs.version.outputs.tag }}

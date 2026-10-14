@@ -384,7 +384,9 @@ jobs:
   upload-cos:
     name: Upload desktop packages to COS
     needs: release
-    if: needs.release.result == 'success'
+    # attach_from_run skips the package jobs. A plain success check then skips
+    # this reusable workflow even after the release job itself succeeded.
+    if: ${{ always() && needs.release.result == 'success' }}
     uses: ./.github/workflows/upload-release-cos.yml
     with:
       tag: ${{ needs.release.outputs.tag }}
