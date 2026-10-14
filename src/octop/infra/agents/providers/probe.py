@@ -21,20 +21,17 @@ _FETCH_MODELS_TIMEOUT_S = 30.0
 _EMBEDDING_PROBE_TEXT = "ping"
 
 
-def parse_provider_extra(row: Any) -> dict[str, Any]:
-    """Return the provider ``extra_json`` object, or ``{}`` when missing / invalid."""
+def provider_headers(row: Any) -> dict[str, str]:
     raw = getattr(row, "extra_json", None)
-    if not isinstance(raw, str) or not raw.strip():
+    if not raw:
         return {}
     try:
         extra = json.loads(raw)
     except json.JSONDecodeError:
         return {}
-    return extra if isinstance(extra, dict) else {}
-
-
-def provider_headers(row: Any) -> dict[str, str]:
-    headers = parse_provider_extra(row).get("headers")
+    if not isinstance(extra, dict):
+        return {}
+    headers = extra.get("headers")
     return dict(headers) if isinstance(headers, dict) else {}
 
 
@@ -44,12 +41,12 @@ def _is_codex_base_url(base_url: str | None) -> bool:
 
 def build_probe_chat_model(row: Any, *, model_id: str | None = None) -> Any:
     """Construct a chat model from a provider row for probing."""
-    from octop_harness.config import ModelConfig, ProviderConfig
-    from octop_harness.llm.factory import build_chat_model
+    from harness_agent.config import ModelConfig, ProviderConfig
+    from harness_agent.llm.factory import build_chat_model
 
     protocol = KIND_TO_PROTOCOL.get(row.kind, row.kind)
     base_url = row.base_url or "https://api.openai.com/v1"
-    headers = ensure_opencode_session_header(row.name, provider_headers(row), base_url=base_url)
+    headers = ensure_opencode_session_header(base_url, provider_headers(row))
     models = row.get_models() if hasattr(row, "get_models") else []
     mid = model_id or (models[0]["id"] if models else "gpt-4o-mini")
     entry = next((m for m in models if m.get("id") == mid), None)
@@ -69,8 +66,6 @@ def build_probe_chat_model(row: Any, *, model_id: str | None = None) -> Any:
             kwargs["default_headers"] = dict(headers)
         return ChatOpenAI(**kwargs)
 
-    from octop.infra.agents.providers.store import resolve_provider_stream_usage
-
     provider = ProviderConfig(
         id=row.name,
         name=row.name,
@@ -78,10 +73,6 @@ def build_probe_chat_model(row: Any, *, model_id: str | None = None) -> Any:
         base_url=base_url,
         api_key=row.api_key or "",
         headers=headers,
-        stream_usage=resolve_provider_stream_usage(
-            provider_name=row.name,
-            extra=parse_provider_extra(row),
-        ),
     )
     return build_chat_model(provider, model)
 
@@ -174,11 +165,7 @@ async def _probe_embedding_endpoint(
     started = time.perf_counter()
     url = _embeddings_url(getattr(row, "base_url", None))
     headers: dict[str, str] = {"Authorization": f"Bearer {getattr(row, 'api_key', None) or ''}"}
-    extra = ensure_opencode_session_header(
-        getattr(row, "name", None),
-        provider_headers(row),
-        base_url=getattr(row, "base_url", None),
-    )
+    extra = ensure_opencode_session_header(getattr(row, "base_url", None), provider_headers(row))
     headers.update(extra)
     try:
         async with httpx.AsyncClient(timeout=_FETCH_MODELS_TIMEOUT_S) as client:
@@ -280,17 +267,17 @@ async def fetch_openai_compatible_models(
     api_key: str,
     extra_headers: dict[str, str] | None = None,
     locale: str = "en",
-    provider_name: str | None = None,
 ) -> dict[str, Any]:
     """List models via OpenAI-compatible ``GET {base}/models``."""
     url = _models_list_url(base_url)
     headers: dict[str, str] = {"Authorization": f"Bearer {api_key}"}
-    extra_headers = ensure_opencode_session_header(provider_name, extra_headers, base_url=base_url)
+    extra_headers = ensure_opencode_session_header(base_url, extra_headers)
     if extra_headers:
         headers.update(extra_headers)
+    params = {"client_version": "2026.6.9"} if _is_codex_base_url(base_url) else None
     try:
         async with httpx.AsyncClient(timeout=_FETCH_MODELS_TIMEOUT_S) as client:
-            response = await client.get(url, headers=headers)
+            response = await client.get(url, headers=headers, params=params)
     except Exception as exc:
         logger.info(
             "provider fetch-models failed for %s: %r (%s)",
@@ -317,11 +304,18 @@ async def fetch_openai_compatible_models(
             "error": "response is not valid JSON (expected OpenAI-compatible /models)",
         }
 
-    data = payload.get("data") if isinstance(payload, dict) else None
+    if _is_codex_base_url(base_url):
+        data = payload.get("models") if isinstance(payload, dict) else None
+    else:
+        data = payload.get("data") if isinstance(payload, dict) else None
     if not isinstance(data, list):
         return {
             "ok": False,
-            "error": "response is not OpenAI-compatible (expected {data: [{id, …}]})",
+            "error": (
+                "response is not Codex-compatible (expected {models: [{slug, display_name, …}]})"
+                if _is_codex_base_url(base_url)
+                else "response is not OpenAI-compatible (expected {data: [{id, …}]})"
+            ),
         }
 
     models: list[dict[str, str]] = []
@@ -329,13 +323,16 @@ async def fetch_openai_compatible_models(
     for item in data:
         if not isinstance(item, dict):
             continue
-        mid = item.get("id")
+        mid = item.get("slug") if _is_codex_base_url(base_url) else item.get("id")
         if not isinstance(mid, str) or not mid.strip():
             continue
         mid = mid.strip()
         if mid in seen:
             continue
         seen.add(mid)
-        models.append({"id": mid, "name": mid})
+        name = item.get("display_name") if _is_codex_base_url(base_url) else mid
+        models.append(
+            {"id": mid, "name": name.strip() if isinstance(name, str) and name.strip() else mid}
+        )
     models.sort(key=lambda m: m["id"])
     return {"ok": True, "models": models}
