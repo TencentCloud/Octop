@@ -196,10 +196,14 @@ class _ExtractConfigBody(BaseModel):
     extract_on_session_end: bool | None = None
     extract_trigger_mode: str | None = Field(default=None, description="idle / interval")
     extract_idle_seconds: float | None = Field(
-        default=None, description="mode=idle: seconds of inactivity before extract"
+        default=None,
+        allow_inf_nan=False,
+        description="mode=idle: seconds of inactivity before extract",
     )
     extract_interval_seconds: float | None = Field(
-        default=None, description="mode=interval: seconds between sweeps"
+        default=None,
+        allow_inf_nan=False,
+        description="mode=interval: seconds between sweeps",
     )
     aux_model: str | None = Field(
         default=None,
