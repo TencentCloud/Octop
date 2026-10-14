@@ -3584,6 +3584,7 @@ class AgentManager:
         from octop.infra.agents.middleware.browser_profile import BrowserProfileMiddleware
         from octop.infra.agents.middleware.octop_ui_offload import OctopUiOffloadMiddleware
         from octop.infra.agents.middleware.reasoning import ReasoningRequestMiddleware
+        from octop.infra.agents.middleware.system_messages import SystemMessageFoldMiddleware
         from octop.infra.agents.middleware.thread_artifacts import ThreadArtifactsMiddleware
         from octop.infra.agents.middleware.token_quota import TokenQuotaMiddleware
         from octop.infra.agents.middleware.workspace_image import (
@@ -3595,6 +3596,8 @@ class AgentManager:
         # BinaryReadGuard stays Octop-specific (inbound/attachment product policy).
         # ThreadArtifacts writes workspace paths onto threads after successful tools.
         # WorkspaceImageMaterialize expands path-only vision refs at model-call time.
+        # SystemMessageFold merges team-dispatch briefings (mid-conversation
+        # SystemMessages) into the system prompt for providers that reject them.
         # OctopUiOffload stays innermost so every outer middleware observes the
         # slimmed content consistently; it only touches octop_ui plugin envelopes,
         # disjoint from the file-tool results ThreadArtifacts cares about.
@@ -3614,6 +3617,7 @@ class AgentManager:
                 workspace_dir=harness_workspace,
                 agent_id=row.agent_id,
             ),
+            SystemMessageFoldMiddleware(),
             OctopUiOffloadMiddleware(),
         ]
 
