@@ -265,6 +265,7 @@ const EMPTY_SNAPSHOT: SessionSnapshot = Object.freeze({
   historyHydrated: false,
   pendingPlanPath: null,
   liveSpeakers: [] as string[],
+  activeTurnId: null,
 });
 
 const sessionStates = new Map<string, SessionStreamState>();
@@ -397,6 +398,7 @@ function buildSnapshot(state: SessionStreamState): SessionSnapshot {
     historyHydrated: state.historyHydrated,
     pendingPlanPath: state.pendingPlanPath ?? null,
     liveSpeakers: [...state.liveSpeakers].sort(),
+    activeTurnId: state.activeTurnId ?? null,
   };
 }
 
@@ -479,9 +481,12 @@ function getOrCreate(sessionId: string): SessionStreamState {
       roomAgentId: undefined,
       isTeamRoom: false,
       liveSpeakers: new Set(),
+      activeTurnId: null,
+      pendingSteers: [],
     };
     sessionStates.set(sessionId, state);
   }
+  if (!state.pendingSteers) state.pendingSteers = [];
   return state;
 }
 
@@ -509,6 +514,8 @@ function clearStreamingFlags(state: SessionStreamState): void {
   // host turn unlocks the composer; process panels key off liveSpeakers.
   state.isStreaming = false;
   state.thinkingStartedAt = null;
+  state.activeTurnId = null;
+  state.pendingSteers = [];
 }
 
 // ── Live WebSocket bookkeeping (used by cancel / attach / send) ────────────
@@ -1110,9 +1117,15 @@ function isHostTurnTerminal(
     agent_id?: unknown;
   },
   hostAgentId?: string,
+  activeTurnId?: string | null,
 ): boolean {
+  // Logical mid-turn steer turn ends only on turn.ended (issue #1300).
+  // Intermediate harness ``done`` must NOT close the live socket or the
+  // Dashboard misses drain continuation + falsely flushes the local queue.
+  if (data.type === "turn.ended") return true;
   if (data.type === "error" || data.type === "hitl_required") return true;
   if (data.type !== "done") return false;
+  if (activeTurnId) return false;
   const speaker = chunkSpeakerId(data, hostAgentId);
   if (!speaker) return true;
   const host = (hostAgentId || "").trim();
@@ -1230,10 +1243,16 @@ function handleHarnessChunk(
         sessionHostAgentId(state, sessionId),
       );
       clearSpeakerLive(state, speaker);
-      // Host done always frees the composer. Member bubbles may still stream.
+      // Host done seals the segment. When a logical steer turn is still
+      // active, keep isStreaming / activeTurnId so 排队 stays available and
+      // local follow-up flush does not race the server continuation.
       if (!speaker || (!hasStreamingMessages(state) && state.isStreaming)) {
-        clearStreamingFlags(state);
-        clearStreamActivity(sessionId ?? "");
+        if (state.activeTurnId) {
+          if (sessionId) touchStreamActivity(sessionId);
+        } else {
+          clearStreamingFlags(state);
+          clearStreamActivity(sessionId ?? "");
+        }
       }
       break;
     case "error":
@@ -2432,9 +2451,34 @@ export async function attachThread(
         }
 
         if (data.type === "pong") return;
+        if (applySteerProtocolFrame(state, data, sessionId)) {
+          notify(state);
+          if (
+            isHostTurnTerminal(
+              data,
+              sessionHostAgentId(state, sessionId),
+              state.activeTurnId,
+            )
+          ) {
+            if (state.isTeamRoom) {
+              live.listenOnly = true;
+              finish("host");
+            } else {
+              finish("all");
+              closeLiveSocket(sessionId, { intentional: true });
+            }
+          }
+          return;
+        }
 
         handleHarnessChunk(state, data as unknown as HarnessChunk, sessionId);
-        if (isHostTurnTerminal(data, sessionHostAgentId(state, sessionId))) {
+        if (
+          isHostTurnTerminal(
+            data,
+            sessionHostAgentId(state, sessionId),
+            state.activeTurnId,
+          )
+        ) {
           if (state.isTeamRoom) {
             live.listenOnly = true;
             finish("host");
@@ -2639,8 +2683,41 @@ async function sendTurnWebSocket(
         if (!data || typeof data !== "object") return;
         if (!frameBelongsToThread(data, live.threadId)) return;
         if ((data as { type?: string }).type === "turn_status") return;
+        if (
+          applySteerProtocolFrame(
+            state,
+            data as unknown as Record<string, unknown>,
+            sessionId,
+          )
+        ) {
+          notify(state);
+          if (
+            isHostTurnTerminal(
+              data,
+              sessionHostAgentId(state, sessionId),
+              state.activeTurnId,
+            )
+          ) {
+            controller.signal.removeEventListener("abort", onAbort);
+            if (state.isTeamRoom) {
+              live.listenOnly = true;
+              finish("host");
+            } else {
+              finish("all");
+              closeLiveSocket(sessionId, { intentional: true });
+            }
+            settle(true);
+          }
+          return;
+        }
         handleHarnessChunk(state, data, sessionId);
-        if (isHostTurnTerminal(data, sessionHostAgentId(state, sessionId))) {
+        if (
+          isHostTurnTerminal(
+            data,
+            sessionHostAgentId(state, sessionId),
+            state.activeTurnId,
+          )
+        ) {
           controller.signal.removeEventListener("abort", onAbort);
           if (state.isTeamRoom) {
             live.listenOnly = true;
@@ -3014,4 +3091,257 @@ export async function resumeHitl(
     appendErrorBubble(state, (err as Error).message || "HITL resume error");
     finish();
   }
+}
+
+function optimisticSteerMessageId(clientPendingId: string): string {
+  return `steer:${clientPendingId}`;
+}
+
+/** Commit shows the user row in the transcript immediately. */
+function appendOptimisticSteerMessage(
+  state: SessionStreamState,
+  clientPendingId: string,
+  text: string,
+): void {
+  const id = optimisticSteerMessageId(clientPendingId);
+  if (state.messages.some((m) => m.id === id)) return;
+  state.messages = [
+    ...state.messages,
+    { id, role: "user", content: text, status: "done", timestamp: Date.now() },
+  ];
+}
+
+/** Settle optimistic rows when their server fact arrives (drain/reject/end). */
+function dropOptimisticSteerMessages(
+  state: SessionStreamState,
+  clientPendingIds: string[],
+): void {
+  const next = state.messages.filter(
+    (m) => !clientPendingIds.some((c) => m.id === optimisticSteerMessageId(c)),
+  );
+  if (next.length !== state.messages.length) state.messages = next;
+}
+
+function applySteerProtocolFrame(
+  state: SessionStreamState,
+  data: Record<string, unknown>,
+  sessionId?: string,
+): boolean {
+  const type = String(data.type || "");
+  if (type === "turn.started" || type === "turn.resumed") {
+    const turnId = String(data.turn_id || "").trim();
+    if (turnId) state.activeTurnId = turnId;
+    // A NEW turn means an idle-time steer commit became a normal turn —
+    // resolve optimistic rows (the queue settles on started_turn).
+    if (type === "turn.started") {
+      dropOptimisticSteerMessages(
+        state,
+        state.pendingSteers.map((s) => s.clientPendingId),
+      );
+      state.pendingSteers = [];
+    }
+    // Continuation after drain: keep the composer in busy/steer mode.
+    if (type === "turn.resumed" && !state.isStreaming && sessionId) {
+      beginStream(state, sessionId);
+    }
+    return true;
+  }
+  if (type === "turn.ended") {
+    state.activeTurnId = null;
+    if (data.hitl_paused === true) {
+      // Steers are parked server-side across the approval
+      // pause and drain after resume — keep chips and optimistic rows.
+      return true;
+    }
+    dropOptimisticSteerMessages(
+      state,
+      state.pendingSteers.map((s) => s.clientPendingId),
+    );
+    state.pendingSteers = [];
+    return true;
+  }
+  if (type === "steer.queue_snapshot") {
+    const turnId = data.turn_id;
+    state.activeTurnId =
+      typeof turnId === "string" && turnId.trim() ? turnId.trim() : null;
+    const items = Array.isArray(data.items) ? data.items : [];
+    // Snapshot is the server-authoritative queue: keep optimistic rows for
+    // items the server still knows, drop rows for the rest (settled or
+    // ghosts from a dead socket), and preserve client-only full text.
+    const snapshot = items
+      .map((raw) => {
+        if (!raw || typeof raw !== "object") return null;
+        const item = raw as Record<string, unknown>;
+        const clientPendingId = String(item.client_pending_id || "").trim();
+        const pendingId = String(item.pending_id || "").trim();
+        if (!clientPendingId || !pendingId) return null;
+        const existing = state.pendingSteers.find(
+          (s) => s.clientPendingId === clientPendingId,
+        );
+        return {
+          clientPendingId,
+          pendingId,
+          preview: String(item.preview || "").trim() || existing?.preview || "",
+          text: existing?.text,
+        };
+      })
+      .filter((x): x is NonNullable<typeof x> => x != null);
+    dropOptimisticSteerMessages(
+      state,
+      state.pendingSteers
+        .map((s) => s.clientPendingId)
+        .filter((cpid) => !snapshot.some((s) => s.clientPendingId === cpid)),
+    );
+    state.pendingSteers = snapshot;
+    return true;
+  }
+  if (type === "steer.queued") {
+    const clientPendingId = String(data.client_pending_id || "").trim();
+    const pendingId = String(data.pending_id || "").trim();
+    if (!clientPendingId || !pendingId) return true;
+    const preview = String(data.preview || "").trim();
+    const existingIdx = state.pendingSteers.findIndex(
+      (s) => s.pendingId === pendingId || s.clientPendingId === clientPendingId,
+    );
+    const existing = existingIdx >= 0 ? state.pendingSteers[existingIdx] : null;
+    const next = {
+      clientPendingId,
+      pendingId,
+      preview: preview || (existing?.preview ?? ""),
+      // Full text is client-only (frames carry previews); keep what we sent.
+      text: existing?.text,
+    };
+    if (existingIdx >= 0) {
+      state.pendingSteers = state.pendingSteers.map((s, i) =>
+        i === existingIdx ? next : s,
+      );
+    } else {
+      state.pendingSteers = [...state.pendingSteers, next];
+    }
+    return true;
+  }
+  if (type === "steer.drained" || type === "steer.discarded") {
+    // Drain swaps optimistic rows for the canonical server bubble (the
+    // user/meta.steer frame lands first and already did the swap; this is
+    // the safety net for reordered frames).
+    dropOptimisticSteerMessages(
+      state,
+      state.pendingSteers.map((s) => s.clientPendingId),
+    );
+    state.pendingSteers = [];
+    return true;
+  }
+  if (type === "steer.removed") {
+    const pendingId = String(data.pending_id || "").trim();
+    const removed = state.pendingSteers.find((s) => s.pendingId === pendingId);
+    if (removed) {
+      dropOptimisticSteerMessages(state, [removed.clientPendingId]);
+    }
+    state.pendingSteers = state.pendingSteers.filter(
+      (s) => s.pendingId !== pendingId,
+    );
+    return true;
+  }
+  if (type === "steer.rejected") {
+    const cpid = String(data.client_pending_id || "").trim();
+    if (cpid) {
+      // A rejected input leaves the transcript and the queue (the
+      // dashboard surfaces the reason via the steer.rejected frame).
+      dropOptimisticSteerMessages(state, [cpid]);
+      state.pendingSteers = state.pendingSteers.filter(
+        (s) => s.clientPendingId !== cpid,
+      );
+    }
+    return true;
+  }
+  if (type === "steer.ack") {
+    return true;
+  }
+  if (
+    type === "user" &&
+    (data.meta as { steer?: boolean } | undefined)?.steer
+  ) {
+    // Server-synthesized user bubble for drained steers (meta.steer). The
+    // drain is all-at-once, so settle every optimistic row here first —
+    // the canonical coalesced bubble replaces them.
+    dropOptimisticSteerMessages(
+      state,
+      state.pendingSteers.map((s) => s.clientPendingId),
+    );
+    const content = String(data.content || "");
+    const messageId = String(data.message_id || generateId());
+    if (content && !state.messages.some((m) => m.id === messageId)) {
+      state.messages = [
+        ...state.messages,
+        {
+          id: messageId,
+          role: "user",
+          content,
+          status: "done",
+          timestamp: Date.now(),
+        },
+      ];
+    }
+    return true;
+  }
+  return false;
+}
+
+/** Send a mid-turn steer on the live socket (issue #1300).
+ *
+ * ``delivery:"auto"`` semantics: the send always goes out and the
+ * SERVER decides (busy → steer queue, idle → normal new turn, stale
+ * expected_turn_id → structured reject). The client never gates on its own
+ * turn knowledge — a missing turnId just omits ``expected_turn_id`` and the
+ * busy path binds to the live turn.
+ */
+export function sendSteerWhileBusy(
+  sessionId: string,
+  text: string,
+  opts: { expectedTurnId?: string; clientPendingId?: string },
+): "ok" | "empty" | "no_socket" {
+  const trimmed = text.trim();
+  if (!trimmed) return "empty";
+  const live = liveSockets.get(sessionId);
+  if (!live || live.ws.readyState !== WebSocket.OPEN) return "no_socket";
+  const cpid = (opts.clientPendingId || generateId()).trim();
+  const turnId = (opts.expectedTurnId || "").trim();
+  try {
+    live.ws.send(
+      JSON.stringify({
+        type: "user_turn",
+        text: trimmed,
+        thread_id: live.threadId,
+        delivery: "auto",
+        ...(turnId ? { expected_turn_id: turnId } : {}),
+        client_pending_id: cpid,
+        messages: [{ role: "user", content: trimmed }],
+      }),
+    );
+  } catch {
+    return "no_socket";
+  }
+  // The committed input enters the visible conversation
+  // immediately (optimistic user row), settled by steer.queued / drained /
+  // rejected. The caller drops the chip on success; this entry tracks the
+  // optimistic row until its server fact arrives.
+  const state = getOrCreate(sessionId);
+  appendOptimisticSteerMessage(state, cpid, trimmed);
+  if (!state.pendingSteers.some((s) => s.clientPendingId === cpid)) {
+    state.pendingSteers = [
+      ...state.pendingSteers,
+      {
+        clientPendingId: cpid,
+        pendingId: cpid,
+        preview: trimmed.length > 200 ? `${trimmed.slice(0, 199)}…` : trimmed,
+        text: trimmed,
+      },
+    ];
+    notify(state);
+  }
+  return "ok";
+}
+
+export function getActiveTurnId(sessionId: string): string | null {
+  return getOrCreate(sessionId).activeTurnId ?? null;
 }

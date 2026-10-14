@@ -69,6 +69,7 @@ export function useChatComposerResources(
   const remoteBridge = Boolean(bridgeConnectionId);
   const expertMcpServers = teamHost || remoteBridge ? [] : expert?.mcp_servers;
   const expertKnowledgeBaseIds = expert?.knowledge_base_ids;
+  const expertDefaultModel = (expert?.default_model || "").trim() || null;
   const expertMcpKey = (expertMcpServers ?? []).join("\0");
   const expertKbKey = (expertKnowledgeBaseIds ?? []).join("\0");
   const isNewSession = !activeThreadId || isPendingThread(activeThreadId);
@@ -133,18 +134,23 @@ export function useChatComposerResources(
     if (isNewSession) composerTouchedRef.current = false;
   }, [isNewSession]);
 
-  // Auto = omit turn model; backend applies the expert default.
+  // No thread override: show the expert default (same as knowledge bases and
+  // connectors). Account preferred model only fills in when the expert is Auto.
+  // Sending still omits a selection that matches the expert default.
   useEffect(() => {
     const local = activeThreadId
       ? conversationOverrides[activeThreadId]
       : undefined;
     setSelectedModel(
-      local ? local.model : stickyModel || preferredModel || null,
+      local
+        ? local.model
+        : stickyModel || expertDefaultModel || preferredModel || null,
     );
   }, [
     resolvedAgentId,
     activeThreadId,
     stickyModel,
+    expertDefaultModel,
     preferredModel,
     conversationOverrides,
   ]);

@@ -152,7 +152,7 @@ destination synchronized after the request completes.
 
 | Path | Auth | Notes |
 |------|------|-------|
-| `WS /agents/{id}/chat/ws?token=<jwt>` | owner | Primary dashboard turn endpoint. Send `{"type":"user_turn", ...}` frames (optional `hitl_policy` is a thread-scoped tool-approval bypass); server replies with harness stream chunks ending in `{"type":"done"}` or `{"type":"error","message":"..."}`. `{"type":"ping"}` → `{"type":"pong"}`. `{"type":"subscribe","thread_id"}` → `{"type":"turn_status","thread_id","active"}` (attach to an in-flight turn without cancelling on disconnect). `{"type":"cancel","thread_id"}` stops the active turn (explicit stop; disconnect alone does **not** cancel). |
+| `WS /agents/{id}/chat/ws?token=<jwt>` | owner | Primary dashboard turn endpoint. Send `{"type":"user_turn", ...}` frames (optional `hitl_policy` is a thread-scoped tool-approval bypass); server replies with harness stream chunks ending in `{"type":"done"}` or `{"type":"error","message":"..."}`. `{"type":"ping"}` → `{"type":"pong"}`. `{"type":"subscribe","thread_id"}` → `{"type":"turn_status","thread_id","active"}` plus a `steer.queue_snapshot` baseline (attach to an in-flight turn without cancelling on disconnect). `{"type":"cancel","thread_id"}` stops the active turn and discards its queued steers (explicit stop; disconnect alone does **not** cancel). See [Mid-turn steering](#mid-turn-steering) for steer frames. |
 | `GET /agents/{id}/chat/welcome` | agent access | `{welcome_message, quick_prompts, task_examples}`; `task_examples` is `null` when the workspace field is absent |
 | `POST /agents/{id}/chat/polish` | owner | body `{text, default_model?}` → `{text}` (one-shot prompt refinement) |
 | `POST /agents/{id}/chat/hitl/resume` | owner | body `{thread_id, decisions: [...], hitl_policy?}` → SSE chunk stream; finishes with `{"type":"done"}`. Optional `hitl_policy` (`ask` / `allow_all` / `allow_tools`) is a thread-scoped bypass and does not change global tool-approval settings. |
@@ -162,6 +162,32 @@ destination synchronized after the request completes.
 The previous `POST /agents/{id}/chat/stream` is gone. The dashboard
 streams turns over the WebSocket above; HITL resume stays on SSE
 because each request is a one-shot continuation.
+
+### Mid-turn steering
+
+While a turn is active, a `user_turn` frame may carry `delivery`
+(`auto` \| `steer` \| `follow_up`), `client_pending_id` (client UUID for
+correlation) and `expected_turn_id` (the `turn.started` id, for optimistic
+concurrency). The server is authoritative: busy `auto`/`steer` steers the
+active turn (queued server-side, bounded by depth and byte caps); idle `auto`
+starts a normal new turn; `follow_up` while busy is rejected; new steers are
+rejected while a HITL card is pending. Replies arrive on the thread:
+
+| Frame | Meaning |
+|-------|---------|
+| `turn.started` / `turn.resumed` / `turn.ended` | logical turn lifecycle; `turn.ended` carries `hitl_paused: true` when steers stay parked across an approval pause |
+| `steer.ack` | direct reply on the sending socket (`queued` / `rejected` / `removed`, with `reason`) |
+| `steer.queued` | steer accepted into the active turn queue (`pending_id`, `queue_length`, `preview`) |
+| `steer.drained` | queued steers injected as a user message; the same turn continues (`turn.resumed` follows) |
+| `steer.discarded` | queue dropped (`turn_cancelled` / `turn_failed` / `continuation_exhausted`) |
+| `steer.removed` / `steer.rejected` | `steer_remove` confirmation / structured rejection |
+| `steer.queue_snapshot` | server-authoritative queue baseline (on subscribe) |
+
+Drain happens only at safe boundaries: when tools have run, the first model
+output after the completed tool batch preempts the stream (clean checkpoint)
+and the queued steers continue the same logical turn; after a pure-text
+answer steers drain at the natural turn end. Steers
+parked across an HITL pause drain after the approval resumes.
 
 ## Threads & history
 
