@@ -155,7 +155,7 @@ destination synchronized after the request completes.
 | `WS /agents/{id}/chat/ws?token=<jwt>` | owner | Primary dashboard turn endpoint. Send `{"type":"user_turn", ...}` frames (optional `hitl_policy` is a thread-scoped tool-approval bypass); server replies with harness stream chunks ending in `{"type":"done"}` or `{"type":"error","message":"..."}`. `{"type":"ping"}` → `{"type":"pong"}`. `{"type":"subscribe","thread_id"}` → `{"type":"turn_status","thread_id","active"}` plus a `steer.queue_snapshot` baseline (attach to an in-flight turn without cancelling on disconnect). `{"type":"cancel","thread_id"}` stops the active turn and discards its queued steers (explicit stop; disconnect alone does **not** cancel). See [Mid-turn steering](#mid-turn-steering) for steer frames. |
 | `GET /agents/{id}/chat/welcome` | agent access | `{welcome_message, quick_prompts, task_examples}`; `task_examples` is `null` when the workspace field is absent |
 | `POST /agents/{id}/chat/polish` | owner | body `{text, default_model?}` → `{text}` (one-shot prompt refinement) |
-| `POST /agents/{id}/chat/hitl/resume` | owner | body `{thread_id, decisions: [...], hitl_policy?}` → SSE chunk stream; finishes with `{"type":"done"}`. Optional `hitl_policy` (`ask` / `allow_all` / `allow_tools`) is a thread-scoped bypass and does not change global tool-approval settings. |
+| `POST /agents/{id}/chat/hitl/resume` | owner | body `{thread_id, decisions: [...], hitl_policy?}` → SSE chunk stream; finishes with `{"type":"done"}`. When the resume stops on another approval, the done frame is `{"type":"done","hitl_paused":true}` and parked steers stay queued. Optional `hitl_policy` (`ask` / `allow_all` / `allow_tools`) is a thread-scoped bypass and does not change global tool-approval settings. |
 
 ### Legacy SSE
 
@@ -179,15 +179,19 @@ rejected while a HITL card is pending. Replies arrive on the thread:
 | `steer.ack` | direct reply on the sending socket (`queued` / `rejected` / `removed`, with `reason`) |
 | `steer.queued` | steer accepted into the active turn queue (`pending_id`, `queue_length`, `preview`) |
 | `steer.drained` | queued steers injected as a user message; the same turn continues (`turn.resumed` follows) |
-| `steer.discarded` | queue dropped (`turn_cancelled` / `turn_failed` / `continuation_exhausted`) |
+| `steer.discarded` | queue dropped (`turn_cancelled` / `turn_failed` / `continuation_exhausted` / `park_expired`) |
 | `steer.removed` / `steer.rejected` | `steer_remove` confirmation / structured rejection |
 | `steer.queue_snapshot` | server-authoritative queue baseline (on subscribe) |
 
 Drain happens only at safe boundaries: when tools have run, the first model
-output after the completed tool batch preempts the stream (clean checkpoint)
-and the queued steers continue the same logical turn; after a pure-text
-answer steers drain at the natural turn end. Steers
-parked across an HITL pause drain after the approval resumes.
+output after the completed tool batch preempts the stream (that chunk and
+anything after it, except `done` / `error`, are not forwarded) and the queued
+steers continue the same logical turn; after a pure-text answer steers drain
+at the natural turn end. Image and file blocks on the `user_turn` are queued
+with the text and replayed on drain. Steers parked across an HITL pause drain
+after the approval resumes, and only when that resume does not stop on a new
+approval card. A park older than 30 minutes is discarded (`park_expired`).
+`{"type":"steer_remove",...}` withdraws one queued item before it drains. The client puts the draft back only after `steer.ack` with `status: "removed"` and without `already_drained`; an already-drained item stays in the continuation.
 
 ## Threads & history
 

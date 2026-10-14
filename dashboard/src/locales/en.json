@@ -1392,7 +1392,25 @@
     "steer": {
       "action": "Steer",
       "hint": "Send a mid-turn correction without stopping the current reply",
-      "placeholder": "Keep typing to queue a mid-turn steer…"
+      "placeholder": "Keep typing to queue a mid-turn steer…",
+      "withdraw": "Withdraw this correction",
+      "withdrawPending": "Still confirming with the server. Try again in a moment.",
+      "withdrawn": "Correction withdrawn and put back in the composer",
+      "alreadyDrained": "This correction was already included in the reply, so it stays in the conversation.",
+      "rejected": "Correction was not sent ({{reason}})",
+      "reasons": {
+        "queue_full": "the queue is full",
+        "hitl_paused": "an approval is waiting",
+        "expected_turn_id_mismatch": "the turn changed",
+        "expected_turn_id_required": "the turn id is missing",
+        "input_too_large": "the message is too long",
+        "turn_already_cancelled": "the turn was stopped",
+        "turn_not_steerable": "this turn cannot be steered",
+        "empty_input": "the message is empty",
+        "no_active_turn": "no turn is in progress",
+        "turn_active": "a turn is still in progress",
+        "forbidden": "not allowed"
+      }
     },
     "queue": {
       "label": "Queued messages",

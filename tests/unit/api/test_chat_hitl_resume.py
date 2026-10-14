@@ -76,7 +76,7 @@ async def test_dashboard_hitl_resume_registers_followup_hitl_required() -> None:
     chunks = _parse_sse_chunks("".join(frames))
     hitl_chunks = [c for c in chunks if c.get("type") == "hitl_required"]
     assert hitl_chunks
-    assert any(c.get("type") == "done" for c in chunks)
+    assert chunks[-1] == {"type": "done", "hitl_paused": True}
 
     followup = hitl.store.resolve_pending_for_thread(
         "thr-follow",

@@ -60,6 +60,7 @@ export function partitionPinnedTools(split: AssistantTurnSplit): {
         (s) => s.kind === "thinking" || !pinnedIds.has(s.message.id),
       ),
       answerMessage: split.answerMessage,
+      errorMessages: split.errorMessages,
     },
   };
 }

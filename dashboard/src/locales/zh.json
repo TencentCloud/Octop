@@ -1392,7 +1392,25 @@
     "steer": {
       "action": "Steer",
       "hint": "在不打断当前回复的情况下投递纠正指令",
-      "placeholder": "继续输入以排队 mid-turn Steer…"
+      "placeholder": "继续输入以排队 mid-turn Steer…",
+      "withdraw": "撤回这条纠正",
+      "withdrawPending": "还在和服务端确认，请稍后再撤回",
+      "withdrawn": "已撤回，内容放回输入框",
+      "alreadyDrained": "这条纠正已经进入当前回复，不能撤回。",
+      "rejected": "这条纠正没有送出（{{reason}}）",
+      "reasons": {
+        "queue_full": "队列已满",
+        "hitl_paused": "正在等待审批",
+        "expected_turn_id_mismatch": "回合已经变了",
+        "expected_turn_id_required": "缺少回合编号",
+        "input_too_large": "内容过长",
+        "turn_already_cancelled": "回合已停止",
+        "turn_not_steerable": "当前不能插入",
+        "empty_input": "内容为空",
+        "no_active_turn": "没有进行中的回合",
+        "turn_active": "回合仍在进行",
+        "forbidden": "没有权限"
+      }
     },
     "queue": {
       "label": "排队中的消息",
