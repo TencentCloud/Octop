@@ -61,6 +61,53 @@ async def test_fetch_models_defaults_openai_base_url() -> None:
 
 
 @pytest.mark.asyncio
+async def test_fetch_models_supports_codex_payload_and_client_version() -> None:
+    response = _mock_response(
+        200,
+        {
+            "models": [
+                {"slug": "gpt-6.1-sol", "display_name": "GPT-6.1 Sol"},
+                {"slug": "gpt-6.1-sol", "display_name": "duplicate"},
+            ]
+        },
+    )
+    mock_client = AsyncMock()
+    mock_client.get = AsyncMock(return_value=response)
+    mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+    mock_client.__aexit__ = AsyncMock(return_value=None)
+
+    with patch("octop.infra.agents.providers.probe.httpx.AsyncClient", return_value=mock_client):
+        result = await fetch_openai_compatible_models(
+            base_url="https://chatgpt.com/backend-api/codex",
+            api_key="codex-token",
+        )
+
+    assert result == {
+        "ok": True,
+        "models": [{"id": "gpt-6.1-sol", "name": "GPT-6.1 Sol"}],
+    }
+    kwargs = mock_client.get.await_args.kwargs
+    assert kwargs["params"] == {"client_version": "2026.6.9"}
+
+
+@pytest.mark.asyncio
+async def test_fetch_models_does_not_add_codex_params_for_openai() -> None:
+    response = _mock_response(200, {"data": [{"id": "gpt-4o"}]})
+    mock_client = AsyncMock()
+    mock_client.get = AsyncMock(return_value=response)
+    mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+    mock_client.__aexit__ = AsyncMock(return_value=None)
+
+    with patch("octop.infra.agents.providers.probe.httpx.AsyncClient", return_value=mock_client):
+        await fetch_openai_compatible_models(
+            base_url="https://api.example.com/v1",
+            api_key="sk-test",
+        )
+
+    assert mock_client.get.await_args.kwargs["params"] is None
+
+
+@pytest.mark.asyncio
 async def test_fetch_models_rejects_non_openai_payload() -> None:
     response = _mock_response(200, {"models": ["gpt-4o"]})
     mock_client = AsyncMock()
