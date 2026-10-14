@@ -73,6 +73,50 @@ def test_create_and_update_text_document(
     assert raw["text"] == "# Updated\n"
 
 
+@pytest.mark.parametrize("encoding", ["gbk", "gb18030"])
+def test_uploaded_chinese_text_remains_editable(services, monkeypatch, encoding) -> None:
+    monkeypatch.setattr("octop.infra.knowledge.service.assert_knowledge_usable", lambda *_a: None)
+    svc = KnowledgeService(services)
+    base = svc.create_base(owner_user_id=services.owner_id, name="Docs")
+    text = "# 中文标题\r\n正文内容，原样保留。\r\n"
+    if encoding == "gb18030":
+        text += "扩展汉字：𠀀\r\n"
+    doc = svc.upload_document(
+        base.id,
+        actor_user_id=services.owner_id,
+        filename="notes.md",
+        content_type="text/markdown",
+        content=text.encode(encoding),
+    )
+    assert (
+        "中文标题" in svc.preview_document(base.id, doc.id, actor_user_id=services.owner_id)["text"]
+    )
+    read = svc.read_text_document(base.id, doc.id, actor_user_id=services.owner_id)
+    assert read["text"] == text
+    updated = svc.update_text_document(
+        base.id, doc.id, actor_user_id=services.owner_id, content=text + "新增内容\n"
+    )
+    assert updated.status == "pending"
+    assert document_path(base.id, doc.id, doc.filename).read_bytes() == (
+        text + "新增内容\n"
+    ).encode("utf-8")
+
+
+def test_invalid_editable_text_encoding_still_fails(services, monkeypatch) -> None:
+    monkeypatch.setattr("octop.infra.knowledge.service.assert_knowledge_usable", lambda *_a: None)
+    svc = KnowledgeService(services)
+    base = svc.create_base(owner_user_id=services.owner_id, name="Docs")
+    doc = svc.upload_document(
+        base.id,
+        actor_user_id=services.owner_id,
+        filename="bad.txt",
+        content_type="text/plain",
+        content=b"\xff\xfe",
+    )
+    with pytest.raises(ValueError, match="not valid UTF-8"):
+        svc.read_text_document(base.id, doc.id, actor_user_id=services.owner_id)
+
+
 def test_upload_spreadsheet_documents(
     services: SimpleNamespace, monkeypatch: pytest.MonkeyPatch
 ) -> None:
