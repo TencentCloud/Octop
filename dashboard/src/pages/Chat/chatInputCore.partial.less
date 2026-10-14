@@ -603,20 +603,21 @@
   }
 }
 
-/* ---------- Queued messages (while streaming) ---------- */
+/* ---------- Queued messages: composer header strip ---------- */
 .queuedMessages {
-  max-width: var(--chat-column-max, 960px);
-  width: calc(100% - 2 * var(--chat-column-pad-x, 32px));
-  margin: 0 auto 8px;
   display: flex;
   flex-direction: column;
-  gap: 6px;
-  max-height: 132px;
+  gap: 0;
+  max-height: 120px;
   overflow-y: auto;
   flex-shrink: 0;
+  margin: -8px -10px 8px -16px;
+  border-bottom: 1px solid var(--fn-border-secondary);
+  background: var(--fn-bg-secondary, var(--fn-bg-layout));
+  border-radius: 19px 19px 0 0;
 
   @media (max-width: 767px) {
-    width: calc(100% - 24px);
+    margin: -8px -8px 6px -14px;
   }
 
   &::-webkit-scrollbar {
@@ -633,10 +634,7 @@
   align-items: center;
   gap: 8px;
   min-width: 0;
-  padding: 6px 8px 6px 10px;
-  border-radius: 12px;
-  border: 1px solid var(--fn-border-secondary);
-  background: var(--fn-bg-secondary, var(--fn-bg-primary));
+  padding: 8px 10px 8px 14px;
 }
 
 .queuedMessageIndex {
@@ -663,13 +661,8 @@
   border: none;
   background: transparent;
   padding: 0;
-  cursor: pointer;
   text-align: left;
   color: var(--fn-text-primary);
-
-  &:hover .queuedMessageText {
-    color: var(--fn-color-brand);
-  }
 }
 
 .queuedMessageText {
@@ -680,7 +673,6 @@
   white-space: nowrap;
   font-size: 13px;
   line-height: 1.35;
-  transition: color var(--fn-transition-fast);
 }
 
 .queuedMessageAttach {
@@ -692,13 +684,20 @@
   color: var(--fn-text-tertiary);
 }
 
-.queuedMessageRemove {
+.queuedMessageActions {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.queuedMessageIconBtn {
   flex-shrink: 0;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 24px;
-  height: 24px;
+  width: 28px;
+  height: 28px;
   border: none;
   border-radius: var(--fn-radius-full);
   background: transparent;
@@ -708,6 +707,11 @@
   &:hover {
     color: var(--fn-text-secondary);
     background: var(--fn-bg-tertiary, rgba(0, 0, 0, 0.04));
+  }
+
+  &:focus-visible {
+    outline: 2px solid var(--fn-color-brand);
+    outline-offset: 1px;
   }
 }
 
