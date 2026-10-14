@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
 import type { OctopAgent } from "./AgentContext";
-import { projectChatAgentOption, selectEnabledExperts } from "./AgentContext";
+import {
+  agentsSnapshotEqual,
+  projectChatAgentOption,
+  selectEnabledExperts,
+} from "./AgentContext";
 
 function agent(
   agent_id: string,
@@ -154,5 +158,45 @@ describe("projectChatAgentOption", () => {
       "bridge:cid:aid",
       "L1",
     ]);
+  });
+});
+
+describe("agentsSnapshotEqual", () => {
+  it("notices expert default model, knowledge bases, and connectors", () => {
+    const base = [
+      agent("A", "running", {
+        default_model: null,
+        knowledge_base_ids: [],
+        mcp_servers: [],
+      }),
+    ];
+    expect(agentsSnapshotEqual(base, base)).toBe(true);
+    expect(
+      agentsSnapshotEqual(base, [
+        agent("A", "running", {
+          default_model: "prov/model",
+          knowledge_base_ids: [],
+          mcp_servers: [],
+        }),
+      ]),
+    ).toBe(false);
+    expect(
+      agentsSnapshotEqual(base, [
+        agent("A", "running", {
+          default_model: null,
+          knowledge_base_ids: ["kb1"],
+          mcp_servers: [],
+        }),
+      ]),
+    ).toBe(false);
+    expect(
+      agentsSnapshotEqual(base, [
+        agent("A", "running", {
+          default_model: null,
+          knowledge_base_ids: [],
+          mcp_servers: ["mail"],
+        }),
+      ]),
+    ).toBe(false);
   });
 });

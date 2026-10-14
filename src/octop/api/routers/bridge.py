@@ -507,7 +507,14 @@ async def bridge_inbound_ws(
 ) -> None:
     """Peer Octop dials in; JWT is the peer user's token on this instance."""
     server = websocket.app.state.octop_server
+    # Accept before any rejection. Closing first makes uvicorn answer HTTP 403
+    # with an empty body, which the dialer misreads as "route missing".
+    await websocket.accept()
     raw = websocket.query_params.get("token")
+    if not raw:
+        header = websocket.headers.get("authorization") or ""
+        if header.lower().startswith("bearer "):
+            raw = header[7:].strip()
     if not raw:
         await websocket.close(code=4001, reason="missing token")
         return
@@ -520,7 +527,6 @@ async def bridge_inbound_ws(
     if mgr is None:
         await websocket.close(code=1011, reason="bridge not ready")
         return
-    await websocket.accept()
     try:
         await mgr.accept_inbound(websocket=websocket, user=user)
     except WebSocketDisconnect:

@@ -19,6 +19,35 @@ def _token(content: str, thread_id: str) -> dict[str, Any]:
     return {"type": "token", "content": content, "thread_id": thread_id}
 
 
+_STEER_PROTOCOL_TYPES = frozenset(
+    {
+        "turn.started",
+        "turn.resumed",
+        "turn.ended",
+        "steer.queue_snapshot",
+        "steer.queued",
+        "steer.drained",
+        "steer.discarded",
+        "steer.removed",
+        "steer.rejected",
+        "steer.ack",
+    }
+)
+
+
+def _stream_frames(frames: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Drop mid-turn steer protocol frames for legacy stream assertions."""
+    out: list[dict[str, Any]] = []
+    for frame in frames:
+        ftype = frame.get("type")
+        if ftype in _STEER_PROTOCOL_TYPES:
+            continue
+        if ftype == "user" and isinstance(frame.get("meta"), dict) and frame["meta"].get("steer"):
+            continue
+        out.append(frame)
+    return out
+
+
 @pytest.mark.asyncio
 async def test_ws_hub_push() -> None:
     hub = WebSocketHub()
@@ -144,7 +173,7 @@ async def test_ws_hub_subscribe_push_to_thread_fans_out() -> None:
         _token("two", "thread-1"),
         _token("three", "thread-1"),
     ]
-    assert b_frames == [_token("two", "thread-1")]
+    assert _stream_frames(b_frames) == [_token("two", "thread-1")]
 
 
 @pytest.mark.asyncio
@@ -167,8 +196,8 @@ async def test_ws_hub_subscribe_switches_thread_without_kicking_others() -> None
     await hub.push_to_thread("thread-1", {"type": "token", "content": "t1"})
     await hub.push_to_thread("thread-2", {"type": "token", "content": "t2"})
 
-    assert a_frames == [_token("t2", "thread-2")]
-    assert b_frames == [_token("t1", "thread-1")]
+    assert _stream_frames(a_frames) == [_token("t2", "thread-2")]
+    assert _stream_frames(b_frames) == [_token("t1", "thread-1")]
 
 
 def test_ws_hub_turn_active_flags() -> None:
@@ -212,7 +241,9 @@ async def test_ws_channel_streams_chunks() -> None:
     await channel.handle_inbound(msg)
 
     assert {"type": "token", "content": "hello", "thread_id": "thread-1"} in frames
-    assert frames[-1] == {"type": "done", "thread_id": "thread-1"}
+    assert {"type": "done", "thread_id": "thread-1"} in frames
+    assert frames[-1]["type"] == "turn.ended"
+    assert frames[-1]["thread_id"] == "thread-1"
     assert hub.is_turn_active("thread-1") is False
 
 
@@ -260,7 +291,7 @@ async def test_ws_channel_rebinds_mid_turn_to_new_subscriber() -> None:
         if a_frames:
             break
         await asyncio.sleep(0.01)
-    assert a_frames == [_token("first", "thread-1")]
+    assert _stream_frames(a_frames) == [_token("first", "thread-1")]
     assert hub.is_turn_active("thread-1") is True
 
     hub.unsubscribe_connection("a")
@@ -268,7 +299,7 @@ async def test_ws_channel_rebinds_mid_turn_to_new_subscriber() -> None:
     gate.set()
     await task
 
-    assert b_frames == [
+    assert _stream_frames(b_frames) == [
         _token("second", "thread-1"),
         {"type": "done", "thread_id": "thread-1"},
     ]
@@ -319,18 +350,18 @@ async def test_ws_channel_fans_out_mid_turn_to_all_subscribers() -> None:
         if a_frames:
             break
         await asyncio.sleep(0.01)
-    assert a_frames == [_token("first", "thread-1")]
+    assert _stream_frames(a_frames) == [_token("first", "thread-1")]
 
     hub.subscribe("thread-1", "b")
     gate.set()
     await task
 
-    assert a_frames == [
+    assert _stream_frames(a_frames) == [
         _token("first", "thread-1"),
         _token("second", "thread-1"),
         {"type": "done", "thread_id": "thread-1"},
     ]
-    assert b_frames == [
+    assert _stream_frames(b_frames) == [
         _token("second", "thread-1"),
         {"type": "done", "thread_id": "thread-1"},
     ]
@@ -754,3 +785,187 @@ async def test_ws_channel_send_text_finalizes_with_done() -> None:
     assert frames[0]["type"] == "token"
     assert frames[0]["content"] == "hello"
     assert frames[-1]["type"] == "done"
+
+
+def _steer_inbound(text: str) -> InboundMessage:
+    return InboundMessage(
+        channel_id=WS_CHANNEL_ID,
+        channel_type="dashboard",
+        tenant_id="agent-1",
+        channel_subject=ChannelSubject(subject_id="7"),
+        content=[TextContent(text=text)],
+        metadata={
+            "ws_connection_id": "conn-1",
+            "session_key": "sk",
+            "thread_id": "thread-1",
+        },
+    )
+
+
+@pytest.mark.asyncio
+async def test_ws_channel_preempts_at_tool_boundary_when_steer_pending() -> None:
+    """Queued steer cancels the stream at the first model chunk after tools."""
+    from octop.infra.gateway.steer import SteerCoordinator
+
+    hub = WebSocketHub()
+    frames: list[dict[str, Any]] = []
+
+    async def capture(frame: dict[str, Any]) -> None:
+        frames.append(frame)
+
+    steer = SteerCoordinator()
+
+    class _FakeProcessor:
+        def __init__(self) -> None:
+            self.cancel_calls: list[tuple[str, str]] = []
+            self.turn_texts: list[str] = []
+            self._cancelled = False
+
+        def cancel_agent_stream(self, agent_id: str, thread_id: str) -> None:
+            self.cancel_calls.append((agent_id, thread_id))
+            self._cancelled = True
+
+        async def iter_turn_chunks(self, msg: InboundMessage) -> AsyncIterator[dict[str, Any]]:
+            self.turn_texts.append(msg.text)
+            if len(self.turn_texts) == 1:
+                yield {"type": "token", "content": "working"}
+                yield {"type": "tool_call_chunk", "name": "bash"}
+                yield {"type": "tool_result", "name": "bash"}
+                assert (
+                    steer.admit(
+                        "thread-1",
+                        text="wait, use plan B",
+                        client_pending_id="cp1",
+                        expected_turn_id=None,
+                        delivery="auto",
+                    ).status
+                    == "queued"
+                )
+                # First model output after the tools superstep triggers preemption.
+                yield {"type": "token", "content": "next"}
+                if self._cancelled:
+                    yield {"type": "done"}
+                    return
+                raise AssertionError("stream should have been cancelled")
+            yield {"type": "token", "content": "steered answer"}
+            yield {"type": "done"}
+
+    processor = _FakeProcessor()
+    channel = WebSocketChannel(processor, hub=hub, steer=steer)  # type: ignore[arg-type]
+    hub.register("conn-1", capture)
+    await channel.handle_inbound(_steer_inbound("run tests"))
+
+    assert processor.cancel_calls == [("agent-1", "thread-1")]
+    assert processor.turn_texts == ["run tests", "wait, use plan B"]
+    types = [f["type"] for f in frames]
+    assert "steer.drained" in types
+    assert "turn.resumed" in types
+    assert {"type": "token", "content": "steered answer", "thread_id": "thread-1"} in frames
+    assert types[-1] == "turn.ended"
+    assert hub.is_turn_active("thread-1") is False
+
+
+@pytest.mark.asyncio
+async def test_ws_channel_hitl_pause_parks_steers_for_post_resume_drain() -> None:
+    """hitl_required parks the queue; it drains only after the SSE resume."""
+    from octop.infra.gateway.steer import SteerCoordinator
+
+    hub = WebSocketHub()
+    frames: list[dict[str, Any]] = []
+
+    async def capture(frame: dict[str, Any]) -> None:
+        frames.append(frame)
+
+    steer = SteerCoordinator()
+
+    class _FakeProcessor:
+        def __init__(self) -> None:
+            self.turn_texts: list[str] = []
+
+        def cancel_agent_stream(self, agent_id: str, thread_id: str) -> None:
+            raise AssertionError("cancel must not fire on hitl pause")
+
+        async def iter_turn_chunks(self, msg: InboundMessage) -> AsyncIterator[dict[str, Any]]:
+            self.turn_texts.append(msg.text)
+            yield {"type": "token", "content": "need approval"}
+            assert (
+                steer.admit(
+                    "thread-1",
+                    text="also tweak it",
+                    client_pending_id="cp1",
+                    expected_turn_id=None,
+                    delivery="auto",
+                ).status
+                == "queued"
+            )
+            yield {"type": "hitl_required"}
+            yield {"type": "done"}
+
+    processor = _FakeProcessor()
+    channel = WebSocketChannel(processor, hub=hub, steer=steer)  # type: ignore[arg-type]
+    hub.register("conn-1", capture)
+    await channel.handle_inbound(_steer_inbound("deploy"))
+
+    assert processor.turn_texts == ["deploy"]
+    assert not [f for f in frames if f["type"] == "steer.discarded"]
+    assert steer.has_pending("thread-1") is True
+    ended = [f for f in frames if f["type"] == "turn.ended"]
+    assert len(ended) == 1 and ended[0].get("hitl_paused") is True
+    taken = steer.take_hitl_pending("thread-1")
+    assert taken is not None
+    bundle, seq = taken
+    assert bundle.text == "also tweak it"
+    assert bundle.client_pending_ids == ["cp1"]
+    assert seq > 0
+    assert steer.has_pending("thread-1") is False
+
+
+@pytest.mark.asyncio
+async def test_ws_channel_pure_text_stream_is_never_preempted() -> None:
+    """No tool superstep → steer waits for the natural turn end."""
+    from octop.infra.gateway.steer import SteerCoordinator
+
+    hub = WebSocketHub()
+    frames: list[dict[str, Any]] = []
+
+    async def capture(frame: dict[str, Any]) -> None:
+        frames.append(frame)
+
+    steer = SteerCoordinator()
+
+    class _FakeProcessor:
+        def __init__(self) -> None:
+            self.turn_texts: list[str] = []
+
+        def cancel_agent_stream(self, agent_id: str, thread_id: str) -> None:
+            raise AssertionError("pure text stream must not be cancelled")
+
+        async def iter_turn_chunks(self, msg: InboundMessage) -> AsyncIterator[dict[str, Any]]:
+            self.turn_texts.append(msg.text)
+            if len(self.turn_texts) == 1:
+                yield {"type": "token", "content": "answer"}
+                assert (
+                    steer.admit(
+                        "thread-1",
+                        text="one more thing",
+                        client_pending_id="cp1",
+                        expected_turn_id=None,
+                        delivery="auto",
+                    ).status
+                    == "queued"
+                )
+                yield {"type": "token", "content": " done"}
+                yield {"type": "done"}
+            else:
+                yield {"type": "token", "content": "follow-up answer"}
+                yield {"type": "done"}
+
+    processor = _FakeProcessor()
+    channel = WebSocketChannel(processor, hub=hub, steer=steer)  # type: ignore[arg-type]
+    hub.register("conn-1", capture)
+    await channel.handle_inbound(_steer_inbound("hi"))
+
+    assert processor.turn_texts == ["hi", "one more thing"]
+    types = [f["type"] for f in frames]
+    assert "steer.drained" in types
+    assert types[-1] == "turn.ended"

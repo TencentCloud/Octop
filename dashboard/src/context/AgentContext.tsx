@@ -146,6 +146,41 @@ function sameMemberIds(left?: string[], right?: string[]): boolean {
   return a.length === b.length && a.every((id, index) => id === b[index]);
 }
 
+/** True when a silent agent refresh would not change chat composer defaults. */
+export function agentsSnapshotEqual(
+  prev: OctopAgent[],
+  next: OctopAgent[],
+): boolean {
+  return (
+    prev.length === next.length &&
+    prev.every((a, i) => {
+      const b = next[i];
+      return (
+        a.agent_id === b.agent_id &&
+        a.state === b.state &&
+        a.unread_count === b.unread_count &&
+        a.bootstrap_pending === b.bootstrap_pending &&
+        a.name === b.name &&
+        a.icon === b.icon &&
+        a.icon_name === b.icon_name &&
+        a.icon_url === b.icon_url &&
+        a.color === b.color &&
+        a.kind === b.kind &&
+        a.bridge === b.bridge &&
+        a.is_owner === b.is_owner &&
+        a.bridge_connection_id === b.bridge_connection_id &&
+        a.bridge_connection_name === b.bridge_connection_name &&
+        a.bridge_disconnected === b.bridge_disconnected &&
+        a.bridge_inbound === b.bridge_inbound &&
+        a.default_model === b.default_model &&
+        sameMemberIds(a.member_ids, b.member_ids) &&
+        sameMemberIds(a.knowledge_base_ids, b.knowledge_base_ids) &&
+        sameMemberIds(a.mcp_servers, b.mcp_servers)
+      );
+    })
+  );
+}
+
 /**
  * Shared projection used by the chat composer (`ChatInput` /
  * ``composerLookups``). Keeps the lightweight ``ChatAgentOption`` shape
@@ -374,32 +409,7 @@ export function AgentProvider({ children }: { children: ReactNode }) {
             list,
             liveConnectionIds,
           );
-          if (
-            !options?.force &&
-            prev.length === merged.length &&
-            prev.every((a, i) => {
-              const b = merged[i];
-              return (
-                a.agent_id === b.agent_id &&
-                a.state === b.state &&
-                a.unread_count === b.unread_count &&
-                a.bootstrap_pending === b.bootstrap_pending &&
-                a.name === b.name &&
-                a.icon === b.icon &&
-                a.icon_name === b.icon_name &&
-                a.icon_url === b.icon_url &&
-                a.color === b.color &&
-                a.kind === b.kind &&
-                a.bridge === b.bridge &&
-                a.is_owner === b.is_owner &&
-                a.bridge_connection_id === b.bridge_connection_id &&
-                a.bridge_connection_name === b.bridge_connection_name &&
-                a.bridge_disconnected === b.bridge_disconnected &&
-                a.bridge_inbound === b.bridge_inbound &&
-                sameMemberIds(a.member_ids, b.member_ids)
-              );
-            })
-          ) {
+          if (!options?.force && agentsSnapshotEqual(prev, merged)) {
             merged = prev;
             return prev; // nothing changed — keep the same reference
           }
