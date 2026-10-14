@@ -172,6 +172,8 @@ RequestExecutionLevel "${REQUEST_EXECUTION_LEVEL}"
 
 # Install webview2 by launching the bootstrapper
 # See https://docs.microsoft.com/en-us/microsoft-edge/webview2/concepts/distribution#online-only-deployment
+# If the installation fails, warn (log + localized MessageBox) but never abort.
+!define WAILS_WEBVIEW2_OFFLINE_INSTALLER_URL "https://developer.microsoft.com/microsoft-edge/webview2/"
 !macro wails.webview2runtime
     !ifndef WAILS_INSTALL_WEBVIEW_DETAILPRINT
         !define WAILS_INSTALL_WEBVIEW_DETAILPRINT "Installing: WebView2 Runtime"
@@ -183,11 +185,10 @@ RequestExecutionLevel "${REQUEST_EXECUTION_LEVEL}"
         Goto ok
     ${EndIf}
 
-    ${If} ${REQUEST_EXECUTION_LEVEL} == "user"
-        ReadRegStr $0 HKCU "Software\Microsoft\EdgeUpdate\Clients\{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}" "pv"
-        ${If} $0 != ""
-            Goto ok
-        ${EndIf}
+    # WebView2 may be installed per-user (HKCU); check it in both install scopes.
+    ReadRegStr $0 HKCU "Software\Microsoft\EdgeUpdate\Clients\{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}" "pv"
+    ${If} $0 != ""
+        Goto ok
     ${EndIf}
 
     SetDetailsPrint both
@@ -198,7 +199,24 @@ RequestExecutionLevel "${REQUEST_EXECUTION_LEVEL}"
     CreateDirectory "$pluginsdir\webview2bootstrapper"
     SetOutPath "$pluginsdir\webview2bootstrapper"
     File "MicrosoftEdgeWebview2Setup.exe"
-    ExecWait '"$pluginsdir\webview2bootstrapper\MicrosoftEdgeWebview2Setup.exe" /silent /install'
+    ExecWait '"$pluginsdir\webview2bootstrapper\MicrosoftEdgeWebview2Setup.exe" /silent /install' $0
+
+    ${If} $0 != 0
+        # Re-check the registry in case the runtime got installed anyway.
+        SetRegView 64
+        ReadRegStr $0 HKLM "SOFTWARE\WOW6432Node\Microsoft\EdgeUpdate\Clients\{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}" "pv"
+        ${If} $0 == ""
+            ReadRegStr $0 HKCU "Software\Microsoft\EdgeUpdate\Clients\{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}" "pv"
+        ${EndIf}
+        ${If} $0 == ""
+            SetDetailsPrint both
+            DetailPrint "$(WAILS_WEBVIEW2_INSTALL_FAILED)"
+            DetailPrint "$(WAILS_WEBVIEW2_INSTALL_GUIDE)"
+            DetailPrint "${WAILS_WEBVIEW2_OFFLINE_INSTALLER_URL}"
+            MessageBox MB_OK|MB_ICONEXCLAMATION "$(WAILS_WEBVIEW2_INSTALL_FAILED)$\r$\n$\r$\n$(WAILS_WEBVIEW2_INSTALL_GUIDE)$\r$\n${WAILS_WEBVIEW2_OFFLINE_INSTALLER_URL}"
+            SetDetailsPrint listonly
+        ${EndIf}
+    ${EndIf}
 
     SetDetailsPrint both
     ok:

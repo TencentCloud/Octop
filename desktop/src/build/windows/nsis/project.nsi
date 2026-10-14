@@ -1,4 +1,4 @@
-Unicode true
+﻿Unicode true
 
 # Octop desktop NSIS installer.
 # Built by `wails3 task package` on a Windows runner:
@@ -45,6 +45,11 @@ ManifestDPIAware true
 !insertmacro MUI_LANGUAGE "SimpChinese"
 !insertmacro MUI_LANGUAGE "English"
 !insertmacro MUI_RESERVEFILE_LANGDLL
+
+LangString WAILS_WEBVIEW2_INSTALL_FAILED ${LANG_SIMPCHINESE} "WebView2 运行时安装失败，可能无法运行 ${INFO_PRODUCTNAME}。"
+LangString WAILS_WEBVIEW2_INSTALL_FAILED ${LANG_ENGLISH} "Failed to install the WebView2 Runtime, so ${INFO_PRODUCTNAME} may not run."
+LangString WAILS_WEBVIEW2_INSTALL_GUIDE ${LANG_SIMPCHINESE} "请下载 WebView2 离线安装包（Evergreen Standalone Installer）手动安装："
+LangString WAILS_WEBVIEW2_INSTALL_GUIDE ${LANG_ENGLISH} "Please download the WebView2 offline installer (Evergreen Standalone Installer) and install it manually:"
 
 Name "${INFO_PRODUCTNAME}"
 !ifndef INSTALLER_OUTFILE
