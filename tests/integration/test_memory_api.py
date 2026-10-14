@@ -13,6 +13,7 @@ test fast and deterministic without an LLM.
 
 from __future__ import annotations
 
+import math
 from datetime import UTC, datetime
 from typing import Any
 
@@ -525,6 +526,26 @@ async def test_extract_config_clamps_zero_idle_time_to_one_minute(
     )
     assert r.status_code == 200, r.text
     assert r.json()["extract_idle_seconds"] == 60.0
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("field", ["extract_idle_seconds", "extract_interval_seconds"])
+async def test_extract_config_rejects_non_finite_seconds(
+    env_with_main_agent,
+    field: str,
+) -> None:
+    """``allow_inf_nan=False``, like the sibling timeout fields.
+
+    A string payload survives ``json.loads`` as NaN, ``_coerce_seconds`` compares
+    it without clamping, and the row then stores a bare ``NaN`` in ``config_json``.
+    """
+    client, _srv, auth, aid = env_with_main_agent
+    url = f"/api/agents/{aid}/memory/extract-config"
+    for raw in ("NaN", "Infinity"):
+        r = await client.put(url, headers=auth, json={field: raw})
+        assert r.status_code == 422, (field, raw, r.text)
+    saved = (await client.get(url, headers=auth)).json()
+    assert isinstance(saved[field], (int, float)) and math.isfinite(saved[field])
 
 
 @pytest.mark.asyncio
