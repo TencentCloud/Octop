@@ -1051,6 +1051,14 @@ export default function SkillPackagesPage() {
           if (isMobile) setMobilePane("detail");
           setSkillsetHubOpen(false);
           message.success(t("skillPackages.created"));
+          if (pkg.skipped_skills && pkg.skipped_skills.length > 0) {
+            message.warning(
+              t("skillPackages.importedWithSkipped", {
+                count: pkg.skipped_skills.length,
+                skills: pkg.skipped_skills.join(", "),
+              }),
+            );
+          }
         }}
       />
 

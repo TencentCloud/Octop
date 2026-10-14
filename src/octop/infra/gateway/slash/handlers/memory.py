@@ -12,6 +12,7 @@ from octop.i18n import tr as full_tr
 from octop.i18n.domains.slash import tr
 from octop.infra.gateway.slash.ctx import SlashCtx, lang_of
 from octop.infra.gateway.threads import ThreadRegistry
+from octop.infra.utils.locale import Locale
 
 if TYPE_CHECKING:
     from octop.infra.gateway.slash.dispatcher import SlashDispatcher
@@ -33,6 +34,15 @@ def _status_line(state: dict[str, Any], locale: str) -> str:
             "memory_slim.scanned", locale, scanned=state["scanned"], total=state["total"]
         )
     report = state.get("report")
+    sweep = state.get("sweep")
+    if phase == "done" and isinstance(sweep, dict):
+        line += "\n" + full_tr(
+            "memory_slim.swept",
+            locale,
+            namespaces=sweep.get("namespaces", 0),
+            threads=sweep.get("threads", 0),
+            directories=sweep.get("directories", 0),
+        )
     if phase == "done" and report:
         line += "\n" + full_tr(
             "memory_slim.result",
@@ -43,6 +53,33 @@ def _status_line(state: dict[str, Any], locale: str) -> str:
         )
     if phase == "failed":
         line += " " + full_tr("slash.memory.failure_hint", locale)
+    return line
+
+
+def _format_bytes(size: int) -> str:
+    if abs(size) < 1048576:
+        return f"{size / 1024:.1f} KB"
+    return f"{size / 1048576:.2f} MB"
+
+
+def _compact_result(stats: Any, locale: Locale) -> str:
+    before = getattr(stats, "bytes_before", None)
+    after = getattr(stats, "bytes_after", None)
+    if before is None or after is None:
+        line = tr("memory.compact_done_tables", locale, count=getattr(stats, "tables_done", 0))
+    else:
+        saved = before - after
+        key = "memory.compact_done_saved" if saved > 0 else "memory.compact_done_unchanged"
+        line = tr(
+            key,
+            locale,
+            before=_format_bytes(before),
+            after=_format_bytes(after),
+            saved=_format_bytes(saved),
+        )
+    skipped = getattr(stats, "tables_skipped", ())
+    if skipped:
+        line += "\n" + tr("memory.compact_skipped", locale, tables=", ".join(skipped))
     return line
 
 
@@ -59,9 +96,15 @@ async def cmd_memory(d: SlashDispatcher, cmd: SlashCommand, ctx: SlashCtx, sink:
         return
     args = cmd.args.lower().split()
     is_slim = bool(args) and args[0] == "slim"
+    is_compact = bool(args) and args[0] == "compact"
     flags = args[1:]
-    valid_slim = is_slim and len(flags) == len(set(flags)) and set(flags) <= {"--all", "--confirm"}
-    if not valid_slim and args != ["status"]:
+    valid_slim = (
+        is_slim
+        and len(flags) == len(set(flags))
+        and set(flags) <= {"--all", "--confirm", "--delete-dirs"}
+    )
+    valid_compact = is_compact and len(flags) == len(set(flags)) and set(flags) <= {"--confirm"}
+    if not valid_slim and not valid_compact and args != ["status"]:
         await sink.text(tr("memory.usage", lang))
         return
     if ctx.agent_manager is None:
@@ -79,6 +122,14 @@ async def cmd_memory(d: SlashDispatcher, cmd: SlashCommand, ctx: SlashCtx, sink:
                 await sink.text(tr("memory.preview", lang, count=len(targets)))
                 for target in targets:
                     await sink.text(f"- {target['name']} [{target['agent_id']}]")
+                directories = coordinator.orphan_directories()
+                if directories:
+                    delete_command = command + " --delete-dirs"
+                    await sink.text(tr("memory.orphan_dirs", lang, command=delete_command))
+                    for directory in directories:
+                        await sink.text(f"- {directory}")
+                else:
+                    await sink.text(tr("memory.orphan_dirs_none", lang))
                 await sink.text(tr("memory.confirm_hint", lang, command=command))
                 return
             count = coordinator.start_chat(
@@ -86,8 +137,25 @@ async def cmd_memory(d: SlashDispatcher, cmd: SlashCommand, ctx: SlashCtx, sink:
                 ctx.user_id,
                 all_agents=all_agents,
                 locale=lang,
+                remove_directories="--delete-dirs" in flags,
             )
             await sink.text(tr("memory.accepted", lang, count=count))
+            return
+        if args[0] == "compact":
+            if "--confirm" not in flags:
+                await sink.text(tr("memory.compact_preview", lang))
+                await sink.text(
+                    tr("memory.confirm_hint", lang, command="/memory compact --confirm")
+                )
+                return
+            import asyncio
+
+            from octop.infra.agents.memory.compact_store import compact_agent_store
+
+            stats = await asyncio.to_thread(
+                compact_agent_store, ctx.agent_manager, ctx.agent_id, locale=lang
+            )
+            await sink.text(_compact_result(stats, lang))
             return
         snapshot = coordinator.chat_status(ctx.agent_id, ctx.user_id, locale=lang)
         states = snapshot["agents"]

@@ -21,6 +21,7 @@ import {
 import { useTranslation } from "react-i18next";
 import { probeAuthResource, request, requestBlob } from "../../../api/request";
 import { isNotFoundApiError } from "../../../utils/apiError";
+import { saveBlobAsFile } from "../../../utils/saveBlobAsFile";
 import FileViewer from "../../Agent/Workspace/components/FileViewer";
 import { getDocKind } from "../../Agent/Workspace/utils/docKind";
 import { isProbablyText } from "../../Agent/Workspace/utils/fileKind";
@@ -188,11 +189,7 @@ export default function FilePanelContent({
           apiFilePath,
         )}`,
       );
-      const a = document.createElement("a");
-      a.href = URL.createObjectURL(blob);
-      a.download = dockFileBasename(resolvedPath) || "download";
-      a.click();
-      URL.revokeObjectURL(a.href);
+      await saveBlobAsFile(blob, dockFileBasename(resolvedPath) || "download");
     } catch (err: unknown) {
       if (isNotFoundApiError(err)) {
         setFileMissing(true);

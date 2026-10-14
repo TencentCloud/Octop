@@ -20,6 +20,12 @@ from octop_gateway.models import (
 )
 
 from octop.i18n.domains.stream import format_stream_error
+from octop.infra.gateway.media.attachment_hints import (
+    inbound_attachments_from_parts,
+    is_vision_attachment,
+)
+from octop.infra.gateway.process.message_keys import INBOUND_ATTACHMENTS_KEY
+from octop.infra.gateway.steer import DiscardBundle, DrainBundle, SteerCoordinator
 from octop.infra.gateway.threads import ThreadRegistry
 from octop.infra.gateway.ws.ws_hub import WebSocketHub
 from octop.infra.utils.locale import resolve_locale
@@ -39,10 +45,12 @@ class WebSocketChannel(BaseChannel):
         processor: MessageProcessor,
         *,
         hub: WebSocketHub,
+        steer: SteerCoordinator | None = None,
         channel_id: str = WS_CHANNEL_ID,
     ) -> None:
         super().__init__(processor, channel_id=channel_id, debounce_seconds=0.0)
         self._hub = hub
+        self._steer = steer or SteerCoordinator()
 
     def _default_constraints(self) -> ChannelConstraints:
         return ChannelConstraints(
@@ -88,7 +96,11 @@ class WebSocketChannel(BaseChannel):
         return False
 
     async def handle_inbound(self, raw_payload: Any) -> None:
-        """Stream harness chunks to all thread subscribers (no delta batching)."""
+        """Stream harness chunks to all thread subscribers (no delta batching).
+
+        After each harness stream completes, drain pending steers and continue
+        the same logical turn (issue #1300 soft interrupt at Octop boundaries).
+        """
         message = self.parse_inbound(raw_payload)
 
         if self._media_backend:
@@ -143,20 +155,134 @@ class WebSocketChannel(BaseChannel):
             await self._hub.push_to_thread(thread_id, {"type": "done"})
             return
 
+        turn_id, started_seq, replaced = self._steer.begin_turn(thread_id)
+        if replaced is not None:
+            await _push_discarded(self._hub, thread_id, replaced)
+        self._steer.remember_context(
+            thread_id, message.metadata if isinstance(message.metadata, dict) else None
+        )
         self._hub.mark_turn_active(thread_id)
+        failed = False
         try:
-            async for chunk in processor.iter_turn_chunks(message):
-                # Never let delivery failures abort the harness turn — otherwise a
-                # flaky client disconnect can stop generation mid-node and leave
-                # an incomplete checkpoint.
-                try:
-                    await self._hub.push_to_thread(thread_id, chunk)
-                except Exception:
-                    logger.exception(
-                        "websocket push failed thread=%s (turn continues)",
-                        thread_id,
-                    )
+            await self._hub.push_to_thread(
+                thread_id,
+                {
+                    "type": "turn.started",
+                    "turn_id": turn_id,
+                    "seq": started_seq,
+                    "phase": "streaming_text",
+                    "thread_id": thread_id,
+                },
+            )
+            current = message
+            while True:
+                saw_tool_result = False
+                preempted = False
+                async for chunk in processor.iter_turn_chunks(current):
+                    chunk_type = str(chunk.get("type") or "") if isinstance(chunk, dict) else ""
+                    if preempted and chunk_type not in ("done", "error"):
+                        # Cancel already landed at the tool boundary. Later
+                        # tokens are not in the checkpoint — do not show them.
+                        continue
+                    if (
+                        not preempted
+                        and chunk_type in ("token", "tool_call_chunk")
+                        and saw_tool_result
+                        and self._steer.has_pending(thread_id)
+                    ):
+                        # First model output after a completed tools superstep.
+                        # Drop this chunk: the checkpoint still ends at the
+                        # tool results, and the client must not render text
+                        # the continuation will not see.
+                        preempted = True
+                        self._steer.set_phase(thread_id, "between_model_steps")
+                        cancel = getattr(processor, "cancel_agent_stream", None)
+                        if callable(cancel):
+                            logger.info(
+                                "steer preemption cancelling stream agent=%s thread=%s",
+                                message.tenant_id,
+                                thread_id,
+                            )
+                            cancel(str(message.tenant_id or ""), thread_id)
+                        continue
+                    # Never let delivery failures abort the harness turn — otherwise a
+                    # flaky client disconnect can stop generation mid-node and leave
+                    # an incomplete checkpoint.
+                    try:
+                        await self._hub.push_to_thread(thread_id, chunk)
+                    except Exception:
+                        logger.exception(
+                            "websocket push failed thread=%s (turn continues)",
+                            thread_id,
+                        )
+                    if chunk_type == "hitl_required":
+                        # Graph is interrupted; the WS turn ends but resume flows
+                        # through the HITL SSE route — never continue into it.
+                        self._steer.set_phase(thread_id, "hitl_paused")
+                        continue
+                    if chunk_type == "tool_result":
+                        saw_tool_result = True
+                        self._steer.set_phase(thread_id, "awaiting_tools")
+                if self._steer.is_hitl_paused(thread_id):
+                    break
+                outcome = self._steer.drain_for_continuation(thread_id)
+                if outcome is None:
+                    break
+                if isinstance(outcome, DiscardBundle):
+                    try:
+                        await self._hub.push_to_thread(
+                            thread_id,
+                            {
+                                "type": "steer.discarded",
+                                "seq": outcome.seq,
+                                "client_pending_ids": outcome.client_pending_ids,
+                                "pending_ids": outcome.pending_ids,
+                                "turn_id": outcome.turn_id,
+                                "reason": outcome.reason,
+                                "thread_id": thread_id,
+                            },
+                        )
+                    except Exception:
+                        logger.exception("websocket failed to deliver steer.discarded (in-loop)")
+                    break
+                if not isinstance(outcome, DrainBundle):  # pragma: no cover - defensive
+                    raise TypeError(f"unexpected steer drain outcome: {outcome!r}")
+                seq_drained = self._steer.drained_event_seq(thread_id)
+                # Dashboard user bubble then drained (adjacent allocating seq).
+                await self._hub.push_to_thread(
+                    thread_id,
+                    _steer_user_frame(thread_id, outcome),
+                )
+                await self._hub.push_to_thread(
+                    thread_id,
+                    {
+                        "type": "steer.drained",
+                        "seq": seq_drained,
+                        "client_pending_ids": outcome.client_pending_ids,
+                        "pending_ids": outcome.pending_ids,
+                        "turn_id": outcome.turn_id,
+                        "message_id": outcome.message_id,
+                        "thread_id": thread_id,
+                    },
+                )
+                resumed_seq = self._steer.allocate_seq(thread_id)
+                await self._hub.push_to_thread(
+                    thread_id,
+                    {
+                        "type": "turn.resumed",
+                        "turn_id": outcome.turn_id,
+                        "seq": resumed_seq,
+                        "phase": "between_model_steps",
+                        "thread_id": thread_id,
+                    },
+                )
+                current = _continuation_inbound(
+                    message,
+                    text=outcome.text,
+                    blocks=outcome.content_blocks,
+                )
         except Exception as exc:
+            failed = True
             logger.exception("websocket turn failed")
             err_meta = message.metadata if isinstance(message.metadata, dict) else None
             locale = resolve_locale(
@@ -172,6 +298,40 @@ class WebSocketChannel(BaseChannel):
             except Exception:
                 logger.exception("websocket failed to deliver error frame thread=%s", thread_id)
         finally:
+            discarded = self._steer.end_turn(thread_id, failed=failed)
+            if discarded is not None:
+                try:
+                    await self._hub.push_to_thread(
+                        thread_id,
+                        {
+                            "type": "steer.discarded",
+                            "seq": discarded.seq,
+                            "client_pending_ids": discarded.client_pending_ids,
+                            "pending_ids": discarded.pending_ids,
+                            "turn_id": discarded.turn_id,
+                            "reason": discarded.reason,
+                            "thread_id": thread_id,
+                        },
+                    )
+                except Exception:
+                    logger.exception("websocket failed to deliver steer.discarded")
+            try:
+                # hitl_paused means the steer queue is parked server-side and
+                # survives the approval pause (drains after SSE resume) — the
+                # dashboard keeps its chips instead of clearing them.
+                hitl_parked = self._steer.is_hitl_paused(thread_id)
+                await self._hub.push_to_thread(
+                    thread_id,
+                    {
+                        "type": "turn.ended",
+                        "turn_id": turn_id,
+                        "thread_id": thread_id,
+                        "failed": failed or None,
+                        **({"hitl_paused": True} if hitl_parked else {}),
+                    },
+                )
+            except Exception:
+                logger.exception("websocket failed to deliver turn.ended thread=%s", thread_id)
             self._hub.mark_turn_idle(thread_id)
 
     async def _send_text(self, subject: ChannelSubject, text: str) -> None:
@@ -221,6 +381,70 @@ class WebSocketChannel(BaseChannel):
             await self._hub.push(conn_id, frame)
 
 
+def _push_discarded_frame(thread_id: str, bundle: DiscardBundle) -> dict[str, Any]:
+    return {
+        "type": "steer.discarded",
+        "seq": bundle.seq,
+        "client_pending_ids": bundle.client_pending_ids,
+        "pending_ids": bundle.pending_ids,
+        "turn_id": bundle.turn_id,
+        "reason": bundle.reason,
+        "thread_id": thread_id,
+    }
+
+
+async def _push_discarded(hub: WebSocketHub, thread_id: str, bundle: DiscardBundle) -> None:
+    try:
+        await hub.push_to_thread(thread_id, _push_discarded_frame(thread_id, bundle))
+    except Exception:
+        logger.exception("websocket failed to deliver steer.discarded thread=%s", thread_id)
+
+
+def _steer_user_frame(thread_id: str, bundle: DrainBundle) -> dict[str, Any]:
+    content = _content_from_steer(bundle.text, bundle.content_blocks)
+    frame: dict[str, Any] = {
+        "type": "user",
+        "content": bundle.text,
+        "message_id": bundle.message_id,
+        "meta": {"steer": True},
+        "thread_id": thread_id,
+    }
+    attachments = inbound_attachments_from_parts(content)
+    if attachments:
+        frame["attachments"] = attachments
+    return frame
+
+
+def _content_from_steer(text: str, blocks: tuple[dict[str, Any], ...]) -> list[ContentPart]:
+    parts: list[ContentPart] = []
+    if text.strip():
+        parts.append(TextContent(text=text))
+    for block in blocks:
+        path = str(block.get("workspace_path") or "").strip()
+        if not path:
+            continue
+        filename = str(block.get("filename") or "").strip() or "attachment"
+        media_type = str(block.get("media_type") or "").strip() or "application/octet-stream"
+        kind = str(block.get("type") or "")
+        if is_vision_attachment(kind=kind, media_type=media_type, path=path):
+            parts.append(
+                ImageContent(
+                    local_path=path,
+                    mime_type=media_type if media_type.startswith("image/") else "image/png",
+                    alt_text=filename,
+                )
+            )
+        else:
+            parts.append(
+                FileContent(
+                    local_path=path,
+                    filename=filename,
+                    mime_type=media_type,
+                )
+            )
+    return parts
+
+
 def _media_kind(media: ContentPart) -> str:
     if isinstance(media, ImageContent):
         return "image"
@@ -233,4 +457,118 @@ def _media_kind(media: ContentPart) -> str:
     return "file"
 
 
-__all__ = ["WS_CHANNEL_ID", "WebSocketChannel"]
+def _continuation_inbound(
+    original: InboundMessage,
+    *,
+    text: str,
+    blocks: tuple[dict[str, Any], ...] = (),
+) -> InboundMessage:
+    """Clone inbound for a steer continuation (same thread / connection)."""
+    meta = dict(original.metadata or {})
+    content = _content_from_steer(text, blocks)
+    attachments = inbound_attachments_from_parts(content)
+    if attachments:
+        meta[INBOUND_ATTACHMENTS_KEY] = attachments
+    else:
+        meta.pop(INBOUND_ATTACHMENTS_KEY, None)
+    return InboundMessage(
+        channel_id=original.channel_id,
+        channel_type=original.channel_type,
+        tenant_id=original.tenant_id,
+        channel_subject=original.channel_subject,
+        channel_session_id=original.channel_session_id,
+        content=content,
+        metadata=meta,
+        timestamp=original.timestamp,
+    )
+
+
+async def resume_parked_steers(
+    server: Any,
+    *,
+    agent_id: str,
+    thread_id: str,
+    session_key: str,
+    channel_type: str,
+    user_id: int,
+) -> None:
+    """After an HITL approval resumes, drain steers parked across the pause.
+
+    The queue survives the interrupt and drains at the first
+    boundary after resume — here that boundary is the end of the SSE resume
+    stream, and the drain re-enters through the normal WS channel turn so all
+    steer frames (user bubble, steer.drained, turn.started…) flow as usual.
+    """
+    runtime = getattr(server, "app_runtime", None)
+    gateway = getattr(runtime, "gateway", None)
+    steer = getattr(gateway, "steer", None)
+    hub = getattr(gateway, "ws_hub", None)
+    channel_manager = getattr(gateway, "channel_manager", None)
+    if steer is None or hub is None or channel_manager is None:
+        return
+    expired = steer.sweep_expired(thread_id)
+    if expired is not None:
+        await _push_discarded(hub, thread_id, expired)
+        return
+    staged = steer.stage_hitl_pending(thread_id)
+    if staged is None:
+        return
+    bundle, seq = staged
+    queues = getattr(channel_manager, "_queues", None)
+    if not isinstance(queues, dict) or WS_CHANNEL_ID not in queues:
+        steer.release_staged_hitl(thread_id)
+        logger.error("steer resume has no dashboard queue thread=%s", thread_id)
+        return
+    meta = steer.continuation_metadata(thread_id)
+    meta["thread_id"] = thread_id
+    meta["session_key"] = session_key
+    # Subscribers already on the thread receive the turn. This id only
+    # satisfies the inbound guard; it is not a hub connection.
+    meta["ws_connection_id"] = f"hitl-resume:{thread_id}"
+    content = _content_from_steer(bundle.text, bundle.content_blocks)
+    attachments = inbound_attachments_from_parts(content)
+    if attachments:
+        meta[INBOUND_ATTACHMENTS_KEY] = attachments
+    logger.info(
+        "steer resume drain after hitl agent=%s thread=%s items=%d",
+        agent_id,
+        thread_id,
+        len(bundle.client_pending_ids),
+    )
+    try:
+        channel_manager.enqueue(
+            WS_CHANNEL_ID,
+            InboundMessage(
+                channel_id=WS_CHANNEL_ID,
+                channel_type=channel_type or "dashboard",
+                tenant_id=agent_id,
+                channel_subject=ChannelSubject(subject_id=str(user_id)),
+                channel_session_id=session_key,
+                content=content,
+                metadata=meta,
+            ),
+        )
+    except Exception:
+        steer.release_staged_hitl(thread_id)
+        logger.exception("steer resume continuation enqueue failed thread=%s", thread_id)
+        return
+    steer.commit_staged_hitl(thread_id)
+    try:
+        await hub.push_to_thread(thread_id, _steer_user_frame(thread_id, bundle))
+        await hub.push_to_thread(
+            thread_id,
+            {
+                "type": "steer.drained",
+                "seq": seq,
+                "client_pending_ids": bundle.client_pending_ids,
+                "pending_ids": bundle.pending_ids,
+                "turn_id": bundle.turn_id,
+                "message_id": bundle.message_id,
+                "thread_id": thread_id,
+            },
+        )
+    except Exception:
+        logger.exception("steer resume drain frames failed thread=%s", thread_id)
+
+
+__all__ = ["WS_CHANNEL_ID", "WebSocketChannel", "resume_parked_steers"]

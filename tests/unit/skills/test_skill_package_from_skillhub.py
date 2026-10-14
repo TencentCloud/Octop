@@ -13,6 +13,7 @@ from octop.infra.db.repos.skill_packages import SkillPackageRepo
 from octop.infra.errors import ErrorCode, OctopError
 from octop.infra.skills.skill_package_from_skillhub import create_package_from_skillhub
 from octop.infra.skills.skill_package_store import SkillPackageStore
+from octop.infra.skills.skillhub_market import SkillHubSkillNotFound
 
 
 @pytest.fixture
@@ -99,6 +100,41 @@ def test_returns_refreshed_skill_count_for_multiple_skills(store: SkillPackageSt
     )
 
     assert result.row.skill_count == 2
+
+
+def test_skips_unpublished_skill_and_keeps_the_rest(store: SkillPackageStore) -> None:
+    def download(skill_slug: str) -> list[tuple[str, bytes]]:
+        if skill_slug == "content-writer":
+            raise SkillHubSkillNotFound("SkillHub skill package not found: HTTP 404")
+        return [("SKILL.md", f"---\nname: {skill_slug}\n---\n".encode())]
+
+    result = create_package_from_skillhub(
+        store,
+        slug="demo-skillset",
+        created_by="1",
+        fetch_skillset_fn=lambda _slug: _item(skill_slugs=("alpha", "content-writer")),
+        download_skill_files_fn=download,
+    )
+
+    assert result.skipped_slugs == ("content-writer",)
+    assert result.row.skill_count == 1
+    assert [skill["slug"] for skill in store.list_skill_summaries(result.row.id)] == ["alpha"]
+
+
+def test_all_missing_skills_fail_without_creating_a_package(store: SkillPackageStore) -> None:
+    def download(_skill_slug: str) -> list[tuple[str, bytes]]:
+        raise SkillHubSkillNotFound("SkillHub skill package not found: HTTP 404")
+
+    with pytest.raises(SkillHubSkillNotFound):
+        create_package_from_skillhub(
+            store,
+            slug="demo-skillset",
+            created_by="1",
+            fetch_skillset_fn=lambda _slug: _item(skill_slugs=("content-writer",)),
+            download_skill_files_fn=download,
+        )
+
+    assert store.repo.list_all() == []
 
 
 def test_write_failure_deletes_new_package(

@@ -5,7 +5,6 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
-import shutil
 from pathlib import Path
 from typing import Any
 
@@ -163,9 +162,11 @@ def disable_user_offline(username: str, *, home: Path | None = None) -> None:
 
 
 def delete_user_offline(username: str, *, home: Path | None = None) -> None:
+    from octop.infra.users.manager import UserManager
+
     with open_cli_services(home) as svc:
-        uid = _require_username(svc, username)
-        svc.user_repo.delete(uid)
+        _require_username(svc, username)
+        asyncio.run(UserManager(svc).remove(username))
 
 
 # ── Cron ─────────────────────────────────────────────────────────────────────
@@ -260,6 +261,10 @@ resolve_acting_user_id_offline = resolve_cron_user_id
 
 
 def delete_agent_offline(agent_id: str, *, home: Path | None = None) -> None:
+    from octop.infra.agents.memory.thread_cleanup import (
+        agent_config_from_row,
+        delete_agent_memory_and_checkpoints,
+    )
     from octop.infra.agents.workspace.dir import workspace_dir_from_config_json
 
     with open_cli_services(home) as svc:
@@ -269,9 +274,19 @@ def delete_agent_offline(agent_id: str, *, home: Path | None = None) -> None:
         workspace_dir = workspace_dir_from_config_json(
             row.config_json, paths=svc.paths, agent_id=agent_id
         )
+        cfg = agent_config_from_row(row)
+        delete_agent_memory_and_checkpoints(
+            agent_id=agent_id,
+            thread_ids=svc.thread_repo.list_ids_for_agent(agent_id),
+            cfg=cfg,
+            octop_config=svc.config,
+            workspace_dir=workspace_dir,
+            paths=svc.paths,
+        )
         try:
-            if workspace_dir.exists():
-                shutil.rmtree(workspace_dir)
+            from octop.infra.agents.workspace.dir import remove_agent_host_dirs
+
+            remove_agent_host_dirs(cfg, paths=svc.paths, agent_id=agent_id)
         except OSError:
             logger.exception("rmtree failed for %s; agent removed from DB anyway", workspace_dir)
         svc.agent_repo.delete(agent_id)
@@ -557,10 +572,29 @@ def update_thread_offline(
 
 
 def delete_thread_offline(agent_id: str, thread_id: str, *, home: Path | None = None) -> None:
+    from octop.infra.agents.memory.thread_cleanup import (
+        agent_config_from_row,
+        delete_thread_from_agent_stores,
+        workspace_for_agent_row,
+    )
+
     with open_cli_services(home) as svc:
         row = svc.thread_repo.get(thread_id)
         if row is None or row.agent_id != agent_id:
             raise OctopError(ErrorCode.AGENT_NOT_FOUND, f"thread {thread_id!r} not found")
+        agent = svc.agent_repo.get(agent_id)
+        if agent is None:
+            raise OctopError(ErrorCode.AGENT_NOT_FOUND, f"agent {agent_id!r} not found")
+        cfg = agent_config_from_row(agent)
+        workspace = workspace_for_agent_row(agent, paths=svc.paths)
+        delete_thread_from_agent_stores(
+            agent_id=agent_id,
+            thread_id=thread_id,
+            cfg=cfg,
+            octop_config=svc.config,
+            workspace_dir=workspace,
+            paths=svc.paths,
+        )
         try:
             svc.trajectory_event_repo.delete_for_thread(thread_id)
         except Exception:

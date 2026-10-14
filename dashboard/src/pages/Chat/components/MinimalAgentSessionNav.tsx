@@ -16,8 +16,12 @@ import {
 import type { OctopAgent } from "../../../context/AgentContext";
 import { ExpertIcon } from "../../Experts/components/iconForName";
 import { octopThreadsApi } from "../../../api/modules/octopThreads";
-import { showConfirmModal } from "../../../utils/confirmModal";
+import {
+  confirmDeleteConversation,
+  deleteConversation,
+} from "../utils/deleteConversation";
 import { isAgentChatReady } from "../../../utils/agentError";
+import { isImeComposing } from "../../../utils/ime";
 import { sortSessions, toSession, type Session } from "../hooks/useSessions";
 import { formatThreadTitle } from "../utils/threadTitle";
 import { onSessionEvent } from "../hooks/chatStore";
@@ -69,7 +73,10 @@ interface MinimalAgentSessionNavProps {
   onAgentSelect: (agentId: string) => void;
   /** Start a fresh (unsaved) chat with the given expert. */
   onNewChat: (agentId: string) => void;
-  onDeleteActive: (id: string) => void;
+  onDeleteActive: (
+    id: string,
+    compact: boolean,
+  ) => void | Promise<boolean | void>;
   onRenameActive: (id: string, name: string) => void;
   onPinActive: (id: string, pinned: boolean) => void;
   onFork: (id: string, agentId?: string | null) => void;
@@ -106,7 +113,7 @@ const PreviewSessionRow = memo(function PreviewSessionRow({
   isActive: boolean;
   workStatus: SessionWorkStatus;
   onSelect: (id: string) => void;
-  onDelete: (id: string) => void;
+  onDelete: (id: string, compact: boolean) => void | Promise<boolean | void>;
   onRename: (id: string, name: string) => void;
   onPin: (id: string, pinned: boolean) => void;
   onFork: (id: string) => void;
@@ -183,14 +190,8 @@ const PreviewSessionRow = memo(function PreviewSessionRow({
       danger: true,
       onClick: ({ domEvent }) => {
         domEvent.stopPropagation();
-        showConfirmModal({
-          title: t("chat.deleteSessionConfirm"),
-          okText: t("common.delete"),
-          cancelText: t("common.cancel"),
-          okButtonProps: { danger: true },
-          onOk: () => {
-            onDelete(session.id);
-          },
+        confirmDeleteConversation(t, (compact) => {
+          void onDelete(session.id, compact);
         });
       },
     },
@@ -218,6 +219,7 @@ const PreviewSessionRow = memo(function PreviewSessionRow({
           onChange={(e) => setEditValue(e.target.value)}
           onBlur={commitEdit}
           onKeyDown={(e) => {
+            if (isImeComposing(e)) return;
             if (e.key === "Enter") commitEdit();
             if (e.key === "Escape") {
               setEditValue(session.name);
@@ -435,20 +437,18 @@ export default function MinimalAgentSessionNav({
   );
 
   const handleDelete = useCallback(
-    async (agentId: string, sessionId: string) => {
+    async (agentId: string, sessionId: string, compact: boolean) => {
       if (agentId === activeAgentId) {
-        onDeleteActive(sessionId);
+        const deleted = await onDeleteActive(sessionId, compact);
+        if (deleted === false) return;
         patchLocal(agentId, (prev) => prev.filter((s) => s.id !== sessionId));
         return;
       }
-      try {
-        await octopThreadsApi.delete(agentId, sessionId);
-        patchLocal(agentId, (prev) => prev.filter((s) => s.id !== sessionId));
-      } catch {
-        /* ignore */
-      }
+      const deleted = await deleteConversation(agentId, sessionId, compact, t);
+      if (!deleted) return;
+      patchLocal(agentId, (prev) => prev.filter((s) => s.id !== sessionId));
     },
-    [activeAgentId, onDeleteActive, patchLocal],
+    [activeAgentId, onDeleteActive, patchLocal, t],
   );
 
   const handleRename = useCallback(
@@ -593,7 +593,9 @@ export default function MinimalAgentSessionNav({
                         liveWorkingIds,
                       )}
                       onSelect={(id) => onSelect(id, agent.agent_id)}
-                      onDelete={(id) => void handleDelete(agent.agent_id, id)}
+                      onDelete={(id, compact) =>
+                        void handleDelete(agent.agent_id, id, compact)
+                      }
                       onRename={(id, name) =>
                         handleRename(agent.agent_id, id, name)
                       }
