@@ -91,6 +91,7 @@ import { apiErrorMessage, isNotFoundApiError } from "../../utils/apiError";
 import { saveBlobAsFile } from "../../utils/saveBlobAsFile";
 import { createDetailRequestGate } from "../../utils/detailRequestGate";
 import { getDocKind, type DocKind } from "../../utils/docKind";
+import { isImeComposing } from "../../utils/ime";
 import { formatBytes, formatSizeGb } from "../../utils/embeddingDownload";
 import { fileTreeIconSpec } from "../../utils/fileTreeIcon";
 import { formatServerDateTime } from "../../utils/formatMessageTime";
@@ -2807,8 +2808,11 @@ export default function KnowledgeBasesPage() {
                       setMdFindQuery(event.target.value);
                       setMdFindIndex(0);
                     }}
-                    onPressEnter={() => jumpMdFind(1)}
+                    onPressEnter={(event) => {
+                      if (!isImeComposing(event)) jumpMdFind(1);
+                    }}
                     onKeyDown={(event) => {
+                      if (isImeComposing(event)) return;
                       if (event.key === "Escape") {
                         event.stopPropagation();
                         setMdFindOpen(false);
@@ -2957,7 +2961,9 @@ export default function KnowledgeBasesPage() {
           value={folderName}
           onChange={(event) => setFolderName(event.target.value)}
           placeholder={t("knowledgeBases.folderNamePlaceholder")}
-          onPressEnter={() => void createFolder()}
+          onPressEnter={(event) => {
+            if (!isImeComposing(event)) void createFolder();
+          }}
         />
       </Modal>
 
@@ -2974,7 +2980,9 @@ export default function KnowledgeBasesPage() {
           value={renameName}
           onChange={(event) => setRenameName(event.target.value)}
           placeholder={t("knowledgeBases.folderNamePlaceholder")}
-          onPressEnter={() => void renameFolder()}
+          onPressEnter={(event) => {
+            if (!isImeComposing(event)) void renameFolder();
+          }}
         />
       </Modal>
 
