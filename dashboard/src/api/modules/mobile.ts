@@ -35,6 +35,21 @@ function streamMobileSse(
   const controller = new AbortController();
   const url = getApiUrl(path);
   const token = getAuthToken();
+
+  // ``onDone`` is the only thing that moves the caller out of its "installing"
+  // phase, so it has to fire exactly once per stream - including the two ways
+  // this endpoint can end without a clean terminal frame: a terminal frame
+  // followed by another frame, and the body closing with no terminal frame at
+  // all (``infra/mobile/setup.py`` runs ``bash`` unguarded, so a missing shell
+  // or a dying subprocess truncates the body). desktop.ts/browser.ts already
+  // settle after their read loop; this one returned straight into the caller.
+  let settled = false;
+  const settle = (ok: boolean, error?: string) => {
+    if (settled) return;
+    settled = true;
+    onDone(ok, error);
+  };
+
   fetch(url, {
     method: "POST",
     headers: {
@@ -44,7 +59,7 @@ function streamMobileSse(
   })
     .then(async (res) => {
       if (!res.ok || !res.body) {
-        onDone(false, `HTTP ${res.status}`);
+        settle(false, `HTTP ${res.status}`);
         return;
       }
       const reader = res.body.getReader();
@@ -66,17 +81,24 @@ function streamMobileSse(
               error?: string;
             };
             if (payload.log) onLog(payload.log);
-            if (payload.done === true) onDone(true);
-            if (payload.done === false) onDone(false, payload.error);
+            if (payload.done === true) {
+              settle(true);
+              return;
+            }
+            if (payload.done === false) {
+              settle(false, payload.error);
+              return;
+            }
           } catch {
             /* ignore */
           }
         }
       }
+      settle(false, "SSE stream ended before completion");
     })
     .catch((err: unknown) => {
       if ((err as Error).name !== "AbortError") {
-        onDone(false, String(err));
+        settle(false, String(err));
       }
     });
   return controller;

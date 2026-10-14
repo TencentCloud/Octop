@@ -21,7 +21,6 @@ from octop.infra.knowledge.index import KnowledgeIndex
 
 def test_enqueue_index_document_limits_concurrency(monkeypatch: pytest.MonkeyPatch) -> None:
     jobs.reset_index_semaphore_for_tests()
-    monkeypatch.setattr(jobs, "INDEX_CONCURRENCY", 1)
 
     lock = threading.Lock()
     active = 0

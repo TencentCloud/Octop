@@ -151,28 +151,43 @@
   margin-top: 4px;
 }
 
+.actionTooltipWrap {
+  display: inline-flex;
+}
+
 @media (max-width: 767px) {
   .wrap {
-    padding: 16px;
+    align-items: flex-start;
+    padding: 12px 16px 16px;
   }
 
   .plain {
-    padding: 40px 16px 32px;
+    padding: 12px 16px 24px;
   }
 
   .card {
-    padding: 28px 20px 24px;
+    padding: 20px 16px 20px;
   }
 
   .plain .card {
     padding: 0;
   }
 
+  .plain .title {
+    margin-top: 0;
+  }
+
   .actions {
-    flex-direction: column;
+    display: grid;
+    grid-template-columns: 1fr;
 
     :global(.ant-btn) {
       width: 100%;
     }
+  }
+
+  .actionTooltipWrap {
+    display: block;
+    width: 100%;
   }
 }

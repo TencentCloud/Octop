@@ -2,15 +2,21 @@
 
 from __future__ import annotations
 
+import logging
+
 from octop.i18n.domains.stream import (
+    INVALID_REQUEST,
     MODEL_CALL_FAILED,
+    MODEL_RETRY_FAILURE_MARK,
     PATH_OUTSIDE_ROOT,
     RECURSION_LIMIT,
     STREAM_STALL,
     classify_stream_error_message,
     exception_display_message,
     format_stream_error,
+    model_retry_failure_prompt,
     stream_error_message,
+    unwrap_model_retry_message,
 )
 
 
@@ -58,6 +64,17 @@ def test_classify_auth() -> None:
     )
 
 
+def test_classify_invalid_request_mindie_422() -> None:
+    msg = (
+        "Error code: 422 - {error:'Check open ai req parameter error',"
+        "'error_type': 'Input Validation Error'}"
+    )
+    assert classify_stream_error_message(msg) == INVALID_REQUEST
+    text = format_stream_error(msg, "zh")
+    assert "MindIE" in text or "参数" in text
+    assert "422" not in text
+
+
 def test_classify_provider_unavailable_http_status() -> None:
     assert (
         classify_stream_error_message("HTTP 503 POST https://api.example.com/v1/embeddings")
@@ -89,6 +106,13 @@ def test_classify_recursion_limit() -> None:
     assert (
         classify_stream_error_message("GraphRecursionError: GRAPH_RECURSION_LIMIT")
         == RECURSION_LIMIT
+    )
+
+
+def test_unwrap_model_retry_wrapper() -> None:
+    assert (
+        unwrap_model_retry_message("Model call failed after 3 attempts with RuntimeError: boom")
+        == "RuntimeError: boom"
     )
 
 
@@ -159,10 +183,10 @@ def test_stream_error_message_octop_key() -> None:
     assert "重试" in stream_error_message(STREAM_STALL, "zh")
 
 
-def test_format_stream_error_unknown_falls_back_to_localized() -> None:
+def test_format_stream_error_unknown_keeps_actual_cause() -> None:
     text = format_stream_error("disk full", "en")
-    assert "disk full" not in text
-    assert "model call failed" in text
+    assert "disk full" in text
+    assert "several retries" not in text
 
 
 def test_format_stream_error_passes_through_send_file_failures() -> None:
@@ -173,8 +197,19 @@ def test_format_stream_error_passes_through_send_file_failures() -> None:
     assert format_stream_error(msg, "zh") == msg
     assert format_stream_error(FileNotFoundError(msg), "en") == msg
     assert "模型调用" not in format_stream_error(msg, "zh")
-    # Generic missing-file noise must still fall back to the model-failure copy.
-    assert "model call failed" in format_stream_error("FileNotFoundError: config.json", "en")
+    # Unknown file errors keep the concrete cause instead of a generic retry line.
+    assert "config.json" in format_stream_error("FileNotFoundError: config.json", "en")
+
+
+def test_model_retry_failure_prompt_is_specific_and_model_visible() -> None:
+    prompt = model_retry_failure_prompt(
+        RuntimeError("Error code: 400 - This model's maximum context length is 128000 tokens"),
+        "en",
+    )
+    assert prompt.startswith(MODEL_RETRY_FAILURE_MARK)
+    assert "context" in prompt.lower()
+    assert "128000" in prompt
+    assert "Do not pretend the task succeeded" in prompt
 
 
 def test_exception_display_message_empty_falls_back_to_type() -> None:
@@ -190,7 +225,32 @@ def test_exception_display_message_empty_falls_back_to_type() -> None:
     assert exception_display_message(wrapped) == "RuntimeError <- ConnectionError"
 
 
+def test_model_retry_on_failure_writes_server_log(caplog: logging.LogCaptureFixture) -> None:
+    from octop.infra.agents.manager import _model_retry_on_failure
+
+    err = RuntimeError(
+        "Error code: 422 - {error:'Check open ai req parameter error',"
+        "'error_type': 'Input Validation Error'}"
+    )
+    from octop.infra.agents.security.hitl_session import hitl_thread_scope
+    from octop.infra.utils.turn_failure import turn_model_scope
+
+    with (
+        caplog.at_level(logging.ERROR, logger="octop.infra.utils.turn_failure"),
+        hitl_thread_scope("th_mindie"),
+        turn_model_scope("mindie/qwen"),
+    ):
+        prompt = _model_retry_on_failure(err, agent_id="ag_mindie")
+    assert "turn failure kind=model_retry" in caplog.text
+    assert "agent=ag_mindie" in caplog.text
+    assert "thread=th_mindie" in caplog.text
+    assert "model=mindie/qwen" in caplog.text
+    assert "Check open ai req parameter error" in caplog.text
+    assert prompt.startswith(MODEL_RETRY_FAILURE_MARK)
+
+
 def test_format_stream_error_empty_exception_still_localized() -> None:
     text = format_stream_error(TimeoutError(), "zh")
     assert text
-    assert "模型调用" in text
+    assert "模型调用失败" in text
+    assert "TimeoutError" in text

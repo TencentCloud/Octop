@@ -458,6 +458,10 @@
   align-items: center;
   padding: 64px 24px 48px;
   text-align: center;
+
+  @media (max-width: 767px) {
+    padding: 12px 16px 24px;
+  }
 }
 
 .emptyStateIcon {
@@ -560,6 +564,17 @@
   display: inline-flex;
   align-items: center;
   gap: 4px;
+}
+
+.mailTriggerHint {
+  display: block;
+  margin-top: 8px;
+  padding: 10px 12px;
+  border-radius: var(--fn-radius-md);
+  background: var(--fn-surface-sunken);
+  color: var(--fn-text-secondary);
+  font-size: 12px;
+  line-height: 1.6;
 }
 
 /* ── Execute-now confirmation modal ──────────────────────────── */

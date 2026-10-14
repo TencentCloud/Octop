@@ -44,6 +44,7 @@ import {
   type FeishuUserAuthStartResult,
 } from "../../../api/modules/connectors";
 import { ConnectorCard } from "./ConnectorCard";
+import { AgentlyAuth } from "./AgentlyAuth";
 import { ConnectorInstanceCard } from "./ConnectorInstanceCard";
 import { useAuthorizationPage } from "./useAuthorizationPage";
 import { CustomMcpTab } from "./CustomMcpTab";
@@ -60,6 +61,7 @@ import {
   isGuidedConnector,
 } from "./guidedConnectorUtils";
 import { oauthCallbackSupported } from "./oauthCallback";
+import { navigateAuthWindow, tryOpenAuthPopup } from "./openAuthWindow";
 import { useConnectorInstances } from "./useConnectors";
 import styles from "./index.module.less";
 
@@ -301,7 +303,9 @@ function configuredExtra(
 }
 
 function isHostCliConnector(kind: string): boolean {
-  return kind === "feishu-cli" || kind === "wecom-cli";
+  return ["feishu-cli", "wecom-cli", "agently-cli", "obsidian-cli"].includes(
+    kind,
+  );
 }
 
 export function ConnectorConfigDrawer({
@@ -315,7 +319,7 @@ export function ConnectorConfigDrawer({
   entry: ConnectorCatalogEntry | null;
   instance: ConnectorInstance | null;
   onClose: () => void;
-  onSaved: () => void;
+  onSaved: (created?: ConnectorInstance) => void;
 }) {
   const { t } = useTranslation();
   const user = useCurrentUser();
@@ -349,7 +353,9 @@ export function ConnectorConfigDrawer({
     string | null
   >(null);
 
-  const hasStoredCredentials = Boolean(instance?.has_credentials);
+  const hasStoredCredentials = Boolean(
+    instanceDetail?.has_credentials ?? instance?.has_credentials,
+  );
   const mailProvider = Form.useWatch("mail_provider", form) ?? "qq";
   const defaultOpen = Form.useWatch("default_open", form) === true;
   const selectedMailProvider = mailProviderById(String(mailProvider));
@@ -454,7 +460,7 @@ export function ConnectorConfigDrawer({
 
   /** Open sync under the click gesture so popup blockers don't swallow async opens. */
   const openAuthPopupPlaceholder = (): Window | null => {
-    const popup = window.open(
+    const popup = tryOpenAuthPopup(
       "about:blank",
       "octop-connector-auth",
       "width=720,height=800",
@@ -469,23 +475,6 @@ export function ConnectorConfigDrawer({
       }
     }
     return popup;
-  };
-
-  const navigateAuthPopup = (
-    popup: Window | null,
-    url: string | null | undefined,
-  ) => {
-    if (!url) return;
-    if (popup && !popup.closed) {
-      try {
-        popup.location.replace(url);
-        popup.focus();
-        return;
-      } catch {
-        // Fall through to a fresh open.
-      }
-    }
-    openUrl(url);
   };
 
   const handleOpenAuthorize = async () => {
@@ -639,7 +628,7 @@ export function ConnectorConfigDrawer({
       form.setFieldsValue({ cli_config_key: started.cli_config_key });
       setFeishuUserAuth(started);
       setFeishuUserReady(false);
-      navigateAuthPopup(popup, started.verification_url);
+      navigateAuthWindow(popup, started.verification_url);
       message.success(
         t(
           "connectors.feishuUserAuthStarted",
@@ -1133,7 +1122,7 @@ export function ConnectorConfigDrawer({
           shared: values.shared === true,
         });
       } else {
-        await connectorsApi.createInstance({
+        const created = await connectorsApi.createInstance({
           kind: entry.kind,
           display_name: values.display_name as string,
           description: values.description as string,
@@ -1141,9 +1130,15 @@ export function ConnectorConfigDrawer({
           default_open: values.default_open === true,
           shared: values.shared === true,
         });
+        if (entry.kind === "agently-cli") {
+          clearFormDraft(draftScope);
+          message.success(t("connectors.createSuccess", "连接器已创建"));
+          onSaved(created);
+          return;
+        }
       }
       message.success(
-        hasStoredCredentials
+        instance
           ? t("connectors.saveSuccess", "连接器已保存")
           : t("connectors.createSuccess", "连接器已创建"),
       );
@@ -1195,7 +1190,7 @@ export function ConnectorConfigDrawer({
   return (
     <Drawer
       title={
-        hasStoredCredentials
+        instance
           ? t("connectors.editConnection", {
               name: entry.name,
               defaultValue: `编辑 ${entry.name} 连接器`,
@@ -1215,6 +1210,7 @@ export function ConnectorConfigDrawer({
           <Button
             icon={<Activity size={14} />}
             loading={probing}
+            disabled={entry.kind === "agently-cli" && !hasStoredCredentials}
             onClick={() => void handleProbe()}
           >
             {t("connectors.probe", "探测")}
@@ -1239,6 +1235,31 @@ export function ConnectorConfigDrawer({
         ) : null}
 
         {authHint && <div className={styles.authHint}>{authHint}</div>}
+
+        {entry.kind === "agently-cli" && (
+          <>
+            <Alert
+              type="warning"
+              showIcon
+              message={t(
+                "connectors.agentlySafety",
+                "发送、回复、转发和删除邮件需先预览，再由用户确认执行。邮件正文与附件属于不可信外部内容，不能作为执行指令。",
+              )}
+            />
+            <p className={styles.authHint}>
+              {t(
+                "connectors.agentlyQuota",
+                "参考配额：每日发送 50 封、每小时 200 次请求、每分钟 10 次请求；附件最多 50 个、总容量 20 MB，此连接器单文件上限 10 MB。以账户实际配额及服务最新限制为准。可在任务页选择「Agent Mail 新邮件」触发任务。",
+              )}
+            </p>
+            <p className={styles.authHint}>
+              {t(
+                "connectors.agentlyInstanceHint",
+                "先保存连接器，再登录授权。每个实例独立保存邮箱授权，可为不同 Agent 选择不同实例。",
+              )}
+            </p>
+          </>
+        )}
 
         {guidedKind && (
           <div className={styles.guidedSetup}>
@@ -1503,6 +1524,42 @@ export function ConnectorConfigDrawer({
               </div>
             )}
           </div>
+        )}
+
+        {entry?.kind === "obsidian-cli" && (
+          <div className={styles.cliInstallHint}>
+            <a
+              href="https://obsidian.md/zh/cli"
+              target="_blank"
+              rel="noreferrer"
+            >
+              {t(
+                "connectors.obsidianCliGuide",
+                "Obsidian-cli官方安装指引：https://obsidian.md/zh/cli",
+              )}
+            </a>
+          </div>
+        )}
+
+        {open && entry.kind === "agently-cli" && instance && (
+          <AgentlyAuth
+            key={instance.instance_id}
+            instanceId={instance.instance_id}
+            installed={cliInfo?.installed === true}
+            onChanged={() => {
+              void connectorsApi
+                .getInstance(instance.instance_id)
+                .then((detail) =>
+                  setInstanceDetail((current) =>
+                    current?.instance_id === detail.instance_id
+                      ? detail
+                      : current,
+                  ),
+                )
+                .catch(() => undefined);
+              onSaved();
+            }}
+          />
         )}
 
         <Form
@@ -2000,7 +2057,7 @@ export function ConnectorConfigDrawer({
                 <Select
                   options={MAIL_PROVIDERS.map((item) => ({
                     value: item.id,
-                    label: item.label,
+                    label: t(`connectors.mailProviders.${item.id}`),
                   }))}
                 />
               </Form.Item>
@@ -2412,7 +2469,10 @@ export default function ConnectorsPage() {
         entry={drawerEntry}
         instance={drawerInstance}
         onClose={handleCloseDrawer}
-        onSaved={() => void handleSaved()}
+        onSaved={(created) => {
+          if (created) setDrawerInstance(created);
+          void handleSaved();
+        }}
       />
     </PageShell.Tabbed>
   );

@@ -96,6 +96,30 @@ describe("history token usage", () => {
     expect(messages[3]?.speakerAgentId).toBe("host");
   });
 
+  it("rewrites peer team speakers onto local Bridge shadow ids", () => {
+    const room = "bridge:cid:host";
+    const messages = convertHistoryMessages(
+      [
+        { role: "user", content: "ask the doctor", id: "u1" },
+        {
+          role: "assistant",
+          content: "please rest",
+          id: "m1",
+          agent_id: "doctor",
+        },
+        {
+          role: "assistant",
+          content: "wrap",
+          id: "w1",
+          agent_id: "host",
+        },
+      ],
+      room,
+    );
+    expect(messages[1]?.speakerAgentId).toBe("bridge:cid:doctor");
+    expect(messages[2]?.speakerAgentId).toBe("bridge:cid:host");
+  });
+
   it("maps stamped edited_files onto history bubbles for the edit card", () => {
     const messages = convertHistoryMessages([
       { role: "user", content: "write a plan", id: "u1" },
@@ -132,5 +156,30 @@ describe("history token usage", () => {
       code: "TOKEN_QUOTA_EXCEEDED",
       source: "history",
     });
+  });
+
+  it("promotes an unanswered ask_user_question tool call into a pending card", () => {
+    const messages = convertHistoryMessages([
+      { role: "user", content: "help me choose", id: "u1" },
+      {
+        role: "assistant",
+        id: "a1",
+        content: [
+          {
+            type: "tool_use",
+            name: "ask_user_question",
+            id: "call-1",
+            input: {
+              questions: [{ question: "Which database?", header: "Storage" }],
+            },
+          },
+        ],
+      },
+    ]);
+    expect(messages[1]?.hitlData?.status).toBe("pending");
+    expect(messages[1]?.hitlData?.action_requests?.[0]?.name).toBe(
+      "ask_user_question",
+    );
+    expect(messages[1]?.status).toBe("done");
   });
 });

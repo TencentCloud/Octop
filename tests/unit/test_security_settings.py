@@ -6,7 +6,7 @@ from unittest.mock import MagicMock
 
 from octop_harness.security.models import SecurityPolicy
 
-from octop.infra.agents.security import SecuritySettingsStore
+from octop.infra.agents.security import SecuritySettingsStore, tool_execution_may_pause
 
 
 def test_load_defaults_when_missing() -> None:
@@ -31,3 +31,20 @@ def test_save_round_trip() -> None:
     key, raw = repo.set.call_args[0]
     assert key == "security_policy"
     assert '"enabled": false' in raw or '"enabled": false' in raw.replace(" ", "")
+
+
+def test_tool_execution_may_pause() -> None:
+    assert tool_execution_may_pause(SecurityPolicy.defaults()) is False
+    assert tool_execution_may_pause(SecurityPolicy.from_dict({"hitl": {"enabled": True}})) is True
+    assert (
+        tool_execution_may_pause(
+            SecurityPolicy.from_dict({"tool_guard": {"enabled": True, "mode": "require_approval"}})
+        )
+        is True
+    )
+    assert (
+        tool_execution_may_pause(
+            SecurityPolicy.from_dict({"tool_guard": {"enabled": False, "mode": "require_approval"}})
+        )
+        is False
+    )

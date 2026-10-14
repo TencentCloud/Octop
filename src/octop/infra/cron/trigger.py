@@ -16,6 +16,13 @@ _NUMERIC_DAY_OF_WEEK = re.compile(r"(?P<first>\*|\d+)(?:-(?P<last>\d+))?(?:/(?P<
 _UNIX_WEEKDAYS = ("sun", "mon", "tue", "wed", "thu", "fri", "sat", "sun")
 
 
+class AgentlyMailTrigger:
+    """An external event source, never scheduled on the wall clock."""
+
+    def __init__(self, instance_id: str) -> None:
+        self.instance_id = instance_id
+
+
 def _unix_day_of_week(expression: str) -> str:
     """Translate numeric Unix weekdays to unambiguous names for APScheduler 3."""
     translated: list[str] = []
@@ -59,8 +66,8 @@ def _cron_trigger_from_unix_crontab(expression: str, *, timezone: str | None = N
     return CronTrigger.from_crontab(" ".join(fields), timezone=timezone)
 
 
-def build_trigger(spec: str, *, timezone: str | None = None) -> BaseTrigger:
-    """Parse 'cron:<expr>' / 'interval:<seconds>' / 'date:<ISO>'.
+def build_trigger(spec: str, *, timezone: str | None = None) -> BaseTrigger | AgentlyMailTrigger:
+    """Parse time schedules or 'agently:<connector instance id>'.
 
     ``timezone`` carries the configured server timezone (``config.default_timezone``) into
     wall-clock specs (``cron:`` and naive ``date:`` ISO times). APScheduler only injects the
@@ -75,6 +82,10 @@ def build_trigger(spec: str, *, timezone: str | None = None) -> BaseTrigger:
     if not value:
         raise OctopError(ErrorCode.CRON_TRIGGER_INVALID, f"trigger value empty: {spec!r}")
     try:
+        if kind == "agently":
+            if not re.fullmatch(r"[A-Za-z0-9_-]{1,128}", value):
+                raise ValueError("invalid Agent Mail connector instance id")
+            return AgentlyMailTrigger(value)
         if kind == "interval":
             seconds = int(value)
             # A non-positive interval is a hot loop: the computed fire time stays

@@ -40,13 +40,29 @@ Octop-<plat>/
 5. Set `PYTHONNOUSERSITE=1` and `OCTOP_GREEN_PACKAGES=<extract>/packages`.
    **Do not set `PYTHONPATH`.**
 
-6. Spawn:
+6. Spawn `launch.py run` **without** `--host` or `--port`. Those flags are
+   written back to `config.json`, so a hardcoded `127.0.0.1` undoes the user's
+   `bind_host` on every start. Pass them only when the user asked to change
+   the saved listen address. If `GET /api/health` on the preferred port is
+   already Octop (`ok`, `users_loaded`, and `agents_running`), do not spawn;
+   load that URL. Also check `OCTOP_HOME/desktop-port` when the preferred port
+   is not Octop: that file is the port a previous desktop start actually bound
+   after a conflict, and a live health check there means attach instead of
+   starting a second server. If the port is taken by something else, set
+   `OCTOP_PORT` to the next free port, then write that port to `desktop-port`.
+   The override applies to this process only and is not saved to `config.json`.
+   Delete `desktop-port` when the process you started exits. A listen failure
+   other than "address already in use" is reported immediately — do not scan
+   further ports.
 
-   - macOS / Linux: `<extract>/runtime/bin/python3 <extract>/launch.py run --host 127.0.0.1 --port <port>`
-   - Windows: `<extract>/runtime/python.exe <extract>/launch.py run --host 127.0.0.1 --port <port>`
+   - macOS / Linux: `<extract>/runtime/bin/python3 <extract>/launch.py run`
+   - Windows: `<extract>/runtime/python.exe <extract>/launch.py run`
 
-7. Poll `http://127.0.0.1:<port>/api/health` until ready, then load the
-   Dashboard (`http://127.0.0.1:<port>/`).
+7. Read `bind_host` and `port` from `OCTOP_HOME/config.json` (defaults
+   `127.0.0.1` and `8088` when the file or keys are absent; `OCTOP_BIND_HOST`
+   / `OCTOP_PORT` override the file for this process and are not saved).
+   When `bind_host` is `0.0.0.0` or `::`, poll and load
+   `http://127.0.0.1:<port>/`. Otherwise use the configured host.
 8. First run uses the **normal Octop setup wizard** (create admin). The
    green zip does not skip setup or mint loopback sessions.
 9. On quit, kill the process **tree** (Windows: taskkill `/T`; POSIX: process group).

@@ -5,10 +5,10 @@ from __future__ import annotations
 import asyncio
 import base64
 from dataclasses import asdict
-from typing import Any
+from typing import Any, Literal
 
 from fastapi import APIRouter, Depends, Request, status
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from octop.api.deps import get_server, require_permission
 from octop.infra.agents.experts.skillhub_market import (
@@ -56,6 +56,10 @@ class UpdateSkillPackageBody(BaseModel):
     description: str | None = None
     icon_name: str | None = None
     icon_url: str | None = None
+    copy_policy: Literal["snapshot", "lock", "deny"] | None = Field(
+        default=None,
+        description="Who may copy this package's skills into a workspace (#770).",
+    )
 
 
 class FromSkillHubBody(BaseModel):
@@ -261,6 +265,7 @@ async def list_skill_packages(
             **_row_public_dict(row),
             **_creator_fields(server, row.created_by),
             "can_write": store.can_mutate(row, user),
+            "can_copy": store.can_copy(row, user),
         }
         for row in store.repo.list_all()
         if not writable_only or store.can_mutate(row, user)
@@ -358,7 +363,10 @@ async def create_from_skillhub(
         )
     except (SkillHubMarketError, SkillHubDownloadError) as exc:
         raise _map_skillhub_error(exc) from exc
-    return _package_payload_with_creator(server, store, result.row)
+    payload = _package_payload_with_creator(server, store, result.row)
+    if result.skipped_slugs:
+        payload["skipped_skills"] = list(result.skipped_slugs)
+    return payload
 
 
 @router.get("/{package_id}", summary="Get a global skill package and its skills")
@@ -378,6 +386,7 @@ async def get_skill_package(
             locale=resolve_request_locale(request),
         ),
         "can_write": store.can_mutate(row, user),
+        "can_copy": store.can_copy(row, user),
     }
 
 
@@ -403,6 +412,7 @@ async def update_skill_package(
             description=description,
             icon_name=icon_name,
             icon_url=icon_url,
+            copy_policy=body.copy_policy,
         )
     except Exception as exc:
         if name is not None and is_skill_package_name_conflict(exc):

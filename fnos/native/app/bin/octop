@@ -4,8 +4,15 @@
 # 运行在飞牛主机上，依赖飞牛应用商店提供的 Python 3.12（不内置 Python 运行时）。
 # 包内仅含 Octop 核心 whl + 核心依赖 site-packages；浏览器/专家/技能由用户按需安装。
 # 首次启动用向导配置的 .env 初始化管理员账号，然后启动服务。
+# --prepare：只做 Python / 账号初始化，不监听端口（安装回调与 start 失败提示用）。
 #
 set -euo pipefail
+
+PREPARE_ONLY=0
+if [ "${1:-}" = "--prepare" ]; then
+    PREPARE_ONLY=1
+    shift
+fi
 
 # 共享函数库（find_python312 / fix_ownership_and_perms / free_octop_ports）
 # 打包时由 scripts/build-fpk.sh 注入；仓库内运行无此文件时跳过（函数缺失时再报错）。
@@ -39,8 +46,19 @@ export HOME="$DATA_DIR"
 export OCTOP_HOME="${DATA_DIR}/.octop"
 export OCTOP_DATA_DIR="$DATA_DIR"
 
-# 查找飞牛系统上的 Python 3.12（优先应用商店安装路径，再 PATH）
+# 查找飞牛系统上的 Python 3.12（优先应用商店安装路径，再 PATH）。
+# 若应用中心已装 Node.js，一并加入 PATH，供专家 shell / npx 使用。
 
+if type octop_assert_native_arch >/dev/null 2>&1; then
+    if ! REASON="$(octop_assert_native_arch)"; then
+        echo "[octop-native] $REASON" >&2
+        exit 1
+    fi
+fi
+
+if type octop_prepend_fnos_node_path >/dev/null 2>&1; then
+    octop_prepend_fnos_node_path
+fi
 
 PY="$(find_python312)" || {
     echo "[octop-native] 错误：未找到 Python 3.12。" >&2
@@ -120,6 +138,24 @@ if [ ! -f "$OCTOP_HOME/octop.db" ]; then
         export OCTOP_DEFAULT_PASSWORD="$INIT_PW"
     fi
     octop_write_login_file "$DATA_DIR" "${OCTOP_ADMIN_USERNAME:-admin}" "$INIT_PW" "${OCTOP_PORT:-8089}"
+    if [ -n "${OCTOP_ADMIN_EMAIL:-}" ]; then
+        octop_cmd user set-email "${OCTOP_ADMIN_USERNAME:-admin}" "$OCTOP_ADMIN_EMAIL" || true
+    fi
+    : > "${OCTOP_HOME}/.fnos-wizard-password-applied"
+    rm -f "${OCTOP_HOME}/.fnos-apply-wizard-password"
+elif [ -f "${OCTOP_HOME}/.fnos-apply-wizard-password" ] && [ -n "${OCTOP_DEFAULT_PASSWORD:-}" ]; then
+    echo "[octop-native] 应用待处理的向导密码 ..."
+    octop_cmd user passwd "${OCTOP_ADMIN_USERNAME:-admin}" --password "$OCTOP_DEFAULT_PASSWORD" || true
+    if [ -n "${OCTOP_ADMIN_EMAIL:-}" ]; then
+        octop_cmd user set-email "${OCTOP_ADMIN_USERNAME:-admin}" "$OCTOP_ADMIN_EMAIL" || true
+    fi
+    : > "${OCTOP_HOME}/.fnos-wizard-password-applied"
+    rm -f "${OCTOP_HOME}/.fnos-apply-wizard-password"
+fi
+
+if [ "$PREPARE_ONLY" = 1 ]; then
+    echo "[octop-native] 初始化完成"
+    exit 0
 fi
 
 echo "[octop-native] 正在启动 Octop，$OCTOP_BIND_HOST:$OCTOP_PORT ..."

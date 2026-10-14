@@ -11,6 +11,7 @@ import { getApiUrl } from "../../../api/config";
 import { getAuthToken } from "../../../api/request";
 import type { TokenUsage } from "../../../api/types";
 import { buildDashboardChatWsUrl } from "../../../api/modules/wsChat";
+import { rewritePeerSpeakerId } from "../../../utils/remoteExpert";
 import { generateId } from "../../../utils/messageParser";
 import type {
   ChatAttachment,
@@ -37,6 +38,15 @@ import {
 } from "../utils/messageGrouping";
 import { turnStatusAction } from "./turnStatusGate";
 import { mergePatchedToolOutput } from "../../../plugins/toolRenderers/parseToolOutput";
+import {
+  isAskHitl,
+  normalizeHitlRequest,
+  parseActionArgs,
+} from "../../../api/types/hitl";
+import {
+  isPausedAskTool,
+  promoteAskUserToolMessage,
+} from "../utils/pendingHitl";
 import { frameBelongsToThread } from "./frameThread";
 import {
   MAX_STREAM_RESUME_ATTEMPTS,
@@ -255,6 +265,7 @@ const EMPTY_SNAPSHOT: SessionSnapshot = Object.freeze({
   historyHydrated: false,
   pendingPlanPath: null,
   liveSpeakers: [] as string[],
+  activeTurnId: null,
 });
 
 const sessionStates = new Map<string, SessionStreamState>();
@@ -387,6 +398,7 @@ function buildSnapshot(state: SessionStreamState): SessionSnapshot {
     historyHydrated: state.historyHydrated,
     pendingPlanPath: state.pendingPlanPath ?? null,
     liveSpeakers: [...state.liveSpeakers].sort(),
+    activeTurnId: state.activeTurnId ?? null,
   };
 }
 
@@ -429,7 +441,11 @@ function pruneIdleLiveSpeakers(state: SessionStreamState): void {
   for (const message of state.messages) {
     if (message.role !== "assistant") continue;
     const key = speakerLiveKey(message.speakerAgentId);
-    const inFlightTool = Boolean(message.toolData && !message.toolData.output);
+    const inFlightTool = Boolean(
+      message.toolData &&
+        message.toolData.output === undefined &&
+        !isPausedAskTool(message),
+    );
     if (message.status !== "streaming" && !inFlightTool) continue;
     busy.add(key);
     if (!key && host) busy.add(host);
@@ -465,9 +481,12 @@ function getOrCreate(sessionId: string): SessionStreamState {
       roomAgentId: undefined,
       isTeamRoom: false,
       liveSpeakers: new Set(),
+      activeTurnId: null,
+      pendingSteers: [],
     };
     sessionStates.set(sessionId, state);
   }
+  if (!state.pendingSteers) state.pendingSteers = [];
   return state;
 }
 
@@ -495,6 +514,8 @@ function clearStreamingFlags(state: SessionStreamState): void {
   // host turn unlocks the composer; process panels key off liveSpeakers.
   state.isStreaming = false;
   state.thinkingStartedAt = null;
+  state.activeTurnId = null;
+  state.pendingSteers = [];
 }
 
 // ── Live WebSocket bookkeeping (used by cancel / attach / send) ────────────
@@ -865,9 +886,11 @@ export function cancelStream(sessionId: string) {
   const hadAbort = Boolean(state.abortController);
   const hadStreaming = state.isStreaming;
   const hadStreamingMsgs = state.messages.some((m) => m.status === "streaming");
+  const hadLive = state.liveSpeakers.size > 0;
   state.abortController?.abort();
   state.abortController = null;
   clearStreamingFlags(state);
+  clearAllLiveSpeakers(state);
   clearStreamActivity(sessionId);
   pendingResumeBySession.delete(sessionId);
   state.runUsage = null;
@@ -877,7 +900,7 @@ export function cancelStream(sessionId: string) {
       m.status === "streaming" ? { ...m, status: "done" as const } : m,
     );
   }
-  if (hadAbort || hadStreaming || hadStreamingMsgs) {
+  if (hadAbort || hadStreaming || hadStreamingMsgs || hadLive) {
     notify(state);
   }
 }
@@ -1079,8 +1102,9 @@ function applyUsageChunk(state: SessionStreamState, chunk: UsageChunk): void {
 
 function chunkSpeakerId(
   chunk: { agent_id?: unknown } | object,
+  hostAgentId?: string,
 ): string | undefined {
-  return streamSpeakerId(chunk);
+  return rewritePeerSpeakerId(hostAgentId, streamSpeakerId(chunk));
 }
 
 function hasStreamingMessages(state: SessionStreamState): boolean {
@@ -1093,10 +1117,16 @@ function isHostTurnTerminal(
     agent_id?: unknown;
   },
   hostAgentId?: string,
+  activeTurnId?: string | null,
 ): boolean {
+  // Logical mid-turn steer turn ends only on turn.ended (issue #1300).
+  // Intermediate harness ``done`` must NOT close the live socket or the
+  // Dashboard misses drain continuation + falsely flushes the local queue.
+  if (data.type === "turn.ended") return true;
   if (data.type === "error" || data.type === "hitl_required") return true;
   if (data.type !== "done") return false;
-  const speaker = chunkSpeakerId(data);
+  if (activeTurnId) return false;
+  const speaker = chunkSpeakerId(data, hostAgentId);
   if (!speaker) return true;
   const host = (hostAgentId || "").trim();
   // Room id not remembered yet — treat a stamped done as the 1:1 host.
@@ -1156,7 +1186,7 @@ function handleHarnessChunk(
   chunk: HarnessChunk,
   sessionId?: string,
 ): void {
-  const speaker = chunkSpeakerId(chunk);
+  const speaker = chunkSpeakerId(chunk, sessionHostAgentId(state, sessionId));
   if (sessionId && (state.isStreaming || speaker)) {
     touchStreamActivity(sessionId);
   }
@@ -1213,17 +1243,23 @@ function handleHarnessChunk(
         sessionHostAgentId(state, sessionId),
       );
       clearSpeakerLive(state, speaker);
-      // Host done always frees the composer. Member bubbles may still stream.
+      // Host done seals the segment. When a logical steer turn is still
+      // active, keep isStreaming / activeTurnId so 排队 stays available and
+      // local follow-up flush does not race the server continuation.
       if (!speaker || (!hasStreamingMessages(state) && state.isStreaming)) {
-        clearStreamingFlags(state);
-        clearStreamActivity(sessionId ?? "");
+        if (state.activeTurnId) {
+          if (sessionId) touchStreamActivity(sessionId);
+        } else {
+          clearStreamingFlags(state);
+          clearStreamActivity(sessionId ?? "");
+        }
       }
       break;
     case "error":
       appendErrorBubble(state, chunk.message, chunk.error_code);
       break;
     case "hitl_required":
-      handleHitlRequired(state, chunk.request);
+      handleHitlRequired(state, chunk.request, speaker);
       break;
     case "slash_action":
       emitSlashAction({
@@ -1594,6 +1630,7 @@ function appendStreamingReasoning(
     state.messages,
     speaker,
     sessionHostAgentId(state),
+    continueTokenOpts(state),
   );
   const last = lastIdx >= 0 ? state.messages[lastIdx] : null;
   if (last && last.role === "assistant" && !last.toolData) {
@@ -1725,7 +1762,7 @@ function upsertToolCall(
           : m.toolData?.callId ?? callId;
       state.messages = [
         ...state.messages.slice(0, idx),
-        {
+        promoteAskUserToolMessage({
           ...m,
           speakerAgentId: speaker ?? m.speakerAgentId,
           toolData: {
@@ -1735,7 +1772,7 @@ function upsertToolCall(
             callId: nextCallId,
             arguments: nextArgs,
           },
-        },
+        }),
         ...state.messages.slice(idx + 1),
       ];
       registerToolCallKeys(state, existingMsgId, chunk, speaker);
@@ -1747,7 +1784,7 @@ function upsertToolCall(
   registerToolCallKeys(state, msgId, chunk, speaker);
   state.messages = [
     ...state.messages,
-    {
+    promoteAskUserToolMessage({
       id: msgId,
       role: "assistant",
       content: "",
@@ -1760,7 +1797,7 @@ function upsertToolCall(
       status: "streaming",
       timestamp: Date.now(),
       speakerAgentId: speaker,
-    },
+    }),
   ];
   emitToolEvent({
     kind: "toolStart",
@@ -2069,8 +2106,9 @@ function finalizeStreamingMessages(
 }
 
 function parseHitlRequest(raw: Record<string, unknown>) {
-  const requests = Array.isArray(raw.action_requests)
-    ? raw.action_requests
+  const normalized = normalizeHitlRequest(raw);
+  const requests = Array.isArray(normalized.action_requests)
+    ? normalized.action_requests
     : [];
   const action_requests = requests
     .filter((item) => item && typeof item === "object")
@@ -2078,16 +2116,13 @@ function parseHitlRequest(raw: Record<string, unknown>) {
       const row = item as Record<string, unknown>;
       return {
         name: typeof row.name === "string" ? row.name : "tool",
-        args:
-          row.args && typeof row.args === "object"
-            ? (row.args as Record<string, unknown>)
-            : {},
+        args: parseActionArgs(row.args),
         description:
           typeof row.description === "string" ? row.description : undefined,
       };
     });
-  const review_configs = Array.isArray(raw.review_configs)
-    ? raw.review_configs
+  const review_configs = Array.isArray(normalized.review_configs)
+    ? normalized.review_configs
         .filter((item) => item && typeof item === "object")
         .map(
           (item) =>
@@ -2097,13 +2132,25 @@ function parseHitlRequest(raw: Record<string, unknown>) {
             },
         )
     : undefined;
-  return { action_requests, review_configs, status: "pending" as const };
+  const pendingId =
+    typeof normalized.pending_id === "string"
+      ? normalized.pending_id
+      : typeof raw.pending_id === "string"
+      ? raw.pending_id
+      : undefined;
+  return {
+    action_requests,
+    review_configs,
+    status: "pending" as const,
+    ...(pendingId ? { pending_id: pendingId } : {}),
+  };
 }
 
 function resolveHitlPending(
   state: SessionStreamState,
   status: "approved" | "rejected",
   policy?: { mode: string; tools?: string[] },
+  pendingId?: string,
 ): void {
   const resolution =
     status === "rejected"
@@ -2113,29 +2160,105 @@ function resolveHitlPending(
       : policy?.mode === "allow_tools"
       ? "allow_tool"
       : "approve";
+  const targetId = pendingId?.trim();
   state.messages = state.messages.map((m) => {
     const hitl = m.hitlData;
     if (!hitl || (hitl.status ?? "pending") !== "pending") return m;
+    if (targetId && hitl.pending_id !== targetId) return m;
     return { ...m, hitlData: { ...hitl, status, resolution } };
   });
+}
+
+function pendingCardSpeaker(
+  state: SessionStreamState,
+  pendingId?: string,
+): string | undefined {
+  const targetId = pendingId?.trim();
+  for (let index = state.messages.length - 1; index >= 0; index -= 1) {
+    const message = state.messages[index];
+    const hitl = message?.hitlData;
+    if (!hitl || (hitl.status ?? "pending") !== "pending") continue;
+    if (targetId && hitl.pending_id !== targetId) continue;
+    const speaker = message?.speakerAgentId?.trim();
+    if (speaker) return speaker;
+  }
+  return undefined;
 }
 
 function handleHitlRequired(
   state: SessionStreamState,
   request: Record<string, unknown>,
+  speaker?: string,
 ): void {
-  finalizeStreamingMessages(state);
-  clearStreamingFlags(state);
-  clearAllLiveSpeakers(state);
+  const memberPause = Boolean(state.isTeamRoom) && Boolean(speaker?.trim());
+  if (memberPause) {
+    finalizeStreamingMessages(state, speaker);
+    clearSpeakerLive(state, speaker);
+    if (state.liveSpeakers.size === 0) clearStreamingFlags(state);
+  } else {
+    finalizeStreamingMessages(state);
+    clearStreamingFlags(state);
+    clearAllLiveSpeakers(state);
+  }
+  const hitlData = parseHitlRequest(request);
+  const askPause = isAskHitl(hitlData.action_requests);
+  const existingIdx = [...state.messages]
+    .map((message, index) => ({ message, index }))
+    .reverse()
+    .find(({ message }) => {
+      const hitl = message.hitlData;
+      if (hitlData.pending_id && hitl?.pending_id === hitlData.pending_id) {
+        return true;
+      }
+      if (
+        speaker &&
+        message.speakerAgentId &&
+        message.speakerAgentId !== speaker
+      ) {
+        return false;
+      }
+      if (askPause) {
+        if (isPausedAskTool(message)) return true;
+        return (
+          Boolean(hitl) &&
+          (hitl?.status ?? "pending") === "pending" &&
+          isAskHitl(hitl?.action_requests) &&
+          !hitl?.pending_id
+        );
+      }
+      return (
+        Boolean(hitl) &&
+        (hitl?.status ?? "pending") === "pending" &&
+        !isAskHitl(hitl?.action_requests)
+      );
+    })?.index;
+  if (existingIdx !== undefined) {
+    const current = state.messages[existingIdx];
+    state.messages = [
+      ...state.messages.slice(0, existingIdx),
+      {
+        ...current,
+        hitlData: {
+          ...current.hitlData,
+          ...hitlData,
+        },
+        speakerAgentId: speaker ?? current.speakerAgentId,
+        status: "done",
+      },
+      ...state.messages.slice(existingIdx + 1),
+    ];
+    return;
+  }
   state.messages = [
     ...state.messages,
     {
       id: generateId(),
       role: "assistant",
       content: "",
-      hitlData: parseHitlRequest(request),
+      hitlData,
       status: "done",
       timestamp: Date.now(),
+      ...(speaker ? { speakerAgentId: speaker } : {}),
     },
   ];
 }
@@ -2328,9 +2451,34 @@ export async function attachThread(
         }
 
         if (data.type === "pong") return;
+        if (applySteerProtocolFrame(state, data, sessionId)) {
+          notify(state);
+          if (
+            isHostTurnTerminal(
+              data,
+              sessionHostAgentId(state, sessionId),
+              state.activeTurnId,
+            )
+          ) {
+            if (state.isTeamRoom) {
+              live.listenOnly = true;
+              finish("host");
+            } else {
+              finish("all");
+              closeLiveSocket(sessionId, { intentional: true });
+            }
+          }
+          return;
+        }
 
         handleHarnessChunk(state, data as unknown as HarnessChunk, sessionId);
-        if (isHostTurnTerminal(data, sessionHostAgentId(state, sessionId))) {
+        if (
+          isHostTurnTerminal(
+            data,
+            sessionHostAgentId(state, sessionId),
+            state.activeTurnId,
+          )
+        ) {
           if (state.isTeamRoom) {
             live.listenOnly = true;
             finish("host");
@@ -2535,8 +2683,41 @@ async function sendTurnWebSocket(
         if (!data || typeof data !== "object") return;
         if (!frameBelongsToThread(data, live.threadId)) return;
         if ((data as { type?: string }).type === "turn_status") return;
+        if (
+          applySteerProtocolFrame(
+            state,
+            data as unknown as Record<string, unknown>,
+            sessionId,
+          )
+        ) {
+          notify(state);
+          if (
+            isHostTurnTerminal(
+              data,
+              sessionHostAgentId(state, sessionId),
+              state.activeTurnId,
+            )
+          ) {
+            controller.signal.removeEventListener("abort", onAbort);
+            if (state.isTeamRoom) {
+              live.listenOnly = true;
+              finish("host");
+            } else {
+              finish("all");
+              closeLiveSocket(sessionId, { intentional: true });
+            }
+            settle(true);
+          }
+          return;
+        }
         handleHarnessChunk(state, data, sessionId);
-        if (isHostTurnTerminal(data, sessionHostAgentId(state, sessionId))) {
+        if (
+          isHostTurnTerminal(
+            data,
+            sessionHostAgentId(state, sessionId),
+            state.activeTurnId,
+          )
+        ) {
           controller.signal.removeEventListener("abort", onAbort);
           if (state.isTeamRoom) {
             live.listenOnly = true;
@@ -2770,7 +2951,7 @@ async function consumeSseResponse(
   sessionId: string,
   res: Response,
   controller: AbortController,
-  finish: () => void,
+  finish: (skipRefresh?: boolean) => void,
 ): Promise<void> {
   const reader = res.body?.getReader();
   if (!reader) {
@@ -2795,7 +2976,7 @@ async function consumeSseResponse(
       handleHarnessChunk(state, chunk, sessionId);
       if (chunk.type === "done" || chunk.type === "error") {
         controller.abort();
-        finish();
+        finish(chunk.type === "done" && chunk.team_member_continuing === true);
         return;
       }
     }
@@ -2817,17 +2998,37 @@ export async function resumeHitl(
   onStreamEnd?: () => void,
   dismissed = false,
   hitlPolicy?: { mode: string; tools?: string[] },
+  pendingId?: string,
 ): Promise<void> {
   const state = getOrCreate(sessionId);
-  state.abortController?.abort();
+  const live = liveSockets.get(sessionId);
+  // Team member answers arrive on the room listen socket. Aborting it sends
+  // cancel and drops the continuation that follows this approval.
+  const keepRoomListen =
+    Boolean(state.isTeamRoom) &&
+    Boolean(live?.listenOnly) &&
+    live?.ws.readyState === WebSocket.OPEN;
+  if (!keepRoomListen) {
+    state.abortController?.abort();
+  }
   const hitlStatus =
     dismissed || decisions.some((d) => d.type === "reject")
       ? "rejected"
       : "approved";
-  resolveHitlPending(state, hitlStatus, hitlPolicy);
-  beginStream(state, sessionId);
-  notify(state);
-  emitStreamEvent({ kind: "streamStart", sessionId });
+  const continuedSpeaker = keepRoomListen
+    ? pendingCardSpeaker(state, pendingId)
+    : undefined;
+  resolveHitlPending(state, hitlStatus, hitlPolicy, pendingId);
+  if (keepRoomListen) {
+    // The member is still in this turn. Keep their bubble and the
+    // "responding" indicator until their own done frame arrives.
+    if (continuedSpeaker) markSpeakerLive(state, continuedSpeaker);
+    notify(state);
+  } else {
+    beginStream(state, sessionId);
+    notify(state);
+    emitStreamEvent({ kind: "streamStart", sessionId });
+  }
 
   const controller = new AbortController();
   state.abortController = controller;
@@ -2842,20 +3043,29 @@ export async function resumeHitl(
   }
 
   let finished = false;
-  const finish = () => {
+  const finish = (skipRefresh = false) => {
     if (finished) return;
     finished = true;
+    pendingResumeBySession.delete(sessionId);
+    if (state.abortController === controller) {
+      state.abortController = null;
+    }
+    if (skipRefresh && keepRoomListen) {
+      if (continuedSpeaker) markSpeakerLive(state, continuedSpeaker);
+      notify(state);
+      return;
+    }
     clearStreamingFlags(state);
     clearStreamActivity(sessionId);
-    pendingResumeBySession.delete(sessionId);
-    state.abortController = null;
     state.streamMsg = "";
     state.streamId = "";
     state.streamBlockType = "";
     sealInFlightAssistantMessages(state);
     notify(state);
     emitStreamEvent({ kind: "streamEnd", sessionId });
-    onStreamEnd?.();
+    // History reload now would replace the live member bubbles with a room
+    // transcript that does not yet contain this answer.
+    if (!skipRefresh) onStreamEnd?.();
   };
 
   try {
@@ -2865,6 +3075,7 @@ export async function resumeHitl(
       body: JSON.stringify({
         thread_id: threadId,
         decisions,
+        ...(pendingId ? { pending_id: pendingId } : {}),
         ...(hitlPolicy ? { hitl_policy: hitlPolicy } : {}),
       }),
       signal: controller.signal,
@@ -2880,4 +3091,257 @@ export async function resumeHitl(
     appendErrorBubble(state, (err as Error).message || "HITL resume error");
     finish();
   }
+}
+
+function optimisticSteerMessageId(clientPendingId: string): string {
+  return `steer:${clientPendingId}`;
+}
+
+/** Commit shows the user row in the transcript immediately. */
+function appendOptimisticSteerMessage(
+  state: SessionStreamState,
+  clientPendingId: string,
+  text: string,
+): void {
+  const id = optimisticSteerMessageId(clientPendingId);
+  if (state.messages.some((m) => m.id === id)) return;
+  state.messages = [
+    ...state.messages,
+    { id, role: "user", content: text, status: "done", timestamp: Date.now() },
+  ];
+}
+
+/** Settle optimistic rows when their server fact arrives (drain/reject/end). */
+function dropOptimisticSteerMessages(
+  state: SessionStreamState,
+  clientPendingIds: string[],
+): void {
+  const next = state.messages.filter(
+    (m) => !clientPendingIds.some((c) => m.id === optimisticSteerMessageId(c)),
+  );
+  if (next.length !== state.messages.length) state.messages = next;
+}
+
+function applySteerProtocolFrame(
+  state: SessionStreamState,
+  data: Record<string, unknown>,
+  sessionId?: string,
+): boolean {
+  const type = String(data.type || "");
+  if (type === "turn.started" || type === "turn.resumed") {
+    const turnId = String(data.turn_id || "").trim();
+    if (turnId) state.activeTurnId = turnId;
+    // A NEW turn means an idle-time steer commit became a normal turn —
+    // resolve optimistic rows (the queue settles on started_turn).
+    if (type === "turn.started") {
+      dropOptimisticSteerMessages(
+        state,
+        state.pendingSteers.map((s) => s.clientPendingId),
+      );
+      state.pendingSteers = [];
+    }
+    // Continuation after drain: keep the composer in busy/steer mode.
+    if (type === "turn.resumed" && !state.isStreaming && sessionId) {
+      beginStream(state, sessionId);
+    }
+    return true;
+  }
+  if (type === "turn.ended") {
+    state.activeTurnId = null;
+    if (data.hitl_paused === true) {
+      // Steers are parked server-side across the approval
+      // pause and drain after resume — keep chips and optimistic rows.
+      return true;
+    }
+    dropOptimisticSteerMessages(
+      state,
+      state.pendingSteers.map((s) => s.clientPendingId),
+    );
+    state.pendingSteers = [];
+    return true;
+  }
+  if (type === "steer.queue_snapshot") {
+    const turnId = data.turn_id;
+    state.activeTurnId =
+      typeof turnId === "string" && turnId.trim() ? turnId.trim() : null;
+    const items = Array.isArray(data.items) ? data.items : [];
+    // Snapshot is the server-authoritative queue: keep optimistic rows for
+    // items the server still knows, drop rows for the rest (settled or
+    // ghosts from a dead socket), and preserve client-only full text.
+    const snapshot = items
+      .map((raw) => {
+        if (!raw || typeof raw !== "object") return null;
+        const item = raw as Record<string, unknown>;
+        const clientPendingId = String(item.client_pending_id || "").trim();
+        const pendingId = String(item.pending_id || "").trim();
+        if (!clientPendingId || !pendingId) return null;
+        const existing = state.pendingSteers.find(
+          (s) => s.clientPendingId === clientPendingId,
+        );
+        return {
+          clientPendingId,
+          pendingId,
+          preview: String(item.preview || "").trim() || existing?.preview || "",
+          text: existing?.text,
+        };
+      })
+      .filter((x): x is NonNullable<typeof x> => x != null);
+    dropOptimisticSteerMessages(
+      state,
+      state.pendingSteers
+        .map((s) => s.clientPendingId)
+        .filter((cpid) => !snapshot.some((s) => s.clientPendingId === cpid)),
+    );
+    state.pendingSteers = snapshot;
+    return true;
+  }
+  if (type === "steer.queued") {
+    const clientPendingId = String(data.client_pending_id || "").trim();
+    const pendingId = String(data.pending_id || "").trim();
+    if (!clientPendingId || !pendingId) return true;
+    const preview = String(data.preview || "").trim();
+    const existingIdx = state.pendingSteers.findIndex(
+      (s) => s.pendingId === pendingId || s.clientPendingId === clientPendingId,
+    );
+    const existing = existingIdx >= 0 ? state.pendingSteers[existingIdx] : null;
+    const next = {
+      clientPendingId,
+      pendingId,
+      preview: preview || (existing?.preview ?? ""),
+      // Full text is client-only (frames carry previews); keep what we sent.
+      text: existing?.text,
+    };
+    if (existingIdx >= 0) {
+      state.pendingSteers = state.pendingSteers.map((s, i) =>
+        i === existingIdx ? next : s,
+      );
+    } else {
+      state.pendingSteers = [...state.pendingSteers, next];
+    }
+    return true;
+  }
+  if (type === "steer.drained" || type === "steer.discarded") {
+    // Drain swaps optimistic rows for the canonical server bubble (the
+    // user/meta.steer frame lands first and already did the swap; this is
+    // the safety net for reordered frames).
+    dropOptimisticSteerMessages(
+      state,
+      state.pendingSteers.map((s) => s.clientPendingId),
+    );
+    state.pendingSteers = [];
+    return true;
+  }
+  if (type === "steer.removed") {
+    const pendingId = String(data.pending_id || "").trim();
+    const removed = state.pendingSteers.find((s) => s.pendingId === pendingId);
+    if (removed) {
+      dropOptimisticSteerMessages(state, [removed.clientPendingId]);
+    }
+    state.pendingSteers = state.pendingSteers.filter(
+      (s) => s.pendingId !== pendingId,
+    );
+    return true;
+  }
+  if (type === "steer.rejected") {
+    const cpid = String(data.client_pending_id || "").trim();
+    if (cpid) {
+      // A rejected input leaves the transcript and the queue (the
+      // dashboard surfaces the reason via the steer.rejected frame).
+      dropOptimisticSteerMessages(state, [cpid]);
+      state.pendingSteers = state.pendingSteers.filter(
+        (s) => s.clientPendingId !== cpid,
+      );
+    }
+    return true;
+  }
+  if (type === "steer.ack") {
+    return true;
+  }
+  if (
+    type === "user" &&
+    (data.meta as { steer?: boolean } | undefined)?.steer
+  ) {
+    // Server-synthesized user bubble for drained steers (meta.steer). The
+    // drain is all-at-once, so settle every optimistic row here first —
+    // the canonical coalesced bubble replaces them.
+    dropOptimisticSteerMessages(
+      state,
+      state.pendingSteers.map((s) => s.clientPendingId),
+    );
+    const content = String(data.content || "");
+    const messageId = String(data.message_id || generateId());
+    if (content && !state.messages.some((m) => m.id === messageId)) {
+      state.messages = [
+        ...state.messages,
+        {
+          id: messageId,
+          role: "user",
+          content,
+          status: "done",
+          timestamp: Date.now(),
+        },
+      ];
+    }
+    return true;
+  }
+  return false;
+}
+
+/** Send a mid-turn steer on the live socket (issue #1300).
+ *
+ * ``delivery:"auto"`` semantics: the send always goes out and the
+ * SERVER decides (busy → steer queue, idle → normal new turn, stale
+ * expected_turn_id → structured reject). The client never gates on its own
+ * turn knowledge — a missing turnId just omits ``expected_turn_id`` and the
+ * busy path binds to the live turn.
+ */
+export function sendSteerWhileBusy(
+  sessionId: string,
+  text: string,
+  opts: { expectedTurnId?: string; clientPendingId?: string },
+): "ok" | "empty" | "no_socket" {
+  const trimmed = text.trim();
+  if (!trimmed) return "empty";
+  const live = liveSockets.get(sessionId);
+  if (!live || live.ws.readyState !== WebSocket.OPEN) return "no_socket";
+  const cpid = (opts.clientPendingId || generateId()).trim();
+  const turnId = (opts.expectedTurnId || "").trim();
+  try {
+    live.ws.send(
+      JSON.stringify({
+        type: "user_turn",
+        text: trimmed,
+        thread_id: live.threadId,
+        delivery: "auto",
+        ...(turnId ? { expected_turn_id: turnId } : {}),
+        client_pending_id: cpid,
+        messages: [{ role: "user", content: trimmed }],
+      }),
+    );
+  } catch {
+    return "no_socket";
+  }
+  // The committed input enters the visible conversation
+  // immediately (optimistic user row), settled by steer.queued / drained /
+  // rejected. The caller drops the chip on success; this entry tracks the
+  // optimistic row until its server fact arrives.
+  const state = getOrCreate(sessionId);
+  appendOptimisticSteerMessage(state, cpid, trimmed);
+  if (!state.pendingSteers.some((s) => s.clientPendingId === cpid)) {
+    state.pendingSteers = [
+      ...state.pendingSteers,
+      {
+        clientPendingId: cpid,
+        pendingId: cpid,
+        preview: trimmed.length > 200 ? `${trimmed.slice(0, 199)}…` : trimmed,
+        text: trimmed,
+      },
+    ];
+    notify(state);
+  }
+  return "ok";
+}
+
+export function getActiveTurnId(sessionId: string): string | null {
+  return getOrCreate(sessionId).activeTurnId ?? null;
 }

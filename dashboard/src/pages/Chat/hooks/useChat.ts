@@ -30,6 +30,9 @@ import {
   parseToolExecutionFeedback,
 } from "../../../utils/toolMediaBlocks";
 import { injectPendingHitlMessage } from "../../../utils/injectPendingHitlMessage";
+import { mergeHistoryWithLocalTail } from "../utils/mergeHistoryTail";
+import { promoteAskUserToolMessage } from "../utils/pendingHitl";
+import { rewritePeerSpeakerId } from "../../../utils/remoteExpert";
 import type {
   ChatAttachment,
   ChatMessage,
@@ -640,7 +643,7 @@ function convertCallEntries(entries: CallEntry[]): ChatMessage[] {
   }
   flushTurn();
 
-  return merged;
+  return merged.map(promoteAskUserToolMessage);
 }
 
 function toHistoryContentBlocks(content: unknown): unknown[] {
@@ -710,7 +713,15 @@ export function convertHistoryMessages(
   const converted = convertCallEntries(entries).filter(
     isDisplayableHistoryMessage,
   );
-  return agentId ? enrichAttachmentPreviewUrls(converted, agentId) : converted;
+  const rewritten = agentId
+    ? converted.map((message) => {
+        const speaker = rewritePeerSpeakerId(agentId, message.speakerAgentId);
+        return speaker && speaker !== message.speakerAgentId
+          ? { ...message, speakerAgentId: speaker }
+          : message;
+      })
+    : converted;
+  return agentId ? enrichAttachmentPreviewUrls(rewritten, agentId) : rewritten;
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────
@@ -841,6 +852,7 @@ export function useChat(
     historyHydrated,
     pendingPlanPath,
     liveSpeakers,
+    activeTurnId,
   } = useSyncExternalStore(subscribeStore, getStoreSnapshot);
 
   const [historyLoading, setHistoryLoading] = useState(false);
@@ -969,11 +981,28 @@ export function useChat(
           });
         }
         if (loadGenRef.current !== gen) return;
-        chatStore.setHistoryPage(key, loaded.messages, {
-          hasMore: loaded.hasMore,
-          nextOffset: loaded.nextOffset,
-          nextCursor: loaded.nextCursor,
-        });
+        // Re-read after the await. A send during this fetch appends a local
+        // turn the server page does not have yet; replacing the list drops
+        // that bubble while the websocket turn keeps running.
+        const current = chatStore.getSnapshot(key);
+        const loadedIds = new Set(loaded.messages.map((message) => message.id));
+        const firstOverlap = current.messages.findIndex((message) =>
+          loadedIds.has(message.id),
+        );
+        const keptOlder = firstOverlap > 0;
+        chatStore.setHistoryPage(
+          key,
+          mergeHistoryWithLocalTail(loaded.messages, current.messages),
+          {
+            hasMore: keptOlder ? current.historyHasMore : loaded.hasMore,
+            nextOffset: keptOlder
+              ? current.historyNextOffset
+              : loaded.nextOffset,
+            nextCursor: keptOlder
+              ? current.historyNextCursor
+              : loaded.nextCursor,
+          },
+        );
         setHistoryError(false);
         attachAfterHistory(key, targetThreadId);
       } catch {
@@ -1077,21 +1106,24 @@ export function useChat(
         // Stale after a concurrent loadHistory / newer refresh — drop apply only.
         if (loadGenRef.current !== gen) return;
 
-        // Keep older pages the user already scrolled in; replace the overlapping
-        // latest-page window with the server copy so truncated WS turns heal.
+        // Keep older pages and any local turn sent while this refresh was
+        // in flight. `snap` is from before the await and must not be the
+        // message source — a send during the fetch lives only on the store.
+        const current = chatStore.getSnapshot(key);
         const latestIds = new Set(latest.map((m) => m.id));
-        const firstOverlap = snap.messages.findIndex((m) =>
+        const firstOverlap = current.messages.findIndex((m) =>
           latestIds.has(m.id),
         );
-        const olderPrefix =
-          firstOverlap > 0 ? snap.messages.slice(0, firstOverlap) : [];
-        chatStore.setHistoryPage(key, [...olderPrefix, ...latest], {
-          hasMore: olderPrefix.length > 0 ? snap.historyHasMore : hasMore,
-          nextOffset:
-            olderPrefix.length > 0 ? snap.historyNextOffset : nextOffset,
-          nextCursor:
-            olderPrefix.length > 0 ? snap.historyNextCursor : nextCursor,
-        });
+        const keptOlder = firstOverlap > 0;
+        chatStore.setHistoryPage(
+          key,
+          mergeHistoryWithLocalTail(latest, current.messages),
+          {
+            hasMore: keptOlder ? current.historyHasMore : hasMore,
+            nextOffset: keptOlder ? current.historyNextOffset : nextOffset,
+            nextCursor: keptOlder ? current.historyNextCursor : nextCursor,
+          },
+        );
         setHistoryError(false);
       } catch {
         if (loadGenRef.current === gen) {
@@ -1157,6 +1189,7 @@ export function useChat(
       storeKey?: string,
       dismissed?: boolean,
       hitlPolicy?: HitlSessionPolicy,
+      pendingId?: string,
     ) => {
       if (!agentId) return;
       const key = storeKey || stableSessionId;
@@ -1173,6 +1206,7 @@ export function useChat(
         },
         dismissed,
         hitlPolicy,
+        pendingId,
       );
     },
     [agentId, stableSessionId, refreshHistory],
@@ -1192,6 +1226,7 @@ export function useChat(
     historyHydrated,
     pendingPlanPath,
     liveSpeakers,
+    activeTurnId,
     sendMessage,
     editAndResend,
     cancelStream,

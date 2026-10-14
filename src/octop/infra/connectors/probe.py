@@ -333,38 +333,69 @@ async def probe_streamable_http_mcp(
     *,
     kind: str,
 ) -> dict[str, Any]:
-    """Probe Notion/Figma-style remote MCP via Streamable HTTP (session + SSE)."""
+    """Probe Notion/Figma-style remote MCP via Streamable HTTP (session + SSE).
+
+    A single retry tolerates transient connection drops (e.g. a proxy or the
+    upstream closing the session on the first ``initialize``), matching
+    :func:`_probe_mcp_sse`. Auth rejections (HTTP 401/403) are definitive and
+    returned immediately so a bad key is never masked by a retry.
+    """
     from mcp import ClientSession
     from mcp.client.streamable_http import streamablehttp_client
 
-    try:
-        async with (
-            streamablehttp_client(url, headers=headers, timeout=20, sse_read_timeout=20) as (
-                read,
-                write,
-                _get_session_id,
-            ),
-            ClientSession(read, write) as session,
-        ):
-            await session.initialize()
-            listed = await session.list_tools()
-            tools = normalize_tools(
-                [{"name": t.name, "description": t.description or ""} for t in listed.tools]
-            )
-            return {"ok": True, "tool_count": len(tools), "tools": tools}
-    except httpx.HTTPStatusError as exc:
-        return _probe_mcp_http_error(exc, kind=kind)
-    except McpError as exc:
-        return _probe_mcp_mcp_error(exc, kind=kind)
-    except BaseExceptionGroup as exc:
-        result = _unwrap_probe_exception_group(exc, kind=kind)
-        if result is not None:
-            return result
-        logger.exception("streamable HTTP MCP probe failed for %s", kind)
-        return {"ok": False, "error": str(exc)}
-    except Exception as exc:
-        logger.exception("streamable HTTP MCP probe failed for %s", kind)
-        return {"ok": False, "error": str(exc)}
+    for attempt in range(2):
+        try:
+            async with (
+                streamablehttp_client(url, headers=headers, timeout=20, sse_read_timeout=20) as (
+                    read,
+                    write,
+                    _get_session_id,
+                ),
+                ClientSession(read, write) as session,
+            ):
+                await session.initialize()
+                listed = await session.list_tools()
+                tools = normalize_tools(
+                    [{"name": t.name, "description": t.description or ""} for t in listed.tools]
+                )
+                return {"ok": True, "tool_count": len(tools), "tools": tools}
+        except httpx.HTTPStatusError as exc:
+            result = _probe_mcp_http_error(exc, kind=kind)
+            if result.get("error_type") != "connection" or attempt > 0:
+                return result
+            logger.warning("%s streamable HTTP probe connection failure, retrying: %s", kind, exc)
+            continue
+        except McpError as exc:
+            result = _probe_mcp_mcp_error(exc, kind=kind)
+            if result.get("error_type") != "connection" or attempt > 0:
+                return result
+            logger.warning("%s streamable HTTP probe connection failure, retrying: %s", kind, exc)
+            continue
+        except BaseExceptionGroup as exc:
+            unwrapped = _unwrap_probe_exception_group(exc, kind=kind)
+            if unwrapped is not None:
+                if unwrapped.get("error_type") != "connection" or attempt > 0:
+                    return unwrapped
+                logger.warning(
+                    "%s streamable HTTP probe connection failure, retrying: %s", kind, exc
+                )
+                continue
+            if attempt == 0:
+                logger.warning(
+                    "%s streamable HTTP probe transient failure, retrying: %s", kind, exc
+                )
+                continue
+            logger.exception("streamable HTTP MCP probe failed for %s", kind)
+            return {"ok": False, "error": str(exc)}
+        except Exception as exc:
+            if attempt == 0:
+                logger.warning(
+                    "%s streamable HTTP probe transient failure, retrying: %s", kind, exc
+                )
+                continue
+            logger.exception("streamable HTTP MCP probe failed for %s", kind)
+            return {"ok": False, "error": str(exc)}
+    return {"ok": False, "error": "streamable HTTP probe failed after retry"}
 
 
 async def probe_connector(

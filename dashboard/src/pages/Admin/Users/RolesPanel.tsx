@@ -18,6 +18,7 @@ import {
   Spin,
   Tag,
   Tooltip,
+  Typography,
 } from "antd";
 import {
   IdCard,
@@ -54,8 +55,21 @@ import {
 
 interface RoleFormValues extends PolicyFormValues {
   name: string;
+  user_role_id?: string;
   description?: string;
   permissions?: string[];
+}
+
+const ROLE_ID_MAX = 64;
+
+function isValidRoleId(value: string): boolean {
+  return (
+    value.length >= 1 &&
+    value.length <= ROLE_ID_MAX &&
+    /^[A-Za-z_]+$/.test(value) &&
+    !value.startsWith("_") &&
+    !value.endsWith("_")
+  );
 }
 
 export default function RolesPanel() {
@@ -63,7 +77,7 @@ export default function RolesPanel() {
   const [rows, setRows] = useState<UserRole[]>([]);
   const [loading, setLoading] = useState(false);
   const [permCatalog, setPermCatalog] = useState<PermissionCatalogItem[]>([]);
-  const [fsTreeRoot, setFsTreeRoot] = useState(HOST_FS_ROOT);
+  const [fsTreeRoots, setFsTreeRoots] = useState<string[]>([HOST_FS_ROOT]);
   const [workspaceRootAllowed, setWorkspaceRootAllowed] = useState(true);
   const [editor, setEditor] = useState<UserRole | "new" | null>(null);
   const [submitting, setSubmitting] = useState(false);
@@ -74,7 +88,11 @@ export default function RolesPanel() {
 
   const baselinePermissions = useMemo(
     () =>
-      permCatalog.filter((item) => item.category === "settings").map((item) => item.key),
+      permCatalog
+        .filter(
+          (item) => item.category === "settings" || item.category === "nav",
+        )
+        .map((item) => item.key),
     [permCatalog],
   );
 
@@ -96,11 +114,15 @@ export default function RolesPanel() {
       .catch(() => setPermCatalog([]));
     fetchFilesystemDefaults()
       .then((defaults) => {
-        setFsTreeRoot(defaults.tree_root);
+        setFsTreeRoots(
+          defaults.browse_roots?.length
+            ? defaults.browse_roots
+            : [defaults.tree_root],
+        );
         setWorkspaceRootAllowed(!defaults.in_container);
       })
       .catch(() => {
-        setFsTreeRoot(HOST_FS_ROOT);
+        setFsTreeRoots([HOST_FS_ROOT]);
         setWorkspaceRootAllowed(true);
       });
   }, [refresh]);
@@ -133,6 +155,7 @@ export default function RolesPanel() {
     !editor || editor === "new"
       ? {
           name: "",
+          user_role_id: "",
           description: "",
           permissions: [...baselinePermissions],
           limit_workspace_root: false,
@@ -148,7 +171,7 @@ export default function RolesPanel() {
             ? Boolean(editor.workspace_root_dir)
             : false,
           workspace_root_dir: workspaceRootAllowed
-            ? (editor.workspace_root_dir ?? undefined)
+            ? editor.workspace_root_dir ?? undefined
             : undefined,
           limit_token_quota: editor.token_quota != null,
           token_quota: editor.token_quota ?? undefined,
@@ -193,6 +216,7 @@ export default function RolesPanel() {
         message.success(t("adminUsers.roleUpdateSuccess"));
       } else {
         const created = await userRolesApi.create({
+          user_role_id: values.user_role_id?.trim(),
           user_role_name: values.name.trim(),
           description: values.description?.trim() || null,
           permissions: values.permissions ?? [],
@@ -205,7 +229,9 @@ export default function RolesPanel() {
             avatar_icon: pendingIcon,
           });
         }
-        message.success(t("adminUsers.roleCreateSuccess", { name: values.name.trim() }));
+        message.success(
+          t("adminUsers.roleCreateSuccess", { name: values.name.trim() }),
+        );
       }
       setPendingAvatar(null);
       setPendingIcon(null);
@@ -215,7 +241,9 @@ export default function RolesPanel() {
       message.error(
         apiErrorMessage(
           err,
-          editing ? t("adminUsers.roleUpdateFailed") : t("adminUsers.roleCreateFailed"),
+          editing
+            ? t("adminUsers.roleUpdateFailed")
+            : t("adminUsers.roleCreateFailed"),
           t,
         ),
       );
@@ -244,7 +272,9 @@ export default function RolesPanel() {
           <span className={styles.roleLegendLabel}>
             {t("adminUsers.tabRoles")}
           </span>
-          <p className={styles.roleLegendText}>{t("adminUsers.roleTemplateHint")}</p>
+          <p className={styles.roleLegendText}>
+            {t("adminUsers.roleTemplateHint")}
+          </p>
         </div>
         <div className={styles.roleToolbar}>
           <Segmented
@@ -308,17 +338,18 @@ export default function RolesPanel() {
                       <div className={styles.roleCardTitle}>
                         <h3>
                           {userRoleLabel(row, t)}
-                          {row.user_role_id === "admin" ? (
+                          {!row.deletable ? (
                             <span className={styles.roleCardBuiltin}>
-                              {t("adminUsers.roleBuiltinAdmin")}
-                            </span>
-                          ) : null}
-                          {row.user_role_id === "user" ? (
-                            <span className={styles.roleCardBuiltin}>
-                              {t("adminUsers.roleBuiltinUser")}
+                              {t("adminUsers.roleBuiltin")}
                             </span>
                           ) : null}
                         </h3>
+                        <span
+                          className={styles.roleIdMeta}
+                          title={row.user_role_id}
+                        >
+                          {row.user_role_id}
+                        </span>
                       </div>
                     </div>
                     <p className={styles.roleCardDescription}>
@@ -368,106 +399,120 @@ export default function RolesPanel() {
           </div>
         )
       ) : (
-      <ResizableTable
-        storageKey="admin-user-roles"
-        rowKey="user_role_id"
-        size="middle"
-        loading={loading}
-        dataSource={rows}
-        pagination={false}
-        locale={{ emptyText: <Empty description={t("adminUsers.roleEmpty")} /> }}
-        columns={[
-          {
-            title: t("adminUsers.roleColName"),
-            dataIndex: "user_role_name",
-            render: (_name: string, row) => (
-              <Space size={8}>
-                <ProfileAvatar
-                  url={row.avatar_url}
-                  icon={row.avatar_icon}
-                  kind="role"
-                  className={styles.userCellAvatar}
-                />
-                <span>{userRoleLabel(row, t)}</span>
-                {row.user_role_id === "admin" ? (
-                  <Tag>{t("adminUsers.roleBuiltinAdmin")}</Tag>
-                ) : null}
-                {row.user_role_id === "user" ? (
-                  <Tag>{t("adminUsers.roleBuiltinUser")}</Tag>
-                ) : null}
-              </Space>
-            ),
-          },
-          {
-            title: t("adminUsers.roleDescription"),
-            dataIndex: "description",
-            ellipsis: true,
-            render: (_description: string | null, row) =>
-              userRoleDescription(row, t),
-          },
-          {
-            title: t("adminUsers.colPermissions"),
-            width: 160,
-            render: (_, row) =>
-              row.system_role === "admin"
-                ? t("adminUsers.permAll")
-                : t("adminUsers.permCount", { count: row.permissions.length }),
-          },
-          {
-            title: t("adminUsers.roleColPolicy"),
-            width: 140,
-            render: (_, row) => {
-              const limited =
-                Boolean(row.workspace_root_dir) ||
-                row.token_quota != null ||
-                row.max_agents != null;
-              return limited
-                ? t("adminUsers.rolePolicyLimited")
-                : t("adminUsers.rolePolicyUnlimited");
+        <ResizableTable
+          storageKey="admin-user-roles"
+          rowKey="user_role_id"
+          size="middle"
+          loading={loading}
+          dataSource={rows}
+          pagination={false}
+          locale={{
+            emptyText: <Empty description={t("adminUsers.roleEmpty")} />,
+          }}
+          columns={[
+            {
+              title: t("adminUsers.roleColName"),
+              dataIndex: "user_role_name",
+              width: 260,
+              render: (_name: string, row) => (
+                <div className={styles.userCell}>
+                  <ProfileAvatar
+                    url={row.avatar_url}
+                    icon={row.avatar_icon}
+                    kind="role"
+                    className={styles.roleCellAvatar}
+                  />
+                  <span className={styles.userCellText}>
+                    <span className={styles.userCellName}>
+                      {userRoleLabel(row, t)}
+                      {!row.deletable ? (
+                        <Tag>{t("adminUsers.roleBuiltin")}</Tag>
+                      ) : null}
+                    </span>
+                    <span
+                      className={styles.roleIdMeta}
+                      title={row.user_role_id}
+                    >
+                      {row.user_role_id}
+                    </span>
+                  </span>
+                </div>
+              ),
             },
-          },
-          {
-            title: t("adminUsers.colActions"),
-            width: 100,
-            render: (_, row) => (
-              <Space size={4}>
-                <Tooltip title={t("common.edit")}>
-                  <button
-                    type="button"
-                    className={styles.userCardIconBtn}
-                    onClick={() => openEdit(row)}
-                    aria-label={t("common.edit")}
-                  >
-                    <Pencil size={14} />
-                  </button>
-                </Tooltip>
-                <Popconfirm
-                  title={t("adminUsers.roleDeleteConfirm", { name: userRoleLabel(row, t) })}
-                  onConfirm={() => void onDelete(row)}
-                  disabled={!row.deletable}
-                >
-                  <Tooltip
-                    title={
-                      row.deletable
-                        ? t("common.delete")
-                        : t("adminUsers.roleDeleteBuiltin")
-                    }
-                  >
+            {
+              title: t("adminUsers.roleDescription"),
+              dataIndex: "description",
+              ellipsis: true,
+              render: (_description: string | null, row) =>
+                userRoleDescription(row, t),
+            },
+            {
+              title: t("adminUsers.colPermissions"),
+              width: 160,
+              render: (_, row) =>
+                row.system_role === "admin"
+                  ? t("adminUsers.permAll")
+                  : t("adminUsers.permCount", {
+                      count: row.permissions.length,
+                    }),
+            },
+            {
+              title: t("adminUsers.roleColPolicy"),
+              width: 140,
+              render: (_, row) => {
+                const limited =
+                  Boolean(row.workspace_root_dir) ||
+                  row.token_quota != null ||
+                  row.max_agents != null;
+                return limited
+                  ? t("adminUsers.rolePolicyLimited")
+                  : t("adminUsers.rolePolicyUnlimited");
+              },
+            },
+            {
+              title: t("adminUsers.colActions"),
+              width: 100,
+              render: (_, row) => (
+                <Space size={4}>
+                  <Tooltip title={t("common.edit")}>
                     <button
                       type="button"
-                      className={`${styles.userCardIconBtn} ${styles.userCardIconBtnDanger}`}
-                      disabled={!row.deletable}
-                      aria-label={t("common.delete")}
+                      className={styles.userCardIconBtn}
+                      onClick={() => openEdit(row)}
+                      aria-label={t("common.edit")}
                     >
-                      <Trash2 size={14} />
+                      <Pencil size={14} />
                     </button>
                   </Tooltip>
-                </Popconfirm>
-              </Space>
-            ),
-          },
-        ]}
-      />
+                  <Popconfirm
+                    title={t("adminUsers.roleDeleteConfirm", {
+                      name: userRoleLabel(row, t),
+                    })}
+                    onConfirm={() => void onDelete(row)}
+                    disabled={!row.deletable}
+                  >
+                    <Tooltip
+                      title={
+                        row.deletable
+                          ? t("common.delete")
+                          : t("adminUsers.roleDeleteBuiltin")
+                      }
+                    >
+                      <button
+                        type="button"
+                        className={`${styles.userCardIconBtn} ${styles.userCardIconBtnDanger}`}
+                        disabled={!row.deletable}
+                        aria-label={t("common.delete")}
+                      >
+                        <Trash2 size={14} />
+                      </button>
+                    </Tooltip>
+                  </Popconfirm>
+                </Space>
+              ),
+            },
+          ]}
+        />
       )}
 
       <Drawer
@@ -489,7 +534,11 @@ export default function RolesPanel() {
         footer={
           <div className={styles.createUserFooter}>
             <Button onClick={closeEditor}>{t("common.cancel")}</Button>
-            <Button type="primary" loading={submitting} onClick={() => form.submit()}>
+            <Button
+              type="primary"
+              loading={submitting}
+              onClick={() => form.submit()}
+            >
               {editing ? t("common.save") : t("common.create")}
             </Button>
           </div>
@@ -519,9 +568,12 @@ export default function RolesPanel() {
                 return;
               }
               try {
-                const updated = await userRolesApi.update(editing.user_role_id, {
-                  avatar_icon: icon,
-                });
+                const updated = await userRolesApi.update(
+                  editing.user_role_id,
+                  {
+                    avatar_icon: icon,
+                  },
+                );
                 setEditor({
                   ...editing,
                   avatar_url: updated.avatar_url,
@@ -563,7 +615,11 @@ export default function RolesPanel() {
                       void refresh();
                     } catch (err) {
                       message.error(
-                        apiErrorMessage(err, t("experts.avatarRemoveFailed"), t),
+                        apiErrorMessage(
+                          err,
+                          t("experts.avatarRemoveFailed"),
+                          t,
+                        ),
                       );
                       throw err;
                     }
@@ -574,10 +630,52 @@ export default function RolesPanel() {
           <Form.Item
             label={t("adminUsers.roleColName")}
             name="name"
-            rules={[{ required: true, message: t("adminUsers.roleNameRequired") }]}
+            rules={[
+              { required: true, message: t("adminUsers.roleNameRequired") },
+            ]}
           >
             <Input maxLength={64} autoFocus prefix={<IdCard size={16} />} />
           </Form.Item>
+          {editing ? (
+            <Form.Item label={t("adminUsers.roleColId")}>
+              <Typography.Text
+                code
+                copyable={{ text: editing.user_role_id }}
+                className={styles.roleIdField}
+              >
+                {editing.user_role_id}
+              </Typography.Text>
+            </Form.Item>
+          ) : (
+            <Form.Item
+              label={t("adminUsers.roleColId")}
+              name="user_role_id"
+              extra={t("adminUsers.roleIdHint")}
+              rules={[
+                {
+                  required: true,
+                  whitespace: true,
+                  message: t("adminUsers.roleIdRequired"),
+                },
+                {
+                  validator: (_, value: string | undefined) => {
+                    const roleId = value?.trim() ?? "";
+                    if (!roleId || isValidRoleId(roleId)) {
+                      return Promise.resolve();
+                    }
+                    return Promise.reject(
+                      new Error(t("adminUsers.roleIdInvalid")),
+                    );
+                  },
+                },
+              ]}
+            >
+              <Input
+                maxLength={ROLE_ID_MAX}
+                placeholder={t("adminUsers.roleIdPlaceholder")}
+              />
+            </Form.Item>
+          )}
           <Form.Item label={t("adminUsers.roleDescription")} name="description">
             <Input.TextArea
               maxLength={500}
@@ -592,7 +690,9 @@ export default function RolesPanel() {
             </div>
           ) : (
             <>
-              <div className={`${styles.permAdminHint} ${styles.permSectionHint}`}>
+              <div
+                className={`${styles.permAdminHint} ${styles.permSectionHint}`}
+              >
                 <span>{t("adminUsers.roleCustomHint")}</span>
               </div>
               <Form.Item
@@ -603,7 +703,7 @@ export default function RolesPanel() {
                 <PermissionCheckboxPicker catalog={permCatalog} />
               </Form.Item>
               <ResourcePolicyFields
-                fsTreeRoot={fsTreeRoot}
+                fsTreeRoots={fsTreeRoots}
                 workspaceRootAllowed={workspaceRootAllowed}
               />
             </>

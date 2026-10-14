@@ -188,6 +188,37 @@ def test_opensandbox_probe_installs_and_closes(monkeypatch: pytest.MonkeyPatch) 
     assert result.get("message_key") == "opensandbox_probe_ok"
 
 
+def test_postgres_probe_delegates_to_harness(monkeypatch: pytest.MonkeyPatch) -> None:
+    from octop.infra.backend import probe as probe_mod
+
+    captured: dict[str, Any] = {}
+
+    def _probe(spec: dict[str, Any]) -> dict[str, Any]:
+        captured["spec"] = spec
+        return {"ok": True, "message_key": "probe_roundtrip_ok"}
+
+    monkeypatch.setattr(probe_mod, "probe_backend", _probe)
+    result = probe_storage_backend(
+        _row(
+            kind="postgres",
+            endpoint="localhost:5432",
+            access_key="octop",
+            secret_key="secret",
+            bucket="octop",
+        )
+    )
+    assert result["ok"] is True
+    assert captured["spec"]["type"] == "postgres"
+    assert captured["spec"]["host"] == "localhost"
+    assert "connection_string" not in captured["spec"]
+
+
+def test_postgres_probe_incomplete() -> None:
+    result = probe_storage_backend(_row(kind="postgres"))
+    assert result["ok"] is False
+    assert "incomplete" in result["message"]
+
+
 def test_opensandbox_probe_reports_install_failure(monkeypatch: pytest.MonkeyPatch) -> None:
     from octop.infra.backend import opensandbox_deps
 

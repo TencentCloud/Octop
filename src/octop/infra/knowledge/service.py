@@ -46,6 +46,8 @@ _EXT_TO_CONTENT_TYPE = {
     ".csv": "text/csv",
     ".tsv": "text/tab-separated-values",
     ".pdf": "application/pdf",
+    ".doc": "application/msword",
+    ".wps": "application/msword",
     ".docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
     ".pptx": "application/vnd.openxmlformats-officedocument.presentationml.presentation",
     ".xls": "application/vnd.ms-excel",

@@ -1,28 +1,31 @@
 import { useEffect, useRef, useState, type CSSProperties } from "react";
 import { Button } from "antd";
 import {
-  Award,
-  BookOpen,
-  Briefcase,
-  ChartColumn,
-  FlaskConical,
-  GraduationCap,
-  Headset,
+  Code2,
+  Cog,
+  Crown,
+  Feather,
   ImagePlus,
-  Laptop,
-  Palette,
-  PenLine,
-  Scale,
-  SquareUser,
-  Stethoscope,
-  Terminal,
+  Landmark,
+  Megaphone,
+  PieChart,
   UserRound,
-  Wrench,
+  Users,
   type LucideIcon,
 } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { message } from "@/utils/antdMessage";
 import { request, requestUpload } from "../../../api/request";
+import adminPortrait from "../../../assets/avatars/admin.png";
+import bossPortrait from "../../../assets/avatars/boss.png";
+import doctorPortrait from "../../../assets/avatars/doctor.png";
+import financePortrait from "../../../assets/avatars/finance.png";
+import nursePortrait from "../../../assets/avatars/nurse.png";
+import opsPortrait from "../../../assets/avatars/ops.png";
+import staffPortrait from "../../../assets/avatars/staff.png";
+import studentPortrait from "../../../assets/avatars/student.png";
+import supportPortrait from "../../../assets/avatars/support.png";
+import teacherPortrait from "../../../assets/avatars/teacher.png";
 import { useAuthImageSrc } from "../../../hooks/useAuthImageSrc";
 import { validateAvatarFile } from "../../Experts/components/ExpertAvatarPicker";
 import styles from "./index.module.less";
@@ -36,29 +39,147 @@ interface AvatarPreset {
   labelKey: string;
   bg: string;
   fg: string;
-  Icon: LucideIcon;
+  Icon?: LucideIcon;
+  src?: string;
 }
 
 const USER_PRESETS: AvatarPreset[] = [
-  { id: "user", labelKey: "adminUsers.avatarIconUser", bg: "#e8f1ff", fg: "#175cd3", Icon: UserRound },
-  { id: "business", labelKey: "adminUsers.avatarIconBusiness", bg: "#fff4d6", fg: "#b54708", Icon: Briefcase },
-  { id: "research", labelKey: "adminUsers.avatarIconResearch", bg: "#f4ebff", fg: "#6941c6", Icon: FlaskConical },
-  { id: "medical", labelKey: "adminUsers.avatarIconMedical", bg: "#ffe4e8", fg: "#c01048", Icon: Stethoscope },
-  { id: "laptop", labelKey: "adminUsers.avatarIconLaptop", bg: "#e0f2fe", fg: "#026aa2", Icon: Laptop },
-  { id: "teach", labelKey: "adminUsers.avatarIconTeach", bg: "#f3e8dd", fg: "#93370d", Icon: BookOpen },
-  { id: "design", labelKey: "adminUsers.avatarIconDesign", bg: "#fce7f6", fg: "#c11574", Icon: Palette },
-  { id: "learner", labelKey: "adminUsers.avatarIconLearner", bg: "#fef7c3", fg: "#a15c07", Icon: GraduationCap },
+  {
+    id: "user",
+    labelKey: "adminUsers.avatarIconUser",
+    bg: "#e8f1ff",
+    fg: "#175cd3",
+    Icon: UserRound,
+  },
+  {
+    id: "admin",
+    labelKey: "adminUsers.avatarIconAdmin",
+    bg: "",
+    fg: "",
+    src: adminPortrait,
+  },
+  {
+    id: "staff",
+    labelKey: "adminUsers.avatarIconStaff",
+    bg: "",
+    fg: "",
+    src: staffPortrait,
+  },
+  {
+    id: "doctor",
+    labelKey: "adminUsers.avatarIconDoctor",
+    bg: "",
+    fg: "",
+    src: doctorPortrait,
+  },
+  {
+    id: "nurse",
+    labelKey: "adminUsers.avatarIconNurse",
+    bg: "",
+    fg: "",
+    src: nursePortrait,
+  },
+  {
+    id: "student",
+    labelKey: "adminUsers.avatarIconStudent",
+    bg: "",
+    fg: "",
+    src: studentPortrait,
+  },
+  {
+    id: "teacher",
+    labelKey: "adminUsers.avatarIconTeacher",
+    bg: "",
+    fg: "",
+    src: teacherPortrait,
+  },
+  {
+    id: "support",
+    labelKey: "adminUsers.avatarIconSupport",
+    bg: "",
+    fg: "",
+    src: supportPortrait,
+  },
+  {
+    id: "ops",
+    labelKey: "adminUsers.avatarIconOps",
+    bg: "",
+    fg: "",
+    src: opsPortrait,
+  },
+  {
+    id: "finance",
+    labelKey: "adminUsers.avatarIconFinance",
+    bg: "",
+    fg: "",
+    src: financePortrait,
+  },
+  {
+    id: "boss",
+    labelKey: "adminUsers.avatarIconBoss",
+    bg: "",
+    fg: "",
+    src: bossPortrait,
+  },
 ];
 
 const ROLE_PRESETS: AvatarPreset[] = [
-  { id: "member", labelKey: "adminUsers.avatarIconMember", bg: "", fg: "", Icon: SquareUser },
-  { id: "award", labelKey: "adminUsers.avatarIconAward", bg: "", fg: "", Icon: Award },
-  { id: "terminal", labelKey: "adminUsers.avatarIconTerminal", bg: "", fg: "", Icon: Terminal },
-  { id: "pen", labelKey: "adminUsers.avatarIconPen", bg: "", fg: "", Icon: PenLine },
-  { id: "chart", labelKey: "adminUsers.avatarIconChart", bg: "", fg: "", Icon: ChartColumn },
-  { id: "headset", labelKey: "adminUsers.avatarIconHeadset", bg: "", fg: "", Icon: Headset },
-  { id: "wrench", labelKey: "adminUsers.avatarIconWrench", bg: "", fg: "", Icon: Wrench },
-  { id: "scale", labelKey: "adminUsers.avatarIconScale", bg: "", fg: "", Icon: Scale },
+  {
+    id: "member",
+    labelKey: "adminUsers.avatarIconMember",
+    bg: "",
+    fg: "",
+    Icon: Users,
+  },
+  {
+    id: "award",
+    labelKey: "adminUsers.avatarIconAward",
+    bg: "",
+    fg: "",
+    Icon: Crown,
+  },
+  {
+    id: "terminal",
+    labelKey: "adminUsers.avatarIconTerminal",
+    bg: "",
+    fg: "",
+    Icon: Code2,
+  },
+  {
+    id: "pen",
+    labelKey: "adminUsers.avatarIconPen",
+    bg: "",
+    fg: "",
+    Icon: Feather,
+  },
+  {
+    id: "chart",
+    labelKey: "adminUsers.avatarIconChart",
+    bg: "",
+    fg: "",
+    Icon: PieChart,
+  },
+  {
+    id: "headset",
+    labelKey: "adminUsers.avatarIconHeadset",
+    bg: "",
+    fg: "",
+    Icon: Megaphone,
+  },
+  {
+    id: "wrench",
+    labelKey: "adminUsers.avatarIconWrench",
+    bg: "",
+    fg: "",
+    Icon: Cog,
+  },
+  {
+    id: "scale",
+    labelKey: "adminUsers.avatarIconScale",
+    bg: "",
+    fg: "",
+    Icon: Landmark,
+  },
 ];
 
 function presetsFor(kind: AvatarKind): AvatarPreset[] {
@@ -91,11 +212,9 @@ function pickImageFile(): Promise<File | null> {
     const input = document.createElement("input");
     input.type = "file";
     input.accept = AVATAR_ACCEPT;
-    input.addEventListener(
-      "change",
-      () => resolve(input.files?.[0] ?? null),
-      { once: true },
-    );
+    input.addEventListener("change", () => resolve(input.files?.[0] ?? null), {
+      once: true,
+    });
     input.click();
   });
 }
@@ -117,13 +236,26 @@ export function ProfileAvatar({
   const { src, loadState } = useAuthImageSrc(trimmed);
   const photo = Boolean(trimmed) && loadState === "ready" && Boolean(src);
   const preset = resolveAvatarPreset(kind, icon ?? defaultIcon);
-  const tinted = !photo && kind !== "role";
+  const portrait = !photo && Boolean(preset.src);
+  const tinted = !photo && !portrait && kind !== "role";
   const style: CSSProperties | undefined = tinted
     ? { background: preset.bg, color: preset.fg }
     : undefined;
+  const PresetIcon = preset.Icon;
   return (
-    <span className={className} style={style}>
-      {photo ? <img src={src} alt="" /> : <preset.Icon />}
+    <span
+      className={[className, portrait ? styles.presetPortrait : ""]
+        .filter(Boolean)
+        .join(" ")}
+      style={style}
+    >
+      {photo ? (
+        <img src={src} alt="" />
+      ) : portrait ? (
+        <img src={preset.src} alt="" className={styles.presetPortraitImg} />
+      ) : PresetIcon ? (
+        <PresetIcon />
+      ) : null}
     </span>
   );
 }
@@ -193,7 +325,12 @@ export function ProfileAvatarPicker({
           url={displayUrl}
           icon={icon}
           kind={kind}
-          className={styles.profileAvatarPickerPreview}
+          className={[
+            styles.profileAvatarPickerPreview,
+            kind === "role" ? styles.profileAvatarPickerPreviewRole : "",
+          ]
+            .filter(Boolean)
+            .join(" ")}
         />
         <div className={styles.profileAvatarPickerActions}>
           <Button
@@ -236,7 +373,9 @@ export function ProfileAvatarPicker({
           </span>
         </div>
       </div>
-      <div className={styles.avatarPresetLabel}>{t("adminUsers.avatarSamples")}</div>
+      <div className={styles.avatarPresetLabel}>
+        {t("adminUsers.avatarSamples")}
+      </div>
       <div className={styles.avatarPresetGrid}>
         {presets.map((preset, index) => {
           const selected =
@@ -244,6 +383,8 @@ export function ProfileAvatarPicker({
           const label =
             index === 0 ? t("adminUsers.avatarDefault") : t(preset.labelKey);
           const plain = kind === "role";
+          const portrait = Boolean(preset.src);
+          const PresetIcon = preset.Icon;
           return (
             <button
               key={preset.id}
@@ -251,12 +392,15 @@ export function ProfileAvatarPicker({
               className={[
                 styles.avatarPreset,
                 plain ? styles.avatarPresetPlain : "",
+                portrait ? styles.avatarPresetPortrait : "",
                 selected ? styles.avatarPresetActive : "",
               ]
                 .filter(Boolean)
                 .join(" ")}
               style={
-                plain ? undefined : { background: preset.bg, color: preset.fg }
+                plain || portrait
+                  ? undefined
+                  : { background: preset.bg, color: preset.fg }
               }
               disabled={disabled}
               aria-pressed={selected}
@@ -269,7 +413,11 @@ export function ProfileAvatarPicker({
                 ).catch(() => undefined);
               }}
             >
-              <preset.Icon size={18} />
+              {portrait ? (
+                <img src={preset.src} alt="" />
+              ) : PresetIcon ? (
+                <PresetIcon size={plain ? 22 : 18} />
+              ) : null}
             </button>
           );
         })}

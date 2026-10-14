@@ -48,6 +48,11 @@ import {
   defaultModelFromForm,
   MODEL_AUTO_VALUE,
 } from "../../../utils/modelOptions";
+import {
+  CONVERSATION_MODES,
+  DEFAULT_CONVERSATION_MODE,
+  type ConversationMode,
+} from "../../Chat/utils/conversationMode";
 import type { ExpertSummary } from "./ExpertCard";
 import { groupExpertFiles, type NamedFileContent } from "./expertFileGroups";
 import { metaForFile } from "./iconForName";
@@ -220,6 +225,7 @@ export default function CreateFromExpertDrawer({
       agent_id?: string;
       welcome_message?: string;
       default_model: string;
+      conversation_mode: ConversationMode;
       backend_choice: string;
       composite_default: string;
       root_dir?: string;
@@ -308,6 +314,7 @@ export default function CreateFromExpertDrawer({
       agent_id: undefined,
       welcome_message: defaults.welcome_message,
       default_model: MODEL_AUTO_VALUE,
+      conversation_mode: DEFAULT_CONVERSATION_MODE,
       backend_choice: DEFAULT_BACKEND,
       composite_default: DEFAULT_BACKEND,
       skill_package_ids: [],
@@ -453,6 +460,7 @@ export default function CreateFromExpertDrawer({
         ...(welcomeText ? { welcome_message: welcomeText } : {}),
         ...buildAgentRuntimeRequest(values),
         enable_trajectory: values.enable_trajectory === true,
+        conversation_mode: values.conversation_mode,
         ...(composerPatch.file_overrides.length
           ? { file_overrides: composerPatch.file_overrides }
           : {}),
@@ -754,6 +762,20 @@ export default function CreateFromExpertDrawer({
 
         <Form.Item label={t("experts.color")} extra={t("experts.colorHint")}>
           <ExpertColorPicker value={colorPalette} onChange={setColorPalette} />
+        </Form.Item>
+
+        <Form.Item
+          name="conversation_mode"
+          label={t("experts.defaultModeLabel")}
+          tooltip={t("experts.defaultModeHint")}
+          initialValue={DEFAULT_CONVERSATION_MODE}
+        >
+          <Select
+            options={CONVERSATION_MODES.map((mode) => ({
+              value: mode,
+              label: t(`chat.conversationMode.${mode}`),
+            }))}
+          />
         </Form.Item>
 
         <Form.Item

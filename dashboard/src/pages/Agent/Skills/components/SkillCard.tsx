@@ -10,6 +10,10 @@ import {
   Trash2,
 } from "lucide-react";
 import { useTranslation } from "react-i18next";
+import {
+  resolveBuiltinSkillIcon,
+  resolveFigurativeSkillIcon,
+} from "../builtinSkillIcon";
 import type { SkillSpec } from "../useSkills";
 import { useSkillDisplayName } from "../skillDisplayNames";
 import styles from "../index.module.less";
@@ -187,10 +191,15 @@ export function SkillCard({
   const skillDisplayName = useSkillDisplayName();
   const isBuiltin = skill.kind === "builtin";
   const isCustomized = skill.kind === "workspace";
-  const iconColor = DEFAULT_COLOR;
-  const iconBg = `${iconColor}18`; // ~10% opacity tint
-
   const displayName = skillDisplayName(skill);
+  const tileLabel = [skill.name, skill.displayName, displayName]
+    .filter(Boolean)
+    .join(" ");
+  const tileVisual = isBuiltin
+    ? resolveBuiltinSkillIcon(skill.slug, skill.emoji, 44, tileLabel)
+    : resolveFigurativeSkillIcon(skill.slug, skill.emoji, tileLabel);
+  const iconColor = tileVisual?.color ?? DEFAULT_COLOR;
+  const iconBg = `${iconColor}18`; // ~10% opacity tint
   const displayDesc = skill.description;
   const hubIcon = skill.iconUrl;
 
@@ -217,7 +226,8 @@ export function SkillCard({
             className={styles.iconWrapper}
             style={{
               color: iconColor,
-              backgroundColor: hubIcon ? "transparent" : iconBg,
+              backgroundColor:
+                hubIcon || tileVisual?.image ? "transparent" : iconBg,
             }}
           >
             {hubIcon ? (
@@ -231,6 +241,8 @@ export function SkillCard({
                   objectFit: "cover",
                 }}
               />
+            ) : tileVisual ? (
+              tileVisual.node
             ) : (
               renderSkillIcon(skill)
             )}

@@ -7,6 +7,7 @@ from typing import Any
 from fastapi import APIRouter, Depends, Request
 from pydantic import BaseModel, Field
 
+from octop.api.common.client_ip import resolve_client_ip
 from octop.api.deps import get_server, require_permission, sign_token
 from octop.api.routers.auth import _user_json
 from octop.infra.errors import ErrorCode, OctopError
@@ -31,12 +32,8 @@ def _service(server: Any) -> InviteService:
 
 
 def _client_id(request: Request) -> str:
-    forwarded = request.headers.get("x-forwarded-for")
-    if forwarded:
-        return forwarded.split(",", 1)[0].strip() or "unknown"
-    if request.client and request.client.host:
-        return request.client.host
-    return "unknown"
+    """Trusted client address for invite rate limiting (see ``resolve_client_ip``)."""
+    return resolve_client_ip(request)
 
 
 def _public_base(request: Request) -> str:
@@ -59,9 +56,9 @@ class InviteCreateBody(BaseModel):
         ge=MIN_EXPIRES_DAYS,
         le=MAX_EXPIRES_DAYS,
     )
-    user_role_id: str | None = Field(
+    role: str | None = Field(
         default=None,
-        description="Role id stored on the invite. Defaults are read when the invite is redeemed.",
+        description="Role-template public id stored on the invite. Applied at redeem time.",
     )
 
 
@@ -95,12 +92,12 @@ async def create_invite(
     server: Any = Depends(get_server),
 ) -> dict[str, Any]:
     role_name: str | None = None
-    user_role_id: str | None = None
-    if body.user_role_id is not None:
+    role_id: str | None = None
+    if body.role is not None:
         from octop.api.routers.users import _assert_can_assign
         from octop.infra.db.repos.user_roles import UserRoleRepo
 
-        role = UserRoleRepo(server.services.db).get(body.user_role_id)
+        role = UserRoleRepo(server.services.db).get(body.role)
         if role is None:
             raise OctopError(ErrorCode.NOT_FOUND, "role not found")
         if role.is_admin and not actor.is_admin:
@@ -111,14 +108,14 @@ async def create_invite(
         if not role.is_admin:
             _assert_can_assign(actor, list(role.permissions))
         role_name = role.user_role_name
-        user_role_id = role.user_role_id
+        role_id = role.user_role_id
     row = _service(server).create(
         created_by=actor.id,
         actor_username=actor.username,
         note=body.note,
         expires_in_days=body.expires_in_days,
         role_name=role_name,
-        user_role_id=user_role_id,
+        role=role_id,
     )
     from octop.infra.db.repos.invites import invite_status_payload
 
@@ -172,9 +169,7 @@ async def redeem_invite(
     await try_bootstrap_default_agent(server, user_id=user.id, locale=user.locale)
     secret = server.services.secret_repo.get("jwt")
     ttl = server.services.config.access_token_ttl_seconds
-    token = sign_token(
-        secret, sub=user.id, uname=user.username, role=user.role.value, ttl_seconds=ttl
-    )
+    token = sign_token(secret, sub=user.id, uname=user.username, role=user.role, ttl_seconds=ttl)
     return {
         "access_token": token,
         "token_type": "Bearer",

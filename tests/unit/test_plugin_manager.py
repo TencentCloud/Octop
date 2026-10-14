@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import io
 import json
+import sys
 import zipfile
 from pathlib import Path
 from typing import Any
@@ -346,6 +347,43 @@ def test_set_enabled_refuses_corrupt_config_and_preserves_bytes(tmp_path: Path) 
         mgr.set_enabled("echo-tool", False)
     assert excinfo.value.code is ErrorCode.CONFIG_FILE_CORRUPT
     assert config_path.read_text(encoding="utf-8") == corrupt
+
+
+def test_install_plugin_importing_legacy_harness_agent(tmp_path: Path) -> None:
+    """Plugins published before the octop_harness rename still import harness_agent."""
+    src = tmp_path / "legacy-plugin"
+    src.mkdir()
+    (src / "plugin.yaml").write_text(
+        "id: legacy-plugin\nversion: 0.1.0\nname: Legacy\nkind: tool\nentry: main.py\n",
+        encoding="utf-8",
+    )
+    (src / "main.py").write_text(
+        "from harness_agent.plugins import PluginContext\n"
+        "from harness_agent.plugins.context import PluginContext as Ctx\n"
+        "\n"
+        "def ping() -> str:\n"
+        "    return 'pong'\n"
+        "\n"
+        "def setup(ctx: PluginContext) -> None:\n"
+        "    if Ctx is not PluginContext:\n"
+        "        raise RuntimeError('legacy PluginContext is not the installed class')\n"
+        "    ctx.tool('ping', ping, description='ping')\n",
+        encoding="utf-8",
+    )
+    config_path = tmp_path / "config.json"
+    config_path.write_text("{}", encoding="utf-8")
+    mgr = PluginManager(plugins_dir=tmp_path / "plugins", config_path=config_path)
+    loaded = mgr.install_path(src, force=True)
+    assert loaded.manifest.id == "legacy-plugin"
+    assert [tool.name for tool in loaded.tools] == ["ping"]
+
+    import octop_harness
+    from harness_agent.plugins import PluginContext
+    from octop_harness.plugins import PluginContext as RealContext
+
+    assert PluginContext is RealContext
+    assert octop_harness.__name__ == "octop_harness"
+    assert sys.modules["harness_agent"] is octop_harness
 
 
 def test_set_enabled_preserves_unrelated_keys(tmp_path: Path) -> None:

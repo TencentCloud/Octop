@@ -50,7 +50,8 @@ export interface SsoIdentity {
 export interface OctopUser {
   id: number;
   username: string;
-  role: "admin" | "user";
+  /** Role-template public id: admin | user | custom ULID. */
+  role: string;
   display_name: string | null;
   locale: string;
   /** Module permission keys; admin responses include the full catalog. */
@@ -93,6 +94,12 @@ export interface OauthProviderStatus {
 
 export interface OauthStatus {
   providers: OauthProviderStatus[];
+}
+
+/** Public LDAP login availability probe (no auth required). */
+export interface LdapStatus {
+  enabled: boolean;
+  display_name: string;
 }
 
 export interface SetupBody {
@@ -203,6 +210,9 @@ export const authApi = {
   /** Return enabled dashboard SSO providers for the login page. */
   getOauthStatus: () => request<OauthStatus>("/auth/oauth/status"),
 
+  /** Return whether directory (LDAP) logins are available, and its label. */
+  getLdapStatus: () => request<LdapStatus>("/auth/ldap/status"),
+
   /** Start an OIDC authorization-code login flow. */
   startOidc: (redirect_after?: string) =>
     request<{ authorization_url: string }>("/auth/oidc/start", {
@@ -274,7 +284,10 @@ export const authApi = {
   uploadAvatar: (file: File) => {
     const body = new FormData();
     body.append("file", file);
-    return requestUpload<{ avatar_url: string | null }>("/auth/me/avatar", body);
+    return requestUpload<{ avatar_url: string | null }>(
+      "/auth/me/avatar",
+      body,
+    );
   },
 
   deleteAvatar: () => request<void>("/auth/me/avatar", { method: "DELETE" }),

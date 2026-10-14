@@ -9,6 +9,7 @@ from octop.infra.db.pool import DatabasePool
 from octop.infra.db.repos.agents import AgentRepo
 from octop.infra.db.repos.audit import AuditRepo
 from octop.infra.db.repos.backends import BackendRepo
+from octop.infra.db.repos.bridge_connections import BridgeConnectionRepo
 from octop.infra.db.repos.care_push import CarePushRepo
 from octop.infra.db.repos.channels import ChannelRepo
 from octop.infra.db.repos.connectors import ConnectorRepo
@@ -53,6 +54,7 @@ class RepoBundle:
     usage_repo: UsageRepo
     settings_repo: SettingsRepo
     storage_backend_repo: BackendRepo
+    bridge_connection_repo: BridgeConnectionRepo
     connector_repo: ConnectorRepo
     skill_package_repo: SkillPackageRepo
     published_expert_repo: PublishedExpertRepo
@@ -82,6 +84,7 @@ class RepoBundle:
             usage_repo=UsageRepo(db),
             settings_repo=SettingsRepo(db),
             storage_backend_repo=BackendRepo(db),
+            bridge_connection_repo=BridgeConnectionRepo(db),
             connector_repo=ConnectorRepo(db),
             skill_package_repo=SkillPackageRepo(db),
             published_expert_repo=PublishedExpertRepo(db),
@@ -166,6 +169,10 @@ class SharedServices:
     @property
     def storage_backend_repo(self) -> BackendRepo:
         return self.repos.storage_backend_repo
+
+    @property
+    def bridge_connection_repo(self) -> BridgeConnectionRepo:
+        return self.repos.bridge_connection_repo
 
     @property
     def connector_repo(self) -> ConnectorRepo:

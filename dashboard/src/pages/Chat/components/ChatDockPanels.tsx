@@ -19,6 +19,7 @@ interface ChatDockPanelsProps {
   onCloseTab: (id: DockTabId) => void;
   onOpenFile: (path: string, agentId?: string | null) => void;
   browserEnvironment: DisplayEnvironment;
+  bridgeConnectionId?: string | null;
   threadId?: string | null;
   isStreamingTurn?: boolean;
   onModeChange: (mode: PanelMode) => void;
@@ -55,6 +56,7 @@ export default function ChatDockPanels({
   onCloseTab,
   onOpenFile,
   browserEnvironment,
+  bridgeConnectionId = null,
   threadId = null,
   isStreamingTurn = false,
   onModeChange,
@@ -93,6 +95,7 @@ export default function ChatDockPanels({
       onCloseTab={onCloseTab}
       onOpenFile={onOpenFile}
       browserEnvironment={browserEnvironment}
+      bridgeConnectionId={bridgeConnectionId}
       threadId={threadId}
       isStreamingTurn={isStreamingTurn}
       surfaceVisible={visible}

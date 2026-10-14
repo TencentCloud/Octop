@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING
 from octop_harness.slash import SlashCommand, SlashSink
 
 from octop.i18n.domains.slash import localized_rows, tr
+from octop.infra.agents.security import tool_execution_may_pause
 from octop.infra.errors import ErrorCode, OctopError
 from octop.infra.gateway.slash.catalog import channel_origin
 from octop.infra.gateway.slash.ctx import SlashCtx, ensure_thread_id, lang_of, resolve_user_agent
@@ -18,8 +19,18 @@ if TYPE_CHECKING:
     from octop.infra.gateway.slash.dispatcher import SlashDispatcher
 
 
+def _include_hitl_approval(ctx: SlashCtx) -> bool:
+    manager = ctx.agent_manager
+    if manager is None:
+        return False
+    return tool_execution_may_pause(manager.security.load())
+
+
 async def cmd_help(d: SlashDispatcher, cmd: SlashCommand, ctx: SlashCtx, sink: SlashSink) -> None:
-    specs = d.list_command_specs(origin=channel_origin(ctx.channel_type))
+    specs = d.list_command_specs(
+        origin=channel_origin(ctx.channel_type),
+        include_hitl_approval=_include_hitl_approval(ctx),
+    )
     await sink.text(format_help(specs, lang_of(ctx)))
 
 

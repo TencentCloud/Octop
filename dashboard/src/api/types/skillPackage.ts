@@ -6,6 +6,8 @@ export interface SkillPackage {
   creator_username?: string | null;
   creator_display_name?: string | null;
   can_write?: boolean;
+  can_copy?: boolean;
+  copy_policy?: "snapshot" | "lock" | "deny";
   skill_count: number;
   icon_name?: string;
   icon_url?: string;
@@ -37,6 +39,8 @@ export interface SkillPackageSkillDetail extends SkillPackageSkill {
 
 export interface SkillPackageDetail extends SkillPackage {
   skills: SkillPackageSkill[];
+  /** Skill slugs listed by the skillset whose packages were not published. */
+  skipped_skills?: string[];
 }
 
 export interface CreateSkillPackageBody {
@@ -51,6 +55,7 @@ export interface UpdateSkillPackageBody {
   description?: string;
   icon_name?: string;
   icon_url?: string;
+  copy_policy?: "snapshot" | "lock" | "deny";
 }
 
 export interface CreateSkillPackageSkillBody {

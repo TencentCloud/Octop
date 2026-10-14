@@ -54,7 +54,7 @@ from octop.infra.agents.manager import (
 )
 from octop.infra.errors import ErrorCode, OctopError
 from octop.infra.skills.presentation import apply_skill_presentation
-from octop.infra.skills.skill_package_store import SkillPackageStore
+from octop.infra.skills.skill_package_store import SkillPackageStore, normalize_copy_policy
 from octop.infra.skills.skill_packages import (
     SkillPackageError,
     SkillPackageTooLarge,
@@ -204,12 +204,37 @@ async def _guard_package_only_skill_write(
     config: dict[str, Any],
     server: Any,
     slug: str,
+    user: Any = None,
 ) -> None:
-    """Reject writes that would alter a skill supplied only by a mounted package."""
+    """Reject writes that would alter a skill supplied only by a mounted package.
+
+    Also rejects writes to workspace copies stamped ``locked`` by a
+    ``copy_policy="lock"`` package unless the requester created that package
+    (or is admin) — the copy is meant to be used, not rewritten (#770).
+    """
     workspace_manifest = await _aread_text(workspace, f"{_SKILLS_ROOT}/{slug}/SKILL.md")
     if workspace_manifest is not None:
         metadata, _body = _parse_frontmatter(workspace_manifest)
         if not metadata.get("removed"):
+            origin = str(metadata.get("origin") or "").strip()
+            if metadata.get("locked") and origin and server.services is not None:
+                store = SkillPackageStore(
+                    repo=server.services.skill_package_repo,
+                    root=server.paths.skill_packages_dir,
+                )
+                origin_row = store.repo.get(origin)
+                # Unknown origin stays locked for regular users (fail-safe)
+                # but admins keep an escape hatch for orphaned copies.
+                allowed = bool(getattr(user, "is_admin", False)) or (
+                    user is not None
+                    and origin_row is not None
+                    and str(getattr(user, "id", "")) == origin_row.created_by
+                )
+                if not allowed:
+                    raise OctopError(
+                        ErrorCode.SKILL_PACKAGE_LOCKED,
+                        f"skill {slug!r} was copied from a locked skill package",
+                    )
             return
 
     assert server.services is not None
@@ -580,11 +605,13 @@ async def copy_skill_package_to_workspace(
 ) -> dict[str, list[str]]:
     ctx = await _ctx(agent_id, user=user, as_user=as_user, server=server)
     store = _skill_package_store(server)
-    if store.repo.get(package_id) is None:
+    package_row = store.repo.get(package_id)
+    if package_row is None:
         raise OctopError.localized(
             ErrorCode.SKILL_PACKAGE_NOT_FOUND,
             resolve_request_locale(request),
         )
+    store.assert_can_copy(package_row, user)
     try:
         requested_slugs = list(
             dict.fromkeys(validate_skill_slug(slug) for slug in body.skill_slugs)
@@ -598,6 +625,7 @@ async def copy_skill_package_to_workspace(
             slugs=requested_slugs,
             workspace=ctx.workspace,
             overwrite=body.overwrite,
+            copy_policy=normalize_copy_policy(package_row.copy_policy),
         )
     except SkillPackageError as exc:
         raise _skill_transfer_error(
@@ -611,6 +639,13 @@ async def copy_skill_package_to_workspace(
     if disabled.intersection(copied_identity_keys):
         disabled.difference_update(copied_identity_keys)
         await _persist_disabled(server, agent_id, disabled)
+    if server.services is not None:
+        server.services.audit_repo.write(
+            actor=user.username,
+            action="skill_package.copied",
+            target=package_id,
+            payload=",".join(copied)[:200],
+        )
     return {"copied": copied}
 
 
@@ -636,7 +671,7 @@ async def push_workspace_skill_to_package(
             resolve_request_locale(request),
         )
     store.assert_can_mutate(row, user)
-    await _guard_package_only_skill_write(ctx.workspace, ctx.config, server, name)
+    await _guard_package_only_skill_write(ctx.workspace, ctx.config, server, name, user)
     try:
         slug = await copy_workspace_skill_to_package(
             workspace=ctx.workspace,
@@ -778,7 +813,7 @@ async def create_skill(
         raise OctopError(ErrorCode.SLASH_BAD_ARGS, str(exc)) from exc
     except SkillPackageError:
         raise OctopError(ErrorCode.NOT_FOUND, "invalid skill name") from None
-    await _guard_package_only_skill_write(ctx.workspace, ctx.config, server, name)
+    await _guard_package_only_skill_write(ctx.workspace, ctx.config, server, name, user)
     # Conflict check must use SKILL.md — ZIP payloads often list siblings first,
     # and soft-delete only marks the manifest (leaving sibling files behind).
     existing = await _aread_text(ctx.workspace, f"skills/{name}/SKILL.md")
@@ -832,7 +867,7 @@ async def update_skill(
     except SkillPackageError:
         raise OctopError(ErrorCode.NOT_FOUND, "invalid skill name") from None
 
-    await _guard_package_only_skill_write(ctx.workspace, ctx.config, server, slug)
+    await _guard_package_only_skill_write(ctx.workspace, ctx.config, server, slug, user)
     existing = await _aread_text(ctx.workspace, f"skills/{slug}/SKILL.md")
     if existing is None:
         raise OctopError(ErrorCode.NOT_FOUND, f"skill {slug!r} not found")
@@ -977,6 +1012,7 @@ async def import_skill_from_url(
             bundle_url=bundle_url,
             version=body.version,
         )
+        await _guard_package_only_skill_write(ctx.workspace, ctx.config, server, package.slug, user)
         await commit_skill_install(
             target,
             package,
@@ -1041,7 +1077,7 @@ async def delete_skill(
         slug = validate_skill_slug(name)
     except SkillPackageError:
         raise OctopError(ErrorCode.NOT_FOUND, "invalid skill name") from None
-    await _guard_package_only_skill_write(ctx.workspace, ctx.config, server, slug)
+    await _guard_package_only_skill_write(ctx.workspace, ctx.config, server, slug, user)
     resolved = await _resolve_skill(ctx.workspace, slug)
     if resolved is None:
         raise OctopError(ErrorCode.NOT_FOUND, f"skill {slug!r} not found")
@@ -1457,6 +1493,7 @@ async def hub_install_skill(
         except (SkillHubPackageError, SkillPackageError) as package_exc:
             raise HTTPException(status_code=502, detail=str(package_exc)) from package_exc
 
+    await _guard_package_only_skill_write(ctx.workspace, ctx.config, server, skill_name, user)
     try:
         await install_skill_from_skillhub(
             target,

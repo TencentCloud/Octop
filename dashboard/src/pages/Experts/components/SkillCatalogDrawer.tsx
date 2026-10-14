@@ -22,6 +22,8 @@ export default function SkillCatalogDrawer({
       title={t("pageShell.skills.title")}
       open={open}
       onClose={onClose}
+      agentId={agentId}
+      remoteHintKey="editSkillPackages"
     >
       <SkillsTabs agentId={agentId || null} />
     </CatalogDrawer>

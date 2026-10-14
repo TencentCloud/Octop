@@ -18,8 +18,9 @@ import {
   ancestorDirPaths,
   appendChildren,
   insertChild,
-  makeRootNode,
-  normalizeTreeRoot,
+  isTreeRoot,
+  makeRootNodes,
+  normalizeTreeRoots,
   renameNode,
   sanitizeTree,
   type DirTreeNode,
@@ -34,8 +35,12 @@ interface DirEntry {
 interface RootDirSelectProps {
   value?: string;
   onChange?: (value: string) => void;
-  /** Tree browse root: host ``/`` (or drive root). Default value is still home. */
-  treeRoot?: string;
+  /**
+   * Browse-tree roots. A bare string is accepted for single-root callers;
+   * Windows hosts pass every ready drive so the picker is not confined to
+   * whichever drive holds the server's home directory.
+   */
+  treeRoots?: string | string[];
   /** When true, shows the current path but blocks picking / mkdir / rename. */
   disabled?: boolean;
 }
@@ -74,14 +79,17 @@ function entriesToNodes(entries: DirEntry[]): DirTreeNode[] {
 export default function RootDirSelect({
   value,
   onChange,
-  treeRoot = HOST_FS_ROOT,
+  treeRoots = HOST_FS_ROOT,
   disabled = false,
 }: RootDirSelectProps) {
   const { t } = useTranslation();
-  const normalizedRoot = normalizeTreeRoot(treeRoot);
-  const [treeData, setTreeData] = useState<DirTreeNode[]>(() => [
-    makeRootNode(normalizedRoot),
-  ]);
+  const normalizedRoots = useMemo(
+    () => normalizeTreeRoots(treeRoots),
+    [treeRoots],
+  );
+  const [treeData, setTreeData] = useState<DirTreeNode[]>(() =>
+    makeRootNodes(normalizedRoots),
+  );
   const [expandedKeys, setExpandedKeys] = useState<string[] | undefined>(
     undefined,
   );
@@ -99,9 +107,9 @@ export default function RootDirSelect({
     (
       updater: (prev: DirTreeNode[]) => DirTreeNode[],
     ): ((prev: DirTreeNode[]) => DirTreeNode[]) => {
-      return (prev) => sanitizeTree(updater(prev), normalizedRoot);
+      return (prev) => sanitizeTree(updater(prev), normalizedRoots);
     },
-    [normalizedRoot],
+    [normalizedRoots],
   );
 
   const markLoaded = useCallback((paths: string[]) => {
@@ -118,12 +126,12 @@ export default function RootDirSelect({
   }, []);
 
   const resetTree = useCallback(() => {
-    setTreeData([makeRootNode(normalizedRoot)]);
+    setTreeData(makeRootNodes(normalizedRoots));
     loadedKeysRef.current.clear();
     setLoadedKeys([]);
     setExpandedKeys(undefined);
     loadingPathsRef.current.clear();
-  }, [normalizedRoot]);
+  }, [normalizedRoots]);
 
   useEffect(() => {
     resetTree();
@@ -169,7 +177,7 @@ export default function RootDirSelect({
   // parents exist makes antd loadData miss child merges; no synthetic path chain.
   useEffect(() => {
     if (!value) return;
-    const ancestors = ancestorDirPaths(value, normalizedRoot);
+    const ancestors = ancestorDirPaths(value, normalizedRoots);
     if (ancestors.length === 0) return;
 
     let cancelled = false;
@@ -185,7 +193,7 @@ export default function RootDirSelect({
     return () => {
       cancelled = true;
     };
-  }, [value, normalizedRoot]);
+  }, [value, normalizedRoots]);
 
   const loadData = useCallback<NonNullable<TreeSelectProps["loadData"]>>(
     async (node) => {
@@ -267,7 +275,7 @@ export default function RootDirSelect({
             }),
           ),
         );
-        const ancestors = ancestorDirPaths(result.path, normalizedRoot);
+        const ancestors = ancestorDirPaths(result.path, normalizedRoots);
         setExpandedKeys((prev) => [
           ...new Set([...(prev ?? []), ...ancestors]),
         ]);
@@ -278,7 +286,7 @@ export default function RootDirSelect({
         setBusy(false);
       }
     },
-    [beginEditing, busy, normalizedRoot, t, withSanitizedTree],
+    [beginEditing, busy, normalizedRoots, t, withSanitizedTree],
   );
 
   const renderTitle = useCallback(
@@ -334,7 +342,7 @@ export default function RootDirSelect({
               flexShrink: 0,
             }}
           >
-            {path !== normalizedRoot ? (
+            {isTreeRoot(path, normalizedRoots) ? null : (
               <button
                 type="button"
                 className={styles.rootDirActionBtn}
@@ -350,7 +358,7 @@ export default function RootDirSelect({
               >
                 <Pencil size={14} />
               </button>
-            ) : null}
+            )}
             <button
               type="button"
               className={styles.rootDirActionBtn}
@@ -378,7 +386,7 @@ export default function RootDirSelect({
       editingName,
       editingPath,
       handleMkdir,
-      normalizedRoot,
+      normalizedRoots,
       t,
     ],
   );

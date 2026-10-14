@@ -24,6 +24,71 @@ KIND_TO_PROTOCOL: dict[str, str] = {
     "gemini": "openai",
 }
 
+_PRESET_PROVIDER_KEYS: frozenset[str] | None = None
+
+
+def _preset_provider_keys() -> frozenset[str]:
+    """Lowercased bundled preset ids and display names."""
+    global _PRESET_PROVIDER_KEYS
+    if _PRESET_PROVIDER_KEYS is None:
+        from octop.infra.agents.providers.presets import load_provider_presets
+
+        keys: set[str] = set()
+        for preset in load_provider_presets():
+            for raw in (preset.get("id"), preset.get("name")):
+                if isinstance(raw, str) and raw.strip():
+                    keys.add(raw.strip().lower())
+        _PRESET_PROVIDER_KEYS = frozenset(keys)
+    return _PRESET_PROVIDER_KEYS
+
+
+def resolve_provider_stream_usage(
+    *,
+    provider_name: str | None,
+    extra: dict[str, Any] | None = None,
+) -> bool:
+    """Whether ChatOpenAI should send ``stream_options.include_usage``.
+
+    Harness defaults this on so streamed replies carry token usage. Strict
+    OpenAI-compatible stacks (Huawei MindIE, older relays) 422 on that field.
+    Custom providers therefore default off; bundled presets stay on.
+    ``extra_json.stream_usage`` always wins.
+    """
+    if extra is not None and "stream_usage" in extra:
+        return bool(extra["stream_usage"])
+    name = (provider_name or "").strip().lower()
+    return bool(name) and name in _preset_provider_keys()
+
+
+def merge_stream_usage_extra(
+    extra_json: str | None,
+    stream_usage: bool | None,
+) -> str | None:
+    """Write ``stream_usage`` into *extra_json*. ``None`` leaves the blob unchanged."""
+    if stream_usage is None:
+        return extra_json
+    extra: dict[str, Any] = {}
+    if extra_json:
+        try:
+            parsed = json.loads(extra_json)
+            if isinstance(parsed, dict):
+                extra = dict(parsed)
+        except json.JSONDecodeError:
+            extra = {}
+    extra["stream_usage"] = bool(stream_usage)
+    return json.dumps(extra)
+
+
+def _provider_extra_dict(row: Any) -> dict[str, Any]:
+    raw = getattr(row, "extra_json", None)
+    if not isinstance(raw, str) or not raw.strip():
+        return {}
+    try:
+        extra = json.loads(raw)
+    except json.JSONDecodeError:
+        return {}
+    return extra if isinstance(extra, dict) else {}
+
 
 def _infer_model_input_modalities(
     model_id: str,
@@ -140,14 +205,13 @@ class ProviderStore:
             ]
             if not models:
                 continue
-            headers: dict[str, str] = {}
-            if row.extra_json:
-                try:
-                    extra = json.loads(row.extra_json)
-                    if isinstance(extra, dict) and isinstance(extra.get("headers"), dict):
-                        headers = {str(k): str(v) for k, v in extra["headers"].items()}
-                except Exception:
-                    pass
+            extra = _provider_extra_dict(row)
+            raw_headers = extra.get("headers")
+            headers = (
+                {str(k): str(v) for k, v in raw_headers.items()}
+                if isinstance(raw_headers, dict)
+                else {}
+            )
             out.append(
                 ProviderConfig(
                     id=row.name,
@@ -158,6 +222,10 @@ class ProviderStore:
                     models=models,
                     headers=headers,
                     session_header=session_header_for_provider(row.name, row.base_url),
+                    stream_usage=resolve_provider_stream_usage(
+                        provider_name=row.name,
+                        extra=extra,
+                    ),
                 )
             )
         return out

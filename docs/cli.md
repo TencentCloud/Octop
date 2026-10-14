@@ -23,6 +23,7 @@ Commands:
   admin      Admin commands.
   agent      Agent lifecycle commands.
   backup     Export and restore Octop backups.
+  bridge     Manage remote Octop bridge peers.
   chat       [deprecated] Alias for `octop chats`.
   chats      Chat REPL and session management.
   channel    Channel management commands.
@@ -56,13 +57,14 @@ Commands:
 
 ## Transport layers
 
-Octop commands pick one of three transports:
+Octop commands pick one of these transports:
 
 | Layer | When | Login? | Examples |
 |-------|------|--------|----------|
-| **Offline** (local DB only) | Need to read/write `~/.octop` without a running server | No | `init`, `backup`, `plugin`, `agent list`, `chats list/get/create/update/delete`, `cron list`, `user *`, `admin overview/audit`, `models presets/list/active` |
+| **Offline** (local DB only) | Need to read/write `~/.octop` without a running server | No | `init`, `backup`, `plugin`, `agent list`, `chats list/get/create/update/delete`, `cron list`, `user *`, `admin overview/audit`, `models presets/list/active`, `bridge list/get` |
 | **Attach** (HTTP / WS) | Need a live `octop run` process (IM, streams, model pulls) | Yes (`octop user login`) | `chats send/repl`, `channel test/probe`, `models ollama-*`, `skills enable/disable`, `provider test` |
 | **Embedded** (in-process) | CLI boots `OctopServer` for a single command | No | `octop acp`, `octop chats repl`, `octop chats send` (defaults to embedded), `octop agent create/from-expert/start/stop/reload` |
+| **Embedded (bridge)** | In-process `BridgeManager` (no full server); CLI cannot keep the WS after exit | No | `bridge probe/create/patch/delete/connect/disconnect/agents` |
 
 The dashboards and HTTP callers manage their own JWTs and do **not**
 share `~/.octop/cli_state.json`.
@@ -207,6 +209,36 @@ Commands:
 
 `octop chat` is a deprecated alias that prints a stderr warning and
 forwards to `chats`.
+
+## `octop bridge`
+
+User-scoped Octop-to-Octop peer links (same surface as Dashboard **远程桥接**).
+`--user` / pinned `default_user` selects the local owner. `--peer-user` is
+the **remote** login. `probe` talks HTTP only; `create --connect` /
+`connect` / `agents` verify the Bridge WebSocket then close it — start
+`octop run` to keep a link alive (auto-reconnect).
+
+```
+Usage: octop bridge [OPTIONS] COMMAND [ARGS]...
+
+  Manage remote Octop bridge peers (add / edit / probe / connect).
+
+Commands:
+  list        List saved bridge connections.
+  get         Show one saved connection.
+  probe       Test peer credentials (login + list experts).
+  create      Add a peer (optional Bridge WS handshake).
+  patch       Update name / notes / icon / credentials / auto-reconnect.
+  delete      Delete a saved connection.
+  connect     Dial and verify Bridge WS, then close the CLI session.
+  disconnect  Mark a connection disconnected in the local DB.
+  agents      Dial, list remote experts via the tunnel, then close.
+```
+
+`probe` without `CONNECTION_ID` requires `--url` and `--peer-user`.
+`probe CONNECTION_ID` reuses the stored password when `--peer-password`
+is omitted. `create` always needs the remote password: pass
+`--peer-password` or type it at the hidden prompt.
 
 ## `octop channel`
 

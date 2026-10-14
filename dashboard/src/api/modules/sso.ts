@@ -26,6 +26,63 @@ export interface OidcConfigTestResult {
   detail?: string;
 }
 
+export interface LdapConfig {
+  enabled: boolean;
+  display_name: string;
+  server_url: string;
+  start_tls: boolean;
+  verify_tls: boolean;
+  bind_dn: string;
+  has_bind_password: boolean;
+  user_base_dn: string;
+  user_filter: string;
+  username_attribute: string;
+  email_attribute: string;
+  display_name_attribute: string;
+  subject_attribute: string;
+  group_attribute: string;
+  group_search: boolean;
+  group_search_base: string;
+  group_member_attribute: string;
+  admin_groups: string;
+  allowed_groups: string;
+  auto_provision: boolean;
+  timeout_seconds: number;
+  warnings: string[];
+}
+
+export interface LdapConfigPut {
+  enabled?: boolean;
+  display_name?: string;
+  server_url?: string;
+  start_tls?: boolean;
+  verify_tls?: boolean;
+  bind_dn?: string;
+  bind_password?: string;
+  user_base_dn?: string;
+  user_filter?: string;
+  username_attribute?: string;
+  email_attribute?: string;
+  display_name_attribute?: string;
+  subject_attribute?: string;
+  group_attribute?: string;
+  group_search?: boolean;
+  group_search_base?: string;
+  group_member_attribute?: string;
+  admin_groups?: string;
+  allowed_groups?: string;
+  auto_provision?: boolean;
+  timeout_seconds?: number;
+}
+
+export interface LdapConfigTestResult {
+  ok: boolean;
+  detail: string;
+  warnings?: string[];
+  /** Identity-key attribute the probe found; suggest it when subject_attribute is blank. */
+  detected_subject_attribute?: string | null;
+}
+
 export interface OauthAppConfig {
   kind: string;
   enabled: boolean;
@@ -61,6 +118,20 @@ export const ssoApi = {
   },
   testOidcConfig(): Promise<OidcConfigTestResult> {
     return request<OidcConfigTestResult>("/auth/oidc/config/test", {
+      method: "POST",
+    });
+  },
+  getLdapConfig(): Promise<LdapConfig> {
+    return request<LdapConfig>("/auth/ldap/config");
+  },
+  putLdapConfig(body: LdapConfigPut): Promise<LdapConfig> {
+    return request<LdapConfig>("/auth/ldap/config", {
+      method: "PUT",
+      body: JSON.stringify(body),
+    });
+  },
+  testLdapConfig(): Promise<LdapConfigTestResult> {
+    return request<LdapConfigTestResult>("/auth/ldap/config/test", {
       method: "POST",
     });
   },

@@ -1,3 +1,5 @@
+import { ASK_USER_TOOL_NAME } from "../../../api/types/hitl";
+
 /** Resolve display names for speakers still generating in a team room. */
 
 export interface NamedAgent {
@@ -45,14 +47,15 @@ export function resolveLiveSpeakerNames(
 export function hasInFlightTool(
   messages: ReadonlyArray<{
     status?: string;
-    toolData?: { output?: unknown } | null;
+    toolData?: { name?: string; output?: unknown } | null;
   }>,
 ): boolean {
   return messages.some(
     (m) =>
       Boolean(m.toolData) &&
       m.status === "streaming" &&
-      m.toolData?.output === undefined,
+      m.toolData?.output === undefined &&
+      m.toolData?.name !== ASK_USER_TOOL_NAME,
   );
 }
 

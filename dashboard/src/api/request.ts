@@ -206,10 +206,26 @@ export function getActiveAgentId(): string | null {
 }
 
 /**
+ * Optional ``X-Octop-Agent-Id`` for caller-opted header tunnels (composer
+ * GETs, connector lists). Do not auto-attach these on settings pages.
+ */
+export function bridgeAgentHeaders(
+  agentId?: string | null,
+): Record<string, string> | undefined {
+  const id = (agentId ?? "").trim();
+  if (!id) return undefined;
+  return { "X-Octop-Agent-Id": id };
+}
+
+/**
  * Decide whether a request path is "agent-scoped" — i.e. talking to a
  * concrete agent's resource — and therefore should carry the
  * ``X-Octop-Agent-Id`` header. Health, admin, auth, setup, providers, and
  * personas don't need it.
+ *
+ * Composer / knowledge / browser host GETs are NOT auto-scoped: those
+ * settings pages must keep talking to this instance. Callers that need a
+ * remote hop pass ``bridgeAgentHeaders(agentId)`` explicitly.
  */
 function isAgentScopedPath(path: string): boolean {
   // Match `/agents/<id>/...` (one trailing segment after the id).
@@ -217,6 +233,10 @@ function isAgentScopedPath(path: string): boolean {
   if (/^\/agents\/[^/]+(\/|$)/.test(path)) return true;
   // MBTI endpoints that read/write the active agent's persona config.
   if (/^\/mbti\//.test(path)) return true;
+  if (path === "/cron/settings") return true;
+  if (path === "/subagent-catalog" || path.startsWith("/subagent-catalog/")) {
+    return true;
+  }
   return false;
 }
 

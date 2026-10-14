@@ -1,6 +1,7 @@
--- Schema v18: role templates. Users and invites store role snapshots (no FK).
+-- Schema v18: role templates. users.role stores the template public id
+-- (admin | user | custom ULID). Invites store the same id in user_invites.role.
 -- Resource policies live in a JSON array; a missing name means that policy is off.
--- Existing users are not rewritten; users.role_name stays NULL.
+-- Existing users keep their role values (already admin|user).
 
 CREATE TABLE IF NOT EXISTS user_role (
   id              INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -15,9 +16,8 @@ CREATE TABLE IF NOT EXISTS user_role (
 );
 
 ALTER TABLE users ADD COLUMN role_name TEXT;
-ALTER TABLE users ADD COLUMN user_role_id TEXT;
 ALTER TABLE users ADD COLUMN avatar_icon TEXT;
 ALTER TABLE user_invites ADD COLUMN role_name TEXT;
-ALTER TABLE user_invites ADD COLUMN user_role_id TEXT;
+ALTER TABLE user_invites ADD COLUMN role TEXT;
 
 UPDATE _schema_version SET version = 18;

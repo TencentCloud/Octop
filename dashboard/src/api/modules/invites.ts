@@ -16,14 +16,14 @@ export interface InviteRow {
   invite_path: string;
   invite_url: string;
   role_name?: string | null;
-  user_role_id?: string | null;
-  system_role?: string | null;
+  /** Role-template public id applied at redeem time. */
+  role?: string | null;
 }
 
 export interface InviteCreateBody {
   note?: string | null;
   expires_in_days?: number;
-  user_role_id?: string | null;
+  role?: string | null;
 }
 
 export interface InviteRedeemBody {
@@ -41,7 +41,7 @@ export interface InviteRedeemResponse {
   user: {
     id: number;
     username: string;
-    role: "admin" | "user";
+    role: string;
     display_name: string | null;
     locale: string;
     permissions?: string[];
