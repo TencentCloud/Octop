@@ -274,6 +274,12 @@ def _version_tuple(version: str | None) -> tuple[int, ...]:
 _MARKET_ASSET_SUFFIXES = frozenset({".svg", ".png", ".jpg", ".jpeg", ".webp", ".gif"})
 
 
+def is_safe_plugin_id(plugin_id: str) -> bool:
+    """True when *plugin_id* is a single directory name safe to join onto a root."""
+    cleaned = str(plugin_id).strip()
+    return bool(cleaned) and ".." not in cleaned and "/" not in cleaned and "\\" not in cleaned
+
+
 class PluginManager:
     def __init__(self, *, plugins_dir: Path, config_path: Path) -> None:
         self._plugins_dir = plugins_dir
@@ -616,6 +622,14 @@ class PluginManager:
                 ErrorCode.PLUGIN_INVALID_ARCHIVE,
                 f"invalid plugin manifest: {exc}",
             ) from exc
+        if not is_safe_plugin_id(manifest.id):
+            # Without this an id of "../evil" installed outside the plugins
+            # directory, and force=True then rmtree'd whatever it landed on.
+            raise OctopError(
+                ErrorCode.PLUGIN_INVALID_ARCHIVE,
+                f"invalid plugin id: {manifest.id!r}",
+                details={"id": manifest.id},
+            )
         dest = self._plugins_dir / manifest.id
         if dest.exists():
             if not force:
