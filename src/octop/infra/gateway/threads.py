@@ -147,8 +147,9 @@ class ThreadRegistry:
         channel_chat_type: str = "dm",
         channel_metadata: dict[str, Any] | None = None,
         channel_id: str | None = None,
+        session_key: str | None = None,
     ) -> str:
-        session_key = self.make_key(
+        session_key = session_key or self.make_key(
             agent_id=agent_id,
             channel_type=channel_type,
             channel_subject_id=channel_subject_id,
@@ -228,6 +229,7 @@ class ThreadRegistry:
             channel_chat_type=channel_chat_type if len(parts) < 4 else parts[3],
             channel_metadata=channel_metadata,
             channel_id=channel_channel_id,
+            session_key=session_key,
         )
 
     def get_bound_thread_id(self, session_key: str) -> str | None:
