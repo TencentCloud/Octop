@@ -118,6 +118,10 @@ def _build_stdio_spec(entry: ConnectorCatalogEntry, creds: dict[str, Any]) -> di
             creds.get("token") or creds.get("api_key") or creds.get("personal_token") or ""
         ).strip()
         base_url = str(creds.get("base_url") or "https://www.yuque.com/api/v2").strip()
+        # The Yuque Open API lives under /api/v2; a bare site root would send
+        # requests to the marketing homepage, so append the path when missing.
+        if not base_url.endswith("/api/v2"):
+            base_url = base_url.rstrip("/") + "/api/v2"
         return {
             "transport": "stdio",
             "command": "npx",
@@ -529,6 +533,16 @@ def _redact_mcp_configs_for_log(configs: dict[str, Any]) -> dict[str, Any]:
                 if key in redacted:
                     redacted[key] = "***"
             entry["headers"] = redacted
+        env = entry.get("env")
+        if isinstance(env, dict):
+            redacted_env = dict(env)
+            for env_key in redacted_env:
+                if any(
+                    marker in env_key.upper()
+                    for marker in ("TOKEN", "SECRET", "KEY", "PASSWORD", "CREDENTIAL")
+                ):
+                    redacted_env[env_key] = "***"
+            entry["env"] = redacted_env
         for key, value in list(entry.items()):
             if callable(value):
                 entry[key] = f"<callable {getattr(value, '__name__', type(value).__name__)}>"

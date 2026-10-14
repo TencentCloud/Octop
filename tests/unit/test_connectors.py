@@ -287,6 +287,53 @@ def test_dify_builds_streamable_http_spec():
     }
 
 
+def test_yuque_mcp_builds_stdio_spec():
+    entry = get_catalog_entry("yuque-mcp")
+    assert entry is not None
+    assert entry.mcp_mode == "stdio"
+    creds = validate_create_credentials("yuque-mcp", {"token": "yuque-token"})
+    assert creds == {"token": "yuque-token"}
+    spec = build_http_mcp_spec(
+        entry=entry,
+        instance_id="x",
+        creds=creds,
+        config=OctopConfig(),
+    )
+    assert spec == {
+        "transport": "stdio",
+        "command": "npx",
+        "args": ["-y", "yuque-mcp"],
+        "env": {
+            "YUQUE_PERSONAL_TOKEN": "yuque-token",
+            "YUQUE_BASE_URL": "https://www.yuque.com/api/v2",
+        },
+    }
+
+
+def test_yuque_mcp_stdio_spec_appends_api_v2_to_site_root():
+    entry = get_catalog_entry("yuque-mcp")
+    assert entry is not None
+    spec = build_http_mcp_spec(
+        entry=entry,
+        instance_id="x",
+        creds={"token": "t", "base_url": "https://www.yuque.com"},
+        config=OctopConfig(),
+    )
+    assert spec["env"]["YUQUE_BASE_URL"] == "https://www.yuque.com/api/v2"
+
+
+def test_yuque_mcp_stdio_spec_keeps_explicit_api_v2():
+    entry = get_catalog_entry("yuque-mcp")
+    assert entry is not None
+    spec = build_http_mcp_spec(
+        entry=entry,
+        instance_id="x",
+        creds={"token": "t", "base_url": "https://www.yuque.com/api/v2"},
+        config=OctopConfig(),
+    )
+    assert spec["env"]["YUQUE_BASE_URL"] == "https://www.yuque.com/api/v2"
+
+
 def test_dify_rejects_non_server_url():
     with pytest.raises(ValueError, match="Dify MCP Server URL"):
         validate_create_credentials("dify", {"mcp_url": "https://dify.example.com/v1/chat"})
@@ -304,6 +351,27 @@ def test_dify_server_code_is_redacted_from_logs():
         }
     )
     assert redacted["dify__x"]["url"] == "https://dify.example.com/mcp/server/***/mcp"
+
+
+def test_stdio_spec_env_tokens_are_redacted_from_logs():
+    from octop.infra.connectors.builder import _redact_mcp_configs_for_log
+
+    redacted = _redact_mcp_configs_for_log(
+        {
+            "yuque-mcp__x": {
+                "transport": "stdio",
+                "command": "npx",
+                "args": ["-y", "yuque-mcp"],
+                "env": {
+                    "YUQUE_PERSONAL_TOKEN": "top-secret-token",
+                    "YUQUE_BASE_URL": "https://www.yuque.com/api/v2",
+                },
+            }
+        }
+    )
+    env = redacted["yuque-mcp__x"]["env"]
+    assert env["YUQUE_PERSONAL_TOKEN"] == "***"
+    assert env["YUQUE_BASE_URL"] == "https://www.yuque.com/api/v2"
 
 
 def test_didi_builds_streamable_http_spec_from_user_key():
