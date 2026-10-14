@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import asyncio
 import importlib
+import importlib.metadata
 import importlib.util
 import logging
 import os
@@ -134,7 +135,7 @@ def build_install_commands(packages: Sequence[str]) -> list[list[str]]:
 
 
 def _extra_fallback_commands(extra: str) -> list[list[str]]:
-    spec = f"octop[{extra}]"
+    spec = f"octop[{extra}]=={importlib.metadata.version('octop')}"
     commands: list[list[str]] = []
     uv_bin = find_uv_binary()
     if uv_bin:

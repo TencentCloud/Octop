@@ -6,6 +6,8 @@ import subprocess
 import sys
 
 import pytest
+from packaging.requirements import Requirement
+from tests.support.fakes import fake_bin_path
 
 from octop.infra.utils import runtime_packages as mod
 
@@ -103,11 +105,44 @@ def test_install_packages_extra_fallback(monkeypatch) -> None:
         stdout = ""
 
     monkeypatch.setattr(mod, "find_uv_binary", lambda: None)
+    monkeypatch.setattr("importlib.metadata.version", lambda _name: "1.0.2b8")
     monkeypatch.setattr(subprocess, "run", lambda cmd, **_kw: calls.append(list(cmd)) or FakeProc())
     spec = mod.PackageInstallSpec(packages=("fastembed>=0.4",), extra_fallback="local-embedding")
     with pytest.raises(RuntimeError, match="Could not install optional Python components"):
         mod.install_packages(spec, is_satisfied=lambda: False)
-    assert any("octop[local-embedding]" in cmd for cmd in calls)
+    assert any("octop[local-embedding]==1.0.2b8" in cmd for cmd in calls)
+
+
+@pytest.mark.parametrize("version", ["1.0.1", "1.0.2b8"])
+@pytest.mark.parametrize("has_uv", [False, True])
+def test_runtime_extra_fallback_cannot_replace_installed_octop(monkeypatch, version, has_uv):
+    monkeypatch.setattr(
+        "importlib.metadata.version", lambda name: version if name == "octop" else ""
+    )
+    monkeypatch.setattr(mod, "find_uv_binary", lambda: fake_bin_path("uv") if has_uv else None)
+    calls: list[list[str]] = []
+
+    class FailedInstall:
+        returncode = 1
+        stderr = "requested optional dependency is unavailable"
+        stdout = ""
+
+    monkeypatch.setattr(
+        subprocess, "run", lambda cmd, **kw: calls.append(list(cmd)) or FailedInstall()
+    )
+    with pytest.raises(RuntimeError, match="Could not install optional Python components"):
+        mod.install_packages(
+            mod.PackageInstallSpec(packages=("pymupdf>=1.24",), extra_fallback="knowledge-ocr"),
+            is_satisfied=lambda: False,
+        )
+    fallback = [cmd for cmd in calls if cmd[-1].startswith("octop[")]
+    assert len(fallback) == (2 if has_uv else 1)
+    for cmd in fallback:
+        requirement = Requirement(cmd[-1])
+        assert requirement.extras == {"knowledge-ocr"}
+        assert requirement.specifier.contains(version, prereleases=True)
+        assert not requirement.specifier.contains("0.9.31", prereleases=True)
+        assert not requirement.specifier.contains("9.0.0", prereleases=True)
 
 
 def test_find_uv_binary_uses_custom_search_paths(monkeypatch, tmp_path) -> None:
