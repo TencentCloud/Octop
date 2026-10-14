@@ -91,14 +91,14 @@ if [[ ! -x "$coscli" ]]; then
   curl -fsSL "$url" -o "$coscli"
   # CI runners are linux-amd64. Other hosts used for a local dry upload are unchecked.
   if [[ "$asset" == "coscli-${COSCLI_VERSION}-linux-amd64" ]]; then
-    expected="7165f2ae16c5f7ac495864c963ca574a76e04ec72680d7bc8a8eee3234d8cf91"
+    expected="a07de5ba2800147a700ed29036b0c76a4229088cee68e1682d0eae19b638a915"
     if command -v sha256sum >/dev/null; then
       actual="$(sha256sum "$coscli" | awk '{print $1}')"
     else
       actual="$(shasum -a 256 "$coscli" | awk '{print $1}')"
     fi
     if [[ "$actual" != "$expected" ]]; then
-      echo "::error::coscli checksum mismatch" >&2
+      echo "::error::coscli checksum mismatch: ${actual}" >&2
       rm -f "$coscli"
       exit 1
     fi
