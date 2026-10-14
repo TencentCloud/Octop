@@ -8,6 +8,7 @@ const ConnectorsPage = lazy(() => import("../pages/Agent/Connectors"));
 const SkillPackagesPage = lazy(() => import("../pages/SkillPackages"));
 const KnowledgeBasesPage = lazy(() => import("../pages/KnowledgeBases"));
 const BridgePage = lazy(() => import("../pages/Settings/Bridge"));
+const PluginPagesPage = lazy(() => import("../pages/PluginPages"));
 const PersonalizationPage = lazy(
   () => import("../pages/Agent/Personalization"),
 );
@@ -55,6 +56,7 @@ export const pathToKey: Record<string, string> = {
   "/skill-packages": "skill-packages",
   "/knowledge-bases": "knowledge-bases",
   "/bridge": "bridge",
+  "/extensions": "extensions",
   "/personalization": "personalization",
   "/personalization/skills": "personalization",
   "/personalization/tools": "personalization",
@@ -213,6 +215,8 @@ export const routeConfigs: RouteConfig[] = [
   { path: "/workspace", element: <Navigate to="/experts" replace /> },
 
   // Settings
+  { path: "/extensions", element: <PluginPagesPage /> },
+  { path: "/extensions/:pluginId/:pageId", element: <PluginPagesPage /> },
   { path: "/admin/models", element: <ModelsPage /> },
 
   // Admin (RequirePermission wrapper applied in MainLayout)

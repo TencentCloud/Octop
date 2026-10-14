@@ -54,6 +54,7 @@ export const SIDEBAR_NAV_KEYS = [
   "tasks",
   "token-usage",
   "personalization",
+  "extensions",
   "channels",
   "connectors",
   "skill-packages",
@@ -108,6 +109,7 @@ export function navSectionLabel(
  */
 export const SIDEBAR_GROUPED_NAV_KEYS = [
   "personalization",
+  "extensions",
   "channels",
   "connectors",
   "skill-packages",
@@ -175,6 +177,12 @@ export function buildNavSections(
       path: "/personalization/skills",
       icon: <Sparkles size={iconSize} strokeWidth={iconStroke} />,
       labelKey: "nav.personalization",
+    },
+    {
+      key: "extensions",
+      path: "/extensions",
+      icon: <Puzzle size={iconSize} strokeWidth={iconStroke} />,
+      labelKey: "pluginPages.title",
     },
   ];
   if (navAllowed(user, "channels")) {

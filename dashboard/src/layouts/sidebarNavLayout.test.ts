@@ -98,7 +98,11 @@ describe("sidebarNavLayout", () => {
     const editor = editorFromCatalog(catalog(), null);
     const next = deleteGroup(editor, "settings");
     expect(next.groups.map((group) => group.id)).toEqual(["control", "admin"]);
-    expect(next.ungrouped.slice(0, 2)).toEqual(["personalization", "channels"]);
+    expect(next.ungrouped.slice(0, 3)).toEqual([
+      "personalization",
+      "extensions",
+      "channels",
+    ]);
     expect(next.ungrouped).toContain("chat");
   });
 
