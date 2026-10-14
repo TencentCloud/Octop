@@ -2,7 +2,10 @@
 
 from __future__ import annotations
 
+import contextlib
+import json
 import os
+import shlex
 from typing import Any
 
 from octop.infra.connectors.gateway.cli_dirs import resolve_cli_config_key
@@ -19,16 +22,17 @@ TOOLS: list[dict[str, Any]] = [
         "name": "dws",
         "description": (
             "Run a DingTalk Workspace CLI (dws) command via Octop Connectors. "
-            "args is the argv after `dws`, e.g. "
-            '["contact","user","search","--query","Alice","-f","json"]. '
-            'Use ["--help"] or [<product>,"--help"] to discover commands. '
+            "args is the command line after `dws`, e.g. "
+            "'contact user search --query Alice -f json'; quote values with spaces. "
+            "Use '--help' or '<product> --help' to discover commands. "
             "On auth errors, tell the user to authorize the DingTalk connector in Octop — "
             "never run shell/CLI commands."
         ),
         "inputSchema": {
             "type": "object",
             "properties": {
-                "args": {"type": "array", "items": {"type": "string"}},
+                # String, not array: harness mcp_args_model only maps scalar JSON types.
+                "args": {"type": "string", "description": "Arguments after `dws`"},
             },
             "required": ["args"],
         },
@@ -43,14 +47,26 @@ def list_tools() -> list[dict[str, Any]]:
 def call_tool(creds: dict[str, Any], name: str, args: dict[str, Any]) -> str:
     if name != "dws":
         raise ValueError(f"unknown DingTalk CLI tool: {name}")
-    argv = args.get("args")
-    if not isinstance(argv, list) or not argv or not all(isinstance(a, str) for a in argv):
-        raise ValueError("args must be a non-empty array of strings")
+    argv = _parse_argv(args.get("args"))
     if argv[0] in _DENIED:
         raise ValueError(
             f"dws {argv[0]!r} is not available through Octop. 禁止建议或执行任何终端命令。"
         )
     return run_cli([resolve_binary("dws"), *argv], env=prepare_env(creds), timeout_s=_TIMEOUT_S)
+
+
+def _parse_argv(raw: Any) -> list[str]:
+    if isinstance(raw, str) and raw.strip().startswith("["):
+        with contextlib.suppress(json.JSONDecodeError):
+            raw = json.loads(raw)
+    if isinstance(raw, str):
+        try:
+            raw = shlex.split(raw)
+        except ValueError as exc:
+            raise ValueError(f"args is not a valid command line: {exc}") from exc
+    if not isinstance(raw, list) or not raw or not all(isinstance(a, str) for a in raw):
+        raise ValueError("args must be the non-empty command line after `dws`")
+    return raw
 
 
 def probe_credentials(creds: dict[str, Any]) -> None:

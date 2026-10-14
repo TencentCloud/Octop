@@ -46,8 +46,33 @@ def test_call_tool_rejects_interactive_and_bad_args() -> None:
     creds = {"client_id": "k", "client_secret": "s", "cli_config_key": "i"}
     with pytest.raises(ValueError, match="not available"):
         dingtalk_cli.call_tool(creds, "dws", {"args": ["auth", "login"]})
-    with pytest.raises(ValueError, match="non-empty array"):
-        dingtalk_cli.call_tool(creds, "dws", {"args": "contact"})
+    with pytest.raises(ValueError, match="non-empty command line"):
+        dingtalk_cli.call_tool(creds, "dws", {"args": "   "})
+    with pytest.raises(ValueError, match="not a valid command line"):
+        dingtalk_cli.call_tool(creds, "dws", {"args": 'contact "unclosed'})
+
+
+def test_llm_facing_schema_round_trips_a_command_line(monkeypatch, tmp_path) -> None:
+    # Regression: harness mcp_args_model maps non-scalar JSON types to str, so an
+    # array schema made every real LLM call fail validation in the adapter.
+    from octop_harness.mcp import mcp_args_model
+
+    monkeypatch.setenv("OCTOP_HOME", str(tmp_path))
+    seen: dict = {}
+    monkeypatch.setattr(dingtalk_cli, "resolve_binary", lambda _n: fake_bin_path("dws"))
+    monkeypatch.setattr(dingtalk_cli, "run_cli", lambda argv, **_: seen.setdefault("argv", argv))
+    model = mcp_args_model("dws", dingtalk_cli.TOOLS[0]["inputSchema"])
+    for raw, want in (
+        (
+            'contact user search --query "Ada Lovelace" -f json',
+            ["contact", "user", "search", "--query", "Ada Lovelace", "-f", "json"],
+        ),
+        ('["contact", "user", "get-self"]', ["contact", "user", "get-self"]),
+    ):
+        seen.clear()
+        payload = model(args=raw).model_dump()
+        dingtalk_cli.call_tool({"cli_config_key": "i"}, "dws", payload)
+        assert seen["argv"][1:] == want
 
 
 def test_registered() -> None:
