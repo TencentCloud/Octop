@@ -358,6 +358,7 @@ function ChatPageInner() {
     contextUsage,
     pendingPlanPath,
     liveSpeakers,
+    activeTurnId,
     sendMessage,
     editAndResend,
     cancelStream,
@@ -841,6 +842,38 @@ function ChatPageInner() {
     onFlush: flushQueuedItem,
     shouldDeferFlush: shouldDeferQueueFlush,
   });
+
+  // While streaming, Enter/Send parks a local chip; ↑ Steer on the chip row
+  // commits sendSteerWhileBusy. The click always acts: the
+  // server routes delivery=auto (busy → steer queue, idle → new turn); a
+  // dead socket degrades to the normal send path — never a silent no-op.
+  const handleSteerQueued = useCallback(
+    (id: string) => {
+      const key = activeThreadId || "";
+      const item = queuedItems.find((q) => q.id === id);
+      if (!item || !key) return;
+      const turnId = activeTurnId || chatStore.getActiveTurnId(key) || "";
+      const result = chatStore.sendSteerWhileBusy(key, item.text, {
+        expectedTurnId: turnId || undefined,
+      });
+      removeQueued(id);
+      if (result === "no_socket") {
+        wrappedHandleSend(item.text, item.attachments);
+      }
+    },
+    [
+      activeThreadId,
+      activeTurnId,
+      queuedItems,
+      removeQueued,
+      wrappedHandleSend,
+    ],
+  );
+
+  // Committed steers live in the transcript (optimistic row settled by
+  // server frames) — the chip panel holds only uncommitted local drafts
+  // (the queue row settles on commit).
+  const displayQueuedItems = queuedItems;
 
   const {
     handleNewChat: startNewChat,
@@ -1758,9 +1791,10 @@ function ChatPageInner() {
               ref={chatInputRef}
               onSend={wrappedHandleSend}
               onQueue={enqueueQueued}
-              queuedItems={queuedItems}
+              queuedItems={displayQueuedItems}
               onRemoveQueued={removeQueued}
               onReclaimQueued={reclaimQueued}
+              onSteerQueued={handleSteerQueued}
               onCancel={cancelStream}
               onNewChat={handleNewChat}
               isStreaming={isStreaming}

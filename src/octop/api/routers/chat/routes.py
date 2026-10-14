@@ -106,6 +106,7 @@ async def get_chat_welcome(
 
 async def iter_dashboard_hitl_resume_sse(
     *,
+    server: Any,
     processor: Any,
     hitl_coordinator: HitlChannelCoordinator,
     agent_id: str,
@@ -185,6 +186,22 @@ async def iter_dashboard_hitl_resume_sse(
                 yield format_sse("chunk", chunk)
         if not disconnected:
             yield format_sse("chunk", {"type": "done"})
+        # Steers parked across the HITL pause drain at this
+        # boundary and continue through a normal WS turn — also when the SSE
+        # client disconnected, because the resume itself completed here.
+        from octop.infra.gateway.ws.ws_channel import resume_parked_steers  # noqa: PLC0415
+
+        try:
+            await resume_parked_steers(
+                server,
+                agent_id=agent_id,
+                thread_id=thread_id,
+                session_key=session_key,
+                channel_type=channel_type,
+                user_id=user_id,
+            )
+        except Exception:
+            logging.getLogger(__name__).exception("steer resume drain failed thread=%s", thread_id)
     except Exception as exc:
         # Resume failed after we cleared the pause for reinject safety — do not
         # leave the record looking like a successful approve/reject.
@@ -261,6 +278,7 @@ async def resume_hitl(
 
     async def gen() -> AsyncIterator[str]:
         async for frame in iter_dashboard_hitl_resume_sse(
+            server=server,
             processor=processor,
             hitl_coordinator=hitl_coordinator,
             agent_id=agent_id,
