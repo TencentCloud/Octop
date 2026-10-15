@@ -2,6 +2,10 @@
 
 from __future__ import annotations
 
+import os
+import tempfile
+from pathlib import Path
+
 import click
 
 from octop.cli.support.errors import fail_octop
@@ -20,6 +24,24 @@ def _run_uvicorn(**kwargs: object) -> None:
     from octop.launch import run_foreground_blocking
 
     run_foreground_blocking(**kwargs)
+
+
+def _publish_bytes_atomically(path: Path, data: bytes) -> None:
+    """Publish *data* at *path* so a failed write cannot leave a partial file.
+
+    A half-written PEM is unloadable, and the caller only regenerates when the
+    file is missing, so an interrupted key/cert write would break TLS for good.
+    """
+    fd, temporary = tempfile.mkstemp(dir=str(path.parent), prefix=f".{path.name}.", suffix=".tmp")
+    try:
+        with os.fdopen(fd, "wb") as handle:
+            handle.write(data)
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(temporary, path)
+    except BaseException:
+        Path(temporary).unlink(missing_ok=True)
+        raise
 
 
 def _maybe_generate_self_signed(
@@ -58,14 +80,15 @@ def _maybe_generate_self_signed(
             )
             .sign(priv, hashes.SHA256())
         )
-        key.write_bytes(
+        _publish_bytes_atomically(
+            key,
             priv.private_bytes(
                 encoding=serialization.Encoding.PEM,
                 format=serialization.PrivateFormat.TraditionalOpenSSL,
                 encryption_algorithm=serialization.NoEncryption(),
-            )
+            ),
         )
-        cert.write_bytes(cert_obj.public_bytes(serialization.Encoding.PEM))
+        _publish_bytes_atomically(cert, cert_obj.public_bytes(serialization.Encoding.PEM))
     return str(cert), str(key)
 
 
