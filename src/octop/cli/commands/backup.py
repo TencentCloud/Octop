@@ -167,7 +167,11 @@ def restore(
     owner_user_id: int | None,
     yes: bool,
 ) -> None:
-    """Restore from a backup archive. Stop ``octop run`` first for a clean restore."""
+    """Restore from a backup archive. Stop ``octop run`` first for a clean restore.
+
+    When the backup includes chats, this restores the versioned history archive
+    (``history_v2.sqlite`` and its marker) together with the main database.
+    """
     if not yes:
         click.confirm(
             "This overwrites the database and local workspaces. Continue?",
@@ -183,6 +187,9 @@ def restore(
         db_config=config.database,
         restore_config=not no_config,
         owner_user_id=owner_user_id,
+        # This command is the offline path (its help text asks for the server to be stopped),
+        # so it may replace history_v2.sqlite; the HTTP endpoint still refuses.
+        allow_versioned_history=True,
     )
     db.close()
     click.echo(f"restored: {result}")
