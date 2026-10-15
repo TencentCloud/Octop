@@ -67,7 +67,9 @@ export function useChatComposerResources(
       ? expert.bridge_connection_id
       : null;
   const remoteBridge = Boolean(bridgeConnectionId);
-  const expertMcpServers = teamHost || remoteBridge ? [] : expert?.mcp_servers;
+  // Peer experts carry the same composer defaults as local ones (mapped onto
+  // the shadow row). Team hosts still have no connectors.
+  const expertMcpServers = teamHost ? [] : expert?.mcp_servers;
   const expertKnowledgeBaseIds = expert?.knowledge_base_ids;
   const expertDefaultModel = (expert?.default_model || "").trim() || null;
   const expertMcpKey = (expertMcpServers ?? []).join("\0");
