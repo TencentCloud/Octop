@@ -75,7 +75,6 @@ does not set these headers itself.
 | `POST`   | `/setup/verify-password` | public | Exchange the wizard password for a session token |
 | `GET`    | `/setup/validate-token` | public | Check a wizard session token |
 | `POST`   | `/setup/initial-admin` | public | body `{username, password, display_name?, email?}` → `201` |
-| `POST`   | `/setup/resume-wizard` | public | Issue a fresh wizard token mid-setup |
 | `POST`   | `/setup/test-provider` | public | Ping a provider draft (kind/base_url/api_key/model) |
 | `POST`   | `/setup/finish` | public | Finalise setup and unlock the rest of the API |
 | `GET`    | `/auth/captcha` | public | `{provider, site_key?}` for the login widget; 503 while setup is required |
@@ -367,6 +366,66 @@ Bundled experts live in `src/octop/infra/agents/experts/library/`
 | `GET`    | `/agents/{aid}/memory/daily/{filename}` | owner | read one daily memory |
 | `DELETE` | `/agents/{aid}/memory/daily/{filename}` | owner | delete one daily memory |
 | `GET`/`POST` | `/memory/...` | user | memory API (dashboard memory tab) |
+
+### Current-expert memory storage maintenance
+
+SQLite restore requires a harness runtime with `MemoryMiddleware.pause_background`
+([octop-harness #69](https://github.com/TencentCloud/octop-harness/pull/69)). Older runtimes
+reject restore before stopping the expert or changing its database. Independent retry
+controls also require this runtime; the extraction config API reports supported options.
+
+| Method | Path | Auth | Notes |
+|--------|------|------|-------|
+| `GET` | `/agents/{aid}/memory/storage/check` | owner/admin | Read-only inspection; backend, scope, per-expert statistics and cleanup preview |
+| `GET` | `/agents/{aid}/memory/storage/maintenance` | owner/admin | Current progress and this expert's last result, retained until host restart |
+| `POST` | `/agents/{aid}/memory/storage/maintenance` | owner/admin | Body `{confirmed: true}` → `202`; run one host-owned maintenance job |
+| `GET` | `/agents/{aid}/memory/storage/backups` | owner/admin | List this expert’s maintenance and pre-restore SQLite backups from disk |
+| `DELETE` | `/agents/{aid}/memory/storage/backups` | owner/admin | Body `{confirmed: true, backup_id: "server-generated filename"}` → `204`; permanently delete only the selected backup; rejected while maintenance/restore is active |
+| `POST` | `/agents/{aid}/memory/storage/restore` | owner/admin | Body `{confirmed: true, backup_id: "server-generated filename"}` → `202`; back up current state, restore and reload only this expert |
+
+The job waits for the selected expert to become idle and reserves only that
+expert's turn admission. Ownership and storage isolation are checked again after
+waiting. Other experts' conversations can continue. Shared SQLite files and
+colliding PostgreSQL namespaces reject maintenance.
+
+SQLite creates a full file backup before checkpoint deduplication and compaction.
+SQLite restore accepts only regular sibling backup files matching the host’s naming scheme; arbitrary paths and symlinks are rejected. It validates SQLite integrity, namespace ownership and checkpoint references, drains this expert’s background workers, closes its runtime, and creates and fsyncs a full current-state backup before overwriting. SQLite’s backup API manages the database and WAL; files are not blindly replaced. A failed post-restore validation rolls back from the safety snapshot. The expert is recreated before waiting conversations are released. Backups remain discoverable after restart. The control-plane conversation lists/message archives, attachments and configuration are not restored.
+Its inspection uses a separate read-only connection and a consistent snapshot.
+`memory_counts` reports only the selected namespace's logical categories, excluding
+full-text index duplicates. `checkpoint_counts` reports checkpoints, writes, shared
+content blocks and distinct session IDs in a dedicated expert file. Shared files
+omit checkpoint counts because those tables have no expert namespace, and disable
+file maintenance, including when residual foreign namespaces are detected.
+Each count has `rows`, `status` (`ok`, `missing`, `timed_out`) and `elapsed_ms`;
+unavailable counts are null, never zero. Count queries share a five-second budget.
+`elapsed_ms` and `file_check_ms` measure server-side inspection only, excluding
+network transfer; they are not a performance benchmark. Completed SQLite jobs
+include `inspection_before` and `inspection_after` snapshots in `report`, alongside
+file/WAL totals, deduplication statistics and backup size. Counts may remain stable
+because maintenance preserves history; concurrent background writes may affect them.
+
+PostgreSQL limits every read/delete to the live expert's verified namespace and
+backs up exact target rows to a private JSONL file under
+`OCTOP_HOME/backups/memory-maintenance/` before committing a single transaction:
+
+- Rejected candidates decided more than 30 days ago, with no atom referencing them.
+- Operational journal entries older than 14 days (`extract_run`, `gc_*`,
+  `page_regen`, `page_regen_failed`; only the fixed action allowlist is eligible).
+- At most 500 rows per category per pass; locked rows are skipped and another pass
+  can process remaining eligible records.
+
+Active memories, raw evidence, decision journals (including consolidation), and
+all checkpoints remain intact. PostgreSQL results report deleted rows and backup
+size, **not physical disk reclamation**. No shared-table `VACUUM` or host-wide
+orphan sweep runs from this page. Row-byte statistics are estimates that exclude
+indexes, shared overhead and checkpoints. The JSONL header identifies the format,
+namespace and row count; subsequent records contain table names and original rows
+excluding generated search columns. PostgreSQL JSONL restore is not supported by this endpoint.
+
+To verify the PostgreSQL isolation/backup/rollback gate against a dedicated test
+database, set `OCTOP_MEMORY_MAINTENANCE_TEST_DSN` and run
+`uv run pytest tests/integration/test_postgres_memory_storage.py -q`. Never point
+this gate at production: it creates test namespaces and a temporary failure trigger.
 
 ## ACP (Agent Client Protocol)
 

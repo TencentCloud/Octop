@@ -603,6 +603,27 @@
       ]
     },
     {
+      "kind": "yuque-mcp",
+      "name": { "en": "Yuque (official MCP)", "zh": "语雀（官方 MCP）" },
+      "description": {
+        "en": "Search, read, and write Yuque books and docs via the official Yuque MCP server (stdio)",
+        "zh": "通过官方语雀 MCP（本地进程 stdio）检索、读写知识库与文档"
+      },
+      "auth_kind": "personal_token",
+      "doc_url": "https://www.yuque.com/yuque/yuque-open-api/api",
+      "icon": "yuque-mcp",
+      "color": "#22ab28",
+      "phase": "available",
+      "mcp_mode": "stdio",
+      "category": "knowledge",
+      "guide_url": "https://www.yuque.com/yuque/yuque-open-api/api",
+      "manual_url": "https://www.yuque.com/yuque/yuque-open-api/api",
+      "auth_hint": {
+        "en": "Create a personal token on the Yuque open platform and paste it below",
+        "zh": "在语雀开放平台创建个人令牌并粘贴到下方"
+      }
+    },
+    {
       "kind": "weknora",
       "name": { "en": "WeKnora", "zh": "WeKnora" },
       "description": {
