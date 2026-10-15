@@ -5,6 +5,7 @@
 格式遵循 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)，版本号遵循 [语义化版本规范](https://semver.org/spec/v2.0.0.html)。
 
 ## [Unreleased]
+- 定时任务的提示词为空/超长、名称超长时返回 400 参数错误，不再因为领域层抛出的 `ValueError` 变成 500 内部错误
 - Linux 桌面客户端无边框窗口支持拖拽边缘与角落调整大小。
 
 ### 新增

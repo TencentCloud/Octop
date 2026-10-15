@@ -135,8 +135,12 @@ async def create_cron(
 
     agent_row = require_agent_row(agent_id, user=user, as_user=None, server=server)
     _assert_cron_manage(agent_id=agent_id, agent_row=agent_row, user=user)
-    prompt = require_cron_prompt(body.prompt)
     cron_id = new_cron_id()
+    try:
+        prompt = require_cron_prompt(body.prompt)
+        name = require_cron_name(body.name, prompt=prompt, cron_id=cron_id)
+    except ValueError as exc:
+        raise OctopError(ErrorCode.SLASH_BAD_ARGS, str(exc)) from exc
     mcp_servers = (
         await validate_chat_mcp_servers(server, user_id=user.id, names=body.mcp_servers) or []
     )
@@ -144,7 +148,7 @@ async def create_cron(
         cron_id=cron_id,
         agent_id=agent_id,
         user_id=user.id,
-        name=require_cron_name(body.name, prompt=prompt, cron_id=cron_id),
+        name=name,
         trigger=body.trigger,
         prompt=prompt,
         session_key=body.session_key,
@@ -196,7 +200,15 @@ async def patch_cron(
     if body.trigger is not None:
         build_trigger(body.trigger)
     patch_fields = body.model_dump(exclude_unset=True)
-    prompt = require_cron_prompt(body.prompt) if body.prompt is not None else None
+    try:
+        prompt = require_cron_prompt(body.prompt) if body.prompt is not None else None
+        name = (
+            require_cron_name(body.name, prompt=prompt or existing.prompt, cron_id=cron_id)
+            if "name" in patch_fields
+            else None
+        )
+    except ValueError as exc:
+        raise OctopError(ErrorCode.SLASH_BAD_ARGS, str(exc)) from exc
     mcp_arg: object = UNSET
     if "mcp_servers" in patch_fields:
         mcp_arg = await validate_chat_mcp_servers(
@@ -205,11 +217,7 @@ async def patch_cron(
     row = await mgr.update(
         cron_id,
         trigger=body.trigger,
-        name=(
-            require_cron_name(body.name, prompt=prompt or existing.prompt, cron_id=cron_id)
-            if "name" in patch_fields
-            else None
-        ),
+        name=name,
         prompt=prompt,
         session_key=body.session_key,
         fresh_thread=body.fresh_thread,
