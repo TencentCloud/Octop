@@ -255,8 +255,13 @@ async def test_test_provider_returns_error_for_bad_key(env: Any) -> None:
     assert r.json()["ok"] is False
 
 
-async def test_resume_wizard_after_admin_created(env: Any) -> None:
+async def test_resume_wizard_does_not_issue_token(env: Any) -> None:
     c, _srv, home = env
+    before = await c.post("/api/setup/resume-wizard")
+    # SPA catch-all is GET-only, so a removed POST is 405 and must not mint a token.
+    assert before.status_code == 405
+    assert "wizard_token" not in before.text
+
     pw = read_password(Path.home())
     tok = (await c.post("/api/setup/verify-password", json={"password": pw})).json()["wizard_token"]
     await c.post(
@@ -264,11 +269,15 @@ async def test_resume_wizard_after_admin_created(env: Any) -> None:
         json={"username": "admin", "password": "TestPass12"},
         headers={"Authorization": f"Bearer {tok}"},
     )
-    r = await c.post("/api/setup/resume-wizard")
-    assert r.status_code == 200
-    body = r.json()
-    assert isinstance(body["wizard_token"], str)
-    assert body["expires_in"] > 0
+    after = await c.post("/api/setup/resume-wizard")
+    assert after.status_code == 405
+    assert "wizard_token" not in after.text
+    still = await c.get(
+        "/api/setup/validate-token",
+        headers={"Authorization": f"Bearer {tok}"},
+    )
+    assert still.status_code == 200
+    assert still.json()["valid"] is True
 
 
 async def test_test_provider_accepts_admin_jwt_after_admin_created(env: Any) -> None:
