@@ -23,12 +23,6 @@ def _bytes_human(n: int | float) -> str:
     return f"{value:.1f} EB"
 
 
-def _pct(used: float | int, total: float | int) -> float:
-    if not total:
-        return 0.0
-    return round(100.0 * float(used) / float(total), 1)
-
-
 def _uptime_human(seconds: float) -> str:
     secs = max(0, int(seconds))
     days, rem = divmod(secs, 86400)
@@ -109,7 +103,7 @@ def _collect() -> dict[str, Any]:
             "total": int(disk.total),
             "used": int(disk.used),
             "free": int(disk.free),
-            "percent": _pct(disk.used, disk.total),
+            "percent": float(disk.percent),
             "total_h": _bytes_human(disk.total),
             "used_h": _bytes_human(disk.used),
             "free_h": _bytes_human(disk.free),
