@@ -68,12 +68,16 @@ import {
 } from "./openAuthWindow";
 import { useConnectorInstances } from "./useConnectors";
 import styles from "./index.module.less";
+import { OpenDesignConnection } from "./OpenDesignConnection";
 
 function buildCredentials(
   entry: ConnectorCatalogEntry,
   values: Record<string, unknown>,
 ): Record<string, unknown> {
   const credentials: Record<string, unknown> = {};
+  if (entry.kind === "open-design" && values._open_design_auto === true) {
+    return { auto_detect: true };
+  }
   if (entry.auth_kind === "personal_token") {
     const token = String(values.token ?? "").trim();
     if (token) credentials.token = token;
@@ -165,6 +169,7 @@ function previewToFormValues(
       mail_provider: "qq",
       default_open: false,
       shared: false,
+      _open_design_auto: true,
     };
   }
   const preview = detail.credentials_preview ?? {};
@@ -196,7 +201,10 @@ function previewToFormValues(
       if (field.secret) continue;
       const value = preview[field.key];
       if (Array.isArray(value)) {
-        values[field.key] = value.join(", ");
+        values[field.key] =
+          entry.kind === "open-design"
+            ? JSON.stringify(value)
+            : value.join(", ");
       } else if (value !== undefined && value !== null) {
         values[field.key] = value;
       }
@@ -253,12 +261,16 @@ function customCredentialConfigChanged(
   preview: ConnectorCredentialsPreview,
 ): boolean {
   if (entry.auth_kind !== "custom_fields") return false;
+  if (entry.kind === "open-design" && values._open_design_auto === true)
+    return false;
   return (entry.credential_fields ?? []).some((field) => {
     if (field.secret) return false;
     const current = String(values[field.key] ?? "").trim();
     const storedValue = preview[field.key];
     const stored = Array.isArray(storedValue)
-      ? storedValue.join(", ")
+      ? entry.kind === "open-design"
+        ? JSON.stringify(storedValue)
+        : storedValue.join(", ")
       : String(storedValue ?? "").trim();
     return current !== stored;
   });
@@ -341,6 +353,7 @@ function ConnectorConfigDrawer({
     { name: string; description: string }[] | null
   >(null);
   const [loadingDetail, setLoadingDetail] = useState(false);
+  const openDesignAutomatic = Form.useWatch("_open_design_auto", form) === true;
   const [cliInfo, setCliInfo] = useState<ConnectorCliInstallResult | null>(
     null,
   );
@@ -394,6 +407,7 @@ function ConnectorConfigDrawer({
       description: entry.description,
       default_open: false,
       shared: false,
+      _open_design_auto: !instance,
     });
 
     void connectorsApi
@@ -1048,7 +1062,11 @@ function ConnectorConfigDrawer({
     }
     const freshInput = freshSecret || identityChanged;
     // Only reuse saved creds when the form still matches the stored identity.
-    const canUseStored = hasStoredCredentials && instance && !freshInput;
+    const canUseStored =
+      hasStoredCredentials &&
+      instance &&
+      !freshInput &&
+      !(entry.kind === "open-design" && openDesignAutomatic);
 
     if (!canUseStored) {
       try {
@@ -1604,7 +1622,32 @@ function ConnectorConfigDrawer({
             />
           </Form.Item>
 
+          {entry.kind === "open-design" && (
+            <>
+              {["command", "args", "env", "_open_design_auto"].map((name) => (
+                <Form.Item key={name} name={name} hidden>
+                  <Input />
+                </Form.Item>
+              ))}
+              <OpenDesignConnection
+                automatic={openDesignAutomatic}
+                onAutomatic={() =>
+                  form.setFieldsValue({ _open_design_auto: true })
+                }
+                onImport={(value) =>
+                  form.setFieldsValue({
+                    _open_design_auto: false,
+                    command: value.command,
+                    args: JSON.stringify(value.args),
+                    env: JSON.stringify(value.env),
+                  })
+                }
+              />
+            </>
+          )}
+
           {entry.auth_kind === "custom_fields" &&
+            entry.kind !== "open-design" &&
             (entry.credential_fields ?? []).map((field) => {
               const isSecret = field.secret || field.field_type === "password";
               const input = isSecret ? (

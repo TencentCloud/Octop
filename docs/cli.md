@@ -30,6 +30,7 @@ Commands:
   clean      Remove CLI state or wipe all of ~/.octop.
   completion Shell completion utilities.
   config     CLI state (base URL, defaults).
+  connector  Install, inspect or remove built-in connectors.
   cron       Cron job management commands.
   init       Bootstrap an Octop server install.
   models     Model catalog and active-model settings.
@@ -529,3 +530,27 @@ The path is exposed as `octop.cli.support.state.default_state_path()`
 and can be overridden via `OCTOP_HOME`. Delete the file to log out
 the CLI without hitting the server. The dashboard and HTTP callers
 do not share this file — they manage their own tokens.
+
+## Built-in connector installation
+
+These commands operate on the local Octop database without an HTTP login. Select
+an owner using root `--user`, `OCTOP_USER`, or `octop config set-user`; no owner is
+automatically chosen. Currently only `open-design` is supported.
+
+```bash
+octop config set-user alice
+octop --json connector install open-design --config-file launch.json
+octop --json connector get open-design --name open-design
+octop --json connector remove open-design --name open-design
+```
+
+`--config-file -` reads the canonical `{ "command": "…", "args": [], "env": {} }`
+launch configuration from stdin. Installation encrypts credentials, updates the
+same owner's named instance idempotently, and preserves existing sharing/default
+settings. `get` returns registration metadata without credentials. Repeated
+removal succeeds; it does not delete OpenDesign projects or cancel generation.
+Restart an already running Octop server after offline CLI changes.
+
+With compatible OpenDesign and Octop CLI versions, `od mcp install octop` supplies
+the canonical configuration automatically. See [OpenDesign](connectors-open-design.md)
+for prerequisites, local detection and remote deployment.

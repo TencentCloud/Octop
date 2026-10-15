@@ -425,6 +425,68 @@
       }
     },
     {
+      "kind": "open-design",
+      "name": {
+        "en": "OpenDesign",
+        "zh": "OpenDesign"
+      },
+      "description": {
+        "en": "Generate and refine designs through your OpenDesign MCP instance.",
+        "zh": "通过独立 OpenDesign MCP 实例生成和修改设计。"
+      },
+      "auth_kind": "custom_fields",
+      "doc_url": "https://github.com/nexu-io/open-design",
+      "guide_url": "https://github.com/nexu-io/open-design#quick-start",
+      "icon": "open-design",
+      "color": "#8b5cf6",
+      "phase": "available",
+      "mcp_mode": "stdio",
+      "category": "self_hosted",
+      "auth_hint": {
+        "en": "Detect local OpenDesign automatically, or import MCP configuration under Advanced. Configure the generation runtime in OpenDesign.",
+        "zh": "自动检测本机 OpenDesign；特殊部署可在高级配置中导入 MCP 配置。生成模型需在 OpenDesign 中配置。"
+      },
+      "credential_fields": [
+        {
+          "key": "command",
+          "label": {
+            "en": "Executable",
+            "zh": "可执行程序"
+          },
+          "required": true,
+          "help": {
+            "en": "Use an absolute path to Node/Electron or a configured SSH launcher.",
+            "zh": "使用 Node/Electron 或 SSH 启动器的绝对路径。"
+          }
+        },
+        {
+          "key": "args",
+          "label": {
+            "en": "Arguments (JSON array)",
+            "zh": "参数（JSON 数组）"
+          },
+          "required": false,
+          "placeholder": {
+            "en": "[]",
+            "zh": "[]"
+          }
+        },
+        {
+          "key": "env",
+          "label": {
+            "en": "Environment (JSON object)",
+            "zh": "环境变量（JSON 对象）"
+          },
+          "required": false,
+          "secret": true,
+          "help": {
+            "en": "Leave blank to preserve saved values; {} clears them.",
+            "zh": "留空保留已保存值；填写 {} 清空。"
+          }
+        }
+      ]
+    },
+    {
       "kind": "notion",
       "name": { "en": "Notion", "zh": "Notion" },
       "description": {

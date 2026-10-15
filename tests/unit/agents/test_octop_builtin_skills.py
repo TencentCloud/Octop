@@ -48,7 +48,7 @@ async def test_sync_seeds_manager_and_retires_old_installer(tmp_path: Path) -> N
 
     synced = await sync_octop_builtin_skills(agent.workspace)
 
-    assert synced == ["skill-manager"]
+    assert synced == ["open-design", "skill-manager"]
     assert await agent.workspace.aexists("skills")
     assert await agent.workspace.aread_text("_builtin_skills/install-skill/SKILL.md") is None
     manager = await agent.workspace.aread_text("_builtin_skills/skill-manager/SKILL.md")
@@ -82,7 +82,7 @@ async def test_sync_uses_system_files_path(tmp_path: Path) -> None:
 
     synced = await sync_octop_builtin_skills(agent.workspace)
 
-    assert synced == ["skill-manager"]
+    assert synced == ["open-design", "skill-manager"]
     manager = await agent.workspace.aread_text("_builtin_skills/skill-manager/SKILL.md")
     assert manager is not None
     assert "{{OCTOP_SKILLS}}" not in manager

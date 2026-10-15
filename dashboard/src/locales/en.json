@@ -6300,7 +6300,27 @@
     "weknoraFound": "Detected local WeKnora and filled in the URL",
     "weknoraNotFound": "WeKnora not found at 127.0.0.1:8080 on the Octop host",
     "weknoraStep1": "Open WeKnora and create an API Key",
-    "weknoraStep2": "Detect the local service or enter the deployment URL manually"
+    "weknoraStep2": "Detect the local service or enter the deployment URL manually",
+    "openDesignImportHint": "Paste the launch configuration from OpenDesign Settings → MCP server.",
+    "openDesignImportInvalid": "Enter a valid stdio launch configuration with string arguments and environment values.",
+    "openDesignSelectServer": "Select the OpenDesign server to import",
+    "openDesignImport": "Import launch configuration",
+    "openDesignAutomatic": "Connect to local OpenDesign automatically",
+    "openDesignImported": "MCP launch configuration ready",
+    "openDesignImportedHint": "The saved or imported configuration includes the executable, startup arguments and environment. You do not need to enter them separately.",
+    "openDesignDetect": "Detect again",
+    "openDesignInstall": "Download and installation guide",
+    "openDesignUseAutomatic": "Use local auto-detection",
+    "openDesignAdvanced": "Advanced: import MCP configuration",
+    "openDesignAdvancedHint": "For remote SSH connections, non-standard installation locations or versions without discovery, paste the full JSON from OpenDesign → Settings → MCP server. This replaces the launch configuration; no API key is needed.",
+    "openDesignLocal": {
+      "loading": "Detecting OpenDesign on the Octop host…",
+      "ready": "OpenDesign is running. Octop will retrieve and encrypt its complete MCP launch configuration when you save.",
+      "missing": "Install OpenDesign on the Octop host, open it, then detect again. In Docker or on a remote server, the application must be reachable from the Octop host.",
+      "stopped": "OpenDesign is installed. Open the app and detect again. If your version does not support discovery, import its MCP configuration below.",
+      "multiple": "Multiple OpenDesign installations are running. Import the configuration of the instance you want to use below.",
+      "error": "Detection failed. Retry or import the MCP configuration below."
+    }
   },
   "mbtiPage": {
     "pickAgent": "Select an Agent first"

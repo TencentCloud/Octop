@@ -44,6 +44,31 @@ def test_fingerprint_stable_and_ignores_enabled() -> None:
 
 
 @pytest.mark.asyncio
+async def test_wrapper_preserves_structured_result_and_error() -> None:
+    from langchain_core.tools import ToolException
+
+    async def result(fail: bool = False) -> tuple[str, dict[str, str]]:
+        if fail:
+            raise ToolException("generation failed")
+        return "ready", {"runId": "run-1"}
+
+    tool = StructuredTool.from_function(
+        coroutine=result,
+        name="design",
+        description="design",
+        response_format="content_and_artifact",
+        handle_tool_error=True,
+    )
+    wrapped = wrap_tools_for_shared_use([tool], asyncio.Lock())[0]
+    message = await wrapped.ainvoke({"name": "design", "args": {}, "id": "t1", "type": "tool_call"})
+    assert message.artifact == {"runId": "run-1"}
+    error = await wrapped.ainvoke(
+        {"name": "design", "args": {"fail": True}, "id": "t2", "type": "tool_call"}
+    )
+    assert error.status == "error"
+
+
+@pytest.mark.asyncio
 async def test_wrap_tools_serialize_ainvoke() -> None:
     order: list[str] = []
 

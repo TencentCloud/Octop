@@ -131,6 +131,109 @@ async def test_create_tencent_instance(env):
     assert inst.get("default_open") is False
 
 
+async def test_open_design_instance_edit_preserves_environment(env):
+    c, srv, auth, _ = env
+    created = await c.post(
+        "/api/connector-instances",
+        headers=auth,
+        json={
+            "kind": "open-design",
+            "display_name": "Design",
+            "credentials": {
+                "command": "node",
+                "args": '["od.mjs","mcp"]',
+                "env": '{"TOKEN":"design-secret"}',
+            },
+        },
+    )
+    assert created.status_code == 201
+    instance_id = created.json()["instance_id"]
+    detail = await c.get(f"/api/connector-instances/{instance_id}", headers=auth)
+    assert detail.json()["credentials_preview"]["env_configured"] is True
+    assert "design-secret" not in detail.text
+    edited = await c.patch(
+        f"/api/connector-instances/{instance_id}",
+        headers=auth,
+        json={"credentials": {"command": "node", "args": '["updated.mjs","mcp"]'}},
+    )
+    assert edited.status_code == 200
+    creds = srv.app_runtime.agent_registry._connector_svc.decrypt(instance_id)
+    assert creds["env"] == {"TOKEN": "design-secret"}
+    assert creds["args"] == ["updated.mjs", "mcp"]
+    with patch(
+        "octop.infra.connectors.open_design.probe_open_design",
+        AsyncMock(return_value={"ok": True, "tools": []}),
+    ) as probe:
+        result = await c.post(
+            f"/api/connector-instances/{instance_id}/test",
+            headers={**auth, "Accept-Language": "zh"},
+        )
+        assert result.status_code == 200 and result.json()["ok"] is True
+        assert probe.call_args.args[0]["_locale"] == "zh"
+    disabled = await c.patch(
+        f"/api/connector-instances/{instance_id}", headers=auth, json={"status": "disabled"}
+    )
+    assert disabled.status_code == 200
+    removed = await c.delete(f"/api/connector-instances/{instance_id}", headers=auth)
+    assert removed.status_code == 204
+
+
+async def test_open_design_auto_configuration_and_status(env, monkeypatch):
+    from octop.infra.connectors import open_design_local as local
+
+    c, srv, auth, _ = env
+    spec = {"command": "electron", "args": ["mcp"], "env": {"TOKEN": "local-secret"}}
+    monkeypatch.setattr(
+        local, "detect_local_open_design", lambda: ({"installed": True, "state": "ready"}, spec)
+    )
+    unauthorized = await c.get("/api/connectors/open-design/local-status")
+    assert unauthorized.status_code == 401
+    status = await c.get("/api/connectors/open-design/local-status", headers=auth)
+    assert status.json() == {"installed": True, "state": "ready"}
+    assert "local-secret" not in status.text
+    created = await c.post(
+        "/api/connector-instances",
+        headers=auth,
+        json={
+            "kind": "open-design",
+            "display_name": "Automatic Design",
+            "credentials": {"auto_detect": True},
+        },
+    )
+    assert created.status_code == 201
+    instance_id = created.json()["instance_id"]
+    assert srv.app_runtime.agent_registry._connector_svc.decrypt(instance_id) == {
+        **spec,
+        "instance_id": instance_id,
+    }
+    detail = await c.get(f"/api/connector-instances/{instance_id}", headers=auth)
+    assert "local-secret" not in detail.text
+    with patch(
+        "octop.infra.connectors.open_design.probe_open_design",
+        AsyncMock(return_value={"ok": True, "tools": []}),
+    ) as probe:
+        result = await c.post(
+            "/api/connectors/test-credentials",
+            headers=auth,
+            json={"kind": "open-design", "credentials": {"auto_detect": True}},
+        )
+        assert result.status_code == 200 and result.json()["ok"] is True
+        assert probe.call_args.args[0]["env"] == spec["env"]
+    monkeypatch.setattr(
+        local, "detect_local_open_design", lambda: ({"installed": False, "state": "missing"}, None)
+    )
+    missing = await c.post(
+        "/api/connector-instances",
+        headers=auth,
+        json={
+            "kind": "open-design",
+            "display_name": "Missing Design",
+            "credentials": {"auto_detect": True},
+        },
+    )
+    assert missing.status_code == 400
+
+
 async def test_create_instance_default_open(env):
     c, _, auth, _ = env
     r = await c.post(
@@ -475,6 +578,7 @@ async def test_catalog_weknora_dify_last(env):
     assert kinds.index("wecom-cli") < kinds.index("dify")
     assert kinds.index("didi") < kinds.index("weknora")
     assert kinds[-2:] == ["weknora", "dify"]
+    assert kinds[kinds.index("notion") - 1] == "open-design"
 
 
 async def test_obsidian_cli_install_registers_binary(
