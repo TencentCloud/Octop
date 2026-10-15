@@ -255,12 +255,15 @@ async def test_test_provider_returns_error_for_bad_key(env: Any) -> None:
     assert r.json()["ok"] is False
 
 
+def _assert_resume_wizard_absent(response: Any) -> None:
+    """A removed POST is 404, or 405 when the GET-only SPA catch-all is mounted."""
+    assert response.status_code in (404, 405)
+    assert "wizard_token" not in response.text
+
+
 async def test_resume_wizard_does_not_issue_token(env: Any) -> None:
     c, _srv, home = env
-    before = await c.post("/api/setup/resume-wizard")
-    # SPA catch-all is GET-only, so a removed POST is 405 and must not mint a token.
-    assert before.status_code == 405
-    assert "wizard_token" not in before.text
+    _assert_resume_wizard_absent(await c.post("/api/setup/resume-wizard"))
 
     pw = read_password(Path.home())
     tok = (await c.post("/api/setup/verify-password", json={"password": pw})).json()["wizard_token"]
@@ -269,9 +272,7 @@ async def test_resume_wizard_does_not_issue_token(env: Any) -> None:
         json={"username": "admin", "password": "TestPass12"},
         headers={"Authorization": f"Bearer {tok}"},
     )
-    after = await c.post("/api/setup/resume-wizard")
-    assert after.status_code == 405
-    assert "wizard_token" not in after.text
+    _assert_resume_wizard_absent(await c.post("/api/setup/resume-wizard"))
     still = await c.get(
         "/api/setup/validate-token",
         headers={"Authorization": f"Bearer {tok}"},
