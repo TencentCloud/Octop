@@ -2,7 +2,8 @@
   display: flex;
   flex-direction: column;
   gap: 16px;
-  max-width: 880px;
+  width: 100%;
+  min-width: 0;
   padding-bottom: 24px;
 }
 
@@ -53,6 +54,31 @@
   :global(.ant-card-body) {
     padding: 20px;
   }
+}
+
+.advancedSettings {
+  border-radius: 12px;
+  background: var(--fn-bg-elevated);
+
+  > :global(.ant-collapse-item) > :global(.ant-collapse-header) {
+    align-items: center !important;
+    padding: 20px !important;
+  }
+
+  > :global(.ant-collapse-item)
+    > :global(.ant-collapse-content)
+    > :global(.ant-collapse-content-box) {
+    padding: 20px !important;
+  }
+
+  .strategyFields {
+    margin-top: 0;
+  }
+}
+
+.callParameterDetail {
+  width: 100%;
+  max-width: 720px;
 }
 
 .settingRow,
@@ -160,7 +186,7 @@
   box-shadow: 0 8px 28px rgba(0, 0, 0, 0.08);
   backdrop-filter: blur(10px);
 
-  span {
+  > span {
     color: var(--fn-text-tertiary);
     font-size: 12px;
   }
@@ -192,4 +218,29 @@
   .saveBar {
     bottom: 8px;
   }
+}
+
+.storageSection {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  min-width: 0;
+
+  h5,
+  p {
+    margin-bottom: 0;
+  }
+}
+
+.storageResult {
+  padding: 16px;
+  border: 1px solid var(--fn-border-primary);
+  border-radius: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.backupPath {
+  overflow-wrap: anywhere;
 }

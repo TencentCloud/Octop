@@ -1285,6 +1285,7 @@ export default function ChatInputActionsRow({
         )}
         {isStreaming ? (
           canSend ? (
+            // Queue into the chip bar; ↵ Steer lives on the chip row.
             <Tooltip title={t("chat.queue.action")} mouseEnterDelay={0.4}>
               <button
                 className={styles.sendBtn}
