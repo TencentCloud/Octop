@@ -8,6 +8,7 @@ from typing import Any, Literal
 
 from fastapi import APIRouter, Depends, File, Query, UploadFile
 from fastapi.responses import Response
+from pydantic import BaseModel, Field
 
 from octop.api.common.agent import assert_agent_access_row, assert_agent_owner
 from octop.api.common.agent_runtime import AgentRuntimeFields, runtime_field_updates
@@ -32,6 +33,7 @@ from octop.infra.agents.settings.runtime_limits import (
     AGENT_RUNTIME_CONFIG_KEYS,
     agent_runtime_values,
 )
+from octop.infra.bridge.ids import is_bridge_agent_id
 from octop.infra.errors import ErrorCode, OctopError
 from octop.infra.users.permissions import user_has_permission
 
@@ -76,6 +78,21 @@ class AgentPatchBody(AgentRuntimeFields):
     skill_package_ids: list[str] | None = None
     knowledge_base_ids: list[str] | None = None
     mcp_servers: list[str] | None = None
+
+
+def _prefs_sort_key(row: Any, pref: Any) -> tuple[int, int, int, int, int]:
+    """Composite order: pinned first, manually-ordered ahead of unordered,
+    then sort_order ASC, then creation time. Mirrors SQL ``_PREFS_ORDER_BY``."""
+    pinned = 1 if (pref is not None and pref.pinned) else 0
+    sort_order = pref.sort_order if pref is not None else -1
+    manually_ordered = 0 if sort_order >= 0 else 1
+    return (
+        -pinned,
+        manually_ordered,
+        sort_order if sort_order >= 0 else 2147483647,
+        row.created_at,
+        row.id,
+    )
 
 
 def _attach_unread_counts(
@@ -143,6 +160,8 @@ def _row_dict(
     owner_username: str | None = None,
     bootstrap_pending: bool | None = None,
     server: Any | None = None,
+    pinned: bool = False,
+    sort_order: int = -1,
 ) -> dict[str, Any]:
     cfg = parse_config_json(row.config_json)
     public_cfg = {
@@ -192,6 +211,8 @@ def _row_dict(
         "is_owner": row.user_id is not None and row.user_id == viewer_user_id,
         "owner_username": owner_username,
         "kind": getattr(row, "kind", None) or "expert",
+        "pinned": pinned,
+        "sort_order": sort_order,
         **agent_runtime_values(cfg),
     }
     if payload["kind"] == "team":
@@ -231,6 +252,9 @@ async def list_agents(
     assert server.app_runtime is not None
     registry = server.app_runtime.agent_registry
     if scope == "all":
+        # Admin global view: intentionally NOT ordered by any single user's
+        # sidebar prefs (a global list has no meaningful personal order) —
+        # creation order, same as before schema v21.
         rows = registry.list_rows()
         user_ids = {r.user_id for r in rows if r.user_id is not None}
         username_by_id: dict[int, str] = {}
@@ -253,6 +277,13 @@ async def list_agents(
     owned = registry.list_agents(user.id)
     shared = server.services.agent_repo.list_shared(exclude_user_id=user.id)
     rows = list({row.agent_id: row for row in [*shared, *owned]}.values())
+    # Viewer-scoped personal order (schema v21): every row — owned AND
+    # shared — sorts by THIS user's prefs; rows without a pref row fall
+    # back to creation order after the manually-ordered block. Sorting is
+    # re-applied here (not only in SQL) because the owned+shared dict
+    # merge above reorders whatever each query returned.
+    prefs = server.services.user_agent_pref_repo.get_prefs(user.id)
+    rows.sort(key=lambda r: _prefs_sort_key(r, prefs.get(r.agent_id)))
     shared_owner_username_by_id: dict[int, str] = {}
     for row in shared:
         if row.user_id is None or row.user_id in shared_owner_username_by_id:
@@ -272,6 +303,8 @@ async def list_agents(
                 ),
                 bootstrap_pending=_bootstrap_pending_for(server, r.agent_id),
                 server=server,
+                pinned=prefs[r.agent_id].pinned if r.agent_id in prefs else False,
+                sort_order=prefs[r.agent_id].sort_order if r.agent_id in prefs else -1,
             )
             for r in rows
         ],
@@ -349,6 +382,64 @@ async def mark_agent_read(
         raise OctopError(ErrorCode.AGENT_NOT_FOUND, f"agent {agent_id!r} not found")
     _assert_agent_owner(row, user)
     server.services.session_repo.clear_unread_for_agent(agent_id, user.id)
+
+
+class AgentPinBody(BaseModel):
+    pinned: bool
+
+
+class AgentOrderBody(BaseModel):
+    order: list[str] = Field(default_factory=list)
+
+
+@router.post("/{agent_id}/pin", status_code=204, summary="Pin/unpin agent for current user")
+async def pin_agent(
+    agent_id: str,
+    body: AgentPinBody,
+    user: Any = Depends(current_user),
+    server: Any = Depends(get_server),
+) -> None:
+    """Per-user pin toggle (schema v21). Any agent the viewer can see —
+    owned or shared — may be pinned in their OWN sidebar; the pref row is
+    keyed by (viewer, agent) so pins never leak between users."""
+    assert server.app_runtime is not None
+    if is_bridge_agent_id(agent_id):
+        raise OctopError(ErrorCode.AGENT_NOT_FOUND, f"agent {agent_id!r} not found")
+    row = server.app_runtime.agent_registry.get_row(agent_id)
+    if row is None:
+        raise OctopError(ErrorCode.AGENT_NOT_FOUND, f"agent {agent_id!r} not found")
+    assert_agent_access_row(row, user)
+    server.services.user_agent_pref_repo.set_pin(user.id, agent_id, body.pinned)
+
+
+@router.put("/order", status_code=204, summary="Persist agent order for current user")
+async def order_agents(
+    body: AgentOrderBody,
+    user: Any = Depends(current_user),
+    server: Any = Depends(get_server),
+) -> None:
+    """Persist the viewer's full manual sequence (sort_order = index).
+
+    Every non-bridge id must exist AND be visible to the caller (owned or
+    shared) — ordering other users' private agents is a privilege leak, so
+    unknown ids raise 404 and foreign private ids raise 403. Bridge shadow
+    ids have no local row; they are skipped (their order stays client-side).
+    """
+    assert server.app_runtime is not None
+    registry = server.app_runtime.agent_registry
+    local_ids: list[str] = []
+    for agent_id in body.order:
+        agent_id = (agent_id or "").strip()
+        if not agent_id or agent_id in local_ids:
+            continue
+        if is_bridge_agent_id(agent_id):
+            continue
+        row = registry.get_row(agent_id)
+        if row is None:
+            raise OctopError(ErrorCode.AGENT_NOT_FOUND, f"agent {agent_id!r} not found")
+        assert_agent_access_row(row, user)
+        local_ids.append(agent_id)
+    server.services.user_agent_pref_repo.reorder(user.id, local_ids)
 
 
 @router.get("/{agent_id}", summary="Get agent")

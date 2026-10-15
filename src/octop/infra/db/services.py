@@ -29,6 +29,7 @@ from octop.infra.db.repos.threads import ThreadRepo
 from octop.infra.db.repos.trajectory_events import TrajectoryEventRepo
 from octop.infra.db.repos.usage import UsageRepo
 from octop.infra.db.repos.user_policies import UserPolicyRepo
+from octop.infra.db.repos.user_agent_prefs import UserAgentPrefRepo
 from octop.infra.db.repos.users import UserRepo
 from octop.infra.db.repos.voice_providers import VoiceProviderRepo
 from octop.infra.utils.paths import PathLayout
@@ -40,6 +41,7 @@ class RepoBundle:
 
     user_repo: UserRepo
     user_policy_repo: UserPolicyRepo
+    user_agent_pref_repo: UserAgentPrefRepo
     invite_repo: InviteRepo
     agent_repo: AgentRepo
     provider_repo: ProviderRepo
@@ -70,6 +72,7 @@ class RepoBundle:
             db=db,
             user_repo=UserRepo(db),
             user_policy_repo=UserPolicyRepo(db),
+            user_agent_pref_repo=UserAgentPrefRepo(db),
             invite_repo=InviteRepo(db),
             agent_repo=AgentRepo(db),
             provider_repo=ProviderRepo(db),
@@ -113,6 +116,10 @@ class SharedServices:
     @property
     def user_policy_repo(self) -> UserPolicyRepo:
         return self.repos.user_policy_repo
+
+    @property
+    def user_agent_pref_repo(self) -> UserAgentPrefRepo:
+        return self.repos.user_agent_pref_repo
 
     @property
     def invite_repo(self) -> InviteRepo:

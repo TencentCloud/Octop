@@ -9,6 +9,7 @@ import {
 import type { ReactNode } from "react";
 import { setActiveAgentId } from "../api/request";
 import { agentApi as legacyAgentApi } from "../api/modules/agent";
+import { octopAgentsApi } from "../api/modules/octopAgents";
 import {
   retainDisconnectedBridgeAgents,
   toBridgeShadowAgentId,
@@ -67,6 +68,10 @@ export interface OctopAgent {
   kind?: "expert" | "team" | string;
   /** Member agent ids when ``kind === "team"``. */
   member_ids?: string[];
+  /** Per-user pin flag (schema v21, cross-device). */
+  pinned?: boolean;
+  /** Per-user manual sort index (schema v21); -1 = never ordered. */
+  sort_order?: number;
   welcome_message?: string | null;
   /** True when this row is a remote shadow expert via cloud collab. */
   bridge?: boolean;
@@ -96,6 +101,10 @@ interface AgentContextValue {
   setActiveAgent: (id: string | null) => void;
   /** Force a re-fetch of ``/api/agents`` (e.g. after creating one). */
   refresh: (options?: { silent?: boolean; force?: boolean }) => Promise<void>;
+  /** Optimistically pin/unpin an agent, then persist (schema v21). */
+  pinAgent: (agentId: string, pinned: boolean) => Promise<void>;
+  /** Optimistically persist a manual order sequence (schema v21). */
+  reorderAgents: (order: string[]) => Promise<void>;
 }
 
 export interface EnabledExpertsOptions {
@@ -229,6 +238,8 @@ const defaultValue: AgentContextValue = {
   error: null,
   setActiveAgent: () => undefined,
   refresh: async () => undefined,
+  pinAgent: async () => undefined,
+  reorderAgents: async () => undefined,
 };
 
 const AgentContext = createContext<AgentContextValue>(defaultValue);
@@ -460,6 +471,58 @@ export function AgentProvider({ children }: { children: ReactNode }) {
     [agents, activeAgentId],
   );
 
+  // ── Schema v21: per-user pin / manual order (cross-device) ───────────
+  // Both actions optimistically patch the in-memory list, then persist via
+  // the API. On failure they roll back by re-syncing from the server (which
+  // still holds the pre-change order). Offline buffering of the *arrangement*
+  // lives in ``useListOrder`` so this context stays free of localStorage
+  // concerns (and avoids a useListOrder ↔ AgentContext import cycle).
+  const patchAgentFields = useCallback(
+    (agentId: string, patch: Partial<OctopAgent>) => {
+      setAgents((prev) =>
+        prev.map((a) => (a.agent_id === agentId ? { ...a, ...patch } : a)),
+      );
+    },
+    [],
+  );
+
+  const pinAgent = useCallback(
+    async (agentId: string, pinned: boolean) => {
+      const snapshot = agents;
+      patchAgentFields(agentId, { pinned });
+      try {
+        await octopAgentsApi.pin(agentId, pinned);
+      } catch {
+        setAgents(snapshot); // roll back optimistic patch
+        void refresh({ silent: true, force: true });
+        throw new Error("pin failed"); // caller may fall back to local write
+      }
+    },
+    [agents, patchAgentFields, refresh],
+  );
+
+  const reorderAgents = useCallback(
+    async (order: string[]) => {
+      const snapshot = agents;
+      const rank = new Map(order.map((id, idx) => [id, idx]));
+      setAgents((prev) =>
+        prev.map((a) =>
+          rank.has(a.agent_id)
+            ? { ...a, sort_order: rank.get(a.agent_id)! }
+            : a,
+        ),
+      );
+      try {
+        await octopAgentsApi.reorder(order);
+      } catch {
+        setAgents(snapshot);
+        void refresh({ silent: true, force: true });
+        throw new Error("reorder failed");
+      }
+    },
+    [agents, refresh],
+  );
+
   const value = useMemo<AgentContextValue>(
     () => ({
       agents,
@@ -469,6 +532,8 @@ export function AgentProvider({ children }: { children: ReactNode }) {
       error,
       setActiveAgent: persistAndApply,
       refresh,
+      pinAgent,
+      reorderAgents,
     }),
     [
       agents,
@@ -478,6 +543,8 @@ export function AgentProvider({ children }: { children: ReactNode }) {
       error,
       persistAndApply,
       refresh,
+      pinAgent,
+      reorderAgents,
     ],
   );
 

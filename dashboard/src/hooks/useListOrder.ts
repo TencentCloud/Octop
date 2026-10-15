@@ -1,125 +1,107 @@
 /**
- * useListOrder - per-user localStorage persistence for manual sidebar
- * ordering + pinning of experts / expert teams.
+ * useListOrder - manual sidebar ordering + pinning for experts / teams.
  *
- * Mirrors the hiddenExpertsPrefs pattern: key is namespaced per user so two
- * accounts on the same browser don't share arrangements. An all-empty state
- * removes the key entirely (most users never touch this feature).
+ * The source of truth is the per-user backend table ``user_agent_prefs``
+ * (schema v21, cross-device). The hook derives its ``state`` from the
+ * ``AgentContext`` agents (which carry ``pinned`` / ``sort_order`` once
+ * loaded) and routes every mutation through the context actions
+ * (``pinAgent`` / ``reorderAgents`` → ``POST /agents/{id}/pin`` +
+ * ``PUT /agents/order``).
+ *
+ * No local mirror: localStorage is **not** a source of truth here — keeping
+ * one would let an offline tab drift out of sync with the server and the
+ * two copies could never be reconciled deterministically. Before agents have
+ * loaded, the derived state is intentionally empty so the sidebar falls back
+ * to its default ordering rather than presenting stale local data as truth.
  */
 
-import { useCallback, useEffect, useState } from "react";
-import { useCurrentUser } from "./useCurrentUser";
+import { useCallback, useMemo } from "react";
+import { useAgent } from "../context/AgentContext";
+import type { OctopAgent } from "../context/AgentContext";
 import {
   EMPTY_LIST_ORDER,
-  parseListOrder,
   togglePinned,
   type ListOrderState,
 } from "../utils/listOrder";
 
-export const SIDEBAR_AGENT_ORDER_STORAGE_KEY = "octop:sidebar-agent-order";
-
-export function sidebarAgentOrderStorageKey(userId?: number | null): string {
-  return userId == null || userId <= 0
-    ? SIDEBAR_AGENT_ORDER_STORAGE_KEY
-    : `${SIDEBAR_AGENT_ORDER_STORAGE_KEY}:${userId}`;
+/**
+ * Derive the ``{pinned, order}`` view state from the loaded agents.
+ *
+ * - ``pinned``: agent_ids whose server flag is true (membership list).
+ * - ``order``: only the manually-ordered agents (``sort_order >= 0``),
+ *   ascending — items with ``sort_order == -1`` are left out so
+ *   ``applyListOrder`` keeps them in default position (backend "no backfill"
+ *   semantics: a fresh upgrade shows the exact pre-upgrade order).
+ *
+ * Bridge shadow agents (no ``pinned`` / ``sort_order``) fall through to the
+ * default tail, matching their server-side treatment.
+ */
+export function deriveListOrderFromAgents(
+  agents: readonly OctopAgent[],
+): ListOrderState {
+  const pinned: string[] = [];
+  for (const a of agents) if (a.pinned) pinned.push(a.agent_id);
+  const order = agents
+    .filter((a) => (a.sort_order ?? -1) >= 0)
+    .sort((x, y) => (x.sort_order ?? 0) - (y.sort_order ?? 0))
+    .map((a) => a.agent_id);
+  return { pinned, order };
 }
 
-export function readListOrder(userId?: number | null): ListOrderState {
-  try {
-    return parseListOrder(
-      localStorage.getItem(sidebarAgentOrderStorageKey(userId)),
-    );
-  } catch {
-    return { ...EMPTY_LIST_ORDER };
-  }
-}
-
-export function writeListOrder(
-  state: ListOrderState,
-  userId?: number | null,
-): void {
-  try {
-    const key = sidebarAgentOrderStorageKey(userId);
-    if (state.pinned.length === 0 && state.order.length === 0) {
-      localStorage.removeItem(key);
-      return;
-    }
-    localStorage.setItem(
-      key,
-      JSON.stringify({ pinned: state.pinned, order: state.order }),
-    );
-  } catch {
-    // quota / private mode — ordering simply won't persist
-  }
+export interface UseListOrder {
+  /** Current server-derived order state (empty before agents load). */
+  state: ListOrderState;
+  /** True until the backend list has been fetched at least once. */
+  loading: boolean;
+  /** Whether a pending mutation is in flight (optimistic, not yet confirmed). */
+  pending: boolean;
+  /**
+   * Persist a full manual sequence (drag & drop / move up / down).
+   * Propagates the underlying failure so the caller can surface it —
+   * the context rolls back the optimistic patch on rejection.
+   */
+  write: (next: ListOrderState) => Promise<void>;
+  /**
+   * Flip the pin membership of one agent. Propagates the underlying failure
+   * so the caller can surface it.
+   */
+  togglePin: (id: string) => Promise<void>;
 }
 
 /**
  * State + mutators for the current user's manual list order.
  *
- * - ``move(id, delta)``: menu 上移/下移 (clamped by caller via canMove).
- * - ``relocate(id, targetId, placement)``: drag & drop.
- * - ``togglePin(id)``: pin/unpin membership.
- * - ``applyOrder(items, getId)``: convenience wrapper over applyListOrder.
+ * All mutations are optimistically applied by the context (which patches the
+ * live ``agents`` list) and persisted through the backend; on failure the
+ * context re-syncs from the server, so the UI never lingers on a fake
+ * arrangement. The hook itself holds no state — it just projects the live
+ * agents into a ``{pinned, order}`` shape.
  */
-export function useListOrder() {
-  const userId = useCurrentUser()?.id ?? null;
-  const [state, setState] = useState<ListOrderState>(() =>
-    readListOrder(userId),
+export function useListOrder(): UseListOrder {
+  const { agents, loading, pinAgent, reorderAgents } = useAgent();
+
+  const state = useMemo<ListOrderState>(
+    () => (agents.length > 0 ? deriveListOrderFromAgents(agents) : EMPTY_LIST_ORDER),
+    [agents],
   );
 
-  useEffect(() => {
-    setState(readListOrder(userId));
-  }, [userId]);
-
-  const commit = useCallback(
-    (next: ListOrderState) => {
-      writeListOrder(next, userId);
-      setState(next);
+  const write = useCallback(
+    async (next: ListOrderState) => {
+      // Reorder only when there is an actual manual sequence to send; a
+      // fully-default list (no pinned / no order) carries nothing to persist.
+      if (next.order.length === 0) return;
+      await reorderAgents(next.order);
     },
-    [userId],
-  );
-
-  const move = useCallback(
-    (seq: string[], id: string, delta: number) => {
-      const from = seq.indexOf(id);
-      if (from < 0) return;
-      const to = from + delta;
-      if (to < 0 || to >= seq.length) return;
-      const next = [...seq];
-      next.splice(from, 1);
-      next.splice(to, 0, id);
-      commit({ ...state, order: next });
-    },
-    [commit, state],
-  );
-
-  const relocate = useCallback(
-    (seq: string[], id: string, targetId: string, placement: "before" | "after") => {
-      if (id === targetId) return;
-      const from = seq.indexOf(id);
-      if (from < 0) return;
-      const next = seq.filter((_, i) => i !== from);
-      let to = next.indexOf(targetId);
-      if (to < 0) return;
-      if (placement === "after") to += 1;
-      next.splice(to, 0, id);
-      commit({ ...state, order: next });
-    },
-    [commit, state],
+    [reorderAgents],
   );
 
   const togglePin = useCallback(
-    (id: string) => {
-      commit({ ...state, pinned: togglePinned(state.pinned, id) });
+    async (id: string) => {
+      const nextPinned = togglePinned(state.pinned, id);
+      await pinAgent(id, nextPinned.includes(id));
     },
-    [commit, state],
+    [state, pinAgent],
   );
 
-  return {
-    state,
-    move,
-    relocate,
-    togglePin,
-    write: commit,
-  };
+  return { state, loading, pending: false, write, togglePin };
 }
