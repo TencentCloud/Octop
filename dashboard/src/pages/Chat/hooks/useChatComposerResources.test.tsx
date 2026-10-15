@@ -64,19 +64,31 @@ vi.mock("../../../api/modules/knowledgeBases", () => ({
 vi.mock("../../../hooks/useCurrentUser", () => ({
   useCurrentUser: () => ({ id: 7 }),
 }));
-vi.mock("../../../context/AgentContext", () => ({
-  useAgent: () => ({
+const { agentState } = vi.hoisted(() => ({
+  agentState: {
     agents: [
       { agent_id: "expertA", knowledge_base_ids: ["k1"] },
       { agent_id: "expertB", knowledge_base_ids: ["k3"] },
-    ],
-  }),
+    ] as Array<Record<string, unknown>>,
+  },
 }));
 
+vi.mock("../../../context/AgentContext", () => ({
+  useAgent: () => ({ agents: agentState.agents }),
+}));
+
+import { preferencesApi } from "../../../api/modules/preferences";
 import { useChatComposerResources } from "./useChatComposerResources";
+
+const baseAgents = [
+  { agent_id: "expertA", knowledge_base_ids: ["k1"] },
+  { agent_id: "expertB", knowledge_base_ids: ["k3"] },
+];
 
 beforeEach(() => {
   localStorage.clear();
+  agentState.agents = baseAgents.map((item) => ({ ...item }));
+  vi.mocked(preferencesApi.get).mockResolvedValue(null as never);
 });
 
 describe("useChatComposerResources — per-expert KB selection", () => {
@@ -171,6 +183,67 @@ describe("useChatComposerResources — per-expert KB selection", () => {
     rerender({ agentId: "expertB" });
     await waitFor(() =>
       expect(result.current.selectedConnectors).toEqual(["c2"]),
+    );
+  });
+});
+
+describe("useChatComposerResources — expert default model", () => {
+  it("prefers the expert default over the account preferred model", async () => {
+    agentState.agents = [
+      {
+        agent_id: "expertA",
+        default_model: "prov/expert",
+        knowledge_base_ids: ["k1"],
+      },
+    ];
+    vi.mocked(preferencesApi.get).mockResolvedValue({
+      locale: "zh",
+      remote_browser_bookmarks: [],
+      preferred_model: "prov/preferred",
+      model_reasoning: {},
+    });
+
+    const { result } = renderHook(() =>
+      useChatComposerResources("expertA", null),
+    );
+
+    await waitFor(() =>
+      expect(result.current.selectedModel).toBe("prov/expert"),
+    );
+  });
+
+  it("uses the account preferred model when the expert default is Auto", async () => {
+    vi.mocked(preferencesApi.get).mockResolvedValue({
+      locale: "zh",
+      remote_browser_bookmarks: [],
+      preferred_model: "prov/preferred",
+      model_reasoning: {},
+    });
+
+    const { result } = renderHook(() =>
+      useChatComposerResources("expertA", null),
+    );
+
+    await waitFor(() =>
+      expect(result.current.selectedModel).toBe("prov/preferred"),
+    );
+  });
+
+  it("keeps an explicit thread model ahead of the expert default", async () => {
+    agentState.agents = [
+      {
+        agent_id: "expertA",
+        default_model: "prov/expert",
+        knowledge_base_ids: ["k1"],
+      },
+    ];
+
+    const { result } = renderHook(() =>
+      useChatComposerResources("expertA", "thread-existing", "prov/sticky"),
+    );
+
+    await waitFor(() =>
+      expect(result.current.selectedModel).toBe("prov/sticky"),
     );
   });
 });
