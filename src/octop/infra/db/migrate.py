@@ -147,9 +147,32 @@ def _ensure_agent_profile_columns(db: DatabasePool) -> None:
     _collapse_legacy_agent_welcome_columns(db)
 
 
+def _rename_legacy_cron_schedule_column(db: DatabasePool) -> None:
+    """Rename pre-squash ``cron_jobs.trigger`` to ``schedule_spec``.
+
+    Current inserts and reads use ``schedule_spec``. Databases created before
+    that rename kept the old column, so cron creation failed with
+    "no column named schedule_spec" even after later columns were added.
+    """
+    cols = _table_columns(db, "cron_jobs")
+    if "trigger" not in cols:
+        return
+    if "schedule_spec" not in cols:
+        with db.connect() as conn:
+            conn.execute('ALTER TABLE cron_jobs RENAME COLUMN "trigger" TO schedule_spec')
+        return
+    with db.connect() as conn:
+        conn.execute(
+            'UPDATE cron_jobs SET schedule_spec = "trigger" '
+            "WHERE schedule_spec IS NULL OR schedule_spec = ''"
+        )
+    _drop_column(db, "cron_jobs", "trigger")
+
+
 def _ensure_cron_jobs_schema(db: DatabasePool) -> None:
     if not _table_exists(db, "cron_jobs"):
         return
+    _rename_legacy_cron_schedule_column(db)
     _ensure_column(db, "cron_jobs", "name", "TEXT NOT NULL DEFAULT ''")
     _ensure_column(
         db,

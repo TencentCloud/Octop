@@ -42,13 +42,18 @@ class _HoldSocket:
         self.hold.set()
 
 
-def _hello(connection_id: str, *, display_name: str) -> dict[str, object]:
+def _hello(
+    connection_id: str,
+    *,
+    display_name: str,
+    advertise_base_url: str = "http://127.0.0.1:8088",
+) -> dict[str, object]:
     return {
         "type": "hello",
         "protocol_version": PROTOCOL_VERSION,
         "connection_id": connection_id,
         "role": "initiator",
-        "advertise_base_url": "http://127.0.0.1:8088",
+        "advertise_base_url": advertise_base_url,
         "advertise_username": "jubaoliang",
         "display_name": display_name,
     }
@@ -133,3 +138,51 @@ async def test_two_logins_to_same_account_stay_separate(tmp_path: Path) -> None:
     for sock in (first, second, again):
         sock.hold.set()
     await asyncio.gather(task_a, task_b, task_again)
+
+
+def _manager(
+    tmp_path: Path, *, advertise_base_url: str
+) -> tuple[BridgeManager, SimpleNamespace, int]:
+    pool = SqlitePool(tmp_path / "octop.db")
+    run_migrations(pool)
+    users = UserRepo(pool)
+    uid = users.create(username="jubaoliang", password_hash="x", role="admin")
+    mgr = BridgeManager(
+        bridge_repo=BridgeConnectionRepo(pool),
+        secret_repo=SimpleNamespace(),
+        user_repo=users,
+        advertise_base_url=advertise_base_url,
+    )
+    return mgr, SimpleNamespace(id=uid, username="jubaoliang"), uid
+
+
+@pytest.mark.asyncio
+async def test_same_loopback_advertise_accepts_remote_peer(tmp_path: Path) -> None:
+    """Two default installs both advertise 127.0.0.1:8088; that is not self."""
+    mgr, owner, uid = _manager(tmp_path, advertise_base_url="http://127.0.0.1:8088")
+    sock = _HoldSocket(_hello("CIDREM", display_name="对端"), client_host="203.0.113.8")
+    task = asyncio.create_task(mgr.accept_inbound(websocket=sock, user=owner))
+    ack = await _wait_ack(sock)
+    assert ack["connection_id"] == "CIDREM"
+    assert sock.close_code is None
+    row = mgr._repo.get("CIDREM")
+    assert row is not None and row.owner_user_id == uid and row.status == "connected"
+    sock.hold.set()
+    await task
+
+
+@pytest.mark.asyncio
+async def test_matching_public_advertise_is_self_connect(tmp_path: Path) -> None:
+    mgr, owner, _uid = _manager(tmp_path, advertise_base_url="http://203.0.113.10:8088")
+    sock = _HoldSocket(
+        _hello(
+            "CIDSELF",
+            display_name="自己",
+            advertise_base_url="http://203.0.113.10:8088",
+        ),
+        client_host="198.51.100.7",
+    )
+    await mgr.accept_inbound(websocket=sock, user=owner)
+    assert sock.close_code == 4004
+    assert sock.sent == []
+    assert mgr._repo.get("CIDSELF") is None

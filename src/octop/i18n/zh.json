@@ -717,6 +717,11 @@
       "created": "已创建",
       "error": "异常",
       "unknown": "未知"
+    },
+    "cli": {
+      "active_model_unset": "未设置全局默认模型。用 octop models active --provider <名称> --model <模型ID> 设置；专家也可以单独绑定模型。",
+      "model_global": "（全局：{model}）",
+      "model_unset": "（未设置）"
     }
   },
   "agent_errors": {
@@ -899,7 +904,16 @@
     "backend_unsupported": "当前智能体使用 {backend} 记忆库；此命令仅整理 SQLite 文件，不适用于当前数据库。本次未执行整理。",
     "memory_disabled": "当前智能体没有启用记忆库，因此没有可整理的数据库。本次未执行整理。",
     "agent_not_running": "当前智能体尚未启动或启动失败，请先启动成功后再整理。本次未执行整理。",
-    "postgres_unsupported": "当前智能体使用 {backend} 记忆库。PostgreSQL 也可能出现重复数据或空间膨胀，需要根据实际占用评估整理方式；本命令目前尚未支持 PostgreSQL 瘦身，仅支持 SQLite。本次未执行任何整理，聊天可继续。"
+    "postgres_unsupported": "当前智能体使用 {backend} 记忆库。PostgreSQL 也可能出现重复数据或空间膨胀，需要根据实际占用评估整理方式；本命令目前尚未支持 PostgreSQL 瘦身，仅支持 SQLite。本次未执行任何整理，聊天可继续。",
+    "inspecting": "正在检查本专家的过期记录",
+    "cleaning": "正在清理已备份记录",
+    "postgres_result": "已清理当前专家的已拒绝候选 {candidates} 条、运行日志 {journal} 条。完整会话历史和有效记忆保留；请到记忆高级设置查看备份详情。",
+    "draining": "正在等待当前专家后台任务结束",
+    "validating": "正在校验备份和专家归属",
+    "backing_up_current": "正在备份当前专家现状",
+    "restoring": "正在恢复当前专家的数据",
+    "restarting": "正在重新加载当前专家",
+    "restore_result": "已恢复所选备份；恢复前现状备份：{backup}"
   },
   "teams": {
     "peer_thread_title": "来自团队 {name}",
@@ -932,5 +946,20 @@
       "bind_failed": "目录服务拒绝了绑定 DN 或密码",
       "search_failed": "目录服务拒绝了用户检索"
     }
+  },
+  "memory_storage": {
+    "postgres": "PostgreSQL 使用共享表，暂不支持仅维护当前专家。请由管理员安排数据库维护。",
+    "shared_sqlite": "该 SQLite 文件由多个专家共用，无法仅维护当前专家。",
+    "incompatible": "当前记忆运行组件不支持在线存储维护，请更新组件并启动专家。",
+    "shared_namespace": "多个专家的标识映射到同一记忆命名空间，无法仅维护当前专家。",
+    "namespace_mismatch": "当前专家与记忆命名空间不匹配，已停止操作，请重新加载专家。",
+    "namespace_busy": "该专家的记忆正在被另一个维护任务处理，请稍后重试。",
+    "delete_backup_failed": "删除备份失败，请检查文件权限后重试。",
+    "delete_sqlite_only": "仅支持删除当前专家独占的 SQLite 记忆数据库备份。",
+    "invalid_backup": "备份不存在或不是本专家可恢复的备份。",
+    "backup_scope": "备份不属于当前专家，或数据库结构不兼容，未执行恢复。",
+    "restore_changed": "当前专家的运行实例或存储已发生变化，请重新检查后重试。",
+    "restore_reload_failed": "数据恢复流程已结束，但专家重新启动失败。恢复前备份已保留，请先重新启动专家并检查结果。",
+    "restore_sqlite_only": "仅支持恢复当前专家独占的 SQLite 记忆数据库。"
   }
 }
