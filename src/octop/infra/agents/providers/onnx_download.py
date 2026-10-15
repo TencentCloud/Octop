@@ -334,7 +334,18 @@ def write_cos_manifest(model_dir: Path, *, model_id: str, hf_repo: str) -> Path:
     )
     payload = {"model_id": model_id, "hf_repo": hf_repo, "files": files}
     dest = model_dir / COS_MANIFEST_NAME
-    dest.write_text(json.dumps(payload, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+    # Publish through a temporary file: the manifest is what the upload path walks,
+    # so a half-written one is either unparseable or lists an incomplete model.
+    fd, tmp_name = tempfile.mkstemp(dir=str(model_dir), prefix=f".{dest.name}.", suffix=".tmp")
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as handle:
+            handle.write(json.dumps(payload, indent=2, ensure_ascii=False) + "\n")
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(tmp_name, dest)
+    except BaseException:
+        Path(tmp_name).unlink(missing_ok=True)
+        raise
     return dest
 
 
