@@ -163,19 +163,40 @@ interface ChannelDrawerProps {
 function FormItemForField({
   field,
   disabled = false,
+  editing = false,
 }: {
   field: ChannelField;
+  editing?: boolean;
   disabled?: boolean;
 }) {
   const { t } = useTranslation();
   const label = field.label.startsWith("channels.")
     ? t(field.label)
     : field.label;
+  const initialValue = editing ? field.legacyDefaultValue : field.defaultValue;
+  if (field.type === "select") {
+    return (
+      <Form.Item
+        name={field.name}
+        label={label}
+        initialValue={initialValue}
+        extra={field.helpKey ? t(field.helpKey) : undefined}
+      >
+        <Select
+          options={field.options?.map((value) => ({
+            value,
+            label: t(`channels.telegram_option_${value}`),
+          }))}
+        />
+      </Form.Item>
+    );
+  }
   if (field.type === "switch") {
     return (
       <Form.Item
         name={field.name}
         label={label}
+        initialValue={initialValue}
         valuePropName="checked"
         extra={field.helpKey ? t(field.helpKey) : undefined}
       >
@@ -213,14 +234,21 @@ function FormItemForField({
   }
   if (
     field.name === "allowed_channel_ids" ||
-    field.name === "allowed_user_ids"
+    field.name === "allowed_user_ids" ||
+    field.name === "allowed_chat_ids"
   ) {
     rules.push({
       validator: async (_: unknown, value: unknown) => {
         try {
           normalizeChannelFieldValue(field.name, value);
         } catch {
-          throw new Error(t("channels.discordInvalidIds"));
+          throw new Error(
+            t(
+              field.name === "allowed_chat_ids"
+                ? "channels.telegramInvalidChatIds"
+                : "channels.discordInvalidIds",
+            ),
+          );
         }
       },
     });
@@ -1887,11 +1915,20 @@ export function ChannelDrawer({
                   style={{ marginBottom: 16 }}
                 />
               )}
+              {selectedKind === "telegram" && (
+                <Alert
+                  type="info"
+                  showIcon
+                  message={t("channels.telegramSetupHelp")}
+                  style={{ marginBottom: 16 }}
+                />
+              )}
               {hasSchema ? (
                 fields!.map((f) => (
                   <FormItemForField
                     key={f.name}
                     field={f}
+                    editing={isEdit}
                     disabled={
                       selectedKind === "discord" &&
                       f.name === "allowed_channel_ids" &&

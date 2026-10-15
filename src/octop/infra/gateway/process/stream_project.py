@@ -196,7 +196,7 @@ async def _project_chunks(
                 if projection_state is not None:
                     projection_state.hitl_paused = True
                     projection_state.hitl_pending_id = record.pending_id
-                yield MessageEvent.text(card)
+                yield MessageEvent.text(card, metadata={"octop_hitl_pending_id": record.pending_id})
             return
 
         elif ctype == "state_update":
