@@ -205,6 +205,20 @@ def _memory_aux_model_settings(
     return {"memory_aux_light_model": ref, "memory_aux_heavy_model": ref}
 
 
+def memory_extract_supported_options() -> list[str]:
+    """Call options supported by the installed harness, for the settings UI."""
+    fields = {
+        "extract_max_tokens": "memory_extract_max_tokens",
+        "extract_light_timeout_s": "memory_aux_light_timeout_s",
+        "extract_heavy_timeout_s": "memory_aux_heavy_timeout_s",
+        "extract_thinking": "memory_aux_thinking",
+        "extract_extra_body": "memory_aux_extra_body",
+        "extract_max_retries": "memory_aux_max_retries",
+        "extract_retry_backoff_s": "memory_aux_retry_backoff_s",
+    }
+    return [key for key, field in fields.items() if field in _HARNESS_AGENT_CONFIG_FIELDS]
+
+
 def _memory_extract_settings(
     cfg: dict[str, Any],
     *,
@@ -244,7 +258,7 @@ def _memory_extract_settings(
         ):
             out[dst] = float(val)
 
-    # Aux-call options (#1360): read timeouts per tier, a default completion
+    # Aux-call options (#1360): read timeouts per tier, an extraction output
     # budget, and vendor request extras for the aux LLM. Forward-compat: only
     # forwarded when the installed octop-harness knows the field.
     for src, dst in (
@@ -258,17 +272,39 @@ def _memory_extract_settings(
             and not isinstance(val, bool)
             and val > 0
         ):
-            out[dst] = float(val)
+            # Older API versions accepted timeouts beyond harness limits.
+            out[dst] = max(30.0, min(3600.0, float(val)))
     max_tokens = mem.get("extract_max_tokens")
     if (
-        "memory_aux_max_tokens" in supported_fields
+        "memory_extract_max_tokens" in supported_fields
         and isinstance(max_tokens, int)
         and not isinstance(max_tokens, bool)
         and max_tokens > 0
     ):
-        out["memory_aux_max_tokens"] = max_tokens
+        out["memory_extract_max_tokens"] = max(128, min(65536, max_tokens))
+    thinking = mem.get("extract_thinking")
+    if thinking in ("auto", "off", "on") and "memory_aux_thinking" in supported_fields:
+        out["memory_aux_thinking"] = thinking
+    for src, dst in (
+        ("extract_max_retries", "memory_aux_max_retries"),
+        ("extract_retry_backoff_s", "memory_aux_retry_backoff_s"),
+    ):
+        value = mem.get(src)
+        if (
+            dst in supported_fields
+            and isinstance(value, int | float)
+            and not isinstance(value, bool)
+        ):
+            out[dst] = value
     extra_body = mem.get("extract_extra_body")
-    if "memory_aux_extra_body" in supported_fields and isinstance(extra_body, dict) and extra_body:
+    aux_model = mem.get("aux_model")
+    has_aux_override = isinstance(aux_model, str) and bool(aux_model.strip())
+    if (
+        "memory_aux_extra_body" in supported_fields
+        and isinstance(extra_body, dict)
+        and extra_body
+        and (not has_aux_override or "memory_aux_light_model" in out)
+    ):
         out["memory_aux_extra_body"] = dict(extra_body)
 
     # octop-harness 0.9.5 predates the interval trigger fields. Keep
@@ -1129,6 +1165,79 @@ class AgentManager:
             with suppress(Exception):
                 shutdown()
         self._wait_memory_maintenance_idle(mw)
+
+    async def restore_memory_store(
+        self, agent_id: str, memory: Any, operation: Callable[[], dict[str, Any]], *, locale: str
+    ) -> dict[str, Any]:
+        """Drain and recreate only this expert; caller owns its turn reservation."""
+        from octop_harness.memory.store import shared_memory_store
+
+        from octop.i18n import tr
+
+        assert self._harness_manager is not None
+        async with self._lifecycle_lock_for(agent_id):
+            agent = self.get_agent(agent_id)
+            runtime = agent._memory_runtime
+            if runtime.memory is not memory:
+                raise ValueError(tr("memory_storage.restore_changed", locale))
+            key = runtime._memory_key
+            if key is not None and shared_memory_store().refs(key) != 1:
+                raise ValueError(tr("memory_storage.shared_sqlite", locale))
+            mw = runtime._middleware
+            pause_background = getattr(mw, "pause_background", None)
+            if not callable(pause_background):
+                raise ValueError(tr("memory_storage.incompatible", locale))
+            pause = pause_background(timeout=120)
+            draining = asyncio.create_task(asyncio.to_thread(pause.__enter__))
+            try:
+                await asyncio.shield(draining)
+            except asyncio.CancelledError:
+                await draining
+                await asyncio.to_thread(pause.__exit__, None, None, None)
+                raise
+            removed = False
+            try:
+                row = self.get_row(agent_id)
+                if row is None:
+                    raise ValueError(tr("memory_storage.restore_changed", locale))
+                cfg, metadata, tags, user_display = self._agent_runtime_bundle(row)
+                removed = True
+                await self._harness_manager.aremove_agent(agent_id)
+                if runtime.memory is not None or (
+                    key is not None and shared_memory_store().peek(key) is not None
+                ):
+                    raise ValueError(tr("memory_storage.restore_changed", locale))
+                worker = asyncio.create_task(asyncio.to_thread(operation))
+                try:
+                    return await asyncio.shield(worker)
+                except asyncio.CancelledError:
+                    await worker
+                    raise
+            finally:
+                try:
+                    if removed:
+                        try:
+                            assert row is not None
+                            entry = await self._harness_manager.acreate_agent(
+                                cfg,
+                                agent_id=agent_id,
+                                metadata=metadata,
+                                tags=tags,
+                                init_workspace=False,
+                            )
+                            await self._post_start_agent(
+                                row, entry.agent, cfg, user_display=user_display
+                            )
+                            self._repos.agent_repo.set_state(agent_id, "running", error=None)
+                        except Exception as exc:
+                            self._repos.agent_repo.set_state(
+                                agent_id, "failed", error=format_agent_start_error(exc)
+                            )
+                            raise ValueError(
+                                tr("memory_storage.restore_reload_failed", locale)
+                            ) from exc
+                finally:
+                    await asyncio.to_thread(pause.__exit__, None, None, None)
 
     @staticmethod
     def _wait_memory_maintenance_idle(mw: object, *, timeout: float = 5.0) -> None:

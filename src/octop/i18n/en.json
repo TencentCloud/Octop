@@ -903,7 +903,16 @@
     "backend_unsupported": "This agent uses {backend} memory. This command only maintains SQLite files and does not apply to this database. No maintenance was started.",
     "memory_disabled": "This agent has no memory enabled, so there is no database to maintain. No maintenance was started.",
     "agent_not_running": "This agent is not running or failed to start. Start it successfully before maintenance. No maintenance was started.",
-    "postgres_unsupported": "This agent uses {backend} memory. PostgreSQL can also accumulate duplicate data or storage bloat and may need maintenance based on its actual usage. This command does not yet support PostgreSQL slimming; it currently supports SQLite only. No maintenance was performed, and you can continue chatting."
+    "postgres_unsupported": "This agent uses {backend} memory. PostgreSQL can also accumulate duplicate data or storage bloat and may need maintenance based on its actual usage. This command does not yet support PostgreSQL slimming; it currently supports SQLite only. No maintenance was performed, and you can continue chatting.",
+    "inspecting": "Checking this expert’s expired records",
+    "cleaning": "Cleaning backed-up records",
+    "postgres_result": "Cleaned {candidates} rejected candidates and {journal} operational journal rows for this expert. Active memories and full conversation history are preserved; see memory advanced settings for backup details.",
+    "draining": "Waiting for this expert’s background work",
+    "validating": "Validating backup and expert ownership",
+    "backing_up_current": "Backing up this expert’s current state",
+    "restoring": "Restoring this expert’s data",
+    "restarting": "Reloading this expert",
+    "restore_result": "Selected backup restored; pre-restore safety backup: {backup}"
   },
   "teams": {
     "peer_thread_title": "From team {name}",
@@ -936,5 +945,20 @@
       "bind_failed": "The directory rejected the bind DN or password",
       "search_failed": "The directory refused the user search"
     }
+  },
+  "memory_storage": {
+    "postgres": "PostgreSQL tables are shared. Per-expert maintenance is unavailable; ask an administrator to arrange database maintenance.",
+    "shared_sqlite": "This SQLite file is shared by several experts and cannot be maintained for just this expert.",
+    "incompatible": "The memory runtime does not support live storage maintenance. Update the runtime and start the expert.",
+    "shared_namespace": "Several expert IDs map to the same memory namespace. Per-expert maintenance is unavailable.",
+    "namespace_mismatch": "The expert does not match its memory namespace. Reload the expert before continuing.",
+    "namespace_busy": "Another maintenance job is using this expert’s memory. Retry later.",
+    "delete_backup_failed": "Failed to delete the backup. Check file permissions and retry.",
+    "delete_sqlite_only": "Deleting backups requires a dedicated SQLite memory store for this expert.",
+    "invalid_backup": "The backup is missing or is not an eligible backup for this expert.",
+    "backup_scope": "The backup belongs to a different expert or has an incompatible schema. Restore was not performed.",
+    "restore_changed": "The expert runtime or store changed. Inspect again before retrying.",
+    "restore_reload_failed": "The data restore stage ended, but restarting the expert failed. The safety backup is retained. Restart the expert and inspect the result.",
+    "restore_sqlite_only": "Restore requires a dedicated SQLite memory store for this expert."
   }
 }

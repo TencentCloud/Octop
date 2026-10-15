@@ -1,0 +1,46 @@
+# =============================================================================
+# Octop — Docker Compose（国内镜像）
+#
+# 不在本地构建。官方 GHCR（ghcr.io/tencentcloud/octop）拉取失败时用本文件，
+# 镜像来自南京大学 GHCR 源：ghcr.nju.edu.cn/tencentcloud/octop:latest
+#
+# 用法（在仓库根目录执行）:
+#   docker compose -f docker/docker-compose.cn.yml up -d
+#   OCTOP_PORT=9090 docker compose -f docker/docker-compose.cn.yml up -d
+#   OCTOP_DEFAULT_PASSWORD=<your-strong-password> docker compose -f docker/docker-compose.cn.yml up -d
+#
+# 环境变量与 docker-compose.yml 相同。docker/.env 仅用于 Compose 插值；
+# 变量必须列在下方 environment 才会进入容器。
+# =============================================================================
+
+services:
+  octop:
+    image: ghcr.nju.edu.cn/tencentcloud/octop:latest
+    container_name: octop
+    restart: unless-stopped
+    ports:
+      - "${OCTOP_PORT:-8088}:${OCTOP_PORT:-8088}"
+    volumes:
+      - ${OCTOP_DATA:-~/.octop}:/data/.octop
+    environment:
+      - HOME=/data
+      - OCTOP_BIND_HOST=0.0.0.0
+      - OCTOP_PORT=${OCTOP_PORT:-8088}
+      - OCTOP_LOG_LEVEL=${OCTOP_LOG_LEVEL:-info}
+      - OCTOP_DEFAULT_PASSWORD=${OCTOP_DEFAULT_PASSWORD:-}
+      - OCTOP_ADMIN_USERNAME=${OCTOP_ADMIN_USERNAME:-admin}
+      - OCTOP_ADMIN_DISPLAY_NAME=${OCTOP_ADMIN_DISPLAY_NAME:-Admin}
+      - OCTOP_DATABASE_URL=${OCTOP_DATABASE_URL:-}
+      - OCTOP_DATABASE_DRIVER=${OCTOP_DATABASE_DRIVER:-}
+      - OCTOP_DATABASE_SQLITE_PATH=${OCTOP_DATABASE_SQLITE_PATH:-}
+      - OCTOP_DATABASE_HOST=${OCTOP_DATABASE_HOST:-}
+      - OCTOP_DATABASE_PORT=${OCTOP_DATABASE_PORT:-}
+      - OCTOP_DATABASE_NAME=${OCTOP_DATABASE_NAME:-}
+      - OCTOP_DATABASE_USER=${OCTOP_DATABASE_USER:-}
+      - OCTOP_DATABASE_PASSWORD=${OCTOP_DATABASE_PASSWORD:-}
+      - OPENAI_API_KEY=${OPENAI_API_KEY:-}
+      - DASHSCOPE_API_KEY=${DASHSCOPE_API_KEY:-}
+      - LANGFUSE_TRACING_ENABLED=${LANGFUSE_TRACING_ENABLED:-true}
+      - LANGFUSE_PUBLIC_KEY=${LANGFUSE_PUBLIC_KEY:-}
+      - LANGFUSE_SECRET_KEY=${LANGFUSE_SECRET_KEY:-}
+      - LANGFUSE_BASE_URL=${LANGFUSE_BASE_URL:-}

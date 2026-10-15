@@ -73,6 +73,8 @@ export interface ChatMessage {
   /** Structured content blocks for multi-part messages (thinking + text). */
   contentBlocks?: ContentBlockItem[];
   attachments?: ChatAttachment[];
+  /** Optimistic mid-turn steer that can still be withdrawn. */
+  steerPending?: boolean;
   composerContext?: UserComposerContext;
   toolData?: ToolCallData;
   hitlData?: HitlRequestData;
@@ -149,6 +151,9 @@ export interface SessionStreamState {
     preview: string;
     /** Client-only full text (frames carry 200-char previews). */
     text?: string;
+    attachments?: ChatAttachment[];
+    /** ``steer_remove`` is in flight; the row stays until ``steer.ack``. */
+    withdrawing?: boolean;
   }>;
 }
 

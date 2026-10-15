@@ -13,7 +13,7 @@ def test_idle_auto_returns_none() -> None:
 
 def test_queue_drain_continuation() -> None:
     c = SteerCoordinator()
-    turn_id, _seq = c.begin_turn("t1")
+    turn_id, _seq, _ = c.begin_turn("t1")
     r1 = c.admit(
         "t1",
         text="one",
@@ -39,7 +39,7 @@ def test_queue_drain_continuation() -> None:
 
 def test_hitl_paused_rejects() -> None:
     c = SteerCoordinator()
-    turn_id, _ = c.begin_turn("t1")
+    turn_id, _, _ = c.begin_turn("t1")
     c.set_phase("t1", "hitl_paused")
     r = c.admit(
         "t1",
@@ -67,7 +67,7 @@ def test_expected_turn_mismatch() -> None:
 
 def test_idempotent_retry() -> None:
     c = SteerCoordinator()
-    turn_id, _ = c.begin_turn("t1")
+    turn_id, _, _ = c.begin_turn("t1")
     first = c.admit(
         "t1",
         text="hello",
@@ -89,7 +89,7 @@ def test_idempotent_retry() -> None:
 
 def test_discard_on_cancel() -> None:
     c = SteerCoordinator()
-    turn_id, _ = c.begin_turn("t1")
+    turn_id, _, _ = c.begin_turn("t1")
     c.admit(
         "t1",
         text="bye",
@@ -120,7 +120,7 @@ def test_follow_up_while_busy() -> None:
 def test_auto_busy_mints_client_pending_id_and_binds_turn() -> None:
     """Busy ``delivery=auto`` without ids still steers (flush race safety)."""
     c = SteerCoordinator()
-    turn_id, _ = c.begin_turn("t1")
+    turn_id, _, _ = c.begin_turn("t1")
     r = c.admit(
         "t1",
         text="steer me",
@@ -137,7 +137,7 @@ def test_auto_busy_mints_client_pending_id_and_binds_turn() -> None:
 
 def test_queue_full() -> None:
     c = SteerCoordinator()
-    turn_id, _ = c.begin_turn("t1")
+    turn_id, _, _ = c.begin_turn("t1")
     for i in range(8):
         r = c.admit(
             "t1",
@@ -158,7 +158,7 @@ def test_queue_full() -> None:
 
 def test_snapshot_while_live() -> None:
     c = SteerCoordinator()
-    turn_id, seq = c.begin_turn("t1")
+    turn_id, seq, _ = c.begin_turn("t1")
     c.admit(
         "t1",
         text="snap",
@@ -177,7 +177,7 @@ def test_snapshot_while_live() -> None:
 
 def test_remove_queued() -> None:
     c = SteerCoordinator()
-    turn_id, _ = c.begin_turn("t1")
+    turn_id, _, _ = c.begin_turn("t1")
     admitted = c.admit(
         "t1",
         text="rm",
@@ -198,7 +198,7 @@ def test_remove_queued() -> None:
 
 def test_has_pending_and_is_hitl_paused() -> None:
     c = SteerCoordinator()
-    turn_id, _ = c.begin_turn("t1")
+    turn_id, _, _ = c.begin_turn("t1")
     assert c.has_pending("t1") is False
     assert c.is_hitl_paused("t1") is False
     assert isinstance(
@@ -212,7 +212,7 @@ def test_has_pending_and_is_hitl_paused() -> None:
 
 def test_end_turn_hitl_parks_queue_until_taken() -> None:
     c = SteerCoordinator()
-    turn_id, _ = c.begin_turn("t1")
+    turn_id, _, _ = c.begin_turn("t1")
     assert isinstance(
         c.admit("t1", text="x", client_pending_id="c1", expected_turn_id=turn_id),
         SteerAdmitOk,
@@ -230,3 +230,64 @@ def test_end_turn_hitl_parks_queue_until_taken() -> None:
     assert seq > 0
     assert c.has_pending("t1") is False
     assert c.take_hitl_pending("t1") is None
+
+
+def test_stage_hitl_keeps_queue_until_commit() -> None:
+    c = SteerCoordinator()
+    turn_id, _, _ = c.begin_turn("t1")
+    assert isinstance(
+        c.admit("t1", text="keep", client_pending_id="c1", expected_turn_id=turn_id),
+        SteerAdmitOk,
+    )
+    c.set_phase("t1", "hitl_paused")
+    assert c.end_turn("t1") is None
+    staged = c.stage_hitl_pending("t1")
+    assert staged is not None
+    assert c.has_pending("t1") is True
+    c.release_staged_hitl("t1")
+    assert c.has_pending("t1") is True
+    assert c.stage_hitl_pending("t1") is not None
+    c.commit_staged_hitl("t1")
+    assert c.has_pending("t1") is False
+
+
+def test_sweep_expired_park_discards_queue() -> None:
+    c = SteerCoordinator()
+    turn_id, _, _ = c.begin_turn("t1")
+    assert isinstance(
+        c.admit("t1", text="late", client_pending_id="c1", expected_turn_id=turn_id),
+        SteerAdmitOk,
+    )
+    c.set_phase("t1", "hitl_paused")
+    assert c.end_turn("t1") is None
+    state = c._by_thread["t1"]
+    state.parked_at = 0
+    bundle = c.sweep_expired("t1")
+    assert isinstance(bundle, DiscardBundle)
+    assert bundle.reason == "park_expired"
+    assert bundle.client_pending_ids == ["c1"]
+    assert c.is_active("t1") is False
+    assert c.sweep_expired("t1") is None
+
+
+def test_admit_attachment_only_and_drain_blocks() -> None:
+    c = SteerCoordinator()
+    turn_id, _, _ = c.begin_turn("t1")
+    block = {
+        "type": "image",
+        "workspace_path": "inbound/shot.png",
+        "filename": "shot.png",
+        "media_type": "image/png",
+    }
+    admitted = c.admit(
+        "t1",
+        text="",
+        client_pending_id="c1",
+        expected_turn_id=turn_id,
+        content_blocks=[block],
+    )
+    assert isinstance(admitted, SteerAdmitOk)
+    drained = c.drain_for_continuation("t1")
+    assert isinstance(drained, DrainBundle)
+    assert drained.text == ""
+    assert drained.content_blocks == (block,)

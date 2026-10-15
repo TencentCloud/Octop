@@ -857,6 +857,7 @@ async def test_ws_channel_preempts_at_tool_boundary_when_steer_pending() -> None
 
     assert processor.cancel_calls == [("agent-1", "thread-1")]
     assert processor.turn_texts == ["run tests", "wait, use plan B"]
+    assert not any(f.get("type") == "token" and f.get("content") == "next" for f in frames)
     types = [f["type"] for f in frames]
     assert "steer.drained" in types
     assert "turn.resumed" in types

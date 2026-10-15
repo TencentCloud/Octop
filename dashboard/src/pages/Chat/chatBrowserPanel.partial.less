@@ -791,8 +791,13 @@
 .errorMessageBox {
   padding: 12px 14px;
   border-radius: 14px;
-  border: 1px solid rgba(255, 77, 79, 0.25);
-  background: rgba(255, 77, 79, 0.04);
+  border: 1px solid
+    color-mix(in srgb, var(--fn-color-brand) 32%, var(--fn-border-primary));
+  background: color-mix(
+    in srgb,
+    var(--fn-color-brand) 7%,
+    var(--fn-bg-primary)
+  );
   display: flex;
   flex-direction: column;
   gap: 8px;
@@ -806,18 +811,18 @@
 
 .errorMessageIcon {
   font-size: 15px;
-  color: var(--fn-color-danger, #ff4d4f);
+  color: var(--fn-color-brand);
 }
 
 .errorMessageTitle {
   font-size: 13px;
   font-weight: 600;
-  color: var(--fn-color-danger, #ff4d4f);
+  color: var(--fn-color-brand);
 }
 
 .errorMessageBody {
   font-size: 13px;
-  color: var(--fn-text-secondary);
+  color: var(--fn-text-primary);
   line-height: 1.6;
   white-space: pre-wrap;
   word-break: break-word;
@@ -835,10 +840,10 @@
   align-items: center;
   gap: 6px;
   padding: 5px 12px;
-  border: 1px solid rgba(22, 119, 255, 0.35);
+  border: 1px solid color-mix(in srgb, var(--fn-color-brand) 35%, transparent);
   border-radius: 8px;
-  background: rgba(22, 119, 255, 0.06);
-  color: var(--fn-color-primary, #1677ff);
+  background: color-mix(in srgb, var(--fn-color-brand) 8%, transparent);
+  color: var(--fn-color-brand);
   font-size: 12px;
   cursor: pointer;
   transition:
@@ -846,8 +851,8 @@
     border-color var(--fn-transition-fast);
 
   &:hover {
-    background: rgba(22, 119, 255, 0.12);
-    border-color: rgba(22, 119, 255, 0.5);
+    background: color-mix(in srgb, var(--fn-color-brand) 14%, transparent);
+    border-color: color-mix(in srgb, var(--fn-color-brand) 50%, transparent);
   }
 }
 
@@ -857,10 +862,10 @@
   gap: 6px;
   align-self: flex-start;
   padding: 5px 12px;
-  border: 1px solid rgba(255, 77, 79, 0.3);
+  border: 1px solid color-mix(in srgb, var(--fn-color-brand) 35%, transparent);
   border-radius: 8px;
   background: transparent;
-  color: var(--fn-color-danger, #ff4d4f);
+  color: var(--fn-color-brand);
   font-size: 12px;
   cursor: pointer;
   transition:
@@ -868,8 +873,9 @@
     box-shadow var(--fn-transition-fast);
 
   &:hover {
-    background: rgba(255, 77, 79, 0.06);
-    box-shadow: 0 2px 8px rgba(255, 77, 79, 0.1);
+    background: color-mix(in srgb, var(--fn-color-brand) 8%, transparent);
+    box-shadow: 0 2px 8px
+      color-mix(in srgb, var(--fn-color-brand) 16%, transparent);
   }
 }
 .browserStatusActive {
