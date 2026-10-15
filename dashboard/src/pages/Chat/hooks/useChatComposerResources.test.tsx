@@ -247,3 +247,36 @@ describe("useChatComposerResources — expert default model", () => {
     );
   });
 });
+
+describe("useChatComposerResources — peer expert defaults", () => {
+  it("shows the peer expert's model, connectors, knowledge bases, and mode", async () => {
+    agentState.agents = [
+      {
+        agent_id: "bridge:cid:peer",
+        bridge: true,
+        bridge_connection_id: "cid",
+        default_model: "prov/peer",
+        knowledge_base_ids: ["k2"],
+        mcp_servers: ["c2"],
+        config: { conversation_mode: "plan" },
+      },
+    ];
+    vi.mocked(preferencesApi.get).mockResolvedValue({
+      locale: "zh",
+      remote_browser_bookmarks: [],
+      preferred_model: "prov/local",
+      model_reasoning: {},
+    });
+
+    const { result } = renderHook(() =>
+      useChatComposerResources("bridge:cid:peer", null),
+    );
+
+    await waitFor(() => {
+      expect(result.current.selectedModel).toBe("prov/peer");
+      expect(result.current.selectedConnectors).toEqual(["c2"]);
+      expect(result.current.selectedKnowledgeBaseIds).toEqual(["k2"]);
+      expect(result.current.conversationMode).toBe("plan");
+    });
+  });
+});

@@ -31,6 +31,7 @@ import ChatInputActionsRow from "./ChatInputActionsRow";
 import ChatQueuedMessages from "./ChatQueuedMessages";
 import { useVoiceInput } from "../../../hooks/useVoiceInput";
 import { useChatAttachments } from "../hooks/useChatAttachments";
+import { onSteerRestore } from "../hooks/chatStore";
 import { useSlashMentionInput } from "../hooks/useSlashMentionInput";
 import { stripThinkingTags } from "../utils/chatAttachments";
 import { isSlashCommandText } from "../utils/slashText";
@@ -75,6 +76,8 @@ interface ChatInputProps {
   queuedItems?: QueuedChatItem[];
   onRemoveQueued?: (id: string) => void;
   onReclaimQueued?: (id: string) => QueuedChatItem | null;
+  /** Commit a local queued draft as a mid-turn steer (chip-row ↑ Steer). */
+  onSteerQueued?: (id: string) => void;
   onCancel: () => void;
   onNewChat: () => void;
   onUserInput?: () => void;
@@ -145,6 +148,7 @@ const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
       queuedItems = [],
       onRemoveQueued,
       onReclaimQueued,
+      onSteerQueued,
       onCancel,
       onNewChat,
       onUserInput,
@@ -391,6 +395,61 @@ const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
         clearAttachments();
       }
     }, [agentId, threadId, initialText, clearAttachments, restoreAttachments]);
+
+    useEffect(() => {
+      return onSteerRestore((event) => {
+        if (threadId && event.sessionId && event.sessionId !== threadId) {
+          return;
+        }
+        if (event.applyToComposer === false) {
+          if (event.reason === "already_drained") {
+            antMessage.info(t("chat.steer.alreadyDrained"));
+          } else {
+            antMessage.warning(
+              t("chat.steer.rejected", {
+                reason: t(`chat.steer.reasons.${event.reason}`, {
+                  defaultValue: event.reason,
+                }),
+              }),
+            );
+          }
+          return;
+        }
+        const reasonLabel =
+          event.reason === "withdrawn"
+            ? t("chat.steer.withdrawn")
+            : t("chat.steer.rejected", {
+                reason: t(`chat.steer.reasons.${event.reason}`, {
+                  defaultValue: event.reason,
+                }),
+              });
+        if (event.reason === "withdrawn") antMessage.success(reasonLabel);
+        else antMessage.warning(reasonLabel);
+        const apply = () => {
+          userHasEditedRef.current = true;
+          setText(event.text);
+          restoreAttachments(event.attachments ?? []);
+          setTimeout(() => {
+            const el = textareaRef.current;
+            if (el) {
+              el.focus();
+              el.setSelectionRange(el.value.length, el.value.length);
+            }
+          }, 50);
+        };
+        if (text.trim() || attachments.length > 0) {
+          modal.confirm({
+            title: t("chat.queue.reclaimOverwriteTitle"),
+            content: t("chat.queue.reclaimOverwrite"),
+            okText: t("common.confirm", "确认"),
+            cancelText: t("common.cancel", "取消"),
+            onOk: apply,
+          });
+          return;
+        }
+        apply();
+      });
+    }, [threadId, text, attachments, t, antMessage, modal, restoreAttachments]);
 
     // Persist draft while typing so leaving /chat and returning keeps content.
     useEffect(() => {
@@ -794,18 +853,19 @@ const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
         onDragOver={handleDragOver}
         onDrop={handleDrop}
       >
-        {onRemoveQueued && onReclaimQueued && (
-          <ChatQueuedMessages
-            items={queuedItems}
-            onRemove={onRemoveQueued}
-            onReclaim={handleReclaimQueued}
-          />
-        )}
         <div className={styles.inputWrapper}>
           {showDrop && (
             <div className={styles.dropOverlay} data-testid="chat-drop-overlay">
               {t("upload.dropHint", "Drop files or a folder to upload")}
             </div>
+          )}
+          {onRemoveQueued && onReclaimQueued && (
+            <ChatQueuedMessages
+              items={queuedItems}
+              onRemove={onRemoveQueued}
+              onReclaim={handleReclaimQueued}
+              onSteer={onSteerQueued}
+            />
           )}
           <ChatInputPreviewBar
             attachments={attachments}
@@ -832,10 +892,14 @@ const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
               }}
               onKeyDown={handleKeyDown}
               onPaste={handlePaste}
-              placeholder={t(
-                "chatWelcome.inputPlaceholder",
-                "Message Octop...",
-              )}
+              placeholder={
+                isStreaming || holdSend
+                  ? t(
+                      "chat.steer.placeholder",
+                      "Keep typing to queue a mid-turn steer…",
+                    )
+                  : t("chatWelcome.inputPlaceholder", "Message Octop...")
+              }
               rows={1}
               disabled={disabled}
               enterKeyHint={isMobile ? "enter" : undefined}
