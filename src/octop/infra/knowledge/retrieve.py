@@ -92,7 +92,7 @@ def _retrieve_context_sync(
             for document in services.knowledge_repo.list_documents(kb_id)
             if document.status == "ready" and not document.is_dir
         }
-        for hit in KnowledgeIndex(kb_id).search(query_vectors[0], k=k):
+        for hit in KnowledgeIndex(kb_id).search(query_vectors[0], k=k, doc_ids=ready_documents):
             document = ready_documents.get(hit.doc_id)
             if document is not None:
                 ranked.append((base, hit, document))
