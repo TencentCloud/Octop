@@ -19,37 +19,6 @@ export interface ListOrderState {
 
 export const EMPTY_LIST_ORDER: ListOrderState = { pinned: [], order: [] };
 
-/** Tolerant parse of the persisted JSON blob; anything unusable → empty. */
-export function parseListOrder(raw: string | null): ListOrderState {
-  if (!raw) return { pinned: [], order: [] };
-  try {
-    const parsed = JSON.parse(raw) as unknown;
-    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
-      return { pinned: [], order: [] };
-    }
-    const obj = parsed as Record<string, unknown>;
-    return {
-      pinned: normalizeIdList(obj.pinned),
-      order: normalizeIdList(obj.order),
-    };
-  } catch {
-    return { pinned: [], order: [] };
-  }
-}
-
-function normalizeIdList(value: unknown): string[] {
-  if (!Array.isArray(value)) return [];
-  const seen = new Set<string>();
-  const out: string[] = [];
-  for (const item of value) {
-    if (typeof item !== "string" || item.length === 0 || seen.has(item)) {
-      continue;
-    }
-    seen.add(item);
-    out.push(item);
-  }
-  return out;
-}
 
 /**
  * Merge a known manual sequence with the fresh id list (default order):

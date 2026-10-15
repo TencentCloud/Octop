@@ -7,30 +7,8 @@ import {
   mergeOrder,
   moveIdBy,
   moveIdTo,
-  parseListOrder,
   togglePinned,
 } from "./listOrder";
-
-describe("parseListOrder", () => {
-  it("returns empty state for null / garbage / wrong shapes", () => {
-    expect(parseListOrder(null)).toEqual({ pinned: [], order: [] });
-    expect(parseListOrder("{not-json")).toEqual({ pinned: [], order: [] });
-    expect(parseListOrder("[1,2]")).toEqual({ pinned: [], order: [] });
-    expect(parseListOrder('"str"')).toEqual({ pinned: [], order: [] });
-    expect(parseListOrder("{}")).toEqual({ pinned: [], order: [] });
-  });
-
-  it("drops non-string, empty and duplicate ids", () => {
-    const raw = JSON.stringify({
-      pinned: ["a", 1, "", "a", "b"],
-      order: ["x", null, "x", "y"],
-    });
-    expect(parseListOrder(raw)).toEqual({
-      pinned: ["a", "b"],
-      order: ["x", "y"],
-    });
-  });
-});
 
 describe("mergeOrder", () => {
   it("keeps known ids in manual sequence and appends new ones", () => {

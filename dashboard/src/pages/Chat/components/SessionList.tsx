@@ -641,6 +641,7 @@ export default function SessionList({
     useHiddenSharedExperts();
   const {
     state: listOrderState,
+    loading: listOrderLoading,
     write: writeListOrderState,
     togglePin,
   } = useListOrder();
@@ -659,8 +660,12 @@ export default function SessionList({
       keepAgentIds: activeAgentId ? [activeAgentId] : [],
     });
     const base = [...visible].sort((a, b) => b.id - a.id);
-    return applyListOrder(base, listOrderState, (a) => a.agent_id);
-  }, [agents, filterVisible, activeAgentId, listOrderState]);
+    // While the order state is still loading from the backend, hold the
+    // default ordering rather than presenting an empty manual block.
+    return listOrderLoading
+      ? base
+      : applyListOrder(base, listOrderState, (a) => a.agent_id);
+  }, [agents, filterVisible, activeAgentId, listOrderState, listOrderLoading]);
 
   // Leave the hidden-only view once nothing remains hidden.
   const viewingHidden = showingHidden && hiddenAgents.length > 0;
@@ -676,8 +681,10 @@ export default function SessionList({
     return n;
   }, [agentsToRender, pinnedSet]);
 
-  // Ordering is unavailable while searching or browsing hidden experts.
-  const orderingEnabled = !searchQuery.trim() && !viewingHidden;
+  // Ordering is unavailable while searching, browsing hidden experts, or
+  // before the order state has been fetched from the backend.
+  const orderingEnabled =
+    !searchQuery.trim() && !viewingHidden && !listOrderLoading;
 
   const drag = useDragSortReorder({
     enabled: orderingEnabled,
@@ -685,7 +692,7 @@ export default function SessionList({
       const seq = sortedAgents.map((a) => a.agent_id);
       const next = moveIdTo(seq, fromId, toId, placement);
       if (!next) return;
-      writeListOrderState({ ...listOrderState, order: next });
+      void writeListOrderState({ ...listOrderState, order: next });
     },
   });
 
@@ -714,7 +721,7 @@ export default function SessionList({
         delta,
       );
       if (!nextGroup) return; // at group boundary — no-op
-      writeListOrderState({
+      void writeListOrderState({
         ...listOrderState,
         order: joinSequence(
           inPinned
@@ -737,7 +744,9 @@ export default function SessionList({
           ? (drag.getHandleProps(id) as AgentOrdering["handleProps"])
           : undefined,
         rowClassName: orderingEnabled ? dragRowClass(id) : "",
-        onTogglePin: () => togglePin(id),
+        onTogglePin: () => {
+          void togglePin(id);
+        },
         onMoveUp: () => moveAgent(id, -1),
         onMoveDown: () => moveAgent(id, 1),
       };

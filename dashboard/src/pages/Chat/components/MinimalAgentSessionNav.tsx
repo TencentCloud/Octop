@@ -310,6 +310,7 @@ export default function MinimalAgentSessionNav({
 
   const {
     state: listOrderState,
+    loading: listOrderLoading,
     write: writeListOrderState,
     togglePin,
   } = useListOrder();
@@ -320,8 +321,12 @@ export default function MinimalAgentSessionNav({
 
   const sortedAgents = useMemo(() => {
     const base = [...agents].sort((a, b) => b.id - a.id);
-    return applyListOrder(base, listOrderState, (a) => a.agent_id);
-  }, [agents, listOrderState]);
+    // Hold the default ordering while the backend order is still loading so
+    // the minimal nav never flashes an empty manual block.
+    return listOrderLoading
+      ? base
+      : applyListOrder(base, listOrderState, (a) => a.agent_id);
+  }, [agents, listOrderState, listOrderLoading]);
 
   // Length of the pinned block at the head of the list.
   const pinnedCount = useMemo(() => {
@@ -334,12 +339,12 @@ export default function MinimalAgentSessionNav({
   }, [sortedAgents, pinnedSet]);
 
   const drag = useDragSortReorder({
-    enabled: true,
+    enabled: !listOrderLoading,
     onReorder: (fromId, toId, placement) => {
       const seq = sortedAgents.map((a) => a.agent_id);
       const next = moveIdTo(seq, fromId, toId, placement);
       if (!next) return;
-      writeListOrderState({ ...listOrderState, order: next });
+      void writeListOrderState({ ...listOrderState, order: next });
     },
   });
 
@@ -368,7 +373,7 @@ export default function MinimalAgentSessionNav({
         delta,
       );
       if (!nextGroup) return; // at group boundary — no-op
-      writeListOrderState({
+      void writeListOrderState({
         ...listOrderState,
         order: joinSequence(
           inPinned
@@ -389,7 +394,9 @@ export default function MinimalAgentSessionNav({
         rowProps: drag.getRowProps(id),
         handleProps: drag.getHandleProps(id) as AgentOrdering["handleProps"],
         rowClassName: dragRowClass(id),
-        onTogglePin: () => togglePin(id),
+        onTogglePin: () => {
+          void togglePin(id);
+        },
         onMoveUp: () => moveAgent(id, -1),
         onMoveDown: () => moveAgent(id, 1),
       };
