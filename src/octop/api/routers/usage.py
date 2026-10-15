@@ -100,6 +100,27 @@ def _agent_name_map(server: Any) -> dict[str, str]:
     return {str(row.agent_id): str(row.name or row.agent_id) for row in rows}
 
 
+def _label_agent_buckets(server: Any, payload: dict[str, Any]) -> dict[str, Any]:
+    """Replace ``by_agent`` bucket labels with expert names.
+
+    The ledger groups by ``agent_id``. The signed-in user's agent list cannot
+    name experts owned by other accounts, so the admin table would show ids.
+    """
+    if str(payload.get("granularity") or "") != "by_agent":
+        return payload
+    names = _agent_name_map(server)
+    labeled: list[Any] = []
+    for bucket in payload.get("buckets") or []:
+        if not isinstance(bucket, dict):
+            labeled.append(bucket)
+            continue
+        name = names.get(str(bucket.get("key") or ""), "").strip()
+        if name:
+            bucket = {**bucket, "label": name}
+        labeled.append(bucket)
+    return {**payload, "buckets": labeled}
+
+
 def _username_map(server: Any) -> dict[int, str]:
     out: dict[int, str] = {}
     users = server.user_manager.list_all(include_disabled=True)
@@ -202,12 +223,15 @@ async def user_summary(
 ) -> dict[str, Any]:
     user_id = _resolve_user_scope(user=user, as_user=as_user, server=server)
     _assert_agent_exists(server, agent_id)
-    return _summary_or_raise(
-        server=server,
-        user_id=user_id,
-        agent_id=agent_id,
-        window=window,
-        granularity=granularity,
+    return _label_agent_buckets(
+        server,
+        _summary_or_raise(
+            server=server,
+            user_id=user_id,
+            agent_id=agent_id,
+            window=window,
+            granularity=granularity,
+        ),
     )
 
 
@@ -253,12 +277,15 @@ async def admin_summary(
     the scope; absent both fields mean *all rows*. Admin only."""
     if not user.is_admin:
         raise OctopError(ErrorCode.FORBIDDEN, "admin required")
-    return _summary_or_raise(
-        server=server,
-        user_id=user_id,
-        agent_id=agent_id,
-        window=window,
-        granularity=granularity,
+    return _label_agent_buckets(
+        server,
+        _summary_or_raise(
+            server=server,
+            user_id=user_id,
+            agent_id=agent_id,
+            window=window,
+            granularity=granularity,
+        ),
     )
 
 

@@ -112,7 +112,9 @@ def list_agents(as_user: str | None) -> None:
     from rich.table import Table
 
     from octop.cli.support.ctx import json_output_enabled
-    from octop.cli.support.db import list_agents_offline
+    from octop.cli.support.db import list_agents_offline, resolve_cli_locale
+    from octop.cli.support.offline_ops import get_active_model_offline
+    from octop.i18n import tr
 
     try:
         rows = list_agents_offline(as_user=as_user)
@@ -121,6 +123,18 @@ def list_agents(as_user: str | None) -> None:
     if json_output_enabled():
         click.echo(_json.dumps(rows, indent=2))
         return
+    # Agents without their own model run on the global default; say so, so an
+    # empty cell is not mistaken for "no model" and an override stays visible.
+    locale = resolve_cli_locale()
+    active = get_active_model_offline()
+    if active.get("provider_name") and active.get("model"):
+        fallback = tr(
+            "agents.cli.model_global",
+            locale,
+            model=f"{active['provider_name']}/{active['model']}",
+        )
+    else:
+        fallback = tr("agents.cli.model_unset", locale)
     table = Table(title="Agents")
     for col in ("id", "name", "template", "model", "state"):
         table.add_column(col)
@@ -130,7 +144,7 @@ def list_agents(as_user: str | None) -> None:
             str(aid),
             a.get("name", ""),
             a.get("template_name", "") or "",
-            a.get("default_model", "") or "",
+            a.get("default_model", "") or fallback,
             a.get("state", "") or a.get("last_state", "") or "",
         )
     Console(file=sys.stdout).print(table)

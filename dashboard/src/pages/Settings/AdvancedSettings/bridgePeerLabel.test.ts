@@ -1,7 +1,11 @@
 import { describe, expect, it } from "vitest";
 
 import type { BridgeConnection } from "../../../api/modules/bridge";
-import { inboundPeerAddress, inboundSourceIp } from "./bridgePeerLabel";
+import {
+  inboundPeerAddress,
+  inboundSourceIp,
+  peerHostLabel,
+} from "./bridgePeerLabel";
 
 function row(partial: Partial<BridgeConnection>): BridgeConnection {
   return {
@@ -36,5 +40,21 @@ describe("inbound peer labels", () => {
     });
     expect(inboundPeerAddress(connection)).toBe("https://office.example");
     expect(inboundSourceIp(connection)).toBe("203.0.113.8");
+  });
+});
+
+describe("peerHostLabel", () => {
+  it("keeps the hostname and a non-default port", () => {
+    expect(peerHostLabel("https://demo.octop.chat/path")).toBe(
+      "demo.octop.chat",
+    );
+    expect(peerHostLabel("http://sandbox-a156c721:8088")).toBe(
+      "sandbox-a156c721:8088",
+    );
+  });
+
+  it("leaves a bare address unchanged", () => {
+    expect(peerHostLabel("203.0.113.8")).toBe("203.0.113.8");
+    expect(peerHostLabel("")).toBe("");
   });
 });

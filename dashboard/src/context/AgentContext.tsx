@@ -307,7 +307,26 @@ async function fetchBridgeShadowAgents(): Promise<{
   }
 }
 
-function mapBridgeAgent(
+function stringIdList(value: unknown): string[] | undefined {
+  if (!Array.isArray(value)) return undefined;
+  const ids = value
+    .filter((item): item is string => typeof item === "string")
+    .map((item) => item.trim())
+    .filter(Boolean);
+  return ids;
+}
+
+/** Peer public config the local composer reads (mode). Other keys stay on the peer. */
+function bridgeShadowConfig(value: unknown): Record<string, unknown> {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return {};
+  const mode = (value as Record<string, unknown>).conversation_mode;
+  if (mode === "ask" || mode === "plan" || mode === "craft") {
+    return { conversation_mode: mode };
+  }
+  return {};
+}
+
+export function mapBridgeAgent(
   agent: {
     id?: string;
     agent_id?: string;
@@ -321,6 +340,10 @@ function mapBridgeAgent(
     member_ids?: unknown;
     is_owner?: boolean;
     is_shared?: boolean;
+    default_model?: unknown;
+    knowledge_base_ids?: unknown;
+    mcp_servers?: unknown;
+    config?: unknown;
   },
   conn: {
     connection_id: string;
@@ -338,6 +361,9 @@ function mapBridgeAgent(
         )
         .filter((id): id is string => Boolean(id))
     : undefined;
+  const kind = agent.kind === "team" ? "team" : "expert";
+  const defaultModel =
+    typeof agent.default_model === "string" ? agent.default_model.trim() : "";
   return {
     id: 0,
     agent_id: agentId,
@@ -345,7 +371,7 @@ function mapBridgeAgent(
     description:
       typeof agent.description === "string" ? agent.description : null,
     persona_mbti: null,
-    default_model: null,
+    default_model: defaultModel || null,
     system_prompt: null,
     template_name: null,
     state: "running",
@@ -354,8 +380,11 @@ function mapBridgeAgent(
     icon_name: typeof agent.icon_name === "string" ? agent.icon_name : null,
     icon_url: typeof agent.icon_url === "string" ? agent.icon_url : null,
     color: typeof agent.color === "string" ? agent.color : null,
-    config: {},
-    kind: agent.kind === "team" ? "team" : "expert",
+    config: bridgeShadowConfig(agent.config),
+    knowledge_base_ids: stringIdList(agent.knowledge_base_ids),
+    // Team hosts do not attach connectors; match the local agents list.
+    mcp_servers: kind === "team" ? [] : stringIdList(agent.mcp_servers),
+    kind,
     member_ids: memberIds,
     bridge: true,
     is_owner: agent.is_owner !== false,

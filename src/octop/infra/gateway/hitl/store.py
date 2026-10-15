@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import secrets
 import time
 from dataclasses import dataclass, field
@@ -10,6 +11,28 @@ from typing import Any, Literal
 HitlPendingStatus = Literal["pending", "approved", "rejected", "expired"]
 
 _DEFAULT_TTL_SECONDS = 30 * 60
+
+
+def _same_pause_slot(
+    existing: HitlPendingRecord,
+    *,
+    session_key: str,
+    resume_agent_id: str | None,
+) -> bool:
+    if existing.session_key != session_key or existing.status != "pending":
+        return False
+    if resume_agent_id:
+        return existing.resume_agent_id == resume_agent_id
+    return not existing.resume_agent_id
+
+
+def _actions_equivalent(
+    left: list[dict[str, Any]],
+    right: list[dict[str, Any]],
+) -> bool:
+    return json.dumps(left, sort_keys=True, default=str) == json.dumps(
+        right, sort_keys=True, default=str
+    )
 
 
 @dataclass
@@ -54,13 +77,23 @@ class HitlPendingStore:
         self._gc()
         # A new pause replaces only the same slot. Two team members share the
         # room session, so one member's card must not expire the other's.
+        # The same interrupt is often projected twice; reuse that pending id
+        # so an automatic resume of the first frame is not already expired.
         for existing in list(self._records.values()):
-            if existing.session_key != session_key or existing.status != "pending":
+            if not _same_pause_slot(
+                existing,
+                session_key=session_key,
+                resume_agent_id=resume_agent_id,
+            ):
                 continue
-            if resume_agent_id:
-                if existing.resume_agent_id != resume_agent_id:
-                    continue
-            elif existing.resume_agent_id:
+            if _actions_equivalent(existing.action_requests, action_requests):
+                return existing
+        for existing in list(self._records.values()):
+            if not _same_pause_slot(
+                existing,
+                session_key=session_key,
+                resume_agent_id=resume_agent_id,
+            ):
                 continue
             existing.status = "expired"
         pending_id = secrets.token_hex(2)

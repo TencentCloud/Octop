@@ -119,6 +119,19 @@ async def dashboard_chat_ws(
                         "active": hub.is_turn_active(thread_id),
                     },
                 )
+                expired = gateway.steer.sweep_expired(thread_id)
+                if expired is not None:
+                    await send_frame(
+                        {
+                            "type": "steer.discarded",
+                            "seq": expired.seq,
+                            "client_pending_ids": expired.client_pending_ids,
+                            "pending_ids": expired.pending_ids,
+                            "turn_id": expired.turn_id,
+                            "reason": expired.reason,
+                            "thread_id": thread_id,
+                        }
+                    )
                 for frame in gateway.steer.snapshot_frames(thread_id):
                     await send_frame({**frame, "thread_id": thread_id})
                 continue
@@ -198,6 +211,7 @@ async def dashboard_chat_ws(
                 hub=hub,
                 send_frame=send_frame,
                 hitl_paused=_thread_hitl_paused(gateway, prepared_early.thread_id, agent_id),
+                content_blocks=_steer_blocks_from_turn(turn),
             )
             if steered:
                 continue
@@ -329,6 +343,44 @@ async def _bridge_chat_ws(
                 await websocket.close()
 
 
+def _steer_blocks_from_turn(turn: Any) -> list[dict[str, Any]]:
+    """Image/file blocks already uploaded under workspace ``inbound/``."""
+    messages = getattr(turn, "messages", None) or []
+    content: Any = None
+    for message in reversed(messages):
+        if not isinstance(message, dict):
+            continue
+        if str(message.get("role") or "").lower() != "user":
+            continue
+        content = message.get("content")
+        break
+    if not isinstance(content, list):
+        return []
+    blocks: list[dict[str, Any]] = []
+    for block in content:
+        if not isinstance(block, dict):
+            continue
+        kind = str(block.get("type") or "")
+        if kind not in ("image", "file", "image_url"):
+            continue
+        path = block.get("workspace_path") or block.get("workspacePath")
+        if not isinstance(path, str) or not path.strip():
+            continue
+        source_raw = block.get("source")
+        source: dict[str, Any] = source_raw if isinstance(source_raw, dict) else {}
+        media = block.get("media_type") or block.get("mime_type") or source.get("media_type")
+        filename = block.get("filename") or block.get("name") or ""
+        blocks.append(
+            {
+                "type": "image" if kind in ("image", "image_url") else "file",
+                "workspace_path": path.strip(),
+                "filename": str(filename).strip(),
+                "media_type": str(media).strip() if isinstance(media, str) else "",
+            }
+        )
+    return blocks
+
+
 def _plain_text_from_turn(turn: Any) -> str:
     text = (getattr(turn, "text", None) or "").strip()
     if text:
@@ -370,10 +422,25 @@ async def _maybe_admit_steer(
     hub: Any,
     send_frame: Any,
     hitl_paused: bool,
+    content_blocks: list[dict[str, Any]] | None = None,
 ) -> bool:
     """Return True when the frame was handled as a steer (queued/rejected/idle-bypass False)."""
     if delivery not in ("auto", "steer", "follow_up"):
         delivery = "auto"
+    expired = steer.sweep_expired(thread_id)
+    if expired is not None:
+        await hub.push_to_thread(
+            thread_id,
+            {
+                "type": "steer.discarded",
+                "seq": expired.seq,
+                "client_pending_ids": expired.client_pending_ids,
+                "pending_ids": expired.pending_ids,
+                "turn_id": expired.turn_id,
+                "reason": expired.reason,
+                "thread_id": thread_id,
+            },
+        )
     if not steer.is_active(thread_id) and delivery != "steer" and delivery != "follow_up":
         return False
     if not steer.is_active(thread_id) and delivery == "follow_up":
@@ -386,6 +453,7 @@ async def _maybe_admit_steer(
         expected_turn_id=expected_turn_id,
         delivery=delivery,  # type: ignore[arg-type]
         hitl_paused=hitl_paused,
+        content_blocks=content_blocks,
     )
     if result is None:
         return False
@@ -465,20 +533,35 @@ async def _handle_steer_remove(
     pending_id = str(payload.get("pending_id") or "").strip()
     if not thread_id or not turn_id:
         await send_frame(
-            {"type": "error", "message": "steer_remove requires thread_id and turn_id"}
+            {
+                "type": "steer.ack",
+                "status": "rejected",
+                "reason": "turn_id_required",
+                "client_pending_id": client_pending_id or None,
+                "thread_id": thread_id or None,
+            }
         )
         return
     row = gateway.thread_registry.get_thread(thread_id)
     if row is None or row.agent_id != agent_id or row.user_id != user_id:
-        await send_frame({"type": "error", "reason": "forbidden", "message": "forbidden"})
+        await send_frame(
+            {
+                "type": "steer.ack",
+                "status": "rejected",
+                "reason": "forbidden",
+                "client_pending_id": client_pending_id or None,
+                "thread_id": thread_id,
+            }
+        )
         return
     if not client_pending_id or not pending_id:
         await send_frame(
             {
-                "type": "error",
+                "type": "steer.ack",
+                "status": "rejected",
                 "reason": "client_pending_id_required",
                 "client_pending_id": client_pending_id or None,
-                "message": "client_pending_id_required",
+                "thread_id": thread_id,
             }
         )
         return
