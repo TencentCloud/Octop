@@ -21,6 +21,7 @@ import {
   deleteConversation,
 } from "../utils/deleteConversation";
 import { isAgentChatReady } from "../../../utils/agentError";
+import { isImeComposing } from "../../../utils/ime";
 import { sortSessions, toSession, type Session } from "../hooks/useSessions";
 import { formatThreadTitle } from "../utils/threadTitle";
 import { onSessionEvent } from "../hooks/chatStore";
@@ -218,6 +219,7 @@ const PreviewSessionRow = memo(function PreviewSessionRow({
           onChange={(e) => setEditValue(e.target.value)}
           onBlur={commitEdit}
           onKeyDown={(e) => {
+            if (isImeComposing(e)) return;
             if (e.key === "Enter") commitEdit();
             if (e.key === "Escape") {
               setEditValue(session.name);
