@@ -67,6 +67,20 @@ bash docker/docker_build.sh
 
 For Compose, put these in `docker/.env`. Values only reach the container if listed under `environment:` in `docker-compose.yml` (Compose interpolates `.env`; it does not auto-export every key). Alternatively write the same keys into the mounted data dir as `~/.octop/env`.
 
+### Knowledge-base dependencies
+
+The image includes the `local-embedding` and `knowledge-ocr` extras alongside
+`browser`. Both dependency installation steps use these extras, so the final
+`uv sync` retains them. The build checks that the embedding and OCR modules can
+be imported; it does not download model weights or enable either feature.
+
+Dependencies installed from the dashboard into a running container live in its
+writable layer and disappear when that container is recreated. Rebuild or pull
+an image containing these extras instead of relying on runtime installation.
+Keep the `/data/.octop` volume to preserve settings, knowledge indexes and the
+local embedding model cache. Existing deployments must rebuild or upgrade their
+image to receive these dependencies; restarting an older image is insufficient.
+
 ### Data persistence
 
 - Compose mounts host `~/.octop` → container `/data/.octop`
