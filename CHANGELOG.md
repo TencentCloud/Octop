@@ -7,6 +7,7 @@
 ## [Unreleased]
 
 ### 修复
+- 桌面端（Windows）配置端口被占用时不会顺延到下一个空闲端口：端口探测误用 Windows 上恒不成立的 `syscall.EADDRINUSE`，现按平台匹配 `WSAEADDRINUSE`；同时修复 desktop Go 测试包因重复声明 `err` 而无法编译（Fixes #1905）
 - 云端协同对端专家的模型、连接器、知识库和对话模式会显示在本端输入框上方
 - 侧栏 Beta 标记跟随主题色
 - 管理员用量统计里，其他用户创建的专家显示名称而不是 id

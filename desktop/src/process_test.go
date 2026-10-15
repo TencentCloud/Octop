@@ -127,6 +127,25 @@ func TestChooseFreePortStopsWhenHostCannotBind(t *testing.T) {
 	}
 }
 
+func TestChooseFreePortSkipsALiveListener(t *testing.T) {
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer ln.Close()
+	busy := ln.Addr().(*net.TCPAddr).Port
+	if busy > 65535-freePortScanLimit {
+		t.Skipf("ephemeral port %d leaves no room for a scan window", busy)
+	}
+	got, err := chooseFreePort("127.0.0.1", busy)
+	if err != nil {
+		t.Fatalf("chooseFreePort(%d) = %v", busy, err)
+	}
+	if got == busy {
+		t.Fatalf("chooseFreePort returned the busy port %d", busy)
+	}
+}
+
 func TestListenProbeSeesOpenListener(t *testing.T) {
 	ln, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {

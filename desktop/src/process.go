@@ -2,7 +2,6 @@ package main
 
 import (
 	"encoding/json"
-	"errors"
 	"fmt"
 	"io"
 	"net"
@@ -13,7 +12,6 @@ import (
 	"runtime"
 	"strconv"
 	"strings"
-	"syscall"
 	"time"
 )
 
@@ -219,7 +217,7 @@ func listenProbe(host string, port int) (bool, error) {
 		_ = ln.Close()
 		return false, nil
 	}
-	if errors.Is(err, syscall.EADDRINUSE) {
+	if addrInUse(err) {
 		return true, nil
 	}
 	return false, err
