@@ -201,6 +201,67 @@ def test_parse_csv_xlsx_and_xls(tmp_path: Path) -> None:
     assert parse_document(xls) == "# Q1\nitem\tqty\napple\t2"
 
 
+def _xlsx_with_invalid_created(
+    path: Path, *, corrupt_sheet: bool = False, invalid_modified: bool = False
+) -> bytes:
+    from openpyxl import Workbook
+    from openpyxl.xml.functions import fromstring, tostring
+
+    workbook = Workbook()
+    assert workbook.active is not None
+    workbook.active.append(["revenue", 12.25])
+    workbook.save(path)
+    original = path.read_bytes()
+    with zipfile.ZipFile(io.BytesIO(original)) as source, zipfile.ZipFile(path, "w") as target:
+        for entry in source.infolist():
+            data = source.read(entry.filename)
+            if entry.filename == "docProps/core.xml":
+                core = fromstring(data)
+                created = core.find("{http://purl.org/dc/terms/}created")
+                assert created is not None
+                created.text = "ASUS"
+                if invalid_modified:
+                    modified = core.find("{http://purl.org/dc/terms/}modified")
+                    assert modified is not None
+                    modified.text = "invalid-modified"
+                data = tostring(core)
+            elif corrupt_sheet and entry.filename == "xl/worksheets/sheet1.xml":
+                data = b"<worksheet><broken>"
+            target.writestr(entry, data)
+    return path.read_bytes()
+
+
+@pytest.mark.parametrize("suffix", [".xlsx", ".xlsm"])
+def test_parse_xlsx_invalid_created_preserves_cells_and_source(tmp_path: Path, suffix: str) -> None:
+    path = tmp_path / f"sales{suffix}"
+    original = _xlsx_with_invalid_created(path)
+
+    assert parse_document(path) == "# Sheet\nrevenue\t12.25"
+    assert path.read_bytes() == original
+
+
+def test_parse_xlsx_invalid_created_does_not_hide_corrupt_sheet(tmp_path: Path) -> None:
+    from xml.etree.ElementTree import ParseError
+
+    from lxml.etree import XMLSyntaxError
+
+    path = tmp_path / "broken.xlsx"
+    original = _xlsx_with_invalid_created(path, corrupt_sheet=True)
+
+    with pytest.raises((ParseError, XMLSyntaxError)):
+        parse_document(path)
+    assert path.read_bytes() == original
+
+
+def test_parse_xlsx_invalid_created_does_not_hide_other_metadata_errors(tmp_path: Path) -> None:
+    path = tmp_path / "metadata.xlsx"
+    original = _xlsx_with_invalid_created(path, invalid_modified=True)
+
+    with pytest.raises(ValueError, match="could not read properties"):
+        parse_document(path)
+    assert path.read_bytes() == original
+
+
 def test_parse_html_json_and_plain_variants(tmp_path: Path) -> None:
     html = tmp_path / "page.html"
     html.write_text(
