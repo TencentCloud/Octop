@@ -2,7 +2,7 @@
 name: bo-process-optimization
 description: 识别业务流程中的瓶颈、等待、返工和交接浪费，设计可行的改进方案与衡量计划。适用于流程效率分析或工作流重设计。
 ---
-本文件由 Anthropic `operations` 技能改编并已修改；固定版本、署名与许可见[第三方来源说明](../../THIRD_PARTY_NOTICES.md)。
+<!-- 已为 Octop 改编。 -->
 
 # 流程优化
 

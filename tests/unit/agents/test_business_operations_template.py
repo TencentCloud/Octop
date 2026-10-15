@@ -61,21 +61,17 @@ def test_business_operations_skill_files_and_attribution() -> None:
         assert "\ndescription:" in raw.split("---", 2)[1]
         # Modified upstream files must carry their own notice, not only a directory notice.
         notice = raw.split("---", 2)[2].strip().split("\n\n", 1)[0]
-        assert "已修改" in notice
-        assert "(../../THIRD_PARTY_NOTICES.md)" in notice
-        assert (
-            (EXPERT_DIR / rel).parent.joinpath("../../THIRD_PARTY_NOTICES.md").resolve().is_file()
-        )
+        assert "已为 Octop 改编" in notice
     for name in EXPECTED_SKILLS:
         assert name in (EXPERT_DIR / "SOUL.md").read_text(encoding="utf-8")
-    # Preserve the full pinned LICENSE (including its suffix), allowing Git's checkout EOLs.
-    license_bytes = (EXPERT_DIR / "LICENSE-APACHE-2.0").read_bytes().replace(b"\r\n", b"\n")
+    # The shared README and its complete upstream license must ship with the expert.
+    assert "README.md" in files
+    readme = (EXPERT_DIR / "README.md").read_text(encoding="utf-8")
+    license_bytes = readme.split("```text\n", 1)[1].split("```", 1)[0].encode("utf-8")
     assert hashlib.sha256(license_bytes).hexdigest() == (
         "a6946284993aeec75c7d75906064b66210c46051e562077efb30eb6dcfe72e26"
     )
-    assert "02ffa99ff00ce4d3046ccebabb8357cb39f3ab06" in (
-        EXPERT_DIR / "THIRD_PARTY_NOTICES.md"
-    ).read_text(encoding="utf-8")
+    assert "02ffa99ff00ce4d3046ccebabb8357cb39f3ab06" in readme
 
 
 def test_business_operations_marks_unknowns_without_claiming_nonexistence() -> None:

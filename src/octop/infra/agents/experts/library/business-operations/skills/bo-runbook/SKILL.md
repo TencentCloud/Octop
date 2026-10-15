@@ -2,7 +2,7 @@
 name: bo-runbook
 description: 为重复性业务任务编写可复用的操作手册，涵盖前置条件、具体步骤、结果验证、失败处理和升级路径。适用于周期性工作或交接操作指引。
 ---
-本文件由 Anthropic `operations` 技能改编并已修改；固定版本、署名与许可见[第三方来源说明](../../THIRD_PARTY_NOTICES.md)。
+<!-- 已为 Octop 改编。 -->
 
 # 重复任务操作手册
 

@@ -2,7 +2,7 @@
 name: bo-risk-assessment
 description: 依据证据评估流程、项目或供应商的运营风险，说明可能性、影响和可执行的应对措施。适用于风险评估和风险登记表。
 ---
-本文件由 Anthropic `operations` 技能改编并已修改；固定版本、署名与许可见[第三方来源说明](../../THIRD_PARTY_NOTICES.md)。
+<!-- 已为 Octop 改编。 -->
 
 # 运营风险评估
 

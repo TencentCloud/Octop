@@ -2,7 +2,7 @@
 name: bo-process-doc
 description: 将组织实际执行或拟议的流程整理为可复用的标准操作流程（SOP），明确职责、异常处理和验证方式。适用于编写 SOP、流程图、RACI、交接说明或流程文档。
 ---
-本文件由 Anthropic `operations` 技能改编并已修改；固定版本、署名与许可见[第三方来源说明](../../THIRD_PARTY_NOTICES.md)。
+<!-- 已为 Octop 改编。 -->
 
 # 流程文档与标准操作流程（SOP）
 

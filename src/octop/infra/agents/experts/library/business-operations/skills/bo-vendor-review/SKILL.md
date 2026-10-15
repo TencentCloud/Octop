@@ -2,7 +2,7 @@
 name: bo-vendor-review
 description: 从总体成本、运营适配度、绩效、合同和持续经营风险等方面比较供应商方案与续约选择。适用于供应商评估、采购和续约决策。
 ---
-本文件由 Anthropic `operations` 技能改编并已修改；固定版本、署名与许可见[第三方来源说明](../../THIRD_PARTY_NOTICES.md)。
+<!-- 已为 Octop 改编。 -->
 
 # 供应商评估
 

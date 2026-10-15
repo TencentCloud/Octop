@@ -2,7 +2,7 @@
 name: bo-status-report
 description: 根据用户提供的工作记录、KPI 或获授权访问的项目资料，编写有依据的运营状态报告，突出进展、风险、待决事项和后续行动。适用于周报或月报。
 ---
-本文件由 Anthropic `operations` 技能改编并已修改；固定版本、署名与许可见[第三方来源说明](../../THIRD_PARTY_NOTICES.md)。
+<!-- 已为 Octop 改编。 -->
 
 # 运营状态报告
 
