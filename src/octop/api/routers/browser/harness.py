@@ -158,6 +158,8 @@ async def resolve_harness_session(
             profile_manager=profile_manager,
         )
     except Exception as exc:
+        if "No usable sandbox!" in str(exc):
+            raise OctopError.localized(ErrorCode.BROWSER_SANDBOX_UNAVAILABLE) from exc
         # Chrome exit 21 / ProcessSingleton usually means a stale lock or a
         # non-writable profile left by a previous root/non-root mismatch.
         msg = str(exc)
@@ -185,6 +187,8 @@ async def resolve_harness_session(
                     profile_manager=profile_manager,
                 )
             except Exception as retry_exc:
+                if "No usable sandbox!" in str(retry_exc):
+                    raise OctopError.localized(ErrorCode.BROWSER_SANDBOX_UNAVAILABLE) from retry_exc
                 raise OctopError(
                     ErrorCode.INTERNAL_ERROR,
                     f"failed to attach browser profile {profile!r}: {retry_exc}",

@@ -158,6 +158,7 @@
     "VOICE_PROVIDER_DISABLED": "语音提供商已禁用。",
     "VOICE_REALTIME_UNAVAILABLE": "实时语音识别不可用，请检查腾讯云语音配置。",
     "INTERNAL_ERROR": "服务器内部错误。",
+    "BROWSER_SANDBOX_UNAVAILABLE": "Chromium 无法启动：没有可用的沙箱。Linux 上的 AppArmor 非特权用户命名空间限制可能导致此问题。请安装系统 Chrome/Chromium，或联系主机管理员检查 AppArmor 策略。参见 https://chromium.googlesource.com/chromium/src/+/main/docs/security/apparmor-userns-restrictions.md",
     "TLS_NOT_ELIGIBLE": "当前服务器配置不支持 TLS 证书申请。",
     "TLS_ISSUE_IN_PROGRESS": "已有证书申请任务正在进行。",
     "TLS_DOMAIN_MISMATCH": "域名与现有证书不一致。",
