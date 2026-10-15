@@ -155,6 +155,41 @@ async def test_export_skill_package_zip(env: Any) -> None:
     assert empty.status_code == 400
 
 
+async def test_skill_package_download_can_be_disabled(env_boundary: Any) -> None:
+    client, _server, _admin_auth, alice_auth, bob_auth, _ctx = env_boundary
+    package_id = (
+        await client.post(
+            "/api/skill-packages",
+            headers=alice_auth,
+            json={"name": "Alice download"},
+        )
+    ).json()["id"]
+    created = await client.post(
+        f"/api/skill-packages/{package_id}/skills",
+        headers=alice_auth,
+        json={"name": "pdf-reader", "content": SAMPLE_SKILL},
+    )
+    assert created.status_code == 200, created.text
+
+    open_download = await client.get(f"/api/skill-packages/{package_id}/export", headers=bob_auth)
+    assert open_download.status_code == 200, open_download.text
+
+    closed = await client.patch(
+        f"/api/skill-packages/{package_id}",
+        headers=alice_auth,
+        json={"allow_download": False},
+    )
+    assert closed.status_code == 200, closed.text
+    assert closed.json()["allow_download"] is False
+
+    denied = await client.get(f"/api/skill-packages/{package_id}/export", headers=bob_auth)
+    assert denied.status_code == 403, denied.text
+    assert denied.json()["error"]["code"] == "SKILL_PACKAGE_DOWNLOAD_DENIED"
+
+    owner = await client.get(f"/api/skill-packages/{package_id}/export", headers=alice_auth)
+    assert owner.status_code == 200, owner.text
+
+
 async def test_other_user_cannot_mutate_skill_package(env_boundary: Any) -> None:
     client, _server, _admin_auth, alice_auth, bob_auth, _ctx = env_boundary
     package_id = (

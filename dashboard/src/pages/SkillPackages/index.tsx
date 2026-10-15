@@ -16,6 +16,7 @@ import {
   List,
   Segmented,
   Spin,
+  Switch,
   Tag,
   Tooltip,
   Typography,
@@ -91,6 +92,8 @@ type PackageFormValues = {
   icon_name?: string;
   icon_url?: string;
   copy_policy?: "snapshot" | "lock" | "deny";
+  allow_download?: boolean;
+  can_download?: boolean;
 };
 
 const EMPTY_SKILL = "---\nname: \ndescription: \n---\n\n";
@@ -339,6 +342,7 @@ export default function SkillPackagesPage() {
       icon_name: item.icon_name,
       icon_url: item.icon_url,
       copy_policy: item.copy_policy ?? "snapshot",
+      allow_download: item.allow_download !== false,
     });
     setPackageDrawerOpen(true);
   };
@@ -908,7 +912,11 @@ export default function SkillPackagesPage() {
                         <button
                           type="button"
                           className={skillStyles.toolbarBtn}
-                          disabled={!selected || selected.skills.length === 0}
+                          disabled={
+                            !selected ||
+                            selected.skills.length === 0 ||
+                            selected.can_download === false
+                          }
                           onClick={() => void exportPackage()}
                         >
                           <FileDown size={14} />
@@ -1004,6 +1012,16 @@ export default function SkillPackagesPage() {
                   { value: "deny", label: t("skillPackages.copyPolicyDeny") },
                 ]}
               />
+            </Form.Item>
+          ) : null}
+          {editingPackageId ? (
+            <Form.Item
+              name="allow_download"
+              label={t("skillPackages.allowDownload")}
+              tooltip={t("skillPackages.allowDownloadHint")}
+              valuePropName="checked"
+            >
+              <Switch />
             </Form.Item>
           ) : null}
           <Form.Item

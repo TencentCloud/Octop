@@ -64,6 +64,10 @@ class UpdateSkillPackageBody(BaseModel):
         default=None,
         description="Who may copy this package's skills into a workspace (#770).",
     )
+    allow_download: bool | None = Field(
+        default=None,
+        description="When false, users other than the creator and admins cannot download this package as a ZIP.",
+    )
 
 
 class FromSkillHubBody(BaseModel):
@@ -270,6 +274,7 @@ async def list_skill_packages(
             **_creator_fields(server, row.created_by),
             "can_write": store.can_mutate(row, user),
             "can_copy": store.can_copy(row, user),
+            "can_download": store.can_download(row, user),
         }
         for row in store.repo.list_all()
         if not writable_only or store.can_mutate(row, user)
@@ -391,6 +396,7 @@ async def get_skill_package(
         ),
         "can_write": store.can_mutate(row, user),
         "can_copy": store.can_copy(row, user),
+        "can_download": store.can_download(row, user),
     }
 
 
@@ -417,6 +423,7 @@ async def update_skill_package(
             icon_name=icon_name,
             icon_url=icon_url,
             copy_policy=body.copy_policy,
+            allow_download=None if body.allow_download is None else int(body.allow_download),
         )
     except Exception as exc:
         if name is not None and is_skill_package_name_conflict(exc):
@@ -517,6 +524,7 @@ async def export_skill_package(
 ) -> Response:
     store = _store(server)
     row = _package_or_404(store, package_id, locale=resolve_request_locale(request))
+    store.assert_can_download(row, _user)
     try:
         packed = await asyncio.to_thread(_read_package_skill_files, store, package_id)
         payload = await asyncio.to_thread(build_skills_zip, packed)
