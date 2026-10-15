@@ -72,6 +72,10 @@ class KnowledgeIndex:
             vector = [float(value) for value in embedding]
             if not vector:
                 raise ValueError("embedding cannot be empty")
+            # NaN/Inf are representable float32 values, so they would be stored and
+            # the document marked ready, while cosine scores over them are NaN.
+            if not all(math.isfinite(value) for value in vector):
+                raise ValueError("embedding must be finite")
             meta = metadata[ordinal] if metadata is not None else {}
             rows.append(
                 (
@@ -102,7 +106,11 @@ class KnowledgeIndex:
         query = [float(value) for value in query_vec]
         if not query:
             raise ValueError("query vector cannot be empty")
+        if not all(math.isfinite(value) for value in query):
+            raise ValueError("query vector must be finite")
         query_norm = math.sqrt(sum(value * value for value in query))
+        if not math.isfinite(query_norm):
+            raise ValueError("query vector norm is not finite")
         if query_norm == 0:
             raise ValueError("query vector cannot be zero")
         with self._connect() as conn:
@@ -113,6 +121,10 @@ class KnowledgeIndex:
         for chunk_id, doc_id, ordinal, text, blob, meta_json in rows:
             embedding = struct.unpack(f"<{len(blob) // 4}f", blob)
             if len(embedding) != len(query):
+                continue
+            # Rows written before the check above can still hold non-finite values;
+            # skipping them keeps the healthy documents retrievable.
+            if not all(math.isfinite(value) for value in embedding):
                 continue
             norm = math.sqrt(sum(value * value for value in embedding))
             score = (
