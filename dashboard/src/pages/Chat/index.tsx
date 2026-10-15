@@ -99,7 +99,6 @@ import {
   findAutoResumableApproval,
   findPendingAsk,
   hasPendingHitl,
-  isResumableHitl,
 } from "./utils/pendingHitl";
 import { isAgentChatReady } from "../../utils/agentError";
 import { useMemoryMaintenance } from "./hooks/useMemoryMaintenance";
@@ -358,6 +357,7 @@ function ChatPageInner() {
     contextUsage,
     pendingPlanPath,
     liveSpeakers,
+    activeTurnId,
     sendMessage,
     editAndResend,
     cancelStream,
@@ -842,6 +842,52 @@ function ChatPageInner() {
     shouldDeferFlush: shouldDeferQueueFlush,
   });
 
+  // While streaming, Enter/Send parks a local chip; ↑ Steer on the chip row
+  // commits sendSteerWhileBusy. The click always acts: the
+  // server routes delivery=auto (busy → steer queue, idle → new turn); a
+  // dead socket degrades to the normal send path — never a silent no-op.
+  const handleSteerQueued = useCallback(
+    (id: string) => {
+      const key = activeThreadId || "";
+      const item = queuedItems.find((q) => q.id === id);
+      if (!item || !key) return;
+      const turnId = activeTurnId || chatStore.getActiveTurnId(key) || "";
+      const result = chatStore.sendSteerWhileBusy(key, item.text, {
+        expectedTurnId: turnId || undefined,
+        attachments: item.attachments,
+      });
+      if (result === "empty") return;
+      removeQueued(id);
+      if (result === "no_socket") {
+        wrappedHandleSend(item.text, item.attachments);
+      }
+    },
+    [
+      activeThreadId,
+      activeTurnId,
+      queuedItems,
+      removeQueued,
+      wrappedHandleSend,
+    ],
+  );
+
+  const handleWithdrawSteer = useCallback(
+    (messageId: string) => {
+      const key = activeThreadId || "";
+      if (!key) return;
+      const result = chatStore.withdrawCommittedSteer(key, messageId);
+      if (result === "pending_ack") {
+        antMessage.info(t("chat.steer.withdrawPending"));
+      }
+    },
+    [activeThreadId, t],
+  );
+
+  // Committed steers live in the transcript (optimistic row settled by
+  // server frames) — the chip panel holds only uncommitted local drafts
+  // (the queue row settles on commit).
+  const displayQueuedItems = queuedItems;
+
   const {
     handleNewChat: startNewChat,
     handleNewChatWithAgent,
@@ -961,23 +1007,30 @@ function ChatPageInner() {
   useEffect(() => {
     if (isStreaming || !activeThreadId) return;
     const sessionPolicy = parseHitlSessionPolicy(composerSession?.hitlPolicy);
-    const pending = findAutoResumableApproval(sessionPolicy, messages);
-    if (!pending) {
-      autoResumedApprovalRef.current = null;
-      return;
-    }
-    const card = messages.find((message) => message.id === pending.messageId);
-    if (!isResumableHitl(card?.hitlData)) return;
-    const resumeKey = `${activeThreadId}:${pending.messageId}`;
-    if (autoResumedApprovalRef.current === resumeKey) return;
-    autoResumedApprovalRef.current = resumeKey;
-    resumeHitl(
-      pending.actions.map(() => ({ type: "approve" })),
-      activeThreadId,
-      undefined,
-      sessionPolicy,
-      pending.pendingId,
-    );
+    const threadId = activeThreadId;
+    // A pause can be projected twice. Wait until the latest card is the one
+    // we resume, instead of approving an id the next frame already expired.
+    const timer = window.setTimeout(() => {
+      const pending = findAutoResumableApproval(
+        sessionPolicy,
+        chatStore.getSnapshot(threadId).messages,
+      );
+      if (!pending?.pendingId) {
+        autoResumedApprovalRef.current = null;
+        return;
+      }
+      const resumeKey = `${threadId}:${pending.messageId}`;
+      if (autoResumedApprovalRef.current === resumeKey) return;
+      autoResumedApprovalRef.current = resumeKey;
+      resumeHitl(
+        pending.actions.map(() => ({ type: "approve" })),
+        threadId,
+        undefined,
+        sessionPolicy,
+        pending.pendingId,
+      );
+    }, 50);
+    return () => window.clearTimeout(timer);
   }, [
     composerSession?.hitlPolicy,
     messages,
@@ -1494,6 +1547,7 @@ function ChatPageInner() {
                     onRegenerate={handleRegenerate}
                     onDisableStreamUsage={handleDisableStreamUsage}
                     onEditUserMessage={handleEditUserMessage}
+                    onWithdrawSteer={handleWithdrawSteer}
                     onForkAssistantMessage={handleForkAssistantMessage}
                     forkDisabled={forkDisabled}
                     forkDisabledHint={forkDisabledHint}
@@ -1758,9 +1812,10 @@ function ChatPageInner() {
               ref={chatInputRef}
               onSend={wrappedHandleSend}
               onQueue={enqueueQueued}
-              queuedItems={queuedItems}
+              queuedItems={displayQueuedItems}
               onRemoveQueued={removeQueued}
               onReclaimQueued={reclaimQueued}
+              onSteerQueued={handleSteerQueued}
               onCancel={cancelStream}
               onNewChat={handleNewChat}
               isStreaming={isStreaming}

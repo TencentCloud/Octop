@@ -38,6 +38,7 @@ def test_exempt_paths() -> None:
     assert is_jwt_exempt_path("/api/auth/invite/redeem")
     assert is_jwt_exempt_path("/api/docs")
     assert is_jwt_exempt_path("/api/openapi.json")
+    assert is_jwt_exempt_path("/api/downloads/link/abc")
     assert not is_jwt_exempt_path("/api/auth/oidc/config")
     assert not is_jwt_exempt_path("/api/auth/oauth/providers/feishu")
     assert not is_jwt_exempt_path("/api/auth/oauth/bind/start")
@@ -45,6 +46,7 @@ def test_exempt_paths() -> None:
     assert not is_jwt_exempt_path("/api/auth/oidc/config/test")
     assert not is_jwt_exempt_path("/api/auth/me")
     assert not is_jwt_exempt_path("/api/agents")
+    assert not is_jwt_exempt_path("/api/downloads/link")
 
 
 @pytest.fixture

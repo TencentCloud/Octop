@@ -1,15 +1,11 @@
 .card {
   border: 1px solid
-    color-mix(
-      in srgb,
-      var(--fn-color-warning, #d48806) 42%,
-      var(--fn-border-primary)
-    );
+    color-mix(in srgb, var(--fn-color-brand) 42%, var(--fn-border-primary));
   border-radius: var(--fn-radius-lg);
   padding: 14px 16px;
   background: color-mix(
     in srgb,
-    var(--fn-color-warning, #d48806) 7%,
+    var(--fn-color-brand) 7%,
     var(--fn-bg-primary)
   );
   box-shadow: var(--fn-shadow-xs);
@@ -33,12 +29,8 @@
   width: 28px;
   height: 28px;
   border-radius: var(--fn-radius-full);
-  color: var(--fn-color-warning, #d48806);
-  background: color-mix(
-    in srgb,
-    var(--fn-color-warning, #d48806) 16%,
-    transparent
-  );
+  color: var(--fn-color-brand);
+  background: color-mix(in srgb, var(--fn-color-brand) 16%, transparent);
 }
 
 .title {
