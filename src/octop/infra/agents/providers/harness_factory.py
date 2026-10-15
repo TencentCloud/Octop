@@ -31,13 +31,16 @@ def sync_providers_to_harness(
         return
 
     new_ids = {provider.id for provider in providers}
-    existing_ids = set(getattr(shared_factory, "_providers", {}).keys())
+    existing_providers = shared_factory._providers
+    existing_ids = set(existing_providers)
     for provider_id in existing_ids - new_ids:
         try:
             harness_manager.remove_provider(provider_id)
         except Exception:
             logger.exception("remove_provider %s failed", provider_id)
     for provider in providers:
+        if existing_providers.get(provider.id) == provider:
+            continue
         try:
             harness_manager.add_provider(provider)
         except Exception:
