@@ -7,6 +7,7 @@
 ## [Unreleased]
 
 ### 修复
+- OpenSandbox 存储后端缺 `mkdir_path` / `delete_path` / `move_path` 三个工作区原语，非挂载启动专家直接失败；Octop 兼容层已补齐（Fixes #1813）
 - 云端协同对端专家的模型、连接器、知识库和对话模式会显示在本端输入框上方
 - 侧栏 Beta 标记跟随主题色
 - 管理员用量统计里，其他用户创建的专家显示名称而不是 id
