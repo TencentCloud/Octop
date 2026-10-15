@@ -178,7 +178,7 @@ Each variable, when set, takes precedence over the matching key in
 | `OCTOP_BROWSER_IDLE_TIMEOUT_MINUTES` | int | `30` | Idle timeout applied to octop-browser sessions at boot (`0` disables the idle cutoff) |
 | `OCTOP_BACKUP_AUTO_ENABLED` | bool | `false` | Enable automatic system backups |
 | `OCTOP_BACKUP_SCHEDULE` | string | `cron:0 4 * * *` | Backup schedule expression |
-| `OCTOP_BACKUP_RETENTION_COUNT` | int | `7` | Number of backup archives to keep (`< 1` falls back to the default) |
+| `OCTOP_BACKUP_RETENTION_COUNT` | int | `7` | Number of backup archives to keep (`< 1` keeps the configured value from `config.json`) |
 | `OCTOP_BACKUP_INCLUDE_CONFIG` | bool | `true` | Include `config.json` and secrets layout in backup archives |
 | `OCTOP_BACKUP_INCLUDE_WORKSPACES` | bool | `true` | Include agent workspaces in backup archives |
 | `OCTOP_BACKUP_INCLUDE_SKILL_PACKAGES` | bool | `true` | Include skill packages in backup archives |
