@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Literal
+from typing import Any, Literal
 
 STEER_DEPTH_CAP = 8
 STEER_CONTINUATION_CAP = 8
@@ -60,6 +60,7 @@ DiscardReason = Literal[
     "turn_failed",
     "continuation_exhausted",
     "hitl_paused",
+    "park_expired",
 ]
 
 
@@ -69,6 +70,8 @@ class PendingSteer:
     pending_id: str
     text: str
     preview: str
+    # Image/file blocks already stored under workspace ``inbound/``.
+    content_blocks: tuple[dict[str, Any], ...] = ()
 
 
 @dataclass
@@ -83,6 +86,8 @@ class TurnSteerState:
     last_allocated_seq: int = 0
     # Wall-clock epoch seconds when an HITL pause parked this state.
     parked_at: float | None = None
+    # Model / skills / knowledge bases to reuse when a parked steer resumes.
+    continuation_meta: dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)

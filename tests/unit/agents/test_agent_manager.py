@@ -621,7 +621,7 @@ def test_memory_extract_settings_forwards_aux_call_options() -> None:
             {
                 "memory_aux_light_timeout_s",
                 "memory_aux_heavy_timeout_s",
-                "memory_aux_max_tokens",
+                "memory_extract_max_tokens",
                 "memory_aux_extra_body",
             }
         ),
@@ -629,9 +629,30 @@ def test_memory_extract_settings_forwards_aux_call_options() -> None:
     assert settings == {
         "memory_aux_light_timeout_s": 42.0,
         "memory_aux_heavy_timeout_s": 90.0,
-        "memory_aux_max_tokens": 1024,
+        "memory_extract_max_tokens": 1024,
         "memory_aux_extra_body": {"chat_template_kwargs": {"enable_thinking": False}},
     }
+
+
+def test_memory_extract_settings_handles_legacy_limits_and_stale_model() -> None:
+    settings = _memory_extract_settings(
+        {
+            "memory": {
+                "aux_model": "deleted/Qwen3",
+                "extract_max_tokens": 1,
+                "extract_light_timeout_s": 604800,
+                "extract_heavy_timeout_s": 1,
+                "extract_extra_body": {"chat_template_kwargs": {"enable_thinking": False}},
+            }
+        },
+        is_ref_usable=lambda _ref: False,
+    )
+    assert settings["memory_extract_max_tokens"] == 128
+    assert settings["memory_aux_light_timeout_s"] == 3600
+    assert settings["memory_aux_heavy_timeout_s"] == 30
+    # A deleted model falls back before the LLM client is built; its vendor
+    # options must not reach that replacement model either.
+    assert "memory_aux_extra_body" not in settings
 
 
 def test_memory_extract_settings_skips_aux_call_options_on_legacy_harness() -> None:
@@ -648,6 +669,46 @@ def test_memory_extract_settings_skips_aux_call_options_on_legacy_harness() -> N
         supported_fields=frozenset({"memory_enabled"}),
     )
     assert settings == {}
+
+
+def test_memory_extract_budget_reaches_actual_extractor(tmp_path: Path) -> None:
+    from dataclasses import fields
+
+    from octop_harness.config import HarnessAgentConfig
+    from octop_harness.memory.runtime import MemoryRuntime
+    from octop_memory.pipeline.extractor import CandidateExtractor
+
+    settings = _memory_extract_settings(
+        {"memory": {"extract_max_tokens": 1024, "extract_light_timeout_s": 45}},
+        supported_fields=frozenset(field.name for field in fields(HarnessAgentConfig)),
+    )
+    model = MagicMock()
+    model.bind.return_value = model
+    model.invoke.return_value = SimpleNamespace(content='{"candidates": []}')
+    factory = MagicMock()
+    factory.get_chat_model.return_value = model
+    config = HarnessAgentConfig(
+        name="budget-test",
+        workspace_dir=tmp_path,
+        default_model="local/test",
+        memory_backend={"type": "sqlite", "db_path": str(tmp_path / "memory.sqlite")},
+        session_log_enabled=False,
+        checkpointer=False,
+        **settings,
+    )
+    runtime = MemoryRuntime(config=config, workspace_path=tmp_path, model_factory=factory)
+    try:
+        service = runtime.service
+        assert service is not None
+        extractor = CandidateExtractor(
+            llm=runtime._llm_client, max_tokens=service._runtime._extraction_cfg()["max_tokens"]
+        )
+        result = extractor._call_with_retry(prompt="test", session_id="test", raw_event_ids=set())
+        assert result.failure_reason is None
+        assert model.bind.call_args.kwargs["max_tokens"] == 1024
+        assert model.bind.call_args.kwargs["timeout"] == 45
+    finally:
+        runtime.close()
 
 
 def test_memory_extract_settings_ignores_unset_aux_call_options() -> None:
@@ -2537,3 +2598,91 @@ async def test_stream_and_resume_hitl_serialize_per_thread(
     await turn
     await resume
     assert peak == 1
+
+
+def test_memory_extract_settings_preserves_zero_retries() -> None:
+    memory = {"extract_thinking": "off", "extract_max_retries": 0, "extract_retry_backoff_s": 0}
+    supported = frozenset(
+        {"memory_aux_thinking", "memory_aux_max_retries", "memory_aux_retry_backoff_s"}
+    )
+    assert _memory_extract_settings({"memory": memory}, supported_fields=supported) == {
+        "memory_aux_thinking": "off",
+        "memory_aux_max_retries": 0,
+        "memory_aux_retry_backoff_s": 0,
+    }
+    assert _memory_extract_settings({"memory": memory}, supported_fields=frozenset()) == {}
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("legacy_runtime", [False, True])
+async def test_restore_respects_runtime_capability_and_expert_scope(
+    manager, monkeypatch, legacy_runtime
+):
+    import sqlite3
+    from contextlib import closing
+
+    from langgraph.checkpoint.base import empty_checkpoint
+    from octop_harness import HarnessAgentManager
+    from octop_harness.middleware.memory import MemoryMiddleware
+
+    from octop.infra.agents.manager import AgentCreateSpec
+    from octop.infra.agents.memory.sqlite_restore import restore_sqlite
+
+    monkeypatch.setattr(MemoryMiddleware, "_arm_maintenance", lambda *a, **k: None)
+    if legacy_runtime:
+        monkeypatch.setattr(MemoryMiddleware, "pause_background", None, raising=False)
+    _seed_test_provider(manager)
+    manager._harness_manager = HarnessAgentManager(
+        providers=manager.providers.build_harness_configs(), log_dir=str(manager.paths.logs_dir)
+    )
+    rows = []
+    try:
+        for name in ("restore-one", "restore-other"):
+            rows.append(await manager.create(AgentCreateSpec(name=name)))
+        first, other = [manager.get_agent(row.agent_id) for row in rows]
+        old_memory = first._memory_runtime.memory
+        assert old_memory is not None
+        old_memory.put(
+            {"configurable": {"thread_id": "one", "checkpoint_ns": ""}}, empty_checkpoint(), {}, {}
+        )
+        path = Path(old_memory.backend._db_path)
+        backup = path.with_name(path.name + ".before-slim." + "a" * 32 + ".bak")
+        with closing(sqlite3.connect(path)) as source, closing(sqlite3.connect(backup)) as target:
+            source.backup(target)
+        old_memory.put(
+            {"configurable": {"thread_id": "two", "checkpoint_ns": ""}}, empty_checkpoint(), {}, {}
+        )
+        assert manager.try_begin_history_backfill(rows[0].agent_id)
+        if not callable(getattr(MemoryMiddleware, "pause_background", None)):
+            operation = MagicMock()
+            with pytest.raises(ValueError, match="does not support"):
+                await manager.restore_memory_store(
+                    rows[0].agent_id, old_memory, operation, locale="en"
+                )
+            operation.assert_not_called()
+            assert manager.get_agent(rows[0].agent_id) is first
+            assert first._memory_runtime.memory is old_memory
+            assert manager.get_agent(rows[1].agent_id) is other
+            with closing(sqlite3.connect(path)) as conn:
+                assert conn.execute("SELECT count(*) FROM checkpoints").fetchone()[0] == 2
+            manager.end_history_backfill(rows[0].agent_id)
+            return
+        result = await manager.restore_memory_store(
+            rows[0].agent_id,
+            old_memory,
+            lambda: restore_sqlite(
+                path, old_memory.backend._ns, backup.name, locale="en", progress=lambda _: None
+            ),
+            locale="en",
+        )
+        manager.end_history_backfill(rows[0].agent_id)
+        new_agent = manager.get_agent(rows[0].agent_id)
+        assert new_agent is not first
+        assert new_agent._memory_runtime.memory is not old_memory
+        assert manager.get_agent(rows[1].agent_id) is other
+        with closing(sqlite3.connect(path)) as conn:
+            assert conn.execute("SELECT count(*) FROM checkpoints").fetchone()[0] == 1
+        assert Path(result["backup_path"]).exists()
+    finally:
+        for row in rows:
+            await manager.stop(row.agent_id)

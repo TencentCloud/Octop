@@ -29,6 +29,14 @@ from octop.infra.history.trajectory.projector import _tool_result_fields
 logger = logging.getLogger(__name__)
 
 
+def _is_stream_error_part(part: dict[str, Any]) -> bool:
+    data = part.get("data")
+    if not isinstance(data, dict):
+        return False
+    extra = data.get("additional_kwargs")
+    return isinstance(extra, dict) and bool(extra.get(STREAM_ERROR_FLAG))
+
+
 def _foreign_turn_speaker(turn: dict[str, Any], chunk: dict[str, Any]) -> bool:
     """True when a live frame belongs to a different agent than this history turn."""
     owner = str(turn.get("agent_id") or "").strip()
@@ -307,7 +315,13 @@ class RecordingTracker(TurnHistoryTracker):
                     None,
                 )
             if role == "ai":
-                assistants = [p for p in self._parts if p["type"] == "ai"]
+                # A later checkpoint must not reuse the error row as a normal
+                # assistant message — that drops the failure from history.
+                if target is not None and _is_stream_error_part(target):
+                    target = None
+                assistants = [
+                    p for p in self._parts if p["type"] == "ai" and not _is_stream_error_part(p)
+                ]
                 if (
                     target is None
                     and not self._identified
