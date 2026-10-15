@@ -938,6 +938,9 @@
     "version_mismatch": "The installer finished, but installed version {actual} does not match requested version {expected}.",
     "version_not_newer": "The installer finished, but installed version {actual} is not newer than {previous}."
   },
+  "providers": {
+    "codex_models_invalid_response": "Invalid Codex model list (expected models entries with slug identifiers)."
+  },
   "ldap": {
     "test": {
       "ok": "Connected to the LDAP directory",

@@ -8,10 +8,14 @@ import logging
 import time
 from types import SimpleNamespace
 from typing import Any
+from urllib.parse import urlsplit
 
 import httpx
 
+from octop.i18n import tr
 from octop.infra.agents.providers import KIND_TO_PROTOCOL
+from octop.infra.agents.providers.codex_apply import CODEX_PROVIDER_NAME
+from octop.infra.agents.providers.codex_oauth import CODEX_ATTRIBUTION_VERSION
 from octop.infra.agents.providers.opencode_session import ensure_opencode_session_header
 
 logger = logging.getLogger(__name__)
@@ -39,7 +43,8 @@ def provider_headers(row: Any) -> dict[str, str]:
 
 
 def _is_codex_base_url(base_url: str | None) -> bool:
-    return bool(base_url and "chatgpt.com/backend-api/codex" in base_url)
+    parsed = urlsplit((base_url or "").strip())
+    return parsed.hostname == "chatgpt.com" and parsed.path.rstrip("/") == "/backend-api/codex"
 
 
 def build_probe_chat_model(row: Any, *, model_id: str | None = None) -> Any:
@@ -284,13 +289,15 @@ async def fetch_openai_compatible_models(
 ) -> dict[str, Any]:
     """List models via OpenAI-compatible ``GET {base}/models``."""
     url = _models_list_url(base_url)
+    is_codex = provider_name == CODEX_PROVIDER_NAME or _is_codex_base_url(base_url)
+    params = {"client_version": CODEX_ATTRIBUTION_VERSION} if is_codex else None
     headers: dict[str, str] = {"Authorization": f"Bearer {api_key}"}
     extra_headers = ensure_opencode_session_header(provider_name, extra_headers, base_url=base_url)
     if extra_headers:
         headers.update(extra_headers)
     try:
         async with httpx.AsyncClient(timeout=_FETCH_MODELS_TIMEOUT_S) as client:
-            response = await client.get(url, headers=headers)
+            response = await client.get(url, headers=headers, params=params)
     except Exception as exc:
         logger.info(
             "provider fetch-models failed for %s: %r (%s)",
@@ -317,8 +324,10 @@ async def fetch_openai_compatible_models(
             "error": "response is not valid JSON (expected OpenAI-compatible /models)",
         }
 
-    data = payload.get("data") if isinstance(payload, dict) else None
+    data = payload.get("models" if is_codex else "data") if isinstance(payload, dict) else None
     if not isinstance(data, list):
+        if is_codex:
+            return {"ok": False, "error": tr("providers.codex_models_invalid_response", locale)}
         return {
             "ok": False,
             "error": "response is not OpenAI-compatible (expected {data: [{id, …}]})",
@@ -329,13 +338,18 @@ async def fetch_openai_compatible_models(
     for item in data:
         if not isinstance(item, dict):
             continue
-        mid = item.get("id")
+        mid = item.get("slug" if is_codex else "id")
         if not isinstance(mid, str) or not mid.strip():
             continue
         mid = mid.strip()
         if mid in seen:
             continue
         seen.add(mid)
-        models.append({"id": mid, "name": mid})
+        name = item.get("display_name") if is_codex else mid
+        models.append(
+            {"id": mid, "name": name.strip() if isinstance(name, str) and name.strip() else mid}
+        )
+    if is_codex and data and not models:
+        return {"ok": False, "error": tr("providers.codex_models_invalid_response", locale)}
     models.sort(key=lambda m: m["id"])
     return {"ok": True, "models": models}
