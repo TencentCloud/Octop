@@ -101,8 +101,14 @@ def tool_message_name(message: Any, *, chunk_name: str | None = None) -> str | N
 def dedup_tool_result_messages(
     chunk: dict[str, Any],
     emitted_ids: set[str],
+    *,
+    current_turn_ids: set[str] | None = None,
 ) -> dict[str, Any] | None:
     """Keep only ``tool_result`` messages not yet emitted in this stream.
+
+    When ``current_turn_ids`` is given, a message whose ``tool_call_id`` was not
+    announced by this turn is dropped as well: a replayed history carries every
+    earlier ``send_file_to_user`` result, and those must not be pushed again.
 
     When ``PatchToolCallsMiddleware`` returns ``Overwrite(full_history)`` the
     chunk can contain every prior ToolMessage. Skip ones whose ``tool_call_id``
@@ -121,6 +127,9 @@ def dedup_tool_result_messages(
             msg.get("tool_call_id") if isinstance(msg, dict) else None
         )
         if msg_id and msg_id in emitted_ids:
+            continue
+        if current_turn_ids is not None and (not msg_id or msg_id not in current_turn_ids):
+            # Not announced this turn -> replayed history, not a fresh delivery.
             continue
         new_messages.append(msg)
         if msg_id:
