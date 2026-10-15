@@ -5,6 +5,7 @@
 格式遵循 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)，版本号遵循 [语义化版本规范](https://semver.org/spec/v2.0.0.html)。
 
 ## [Unreleased]
+- 服务器状态卡片的磁盘使用率改用系统口径（`psutil` 的 `disk.percent`，与 `df` 和卡片的内存/交换分区进度条一致），不再用 `used / total` 低估已用接近上限的磁盘
 - Linux 桌面客户端无边框窗口支持拖拽边缘与角落调整大小。
 
 ### 新增
