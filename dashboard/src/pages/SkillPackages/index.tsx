@@ -995,6 +995,13 @@ export default function SkillPackagesPage() {
           layout="vertical"
           className={styles.packageForm}
           requiredMark={false}
+          onValuesChange={(changed) => {
+            if (!("copy_policy" in changed)) return;
+            packageForm.setFieldValue(
+              "allow_download",
+              changed.copy_policy === "snapshot",
+            );
+          }}
         >
           {editingPackageId ? (
             <Form.Item
