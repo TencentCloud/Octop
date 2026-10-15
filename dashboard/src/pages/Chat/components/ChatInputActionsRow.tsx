@@ -1129,6 +1129,7 @@ export default function ChatInputActionsRow({
           threadId={threadId}
           selectedConnectors={selectedConnectors}
           isMobile={isMobile}
+          isStreaming={isStreaming}
         />
         {/* Desktop: dedicated newChatBtn; mobile: replace polish with new-chat */}
         {useCompactControls ? (
