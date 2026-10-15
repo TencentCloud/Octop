@@ -79,6 +79,31 @@ def init(
                 ):
                     click.echo("aborted", err=True)
                     raise SystemExit(1)
+            # A virtualenv inside OCTOP_HOME is the installed program itself
+            # (#1933): wiping it silently breaks `octop` until reinstall. Point
+            # at data/program separation instead of offering a bare wipe.
+            if (home / "venv" / "pyvenv.cfg").is_file():
+                click.echo(
+                    f"warning: {home}/venv contains a Python virtualenv — it is the "
+                    "installed program, not disposable state. Keep program and data "
+                    "apart: point OCTOP_HOME at a data-only directory and run "
+                    "`octop init` there instead of wiping this one.",
+                    err=True,
+                )
+                if non_interactive:
+                    click.echo(
+                        "error: refusing to wipe a home that contains a virtualenv "
+                        "in non-interactive mode",
+                        err=True,
+                    )
+                    raise SystemExit(1)
+                from octop.cli.support import prompts as _prompts
+
+                if not _prompts.confirm(
+                    "Wipe it anyway, including the virtualenv?", default=False
+                ):
+                    click.echo("aborted", err=True)
+                    raise SystemExit(1)
             shutil.rmtree(home)
 
     paths.ensure_root()
