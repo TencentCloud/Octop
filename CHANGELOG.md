@@ -6,6 +6,9 @@
 
 ## [Unreleased]
 
+### 修复
+- CLI `octop user create` / `octop user passwd` 与管理端统一使用密码策略，不再接受长度不足、缺少字母/数字或常见弱密码。
+
 ## [1.0.2b8] - 2026-10-14
 
 ### 新增

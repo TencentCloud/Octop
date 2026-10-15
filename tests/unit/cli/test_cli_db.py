@@ -18,6 +18,7 @@ from octop.infra.utils.ulid import new_ulid
 @pytest.fixture
 def fake_home(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     monkeypatch.setenv("HOME", str(tmp_path))
+    monkeypatch.setenv("OCTOP_HOME", str(tmp_path / ".octop"))
     monkeypatch.setattr(Path, "home", classmethod(lambda cls: tmp_path))
     return tmp_path
 
@@ -137,3 +138,48 @@ def test_models_active_explains_an_unset_default(fake_home: Path) -> None:
     runner.invoke(cli, ["models", "active", "--provider", "acme", "--model", "small"])
     shown = runner.invoke(cli, ["models", "active"])
     assert shown.output.strip() == "acme / small"
+
+
+def test_user_create_enforces_password_policy(fake_home: Path) -> None:
+    _bootstrap(fake_home)
+    runner = CliRunner()
+
+    weak = runner.invoke(
+        cli,
+        ["user", "create", "bob", "--password", "short1", "--role", "user"],
+    )
+    assert weak.exit_code == 1
+    assert "password too short" in weak.output
+
+    strong = runner.invoke(
+        cli,
+        [
+            "user",
+            "create",
+            "bob",
+            "--password",
+            "StrongPass12",
+            "--role",
+            "user",
+        ],
+    )
+    assert strong.exit_code == 0, strong.output
+
+
+def test_user_passwd_enforces_password_policy(fake_home: Path) -> None:
+    _bootstrap(fake_home)
+    runner = CliRunner()
+
+    weak = runner.invoke(
+        cli,
+        ["user", "passwd", "alice", "--password", "password1"],
+    )
+    assert weak.exit_code == 1
+    assert "password is too common" in weak.output
+
+    strong = runner.invoke(
+        cli,
+        ["user", "passwd", "alice", "--password", "NewPass12"],
+    )
+    assert strong.exit_code == 0, strong.output
+    assert "ok" in strong.output
