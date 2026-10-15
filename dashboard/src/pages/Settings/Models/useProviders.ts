@@ -22,6 +22,8 @@ export interface ProviderModel {
   reasoning_config?: ResolvedModel["reasoning_config"];
   context_window?: number;
   max_tokens?: number;
+  api_mode?: "chat_completions" | "responses";
+  api_fallback?: "none" | "chat_completions";
   /** Embedding-only: excluded from chat picker and auto-route. */
   embedding?: boolean;
   task?: string;

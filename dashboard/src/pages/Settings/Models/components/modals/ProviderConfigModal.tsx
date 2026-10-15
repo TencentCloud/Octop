@@ -827,6 +827,9 @@ export function ProviderConfigModal({
       const embedding = isEmbeddingModel(
         draftModels.find((m) => m.id === modelId),
       );
+      const apiMode = draftModels.find((m) => m.id === modelId)?.api_mode;
+      const apiFallback = draftModels.find((m) => m.id === modelId)
+        ?.api_fallback;
       const result =
         useDraft || !hasApiKey
           ? await testProviderDraft({
@@ -835,28 +838,41 @@ export function ProviderConfigModal({
               api_key: draftApiKey || provider.api_key || undefined,
               base_url: draftBaseUrl || provider.base_url,
               model_id: modelId,
+              api_mode: apiMode,
+              api_fallback: apiFallback,
               embedding,
             })
           : await request<{
               ok: boolean;
               latency_ms?: number;
               error?: string;
+              fallback_used?: boolean;
+              api_mode_used?: ProviderModel["api_mode"];
             }>(`${apiPrefix}/${provider.id}/test`, {
               method: "POST",
-              body: JSON.stringify({ model_id: modelId, embedding }),
+              body: JSON.stringify({
+                model_id: modelId,
+                api_mode: apiMode,
+                api_fallback: apiFallback,
+                embedding,
+              }),
             });
 
       if (result.ok) {
-        const latency =
-          result.latency_ms != null
-            ? t("models.testConnectionLatency", { time: result.latency_ms })
-            : "";
-        message.success(
-          t("models.testConnectionSuccess", {
-            name: provider.name,
-            latency,
-          }),
-        );
+        if (result.fallback_used) {
+          message.warning(t("models.apiFallbackTestUsed"));
+        } else {
+          const latency =
+            result.latency_ms != null
+              ? t("models.testConnectionLatency", { time: result.latency_ms })
+              : "";
+          message.success(
+            t("models.testConnectionSuccess", {
+              name: provider.name,
+              latency,
+            }),
+          );
+        }
       } else {
         message.error(
           t("models.testConnectionFailed", {

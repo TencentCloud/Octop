@@ -53,6 +53,9 @@
 - 头像、技能卡片、个人设置抽屉与登录页外观
 - 升级 octop-harness 与 octop-memory；README 加入 Octop Pet
 
+### 新增
+- 模型配置支持显式选择 OpenAI Chat Completions 或 Responses API，并可按模型启用受限的 Responses → Chat Completions 协议回退
+
 ## [1.0.2b6] - 2026-10-04
 
 ### 新增
