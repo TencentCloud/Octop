@@ -1,4 +1,10 @@
-import { useEffect, useRef, useState, type CSSProperties } from "react";
+import {
+  useEffect,
+  useRef,
+  useState,
+  type ChangeEvent,
+  type CSSProperties,
+} from "react";
 import { Button } from "antd";
 import {
   Code2,
@@ -207,18 +213,6 @@ export function deleteUserAvatar(userId: number) {
   return request<void>(`/users/${userId}/avatar`, { method: "DELETE" });
 }
 
-function pickImageFile(): Promise<File | null> {
-  return new Promise((resolve) => {
-    const input = document.createElement("input");
-    input.type = "file";
-    input.accept = AVATAR_ACCEPT;
-    input.addEventListener("change", () => resolve(input.files?.[0] ?? null), {
-      once: true,
-    });
-    input.click();
-  });
-}
-
 export function ProfileAvatar({
   url,
   icon,
@@ -302,6 +296,7 @@ export function ProfileAvatarPicker({
   const { t } = useTranslation();
   const [localPreview, setLocalPreview] = useState<string | null>(null);
   const localPreviewRef = useRef<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const displayUrl = localPreview ?? avatarUrl;
   const hasPhoto = Boolean(displayUrl?.trim());
   const presets = presetsFor(kind);
@@ -318,8 +313,32 @@ export function ProfileAvatarPicker({
     setLocalPreview(next);
   };
 
+  const handleFileChange = async (event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.currentTarget.files?.[0];
+    if (!file) return;
+    const err = validateAvatarFile(file, t);
+    if (err) {
+      message.error(err);
+      return;
+    }
+    replaceLocalPreview(URL.createObjectURL(file));
+    try {
+      await onPick(file);
+    } catch {
+      replaceLocalPreview(null);
+    }
+  };
+
   return (
     <div className={styles.profileAvatarPicker}>
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept={AVATAR_ACCEPT}
+        disabled={disabled}
+        hidden
+        onChange={(event) => void handleFileChange(event)}
+      />
       <div className={styles.profileAvatarPickerHead}>
         <ProfileAvatar
           url={displayUrl}
@@ -338,20 +357,10 @@ export function ProfileAvatarPicker({
             icon={<ImagePlus size={14} />}
             disabled={disabled}
             onClick={() => {
-              void pickImageFile().then(async (file) => {
-                if (!file) return;
-                const err = validateAvatarFile(file, t);
-                if (err) {
-                  message.error(err);
-                  return;
-                }
-                replaceLocalPreview(URL.createObjectURL(file));
-                try {
-                  await onPick(file);
-                } catch {
-                  replaceLocalPreview(null);
-                }
-              });
+              const input = fileInputRef.current;
+              if (!input) return;
+              input.value = "";
+              input.click();
             }}
           >
             {hasPhoto ? t("experts.avatarChange") : t("experts.avatarUpload")}

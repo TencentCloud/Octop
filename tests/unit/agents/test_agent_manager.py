@@ -827,6 +827,13 @@ def test_build_harness_config_defaults_local_shell_backend(manager: AgentManager
     assert cfg.permissions is not None
 
 
+def test_build_harness_config_normalizes_cumulative_stream_usage(manager: AgentManager) -> None:
+    from octop.infra.agents.middleware.stream_usage import StreamUsageMiddleware
+
+    cfg = manager._build_harness_config(_row(agent_id="AGT001"))
+    assert any(isinstance(item, StreamUsageMiddleware) for item in (cfg.middleware or []))
+
+
 @pytest.mark.asyncio
 async def test_boot_passes_process_log_dir_to_harness_manager(manager: AgentManager) -> None:
     await manager.boot()

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type ChangeEvent } from "react";
 import { useTranslation } from "react-i18next";
 import { Button, Modal } from "antd";
 import { ImagePlus } from "lucide-react";
@@ -28,22 +28,6 @@ export function validateAvatarFile(
   return null;
 }
 
-function pickImageFile(): Promise<File | null> {
-  return new Promise((resolve) => {
-    const input = document.createElement("input");
-    input.type = "file";
-    input.accept = AVATAR_ACCEPT;
-    input.addEventListener(
-      "change",
-      () => {
-        resolve(input.files?.[0] ?? null);
-      },
-      { once: true },
-    );
-    input.click();
-  });
-}
-
 interface ExpertAvatarPickerProps {
   iconUrl?: string | null;
   iconName?: string | null;
@@ -64,6 +48,7 @@ export default function ExpertAvatarPicker({
   const { t } = useTranslation();
   const [localPreview, setLocalPreview] = useState<string | null>(null);
   const localPreviewRef = useRef<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const [previewOpen, setPreviewOpen] = useState(false);
   const displayUrl = localPreview ?? iconUrl;
   const hasPhoto = Boolean(displayUrl?.trim());
@@ -85,24 +70,38 @@ export default function ExpertAvatarPicker({
   };
 
   const handlePick = () => {
-    void pickImageFile().then(async (file) => {
-      if (!file) return;
-      const err = validateAvatarFile(file, t);
-      if (err) {
-        message.error(err);
-        return;
-      }
-      replaceLocalPreview(URL.createObjectURL(file));
-      try {
-        await onPick(file);
-      } catch {
-        replaceLocalPreview(null);
-      }
-    });
+    const input = fileInputRef.current;
+    if (!input) return;
+    input.value = "";
+    input.click();
+  };
+
+  const handleFileChange = async (event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.currentTarget.files?.[0];
+    if (!file) return;
+    const err = validateAvatarFile(file, t);
+    if (err) {
+      message.error(err);
+      return;
+    }
+    replaceLocalPreview(URL.createObjectURL(file));
+    try {
+      await onPick(file);
+    } catch {
+      replaceLocalPreview(null);
+    }
   };
 
   return (
     <div className={styles.avatarPicker}>
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept={AVATAR_ACCEPT}
+        disabled={disabled}
+        hidden
+        onChange={(event) => void handleFileChange(event)}
+      />
       <button
         type="button"
         className={styles.avatarPickerPreviewBtn}
