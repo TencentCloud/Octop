@@ -67,6 +67,52 @@ class ThreadMessageRepo:
             ).fetchone()
         return int(row[0])
 
+    def tool_rows_containing(self, thread_id: str, value: str) -> list[ThreadMessageRow]:
+        """Candidates only; the caller must validate the structured tool result."""
+        with self._db.connect() as conn:
+            rows = conn.execute(
+                "SELECT seq,message_id,role,message_json,created_at FROM thread_messages "
+                "WHERE thread_id=? AND role='tool' AND message_json LIKE ? ORDER BY seq LIMIT 10",
+                (thread_id, f"%{value}%"),
+            ).fetchall()
+        return [ThreadMessageRow.from_row(row) for row in rows]
+
+    def assistant_ids_in_turn(self, thread_id: str, seq: int) -> list[str]:
+        """Latest assistant IDs between the surrounding user-message boundaries."""
+        with self._db.connect() as conn:
+            user_seq = int(
+                conn.execute(
+                    "SELECT COALESCE(MAX(seq),0) FROM thread_messages WHERE thread_id=? "
+                    "AND role IN ('human','user') AND seq<?",
+                    (thread_id, seq),
+                ).fetchone()[0]
+            )
+        return self.assistant_ids_after_user(thread_id, user_seq)
+
+    def latest_user_seq(self, thread_id: str) -> int:
+        with self._db.connect() as conn:
+            return int(
+                conn.execute(
+                    "SELECT COALESCE(MAX(seq),0) FROM thread_messages WHERE thread_id=? "
+                    "AND role IN ('human','user')",
+                    (thread_id,),
+                ).fetchone()[0]
+            )
+
+    def assistant_ids_after_user(self, thread_id: str, user_seq: int) -> list[str]:
+        """Assistant identities from one user turn, including paginated-off messages."""
+        with self._db.connect() as conn:
+            rows = conn.execute(
+                "SELECT message_id FROM thread_messages WHERE thread_id=? "
+                "AND role IN ('ai','assistant') AND message_id IS NOT NULL "
+                "AND seq>? "
+                "AND seq<COALESCE((SELECT MIN(seq) FROM thread_messages WHERE thread_id=? "
+                "AND role IN ('human','user') AND seq>?),9223372036854775807) "
+                "ORDER BY seq DESC LIMIT 20",
+                (thread_id, user_seq, thread_id, user_seq),
+            ).fetchall()
+        return [str(row[0]) for row in rows]
+
     def range_rows(self, thread_id: str, start: int, end: int) -> list[ThreadMessageRow]:
         """Read an immutable legacy interval without triggering projection backfill."""
         with self._db.connect() as conn:

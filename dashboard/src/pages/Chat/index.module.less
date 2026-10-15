@@ -395,3 +395,19 @@
   line-height: 1.6;
   color: var(--fn-text-secondary);
 }
+
+.contextChipOpen {
+  border: 0;
+  background: transparent;
+  padding: 0;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+  &:hover {
+    text-decoration: underline;
+  }
+  &:focus-visible {
+    outline: 2px solid currentColor;
+    outline-offset: 2px;
+  }
+}

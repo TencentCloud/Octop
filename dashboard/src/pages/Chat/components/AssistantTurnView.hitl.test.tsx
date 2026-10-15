@@ -61,6 +61,47 @@ function message(
 }
 
 describe("AssistantTurnView approval", () => {
+  it("seals the process panel when the turn ends despite stale message flags", () => {
+    const messages = [
+      message({
+        id: "tool",
+        status: "streaming",
+        toolData: { name: "read_file", arguments: "{}", output: "ok" },
+      }),
+      message({ id: "answer", content: "Completed answer" }),
+    ];
+    const { rerender } = render(
+      <AssistantTurnView messages={messages} isTurnInProgress />,
+    );
+    expect(screen.getByText("整理结果中")).toBeInTheDocument();
+    rerender(
+      <AssistantTurnView messages={messages} isTurnInProgress={false} />,
+    );
+    expect(screen.queryByText("整理结果中")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /已调用/ })).toHaveAttribute(
+      "aria-expanded",
+      "false",
+    );
+    expect(screen.getByText("Completed answer")).toBeInTheDocument();
+  });
+
+  it("keeps a current team member live after the host finishes", () => {
+    render(
+      <AssistantTurnView
+        messages={[
+          message({
+            id: "member-tool",
+            speakerAgentId: "member",
+            toolData: { name: "read_file", arguments: "{}", output: "ok" },
+          }),
+        ]}
+        isTurnInProgress={false}
+        liveSpeakers={["member"]}
+      />,
+    );
+    expect(screen.getByText("整理结果中")).toBeInTheDocument();
+  });
+
   it("keeps the answer that arrived before the approval card", () => {
     render(
       <AssistantTurnView

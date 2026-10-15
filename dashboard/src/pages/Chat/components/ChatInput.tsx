@@ -868,6 +868,8 @@ const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
             />
           )}
           <ChatInputPreviewBar
+            agentId={agentId}
+            threadId={threadId}
             attachments={attachments}
             uploading={uploading}
             selectedConnectors={selectedConnectors}

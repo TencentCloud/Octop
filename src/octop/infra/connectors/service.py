@@ -97,7 +97,15 @@ class ConnectorService:
         *,
         active_only: bool = False,
         with_credentials: bool = False,
+        include_shared: bool = False,
     ) -> list[ConnectorRow]:
+        if include_shared:
+            rows = self._repo.list_visible(user_id)
+            if active_only:
+                rows = [row for row in rows if row.status == "active"]
+            if with_credentials:
+                rows = [row for row in rows if row.has_credentials]
+            return rows
         return list_user_connector_instances(
             self._repo,
             user_id,

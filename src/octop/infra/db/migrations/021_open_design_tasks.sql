@@ -1,0 +1,24 @@
+-- Schema v21: durable OpenDesign generation task tracking.
+CREATE TABLE IF NOT EXISTS open_design_tasks (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  task_id TEXT NOT NULL UNIQUE,
+  user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  instance_id TEXT NOT NULL,
+  agent_id TEXT NOT NULL REFERENCES agents(agent_id) ON DELETE CASCADE,
+  thread_id TEXT NOT NULL REFERENCES threads(thread_id) ON DELETE CASCADE,
+  project TEXT NOT NULL,
+  request_id TEXT NOT NULL,
+  run_id TEXT,
+  status TEXT NOT NULL DEFAULT 'submitting',
+  result_json TEXT NOT NULL DEFAULT '{}',
+  last_error TEXT,
+  failures INTEGER NOT NULL DEFAULT 0,
+  next_check INTEGER NOT NULL DEFAULT 0,
+  revision INTEGER NOT NULL DEFAULT 1,
+  created_at INTEGER NOT NULL,
+  updated_at INTEGER NOT NULL,
+  UNIQUE(user_id, instance_id, agent_id, thread_id, request_id)
+);
+CREATE INDEX IF NOT EXISTS idx_open_design_tasks_thread ON open_design_tasks(user_id, agent_id, thread_id, created_at);
+CREATE INDEX IF NOT EXISTS idx_open_design_tasks_due ON open_design_tasks(next_check, status);
+UPDATE _schema_version SET version = 21;

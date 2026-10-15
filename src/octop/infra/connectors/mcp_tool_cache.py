@@ -64,6 +64,8 @@ def wrap_tools_for_shared_use(tools: list[Any], lock: asyncio.Lock) -> list[Any]
             **kwargs: Any,
         ) -> Any:
             async with _lock:
+                if isinstance(_tool, StructuredTool) and _tool.coroutine is not None:
+                    return await _tool.coroutine(**kwargs)
                 return await _tool.ainvoke(kwargs)
 
         def _call(
@@ -71,8 +73,13 @@ def wrap_tools_for_shared_use(tools: list[Any], lock: asyncio.Lock) -> list[Any]
             _lock: asyncio.Lock = lock,
             **kwargs: Any,
         ) -> Any:
+            if isinstance(_tool, StructuredTool) and _tool.func is not None:
+                return _tool.func(**kwargs)
+
             async def _run() -> Any:
                 async with _lock:
+                    if isinstance(_tool, StructuredTool) and _tool.coroutine is not None:
+                        return await _tool.coroutine(**kwargs)
                     return await _tool.ainvoke(kwargs)
 
             try:
@@ -90,5 +97,9 @@ def wrap_tools_for_shared_use(tools: list[Any], lock: asyncio.Lock) -> list[Any]
         }
         if isinstance(metadata, dict) and metadata:
             st_kwargs["metadata"] = dict(metadata)
+        if isinstance(tool, StructuredTool):
+            st_kwargs["response_format"] = tool.response_format
+            st_kwargs["handle_tool_error"] = tool.handle_tool_error
+            st_kwargs["handle_validation_error"] = tool.handle_validation_error
         wrapped.append(StructuredTool(**st_kwargs))
     return wrapped

@@ -2014,6 +2014,21 @@ def _grant_default_nav_permissions(db: DatabasePool) -> None:
             )
 
 
+def _ensure_open_design_tasks_schema(db: DatabasePool) -> None:
+    """Repair databases whose recorded version skipped the task-table DDL."""
+    if _table_exists(db, "open_design_tasks"):
+        return
+    suffix = ".pg.sql" if db.dialect == "postgresql" else ".sql"
+    sql = (_MIGRATIONS_DIR / ("021_open_design_tasks" + suffix)).read_text(encoding="utf-8")
+    sql = sql.rsplit("UPDATE _schema_version", 1)[0]
+    with db.connect() as conn:
+        if db.dialect == "postgresql":
+            with conn.transaction():
+                _apply_postgresql_migration(conn, sql)
+        else:
+            conn.executescript(sql)
+
+
 def run_migrations(db: DatabasePool) -> None:
     if db.dialect == "sqlite":
         _repair_legacy_schema(db)
@@ -2066,4 +2081,5 @@ def run_migrations(db: DatabasePool) -> None:
     _ensure_sso_provider_kind_schema(db)
     _ensure_user_role_schema(db)
     _ensure_bridge_connections_schema(db)
+    _ensure_open_design_tasks_schema(db)
     _grant_default_nav_permissions(db)

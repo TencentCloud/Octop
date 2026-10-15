@@ -11,6 +11,7 @@ import meituanTravel from "./meituan-travel.png";
 import notion from "./notion.png";
 import obsidianCli from "./obsidian-cli.svg";
 import openalex from "./openalex.svg";
+import openDesign from "./open-design.svg";
 import qcc from "./qcc.png";
 import qqMail from "./qq-mail.png";
 import qqMusic from "./qq-music.png";
@@ -47,6 +48,7 @@ export const CONNECTOR_LOGOS: Record<string, string> = {
   notion,
   "obsidian-cli": obsidianCli,
   openalex,
+  "open-design": openDesign,
   qcc,
   dida365: dida365,
   dify,

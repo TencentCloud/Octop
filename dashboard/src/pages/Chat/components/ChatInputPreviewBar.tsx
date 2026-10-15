@@ -1,3 +1,4 @@
+import { OpenDesignStudio } from "../../Agent/Connectors/OpenDesignStudio";
 import { Image } from "antd";
 import { X, FileText, Cpu } from "lucide-react";
 import { useTranslation } from "react-i18next";
@@ -13,6 +14,8 @@ import { modelShortLabel } from "../../../utils/modelOptions";
 import styles from "../index.module.less";
 
 interface ChatInputPreviewBarProps {
+  agentId?: string | null;
+  threadId?: string | null;
   attachments: ChatAttachment[];
   uploading: boolean;
   selectedConnectors: string[];
@@ -88,6 +91,8 @@ function ComposerImagePreview({
 }
 
 export default function ChatInputPreviewBar({
+  agentId,
+  threadId,
   attachments,
   uploading,
   selectedConnectors,
@@ -100,6 +105,7 @@ export default function ChatInputPreviewBar({
   selectedModel,
   onModelChange,
 }: ChatInputPreviewBarProps) {
+  const { t } = useTranslation();
   // Show the chip whenever a model is explicitly selected, mirroring how
   // connectors behave — not only when it differs from the
   // agent default (that was the old "override" behavior).
@@ -223,16 +229,29 @@ export default function ChatInputPreviewBar({
         selectedConnectors.map((name) => {
           const c = availableConnectors.find((x) => x.mcp_server_name === name);
           if (!c) return null;
-          return (
+          const chip = (onOpen?: () => void) => (
             <ContextChip
               key={name}
               variant="connector"
               icon={<ConnectorLogo kind={c.kind} size={16} />}
               label={c.label}
+              onOpen={onOpen}
+              openLabel={onOpen ? t("openDesignStudio.title") : undefined}
               onRemove={() =>
                 onConnectorsChange(selectedConnectors.filter((n) => n !== name))
               }
             />
+          );
+          return c.kind === "open-design" ? (
+            <OpenDesignStudio
+              key={`${agentId}:${threadId}:${name}`}
+              selectedNames={[name]}
+              agentId={agentId ?? undefined}
+              threadId={threadId}
+              trigger={chip}
+            />
+          ) : (
+            chip()
           );
         })}
       {availableKnowledgeBases &&

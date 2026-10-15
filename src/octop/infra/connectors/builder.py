@@ -100,6 +100,10 @@ def build_http_mcp_spec(
     creds: dict[str, Any],
     config: OctopConfig,
 ) -> dict[str, Any]:
+    if entry.mcp_mode == "stdio":
+        from octop.infra.connectors.open_design import connection_spec
+
+        return connection_spec(creds)
     if entry.mcp_mode == "remote":
         return _build_remote_spec(entry, creds)
     if entry.mcp_mode == "stdio":
@@ -473,6 +477,10 @@ def validate_create_credentials(
         }
 
     if entry.auth_kind == "custom_fields":
+        if entry.kind == "open-design":
+            from octop.infra.connectors.open_design import normalize_credentials
+
+            return normalize_credentials(credentials)
         if entry.kind == "agently-cli":
             # A caller must never select another instance's CLI credential directory.
             return {"internal_token": new_internal_token(), "cli_config_key": new_ulid()}
@@ -580,7 +588,7 @@ def build_mcp_server_configs_for_user(
         )
     for inst, entry, creds in _iter_active_connectors(svc, connector_repo, user_id):
         try:
-            if is_inprocess_gateway(entry):
+            if is_inprocess_gateway(entry) or entry.mcp_mode == "stdio":
                 # Name-only placeholder: harness skips specs without ``transport``;
                 # tools are injected in-process in AgentManager._post_start_agent.
                 configs[inst.mcp_server_name] = {}

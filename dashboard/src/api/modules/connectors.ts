@@ -18,7 +18,7 @@ export interface ConnectorCatalogEntry {
   icon: string;
   color: string;
   phase: "available" | "coming_soon";
-  mcp_mode: "remote" | "gateway" | "internal";
+  mcp_mode: "remote" | "gateway" | "internal" | "stdio";
   category: ConnectorCategory;
   quick_auth_url?: string | null;
   login_url?: string | null;
@@ -313,6 +313,12 @@ export const connectorsApi = {
       method: "POST",
       body: JSON.stringify(body),
     }),
+
+  openDesignLocalStatus: () =>
+    request<{
+      installed: boolean;
+      state: "ready" | "missing" | "stopped" | "multiple";
+    }>("/connectors/open-design/local-status"),
 
   cliStatus: (kind: string) =>
     request<ConnectorCliInstallResult>(

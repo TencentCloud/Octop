@@ -532,6 +532,14 @@ class AgentManager:
             settings_repo=repos.settings_repo,
             config=self._config,
         )
+        from octop.infra.connectors.open_design import OpenDesignRuntime
+        from octop.infra.connectors.open_design_console import OpenDesignConsole
+        from octop.infra.connectors.open_design_tasks import OpenDesignTasks
+
+        self._open_design = OpenDesignRuntime(
+            self._connector_svc, repos, tasks=OpenDesignTasks(self._connector_svc, repos)
+        )
+        self._open_design.console = OpenDesignConsole(self._open_design, self._connector_svc, repos)
         # User-scoped custom MCP tools: (user_id, server_name, fingerprint) -> tools
         self._mcp_tool_cache: dict[tuple[int, str, str], list[Any]] = {}
         self._mcp_tool_cache_locks: dict[tuple[int, str], asyncio.Lock] = {}
@@ -563,6 +571,7 @@ class AgentManager:
             settings_repo=repos.settings_repo,
             config=self._config,
         )
+        self._open_design.replace_persistence(self._connector_svc, repos)
 
     def set_cron_manager(self, cron_manager: CronManager) -> None:
         """Attach the process-wide CronManager (must be set before boot())."""
@@ -644,7 +653,18 @@ class AgentManager:
                     error=AGENT_START_TIMEOUT,
                 )
 
+    @property
+    def open_design(self) -> Any:
+        return self._open_design
+
+    async def start_open_design_tracking(self) -> None:
+        if self._open_design.tasks is not None:
+            await self._open_design.tasks.start()
+
     async def shutdown(self) -> None:
+        if self._open_design.tasks is not None:
+            await self._open_design.tasks.stop()
+        await self._open_design.close()
         self._reclaim_pending.clear()
         reclaim_task = self._reclaim_task
         self._reclaim_task = None
@@ -1132,6 +1152,7 @@ class AgentManager:
 
     async def stop(self, agent_id: str) -> None:
         """Unload agent from harness runtime and persist ``last_state=stopped``."""
+        await self._open_design.close(agent_id=agent_id)
         async with self._lock:
             row = self._repos.agent_repo.get(agent_id)
             if row is None:
@@ -1843,6 +1864,7 @@ class AgentManager:
 
     async def reload_all(self) -> None:
         """Rebuild harness runtime for every enabled agent (bounded parallel)."""
+        await self._open_design.close()
         agent_ids = [
             row.agent_id for row in self._repos.agent_repo.list_all(include_disabled=False)
         ]
@@ -1971,6 +1993,7 @@ class AgentManager:
             self._connector_user_override.pop(agent_id, None)
 
     async def reload_connectors_for_user(self, user_id: int) -> None:
+        await self._open_design.close(user_id=user_id)
         self.invalidate_mcp_tool_cache(user_id)
         reloaded: set[str] = set()
         for row in self._repos.agent_repo.list_by_user(user_id, include_disabled=False):
@@ -2155,6 +2178,32 @@ class AgentManager:
         uid = self._connector_uid_for(row, connector_user_id=connector_user_id) if row else None
         if uid is None and connector_user_id is not None:
             uid = connector_user_id
+
+        if uid is not None:
+            design_instances = await asyncio.to_thread(
+                self._connector_svc.list_user_instances,
+                uid,
+                active_only=True,
+                with_credentials=True,
+                include_shared=True,
+            )
+            for instance in design_instances:
+                if instance.kind != "open-design" or instance.mcp_server_name not in names:
+                    continue
+                prefix = f"{instance.mcp_server_name}_"
+                if any(
+                    t.startswith(prefix) for t in getattr(agent, "_mcp_tool_name_set", frozenset())
+                ):
+                    continue
+                try:
+                    tools = await self._open_design.build_tools(
+                        user_id=uid, instance=instance, agent_id=agent_id
+                    )
+                    agent.append_mcp_tools(tools)
+                except (Exception, BaseExceptionGroup):
+                    logger.warning(
+                        "OpenDesign tool discovery failed for instance %s", instance.instance_id
+                    )
 
         tool_set: frozenset[str] = getattr(agent, "_mcp_tool_name_set", frozenset())
         missing_tools = [n for n in names if not any(t.startswith(f"{n}_") for t in tool_set)]
@@ -3344,6 +3393,7 @@ class AgentManager:
 
     async def _reload_agent(self, agent_id: str) -> None:
         assert self._harness_manager is not None
+        await self._open_design.close(agent_id=agent_id)
         async with self._lifecycle_lock_for(agent_id):
             self._bootstrap_graph_refresh_pending.discard(agent_id)
             row = self._repos.agent_repo.get(agent_id)

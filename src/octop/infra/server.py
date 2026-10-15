@@ -569,6 +569,7 @@ class OctopServer:
         from octop.infra.knowledge.jobs import resume_pending_index_jobs  # noqa: PLC0415
 
         resume_pending_index_jobs(self.services)
+        await registry.start_open_design_tracking()
 
         # Resume Bridge links that opted into auto-reconnect (best-effort).
         async def _resume_bridges() -> None:
