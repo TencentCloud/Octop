@@ -75,6 +75,7 @@ def _run_vendor(plat: str, tmp_path: Path) -> tuple[subprocess.CompletedProcess[
     return result, argv_log
 
 
+@posix_only
 @pytest.mark.parametrize("plat", NO_OVERRIDE_PLATS + OVERRIDE_PLATS)
 def test_download_line_is_reached(plat: str, tmp_path: Path) -> None:
     result, argv_log = _run_vendor(plat, tmp_path)
@@ -84,6 +85,7 @@ def test_download_line_is_reached(plat: str, tmp_path: Path) -> None:
     assert any(line.startswith("CMD pip download") for line in argv_log.splitlines())
 
 
+@posix_only
 @pytest.mark.parametrize("plat", NO_OVERRIDE_PLATS)
 def test_empty_optional_argv_adds_no_argument(plat: str, tmp_path: Path) -> None:
     result, argv_log = _run_vendor(plat, tmp_path)
@@ -94,6 +96,7 @@ def test_empty_optional_argv_adds_no_argument(plat: str, tmp_path: Path) -> None
     assert "=[]" not in argv_log, argv_log
 
 
+@posix_only
 @pytest.mark.parametrize("plat", OVERRIDE_PLATS)
 def test_override_platform_still_passes_its_file(plat: str, tmp_path: Path) -> None:
     result, argv_log = _run_vendor(plat, tmp_path)
