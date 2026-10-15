@@ -421,3 +421,81 @@ async def test_agent_failure_projects_the_prompt(tmp_path: Path) -> None:
     assert titled is not None
     assert titled.title == "喝水提醒"
     db.close()
+
+
+@pytest.mark.asyncio
+async def test_agent_stream_error_after_text_does_not_push() -> None:
+    session = _session(channel_type="feishu")
+
+    async def _stream(_aid: str, _request: dict):
+        yield {"type": "token", "content": "partial result"}
+        yield {"type": "error", "message": "synthetic failure"}
+
+    agent_manager = MagicMock()
+    agent_manager.merge_turn_mcp_servers = MagicMock(return_value=None)
+    agent_manager.prepare_chat_mcp = AsyncMock(return_value=[])
+    agent_manager.stream = _stream
+    agent_manager.get_row = MagicMock(return_value=None)
+
+    gateway = MagicMock()
+    gateway.run_in_session = _run_locked
+    gateway.require_session = MagicMock(return_value=session)
+    gateway.push_session_text = AsyncMock()
+
+    repos = MagicMock()
+    service = CronDeliveryService(gateway=gateway, agent_manager=agent_manager, repos=repos)
+    with pytest.raises(RuntimeError, match="synthetic failure"):
+        await service.deliver(_command(task_type="agent", prompt="run"))
+    # The partial text used to satisfy the success path, so a failed run was
+    # delivered as if it had completed.
+    gateway.push_session_text.assert_not_awaited()
+    projected = repos.thread_message_repo.append_if_ready.call_args.args[1]
+    assert projected[0].role == "human"
+
+
+@pytest.mark.asyncio
+async def test_agent_error_only_stream_does_not_push() -> None:
+    session = _session(channel_type="feishu")
+
+    async def _stream(_aid: str, _request: dict):
+        yield {"type": "error", "message": "synthetic failure"}
+
+    agent_manager = MagicMock()
+    agent_manager.merge_turn_mcp_servers = MagicMock(return_value=None)
+    agent_manager.prepare_chat_mcp = AsyncMock(return_value=[])
+    agent_manager.stream = _stream
+    agent_manager.get_row = MagicMock(return_value=None)
+
+    gateway = MagicMock()
+    gateway.run_in_session = _run_locked
+    gateway.require_session = MagicMock(return_value=session)
+    gateway.push_session_text = AsyncMock()
+
+    service = CronDeliveryService(gateway=gateway, agent_manager=agent_manager, repos=MagicMock())
+    with pytest.raises(RuntimeError):
+        await service.deliver(_command(task_type="agent", prompt="run"))
+    gateway.push_session_text.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_agent_plain_text_still_pushes() -> None:
+    """Control: a stream without an error chunk keeps the existing behaviour."""
+    session = _session(channel_type="feishu")
+
+    async def _stream(_aid: str, _request: dict):
+        yield {"type": "token", "content": "all good"}
+
+    agent_manager = MagicMock()
+    agent_manager.merge_turn_mcp_servers = MagicMock(return_value=None)
+    agent_manager.prepare_chat_mcp = AsyncMock(return_value=[])
+    agent_manager.stream = _stream
+    agent_manager.get_row = MagicMock(return_value=None)
+
+    gateway = MagicMock()
+    gateway.run_in_session = _run_locked
+    gateway.require_session = MagicMock(return_value=session)
+    gateway.push_session_text = AsyncMock()
+
+    service = CronDeliveryService(gateway=gateway, agent_manager=agent_manager, repos=MagicMock())
+    await service.deliver(_command(task_type="agent", prompt="run"))
+    gateway.push_session_text.assert_awaited()

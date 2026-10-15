@@ -141,6 +141,7 @@ class CronDeliveryService:
         usage = UsageTracker()
         parts: list[str] = []
         interaction_required = False
+        stream_error: str | None = None
         saw_tool_call = False
         emitted_tool_error_ids: set[str] = set()
         try:
@@ -165,6 +166,13 @@ class CronDeliveryService:
                         parts.append(str(chunk.get("content") or chunk.get("text") or ""))
                     elif kind == "hitl_required":
                         interaction_required = True
+                    elif kind == "error":
+                        # The stream can end normally after yielding an explicit error
+                        # chunk; without this the partial text below satisfied the
+                        # success path and a failed run was delivered as a success.
+                        stream_error = str(chunk.get("message") or "cron agent stream failed")
+            if stream_error is not None:
+                raise RuntimeError(stream_error)
             if interaction_required:
                 raise RuntimeError("cron agent run requires user interaction")
             outbound = strip_thinking("".join(parts)).strip()
