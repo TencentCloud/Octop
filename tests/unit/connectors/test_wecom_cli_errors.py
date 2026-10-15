@@ -39,6 +39,7 @@ def test_humanize_unrecognized_method_not_bad_creds() -> None:
 
 
 def test_call_tool_humanizes_errors(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    monkeypatch.setattr(wecom_cli, "_uses_modern_cli", lambda *_a: False)
     monkeypatch.setenv("OCTOP_HOME", str(tmp_path))
     monkeypatch.setattr(
         "octop.infra.connectors.gateway.adapters.wecom_cli.resolve_binary",
@@ -93,6 +94,7 @@ def test_probe_requires_non_empty_mcp_cache(
 
 
 def test_probe_ok_with_mcp_items(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    monkeypatch.setattr(wecom_cli, "_uses_modern_cli", lambda *_a: False)
     monkeypatch.setenv("OCTOP_HOME", str(tmp_path))
     monkeypatch.setattr(
         "octop.infra.connectors.gateway.adapters.wecom_cli.resolve_binary",

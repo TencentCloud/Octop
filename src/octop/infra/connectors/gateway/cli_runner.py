@@ -40,6 +40,7 @@ def run_cli(
             input=stdin_text,
             capture_output=True,
             text=True,
+            encoding="utf-8",
             env=dict(env) if env is not None else None,
             timeout=timeout_s,
             cwd=cwd,
