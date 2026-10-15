@@ -414,8 +414,9 @@ export const CHANNEL_FIELDS: Partial<Record<ChannelKey, ChannelField[]>> = {
     },
     {
       name: "allowed_user_ids",
-      label: "channels.telegram_allowed_user_ids",
+      label: "channels.telegramAllowedUsers",
       type: "textarea",
+      helpKey: "channels.telegramAllowedUsersHelp",
     },
     {
       name: "allowed_chat_ids",

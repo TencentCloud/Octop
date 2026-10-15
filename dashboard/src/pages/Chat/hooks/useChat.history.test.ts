@@ -124,4 +124,37 @@ describe("history failures", () => {
       chatStore.getSnapshot(thread).messages.map((m) => m.content),
     ).toEqual(["older", "latest"]);
   });
+
+  it("keeps a message sent while the history request is still in flight", async () => {
+    let resolveHistory: (value: unknown) => void = () => {};
+    const gate = new Promise((resolve) => {
+      resolveHistory = resolve;
+    });
+    vi.spyOn(octopThreadsApi, "history").mockImplementation(
+      () => gate as ReturnType<typeof octopThreadsApi.history>,
+    );
+    const { result } = renderHook(() => useChat(thread, "agent"));
+    const pending = result.current.loadHistory(thread);
+    // Dynamic import inside the loader yields before the request is awaited.
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    act(() => {
+      chatStore.appendUserMessage(thread, {
+        id: "local-user",
+        role: "user",
+        content: "继续做",
+        timestamp: Date.now(),
+      });
+    });
+    resolveHistory({
+      thread_id: thread,
+      messages: [{ id: "old", role: "assistant", content: "之前的回复" }],
+      has_more: false,
+    });
+    await act(async () => {
+      await pending;
+    });
+    expect(
+      chatStore.getSnapshot(thread).messages.map((message) => message.content),
+    ).toEqual(["之前的回复", "继续做"]);
+  });
 });

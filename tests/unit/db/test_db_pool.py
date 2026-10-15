@@ -145,6 +145,48 @@ def test_run_migrations_idempotent(db: SqlitePool):
     assert {"document_id", "path", "is_dir"}.issubset(doc_cols)
 
 
+def test_legacy_cron_trigger_column_renamed_to_schedule_spec(tmp_path: Path) -> None:
+    """Old cron_jobs.trigger must become schedule_spec without dropping job rows."""
+    from octop.infra.db.repos.agents import AgentRepo
+    from octop.infra.db.repos.cron import CronJobRepo
+    from octop.infra.db.repos.users import UserRepo
+    from octop.infra.utils.ulid import new_ulid
+
+    pool = SqlitePool(tmp_path / "octop.db")
+    run_migrations(pool)
+    user_id = UserRepo(pool).create(username="alice", password_hash="h", role="admin")
+    agent_id = new_ulid()
+    AgentRepo(pool).create(agent_id=agent_id, user_id=user_id, name="bot")
+    cron_id = new_ulid()
+    with pool.connect() as conn:
+        conn.execute('ALTER TABLE cron_jobs RENAME COLUMN schedule_spec TO "trigger"')
+        conn.execute(
+            "INSERT INTO cron_jobs("
+            "cron_id, agent_id, user_id, trigger, prompt, session_key, created_at, updated_at"
+            ") VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+            (cron_id, agent_id, user_id, "interval:3600", "ping", "sess", 1, 1),
+        )
+    run_migrations(pool)
+    with pool.connect() as conn:
+        cols = {row["name"] for row in conn.execute("PRAGMA table_info(cron_jobs)").fetchall()}
+    assert "schedule_spec" in cols
+    assert "trigger" not in cols
+    row = CronJobRepo(pool).get(cron_id)
+    assert row is not None
+    assert row.trigger == "interval:3600"
+    created = new_ulid()
+    CronJobRepo(pool).create(
+        cron_id=created,
+        agent_id=agent_id,
+        user_id=user_id,
+        name="hourly",
+        trigger="interval:60",
+        prompt="again",
+        session_key="sess",
+    )
+    assert CronJobRepo(pool).get(created) is not None
+
+
 def test_repair_legacy_schema_ensures_columns(tmp_path: Path) -> None:
     """DBs missing columns must be repaired on boot even if schema version is ahead."""
     db_path = tmp_path / "octop.db"

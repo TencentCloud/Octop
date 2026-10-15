@@ -254,7 +254,12 @@ function FormItemForField({
     });
   }
   return (
-    <Form.Item name={field.name} label={label} rules={rules}>
+    <Form.Item
+      name={field.name}
+      label={label}
+      rules={rules}
+      extra={field.helpKey ? t(field.helpKey) : undefined}
+    >
       <Input1
         disabled={disabled}
         placeholder={field.placeholder}

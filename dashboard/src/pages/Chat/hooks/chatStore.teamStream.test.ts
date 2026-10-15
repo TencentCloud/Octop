@@ -84,6 +84,25 @@ describe("team member live stream", () => {
     ).not.toBe(true);
   });
 
+  it("does not splice unstamped reasoning into a stamped host bubble", () => {
+    ingestHarnessChunk(SESSION, {
+      type: "token",
+      content: "已安排系统医生，稍等片刻",
+      agent_id: "host",
+    });
+    ingestHarnessChunk(SESSION, {
+      type: "reasoning",
+      content: "这是一个系统诊断任务",
+    });
+
+    const { messages } = getSnapshot(SESSION);
+    const host = messages.find((item) => item.speakerAgentId === "host");
+    expect(host?.content).toBe("已安排系统医生，稍等片刻");
+    expect(
+      host?.contentBlocks?.some((block) => block.content.includes("系统诊断")),
+    ).not.toBe(true);
+  });
+
   it("keeps host text on one bubble across ask_agent", () => {
     ingestHarnessChunk(SESSION, {
       type: "token",

@@ -43,6 +43,10 @@ import {
   parseHitlSessionPolicy,
 } from "./utils/hitlSessionPolicy";
 import { useChatContextWindow } from "./hooks/useChatContextWindow";
+import {
+  disableProviderStreamUsage,
+  providerIdForTurn,
+} from "../../utils/disableProviderStreamUsage";
 import { useBrowserToolDetection } from "./hooks/useBrowserToolDetection";
 import { useSkillRecordingWorkflow } from "./hooks/useSkillRecordingWorkflow";
 import { listDockFilePathsForTree } from "./utils/dockFilePath";
@@ -95,7 +99,6 @@ import {
   findAutoResumableApproval,
   findPendingAsk,
   hasPendingHitl,
-  isResumableHitl,
 } from "./utils/pendingHitl";
 import { isAgentChatReady } from "../../utils/agentError";
 import { useMemoryMaintenance } from "./hooks/useMemoryMaintenance";
@@ -354,6 +357,7 @@ function ChatPageInner() {
     contextUsage,
     pendingPlanPath,
     liveSpeakers,
+    activeTurnId,
     sendMessage,
     editAndResend,
     cancelStream,
@@ -807,9 +811,22 @@ function ChatPageInner() {
     [handleSend, t],
   );
 
-  const shouldDeferQueueFlush = useCallback((threadId: string) => {
-    return hasPendingHitl(chatStore.getSnapshot(threadId).messages);
-  }, []);
+  const membersStillTalking =
+    isTeamChat &&
+    liveSpeakers.some(
+      (id) => id.trim() && id !== (activeAgent?.agent_id ?? ""),
+    );
+
+  const shouldDeferQueueFlush = useCallback(
+    (threadId: string) => {
+      const snap = chatStore.getSnapshot(threadId);
+      if (hasPendingHitl(snap.messages)) return true;
+      if (!isTeamChat) return false;
+      const hostId = activeAgent?.agent_id ?? "";
+      return snap.liveSpeakers.some((id) => id.trim() && id !== hostId);
+    },
+    [activeAgent?.agent_id, isTeamChat],
+  );
 
   const {
     items: queuedItems,
@@ -820,10 +837,56 @@ function ChatPageInner() {
   } = useChatMessageQueue({
     agentId: resolvedAgentId,
     threadId: activeThreadId,
-    isStreaming,
+    isStreaming: isStreaming || membersStillTalking,
     onFlush: flushQueuedItem,
     shouldDeferFlush: shouldDeferQueueFlush,
   });
+
+  // While streaming, Enter/Send parks a local chip; ↑ Steer on the chip row
+  // commits sendSteerWhileBusy. The click always acts: the
+  // server routes delivery=auto (busy → steer queue, idle → new turn); a
+  // dead socket degrades to the normal send path — never a silent no-op.
+  const handleSteerQueued = useCallback(
+    (id: string) => {
+      const key = activeThreadId || "";
+      const item = queuedItems.find((q) => q.id === id);
+      if (!item || !key) return;
+      const turnId = activeTurnId || chatStore.getActiveTurnId(key) || "";
+      const result = chatStore.sendSteerWhileBusy(key, item.text, {
+        expectedTurnId: turnId || undefined,
+        attachments: item.attachments,
+      });
+      if (result === "empty") return;
+      removeQueued(id);
+      if (result === "no_socket") {
+        wrappedHandleSend(item.text, item.attachments);
+      }
+    },
+    [
+      activeThreadId,
+      activeTurnId,
+      queuedItems,
+      removeQueued,
+      wrappedHandleSend,
+    ],
+  );
+
+  const handleWithdrawSteer = useCallback(
+    (messageId: string) => {
+      const key = activeThreadId || "";
+      if (!key) return;
+      const result = chatStore.withdrawCommittedSteer(key, messageId);
+      if (result === "pending_ack") {
+        antMessage.info(t("chat.steer.withdrawPending"));
+      }
+    },
+    [activeThreadId, t],
+  );
+
+  // Committed steers live in the transcript (optimistic row settled by
+  // server frames) — the chip panel holds only uncommitted local drafts
+  // (the queue row settles on commit).
+  const displayQueuedItems = queuedItems;
 
   const {
     handleNewChat: startNewChat,
@@ -890,6 +953,7 @@ function ChatPageInner() {
     (
       decisions: Array<{ type: string; message?: string }>,
       policy?: HitlSessionPolicy,
+      pendingId?: string,
     ) => {
       if (policy) {
         const next =
@@ -901,10 +965,22 @@ function ChatPageInner() {
           autoResumedApprovalRef.current = `${activeThreadId}:${pending.messageId}`;
         }
         handleHitlPolicyChange(next, { persist: false });
-        resumeHitl(decisions, activeThreadId ?? undefined, undefined, next);
+        resumeHitl(
+          decisions,
+          activeThreadId ?? undefined,
+          undefined,
+          next,
+          pendingId ?? pending?.pendingId,
+        );
         return;
       }
-      resumeHitl(decisions, activeThreadId ?? undefined);
+      resumeHitl(
+        decisions,
+        activeThreadId ?? undefined,
+        undefined,
+        undefined,
+        pendingId,
+      );
     },
     [resumeHitl, activeThreadId, handleHitlPolicyChange, hitlPolicy, messages],
   );
@@ -922,6 +998,7 @@ function ChatPageInner() {
         activeThreadId ?? undefined,
         undefined,
         policy,
+        pending.pendingId,
       );
     },
     [handleHitlPolicyChange, messages, resumeHitl, activeThreadId],
@@ -930,22 +1007,30 @@ function ChatPageInner() {
   useEffect(() => {
     if (isStreaming || !activeThreadId) return;
     const sessionPolicy = parseHitlSessionPolicy(composerSession?.hitlPolicy);
-    const pending = findAutoResumableApproval(sessionPolicy, messages);
-    if (!pending) {
-      autoResumedApprovalRef.current = null;
-      return;
-    }
-    const card = messages.find((message) => message.id === pending.messageId);
-    if (!isResumableHitl(card?.hitlData)) return;
-    const resumeKey = `${activeThreadId}:${pending.messageId}`;
-    if (autoResumedApprovalRef.current === resumeKey) return;
-    autoResumedApprovalRef.current = resumeKey;
-    resumeHitl(
-      pending.actions.map(() => ({ type: "approve" })),
-      activeThreadId,
-      undefined,
-      sessionPolicy,
-    );
+    const threadId = activeThreadId;
+    // A pause can be projected twice. Wait until the latest card is the one
+    // we resume, instead of approving an id the next frame already expired.
+    const timer = window.setTimeout(() => {
+      const pending = findAutoResumableApproval(
+        sessionPolicy,
+        chatStore.getSnapshot(threadId).messages,
+      );
+      if (!pending?.pendingId) {
+        autoResumedApprovalRef.current = null;
+        return;
+      }
+      const resumeKey = `${threadId}:${pending.messageId}`;
+      if (autoResumedApprovalRef.current === resumeKey) return;
+      autoResumedApprovalRef.current = resumeKey;
+      resumeHitl(
+        pending.actions.map(() => ({ type: "approve" })),
+        threadId,
+        undefined,
+        sessionPolicy,
+        pending.pendingId,
+      );
+    }, 50);
+    return () => window.clearTimeout(timer);
   }, [
     composerSession?.hitlPolicy,
     messages,
@@ -1010,6 +1095,41 @@ function ChatPageInner() {
     },
     [messages, wrappedHandleSend, hasPendingHitlPause, t],
   );
+
+  const handleDisableStreamUsage = useCallback(async () => {
+    let lastUserModel: string | null = null;
+    for (let i = messages.length - 1; i >= 0; i -= 1) {
+      if (messages[i].role === "user") {
+        lastUserModel = messages[i].composerContext?.model ?? null;
+        break;
+      }
+    }
+    const providerId = providerIdForTurn(availableModels, [
+      lastUserModel,
+      selectedModel,
+      activeAgent?.default_model,
+      activeModelRef,
+    ]);
+    if (providerId == null) {
+      antMessage.error(t("chat.disableStreamUsageFailed"));
+      return false;
+    }
+    try {
+      await disableProviderStreamUsage(providerId);
+      antMessage.success(t("chat.disableStreamUsageSuccess"));
+      return true;
+    } catch {
+      antMessage.error(t("chat.disableStreamUsageFailed"));
+      return false;
+    }
+  }, [
+    availableModels,
+    selectedModel,
+    activeAgent?.default_model,
+    activeModelRef,
+    messages,
+    t,
+  ]);
 
   // Edit user message: truncate history from that message onwards, replace
   // its content, and re-send — mirrors Claude / ChatGPT "edit message" behaviour.
@@ -1425,7 +1545,9 @@ function ChatPageInner() {
                     thinkingStartedAt={thinkingStartedAt}
                     sessionKey={activeThreadId ?? undefined}
                     onRegenerate={handleRegenerate}
+                    onDisableStreamUsage={handleDisableStreamUsage}
                     onEditUserMessage={handleEditUserMessage}
+                    onWithdrawSteer={handleWithdrawSteer}
                     onForkAssistantMessage={handleForkAssistantMessage}
                     forkDisabled={forkDisabled}
                     forkDisabledHint={forkDisabledHint}
@@ -1690,12 +1812,14 @@ function ChatPageInner() {
               ref={chatInputRef}
               onSend={wrappedHandleSend}
               onQueue={enqueueQueued}
-              queuedItems={queuedItems}
+              queuedItems={displayQueuedItems}
               onRemoveQueued={removeQueued}
               onReclaimQueued={reclaimQueued}
+              onSteerQueued={handleSteerQueued}
               onCancel={cancelStream}
               onNewChat={handleNewChat}
               isStreaming={isStreaming}
+              holdSend={membersStillTalking}
               isTeam={isTeamChat}
               disabled={!agentChatReady || noAgents || memoryMaintBlocking}
               initialText={prefillInputRef.current}

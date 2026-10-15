@@ -155,3 +155,18 @@ def test_telegram_durable_topic_metadata_excludes_source_reply_ids() -> None:
         "topic_isolation": True,
         "message_thread_id": 42,
     }
+
+
+def test_session_metadata_keeps_weixin_token_under_a_durable_key() -> None:
+    from octop.infra.gateway.process.message_keys import session_metadata_from_message
+
+    msg = InboundMessage(
+        channel_type="weixin",
+        channel_id="ch-wx",
+        channel_subject=ChannelSubject(subject_id="user@im.wechat"),
+        content=[TextContent(text="hi")],
+        metadata={"context_token": "ctx-abc", "from_user_id": "user@im.wechat"},
+    )
+    meta = session_metadata_from_message(msg)
+    assert "context_token" not in meta
+    assert meta["weixin_context_token"] == "ctx-abc"

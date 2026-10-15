@@ -192,13 +192,31 @@ function localPresetApiKey(provider: { api_key?: string | null }): string {
   return (provider.api_key ?? "").trim().toLowerCase();
 }
 
+function providerNameKey(name: string | null | undefined): string {
+  return (name ?? "").trim().toLowerCase();
+}
+
 export function isOnnxProviderRow(provider: {
   name: string;
   api_key?: string | null;
 }): boolean {
   if (localPresetApiKey(provider) === "onnx") return true;
-  const n = provider.name.toLowerCase();
+  const n = providerNameKey(provider.name);
   return n === "onnx" || n === "onnx (local)";
+}
+
+/** URL hint for Ollama management UI — not used for delete protection. */
+export function isOllamaRuntimeUrl(baseUrl?: string | null): boolean {
+  const raw = (baseUrl ?? "").trim().toLowerCase();
+  if (!raw) return false;
+  try {
+    const href = raw.includes("://") ? raw : `http://${raw}`;
+    const parsed = new URL(href);
+    if (parsed.hostname === "ollama") return true;
+    return parsed.port === "11434";
+  } catch {
+    return raw === "ollama";
+  }
 }
 
 export function isOllamaProviderRow(provider: {
@@ -208,13 +226,16 @@ export function isOllamaProviderRow(provider: {
 }): boolean {
   if (isOnnxProviderRow(provider)) return false;
   if (localPresetApiKey(provider) === "ollama") return true;
-  const n = provider.name.toLowerCase();
-  return (
-    n === "ollama" ||
-    n === "ollama (local)" ||
-    (provider.base_url?.includes("11434") ?? false) ||
-    (provider.base_url?.includes("ollama") ?? false)
-  );
+  const n = providerNameKey(provider.name);
+  return n === "ollama" || n === "ollama (local)";
+}
+
+export function looksLikeOllamaProvider(provider: {
+  name: string;
+  base_url?: string | null;
+  api_key?: string | null;
+}): boolean {
+  return isOllamaProviderRow(provider) || isOllamaRuntimeUrl(provider.base_url);
 }
 
 export function isLocalProviderRow(provider: {
