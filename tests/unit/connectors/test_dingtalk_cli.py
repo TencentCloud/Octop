@@ -30,8 +30,8 @@ def test_call_tool_passes_argv_and_isolated_env(monkeypatch, tmp_path) -> None:
     seen: dict = {}
     monkeypatch.setattr(dingtalk_cli, "resolve_binary", lambda _n: fake_bin_path("dws"))
 
-    def fake_run(argv, *, env, timeout_s):
-        seen.update(argv=argv, env=env)
+    def fake_run(argv, *, env, timeout_s, stdin_text):
+        seen.update(argv=argv, env=env, stdin_text=stdin_text)
         return "{}"
 
     monkeypatch.setattr(dingtalk_cli, "run_cli", fake_run)
@@ -39,6 +39,9 @@ def test_call_tool_passes_argv_and_isolated_env(monkeypatch, tmp_path) -> None:
     dingtalk_cli.call_tool(creds, "dws", {"args": ["contact", "user", "search"]})
     assert seen["argv"][1:] == ["contact", "user", "search"]
     assert seen["env"]["DWS_CLIENT_ID"] == "k"
+    assert seen["stdin_text"] == ""  # never inherit the server's stdin
+    dingtalk_cli.call_tool(creds, "dws", {"args": "--help"})
+    assert seen["argv"][1:] == ["--help"]
     assert "inst1" in seen["env"]["DWS_CONFIG_DIR"]
 
 
@@ -46,6 +49,9 @@ def test_call_tool_rejects_interactive_and_bad_args() -> None:
     creds = {"client_id": "k", "client_secret": "s", "cli_config_key": "i"}
     with pytest.raises(ValueError, match="not available"):
         dingtalk_cli.call_tool(creds, "dws", {"args": ["auth", "login"]})
+    for smuggled in ("--profile x auth login", "-v upgrade -y"):
+        with pytest.raises(ValueError, match="must start with a dws product"):
+            dingtalk_cli.call_tool(creds, "dws", {"args": smuggled})
     with pytest.raises(ValueError, match="non-empty command line"):
         dingtalk_cli.call_tool(creds, "dws", {"args": "   "})
     with pytest.raises(ValueError, match="not a valid command line"):

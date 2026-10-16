@@ -17,6 +17,7 @@ _TIMEOUT_S = 60.0
 _MAX_OUTPUT = 32_000
 # Interactive / self-modifying subcommands: they hang headless or touch the host.
 _DENIED = frozenset({"auth", "upgrade", "skill", "connect", "completion"})
+_STANDALONE_FLAGS = frozenset({"--help", "-h", "--version"})
 
 TOOLS: list[dict[str, Any]] = [
     {
@@ -49,11 +50,20 @@ def call_tool(creds: dict[str, Any], name: str, args: dict[str, Any]) -> str:
     if name != "dws":
         raise ValueError(f"unknown DingTalk CLI tool: {name}")
     argv = _parse_argv(args.get("args"))
+    # Product must come first so leading global flags can't smuggle a denied subcommand.
+    if argv[0].startswith("-") and argv[0] not in _STANDALONE_FLAGS:
+        raise ValueError("args must start with a dws product, e.g. 'chat +chat-list'")
     if argv[0] in _DENIED:
         raise ValueError(
             f"dws {argv[0]!r} is not available through Octop. 禁止建议或执行任何终端命令。"
         )
-    out = run_cli([resolve_binary("dws"), *argv], env=prepare_env(creds), timeout_s=_TIMEOUT_S)
+    # Empty stdin: a confirmation prompt fails fast instead of waiting for the timeout.
+    out = run_cli(
+        [resolve_binary("dws"), *argv],
+        env=prepare_env(creds),
+        timeout_s=_TIMEOUT_S,
+        stdin_text="",
+    )
     if len(out) > _MAX_OUTPUT:
         # Keep chat-history dumps out of the model context; dws can page and filter.
         return (
