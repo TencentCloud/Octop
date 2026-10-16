@@ -542,6 +542,24 @@ def test_gateway_tools_list():
     assert len(resp["result"]["tools"]) == 3
 
 
+@pytest.mark.parametrize(
+    "method",
+    [
+        "notifications/initialized",
+        "notifications/cancelled",
+        "notifications/progress",
+        "notifications/roots/list_changed",
+    ],
+)
+def test_gateway_notifications_never_get_a_response(method):
+    resp = handle_mcp_request(
+        kind="qq-mail",
+        creds={"email": "a@qq.com", "password": "p"},
+        body={"jsonrpc": "2.0", "method": method, "params": {}},
+    )
+    assert resp == {}
+
+
 def test_gateway_ima_tools():
     tools = handle_mcp_request(
         kind="tencent-ima",

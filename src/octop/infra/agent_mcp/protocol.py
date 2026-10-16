@@ -111,7 +111,8 @@ async def handle_agent_mcp_request(
             },
         )
 
-    if method == "notifications/initialized":
+    if isinstance(method, str) and method.startswith("notifications/"):
+        # A JSON-RPC notification has no id, so answering it would emit a response with id: null.
         return {}
     if method == "ping":
         return _ok(request_id, {})

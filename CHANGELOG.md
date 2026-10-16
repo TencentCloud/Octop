@@ -5,6 +5,7 @@
 格式遵循 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)，版本号遵循 [语义化版本规范](https://semver.org/spec/v2.0.0.html)。
 
 ## [Unreleased]
+- MCP 端点不再回复 notification 消息：`notifications/cancelled`、`notifications/roots/list_changed` 等此前会收到 `id: null` 的 `-32601` 错误，HTTP 也返回 200 而非协议要求的 202（`/api/mcp/agents` 与内部连接器 MCP 端点）
 - Linux 桌面客户端无边框窗口支持拖拽边缘与角落调整大小。
 
 ### 新增
