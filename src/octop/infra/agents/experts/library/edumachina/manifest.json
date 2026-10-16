@@ -66,13 +66,17 @@
       "把「哈希冲突」做成一台分拣机教具，课堂投屏用",
       "这段学员数据收集话术在马来西亚校区能用吗？标注法域和条款",
       "帮我给《做好自己AI基建的运维师》加一节 30 分钟微课，配一台概念机器",
-      "复核我的课纲里所有数字，标出口径表没有依据的"
+      "复核我的课纲里所有数字，标出口径表没有依据的",
+      "演练：把计算机科学学费从 32000 调到 34500 MYR/年，口径变更怎么留痕、哪些话术要同步",
+      "本期内训 260 人：AI 接住 148、转人工 61、打开未提问 37，按三态复盘给我改进动作"
     ],
     "en": [
       "Build \"hash collision\" as a sorting-machine figure for classroom projection",
       "Can I use this learner data-collection script on the Malaysia campus? Cite jurisdiction and clauses",
       "Add a 30-min micro-lesson with one concept machine to my AI-ops course",
-      "Audit every number in my outline and flag anything without a canonical source"
+      "Audit every number in my outline and flag anything without a canonical source",
+      "Drill: BCS tuition rises from 32,000 to 34,500 MYR/yr — walk the canonical change log and sync affected scripts",
+      "This month 260 learners: 148 captured, 61 handoff, 37 open-but-no-question — run a tri-state review with next-week actions"
     ]
   }
 }
