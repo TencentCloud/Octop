@@ -53,6 +53,7 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 
 _FRAME_INTERVAL_S = 0.25  # ~4 fps
+_CAPTURE_FAILURE_LIMIT = 3
 
 
 def _normalize_nav_url(raw: str) -> str:
@@ -144,6 +145,7 @@ async def _stream_loop(
 ) -> None:
     await send_json({"type": "status", "status": "browser_started"})
     await send_json({"type": "status", "status": "streaming"})
+    capture_failures = 0
 
     while is_connected():
         await _send_session_snapshot(send_json, profile, sess=sess)
@@ -151,7 +153,19 @@ async def _stream_loop(
         if not listen_only:
             frame = await _capture_jpeg(sess)
             if frame:
+                if capture_failures >= _CAPTURE_FAILURE_LIMIT:
+                    await send_json({"type": "status", "status": "streaming"})
+                capture_failures = 0
                 await send_json({"type": "frame", "data": frame})
+            else:
+                capture_failures += 1
+                if capture_failures == _CAPTURE_FAILURE_LIMIT:
+                    logger.warning(
+                        "Browser stream capture failed %s consecutive times (profile=%s)",
+                        capture_failures,
+                        profile,
+                    )
+                    await send_json({"type": "status", "status": "error"})
 
         await asyncio.sleep(_FRAME_INTERVAL_S)
 
