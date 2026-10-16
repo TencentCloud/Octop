@@ -143,6 +143,29 @@ async def test_iter_turn_chunks_persists_partial_output_and_error() -> None:
     processor._thread_registry.touch_last_active.assert_called_with("thread-1")
 
 
+@pytest.mark.parametrize("entry", ["dashboard", "im"])
+async def test_terminal_error_is_saved_before_delivery_even_if_consumer_closes(entry: str) -> None:
+    async def stream(*_args: object, **_kwargs: object) -> AsyncIterator[dict[str, Any]]:
+        raise RuntimeError("simulated terminal failure")
+        yield  # pragma: no cover
+
+    processor, msg, appended = _processor_with_stream(stream)
+    processor._thread_registry.get_or_create_by_key = AsyncMock(return_value="thread-1")
+    processor._agent_manager.get_thread_model.return_value = None
+    if entry == "im":
+        msg.channel_id, msg.channel_type = "feishu-test", "feishu"
+    events = processor.iter_turn_chunks(msg) if entry == "dashboard" else processor(msg)
+    try:
+        async for event in events:
+            if (event.get("type") if isinstance(event, dict) else event.type) == "error":
+                assert len(appended) == 1
+                assert any("octop_stream_error" in item.message_json for item in appended[0])
+                break
+    finally:
+        await events.aclose()
+    assert len(appended) == 1  # Closing must not append a duplicate error turn.
+
+
 @pytest.mark.asyncio
 async def test_iter_turn_chunks_persists_streamed_tokens_without_state() -> None:
     async def stream(*_args: object, **_kwargs: object) -> AsyncIterator[dict[str, Any]]:
