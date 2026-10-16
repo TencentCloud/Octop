@@ -33,66 +33,54 @@
   position: relative;
   display: flex;
   flex-direction: column;
-  align-items: flex-start;
-  gap: 10px;
-  padding: 14px 16px 12px;
-  overflow: hidden;
+  gap: 12px;
+  min-height: 168px;
+  padding: 16px;
   text-align: left;
   cursor: pointer;
   background: var(--fn-bg-primary);
   border: 1px solid var(--fn-card-border-normal);
-  border-radius: var(--fn-radius-lg, 10px);
+  border-radius: var(--fn-card-radius, var(--fn-radius-lg));
+  box-shadow: var(--fn-card-shadow-normal);
   transition:
-    background 0.15s ease,
-    border-color 0.15s ease;
+    border-color 0.18s ease,
+    box-shadow 0.18s ease;
 
   &:hover {
-    transform: none;
-    box-shadow: none;
-    background: var(--fn-bg-secondary-hover, #f0f1f3);
-    border-color: color-mix(
-      in srgb,
-      var(--fn-text-tertiary) 45%,
-      var(--fn-card-border-normal)
-    );
+    border-color: var(--fn-border-input);
+    box-shadow: 0 6px 18px rgba(0, 0, 0, 0.06);
+  }
+
+  @media (max-width: 767px) {
+    min-height: 0;
   }
 }
 
 .choiceOn {
   border-color: color-mix(
     in srgb,
-    var(--fn-color-brand) 55%,
+    var(--fn-color-brand) 45%,
     var(--fn-card-border-normal)
   );
+  box-shadow:
+    inset 3px 0 0 var(--fn-color-brand),
+    var(--fn-card-shadow-normal);
 
   &:hover {
-    background: var(--fn-bg-selected, rgba(232, 93, 117, 0.06));
-    border-color: var(--fn-color-brand);
+    border-color: color-mix(
+      in srgb,
+      var(--fn-color-brand) 60%,
+      var(--fn-card-border-normal)
+    );
   }
-
-  .choiceTop {
-    padding-right: 76px;
-  }
-}
-
-.flag {
-  position: absolute;
-  top: 0;
-  right: 0;
-  padding: 5px 10px 6px;
-  border-bottom-left-radius: 10px;
-  background: var(--fn-color-brand);
-  color: #fff;
-  font-size: 12px;
-  font-weight: 600;
-  line-height: 1.2;
 }
 
 .choiceTop {
   display: flex;
-  align-items: flex-start;
-  gap: 10px;
+  align-items: center;
+  gap: 12px;
   width: 100%;
+  min-height: 40px;
 }
 
 .logoTile {
@@ -109,24 +97,30 @@
 }
 
 .logo {
-  width: 26px;
-  height: 26px;
+  width: 28px;
+  height: 28px;
   object-fit: contain;
   flex-shrink: 0;
 }
 
 .titleBlock {
-  display: flex;
   flex: 1;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: 6px;
   min-width: 0;
 }
 
 .badgeRow {
   display: flex;
-  flex-wrap: wrap;
+  flex-shrink: 0;
+  flex-wrap: nowrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 6px;
+}
+
+.badgePair {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
   gap: 6px;
 }
 
@@ -137,6 +131,7 @@
 }
 
 .choiceName {
+  display: block;
   max-width: 100%;
   overflow: hidden;
   font-size: 15px;
@@ -190,36 +185,27 @@
   border-color: var(--fn-border-secondary, var(--fn-card-border-normal));
 }
 
-.choiceModel {
-  width: 100%;
-  overflow: hidden;
-  font-size: 12px;
-  line-height: 1.4;
-  color: var(--fn-text-secondary);
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
 .choiceBlurb {
   display: -webkit-box;
+  flex: 1;
   width: 100%;
-  min-height: 3em;
   margin: 0;
   overflow: hidden;
-  font-size: 12px;
-  line-height: 1.5;
-  color: var(--fn-text-tertiary);
+  font-size: 13px;
+  line-height: 1.55;
+  color: var(--fn-text-secondary);
   -webkit-box-orient: vertical;
-  -webkit-line-clamp: 2;
+  -webkit-line-clamp: 3;
+  line-clamp: 3;
 }
 
 .actions {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
-  justify-content: flex-end;
-  gap: 2px;
-  width: 100%;
+  gap: 8px;
   margin-top: auto;
+  padding-top: 2px;
 }
 
 .iconBtn {

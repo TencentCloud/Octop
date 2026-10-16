@@ -113,6 +113,70 @@ def test_decision_settings_clears_key_when_endpoint_changes(store: DecisionSetti
     config = store.harness_config()
     assert config is not None
     assert config.api_key == ""
+    jev = next(item for item in saved.services if item.provider == "jev")
+    assert jev.api_key_set is True
+    assert jev.endpoint == "https://one.example.test/decisions"
+
+
+def test_decision_settings_keeps_every_service(store: DecisionSettingsStore) -> None:
+    store.save(
+        enabled=True,
+        provider="laya",
+        endpoint="http://127.0.0.1:8000/v1/systemone",
+        model="",
+        skills=True,
+        tools=True,
+        team=True,
+        threshold=0.6,
+        tool_min_count=8,
+        services=[
+            {
+                "provider": "jev",
+                "endpoint": "https://openrouter.ai/api/alpha/decisions",
+                "model": "typesafe/jev-1.13",
+                "api_key": "jev-key",
+            },
+            {
+                "provider": "laya",
+                "endpoint": "http://127.0.0.1:8000/v1/systemone",
+                "model": "",
+                "api_key": "",
+            },
+        ],
+    )
+    saved = store.save(
+        enabled=True,
+        provider="jev",
+        endpoint="https://openrouter.ai/api/alpha/decisions",
+        model="typesafe/jev-1.13",
+        skills=True,
+        tools=True,
+        team=True,
+        threshold=0.6,
+        tool_min_count=8,
+        services=[
+            {
+                "provider": "jev",
+                "endpoint": "https://openrouter.ai/api/alpha/decisions",
+                "model": "typesafe/jev-1.13",
+                "api_key": None,
+            },
+            {
+                "provider": "laya",
+                "endpoint": "http://127.0.0.1:8000/v1/systemone",
+                "model": "",
+                "api_key": None,
+            },
+        ],
+    )
+    assert saved.provider == "jev"
+    assert saved.endpoint == "https://openrouter.ai/api/alpha/decisions"
+    laya = next(item for item in saved.services if item.provider == "laya")
+    assert laya.endpoint == "http://127.0.0.1:8000/v1/systemone"
+    config = store.harness_config()
+    assert config is not None
+    assert config.provider == "jev"
+    assert config.api_key == "jev-key"
 
 
 def test_decision_settings_requires_endpoint_and_model(store: DecisionSettingsStore) -> None:

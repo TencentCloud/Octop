@@ -2419,6 +2419,7 @@ class AgentManager:
         threshold: float,
         tool_min_count: int,
         api_key: str | None = None,
+        services: list[dict[str, object]] | None = None,
     ) -> DecisionSettings:
         """Persist the decision switch and rebuild agents so the middleware mounts or not."""
         view = self._decision.save(
@@ -2432,6 +2433,7 @@ class AgentManager:
             threshold=threshold,
             tool_min_count=tool_min_count,
             api_key=api_key,
+            services=services,
         )
         await self.reload_all()
         return view

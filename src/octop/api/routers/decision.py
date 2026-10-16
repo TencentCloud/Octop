@@ -17,11 +17,19 @@ from octop.infra.utils.locale import resolve_request_locale
 router = APIRouter()
 
 
+class DecisionServiceResponse(BaseModel):
+    provider: Literal["laya", "jev", "microsoft", "custom"]
+    endpoint: str
+    model: str
+    api_key_set: bool
+
+
 class DecisionSettingsResponse(BaseModel):
     enabled: bool
     provider: Literal["laya", "jev", "microsoft", "custom"]
     endpoint: str
     model: str
+    services: list[DecisionServiceResponse]
     skills: bool
     tools: bool
     team: bool
@@ -31,11 +39,25 @@ class DecisionSettingsResponse(BaseModel):
     active: bool
 
 
+class DecisionServiceBody(BaseModel):
+    provider: Literal["laya", "jev", "microsoft", "custom"]
+    endpoint: str = ""
+    model: str = ""
+    api_key: str | None = Field(
+        default=None,
+        description="Omit to keep this service's key. Send an empty string to clear it.",
+    )
+
+
 class DecisionSettingsBody(BaseModel):
     enabled: bool = False
     provider: Literal["laya", "jev", "microsoft", "custom"] = "laya"
     endpoint: str = ""
     model: str = ""
+    services: list[DecisionServiceBody] | None = Field(
+        default=None,
+        description="Every saved service. The provider field is the default.",
+    )
     skills: bool = True
     tools: bool = True
     team: bool = True
@@ -67,6 +89,15 @@ def _view(settings: DecisionSettings) -> DecisionSettingsResponse:
         tool_min_count=settings.tool_min_count,
         api_key_set=settings.api_key_set,
         active=settings.active,
+        services=[
+            DecisionServiceResponse(
+                provider=item.provider,  # type: ignore[arg-type]
+                endpoint=item.endpoint,
+                model=item.model,
+                api_key_set=item.api_key_set,
+            )
+            for item in settings.services
+        ],
     )
 
 
@@ -97,6 +128,9 @@ async def put_decision_settings(
         threshold=body.threshold,
         tool_min_count=body.tool_min_count,
         api_key=body.api_key,
+        services=(
+            [item.model_dump() for item in body.services] if body.services is not None else None
+        ),
     )
     return _view(saved)
 

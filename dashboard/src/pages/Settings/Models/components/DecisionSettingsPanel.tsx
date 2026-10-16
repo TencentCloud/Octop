@@ -14,7 +14,7 @@ import {
   Switch,
   Typography,
 } from "antd";
-import { Activity, Pencil } from "lucide-react";
+import { Activity, Settings2 } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import {
   decisionApi,
@@ -46,11 +46,82 @@ const JEV_MODELS = [JEV_MODEL, "~typesafe/jev-latest"];
 const MICROSOFT_MODELS = [MICROSOFT_MODEL];
 
 function inferPreset(settings: DecisionSettings): PresetId {
-  if (!settings.endpoint) return "jev";
-  if (settings.provider === "custom") return "custom";
-  if (settings.provider === "microsoft") return "microsoft";
-  if (settings.provider === "laya") return "laya";
+  if (
+    settings.provider === "custom" ||
+    settings.provider === "microsoft" ||
+    settings.provider === "laya" ||
+    settings.provider === "jev"
+  ) {
+    return settings.provider;
+  }
   return "jev";
+}
+
+interface ServiceDraft {
+  endpoint: string;
+  model: string;
+  apiKey: string;
+  apiKeySet: boolean;
+  filledSavedKey: boolean;
+  edited: boolean;
+}
+
+function blankDraft(): ServiceDraft {
+  return {
+    endpoint: "",
+    model: "",
+    apiKey: "",
+    apiKeySet: false,
+    filledSavedKey: false,
+    edited: false,
+  };
+}
+
+function savedEndpointsFrom(
+  settings: DecisionSettings,
+): Record<PresetId, string> {
+  const endpoints = { jev: "", microsoft: "", laya: "", custom: "" };
+  for (const id of PRESETS) {
+    const saved = settings.services?.find((item) => item.provider === id);
+    endpoints[id] =
+      saved?.endpoint ?? (settings.provider === id ? settings.endpoint : "");
+  }
+  return endpoints;
+}
+
+function draftsFrom(
+  settings: DecisionSettings,
+): Record<PresetId, ServiceDraft> {
+  const drafts = {
+    jev: blankDraft(),
+    microsoft: blankDraft(),
+    laya: blankDraft(),
+    custom: blankDraft(),
+  };
+  for (const id of PRESETS) {
+    const saved = settings.services?.find((item) => item.provider === id);
+    const selected = settings.provider === id;
+    const endpoint = saved?.endpoint ?? (selected ? settings.endpoint : "");
+    const model = saved?.model ?? (selected ? settings.model : "");
+    drafts[id] = {
+      endpoint,
+      model: id === "laya" && endpoint && !model ? LAYA_AUTO : model,
+      apiKey: "",
+      apiKeySet:
+        saved?.api_key_set ?? (selected ? settings.api_key_set : false),
+      filledSavedKey: false,
+      edited: false,
+    };
+  }
+  const selected = inferPreset(settings);
+  if (!drafts[selected].endpoint && !drafts[selected].model) {
+    drafts[selected] = {
+      ...drafts[selected],
+      endpoint: defaultEndpoint(selected),
+      model: defaultModel(selected),
+    };
+  }
+  return drafts;
 }
 
 function defaultEndpoint(preset: PresetId): string {
@@ -290,21 +361,43 @@ export function DecisionSettingsPanel({
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [testingId, setTestingId] = useState<string | null>(null);
-  const [apiKeySet, setApiKeySet] = useState(false);
   const [preset, setPreset] = useState<PresetId>("jev");
-  const [hasSavedService, setHasSavedService] = useState(false);
+  const [drafts, setDrafts] = useState<Record<PresetId, ServiceDraft>>(() =>
+    draftsFrom({
+      enabled: false,
+      provider: "jev",
+      endpoint: "",
+      model: "",
+      skills: true,
+      tools: true,
+      team: true,
+      threshold: 0.6,
+      tool_min_count: 8,
+      api_key_set: false,
+      active: false,
+    }),
+  );
+  const [savedProvider, setSavedProvider] = useState<PresetId>("jev");
+  const [savedEndpoints, setSavedEndpoints] = useState<
+    Record<PresetId, string>
+  >({ jev: "", microsoft: "", laya: "", custom: "" });
   const [savedActive, setSavedActive] = useState(false);
   const [layaReady, setLayaReady] = useState(false);
   const [editing, setEditing] = useState<PresetId | null>(null);
-  const [draftEndpoint, setDraftEndpoint] = useState("");
-  const [draftModel, setDraftModel] = useState("");
-  const [draftKey, setDraftKey] = useState("");
-  const [filledSavedKey, setFilledSavedKey] = useState(false);
   const enabled = Form.useWatch("enabled", form);
   const skills = Form.useWatch("skills", form);
   const tools = Form.useWatch("tools", form);
   const team = Form.useWatch("team", form);
-  const activeModel = String(Form.useWatch("model", form) || "");
+
+  const applySaved = (saved: DecisionSettings) => {
+    const next = inferPreset(saved);
+    setPreset(next);
+    setSavedProvider(next);
+    setSavedEndpoints(savedEndpointsFrom(saved));
+    setSavedActive(saved.active);
+    setDrafts(draftsFrom(saved));
+    form.setFieldsValue({ ...saved, provider: next, api_key: "" });
+  };
 
   useEffect(() => {
     let cancelled = false;
@@ -312,17 +405,7 @@ export function DecisionSettingsPanel({
       .get()
       .then((settings) => {
         if (cancelled) return;
-        const next = inferPreset(settings);
-        const connection = connectionFor(
-          next,
-          settings.endpoint,
-          settings.model,
-        );
-        setPreset(next);
-        setHasSavedService(Boolean(settings.endpoint));
-        setSavedActive(settings.active);
-        form.setFieldsValue({ ...settings, ...connection, api_key: "" });
-        setApiKeySet(settings.api_key_set);
+        applySaved(settings);
       })
       .catch((error: unknown) => {
         if (!cancelled)
@@ -336,21 +419,9 @@ export function DecisionSettingsPanel({
     return () => {
       cancelled = true;
     };
+    // applySaved closes over the form instance, which is stable.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [form, message, t]);
-
-  const applySaved = (saved: DecisionSettings) => {
-    const next = inferPreset(saved);
-    setPreset(next);
-    setHasSavedService(Boolean(saved.endpoint));
-    setSavedActive(saved.active);
-    form.setFieldsValue({
-      ...saved,
-      ...connectionFor(next, saved.endpoint, saved.model),
-      api_key: "",
-    });
-    setApiKeySet(saved.api_key_set);
-    setFilledSavedKey(false);
-  };
 
   useEffect(() => {
     void decisionApi
@@ -359,82 +430,136 @@ export function DecisionSettingsPanel({
       .catch(() => setLayaReady(false));
   }, []);
 
-  const persist = async (
-    connection: { provider: DecisionProvider; endpoint: string; model: string },
-    apiKey: string,
-  ) => {
+  const patchDraft = (id: PresetId, patch: Partial<ServiceDraft>) => {
+    setDrafts((current) => ({
+      ...current,
+      [id]: { ...current[id], ...patch },
+    }));
+  };
+
+  const selectProvider = (id: PresetId) => {
+    setPreset(id);
+    form.setFieldValue("provider", id);
+    setDrafts((current) => {
+      const draft = current[id];
+      if (draft.endpoint || draft.model) return current;
+      return {
+        ...current,
+        [id]: {
+          ...draft,
+          endpoint: defaultEndpoint(id),
+          model: defaultModel(id),
+        },
+      };
+    });
+  };
+
+  const openEditor = (id: PresetId) => {
+    setEditing(id);
+    setDrafts((current) => {
+      const draft = current[id];
+      if (draft.endpoint || draft.model) return current;
+      return {
+        ...current,
+        [id]: {
+          ...draft,
+          endpoint: defaultEndpoint(id),
+          model: defaultModel(id),
+        },
+      };
+    });
+  };
+
+  const persist = async (forceId?: PresetId) => {
     const values = form.getFieldsValue(true);
-    if (values.enabled && !/^https?:\/\//i.test(connection.endpoint.trim())) {
+    const selected = connectionFor(
+      preset,
+      drafts[preset].endpoint,
+      drafts[preset].model,
+    );
+    if (values.enabled && !/^https?:\/\//i.test(selected.endpoint)) {
       message.error(t("models.decisionNeedEndpoint"));
-      return;
+      return false;
+    }
+    if (
+      values.enabled &&
+      (preset === "jev" || preset === "microsoft") &&
+      !selected.model
+    ) {
+      message.error(t("models.decisionNeedModel"));
+      return false;
     }
     setSaving(true);
     try {
-      const savedConnection = connectionFor(
-        preset,
-        String(values.endpoint || ""),
-        String(values.model || ""),
-      );
-      const sameService =
-        hasSavedService && connection.endpoint === savedConnection.endpoint;
       const saved = await decisionApi.save({
         enabled: Boolean(values.enabled),
-        provider: connection.provider,
-        endpoint: connection.endpoint,
-        model: connection.model,
+        provider: selected.provider,
+        endpoint: selected.endpoint,
+        model: selected.model,
         skills: Boolean(values.skills),
         tools: Boolean(values.tools),
         team: Boolean(values.team),
         threshold: Number(values.threshold),
         tool_min_count: Number(values.tool_min_count),
-        api_key: apiKey ? apiKey : sameService ? null : "",
+        services: PRESETS.map((id) => {
+          const keep =
+            id === preset ||
+            id === forceId ||
+            Boolean(savedEndpoints[id]) ||
+            drafts[id].edited;
+          const connection = keep
+            ? connectionFor(id, drafts[id].endpoint, drafts[id].model)
+            : { provider: id, endpoint: "", model: "" };
+          return {
+            provider: id,
+            endpoint: connection.endpoint,
+            model: connection.model,
+            api_key: keep && drafts[id].apiKey ? drafts[id].apiKey : null,
+          };
+        }),
       });
       applySaved(saved);
-      setEditing(null);
       message.success(t("models.decisionSaved"));
+      return true;
     } catch (error) {
       message.error(apiErrorMessage(error, t("common.saveFailed"), t));
+      return false;
     } finally {
       setSaving(false);
     }
   };
 
-  const onSave = async () => {
-    const values = form.getFieldsValue(true);
-    await persist(
-      connectionFor(
-        preset,
-        String(values.endpoint || ""),
-        String(values.model || ""),
-      ),
-      String(values.api_key || ""),
+  const saveEditor = async () => {
+    if (!editing) return;
+    const connection = connectionFor(
+      editing,
+      drafts[editing].endpoint,
+      drafts[editing].model,
     );
+    if (!/^https?:\/\//i.test(connection.endpoint)) {
+      message.error(t("models.decisionNeedEndpoint"));
+      return;
+    }
+    if ((editing === "jev" || editing === "microsoft") && !connection.model) {
+      message.error(t("models.decisionNeedModel"));
+      return;
+    }
+    if (await persist(editing)) setEditing(null);
   };
 
-  const runTest = async (
-    spin: string,
-    connection: { provider: DecisionProvider; endpoint: string; model: string },
-    apiKey?: string,
-  ) => {
+  const runTest = async (id: PresetId) => {
+    const connection = connectionFor(id, drafts[id].endpoint, drafts[id].model);
     if (!connection.endpoint.trim()) {
       message.error(t("models.decisionNeedEndpoint"));
       return;
     }
-    setTestingId(spin);
+    setTestingId(id);
     try {
-      const values = form.getFieldsValue(true);
-      const savedConnection = connectionFor(
-        preset,
-        String(values.endpoint || ""),
-        String(values.model || ""),
-      );
-      const sameService =
-        hasSavedService && connection.endpoint === savedConnection.endpoint;
       const result = await decisionApi.test({
         endpoint: connection.endpoint,
         model: connection.model,
         provider: connection.provider,
-        api_key: apiKey || (sameService ? undefined : ""),
+        api_key: drafts[id].apiKey || undefined,
       });
       if (result.ok) {
         message.success(
@@ -450,33 +575,6 @@ export function DecisionSettingsPanel({
     } finally {
       setTestingId(null);
     }
-  };
-
-  const openEditor = (id: PresetId) => {
-    setEditing(id);
-    setFilledSavedKey(false);
-    setDraftKey("");
-    if (id === preset && hasSavedService) {
-      setDraftEndpoint(String(form.getFieldValue("endpoint") || ""));
-      const savedModel = String(form.getFieldValue("model") || "");
-      setDraftModel(id === "laya" && !savedModel ? LAYA_AUTO : savedModel);
-      return;
-    }
-    setDraftEndpoint(defaultEndpoint(id));
-    setDraftModel(defaultModel(id));
-  };
-
-  const testPreset = (id: PresetId) => {
-    const values = form.getFieldsValue(true);
-    const connection =
-      id === preset
-        ? connectionFor(
-            id,
-            String(values.endpoint || ""),
-            String(values.model || ""),
-          )
-        : connectionFor(id, defaultEndpoint(id), defaultModel(id));
-    void runTest(id, connection);
   };
 
   const presetLogos: Record<PresetId, { src: string; mark: boolean }> = {
@@ -554,22 +652,17 @@ export function DecisionSettingsPanel({
             <div className={styles.choices}>
               {PRESETS.map((id) => {
                 const copy = choiceCopy[id];
-                const configured = hasSavedService && preset === id;
-                const inUse = configured && savedActive;
-                const canTest = configured;
+                const configured = Boolean(savedEndpoints[id]);
+                const selected = preset === id;
                 return (
                   <div
                     key={id}
                     className={`${styles.choice} ${
-                      inUse ? styles.choiceOn : ""
+                      selected ? styles.choiceOn : ""
                     }`}
-                    onClick={() => openEditor(id)}
+                    aria-pressed={selected}
+                    onClick={() => selectProvider(id)}
                   >
-                    {inUse ? (
-                      <span className={styles.flag}>
-                        {t("models.decisionInUse")}
-                      </span>
-                    ) : null}
                     <span className={styles.choiceTop}>
                       <span className={styles.logoTile}>
                         <img
@@ -582,7 +675,9 @@ export function DecisionSettingsPanel({
                       </span>
                       <span className={styles.titleBlock}>
                         <span className={styles.choiceName}>{copy.name}</span>
-                        <span className={styles.badgeRow}>
+                      </span>
+                      <span className={styles.badgeRow}>
+                        <span className={styles.badgePair}>
                           <span
                             className={`${styles.hostFlag} ${copy.hostTone}`}
                           >
@@ -595,24 +690,19 @@ export function DecisionSettingsPanel({
                               {t("models.decisionServiceReady")}
                             </span>
                           ) : null}
-                          {configured && !inUse ? (
-                            <span
-                              className={`${styles.hostFlag} ${styles.serviceConfigured}`}
-                            >
-                              {t("models.decisionConfiguredInactive")}
-                            </span>
-                          ) : null}
                         </span>
+                        {configured && !selected ? (
+                          <span
+                            className={`${styles.hostFlag} ${styles.serviceConfigured}`}
+                          >
+                            {t("models.decisionConfiguredInactive")}
+                          </span>
+                        ) : null}
                       </span>
                     </span>
                     <span className={styles.choiceBlurb}>{copy.blurb}</span>
-                    {inUse && (activeModel || id === "laya") ? (
-                      <span className={styles.choiceModel}>
-                        {activeModel || t("models.decisionLayaModelAuto")}
-                      </span>
-                    ) : null}
                     <span className={styles.actions}>
-                      {canTest ? (
+                      {drafts[id].endpoint ? (
                         <Button
                           type="text"
                           size="small"
@@ -623,22 +713,23 @@ export function DecisionSettingsPanel({
                           loading={testingId === id}
                           onClick={(event) => {
                             event.stopPropagation();
-                            testPreset(id);
+                            void runTest(id);
                           }}
                         />
                       ) : null}
                       <Button
-                        type="text"
                         size="small"
-                        className={styles.iconBtn}
-                        aria-label={t("common.edit")}
-                        title={t("common.edit")}
-                        icon={<Pencil size={15} />}
+                        type={configured ? "default" : "primary"}
+                        icon={<Settings2 size={14} />}
                         onClick={(event) => {
                           event.stopPropagation();
                           openEditor(id);
                         }}
-                      />
+                      >
+                        {configured
+                          ? t("common.edit")
+                          : t("advancedSettings.search.configure")}
+                      </Button>
                     </span>
                   </div>
                 );
@@ -735,7 +826,11 @@ export function DecisionSettingsPanel({
         ) : null}
 
         <div className={styles.footer}>
-          <Button type="primary" loading={saving} onClick={() => void onSave()}>
+          <Button
+            type="primary"
+            loading={saving}
+            onClick={() => void persist()}
+          >
             {t("common.save")}
           </Button>
         </div>
@@ -761,14 +856,9 @@ export function DecisionSettingsPanel({
             </Button>
             <Button
               icon={<Activity size={14} />}
-              loading={testingId === "drawer"}
+              loading={editing !== null && testingId === editing}
               onClick={() => {
-                if (!editing) return;
-                void runTest(
-                  "drawer",
-                  connectionFor(editing, draftEndpoint, draftModel),
-                  draftKey,
-                );
+                if (editing) void runTest(editing);
               }}
             >
               {t("models.decisionTest")}
@@ -776,15 +866,9 @@ export function DecisionSettingsPanel({
             <Button
               type="primary"
               loading={saving}
-              onClick={() => {
-                if (!editing) return;
-                void persist(
-                  connectionFor(editing, draftEndpoint, draftModel),
-                  draftKey,
-                );
-              }}
+              onClick={() => void saveEditor()}
             >
-              {t("models.decisionSaveUse")}
+              {t("common.save")}
             </Button>
           </div>
         }
@@ -792,25 +876,30 @@ export function DecisionSettingsPanel({
         {editing ? (
           <DrawerFields
             preset={editing}
-            endpoint={draftEndpoint}
-            model={draftModel}
-            apiKey={draftKey}
-            apiKeySet={
-              apiKeySet &&
-              draftEndpoint.trim() ===
-                String(form.getFieldValue("endpoint") || "").trim()
-            }
-            filledSavedKey={filledSavedKey}
+            endpoint={drafts[editing].endpoint}
+            model={drafts[editing].model}
+            apiKey={drafts[editing].apiKey}
+            apiKeySet={drafts[editing].apiKeySet && !drafts[editing].apiKey}
+            filledSavedKey={drafts[editing].filledSavedKey}
             openRouterKey={openRouterKey}
-            layaActive={savedActive && preset === "laya"}
+            layaActive={savedActive && savedProvider === "laya"}
             onLayaStatus={(status) => setLayaReady(status.running)}
-            onEndpoint={setDraftEndpoint}
-            onModel={setDraftModel}
-            onApiKey={setDraftKey}
+            onEndpoint={(value) =>
+              patchDraft(editing, { endpoint: value, edited: true })
+            }
+            onModel={(value) =>
+              patchDraft(editing, { model: value, edited: true })
+            }
+            onApiKey={(value) =>
+              patchDraft(editing, { apiKey: value, edited: true })
+            }
             onUseSavedKey={() => {
               if (!openRouterKey) return;
-              setDraftKey(openRouterKey);
-              setFilledSavedKey(true);
+              patchDraft(editing, {
+                apiKey: openRouterKey,
+                filledSavedKey: true,
+                edited: true,
+              });
             }}
           />
         ) : null}

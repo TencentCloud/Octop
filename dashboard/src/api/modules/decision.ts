@@ -4,11 +4,19 @@ import { getAuthToken, request } from "../request";
 
 export type DecisionProvider = "laya" | "jev" | "microsoft" | "custom";
 
+export interface DecisionServiceConfig {
+  provider: DecisionProvider;
+  endpoint: string;
+  model: string;
+  api_key_set: boolean;
+}
+
 export interface DecisionSettings {
   enabled: boolean;
   provider: DecisionProvider;
   endpoint: string;
   model: string;
+  services?: DecisionServiceConfig[];
   skills: boolean;
   tools: boolean;
   team: boolean;
@@ -18,11 +26,19 @@ export interface DecisionSettings {
   active: boolean;
 }
 
+export interface DecisionServiceBody {
+  provider: DecisionProvider;
+  endpoint: string;
+  model: string;
+  api_key?: string | null;
+}
+
 export interface DecisionSettingsBody {
   enabled: boolean;
   provider: DecisionProvider;
   endpoint: string;
   model: string;
+  services?: DecisionServiceBody[];
   skills: boolean;
   tools: boolean;
   team: boolean;
