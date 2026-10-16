@@ -128,6 +128,9 @@ async def test_seeded_business_bootstrap_survives_workspace_init(
     assert "BOOTSTRAP.md" in paths
     copied = await seed_expert_directory(expert_dir=EXPERT_DIR, workspace=workspace)
     assert copied == len(paths) + 1
+    assert {workspace.resolve_path(name) for name in ("SOUL.md", "AGENTS.md")} <= set(
+        workspace.memory_paths()
+    )
     assert not bootstrap_marker_exists(workspace)
     manifest = json.loads((EXPERT_DIR / "manifest.json").read_text(encoding="utf-8"))
 

@@ -347,7 +347,6 @@ def _run_entrypoint(
     return result, calls
 
 
-@posix_only
 @bash_only
 def test_entrypoint_restart_skips_init_for_external_db(tmp_path: Path) -> None:
     """Issue #1866: with PostgreSQL there is no octop.db; a restart must not re-run init."""
@@ -368,7 +367,6 @@ def test_entrypoint_restart_skips_init_for_external_db(tmp_path: Path) -> None:
     assert any(call.startswith("run --host") for call in calls), calls
 
 
-@posix_only
 @bash_only
 def test_entrypoint_sqlite_install_skips_init_without_marker(tmp_path: Path) -> None:
     """Backward compat: an existing octop.db still short-circuits the guard."""
@@ -382,7 +380,6 @@ def test_entrypoint_sqlite_install_skips_init_without_marker(tmp_path: Path) -> 
     assert any(call.startswith("run --host") for call in calls), calls
 
 
-@posix_only
 @bash_only
 def test_entrypoint_adopts_existing_admin_without_rewriting_credentials(tmp_path: Path) -> None:
     """Upgrade path: init now no-ops on an already-bootstrapped DB; the credential card must survive."""
@@ -401,7 +398,6 @@ def test_entrypoint_adopts_existing_admin_without_rewriting_credentials(tmp_path
     assert not any(call.startswith("init") for call in calls), calls
 
 
-@posix_only
 @bash_only
 def test_entrypoint_init_failure_leaves_no_marker_and_retries_next_boot(tmp_path: Path) -> None:
     first, _ = _run_entrypoint(tmp_path, extra_env={"OCTOP_STUB_INIT_FAIL": "1"})
