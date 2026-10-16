@@ -102,7 +102,32 @@ def build_http_mcp_spec(
 ) -> dict[str, Any]:
     if entry.mcp_mode == "remote":
         return _build_remote_spec(entry, creds)
+    if entry.mcp_mode == "stdio":
+        return _build_stdio_spec(entry, creds)
     return _build_gateway_spec(entry, instance_id, creds, config)
+
+
+def _build_stdio_spec(entry: ConnectorCatalogEntry, creds: dict[str, Any]) -> dict[str, Any]:
+    """Built-in stdio MCP spec: spawn a local child process (e.g. ``npx yuque-mcp``).
+
+    Built-in stdio connectors are bundled like remote/gateway ones, but instead of
+    an HTTP URL the harness spawns a subprocess and speaks MCP over stdio.
+    """
+    if entry.kind == "yuque-mcp":
+        token = str(
+            creds.get("token") or creds.get("api_key") or creds.get("personal_token") or ""
+        ).strip()
+        base_url = str(creds.get("base_url") or "https://www.yuque.com/api/v2").strip()
+        return {
+            "transport": "stdio",
+            "command": "npx",
+            "args": ["-y", "yuque-mcp"],
+            "env": {
+                "YUQUE_PERSONAL_TOKEN": token,
+                "YUQUE_BASE_URL": base_url,
+            },
+        }
+    raise ValueError(f"unsupported stdio connector kind: {entry.kind}")
 
 
 def _build_remote_spec(entry: ConnectorCatalogEntry, creds: dict[str, Any]) -> dict[str, Any]:

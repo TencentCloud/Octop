@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 from collections.abc import AsyncIterator, Callable
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Literal
@@ -29,6 +30,8 @@ if TYPE_CHECKING:
     from octop.infra.agents.manager import AgentManager
     from octop.infra.gateway.slash.ctx import SlashCtx
 
+_log = logging.getLogger(__name__)
+
 
 @dataclass
 class HitlStreamContext:
@@ -52,6 +55,108 @@ class HitlAnswerOutcome:
 
     completed_turn: bool = False
     awaiting_more: bool = False
+
+
+def _action_allows_approve(request: dict[str, Any], name: str) -> bool:
+    """True when this tool's review config accepts an ``approve`` decision."""
+    configs = request.get("review_configs")
+    if not isinstance(configs, list):
+        return True
+    for config in configs:
+        if not isinstance(config, dict) or config.get("action_name") != name:
+            continue
+        allowed = config.get("allowed_decisions")
+        if not isinstance(allowed, list) or not allowed:
+            return True
+        return "approve" in {str(item) for item in allowed}
+    return True
+
+
+def approve_decisions_if_allowed(
+    policies: Any,
+    thread_id: str,
+    chunk: dict[str, Any],
+) -> list[dict[str, str]] | None:
+    """Approve decisions when the thread bypass already covers every action.
+
+    ``ask_user_question`` is never covered. A tool whose ``allowed_decisions``
+    omit ``approve`` is not auto-resumed. Returns ``None`` when the chunk must
+    still be shown to the user.
+    """
+    if chunk.get("type") != "hitl_required":
+        return None
+    allows = getattr(policies, "allows", None)
+    if not callable(allows):
+        return None
+    request = chunk.get("request")
+    if not isinstance(request, dict):
+        return None
+    actions = request.get("action_requests")
+    if not isinstance(actions, list) or not actions:
+        return None
+    decisions: list[dict[str, str]] = []
+    for action in actions:
+        if not isinstance(action, dict):
+            return None
+        name = action.get("name")
+        if not isinstance(name, str) or not allows(thread_id, name):
+            return None
+        if not _action_allows_approve(request, name):
+            return None
+        decisions.append({"type": "approve"})
+    return decisions
+
+
+async def iter_with_session_auto_approve(
+    source: AsyncIterator[dict[str, Any]],
+    *,
+    thread_id: str,
+    policies: Any,
+    resume: Callable[[list[dict[str, Any]]], AsyncIterator[dict[str, Any]]],
+    max_rounds: int = 8,
+) -> AsyncIterator[dict[str, Any]]:
+    """Continue a paused graph when the session policy already allows the tools.
+
+    The client auto-resume of that same card races the next turn, which expires
+    the pending id and surfaces "approval request has expired". A failed resume
+    yields the held card so the user can still decide.
+    """
+    held: dict[str, Any] | None = None
+    decisions: list[dict[str, Any]] | None = None
+    carried: dict[str, Any] | None = None
+    for _ in range(max_rounds):
+        held = None
+        decisions = None
+        try:
+            async for chunk in source:
+                if isinstance(chunk, dict) and chunk.get("type") == "hitl_required":
+                    allowed = approve_decisions_if_allowed(policies, thread_id, chunk)
+                    if allowed is not None:
+                        held = chunk
+                        decisions = [dict(item) for item in allowed]
+                        continue
+                    held = None
+                    decisions = None
+                yield chunk
+        except Exception:
+            card = held if held is not None else carried
+            if card is None:
+                raise
+            _log.exception("session auto-approve resume failed thread=%s", thread_id)
+            yield card
+            return
+        if decisions is None:
+            return
+        carried = held
+        try:
+            source = resume(decisions)
+        except Exception:
+            _log.exception("session auto-approve resume failed thread=%s", thread_id)
+            if carried is not None:
+                yield carried
+            return
+    if carried is not None:
+        yield carried
 
 
 def pending_hitl_payload(

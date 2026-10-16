@@ -70,6 +70,9 @@ export interface StateSnapshotChunk {
 export interface CustomChunk {
   type: "custom";
   data: unknown;
+  agent_id?: string;
+  /** Host wrap-up decision — attach to the wrap-up bubble, not the dispatch turn. */
+  team_wrapup?: boolean;
 }
 
 export interface UsageChunk {
@@ -88,6 +91,8 @@ export interface DoneChunk {
   team_wrapup?: boolean;
   /** Member approval was accepted; the answer continues on the room socket. */
   team_member_continuing?: boolean;
+  /** Resume stopped on another approval. Do not flush the local queue. */
+  hitl_paused?: boolean;
   conversation_mode?: "ask" | "plan" | "craft";
   pending_plan_path?: string | null;
 }
@@ -244,6 +249,7 @@ export function parseHarnessChunk(line: string): HarnessChunk | null {
         ...(obj.team_member_continuing === true
           ? { team_member_continuing: true as const }
           : {}),
+        ...(obj.hitl_paused === true ? { hitl_paused: true as const } : {}),
         conversation_mode:
           obj.conversation_mode === "ask" ||
           obj.conversation_mode === "plan" ||
@@ -282,6 +288,13 @@ export function parseHarnessChunk(line: string): HarnessChunk | null {
         action: typeof obj.action === "string" ? obj.action : "",
         agent_id: agentId,
         mode: typeof obj.mode === "string" ? obj.mode : undefined,
+      };
+    case "custom":
+      return {
+        type: "custom",
+        data: "data" in obj ? obj.data : raw,
+        agent_id: agentId,
+        team_wrapup: obj.team_wrapup === true,
       };
     case "attachment":
       return {

@@ -327,11 +327,11 @@
 }
 
 .errorBubble .bubbleContent {
-  color: var(--fn-color-danger);
+  color: var(--fn-text-primary);
 }
 
 .errorBubble .assistantText {
-  color: var(--fn-color-danger);
+  color: var(--fn-text-primary);
 }
 
 .msgSender {
@@ -641,6 +641,17 @@
 }
 
 .generatingIndicator {
+  display: contents;
+}
+
+.generatingIndicator .avatarCol {
+  grid-column: 1;
+  justify-self: center;
+  align-self: center;
+}
+
+.generatingStatus {
+  grid-column: 2;
   display: flex;
   align-items: center;
   gap: 6px;

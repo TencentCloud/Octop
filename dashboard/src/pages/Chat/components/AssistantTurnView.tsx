@@ -64,6 +64,59 @@ function hasProcessContent(
   return turnHasVisibleProcess(split);
 }
 
+function TurnErrorBubbles({
+  messages,
+  agentId,
+  showAvatar,
+  onRegenerate,
+  onDisableStreamUsage,
+  onEditUserMessage,
+  onForkAssistantMessage,
+  forkDisabled,
+  forkDisabledHint,
+  onRunShellCommand,
+  shellCommandDisabled,
+  shellCommandDisabledTitle,
+}: {
+  messages: ChatMessage[] | undefined;
+  agentId?: string | null;
+  showAvatar: boolean;
+  onRegenerate?: (messageId: string) => void;
+  onDisableStreamUsage?: () => Promise<boolean>;
+  onEditUserMessage?: (messageId: string, newText: string) => void;
+  onForkAssistantMessage?: (messageId: string) => void;
+  forkDisabled?: boolean;
+  forkDisabledHint?: string;
+  onRunShellCommand?: (code: string) => void;
+  shellCommandDisabled?: boolean;
+  shellCommandDisabledTitle?: string;
+}) {
+  if (!messages?.length) return null;
+  return (
+    <>
+      {messages.map((message, index) => (
+        <div key={message.id} className={styles.assistantTurnAnswer}>
+          <MessageBubble
+            message={message}
+            agentId={agentId}
+            showAvatar={showAvatar && index === 0}
+            groupPosition="only"
+            onRegenerate={onRegenerate}
+            onDisableStreamUsage={onDisableStreamUsage}
+            onEditUserMessage={onEditUserMessage}
+            onForkAssistantMessage={onForkAssistantMessage}
+            forkDisabled={forkDisabled}
+            forkDisabledHint={forkDisabledHint}
+            onRunShellCommand={onRunShellCommand}
+            shellCommandDisabled={shellCommandDisabled}
+            shellCommandDisabledTitle={shellCommandDisabledTitle}
+          />
+        </div>
+      ))}
+    </>
+  );
+}
+
 /** True when any message in this turn belongs to a still-live speaker. */
 function turnHasLiveSpeaker(
   messages: ChatMessage[],
@@ -194,6 +247,23 @@ export default function AssistantTurnView({
   const todoAtTop = todoPanel && !anyProcessShown ? todoPanel : null;
 
   const isWrapupTurn = messages.some((item) => item.teamWrapup);
+  const hasVisibleTurn =
+    Boolean(todoAtTop) ||
+    anyProcessShown ||
+    segmentProcess.some(
+      ({ split }) =>
+        split.answerMessage || (split.errorMessages?.length ?? 0) > 0,
+    ) ||
+    hitlLayout.segments.length > 0 ||
+    Boolean(trailingSplit.answerMessage) ||
+    (trailingSplit.errorMessages?.length ?? 0) > 0 ||
+    hasToolMedia ||
+    knowledgeCitations.length > 0 ||
+    showOpenBrowser ||
+    showEditFile;
+  // A decision-only placeholder has no row yet. Rendering an empty turn
+  // would shift the layout before the avatar and the first status settle.
+  if (!hasVisibleTurn) return null;
 
   return (
     <div className={styles.assistantTurn}>
@@ -242,6 +312,20 @@ export default function AssistantTurnView({
                 />
               </div>
             ) : null}
+            <TurnErrorBubbles
+              messages={split.errorMessages}
+              agentId={agentId}
+              showAvatar={!showProcess && !split.answerMessage}
+              onRegenerate={onRegenerate}
+              onDisableStreamUsage={onDisableStreamUsage}
+              onEditUserMessage={onEditUserMessage}
+              onForkAssistantMessage={onForkAssistantMessage}
+              forkDisabled={forkDisabled}
+              forkDisabledHint={forkDisabledHint}
+              onRunShellCommand={onRunShellCommand}
+              shellCommandDisabled={shellCommandDisabled}
+              shellCommandDisabledTitle={shellCommandDisabledTitle}
+            />
             <MessageBubble
               message={hitl}
               agentId={agentId}
@@ -304,6 +388,24 @@ export default function AssistantTurnView({
           />
         </div>
       ) : null}
+      <TurnErrorBubbles
+        messages={trailingSplit.errorMessages}
+        agentId={agentId}
+        showAvatar={
+          firstSummaryIdx < 0 &&
+          !trailingHasSummary &&
+          !trailingSplit.answerMessage
+        }
+        onRegenerate={onRegenerate}
+        onDisableStreamUsage={onDisableStreamUsage}
+        onEditUserMessage={onEditUserMessage}
+        onForkAssistantMessage={onForkAssistantMessage}
+        forkDisabled={forkDisabled}
+        forkDisabledHint={forkDisabledHint}
+        onRunShellCommand={onRunShellCommand}
+        shellCommandDisabled={shellCommandDisabled}
+        shellCommandDisabledTitle={shellCommandDisabledTitle}
+      />
       {knowledgeCitations.length > 0 ? (
         <div className={styles.turnInset}>
           <KnowledgeCitationsStrip citations={knowledgeCitations} />
