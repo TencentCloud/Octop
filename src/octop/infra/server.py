@@ -14,6 +14,8 @@ from logging.handlers import TimedRotatingFileHandler
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
+from octop_harness.plugins.registry import PluginRegistry
+
 from octop.config import OctopConfig, load_config
 from octop.infra.agents.experts.catalog import ExpertCatalog, default_library_root
 from octop.infra.agents.manager import AgentManager
@@ -21,7 +23,6 @@ from octop.infra.agents.plugins.manager import PluginManager
 from octop.infra.agents.subagents.catalog import SubagentCatalog, default_package_root
 from octop.infra.cron.manager import CronManager
 from octop.infra.db.factory import open_database, should_defer_control_plane_db
-from octop_harness.plugins.registry import PluginRegistry
 from octop.infra.db.migrate import run_migrations
 from octop.infra.db.services import SharedServices, build_shared_services
 from octop.infra.gateway.gateway import Gateway
@@ -522,6 +523,7 @@ class OctopServer:
         registry.set_proactive_scheduler(proactive_scheduler)
 
         await registry.boot()
+        registry.schedule_idle_reclaim_sweep()
         await gateway.refresh_media_backends()
 
         user_mgr = UserManager(self.services)
@@ -577,6 +579,13 @@ class OctopServer:
                 await bridge_mgr.resume_auto_connections()
 
         asyncio.create_task(_resume_bridges(), name="bridge-auto-resume")
+
+    async def refresh_plugin_channels(self) -> None:
+        """Reconcile plugin factories and their live channel instances."""
+        if self.app_runtime is not None:
+            await self.app_runtime.gateway.reload_plugin_channels(self._apply_plugin_channels)
+        else:
+            self._apply_plugin_channels()
 
     def _apply_plugin_channels(self) -> None:
         """Register plugin-contributed channel kinds with the gateway.

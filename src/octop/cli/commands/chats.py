@@ -213,6 +213,41 @@ def delete_chat(thread_id: str, agent_id: str | None, as_user: str | None, yes: 
     click.echo("deleted")
 
 
+@chats.command("gc-orphans")
+@click.option("--agent", "agent_id", default=None, help="Limit the scan to one agent.")
+@click.option("--yes", is_flag=True, default=False, help="Delete the orphan checkpoints.")
+def gc_orphans(agent_id: str | None, yes: bool) -> None:
+    """Report checkpoint rows whose thread was already removed.
+
+    Without ``--yes`` this only prints the orphans. With ``--yes`` it
+    deletes them from each agent's memory store.
+    """
+    from octop.cli.support.db import open_cli_services
+    from octop.infra.agents.memory.thread_cleanup import gc_orphan_checkpoints
+    from octop.infra.errors import OctopError
+
+    try:
+        with open_cli_services(None) as svc:
+            orphans = gc_orphan_checkpoints(svc, agent_id=agent_id, apply=yes)
+    except OctopError as exc:
+        raise click.ClickException(exc.message) from exc
+    payload = [
+        {"agent_id": item.agent_id, "thread_id": item.thread_id, "bytes": item.nbytes}
+        for item in orphans
+    ]
+    if json_output_enabled():
+        click.echo(_json.dumps({"deleted": yes, "orphans": payload}, indent=2))
+        return
+    if not payload:
+        click.echo("no orphan checkpoints")
+        return
+    total = sum(item.nbytes for item in orphans)
+    for item in orphans:
+        click.echo(f"{item.agent_id} {item.thread_id} {item.nbytes}")
+    verb = "deleted" if yes else "would delete"
+    click.echo(f"{verb} {len(payload)} orphan thread(s), {total} bytes")
+
+
 @chats.command("send")
 @click.argument("prompt")
 @click.option("--agent", "agent_id", default=None)

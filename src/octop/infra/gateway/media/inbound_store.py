@@ -52,6 +52,8 @@ INBOUND_EXTENSION_MEDIA_TYPES = {
     ".csv": "text/csv",
     ".tsv": "text/tab-separated-values",
     ".doc": "application/msword",
+    # WPS Writer binary docs are OLE Compound files (same family as classic .doc).
+    ".wps": "application/msword",
     ".xls": "application/vnd.ms-excel",
     ".ppt": "application/vnd.ms-powerpoint",
     ".docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
@@ -190,6 +192,12 @@ _INBOUND_MEDIA_TYPE_ALIASES = {
     "application/x-ipynb+json": "application/json",
     "text/rtf": "application/rtf",
     "application/x-rtf": "application/rtf",
+    # WPS Office / Kingsoft registry types (Windows browsers often send these).
+    "application/wps-office.wps": "application/msword",
+    "application/kswps": "application/msword",
+    "application/vnd.wps-office.wps": "application/msword",
+    "application/x-msword": "application/msword",
+    "application/vnd.ms-works": "application/msword",
     "application/x-gzip": "application/gzip",
     "application/x-gtar": "application/x-tar",
     "application/x-rar-compressed": "application/vnd.rar",

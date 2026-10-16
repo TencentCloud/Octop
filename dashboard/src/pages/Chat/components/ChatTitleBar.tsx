@@ -10,12 +10,13 @@ import {
   Trash2,
   GitFork,
 } from "lucide-react";
-import { showConfirmModal } from "../../../utils/confirmModal";
+import { confirmDeleteConversation } from "../utils/deleteConversation";
 import type { Session } from "../hooks/useSessions";
 import SessionChannelIcon from "./SessionChannelIcon";
 import TeamChatBadge from "./TeamChatBadge";
 import styles from "../index.module.less";
 import { DESKTOP_DRAG_REGION_CLASS } from "../../../utils/desktopChrome";
+import { isImeComposing } from "../../../utils/ime";
 import { useCollapseThinking } from "../hooks/useCollapseThinking";
 
 interface ChatTitleBarProps {
@@ -24,7 +25,7 @@ interface ChatTitleBarProps {
   onRename: (id: string, name: string) => void;
   onPin: (id: string, pinned: boolean) => void;
   onFork: (id: string) => void;
-  onDelete: (id: string) => void;
+  onDelete: (id: string, compact: boolean) => void | Promise<boolean | void>;
   forkDisabled?: boolean;
   forkDisabledHint?: string;
   isTeam?: boolean;
@@ -107,14 +108,8 @@ export default function ChatTitleBar({
         icon: <Trash2 size={14} />,
         danger: true,
         onClick: () => {
-          showConfirmModal({
-            title: t("chat.deleteSessionConfirm"),
-            okText: t("common.delete"),
-            cancelText: t("common.cancel"),
-            okButtonProps: { danger: true },
-            onOk: () => {
-              onDelete(session.id);
-            },
+          confirmDeleteConversation(t, (compact) => {
+            void onDelete(session.id, compact);
           });
         },
       },
@@ -151,6 +146,7 @@ export default function ChatTitleBar({
             onChange={(e) => setEditValue(e.target.value)}
             onBlur={commitEdit}
             onKeyDown={(e) => {
+              if (isImeComposing(e)) return;
               if (e.key === "Enter") commitEdit();
               if (e.key === "Escape") {
                 setEditValue(title);

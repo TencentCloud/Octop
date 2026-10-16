@@ -23,7 +23,7 @@ import {
   normalizeChannelFieldValue,
   normalizeQqGroupContextConfig,
   partitionChannelKeys,
-  registerPluginChannelKind,
+  replacePluginChannelKinds,
   type ChannelKey,
   type PluginChannelKindInfo,
 } from "./components";
@@ -128,25 +128,26 @@ export default function ChannelsPanel({ agentId }: ChannelsPanelProps) {
   const [deleting, setDeleting] = useState(false);
   const [form] = Form.useForm<ChannelFormValues>();
 
-  // Merge ``kind: channel`` plugin kinds into the catalogue once per mount.
-  // Runs before agentId-scoped fetches; failure is silent (builtin kinds
-  // still render, plugin kinds simply don't appear).
-  useEffect(() => {
-    let cancelled = false;
-    request<PluginChannelKindInfo[]>("/channels/plugin-kinds", {
-      method: "GET",
-    })
-      .then((kinds) => {
-        if (cancelled || !Array.isArray(kinds)) return;
-        for (const info of kinds) registerPluginChannelKind(info);
-      })
-      .catch(() => {
-        /* backend predates /channels/plugin-kinds; builtin-only catalogue */
-      });
-    return () => {
-      cancelled = true;
-    };
+  const [catalogVersion, setCatalogVersion] = useState(0);
+
+  const refreshPluginKinds = useCallback(async () => {
+    try {
+      const kinds = await request<PluginChannelKindInfo[]>(
+        "/channels/plugin-kinds",
+        { method: "GET" },
+      );
+      if (Array.isArray(kinds)) {
+        replacePluginChannelKinds(kinds);
+        setCatalogVersion((version) => version + 1);
+      }
+    } catch {
+      // Keep the existing catalogue when the backend is unavailable.
+    }
   }, []);
+
+  useEffect(() => {
+    void refreshPluginKinds();
+  }, [refreshPluginKinds]);
 
   const channelByKind = useMemo<Map<ChannelKey, ChannelRow>>(() => {
     const map = new Map<ChannelKey, ChannelRow>();
@@ -159,7 +160,7 @@ export default function ChannelsPanel({ agentId }: ChannelsPanelProps) {
       }
     }
     return map;
-  }, [channels]);
+  }, [channels, catalogVersion]);
 
   const { featuredChannelKeys, moreChannelKeys } = useMemo(() => {
     const { featured, more } = partitionChannelKeys(
@@ -227,7 +228,7 @@ export default function ChannelsPanel({ agentId }: ChannelsPanelProps) {
             continue;
           }
           if (
-            row.kind === "discord" &&
+            (row.kind === "discord" || row.kind === "telegram") &&
             (k === "allowed_channel_ids" || k === "allowed_user_ids") &&
             Array.isArray(v)
           ) {
@@ -447,7 +448,10 @@ export default function ChannelsPanel({ agentId }: ChannelsPanelProps) {
         </span>
         <Button
           icon={<RefreshCw size={14} />}
-          onClick={() => void fetchChannels()}
+          onClick={() => {
+            void fetchChannels();
+            void refreshPluginKinds();
+          }}
           loading={loading}
         >
           {t("common.refresh")}

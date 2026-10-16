@@ -2,7 +2,10 @@
 
 from __future__ import annotations
 
+import logging
+
 from octop.i18n.domains.stream import (
+    INVALID_REQUEST,
     MODEL_CALL_FAILED,
     MODEL_RETRY_FAILURE_MARK,
     PATH_OUTSIDE_ROOT,
@@ -59,6 +62,17 @@ def test_classify_auth() -> None:
         classify_stream_error_message("Error code: 401 - Incorrect API key provided")
         == "octop:stream_errors.auth"
     )
+
+
+def test_classify_invalid_request_mindie_422() -> None:
+    msg = (
+        "Error code: 422 - {error:'Check open ai req parameter error',"
+        "'error_type': 'Input Validation Error'}"
+    )
+    assert classify_stream_error_message(msg) == INVALID_REQUEST
+    text = format_stream_error(msg, "zh")
+    assert "MindIE" in text or "参数" in text
+    assert "422" not in text
 
 
 def test_classify_provider_unavailable_http_status() -> None:
@@ -209,6 +223,30 @@ def test_exception_display_message_empty_falls_back_to_type() -> None:
     wrapped = RuntimeError()
     wrapped.__cause__ = ConnectionError()
     assert exception_display_message(wrapped) == "RuntimeError <- ConnectionError"
+
+
+def test_model_retry_on_failure_writes_server_log(caplog: logging.LogCaptureFixture) -> None:
+    from octop.infra.agents.manager import _model_retry_on_failure
+
+    err = RuntimeError(
+        "Error code: 422 - {error:'Check open ai req parameter error',"
+        "'error_type': 'Input Validation Error'}"
+    )
+    from octop.infra.agents.security.hitl_session import hitl_thread_scope
+    from octop.infra.utils.turn_failure import turn_model_scope
+
+    with (
+        caplog.at_level(logging.ERROR, logger="octop.infra.utils.turn_failure"),
+        hitl_thread_scope("th_mindie"),
+        turn_model_scope("mindie/qwen"),
+    ):
+        prompt = _model_retry_on_failure(err, agent_id="ag_mindie")
+    assert "turn failure kind=model_retry" in caplog.text
+    assert "agent=ag_mindie" in caplog.text
+    assert "thread=th_mindie" in caplog.text
+    assert "model=mindie/qwen" in caplog.text
+    assert "Check open ai req parameter error" in caplog.text
+    assert prompt.startswith(MODEL_RETRY_FAILURE_MARK)
 
 
 def test_format_stream_error_empty_exception_still_localized() -> None:

@@ -36,7 +36,7 @@ from __future__ import annotations
 
 import json
 import logging
-from typing import Any, cast
+from typing import Any, Literal, cast
 
 from fastapi import APIRouter, Body, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
@@ -44,6 +44,7 @@ from pydantic import BaseModel, Field
 from octop.api.common.agent import assert_agent_owner, require_agent_owner_row
 from octop.api.common.memory_client import call_memory_rpc
 from octop.api.deps import current_user, get_server
+from octop.infra.agents.manager import memory_extract_supported_options
 from octop.infra.errors import ErrorCode, OctopError
 
 logger = logging.getLogger(__name__)
@@ -63,11 +64,24 @@ _EXTRACT_DEFAULTS: dict[str, Any] = {
     # Model ref ("provider/model") used for extraction / promotion; None → AUTO
     # (follow the agent's effective chat model).
     "aux_model": None,
+    # Aux-call options (TencentCloud/Octop#1360): how long a memory call may
+    # wait and how much it may generate. None → harness defaults. These are
+    # independent of the idle/interval trigger above, which only decides when
+    # extraction fires.
+    "extract_light_timeout_s": None,
+    "extract_heavy_timeout_s": None,
+    "extract_max_tokens": None,
+    "extract_extra_body": None,
+    "extract_thinking": "auto",
+    "extract_max_retries": 2,
+    "extract_retry_backoff_s": 1.0,
 }
 # Guard rails so a bad UI value can't schedule a hot loop or a never-firing timer.
 _MIN_IDLE_SECONDS = 60.0  # UI minimum: one minute; zero must not disable extraction
 _MIN_INTERVAL_SECONDS = 300.0  # 5 min floor for the fixed-interval sweep
 _MAX_SECONDS = 7 * 24 * 3600.0  # 7 days
+_MIN_AUX_TIMEOUT_SECONDS = 30.0  # below this even a warm-up cannot finish
+_MAX_AUX_TOKENS = 65536
 
 
 # ---------------------------------------------------------------------------
@@ -190,6 +204,57 @@ class _ExtractConfigBody(BaseModel):
     aux_model: str | None = Field(
         default=None,
         description="'provider/model' ref for extraction; '' resets to AUTO",
+    )
+    extract_light_timeout_s: float | None = Field(
+        default=None,
+        allow_inf_nan=False,
+        description=(
+            "Read timeout in seconds for light memory calls (extraction); "
+            "0 resets to the harness default. Distinct from the idle trigger."
+        ),
+    )
+    extract_heavy_timeout_s: float | None = Field(
+        default=None,
+        allow_inf_nan=False,
+        description=(
+            "Read timeout in seconds for heavy memory calls (promotion / "
+            "page regen); 0 resets to the harness default."
+        ),
+    )
+    extract_max_tokens: int | None = Field(
+        default=None,
+        description=(
+            "Output budget for candidate and episode extraction (128..65536). "
+            "0 resets to the built-in 2048 tokens."
+        ),
+    )
+    extract_extra_body: dict[str, Any] | None = Field(
+        default=None,
+        description=(
+            "Vendor-specific request extras for OpenAI-compatible endpoints "
+            "(e.g. thinking controls or reasoning_effort); applied only to the "
+            "first selected model, not fallback models. {} resets to unset."
+        ),
+    )
+
+    extract_thinking: Literal["auto", "off", "on"] | None = Field(
+        default=None,
+        description="Memory-only thinking: auto/off for supported models; on keeps the model default.",
+    )
+    extract_max_retries: int | None = Field(
+        default=None,
+        ge=0,
+        le=10,
+        strict=True,
+        description="Extra attempts per model for transient failures. 0 disables retries; default 2.",
+    )
+    extract_retry_backoff_s: float | None = Field(
+        default=None,
+        ge=0,
+        le=60,
+        strict=True,
+        allow_inf_nan=False,
+        description="Base retry delay in seconds; doubles per retry, capped at 60s. Default 1.",
     )
 
 
@@ -798,6 +863,29 @@ def _validated_aux_model(value: Any, providers: Any) -> str | None:
     return ref
 
 
+def _coerce_aux_timeout(value: Any) -> float | None:
+    """Clamp an aux read timeout; ``<= 0`` resets to the harness default."""
+    seconds = float(value)
+    if seconds <= 0:
+        return None
+    return min(3600.0, _coerce_seconds(seconds, minimum=_MIN_AUX_TIMEOUT_SECONDS))
+
+
+def _coerce_aux_max_tokens(value: Any) -> int | None:
+    """Clamp the aux completion budget; ``<= 0`` resets to automatic."""
+    tokens = int(value)
+    if tokens <= 0:
+        return None
+    return max(128, min(tokens, _MAX_AUX_TOKENS))
+
+
+def _coerce_aux_extra_body(value: Any) -> dict[str, Any] | None:
+    """Normalize the aux ``extra_body``; empty object resets to unset."""
+    if not isinstance(value, dict):
+        raise HTTPException(status_code=400, detail="extract_extra_body must be a JSON object")
+    return dict(value) or None
+
+
 @router.get("/agents/{agent_id}/memory/extract-config")
 async def get_extract_config(
     agent_id: str,
@@ -805,9 +893,12 @@ async def get_extract_config(
     user: Any = Depends(current_user),
     server: Any = Depends(get_server),
 ) -> dict[str, Any]:
-    """Return the agent's extraction-trigger configuration (with defaults)."""
+    """Return memory extraction timing and independent model call options."""
     row = require_agent_owner_row(agent_id, user=user, as_user=as_user, server=server)
-    return _read_extract_config(row)
+    return {
+        **_read_extract_config(row),
+        "supported_call_options": memory_extract_supported_options(),
+    }
 
 
 @router.put("/agents/{agent_id}/memory/extract-config")
@@ -852,6 +943,17 @@ async def put_extract_config(
         )
     if "aux_model" in patch:
         merged["aux_model"] = _validated_aux_model(patch["aux_model"], registry.providers)
+    if "extract_light_timeout_s" in patch:
+        merged["extract_light_timeout_s"] = _coerce_aux_timeout(patch["extract_light_timeout_s"])
+    if "extract_heavy_timeout_s" in patch:
+        merged["extract_heavy_timeout_s"] = _coerce_aux_timeout(patch["extract_heavy_timeout_s"])
+    if "extract_max_tokens" in patch:
+        merged["extract_max_tokens"] = _coerce_aux_max_tokens(patch["extract_max_tokens"])
+    if "extract_extra_body" in patch:
+        merged["extract_extra_body"] = _coerce_aux_extra_body(patch["extract_extra_body"])
+    for key in ("extract_thinking", "extract_max_retries", "extract_retry_backoff_s"):
+        if key in patch:
+            merged[key] = patch[key]
 
     try:
         cfg = json.loads(row.config_json or "{}")
@@ -865,7 +967,7 @@ async def put_extract_config(
     cfg["memory"] = mem_section
 
     await registry.update(agent_id, config_json=json.dumps(cfg))
-    return merged
+    return {**merged, "supported_call_options": memory_extract_supported_options()}
 
 
 __all__ = ["router"]

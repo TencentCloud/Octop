@@ -28,6 +28,7 @@ export {
   partitionChannelKeys,
   isCollapsedChannelKey,
   registerPluginChannelKind,
+  replacePluginChannelKinds,
   isPluginChannelKind,
   type ChannelKey,
   type ChannelField,

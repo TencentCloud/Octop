@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-from collections.abc import AsyncIterator
+import logging
+from collections.abc import AsyncIterator, Callable
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Literal
 
@@ -29,6 +30,8 @@ if TYPE_CHECKING:
     from octop.infra.agents.manager import AgentManager
     from octop.infra.gateway.slash.ctx import SlashCtx
 
+_log = logging.getLogger(__name__)
+
 
 @dataclass
 class HitlStreamContext:
@@ -52,6 +55,108 @@ class HitlAnswerOutcome:
 
     completed_turn: bool = False
     awaiting_more: bool = False
+
+
+def _action_allows_approve(request: dict[str, Any], name: str) -> bool:
+    """True when this tool's review config accepts an ``approve`` decision."""
+    configs = request.get("review_configs")
+    if not isinstance(configs, list):
+        return True
+    for config in configs:
+        if not isinstance(config, dict) or config.get("action_name") != name:
+            continue
+        allowed = config.get("allowed_decisions")
+        if not isinstance(allowed, list) or not allowed:
+            return True
+        return "approve" in {str(item) for item in allowed}
+    return True
+
+
+def approve_decisions_if_allowed(
+    policies: Any,
+    thread_id: str,
+    chunk: dict[str, Any],
+) -> list[dict[str, str]] | None:
+    """Approve decisions when the thread bypass already covers every action.
+
+    ``ask_user_question`` is never covered. A tool whose ``allowed_decisions``
+    omit ``approve`` is not auto-resumed. Returns ``None`` when the chunk must
+    still be shown to the user.
+    """
+    if chunk.get("type") != "hitl_required":
+        return None
+    allows = getattr(policies, "allows", None)
+    if not callable(allows):
+        return None
+    request = chunk.get("request")
+    if not isinstance(request, dict):
+        return None
+    actions = request.get("action_requests")
+    if not isinstance(actions, list) or not actions:
+        return None
+    decisions: list[dict[str, str]] = []
+    for action in actions:
+        if not isinstance(action, dict):
+            return None
+        name = action.get("name")
+        if not isinstance(name, str) or not allows(thread_id, name):
+            return None
+        if not _action_allows_approve(request, name):
+            return None
+        decisions.append({"type": "approve"})
+    return decisions
+
+
+async def iter_with_session_auto_approve(
+    source: AsyncIterator[dict[str, Any]],
+    *,
+    thread_id: str,
+    policies: Any,
+    resume: Callable[[list[dict[str, Any]]], AsyncIterator[dict[str, Any]]],
+    max_rounds: int = 8,
+) -> AsyncIterator[dict[str, Any]]:
+    """Continue a paused graph when the session policy already allows the tools.
+
+    The client auto-resume of that same card races the next turn, which expires
+    the pending id and surfaces "approval request has expired". A failed resume
+    yields the held card so the user can still decide.
+    """
+    held: dict[str, Any] | None = None
+    decisions: list[dict[str, Any]] | None = None
+    carried: dict[str, Any] | None = None
+    for _ in range(max_rounds):
+        held = None
+        decisions = None
+        try:
+            async for chunk in source:
+                if isinstance(chunk, dict) and chunk.get("type") == "hitl_required":
+                    allowed = approve_decisions_if_allowed(policies, thread_id, chunk)
+                    if allowed is not None:
+                        held = chunk
+                        decisions = [dict(item) for item in allowed]
+                        continue
+                    held = None
+                    decisions = None
+                yield chunk
+        except Exception:
+            card = held if held is not None else carried
+            if card is None:
+                raise
+            _log.exception("session auto-approve resume failed thread=%s", thread_id)
+            yield card
+            return
+        if decisions is None:
+            return
+        carried = held
+        try:
+            source = resume(decisions)
+        except Exception:
+            _log.exception("session auto-approve resume failed thread=%s", thread_id)
+            if carried is not None:
+                yield carried
+            return
+    if carried is not None:
+        yield carried
 
 
 def pending_hitl_payload(
@@ -128,6 +233,7 @@ class HitlChannelCoordinator:
         raw_request: dict[str, Any],
         *,
         ctx: HitlStreamContext,
+        resume_agent_id: str | None = None,
     ) -> HitlPendingRecord:
         return self._store.register(
             thread_id=ctx.thread_id,
@@ -137,6 +243,7 @@ class HitlChannelCoordinator:
             channel_type=ctx.channel_type,
             action_requests=parse_action_requests(raw_request),
             review_configs=parse_review_configs(raw_request),
+            resume_agent_id=resume_agent_id,
         )
 
     @staticmethod
@@ -151,6 +258,29 @@ class HitlChannelCoordinator:
             return [{"type": "approve"} for _ in range(count)]
         reject_message = message or "Rejected by user"
         return [{"type": "reject", "message": reject_message} for _ in range(count)]
+
+    def hand_member_pause(
+        self,
+        record: HitlPendingRecord,
+        decisions: list[dict[str, Any]],
+        *,
+        deliver: Callable[[str, list[dict[str, Any]]], bool] | None,
+        rejected: bool,
+    ) -> bool | None:
+        """Wake a team member job that owns this pause.
+
+        Returns None when the pause is a normal host turn. True means the
+        member job accepted the decision and the caller must not resume the
+        host graph. False means the job is gone.
+        """
+        if not record.resume_agent_id:
+            return None
+        ok = bool(deliver is not None and deliver(record.pending_id, decisions))
+        self._store.mark_resolved(
+            record.pending_id,
+            ("rejected" if rejected else "approved") if ok else "expired",
+        )
+        return ok
 
     def expire_pending_for_thread(
         self,
@@ -278,6 +408,7 @@ class HitlChannelCoordinator:
         history_tracker: Any | None = None,
         projection_state: Any | None = None,
         outcome: HitlAnswerOutcome | None = None,
+        member_hitl: Callable[[str, list[dict[str, Any]]], bool] | None = None,
     ) -> AsyncIterator[MessageEvent]:
         """Collect one IM answer and resume only after the final question."""
         from octop.infra.gateway.process.stream_project import (
@@ -298,6 +429,18 @@ class HitlChannelCoordinator:
 
         yield MessageEvent.typing()
         decisions = self._answer_decisions(record, resume_message)
+        handed = self.hand_member_pause(
+            record,
+            decisions,
+            deliver=member_hitl,
+            rejected=False,
+        )
+        if handed is not None:
+            if handed:
+                yield MessageEvent.text(tr("hitl.approved_ack", lang))
+            else:
+                yield MessageEvent.error_event(tr("hitl.expired", lang))
+            return
         hitl_ctx = HitlStreamContext(
             thread_id=record.thread_id,
             agent_id=record.agent_id,
@@ -340,6 +483,7 @@ class HitlChannelCoordinator:
         outcome: HitlSlashOutcome | None = None,
         history_factory: Any | None = None,
         history_finalize: Any | None = None,
+        member_hitl: Callable[[str, list[dict[str, Any]]], bool] | None = None,
     ) -> AsyncIterator[MessageEvent]:
         lang = normalize_locale(locale)
         if cmd.name == "pending":
@@ -364,6 +508,22 @@ class HitlChannelCoordinator:
             approve=approve,
             message=reject_message,
         )
+        if record is not None:
+            handed = self.hand_member_pause(
+                record,
+                decisions,
+                deliver=member_hitl,
+                rejected=not approve,
+            )
+            if handed is not None:
+                if handed:
+                    ack = (
+                        tr("hitl.approved_ack", lang) if approve else tr("hitl.rejected_ack", lang)
+                    )
+                    yield MessageEvent.text(ack)
+                else:
+                    yield MessageEvent.error_event(tr("hitl.expired", lang))
+                return
         hitl_ctx = HitlStreamContext(
             thread_id=thread_id,
             agent_id=ctx.agent_id,

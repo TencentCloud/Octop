@@ -115,6 +115,59 @@ async def collapse_to_invoke_response(
         yield event
 
 
+_WEIXIN_PREAMBLE_TYPES = frozenset(
+    {
+        MessageEventType.DELTA,
+        MessageEventType.FLUSH,
+        MessageEventType.THINKING,
+        MessageEventType.THINKING_DELTA,
+    }
+)
+
+
+def _weixin_tool_key(event: MessageEvent) -> str:
+    meta = event.metadata if isinstance(event.metadata, dict) else {}
+    return str(meta.get("tool_key") or meta.get("tool_name") or "")
+
+
+def _drops_weixin_preamble(event: MessageEvent) -> bool:
+    """Tool calls other than ``ask_agent`` discard the text that led into them."""
+    return event.type == MessageEventType.TOOL_START and _weixin_tool_key(event) != "ask_agent"
+
+
+async def withhold_weixin_stream_preamble(
+    events: AsyncIterator[MessageEvent],
+) -> AsyncIterator[MessageEvent]:
+    """Drop text that is only the lead-in to a tool call.
+
+    Used for WeChat team hosts, which stay on stream mode. Other channels are
+    unchanged. ``ask_agent`` narration is kept so a team host can still say who
+    it is calling. Media and the final answer pass through in their own order.
+    """
+    held: list[MessageEvent] = []
+    async for event in events:
+        if event.type in _WEIXIN_PREAMBLE_TYPES:
+            held.append(event)
+            continue
+        if not _drops_weixin_preamble(event):
+            for item in held:
+                yield item
+        held.clear()
+        yield event
+    for item in held:
+        yield item
+
+
+def wrap_weixin_stream_processor(processor: MessageProcessor) -> MessageProcessor:
+    """Hide tool lead-in text before a WeChat stream processor emits it."""
+
+    async def _wrapped(message: InboundMessage) -> AsyncIterator[MessageEvent]:
+        async for event in withhold_weixin_stream_preamble(processor(message)):
+            yield event
+
+    return _wrapped
+
+
 def processor_for_response_mode(
     processor: MessageProcessor,
     mode: ChannelResponseMode,
@@ -137,4 +190,6 @@ __all__ = [
     "normalize_channel_response_mode",
     "processor_for_response_mode",
     "qq_channel_response_mode",
+    "withhold_weixin_stream_preamble",
+    "wrap_weixin_stream_processor",
 ]

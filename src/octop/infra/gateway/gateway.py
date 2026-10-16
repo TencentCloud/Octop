@@ -28,8 +28,10 @@ from octop.infra.gateway.process.response_mode import (
     normalize_channel_response_mode,
     processor_for_response_mode,
     qq_channel_response_mode,
+    wrap_weixin_stream_processor,
 )
 from octop.infra.gateway.slash.dispatcher import SlashDispatcher, build_default_dispatcher
+from octop.infra.gateway.steer import SteerCoordinator
 from octop.infra.gateway.threads import ThreadRegistry
 from octop.infra.gateway.ws import (
     WS_CHANNEL_ID,
@@ -120,6 +122,7 @@ class Gateway:
         self._slash_meta: SlashRuntimeMeta | None = None
         self._ws_hub = WebSocketHub()
         self._cli_hub = CliHub()
+        self._steer = SteerCoordinator()
         self._ws_channel: WebSocketChannel | None = None
         self._cli_channel: CliChannel | None = None
         self._runtime_status: dict[str, ChannelRuntimeStatus] = {}
@@ -139,6 +142,10 @@ class Gateway:
     @property
     def ws_hub(self) -> WebSocketHub:
         return self._ws_hub
+
+    @property
+    def steer(self) -> SteerCoordinator:
+        return self._steer
 
     @property
     def cli_hub(self) -> CliHub:
@@ -248,6 +255,7 @@ class Gateway:
         self._ws_channel = WebSocketChannel(
             self._processor,
             hub=self._ws_hub,
+            steer=self._steer,
             channel_id=WS_CHANNEL_ID,
         )
         await self._channel_manager.add_channel(self._ws_channel)
@@ -281,6 +289,21 @@ class Gateway:
             backend = media_backend_for_agent(self._agent_manager, row.agent_id)
             if backend is not None:
                 channel.set_media_backend(backend)
+
+    async def reload_plugin_channels(self, apply: Callable[[], None]) -> None:
+        """Stop plugin channels before replacing factories; preserve DB rows."""
+        rows = [
+            row
+            for row in self._repos.channel_repo.list_all(include_disabled=False)
+            if row.kind not in {kind.value for kind in ChannelKind}
+        ]
+        if self._channel_manager is not None:
+            for row in rows:
+                await self._unregister(row.channel_id)
+        apply()
+        if self._channel_manager is not None:
+            for row in rows:
+                await self._safe_register_channel(row)
 
     async def reload_channels_from_db(self) -> None:
         """Drop and re-register enabled IM channels from the DB.
@@ -440,14 +463,18 @@ class Gateway:
     ) -> None:
         """Deliver one complete proactive message to a resolved session."""
         channel_id = self._channel_id_for_session(session)
-        await self.push_text(
-            session.channel_type,
-            channel_id,
-            self._resolve_push_subject(session),
-            text,
-        )
-        if ThreadRegistry.is_virtual_channel(session.channel_type):
-            self._bump_virtual_session(session, title_source or text)
+        try:
+            await self.push_text(
+                session.channel_type,
+                channel_id,
+                self._resolve_push_subject(session),
+                text,
+            )
+        finally:
+            # Title the conversation even when the channel push fails. Otherwise
+            # the thread stays "New Chat" until the user sends a follow-up.
+            if ThreadRegistry.is_virtual_channel(session.channel_type):
+                self._bump_virtual_session(session, title_source or text)
 
     @staticmethod
     def _channel_id_for_session(session: SessionRow) -> str:
@@ -701,6 +728,8 @@ class Gateway:
         else:
             response_mode = normalize_channel_response_mode(config.get("response_mode"))
         processor = processor_for_response_mode(self._processor, response_mode)
+        if row.kind == "weixin" and response_mode == "stream":
+            processor = wrap_weixin_stream_processor(processor)
         manager = self._require_channel_manager()
         await manager.add_channel(
             row.kind,
@@ -715,6 +744,24 @@ class Gateway:
             if backend is not None:
                 registered.set_media_backend(backend)
         self._set_runtime_status(row.channel_id, connected=True)
+        if row.kind == "weixin" and registered is not None:
+            self._listen_for_weixin_context_token(registered, row)
+
+    def _listen_for_weixin_context_token(self, channel: Any, row: ChannelRow) -> None:
+        """Persist a refreshed iLink send token onto the matching WeChat session."""
+        listener = getattr(channel, "set_context_token_listener", None)
+        if listener is None:
+            return
+
+        def _persist(_account_id: str, user_id: str, token: str, token_ms: int) -> None:
+            self._repos.session_repo.remember_weixin_context_token(
+                agent_id=str(channel.tenant_id or row.agent_id),
+                subject_id=user_id,
+                token=token,
+                token_ms=token_ms,
+            )
+
+        listener(_persist)
 
     def _config_from_row(self, row: ChannelRow) -> dict[str, Any]:
         """Parse the stored JSON config; alias/normalize happens in ``Config.from_dict``."""

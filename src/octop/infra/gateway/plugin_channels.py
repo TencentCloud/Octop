@@ -8,12 +8,9 @@ rebuilt exactly like builtin ones.
 
 Design notes:
 
-- Idempotent: applying twice is a no-op (the gateway's
-  ``register_channel_kind`` keeps the first registration), so hosts can
-  replay after every plugin reload.
-- Plugin kinds never shadow builtin kinds; the gateway raises on clashes.
-- Registered kinds are exposed to the API layer as plain strings; the
-  dashboard receives them through the channel-catalogue endpoint.
+Registrations are owned by plugin ID. Reconciliation removes previous entries
+before applying the current registry. The host stops live plugin instances first.
+Only successfully applied registrations enter the API catalogue.
 """
 
 from __future__ import annotations
@@ -23,6 +20,8 @@ from dataclasses import dataclass
 from typing import Any
 
 logger = logging.getLogger(__name__)
+
+_APPLIED: dict[str, PluginChannelInfo] = {}
 
 
 @dataclass(frozen=True)
@@ -51,6 +50,7 @@ def apply_plugin_channels(
     *,
     registry: Any,
     register: Any | None = None,
+    unregister: Any | None = None,
 ) -> list[PluginChannelInfo]:
     """Apply every channel registration from loaded plugins to the gateway.
 
@@ -68,14 +68,32 @@ def apply_plugin_channels(
     if register is None:  # pragma: no cover - exercised via real gateway
         from octop_gateway.channels import register_channel_kind as register
 
+    if unregister is None:
+        try:
+            from octop_gateway.channels import unregister_channel_kind as unregister
+        except ImportError:
+            logger.warning(
+                "gateway does not support plugin channel lifecycle; upgrade gateway first"
+            )
+            return []
+
+    assert register is not None
+    assert unregister is not None
+    for old in list(_APPLIED.values()):
+        try:
+            unregister(old.kind, plugin_id=old.plugin_id)
+        except Exception:
+            logger.exception("failed to unregister plugin channel %s", old.kind)
+    _APPLIED.clear()
     applied: list[PluginChannelInfo] = []
     seen: set[str] = set()
-    for reg in registry.all_channels():
+    all_channels = getattr(registry, "all_channels", None)
+    for reg in all_channels() if callable(all_channels) else []:
         if reg.kind in seen:
             continue
         seen.add(reg.kind)
         try:
-            register(reg.kind, reg.channel_cls)
+            register(reg.kind, reg.channel_cls, plugin_id=reg.plugin_id)
         except Exception:
             logger.exception(
                 "plugin %s: failed to register channel kind %r; skipping",
@@ -93,6 +111,7 @@ def apply_plugin_channels(
                 plugin_id=reg.plugin_id,
             ),
         )
+    _APPLIED.update({info.kind: info for info in applied})
     applied.sort(key=lambda info: info.kind)
     if applied:
         logger.info(
@@ -122,7 +141,10 @@ def plugin_channel_kinds(
 
         registry = PluginRegistry()
 
-    return _summarize(registry.all_channels())
+    all_channels = getattr(registry, "all_channels", None)
+    if not callable(all_channels):
+        return []
+    return [info for info in _summarize(all_channels()) if _APPLIED.get(info.kind) == info]
 
 
 def _summarize(regs: list[Any]) -> list[PluginChannelInfo]:

@@ -1,5 +1,10 @@
 import { afterEach, describe, expect, it } from "vitest";
-import { getSnapshot, ingestHarnessChunk, removeSession } from "./chatStore";
+import {
+  getSnapshot,
+  ingestHarnessChunk,
+  removeSession,
+  setSessionTeamRoom,
+} from "./chatStore";
 
 const SESSION = "test-hitl-ask";
 
@@ -63,5 +68,40 @@ describe("ask_user_question HITL ingest", () => {
     expect(messages[0]?.hitlData?.pending_id).toBe("appr");
     expect(messages[0]?.hitlData?.action_requests?.[0]?.name).toBe("execute");
     expect(messages[1]?.hitlData?.pending_id).toBe("ask1");
+  });
+
+  it("keeps a second member approval as its own card", () => {
+    setSessionTeamRoom(SESSION, true);
+    ingestHarnessChunk(
+      SESSION,
+      {
+        type: "hitl_required",
+        agent_id: "doctor",
+        request: {
+          pending_id: "doc",
+          action_requests: [{ name: "execute", args: { command: "df" } }],
+        },
+      },
+      "host",
+    );
+    ingestHarnessChunk(
+      SESSION,
+      {
+        type: "hitl_required",
+        agent_id: "nurse",
+        request: {
+          pending_id: "nur",
+          action_requests: [{ name: "write_file", args: { path: "a.txt" } }],
+        },
+      },
+      "host",
+    );
+
+    const messages = getSnapshot(SESSION).messages;
+    expect(messages).toHaveLength(2);
+    expect(messages[0]?.speakerAgentId).toBe("doctor");
+    expect(messages[0]?.hitlData?.pending_id).toBe("doc");
+    expect(messages[1]?.speakerAgentId).toBe("nurse");
+    expect(messages[1]?.hitlData?.pending_id).toBe("nur");
   });
 });

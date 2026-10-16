@@ -88,8 +88,10 @@ import { useListPanelCollapsed } from "../../hooks/useListPanelCollapsed";
 import { useServerTimezone } from "../../hooks/useServerTimezone";
 import PageShell from "../../layouts/PageShell";
 import { apiErrorMessage, isNotFoundApiError } from "../../utils/apiError";
+import { saveBlobAsFile } from "../../utils/saveBlobAsFile";
 import { createDetailRequestGate } from "../../utils/detailRequestGate";
 import { getDocKind, type DocKind } from "../../utils/docKind";
+import { isImeComposing } from "../../utils/ime";
 import { formatBytes, formatSizeGb } from "../../utils/embeddingDownload";
 import { fileTreeIconSpec } from "../../utils/fileTreeIcon";
 import { formatServerDateTime } from "../../utils/formatMessageTime";
@@ -110,6 +112,10 @@ import {
   shouldOpenKnowledgeFolder,
 } from "./knowledgeFolder";
 import { resolveKnowledgeDeepLink } from "./knowledgeDeepLink";
+import {
+  isKnowledgeDocumentLimitReached,
+  knowledgeDocumentCap,
+} from "./knowledgeLimits";
 import {
   canDownloadKnowledgeOriginal,
   canPreviewKnowledgeDocument,
@@ -133,7 +139,7 @@ type DocsViewMode = "card" | "table";
 const DOCS_VIEW_STORAGE_KEY = "octop:knowledge-bases-docs-view";
 
 const BASE_DOCUMENT_TYPES =
-  ".md,.markdown,.txt,.rst,.html,.htm,.json,.jsonl,.yaml,.yml,.csv,.tsv,.pdf,.docx,.pptx,.xls,.xlsx,.xlsm";
+  ".md,.markdown,.txt,.rst,.html,.htm,.json,.jsonl,.yaml,.yml,.csv,.tsv,.pdf,.doc,.wps,.docx,.pptx,.xls,.xlsx,.xlsm";
 const OCR_DOCUMENT_TYPES = ".png,.jpg,.jpeg,.webp";
 
 function loadDocsViewMode(): DocsViewMode {
@@ -694,8 +700,14 @@ export default function KnowledgeBasesPage() {
     : 0;
   const atBaseLimit = ownedBaseCount >= limits.max_bases_per_owner;
   const fileCount = documents.filter((document) => !document.is_dir).length;
-  const isAtDocumentLimit =
-    fileCount >= (selected?.max_documents ?? limits.max_docs_per_kb);
+  const documentCap = knowledgeDocumentCap(
+    selected?.max_documents,
+    limits.max_docs_per_kb,
+  );
+  const isAtDocumentLimit = isKnowledgeDocumentLimitReached(
+    fileCount,
+    documentCap,
+  );
   const folderEntries = documents
     .filter((document) =>
       isDirectKnowledgeChild(document.path || document.filename, currentFolder),
@@ -1286,10 +1298,10 @@ export default function KnowledgeBasesPage() {
 
   const uploadDocuments = async (files: FileList | File[] | null) => {
     if (!selected || !files || !usable || isAtDocumentLimit) return;
-    const remaining = Math.max(
-      0,
-      (selected?.max_documents ?? limits.max_docs_per_kb) - fileCount,
-    );
+    const remaining =
+      documentCap === null
+        ? Number.POSITIVE_INFINITY
+        : Math.max(0, documentCap - fileCount);
     const incoming = Array.from(files);
     const matched = incoming.filter((file) =>
       fileMatchesAccept(file, supportedDocumentTypes),
@@ -1302,10 +1314,10 @@ export default function KnowledgeBasesPage() {
     }
     const chosen = matched.slice(0, remaining);
     if (chosen.length === 0) return;
-    if (matched.length > remaining) {
+    if (documentCap !== null && matched.length > remaining) {
       message.warning(
         t("knowledgeBases.documentLimitReached", {
-          count: selected?.max_documents ?? limits.max_docs_per_kb,
+          count: documentCap,
         }),
       );
     }
@@ -1550,12 +1562,7 @@ export default function KnowledgeBasesPage() {
         documentId,
         "attachment",
       );
-      const url = URL.createObjectURL(blob);
-      const a = window.document.createElement("a");
-      a.href = url;
-      a.download = filename || "download";
-      a.click();
-      URL.revokeObjectURL(url);
+      await saveBlobAsFile(blob, filename || "download");
     } catch (error) {
       message.error(
         apiErrorMessage(error, t("knowledgeBases.downloadOriginalFailed"), t),
@@ -2204,11 +2211,14 @@ export default function KnowledgeBasesPage() {
                       className={`${skillStyles.gridToolbar} ${styles.docsToolbar}`}
                     >
                       <span className={skillStyles.gridCount}>
-                        {t("knowledgeBases.documentLimit", {
-                          count: fileCount,
-                          max:
-                            selected?.max_documents ?? limits.max_docs_per_kb,
-                        })}
+                        {documentCap === null
+                          ? t("knowledgeBases.documentCount", {
+                              count: fileCount,
+                            })
+                          : t("knowledgeBases.documentLimit", {
+                              count: fileCount,
+                              max: documentCap,
+                            })}
                       </span>
                       <div className={skillStyles.gridToolbarRight}>
                         <Segmented
@@ -2367,8 +2377,7 @@ export default function KnowledgeBasesPage() {
                         type="info"
                         showIcon
                         message={t("knowledgeBases.documentLimitReached", {
-                          count:
-                            selected?.max_documents ?? limits.max_docs_per_kb,
+                          count: documentCap ?? limits.max_docs_per_kb,
                         })}
                       />
                     ) : null}
@@ -2799,8 +2808,11 @@ export default function KnowledgeBasesPage() {
                       setMdFindQuery(event.target.value);
                       setMdFindIndex(0);
                     }}
-                    onPressEnter={() => jumpMdFind(1)}
+                    onPressEnter={(event) => {
+                      if (!isImeComposing(event)) jumpMdFind(1);
+                    }}
                     onKeyDown={(event) => {
+                      if (isImeComposing(event)) return;
                       if (event.key === "Escape") {
                         event.stopPropagation();
                         setMdFindOpen(false);
@@ -2949,7 +2961,9 @@ export default function KnowledgeBasesPage() {
           value={folderName}
           onChange={(event) => setFolderName(event.target.value)}
           placeholder={t("knowledgeBases.folderNamePlaceholder")}
-          onPressEnter={() => void createFolder()}
+          onPressEnter={(event) => {
+            if (!isImeComposing(event)) void createFolder();
+          }}
         />
       </Modal>
 
@@ -2966,7 +2980,9 @@ export default function KnowledgeBasesPage() {
           value={renameName}
           onChange={(event) => setRenameName(event.target.value)}
           placeholder={t("knowledgeBases.folderNamePlaceholder")}
-          onPressEnter={() => void renameFolder()}
+          onPressEnter={(event) => {
+            if (!isImeComposing(event)) void renameFolder();
+          }}
         />
       </Modal>
 

@@ -401,6 +401,12 @@ export const CHANNEL_FIELDS: Partial<Record<ChannelKey, ChannelField[]>> = {
   telegram: [
     { name: "bot_token", label: "Bot Token", type: "password", required: true },
     {
+      name: "allowed_user_ids",
+      label: "channels.telegramAllowedUsers",
+      type: "textarea",
+      helpKey: "channels.telegramAllowedUsersHelp",
+    },
+    {
       name: "http_proxy",
       label: "HTTP Proxy",
       placeholder: "http://127.0.0.1:18118",
@@ -503,6 +509,22 @@ export interface PluginChannelKindInfo {
 /** Kinds registered at runtime through ``registerPluginChannelKind``. */
 const PLUGIN_CHANNEL_KINDS: string[] = [];
 
+export function replacePluginChannelKinds(
+  infos: PluginChannelKindInfo[],
+): void {
+  for (const kind of PLUGIN_CHANNEL_KINDS) {
+    const key = kind as ChannelKey;
+    const index = CHANNEL_KEYS.indexOf(key);
+    if (index >= 0) CHANNEL_KEYS.splice(index, 1);
+    delete (CHANNEL_LABELS as Partial<Record<string, string>>)[kind];
+    delete (CHANNEL_ICONS as Partial<Record<string, string>>)[kind];
+    delete (CHANNEL_URLS as Partial<Record<string, string>>)[kind];
+    delete (CHANNEL_FIELDS as Partial<Record<string, ChannelField[]>>)[kind];
+  }
+  PLUGIN_CHANNEL_KINDS.length = 0;
+  for (const info of infos) registerPluginChannelKind(info);
+}
+
 /** True once ``registerPluginChannelKind`` has accepted this kind. */
 export function isPluginChannelKind(key: string): boolean {
   return PLUGIN_CHANNEL_KINDS.includes(key);
@@ -513,8 +535,8 @@ export function isPluginChannelKind(key: string): boolean {
  *
  * Builtin constants stay compile-time; plugin kinds join the same lookup
  * tables so ChannelCard / ChannelDrawer need no per-kind code. Idempotent
- * (first registration wins, mirroring the gateway's
- * ``register_channel_kind``), and builtin kinds are never shadowed.
+ * within one catalogue snapshot; builtin kinds are never shadowed.
+ * Use replacePluginChannelKinds to apply a refreshed snapshot.
  * Returns true when the kind was added.
  */
 export function registerPluginChannelKind(

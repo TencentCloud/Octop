@@ -35,20 +35,15 @@ router = APIRouter()
 
 def _validate_channel_kind(value: str) -> str:
     """Accept builtin kinds plus plugin-registered kinds (case-normalized)."""
-    from octop_harness.plugins.registry import PluginRegistry  # noqa: PLC0415
-
     normalized = str(value).strip().lower()
     try:
         ChannelKind(normalized)
         return normalized
     except ValueError:
         pass
-    # Older octop-harness releases lack all_channels(); treat as "no plugin
-    # kinds" instead of crashing the request.
-    all_channels = getattr(PluginRegistry(), "all_channels", None)
-    if callable(all_channels) and any(
-        reg.kind == normalized for reg in all_channels()
-    ):
+    from octop.infra.gateway.plugin_channels import plugin_channel_kinds
+
+    if any(info.kind == normalized for info in plugin_channel_kinds()):
         return normalized
     raise ValueError(
         f"unknown channel kind {value!r}; "
