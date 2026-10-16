@@ -11,6 +11,11 @@
 
 import { request } from "../request";
 
+export interface StrongMemoryFile {
+  content: string;
+  exists: boolean;
+}
+
 // ---------------------------------------------------------------------------
 // Wire types
 // ---------------------------------------------------------------------------
@@ -533,6 +538,20 @@ export const memoryDashboardApi = {
       method: "POST",
       body: JSON.stringify({ confirmed: true }),
     }),
+
+  getStrongMemory: (agentId: string) =>
+    request<StrongMemoryFile>(
+      `/agents/${encodeURIComponent(agentId)}/memory/strong`,
+    ),
+
+  putStrongMemory: (agentId: string, content: string) =>
+    request<StrongMemoryFile>(
+      `/agents/${encodeURIComponent(agentId)}/memory/strong`,
+      {
+        method: "PUT",
+        body: JSON.stringify({ content }),
+      },
+    ),
 
   // listings
   listAtoms: (aid: string, body?: ListAtomsBody) =>

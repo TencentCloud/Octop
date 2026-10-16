@@ -6,6 +6,7 @@ row:
 
   GET  /api/agents/{aid}/heartbeat-config
   PUT  /api/agents/{aid}/heartbeat-config
+  GET/PUT /api/agents/{aid}/memory/strong
   GET  /api/agents/{aid}/memory/daily
   GET  /api/agents/{aid}/memory/daily/{filename}
   DELETE /api/agents/{aid}/memory/daily/{filename}
@@ -23,11 +24,10 @@ delete falls back to the filesystem path because
 filesystem-rooted (S3 etc.) delete will raise — that's acceptable for
 the v1 dashboard which only ever runs against ``local_shell``.
 
-The ``HEARTBEAT.md`` and ``MEMORY.md`` text files themselves are NOT
-served here — the dashboard reuses the existing
-``GET/PUT /api/agents/{aid}/workspace/file?path=…`` endpoints from
-``routers/workspace.py`` so we don't grow a second copy of the same
-read/write logic.
+``MEMORY.md`` is exposed as user-maintained strong memory through the
+owner-only ``memory/strong`` endpoints, including while the agent is stopped.
+The full file is loaded into subsequent chat context. ``HEARTBEAT.md`` uses
+the general workspace file endpoints.
 """
 
 from __future__ import annotations
@@ -38,17 +38,68 @@ import re
 from typing import Any
 
 from fastapi import APIRouter, Depends, Response
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from octop.api.common.agent import require_agent_owner_row
 from octop.api.common.agent_workspace import resolve_agent_workspace_dir
-from octop.api.common.workspace import require_running_workspace
+from octop.api.common.workspace import require_agent_workspace, require_running_workspace
 from octop.api.deps import current_user, get_server
 from octop.infra.errors import ErrorCode, OctopError
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
+
+
+class StrongMemoryBody(BaseModel):
+    content: str = Field(
+        description="Complete user-maintained MEMORY.md content; an empty string clears it."
+    )
+
+
+class StrongMemoryFile(StrongMemoryBody):
+    exists: bool = Field(description="Whether MEMORY.md exists in this agent's workspace.")
+
+
+@router.get(
+    "/agents/{agent_id}/memory/strong",
+    response_model=StrongMemoryFile,
+    summary="Read strong memory",
+    description="Read the full user-maintained MEMORY.md that is included in every chat context. Available to the owner even when the agent is stopped.",
+)
+async def get_strong_memory(
+    agent_id: str,
+    as_user: int | None = None,
+    user: Any = Depends(current_user),
+    server: Any = Depends(get_server),
+) -> StrongMemoryFile:
+    ws = await require_agent_workspace(
+        agent_id, user=user, as_user=as_user, server=server, owner_only=True
+    )
+    data = await ws.adownload_bytes("MEMORY.md")
+    return StrongMemoryFile(
+        content=data.decode("utf-8") if data is not None else "", exists=data is not None
+    )
+
+
+@router.put(
+    "/agents/{agent_id}/memory/strong",
+    response_model=StrongMemoryFile,
+    summary="Save strong memory",
+    description="Replace the owner's MEMORY.md with the supplied text. The full content is loaded for the next chat turn; ordinary remember requests are saved separately to octop-memory.",
+)
+async def put_strong_memory(
+    agent_id: str,
+    body: StrongMemoryBody,
+    as_user: int | None = None,
+    user: Any = Depends(current_user),
+    server: Any = Depends(get_server),
+) -> StrongMemoryFile:
+    ws = await require_agent_workspace(
+        agent_id, user=user, as_user=as_user, server=server, owner_only=True
+    )
+    await ws.awrite_text("MEMORY.md", body.content, force=True)
+    return StrongMemoryFile(content=body.content, exists=True)
 
 
 # --- shared agent resolution -----------------------------------------------

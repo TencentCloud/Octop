@@ -18,6 +18,47 @@ from octop.infra.gateway.ws import WS_CHANNEL_ID
 from octop.infra.history.projection import _wire_text
 
 
+@pytest.mark.asyncio
+@pytest.mark.parametrize("entry", ["dashboard", "im"])
+async def test_auth_exception_is_displayed_as_failure_and_kept_out_of_checkpoint_messages(
+    entry: str,
+) -> None:
+    import httpx
+    from openai import AuthenticationError
+
+    from octop.i18n.domains.stream import AUTH, stream_error_message
+
+    error = AuthenticationError(
+        "opaque rejection",
+        response=httpx.Response(
+            401, request=httpx.Request("POST", "https://provider.example/v1/chat/completions")
+        ),
+        body={},
+    )
+
+    async def stream(*_args: object, **_kwargs: object) -> AsyncIterator[dict[str, Any]]:
+        raise error
+        yield  # pragma: no cover - defines the streaming protocol
+
+    processor, msg, appended = _processor_with_stream(stream)
+    processor._thread_registry.get_or_create_by_key = AsyncMock(return_value="thread-1")
+    processor._agent_manager.get_thread_model.return_value = None
+    processor._user_repo.get.return_value = MagicMock(locale="zh")
+    if entry == "dashboard":
+        frames = [frame async for frame in processor.iter_turn_chunks(msg)]
+        failures = [frame["message"] for frame in frames if frame.get("type") == "error"]
+        assert frames[-1]["type"] == "done"
+    else:
+        msg.channel_id = "feishu-test"
+        msg.channel_type = "feishu"
+        events = [event async for event in processor(msg)]
+        failures = [event.error for event in events if event.type == "error"]
+        assert events[-1].type == "completed"
+    assert failures == [stream_error_message(AUTH, "zh")]
+    processor._agent_manager.append_thread_messages.assert_not_called()
+    assert appended  # The product archive retains the failed turn for display.
+
+
 def test_stream_error_preserves_resource_error_code() -> None:
     error = OctopError(
         ErrorCode.TOKEN_QUOTA_EXCEEDED,

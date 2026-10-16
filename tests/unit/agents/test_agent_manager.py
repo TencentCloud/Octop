@@ -1504,8 +1504,10 @@ async def test_model_retry_exhaustion_fails_background_job(
     cfg = manager._build_harness_config(_row())
     retries = [m for m in cfg.middleware or [] if isinstance(m, ModelRetryMiddleware)]
     assert len(retries) == 1
-    assert not cfg.model_retry_enabled  # Do not nest the harness's continue-on-error retry.
+    assert not cfg.model_retry_enabled  # The host installs exactly one retry middleware.
     retry = retries[0]
+    assert retry.on_failure == "error"
+    assert retry.retry_on is ModelRetryMiddleware().retry_on
     assert retry.max_retries == cfg.model_retry_max_retries
     assert retry.initial_delay == cfg.model_retry_initial_delay
     assert retry.max_delay == cfg.model_retry_max_delay
@@ -1522,11 +1524,9 @@ async def test_model_retry_exhaustion_fails_background_job(
         response = await retry.awrap_model_call(None, fail)
         return {"messages": response.result}
 
-    # Exhausted retries become a model-visible prompt, not a raised exception.
-    response = await retry.awrap_model_call(None, fail)
-    text = str(response.result[0].content)
-    assert "provider unavailable" in text
-    assert "[model_call_failed]" in text
+    with pytest.raises(failure_type) as caught:
+        await retry.awrap_model_call(None, fail)
+    assert caught.value is failure
     assert attempts == cfg.model_retry_max_retries + 1
     attempts = 0
 
@@ -1546,15 +1546,6 @@ async def test_model_retry_exhaustion_fails_background_job(
     )
     await inbox._process(msg)
     assert attempts == cfg.model_retry_max_retries + 1
-    try:
-        from octop_harness.messages import is_model_retry_failure_text
-    except ImportError:
-        is_model_retry_failure_text = None  # type: ignore[assignment]
-    if is_model_retry_failure_text is None:
-        # Published harness still treats a continue-on-error AIMessage as success.
-        assert msg.status == "done"
-        return
-    assert is_model_retry_failure_text(text)
     assert msg.status == "failed"
     event = processor.on_reply.call_args.args[0]
     assert event.status == "failed"
@@ -1572,14 +1563,38 @@ def test_model_retry_sync_failure_and_recovery(manager: AgentManager) -> None:
     retry.initial_delay = 0
     failure = TypeError("model failed")
     handler = MagicMock(side_effect=failure)
-    exhausted = retry.wrap_model_call(None, handler)
-    assert "model failed" in str(exhausted.result[0].content)
-    assert "[model_call_failed]" in str(exhausted.result[0].content)
+    with pytest.raises(TypeError) as caught:
+        retry.wrap_model_call(None, handler)
+    assert caught.value is failure
     assert handler.call_count == cfg.model_retry_max_retries + 1
     response = ModelResponse(result=[AIMessage(content="recovered")])
     handler = MagicMock(side_effect=[failure, response])
     assert retry.wrap_model_call(None, handler) is response
     assert handler.call_count == 2
+
+
+@pytest.mark.parametrize("status", [400, 401, 403, 422])
+def test_host_model_sdk_errors_keep_original_retry_budget(
+    manager: AgentManager, status: int
+) -> None:
+    from langchain.agents.middleware import ModelRetryMiddleware
+    from openai import APIStatusError
+
+    cfg = manager._build_harness_config(_row())
+    retry = next(m for m in cfg.middleware or [] if isinstance(m, ModelRetryMiddleware))
+    retry.initial_delay = 0
+    error = APIStatusError(
+        "opaque rejection",
+        response=httpx.Response(
+            status, request=httpx.Request("POST", "https://provider.example/v1/messages")
+        ),
+        body={},
+    )
+    handler = MagicMock(side_effect=error)
+    with pytest.raises(APIStatusError) as caught:
+        retry.wrap_model_call(None, handler)
+    assert caught.value is error
+    assert handler.call_count == cfg.model_retry_max_retries + 1
 
 
 def test_build_harness_config_auto_expert_falls_back_to_first_model(

@@ -603,6 +603,7 @@
     "desktop_screenshot": "桌面截图",
     "memory_search": "检索记忆",
     "memory_get": "读取记忆",
+    "memory_save": "保存记忆",
     "tavily_search": "Tavily 联网搜索",
     "brave_search": "Brave 联网搜索",
     "google_search": "Google 联网搜索",

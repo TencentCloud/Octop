@@ -1781,6 +1781,7 @@
     "desktop_screenshot": "桌面截图",
     "memory_search": "检索记忆",
     "memory_get": "读取记忆",
+    "memory_save": "保存记忆",
     "tavily_search": "Tavily 联网搜索",
     "brave_search": "Brave 联网搜索",
     "google_search": "Google 联网搜索",
@@ -4055,6 +4056,7 @@
     "noAgentSelected": "请先在顶部选择一个 Octop",
     "tabs": {
       "overview": "概览",
+      "strong": "强记忆",
       "profile": "用户画像",
       "library": "记忆树",
       "episodes": "情绪日记",
@@ -4062,6 +4064,16 @@
       "journal": "整理记录",
       "proactive": "主动关心",
       "settings": "设置"
+    },
+    "strong": {
+      "contextNotice": "每次聊天都会将这里的全部内容加入上下文。",
+      "description": "强记忆由你手动维护，适合填写始终需要参考的重要背景和约定。普通记忆按需召回，每次将相关记忆加入上下文。对 Agent 说“记住”会保存到普通记忆，不会改动这里。",
+      "contentLabel": "强记忆内容",
+      "placeholder": "在这里填写每次聊天都需要参考的内容，支持 Markdown。",
+      "discard": "撤销修改",
+      "saved": "强记忆已保存，将从下一轮聊天开始使用。",
+      "loadFailed": "加载强记忆失败，请重试。",
+      "saveFailed": "保存失败，修改内容已保留，请重试。"
     },
     "library": {
       "viewTree": "主题视图",

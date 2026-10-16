@@ -603,6 +603,7 @@
     "desktop_screenshot": "Desktop screenshot",
     "memory_search": "Search memory",
     "memory_get": "Read memory",
+    "memory_save": "Save memory",
     "tavily_search": "Tavily web search",
     "brave_search": "Brave web search",
     "google_search": "Google web search",

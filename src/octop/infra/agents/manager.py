@@ -104,8 +104,8 @@ def _model_retry_on_failure(
     agent_id: str = "",
     manager: AgentManager | None = None,
 ) -> str:
-    # Feed a specific, model-visible prompt instead of raising. Inbox jobs still
-    # mark failed when the reply carries MODEL_RETRY_FAILURE_MARK.
+    # Legacy formatter for callers that explicitly request a recovery prompt.
+    # Active agents use on_failure="error"; their entry points log the exception.
     from octop.i18n.domains.stream import exception_display_message, model_retry_failure_prompt
     from octop.infra.agents.security.hitl_session import current_hitl_thread_id
     from octop.infra.metrics import METRICS
@@ -3894,11 +3894,6 @@ class AgentManager:
         if applied.model_retry_enabled:
             from langchain.agents.middleware import ModelRetryMiddleware
 
-            bound_agent_id = row.agent_id
-
-            def _on_model_retry_failure(exc: Exception) -> str:
-                return _model_retry_on_failure(exc, agent_id=bound_agent_id, manager=self)
-
             applied = replace(
                 applied,
                 model_retry_enabled=False,
@@ -3907,7 +3902,7 @@ class AgentManager:
                         max_retries=applied.model_retry_max_retries,
                         initial_delay=applied.model_retry_initial_delay,
                         max_delay=applied.model_retry_max_delay,
-                        on_failure=_on_model_retry_failure,
+                        on_failure="error",
                     ),
                     *(applied.middleware or []),
                 ],

@@ -156,6 +156,14 @@ destination synchronized after the request completes.
 | `POST /agents/{id}/chat/polish` | owner | body `{text, default_model?}` → `{text}` (one-shot prompt refinement) |
 | `POST /agents/{id}/chat/hitl/resume` | owner | body `{thread_id, decisions: [...], hitl_policy?}` → SSE chunk stream; finishes with `{"type":"done"}`. When the resume stops on another approval, the done frame is `{"type":"done","hitl_paused":true}` and parked steers stay queued. Optional `hitl_policy` (`ask` / `allow_all` / `allow_tools`) is a thread-scoped bypass and does not change global tool-approval settings. |
 
+Model calls retain LangChain's default retry eligibility and the configured
+retry budget/backoff. Exhausted calls raise and remain failed
+checkpoint tasks, without a synthetic assistant reply. WebUI, IM and team tasks
+display the failure separately. Team rooms publish an `error` frame followed by
+`done`; stored error bubbles carry `additional_kwargs.octop_stream_error` for
+history display. These diagnostics and automatic team failure notifications do
+not become long-term memory.
+
 ### Legacy SSE
 
 The previous `POST /agents/{id}/chat/stream` is gone. The dashboard
@@ -363,6 +371,7 @@ Bundled experts live in `src/octop/infra/agents/experts/library/`
 | `GET`    | `/agents/{aid}/heartbeat-config` | owner | read heartbeat YAML |
 | `PUT`    | `/agents/{aid}/heartbeat-config` | owner | write heartbeat YAML |
 | `GET`    | `/agents/{aid}/memory/daily` | owner | list daily memory files |
+| `GET`/`PUT` | `/agents/{aid}/memory/strong` | owner | read/edit user-maintained MEMORY.md; full content enters chat context, including for stopped agents |
 | `GET`    | `/agents/{aid}/memory/daily/{filename}` | owner | read one daily memory |
 | `DELETE` | `/agents/{aid}/memory/daily/{filename}` | owner | delete one daily memory |
 | `GET`/`POST` | `/memory/...` | user | memory API (dashboard memory tab) |

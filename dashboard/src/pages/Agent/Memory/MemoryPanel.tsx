@@ -13,6 +13,7 @@ import {
   LayoutDashboard,
   MessageSquare,
   Network,
+  Pin,
   ScrollText,
   Settings,
   User,
@@ -31,12 +32,14 @@ import CandidatesReview from "./CandidatesReview";
 import MemoryTree from "./MemoryTree";
 import ProactiveConfig from "./ProactiveConfig";
 import MemorySettings from "./MemorySettings";
+import StrongMemory from "./StrongMemory";
 
 import memoryDashboardApi from "../../../api/modules/memoryDashboard";
 import styles from "./index.module.less";
 
 type MemoryTab =
   | "overview"
+  | "strong"
   | "profile"
   | "library"
   | "episodes"
@@ -74,6 +77,12 @@ const TABS: TabDef[] = [
     labelKey: "memory.tabs.library",
     fallback: "记忆树",
     icon: Network,
+  },
+  {
+    key: "strong",
+    labelKey: "memory.tabs.strong",
+    fallback: "强记忆",
+    icon: Pin,
   },
   {
     key: "episodes",
@@ -230,6 +239,9 @@ export default function MemoryPanel({
               onOpenSettings={() => setActiveTab("settings")}
             />
           );
+          break;
+        case "strong":
+          children = <StrongMemory key={agentId} agentId={agentId} />;
           break;
         case "profile":
           children = (

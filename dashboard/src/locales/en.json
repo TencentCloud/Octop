@@ -1781,6 +1781,7 @@
     "desktop_screenshot": "Desktop screenshot",
     "memory_search": "Search memory",
     "memory_get": "Read memory",
+    "memory_save": "Save memory",
     "tavily_search": "Tavily web search",
     "brave_search": "Brave web search",
     "google_search": "Google web search",
@@ -4055,6 +4056,7 @@
     "noAgentSelected": "Pick an agent in the top switcher first",
     "tabs": {
       "overview": "Overview",
+      "strong": "Strong memory",
       "profile": "Profile",
       "library": "Memory tree",
       "episodes": "Emotional journal",
@@ -4062,6 +4064,16 @@
       "journal": "Activity",
       "proactive": "Proactive care",
       "settings": "Settings"
+    },
+    "strong": {
+      "contextNotice": "The full content here is included in every chat context.",
+      "description": "Maintain strong memory manually for important background and agreements that should always be available. Regular memory is recalled as needed, adding relevant memories to the context each time. Asking the agent to remember something saves it to regular memory and leaves this document unchanged.",
+      "contentLabel": "Strong memory content",
+      "placeholder": "Enter content to reference in every chat. Markdown is supported.",
+      "discard": "Discard changes",
+      "saved": "Strong memory saved. It will be used from the next chat turn.",
+      "loadFailed": "Could not load strong memory. Please retry.",
+      "saveFailed": "Could not save. Your changes have been kept; please retry."
     },
     "vs": {
       "title": "Semantic Search",
