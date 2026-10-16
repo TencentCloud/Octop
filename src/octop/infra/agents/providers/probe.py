@@ -12,6 +12,11 @@ from typing import Any
 import httpx
 
 from octop.infra.agents.providers import KIND_TO_PROTOCOL
+from octop.infra.agents.providers.codex_catalog import (
+    codex_catalog_params,
+    is_codex_endpoint,
+    normalize_codex_catalog,
+)
 from octop.infra.agents.providers.opencode_session import ensure_opencode_session_header
 
 logger = logging.getLogger(__name__)
@@ -38,10 +43,6 @@ def provider_headers(row: Any) -> dict[str, str]:
     return dict(headers) if isinstance(headers, dict) else {}
 
 
-def _is_codex_base_url(base_url: str | None) -> bool:
-    return bool(base_url and "chatgpt.com/backend-api/codex" in base_url)
-
-
 def build_probe_chat_model(row: Any, *, model_id: str | None = None) -> Any:
     """Construct a chat model from a provider row for probing."""
     from octop_harness.config import ModelConfig, ProviderConfig
@@ -55,19 +56,6 @@ def build_probe_chat_model(row: Any, *, model_id: str | None = None) -> Any:
     entry = next((m for m in models if m.get("id") == mid), None)
     display_name = (entry or {}).get("name") or mid
     model = ModelConfig(id=mid, name=display_name)
-
-    if _is_codex_base_url(base_url):
-        from langchain_openai import ChatOpenAI
-
-        kwargs: dict[str, Any] = {
-            "model": model.id,
-            "base_url": base_url,
-            "api_key": row.api_key or "",
-            "use_responses_api": True,
-        }
-        if headers:
-            kwargs["default_headers"] = dict(headers)
-        return ChatOpenAI(**kwargs)
 
     from octop.infra.agents.providers.store import resolve_provider_stream_usage
 
@@ -290,7 +278,8 @@ async def fetch_openai_compatible_models(
         headers.update(extra_headers)
     try:
         async with httpx.AsyncClient(timeout=_FETCH_MODELS_TIMEOUT_S) as client:
-            response = await client.get(url, headers=headers)
+            params = codex_catalog_params() if is_codex_endpoint(base_url) else None
+            response = await client.get(url, headers=headers, params=params)
     except Exception as exc:
         logger.info(
             "provider fetch-models failed for %s: %r (%s)",
@@ -316,6 +305,12 @@ async def fetch_openai_compatible_models(
             "ok": False,
             "error": "response is not valid JSON (expected OpenAI-compatible /models)",
         }
+
+    if is_codex_endpoint(base_url):
+        try:
+            return {"ok": True, "models": normalize_codex_catalog(payload, locale=locale)}
+        except ValueError as exc:
+            return {"ok": False, "error": str(exc)}
 
     data = payload.get("data") if isinstance(payload, dict) else None
     if not isinstance(data, list):

@@ -417,7 +417,9 @@ async def _run_codex_device_poll(
                 continue
             code, verifier = result
             cred = await asyncio.to_thread(exchange_device_code, code, verifier)
-            pid = apply_codex_credentials(server.services, server.services.paths, cred)
+            pid = await asyncio.to_thread(
+                apply_codex_credentials, server.services, server.services.paths, cred
+            )
             if server.app_runtime is not None:
                 await server.app_runtime.agent_registry.on_provider_changed(
                     provider_name=CODEX_PROVIDER_NAME,

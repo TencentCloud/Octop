@@ -1,4 +1,8 @@
 {
+  "codex_catalog": {
+    "invalid_response": "Invalid Codex model list: expected models with non-empty slug fields.",
+    "empty": "Codex returned no selectable models for this account. Existing settings were kept."
+  },
   "slash": {
     "error": {
       "unknown_command": "Unknown command: /{name}. Type /help for available commands."

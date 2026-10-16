@@ -1,4 +1,8 @@
 {
+  "codex_catalog": {
+    "invalid_response": "Codex 模型列表格式无效：应包含带非空 slug 字段的 models 列表。",
+    "empty": "Codex 未返回此账号可选择的模型，已保留现有设置。"
+  },
   "slash": {
     "error": {
       "unknown_command": "未知指令：/{name}。输入 /help 查看可用指令。"

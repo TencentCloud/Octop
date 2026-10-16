@@ -372,6 +372,13 @@ func main() {
 		BackgroundColour:     application.NewRGB(247, 248, 250),
 	})
 	api.window = win
+	// A fast health check can finish while WebView2 is still initializing.
+	// Start only after this window's runtime is ready, and never restart the
+	// backend when dashboard navigation emits another ready event.
+	var bootOnce sync.Once
+	win.OnWindowEvent(events.Common.WindowRuntimeReady, func(_ *application.WindowEvent) {
+		bootOnce.Do(func() { go api.boot() })
+	})
 	app.Event.On("desktop:toggle-maximise", func(_ *application.CustomEvent) {
 		win.ToggleMaximise()
 	})
@@ -446,9 +453,6 @@ func main() {
 	if err := api.sleep.set(store.get().PreventSleep); err != nil {
 		log.Printf("enable sleep prevention: %v", err)
 	}
-
-	api.scheduleDragOverlay()
-	go api.boot()
 
 	if err := app.Run(); err != nil {
 		log.Fatal(err)
