@@ -32,6 +32,7 @@
 - COS 下载的 ONNX 模型可完全离线加载，不再查询 Hugging Face API
 - Docker 使用 PostgreSQL 等外部数据库时，容器重启不再重复执行初始化导致 `UniqueViolation` 崩溃：`octop init` 成功后写入数据卷初始化标记（`~/.octop/.initialized`），重启直接启动；`octop init` 对已有管理员改为幂等跳过（#1866）
 - 更新提示仅对拥有「应用更新」权限的用户显示：非管理员不再看到 PWA「新版本已就绪」横幅，且关闭后同一标签页会话内不再重复弹出
+- MCP 端点不再回复 notification 消息：`notifications/cancelled`、`notifications/roots/list_changed` 等此前会收到 `id: null` 的 `-32601` 错误，HTTP 也返回 200 而非协议要求的 202（`/api/mcp/agents` 与内部连接器 MCP 端点）
 
 ## [1.0.2b8] - 2026-10-14
 
