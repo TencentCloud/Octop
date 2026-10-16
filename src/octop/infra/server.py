@@ -581,11 +581,27 @@ class OctopServer:
         asyncio.create_task(_resume_bridges(), name="bridge-auto-resume")
 
     async def refresh_plugin_channels(self) -> None:
-        """Reconcile plugin factories and their live channel instances."""
+        """Reconcile only changed kinds and report registration failures to callers."""
+        from octop.infra.errors import ErrorCode, OctopError
+        from octop.infra.gateway.plugin_channels import (
+            changed_plugin_channel_kinds,
+            registration_errors,
+        )
+
+        changed = changed_plugin_channel_kinds(PluginRegistry())
         if self.app_runtime is not None:
-            await self.app_runtime.gateway.reload_plugin_channels(self._apply_plugin_channels)
+            await self.app_runtime.gateway.reload_plugin_channels(
+                self._apply_plugin_channels, kinds=changed
+            )
         else:
             self._apply_plugin_channels()
+        errors = registration_errors()
+        if errors:
+            raise OctopError(
+                ErrorCode.PLUGIN_INSTALL_FAILED,
+                "plugin channel registration failed",
+                details={"registration_errors": errors},
+            )
 
     def _apply_plugin_channels(self) -> None:
         """Register plugin-contributed channel kinds with the gateway.

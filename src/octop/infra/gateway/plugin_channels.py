@@ -22,6 +22,24 @@ from typing import Any
 logger = logging.getLogger(__name__)
 
 _APPLIED: dict[str, PluginChannelInfo] = {}
+_CLASSES: dict[str, tuple[str, Any]] = {}
+_ERRORS: dict[str, str] = {}
+
+
+def registration_errors() -> dict[str, str]:
+    return dict(_ERRORS)
+
+
+def changed_plugin_channel_kinds(registry: Any) -> set[str]:
+    all_channels = getattr(registry, "all_channels", None)
+    desired = (
+        {reg.kind: (reg.plugin_id, reg.channel_cls) for reg in all_channels()}
+        if callable(all_channels)
+        else {}
+    )
+    return {
+        kind for kind in _CLASSES.keys() | desired.keys() if _CLASSES.get(kind) != desired.get(kind)
+    }
 
 
 @dataclass(frozen=True)
@@ -79,12 +97,18 @@ def apply_plugin_channels(
 
     assert register is not None
     assert unregister is not None
-    for old in list(_APPLIED.values()):
-        try:
-            unregister(old.kind, plugin_id=old.plugin_id)
-        except Exception:
-            logger.exception("failed to unregister plugin channel %s", old.kind)
-    _APPLIED.clear()
+    changed = changed_plugin_channel_kinds(registry)
+    _ERRORS.clear()
+    for kind in changed:
+        old = _APPLIED.get(kind)
+        if old is not None:
+            try:
+                unregister(kind, plugin_id=old.plugin_id)
+            except Exception as exc:
+                _ERRORS[old.plugin_id] = f"channel {kind}: {exc}"
+                continue
+        _APPLIED.pop(kind, None)
+        _CLASSES.pop(kind, None)
     applied: list[PluginChannelInfo] = []
     seen: set[str] = set()
     all_channels = getattr(registry, "all_channels", None)
@@ -92,9 +116,14 @@ def apply_plugin_channels(
         if reg.kind in seen:
             continue
         seen.add(reg.kind)
+        if reg.plugin_id in _ERRORS:
+            continue
         try:
-            register(reg.kind, reg.channel_cls, plugin_id=reg.plugin_id)
-        except Exception:
+            if reg.kind in changed or reg.kind not in _APPLIED:
+                register(reg.kind, reg.channel_cls, plugin_id=reg.plugin_id)
+            _CLASSES[reg.kind] = (reg.plugin_id, reg.channel_cls)
+        except Exception as exc:
+            _ERRORS[reg.plugin_id] = f"channel {reg.kind}: {exc}"
             logger.exception(
                 "plugin %s: failed to register channel kind %r; skipping",
                 reg.plugin_id,

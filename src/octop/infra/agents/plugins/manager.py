@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 import logging
 import re
@@ -40,6 +41,21 @@ _GITHUB_BLOB_RE = re.compile(
     r"(?P<ref>[^/]+)/(?P<path>.+)$",
     re.IGNORECASE,
 )
+
+
+_CHANNEL_FINGERPRINTS: dict[str, str] = {}
+
+
+def _channel_fingerprint(directory: Path) -> str:
+    digest = hashlib.sha256()
+    for path in sorted(directory.rglob("*")):
+        if not path.is_file() or any(
+            part in {"__pycache__", ".git"} for part in path.relative_to(directory).parts
+        ):
+            continue
+        digest.update(str(path.relative_to(directory)).encode())
+        digest.update(path.read_bytes())
+    return digest.hexdigest()
 
 
 def normalize_plugin_download_url(url: str) -> str:
@@ -394,6 +410,7 @@ class PluginManager:
 
     def load_installed(self, *, install_deps: bool = True) -> list[LoadedPlugin]:
         enabled = self.global_enabled_map()
+        previous = {plugin.manifest.id: plugin for plugin in PluginRegistry().all_loaded()}
         PluginRegistry().clear()
         loaded: list[LoadedPlugin] = []
         for plugin_dir in discover_plugin_dirs(self._plugins_dir):
@@ -405,7 +422,19 @@ class PluginManager:
             if enabled.get(manifest.id, True) is False:
                 continue
             try:
-                loaded.append(_load_plugin_dir(plugin_dir, install_deps=install_deps))
+                fingerprint = _channel_fingerprint(plugin_dir) if manifest.kind == "channel" else ""
+                old = previous.get(manifest.id)
+                if (
+                    manifest.kind == "channel"
+                    and old is not None
+                    and _CHANNEL_FINGERPRINTS.get(manifest.id) == fingerprint
+                ):
+                    PluginRegistry().register(old)
+                    loaded.append(old)
+                else:
+                    loaded.append(_load_plugin_dir(plugin_dir, install_deps=install_deps))
+                if manifest.kind == "channel":
+                    _CHANNEL_FINGERPRINTS[manifest.id] = fingerprint
             except Exception as exc:
                 logger.error(
                     "failed to load plugin from %s: %s",
@@ -452,6 +481,12 @@ class PluginManager:
                     exc_info=True,
                 )
         return newly
+
+    @staticmethod
+    def _channel_registration_error(plugin_id: str) -> str | None:
+        from octop.infra.gateway.plugin_channels import registration_errors
+
+        return registration_errors().get(plugin_id)
 
     def list_installed(self) -> list[dict[str, Any]]:
         out: list[dict[str, Any]] = []
@@ -501,6 +536,7 @@ class PluginManager:
                     "requires": parse_plugin_requires(plugin_dir),
                     "path": str(plugin_dir),
                     "loaded": loaded is not None,
+                    "registration_error": self._channel_registration_error(manifest.id),
                     "enabled": enabled_map.get(manifest.id, True),
                     "ui": ui_meta,
                     "tools": tools_meta,

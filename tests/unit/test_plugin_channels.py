@@ -29,6 +29,15 @@ def _harness_supports_channel_kind() -> bool:
         return False
 
 
+@pytest.fixture(autouse=True)
+def reset_bridge(monkeypatch: pytest.MonkeyPatch) -> None:
+    from octop.infra.gateway import plugin_channels as bridge
+
+    monkeypatch.setattr(bridge, "_APPLIED", {})
+    monkeypatch.setattr(bridge, "_CLASSES", {})
+    monkeypatch.setattr(bridge, "_ERRORS", {})
+
+
 @dataclass
 class _StubReg:
     plugin_id: str
@@ -301,5 +310,71 @@ async def test_reload_stops_plugin_instances_before_replacing_factories() -> Non
         _unregister=AsyncMock(side_effect=stop),
         _safe_register_channel=AsyncMock(side_effect=start),
     )
-    await Gateway.reload_plugin_channels(fake, lambda: events.append("apply"))
+    await Gateway.reload_plugin_channels(fake, lambda: events.append("apply"), kinds={"acme"})
     assert events == ["stop:plugin-row", "apply", "start:plugin-row"]
+
+
+def test_no_change_leaves_factories_registered() -> None:
+    from unittest.mock import Mock
+
+    from octop.infra.gateway import plugin_channels as bridge
+
+    reg = _StubRegistry(_StubReg("owner", "acme", _FakeChannel))
+    register, unregister = Mock(), Mock()
+    bridge.apply_plugin_channels(registry=reg, register=register, unregister=unregister)
+    assert bridge.changed_plugin_channel_kinds(reg) == set()
+    bridge.apply_plugin_channels(registry=reg, register=register, unregister=unregister)
+    assert register.call_count == 1
+    unregister.assert_not_called()
+
+
+def test_registration_failure_exposed_as_status() -> None:
+    from octop.infra.gateway import plugin_channels as bridge
+
+    bridge.apply_plugin_channels(
+        registry=_StubRegistry(_StubReg("broken", "acme", _FakeChannel)),
+        register=_RecordingGateway(fail_on={"acme"}),
+        unregister=lambda *args, **kwargs: None,
+    )
+    assert "broken" in bridge.registration_errors()
+    assert bridge.plugin_channel_kinds(registry=_StubRegistry()) == []
+
+
+@pytest.mark.asyncio
+async def test_registration_failure_reaches_mutation_caller(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from types import SimpleNamespace
+
+    from octop.infra.errors import OctopError
+    from octop.infra.gateway import plugin_channels as bridge
+    from octop.infra.server import OctopServer
+
+    monkeypatch.setattr(bridge, "_ERRORS", {"broken": "not BaseChannel"})
+    fake = SimpleNamespace(app_runtime=None, _apply_plugin_channels=lambda: None)
+    with pytest.raises(OctopError):
+        await OctopServer.refresh_plugin_channels(fake)
+
+
+@pytest.mark.asyncio
+async def test_unrelated_plugin_change_does_not_restart_channels() -> None:
+    from types import SimpleNamespace
+    from unittest.mock import AsyncMock, Mock
+
+    from octop.infra.gateway.gateway import Gateway
+
+    fake = SimpleNamespace(
+        _repos=SimpleNamespace(
+            channel_repo=SimpleNamespace(
+                list_all=lambda **kwargs: [SimpleNamespace(kind="acme", channel_id="a")]
+            )
+        ),
+        _channel_manager=object(),
+        _unregister=AsyncMock(),
+        _safe_register_channel=AsyncMock(),
+    )
+    apply = Mock()
+    await Gateway.reload_plugin_channels(fake, apply, kinds=set())
+    fake._unregister.assert_not_awaited()
+    fake._safe_register_channel.assert_not_awaited()
+    apply.assert_called_once()
