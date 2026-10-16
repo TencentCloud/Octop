@@ -66,7 +66,9 @@ async def _turn_then_rebind(
             }
         )
         first = await ws_a.receive_json()
-        assert first.get("type") == "token"
+        while first.get("type") != "token":
+            # Skip steer protocol frames (turn.started, …) — harness chunks only.
+            first = await ws_a.receive_json()
         assert first.get("content") == "first"
     # A is closed; turn is blocked on gate_release (still active, not cancelled).
 
@@ -125,7 +127,11 @@ async def _turn_with_second_subscriber(
                 "thread_id": thread_id,
             }
         )
-        a_frames.append(await ws_a.receive_json())
+        first = await ws_a.receive_json()
+        while first.get("type") != "token":
+            # Skip steer protocol frames (turn.started, …) — harness chunks only.
+            first = await ws_a.receive_json()
+        a_frames.append(first)
         async with _chat_ws(c, aid, auth) as ws_b:
             await ws_b.send_json({"type": "subscribe", "thread_id": thread_id})
             b_frames.append(await ws_b.receive_json())
@@ -346,6 +352,23 @@ async def test_ws_emits_error_frame_on_exception(env: Any) -> None:
     assert chunks[-1]["type"] == "error"
 
 
+async def test_ws_auth_failure_has_actionable_error_and_releases_turn(env: Any) -> None:
+    from langchain_core.exceptions import ModelAuthenticationError
+
+    from octop.i18n.domains.stream import AUTH, stream_error_message
+
+    c, srv, _fake, alice_auth, _bob_auth, aid = env
+    agent = srv.app_runtime.agent_registry.get_agent(aid)
+    agent.raise_on_stream = ModelAuthenticationError("opaque credential rejection")
+    frames = await _consume_ws_turn(c, aid, alice_auth, text="check auth")
+    error = next(frame for frame in frames if frame.get("type") == "error")
+    assert error["message"] in (stream_error_message(AUTH, "zh"), stream_error_message(AUTH, "en"))
+    # A corrected credential can be used by the very next turn.
+    agent.raise_on_stream = None
+    following = await _consume_ws_turn(c, aid, alice_auth, text="try after fixing credentials")
+    assert not any(frame.get("type") == "error" for frame in following)
+
+
 async def test_ws_bad_agent_rejected(env: Any) -> None:
     c, _srv, _fake, alice_auth, _bob_auth, _aid = env
     with pytest.raises(WebSocketDisconnect):
@@ -531,7 +554,11 @@ async def test_ws_cancel_persists_interrupted_history(tmp_octop_home, monkeypatc
         registry._harness_manager.cancel.side_effect = lambda *_args: stopped.set()
         async with _chat_ws(c, aid, auth) as ws:
             await ws.send_json({"type": "user_turn", "text": "hello", "thread_id": tid})
-            assert (await ws.receive_json())["content"] == "partial answer"
+            first = await ws.receive_json()
+            while first.get("type") != "token":
+                # Skip steer protocol frames (turn.started, …) — harness chunks only.
+                first = await ws.receive_json()
+            assert first["content"] == "partial answer"
             await ws.send_json({"type": "cancel", "thread_id": tid})
             frames = await ws.drain_turn()
         assert frames[-1]["type"] == "done"

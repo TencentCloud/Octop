@@ -478,6 +478,36 @@ async def test_revised_state_message_keeps_latest_tool_metadata(archive):
 
 
 @pytest.mark.asyncio
+async def test_state_update_does_not_replace_stream_error(archive):
+    turn = archive.begin("a", "t")
+    tracker = RecordingTracker(archive, turn, [HumanMessage(content="question", id="u")])
+    tracker.observe({"type": "token", "message_id": "m", "content": "partial"})
+    tracker.observe({"type": "error", "message": "Error code: 402 insufficient balance"})
+    tracker.observe(
+        {
+            "type": "state_update",
+            "data": {
+                "messages": [
+                    HumanMessage(content="question", id="u"),
+                    AIMessage(content="partial from checkpoint", id="ckpt-1"),
+                    AIMessage(content="later thought", id="ckpt-2"),
+                ]
+            },
+        }
+    )
+    await tracker.finish(completed=False)
+    recovered = messages_from_dict(
+        (await archive.page("t", limit=20, cursor=None, legacy_reader=no_anchor))["messages"]
+    )
+    error = next(
+        message for message in recovered if message.additional_kwargs.get("octop_stream_error")
+    )
+    assert "insufficient" in str(error.content).lower()
+    assert any("partial" in str(message.content) for message in recovered)
+    assert any(message.content == "later thought" for message in recovered)
+
+
+@pytest.mark.asyncio
 async def test_dashboard_processor_writes_only_new_archive(archive):
     from unittest.mock import AsyncMock, MagicMock
 
