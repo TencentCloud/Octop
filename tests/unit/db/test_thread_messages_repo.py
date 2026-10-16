@@ -82,6 +82,44 @@ def test_pending_legacy_thread_only_publishes_after_replace(tmp_path: Path) -> N
     assert more is False
 
 
+def test_replace_all_with_empty_projection_keeps_existing_rows(tmp_path: Path) -> None:
+    """An empty decode must never wipe a stored projection (#2059)."""
+    _db, threads, messages = _repos(tmp_path)
+    threads.insert(
+        thread_id="thr",
+        agent_id="agt",
+        user_id=1,
+        channel_type="dashboard",
+        session_key="sk",
+        last_active=0,
+    )
+    assert messages.append_if_ready("thr", [_message("m1", "one")]) == 1
+
+    assert messages.replace_all("thr", []) == 0
+
+    assert messages.projection_status("thr") == "ready"
+    page, more = messages.page("thr", limit=25)
+    assert [row.message_id for row in page] == ["m1"]
+    assert more is False
+
+
+def test_replace_all_empty_marks_pending_thread_ready(tmp_path: Path) -> None:
+    """A legacy thread with nothing to recover stops re-queueing (#2059)."""
+    _db, threads, messages = _repos(tmp_path)
+    threads.insert(
+        thread_id="legacy",
+        agent_id="agt",
+        user_id=1,
+        channel_type="dashboard",
+        session_key="legacy-sk",
+        last_active=10,
+    )
+    messages.mark_projection("legacy", "pending")
+
+    assert messages.replace_all("legacy", []) == 0
+    assert messages.projection_status("legacy") == "ready"
+
+
 def test_migration_summary_and_candidates_are_scoped(tmp_path: Path) -> None:
     _db, threads, messages = _repos(tmp_path)
     for thread_id, last_active in (("old-1", 10), ("old-2", 20), ("empty", 0)):

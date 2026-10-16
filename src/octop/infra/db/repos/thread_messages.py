@@ -289,6 +289,12 @@ class ThreadMessageRepo:
         Readers are gated by ``status != ready``, so the batches stay invisible
         without holding SQLite's writer lock for the entire transcript.
         """
+        if not messages:
+            # An empty decode must never clear a stored projection (#2059):
+            # publish as ready so the thread stops re-queueing, but keep any
+            # rows that are already stored.
+            self.mark_projection(thread_id, "ready")
+            return 0
         with self._db.transaction() as conn:
             if self._db.dialect == "postgresql":
                 conn.execute(

@@ -6,12 +6,13 @@ import sqlite3
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
-from unittest.mock import MagicMock, call
+from unittest.mock import AsyncMock, MagicMock, call
 
 import pytest
 from langchain_core.messages import HumanMessage
 
 from octop.api.routers.chat import history as history_mod
+from octop.api.routers.chat import serialize as serialize_mod
 from octop.api.routers.chat.serialize import (
     HISTORY_DEFAULT_LIMIT,
     HISTORY_MAX_LIMIT,
@@ -404,6 +405,45 @@ async def test_backfill_requeues_thread_when_agent_became_busy() -> None:
         "thr_legacy", "pending"
     )
     registry.get_agent.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_backfill_marks_failed_when_raw_rows_serialize_to_nothing(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Raw turns exist but none survive serialization → failed, not an empty
+    ready projection that blanks the visible thread (#2059)."""
+    server = MagicMock()
+    server.app_runtime.history_archive = None
+    repo = server.services.thread_message_repo
+    monkeypatch.setattr(
+        serialize_mod,
+        "_isolated_sqlite_checkpoint_messages",
+        MagicMock(return_value=None),
+    )
+    monkeypatch.setattr(
+        serialize_mod,
+        "_load_checkpoint_messages",
+        AsyncMock(return_value=([{"role": "user", "content": "hi", "id": "u1"}], False)),
+    )
+    monkeypatch.setattr(
+        "octop.infra.history.projection.message_inputs",
+        MagicMock(return_value=[]),
+    )
+
+    await serialize_mod._backfill_thread_projection(
+        server,
+        "agt_1",
+        "thr_blank",
+        user=MagicMock(id=1),
+    )
+
+    repo.replace_all.assert_not_called()
+    failed_calls = [c for c in repo.mark_projection.call_args_list if c.args[1:2] == ("failed",)]
+    assert failed_calls, repo.mark_projection.call_args_list
+    assert "0 of 1" in failed_calls[0].kwargs.get("error", "") or "0 of 1" in str(
+        failed_calls[0].args
+    )
 
 
 @pytest.mark.asyncio

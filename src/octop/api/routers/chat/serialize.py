@@ -528,6 +528,12 @@ async def _backfill_thread_projection(
         from octop.infra.history.projection import message_inputs  # noqa: PLC0415
 
         projected = await asyncio.to_thread(message_inputs, list(raw))
+        if raw and not projected:
+            # Raw turns exist but none survived serialization: publishing the
+            # empty result would blank the visible thread while the status
+            # flips to ready (#2059). Surface it as a failed projection so
+            # the loading state persists for a retry instead.
+            raise ValueError(f"history projection serialized 0 of {len(raw)} raw messages")
         await asyncio.to_thread(repo.replace_all, thread_id, projected)
     except Exception as exc:
         logger.exception("history projection backfill failed for thread=%s", thread_id)
