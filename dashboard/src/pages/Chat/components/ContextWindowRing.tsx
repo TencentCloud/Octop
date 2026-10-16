@@ -40,6 +40,8 @@ interface ContextWindowRingProps {
   threadId?: string | null;
   selectedConnectors?: string[];
   isMobile?: boolean;
+  /** Live-turn flag: a true→false edge refetches the snapshot. */
+  isStreaming: boolean;
   /** Session total omitted by the decision filter. Same figure as 本会话累计. */
   decisionSaved?: number;
 }
@@ -52,6 +54,7 @@ export default function ContextWindowRing({
   threadId,
   selectedConnectors = [],
   isMobile = false,
+  isStreaming,
   decisionSaved = 0,
 }: ContextWindowRingProps) {
   const { t } = useTranslation();
@@ -60,14 +63,21 @@ export default function ContextWindowRing({
   const [breakdown, setBreakdown] = useState<ContextUsageBreakdown | null>(
     null,
   );
+  // /compact lowers server usage with no model call, so the hint never drops on
+  // its own. Each snapshot records the hint it absorbed; this lives in state
+  // (not a ref) so the ring memo below recomputes when it changes.
+  const [breakdownHint, setBreakdownHint] = useState<number | null>(null);
   const cacheRef = useRef<{
     key: string;
     at: number;
+    hint: number;
     data: ContextUsageBreakdown;
   } | null>(null);
   // Stream hint — kept in a ref so prefetch does not re-fire on every token tick.
   const hintUsedRef = useRef(usedTokens ?? 0);
   hintUsedRef.current = usedTokens ?? 0;
+  // Request order decides which of two in-flight responses may land.
+  const requestSeqRef = useRef(0);
 
   const max = maxTokens > 0 ? maxTokens : DEFAULT_MAX;
   const hintUsed = usedTokens ?? 0;
@@ -86,6 +96,7 @@ export default function ContextWindowRing({
   const loadBreakdown = useCallback(
     async (opts?: { silent?: boolean; force?: boolean }) => {
       if (!agentId || !threadId || isPendingThread(threadId)) return;
+      const force = Boolean(opts?.force);
       const cached = cacheRef.current;
       const hint = hintUsedRef.current;
       // A new model call moves the live total. The 30s cache would otherwise
@@ -95,15 +106,17 @@ export default function ContextWindowRing({
         (cached?.data.used_tokens ?? 0) > 0 &&
         Math.abs(hint - (cached?.data.used_tokens ?? 0)) >= 64;
       if (
-        !opts?.force &&
+        !force &&
         !hintMoved &&
         cached &&
         cached.key === cacheKey &&
         Date.now() - cached.at < BREAKDOWN_CACHE_TTL_MS
       ) {
+        setBreakdownHint(cached.hint);
         setBreakdown(cached.data);
         return;
       }
+      const reqSeq = ++requestSeqRef.current;
       if (!opts?.silent) setLoading(true);
       try {
         // Prefer a pure harness snapshot. Pass stream hint only as a fallback
@@ -117,15 +130,25 @@ export default function ContextWindowRing({
           inputTokens: !haveSegments && hint > 0 ? hint : undefined,
           mcpServers: selectedConnectors,
         });
+        // A newer request, or a thread switch, already superseded this one.
+        if (reqSeq !== requestSeqRef.current) return;
         if (data.used_tokens > 0) {
-          cacheRef.current = { key: cacheKey, at: Date.now(), data };
+          cacheRef.current = { key: cacheKey, at: Date.now(), hint, data };
+          setBreakdownHint(hint);
           setBreakdown(data);
         } else {
           // Empty harness snapshot (old threads) must not pin the ring at 0%.
           cacheRef.current = null;
+          setBreakdownHint(null);
           setBreakdown(null);
         }
       } catch {
+        if (force) {
+          // A failed post-compaction refetch must not leave the pre-compaction
+          // snapshot cached; dropping it forces the next read to hit the server.
+          cacheRef.current = null;
+          setBreakdownHint(null);
+        }
         if (!opts?.silent) setBreakdown(null);
       } finally {
         if (!opts?.silent) setLoading(false);
@@ -139,19 +162,36 @@ export default function ContextWindowRing({
   useEffect(() => {
     setBreakdown(null);
     cacheRef.current = null;
+    setBreakdownHint(null);
+    // Invalidate anything still in flight for the previous key.
+    requestSeqRef.current += 1;
   }, [cacheKey]);
 
+  // Refetch on streaming→idle: the turn may have compacted server-side.
+  const wasStreamingRef = useRef(isStreaming);
+  useEffect(() => {
+    const wasStreaming = wasStreamingRef.current;
+    wasStreamingRef.current = isStreaming;
+    if (wasStreaming && !isStreaming) {
+      void loadBreakdown({ force: true, silent: true });
+    }
+  }, [isStreaming, loadBreakdown]);
+
   const ringUsed = useMemo(() => {
-    if (hintUsed > 0) return Math.min(hintUsed, max);
-    if (breakdown && breakdown.used_tokens > 0) {
-      const breakdownMax =
-        breakdown.max_tokens > 0 ? breakdown.max_tokens : max;
+    const hasBreakdown = breakdown != null && breakdown.used_tokens > 0;
+    const breakdownMax =
+      breakdown && breakdown.max_tokens > 0 ? breakdown.max_tokens : max;
+    // The snapshot is authoritative while the hint has not moved since it was
+    // fetched; a moved hint means the turn outran the snapshot.
+    if (hasBreakdown && hintUsed === breakdownHint) {
       return Math.min(breakdown.used_tokens, breakdownMax);
     }
+    if (hintUsed > 0) return Math.min(hintUsed, max);
+    if (hasBreakdown) return Math.min(breakdown.used_tokens, breakdownMax);
     // Until prefetch returns, show last-call hint (capped so a stale
     // turn-sum cannot flash a full ring).
     return 0;
-  }, [breakdown, hintUsed, max]);
+  }, [breakdown, breakdownHint, hintUsed, max]);
 
   const ringMax =
     breakdown && breakdown.max_tokens > 0 ? breakdown.max_tokens : max;
