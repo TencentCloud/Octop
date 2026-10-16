@@ -312,7 +312,7 @@ def test_fnos_native_start_reports_failure() -> None:
 
 
 @posix_only
-def test_slim_site_packages_drops_driver_and_discovery(tmp_path: Path) -> None:
+def test_slim_site_packages_keeps_playwright_driver(tmp_path: Path) -> None:
     sp = tmp_path / "site-packages"
     driver = sp / "playwright" / "driver"
     driver.mkdir(parents=True)
@@ -325,7 +325,7 @@ def test_slim_site_packages_drops_driver_and_discovery(tmp_path: Path) -> None:
     (pyc / "a.pyc").write_bytes(b"x")
     (sp / "keep.py").write_text("ok", encoding="utf-8")
     subprocess.check_call(["bash", str(REPO / "scripts/fnos/slim-site-packages.sh"), str(sp)])
-    assert not driver.exists()
+    assert (driver / "node").read_text(encoding="utf-8") == "x"
     assert not cache.exists()
     assert not pyc.exists()
     assert (sp / "keep.py").read_text(encoding="utf-8") == "ok"
