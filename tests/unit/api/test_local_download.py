@@ -34,7 +34,7 @@ async def test_save_local_download_writes_downloads(
         "octop.infra.utils.user_downloads.downloads_dir",
         lambda home=None: downloads,
     )
-    monkeypatch.setattr("octop.infra.utils.user_downloads.reveal_download", lambda _path: None)
+    monkeypatch.setattr("octop.api.routers.settings.reveal_download", lambda _path: None)
     await bootstrap_admin(c, home)
     token = await login(c)
     response = await c.post(
@@ -50,7 +50,7 @@ async def test_save_local_download_writes_downloads(
 async def test_save_local_download_rejects_public_host(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    monkeypatch.setattr("octop.infra.utils.user_downloads.reveal_download", lambda _path: None)
+    monkeypatch.setattr("octop.api.routers.settings.reveal_download", lambda _path: None)
     srv = OctopServer(home=tmp_path)
     await srv.start()
     await ensure_control_plane_bound(srv)

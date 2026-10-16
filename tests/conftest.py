@@ -93,6 +93,20 @@ def _isolated_user_home(
     return home
 
 
+@pytest.fixture(autouse=True)
+def _no_reveal_download(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Never open Finder / Explorer / xdg-open from a test.
+
+    The settings router binds ``reveal_download`` at import, so patch both names.
+    """
+
+    def _noop(_path: Path) -> None:
+        return None
+
+    monkeypatch.setattr("octop.infra.utils.user_downloads.reveal_download", _noop)
+    monkeypatch.setattr("octop.api.routers.settings.reveal_download", _noop)
+
+
 @pytest.fixture
 def tmp_octop_home(_isolated_user_home: Path) -> Iterator[Path]:
     """Redirect ``~/.octop`` under the autouse isolated HOME."""
