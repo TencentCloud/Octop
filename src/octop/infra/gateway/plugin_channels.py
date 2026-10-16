@@ -44,7 +44,9 @@ def changed_plugin_channel_kinds(registry: Any) -> set[str]:
         else {}
     )
     return {
-        kind for kind in _CLASSES.keys() | desired.keys() if _CLASSES.get(kind) != desired.get(kind)
+        kind
+        for kind in _CLASSES.keys() | desired.keys() | _APPLIED.keys()
+        if _CLASSES.get(kind) != desired.get(kind) or (kind in _APPLIED and kind not in desired)
     }
 
 
@@ -114,8 +116,12 @@ def apply_plugin_channels(
                 unregister(kind, plugin_id=old.plugin_id)
             except Exception as exc:
                 message = f"channel {kind}: {exc}"
+                # Retrying an unchanged removal must not fail unrelated mutations.
+                if kind not in _KIND_ERRORS or _CLASSES.get(kind) != (
+                    (reg.plugin_id, reg.channel_cls) if reg is not None else None
+                ):
+                    _CURRENT_ERRORS[old.plugin_id] = message
                 _KIND_ERRORS[kind] = (old.plugin_id, message)
-                _CURRENT_ERRORS[old.plugin_id] = message
                 # Remember the attempted class, but preserve the live registration.
                 if reg is not None:
                     _CLASSES[kind] = (reg.plugin_id, reg.channel_cls)

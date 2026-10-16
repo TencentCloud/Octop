@@ -458,3 +458,81 @@ async def test_existing_failed_registration_does_not_fail_unrelated_refresh(
     )
     assert register.call_count == 1
     assert "bad" in bridge.registration_errors()
+
+
+@pytest.mark.asyncio
+async def test_removed_kind_retries_unregister_without_blocking_unrelated_refresh(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from types import SimpleNamespace
+
+    from octop.infra.errors import OctopError
+    from octop.infra.gateway import plugin_channels as bridge
+    from octop.infra.server import OctopServer
+
+    gateway = _RecordingGateway()
+    registry = _StubRegistry(_StubReg("owner", "acme", _FakeChannel))
+    attempts: list[tuple[str, str]] = []
+    failing = True
+
+    def unregister(kind: str, *, plugin_id: str) -> None:
+        attempts.append((kind, plugin_id))
+        if failing:
+            raise ValueError("cannot remove acme")
+        del gateway.registered[kind]
+
+    def apply() -> None:
+        bridge.apply_plugin_channels(registry=registry, register=gateway, unregister=unregister)
+
+    monkeypatch.setattr("octop.infra.server.PluginRegistry", lambda: registry)
+    server = SimpleNamespace(app_runtime=None, _apply_plugin_channels=apply)
+    apply()
+    registry._regs.clear()
+    with pytest.raises(OctopError):
+        await OctopServer.refresh_plugin_channels(server)
+    assert gateway.registered == {"acme": _FakeChannel}
+    assert "acme" in bridge._APPLIED
+    assert "acme" not in bridge._CLASSES
+    assert "owner" in bridge.current_registration_errors()
+    assert bridge.plugin_channel_kinds(registry=registry) == []
+    assert bridge.changed_plugin_channel_kinds(registry) == {"acme"}
+
+    # Existing cleanup failure remains visible, but a sibling can still register.
+    registry._regs.append(_StubReg("owner", "beta", _FakeChannel))
+    await OctopServer.refresh_plugin_channels(server)
+    assert attempts == [("acme", "owner")] * 2
+    assert gateway.registered == {"acme": _FakeChannel, "beta": _FakeChannel}
+    assert "owner" in bridge.registration_errors()
+    assert bridge.current_registration_errors() == {}
+    assert [info.kind for info in bridge.plugin_channel_kinds(registry=registry)] == ["beta"]
+
+    failing = False
+    await OctopServer.refresh_plugin_channels(server)
+    assert attempts == [("acme", "owner")] * 3
+    assert gateway.registered == {"beta": _FakeChannel}
+    assert set(bridge._APPLIED) == set(bridge._CLASSES) == {"beta"}
+    assert bridge._KIND_ERRORS == {}
+    assert bridge.registration_errors() == bridge.current_registration_errors() == {}
+    assert bridge.changed_plugin_channel_kinds(registry) == set()
+    registry._regs.clear()
+    await OctopServer.refresh_plugin_channels(server)
+    assert gateway.registered == bridge._APPLIED == bridge._CLASSES == bridge._KIND_ERRORS == {}
+    assert bridge.plugin_channel_kinds(registry=registry) == []
+
+
+def test_removing_failed_registration_clears_kind_errors() -> None:
+    from octop.infra.gateway import plugin_channels as bridge
+
+    gateway = _RecordingGateway(fail_on={"acme"})
+    registry = _StubRegistry(_StubReg("owner", "acme", _FakeChannel))
+
+    def unregister(kind: str, *, plugin_id: str) -> None:
+        pytest.fail("a failed registration must not unregister a gateway kind")
+
+    bridge.apply_plugin_channels(registry=registry, register=gateway, unregister=unregister)
+    assert "owner" in bridge.registration_errors()
+    registry._regs.clear()
+    bridge.apply_plugin_channels(registry=registry, register=gateway, unregister=unregister)
+    assert gateway.registered == bridge._APPLIED == bridge._CLASSES == bridge._KIND_ERRORS == {}
+    assert bridge.registration_errors() == bridge.current_registration_errors() == {}
+    assert bridge.plugin_channel_kinds(registry=registry) == []
