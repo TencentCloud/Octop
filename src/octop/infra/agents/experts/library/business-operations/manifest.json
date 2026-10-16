@@ -1,0 +1,139 @@
+{
+  "id": "business-operations",
+  "label": {
+    "zh": "业务流程专家",
+    "en": "Business Process Specialist"
+  },
+  "description": {
+    "zh": "基于 Anthropic Knowledge Work Plugins 的运营插件改编。帮你编写 SOP 和操作手册、优化业务流程、评估风险与供应商、整理运营报告。",
+    "en": "Adapted from the operations plugin in Anthropic Knowledge Work Plugins. Helps you write SOPs and runbooks, improve business processes, assess risks and vendors, and prepare operations reports."
+  },
+  "welcome_message": {
+    "zh": "告诉我需要梳理的流程、问题或运营材料。我会先确认事实，再交付可以实际使用的工作成果。",
+    "en": "Describe your process or share operations materials. I will clarify the facts and deliver a practical result."
+  },
+  "icon_name": "network",
+  "color": "#0F766E",
+  "prompt_files": [
+    "SOUL.md",
+    "IDENTITY.md",
+    "AGENTS.md",
+    "BOOTSTRAP.md"
+  ],
+  "quick_prompts": [
+    {
+      "title": {
+        "zh": "编写标准操作流程",
+        "en": "Document an SOP"
+      },
+      "description": {
+        "zh": "整理职责、流程图、异常与验收标准",
+        "en": "Map ownership, steps, exceptions and checks"
+      },
+      "prompt": {
+        "zh": "请根据下面的真实流程描述整理一份标准操作流程，包含职责、步骤、异常处理、验收点。信息不完整的地方请标记待确认：\n\n",
+        "en": "Turn the following real-world process description into an SOP with roles, steps, exceptions, and verification points. Flag unknown facts:\n\n"
+      },
+      "color": "#e8f4ff",
+      "icon_name": "file-text"
+    },
+    {
+      "title": {
+        "zh": "建立重复任务手册",
+        "en": "Create a runbook"
+      },
+      "description": {
+        "zh": "让重复任务有步骤、检查与升级机制",
+        "en": "Make recurring work reproducible"
+      },
+      "prompt": {
+        "zh": "请把下面的重复性业务工作整理成可以交接执行的操作手册，加入前置条件、结果验证、失败处理与升级路径：\n\n",
+        "en": "Create a repeatable runbook for this recurring business task, including prerequisites, verification, recovery and escalation:\n\n"
+      },
+      "color": "#dcfce7",
+      "icon_name": "book-open"
+    },
+    {
+      "title": {
+        "zh": "优化工作流程",
+        "en": "Improve a process"
+      },
+      "description": {
+        "zh": "发现瓶颈并提出可验证的改善建议",
+        "en": "Find bottlenecks and testable improvements"
+      },
+      "prompt": {
+        "zh": "请分析下面流程的等待、返工、交接和重复工作，提出改进方案。不要编造节省时间或成本的数据：\n\n",
+        "en": "Analyze waiting, rework, handoffs, and redundant work in the process below. Propose improvements without inventing impact figures:\n\n"
+      },
+      "color": "#fef3c7",
+      "icon_name": "trending-up"
+    },
+    {
+      "title": {
+        "zh": "评估运营风险",
+        "en": "Assess operational risk"
+      },
+      "description": {
+        "zh": "用依据和责任人构建风险登记表",
+        "en": "Build a grounded, owned risk register"
+      },
+      "prompt": {
+        "zh": "请根据下列项目或业务过程建立风险登记表，包括风险依据、概率、影响、负责人和缓解措施：\n\n",
+        "en": "Build an evidence-based risk register for the following project or process, including likelihood, impact, ownership, and mitigations:\n\n"
+      },
+      "color": "#f3e8ff",
+      "icon_name": "shield-check"
+    },
+    {
+      "title": {
+        "zh": "比较供应商方案",
+        "en": "Review vendors"
+      },
+      "description": {
+        "zh": "从成本、交付、风险角度比较供应商",
+        "en": "Compare cost, delivery and supplier risks"
+      },
+      "prompt": {
+        "zh": "请比较以下供应商方案，区分已知数据、未提供数据及假设。输出总成本维度、风险和决策建议：\n\n",
+        "en": "Compare the following vendor proposals. Separate known data, missing information, and assumptions; assess total costs, risks, and a recommendation:\n\n"
+      },
+      "color": "#eef2ff",
+      "icon_name": "shopping-bag"
+    },
+    {
+      "title": {
+        "zh": "整理运营状态报告",
+        "en": "Prepare a status report"
+      },
+      "description": {
+        "zh": "根据真实记录生成汇报与行动项",
+        "en": "Report actual progress and action items"
+      },
+      "prompt": {
+        "zh": "请将下面的项目进展或工作记录整理为运营状态报告，含已完成、进行中、风险、需决策事项与下一步；没有的数据请不要补造：\n\n",
+        "en": "Turn the following progress notes into an operations status report with achievements, work in progress, risks, decisions and next steps. Do not invent data:\n\n"
+      },
+      "color": "#fdf4e7",
+      "icon_name": "bar-chart-3"
+    }
+  ],
+  "task_examples": {
+    "zh": [
+      "每周五「17:00」根据我提供或授权访问的工作记录生成运营周报，标明资料缺失项",
+      "每周一「09:00」根据现有项目记录整理本周待办、负责人和待确认事项",
+      "每月第一天「10:00」复核现有SOP中的待确认项，提醒我哪些流程需要更新",
+      "每周三「16:00」依据可访问的风险登记表汇总未关闭风险和需要决策的事项",
+      "每个月最后一个工作日「16:00」根据供应商考核资料生成月度评审草稿",
+      "每周五「16:30」根据本周流程改进记录列出已验证改进与待验证假设"
+    ],
+    "en": [
+      "Every Friday at 17:00, draft an operations weekly report from the work records I provide or authorize; flag missing inputs",
+      "Every Monday at 09:00, compile this week’s tasks, owners and unanswered questions from available project records",
+      "On the first day of each month at 10:00, review unresolved questions in existing SOPs and suggest updates",
+      "Every Wednesday at 16:00, summarize open risks and decisions needed from an accessible risk register",
+      "On the last business day of each month at 16:00, draft a supplier review from available evaluation records",
+      "Every Friday at 16:30, recap verified improvements and untested hypotheses from this week’s process notes"
+    ]
+  }
+}
