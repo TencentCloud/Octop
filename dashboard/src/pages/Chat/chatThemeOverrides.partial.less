@@ -120,6 +120,10 @@
   gap: 0;
   overflow-y: auto;
   padding-top: 2px;
+
+  .sessionSearchWrap {
+    margin: 0 4px 8px;
+  }
 }
 
 .minimalAgentSection {
@@ -210,14 +214,19 @@
   transition: opacity var(--fn-transition-fast);
 }
 
-.minimalAgentNewChatBtn {
+.minimalAgentHeader .expertNavActions {
+  margin-right: 2px;
+}
+
+.minimalAgentNewChatBtn,
+.minimalAgentPinBtn {
   display: inline-flex;
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
   width: 22px;
   height: 22px;
-  margin-right: 2px;
+  margin-right: 0;
   padding: 0;
   border: none;
   border-radius: 4px;
@@ -233,6 +242,26 @@
   }
 }
 
+.agentPinBtn.agentPinBtnActive,
+.minimalAgentPinBtn.agentPinBtnActive,
+.agentCardProfile:hover .agentPinBtn.agentPinBtnActive,
+.agentCardProfile:focus-within .agentPinBtn.agentPinBtnActive,
+.agentRow:hover .agentPinBtn.agentPinBtnActive,
+.agentRow:focus-within .agentPinBtn.agentPinBtnActive,
+.minimalAgentHeader:hover .minimalAgentPinBtn.agentPinBtnActive,
+.minimalAgentHeader:focus-within .minimalAgentPinBtn.agentPinBtnActive {
+  opacity: 0.7;
+  pointer-events: auto;
+  color: var(--fn-text-tertiary);
+  background: transparent;
+}
+
+.agentPinBtn.agentPinBtnActive:hover,
+.minimalAgentPinBtn.agentPinBtnActive:hover {
+  color: var(--fn-text-tertiary);
+  background: var(--fn-bg-hover, rgba(0, 0, 0, 0.06));
+}
+
 .minimalAgentHeader:hover,
 .minimalAgentHeader:focus-within {
   .minimalAgentAvatar {
@@ -240,7 +269,8 @@
   }
 
   .minimalAgentChevronBtn,
-  .minimalAgentNewChatBtn {
+  .minimalAgentNewChatBtn,
+  .minimalAgentPinBtn {
     opacity: 1;
     pointer-events: auto;
   }
@@ -253,7 +283,8 @@
   }
 
   .minimalAgentChevronBtn,
-  .minimalAgentNewChatBtn {
+  .minimalAgentNewChatBtn,
+  .minimalAgentPinBtn {
     opacity: 1;
     pointer-events: auto;
   }
