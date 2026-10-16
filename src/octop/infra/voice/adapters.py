@@ -100,8 +100,17 @@ async def transcribe_openai(
     base_url = (row.base_url or "https://api.openai.com/v1").rstrip("/")
     await _guard_voice_base_url(base_url)
     extra = row.get_extra()
-    model = str(extra.get("model") or "whisper-1")
-    ext = "webm" if "webm" in mime else "wav"
+    model = str(extra.get("stt_model") or extra.get("model") or "whisper-1")
+    content_type = mime.split(";", 1)[0].strip().lower()
+    ext = {
+        "audio/mpeg": "mp3",
+        "audio/mp3": "mp3",
+        "audio/mp4": "m4a",
+        "audio/x-m4a": "m4a",
+        "audio/ogg": "ogg",
+        "audio/flac": "flac",
+        "audio/webm": "webm",
+    }.get(content_type, "wav")
     files = {"file": (f"audio.{ext}", audio, mime or "audio/webm")}
     data: dict[str, str] = {"model": model}
     if language:
@@ -115,8 +124,12 @@ async def transcribe_openai(
         )
         resp.raise_for_status()
         body = resp.json()
-    text = str(body.get("text") or "").strip()
-    return STTResult(text=text)
+    text = body.get("text") if isinstance(body, dict) else None
+    if not isinstance(text, str):
+        raise _voice_response_error(
+            body if isinstance(body, dict) else {}, reason="invalid_response"
+        )
+    return STTResult(text=text.strip())
 
 
 async def synthesize_openai(
@@ -132,7 +145,7 @@ async def synthesize_openai(
     base_url = (row.base_url or "https://api.openai.com/v1").rstrip("/")
     await _guard_voice_base_url(base_url)
     extra = row.get_extra()
-    model = str(extra.get("model") or "tts-1")
+    model = str(extra.get("tts_model") or extra.get("model") or "tts-1")
     voice = voice_id or str(extra.get("voice_id") or "alloy")
     payload = {
         "model": model,
@@ -151,9 +164,126 @@ async def synthesize_openai(
         ) as resp,
     ):
         resp.raise_for_status()
+        if "application/json" in resp.headers.get("content-type", "").lower():
+            await resp.aread()
+            raise _voice_response_error(resp.json(), reason="invalid_response")
         async for chunk in resp.aiter_bytes():
             if chunk:
                 yield chunk
+
+
+def _voice_response_error(body: dict[str, Any], *, reason: str = "provider_error") -> OctopError:
+    error = body.get("error")
+    source = error if isinstance(error, dict) else body
+    return OctopError.localized(
+        ErrorCode.INTERNAL_ERROR,
+        _ui_locale.get() or "en",
+        status=502,
+        details={
+            "reason": reason,
+            "provider_code": source.get("code"),
+            "provider_message": source.get("message"),
+        },
+    )
+
+
+async def transcribe_dashscope(
+    row: VoiceProviderRow, audio: bytes, *, mime: str, language: str
+) -> STTResult:
+    api_key = row.api_key or ""
+    if not api_key:
+        raise ValueError(voice_credentials_error("dashscope", _ui_locale.get() or "en"))
+    base_url = (row.base_url or "https://dashscope.aliyuncs.com/api/v1").rstrip("/")
+    await _guard_voice_base_url(base_url)
+    extra = row.get_extra()
+    model = str(extra.get("stt_model") or extra.get("model") or "qwen3-asr-flash")
+    audio_mime = mime.split(";", 1)[0] or "audio/wav"
+    data_url = f"data:{audio_mime};base64,{base64.b64encode(audio).decode('ascii')}"
+    asr_options: dict[str, Any] = {"enable_itn": False}
+    if language and language.lower() != "auto":
+        asr_options["language"] = language.lower().split("-", 1)[0]
+    payload = {
+        "model": model,
+        "input": {"messages": [{"role": "user", "content": [{"audio": data_url}]}]},
+        "parameters": {"result_format": "message", "asr_options": asr_options},
+    }
+    async with httpx.AsyncClient(timeout=60.0) as client:
+        resp = await client.post(
+            f"{base_url}/services/aigc/multimodal-generation/generation",
+            headers={"Authorization": f"Bearer {api_key}"},
+            json=payload,
+        )
+        resp.raise_for_status()
+        body = resp.json()
+    if body.get("code"):
+        raise _voice_response_error(body)
+    choices = (body.get("output") or {}).get("choices") or []
+    if not choices:
+        raise _voice_response_error(body, reason="invalid_response")
+    content = (choices[0].get("message") or {}).get("content") or []
+    text = "".join(str(part.get("text") or "") for part in content).strip()
+    return STTResult(text=text)
+
+
+async def synthesize_dashscope(
+    row: VoiceProviderRow,
+    text: str,
+    *,
+    voice_id: str | None,
+    speed: float,
+) -> AsyncIterator[bytes]:
+    api_key = row.api_key or ""
+    if not api_key:
+        raise ValueError(voice_credentials_error("dashscope", _ui_locale.get() or "en"))
+    base_url = (row.base_url or "https://dashscope.aliyuncs.com/api/v1").rstrip("/")
+    await _guard_voice_base_url(base_url)
+    extra = row.get_extra()
+    model = str(extra.get("tts_model") or extra.get("model") or "qwen3-tts-flash")
+    voice = voice_id or str(extra.get("voice_id") or "Cherry")
+    # Qwen-TTS has no numeric speed parameter; its streaming output is 24kHz PCM16LE.
+    payload = {"model": model, "input": {"text": text, "voice": voice, "language_type": "Auto"}}
+    started = False
+    async with (
+        httpx.AsyncClient(timeout=120.0) as client,
+        client.stream(
+            "POST",
+            f"{base_url}/services/aigc/multimodal-generation/generation",
+            headers={
+                "Authorization": f"Bearer {api_key}",
+                "X-DashScope-SSE": "enable",
+            },
+            json=payload,
+        ) as resp,
+    ):
+        resp.raise_for_status()
+        if "application/json" in resp.headers.get("content-type", ""):
+            await resp.aread()
+            raise _voice_response_error(resp.json())
+        event_data: list[str] = []
+        async for line in resp.aiter_lines():
+            if line.startswith("data:"):
+                event_data.append(line[len("data:") :].lstrip())
+                continue
+            if line or not event_data:
+                continue
+            event_text = "\n".join(event_data)
+            event_data.clear()
+            if event_text == "[DONE]":
+                break
+            event = json.loads(event_text)
+            if event.get("code"):
+                raise _voice_response_error(event)
+            audio_data = ((event.get("output") or {}).get("audio") or {}).get("data")
+            if not audio_data:
+                continue
+            pcm = base64.b64decode(audio_data)
+            if pcm:
+                if not started:
+                    yield _wav_header(0xFFFF_FFFF)
+                    started = True
+                yield pcm
+    if not started:
+        raise _voice_response_error({}, reason="empty_audio")
 
 
 async def transcribe_tencent(
@@ -481,13 +611,20 @@ def _missing_credentials(row: VoiceProviderRow, kind: str, *, locale: str = "en"
         except ValueError:
             return voice_credentials_error(kind, locale)
         return None
-    if kind in {"openai", "mimo"} and not row.api_key:
+    if kind in {"openai", "mimo", "dashscope"} and not row.api_key:
         return voice_credentials_error(kind, locale)
     return None
 
 
 def _probe_failure(exc: Exception, *, locale: str = "en") -> dict[str, Any]:
     """Turn a probe-time exception into an ``ok: false`` payload instead of a 500."""
+    if isinstance(exc, OctopError) and exc.details.get("provider_message"):
+        error = ": ".join(
+            str(value)
+            for value in (exc.details.get("provider_code"), exc.details["provider_message"])
+            if value
+        )
+        return {"ok": False, "error": error}
     return {"ok": False, "error": format_voice_probe_error(exc, locale)}
 
 
@@ -502,14 +639,16 @@ async def test_stt(
         return {"ok": True, "mode": "browser"}
     if row is None:
         return {"ok": False, "error": voice_not_configured(locale)}
-    if kind not in {"openai", "tencent", "mimo"}:
+    if kind not in {"openai", "tencent", "mimo", "dashscope"}:
         # edge is TTS-only and unknown kinds have no adapter: keep offline pass.
         return {"ok": True, "mode": kind}
     missing = _missing_credentials(row, kind, locale=locale)
     if missing:
         return {"ok": False, "error": missing}
     transcribe = (
-        transcribe_mimo
+        transcribe_dashscope
+        if kind == "dashscope"
+        else transcribe_mimo
         if kind == "mimo"
         else transcribe_openai
         if kind == "openai"
@@ -555,7 +694,9 @@ async def test_tts(
     if missing:
         return {"ok": False, "error": missing}
     synth = (
-        synthesize_mimo
+        synthesize_dashscope
+        if kind == "dashscope"
+        else synthesize_mimo
         if kind == "mimo"
         else synthesize_openai
         if kind == "openai"
