@@ -178,6 +178,18 @@
   border-color: var(--fn-border-secondary, var(--fn-card-border-normal));
 }
 
+.serviceReady {
+  color: #047857;
+  background: var(--fn-bg-success-light, #ecfdf5);
+  border-color: color-mix(in srgb, #10b981 28%, transparent);
+}
+
+.serviceConfigured {
+  color: var(--fn-text-secondary);
+  background: var(--fn-bg-secondary);
+  border-color: var(--fn-border-secondary, var(--fn-card-border-normal));
+}
+
 .choiceModel {
   width: 100%;
   overflow: hidden;
@@ -275,6 +287,52 @@
   color: var(--fn-text-tertiary);
   font-size: 12px;
   line-height: 1.5;
+}
+
+.serviceStatus {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.serviceStatusItem {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 8px;
+  color: var(--fn-text-tertiary);
+  font-size: 12px;
+  line-height: 1;
+  background: var(--fn-bg-secondary);
+  border: 1px solid var(--fn-border-secondary);
+  border-radius: 999px;
+}
+
+.serviceStatusDot {
+  width: 7px;
+  height: 7px;
+  background: var(--fn-text-tertiary);
+  border-radius: 50%;
+}
+
+.serviceStatusReady {
+  color: #047857;
+  background: var(--fn-bg-success-light, #ecfdf5);
+  border-color: color-mix(in srgb, #10b981 28%, transparent);
+
+  .serviceStatusDot {
+    background: #10b981;
+  }
+}
+
+.serviceStatusActive {
+  color: var(--fn-color-brand);
+  background: var(--fn-color-brand-light);
+  border-color: color-mix(in srgb, var(--fn-color-brand) 28%, transparent);
+
+  .serviceStatusDot {
+    background: var(--fn-color-brand);
+  }
 }
 
 .installProgressTitle {

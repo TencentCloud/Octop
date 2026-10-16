@@ -20,6 +20,7 @@ import {
   decisionApi,
   type DecisionProvider,
   type DecisionSettings,
+  type LayaStatus,
 } from "../../../../api/modules/decision";
 import customProviderLogo from "../../../../assets/providers/custom-provider.svg";
 import jevLogo from "../../../../assets/providers/jev.png";
@@ -103,6 +104,8 @@ function DrawerFields({
   onModel,
   onApiKey,
   onUseSavedKey,
+  layaActive,
+  onLayaStatus,
 }: {
   preset: PresetId;
   endpoint: string;
@@ -115,6 +118,8 @@ function DrawerFields({
   onModel: (value: string) => void;
   onApiKey: (value: string) => void;
   onUseSavedKey: () => void;
+  layaActive: boolean;
+  onLayaStatus: (status: LayaStatus) => void;
 }) {
   const { t } = useTranslation();
   const cloud = preset === "jev" || preset === "microsoft";
@@ -161,6 +166,8 @@ function DrawerFields({
       </div>
       {preset === "laya" ? (
         <LayaLocalInstall
+          active={layaActive}
+          onStatusChange={onLayaStatus}
           onReady={() => {
             onEndpoint(LAYA_ENDPOINT);
             onModel(LAYA_AUTO);
@@ -286,6 +293,8 @@ export function DecisionSettingsPanel({
   const [apiKeySet, setApiKeySet] = useState(false);
   const [preset, setPreset] = useState<PresetId>("jev");
   const [hasSavedService, setHasSavedService] = useState(false);
+  const [savedActive, setSavedActive] = useState(false);
+  const [layaReady, setLayaReady] = useState(false);
   const [editing, setEditing] = useState<PresetId | null>(null);
   const [draftEndpoint, setDraftEndpoint] = useState("");
   const [draftModel, setDraftModel] = useState("");
@@ -311,6 +320,7 @@ export function DecisionSettingsPanel({
         );
         setPreset(next);
         setHasSavedService(Boolean(settings.endpoint));
+        setSavedActive(settings.active);
         form.setFieldsValue({ ...settings, ...connection, api_key: "" });
         setApiKeySet(settings.api_key_set);
       })
@@ -332,6 +342,7 @@ export function DecisionSettingsPanel({
     const next = inferPreset(saved);
     setPreset(next);
     setHasSavedService(Boolean(saved.endpoint));
+    setSavedActive(saved.active);
     form.setFieldsValue({
       ...saved,
       ...connectionFor(next, saved.endpoint, saved.model),
@@ -340,6 +351,13 @@ export function DecisionSettingsPanel({
     setApiKeySet(saved.api_key_set);
     setFilledSavedKey(false);
   };
+
+  useEffect(() => {
+    void decisionApi
+      .layaStatus()
+      .then((status) => setLayaReady(status.running))
+      .catch(() => setLayaReady(false));
+  }, []);
 
   const persist = async (
     connection: { provider: DecisionProvider; endpoint: string; model: string },
@@ -536,8 +554,9 @@ export function DecisionSettingsPanel({
             <div className={styles.choices}>
               {PRESETS.map((id) => {
                 const copy = choiceCopy[id];
-                const inUse = hasSavedService && preset === id;
-                const canTest = inUse;
+                const configured = hasSavedService && preset === id;
+                const inUse = configured && savedActive;
+                const canTest = configured;
                 return (
                   <div
                     key={id}
@@ -569,6 +588,20 @@ export function DecisionSettingsPanel({
                           >
                             {copy.host}
                           </span>
+                          {id === "laya" && layaReady ? (
+                            <span
+                              className={`${styles.hostFlag} ${styles.serviceReady}`}
+                            >
+                              {t("models.decisionServiceReady")}
+                            </span>
+                          ) : null}
+                          {configured && !inUse ? (
+                            <span
+                              className={`${styles.hostFlag} ${styles.serviceConfigured}`}
+                            >
+                              {t("models.decisionConfiguredInactive")}
+                            </span>
+                          ) : null}
                         </span>
                       </span>
                     </span>
@@ -769,6 +802,8 @@ export function DecisionSettingsPanel({
             }
             filledSavedKey={filledSavedKey}
             openRouterKey={openRouterKey}
+            layaActive={savedActive && preset === "laya"}
+            onLayaStatus={(status) => setLayaReady(status.running)}
             onEndpoint={setDraftEndpoint}
             onModel={setDraftModel}
             onApiKey={setDraftKey}

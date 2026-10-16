@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Alert, App, Button } from "antd";
 import { Copy, RefreshCw } from "lucide-react";
 import { useTranslation } from "react-i18next";
@@ -23,7 +23,15 @@ const EMPTY: LayaStatus = {
   logs: [],
 };
 
-export function LayaLocalInstall({ onReady }: { onReady: () => void }) {
+export function LayaLocalInstall({
+  active,
+  onReady,
+  onStatusChange,
+}: {
+  active: boolean;
+  onReady: () => void;
+  onStatusChange: (status: LayaStatus) => void;
+}) {
   const { t } = useTranslation();
   const { message } = App.useApp();
   const [status, setStatus] = useState<LayaStatus>(EMPTY);
@@ -32,10 +40,14 @@ export function LayaLocalInstall({ onReady }: { onReady: () => void }) {
   const logRef = useRef<HTMLDivElement | null>(null);
   const installRef = useRef<AbortController | null>(null);
 
-  const apply = (next: LayaStatus) => {
-    setStatus(next);
-    if (next.logs.length > 0) setLogs(next.logs);
-  };
+  const apply = useCallback(
+    (next: LayaStatus) => {
+      setStatus(next);
+      onStatusChange(next);
+      if (next.logs.length > 0) setLogs(next.logs);
+    },
+    [onStatusChange],
+  );
 
   useEffect(() => {
     let cancelled = false;
@@ -64,7 +76,7 @@ export function LayaLocalInstall({ onReady }: { onReady: () => void }) {
         .catch(() => undefined);
     }, 2000);
     return () => window.clearInterval(timer);
-  }, [status.phase]);
+  }, [apply, status.phase]);
 
   useEffect(() => {
     if (logRef.current) {
@@ -160,6 +172,28 @@ export function LayaLocalInstall({ onReady }: { onReady: () => void }) {
       <p className={styles.installDesc}>
         {t("models.decisionLayaInstallDesc")}
       </p>
+      <div className={styles.serviceStatus}>
+        <span
+          className={`${styles.serviceStatusItem} ${
+            status.running ? styles.serviceStatusReady : ""
+          }`}
+        >
+          <span className={styles.serviceStatusDot} />
+          {status.running
+            ? t("models.decisionServiceReady")
+            : t("models.decisionServiceNotReady")}
+        </span>
+        <span
+          className={`${styles.serviceStatusItem} ${
+            active ? styles.serviceStatusActive : ""
+          }`}
+        >
+          <span className={styles.serviceStatusDot} />
+          {active
+            ? t("models.decisionDefaultActive")
+            : t("models.decisionDefaultInactive")}
+        </span>
+      </div>
       {status.command ? (
         <div>
           <div className={styles.installHead}>
