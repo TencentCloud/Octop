@@ -421,6 +421,7 @@
     "STORAGE_BROWSE_FAILED": "无法浏览此存储后端。",
     "CHANNEL_KIND_UNSUPPORTED": "不支持的通道类型。",
     "CHANNEL_INVALID_CREDENTIALS": "通道凭证无效。",
+    "CHANNEL_OPTIONS_UNSUPPORTED": "当前安装的 octop-gateway 不支持这些 Telegram 选项。请先安装兼容的 Gateway 构建再保存。",
     "CHANNEL_NAME_TAKEN": "该通道名称已被使用，请换一个名称。",
     "CONNECTOR_NOT_FOUND": "未找到连接器。",
     "CONNECTOR_NAME_TAKEN": "该连接器名称已被使用，请换一个名称。",

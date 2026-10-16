@@ -421,7 +421,10 @@ class HitlChannelCoordinator:
         if next_card is not None:
             if outcome is not None:
                 outcome.awaiting_more = True
-            yield MessageEvent.text(f"{tr('ask.answer_recorded', lang)}\n\n{next_card}")
+            yield MessageEvent.text(
+                f"{tr('ask.answer_recorded', lang)}\n\n{next_card}",
+                metadata={"octop_hitl_pending_id": record.pending_id},
+            )
             return
         if resume_message is None:
             yield MessageEvent.error_event(tr("hitl.expired", lang))

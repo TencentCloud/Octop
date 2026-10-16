@@ -213,12 +213,30 @@ describe("<ChannelsPanel /> create-flow default", () => {
     expect(JSON.parse(String(init.body))).toEqual({
       kind: "telegram",
       name: "telegram",
-      config: expect.objectContaining({ bot_token: "123456:ABC-token" }),
+      config: expect.objectContaining({
+        bot_token: "123456:ABC-token",
+        group_activation: "always",
+        topic_isolation: false,
+        edited_messages: false,
+        streaming_mode: "off",
+        allow_unaddressed_commands: true,
+        reply_to_message: true,
+        status_reactions: false,
+        disable_notification: false,
+        protect_content: false,
+        link_preview: true,
+        command_menu: false,
+        albums: false,
+        audio_as_voice: false,
+      }),
     });
   });
 
   it("saves Telegram allowed user IDs as a deduplicated list", async () => {
     await openTelegramCreateDrawer();
+    expect(
+      screen.getByText("channels.telegramAllowedUsersHelp"),
+    ).toBeInTheDocument();
 
     await userEvent.type(
       await screen.findByLabelText(/Bot Token/i),
@@ -267,3 +285,48 @@ describe("<ChannelsPanel /> create-flow default", () => {
     });
   });
 });
+
+it.each([undefined, false, true])(
+  "preserves Telegram legacy activation and boolean %s on edit",
+  async (enabled) => {
+    const row = { id: "t1", kind: "telegram", name: "telegram", enabled: true };
+    api.mockImplementation(async (url, init) => {
+      if (init?.method === "PATCH") return row;
+      if (url.endsWith("/t1"))
+        return {
+          ...row,
+          config: {
+            bot_token: "fake",
+            allowed_chat_ids: ["-100123"],
+            allowed_user_ids: ["42"],
+            ...(enabled === undefined
+              ? {}
+              : { topic_isolation: enabled, edited_messages: enabled }),
+          },
+        };
+      return [row];
+    });
+    render(<ChannelsPanel agentId="ag1" />);
+    await userEvent.click(
+      (await screen.findAllByText("channels.label_telegram"))[0],
+    );
+    expect(
+      await screen.findByLabelText("channels.telegram_topic_isolation"),
+    ).toHaveAttribute("aria-checked", String(enabled ?? false));
+    expect(
+      screen.getByLabelText("channels.telegram_allowed_chat_ids"),
+    ).toHaveValue("-100123");
+    await userEvent.click(screen.getByRole("button", { name: "common.save" }));
+    await waitFor(() => {
+      const patch = api.mock.calls.find(([, init]) => init?.method === "PATCH");
+      expect(patch).toBeDefined();
+      expect(JSON.parse(String(patch![1]!.body)).config).toMatchObject({
+        group_activation: "always",
+        topic_isolation: enabled ?? false,
+        edited_messages: enabled ?? false,
+        allowed_chat_ids: ["-100123"],
+        allowed_user_ids: ["42"],
+      });
+    });
+  },
+);
