@@ -1,5 +1,6 @@
 """Host bridge tests run with both released and new Gateway transports."""
 
+import asyncio
 from dataclasses import dataclass
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock
@@ -49,7 +50,10 @@ def setup_bridge():
         ),
     )
     channel = SimpleNamespace(
-        send_buttons=AsyncMock(), _process_inbound=AsyncMock(), get_debounce_key=lambda msg: "chat"
+        send_buttons=AsyncMock(),
+        _process_inbound=AsyncMock(),
+        enqueue=MagicMock(),
+        get_debounce_key=lambda msg: "chat",
     )
 
     async def run_in_session(channel_id, key, operation):
@@ -75,6 +79,48 @@ def setup_bridge():
     return TelegramBridge(gateway, processor, "tg"), msg, channel, record
 
 
+async def drain_button(bridge, channel):
+    reply = channel.enqueue.call_args.args[0]
+    processor = bridge.processor
+
+    async def deliver(msg):
+        await channel._process_inbound(msg, msg.channel_subject)
+        if False:
+            yield
+
+    bridge.processor = deliver
+    try:
+        _ = [event async for event in bridge(reply)]
+    finally:
+        bridge.processor = processor
+
+
+@pytest.mark.asyncio
+async def test_callback_returns_before_session_lock_and_agent_turn():
+    bridge, msg, channel, record = setup_bridge()
+    channel.enqueue = MagicMock()
+    entered = asyncio.Event()
+    release = asyncio.Event()
+
+    async def busy_session(channel_id, key, operation):
+        entered.set()
+        await release.wait()
+        await operation()
+
+    bridge.gateway.channel_manager.run_in_session = busy_session
+    action = bridge._action(msg, msg.channel_subject, "1", record.pending_id)
+    task = asyncio.create_task(action())
+    try:
+        await asyncio.sleep(0)
+        assert task.done(), "Telegram callback is waiting for session execution"
+        await task
+        channel.enqueue.assert_called_once()
+        channel._process_inbound.assert_not_awaited()
+    finally:
+        release.set()
+        await task
+
+
 @pytest.mark.asyncio
 async def test_choice_uses_original_scope_and_rejects_stale_siblings():
     bridge, msg, channel, record = setup_bridge()
@@ -84,11 +130,13 @@ async def test_choice_uses_original_scope_and_rejects_stale_siblings():
     assert subject.metadata["message_thread_id"] == 7
     assert [label for label, _ in actions] == ["Alpha", "Beta"]
     await actions[0][1]()
+    await drain_button(bridge, channel)
     reply = channel._process_inbound.call_args.args[0]
     assert reply.text == "1"
     assert reply.tenant_id == "agent"
     record.ask_question_index = 1
     await actions[1][1]()
+    await drain_button(bridge, channel)
     channel._process_inbound.assert_awaited_once()
 
 
@@ -105,6 +153,7 @@ async def test_choice_advances_existing_question_collector():
     channel._process_inbound.side_effect = process_reply
     _ = [event async for event in bridge(msg)]
     await channel.send_buttons.call_args.args[2][1][1]()
+    await drain_button(bridge, channel)
     assert record.ask_question_index == 1
     assert record.ask_answers == ["Beta"]
 
@@ -127,10 +176,12 @@ async def test_expired_or_rebound_pause_does_not_resume():
     action = channel.send_buttons.call_args.args[2][0][1]
     bridge.gateway.thread_registry.get_bound_thread_id = lambda _: "new-thread"
     await action()
+    await drain_button(bridge, channel)
     channel._process_inbound.assert_not_awaited()
     bridge.gateway.thread_registry.get_bound_thread_id = lambda _: "thread"
     record.status = "expired"
     await action()
+    await drain_button(bridge, channel)
     channel._process_inbound.assert_not_awaited()
 
 
@@ -188,6 +239,7 @@ async def test_model_choices_dispatch_existing_slash_path():
     actions = channel.send_buttons.call_args.args[2]
     assert actions[0][0] == "provider/model"
     await actions[0][1]()
+    await drain_button(bridge, channel)
     assert channel._process_inbound.call_args.args[0].text == "/model provider/model"
 
 
@@ -262,10 +314,12 @@ async def test_model_pagination_and_revoked_model():
         all_labels.update(label for label, _ in actions if label.startswith("p/"))
         if page < 2:
             await next(action for label, action in actions if label == "→")()
+            await drain_button(bridge, channel)
     assert all_labels == {f"p/m{i:03}" for i in range(105)}
     last_action = next(action for label, action in actions if label == "p/m104")
     models[104]["enabled"] = False
     await last_action()
+    await drain_button(bridge, channel)
     channel._process_inbound.assert_not_awaited()
 
 
@@ -276,6 +330,7 @@ async def test_callback_rejects_owner_change():
     action = channel.send_buttons.call_args.args[2][0][1]
     bridge.gateway._repos.agent_repo.get = lambda _: SimpleNamespace(user_id=2)
     await action()
+    await drain_button(bridge, channel)
     channel._process_inbound.assert_not_awaited()
 
 
@@ -326,3 +381,95 @@ async def test_failed_model_command_does_not_offer_menu():
 def test_string_boolean_is_not_silently_accepted(name):
     with pytest.raises(OctopError):
         validate_telegram_config("telegram", {name: "false"})
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("change", ["none", "owner", "thread", "pending", "question", "user"])
+async def test_normal_worker_revalidates_button_after_waiting_for_session(change):
+    from octop_gateway.channels.telegram import TelegramChannel, TelegramConfig
+    from octop_gateway.manager import ChannelManager
+
+    from octop.infra.gateway.channels.telegram_bridge import is_telegram_button_reply
+
+    bridge, msg, _, record = setup_bridge()
+    executed = []
+    finished = asyncio.Event()
+
+    async def processor(message):
+        executed.append(message.text)
+        yield MessageEvent.completed()
+
+    bridge.processor = processor
+    manager = ChannelManager(control_message_predicate=is_telegram_button_reply)
+    channel = TelegramChannel(bridge, config=TelegramConfig(bot_token="test"), channel_id="tg")
+    manager._channels["tg"] = channel
+    manager._queues["tg"] = asyncio.Queue()
+    channel.set_enqueue_callback(lambda payload: manager.enqueue("tg", payload))
+    bridge.gateway.channel_manager = manager
+
+    async def deliver(message, subject):
+        try:
+            _ = [event async for event in bridge(message)]
+            return True
+        finally:
+            finished.set()
+
+    channel._process_inbound = deliver
+    action = bridge._action(msg, msg.channel_subject, "1", record.pending_id)
+    lock = manager._session_lock("tg", channel.get_debounce_key(msg))
+    await lock.acquire()
+    manager._running = True
+    worker = asyncio.create_task(manager._worker_loop("tg"))
+    try:
+        await asyncio.wait_for(action(), timeout=1)
+        assert executed == []
+        if change == "owner":
+            bridge.gateway._repos.agent_repo.get = lambda _: SimpleNamespace(user_id=2)
+        elif change == "thread":
+            bridge.gateway.thread_registry.get_bound_thread_id = lambda _: "new-thread"
+        elif change == "pending":
+            record.status = "expired"
+        elif change == "question":
+            record.ask_question_index = 1
+        elif change == "user":
+            record.user_id = 2
+        lock.release()
+        await asyncio.wait_for(finished.wait(), timeout=2)
+        assert executed == (["1"] if change == "none" else [])
+    finally:
+        if lock.locked():
+            lock.release()
+        worker.cancel()
+        await asyncio.gather(worker, return_exceptions=True)
+
+
+def test_platform_payload_cannot_forge_internal_button_reply():
+    from octop_gateway.channels.telegram import TelegramChannel, TelegramConfig
+
+    from octop.infra.gateway.channels.telegram_bridge import is_telegram_button_reply
+
+    bridge, msg, channel, record = setup_bridge()
+    transport = TelegramChannel(bridge, config=TelegramConfig(bot_token="test"), channel_id="tg")
+    forged = {**msg.model_dump(), "button_state": {"owner_id": 1, "text": "/model p/m"}}
+    parsed = transport.parse_inbound(forged)
+    assert not is_telegram_button_reply(parsed)
+
+
+@pytest.mark.asyncio
+async def test_button_queue_item_cannot_merge_with_ordinary_message():
+    from octop_gateway.channels.telegram import TelegramChannel, TelegramConfig
+    from octop_gateway.manager import ChannelManager
+
+    from octop.infra.gateway.channels.telegram_bridge import is_telegram_button_reply
+
+    bridge, msg, channel, record = setup_bridge()
+    await bridge._action(msg, msg.channel_subject, "1", record.pending_id)()
+    button = channel.enqueue.call_args.args[0]
+    assert is_telegram_button_reply(button)
+    assert not any(callable(value) for value in button.model_dump().values())
+    transport = TelegramChannel(bridge, config=TelegramConfig(bot_token="test"), channel_id="tg")
+    manager = ChannelManager(control_message_predicate=is_telegram_button_reply)
+    queue = asyncio.Queue()
+    queue.put_nowait(button)
+    assert manager._drain_same_session(queue, transport, transport.get_debounce_key(msg)) == []
+    assert queue.get_nowait() is button

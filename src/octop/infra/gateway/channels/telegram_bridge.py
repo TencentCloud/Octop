@@ -5,7 +5,7 @@ from __future__ import annotations
 import asyncio
 import re
 from collections.abc import AsyncIterator, Awaitable, Callable
-from dataclasses import fields
+from dataclasses import dataclass, fields
 from typing import Any
 
 from octop_gateway.models import (
@@ -59,6 +59,27 @@ def validate_telegram_config(kind: str, config: dict[str, Any]) -> None:
         raise OctopError(ErrorCode.CHANNEL_INVALID_CREDENTIALS, str(exc)) from exc
 
 
+@dataclass(frozen=True)
+class _ButtonState:
+    owner_id: int | None
+    thread_id: str | None
+    pending_id: str | None
+    question_index: int
+    model_page: int | None
+    text: str
+
+
+class _ButtonReply(InboundMessage):
+    """Host-created queue item; platform dictionaries cannot construct this type."""
+
+    button_state: _ButtonState
+
+
+def is_telegram_button_reply(msg: InboundMessage) -> bool:
+    """Keep trusted button replies out of manager-level text batching."""
+    return isinstance(msg, _ButtonReply)
+
+
 class TelegramBridge:
     def __init__(self, gateway: Any, processor: Any, channel_id: str) -> None:
         self.gateway = gateway
@@ -66,6 +87,15 @@ class TelegramBridge:
         self.channel_id = channel_id
 
     async def __call__(self, msg: InboundMessage) -> AsyncIterator[MessageEvent]:
+        if isinstance(msg, _ButtonReply):
+            # The normal worker holds the session lock for validation and execution.
+            if not self._button_is_current(msg):
+                return
+            if msg.button_state.model_page is not None:
+                if msg.channel_subject is not None:
+                    await self._send_models(msg, msg.channel_subject, msg.button_state.model_page)
+                return
+            msg = InboundMessage(**msg.model_dump(exclude={"button_state"}))
         # Gateway has already checked that an addressed command names this bot.
         text = re.sub(r"^(\s*/[\w-]+)@[\w]+(?=\s|$)", r"\1", msg.text)
         if text != msg.text:
@@ -199,54 +229,52 @@ class TelegramBridge:
         owner = self.gateway._repos.agent_repo.get(agent_id)
         owner_id = owner.user_id if owner else None
 
+        state = _ButtonState(owner_id, thread_id, pending_id, question_index, model_page, text)
+
         async def action() -> None:
             manager = self.gateway.channel_manager
             channel = manager.get_channel(self.channel_id) if manager else None
             if channel is None:
                 return
-
-            async def run() -> None:
-                current_owner = self.gateway._repos.agent_repo.get(agent_id)
-                if current_owner is None or current_owner.user_id != owner_id:
-                    return
-                if self.gateway.thread_registry.get_bound_thread_id(session_key) != thread_id:
-                    return
-                if model_page is not None:
-                    await self._send_models(msg, subject, model_page)
-                    return
-                if (
-                    text.startswith("/model ")
-                    and text.removeprefix("/model ") not in self._model_refs()
-                ):
-                    return
-                if pending_id is not None:
-                    hitl = self.gateway.processor.hitl_coordinator
-                    record = hitl.store.get_pending(
-                        pending_id,
-                        session_key=session_key_from_message(msg, agent_id=msg.tenant_id or ""),
-                        agent_id=msg.tenant_id or "",
-                    )
-                    if (
-                        record is None
-                        or record.ask_question_index != question_index
-                        or record.user_id
-                        != resolve_user_id_for_message(msg, agent_owner_id=owner_id)
-                    ):
-                        return
-                    if (
-                        self.gateway.thread_registry.get_bound_thread_id(record.session_key)
-                        != record.thread_id
-                    ):
-                        return
-                reply = msg.model_copy(
-                    update={
-                        "content": [TextContent(text=text)],
-                        "channel_subject": subject,
-                    }
-                )
-                # Reuse normal channel delivery and Octop slash / answer authorization.
-                await channel._process_inbound(reply, subject)
-
-            await manager.run_in_session(self.channel_id, channel.get_debounce_key(msg), run)
+            reply = _ButtonReply(
+                **{
+                    **msg.model_dump(exclude={"button_state"}),
+                    "content": [TextContent(text=text)],
+                    "channel_subject": subject,
+                },
+                button_state=state,
+            )
+            channel.enqueue(reply)
 
         return action
+
+    def _button_is_current(self, msg: _ButtonReply) -> bool:
+        state = msg.button_state
+        agent_id = msg.tenant_id or ""
+        session_key = session_key_from_message(msg, agent_id=agent_id)
+        current_owner = self.gateway._repos.agent_repo.get(agent_id)
+        if current_owner is None or current_owner.user_id != state.owner_id:
+            return False
+        if self.gateway.thread_registry.get_bound_thread_id(session_key) != state.thread_id:
+            return False
+        if (
+            state.text.startswith("/model ")
+            and state.text.removeprefix("/model ") not in self._model_refs()
+        ):
+            return False
+        if state.pending_id is not None:
+            record = self.gateway.processor.hitl_coordinator.store.get_pending(
+                state.pending_id, session_key=session_key, agent_id=agent_id
+            )
+            if (
+                record is None
+                or record.ask_question_index != state.question_index
+                or record.user_id != resolve_user_id_for_message(msg, agent_owner_id=state.owner_id)
+            ):
+                return False
+            if (
+                self.gateway.thread_registry.get_bound_thread_id(record.session_key)
+                != record.thread_id
+            ):
+                return False
+        return True

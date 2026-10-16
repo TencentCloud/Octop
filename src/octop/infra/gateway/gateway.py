@@ -248,7 +248,11 @@ class Gateway:
             history_archive=self._history_archive,
         )
 
-        self._channel_manager = ChannelManager(channels={})
+        from octop.infra.gateway.channels.telegram_bridge import is_telegram_button_reply
+
+        self._channel_manager = ChannelManager(
+            channels={}, control_message_predicate=is_telegram_button_reply
+        )
         self._channel_manager.set_pre_lock_handler(self._preempt_cancel_on_stop)
         await self._channel_manager.start()
 

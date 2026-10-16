@@ -130,7 +130,11 @@ def session_key_from_message(msg: InboundMessage, *, agent_id: str) -> str:
     if isinstance(explicit, str) and explicit.strip():
         return explicit.strip()
     subject_id = subject_id_from_message(msg)
-    if msg.channel_type == "telegram" and meta.get("topic_isolation") is True:
+    if (
+        msg.channel_type == "telegram"
+        and meta.get("topic_isolation") is True
+        and meta.get("message_thread_id") is not None
+    ):
         # Keep the four-part key shape used by peer-session routing. Escaping
         # prevents separators in a channel instance ID from creating collisions.
         chat_id = meta.get("chat_id", subject_id)

@@ -127,11 +127,24 @@ def test_telegram_isolation_separates_chat_topic_instance_and_agent() -> None:
     assert first == "a1:telegram:ch1/-100123/42:group"
 
 
-def test_telegram_missing_topic_uses_main_chat_and_preserves_explicit_key() -> None:
-    msg = _telegram_message(topic_isolation=True)
-    assert session_key_from_message(msg, agent_id="a1") == "a1:telegram:ch1/-100123/0:group"
-    msg.metadata["session_key"] = " existing-session "
-    assert session_key_from_message(msg, agent_id="a1") == "existing-session"
+def test_telegram_missing_topic_preserves_legacy_sessions() -> None:
+    for chat_type in ("dm", "group"):
+        for topic in ({}, {"message_thread_id": None}):
+            msg = _telegram_message(topic_isolation=True, chat_type=chat_type, **topic)
+            assert session_key_from_message(msg, agent_id="a1") == (
+                f"a1:telegram:-100123:{chat_type}"
+            )
+
+
+def test_telegram_zero_topic_is_present_and_explicit_session_wins() -> None:
+    for topic_id in (None, 0, 42):
+        msg = _telegram_message(topic_isolation=True, message_thread_id=topic_id)
+        msg.metadata["session_key"] = " existing-session "
+        assert session_key_from_message(msg, agent_id="a1") == "existing-session"
+        for empty in ("", "  ", None):
+            msg.metadata["session_key"] = empty
+            subject = "-100123" if topic_id is None else f"ch1/-100123/{topic_id}"
+            assert session_key_from_message(msg, agent_id="a1") == f"a1:telegram:{subject}:group"
 
 
 def test_topic_isolation_metadata_does_not_change_other_channels() -> None:
