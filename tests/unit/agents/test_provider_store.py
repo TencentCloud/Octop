@@ -180,6 +180,18 @@ def test_build_harness_configs_maps_kind_to_protocol(store: ProviderStore) -> No
     assert providers[0].protocol == "anthropic"
 
 
+def test_build_harness_configs_strips_v1_from_anthropic_base_url(store: ProviderStore) -> None:
+    # The Anthropic SDK appends /v1/messages itself; the preset stores .../v1.
+    store._provider_repo.create(
+        name="anthropic",
+        kind="anthropic",
+        base_url="https://api.anthropic.com/v1/",
+        api_key="sk-ant",
+        models_json=json.dumps([{"id": "claude", "name": "claude"}]),
+    )
+    assert store.build_harness_configs()[0].base_url == "https://api.anthropic.com"
+
+
 def test_build_harness_configs_maps_context_window_to_max_input_tokens(
     store: ProviderStore,
 ) -> None:

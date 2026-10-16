@@ -13,11 +13,15 @@ import httpx
 
 from octop.infra.agents.providers import KIND_TO_PROTOCOL
 from octop.infra.agents.providers.opencode_session import ensure_opencode_session_header
+from octop.infra.agents.providers.store import anthropic_sdk_base_url
 
 logger = logging.getLogger(__name__)
 
 _DEFAULT_OPENAI_BASE_URL = "https://api.openai.com/v1"
 _FETCH_MODELS_TIMEOUT_S = 30.0
+_ANTHROPIC_VERSION = "2023-06-01"
+_ANTHROPIC_MODELS_PAGE_LIMIT = 1000
+_ANTHROPIC_MODELS_MAX_PAGES = 10
 _EMBEDDING_PROBE_TEXT = "ping"
 
 
@@ -48,7 +52,10 @@ def build_probe_chat_model(row: Any, *, model_id: str | None = None) -> Any:
     from octop_harness.llm.factory import build_chat_model
 
     protocol = KIND_TO_PROTOCOL.get(row.kind, row.kind)
-    base_url = row.base_url or "https://api.openai.com/v1"
+    if protocol == "anthropic":
+        base_url = anthropic_sdk_base_url(row.base_url)
+    else:
+        base_url = row.base_url or "https://api.openai.com/v1"
     headers = ensure_opencode_session_header(row.name, provider_headers(row), base_url=base_url)
     models = row.get_models() if hasattr(row, "get_models") else []
     mid = model_id or (models[0]["id"] if models else "gpt-4o-mini")
@@ -337,5 +344,79 @@ async def fetch_openai_compatible_models(
             continue
         seen.add(mid)
         models.append({"id": mid, "name": mid})
+    models.sort(key=lambda m: m["id"])
+    return {"ok": True, "models": models}
+
+
+async def fetch_anthropic_models(
+    *,
+    base_url: str | None,
+    api_key: str,
+    extra_headers: dict[str, str] | None = None,
+    locale: str = "en",
+    provider_name: str | None = None,
+) -> dict[str, Any]:
+    """List models via Anthropic ``GET {root}/v1/models`` (``x-api-key`` auth, paginated)."""
+    url = f"{anthropic_sdk_base_url(base_url)}/v1/models"
+    headers: dict[str, str] = {"x-api-key": api_key, "anthropic-version": _ANTHROPIC_VERSION}
+    extra_headers = ensure_opencode_session_header(provider_name, extra_headers, base_url=base_url)
+    if extra_headers:
+        headers.update(extra_headers)
+
+    models: list[dict[str, str]] = []
+    seen: set[str] = set()
+    params: dict[str, Any] = {"limit": _ANTHROPIC_MODELS_PAGE_LIMIT}
+    try:
+        async with httpx.AsyncClient(timeout=_FETCH_MODELS_TIMEOUT_S) as client:
+            for _ in range(_ANTHROPIC_MODELS_MAX_PAGES):
+                response = await client.get(url, headers=headers, params=params)
+                if response.status_code >= 400:
+                    detail = response.text.strip()
+                    if len(detail) > 300:
+                        detail = detail[:300] + "…"
+                    error = f"HTTP {response.status_code}"
+                    if detail:
+                        error = f"{error}: {detail}"
+                    return {"ok": False, "error": _friendly_probe_error(error, locale=locale)}
+                try:
+                    payload = response.json()
+                except Exception:
+                    return {
+                        "ok": False,
+                        "error": "response is not valid JSON (expected Anthropic /v1/models)",
+                    }
+                data = payload.get("data") if isinstance(payload, dict) else None
+                if not isinstance(data, list):
+                    return {
+                        "ok": False,
+                        "error": "response is not Anthropic-compatible "
+                        "(expected {data: [{id, display_name, …}]})",
+                    }
+                for item in data:
+                    if not isinstance(item, dict):
+                        continue
+                    mid = item.get("id")
+                    if not isinstance(mid, str) or not mid.strip():
+                        continue
+                    mid = mid.strip()
+                    if mid in seen:
+                        continue
+                    seen.add(mid)
+                    display = item.get("display_name")
+                    name = display.strip() if isinstance(display, str) and display.strip() else mid
+                    models.append({"id": mid, "name": name})
+                last_id = payload.get("last_id")
+                if not payload.get("has_more") or not isinstance(last_id, str) or not last_id:
+                    break
+                params = {"limit": _ANTHROPIC_MODELS_PAGE_LIMIT, "after_id": last_id}
+    except Exception as exc:
+        logger.info(
+            "provider fetch-models failed for %s: %r (%s)",
+            url,
+            exc,
+            type(exc).__name__,
+        )
+        return {"ok": False, "error": _friendly_probe_error(exc, locale=locale)}
+
     models.sort(key=lambda m: m["id"])
     return {"ok": True, "models": models}

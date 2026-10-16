@@ -110,7 +110,7 @@ export function PresetProviderModal({
       }
       setFetchingModels(true);
       const result = await fetchProviderModels({
-        kind: "openai",
+        kind: preset.protocol === "anthropic" ? "anthropic" : "openai",
         api_key: key,
         base_url: values.base_url?.trim() || preset.base_url,
         name: preset.id,
@@ -224,7 +224,7 @@ export function PresetProviderModal({
         body: JSON.stringify({
           name: values.name.trim(),
           kind: preset.protocol,
-          base_url: values.base_url?.trim() || null,
+          base_url: values.base_url?.trim() || preset.base_url || null,
           api_key: values.api_key?.trim() || null,
           models: draftModels,
           ...(preset.protocol === "openai"

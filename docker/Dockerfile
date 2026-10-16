@@ -117,7 +117,11 @@ COPY --from=frontend-builder /build/src/octop/dashboard/ ./src/octop/dashboard/
 
 COPY .env.example ./
 COPY docker/docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
-RUN chmod +x /usr/local/bin/docker-entrypoint.sh
+# Windows checkouts (core.autocrlf=true) give shell scripts CRLF endings, which
+# break the shebang ("env: 'bash\r'"); normalize them inside the image.
+RUN sed -i 's/\r$//' /usr/local/bin/docker-entrypoint.sh \
+    && find ./src -name '*.sh' -exec sed -i 's/\r$//' {} + \
+    && chmod +x /usr/local/bin/docker-entrypoint.sh
 
 RUN --mount=type=cache,target=/root/.cache/uv \
     if [ -n "$PIP_INDEX_URL" ]; then \

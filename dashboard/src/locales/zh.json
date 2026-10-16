@@ -3404,7 +3404,7 @@
     "fetchModelsMerged": "已新增 {{count}} 个模型到列表（已有模型保持不变）",
     "fetchModelsNoNew": "没有可新增的模型",
     "fetchModelsFailed": "获取模型失败：{{error}}",
-    "fetchModelsUnsupportedKind": "仅 OpenAI 兼容供应商支持自动获取模型列表",
+    "fetchModelsUnsupportedKind": "仅 OpenAI 兼容和 Anthropic 供应商支持自动获取模型列表",
     "customModelsLabel": "模型",
     "customModelsHint": "获取后默认未启用，可开启开关、测试、编辑或删除；也可手动添加",
     "onnxLocalService": "本地 ONNX Embedding",

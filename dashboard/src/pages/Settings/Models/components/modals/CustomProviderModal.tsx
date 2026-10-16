@@ -11,6 +11,7 @@ import { request } from "../../../../../api/request";
 import type { ProviderModel, ProviderRow } from "../../useProviders";
 import { isEmbeddingModel } from "../../useProviders";
 import { fetchProviderModels, testProviderDraft } from "../../providerApi";
+import { defaultBaseUrlForKind } from "../../presetUtils";
 import { ModelListEditor } from "./ModelListEditor";
 import { StreamUsageAdvanced } from "../StreamUsageAdvanced";
 import { TestStreamHint } from "../TestStreamHint";
@@ -101,7 +102,8 @@ export function CustomProviderModal({
   const handleFetchModels = async () => {
     try {
       const values = await form.validateFields(["kind", "api_key", "base_url"]);
-      if ((values.kind as string) !== "openai") {
+      const draftKind = values.kind as string;
+      if (draftKind !== "openai" && draftKind !== "anthropic") {
         message.warning(t("models.fetchModelsUnsupportedKind"));
         return;
       }
@@ -112,7 +114,7 @@ export function CustomProviderModal({
       }
       setFetchingModels(true);
       const result = await fetchProviderModels({
-        kind: "openai",
+        kind: draftKind,
         api_key: apiKey,
         base_url: (values.base_url as string | undefined)?.trim() || null,
       });
@@ -183,7 +185,10 @@ export function CustomProviderModal({
         body: JSON.stringify({
           name: (values.name as string).trim(),
           kind: values.kind as string,
-          base_url: (values.base_url as string | undefined)?.trim() || null,
+          base_url:
+            (values.base_url as string | undefined)?.trim() ||
+            defaultBaseUrlForKind(values.kind as string) ||
+            null,
           api_key: (values.api_key as string | undefined)?.trim() || null,
           models: modelEntries.length > 0 ? modelEntries : [],
           note: (values.note as string | undefined)?.trim() || null,
@@ -265,14 +270,14 @@ export function CustomProviderModal({
           label="Base URL"
           extra={t("models.baseUrlExtra")}
         >
-          <Input placeholder="https://api.openai.com/v1" />
+          <Input placeholder={defaultBaseUrlForKind(kind) || "https://..."} />
         </Form.Item>
 
         <Form.Item name="api_key" label="API Key">
           <Input.Password placeholder="sk-..." visibilityToggle />
         </Form.Item>
 
-        {kind === "openai" && (
+        {(kind === "openai" || kind === "anthropic") && (
           <Form.Item style={{ marginBottom: 12 }}>
             <Button
               icon={<Download size={14} />}
@@ -335,7 +340,7 @@ export function CustomProviderModal({
         >
           {t("models.testConnection")}
         </Button>
-        {kind === "openai" && (
+        {(kind === "openai" || kind === "anthropic") && (
           <Button
             size="small"
             icon={<Download size={12} />}

@@ -21,6 +21,8 @@ export HOME="${HOME:-/data}"
 OCTOP_HOME="${OCTOP_HOME:-${HOME}/.octop}"
 export OCTOP_HOME
 DB_FILE="${OCTOP_HOME}/octop.db"
+# PostgreSQL control planes have no octop.db; this marker records a finished init.
+INIT_MARKER="${OCTOP_HOME}/.initialized"
 CREDENTIAL_FILE="${OCTOP_HOME}/credential.txt"
 WIZARD_FILE="${OCTOP_HOME}/octop-login.txt"
 ADMIN_USERNAME="${OCTOP_ADMIN_USERNAME:-admin}"
@@ -153,7 +155,7 @@ octop_entrypoint_main() {
     local default_password="${OCTOP_DEFAULT_PASSWORD:-}"
     local init_log reason
 
-    if [ ! -f "$DB_FILE" ]; then
+    if [ ! -f "$DB_FILE" ] && [ ! -f "$INIT_MARKER" ]; then
         echo "[entrypoint] 首次启动，正在初始化 Octop..."
         mkdir -p "$OCTOP_HOME"
 
@@ -162,6 +164,7 @@ octop_entrypoint_main() {
             if octop_run_init "$default_password" "$init_log"; then
                 rm -f "$init_log"
                 octop_write_admin_credential "$default_password"
+                touch "$INIT_MARKER"
                 echo "[entrypoint] 凭据已保存至: $CREDENTIAL_FILE"
             elif grep -qiE 'password is too common|password too short|password must include' "$init_log"; then
                 cat "$init_log" >&2 || true

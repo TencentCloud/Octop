@@ -34,6 +34,35 @@ def test_build_chat_model_includes_provider_id_and_model_name() -> None:
     assert provider.stream_usage is False
 
 
+@pytest.mark.parametrize(
+    ("base_url", "expected"),
+    [
+        ("https://api.anthropic.com/v1", "https://api.anthropic.com"),
+        ("https://api.anthropic.com/v1/", "https://api.anthropic.com"),
+        ("https://api.anthropic.com", "https://api.anthropic.com"),
+        ("https://opencode.ai/zen", "https://opencode.ai/zen"),
+        (None, "https://api.anthropic.com"),
+    ],
+)
+def test_build_chat_model_anthropic_base_url_has_no_v1(base_url: str | None, expected: str) -> None:
+    # The Anthropic SDK appends /v1/messages itself; keeping /v1 would hit /v1/v1/messages.
+    row = SimpleNamespace(
+        name="anthropic",
+        kind="anthropic",
+        base_url=base_url,
+        api_key="sk-ant-test",
+        get_models=lambda: [{"id": "claude-opus-5-5", "name": "Claude Opus 5.5"}],
+    )
+
+    with patch("octop_harness.llm.factory.build_chat_model") as mock_build:
+        mock_build.return_value = object()
+        _build_chat_model(row)
+
+    provider, _model = mock_build.call_args[0]
+    assert provider.protocol == "anthropic"
+    assert provider.base_url == expected
+
+
 def _embedding_row(**overrides: Any) -> SimpleNamespace:
     models = overrides.pop(
         "models",

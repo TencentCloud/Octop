@@ -33,7 +33,12 @@ import {
   setOnnxDownloadProgressHandler,
   watchOnnxDownload,
 } from "../../../../../api/modules/onnxDownloadWatcher";
-import { looksLikeOllamaProvider, isOnnxProviderRow } from "../../presetUtils";
+import {
+  defaultBaseUrlForKind,
+  firstEnabledModelId,
+  looksLikeOllamaProvider,
+  isOnnxProviderRow,
+} from "../../presetUtils";
 import { expandOllamaDownloadedIds } from "../../ollamaNames";
 import { ModelListEditor } from "./ModelListEditor";
 import { StreamUsageAdvanced } from "../StreamUsageAdvanced";
@@ -101,6 +106,11 @@ export function ProviderConfigModal({
   const hasApiKey = !!provider.api_key && provider.api_key.length > 0;
   const isOllama = looksLikeOllamaProvider(provider);
   const isOnnx = isOnnxProviderRow(provider);
+  // Ollama runs locally, so the cloud default for its "openai" kind would be wrong.
+  const defaultBaseUrl =
+    isOllama || isOnnx ? "" : defaultBaseUrlForKind(provider.kind);
+  // Ollama / ONNX restrict the default model to downloaded ones instead.
+  const restrictDefaultToEnabled = !isOllama && !isOnnx;
   const [downloadedIds, setDownloadedIds] = useState<string[]>([]);
   const [downloadingIds, setDownloadingIds] = useState<string[]>([]);
   const [onnxSizeById, setOnnxSizeById] = useState<Record<string, number>>({});
@@ -657,12 +667,14 @@ export function ProviderConfigModal({
     if (!open) return;
     // Only hydrate when the modal opens (or provider id changes), so
     // background refreshes / local model toggles do not reset the form.
-    const currentDefaultModel = provider.models?.length
+    const currentDefaultModel = restrictDefaultToEnabled
+      ? firstEnabledModelId(provider.models)
+      : provider.models?.length
       ? provider.models[0].id
       : "";
     form.setFieldsValue({
       kind: provider.kind,
-      base_url: provider.base_url ?? "",
+      base_url: provider.base_url || defaultBaseUrl,
       api_key: undefined,
       model: currentDefaultModel,
       note: provider.note ?? "",
@@ -680,6 +692,12 @@ export function ProviderConfigModal({
   const handleModelsChange = (models: ProviderModel[]) => {
     setDraftModels(models);
     setFormDirty(true);
+    if (!restrictDefaultToEnabled) return;
+    const current = (form.getFieldValue("model") as string | undefined)?.trim();
+    const stillEnabled = models.some(
+      (m) => m.id === current && m.enabled !== false,
+    );
+    if (!stillEnabled) form.setFieldValue("model", firstEnabledModelId(models));
   };
 
   const handleSubmit = async () => {
@@ -689,8 +707,8 @@ export function ProviderConfigModal({
 
       const payload: Record<string, unknown> = {};
       if (values.kind !== provider.kind) payload.kind = values.kind;
-      if ((values.base_url ?? "") !== (provider.base_url ?? ""))
-        payload.base_url = values.base_url?.trim() || null;
+      const baseUrl = values.base_url?.trim() || defaultBaseUrl || null;
+      if (baseUrl !== (provider.base_url || null)) payload.base_url = baseUrl;
       if (values.api_key !== undefined && values.api_key !== "")
         payload.api_key = values.api_key.trim();
       if ((values.note ?? "") !== (provider.note ?? ""))
@@ -817,7 +835,8 @@ export function ProviderConfigModal({
       const draftBaseUrl = (values.base_url as string | undefined)?.trim();
       const useDraft =
         !!draftApiKey ||
-        (!!draftBaseUrl && draftBaseUrl !== (provider.base_url ?? ""));
+        (!!draftBaseUrl &&
+          draftBaseUrl !== (provider.base_url || defaultBaseUrl));
 
       if (useDraft && !draftApiKey && !hasApiKey) {
         message.warning(t("models.pleaseEnterApiKey"));
@@ -908,7 +927,7 @@ export function ProviderConfigModal({
 
       const values = form.getFieldsValue();
       const kind = (values.kind as string | undefined) ?? provider.kind;
-      if (kind !== "openai") {
+      if (kind !== "openai" && kind !== "anthropic") {
         message.warning(t("models.fetchModelsUnsupportedKind"));
         return;
       }
@@ -922,7 +941,7 @@ export function ProviderConfigModal({
 
       setFetchingModels(true);
       const result = await fetchProviderModels({
-        kind: "openai",
+        kind,
         api_key: apiKey,
         base_url: draftBaseUrl || provider.base_url,
         name: provider.name,
@@ -1026,7 +1045,7 @@ export function ProviderConfigModal({
               label="Base URL"
               extra={t("models.baseUrlExtra")}
             >
-              <Input placeholder="https://api.openai.com/v1" />
+              <Input placeholder={defaultBaseUrl || "https://..."} />
             </Form.Item>
 
             <Form.Item name="api_key" label="API Key" extra={apiKeyExtra}>
@@ -1062,7 +1081,7 @@ export function ProviderConfigModal({
               }
               options={(isOllama || isOnnx
                 ? draftModels.filter((m) => downloadedIds.includes(m.id))
-                : draftModels
+                : draftModels.filter((m) => m.enabled !== false)
               ).map((m) => ({
                 value: m.id,
                 label: m.name !== m.id ? `${m.name} (${m.id})` : m.id,

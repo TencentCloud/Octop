@@ -245,3 +245,24 @@ export function isLocalProviderRow(provider: {
 }): boolean {
   return isOnnxProviderRow(provider) || isOllamaProviderRow(provider);
 }
+
+const OFFICIAL_BASE_URL_BY_KIND: Record<string, string> = {
+  openai: "https://api.openai.com/v1",
+  anthropic: "https://api.anthropic.com/v1",
+};
+
+/**
+ * Endpoint saved when the Base URL field is left blank. The backend treats a
+ * provider without a base URL as unusable, so a blank field must not be
+ * stored as null for kinds that have an official endpoint.
+ */
+export function defaultBaseUrlForKind(kind?: string | null): string {
+  return OFFICIAL_BASE_URL_BY_KIND[kind ?? ""] ?? "";
+}
+
+/** Id of the first model not explicitly disabled, or "" when none is enabled. */
+export function firstEnabledModelId(
+  models?: ReadonlyArray<{ id: string; enabled?: boolean }> | null,
+): string {
+  return models?.find((m) => m.enabled !== false)?.id ?? "";
+}

@@ -5,6 +5,8 @@ import {
   isOllamaRuntimeUrl,
   isOnnxProviderRow,
   looksLikeOllamaProvider,
+  defaultBaseUrlForKind,
+  firstEnabledModelId,
 } from "./presetUtils";
 
 describe("isOnnxProviderRow", () => {
@@ -86,5 +88,36 @@ describe("looksLikeOllamaProvider", () => {
         base_url: "http://127.0.0.1:8000/v1",
       }),
     ).toBe(false);
+  });
+});
+
+describe("defaultBaseUrlForKind", () => {
+  it("returns the official endpoint for openai and anthropic kinds", () => {
+    expect(defaultBaseUrlForKind("openai")).toBe("https://api.openai.com/v1");
+    expect(defaultBaseUrlForKind("anthropic")).toBe(
+      "https://api.anthropic.com/v1",
+    );
+  });
+
+  it("returns an empty string for kinds without a single official endpoint", () => {
+    expect(defaultBaseUrlForKind("ollama")).toBe("");
+    expect(defaultBaseUrlForKind(undefined)).toBe("");
+  });
+});
+
+describe("firstEnabledModelId", () => {
+  it("skips disabled models and treats a missing flag as enabled", () => {
+    expect(
+      firstEnabledModelId([
+        { id: "old", enabled: false },
+        { id: "new" },
+        { id: "other", enabled: true },
+      ]),
+    ).toBe("new");
+  });
+
+  it("returns an empty string when nothing is enabled", () => {
+    expect(firstEnabledModelId([{ id: "a", enabled: false }])).toBe("");
+    expect(firstEnabledModelId(undefined)).toBe("");
   });
 });

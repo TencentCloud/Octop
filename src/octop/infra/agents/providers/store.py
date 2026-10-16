@@ -26,6 +26,20 @@ KIND_TO_PROTOCOL: dict[str, str] = {
 
 _PRESET_PROVIDER_KEYS: frozenset[str] | None = None
 
+_ANTHROPIC_DEFAULT_BASE_URL = "https://api.anthropic.com"
+
+
+def anthropic_sdk_base_url(base_url: str | None) -> str:
+    """Base URL for the Anthropic SDK, which appends ``/v1/...`` itself.
+
+    Presets store the documented API root ``https://api.anthropic.com/v1``; passed
+    through unchanged, requests would hit ``/v1/v1/messages`` and 404.
+    """
+    root = (base_url or "").strip().rstrip("/")
+    if root.endswith("/v1"):
+        root = root[: -len("/v1")]
+    return root or _ANTHROPIC_DEFAULT_BASE_URL
+
 
 def _preset_provider_keys() -> frozenset[str]:
     """Lowercased bundled preset ids and display names."""
@@ -215,7 +229,11 @@ class ProviderStore:
             out.append(
                 ProviderConfig(
                     id=row.name,
-                    base_url=row.base_url,
+                    base_url=(
+                        anthropic_sdk_base_url(row.base_url)
+                        if protocol == "anthropic"
+                        else row.base_url
+                    ),
                     api_key=row.api_key,
                     protocol=protocol,  # type: ignore[arg-type]
                     name=row.name,
@@ -368,6 +386,7 @@ class ProviderStore:
 __all__ = [
     "KIND_TO_PROTOCOL",
     "ProviderStore",
+    "anthropic_sdk_base_url",
     "clear_stale_pins_for_provider",
     "enabled_model_refs",
 ]

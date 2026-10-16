@@ -1,0 +1,68 @@
+# =============================================================================
+# Octop + PostgreSQL (pgvector) — one stack, built from this checkout
+#
+# From repo root:
+#   docker compose -f docker/docker-compose.pgvector.yml up -d --build
+#   docker compose -f docker/docker-compose.pgvector.yml down        # keep data
+#   docker compose -f docker/docker-compose.pgvector.yml down -v     # wipe data
+#
+# Optional docker/.env (Compose interpolation only):
+#   OCTOP_DEFAULT_PASSWORD=<≥8 chars, letters + digits>
+#   OCTOP_PG_PASSWORD=<postgres password>
+#
+# Data lives in named volumes (octop_data, octop_pgdata), not ~/.octop, so a
+# host install of Octop is left untouched. Postgres is published on host port
+# ${OCTOP_PG_HOST_PORT:-5433} for psql access; Octop reaches it as postgres:5432.
+# =============================================================================
+
+# Own project name: the default (folder name "docker") is shared by unrelated stacks.
+name: octop-pgvector
+
+services:
+  postgres:
+    image: pgvector/pgvector:pg16
+    container_name: octop-pgvector
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:${OCTOP_PG_HOST_PORT:-5433}:5432"
+    environment:
+      POSTGRES_USER: ${OCTOP_PG_USER:-octop}
+      POSTGRES_PASSWORD: ${OCTOP_PG_PASSWORD:-octop}
+      POSTGRES_DB: ${OCTOP_PG_DB:-octop}
+    volumes:
+      - octop_pgdata:/var/lib/postgresql/data
+      - ./postgres/init-vector.sql:/docker-entrypoint-initdb.d/01-vector.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  octop:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    image: octop:local
+    container_name: octop-app
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    ports:
+      - "${OCTOP_PORT:-8088}:${OCTOP_PORT:-8088}"
+    volumes:
+      - octop_data:/data/.octop
+    environment:
+      - HOME=/data
+      - OCTOP_BIND_HOST=0.0.0.0
+      - OCTOP_PORT=${OCTOP_PORT:-8088}
+      - OCTOP_LOG_LEVEL=${OCTOP_LOG_LEVEL:-info}
+      - OCTOP_DEFAULT_PASSWORD=${OCTOP_DEFAULT_PASSWORD:-}
+      - OCTOP_ADMIN_USERNAME=${OCTOP_ADMIN_USERNAME:-admin}
+      - OCTOP_ADMIN_DISPLAY_NAME=${OCTOP_ADMIN_DISPLAY_NAME:-Admin}
+      - OCTOP_DATABASE_DRIVER=postgresql
+      - OCTOP_DATABASE_URL=postgresql://${OCTOP_PG_USER:-octop}:${OCTOP_PG_PASSWORD:-octop}@postgres:5432/${OCTOP_PG_DB:-octop}
+
+volumes:
+  octop_data:
+  octop_pgdata:

@@ -28,6 +28,7 @@ from octop.infra.agents.providers.codex_oauth import (
 from octop.infra.agents.providers.model_flags import is_local_runtime_provider
 from octop.infra.agents.providers.presets import load_provider_presets
 from octop.infra.agents.providers.probe import (
+    fetch_anthropic_models,
     fetch_openai_compatible_models,
     make_probe_provider_row,
     parse_provider_extra,
@@ -372,23 +373,25 @@ async def admin_test_provider_draft(
     )
 
 
-@admin_router.post("/fetch-models", summary="List models from an OpenAI-compatible draft")
+@admin_router.post("/fetch-models", summary="List models from a provider draft")
 async def admin_fetch_provider_models(
     body: ProviderFetchModelsBody,
     request: Request,
     _: Any = Depends(require_permission("providers")),
 ) -> dict[str, Any]:
-    """Fetch remote model ids via OpenAI-compatible ``GET /models`` (openai kind only)."""
-    if body.kind != "openai":
+    """Fetch remote model ids: OpenAI-compatible ``GET /models`` for ``openai`` kind,
+    Anthropic ``GET /v1/models`` (``x-api-key`` auth) for ``anthropic`` kind."""
+    if body.kind not in ("openai", "anthropic"):
         return {
             "ok": False,
-            "error": "fetch models is only supported for openai-compatible providers",
+            "error": "fetch models is only supported for openai-compatible and anthropic providers",
         }
     api_key = (body.api_key or "").strip()
     if not api_key:
         return {"ok": False, "error": "api_key is required"}
     draft = SimpleNamespace(extra_json=body.extra_json)
-    return await fetch_openai_compatible_models(
+    fetch = fetch_anthropic_models if body.kind == "anthropic" else fetch_openai_compatible_models
+    return await fetch(
         base_url=(body.base_url or "").strip() or None,
         api_key=api_key,
         extra_headers=provider_headers(draft) or None,

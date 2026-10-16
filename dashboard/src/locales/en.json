@@ -3405,7 +3405,7 @@
     "fetchModelsMerged": "Added {{count}} new models to list (existing ones unchanged)",
     "fetchModelsNoNew": "No new models to add",
     "fetchModelsFailed": "Failed to fetch models: {{error}}",
-    "fetchModelsUnsupportedKind": "Auto-fetch is only supported for OpenAI-compatible providers",
+    "fetchModelsUnsupportedKind": "Auto-fetch is only supported for OpenAI-compatible and Anthropic providers",
     "customModelsLabel": "Models",
     "customModelsHint": "Fetched models are off by default — enable, test, edit, or remove; or add manually",
     "onnxLocalService": "Local ONNX embedding",

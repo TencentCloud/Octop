@@ -258,6 +258,27 @@ def test_existing_db_skips_password_init(tmp_path: Path) -> None:
 
 
 @posix_only
+def test_first_boot_init_writes_marker(tmp_path: Path) -> None:
+    result, octop_home = _run_first_boot(tmp_path, password="GoodPass1")
+    assert result.returncode == 0, result.stderr + result.stdout
+    assert (octop_home / ".initialized").is_file()
+
+
+@posix_only
+def test_init_marker_skips_init_without_sqlite_db(tmp_path: Path) -> None:
+    # PostgreSQL control plane: no octop.db, so a restart must rely on the marker
+    # instead of re-running `octop init` (which fails once the admin exists).
+    home = tmp_path / "data"
+    octop_home = home / ".octop"
+    octop_home.mkdir(parents=True)
+    (octop_home / ".initialized").touch()
+    result, _ = _run_first_boot(tmp_path, password="GoodPass1")
+    assert result.returncode == 0, result.stderr + result.stdout
+    assert not (octop_home / "init-password.txt").exists()
+    assert "首次启动" not in result.stdout
+
+
+@posix_only
 def test_random_wizard_password_meets_policy() -> None:
     script = (
         _source_helpers()
