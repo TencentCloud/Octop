@@ -9,6 +9,7 @@ from contextlib import suppress
 from typing import Any
 
 from octop.infra.server import OctopServer
+from octop.infra.utils.accept_errors import coalesce_accept_errors
 
 logger = logging.getLogger(__name__)
 
@@ -150,13 +151,14 @@ async def run_foreground(
     from octop.infra.agents.memory.slim_control import MemorySlimControl
 
     memory_control = MemorySlimControl(srv)
-    try:
-        await memory_control.start()
-        await asyncio.gather(*(_serve(s) for s in servers))
-    finally:
-        await memory_control.close()
-        await _cancel_background_task(bwrap_task)
-        await srv.stop()
+    with coalesce_accept_errors(asyncio.get_running_loop()):
+        try:
+            await memory_control.start()
+            await asyncio.gather(*(_serve(s) for s in servers))
+        finally:
+            await memory_control.close()
+            await _cancel_background_task(bwrap_task)
+            await srv.stop()
 
 
 def run_foreground_blocking(**kwargs: Any) -> None:
