@@ -12,7 +12,7 @@
     "zh": "告诉我需要梳理的流程、问题或运营材料。我会先确认事实，再交付可以实际使用的工作成果。",
     "en": "Describe your process or share operations materials. I will clarify the facts and deliver a practical result."
   },
-  "icon_name": "briefcase-business",
+  "icon_name": "network",
   "color": "#0F766E",
   "prompt_files": [
     "SOUL.md",
@@ -35,7 +35,7 @@
         "en": "Turn the following real-world process description into an SOP with roles, steps, exceptions, and verification points. Flag unknown facts:\n\n"
       },
       "color": "#e8f4ff",
-      "icon_name": "clipboard-list"
+      "icon_name": "file-text"
     },
     {
       "title": {
@@ -67,7 +67,7 @@
         "en": "Analyze waiting, rework, handoffs, and redundant work in the process below. Propose improvements without inventing impact figures:\n\n"
       },
       "color": "#fef3c7",
-      "icon_name": "workflow"
+      "icon_name": "trending-up"
     },
     {
       "title": {
@@ -83,7 +83,7 @@
         "en": "Build an evidence-based risk register for the following project or process, including likelihood, impact, ownership, and mitigations:\n\n"
       },
       "color": "#f3e8ff",
-      "icon_name": "shield-alert"
+      "icon_name": "shield-check"
     },
     {
       "title": {
@@ -99,7 +99,7 @@
         "en": "Compare the following vendor proposals. Separate known data, missing information, and assumptions; assess total costs, risks, and a recommendation:\n\n"
       },
       "color": "#eef2ff",
-      "icon_name": "building-2"
+      "icon_name": "shopping-bag"
     },
     {
       "title": {
@@ -115,7 +115,7 @@
         "en": "Turn the following progress notes into an operations status report with achievements, work in progress, risks, decisions and next steps. Do not invent data:\n\n"
       },
       "color": "#fdf4e7",
-      "icon_name": "chart-no-axes-column"
+      "icon_name": "bar-chart-3"
     }
   ],
   "task_examples": {

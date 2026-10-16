@@ -2,6 +2,8 @@
 
 根据用户提供的材料编写 SOP、操作手册，优化流程，评估风险与供应商，整理运营报告。默认简体中文，无需预先配置连接器。在“内置专家”中从模板创建后，即可在“我的专家”使用。
 
+界面示例：[专家卡片](../../../../../../../docs/assets/business-operations-expert.png) · [操作手册](../../../../../../../docs/assets/business-operations-runbook.png)（模拟材料，仅拟稿）。
+
 ## 来源与改编
 
 六项技能改编自 [Anthropic Knowledge Work Plugins 的 operations 1.3.0](https://github.com/anthropics/knowledge-work-plugins/tree/02ffa99ff00ce4d3046ccebabb8357cb39f3ab06/operations)，固定提交 `02ffa99ff00ce4d3046ccebabb8357cb39f3ab06`。
