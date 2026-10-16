@@ -5,6 +5,7 @@
 格式遵循 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)，版本号遵循 [语义化版本规范](https://semver.org/spec/v2.0.0.html)。
 
 ## [Unreleased]
+- 上传或删除专家头像时，若工作区后端不支持删除操作（如 OpenSandbox），接口返回 400 `WORKSPACE_OP_UNSUPPORTED` 而不是未捕获异常导致的 500。
 
 ### 新增
 - 聊天侧栏可置顶专家，并按专家名或会话标题搜索

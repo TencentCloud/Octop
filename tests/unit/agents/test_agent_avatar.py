@@ -79,6 +79,34 @@ async def test_write_skips_unsupported_mkdir() -> None:
     assert workspace.files[".octop/avatar.png"] == PNG
 
 
+class _NoDelete(_MemoryWorkspace):
+    """Backends without a delete primitive raise instead of reporting a missing file.
+
+    ``octop_harness`` routes this for the shipped ``OpenSandbox`` backend
+    (``sandbox_fs=True``, no ``delete_path``).
+    """
+
+    async def adelete(self, path: str) -> None:
+        raise BackendOperationNotSupportedError("delete", "OpenSandbox")
+
+
+@pytest.mark.asyncio
+async def test_delete_maps_unsupported_primitive_to_client_error() -> None:
+    with pytest.raises(OctopError) as raised:
+        await delete_workspace_avatar(_NoDelete())
+    assert raised.value.code is ErrorCode.WORKSPACE_OP_UNSUPPORTED
+    assert raised.value.status == 400
+
+
+@pytest.mark.asyncio
+async def test_write_refuses_when_avatar_cannot_be_replaced() -> None:
+    workspace = _NoDelete()
+    with pytest.raises(OctopError) as raised:
+        await write_workspace_avatar(workspace, PNG)
+    assert raised.value.code is ErrorCode.WORKSPACE_OP_UNSUPPORTED
+    assert workspace.files == {}
+
+
 @pytest.mark.asyncio
 async def test_read_legacy_root_avatar() -> None:
     workspace = _MemoryWorkspace()
