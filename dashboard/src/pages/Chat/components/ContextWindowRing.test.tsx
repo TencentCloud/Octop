@@ -5,6 +5,7 @@ import {
   screen,
   waitFor,
 } from "@testing-library/react";
+import type { ComponentProps } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { ContextUsageBreakdown } from "../../../api/modules/octopThreads";
 import ContextWindowRing from "./ContextWindowRing";
@@ -38,8 +39,10 @@ function deferred<T>() {
   return { promise, resolve, reject };
 }
 
-function renderRing(overrides: Record<string, unknown> = {}) {
-  const props = {
+function renderRing(
+  overrides: Partial<ComponentProps<typeof ContextWindowRing>> = {},
+) {
+  const props: ComponentProps<typeof ContextWindowRing> = {
     usedTokens: HINT,
     maxTokens: MAX,
     agentId: "agent-1",
@@ -47,7 +50,7 @@ function renderRing(overrides: Record<string, unknown> = {}) {
     isStreaming: false,
     ...overrides,
   };
-  return render(<ContextWindowRing {...(props as never)} />);
+  return render(<ContextWindowRing {...props} />);
 }
 
 function rerenderRing(view: ReturnType<typeof render>, isStreaming: boolean) {

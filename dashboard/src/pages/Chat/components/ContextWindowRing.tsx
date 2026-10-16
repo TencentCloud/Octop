@@ -39,7 +39,7 @@ interface ContextWindowRingProps {
   selectedConnectors?: string[];
   isMobile?: boolean;
   /** Live-turn flag: a true→false edge refetches the snapshot. */
-  isStreaming?: boolean;
+  isStreaming: boolean;
 }
 
 export default function ContextWindowRing({
@@ -50,7 +50,7 @@ export default function ContextWindowRing({
   threadId,
   selectedConnectors = [],
   isMobile = false,
-  isStreaming = false,
+  isStreaming,
 }: ContextWindowRingProps) {
   const { t } = useTranslation();
   const [open, setOpen] = useState(false);
@@ -58,6 +58,10 @@ export default function ContextWindowRing({
   const [breakdown, setBreakdown] = useState<ContextUsageBreakdown | null>(
     null,
   );
+  // /compact lowers server usage with no model call, so the hint never drops on
+  // its own. Each snapshot records the hint it absorbed; this lives in state
+  // (not a ref) so the ring memo below recomputes when it changes.
+  const [breakdownHint, setBreakdownHint] = useState<number | null>(null);
   const cacheRef = useRef<{
     key: string;
     at: number;
@@ -67,10 +71,7 @@ export default function ContextWindowRing({
   // Stream hint — kept in a ref so prefetch does not re-fire on every token tick.
   const hintUsedRef = useRef(usedTokens ?? 0);
   hintUsedRef.current = usedTokens ?? 0;
-  // /compact lowers server usage with no model call, so the hint never
-  // drops on its own. Each snapshot records the hint it absorbed; request
-  // order decides which of two in-flight responses may land.
-  const breakdownHintRef = useRef<number | null>(null);
+  // Request order decides which of two in-flight responses may land.
   const requestSeqRef = useRef(0);
 
   const max = maxTokens > 0 ? maxTokens : DEFAULT_MAX;
@@ -98,7 +99,7 @@ export default function ContextWindowRing({
         cached.key === cacheKey &&
         Date.now() - cached.at < BREAKDOWN_CACHE_TTL_MS
       ) {
-        breakdownHintRef.current = cached.hint;
+        setBreakdownHint(cached.hint);
         setBreakdown(cached.data);
         return;
       }
@@ -121,12 +122,12 @@ export default function ContextWindowRing({
         if (reqSeq !== requestSeqRef.current) return;
         if (data.used_tokens > 0) {
           cacheRef.current = { key: cacheKey, at: Date.now(), hint, data };
-          breakdownHintRef.current = hint;
+          setBreakdownHint(hint);
           setBreakdown(data);
         } else {
           // Empty harness snapshot (old threads) must not pin the ring at 0%.
           cacheRef.current = null;
-          breakdownHintRef.current = null;
+          setBreakdownHint(null);
           setBreakdown(null);
         }
       } catch {
@@ -134,7 +135,7 @@ export default function ContextWindowRing({
           // A failed post-compaction refetch must not leave the pre-compaction
           // snapshot cached; dropping it forces the next read to hit the server.
           cacheRef.current = null;
-          breakdownHintRef.current = null;
+          setBreakdownHint(null);
         }
         if (!opts?.silent) setBreakdown(null);
       } finally {
@@ -149,7 +150,7 @@ export default function ContextWindowRing({
   useEffect(() => {
     setBreakdown(null);
     cacheRef.current = null;
-    breakdownHintRef.current = null;
+    setBreakdownHint(null);
     // Invalidate anything still in flight for the previous key.
     requestSeqRef.current += 1;
   }, [cacheKey]);
@@ -170,7 +171,7 @@ export default function ContextWindowRing({
       breakdown && breakdown.max_tokens > 0 ? breakdown.max_tokens : max;
     // The snapshot is authoritative while the hint has not moved since it was
     // fetched; a moved hint means the turn outran the snapshot.
-    if (hasBreakdown && hintUsed === breakdownHintRef.current) {
+    if (hasBreakdown && hintUsed === breakdownHint) {
       return Math.min(breakdown.used_tokens, breakdownMax);
     }
     if (hintUsed > 0) return Math.min(hintUsed, max);
@@ -178,7 +179,7 @@ export default function ContextWindowRing({
     // Until prefetch returns, show last-call hint (capped so a stale
     // turn-sum cannot flash a full ring).
     return 0;
-  }, [breakdown, hintUsed, max]);
+  }, [breakdown, breakdownHint, hintUsed, max]);
 
   const ringMax =
     breakdown && breakdown.max_tokens > 0 ? breakdown.max_tokens : max;
