@@ -14,6 +14,8 @@ from logging.handlers import TimedRotatingFileHandler
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
+from octop_harness.plugins.registry import PluginRegistry
+
 from octop.config import OctopConfig, load_config
 from octop.infra.agents.experts.catalog import ExpertCatalog, default_library_root
 from octop.infra.agents.manager import AgentManager
@@ -32,6 +34,7 @@ from octop.infra.setup.password_file import WIZARD_FILE_NAME
 from octop.infra.setup.wizard_tokens import WizardTokenStore
 from octop.infra.users.manager import UserManager
 from octop.infra.utils.paths import PathLayout
+from octop.infra.utils.process_resources import ensure_nofile_limit
 
 if TYPE_CHECKING:
     from octop.infra.auth.ldap.service import LdapAuthService
@@ -161,6 +164,21 @@ def _parse_log_max_bytes() -> int:
         return DEFAULT_LOG_MAX_BYTES
 
 
+class _OctopLogFormatter(logging.Formatter):
+    """Process log line, with the active harness agent id when one is in scope."""
+
+    def format(self, record: logging.LogRecord) -> str:
+        text = super().format(record)
+        agent = getattr(record, "agent", None)
+        if not agent:
+            from octop_harness.observability.logging import current_log_agent_id
+
+            agent = current_log_agent_id()
+        if not agent:
+            return text
+        return f"{text} [agent={agent}]"
+
+
 def _build_log_handler(
     log_path: Path,
     retention_days: int,
@@ -180,7 +198,7 @@ def _build_log_handler(
     )
     # Rotated files get a date suffix, e.g. octop.log.2026-07-16
     handler.suffix = "%Y-%m-%d"
-    handler.setFormatter(logging.Formatter("%(asctime)s %(levelname)-5s %(name)s — %(message)s"))
+    handler.setFormatter(_OctopLogFormatter("%(asctime)s %(levelname)-5s %(name)s — %(message)s"))
     return handler
 
 
@@ -336,6 +354,10 @@ class OctopServer:
 
         apply_env_file(env_file_path(self.paths.root))
         self._setup_logging()
+        ensure_nofile_limit()
+        from octop.infra.backend.grep_safety import install_safe_grep_fallback  # noqa: PLC0415
+
+        install_safe_grep_fallback()
         config = ensure_mobile_capabilities_probed(self.paths.config)
         self.config = config
 
@@ -353,6 +375,7 @@ class OctopServer:
         )
         self.plugin_manager.seed_bundled()
         self.plugin_manager.load_installed(install_deps=True)
+        self._apply_plugin_channels()
 
         import time  # noqa: PLC0415
 
@@ -576,6 +599,46 @@ class OctopServer:
                 await bridge_mgr.resume_auto_connections()
 
         asyncio.create_task(_resume_bridges(), name="bridge-auto-resume")
+
+    async def refresh_plugin_channels(self) -> None:
+        """Reconcile only changed kinds and report registration failures to callers."""
+        from octop.infra.errors import ErrorCode, OctopError
+        from octop.infra.gateway.plugin_channels import (
+            changed_plugin_channel_kinds,
+            current_registration_errors,
+        )
+
+        changed = changed_plugin_channel_kinds(PluginRegistry())
+        if self.app_runtime is not None:
+            await self.app_runtime.gateway.reload_plugin_channels(
+                self._apply_plugin_channels, kinds=changed
+            )
+        else:
+            self._apply_plugin_channels()
+        errors = current_registration_errors()
+        if errors:
+            raise OctopError(
+                ErrorCode.PLUGIN_INSTALL_FAILED,
+                "plugin channel registration failed",
+                details={"registration_errors": errors},
+            )
+
+    def _apply_plugin_channels(self) -> None:
+        """Register plugin-contributed channel kinds with the gateway.
+
+        Called after every plugin load/reload so channel kinds are always in
+        sync with the plugin registry. Best-effort: a failure in one plugin's
+        registration never blocks boot (already handled inside
+        ``apply_plugin_channels``).
+        """
+        if self.plugin_manager is None:
+            return
+        try:
+            from octop.infra.gateway.plugin_channels import apply_plugin_channels  # noqa: PLC0415
+
+            apply_plugin_channels(registry=PluginRegistry())
+        except Exception:
+            logger.exception("applying plugin channel kinds failed")
 
     def _emit_wizard_password(self, *, user_count: int) -> None:
         config = self.config

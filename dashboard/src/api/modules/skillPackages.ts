@@ -1,4 +1,4 @@
-import { request } from "../request";
+import { request, requestBlob } from "../request";
 import type {
   CreateSkillPackageBody,
   CopyPackageSkillsBody,
@@ -54,6 +54,9 @@ export const skillPackagesApi = {
 
   get: (packageId: string) =>
     request<SkillPackageDetail>(`/skill-packages/${packageId}`),
+
+  exportPackage: (packageId: string) =>
+    requestBlob(`/skill-packages/${encodeURIComponent(packageId)}/export`),
 
   create: (body: CreateSkillPackageBody) =>
     request<SkillPackageDetail>("/skill-packages", {

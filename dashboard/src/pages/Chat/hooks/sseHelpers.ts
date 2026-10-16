@@ -65,6 +65,63 @@ export interface UserComposerContext {
   reasoningEffort?: string | null;
 }
 
+export interface DecisionNoticePart {
+  kind: "skill" | "tool" | "member" | "result";
+  /** Null when that catalog was left unchanged. An empty list means it was narrowed to nothing extra. */
+  kept: Array<{ name: string; score?: number }> | null;
+}
+
+/** Notice that a decision model narrowed this reply. Stored on the assistant message. */
+export interface DecisionNotice {
+  model: string;
+  empty: boolean;
+  parts: DecisionNoticePart[];
+}
+
+export function parseDecisionNotice(data: unknown): DecisionNotice | null {
+  if (!data || typeof data !== "object" || Array.isArray(data)) return null;
+  const raw = data as Record<string, unknown>;
+  if (raw.kind !== "decision") return null;
+  const partsRaw = Array.isArray(raw.parts) ? raw.parts : [];
+  const parts: DecisionNoticePart[] = [];
+  for (const item of partsRaw) {
+    if (!item || typeof item !== "object") continue;
+    const row = item as Record<string, unknown>;
+    const kind = row.kind;
+    if (
+      kind !== "skill" &&
+      kind !== "tool" &&
+      kind !== "member" &&
+      kind !== "result"
+    ) {
+      continue;
+    }
+    if (row.kept == null) {
+      parts.push({ kind, kept: null });
+      continue;
+    }
+    if (!Array.isArray(row.kept)) continue;
+    const kept = row.kept.flatMap((entry) => {
+      if (!entry || typeof entry !== "object") return [];
+      const name = (entry as { name?: unknown }).name;
+      if (typeof name !== "string" || !name.trim()) return [];
+      const score = (entry as { score?: unknown }).score;
+      return [
+        {
+          name,
+          ...(typeof score === "number" ? { score } : {}),
+        },
+      ];
+    });
+    parts.push({ kind, kept });
+  }
+  return {
+    model: typeof raw.model === "string" ? raw.model : "",
+    empty: raw.empty === true,
+    parts,
+  };
+}
+
 export interface ChatMessage {
   id: string;
   role: "user" | "assistant" | "system" | "tool";
@@ -97,6 +154,8 @@ export interface ChatMessage {
    * persisted for the process panel.
    */
   editedFiles?: string[];
+  /** Decision-model pass for this turn. Shown inside the process fold. */
+  decision?: DecisionNotice;
 }
 
 /** Per-session state held in the chat store's module-scoped Map. */
