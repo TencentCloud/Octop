@@ -160,6 +160,8 @@ export default function LdapPanel() {
   }, [loadConfig]);
 
   const saveConfig = async (values: LdapFormValues) => {
+    // onFinish only includes mounted fields; retain hidden group/advanced values.
+    values = { ...form.getFieldsValue(true), ...values };
     setSaving(true);
     try {
       const body: LdapConfigPut = {
