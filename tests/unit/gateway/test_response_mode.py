@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 from collections.abc import AsyncIterator
 
 import pytest
@@ -12,6 +13,7 @@ from octop_gateway.models import (
     MessageEventType,
     TextContent,
 )
+from octop_gateway.utils import close_event_stream
 
 from octop.infra.gateway.process.response_mode import (
     collapse_to_invoke_response,
@@ -19,6 +21,7 @@ from octop.infra.gateway.process.response_mode import (
     processor_for_response_mode,
     qq_channel_response_mode,
     withhold_weixin_stream_preamble,
+    wrap_weixin_stream_processor,
 )
 
 
@@ -102,7 +105,30 @@ async def test_invoke_forwards_error_without_partial_text() -> None:
 
     result = [event async for event in collapse_to_invoke_response(source)]
 
-    assert result == [error, MessageEvent.completed()]
+    assert result == [error]
+
+
+@pytest.mark.parametrize("mode", ["invoke", "weixin-stream"])
+async def test_terminal_error_closes_underlying_processor_through_response_wrapper(mode):
+    closed = False
+
+    async def source(_message):
+        nonlocal closed
+        try:
+            yield MessageEvent.error_event("simulated failure")
+            await asyncio.Event().wait()
+        finally:
+            closed = True
+
+    processor = (
+        processor_for_response_mode(source, "invoke")
+        if mode == "invoke"
+        else wrap_weixin_stream_processor(source)
+    )
+    stream = processor(InboundMessage(channel_id="test", content=[TextContent(text="test")]))
+    assert (await anext(stream)).type == MessageEventType.ERROR
+    await close_event_stream(stream)
+    assert closed
 
 
 @pytest.mark.asyncio

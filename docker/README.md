@@ -29,12 +29,15 @@ docker compose -f docker/docker-compose.yml up -d --build
 
 Open `http://localhost:8088`. A valid `OCTOP_DEFAULT_PASSWORD` (≥8 characters with letters and digits) creates the admin on first boot and writes credentials to `/data/.octop/credential.txt`. If the variable is unset, or the password fails policy (too short, missing letters/digits, or a common password), **no** admin is created — open the dashboard and complete the setup wizard. The wizard unlock password is in `/data/.octop/octop-login.txt` (also noted in `credential.txt`).
 
+Compose sets the open-file limit to 65535 for multi-agent workloads. Server startup also raises the soft limit up to 65535 within the inherited hard limit and logs the effective limits. Recreate existing containers to apply changed Compose limits; a restart alone does not change their hard limit.
+
 **Option 2: Build script**
 
 ```bash
 bash docker/docker_build.sh
 docker run -d \
   --name octop \
+  --ulimit nofile=65535:65535 \
   -p 8088:8088 \
   -v octop-data:/data/.octop \
   -e HOME=/data \

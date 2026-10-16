@@ -394,3 +394,42 @@ def test_resolve_multimodal_model_ref_prefers_inferred_vision_model(store: Provi
         ),
     )
     assert store.resolve_multimodal_model_ref() == "p/gpt-4o"
+
+
+def test_list_auto_route_candidates_filters_and_preserves_capacity(
+    store: ProviderStore,
+) -> None:
+    store._provider_repo.create(
+        name="p",
+        kind="openai",
+        base_url="https://api.example.com/v1",
+        api_key="sk-test",
+        models_json=json.dumps(
+            [
+                {
+                    "id": "text",
+                    "enabled": True,
+                    "input": ["text"],
+                    "max_input_tokens": 8_000,
+                },
+                {
+                    "id": "vision",
+                    "enabled": True,
+                    "input": ["text", "image"],
+                    "context_window": 32_000,
+                },
+                {"id": "disabled", "enabled": False, "context_window": 99_000},
+            ]
+        ),
+    )
+
+    all_candidates = store.list_auto_route_candidates(needs_multimodal=False)
+    vision_candidates = store.list_auto_route_candidates(needs_multimodal=True)
+
+    assert [(item.ref, item.max_input_tokens) for item in all_candidates] == [
+        ("p/text", 8_000),
+        ("p/vision", 32_000),
+    ]
+    assert [(item.ref, item.max_input_tokens) for item in vision_candidates] == [
+        ("p/vision", 32_000)
+    ]
