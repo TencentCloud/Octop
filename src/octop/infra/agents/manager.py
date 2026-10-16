@@ -27,6 +27,7 @@ from octop.i18n.domains.agents import (
 from octop.infra.agents.memory.backend import memory_backend_from_agent_config
 from octop.infra.agents.memory.slim import MemorySlimCoordinator
 from octop.infra.agents.providers import ProviderStore, sync_providers_to_harness
+from octop.infra.agents.providers.health import ModelHealthRegistry
 from octop.infra.agents.security import SecuritySettingsStore, ToolGuardRulesStore
 from octop.infra.agents.security.hitl_session import (
     HitlSessionPolicyStore,
@@ -526,6 +527,7 @@ class AgentManager:
         self._providers = ProviderStore(
             provider_repo=repos.provider_repo,
         )
+        self._model_health = ModelHealthRegistry()
         self._connector_svc = ConnectorService(
             repo=repos.connector_repo,
             secret_repo=repos.secret_repo,
@@ -1824,14 +1826,28 @@ class AgentManager:
         if self._harness_manager is not None:
             self._harness_manager.clear_thread_model(agent_id, thread_id)
 
-    def resolve_fallback_model_ref(self) -> str | None:
-        """Settings active model when usable, else the first enabled catalog model."""
+    def _resolve_configured_fallback_model_ref(self) -> str | None:
+        """Return the configured fallback without applying runtime health."""
         name, model_id = self._repos.settings_repo.get_active_model()
         if name and model_id:
             ref = f"{name}/{model_id}"
             if self._providers.is_model_ref_usable(ref):
                 return ref
         return self._providers.resolve_first_model_ref()
+
+    def resolve_fallback_model_ref(self) -> str | None:
+        """Return the first healthy model for an automatic route."""
+        configured = self._resolve_configured_fallback_model_ref()
+        if configured and self._model_health.is_routable(configured):
+            return configured
+        for candidate in self._providers.list_auto_route_candidates(needs_multimodal=False):
+            if self._model_health.is_routable(candidate.ref):
+                return candidate.ref
+        return None
+
+    def is_auto_route_model_available(self, ref: str) -> bool:
+        """Return whether a usable model can start an automatic route now."""
+        return self._providers.is_model_ref_usable(ref) and self._model_health.is_routable(ref)
 
     # ------------------------------------------------------------------
     # Hot-reload — rebuild harness agents after config / provider changes
@@ -3852,7 +3868,7 @@ class AgentManager:
             # ``resolve_explicit_default_model`` directly.
             default_model=(
                 self._providers.resolve_explicit_default_model(row, cfg)
-                or self.resolve_fallback_model_ref()
+                or self._resolve_configured_fallback_model_ref()
             ),
             system_prompt=system_prompt,
             memory=memory,
@@ -3892,23 +3908,48 @@ class AgentManager:
         if interrupt_on is not applied.interrupt_on:
             applied = replace(applied, interrupt_on=interrupt_on)
         if applied.model_retry_enabled:
-            from langchain.agents.middleware import ModelRetryMiddleware
-
             bound_agent_id = row.agent_id
 
             def _on_model_retry_failure(exc: Exception) -> str:
                 return _model_retry_on_failure(exc, agent_id=bound_agent_id, manager=self)
 
+            factory = (
+                self._harness_manager.shared_factory if self._harness_manager is not None else None
+            )
+            get_chat_model = getattr(factory, "get_chat_model", None)
+            if callable(get_chat_model):
+                from octop.infra.agents.middleware.model_failover import (
+                    SafeModelFailoverMiddleware,
+                )
+
+                retry_middleware: Any = SafeModelFailoverMiddleware(
+                    health=self._model_health,
+                    candidates=lambda _current_ref, needs_multimodal: (
+                        self._providers.list_auto_route_candidates(
+                            needs_multimodal=needs_multimodal
+                        )
+                    ),
+                    model_for_ref=get_chat_model,
+                    max_retries=applied.model_retry_max_retries,
+                    initial_delay=applied.model_retry_initial_delay,
+                    max_delay=applied.model_retry_max_delay,
+                    on_failure=_on_model_retry_failure,
+                )
+            else:
+                from langchain.agents.middleware import ModelRetryMiddleware
+
+                retry_middleware = ModelRetryMiddleware(
+                    max_retries=applied.model_retry_max_retries,
+                    initial_delay=applied.model_retry_initial_delay,
+                    max_delay=applied.model_retry_max_delay,
+                    on_failure=_on_model_retry_failure,
+                )
+
             applied = replace(
                 applied,
                 model_retry_enabled=False,
                 middleware=[
-                    ModelRetryMiddleware(
-                        max_retries=applied.model_retry_max_retries,
-                        initial_delay=applied.model_retry_initial_delay,
-                        max_delay=applied.model_retry_max_delay,
-                        on_failure=_on_model_retry_failure,
-                    ),
+                    retry_middleware,
                     *(applied.middleware or []),
                 ],
             )

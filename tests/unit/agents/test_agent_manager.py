@@ -1582,6 +1582,47 @@ def test_model_retry_sync_failure_and_recovery(manager: AgentManager) -> None:
     assert handler.call_count == 2
 
 
+def test_runtime_uses_health_aware_model_failover(manager: AgentManager) -> None:
+    from octop.infra.agents.middleware.model_failover import SafeModelFailoverMiddleware
+
+    _seed_test_provider(manager)
+    factory = MagicMock()
+    factory.get_chat_model.return_value = object()
+    manager._harness_manager = MagicMock(shared_factory=factory)
+
+    cfg = manager._build_harness_config(_row())
+
+    failovers = [
+        item for item in (cfg.middleware or []) if isinstance(item, SafeModelFailoverMiddleware)
+    ]
+    assert len(failovers) == 1
+    assert not cfg.model_retry_enabled
+
+
+def test_auto_route_fallback_skips_model_in_cooldown(manager: AgentManager) -> None:
+    from octop.infra.agents.providers.health import FailureScope
+
+    manager._repos.provider_repo.create(
+        name="p",
+        kind="openai",
+        base_url="https://api.example.com/v1",
+        api_key="sk-test",
+        models_json=json.dumps(
+            [
+                {"id": "bad", "enabled": True},
+                {"id": "ready", "enabled": True},
+            ]
+        ),
+    )
+    manager._model_health.record_failure(
+        "p/bad",
+        kind="provider_unavailable",
+        scope=FailureScope.MODEL,
+    )
+
+    assert manager.resolve_fallback_model_ref() == "p/ready"
+
+
 def test_build_harness_config_auto_expert_falls_back_to_first_model(
     manager: AgentManager,
 ) -> None:
@@ -1590,6 +1631,23 @@ def test_build_harness_config_auto_expert_falls_back_to_first_model(
     cfg = manager._build_harness_config(_row(default_model=None))
     assert cfg.default_model == "test-openai/gpt-4o-mini"
     assert cfg.providers == []
+
+
+def test_build_harness_config_keeps_model_during_runtime_cooldown(
+    manager: AgentManager,
+) -> None:
+    from octop.infra.agents.providers.health import FailureScope
+
+    _seed_test_provider(manager)
+    manager._model_health.record_failure(
+        "test-openai/gpt-4o-mini",
+        kind="timeout",
+        scope=FailureScope.MODEL,
+    )
+
+    cfg = manager._build_harness_config(_row(default_model=None))
+
+    assert cfg.default_model == "test-openai/gpt-4o-mini"
 
 
 def test_build_harness_config_uses_active_model_before_first(

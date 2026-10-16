@@ -1952,6 +1952,63 @@ def test_resolve_harness_model_dashboard_override_wins() -> None:
     )
 
 
+def test_resolve_harness_model_route_marks_dashboard_override_explicit() -> None:
+    processor = GlobalProcessor(
+        agent_manager=MagicMock(),
+        thread_registry=MagicMock(),
+        audit_repo=MagicMock(),
+        agent_repo=MagicMock(),
+        user_repo=MagicMock(),
+        connector_repo=MagicMock(),
+        dispatcher=MagicMock(),
+        usage_repo=MagicMock(),
+        gateway=MagicMock(),
+    )
+    processor._agent_manager.get_thread_model.return_value = None
+    processor._agent_manager.providers.is_model_ref_usable.return_value = True
+    processor._agent_manager.providers.resolve_model_for_multimodal_turn.return_value = "p/picked"
+
+    route = processor._resolve_harness_model_route(
+        "a1",
+        "t1",
+        {"model": "p/picked"},
+        needs_multimodal=False,
+    )
+
+    assert route.model_ref == "p/picked"
+    assert route.automatic is False
+
+
+def test_resolve_harness_model_route_marks_fallback_automatic() -> None:
+    processor = GlobalProcessor(
+        agent_manager=MagicMock(),
+        thread_registry=MagicMock(),
+        audit_repo=MagicMock(),
+        agent_repo=MagicMock(),
+        user_repo=MagicMock(),
+        connector_repo=MagicMock(),
+        dispatcher=MagicMock(),
+        usage_repo=MagicMock(),
+        gateway=MagicMock(),
+    )
+    processor._agent_manager.get_thread_model.return_value = None
+    processor._agent_repo.get.return_value = MagicMock(default_model=None)
+    processor._agent_manager.get_config.return_value = {}
+    processor._agent_manager.providers.resolve_explicit_default_model.return_value = None
+    processor._agent_manager.resolve_fallback_model_ref.return_value = "p/auto"
+    processor._agent_manager.providers.resolve_model_for_multimodal_turn.return_value = "p/auto"
+
+    route = processor._resolve_harness_model_route(
+        "a1",
+        "t1",
+        None,
+        needs_multimodal=False,
+    )
+
+    assert route.model_ref == "p/auto"
+    assert route.automatic is True
+
+
 def test_resolve_harness_model_drops_unusable_dashboard_override() -> None:
     """Stale composer/expert refs must not bypass catalog usability checks."""
     processor = GlobalProcessor(

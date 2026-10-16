@@ -501,6 +501,53 @@ discovery.
 |--------|------|------|-------|
 | `POST`/`GET`/… | `/internal/mcp/*` | public (mTLS / network-isolated) | MCP gateway used by octop-harness agents (not the dashboard) |
 
+## Octop Agent MCP Gateway
+
+External agents call installed Octop experts through the authenticated
+Streamable HTTP endpoint:
+
+`POST/GET/DELETE /mcp/agents`
+
+Use the same JWT bearer token as the REST API. Use HTTPS when the endpoint is
+available outside the local host. The default token lifetime is 24 hours.
+
+The server exposes three tools:
+
+| Tool | Purpose |
+|------|---------|
+| `list_octop_experts` | List experts visible to the authenticated user |
+| `call_octop_expert` | Start a new isolated expert conversation, or continue one with `thread_id` |
+| `resume_octop_expert` | Resume a call that stopped for tool approval or user input |
+
+`call_octop_expert` returns `thread_id`. Store this value in the external
+agent's working state. Pass it only when the next task must use the same Octop
+conversation. Omit it for a new task. MCP threads cannot attach to dashboard,
+CLI, or IM threads.
+
+When a tool needs approval, the call returns `status: "approval_required"` and
+an `approval` object. Read `approval.request.action_requests` and
+`approval.request.review_configs`. Send one allowed decision for each action to
+`resume_octop_expert`. A resumed call can return another approval request.
+
+Example client configuration:
+
+```json
+{
+  "mcpServers": {
+    "octop-agents": {
+      "type": "streamable_http",
+      "url": "http://127.0.0.1:8090/api/mcp/agents",
+      "headers": {
+        "Authorization": "Bearer <octop-access-token>"
+      }
+    }
+  }
+}
+```
+
+The exact transport key differs by MCP client. Some clients use `http`
+instead of `streamable_http`.
+
 ## Observability & security
 
 | Method | Path | Auth | Notes |
