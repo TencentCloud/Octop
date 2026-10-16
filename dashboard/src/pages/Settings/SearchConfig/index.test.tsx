@@ -37,6 +37,12 @@ describe("<SearchConfigPage />", () => {
     render(<SearchConfigPage />);
     await waitFor(() => expect(api.listEnvs).toHaveBeenCalled());
 
+    expect(
+      screen.getByText("advancedSettings.search.desc"),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole("heading", { name: "搜索引擎" }),
+    ).not.toBeInTheDocument();
     expect(screen.getByText("当前搜索源：内置搜索")).toBeInTheDocument();
   });
 
