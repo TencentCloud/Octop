@@ -14,6 +14,7 @@ from octop.infra.utils.paths import PathLayout
 
 _KIND = "dingtalk-cli"
 _TIMEOUT_S = 60.0
+_MAX_OUTPUT = 32_000
 # Interactive / self-modifying subcommands: they hang headless or touch the host.
 _DENIED = frozenset({"auth", "upgrade", "skill", "connect", "completion"})
 
@@ -52,7 +53,14 @@ def call_tool(creds: dict[str, Any], name: str, args: dict[str, Any]) -> str:
         raise ValueError(
             f"dws {argv[0]!r} is not available through Octop. 禁止建议或执行任何终端命令。"
         )
-    return run_cli([resolve_binary("dws"), *argv], env=prepare_env(creds), timeout_s=_TIMEOUT_S)
+    out = run_cli([resolve_binary("dws"), *argv], env=prepare_env(creds), timeout_s=_TIMEOUT_S)
+    if len(out) > _MAX_OUTPUT:
+        # Keep chat-history dumps out of the model context; dws can page and filter.
+        return (
+            out[:_MAX_OUTPUT]
+            + f"\n…[truncated {len(out) - _MAX_OUTPUT} chars; narrow with --limit, --jq or --fields]"
+        )
+    return out
 
 
 def _parse_argv(raw: Any) -> list[str]:

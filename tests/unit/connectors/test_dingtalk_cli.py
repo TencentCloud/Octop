@@ -77,3 +77,11 @@ def test_llm_facing_schema_round_trips_a_command_line(monkeypatch, tmp_path) -> 
 
 def test_registered() -> None:
     assert get_gateway_adapter("dingtalk-cli") is dingtalk_cli
+
+
+def test_large_output_is_truncated_with_a_hint(monkeypatch, tmp_path) -> None:
+    monkeypatch.setenv("OCTOP_HOME", str(tmp_path))
+    monkeypatch.setattr(dingtalk_cli, "resolve_binary", lambda _n: fake_bin_path("dws"))
+    monkeypatch.setattr(dingtalk_cli, "run_cli", lambda argv, **_: "x" * 40_000)
+    out = dingtalk_cli.call_tool({"cli_config_key": "i"}, "dws", {"args": "chat +chat-messages"})
+    assert out.startswith("x" * 32_000) and "truncated 8000 chars" in out
