@@ -4066,12 +4066,12 @@
       "settings": "Settings"
     },
     "strong": {
-      "contextNotice": "The full content here is included in every chat context.",
-      "description": "Maintain strong memory manually for important background and agreements that should always be available. Regular memory is recalled as needed, adding relevant memories to the context each time. Asking the agent to remember something saves it to regular memory and leaves this document unchanged.",
+      "contextNotice": "Strong memory is loaded once when a session starts and stays in that session's context.",
+      "description": "Maintain strong memory manually for important background and agreements that should always be available. Its content stays unchanged within a session; edits apply to new sessions. Regular memory is recalled as needed, adding relevant memories to the context each time. Asking the agent to remember something saves it to regular memory and leaves this document unchanged.",
       "contentLabel": "Strong memory content",
       "placeholder": "Enter content to reference in every chat. Markdown is supported.",
       "discard": "Discard changes",
-      "saved": "Strong memory saved. It will be used from the next chat turn.",
+      "saved": "Strong memory saved. It will apply to new sessions.",
       "loadFailed": "Could not load strong memory. Please retry.",
       "saveFailed": "Could not save. Your changes have been kept; please retry."
     },

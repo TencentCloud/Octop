@@ -52,7 +52,7 @@ export default function StrongMemory({ agentId }: { agentId: string }) {
       setSavedContent(file.content);
       setExists(file.exists);
       message.success(
-        t("memory.strong.saved", "强记忆已保存，将从下一轮聊天开始使用。"),
+        t("memory.strong.saved", "强记忆已保存，将在新会话中生效。"),
       );
     } catch {
       if (generation.current === current) {
@@ -73,11 +73,11 @@ export default function StrongMemory({ agentId }: { agentId: string }) {
         showIcon
         message={t(
           "memory.strong.contextNotice",
-          "每次聊天都会将这里的全部内容加入上下文。",
+          "每个会话开始时加载一次强记忆，并持续用于该会话上下文。",
         )}
         description={t(
           "memory.strong.description",
-          "强记忆由你手动维护，适合填写始终需要参考的重要背景和约定。普通记忆按需召回，每次将相关记忆加入上下文。对 Agent 说“记住”会保存到普通记忆，不会改动这里。",
+          "强记忆由你手动维护，适合填写始终需要参考的重要背景和约定。同一会话内内容保持不变，修改后对新会话生效。普通记忆按需召回，每次将相关记忆加入上下文。对 Agent 说“记住”会保存到普通记忆，不会改动这里。",
         )}
       />
       {failed && (

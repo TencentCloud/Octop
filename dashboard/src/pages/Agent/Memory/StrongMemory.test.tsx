@@ -5,8 +5,12 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 vi.mock("../../../api/modules/memoryDashboard", () => ({
   default: { getStrongMemory: vi.fn(), putStrongMemory: vi.fn() },
 }));
+vi.mock("../../../utils/antdMessage", () => ({
+  message: { success: vi.fn(), error: vi.fn() },
+}));
 
 import memoryApi from "../../../api/modules/memoryDashboard";
+import { message } from "../../../utils/antdMessage";
 import StrongMemory from "./StrongMemory";
 
 const api = vi.mocked(memoryApi);
@@ -26,8 +30,9 @@ describe("Strong memory", () => {
     const editor = await screen.findByRole("textbox", { name: "强记忆内容" });
     expect(editor).toHaveValue(original);
     expect(
-      screen.getByText(/每次聊天都会将这里的全部内容加入上下文/),
+      screen.getByText(/每个会话开始时加载一次强记忆/),
     ).toBeInTheDocument();
+    expect(screen.getByText(/修改后对新会话生效/)).toBeInTheDocument();
     await user.clear(editor);
     await user.type(editor, "新的手工约定");
     await user.click(screen.getByRole("button", { name: /保\s*存/ }));
@@ -35,6 +40,11 @@ describe("Strong memory", () => {
       expect(api.putStrongMemory).toHaveBeenCalledWith(
         "agent-a",
         "新的手工约定",
+      ),
+    );
+    await waitFor(() =>
+      expect(message.success).toHaveBeenCalledWith(
+        expect.stringContaining("新会话"),
       ),
     );
   });

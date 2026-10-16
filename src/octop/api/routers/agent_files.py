@@ -26,7 +26,7 @@ the v1 dashboard which only ever runs against ``local_shell``.
 
 ``MEMORY.md`` is exposed as user-maintained strong memory through the
 owner-only ``memory/strong`` endpoints, including while the agent is stopped.
-The full file is loaded into subsequent chat context. ``HEARTBEAT.md`` uses
+The full file is snapshotted once per session; edits apply to new sessions. ``HEARTBEAT.md`` uses
 the general workspace file endpoints.
 """
 
@@ -65,7 +65,7 @@ class StrongMemoryFile(StrongMemoryBody):
     "/agents/{agent_id}/memory/strong",
     response_model=StrongMemoryFile,
     summary="Read strong memory",
-    description="Read the full user-maintained MEMORY.md that is included in every chat context. Available to the owner even when the agent is stopped.",
+    description="Read the current user-maintained MEMORY.md. New sessions snapshot its full content once; existing sessions keep their snapshot. Available to the owner even when the agent is stopped.",
 )
 async def get_strong_memory(
     agent_id: str,
@@ -86,7 +86,7 @@ async def get_strong_memory(
     "/agents/{agent_id}/memory/strong",
     response_model=StrongMemoryFile,
     summary="Save strong memory",
-    description="Replace the owner's MEMORY.md with the supplied text. The full content is loaded for the next chat turn; ordinary remember requests are saved separately to octop-memory.",
+    description="Replace the owner's MEMORY.md with the supplied text. Edits apply to new sessions; existing sessions keep their snapshot. Ordinary remember requests are saved separately to octop-memory.",
 )
 async def put_strong_memory(
     agent_id: str,

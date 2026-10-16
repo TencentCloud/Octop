@@ -8,7 +8,7 @@
 
 ### 新增
 
-- 记忆页新增「强记忆」Tab，用户可手动编辑每次全文进入聊天上下文的 MEMORY.md，支持停止状态的 Agent。用户说「记住」通过 memory_save 保存到 octop-memory，Agent 不再自动改写 MEMORY.md。
+- 记忆页新增「强记忆」Tab，用户可手动编辑 MEMORY.md，支持停止状态的 Agent。每个会话首次加载全文快照并持续复用，修改对新会话生效。用户说「记住」通过 memory_save 保存到 octop-memory，Agent 不再自动改写 MEMORY.md。
 
 ### 修复
 
