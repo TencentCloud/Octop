@@ -634,12 +634,13 @@ async def test_probe_local_model_maps_network_error_to_hint(monkeypatch) -> None
 
     assert result["ok"] is False
     assert "Errno 101" in result["error"], "original detail kept for diagnosis"
-    assert "re-download" in result["error"]
+    assert "local model cache" in result["error"]
     assert "offline" in result["error"]
+    assert "re-download" not in result["error"]
 
 
 async def test_probe_local_model_maps_incomplete_cache_to_hint(monkeypatch) -> None:
-    """fastembed's local-only ValueError must point the user at re-downloading."""
+    """A failed local load must not promise that re-downloading repairs the cache."""
     from octop.infra.agents.providers import onnx_service as mod
 
     def fake_build(_model: str, *, local_files_only: bool = False) -> object:
@@ -654,7 +655,33 @@ async def test_probe_local_model_maps_incomplete_cache_to_hint(monkeypatch) -> N
 
     assert result["ok"] is False
     assert "from any source" in result["error"]
-    assert "re-download" in result["error"]
+    assert "local cache layout and model files" in result["error"]
+    assert "re-download" not in result["error"]
+
+
+@pytest.mark.parametrize(
+    "exc",
+    [
+        ValueError("invalid network input shape"),
+        ValueError("invalid tokenizer configuration"),
+        PermissionError(13, "Permission denied"),
+        RuntimeError("connection between graph nodes is invalid"),
+    ],
+)
+async def test_probe_local_model_preserves_unrelated_errors(monkeypatch, exc) -> None:
+    from octop.infra.agents.providers import onnx_service as mod
+
+    def fake_build(_model: str, *, local_files_only: bool = False) -> object:
+        raise exc
+
+    monkeypatch.setattr(mod, "local_embedding_deps_available", lambda: True)
+    monkeypatch.setattr(mod, "is_model_downloaded", lambda _m: True)
+    monkeypatch.setattr(mod, "_build_text_embedding", fake_build)
+
+    assert await mod.probe_local_model("BAAI/bge-small-zh-v1.5") == {
+        "ok": False,
+        "error": str(exc),
+    }
 
 
 @pytest.mark.parametrize("local_files_only", [False, True])

@@ -23,6 +23,7 @@ from typing import Any
 
 import httpx
 
+from octop.i18n import tr
 from octop.infra.agents.providers.onnx_catalog import (
     ONNX_PRESET_MODEL_IDS,
     get_onnx_model_meta,
@@ -451,31 +452,16 @@ def embed_texts(
 
 
 def _probe_error_message(exc: Exception) -> str:
-    """Turn a failed offline probe into an actionable message, not a bare errno."""
+    """Explain known offline-load failures without hiding unrelated errors."""
     text = str(exc)
-    lowered = text.lower()
-    if isinstance(exc, httpx.HTTPError) or any(
-        marker in lowered
-        for marker in (
-            "network",
-            "connection",
-            "timed out",
-            "getaddrinfo",
-            "name resolution",
-            "errno",
-        )
+    if isinstance(exc, httpx.TransportError):
+        return tr("onnx.probe.network_error", detail=text)
+    if (
+        isinstance(exc, ValueError)
+        and text.startswith("Could not load model ")
+        and text.endswith(" from any source.")
     ):
-        return (
-            f"network error while loading the cached model ({text}); the probe must "
-            "run fully offline, so re-download the model and test the connection again"
-        )
-    if isinstance(exc, ValueError):
-        # fastembed raises ValueError("Could not load model ... from any source.")
-        # when local_files_only resolution fails against a broken cache.
-        return (
-            f"{text}; the model cache is incomplete for offline use, "
-            "re-download the model and test the connection again"
-        )
+        return tr("onnx.probe.cache_load_failed", detail=text)
     return text
 
 
