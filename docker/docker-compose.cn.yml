@@ -18,6 +18,10 @@ services:
     image: ghcr.nju.edu.cn/tencentcloud/octop:latest
     container_name: octop
     restart: unless-stopped
+    ulimits:
+      nofile:
+        soft: 65535
+        hard: 65535
     ports:
       - "${OCTOP_PORT:-8088}:${OCTOP_PORT:-8088}"
     volumes:
