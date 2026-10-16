@@ -432,12 +432,8 @@
 }
 
 .userText {
-  background: linear-gradient(
-    135deg,
-    var(--fn-color-brand) 0%,
-    var(--fn-color-brand-soft) 100%
-  );
-  color: #fff;
+  background: var(--fn-bg-secondary-active, #e8eaed);
+  color: var(--fn-text-primary);
   padding: 10px 14px;
   border-radius: 16px 16px 6px 16px;
   font-size: 14px;
@@ -1534,21 +1530,11 @@
     width: 22px;
     height: 22px;
     margin-left: 0;
-    /* Invisible until hover/focus, but still receive clicks if aimed. */
-    opacity: 0;
-    pointer-events: auto;
-  }
-
-  &:hover .msgCopyBtn,
-  &:hover .msgActionBtn,
-  &:focus-within .msgCopyBtn,
-  &:focus-within .msgActionBtn {
     opacity: 1;
   }
 
   .msgCopyBtn:hover,
   .msgActionBtn:hover {
-    opacity: 1;
     color: var(--fn-text-primary);
     background: var(--fn-bg-hover);
   }
@@ -1558,16 +1544,6 @@
     cursor: not-allowed;
     opacity: 0.35;
   }
-}
-
-/* Reveal when the user bubble (or meta row) is hovered/focused. */
-.bubbleContent:hover .userMsgActions .msgCopyBtn,
-.bubbleContent:hover .userMsgActions .msgActionBtn,
-.bubbleContent:focus-within .userMsgActions .msgCopyBtn,
-.bubbleContent:focus-within .userMsgActions .msgActionBtn,
-.messageBubble:hover .userMsgActions .msgCopyBtn,
-.messageBubble:hover .userMsgActions .msgActionBtn {
-  opacity: 1;
 }
 
 .msgCopyBtn {
