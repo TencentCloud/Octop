@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import base64
+import io
+import zipfile
 from typing import Any
 
 import pytest
@@ -112,6 +114,80 @@ async def test_package_skill_content_lifecycle(env: Any) -> None:
     )
     assert deleted.status_code == 204, deleted.text
     assert (await client.get(f"/api/skill-packages/{package_id}/skills", headers=auth)).json() == []
+
+
+async def test_export_skill_package_zip(env: Any) -> None:
+    client, _server, auth = env
+    package_id = (
+        await client.post(
+            "/api/skill-packages",
+            headers=auth,
+            json={"name": "Office", "description": ""},
+        )
+    ).json()["id"]
+    for name, content in (
+        ("pdf-reader", SAMPLE_SKILL),
+        ("notes", "---\nname: notes\n---\n\n# Notes\n"),
+    ):
+        created = await client.post(
+            f"/api/skill-packages/{package_id}/skills",
+            headers=auth,
+            json={"name": name, "content": content},
+        )
+        assert created.status_code == 200, created.text
+
+    exported = await client.get(f"/api/skill-packages/{package_id}/export", headers=auth)
+    assert exported.status_code == 200, exported.text
+    assert exported.headers["content-type"].startswith("application/zip")
+    assert "Office.zip" in exported.headers["content-disposition"]
+    with zipfile.ZipFile(io.BytesIO(exported.content)) as archive:
+        assert archive.read("pdf-reader/SKILL.md").decode("utf-8") == SAMPLE_SKILL
+        assert "notes/SKILL.md" in archive.namelist()
+
+    empty_id = (
+        await client.post(
+            "/api/skill-packages",
+            headers=auth,
+            json={"name": "Empty", "description": ""},
+        )
+    ).json()["id"]
+    empty = await client.get(f"/api/skill-packages/{empty_id}/export", headers=auth)
+    assert empty.status_code == 400
+
+
+async def test_skill_package_download_can_be_disabled(env_boundary: Any) -> None:
+    client, _server, _admin_auth, alice_auth, bob_auth, _ctx = env_boundary
+    package_id = (
+        await client.post(
+            "/api/skill-packages",
+            headers=alice_auth,
+            json={"name": "Alice download"},
+        )
+    ).json()["id"]
+    created = await client.post(
+        f"/api/skill-packages/{package_id}/skills",
+        headers=alice_auth,
+        json={"name": "pdf-reader", "content": SAMPLE_SKILL},
+    )
+    assert created.status_code == 200, created.text
+
+    open_download = await client.get(f"/api/skill-packages/{package_id}/export", headers=bob_auth)
+    assert open_download.status_code == 200, open_download.text
+
+    closed = await client.patch(
+        f"/api/skill-packages/{package_id}",
+        headers=alice_auth,
+        json={"allow_download": False},
+    )
+    assert closed.status_code == 200, closed.text
+    assert closed.json()["allow_download"] is False
+
+    denied = await client.get(f"/api/skill-packages/{package_id}/export", headers=bob_auth)
+    assert denied.status_code == 403, denied.text
+    assert denied.json()["error"]["code"] == "SKILL_PACKAGE_DOWNLOAD_DENIED"
+
+    owner = await client.get(f"/api/skill-packages/{package_id}/export", headers=alice_auth)
+    assert owner.status_code == 200, owner.text
 
 
 async def test_other_user_cannot_mutate_skill_package(env_boundary: Any) -> None:

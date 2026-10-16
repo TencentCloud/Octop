@@ -199,10 +199,10 @@ git checkout -B {RELEASE_BRANCH_PREFIX}{version} {REMOTE}/{INTEGRATION_BRANCH}
    grep -n '__version__' src/octop/__init__.py
    # `__version__ = "X.Y.Z"` → `"A.B.C"`
    ```
-4. 飞牛 FnOS 两个 manifest 的 `version=`（`scripts/build-fpk.sh` 打包时会再注入，但仓库源文件必须先改）：
+4. 飞牛 FnOS 两个 manifest 的 `version=`（仓库源文件与 pyproject 保持同一 PEP 440 字符串。`scripts/build-fpk.sh` 打包时会改写成商店可比版本，例如 `1.0.2b8` → `1.0.208`，不要把源文件改成这个编码）：
    ```bash
    grep -n '^version=' fnos/docker/manifest fnos/native/manifest
-   # `version=X.Y.Z` → `version=A.B.C`（两个文件都要改）
+   # `version=X.Y.Z` → `version=A.B.C`（两个文件都要改，仍是 PEP 440）
    ```
 5. 飞牛 Docker compose 镜像标签（与本包版本相同，供 FPK 拉取 GHCR）：
    ```bash
