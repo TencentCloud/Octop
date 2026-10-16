@@ -63,6 +63,10 @@ export interface OctopThread {
   artifacts?: Array<string | ThreadArtifact>;
   /** Structured refs with producer ``agent_id``. */
   artifact_refs?: ThreadArtifact[];
+  /** True while a turn is still streaming server-side for this thread. */
+  turn_active?: boolean;
+  /** True when this thread is paused on a HITL approval or question. */
+  awaiting_user?: boolean;
 }
 
 export interface OctopThreadHistory {
@@ -101,6 +105,12 @@ export interface OctopThreadHistory {
   artifacts?: Array<string | ThreadArtifact>;
   /** Structured refs with producer ``agent_id``. */
   artifact_refs?: ThreadArtifact[];
+}
+
+/** Result of deleting a thread when the client asks about compaction. */
+export interface ThreadDeleteResult {
+  compacted?: boolean;
+  scheduled?: boolean;
 }
 
 export interface OctopThreadPatch {
@@ -238,11 +248,11 @@ export const octopThreadsApi = {
       { method: "PATCH", body: JSON.stringify(body) },
     ),
 
-  delete: (agentId: string, threadId: string) =>
-    request<void>(
+  delete: (agentId: string, threadId: string, compact: boolean) =>
+    request<ThreadDeleteResult>(
       `/agents/${encodeURIComponent(agentId)}/threads/${encodeURIComponent(
         threadId,
-      )}`,
+      )}?compact=${compact ? "true" : "false"}`,
       { method: "DELETE" },
     ),
 

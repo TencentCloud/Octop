@@ -75,7 +75,10 @@ _FRIENDLY: dict[str, str] = {
 }
 
 _PHRASE_KEYS: tuple[tuple[re.Pattern[str], str], ...] = (
-    (re.compile(r"specified bucket does not exist|nosuchbucket|no such bucket", re.I), "probe_no_such_bucket"),
+    (
+        re.compile(r"specified bucket does not exist|nosuchbucket|no such bucket", re.I),
+        "probe_no_such_bucket",
+    ),
     (re.compile(r"invalid bucket name", re.I), "probe_invalid_bucket"),
     (re.compile(r"access denied|not authorized|forbidden", re.I), "probe_access_denied"),
     (
@@ -92,7 +95,10 @@ _PHRASE_KEYS: tuple[tuple[re.Pattern[str], str], ...] = (
         ),
         "probe_signature_mismatch",
     ),
-    (re.compile(r"password authentication failed|auth(?:entication)? failed", re.I), "probe_invalid_credentials"),
+    (
+        re.compile(r"password authentication failed|auth(?:entication)? failed", re.I),
+        "probe_invalid_credentials",
+    ),
     (re.compile(r'database ["\'].+["\'] does not exist', re.I), "probe_database_missing"),
     (
         re.compile(
@@ -103,7 +109,10 @@ _PHRASE_KEYS: tuple[tuple[re.Pattern[str], str], ...] = (
         "probe_connection_failed",
     ),
     (re.compile(r"timed? ?out|timeout", re.I), "probe_timeout"),
-    (re.compile(r"permanentredirect|illegal location|invalid endpoint", re.I), "probe_invalid_endpoint"),
+    (
+        re.compile(r"permanentredirect|illegal location|invalid endpoint", re.I),
+        "probe_invalid_endpoint",
+    ),
     (
         re.compile(r"functionality that is not implemented|not implemented", re.I),
         "probe_s3_incompatible",

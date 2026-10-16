@@ -1,0 +1,130 @@
+name: Upload release to COS
+
+# 把某个 v* GitHub Release 上的制品上传到 COS：
+#   octop/release/<version>/<filename>
+#   https://${RELEASE_COS_BUCKET}.${RELEASE_COS_ENDPOINT}/octop/release/<version>/<filename>
+# version 去掉 tag 的前导 v。
+#
+# 自动：Desktop Package / FnOS 在把自己的安装包挂到 GitHub Release 之后
+# 用 workflow_call 调本工作流，patterns 只拉这一批文件，避免重复传大包。
+# wheel / sdist 不上传。
+# 手工补传：Run workflow，tag=vX.Y.Z；patterns 留空则下载该 Release 的全部 asset。
+#
+# 仓库 Secrets（不是 environment secret；未设置则上传失败）：
+#   RELEASE_COS_SECRET_ID
+#   RELEASE_COS_SECRET_KEY
+#   RELEASE_COS_BUCKET
+#   RELEASE_COS_REGION
+#   RELEASE_COS_ENDPOINT
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Release tag, e.g. v1.0.1"
+        required: true
+        type: string
+      patterns:
+        description: "Comma-separated asset globs. Empty downloads every asset."
+        required: false
+        default: ""
+        type: string
+  workflow_call:
+    inputs:
+      tag:
+        description: "Release tag, e.g. v1.0.1"
+        required: true
+        type: string
+      patterns:
+        description: "Comma-separated gh release download globs. Empty downloads every asset."
+        required: false
+        type: string
+        default: ""
+    secrets:
+      RELEASE_COS_SECRET_ID:
+        required: true
+      RELEASE_COS_SECRET_KEY:
+        required: true
+      RELEASE_COS_BUCKET:
+        required: true
+      RELEASE_COS_REGION:
+        required: true
+      RELEASE_COS_ENDPOINT:
+        required: true
+
+permissions:
+  contents: read
+
+concurrency:
+  group: upload-cos-${{ inputs.tag }}-${{ inputs.patterns }}
+  cancel-in-progress: false
+
+jobs:
+  upload:
+    name: Upload ${{ inputs.tag }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download GitHub Release assets
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ inputs.tag }}
+          PATTERNS: ${{ inputs.patterns }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          case "$TAG" in
+            v*) ;;
+            *)
+              echo "::error::tag must look like v1.0.2, got ${TAG}"
+              exit 1
+              ;;
+          esac
+
+          rm -rf release-assets
+          mkdir -p release-assets
+          args=(release download "$TAG" --repo "$REPO" --dir release-assets --clobber)
+          if [[ -n "$PATTERNS" ]]; then
+            IFS=',' read -ra parts <<< "$PATTERNS"
+            for part in "${parts[@]}"; do
+              part="${part#"${part%%[![:space:]]*}"}"
+              part="${part%"${part##*[![:space:]]}"}"
+              [[ -z "$part" ]] && continue
+              args+=(--pattern "$part")
+            done
+          fi
+
+          ok=0
+          for attempt in 1 2 3 4 5 6; do
+            if gh "${args[@]}"; then
+              if find release-assets -mindepth 1 -maxdepth 1 -type f | grep -q .; then
+                ok=1
+                break
+              fi
+              echo "No matching assets yet (attempt ${attempt})."
+            else
+              echo "gh release download failed (attempt ${attempt})."
+            fi
+            sleep 15
+          done
+          if [[ "$ok" != 1 ]]; then
+            echo "::error::No release assets downloaded for ${TAG}"
+            exit 1
+          fi
+          if find release-assets -mindepth 1 -maxdepth 1 -type d | grep -q .; then
+            echo "::error::Release download extracted a directory; refusing to upload."
+            find release-assets -mindepth 1 -maxdepth 1 -print
+            exit 1
+          fi
+          ls -lh release-assets
+
+      - name: Upload to COS version folder
+        env:
+          RELEASE_COS_SECRET_ID: ${{ secrets.RELEASE_COS_SECRET_ID }}
+          RELEASE_COS_SECRET_KEY: ${{ secrets.RELEASE_COS_SECRET_KEY }}
+          RELEASE_COS_BUCKET: ${{ secrets.RELEASE_COS_BUCKET }}
+          RELEASE_COS_REGION: ${{ secrets.RELEASE_COS_REGION }}
+          RELEASE_COS_ENDPOINT: ${{ secrets.RELEASE_COS_ENDPOINT }}
+        run: bash scripts/ci/upload_release_cos.sh "${{ inputs.tag }}" release-assets

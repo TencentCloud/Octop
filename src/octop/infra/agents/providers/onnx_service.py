@@ -297,7 +297,18 @@ def list_downloaded_models() -> list[str]:
 
 
 def delete_downloaded_model(model_name: str) -> bool:
+    global _embedding_instance
     name = assert_catalog_model(model_name)
+    with _embedding_inference_lock:
+        if _embedding_instance is not None and _embedding_instance[:2] == (
+            name,
+            str(embedding_models_dir()),
+        ):
+            _embedding_instance = None
+        return _delete_downloaded_model_files(name)
+
+
+def _delete_downloaded_model_files(name: str) -> bool:
     removed = False
     targets = [model_cache_dir(name), _downloaded_marker_path(name)]
     for alias in _alias_cache_names(name):
@@ -388,12 +399,19 @@ def require_embedding_prerequisites(settings_get: Any) -> OnnxServiceConfig:
     return cfg
 
 
+# One resident model and one inference at a time, shared by indexing, retrieval,
+# and probes. A document-only semaphore would leave queries free to load copies.
+_embedding_inference_lock = threading.Lock()
+_embedding_instance: tuple[str, str, Any] | None = None
+
+
 def _build_text_embedding(model: str, *, local_files_only: bool = False) -> Any:
     from fastembed import TextEmbedding
 
     return TextEmbedding(
         model_name=model,
         cache_dir=str(embedding_models_dir()),
+        threads=2,
         local_files_only=local_files_only,
     )
 
@@ -404,14 +422,31 @@ def embed_texts(
     *,
     local_files_only: bool = False,
 ) -> list[list[float]]:
+    global _embedding_instance
     if not texts:
         return []
     require_local_embedding_deps()
     model = assert_catalog_model(model)
-    emb = _build_text_embedding(model, local_files_only=local_files_only)
-    out = [[float(x) for x in vec] for vec in emb.embed(list(texts))]
-    if len(out) != len(texts):
-        raise RuntimeError("embedding count mismatch")
+    cache_path = str(embedding_models_dir())
+    out: list[list[float]] = []
+    for text in texts:
+        # Release between chunks so a query need not wait for the whole document.
+        with _embedding_inference_lock:
+            if _embedding_instance is None or _embedding_instance[:2] != (model, cache_path):
+                # Release the old session before loading another model's weights.
+                _embedding_instance = None
+                _embedding_instance = (
+                    model,
+                    cache_path,
+                    _build_text_embedding(model, local_files_only=local_files_only),
+                )
+            vectors = [
+                [float(x) for x in vec]
+                for vec in _embedding_instance[2].embed([text], batch_size=1)
+            ]
+            if len(vectors) != 1:
+                raise RuntimeError("embedding count mismatch")
+            out.extend(vectors)
     return out
 
 

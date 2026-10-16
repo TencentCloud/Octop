@@ -70,6 +70,8 @@ export interface AssistantTurnSplit {
   thinkings: ThinkingProcessItem[];
   processSteps: ProcessStep[];
   answerMessage: ChatMessage | null;
+  /** Stream failures stay out of the answer so the error box is only the error. */
+  errorMessages?: ChatMessage[];
 }
 
 function joinAnswerParts(parts: string[]): string {
@@ -121,6 +123,7 @@ export function splitAssistantTurn(
   const thinkings: ThinkingProcessItem[] = [];
   const processSteps: ProcessStep[] = [];
   const textParts: string[] = [];
+  const errorMessages: ChatMessage[] = [];
   let answerTemplate: ChatMessage | null = null;
   let answerStreaming = false;
 
@@ -139,6 +142,16 @@ export function splitAssistantTurn(
     if (msg.toolData) {
       tools.push(msg);
       processSteps.push({ kind: "tool", message: msg });
+      continue;
+    }
+    if (msg.status === "error") {
+      const errorText =
+        textContent.trim() || msg.errorInfo?.message?.trim() || "";
+      errorMessages.push({
+        ...msg,
+        content: errorText,
+        contentBlocks: undefined,
+      });
       continue;
     }
     if (textContent.trim()) {
@@ -174,7 +187,7 @@ export function splitAssistantTurn(
         }
       : null;
 
-  return { tools, thinkings, processSteps, answerMessage };
+  return { tools, thinkings, processSteps, answerMessage, errorMessages };
 }
 
 export function toAnswerOnlyMessage(message: ChatMessage): ChatMessage {

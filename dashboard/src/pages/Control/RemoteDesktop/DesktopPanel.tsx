@@ -996,7 +996,7 @@ export default function DesktopPanel({
   const pageTitle = t("nav.remoteDesktop", "远程桌面");
   const pageSubtitle = t(
     "pageShell.desktop.subtitle",
-    "查看并操控 Octop 主机操作系统桌面",
+    "查看并操控 Octop 主机操作系统桌面，远程完成桌面操作",
   );
   const setupMascot = <OctopEmptyMascot />;
 
@@ -1042,13 +1042,21 @@ export default function DesktopPanel({
         onClick: () => void refreshEnv(),
         icon: <RefreshCw size={14} />,
         loading: envLoading,
-        type: "default" as const,
+        type: envReady ? ("default" as const) : ("primary" as const),
       }
     : {
         label: t("remoteDesktop.checkInstallShort", "检查"),
         onClick: openEnvModal,
-        icon: <Monitor size={14} />,
-        type: "default" as const,
+        icon:
+          envReady && !envLoading ? (
+            <CheckCircle2
+              size={14}
+              style={{ color: "var(--fn-color-success,#52c41a)" }}
+            />
+          ) : (
+            <Monitor size={14} />
+          ),
+        type: envReady ? ("default" as const) : ("primary" as const),
         title: t("remoteDesktop.checkInstallTip"),
       };
 
@@ -1057,6 +1065,7 @@ export default function DesktopPanel({
     onClick: handleConnect,
     icon: <PlugZap size={14} />,
     disabled: !envReady,
+    type: envReady ? ("primary" as const) : ("default" as const),
     title: envReady
       ? undefined
       : needsMacPermissions
@@ -1235,8 +1244,10 @@ export default function DesktopPanel({
                         },
                       ]
                 }
-                primaryAction={checkGuideAction}
-                secondaryAction={connectGuideAction}
+                primaryAction={envReady ? connectGuideAction : checkGuideAction}
+                secondaryAction={
+                  envReady ? checkGuideAction : connectGuideAction
+                }
                 extraAction={uninstallGuideAction}
               />
             )
