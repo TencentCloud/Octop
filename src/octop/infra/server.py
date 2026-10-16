@@ -589,8 +589,20 @@ class OctopServer:
             history_archive=history_archive,
             bridge_manager=bridge_mgr,
         )
+        from octop.infra.knowledge.gate import (  # noqa: PLC0415
+            warn_if_local_embedding_deps_missing,
+        )
         from octop.infra.knowledge.jobs import resume_pending_index_jobs  # noqa: PLC0415
+        from octop.infra.knowledge.ocr import warn_if_local_ocr_deps_missing  # noqa: PLC0415
 
+        warn_if_local_embedding_deps_missing(
+            self.services.settings_repo.get,
+            self.services.provider_repo,
+        )
+        warn_if_local_ocr_deps_missing(
+            self.services.settings_repo.get,
+            self.services.provider_repo,
+        )
         resume_pending_index_jobs(self.services)
 
         # Resume Bridge links that opted into auto-reconnect (best-effort).
