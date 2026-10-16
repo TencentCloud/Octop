@@ -76,6 +76,13 @@ _MEMBER_HITL_WAIT_SEC = 30 * 60
 _RELAY_CHUNK_TYPES = frozenset(
     {"token", "reasoning", "tool_call_chunk", "tool_result", "error", "attachment"}
 )
+
+
+def _is_decision_custom(chunk: dict[str, Any]) -> bool:
+    data = chunk.get("data")
+    return isinstance(data, dict) and data.get("kind") == "decision"
+
+
 _STREAM_SPEAKER_TYPES = frozenset(
     {
         "token",
@@ -87,6 +94,7 @@ _STREAM_SPEAKER_TYPES = frozenset(
         "slash_action",
         "hitl_required",
         "done",
+        "custom",
     }
 )
 
@@ -353,6 +361,7 @@ class TeamManager:
         reasoning_parts: list[str] = []
         relayed_visible = False
         saw_tool_call = False
+        decision_payload: dict[str, Any] | None = None
         emitted_tool_error_ids: set[str] = set()
         hold_room = self._defer_member_wall(speaker_id, member_tid, room_thread_id)
         host_id = self._room_agent_id(room_thread_id) if hold_room else ""
@@ -442,9 +451,18 @@ class TeamManager:
                         pause = chunk
                         resume_pending = None
                         break
-                    if kind in _RELAY_CHUNK_TYPES:
+                    # Host wrap-up runs the decision model. Member streams stay
+                    # off the room wall, including their custom events.
+                    decision_custom = (
+                        kind == "custom" and _is_decision_custom(chunk) and not hold_room
+                    )
+                    if decision_custom:
+                        data = chunk.get("data")
+                        if isinstance(data, dict):
+                            decision_payload = dict(data)
+                    if kind in _RELAY_CHUNK_TYPES or decision_custom:
                         relay = chunk
-                        if extra_stamp and kind in {"token", "reasoning"}:
+                        if extra_stamp and (kind in {"token", "reasoning"} or decision_custom):
                             relay = {**chunk, **extra_stamp}
                         await emit(relay)
                 if pause is None:
@@ -503,6 +521,7 @@ class TeamManager:
             ),
             "team_live_streamed": relayed_visible,
             "stream_text": stream_text,
+            "decision": decision_payload,
         }
 
     def _defer_member_wall(self, speaker_id: str, member_tid: str, room_thread_id: str) -> bool:
@@ -571,7 +590,16 @@ class TeamManager:
                 if text:
                     break
         if text:
-            self._persist_room_assistant(room_thread_id, speaker_id, text, wrapup=True)
+            decision = _decision_from_messages(result.get("messages") or [])
+            if decision is None and isinstance(result.get("decision"), dict):
+                decision = dict(result["decision"])
+            self._persist_room_assistant(
+                room_thread_id,
+                speaker_id,
+                text,
+                wrapup=True,
+                decision=decision,
+            )
         live = bool(result.get("team_live_streamed"))
         # Some models finish wrap-up in checkpoint/values only — no token
         # frames. Push the final text so the open room still sees it.
@@ -583,7 +611,10 @@ class TeamManager:
                 wrapup=True,
             )
             live = self._thread_is_watched(room_thread_id)
-        if room_thread_id and text and live:
+        # ``on_reply`` fires after this method even when nobody watches the
+        # room. Mark the reply handled once it has been persisted, otherwise
+        # the fallback path appends the same wrap-up a second time.
+        if room_thread_id and text:
             self._live_host_replies.add(room_thread_id)
         return result
 
@@ -1187,6 +1218,7 @@ class TeamManager:
         text: str,
         *,
         wrapup: bool = False,
+        decision: dict[str, Any] | None = None,
     ) -> None:
         body = (text or "").strip()
         if not thread_id or not body or self._thread_message_repo is None:
@@ -1195,6 +1227,8 @@ class TeamManager:
         extra: dict[str, Any] = {"speaker_agent_id": speaker_id}
         if wrapup:
             extra["team_wrapup"] = True
+        if decision:
+            extra["octop_decision"] = dict(decision)
         msg = AIMessage(
             content=body,
             id=f"team-room:{new_ulid()}:assistant",
@@ -1541,6 +1575,23 @@ def _message_is_assistant(msg: Any) -> bool:
     return _message_role(msg) in {"ai", "assistant"}
 
 
+def _decision_from_messages(messages: Sequence[Any]) -> dict[str, Any] | None:
+    for msg in reversed(messages):
+        if not _message_is_assistant(msg):
+            continue
+        kwargs = (
+            msg.get("additional_kwargs")
+            if isinstance(msg, dict)
+            else getattr(msg, "additional_kwargs", None)
+        )
+        if not isinstance(kwargs, dict):
+            continue
+        decision = kwargs.get("octop_decision")
+        if isinstance(decision, dict):
+            return dict(decision)
+    return None
+
+
 def _message_tool_calls(msg: Any) -> Any:
     if isinstance(msg, dict):
         return msg.get("tool_calls")
@@ -1852,6 +1903,12 @@ def _patch_inbox_wrapup(
             agent_id=host_id,
             text=prompt,
             source="inbox",
+            configurable={
+                "octop_decision_followup": True,
+                "peer_invoke_mode": "async",
+                "octop_decision_finished_member": str(getattr(msg, "target_agent_id", "") or ""),
+                "octop_decision_task": str(getattr(msg, "message", "") or ""),
+            },
         )
         try:
             reply = await stream_followup(

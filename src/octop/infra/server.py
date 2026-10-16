@@ -34,6 +34,7 @@ from octop.infra.setup.password_file import WIZARD_FILE_NAME
 from octop.infra.setup.wizard_tokens import WizardTokenStore
 from octop.infra.users.manager import UserManager
 from octop.infra.utils.paths import PathLayout
+from octop.infra.utils.process_resources import ensure_nofile_limit
 
 if TYPE_CHECKING:
     from octop.infra.auth.ldap.service import LdapAuthService
@@ -163,6 +164,21 @@ def _parse_log_max_bytes() -> int:
         return DEFAULT_LOG_MAX_BYTES
 
 
+class _OctopLogFormatter(logging.Formatter):
+    """Process log line, with the active harness agent id when one is in scope."""
+
+    def format(self, record: logging.LogRecord) -> str:
+        text = super().format(record)
+        agent = getattr(record, "agent", None)
+        if not agent:
+            from octop_harness.observability.logging import current_log_agent_id
+
+            agent = current_log_agent_id()
+        if not agent:
+            return text
+        return f"{text} [agent={agent}]"
+
+
 def _build_log_handler(
     log_path: Path,
     retention_days: int,
@@ -182,7 +198,7 @@ def _build_log_handler(
     )
     # Rotated files get a date suffix, e.g. octop.log.2026-07-16
     handler.suffix = "%Y-%m-%d"
-    handler.setFormatter(logging.Formatter("%(asctime)s %(levelname)-5s %(name)s — %(message)s"))
+    handler.setFormatter(_OctopLogFormatter("%(asctime)s %(levelname)-5s %(name)s — %(message)s"))
     return handler
 
 
@@ -338,6 +354,7 @@ class OctopServer:
 
         apply_env_file(env_file_path(self.paths.root))
         self._setup_logging()
+        ensure_nofile_limit()
         config = ensure_mobile_capabilities_probed(self.paths.config)
         self.config = config
 

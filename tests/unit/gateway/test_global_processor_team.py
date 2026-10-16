@@ -360,6 +360,134 @@ async def test_stream_host_followup_marks_live_and_persists(
 
 
 @pytest.mark.asyncio
+async def test_stream_host_followup_relays_decision_custom(
+    processor_env: dict,
+) -> None:
+    from langchain_core.messages import AIMessage
+    from octop_harness.request import ChatRequest
+
+    processor = processor_env["processor"]
+    gateway = processor_env["gateway"]
+    processor._agent_repo.create(agent_id="host", user_id=1, name="Host", kind="team")
+    frames: list[dict[str, object]] = []
+
+    async def capture(frame: dict[str, object]) -> None:
+        frames.append(frame)
+
+    gateway.ws_hub.register("conn-wrap-decision", capture)
+    gateway.ws_hub.subscribe("thr_parent", "conn-wrap-decision")
+
+    decision = {
+        "kind": "decision",
+        "model": "laya",
+        "parts": [{"kind": "result", "kept": [{"name": "结果充分, 可以总结", "score": 0.91}]}],
+    }
+
+    async def fake_stream(_agent_id: str, _request: dict[str, object]) -> object:
+        yield {"type": "custom", "data": decision}
+        yield {"type": "token", "content": "可以收工。"}
+
+    processor._agent_manager.stream = fake_stream
+    harness = MagicMock()
+    harness.aget_history = AsyncMock(return_value=[AIMessage(content="可以收工。")])
+    processor._agent_manager.get_agent.return_value = harness
+    repo = MagicMock()
+    repo.projection_status.return_value = "ready"
+    repo.append_if_ready = MagicMock(return_value=1)
+    processor.replace_thread_message_repo(repo)
+
+    await processor.teams.stream_host_followup_to_room(
+        ChatRequest(messages="wrap up", thread_id="thr_parent", agent_id="host"),
+        room_thread_id="thr_parent",
+        speaker_id="host",
+    )
+    customs = [frame for frame in frames if frame.get("type") == "custom"]
+    assert len(customs) == 1
+    assert customs[0].get("team_wrapup") is True
+    assert customs[0].get("agent_id") == "host"
+    assert customs[0].get("data") == decision
+    persisted = repo.append_if_ready.call_args.args[1]
+    assert "octop_decision" in str(persisted)
+    assert "result" in str(persisted)
+
+
+@pytest.mark.asyncio
+async def test_member_stream_does_not_relay_decision_custom(processor_env: dict) -> None:
+    from langchain_core.messages import AIMessage
+    from octop_harness.request import ChatRequest
+
+    processor = processor_env["processor"]
+    gateway = processor_env["gateway"]
+    room_frames: list[dict[str, object]] = []
+
+    async def capture_room(frame: dict[str, object]) -> None:
+        room_frames.append(frame)
+
+    gateway.ws_hub.register("conn-room-decision", capture_room)
+    gateway.ws_hub.subscribe("thr_parent", "conn-room-decision")
+
+    async def fake_stream(_agent_id: str, _request: dict[str, object]) -> object:
+        yield {"type": "custom", "data": {"kind": "decision", "parts": []}}
+        yield {"type": "token", "content": "成员回答"}
+
+    processor._agent_manager.stream = fake_stream
+    harness = MagicMock()
+    harness.aget_history = AsyncMock(return_value=[AIMessage(content="成员回答")])
+    processor._agent_manager.get_agent.return_value = harness
+
+    await processor.teams.stream_peer_to_room(
+        ChatRequest(messages="task", thread_id="thr_parent~child", agent_id="child"),
+        room_thread_id="thr_parent",
+        speaker_id="child",
+    )
+    assert [frame for frame in room_frames if frame.get("type") == "custom"] == []
+    assert any(frame.get("type") == "token" for frame in room_frames)
+
+
+@pytest.mark.asyncio
+async def test_wrapup_request_marks_decision_followup() -> None:
+    from types import SimpleNamespace
+
+    from octop.infra.agents.teams.team_manager import _patch_inbox_wrapup
+
+    seen: dict[str, object] = {}
+
+    async def stream_followup(req: object, *, room_thread_id: str, speaker_id: str) -> str:
+        seen["req"] = req
+        seen["room"] = room_thread_id
+        seen["speaker"] = speaker_id
+        return "ok"
+
+    async def original(_msg: object, _result_text: str | None, _error_text: str | None) -> str:
+        return "fallback"
+
+    inbox = SimpleNamespace(
+        _synthesize_reply=original,
+        _is_cancelled=lambda _msg: False,
+        _processor=SimpleNamespace(
+            compose_followup=lambda _msg, result_text, error_text: "wakeup",
+        ),
+    )
+    _patch_inbox_wrapup(inbox, stream_followup=stream_followup, is_team=lambda _agent_id: True)
+    msg = SimpleNamespace(
+        user_id=1,
+        source_thread_id="room-1",
+        source_agent_id="host",
+        target_agent_id="agent-research",
+        message="查资料",
+    )
+    await inbox._synthesize_reply(msg, "成员正文", None)
+    req = seen["req"]
+    configurable = getattr(req, "configurable", None)
+    assert configurable["octop_decision_followup"] is True
+    assert configurable["peer_invoke_mode"] == "async"
+    assert configurable["octop_decision_finished_member"] == "agent-research"
+    assert configurable["octop_decision_task"] == "查资料"
+    assert seen["room"] == "room-1"
+    assert seen["speaker"] == "host"
+
+
+@pytest.mark.asyncio
 async def test_stream_host_followup_waits_for_dispatch_turn(
     processor_env: dict,
 ) -> None:
@@ -394,7 +522,7 @@ async def test_stream_host_followup_waits_for_dispatch_turn(
 
 
 @pytest.mark.asyncio
-async def test_stream_host_followup_unwatched_does_not_skip_snapshot(
+async def test_unwatched_wrapup_is_persisted_once(
     processor_env: dict,
 ) -> None:
     from langchain_core.messages import AIMessage
@@ -421,6 +549,22 @@ async def test_stream_host_followup_unwatched_does_not_skip_snapshot(
         speaker_id="host",
     )
     assert result["team_live_streamed"] is False
+    assert "thr_parent" in processor.teams._live_host_replies
+    assert repo.append_if_ready.call_count == 1
+
+    await processor.on_reply(
+        ReplyEvent(
+            inbox_id="job-unwatched-wrap",
+            status="done",
+            source_agent_id="host",
+            source_thread_id="thr_parent",
+            target_agent_id="child",
+            user_id=1,
+            reply_text="可以收工。",
+            metadata={},
+        )
+    )
+    assert repo.append_if_ready.call_count == 1
     assert "thr_parent" not in processor.teams._live_host_replies
 
 

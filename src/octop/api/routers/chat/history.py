@@ -281,6 +281,7 @@ async def get_thread_context_usage(
     return {
         "max_tokens": breakdown.max_tokens,
         "used_tokens": breakdown.used_tokens,
+        "decision_saved": breakdown.decision_saved,
         "segments": [
             {"key": key, "tokens": breakdown.segments.get(key, 0)}
             for key in SEGMENT_KEYS
