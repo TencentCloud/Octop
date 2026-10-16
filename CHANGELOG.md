@@ -5,6 +5,7 @@
 格式遵循 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)，版本号遵循 [语义化版本规范](https://semver.org/spec/v2.0.0.html)。
 
 ## [Unreleased]
+- 内置插件「单位换算」在 `value` 为 `inf`/`nan` 或换算结果溢出时返回含 `Infinity`/`NaN` 的信封，该串不是合法 JSON，仪表盘 `JSON.parse` 失败后卡片退化为原始文本；现改为返回 `value must be finite` / `result out of range` 错误卡片。
 
 ### 新增
 - 聊天侧栏可置顶专家，并按专家名或会话标题搜索
