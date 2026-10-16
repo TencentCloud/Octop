@@ -6,6 +6,9 @@
 
 ## [Unreleased]
 
+### 新增
+- Agent API 响应新增 `reload_pending` 字段：`PATCH /api/agents/{id}` 落库后、后台 harness 重建完成前为 `true`，调用方可据此等待或展示「重载中」状态（Fixes octop-harness#19）。
+
 ### 修复
 - 云端协同对端专家的模型、连接器、知识库和对话模式会显示在本端输入框上方
 - 侧栏 Beta 标记跟随主题色
