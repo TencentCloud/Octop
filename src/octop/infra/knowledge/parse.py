@@ -5,6 +5,7 @@ from __future__ import annotations
 import csv
 import io
 import json
+import logging
 from collections.abc import Iterable
 from html.parser import HTMLParser
 from pathlib import Path
@@ -14,6 +15,8 @@ from octop.infra.knowledge.ocr import OCR_IMAGE_SUFFIXES
 
 if TYPE_CHECKING:
     from octop.infra.knowledge.ocr import OcrExtractor
+
+logger = logging.getLogger(__name__)
 
 _PLAIN_TEXT_SUFFIXES = {
     ".md",
@@ -264,18 +267,38 @@ def _parse_delimited(path: Path, *, delimiter: str) -> str:
 
 
 def _parse_xlsx(path: Path) -> str:
-    from openpyxl import load_workbook
+    from openpyxl.packaging.core import DocumentProperties
+    from openpyxl.reader.excel import ExcelReader
+    from openpyxl.xml.constants import ARC_CORE, DCTERMS_NS
+    from openpyxl.xml.functions import fromstring
 
-    workbook = load_workbook(path, read_only=True, data_only=True)
+    class KnowledgeExcelReader(ExcelReader):  # type: ignore[misc]
+        def read_properties(self) -> None:
+            if ARC_CORE not in self.valid_files:
+                return
+            core = fromstring(self.archive.read(ARC_CORE))
+            created = core.find(f"{{{DCTERMS_NS}}}created")
+            if created is not None:
+                try:
+                    DocumentProperties(created=created.text)
+                except ValueError:
+                    # Creation metadata is not used for knowledge extraction.
+                    # Keep the source archive and all cell validation intact.
+                    core.remove(created)
+                    logger.warning("Ignoring invalid XLSX creation timestamp: %s", path.name)
+            self.wb.properties = DocumentProperties.from_tree(core)
+
+    reader = KnowledgeExcelReader(path, read_only=True, data_only=True)
     try:
+        reader.read()
         parts: list[str] = []
-        for sheet in workbook.worksheets:
+        for sheet in reader.wb.worksheets:
             text = _sheet_text(str(sheet.title), sheet.iter_rows(values_only=True))
             if text:
                 parts.append(text)
         return "\n\n".join(parts)
     finally:
-        workbook.close()
+        reader.archive.close()
 
 
 def _parse_xls(path: Path) -> str:
