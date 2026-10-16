@@ -345,9 +345,8 @@ export function ModelListEditor({
       reasoning_effort_type: model.reasoning_config?.effort_type ?? "enum",
       reasoning_adapter: model.reasoning_config?.adapter ?? "thinking",
       input: model.input ?? ["text"],
-      purpose: Boolean(model.embedding || model.task === "embedding")
-        ? "embedding"
-        : "chat",
+      purpose:
+        model.embedding || model.task === "embedding" ? "embedding" : "chat",
     });
     const hasAdvanced = (model as Record<string, unknown>).reasoning != null;
     setShowAdvanced(hasAdvanced);
