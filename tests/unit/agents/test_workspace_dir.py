@@ -2,11 +2,14 @@
 
 from __future__ import annotations
 
+import os
 from pathlib import Path
 
 import pytest
 
 from octop.infra.agents.workspace.dir import (
+    _is_host_root_sentinel,
+    _path_under,
     agent_facing_workspace_dir_from_config,
     agent_facing_workspace_root,
     default_agent_workspace_dir,
@@ -87,10 +90,14 @@ def test_host_rooted_default_uses_octop_home(tmp_path: Path) -> None:
     assert host == (tmp_path / ".octop" / "agents" / "A1").resolve()
 
 
-@pytest.mark.parametrize("root_dir", ["C:/", "C:\\", "D:", "d:/"])
-def test_windows_drive_root_is_host_sentinel(tmp_path: Path, root_dir: str) -> None:
-    """Drive roots must use OCTOP_HOME agents/, not {drive}/.octop/workspaces/."""
+@pytest.mark.parametrize("root_dir", ["C:/", "C:\\"])
+def test_octop_home_drive_root_uses_host_workspace(
+    tmp_path: Path,
+    root_dir: str,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     paths = PathLayout(tmp_path / ".octop")
+    monkeypatch.setenv("OCTOP_HOME", str(paths.root))
     cfg = {
         "backend": {
             "type": "local_shell",
@@ -102,6 +109,44 @@ def test_windows_drive_root_is_host_sentinel(tmp_path: Path, root_dir: str) -> N
     assert cfg["workspace_dir"] == str(host)
     assert host == (tmp_path / ".octop" / "agents" / "WIN1").resolve()
     assert ".octop/workspaces" not in cfg["workspace_dir"].replace("\\", "/")
+
+
+def test_windows_drive_root_sentinel_matches_octop_home_drive(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("OCTOP_HOME", "C:/octop-home")
+
+    assert _is_host_root_sentinel("C:/")
+    assert not _is_host_root_sentinel("D:/")
+    monkeypatch.setenv("OCTOP_HOME", "D:/octop-home")
+    assert _is_host_root_sentinel("D:/")
+
+
+@pytest.mark.skipif(os.name != "nt", reason="Windows drive semantics")
+def test_other_drive_root_uses_scoped_workspace(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from octop.infra.agents.workspace import dir as workspace_dir
+
+    paths = PathLayout(tmp_path / ".octop")
+    monkeypatch.setenv("OCTOP_HOME", str(paths.root))
+    monkeypatch.setattr(workspace_dir, "_ensure_dir", lambda _path: True)
+    cfg = {
+        "backend": {"type": "local_shell", "root_dir": "D:/", "virtual_mode": True},
+    }
+
+    host = seed_workspace_dir_on_create(cfg, paths=paths, agent_id="WIN2")
+    drive_root = Path("D:/").resolve()
+
+    assert cfg["workspace_dir"] == "/.octop/workspaces/WIN2"
+    assert host == drive_root / ".octop" / "workspaces" / "WIN2"
+    assert resolve_workspace_host_path(cfg["workspace_dir"], cfg) == host
+    assert agent_facing_workspace_root(host, root_dir="D:/", virtual_mode=True) == (
+        "/.octop/workspaces/WIN2"
+    )
+    assert _path_under(host, drive_root)
+    assert not _path_under(paths.root, drive_root)
 
 
 def test_harness_workspace_keeps_absolute_persisted_value(tmp_path: Path) -> None:
