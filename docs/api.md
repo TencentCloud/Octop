@@ -75,7 +75,6 @@ does not set these headers itself.
 | `POST`   | `/setup/verify-password` | public | Exchange the wizard password for a session token |
 | `GET`    | `/setup/validate-token` | public | Check a wizard session token |
 | `POST`   | `/setup/initial-admin` | public | body `{username, password, display_name?, email?}` → `201` |
-| `POST`   | `/setup/resume-wizard` | public | Issue a fresh wizard token mid-setup |
 | `POST`   | `/setup/test-provider` | public | Ping a provider draft (kind/base_url/api_key/model) |
 | `POST`   | `/setup/finish` | public | Finalise setup and unlock the rest of the API |
 | `GET`    | `/auth/captcha` | public | `{provider, site_key?}` for the login widget; 503 while setup is required |
