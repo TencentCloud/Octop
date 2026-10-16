@@ -14,6 +14,8 @@ from logging.handlers import TimedRotatingFileHandler
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
+from octop_harness.plugins.registry import PluginRegistry
+
 from octop.config import OctopConfig, load_config
 from octop.infra.agents.experts.catalog import ExpertCatalog, default_library_root
 from octop.infra.agents.manager import AgentManager
@@ -370,6 +372,7 @@ class OctopServer:
         )
         self.plugin_manager.seed_bundled()
         self.plugin_manager.load_installed(install_deps=True)
+        self._apply_plugin_channels()
 
         import time  # noqa: PLC0415
 
@@ -593,6 +596,46 @@ class OctopServer:
                 await bridge_mgr.resume_auto_connections()
 
         asyncio.create_task(_resume_bridges(), name="bridge-auto-resume")
+
+    async def refresh_plugin_channels(self) -> None:
+        """Reconcile only changed kinds and report registration failures to callers."""
+        from octop.infra.errors import ErrorCode, OctopError
+        from octop.infra.gateway.plugin_channels import (
+            changed_plugin_channel_kinds,
+            current_registration_errors,
+        )
+
+        changed = changed_plugin_channel_kinds(PluginRegistry())
+        if self.app_runtime is not None:
+            await self.app_runtime.gateway.reload_plugin_channels(
+                self._apply_plugin_channels, kinds=changed
+            )
+        else:
+            self._apply_plugin_channels()
+        errors = current_registration_errors()
+        if errors:
+            raise OctopError(
+                ErrorCode.PLUGIN_INSTALL_FAILED,
+                "plugin channel registration failed",
+                details={"registration_errors": errors},
+            )
+
+    def _apply_plugin_channels(self) -> None:
+        """Register plugin-contributed channel kinds with the gateway.
+
+        Called after every plugin load/reload so channel kinds are always in
+        sync with the plugin registry. Best-effort: a failure in one plugin's
+        registration never blocks boot (already handled inside
+        ``apply_plugin_channels``).
+        """
+        if self.plugin_manager is None:
+            return
+        try:
+            from octop.infra.gateway.plugin_channels import apply_plugin_channels  # noqa: PLC0415
+
+            apply_plugin_channels(registry=PluginRegistry())
+        except Exception:
+            logger.exception("applying plugin channel kinds failed")
 
     def _emit_wizard_password(self, *, user_count: int) -> None:
         config = self.config
