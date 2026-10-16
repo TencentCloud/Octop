@@ -5,6 +5,7 @@
 格式遵循 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)，版本号遵循 [语义化版本规范](https://semver.org/spec/v2.0.0.html)。
 
 ## [Unreleased]
+- 对话中途 Steer 排队气泡：只带附件的 Steer 立刻显示文件名，不再等重连刷新才出现（空白预览）
 
 ### 新增
 - 聊天侧栏可置顶专家，并按专家名或会话标题搜索
