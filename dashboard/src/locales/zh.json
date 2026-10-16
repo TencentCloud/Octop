@@ -430,6 +430,8 @@
     "uploadHintOcr": "另支持 png / jpg / webp 图片及扫描 PDF OCR，单文件不超过 {{sizeMb}} MB。可直接拖到本页上传。",
     "dropToUpload": "将文件拖放到此处上传",
     "dropUploadUnsupported": "已跳过 {{count}} 个不支持的文件",
+    "uploadFolder": "上传文件夹",
+    "uploadFolderHint": "保留所选文件夹及子目录结构，上传到当前目录；不支持的文件会跳过，空文件夹不会导入。",
     "viewCard": "卡片",
     "viewTable": "表格",
     "updatedAt": "更新时间",

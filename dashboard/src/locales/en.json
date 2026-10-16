@@ -430,6 +430,8 @@
     "uploadHintOcr": "Also supports png / jpg / webp images and OCR fallback for scanned PDFs. Max {{sizeMb}} MB per file. Drag and drop onto this page to upload.",
     "dropToUpload": "Drop files here to upload",
     "dropUploadUnsupported": "Skipped {{count}} unsupported file(s)",
+    "uploadFolder": "Upload folder",
+    "uploadFolderHint": "Upload into the current folder, keeping the selected folder and its subfolders. Unsupported files are skipped; empty folders are not imported.",
     "viewCard": "Cards",
     "viewTable": "Table",
     "updatedAt": "Updated",
