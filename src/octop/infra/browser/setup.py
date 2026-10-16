@@ -60,22 +60,53 @@ def _relocated_profiles_root_for_uid(uid: int | None = None) -> Path:
     return Path(tempfile.gettempdir()) / f"octop-browser-profiles-{token}"
 
 
+def _current_runtime_dir_usable() -> bool:
+    """True when ``$XDG_RUNTIME_DIR`` is a writable dir owned by this uid."""
+    raw = (os.environ.get("XDG_RUNTIME_DIR") or "").strip()
+    if not raw:
+        return False
+    path = Path(raw)
+    try:
+        st = path.stat()
+    except OSError:
+        return False
+    if not path.is_dir():
+        return False
+    getuid = getattr(os, "getuid", None)
+    if callable(getuid) and st.st_uid != getuid():
+        return False
+    return os.access(path, os.W_OK | os.X_OK)
+
+
 def ensure_chrome_runtime_env() -> Path:
-    """Force a writable ``XDG_RUNTIME_DIR`` for Chrome on Linux.
+    """Resolve the ``XDG_RUNTIME_DIR`` Chrome should run with (Linux).
 
     Chrome defaults to ``/run/user/<uid>``, which is often missing or
     unwritable on headless / root / container hosts (``mkdir: cannot create
-    directory '/run/user/0': Permission denied``). Always point at a private
-    ``/tmp`` directory owned by the current process.
+    directory '/run/user/0': Permission denied``). In that case point at a
+    private ``/tmp`` directory owned by the current process.
 
-    Chrome expects ``XDG_RUNTIME_DIR`` mode ``0700``; set that only on the
-    directory we just created — never on profile trees or system paths.
+    An already usable ``$XDG_RUNTIME_DIR`` is **used as-is**: Wayland clients
+    resolve their compositor socket as ``$XDG_RUNTIME_DIR/$WAYLAND_DISPLAY``, so
+    pointing Chrome at a private ``/tmp`` dir hides ``wayland-0`` and makes
+    Chromium abort with "Failed to connect to Wayland display: No such file or
+    directory" even though ``DISPLAY`` is perfectly usable.
+
+    Deliberately does not write ``os.environ``: ``XDG_RUNTIME_DIR`` is
+    process-global, and ``systemctl --user`` resolves the user bus via
+    ``$XDG_RUNTIME_DIR/bus``, so redirecting it here would silently break
+    service restarts issued by this process (#1833). The returned value reaches
+    Chrome through the launcher's subprocess env, which is also where a stale
+    ``WAYLAND_DISPLAY`` / ``XDG_SESSION_TYPE`` gets dropped when this falls back
+    to the private dir — the launcher owns the child env, this helper does not.
     """
+    if _current_runtime_dir_usable():
+        return Path(os.environ["XDG_RUNTIME_DIR"])
+
     path = _runtime_dir_for_uid()
     path.mkdir(parents=True, exist_ok=True)
     with contextlib.suppress(OSError):
         os.chmod(path, 0o700)
-    os.environ["XDG_RUNTIME_DIR"] = str(path)
     return path
 
 
