@@ -3715,7 +3715,7 @@ class AgentManager:
             ),
             ReasoningRequestMiddleware(),
             KnowledgeSearchHintMiddleware(),
-            BrowserProfileMiddleware(),
+            BrowserProfileMiddleware(thread_repo=self._repos.thread_repo),
             BinaryReadGuardMiddleware(),
             WorkspaceImageMaterializeMiddleware(workspace=ws),
             ThreadArtifactsMiddleware(
