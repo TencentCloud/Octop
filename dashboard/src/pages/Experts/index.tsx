@@ -43,6 +43,8 @@ import {
   type PublishedExpert,
 } from "../../api/modules/publishedExperts";
 import { useAgent } from "../../context/AgentContext";
+import { applyListOrder } from "../../utils/listOrder";
+import { useListOrder } from "../../hooks/useListOrder";
 import { useCurrentUser } from "../../hooks/useCurrentUser";
 import { useCardTableView } from "../../hooks/useCardTableView";
 import type { OctopAgent } from "../../context/AgentContext";
@@ -217,13 +219,26 @@ export default function ExpertsPage() {
   // ── Local agent state (extends AgentContext for optimistic updates) ──
   const ownedAgents = useMemo(() => ownedExperts(agents), [agents]);
   const [localAgents, setLocalAgents] = useState<OctopAgent[]>(ownedAgents);
+  // Same per-user manual order / pinning as the chat sidebar (schema v21) —
+  // keeps the management grid and the sidebar in lockstep.
+  const { state: listOrderState } = useListOrder();
   const expertAgents = useMemo(
-    () => localAgents.filter((item) => item.kind !== "team"),
-    [localAgents],
+    () =>
+      applyListOrder(
+        localAgents.filter((item) => item.kind !== "team"),
+        listOrderState,
+        (item) => item.agent_id,
+      ),
+    [localAgents, listOrderState],
   );
   const teamAgents = useMemo(
-    () => localAgents.filter((item) => item.kind === "team"),
-    [localAgents],
+    () =>
+      applyListOrder(
+        localAgents.filter((item) => item.kind === "team"),
+        listOrderState,
+        (item) => item.agent_id,
+      ),
+    [localAgents, listOrderState],
   );
   const visibleExpertAgents = useMemo(
     () =>

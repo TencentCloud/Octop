@@ -47,6 +47,18 @@ def _opt_str(r: DbRow, key: str) -> str | None:
     return text if text else None
 
 
+# Composite ordering for viewer-scoped agent lists (schema v21):
+# pinned first, then manually-ordered rows (sort_order >= 0) ahead of
+# never-ordered ones (-1 / no pref row), ties broken by creation time.
+# The joined table alias must be ``uap``.
+_PREFS_ORDER_BY = (
+    "ORDER BY COALESCE(uap.pinned, 0) DESC, "
+    "CASE WHEN COALESCE(uap.sort_order, -1) >= 0 THEN 0 ELSE 1 END ASC, "
+    "COALESCE(uap.sort_order, 2147483647) ASC, "
+    "agents.created_at ASC, agents.id ASC"
+)
+
+
 @dataclass(frozen=True)
 class AgentRow:
     id: int
@@ -187,13 +199,37 @@ class AgentRepo:
             r = conn.execute("SELECT * FROM agents WHERE agent_id = ?", (agent_id,)).fetchone()
         return AgentRow.from_row(r) if r else None
 
-    def list_by_user(self, user_id: int, *, include_disabled: bool = True) -> list[AgentRow]:
-        sql = "SELECT * FROM agents WHERE user_id = ?"
+    def list_by_user(
+        self,
+        user_id: int,
+        *,
+        include_disabled: bool = True,
+        prefs_user_id: int | None = None,
+    ) -> list[AgentRow]:
+        """List agents owned by ``user_id``.
+
+        ``prefs_user_id``: optionally join that user's ``user_agent_prefs`` and
+        order by (pinned DESC, manually-ordered first, sort_order ASC,
+        created_at ASC, id ASC). None (default) keeps the plain creation order
+        so existing callers (CLI, backup, resolver) see no behavior change.
+        """
+        where = "agents.user_id = ?"
+        params: list[object] = [user_id]
         if not include_disabled:
-            sql += " AND enabled = 1"
-        sql += " ORDER BY created_at ASC, id ASC"
+            where += " AND agents.enabled = 1"
+        if prefs_user_id is None:
+            sql = f"SELECT agents.* FROM agents WHERE {where} ORDER BY agents.created_at ASC, agents.id ASC"
+            with self._db.connect() as conn:
+                rows = conn.execute(sql, params).fetchall()
+            return map_rows(rows, AgentRow)
+        sql = (
+            "SELECT agents.* FROM agents "
+            "LEFT JOIN user_agent_prefs uap "
+            "ON uap.agent_id = agents.agent_id AND uap.user_id = ? "
+            f"WHERE {where} {_PREFS_ORDER_BY}"
+        )
         with self._db.connect() as conn:
-            rows = conn.execute(sql, (user_id,)).fetchall()
+            rows = conn.execute(sql, [prefs_user_id, *params]).fetchall()
         return map_rows(rows, AgentRow)
 
     def count_by_user(
@@ -214,13 +250,39 @@ class AgentRepo:
             row = conn.execute(sql, params).fetchone()
         return int(row["c"]) if row is not None else 0
 
-    def list_all(self, *, include_disabled: bool = True) -> list[AgentRow]:
-        sql = "SELECT * FROM agents"
-        if not include_disabled:
-            sql += " WHERE enabled = 1"
-        sql += " ORDER BY created_at ASC, id ASC"
+    def list_all(
+        self,
+        *,
+        include_disabled: bool = True,
+        prefs_user_id: int | None = None,
+    ) -> list[AgentRow]:
+        """All agents, optionally ordered by one user's prefs.
+
+        ``prefs_user_id=None`` (default) keeps plain creation order — the
+        admin ``scope=all`` view intentionally does NOT apply any single
+        user's sidebar prefs (there is no meaningful personal order for a
+        global list); only viewer-scoped lists pass a user here.
+        """
+        where = "enabled = 1" if not include_disabled else None
+        if prefs_user_id is None:
+            sql = "SELECT agents.* FROM agents"
+            if where:
+                sql += f" WHERE {where}"
+            sql += " ORDER BY agents.created_at ASC, agents.id ASC"
+            with self._db.connect() as conn:
+                rows = conn.execute(sql).fetchall()
+            return map_rows(rows, AgentRow)
+        sql = (
+            "SELECT agents.* FROM agents "
+            "LEFT JOIN user_agent_prefs uap "
+            "ON uap.agent_id = agents.agent_id AND uap.user_id = ?"
+        )
+        params: list[object] = [prefs_user_id]
+        if where:
+            sql += f" WHERE {where}"
+        sql += f" {_PREFS_ORDER_BY}"
         with self._db.connect() as conn:
-            rows = conn.execute(sql).fetchall()
+            rows = conn.execute(sql, params).fetchall()
         return map_rows(rows, AgentRow)
 
     def set_enabled(self, agent_id: str, enabled: bool) -> None:
@@ -237,15 +299,40 @@ class AgentRepo:
                 (bool_int(shared), now_ts(), agent_id),
             )
 
-    def list_shared(self, *, exclude_user_id: int | None = None) -> list[AgentRow]:
-        sql = "SELECT * FROM agents WHERE is_shared = 1 AND enabled = 1"
+    def list_shared(
+        self,
+        *,
+        exclude_user_id: int | None = None,
+        prefs_user_id: int | None = None,
+    ) -> list[AgentRow]:
+        """Shared agents from other owners.
+
+        ``prefs_user_id`` is the VIEWER's id (not the owner's): shared rows
+        must be ordered by how the current user arranged them, never by the
+        owner's prefs — otherwise one user's pinning would leak into every
+        viewer's sidebar.
+        """
+        where = "agents.is_shared = 1 AND agents.enabled = 1"
         params: list[object] = []
         if exclude_user_id is not None:
-            sql += " AND user_id != ?"
+            where += " AND agents.user_id != ?"
             params.append(exclude_user_id)
-        sql += " ORDER BY created_at ASC, id ASC"
+        if prefs_user_id is None:
+            sql = (
+                f"SELECT agents.* FROM agents WHERE {where} "
+                "ORDER BY agents.created_at ASC, agents.id ASC"
+            )
+            with self._db.connect() as conn:
+                rows = conn.execute(sql, params).fetchall()
+            return map_rows(rows, AgentRow)
+        sql = (
+            "SELECT agents.* FROM agents "
+            "LEFT JOIN user_agent_prefs uap "
+            "ON uap.agent_id = agents.agent_id AND uap.user_id = ? "
+            f"WHERE {where} {_PREFS_ORDER_BY}"
+        )
         with self._db.connect() as conn:
-            rows = conn.execute(sql, params).fetchall()
+            rows = conn.execute(sql, [prefs_user_id, *params]).fetchall()
         return map_rows(rows, AgentRow)
 
     def set_state(self, agent_id: str, state: str, *, error: str | None = None) -> None:

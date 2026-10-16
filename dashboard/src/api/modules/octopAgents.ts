@@ -6,6 +6,20 @@ export const octopAgentsApi = {
       method: "POST",
     }),
 
+  /** Per-user pin toggle (schema v21, cross-device). */
+  pin: (agentId: string, pinned: boolean) =>
+    request<void>(`/agents/${encodeURIComponent(agentId)}/pin`, {
+      method: "POST",
+      body: JSON.stringify({ pinned }),
+    }),
+
+  /** Persist the full manual sequence (schema v21, cross-device). */
+  reorder: (order: string[]) =>
+    request<void>("/agents/order", {
+      method: "PUT",
+      body: JSON.stringify({ order }),
+    }),
+
   uploadAvatar: (agentId: string, file: File) => {
     const body = new FormData();
     body.append("file", file);
