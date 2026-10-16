@@ -87,6 +87,14 @@ async def test_different_agents_isolated(registry: ThreadRegistry) -> None:
     assert tid1 != tid2
 
 
+def test_mcp_keys_are_virtual_and_isolated() -> None:
+    first = ThreadRegistry.mcp_key(agent_id="a1", user_id=1, call_id="one")
+    second = ThreadRegistry.mcp_key(agent_id="a1", user_id=1, call_id="two")
+    assert first == "a1:mcp:1:call-one"
+    assert first != second
+    assert ThreadRegistry.is_virtual_channel(ThreadRegistry.CHANNEL_MCP)
+
+
 @pytest.mark.asyncio
 async def test_rebind(registry: ThreadRegistry) -> None:
     sk = "a1:feishu:ou_x:dm"

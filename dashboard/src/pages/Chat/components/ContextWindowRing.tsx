@@ -23,6 +23,8 @@ const SEGMENT_COLORS: Record<ContextUsageSegmentKey, string> = {
   conversation: "#22d3ee",
 };
 
+const DECISION_SAVED_COLOR = "#fb923c";
+
 function formatTokenK(n: number): string {
   if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
   if (n >= 1_000) return `${Math.round(n / 1_000)}k`;
@@ -38,6 +40,8 @@ interface ContextWindowRingProps {
   threadId?: string | null;
   selectedConnectors?: string[];
   isMobile?: boolean;
+  /** Session total omitted by the decision filter. Same figure as 本会话累计. */
+  decisionSaved?: number;
 }
 
 export default function ContextWindowRing({
@@ -48,6 +52,7 @@ export default function ContextWindowRing({
   threadId,
   selectedConnectors,
   isMobile = false,
+  decisionSaved = 0,
 }: ContextWindowRingProps) {
   const { t } = useTranslation();
   const [open, setOpen] = useState(false);
@@ -82,6 +87,8 @@ export default function ContextWindowRing({
     async (opts?: { silent?: boolean; force?: boolean }) => {
       if (!agentId || !threadId || isPendingThread(threadId)) return;
       const cached = cacheRef.current;
+      // cacheKey includes usedTokens, so a new model call already misses the
+      // cache and refreshes the decision savings shown below.
       if (
         !opts?.force &&
         cached &&
@@ -171,6 +178,10 @@ export default function ContextWindowRing({
 
   const segments = available ? breakdown.segments : [];
   const segmentTotal = segments.reduce((sum, item) => sum + item.tokens, 0);
+  // The legend row matches 本会话累计. The snapshot field is only the latest
+  // model call, which is much smaller once a turn has called the model again.
+  const savedTokens =
+    decisionSaved > 0 ? decisionSaved : breakdown?.decision_saved ?? 0;
 
   const popoverContent = (
     <div className={styles.contextUsagePanel}>
@@ -186,8 +197,8 @@ export default function ContextWindowRing({
         {available
           ? t("chat.contextWindow.breakdownHint")
           : usageEstimated
-            ? t("chat.contextWindow.estimateHint")
-            : tooltip}
+          ? t("chat.contextWindow.estimateHint")
+          : tooltip}
       </div>
       {loading ? (
         <div className={styles.contextUsageLoading}>
@@ -242,6 +253,20 @@ export default function ContextWindowRing({
                 </span>
               </li>
             ))}
+            {savedTokens > 0 ? (
+              <li className={styles.contextUsageLegendItem}>
+                <span
+                  className={styles.contextUsageLegendSwatch}
+                  style={{ background: DECISION_SAVED_COLOR }}
+                />
+                <span className={styles.contextUsageLegendLabel}>
+                  {t("chat.contextWindow.decisionSaved")}
+                </span>
+                <span className={styles.contextUsageLegendValue}>
+                  ~{formatTokenK(savedTokens)}
+                </span>
+              </li>
+            ) : null}
           </ul>
         </>
       ) : null}

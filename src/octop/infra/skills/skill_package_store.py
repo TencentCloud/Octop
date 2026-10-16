@@ -208,6 +208,20 @@ class SkillPackageStore:
             f"skill package {row.id!r} does not allow copying",
         )
 
+    def can_download(self, row: SkillPackageRow, user: User) -> bool:
+        """Whether *user* may download this package as a ZIP."""
+        if self.can_mutate(row, user):
+            return True
+        return bool(getattr(row, "allow_download", True))
+
+    def assert_can_download(self, row: SkillPackageRow, user: User) -> None:
+        if self.can_download(row, user):
+            return
+        raise OctopError(
+            ErrorCode.SKILL_PACKAGE_DOWNLOAD_DENIED,
+            f"skill package {row.id!r} does not allow download",
+        )
+
     def can_mutate(self, row: SkillPackageRow, user: User) -> bool:
         return user.is_admin or str(user.id) == row.created_by
 
