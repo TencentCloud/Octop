@@ -68,6 +68,17 @@ bash docker/docker_build.sh
 
 Compose 可在 `docker/.env` 中配置上述变量。注意：`.env` 只参与 Compose 插值，变量必须出现在 `docker-compose.yml` 的 `environment:` 中才会进入容器。也可把相同键写入挂载数据目录下的 `~/.octop/env`。
 
+### 知识库依赖
+
+镜像除 `browser` 外，还包含 `local-embedding` 和 `knowledge-ocr` 可选依赖。
+两次依赖安装均指定这些 extras，避免最后一次 `uv sync` 将其移除。构建时会检查
+嵌入与 OCR 模块能否导入；不会下载模型权重，也不会自动开启知识库或 OCR。
+
+通过控制台安装到运行中容器的依赖位于容器可写层，重建容器后会丢失。应重新构建或
+拉取已包含这些 extras 的镜像，而不是依赖运行时安装。保留 `/data/.octop` 数据卷，
+即可保留配置、知识库索引与本地嵌入模型缓存。已有部署需要重新构建或升级镜像才能
+获得这些依赖，仅重启旧镜像无效。
+
 ### 数据持久化
 
 - Compose 默认将宿主机 `~/.octop` 挂载到容器 `/data/.octop`

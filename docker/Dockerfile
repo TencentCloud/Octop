@@ -92,6 +92,8 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     && apt-get update && apt-get install -y --no-install-recommends \
         build-essential \
         libffi-dev \
+        libgl1 \
+        libglib2.0-0 \
         curl \
         git \
     && rm -rf /var/lib/apt/lists/*
@@ -107,7 +109,8 @@ RUN --mount=type=cache,target=/root/.cache/uv \
         export UV_INDEX_URL="$PIP_INDEX_URL"; \
         if [ -n "$PIP_TRUSTED_HOST" ]; then export UV_INSECURE_HOST="$PIP_TRUSTED_HOST"; fi; \
     fi \
-    && uv sync --frozen --no-install-project --no-dev --extra browser
+    && uv sync --frozen --no-install-project --no-dev \
+        --extra browser --extra local-embedding --extra knowledge-ocr
 
 ENV PATH="/app/.venv/bin:$PATH" \
     PLAYWRIGHT_BROWSERS_PATH=/root/.cache/ms-playwright
@@ -124,7 +127,9 @@ RUN --mount=type=cache,target=/root/.cache/uv \
         export UV_INDEX_URL="$PIP_INDEX_URL"; \
         if [ -n "$PIP_TRUSTED_HOST" ]; then export UV_INSECURE_HOST="$PIP_TRUSTED_HOST"; fi; \
     fi \
-    && uv sync --frozen --no-dev --extra browser \
+    && uv sync --frozen --no-dev \
+        --extra browser --extra local-embedding --extra knowledge-ocr \
+    && .venv/bin/python -c "import cv2, fastembed, huggingface_hub, rapidocr, onnxruntime, pymupdf" \
     && apt-get update && apt-get install -y --no-install-recommends fonts-noto-cjk \
     && apt-get purge -y --auto-remove build-essential \
     && rm -rf /var/lib/apt/lists/* /tmp/*
