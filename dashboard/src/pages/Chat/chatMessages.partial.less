@@ -1530,21 +1530,11 @@
     width: 22px;
     height: 22px;
     margin-left: 0;
-    /* Invisible until hover/focus, but still receive clicks if aimed. */
-    opacity: 0;
-    pointer-events: auto;
-  }
-
-  &:hover .msgCopyBtn,
-  &:hover .msgActionBtn,
-  &:focus-within .msgCopyBtn,
-  &:focus-within .msgActionBtn {
     opacity: 1;
   }
 
   .msgCopyBtn:hover,
   .msgActionBtn:hover {
-    opacity: 1;
     color: var(--fn-text-primary);
     background: var(--fn-bg-hover);
   }
@@ -1554,16 +1544,6 @@
     cursor: not-allowed;
     opacity: 0.35;
   }
-}
-
-/* Reveal when the user bubble (or meta row) is hovered/focused. */
-.bubbleContent:hover .userMsgActions .msgCopyBtn,
-.bubbleContent:hover .userMsgActions .msgActionBtn,
-.bubbleContent:focus-within .userMsgActions .msgCopyBtn,
-.bubbleContent:focus-within .userMsgActions .msgActionBtn,
-.messageBubble:hover .userMsgActions .msgCopyBtn,
-.messageBubble:hover .userMsgActions .msgActionBtn {
-  opacity: 1;
 }
 
 .msgCopyBtn {
