@@ -174,18 +174,19 @@ def test_user_list_json_emits_dump(monkeypatch) -> None:
     assert parsed == payload
 
 
-def test_root_help_does_not_import_subcommand_modules() -> None:
+def test_root_help_does_not_import_subcommand_modules(monkeypatch) -> None:
     """`octop --help` must not import individual command modules eagerly."""
     import importlib
     import sys
 
     for mod in list(sys.modules):
         if mod.startswith("octop.cli.commands."):
-            del sys.modules[mod]
+            monkeypatch.delitem(sys.modules, mod)
     importlib.invalidate_caches()
     # Force re-import of main itself so the lazy group is fresh.
     if "octop.cli.main" in sys.modules:
-        del sys.modules["octop.cli.main"]
+        monkeypatch.delitem(sys.modules, "octop.cli.main")
+    monkeypatch.delattr("octop.cli.main")
     from octop.cli.main import cli as fresh_cli
 
     runner = CliRunner()

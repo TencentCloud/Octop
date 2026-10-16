@@ -58,6 +58,7 @@ from octop.infra.agents.settings.runtime_limits import (
 from octop.infra.agents.settings.runtime_limits import (
     resolve_context_max_tokens as config_context_max_tokens,
 )
+from octop.infra.agents.settings.search import CustomSearchSettingsStore
 from octop.infra.backend.docker_spec import (
     enrich_docker_backend_spec,
     inject_docker_global_environment,
@@ -517,6 +518,10 @@ class AgentManager:
             settings_repo=repos.settings_repo,
             secret_repo=repos.secret_repo,
         )
+        self._search_settings = CustomSearchSettingsStore(
+            settings_repo=repos.settings_repo,
+            secret_repo=repos.secret_repo,
+        )
         self._security = SecuritySettingsStore(settings_repo=repos.settings_repo)
         self._acp_settings = ACPSettingsStore(
             settings_repo=repos.settings_repo,
@@ -548,6 +553,10 @@ class AgentManager:
             secret_repo=repos.secret_repo,
         )
         self._media_generation = MediaGenerationSettingsStore(
+            settings_repo=repos.settings_repo,
+            secret_repo=repos.secret_repo,
+        )
+        self._search_settings = CustomSearchSettingsStore(
             settings_repo=repos.settings_repo,
             secret_repo=repos.secret_repo,
         )
@@ -689,6 +698,10 @@ class AgentManager:
     @property
     def media_generation(self) -> MediaGenerationSettingsStore:
         return self._media_generation
+
+    @property
+    def search_settings(self) -> CustomSearchSettingsStore:
+        return self._search_settings
 
     @property
     def paths(self) -> PathLayout:
@@ -3630,6 +3643,12 @@ class AgentManager:
                 paths=self.paths,
             )
 
+        custom_search_tool = (
+            self._search_settings.build_tool()
+            if not team_host and cfg.get("web_search_tools") is not False
+            else None
+        )
+
         from octop_harness.plugins import PluginRegistry, build_plugin_tools  # noqa: PLC0415
 
         from octop.infra.agents.plugins.plugin_tool_defaults import (  # noqa: PLC0415
@@ -3675,7 +3694,8 @@ class AgentManager:
             reserved={
                 str(getattr(t, "name", ""))
                 for t in [*(cron_tools or []), *knowledge_tools, *mobile_tools]
-            },
+            }
+            | ({custom_search_tool.name} if custom_search_tool is not None else set()),
         )
         self._plugin_tool_labels[row.agent_id] = {
             str(getattr(tool, "name", "")): label
@@ -3731,6 +3751,8 @@ class AgentManager:
             merged_tools.extend(cron_tools)
         merged_tools.extend(knowledge_tools)
         merged_tools.extend(mobile_tools)
+        if custom_search_tool is not None:
+            merged_tools.append(custom_search_tool)
         merged_tools.extend(plugin_tools)
         # agent_list / ask_agent: PeerAgentMiddleware (team_enabled=True), not config.tools.
 
@@ -3868,6 +3890,11 @@ class AgentManager:
             default_timezone=self._config.default_timezone,
             log_dir=str(self.paths.logs_dir),
             media_generation=self._media_generation.harness_config(),
+            web_search_tools=(
+                False
+                if custom_search_tool is not None or cfg.get("web_search_tools") is False
+                else self._search_settings.harness_search_policy()
+            ),
             **_memory_extract_settings(cfg, is_ref_usable=self._providers.is_model_ref_usable),
             **_resolve_memory_backend_kwargs(cfg, workspace_dir=workspace_dir, config=self._config),
         )

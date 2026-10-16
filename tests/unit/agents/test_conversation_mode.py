@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 from pathlib import Path, PurePosixPath
+from typing import Literal
 
 import pytest
 
@@ -122,3 +123,18 @@ def test_stamp_ask_clears_skills_and_mcp() -> None:
     assert cfg["conversation_mode"] == "ask"
     assert cfg["conversation_mode_extra_read_tools"] == list(HOST_READ_TOOLS)
     assert cfg["skills"] == []
+
+
+@pytest.mark.parametrize("mode", ["ask", "plan"])
+def test_custom_search_is_allowed_in_read_only_modes(mode: Literal["ask", "plan"]) -> None:
+    from octop_harness.middleware.conversation_mode import allowed_tool_names, extra_read_tools
+
+    request: dict[str, object] = {}
+    stamp_conversation_mode(request, mode)
+    configurable = request["configurable"]
+    assert isinstance(configurable, dict)
+
+    assert "custom_search" in allowed_tool_names(
+        mode,
+        extra_read=extra_read_tools(configurable),
+    )

@@ -1148,6 +1148,9 @@ def test_cold_target_install_budget_preserves_regular_timeout(
         "rank_install_indexes",
         lambda _: ([("https://one.example", "one")], []),
     )
+    # (deadline - now) rounds to 900 +/- 1 ulp against a real clock; pin the
+    # clock so the budgets are exact, like the sibling window tests.
+    monkeypatch.setattr(self_update.time, "monotonic", lambda: 0.0)
     budgets: list[float] = []
 
     def cold_install(
