@@ -73,6 +73,87 @@ def _seed_test_provider(manager: AgentManager) -> None:
     )
 
 
+@pytest.mark.asyncio
+@pytest.mark.parametrize("cancel_review", [False, True])
+async def test_manual_review_serializes_profile_edits_without_changing_session(
+    manager: AgentManager, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, cancel_review: bool
+) -> None:
+    from deepagents.backends import FilesystemBackend
+    from octop_harness.backends.workspace import BackendWorkspace
+
+    ws = BackendWorkspace(FilesystemBackend(root_dir=str(tmp_path), virtual_mode=True), tmp_path)
+    ws.write_text("USER.md", "Original profile", force=True)
+    entered, release = threading.Event(), threading.Event()
+
+    def review(documents: dict[str, str], *, is_current: Any) -> dict[str, Any]:
+        entered.set()
+        assert release.wait(timeout=3)
+        assert documents["USER.md"] == "Original profile" and is_current()
+        return {"status": "complete"}
+
+    service = SimpleNamespace(reconcile_manual_documents=review)
+    agent = SimpleNamespace(_memory_runtime=SimpleNamespace(service=service))
+    monkeypatch.setattr(manager, "workspace_for_agent", lambda _: ws)
+    monkeypatch.setattr(manager, "get_agent", lambda _: agent)
+    task = asyncio.create_task(manager.review_manual_memory_documents("a1"))
+    assert await asyncio.to_thread(entered.wait, 2)
+    edit = asyncio.create_task(
+        manager.save_manual_memory_document("a1", "USER.md", "Updated profile")
+    )
+    if cancel_review:
+        task.cancel()
+    await asyncio.sleep(0.01)
+    assert not edit.done() and ws.read_text("USER.md") == "Original profile"
+    release.set()
+    if cancel_review:
+        with pytest.raises(asyncio.CancelledError):
+            await task
+    else:
+        assert await task == {"status": "complete"}
+    await edit
+    assert ws.read_text("USER.md") == "Updated profile"
+    with pytest.raises(ValueError, match="Unsupported"):
+        await manager.save_manual_memory_document("a1", "AGENTS.md", "invalid")
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("failure", [False, True])
+async def test_stopped_agent_manual_review_closes_temporary_runtime(
+    manager: AgentManager, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, failure: bool
+) -> None:
+    from deepagents.backends import FilesystemBackend
+    from octop_harness.backends.workspace import BackendWorkspace
+
+    ws = BackendWorkspace(FilesystemBackend(root_dir=str(tmp_path), virtual_mode=True), tmp_path)
+    ws.write_text("USER.md", "Current profile", force=True)
+    monkeypatch.setattr(manager, "workspace_for_agent", lambda _: ws)
+
+    def stopped(_: str) -> Any:
+        raise OctopError(ErrorCode.AGENT_NOT_RUNNING, "stopped")
+
+    monkeypatch.setattr(manager, "get_agent", stopped)
+    monkeypatch.setattr(manager, "get_row", lambda _: _row())
+    cfg = SimpleNamespace(memory_enabled=True, providers=[], workspace_dir=str(tmp_path))
+    monkeypatch.setattr(manager, "_build_harness_config", lambda _: cfg)
+    factory, runtime = MagicMock(), MagicMock()
+    runtime.service.reconcile_manual_documents.return_value = {"status": "complete"}
+    if failure:
+        runtime.service.reconcile_manual_documents.side_effect = RuntimeError("audit failed")
+    factory_type = MagicMock(return_value=factory)
+    runtime_type = MagicMock(return_value=runtime)
+    monkeypatch.setattr("octop_harness.llm.factory.ChatModelFactory", factory_type)
+    monkeypatch.setattr("octop_harness.memory.runtime.MemoryRuntime", runtime_type)
+    if failure:
+        with pytest.raises(RuntimeError, match="audit failed"):
+            await manager.review_manual_memory_documents("a1")
+    else:
+        assert await manager.review_manual_memory_documents("a1") == {"status": "complete"}
+        assert runtime.service.reconcile_manual_documents.call_args.kwargs["is_current"]()
+    assert runtime_type.call_args.kwargs["workspace"] is ws
+    runtime.close.assert_called_once()
+    factory.close.assert_called_once()
+
+
 def _row(
     *,
     agent_id: str = "01AGENT",

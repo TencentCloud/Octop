@@ -4063,7 +4063,8 @@
       "candidates": "记忆沉淀",
       "journal": "整理记录",
       "proactive": "主动关心",
-      "settings": "设置"
+      "settings": "设置",
+      "userFile": "用户档案"
     },
     "strong": {
       "contextNotice": "每个会话开始时加载一次强记忆，并持续用于该会话上下文。",
@@ -4588,6 +4589,30 @@
       "phase_backing_up_current": "正在备份当前专家现状",
       "phase_restoring": "正在恢复当前专家的数据",
       "phase_restarting": "正在重新加载当前专家"
+    },
+    "userFile": {
+      "contextNotice": "每个会话开始时加载一次 USER.md 用户档案，并持续用于该会话上下文。",
+      "description": "USER.md 由你手动维护，Agent 只读，适合填写个人信息、称呼和沟通偏好。修改后对新会话生效。与普通记忆冲突时以手动档案为准，冲突记忆转为候选待审核。对 Agent 说“记住”会保存到普通记忆，不会改动这里。",
+      "contentLabel": "用户档案内容（USER.md）",
+      "placeholder": "填写你的个人信息和偏好，支持 Markdown。",
+      "saved": "用户档案已保存，将在新会话中生效。",
+      "loadFailed": "加载用户档案失败，请重试。",
+      "saveFailed": "保存失败，修改内容已保留，请重试。"
+    },
+    "manualReview": {
+      "check": "检查重复与冲突",
+      "conflicts": "发现 {{count}} 条冲突，已转为候选待审核。",
+      "complete": "当前核对已完成。",
+      "partial": "还有 {{count}} 条普通记忆待检查，点击继续核对。",
+      "unavailable": "语义检查不可用，尚未完成核对。请配置记忆辅助模型后重试。",
+      "failed": "核对尚未完成，请稍后重试。",
+      "stale": "手动文档已变化，请重新核对。",
+      "disabled": "普通记忆未启用，文档已保存，暂不执行核对。",
+      "too_large": "文档过长，尚未完成语义检查。请精简后重试。",
+      "not_checked": "这些手动文档尚未核对。",
+      "details": "手动文档优先。相同档案快照中的 {{count}} 条重复记忆不再重复注入；已确认的冲突转为候选，旧记忆停用并保留原始证据。核对基于已保存的 USER.md 和 MEMORY.md。",
+      "openCandidates": "查看候选",
+      "uncertain": "部分信息无法确定，原记忆保持不变。请补充明确档案后重新检查。"
     }
   },
   "personalization": {

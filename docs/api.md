@@ -372,9 +372,23 @@ Bundled experts live in `src/octop/infra/agents/experts/library/`
 | `PUT`    | `/agents/{aid}/heartbeat-config` | owner | write heartbeat YAML |
 | `GET`    | `/agents/{aid}/memory/daily` | owner | list daily memory files |
 | `GET`/`PUT` | `/agents/{aid}/memory/strong` | owner | read/edit user-maintained MEMORY.md, including for stopped agents; new sessions snapshot full content once, existing sessions keep their snapshot |
+| `GET`/`PUT` | `/agents/{aid}/memory/user` | owner | read/edit user-maintained USER.md with the same session snapshot policy; distinct from the derived profile |
+| `GET` | `/agents/{aid}/memory/manual-review` | owner | read persisted reconciliation status against current documents; no model call or memory mutation |
+| `POST` | `/agents/{aid}/memory/manual-review` | owner | reconcile saved USER.md + MEMORY.md against up to 100 unchecked atoms; duplicates remain stored, proven conflicts retire the old atom and create a replacement review candidate with evidence |
 | `GET`    | `/agents/{aid}/memory/daily/{filename}` | owner | read one daily memory |
 | `DELETE` | `/agents/{aid}/memory/daily/{filename}` | owner | delete one daily memory |
 | `GET`/`POST` | `/memory/...` | user | memory API (dashboard memory tab) |
+
+### Manual document reconciliation
+
+The manual editors save files first, then request reconciliation. The response reports
+`complete`, `partial` (continue checking), `uncertain`, `unavailable`, `failed`, `stale`,
+`disabled`, `too_large`, or `not_checked`, plus conflict/duplicate counts and candidate IDs.
+Semantic checks use the configured memory auxiliary model and require literal document
+evidence; unavailable or uncertain checks never silently retire facts. Combined document
+input above 100,000 characters is explicitly refused. Current documents are checked again
+when accepting a document-derived candidate; stale candidates require review of the new
+version. The file save remains successful if the subsequent semantic check fails.
 
 ### Current-expert memory storage maintenance
 

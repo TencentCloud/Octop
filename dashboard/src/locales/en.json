@@ -4063,7 +4063,8 @@
       "candidates": "Memory distillation",
       "journal": "Activity",
       "proactive": "Proactive care",
-      "settings": "Settings"
+      "settings": "Settings",
+      "userFile": "User profile"
     },
     "strong": {
       "contextNotice": "Strong memory is loaded once when a session starts and stays in that session's context.",
@@ -4588,6 +4589,30 @@
       "phase_backing_up_current": "Backing up this expert’s current state",
       "phase_restoring": "Restoring this expert’s data",
       "phase_restarting": "Reloading this expert"
+    },
+    "userFile": {
+      "contextNotice": "USER.md is loaded once when a session starts and stays in that session’s context.",
+      "description": "Maintain USER.md manually for personal details, names and communication preferences. Agents have read-only access, including during onboarding. Edits apply to new sessions. Manual documents take priority over ordinary memory; conflicts become review candidates. Remember requests go to ordinary memory and leave this document unchanged.",
+      "contentLabel": "User profile content (USER.md)",
+      "placeholder": "Enter personal details and preferences. Markdown is supported.",
+      "saved": "User profile saved. It will apply to new sessions.",
+      "loadFailed": "Could not load the user profile. Please retry.",
+      "saveFailed": "Could not save. Your changes have been kept; please retry."
+    },
+    "manualReview": {
+      "check": "Check duplicates and conflicts",
+      "conflicts": "{{count}} conflicts moved to candidates for review.",
+      "complete": "The current review is complete.",
+      "partial": "{{count}} ordinary memories remain. Continue the review.",
+      "unavailable": "Semantic review is unavailable and incomplete. Configure a memory auxiliary model and retry.",
+      "failed": "Review is incomplete. Please retry later.",
+      "stale": "The manual documents changed. Run the review again.",
+      "disabled": "Ordinary memory is disabled. The document is saved; review is skipped.",
+      "too_large": "The documents are too long for semantic review. Shorten them and retry.",
+      "not_checked": "These manual documents have not been reviewed.",
+      "details": "Manual documents take priority. {{count}} duplicate memories are omitted from recall when the session snapshot matches. Confirmed conflicts become review candidates; old facts are retired and source evidence is preserved. Review uses the saved USER.md and MEMORY.md.",
+      "openCandidates": "Review candidates",
+      "uncertain": "Some comparisons are uncertain. Original memories are unchanged. Clarify the manual documents and retry."
     }
   },
   "personalization": {

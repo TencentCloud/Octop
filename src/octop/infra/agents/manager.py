@@ -1282,6 +1282,84 @@ class AgentManager:
                 pass
         return self._backend_workspace_for_row(row)
 
+    async def save_manual_memory_document(self, agent_id: str, filename: str, content: str) -> None:
+        """Serialize owner edits with document review and lifecycle changes."""
+        if filename not in {"USER.md", "MEMORY.md"}:
+            raise ValueError("Unsupported manual memory document")
+        async with self._lifecycle_lock_for(agent_id):
+            workspace = await asyncio.to_thread(self.workspace_for_agent, agent_id)
+            if workspace is None:
+                raise self._unavailable_error(agent_id)
+            await workspace.awrite_text(filename, content, force=True)
+
+    async def review_manual_memory_documents(self, agent_id: str) -> dict[str, Any]:
+        """Review current files, including for stopped agents, without changing session snapshots."""
+        async with self._lifecycle_lock_for(agent_id):
+            if self.memory_slim.busy and self.memory_slim.status(agent_id) is not None:
+                raise OctopError.localized(ErrorCode.AGENT_BUSY)
+            workspace = await asyncio.to_thread(self.workspace_for_agent, agent_id)
+            if workspace is None:
+                raise self._unavailable_error(agent_id)
+            documents = {}
+            for filename in ("USER.md", "MEMORY.md"):
+                data = await workspace.adownload_bytes(filename)
+                documents[filename] = data.decode("utf-8") if data is not None else ""
+
+            def run() -> dict[str, Any]:
+                from octop_harness.llm.factory import ChatModelFactory
+                from octop_harness.memory.runtime import MemoryRuntime
+
+                temporary = None
+                owned_factory = None
+                try:
+                    try:
+                        service = self.get_agent(agent_id)._memory_runtime.service
+                    except OctopError:
+                        row = self.get_row(agent_id)
+                        if row is None:
+                            raise self._unavailable_error(agent_id) from None
+                        cfg = self._build_harness_config(row)
+                        if not cfg.memory_enabled:
+                            return {"status": "disabled"}
+                        factory = (
+                            self._harness_manager.shared_factory
+                            if self._harness_manager is not None
+                            else None
+                        )
+                        if factory is None:
+                            factory = owned_factory = ChatModelFactory(
+                                cfg.providers, agent_config=cfg
+                            )
+                        temporary = MemoryRuntime(
+                            config=cfg,
+                            workspace_path=Path(cfg.workspace_dir),
+                            model_factory=factory,
+                            workspace=workspace,
+                        )
+                        service = temporary.service
+                    if service is None:
+                        return {"status": "disabled"}
+
+                    def current() -> bool:
+                        return all(
+                            (workspace.download_bytes(name) or b"").decode("utf-8") == body
+                            for name, body in documents.items()
+                        )
+
+                    return dict(service.reconcile_manual_documents(documents, is_current=current))
+                finally:
+                    if temporary is not None:
+                        temporary.close()
+                    if owned_factory is not None:
+                        owned_factory.close()
+
+            worker = asyncio.create_task(asyncio.to_thread(run))
+            try:
+                return await asyncio.shield(worker)
+            except asyncio.CancelledError:
+                await worker
+                raise
+
     def list_agents(self, user_id: int) -> list[AgentRow]:
         return self._repos.agent_repo.list_by_user(user_id, include_disabled=False)
 

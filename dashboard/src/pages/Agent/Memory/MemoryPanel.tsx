@@ -40,6 +40,7 @@ import styles from "./index.module.less";
 type MemoryTab =
   | "overview"
   | "strong"
+  | "userFile"
   | "profile"
   | "library"
   | "episodes"
@@ -83,6 +84,12 @@ const TABS: TabDef[] = [
     labelKey: "memory.tabs.strong",
     fallback: "强记忆",
     icon: Pin,
+  },
+  {
+    key: "userFile",
+    labelKey: "memory.tabs.userFile",
+    fallback: "用户档案",
+    icon: User,
   },
   {
     key: "episodes",
@@ -241,7 +248,23 @@ export default function MemoryPanel({
           );
           break;
         case "strong":
-          children = <StrongMemory key={agentId} agentId={agentId} />;
+          children = (
+            <StrongMemory
+              key={agentId}
+              agentId={agentId}
+              onReviewCandidates={() => setActiveTab("candidates")}
+            />
+          );
+          break;
+        case "userFile":
+          children = (
+            <StrongMemory
+              key={`${agentId}:user`}
+              agentId={agentId}
+              document="user"
+              onReviewCandidates={() => setActiveTab("candidates")}
+            />
+          );
           break;
         case "profile":
           children = (
