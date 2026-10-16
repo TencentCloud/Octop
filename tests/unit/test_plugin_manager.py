@@ -407,6 +407,10 @@ def test_set_enabled_preserves_unrelated_keys(tmp_path: Path) -> None:
 
 
 def test_channel_reload_preserves_class_until_source_changes(tmp_path: Path) -> None:
+    from octop_harness.plugins.context import PluginContext
+
+    if not hasattr(PluginContext, "channel"):
+        pytest.skip("released harness lacks channel registration; exercised with companion source")
     config = tmp_path / "config.json"
     config.write_text("{}")
     directory = tmp_path / "plugins" / "test-channel"

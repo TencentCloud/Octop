@@ -378,3 +378,17 @@ async def test_unrelated_plugin_change_does_not_restart_channels() -> None:
     fake._unregister.assert_not_awaited()
     fake._safe_register_channel.assert_not_awaited()
     apply.assert_called_once()
+
+
+def test_old_gateway_capability_failure_is_reported(monkeypatch: pytest.MonkeyPatch) -> None:
+    from octop_gateway import channels
+
+    from octop.infra.gateway import plugin_channels as bridge
+
+    monkeypatch.delattr(channels, "register_channel_kind", raising=False)
+    monkeypatch.delattr(channels, "unregister_channel_kind", raising=False)
+    result = bridge.apply_plugin_channels(
+        registry=_StubRegistry(_StubReg("owner", "acme", _FakeChannel))
+    )
+    assert result == []
+    assert "upgrade gateway" in bridge.registration_errors()["owner"]

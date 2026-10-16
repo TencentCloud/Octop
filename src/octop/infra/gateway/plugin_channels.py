@@ -83,17 +83,21 @@ def apply_plugin_channels(
         Summaries of the channel kinds that are registered and usable,
         sorted by kind for stable UI ordering.
     """
-    if register is None:  # pragma: no cover - exercised via real gateway
-        from octop_gateway.channels import register_channel_kind as register
+    from octop_gateway import channels as gateway_channels
 
+    if register is None:
+        register = getattr(gateway_channels, "register_channel_kind", None)
     if unregister is None:
-        try:
-            from octop_gateway.channels import unregister_channel_kind as unregister
-        except ImportError:
-            logger.warning(
-                "gateway does not support plugin channel lifecycle; upgrade gateway first"
-            )
-            return []
+        unregister = getattr(gateway_channels, "unregister_channel_kind", None)
+    if not callable(register) or not callable(unregister):
+        _ERRORS.clear()
+        all_channels = getattr(registry, "all_channels", None)
+        if callable(all_channels):
+            for reg in all_channels():
+                _ERRORS[reg.plugin_id] = (
+                    "gateway lacks channel plugin lifecycle support; upgrade gateway"
+                )
+        return []
 
     assert register is not None
     assert unregister is not None

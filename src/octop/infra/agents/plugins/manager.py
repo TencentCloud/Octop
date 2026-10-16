@@ -422,10 +422,12 @@ class PluginManager:
             if enabled.get(manifest.id, True) is False:
                 continue
             try:
-                fingerprint = _channel_fingerprint(plugin_dir) if manifest.kind == "channel" else ""
+                fingerprint = (
+                    _channel_fingerprint(plugin_dir) if str(manifest.kind) == "channel" else ""
+                )
                 old = previous.get(manifest.id)
                 if (
-                    manifest.kind == "channel"
+                    str(manifest.kind) == "channel"
                     and old is not None
                     and _CHANNEL_FINGERPRINTS.get(manifest.id) == fingerprint
                 ):
@@ -433,7 +435,7 @@ class PluginManager:
                     loaded.append(old)
                 else:
                     loaded.append(_load_plugin_dir(plugin_dir, install_deps=install_deps))
-                if manifest.kind == "channel":
+                if str(manifest.kind) == "channel":
                     _CHANNEL_FINGERPRINTS[manifest.id] = fingerprint
             except Exception as exc:
                 logger.error(
