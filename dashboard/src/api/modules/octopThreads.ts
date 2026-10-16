@@ -142,6 +142,7 @@ export interface ContextUsageBreakdown {
   max_tokens: number;
   used_tokens: number;
   segments: ContextUsageSegment[];
+  available?: boolean;
   /** Tokens the decision filter kept out of the latest model request. */
   decision_saved?: number;
 }

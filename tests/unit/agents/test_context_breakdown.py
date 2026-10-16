@@ -73,46 +73,56 @@ def _registry(usage: object | None, *, history: list[object] | None = None) -> M
 @pytest.mark.asyncio
 async def test_prefers_harness_snapshot() -> None:
     usage = _usage(
-        used=9_000,
-        max_tokens=1_000_000,
+        used=20_000,
+        max_tokens=100_000,
         segments={
-            "system_prompt": 1_000,
-            "skills": 2_000,
-            "tool_definitions": 1_500,
-            "conversation": 4_500,
+            "system_prompt": 2_000,
+            "skills": 4_000,
+            "tool_definitions": 3_000,
+            "conversation": 11_000,
         },
     )
+    usage_repo = MagicMock()
+    usage_repo.last_thread_input_tokens.return_value = 30_000
     result = await compute_context_breakdown(
         _registry(usage),
         agent_id="agt",
         thread_id="t1",
         max_tokens=100_000,
-        input_tokens=9999,
+        input_tokens=30_000,
+        usage_repo=usage_repo,
     )
-    assert result.max_tokens == 1_000_000
-    assert result.used_tokens == 9_000
-    assert result.segments["skills"] == 2_000
-    assert result.segments["conversation"] == 4_500
+    assert result.available is True
+    assert result.max_tokens == 100_000
+    assert result.used_tokens == 20_000
+    assert result.segments["skills"] == 4_000
+    assert result.segments["conversation"] == 11_000
+    usage_repo.last_thread_input_tokens.assert_not_called()
 
 
 @pytest.mark.asyncio
-async def test_fallback_to_stream_input_tokens_when_empty() -> None:
+async def test_empty_snapshot_is_unavailable_despite_usage_hints() -> None:
     empty = _usage(used=0, segments={}, source="empty")
+    usage_repo = MagicMock()
+    usage_repo.last_thread_input_tokens.return_value = 30_000
     result = await compute_context_breakdown(
         _registry(empty),
         agent_id="agt",
         thread_id="t1",
         max_tokens=128_000,
-        input_tokens=9_000,
+        input_tokens=30_000,
+        usage_repo=usage_repo,
     )
-    assert result.used_tokens == 9_000
-    assert result.segments["conversation"] == 9_000
+    assert result.available is False
+    assert result.used_tokens == 0
+    assert result.segments["conversation"] == 0
     assert result.segments["skills"] == 0
     assert result.segments["system_prompt"] == 0
+    usage_repo.last_thread_input_tokens.assert_not_called()
 
 
 @pytest.mark.asyncio
-async def test_fallback_when_harness_lacks_getter() -> None:
+async def test_missing_snapshot_is_unavailable() -> None:
     result = await compute_context_breakdown(
         _registry(None),
         agent_id="agt",
@@ -120,8 +130,9 @@ async def test_fallback_when_harness_lacks_getter() -> None:
         max_tokens=128_000,
         input_tokens=4_200,
     )
-    assert result.used_tokens == 4_200
-    assert result.segments["conversation"] == 4_200
+    assert result.available is False
+    assert result.used_tokens == 0
+    assert result.segments["conversation"] == 0
 
 
 @pytest.mark.asyncio
@@ -146,6 +157,7 @@ async def test_empty_without_stream_tokens() -> None:
         thread_id="t1",
         max_tokens=64_000,
     )
+    assert result.available is False
     assert result.used_tokens == 0
     assert all(v == 0 for v in result.segments.values())
 
@@ -166,6 +178,7 @@ async def test_does_not_recover_response_metadata_from_checkpoint() -> None:
         thread_id="t1",
         max_tokens=128_000,
     )
+    assert result.available is False
     assert result.used_tokens == 0
 
 
@@ -196,12 +209,13 @@ async def test_does_not_read_checkpoint_context_stamp() -> None:
         thread_id="t1",
         max_tokens=1_000_000,
     )
+    assert result.available is False
     assert result.max_tokens == 1_000_000
     assert result.used_tokens == 0
 
 
 @pytest.mark.asyncio
-async def test_empty_snapshot_uses_usage_ledger_without_checkpoint() -> None:
+async def test_empty_snapshot_ignores_usage_ledger_without_checkpoint() -> None:
     empty = _usage(used=0, segments={}, source="empty")
     history = [
         {"role": "user", "content": "hi"},
@@ -221,13 +235,15 @@ async def test_empty_snapshot_uses_usage_ledger_without_checkpoint() -> None:
         max_tokens=128_000,
         usage_repo=usage_repo,
     )
-    assert result.used_tokens == 4200
-    assert result.segments["conversation"] == 4200
+    assert result.available is False
+    assert result.used_tokens == 0
+    assert result.segments["conversation"] == 0
+    usage_repo.last_thread_input_tokens.assert_not_called()
     registry.get_agent.return_value.aget_history.assert_not_awaited()
 
 
 @pytest.mark.asyncio
-async def test_live_harness_missing_falls_back_to_query_hint() -> None:
+async def test_live_harness_missing_ignores_query_hint() -> None:
     registry = MagicMock()
     registry.get_row.return_value = MagicMock()
     registry.get_agent.side_effect = RuntimeError("agent not running")
@@ -238,5 +254,19 @@ async def test_live_harness_missing_falls_back_to_query_hint() -> None:
         max_tokens=128_000,
         input_tokens=9_000,
     )
-    assert result.used_tokens == 9_000
-    assert result.segments["conversation"] == 9_000
+    assert result.available is False
+    assert result.used_tokens == 0
+    assert result.segments["conversation"] == 0
+
+
+@pytest.mark.asyncio
+async def test_verified_zero_snapshot_is_available() -> None:
+    result = await compute_context_breakdown(
+        _registry(_usage(used=0, segments={}, source="model_request")),
+        agent_id="agt",
+        thread_id="t1",
+        max_tokens=128_000,
+        input_tokens=30_000,
+    )
+    assert result.available is True
+    assert result.used_tokens == 0
