@@ -33,6 +33,7 @@ from octop_harness.teams.util import (
 )
 
 from octop.i18n import tr
+from octop.i18n.domains.stream import format_stream_error
 from octop.infra.agents.teams.service import _user_may_use_member, is_team_agent
 from octop.infra.agents.threads.artifact import artifact_path_allowed, extract_artifact_paths
 from octop.infra.db.repos.agents import AgentRow
@@ -303,6 +304,9 @@ class TeamManager:
             if event.status != "done"
             else (event.reply_text or "(empty)")
         )
+        failed = event.status == "failed"
+        if failed:
+            text = format_stream_error(text, self._locale_for(_octop_user_id(event.user_id)))
         if room:
             await self._push_room_to_channels(room, speaker, text, wrapup=True)
         live_ws = self._take_live_host_reply(room) and event.status == "done"
@@ -322,12 +326,15 @@ class TeamManager:
                 str(session.session_key),
                 text,
                 speaker_id=speaker,
+                **({"error": True} if failed else {}),
             )
             return
         if session is not None:
             return
         if room:
-            await self._publish_room_text(room, speaker, text)
+            await self._publish_room_text(
+                room, speaker, text, **({"error": True} if failed else {})
+            )
             self._thread_registry.touch_last_active(room)
             return
         logger.warning("team reply %s: no room to publish", event.inbox_id)
@@ -1218,6 +1225,7 @@ class TeamManager:
         text: str,
         *,
         wrapup: bool = False,
+        error: bool = False,
         decision: dict[str, Any] | None = None,
     ) -> None:
         body = (text or "").strip()
@@ -1227,6 +1235,8 @@ class TeamManager:
         extra: dict[str, Any] = {"speaker_agent_id": speaker_id}
         if wrapup:
             extra["team_wrapup"] = True
+        if error:
+            extra["octop_stream_error"] = {"code": "stream_error", "source": "team_task"}
         if decision:
             extra["octop_decision"] = dict(decision)
         msg = AIMessage(
@@ -1321,16 +1331,19 @@ class TeamManager:
                     exc_info=True,
                 )
 
-    async def _publish_room_text(self, thread_id: str, speaker_id: str, text: str) -> None:
+    async def _publish_room_text(
+        self, thread_id: str, speaker_id: str, text: str, *, error: bool = False
+    ) -> None:
         body = (text or "").strip()
         if not thread_id or not body:
             return
-        self._persist_room_assistant(thread_id, speaker_id, body, wrapup=True)
+        self._persist_room_assistant(thread_id, speaker_id, body, wrapup=True, error=error)
         await self._push_room_snapshot(
             thread_id,
             speaker_id,
             body,
             wrapup=True,
+            error=error,
         )
 
     async def _push_room_snapshot(
@@ -1340,6 +1353,7 @@ class TeamManager:
         text: str,
         *,
         wrapup: bool = False,
+        error: bool = False,
     ) -> None:
         body = (text or "").strip()
         if not thread_id or not body:
@@ -1352,7 +1366,11 @@ class TeamManager:
             await hub.push_to_thread(
                 thread_id,
                 stamp_stream_speaker(
-                    {"type": "token", "content": body, **extra},
+                    (
+                        {"type": "error", "message": body, **extra}
+                        if error
+                        else {"type": "token", "content": body, **extra}
+                    ),
                     speaker_id,
                 ),
             )
@@ -1384,6 +1402,7 @@ class TeamManager:
         text: str,
         *,
         speaker_id: str | None = None,
+        error: bool = False,
     ) -> None:
         if self._thread_registry.is_im_session(session):
             await self._push_session_channel(session, text)
@@ -1392,6 +1411,7 @@ class TeamManager:
             session.thread_id,
             speaker_id or session.agent_id,
             text,
+            error=error,
         )
         if not self._thread_is_watched(session.thread_id):
             self._thread_registry.increment_unread(session_key)
@@ -1904,6 +1924,7 @@ def _patch_inbox_wrapup(
             text=prompt,
             source="inbox",
             configurable={
+                **({"octop_memory_capture_exclude": True} if error_text else {}),
                 "octop_decision_followup": True,
                 "peer_invoke_mode": "async",
                 "octop_decision_finished_member": str(getattr(msg, "target_agent_id", "") or ""),

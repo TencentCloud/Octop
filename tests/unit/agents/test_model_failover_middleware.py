@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from types import SimpleNamespace
-from unittest.mock import MagicMock
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 from langchain.agents.middleware import ModelRequest, ModelResponse
@@ -37,6 +37,7 @@ async def test_auto_route_switches_after_retry_exhaustion(monkeypatch) -> None:
         max_retries=1,
         initial_delay=0,
         max_delay=0,
+        on_failure="error",
     )
     monkeypatch.setattr(
         model_failover,
@@ -60,6 +61,44 @@ async def test_auto_route_switches_after_retry_exhaustion(monkeypatch) -> None:
     assert attempts == [("p/a", "p/a"), ("p/a", "p/a"), ("p/b", "p/b")]
     assert configurable["model"] == "p/b"
     assert not health.is_routable("p/a")
+
+
+@pytest.mark.parametrize("automatic", [False, True])
+@pytest.mark.parametrize("asynchronous", [False, True])
+@pytest.mark.asyncio
+async def test_error_policy_raises_after_all_routes_exhaust_retries(
+    monkeypatch, automatic: bool, asynchronous: bool
+) -> None:
+    models = {"p/a": _model("p/a", 100_000), "p/b": _model("p/b", 100_000)}
+    configurable = {"model": "p/a", "octop_auto_route": automatic}
+    health = ModelHealthRegistry(clock=lambda: 100.0)
+    middleware = SafeModelFailoverMiddleware(
+        health=health,
+        candidates=lambda _current, _vision: [AutoRouteCandidate("p/b", 100_000)],
+        model_for_ref=models.__getitem__,
+        max_retries=1,
+        initial_delay=0,
+        max_delay=0,
+        on_failure="error",
+    )
+    monkeypatch.setattr(model_failover, "_configurable", lambda _request: configurable)
+    error = RuntimeError("HTTP 503 service unavailable")
+    handler = AsyncMock(side_effect=error) if asynchronous else MagicMock(side_effect=error)
+    request = ModelRequest(model=models["p/a"], messages=[HumanMessage(content="hello")])
+
+    with pytest.raises(RuntimeError) as caught:
+        if asynchronous:
+            await middleware.awrap_model_call(request, handler)
+        else:
+            middleware.wrap_model_call(request, handler)
+
+    assert caught.value is error
+    assert [call.args[0].model.model for call in handler.call_args_list] == (
+        ["p/a", "p/a", "p/b", "p/b"] if automatic else ["p/a", "p/a"]
+    )
+    assert not health.is_routable("p/a")
+    if automatic:
+        assert not health.is_routable("p/b")
 
 
 @pytest.mark.asyncio
