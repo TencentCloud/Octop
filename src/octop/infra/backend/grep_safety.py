@@ -102,6 +102,7 @@ def _iter_capped_lines(
     total = 0
     line_num = 0
     decoded_any = False
+    skipping = False
     try:
         with path.open("rb") as handle:
             while True:
@@ -118,9 +119,16 @@ def _iter_capped_lines(
                 while True:
                     newline_at = buf.find(b"\n")
                     if newline_at < 0:
-                        if len(buf) > _MAX_LINE_BYTES:
-                            return
+                        if skipping or len(buf) > _MAX_LINE_BYTES:
+                            # Drop the oversized line only; the rest of the file is still searched.
+                            skipping = True
+                            buf.clear()
                         break
+                    if skipping:
+                        del buf[: newline_at + 1]
+                        line_num += 1
+                        skipping = False
+                        continue
                     raw = buf[:newline_at]
                     del buf[: newline_at + 1]
                     if raw.endswith(b"\r"):
