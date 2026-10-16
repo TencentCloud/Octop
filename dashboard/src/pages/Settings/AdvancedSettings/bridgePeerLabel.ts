@@ -13,6 +13,25 @@ function isLoopbackHost(host: string): boolean {
   );
 }
 
+/** Short address for a card: hostname, plus a non-default port. */
+export function peerHostLabel(raw: string): string {
+  const value = raw.trim();
+  if (!value) return "";
+  const withScheme = /^[a-z][a-z0-9+.-]*:\/\//i.test(value)
+    ? value
+    : `http://${value}`;
+  try {
+    const url = new URL(withScheme);
+    const host = url.hostname;
+    if (!host) return value;
+    const port = url.port;
+    if (port && port !== "80" && port !== "443") return `${host}:${port}`;
+    return host;
+  } catch {
+    return value;
+  }
+}
+
 function hostFromUrl(url: string): string {
   const raw = url.trim();
   if (!raw) return "";

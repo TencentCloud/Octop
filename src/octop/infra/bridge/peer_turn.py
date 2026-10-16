@@ -22,12 +22,26 @@ USER_TURN_WS_KEYS = frozenset(
         "skills",
         "messages",
         "target_agent_ids",
+        "delivery",
+        "client_pending_id",
+        "expected_turn_id",
     }
 )
 
 
 class PeerTurnRejected(ValueError):
     """Peer turn was syntactically fine but must not be enqueued."""
+
+
+def peer_turn_relay_finished(frame_type: str) -> bool:
+    """Whether a peer stream frame ends the Bridge relay.
+
+    Harness ``done`` is not the end. The dashboard keeps Generating after
+    ``turn.started`` until it sees ``turn.ended`` (steer may also emit an
+    intermediate ``done`` first). ``error`` ends paths that never emit
+    ``turn.ended``.
+    """
+    return frame_type in {"turn.ended", "error"}
 
 
 class PreparedPeerTurnLike(Protocol):

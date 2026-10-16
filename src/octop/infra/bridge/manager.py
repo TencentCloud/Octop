@@ -34,6 +34,7 @@ from octop.infra.bridge.peer_turn import (
     PeerTurnRejected,
     PeerTurnRunner,
     bridge_turn_ws_payload,
+    peer_turn_relay_finished,
 )
 from octop.infra.bridge.transport import (
     ADVERTISED_BRIDGE_FEATURES,
@@ -51,6 +52,44 @@ from octop.infra.errors import ErrorCode, OctopError
 from octop.infra.utils.ulid import new_short_id
 
 logger = logging.getLogger(__name__)
+
+
+def _handshake_http_status(exc: BaseException) -> int | None:
+    """HTTP status from a WebSocket client handshake rejection, if any."""
+    response = getattr(exc, "response", None)
+    status = getattr(response, "status_code", None)
+    return status if isinstance(status, int) else None
+
+
+def _close_code(exc: BaseException) -> int | None:
+    rcvd = getattr(exc, "rcvd", None)
+    code = getattr(rcvd, "code", None)
+    return code if isinstance(code, int) else None
+
+
+def _should_refresh_peer_token(exc: BaseException) -> bool:
+    """True when the peer refused the socket before hello — usually a bad token.
+
+    Uvicorn turns ``websocket.close()`` before ``accept()`` into HTTP 403 with
+    an empty body. That is not evidence the ``/api/bridge/ws`` route is missing.
+    """
+    if _handshake_http_status(exc) in {401, 403}:
+        return True
+    return _close_code(exc) == 4001
+
+
+def _annotate_bridge_dial_error(exc: BaseException) -> str:
+    detail = str(exc)
+    status = _handshake_http_status(exc)
+    if status == 404:
+        return f"{detail}; peer may not support Bridge yet (needs Octop with /api/bridge/ws)"
+    if status == 403:
+        return (
+            f"{detail}; the peer refused the WebSocket handshake. "
+            "That is a rejected token or a proxy, not a missing /api/bridge/ws route."
+        )
+    return detail
+
 
 # Auto-reconnect: backoff after unexpected disconnect; disable after this many failures.
 _AUTO_RECONNECT_MAX_FAILURES = 5
@@ -780,6 +819,7 @@ class BridgeManager:
 
     async def _outbound_supervisor(self, connection_id: str) -> None:
         """Keep an outbound Bridge WS alive while auto_reconnect is on."""
+        retried_auth = False
         while True:
             if connection_id in self._user_stopped:
                 return
@@ -787,21 +827,24 @@ class BridgeManager:
             if row is None:
                 return
             try:
-                token = await self._ensure_peer_token(row)
+                token = await self._ensure_peer_token(row, force_refresh=retried_auth)
                 self._repo.update_status(connection_id, status="connecting", last_error=None)
                 await self._run_outbound_client(connection_id, row.peer_base_url, token)
+                retried_auth = False
                 # Clean close (peer hung up) — reset failure streak.
                 self._reconnect_failures[connection_id] = 0
             except asyncio.CancelledError:
                 raise
             except Exception as exc:
-                detail = str(exc)
-                low = detail.lower()
-                if "403" in detail or "404" in detail or "rejected websocket" in low:
-                    detail = (
-                        f"{detail}; peer may not support Bridge yet "
-                        "(needs Octop with /api/bridge/ws)"
+                if not retried_auth and _should_refresh_peer_token(exc):
+                    retried_auth = True
+                    logger.info(
+                        "bridge handshake rejected connection=%s; refreshing peer token",
+                        connection_id,
                     )
+                    continue
+                retried_auth = False
+                detail = _annotate_bridge_dial_error(exc)
                 failures = self._reconnect_failures.get(connection_id, 0) + 1
                 self._reconnect_failures[connection_id] = failures
                 if self._repo.get(connection_id) is not None:
@@ -861,10 +904,12 @@ class BridgeManager:
             except asyncio.CancelledError:
                 raise
 
-    async def _ensure_peer_token(self, row: BridgeConnectionRow) -> str:
+    async def _ensure_peer_token(
+        self, row: BridgeConnectionRow, *, force_refresh: bool = False
+    ) -> str:
         from octop.infra.db.repos._base import now_ts
 
-        if row.access_token_blob:
+        if row.access_token_blob and not force_refresh:
             data = decrypt_payload(self._secrets, row.access_token_blob)
             token = str(data.get("access_token") or "").strip()
             exp = row.token_expires_at
@@ -895,12 +940,19 @@ class BridgeManager:
         url = peer_ws_url(peer_base_url, token=token)
         session: BridgeSession | None = None
         try:
+            # websockets 15 uses the system proxy by default. A proxy that
+            # allows HTTP login often answers the upgrade with an empty 403.
+            # Dial the peer URL directly. The bearer header survives proxies
+            # that strip the query string; peers that only read ``token``
+            # still see the query.
             async with websockets.connect(
                 url,
                 open_timeout=20,
                 max_size=BRIDGE_WS_MAX_BYTES,
                 ping_interval=20,
                 ping_timeout=20,
+                proxy=None,
+                additional_headers={"Authorization": f"Bearer {token}"},
             ) as ws:
                 owner = self._repo.get(connection_id)
                 local_user = self._users.get(owner.owner_user_id) if owner is not None else None
@@ -1599,7 +1651,7 @@ class BridgeManager:
                         "frame": stamped,
                     }
                 )
-                if str(stamped.get("type") or "") in {"done", "error"}:
+                if peer_turn_relay_finished(str(stamped.get("type") or "")):
                     break
             await sess.send_json({"type": "turn.end", "request_id": request_id})
         except PeerTurnRejected as exc:
@@ -1647,19 +1699,21 @@ class BridgeManager:
                     **turn_payload,
                 }
             )
+            saw_turn_ended = False
             while True:
                 msg = await sess.next_queue_item(queue, timeout=600.0)
                 msg_type = str(msg.get("type") or "")
                 if msg_type == "turn.chunk":
                     frame = msg.get("frame")
                     if isinstance(frame, dict):
-                        await on_frame(
-                            rewrite_peer_stream_frame(
-                                connection_id,
-                                frame,
-                                remote_agent_id=remote_agent_id,
-                            )
+                        rewritten = rewrite_peer_stream_frame(
+                            connection_id,
+                            frame,
+                            remote_agent_id=remote_agent_id,
                         )
+                        if str(rewritten.get("type") or "") == "turn.ended":
+                            saw_turn_ended = True
+                        await on_frame(rewritten)
                 elif msg_type == "turn.error":
                     await on_frame(
                         {
@@ -1670,6 +1724,11 @@ class BridgeManager:
                     await on_frame({"type": "done"})
                     return
                 elif msg_type == "turn.end":
+                    # Older peers stop at harness ``done`` and never send
+                    # ``turn.ended``. The dashboard leaves Generating on until
+                    # that frame arrives.
+                    if not saw_turn_ended:
+                        await on_frame({"type": "turn.ended"})
                     return
         except (TimeoutError, ConnectionError) as exc:
             await self._unregister_session(connection_id)
