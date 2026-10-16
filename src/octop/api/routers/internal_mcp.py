@@ -106,7 +106,7 @@ async def internal_mcp_get(
 ) -> Response:
     """Streamable HTTP clients open a long-lived GET SSE channel after initialize."""
     inst = server.services.repos.connector_repo.get(instance_id)
-    if inst is None or inst.kind != kind:
+    if inst is None or inst.kind != kind or inst.status != "active":
         raise OctopError(ErrorCode.CONNECTOR_NOT_FOUND, "instance not found")
 
     svc = _service(server)
@@ -142,7 +142,7 @@ async def internal_mcp_delete(
 ) -> Response:
     """Streamable HTTP clients may DELETE to end a session."""
     inst = server.services.repos.connector_repo.get(instance_id)
-    if inst is None or inst.kind != kind:
+    if inst is None or inst.kind != kind or inst.status != "active":
         raise OctopError(ErrorCode.CONNECTOR_NOT_FOUND, "instance not found")
     svc = _service(server)
     if svc.verify_internal_token(instance_id, token) is None:
