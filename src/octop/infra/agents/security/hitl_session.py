@@ -18,6 +18,8 @@ if TYPE_CHECKING:
 HitlSessionMode = Literal["ask", "allow_all", "allow_tools"]
 
 _ASK_USER_TOOL_NAME = "ask_user_question"
+# Tools with their own secure HITL channel that a thread bypass must never skip.
+_NEVER_BYPASSED_TOOLS: frozenset[str] = frozenset({_ASK_USER_TOOL_NAME, "request_secret_file"})
 _MAX_TOOLS = 64
 _MAX_TOOL_NAME = 128
 _CURRENT_HITL_THREAD: ContextVar[str | None] = ContextVar(
@@ -35,7 +37,7 @@ def _normalize_tools(raw: object) -> tuple[str, ...]:
         if not isinstance(item, str):
             continue
         name = item.strip()
-        if not name or name == _ASK_USER_TOOL_NAME or len(name) > _MAX_TOOL_NAME or name in seen:
+        if not name or name in _NEVER_BYPASSED_TOOLS or len(name) > _MAX_TOOL_NAME or name in seen:
             continue
         seen.add(name)
         out.append(name)
@@ -52,7 +54,7 @@ class HitlSessionPolicy:
     tools: tuple[str, ...] = ()
 
     def allows(self, tool_name: str) -> bool:
-        if not tool_name or tool_name == _ASK_USER_TOOL_NAME:
+        if not tool_name or tool_name in _NEVER_BYPASSED_TOOLS:
             return False
         if self.mode == "allow_all":
             return True
@@ -250,7 +252,7 @@ def apply_session_bypass(
         return interrupt_on
     out: dict[str, Any] = {}
     for name, cfg in interrupt_on.items():
-        if name == _ASK_USER_TOOL_NAME:
+        if name in _NEVER_BYPASSED_TOOLS:
             out[name] = cfg
             continue
         entry = dict(cfg) if isinstance(cfg, dict) else {}

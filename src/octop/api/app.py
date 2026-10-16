@@ -9,6 +9,8 @@ from pathlib import Path
 from typing import Any
 
 from fastapi import FastAPI, HTTPException, Request
+from fastapi.encoders import jsonable_encoder
+from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, PlainTextResponse
 from scalar_fastapi import get_scalar_api_reference
@@ -75,6 +77,28 @@ def _mount_routers(app: FastAPI, mounts: Sequence[_RouterMount]) -> None:
 
 
 def _install_exception_handlers(app: FastAPI) -> None:
+    @app.exception_handler(RequestValidationError)
+    async def _validation(request: Request, exc: RequestValidationError) -> JSONResponse:
+        # The secret-file submit body carries the credential itself. Pydantic
+        # echoes failing ``input``/``ctx`` values into 422 details, which would
+        # reflect the secret back to the client — strip everything except the
+        # machine-readable location/type/message for that endpoint. Other
+        # routes keep the stock FastAPI shape.
+        if request.url.path.endswith("/chat/secret-file/submit"):
+            detail = [
+                {
+                    "type": error.get("type"),
+                    "loc": error.get("loc"),
+                    "msg": error.get("msg"),
+                }
+                for error in exc.errors()
+            ]
+            return JSONResponse(status_code=422, content=jsonable_encoder(detail))
+        return JSONResponse(
+            status_code=422,
+            content={"detail": jsonable_encoder(exc.errors())},
+        )
+
     @app.exception_handler(OctopError)
     async def _octop(request: Request, exc: OctopError) -> JSONResponse:
         # Client responses are locale-localized; log the original English message
