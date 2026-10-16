@@ -517,6 +517,7 @@
     "TEAM_NOT_SHAREABLE": "Teams cannot be shared in this version.",
     "LOCAL_DOWNLOAD_UNAVAILABLE": "Saving to the host Downloads folder is only available when Octop is opened on this computer.",
     "SKILL_PACKAGE_COPY_DENIED": "The creator of this skill package has disabled copying its skills.",
+    "SKILL_PACKAGE_DOWNLOAD_DENIED": "Downloading this skill package is disabled.",
     "SKILL_PACKAGE_LOCKED": "This skill was copied from a locked skill package and cannot be edited in the workspace."
   },
   "desktop": {
@@ -604,6 +605,7 @@
     "desktop_screenshot": "Desktop screenshot",
     "memory_search": "Search memory",
     "memory_get": "Read memory",
+    "memory_save": "Save memory",
     "tavily_search": "Tavily web search",
     "brave_search": "Brave web search",
     "google_search": "Google web search",
