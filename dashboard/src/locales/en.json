@@ -235,7 +235,7 @@
     "acp": "ACP Collaboration",
     "agents": "Agents",
     "providers": "Providers",
-    "models": "Model Management",
+    "models": "Model",
     "channels": "Channels",
     "sessions": "Sessions",
     "cronJobs": "Cron Jobs",
