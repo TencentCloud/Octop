@@ -32,7 +32,7 @@ def handle_mcp_request(
             },
         )
 
-    if method == "notifications/initialized":
+    if isinstance(method, str) and method.startswith("notifications/"):
         return {}
 
     if method == "tools/list":

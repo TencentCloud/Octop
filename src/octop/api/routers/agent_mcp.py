@@ -45,7 +45,7 @@ async def agent_mcp_post(
         raise OctopError(ErrorCode.SLASH_BAD_ARGS, "expected JSON object")
 
     method = str(body.get("method") or "")
-    if method == "notifications/initialized":
+    if method.startswith("notifications/"):
         return Response(status_code=202)
 
     response = await handle_agent_mcp_request(

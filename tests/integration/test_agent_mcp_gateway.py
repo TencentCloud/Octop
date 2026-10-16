@@ -63,6 +63,25 @@ async def test_agent_mcp_initializes_and_lists_tools(
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "method",
+    ["notifications/initialized", "notifications/cancelled", "notifications/roots/list_changed"],
+)
+async def test_agent_mcp_accepts_notifications_with_an_empty_202(
+    env_with_agent: tuple[httpx.AsyncClient, Any, dict[str, str], str],
+    method: str,
+) -> None:
+    client, _server, auth, _agent_id = env_with_agent
+    response = await client.post(
+        "/api/mcp/agents",
+        headers=auth,
+        json={"jsonrpc": "2.0", "method": method, "params": {}},
+    )
+    assert response.status_code == 202
+    assert response.content == b""
+
+
+@pytest.mark.asyncio
 async def test_agent_mcp_calls_expert_and_continues_only_its_own_thread(
     env_with_agent: tuple[httpx.AsyncClient, Any, dict[str, str], str],
 ) -> None:

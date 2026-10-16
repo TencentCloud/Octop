@@ -67,3 +67,23 @@ async def test_unknown_tool_is_a_tool_error(user: User) -> None:
     )
     assert response["result"]["isError"] is True
     assert response["result"]["structuredContent"] == {"error": "unknown tool: unknown"}
+
+
+@pytest.mark.parametrize(
+    "method",
+    [
+        "notifications/initialized",
+        "notifications/cancelled",
+        "notifications/progress",
+        "notifications/roots/list_changed",
+        "notifications/tasks/status",
+    ],
+)
+@pytest.mark.asyncio
+async def test_notifications_never_get_a_response(user: User, method: str) -> None:
+    response = await handle_agent_mcp_request(
+        service=MagicMock(),
+        user=user,
+        body={"jsonrpc": "2.0", "method": method, "params": {}},
+    )
+    assert response == {}
