@@ -36,6 +36,8 @@ def reset_bridge(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(bridge, "_APPLIED", {})
     monkeypatch.setattr(bridge, "_CLASSES", {})
     monkeypatch.setattr(bridge, "_ERRORS", {})
+    monkeypatch.setattr(bridge, "_KIND_ERRORS", {})
+    monkeypatch.setattr(bridge, "_CURRENT_ERRORS", {})
 
 
 @dataclass
@@ -350,7 +352,7 @@ async def test_registration_failure_reaches_mutation_caller(
     from octop.infra.gateway import plugin_channels as bridge
     from octop.infra.server import OctopServer
 
-    monkeypatch.setattr(bridge, "_ERRORS", {"broken": "not BaseChannel"})
+    monkeypatch.setattr(bridge, "_CURRENT_ERRORS", {"broken": "not BaseChannel"})
     fake = SimpleNamespace(app_runtime=None, _apply_plugin_channels=lambda: None)
     with pytest.raises(OctopError):
         await OctopServer.refresh_plugin_channels(fake)
@@ -392,3 +394,67 @@ def test_old_gateway_capability_failure_is_reported(monkeypatch: pytest.MonkeyPa
     )
     assert result == []
     assert "upgrade gateway" in bridge.registration_errors()["owner"]
+
+
+def test_failed_class_is_observed_without_repeated_registration() -> None:
+    from unittest.mock import Mock
+
+    from octop.infra.gateway import plugin_channels as bridge
+
+    registry = _StubRegistry(_StubReg("bad", "broken", _FakeChannel))
+    register = Mock(side_effect=ValueError("invalid class"))
+    bridge.apply_plugin_channels(registry=registry, register=register, unregister=Mock())
+    assert bridge.changed_plugin_channel_kinds(registry) == set()
+    bridge.apply_plugin_channels(registry=registry, register=register, unregister=Mock())
+    assert register.call_count == 1
+    assert "bad" in bridge.registration_errors()
+    assert bridge.current_registration_errors() == {}
+
+
+def test_unregister_failure_does_not_skip_sibling_kind() -> None:
+    from unittest.mock import Mock
+
+    from octop.infra.gateway import plugin_channels as bridge
+
+    first = _StubRegistry(
+        _StubReg("owner", "alpha", _FakeChannel), _StubReg("owner", "beta", _FakeChannel)
+    )
+    bridge.apply_plugin_channels(registry=first, register=Mock(), unregister=Mock())
+
+    class Updated:
+        pass
+
+    updated = _StubRegistry(_StubReg("owner", "alpha", Updated), _StubReg("owner", "beta", Updated))
+
+    def unregister(kind: str, **kwargs: Any) -> None:
+        if kind == "alpha":
+            raise ValueError("cannot remove alpha")
+
+    register = Mock()
+    bridge.apply_plugin_channels(registry=updated, register=register, unregister=unregister)
+    register.assert_called_once_with("beta", Updated, plugin_id="owner")
+
+
+@pytest.mark.asyncio
+async def test_existing_failed_registration_does_not_fail_unrelated_refresh(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from types import SimpleNamespace
+    from unittest.mock import Mock
+
+    from octop.infra.gateway import plugin_channels as bridge
+    from octop.infra.server import OctopServer
+
+    registry = _StubRegistry(_StubReg("bad", "broken", _FakeChannel))
+    register = Mock(side_effect=ValueError("invalid class"))
+
+    def apply() -> None:
+        bridge.apply_plugin_channels(registry=registry, register=register, unregister=Mock())
+
+    apply()
+    monkeypatch.setattr("octop.infra.server.PluginRegistry", lambda: registry)
+    await OctopServer.refresh_plugin_channels(
+        SimpleNamespace(app_runtime=None, _apply_plugin_channels=apply)
+    )
+    assert register.call_count == 1
+    assert "bad" in bridge.registration_errors()

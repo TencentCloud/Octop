@@ -585,7 +585,7 @@ class OctopServer:
         from octop.infra.errors import ErrorCode, OctopError
         from octop.infra.gateway.plugin_channels import (
             changed_plugin_channel_kinds,
-            registration_errors,
+            current_registration_errors,
         )
 
         changed = changed_plugin_channel_kinds(PluginRegistry())
@@ -595,7 +595,7 @@ class OctopServer:
             )
         else:
             self._apply_plugin_channels()
-        errors = registration_errors()
+        errors = current_registration_errors()
         if errors:
             raise OctopError(
                 ErrorCode.PLUGIN_INSTALL_FAILED,

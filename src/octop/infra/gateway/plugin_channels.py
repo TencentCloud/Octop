@@ -24,6 +24,12 @@ logger = logging.getLogger(__name__)
 _APPLIED: dict[str, PluginChannelInfo] = {}
 _CLASSES: dict[str, tuple[str, Any]] = {}
 _ERRORS: dict[str, str] = {}
+_KIND_ERRORS: dict[str, tuple[str, str]] = {}
+_CURRENT_ERRORS: dict[str, str] = {}
+
+
+def current_registration_errors() -> dict[str, str]:
+    return dict(_CURRENT_ERRORS)
 
 
 def registration_errors() -> dict[str, str]:
@@ -89,62 +95,72 @@ def apply_plugin_channels(
         register = getattr(gateway_channels, "register_channel_kind", None)
     if unregister is None:
         unregister = getattr(gateway_channels, "unregister_channel_kind", None)
-    if not callable(register) or not callable(unregister):
-        _ERRORS.clear()
-        all_channels = getattr(registry, "all_channels", None)
-        if callable(all_channels):
-            for reg in all_channels():
-                _ERRORS[reg.plugin_id] = (
-                    "gateway lacks channel plugin lifecycle support; upgrade gateway"
-                )
-        return []
-
-    assert register is not None
-    assert unregister is not None
+    all_channels = getattr(registry, "all_channels", None)
+    desired: dict[str, Any] = {}
+    for reg in all_channels() if callable(all_channels) else []:
+        desired.setdefault(reg.kind, reg)
     changed = changed_plugin_channel_kinds(registry)
-    _ERRORS.clear()
+    _CURRENT_ERRORS.clear()
+    blocked: set[str] = set()
     for kind in changed:
         old = _APPLIED.get(kind)
+        reg = desired.get(kind)
         if old is not None:
             try:
+                if not callable(unregister):
+                    raise RuntimeError(
+                        "gateway lacks channel plugin lifecycle support; upgrade gateway"
+                    )
                 unregister(kind, plugin_id=old.plugin_id)
             except Exception as exc:
-                _ERRORS[old.plugin_id] = f"channel {kind}: {exc}"
+                message = f"channel {kind}: {exc}"
+                _KIND_ERRORS[kind] = (old.plugin_id, message)
+                _CURRENT_ERRORS[old.plugin_id] = message
+                # Remember the attempted class, but preserve the live registration.
+                if reg is not None:
+                    _CLASSES[kind] = (reg.plugin_id, reg.channel_cls)
+                else:
+                    _CLASSES.pop(kind, None)
+                blocked.add(kind)
                 continue
         _APPLIED.pop(kind, None)
         _CLASSES.pop(kind, None)
-    applied: list[PluginChannelInfo] = []
-    seen: set[str] = set()
-    all_channels = getattr(registry, "all_channels", None)
-    for reg in all_channels() if callable(all_channels) else []:
-        if reg.kind in seen:
+        _KIND_ERRORS.pop(kind, None)
+    for kind, reg in desired.items():
+        if kind in blocked:
             continue
-        seen.add(reg.kind)
-        if reg.plugin_id in _ERRORS:
+        signature = (reg.plugin_id, reg.channel_cls)
+        if kind in _KIND_ERRORS and _CLASSES.get(kind) == signature:
             continue
         try:
-            if reg.kind in changed or reg.kind not in _APPLIED:
-                register(reg.kind, reg.channel_cls, plugin_id=reg.plugin_id)
-            _CLASSES[reg.kind] = (reg.plugin_id, reg.channel_cls)
+            if kind in changed or kind not in _APPLIED:
+                if not callable(register) or not callable(unregister):
+                    raise RuntimeError(
+                        "gateway lacks channel plugin lifecycle support; upgrade gateway"
+                    )
+                register(kind, reg.channel_cls, plugin_id=reg.plugin_id)
+            _CLASSES[kind] = signature
         except Exception as exc:
-            _ERRORS[reg.plugin_id] = f"channel {reg.kind}: {exc}"
-            logger.exception(
-                "plugin %s: failed to register channel kind %r; skipping",
-                reg.plugin_id,
-                reg.kind,
-            )
+            _CLASSES[kind] = signature
+            message = f"channel {kind}: {exc}"
+            _KIND_ERRORS[kind] = (reg.plugin_id, message)
+            _CURRENT_ERRORS[reg.plugin_id] = message
+            logger.exception("plugin %s: failed channel %s", reg.plugin_id, kind)
             continue
-        applied.append(
-            PluginChannelInfo(
-                kind=reg.kind,
-                label=reg.label or reg.kind,
-                icon=reg.icon,
-                intro_url=reg.intro_url,
-                fields=list(reg.fields or []),
-                plugin_id=reg.plugin_id,
-            ),
+        _APPLIED[kind] = PluginChannelInfo(
+            kind=kind,
+            label=reg.label or kind,
+            icon=reg.icon,
+            intro_url=reg.intro_url,
+            fields=list(reg.fields or []),
+            plugin_id=reg.plugin_id,
         )
-    _APPLIED.update({info.kind: info for info in applied})
+    _ERRORS.clear()
+    for owner, message in _KIND_ERRORS.values():
+        _ERRORS[owner] = message
+    applied = [
+        info for kind, info in _APPLIED.items() if kind in desired and kind not in _KIND_ERRORS
+    ]
     applied.sort(key=lambda info: info.kind)
     if applied:
         logger.info(
