@@ -352,6 +352,23 @@ async def test_ws_emits_error_frame_on_exception(env: Any) -> None:
     assert chunks[-1]["type"] == "error"
 
 
+async def test_ws_auth_failure_has_actionable_error_and_releases_turn(env: Any) -> None:
+    from langchain_core.exceptions import ModelAuthenticationError
+
+    from octop.i18n.domains.stream import AUTH, stream_error_message
+
+    c, srv, _fake, alice_auth, _bob_auth, aid = env
+    agent = srv.app_runtime.agent_registry.get_agent(aid)
+    agent.raise_on_stream = ModelAuthenticationError("opaque credential rejection")
+    frames = await _consume_ws_turn(c, aid, alice_auth, text="check auth")
+    error = next(frame for frame in frames if frame.get("type") == "error")
+    assert error["message"] in (stream_error_message(AUTH, "zh"), stream_error_message(AUTH, "en"))
+    # A corrected credential can be used by the very next turn.
+    agent.raise_on_stream = None
+    following = await _consume_ws_turn(c, aid, alice_auth, text="try after fixing credentials")
+    assert not any(frame.get("type") == "error" for frame in following)
+
+
 async def test_ws_bad_agent_rejected(env: Any) -> None:
     c, _srv, _fake, alice_auth, _bob_auth, _aid = env
     with pytest.raises(WebSocketDisconnect):

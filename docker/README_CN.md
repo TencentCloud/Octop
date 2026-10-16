@@ -29,12 +29,15 @@ docker compose -f docker/docker-compose.yml up -d --build
 
 访问 `http://localhost:8088`。设置了合格的 `OCTOP_DEFAULT_PASSWORD`（≥8 位且同时包含字母和数字）时，首次启动会创建管理员，并把凭据写入 `/data/.octop/credential.txt`。未设置，或密码被策略拒绝（过短、缺字母/数字、常见弱密码）时，**不**自动建账号，打开页面走设置向导；向导口令在 `/data/.octop/octop-login.txt`（`credential.txt` 里也有说明）。在向导里自行设置管理员密码。
 
+Compose 将多 agent 服务的文件描述符限制设为 65535。服务启动时也会在继承的 hard limit 内将 soft limit 提升至最多 65535，并记录实际限额。已有容器需重新创建才能应用 Compose 限额变化；仅重启不会改变容器的 hard limit。
+
 **方式二：构建脚本**
 
 ```bash
 bash docker/docker_build.sh
 docker run -d \
   --name octop \
+  --ulimit nofile=65535:65535 \
   -p 8088:8088 \
   -v octop-data:/data/.octop \
   -e HOME=/data \
@@ -67,6 +70,17 @@ bash docker/docker_build.sh
 | `DASHSCOPE_API_KEY` | — | 阿里云通义千问 API Key |
 
 Compose 可在 `docker/.env` 中配置上述变量。注意：`.env` 只参与 Compose 插值，变量必须出现在 `docker-compose.yml` 的 `environment:` 中才会进入容器。也可把相同键写入挂载数据目录下的 `~/.octop/env`。
+
+### 知识库依赖
+
+镜像除 `browser` 外，还包含 `local-embedding` 和 `knowledge-ocr` 可选依赖。
+两次依赖安装均指定这些 extras，避免最后一次 `uv sync` 将其移除。构建时会检查
+嵌入与 OCR 模块能否导入；不会下载模型权重，也不会自动开启知识库或 OCR。
+
+通过控制台安装到运行中容器的依赖位于容器可写层，重建容器后会丢失。应重新构建或
+拉取已包含这些 extras 的镜像，而不是依赖运行时安装。保留 `/data/.octop` 数据卷，
+即可保留配置、知识库索引与本地嵌入模型缓存。已有部署需要重新构建或升级镜像才能
+获得这些依赖，仅重启旧镜像无效。
 
 ### 数据持久化
 

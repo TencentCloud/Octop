@@ -34,6 +34,7 @@ from octop.infra.bridge.peer_turn import (
     PeerTurnRejected,
     PeerTurnRunner,
     bridge_turn_ws_payload,
+    peer_turn_relay_finished,
 )
 from octop.infra.bridge.transport import (
     ADVERTISED_BRIDGE_FEATURES,
@@ -1650,7 +1651,7 @@ class BridgeManager:
                         "frame": stamped,
                     }
                 )
-                if str(stamped.get("type") or "") in {"done", "error"}:
+                if peer_turn_relay_finished(str(stamped.get("type") or "")):
                     break
             await sess.send_json({"type": "turn.end", "request_id": request_id})
         except PeerTurnRejected as exc:
@@ -1698,19 +1699,21 @@ class BridgeManager:
                     **turn_payload,
                 }
             )
+            saw_turn_ended = False
             while True:
                 msg = await sess.next_queue_item(queue, timeout=600.0)
                 msg_type = str(msg.get("type") or "")
                 if msg_type == "turn.chunk":
                     frame = msg.get("frame")
                     if isinstance(frame, dict):
-                        await on_frame(
-                            rewrite_peer_stream_frame(
-                                connection_id,
-                                frame,
-                                remote_agent_id=remote_agent_id,
-                            )
+                        rewritten = rewrite_peer_stream_frame(
+                            connection_id,
+                            frame,
+                            remote_agent_id=remote_agent_id,
                         )
+                        if str(rewritten.get("type") or "") == "turn.ended":
+                            saw_turn_ended = True
+                        await on_frame(rewritten)
                 elif msg_type == "turn.error":
                     await on_frame(
                         {
@@ -1721,6 +1724,11 @@ class BridgeManager:
                     await on_frame({"type": "done"})
                     return
                 elif msg_type == "turn.end":
+                    # Older peers stop at harness ``done`` and never send
+                    # ``turn.ended``. The dashboard leaves Generating on until
+                    # that frame arrives.
+                    if not saw_turn_ended:
+                        await on_frame({"type": "turn.ended"})
                     return
         except (TimeoutError, ConnectionError) as exc:
             await self._unregister_session(connection_id)
