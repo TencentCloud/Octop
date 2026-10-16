@@ -40,6 +40,46 @@ def test_fnos_manifest_version_matches_pyproject(manifest: Path) -> None:
     assert f"version={_pyproject_version()}\n" in text
 
 
+def test_build_fpk_writes_store_version_not_pep440() -> None:
+    text = (REPO / "scripts" / "build-fpk.sh").read_text(encoding="utf-8")
+    assert "fnos_store_version" in text
+    assert "version=$STORE_VER" in text
+
+
+@posix_only
+@pytest.mark.parametrize(
+    ("pep440", "store"),
+    [
+        ("1.0.2b6", "1.0.206"),
+        ("1.0.2b7", "1.0.207"),
+        ("1.0.2b8", "1.0.208"),
+        ("1.0.2b10", "1.0.210"),
+        ("1.0.2", "1.0.300"),
+        ("1.0.3b1", "1.0.301"),
+        ("1.0.3", "1.0.400"),
+    ],
+)
+def test_fnos_store_version_sorts_above_stripped_betas(pep440: str, store: str) -> None:
+    script = REPO / "scripts" / "fnos" / "store_version.sh"
+    got = subprocess.check_output(["bash", str(script), pep440], text=True).strip()
+    assert got == store
+
+    def triple(value: str) -> tuple[int, int, int]:
+        major, minor, patch = value.split(".")
+        return int(major), int(minor), int(patch)
+
+    # 已安装的 1.0.2bN 在商店侧只剩 1.0.2，新包必须比它大。
+    assert triple(store) > (1, 0, 2)
+
+
+@posix_only
+def test_fnos_store_version_rejects_unencoded_prerelease() -> None:
+    script = REPO / "scripts" / "fnos" / "store_version.sh"
+    for raw in ("1.0.2a1", "1.0.2rc1", "1.0.2b0", "1.0.2b100", "1.0.2b8.dev0"):
+        result = subprocess.run(["bash", str(script), raw], capture_output=True, text=True)
+        assert result.returncode != 0, raw
+
+
 def test_publish_skill_bumps_fnos_manifest_versions() -> None:
     text = (REPO / ".cursor" / "skills" / "publish" / "SKILL.md").read_text(encoding="utf-8")
     assert "fnos/docker/manifest" in text
