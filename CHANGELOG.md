@@ -5,6 +5,7 @@
 格式遵循 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)，版本号遵循 [语义化版本规范](https://semver.org/spec/v2.0.0.html)。
 
 ## [Unreleased]
+- `weather` 插件补齐 Open-Meteo 会返回的 WMO 码 56/57/66/67/77/85/86/97：此前天气卡片对这些码直接显示「天气码 86」这样的原始编号，阵雪（85/86）还会回退成温度计图标
 
 ### 新增
 - 聊天侧栏可置顶专家，并按专家名或会话标题搜索
