@@ -1195,6 +1195,8 @@ class GlobalProcessor:
             ):
                 usage_tracker.observe(chunk)
                 history_tracker.observe(chunk)
+                if chunk.get("type") == "octop_stream_cancelled":
+                    continue
                 from octop.infra.history.recorder import flush_tracker  # noqa: PLC0415
 
                 await flush_tracker(history_tracker)
@@ -1328,6 +1330,8 @@ class GlobalProcessor:
             ):
                 usage_tracker.observe(chunk)
                 history_tracker.observe(chunk)
+                if chunk.get("type") == "octop_stream_cancelled":
+                    continue
                 from octop.infra.history.recorder import flush_tracker  # noqa: PLC0415
 
                 await flush_tracker(history_tracker)
