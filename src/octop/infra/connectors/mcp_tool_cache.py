@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import json
+from functools import wraps
 from typing import Any
 
 from langchain_core.tools import StructuredTool
@@ -47,6 +48,14 @@ def wrap_tools_for_shared_use(tools: list[Any], lock: asyncio.Lock) -> list[Any]
 
     wrapped: list[Any] = []
     for tool in tools:
+        if isinstance(tool, StructuredTool) and tool.coroutine is not None:
+            # MCP adapters carry content_and_artifact and error handling on the
+            # tool itself. Calling ainvoke with plain args formats away the
+            # artifact and error status before an outer tool can see them.
+            # Copy the tool and serialize its raw coroutine instead; LangChain
+            # then performs validation and result formatting exactly once.
+            wrapped.append(_shared_structured_tool(tool, lock))
+            continue
         name = str(getattr(tool, "name", "") or "") or "mcp_tool"
         description = str(getattr(tool, "description", "") or "")
         args_schema = getattr(tool, "args_schema", None)
@@ -92,3 +101,27 @@ def wrap_tools_for_shared_use(tools: list[Any], lock: asyncio.Lock) -> list[Any]
             st_kwargs["metadata"] = dict(metadata)
         wrapped.append(StructuredTool(**st_kwargs))
     return wrapped
+
+
+def _shared_structured_tool(tool: StructuredTool, lock: asyncio.Lock) -> StructuredTool:
+    coroutine = tool.coroutine
+    assert coroutine is not None
+
+    # Preserve the signature: LangChain inspects it for injected runtime,
+    # callbacks and RunnableConfig parameters.
+    @wraps(coroutine)
+    async def invoke(*args: Any, **kwargs: Any) -> Any:
+        async with lock:
+            return await coroutine(*args, **kwargs)
+
+    @wraps(tool.func or coroutine)
+    def invoke_sync(*args: Any, **kwargs: Any) -> Any:
+        try:
+            asyncio.get_running_loop()
+        except RuntimeError:
+            return asyncio.run(invoke(*args, **kwargs))
+        if tool.func is None:
+            raise NotImplementedError("StructuredTool does not support sync invocation.")
+        return tool.func(*args, **kwargs)
+
+    return tool.model_copy(update={"coroutine": invoke, "func": invoke_sync})
