@@ -213,12 +213,21 @@ class TurnHistoryTracker:
         return live_message_input(AIMessage(content=self._error_message, additional_kwargs=extra))
 
     def _inputs_cover_stream(self, items: list[ThreadMessageInput]) -> bool:
+        """Whether the per-segment rows already record this turn's assistant text.
+
+        ``_state_messages`` is sliced from the last user message, so any
+        assistant row in *items* is a segment of the current turn. A
+        single-segment turn leaves one clean row containing the whole
+        accumulated stream; a multi-segment turn (narration around tool
+        calls) matches no single row — the accumulated buffer is a strict
+        superset — yet the segments jointly cover it. Appending the buffer
+        in that case would store a verbatim superset as a second ``ai``
+        row, so any non-empty assistant row means the stream is already
+        persisted.
+        """
         if not self._stream_text:
             return False
-        return any(
-            item.role in _ASSISTANT_ROLES and self._stream_text in _wire_text(item)
-            for item in items
-        )
+        return any(item.role in _ASSISTANT_ROLES for item in items)
 
     @property
     def inputs(self) -> list[ThreadMessageInput]:

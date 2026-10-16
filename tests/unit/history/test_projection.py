@@ -142,6 +142,77 @@ def test_turn_tracker_does_not_duplicate_state_assistant() -> None:
     assert any(text == "hello world" for text in texts)
 
 
+def test_turn_tracker_multi_segment_stream_not_appended() -> None:
+    """Narration around tool calls: segments jointly cover the turn (#2095).
+
+    The accumulated stream text is a strict superset of every single
+    per-segment row, so the old exact-substring coverage test always failed
+    and the whole-turn buffer landed as an extra concatenated ``ai`` row.
+    """
+    tracker = TurnHistoryTracker.from_request(
+        {"messages": [{"role": "user", "content": "hi", "id": "u1"}]}
+    )
+    tracker.observe({"type": "token", "content": "Let me check. "})
+    tracker.observe(
+        {
+            "type": "state_snapshot",
+            "data": {
+                "messages": [
+                    {"role": "user", "content": "hi", "id": "u1"},
+                    {"role": "assistant", "content": "Let me check.", "id": "a1"},
+                ]
+            },
+        }
+    )
+    tracker.observe({"type": "token", "content": "Now the summary."})
+    tracker.observe(
+        {
+            "type": "state_update",
+            "data": {
+                "messages": [
+                    {"role": "user", "content": "hi", "id": "u1"},
+                    {"role": "assistant", "content": "Let me check.", "id": "a1"},
+                    {"role": "assistant", "content": "Now the summary.", "id": "a2"},
+                ]
+            },
+        }
+    )
+
+    texts = [_wire_text(item) for item in tracker.inputs]
+    assert not any(text == "Let me check. Now the summary." for text in texts)
+    assert texts.count("Let me check.") == 1
+    assert texts.count("Now the summary.") == 1
+
+
+def test_turn_tracker_pure_text_turn_still_persists_stream() -> None:
+    """No state rows (plain text turn): the stream is the only record."""
+    tracker = TurnHistoryTracker.from_request({"messages": []})
+    tracker.observe({"type": "token", "content": "hello world"})
+
+    assert [_wire_text(item) for item in tracker.inputs] == ["hello world"]
+
+
+def test_turn_tracker_single_row_containing_stream_unchanged() -> None:
+    """Single-segment turn: the clean row carries the stream, nothing appended."""
+    tracker = TurnHistoryTracker.from_request(
+        {"messages": [{"role": "user", "content": "hi", "id": "u1"}]}
+    )
+    tracker.observe({"type": "token", "content": "hello"})
+    tracker.observe(
+        {
+            "type": "state_snapshot",
+            "data": {
+                "messages": [
+                    {"role": "user", "content": "hi", "id": "u1"},
+                    {"role": "assistant", "content": "hello", "id": "a1"},
+                ]
+            },
+        }
+    )
+
+    assert [_wire_text(item) for item in tracker.inputs] == ["hi", "hello"]
+
+
 @pytest.mark.asyncio
 async def test_backfill_queue_runs_one_job_at_a_time_and_dedupes() -> None:
     queue = HistoryBackfillQueue(max_pending=2)
