@@ -2,18 +2,22 @@
 
 from __future__ import annotations
 
+import re
 from typing import Any
 
 import yaml
 
+_CLOSING_FENCE_RE = re.compile(r"(?m)^---[ \t]*\r?$")
 
-def _find_frontmatter(text: str) -> tuple[int, int] | None:
+
+def _find_frontmatter(text: str) -> tuple[int, int, int] | None:
     """Locate the YAML frontmatter block (``---`` ... ``---``) in *text*.
 
     The frontmatter does not have to start at the first line; leading HTML
-    comments or empty lines are skipped.  Returns ``(start, end)`` where
-    *start* is the index of the first ``---`` line and *end* is the index
-    of the closing ``---`` line, or ``None`` when no valid block exists.
+    comments or empty lines are skipped. Returns the YAML content start,
+    content end, and body start, or ``None`` when no valid block exists.
+    Only an entire unindented fence line closes the block; a YAML key
+    starting with ``---`` or an indented literal is still metadata.
     """
     # Fast path: frontmatter at very beginning
     if text.startswith("---\n") or text.startswith("---\r\n"):
@@ -52,12 +56,15 @@ def _find_frontmatter(text: str) -> tuple[int, int] | None:
         else:
             return None
 
-    # Now find the closing ---
-    rest = text[start + 3 :]  # skip past the opening ---
-    end_marker = rest.find("\n---")
-    if end_marker == -1:
+    # Consume the complete opening line, including whitespace and CRLF.
+    content_start = text.find("\n", start)
+    if content_start == -1:
         return None
-    return start, start + 3 + end_marker + 4  # +4 for "\n---"
+    content_start += 1
+    closing = _CLOSING_FENCE_RE.search(text, content_start)
+    if closing is None:
+        return None
+    return content_start, closing.start(), closing.end()
 
 
 def parse_frontmatter(text: str) -> tuple[dict[str, Any], str]:
@@ -72,10 +79,9 @@ def parse_frontmatter(text: str) -> tuple[dict[str, Any], str]:
     positions = _find_frontmatter(text)
     if positions is None:
         return {}, text
-    start, end = positions
-    # start points to the opening ---, end points past the closing ---
-    raw = text[start + 3 : end - 4]  # skip opening ---\n, exclude closing \n---
-    body = text[end:].lstrip("\n")
+    content_start, content_end, body_start = positions
+    raw = text[content_start:content_end]
+    body = text[body_start:].lstrip("\r\n")
     try:
         meta = yaml.safe_load(raw) or {}
         if not isinstance(meta, dict):
