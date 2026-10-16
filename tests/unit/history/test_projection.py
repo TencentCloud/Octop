@@ -142,6 +142,54 @@ def test_turn_tracker_does_not_duplicate_state_assistant() -> None:
     assert any(text == "hello world" for text in texts)
 
 
+def test_turn_tracker_does_not_duplicate_multi_segment_stream() -> None:
+    """Segmented turns (text around tool calls) arrive as one state message per
+    model call; the accumulated stream must not be appended again whole."""
+    tracker = TurnHistoryTracker.from_request(
+        {"messages": [{"role": "user", "content": "hi", "id": "u1"}]}
+    )
+    tracker.observe({"type": "token", "content": "checking "})
+    tracker.observe({"type": "token", "content": "the logs"})
+    tracker.observe(
+        {
+            "type": "state_snapshot",
+            "data": {
+                "messages": [
+                    {"role": "user", "content": "hi", "id": "u1"},
+                    {"role": "assistant", "content": "checking ", "id": "a1"},
+                    {"role": "assistant", "content": "the logs", "id": "a2"},
+                ]
+            },
+        }
+    )
+
+    texts = [_wire_text(item) for item in tracker.inputs]
+    assert texts == ["hi", "checking ", "the logs"]
+
+
+def test_turn_tracker_appends_only_the_uncovered_stream_tail() -> None:
+    """A stream that ran past the last state segment keeps its tail once."""
+    tracker = TurnHistoryTracker.from_request(
+        {"messages": [{"role": "user", "content": "hi", "id": "u1"}]}
+    )
+    tracker.observe({"type": "token", "content": "first "})
+    tracker.observe({"type": "token", "content": "and the partial"})
+    tracker.observe(
+        {
+            "type": "state_snapshot",
+            "data": {
+                "messages": [
+                    {"role": "user", "content": "hi", "id": "u1"},
+                    {"role": "assistant", "content": "first ", "id": "a1"},
+                ]
+            },
+        }
+    )
+
+    texts = [_wire_text(item) for item in tracker.inputs]
+    assert texts == ["hi", "first ", "and the partial"]
+
+
 @pytest.mark.asyncio
 async def test_backfill_queue_runs_one_job_at_a_time_and_dedupes() -> None:
     queue = HistoryBackfillQueue(max_pending=2)
