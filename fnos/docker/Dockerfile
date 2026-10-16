@@ -68,6 +68,7 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
         libffi-dev \
         curl \
         git \
+        ripgrep \
     && rm -rf /var/lib/apt/lists/*
 
 COPY --from=ghcr.io/astral-sh/uv:0.7 /uv /uvx /bin/
