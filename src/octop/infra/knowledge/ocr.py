@@ -147,9 +147,13 @@ async def ensure_ocr_deps_async(*, backend: str) -> str:
 
 
 def _provider_for_config(provider_repo: Any, config: OcrConfig) -> Any | None:
-    if provider_repo is None or not config.provider_id.isdigit():
+    if provider_repo is None or not config.provider_id:
         return None
-    return provider_repo.get(int(config.provider_id))
+    if config.provider_id.isdigit():
+        return provider_repo.get(int(config.provider_id))
+    if hasattr(provider_repo, "get_by_name"):
+        return provider_repo.get_by_name(config.provider_id)
+    return None
 
 
 def _remote_ready(provider: Any | None, model_id: str) -> bool:
