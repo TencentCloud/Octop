@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import shlex
 from collections.abc import AsyncIterator
 from pathlib import Path
 
@@ -18,6 +19,7 @@ from octop.infra.agents.settings.laya_runtime import (
     install_commands,
     redact,
     serve_bin,
+    venv_python,
 )
 
 
@@ -36,11 +38,14 @@ def test_compatible_python_rejects_314_when_nothing_else_exists() -> None:
 
 
 def test_format_install_command_matches_the_automatic_steps(tmp_path: Path) -> None:
-    text = format_install_command(Path("/usr/bin/python3.12"), tmp_path)
-    assert "python3.12 -m venv" in text
-    assert "laya[serve]==0.4.7" in text
+    python = tmp_path / "python3.12"
+    text = format_install_command(python, tmp_path)
+    for argv in install_commands(python, venv_python(tmp_path)):
+        assert shlex.join(argv) in text
+    assert f"laya[serve]=={LAYA_VERSION}" in text
     assert "https://download.pytorch.org/whl/cpu" in text
     assert "LAYA_MODELS=multilingual" in text
+    assert shlex.quote(str(serve_bin(tmp_path))) in text
 
 
 def test_install_commands_use_cpu_torch_and_pinned_laya(tmp_path: Path) -> None:
