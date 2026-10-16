@@ -5,6 +5,7 @@
 格式遵循 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)，版本号遵循 [语义化版本规范](https://semver.org/spec/v2.0.0.html)。
 
 ## [Unreleased]
+- 记忆提取配置里的等待/间隔秒数不再接受 `NaN`、`Infinity` 等非有限数值：以前这类值会被当成保存成功，但永远不生效，现在按 422 拒绝（与超时、重试间隔字段的口径一致）
 
 ### 新增
 - 聊天侧栏可置顶专家，并按专家名或会话标题搜索
