@@ -482,6 +482,7 @@
     "PLUGIN_INSTALL_FAILED": "Failed to download or install the plugin: {reason}",
     "PLUGIN_ALREADY_EXISTS": "Plugin {id} is already installed.",
     "KNOWLEDGE_FEATURE_DISABLED": "Knowledge bases are disabled by the administrator.",
+    "KNOWLEDGE_PREREQUISITES_RESTART_REQUIRED": "The knowledge-base embedding components were installed but cannot be loaded by this process yet. Restart the server for them to take effect.",
     "KNOWLEDGE_PREREQUISITES_FAILED": "Knowledge-base embedding prerequisites are not ready.",
     "KNOWLEDGE_NOT_FOUND": "Knowledge base or document not found.",
     "KNOWLEDGE_FORBIDDEN": "You do not have access to this knowledge base.",
@@ -960,5 +961,28 @@
     "restore_changed": "The expert runtime or store changed. Inspect again before retrying.",
     "restore_reload_failed": "The data restore stage ended, but restarting the expert failed. The safety backup is retained. Restart the expert and inspect the result.",
     "restore_sqlite_only": "Restore requires a dedicated SQLite memory store for this expert."
+  },
+  "laya": {
+    "install_start": "Installing Laya into an isolated environment…",
+    "install_python": "Python: {python}",
+    "install_venv": "Environment: {path}",
+    "install_torch": "Installing the CPU build of PyTorch…",
+    "install_package": "Installing laya[serve] {version}…",
+    "install_server": "Starting laya-serve on 127.0.0.1:{port}. The first launch downloads the multilingual checkpoint.",
+    "install_wait": "Waiting for the service ({seconds}s). The first model download can take several minutes.",
+    "install_ready": "Laya is ready at {endpoint}. It chooses a checkpoint from the text and does not require a key.",
+    "already_running": "A Laya service is already responding on 127.0.0.1:{port}.",
+    "stopped": "Laya has stopped.",
+    "started": "Starting Laya…",
+    "error_python": "Python 3.10 through 3.13 is required. The CPU PyTorch build does not publish a Python 3.14 wheel yet. Install Python 3.12 and retry.",
+    "error_disk": "Only {free_gb} GB is free. Leave at least {need_gb} GB before installing.",
+    "error_port": "Port {port} is already in use by something that is not Laya.",
+    "error_command": "Command failed (exit {exit_code}): {command}",
+    "error_spawn": "Could not start {command}: {error}",
+    "error_missing_bin": "The install finished, but laya-serve was not found.",
+    "error_health": "Laya did not become ready in time. Copy the log and send it to Octop.",
+    "error_exited": "laya-serve exited before it was ready.",
+    "error_not_installed": "Laya is not installed yet.",
+    "error_stalled": "The install produced no result for too long and was stopped."
   }
 }

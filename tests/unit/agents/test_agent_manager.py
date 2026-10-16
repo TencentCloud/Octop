@@ -828,14 +828,22 @@ def test_build_harness_config_defaults_local_shell_backend(manager: AgentManager
 
 
 @pytest.mark.asyncio
-async def test_boot_passes_process_log_dir_to_harness_manager(manager: AgentManager) -> None:
+async def test_boot_reuses_process_log_instead_of_dated_harness_files(
+    manager: AgentManager,
+) -> None:
+    from octop_harness.observability.logging import teardown_logging
+
     await manager.boot()
     try:
         hm = manager._harness_manager
         assert hm is not None
-        assert hm._log_dir == manager.paths.logs_dir.resolve()
+        assert hm._log_file is None
+        log_dir = manager.paths.logs_dir
+        dated = list(log_dir.glob("????-??-??.log")) if log_dir.is_dir() else []
+        assert dated == []
     finally:
         await manager.shutdown()
+        teardown_logging()
 
 
 @pytest.mark.asyncio
@@ -1011,6 +1019,21 @@ def test_apply_pending_bootstrap_graph_refresh_recompiles_graph(manager: AgentMa
 
 def test_is_bootstrapped_returns_false_when_agent_not_running(manager: AgentManager) -> None:
     assert manager.is_bootstrapped("NOPE") is False
+
+
+def test_is_bootstrapped_does_not_cache_an_incomplete_marker(manager: AgentManager) -> None:
+    agent = MagicMock()
+    agent.is_bootstrapped.side_effect = [False, True]
+    harness_manager = MagicMock()
+    harness_manager.get_agent.return_value = MagicMock(agent=agent)
+    manager._harness_manager = harness_manager
+    manager._repos.agent_repo.create(agent_id="AGT_COS", user_id=None, name="cos", config_json="{}")
+
+    assert manager.is_bootstrapped("AGT_COS") is False
+    assert manager.is_bootstrapped("AGT_COS") is True
+    assert agent.is_bootstrapped.call_count == 2
+    assert manager.is_bootstrapped("AGT_COS") is True
+    assert agent.is_bootstrapped.call_count == 2
 
 
 def test_is_bootstrapped_assumes_true_when_backend_check_fails(manager: AgentManager) -> None:
@@ -1582,6 +1605,47 @@ def test_model_retry_sync_failure_and_recovery(manager: AgentManager) -> None:
     assert handler.call_count == 2
 
 
+def test_runtime_uses_health_aware_model_failover(manager: AgentManager) -> None:
+    from octop.infra.agents.middleware.model_failover import SafeModelFailoverMiddleware
+
+    _seed_test_provider(manager)
+    factory = MagicMock()
+    factory.get_chat_model.return_value = object()
+    manager._harness_manager = MagicMock(shared_factory=factory)
+
+    cfg = manager._build_harness_config(_row())
+
+    failovers = [
+        item for item in (cfg.middleware or []) if isinstance(item, SafeModelFailoverMiddleware)
+    ]
+    assert len(failovers) == 1
+    assert not cfg.model_retry_enabled
+
+
+def test_auto_route_fallback_skips_model_in_cooldown(manager: AgentManager) -> None:
+    from octop.infra.agents.providers.health import FailureScope
+
+    manager._repos.provider_repo.create(
+        name="p",
+        kind="openai",
+        base_url="https://api.example.com/v1",
+        api_key="sk-test",
+        models_json=json.dumps(
+            [
+                {"id": "bad", "enabled": True},
+                {"id": "ready", "enabled": True},
+            ]
+        ),
+    )
+    manager._model_health.record_failure(
+        "p/bad",
+        kind="provider_unavailable",
+        scope=FailureScope.MODEL,
+    )
+
+    assert manager.resolve_fallback_model_ref() == "p/ready"
+
+
 def test_build_harness_config_auto_expert_falls_back_to_first_model(
     manager: AgentManager,
 ) -> None:
@@ -1590,6 +1654,23 @@ def test_build_harness_config_auto_expert_falls_back_to_first_model(
     cfg = manager._build_harness_config(_row(default_model=None))
     assert cfg.default_model == "test-openai/gpt-4o-mini"
     assert cfg.providers == []
+
+
+def test_build_harness_config_keeps_model_during_runtime_cooldown(
+    manager: AgentManager,
+) -> None:
+    from octop.infra.agents.providers.health import FailureScope
+
+    _seed_test_provider(manager)
+    manager._model_health.record_failure(
+        "test-openai/gpt-4o-mini",
+        kind="timeout",
+        scope=FailureScope.MODEL,
+    )
+
+    cfg = manager._build_harness_config(_row(default_model=None))
+
+    assert cfg.default_model == "test-openai/gpt-4o-mini"
 
 
 def test_build_harness_config_uses_active_model_before_first(

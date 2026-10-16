@@ -105,7 +105,13 @@ interface MessageBubbleProps {
 
 function formatTokenUsage(
   usage: ChatMessage["usage"],
-  labels: { input: string; output: string; total: string; cacheHit: string },
+  labels: {
+    input: string;
+    output: string;
+    total: string;
+    cacheHit: string;
+    decisionSaved: string;
+  },
 ): string[] {
   if (!usage) return [];
 
@@ -130,6 +136,9 @@ function formatTokenUsage(
   }
   if (typeof usage.total_tokens === "number") {
     parts.push(`${usage.total_tokens} ${labels.total}`);
+  }
+  if (typeof usage.decision_saved === "number" && usage.decision_saved > 0) {
+    parts.push(`${usage.decision_saved} ${labels.decisionSaved}`);
   }
   return parts;
 }
@@ -615,6 +624,7 @@ function MessageBubble({
         output: t("chatUsage.output"),
         total: t("chatUsage.total"),
         cacheHit: t("chatUsage.cacheHit"),
+        decisionSaved: t("chatUsage.decisionSaved"),
       }),
     [message.usage, t],
   );
