@@ -219,7 +219,9 @@ func listenProbe(host string, port int) (bool, error) {
 		_ = ln.Close()
 		return false, nil
 	}
-	if errors.Is(err, syscall.EADDRINUSE) {
+	// Windows reports Winsock WSAEADDRINUSE, not the POSIX errno value.
+	if errors.Is(err, syscall.EADDRINUSE) ||
+		(runtime.GOOS == "windows" && errors.Is(err, syscall.Errno(10048))) {
 		return true, nil
 	}
 	return false, err

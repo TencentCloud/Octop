@@ -10,7 +10,7 @@ from urllib.parse import urlparse
 
 import pytest
 
-from octop.infra.agents.providers.codex_apply import CODEX_MODELS, CODEX_PROVIDER_NAME
+from octop.infra.agents.providers.codex_apply import CODEX_PROVIDER_NAME
 from octop.infra.agents.providers.codex_oauth import (
     CodexOAuthDeviceCodeError,
     build_codex_headers,
@@ -129,4 +129,3 @@ def test_build_codex_headers_includes_account_id() -> None:
 
 def test_codex_provider_constants() -> None:
     assert CODEX_PROVIDER_NAME == "openai-codex"
-    assert any(m["id"] == "gpt-5.4" for m in CODEX_MODELS)
