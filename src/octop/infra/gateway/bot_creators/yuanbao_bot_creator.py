@@ -26,17 +26,19 @@ import sys
 
 # Force stdout line-buffered / write-through so the parent process can read
 # structured JSON lines in real time (Python defaults to full buffering in
-# pipe environments).
+# pipe environments). Encoding is pinned to UTF-8 because the parent decodes
+# these lines as UTF-8 and the ANSI code page (cp936) cannot carry every
+# character the messages may contain.
 if hasattr(sys.stdout, "reconfigure"):
-    sys.stdout.reconfigure(write_through=True)
+    sys.stdout.reconfigure(encoding="utf-8", write_through=True)
 elif hasattr(sys.stdout, "buffer"):
     import io as _io
 
     sys.stdout = _io.TextIOWrapper(
         sys.stdout.buffer,
         write_through=True,
-        encoding=sys.stdout.encoding,
-        errors=sys.stdout.errors,
+        encoding="utf-8",
+        errors="replace",
     )
 
 # ============================================================
