@@ -32,6 +32,7 @@
 - COS 下载的 ONNX 模型可完全离线加载，不再查询 Hugging Face API
 - Docker 使用 PostgreSQL 等外部数据库时，容器重启不再重复执行初始化导致 `UniqueViolation` 崩溃：`octop init` 成功后写入数据卷初始化标记（`~/.octop/.initialized`），重启直接启动；`octop init` 对已有管理员改为幂等跳过（#1866）
 - 更新提示仅对拥有「应用更新」权限的用户显示：非管理员不再看到 PWA「新版本已就绪」横幅，且关闭后同一标签页会话内不再重复弹出
+- 服务器状态卡片的磁盘使用率改用系统口径（`psutil` 的 `disk.percent`，与 `df` 和卡片的内存/交换分区进度条一致），不再用 `used / total` 低估已用接近上限的磁盘
 
 ## [1.0.2b8] - 2026-10-14
 
