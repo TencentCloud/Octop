@@ -396,6 +396,152 @@ def test_hitl_store_resolve_pending_for_thread() -> None:
     assert store.pending_thread_ids(agent_id="agent1", user_id=2) == frozenset()
 
 
+def test_hitl_store_reuses_equivalent_pending() -> None:
+    store = HitlPendingStore()
+    actions = [{"name": "execute", "args": {"command": "df"}}]
+    first = store.register(
+        thread_id="thr-a",
+        agent_id="agent1",
+        user_id=1,
+        session_key="sk",
+        channel_type="dashboard",
+        action_requests=actions,
+        review_configs=None,
+    )
+    again = store.register(
+        thread_id="thr-a",
+        agent_id="agent1",
+        user_id=1,
+        session_key="sk",
+        channel_type="dashboard",
+        action_requests=[{"args": {"command": "df"}, "name": "execute"}],
+        review_configs=None,
+    )
+    assert again is first
+    assert store.get(first.pending_id) is not None
+    assert store.get(first.pending_id).status == "pending"  # type: ignore[union-attr]
+    replaced = store.register(
+        thread_id="thr-a",
+        agent_id="agent1",
+        user_id=1,
+        session_key="sk",
+        channel_type="dashboard",
+        action_requests=[{"name": "write_file", "args": {}}],
+        review_configs=None,
+    )
+    assert replaced is not first
+    assert store.get(first.pending_id).status == "expired"  # type: ignore[union-attr]
+
+
+@pytest.mark.asyncio
+async def test_session_auto_approve_resumes_without_yielding_the_card() -> None:
+    from octop.infra.agents.security.hitl_session import (
+        HitlSessionPolicy,
+        HitlSessionPolicyStore,
+    )
+    from octop.infra.gateway.hitl.coordinator import iter_with_session_auto_approve
+
+    policies = HitlSessionPolicyStore()
+    policies.set("thr-a", HitlSessionPolicy(mode="allow_all"))
+    resumed: list[list[dict[str, object]]] = []
+
+    async def first_turn():
+        yield {
+            "type": "hitl_required",
+            "request": {"action_requests": [{"name": "execute", "args": {}}]},
+        }
+        yield {"type": "state_update", "data": {}}
+
+    async def resume(decisions: list[dict[str, object]]):
+        resumed.append(decisions)
+        yield {"type": "token", "content": "done-after-approve"}
+
+    chunks = [
+        chunk
+        async for chunk in iter_with_session_auto_approve(
+            first_turn(),
+            thread_id="thr-a",
+            policies=policies,
+            resume=resume,
+        )
+    ]
+    assert [chunk.get("type") for chunk in chunks] == ["state_update", "token"]
+    assert resumed == [[{"type": "approve"}]]
+
+
+@pytest.mark.asyncio
+async def test_session_auto_approve_yields_card_when_approve_is_forbidden() -> None:
+    from octop.infra.agents.security.hitl_session import (
+        HitlSessionPolicy,
+        HitlSessionPolicyStore,
+    )
+    from octop.infra.gateway.hitl.coordinator import iter_with_session_auto_approve
+
+    policies = HitlSessionPolicyStore()
+    policies.set("thr-a", HitlSessionPolicy(mode="allow_all"))
+    resumed: list[list[dict[str, object]]] = []
+
+    async def first_turn():
+        yield {
+            "type": "hitl_required",
+            "request": {
+                "action_requests": [{"name": "execute", "args": {}}],
+                "review_configs": [
+                    {"action_name": "execute", "allowed_decisions": ["reject"]},
+                ],
+            },
+        }
+
+    async def resume(decisions: list[dict[str, object]]):
+        resumed.append(decisions)
+        yield {"type": "token", "content": "should-not-run"}
+
+    chunks = [
+        chunk
+        async for chunk in iter_with_session_auto_approve(
+            first_turn(),
+            thread_id="thr-a",
+            policies=policies,
+            resume=resume,
+        )
+    ]
+    assert [chunk.get("type") for chunk in chunks] == ["hitl_required"]
+    assert resumed == []
+
+
+@pytest.mark.asyncio
+async def test_session_auto_approve_yields_card_when_resume_fails() -> None:
+    from octop.infra.agents.security.hitl_session import (
+        HitlSessionPolicy,
+        HitlSessionPolicyStore,
+    )
+    from octop.infra.gateway.hitl.coordinator import iter_with_session_auto_approve
+
+    policies = HitlSessionPolicyStore()
+    policies.set("thr-a", HitlSessionPolicy(mode="allow_all"))
+
+    async def first_turn():
+        yield {
+            "type": "hitl_required",
+            "request": {"action_requests": [{"name": "execute", "args": {}}]},
+        }
+
+    async def resume(_decisions: list[dict[str, object]]):
+        raise RuntimeError("graph rejected approve")
+        yield {"type": "token", "content": "unused"}  # pragma: no cover
+
+    chunks = [
+        chunk
+        async for chunk in iter_with_session_auto_approve(
+            first_turn(),
+            thread_id="thr-a",
+            policies=policies,
+            resume=resume,
+        )
+    ]
+    assert [chunk.get("type") for chunk in chunks] == ["hitl_required"]
+
+
 def test_hitl_store_keeps_each_team_member_pause() -> None:
     store = HitlPendingStore()
     first = store.register(

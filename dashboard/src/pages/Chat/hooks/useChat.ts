@@ -35,10 +35,11 @@ import { injectPendingHitlMessage } from "../../../utils/injectPendingHitlMessag
 import { mergeHistoryWithLocalTail } from "../utils/mergeHistoryTail";
 import { promoteAskUserToolMessage } from "../utils/pendingHitl";
 import { rewritePeerSpeakerId } from "../../../utils/remoteExpert";
-import type {
-  ChatAttachment,
-  ChatMessage,
-  UserComposerContext,
+import {
+  parseDecisionNotice,
+  type ChatAttachment,
+  type ChatMessage,
+  type UserComposerContext,
 } from "./sseHelpers";
 
 export type {
@@ -48,6 +49,7 @@ export type {
   ChatAttachment,
   UserComposerContext,
   ChatMessage,
+  DecisionNotice,
 } from "./sseHelpers";
 
 export type { ContentBlockItem } from "../../../utils/messageParser";
@@ -480,6 +482,7 @@ function convertCallEntries(entries: CallEntry[]): ChatMessage[] {
           ? entry.speaker_agent_id.trim()
           : undefined,
       teamWrapup: Boolean(entry.team_wrapup),
+      decision: parseDecisionNotice(entry.decision) ?? undefined,
       editedFiles: Array.isArray(entry.edited_files)
         ? entry.edited_files
             .filter(
@@ -566,6 +569,7 @@ function convertCallEntries(entries: CallEntry[]): ChatMessage[] {
     reasoning_tokens: 0,
     total_tokens: 0,
     model_calls: 0,
+    decision_saved: 0,
   });
   let turnAcc: TokenUsage | null = null;
   let turnLastInputTokens = 0;
@@ -634,6 +638,8 @@ function convertCallEntries(entries: CallEntry[]): ChatMessage[] {
       turnAcc.total_tokens =
         (turnAcc.total_tokens || 0) + (u.total_tokens || 0);
       turnAcc.model_calls = (turnAcc.model_calls || 0) + (u.model_calls || 1);
+      const saved = typeof u.decision_saved === "number" ? u.decision_saved : 0;
+      turnAcc.decision_saved = (turnAcc.decision_saved || 0) + saved;
       // Strip the per-call usage so only the Turn's final bubble shows a total.
       merged[i] = { ...m, usage: undefined };
     }
@@ -659,6 +665,7 @@ function toHistoryContentBlocks(content: unknown): unknown[] {
 function isDisplayableHistoryMessage(message: ChatMessage): boolean {
   if (message.hitlData) return true;
   if (message.toolData) return true;
+  if (message.decision) return true;
   if (message.attachments && message.attachments.length > 0) return true;
   if (message.contentBlocks?.some((block) => block.content.trim())) return true;
   return message.content.trim().length > 0;
@@ -678,6 +685,7 @@ export function convertHistoryMessages(
     agent_id?: string;
     team_wrapup?: boolean;
     edited_files?: string[];
+    decision?: unknown;
   }>,
   agentId?: string,
 ): ChatMessage[] {
@@ -705,6 +713,7 @@ export function convertHistoryMessages(
           ? message.agent_id.trim()
           : undefined,
       team_wrapup: message.team_wrapup === true,
+      decision: message.decision,
       edited_files: Array.isArray(message.edited_files)
         ? message.edited_files.filter(
             (p): p is string => typeof p === "string" && p.trim().length > 0,
@@ -856,6 +865,7 @@ export function useChat(
     historyHydrated,
     pendingPlanPath,
     liveSpeakers,
+    activeTurnId,
   } = useSyncExternalStore(subscribeStore, getStoreSnapshot);
 
   const [historyLoading, setHistoryLoading] = useState(false);
@@ -1246,6 +1256,7 @@ export function useChat(
     historyHydrated,
     pendingPlanPath,
     liveSpeakers,
+    activeTurnId,
     sendMessage,
     editAndResend,
     cancelStream,

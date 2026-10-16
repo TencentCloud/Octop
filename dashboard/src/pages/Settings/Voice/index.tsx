@@ -11,7 +11,7 @@ import {
 } from "antd";
 import { message } from "@/utils/antdMessage";
 
-import { Activity, Mic2, Check, Settings2 } from "lucide-react";
+import { Activity, Check, Settings2 } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import {
   voiceApi,
@@ -21,7 +21,6 @@ import {
 } from "../../../api/modules/voice";
 import { customProviderLogo, getProviderLogo } from "../../../assets/providers";
 import { invalidateVoiceConfigCache } from "../../../hooks/useVoiceConfig";
-import { TabPanelHeader } from "../AdvancedSettings/TabPanelHeader";
 import styles from "./index.module.less";
 
 const { Text } = Typography;
@@ -362,11 +361,7 @@ export function VoiceSettingsPanel() {
 
   return (
     <>
-      <TabPanelHeader
-        icon={<Mic2 size={22} />}
-        title={t("models.voiceModelsTab")}
-        description={t("voice.description")}
-      />
+      <p className={styles.intro}>{t("voice.description")}</p>
 
       {loading ? (
         <Text type="secondary">{t("voice.loading")}</Text>
