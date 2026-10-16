@@ -66,6 +66,31 @@ def test_oversized_line_is_skipped_without_match(tmp_path: Path) -> None:
     assert not any(str(bomb) in path or path.endswith("bomb.bin") for path in results)
 
 
+def test_search_resumes_after_an_oversized_line(tmp_path: Path) -> None:
+    install_safe_grep_fallback()
+    bundle = tmp_path / "bundle.min.js"
+    bundle.write_bytes(b"x" * (_MAX_LINE_BYTES * 2) + b"\nfind-me-here = 1\n")
+    backend = FilesystemBackend(root_dir=tmp_path, virtual_mode=False)
+    results, truncated, error = backend._python_search("find-me-here", tmp_path, None)
+    assert truncated is False
+    assert error is None
+    assert [m for matches in results.values() for m in matches] == [(2, "find-me-here = 1")]
+
+
+def test_oversized_line_body_is_not_matched(tmp_path: Path) -> None:
+    install_safe_grep_fallback()
+    bundle = tmp_path / "bundle.min.js"
+    bundle.write_bytes(
+        b"x" * _MAX_LINE_BYTES + b"find-me-here" + b"x" * _MAX_LINE_BYTES + b"\nafter = 1\n",
+    )
+    backend = FilesystemBackend(root_dir=tmp_path, virtual_mode=False)
+    results, truncated, error = backend._python_search("find-me-here", tmp_path, None)
+    assert truncated is False
+    assert error is None
+    matched = [text for matches in results.values() for _, text in matches]
+    assert all("find-me-here" not in text for text in matched)
+
+
 @posix_only
 def test_virtual_fs_path_prefixes() -> None:
     assert is_virtual_fs_path(Path("/proc"))

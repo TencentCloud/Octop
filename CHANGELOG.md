@@ -5,6 +5,7 @@
 格式遵循 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)，版本号遵循 [语义化版本规范](https://semver.org/spec/v2.0.0.html)。
 
 ## [Unreleased]
+- 无 ripgrep 时的 Python 兜底搜索遇到超长单行（压缩 JS、base64、单行日志）时，只跳过这一行并继续搜文件剩余内容，不再把整个文件直接放弃导致漏报命中
 - Linux 桌面客户端无边框窗口支持拖拽边缘与角落调整大小。
 
 ### 新增
