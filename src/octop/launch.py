@@ -159,6 +159,40 @@ async def run_foreground(
         await srv.stop()
 
 
+def _apply_nofile_floor(resource: Any) -> tuple[int, int] | None:
+    """Raise the soft NOFILE limit toward the hard cap; ``(soft, hard)`` if applied."""
+    soft, hard = resource.getrlimit(resource.RLIMIT_NOFILE)
+    target = max(soft, 65535) if hard == resource.RLIM_INFINITY else hard
+    if soft >= target:
+        return None
+    resource.setrlimit(resource.RLIMIT_NOFILE, (target, hard))
+    return (target, hard)
+
+
+def _raise_nofile_soft_limit(resource_module: Any = None) -> None:
+    """Raise the soft fd limit to the hard cap (POSIX only, best effort).
+
+    Multi-agent installs keep one SQLite pool per agent, so the common 1024
+    soft cap is the ceiling long before the hard cap matters (#2060): a busy
+    registry baseline sits near the soft cap and tips into an EMFILE storm.
+    Containers may deny ``setrlimit`` — never fail the boot over it.
+    """
+    if resource_module is None:
+        try:
+            import resource as _resource  # noqa: PLC0415
+        except ImportError:  # pragma: no cover - Windows has no resource module
+            return
+        resource_module = _resource
+    try:
+        applied = _apply_nofile_floor(resource_module)
+    except (OSError, ValueError):
+        logger.warning("could not raise NOFILE soft limit", exc_info=True)
+        return
+    if applied is not None:
+        logger.info("raised NOFILE soft limit %d -> %d", applied[0], applied[1])
+
+
 def run_foreground_blocking(**kwargs: Any) -> None:
     """Sync entry for Click commands and tests."""
+    _raise_nofile_soft_limit()
     asyncio.run(run_foreground(**kwargs))
