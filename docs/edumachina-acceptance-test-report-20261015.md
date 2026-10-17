@@ -65,3 +65,28 @@ EduMachina is an Octop expert package (manifest + SOUL.md + compliance knowledge
 
 ---
 *Test tooling: `tools/edumachina_it_test.py`（WS 端到端 6 断言）· `tools/edumachina_diag_frames.py`（帧协议诊断）*
+
+## 六、2026-10-18 复验：保活铁律补齐后的包级校验
+
+**背景**：本报告定稿后（10-16 13:24），本地模板新增了铁律 10（流式保活输出）与铁律 11（选型/确认幂等），但当时未同步进 PR。本次将两条铁律补入 `SOUL.md`，并做包级复验。
+
+**变更范围**：仅 `SOUL.md`。新增铁律 10、11；同时把铁律 10 中的「当前 600s」改为「默认 120 秒，可通过环境变量调整」——600s 是本机 `start-octop.cmd` 设置环境变量后的值，平台默认是 120 秒，写死会误导。`manifest.json`（6,349 字符）与 `kb_compliance.md`（2,510 字符）与 10-15 版本逐字节相同，未改动。
+
+**校验方式**：本地复现仓库门禁断言 + 结构/资产检查，共 57 项。脚本 `docs/localtest_expert_package.py`，日志 `docs/localtest-report-20261018.log`。
+
+- **门禁断言复现**：`parse_task_examples` / `_coerce_string_list` 函数体逐字取自 `src/octop/infra/agents/experts/catalog.py`，按 `tests/unit/agents/test_library_task_examples.py` 的判定逐条执行——zh/en 各 6 条、等长、无空项、条数 6 ∈ (3,6)
+- **结构检查**：id 与目录一致；label / description / welcome_message 双语齐全；icon_name=`factory`；color=`#0E7C66`；`prompt_files` 所列文件均存在且非空；6 条 quick_prompts 的 title/description/prompt 双语、icon_name、color 齐备
+- **文本卫生**：UTF-8 无 BOM、LF 换行、以换行结尾
+- **SOUL 规则**：front matter 正常；行为铁律编号 1–11 连续无缺号；铁律 10 含「分段成文」「先报时」「默认 120 秒」；无残留 `600s`；铁律 11 在位
+- **头像资产**：SVG 可解析、`viewBox="0 0 128 128"`、`role="img"`、aria-label 匹配专家 id、圆角 32 裁切、可被 basename 扫描发现
+- **基线校准**：用同一套断言评 `stock-assistant`（6 条）、`general-assistant`（3 条）、`default`（3 条），全部通过——证明本地判定标准不比仓库严
+
+**结果：57/57 PASS。**
+
+**未覆盖项（如实标注）**：
+
+1. 本机未执行仓库 pytest（缺源码树依赖环境），由 CI 代跑：Linux / Windows Python 3.12，结论见 PR 检查区
+2. 第二节的端到端 24/24 为 10-15 的实测结果，本次未重跑——补丁只改提示词文本，且按边界要求不重启本地服务
+3. 铁律 10 只能降低「思考期长空窗」概率（首 token 提前 + 分段输出），传输层 120 秒判定仍属平台参数，根治见 issue #2072
+
+**结论**：补齐后包内容与本地已跑通版本等价（仅一行措辞差异），门禁断言与结构检查全部通过，可随 PR 合入。
