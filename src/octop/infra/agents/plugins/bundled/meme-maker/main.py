@@ -44,6 +44,11 @@ def _encode_segment(text: str) -> str:
             out.append("~h")
         elif ch == "%":
             out.append("~p")
+        elif ch == "/":
+            # A raw "/" starts a new URL path segment, which silently shifts the
+            # bottom caption up and drops the last text (memegen reads
+            # /images/<template>/<top>/<bottom>.png).
+            out.append("~s")
         else:
             out.append(ch)
     return "".join(out)

@@ -5,6 +5,7 @@
 格式遵循 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)，版本号遵循 [语义化版本规范](https://semver.org/spec/v2.0.0.html)。
 
 ## [Unreleased]
+- 修复梗图插件（meme-maker）文案含 `/` 时多出 URL 路径段、导致底部文案被顶替并丢弃末段文本的问题（按 memegen 文档转义为 `~s`）。
 
 ## [1.0.2b9] - 2026-10-16
 
