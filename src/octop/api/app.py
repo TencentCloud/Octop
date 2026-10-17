@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import re
 from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
@@ -32,6 +33,10 @@ class _RouterMount:
 
 _NO_CACHE_DASHBOARD_NAMES = frozenset({"sw.js", "manifest.json", "index.html"})
 
+# Self-hosted Monaco AMD tree copied by the dashboard build.
+_MONACO_PREFIX = "monaco/vs/"
+_HASHED_NAME = re.compile(r"-[A-Za-z0-9_-]{8,}\.(?:js|css)$")
+
 
 def dashboard_cache_control(full_path: str) -> str | None:
     """Cache-Control for a dashboard SPA path, or ``None`` to leave unset."""
@@ -41,6 +46,12 @@ def dashboard_cache_control(full_path: str) -> str | None:
     # Vite emits content-hashed files under assets/ — safe to pin forever.
     if full_path.startswith("assets/"):
         return "public, max-age=31536000, immutable"
+    if full_path.startswith(_MONACO_PREFIX):
+        # Monaco's own chunks carry a content hash; the fixed-name entry
+        # points (loader.js, editor.main.js) must revalidate after upgrades.
+        if _HASHED_NAME.search(Path(full_path).name):
+            return "public, max-age=31536000, immutable"
+        return "no-cache"
     return None
 
 
@@ -53,8 +64,8 @@ def _dashboard_response(path: Path, full_path: str) -> FileResponse:
 
 
 def is_dashboard_asset_path(full_path: str) -> bool:
-    """True for hashed build artifacts that must 404 instead of falling back."""
-    return full_path.startswith("assets/")
+    """True for build artifacts that must 404 instead of falling back."""
+    return full_path.startswith("assets/") or full_path.startswith(_MONACO_PREFIX)
 
 
 def _dashboard_fallback(index_file: Path, full_path: str) -> FileResponse:

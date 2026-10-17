@@ -7,6 +7,8 @@ import { message } from "@/utils/antdMessage";
 import { request } from "../../../api/request";
 import { useTheme } from "../../../context/ThemeContext";
 import { withFromWorkspace } from "../../../utils/fromWorkspace";
+// Must run before the lazy import resolves the loader.
+import "../../../utils/monacoLoader";
 
 const MonacoEditor = lazy(() => import("@monaco-editor/react"));
 
