@@ -17,12 +17,13 @@ ErrorType = Literal["auth_error", "timeout", "network_error", "invalid_config", 
 
 _TIMEOUT_S = 30.0
 _TEST_QUERY = "octop connectivity probe"
-_KNOWN: frozenset[str] = frozenset({"tavily", "brave", "google", "kimi"})
+_KNOWN: frozenset[str] = frozenset({"tavily", "brave", "google", "kimi", "deepseek"})
 _REQUIRED: dict[str, tuple[str, ...]] = {
     "tavily": ("TAVILY_API_KEY",),
     "brave": ("BRAVE_API_KEY",),
     "google": ("GOOGLE_API_KEY", "GOOGLE_CSE_ID"),
     "kimi": ("MOONSHOT_API_KEY",),
+    "deepseek": ("DEEPSEEK_API_KEY",),
 }
 
 
@@ -80,6 +81,8 @@ async def _probe(provider_id: str, env_vars: Mapping[str, str]) -> dict[str, Any
             return await _brave(client, creds["BRAVE_API_KEY"])
         if provider_id == "google":
             return await _google(client, creds["GOOGLE_API_KEY"], creds["GOOGLE_CSE_ID"])
+        if provider_id == "deepseek":
+            return await _deepseek(client, creds["DEEPSEEK_API_KEY"])
         return await _kimi(client, creds["MOONSHOT_API_KEY"])
 
 
@@ -124,6 +127,15 @@ async def _kimi(client: httpx.AsyncClient, api_key: str) -> dict[str, Any]:
         },
     )
     return _from_kimi(response)
+
+
+async def _deepseek(client: httpx.AsyncClient, api_key: str) -> dict[str, Any]:
+    response = await client.post(
+        "https://api.deepseek.com/v1/tools/search",
+        headers={"Authorization": f"Bearer {api_key}"},
+        json={"query": _TEST_QUERY, "count": 1},
+    )
+    return _from_response(response, provider="DeepSeek", results_key="results")
 
 
 def _from_response(
