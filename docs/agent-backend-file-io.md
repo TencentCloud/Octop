@@ -128,7 +128,7 @@ await backend.aupload_files([(soul_path, text.encode("utf-8"))])
 
 | 位置 | 现状 | 改造 |
 |------|------|------|
-| `infra/gateway/backend_files.py` | 预览失败时 `Path.read_bytes` 兜底 | 去掉对 agent workspace staging 的静默 fallback；host 临时文件仍可先 upload 再读 backend |
+| `infra/gateway/media/backend_files.py` | 预览失败时 `Path.read_bytes` 兜底 | 去掉对 agent workspace staging 的静默 fallback；host 临时文件仍可先 upload 再读 backend |
 | `infra/backup/system_archive.py` | tar 打包本地 `agent_workspace` | 每 agent 使用 `export_workspace_zip(backend)` |
 | `infra/backup/workspace_archive.py` | replace 模式 `_clear_local_workspace` | 远程 replace 需列 backend 文件后覆盖；或文档警告 + 后续支持 delete |
 
@@ -137,7 +137,7 @@ await backend.aupload_files([(soul_path, text.encode("utf-8"))])
 - `api/routers/workspace.py`
 - `api/routers/skills.py`
 - `api/routers/agent_files.py`（daily 读）
-- `infra/gateway/media.py` `AgentBackedMediaBackend`
+- `infra/gateway/media/ingress.py` `AgentBackedMediaBackend`
 
 若上述模块中 path 使用 `/skills/...` 等与磁盘路径不一致的写法，与产品约定对齐：**统一为 `str(workspace_dir / ...)` 形式**（与本次原则一致）。
 
