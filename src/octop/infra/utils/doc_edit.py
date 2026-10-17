@@ -24,6 +24,7 @@ from typing import Any, Protocol
 from docx import Document
 from docx.oxml.ns import qn
 from docx.table import Table
+from docx.text.hyperlink import Hyperlink
 from docx.text.paragraph import Paragraph
 
 _MONOSPACE_FONTS = frozenset({"consolas", "courier new", "menlo", "monospace"})
@@ -165,7 +166,11 @@ def _style_prefix(paragraph: Paragraph) -> str:
 
 def _render_paragraph(paragraph: Paragraph) -> str:
     parts: list[str] = []
-    for run in paragraph.runs:
+    for run in paragraph.iter_inner_content():
+        if isinstance(run, Hyperlink):
+            if run.text:
+                parts.append(run.text)
+            continue
         text = run.text or ""
         if not text:
             continue
@@ -178,9 +183,6 @@ def _render_paragraph(paragraph: Paragraph) -> str:
             parts.append(f"`{text}`")
         else:
             parts.append(text)
-    for link in getattr(paragraph, "hyperlinks", None) or []:
-        if link.text:
-            parts.append(link.text)
     return "".join(parts)
 
 
