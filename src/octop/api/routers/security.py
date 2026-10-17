@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -131,7 +132,9 @@ async def get_tool_guard_rules(
     server: Any = Depends(get_server),
 ) -> ToolGuardRulesResponse:
     store = _rules_store(server)
-    raw = store.list_catalog()
+    # list_catalog() seeds the file (mkdir + write) and walks the rules directory,
+    # so keep it off the event loop like the other filesystem paths in this repo.
+    raw = await asyncio.to_thread(store.list_catalog)
     rules = [ToolGuardRuleItem(**item) for item in raw]
     return ToolGuardRulesResponse(
         rules=rules,
@@ -146,7 +149,8 @@ async def get_tool_guard_rules_raw(
     server: Any = Depends(get_server),
 ) -> ToolGuardRulesRawResponse:
     store = _rules_store(server)
-    return ToolGuardRulesRawResponse(path=store.display_path(), content=store.read_text())
+    content = await asyncio.to_thread(store.read_text)
+    return ToolGuardRulesRawResponse(path=store.display_path(), content=content)
 
 
 @router.put("/tool-guard/rules/raw", summary="Save command guard rules YAML")
