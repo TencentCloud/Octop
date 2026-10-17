@@ -523,11 +523,20 @@ octop_docker_compose_dirs() {
 
 # 只把数据卷写成绝对路径，并删掉 env_file（缺文件 compose 会直接失败）。
 octop_sync_fnos_compose() {
-    local compose="$1" data_dir="$2" env_file="${3:-}" bind tmp line in_env_file=0
+    local compose="$1" data_dir="$2" env_file="${3:-}" bind tmp line in_env_file=0 docker_socket=""
     [ -f "$compose" ] || return 0
     [ -n "$data_dir" ] || return 0
     bind="${data_dir}/.octop"
     mkdir -p "$bind"
+    # Docker 沙箱工作区要求容器能访问宿主 docker daemon（docker-out-of-docker，
+    # 与 docker/docker-compose.mobile.yml 同款）。挂 docker.sock 等同交出宿主 root，
+    # 所以默认关闭，由 .env 的 OCTOP_DOCKER_SOCKET 显式开启。
+    # 之所以在这里渲染而不是写进 compose 模板：升级会整目录替换应用 payload、
+    # 用户手加的那一行必然被模板覆盖；而本函数在安装与升级回调里都会跑，
+    # 所以开关状态能在升级后重新生效，不用每次手动补挂。
+    case "$(octop_env_get "$env_file" OCTOP_DOCKER_SOCKET)" in
+        1 | true | TRUE | yes | YES | on | ON) docker_socket="/var/run/docker.sock:/var/run/docker.sock" ;;
+    esac
     tmp="${compose}.tmp.$$"
     : > "$tmp"
     while IFS= read -r line || [ -n "$line" ]; do
@@ -550,12 +559,17 @@ octop_sync_fnos_compose() {
         case "$line" in
             *":/data/.octop"*)
                 printf '      - "%s:/data/.octop"\n' "$bind" >> "$tmp"
+                [ -n "$docker_socket" ] && printf '      - "%s"\n' "$docker_socket" >> "$tmp"
                 ;;
             *"/fnos-boot.sh:"*)
                 printf '      - "%s/fnos-boot.sh:/usr/local/bin/fnos-boot.sh:ro"\n' "$data_dir" >> "$tmp"
                 ;;
             *"/fnos-admin.env:"*)
                 printf '      - "%s/fnos-admin.env:/data/fnos-admin.env:ro"\n' "$data_dir" >> "$tmp"
+                ;;
+            *"/var/run/docker.sock"*)
+                # 唯一来源是上面的开关；这里丢掉已有行，关掉开关才能真的摘掉挂载，
+                # 重复同步也不会累积出第二条。
                 ;;
             *)
                 printf '%s\n' "$line" >> "$tmp"
