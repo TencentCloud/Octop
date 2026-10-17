@@ -2,6 +2,7 @@ import { Switch, Tooltip } from "antd";
 import { CheckCircle, Loader2, Plug } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import {
+  CHANNEL_DESCRIPTIONS,
   CHANNEL_LABEL_KEYS,
   CHANNEL_LABELS,
   CHANNEL_ICONS,
@@ -151,7 +152,8 @@ export function ChannelCard({
       </div>
 
       <p className={styles.cardDescription}>
-        {t(`channels.intro_${channelKey}`, label)}
+        {CHANNEL_DESCRIPTIONS[channelKey] ||
+          t(`channels.intro_${channelKey}`, label)}
       </p>
 
       <div className={styles.cardBottom}>{renderStatusBadge()}</div>
