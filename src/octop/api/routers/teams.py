@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 from typing import Any, cast
 
 from fastapi import APIRouter, Depends
@@ -101,17 +102,26 @@ async def create_team(
 async def team_template_files(
     _user: Any = Depends(current_user),
 ) -> list[dict[str, str]]:
-    files: list[dict[str, str]] = []
-    if TEMPLATE_DIR.is_dir():
-        for path in sorted(TEMPLATE_DIR.iterdir()):
-            if path.is_file() and path.suffix.lower() == ".md" and not path.name.startswith("."):
-                files.append(
-                    {
-                        "name": path.name,
-                        "content": path.read_text(encoding="utf-8"),
-                    }
-                )
-    return files
+    def _read_templates() -> list[dict[str, str]]:
+        # Walking the template directory and reading every file is blocking I/O;
+        # it belongs on a worker thread rather than the event loop (AGENTS.md §8).
+        found: list[dict[str, str]] = []
+        if TEMPLATE_DIR.is_dir():
+            for path in sorted(TEMPLATE_DIR.iterdir()):
+                if (
+                    path.is_file()
+                    and path.suffix.lower() == ".md"
+                    and not path.name.startswith(".")
+                ):
+                    found.append(
+                        {
+                            "name": path.name,
+                            "content": path.read_text(encoding="utf-8"),
+                        }
+                    )
+        return found
+
+    return await asyncio.to_thread(_read_templates)
 
 
 @router.get("/teams/{team_id}", summary="Get an expert team")
