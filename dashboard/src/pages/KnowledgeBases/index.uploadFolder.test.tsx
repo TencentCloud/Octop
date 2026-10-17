@@ -176,6 +176,29 @@ describe("knowledge-base folder upload", () => {
     expect(input).toHaveValue("");
   });
 
+  it("normalizes a trailing slash on the current folder before upload", async () => {
+    documents = [
+      {
+        id: "folder",
+        filename: "现有目录",
+        path: "./现有目录/",
+        is_dir: true,
+      } as KnowledgeDocument,
+    ];
+    await openPage();
+    fireEvent.click(await screen.findByRole("button", { name: /现有目录/ }));
+    const file = folderFile("资料/子目录/a.txt");
+    selectFolder([file]);
+    await waitFor(() =>
+      expect(knowledgeBasesApi.uploadDocument).toHaveBeenCalledWith(
+        "kb-add",
+        file,
+        "现有目录/资料/子目录/a.txt",
+        expect.any(Function),
+      ),
+    );
+  });
+
   it("uploads into the currently opened knowledge-base folder", async () => {
     documents = [
       {
@@ -351,6 +374,30 @@ describe("knowledge-base folder upload", () => {
         screen.getByRole("button", { name: "knowledgeBases.uploadFolder" }),
       ).toBeEnabled(),
     );
+  });
+
+  it("re-enables upload when the post-upload refresh fails", async () => {
+    let listed = 0;
+    vi.mocked(knowledgeBasesApi.listDocuments).mockImplementation(async () => {
+      listed += 1;
+      if (listed > 1) throw new Error("refresh failed");
+      return documents;
+    });
+    vi.mocked(knowledgeBasesApi.list).mockImplementation(async () => {
+      if (listed > 1) throw new Error("refresh failed");
+      return [base];
+    });
+    await openPage();
+    selectFolder([folderFile("资料/a.txt")]);
+    await waitFor(() =>
+      expect(notice.success).toHaveBeenCalledWith("knowledgeBases.uploaded"),
+    );
+    await waitFor(() =>
+      expect(
+        screen.getByRole("button", { name: "knowledgeBases.uploadFolder" }),
+      ).toBeEnabled(),
+    );
+    expect(knowledgeBasesApi.uploadDocument).toHaveBeenCalledOnce();
   });
 
   it("stops on a rejected file and refreshes successful uploads", async () => {

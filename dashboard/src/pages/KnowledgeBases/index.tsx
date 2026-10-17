@@ -108,6 +108,7 @@ import { KNOWLEDGE_ICON_NAMES, knowledgeIconForName } from "./knowledgeIcons";
 import {
   isDirectKnowledgeChild,
   joinKnowledgePath,
+  joinKnowledgeRelativePath,
   knowledgeBasename,
   knowledgeBreadcrumb,
   normalizeKnowledgePath,
@@ -1353,9 +1354,10 @@ export default function KnowledgeBasesPage() {
         const relativePath = normalizeKnowledgePath(
           file.webkitRelativePath || file.name,
         );
-        const targetPath = currentFolder
-          ? `${currentFolder}/${relativePath}`
-          : relativePath;
+        const targetPath = joinKnowledgeRelativePath(
+          currentFolder,
+          relativePath,
+        );
         setUploadState({
           filename: relativePath,
           index: index + 1,
@@ -1384,9 +1386,13 @@ export default function KnowledgeBasesPage() {
         apiErrorMessage(error, t("knowledgeBases.uploadFailed"), t),
       );
     } finally {
-      await loadDetail(selected.id, { silent: true });
-      await loadBases();
-      setUploadState(null);
+      try {
+        await loadDetail(selected.id, { silent: true });
+        await loadBases();
+      } finally {
+        // Refresh owns its own errors today; still release the lock if it throws.
+        setUploadState(null);
+      }
     }
   };
 

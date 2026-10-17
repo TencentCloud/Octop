@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   isDirectKnowledgeChild,
   joinKnowledgePath,
+  joinKnowledgeRelativePath,
   knowledgeBasename,
   knowledgeBreadcrumb,
   knowledgePathParent,
@@ -14,6 +15,22 @@ describe("knowledgePath", () => {
     expect(normalizeKnowledgePath("/a/b/c.md")).toBe("a/b/c.md");
     expect(knowledgeBasename("notes/readme.md")).toBe("readme.md");
     expect(joinKnowledgePath("notes", "readme.md")).toBe("notes/readme.md");
+  });
+
+  it("joins a folder with a nested relative path", () => {
+    expect(joinKnowledgeRelativePath("", "资料/子目录/a.txt")).toBe(
+      "资料/子目录/a.txt",
+    );
+    expect(joinKnowledgeRelativePath("现有目录/", "资料/子目录/a.txt")).toBe(
+      "现有目录/资料/子目录/a.txt",
+    );
+    expect(joinKnowledgeRelativePath("./notes/", "a\\b.txt")).toBe(
+      "notes/a/b.txt",
+    );
+    expect(joinKnowledgeRelativePath("notes", "")).toBe("notes");
+    expect(() => joinKnowledgeRelativePath("notes/..", "a.txt")).toThrow(
+      "invalid knowledge path",
+    );
   });
 
   it("returns parent folder", () => {
