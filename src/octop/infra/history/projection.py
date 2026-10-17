@@ -196,13 +196,15 @@ class TurnHistoryTracker:
             if code:
                 self._error_code = str(code)
 
-    def _stream_message(self) -> ThreadMessageInput | None:
-        if not self._stream_text and not self._reasoning_text:
+    def _stream_message(self, content: str | None = None) -> ThreadMessageInput | None:
+        """Live stream row; *content* defaults to the whole accumulated text."""
+        text = self._stream_text if content is None else content
+        if not text and not self._reasoning_text:
             return None
         extra: dict[str, Any] = {}
         if self._reasoning_text:
             extra["reasoning_content"] = self._reasoning_text
-        return live_message_input(AIMessage(content=self._stream_text, additional_kwargs=extra))
+        return live_message_input(AIMessage(content=text, additional_kwargs=extra))
 
     def _error_input(self) -> ThreadMessageInput | None:
         if not self._error_message:
@@ -212,13 +214,33 @@ class TurnHistoryTracker:
             extra[STREAM_ERROR_CODE_KEY] = self._error_code
         return live_message_input(AIMessage(content=self._error_message, additional_kwargs=extra))
 
+    def _uncovered_stream_tail(self, items: list[ThreadMessageInput]) -> str:
+        """Streamed text that *items* do not already carry.
+
+        A single state message can supersede the stream verbatim (the final
+        answer after post-processing); with several model calls per turn the
+        per-segment messages cover it one after another — text emitted around
+        tool calls. Only the tail no message accounts for is new content:
+        appending the whole accumulated stream would duplicate every segment.
+        """
+        text = self._stream_text
+        if not text:
+            return ""
+        covered = 0
+        for item in items:
+            if item.role not in _ASSISTANT_ROLES:
+                continue
+            segment = _wire_text(item)
+            if not segment:
+                continue
+            if text in segment:
+                return ""
+            if text.startswith(segment, covered):
+                covered += len(segment)
+        return text[covered:]
+
     def _inputs_cover_stream(self, items: list[ThreadMessageInput]) -> bool:
-        if not self._stream_text:
-            return False
-        return any(
-            item.role in _ASSISTANT_ROLES and self._stream_text in _wire_text(item)
-            for item in items
-        )
+        return bool(self._stream_text) and self._uncovered_stream_tail(items) == ""
 
     @property
     def inputs(self) -> list[ThreadMessageInput]:
@@ -231,7 +253,7 @@ class TurnHistoryTracker:
             dedupe_missing_ids=True,
         )
         if not self._inputs_cover_stream(items):
-            streamed = self._stream_message()
+            streamed = self._stream_message(self._uncovered_stream_tail(items))
             if streamed is not None:
                 items.append(streamed)
         error = self._error_input()
