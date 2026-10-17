@@ -12,7 +12,7 @@ from octop.infra.agents.middleware.model_failover import (
     AutoRouteCandidate,
     SafeModelFailoverMiddleware,
 )
-from octop.infra.agents.providers.health import ModelHealthRegistry
+from octop.infra.agents.providers.health import FailureScope, ModelHealthRegistry
 
 
 def _model(ref: str, cap: int) -> SimpleNamespace:
@@ -23,6 +23,58 @@ def _model(ref: str, cap: int) -> SimpleNamespace:
         model_name=model,
         profile={"max_input_tokens": cap},
     )
+
+
+@pytest.mark.parametrize("scope", [FailureScope.MODEL, FailureScope.PROVIDER])
+@pytest.mark.parametrize("asynchronous", [False, True])
+@pytest.mark.parametrize("detail", ["context_length_exceeded", "HTTP 400 invalid tool schema"])
+@pytest.mark.asyncio
+async def test_non_health_failure_releases_half_open_route(
+    monkeypatch, scope: FailureScope, asynchronous: bool, detail: str
+) -> None:
+    now = 100.0
+    health = ModelHealthRegistry(clock=lambda: now)
+    health.record_failure("p/a", kind="timeout", scope=scope)
+    now = 161.0
+    model = _model("p/a", 100_000)
+    middleware = SafeModelFailoverMiddleware(
+        health=health,
+        candidates=lambda _current, _vision: [],
+        model_for_ref=lambda _ref: model,
+        max_retries=0,
+        initial_delay=0,
+        max_delay=0,
+        on_failure="error",
+    )
+    monkeypatch.setattr(
+        model_failover,
+        "_configurable",
+        lambda _request: {"model": "p/a", "octop_auto_route": True},
+    )
+    request = ModelRequest(model=model, messages=[HumanMessage(content="hello")])
+    error = RuntimeError(detail)
+    probe = AsyncMock(side_effect=error) if asynchronous else MagicMock(side_effect=error)
+
+    with pytest.raises(RuntimeError) as caught:
+        if asynchronous:
+            await middleware.awrap_model_call(request, probe)
+        else:
+            middleware.wrap_model_call(request, probe)
+    assert caught.value is error
+    probe.assert_called_once()
+
+    now = 1_000_000.0
+    expected = ModelResponse(result=[AIMessage(content="ok")])
+    handler = AsyncMock(return_value=expected) if asynchronous else MagicMock(return_value=expected)
+    if asynchronous:
+        response = await middleware.awrap_model_call(request, handler)
+    else:
+        response = middleware.wrap_model_call(request, handler)
+
+    assert response is expected
+    handler.assert_called_once()
+    if scope is FailureScope.PROVIDER:
+        assert health.begin_attempt("p/b")
 
 
 @pytest.mark.asyncio
