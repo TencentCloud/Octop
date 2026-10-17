@@ -5,6 +5,7 @@
 格式遵循 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)，版本号遵循 [语义化版本规范](https://semver.org/spec/v2.0.0.html)。
 
 ## [Unreleased]
+- 电影/动画搜索（`search_movie`）此前向 Bangumi 请求 `responseGroup=small`，返回体不含 `rating`，导致卡片与文本摘要里的评分恒为「—」；现请求带评分的 `large` 分组
 
 ## [1.0.2b9] - 2026-10-16
 
