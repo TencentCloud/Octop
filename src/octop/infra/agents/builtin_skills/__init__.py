@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 from importlib import resources
 from importlib.resources.abc import Traversable
 from typing import Any
@@ -45,16 +46,22 @@ async def sync_octop_builtin_skills(workspace: Any) -> list[str]:
     # clean on fresh expert instances.
     await workspace.amkdir("skills")
 
-    package_root = resources.files(_PACKAGE)
-    uploads: list[tuple[str, bytes]] = []
-    skill_names: list[str] = []
-    for entry in package_root.iterdir():
-        if entry.name.startswith((".", "__")) or not entry.is_dir():
-            continue
-        if not entry.joinpath("SKILL.md").is_file():
-            continue
-        skill_names.append(entry.name)
-        _collect_files(entry, f"{OCTOP_BUILTIN_SKILLS_ROOT}/{entry.name}", uploads)
+    def _scan_builtin_skills() -> tuple[list[str], list[tuple[str, bytes]]]:
+        # Walking and reading the whole package tree is blocking I/O; it belongs
+        # on a worker thread rather than the event loop (AGENTS.md §8).
+        package_root = resources.files(_PACKAGE)
+        found_uploads: list[tuple[str, bytes]] = []
+        found_names: list[str] = []
+        for entry in package_root.iterdir():
+            if entry.name.startswith((".", "__")) or not entry.is_dir():
+                continue
+            if not entry.joinpath("SKILL.md").is_file():
+                continue
+            found_names.append(entry.name)
+            _collect_files(entry, f"{OCTOP_BUILTIN_SKILLS_ROOT}/{entry.name}", found_uploads)
+        return found_names, found_uploads
+
+    skill_names, uploads = await asyncio.to_thread(_scan_builtin_skills)
 
     # Render the agent-facing workspace path into the instructions (not the
     # host ``root_dir`` join that ``resolve_path`` returns for I/O).
