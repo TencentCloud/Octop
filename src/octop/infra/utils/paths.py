@@ -75,6 +75,11 @@ class PathLayout:
         return self.root / "skill-packages"
 
     @property
+    def extension_catalog_dir(self) -> Path:
+        """User-created Skill and Plugin catalog: ``~/.octop/extensions/``."""
+        return self.root / "extensions"
+
+    @property
     def knowledge_dir(self) -> Path:
         """Global knowledge base files: ``~/.octop/knowledge/``."""
         return self.root / "knowledge"

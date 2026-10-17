@@ -3800,6 +3800,29 @@ class AgentManager:
                 paths=self.paths,
             )
 
+        extension_builder_tools: list[Any] = []
+        if not team_host:
+            from octop.infra.agents.extensions import (  # noqa: PLC0415
+                EXTENSION_BUILDER_TEMPLATE,
+                ExtensionCatalog,
+                build_extension_builder_tools,
+            )
+
+            if row.template_name == EXTENSION_BUILDER_TEMPLATE:
+                extension_builder_tools = build_extension_builder_tools(
+                    ws,
+                    agent_id=row.agent_id,
+                    owner_user_id=row.user_id,
+                    catalog=ExtensionCatalog(
+                        self._paths.extension_catalog_dir,
+                        reserved_plugins_root=(
+                            self._plugin_manager.market_root()
+                            if self._plugin_manager is not None
+                            else None
+                        ),
+                    ),
+                )
+
         from octop_harness.plugins import PluginRegistry, build_plugin_tools  # noqa: PLC0415
 
         from octop.infra.agents.plugins.plugin_tool_defaults import (  # noqa: PLC0415
@@ -3844,7 +3867,12 @@ class AgentManager:
             plugin_tools,
             reserved={
                 str(getattr(t, "name", ""))
-                for t in [*(cron_tools or []), *knowledge_tools, *mobile_tools]
+                for t in [
+                    *(cron_tools or []),
+                    *knowledge_tools,
+                    *mobile_tools,
+                    *extension_builder_tools,
+                ]
             },
         )
         self._plugin_tool_labels[row.agent_id] = {
@@ -3901,6 +3929,7 @@ class AgentManager:
             merged_tools.extend(cron_tools)
         merged_tools.extend(knowledge_tools)
         merged_tools.extend(mobile_tools)
+        merged_tools.extend(extension_builder_tools)
         merged_tools.extend(plugin_tools)
         # agent_list / ask_agent: PeerAgentMiddleware (team_enabled=True), not config.tools.
 

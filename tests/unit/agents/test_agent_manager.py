@@ -979,6 +979,30 @@ def test_build_harness_config_enables_bootstrap_for_expert_template(manager: Age
     assert cfg.bootstrap_enabled is True
 
 
+def test_build_harness_config_adds_tools_only_to_extension_builder(
+    manager: AgentManager,
+) -> None:
+    from dataclasses import replace
+
+    builder = manager._build_harness_config(
+        replace(
+            _row(agent_id="BUILDER1"),
+            template_name="octop-extension-builder",
+        ),
+    )
+    regular = manager._build_harness_config(_row(agent_id="REGULAR1"))
+
+    builder_names = {str(getattr(tool, "name", "")) for tool in builder.tools or []}
+    regular_names = {str(getattr(tool, "name", "")) for tool in regular.tools or []}
+    expected = {
+        "octop_extension_scaffold",
+        "octop_extension_validate",
+        "octop_extension_package",
+    }
+    assert expected <= builder_names
+    assert expected.isdisjoint(regular_names)
+
+
 def test_build_harness_config_disables_bootstrap_for_team_host(manager: AgentManager) -> None:
     from dataclasses import replace
 

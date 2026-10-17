@@ -76,9 +76,34 @@ def normalize_plugin_download_url(url: str) -> str:
 
 
 def _load_plugin_dir(plugin_dir: Path, *, install_deps: bool) -> LoadedPlugin:
-    """Load one plugin, accepting the pre-rename ``harness_agent`` import."""
+    """Load one plugin and apply Octop host extensions."""
     ensure_legacy_harness_agent_alias()
-    return load_plugin_dir(plugin_dir, install_deps=install_deps)
+    loaded = load_plugin_dir(plugin_dir, install_deps=install_deps)
+    declared_skills = _declared_plugin_skills_dir(plugin_dir)
+    if declared_skills is not None:
+        loaded.skills_dir = declared_skills
+    return loaded
+
+
+def _declared_plugin_skills_dir(plugin_dir: Path) -> Path | None:
+    """Resolve Octop's optional ``skills`` manifest field inside a plugin."""
+    raw = _read_plugin_yaml(plugin_dir)
+    value = raw.get("skills")
+    if value is None:
+        return None
+    relative = str(value).strip().replace("\\", "/")
+    parts = relative.split("/")
+    if not relative or relative.startswith("/") or ".." in parts:
+        raise ValueError("plugin skills path must be a safe relative directory")
+    root = plugin_dir.resolve()
+    skills_dir = (root / relative).resolve()
+    try:
+        skills_dir.relative_to(root)
+    except ValueError as exc:
+        raise ValueError("plugin skills path escaped the plugin directory") from exc
+    if not skills_dir.is_dir():
+        raise FileNotFoundError(f"plugin skills directory not found: {skills_dir}")
+    return skills_dir
 
 
 def _read_global_plugins(config_path: Path) -> dict[str, bool]:
@@ -291,9 +316,16 @@ _MARKET_ASSET_SUFFIXES = frozenset({".svg", ".png", ".jpg", ".jpeg", ".webp", ".
 
 
 class PluginManager:
-    def __init__(self, *, plugins_dir: Path, config_path: Path) -> None:
+    def __init__(
+        self,
+        *,
+        plugins_dir: Path,
+        config_path: Path,
+        created_catalog_root: Path | None = None,
+    ) -> None:
         self._plugins_dir = plugins_dir
         self._config_path = config_path
+        self._created_catalog_root = created_catalog_root
         self._plugins_dir.mkdir(parents=True, exist_ok=True)
         # Last-known tool metadata so Admin / Experts can still list tools after
         # a global disable unloads the plugin from the process registry.
@@ -324,7 +356,12 @@ class PluginManager:
 
         return default_bundled_plugins_root()
 
-    def market_plugin_dir(self, plugin_id: str) -> Path | None:
+    def market_plugin_dir(
+        self,
+        plugin_id: str,
+        *,
+        owner_user_id: int | None = None,
+    ) -> Path | None:
         """Return a catalog plugin directory when it exists under the market root."""
         cleaned = plugin_id.strip()
         if not cleaned or ".." in cleaned or "/" in cleaned or "\\" in cleaned:
@@ -332,15 +369,38 @@ class PluginManager:
         dest = self.market_root() / cleaned
         if dest.is_dir() and (dest / "plugin.yaml").is_file():
             return dest
+        if self._created_catalog_root is not None and owner_user_id is not None:
+            from octop.infra.agents.extensions.catalog import ExtensionCatalog  # noqa: PLC0415
+
+            created = ExtensionCatalog(self._created_catalog_root).resolve_plugin_dir(
+                owner_user_id,
+                cleaned,
+            )
+            if created is not None and (created / "plugin.yaml").is_file():
+                return created
         return None
 
-    def list_market(self) -> list[dict[str, Any]]:
-        """List marketplace catalog entries (in-tree today; remote API later)."""
+    def list_market(self, *, owner_user_id: int | None = None) -> list[dict[str, Any]]:
+        """List built-in and owner-created marketplace entries."""
         root = self.market_root()
         out: list[dict[str, Any]] = []
-        if not root.is_dir():
-            return out
-        for plugin_dir in discover_plugin_dirs(root):
+        sources: list[tuple[Path, dict[str, Any] | None]] = []
+        if root.is_dir():
+            sources.extend((path, None) for path in discover_plugin_dirs(root))
+        if self._created_catalog_root is not None and owner_user_id is not None:
+            from octop.infra.agents.extensions.catalog import ExtensionCatalog  # noqa: PLC0415
+
+            catalog = ExtensionCatalog(self._created_catalog_root)
+            for metadata in catalog.list_plugins(owner_user_id):
+                plugin_dir = catalog.resolve_plugin_dir(
+                    owner_user_id,
+                    str(metadata.get("slug") or ""),
+                )
+                if plugin_dir is not None:
+                    sources.append((plugin_dir, metadata))
+
+        seen: set[str] = set()
+        for plugin_dir, catalog_meta in sources:
             try:
                 manifest = PluginManifest.load(plugin_dir / "plugin.yaml")
             except Exception as exc:
@@ -352,6 +412,9 @@ class PluginManager:
                     },
                 )
                 continue
+            if manifest.id in seen:
+                continue
+            seen.add(manifest.id)
             installed_dir = self.plugin_dir(manifest.id)
             installed_version = (
                 None if installed_dir is None else _read_installed_version(installed_dir)
@@ -375,16 +438,29 @@ class PluginManager:
                         installed_dir is not None
                         and _version_tuple(manifest.version) > _version_tuple(installed_version)
                     ),
+                    "source": "created" if catalog_meta is not None else "built_in",
+                    "created": catalog_meta is not None,
+                    "published_at": (
+                        str(catalog_meta.get("published_at") or "")
+                        if catalog_meta is not None
+                        else None
+                    ),
                 },
             )
         return out
 
-    def install_from_market(self, plugin_id: str, *, force: bool = False) -> LoadedPlugin:
+    def install_from_market(
+        self,
+        plugin_id: str,
+        *,
+        force: bool = False,
+        owner_user_id: int | None = None,
+    ) -> LoadedPlugin:
         """Install a catalog plugin by copying the in-tree package locally.
 
         Future: download a ZIP from a remote API / object storage and extract.
         """
-        source = self.market_plugin_dir(plugin_id)
+        source = self.market_plugin_dir(plugin_id, owner_user_id=owner_user_id)
         if source is None:
             raise OctopError(
                 ErrorCode.NOT_FOUND,
@@ -394,9 +470,15 @@ class PluginManager:
         _write_global_plugin_enabled(self._config_path, loaded.manifest.id, True)
         return loaded
 
-    def resolve_market_ui_file(self, plugin_id: str, rel_path: str) -> Path:
+    def resolve_market_ui_file(
+        self,
+        plugin_id: str,
+        rel_path: str,
+        *,
+        owner_user_id: int | None = None,
+    ) -> Path:
         """Resolve a marketplace catalog asset (icons only)."""
-        plugin_dir = self.market_plugin_dir(plugin_id)
+        plugin_dir = self.market_plugin_dir(plugin_id, owner_user_id=owner_user_id)
         if plugin_dir is None:
             raise OctopError(
                 ErrorCode.NOT_FOUND,

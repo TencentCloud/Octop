@@ -372,6 +372,7 @@ class OctopServer:
         self.plugin_manager = PluginManager(
             plugins_dir=self.paths.plugins_dir,
             config_path=self.paths.config,
+            created_catalog_root=self.paths.extension_catalog_dir,
         )
         self.plugin_manager.seed_bundled()
         self.plugin_manager.load_installed(install_deps=True)

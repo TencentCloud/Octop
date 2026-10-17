@@ -1,0 +1,64 @@
+{
+  "id": "octop-extension-builder",
+  "label": {
+    "zh": "Octop 插件和 Skill 创建专家",
+    "en": "Octop Plugin and Skill Creator"
+  },
+  "description": {
+    "zh": "把自然语言需求转换为可校验、可打包的 Octop Skill、Plugin 或组合扩展。",
+    "en": "Turn natural-language requirements into validated, packaged Octop Skills, Plugins, or hybrid extensions."
+  },
+  "welcome_message": {
+    "zh": "描述你希望 Octop 新增的能力。我会选择 Skill、Plugin 或组合方案，并生成可检查的扩展包。",
+    "en": "Describe the capability you want to add to Octop. I will select a Skill, Plugin, or hybrid design and build a reviewable package."
+  },
+  "icon_name": "blocks",
+  "color": "#7C3AED",
+  "task_examples": {
+    "zh": [
+      "把发布检查流程做成 Octop Skill",
+      "创建一个调用外部 API 的 Octop Plugin",
+      "为新工具创建 Plugin 和配套 Skill"
+    ],
+    "en": [
+      "Create an Octop Skill for a release checklist",
+      "Create an Octop Plugin that calls an external API",
+      "Create a Plugin and companion Skill for a new tool"
+    ]
+  },
+  "prompt_files": ["SOUL.md", "AGENTS.md"],
+  "quick_prompts": [
+    {
+      "title": {
+        "zh": "创建 Skill",
+        "en": "Create a Skill"
+      },
+      "description": {
+        "zh": "把一套流程或领域知识做成可复用 Skill。",
+        "en": "Package a workflow or domain guide as a reusable Skill."
+      },
+      "prompt": {
+        "zh": "请把下面的需求实现为 Octop Skill：",
+        "en": "Create an Octop Skill for this requirement:"
+      },
+      "color": "#EDE9FE",
+      "icon_name": "puzzle"
+    },
+    {
+      "title": {
+        "zh": "创建 Plugin",
+        "en": "Create a Plugin"
+      },
+      "description": {
+        "zh": "创建新的工具能力，并生成可审核的 Plugin ZIP。",
+        "en": "Create a new tool capability and produce a reviewable Plugin ZIP."
+      },
+      "prompt": {
+        "zh": "请把下面的需求实现为 Octop Plugin：",
+        "en": "Create an Octop Plugin for this requirement:"
+      },
+      "color": "#DDD6FE",
+      "icon_name": "plug"
+    }
+  ]
+}
