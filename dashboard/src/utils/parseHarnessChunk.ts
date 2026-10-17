@@ -70,6 +70,9 @@ export interface StateSnapshotChunk {
 export interface CustomChunk {
   type: "custom";
   data: unknown;
+  agent_id?: string;
+  /** Host wrap-up decision — attach to the wrap-up bubble, not the dispatch turn. */
+  team_wrapup?: boolean;
 }
 
 export interface UsageChunk {
@@ -285,6 +288,13 @@ export function parseHarnessChunk(line: string): HarnessChunk | null {
         action: typeof obj.action === "string" ? obj.action : "",
         agent_id: agentId,
         mode: typeof obj.mode === "string" ? obj.mode : undefined,
+      };
+    case "custom":
+      return {
+        type: "custom",
+        data: "data" in obj ? obj.data : raw,
+        agent_id: agentId,
+        team_wrapup: obj.team_wrapup === true,
       };
     case "attachment":
       return {

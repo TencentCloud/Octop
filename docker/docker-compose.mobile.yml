@@ -26,6 +26,10 @@ services:
     image: octop:latest
     container_name: octop
     restart: unless-stopped
+    ulimits:
+      nofile:
+        soft: 65535
+        hard: 65535
     privileged: true
     network_mode: host
     volumes:
