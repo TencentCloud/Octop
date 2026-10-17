@@ -6,8 +6,11 @@ import {
   parseOctopToolOutput,
 } from "./parseToolOutput";
 import { registerToolRenderer } from "./registry";
+import { registerPluginPage } from "../pages/registry";
 import type {
   OctopPluginUIHost,
+  PluginPageDeclaration,
+  PluginPageHost,
   ToolRenderContext,
   ToolRendererRegistration,
 } from "./types";
@@ -42,9 +45,26 @@ function readTheme(): "light" | "dark" {
   return "light";
 }
 
-function createHost(defaultPluginId: string): OctopPluginUIHost {
+function createHost(
+  defaultPluginId: string,
+  pages: readonly PluginPageDeclaration[] = [],
+  pagesEnabled = true,
+  isActive = () => true,
+): OctopPluginUIHost {
   return {
+    registerPage(reg) {
+      if (!pagesEnabled || !isActive()) return;
+      const declaration = pages.find((page) => page.id === reg.id);
+      if (!declaration)
+        throw new Error("Plugin page must be declared in its UI manifest");
+      registerPluginPage({
+        ...declaration,
+        pluginId: defaultPluginId,
+        component: reg.component,
+      });
+    },
     registerRenderer(reg) {
+      if (!isActive()) return;
       const pluginId = reg.pluginId ?? defaultPluginId;
       const full: ToolRendererRegistration = {
         id: reg.id,
@@ -82,8 +102,24 @@ function createHost(defaultPluginId: string): OctopPluginUIHost {
 export const builtinPluginHost: OctopPluginUIHost = createHost("builtin");
 
 /** Build a host scoped to an installed plugin id (for dynamic UI modules). */
-export function createPluginUiHost(pluginId: string): OctopPluginUIHost {
-  return createHost(pluginId);
+export function createPluginUiHost(
+  pluginId: string,
+  pages: readonly PluginPageDeclaration[] = [],
+  pagesEnabled = true,
+  isActive = () => true,
+): OctopPluginUIHost {
+  return createHost(pluginId, pages, pagesEnabled, isActive);
+}
+
+/** Only authenticated requests and presentation context are exposed to pages. */
+export function createPluginPageHost(): PluginPageHost {
+  return {
+    request,
+    getPageContext: () => ({
+      locale: i18n.language ?? "en",
+      theme: readTheme(),
+    }),
+  };
 }
 
 export { parseOctopToolOutput, mergePatchedToolOutput };

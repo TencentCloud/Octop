@@ -60,6 +60,11 @@ export interface OpenSidePanelOptions {
 }
 
 export interface OctopPluginUIHost {
+  /** Register a standalone page declared by this plugin's UI manifest. */
+  registerPage(reg: {
+    id: string;
+    component: ComponentType<PluginPageProps>;
+  }): void;
   registerRenderer(
     reg: Omit<ToolRendererRegistration, "pluginId"> & { pluginId?: string },
   ): void;
@@ -81,8 +86,30 @@ export interface PluginUiModule {
 }
 
 export interface PluginUiManifest {
+  pages?: PluginPageDeclaration[];
   renderers?: Array<{
     id: string;
     tools?: string[];
   }>;
+}
+
+export interface PluginPageDeclaration {
+  id: string;
+  title: string;
+}
+
+/** Standalone pages have no agent, conversation or tool-call prerequisite. */
+export interface PluginPageHost {
+  request: OctopPluginUIHost["request"];
+  getPageContext(): { locale: string; theme: "light" | "dark" };
+}
+
+export interface PluginPageProps {
+  pluginId: string;
+  host: PluginPageHost;
+}
+
+export interface PluginPageRegistration extends PluginPageDeclaration {
+  pluginId: string;
+  component: ComponentType<PluginPageProps>;
 }

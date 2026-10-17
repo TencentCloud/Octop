@@ -1,4 +1,12 @@
 {
+  "pluginPages": {
+    "title": "插件页面",
+    "open": "打开",
+    "back": "所有插件页面",
+    "unavailable": "此插件页面当前不可用。",
+    "loadFailed": "无法加载插件页面，请重试。",
+    "empty": "尚未安装已启用的插件页面。"
+  },
   "app": {
     "pageTitle": "Octop - 懂你、帮你、陪你成长的智能伙伴"
   },

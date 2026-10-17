@@ -1,4 +1,12 @@
 {
+  "pluginPages": {
+    "title": "Plugin pages",
+    "open": "Open",
+    "back": "All plugin pages",
+    "unavailable": "This plugin page is unavailable.",
+    "loadFailed": "Could not load plugin pages. Please try again.",
+    "empty": "No enabled plugin pages are installed."
+  },
   "app": {
     "pageTitle": "Octop - An intelligent partner that understands you, helps you, and grows with you"
   },
