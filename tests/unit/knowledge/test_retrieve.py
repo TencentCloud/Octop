@@ -3,7 +3,10 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 from types import SimpleNamespace
+
+import pytest
 
 from octop.infra.db.migrate import run_migrations
 from octop.infra.db.pool import SqlitePool
@@ -74,6 +77,57 @@ def test_retrieve_context_skips_empty_non_text_turn() -> None:
             user_id=1,
             is_admin=False,
             query=None,  # type: ignore[arg-type]
+            knowledge_base_ids=["kb-1"],
+        )
+    )
+
+    assert context == ""
+
+
+def test_retrieve_context_raises_when_capability_is_unusable(
+    monkeypatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    """A disabled / unprovisioned feature must not look like an empty knowledge base."""
+
+    def _unavailable(*_args, **_kwargs) -> None:
+        raise retrieve_module.KnowledgeUnavailable(
+            "knowledge embedding prerequisites are not satisfied"
+        )
+
+    monkeypatch.setattr(retrieve_module, "assert_knowledge_usable", _unavailable)
+
+    with (
+        caplog.at_level(logging.ERROR, logger="octop.infra.knowledge.retrieve"),
+        pytest.raises(retrieve_module.KnowledgeUnavailable),
+    ):
+        asyncio.run(
+            retrieve_module.retrieve_context(
+                SimpleNamespace(settings_repo=SimpleNamespace(get=lambda _key: None)),
+                user_id=42,
+                is_admin=False,
+                query="what does the manual say?",
+                knowledge_base_ids=["kb-1"],
+            )
+        )
+
+    assert "knowledge_unavailable" in caplog.text
+    assert "user=42" in caplog.text
+
+
+def test_retrieve_context_degrades_transient_failures_to_empty(monkeypatch) -> None:
+    """A per-lookup failure still degrades quietly, as before."""
+
+    def _boom(*_args, **_kwargs) -> None:
+        raise ValueError("index unavailable")
+
+    monkeypatch.setattr(retrieve_module, "assert_knowledge_usable", _boom)
+
+    context = asyncio.run(
+        retrieve_module.retrieve_context(
+            SimpleNamespace(settings_repo=SimpleNamespace(get=lambda _key: None)),
+            user_id=1,
+            is_admin=False,
+            query="anything",
             knowledge_base_ids=["kb-1"],
         )
     )

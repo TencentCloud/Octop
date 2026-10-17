@@ -10,7 +10,7 @@ from typing import Any
 from octop.i18n import tr
 from octop.infra.knowledge.citations import append_citations_marker, citations_from_ranked
 from octop.infra.knowledge.embed import embed_knowledge_texts
-from octop.infra.knowledge.gate import assert_knowledge_usable
+from octop.infra.knowledge.gate import KnowledgeUnavailable, assert_knowledge_usable
 from octop.infra.knowledge.index import Hit, KnowledgeIndex
 
 DEFAULT_RETRIEVAL_K = 8
@@ -31,7 +31,13 @@ async def retrieve_context(
     locale: str = "en",
     visible_bases: Sequence[Any] | None = None,
 ) -> str:
-    """Return formatted readable context, skipping unavailable or failed retrieval."""
+    """Return formatted readable context for the turn.
+
+    A lookup that fails for a transient reason degrades to an empty string, but
+    an unusable knowledge capability (feature off, embedding prerequisites
+    missing) raises :class:`KnowledgeUnavailable` so the caller can tell the
+    user why the knowledge base appears empty.
+    """
     if not (query or "").strip() or not knowledge_base_ids or k <= 0 or char_budget <= 0:
         return ""
     loop = asyncio.get_running_loop()
@@ -50,6 +56,14 @@ async def retrieve_context(
                 visible_bases=visible_bases,
             ),
         )
+    except KnowledgeUnavailable as exc:
+        # A disabled feature or a missing embedding prerequisite is a
+        # deployment problem, not an empty result. Collapsing it into "" made
+        # the agent answer as if the knowledge base held nothing, and left no
+        # greppable trace in the log. Log it under a stable marker and let the
+        # caller decide how to surface it.
+        logger.error("knowledge_unavailable user=%s reason=%s", user_id, exc)
+        raise
     except Exception:
         logger.warning("knowledge retrieval skipped for user=%s", user_id, exc_info=True)
         return ""

@@ -27,6 +27,16 @@ SettingsGet = Callable[[str], str | None]
 SettingsSet = Callable[[str, str], None]
 
 
+class KnowledgeUnavailable(RuntimeError):
+    """The knowledge feature is switched off, or its prerequisites are missing.
+
+    Distinct from a generic retrieval failure so callers can tell "this
+    deployment cannot serve knowledge at all" (a configuration problem the
+    user must be told about) from "this particular lookup failed" (which may
+    legitimately degrade to an empty context).
+    """
+
+
 def _as_bool(value: str | None) -> bool:
     if value is None:
         return False
@@ -165,6 +175,6 @@ def assert_knowledge_usable(settings_get: SettingsGet, provider_repo: Any = None
     """Raise a distinguishable runtime error when the capability cannot be used."""
     capability = get_capability(settings_get, provider_repo)
     if not capability["feature_enabled"]:
-        raise RuntimeError("knowledge feature is disabled")
+        raise KnowledgeUnavailable("knowledge feature is disabled")
     if not capability["prerequisites_ok"]:
-        raise RuntimeError("knowledge embedding prerequisites are not satisfied")
+        raise KnowledgeUnavailable("knowledge embedding prerequisites are not satisfied")

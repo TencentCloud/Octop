@@ -6,6 +6,9 @@
 
 ## [Unreleased]
 
+### 修复
+- 知识库不可用时检索不再静默失败：`assert_knowledge_usable` 改抛可区分的 `KnowledgeUnavailable`，`retrieve_context` 以 `knowledge_unavailable` 记录错误日志并向上抛出，Agent 侧从「没有相关片段」变成可归因的失败说明，日志里也能检索到（Fixes #2053）
+
 ## [1.0.2b9] - 2026-10-16
 
 ### 新增
