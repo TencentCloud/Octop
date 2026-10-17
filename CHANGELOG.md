@@ -5,6 +5,7 @@
 格式遵循 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)，版本号遵循 [语义化版本规范](https://semver.org/spec/v2.0.0.html)。
 
 ## [Unreleased]
+- 自定义 MCP 的已缓存工具在请求前按需刷新 OAuth 凭证，支持并发刷新去重和 401 后一次受控重试；授权失效时提示重新授权，新凭证无需重启或新建对话即可生效（#1353）。
 
 ## [1.0.2b9] - 2026-10-16
 
