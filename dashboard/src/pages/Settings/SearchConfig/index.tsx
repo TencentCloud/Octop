@@ -24,6 +24,11 @@ interface SearchProvider {
   descriptionKey: string;
   docs_url?: string;
   required_keys: string[];
+  /**
+   * Non-secret knobs saved alongside the keys. Unlike {@link required_keys}
+   * they may be left blank, and they are never treated as credentials.
+   */
+  optional_keys?: string[];
   configured: boolean;
 }
 
@@ -58,6 +63,9 @@ const SEARCH_PROVIDERS: SearchProvider[] = [
     descriptionKey: "setupWizard.search.providers.kimi.desc",
     docs_url: "https://platform.moonshot.cn/",
     required_keys: ["MOONSHOT_API_KEY"],
+    // Moonshot retires models on its own schedule, so which one backs the
+    // built-in search has to be adjustable without upgrading Octop (#1926).
+    optional_keys: ["MOONSHOT_SEARCH_MODEL"],
     configured: false,
   },
 ];
@@ -88,21 +96,29 @@ function ConfigureDrawer({
   const [testing, setTesting] = useState(false);
   const [revoking, setRevoking] = useState(false);
 
+  // Everything the drawer may write: credentials plus non-secret knobs.
+  const editableKeys = [
+    ...provider.required_keys,
+    ...(provider.optional_keys ?? []),
+  ];
+
   useEffect(() => {
     if (!open) return;
     const initialValues: Record<string, string> = {};
-    provider.required_keys.forEach((key) => {
+    editableKeys.forEach((key) => {
       if (envVars[key]) initialValues[key] = envVars[key];
     });
     form.setFieldsValue(initialValues);
-  }, [envVars, provider.required_keys, form, open]);
+    // ``editableKeys`` is derived from ``provider``; listing it would loop.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [envVars, provider.required_keys, provider.optional_keys, form, open]);
 
   const handleSave = async () => {
     try {
       setSaving(true);
       const values = (await form.validateFields()) as Record<string, string>;
       const allEnvs = { ...envVars };
-      provider.required_keys.forEach((key) => {
+      editableKeys.forEach((key) => {
         if (values[key]) allEnvs[key] = values[key];
       });
       await envsApi.batchSaveEnvs(allEnvs);
@@ -124,7 +140,7 @@ function ConfigureDrawer({
       setTesting(true);
       const values = (await form.validateFields()) as Record<string, string>;
       const testEnvs = { ...envVars };
-      provider.required_keys.forEach((key) => {
+      editableKeys.forEach((key) => {
         if (values[key]) testEnvs[key] = values[key];
       });
       const result = await api.testSearch(provider.id, testEnvs);
@@ -163,7 +179,7 @@ function ConfigureDrawer({
       onOk: async () => {
         try {
           setRevoking(true);
-          for (const key of provider.required_keys) {
+          for (const key of editableKeys) {
             await envsApi.deleteEnv(key);
           }
           message.success(
@@ -214,51 +230,64 @@ function ConfigureDrawer({
     >
       <div className={styles.drawerHint}>{t(provider.descriptionKey)}</div>
       <Form form={form} layout="vertical" requiredMark={false}>
-        {provider.required_keys.map((key) => (
-          <Form.Item
-            key={key}
-            name={key}
-            label={key}
-            rules={[
-              {
-                required: true,
-                message: t("setupWizard.search.required", { key }),
-              },
-            ]}
-            extra={
-              key === "GOOGLE_CSE_ID" ? (
-                <span>
-                  {t("setupWizard.search.googleCseIdHint")}
-                  {provider.docs_url ? (
-                    <>
-                      {" · "}
-                      <a
-                        href={provider.docs_url}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                      >
-                        {t("setupWizard.search.getApiKey")}
-                      </a>
-                    </>
-                  ) : null}
-                </span>
-              ) : provider.docs_url && key === provider.required_keys[0] ? (
-                <a
-                  href={provider.docs_url}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                >
-                  {t("setupWizard.search.getApiKey")}
-                </a>
-              ) : undefined
-            }
-          >
-            <Input.Password
-              placeholder={t("setupWizard.search.required", { key })}
-              autoComplete="off"
-            />
-          </Form.Item>
-        ))}
+        {editableKeys.map((key) => {
+          const optional = provider.optional_keys?.includes(key) ?? false;
+          return (
+            <Form.Item
+              key={key}
+              name={key}
+              label={optional ? t("setupWizard.search.optional", { key }) : key}
+              rules={
+                optional
+                  ? []
+                  : [
+                      {
+                        required: true,
+                        message: t("setupWizard.search.required", { key }),
+                      },
+                    ]
+              }
+              extra={
+                optional ? (
+                  <span>{t("setupWizard.search.kimiModelHint")}</span>
+                ) : key === "GOOGLE_CSE_ID" ? (
+                  <span>
+                    {t("setupWizard.search.googleCseIdHint")}
+                    {provider.docs_url ? (
+                      <>
+                        {" · "}
+                        <a
+                          href={provider.docs_url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                        >
+                          {t("setupWizard.search.getApiKey")}
+                        </a>
+                      </>
+                    ) : null}
+                  </span>
+                ) : provider.docs_url && key === provider.required_keys[0] ? (
+                  <a
+                    href={provider.docs_url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                  >
+                    {t("setupWizard.search.getApiKey")}
+                  </a>
+                ) : undefined
+              }
+            >
+              {optional ? (
+                <Input autoComplete="off" />
+              ) : (
+                <Input.Password
+                  placeholder={t("setupWizard.search.required", { key })}
+                  autoComplete="off"
+                />
+              )}
+            </Form.Item>
+          );
+        })}
       </Form>
       {provider.configured ? (
         <Button

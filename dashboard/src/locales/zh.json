@@ -694,6 +694,8 @@
       "getApiKey": "获取 API Key",
       "docs": "文档",
       "googleCseIdHint": "来自 https://programmablesearchengine.google.com/ 的自定义搜索引擎 ID",
+      "optional": "{{key}}（可选）",
+      "kimiModelHint": "留空则使用默认模型（当前 kimi-k2.6）。Moonshot 下线某个模型时，改这里即可，无需升级 Octop。",
       "revoke": "撤销授权",
       "revokeTitle": "撤销 {{name}} 授权",
       "revokeConfirm": "您确定要撤销 {{name}} 的授权吗？API Key 将被删除，如需继续使用此搜索提供商需要重新配置。",

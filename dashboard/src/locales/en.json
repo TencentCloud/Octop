@@ -694,6 +694,8 @@
       "getApiKey": "Get API Key",
       "docs": "Documentation",
       "googleCseIdHint": "Custom Search Engine ID from https://programmablesearchengine.google.com/",
+      "optional": "{{key}} (optional)",
+      "kimiModelHint": "Leave blank to use the default model (currently kimi-k2.6). Change this when Moonshot retires a model — no Octop upgrade needed.",
       "revoke": "Revoke Authorization",
       "revokeTitle": "Revoke {{name}} Authorization",
       "revokeConfirm": "Are you sure you want to revoke the authorization for {{name}}? The API key will be deleted and you'll need to reconfigure it to use this search provider.",

@@ -28,6 +28,10 @@ SEARCH_ENV_KEYS = frozenset(
         "GOOGLE_API_KEY",
         "GOOGLE_CSE_ID",
         "MOONSHOT_API_KEY",
+        # Picks the model behind Kimi's built-in search; the tool reads it at
+        # call time, but a change should still rebuild the agent so a stale
+        # model name cannot outlive the edit (TencentCloud/Octop#1926).
+        "MOONSHOT_SEARCH_MODEL",
     }
 )
 
