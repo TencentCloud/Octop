@@ -336,3 +336,27 @@ class TestDecisionValidation:
     def test_missing_review_configs_allows_anything(self) -> None:
         record = self._record(SINGLE_CHOICE, None)
         assert decision_rejection_reason(record, [{"type": "approve"}]) is None
+
+
+def test_secret_pause_formats_dashboard_only_card():
+    from octop.infra.gateway.hitl.format import format_hitl_card
+
+    card = format_hitl_card(
+        [
+            {
+                "name": "request_secret_file",
+                "args": {
+                    "path": "hr.token",
+                    "prompt": "HR 系统 Token",
+                    "_secret_card": {"path": "/ws/.octop/auth/hr.token", "exists": True},
+                },
+            }
+        ],
+        pending_id="ab12",
+        locale="zh",
+    )
+    assert "/ws/.octop/auth/hr.token" in card
+    assert "HR 系统 Token" in card
+    assert "替换" in card
+    assert "ab12" in card
+    assert "/approve" not in card

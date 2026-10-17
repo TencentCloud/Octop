@@ -8,6 +8,10 @@ import string
 from typing import Any
 
 from octop.i18n import tool_display_name, tr
+from octop.infra.agents.secret_file.paths import (
+    is_secret_action_requests,
+    secret_request_args,
+)
 from octop.infra.utils.locale import Locale, normalize_locale
 
 # Tool whose HITL interrupt is a question for the user rather than an approval.
@@ -122,6 +126,41 @@ def _format_args(args: dict[str, Any], *, limit: int = 400) -> str:
     return text
 
 
+def format_secret_card(
+    record_action_requests: list[dict[str, Any]],
+    *,
+    pending_id: str,
+    locale: str | Locale,
+) -> str:
+    """Render the IM notice for a ``request_secret_file`` pause.
+
+    Secrets are only collected on the dashboard; the IM card shows metadata
+    (path, prompt) and points the user there. The args contain no secret —
+    and the model must never receive one through IM text either.
+    """
+    loc = normalize_locale(str(locale))
+    args = secret_request_args(record_action_requests) or {}
+    card_meta = args.get("_secret_card")
+    meta = card_meta if isinstance(card_meta, dict) else {}
+    path = str(meta.get("path") or args.get("path") or "").strip()
+    prompt = str(args.get("prompt") or "").strip()
+    lines = [tr("slash.secret.card_title", loc), "", tr("slash.secret.card_intro", loc), ""]
+    if path:
+        lines.append(tr("slash.secret.path_line", loc, path=path))
+    if prompt:
+        lines.append(tr("slash.secret.prompt_line", loc, prompt=prompt))
+    if meta.get("exists") is True:
+        lines.append(tr("slash.secret.replace_line", loc))
+    lines.extend(
+        [
+            "",
+            tr("slash.secret.card_footer", loc),
+            tr("slash.ask.card_pending_id", loc, pending_id=pending_id),
+        ]
+    )
+    return "\n".join(lines).strip()
+
+
 def format_hitl_card(
     record_action_requests: list[dict[str, Any]],
     *,
@@ -129,6 +168,8 @@ def format_hitl_card(
     locale: str | Locale,
 ) -> str:
     """Render the IM card for a paused turn (approval or question)."""
+    if is_secret_action_requests(record_action_requests):
+        return format_secret_card(record_action_requests, pending_id=pending_id, locale=locale)
     if is_ask_action_requests(record_action_requests):
         return format_ask_card(
             extract_questions(record_action_requests),
@@ -307,6 +348,7 @@ __all__ = [
     "extract_questions",
     "format_ask_card",
     "format_hitl_card",
+    "format_secret_card",
     "is_ask_action_requests",
     "normalize_hitl_request",
     "parse_action_requests",

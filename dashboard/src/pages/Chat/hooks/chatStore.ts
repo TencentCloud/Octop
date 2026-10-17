@@ -9,6 +9,7 @@
 
 import { getApiUrl } from "../../../api/config";
 import { getAuthToken } from "../../../api/request";
+import i18n from "../../../i18n";
 import type { TokenUsage } from "../../../api/types";
 import { buildDashboardChatWsUrl } from "../../../api/modules/wsChat";
 import { rewritePeerSpeakerId } from "../../../utils/remoteExpert";
@@ -42,6 +43,7 @@ import { turnStatusAction } from "./turnStatusGate";
 import { mergePatchedToolOutput } from "../../../plugins/toolRenderers/parseToolOutput";
 import {
   isAskHitl,
+  isSecretHitl,
   normalizeHitlRequest,
   parseActionArgs,
 } from "../../../api/types/hitl";
@@ -2366,6 +2368,7 @@ function handleHitlRequired(
   }
   const hitlData = parseHitlRequest(request);
   const askPause = isAskHitl(hitlData.action_requests);
+  const secretPause = isSecretHitl(hitlData.action_requests);
   const existingIdx = [...state.messages]
     .map((message, index) => ({ message, index }))
     .reverse()
@@ -2390,10 +2393,13 @@ function handleHitlRequired(
           !hitl?.pending_id
         );
       }
+      // Secret pauses only merge by pending_id — never into an unrelated card.
+      if (secretPause) return false;
       return (
         Boolean(hitl) &&
         (hitl?.status ?? "pending") === "pending" &&
-        !isAskHitl(hitl?.action_requests)
+        !isAskHitl(hitl?.action_requests) &&
+        !isSecretHitl(hitl?.action_requests)
       );
     })?.index;
   if (existingIdx !== undefined) {
@@ -3167,6 +3173,117 @@ async function consumeSseResponse(
   }
 
   finish(false, hasPendingHitl(state.messages));
+}
+
+/**
+ * Submit (or cancel) a `request_secret_file` card: the secret goes straight to
+ * the dedicated API, which writes it and streams the resumed turn back. The
+ * card is only marked resolved after the server accepts — on failure the
+ * caller keeps the draft and shows `onError` so the user can retry.
+ *
+ * Returns true when the server accepted (stream started).
+ */
+export async function submitSecretFile(
+  sessionId: string,
+  agentId: string,
+  threadId: string,
+  pendingId: string,
+  content: string,
+  action: "submit" | "cancel",
+  onError?: (message: string) => void,
+  onStreamEnd?: () => void,
+): Promise<boolean> {
+  const state = getOrCreate(sessionId);
+  const live = liveSockets.get(sessionId);
+  const parkedListen =
+    live?.listenOnly === true && live.ws.readyState === WebSocket.OPEN;
+  if (!parkedListen) {
+    state.abortController?.abort();
+  }
+
+  const controller = new AbortController();
+
+  const headers: HeadersInit = {
+    "Content-Type": "application/json",
+    Accept: "text/event-stream",
+  };
+  const token = getAuthToken();
+  if (token) {
+    (headers as Record<string, string>).Authorization = `Bearer ${token}`;
+  }
+
+  let res: Response;
+  try {
+    res = await fetch(getApiUrl(`/agents/${agentId}/chat/secret-file/submit`), {
+      method: "POST",
+      headers,
+      body: JSON.stringify({
+        thread_id: threadId,
+        pending_id: pendingId,
+        action,
+        ...(action === "submit" ? { content } : {}),
+      }),
+      signal: controller.signal,
+    });
+  } catch (err: unknown) {
+    if ((err as Error).name === "AbortError") return false;
+    onError?.((err as Error).message || i18n.t("chat.secretCard.submitFailed"));
+    return false;
+  }
+  if (!res.ok) {
+    let message = i18n.t("chat.secretCard.submitFailed");
+    try {
+      const body = (await res.json()) as {
+        error?: { message?: string };
+      };
+      if (body.error?.message) message = body.error.message;
+    } catch {
+      // keep the generic message
+    }
+    onError?.(message);
+    return false;
+  }
+
+  resolveHitlPending(
+    state,
+    action === "cancel" ? "rejected" : "approved",
+    undefined,
+    pendingId,
+  );
+  beginStream(state, sessionId);
+  notify(state);
+  emitStreamEvent({ kind: "streamStart", sessionId });
+  state.abortController = controller;
+
+  let finished = false;
+  const finish = (skipRefresh = false, keepPaused = false) => {
+    if (finished) return;
+    finished = true;
+    pendingResumeBySession.delete(sessionId);
+    if (state.abortController === controller) {
+      state.abortController = null;
+    }
+    clearStreamingFlags(state, { keepSteer: keepPaused });
+    clearStreamActivity(sessionId);
+    state.streamMsg = "";
+    state.streamId = "";
+    state.streamBlockType = "";
+    sealInFlightAssistantMessages(state);
+    notify(state);
+    if (!keepPaused) {
+      emitStreamEvent({ kind: "streamEnd", sessionId });
+      if (!skipRefresh) onStreamEnd?.();
+    }
+  };
+
+  try {
+    await consumeSseResponse(state, sessionId, res, controller, finish);
+  } catch (err: unknown) {
+    if ((err as Error).name === "AbortError") return true;
+    appendErrorBubble(state, i18n.t("chat.secretCard.resumeFailed"));
+    finish();
+  }
+  return true;
 }
 
 export async function resumeHitl(

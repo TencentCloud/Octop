@@ -9,6 +9,8 @@ from pathlib import Path
 from typing import Any
 
 from fastapi import FastAPI, HTTPException, Request
+from fastapi.encoders import jsonable_encoder
+from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, PlainTextResponse
 from scalar_fastapi import get_scalar_api_reference
@@ -21,6 +23,11 @@ from octop.infra.server import OctopServer
 from octop.infra.utils.locale import resolve_request_locale
 
 logger = logging.getLogger(__name__)
+
+# Matched route template for POST /api/agents/{agent_id}/chat/secret-file/submit.
+# The concrete URL is not used: a different route that merely ends with the same
+# suffix must keep the normal validation envelope.
+_SECRET_FILE_SUBMIT_ROUTE = "/agents/{agent_id}/chat/secret-file/submit"
 
 
 @dataclass(frozen=True)
@@ -74,7 +81,40 @@ def _mount_routers(app: FastAPI, mounts: Sequence[_RouterMount]) -> None:
         app.include_router(spec.router, prefix=spec.prefix, tags=list(spec.tags))
 
 
+def _is_secret_file_submit(request: Request) -> bool:
+    """Whether *request* was routed to the credential-file submit endpoint."""
+    route = request.scope.get("route")
+    template = getattr(route, "path", None)
+    return isinstance(template, str) and template.endswith(_SECRET_FILE_SUBMIT_ROUTE)
+
+
+def _redacted_validation_errors(exc: RequestValidationError) -> list[dict[str, Any]]:
+    """Drop ``input`` and ``ctx``, which echo the rejected credential body."""
+    return [
+        {
+            "type": error.get("type"),
+            "loc": error.get("loc"),
+            "msg": error.get("msg"),
+        }
+        for error in exc.errors()
+    ]
+
+
 def _install_exception_handlers(app: FastAPI) -> None:
+    @app.exception_handler(RequestValidationError)
+    async def _validation(request: Request, exc: RequestValidationError) -> JSONResponse:
+        # The secret-file submit body carries the credential itself. Pydantic
+        # echoes failing ``input``/``ctx`` values into 422 details, which would
+        # reflect the secret back to the client. Keep the stock ``{"detail": ...}``
+        # envelope and strip those fields only on that route.
+        errors: Any = (
+            _redacted_validation_errors(exc) if _is_secret_file_submit(request) else exc.errors()
+        )
+        return JSONResponse(
+            status_code=422,
+            content={"detail": jsonable_encoder(errors)},
+        )
+
     @app.exception_handler(OctopError)
     async def _octop(request: Request, exc: OctopError) -> JSONResponse:
         # Client responses are locale-localized; log the original English message

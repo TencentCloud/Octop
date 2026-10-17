@@ -9,10 +9,17 @@ from typing import Any
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import StreamingResponse
 
-from octop.api.common.agent import assert_agent_access
+from octop.api.common.agent import (
+    agent_is_shared,
+    assert_agent_access,
+    require_agent_owner_row,
+    user_owns_agent,
+)
+from octop.api.common.workspace import require_running_workspace
 from octop.api.deps import current_user, get_server
-from octop.api.routers.chat.models import HitlResumeBody, PolishBody
+from octop.api.routers.chat.models import HitlResumeBody, PolishBody, SecretFileSubmitBody
 from octop.api.routers.chat.sse import format_sse
+from octop.i18n.domains.secret import secret_cancelled_message, secret_filled_message
 from octop.i18n.domains.stream import format_stream_error
 from octop.infra.agents.experts.catalog import (
     default_welcome_payload,
@@ -21,6 +28,12 @@ from octop.infra.agents.experts.catalog import (
     read_workspace_manifest_data,
     welcome_payload_from_manifest_data,
     welcome_payload_has_content,
+)
+from octop.infra.agents.secret_file import (
+    is_secret_action_requests,
+    maybe_annotate_secret_payload,
+    secret_request_args,
+    submit_secret_content,
 )
 from octop.infra.agents.settings.profile import welcome_from_row
 from octop.infra.agents.teams import is_team_agent
@@ -118,6 +131,7 @@ async def iter_dashboard_hitl_resume_sse(
     channel_type: str,
     locale: str,
     is_disconnected: Callable[[], Awaitable[bool]],
+    secret_workspace: Any | None = None,
 ) -> AsyncIterator[str]:
     """Stream dashboard HITL resume chunks and persist any nested ``hitl_required``.
 
@@ -181,6 +195,7 @@ async def iter_dashboard_hitl_resume_sse(
                 request_payload = chunk.get("request")
                 if isinstance(request_payload, dict):
                     request_payload = normalize_hitl_request(request_payload)
+                    await maybe_annotate_secret_payload(request_payload, secret_workspace)
                     record = hitl_coordinator.register_from_request(request_payload, ctx=hitl_ctx)
                     request_payload["pending_id"] = record.pending_id
                     chunk["request"] = request_payload
@@ -271,6 +286,11 @@ async def resume_hitl(
             )
 
         return StreamingResponse(missing(), media_type="text/event-stream")
+    if pending is not None and is_secret_action_requests(pending.action_requests):
+        raise OctopError(
+            ErrorCode.SECRET_REQUEST_INVALID,
+            "credential cards require the dedicated secret-file endpoint",
+        )
     session_key, channel_type = _dashboard_hitl_stream_context(
         server,
         agent_id=agent_id,
@@ -286,6 +306,9 @@ async def resume_hitl(
     if body.hitl_policy is not None:
         hitl_coordinator.session_policies.set(body.thread_id, body.hitl_policy.model_dump())
 
+    assert server.app_runtime is not None
+    secret_workspace = server.app_runtime.agent_registry.workspace_for_agent(agent_id)
+
     async def gen() -> AsyncIterator[str]:
         async for frame in iter_dashboard_hitl_resume_sse(
             server=server,
@@ -300,6 +323,139 @@ async def resume_hitl(
             channel_type=channel_type,
             locale=resolve_request_locale(request),
             is_disconnected=request.is_disconnected,
+            secret_workspace=secret_workspace,
+        ):
+            yield frame
+
+    return StreamingResponse(gen(), media_type="text/event-stream")
+
+
+@router.post(
+    "/agents/{agent_id}/chat/secret-file/submit",
+    summary="Submit a credential file for a secret card (SSE)",
+    response_class=StreamingResponse,
+    responses={
+        200: {
+            "description": "Resumed turn events; credential contents are never returned.",
+            "content": {"text/event-stream": {"schema": {"type": "string"}}},
+        },
+    },
+)
+async def submit_secret_file(
+    agent_id: str,
+    body: SecretFileSubmitBody,
+    request: Request,
+    user: Any = Depends(current_user),
+    server: Any = Depends(get_server),
+) -> StreamingResponse:
+    """Store the user's credential text and resume the paused turn.
+
+    The target path comes from the pending ``request_secret_file`` record —
+    the client cannot redirect the write to another path, agent or user.
+    First version only serves the owner's own non-shared experts. The secret
+    itself is never logged, echoed, or returned; responses and history carry
+    metadata only. On write failure the pause reopens so the user can retry;
+    the previous file is left untouched. Streams the resumed turn as SSE.
+    """
+    row = require_agent_owner_row(agent_id, user=user, as_user=None, server=server)
+    if not user_owns_agent(row, user) or agent_is_shared(row):
+        raise OctopError(
+            ErrorCode.FORBIDDEN,
+            "personal credentials require an owned, non-shared expert",
+        )
+    assert server.app_runtime is not None
+    processor = server.app_runtime.gateway.processor
+    hitl_coordinator: HitlChannelCoordinator = processor.hitl_coordinator
+    store = hitl_coordinator.store
+
+    record = store.get(body.pending_id)
+    if (
+        record is None
+        or record.status != "pending"
+        or record.agent_id != agent_id
+        or record.user_id != user.id
+        or record.thread_id != body.thread_id
+        or not is_secret_action_requests(record.action_requests)
+    ):
+        raise OctopError(
+            ErrorCode.SECRET_REQUEST_INVALID,
+            "secret request is stale, cancelled, or does not belong to this chat",
+        )
+    args = secret_request_args(record.action_requests) or {}
+    raw_path = args.get("path")
+
+    locale = resolve_request_locale(request)
+    action_count = len(record.action_requests) or 1
+
+    if body.action == "cancel":
+        if store.claim_secret(body.pending_id) is None:
+            raise OctopError(ErrorCode.SECRET_REQUEST_INVALID, "secret request already handled")
+        store.mark_resolved(body.pending_id, "cancelled")
+        decisions = [
+            {"type": "respond", "message": secret_cancelled_message(locale)}
+            for _ in range(action_count)
+        ]
+    else:
+        if len(record.action_requests) != 1:
+            raise OctopError(
+                ErrorCode.SECRET_REQUEST_INVALID,
+                "secret submissions require exactly one action request",
+            )
+        # Acquire the workspace BEFORE claiming the pending record: a stopped
+        # agent raises here and must leave the request pending for retry.
+        workspace = await require_running_workspace(
+            agent_id,
+            user=user,
+            as_user=None,
+            server=server,
+            owner_only=True,
+        )
+        if store.claim_secret(body.pending_id) is None:
+            raise OctopError(ErrorCode.SECRET_REQUEST_INVALID, "secret request already handled")
+        try:
+            display_path = await submit_secret_content(
+                workspace,
+                raw_path=raw_path,
+                content=body.content,
+            )
+        except OctopError:
+            store.reopen_secret(body.pending_id)
+            raise
+        except Exception:
+            store.reopen_secret(body.pending_id)
+            # Never log the payload; metadata only.
+            logger.error(
+                "secret-file write failed agent=%s pending=%s",
+                agent_id,
+                body.pending_id,
+            )
+            raise OctopError(
+                ErrorCode.SECRET_WRITE_FAILED,
+                "failed to store the credential file",
+            ) from None
+        store.mark_resolved(body.pending_id, "filled")
+        decisions = [
+            {"type": "respond", "message": secret_filled_message(display_path, locale)}
+            for _ in range(action_count)
+        ]
+
+    secret_workspace = server.app_runtime.agent_registry.workspace_for_agent(agent_id)
+
+    async def gen() -> AsyncIterator[str]:
+        async for frame in iter_dashboard_hitl_resume_sse(
+            server=server,
+            processor=processor,
+            hitl_coordinator=hitl_coordinator,
+            agent_id=agent_id,
+            thread_id=body.thread_id,
+            user_id=user.id,
+            decisions=decisions,
+            pending=None,  # already resolved above — no double marking
+            session_key=record.session_key,
+            channel_type=record.channel_type,
+            locale=locale,
+            is_disconnected=request.is_disconnected,
+            secret_workspace=secret_workspace,
         ):
             yield frame
 

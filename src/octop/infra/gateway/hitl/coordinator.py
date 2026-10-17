@@ -11,6 +11,7 @@ from octop_gateway.models import MessageEvent
 from octop_harness.slash import SlashCommand
 
 from octop.i18n.domains.slash import tr
+from octop.infra.agents.secret_file.paths import is_secret_action_requests
 from octop.infra.agents.security.hitl_session import HitlSessionPolicyStore
 from octop.infra.gateway.hitl.format import (
     extract_questions,
@@ -498,6 +499,12 @@ class HitlChannelCoordinator:
         record = self._resolve_slash_record(ctx, approve=approve, arg=arg, lang=lang)
         if isinstance(record, MessageEvent):
             yield record
+            return
+
+        if record is not None and is_secret_action_requests(record.action_requests):
+            # Secrets are only collected through the dashboard card — never via
+            # IM text or /approve.
+            yield MessageEvent.text(tr("slash.secret.dashboard_only", lang))
             return
 
         reject_message = None if approve else (arg or None)

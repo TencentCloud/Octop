@@ -135,4 +135,6 @@ def inject_agent_execute_env(
     out["env"] = extra
     if kind == "local_shell":
         out.setdefault("inherit_env", True)
+        if not uses_scoped_workspace_default({"backend": backend}):
+            extra["OCTOP_CLI_HOME"] = join_agent_facing(extra["OCTOP_AUTH_DIR"], "cli-home")
     return out

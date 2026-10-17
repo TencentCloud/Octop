@@ -3857,7 +3857,9 @@ class AgentManager:
         )
         global_policy = self._security.harness_policy()
         agent_override = cfg.get("security") if isinstance(cfg.get("security"), dict) else None
-        policy = SecurityPolicy.merge(global_policy, agent_override)
+        from octop.infra.agents.security.policy_store import without_secret_file_approval
+
+        policy = without_secret_file_approval(SecurityPolicy.merge(global_policy, agent_override))
 
         from octop.infra.agents.middleware.binary_read_guard import BinaryReadGuardMiddleware
         from octop.infra.agents.middleware.browser_profile import BrowserProfileMiddleware
@@ -3902,6 +3904,21 @@ class AgentManager:
         merged_tools.extend(knowledge_tools)
         merged_tools.extend(mobile_tools)
         merged_tools.extend(plugin_tools)
+        # request_secret_file: secure credential card (own HITL channel, never
+        # bypassed by session policy; the tool args carry metadata only).
+        if not team_host:
+            from octop.infra.agents.secret_file import (  # noqa: PLC0415
+                REQUEST_SECRET_FILE_TOOL,
+                build_secret_file_tools,
+            )
+            from octop.infra.agents.secret_file.middleware import SecretFileInputMiddleware
+            from octop.infra.agents.settings.tool_catalog import (  # noqa: PLC0415
+                tools_disabled_set,
+            )
+
+            if REQUEST_SECRET_FILE_TOOL not in tools_disabled_set(cfg):
+                merged_tools.extend(build_secret_file_tools())
+                agent_middleware.append(SecretFileInputMiddleware())
         # agent_list / ask_agent: PeerAgentMiddleware (team_enabled=True), not config.tools.
 
         acp_section = cfg.get("acp")

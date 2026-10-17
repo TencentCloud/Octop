@@ -335,6 +335,15 @@
       "compact_busy": "This agent is in a conversation. Wait until it is idle, then run /memory compact --confirm.",
       "compact_not_running": "This agent is not running, so its memory database cannot be compacted from chat.",
       "compact_no_memory": "This agent has no memory store to compact."
+    },
+    "secret": {
+      "card_title": "🔐 Credential request",
+      "card_intro": "The agent asks you to securely provide a credential file:",
+      "path_line": "Target path: `{path}`",
+      "prompt_line": "Purpose: {prompt}",
+      "replace_line": "⚠️ This file already exists; submitting will replace it.",
+      "card_footer": "Fill it in from the Octop dashboard chat; replying here will NOT store the credential.",
+      "dashboard_only": "A credential request is pending; please complete it in the Octop dashboard chat."
     }
   },
   "connector": {
@@ -518,7 +527,11 @@
     "LOCAL_DOWNLOAD_UNAVAILABLE": "Saving to the host Downloads folder is only available when Octop is opened on this computer.",
     "SKILL_PACKAGE_COPY_DENIED": "The creator of this skill package has disabled copying its skills.",
     "SKILL_PACKAGE_DOWNLOAD_DENIED": "Downloading this skill package is disabled.",
-    "SKILL_PACKAGE_LOCKED": "This skill was copied from a locked skill package and cannot be edited in the workspace."
+    "SKILL_PACKAGE_LOCKED": "This skill was copied from a locked skill package and cannot be edited in the workspace.",
+    "SECRET_PATH_INVALID": "Invalid credential path: only a relative file path inside this agent's auth directory is allowed.",
+    "SECRET_REQUEST_INVALID": "This credential request is no longer valid (expired, cancelled, or already submitted).",
+    "SECRET_BACKEND_UNSUPPORTED": "This agent's workspace backend cannot store credential files privately; the write was refused.",
+    "SECRET_WRITE_FAILED": "Failed to store the credential file; the previous file was left untouched. Please retry."
   },
   "desktop": {
     "install_log_deps": "Installing Python dependencies…",
@@ -637,7 +650,8 @@
     "generate_image": "Generate image",
     "generate_video": "Generate video",
     "bilibili_search_anime": "Search Bilibili anime",
-    "search_arxiv": "Search arXiv papers"
+    "search_arxiv": "Search arXiv papers",
+    "request_secret_file": "Request credential file"
   },
   "plugins": {
     "arxiv_search": {
@@ -986,5 +1000,10 @@
     "error_exited": "laya-serve exited before it was ready.",
     "error_not_installed": "Laya is not installed yet.",
     "error_stalled": "The install produced no result for too long and was stopped."
+  },
+  "secret": {
+    "filled_message": "The user securely stored the credential file at: {path} (status=filled). Its content is invisible to you — never read or print it; pass this path to subsequent commands (e.g. --token-file \"{path}\") and verify via the command itself (e.g. whoami).",
+    "cancelled_message": "The user cancelled the credential request (status=cancelled); nothing was written. Do not ask again — ask the user how to proceed.",
+    "headless_hint": "No interactive credential card is available in this run."
   }
 }
