@@ -1,4 +1,4 @@
-import type { ChatMessage } from "../hooks/useChat";
+import type { ChatMessage, DecisionNotice } from "../hooks/useChat";
 import { isBrowserToolName, isWriteToolName } from "../constants";
 
 const THINKING_TAG_RE = /<(?:think|thinking)>[\s\S]*?<\/(?:think|thinking)>/gi;
@@ -63,7 +63,8 @@ export interface ThinkingProcessItem {
 
 export type ProcessStep =
   | { kind: "thinking"; item: ThinkingProcessItem }
-  | { kind: "tool"; message: ChatMessage };
+  | { kind: "tool"; message: ChatMessage }
+  | { kind: "decision"; notice: DecisionNotice };
 
 export interface AssistantTurnSplit {
   tools: ChatMessage[];
@@ -124,6 +125,10 @@ export function splitAssistantTurn(
   const processSteps: ProcessStep[] = [];
   const textParts: string[] = [];
   const errorMessages: ChatMessage[] = [];
+  const decision = messages.find((item) => item.decision)?.decision;
+  if (decision) {
+    processSteps.push({ kind: "decision", notice: decision });
+  }
   let answerTemplate: ChatMessage | null = null;
   let answerStreaming = false;
 

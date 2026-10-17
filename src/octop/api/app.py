@@ -160,6 +160,7 @@ def build_app(server: OctopServer) -> FastAPI:
         acp,
         admin,
         agent_files,
+        agent_mcp,
         agent_tools,
         agents,
         auth,
@@ -210,6 +211,7 @@ def build_app(server: OctopServer) -> FastAPI:
         voice,
         workspace,
     )
+    from octop.api.routers.decision import router as decision_router
     from octop.api.routers.filesystem import router as filesystem_router
     from octop.api.routers.observability import router as observability_router
     from octop.api.routers.providers import admin_router as admin_providers_router
@@ -237,6 +239,7 @@ def build_app(server: OctopServer) -> FastAPI:
             _RouterMount(agents.router, "/api/agents", ["agents"]),
             _RouterMount(agent_tools.router, "/api", ["agents"]),
             _RouterMount(acp.router, "/api", ["agents"]),
+            _RouterMount(agent_mcp.router, "/api", ["agent-mcp"]),
             _RouterMount(chat.router, "/api", ["chat"]),
             _RouterMount(slash.router, "/api", ["slash"]),
             _RouterMount(connectors.router, "/api", ["connectors"]),
@@ -246,6 +249,7 @@ def build_app(server: OctopServer) -> FastAPI:
             _RouterMount(channels.router, "/api", ["channels"]),
             _RouterMount(cron.router, "/api", ["cron"]),
             _RouterMount(settings.router, "/api", ["settings"]),
+            _RouterMount(decision_router, "/api", ["settings"]),
             _RouterMount(envs.router, "/api", ["envs"]),
             _RouterMount(search.router, "/api", ["search"]),
             _RouterMount(providers.router, "/api/providers", ["providers"]),
