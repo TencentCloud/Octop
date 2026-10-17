@@ -60,6 +60,14 @@ const SEARCH_PROVIDERS: SearchProvider[] = [
     required_keys: ["MOONSHOT_API_KEY"],
     configured: false,
   },
+  {
+    id: "deepseek",
+    name: "DeepSeek",
+    descriptionKey: "setupWizard.search.providers.deepseek.desc",
+    docs_url: "https://api-docs.deepseek.com/",
+    required_keys: ["DEEPSEEK_API_KEY"],
+    configured: false,
+  },
 ];
 
 function searchProviderLogo(providerId: string): string {

@@ -682,6 +682,9 @@
         },
         "kimi": {
           "desc": "Moonshot AI with built-in web search capability"
+        },
+        "deepseek": {
+          "desc": "DeepSeek's self-built search engine with site:/lang:/date-range operators; Fetch returns page bodies as Markdown"
         }
       },
       "test": "Test Connection",
@@ -1805,6 +1808,8 @@
     "google_search": "Google web search",
     "kimi_search": "Kimi web search",
     "searchfree_search": "AI web search",
+    "deepseek_search": "DeepSeek web search",
+    "deepseek_fetch": "DeepSeek page fetch",
     "cronjob_list": "List cron jobs",
     "cronjob_get": "Get cron job",
     "cronjob_create": "Create cron job",
