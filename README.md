@@ -218,7 +218,14 @@ The installer places `octop` on your PATH via `~/.octop/bin`. Optional extras:
 ```bash
 # Download Playwright Chromium for browser automation (skipped if a system Chrome/Chromium is already present)
 curl -fsSL https://finnie-1258344699.cos.ap-guangzhou.myqcloud.com/octop/install.sh | bash -s -- --extras browser
+
+# Knowledge-base OCR (RapidOCR + onnxruntime)
+curl -fsSL https://finnie-1258344699.cos.ap-guangzhou.myqcloud.com/octop/install.sh | bash -s -- --extras knowledge-ocr
 ```
+
+Valid extras are the ones the `octop` wheel declares: `browser`, `desktop`,
+`local-embedding`, `knowledge-ocr`. IM channels need no extra — the Feishu SDK
+(`lark-oapi`) ships in the base install.
 
 See [scripts/README.md](scripts/README.md) for all install options (`--version`, `--from-source`, `--mirror`, Windows flags).
 
