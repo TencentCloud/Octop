@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import asyncio
+import os
+import tempfile
 from contextlib import suppress
 from datetime import datetime
 from pathlib import Path, PurePosixPath
@@ -148,6 +150,24 @@ async def delete_workspace_avatar(workspace: WorkspaceAvatarIO) -> None:
             continue
 
 
+def _publish_bytes_atomically(path: Path, data: bytes) -> None:
+    """Publish *data* at *path* so a failed write cannot leave a partial file.
+
+    The snapshot directory is published as a whole, so a half-written avatar would
+    be served as the agent's icon instead of being discarded.
+    """
+    fd, temporary = tempfile.mkstemp(dir=str(path.parent), prefix=f".{path.name}.", suffix=".tmp")
+    try:
+        with os.fdopen(fd, "wb") as handle:
+            handle.write(data)
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(temporary, path)
+    except BaseException:
+        Path(temporary).unlink(missing_ok=True)
+        raise
+
+
 async def copy_workspace_avatar_to_dir(workspace: WorkspaceAvatarIO, dest: Path) -> str | None:
     """Write the current avatar into a snapshot directory as ``.octop/avatar.*``."""
     found = await read_workspace_avatar(workspace)
@@ -157,7 +177,7 @@ async def copy_workspace_avatar_to_dir(workspace: WorkspaceAvatarIO, dest: Path)
     rel = avatar_relpath_for_media(media_type)
     target = dest.joinpath(*PurePosixPath(rel).parts)
     target.parent.mkdir(parents=True, exist_ok=True)
-    target.write_bytes(data)
+    _publish_bytes_atomically(target, data)
     return rel
 
 
