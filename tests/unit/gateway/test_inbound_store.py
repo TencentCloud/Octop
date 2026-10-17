@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import re
 import tempfile
 
@@ -103,3 +104,27 @@ async def test_write_inbound_flat_docx_path() -> None:
         )
         assert stored.path.endswith(".docx")
         assert stored.filename == "report.docx"
+
+
+@pytest.mark.asyncio
+async def test_concurrent_same_name_uploads_keep_their_own_bytes() -> None:
+    """Uploads racing on one name must each keep their own path and bytes."""
+    with tempfile.TemporaryDirectory() as ws_dir:
+        workspace = _workspace(ws_dir)
+        payloads = (b"first report", b"second report")
+
+        stored = await asyncio.gather(
+            *(
+                write_inbound(
+                    workspace,
+                    payload,
+                    filename="report.txt",
+                    media_type="text/plain",
+                )
+                for payload in payloads
+            )
+        )
+
+        assert len({item.path for item in stored}) == 2
+        written = [await read_inbound_bytes(workspace, item.path) for item in stored]
+        assert sorted(written) == sorted(payloads)

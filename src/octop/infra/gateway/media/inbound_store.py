@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import mimetypes
 import re
 import time
@@ -405,6 +406,29 @@ async def _unique_inbound_path(workspace: BackendWorkspace, stored_name: str) ->
     raise OctopError(ErrorCode.INTERNAL_ERROR, f"cannot allocate unique path for {stored_name!r}")
 
 
+# ``write_inbound`` allocates a free path and only then uploads to it. Both steps
+# await, so two concurrent uploads whose timestamped names collide can observe the
+# same free candidate and write to it — the second one silently wins and the first
+# upload's bytes are lost. Serialise allocate+write per workspace so that every
+# accepted upload keeps its own path and its own bytes.
+_inbound_write_locks: dict[str, tuple[asyncio.AbstractEventLoop, asyncio.Lock]] = {}
+
+
+def _inbound_write_lock(workspace: BackendWorkspace) -> asyncio.Lock:
+    """Per-workspace lock guarding inbound path allocation plus upload.
+
+    The lock is rebuilt when the running event loop changes so a module-level
+    cache never hands a lock bound to a closed loop to a new one.
+    """
+    loop = asyncio.get_running_loop()
+    key = str(workspace.workspace_dir)
+    entry = _inbound_write_locks.get(key)
+    if entry is None or entry[0] is not loop:
+        entry = (loop, asyncio.Lock())
+        _inbound_write_locks[key] = entry
+    return entry[1]
+
+
 async def write_inbound(
     workspace: BackendWorkspace,
     data: bytes,
@@ -421,8 +445,9 @@ async def write_inbound(
     if not Path(display_name).suffix:
         display_name = f"{display_name}{inbound_extension(display_name, normalized_type)}"
     stored_name = build_timestamped_inbound_name(display_name)
-    path = await _unique_inbound_path(workspace, stored_name)
-    await workspace.aupload_bytes(path, data)
+    async with _inbound_write_lock(workspace):
+        path = await _unique_inbound_path(workspace, stored_name)
+        await workspace.aupload_bytes(path, data)
     return InboundFile(
         path=path,
         filename=display_name,
