@@ -5,8 +5,6 @@ from __future__ import annotations
 import asyncio
 import threading
 
-import pytest
-
 from octop.api.routers import teams as teams_router
 
 
