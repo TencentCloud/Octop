@@ -40,6 +40,13 @@ def run_cli(
             input=stdin_text,
             capture_output=True,
             text=True,
+            # Official connector CLIs emit UTF-8. Without an explicit encoding,
+            # Python decodes with locale.getpreferredencoding(False) — cp936 on
+            # a Chinese Windows host — the reader thread raises
+            # UnicodeDecodeError, stdout comes back None and run_cli silently
+            # returns "{}", so the agent sees empty data instead of the error.
+            encoding="utf-8",
+            errors="replace",
             env=dict(env) if env is not None else None,
             timeout=timeout_s,
             cwd=cwd,

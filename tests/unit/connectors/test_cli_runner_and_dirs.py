@@ -80,3 +80,34 @@ def test_resolve_cli_config_key_rejects_app_or_bot_fallback() -> None:
         cli_dirs.resolve_cli_config_key({"app_id": "cli_x", "app_secret": "s"})
     with pytest.raises(ValueError, match="cli_config_key"):
         cli_dirs.resolve_cli_config_key({"bot_id": "botx", "bot_secret": "s"})
+
+
+def test_run_cli_decodes_child_output_as_utf8(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A cp936 host locale must not turn the CLI's UTF-8 output into ``{}``."""
+    captured: dict[str, object] = {}
+
+    def _fake_run(argv: list[str], **kwargs: object) -> object:
+        captured.update(kwargs)
+        return type("R", (), {"returncode": 0, "stdout": "{}", "stderr": ""})()
+
+    monkeypatch.setattr(cli_runner.subprocess, "run", _fake_run)
+    cli_runner.run_cli(["lark-cli", "whoami"])
+
+    assert captured.get("encoding") == "utf-8"
+    assert captured.get("errors") == "replace"
+
+
+def test_run_cli_preserves_utf8_output() -> None:
+    import json
+    import sys
+
+    child = (
+        "import sys,json;"
+        "sys.stdout.buffer.write("
+        "json.dumps({'message':'\u8fde\u63a5\u5668\u8fd4\u56de\u4e2d\u6587'},"
+        "ensure_ascii=False).encode('utf-8'))"
+    )
+    out = cli_runner.run_cli([sys.executable, "-c", child])
+    assert json.loads(out)["message"] == "\u8fde\u63a5\u5668\u8fd4\u56de\u4e2d\u6587"
