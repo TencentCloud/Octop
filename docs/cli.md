@@ -62,7 +62,7 @@ Octop commands pick one of these transports:
 | Layer | When | Login? | Examples |
 |-------|------|--------|----------|
 | **Offline** (local DB only) | Need to read/write `~/.octop` without a running server | No | `init`, `backup`, `plugin`, `agent list`, `chats list/get/create/update/delete`, `cron list`, `user *`, `admin overview/audit`, `models presets/list/active`, `bridge list/get` |
-| **Attach** (HTTP / WS) | Need a live `octop run` process (IM, streams, model pulls) | Yes (`octop user login`) | `chats send/repl`, `channel test/probe`, `models ollama-*`, `skills enable/disable`, `provider test` |
+| **Attach** (HTTP / WS) | Need a live `octop run` process (IM, streams, model pulls) | No — no login command; act as `--user` / `OCTOP_USER`, or pin it with `octop config set-user` | `chats send/repl`, `channel test/probe`, `models ollama-*`, `skills enable/disable`, `provider test` |
 | **Embedded** (in-process) | CLI boots `OctopServer` for a single command | No | `octop acp`, `octop chats repl`, `octop chats send` (defaults to embedded), `octop agent create/from-expert/start/stop/reload` |
 | **Embedded (bridge)** | In-process `BridgeManager` (no full server); CLI cannot keep the WS after exit | No | `bridge probe/create/patch/delete/connect/disconnect/agents` |
 
@@ -96,17 +96,24 @@ Start the FastAPI app in the foreground (delegates to
 ```
 Usage: octop run [OPTIONS]
 
-  Start the Octop server (foreground; uvicorn).
+  Run octop-server in the foreground.
+
+  Host and port are resolved with the following precedence: explicit CLI flags >
+  ``OCTOP_BIND_HOST``/``OCTOP_PORT`` env > ``~/.octop/config.json`` > launch
+  defaults. When ``--host`` or ``--port`` is passed on the CLI, that override is
+  persisted to ``config.json`` immediately before uvicorn starts.
 
 Options:
-  --host TEXT                 Override OCTOP_BIND_HOST.
-  --port INTEGER RANGE        Override OCTOP_PORT (0-65535, 0 = OS-assigned).
-  --reload / --no-reload      Enable uvicorn auto-reload (dev only).
-  --ssl / --no-ssl            Enable HTTPS with a self-signed cert (or a real one).
-  --certfile PATH             TLS certificate (PEM).
-  --keyfile PATH              TLS private key (PEM).
-  --log-level [debug|info|warning|error]
-  -h, --help                  Show this message and exit.
+  --host TEXT                     Override bind host
+  --port INTEGER RANGE            Override port  [0<=x<=65535]
+  --reload                        Enable uvicorn auto-reload (dev).
+  --workers INTEGER               Worker process count (default 1).
+  --log-level [critical|error|warning|info|debug|trace]
+  --ssl                           Enable HTTPS (auto-generates self-signed if no
+                                  cert/key given).
+  --ssl-certfile TEXT             TLS certificate file.
+  --ssl-keyfile TEXT              TLS private key file.
+  -h, --help                      Show this message and exit.
 ```
 
 ## `octop service`
@@ -142,22 +149,25 @@ still comes back. To undo: delete the drop-in, then
 
 ## `octop user`
 
-Local-DB user management. `login` requires a running server; the
-rest are offline.
+Local-DB user management. Every subcommand here is offline; there is no
+`octop user login` — the CLI trusts local filesystem access to `~/.octop`.
 
 ```
 Usage: octop user [OPTIONS] COMMAND [ARGS]...
 
-  User management commands (local DB; no server login required).
+  User management commands (local DB).
+
+Options:
+  -h, --help  Show this message and exit.
 
 Commands:
-  create    Create a new user.
-  list      List all users.
-  passwd    Reset a user's password (admin).
-  role      Set a user's role.
-  disable   Disable a user.
-  delete    Delete a user.
-  login     Login against a running server; stores JWT for optional remote HTTP attach.
+  create     Create a new user.
+  delete     Delete a user (irreversible).
+  disable    Disable a user.
+  list       List all users.
+  passwd     Reset a user's password.
+  role       Set a user's role.
+  set-email  Set or clear a user's email.
 ```
 
 ## `octop agent`
@@ -207,8 +217,7 @@ Commands:
   repl        Interactive chat REPL (embedded server + CLI gateway channel).
 ```
 
-`octop chat` is a deprecated alias that prints a stderr warning and
-forwards to `chats`.
+There is no `chat` alias — the command is `octop chats`.
 
 ## `octop bridge`
 
@@ -243,8 +252,9 @@ is omitted. `create` always needs the remote password: pass
 ## `octop channel`
 
 Local DB channel CRUD plus platform-specific bot creators. The
-`wecom` / `weixin` / `feishu-setup` subcommands drive the QR-code
-bot-creator flows; `config` is the offline config editor.
+`bind qq` / `bind wecom` / `bind weixin` / `feishu-setup` subcommands
+drive the QR-code bot-creator flows; `config` is the offline config
+editor.
 
 ```
 Usage: octop channel [OPTIONS] COMMAND [ARGS]...
@@ -416,8 +426,8 @@ retention only deletes those files and never touches manual
 
 ## `octop update`
 
-Check for and install a newer Octop release from the configured
-channel (PyPI by default).
+Check for and install a newer Octop release; `--check` stops at the
+version lookup.
 
 ```
 Usage: octop update [OPTIONS]
@@ -425,9 +435,12 @@ Usage: octop update [OPTIONS]
   Check for and install a newer Octop release.
 
 Options:
-  --check / --no-check     Only check; do not install.
-  --channel TEXT           Release channel (pypi, testpypi, custom index).
-  -h, --help               Show this message and exit.
+  --check             Only check, do not install.
+  -y, --yes           Skip confirmation.
+  -v, --verbose       Verbose installer output.
+  --allow-prerelease  Include and allow installing pre-releases (alpha / beta /
+                      rc / dev).
+  -h, --help          Show this message and exit.
 ```
 
 ## `octop plugin`
@@ -481,35 +494,38 @@ the help carefully.
 ```
 Usage: octop clean [OPTIONS]
 
-  Remove CLI state or wipe all of ~/.octop.
+  Remove the CLI state file (default) or wipe everything (--all).
 
 Options:
-  --state / --all       What to remove.
-  --yes                 Skip the confirmation prompt.
-  -h, --help            Show this message and exit.
+  --all       Wipe ALL of ~/.octop.
+  --yes       Skip confirmation.
+  --dry-run   Show targets without deleting.
+  -h, --help  Show this message and exit.
 ```
 
 ## `octop config`
 
-Inspect / edit `~/.octop/cli_state.json` (default base URL, user,
-agent).
+Inspect / edit `~/.octop/cli_state.json` (default user and agent).
 
 ```
 Usage: octop config [OPTIONS] COMMAND [ARGS]...
 
-  CLI state (base URL, defaults).
+  View or update CLI defaults (~/.octop/cli_state.json).
+
+Options:
+  -h, --help  Show this message and exit.
 
 Commands:
-  show       Print the current CLI state.
-  set-user   Pin the default --user.
+  set-user  Pin default --user for subcommands.
+  show      Print pinned default user and agent.
 ```
 
 ## `octop completion` / `octop version`
 
 ```text
-$ octop completion show bash   # dump a shell snippet
-$ octop completion install     # append to ~/.zshrc / ~/.bashrc
-$ octop version                # print the installed octop version
+$ octop completion show --shell bash   # dump a shell snippet
+$ octop completion install             # append to ~/.zshrc / ~/.bashrc
+$ octop version                        # print the installed octop version
 ```
 
 ## CLI state file
@@ -518,14 +534,14 @@ $ octop version                # print the installed octop version
 
 ```json
 {
-  "base_url": "http://127.0.0.1:8088",
-  "token": null,
   "default_user": null,
   "default_agent": null
 }
 ```
 
 The path is exposed as `octop.cli.support.state.default_state_path()`
-and can be overridden via `OCTOP_HOME`. Delete the file to log out
-the CLI without hitting the server. The dashboard and HTTP callers
-do not share this file — they manage their own tokens.
+and can be overridden via `OCTOP_HOME`. The file holds only these two
+pinned defaults — no base URL and no credentials — so deleting it just
+unpins the default user and agent. The CLI has no `octop user login`; it
+trusts local filesystem access to `~/.octop`. The dashboard and HTTP
+callers do not share this file — they manage their own tokens.
