@@ -8,6 +8,7 @@ import httpx
 import pytest
 
 from octop.infra.agents.settings.media_generation import (
+    MEDIA_PROVIDER_PRESETS,
     DEFAULT_PROVIDER_ID,
     MediaGenerationSettingsStore,
     MediaProviderUpdate,
@@ -115,6 +116,12 @@ def test_media_generation_settings_encrypt_keys_and_build_routes(
     assert [item.provider for item in config.providers] == ["volcengine", "dashscope"]
 
 
+def test_minimax_preset_uses_global_v2_video_contract() -> None:
+    preset = MEDIA_PROVIDER_PRESETS["minimax"]
+    assert preset.base_url == "https://api.minimax.io"
+    assert preset.video_models == ("MiniMax-H3",)
+
+
 def test_legacy_ark_settings_are_exposed_as_default_provider(
     store: tuple[MediaGenerationSettingsStore, SettingsRepo, SecretRepo],
 ) -> None:
@@ -169,8 +176,8 @@ def test_disabled_media_generation_does_not_build_harness_config(
         ),
         (
             "minimax",
-            "https://api.minimax.cn",
-            "https://api.minimax.cn/v1/models",
+            "https://api.minimax.io",
+            "https://api.minimax.io/v1/models",
         ),
     ],
 )

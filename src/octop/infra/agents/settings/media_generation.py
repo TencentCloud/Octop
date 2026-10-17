@@ -101,9 +101,9 @@ MEDIA_PROVIDER_PRESETS: dict[MediaProviderName, MediaProviderPreset] = {
     "minimax": MediaProviderPreset(
         provider="minimax",
         display_name="MiniMax",
-        base_url="https://api.minimax.cn",
+        base_url="https://api.minimax.io",
         image_models=("image-01", "image-01-live"),
-        video_models=("MiniMax-H3", "MiniMax-H3-Max"),
+        video_models=("MiniMax-H3",),
     ),
 }
 
