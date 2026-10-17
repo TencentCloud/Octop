@@ -259,7 +259,9 @@ def _sheet_text(title: str, rows: Iterable[Iterable[object]]) -> str:
 
 
 def _parse_delimited(path: Path, *, delimiter: str) -> str:
-    reader = csv.reader(_read_text(path).splitlines(), delimiter=delimiter)
+    # ``splitlines()`` would cut RFC 4180 quoted multi-line cells and drop their
+    # line breaks, gluing "line one\nline two" into "line oneline two".
+    reader = csv.reader(io.StringIO(_read_text(path), newline=""), delimiter=delimiter)
     return _sheet_text(path.stem, reader)
 
 

@@ -201,6 +201,18 @@ def test_parse_csv_xlsx_and_xls(tmp_path: Path) -> None:
     assert parse_document(xls) == "# Q1\nitem\tqty\napple\t2"
 
 
+def test_parse_delimited_keeps_quoted_multiline_cells(tmp_path: Path) -> None:
+    csv_path = tmp_path / "notes.csv"
+    csv_path.write_bytes(b'item,note\r\napple,"line one\nline two"\r\n')
+
+    tsv_path = tmp_path / "notes.tsv"
+    tsv_path.write_text('item\tnote\napple\t"line one\nline two"\n', encoding="utf-8")
+
+    expected = "# notes\nitem\tnote\napple\tline one line two"
+    assert parse_document(csv_path) == expected
+    assert parse_document(tsv_path) == expected
+
+
 def test_parse_html_json_and_plain_variants(tmp_path: Path) -> None:
     html = tmp_path / "page.html"
     html.write_text(
