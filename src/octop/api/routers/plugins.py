@@ -13,6 +13,7 @@ from fastapi.responses import FileResponse, Response
 from pydantic import BaseModel, Field
 
 from octop.api.common.agent import assert_agent_owner as _assert_agent_owner
+from octop.api.content_types import ui_content_type
 from octop.api.deps import current_user, get_server, require_permission
 from octop.infra.agents.plugins.manager import PluginManager
 from octop.infra.agents.plugins.plugin_tool_defaults import (
@@ -24,21 +25,6 @@ from octop.infra.errors import ErrorCode, OctopError
 from octop.infra.server import OctopServer
 
 router = APIRouter(prefix="/plugins", tags=["plugins"])
-
-_UI_CONTENT_TYPES = {
-    ".js": "text/javascript; charset=utf-8",
-    ".mjs": "text/javascript; charset=utf-8",
-    ".css": "text/css; charset=utf-8",
-    ".json": "application/json; charset=utf-8",
-    ".map": "application/json; charset=utf-8",
-    ".svg": "image/svg+xml",
-    ".png": "image/png",
-    ".jpg": "image/jpeg",
-    ".jpeg": "image/jpeg",
-    ".webp": "image/webp",
-    ".woff": "font/woff",
-    ".woff2": "font/woff2",
-}
 
 
 class PluginInstallBody(BaseModel):
@@ -264,8 +250,7 @@ async def get_market_plugin_ui_asset(
 ) -> Response:
     """Static files from the in-tree catalog (icons before install)."""
     target = _plugin_manager(server).resolve_market_ui_file(plugin_id, file_path)
-    suffix = target.suffix.lower()
-    media_type = _UI_CONTENT_TYPES.get(suffix) or mimetypes.guess_type(target.name)[0]
+    media_type = ui_content_type(target.name) or mimetypes.guess_type(target.name)[0]
     return FileResponse(
         path=target,
         media_type=media_type or "application/octet-stream",
@@ -327,8 +312,7 @@ async def get_plugin_ui_asset(
     Authenticated users only. Paths are traversal-checked in ``PluginManager``.
     """
     target = _plugin_manager(server).resolve_ui_file(plugin_id, file_path)
-    suffix = target.suffix.lower()
-    media_type = _UI_CONTENT_TYPES.get(suffix) or mimetypes.guess_type(target.name)[0]
+    media_type = ui_content_type(target.name) or mimetypes.guess_type(target.name)[0]
     return FileResponse(
         path=target,
         media_type=media_type or "application/octet-stream",
