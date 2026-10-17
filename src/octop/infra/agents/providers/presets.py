@@ -124,6 +124,14 @@ def _reasoning_profile(provider_id: str, model_id: str) -> dict[str, Any] | None
             "default_mode": "auto",
         }
 
+    if provider == "iflytek-astron-token-plan" and model in {"spark-x2.5", "xsparkx2flash"}:
+        return {
+            "supported": True,
+            "adapter": "thinking",
+            "toggle": True,
+            "default_mode": "auto",
+        }
+
     if provider.startswith(("dashscope", "aliyun-")):
         if model.startswith("minimax-") or "-thinking-" in model:
             return {
