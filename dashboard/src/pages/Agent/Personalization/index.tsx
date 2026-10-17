@@ -15,7 +15,10 @@ import { useAgent } from "../../../context/AgentContext";
 import { useIsMobile } from "../../../hooks/useIsMobile";
 import { usePathTabs } from "../../../hooks/usePathTabs";
 import { useCurrentUser } from "../../../hooks/useCurrentUser";
-import { userCan } from "../../../utils/permissions";
+import {
+  PERSONALIZATION_TAB_PERMISSIONS,
+  userCan,
+} from "../../../utils/permissions";
 import { isTeamAgent } from "../../../utils/teamAgent";
 import SkillsTabs from "../Skills/components/SkillsTabs";
 import ToolsTabs from "../Tools/ToolsTabs";
@@ -62,18 +65,18 @@ export default function PersonalizationPage() {
   const { activeAgentId, agents } = useAgent();
   const activeAgent = agents.find((a) => a.agent_id === activeAgentId);
   const isAllowed = useCallback(
-    (tab: PersonalizationTab) => {
-      if (tab === "channels") return userCan(user, "channels");
-      return true;
-    },
+    (tab: PersonalizationTab) =>
+      userCan(user, PERSONALIZATION_TAB_PERMISSIONS[tab]),
     [user],
   );
+  const defaultTab =
+    PERSONALIZATION_TABS.find((tab) => isAllowed(tab)) ?? "skills";
 
   const { activeTab, handleTabChange, isMounted } = usePathTabs({
     basePath: "/personalization",
     tabs: PERSONALIZATION_TABS,
     storageKey: "octop:personalization:tab",
-    defaultTab: "skills",
+    defaultTab,
     isAllowed,
   });
 
