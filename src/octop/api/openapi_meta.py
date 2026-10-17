@@ -94,6 +94,10 @@ OPENAPI_TAGS: list[dict[str, str]] = [
         "description": "Internal MCP gateway used by harness agents (no dashboard auth).",
     },
     {
+        "name": "agent-mcp",
+        "description": "Authenticated MCP gateway for external agents to call wkbuddy experts.",
+    },
+    {
         "name": "channels",
         "description": "Instant-messaging bridges (WeCom, Feishu, Telegram, …) per agent.",
     },

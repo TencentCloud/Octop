@@ -89,6 +89,19 @@ def test_build_harness_request_with_messages_override():
     assert req["thread_id"] == "t1"
 
 
+def test_build_harness_request_marks_auto_route() -> None:
+    req = build_harness_request(
+        thread_id="t1",
+        user_id=1,
+        source="web",
+        text="hello",
+        model="p/a",
+        auto_route=True,
+    )
+
+    assert req["configurable"]["octop_auto_route"] is True
+
+
 @pytest.mark.asyncio
 async def test_block_to_content_part_base64_image():
     from tests.support.fakes import FakeHarnessAgent

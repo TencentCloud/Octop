@@ -482,6 +482,7 @@
     "PLUGIN_INSTALL_FAILED": "下载或安装插件失败：{reason}",
     "PLUGIN_ALREADY_EXISTS": "插件 {id} 已安装。",
     "KNOWLEDGE_FEATURE_DISABLED": "管理员尚未启用知识库功能。",
+    "KNOWLEDGE_PREREQUISITES_RESTART_REQUIRED": "知识库的向量模型或依赖已安装，但当前进程还加载不到，需要重启服务后生效。",
     "KNOWLEDGE_PREREQUISITES_FAILED": "知识库的向量模型或依赖尚未就绪。",
     "KNOWLEDGE_NOT_FOUND": "未找到知识库或文档。",
     "KNOWLEDGE_FORBIDDEN": "您没有此知识库的访问权限。",
@@ -516,6 +517,7 @@
     "TEAM_NOT_SHAREABLE": "当前版本不支持分享团队。",
     "LOCAL_DOWNLOAD_UNAVAILABLE": "仅在本机打开政务伙伴时才能保存到系统「下载」文件夹。",
     "SKILL_PACKAGE_COPY_DENIED": "该技能包的创建者已禁止复制其中的技能。",
+    "SKILL_PACKAGE_DOWNLOAD_DENIED": "该技能包已禁止打包下载。",
     "SKILL_PACKAGE_LOCKED": "此技能复制自锁定策略的技能包，无法在工作区编辑。"
   },
   "desktop": {
@@ -603,6 +605,7 @@
     "desktop_screenshot": "桌面截图",
     "memory_search": "检索记忆",
     "memory_get": "读取记忆",
+    "memory_save": "保存记忆",
     "tavily_search": "Tavily 联网搜索",
     "brave_search": "Brave 联网搜索",
     "google_search": "Google 联网搜索",
@@ -950,5 +953,28 @@
     "restore_changed": "当前专家的运行实例或存储已发生变化，请重新检查后重试。",
     "restore_reload_failed": "数据恢复流程已结束，但专家重新启动失败。恢复前备份已保留，请先重新启动专家并检查结果。",
     "restore_sqlite_only": "仅支持恢复当前专家独占的 SQLite 记忆数据库。"
+  },
+  "laya": {
+    "install_start": "正在把 Laya 安装到独立环境…",
+    "install_python": "Python：{python}",
+    "install_venv": "环境目录：{path}",
+    "install_torch": "正在安装 CPU 版 PyTorch…",
+    "install_package": "正在安装 laya[serve] {version}…",
+    "install_server": "正在启动 laya-serve，只监听 127.0.0.1:{port}。第一次启动会下载多语言模型。",
+    "install_wait": "仍在等待服务就绪（已等待 {seconds} 秒）。首次下载模型可能需要几分钟。",
+    "install_ready": "Laya 已就绪：{endpoint}。它会按文本语言选择检查点，默认不需要密钥。",
+    "already_running": "127.0.0.1:{port} 上已经有 Laya 在响应。",
+    "stopped": "Laya 已停止。",
+    "started": "正在启动 Laya…",
+    "error_python": "需要 Python 3.10 到 3.13。CPU 版 PyTorch 还没有 Python 3.14 的安装包，请先安装 Python 3.12 后再试。",
+    "error_disk": "可用磁盘只剩 {free_gb} GB。安装前请至少留出 {need_gb} GB。",
+    "error_port": "{port} 端口已被其他程序占用，且不是 Laya。",
+    "error_command": "命令失败（退出码 {exit_code}）：{command}",
+    "error_spawn": "无法启动 {command}：{error}",
+    "error_missing_bin": "安装结束了，但没有找到 laya-serve。",
+    "error_health": "Laya 没有在限定时间内就绪。请复制日志交给政务伙伴继续排查。",
+    "error_exited": "laya-serve 在就绪前退出了。",
+    "error_not_installed": "尚未安装 Laya。",
+    "error_stalled": "安装长时间没有结果，已停止。"
   }
 }

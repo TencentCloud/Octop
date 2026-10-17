@@ -28,6 +28,10 @@ services:
     image: wkbuddy:latest
     container_name: wkbuddy
     restart: unless-stopped
+    ulimits:
+      nofile:
+        soft: 65535
+        hard: 65535
     ports:
       - "${OCTOP_PORT:-8088}:${OCTOP_PORT:-8088}"
     volumes:

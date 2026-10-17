@@ -29,7 +29,7 @@ _WEB_SEARCH_TOOLS: frozenset[str] = frozenset(
     }
 )
 _MEDIA_TOOLS: frozenset[str] = frozenset({"generate_image", "generate_video"})
-_MEMORY_TOOLS: frozenset[str] = frozenset({"memory_search", "memory_get"})
+_MEMORY_TOOLS: frozenset[str] = frozenset({"memory_search", "memory_get", "memory_save"})
 _MOBILE_TOOLS: frozenset[str] = frozenset(
     {
         "mobile_screenshot",
@@ -78,6 +78,7 @@ BUILTIN_TOOL_CATALOG: tuple[BuiltinToolEntry, ...] = (
     BuiltinToolEntry("generate_video", "media"),
     BuiltinToolEntry("memory_search", "memory"),
     BuiltinToolEntry("memory_get", "memory"),
+    BuiltinToolEntry("memory_save", "memory"),
     BuiltinToolEntry("acp_runner", "misc"),
     # wkbuddy host tools
     BuiltinToolEntry("cronjob_list", "cron"),

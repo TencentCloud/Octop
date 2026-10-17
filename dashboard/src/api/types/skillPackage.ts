@@ -7,6 +7,8 @@ export interface SkillPackage {
   creator_display_name?: string | null;
   can_write?: boolean;
   can_copy?: boolean;
+  can_download?: boolean;
+  allow_download?: boolean;
   copy_policy?: "snapshot" | "lock" | "deny";
   skill_count: number;
   icon_name?: string;
@@ -56,6 +58,7 @@ export interface UpdateSkillPackageBody {
   icon_name?: string;
   icon_url?: string;
   copy_policy?: "snapshot" | "lock" | "deny";
+  allow_download?: boolean;
 }
 
 export interface CreateSkillPackageSkillBody {

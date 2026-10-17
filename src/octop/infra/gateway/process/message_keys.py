@@ -94,6 +94,7 @@ def resolve_user_id_for_message(
     if msg.channel_type in (
         ThreadRegistry.CHANNEL_DASHBOARD,
         ThreadRegistry.CHANNEL_CLI,
+        ThreadRegistry.CHANNEL_MCP,
     ):
         sid = subject_id_from_message(msg)
         try:
