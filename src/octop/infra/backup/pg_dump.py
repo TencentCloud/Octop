@@ -31,10 +31,15 @@ def dump_postgres(
     cmd = [pg_dump, "-Fc", "-f", str(dest), "--dbname", conninfo]
     for table in exclude_table_data:
         cmd.extend(["--exclude-table-data", table])
+    # pg tools write diagnostics in the database encoding (UTF-8); the parent
+    # must not inherit the ANSI locale, whose strict decode can crash on the
+    # very message that reports a failure.
     proc = subprocess.run(
         cmd,
         capture_output=True,
         text=True,
+        encoding="utf-8",
+        errors="replace",
         check=False,
     )
     if proc.returncode != 0:
@@ -58,6 +63,8 @@ def restore_postgres(conninfo: str, dump_file: Path) -> None:
         ],
         capture_output=True,
         text=True,
+        encoding="utf-8",
+        errors="replace",
         check=False,
     )
     # pg_restore may return 1 with warnings; treat only >=2 as hard fail.
