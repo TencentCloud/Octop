@@ -1,4 +1,4 @@
-/** Helpers to map Octop cron rows for dashboard display. */
+/** Helpers to map wkbuddy cron rows for dashboard display. */
 
 import { formatServerDateTime } from "../../../utils/formatMessageTime";
 

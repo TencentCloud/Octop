@@ -81,7 +81,7 @@ def _annotate_bridge_dial_error(exc: BaseException) -> str:
     detail = str(exc)
     status = _handshake_http_status(exc)
     if status == 404:
-        return f"{detail}; peer may not support Bridge yet (needs Octop with /api/bridge/ws)"
+        return f"{detail}; peer may not support Bridge yet (needs wkbuddy with /api/bridge/ws)"
     if status == 403:
         return (
             f"{detail}; the peer refused the WebSocket handshake. "
@@ -330,7 +330,7 @@ class BridgeManager:
         if is_self_peer_url(peer_base_url, self._advertise_base_url):
             raise OctopError(
                 ErrorCode.BRIDGE_SELF_CONNECT,
-                "cannot link this Octop instance to itself",
+                "cannot link this wkbuddy instance to itself",
             )
         other = self._find_peer_link(
             owner_user_id,
@@ -1234,7 +1234,7 @@ class BridgeManager:
         if not is_tunnel_path_allowed(method, path):
             raise OctopError(
                 ErrorCode.BRIDGE_REMOTE_UNSUPPORTED,
-                "This action is not available through the remote bridge. Manage it on the peer Octop.",
+                "This action is not available through the remote bridge. Manage it on the peer wkbuddy.",
             )
         sess = await self._require_live_session(connection_id)
         if body:
@@ -1266,7 +1266,7 @@ class BridgeManager:
             if code_raw == ErrorCode.BRIDGE_REMOTE_UNSUPPORTED.value:
                 raise OctopError(
                     ErrorCode.BRIDGE_REMOTE_UNSUPPORTED,
-                    "This action is not available through the remote bridge. Manage it on the peer Octop.",
+                    "This action is not available through the remote bridge. Manage it on the peer wkbuddy.",
                 )
             raise OctopError(
                 ErrorCode.BRIDGE_TUNNEL_FAILED,

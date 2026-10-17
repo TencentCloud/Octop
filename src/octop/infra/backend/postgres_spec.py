@@ -1,4 +1,4 @@
-"""Map Octop postgres storage rows / inline specs onto PostgresConfig fields.
+"""Map wkbuddy postgres storage rows / inline specs onto PostgresConfig fields.
 
 ``deepagents_backends.PostgresConfig`` is a dataclass of split fields. Passing a
 libpq URI as ``connection_string`` raises ``TypeError``. Discrete credentials

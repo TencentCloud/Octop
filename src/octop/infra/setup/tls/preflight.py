@@ -19,12 +19,8 @@ from octop.infra.utils.locale import normalize_locale
 
 logger = logging.getLogger(__name__)
 
-# Cloud metadata first (no public Internet). Then CN-reachable and global HTTPS
-# echo services — api.ipify.org alone is often unreachable from mainland China.
-_METADATA_PUBLIC_IP_URLS: tuple[str, ...] = (
-    "http://metadata.tencentyun.com/latest/meta-data/public-ipv4",
-    "http://100.100.100.200/latest/meta-data/eipv4",  # Aliyun
-)
+# Public HTTPS echo services — api.ipify.org alone is often unreachable from
+# mainland China, so the CN-reachable ones are listed first.
 _PUBLIC_IP_HTTPS_URLS: tuple[str, ...] = (
     "https://4.ipw.cn/",
     "https://api.ip.sb/ip",
@@ -116,10 +112,7 @@ def _fetch_public_ip_from_urls(urls: tuple[str, ...], *, timeout: float) -> str 
 
 
 def _fetch_public_ip(timeout: float = 4.0) -> str | None:
-    """Best-effort public IPv4 via cloud metadata, then HTTPS echo services."""
-    ip = _fetch_public_ip_from_urls(_METADATA_PUBLIC_IP_URLS, timeout=min(timeout, 1.5))
-    if ip:
-        return ip
+    """Best-effort public IPv4 via HTTPS echo services."""
     return _fetch_public_ip_from_urls(_PUBLIC_IP_HTTPS_URLS, timeout=timeout)
 
 

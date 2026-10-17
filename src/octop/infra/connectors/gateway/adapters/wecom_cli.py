@@ -40,7 +40,7 @@ TOOLS: list[dict[str, Any]] = [
     {
         "name": "doc",
         "description": (
-            "WeCom docs / smartsheet via Octop Connectors. "
+            "WeCom docs / smartsheet via wkbuddy Connectors. "
             "Pass method + optional args JSON. "
             f"{_DOC_METHODS_HINT} "
             "On setup/auth errors, tell the user to fix Bot credentials "
@@ -61,7 +61,7 @@ TOOLS: list[dict[str, Any]] = [
     {
         "name": "schedule",
         "description": (
-            "WeCom schedule via Octop Connectors. "
+            "WeCom schedule via wkbuddy Connectors. "
             "Pass method + optional args. "
             "Enterprise may not authorize schedule for bots — surface that "
             "permission error to the user. Never run CLI in shell."
@@ -78,7 +78,7 @@ TOOLS: list[dict[str, Any]] = [
     {
         "name": "msg",
         "description": (
-            "WeCom messaging via Octop Connectors. "
+            "WeCom messaging via wkbuddy Connectors. "
             "Pass method + optional args. "
             "On auth errors, fix Bot credentials in Connectors — never run CLI in shell."
         ),

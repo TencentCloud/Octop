@@ -28,7 +28,7 @@ from octop.infra.setup.self_update import (
     help="Include and allow installing pre-releases (alpha / beta / rc / dev).",
 )
 def update(check: bool, yes: bool, verbose: bool, allow_prerelease: bool) -> None:
-    """Check for and install a newer Octop release."""
+    """Check for and install a newer wkbuddy release."""
     current = get_local_version()
     info = fetch_pypi_info()
     click.echo(f"installed: {current}")

@@ -86,7 +86,7 @@ export default function EpisodesList({ agentId }: Props) {
         💡{" "}
         {t(
           "memory.episodes.disclaimer",
-          "这里记录你与 Octop 相处中的情绪和小故事。它不会用于常规对话引用，只会帮 Octop 更好地关心你，并用于周 / 月小结。",
+          "这里记录你与 wkbuddy 相处中的情绪和小故事。它不会用于常规对话引用，只会帮 wkbuddy 更好地关心你，并用于周 / 月小结。",
         )}
       </div>
       {loading && items.length === 0 ? (

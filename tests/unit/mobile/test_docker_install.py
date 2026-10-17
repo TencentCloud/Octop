@@ -9,11 +9,7 @@ from unittest.mock import patch
 import pytest
 
 from octop.infra.mobile import docker_install
-from octop.infra.mobile.docker_install import (
-    _merge_registry_mirror,
-    _probe_tencent_mirror,
-    select_download_source,
-)
+from octop.infra.mobile.docker_install import select_download_source
 
 
 def _with_measure(delays: dict[str, float | None]):
@@ -36,7 +32,6 @@ def _with_measure(delays: dict[str, float | None]):
     {
         "https://download.docker.com": 0.1,
         "https://mirrors.aliyun.com/docker-ce": 0.4,
-        "https://mirrors.tencent.com/docker-ce": 0.5,
         "https://mirrors.163.com/docker-ce": 0.6,
         "https://mirrors.cernet.edu.cn/docker-ce": 0.7,
     }
@@ -52,7 +47,6 @@ async def test_select_download_source_official_wins_no_override() -> None:
     {
         "https://download.docker.com": 0.9,
         "https://mirrors.aliyun.com/docker-ce": 0.2,
-        "https://mirrors.tencent.com/docker-ce": 0.5,
         "https://mirrors.163.com/docker-ce": 0.6,
         "https://mirrors.cernet.edu.cn/docker-ce": 0.7,
     }
@@ -68,7 +62,6 @@ async def test_select_download_source_mirror_wins() -> None:
     {
         "https://download.docker.com": None,
         "https://mirrors.aliyun.com/docker-ce": None,
-        "https://mirrors.tencent.com/docker-ce": None,
         "https://mirrors.163.com/docker-ce": None,
         "https://mirrors.cernet.edu.cn/docker-ce": None,
     }
@@ -77,93 +70,6 @@ async def test_select_download_source_all_unreachable_falls_back() -> None:
     source, delay = await select_download_source()
     assert source is None
     assert delay is None
-
-
-def test_merge_registry_mirror_fresh_file(tmp_path: Path) -> None:
-    daemon = tmp_path / "daemon.json"
-    assert _merge_registry_mirror(daemon, "https://mirror.example/") is True
-    data = json.loads(daemon.read_text(encoding="utf-8"))
-    assert data["registry-mirrors"] == ["https://mirror.example/"]
-
-
-def test_merge_registry_mirror_backs_up_existing(tmp_path: Path) -> None:
-    daemon = tmp_path / "daemon.json"
-    daemon.write_text('{"log-level": "warn"}', encoding="utf-8")
-    assert _merge_registry_mirror(daemon, "https://mirror.example/") is True
-    backup = tmp_path / "daemon.json.backup"
-    assert json.loads(backup.read_text(encoding="utf-8")) == {"log-level": "warn"}
-    data = json.loads(daemon.read_text(encoding="utf-8"))
-    assert data["registry-mirrors"] == ["https://mirror.example/"]
-    assert data["log-level"] == "warn"  # other keys preserved
-
-
-def test_merge_registry_mirror_skips_when_configured(tmp_path: Path) -> None:
-    daemon = tmp_path / "daemon.json"
-    daemon.write_text('{"registry-mirrors": ["https://old/"]}', encoding="utf-8")
-    assert _merge_registry_mirror(daemon, "https://mirror.example/") is False
-    assert json.loads(daemon.read_text(encoding="utf-8")) == {"registry-mirrors": ["https://old/"]}
-
-
-def test_merge_registry_mirror_skips_corrupt_file(tmp_path: Path) -> None:
-    daemon = tmp_path / "daemon.json"
-    daemon.write_text("{not json", encoding="utf-8")
-    assert _merge_registry_mirror(daemon, "https://mirror.example/") is False
-    assert daemon.read_text(encoding="utf-8") == "{not json"  # left untouched
-
-
-def test_privileged_cmd_prefixes_sudo_when_not_root(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(docker_install, "geteuid", lambda: 1000)
-    assert docker_install._privileged_cmd("systemctl", "restart", "docker") == [
-        "sudo",
-        "-n",
-        "systemctl",
-        "restart",
-        "docker",
-    ]
-    monkeypatch.setattr(docker_install, "geteuid", lambda: 0)
-    assert docker_install._privileged_cmd("systemctl", "restart", "docker") == [
-        "systemctl",
-        "restart",
-        "docker",
-    ]
-
-
-def test_write_text_privileged_falls_back_to_sudo_tee(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    target = tmp_path / "daemon.json"
-    monkeypatch.setattr(docker_install, "geteuid", lambda: 1000)
-
-    orig_write = Path.write_text
-
-    def boom(_self: Path, *_args: object, **_kwargs: object) -> None:
-        raise PermissionError("denied")
-
-    calls: list[list[str]] = []
-
-    def fake_run(argv: list[str], **kwargs: object) -> object:
-        calls.append(list(argv))
-        raw = kwargs.get("input")
-        assert isinstance(raw, bytes)
-        orig_write(target, raw.decode("utf-8"), encoding="utf-8")
-
-        class _Proc:
-            returncode = 0
-
-        return _Proc()
-
-    monkeypatch.setattr(Path, "write_text", boom)
-    monkeypatch.setattr(docker_install.subprocess, "run", fake_run)
-    assert docker_install._write_text_privileged(target, '{"ok": true}\n') is True
-    assert calls[0] == ["sudo", "-n", "tee", str(target)]
-    assert json.loads(target.read_text(encoding="utf-8")) == {"ok": True}
-
-
-@pytest.mark.asyncio
-async def test_probe_tencent_mirror_unreachable() -> None:
-    # 127.0.0.1:1 → connection refused → probe returns False quickly.
-    with patch.object(docker_install, "_TENCENT_MIRROR_HOST", "127.0.0.1"):
-        assert await _probe_tencent_mirror() is False
 
 
 @pytest.mark.asyncio
@@ -309,7 +215,7 @@ async def test_auto_install_missing_script_reports_error() -> None:
 
     with patch.object(docker_install, "bundled_install_script", return_value=Path("/nonexistent")):
         lines = await collect()
-    assert any("missing from the Octop package" in line for line in lines)
+    assert any("missing from the wkbuddy package" in line for line in lines)
 
 
 @pytest.mark.asyncio

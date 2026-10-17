@@ -420,7 +420,7 @@ def config_channels(agent_id: str | None, as_user: str | None) -> None:
     from octop.cli.support.offline_ops import create_channel_offline, patch_channel_offline
     from octop.infra.errors import OctopError
 
-    kinds = ["feishu", "wecom", "weixin", "qq", "dingtalk", "telegram", "yuanbao"]
+    kinds = ["feishu", "wecom", "weixin", "qq", "dingtalk", "telegram"]
     kind = _prompts.select("Channel kind:", choices=kinds)
     name = _prompts.text("Channel name:", default=kind)
     try:

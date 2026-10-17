@@ -22,7 +22,7 @@ async def test_api_docs_endpoint(tmp_octop_home: Path) -> None:
             assert "/api/openapi.json" in r.text
             spec = c.get("/api/openapi.json")
             assert spec.status_code == 200
-            assert spec.json()["info"]["title"] == "Octop API"
+            assert spec.json()["info"]["title"] == "wkbuddy API"
 
 
 async def test_api_docs_disabled_by_default(tmp_octop_home: Path) -> None:

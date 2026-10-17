@@ -64,7 +64,7 @@ _EXTRACT_DEFAULTS: dict[str, Any] = {
     # Model ref ("provider/model") used for extraction / promotion; None → AUTO
     # (follow the agent's effective chat model).
     "aux_model": None,
-    # Aux-call options (TencentCloud/Octop#1360): how long a memory call may
+    # Aux-call options (upstream issue #1360): how long a memory call may
     # wait and how much it may generate. None → harness defaults. These are
     # independent of the idle/interval trigger above, which only decides when
     # extraction fires.

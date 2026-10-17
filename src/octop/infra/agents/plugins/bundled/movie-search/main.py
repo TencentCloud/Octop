@@ -9,7 +9,7 @@ from urllib.parse import quote
 import httpx
 from octop_harness.plugins import PluginContext
 
-_UA = "Octop-movie-search/0.1.0 (https://github.com/octop)"
+_UA = "wkbuddy-movie-search/0.1.0"
 
 
 def _payload(data: dict[str, Any], text: str) -> str:

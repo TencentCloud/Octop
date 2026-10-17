@@ -1,6 +1,6 @@
 # Expert template library (read-only bundled content)
 
-This directory holds **static expert templates** shipped with Octop: manifests,
+This directory holds **static expert templates** shipped with wkbuddy: manifests,
 markdown persona files, and optional skill scripts. It is **not** runtime Python
 code — treat it as data.
 

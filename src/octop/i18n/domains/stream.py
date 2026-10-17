@@ -8,7 +8,7 @@ from octop.i18n.loader import lookup, tr
 from octop.infra.utils.locale import Locale
 
 # Keep in sync with octop_harness.messages.MODEL_RETRY_FAILURE_MARK.
-# Defined locally so Octop still imports on older harness wheels.
+# Defined locally so wkbuddy still imports on older harness wheels.
 MODEL_RETRY_FAILURE_MARK = "[model_call_failed]"
 
 _PREFIX = "octop:"

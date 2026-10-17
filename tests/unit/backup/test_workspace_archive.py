@@ -241,7 +241,7 @@ async def test_export_mountless_includes_hidden_via_aglob(tmp_path: Path) -> Non
 
 @pytest.mark.asyncio
 async def test_import_skips_octop_builtin_skills(tmp_path: Path) -> None:
-    """An archive must not plant entries under the Octop-owned ``_builtin_skills`` root.
+    """An archive must not plant entries under the wkbuddy-owned ``_builtin_skills`` root.
 
     ``DELETE`` / ``move`` refuse that prefix, so a planted skill directory would be
     something the user cannot remove through the API, while ``sync_octop_builtin_skills``

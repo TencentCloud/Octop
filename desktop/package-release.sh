@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Build one native Octop desktop release: Dashboard → portable runtime → Wails package.
+# Build one native wkbuddy desktop release: Dashboard → portable runtime → Wails package.
 # Run once per native platform; the GitHub Actions matrix runs all six variants.
 set -euo pipefail
 
@@ -22,7 +22,7 @@ Platforms:
   windows-arm64 windows-amd64
 
 The platform defaults to the current native host. --reuse-portable skips
-rebuilding desktop/portable/release/Octop-portable-<platform>-<version>.zip when it already exists.
+rebuilding desktop/portable/release/wkbuddy-portable-<platform>-<version>.zip when it already exists.
 EOF
 }
 
@@ -80,7 +80,7 @@ else
   bash "${REPO_ROOT}/desktop/portable/package.sh" "$plat"
 fi
 
-staging="${REPO_ROOT}/desktop/portable/release/Octop-${plat}"
+staging="${REPO_ROOT}/desktop/portable/release/wkbuddy-${plat}"
 requirements="${REPO_ROOT}/desktop/portable/requirements-${plat}.txt"
 if [[ "$plat" == windows-* ]]; then
   portable_python="${staging}/runtime/python.exe"

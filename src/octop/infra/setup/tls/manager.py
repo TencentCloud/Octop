@@ -57,7 +57,7 @@ class TlsTask:
 
 
 class TlsManager:
-    """In-process TLS issuance state (single Octop process)."""
+    """In-process TLS issuance state (single wkbuddy process)."""
 
     def __init__(self) -> None:
         self._task = TlsTask()

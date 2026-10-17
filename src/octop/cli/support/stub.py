@@ -14,8 +14,8 @@ def not_applicable(
     suggestion: str | None = None,
     docs_url: str | None = None,
 ) -> NoReturn:
-    """Print a uniform "not applicable for Octop" error and exit 2."""
-    lines = [f"\u274c Not applicable for Octop: {reason}"]
+    """Print a uniform "not applicable for wkbuddy" error and exit 2."""
+    lines = [f"\u274c Not applicable for wkbuddy: {reason}"]
     if suggestion:
         lines.append(f"   Suggestion: {suggestion}")
     if docs_url:

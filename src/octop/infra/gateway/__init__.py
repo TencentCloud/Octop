@@ -1,1 +1,1 @@
-"""Octop Gateway — global AI interaction entry point."""
+"""wkbuddy Gateway — global AI interaction entry point."""

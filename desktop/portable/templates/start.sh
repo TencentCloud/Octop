@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Octop green portable launcher (macOS / Linux).
+# wkbuddy green portable launcher (macOS / Linux).
 # Usage:
 #   ./start.sh
 #   ./start.sh --home /path/to/data
@@ -33,7 +33,7 @@ while [[ $# -gt 0 ]]; do
       ;;
     -h|--help)
       cat <<EOF
-Octop green portable launcher
+wkbuddy green portable launcher
 
 Usage: ./start.sh [--home DIR] [--host HOST] [--port PORT] [octop run args...]
 

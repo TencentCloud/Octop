@@ -1,4 +1,4 @@
-"""Patch octop-gateway inbound cleaning to honour Octop thinking helpers."""
+"""Patch octop-gateway inbound cleaning to honour wkbuddy thinking helpers."""
 
 from __future__ import annotations
 
@@ -8,9 +8,9 @@ _PATCHED = False
 
 
 def install_channel_thinking_clean() -> None:
-    """Replace ``BaseChannel._clean_output`` with Octop's broader strip/format.
+    """Replace ``BaseChannel._clean_output`` with wkbuddy's broader strip/format.
 
-    Upstream only strips ``<think>`` and skips proactive ``push_text``. Octop
+    Upstream only strips ``<think>`` and skips proactive ``push_text``. wkbuddy
     upgrades inbound reply cleaning here; ``Gateway.push_text`` cleans pushes.
     """
     global _PATCHED

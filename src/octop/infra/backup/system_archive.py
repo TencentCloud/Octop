@@ -430,7 +430,7 @@ def restore_system_backup(
 
     *source* may be a filesystem path (preferred) or in-memory bytes (tests / legacy).
 
-    ``preserve_users`` controls whether the *current* Octop instance's login
+    ``preserve_users`` controls whether the *current* wkbuddy instance's login
     credentials (``users`` rows + ``secrets.jwt``) are written back after the
     database is replaced:
 

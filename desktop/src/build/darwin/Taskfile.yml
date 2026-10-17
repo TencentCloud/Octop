@@ -147,7 +147,7 @@ tasks:
     vars:
       ARCH: "{{.ARCH | default ARCH}}"
       VERSION: '{{.VERSION | default "dev"}}'
-      PORTABLE_ZIP: '{{.PORTABLE_ZIP | default (printf "../portable/release/Octop-portable-darwin-%s-%s.zip" .ARCH .VERSION)}}'
+      PORTABLE_ZIP: '{{.PORTABLE_ZIP | default (printf "../portable/release/wkbuddy-portable-darwin-%s-%s.zip" .ARCH .VERSION)}}'
       ARCHIVE: '{{.BIN_DIR}}/{{.APP_NAME}}-desktop-darwin-{{.ARCH}}-{{.VERSION}}.dmg'
 
   create:app:bundle:
@@ -157,7 +157,7 @@ tasks:
       - mkdir -p {{.BIN_DIR}}/{{.APP_NAME}}.app/Contents/{MacOS,Resources}
       - cp build/darwin/icons.icns {{.BIN_DIR}}/{{.APP_NAME}}.app/Contents/Resources
       # Stable name inside the signed .app; GitHub Release uses the versioned portable zip.
-      - cp {{.PORTABLE_ZIP}} {{.BIN_DIR}}/{{.APP_NAME}}.app/Contents/Resources/Octop-darwin-{{.ARCH}}.zip
+      - cp {{.PORTABLE_ZIP}} {{.BIN_DIR}}/{{.APP_NAME}}.app/Contents/Resources/wkbuddy-darwin-{{.ARCH}}.zip
       - cp {{.BIN_DIR}}/{{.APP_NAME}} {{.BIN_DIR}}/{{.APP_NAME}}.app/Contents/MacOS
       - cp build/darwin/Info.plist {{.BIN_DIR}}/{{.APP_NAME}}.app/Contents
       - python3 build/stamp_version.py plist {{.BIN_DIR}}/{{.APP_NAME}}.app/Contents/Info.plist "{{.VERSION}}"

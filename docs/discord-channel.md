@@ -4,10 +4,10 @@
 
 ## 1. 安装依赖并启动
 
-Discord 适配器已随 `octop-gateway 0.9.9` 发布。Octop 要求 `octop-gateway>=0.9.9`，可直接使用发布包，无需克隆相邻网关仓库：
+Discord 适配器已随 `octop-gateway 0.9.9` 发布。政务伙伴要求 `octop-gateway>=0.9.9`，可直接使用发布包，无需克隆相邻网关仓库：
 
 ```sh
-cd Octop
+cd wkbuddy
 uv sync --locked --extra dev
 uv run octop run
 ```
@@ -18,7 +18,7 @@ uv run octop run
 
 ## 2. 填写位置
 
-打开本地 Octop 网页，进入 **Agent → 通道 → 更多通道 → Discord**。
+打开本地政务伙伴网页，进入 **Agent → 通道 → 更多通道 → Discord**。
 
 1. **Bot Token**：填写 Discord Developer Portal 的 Bot 页面生成的 Token，不需要 Public Key 或 Client Secret。
 2. **允许所有可访问频道**：默认开启，无需填写频道 ID；机器人在所有有 Discord 访问权限的服务器文字频道和已有线程中可响应。关闭后，填写 **允许的频道 ID**，多个 ID 用逗号或换行分隔；留空则不接收服务器频道消息。已有线程继承父频道权限，也可单独填写线程 ID。旧配置缺少 `allow_all_channels` 时也默认开启；显式保存为 `false` 才限制到列表。
@@ -55,12 +55,12 @@ uv run octop run
 | 检查 | 结果 |
 |---|---|
 | octop-gateway `make all` | 格式、Lint、mypy 通过；458 项测试通过，13 项集成测试按默认命令排除 |
-| Octop `make all` | 格式、Lint、mypy 通过；3587 项测试通过，17 项条件跳过 |
+| 政务伙伴 `make all` | 格式、Lint、mypy 通过；3587 项测试通过，17 项条件跳过 |
 | Discord 最终相关后端复核 | 18 项通过，覆盖路由、实时状态、通道 CRUD 与配置探测 |
 | 前端通道测试 | 12 项通过，包含 Discord 入口、Token 和长数字 ID 的完整保存流程 |
 | `make build-frontend` / 启动脚本 | TypeScript 与 Vite 构建通过；`run-discord-local.sh --help` 通过；内置网页产物已生成 |
 
-命令使用 `RUN='uv run --no-sync'` 保留未发布的本地网关；通道库复用 Octop 的开发环境（`UV_PROJECT_ENVIRONMENT=../Octop/.venv`）。Octop 完整测试需允许绑定本机随机端口，最初沙箱导致的 15 项端口权限失败已在允许本机端口后完整重跑通过。
+命令使用 `RUN='uv run --no-sync'` 保留未发布的本地网关；通道库复用政务伙伴的开发环境（`UV_PROJECT_ENVIRONMENT=../政务伙伴/.venv`）。政务伙伴完整测试需允许绑定本机随机端口，最初沙箱导致的 15 项端口权限失败已在允许本机端口后完整重跑通过。
 
 没有使用真实 Bot Token，也没有发布包、提交或推送代码。人工测试请使用本文第一节的本地启动方式。
 
@@ -69,7 +69,7 @@ uv run octop run
 新增「允许所有可访问频道」开关，前后端默认开启；缺少该字段的旧配置同样按开启处理。关闭并保存后保持指定频道模式；输入框保留原有 ID。私聊允许列表与直接 @触发规则不变。
 
 - octop-gateway `make all`：460 passed，13 deselected；格式、Lint、mypy 通过。
-- Octop `make all`：3591 passed，17 skipped；格式、Lint、mypy 通过。
+- 政务伙伴 `make all`：3591 passed，17 skipped；格式、Lint、mypy 通过。
 - 前端通道测试：16 passed，覆盖默认开启、关闭后保存、旧配置默认值、重新编辑保留布尔值。
 - 前端相关文件 ESLint 通过；TypeScript 和 Vite 构建通过，内置网页产物已更新。
-- 重启本地 Octop 并刷新网页后生效；真实 Discord 联调仍由用户人工测试。
+- 重启本地政务伙伴并刷新网页后生效；真实 Discord 联调仍由用户人工测试。

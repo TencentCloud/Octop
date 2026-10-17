@@ -43,7 +43,7 @@
         "zh": "笔记与知识库读写、检索与管理"
       },
       "auth_kind": "api_key",
-      "doc_url": "https://qclaw.qq.com/docs/206424375046045696",
+      "doc_url": "about:blank",
       "icon": "tencent-ima",
       "color": "#07c160",
       "phase": "available",
@@ -93,7 +93,7 @@
       "mcp_mode": "gateway",
       "category": "media",
       "quick_auth_url": "https://news.qq.com/exchange?scene=appkey",
-      "guide_url": "https://qclaw.qq.com/docs/207612064014921728/",
+      "guide_url": "about:blank",
       "manual_url": "https://news.qq.com/exchange?scene=appkey",
       "auth_hint": {
         "en": "Sign in on the Tencent News Skills page, generate an API Key, and paste it below (one key per account)",
@@ -128,14 +128,14 @@
         "zh": "知识库检索、阅读、创建与文档管理"
       },
       "auth_kind": "api_key",
-      "doc_url": "https://qclaw.qq.com/docs/211858629271314432",
+      "doc_url": "about:blank",
       "icon": "tencent-lexiang",
       "color": "#00c1de",
       "phase": "available",
       "mcp_mode": "remote",
       "category": "office",
       "quick_auth_url": "https://lexiangla.com/ai/claw",
-      "guide_url": "https://qclaw.qq.com/docs/211858629271314432",
+      "guide_url": "about:blank",
       "manual_url": "https://lexiangla.com/mcp",
       "auth_hint": {
         "en": "Open the Lexiang credentials page, sign in, then copy the company id (company_from) and access token into the fields below",
@@ -234,7 +234,7 @@
       "mcp_mode": "gateway",
       "category": "travel",
       "quick_auth_url": "https://flyai.open.fliggy.com/console",
-      "guide_url": "https://qclaw.qq.com/docs/208142370404184064.html",
+      "guide_url": "about:blank",
       "manual_url": "https://flyai.open.fliggy.com/console",
       "auth_hint": {
         "en": "Sign in to the Fliggy AI Open Platform console, copy the API Key, and paste it below",
@@ -278,7 +278,7 @@
       "mcp_mode": "gateway",
       "category": "travel",
       "quick_auth_url": "http://t.ctrip.cn/28J6RhL",
-      "guide_url": "https://qclaw.qq.com/docs/208231741261246464.html",
+      "guide_url": "about:blank",
       "manual_url": "http://t.ctrip.cn/28J6RhL",
       "auth_hint": {
         "en": "Open the Wendao authorization page, copy the Token, and paste it below (the upstream does not reject invalid tokens — copy the full value)",
@@ -370,7 +370,7 @@
       "guide_url": "https://agent.qcc.com/guide",
       "manual_url": "https://agent.qcc.com/",
       "auth_hint": {
-        "en": "Use one-click OAuth when Octop has public HTTPS or localhost; otherwise open the authorization page, copy the API Key, and paste it. Query scope follows your account permissions.",
+        "en": "Use one-click OAuth when wkbuddy has public HTTPS or localhost; otherwise open the authorization page, copy the API Key, and paste it. Query scope follows your account permissions.",
         "zh": "有公网 HTTPS 或本机 localhost 时可用一键 OAuth；否则打开授权页获取 API Key 后粘贴。查询范围以账户权限为准。"
       },
       "oauth_issuer": "https://agent.qcc.com",
@@ -410,14 +410,14 @@
         "zh": "官方 MCP：笔记创建、搜索、整理与管理"
       },
       "auth_kind": "personal_token",
-      "doc_url": "https://qclaw.qq.com/docs/207508177113886720",
+      "doc_url": "about:blank",
       "icon": "youdao-note",
       "color": "#00c853",
       "phase": "available",
       "mcp_mode": "remote",
       "category": "knowledge",
       "quick_auth_url": "https://mopen.163.com/#/dashboard",
-      "guide_url": "https://qclaw.qq.com/docs/207508177113886720",
+      "guide_url": "about:blank",
       "manual_url": "https://mopen.163.com/#/dashboard",
       "auth_hint": {
         "en": "Click “Open auth page”, sign in to the MCP platform, create an API Key under API management, and paste it below",
@@ -577,8 +577,8 @@
       "guide_url": "https://obsidian.md/zh/cli",
       "manual_url": "https://obsidian.md/zh/cli",
       "auth_hint": {
-        "en": "Enter the vault name shown in the Obsidian sidebar. Octop and Obsidian must run on the same host, with Command line interface enabled.",
-        "zh": "填写 Obsidian 侧边栏中的库名。Octop 与 Obsidian 需在同一台主机，并已启用 Command line interface。"
+        "en": "Enter the vault name shown in the Obsidian sidebar. wkbuddy and Obsidian must run on the same host, with Command line interface enabled.",
+        "zh": "填写 Obsidian 侧边栏中的库名。政务伙伴与 Obsidian 需在同一台主机，并已启用 Command line interface。"
       },
       "credential_fields": [
         {
@@ -652,7 +652,7 @@
             "zh": "http://127.0.0.1:8080 或 https://weknora.example.com"
           },
           "help": {
-            "en": "Octop appends /api/v1 when the URL does not already include it",
+            "en": "wkbuddy appends /api/v1 when the URL does not already include it",
             "zh": "未包含 /api/v1 时会自动补齐"
           }
         },

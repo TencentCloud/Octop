@@ -1,4 +1,4 @@
-"""Ask / Plan / Craft helpers for Octop (policy SoT lives in octop-harness)."""
+"""Ask / Plan / Craft helpers for wkbuddy (policy SoT lives in octop-harness)."""
 
 from __future__ import annotations
 

@@ -36,7 +36,7 @@ const SCRIPTS_DIR = __dirname;
 const SKILL_DIR = path.dirname(SCRIPTS_DIR);
 const CLIENT_ID = 'c6f50b5a1e2f4e2bb00a3e2f58df3ced';
 const PT_PASSPORT_BIN = path.join(SCRIPTS_DIR, 'node_modules', '.bin', 'pt-passport');
-// 认证目录：Octop 多用户/多 Agent 隔离时通过 OCTOP_AUTH_DIR 环境变量注入
+// 认证目录：政务伙伴多用户/多 Agent 隔离时通过 OCTOP_AUTH_DIR 环境变量注入
 // （如 ~/.octop/agents/<id>/credentials/meituan/）；未注入时回退到本机默认目录。
 const AUTH_DIR = process.env.OCTOP_AUTH_DIR
     || path.join(require('os').homedir(), '.workbuddy', 'credentials', 'meituan-living-deals-assistant');
@@ -75,9 +75,9 @@ function isPython3(pythonPath) {
 /**
  * Python 解释器解析优先级：
  * 1. OCTOP_PYTHON 环境变量（显式指定）
- * 2. Octop 自托管 venv（裸机安装：$OCTOP_HOME/venv/bin/python，默认 ~/.octop/venv）
- * 3. Octop Docker 镜像 venv（/app/.venv/bin/python）
- * 4. 回退：PATH 上的 python3 / python（非 Octop 宿主环境的兼容路径）
+ * 2. 政务伙伴自托管 venv（裸机安装：$OCTOP_HOME/venv/bin/python，默认 ~/.octop/venv）
+ * 3. 政务伙伴 Docker 镜像 venv（/app/.venv/bin/python）
+ * 4. 回退：PATH 上的 python3 / python（非政务伙伴宿主环境的兼容路径）
  */
 function findPython() {
   if (process.env.OCTOP_PYTHON && isPython3(process.env.OCTOP_PYTHON)) {
@@ -87,7 +87,7 @@ function findPython() {
   const venvCandidates = [
     path.join(octopHome, 'venv', 'bin', 'python'),            // macOS / Linux
     path.join(octopHome, 'venv', 'Scripts', 'python.exe'),    // Windows
-    '/app/.venv/bin/python',                                   // Octop Docker 镜像
+    '/app/.venv/bin/python',                                   // 政务伙伴 Docker 镜像
   ];
   for (const p of venvCandidates) {
     try {
@@ -214,7 +214,7 @@ commands.init = function () {
     fail('PATH_NOT_FOUND');
   }
 
-  // 2. Python 检查（优先使用 Octop 自托管 venv，见 findPython 解析顺序）
+  // 2. Python 检查（优先使用政务伙伴自托管 venv，见 findPython 解析顺序）
   let pyVer = '';
   try {
     pyVer = execSync(`"${PYTHON}" --version`, { encoding: 'utf-8', timeout: 10000, stdio: 'pipe' }).trim();

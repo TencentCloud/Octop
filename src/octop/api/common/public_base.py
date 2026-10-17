@@ -16,7 +16,7 @@ def resolve_public_base(request: Request) -> str:
     """Resolve the externally visible origin for an incoming request.
 
     Trusts ``X-Forwarded-Proto`` / ``X-Forwarded-Host`` when present (typical
-    behind a reverse proxy). Prefer deploying Octop behind a trusted proxy and
+    behind a reverse proxy). Prefer deploying wkbuddy behind a trusted proxy and
     keeping the dashboard same-origin with the API for OIDC cookies.
     """
     forwarded_proto = _first_header_value(request.headers.get("x-forwarded-proto"))

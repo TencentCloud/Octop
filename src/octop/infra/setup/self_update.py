@@ -145,9 +145,8 @@ def get_local_version() -> str:
         from importlib.metadata import version
 
         target = green_packages_dir()
-        fpk_target = os.environ.get("OCTOP_FPK_SITE_PACKAGES", "").strip()
-        if target is not None or fpk_target:
-            return get_version_in_dir(sys.executable, str(target or fpk_target)) or "0.0.0"
+        if target is not None:
+            return get_version_in_dir(sys.executable, str(target)) or "0.0.0"
         return version(_PACKAGE_NAME)
     except Exception:
         return "0.0.0"
@@ -861,113 +860,6 @@ def _run_install_cmd(
     return result.returncode, snippet
 
 
-def _verify_fpk_upgrade(
-    local_ver: str,
-    site_packages: str,
-    python_exe: str,
-    mirror_errors: list[str],
-    *,
-    version: str | None = None,
-    locale: str = DEFAULT_LOCALE,
-) -> UpgradeResult:
-    result = _verify_upgrade(
-        local_ver,
-        python_exe,
-        mirror_errors,
-        version=version,
-        locale=locale,
-        target=Path(site_packages),
-    )
-    if result.success:
-        result.message = tr("update.fpk_completed", locale, version=result.installed_version)
-    return result
-
-
-def _run_fpk_upgrade(
-    site_packages: str,
-    *,
-    verbose: bool = False,
-    allow_prerelease: bool = False,
-    version: str | None = None,
-    locale: str = DEFAULT_LOCALE,
-) -> UpgradeResult:
-    """FnOS FPK 部署下的在线升级：把新版安装到 launcher 实际加载的打包目录。
-
-    launcher 通过 PYTHONPATH 从应用中心托管的打包 site-packages 加载 octop，
-    在线安装到系统 Python 永远不会被加载（重启后仍是旧版）。本函数把新版
-    安装到该打包目录本身，重启服务后即加载新版，升级真正生效。
-
-    与普通部署不同，FPK 首次在线升级需要从零解析并下载完整依赖树
-    （octop 依赖 octop-harness 等大包），故安装超时显著放宽；先并行探测
-    simple index，缺版本/不可达的镜像直接跳过，最后以 pypi.org 兜底。
-    """
-    if not os.path.isdir(site_packages):
-        return UpgradeResult(
-            success=False,
-            error=tr("update.fpk_target_missing", locale, path=site_packages),
-        )
-    local_ver = get_local_version()
-    ordered, mirror_errors = rank_install_indexes(version)
-    python_exe = sys.executable
-    installer = detect_installer()  # uv 优先：pip 对 octop-harness[all] 依赖树解析会卡死
-
-    def _build_cmd(index_url: str) -> list[str]:
-        requirement = package_requirement(version)
-        if installer == "uv":
-            cmd = [
-                find_uv_executable(),
-                "pip",
-                "install",
-                "--python",
-                python_exe,
-                "--target",
-                site_packages,
-                "--upgrade-package",
-                _PACKAGE_NAME,
-                "--index-url",
-                index_url,
-            ]
-            append_prerelease_flags(cmd, installer, allow_prerelease=allow_prerelease)
-            cmd.append(requirement)
-            return cmd
-        cmd = [
-            python_exe,
-            "-m",
-            "pip",
-            "install",
-            "--upgrade",
-            "--upgrade-strategy",
-            "only-if-needed",
-            "--target",
-            site_packages,
-            "-i",
-            index_url,
-        ]
-        append_prerelease_flags(cmd, installer, allow_prerelease=allow_prerelease)
-        cmd.append(requirement)
-        return cmd
-
-    for index_url, label in ordered:
-        rc, err_snippet = _run_install_cmd(
-            _build_cmd(index_url),
-            label,
-            verbose=verbose,
-            timeout=_TARGET_INSTALL_TIMEOUT_S,
-        )
-        if rc != 0:
-            mirror_errors.append(f"{label}: {err_snippet or 'unknown error'}")
-            continue
-        res = _verify_fpk_upgrade(
-            local_ver, site_packages, python_exe, mirror_errors, version=version, locale=locale
-        )
-        if res.success:
-            return res
-        # 镜像装到了同版本/旧版（同步滞后）：继续尝试下一个镜像
-        mirror_errors.append(f"{label}: {res.error or 'version unchanged'}")
-
-    return _all_mirrors_failed(mirror_errors)
-
-
 def run_upgrade(
     *,
     verbose: bool = False,
@@ -982,20 +874,6 @@ def run_upgrade(
     # Cache this running updater's locale bundles before installation replaces
     # its package resources, so result messages use the matching translations.
     lookup("update.completed", locale)
-    # [FPK] FnOS FPK 部署：launcher 通过 PYTHONPATH 从应用中心托管的打包
-    # site-packages 加载 octop，在线安装到系统 Python 永远不会被加载（重启
-    # 无效）。launcher 导出 OCTOP_FPK_SITE_PACKAGES 指向该打包目录，升级即
-    # 安装到此目录并提示重启服务生效——升级真正可用，而非禁止升级。
-    _fpk_site = os.environ.get("OCTOP_FPK_SITE_PACKAGES", "").strip()
-    if _fpk_site:
-        return _run_fpk_upgrade(
-            _fpk_site,
-            verbose=verbose,
-            allow_prerelease=allow_prerelease,
-            version=version,
-            locale=locale,
-        )
-
     # Windows keeps the running octop.exe locked (os error 32), so pip / uv
     # cannot rewrite the console script. Renaming it is still allowed, so move
     # the launchers aside first and restore them if the upgrade fails.
@@ -1044,7 +922,7 @@ def _run_managed_upgrade(
         if cmd is None:
             return UpgradeResult(
                 success=False,
-                error="pip is not available for the Octop virtual environment.",
+                error="pip is not available for the wkbuddy virtual environment.",
                 mirror_errors=mirror_errors,
             )
         fast_path = installer == "pip" and target is not None

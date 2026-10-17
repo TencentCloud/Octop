@@ -1,5 +1,5 @@
 # =============================================================================
-# Octop — Docker Compose
+# wkbuddy — Docker Compose
 #
 # 用法（在仓库根目录执行）:
 #   docker compose -f docker/docker-compose.yml up -d
@@ -21,12 +21,12 @@
 # =============================================================================
 
 services:
-  octop:
+  wkbuddy:
     build:
       context: ..
       dockerfile: docker/Dockerfile
-    image: octop:latest
-    container_name: octop
+    image: wkbuddy:latest
+    container_name: wkbuddy
     restart: unless-stopped
     ports:
       - "${OCTOP_PORT:-8088}:${OCTOP_PORT:-8088}"

@@ -110,7 +110,7 @@ def _table_exists(db: DatabasePool, table: str) -> bool:
 
 
 def _ensure_column(db: DatabasePool, table: str, column: str, definition: str) -> None:
-    """Add a missing column on databases created by older Octop builds."""
+    """Add a missing column on databases created by older wkbuddy builds."""
     if column in _table_columns(db, table):
         return
     with db.connect() as conn:

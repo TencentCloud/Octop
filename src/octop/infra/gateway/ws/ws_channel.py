@@ -99,7 +99,7 @@ class WebSocketChannel(BaseChannel):
         """Stream harness chunks to all thread subscribers (no delta batching).
 
         After each harness stream completes, drain pending steers and continue
-        the same logical turn (issue #1300 soft interrupt at Octop boundaries).
+        the same logical turn (issue #1300 soft interrupt at wkbuddy boundaries).
         """
         message = self.parse_inbound(raw_payload)
 

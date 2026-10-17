@@ -3,14 +3,10 @@ import { useLocation, useNavigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import type { TFunction } from "i18next";
 import AvatarDropdown from "../components/AvatarDropdown";
-import AppVersionBadge from "../components/AppVersionBadge";
-import CurrentVersionBadge from "../components/CurrentVersionBadge";
 import { ArrowRightLeft, ChevronDown, X } from "lucide-react";
 import { useTheme } from "../context/ThemeContext";
 import { useLayoutMode } from "../context/LayoutModeContext";
-import { useUserRole } from "../hooks/useUserRole";
 import { useCurrentUser, useSetCurrentUser } from "../hooks/useCurrentUser";
-import { useUpdateStatus } from "../hooks/useUpdateStatus";
 import { prefetchRoute } from "../routes/prefetch";
 import { useServerCapabilities } from "../hooks/useServerCapabilities";
 import { useChatSidebarOpen } from "../pages/Chat/hooks/useChatSidebarState";
@@ -127,8 +123,6 @@ function NavItemButton({
   onNavigate,
   onExpandChatRail,
   showChatRailExpand,
-  role,
-  hasUpdate,
   t,
 }: {
   item: NavItem;
@@ -137,8 +131,6 @@ function NavItemButton({
   onNavigate: (path: string) => void;
   onExpandChatRail?: () => void;
   showChatRailExpand?: boolean;
-  role: string | null;
-  hasUpdate: boolean;
   t: TFunction<"translation", undefined>;
 }) {
   const showExpand = Boolean(
@@ -200,11 +192,6 @@ function NavItemButton({
           }}
         >
           {t(item.labelKey)}
-          {item.key === "admin-advanced" && role === "admin" && hasUpdate ? (
-            <span className={styles.navUpdateBadge}>
-              {t("nav.newVersionBadge", "有新版本")}
-            </span>
-          ) : null}
           {item.badge && (
             <span
               className="nav-badge-new"
@@ -271,8 +258,6 @@ function NavList({
   hideHeaderIds?: ReadonlySet<string>;
 }) {
   const { t } = useTranslation();
-  const role = useUserRole();
-  const { hasUpdate } = useUpdateStatus();
   const navSections = sections.filter((section) => {
     if (sectionFilter === "primary") return !section.id;
     if (sectionFilter === "grouped") return Boolean(section.id);
@@ -320,8 +305,6 @@ function NavList({
                     onNavigate={onNavigate}
                     onExpandChatRail={onExpandChatRail}
                     showChatRailExpand={showChatRailExpand}
-                    role={role}
-                    hasUpdate={hasUpdate}
                     t={t}
                   />
                 ))}
@@ -362,8 +345,6 @@ function NavList({
                     onNavigate={onNavigate}
                     onExpandChatRail={onExpandChatRail}
                     showChatRailExpand={showChatRailExpand}
-                    role={role}
-                    hasUpdate={hasUpdate}
                     t={t}
                   />
                 ))}
@@ -386,10 +367,8 @@ export default function Sidebar({
   const location = useLocation();
   const { t } = useTranslation();
   const { isDark } = useTheme();
-  const role = useUserRole();
   const user = useCurrentUser();
   const setUser = useSetCurrentUser();
-  const { hasUpdate } = useUpdateStatus();
   const { mobileEnabled } = useServerCapabilities();
   const { layoutMode, minimalPane, setMinimalPane } = useLayoutMode();
   const isMinimal = layoutMode === "minimal";
@@ -493,7 +472,7 @@ export default function Sidebar({
     <>
       <img
         src={isRailCollapsed ? "/pwa-192.png" : wordmarkSrc}
-        alt="Octop"
+        alt="wkbuddy"
         style={{
           height: isRailCollapsed ? 32 : isMobile ? 38 : 36,
           width: isRailCollapsed ? 32 : "auto",
@@ -504,12 +483,6 @@ export default function Sidebar({
           borderRadius: isRailCollapsed ? 8 : undefined,
         }}
       />
-      {!isRailCollapsed && !isMobile && (
-        <>
-          <CurrentVersionBadge isMobile={isMobile} />
-          <AppVersionBadge isMobile={isMobile} />
-        </>
-      )}
     </>
   );
 
@@ -578,8 +551,6 @@ export default function Sidebar({
         })}
         selectedKey={selectedKey}
         onNavigate={handleNavigate}
-        role={role}
-        hasUpdate={hasUpdate}
         t={t}
       />
     </div>
@@ -604,8 +575,6 @@ export default function Sidebar({
             items={primaryItems}
             selectedKey={selectedKey}
             onNavigate={handleNavigate}
-            role={role}
-            hasUpdate={hasUpdate}
             t={t}
           />
           {paneToggle}
@@ -614,8 +583,6 @@ export default function Sidebar({
               items={groupedItems}
               selectedKey={selectedKey}
               onNavigate={handleNavigate}
-              role={role}
-              hasUpdate={hasUpdate}
               t={t}
             />
           ) : null}

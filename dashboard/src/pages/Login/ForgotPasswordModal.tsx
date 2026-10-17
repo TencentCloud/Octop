@@ -41,7 +41,7 @@ export default function ForgotPasswordModal({ open, onClose }: Props) {
         <p className={styles.help}>
           {t(
             "login.forgotPasswordHelp",
-            "Ask an administrator to reset it under Users. If you manage this host, run the command below on the machine where Octop is installed, using the same OS account that runs the service.",
+            "Ask an administrator to reset it under Users. If you manage this host, run the command below on the machine where wkbuddy is installed, using the same OS account that runs the service.",
           )}
         </p>
         <CopyCommand

@@ -221,7 +221,7 @@ def test_install_runs_npm(monkeypatch: pytest.MonkeyPatch, tmp_path: Any) -> Non
 def test_install_degrades_to_user_prefix_when_global_not_writable(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Any
 ) -> None:
-    """npm 全局目录不可写（fnOS/容器内非 root 用户）时降级到 ~/.npm-global。"""
+    """npm 全局目录不可写（容器内非 root 用户）时降级到 ~/.npm-global。"""
     calls: list[list[str]] = []
     state = {"installed": False}
     home = tmp_path / "home"

@@ -30,7 +30,7 @@ def request_hostname(host_header: str) -> str:
 
 
 def is_local_dashboard_request(request: Any) -> bool:
-    """True when the dashboard is talking to Octop on this machine.
+    """True when the dashboard is talking to wkbuddy on this machine.
 
     Requires a loopback peer *and* a loopback Host header so a local reverse
     proxy cannot turn this into a remote write-to-Downloads endpoint.

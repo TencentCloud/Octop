@@ -136,7 +136,7 @@ def parse_plugin_ui_meta(plugin_dir: Path) -> dict[str, str] | None:
     """Return ``{entry, manifest}`` relative paths when ``plugin.yaml`` declares ``ui``.
 
     Missing entry file → ``None`` (treat as backend-only). Harness ignores the
-    ``ui`` key; Octop surfaces it for Dashboard dynamic loading.
+    ``ui`` key; wkbuddy surfaces it for Dashboard dynamic loading.
     """
     try:
         data = _read_plugin_yaml(plugin_dir)

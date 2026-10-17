@@ -7,8 +7,6 @@ import type {
   DailyMemoryFile,
   FileTreeNode,
   WorkspaceFileContent,
-  SyncFromOpenClawRequest,
-  SyncFromOpenClawResponse,
 } from "../types";
 
 export const workspaceApi = {
@@ -171,13 +169,6 @@ export const workspaceApi = {
       formData,
     );
   },
-
-  // Sync from OpenClaw
-  syncFromOpenClaw: (syncRequest?: SyncFromOpenClawRequest) =>
-    request<SyncFromOpenClawResponse>(`/workspace/sync-from-openclaw`, {
-      method: "POST",
-      body: JSON.stringify(syncRequest || {}),
-    }),
 
   /** Initialize workspace with default prompt files and skills.
    *  Equivalent to `octop init` — safe to call repeatedly. */

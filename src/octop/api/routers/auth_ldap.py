@@ -70,7 +70,7 @@ class LdapConfigBody(BaseModel):
     admin_groups: str | None = Field(
         default=None,
         description=(
-            "Comma-separated group CNs or DNs whose members become Octop admins. "
+            "Comma-separated group CNs or DNs whose members become wkbuddy admins. "
             "Only applied when the account is first provisioned."
         ),
     )
@@ -79,7 +79,7 @@ class LdapConfigBody(BaseModel):
         description="When set, only members of these groups may sign in through the directory.",
     )
     auto_provision: bool | None = Field(
-        default=None, description="Create an Octop account on a first directory login."
+        default=None, description="Create a wkbuddy account on a first directory login."
     )
     timeout_seconds: int | None = Field(default=None, ge=1, le=60)
 

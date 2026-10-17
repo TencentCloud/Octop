@@ -180,7 +180,7 @@ def test_docker_valid_password_creates_admin_and_serves(docker_boot: Any) -> Non
     assert login.get("access_token")
     assert (login.get("user") or {}).get("username") == "admin"
     cred = _exec_text(name, "/data/.octop/credential.txt")
-    assert "Octop Login Credential" in cred
+    assert "wkbuddy Login Credential" in cred
     assert f"Password: {password}" in cred
     wizard = _run(["docker", "exec", name, "test", "-f", "/data/.octop/octop-login.txt"])
     assert wizard.returncode != 0

@@ -174,7 +174,7 @@ def test_first_boot_valid_password_creates_admin(tmp_path: Path, password: str) 
     assert result.returncode == 0, result.stderr + result.stdout
     assert (octop_home / "init-password.txt").read_text(encoding="utf-8") == password
     cred = (octop_home / "credential.txt").read_text(encoding="utf-8")
-    assert "Octop Login Credential" in cred
+    assert "wkbuddy Login Credential" in cred
     assert f"Password: {password}" in cred
     assert "Username: admin" in cred
     assert not (octop_home / "octop-login.txt").exists()

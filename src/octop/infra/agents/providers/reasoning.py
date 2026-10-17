@@ -53,7 +53,7 @@ def _legacy_adapter(model_id: str, *, base_url: str | None) -> str:
         return "thinking"
     if any(host in url for host in ("openai.com", "generativelanguage.googleapis.com", "groq.com")):
         return "openai_reasoning_effort"
-    # Existing Octop metadata historically meant an OpenAI-compatible model
+    # Existing wkbuddy metadata historically meant an OpenAI-compatible model
     # with a ``thinking`` object. Keep that behaviour for unknown gateways.
     return "thinking"
 
@@ -113,7 +113,7 @@ def reasoning_capability(
         default_effort = None
     adapter = str(raw.get("adapter") or "").strip().lower()
     if not adapter:
-        # Backward compatibility for the first Octop reasoning-config draft.
+        # Backward compatibility for the first wkbuddy reasoning-config draft.
         adapter = (
             "thinking_nested_effort"
             if raw.get("effort_parameter") == "thinking"

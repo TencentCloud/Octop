@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
-# Install / start the Octop Remote Phone Android container (Redroid).
+# Install / start the wkbuddy Remote Phone Android container (Redroid).
 #
 # DinD / docker.sock notes:
 # - Prefer --network host so adb 5555 is reachable at 127.0.0.1 from the
-#   Octop process (same netns as dockerd). Falls back to -p 5555:5555.
+#   wkbuddy process (same netns as dockerd). Falls back to -p 5555:5555.
 # - Mount binderfs when present; use --cgroupns=host for nested runtimes.
 set -euo pipefail
 
@@ -72,7 +72,7 @@ if [ -e /dev/binder ]; then
   _run_args+=(--device /dev/binder)
 fi
 
-# Host networking: Octop + dockerd share localhost → adb connect 127.0.0.1:5555 works.
+# Host networking: wkbuddy + dockerd share localhost → adb connect 127.0.0.1:5555 works.
 # Bridge publish is the fallback when host network is unavailable.
 if docker network inspect host >/dev/null 2>&1; then
   _run_args+=(--network host)

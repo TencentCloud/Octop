@@ -9,14 +9,14 @@
 
 ## Context
 
-Operators need an optional PostgreSQL control plane for compliance / externalized state, while keeping zero-friction SQLite as the default. Agent memory (octop-memory) already supports a postgres backend; Octop must be able to pass it through without forking octop-*.
+Operators need an optional PostgreSQL control plane for compliance / externalized state, while keeping zero-friction SQLite as the default. Agent memory (octop-memory) already supports a postgres backend; wkbuddy must be able to pass it through without forking octop-*.
 
 ## Decision
 
 ### Three storage layers (do not conflate)
 
 ```text
-Layer 1 — Octop control plane
+Layer 1 — wkbuddy control plane
   users / agents / channels / cron / settings / secrets
   → SQLite file  OR  PostgreSQL (psycopg3 pool 1–8)
   → Setup wizard: greenfield defers open until database step; first bind
@@ -41,7 +41,7 @@ Workspace content files (SOUL, skills, inbound, JSONL) remain files via `Backend
 - Repos keep `?` placeholders; `PostgresPool` rewrites to `%s` at the boundary.
 - Parallel migrations: `NNN_*.sql` (SQLite) and `NNN_*.pg.sql` (PostgreSQL).
 - Sync pool from async (same pattern as today). Optional `asyncio.to_thread` helpers are **out of scope** (follow-up “1b”).
-- Single active Octop writer; no multi-instance write promise.
+- Single active wkbuddy writer; no multi-instance write promise.
 - Greenfield only — no SQLite→PG data migrator.
 - Backup: SQLite file snapshot vs `pg_dump -Fc`; manifest carries `database_driver` + `database_dump_format`; refuse cross-engine restore.
 - Default dependency includes `psycopg[binary]`. Live PG tests are gated by `@pytest.mark.postgresql` + `OCTOP_TEST_DATABASE_URL`.
@@ -51,20 +51,20 @@ Workspace content files (SOUL, skills, inbound, JSONL) remain files via `Backend
 
 | Concern | Owner | Location |
 |---------|--------|----------|
-| Control-plane tables / indexes | Octop migrate | `migrations/NNN_*.sql` and `NNN_*.pg.sql` |
+| Control-plane tables / indexes | wkbuddy migrate | `migrations/NNN_*.sql` and `NNN_*.pg.sql` |
 | Connection / session settings | Pool connect | SQLite: `PRAGMA` in `SqlitePool`; PG: defaults (FK on) — **not** in migrations |
 | Instance extensions (`vector`, …) | Ops / docker | `docker/postgres/init-vector.sql` via `initdb.d`, or DBA on managed PG |
 | Agent memory DDL | octop-memory | Runtime `_init_schema` per `agent_*` schema |
 
-**Hard rule:** Octop control-plane `*.pg.sql` must **not** run `CREATE EXTENSION`. Many managed Postgres roles cannot create extensions; the control plane also does not need `vector` (plain types only). octop-memory today uses built-in `tsvector`, not pgvector. Keep `CREATE EXTENSION vector` in docker/ops for optional future embedding use.
+**Hard rule:** wkbuddy control-plane `*.pg.sql` must **not** run `CREATE EXTENSION`. Many managed Postgres roles cannot create extensions; the control plane also does not need `vector` (plain types only). octop-memory today uses built-in `tsvector`, not pgvector. Keep `CREATE EXTENSION vector` in docker/ops for optional future embedding use.
 
 ### Memory wiring
 
-Octop passes `memory_backend` into `HarnessAgentConfig` and opens dashboard Memory with the same spec. Portable pack/adopt for postgres is refused (use `pg_dump` on the memory schema).
+wkbuddy passes `memory_backend` into `HarnessAgentConfig` and opens dashboard Memory with the same spec. Portable pack/adopt for postgres is refused (use `pg_dump` on the memory schema).
 
 ## Consequences
 
 - `DatabasePool` Protocol; `open_database()` returns SQLite or PG.
 - Setup first step must succeed before admin creation when operators choose PG.
 - Operators may colocate control plane + memory on one Postgres (separate schemas) or split DSNs.
-- ADR 001’s “one process” model is unchanged; PG is an optional backing store, not a second Octop instance.
+- ADR 001’s “one process” model is unchanged; PG is an optional backing store, not a second wkbuddy instance.

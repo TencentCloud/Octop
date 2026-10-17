@@ -34,23 +34,3 @@ export interface WorkspaceFileContent {
   content: string;
   size: number;
 }
-
-export interface SyncFromOpenClawRequest {
-  openclaw_json_path?: string;
-  sync_md?: boolean;
-  sync_config?: boolean;
-  sync_models?: boolean;
-  sync_channels?: boolean;
-  dry_run?: boolean;
-}
-
-export interface SyncFromOpenClawResponse {
-  success: boolean;
-  md_synced: number;
-  md_skipped: number;
-  skills_synced?: number;
-  config_updated: boolean;
-  updated_fields?: string[];
-  warnings?: string[];
-  errors?: string[];
-}

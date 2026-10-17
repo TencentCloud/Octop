@@ -59,7 +59,7 @@ async def test_browser_profile_blocks_when_user_missing(monkeypatch) -> None:
 
     handler.assert_not_awaited()
     assert getattr(result, "status", None) == "error"
-    assert "no Octop user id" in str(result.content)
+    assert "no wkbuddy user id" in str(result.content)
 
 
 @pytest.mark.asyncio

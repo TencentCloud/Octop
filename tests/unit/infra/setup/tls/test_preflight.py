@@ -12,7 +12,6 @@ import pytest
 from octop.config import OctopConfig, TlsConfig
 from octop.infra.setup.tls import preflight as preflight_mod
 from octop.infra.setup.tls.preflight import (
-    _METADATA_PUBLIC_IP_URLS,
     _PUBLIC_IP_HTTPS_URLS,
     _fetch_public_ip,
     _parse_public_ipv4,
@@ -187,9 +186,7 @@ def test_parse_public_ipv4(text: str, expected: str | None) -> None:
     assert _parse_public_ipv4(text) == expected
 
 
-def test_default_probe_url_lists_prefer_cn_and_cloud() -> None:
-    assert urlparse(_METADATA_PUBLIC_IP_URLS[0]).hostname == "metadata.tencentyun.com"
-    assert any(urlparse(url).hostname == "100.100.100.200" for url in _METADATA_PUBLIC_IP_URLS)
+def test_default_probe_url_lists_prefer_cn_endpoints() -> None:
     assert urlparse(_PUBLIC_IP_HTTPS_URLS[0]).hostname == "4.ipw.cn"
     assert "https://api.ipify.org?format=text" in _PUBLIC_IP_HTTPS_URLS
     assert _PUBLIC_IP_HTTPS_URLS.index("https://4.ipw.cn/") < _PUBLIC_IP_HTTPS_URLS.index(
@@ -210,7 +207,6 @@ def test_fetch_public_ip_falls_back_past_unreachable_endpoints() -> None:
         raise httpx.ConnectError("skip")
 
     with (
-        patch.object(preflight_mod, "_METADATA_PUBLIC_IP_URLS", ()),
         patch.object(
             preflight_mod,
             "_PUBLIC_IP_HTTPS_URLS",
@@ -244,7 +240,6 @@ def test_fetch_public_ip_skips_non_public_bodies() -> None:
         raise httpx.ConnectError("unexpected")
 
     with (
-        patch.object(preflight_mod, "_METADATA_PUBLIC_IP_URLS", ()),
         patch.object(
             preflight_mod,
             "_PUBLIC_IP_HTTPS_URLS",
@@ -266,55 +261,6 @@ def test_fetch_public_ip_skips_non_public_bodies() -> None:
     ]
 
 
-def test_fetch_public_ip_prefers_cloud_metadata() -> None:
-    def handler(url: str) -> object:
-        assert urlparse(url).hostname == "metadata.tencentyun.com"
-        return _OkResponse(_PUBLIC_IP)
-
-    with (
-        patch.object(
-            preflight_mod,
-            "_METADATA_PUBLIC_IP_URLS",
-            ("http://metadata.tencentyun.com/latest/meta-data/public-ipv4",),
-        ),
-        patch.object(preflight_mod, "_PUBLIC_IP_HTTPS_URLS", ("https://should-not-call/",)),
-        patch("octop.infra.setup.tls.preflight.httpx.Client", _fake_client(handler)),
-    ):
-        assert _fetch_public_ip() == _PUBLIC_IP
-
-
-def test_fetch_public_ip_falls_through_metadata_to_https() -> None:
-    calls: list[str] = []
-
-    def handler(url: str) -> object:
-        calls.append(url)
-        host = urlparse(url).hostname or ""
-        if host in {"metadata.tencentyun.com", "100.100.100.200"}:
-            raise httpx.ConnectError("not on cloud")
-        if host == "4.ipw.cn":
-            return _OkResponse(_PUBLIC_IP)
-        raise httpx.ConnectError("skip")
-
-    with (
-        patch.object(
-            preflight_mod,
-            "_METADATA_PUBLIC_IP_URLS",
-            ("http://metadata.tencentyun.com/latest/meta-data/public-ipv4",),
-        ),
-        patch.object(
-            preflight_mod,
-            "_PUBLIC_IP_HTTPS_URLS",
-            ("https://4.ipw.cn/",),
-        ),
-        patch("octop.infra.setup.tls.preflight.httpx.Client", _fake_client(handler)),
-    ):
-        assert _fetch_public_ip() == _PUBLIC_IP
-    assert calls == [
-        "http://metadata.tencentyun.com/latest/meta-data/public-ipv4",
-        "https://4.ipw.cn/",
-    ]
-
-
 def test_fetch_public_ip_returns_none_when_all_sources_fail() -> None:
     def handler(url: str) -> object:
         if url.endswith("/http-error"):
@@ -322,11 +268,6 @@ def test_fetch_public_ip_returns_none_when_all_sources_fail() -> None:
         raise httpx.ConnectError("down")
 
     with (
-        patch.object(
-            preflight_mod,
-            "_METADATA_PUBLIC_IP_URLS",
-            ("http://metadata.example/missing",),
-        ),
         patch.object(
             preflight_mod,
             "_PUBLIC_IP_HTTPS_URLS",

@@ -171,7 +171,7 @@ HarnessAgentManager(
 
 - `team_processor is None` → 不创建 inbox；`stream`/`call` 直连。
 - `team_processor` 非空 → 创建 `HarnessAgentInboxManager(caller=self, processor=...)`。
-- 属性 `team_enabled: bool`；`set_team_processor(...)` 支持启动后注入（Octop 装配顺序需要）。
+- 属性 `team_enabled: bool`；`set_team_processor(...)` 支持启动后注入（政务伙伴装配顺序需要）。
 
 ### 5.2 `stream` / `call`：回到原始实现
 
@@ -199,7 +199,7 @@ def team_tools(self) -> list[StructuredTool]:
     return build_team_tools(self)        # agent_list + ask_agent
 ```
 
-- 仅当调用方（Octop）显式取用时加入 agent 工具；**不写进 HarnessAgent 默认工具**。
+- 仅当调用方（政务伙伴）显式取用时加入 agent 工具；**不写进 HarnessAgent 默认工具**。
 
 ---
 
@@ -218,7 +218,7 @@ def team_tools(self) -> list[StructuredTool]:
 
 ---
 
-## 7. Octop 适配
+## 7. 政务伙伴适配
 
 ### 7.1 实现 `TeamProcessor`
 
@@ -251,7 +251,7 @@ harness = HarnessAgentManager(providers=..., team_processor=delegation_processor
 ### 7.3 工具注册
 
 `AgentManager._build_harness_config`：`merged_tools.extend(self._harness_manager.team_tools())`
-（仅 Octop 使用 manager，符合「使用 manager 时才启用」）。
+（仅政务伙伴使用 manager，符合「使用 manager 时才启用」）。
 
 ### 7.4 入口不变
 
@@ -309,7 +309,7 @@ inbox worker：
 2. **manager 接线**：`stream`/`call` 还原；`team_processor` 开关；`call_peer`/`submit_peer`/`apply_mentions`/`team_tools`。
 3. **teams/tools.py**：`agent_list` + `ask_agent`（sync 默认，team 时支持 background）。
 4. **harness 测试**：`test_inbox.py`（enqueue→target.call→source.call→on_reply）、`test_team_tools.py`。
-5. **Octop 接线**：`DelegationProcessor`、装配、工具注册、删旧路径；回归 `uv run pytest -m "not live"`。
+5. **政务伙伴接线**：`DelegationProcessor`、装配、工具注册、删旧路径；回归 `uv run pytest -m "not live"`。
 
 ---
 

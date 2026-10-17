@@ -15,7 +15,7 @@ from typing import Any
 
 _INSTALL_TIMEOUT_S = 300.0
 _VERSION_RE = re.compile(r"(\d+\.\d+\.\d+(?:[-+][\w.]+)?)")
-# fnOS / 容器里 Octop 常以非 root 用户运行，npm 全局目录（/usr/local）不可写，
+# 容器里 wkbuddy 常以非 root 用户运行，npm 全局目录（/usr/local）不可写，
 # 此时降级到用户级目录安装，目录名沿用 npm 官方推荐的 ~/.npm-global。
 _NPM_USER_PREFIX_NAME = ".npm-global"
 
@@ -72,12 +72,12 @@ _SPECS: dict[str, CliInstallSpec] = {
 OBSIDIAN_CLI_MISSING = (
     "主机上未找到 Obsidian CLI（obsidian）。"
     "请在本机打开 Obsidian，于设置 → 通用中启用 Command line interface，并按提示注册到 PATH。"
-    "Octop 与 Obsidian 必须在同一台主机。"
+    "wkbuddy 与 Obsidian 必须在同一台主机。"
     "禁止建议或执行任何终端命令。"
 )
 OBSIDIAN_NOT_RUNNING = (
     "Obsidian 未在运行，或 CLI 无法连接桌面应用。"
-    "请在 Octop 所在主机打开 Obsidian，并确认已启用 Command line interface。"
+    "请在 wkbuddy 所在主机打开 Obsidian，并确认已启用 Command line interface。"
     "禁止建议或执行任何终端命令。"
 )
 
@@ -143,7 +143,7 @@ def _prepend_path(bin_dir: str) -> None:
 def ensure_cli_path() -> str:
     """Prepend user-level bin dirs to the in-process PATH.
 
-    Octop 在 fnOS 上常以非 root 用户运行，``/usr/local`` 下的 npm 全局目录
+    wkbuddy 在容器里常以非 root 用户运行，``/usr/local`` 下的 npm 全局目录
     不可写，安装会降级到用户级目录（~/.npm-global）。Obsidian CLI 在系统
     bin 不可写时同样落到 ``~/.local/bin``。这里确保这些目录进入进程 PATH，
     使 ``shutil.which`` 与后续 CLI 子进程调用都能找到命令。
@@ -261,7 +261,7 @@ def _windows_user_path_command(directory: str) -> str:
 
 
 def obsidian_install_command(source: str | None = None, dest: str | None = None) -> str:
-    """Shell command matching the registration Octop performs for Obsidian CLI."""
+    """Shell command matching the registration wkbuddy performs for Obsidian CLI."""
     src = source or _find_obsidian_bundle() or _default_obsidian_bundle_hint()
     if os.name == "nt" and _is_windows_redirector(src):
         return _windows_user_path_command(os.path.dirname(src))
@@ -392,10 +392,10 @@ def install_connector_cli(kind: str) -> dict[str, Any]:
     if not npm:
         return _fail(
             status,
-            f"未找到 npm，请先在 Octop 主机安装 Node.js，然后执行：{status['install_command']}",
+            f"未找到 npm，请先在 wkbuddy 主机安装 Node.js，然后执行：{status['install_command']}",
         )
 
-    # npm 全局目录（默认 /usr/local）不可写时（fnOS/容器内非 root 用户），
+    # npm 全局目录（默认 /usr/local）不可写时（容器内非 root 用户），
     # 自动降级到用户级目录 ~/.npm-global 安装，避免 EACCES 导致安装失败。
     prefix, _ = _npm_prefix_info(npm)
     install_args = [npm, "install", "-g"]

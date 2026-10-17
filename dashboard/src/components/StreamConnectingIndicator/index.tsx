@@ -16,7 +16,7 @@ interface StreamConnectingIndicatorProps {
 
 /**
  * Shared connecting / waiting-frame indicator for remote browser & desktop.
- * Uses the same Octop mascot loop as chat thinking bubbles.
+ * Uses the same wkbuddy mascot loop as chat thinking bubbles.
  */
 export default function StreamConnectingIndicator({
   label,

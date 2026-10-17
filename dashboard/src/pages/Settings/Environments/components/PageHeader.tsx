@@ -20,7 +20,7 @@ export function PageHeader({ className }: PageHeaderProps) {
             <p style={{ marginTop: 8, marginBottom: 0, fontSize: 13 }}>
               {t("environments.secretGuide")}{" "}
               <a
-                href="https://console.cloud.tencent.com/cam/capi"
+                href="about:blank"
                 target="_blank"
                 rel="noopener noreferrer"
                 style={{

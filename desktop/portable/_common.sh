@@ -25,8 +25,8 @@ ALL_PLATS=(
   windows-arm64
 )
 
-# Public GitHub Release names: Octop-<kind>-<os>-<arch>-<version>.<ext>
-# Zip payload directory stays Octop-<plat>/ (the desktop unzip strips the first
+# Public GitHub Release names: wkbuddy-<kind>-<os>-<arch>-<version>.<ext>
+# Zip payload directory stays wkbuddy-<plat>/ (the desktop unzip strips the first
 # path component). PyPI wheels keep the PEP 427 name and are not renamed here.
 octop_version() {
   sed -nE 's/^version[[:space:]]*=[[:space:]]*"([^"]+)".*/\1/p' \
@@ -34,7 +34,7 @@ octop_version() {
 }
 
 portable_zip_basename() {
-  echo "Octop-portable-${1}-$(octop_version).zip"
+  echo "wkbuddy-portable-${1}-$(octop_version).zip"
 }
 
 desktop_pkg_basename() {
@@ -42,9 +42,9 @@ desktop_pkg_basename() {
   local ver
   ver="$(octop_version)"
   case "$plat" in
-    darwin-*) echo "Octop-desktop-${plat}-${ver}.dmg" ;;
-    windows-*) echo "Octop-desktop-${plat}-${ver}.exe" ;;
-    linux-*) echo "Octop-desktop-${plat}-${ver}.tar.gz" ;;
+    darwin-*) echo "wkbuddy-desktop-${plat}-${ver}.dmg" ;;
+    windows-*) echo "wkbuddy-desktop-${plat}-${ver}.exe" ;;
+    linux-*) echo "wkbuddy-desktop-${plat}-${ver}.tar.gz" ;;
     *)
       echo "unknown platform: ${plat}" >&2
       return 1

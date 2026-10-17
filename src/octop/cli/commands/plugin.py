@@ -14,7 +14,7 @@ from octop.infra.utils.paths import PathLayout
 
 @click.group()
 def plugin() -> None:
-    """Install and manage Octop plugins."""
+    """Install and manage wkbuddy plugins."""
 
 
 def _manager() -> PluginManager:

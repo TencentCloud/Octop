@@ -209,7 +209,7 @@ export function buildNavSections(
       labelKey: "nav.knowledgeBases",
     });
   }
-  // User-scoped remote Octop links — always available (like personalization).
+  // User-scoped remote wkbuddy links — always available (like personalization).
   settingsItems.push({
     key: "bridge",
     path: "/bridge",

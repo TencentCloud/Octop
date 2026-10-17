@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Stamp the Octop version into Wails desktop metadata copies."""
+"""Stamp the wkbuddy version into Wails desktop metadata copies."""
 
 from __future__ import annotations
 
@@ -12,7 +12,7 @@ import sys
 from pathlib import Path
 
 _MANIFEST_IDENTITY = re.compile(
-    r'(<assemblyIdentity\b[^>]*\bname="com\.tencent\.octop"[^>]*\bversion=")[^"]+(")',
+    r'(<assemblyIdentity\b[^>]*\bname="com\.daoshengtech\.wkbuddy"[^>]*\bversion=")[^"]+(")',
     re.IGNORECASE,
 )
 
@@ -95,7 +95,7 @@ def stamp_manifest(src: Path, dest: Path, version: str) -> None:
     text = dest.read_text(encoding="utf-8")
     updated, n = _MANIFEST_IDENTITY.subn(rf"\g<1>{dotted}\2", text, count=1)
     if n != 1:
-        raise SystemExit(f"octop assemblyIdentity not found in {dest}")
+        raise SystemExit(f"wkbuddy assemblyIdentity not found in {dest}")
     dest.write_text(updated, encoding="utf-8")
 
 

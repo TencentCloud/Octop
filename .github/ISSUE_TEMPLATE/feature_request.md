@@ -1,6 +1,6 @@
 ---
 name: Feature request
-about: Propose an enhancement to Octop
+about: Propose an enhancement to wkbuddy
 title: "[feature] "
 labels: enhancement
 ---

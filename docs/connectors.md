@@ -2,7 +2,7 @@
 
 **English** · [中文](#内置连接器)
 
-Octop ships a catalog of OAuth / MCP connectors. Dashboard copy (`name`,
+wkbuddy ships a catalog of OAuth / MCP connectors. Dashboard copy (`name`,
 `description`, `auth_hint`, and credential-field labels) is bilingual (`en` /
 `zh`) and follows `Accept-Language`.
 
@@ -15,7 +15,7 @@ You can also add **custom MCP** servers in the dashboard; they are not listed he
 
 [English](#built-in-connectors) · **中文**
 
-Octop 内置一组 OAuth / MCP 连接器。控制台展示的名称、描述、授权提示和凭证字段
+政务伙伴内置一组 OAuth / MCP 连接器。控制台展示的名称、描述、授权提示和凭证字段
 文案支持中英双语，跟随 `Accept-Language`。
 
 **元数据源：** [`src/octop/infra/connectors/catalog.json`](../src/octop/infra/connectors/catalog.json)。
@@ -69,7 +69,7 @@ are updating `catalog.json` in the same change.
 |------|---------|------|
 | `remote` | The harness talks to the vendor MCP URL. | Harness 直连厂商 MCP 地址。 |
 | `gateway` | An in-process Python adapter; the harness config is a name-only placeholder. | 进程内 Python 适配器；Harness 配置只占位。 |
-| `internal` | Octop hosts HTTP MCP at `/api/internal/mcp`; the harness loads it over HTTP. | Octop 在 `/api/internal/mcp` 托管 HTTP MCP，Harness 经 HTTP 加载。 |
+| `internal` | 政务伙伴 hosts HTTP MCP at `/api/internal/mcp`; the harness loads it over HTTP. | 政务伙伴在 `/api/internal/mcp` 托管 HTTP MCP，Harness 经 HTTP 加载。 |
 
 ## Catalog JSON / 目录 JSON
 

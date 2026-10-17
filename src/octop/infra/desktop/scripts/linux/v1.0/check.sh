@@ -1,6 +1,6 @@
 #!/bin/bash
 #
-# Check Octop virtual desktop readiness.
+# Check wkbuddy virtual desktop readiness.
 # Output (last line JSON):
 #   {"ready": true, "vnc_running": true, "display": ":99", ...}
 

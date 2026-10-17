@@ -15,7 +15,7 @@ logger = logging.getLogger(__name__)
 
 _SETTINGS_PREFIX = "acp_runners:user:"
 _HIDDEN_RUNNERS = frozenset({"qwen_code"})
-# Until octop-harness ships these builtins, merge Octop-side defaults.
+# Until octop-harness ships these builtins, merge wkbuddy-side defaults.
 _OCTOP_BUILTIN_RUNNERS: dict[str, dict[str, Any]] = {
     "kimi_code": {
         "command": "kimi",

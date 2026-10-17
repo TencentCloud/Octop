@@ -1,12 +1,9 @@
 name: Release
 
-# 版本标签 v* → 测包、发 PyPI、建 GitHub Release，再级联：
-#   - Sync Main Into Develop
-#   - Build Octop FPK（复用本 Release 的 wheel；等待 docker-publish 的多架构 GHCR 镜像）
+# 版本标签 v* → 测包、建 GitHub Release，再级联 Sync Main Into Develop。
 #
 # 与 docker-publish.yml / octop-desktop.yml 并行（由 Auto Tag 同时 dispatch，
-# 或人工 push v* tag 同时触发）。wheel / sdist 只发 PyPI 和 GitHub Release。
-# 桌面安装包与 FnOS FPK 挂到同一 GitHub Release 后，再上传到同一个 COS 版本目录。
+# 或人工 push v* tag 同时触发）。wheel / sdist 只挂 GitHub Release，不发公共 PyPI。
 
 on:
   push:
@@ -63,26 +60,9 @@ jobs:
           name: dist
           path: dist/
 
-  publish:
-    name: Publish to PyPI
-    needs: build
-    runs-on: ubuntu-latest
-    environment: pypi
-    steps:
-      - name: Download distributions
-        uses: actions/download-artifact@v4
-        with:
-          name: dist
-          path: dist/
-
-      - name: Publish package
-        uses: pypa/gh-action-pypi-publish@release/v1
-        with:
-          password: ${{ secrets.PYPI_API_TOKEN }}
-
   github-release:
     name: Create GitHub Release
-    needs: publish
+    needs: build
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -115,12 +95,6 @@ jobs:
               else
                 git log --oneline --no-decorate | head -20
               fi
-              echo ""
-              echo "## Install"
-              echo ""
-              echo '```bash'
-              echo "pip install octop==$version"
-              echo '```'
             } > .release-notes.md
           fi
           if ! grep -q '^## Downloads' .release-notes.md; then
@@ -153,19 +127,3 @@ jobs:
             --repo "${{ github.repository }}" \
             --ref main \
             -f version="${{ github.ref_name }}"
-
-  # FnOS FPK：复用本 Release 的 wheel + docker-publish 的 GHCR 镜像。
-  # 与 sync-develop 并行。Dispatch 失败必须让本 workflow 变红（PyPI 已发布仍如此）。
-  trigger-fnos:
-    name: Trigger FnOS FPK build
-    needs: github-release
-    runs-on: ubuntu-latest
-    steps:
-      - name: Dispatch Build Octop FPK
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          # --ref 用版本 tag，保证 FPK 打在与 PyPI / 镜像相同的 commit 上
-          gh workflow run fnos-build-fpk.yml \
-            --repo "${{ github.repository }}" \
-            --ref "${{ github.ref_name }}"

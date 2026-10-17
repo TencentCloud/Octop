@@ -1,6 +1,6 @@
 #!/bin/bash
-# Desktop shell against a source Octop (hot reload). Not ~/.octop/portable.
-# Starts Octop in this shell and stops it when wails3 / this script exits.
+# Desktop shell against a source wkbuddy (hot reload). Not ~/.octop/portable.
+# Starts wkbuddy in this shell and stops it when wails3 / this script exits.
 set -euo pipefail
 
 REPO="$(cd "$(dirname "$0")/.." && pwd)"
@@ -42,7 +42,7 @@ cleanup() {
 trap cleanup EXIT INT TERM
 
 if curl -sf -o /dev/null --max-time 1 "$HEALTH"; then
-  echo "Octop already listening at ${URL}; stop it first so this script can own the process." >&2
+  echo "wkbuddy already listening at ${URL}; stop it first so this script can own the process." >&2
   exit 1
 fi
 
@@ -59,14 +59,14 @@ for _ in $(seq 1 60); do
     break
   fi
   if ! kill -0 "$octop_pid" 2>/dev/null; then
-    echo "Octop 进程在就绪前退出了，请查看上方日志。" >&2
+    echo "政务伙伴进程在就绪前退出了，请查看上方日志。" >&2
     exit 1
   fi
   sleep 0.5
 done
 
 if ! curl -sf -o /dev/null --max-time 1 "$HEALTH"; then
-  echo "Octop 未在 30 秒内就绪（${URL}）。" >&2
+  echo "政务伙伴未在 30 秒内就绪（${URL}）。" >&2
   echo "请查看上方 octop run 的输出；常见原因：端口被占用、依赖缺失，或服务启动失败。" >&2
   exit 1
 fi

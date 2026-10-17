@@ -1,4 +1,4 @@
-# Makefile for Octop
+# Makefile for wkbuddy
 # Usage:
 #   make              - Show this help
 #   make all          - format (BE+FE) + backend lint + typecheck + test (ship bar)
@@ -35,7 +35,7 @@ PYTEST_JOBS ?= auto
 
 .PHONY: help
 help:
-	@echo "Octop Build System"
+	@echo "wkbuddy Build System"
 	@echo ""
 	@echo "Usage: make <target>"
 	@echo ""
@@ -53,8 +53,8 @@ help:
 	@echo "  dev-frontend     Start Vite dev server only"
 	@echo "  dev-backend      Start octop run only"
 	@echo ""
-	@echo "Online-deps targets (local Octop source + PyPI harness components):"
-	@echo "  install-online   Create .venv-online: Octop editable + harness-* from PyPI"
+	@echo "Online-deps targets (local wkbuddy source + PyPI harness components):"
+	@echo "  install-online   Create .venv-online: wkbuddy editable + harness-* from PyPI"
 	@echo "  test-online      pytest against .venv-online (not live)"
 	@echo "  run-online       Start octop run from .venv-online"
 	@echo ""
@@ -171,8 +171,8 @@ dev-frontend:
 dev-backend:
 	$(RUN) octop run
 
-# ─── Online-deps dev (local Octop source + PyPI harness components) ───────────
-# Keeps a dedicated .venv-online alongside .venv. Octop itself is installed
+# ─── Online-deps dev (local wkbuddy source + PyPI harness components) ───────────
+# Keeps a dedicated .venv-online alongside .venv. wkbuddy itself is installed
 # editable (-e) so source edits are live; the harness-* siblings are pulled
 # from PyPI (--no-sources ignores the editable local paths in uv.lock).
 # Re-run install-online only when a dependency version changes.
@@ -181,10 +181,10 @@ PY_ONLINE   := $(VENV_ONLINE)/bin
 
 .PHONY: install-online
 install-online:
-	@echo "[install-online] Creating $(VENV_ONLINE) (local Octop + PyPI harness deps)..."
+	@echo "[install-online] Creating $(VENV_ONLINE) (local wkbuddy + PyPI harness deps)..."
 	uv venv $(VENV_ONLINE) --python 3.12
 	uv pip install --no-sources --python $(PY_ONLINE)/python -e ".[dev]"
-	@echo "[install-online] Done. Octop=editable(local), harness-*=PyPI."
+	@echo "[install-online] Done. wkbuddy=editable(local), harness-*=PyPI."
 
 .PHONY: test-online
 test-online:

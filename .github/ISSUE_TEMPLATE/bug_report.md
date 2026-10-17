@@ -1,6 +1,6 @@
 ---
 name: Bug report
-about: Report a defect or unexpected behavior in Octop
+about: Report a defect or unexpected behavior in wkbuddy
 title: "[bug] "
 labels: bug
 ---

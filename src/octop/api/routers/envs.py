@@ -82,7 +82,7 @@ async def list_envs(
     "",
     summary="Replace global environment variables",
     description=(
-        "Overwrite ~/.octop/env and align the Octop process environment "
+        "Overwrite ~/.octop/env and align the wkbuddy process environment "
         "(including deleting keys removed from the list). Running execute "
         "shells and Docker sandboxes pick up keys on the next command without "
         "an agent reload. Agents reload in the background only when search "

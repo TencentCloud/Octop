@@ -121,7 +121,7 @@ const LEGACY_SESSION_STORAGE_KEY = "octop:remote-browser:session-id";
 /** Whether the user left the remote-browser stream open last time. */
 const STREAM_ACTIVE_KEY = "octop:remote-browser:stream-active";
 const DEFAULT_REFRESH_INTERVAL = 500;
-const DEFAULT_START_URL = "https://cloud.tencent.com";
+const DEFAULT_START_URL = "about:blank";
 const BROWSER_AI_PANEL_KEY = "octop:remote-browser:ai-panel-open";
 const BROWSER_AI_PANEL_WIDTH_KEY = "octop:remote-browser:ai-panel-width";
 const BROWSER_AI_PANEL_HEIGHT_KEY = "octop:remote-browser:ai-panel-height";
@@ -608,7 +608,7 @@ export default function RemoteBrowserPage({
       title: t("remoteBrowser.uninstallTitle", "卸载内置浏览器"),
       content: t(
         "remoteBrowser.uninstallConfirm",
-        "将关闭当前浏览器窗口，并卸载 Octop 自动安装的浏览器。你电脑上已有的 Chrome 等浏览器不受影响。",
+        "将关闭当前浏览器窗口，并卸载 wkbuddy 自动安装的浏览器。你电脑上已有的 Chrome 等浏览器不受影响。",
       ),
       okText: t("remoteBrowser.uninstall", "卸载"),
       okButtonProps: { danger: true },
@@ -1113,7 +1113,7 @@ export default function RemoteBrowserPage({
             >
               {t(
                 "common.askOctopHint",
-                "若安装失败，可复制下方错误信息发给 Octop 排查。",
+                "若安装失败，可复制下方错误信息发给 wkbuddy 排查。",
               )}
             </div>
           </div>
@@ -1172,7 +1172,7 @@ export default function RemoteBrowserPage({
         title={t("remoteBrowser.notInstalled", "未检测到可用浏览器")}
         subTitle={t(
           "remoteBrowser.notInstalledHint",
-          "Octop 需要浏览器才能帮你自动打开网页、填写表单和截图。点击下方按钮即可自动安装，无需手动配置。",
+          "wkbuddy 需要浏览器才能帮你自动打开网页、填写表单和截图。点击下方按钮即可自动安装，无需手动配置。",
         )}
         style={{ padding: "8px 0" }}
       />

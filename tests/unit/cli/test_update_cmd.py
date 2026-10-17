@@ -1,4 +1,4 @@
-"""Tests for `octop update`."""
+"""Tests for the retained `update` command module (not registered on the CLI)."""
 
 from __future__ import annotations
 
@@ -7,8 +7,15 @@ from pathlib import Path
 import pytest
 from click.testing import CliRunner
 
+from octop.cli.commands.update import update as update_command
 from octop.cli.main import cli
 from octop.infra.setup import self_update
+
+
+def test_update_command_is_not_registered() -> None:
+    result = CliRunner().invoke(cli, ["update", "--check"])
+    assert result.exit_code != 0
+    assert "No such command" in result.output
 
 
 def test_update_check_only_no_install(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -31,7 +38,7 @@ def test_update_check_only_no_install(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(update_cmd, "run_upgrade", _fake_upgrade)
 
     runner = CliRunner()
-    result = runner.invoke(cli, ["update", "--check"])
+    result = runner.invoke(update_command, ["--check"])
     assert result.exit_code == 0
     assert "9.9.9" in result.output
     assert "ran" not in called
@@ -61,7 +68,7 @@ def test_update_yes_runs_upgrade(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(update_cmd, "run_upgrade", _fake_upgrade)
 
     runner = CliRunner()
-    result = runner.invoke(cli, ["update", "--yes"])
+    result = runner.invoke(update_command, ["--yes"])
     assert result.exit_code == 0
     assert called.get("ran") is True
     assert called["kwargs"]["version"] == "9.9.9"
@@ -81,7 +88,7 @@ def test_update_already_latest(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(update_cmd, "get_editable_path", lambda: None)
 
     runner = CliRunner()
-    result = runner.invoke(cli, ["update", "--check"])
+    result = runner.invoke(update_command, ["--check"])
     assert result.exit_code == 0
     assert "up to date" in result.output.lower()
 
@@ -162,7 +169,7 @@ def test_update_check_skips_prerelease_by_default(monkeypatch: pytest.MonkeyPatc
     monkeypatch.setattr(update_cmd, "get_editable_path", lambda: None)
 
     runner = CliRunner()
-    result = runner.invoke(cli, ["update", "--check"])
+    result = runner.invoke(update_command, ["--check"])
     assert result.exit_code == 0
     assert "0.1.0" in result.output
     assert "0.9.34b1" not in result.output
@@ -183,7 +190,7 @@ def test_update_allow_prerelease_check_shows_prerelease(
     monkeypatch.setattr(update_cmd, "get_editable_path", lambda: None)
 
     runner = CliRunner()
-    result = runner.invoke(cli, ["update", "--check", "--allow-prerelease"])
+    result = runner.invoke(update_command, ["--check", "--allow-prerelease"])
     assert result.exit_code == 0
     assert "0.9.34b1" in result.output
 
@@ -214,7 +221,7 @@ def test_update_allow_prerelease_installs_prerelease(
     monkeypatch.setattr(update_cmd, "run_upgrade", _fake_upgrade)
 
     runner = CliRunner()
-    result = runner.invoke(cli, ["update", "--allow-prerelease", "--yes"])
+    result = runner.invoke(update_command, ["--allow-prerelease", "--yes"])
     assert result.exit_code == 0
     assert called.get("ran") is True
     assert called["kwargs"]["version"] == "0.9.34b1"
@@ -233,6 +240,6 @@ def test_update_editable_install_exits_nonzero(monkeypatch: pytest.MonkeyPatch) 
     monkeypatch.setattr(update_cmd, "get_editable_path", lambda: "/src/orca")
 
     runner = CliRunner()
-    result = runner.invoke(cli, ["update", "--yes"])
+    result = runner.invoke(update_command, ["--yes"])
     assert result.exit_code == 1
     assert "/src/orca" in result.output

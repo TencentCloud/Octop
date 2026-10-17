@@ -1,4 +1,4 @@
-name: Octop Desktop Package
+name: wkbuddy Desktop Package
 
 # 正式发版：Auto Tag 在打 v* 后与 Release / Docker Publish 一并 dispatch。
 # 产物 upsert 到同一 GitHub Release，再上传到 COS octop/release/<version>/。
@@ -31,7 +31,7 @@ on:
         default: ""
         type: string
       attach_from_run:
-        description: "Existing workflow run ID — attach its Octop-* artifacts and skip the 6-platform rebuild"
+        description: "Existing workflow run ID — attach its wkbuddy-* artifacts and skip the 6-platform rebuild"
         required: false
         default: ""
         type: string
@@ -185,7 +185,7 @@ jobs:
       - name: Smoke import (native host only)
         run: |
           set -euo pipefail
-          staging="desktop/portable/release/Octop-${{ matrix.plat }}"
+          staging="desktop/portable/release/wkbuddy-${{ matrix.plat }}"
           if [[ -x "${staging}/runtime/bin/python3" ]]; then
             py="${staging}/runtime/bin/python3"
           elif [[ -f "${staging}/runtime/python.exe" ]]; then
@@ -289,14 +289,14 @@ jobs:
           wails3 task package
           ARCH=${{ matrix.arch }}
           VERSION=${{ env.OCTOP_VERSION }}
-          PORTABLE_ZIP=../portable/release/Octop-portable-${{ matrix.plat }}-${{ env.OCTOP_VERSION }}.zip
+          PORTABLE_ZIP=../portable/release/wkbuddy-portable-${{ matrix.plat }}-${{ env.OCTOP_VERSION }}.zip
 
       # archive: false — upload the prebuilt zip as-is. Default archive=true would
       # wrap it again, so Actions UI / "Download artifact" becomes zip-in-zip.
       # With archive:false, artifact name is the filename (name: is ignored).
       - uses: actions/upload-artifact@v7
         with:
-          path: desktop/portable/release/Octop-portable-${{ matrix.plat }}-${{ env.OCTOP_VERSION }}.zip
+          path: desktop/portable/release/wkbuddy-portable-${{ matrix.plat }}-${{ env.OCTOP_VERSION }}.zip
           archive: false
           if-no-files-found: error
           retention-days: 14
@@ -304,7 +304,7 @@ jobs:
       - name: Upload bundled desktop package
         uses: actions/upload-artifact@v7
         with:
-          path: desktop/src/bin/Octop-desktop-${{ matrix.plat }}-${{ env.OCTOP_VERSION }}.*
+          path: desktop/src/bin/wkbuddy-desktop-${{ matrix.plat }}-${{ env.OCTOP_VERSION }}.*
           archive: false
           if-no-files-found: error
           retention-days: 14
@@ -354,7 +354,7 @@ jobs:
       # zips into directories, so files: release-assets/* would skip them.
       - uses: actions/download-artifact@v8
         with:
-          pattern: Octop-*
+          pattern: wkbuddy-*
           path: release-assets
           merge-multiple: true
           skip-decompress: true
@@ -380,20 +380,3 @@ jobs:
           fail_on_unmatched_files: true
           # Upsert: works whether Release workflow already created the release.
           generate_release_notes: false
-
-  upload-cos:
-    name: Upload desktop packages to COS
-    needs: release
-    # attach_from_run skips the package jobs. A plain success check then skips
-    # this reusable workflow even after the release job itself succeeded.
-    if: ${{ always() && needs.release.result == 'success' }}
-    uses: ./.github/workflows/upload-release-cos.yml
-    with:
-      tag: ${{ needs.release.outputs.tag }}
-      patterns: "Octop-desktop-*,Octop-portable-*"
-    secrets:
-      RELEASE_COS_SECRET_ID: ${{ secrets.RELEASE_COS_SECRET_ID }}
-      RELEASE_COS_SECRET_KEY: ${{ secrets.RELEASE_COS_SECRET_KEY }}
-      RELEASE_COS_BUCKET: ${{ secrets.RELEASE_COS_BUCKET }}
-      RELEASE_COS_REGION: ${{ secrets.RELEASE_COS_REGION }}
-      RELEASE_COS_ENDPOINT: ${{ secrets.RELEASE_COS_ENDPOINT }}

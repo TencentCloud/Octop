@@ -25,24 +25,20 @@ def test_split_tag_accepts_with_or_without_v() -> None:
 def test_render_download_section_matches_github_asset_names() -> None:
     mod = _load()
     body = mod.render_download_section("0.9.31")
-    base = "https://github.com/TencentCloud/Octop/releases/download/v0.9.31"
-    assert f"{base}/Octop-desktop-windows-amd64-0.9.31.exe" in body
-    assert f"{base}/Octop-desktop-windows-arm64-0.9.31.exe" in body
-    assert f"{base}/Octop-portable-windows-amd64-0.9.31.zip" in body
-    assert f"{base}/Octop-portable-windows-arm64-0.9.31.zip" in body
-    assert f"{base}/Octop-desktop-darwin-arm64-0.9.31.dmg" in body
-    assert f"{base}/Octop-desktop-darwin-amd64-0.9.31.dmg" in body
-    assert f"{base}/Octop-portable-darwin-arm64-0.9.31.zip" in body
-    assert f"{base}/Octop-portable-darwin-amd64-0.9.31.zip" in body
-    assert f"{base}/Octop-desktop-linux-amd64-0.9.31.tar.gz" in body
-    assert f"{base}/Octop-desktop-linux-arm64-0.9.31.tar.gz" in body
-    assert f"{base}/Octop-portable-linux-amd64-0.9.31.zip" in body
-    assert f"{base}/Octop-portable-linux-arm64-0.9.31.zip" in body
-    assert f"{base}/Octop-fnos-docker-0.9.31.fpk" in body
-    assert f"{base}/Octop-fnos-native-0.9.31.fpk" in body
-    assert f"{base}/Octop-fnos-native-arm64-0.9.31.fpk" in body
-    assert "Docker (recommended; x86 and ARM)" in body
-    assert "Native x86_64" in body
-    assert "Native ARM64 (no Docker)" in body
+    base = f"https://github.com/{mod.GITHUB_REPO}/releases/download/v0.9.31"
+    assert f"{base}/wkbuddy-desktop-windows-amd64-0.9.31.exe" in body
+    assert f"{base}/wkbuddy-desktop-windows-arm64-0.9.31.exe" in body
+    assert f"{base}/wkbuddy-portable-windows-amd64-0.9.31.zip" in body
+    assert f"{base}/wkbuddy-portable-windows-arm64-0.9.31.zip" in body
+    assert f"{base}/wkbuddy-desktop-darwin-arm64-0.9.31.dmg" in body
+    assert f"{base}/wkbuddy-desktop-darwin-amd64-0.9.31.dmg" in body
+    assert f"{base}/wkbuddy-portable-darwin-arm64-0.9.31.zip" in body
+    assert f"{base}/wkbuddy-portable-darwin-amd64-0.9.31.zip" in body
+    assert f"{base}/wkbuddy-desktop-linux-amd64-0.9.31.tar.gz" in body
+    assert f"{base}/wkbuddy-desktop-linux-arm64-0.9.31.tar.gz" in body
+    assert f"{base}/wkbuddy-portable-linux-amd64-0.9.31.zip" in body
+    assert f"{base}/wkbuddy-portable-linux-arm64-0.9.31.zip" in body
+    assert "Docker (recommended; x86 and ARM)" not in body
+    assert "### fnOS NAS" not in body
     assert "pip install" not in body
     assert "## Downloads" in body

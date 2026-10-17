@@ -1,7 +1,7 @@
-Octop green portable package
+wkbuddy green portable package
 ============================
 
-Extract this zip anywhere. It includes a portable CPython runtime and Octop
+Extract this zip anywhere. It includes a portable CPython runtime and wkbuddy
 dependencies. No system Python install is required.
 
 Start
@@ -17,12 +17,12 @@ http://127.0.0.1:8088). Data dir = ./data (OCTOP_HOME).
 
 --host and --port are saved back to config.json. Omit them to keep the file.
 
-First launch follows the normal Octop setup wizard (create admin password).
+First launch follows the normal wkbuddy setup wizard (create admin password).
 
 Layout
 ------
   runtime/     portable CPython
-  packages/    Octop + locked dependencies (site-packages)
+  packages/    wkbuddy + locked dependencies (site-packages)
   launch.py    entry bootstrap (loads packages/ + Windows pywin32 DLLs)
   start.sh / start.bat
   README.txt

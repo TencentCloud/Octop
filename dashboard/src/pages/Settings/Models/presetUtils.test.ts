@@ -1,11 +1,54 @@
 import { describe, expect, it } from "vitest";
+import type { ProviderPreset } from "./useProviders";
 import {
+  groupPresets,
   isLocalProviderRow,
   isOllamaProviderRow,
   isOllamaRuntimeUrl,
   isOnnxProviderRow,
   looksLikeOllamaProvider,
 } from "./presetUtils";
+
+const preset = (
+  id: string,
+  name: string,
+  provider_group?: string,
+  provider_group_name?: string,
+): ProviderPreset => ({
+  id,
+  name,
+  base_url: "",
+  protocol: "openai",
+  api_key_prefix: "sk-",
+  models: [],
+  provider_group,
+  provider_group_name,
+});
+
+describe("groupPresets", () => {
+  it("keeps the brand card order the server sends", () => {
+    const { grouped, ungrouped } = groupPresets([
+      preset("zhipu-a", "Zhipu A", "zhipu", "智谱"),
+      preset("zhipu-b", "Zhipu B", "zhipu", "智谱"),
+      preset("loose", "Loose"),
+      preset("tn-a", "Tn A", "tencent", "腾讯"),
+      preset("tn-b", "Tn B", "tencent", "腾讯"),
+    ]);
+    expect(grouped.map((g) => g.groupKey)).toEqual(["zhipu", "tencent"]);
+    expect(ungrouped.map((p) => p.id)).toEqual(["loose"]);
+  });
+
+  it("moves a single-preset group into the loose list, in place", () => {
+    const { grouped, ungrouped } = groupPresets([
+      preset("tn-a", "Tn A", "tencent"),
+      preset("tn-b", "Tn B", "tencent"),
+      preset("solo", "Solo", "kimi"),
+      preset("loose", "Loose"),
+    ]);
+    expect(grouped.map((g) => g.groupKey)).toEqual(["tencent"]);
+    expect(ungrouped.map((p) => p.id)).toEqual(["solo", "loose"]);
+  });
+});
 
 describe("isOnnxProviderRow", () => {
   it("matches the onboard ONNX placeholder key or exact name", () => {

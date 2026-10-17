@@ -8,7 +8,7 @@ lazily from `src/octop/cli/registry.py`.
 $ octop --help
 Usage: octop [OPTIONS] COMMAND [ARGS]...
 
-  Octop command-line interface.
+  wkbuddy command-line interface.
 
 Options:
   -v, --version           Show the installed octop version.
@@ -19,11 +19,11 @@ Options:
   -h, --help              Show this message and exit.
 
 Commands:
-  acp        Run Octop agent as ACP server (stdio).
+  acp        Run wkbuddy agent as ACP server (stdio).
   admin      Admin commands.
   agent      Agent lifecycle commands.
-  backup     Export and restore Octop backups.
-  bridge     Manage remote Octop bridge peers.
+  backup     Export and restore wkbuddy backups.
+  bridge     Manage remote wkbuddy bridge peers.
   chat       [deprecated] Alias for `octop chats`.
   chats      Chat REPL and session management.
   channel    Channel management commands.
@@ -31,14 +31,14 @@ Commands:
   completion Shell completion utilities.
   config     CLI state (base URL, defaults).
   cron       Cron job management commands.
-  init       Bootstrap an Octop server install.
+  init       Bootstrap a wkbuddy server install.
   models     Model catalog and active-model settings.
   plugin     Install and manage plugins.
   provider   Provider management (admin write).
   run        Run octop-server in the foreground.
   service    System service lifecycle (start/stop/restart/status).
   skills     Per-agent skill enable/disable.
-  update     Check for and install a newer Octop release.
+  update     Check for and install a newer wkbuddy release.
   user       User management commands.
   version    Show the installed octop version.
 ```
@@ -57,7 +57,7 @@ Commands:
 
 ## Transport layers
 
-Octop commands pick one of these transports:
+wkbuddy commands pick one of these transports:
 
 | Layer | When | Login? | Examples |
 |-------|------|--------|----------|
@@ -77,7 +77,7 @@ Idempotent on the DB; pass `--force` to wipe `~/.octop` first.
 ```
 Usage: octop init [OPTIONS]
 
-  Bootstrap an Octop server (~/.octop dir, DB migrations, JWT secret, first admin).
+  Bootstrap a wkbuddy server (~/.octop dir, DB migrations, JWT secret, first admin).
 
 Options:
   --admin-username TEXT       [env: OCTOP_ADMIN_USERNAME]
@@ -96,7 +96,7 @@ Start the FastAPI app in the foreground (delegates to
 ```
 Usage: octop run [OPTIONS]
 
-  Start the Octop server (foreground; uvicorn).
+  Start the wkbuddy server (foreground; uvicorn).
 
 Options:
   --host TEXT                 Override OCTOP_BIND_HOST.
@@ -111,7 +111,7 @@ Options:
 
 ## `octop service`
 
-Install and manage the Octop system service. The backend is detected
+Install and manage the wkbuddy system service. The backend is detected
 automatically (systemd on Linux, launchd on macOS); the scope
 (`user` vs `system`) can be forced via `--scope` or
 `OCTOP_SERVICE_SCOPE`.
@@ -119,7 +119,7 @@ automatically (systemd on Linux, launchd on macOS); the scope
 ```
 Usage: octop service [OPTIONS] COMMAND [ARGS]...
 
-  Manage the Octop system service (systemd on Linux, launchd on macOS).
+  Manage the wkbuddy system service (systemd on Linux, launchd on macOS).
 
 Commands:
   start     Install (if missing) and start the service.
@@ -212,7 +212,7 @@ forwards to `chats`.
 
 ## `octop bridge`
 
-User-scoped Octop-to-Octop peer links (same surface as Dashboard **远程桥接**).
+User-scoped wkbuddy-to-政务伙伴 peer links (same surface as Dashboard **远程桥接**).
 `--user` / pinned `default_user` selects the local owner. `--peer-user` is
 the **remote** login. `probe` talks HTTP only; `create --connect` /
 `connect` / `agents` verify the Bridge WebSocket then close it — start
@@ -221,7 +221,7 @@ the **remote** login. `probe` talks HTTP only; `create --connect` /
 ```
 Usage: octop bridge [OPTIONS] COMMAND [ARGS]...
 
-  Manage remote Octop bridge peers (add / edit / probe / connect).
+  Manage remote wkbuddy bridge peers (add / edit / probe / connect).
 
 Commands:
   list        List saved bridge connections.
@@ -380,7 +380,7 @@ Restart `octop run` (if already running) for the change to apply.
 
 ## `octop backup`
 
-Export and restore Octop backups. Works fully offline.
+Export and restore wkbuddy backups. Works fully offline.
 
 ```
 Usage: octop backup [OPTIONS] COMMAND [ARGS]...
@@ -414,28 +414,12 @@ timezone). Automatic archives are named `octop-auto-backup-*.tar.gz`;
 retention only deletes those files and never touches manual
 `octop-backup-*.tar.gz` archives.
 
-## `octop update`
-
-Check for and install a newer Octop release from the configured
-channel (PyPI by default).
-
-```
-Usage: octop update [OPTIONS]
-
-  Check for and install a newer Octop release.
-
-Options:
-  --check / --no-check     Only check; do not install.
-  --channel TEXT           Release channel (pypi, testpypi, custom index).
-  -h, --help               Show this message and exit.
-```
-
 ## `octop plugin`
 
 Install and manage third-party plugins (drop into `~/.octop/plugins/`).
 The same plugin manager powers the dashboard's "Plugins" page.
 
-Octop also **seeds bundled plugins** into `~/.octop/plugins/` during
+wkbuddy also **seeds bundled plugins** into `~/.octop/plugins/` during
 `octop init` and every `octop run` start. They are listed in Admin →
 Plugins but stay **globally disabled** until you turn them on. An id
 already recorded in `config.json` → `bundled_plugins_seeded` is not
@@ -455,14 +439,14 @@ Commands:
 
 ## `octop acp`
 
-Expose an Octop agent as a stdio JSON-RPC ACP server. Boots a
+Expose a wkbuddy agent as a stdio JSON-RPC ACP server. Boots a
 standalone `OctopServer` (reads `~/.octop`); does **not** require
 `octop run` to be running.
 
 ```
 Usage: octop acp [OPTIONS]
 
-  Run Octop agent as ACP server (stdio).
+  Run wkbuddy agent as ACP server (stdio).
 
 Options:
   --agent TEXT   Agent to expose (default: OCTOP_AGENT or first agent).

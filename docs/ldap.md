@@ -1,6 +1,6 @@
 # LDAP 目录登录
 
-> Octop 支持接入企业目录（Active Directory、OpenLDAP 等）作为登录方式：用户在**现有登录表单**里直接输入域账号和密码，Octop 通过目录完成认证，并可自动创建本地账号、按目录组映射角色。
+> 政务伙伴支持接入企业目录（Active Directory、OpenLDAP 等）作为登录方式：用户在**现有登录表单**里直接输入域账号和密码，政务伙伴通过目录完成认证，并可自动创建本地账号、按目录组映射角色。
 
 本文覆盖：功能与设计、跑起来（含本地 LDAP 开发服务器）、配置项参考、登录行为细则、HTTP API、测试方法、故障排查。
 
@@ -12,7 +12,7 @@
 |---|---|
 | 登录方式 | 复用 `/api/auth/login`，无需新端点。**有本地密码的账号在本地判完即止**；无本地密码、或本地无此用户时回退目录 |
 | 检索方式 | 服务账号（或匿名）先检索用户 DN，再用该 DN 以用户密码二次 bind 验证 |
-| 账号开通 | 首次目录登录自动创建 Octop 账号（可关闭） |
+| 账号开通 | 首次目录登录自动创建政务伙伴账号（可关闭） |
 | 角色映射 | 按目录组成员关系判定 `admin` / `user`，仅在建号时判定一次 |
 | 属性同步 | 登录时回写邮箱、显示名；**不动**已存在账号的角色 |
 | 传输安全 | `ldaps://` 或 `ldap://` + StartTLS，证书校验可关（仅测试自签证书） |
@@ -21,7 +21,7 @@
 ### 设计要点
 
 1. **不新增登录表单**。目录用户走原有的用户名/密码输入框，登录页只多一行提示（`login.ldapHint`），与现有交互一致。后端在本地密码校验失败后回退目录，因此同一入口同时服务本地账号与目录账号。
-2. **角色只在开通时判定，之后不回写**。把已存在的用户挪进管理员组**不会**静默提权；角色变更由管理员在 Octop 内显式操作。
+2. **角色只在开通时判定，之后不回写**。把已存在的用户挪进管理员组**不会**静默提权；角色变更由管理员在政务伙伴内显式操作。
 3. **零 schema 变更**。复用既有 SSO 表结构：配置行是 `sso_providers.kind = 'ldap'`（明细放在该行的 `extra` JSON），身份关联复用 `user_sso_identities`。
 4. **目录故障 ≠ 密码错误**。目录不可达返回 `502 LDAP_UNAVAILABLE`，密码错误返回 `401 AUTH_FAILED`。若该用户名对应的是**有本地密码**的账号，即使目录宕机也只报 401（避免掩盖用户打错密码）。
 
@@ -72,17 +72,17 @@
 
 | 依赖 | 说明 |
 |---|---|
-| Python 3.12+ / uv | Octop 运行环境（仓库根目录 `uv sync` 一次） |
+| Python 3.12+ / uv | 政务伙伴运行环境（仓库根目录 `uv sync` 一次） |
 | Go 1.21+ | 仅用于构建本地 LDAP 开发服务器（glauth） |
 | `ldapsearch`（可选） | OpenLDAP 客户端，用于手工验证目录；macOS 自带 |
 
-Octop 侧依赖 `ldap3`，已加入 `pyproject.toml`，`uv sync` 后会安装。
+政务伙伴侧依赖 `ldap3`，已加入 `pyproject.toml`，`uv sync` 后会安装。
 
 ### 3.1 启动本地 LDAP 服务器（glauth）
 
 开发用目录选 [glauth](https://github.com/glauth/glauth)——Go 写的轻量 LDAP 服务，单二进制、配置文件驱动、不需要数据库或容器。
 
-下面的示例把沙箱放在 `~/octop-ldap-dev/`（任意目录都行，**不要**放在 Octop 仓库内，避免污染工作区）：
+下面的示例把沙箱放在 `~/octop-ldap-dev/`（任意目录都行，**不要**放在政务伙伴仓库内，避免污染工作区）：
 
 ```bash
 LDAP_DEV=~/octop-ldap-dev
@@ -104,7 +104,7 @@ debug = false
 [ldap]
   enabled = true
   listen = "127.0.0.1:3893"
-  # Octop 拒绝「启用明文 ldap:// 且未开 StartTLS」的配置，所以本地目录也开 StartTLS。
+  # 政务伙伴拒绝「启用明文 ldap:// 且未开 StartTLS」的配置，所以本地目录也开 StartTLS。
   tls = true
   tlsCertPath = "glauth.crt"
   tlsKeyPath = "glauth.key"
@@ -221,7 +221,7 @@ mail: alice@example.org
 memberOf: cn=admin,ou=groups,dc=example,dc=org
 ```
 
-### 3.2 启动 Octop（独立 HOME，避免污染现有实例）
+### 3.2 启动政务伙伴（独立 HOME，避免污染现有实例）
 
 用独立 `HOME` + `OCTOP_HOME` 起一个一次性实例，数据库与向导密码都落在临时目录：
 
@@ -239,7 +239,7 @@ uv run octop run --host 127.0.0.1 --port 8799
 
 ```
 ╔══════════════════════════════════════════════════════════╗
-║  Octop first-run wizard password (one-time use):          ║
+║  wkbuddy first-run wizard password (one-time use):          ║
 ║  xxxxxxxxxxxxxxxxxxxx                                     ║
 ║  File: ~/octop-login.txt                                  ║
 ╚══════════════════════════════════════════════════════════╝
@@ -348,7 +348,7 @@ done
 
 预期结果：
 
-| 账号 | 密码 | 所属组 | Octop 角色 |
+| 账号 | 密码 | 所属组 | 政务伙伴角色 |
 |---|---|---|---|
 | `alice` | `alicepw` | `admin` | `admin` |
 | `bob` | `bobpw` | `engineering` | `user` |
@@ -372,7 +372,7 @@ done
 | `bind_password` | — | 只写字段，从不回传；省略则保留已存值 |
 | `user_base_dn` | `""` | 用户检索基准 DN，必填 |
 | `user_filter` | `(\|(uid={username})(sAMAccountName={username})(mail={username}))` | 必须含字面量 `{username}`，会被转义后替换 |
-| `username_attribute` | `uid` | 用于确定 Octop 用户名 |
+| `username_attribute` | `uid` | 用于确定政务伙伴用户名 |
 | `email_attribute` | `mail` | 回写到账号邮箱 |
 | `display_name_attribute` | `cn` | 回写到显示名 |
 | `subject_attribute` | `""`（留空） | 身份主键：目录侧稳定不变的属性（OpenLDAP `entryUUID`、AD `objectGUID`）。**默认留空**＝显式选择用条目 DN，此时条目改名/搬家会再开一个账号。点「测试连接」会回报该目录实际提供的属性（`detected_subject_attribute`），照它填上即可 |
@@ -382,7 +382,7 @@ done
 | `group_member_attribute` | `member` | 组条目上的成员属性。`member` / `uniqueMember` 存成员 **DN**；`memberUid`（经典 OpenLDAP `posixGroup`）存**用户名**——两种取值都会匹配，无需额外配置 |
 | `admin_groups` | `""` | 逗号分隔；可填组 CN（`admin`）或完整 DN（`cn=ops,ou=groups,dc=x`）。**仅首次开通账号时生效** |
 | `allowed_groups` | `""` | 逗号分隔；非空时仅这些组的成员可登录，其他目录账号被拒绝且不会建号 |
-| `auto_provision` | `false` | 默认关闭：目录账号需先有 Octop 账号，或由管理员显式开启自动开通 |
+| `auto_provision` | `false` | 默认关闭：目录账号需先有政务伙伴账号，或由管理员显式开启自动开通 |
 | `timeout_seconds` | `10` | 连接/接收超时，范围 1–60 |
 
 保存已启用（`enabled=true`）的配置会做完整校验；保存草稿（`enabled=false`）允许字段不全，便于分次填写。
@@ -399,21 +399,21 @@ done
 | 身份关联 | 以 `subject_attribute`（默认 `entryUUID`）为键，条目改名/换 OU 不会重复建号 |
 | 首次登录 | 建号：用户名取目录值（冲突自动加 `_2` 后缀）。按 `admin_groups` 选用 **admin 或预设 user 角色模板**，权限与策略都从模板拷贝 |
 | 再次登录 | 更新邮箱与显示名；**不**覆盖已有角色、权限与策略 |
-| 邮箱冲突 | 目录邮箱若已被其他 Octop 账号占用，则该账号邮箱留空，不报错 |
+| 邮箱冲突 | 目录邮箱若已被其他政务伙伴账号占用，则该账号邮箱留空，不报错 |
 | 账号被停用 | `403 USER_DISABLED` |
 | 未开通且 `auto_provision=false` | `403 LDAP_USER_NOT_PROVISIONED` |
 | 不在 `allowed_groups` 内 | `403 LDAP_GROUP_NOT_ALLOWED`（不建号） |
 | **任何有本地密码的账号**打错密码 | 在本地就结束：`401 AUTH_FAILED`，**绝不**把该口令发给目录（不泄漏本地口令、不占用目录的失败计数）。即便该账号同时也绑定了目录也一样 |
-| 无本地密码的账号（目录开通的，或 Octop 里没有这个用户）打错密码 | 去目录 bind，失败返回 `401`，并按「用户名 + 客户端地址」计入目录登录限流 |
+| 无本地密码的账号（目录开通的，或政务伙伴里没有这个用户）打错密码 | 去目录 bind，失败返回 `401`，并按「用户名 + 客户端地址」计入目录登录限流 |
 | 本地密码与目录密码都想用 | 请选择：设置本地密码后，以本地密码为准；不设本地密码则走目录 |
-| 目录账号被改名 | 下次登录即刷新显示名（无需重启 Octop）。**但**若 `subject_attribute` 留空（按 DN 关联），改名会被当作新用户另开账号 |
+| 目录账号被改名 | 下次登录即刷新显示名（无需重启政务伙伴）。**但**若 `subject_attribute` 留空（按 DN 关联），改名会被当作新用户另开账号 |
 | 目录不可达 / 服务账号密码轮换失效 | `502 LDAP_UNAVAILABLE`（本地有密码的账号仍报 401） |
 | 修改密码 | 目录账号无本地密码，`400 PASSWORD_NOT_SET` |
 | 账号被删除 | 下次登录若 `auto_provision` 开启会重新建号 |
 
 > **生产注意**
 >
-> 1. **角色只在首次开通时判定**。之后把用户加入 `admin_groups` 不会提权，移出也不会降权——这与「目录是权限源」的常见预期相反。需要变更请在 Octop 用户列表里改角色。
+> 1. **角色只在首次开通时判定**。之后把用户加入 `admin_groups` 不会提权，移出也不会降权——这与「目录是权限源」的常见预期相反。需要变更请在政务伙伴用户列表里改角色。
 > 2. **组属性来源**：默认读用户条目上的 `memberOf`（AD 天然提供）。没有 `memberof` overlay 的 OpenLDAP 请开启 `group_search` 反查组成员：`member` / `uniqueMember`（存 DN）与 `memberUid`（存用户名）都已支持。嵌套组（组套组）**不支持**，仅比较直接成员。
 > 3. **同名组风险**：`admin_groups` 写短名（`admin`）时，任何 OU 下的同名组都算命中；写完整 DN 则按整条 DN 比较，更安全。
 > 4. **身份主键**：默认留空＝用条目 DN，改名或换 OU 会新建账号。请点「测试连接」，它会回报该目录能提供的属性（`entryUUID` 或 `objectGUID`），填进 `subject_attribute` 后**新开通**的账号即按该键关联。注意：切换主键会导致**既有**账号关联失配，需要管理员重新关联。
@@ -422,7 +422,7 @@ done
 ---
 
 > 5. **本地密码优先且终局**：给一个目录账号设置本地密码后，该密码即成为其唯一登录口令——目录密码不再生效（但也不会被外发）。若要保留目录密码，请不要为该账号设置本地密码。
-> 6. **登录限流**按「用户名 + 客户端地址」计数。地址取自直连对端；**仅当对端是环回地址**（本机/同 Pod 上的反向代理）时才采用 `X-Forwarded-For`，且取其中最右侧一跳（可信代理append 的那条），因此无法用伪造头重置额度。所以部署在反向代理后请确保代理与 Octop 同机，否则所有用户会共享同一个来源地址。
+> 6. **登录限流**按「用户名 + 客户端地址」计数。地址取自直连对端；**仅当对端是环回地址**（本机/同 Pod 上的反向代理）时才采用 `X-Forwarded-For`，且取其中最右侧一跳（可信代理append 的那条），因此无法用伪造头重置额度。所以部署在反向代理后请确保代理与政务伙伴同机，否则所有用户会共享同一个来源地址。
 
 ---
 
@@ -512,9 +512,9 @@ cd dashboard && npx tsc -b
 | 「测试连接」提示服务账号被拒 | `bind_failed` | `bind_dn` 或 `bind_password` 错；DN 写法需与目录一致（`cn=` / `uid=` / `ou=`） |
 | 「测试连接」提示检索被拒 | `search_failed` | `user_base_dn` 越界，或服务账号没有该子树的检索权限（glauth 需 `[[users.capabilities]] action="search"`） |
 | 登录报 502 | `LDAP_UNAVAILABLE` | 服务地址/端口不可达、服务账号密码已轮换、防火墙或证书校验失败（自签证书测试时关 `verify_tls`） |
-| 登录报 403 未开通 | `LDAP_USER_NOT_PROVISIONED` | 开 `auto_provision`，或先在 Octop 内建同名账号 |
+| 登录报 403 未开通 | `LDAP_USER_NOT_PROVISIONED` | 开 `auto_provision`，或先在政务伙伴内建同名账号 |
 | 登录报 401 | `AUTH_FAILED` | 密码错、用户名在 `user_filter` 下检索不到（检查 `username_attribute` 与过滤器）、或解析出多条且无精确匹配 |
-| 登录成功但不是管理员 | — | 用户不在 `admin_groups` 内；确认目录真的返回 `memberOf`（OpenLDAP 需 `memberof` overlay）；改组**不会**自动提权，需在 Octop 内改角色 |
+| 登录成功但不是管理员 | — | 用户不在 `admin_groups` 内；确认目录真的返回 `memberOf`（OpenLDAP 需 `memberof` overlay）；改组**不会**自动提权，需在政务伙伴内改角色 |
 | 显示名为空 | — | 目录未暴露该属性（glauth 的 `cn` 即如此，改用 `givenName`） |
 | 改密码报 400 | `PASSWORD_NOT_SET` | 目录账号本就没有本地密码，属预期 |
 | 绑定密码丢了 | — | `PUT` 时省略 `bind_password` 会保留原值；若改了 Fernet 密钥（`secrets.sso_fernet`）则需重新填写 |
@@ -528,7 +528,7 @@ cd dashboard && npx tsc -b
 3. **过滤器**：按目录类型调整，AD 常用 `(&(objectClass=user)(sAMAccountName={username}))`；OpenLDAP 常用 `(&(objectClass=inetOrgPerson)(uid={username}))`。
 4. **组映射**：确认目录返回 `memberOf`（OpenLDAP 需 overlay），或接受管理员手动授予。
 5. **属性映射**：`display_name_attribute` 建议 `displayName`（AD）或 `cn`/`displayName`（OpenLDAP）。
-6. **首次上线**：可用 `auto_provision=true` 便于导入；稳定后可关掉，改为管理员先在 Octop 内建号。
+6. **首次上线**：可用 `auto_provision=true` 便于导入；稳定后可关掉，改为管理员先在政务伙伴内建号。
 
 ---
 

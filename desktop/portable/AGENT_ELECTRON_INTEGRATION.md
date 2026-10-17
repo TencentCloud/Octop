@@ -1,6 +1,6 @@
-# Octop Electron green-package integration
+# wkbuddy Electron green-package integration
 
-This document is the contract for embedding Octop's **green portable zip**
+This document is the contract for embedding wkbuddy's **green portable zip**
 in an Electron (or other) desktop shell. Do not invent a parallel install
 path (no system Python, no `PYTHONPATH=packages`).
 
@@ -9,7 +9,7 @@ path (no system Python, no `PYTHONPATH=packages`).
 CI / `make -f desktop/portable/Makefile green` produces:
 
 ```
-desktop/portable/release/Octop-portable-<plat>-<version>.zip
+desktop/portable/release/wkbuddy-portable-<plat>-<version>.zip
 ```
 
 Platforms: `darwin-arm64` `darwin-amd64` `linux-amd64` `linux-arm64`
@@ -18,7 +18,7 @@ Platforms: `darwin-arm64` `darwin-amd64` `linux-amd64` `linux-arm64`
 Layout after extract (outside asar):
 
 ```
-Octop-<plat>/
+wkbuddy-<plat>/
   runtime/     portable CPython
   packages/    site-packages
   launch.py
@@ -32,7 +32,7 @@ Octop-<plat>/
    beside the executable (Linux); the desktop shell does not download it at runtime.
 2. Extract to a writable user directory **outside** `app.asar`.
 3. On macOS, after checksum: `xattr -dr com.apple.quarantine <extractDir>`.
-4. Set `OCTOP_HOME` to Octop's default data dir (`~/.octop`, or `$OCTOP_HOME`
+4. Set `OCTOP_HOME` to wkbuddy's default data dir (`~/.octop`, or `$OCTOP_HOME`
    if already set). Do **not** use the zip's `./data` folder when launching
    from the Wails desktop shell (`desktop/src`).
    Extract the zip under `~/.octop/portable/` so runtime files stay next to
@@ -44,9 +44,9 @@ Octop-<plat>/
    written back to `config.json`, so a hardcoded `127.0.0.1` undoes the user's
    `bind_host` on every start. Pass them only when the user asked to change
    the saved listen address. If `GET /api/health` on the preferred port is
-   already Octop (`ok`, `users_loaded`, and `agents_running`), do not spawn;
+   already wkbuddy (`ok`, `users_loaded`, and `agents_running`), do not spawn;
    load that URL. Also check `OCTOP_HOME/desktop-port` when the preferred port
-   is not Octop: that file is the port a previous desktop start actually bound
+   is not wkbuddy: that file is the port a previous desktop start actually bound
    after a conflict, and a live health check there means attach instead of
    starting a second server. If the port is taken by something else, set
    `OCTOP_PORT` to the next free port, then write that port to `desktop-port`.
@@ -63,7 +63,7 @@ Octop-<plat>/
    / `OCTOP_PORT` override the file for this process and are not saved).
    When `bind_host` is `0.0.0.0` or `::`, poll and load
    `http://127.0.0.1:<port>/`. Otherwise use the configured host.
-8. First run uses the **normal Octop setup wizard** (create admin). The
+8. First run uses the **normal wkbuddy setup wizard** (create admin). The
    green zip does not skip setup or mint loopback sessions.
 9. On quit, kill the process **tree** (Windows: taskkill `/T`; POSIX: process group).
 

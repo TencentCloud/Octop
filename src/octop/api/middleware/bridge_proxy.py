@@ -172,7 +172,7 @@ def _local_bridge_shadow_response(
             )
         raise OctopError(
             ErrorCode.BRIDGE_REMOTE_UNSUPPORTED,
-            "This action is not available through the remote bridge. Manage it on the peer Octop.",
+            "This action is not available through the remote bridge. Manage it on the peer wkbuddy.",
         )
 
     return None

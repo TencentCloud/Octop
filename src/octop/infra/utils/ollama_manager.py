@@ -100,7 +100,7 @@ def apply_models_dir(path: str | None) -> str | None:
     """Set ``OLLAMA_MODELS`` for this process (and children such as ``ollama serve``).
 
     An empty/None *path* restores the environment value that was present when
-    this helper first ran, so a cleared Octop setting does not drop a
+    this helper first ran, so a cleared wkbuddy setting does not drop a
     user-level ``OLLAMA_MODELS`` export.
     """
     global _original_ollama_models, _applied_models_dir

@@ -144,7 +144,7 @@ class LdapConfig:
             notes.append("auto_provision_open")
         if self.enabled and self.auto_provision and not self.subject_attribute.strip():
             # New accounts will be keyed on their DN, so moving or renaming a user
-            # in the directory produces a second Octop account.
+            # in the directory produces a second wkbuddy account.
             notes.append("identity_key_is_dn")
         return notes
 

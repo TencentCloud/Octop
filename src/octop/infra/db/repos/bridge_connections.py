@@ -1,4 +1,4 @@
-"""Bridge connection rows — per-user links to remote Octop instances."""
+"""Bridge connection rows — per-user links to remote wkbuddy instances."""
 
 from __future__ import annotations
 

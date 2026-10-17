@@ -17,7 +17,7 @@ def resolve_binary(name: str) -> str:
     if not path:
         raise ValueError(
             f"未找到主机命令 {name!r}。"
-            "请打开 Octop「连接器」抽屉，由管理员安装 CLI，或在主机 PATH 中自行安装。"
+            "请打开 wkbuddy「连接器」抽屉，由管理员安装 CLI，或在主机 PATH 中自行安装。"
             "禁止在 Agent 终端中查找或安装该命令。"
         )
     return path

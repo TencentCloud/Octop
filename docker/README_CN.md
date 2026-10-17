@@ -1,8 +1,8 @@
-# Octop Docker 部署
+# 政务伙伴 Docker 部署
 
 ---
 
-本目录包含 Octop 的 Docker 构建与部署相关文件。
+本目录包含政务伙伴的 Docker 构建与部署相关文件。
 
 ### 文件说明
 
@@ -12,9 +12,9 @@
 | `../.dockerignore` | 构建上下文忽略规则（Podman 与 BuildKit 均适用） |
 | `docker_build.sh` | 从源码构建镜像（默认开启 BuildKit 缓存） |
 | `docker-compose.yml` | 本地开发 / 自托管一键启动 |
-| `docker-compose.cn.yml` | 同一套服务，拉取 `ghcr.nju.edu.cn/tencentcloud/octop:latest`（不本地构建） |
+| `docker-compose.cn.yml` | 同一套服务，不本地构建、直接拉取镜像（`image:` 需改成发布方自己的仓库地址） |
 | `docker-compose.postgres.yml` | 仅 PostgreSQL（+ pgvector）开发/测试库；扩展在 `postgres/init-vector.sql` |
-| `postgres/init-vector.sql` | 实例级 `CREATE EXTENSION vector`（initdb.d；**不**进 Octop 迁移） |
+| `postgres/init-vector.sql` | 实例级 `CREATE EXTENSION vector`（initdb.d；**不**进政务伙伴迁移） |
 | `docker-entrypoint.sh` | 容器入口：首次初始化数据库并启动服务 |
 
 ### 快速开始
@@ -38,7 +38,7 @@ docker run -d \
   -p 8088:8088 \
   -v octop-data:/data/.octop \
   -e HOME=/data \
-  octop:latest
+  wkbuddy:latest
 ```
 
 ### 国内镜像加速
@@ -46,10 +46,10 @@ docker run -d \
 构建时可通过环境变量加速依赖下载：
 
 ```bash
-PIP_INDEX_URL=https://mirrors.cloud.tencent.com/pypi/simple \
-PIP_TRUSTED_HOST=mirrors.cloud.tencent.com \
-NPM_REGISTRY=https://mirrors.cloud.tencent.com/npm/ \
-APT_MIRROR=mirrors.cloud.tencent.com \
+PIP_INDEX_URL=https://mirrors.example.com/pypi/simple \
+PIP_TRUSTED_HOST=mirrors.example.com \
+NPM_REGISTRY=https://mirrors.example.com/npm/ \
+APT_MIRROR=mirrors.example.com \
 bash docker/docker_build.sh
 ```
 

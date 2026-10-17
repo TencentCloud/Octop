@@ -3,13 +3,13 @@
 Ported from finnie/lightclaw; constants match openclaw wire contract.
 Tokens live at ``~/.octop/codex_oauth.json``.
 
-Octop is a server (not a local CLI), so it cannot use the PKCE browser
+wkbuddy is a server (not a local CLI), so it cannot use the PKCE browser
 redirect flow: that flow's shared client only accepts the exact
 ``http://localhost:1455/auth/callback`` redirect_uri that OpenAI's own
 Codex CLI binds locally, which a hosted backend can never match. The
 device code flow has no redirect_uri at all — the user visits a
 verification URL and enters a short code, and the backend polls for
-completion — so it works regardless of how/where Octop is deployed.
+completion — so it works regardless of how/where wkbuddy is deployed.
 """
 
 from __future__ import annotations

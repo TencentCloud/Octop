@@ -4,14 +4,14 @@ description: >
   Customize a Claude Code plugin for a specific organization's tools and workflows.
   Use when: customize plugin, set up plugin, configure plugin, tailor plugin, adjust plugin settings,
   customize plugin connectors, customize plugin skill, tweak plugin, modify plugin configuration.
-compatibility: Runs in the Octop agent workspace. The plugin directory is a workspace folder (uploaded or scaffolded here); results are delivered as workspace files.
+compatibility: Runs in the wkbuddy agent workspace. The plugin directory is a workspace folder (uploaded or scaffolded here); results are delivered as workspace files.
 ---
 
 # Cowork Plugin Customization
 
 Customize a plugin for a specific organization — either by setting up a generic plugin template for the first time, or by tweaking and refining an already-configured plugin.
 
-> **Target format**: this skill customizes Claude Code / Cowork plugin packages (`.claude-plugin/plugin.json` + `skills/` ...). That is the deliverable format — distinct from the Octop expert-library format (`manifest.json`); do not conflate the two.
+> **Target format**: this skill customizes Claude Code / Cowork plugin packages (`.claude-plugin/plugin.json` + `skills/` ...). That is the deliverable format — distinct from the wkbuddy expert-library format (`manifest.json`); do not conflate the two.
 
 > **Finding the plugin**: The plugin's source files live inside this workspace. Ask the user which directory holds the plugin, or search the workspace for `.claude-plugin/plugin.json` to locate it, then read its files to understand its structure before making changes. If the plugin is not in the workspace yet, ask the user to upload or provide its files first — do not abort.
 
@@ -114,7 +114,7 @@ After all customizations are applied, package the plugin for the user:
    cd /path/to/plugin && zip -r deliverables/plugin-name.plugin . -x "setup/*"
    ```
    Do not write to `/tmp/` or other system paths — the user can only access files inside this workspace.
-2. **Tell the user** the archive location: they can download `<name>.plugin` from the workspace file panel and install it into Claude Code / Cowork. The package format is the Claude plugin format (`.claude-plugin/plugin.json` + `skills/` ...); it is consumed by Claude, not by Octop.
+2. **Tell the user** the archive location: they can download `<name>.plugin` from the workspace file panel and install it into Claude Code / Cowork. The package format is the Claude plugin format (`.claude-plugin/plugin.json` + `skills/` ...); it is consumed by Claude, not by wkbuddy.
 
 > **Naming**: Use the original plugin directory name for the `.plugin` file (e.g., if the plugin directory is `coder`, the output file should be `coder.plugin`). Do not rename the plugin or its files during customization — only replace placeholder values and update content.
 

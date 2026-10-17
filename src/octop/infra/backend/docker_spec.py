@@ -1,4 +1,4 @@
-"""Octop helpers for harness ``type: "docker"`` backend specs."""
+"""wkbuddy helpers for harness ``type: "docker"`` backend specs."""
 
 from __future__ import annotations
 
@@ -58,7 +58,7 @@ def enrich_docker_backend_spec(
     agent_id: str,
     username: str | None = None,
 ) -> dict[str, Any]:
-    """Inject Octop defaults into a docker harness spec (does not overwrite set keys).
+    """Inject wkbuddy defaults into a docker harness spec (does not overwrite set keys).
 
     - ``sandbox_prefix`` defaults to ``octop_sandbox``
     - ``sandbox_scope`` defaults to ``agent``

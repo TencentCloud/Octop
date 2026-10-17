@@ -163,7 +163,7 @@ async def generate_skillhub_manifest_assets(
             "task_example_max": _MAX_TASK_EXAMPLES,
             "output": (
                 "label + description + one-line welcome_message + quick_prompts "
-                "+ task_examples for Octop expert manifest"
+                "+ task_examples for wkbuddy expert manifest"
             ),
         },
     }

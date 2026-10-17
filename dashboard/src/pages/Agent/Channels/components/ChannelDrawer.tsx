@@ -90,12 +90,7 @@ const QUICK_CONFIG_CHANNELS: ChannelKey[] = [
   "weixin",
   "dingtalk",
   "feishu",
-  "yuanbao",
 ];
-
-const YUANBAO_DEFAULT_API_DOMAIN = "https://bot.yuanbao.tencent.com";
-const YUANBAO_DEFAULT_WS_URL =
-  "wss://bot-wss.yuanbao.tencent.com/wss/connection";
 
 // QR State Machine
 type QrPhase =
@@ -132,10 +127,6 @@ type QrPhase =
       botName?: string;
       manageUrl?: string;
     }
-  | { phase: "yuanbao_creating"; message: string }
-  | { phase: "yuanbao_scan"; scanCode: string; scanUrl?: string }
-  | { phase: "yuanbao_progress"; message: string }
-  | { phase: "yuanbao_done"; appKey: string; appSecret: string }
   | { phase: "error"; reason: string };
 
 interface ChannelDrawerProps {
@@ -840,64 +831,6 @@ export function ChannelDrawer({
     pollTimerRef.current = timer;
   };
 
-  // ── YuanBao Flow ────────────────────────────────────────────────────────
-  const startYuanbaoCreator = async () => {
-    stopPolling();
-    setQrState({
-      phase: "yuanbao_creating",
-      message: t("channels.yuanbaoStarting"),
-    });
-    try {
-      await channelApi.yuanbaoBotCreatorStart(agentId, {});
-    } catch (e: unknown) {
-      setQrState({
-        phase: "error",
-        reason: e instanceof Error ? e.message : String(e),
-      });
-      return;
-    }
-    const timer = setInterval(async () => {
-      try {
-        const poll = await channelApi.yuanbaoBotCreatorPoll(agentId);
-        if (poll.scan_code) {
-          setQrState({
-            phase: "yuanbao_scan",
-            scanCode: poll.scan_code,
-            scanUrl: poll.scan_url,
-          });
-        }
-        const lastEvent = poll.events[poll.events.length - 1];
-        if (lastEvent?.action === "progress") {
-          setQrState((prev) =>
-            prev.phase === "yuanbao_scan"
-              ? prev
-              : { phase: "yuanbao_progress", message: lastEvent.message },
-          );
-        }
-        if (poll.status === "finished" && poll.app_key && poll.app_secret) {
-          stopPolling();
-          setQrState({
-            phase: "yuanbao_done",
-            appKey: poll.app_key,
-            appSecret: poll.app_secret,
-          });
-        } else if (poll.status === "failed") {
-          stopPolling();
-          const errEvent = poll.events.find(
-            (e) => e.action === "finish" && e.level === "error",
-          );
-          setQrState({
-            phase: "error",
-            reason: errEvent?.message ?? t("channels.yuanbaoBindFailed"),
-          });
-        }
-      } catch {
-        // keep polling
-      }
-    }, 2000);
-    pollTimerRef.current = timer;
-  };
-
   // Entering quick-config starts QR generation immediately (no extra click).
   useEffect(() => {
     if (!open || isEdit || loadingConfig) return;
@@ -921,9 +854,6 @@ export function ChannelDrawer({
         break;
       case "feishu":
         void startFeishuCreator("feishu");
-        break;
-      case "yuanbao":
-        void startYuanbaoCreator();
         break;
       default:
         break;
@@ -1062,18 +992,6 @@ export function ChannelDrawer({
           app_secret: s.appSecret,
         }),
       };
-    } else if (s.phase === "yuanbao_done") {
-      dedupeKey = `yuanbao:${s.appKey}:${s.appSecret}`;
-      payload = {
-        kind: "yuanbao",
-        name: "yuanbao",
-        config: mergeDisplayConfig({
-          app_key: s.appKey,
-          app_secret: s.appSecret,
-          api_domain: YUANBAO_DEFAULT_API_DOMAIN,
-          ws_url: YUANBAO_DEFAULT_WS_URL,
-        }),
-      };
     }
 
     if (!payload || !dedupeKey) return;
@@ -1153,8 +1071,6 @@ export function ChannelDrawer({
     stopPolling();
     if (selectedKind === "feishu")
       void channelApi.feishuBotCreatorStop(agentId).catch(() => {});
-    if (selectedKind === "yuanbao")
-      void channelApi.yuanbaoBotCreatorStop(agentId).catch(() => {});
     onClose();
   };
 
@@ -1637,90 +1553,6 @@ export function ChannelDrawer({
     );
   }
 
-  function renderYuanbaoPanel() {
-    const s = qrState;
-    if (
-      s.phase === "idle" ||
-      s.phase === "loading" ||
-      s.phase === "yuanbao_creating" ||
-      s.phase === "yuanbao_progress"
-    ) {
-      return renderQrLoading(
-        t("channels.yuanbaoQrStep1"),
-        t("channels.yuanbaoQrStep2"),
-        t("channels.yuanbaoQrStep3"),
-      );
-    }
-    if (s.phase === "yuanbao_scan") {
-      const qrValue = s.scanUrl ?? s.scanCode;
-      return (
-        <div className={styles.qrPanel}>
-          {renderQrSteps(
-            t("channels.yuanbaoQrStep1"),
-            t("channels.yuanbaoQrStep2"),
-            t("channels.yuanbaoQrStep3"),
-          )}
-          <div className={styles.qrCardWrap}>
-            <div className={styles.qrFrame}>
-              <QRCodeSVG value={qrValue} size={200} />
-            </div>
-          </div>
-          <p className={styles.qrScanHint}>{t("channels.yuanbaoQrScanHint")}</p>
-          <Button
-            size="small"
-            onClick={() => void startYuanbaoCreator()}
-            style={{ marginTop: 4 }}
-          >
-            {t("channels.qrRegenerate")}
-          </Button>
-        </div>
-      );
-    }
-    if (s.phase === "yuanbao_done") {
-      const retrySave = () =>
-        submitChannel(
-          "yuanbao",
-          "yuanbao",
-          mergeDisplayConfig({
-            app_key: s.appKey,
-            app_secret: s.appSecret,
-            api_domain: YUANBAO_DEFAULT_API_DOMAIN,
-            ws_url: YUANBAO_DEFAULT_WS_URL,
-          }),
-          true,
-        );
-      return (
-        <div className={styles.qrPanel}>
-          <Alert
-            type="success"
-            message={t("channels.yuanbaoCreateSuccess")}
-            style={{ width: "100%", marginBottom: 12 }}
-          />
-          {renderQrAutoSaveStatus(retrySave)}
-        </div>
-      );
-    }
-    if (s.phase === "error") {
-      return (
-        <div className={styles.qrPanel}>
-          <Alert
-            type="error"
-            message={s.reason}
-            style={{ width: "100%", marginBottom: 12 }}
-          />
-          <Button onClick={() => void startYuanbaoCreator()}>
-            {t("channels.qrRetryBtn")}
-          </Button>
-        </div>
-      );
-    }
-    return renderQrLoading(
-      t("channels.yuanbaoQrStep1"),
-      t("channels.yuanbaoQrStep2"),
-      t("channels.yuanbaoQrStep3"),
-    );
-  }
-
   // ── Render ──────────────────────────────────────────────────────────────
   return (
     <Drawer
@@ -1834,7 +1666,6 @@ export function ChannelDrawer({
                 {selectedKind === "weixin" && renderWeixinPanel()}
                 {selectedKind === "dingtalk" && renderDingtalkPanel()}
                 {selectedKind === "feishu" && renderFeishuPanel()}
-                {selectedKind === "yuanbao" && renderYuanbaoPanel()}
               </>
             )}
 

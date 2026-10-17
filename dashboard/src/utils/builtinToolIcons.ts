@@ -37,7 +37,7 @@ import {
   Wrench,
 } from "lucide-react";
 
-/** Lucide icons for built-in harness / Octop host tools. */
+/** Lucide icons for built-in harness / wkbuddy host tools. */
 export const BUILTIN_TOOL_ICONS: Record<string, LucideIcon> = {
   ls: Folder,
   read_file: FileSearch,

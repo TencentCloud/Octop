@@ -3,7 +3,7 @@
 LangGraph v2 moves ``__interrupt__`` off the values payload onto
 ``chunk["interrupts"]``. Harness ``_project_chunk`` only reads
 ``data["__interrupt__"]`` on updates, so ``hitl_required`` never reaches
-Octop and the dashboard leaves ``ask_user_question`` spinning.
+wkbuddy and the dashboard leaves ``ask_user_question`` spinning.
 """
 
 from __future__ import annotations

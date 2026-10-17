@@ -28,7 +28,6 @@ import {
 import { useTranslation } from "react-i18next";
 import type { TFunction } from "i18next";
 
-import MigrateMemory from "./MigrateMemory";
 import LastExtractionStatus from "./LastExtractionStatus";
 import {
   memoryDashboardApi,
@@ -168,7 +167,6 @@ export default function Overview({
               disabled={state.refreshing}
             />
           </Tooltip>
-          <MigrateMemory agentId={agentId} />
         </div>
       </header>
 

@@ -1,4 +1,4 @@
-"""Octop-specific storage backend probes (docker + row → harness probe)."""
+"""wkbuddy-specific storage backend probes (docker + row → harness probe)."""
 
 from __future__ import annotations
 

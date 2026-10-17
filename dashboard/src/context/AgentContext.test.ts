@@ -45,13 +45,13 @@ describe("selectEnabledExperts", () => {
     ]);
   });
 
-  it("hides general-assistant and system-doctor style experts once they are stopped", () => {
+  it("hides stopped experts of every template, not just the general assistant", () => {
     // User's two scenarios from the bug report.
     const agents = [
       agent("G1", "stopped", { template_name: "general-assistant" }),
       agent("G2", "running", { template_name: "general-assistant" }),
-      agent("S1", "stopped", { template_name: "cvm-ai-doctor" }),
-      agent("S2", "running", { template_name: "cvm-ai-doctor" }),
+      agent("S1", "stopped", { template_name: "ops-engineer" }),
+      agent("S2", "running", { template_name: "ops-engineer" }),
     ];
     const result = selectEnabledExperts(agents, null).map((a) => a.agent_id);
     // Both templates follow the same rule: only running ones survive.
@@ -62,7 +62,7 @@ describe("selectEnabledExperts", () => {
     // Regression for: stopping the focused expert in the chat page used to
     // leave it pinned in the sidebar because of an early pinActive default.
     const agents = [
-      agent("S1", "stopped", { template_name: "cvm-ai-doctor" }),
+      agent("S1", "stopped", { template_name: "ops-engineer" }),
       agent("G1", "running", { template_name: "general-assistant" }),
     ];
     // S1 is the resolvedAgentId (URL is /chat/S1). Without pinActive it must
@@ -91,7 +91,7 @@ describe("selectEnabledExperts", () => {
     // pinActive:false — but the option still exists in case a future
     // surface wants to keep the focused expert visible.
     const agents = [
-      agent("S1", "stopped", { template_name: "cvm-ai-doctor" }),
+      agent("S1", "stopped", { template_name: "ops-engineer" }),
       agent("G1", "running", { template_name: "general-assistant" }),
     ];
     const result = selectEnabledExperts(agents, "S1", { pinActive: true }).map(

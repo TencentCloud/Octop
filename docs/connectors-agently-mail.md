@@ -12,11 +12,11 @@ Agent Mail 为 Agent 提供独立邮箱。本连接器通过官方 `@tencent-qqm
 
 每个实例使用独立的 CLI 原生 workspace（同时隔离配置与 keychain 命名空间）。不同 Agent 需要不同邮箱时，分别创建实例并授权。
 同一实例被显式共享或绑定到多个 Agent 时，这些 Agent 使用同一个邮箱。
-OAuth 凭据由官方 CLI 管理；Octop 不向 Dashboard 或模型返回访问令牌。
+OAuth 凭据由官方 CLI 管理；政务伙伴不向 Dashboard 或模型返回访问令牌。
 登录流程在后台运行，超时、取消、删除实例和服务关闭时清理子进程。
 
 授权页还支持刷新、注销。注销会清除 CLI 授权并尝试撤销远端凭据。
-删除实例会注销 CLI 凭据并清理 Octop 内的暂存附件。
+删除实例会注销 CLI 凭据并清理政务伙伴内的暂存附件。
 
 CLI 1.0.18 设置 `AGENTLY_CLI_CONFIG_DIR` 后会强制使用 `default` workspace，
 而 keychain 不跟随该目录。本连接器清除继承的 `AGENTLY_*` 变量，只设置由实例
@@ -32,7 +32,7 @@ CLI 1.0.18 设置 `AGENTLY_CLI_CONFIG_DIR` 后会强制使用 `default` workspac
 单封永久删除可能直接执行，因此不能把首次实际写请求用作预览：
 
 1. 首次调用仅运行 CLI `--dry-run` 校验参数，返回 `confirmation_required`、`confirmation_token` 和摘要，尚未执行写操作。
-2. 带 `confirmation_token` 的第二次调用会走 Octop 现有 HITL 工具审批；用户批准后网关才消费令牌并真正写入。
+2. 带 `confirmation_token` 的第二次调用会走政务伙伴现有 HITL 工具审批；用户批准后网关才消费令牌并真正写入。
 3. 令牌绑定实例、工具和原参数，五分钟内有效且只能使用一次；过期未用文件会在下次预览时清理。
 4. 若上游另要求确认，网关在已经获得用户确认的同一次调用内，使用上游令牌及相同参数完成操作。
 

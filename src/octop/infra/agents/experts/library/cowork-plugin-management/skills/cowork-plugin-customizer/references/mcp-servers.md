@@ -4,7 +4,7 @@ How to find and connect MCPs during plugin customization.
 
 ## Available Tools
 
-> **Octop note**: `search_mcp_registry` and `suggest_connectors` are Cowork desktop built-in tools and are not available here. In Octop, identify candidate MCP servers by tool name or official MCP endpoint (the keyword mapping below still applies), then have the user connect the tool in their connector settings and write the endpoint into the plugin's `.mcp.json` as usual.
+> **wkbuddy note**: `search_mcp_registry` and `suggest_connectors` are Cowork desktop built-in tools and are not available here. In wkbuddy, identify candidate MCP servers by tool name or official MCP endpoint (the keyword mapping below still applies), then have the user connect the tool in their connector settings and write the endpoint into the plugin's `.mcp.json` as usual.
 
 ### `search_mcp_registry` (Cowork only)
 Search the MCP directory for available connectors.

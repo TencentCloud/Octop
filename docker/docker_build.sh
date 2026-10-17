@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # =============================================================================
-# 构建 Octop Docker 镜像
+# 构建政务伙伴 Docker 镜像
 #
 # 用法:
 #   bash docker/docker_build.sh [镜像标签] [额外 docker build 参数...]
@@ -11,10 +11,10 @@
 #   bash docker/docker_build.sh octop:dev --no-cache
 #
 # 国内加速（可选，需 BuildKit，本脚本默认已开启）:
-#   PIP_INDEX_URL=https://mirrors.cloud.tencent.com/pypi/simple \
-#   PIP_TRUSTED_HOST=mirrors.cloud.tencent.com \
-#   NPM_REGISTRY=https://mirrors.cloud.tencent.com/npm/ \
-#   APT_MIRROR=mirrors.cloud.tencent.com \
+#   PIP_INDEX_URL=https://mirrors.example.com/pypi/simple \
+#   PIP_TRUSTED_HOST=mirrors.example.com \
+#   NPM_REGISTRY=https://mirrors.example.com/npm/ \
+#   APT_MIRROR=mirrors.example.com \
 #   bash docker/docker_build.sh
 # =============================================================================
 set -euo pipefail
@@ -22,7 +22,7 @@ set -euo pipefail
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$REPO_ROOT"
 
-IMAGE_TAG="${1:-octop:latest}"
+IMAGE_TAG="${1:-wkbuddy:latest}"
 shift 2>/dev/null || true
 
 # BuildKit 启用 Dockerfile 缓存挂载，加速 npm / pip / apt 下载
@@ -46,7 +46,7 @@ if [ -n "${APT_MIRROR:-}" ]; then
 fi
 
 echo "╔══════════════════════════════════════════════════╗"
-echo "║  正在构建 Octop Docker 镜像                      ║"
+echo "║  正在构建政务伙伴 Docker 镜像                      ║"
 echo "║  标签: ${IMAGE_TAG}"
 echo "╚══════════════════════════════════════════════════╝"
 echo ""

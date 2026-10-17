@@ -7,7 +7,7 @@
 
 ## Context
 
-Octop needs to run a web server, a CLI, per-user Agent runtimes, IM channel connections, and cron schedulers simultaneously. The question was whether to split these into separate services (worker + API server) or keep everything in one process.
+wkbuddy needs to run a web server, a CLI, per-user Agent runtimes, IM channel connections, and cron schedulers simultaneously. The question was whether to split these into separate services (worker + API server) or keep everything in one process.
 
 ## Decision
 

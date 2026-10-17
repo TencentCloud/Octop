@@ -1,4 +1,4 @@
-"""Symlink-tolerant workspace skill discovery for Octop."""
+"""Symlink-tolerant workspace skill discovery for wkbuddy."""
 
 from __future__ import annotations
 

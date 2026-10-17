@@ -81,7 +81,7 @@ export function tryReloadOnStaleChunk(error: unknown): boolean {
   }
 
   reloadScheduled = true;
-  console.warn("[Octop] Stale chunk detected; reloading once.", error);
+  console.warn("[wkbuddy] Stale chunk detected; reloading once.", error);
   void bustServiceWorkerAndReload();
   return true;
 }

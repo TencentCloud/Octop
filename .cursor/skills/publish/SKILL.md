@@ -3,7 +3,7 @@ name: publish
 description: >-
   Publish the Octop Python package: cut a release branch from develop, bump
   version, update CHANGELOG, open a PR to main; after merge, Actions tag on
-  main (PyPI / Docker Hub + GHCR) and sync main into develop. Use when the user asks
+  main (GitHub Release + GHCR) and sync main into develop. Use when the user asks
   to publish, release, bump version, cut a release, or run /publish.
 disable-model-invocation: true
 ---
@@ -182,7 +182,7 @@ git checkout -B {RELEASE_BRANCH_PREFIX}{version} {REMOTE}/{INTEGRATION_BRANCH}
 
 必改清单（按顺序，用 Edit 工具精确替换，勿用会误伤 CHANGELOG 历史条目的全局 replace）：
 
-1. `VERSION_FILE`（`pyproject.toml`）— wheel / PyPI 的唯一版本源：
+1. `VERSION_FILE`（`pyproject.toml`）— wheel / 发布物的唯一版本源：
    ```bash
    grep -n '^\s*version\s*=\s*"[^"]+"' pyproject.toml
    # "X.Y.Z" → "A.B.C"
@@ -199,18 +199,7 @@ git checkout -B {RELEASE_BRANCH_PREFIX}{version} {REMOTE}/{INTEGRATION_BRANCH}
    grep -n '__version__' src/octop/__init__.py
    # `__version__ = "X.Y.Z"` → `"A.B.C"`
    ```
-4. 飞牛 FnOS 两个 manifest 的 `version=`（`scripts/build-fpk.sh` 打包时会再注入，但仓库源文件必须先改）：
-   ```bash
-   grep -n '^version=' fnos/docker/manifest fnos/native/manifest
-   # `version=X.Y.Z` → `version=A.B.C`（两个文件都要改）
-   ```
-5. 飞牛 Docker compose 镜像标签（与本包版本相同，供 FPK 拉取 GHCR）：
-   ```bash
-   grep -n 'ghcr.io/tencentcloud/octop:' fnos/docker/app/docker/docker-compose.yaml
-   # `ghcr.io/tencentcloud/octop:X.Y.Z` → `:A.B.C`
-   # 不得改成 `:latest`（测试禁止 latest）
-   ```
-6. `uv.lock` 里可编辑包 `octop` 的版本（漏改会导致 lock 与 pyproject 不一致）：
+4. `uv.lock` 里可编辑包 `octop` 的版本（漏改会导致 lock 与 pyproject 不一致）：
    ```bash
    grep -n -A2 'name = "octop"' uv.lock | head -5
    # 将该包的 `version = "X.Y.Z"` 改为 `"A.B.C"`
@@ -239,8 +228,6 @@ git grep -n --fixed-strings "X.Y.Z"
 git grep -n --fixed-strings "X.Y.Z" -- \
   pyproject.toml src/octop/__init__.py \
   README.md README_CN.md \
-  fnos/docker/manifest fnos/native/manifest \
-  fnos/docker/app/docker/docker-compose.yaml \
   uv.lock
 ```
 
@@ -352,7 +339,7 @@ git checkout {original_branch}
 
 **绝不：**
 - 在 release / feature 分支上、于合入 `main` **之前**推送生产 `v*` tag
-- 在推送 tag 前直接上传 PyPI（发布由 GitHub Action 负责）
+- 手动把 wheel / sdist 上传到公共 PyPI（本项目不发公共 PyPI，制品只挂 GitHub Release 与 GHCR）
 - 将 `develop` 直接 push / merge 进 `main`（必须走 PR）
 - 跳过步骤 1 的用户确认
 - 跳过步骤 3 的 CHANGELOG 确认
@@ -366,6 +353,6 @@ git checkout {original_branch}
 - 发版后删除 `release/*`；`main → develop` 由 `sync-main-to-develop.yml` 自动同步（失败时再手动补）
 - 中止前展示完整错误输出
 - 插入新版本条目后保持 `[Unreleased]` 为空
-- 把旧版本号 `X.Y.Z` 换成 `A.B.C`：`pyproject.toml`、`__version__`、多语言 README 徽标、`fnos/*/manifest`、`fnos/docker/app/docker/docker-compose.yaml` 镜像标签、`uv.lock` 的 octop 包版本；提交前 `git grep` 必改清单确认无旧号
+- 把旧版本号 `X.Y.Z` 换成 `A.B.C`：`pyproject.toml`、`__version__`、多语言 README 徽标、`uv.lock` 的 octop 包版本；提交前 `git grep` 必改清单确认无旧号
 - 勿改 CHANGELOG 历史章节、测试夹具里的旧版本比较、workflow 示例号
 - 推送 tag 后提示用户关注 GitHub Actions 的发布结果

@@ -98,7 +98,7 @@ def test_stamp_manifest_sets_octop_identity_only(tmp_path: Path) -> None:
     dest = tmp_path / "wails.exe.generated.manifest"
     stamp_version.stamp_manifest(src, dest, "1.2.3")
     text = dest.read_text(encoding="utf-8")
-    assert 'name="com.tencent.octop" version="1.2.3.0"' in text
+    assert 'name="com.daoshengtech.wkbuddy" version="1.2.3.0"' in text
     assert 'name="Microsoft.Windows.Common-Controls" version="6.0.0.0"' in text
 
 
@@ -114,7 +114,7 @@ def test_stamp_manifest_pep440_prerelease(tmp_path: Path) -> None:
     dest = tmp_path / "wails.exe.generated.manifest"
     stamp_version.stamp_manifest(src, dest, "1.0.2b1")
     text = dest.read_text(encoding="utf-8")
-    assert 'name="com.tencent.octop" version="1.0.2.0"' in text
+    assert 'name="com.daoshengtech.wkbuddy" version="1.0.2.0"' in text
 
 
 def test_write_nsis_defines_pep440(tmp_path: Path) -> None:

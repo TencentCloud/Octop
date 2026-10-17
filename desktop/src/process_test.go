@@ -155,7 +155,7 @@ func TestOctopAlreadyRunningRecognizesHealth(t *testing.T) {
 	}))
 	defer srv.Close()
 	if !octopAlreadyRunning(srv.URL) {
-		t.Fatal("expected a running Octop")
+		t.Fatal("expected a running wkbuddy")
 	}
 }
 
@@ -165,10 +165,10 @@ func TestOctopAlreadyRunningRejectsOtherServers(t *testing.T) {
 	}))
 	defer srv.Close()
 	if octopAlreadyRunning(srv.URL) {
-		t.Fatal("a generic health payload is not Octop")
+		t.Fatal("a generic health payload is not wkbuddy")
 	}
 	if octopAlreadyRunning(fmt.Sprintf("http://127.0.0.1:%d/", srv.Listener.Addr().(*net.TCPAddr).Port+1)) {
-		t.Fatal("nothing listening should not count as Octop")
+		t.Fatal("nothing listening should not count as wkbuddy")
 	}
 }
 

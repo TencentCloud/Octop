@@ -2,7 +2,7 @@
 
 In-app browsers (WeChat, QQ, DingTalk, …) refuse ``blob:`` downloads, and a
 plain API URL needs a JWT that the system browser does not have. The
-dashboard hands the bytes it already fetched back to Octop, which keeps them
+dashboard hands the bytes it already fetched back to wkbuddy, which keeps them
 on disk behind an unguessable token for a few minutes so the link can be
 opened anywhere.
 """

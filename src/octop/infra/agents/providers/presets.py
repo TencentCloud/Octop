@@ -1,8 +1,94 @@
-"""Built-in provider template loading (octop-harness bundles)."""
+"""Built-in provider template loading (octop-harness bundles).
+
+Publishers retune the shipped list with ``~/.octop/provider_presets.json`` —
+see :func:`apply_preset_overrides`.
+"""
 
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Any
+
+from octop.infra.errors import corrupt_config_error
+from octop.infra.utils.json_file import JsonFileCorruptError, read_json_object
+from octop.infra.utils.paths import PathLayout
+
+#: Brand card order used when the override file does not list ``order``.
+DEFAULT_GROUP_ORDER: tuple[str, ...] = (
+    "tencent",
+    "kimi",
+    "minimax",
+    "opencode",
+    "siliconflow",
+    "aliyun",
+    "volcengine",
+    "zhipu",
+)
+
+
+def preset_overrides_path() -> Path:
+    """``~/.octop/provider_presets.json`` — optional, publisher-authored."""
+    return PathLayout.from_env().root / "provider_presets.json"
+
+
+def load_preset_overrides() -> dict[str, Any]:
+    """Read the override file; a missing file means "no overrides"."""
+    try:
+        return read_json_object(preset_overrides_path()) or {}
+    except JsonFileCorruptError as exc:
+        raise corrupt_config_error(exc.path, exc.detail) from exc
+
+
+def apply_preset_overrides(
+    presets: list[dict[str, Any]],
+    overrides: dict[str, Any],
+) -> list[dict[str, Any]]:
+    """Hide, rename and reorder presets for the Models page / CLI / setup wizard.
+
+    ``hidden`` matches preset ids *and* group keys, ``order`` lists ids and/or
+    group keys to surface first, ``group_names`` maps a group key to its display
+    name. Groups come first, each in ``order`` → :data:`DEFAULT_GROUP_ORDER` →
+    name order; presets inside a group keep template order unless ordered.
+    """
+    hidden = {str(x) for x in (overrides.get("hidden") or [])}
+    order = [str(x) for x in (overrides.get("order") or [])]
+    group_names = {str(k): str(v) for k, v in (overrides.get("group_names") or {}).items()}
+    rank = {key: i for i, key in enumerate(order)}
+    unlisted = len(order)
+
+    grouped: dict[str, list[dict[str, Any]]] = {}
+    ungrouped: list[dict[str, Any]] = []
+    for preset in presets:
+        preset_id = str(preset.get("id") or "")
+        group = str(preset.get("provider_group") or "")
+        if preset_id in hidden or group in hidden:
+            continue
+        if group and group in group_names:
+            preset["provider_group_name"] = group_names[group]
+        if group:
+            grouped.setdefault(group, []).append(preset)
+        else:
+            ungrouped.append(preset)
+
+    def group_sort_key(group: str) -> tuple[int, int, str]:
+        default = (
+            DEFAULT_GROUP_ORDER.index(group)
+            if group in DEFAULT_GROUP_ORDER
+            else len(DEFAULT_GROUP_ORDER)
+        )
+        label = str(grouped[group][0].get("provider_group_name") or group)
+        return (rank.get(group, unlisted), default, label)
+
+    out: list[dict[str, Any]] = []
+    for group in sorted(grouped, key=group_sort_key):
+        out.extend(sorted(grouped[group], key=lambda p: rank.get(str(p.get("id") or ""), unlisted)))
+    out.extend(
+        sorted(
+            ungrouped,
+            key=lambda p: (rank.get(str(p.get("id") or ""), unlisted), str(p.get("name") or "")),
+        )
+    )
+    return out
 
 
 def _reasoning_profile(provider_id: str, model_id: str) -> dict[str, Any] | None:
@@ -276,4 +362,4 @@ def load_provider_presets() -> list[dict[str, Any]]:
             if profile is not None:
                 model["reasoning"] = True
                 model["reasoning_config"] = profile
-    return out
+    return apply_preset_overrides(out, load_preset_overrides())

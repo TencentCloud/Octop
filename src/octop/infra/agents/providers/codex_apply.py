@@ -1,4 +1,4 @@
-"""Apply Codex OAuth credentials to the Octop provider store."""
+"""Apply Codex OAuth credentials to the wkbuddy provider store."""
 
 from __future__ import annotations
 

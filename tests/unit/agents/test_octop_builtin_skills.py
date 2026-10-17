@@ -1,4 +1,4 @@
-"""Tests for Octop-owned built-in Skills and the Skill Manager helper."""
+"""Tests for wkbuddy-owned built-in Skills and the Skill Manager helper."""
 
 from __future__ import annotations
 
@@ -193,7 +193,7 @@ def test_manager_refuses_to_replace_itself(tmp_path: Path) -> None:
     result = _run_manager(tmp_path, "install", str(source), "--force")
 
     assert result.returncode == 1
-    assert "Octop-owned built-in" in result.stdout
+    assert "wkbuddy-owned built-in" in result.stdout
     assert not (tmp_path / "skills" / "skill-manager").exists()
 
 

@@ -38,7 +38,7 @@ tasks:
           New-Item -ItemType Directory -Force bundled | Out-Null;
           Copy-Item -Force '{{.PORTABLE_ZIP}}' 'bundled/portable.zip'"
     vars:
-      PORTABLE_ZIP: '{{.PORTABLE_ZIP | default (printf "../portable/release/Octop-portable-windows-%s-%s.zip" (.ARCH | default ARCH) (.VERSION | default "dev"))}}'
+      PORTABLE_ZIP: '{{.PORTABLE_ZIP | default (printf "../portable/release/wkbuddy-portable-windows-%s-%s.zip" (.ARCH | default ARCH) (.VERSION | default "dev"))}}'
 
   package:
     summary: Packages an NSIS installer with the portable runtime embedded
@@ -65,11 +65,11 @@ tasks:
     vars:
       ARCH: "{{.ARCH | default ARCH}}"
       VERSION: '{{.VERSION | default "dev"}}'
-      PORTABLE_ZIP: '{{.PORTABLE_ZIP | default (printf "../portable/release/Octop-portable-windows-%s-%s.zip" .ARCH .VERSION)}}'
+      PORTABLE_ZIP: '{{.PORTABLE_ZIP | default (printf "../portable/release/wkbuddy-portable-windows-%s-%s.zip" .ARCH .VERSION)}}'
       ARCHIVE: '{{.BIN_DIR}}/{{.APP_NAME}}-desktop-windows-{{.ARCH}}-{{.VERSION}}.exe'
 
   create:nsis:installer:
-    summary: Wraps Octop.exe in an NSIS installer (Program Files + shortcuts)
+    summary: Wraps wkbuddy.exe in an NSIS installer (Program Files + shortcuts)
     dir: build/windows/nsis
     preconditions:
       - sh: makensis -VERSION

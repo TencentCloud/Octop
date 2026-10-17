@@ -1,4 +1,4 @@
-# Shared NSIS helpers for the Octop desktop installer.
+# Shared NSIS helpers for the wkbuddy desktop installer.
 # INFO_PRODUCTVERSION: display string (pep440 OK, e.g. 1.0.2b1).
 # INFO_FILEVERSION: numeric X.X.X.X for VIProductVersion / VIFileVersion
 # (stamp_version.py four-part). Fallbacks below are for local makensis without -D.
@@ -8,19 +8,19 @@
 !include "FileFunc.nsh"
 
 !ifndef INFO_PROJECTNAME
-    !define INFO_PROJECTNAME "Octop"
+    !define INFO_PROJECTNAME "wkbuddy"
 !endif
 !ifndef INFO_COMPANYNAME
-    !define INFO_COMPANYNAME "Octop"
+    !define INFO_COMPANYNAME "wkbuddy"
 !endif
 !ifndef INFO_PRODUCTNAME
-    !define INFO_PRODUCTNAME "Octop"
+    !define INFO_PRODUCTNAME "wkbuddy"
 !endif
 !ifndef INFO_PRODUCTVERSION
     !define INFO_PRODUCTVERSION "0.9.31"
 !endif
 !ifndef INFO_COPYRIGHT
-    !define INFO_COPYRIGHT "(c) 2026, Octop"
+    !define INFO_COPYRIGHT "Copyright (c) 2026 daoshengtech.com"
 !endif
 !ifndef PRODUCT_EXECUTABLE
     !define PRODUCT_EXECUTABLE "${INFO_PROJECTNAME}.exe"

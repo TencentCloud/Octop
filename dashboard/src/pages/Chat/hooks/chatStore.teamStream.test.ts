@@ -87,7 +87,7 @@ describe("team member live stream", () => {
   it("does not splice unstamped reasoning into a stamped host bubble", () => {
     ingestHarnessChunk(SESSION, {
       type: "token",
-      content: "已安排系统医生，稍等片刻",
+      content: "已安排运维工程师，稍等片刻",
       agent_id: "host",
     });
     ingestHarnessChunk(SESSION, {
@@ -97,7 +97,7 @@ describe("team member live stream", () => {
 
     const { messages } = getSnapshot(SESSION);
     const host = messages.find((item) => item.speakerAgentId === "host");
-    expect(host?.content).toBe("已安排系统医生，稍等片刻");
+    expect(host?.content).toBe("已安排运维工程师，稍等片刻");
     expect(
       host?.contentBlocks?.some((block) => block.content.includes("系统诊断")),
     ).not.toBe(true);

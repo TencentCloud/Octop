@@ -34,7 +34,7 @@ def host_path_text(path: Path) -> str:
 
 
 def host_home_dir() -> Path:
-    """Absolute home directory of the OS user running the Octop process."""
+    """Absolute home directory of the OS user running the wkbuddy process."""
     return Path(os.path.realpath(os.path.expanduser(str(Path.home()))))
 
 
@@ -94,7 +94,7 @@ def host_jail_enforced() -> bool:
 
 
 def running_in_container() -> bool:
-    """True when the Octop process appears to run inside a container.
+    """True when the wkbuddy process appears to run inside a container.
 
     Used so Docker (and Podman) deployments ignore host ``workspace_root_dir``
     policy (the container is already the isolation boundary) and so the UI can

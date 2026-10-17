@@ -326,8 +326,6 @@ export default function ChannelsPanel({ agentId }: ChannelsPanelProps) {
             ? "channels.weixinQrBindSuccess"
             : kind === "feishu"
             ? "channels.feishuBindSuccess"
-            : kind === "yuanbao"
-            ? "channels.yuanbaoBindSuccess"
             : "channels.channelEnabled";
           message.success(t(toastKey));
           setDrawerOpen(false);

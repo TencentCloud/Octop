@@ -74,7 +74,7 @@ async def qq_qr_generate(session_id: str) -> dict[str, str]:
 
 
 async def qq_qr_poll(session_id: str, qrcode_token: str) -> dict[str, Any]:
-    """Poll the active QQ Bot QR task for an Octop API or CLI session."""
+    """Poll the active QQ Bot QR task for a wkbuddy API or CLI session."""
     session = _qq_qr_sessions.get(session_id)
     if session is None or session[1] != qrcode_token:
         return {"status": "error", "message": "QQ QR session is missing or expired"}

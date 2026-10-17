@@ -197,7 +197,7 @@ export default function ProfileOverview({
           items={state.aboutMe.map((a) => atomToConceptItem(a, t, timeZone))}
           emptyHint={t(
             "memory.terminal.emptyAboutMe",
-            "Octop 还在了解你，多聊几次就会补上",
+            "wkbuddy 还在了解你，多聊几次就会补上",
           )}
           onViewAll={onViewAll}
         />
@@ -218,7 +218,7 @@ export default function ProfileOverview({
           title={t("memory.terminal.toldMe", "你提到的事实")}
           subtitle={t(
             "memory.terminal.toldMeDesc",
-            "最近被 Octop 记下的关键内容",
+            "最近被 wkbuddy 记下的关键内容",
           )}
           loading={firstLoading}
           items={state.toldMe.map((a) => atomToConceptItem(a, t, timeZone))}

@@ -1,4 +1,4 @@
-"""Agent backend configuration — Octop DB rows → harness specs + probes.
+"""Agent backend configuration — wkbuddy DB rows → harness specs + probes.
 
 - :mod:`adapter` — ``storage_backends`` row → harness spec (no I/O)
 - :mod:`resolver` — agent config ``named`` / ``composite`` expansion

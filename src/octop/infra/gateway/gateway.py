@@ -46,8 +46,13 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
+# Vendor channel kinds this build does not offer: existing rows are never registered,
+# and creating or switching to them is rejected.
+DISABLED_CHANNEL_KINDS: frozenset[str] = frozenset({"yuanbao"})
+
 # Re-export for api/cli importers
 __all__ = [
+    "DISABLED_CHANNEL_KINDS",
     "ChannelCreateSpec",
     "ChannelKind",
     "ChannelRuntimeStatus",
@@ -689,6 +694,9 @@ class Gateway:
             )
 
     async def _register_channel(self, row: ChannelRow) -> None:
+        if str(row.kind) in DISABLED_CHANNEL_KINDS:
+            self._set_runtime_status(row.channel_id, connected=False, reason="unsupported_kind")
+            return
         if not self._channel_manager or not self._processor:
             return
         config = self._config_from_row(row)

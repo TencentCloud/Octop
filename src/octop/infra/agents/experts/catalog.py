@@ -44,8 +44,6 @@ _FALLBACK_BUNDLED_AVATAR_IDS = frozenset(
         "ai-coding-coach",
         "ai-safety-guardian",
         "clinical-learning-subscription",
-        "cvm-ai-doctor",
-        "cvm-cluster-doctor",
         "default",
         "general-assistant",
         "karpathy-knowledge-base",
@@ -57,7 +55,6 @@ _FALLBACK_BUNDLED_AVATAR_IDS = frozenset(
         "parenting-companion",
         "stock-assistant",
         "superpowers-methodology",
-        "tencentcloud-api",
         "wechat-ops",
         "scene-academic",
         "scene-content-creation",
@@ -82,7 +79,7 @@ _FALLBACK_BUNDLED_AVATAR_IDS = frozenset(
 
 def bundled_avatars_dir() -> Path | None:
     """Locate ``dashboard/public/experts/avatars`` relative to this package."""
-    # catalog.py → experts → agents → infra → octop → src → Octop/
+    # catalog.py → experts → agents → infra → octop → src → wkbuddy/
     for parent in Path(__file__).resolve().parents:
         candidate = parent / "dashboard" / "public" / "experts" / "avatars"
         if candidate.is_dir():

@@ -30,20 +30,20 @@ checkpoint、Memory 原始记录及会话 JSONL 仍遵循现有行为。
 
 分段归档关闭时，旧投影回填仍可读取 checkpoint。SQLite 回填使用独立只读连接、事务和内容缓存；
 若 octop-memory 使用共享正文格式，须同时安装提供 `CheckpointSerializer.with_connection` 的
-octop-memory 和本次 Octop 读取修正。原有 inline 格式仍可读取。
+octop-memory 和本次政务伙伴读取修正。原有 inline 格式仍可读取。
 PostgreSQL 不进入 SQLite 读取入口，继续经 graph 恢复消息；这不改变下述分段归档的 SQLite-only 限制。
 
 ## 启用
 
-适用范围：SQLite 主库、单个 Octop 服务进程。PostgreSQL 开启此功能会明确拒绝启动。
-上线需同时包含本次 Octop 变更及 octop-harness 流式协议变更；后者提供模型消息 ID 和来源关联。
+适用范围：SQLite 主库、单个政务伙伴服务进程。PostgreSQL 开启此功能会明确拒绝启动。
+上线需同时包含本次政务伙伴变更及 octop-harness 流式协议变更；后者提供模型消息 ID 和来源关联。
 本地仅修改源码不会自动升级虚拟环境里已安装的 octop-harness。
 
 1. 先停止新请求，等待运行中的任务结束。保留当前应用版本及完整数据目录备份。
 2. 在测试数据副本中安装包含上述变更的兼容版本。
 3. 在现有 `config.json` 增加 `"history_v2_enabled": true`，或设置
    `OCTOP_HISTORY_V2_ENABLED=true` 后重启。默认值为 false。
-4. 新文件位于 Octop 数据根目录下的 `history_v2.sqlite`，旁边有
+4. 新文件位于政务伙伴数据根目录下的 `history_v2.sqlite`，旁边有
    `history_v2.required` 标记。不要单独删除或移动其中之一。
 5. 对一段旧会话继续聊天，刷新并翻到切换边界之前；再测试工具调用、可见 thinking、
    HITL 暂停恢复和进程中断。确认新回合没有写入旧消息/轨迹表。

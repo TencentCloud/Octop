@@ -378,43 +378,6 @@ def test_feishu_bot_creator_stop_not_running(mock_server_and_user):
     assert resp.json()["status"] in ("stopped", "not_running")
 
 
-def test_yuanbao_bot_creator_start_returns_pid(mock_server_and_user):
-    """yuanbao/bot-creator/start should launch subprocess and return pid."""
-    server, user = mock_server_and_user
-
-    mock_proc = MagicMock()
-    mock_proc.pid = 9999
-
-    with (
-        patch("octop.api.routers.channels.subprocess.Popen", return_value=mock_proc),
-        patch(
-            "octop.api.routers.channels._bot_creator_script",
-            return_value="/fake/yuanbao_bot_creator.py",
-        ),
-    ):
-        app = _make_app(server, user)
-        client = TestClient(app)
-        resp = client.post(
-            "/agents/agent1/channels/yuanbao/bot-creator/start",
-            json={},
-        )
-
-    assert resp.status_code == 200
-    data = resp.json()
-    assert data["status"] == "started"
-    assert data["pid"] == 9999
-
-
-def test_yuanbao_bot_creator_stop_not_running(mock_server_and_user):
-    """yuanbao/bot-creator/stop returns not_running when no process."""
-    server, user = mock_server_and_user
-    app = _make_app(server, user)
-    client = TestClient(app)
-    resp = client.post("/agents/agent1/channels/yuanbao/bot-creator/stop")
-    assert resp.status_code == 200
-    assert resp.json()["status"] in ("stopped", "not_running")
-
-
 @pytest.mark.parametrize(
     ("endpoint", "payload"),
     [
@@ -429,14 +392,6 @@ def test_yuanbao_bot_creator_stop_not_running(mock_server_and_user):
         (
             "/agents/agent1/channels/feishu/bot-creator/start",
             {"avatar_url": "https://example.com/a.png;id"},
-        ),
-        (
-            "/agents/agent1/channels/yuanbao/bot-creator/start",
-            {"instance_id": "i|id"},
-        ),
-        (
-            "/agents/agent1/channels/yuanbao/bot-creator/start",
-            {"instance_id": "i1", "ip": "127.0.0.1;id"},
         ),
         (
             "/agents/agent1/channels/wecom/qrcode/poll",

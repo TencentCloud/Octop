@@ -92,7 +92,7 @@ def _x11_socket_path(display: str) -> Path | None:
 def resolve_browser_display() -> str | None:
     """Pick a usable X11 display for headed Chrome (virtual desktop or env).
 
-    When Octop's Linux virtual desktop (Xvnc ``:99``) is running, inject
+    When wkbuddy's Linux virtual desktop (Xvnc ``:99``) is running, inject
     ``DISPLAY`` into the process env so octop-browser launches headed and
     the window appears on the remote desktop.
 
@@ -176,7 +176,7 @@ def _probe_dir_writable(directory: Path) -> bool:
 def _under_root_home(path: Path) -> bool:
     """True for paths under ``/root`` that are unsafe for Chrome (YunJing).
 
-    Octop home (``OCTOP_HOME`` / ``~/.octop``) is exempt so shared profiles
+    wkbuddy home (``OCTOP_HOME`` / ``~/.octop``) is exempt so shared profiles
     at ``~/.octop/browser-profiles`` stay put even when running as root.
     """
     if not sys.platform.startswith("linux"):
@@ -478,7 +478,7 @@ async def uninstall_browser_stream(*, locale: str = "en") -> AsyncIterator[str]:
     ``locale`` is reserved for future i18n of log lines.
     """
     _ = locale
-    yield _sse({"log": "Closing Octop browser sessions…"})
+    yield _sse({"log": "Closing wkbuddy browser sessions…"})
     closed = await _close_harness_registry()
     if closed:
         yield _sse({"log": f"Closed {closed} in-process session(s)."})
@@ -488,7 +488,7 @@ async def uninstall_browser_stream(*, locale: str = "en") -> AsyncIterator[str]:
     # Chrome windows the user opened themselves.
     profiles_root = _profiles_root()
     if profiles_root.is_dir():
-        yield _sse({"log": "Stopping Octop-managed browser processes…"})
+        yield _sse({"log": "Stopping wkbuddy-managed browser processes…"})
         for child in sorted(profiles_root.iterdir()):
             if child.is_dir() and not child.name.startswith("."):
                 await asyncio.to_thread(pkill_chrome_profile, child)

@@ -1,11 +1,11 @@
 ---
 name: expert-manifest-generator
-description: Generate bilingual Octop expert manifest metadata from a SkillHub skillset package.
+description: Generate bilingual wkbuddy expert manifest metadata from a SkillHub skillset package.
 ---
 
 # Expert Manifest Generator
 
-You turn a SkillHub skillset package into the small manifest metadata Octop needs
+You turn a SkillHub skillset package into the small manifest metadata wkbuddy needs
 for an expert agent. You do not create a soul/persona file. You only generate
 display metadata, a welcome message, quick-start cards, and scheduled-task examples.
 
@@ -139,6 +139,6 @@ Allowed `icon_name` values:
 `terminal`, `hard-drive`, `heart`, `user`, `sparkles`.
 
 Use distinct **light pastel** hex colors for icon backgrounds when suggesting
-them (examples: `#e8f4ff`, `#dcfce7`, `#fef3c7`, `#fce7f3`). Octop may remap
+them (examples: `#e8f4ff`, `#dcfce7`, `#fef3c7`, `#fce7f3`). wkbuddy may remap
 card colors onto this shared pastel palette so market experts match built-in
 chips — avoid saturated or dark brand colors.

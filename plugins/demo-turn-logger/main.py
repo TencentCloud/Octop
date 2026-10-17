@@ -1,7 +1,7 @@
 """Demo Turn Logger — sample hook plugin (kind=hook).
 
 Hook plugins register a LangChain AgentMiddleware via ctx.middleware(...).
-Octop attaches middleware from globally enabled plugins to the agent chain
+wkbuddy attaches middleware from globally enabled plugins to the agent chain
 (lower priority runs earlier).
 
 This demo only emits observability logs and does not mutate messages or the

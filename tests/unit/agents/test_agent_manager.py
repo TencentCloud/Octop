@@ -885,7 +885,7 @@ def test_build_harness_config_enables_bootstrap_for_expert_template(manager: Age
     from dataclasses import replace
 
     cfg = manager._build_harness_config(
-        replace(_row(agent_id="AGT001"), template_name="cvm-ai-doctor"),
+        replace(_row(agent_id="AGT001"), template_name="ops-engineer"),
     )
     assert cfg.bootstrap_enabled is True
 

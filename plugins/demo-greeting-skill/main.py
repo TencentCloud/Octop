@@ -1,7 +1,7 @@
 """Demo Greeting Skill — sample skill plugin (kind=skill).
 
 Skill plugins do not register callable tools. They declare a directory with
-ctx.skills(...); on agent start Octop syncs each skills/<name>/SKILL.md into
+ctx.skills(...); on agent start wkbuddy syncs each skills/<name>/SKILL.md into
 the agent workspace under skills/.
 """
 

@@ -1108,7 +1108,7 @@ async def connector_install_cli(
     kind: str,
     _: Any = Depends(require_permission("connectors")),
 ) -> dict[str, Any]:
-    """Run ``npm install -g`` for the connector CLI on the Octop host (admin only).
+    """Run ``npm install -g`` for the connector CLI on the wkbuddy host (admin only).
 
     Always returns a structured body (even on failure) including ``install_command``
     and documentation URLs so the UI can guide manual install.

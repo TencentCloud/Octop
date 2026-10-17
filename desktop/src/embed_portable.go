@@ -2,7 +2,7 @@
 
 package main
 
-// Development builds look for Octop-<plat>.zip or Octop-portable-<plat>-*.zip
+// Development builds look for wkbuddy-<plat>.zip or wkbuddy-portable-<plat>-*.zip
 // beside the executable. macOS production copies the zip into Resources as
-// Octop-<plat>.zip.
+// wkbuddy-<plat>.zip.
 var embeddedPortable []byte

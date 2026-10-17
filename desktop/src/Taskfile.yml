@@ -7,13 +7,13 @@ includes:
   linux: ./build/linux/Taskfile.yml
 
 vars:
-  APP_NAME: "Octop"
+  APP_NAME: "wkbuddy"
   BIN_DIR: "bin"
   VITE_PORT: '{{.WAILS_VITE_PORT | default 9245}}'
 
 tasks:
   build:
-    summary: Builds the Octop desktop shell
+    summary: Builds the wkbuddy desktop shell
     cmds:
       - task: "{{OS}}:build"
 

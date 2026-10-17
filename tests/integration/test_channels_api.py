@@ -138,3 +138,44 @@ async def test_create_reloads_runtime(env: Any) -> None:
 
     r = await c.delete(f"/api/agents/{aid}/channels/{cid}", headers=alice_auth)
     assert r.status_code == 204
+
+
+# --- Disabled channel kinds -----------------------------------------------------
+
+
+async def test_disabled_channel_kind_is_rejected(env: Any) -> None:
+    """Retired vendor kinds cannot be created, patched to, or driven over HTTP."""
+    c, _srv, alice_auth, _bob_auth, aid = env
+
+    r = await c.post(
+        f"/api/agents/{aid}/channels",
+        headers=alice_auth,
+        json={"kind": "yuanbao", "name": "main", "config": {}},
+    )
+    assert r.status_code == 400
+    assert r.json()["error"]["code"] == "CHANNEL_KIND_UNSUPPORTED"
+
+    r = await c.post(
+        f"/api/agents/{aid}/channels",
+        headers=alice_auth,
+        json={"kind": "feishu", "name": "main", "config": {}},
+    )
+    assert r.status_code == 201
+    cid = r.json()["id"]
+
+    r = await c.patch(
+        f"/api/agents/{aid}/channels/{cid}",
+        headers=alice_auth,
+        json={"kind": "yuanbao"},
+    )
+    assert r.status_code == 400
+    assert r.json()["error"]["code"] == "CHANNEL_KIND_UNSUPPORTED"
+
+    r = await c.post(
+        f"/api/agents/{aid}/channels/yuanbao/bot-creator/start",
+        headers=alice_auth,
+        json={},
+    )
+    # Route no longer exists; unmatched non-GET paths hit the GET-only SPA
+    # catch-all (`api/app.py` ``spa_fallback``), which answers 405 rather than 404.
+    assert r.status_code == 405

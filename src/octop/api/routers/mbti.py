@@ -1,6 +1,6 @@
 """MBTI personality type API — profiles, test, and per-agent persona apply.
 
-Octop is multi-agent: the MBTI code lives on ``agents.persona_mbti`` /
+wkbuddy is multi-agent: the MBTI code lives on ``agents.persona_mbti`` /
 ``config_json["persona"]`` and is rendered into workspace ``SOUL.md`` on
 agent reload.  The active agent is selected via ``X-Octop-Agent-Id``.
 """

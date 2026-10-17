@@ -1,4 +1,4 @@
-"""Octop-owned built-in Skills seeded into every agent workspace."""
+"""wkbuddy-owned built-in Skills seeded into every agent workspace."""
 
 from __future__ import annotations
 
@@ -15,7 +15,7 @@ _PACKAGE = "octop.infra.agents.builtin_skills"
 
 
 def is_octop_builtin_skills_path(rel: str) -> bool:
-    """True for workspace-relative paths inside the Octop-owned built-in Skills root.
+    """True for workspace-relative paths inside the wkbuddy-owned built-in Skills root.
 
     Mirrors the two spellings ``_assert_workspace_mutable`` guards: the API name, and
     the ``.octop/``-prefixed system location newer agents keep it in.
@@ -39,7 +39,7 @@ def _collect_files(source: Traversable, prefix: str, out: list[tuple[str, bytes]
 
 
 async def sync_octop_builtin_skills(workspace: Any) -> list[str]:
-    """Overwrite Octop-owned built-ins and remove superseded runtime copies."""
+    """Overwrite wkbuddy-owned built-ins and remove superseded runtime copies."""
     # DeepAgents scans both roots on the first turn. Keep the writable root
     # present even before the user installs their first Skill so that scan is
     # clean on fresh expert instances.

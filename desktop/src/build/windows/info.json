@@ -5,11 +5,11 @@
   "info": {
     "0000": {
       "ProductVersion": "0.9.26",
-      "CompanyName": "Octop",
-      "FileDescription": "Octop desktop",
-      "LegalCopyright": "Copyright © 2026",
-      "ProductName": "Octop",
-      "Comments": "Octop desktop shell"
+      "CompanyName": "道晟科技",
+      "FileDescription": "wkbuddy desktop",
+      "LegalCopyright": "Copyright © 2026 汇智道晟（舟山）科技有限公司",
+      "ProductName": "wkbuddy",
+      "Comments": "wkbuddy desktop shell"
     }
   }
 }

@@ -1,4 +1,4 @@
-# Octop 用户帮助文档
+# 政务伙伴用户帮助文档
 
 > 本帮助文档面向最终用户，介绍 **安装 → 设置向导 → 配置模型 → 基本使用** 的完整流程。
 > 所有运行时数据默认存放在 `~/.octop/`（可通过 `OCTOP_HOME` 覆盖）。
@@ -8,7 +8,7 @@
 ## 目录
 
 - [一、简介](#一简介)
-- [二、安装 Octop](#二安装-octop)
+- [二、安装政务伙伴](#二安装-octop)
   - [2.1 环境要求](#21-环境要求)
   - [2.2 一键脚本安装（推荐）](#22-一键脚本安装推荐)
   - [2.3 验证安装](#23-验证安装)
@@ -43,9 +43,9 @@
 
 ## 一、简介
 
-**Octop** 是一个开源、自托管的 AI 助手平台，支持多用户、多 Agent。它在单进程中同时提供 Web 控制台、CLI、IM 通道（飞书、钉钉、QQ、Discord、企业微信等）和定时任务，所有数据都保存在你自己的机器上。
+**政务伙伴** 是一个开源、自托管的 AI 助手平台，支持多用户、多 Agent。它在单进程中同时提供 Web 控制台、CLI、IM 通道（飞书、钉钉、QQ、Discord、企业微信等）和定时任务，所有数据都保存在你自己的机器上。
 
-![图 1.1 — Octop 产品总览](assets/overview.png)
+![图 1.1 — 政务伙伴产品总览](assets/overview.png)
 
 核心特性速览：
 
@@ -58,7 +58,7 @@
 
 ---
 
-## 二、安装 Octop
+## 二、安装政务伙伴
 
 ### 2.1 环境要求
 
@@ -71,19 +71,19 @@
 **macOS / Linux**
 
 ```bash
-curl -fsSL https://finnie-1258344699.cos.ap-guangzhou.myqcloud.com/octop/install.sh | bash
+curl -fsSL <YOUR_RELEASE_BASE>/install.sh | bash
 ```
 
 **Windows（PowerShell）**
 
 ```powershell
-irm https://finnie-1258344699.cos.ap-guangzhou.myqcloud.com/octop/install.ps1 | iex
+irm <YOUR_RELEASE_BASE>/install.ps1 | iex
 ```
 
 **Windows（cmd）** —— 先下载再运行：
 
 ```bat
-curl -fsSL https://finnie-1258344699.cos.ap-guangzhou.myqcloud.com/octop/install.bat -o install.bat
+curl -fsSL <YOUR_RELEASE_BASE>/install.bat -o install.bat
 install.bat
 ```
 
@@ -220,7 +220,7 @@ octop run
 
 ## 四、配置模型（LLM 供应商）
 
-Octop 通过 **供应商（Provider）** 接入大模型。每个 Agent 可使用不同的供应商与模型。支持 OpenAI 兼容 API、Anthropic、AWS Bedrock、DashScope（通义千问）、Ollama 本地模型等。
+政务伙伴通过 **供应商（Provider）** 接入大模型。每个 Agent 可使用不同的供应商与模型。支持 OpenAI 兼容 API、Anthropic、AWS Bedrock、DashScope（通义千问）、Ollama 本地模型等。
 
 ### 4.1 预设供应商
 
@@ -278,7 +278,7 @@ octop provider --help     # 供应商增删改查帮助
 
 若本机已运行 Ollama，可选择 `ollama` 预设（默认 `base_url` 为本地地址），无需 API Key 即可接入本地模型，适合隐私敏感或离线场景。
 
-如果 Ollama 把模型存在非默认目录（例如从系统盘改到其它磁盘），在供应商设置里填写 **模型下载目录** 后保存。Octop 会按该路径识别已下载模型，并在启动本地 Ollama 服务时设置 `OLLAMA_MODELS`。
+如果 Ollama 把模型存在非默认目录（例如从系统盘改到其它磁盘），在供应商设置里填写 **模型下载目录** 后保存。政务伙伴会按该路径识别已下载模型，并在启动本地 Ollama 服务时设置 `OLLAMA_MODELS`。
 
 ### 4.7 图片与视频生成模型
 
@@ -351,9 +351,9 @@ octop provider --help     # 供应商增删改查帮助
 
 ### 5.7 ACP（与 IDE / 编码 Agent 协作）
 
-Octop 支持两个方向的 ACP 集成：
+政务伙伴支持两个方向的 ACP 集成：
 
-1. **入站** —— 让外部工具（Zed、OpenCode 等）使用你的 Octop Agent：
+1. **入站** —— 让外部工具（Zed、OpenCode 等）使用你的政务伙伴 Agent：
 
    ```bash
    octop acp --agent main
@@ -394,13 +394,13 @@ Octop 支持两个方向的 ACP 集成：
 
 | 命令 | 说明 |
 |------|------|
-| `octop run` | 前台启动 Octop |
+| `octop run` | 前台启动政务伙伴 |
 | `octop run --host 0.0.0.0 --port 8088` | 自定义监听地址与端口 |
 | `octop service start` | 安装并启动系统服务 |
 | `octop service stop` | 停止系统服务 |
 | `octop agent` | 创建、列出、启停 Agent |
 | `octop channel` | 安装与管理 IM 通道 |
-| `octop bridge` | 添加 / 探测 / 编辑 / 删除远程 Octop 对端 |
+| `octop bridge` | 添加 / 探测 / 编辑 / 删除远程政务伙伴对端 |
 | `octop chats` | REPL 与会话管理 |
 | `octop acp` | 为 IDE 提供 stdio ACP 服务 |
 | `octop cron` | 管理定时任务 |
@@ -409,7 +409,6 @@ Octop 支持两个方向的 ACP 集成：
 | `octop skills` | 按 Agent 启用 / 禁用 Skill |
 | `octop user list` | 列出用户（管理员） |
 | `octop backup` | 导出 / 恢复备份 |
-| `octop update` | 检查并安装更新 |
 
 完整参考见 [docs/cli.md](cli.md)。
 
@@ -446,14 +445,7 @@ Octop 支持两个方向的 ACP 集成：
 ```
 
 **Q：如何升级？**
-- `octop update`（若通过一键安装）；或从 PyPI / 源码重新安装后重启服务。
-
-**Q：如何加入客户企业微信服务群？**
-- 请扫描下方二维码加入：
-
-![客户企业微信服务群二维码](assets/qrcode.png)
-
-> 二维码有效期至 **2026-08-03**，过期后请联系管理员更新。
+- 用新版本 wheel / 二进制重新安装后重启服务；源码部署则拉取代码后重新构建并重启。
 
 ---
 
@@ -463,7 +455,7 @@ Octop 支持两个方向的 ACP 集成：
 
 | 编号 | 位置 | 文件名 | 状态 | 内容说明 |
 |------|------|--------|------|----------|
-| 图 1.1 | 一、简介 | `overview.png` | ✅ 已就位 | Octop 品牌 Banner |
+| 图 1.1 | 一、简介 | `overview.png` | ✅ 已就位 | 政务伙伴品牌 Banner |
 | 图 3.1 | 3.2 向导步骤 | `setup-01-steps.png` | ✅ 已就位 | 向导步骤条（验证密码页） |
 | 图 3.2 | 3.2 管理员 | `setup-02-admin.png` | ✅ 已就位 | 创建管理员账号表单 |
 | 图 3.3 | 3.2 模型 | `setup-03-model.png` | ✅ 已就位 | 向导内预设供应商选择 |
@@ -477,4 +469,3 @@ Octop 支持两个方向的 ACP 集成：
 | 图 5.6 | 5.8 设置 | `use-06-settings.png` | ✅ 已就位 | 应用设置页面 |
 | 图 5.7 | 5.9 远程桌面 | `use-07-remote-desktop.png` | ✅ 已就位 | 远程桌面连接页 |
 | 图 5.8 | 5.9 浏览器 AI | `use-08-browser-ai.png` | ✅ 已就位 | 浏览器 AI+ 会话页 |
-| 图 7.1 | 七、常见问题 | `qrcode.png` | ✅ 已就位 | 客户企业微信服务群二维码（有效期至 2026-08-03） |

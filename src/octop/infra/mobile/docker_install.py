@@ -16,8 +16,6 @@ Design notes:
 from __future__ import annotations
 
 import asyncio
-import contextlib
-import json
 import os
 import re
 import shutil
@@ -32,21 +30,14 @@ from octop.infra.utils.posix_compat import geteuid
 _DOCKER_CE_SOURCES = (
     "https://download.docker.com",
     "https://mirrors.aliyun.com/docker-ce",
-    "https://mirrors.tencent.com/docker-ce",
     "https://mirrors.163.com/docker-ce",
     "https://mirrors.cernet.edu.cn/docker-ce",
 )
 _OFFICIAL_SOURCE = "https://download.docker.com"
-_TENCENT_MIRROR_HOST = "mirror.ccs.tencentyun.com"
-_TENCENT_MIRROR_URL = f"https://{_TENCENT_MIRROR_HOST}/"
-_DAEMON_JSON = Path("/etc/docker/daemon.json")
 
 _SPEED_TEST_ITERATIONS = 3
 _SPEED_TEST_TIMEOUT = 5.0
-_PROBE_TIMEOUT = 3.0
 _DAEMON_READY_TIMEOUT = 10.0
-_DAEMON_WAIT_AFTER_RESTART = 30.0
-_DAEMON_WAIT_INTERVAL = 2.0
 # The vendored script sleeps 20s when docker already exists, and package
 # manager steps can take minutes on slow links; keep the read patient.
 _SCRIPT_READLINE_TIMEOUT = 600.0
@@ -189,130 +180,13 @@ async def docker_daemon_ready(timeout: float = _DAEMON_READY_TIMEOUT) -> bool:
     return proc.returncode == 0
 
 
-async def _probe_tencent_mirror() -> bool:
-    """Plain TCP reachability check for the Tencent Cloud registry mirror."""
-    try:
-        _, writer = await asyncio.wait_for(
-            asyncio.open_connection(_TENCENT_MIRROR_HOST, 443), timeout=_PROBE_TIMEOUT
-        )
-    except (TimeoutError, OSError):
-        return False
-    writer.close()
-    with contextlib.suppress(OSError):
-        await writer.wait_closed()
-    return True
-
-
-def _privileged_cmd(*cmd: str) -> list[str]:
-    """Prefix ``sudo -n`` when we are not already root (passwordless sudo)."""
-    if geteuid() == 0:
-        return list(cmd)
-    return ["sudo", "-n", *cmd]
-
-
-def _run_privileged(*cmd: str, input_bytes: bytes | None = None) -> bool:
-    """Run ``cmd``, prefixing ``sudo -n`` when the process is not root."""
-    argv = list(cmd) if geteuid() == 0 else _privileged_cmd(*cmd)
-    try:
-        proc = subprocess.run(
-            argv,
-            input=input_bytes,
-            capture_output=True,
-            timeout=15,
-            check=False,
-        )
-    except (OSError, subprocess.TimeoutExpired):
-        return False
-    return proc.returncode == 0
-
-
-def _copy_privileged(src: Path, dst: Path) -> bool:
-    try:
-        shutil.copy2(src, dst)
-        return True
-    except OSError:
-        return _run_privileged("cp", "-a", str(src), str(dst))
-
-
-def _write_text_privileged(path: Path, text: str) -> bool:
-    try:
-        path.write_text(text, encoding="utf-8")
-        return True
-    except OSError:
-        return _run_privileged("tee", str(path), input_bytes=text.encode("utf-8"))
-
-
-def _merge_registry_mirror(daemon_json: Path, mirror: str) -> bool:
-    """Add ``registry-mirrors`` to daemon.json unless already configured.
-
-    Backs up the previous file as ``daemon.json.backup``. Returns True when the
-    file was written; False when left untouched (already configured, or the
-    existing file is unreadable/corrupt). Writes via ``sudo -n`` when the
-    process is not root (same gate as the install itself).
-    """
-    config: dict[str, object] = {}
-    if daemon_json.exists():
-        try:
-            loaded = json.loads(daemon_json.read_text(encoding="utf-8"))
-        except (OSError, ValueError):
-            return False
-        if not isinstance(loaded, dict):
-            return False
-        config = loaded
-    if "registry-mirrors" in config:
-        return False
-    if not daemon_json.parent.exists():
-        return False
-    if daemon_json.exists() and not _copy_privileged(
-        daemon_json, daemon_json.parent / f"{daemon_json.name}.backup"
-    ):
-        return False
-    config["registry-mirrors"] = [mirror]
-    return _write_text_privileged(
-        daemon_json,
-        json.dumps(config, indent=2, ensure_ascii=False) + "\n",
-    )
-
-
-async def _restart_docker_daemon() -> bool:
-    for cmd in (
-        ("systemctl", "restart", "docker"),
-        ("service", "docker", "restart"),
-    ):
-        if shutil.which(cmd[0]) is None:
-            continue
-        argv = _privileged_cmd(*cmd)
-        try:
-            proc = await asyncio.create_subprocess_exec(
-                *argv,
-                stdout=asyncio.subprocess.DEVNULL,
-                stderr=asyncio.subprocess.DEVNULL,
-            )
-            await asyncio.wait_for(proc.communicate(), timeout=_DAEMON_READY_TIMEOUT)
-        except (TimeoutError, OSError):
-            continue
-        if proc.returncode == 0:
-            return True
-    return False
-
-
-async def _wait_for_daemon(seconds: float) -> bool:
-    deadline = asyncio.get_running_loop().time() + seconds
-    while True:
-        if await docker_daemon_ready():
-            return True
-        if asyncio.get_running_loop().time() >= deadline:
-            return False
-        await asyncio.sleep(_DAEMON_WAIT_INTERVAL)
-
-
 async def auto_install_docker_stream(*, locale: str = "en") -> AsyncIterator[str]:
     """Yield human-readable log lines for the automatic Docker install.
 
     Success is judged by the caller via :func:`docker_daemon_ready`, so this
     generator only reports what happened.
     """
-    # 0) The vendored official script must ship with this Octop install.
+    # 0) The vendored official script must ship with this wkbuddy install.
     script = bundled_install_script()
     if not script.is_file():
         yield _log(locale, "docker_install_script_missing")
@@ -367,21 +241,3 @@ async def auto_install_docker_stream(*, locale: str = "en") -> AsyncIterator[str
         if hint_key is not None:
             yield _log(locale, hint_key)
         return
-
-    # 3) Registry mirror: only probe reachability, only for this fresh install.
-    if await _probe_tencent_mirror():
-        yield _log(locale, "docker_mirror_reachable")
-        if _merge_registry_mirror(_DAEMON_JSON, _TENCENT_MIRROR_URL):
-            yield _log(locale, "docker_mirror_configured")
-            if await _restart_docker_daemon():
-                yield _log(locale, "docker_restart_ok")
-                if await _wait_for_daemon(_DAEMON_WAIT_AFTER_RESTART):
-                    yield _log(locale, "docker_restart_ready")
-                else:
-                    yield _log(locale, "docker_restart_failed")
-            else:
-                yield _log(locale, "docker_restart_failed")
-        else:
-            yield _log(locale, "docker_mirror_skipped")
-    else:
-        yield _log(locale, "docker_mirror_unreachable")

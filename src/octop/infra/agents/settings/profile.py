@@ -33,7 +33,7 @@ def parse_config_json(raw: str | None) -> dict[str, Any]:
 
 
 def strip_profile_config(cfg: dict[str, Any]) -> dict[str, Any]:
-    """Return harness-only config, dropping Octop profile keys."""
+    """Return harness-only config, dropping wkbuddy profile keys."""
     return {key: value for key, value in cfg.items() if key not in PROFILE_CONFIG_KEYS}
 
 

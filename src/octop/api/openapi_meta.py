@@ -10,7 +10,7 @@ from fastapi.openapi.utils import get_openapi
 from octop.api.deps import is_jwt_exempt_path
 
 API_DESCRIPTION = """\
-**Octop** is a smarter, self-hosted AI assistant for multiple users and agents. All routes are served under `/api`.
+**wkbuddy** is a smarter, self-hosted AI assistant for multiple users and agents. All routes are served under `/api`.
 
 ## Authentication
 
@@ -83,7 +83,7 @@ OPENAPI_TAGS: list[dict[str, str]] = [
     },
     {
         "name": "bridge",
-        "description": "Link this Octop to remote Octop instances (HTTP tunnel + remote chat).",
+        "description": "Link this wkbuddy instance to remote wkbuddy instances (HTTP tunnel + remote chat).",
     },
     {
         "name": "knowledge",
@@ -152,7 +152,7 @@ OPENAPI_TAGS: list[dict[str, str]] = [
         "description": "Per-agent subagent definitions (agents/*.md) and bundled catalog install.",
     },
     {"name": "terminal", "description": "AI-assisted remote terminal sessions."},
-    {"name": "update", "description": "In-place server update checks and apply flow."},
+    {"name": "update", "description": "Installed server version and in-place service restart."},
     {
         "name": "browser",
         "description": "Remote browser: env/install, harness sessions, live stream, record/replay.",

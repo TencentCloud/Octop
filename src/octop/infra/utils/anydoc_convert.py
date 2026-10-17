@@ -1,7 +1,7 @@
 """Extract Markdown text from office binaries via ``firecrawl-anydoc``.
 
 Used by knowledge-base indexing and chat attachment enrichment for formats
-that Octop does not parse with dedicated libraries (notably OLE ``.wps`` /
+that wkbuddy does not parse with dedicated libraries (notably OLE ``.wps`` /
 ``.doc``). Detection prefers file bytes over the extension so mislabeled
 WPS Writer documents still convert.
 """

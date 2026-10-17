@@ -1,11 +1,11 @@
-"""Built-in OAuth client credentials shipped with Octop (override via env/settings)."""
+"""Built-in OAuth client credentials shipped with wkbuddy (override via env/settings)."""
 
 from __future__ import annotations
 
 import os
 from typing import Any
 
-# Octop releases may pre-fill registered OAuth apps here; users need not set env vars.
+# wkbuddy releases may pre-fill registered OAuth apps here; users need not set env vars.
 # Self-hosted deployments can still override via OCTOP_* env vars or settings.
 _BUILTIN_CLIENTS: dict[str, tuple[str, str]] = {}
 

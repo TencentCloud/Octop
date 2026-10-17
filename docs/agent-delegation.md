@@ -1,4 +1,4 @@
-# Agent 后台协作（harness teams + Octop 投递）
+# Agent 后台协作（harness teams + 政务伙伴投递）
 
 > **同步互调**（`@` Agent、`ask_agent` sync）见 [agent-call-agent.md](./agent-call-agent.md)。  
 > 架构说明见 [agent-interop-mailbox.md](./agent-interop-mailbox.md)。
@@ -18,7 +18,7 @@
 
 可选 `user_question`：写入 inbox 消息，供 `compose_followup` 使用。
 
-## Octop 侧保留代码
+## 政务伙伴侧保留代码
 
 | 路径 | 职责 |
 |------|------|

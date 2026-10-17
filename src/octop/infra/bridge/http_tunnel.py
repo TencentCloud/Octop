@@ -73,7 +73,7 @@ async def execute_local_http(
     if not is_tunnel_path_allowed(method, path):
         raise OctopError(
             ErrorCode.BRIDGE_REMOTE_UNSUPPORTED,
-            "This action is not available through the remote bridge. Manage it on the peer Octop.",
+            "This action is not available through the remote bridge. Manage it on the peer wkbuddy.",
         )
     clean_headers = {
         k: v

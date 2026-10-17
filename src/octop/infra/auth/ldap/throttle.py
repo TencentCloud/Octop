@@ -1,7 +1,7 @@
 """In-process backoff for LDAP binds.
 
 Local account lockout (``users.login_failed_count``) only covers identifiers that
-already have a row in Octop, so a directory account that has never signed in can
+already have a row in wkbuddy, so a directory account that has never signed in can
 be brute-forced without limit — and every attempt consumes one try against the
 directory's own lockout policy. This module throttles *before* the bind.
 

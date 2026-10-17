@@ -32,7 +32,7 @@ export type ChannelKey =
   | "octopbot";
 
 /**
- * Channel kinds backed by Octop ``ChannelKind`` / octop-gateway ``BUILTIN_CHANNELS``.
+ * Channel kinds backed by wkbuddy ``ChannelKind`` / octop-gateway ``BUILTIN_CHANNELS``.
  * ``dashboard`` / ``agentchat`` are intentionally omitted until implemented.
  */
 export const CHANNEL_KEYS: ChannelKey[] = [
@@ -40,7 +40,6 @@ export const CHANNEL_KEYS: ChannelKey[] = [
   "qq",
   "wecom",
   "feishu",
-  "yuanbao",
   "dingtalk",
   "telegram",
   "discord",
@@ -153,12 +152,12 @@ export function getChannelColor(channel: string): string {
 export const CHANNEL_URLS: Partial<Record<ChannelKey, string>> = {
   feishu: "https://open.feishu.cn/app",
   dingtalk: "https://open-dev.dingtalk.com/",
-  qq: "https://q.qq.com/qqbot/openclaw/",
+  qq: "about:blank",
   discord: "https://discord.com/developers/applications",
-  yuanbao: "https://yuanbao.tencent.com/bot",
+  yuanbao: "about:blank",
   wecom: "https://work.weixin.qq.com/wework_admin/frame#/aiHelper/create",
   telegram: "https://t.me/BotFather",
-  octopbot: "https://octop.cloud.tencent.com",
+  octopbot: "about:blank",
 };
 
 /** A single field of a channel's config form. */

@@ -8,7 +8,7 @@ import {
 /**
  * Auth + setup module — adapted to octop's multi-user backend.
  *
- * Octop endpoints (spec §11.3):
+ * wkbuddy endpoints (spec §11.3):
  *  - GET  /api/setup/status         → { setup_required }
  *  - POST /api/setup/initial-admin  → 201 { id, username, role }
  *  - POST /api/auth/login           → { access_token, token_type, expires_in, user }
@@ -27,7 +27,7 @@ export interface AuthStatus {
   setup_required: boolean;
   /** Legacy alias of ``!setup_required`` kept for compat. */
   setup_done: boolean;
-  /** Octop always requires auth; kept true so legacy components don't unguard. */
+  /** wkbuddy always requires auth; kept true so legacy components don't unguard. */
   enabled: boolean;
   /** Legacy field — octop always uses passwords. */
   has_password: boolean;
@@ -297,16 +297,16 @@ export const authApi = {
   // settings UI is rewritten in phase 14.6. Stubs return rejected
   // promises with a clear message to make accidental use loud.
 
-  /** @deprecated Octop always requires auth — there is no first-time set step. */
+  /** @deprecated wkbuddy always requires auth — there is no first-time set step. */
   setPassword: (): Promise<never> =>
     Promise.reject(
       new Error("setPassword is not supported in octop; use change-password"),
     ),
 
-  /** @deprecated Octop cannot disable auth. */
+  /** @deprecated wkbuddy cannot disable auth. */
   disableAuth: (): Promise<never> =>
     Promise.reject(new Error("disableAuth is not supported in octop")),
 
-  /** @deprecated Octop's setup wizard is single-step; nothing to mark done. */
+  /** @deprecated wkbuddy's setup wizard is single-step; nothing to mark done. */
   markSetupDone: (): Promise<{ ok: boolean }> => Promise.resolve({ ok: true }),
 };

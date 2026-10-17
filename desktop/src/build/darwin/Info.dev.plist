@@ -5,15 +5,15 @@
         <key>CFBundlePackageType</key>
         <string>APPL</string>
         <key>CFBundleName</key>
-        <string>Octop</string>
+        <string>wkbuddy</string>
         <key>CFBundleExecutable</key>
-        <string>Octop</string>
+        <string>wkbuddy</string>
         <key>CFBundleIdentifier</key>
-        <string>com.tencent.octop</string>
+        <string>com.daoshengtech.wkbuddy</string>
         <key>CFBundleVersion</key>
         <string>0.9.26.dev</string>
         <key>CFBundleGetInfoString</key>
-        <string>Octop desktop shell (dev)</string>
+        <string>wkbuddy desktop shell (dev)</string>
         <key>CFBundleShortVersionString</key>
         <string>0.9.26.dev</string>
         <key>CFBundleIconFile</key>
@@ -23,7 +23,7 @@
         <key>NSHighResolutionCapable</key>
         <string>true</string>
         <key>NSHumanReadableCopyright</key>
-        <string>Copyright © 2026</string>
+        <string>Copyright © 2026 汇智道晟（舟山）科技有限公司</string>
         <key>NSAppTransportSecurity</key>
         <dict>
             <key>NSAllowsArbitraryLoads</key>

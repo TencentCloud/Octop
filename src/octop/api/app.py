@@ -107,7 +107,7 @@ def build_app(server: OctopServer) -> FastAPI:
     )
 
     app = FastAPI(
-        title="Octop API",
+        title="wkbuddy API",
         version="0.1.0",
         description=API_DESCRIPTION,
         openapi_url="/api/openapi.json" if enable_api_docs else None,
@@ -184,7 +184,6 @@ def build_app(server: OctopServer) -> FastAPI:
         mbti,
         media_generation,
         memory,
-        memory_portable,
         memory_storage,
         mobile,
         ollama_models,
@@ -194,6 +193,7 @@ def build_app(server: OctopServer) -> FastAPI:
         proactive_care,
         providers,
         search,
+        service_ops,
         settings,
         setup,
         skill_packages,
@@ -202,7 +202,6 @@ def build_app(server: OctopServer) -> FastAPI:
         subagents,
         teams,
         terminal,
-        update,
         uploads,
         usage,
         user_roles,
@@ -273,7 +272,6 @@ def build_app(server: OctopServer) -> FastAPI:
             _RouterMount(workspace.router, "/api", ["workspace"]),
             _RouterMount(agent_files.router, "/api", ["agent_files"]),
             _RouterMount(memory.router, "/api", ["memory"]),
-            _RouterMount(memory_portable.router, "/api", ["memory"]),
             _RouterMount(memory_storage.router, "/api", ["memory"]),
             _RouterMount(proactive_care.router, "/api", ["proactive-care"]),
             _RouterMount(usage.router, "/api", ["usage"]),
@@ -283,7 +281,7 @@ def build_app(server: OctopServer) -> FastAPI:
             _RouterMount(subagents.router, "/api", ["subagents"]),
             _RouterMount(terminal.router, "/api", ["terminal"]),
             _RouterMount(uploads.router, "/api", ["chat"]),
-            _RouterMount(update.router, "/api", ["update"]),
+            _RouterMount(service_ops.router, "/api", ["update"]),
             _RouterMount(browser.router, "/api", ["browser"]),
             _RouterMount(desktop.router, "/api", ["desktop"]),
             _RouterMount(ollama_models.router, "/api", ["ollama"]),
@@ -306,7 +304,7 @@ def build_app(server: OctopServer) -> FastAPI:
         async def api_docs() -> HTMLResponse:
             return get_scalar_api_reference(
                 openapi_url=app.openapi_url,
-                title="Octop API",
+                title="wkbuddy API",
             )
 
     if enable_dashboard:

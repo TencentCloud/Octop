@@ -6,31 +6,6 @@ export interface PresetGroup {
   presets: ProviderPreset[];
 }
 
-/** Preset brand card order (swap Tencent Cloud / Aliyun vs pure alphabetical). */
-const PRESET_GROUP_ORDER = [
-  "tencent",
-  "kimi",
-  "minimax",
-  "opencode",
-  "siliconflow",
-  "aliyun",
-  "volcengine",
-  "zhipu",
-] as const;
-
-function comparePresetGroups(a: PresetGroup, b: PresetGroup): number {
-  const ai = PRESET_GROUP_ORDER.indexOf(
-    a.groupKey as (typeof PRESET_GROUP_ORDER)[number],
-  );
-  const bi = PRESET_GROUP_ORDER.indexOf(
-    b.groupKey as (typeof PRESET_GROUP_ORDER)[number],
-  );
-  const aRank = ai === -1 ? Number.MAX_SAFE_INTEGER : ai;
-  const bRank = bi === -1 ? Number.MAX_SAFE_INTEGER : bi;
-  if (aRank !== bRank) return aRank - bRank;
-  return a.groupName.localeCompare(b.groupName);
-}
-
 const VARIANT_LABELS: Record<string, string> = {
   dashscope: "DashScope",
   dashscope_intl: "Singapore",
@@ -77,36 +52,35 @@ export function groupPresets(presets: ProviderPreset[]): {
   ungrouped: ProviderPreset[];
 } {
   const groupMap = new Map<string, PresetGroup>();
-  const ungrouped: ProviderPreset[] = [];
 
   for (const preset of presets) {
-    if (preset.provider_group) {
-      const existing = groupMap.get(preset.provider_group);
-      if (existing) {
-        existing.presets.push(preset);
-      } else {
-        groupMap.set(preset.provider_group, {
-          groupKey: preset.provider_group,
-          groupName: preset.provider_group_name || preset.provider_group,
-          presets: [preset],
-        });
-      }
+    if (!preset.provider_group) continue;
+    const existing = groupMap.get(preset.provider_group);
+    if (existing) {
+      existing.presets.push(preset);
     } else {
-      ungrouped.push(preset);
+      groupMap.set(preset.provider_group, {
+        groupKey: preset.provider_group,
+        groupName: preset.provider_group_name || preset.provider_group,
+        presets: [preset],
+      });
     }
   }
 
-  const grouped: PresetGroup[] = [];
-  for (const group of groupMap.values()) {
-    if (group.presets.length >= 2) {
-      grouped.push(group);
-    } else {
-      ungrouped.push(...group.presets);
-    }
-  }
-
-  grouped.sort(comparePresetGroups);
-  ungrouped.sort((a, b) => a.name.localeCompare(b.name));
+  // Groups are already ordered by the server (see provider_presets.json); a
+  // single-member group renders as a loose card in its original position.
+  const singletonKeys = new Set(
+    [...groupMap.values()]
+      .filter((group) => group.presets.length < 2)
+      .map((group) => group.groupKey),
+  );
+  const grouped: PresetGroup[] = [...groupMap.values()].filter(
+    (group) => group.presets.length >= 2,
+  );
+  const ungrouped: ProviderPreset[] = presets.filter(
+    (preset) =>
+      !preset.provider_group || singletonKeys.has(preset.provider_group),
+  );
   return { grouped, ungrouped };
 }
 

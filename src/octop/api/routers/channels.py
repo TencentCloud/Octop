@@ -24,7 +24,7 @@ from octop.api.deps import get_server, require_permission
 from octop.infra.errors import ErrorCode, OctopError
 from octop.infra.gateway.bot_creators.feishu_runner import extract_feishu_credentials
 from octop.infra.gateway.channels import dingtalk_registration, qr_bind
-from octop.infra.gateway.gateway import ChannelKind
+from octop.infra.gateway.gateway import DISABLED_CHANNEL_KINDS, ChannelKind
 from octop.infra.utils.locale import DEFAULT_LOCALE, resolve_request_locale
 from octop.infra.utils.subprocess_io import parse_subprocess_json_lines
 
@@ -57,11 +57,6 @@ class FeishuBotCreatorStartBody(BaseModel):
     greeting: str = ""
 
 
-class YuanbaoBotCreatorStartBody(BaseModel):
-    instance_id: str = ""
-    ip: str = ""
-
-
 class DingTalkRegistrationPollBody(BaseModel):
     registration_id: str
 
@@ -71,6 +66,14 @@ def _parse_bot_creator_body(model: type[BaseModel], raw: dict[str, Any] | None) 
         return model.model_validate(raw or {})
     except ValidationError as exc:
         raise HTTPException(status_code=400, detail="Invalid request body.") from exc
+
+
+def _reject_disabled_kind(kind: ChannelKind | None) -> None:
+    if kind is not None and str(kind) in DISABLED_CHANNEL_KINDS:
+        raise OctopError(
+            ErrorCode.CHANNEL_KIND_UNSUPPORTED,
+            f"channel kind {str(kind)!r} is not available",
+        )
 
 
 def _row_to_dict(
@@ -140,6 +143,7 @@ async def create_channel(
     server: Any = Depends(get_server),
 ) -> dict[str, Any]:
     _require_agent_access(agent_id, user=user, as_user=as_user, server=server)
+    _reject_disabled_kind(body.kind)
     from octop.infra.gateway.gateway import ChannelCreateSpec  # noqa: PLC0415
     from octop.infra.utils.ulid import new_ulid as _new_ulid  # noqa: PLC0415
 
@@ -189,6 +193,7 @@ async def patch_channel(
     existing = server.app_runtime.gateway.get_channel(channel_id)
     if existing is None or existing.agent_id != agent_id:
         raise OctopError(ErrorCode.NOT_FOUND, "channel not found")
+    _reject_disabled_kind(body.kind)
     row = await server.app_runtime.gateway.update_channel(
         channel_id,
         kind=str(body.kind) if body.kind is not None else None,
@@ -265,7 +270,6 @@ async def probe_channel_config(
 _SAFE_ARG_RE = re.compile(r"^[a-zA-Z0-9_.:/\\\-]+$")
 _MAX_ARG_LEN = 2048
 _ALLOWED_PLATFORM_VALUES = frozenset({"feishu", "lark"})
-_INSTANCE_ID_RE = re.compile(r"^[a-zA-Z0-9_-]{1,128}$")
 _TOKEN_RE = re.compile(r"^[a-zA-Z0-9_.\-]{1,512}$")
 _FEISHU_PROFILE_NAMES = {
     "feishu": "octop-feishu-bot",
@@ -309,27 +313,6 @@ def _sanitize_token(value: str, field_name: str) -> str:
             status_code=400,
             detail=f"Invalid {field_name}: contains disallowed characters.",
         )
-    return value
-
-
-def _sanitize_instance_id(value: str) -> str:
-    if not _INSTANCE_ID_RE.match(value):
-        raise HTTPException(
-            status_code=400,
-            detail="Invalid instance_id: use letters, digits, underscore, or hyphen only.",
-        )
-    return value
-
-
-def _sanitize_ip_address(value: str) -> str:
-    import ipaddress
-
-    try:
-        ipaddress.ip_address(value)
-    except ValueError as exc:
-        raise HTTPException(
-            status_code=400, detail="Invalid ip: must be a valid IP address."
-        ) from exc
     return value
 
 
@@ -898,166 +881,6 @@ async def feishu_bot_creator_stop(
     """Stop the feishu bot creator subprocess."""
     _require_agent_access(agent_id, user=user, as_user=as_user, server=server)
     state = _get_feishu_state(agent_id)
-
-    async with state["lock"]:
-        proc = state["proc"]
-        if proc is None:
-            return {"status": "not_running"}
-        if proc.poll() is None:
-            proc.kill()
-            await asyncio.to_thread(proc.wait, 5)
-        state["proc"] = None
-        state["lines"] = []
-    return {"status": "stopped"}
-
-
-# ─── YuanBao Bot Creator ─────────────────────────────────────────────────────
-
-_yuanbao_creator_states: dict[str, dict[str, Any]] = {}
-
-
-def _get_yuanbao_state(agent_id: str) -> dict[str, Any]:
-    if agent_id not in _yuanbao_creator_states:
-        _yuanbao_creator_states[agent_id] = {
-            "proc": None,
-            "lines": [],
-            "lock": asyncio.Lock(),
-        }
-    return _yuanbao_creator_states[agent_id]
-
-
-@router.post("/agents/{agent_id}/channels/yuanbao/bot-creator/start")
-async def yuanbao_bot_creator_start(
-    agent_id: str,
-    as_user: int | None = None,
-    body: dict[str, Any] = Body(default=None),
-    user: Any = Depends(require_permission("channels")),
-    server: Any = Depends(get_server),
-) -> dict[str, Any]:
-    """Start the YuanBao bot creator subprocess."""
-    _require_agent_access(agent_id, user=user, as_user=as_user, server=server)
-    state = _get_yuanbao_state(agent_id)
-
-    async with state["lock"]:
-        proc = state["proc"]
-        if proc is not None and proc.poll() is None:
-            proc.kill()
-            await asyncio.to_thread(proc.wait, 5)
-        state["proc"] = None
-        state["lines"] = []
-
-    parsed = _parse_bot_creator_body(YuanbaoBotCreatorStartBody, body)
-    assert isinstance(parsed, YuanbaoBotCreatorStartBody)
-    instance_id = parsed.instance_id
-    ip_addr = parsed.ip
-
-    if instance_id:
-        _sanitize_instance_id(instance_id)
-    if ip_addr:
-        _sanitize_ip_address(ip_addr)
-
-    script_path = _bot_creator_script("yuanbao_bot_creator.py")
-
-    cmd = [sys.executable, script_path, "create"]
-    if instance_id:
-        cmd.append(instance_id)
-        if ip_addr:
-            cmd.append(ip_addr)
-
-    try:
-        proc = subprocess.Popen(
-            cmd,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            bufsize=1,
-            universal_newlines=True,
-            env={**os.environ, "PYTHONUNBUFFERED": "1"},
-            shell=False,
-        )
-        async with state["lock"]:
-            state["proc"] = proc
-        logger.info("YuanBao bot creator started for agent %s, pid=%s", agent_id, proc.pid)
-        return {"status": "started", "pid": proc.pid}
-    except Exception as exc:
-        logger.exception("Failed to start yuanbao bot creator for agent %s", agent_id)
-        raise HTTPException(status_code=500, detail=f"Failed to start creator: {exc}") from exc
-
-
-@router.post("/agents/{agent_id}/channels/yuanbao/bot-creator/poll")
-async def yuanbao_bot_creator_poll(
-    agent_id: str,
-    as_user: int | None = None,
-    user: Any = Depends(require_permission("channels")),
-    server: Any = Depends(get_server),
-) -> dict[str, Any]:
-    """Poll YuanBao bot creator subprocess for new output."""
-    _require_agent_access(agent_id, user=user, as_user=as_user, server=server)
-    state = _get_yuanbao_state(agent_id)
-
-    async with state["lock"]:
-        proc = state["proc"]
-        if proc is None:
-            return {"status": "not_started", "events": []}
-
-        new_lines = await asyncio.to_thread(parse_subprocess_json_lines, proc)
-        state["lines"].extend(new_lines)
-
-        return_code = proc.poll()
-        finished = return_code is not None
-
-        if finished and proc.stdout:
-            remaining = proc.stdout.read()
-            if remaining:
-                for line in remaining.strip().split("\n"):
-                    line = line.strip()
-                    if line:
-                        try:
-                            data = json.loads(line)
-                            new_lines.append(data)
-                            state["lines"].append(data)
-                        except json.JSONDecodeError:
-                            new_lines.append(
-                                {"action": "log", "level": "info", "step": "raw", "message": line}
-                            )
-
-        status = "running"
-        if finished:
-            status = "finished" if return_code == 0 else "failed"
-
-        scan_code = None
-        scan_url = None
-        app_key = None
-        app_secret = None
-        for ev in state["lines"]:
-            if ev.get("action") == "scan_code":
-                scan_code = ev.get("scan_code")
-                scan_url = ev.get("scan_url")
-            if ev.get("action") == "finish" and ev.get("level") == "success":
-                data = ev.get("data", {})
-                app_key = data.get("app_key")
-                app_secret = data.get("app_secret")
-
-        return {
-            "status": status,
-            "events": new_lines,
-            "scan_code": scan_code,
-            "scan_url": scan_url,
-            "app_key": app_key,
-            "app_secret": app_secret,
-            "return_code": return_code,
-        }
-
-
-@router.post("/agents/{agent_id}/channels/yuanbao/bot-creator/stop")
-async def yuanbao_bot_creator_stop(
-    agent_id: str,
-    as_user: int | None = None,
-    user: Any = Depends(require_permission("channels")),
-    server: Any = Depends(get_server),
-) -> dict[str, Any]:
-    """Stop the YuanBao bot creator subprocess."""
-    _require_agent_access(agent_id, user=user, as_user=as_user, server=server)
-    state = _get_yuanbao_state(agent_id)
 
     async with state["lock"]:
         proc = state["proc"]

@@ -378,7 +378,7 @@ export default function SkillHubTab({
         />
         <Button
           icon={<Link size={14} />}
-          href="https://skillhub.tencent.com/"
+          href="about:blank"
           target="_blank"
           type="text"
           size="small"

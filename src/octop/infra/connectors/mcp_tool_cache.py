@@ -9,7 +9,7 @@ from typing import Any
 
 from langchain_core.tools import StructuredTool
 
-# Connection fields that affect the live MCP session (exclude Octop meta like enabled).
+# Connection fields that affect the live MCP session (exclude wkbuddy meta like enabled).
 _FINGERPRINT_KEYS = (
     "transport",
     "url",

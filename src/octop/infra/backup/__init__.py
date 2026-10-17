@@ -1,4 +1,4 @@
-"""Backup and restore for Octop data."""
+"""Backup and restore for wkbuddy data."""
 
 from octop.infra.backup.manifest import MANIFEST_VERSION, AgentBackupEntry, BackupManifest
 from octop.infra.backup.store import (
