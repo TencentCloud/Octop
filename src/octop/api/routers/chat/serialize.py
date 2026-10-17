@@ -1022,6 +1022,9 @@ def _serialize_history_message(
         entry["agent_id"] = speaker.strip()
     if additional_kwargs.get("team_wrapup"):
         entry["team_wrapup"] = True
+    decision = additional_kwargs.get("octop_decision")
+    if role == "assistant" and isinstance(decision, dict) and decision.get("kind") == "decision":
+        entry["decision"] = decision
     edited = additional_kwargs.get("edited_files")
     if isinstance(edited, list):
         cleaned = [path.strip() for path in edited if isinstance(path, str) and path.strip()]

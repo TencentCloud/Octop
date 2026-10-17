@@ -27,6 +27,11 @@ def test_user_id_from_numeric_dashboard_subject() -> None:
     assert user_id_from_message(msg) == 42
 
 
+def test_user_id_from_numeric_mcp_subject() -> None:
+    msg = _msg(subject_id="42", channel_type="mcp")
+    assert resolve_user_id_for_message(msg, agent_owner_id=7) == 42
+
+
 def test_resolve_user_id_uses_owner_for_numeric_external_subject() -> None:
     msg = _msg(subject_id="42", channel_type="dingtalk")
     assert resolve_user_id_for_message(msg, agent_owner_id=7) == 7
