@@ -19,10 +19,18 @@ def _payload(data: dict[str, Any], text: str) -> str:
     )
 
 
+def _score_cell(value: Any) -> str:
+    """Unplayed fixtures come back as null; ``0`` is a real score, not a missing one."""
+    return "-" if value is None or value == "" else str(value)
+
+
 def _map_event(row: dict[str, Any]) -> dict[str, Any]:
     home = str(row.get("strHomeTeam") or "")
     away = str(row.get("strAwayTeam") or "")
-    score = f"{row.get('intHomeScore', '-')} - {row.get('intAwayScore', '-')}"
+    home_score = _score_cell(row.get("intHomeScore"))
+    away_score = _score_cell(row.get("intAwayScore"))
+    # An unplayed fixture carries null scores; "None - None" would be noise.
+    score = "-" if home_score == away_score == "-" else f"{home_score} - {away_score}"
     return {
         "event": str(row.get("strEvent") or f"{home} vs {away}"),
         "home": home,
@@ -36,7 +44,16 @@ async def sports_scores(league: str = "soccer", query: str = "") -> str:
     """Past league events or search by query. Default league EPL (4328)."""
     q = (query or "").strip()
     league_key = (league or "soccer").strip().lower()
-    league_id = _EPL_LEAGUE if league_key in {"soccer", "epl", "4328"} else _EPL_LEAGUE
+    if league_key in {"soccer", "epl", _EPL_LEAGUE}:
+        league_id = _EPL_LEAGUE
+    elif league_key.isdigit():
+        league_id = league_key
+    else:
+        return _payload(
+            {"items": [], "error": "unknown league"},
+            f"暂不支持联赛「{league}」：请传 TheSportsDB 的联赛 ID（英超为 {_EPL_LEAGUE}），"
+            "或用 query 搜索具体赛事。",
+        )
     try:
         with httpx.Client(timeout=20.0, follow_redirects=True) as client:
             if q:
@@ -62,5 +79,6 @@ def setup(ctx: PluginContext) -> None:
     ctx.tool(
         "sports_scores",
         sports_scores,
-        description="足球赛况。query 非空则搜索赛事；否则返回英超(id 4328)近期比赛。",
+        description="足球赛况。query 非空则搜索赛事；否则返回 league 指定联赛的近期比赛"
+        "（联赛 ID，默认英超 4328）。",
     )
