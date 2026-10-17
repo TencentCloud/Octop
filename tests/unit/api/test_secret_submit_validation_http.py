@@ -13,12 +13,19 @@ from types import SimpleNamespace
 import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
+from pydantic import BaseModel, Field
 
 from octop.api.app import _install_exception_handlers
 from octop.api.deps import current_user, get_server
 from octop.api.routers.chat import routes as chat_routes
 
 MARKER = "SYNTHETIC_SECRET_REVIEW_7d4af"  # synthetic; never a real credential
+
+
+class _LookalikeBody(BaseModel):
+    """Body for a route whose URL ends like secret submit but is not that route."""
+
+    content: str = Field(max_length=8)
 
 
 @pytest.fixture()
@@ -35,6 +42,12 @@ def client() -> TestClient:
 def _post(client: TestClient, payload: dict) -> str:
     response = client.post("/api/agents/a1/chat/secret-file/submit", json=payload)
     assert response.status_code == 422, response.text
+    body = response.json()
+    assert isinstance(body, dict)
+    assert isinstance(body.get("detail"), list)
+    for error in body["detail"]:
+        assert "input" not in error
+        assert "ctx" not in error
     return response.text
 
 
@@ -66,6 +79,23 @@ def test_wrong_types_do_not_echo_content(client: TestClient) -> None:
         {"thread_id": 123, "pending_id": None, "action": "submit", "content": MARKER},
     )
     assert MARKER not in text
+
+
+def test_lookalike_path_keeps_validation_input(client: TestClient) -> None:
+    """A URL that merely ends like the secret route still echoes ``input``."""
+
+    @client.app.post("/api/not-agents/chat/secret-file/submit")
+    def _probe(body: _LookalikeBody) -> dict[str, str]:
+        return {"ok": body.content}
+
+    response = client.post(
+        "/api/not-agents/chat/secret-file/submit",
+        json={"content": MARKER},
+    )
+    assert response.status_code == 422, response.text
+    body = response.json()
+    assert isinstance(body.get("detail"), list)
+    assert any(error.get("input") == MARKER for error in body["detail"])
 
 
 def test_submit_documents_sse_response(client: TestClient) -> None:
