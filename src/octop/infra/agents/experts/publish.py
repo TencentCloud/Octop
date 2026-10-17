@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
 import os
 import shutil
@@ -109,6 +110,12 @@ def resolve_published_expert_slug(
     return candidate
 
 
+def _write_file_blocking(target: Path, content: bytes) -> None:
+    """Create the parents and write one snapshot file (runs on a worker thread)."""
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_bytes(content)
+
+
 async def export_agent_workspace_to_dir(
     *,
     workspace: BackendWorkspace,
@@ -117,8 +124,10 @@ async def export_agent_workspace_to_dir(
     manifest_id: str | None = None,
 ) -> list[str]:
     """Atomically replace *dest* with exported workspace files."""
-    dest.parent.mkdir(parents=True, exist_ok=True)
-    staging_dir = Path(tempfile.mkdtemp(prefix=f".{dest.name}.", dir=dest.parent))
+    await asyncio.to_thread(dest.parent.mkdir, parents=True, exist_ok=True)
+    staging_dir = Path(
+        await asyncio.to_thread(tempfile.mkdtemp, prefix=f".{dest.name}.", dir=dest.parent)
+    )
     try:
         exported = await _write_workspace_snapshot(
             workspace=workspace,
@@ -126,9 +135,9 @@ async def export_agent_workspace_to_dir(
             metadata=metadata,
             manifest_id=manifest_id or dest.name,
         )
-        _replace_snapshot_dir(staging_dir, dest)
+        await asyncio.to_thread(_replace_snapshot_dir, staging_dir, dest)
     except BaseException:
-        shutil.rmtree(staging_dir, ignore_errors=True)
+        await asyncio.to_thread(shutil.rmtree, staging_dir, ignore_errors=True)
         raise
     return exported
 
@@ -142,7 +151,7 @@ async def _write_workspace_snapshot(
 ) -> list[str]:
     """Copy seedable workspace files into an empty staging directory."""
     paths = await _workspace_file_paths(workspace)
-    dest.mkdir(parents=True, exist_ok=True)
+    await asyncio.to_thread(dest.mkdir, parents=True, exist_ok=True)
 
     exported: list[str] = []
     for rel in paths:
@@ -155,8 +164,7 @@ async def _write_workspace_snapshot(
         if content is None:
             continue
         target = dest.joinpath(*PurePosixPath(logical).parts)
-        target.parent.mkdir(parents=True, exist_ok=True)
-        target.write_bytes(content)
+        await asyncio.to_thread(_write_file_blocking, target, content)
         exported.append(logical)
 
     avatar_rel = await copy_workspace_avatar_to_dir(workspace, dest)
@@ -178,7 +186,7 @@ async def _write_workspace_snapshot(
         manifest = raw_manifest
 
     manifest_path = dest / MANIFEST_FILENAME
-    manifest_path.write_bytes(manifest)
+    await asyncio.to_thread(_write_file_blocking, manifest_path, manifest)
     exported.append(MANIFEST_FILENAME)
     return sorted(exported)
 
