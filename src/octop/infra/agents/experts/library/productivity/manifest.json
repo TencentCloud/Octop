@@ -1,0 +1,88 @@
+{
+  "id": "productivity",
+  "label": {
+    "zh": "效率专家",
+    "en": "Productivity Expert"
+  },
+  "description": {
+    "zh": "任务管理与职场记忆：维护 TASKS.md 任务清单，记住你的同事、项目和术语，并能生成可视化看板。可连接聊天 / 邮件 / 项目跟踪类连接器自动同步。",
+    "en": "Task management and workplace memory: keeps a TASKS.md list, remembers your people, projects, and terminology, and renders a visual board. Syncs with chat / email / tracker connectors when connected."
+  },
+  "welcome_message": {
+    "zh": "任务、人脉、项目进展，说出来我帮你记着",
+    "en": "Tasks, people, projects — just say it and I'll keep track"
+  },
+  "icon_name": "zap",
+  "icon_url": "/experts/avatars/scene-office.svg",
+  "color": "#16a34a",
+  "prompt_files": [
+    "SOUL.md",
+    "AGENTS.md"
+  ],
+  "task_examples": {
+    "zh": [
+      "初始化我的任务清单和工作记忆，先问我几个问题了解我的角色和优先级",
+      "记下这些任务：周五前评审预算提案、和 Greg 同步后起草 Q2 路线图、跟进平台组的 API 规范",
+      "做一次全面梳理：清理过期任务、检查记忆缺口、把外部工具里的新待办同步进来"
+    ],
+    "en": [
+      "Initialize my task list and workplace memory — ask me a few questions about my role and priorities first",
+      "Add these tasks: review the budget proposal by Friday, draft the Q2 roadmap after syncing with Greg, follow up on the API spec from Platform",
+      "Do a full sweep: triage stale tasks, fill memory gaps, and pull new todos in from my connected tools"
+    ]
+  },
+  "quick_prompts": [
+    {
+      "title": {
+        "zh": "初始化",
+        "en": "Initialize"
+      },
+      "description": {
+        "zh": "建立任务清单与工作记忆",
+        "en": "Set up the task list and workplace memory"
+      },
+      "prompt": {
+        "zh": "初始化我的任务清单和工作记忆，先问我几个问题了解我的角色和优先级",
+        "en": "Initialize my tasks and memory — ask about my role and priorities first"
+      },
+      "color": "#dcfce7",
+      "icon_name": "zap"
+    },
+    {
+      "title": {
+        "zh": "记任务",
+        "en": "Add tasks"
+      },
+      "description": {
+        "zh": "自然语言一次记多条",
+        "en": "Several tasks in one natural sentence"
+      },
+      "prompt": {
+        "zh": "记下这些任务：周五前评审预算提案、同步后起草 Q2 路线图、跟进 API 规范",
+        "en": "Add these tasks: budget review by Friday, Q2 roadmap after syncing, follow up on the API spec"
+      },
+      "color": "#dcfce7",
+      "icon_name": "zap"
+    },
+    {
+      "title": {
+        "zh": "全面梳理",
+        "en": "Full sweep"
+      },
+      "description": {
+        "zh": "清理过期任务、补全记忆缺口",
+        "en": "Triage stale tasks and fill memory gaps"
+      },
+      "prompt": {
+        "zh": "做一次全面梳理：清理过期任务、检查记忆缺口",
+        "en": "Do a full sweep: triage stale tasks and fill memory gaps"
+      },
+      "color": "#dcfce7",
+      "icon_name": "zap"
+    }
+  ],
+  "source": {
+    "type": "knowledge-work-plugins",
+    "plugin": "productivity"
+  }
+}
