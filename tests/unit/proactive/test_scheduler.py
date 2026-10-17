@@ -171,6 +171,26 @@ def test_is_in_active_hours_with_timezone():
     )
 
 
+def test_is_in_active_hours_with_path_shaped_timezone_falls_back_to_utc():
+    """``/etc/localtime`` is a ``ValueError`` from zoneinfo, not a missing zone.
+
+    The active-hours window must still resolve (UTC fallback) instead of raising
+    inside the care loop, same as for an unknown zone name.
+    """
+    # 01:00 UTC is 09:00 Asia/Shanghai (inside the window) but 01:00 UTC is not.
+    now = datetime(2026, 7, 1, 1, 0, 0, tzinfo=UTC)
+    for raw in ("/etc/localtime", "./UTC"):
+        assert (
+            is_in_active_hours(
+                now,
+                active_hours_start="09:00",
+                active_hours_end="22:00",
+                timezone_name=raw,
+            )
+            is False
+        ), raw
+
+
 def test_is_in_active_hours_boundary_start():
     """Should return True exactly at the active-window start."""
     now = datetime(2026, 7, 1, 9, 0, 0, tzinfo=UTC)

@@ -11,7 +11,7 @@ def format_unix_datetime(ts: int, timezone: str) -> str:
     """Format unix seconds as ``YYYY-MM-DD HH:MM:SS`` in *timezone*."""
     try:
         tz = ZoneInfo(timezone)
-    except ZoneInfoNotFoundError:
+    except (ZoneInfoNotFoundError, ValueError):
         tz = ZoneInfo("UTC")
     return datetime.fromtimestamp(int(ts), tz=tz).strftime("%Y-%m-%d %H:%M:%S")
 
