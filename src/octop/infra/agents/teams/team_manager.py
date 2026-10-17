@@ -1131,6 +1131,7 @@ class TeamManager:
             raise RuntimeError("team member paused without an approval request")
         record.resume_agent_id = speaker_id
         record.resume_thread_id = member_thread_id
+        coordinator.store.persist(record)
         loop = asyncio.get_running_loop()
         self._hitl_waiters[record.pending_id] = loop.create_future()
         request = dict(request)
