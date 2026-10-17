@@ -59,6 +59,7 @@ vi.mock("../hooks/chatStore", () => ({
   readInputDraft: (agentId: string) =>
     agentId === "agent-2" ? "target expert draft" : "",
   writeInputDraft: vi.fn(),
+  onSteerRestore: vi.fn(() => () => undefined),
 }));
 
 vi.mock("./ChatInputPreviewBar", () => ({
