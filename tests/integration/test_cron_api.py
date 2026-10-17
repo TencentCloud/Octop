@@ -269,3 +269,29 @@ async def test_cross_user_cannot_list_cron(env: Any) -> None:
     c, _srv, _alice_auth, bob_auth, aid = env
     r = await c.get(f"/api/agents/{aid}/cron", headers=bob_auth)
     assert r.status_code == 403
+
+
+# --- Agent deletion -----------------------------------------------------------
+
+
+async def test_delete_agent_unschedules_its_cron_jobs(env: Any) -> None:
+    """Deleting an agent must drop its in-process cron schedules too.
+
+    The cron rows cascade away with the agent row, so a leftover APScheduler
+    entry could never be reached (or stopped) through any API again — it would
+    keep firing on every interval until the process restarts.
+    """
+    c, srv, alice_auth, _bob_auth, aid = env
+    r = await c.post(
+        f"/api/agents/{aid}/cron",
+        headers=alice_auth,
+        json={"trigger": "interval:3600", "prompt": "ping the server"},
+    )
+    assert r.status_code == 201, r.text
+    cid = r.json()["id"]
+    cron_manager = srv.app_runtime.cron_manager
+    assert cron_manager._scheduler.get_job(cid) is not None
+
+    r = await c.delete(f"/api/agents/{aid}", headers=alice_auth)
+    assert r.status_code == 204, r.text
+    assert cron_manager._scheduler.get_job(cid) is None

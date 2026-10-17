@@ -86,3 +86,48 @@ async def test_add_and_remove(tmp_path: Path) -> None:
     await mgr.delete("c1")
     assert services.cron_repo.get("c1") is None
     await mgr.shutdown()
+
+
+@pytest.mark.asyncio
+async def test_unschedule_agent_jobs_keeps_rows(tmp_path: Path) -> None:
+    """Only the schedules go; the rows are left to the agent-delete cascade."""
+    services = _make_services(tmp_path)
+    uid = services.user_repo.create(username="admin", password_hash="x", role="admin")
+    services.agent_repo.create(agent_id="a1", user_id=uid, name="Test Agent")
+    for cron_id in ("c1", "c2"):
+        services.cron_repo.create(
+            cron_id=cron_id,
+            agent_id="a1",
+            user_id=uid,
+            trigger="interval:3600",
+            prompt="hello",
+            session_key=ThreadRegistry.make_key(
+                agent_id="a1",
+                channel_type="cron",
+                channel_subject_id=cron_id,
+                channel_chat_type=ThreadRegistry.CHAT_TYPE_DM,
+            ),
+        )
+
+    gateway = MagicMock()
+    gateway.thread_registry = MagicMock()
+    mgr = CronManager(
+        gateway=gateway,
+        delivery_service=CronDeliveryService(
+            gateway=gateway,
+            agent_manager=MagicMock(),
+            repos=services.repos,
+        ),
+        repos=services.repos,
+        timezone="UTC",
+    )
+    mgr._scheduler = MagicMock()
+    mgr._scheduler.get_job = MagicMock(return_value=object())
+
+    await mgr.unschedule_agent_jobs("a1")
+
+    removed = {call.args[0] for call in mgr._scheduler.remove_job.call_args_list}
+    assert removed == {"c1", "c2"}
+    assert services.cron_repo.get("c1") is not None
+    assert services.cron_repo.get("c2") is not None
+    await mgr.shutdown()
