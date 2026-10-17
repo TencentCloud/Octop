@@ -32,6 +32,7 @@ from octop.infra.agents.settings.runtime_limits import (
     AGENT_RUNTIME_CONFIG_KEYS,
     agent_runtime_values,
 )
+from octop.infra.backend.resolver import backend_spec_supports_execution
 from octop.infra.errors import ErrorCode, OctopError
 from octop.infra.users.permissions import user_has_permission
 
@@ -170,6 +171,10 @@ def _row_dict(
         "state": row.last_state or "unknown",
         "last_error": row.last_error,
         "config": public_cfg,
+        # Explicit capability flag so the dashboard can label workspaces whose
+        # backend cannot host a shell (e.g. object-storage / database backends):
+        # deepagents silently drops the execute tool for these (#1664).
+        "supports_execution": backend_spec_supports_execution(cfg.get("backend")),
         "icon": row.icon,
         "template_name": row.template_name,
         "icon_name": row.icon_name or cfg.get("icon_name"),
