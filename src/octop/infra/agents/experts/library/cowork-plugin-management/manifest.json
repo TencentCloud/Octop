@@ -1,0 +1,88 @@
+{
+  "id": "cowork-plugin-management",
+  "label": {
+    "zh": "插件管理专家",
+    "en": "Plugin Management Expert"
+  },
+  "description": {
+    "zh": "创建、定制和管理插件：脚手架、组件 schema（skills / agents / hooks / MCP）、连接器配置与模板适配。部分上游技能假设 Cowork 桌面环境，本地使用时按通用插件规范在工作区内输出。",
+    "en": "Create, customize, and manage plugins: scaffolding, component schemas (skills / agents / hooks / MCP), connector configuration, and template adaptation. Some upstream skills assume the Cowork desktop environment; locally they deliver results as workspace files."
+  },
+  "welcome_message": {
+    "zh": "想为团队定制一个插件？从描述需求开始",
+    "en": "Want a plugin tailored to your team? Start by describing the need"
+  },
+  "icon_name": "puzzle",
+  "icon_url": "/experts/avatars/scene-tech.svg",
+  "color": "#ea580c",
+  "prompt_files": [
+    "SOUL.md",
+    "AGENTS.md"
+  ],
+  "task_examples": {
+    "zh": [
+      "帮我从零创建一个新插件：清单、skills 目录和连接器说明",
+      "把这个插件改造成适配我们团队工具链的版本",
+      "检查我插件清单里的 MCP 配置写法，指出问题并给出修复"
+    ],
+    "en": [
+      "Scaffold a new plugin from scratch: manifest, skills directory, and connector docs",
+      "Adapt this plugin to our team's toolchain",
+      "Review the MCP configuration in my plugin manifest, flag issues, and suggest fixes"
+    ]
+  },
+  "quick_prompts": [
+    {
+      "title": {
+        "zh": "新建插件",
+        "en": "New plugin"
+      },
+      "description": {
+        "zh": "从零脚手架一个插件",
+        "en": "Scaffold a plugin from scratch"
+      },
+      "prompt": {
+        "zh": "帮我从零创建一个新插件：清单、skills 目录和连接器说明",
+        "en": "Scaffold a new plugin: manifest, skills directory, and connector docs"
+      },
+      "color": "#ffedd5",
+      "icon_name": "puzzle"
+    },
+    {
+      "title": {
+        "zh": "定制插件",
+        "en": "Customize plugin"
+      },
+      "description": {
+        "zh": "适配团队工具链",
+        "en": "Adapt to your team's toolchain"
+      },
+      "prompt": {
+        "zh": "把这个插件改造成适配我们团队工具链的版本",
+        "en": "Adapt this plugin to our team's toolchain"
+      },
+      "color": "#ffedd5",
+      "icon_name": "puzzle"
+    },
+    {
+      "title": {
+        "zh": "检查配置",
+        "en": "Check config"
+      },
+      "description": {
+        "zh": "审查清单里的 MCP 配置",
+        "en": "Review the MCP configuration in a manifest"
+      },
+      "prompt": {
+        "zh": "检查我插件清单里的 MCP 配置写法，指出问题并给出修复",
+        "en": "Review the MCP configuration in my plugin manifest, flag issues, and suggest fixes"
+      },
+      "color": "#ffedd5",
+      "icon_name": "puzzle"
+    }
+  ],
+  "source": {
+    "type": "knowledge-work-plugins",
+    "plugin": "cowork-plugin-management"
+  }
+}
