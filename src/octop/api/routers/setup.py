@@ -199,6 +199,11 @@ async def _apply_provider_draft(server: Any, draft: ProviderDraftBody) -> None:
         models[0]["enabled"] = True
     if not models:
         raise OctopError(ErrorCode.INTERNAL_ERROR, "at least one model is required", status=400)
+    if server.services.provider_repo.get_by_name(draft.name) is not None:
+        raise OctopError(
+            ErrorCode.PROVIDER_NAME_TAKEN,
+            f"provider {draft.name!r} already exists",
+        )
     server.services.provider_repo.create(
         name=draft.name,
         kind=draft.type,

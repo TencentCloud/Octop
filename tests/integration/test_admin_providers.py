@@ -41,6 +41,18 @@ async def test_admin_only_admin_can_create(env):
     assert r.status_code == 403
 
 
+async def test_admin_create_duplicate_name_conflicts(env):
+    """A duplicate name must be a localized 409, not an unhandled 500."""
+    c, _, auth = env
+    payload = {"name": "dupe-name", "kind": "openai", "api_key": "sk-test"}
+    r = await c.post("/api/admin/providers", headers=auth, json=payload)
+    assert r.status_code == 201
+
+    r = await c.post("/api/admin/providers", headers=auth, json=payload)
+    assert r.status_code == 409
+    assert r.json()["error"]["code"] == "PROVIDER_NAME_TAKEN"
+
+
 async def test_admin_delete(env):
     c, _, auth = env
     r = await c.post(

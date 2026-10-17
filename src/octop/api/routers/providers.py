@@ -270,6 +270,11 @@ async def admin_create_provider(
 ) -> dict[str, Any]:
     import json as _json
 
+    if server.services.provider_repo.get_by_name(body.name) is not None:
+        raise OctopError(
+            ErrorCode.PROVIDER_NAME_TAKEN,
+            f"provider {body.name!r} already exists",
+        )
     models_json = _json.dumps(body.models) if body.models is not None else None
     pid = server.services.provider_repo.create(
         name=body.name,
