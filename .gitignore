@@ -114,3 +114,5 @@ fnos/native/app/site-packages/
 docs/superpowers/
 scripts/lh_image_install_octop_tencentos.sh
 .worktrees/
+# Local conda environment
+.conda-octop/

@@ -7,7 +7,11 @@ import pytest
 from octop.api.bridge_peer import prepare_peer_dashboard_turn
 from octop.api.routers.chat.models import UserTurnWsFrame
 from octop.infra.bridge.manager import _bridge_turn_ws_payload
-from octop.infra.bridge.peer_turn import USER_TURN_WS_KEYS, PeerTurnRejected
+from octop.infra.bridge.peer_turn import (
+    USER_TURN_WS_KEYS,
+    PeerTurnRejected,
+    peer_turn_relay_finished,
+)
 
 
 def test_bridge_turn_ws_payload_keeps_composer_fields() -> None:
@@ -46,6 +50,13 @@ def test_bridge_turn_ws_payload_defaults_empty_text() -> None:
     assert out["type"] == "user_turn"
     assert out["text"] == ""
     assert out["messages"][0]["content"] == "x"
+
+
+def test_peer_turn_relay_waits_for_turn_ended() -> None:
+    assert peer_turn_relay_finished("done") is False
+    assert peer_turn_relay_finished("token") is False
+    assert peer_turn_relay_finished("turn.ended") is True
+    assert peer_turn_relay_finished("error") is True
 
 
 def test_user_turn_ws_keys_match_dashboard_frame() -> None:

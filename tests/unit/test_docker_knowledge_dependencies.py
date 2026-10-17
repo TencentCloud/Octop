@@ -22,3 +22,15 @@ def test_docker_syncs_retain_knowledge_extras() -> None:
         assert {"browser", "local-embedding", "knowledge-ocr"} <= extras
         assert "--frozen" in command
         assert "--no-dev" in command
+
+
+def test_fnos_source_dockerfile_installs_knowledge_extras() -> None:
+    """The manual FnOS source image must bake the same knowledge runtimes.
+
+    Published FnOS Docker packages pull the image built from docker/Dockerfile
+    and do not build this file.
+    """
+    repo = Path(__file__).resolve().parents[2]
+    dockerfile = (repo / "fnos" / "docker" / "Dockerfile").read_text(encoding="utf-8")
+    assert ".[desktop,local-embedding,knowledge-ocr]" in dockerfile
+    assert "import cv2, fastembed, huggingface_hub, rapidocr, onnxruntime, pymupdf" in dockerfile

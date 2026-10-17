@@ -18,6 +18,7 @@ from octop_gateway.models import (
     TextContent,
     VideoContent,
 )
+from octop_gateway.utils import close_event_stream
 
 from octop.i18n.domains.stream import format_stream_error
 from octop.infra.gateway.media.attachment_hints import (
@@ -163,6 +164,7 @@ class WebSocketChannel(BaseChannel):
         )
         self._hub.mark_turn_active(thread_id)
         failed = False
+        stream = None
         try:
             await self._hub.push_to_thread(
                 thread_id,
@@ -178,7 +180,8 @@ class WebSocketChannel(BaseChannel):
             while True:
                 saw_tool_result = False
                 preempted = False
-                async for chunk in processor.iter_turn_chunks(current):
+                stream = processor.iter_turn_chunks(current)
+                async for chunk in stream:
                     chunk_type = str(chunk.get("type") or "") if isinstance(chunk, dict) else ""
                     if preempted and chunk_type not in ("done", "error"):
                         # Cancel already landed at the tool boundary. Later
@@ -215,6 +218,9 @@ class WebSocketChannel(BaseChannel):
                             "websocket push failed thread=%s (turn continues)",
                             thread_id,
                         )
+                    if chunk_type == "error":
+                        failed = True
+                        break
                     if chunk_type == "hitl_required":
                         # Graph is interrupted; the WS turn ends but resume flows
                         # through the HITL SSE route — never continue into it.
@@ -223,8 +229,10 @@ class WebSocketChannel(BaseChannel):
                     if chunk_type == "tool_result":
                         saw_tool_result = True
                         self._steer.set_phase(thread_id, "awaiting_tools")
-                if self._steer.is_hitl_paused(thread_id):
+                if failed or self._steer.is_hitl_paused(thread_id):
                     break
+                await close_event_stream(stream)
+                stream = None
                 outcome = self._steer.drain_for_continuation(thread_id)
                 if outcome is None:
                     break
@@ -299,6 +307,9 @@ class WebSocketChannel(BaseChannel):
                 logger.exception("websocket failed to deliver error frame thread=%s", thread_id)
         finally:
             discarded = self._steer.end_turn(thread_id, failed=failed)
+            self._hub.mark_turn_idle(thread_id)
+            if stream is not None:
+                await close_event_stream(stream)
             if discarded is not None:
                 try:
                     await self._hub.push_to_thread(
@@ -332,7 +343,6 @@ class WebSocketChannel(BaseChannel):
                 )
             except Exception:
                 logger.exception("websocket failed to deliver turn.ended thread=%s", thread_id)
-            self._hub.mark_turn_idle(thread_id)
 
     async def _send_text(self, subject: ChannelSubject, text: str) -> None:
         if not text:

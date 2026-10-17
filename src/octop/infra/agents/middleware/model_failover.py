@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import logging
 from collections.abc import Awaitable, Callable, Sequence
-from typing import Any, cast
+from typing import Any, Literal, cast
 
 from langchain.agents.middleware import AgentMiddleware, ModelRequest, ModelResponse
 from langchain.agents.middleware.model_retry import ModelRetryMiddleware
@@ -64,7 +64,7 @@ class SafeModelFailoverMiddleware(AgentMiddleware[Any, Any]):
         max_retries: int,
         initial_delay: float,
         max_delay: float,
-        on_failure: Callable[[Exception], str] | None = None,
+        on_failure: Callable[[Exception], str] | Literal["error"] | None = None,
     ) -> None:
         super().__init__()
         self._health = health
@@ -79,6 +79,8 @@ class SafeModelFailoverMiddleware(AgentMiddleware[Any, Any]):
         )
 
     def _failure_response(self, exc: Exception) -> ModelResponse[Any]:
+        if self._on_failure == "error":
+            raise exc
         content = (
             self._on_failure(exc)
             if self._on_failure is not None
