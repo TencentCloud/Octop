@@ -6,6 +6,7 @@ import asyncio
 import logging
 import os
 import sys
+import threading
 import time
 from typing import Any
 
@@ -403,11 +404,40 @@ def _restart_desktop_process(server: OctopServer) -> None:
     os.execv(argv[0], argv)
 
 
-def _restart_service_task(runtime: ServiceRuntime) -> None:
+# How long ``/restart`` waits for an immediate failure before answering
+# "restarting".  Real failures — missing sudo privileges, a rejected systemd
+# transaction, an uninstalled unit — surface within milliseconds, whereas a
+# successful bounce replaces this very process, so the client must not wait for
+# that to finish.
+_RESTART_EARLY_FAILURE_WINDOW_SECONDS = 3.0
+
+# ``sudo`` refusing to run without a TTY/password (and outright denials) are
+# reported verbatim by the OS; recognising them lets the dashboard explain what
+# the operator has to do instead of leaving a spinning dialog behind.
+_PRIVILEGE_ERROR_MARKERS = (
+    "a password is required",
+    "a terminal is required",
+    "askpass",
+    "no tty present",
+    "not in the sudoers",
+    "not allowed to execute",
+)
+
+
+def _looks_like_privilege_error(message: str) -> bool:
+    lowered = message.lower()
+    return any(marker in lowered for marker in _PRIVILEGE_ERROR_MARKERS)
+
+
+def _restart_service_worker(runtime: ServiceRuntime, outcome: dict[str, str]) -> None:
     try:
         restart_service(runtime)
-    except Exception:
-        logger.exception("background service restart failed")
+    except Exception as exc:  # noqa: BLE001 - reported back to the caller below
+        outcome["error"] = str(exc).strip() or type(exc).__name__
+        logger.warning(
+            "service restart failed before the service could bounce: %s",
+            outcome["error"],
+        )
 
 
 @router.post("/restart")
@@ -439,5 +469,24 @@ async def restart_service_endpoint(
         raise OctopError(ErrorCode.INTERNAL_ERROR, str(exc)) from exc
     except Exception as exc:
         raise OctopError(ErrorCode.INTERNAL_ERROR, str(exc)) from exc
-    background_tasks.add_task(_restart_service_task, runtime)
+
+    outcome: dict[str, str] = {}
+    worker = threading.Thread(
+        target=_restart_service_worker,
+        args=(runtime, outcome),
+        name="octop-service-restart",
+        daemon=True,
+    )
+    worker.start()
+    await asyncio.to_thread(worker.join, _RESTART_EARLY_FAILURE_WINDOW_SECONDS)
+
+    failure = outcome.get("error")
+    if failure:
+        if _looks_like_privilege_error(failure):
+            raise OctopError(
+                ErrorCode.RESTART_PRIVILEGE_REQUIRED,
+                failure,
+                details={"run_as_user": runtime.run_as_user},
+            )
+        raise OctopError(ErrorCode.INTERNAL_ERROR, failure)
     return {"status": "restarting", "service_mode": mode}
