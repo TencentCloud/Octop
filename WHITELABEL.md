@@ -487,15 +487,15 @@ grep -rn $INC "com.tencent.octop" desktop                                       
 
 ## 9. 第三轮：合并上游 1.0.2b9（2026-10-17）
 
-你要求「先提交，再同步远端，注意保留我的修改」。落地成两个提交，工作树已干净：
+你要求「先提交，再同步远端，注意保留我的修改」，最后追加「全部都提交，然后推送」。落地成三个提交，且已推到 `origin/main`（`4f443bab..14a77d0c`，快进，无 force）：
 
 | 提交 | 内容 |
 |---|---|
 | `ff1c3420` | 本轮全部白标改动（648 文件，+2025 / −51697）。作者与提交者 `daosheng <daosheng@hz.com>`（用 `git -c user.name=… -c user.email=…` 内联传入，**没有改你的 git config**） |
 | `6d5adc51` | `Merge origin/main (1.0.2b9)`，吸收远端 39 个提交（上游已到 `4f443bab Release/1.0.2b9`） |
+| `14a77d0c` | 本报告 + `RESEARCH.md` + `LOCAL-DEBUG-GUIDE.md` 入库 |
 
-当前 `main` 领先 `origin/main` 2 个提交，**未 push**（`kolehank/Octop` 是 PUBLIC 仓库，推不推你定）。
-`WHITELABEL.md` / `RESEARCH.md` / `LOCAL-DEBUG-GUIDE.md` 仍是未跟踪状态，没进提交；仓库外另存了一份保险：`C:\Users\Administrator\Octop-backups\whitelabel-tracked.patch`（3.5 MB，645 个已跟踪文件）+ `whitelabel-untracked.tgz`（含 3 个新源码/测试文件与这三份文档）。
+`kolehank/Octop` 是 **PUBLIC** 仓库，你已明确知情并选择把这三份内部文档一并提交推送 —— 也就是说「这是 TencentCloud/Octop 的白标底座」以及本表的决策记录，从 2026-10-17 起对外可见。推送前扫过凭据与内网 IP（无命中，唯一像是 `10.` 的命中是「Windows 10.0.19045」）。仓库外仍留了一份保险：`C:\Users\Administrator\Octop-backups\whitelabel-tracked.patch`（3.5 MB）+ `whitelabel-untracked.tgz`。
 
 ### 9.1 冲突处置（11 处，规则是「保留我们的删除，采纳他们的行为」）
 
@@ -524,9 +524,9 @@ grep -rn $INC "com.tencent.octop" desktop                                       
 
 按「符号不动、文案才动」保留的：`hasOctopUi`、`BuiltinOctopUiFallback`、`OctopAgent`、`common.copyErrorForOctop`（键名保留，值早已白标）、`OctopError` / `OctopServer` / `_OctopLogFormatter`。
 
-### 9.3 本轮**没**动、需要你拍板的三件
+### 9.3 本轮**没**动的三件（第 1 件你 2026-10-17 已裁定保留）
 
-1. **决策模型默认打外网**：`dashboard/src/pages/Settings/Models/components/DecisionSettingsPanel.tsx:35` 把 `https://openrouter.ai/api/alpha/decisions` 作为预置端点，`:339` 还挂了 `https://openrouter.ai/keys` 取钥匙链接。它要你自己的 API key 才生效，属「用户自带密钥接第三方服务」那一类，所以本轮按既有裁决留着 —— 但这是上游新加的一条**默认出网地址**，内网隔离部署时要不要一并中性化，你定。
+1. **决策模型默认打外网**：`dashboard/src/pages/Settings/Models/components/DecisionSettingsPanel.tsx:35` 把 `https://openrouter.ai/api/alpha/decisions` 作为预置端点，`:339` 还挂了 `https://openrouter.ai/keys` 取钥匙链接。**已裁定：保留** —— 它只是预置端点、要你自己的 API key 才生效，属 BYOK 模式，与连接器/语音那一类同源，不按出网痕迹清理。今后同类「预置端点 + 用户自带 key」一律保留。
 2. **新专家的来源注释**：`src/octop/infra/agents/experts/library/business-operations/README.md:9,11` 与 6 个 `skills/bo-*/SKILL.md:5` 写着「已为 Octop 改写」并链向 `github.com/anthropics/knowledge-work-plugins`。前者是品牌词、后者是第三方出处标注（删了会影响溯源合规），本轮都留着。
 3. **`docs/**` 照旧不动**（你在 §8.5 第 9 条已定「后续我自己重写」）：上游新增 `docs/plugin-channels.md`、`docs/agent-mcp` 相关正文里仍有 `Octop` 称谓；`CHANGELOG.md` 也照旧。
 
@@ -547,4 +547,4 @@ uv run pytest tests/integration/test_update_api.py \
 
 **重要变化：本机已经跑不了全量测试了。** 上游 #2114/#2130 把本地 Embedding 依赖探测接进了服务启动链，`infra/agents/providers/onnx_service.py:67` 的 `local_embedding_deps_available()` 会 `import fastembed`，而这台机器 `uv run python -c "import fastembed"` 直接段错误（exit 139，onnxruntime 装坏了）。现在**凡是启动 `OctopServer` 的测试**都会连带崩掉 —— 不再只是 §8.6 记的那两个 ONNX 文件。已核实这是本机环境而非合并引入：崩掉的调用栈落在 `.venv/Lib/site-packages/onnxruntime/capi/_pybind_state.py:32`。
 
-换到 Linux 电脑后请跑 `make all`（它是本轮唯一没能在本机完成的验证）。顺带提醒两件事：`make install-hooks` 会执行 `git config core.hooksPath .githooks`，我一次都没跑，所以这两个提交**没有经过 pre-commit 钩子**（我用的是手拆的 ruff/format/mypy/build/pytest，等价但不含 `git config` 改动）；`commit 6d5adc51` 我多带了 `--no-verify`，由于钩子未安装它其实没有跳过任何东西，写在这里是为了透明。
+换到 Linux 电脑后请跑 `make all`（它是本轮唯一没能在本机完成的验证）。顺带提醒两件事：`make install-hooks` 会执行 `git config core.hooksPath .githooks`，我一次都没跑，所以这三个提交（`ff1c3420` / `6d5adc51` / `14a77d0c`）**没有经过 pre-commit 钩子**（我用的是手拆的 ruff/format/mypy/build/pytest，等价但不含 `git config` 改动）；`commit 6d5adc51` 我多带了 `--no-verify`，由于钩子未安装它其实没有跳过任何东西，写在这里是为了透明。
