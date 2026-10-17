@@ -247,6 +247,23 @@ export default function AssistantTurnView({
   const todoAtTop = todoPanel && !anyProcessShown ? todoPanel : null;
 
   const isWrapupTurn = messages.some((item) => item.teamWrapup);
+  const hasVisibleTurn =
+    Boolean(todoAtTop) ||
+    anyProcessShown ||
+    segmentProcess.some(
+      ({ split }) =>
+        split.answerMessage || (split.errorMessages?.length ?? 0) > 0,
+    ) ||
+    hitlLayout.segments.length > 0 ||
+    Boolean(trailingSplit.answerMessage) ||
+    (trailingSplit.errorMessages?.length ?? 0) > 0 ||
+    hasToolMedia ||
+    knowledgeCitations.length > 0 ||
+    showOpenBrowser ||
+    showEditFile;
+  // A decision-only placeholder has no row yet. Rendering an empty turn
+  // would shift the layout before the avatar and the first status settle.
+  if (!hasVisibleTurn) return null;
 
   return (
     <div className={styles.assistantTurn}>

@@ -37,6 +37,7 @@ class ContextBreakdownResult:
     max_tokens: int
     used_tokens: int
     segments: dict[str, int]
+    decision_saved: int = 0
 
 
 def _empty_breakdown(*, max_tokens: int) -> ContextBreakdownResult:
@@ -53,7 +54,13 @@ def _usage_to_breakdown(usage: Any, *, fallback_max_tokens: int) -> ContextBreak
     segments = {key: int(raw_segments.get(key, 0) or 0) for key in SEGMENT_KEYS}
     used = int(getattr(usage, "used_tokens", 0) or 0)
     cap = int(getattr(usage, "max_tokens", fallback_max_tokens) or fallback_max_tokens or 128_000)
-    return ContextBreakdownResult(max_tokens=cap, used_tokens=used, segments=segments)
+    saved = _token_int(getattr(usage, "decision_saved", 0))
+    return ContextBreakdownResult(
+        max_tokens=cap,
+        used_tokens=used,
+        segments=segments,
+        decision_saved=saved,
+    )
 
 
 def _from_stream_input_tokens(input_tokens: int, *, max_tokens: int) -> ContextBreakdownResult:
@@ -147,7 +154,8 @@ def usage_dict_from_message(msg: Any) -> dict[str, Any] | None:
     if inp == 0 and out == 0:
         inp, out = _io_from_mapping(mapped_response)
 
-    if inp == 0 and out == 0:
+    saved = _token_int(stamped.get("decision_saved")) if isinstance(stamped, dict) else 0
+    if inp == 0 and out == 0 and saved == 0:
         return None
     payload: dict[str, Any] = {
         "input_tokens": inp,
@@ -186,6 +194,8 @@ def usage_dict_from_message(msg: Any) -> dict[str, Any] | None:
                 "model_calls": 1,
             }
         )
+    if saved:
+        payload["decision_saved"] = saved
     return payload
 
 
