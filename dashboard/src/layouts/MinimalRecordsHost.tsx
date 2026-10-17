@@ -8,6 +8,7 @@ import { octopThreadsApi } from "../api/modules/octopThreads";
 import { deleteConversation } from "../pages/Chat/utils/deleteConversation";
 import MinimalAgentSessionNav from "../pages/Chat/components/MinimalAgentSessionNav";
 import { emitSessionEvent } from "../pages/Chat/hooks/chatStore";
+import { deleteSessions } from "../pages/Chat/hooks/useSessions";
 import { formatThreadTitle } from "../pages/Chat/utils/threadTitle";
 
 function parseChatPath(pathname: string): {
@@ -138,6 +139,7 @@ export default function MinimalRecordsHost() {
       onAgentSelect={handleAgentSelect}
       onNewChat={handleNewChat}
       onDeleteActive={(id, compact) => void handleDeleteActive(id, compact)}
+      onBatchDelete={deleteSessions}
       onRenameActive={handleRenameActive}
       onPinActive={handlePinActive}
       onFork={(id, agentId) => void handleFork(id, agentId)}
