@@ -1274,22 +1274,27 @@ export default function KnowledgeBasesPage() {
       }),
       okText: t("knowledgeBases.downloadModel"),
       cancelText: t("common.cancel"),
-      onOk: async () => {
+      // Return void so antd closes this confirm immediately. An async onOk
+      // stays open (OK button loading) until downloadOnnx settles, and
+      // modal.confirm is pinned at z-index 2000, above the progress dialog.
+      onOk: () => {
         setOnnxDownloading(true);
         setDownloadProgressModel(modelId);
         setDownloadProgress(0);
         setDownloadProgressLabel(t("models.localDownloadPreparing"));
         setDownloadProgressOpen(true);
-        try {
-          await knowledgeBasesApi.downloadOnnx(modelId);
-          watchOnnxDownloadStatus(modelId);
-        } catch (error) {
-          setOnnxDownloading(false);
-          setDownloadProgressOpen(false);
-          message.error(
-            apiErrorMessage(error, t("models.onnxDownloadFailed"), t),
-          );
-        }
+        void knowledgeBasesApi.downloadOnnx(modelId).then(
+          () => {
+            watchOnnxDownloadStatus(modelId);
+          },
+          (error: unknown) => {
+            setOnnxDownloading(false);
+            setDownloadProgressOpen(false);
+            message.error(
+              apiErrorMessage(error, t("models.onnxDownloadFailed"), t),
+            );
+          },
+        );
       },
     });
   };
@@ -3502,6 +3507,9 @@ export default function KnowledgeBasesPage() {
         closable
         maskClosable
         destroyOnHidden={false}
+        // Above modal.confirm (zIndexPopupBase + CONTAINER_MAX_OFFSET = 2000)
+        // so this dialog is not covered while the confirm is closing.
+        zIndex={2100}
         footer={
           <Button onClick={dismissDownloadProgressToBackground}>
             {t("models.localDownloadContinueBackground")}

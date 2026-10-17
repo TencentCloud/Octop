@@ -1,13 +1,19 @@
 # syntax=docker/dockerfile:1
 # =============================================================================
-# Octop — FnOS 专用构建（基于仓库源码，安装全部附加组件）
+# Octop — 可选的源码镜像（飞牛 FPK 不使用本文件）
 #
-# 与上游 docker/Dockerfile 一致，但显式安装 desktop extra：
-#   - desktop  （mss / pynput / pillow，桌面控制附加组件）
+# 飞牛 Docker 版安装包复用 docker-publish 推送的
+# ghcr.io/tencentcloud/octop:{version}，那份镜像由 docker/Dockerfile 构建。
+# 本文件只在显式执行下面的命令时使用，构建上下文为仓库根目录：
+#   docker build -f fnos/docker/Dockerfile -t octop:fnos-source .
+#
+# 与上游相比保留 desktop，并同样打进本地知识库运行时：
+#   - desktop          （mss / pynput / pillow，桌面控制附加组件）
+#   - local-embedding  （fastembed，本地 ONNX 知识库）
+#   - knowledge-ocr    （rapidocr / onnxruntime / pymupdf）
+# 这些依赖必须在镜像层。装进容器可写层的包会在重建后丢失，
+# 数据卷里的设置和索引却还在。
 # Playwright Chromium 不再预装，浏览器自动化可在控制台按需安装。
-#
-# 构建上下文必须为仓库根目录（fnpack / CI 中以仓库根为 context）：
-#   docker build -f fnos/docker/Dockerfile -t ghcr.io/tencentcloud/octop:latest .
 #
 # 国内加速（可选 build-arg）：
 #   PIP_INDEX_URL / PIP_TRUSTED_HOST / NPM_REGISTRY / APT_MIRROR
@@ -66,8 +72,11 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     && apt-get update && apt-get install -y --no-install-recommends \
         build-essential \
         libffi-dev \
+        libgl1 \
+        libglib2.0-0 \
         curl \
         git \
+        ripgrep \
     && rm -rf /var/lib/apt/lists/*
 
 COPY --from=ghcr.io/astral-sh/uv:0.7 /uv /uvx /bin/
@@ -82,7 +91,9 @@ COPY --from=frontend-builder /build/src/octop/dashboard/ ./src/octop/dashboard/
 COPY docker/docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
 RUN chmod +x /usr/local/bin/docker-entrypoint.sh
 
-# 安装项目 + desktop 附加组件（Playwright Chromium 不预装，控制台可按需下载）
+# 安装项目与附加组件（Playwright Chromium 不预装，控制台可按需下载）。
+# local-embedding / knowledge-ocr 与 desktop 一起装进镜像层，避免运行时
+# 装进 overlay 后在容器重建时丢失。
 # UV_INDEX_URL 首选阿里云镜像加速；UV_DEFAULT_INDEX 保留 PyPI 作为兜底，
 # 避免新发布的包（如 octop-harness 0.9.16）尚未同步到镜像时构建失败。
 RUN --mount=type=cache,target=/root/.cache/uv \
@@ -90,7 +101,8 @@ RUN --mount=type=cache,target=/root/.cache/uv \
     && UV_DEFAULT_INDEX=https://pypi.org/simple \
        UV_INDEX_URL=https://mirrors.aliyun.com/pypi/simple \
        UV_INSECURE_HOST=mirrors.aliyun.com \
-       uv pip install --python /app/.venv ".[desktop]" \
+       uv pip install --python /app/.venv ".[desktop,local-embedding,knowledge-ocr]" \
+    && /app/.venv/bin/python -c "import cv2, fastembed, huggingface_hub, rapidocr, onnxruntime, pymupdf" \
     && apt-get update && apt-get install -y --no-install-recommends fonts-noto-cjk \
     && apt-get purge -y --auto-remove build-essential \
     && rm -rf /var/lib/apt/lists/* /tmp/*
