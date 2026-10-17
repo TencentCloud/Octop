@@ -5,6 +5,7 @@
 格式遵循 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)，版本号遵循 [语义化版本规范](https://semver.org/spec/v2.0.0.html)。
 
 ## [Unreleased]
+- 工作区 ZIP 导出压缩与封包、导入解压及 replace 清理移到工作线程，避免阻塞 API、聊天流与 WebSocket 共用的事件循环；导出逐个读取并压缩文件。
 
 ## [1.0.2b9] - 2026-10-16
 
