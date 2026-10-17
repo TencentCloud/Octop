@@ -10,13 +10,13 @@ on first server start (or by `octop init` / `octop run`).
 ├── config.json              # process-level settings (host, port, CORS, DB, TLS, …)
 ├── env                      # optional dotenv (OCTOP_DATABASE_*, API keys, …); loaded at server start
 ├── octop.db                 # SQLite — users, agents, providers, sessions, audit
-├── cli_state.json           # CLI token + pinned defaults (`octop user login`)
+├── cli_state.json           # pinned defaults (`octop config set-user` / `octop agent use`)
 ├── repl_history             # readline-style history for `octop chats repl`
 ├── secrets/
 │   └── jwt_secret           # 32-byte random; rotate with `octop admin rotate-jwt-secret`
 ├── agents/<agent_id>/       # per-agent workspace (LangGraph state, attachments, …)
 ├── plugins/                 # installed third-party plugins
-├── ssl/                     # self-signed certs when `octop run --ssl` is used without --cert/--key
+├── ssl/                     # self-signed certs when `octop run --ssl` is used without --ssl-certfile/--ssl-keyfile
 ├── logs/                    # rotating log files (when `octop service start` writes a logfile)
 └── octop.log                # default foreground log path
 ```
