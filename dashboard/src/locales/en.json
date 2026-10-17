@@ -221,6 +221,7 @@
     "TEAM_NOT_SHAREABLE": "Teams cannot be shared in this version.",
     "LOCAL_DOWNLOAD_UNAVAILABLE": "Saving to the host Downloads folder is only available when Octop is opened on this computer.",
     "SKILL_PACKAGE_COPY_DENIED": "The creator of this skill package has disabled copying its skills.",
+    "SKILL_PACKAGE_DOWNLOAD_DENIED": "Downloading this skill package is disabled.",
     "SKILL_PACKAGE_LOCKED": "This skill was copied from a locked skill package and cannot be edited in the workspace."
   },
   "nav": {
@@ -234,7 +235,7 @@
     "acp": "ACP Collaboration",
     "agents": "Agents",
     "providers": "Providers",
-    "models": "Model Management",
+    "models": "Model",
     "channels": "Channels",
     "sessions": "Sessions",
     "cronJobs": "Cron Jobs",
@@ -366,7 +367,9 @@
     "copyPolicyHint": "Controls whether users other than the creator can copy this package's skills into their agents. Read-only copies are enforced on Dashboard and workspace HTTP writes; Agent tool writes still need harness support (#770).",
     "copyPolicySnapshot": "Copy freely",
     "copyPolicyLock": "Copy (console read-only)",
-    "copyPolicyDeny": "No copying"
+    "copyPolicyDeny": "No copying",
+    "allowDownload": "Allow download",
+    "allowDownloadHint": "When off, other users can still view and mount this package, but cannot export it as a ZIP. The creator and admins can still download it."
   },
   "knowledgeBases": {
     "title": "Knowledge Bases",
@@ -1467,7 +1470,7 @@
     "pickAgent": "Select an Agent first",
     "bootstrapKickoff": "Hi — let's get started",
     "createSessionFailed": "Failed to create a session — please try again",
-    "searchSessions": "Search conversations",
+    "searchSessions": "Search experts or conversations",
     "noSearchResults": "No matching conversations",
     "expandMore": "Show more",
     "pin": "Pin",
@@ -1512,6 +1515,8 @@
     "expertPickerSearch": "Search experts",
     "expertPickerEmpty": "No other experts available",
     "expertPickerManage": "Manage experts",
+    "expertPin": "Pin expert",
+    "expertUnpin": "Unpin expert",
     "expertHide": "Hide shared expert",
     "expertUnhide": "Show expert again",
     "expertPickerHidden": "Hidden experts ({{count}})",
@@ -1770,6 +1775,7 @@
     "openToolUiInDock": "Open in side panel",
     "toolUiDockedHint": "Moved to side panel",
     "toolUiDockedOpen": "Open side panel",
+    "pluginUiNotInstalled": "This plugin is not installed on this machine. Showing the returned data only.",
     "loadEarlierMessages": "Load earlier messages",
     "historyLoadFailed": "History could not be loaded. Existing messages have been kept. Please retry.",
     "historyRetry": "Retry",
@@ -1795,6 +1801,7 @@
     "desktop_screenshot": "Desktop screenshot",
     "memory_search": "Search memory",
     "memory_get": "Read memory",
+    "memory_save": "Save memory",
     "tavily_search": "Tavily web search",
     "brave_search": "Brave web search",
     "google_search": "Google web search",
@@ -2063,6 +2070,9 @@
     "builtinSkills": "Built-in Skills",
     "builtinSkillsDesc": "Bundled skills, ready to use",
     "importSkills": "Import Skill",
+    "exportSkill": "Export ZIP",
+    "exportSelected": "Export selected ({{count}})",
+    "exportSkillFailed": "Failed to export skill",
     "importFromUrl": "Import from URL",
     "importFromZip": "Import from ZIP",
     "enterSkillUrl": "Enter Skill URL",
@@ -4157,13 +4167,25 @@
     "noAgentSelected": "Pick an agent in the top switcher first",
     "tabs": {
       "overview": "Overview",
+      "strong": "Strong memory",
       "profile": "Profile",
       "library": "Memory tree",
       "episodes": "Emotional journal",
       "candidates": "Memory distillation",
       "journal": "Activity",
       "proactive": "Proactive care",
-      "settings": "Settings"
+      "settings": "Settings",
+      "userFile": "User profile"
+    },
+    "strong": {
+      "contextNotice": "Strong memory is loaded once when a session starts and stays in that session's context.",
+      "description": "Maintain strong memory manually for important background and agreements that should always be available. Its content stays unchanged within a session; edits apply to new sessions. Regular memory is recalled as needed, adding relevant memories to the context each time. Asking the agent to remember something saves it to regular memory and leaves this document unchanged.",
+      "contentLabel": "Strong memory content",
+      "placeholder": "Enter content to reference in every chat. Markdown is supported.",
+      "discard": "Discard changes",
+      "saved": "Strong memory saved. It will apply to new sessions.",
+      "loadFailed": "Could not load strong memory. Please retry.",
+      "saveFailed": "Could not save. Your changes have been kept; please retry."
     },
     "vs": {
       "title": "Semantic Search",
@@ -4678,6 +4700,30 @@
       "phase_backing_up_current": "Backing up this expert’s current state",
       "phase_restoring": "Restoring this expert’s data",
       "phase_restarting": "Reloading this expert"
+    },
+    "userFile": {
+      "contextNotice": "USER.md is loaded once when a session starts and stays in that session’s context.",
+      "description": "Maintain USER.md manually for personal details, names and communication preferences. Agents have read-only access, including during onboarding. Edits apply to new sessions. Manual documents take priority over ordinary memory; conflicts become review candidates. Remember requests go to ordinary memory and leave this document unchanged.",
+      "contentLabel": "User profile content (USER.md)",
+      "placeholder": "Enter personal details and preferences. Markdown is supported.",
+      "saved": "User profile saved. It will apply to new sessions.",
+      "loadFailed": "Could not load the user profile. Please retry.",
+      "saveFailed": "Could not save. Your changes have been kept; please retry."
+    },
+    "manualReview": {
+      "check": "Check duplicates and conflicts",
+      "conflicts": "{{count}} conflicts moved to candidates for review.",
+      "complete": "The current review is complete.",
+      "partial": "{{count}} ordinary memories remain. Continue the review.",
+      "unavailable": "Semantic review is unavailable and incomplete. Configure a memory auxiliary model and retry.",
+      "failed": "Review is incomplete. Please retry later.",
+      "stale": "The manual documents changed. Run the review again.",
+      "disabled": "Ordinary memory is disabled. The document is saved; review is skipped.",
+      "too_large": "The documents are too long for semantic review. Shorten them and retry.",
+      "not_checked": "These manual documents have not been reviewed.",
+      "details": "Manual documents take priority. {{count}} duplicate memories are omitted from recall when the session snapshot matches. Confirmed conflicts become review candidates; old facts are retired and source evidence is preserved. Review uses the saved USER.md and MEMORY.md.",
+      "openCandidates": "Review candidates",
+      "uncertain": "Some comparisons are uncertain. Original memories are unchanged. Clarify the manual documents and retry."
     }
   },
   "personalization": {

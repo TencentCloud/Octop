@@ -39,4 +39,19 @@ describe("finalizeStreamingMessages stream-error promotion", () => {
       source: "model_retry",
     });
   });
+
+  it("renders an explicit authentication error and stops loading", () => {
+    ingestHarnessChunk(SESSION, {
+      type: "error",
+      message: "模型服务鉴权失败，请检查 API Key。",
+    });
+    ingestHarnessChunk(SESSION, { type: "done" });
+    const state = getSnapshot(SESSION);
+    const errors = state.messages.filter(
+      (message) => message.status === "error",
+    );
+    expect(errors).toHaveLength(1);
+    expect(errors[0]?.content).toContain("鉴权失败");
+    expect(state.isStreaming).toBe(false);
+  });
 });

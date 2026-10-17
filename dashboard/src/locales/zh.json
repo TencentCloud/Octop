@@ -221,6 +221,7 @@
     "TEAM_NOT_SHAREABLE": "当前版本不支持分享团队。",
     "LOCAL_DOWNLOAD_UNAVAILABLE": "仅在本机打开 Octop 时才能保存到系统「下载」文件夹。",
     "SKILL_PACKAGE_COPY_DENIED": "该技能包的创建者已禁止复制其中的技能。",
+    "SKILL_PACKAGE_DOWNLOAD_DENIED": "该技能包已禁止打包下载。",
     "SKILL_PACKAGE_LOCKED": "此技能复制自锁定策略的技能包，无法在工作区编辑。"
   },
   "nav": {
@@ -366,7 +367,9 @@
     "copyPolicyHint": "控制创建者以外的用户能否把包内技能复制到自己 Agent 的工作区。只读副本由控制台与工作区 HTTP 写接口强制执行；Agent 工具层写保护仍依赖 harness（#770）。",
     "copyPolicySnapshot": "可复制",
     "copyPolicyLock": "可复制（控制台只读）",
-    "copyPolicyDeny": "禁止复制"
+    "copyPolicyDeny": "禁止复制",
+    "allowDownload": "允许下载",
+    "allowDownloadHint": "关闭后，其他用户仍可查看和挂载这个技能包，但不能导出 ZIP。创建者和管理员仍可下载。"
   },
   "knowledgeBases": {
     "title": "知识库",
@@ -1467,7 +1470,7 @@
     "pickAgent": "请先选择一个专家",
     "bootstrapKickoff": "你好，我们开始吧",
     "createSessionFailed": "创建会话失败，请重试",
-    "searchSessions": "搜索会话",
+    "searchSessions": "搜索专家或会话",
     "noSearchResults": "没有匹配的会话",
     "expandMore": "展开更多",
     "pin": "置顶",
@@ -1512,6 +1515,8 @@
     "expertPickerSearch": "搜索专家",
     "expertPickerEmpty": "暂无其他专家",
     "expertPickerManage": "管理专家",
+    "expertPin": "置顶专家",
+    "expertUnpin": "取消置顶专家",
     "expertHide": "隐藏共享专家",
     "expertUnhide": "重新显示专家",
     "expertPickerHidden": "已隐藏专家（{{count}}）",
@@ -1770,6 +1775,7 @@
     "openToolUiInDock": "在侧栏打开",
     "toolUiDockedHint": "已移到侧栏",
     "toolUiDockedOpen": "打开侧栏",
+    "pluginUiNotInstalled": "本机未安装该插件，仅展示数据",
     "loadEarlierMessages": "加载更早的消息",
     "historyLoadFailed": "历史记录加载失败，已显示的消息仍然保留。请重试。",
     "historyRetry": "重试",
@@ -1795,6 +1801,7 @@
     "desktop_screenshot": "桌面截图",
     "memory_search": "检索记忆",
     "memory_get": "读取记忆",
+    "memory_save": "保存记忆",
     "tavily_search": "Tavily 联网搜索",
     "brave_search": "Brave 联网搜索",
     "google_search": "Google 联网搜索",
@@ -2063,6 +2070,9 @@
     "builtinSkills": "内置技能",
     "builtinSkillsDesc": "系统预置、开箱即用的技能",
     "importSkills": "导入技能",
+    "exportSkill": "导出 ZIP",
+    "exportSelected": "导出选中（{{count}}）",
+    "exportSkillFailed": "导出技能失败",
     "importFromUrl": "从 URL 导入",
     "importFromZip": "从本地 ZIP 导入",
     "enterSkillUrl": "输入技能URL",
@@ -4157,13 +4167,25 @@
     "noAgentSelected": "请先在顶部选择一个 Octop",
     "tabs": {
       "overview": "概览",
+      "strong": "强记忆",
       "profile": "用户画像",
       "library": "记忆树",
       "episodes": "情绪日记",
       "candidates": "记忆沉淀",
       "journal": "整理记录",
       "proactive": "主动关心",
-      "settings": "设置"
+      "settings": "设置",
+      "userFile": "用户档案"
+    },
+    "strong": {
+      "contextNotice": "每个会话开始时加载一次强记忆，并持续用于该会话上下文。",
+      "description": "强记忆由你手动维护，适合填写始终需要参考的重要背景和约定。同一会话内内容保持不变，修改后对新会话生效。普通记忆按需召回，每次将相关记忆加入上下文。对 Agent 说“记住”会保存到普通记忆，不会改动这里。",
+      "contentLabel": "强记忆内容",
+      "placeholder": "在这里填写每次聊天都需要参考的内容，支持 Markdown。",
+      "discard": "撤销修改",
+      "saved": "强记忆已保存，将在新会话中生效。",
+      "loadFailed": "加载强记忆失败，请重试。",
+      "saveFailed": "保存失败，修改内容已保留，请重试。"
     },
     "library": {
       "viewTree": "主题视图",
@@ -4678,6 +4700,30 @@
       "phase_backing_up_current": "正在备份当前专家现状",
       "phase_restoring": "正在恢复当前专家的数据",
       "phase_restarting": "正在重新加载当前专家"
+    },
+    "userFile": {
+      "contextNotice": "每个会话开始时加载一次 USER.md 用户档案，并持续用于该会话上下文。",
+      "description": "USER.md 由你手动维护，Agent 只读，适合填写个人信息、称呼和沟通偏好。修改后对新会话生效。与普通记忆冲突时以手动档案为准，冲突记忆转为候选待审核。对 Agent 说“记住”会保存到普通记忆，不会改动这里。",
+      "contentLabel": "用户档案内容（USER.md）",
+      "placeholder": "填写你的个人信息和偏好，支持 Markdown。",
+      "saved": "用户档案已保存，将在新会话中生效。",
+      "loadFailed": "加载用户档案失败，请重试。",
+      "saveFailed": "保存失败，修改内容已保留，请重试。"
+    },
+    "manualReview": {
+      "check": "检查重复与冲突",
+      "conflicts": "发现 {{count}} 条冲突，已转为候选待审核。",
+      "complete": "当前核对已完成。",
+      "partial": "还有 {{count}} 条普通记忆待检查，点击继续核对。",
+      "unavailable": "语义检查不可用，尚未完成核对。请配置记忆辅助模型后重试。",
+      "failed": "核对尚未完成，请稍后重试。",
+      "stale": "手动文档已变化，请重新核对。",
+      "disabled": "普通记忆未启用，文档已保存，暂不执行核对。",
+      "too_large": "文档过长，尚未完成语义检查。请精简后重试。",
+      "not_checked": "这些手动文档尚未核对。",
+      "details": "手动文档优先。相同档案快照中的 {{count}} 条重复记忆不再重复注入；已确认的冲突转为候选，旧记忆停用并保留原始证据。核对基于已保存的 USER.md 和 MEMORY.md。",
+      "openCandidates": "查看候选",
+      "uncertain": "部分信息无法确定，原记忆保持不变。请补充明确档案后重新检查。"
     }
   },
   "personalization": {
