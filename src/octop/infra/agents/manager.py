@@ -436,6 +436,24 @@ def _sanitize_bound_mcp_tools(agent: Any) -> None:
 # ---------------------------------------------------------------------------
 
 
+def _swap_server_mcp_tools(agent: Any, server_name: str, tools: list[Any]) -> None:
+    """Replace one MCP server's tool set inside a (possibly shared) agent.
+
+    ``append_mcp_tools`` dedupes by name, so a second user's tools for the same
+    server would be silently dropped and every call would keep running against
+    the *first* user's session (whose resolved ``${octop.*}`` headers are baked
+    in). Drop the old ``{server}_`` group first, then re-attach and recompile in
+    one shot via ``replace_mcp_tools``. Other servers' tools are kept untouched.
+    """
+    prefix = f"{server_name}_"
+    kept = [
+        t
+        for t in list(getattr(agent, "_mcp_tools", None) or [])
+        if not str(getattr(t, "name", "")).startswith(prefix)
+    ]
+    agent.replace_mcp_tools(kept + list(tools))
+
+
 class AgentManager:
     """Process-wide singleton: owns harness HarnessAgentManager + all HarnessAgent instances.
 
@@ -2278,7 +2296,27 @@ class AgentManager:
             uid = connector_user_id
 
         tool_set: frozenset[str] = getattr(agent, "_mcp_tool_name_set", frozenset())
-        missing_tools = [n for n in names if not any(t.startswith(f"{n}_") for t in tool_set)]
+        custom_configs: dict[str, Any] = {}
+        if uid is not None:
+            custom_configs = self._connector_svc.custom_harness_configs(uid)
+        # p4 (shared-agent cross-talk): a custom MCP tool object is bound to the session
+        # opened when it was loaded — its headers were resolved for THAT user (see
+        # custom_mcp.harness_spec_for_server). The agent instance is shared across all
+        # users of a shared agent, so "a tool with this prefix exists" only proves
+        # readiness for *some* user; the next user would run tools/call against the
+        # first user's session (cross-account data leak), and append_mcp_tools dedupes
+        # by name so the per-user tools can never re-attach. Track which user's tools
+        # are attached per server and force a reload+swap when another user speaks.
+        owner: dict[str, int] = getattr(agent, "_mcp_scope_owner", {})
+
+        def _ready_for(n: str) -> bool:
+            if not any(t.startswith(f"{n}_") for t in tool_set):
+                return False
+            if n in custom_configs:
+                return owner.get(n) == uid
+            return True
+
+        missing_tools = [n for n in names if not _ready_for(n)]
         logger.info(
             "prepare_chat_mcp agent=%s connector_user_id=%s requested=%s tool_count=%d missing=%s",
             agent_id,
@@ -2295,10 +2333,6 @@ class AgentManager:
                 matched,
             )
             return []
-
-        custom_configs: dict[str, Any] = {}
-        if uid is not None:
-            custom_configs = self._connector_svc.custom_harness_configs(uid)
 
         custom_missing = [n for n in missing_tools if n in custom_configs]
         builtin_missing = [n for n in missing_tools if n not in custom_configs]
@@ -2319,15 +2353,17 @@ class AgentManager:
                     continue
                 if tools:
                     try:
-                        agent.append_mcp_tools(tools)
+                        _swap_server_mcp_tools(agent, name, tools)
                     except Exception:
                         logger.exception(
-                            "prepare_chat_mcp agent=%s: append_mcp_tools failed for %s",
+                            "prepare_chat_mcp agent=%s: swap mcp tools failed for %s",
                             agent_id,
                             name,
                         )
                         continue
                 agent.config.mcp_server_configs[name] = dict(spec)
+                owner[name] = uid
+                agent._mcp_scope_owner = owner  # type: ignore[attr-defined]
 
         gateway_missing: list[str] = []
         if builtin_missing and uid is not None:
@@ -2403,7 +2439,7 @@ class AgentManager:
                 for name in names:
                     if name not in custom_configs:
                         continue
-                    if any(t.startswith(f"{name}_") for t in tool_set):
+                    if any(t.startswith(f"{name}_") for t in tool_set) and owner.get(name) == uid:
                         continue
                     spec = custom_configs[name]
                     if not isinstance(spec, dict) or not spec.get("transport"):
@@ -2418,8 +2454,10 @@ class AgentManager:
                         )
                         continue
                     if tools:
-                        agent.append_mcp_tools(tools)
+                        _swap_server_mcp_tools(agent, name, tools)
                         agent.config.mcp_server_configs[name] = dict(spec)
+                        owner[name] = uid
+                        agent._mcp_scope_owner = owner  # type: ignore[attr-defined]
                     tool_set = getattr(agent, "_mcp_tool_name_set", frozenset())
 
         agent = self.get_agent(agent_id)
