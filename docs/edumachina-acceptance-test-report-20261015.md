@@ -80,12 +80,13 @@ EduMachina is an Octop expert package (manifest + SOUL.md + compliance knowledge
 - **SOUL 规则**：front matter 正常；行为铁律编号 1–11 连续无缺号；铁律 10 含「分段成文」「先报时」「默认 120 秒」；无残留 `600s`；铁律 11 在位
 - **头像资产**：SVG 可解析、`viewBox="0 0 128 128"`、`role="img"`、aria-label 匹配专家 id、圆角 32 裁切、可被 basename 扫描发现
 - **基线校准**：用同一套断言评 `stock-assistant`（6 条）、`general-assistant`（3 条）、`default`（3 条），全部通过——证明本地判定标准不比仓库严
+- **上游测试文件原样执行**：`tests/unit/agents/test_library_task_examples.py`（从仓库 develop 原样下载，未改动）→ **3 passed / exit 0**；为使其脱离完整源码树可运行，用最小 stub 提供 `default_library_root` 与 `parse_task_examples`（函数体逐字复制），并为域专家用例备齐 4 个基线 manifest。脚本 `docs/localtest_pytest_run.py`，日志 `docs/localtest-pytest-20261018.log`
 
-**结果：57/57 PASS。**
+**结果：57/57 PASS + 上游门禁测试 3/3 passed。**
 
 **未覆盖项（如实标注）**：
 
-1. 本机未执行仓库 pytest（缺源码树依赖环境），由 CI 代跑：Linux / Windows Python 3.12，结论见 PR 检查区
+1. 仓库**完整** pytest 套件未在本机执行（需完整源码树与依赖），由 CI 代跑 Linux / Windows Python 3.12，结论见 PR 检查区；与本包直接相关的门禁测试已按上条在本地原样跑通 3/3
 2. 第二节的端到端 24/24 为 10-15 的实测结果，本次未重跑——补丁只改提示词文本，且按边界要求不重启本地服务
 3. 铁律 10 只能降低「思考期长空窗」概率（首 token 提前 + 分段输出），传输层 120 秒判定仍属平台参数，根治见 issue #2072
 
