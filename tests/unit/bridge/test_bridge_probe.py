@@ -183,3 +183,92 @@ async def test_probe_owned_prefers_typed_password(monkeypatch: pytest.MonkeyPatc
     decrypt.assert_not_called()
     assert probe.await_args.kwargs["password"] == "typed-secret"
     assert probe.await_args.kwargs["peer_username"] == "bob"
+
+
+@pytest.mark.asyncio
+async def test_probe_peer_auth_failed_raises_400_status(monkeypatch: pytest.MonkeyPatch) -> None:
+    from unittest.mock import AsyncMock, MagicMock
+
+    from octop.infra.bridge.manager import BridgeManager
+    from octop.infra.errors import ErrorCode, OctopError
+
+    mgr = BridgeManager(
+        bridge_repo=MagicMock(),
+        secret_repo=MagicMock(),
+        user_repo=MagicMock(),
+        advertise_base_url="http://127.0.0.1:8080",
+    )
+    monkeypatch.setattr(
+        "octop.infra.bridge.manager.login_peer",
+        AsyncMock(side_effect=OctopError(ErrorCode.BRIDGE_AUTH_FAILED, "peer rejected credentials")),
+    )
+    with pytest.raises(OctopError) as exc_info:
+        await mgr.probe_peer(
+            peer_base_url="http://127.0.0.1:9000",
+            peer_username="alice",
+            password="wrong-password",
+        )
+    assert exc_info.value.code is ErrorCode.BRIDGE_AUTH_FAILED
+    assert exc_info.value.status == 400
+
+
+@pytest.mark.asyncio
+async def test_probe_peer_missing_credentials_raises_400() -> None:
+    from unittest.mock import MagicMock
+
+    from octop.infra.bridge.manager import BridgeManager
+    from octop.infra.errors import ErrorCode, OctopError
+
+    mgr = BridgeManager(
+        bridge_repo=MagicMock(),
+        secret_repo=MagicMock(),
+        user_repo=MagicMock(),
+        advertise_base_url="http://127.0.0.1:8080",
+    )
+    with pytest.raises(OctopError) as exc_info:
+        await mgr.probe_peer(
+            peer_base_url="http://127.0.0.1:9000",
+            peer_username="",
+            password="",
+        )
+    assert exc_info.value.code is ErrorCode.BRIDGE_AUTH_FAILED
+    assert exc_info.value.status == 400
+
+
+@pytest.mark.asyncio
+async def test_probe_peer_agents_unauthorized_raises_400(monkeypatch: pytest.MonkeyPatch) -> None:
+    from unittest.mock import AsyncMock, MagicMock
+
+    from octop.infra.bridge.manager import BridgeManager
+    from octop.infra.errors import ErrorCode, OctopError
+
+    fake_resp = MagicMock()
+    fake_resp.status_code = 401
+    fake_resp.text = "Unauthorized"
+
+    mock_client = MagicMock()
+    mock_client.get = AsyncMock(return_value=fake_resp)
+    mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+    mock_client.__aexit__ = AsyncMock(return_value=None)
+
+    mgr = BridgeManager(
+        bridge_repo=MagicMock(),
+        secret_repo=MagicMock(),
+        user_repo=MagicMock(),
+        advertise_base_url="http://127.0.0.1:8080",
+    )
+    monkeypatch.setattr(
+        "octop.infra.bridge.manager.login_peer",
+        AsyncMock(return_value={"access_token": "valid-token", "user": {}}),
+    )
+    monkeypatch.setattr("octop.infra.bridge.manager.httpx.AsyncClient", lambda *a, **k: mock_client)
+
+    with pytest.raises(OctopError) as exc_info:
+        await mgr.probe_peer(
+            peer_base_url="http://127.0.0.1:9000",
+            peer_username="alice",
+            password="password",
+        )
+    assert exc_info.value.code is ErrorCode.BRIDGE_AUTH_FAILED
+    assert exc_info.value.status == 400
+
