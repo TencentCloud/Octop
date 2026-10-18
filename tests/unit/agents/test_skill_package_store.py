@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import io
+import zipfile
 from pathlib import Path
 
 import pytest
@@ -10,7 +12,9 @@ from octop.infra.db.migrate import run_migrations
 from octop.infra.db.pool import SqlitePool
 from octop.infra.db.repos.skill_packages import SkillPackageRepo
 from octop.infra.errors import ErrorCode, OctopError
+from octop.infra.skills.skill_archive import build_skill_zip
 from octop.infra.skills.skill_package_store import SkillPackageStore
+from octop.infra.skills.skill_packages import read_skill_directory
 from octop.infra.users.identity import Role, User
 
 
@@ -34,6 +38,33 @@ def test_create_package_makes_skills_dir(store: SkillPackageStore) -> None:
 
     assert len(row.id) == 6
     assert (store.root / row.id / "skills").is_dir()
+
+
+def test_export_preserves_imported_empty_directories(
+    store: SkillPackageStore,
+    tmp_path: Path,
+) -> None:
+    row = store.create(name="Roundtrip", description="", created_by="42")
+    store.write_skill(
+        row.id,
+        "demo",
+        [
+            ("SKILL.md", b"# skill"),
+            ("output/", b""),
+            ("nested/empty/", b""),
+            ("refs/note.md", b"reference"),
+        ],
+    )
+    skill_dir = store.package_skills_dir(row.id) / "demo"
+    payload = build_skill_zip("demo", read_skill_directory(skill_dir))
+    destination = tmp_path / "exported"
+    with zipfile.ZipFile(io.BytesIO(payload)) as archive:
+        archive.extractall(destination)
+    restored = destination / "demo"
+    assert (restored / "output").is_dir()
+    assert (restored / "nested" / "empty").is_dir()
+    assert (restored / "SKILL.md").read_bytes() == b"# skill"
+    assert (restored / "refs" / "note.md").read_bytes() == b"reference"
 
 
 def test_write_and_delete_skill_updates_disk_summaries_and_count(

@@ -167,6 +167,34 @@ def test_read_cli_skill_install_accepts_files_at_install_root(tmp_path: Path) ->
     assert skill_packages.read_cli_skill_install(tmp_path) == [("SKILL.md", b"# root skill")]
 
 
+def test_read_skill_directory_preserves_empty_directories(tmp_path: Path) -> None:
+    (tmp_path / "SKILL.md").write_bytes(b"# skill")
+    (tmp_path / "output").mkdir()
+    (tmp_path / "nested" / "empty").mkdir(parents=True)
+    (tmp_path / "refs").mkdir()
+    (tmp_path / "refs" / "note.md").write_bytes(b"reference")
+
+    assert dict(skill_packages.read_skill_directory(tmp_path)) == {
+        "SKILL.md": b"# skill",
+        "output/": b"",
+        "nested/empty/": b"",
+        "refs/note.md": b"reference",
+    }
+
+
+def test_read_skill_directory_counts_empty_directories_toward_limit(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    (tmp_path / "SKILL.md").write_bytes(b"# skill")
+    (tmp_path / "one").mkdir()
+    (tmp_path / "two").mkdir()
+    monkeypatch.setattr(skill_packages, "MAX_SKILL_FILES", 2)
+
+    with pytest.raises(skill_packages.SkillPackageTooLarge, match="too many files"):
+        skill_packages.read_skill_directory(tmp_path)
+
+
 def test_read_cli_skill_install_discovers_single_wrapper_directory(tmp_path: Path) -> None:
     wrapper = tmp_path / "cli-generated-directory"
     wrapper.mkdir()
