@@ -408,7 +408,7 @@ async def patch_agent_plugins(
     agent_id: str,
     body: AgentPluginsPatch,
     server: OctopServer = Depends(get_server),
-    user: Any = Depends(current_user),
+    user: Any = Depends(require_permission("agent_plugins")),
 ) -> AgentPluginsResponse:
     """Merge plugin switches, preserve tool settings, and reload only this agent."""
     _, cfg = _agent_row_and_config(server, agent_id, user)
@@ -489,7 +489,7 @@ async def patch_agent_plugin_tools(
     agent_id: str,
     body: AgentPluginToolsPatch,
     server: OctopServer = Depends(get_server),
-    user: Any = Depends(current_user),
+    user: Any = Depends(require_permission("tools")),
 ) -> dict[str, str]:
     """Persist per-agent plugin tool enable flags and hot-sync the denylist.
 
