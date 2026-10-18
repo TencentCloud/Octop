@@ -10,6 +10,8 @@
 ### 新增
 - 技能包支持「是否共享」：默认仅创建者可见，开启后其他用户可查看与挂载；创建时可同时设置复制策略与是否允许下载
 - 技能包查看/编辑技能时展示左侧文件树（与个性化技能一致），并支持预览同级文件
+- 内置 DeepSeek 搜索提供商：在「模型 → 搜索引擎」配置 API Key、Base URL、返回条数、need_content 和本地化，并支持一键复用 DeepSeek 模型提供商的 Key
+- Agent 新增可独立开关的 `web_search` / `web_fetch` 工具（DeepSeek Search / Fetch API，保留 rerank_score 与 authority 用于排序和引用）；octop-harness 发版内置 `deepseek_search` 后 `web_search` 自动让位，避免重复工具
 
 ### 修复
 - 浏览器工作台支持中文等输入法组合输入与整段粘贴，恢复退格、删除、方向键和全选等编辑操作；提高预览刷新频率并减少重复的标签状态查询

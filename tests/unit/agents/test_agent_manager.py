@@ -898,6 +898,162 @@ def test_build_harness_config_includes_search_knowledge_without_cron(
     assert any(isinstance(item, KnowledgeSearchHintMiddleware) for item in (cfg.middleware or []))
 
 
+def test_build_harness_config_mounts_deepseek_web_tools(
+    manager: AgentManager,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from octop.infra.agents.middleware.web_fetch_override import (
+        WebFetchOverrideMiddleware,
+    )
+    from octop.infra.utils.env_file import env_file_path, save_env_file
+    from octop.infra.websearch import tools as websearch_tools
+
+    monkeypatch.delenv("DEEPSEEK_SEARCH_API_KEY", raising=False)
+    monkeypatch.setattr(
+        websearch_tools,
+        "harness_deepseek_provider_available",
+        lambda: False,
+    )
+    save_env_file(
+        env_file_path(manager.paths.root),
+        {"DEEPSEEK_API_KEY": "sk-ds"},
+    )
+
+    cfg = manager._build_harness_config(_row(agent_id="AGT001"))
+
+    assert cfg.tools is not None
+    names = {tool.name for tool in cfg.tools}
+    assert {"web_search", "web_fetch"} <= names
+    assert any(isinstance(item, WebFetchOverrideMiddleware) for item in (cfg.middleware or []))
+
+
+def test_prepare_stream_request_allows_web_search_in_ask_mode(
+    manager: AgentManager,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from octop.infra.utils.env_file import env_file_path, save_env_file
+    from octop.infra.websearch import tools as websearch_tools
+
+    monkeypatch.delenv("DEEPSEEK_SEARCH_API_KEY", raising=False)
+    monkeypatch.setattr(
+        websearch_tools,
+        "harness_deepseek_provider_available",
+        lambda: False,
+    )
+    save_env_file(env_file_path(manager.paths.root), {"DEEPSEEK_API_KEY": "sk-ds"})
+    manager._build_harness_config(_row(agent_id="AGT001"))
+
+    req = manager._prepare_stream_request("AGT001", {})
+
+    configurable = req.get("configurable") or {}
+    assert configurable.get("conversation_mode_extra_read_tools") == ["web_search"]
+
+
+def test_build_harness_config_yields_search_to_harness(
+    manager: AgentManager,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from octop.infra.agents.middleware.web_fetch_override import (
+        WebFetchOverrideMiddleware,
+    )
+    from octop.infra.utils.env_file import env_file_path, save_env_file
+    from octop.infra.websearch import tools as websearch_tools
+
+    monkeypatch.delenv("DEEPSEEK_SEARCH_API_KEY", raising=False)
+    monkeypatch.setattr(
+        websearch_tools,
+        "harness_deepseek_provider_available",
+        lambda: True,
+    )
+    save_env_file(env_file_path(manager.paths.root), {"DEEPSEEK_API_KEY": "sk-ds"})
+
+    cfg = manager._build_harness_config(_row(agent_id="AGT001"))
+
+    names = {tool.name for tool in (cfg.tools or [])}
+    assert "web_fetch" in names
+    assert "web_search" not in names
+    assert any(isinstance(item, WebFetchOverrideMiddleware) for item in (cfg.middleware or []))
+
+
+def test_prepare_stream_request_allows_harness_deepseek_search(
+    manager: AgentManager,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from octop.infra.utils.env_file import env_file_path, save_env_file
+    from octop.infra.websearch import tools as websearch_tools
+
+    monkeypatch.delenv("DEEPSEEK_SEARCH_API_KEY", raising=False)
+    monkeypatch.setattr(
+        websearch_tools,
+        "harness_deepseek_provider_available",
+        lambda: True,
+    )
+    save_env_file(env_file_path(manager.paths.root), {"DEEPSEEK_API_KEY": "sk-ds"})
+    manager._build_harness_config(_row(agent_id="AGT001"))
+
+    req = manager._prepare_stream_request("AGT001", {})
+
+    configurable = req.get("configurable") or {}
+    assert configurable.get("conversation_mode_extra_read_tools") == ["deepseek_search"]
+
+
+def test_prepare_stream_request_skips_web_search_without_deepseek(
+    manager: AgentManager,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.delenv("DEEPSEEK_API_KEY", raising=False)
+    monkeypatch.delenv("DEEPSEEK_SEARCH_API_KEY", raising=False)
+    manager._build_harness_config(_row(agent_id="AGT001"))
+
+    req = manager._prepare_stream_request("AGT001", {})
+
+    configurable = req.get("configurable") or {}
+    assert "conversation_mode_extra_read_tools" not in configurable
+
+
+def test_build_harness_config_skips_deepseek_tools_without_key(
+    manager: AgentManager,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from octop.infra.utils.env_file import env_file_path, save_env_file
+
+    monkeypatch.delenv("DEEPSEEK_API_KEY", raising=False)
+    monkeypatch.delenv("DEEPSEEK_SEARCH_API_KEY", raising=False)
+
+    save_env_file(
+        env_file_path(manager.paths.root),
+        {"DEEPSEEK_API_KEY": ""},
+    )
+
+    cfg = manager._build_harness_config(_row(agent_id="AGT001"))
+
+    names = {tool.name for tool in (cfg.tools or [])}
+    assert "web_search" not in names
+
+
+def test_build_harness_config_skips_deepseek_tools_when_disabled(
+    manager: AgentManager,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from octop.infra.utils.env_file import env_file_path, save_env_file
+
+    monkeypatch.delenv("DEEPSEEK_SEARCH_API_KEY", raising=False)
+    save_env_file(
+        env_file_path(manager.paths.root),
+        {"DEEPSEEK_API_KEY": "sk-ds"},
+    )
+
+    cfg = manager._build_harness_config(
+        _row(
+            agent_id="AGT001",
+            config_json=json.dumps({"web_search_tools": False}),
+        )
+    )
+
+    names = {tool.name for tool in (cfg.tools or [])}
+    assert "web_search" not in names
+
+
 def test_build_harness_config_defaults_local_shell_backend(manager: AgentManager) -> None:
     cfg = manager._build_harness_config(_row(agent_id="AGT001"))
     assert cfg.backend == _expected_default_backend(manager, "AGT001")

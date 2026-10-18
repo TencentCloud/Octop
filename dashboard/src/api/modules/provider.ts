@@ -11,6 +11,7 @@ import type {
   TestModelResponse,
   TestModelDirectRequest,
   TestSearchResponse,
+  ImportModelKeyResponse,
 } from "../types";
 
 export interface ModelTemplate {
@@ -126,4 +127,10 @@ export const providerApi = {
         body: JSON.stringify({ env_vars: envVars }),
       },
     ),
+
+  /** Copy the configured DeepSeek model provider key into the search env. */
+  importDeepSeekModelKey: () =>
+    request<ImportModelKeyResponse>(`/search/deepseek/import-model-key`, {
+      method: "POST",
+    }),
 };

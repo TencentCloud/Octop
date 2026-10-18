@@ -102,3 +102,11 @@ def test_builtin_tool_available_gates() -> None:
         )
         is False
     )
+    assert builtin_tool_available("web_search", agent_cfg={}) is True
+    assert (
+        builtin_tool_available(
+            "web_search",
+            agent_cfg={"web_search_tools": False},
+        )
+        is False
+    )

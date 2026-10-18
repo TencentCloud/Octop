@@ -95,11 +95,18 @@ async def test_brave_ok(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 @pytest.mark.asyncio
+async def test_deepseek_missing_key() -> None:
+    result = await search_probe.probe_search_provider("deepseek", {})
+    assert result["success"] is False
+    assert result["error_type"] == "invalid_config"
+    assert "DEEPSEEK_API_KEY" in (result.get("error") or "")
+
+
+@pytest.mark.asyncio
 async def test_deepseek_ok(monkeypatch: pytest.MonkeyPatch) -> None:
     def handler(request: httpx.Request) -> httpx.Response:
         assert request.url == "https://api.deepseek.com/v1/tools/search"
         assert request.headers.get("Authorization") == "Bearer deepseek-key"
-        assert request.read()
         return httpx.Response(200, json={"results": [{"url": "https://example.com"}]})
 
     _patch_client(monkeypatch, httpx.MockTransport(handler))
@@ -110,6 +117,27 @@ async def test_deepseek_ok(monkeypatch: pytest.MonkeyPatch) -> None:
     assert result["success"] is True
     assert result["result_count"] == 1
     assert result["provider_id"] == "deepseek"
+
+
+@pytest.mark.asyncio
+async def test_deepseek_accepts_search_key_alias_and_custom_base_url(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        assert str(request.url) == "https://proxy.test/v1/tools/search"
+        assert request.headers.get("Authorization") == "Bearer sk-shared"
+        return httpx.Response(200, json={"results": [{"url": "https://example.com"}]})
+
+    _patch_client(monkeypatch, httpx.MockTransport(handler))
+    result = await search_probe.probe_search_provider(
+        "deepseek",
+        {
+            "DEEPSEEK_SEARCH_API_KEY": "sk-shared",
+            "DEEPSEEK_SEARCH_BASE_URL": "https://proxy.test",
+        },
+    )
+    assert result["success"] is True
+    assert result["result_count"] == 1
 
 
 @pytest.mark.asyncio
@@ -132,6 +160,74 @@ async def test_deepseek_actionable_errors(
     )
     assert result["success"] is False
     assert result["error_type"] == error_type
+
+
+@pytest.mark.asyncio
+async def test_deepseek_auth_error(monkeypatch: pytest.MonkeyPatch) -> None:
+    def handler(_request: httpx.Request) -> httpx.Response:
+        return httpx.Response(401, text="invalid api key")
+
+    _patch_client(monkeypatch, httpx.MockTransport(handler))
+    result = await search_probe.probe_search_provider(
+        "deepseek",
+        {"DEEPSEEK_API_KEY": "bad"},
+    )
+    assert result["success"] is False
+    assert result["error_type"] == "auth_error"
+
+
+@pytest.mark.asyncio
+async def test_deepseek_prefers_explicit_search_only_key(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        assert request.headers.get("Authorization") == "Bearer sk-search"
+        return httpx.Response(200, json={"results": []})
+
+    _patch_client(monkeypatch, httpx.MockTransport(handler))
+    result = await search_probe.probe_search_provider(
+        "deepseek",
+        {
+            "DEEPSEEK_API_KEY": "sk-generic",
+            "DEEPSEEK_SEARCH_API_KEY": "sk-search",
+        },
+    )
+    assert result["success"] is True
+
+
+@pytest.mark.asyncio
+async def test_deepseek_probe_retries_transient_429(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls = {"n": 0}
+
+    def handler(_request: httpx.Request) -> httpx.Response:
+        calls["n"] += 1
+        if calls["n"] == 1:
+            return httpx.Response(429, headers={"retry-after": "0"})
+        return httpx.Response(200, json={"results": []})
+
+    _patch_client(monkeypatch, httpx.MockTransport(handler))
+    result = await search_probe.probe_search_provider(
+        "deepseek",
+        {"DEEPSEEK_API_KEY": "sk-ds"},
+    )
+    assert result["success"] is True
+    assert calls["n"] == 2
+
+
+@pytest.mark.asyncio
+async def test_probe_reports_http_timeout(monkeypatch: pytest.MonkeyPatch) -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        raise httpx.ReadTimeout("slow", request=request)
+
+    _patch_client(monkeypatch, httpx.MockTransport(handler))
+    result = await search_probe.probe_search_provider(
+        "deepseek",
+        {"DEEPSEEK_API_KEY": "sk-ds"},
+    )
+    assert result["success"] is False
+    assert result["error_type"] == "timeout"
 
 
 @pytest.mark.asyncio

@@ -1,10 +1,21 @@
-import { useEffect, useState, useCallback } from "react";
-import { App, Button, Drawer, Form, Input, Typography, Spin } from "antd";
+import { useEffect, useRef, useState, useCallback } from "react";
+import {
+  App,
+  Button,
+  Drawer,
+  Form,
+  Input,
+  InputNumber,
+  Spin,
+  Switch,
+  Typography,
+} from "antd";
 
 import {
   Activity,
   Check,
   CheckCircle,
+  KeyRound,
   Search,
   Settings2,
   Trash2,
@@ -13,17 +24,38 @@ import { useTranslation } from "react-i18next";
 import { envsApi } from "../../../api/modules/env";
 import api from "../../../api";
 import { customProviderLogo, getProviderLogo } from "../../../assets/providers";
+import { useCurrentUser } from "../../../hooks/useCurrentUser";
 import { apiErrorMessage } from "../../../utils/apiError";
+import { userCan } from "../../../utils/permissions";
 import styles from "./index.module.less";
 
 const { Text } = Typography;
+
+type SearchFieldKind = "password" | "text" | "number" | "switch";
+
+interface SearchField {
+  key: string;
+  kind: SearchFieldKind;
+  /** i18n key for the form label; falls back to the raw env key. */
+  labelKey?: string;
+  required?: boolean;
+  placeholder?: string;
+  hintKey?: string;
+}
 
 interface SearchProvider {
   id: string;
   name: string;
   descriptionKey: string;
   docs_url?: string;
+  /** Legacy providers: every listed key is required (rendered as secret fields). */
   required_keys: string[];
+  /** Rich config form for providers with more than an API key. */
+  fields?: SearchField[];
+  /** Extra keys that also mark the provider configured (e.g. a shared fallback). */
+  fallback_keys?: string[];
+  /** Show the "reuse the DeepSeek model provider key" button. */
+  reuse_model_key?: boolean;
   configured: boolean;
 }
 
@@ -50,6 +82,41 @@ const SEARCH_PROVIDERS: SearchProvider[] = [
     descriptionKey: "setupWizard.search.providers.deepseek.desc",
     docs_url: "https://api-docs.deepseek.com/guides/search/",
     required_keys: ["DEEPSEEK_API_KEY"],
+    fallback_keys: ["DEEPSEEK_SEARCH_API_KEY"],
+    reuse_model_key: true,
+    fields: [
+      {
+        key: "DEEPSEEK_API_KEY",
+        kind: "password",
+        labelKey: "setupWizard.search.deepseek.apiKey",
+        required: true,
+      },
+      {
+        key: "DEEPSEEK_SEARCH_BASE_URL",
+        kind: "text",
+        labelKey: "setupWizard.search.deepseek.baseUrl",
+        placeholder: "https://api.deepseek.com",
+      },
+      {
+        key: "DEEPSEEK_SEARCH_COUNT",
+        kind: "number",
+        labelKey: "setupWizard.search.deepseek.count",
+        placeholder: "10",
+        hintKey: "setupWizard.search.deepseek.countHint",
+      },
+      {
+        key: "DEEPSEEK_SEARCH_NEED_CONTENT",
+        kind: "switch",
+        labelKey: "setupWizard.search.deepseek.needContent",
+        hintKey: "setupWizard.search.deepseek.needContentHint",
+      },
+      {
+        key: "DEEPSEEK_SEARCH_LOCALIZATION",
+        kind: "text",
+        labelKey: "setupWizard.search.deepseek.localization",
+        hintKey: "setupWizard.search.deepseek.localizationHint",
+      },
+    ],
     configured: false,
   },
   {
@@ -82,10 +149,96 @@ function searchProviderLogo(providerId: string): string {
   return getProviderLogo(providerId) ?? customProviderLogo;
 }
 
+function providerFields(provider: SearchProvider): SearchField[] {
+  if (provider.fields && provider.fields.length > 0) {
+    return provider.fields;
+  }
+  return provider.required_keys.map((key) => ({
+    key,
+    kind: "password" as const,
+    required: true,
+  }));
+}
+
+function isTruthyEnv(value: string | undefined): boolean {
+  if (!value) return false;
+  return ["1", "true", "yes", "on"].includes(value.trim().toLowerCase());
+}
+
+function providerEnvKeys(provider: SearchProvider): string[] {
+  return [
+    ...new Set([
+      ...provider.required_keys,
+      ...(provider.fallback_keys ?? []),
+      ...(provider.fields ?? []).map((field) => field.key),
+    ]),
+  ];
+}
+
+function isProviderConfigured(
+  provider: SearchProvider,
+  envVars: Record<string, string>,
+): boolean {
+  if (provider.required_keys.every((key) => (envVars[key] ?? "").trim())) {
+    return true;
+  }
+  return (provider.fallback_keys ?? []).some((key) =>
+    (envVars[key] ?? "").trim(),
+  );
+}
+
+function initialFieldValues(
+  provider: SearchProvider,
+  envVars: Record<string, string>,
+): Record<string, unknown> {
+  const values: Record<string, unknown> = {};
+  for (const field of providerFields(provider)) {
+    let raw: string | undefined = envVars[field.key];
+    if (
+      (raw === undefined || raw === "") &&
+      provider.required_keys.includes(field.key)
+    ) {
+      raw = (provider.fallback_keys ?? [])
+        .map((key) => envVars[key])
+        .find((value) => !!value);
+    }
+    if (field.kind === "switch") {
+      values[field.key] = isTruthyEnv(raw);
+    } else if (raw !== undefined && raw !== "") {
+      values[field.key] = raw;
+    }
+  }
+  return values;
+}
+
+/** Convert form values into the env map used for probing / saving. */
+function collectFieldEnvs(
+  provider: SearchProvider,
+  values: Record<string, unknown>,
+  base: Record<string, string>,
+): Record<string, string> {
+  const out = { ...base };
+  for (const field of providerFields(provider)) {
+    const raw = values[field.key];
+    if (field.kind === "switch") {
+      out[field.key] = raw ? "true" : "false";
+      continue;
+    }
+    const value = raw === undefined || raw === null ? "" : String(raw).trim();
+    if (value) {
+      out[field.key] = value;
+    } else {
+      delete out[field.key];
+    }
+  }
+  return out;
+}
+
 interface ConfigureDrawerProps {
   provider: SearchProvider;
   envVars: Record<string, string>;
   open: boolean;
+  canReuseModelKey: boolean;
   onClose: () => void;
   onSaved: () => void;
 }
@@ -94,6 +247,7 @@ function ConfigureDrawer({
   provider,
   envVars,
   open,
+  canReuseModelKey,
   onClose,
   onSaved,
 }: ConfigureDrawerProps) {
@@ -103,24 +257,18 @@ function ConfigureDrawer({
   const [saving, setSaving] = useState(false);
   const [testing, setTesting] = useState(false);
   const [revoking, setRevoking] = useState(false);
+  const [reusingKey, setReusingKey] = useState(false);
 
   useEffect(() => {
     if (!open) return;
-    const initialValues: Record<string, string> = {};
-    provider.required_keys.forEach((key) => {
-      if (envVars[key]) initialValues[key] = envVars[key];
-    });
-    form.setFieldsValue(initialValues);
-  }, [envVars, provider.required_keys, form, open]);
+    form.setFieldsValue(initialFieldValues(provider, envVars));
+  }, [envVars, provider, form, open]);
 
   const handleSave = async () => {
     try {
       setSaving(true);
-      const values = (await form.validateFields()) as Record<string, string>;
-      const allEnvs = { ...envVars };
-      provider.required_keys.forEach((key) => {
-        if (values[key]) allEnvs[key] = values[key];
-      });
+      const values = (await form.validateFields()) as Record<string, unknown>;
+      const allEnvs = collectFieldEnvs(provider, values, envVars);
       await envsApi.batchSaveEnvs(allEnvs);
       message.success(
         t("setupWizard.search.saveSuccess", { name: provider.name }),
@@ -138,11 +286,8 @@ function ConfigureDrawer({
   const handleProbe = async () => {
     try {
       setTesting(true);
-      const values = (await form.validateFields()) as Record<string, string>;
-      const testEnvs = { ...envVars };
-      provider.required_keys.forEach((key) => {
-        if (values[key]) testEnvs[key] = values[key];
-      });
+      const values = (await form.validateFields()) as Record<string, unknown>;
+      const testEnvs = collectFieldEnvs(provider, values, envVars);
       const result = await api.testSearch(provider.id, testEnvs);
       if (result.success) {
         message.success(
@@ -169,6 +314,29 @@ function ConfigureDrawer({
     }
   };
 
+  const handleReuseModelKey = async () => {
+    try {
+      setReusingKey(true);
+      const result = await api.importDeepSeekModelKey();
+      if (result.ok) {
+        message.success(
+          t("setupWizard.search.deepseek.reuseSuccess", {
+            name: result.provider_name || "DeepSeek",
+          }),
+        );
+        onSaved();
+      } else {
+        message.warning(t("setupWizard.search.deepseek.reuseMissing"));
+      }
+    } catch (err) {
+      message.error(
+        apiErrorMessage(err, t("setupWizard.search.deepseek.reuseFailed")),
+      );
+    } finally {
+      setReusingKey(false);
+    }
+  };
+
   const handleRevoke = () => {
     modal.confirm({
       title: t("setupWizard.search.revokeTitle", { name: provider.name }),
@@ -179,9 +347,11 @@ function ConfigureDrawer({
       onOk: async () => {
         try {
           setRevoking(true);
-          for (const key of provider.required_keys) {
-            await envsApi.deleteEnv(key);
+          const remaining = { ...envVars };
+          for (const key of providerEnvKeys(provider)) {
+            delete remaining[key];
           }
+          await envsApi.batchSaveEnvs(remaining);
           message.success(
             t("setupWizard.search.revokeSuccess", { name: provider.name }),
           );
@@ -197,6 +367,8 @@ function ConfigureDrawer({
       },
     });
   };
+
+  const fields = providerFields(provider);
 
   return (
     <Drawer
@@ -229,52 +401,76 @@ function ConfigureDrawer({
       }
     >
       <div className={styles.drawerHint}>{t(provider.descriptionKey)}</div>
-      <Form form={form} layout="vertical" requiredMark={false}>
-        {provider.required_keys.map((key) => (
-          <Form.Item
-            key={key}
-            name={key}
-            label={key}
-            rules={[
-              {
-                required: true,
-                message: t("setupWizard.search.required", { key }),
-              },
-            ]}
-            extra={
-              key === "GOOGLE_CSE_ID" ? (
-                <span>
-                  {t("setupWizard.search.googleCseIdHint")}
-                  {provider.docs_url ? (
-                    <>
-                      {" · "}
-                      <a
-                        href={provider.docs_url}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                      >
-                        {t("setupWizard.search.getApiKey")}
-                      </a>
-                    </>
-                  ) : null}
-                </span>
-              ) : provider.docs_url && key === provider.required_keys[0] ? (
-                <a
-                  href={provider.docs_url}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                >
-                  {t("setupWizard.search.getApiKey")}
-                </a>
-              ) : undefined
-            }
+      {provider.reuse_model_key && canReuseModelKey ? (
+        <div className={styles.reuseRow}>
+          <Button
+            size="small"
+            icon={<KeyRound size={14} />}
+            loading={reusingKey}
+            onClick={() => void handleReuseModelKey()}
           >
-            <Input.Password
-              placeholder={t("setupWizard.search.required", { key })}
-              autoComplete="off"
-            />
-          </Form.Item>
-        ))}
+            {t("setupWizard.search.deepseek.reuseModelKey")}
+          </Button>
+          <span className={styles.reuseHint}>
+            {t("setupWizard.search.deepseek.reuseHint")}
+          </span>
+        </div>
+      ) : null}
+      <Form form={form} layout="vertical" requiredMark={false}>
+        {fields.map((field) => {
+          const label = field.labelKey ? t(field.labelKey) : field.key;
+          const extra = field.hintKey ? t(field.hintKey) : undefined;
+          const hintLink =
+            !provider.fields &&
+            field.key === provider.required_keys[0] &&
+            provider.docs_url ? (
+              <a
+                href={provider.docs_url}
+                target="_blank"
+                rel="noopener noreferrer"
+              >
+                {t("setupWizard.search.getApiKey")}
+              </a>
+            ) : undefined;
+          return (
+            <Form.Item
+              key={field.key}
+              name={field.key}
+              label={label}
+              valuePropName={field.kind === "switch" ? "checked" : undefined}
+              rules={
+                field.required
+                  ? [
+                      {
+                        required: true,
+                        message: t("setupWizard.search.required", {
+                          key: field.labelKey ? label : field.key,
+                        }),
+                      },
+                    ]
+                  : undefined
+              }
+              extra={extra ?? hintLink}
+            >
+              {field.kind === "switch" ? (
+                <Switch />
+              ) : field.kind === "number" ? (
+                <InputNumber
+                  min={1}
+                  max={50}
+                  style={{ width: "100%" }}
+                  placeholder={field.placeholder}
+                />
+              ) : (
+                <Input
+                  type={field.kind === "password" ? "password" : "text"}
+                  placeholder={field.placeholder}
+                  autoComplete="off"
+                />
+              )}
+            </Form.Item>
+          );
+        })}
       </Form>
       {provider.configured ? (
         <Button
@@ -296,11 +492,15 @@ export default function SearchConfigPage() {
     useState<SearchProvider[]>(SEARCH_PROVIDERS);
   const [loading, setLoading] = useState(true);
   const [envVars, setEnvVars] = useState<Record<string, string>>({});
-  const [editing, setEditing] = useState<SearchProvider | null>(null);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const loadedRef = useRef(false);
+  const user = useCurrentUser();
+  const canReuseModelKey = userCan(user, "providers") && userCan(user, "envs");
 
   const fetchEnvVars = useCallback(async () => {
     try {
-      setLoading(true);
+      // Keep the page (and an open drawer) mounted on background refreshes.
+      if (!loadedRef.current) setLoading(true);
       const envs = await envsApi.listEnvs();
       const envMap: Record<string, string> = {};
       envs.forEach((env) => {
@@ -310,12 +510,13 @@ export default function SearchConfigPage() {
       setProviders(
         SEARCH_PROVIDERS.map((p) => ({
           ...p,
-          configured: p.required_keys.every((key) => !!envMap[key]),
+          configured: isProviderConfigured(p, envMap),
         })),
       );
     } catch (err) {
       console.error("Failed to load env vars:", err);
     } finally {
+      loadedRef.current = true;
       setLoading(false);
     }
   }, []);
@@ -323,6 +524,10 @@ export default function SearchConfigPage() {
   useEffect(() => {
     void fetchEnvVars();
   }, [fetchEnvVars]);
+
+  const editing = editingId
+    ? providers.find((p) => p.id === editingId) ?? null
+    : null;
 
   const sortedProviders = [...providers].sort((a, b) => {
     if (a.configured && !b.configured) return -1;
@@ -398,13 +603,13 @@ export default function SearchConfigPage() {
               className={cardClass}
               role={needsSetup ? "button" : undefined}
               tabIndex={needsSetup ? 0 : undefined}
-              onClick={needsSetup ? () => setEditing(provider) : undefined}
+              onClick={needsSetup ? () => setEditingId(provider.id) : undefined}
               onKeyDown={
                 needsSetup
                   ? (e) => {
                       if (e.key === "Enter" || e.key === " ") {
                         e.preventDefault();
-                        setEditing(provider);
+                        setEditingId(provider.id);
                       }
                     }
                   : undefined
@@ -451,7 +656,7 @@ export default function SearchConfigPage() {
                   icon={<Settings2 size={14} />}
                   onClick={(e) => {
                     e.stopPropagation();
-                    setEditing(provider);
+                    setEditingId(provider.id);
                   }}
                 >
                   {needsSetup
@@ -476,7 +681,8 @@ export default function SearchConfigPage() {
           provider={editing}
           envVars={envVars}
           open
-          onClose={() => setEditing(null)}
+          canReuseModelKey={canReuseModelKey}
+          onClose={() => setEditingId(null)}
           onSaved={() => void fetchEnvVars()}
         />
       ) : null}
