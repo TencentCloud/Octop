@@ -41,7 +41,7 @@ async def test_bootstrap_creates_default_main_agent(patched_app_client: Any) -> 
 
 async def test_main_not_created_until_finish(patched_app_client: Any) -> None:
     c, _srv, home = patched_app_client
-    pw = read_password(home.parent)
+    pw = read_password(home)
     assert pw is not None
     tok = (await c.post("/api/setup/verify-password", json={"password": pw})).json()["wizard_token"]
     admin = (
@@ -83,7 +83,8 @@ async def test_start_writes_wizard_password_when_no_users(tmp_octop_home: Path) 
     srv = OctopServer(home=tmp_octop_home)
     await srv.start()
     try:
-        assert (tmp_octop_home.parent / "octop-login.txt").exists()
+        assert (tmp_octop_home / "octop-login.txt").exists()
+        assert not (tmp_octop_home.parent / "octop-login.txt").exists()
     finally:
         await srv.stop()
 
