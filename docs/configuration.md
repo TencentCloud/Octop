@@ -14,12 +14,23 @@ on first server start (or by `octop init` / `octop run`).
 ├── repl_history             # readline-style history for `octop chats repl`
 ├── secrets/
 │   └── jwt_secret           # 32-byte random; rotate with `octop admin rotate-jwt-secret`
+├── workspaces/<workspace>/  # portable workspace: .octop/manifest.json, SOUL.md, prompt files, skills
 ├── agents/<agent_id>/       # per-agent workspace (LangGraph state, attachments, …)
 ├── plugins/                 # installed third-party plugins
+├── security/
+│   └── tool_guard/          # user-editable command guard rules: dangerous_shell_commands.yaml
+├── portable/                # green package: runtime/, packages/, start.sh / start.bat
+├── desktop-settings.json    # desktop shell settings (written by the desktop app)
 ├── ssl/                     # self-signed certs when `octop run --ssl` is used without --cert/--key
 ├── logs/                    # rotating log files (when `octop service start` writes a logfile)
 └── octop.log                # default foreground log path
 ```
+
+> **The setup wizard password is not inside `~/.octop/`.** On a native
+> install it is written to `<home>/octop-login.txt` (the user's home
+> directory) and stays there; `OCTOP_HOME` does not move it. Keep this in
+> mind when backing up an instance, and see
+> [user-guide](user-guide.md) ("首次启动与设置向导") for the format.
 
 `env` is dotenv format, applied before `config.json` is loaded
 (`OctopServer.start` → `apply_env_file`). Dashboard **Advanced → Environment
