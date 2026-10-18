@@ -1,4 +1,5 @@
 import { webcrypto } from "node:crypto";
+import fs from "node:fs";
 import { defineConfig, loadEnv, type Plugin } from "vite";
 import react from "@vitejs/plugin-react";
 import { VitePWA } from "vite-plugin-pwa";
@@ -48,6 +49,27 @@ function suppressViteDisconnectReload(): Plugin {
       }
       if (next === code) return;
       return { code: next, map: null };
+    },
+  };
+}
+
+/** Copy Monaco's runtime tree so the built app needs no CDN. */
+function selfHostMonaco(): Plugin {
+  const source = path.resolve(__dirname, "node_modules/monaco-editor/min/vs");
+  return {
+    name: "octop-self-host-monaco",
+    apply: "build",
+    writeBundle(outputOptions) {
+      const dir = outputOptions.dir;
+      // A silent skip would ship an editor that 404s only at runtime.
+      if (!dir) {
+        throw new Error("monaco/vs not copied: rollup output has no dir");
+      }
+      const dest = path.join(dir, "monaco", "vs");
+      fs.cpSync(source, dest, { recursive: true });
+      if (!fs.existsSync(path.join(dest, "loader.js"))) {
+        throw new Error("monaco/vs/loader.js missing from the build output");
+      }
     },
   };
 }
@@ -171,6 +193,7 @@ export default defineConfig(({ mode }) => {
     plugins: [
       suppressViteDisconnectReload(),
       react(),
+      selfHostMonaco(),
       VitePWA({
         // prompt: new SW stays in waiting until the user accepts via
         // PwaUpdatePrompt → applyUpdate() → SKIP_WAITING. Avoid autoUpdate
@@ -223,6 +246,20 @@ export default defineConfig(({ mode }) => {
                 expiration: {
                   maxEntries: 8,
                   maxAgeSeconds: 24 * 60 * 60,
+                },
+              },
+            },
+            {
+              // Self-hosted Monaco: fixed entry points plus hashed chunks.
+              // Must precede the generic /assets/ rule below, which also
+              // matches monaco/vs/assets/*.worker-*.js.
+              urlPattern: /\/monaco\/vs\/.*\.(js|css)$/,
+              handler: "StaleWhileRevalidate",
+              options: {
+                cacheName: "monaco",
+                expiration: {
+                  maxEntries: 200,
+                  maxAgeSeconds: 30 * 24 * 60 * 60,
                 },
               },
             },

@@ -14,6 +14,8 @@ import { lazy, Suspense, useEffect, useRef } from "react";
 import { Spin } from "antd";
 import type { OnMount } from "@monaco-editor/react";
 import { useTheme } from "../../../../context/ThemeContext";
+// Side effect: point Monaco at the self-hosted tree before it mounts.
+import "../../../../utils/monacoLoader";
 import { getEditorLanguage } from "../utils/editorLanguage";
 import styles from "../index.module.less";
 
