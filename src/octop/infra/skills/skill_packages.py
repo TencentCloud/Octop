@@ -147,6 +147,10 @@ def read_skill_directory(skill_dir: Path) -> list[tuple[str, bytes]]:
         for dirname in dirnames:
             if (current / dirname).is_symlink():
                 raise SkillPackageError(f"unsupported symlink in skill package: {dirname}")
+        if current != skill_dir and not dirnames and not filenames:
+            files.append((f"{current.relative_to(skill_dir).as_posix()}/", b""))
+            if len(files) > MAX_SKILL_FILES:
+                raise SkillPackageTooLarge("skill package has too many files")
         for filename in filenames:
             path = current / filename
             entry_stat = path.lstat()
