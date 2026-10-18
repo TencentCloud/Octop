@@ -409,8 +409,10 @@ class OctopServer:
         self._setup_logging()
         ensure_nofile_limit()
         from octop.infra.backend.grep_safety import install_safe_grep_fallback  # noqa: PLC0415
+        from octop.infra.backend.shell_output import install_shell_output_decoding  # noqa: PLC0415
 
         install_safe_grep_fallback()
+        install_shell_output_decoding()
         config = ensure_mobile_capabilities_probed(self.paths.config)
         self.config = config
 
