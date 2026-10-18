@@ -1,5 +1,6 @@
+import { requestStream } from "../request";
+import { apiErrorMessage } from "../../utils/apiError";
 import i18n from "../../i18n";
-import { getApiUrl } from "../config";
 import { getAuthToken, request } from "../request";
 
 export type DecisionProvider = "laya" | "jev" | "microsoft" | "custom";
@@ -72,7 +73,7 @@ function streamLayaInstall(
 ): AbortController {
   const controller = new AbortController();
   const token = getAuthToken();
-  fetch(getApiUrl("/settings/decision/laya/install"), {
+  requestStream("/settings/decision/laya/install", {
     method: "POST",
     headers: {
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
@@ -81,10 +82,6 @@ function streamLayaInstall(
     signal: controller.signal,
   })
     .then(async (res) => {
-      if (!res.ok || !res.body) {
-        onDone(false);
-        return;
-      }
       const reader = res.body.getReader();
       const decoder = new TextDecoder();
       let buffer = "";
@@ -117,8 +114,11 @@ function streamLayaInstall(
       }
       onDone(false);
     })
-    .catch(() => {
-      if (!controller.signal.aborted) onDone(false);
+    .catch((error: unknown) => {
+      if (!controller.signal.aborted) {
+        onLog(apiErrorMessage(error, "Request failed", i18n.t));
+        onDone(false);
+      }
     });
   return controller;
 }

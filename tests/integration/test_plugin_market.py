@@ -4,6 +4,13 @@ from __future__ import annotations
 
 from typing import Any
 
+import pytest
+
+
+@pytest.fixture(autouse=True)
+def _no_network_dependencies(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr("octop.infra.agents.plugins.manager.install_dependencies", lambda _: None)
+
 
 async def test_list_market_catalog(env: Any) -> None:
     client, _srv, auth = env
