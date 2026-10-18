@@ -6,8 +6,10 @@ import asyncio
 import gzip
 import logging
 import os
+import re
 import shutil
 import time
+from collections.abc import Iterator
 from contextlib import suppress
 from dataclasses import dataclass
 from logging.handlers import TimedRotatingFileHandler
@@ -82,15 +84,69 @@ class SizeTimedRotatingFileHandler(TimedRotatingFileHandler):
             delaycompress_rotated_logs(Path(dest).parent, enabled=True, keep=Path(dest))
 
     def rotation_filename(self, default_name: str) -> str:
-        """Avoid overwriting an existing daily backup when size rolls twice same day."""
-        if not os.path.exists(default_name) and not os.path.exists(f"{default_name}.gz"):
-            return default_name
+        """Place the date before ``.log``, and avoid clobbering an existing backup.
+
+        A second size-triggered roll the same day becomes ``octop.YYYY-MM-DD.log.001``.
+        """
+        named = super().rotation_filename(default_name)
+        if not os.path.exists(named) and not os.path.exists(f"{named}.gz"):
+            return named
         index = 1
         while True:
-            candidate = f"{default_name}-{index:03d}"
+            candidate = f"{named}.{index:03d}"
             if not os.path.exists(candidate) and not os.path.exists(f"{candidate}.gz"):
                 return candidate
             index += 1
+
+
+def _dated_log_namer(default_name: str) -> str:
+    """Turn ``octop.log.2026-10-16`` into ``octop.2026-10-16.log``."""
+    directory, filename = os.path.split(default_name)
+    if "." not in filename:
+        return default_name
+    base, date = filename.rsplit(".", 1)
+    stem, ext = os.path.splitext(base)
+    if not ext or not date:
+        return default_name
+    renamed = f"{stem}.{date}{ext}"
+    return os.path.join(directory, renamed) if directory else renamed
+
+
+# ``octop.log.2026-10-16``, ``octop.log.2026-10-16-001``, and their ``.gz`` forms.
+_LEGACY_ROTATED_LOG = re.compile(r"^octop\.log\.(\d{4}-\d{2}-\d{2})(?:-(\d+))?(\.gz)?$")
+# New names plus any legacy file a rename could not move.
+_ROTATED_LOG_NAME = re.compile(
+    r"^octop\.(?:"
+    r"\d{4}-\d{2}-\d{2}\.log(?:\.\d+)?"
+    r"|"
+    r"log\.\d{4}-\d{2}-\d{2}(?:-\d+)?"
+    r")(?:\.gz)?$"
+)
+
+
+def _migrate_legacy_rotated_logs(log_dir: Path) -> None:
+    """Rename ``octop.log.YYYY-MM-DD`` to ``octop.YYYY-MM-DD.log``."""
+    if not log_dir.is_dir():
+        return
+    for entry in list(log_dir.iterdir()):
+        match = _LEGACY_ROTATED_LOG.fullmatch(entry.name)
+        if match is None or not entry.is_file():
+            continue
+        date, index, gz = match.group(1), match.group(2), match.group(3) or ""
+        index_part = f".{index}" if index else ""
+        dest = log_dir / f"octop.{date}.log{index_part}{gz}"
+        if dest.exists():
+            continue
+        with suppress(OSError):
+            entry.rename(dest)
+
+
+def _iter_rotated_logs(log_dir: Path) -> Iterator[Path]:
+    if not log_dir.is_dir():
+        return
+    for entry in log_dir.iterdir():
+        if entry.is_file() and _ROTATED_LOG_NAME.fullmatch(entry.name):
+            yield entry
 
 
 def gzip_rotated_log(path: Path) -> None:
@@ -129,11 +185,7 @@ def delaycompress_rotated_logs(
     """
     if not enabled or not log_dir.is_dir():
         return
-    plains = [
-        entry
-        for entry in log_dir.glob("octop.log.*")
-        if entry.is_file() and not entry.name.endswith(".gz")
-    ]
+    plains = [entry for entry in _iter_rotated_logs(log_dir) if not entry.name.endswith(".gz")]
     if not plains:
         return
     keep_path = max(plains, key=lambda p: p.stat().st_mtime) if keep is None else keep
@@ -196,8 +248,9 @@ def _build_log_handler(
         max_bytes=max_bytes,
         compress_rotated=compress_rotated,
     )
-    # Rotated files get a date suffix, e.g. octop.log.2026-07-16
+    # Rotated files are ``octop.YYYY-MM-DD.log`` (date before the extension).
     handler.suffix = "%Y-%m-%d"
+    handler.namer = _dated_log_namer
     handler.setFormatter(_OctopLogFormatter("%(asctime)s %(levelname)-5s %(name)s — %(message)s"))
     return handler
 
@@ -212,8 +265,8 @@ def _purge_stale_logs(log_dir: Path, retention_days: int) -> None:
     if retention_days <= 0:
         return
     cutoff = time.time() - retention_days * 86400
-    for entry in log_dir.glob("octop.log.*"):
-        if entry.is_file() and entry.stat().st_mtime < cutoff:
+    for entry in _iter_rotated_logs(log_dir):
+        if entry.stat().st_mtime < cutoff:
             with suppress(OSError):
                 entry.unlink()
 
@@ -725,6 +778,7 @@ class OctopServer:
         retention_days = _parse_log_retention_days()
         max_bytes = _parse_log_max_bytes()
         compress_rotated = _parse_log_compress()
+        _migrate_legacy_rotated_logs(log_dir)
         handler = _build_log_handler(
             log_path,
             retention_days,

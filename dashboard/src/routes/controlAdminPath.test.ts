@@ -61,8 +61,8 @@ describe("pathPermissionKeys", () => {
 
   it("does not gate common pages", () => {
     expect(pathPermissionKeys("/chat")).toBeNull();
-    expect(pathPermissionKeys("/personalization/skills")).toBeNull();
     expect(pathPermissionKeys("/bridge")).toBeNull();
+    expect(pathPermissionKeys("/personalization/acp")).toBeNull();
   });
 
   it("gates ungrouped pages except chat", () => {
@@ -80,9 +80,23 @@ describe("pathPermissionKeys", () => {
     expect(pathPermissionKeys("/skill-packages")).toEqual([
       ...PERM.skillPackages,
     ]);
+    expect(pathPermissionKeys("/personalization/skills")).toEqual([
+      ...PERM.skills,
+    ]);
     expect(pathPermissionKeys("/personalization/channels")).toEqual([
       ...PERM.channels,
     ]);
+    expect(pathPermissionKeys("/personalization/tools")).toEqual([
+      ...PERM.tools,
+    ]);
+    expect(pathPermissionKeys("/personalization/plugins")).toEqual([
+      ...PERM.agentPlugins,
+    ]);
+    expect(pathPermissionKeys("/personalization/memory")).toEqual([
+      ...PERM.memory,
+    ]);
+    expect(pathPermissionKeys("/memory")).toEqual([...PERM.memory]);
+    expect(NAV_PERMISSIONS.personalization).toEqual(PERM.personalization);
     expect(pathPermissionKeys("/knowledge-bases")).toEqual([
       ...PERM.knowledgeBasesPage,
     ]);
