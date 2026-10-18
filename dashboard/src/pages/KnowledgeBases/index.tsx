@@ -300,6 +300,8 @@ export default function KnowledgeBasesPage() {
   );
   const [bases, setBases] = useState<KnowledgeBase[]>([]);
   const [selected, setSelected] = useState<KnowledgeBase | null>(null);
+  const selectedIdRef = useRef<string | null>(null);
+  selectedIdRef.current = selected?.id ?? null;
   const [documents, setDocuments] = useState<KnowledgeDocument[]>([]);
   const [currentFolder, setCurrentFolder] = useState("");
   const [folderModalOpen, setFolderModalOpen] = useState(false);
@@ -667,11 +669,13 @@ export default function KnowledgeBasesPage() {
   const [defaultOpenChecked, setDefaultOpenChecked] = useState(false);
   const [sharedChecked, setSharedChecked] = useState(false);
   const [uploadState, setUploadState] = useState<{
+    baseId: string;
     filename: string;
     index: number;
     total: number;
     percent: number;
   } | null>(null);
+  const uploadInFlightRef = useRef(false);
   const uploadRef = useRef<HTMLInputElement>(null);
   const folderUploadRef = useRef<HTMLInputElement>(null);
   const dragDepthRef = useRef(0);
@@ -1312,9 +1316,10 @@ export default function KnowledgeBasesPage() {
       !canWriteSelected ||
       !usable ||
       isAtDocumentLimit ||
-      uploadState
+      uploadInFlightRef.current
     )
       return;
+    const baseId = selected.id;
     const remaining =
       documentCap === null
         ? Number.POSITIVE_INFINITY
@@ -1349,6 +1354,7 @@ export default function KnowledgeBasesPage() {
       );
       return;
     }
+    uploadInFlightRef.current = true;
     try {
       for (const [index, file] of chosen.entries()) {
         const relativePath = normalizeKnowledgePath(
@@ -1359,25 +1365,30 @@ export default function KnowledgeBasesPage() {
           relativePath,
         );
         setUploadState({
+          baseId,
           filename: relativePath,
           index: index + 1,
           total: chosen.length,
           percent: 0,
         });
         await knowledgeBasesApi.uploadDocument(
-          selected.id,
+          baseId,
           file,
           targetPath,
           (percent) =>
             setUploadState((current) =>
-              current && current.filename === relativePath
+              current &&
+              current.baseId === baseId &&
+              current.filename === relativePath
                 ? { ...current, percent }
                 : current,
             ),
         );
         // Show each finished file while the remaining ones still upload.
-        if (index < chosen.length - 1) {
-          void loadDetail(selected.id, { silent: true });
+        // Skip when the user has opened another base — loadDetail would
+        // replace that view with this upload's base.
+        if (index < chosen.length - 1 && selectedIdRef.current === baseId) {
+          void loadDetail(baseId, { silent: true });
         }
       }
       message.success(t("knowledgeBases.uploaded"));
@@ -1387,17 +1398,27 @@ export default function KnowledgeBasesPage() {
       );
     } finally {
       try {
-        await loadDetail(selected.id, { silent: true });
+        // Refresh the open base only. loadDetail on the upload target would
+        // replace a knowledge base the user switched to while files were sending.
+        if (selectedIdRef.current === baseId) {
+          await loadDetail(baseId, { silent: true });
+        }
         await loadBases();
       } finally {
-        // Refresh owns its own errors today; still release the lock if it throws.
-        setUploadState(null);
+        uploadInFlightRef.current = false;
+        setUploadState((current) =>
+          current?.baseId === baseId ? null : current,
+        );
+        if (uploadRef.current) uploadRef.current.value = "";
+        if (folderUploadRef.current) folderUploadRef.current.value = "";
       }
     }
   };
 
+  const uploadingThisBase = uploadState?.baseId === selected?.id;
+  const uploadBusy = uploadState !== null;
   const canDropUpload =
-    canWriteSelected && usable && !isAtDocumentLimit && !uploadState;
+    canWriteSelected && usable && !isAtDocumentLimit && !uploadBusy;
 
   const resetDragActive = () => {
     dragDepthRef.current = 0;
@@ -2338,8 +2359,8 @@ export default function KnowledgeBasesPage() {
                           <Button
                             type="primary"
                             icon={<FileUp size={14} />}
-                            loading={Boolean(uploadState)}
-                            disabled={isAtDocumentLimit || Boolean(uploadState)}
+                            loading={uploadingThisBase}
+                            disabled={isAtDocumentLimit || uploadBusy}
                             onClick={() => uploadRef.current?.click()}
                           >
                             {t("knowledgeBases.upload")}
@@ -2406,7 +2427,7 @@ export default function KnowledgeBasesPage() {
                         </Typography.Text>
                       ) : null}
                     </div>
-                    {uploadState ? (
+                    {uploadingThisBase && uploadState ? (
                       <div className={styles.uploadProgress} aria-live="polite">
                         <Typography.Text
                           className={styles.uploadProgressLabel}

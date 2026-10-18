@@ -376,6 +376,75 @@ describe("knowledge-base folder upload", () => {
     );
   });
 
+  it("hides folder upload progress on another knowledge base and does not jump back", async () => {
+    const other: KnowledgeBase = {
+      ...base,
+      id: "kb-other",
+      name: "Other base",
+    };
+    vi.mocked(knowledgeBasesApi.list).mockImplementation(async () => [
+      base,
+      other,
+    ]);
+    vi.mocked(knowledgeBasesApi.get).mockImplementation(async (id) =>
+      id === other.id ? other : base,
+    );
+    let finish!: () => void;
+    vi.mocked(knowledgeBasesApi.uploadDocument).mockImplementation(
+      (_kb, _file, _path, progress) => {
+        progress?.(42);
+        return new Promise((resolve) => {
+          finish = () => resolve({} as KnowledgeDocument);
+        });
+      },
+    );
+    await openPage();
+    const file = folderFile("资料/层级/a.txt");
+    selectFolder([file]);
+    await waitFor(() =>
+      expect(screen.getByRole("progressbar")).toHaveAttribute(
+        "aria-valuenow",
+        "42",
+      ),
+    );
+    expect(
+      screen.getByRole("heading", { name: "Upload target" }),
+    ).toBeInTheDocument();
+    fireEvent.click(screen.getByText("Other base"));
+    await waitFor(() =>
+      expect(
+        screen.getByRole("heading", { name: "Other base" }),
+      ).toBeInTheDocument(),
+    );
+    expect(screen.queryByRole("progressbar")).not.toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "knowledgeBases.uploadFolder" }),
+    ).toBeDisabled();
+    const getsBeforeFinish = vi.mocked(knowledgeBasesApi.get).mock.calls.length;
+    await act(async () => finish());
+    await waitFor(() =>
+      expect(notice.success).toHaveBeenCalledWith("knowledgeBases.uploaded"),
+    );
+    expect(
+      screen.getByRole("heading", { name: "Other base" }),
+    ).toBeInTheDocument();
+    expect(screen.queryByRole("progressbar")).not.toBeInTheDocument();
+    expect(vi.mocked(knowledgeBasesApi.get).mock.calls.length).toBe(
+      getsBeforeFinish,
+    );
+    expect(knowledgeBasesApi.uploadDocument).toHaveBeenCalledWith(
+      "kb-add",
+      file,
+      "资料/层级/a.txt",
+      expect.any(Function),
+    );
+    await waitFor(() =>
+      expect(
+        screen.getByRole("button", { name: "knowledgeBases.uploadFolder" }),
+      ).toBeEnabled(),
+    );
+  });
+
   it("re-enables upload when the post-upload refresh fails", async () => {
     let listed = 0;
     vi.mocked(knowledgeBasesApi.listDocuments).mockImplementation(async () => {
