@@ -729,6 +729,21 @@
           "desc": "腾讯元宝搜索，覆盖公开网页与腾讯内容生态"
         }
       },
+      "deepseek": {
+        "apiKey": "API Key",
+        "baseUrl": "Base URL",
+        "count": "返回条数",
+        "countHint": "1～50，默认 10。",
+        "needContent": "返回网页正文（need_content）",
+        "needContentHint": "开启后每条结果附带网页正文，会占用更多上下文。",
+        "localization": "本地化 IP（可选）",
+        "localizationHint": "用于优先返回本地化结果的 IP，留空则使用服务端默认。",
+        "reuseModelKey": "复用 DeepSeek 模型提供商 Key",
+        "reuseHint": "从已配置的 DeepSeek 模型提供商复制 Key，搜索无需再单独填写。",
+        "reuseSuccess": "已复用 {{name}} 的 API Key",
+        "reuseMissing": "未找到已配置 API Key 的 DeepSeek 模型提供商，请先在「模型」中配置。",
+        "reuseFailed": "复用 DeepSeek 模型提供商 Key 失败"
+      },
       "test": "测试连接",
       "testSuccess": "{{name}} 搜索测试成功",
       "testFailed": "{{name}} 搜索测试失败：{{error}}",
@@ -1864,6 +1879,7 @@
     "kimi_search": "Kimi 联网搜索",
     "yuanbao_search": "元宝联网搜索",
     "searchfree_search": "AI 联网搜索",
+    "web_search": "联网搜索",
     "cronjob_list": "列出定时任务",
     "cronjob_get": "查看定时任务",
     "cronjob_create": "创建定时任务",

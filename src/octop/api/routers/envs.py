@@ -2,13 +2,12 @@
 
 from __future__ import annotations
 
-import asyncio
-import logging
 import re
 from typing import Any
 
 from fastapi import APIRouter, Body, Depends
 
+from octop.api.common.env_sync import reload_agents_after_env_change
 from octop.api.deps import get_server, require_permission
 from octop.infra.errors import ErrorCode, OctopError
 from octop.infra.utils.env_file import (
@@ -17,11 +16,9 @@ from octop.infra.utils.env_file import (
     list_env_items,
     load_env_file,
     save_env_file,
-    search_env_changed,
 )
 
 router = APIRouter(prefix="/envs", tags=["envs"])
-logger = logging.getLogger(__name__)
 
 _KEY_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 _CAPTCHA_SECRET_KEYS = frozenset({"OCTOP_CAPTCHA_SECRET", "OCTOP_CAPTCHA_CAM_SECRET_KEY"})
@@ -43,30 +40,6 @@ def _restore_secret_sentinel(cleaned: dict[str, str], previous: dict[str, str]) 
             cleaned[key] = previous[key]
         else:
             cleaned.pop(key, None)
-
-
-def _after_env_sync(server: Any, previous: dict[str, str], new: dict[str, str]) -> None:
-    """Sync process env; reload agents only when search-tool keys change."""
-    runtime = getattr(server, "app_runtime", None)
-    registry = getattr(runtime, "agent_registry", None) if runtime is not None else None
-    if registry is None:
-        return
-    invalidate = getattr(registry, "invalidate_mcp_tool_cache", None)
-    if callable(invalidate):
-        invalidate()
-    if not search_env_changed(previous, new):
-        return
-    reload_all = getattr(registry, "reload_all", None)
-    if not callable(reload_all):
-        return
-
-    async def _reload() -> None:
-        try:
-            await reload_all()
-        except Exception:
-            logger.exception("background agent reload after search env change failed")
-
-    asyncio.create_task(_reload(), name="reload-agents-search-env")
 
 
 @router.get("", summary="List global environment variables")
@@ -107,7 +80,7 @@ async def batch_save_envs(
     _restore_secret_sentinel(cleaned, previous)
     save_env_file(path, cleaned)
     apply_env_file_replace(path, previous=previous)
-    _after_env_sync(server, previous, cleaned)
+    reload_agents_after_env_change(server, previous, cleaned)
     return _redact_env_items(list_env_items(path))
 
 
@@ -130,5 +103,5 @@ async def delete_env(
     values.pop(k, None)
     save_env_file(path, values)
     apply_env_file_replace(path, previous=previous)
-    _after_env_sync(server, previous, values)
+    reload_agents_after_env_change(server, previous, values)
     return _redact_env_items(list_env_items(path))

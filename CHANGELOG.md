@@ -6,6 +6,10 @@
 
 ## [Unreleased]
 
+### 新增
+- DeepSeek 搜索支持在「模型 → 搜索引擎」配置 Base URL、返回条数、need_content 与本地化，并可一键复用已配置的 DeepSeek 模型提供商的 Key
+- 新增 DeepSeek `web_fetch` 工具与客户端 5 QPS 限流、429/408/5xx 退避重试；octop-harness 内置 `deepseek_search` 后 `web_search` 自动让位，只保留 `web_fetch`，避免重复搜索工具
+
 ## [1.0.3b1] - 2026-10-25
 
 ### 新增

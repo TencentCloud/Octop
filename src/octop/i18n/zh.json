@@ -627,6 +627,7 @@
     "kimi_search": "Kimi 联网搜索",
     "yuanbao_search": "元宝联网搜索",
     "searchfree_search": "AI 联网搜索",
+    "web_search": "联网搜索",
     "cronjob_list": "列出定时任务",
     "cronjob_get": "查看定时任务",
     "cronjob_create": "创建定时任务",

@@ -21,6 +21,7 @@ CRITICAL_TOOLS: frozenset[str] = frozenset(
 # Conditionally loaded tools — marked ``available=false`` when gated off.
 _WEB_SEARCH_TOOLS: frozenset[str] = frozenset(
     {
+        "web_search",
         "tavily_search",
         "brave_search",
         "deepseek_search",
@@ -71,6 +72,9 @@ BUILTIN_TOOL_CATALOG: tuple[BuiltinToolEntry, ...] = (
     BuiltinToolEntry("read_env_file", "misc"),
     BuiltinToolEntry("write_env_file", "misc"),
     BuiltinToolEntry("ask_user_question", "interaction"),
+    # ``web_search`` is mounted by Octop's built-in DeepSeek provider; the
+    # provider-specific names below come from octop-harness.
+    BuiltinToolEntry("web_search", "web"),
     BuiltinToolEntry("tavily_search", "web"),
     BuiltinToolEntry("brave_search", "web"),
     BuiltinToolEntry("deepseek_search", "web"),

@@ -729,6 +729,21 @@
           "desc": "Tencent Yuanbao Search over the open web and Tencent content"
         }
       },
+      "deepseek": {
+        "apiKey": "API Key",
+        "baseUrl": "Base URL",
+        "count": "Result count",
+        "countHint": "1-50, default 10.",
+        "needContent": "Return page content (need_content)",
+        "needContentHint": "When on, each result also carries the page body, using more context.",
+        "localization": "Localization IP (optional)",
+        "localizationHint": "IP used to prefer localized results; empty means the server default.",
+        "reuseModelKey": "Reuse DeepSeek model provider key",
+        "reuseHint": "Copies the key of the configured DeepSeek chat provider, so search needs no extra key.",
+        "reuseSuccess": "Reused the API Key of {{name}}",
+        "reuseMissing": "No DeepSeek model provider with an API key was found. Configure it under Models first.",
+        "reuseFailed": "Failed to reuse the DeepSeek model provider key"
+      },
       "test": "Test Connection",
       "testSuccess": "{{name}} search test successful",
       "testFailed": "{{name}} search test failed: {{error}}",
@@ -1864,6 +1879,7 @@
     "kimi_search": "Kimi web search",
     "yuanbao_search": "Yuanbao web search",
     "searchfree_search": "AI web search",
+    "web_search": "Web search",
     "cronjob_list": "List cron jobs",
     "cronjob_get": "Get cron job",
     "cronjob_create": "Create cron job",

@@ -63,6 +63,7 @@ export const BUILTIN_TOOL_ICONS: Record<string, LucideIcon> = {
   kimi_search: Globe,
   yuanbao_search: Globe,
   searchfree_search: Globe,
+  web_search: Globe,
   generate_image: Image,
   generate_video: Video,
   memory_search: Brain,

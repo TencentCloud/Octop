@@ -296,6 +296,18 @@ an optional display label; when omitted, the server derives one from
 | `PATCH`  | `/admin/providers/{id}` | admin | as user PATCH but works on shared rows |
 | `DELETE` | `/admin/providers/{id}` | admin | `204` |
 
+### Web search providers
+
+Search credentials are stored in `~/.octop/env` (no database row). The page is
+**Models → Search**; saving a search key reloads running agents so the provider
+tools are re-mounted. An explicit `DEEPSEEK_SEARCH_API_KEY` wins over the
+shared `DEEPSEEK_API_KEY`.
+
+| Method | Path | Auth | Notes |
+|--------|------|------|-------|
+| `POST` | `/search/{provider_id}/test` | search | body `{env_vars}` → one-shot search probe `{success, result_count?, error?, error_type?}`. `provider_id` is `tavily`, `brave`, `google`, `kimi`, or `deepseek`; credentials are not persisted. |
+| `POST` | `/search/deepseek/import-model-key` | search + envs + providers | copy the API key of the configured DeepSeek chat-model provider into `DEEPSEEK_API_KEY` (a custom relay base URL into `DEEPSEEK_SEARCH_BASE_URL`) → `{ok, provider_name?, env_key?, base_url?, error?}`; the key itself is never returned. |
+
 ## Models
 
 | Method | Path | Auth | Notes |
