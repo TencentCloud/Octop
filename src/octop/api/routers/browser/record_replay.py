@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 from typing import Any
 
 from fastapi import APIRouter, Depends
@@ -285,20 +286,23 @@ async def get_skill_content(
     user: Any = Depends(current_user),
 ) -> dict[str, Any]:
     """Read the generated skill content (draft.skill.md) for a given recording."""
-    skill_content = None
-    skill_name = None
-    skill_exists = False
-    profile = user_browser_profile(user.id)
-    manifest = _require_owned_recording(body.recording_id, profile)
-    from octop_browser.record.store import RecordingStore
 
-    store = RecordingStore()
-    rec_dir = store.recording_dir(body.recording_id)
-    skill_path = rec_dir / "draft.skill.md"
-    if skill_path.exists():
-        skill_content = skill_path.read_text(encoding="utf-8")
-        skill_exists = True
-        skill_name = manifest.target.title.strip() or body.recording_id
+    def _read_skill() -> tuple[str | None, str | None, bool]:
+        # The manifest lookup and the draft.skill.md read are both blocking file
+        # I/O, so keep them off the event loop (AGENTS.md §8).
+        profile = user_browser_profile(user.id)
+        manifest = _require_owned_recording(body.recording_id, profile)
+        from octop_browser.record.store import RecordingStore
+
+        store = RecordingStore()
+        rec_dir = store.recording_dir(body.recording_id)
+        skill_path = rec_dir / "draft.skill.md"
+        if skill_path.exists():
+            content = skill_path.read_text(encoding="utf-8")
+            return content, manifest.target.title.strip() or body.recording_id, True
+        return None, None, False
+
+    skill_content, skill_name, skill_exists = await asyncio.to_thread(_read_skill)
 
     return {
         "ok": True,
