@@ -278,12 +278,17 @@ export const knowledgeBasesApi = {
       text: string;
     }>(`/knowledge-bases/${id}/documents/${documentId}/content`),
 
-  updateTextDocument: (id: string, documentId: string, content: string) =>
+  updateTextDocument: (
+    id: string,
+    documentId: string,
+    content: string,
+    name?: string,
+  ) =>
     request<KnowledgeDocument>(
       `/knowledge-bases/${id}/documents/${documentId}/content`,
       {
         method: "PUT",
-        body: JSON.stringify({ content }),
+        body: JSON.stringify({ content, name }),
       },
     ),
 
