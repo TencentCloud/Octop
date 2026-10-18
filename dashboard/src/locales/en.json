@@ -3662,7 +3662,11 @@
       "viewTable": "Table",
       "totalConnections": "{{count}} connection(s)",
       "colStatus": "Status",
-      "colAgents": "Experts"
+      "colAgents": "Experts",
+      "peerPrivacy": "Hide peer info",
+      "peerPrivacyHint": "Mask peer address and account in cards and tables against screen-share leaks",
+      "revealPeerInfo": "Reveal (this page only; masking returns on reload)",
+      "hidePeerInfoAgain": "Mask again"
     },
     "captcha": {
       "title": "Login captcha",

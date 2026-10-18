@@ -3662,7 +3662,11 @@
       "viewTable": "表格",
       "totalConnections": "共 {{count}} 条连接",
       "colStatus": "状态",
-      "colAgents": "专家"
+      "colAgents": "专家",
+      "peerPrivacy": "隐藏对端信息",
+      "peerPrivacyHint": "对端地址与账号在卡片和表格中打码，避免截图或共享屏幕时泄露",
+      "revealPeerInfo": "显示明文（仅本页，刷新后恢复打码）",
+      "hidePeerInfoAgain": "恢复打码"
     },
     "captcha": {
       "title": "登录验证码",
