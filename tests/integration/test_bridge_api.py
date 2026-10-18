@@ -5,6 +5,8 @@ from __future__ import annotations
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
+from octop.infra.errors import ErrorCode, OctopError
+
 
 async def test_bridge_list_empty(env: Any) -> None:
     client, _srv, auth = env
@@ -80,3 +82,33 @@ async def test_bridge_probe_validation(env: Any) -> None:
         json={"peer_base_url": "https://demo.octop.chat", "peer_username": "", "password": "x"},
     )
     assert r.status_code == 422
+
+
+async def test_bridge_probe_auth_failure_returns_400_not_401(env: Any) -> None:
+    """Peer credentials rejection returns 400 Bad Request, preserving the local session."""
+    client, _srv, auth = env
+
+    with patch(
+        "octop.infra.bridge.manager.login_peer",
+        new=AsyncMock(
+            side_effect=OctopError(ErrorCode.BRIDGE_AUTH_FAILED, "peer rejected credentials")
+        ),
+    ):
+        r = await client.post(
+            "/api/bridge/probe",
+            headers=auth,
+            json={
+                "peer_base_url": "https://demo.octop.chat",
+                "peer_username": "peer",
+                "password": "wrong-password",
+            },
+        )
+    # Must be 400 Bad Request, NOT 401 Unauthorized (which would evict the local user's session).
+    assert r.status_code == 400, r.text
+    body = r.json()
+    assert body["error"]["code"] == "BRIDGE_AUTH_FAILED"
+
+    # Verify local session authentication remains fully intact.
+    listed = await client.get("/api/bridge/connections", headers=auth)
+    assert listed.status_code == 200
+

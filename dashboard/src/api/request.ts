@@ -327,6 +327,15 @@ function handleUnauthorized(): void {
 }
 
 /**
+ * Whether a path is exempt from session-clearing 401 redirects.
+ * /auth/ paths (login, LDAP login) handle 401s in-page.
+ * /probe paths (bridge probe, channel probe, etc.) test remote credentials and must not drop the local session.
+ */
+export function isUnauthorizedExemptPath(path: string): boolean {
+  return path.startsWith("/auth/") || path.includes("/probe");
+}
+
+/**
  * Handle 401 responses: clear token, redirect to login, and throw.
  * Shared by request(), requestBlob(), and requestUpload().
  */
@@ -334,7 +343,7 @@ async function throwIfUnauthorized(
   path: string,
   response: Response,
 ): Promise<void> {
-  if (response.status !== 401 || path.startsWith("/auth/")) {
+  if (response.status !== 401 || isUnauthorizedExemptPath(path)) {
     return;
   }
   clearAuthToken();

@@ -35,3 +35,16 @@ def test_octop_error_to_envelope_localized():
 def test_unknown_error_code_rejected():
     with pytest.raises(ValueError):
         ErrorCode("NOT_A_CODE")
+
+
+def test_downstream_credential_errors_are_bad_request():
+    # Peer / connector / channel credential rejections are client input errors (400),
+    # not local session authentication failures (401).
+    assert OctopError(ErrorCode.BRIDGE_AUTH_FAILED, "bad peer creds").status == 400
+    assert OctopError(ErrorCode.CHANNEL_INVALID_CREDENTIALS, "bad channel creds").status == 400
+    assert OctopError(ErrorCode.CONNECTOR_INVALID_CREDENTIALS, "bad connector creds").status == 400
+
+    # Local session auth errors must remain 401.
+    assert OctopError(ErrorCode.AUTH_FAILED, "bad session").status == 401
+    assert OctopError(ErrorCode.TOKEN_EXPIRED, "expired").status == 401
+
