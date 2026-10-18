@@ -454,8 +454,7 @@ class PluginManager:
                 ErrorCode.NOT_FOUND,
                 f"marketplace plugin {plugin_id!r} not found",
             )
-        loaded = self.install_path(source, force=force)
-        return loaded
+        return self.install_path(source, force=force, persist_enabled=True)
 
     def resolve_market_ui_file(self, plugin_id: str, rel_path: str) -> Path:
         """Resolve a marketplace catalog asset (icons only)."""
@@ -703,7 +702,9 @@ class PluginManager:
             f"plugin UI file not found: {cleaned}",
         )
 
-    def install_path(self, source: Path, *, force: bool = False) -> LoadedPlugin:
+    def install_path(
+        self, source: Path, *, force: bool = False, persist_enabled: bool = False
+    ) -> LoadedPlugin:
         source = source.resolve()
         if not source.is_dir():
             raise OctopError(
@@ -753,8 +754,11 @@ class PluginManager:
                         moved_new = True
                         unload_plugin(manifest.id)
                         loaded = _load_plugin_dir(dest, install_deps=False)
-                        if self.global_enabled_map().get(manifest.id) is False:
+                        enabled = self.global_enabled_map().get(manifest.id, True)
+                        if not enabled:
                             unload_plugin(manifest.id)
+                        if persist_enabled:
+                            _write_global_plugin_enabled(self._config_path, manifest.id, enabled)
                         return loaded
                     except Exception:
                         if moved_new:

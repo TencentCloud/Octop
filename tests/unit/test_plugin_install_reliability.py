@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import shutil
 import threading
 from pathlib import Path
@@ -132,6 +133,39 @@ def test_disabled_market_force_stays_disabled(
     manager.install_from_market("echo-tool", force=True)
     assert manager.global_enabled_map()["echo-tool"] is False
     assert PluginRegistry().get("echo-tool") is None
+
+
+async def test_market_install_persists_enabled_and_preserves_settings(
+    manager: PluginManager, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    config = tmp_path / "config.json"
+    settings = {"database": {"backend": "sqlite"}, "plugins": {"other": {"enabled": False}}}
+    config.write_text(json.dumps(settings), encoding="utf-8")
+    monkeypatch.setattr(manager, "market_plugin_dir", lambda _: FIXTURE)
+    await manager.install_async("install_from_market", "echo-tool")
+    settings["plugins"]["echo-tool"] = {"enabled": True}
+    assert json.loads(config.read_text(encoding="utf-8")) == settings
+
+
+@pytest.mark.parametrize("installed", [False, True])
+async def test_market_config_failure_rolls_back(
+    manager: PluginManager, monkeypatch: pytest.MonkeyPatch, tmp_path: Path, installed: bool
+) -> None:
+    old = manager.install_path(FIXTURE) if installed else None
+    dest = manager.plugins_dir / "echo-tool"
+    previous = (dest / "main.py").read_bytes() if installed else None
+    config = tmp_path / "config.json"
+    corrupt = b"{broken config"
+    config.write_bytes(corrupt)
+    monkeypatch.setattr(manager, "market_plugin_dir", lambda _: FIXTURE)
+    with pytest.raises(OctopError) as exc:
+        await manager.install_async("install_from_market", "echo-tool", force=installed)
+    assert exc.value.code is ErrorCode.CONFIG_FILE_CORRUPT
+    assert config.read_bytes() == corrupt
+    assert PluginRegistry().get("echo-tool") is old
+    assert dest.exists() is installed
+    if installed:
+        assert (dest / "main.py").read_bytes() == previous
 
 
 def test_dependency_failure_keeps_old_files(
