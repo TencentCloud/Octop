@@ -61,10 +61,12 @@ function selfHostMonaco(): Plugin {
     apply: "build",
     writeBundle(outputOptions) {
       const dir = outputOptions.dir;
-      if (!dir) return;
+      // A silent skip would ship an editor that 404s only at runtime.
+      if (!dir) {
+        throw new Error("monaco/vs not copied: rollup output has no dir");
+      }
       const dest = path.join(dir, "monaco", "vs");
       fs.cpSync(source, dest, { recursive: true });
-      // A silent skip would ship an editor that 404s only at runtime.
       if (!fs.existsSync(path.join(dest, "loader.js"))) {
         throw new Error("monaco/vs/loader.js missing from the build output");
       }
@@ -248,6 +250,20 @@ export default defineConfig(({ mode }) => {
               },
             },
             {
+              // Self-hosted Monaco: fixed entry points plus hashed chunks.
+              // Must precede the generic /assets/ rule below, which also
+              // matches monaco/vs/assets/*.worker-*.js.
+              urlPattern: /\/monaco\/vs\/.*\.(js|css)$/,
+              handler: "StaleWhileRevalidate",
+              options: {
+                cacheName: "monaco",
+                expiration: {
+                  maxEntries: 200,
+                  maxAgeSeconds: 30 * 24 * 60 * 60,
+                },
+              },
+            },
+            {
               // Vite emits content-hashed assets (assets/name.[hash].js).
               // CacheFirst is correct: a new deploy uses new URLs.
               // NetworkFirst would prefer a post-deploy 404 over the cache.
@@ -288,17 +304,6 @@ export default defineConfig(({ mode }) => {
               options: {
                 cacheName: "fonts",
                 expiration: { maxAgeSeconds: 365 * 24 * 60 * 60 },
-              },
-            },
-            {
-              // Self-hosted Monaco: fixed entry points plus hashed chunks.
-              // Without this a PWA with the backend unreachable shows a
-              // blank editor even though the CDN is no longer involved.
-              urlPattern: /\/monaco\/vs\/.*\.(js|css)$/,
-              handler: "StaleWhileRevalidate",
-              options: {
-                cacheName: "monaco",
-                expiration: { maxEntries: 200, maxAgeSeconds: 30 * 24 * 60 * 60 },
               },
             },
           ],

@@ -24,6 +24,14 @@ describe("monacoLoader", () => {
     expect(mod.monacoVsPath).not.toMatch(/cdn|jsdelivr|unpkg/);
   });
 
+  it("honours a subpath base", async () => {
+    vi.stubEnv("BASE_URL", "/app/");
+
+    const mod = await import("./monacoLoader");
+
+    expect(mod.monacoVsPath).toBe(`${window.location.origin}/app/monaco/vs`);
+  });
+
   it("redirects the loader when the module loads in a build", async () => {
     vi.stubEnv("DEV", false);
 
