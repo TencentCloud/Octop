@@ -8,6 +8,7 @@ from octop.infra.connectors.gateway.adapters import (
     agently_cli,
     baidu_map,
     ctrip_wendao,
+    dingtalk_cli,
     feishu_cli,
     fliggy,
     meituan_travel,
@@ -45,6 +46,7 @@ _ADAPTERS: dict[str, GatewayAdapter] = {
     "wechat-reading": wechat_reading,
     "feishu-cli": feishu_cli,
     "wecom-cli": wecom_cli,
+    "dingtalk-cli": dingtalk_cli,
     "obsidian-cli": obsidian_cli,
     "weknora": weknora,
 }

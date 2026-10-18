@@ -58,11 +58,19 @@ def test_categories_match_nav_groups() -> None:
     for p in PERMISSIONS.values():
         assert p.category in allowed
     assert {k for k, p in PERMISSIONS.items() if p.category == "settings"} == {
+        "skills",
+        "subagents",
+        "tools",
+        "agent_plugins",
+        "mbti",
+        "memory",
         "channels",
         "connectors",
         "skill_packages",
         "knowledge_bases",
     }
+    assert PERMISSIONS["skills"].page == "personalization"
+    assert PERMISSIONS["agent_plugins"].page == "personalization"
     assert {k for k, p in PERMISSIONS.items() if p.category == "control"} == {
         "terminal",
         "browser",
