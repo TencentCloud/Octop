@@ -204,7 +204,9 @@ _DEFAULT_STATUS: dict[ErrorCode, int] = {
     ErrorCode.CONNECTOR_ALREADY_BOUND: 409,
     ErrorCode.CONNECTOR_MCP_LOAD_FAILED: 502,
     ErrorCode.BRIDGE_NOT_FOUND: 404,
-    ErrorCode.BRIDGE_AUTH_FAILED: 401,
+    # Peer credential failure. 400 matches other invalid-credential codes;
+    # 401 would make the dashboard treat it as a dead local session.
+    ErrorCode.BRIDGE_AUTH_FAILED: 400,
     ErrorCode.BRIDGE_PEER_UNREACHABLE: 502,
     ErrorCode.BRIDGE_NOT_CONNECTED: 503,
     ErrorCode.BRIDGE_TUNNEL_FAILED: 502,
