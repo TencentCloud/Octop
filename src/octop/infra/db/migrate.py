@@ -1947,6 +1947,15 @@ def _apply_sqlite_migration(db: DatabasePool, version: int, path: Path) -> None:
 
 _NAV_PAGE_PERMISSIONS = ("experts", "tasks", "token_usage")
 _NAV_PAGE_PERMISSIONS_FLAG = "granted_nav_page_permissions"
+_PERSONALIZATION_TAB_PERMISSIONS = (
+    "skills",
+    "subagents",
+    "tools",
+    "agent_plugins",
+    "mbti",
+    "memory",
+)
+_PERSONALIZATION_TAB_PERMISSIONS_FLAG = "granted_personalization_tab_permissions"
 
 
 def _parse_perm_list(raw: Any) -> list[str] | None:
@@ -1967,8 +1976,12 @@ def _parse_perm_list(raw: Any) -> list[str] | None:
     return None
 
 
-def _grant_default_nav_permissions(db: DatabasePool) -> None:
-    """Grant experts/tasks/token usage once to accounts that already had them open.
+def _grant_permission_keys_once(
+    db: DatabasePool,
+    keys: tuple[str, ...],
+    flag: str,
+) -> None:
+    """Grant ``keys`` once to accounts that already had those pages open.
 
     Later removals stick: the settings flag stops this from running again.
     Admins are skipped; an empty permission list means "all" for that role.
@@ -1976,11 +1989,11 @@ def _grant_default_nav_permissions(db: DatabasePool) -> None:
     if not _table_exists(db, "settings"):
         return
     with db.connect() as conn:
-        flag = conn.execute(
+        existing = conn.execute(
             "SELECT value FROM settings WHERE key = ?",
-            (_NAV_PAGE_PERMISSIONS_FLAG,),
+            (flag,),
         ).fetchone()
-    if flag is not None:
+    if existing is not None:
         return
 
     def grant(table: str, id_col: str, skip_where: str) -> None:
@@ -1997,7 +2010,7 @@ def _grant_default_nav_permissions(db: DatabasePool) -> None:
                 continue
             merged = list(current)
             changed = False
-            for key in _NAV_PAGE_PERMISSIONS:
+            for key in keys:
                 if key not in merged:
                     merged.append(key)
                     changed = True
@@ -2018,13 +2031,27 @@ def _grant_default_nav_permissions(db: DatabasePool) -> None:
         if db.dialect == "postgresql":
             conn.execute(
                 "INSERT INTO settings(key, value) VALUES (?, ?) ON CONFLICT (key) DO NOTHING",
-                (_NAV_PAGE_PERMISSIONS_FLAG, "1"),
+                (flag, "1"),
             )
         else:
             conn.execute(
                 "INSERT OR IGNORE INTO settings(key, value) VALUES (?, ?)",
-                (_NAV_PAGE_PERMISSIONS_FLAG, "1"),
+                (flag, "1"),
             )
+
+
+def _grant_default_nav_permissions(db: DatabasePool) -> None:
+    """Grant experts/tasks/token usage once to accounts that already had them open."""
+    _grant_permission_keys_once(db, _NAV_PAGE_PERMISSIONS, _NAV_PAGE_PERMISSIONS_FLAG)
+
+
+def _grant_personalization_tab_permissions(db: DatabasePool) -> None:
+    """Grant personalization tab keys once; those pages used to be open to everyone."""
+    _grant_permission_keys_once(
+        db,
+        _PERSONALIZATION_TAB_PERMISSIONS,
+        _PERSONALIZATION_TAB_PERMISSIONS_FLAG,
+    )
 
 
 def run_migrations(db: DatabasePool) -> None:
@@ -2080,3 +2107,4 @@ def run_migrations(db: DatabasePool) -> None:
     _ensure_user_role_schema(db)
     _ensure_bridge_connections_schema(db)
     _grant_default_nav_permissions(db)
+    _grant_personalization_tab_permissions(db)
