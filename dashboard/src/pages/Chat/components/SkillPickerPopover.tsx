@@ -42,6 +42,18 @@ function skillAvatarFallback(skill: SkillSpec): string {
   return name.charAt(0).toUpperCase();
 }
 
+/** User-installed skills first; built-in skills last. */
+function skillPickerKindRank(kind: SkillSpec["kind"]): number {
+  switch (kind) {
+    case "workspace":
+      return 0;
+    case "package":
+      return 1;
+    case "builtin":
+      return 2;
+  }
+}
+
 export default function SkillPickerPopover({
   skills,
   activeSlugs = null,
@@ -62,7 +74,12 @@ export default function SkillPickerPopover({
   }, [activeSlugs]);
 
   const enabledSkills = useMemo(
-    () => skills.filter((s) => s.enabled),
+    () =>
+      skills
+        .filter((skill) => skill.enabled)
+        .sort(
+          (a, b) => skillPickerKindRank(a.kind) - skillPickerKindRank(b.kind),
+        ),
     [skills],
   );
 
