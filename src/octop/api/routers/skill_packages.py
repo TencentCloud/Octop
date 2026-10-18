@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import base64
 from dataclasses import asdict
+from pathlib import Path
 from typing import Any, Literal
 
 from fastapi import APIRouter, Depends, Request, status
@@ -470,6 +471,29 @@ async def list_package_skills(
     )
 
 
+def _read_package_skill_manifest(
+    manifest_path: Path,
+    skill: dict[str, Any],
+    slug: str,
+) -> tuple[dict[str, Any], str, str]:
+    # Disk I/O belongs on a worker thread rather than the event loop (AGENTS.md §8).
+    if skill.get("corrupt"):
+        return {}, "", ""
+    try:
+        raw = manifest_path.read_text(encoding="utf-8")
+    except UnicodeDecodeError:
+        from octop.infra.utils.utf8_text import repair_skill_manifest_file
+
+        repaired = repair_skill_manifest_file(manifest_path)
+        if repaired is None:
+            return {}, "", ""
+        raw = repaired
+    except OSError as exc:
+        raise OctopError(ErrorCode.NOT_FOUND, f"skill {slug!r} manifest not found") from exc
+    frontmatter, body = parse_frontmatter(raw)
+    return frontmatter, body, raw
+
+
 @router.get("/{package_id}/skills/{slug}", summary="Get a global package skill")
 async def get_package_skill(
     package_id: str,
@@ -486,8 +510,13 @@ async def get_package_skill(
         slug,
         locale=resolve_request_locale(request),
     )
-    raw = (store.package_skills_dir(package_id) / slug / "SKILL.md").read_text(encoding="utf-8")
-    frontmatter, body = parse_frontmatter(raw)
+    manifest_path = store.package_skills_dir(package_id) / slug / "SKILL.md"
+    frontmatter, body, raw = await asyncio.to_thread(
+        _read_package_skill_manifest,
+        manifest_path,
+        skill,
+        slug,
+    )
     return {**skill, "frontmatter": frontmatter, "body": body, "raw": raw}
 
 
