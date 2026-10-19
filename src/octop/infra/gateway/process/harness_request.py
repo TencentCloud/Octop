@@ -20,6 +20,7 @@ from octop.infra.gateway.media.attachment_hints import (
     materialize_image_part,
 )
 from octop.infra.gateway.media.ingress import AgentBackedMediaBackend
+from octop.infra.gateway.process.inbound_context import INBOUND_CONTEXT_KEY, InboundContext
 from octop.infra.gateway.process.message_keys import images_from_message
 from octop.infra.utils.anydoc_convert import (
     extract_markdown,
@@ -305,6 +306,7 @@ def build_harness_request(
     auto_route: bool = False,
     message_kwargs: dict[str, Any] | None = None,
     reasoning_overrides: dict[str, Any] | None = None,
+    inbound_context: InboundContext | None = None,
 ) -> dict[str, Any]:
     if messages is not None:
         req: dict[str, Any] = {
@@ -322,6 +324,8 @@ def build_harness_request(
             configurable["session_key"] = session_key
         if reasoning_overrides:
             configurable["octop_reasoning_overrides"] = reasoning_overrides
+        if inbound_context is not None:
+            configurable[INBOUND_CONTEXT_KEY] = inbound_context
         if configurable:
             req["configurable"] = configurable
         if model:
@@ -358,6 +362,8 @@ def build_harness_request(
         configurable["session_key"] = session_key
     if reasoning_overrides:
         configurable["octop_reasoning_overrides"] = reasoning_overrides
+    if inbound_context is not None:
+        configurable[INBOUND_CONTEXT_KEY] = inbound_context
     if configurable:
         req["configurable"] = configurable
     if model:

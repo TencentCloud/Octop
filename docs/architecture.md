@@ -93,6 +93,11 @@ Three surfaces share the same agent runtime:
 `chat_sessions` / `threads`. Thread reuse / archival is a row update —
 see `infra/gateway/threads.py` for the full state machine.
 
+Gateway turns also carry an optional, per-invocation
+`configurable.octop_inbound_context`, separate from Octop account ownership.
+See [Inbound request context](inbound-context.md) for channel coverage, nullable
+sender semantics, and the security contract for middleware and tools.
+
 > **Streaming chat is now WebSocket.** Legacy SSE on
 > `POST /api/agents/{aid}/chat/stream` has been replaced by a
 > bidirectional WS endpoint that lets the dashboard also send
