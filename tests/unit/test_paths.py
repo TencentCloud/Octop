@@ -14,6 +14,7 @@ def test_root_paths(tmp_path: Path):
     assert p.logs_dir == tmp_path / ".agentbuddy" / "logs"
     assert p.log == tmp_path / ".agentbuddy" / "logs" / "agentbuddy.log"
     assert p.config == tmp_path / ".agentbuddy" / "config.json"
+    assert p.wizard_password_file == tmp_path / ".agentbuddy" / "agentbuddy-login.txt"
 
 
 def test_log_dir_creation(tmp_path: Path):

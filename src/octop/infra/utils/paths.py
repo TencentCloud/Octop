@@ -27,6 +27,11 @@ class PathLayout:
         return cls(Path.home() / ".agentbuddy")
 
     @property
+    def wizard_password_file(self) -> Path:
+        """Initial wizard password file: ``~/.agentbuddy/agentbuddy-login.txt`` (or under ``$AGENTBUDDY_HOME``)."""
+        return self.root / "agentbuddy-login.txt"
+
+    @property
     def db(self) -> Path:
         return self.root / "agentbuddy.db"
 
