@@ -93,13 +93,13 @@ import {
 import ChatSidebarPanel from "./components/ChatSidebarPanel";
 import ChatTitleBar from "./components/ChatTitleBar";
 import TeamChatBadge from "./components/TeamChatBadge";
+import RemoteExpertHint from "./components/RemoteExpertHint";
 import ChatComposerChrome from "./components/ChatComposerChrome";
 import AskQuestionCard from "./components/AskQuestionCard";
 import {
   findAutoResumableApproval,
   findPendingAsk,
   hasPendingHitl,
-  isResumableHitl,
 } from "./utils/pendingHitl";
 import { isAgentChatReady } from "../../utils/agentError";
 import { useMemoryMaintenance } from "./hooks/useMemoryMaintenance";
@@ -134,7 +134,6 @@ function ChatPageInner() {
     threadId: threadId ?? null,
   });
   const isMobile = useIsMobile();
-  const hitlEnabled = useHitlEnabled();
   const user = useCurrentUser();
   const { layoutMode } = useLayoutMode();
   const isMinimalLayout = layoutMode === "minimal";
@@ -204,6 +203,7 @@ function ChatPageInner() {
     loading: agentsLoading,
   } = useAgent();
   const resolvedAgentId = routeAgentId || activeAgentId;
+  const hitlEnabled = useHitlEnabled(resolvedAgentId);
   const activeAgent = useMemo(
     () => agents.find((a) => a.agent_id === resolvedAgentId) ?? null,
     [agents, resolvedAgentId],
@@ -355,9 +355,11 @@ function ChatPageInner() {
     historyLoadingMore,
     historyRefreshing,
     historyHydrated,
+    runUsage,
     contextUsage,
     pendingPlanPath,
     liveSpeakers,
+    activeTurnId,
     sendMessage,
     editAndResend,
     cancelStream,
@@ -617,17 +619,29 @@ function ChatPageInner() {
       if (typeof u.total_tokens === "number") {
         acc.total_tokens = (acc.total_tokens || 0) + u.total_tokens;
       }
+      if (typeof u.decision_saved === "number") {
+        acc.decision_saved = (acc.decision_saved || 0) + u.decision_saved;
+      }
     }
-    if (!acc.input_tokens && !acc.output_tokens && !acc.total_tokens) {
+    if (
+      !acc.input_tokens &&
+      !acc.output_tokens &&
+      !acc.total_tokens &&
+      !acc.decision_saved
+    ) {
       return null;
     }
     return acc;
   }, [messages]);
+  const decisionSaved =
+    (sessionUsage?.decision_saved ?? 0) +
+    (isStreaming ? runUsage?.decision_saved ?? 0 : 0);
   const sessionUsageLabel = formatRunUsage(sessionUsage, {
     input: t("chatUsage.input"),
     output: t("chatUsage.output"),
     total: t("chatUsage.total"),
     cacheHit: t("chatUsage.cacheHit"),
+    decisionSaved: t("chatUsage.decisionSaved"),
   });
 
   const { resetNavForAgentSwitch, markInitialNavDone } = useChatNavigation({
@@ -842,6 +856,52 @@ function ChatPageInner() {
     shouldDeferFlush: shouldDeferQueueFlush,
   });
 
+  // While streaming, Enter/Send parks a local chip; ↑ Steer on the chip row
+  // commits sendSteerWhileBusy. The click always acts: the
+  // server routes delivery=auto (busy → steer queue, idle → new turn); a
+  // dead socket degrades to the normal send path — never a silent no-op.
+  const handleSteerQueued = useCallback(
+    (id: string) => {
+      const key = activeThreadId || "";
+      const item = queuedItems.find((q) => q.id === id);
+      if (!item || !key) return;
+      const turnId = activeTurnId || chatStore.getActiveTurnId(key) || "";
+      const result = chatStore.sendSteerWhileBusy(key, item.text, {
+        expectedTurnId: turnId || undefined,
+        attachments: item.attachments,
+      });
+      if (result === "empty") return;
+      removeQueued(id);
+      if (result === "no_socket") {
+        wrappedHandleSend(item.text, item.attachments);
+      }
+    },
+    [
+      activeThreadId,
+      activeTurnId,
+      queuedItems,
+      removeQueued,
+      wrappedHandleSend,
+    ],
+  );
+
+  const handleWithdrawSteer = useCallback(
+    (messageId: string) => {
+      const key = activeThreadId || "";
+      if (!key) return;
+      const result = chatStore.withdrawCommittedSteer(key, messageId);
+      if (result === "pending_ack") {
+        antMessage.info(t("chat.steer.withdrawPending"));
+      }
+    },
+    [activeThreadId, t],
+  );
+
+  // Committed steers live in the transcript (optimistic row settled by
+  // server frames) — the chip panel holds only uncommitted local drafts
+  // (the queue row settles on commit).
+  const displayQueuedItems = queuedItems;
+
   const {
     handleNewChat: startNewChat,
     handleNewChatWithAgent,
@@ -961,23 +1021,30 @@ function ChatPageInner() {
   useEffect(() => {
     if (isStreaming || !activeThreadId) return;
     const sessionPolicy = parseHitlSessionPolicy(composerSession?.hitlPolicy);
-    const pending = findAutoResumableApproval(sessionPolicy, messages);
-    if (!pending) {
-      autoResumedApprovalRef.current = null;
-      return;
-    }
-    const card = messages.find((message) => message.id === pending.messageId);
-    if (!isResumableHitl(card?.hitlData)) return;
-    const resumeKey = `${activeThreadId}:${pending.messageId}`;
-    if (autoResumedApprovalRef.current === resumeKey) return;
-    autoResumedApprovalRef.current = resumeKey;
-    resumeHitl(
-      pending.actions.map(() => ({ type: "approve" })),
-      activeThreadId,
-      undefined,
-      sessionPolicy,
-      pending.pendingId,
-    );
+    const threadId = activeThreadId;
+    // A pause can be projected twice. Wait until the latest card is the one
+    // we resume, instead of approving an id the next frame already expired.
+    const timer = window.setTimeout(() => {
+      const pending = findAutoResumableApproval(
+        sessionPolicy,
+        chatStore.getSnapshot(threadId).messages,
+      );
+      if (!pending?.pendingId) {
+        autoResumedApprovalRef.current = null;
+        return;
+      }
+      const resumeKey = `${threadId}:${pending.messageId}`;
+      if (autoResumedApprovalRef.current === resumeKey) return;
+      autoResumedApprovalRef.current = resumeKey;
+      resumeHitl(
+        pending.actions.map(() => ({ type: "approve" })),
+        threadId,
+        undefined,
+        sessionPolicy,
+        pending.pendingId,
+      );
+    }, 50);
+    return () => window.clearTimeout(timer);
   }, [
     composerSession?.hitlPolicy,
     messages,
@@ -1345,6 +1412,7 @@ function ChatPageInner() {
                       {activeSessionTitle}
                     </span>
                     <TeamChatBadge show={isTeamChat} />
+                    <RemoteExpertHint agent={activeAgent} />
                   </div>
                 )}
                 {resolvedAgentId && !sharedExpertViewer && (
@@ -1410,6 +1478,7 @@ function ChatPageInner() {
                 forkDisabled={sessionForkDisabled}
                 forkDisabledHint={sessionForkDisabledHint}
                 isTeam={isTeamChat}
+                agent={activeAgent}
               />
             )}
 
@@ -1494,6 +1563,7 @@ function ChatPageInner() {
                     onRegenerate={handleRegenerate}
                     onDisableStreamUsage={handleDisableStreamUsage}
                     onEditUserMessage={handleEditUserMessage}
+                    onWithdrawSteer={handleWithdrawSteer}
                     onForkAssistantMessage={handleForkAssistantMessage}
                     forkDisabled={forkDisabled}
                     forkDisabledHint={forkDisabledHint}
@@ -1758,9 +1828,10 @@ function ChatPageInner() {
               ref={chatInputRef}
               onSend={wrappedHandleSend}
               onQueue={enqueueQueued}
-              queuedItems={queuedItems}
+              queuedItems={displayQueuedItems}
               onRemoveQueued={removeQueued}
               onReclaimQueued={reclaimQueued}
+              onSteerQueued={handleSteerQueued}
               onCancel={cancelStream}
               onNewChat={handleNewChat}
               isStreaming={isStreaming}
@@ -1808,6 +1879,7 @@ function ChatPageInner() {
               defaultModel={activeAgent?.default_model ?? null}
               contextUsedTokens={contextUsedTokens}
               contextMaxTokens={contextMaxTokens}
+              decisionSaved={decisionSaved}
             />
           </div>
 

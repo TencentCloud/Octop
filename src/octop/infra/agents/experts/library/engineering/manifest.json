@@ -1,0 +1,88 @@
+{
+  "id": "engineering",
+  "label": {
+    "zh": "工程专家",
+    "en": "Engineering Expert"
+  },
+  "description": {
+    "zh": "软件工程工作流：站会、代码评审、架构决策、事故响应、调试与技术文档。所有技能可独立使用，连接源码管理 / 项目跟踪 / 监控类连接器后体验更佳。",
+    "en": "Software engineering workflows: standups, code review, architecture decisions, incident response, debugging, and technical documentation. Works standalone; richer with source-control, tracker, and monitoring connectors."
+  },
+  "welcome_message": {
+    "zh": "从代码评审到事故响应，把工程流程交给我",
+    "en": "From code review to incident response — hand me your engineering workflows"
+  },
+  "icon_name": "cpu",
+  "icon_url": "/experts/avatars/scene-tech.svg",
+  "color": "#2563eb",
+  "prompt_files": [
+    "SOUL.md",
+    "AGENTS.md"
+  ],
+  "task_examples": {
+    "zh": [
+      "帮我评审这段改动，重点关注安全、性能与边界情况",
+      "支付服务出现大量 503，按事故响应流程帮我处理：分级、沟通、缓解与复盘",
+      "服务间要不要引入消息队列？帮我写一份带权衡分析的架构决策记录"
+    ],
+    "en": [
+      "Review this change with a focus on security, performance, and edge cases",
+      "The payments service is throwing 503s — run the incident workflow: triage, communicate, mitigate, and postmortem",
+      "Should we add a message queue between services? Draft an architecture decision record with trade-offs"
+    ]
+  },
+  "quick_prompts": [
+    {
+      "title": {
+        "zh": "代码评审",
+        "en": "Code review"
+      },
+      "description": {
+        "zh": "安全、性能与边界情况的结构化审查",
+        "en": "Structured review: security, performance, and edge cases"
+      },
+      "prompt": {
+        "zh": "帮我评审这段改动，重点关注安全、性能与边界情况",
+        "en": "Review this change with a focus on security, performance, and edge cases"
+      },
+      "color": "#dbeafe",
+      "icon_name": "cpu"
+    },
+    {
+      "title": {
+        "zh": "事故响应",
+        "en": "Incident response"
+      },
+      "description": {
+        "zh": "分级、沟通、缓解与事后复盘",
+        "en": "Triage, communicate, mitigate, and postmortem"
+      },
+      "prompt": {
+        "zh": "支付服务出现大量 503，按事故响应流程帮我处理",
+        "en": "The payments service is throwing 503s — run the incident workflow"
+      },
+      "color": "#fee2e2",
+      "icon_name": "cpu"
+    },
+    {
+      "title": {
+        "zh": "架构决策",
+        "en": "Architecture decision"
+      },
+      "description": {
+        "zh": "带权衡分析的 ADR",
+        "en": "An ADR with trade-off analysis"
+      },
+      "prompt": {
+        "zh": "服务间要不要引入消息队列？帮我写一份架构决策记录",
+        "en": "Should we add a message queue between services? Draft an ADR"
+      },
+      "color": "#dbeafe",
+      "icon_name": "cpu"
+    }
+  ],
+  "source": {
+    "type": "knowledge-work-plugins",
+    "plugin": "engineering"
+  }
+}

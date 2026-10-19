@@ -4,14 +4,14 @@ import { useNavigate } from "react-router-dom";
 import { Dropdown } from "antd";
 import type { MenuProps } from "antd";
 import {
-  Pencil,
+  ChevronRight,
+  GitFork,
   MoreHorizontal,
-  Trash2,
+  Pencil,
   Pin,
   PinOff,
-  GitFork,
-  ChevronRight,
-  MessageSquarePlus,
+  Search,
+  Trash2,
 } from "lucide-react";
 import type { OctopAgent } from "../../../context/AgentContext";
 import { ExpertIcon } from "../../Experts/components/iconForName";
@@ -21,10 +21,24 @@ import {
   deleteConversation,
 } from "../utils/deleteConversation";
 import { isAgentChatReady } from "../../../utils/agentError";
+import { isImeComposing } from "../../../utils/ime";
 import { sortSessions, toSession, type Session } from "../hooks/useSessions";
 import { formatThreadTitle } from "../utils/threadTitle";
 import { onSessionEvent } from "../hooks/chatStore";
+import { useExpertSessionCatalog } from "../hooks/useExpertSessionCatalog";
+import { usePinnedExperts } from "../hooks/usePinnedExperts";
 import { useSessionWorkIds } from "../hooks/useSessionWorkIds";
+import { sortExpertsByPin } from "../utils/pinnedExpertsPrefs";
+import {
+  initialChatNavScope,
+  matchesChatNavScope,
+  type ChatNavScope,
+} from "../utils/chatNavScope";
+import ChatNavScopeTabs, { ChatNavScopeEmpty } from "./ChatNavScopeTabs";
+import {
+  expertVisibleInNavSearch,
+  matchesNavQuery,
+} from "../utils/navSessionSearch";
 import {
   resolveSessionWorkStatus,
   type SessionWorkStatus,
@@ -33,6 +47,8 @@ import SharedExpertHint from "./SharedExpertHint";
 import RemoteExpertHint from "./RemoteExpertHint";
 import SessionWorkStatusIcon from "./SessionWorkStatusIcon";
 import TeamChatBadge from "./TeamChatBadge";
+import ExpertNameLabel from "./ExpertNameLabel";
+import ExpertNavActions from "./ExpertNavActions";
 import styles from "../index.module.less";
 
 /** Default preview size per expert in minimal nav (matches session page size). */
@@ -218,6 +234,7 @@ const PreviewSessionRow = memo(function PreviewSessionRow({
           onChange={(e) => setEditValue(e.target.value)}
           onBlur={commitEdit}
           onKeyDown={(e) => {
+            if (isImeComposing(e)) return;
             if (e.key === "Enter") commitEdit();
             if (e.key === "Escape") {
               setEditValue(session.name);
@@ -292,10 +309,44 @@ export default function MinimalAgentSessionNav({
     [agents],
   );
 
-  const sortedAgents = useMemo(
-    () => [...agents].sort((a, b) => b.id - a.id),
-    [agents],
+  const [searchQuery, setSearchQuery] = useState("");
+  const [navScope, setNavScope] = useState<ChatNavScope>(() =>
+    initialChatNavScope(
+      agents.find((agent) => agent.agent_id === activeAgentId),
+    ),
   );
+  const { pinnedIds, isPinned, togglePin } = usePinnedExperts();
+  const sortedAgents = useMemo(
+    () =>
+      sortExpertsByPin(agents, pinnedIds).filter((agent) =>
+        matchesChatNavScope(agent, navScope),
+      ),
+    [agents, pinnedIds, navScope],
+  );
+  const searching = searchQuery.trim().length > 0;
+  const catalog = useExpertSessionCatalog(sortedAgents, searching);
+  const visibleAgents = useMemo(() => {
+    if (!searching) return sortedAgents;
+    return sortedAgents.filter((agent) => {
+      const own =
+        agent.agent_id === activeAgentId && activeSessions.length > 0
+          ? activeSessions
+          : catalog.byAgent[agent.agent_id] ?? byAgent[agent.agent_id] ?? [];
+      return expertVisibleInNavSearch(
+        agent.name,
+        own.map((session) => session.name),
+        searchQuery,
+      );
+    });
+  }, [
+    activeAgentId,
+    activeSessions,
+    byAgent,
+    catalog.byAgent,
+    searchQuery,
+    searching,
+    sortedAgents,
+  ]);
 
   // Ensure the active expert folder stays open.
   useEffect(() => {
@@ -430,8 +481,9 @@ export default function MinimalAgentSessionNav({
           MINIMAL_AGENT_SESSION_PREVIEW,
         ),
       }));
+      catalog.patch(agentId, updater);
     },
-    [],
+    [catalog.patch],
   );
 
   const handleDelete = useCallback(
@@ -500,10 +552,56 @@ export default function MinimalAgentSessionNav({
 
   return (
     <div className={`${styles.sessionList} ${styles.minimalAgentNav}`}>
-      {sortedAgents.map((agent) => {
-        const list = byAgent[agent.agent_id] ?? [];
+      <div className={styles.sessionSearchWrap}>
+        <Search
+          size={14}
+          className={styles.sessionSearchIcon}
+          strokeWidth={2}
+        />
+        <input
+          type="search"
+          className={styles.sessionSearchInput}
+          value={searchQuery}
+          onChange={(e) => setSearchQuery(e.target.value)}
+          placeholder={t("chat.searchSessions", "搜索会话")}
+          aria-label={t("chat.searchSessions", "搜索会话")}
+        />
+      </div>
+      <ChatNavScopeTabs value={navScope} onChange={setNavScope} />
+      {visibleAgents.length === 0 ? (
+        searching ? (
+          <div className={styles.minimalAgentEmpty}>
+            {catalog.loading
+              ? t("common.loading")
+              : t("chat.noSearchResults", "没有匹配的会话")}
+          </div>
+        ) : (
+          <ChatNavScopeEmpty scope={navScope} />
+        )
+      ) : null}
+      {visibleAgents.map((agent) => {
+        const preview = byAgent[agent.agent_id] ?? [];
+        const catalogList = catalog.byAgent[agent.agent_id] ?? [];
+        const live =
+          agent.agent_id === activeAgentId && activeSessions.length > 0
+            ? activeSessions
+            : null;
+        const source = searching
+          ? live && live.length >= catalogList.length
+            ? live
+            : catalogList.length > 0
+            ? catalogList
+            : preview
+          : preview;
+        const list = searching
+          ? source.filter((session) =>
+              matchesNavQuery(session.name, searchQuery),
+            )
+          : source;
         const ready = isAgentChatReady(agent.state);
-        const expanded = !collapsedFolders.has(agent.agent_id);
+        const expanded = searching
+          ? list.length > 0
+          : !collapsedFolders.has(agent.agent_id);
 
         return (
           <section key={agent.agent_id} className={styles.minimalAgentSection}>
@@ -548,22 +646,22 @@ export default function MinimalAgentSessionNav({
                 onClick={() => openFolderAndSelect(agent.agent_id)}
               >
                 <span className={styles.agentNameCluster}>
-                  <span className={styles.minimalAgentName}>{agent.name}</span>
+                  <ExpertNameLabel
+                    name={agent.name}
+                    className={styles.minimalAgentName}
+                  />
                   <TeamChatBadge agent={agent} />
                   <SharedExpertHint agent={agent} />
                   <RemoteExpertHint agent={agent} />
                 </span>
                 <AgentUnreadBadge count={agent.unread_count ?? 0} />
               </button>
-              <button
-                type="button"
-                className={styles.minimalAgentNewChatBtn}
-                aria-label={t("chatWelcome.newChat")}
-                title={t("chatWelcome.newChat")}
-                onClick={() => onNewChat(agent.agent_id)}
-              >
-                <MessageSquarePlus size={14} strokeWidth={1.75} aria-hidden />
-              </button>
+              <ExpertNavActions
+                variant="minimal"
+                pinned={isPinned(agent.agent_id)}
+                onTogglePin={() => togglePin(agent.agent_id)}
+                onNewChat={() => onNewChat(agent.agent_id)}
+              />
             </div>
 
             {expanded ? (

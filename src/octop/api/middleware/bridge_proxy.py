@@ -64,6 +64,7 @@ def _is_header_tunneled_path(path: str) -> bool:
         "/api/knowledge-bases/capability",
         "/api/browser/env-status",
         "/api/browser/harness-sessions",
+        "/api/settings/hitl",
     }:
         return True
     return raw == "/api/acp" or raw.startswith("/api/acp/")

@@ -20,6 +20,7 @@ name: Build Octop FPK
 #           ↘ native-arm64（ubuntu-24.04-arm 装 aarch64 site-packages）
 #             → native-arm64-pack（amd64 上用 fnpack 打 Octop-fnos-native-arm64-*.fpk）
 #           → release（把 .fpk 挂到已有的 v* GitHub Release）
+#           → upload-cos（把已挂上的 Octop-fnos-*.fpk 上传到 COS octop/release/<version>/）
 
 on:
   workflow_dispatch:
@@ -484,3 +485,20 @@ jobs:
           generate_release_notes: false
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  upload-cos:
+    name: Upload FPK to COS
+    needs: [release, version]
+    # release uses always() because native jobs can be skipped. Without always()
+    # here, that skip cancels this reusable workflow after release succeeded.
+    if: ${{ always() && needs.release.result == 'success' }}
+    uses: ./.github/workflows/upload-release-cos.yml
+    with:
+      tag: ${{ needs.version.outputs.tag }}
+      patterns: "Octop-fnos-*.fpk"
+    secrets:
+      RELEASE_COS_SECRET_ID: ${{ secrets.RELEASE_COS_SECRET_ID }}
+      RELEASE_COS_SECRET_KEY: ${{ secrets.RELEASE_COS_SECRET_KEY }}
+      RELEASE_COS_BUCKET: ${{ secrets.RELEASE_COS_BUCKET }}
+      RELEASE_COS_REGION: ${{ secrets.RELEASE_COS_REGION }}
+      RELEASE_COS_ENDPOINT: ${{ secrets.RELEASE_COS_ENDPOINT }}

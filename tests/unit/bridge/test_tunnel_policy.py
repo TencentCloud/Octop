@@ -20,6 +20,9 @@ def test_allows_agent_resource_paths() -> None:
     assert is_tunnel_path_allowed("DELETE", "/api/agents/01ABC/avatar")
     assert is_tunnel_path_allowed("GET", "/api/agents/01ABC/threads")
     assert is_tunnel_path_allowed("POST", "/api/agents/01ABC/uploads")
+    assert is_tunnel_path_allowed("POST", "/api/agents/01ABC/upload")
+    assert is_tunnel_path_allowed("POST", "/api/agents/bridge:cid:01ABC/upload")
+    assert is_tunnel_path_allowed("GET", "/api/agents/01ABC/media/preview")
     assert is_tunnel_path_allowed("GET", "/api/agents/bridge:cid:aid/avatar")
     assert is_tunnel_path_allowed("GET", "/api/agents/01ABC/history/versions")
 
@@ -29,6 +32,8 @@ def test_allows_composer_readonly_paths() -> None:
     assert is_tunnel_path_allowed("GET", "/api/providers/active-model")
     assert is_tunnel_path_allowed("GET", "/api/knowledge-bases")
     assert is_tunnel_path_allowed("GET", "/api/knowledge-bases/capability")
+    assert is_tunnel_path_allowed("GET", "/api/settings/hitl")
+    assert not is_tunnel_path_allowed("PUT", "/api/settings/hitl")
     assert is_tunnel_path_allowed("GET", "/api/agents/01ABC/status")
     assert is_tunnel_path_allowed("GET", "/api/agents/01ABC/subagents")
     assert is_tunnel_path_allowed("GET", "/api/agents/01ABC/tool-settings")

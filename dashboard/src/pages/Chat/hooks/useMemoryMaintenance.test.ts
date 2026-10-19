@@ -18,6 +18,13 @@ describe("manual memory maintenance", () => {
       const phases = [
         "waiting",
         "backing_up",
+        "draining",
+        "validating",
+        "backing_up_current",
+        "restoring",
+        "restarting",
+        "inspecting",
+        "cleaning",
         "deduplicating",
         "compacting",
         end,
@@ -35,7 +42,7 @@ describe("manual memory maintenance", () => {
       });
       expect(result.current.visible).toBe(true);
       expect(result.current.blocking).toBe(false);
-      for (let step = 0; step < 3; step++) {
+      for (let step = 0; step < phases.length - 2; step++) {
         await act(async () => {
           await vi.advanceTimersByTimeAsync(2000);
         });

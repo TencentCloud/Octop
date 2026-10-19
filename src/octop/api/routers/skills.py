@@ -7,6 +7,8 @@ file listing:
 
   GET    /api/agents/{aid}/skills                 → summaries
   GET    /api/agents/{aid}/skills/{name}          → full detail (frontmatter + body)
+  GET    /api/agents/{aid}/skills/{name}/export   → ZIP of one workspace skill
+  POST   /api/agents/{aid}/skills/export         → ZIP of selected workspace skills
   POST   /api/agents/{aid}/skills                 → body { name, content }
   DELETE /api/agents/{aid}/skills/{name}          → remove SKILL.md
   POST   /api/agents/{aid}/skills/{name}/enable
@@ -42,9 +44,11 @@ from typing import Any, cast
 
 import yaml
 from fastapi import APIRouter, Depends, Request
-from pydantic import BaseModel
+from fastapi.responses import Response
+from pydantic import BaseModel, Field
 
 from octop.api.common.agent import require_agent_owner_row, require_agent_row
+from octop.api.common.content_disposition import content_disposition
 from octop.api.deps import current_user, get_server, require_permission
 from octop.infra.agents.manager import (
     skill_package_ids_list,
@@ -54,6 +58,7 @@ from octop.infra.agents.manager import (
 )
 from octop.infra.errors import ErrorCode, OctopError
 from octop.infra.skills.presentation import apply_skill_presentation
+from octop.infra.skills.skill_archive import build_skill_zip, build_skills_zip
 from octop.infra.skills.skill_package_store import SkillPackageStore, normalize_copy_policy
 from octop.infra.skills.skill_packages import (
     SkillPackageError,
@@ -68,6 +73,7 @@ from octop.infra.skills.skill_transfer import (
     copy_package_skills_to_workspace,
     copy_workspace_skill_to_package,
     copy_workspace_skill_to_workspace,
+    read_workspace_skill_files,
 )
 from octop.infra.utils.locale import Locale, resolve_request_locale
 
@@ -729,6 +735,83 @@ async def get_skill(
     }
 
 
+@router.get(
+    "/agents/{agent_id}/skills/{name}/export",
+    summary="Download a workspace skill as a ZIP",
+    description=(
+        "Pack one self-built workspace skill (SKILL.md and sibling files) into a ZIP "
+        "whose top-level folder is the skill slug. Built-in skills are not included. "
+        "The archive matches the dashboard ZIP importer, so it can be imported onto "
+        "another agent or into a skill package."
+    ),
+    response_class=Response,
+    responses={200: {"content": {"application/zip": {}}}},
+)
+async def export_skill_zip(
+    agent_id: str,
+    name: str,
+    request: Request,
+    as_user: int | None = None,
+    user: Any = Depends(require_permission("skills")),
+    server: Any = Depends(get_server),
+) -> Response:
+    ctx = await _ctx(agent_id, user=user, as_user=as_user, server=server)
+    locale = resolve_request_locale(request)
+    try:
+        files = await read_workspace_skill_files(ctx.workspace, name)
+        safe_slug = validate_skill_slug(name)
+        payload = await asyncio.to_thread(build_skill_zip, safe_slug, files)
+    except SkillPackageError as exc:
+        raise _skill_transfer_error(exc, locale=locale) from exc
+    return Response(
+        content=payload,
+        media_type="application/zip",
+        headers={"Content-Disposition": content_disposition(f"{safe_slug}.zip")},
+    )
+
+
+class ExportSkillsBody(BaseModel):
+    slugs: list[str] = Field(min_length=1)
+
+
+@router.post(
+    "/agents/{agent_id}/skills/export",
+    summary="Download workspace skills as one ZIP",
+    description=(
+        "Pack the selected workspace skills into one ZIP. Each skill is a top-level "
+        "folder containing SKILL.md, which is the layout the dashboard ZIP importer "
+        "already accepts."
+    ),
+    response_class=Response,
+    responses={200: {"content": {"application/zip": {}}}},
+)
+async def export_skills_zip(
+    agent_id: str,
+    body: ExportSkillsBody,
+    request: Request,
+    as_user: int | None = None,
+    user: Any = Depends(require_permission("skills")),
+    server: Any = Depends(get_server),
+) -> Response:
+    ctx = await _ctx(agent_id, user=user, as_user=as_user, server=server)
+    locale = resolve_request_locale(request)
+    slugs = list(dict.fromkeys(body.slugs))
+    try:
+        packed: list[tuple[str, list[tuple[str, bytes]]]] = []
+        for slug in slugs:
+            files = await read_workspace_skill_files(ctx.workspace, slug)
+            packed.append((validate_skill_slug(slug), files))
+        payload = await asyncio.to_thread(build_skills_zip, packed)
+    except SkillPackageError as exc:
+        raise _skill_transfer_error(exc, locale=locale) from exc
+    filename = f"{packed[0][0]}.zip" if len(packed) == 1 else "skills.zip"
+    return Response(
+        content=payload,
+        media_type="application/zip",
+        headers={"Content-Disposition": content_disposition(filename)},
+    )
+
+
 # --- write endpoints --------------------------------------------------------
 
 
@@ -798,7 +881,7 @@ async def create_skill(
     agent_id: str,
     body: CreateSkillBody,
     as_user: int | None = None,
-    user: Any = Depends(current_user),
+    user: Any = Depends(require_permission("skills")),
     server: Any = Depends(get_server),
 ) -> dict[str, Any]:
     ctx = await _ctx(agent_id, user=user, as_user=as_user, server=server)
@@ -844,7 +927,7 @@ async def update_skill(
     name: str,
     body: UpdateSkillBody,
     as_user: int | None = None,
-    user: Any = Depends(current_user),
+    user: Any = Depends(require_permission("skills")),
     server: Any = Depends(get_server),
 ) -> dict[str, Any]:
     """Overwrite an installed workspace skill via BackendWorkspace only.
@@ -943,7 +1026,7 @@ async def copy_skill_from_agent(
     body: CopyWorkspaceSkillBody,
     request: Request,
     as_user: int | None = None,
-    user: Any = Depends(current_user),
+    user: Any = Depends(require_permission("skills")),
     server: Any = Depends(get_server),
 ) -> dict[str, Any]:
     dest = await _ctx(agent_id, user=user, as_user=as_user, server=server)
@@ -978,7 +1061,7 @@ async def import_skill_from_url(
     body: ImportSkillBody,
     request: Request,
     as_user: int | None = None,
-    user: Any = Depends(current_user),
+    user: Any = Depends(require_permission("skills")),
     server: Any = Depends(get_server),
 ) -> dict[str, Any]:
     """Import a skill bundle from a supported external URL into the agent workspace."""
@@ -1068,7 +1151,7 @@ async def delete_skill(
     agent_id: str,
     name: str,
     as_user: int | None = None,
-    user: Any = Depends(current_user),
+    user: Any = Depends(require_permission("skills")),
     server: Any = Depends(get_server),
 ) -> None:
     """Soft-delete via marker — see module docstring for rationale."""
@@ -1132,7 +1215,7 @@ async def enable_skill(
     agent_id: str,
     name: str,
     as_user: int | None = None,
-    user: Any = Depends(current_user),
+    user: Any = Depends(require_permission("skills")),
     server: Any = Depends(get_server),
 ) -> None:
     ctx = await _ctx(agent_id, user=user, as_user=as_user, server=server)
@@ -1148,7 +1231,7 @@ async def disable_skill(
     agent_id: str,
     name: str,
     as_user: int | None = None,
-    user: Any = Depends(current_user),
+    user: Any = Depends(require_permission("skills")),
     server: Any = Depends(get_server),
 ) -> None:
     ctx = await _ctx(agent_id, user=user, as_user=as_user, server=server)
@@ -1415,7 +1498,7 @@ async def hub_install_skill(
     agent_id: str,
     body: HubInstallBody,
     as_user: int | None = None,
-    user: Any = Depends(current_user),
+    user: Any = Depends(require_permission("skills")),
     server: Any = Depends(get_server),
 ) -> dict[str, Any]:
     """Install a SkillHub skill into the specified agent's workspace.

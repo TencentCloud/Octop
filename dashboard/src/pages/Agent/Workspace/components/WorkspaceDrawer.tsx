@@ -53,6 +53,7 @@ import { formatServerIsoDateTime } from "../../../../utils/formatMessageTime";
 import { isAgentChatReady } from "../../../../utils/agentError";
 import { apiErrorMessage } from "../../../../utils/apiError";
 import { saveBlobAsFile } from "../../../../utils/saveBlobAsFile";
+import { isImeComposing } from "../../../../utils/ime";
 import AgentNotReadyScreen from "../../../Chat/components/AgentNotReadyScreen";
 import { fileTreeIcon } from "../../../../utils/fileTreeIcon";
 import { dedupeFileTreeInfos } from "../../../../utils/fileTreeNodes";
@@ -1172,7 +1173,9 @@ export default function WorkspaceDrawer({
         <Input
           value={createName}
           onChange={(e) => setCreateName(e.target.value)}
-          onPressEnter={() => void confirmCreate()}
+          onPressEnter={(e) => {
+            if (!isImeComposing(e)) void confirmCreate();
+          }}
           placeholder={
             createKind === "folder"
               ? t("workspace.newFolderName")
@@ -1196,7 +1199,9 @@ export default function WorkspaceDrawer({
         <Input
           value={renameValue}
           onChange={(e) => setRenameValue(e.target.value)}
-          onPressEnter={() => void confirmRename()}
+          onPressEnter={(e) => {
+            if (!isImeComposing(e)) void confirmRename();
+          }}
           autoFocus
         />
       </Modal>
