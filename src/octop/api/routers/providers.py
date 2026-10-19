@@ -82,15 +82,14 @@ class ProviderPatchBody(BaseModel):
     models: list[dict[str, Any]] | None = None
     note: str | None = None
     enabled: bool | None = None
+    # Dashboard default-model field. A non-empty id becomes the default.
+    # ``""`` or ``null`` clears it; omitting the key leaves it unchanged.
     model: str | None = None
-    # The dashboard's "default model" dropdown sends this. Without the field
-    # pydantic ignored it, so the save reported success while the default model
-    # never changed - the UI reads the default from the first entry of the list.
 
 
 # Fields that affect harness factory / agent runtime when patched.
 _PROVIDER_REHYDRATE_FIELDS = frozenset(
-    {"kind", "base_url", "api_key", "extra_json", "stream_usage", "models", "enabled"}
+    {"kind", "base_url", "api_key", "extra_json", "stream_usage", "models", "model", "enabled"}
 )
 
 
@@ -104,6 +103,44 @@ def _blank_to_none(value: str | None) -> str | None:
         return None
     stripped = value.strip()
     return stripped or None
+
+
+def _parse_extra_object(extra_json: str | None) -> dict[str, Any]:
+    if not extra_json:
+        return {}
+    try:
+        parsed = json.loads(extra_json)
+    except json.JSONDecodeError:
+        return {}
+    return dict(parsed) if isinstance(parsed, dict) else {}
+
+
+def _extra_with_default_model(extra_json: str | None, model: str | None) -> str:
+    """Store an explicit default. ``None`` keeps the key so a clear is visible."""
+    extra = _parse_extra_object(extra_json)
+    extra["default_model"] = model
+    return json.dumps(extra)
+
+
+def _resolved_default_model(
+    extra: dict[str, Any],
+    models: list[dict[str, Any]],
+) -> str | None:
+    """Return the saved default, or the first catalog id when none was saved.
+
+    An explicit ``default_model: null`` stays empty instead of falling back to
+    the first model — that is how a cleared default reopens as a blank field.
+    """
+    if "default_model" in extra:
+        raw = extra.get("default_model")
+        if isinstance(raw, str) and raw.strip():
+            return raw.strip()
+        return None
+    for model in models:
+        model_id = model.get("id")
+        if isinstance(model_id, str) and model_id.strip():
+            return model_id.strip()
+    return None
 
 
 def _provider_patch_updates(
@@ -122,9 +159,11 @@ def _provider_patch_updates(
     ``stream_usage`` is stored inside ``extra_json``. A patch that only sets
     that flag rewrites the current blob and must not clear the API key.
 
-    ``model`` is the dashboard's default-model choice. A non-empty id is moved
-    to the front of the catalog (that is the slot the UI reads back). An
-    omitted ``model`` leaves the catalog order alone.
+    ``model`` is the dashboard's default-model choice. A non-empty id that is
+    in the catalog is moved to the front (the slot legacy clients read) and
+    recorded on ``extra_json.default_model``. ``""`` or ``null`` records a
+    cleared default without reordering the catalog. Omitting ``model`` leaves
+    both the order and the saved default alone.
     """
     fields = body.model_fields_set
     updates: dict[str, Any] = {}
@@ -145,14 +184,18 @@ def _provider_patch_updates(
     if "models" in fields:
         write_models = True
         models_to_store = list(body.models) if body.models is not None else None
-    chosen = body.model.strip() if isinstance(body.model, str) else ""
-    if "model" in fields and chosen:
-        base = models_to_store if write_models else list(current_models or [])
-        if base is not None:
-            reordered = _with_default_model_first(base, chosen)
-            if write_models or reordered != base:
+    if "model" in fields:
+        chosen = body.model.strip() if isinstance(body.model, str) else ""
+        extra_source = updates.get("extra_json", current_extra_json)
+        catalog = models_to_store if write_models else list(current_models or [])
+        if chosen and catalog is not None and any(item.get("id") == chosen for item in catalog):
+            reordered = _with_default_model_first(catalog, chosen)
+            if write_models or reordered != catalog:
                 models_to_store = reordered
                 write_models = True
+            updates["extra_json"] = _extra_with_default_model(extra_source, chosen)
+        elif not chosen:
+            updates["extra_json"] = _extra_with_default_model(extra_source, None)
     if write_models:
         updates["models_json"] = (
             json.dumps(models_to_store) if models_to_store is not None else None
@@ -225,6 +268,7 @@ def _row_to_dict(r: Any) -> dict[str, Any]:
         "note": r.note,
         "enabled": bool(r.enabled),
         "stream_usage": resolve_provider_stream_usage(provider_name=r.name, extra=extra),
+        "default_model": _resolved_default_model(extra, models),
     }
 
 

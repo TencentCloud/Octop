@@ -23,7 +23,11 @@ import {
 import { Download, Key, Loader2, Trash2, X, Zap } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { request } from "../../../../../api/request";
-import type { ProviderRow, ProviderModel } from "../../useProviders";
+import {
+  providerDefaultModelId,
+  type ProviderModel,
+  type ProviderRow,
+} from "../../useProviders";
 import { isEmbeddingModel } from "../../useProviders";
 import { fetchProviderModels, testProviderDraft } from "../../providerApi";
 import { getProviderDocs } from "../../../../../assets/providers";
@@ -657,9 +661,7 @@ export function ProviderConfigModal({
     if (!open) return;
     // Only hydrate when the modal opens (or provider id changes), so
     // background refreshes / local model toggles do not reset the form.
-    const currentDefaultModel = provider.models?.length
-      ? provider.models[0].id
-      : "";
+    const currentDefaultModel = providerDefaultModelId(provider);
     form.setFieldsValue({
       kind: provider.kind,
       base_url: provider.base_url ?? "",
@@ -702,10 +704,8 @@ export function ProviderConfigModal({
       ) {
         payload.stream_usage = Boolean(values.stream_usage);
       }
-      // default model
-      const existingDefault = provider.models?.length
-        ? provider.models[0].id
-        : "";
+      // default model — null/blank clears; omit the key when it did not change
+      const existingDefault = providerDefaultModelId(provider);
       if ((values.model ?? "") !== existingDefault)
         payload.model = values.model?.trim() || null;
 

@@ -73,6 +73,18 @@ export interface ProviderRow {
   enabled: boolean;
   /** Resolved: custom defaults off, bundled presets default on. */
   stream_usage?: boolean;
+  /** Saved default. null means cleared; omitted falls back to models[0]. */
+  default_model?: string | null;
+}
+
+export function providerDefaultModelId(provider: {
+  default_model?: string | null;
+  models?: { id: string }[] | null;
+}): string {
+  if (provider.default_model !== undefined) {
+    return provider.default_model?.trim() || "";
+  }
+  return provider.models?.length ? provider.models[0].id : "";
 }
 
 export interface UseProvidersResult {
