@@ -19,6 +19,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { useSearchParams } from "react-router-dom";
 import { Input, Spin, Tabs, Segmented, Tooltip } from "antd";
 import { message } from "@/utils/antdMessage";
 
@@ -123,7 +124,19 @@ export default function ExpertsPage() {
   );
 
   // ── Tab state ──────────────────────────────────────────────────
-  const [activeTab, setActiveTab] = useState<TabKey>("my");
+  const [searchParams] = useSearchParams();
+  const [activeTab, setActiveTab] = useState<TabKey>(() => {
+    const tab = searchParams.get("tab");
+    if (
+      tab === "my" ||
+      tab === "teams" ||
+      tab === "library" ||
+      tab === "market"
+    ) {
+      return tab;
+    }
+    return "my";
+  });
   const { viewMode, setViewMode, showCardView } = useCardTableView(
     loadViewMode(),
   );
