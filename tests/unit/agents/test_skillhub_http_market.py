@@ -232,8 +232,7 @@ def test_parse_skillhub_package_prefers_exact_manifest_over_case_variant() -> No
 
     files = dict(skillhub_market.parse_skillhub_package(payload))
 
-    assert files["SKILL.md"] == b"---\nname: a\n---\n"
-    assert files["skill.md"] == b"---\nname: b\n---\n"
+    assert files == {"SKILL.md": b"---\nname: a\n---\n"}
 
 
 def test_parse_skillhub_package_rejects_multiple_case_variants() -> None:
@@ -243,14 +242,14 @@ def test_parse_skillhub_package_rejects_multiple_case_variants() -> None:
         skillhub_market.parse_skillhub_package(payload)
 
 
-def test_parse_skillhub_package_rejects_case_variants_under_wrapper() -> None:
+def test_parse_skillhub_package_prefers_exact_manifest_under_wrapper() -> None:
     payload = _zip_bytes(
         {"nurse/SKILL.md": "---\nname: a\n---\n", "nurse/skill.md": "---\nname: b\n---\n"}
     )
 
     files = dict(skillhub_market.parse_skillhub_package(payload))
 
-    assert files["SKILL.md"] == b"---\nname: a\n---\n"
+    assert files == {"SKILL.md": b"---\nname: a\n---\n"}
 
 
 def test_parse_skillhub_package_rejects_lowercase_manifest_with_invalid_utf8() -> None:
