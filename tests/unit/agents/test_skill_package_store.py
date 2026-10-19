@@ -110,6 +110,19 @@ def test_skill_validation_errors_are_mapped_to_octop_errors(
     assert exc_info.value.code is ErrorCode.SLASH_BAD_ARGS
 
 
+def test_reject_drive_path_before_replacing_existing_skill(store: SkillPackageStore) -> None:
+    row = store.create(name="P", description="", created_by="42")
+    store.write_skill(row.id, "demo", [("SKILL.md", b"# original")])
+    # Keep even the unfixed test's writes on the temporary directory's own drive.
+    drive = store.root.drive or "C:"
+    with pytest.raises(OctopError) as exc_info:
+        store.write_skill(
+            row.id, "demo", [("SKILL.md", b"# replacement"), (f"{drive}outside.txt", b"bad")]
+        )
+    assert exc_info.value.code is ErrorCode.SLASH_BAD_ARGS
+    assert (store.package_skills_dir(row.id) / "demo" / "SKILL.md").read_bytes() == b"# original"
+
+
 def test_write_skill_recreates_empty_directories(store: SkillPackageStore) -> None:
     row = store.create(name="P", description="", created_by="42")
 
