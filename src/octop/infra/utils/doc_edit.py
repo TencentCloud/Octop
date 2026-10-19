@@ -290,17 +290,25 @@ def _parse_pipe_row(raw: str) -> list[str] | None:
     line = raw.strip()
     if not line.startswith("|") or not line.endswith("|"):
         return None
+    body = line[1:-1]
     cells: list[str] = []
     current: list[str] = []
-    for char in line[1:-1]:
-        if char == "\\":
+    index = 0
+    while index < len(body):
+        char = body[index]
+        if char == "\\" and index + 1 < len(body):
+            # Keep the escape pair together: an escaped pipe is cell content,
+            # not a column separator.
             current.append(char)
+            current.append(body[index + 1])
+            index += 2
             continue
         if char == "|":
             cells.append("".join(current).strip().replace("\\|", "|"))
             current = []
         else:
             current.append(char)
+        index += 1
     cells.append("".join(current).strip().replace("\\|", "|"))
     return cells
 

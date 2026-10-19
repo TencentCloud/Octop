@@ -117,3 +117,19 @@ def test_to_markdown_empty_file_is_empty_document() -> None:
 def test_to_markdown_rejects_non_zip() -> None:
     with pytest.raises(BadZipFile):
         DocxDocConverter.to_markdown(b"this is not a docx zip")
+
+
+def test_pipe_table_cell_keeps_an_escaped_vertical_bar() -> None:
+    document = Document()
+    document.add_heading("Report Title", level=1)
+    table = document.add_table(rows=2, cols=2)
+    table.rows[0].cells[0].text = "name"
+    table.rows[0].cells[1].text = "value"
+    table.rows[1].cells[0].text = "a | b"
+    table.rows[1].cells[1].text = "c"
+
+    markdown = DocxDocConverter.to_markdown(_docx_bytes(document))
+    assert "| a \\| b | c |" in markdown
+
+    rewritten = DocxDocConverter.to_markdown(DocxDocConverter.from_markdown(markdown))
+    assert "| a \\| b | c |" in rewritten
