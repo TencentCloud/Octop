@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import asyncio
 import mimetypes
 import tempfile
 from pathlib import Path
@@ -115,7 +114,8 @@ async def reload_plugins(
     disk install does not update the running server until reload or restart.
     """
     mgr = _plugin_manager(server)
-    loaded = mgr.load_installed(install_deps=True)
+    await mgr.prepare_reload()
+    loaded = mgr.load_installed(install_deps=False)
     if server.app_runtime is not None:
         await server.refresh_plugin_channels()
         await server.app_runtime.agent_registry.reload_all()
@@ -140,7 +140,7 @@ async def install_plugin(
 ) -> dict[str, Any]:
     mgr = _plugin_manager(server)
     try:
-        loaded = mgr.install_url(body.url)
+        loaded = await mgr.install_async("install_url", body.url)
     except OctopError:
         raise
     except Exception as exc:
@@ -173,7 +173,9 @@ async def upload_plugin(
     ``force=True`` overwrites an already-installed plugin with the same id.
     """
     mgr = _plugin_manager(server)
-    raw = await file.read()
+    raw = await file.read(64 * 1024 * 1024 + 1)
+    if len(raw) > 64 * 1024 * 1024:
+        raise OctopError(ErrorCode.PLUGIN_INVALID_ARCHIVE, "plugin archive exceeds 64 MiB")
     if not raw:
         raise OctopError(ErrorCode.PLUGIN_INVALID_ARCHIVE, "empty plugin archive")
     try:
@@ -181,7 +183,7 @@ async def upload_plugin(
             tmp.write(raw)
             tmp_path = Path(tmp.name)
         try:
-            loaded = mgr.install_archive(tmp_path, force=force)
+            loaded = await mgr.install_async("install_archive", tmp_path, force=force)
         finally:
             tmp_path.unlink(missing_ok=True)
     except OctopError:
@@ -225,12 +227,8 @@ async def install_market_plugin(
 ) -> dict[str, Any]:
     """Copy a catalog plugin into ``~/.octop/plugins`` (future: download ZIP)."""
     mgr = _plugin_manager(server)
-    loop = asyncio.get_running_loop()
     try:
-        loaded = await loop.run_in_executor(
-            None,
-            lambda: mgr.install_from_market(plugin_id, force=force),
-        )
+        loaded = await mgr.install_async("install_from_market", plugin_id, force=force)
     except OctopError:
         raise
     except Exception as exc:

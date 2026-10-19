@@ -111,7 +111,7 @@ def test_install_url_rejects_non_zip(tmp_path: Path, monkeypatch: pytest.MonkeyP
         return (str(filename), None)
 
     monkeypatch.setattr(
-        "octop.infra.agents.plugins.manager.urllib.request.urlretrieve",
+        "octop.infra.agents.plugins.manager.download",
         fake_retrieve,
     )
     with pytest.raises(OctopError) as excinfo:
@@ -138,7 +138,7 @@ def test_install_url_accepts_valid_zip(tmp_path: Path, monkeypatch: pytest.Monke
         return (str(filename), None)
 
     monkeypatch.setattr(
-        "octop.infra.agents.plugins.manager.urllib.request.urlretrieve",
+        "octop.infra.agents.plugins.manager.download",
         fake_retrieve,
     )
     loaded = mgr.install_url("https://example.com/echo-tool.zip", force=True)

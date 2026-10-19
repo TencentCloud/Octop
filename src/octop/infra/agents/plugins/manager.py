@@ -2,15 +2,19 @@
 
 from __future__ import annotations
 
+import asyncio
+import concurrent.futures
 import hashlib
 import json
 import logging
 import re
 import shutil
+import sys
 import tempfile
+import threading
 import urllib.error
-import urllib.request
 import zipfile
+from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 from urllib.parse import urlparse
@@ -25,6 +29,12 @@ from octop_harness.plugins import (
     unload_plugin,
 )
 
+from octop.infra.agents.plugins.installation import (
+    MAX_ARCHIVE_BYTES,
+    MAX_EXTRACTED_BYTES,
+    download,
+    install_dependencies,
+)
 from octop.infra.agents.plugins.legacy_imports import ensure_legacy_harness_agent_alias
 from octop.infra.errors import ErrorCode, OctopError, corrupt_config_error
 from octop.infra.utils.json_file import (
@@ -135,7 +145,8 @@ def _assert_http_url(url: str) -> None:
 
 
 def _assert_zip_magic(archive: Path) -> None:
-    head = archive.read_bytes()[:4]
+    with archive.open("rb") as stream:
+        head = stream.read(4)
     if len(head) < 2 or head[:2] != b"PK":
         raise OctopError(
             ErrorCode.PLUGIN_INVALID_ARCHIVE,
@@ -299,6 +310,59 @@ class PluginManager:
         # a global disable unloads the plugin from the process registry.
         self._tool_catalog: dict[str, list[dict[str, Any]]] = {}
         self._skill_catalog: dict[str, set[str]] = {}
+        self._install_locks: dict[str, threading.Lock] = {}
+        self._install_guard = threading.Lock()
+        self._install_context = threading.local()
+
+    async def prepare_reload(self) -> None:
+        def prepare() -> None:
+            enabled = self.global_enabled_map()
+            for directory in discover_plugin_dirs(self._plugins_dir):
+                manifest = PluginManifest.load(directory / "plugin.yaml")
+                if enabled.get(manifest.id, True):
+                    install_dependencies(directory)
+
+        await asyncio.get_running_loop().run_in_executor(None, prepare)
+
+    async def install_async(self, method: str, *args: Any, **kwargs: Any) -> LoadedPlugin:
+        """Prepare in a worker, register on the event loop, and drain on cancellation."""
+        loop = asyncio.get_running_loop()
+
+        def worker() -> LoadedPlugin:
+            def on_loop(action: Callable[[], LoadedPlugin]) -> LoadedPlugin:
+                result: concurrent.futures.Future[LoadedPlugin] = concurrent.futures.Future()
+
+                def run() -> None:
+                    try:
+                        result.set_result(action())
+                    except BaseException as exc:
+                        result.set_exception(exc)
+
+                loop.call_soon_threadsafe(run)
+                return result.result()
+
+            self._install_context.commit = on_loop
+            try:
+                return getattr(self, method)(*args, **kwargs)  # type: ignore[no-any-return]
+            finally:
+                del self._install_context.commit
+
+        pending = loop.run_in_executor(None, worker)
+        try:
+            return await asyncio.shield(pending)
+        except asyncio.CancelledError:
+            # A cancelled HTTP request must not release the plugin lock while
+            # its worker can still replace files or mutate the registry.
+            while not pending.done():
+                try:
+                    await asyncio.shield(pending)
+                except asyncio.CancelledError:
+                    continue
+                except Exception:
+                    break
+            if not pending.cancelled():
+                pending.exception()
+            raise
 
     @property
     def plugins_dir(self) -> Path:
@@ -390,9 +454,7 @@ class PluginManager:
                 ErrorCode.NOT_FOUND,
                 f"marketplace plugin {plugin_id!r} not found",
             )
-        loaded = self.install_path(source, force=force)
-        _write_global_plugin_enabled(self._config_path, loaded.manifest.id, True)
-        return loaded
+        return self.install_path(source, force=force, persist_enabled=True)
 
     def resolve_market_ui_file(self, plugin_id: str, rel_path: str) -> Path:
         """Resolve a marketplace catalog asset (icons only)."""
@@ -640,7 +702,9 @@ class PluginManager:
             f"plugin UI file not found: {cleaned}",
         )
 
-    def install_path(self, source: Path, *, force: bool = False) -> LoadedPlugin:
+    def install_path(
+        self, source: Path, *, force: bool = False, persist_enabled: bool = False
+    ) -> LoadedPlugin:
         source = source.resolve()
         if not source.is_dir():
             raise OctopError(
@@ -654,25 +718,71 @@ class PluginManager:
                 ErrorCode.PLUGIN_INVALID_ARCHIVE,
                 f"invalid plugin manifest: {exc}",
             ) from exc
-        dest = self._plugins_dir / manifest.id
-        if dest.exists():
-            if not force:
+        with self._install_guard:
+            lock = self._install_locks.setdefault(manifest.id, threading.Lock())
+        if not lock.acquire(blocking=False):
+            raise OctopError(ErrorCode.PLUGIN_ALREADY_EXISTS, "plugin installation in progress")
+        try:
+            dest = self._plugins_dir / manifest.id
+            if dest.exists() and not force:
                 raise OctopError(
                     ErrorCode.PLUGIN_ALREADY_EXISTS,
                     f"plugin already installed: {manifest.id}",
                     details={"id": manifest.id},
                 )
-            shutil.rmtree(dest)
-        shutil.copytree(source, dest)
-        unload_plugin(manifest.id)
-        try:
-            return _load_plugin_dir(dest, install_deps=True)
+            with tempfile.TemporaryDirectory(dir=self._plugins_dir.parent) as tmp:
+                staged = Path(tmp) / "new"
+                backup = Path(tmp) / "old"
+                shutil.copytree(source, staged)
+                install_dependencies(staged)
+
+                def commit() -> LoadedPlugin:
+                    old = PluginRegistry().get(manifest.id)
+                    prefix = "harness_plugin_" + manifest.id.replace("-", "_")
+                    modules = {
+                        k: v
+                        for k, v in sys.modules.copy().items()
+                        if k == prefix or k.startswith(prefix + ".")
+                    }
+                    moved_old = False
+                    moved_new = False
+                    try:
+                        if dest.exists():
+                            dest.rename(backup)
+                            moved_old = True
+                        staged.rename(dest)
+                        moved_new = True
+                        unload_plugin(manifest.id)
+                        loaded = _load_plugin_dir(dest, install_deps=False)
+                        enabled = self.global_enabled_map().get(manifest.id, True)
+                        if not enabled:
+                            unload_plugin(manifest.id)
+                        if persist_enabled:
+                            _write_global_plugin_enabled(self._config_path, manifest.id, enabled)
+                        return loaded
+                    except Exception:
+                        if moved_new:
+                            unload_plugin(manifest.id)
+                            dest.rename(staged)
+                        if moved_old:
+                            backup.rename(dest)
+                        sys.modules.update(modules)
+                        if old is not None:
+                            PluginRegistry().register(old)
+                        raise
+
+                dispatch = getattr(self._install_context, "commit", None)
+                return dispatch(commit) if dispatch else commit()
+        except OctopError:
+            raise
         except Exception as exc:
             raise OctopError(
                 ErrorCode.PLUGIN_INSTALL_FAILED,
-                f"failed to load plugin: {exc}",
+                f"failed to install plugin: {exc}",
                 details={"reason": str(exc)},
             ) from exc
+        finally:
+            lock.release()
 
     def install_archive(self, archive: Path, *, force: bool = False) -> LoadedPlugin:
         """Install a plugin from a local ZIP archive.
@@ -680,15 +790,24 @@ class PluginManager:
         The archive must contain exactly one plugin directory (at the zip root
         or in a single top-level folder) with a ``plugin.yaml`` manifest.
         """
+        if archive.stat().st_size > MAX_ARCHIVE_BYTES:
+            raise OctopError(ErrorCode.PLUGIN_INVALID_ARCHIVE, "plugin archive exceeds 64 MiB")
         _assert_zip_magic(archive)
         with tempfile.TemporaryDirectory() as tmp:
             extract_to = Path(tmp) / "extract"
             extract_to.mkdir()
             try:
                 with zipfile.ZipFile(archive) as zf:
+                    if (
+                        sum(info.file_size for info in zf.infolist()) > MAX_EXTRACTED_BYTES
+                        or len(zf.infolist()) > 10000
+                    ):
+                        raise OctopError(
+                            ErrorCode.PLUGIN_INVALID_ARCHIVE, "plugin archive expands beyond limits"
+                        )
                     for member in zf.namelist():
                         target = (extract_to / member).resolve()
-                        if not str(target).startswith(str(extract_to.resolve())):
+                        if not target.is_relative_to(extract_to.resolve()):
                             raise OctopError(
                                 ErrorCode.PLUGIN_INVALID_ARCHIVE,
                                 "zip path traversal detected",
@@ -719,7 +838,7 @@ class PluginManager:
         with tempfile.TemporaryDirectory() as tmp:
             archive = Path(tmp) / "plugin.zip"
             try:
-                urllib.request.urlretrieve(resolved, archive)  # noqa: S310
+                download(resolved, archive)
             except urllib.error.HTTPError as exc:
                 raise OctopError(
                     ErrorCode.PLUGIN_INSTALL_FAILED,
@@ -733,7 +852,7 @@ class PluginManager:
                     f"download failed: {reason}",
                     details={"reason": str(reason)},
                 ) from exc
-            except OSError as exc:
+            except (OSError, ValueError) as exc:
                 raise OctopError(
                     ErrorCode.PLUGIN_INSTALL_FAILED,
                     f"download failed: {exc}",
