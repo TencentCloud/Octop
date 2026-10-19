@@ -248,17 +248,57 @@ def _read_zip_member(zf: zipfile.ZipFile, member: zipfile.ZipInfo) -> bytes:
     return b"".join(chunks)
 
 
+def _manifest_renames(
+    validated: list[tuple[zipfile.ZipInfo, str]],
+) -> dict[str, str]:
+    """Map a case-variant manifest to its canonical ``SKILL.md`` path.
+
+    SkillHub ships packages whose manifest is lowercase ``skill.md``. The store
+    and every reader require ``SKILL.md``, so the name is canonicalized here,
+    before UTF-8 coercion. An exact-case manifest always wins; several
+    non-canonical variants in the same directory are rejected, not guessed.
+    """
+    files = [clean for member, clean in validated if not member.is_dir()]
+    candidates = [name for name in files if "/" not in name and name.casefold() == "skill.md"]
+    if not candidates:
+        top_levels = {name.split("/", 1)[0] for name in files}
+        if len(top_levels) == 1:
+            prefix = f"{next(iter(top_levels))}/"
+            candidates = [
+                name
+                for name in files
+                if name.startswith(prefix)
+                and "/" not in name[len(prefix) :]
+                and name[len(prefix) :].casefold() == "skill.md"
+            ]
+    if not candidates:
+        return {}
+    canonical_names = {
+        f"{name.rsplit('/', 1)[0]}/SKILL.md" if "/" in name else "SKILL.md" for name in candidates
+    }
+    if canonical_names & set(files):
+        return {}
+    if len(candidates) > 1:
+        raise SkillHubPackageError(
+            f"SkillHub package has multiple SKILL.md entries: {', '.join(sorted(candidates))}"
+        )
+    return {candidates[0]: canonical_names.pop()}
+
+
 def parse_skillhub_package(payload: bytes) -> list[tuple[str, bytes]]:
     """Validate a SkillHub ZIP and return workspace-relative file payloads."""
     try:
         with zipfile.ZipFile(io.BytesIO(payload)) as zf:
+            validated = _validate_zip(zf)
+            renames = _manifest_renames(validated)
             files: list[tuple[str, bytes]] = []
-            for member, clean in _validate_zip(zf):
+            for member, clean in validated:
                 if member.is_dir():
                     continue
+                target = renames.get(clean, clean)
                 raw = _read_zip_member(zf, member)
                 try:
-                    files.append((clean, coerce_utf8_text_bytes(raw, path=clean)))
+                    files.append((target, coerce_utf8_text_bytes(raw, path=target)))
                 except InvalidSkillManifestEncodingError as exc:
                     raise SkillHubPackageError(str(exc)) from exc
     except SkillHubPackageError:
