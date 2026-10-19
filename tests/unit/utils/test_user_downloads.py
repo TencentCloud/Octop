@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
+
 from octop.infra.utils.user_downloads import (
     is_local_dashboard_request,
     request_hostname,
@@ -35,6 +37,17 @@ def test_unique_download_path_avoids_collision(tmp_path: Path) -> None:
     first.write_text("a", encoding="utf-8")
     second = unique_download_path("note.txt", home=tmp_path)
     assert second.name == "note (1).txt"
+
+
+@pytest.mark.parametrize("codepoint", range(32))
+def test_sanitize_download_filename_replaces_control_characters(codepoint: int) -> None:
+    assert sanitize_download_filename(f"report{chr(codepoint)}2026.txt") == "report_2026.txt"
+
+
+def test_save_download_with_control_character_preserves_payload(tmp_path: Path) -> None:
+    path = save_user_download("report\x01name.txt", b"download payload", home=tmp_path)
+    assert path.name == "report_name.txt"
+    assert path.read_bytes() == b"download payload"
 
 
 def test_save_user_download_writes_bytes(tmp_path: Path) -> None:

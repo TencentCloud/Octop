@@ -70,3 +70,29 @@ async def test_save_local_download_rejects_public_host(
             assert response.json()["error"]["code"] == "LOCAL_DOWNLOAD_UNAVAILABLE"
     finally:
         await srv.stop()
+
+
+async def test_save_local_download_sanitizes_control_character(
+    client, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    c, _srv, home = client
+    downloads = home / "Downloads"
+    downloads.mkdir()
+    monkeypatch.setattr(
+        "octop.infra.utils.user_downloads.downloads_dir", lambda home=None: downloads
+    )
+    monkeypatch.setattr("octop.api.routers.settings.reveal_download", lambda _path: None)
+    await bootstrap_admin(c, home)
+    token = await login(c)
+    response = await c.post(
+        "/api/downloads/local",
+        headers={**bearer(token), "Content-Type": "multipart/form-data; boundary=download-test"},
+        content=(
+            b'--download-test\r\nContent-Disposition: form-data; name="file"; '
+            b'filename="report\x01name.txt"\r\nContent-Type: text/plain\r\n\r\n'
+            b"payload\r\n--download-test--\r\n"
+        ),
+    )
+    assert response.status_code == 200, response.text
+    assert response.json()["filename"] == "report_name.txt"
+    assert (downloads / "report_name.txt").read_bytes() == b"payload"
