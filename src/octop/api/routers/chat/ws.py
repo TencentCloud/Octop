@@ -174,6 +174,12 @@ async def dashboard_chat_ws(
                         },
                     )
                 server.app_runtime.agent_registry.cancel_stream(agent_id, thread_id)
+                if discarded is not None and discarded.texts:
+                    await gateway.processor.persist_discarded_steers(
+                        thread_id,
+                        agent_id=agent_id,
+                        texts=discarded.texts,
+                    )
                 continue
 
             if msg_type == "steer_remove":

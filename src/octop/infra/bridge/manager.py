@@ -1968,6 +1968,12 @@ class BridgeManager:
         server = self._asgi_app.state.octop_server if self._asgi_app is not None else None
         if server is not None and server.app_runtime is not None:
             server.app_runtime.agent_registry.cancel_stream(agent_id, thread_id)
+        if discarded is not None and discarded.texts:
+            await gateway.processor.persist_discarded_steers(
+                thread_id,
+                agent_id=agent_id,
+                texts=discarded.texts,
+            )
         if not sess.closed:
             await sess.send_json({"type": "turn.end", "request_id": request_id})
 

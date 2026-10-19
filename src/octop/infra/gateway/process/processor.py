@@ -1824,6 +1824,50 @@ class GlobalProcessor:
                 exc_info=True,
             )
 
+    async def persist_discarded_steers(
+        self,
+        thread_id: str,
+        *,
+        agent_id: str,
+        texts: list[str],
+    ) -> None:
+        """Record steer follow-ups a cancel dropped before they ran (#2220).
+
+        The dashboard showed the queued message as sent; discarding it on
+        stop must not erase it from every store without a trace. Recording
+        is best-effort and never turns a successful cancel into a failure.
+        """
+        messages = [
+            HumanMessage(content=text, id=f"steer:{new_ulid()}:human")
+            for text in texts
+            if text.strip()
+        ]
+        if not messages:
+            return
+        try:
+            harness = self._agent_manager.get_agent(agent_id)
+            appended = await harness.aappend_messages(thread_id, messages)
+        except Exception:
+            logger.warning(
+                "failed to record discarded steer messages for thread=%s",
+                thread_id,
+                exc_info=True,
+            )
+            return
+        if self._thread_message_repo is None:
+            return
+        try:
+            self._thread_message_repo.append_if_ready(
+                thread_id,
+                message_inputs(appended, dedupe_missing_ids=True),
+            )
+        except Exception:
+            logger.warning(
+                "failed to append discarded steer projection for thread=%s",
+                thread_id,
+                exc_info=True,
+            )
+
 
 def _mcp_server_names(raw: Any) -> list[str] | None:
     if isinstance(raw, list):

@@ -11,7 +11,7 @@ import json
 import logging
 import threading
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any
 
 from octop.infra.gateway.process.message_keys import COMPOSER_CTX_KEY
@@ -76,6 +76,9 @@ class DiscardBundle:
     pending_ids: list[str]
     reason: DiscardReason
     seq: int
+    # Texts of the dropped steers, so the caller can keep a follow-up the
+    # user already saw as sent instead of losing it silently (#2220).
+    texts: list[str] = field(default_factory=list)
 
 
 @dataclass(frozen=True)
@@ -645,6 +648,7 @@ class SteerCoordinator:
             pending_ids=[item.pending_id for item in items],
             reason=reason,
             seq=seq,
+            texts=[item.text for item in items],
         )
 
     def _require(self, thread_id: str) -> TurnSteerState:
