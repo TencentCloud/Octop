@@ -8,6 +8,7 @@
 
 ### 修复
 - `OCTOP_HOME` 迁移数据目录后，首次配置向导密码文件随之写入 `<OCTOP_HOME>/octop-login.txt`；旧位置 `~/octop-login.txt` 自动继承，不再生成冲突密码（#2171）
+- Kimi 联网搜索不再写死已停服的 `moonshot-v1-128k`：模型可用 `MOONSHOT_SEARCH_MODEL` 覆盖（默认 `kimi-k2.6`），搜索配置抽屉新增可选的模型输入项。probe 同时按 Moonshot 现行规范改用 `$web_search` 内置函数、不再发送固定不可改的 `temperature`，并把 `resource_not_found_error` 说明成「模型不可用/无权限，请改 `MOONSHOT_SEARCH_MODEL`」，不再只透出 404（Fixes #1926）
 
 ## [1.0.2] - 2026-10-18
 
