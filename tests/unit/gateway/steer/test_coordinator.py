@@ -103,6 +103,28 @@ def test_discard_on_cancel() -> None:
     assert bundle.client_pending_ids == ["c1"]
 
 
+def test_discard_on_cancel_carries_queued_texts() -> None:
+    """A cancel must hand back the dropped texts so they can be kept (#2220)."""
+    c = SteerCoordinator()
+    turn_id, _, _ = c.begin_turn("t1")
+    c.admit(
+        "t1",
+        text="first follow-up",
+        client_pending_id="c1",
+        expected_turn_id=turn_id,
+    )
+    c.admit(
+        "t1",
+        text="second follow-up",
+        client_pending_id="c2",
+        expected_turn_id=turn_id,
+    )
+    c.mark_cancelling("t1")
+    bundle = c.discard("t1", reason="turn_cancelled")
+    assert isinstance(bundle, DiscardBundle)
+    assert bundle.texts == ["first follow-up", "second follow-up"]
+
+
 def test_follow_up_while_busy() -> None:
     c = SteerCoordinator()
     c.begin_turn("t1")
