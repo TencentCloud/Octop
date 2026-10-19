@@ -308,6 +308,7 @@ class AppRuntime:
             config_repo=services.repos.proactive_care_config_repo,
             session_repo=services.repos.session_repo,
             care_push_repo=services.repos.care_push_repo,
+            thread_repo=services.repos.thread_repo,
         )
         if self.trajectory_service is not None:
             from octop.infra.history.trajectory.store import TrajectoryStore  # noqa: PLC0415
@@ -593,6 +594,9 @@ class OctopServer:
             session_repo=self.services.repos.session_repo,
             agent_repo=self.services.repos.agent_repo,
             user_repo=self.services.repos.user_repo,
+            thread_repo=self.services.repos.thread_repo,
+            care_push_repo=self.services.repos.care_push_repo,
+            is_agent_busy=registry.is_agent_active,
             default_timezone=config.default_timezone,
         )
         registry.set_proactive_scheduler(proactive_scheduler)

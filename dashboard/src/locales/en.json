@@ -3873,9 +3873,9 @@
   },
   "proactiveConfig": {
     "title": "Proactive Reminders",
-    "description": "Let AI periodically review your memories and reach out at the right moment — like a thoughtful assistant who always has your back.",
+    "description": "Octop reaches out only after the chat has gone quiet and the clock is inside care hours. It won't interrupt an active conversation.",
     "enabled": "Enable Proactive Reminders",
-    "enabledTip": "When enabled, AI will regularly review your stored memories and proactively message you whenever it thinks something is worth bringing up.",
+    "enabledTip": "When enabled, Octop waits until care hours and until the chat has gone quiet. It won't cut into a conversation you're already in.",
     "every": "Check Every",
     "everyTip": "How often AI reviews your memories to see if there's anything worth reminding you about. Format: 30m, 1h, 2h30m",
     "everyPlaceholder": "e.g., 1h (every hour)",
@@ -3909,7 +3909,7 @@
     "minIntervalHours": "Min interval (hours)",
     "minIntervalMin": "Minimum interval is 1 hour",
     "minIntervalRequired": "Enter the minimum interval",
-    "timeRangeError": "Care hours start must be earlier than end",
+    "timeRangeError": "Start and end cannot be the same. An earlier end means the window crosses midnight.",
     "viewEpisodes": "Open Episodes →"
   },
   "chatWelcome": {
