@@ -223,7 +223,7 @@ New agents additionally keep system-scoped files under `{workspace}/.octop/` (e.
 
 **Database:** SQLite and PostgreSQL share one schema. Add or change tables via a numbered pair
 `infra/db/migrations/00N_description.sql` **and** `00N_description.pg.sql`, then bump the
-version assertion in `tests/unit/db/test_db_pool.py` (currently `v == 20`). Rebuilds that SQLite
+version assertion in `tests/unit/db/test_db_pool.py` (currently `v == 22`). Rebuilds that SQLite
 cannot express as `ALTER` live in `infra/db/migrate.py` helpers and must stay idempotent.
 
 Unreleased schema work on `develop` **folds into the current unreleased `00N`**, not a new
@@ -372,7 +372,7 @@ Boundary rules are in [§5](#5-module-boundaries). Additionally:
 | Pre-commit hooks | `make install-hooks` → `.githooks/pre-commit` (`make all` incl. `format-all` + dashboard build) |
 | What is a Thread? | `infra/gateway/threads.py`, `infra/db/repos/threads.py` |
 | Workspace backend resolution | `infra/backend/resolver.py`, `infra/backend/adapter.py` |
-| Connectors & OAuth | `infra/connectors/`, `api/routers/connectors.py` |
+| Connectors & OAuth | `infra/connectors/catalog.json` (built-in metadata + i18n), `infra/connectors/`, `api/routers/connectors.py`; human list: `docs/connectors.md` |
 | OpenAPI tags and API intro | `api/openapi_meta.py` |
 | Human-readable API reference | `docs/api.md` |
 | SharedServices / RepoBundle | `infra/db/services.py` |

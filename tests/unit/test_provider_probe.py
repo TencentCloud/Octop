@@ -31,6 +31,7 @@ def test_build_chat_model_includes_provider_id_and_model_name() -> None:
     assert provider.name == "HAI"
     assert model.id == "MiniMax-M2.7"
     assert model.name == "MiniMax-M2.7"
+    assert provider.stream_usage is False
 
 
 def _embedding_row(**overrides: Any) -> SimpleNamespace:

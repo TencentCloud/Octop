@@ -176,6 +176,59 @@ async def test_coordinator_slash_approve_resumes() -> None:
 
 
 @pytest.mark.asyncio
+async def test_coordinator_slash_approve_wakes_team_member_without_host_resume() -> None:
+    store = HitlPendingStore()
+    coordinator = HitlChannelCoordinator(store=store)
+    record = store.register(
+        thread_id="thr-room",
+        agent_id="host",
+        user_id=1,
+        session_key="sk1",
+        channel_type="feishu",
+        action_requests=[{"name": "execute", "args": {}}],
+        review_configs=None,
+    )
+    record.resume_agent_id = "member"
+    record.resume_thread_id = "thr-room~member"
+    delivered: list[tuple[str, list[dict[str, str]]]] = []
+
+    def deliver(pending_id: str, decisions: list[dict[str, str]]) -> bool:
+        delivered.append((pending_id, decisions))
+        return True
+
+    agent_manager = MagicMock()
+    ctx = MagicMock()
+    ctx.session_key = "sk1"
+    ctx.agent_id = "host"
+    ctx.user_id = 1
+    ctx.channel_type = "feishu"
+    ctx.thread_registry = MagicMock()
+
+    from octop_harness.slash import SlashCommand
+
+    events: list[MessageEvent] = []
+    async for ev in coordinator.iter_slash_resolution(
+        SlashCommand(name="approve", args=""),
+        ctx,
+        agent_manager=agent_manager,
+        locale="en",
+        member_hitl=deliver,
+    ):
+        events.append(ev)
+
+    assert delivered == [(record.pending_id, [{"type": "approve"}])]
+    assert agent_manager.resume_hitl.call_count == 0
+    assert store.get(record.pending_id) is not None
+    assert store.get(record.pending_id).status == "approved"  # type: ignore[union-attr]
+    assert any(
+        isinstance(c, TextContent) and "Approved" in c.text
+        for e in events
+        if e.content
+        for c in e.content
+    )
+
+
+@pytest.mark.asyncio
 async def test_coordinator_slash_approve_invalid_pending_id() -> None:
     store = HitlPendingStore()
     coordinator = HitlChannelCoordinator(store=store)
@@ -339,6 +392,223 @@ def test_hitl_store_resolve_pending_for_thread() -> None:
     assert pending is not None
     assert pending.action_requests[0]["name"] == "execute"
     assert store.resolve_pending_for_thread("thr-a", agent_id="agent1", user_id=2) is None
+    assert store.pending_thread_ids(agent_id="agent1", user_id=1) == frozenset({"thr-a", "thr-b"})
+    assert store.pending_thread_ids(agent_id="agent1", user_id=2) == frozenset()
+
+
+def test_hitl_store_reuses_equivalent_pending() -> None:
+    store = HitlPendingStore()
+    actions = [{"name": "execute", "args": {"command": "df"}}]
+    first = store.register(
+        thread_id="thr-a",
+        agent_id="agent1",
+        user_id=1,
+        session_key="sk",
+        channel_type="dashboard",
+        action_requests=actions,
+        review_configs=None,
+    )
+    again = store.register(
+        thread_id="thr-a",
+        agent_id="agent1",
+        user_id=1,
+        session_key="sk",
+        channel_type="dashboard",
+        action_requests=[{"args": {"command": "df"}, "name": "execute"}],
+        review_configs=None,
+    )
+    assert again is first
+    assert store.get(first.pending_id) is not None
+    assert store.get(first.pending_id).status == "pending"  # type: ignore[union-attr]
+    replaced = store.register(
+        thread_id="thr-a",
+        agent_id="agent1",
+        user_id=1,
+        session_key="sk",
+        channel_type="dashboard",
+        action_requests=[{"name": "write_file", "args": {}}],
+        review_configs=None,
+    )
+    assert replaced is not first
+    assert store.get(first.pending_id).status == "expired"  # type: ignore[union-attr]
+
+
+@pytest.mark.asyncio
+async def test_session_auto_approve_resumes_without_yielding_the_card() -> None:
+    from octop.infra.agents.security.hitl_session import (
+        HitlSessionPolicy,
+        HitlSessionPolicyStore,
+    )
+    from octop.infra.gateway.hitl.coordinator import iter_with_session_auto_approve
+
+    policies = HitlSessionPolicyStore()
+    policies.set("thr-a", HitlSessionPolicy(mode="allow_all"))
+    resumed: list[list[dict[str, object]]] = []
+
+    async def first_turn():
+        yield {
+            "type": "hitl_required",
+            "request": {"action_requests": [{"name": "execute", "args": {}}]},
+        }
+        yield {"type": "state_update", "data": {}}
+
+    async def resume(decisions: list[dict[str, object]]):
+        resumed.append(decisions)
+        yield {"type": "token", "content": "done-after-approve"}
+
+    chunks = [
+        chunk
+        async for chunk in iter_with_session_auto_approve(
+            first_turn(),
+            thread_id="thr-a",
+            policies=policies,
+            resume=resume,
+        )
+    ]
+    assert [chunk.get("type") for chunk in chunks] == ["state_update", "token"]
+    assert resumed == [[{"type": "approve"}]]
+
+
+@pytest.mark.asyncio
+async def test_session_auto_approve_yields_card_when_approve_is_forbidden() -> None:
+    from octop.infra.agents.security.hitl_session import (
+        HitlSessionPolicy,
+        HitlSessionPolicyStore,
+    )
+    from octop.infra.gateway.hitl.coordinator import iter_with_session_auto_approve
+
+    policies = HitlSessionPolicyStore()
+    policies.set("thr-a", HitlSessionPolicy(mode="allow_all"))
+    resumed: list[list[dict[str, object]]] = []
+
+    async def first_turn():
+        yield {
+            "type": "hitl_required",
+            "request": {
+                "action_requests": [{"name": "execute", "args": {}}],
+                "review_configs": [
+                    {"action_name": "execute", "allowed_decisions": ["reject"]},
+                ],
+            },
+        }
+
+    async def resume(decisions: list[dict[str, object]]):
+        resumed.append(decisions)
+        yield {"type": "token", "content": "should-not-run"}
+
+    chunks = [
+        chunk
+        async for chunk in iter_with_session_auto_approve(
+            first_turn(),
+            thread_id="thr-a",
+            policies=policies,
+            resume=resume,
+        )
+    ]
+    assert [chunk.get("type") for chunk in chunks] == ["hitl_required"]
+    assert resumed == []
+
+
+@pytest.mark.asyncio
+async def test_session_auto_approve_yields_card_when_resume_fails() -> None:
+    from octop.infra.agents.security.hitl_session import (
+        HitlSessionPolicy,
+        HitlSessionPolicyStore,
+    )
+    from octop.infra.gateway.hitl.coordinator import iter_with_session_auto_approve
+
+    policies = HitlSessionPolicyStore()
+    policies.set("thr-a", HitlSessionPolicy(mode="allow_all"))
+
+    async def first_turn():
+        yield {
+            "type": "hitl_required",
+            "request": {"action_requests": [{"name": "execute", "args": {}}]},
+        }
+
+    async def resume(_decisions: list[dict[str, object]]):
+        raise RuntimeError("graph rejected approve")
+        yield {"type": "token", "content": "unused"}  # pragma: no cover
+
+    chunks = [
+        chunk
+        async for chunk in iter_with_session_auto_approve(
+            first_turn(),
+            thread_id="thr-a",
+            policies=policies,
+            resume=resume,
+        )
+    ]
+    assert [chunk.get("type") for chunk in chunks] == ["hitl_required"]
+
+
+def test_hitl_store_keeps_each_team_member_pause() -> None:
+    store = HitlPendingStore()
+    first = store.register(
+        thread_id="thr-room",
+        agent_id="host",
+        user_id=1,
+        session_key="host:dashboard:1:dm",
+        channel_type="dashboard",
+        action_requests=[{"name": "execute", "args": {}}],
+        review_configs=None,
+        resume_agent_id="doctor",
+    )
+    second = store.register(
+        thread_id="thr-room",
+        agent_id="host",
+        user_id=1,
+        session_key="host:dashboard:1:dm",
+        channel_type="dashboard",
+        action_requests=[{"name": "write_file", "args": {}}],
+        review_configs=None,
+        resume_agent_id="nurse",
+    )
+    assert store.get(first.pending_id) is not None
+    assert store.get(first.pending_id).status == "pending"  # type: ignore[union-attr]
+    assert store.get(second.pending_id) is not None
+    assert store.get(second.pending_id).status == "pending"  # type: ignore[union-attr]
+    picked = store.resolve_pending_for_thread(
+        "thr-room",
+        agent_id="host",
+        user_id=1,
+        pending_id=first.pending_id,
+    )
+    assert picked is first
+    again = store.register(
+        thread_id="thr-room",
+        agent_id="host",
+        user_id=1,
+        session_key="host:dashboard:1:dm",
+        channel_type="dashboard",
+        action_requests=[{"name": "execute", "args": {"command": "df"}}],
+        review_configs=None,
+        resume_agent_id="doctor",
+    )
+    assert store.get(first.pending_id).status == "expired"  # type: ignore[union-attr]
+    assert store.get(second.pending_id).status == "pending"  # type: ignore[union-attr]
+    assert store.get(again.pending_id).status == "pending"  # type: ignore[union-attr]
+
+
+def test_hitl_store_resolves_team_member_pause_from_either_thread() -> None:
+    store = HitlPendingStore()
+    record = store.register(
+        thread_id="thr-room",
+        agent_id="host",
+        user_id=1,
+        session_key="host:dashboard:1:dm",
+        channel_type="dashboard",
+        action_requests=[{"name": "execute", "args": {}}],
+        review_configs=None,
+    )
+    record.resume_agent_id = "member"
+    record.resume_thread_id = "thr-room~member"
+    assert store.resolve_pending_for_thread("thr-room", agent_id="host", user_id=1) is record
+    assert (
+        store.resolve_pending_for_thread("thr-room~member", agent_id="member", user_id=1) is record
+    )
+    assert store.pending_thread_ids(agent_id="host", user_id=1) == frozenset({"thr-room"})
+    assert store.pending_thread_ids(agent_id="member", user_id=1) == frozenset({"thr-room~member"})
 
 
 def test_pending_hitl_payload() -> None:

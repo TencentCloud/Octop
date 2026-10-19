@@ -66,6 +66,26 @@ def test_update(repo: ProviderRepo):
     assert row.kind == "openai"  # unchanged
 
 
+def test_update_null_api_key_clears_it(repo: ProviderRepo):
+    pid = repo.create(
+        name="deepseek", kind="openai", api_key="sk-secret", base_url="https://api.deepseek.com/v1"
+    )
+    repo.update(pid, api_key=None)
+    row = repo.get(pid)
+    assert row is not None
+    assert row.api_key is None
+    assert row.base_url == "https://api.deepseek.com/v1"
+
+
+def test_update_omitted_api_key_is_kept(repo: ProviderRepo):
+    pid = repo.create(name="deepseek", kind="openai", api_key="sk-secret")
+    repo.update(pid, note="memo")
+    row = repo.get(pid)
+    assert row is not None
+    assert row.api_key == "sk-secret"
+    assert row.note == "memo"
+
+
 def test_delete(repo: ProviderRepo):
     pid = repo.create(name="openai", kind="openai")
     repo.delete(pid)
