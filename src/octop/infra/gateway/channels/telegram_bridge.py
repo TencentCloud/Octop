@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 import re
 from collections.abc import AsyncIterator, Awaitable, Callable
 from dataclasses import dataclass, fields
@@ -15,6 +16,7 @@ from octop_gateway.models import (
     MessageEventType,
     TextContent,
 )
+from octop_gateway.utils import close_event_stream
 
 from octop.infra.errors import ErrorCode, OctopError
 from octop.infra.gateway.hitl.format import extract_questions
@@ -23,6 +25,8 @@ from octop.infra.gateway.process.message_keys import (
     session_key_from_message,
 )
 from octop.infra.gateway.slash.parser import parse_slash
+
+logger = logging.getLogger(__name__)
 
 
 def validate_telegram_config(kind: str, config: dict[str, Any]) -> None:
@@ -113,8 +117,9 @@ class TelegramBridge:
         session_key = session_key_from_message(msg, agent_id=agent_id)
         pending_id = None
         failed = False
+        stream = self.processor(msg)
         try:
-            async for event in self.processor(msg):
+            async for event in stream:
                 failed = failed or event.type == MessageEventType.ERROR
                 pending_id = event.metadata.get("octop_hitl_pending_id") or pending_id
                 if event.type == MessageEventType.COMPLETED and not failed:
@@ -126,6 +131,11 @@ class TelegramBridge:
             if thread_id:
                 self.gateway._agent_manager.cancel_stream(agent_id, thread_id)
             raise
+        finally:
+            # GeneratorExit 穿过 async-for 不会关闭内层生成器；不显式关闭
+            # 会让整条 processor 链交给 GC 在异源 Context 里清理（曾致
+            # ContextVar reset 崩溃、resume 中途丢失）。
+            await close_event_stream(stream)
 
     async def _send_choices(
         self, msg: InboundMessage, session_key: str, pending_id: str | None
@@ -252,29 +262,45 @@ class TelegramBridge:
         state = msg.button_state
         agent_id = msg.tenant_id or ""
         session_key = session_key_from_message(msg, agent_id=agent_id)
+        reason = self._button_reject_reason(msg, state, agent_id, session_key)
+        if reason is not None:
+            # 按钮点击被静默丢弃是"点击没反应"的直接表现，必须留下线索。
+            logger.warning(
+                "telegram button reply dropped: agent=%s session=%s reason=%s text=%r",
+                agent_id,
+                session_key,
+                reason,
+                state.text,
+            )
+            return False
+        return True
+
+    def _button_reject_reason(
+        self, msg: _ButtonReply, state: _ButtonState, agent_id: str, session_key: str
+    ) -> str | None:
         current_owner = self.gateway._repos.agent_repo.get(agent_id)
         if current_owner is None or current_owner.user_id != state.owner_id:
-            return False
+            return "owner_changed"
         if self.gateway.thread_registry.get_bound_thread_id(session_key) != state.thread_id:
-            return False
+            return "thread_rebound"
         if (
             state.text.startswith("/model ")
             and state.text.removeprefix("/model ") not in self._model_refs()
         ):
-            return False
+            return "model_unavailable"
         if state.pending_id is not None:
             record = self.gateway.processor.hitl_coordinator.store.get_pending(
                 state.pending_id, session_key=session_key, agent_id=agent_id
             )
-            if (
-                record is None
-                or record.ask_question_index != state.question_index
-                or record.user_id != resolve_user_id_for_message(msg, agent_owner_id=state.owner_id)
-            ):
-                return False
+            if record is None:
+                return "pending_expired_or_resolved"
+            if record.ask_question_index != state.question_index:
+                return "question_index_changed"
+            if record.user_id != resolve_user_id_for_message(msg, agent_owner_id=state.owner_id):
+                return "user_mismatch"
             if (
                 self.gateway.thread_registry.get_bound_thread_id(record.session_key)
                 != record.thread_id
             ):
-                return False
-        return True
+                return "record_thread_rebound"
+        return None

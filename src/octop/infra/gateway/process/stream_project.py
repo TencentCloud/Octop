@@ -8,6 +8,7 @@ from typing import TYPE_CHECKING, Any
 
 from octop_gateway.media import MediaBackend
 from octop_gateway.models import MessageEvent
+from octop_gateway.utils import close_event_stream
 
 from octop.i18n import channel_tool_hint_end, channel_tool_hint_start, tool_display_name
 from octop.infra.gateway.hitl.format import format_hitl_card, normalize_hitl_request
@@ -228,7 +229,7 @@ async def project_stream(
     hitl_ctx: HitlStreamContext | None = None,
 ) -> AsyncIterator[MessageEvent]:
     del media_backend  # IM tool media uses agent.backend directly
-    async for ev in _project_chunks(
+    chunk_stream = _project_chunks(
         agent_manager.stream(agent_id, request),
         agent_manager=agent_manager,
         agent_id=agent_id,
@@ -238,8 +239,12 @@ async def project_stream(
         projection_state=projection_state,
         hitl_coordinator=hitl_coordinator,
         hitl_ctx=hitl_ctx,
-    ):
-        yield ev
+    )
+    try:
+        async for ev in chunk_stream:
+            yield ev
+    finally:
+        await close_event_stream(chunk_stream)
 
 
 async def project_resume_stream(
@@ -255,7 +260,7 @@ async def project_resume_stream(
     hitl_coordinator: HitlChannelCoordinator | None = None,
     hitl_ctx: HitlStreamContext | None = None,
 ) -> AsyncIterator[MessageEvent]:
-    async for ev in _project_chunks(
+    chunk_stream = _project_chunks(
         agent_manager.resume_hitl(agent_id, thread_id, decisions),
         agent_manager=agent_manager,
         agent_id=agent_id,
@@ -265,5 +270,9 @@ async def project_resume_stream(
         projection_state=projection_state,
         hitl_coordinator=hitl_coordinator,
         hitl_ctx=hitl_ctx,
-    ):
-        yield ev
+    )
+    try:
+        async for ev in chunk_stream:
+            yield ev
+    finally:
+        await close_event_stream(chunk_stream)

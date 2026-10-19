@@ -6,11 +6,14 @@ Does not change the global SecurityPolicy. ``ask_user_question`` is never skippe
 from __future__ import annotations
 
 import json
+import logging
 from collections.abc import Iterable, Iterator
 from contextlib import contextmanager
 from contextvars import ContextVar, Token
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Literal
+
+logger = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
     from octop.infra.db.repos.threads import ThreadRepo
@@ -175,7 +178,12 @@ def hitl_thread_scope(thread_id: str | None) -> Iterator[None]:
     try:
         yield
     finally:
-        _CURRENT_HITL_THREAD.reset(token)
+        try:
+            _CURRENT_HITL_THREAD.reset(token)
+        except ValueError:
+            # GC 终结异步生成器时运行在派生 Context，token 无法跨 Context
+            # reset；该 Context 随即丢弃，降级为日志即可。
+            logger.debug("hitl_thread_scope reset skipped in foreign context")
 
 
 def current_hitl_thread_id() -> str | None:

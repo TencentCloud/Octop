@@ -35,7 +35,11 @@ def turn_model_scope(model: str) -> Iterator[None]:
     try:
         yield
     finally:
-        _TURN_MODEL.reset(token)
+        try:
+            _TURN_MODEL.reset(token)
+        except ValueError:
+            # 同 hitl_thread_scope：GC 终结的派生 Context 无法 reset。
+            logger.debug("turn_model_scope reset skipped in foreign context")
 
 
 def current_turn_model() -> str:
