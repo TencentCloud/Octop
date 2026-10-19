@@ -221,6 +221,7 @@ class ProviderStore:
                 if isinstance(raw_headers, dict)
                 else {}
             )
+            proxy = str(extra.get("proxy") or "").strip() or None
             out.append(
                 ProviderConfig(
                     id=row.name,
@@ -230,6 +231,7 @@ class ProviderStore:
                     name=row.name,
                     models=models,
                     headers=headers,
+                    proxy=proxy,
                     session_header=session_header_for_provider(row.name, row.base_url),
                     stream_usage=resolve_provider_stream_usage(
                         provider_name=row.name,

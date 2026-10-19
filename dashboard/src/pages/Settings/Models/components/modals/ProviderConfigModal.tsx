@@ -64,6 +64,41 @@ interface ProviderConfigForm {
   note?: string;
   kind: string;
   stream_usage?: boolean;
+  proxy?: string;
+}
+
+/** Read ``extra_json.proxy`` from a stored provider row ("" when absent). */
+function proxyFromExtra(extraJson?: string | null): string {
+  if (!extraJson) return "";
+  try {
+    const extra = JSON.parse(extraJson) as Record<string, unknown>;
+    return typeof extra.proxy === "string" ? extra.proxy : "";
+  } catch {
+    return "";
+  }
+}
+
+/**
+ * Merge a draft proxy value into the original ``extra_json`` string.
+ * Empty proxy removes the key; an empty object collapses to ``null``.
+ */
+function mergeExtraJson(
+  original: string | null | undefined,
+  proxy?: string,
+): string | null {
+  let extra: Record<string, unknown> = {};
+  if (original) {
+    try {
+      const parsed = JSON.parse(original) as Record<string, unknown>;
+      if (parsed && typeof parsed === "object") extra = parsed;
+    } catch {
+      /* ignore malformed JSON */
+    }
+  }
+  const trimmed = proxy?.trim();
+  if (trimmed) extra.proxy = trimmed;
+  else delete extra.proxy;
+  return Object.keys(extra).length > 0 ? JSON.stringify(extra) : null;
 }
 
 interface ProviderConfigModalProps {
@@ -667,6 +702,7 @@ export function ProviderConfigModal({
       model: currentDefaultModel,
       note: provider.note ?? "",
       stream_usage: provider.stream_usage !== false,
+      proxy: proxyFromExtra(provider.extra_json),
     });
     setDraftModels(
       (provider.models ?? []).map((m) => ({
@@ -701,6 +737,10 @@ export function ProviderConfigModal({
         Boolean(values.stream_usage) !== (provider.stream_usage !== false)
       ) {
         payload.stream_usage = Boolean(values.stream_usage);
+      }
+      const draftProxy = values.proxy ?? "";
+      if (draftProxy.trim() !== proxyFromExtra(provider.extra_json).trim()) {
+        payload.extra_json = mergeExtraJson(provider.extra_json, draftProxy);
       }
       // default model
       const existingDefault = provider.models?.length
@@ -836,6 +876,10 @@ export function ProviderConfigModal({
               base_url: draftBaseUrl || provider.base_url,
               model_id: modelId,
               embedding,
+              extra_json: mergeExtraJson(
+                provider.extra_json,
+                values.proxy as string | undefined,
+              ),
             })
           : await request<{
               ok: boolean;
@@ -926,6 +970,10 @@ export function ProviderConfigModal({
         api_key: apiKey,
         base_url: draftBaseUrl || provider.base_url,
         name: provider.name,
+        extra_json: mergeExtraJson(
+          provider.extra_json,
+          values.proxy as string | undefined,
+        ),
       });
       if (!result.ok) {
         message.error(
@@ -1027,6 +1075,14 @@ export function ProviderConfigModal({
               extra={t("models.baseUrlExtra")}
             >
               <Input placeholder="https://api.openai.com/v1" />
+            </Form.Item>
+
+            <Form.Item
+              name="proxy"
+              label={t("models.httpProxyLabel")}
+              extra={t("models.httpProxyExtra")}
+            >
+              <Input placeholder="http://127.0.0.1:7890" />
             </Form.Item>
 
             <Form.Item name="api_key" label="API Key" extra={apiKeyExtra}>
