@@ -49,6 +49,9 @@
 - 输入栏不常用的入口收进「+」。没有开启审批时，不再出现批准按钮
 - 飞牛提供 ARM 安装包，安装后走建账号向导
 
+### 新增
+- 搜索服务新增 DeepSeek 官方 Search / Fetch：配置 `DEEPSEEK_API_KEY` 后即可在「设置 → AI 搜索」中配置并测试连通性（`POST /api/search/deepseek/test`），智能体获得 `deepseek_search`（自研搜索引擎，支持 `site:`、`lang:`、`after:`/`before:` 语法）与 `deepseek_fetch`（网页正文抓取为 Markdown）两个内置工具，可在工具设置中启停。
+
 ## [1.0.2b9] - 2026-10-16
 
 ### 新增

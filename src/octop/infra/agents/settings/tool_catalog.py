@@ -26,6 +26,8 @@ _WEB_SEARCH_TOOLS: frozenset[str] = frozenset(
         "google_search",
         "kimi_search",
         "searchfree_search",
+        "deepseek_search",
+        "deepseek_fetch",
     }
 )
 _MEDIA_TOOLS: frozenset[str] = frozenset({"generate_image", "generate_video"})
@@ -74,6 +76,8 @@ BUILTIN_TOOL_CATALOG: tuple[BuiltinToolEntry, ...] = (
     BuiltinToolEntry("google_search", "web"),
     BuiltinToolEntry("kimi_search", "web"),
     BuiltinToolEntry("searchfree_search", "web"),
+    BuiltinToolEntry("deepseek_search", "web"),
+    BuiltinToolEntry("deepseek_fetch", "web"),
     BuiltinToolEntry("generate_image", "media"),
     BuiltinToolEntry("generate_video", "media"),
     BuiltinToolEntry("memory_search", "memory"),

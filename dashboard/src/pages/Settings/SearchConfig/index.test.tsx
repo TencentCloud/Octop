@@ -54,4 +54,13 @@ describe("<SearchConfigPage />", () => {
 
     expect(screen.getByText("当前搜索源：Tavily")).toBeInTheDocument();
   });
+
+  it("lists the DeepSeek provider and picks it up once configured", async () => {
+    api.listEnvs.mockResolvedValue(envResp(["DEEPSEEK_API_KEY"]));
+
+    render(<SearchConfigPage />);
+    await waitFor(() => expect(api.listEnvs).toHaveBeenCalled());
+
+    expect(screen.getByText("当前搜索源：DeepSeek")).toBeInTheDocument();
+  });
 });
