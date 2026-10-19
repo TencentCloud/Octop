@@ -24,6 +24,8 @@ import PageShell from "../../../layouts/PageShell";
 import TabBar, { type TabBarItem } from "../../../components/TabLabel/TabBar";
 import StreamSetupGuide from "../../../components/StreamSetupGuide/StreamSetupGuide";
 import { OctopEmptyMascot } from "../../../components/EmptyState/OctopEmptyMascot";
+import { ResourceVisibilityFields } from "../../../components/ResourceVisibilityFields";
+import type { ResourceVisibilityMode } from "../../../api/modules/userGroups";
 import { useCurrentUser } from "../../../hooks/useCurrentUser";
 import { userCan } from "../../../utils/permissions";
 import { apiErrorMessage } from "../../../utils/apiError";
@@ -154,6 +156,83 @@ function buildCredentials(
   return credentials;
 }
 
+function visibilityFromDetail(
+  detail: {
+    shared?: boolean;
+    visibility?: string;
+    group_ids?: string[];
+  } | null,
+): {
+  visibility: ResourceVisibilityMode;
+  group_ids: string[];
+  shared: boolean;
+} {
+  if (!detail) {
+    return { visibility: "owner", group_ids: [], shared: false };
+  }
+  const visibility =
+    detail.visibility === "all" ||
+    detail.visibility === "groups" ||
+    detail.visibility === "owner"
+      ? detail.visibility
+      : detail.shared
+      ? "all"
+      : "owner";
+  return {
+    visibility,
+    group_ids: detail.group_ids ?? [],
+    shared: visibility !== "owner",
+  };
+}
+
+function shareFields(values: Record<string, unknown>): {
+  shared: boolean;
+  visibility?: ResourceVisibilityMode;
+  group_ids?: string[];
+} {
+  const visibility = values.visibility;
+  if (
+    visibility !== "all" &&
+    visibility !== "groups" &&
+    visibility !== "owner"
+  ) {
+    return { shared: values.shared === true };
+  }
+  const groupIds = Array.isArray(values.group_ids)
+    ? values.group_ids.filter(
+        (item): item is string => typeof item === "string",
+      )
+    : [];
+  return {
+    shared: visibility !== "owner",
+    visibility,
+    group_ids: groupIds,
+  };
+}
+
+function ConnectorVisibilityFields() {
+  const form = Form.useFormInstance();
+  const visibility =
+    (Form.useWatch("visibility", form) as ResourceVisibilityMode | undefined) ??
+    "owner";
+  const groupIds =
+    (Form.useWatch("group_ids", form) as string[] | undefined) ?? [];
+  return (
+    <ResourceVisibilityFields
+      allowOwner
+      visibility={visibility}
+      groupIds={groupIds}
+      onChange={(next) => {
+        form.setFieldsValue({
+          visibility: next.visibility,
+          group_ids: next.groupIds,
+          shared: next.visibility !== "owner",
+        });
+      }}
+    />
+  );
+}
+
 function previewToFormValues(
   entry: ConnectorCatalogEntry,
   detail: ConnectorInstanceDetail | null,
@@ -164,7 +243,7 @@ function previewToFormValues(
       description: entry.description,
       mail_provider: "qq",
       default_open: false,
-      shared: false,
+      ...visibilityFromDetail(null),
     };
   }
   const preview = detail.credentials_preview ?? {};
@@ -173,7 +252,7 @@ function previewToFormValues(
     description: detail.description || entry.description,
     default_open:
       detail.default_open === true || detail.config?.default_open === true,
-    shared: detail.shared === true,
+    ...visibilityFromDetail(detail),
   };
   if (preview.email) values.email = preview.email;
   if (preview.mail_provider) values.mail_provider = preview.mail_provider;
@@ -397,7 +476,7 @@ function ConnectorConfigDrawer({
       display_name: entry.name,
       description: entry.description,
       default_open: false,
-      shared: false,
+      ...visibilityFromDetail(null),
     });
 
     void connectorsApi
@@ -450,6 +529,7 @@ function ConnectorConfigDrawer({
             display_name: instance.display_name || entry.name,
             description: instance.description || entry.description,
             default_open: instance.default_open === true,
+            ...visibilityFromDetail(instance),
           });
           applyConnectorDraft();
         })
@@ -904,7 +984,7 @@ function ConnectorConfigDrawer({
             description: String(values.description || entry.description),
             credentials,
             default_open: values.default_open === true,
-            shared: values.shared === true,
+            ...shareFields(values),
           });
         } else {
           await connectorsApi.createInstance({
@@ -913,7 +993,7 @@ function ConnectorConfigDrawer({
             description: String(values.description || entry.description),
             credentials,
             default_open: values.default_open === true,
-            shared: values.shared === true,
+            ...shareFields(values),
           });
         }
         clearFormDraft(draftScope);
@@ -1132,7 +1212,7 @@ function ConnectorConfigDrawer({
           description: values.description as string,
           credentials: payload,
           default_open: values.default_open === true,
-          shared: values.shared === true,
+          ...shareFields(values as Record<string, unknown>),
         });
       } else {
         const created = await connectorsApi.createInstance({
@@ -1141,7 +1221,7 @@ function ConnectorConfigDrawer({
           description: values.description as string,
           credentials: payload,
           default_open: values.default_open === true,
-          shared: values.shared === true,
+          ...shareFields(values as Record<string, unknown>),
         });
         if (entry.kind === "agently-cli" || entry.kind === "dingtalk-cli") {
           clearFormDraft(draftScope);
@@ -2164,16 +2244,8 @@ function ConnectorConfigDrawer({
             </>
           )}
 
-          <Form.Item
-            name="shared"
-            label={t("connectors.shared", "是否共享")}
-            valuePropName="checked"
-            extra={t(
-              "connectors.sharedHint",
-              "共享后其他用户可以选择使用，但不能查看或修改配置。",
-            )}
-          >
-            <Switch />
+          <Form.Item label={t("resourceVisibility.label")}>
+            <ConnectorVisibilityFields />
           </Form.Item>
 
           <Form.Item

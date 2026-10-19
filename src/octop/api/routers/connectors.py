@@ -69,6 +69,7 @@ from octop.infra.connectors.probe import (
 from octop.infra.connectors.service import ConnectorNameTakenError, ConnectorService
 from octop.infra.db.repos.connectors import ConnectorRepo
 from octop.infra.errors import ErrorCode, OctopError
+from octop.infra.users.groups import RESOURCE_CONNECTOR, GroupAccess
 from octop.infra.utils.locale import resolve_request_locale
 from octop.infra.utils.ulid import new_ulid
 
@@ -83,6 +84,8 @@ class CreateInstanceBody(BaseModel):
     description: str | None = Field(default=None, max_length=500)
     credentials: dict[str, Any] = Field(default_factory=dict)
     shared: bool = False
+    visibility: Literal["all", "groups", "owner"] | None = None
+    group_ids: list[str] | None = None
     default_open: bool = Field(
         default=False,
         description=(
@@ -99,6 +102,8 @@ class PatchInstanceBody(BaseModel):
     description: str | None = Field(default=None, max_length=500)
     credentials: dict[str, Any] | None = None
     shared: bool | None = None
+    visibility: Literal["all", "groups", "owner"] | None = None
+    group_ids: list[str] | None = None
     default_open: bool | None = Field(
         default=None,
         description=(
@@ -284,9 +289,9 @@ def _connector_service(server: Any) -> ConnectorService:
     )
 
 
-def _instance_to_dict(inst: Any) -> dict[str, Any]:
+def _instance_to_dict(inst: Any, server: Any | None = None) -> dict[str, Any]:
     config = ConnectorRepo.parse_config_json(inst) if hasattr(inst, "config_json") else {}
-    return {
+    payload = {
         "instance_id": inst.instance_id,
         "kind": inst.kind,
         "display_name": inst.display_name,
@@ -300,6 +305,15 @@ def _instance_to_dict(inst: Any) -> dict[str, Any]:
         "created_at": inst.created_at,
         "updated_at": inst.updated_at,
     }
+    if server is not None:
+        payload.update(
+            GroupAccess(server.services.repos).visibility(
+                RESOURCE_CONNECTOR,
+                inst.instance_id,
+                shared=bool(inst.shared),
+            )
+        )
+    return payload
 
 
 async def _prepare_credentials(
@@ -566,6 +580,13 @@ async def list_instances(
             owner.display_name or owner.username if owner is not None else None
         )
         item["can_manage"] = owner_id == user.id or user.role == "admin"
+        item.update(
+            GroupAccess(server.services.repos).visibility(
+                RESOURCE_CONNECTOR,
+                str(item["instance_id"]),
+                shared=bool(item.get("shared")),
+            )
+        )
     return rows
 
 
@@ -757,13 +778,18 @@ async def create_instance(
         ) from exc
 
     instance_id = new_ulid()
+    shared = body.shared
+    if body.visibility == "owner":
+        shared = False
+    elif body.visibility in {"all", "groups"}:
+        shared = True
     repo.create(
         instance_id=instance_id,
         user_id=user.id,
         kind=body.kind,
         display_name=display_name,
         mcp_server_name=mcp_server_name(body.kind, instance_id),
-        shared=body.shared,
+        shared=shared,
         config_json=build_instance_config_json(
             kind=body.kind,
             default_open=bool(body.default_open),
@@ -780,13 +806,22 @@ async def create_instance(
     )
     inst = repo.get(instance_id)
     assert inst is not None
+    if body.visibility is not None:
+        GroupAccess(server.services.repos).set_visibility(
+            RESOURCE_CONNECTOR,
+            instance_id,
+            body.visibility,
+            body.group_ids,
+        )
+        inst = repo.get(instance_id)
+        assert inst is not None
     _schedule_connector_reload(
         server,
         user.id,
-        all_users=body.shared,
+        all_users=shared,
         mail_instance_id=instance_id if body.kind == "agently-cli" else None,
     )
-    return _instance_to_dict(inst)
+    return _instance_to_dict(inst, server)
 
 
 @router.patch("/connector-instances/{instance_id}", summary="Update connector instance")
@@ -852,6 +887,7 @@ async def patch_instance(
         and body.description is None
         and body.credentials is None
         and body.shared is None
+        and body.visibility is None
     ):
         raise OctopError(
             ErrorCode.CONNECTOR_INVALID_CREDENTIALS,
@@ -867,8 +903,20 @@ async def patch_instance(
         ) or _custom_name_exists(svc, inst.user_id, display_name):
             _raise_name_taken(display_name)
         repo.update_metadata(instance_id, display_name=display_name)
-    if body.shared is not None:
-        repo.update_metadata(instance_id, shared=body.shared)
+    shared = body.shared
+    if body.visibility == "owner":
+        shared = False
+    elif body.visibility in {"all", "groups"}:
+        shared = True
+    if shared is not None:
+        repo.update_metadata(instance_id, shared=shared)
+    if body.visibility is not None:
+        GroupAccess(server.services.repos).set_visibility(
+            RESOURCE_CONNECTOR,
+            instance_id,
+            body.visibility,
+            body.group_ids,
+        )
     if body.credentials is not None:
         svc = _connector_service(server)
         merged = _merge_credentials(svc.decrypt(instance_id), body.credentials, kind=inst.kind)
@@ -914,7 +962,7 @@ async def patch_instance(
         all_users=inst.shared or body.shared is True or body.shared is False,
         mail_instance_id=instance_id if inst.kind == "agently-cli" else None,
     )
-    return _instance_to_dict(inst)
+    return _instance_to_dict(inst, server)
 
 
 @router.delete("/connector-instances/{instance_id}", status_code=204, summary="Delete connector")
@@ -981,6 +1029,7 @@ async def delete_instance(
             raise OctopError(ErrorCode.CONNECTOR_INVALID_CREDENTIALS, str(exc)) from exc
     elif inst.kind not in ("agently-cli", "dingtalk-cli"):
         repo.delete(instance_id)
+        GroupAccess(server.services.repos).clear(RESOURCE_CONNECTOR, instance_id)
     if cli_creds is not None:
         cleanup_creds_cli_dirs(inst.kind, cli_creds)
     _schedule_connector_reload(

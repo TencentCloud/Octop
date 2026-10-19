@@ -573,6 +573,14 @@ async def patch_thread(
                 ErrorCode.SLASH_BAD_ARGS,
                 "model_ref must reference an enabled model",
             )
+        if (
+            model_ref is not None
+            and not server.app_runtime.agent_registry.model_ref_allowed_for_user(
+                user.id,
+                model_ref,
+            )
+        ):
+            raise OctopError(ErrorCode.RESOURCE_NOT_ALLOWED, "resource is not visible to this user")
     if "reasoning_mode" in body.model_fields_set:
         reasoning_mode = body.reasoning_mode
     if "reasoning_effort" in body.model_fields_set:

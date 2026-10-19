@@ -50,6 +50,8 @@ export interface KnowledgeBase {
   description: string;
   default_open: boolean;
   shared: boolean;
+  visibility?: "all" | "groups" | "owner";
+  group_ids?: string[];
   icon_name: string;
   embedding_model: string;
   embedding_dim: number;
@@ -191,6 +193,8 @@ export const knowledgeBasesApi = {
     description?: string;
     default_open?: boolean;
     shared?: boolean;
+    visibility?: "all" | "groups" | "owner";
+    group_ids?: string[];
     icon_name?: string;
     max_documents?: number;
   }) =>
@@ -206,6 +210,8 @@ export const knowledgeBasesApi = {
       description?: string;
       default_open?: boolean;
       shared?: boolean;
+      visibility?: "all" | "groups" | "owner";
+      group_ids?: string[];
       icon_name?: string;
       max_documents?: number;
     },

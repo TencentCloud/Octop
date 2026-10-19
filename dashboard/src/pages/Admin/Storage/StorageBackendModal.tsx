@@ -16,6 +16,8 @@ import { message } from "@/utils/antdMessage";
 import { Activity } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { request } from "../../../api/request";
+import { ResourceVisibilityFields } from "../../../components/ResourceVisibilityFields";
+import type { ResourceVisibilityMode } from "../../../api/modules/userGroups";
 import {
   clearFormDraft,
   loadFormDraft,
@@ -49,10 +51,34 @@ interface StorageForm {
   endpoint?: string;
   config_json?: string;
   note?: string;
+  visibility?: ResourceVisibilityMode;
+  group_ids?: string[];
   sandbox_scope?: string;
   sandbox_prefix?: string;
   sandbox_id?: string;
   username?: string;
+}
+
+function StorageVisibilityFields() {
+  const form = Form.useFormInstance();
+  const visibility =
+    (Form.useWatch("visibility", form) as ResourceVisibilityMode | undefined) ??
+    "all";
+  const groupIds =
+    (Form.useWatch("group_ids", form) as string[] | undefined) ?? [];
+  return (
+    <ResourceVisibilityFields
+      allowOwner={false}
+      visibility={visibility === "owner" ? "all" : visibility}
+      groupIds={groupIds}
+      onChange={(next) => {
+        form.setFieldsValue({
+          visibility: next.visibility,
+          group_ids: next.groupIds,
+        });
+      }}
+    />
+  );
 }
 
 export function StorageBackendDrawer({
@@ -102,6 +128,8 @@ export function StorageBackendDrawer({
           endpoint: editing.endpoint ?? "",
           config_json: editing.config_json ?? "",
           note: editing.note ?? "",
+          visibility: editing.visibility === "groups" ? "groups" : "all",
+          group_ids: editing.group_ids ?? [],
           sandbox_scope:
             typeof cfg.sandbox_scope === "string" ? cfg.sandbox_scope : "agent",
           sandbox_prefix:
@@ -116,6 +144,8 @@ export function StorageBackendDrawer({
         setActiveKind(kind);
         form.resetFields();
         form.setFieldValue("kind", kind);
+        form.setFieldValue("visibility", "all");
+        form.setFieldValue("group_ids", []);
         if (kind === "docker") {
           form.setFieldValue("bucket", "python:3.12-slim");
           form.setFieldValue("sandbox_scope", "agent");
@@ -139,6 +169,13 @@ export function StorageBackendDrawer({
   const handleSubmit = async () => {
     try {
       const values = await form.validateFields();
+      if (
+        values.visibility === "groups" &&
+        (values.group_ids ?? []).length === 0
+      ) {
+        message.error(t("resourceVisibility.needGroup"));
+        return;
+      }
       setSaving(true);
 
       const body: Record<string, unknown> = {
@@ -148,6 +185,8 @@ export function StorageBackendDrawer({
         endpoint: values.endpoint?.trim() || null,
         config_json: values.config_json?.trim() || null,
         note: values.note?.trim() || null,
+        visibility: values.visibility ?? "all",
+        group_ids: values.group_ids ?? [],
       };
       if (values.access_key?.trim()) body.access_key = values.access_key.trim();
       if (values.secret_key?.trim()) body.secret_key = values.secret_key.trim();
@@ -631,6 +670,9 @@ export function StorageBackendDrawer({
         {/* Note */}
         <Form.Item name="note" label={t("storage.noteLabel")}>
           <Input.TextArea rows={2} />
+        </Form.Item>
+        <Form.Item label={t("resourceVisibility.label")}>
+          <StorageVisibilityFields />
         </Form.Item>
       </Form>
 

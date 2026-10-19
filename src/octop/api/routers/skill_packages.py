@@ -30,6 +30,10 @@ from octop.infra.skills.skill_package_store import (
 )
 from octop.infra.skills.skill_packages import SkillPackageError, read_skill_directory
 from octop.infra.skills.skillhub_market import SkillHubMarketError as SkillHubDownloadError
+from octop.infra.users.groups import (
+    RESOURCE_SKILL_PACKAGE,
+    GroupAccess,
+)
 from octop.infra.users.identity import User
 from octop.infra.utils.frontmatter import parse_frontmatter
 from octop.infra.utils.locale import Locale, resolve_request_locale
@@ -68,6 +72,8 @@ class UpdateSkillPackageBody(BaseModel):
         default=None,
         description="When false, users other than the creator and admins cannot download this package as a ZIP.",
     )
+    visibility: Literal["all", "groups"] | None = None
+    group_ids: list[str] | None = None
 
 
 class FromSkillHubBody(BaseModel):
@@ -179,6 +185,15 @@ def _package_payload(
     }
 
 
+def _package_access(server: OctopServer) -> GroupAccess:
+    assert server.services is not None
+    return GroupAccess(server.services.repos)
+
+
+def _package_owner(user: User, row: SkillPackageRow) -> bool:
+    return str(user.id) == str(row.created_by)
+
+
 def _creator_fields(server: OctopServer, created_by: str) -> dict[str, str | None]:
     raw = str(created_by or "").strip()
     if not raw.isdigit():
@@ -268,15 +283,25 @@ async def list_skill_packages(
     user: User = Depends(require_permission("skill_packages")),
 ) -> list[dict[str, Any]]:
     store = _store(server)
+    access = _package_access(server)
+    rows = access.filter_rows(
+        store.repo.list_all(),
+        user_id=user.id,
+        is_admin=user.is_admin,
+        resource_type=RESOURCE_SKILL_PACKAGE,
+        key_of=lambda row: row.id,
+        is_owner=lambda row: _package_owner(user, row),
+    )
     return [
         {
             **_row_public_dict(row),
             **_creator_fields(server, row.created_by),
+            **access.visibility(RESOURCE_SKILL_PACKAGE, row.id, shared=None),
             "can_write": store.can_mutate(row, user),
             "can_copy": store.can_copy(row, user),
             "can_download": store.can_download(row, user),
         }
-        for row in store.repo.list_all()
+        for row in rows
         if not writable_only or store.can_mutate(row, user)
     ]
 
@@ -387,6 +412,17 @@ async def get_skill_package(
 ) -> dict[str, Any]:
     store = _store(server)
     row = _package_or_404(store, package_id, locale=resolve_request_locale(request))
+    if not _package_access(server).allows(
+        user_id=user.id,
+        is_admin=user.is_admin,
+        resource_type=RESOURCE_SKILL_PACKAGE,
+        resource_key=row.id,
+        is_owner=_package_owner(user, row),
+    ):
+        raise OctopError.localized(
+            ErrorCode.SKILL_PACKAGE_NOT_FOUND,
+            resolve_request_locale(request),
+        )
     return {
         **_package_payload_with_creator(
             server,
@@ -394,6 +430,7 @@ async def get_skill_package(
             row,
             locale=resolve_request_locale(request),
         ),
+        **_package_access(server).visibility(RESOURCE_SKILL_PACKAGE, row.id, shared=None),
         "can_write": store.can_mutate(row, user),
         "can_copy": store.can_copy(row, user),
         "can_download": store.can_download(row, user),
@@ -429,13 +466,23 @@ async def update_skill_package(
         if name is not None and is_skill_package_name_conflict(exc):
             raise_skill_package_name_taken(name)
         raise
+    if body.visibility is not None:
+        _package_access(server).set_visibility(
+            RESOURCE_SKILL_PACKAGE,
+            package_id,
+            body.visibility,
+            body.group_ids,
+        )
     updated = _package_or_404(store, package_id, locale=resolve_request_locale(request))
-    return _package_payload_with_creator(
-        server,
-        store,
-        updated,
-        locale=resolve_request_locale(request),
-    )
+    return {
+        **_package_payload_with_creator(
+            server,
+            store,
+            updated,
+            locale=resolve_request_locale(request),
+        ),
+        **_package_access(server).visibility(RESOURCE_SKILL_PACKAGE, package_id, shared=None),
+    }
 
 
 @router.delete(
@@ -451,6 +498,7 @@ async def delete_skill_package(
     row = _package_or_404(store, package_id, locale=resolve_request_locale(request))
     store.assert_can_mutate(row, user)
     store.delete_package(package_id)
+    _package_access(server).clear(RESOURCE_SKILL_PACKAGE, package_id)
     if server.app_runtime is not None:
         await server.app_runtime.agent_registry.strip_skill_package_id(package_id)
 

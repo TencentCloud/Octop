@@ -9,6 +9,8 @@ export interface SkillPackage {
   can_copy?: boolean;
   can_download?: boolean;
   allow_download?: boolean;
+  visibility?: "all" | "groups";
+  group_ids?: string[];
   copy_policy?: "snapshot" | "lock" | "deny";
   skill_count: number;
   icon_name?: string;

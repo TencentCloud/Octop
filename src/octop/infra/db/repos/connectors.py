@@ -7,6 +7,7 @@ from dataclasses import dataclass
 
 from octop.infra.db.pool import DatabasePool
 from octop.infra.db.repos._base import DbRow, bool_int, map_rows, now_ts
+from octop.infra.users.groups import RESOURCE_CONNECTOR, group_visibility_sql
 
 
 @dataclass(frozen=True)
@@ -137,13 +138,25 @@ class ConnectorRepo:
 
     def list_visible(self, user_id: int) -> list[ConnectorRow]:
         with self._db.connect() as conn:
+            clause = group_visibility_sql(RESOURCE_CONNECTOR, "instance_id")
             rows = conn.execute(
                 "SELECT * FROM connectors "
-                "WHERE user_id = ? OR shared = 1 "
+                "WHERE (user_id = ? OR shared = 1) "
+                f"AND (user_id = ? OR {clause}) "
                 "ORDER BY display_name, instance_id",
-                (user_id,),
+                (user_id, user_id, user_id),
             ).fetchall()
         return map_rows(rows, ConnectorRow)
+
+    def group_grant_allows(self, user_id: int, instance_id: str) -> bool:
+        """True when this connector has no group grants, or the user is a member."""
+        clause = group_visibility_sql(RESOURCE_CONNECTOR, "?")
+        with self._db.connect() as conn:
+            row = conn.execute(
+                f"SELECT 1 WHERE {clause}",
+                (instance_id, instance_id, user_id),
+            ).fetchone()
+        return row is not None
 
     def list_by_kind(self, kind: str) -> list[ConnectorRow]:
         with self._db.connect() as conn:

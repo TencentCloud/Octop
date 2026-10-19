@@ -13,6 +13,7 @@ from octop.infra.knowledge.relpath import (
     path_is_direct_child,
     path_parent,
 )
+from octop.infra.users.groups import RESOURCE_KNOWLEDGE_BASE, group_visibility_sql
 from octop.infra.utils.ulid import new_short_id, new_ulid
 
 _DIR_CONTENT_TYPE = "application/x-directory"
@@ -173,11 +174,13 @@ class KnowledgeRepo:
 
     def list_visible(self, user_id: int) -> list[KnowledgeBaseRow]:
         with self._db.connect() as conn:
+            clause = group_visibility_sql(RESOURCE_KNOWLEDGE_BASE, "kb.knowledge_base_id")
             rows = conn.execute(
                 "SELECT kb.* FROM knowledge_bases kb "
-                "WHERE kb.owner_user_id = ? OR kb.shared = 1 "
+                "WHERE (kb.owner_user_id = ? OR kb.shared = 1) "
+                f"AND (kb.owner_user_id = ? OR {clause}) "
                 "ORDER BY kb.name",
-                (user_id,),
+                (user_id, user_id, user_id),
             ).fetchall()
         return map_rows(rows, KnowledgeBaseRow)
 

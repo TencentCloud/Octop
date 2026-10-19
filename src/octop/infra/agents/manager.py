@@ -177,6 +177,20 @@ def skill_package_ids_list(cfg: dict[str, Any]) -> list[str]:
     return [str(item) for item in raw if str(item).strip()]
 
 
+def _stored_id_list(value: Any) -> list[str]:
+    """Normalize a persisted id list, whether it is already a list or JSON text."""
+    if isinstance(value, list):
+        return [str(item) for item in value if str(item).strip()]
+    if isinstance(value, str) and value.strip():
+        try:
+            parsed = json.loads(value)
+        except (json.JSONDecodeError, TypeError):
+            return []
+        if isinstance(parsed, list):
+            return [str(item) for item in parsed if str(item).strip()]
+    return []
+
+
 def _memory_aux_model_settings(
     mem: dict[str, Any],
     supported_fields: frozenset[str],
@@ -777,6 +791,8 @@ class AgentManager:
                     spec.user_id,
                     config.get("backend"),
                 )
+                self._assert_named_storage_backends(spec.user_id, config.get("backend"))
+                self._assert_model_ref(spec.user_id, spec.default_model)
 
             # Create-time: user-assigned workspace_dir wins; otherwise default+encode.
             # After insert, resolve_workspace_dir reads the DB value as source of truth.
@@ -809,6 +825,15 @@ class AgentManager:
             else:
                 raw_mcp = profile.get("mcp_servers")
                 mcp_servers_json = raw_mcp if isinstance(raw_mcp, str) else None
+            if spec.user_id is not None:
+                self._assert_skill_packages_visible(
+                    spec.user_id,
+                    _stored_id_list(package_ids_json),
+                )
+                self.validate_knowledge_base_ids(
+                    spec.user_id,
+                    _stored_id_list(knowledge_ids_json),
+                )
             self._repos.agent_repo.create(
                 agent_id=agent_id,
                 user_id=spec.user_id,
@@ -1008,10 +1033,18 @@ class AgentManager:
                     owner_row.user_id,
                     parsed_profile_cfg.get("backend"),
                 )
+                self._assert_named_storage_backends(
+                    owner_row.user_id,
+                    parsed_profile_cfg.get("backend"),
+                )
             lifted = extract_profile_from_config(parsed_profile_cfg)
             kwargs["config_json"] = dumps_config(parsed_profile_cfg)
             for key, value in lifted.items():
                 kwargs.setdefault(key, value)
+        if "default_model" in kwargs:
+            model_owner = self._repos.agent_repo.get(agent_id)
+            if model_owner is not None and model_owner.user_id is not None:
+                self._assert_model_ref(model_owner.user_id, kwargs.get("default_model"))
         new_name = kwargs.get("name")
         if isinstance(new_name, str):
             row = self._repos.agent_repo.get(agent_id)
@@ -2665,9 +2698,14 @@ class AgentManager:
             repo=self._repos.skill_package_repo,
             root=self._paths.skill_packages_dir,
         )
+        row = self._repos.agent_repo.get(agent_id)
+        owner_id = row.user_id if row is not None else None
         roots: list[str] = []
         for package_id in skill_package_ids_list(self.get_config(agent_id)):
-            if self._repos.skill_package_repo.get(package_id) is None:
+            package = self._repos.skill_package_repo.get(package_id)
+            if package is None:
+                continue
+            if owner_id is not None and not self._skill_package_visible(owner_id, package):
                 continue
             roots.append(str(store.package_skills_dir(package_id).resolve()))
         return roots
@@ -2756,6 +2794,8 @@ class AgentManager:
         if row is None:
             raise OctopError(ErrorCode.AGENT_NOT_FOUND, f"agent {agent_id!r} not found")
         normalized_ids = self.validate_skill_package_ids(package_ids)
+        if row.user_id is not None:
+            self._assert_skill_packages_visible(row.user_id, normalized_ids)
         workspace_dir = self.resolve_workspace_dir(agent_id)
         if normalized_ids and not self._backend_supports_host_skill_packages(
             self._backend_spec_for_row(row),
@@ -2816,6 +2856,82 @@ class AgentManager:
                     f"skill package {package_id!r} not found",
                 )
         return normalized_ids
+
+    def _user_is_admin(self, user_id: int | None) -> bool:
+        if user_id is None:
+            return False
+        user = self._repos.user_repo.get(user_id)
+        return user is not None and user.role == "admin"
+
+    def model_ref_allowed_for_user(self, user_id: int, model_ref: str | None) -> bool:
+        from octop.infra.users.groups import model_ref_allowed
+
+        return model_ref_allowed(
+            self._repos,
+            user_id=user_id,
+            is_admin=self._user_is_admin(user_id),
+            model_ref=model_ref,
+        )
+
+    def _assert_model_ref(self, user_id: int, model_ref: str | None) -> None:
+        from octop.infra.users.groups import RESOURCE_MODEL, GroupAccess
+
+        ref = (model_ref or "").strip()
+        if not ref or ref.lower() == "auto" or "/" not in ref:
+            return
+        GroupAccess(self._repos).assert_allowed(
+            user_id=user_id,
+            is_admin=self._user_is_admin(user_id),
+            resource_type=RESOURCE_MODEL,
+            resource_key=ref,
+            is_owner=False,
+        )
+
+    def _assert_named_storage_backends(self, user_id: int, backend: Any) -> None:
+        from octop.infra.backend.resolver import collect_named_storage_backend_refs
+        from octop.infra.users.groups import RESOURCE_STORAGE_BACKEND, GroupAccess
+
+        names = collect_named_storage_backend_refs(backend)
+        if not names:
+            return
+        access = GroupAccess(self._repos)
+        is_admin = self._user_is_admin(user_id)
+        for name in sorted(names):
+            access.assert_allowed(
+                user_id=user_id,
+                is_admin=is_admin,
+                resource_type=RESOURCE_STORAGE_BACKEND,
+                resource_key=name,
+                is_owner=False,
+            )
+
+    def _skill_package_visible(self, user_id: int, package: Any) -> bool:
+        from octop.infra.users.groups import RESOURCE_SKILL_PACKAGE, GroupAccess
+
+        return GroupAccess(self._repos).allows(
+            user_id=user_id,
+            is_admin=self._user_is_admin(user_id),
+            resource_type=RESOURCE_SKILL_PACKAGE,
+            resource_key=str(package.id),
+            is_owner=str(user_id) == str(package.created_by),
+        )
+
+    def _assert_skill_packages_visible(self, user_id: int, package_ids: list[str]) -> None:
+        from octop.infra.users.groups import RESOURCE_SKILL_PACKAGE, GroupAccess
+
+        access = GroupAccess(self._repos)
+        is_admin = self._user_is_admin(user_id)
+        for package_id in package_ids:
+            package = self._repos.skill_package_repo.get(package_id)
+            if package is None:
+                continue
+            access.assert_allowed(
+                user_id=user_id,
+                is_admin=is_admin,
+                resource_type=RESOURCE_SKILL_PACKAGE,
+                resource_key=str(package.id),
+                is_owner=str(user_id) == str(package.created_by),
+            )
 
     def persist_knowledge_base_ids(self, agent_id: str, knowledge_base_ids: list[str]) -> None:
         """Persist composer knowledge-base defaults without reloading harness."""

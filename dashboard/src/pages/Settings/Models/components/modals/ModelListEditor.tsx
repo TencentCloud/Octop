@@ -21,6 +21,10 @@ import {
 } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { request } from "../../../../../api/request";
+import {
+  userGroupsApi,
+  type UserGroup,
+} from "../../../../../api/modules/userGroups";
 import type { ProviderRow, ProviderModel } from "../../useProviders";
 import { isEmbeddingModel } from "../../useProviders";
 import { isOnnxProviderRow } from "../../presetUtils";
@@ -69,6 +73,61 @@ const INPUT_TYPE_OPTIONS = [
   { value: "image", label: "inputTypeImage" as const },
   { value: "audio", label: "inputTypeAudio" as const },
 ];
+
+function ModelGroupVisibility({
+  visibility,
+  groupIds,
+  onChange,
+}: {
+  visibility: "all" | "groups";
+  groupIds: string[];
+  onChange: (visibility: "all" | "groups", groupIds: string[]) => void;
+}) {
+  const { t } = useTranslation();
+  const [groups, setGroups] = useState<UserGroup[]>([]);
+  useEffect(() => {
+    let cancelled = false;
+    userGroupsApi
+      .list()
+      .then((rows) => {
+        if (!cancelled) setGroups(rows);
+      })
+      .catch(() => {
+        if (!cancelled) setGroups([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+  return (
+    <span style={{ display: "inline-flex", gap: 8, marginLeft: 8 }}>
+      <Select
+        size="small"
+        value={visibility}
+        style={{ width: 140 }}
+        options={[
+          { value: "all", label: t("resourceVisibility.all") },
+          { value: "groups", label: t("resourceVisibility.groups") },
+        ]}
+        onChange={(next) => onChange(next, next === "groups" ? groupIds : [])}
+      />
+      {visibility === "groups" ? (
+        <Select
+          size="small"
+          mode="multiple"
+          style={{ minWidth: 180 }}
+          value={groupIds}
+          placeholder={t("resourceVisibility.groupPlaceholder")}
+          options={groups.map((group) => ({
+            value: group.user_group_id,
+            label: group.name,
+          }))}
+          onChange={(ids) => onChange("groups", ids)}
+        />
+      ) : null}
+    </span>
+  );
+}
 
 export function ModelListEditor({
   provider,
@@ -124,6 +183,14 @@ export function ModelListEditor({
     }
     onModelsChange(
       models.map((m) => (m.id === modelId ? { ...m, enabled } : m)),
+    );
+  };
+
+  const patchModel = (modelId: string, patch: Partial<ProviderModel>) => {
+    onModelsChange(
+      models.map((model) =>
+        model.id === modelId ? { ...model, ...patch } : model,
+      ),
     );
   };
 
@@ -458,6 +525,16 @@ export function ModelListEditor({
                 </Tooltip>
                 <div className={styles.modelListItemInfo}>
                   <span className={styles.modelListItemName}>{m.name}</span>
+                  <ModelGroupVisibility
+                    visibility={m.visibility === "groups" ? "groups" : "all"}
+                    groupIds={m.group_ids ?? []}
+                    onChange={(visibility, groupIds) =>
+                      patchModel(m.id, {
+                        visibility,
+                        group_ids: groupIds,
+                      })
+                    }
+                  />
                   {m.name !== m.id && (
                     <span className={styles.modelListItemId}>{m.id}</span>
                   )}

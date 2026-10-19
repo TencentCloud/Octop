@@ -497,6 +497,8 @@ class ConnectorService:
         for parent in self._repo.list_by_kind(CUSTOM_MCP_KIND):
             if parent.user_id == user_id or not parent.has_credentials:
                 continue
+            if not self._repo.group_grant_allows(user_id, parent.instance_id):
+                continue
             out.extend(
                 expand_custom_instances(
                     parent=parent,
@@ -522,6 +524,8 @@ class ConnectorService:
                 names.append(name)
         for parent in self._repo.list_by_kind(CUSTOM_MCP_KIND):
             if parent.user_id == user_id or not parent.has_credentials:
+                continue
+            if not self._repo.group_grant_allows(user_id, parent.instance_id):
                 continue
             for name, spec in extract_servers(self.decrypt(parent.instance_id)).items():
                 if isinstance(spec, dict) and spec.get("shared") is True and server_enabled(spec):
@@ -586,6 +590,8 @@ class ConnectorService:
         for parent in self._repo.list_by_kind(CUSTOM_MCP_KIND):
             if parent.user_id == user_id or not parent.has_credentials:
                 continue
+            if not self._repo.group_grant_allows(user_id, parent.instance_id):
+                continue
             servers = extract_servers(self.decrypt(parent.instance_id))
             for name, spec in servers.items():
                 if (
@@ -621,6 +627,8 @@ class ConnectorService:
         await self.ensure_fresh_custom_servers(user_id)
         for parent in self._repo.list_by_kind(CUSTOM_MCP_KIND):
             if parent.user_id == user_id or not parent.has_credentials:
+                continue
+            if not self._repo.group_grant_allows(user_id, parent.instance_id):
                 continue
             servers = extract_servers(self.decrypt(parent.instance_id))
             if any(

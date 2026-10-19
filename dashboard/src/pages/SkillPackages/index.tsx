@@ -81,6 +81,8 @@ import { showConfirmModal } from "../../utils/confirmModal";
 import { saveBlobAsFile } from "../../utils/saveBlobAsFile";
 import { createDetailRequestGate } from "../../utils/detailRequestGate";
 import { PackageIcon } from "./PackageIcon";
+import { ResourceVisibilityFields } from "../../components/ResourceVisibilityFields";
+import type { ResourceVisibilityMode } from "../../api/modules/userGroups";
 import { PackageSkillCard } from "./PackageSkillCard";
 import PackageSkillsTable from "./PackageSkillsTable";
 import { SkillsetFromHubDrawer } from "./SkillsetFromHubDrawer";
@@ -175,6 +177,9 @@ export default function SkillPackagesPage() {
   const [detailLoading, setDetailLoading] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [packageDrawerOpen, setPackageDrawerOpen] = useState(false);
+  const [packageVisibility, setPackageVisibility] =
+    useState<ResourceVisibilityMode>("all");
+  const [packageGroupIds, setPackageGroupIds] = useState<string[]>([]);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [importModalOpen, setImportModalOpen] = useState(false);
   const [hubOpen, setHubOpen] = useState(false);
@@ -331,6 +336,8 @@ export default function SkillPackagesPage() {
       icon_url: "",
       copy_policy: "snapshot",
     });
+    setPackageVisibility("all");
+    setPackageGroupIds([]);
     setPackageDrawerOpen(true);
   };
 
@@ -344,14 +351,27 @@ export default function SkillPackagesPage() {
       copy_policy: item.copy_policy ?? "snapshot",
       allow_download: item.allow_download !== false,
     });
+    setPackageVisibility(item.visibility === "groups" ? "groups" : "all");
+    setPackageGroupIds(item.group_ids ?? []);
     setPackageDrawerOpen(true);
   };
 
   const savePackage = async () => {
     const values = await packageForm.validateFields();
+    if (
+      editingPackageId &&
+      packageVisibility === "groups" &&
+      packageGroupIds.length === 0
+    ) {
+      message.error(t("resourceVisibility.needGroup"));
+      return;
+    }
     const payload = {
       ...values,
       icon_url: values.icon_url?.trim() || undefined,
+      ...(editingPackageId
+        ? { visibility: packageVisibility, group_ids: packageGroupIds }
+        : {}),
     };
     try {
       const next = editingPackageId
@@ -1042,6 +1062,19 @@ export default function SkillPackagesPage() {
               valuePropName="checked"
             >
               <Switch />
+            </Form.Item>
+          ) : null}
+          {editingPackageId ? (
+            <Form.Item label={t("resourceVisibility.label")}>
+              <ResourceVisibilityFields
+                allowOwner={false}
+                visibility={packageVisibility}
+                groupIds={packageGroupIds}
+                onChange={(next) => {
+                  setPackageVisibility(next.visibility);
+                  setPackageGroupIds(next.groupIds);
+                }}
+              />
             </Form.Item>
           ) : null}
           <Form.Item
