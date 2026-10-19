@@ -305,6 +305,8 @@ def _xlrd_cell_value(book: object, cell: object) -> object:
     value = getattr(cell, "value", None)
     if ctype in {xlrd.XL_CELL_EMPTY, xlrd.XL_CELL_BLANK, xlrd.XL_CELL_ERROR}:
         return None
+    if ctype == xlrd.XL_CELL_BOOLEAN:
+        return bool(value)
     if ctype == xlrd.XL_CELL_DATE:
         datemode = int(getattr(book, "datemode", 0))
         try:
