@@ -16,7 +16,6 @@ from octop_gateway.models import (
     MessageEventType,
     TextContent,
 )
-from octop_gateway.utils import close_event_stream
 
 from octop.infra.errors import ErrorCode, OctopError
 from octop.infra.gateway.hitl.format import extract_questions
@@ -25,6 +24,7 @@ from octop.infra.gateway.process.message_keys import (
     session_key_from_message,
 )
 from octop.infra.gateway.slash.parser import parse_slash
+from octop.infra.utils.stream_close import close_event_stream
 
 logger = logging.getLogger(__name__)
 

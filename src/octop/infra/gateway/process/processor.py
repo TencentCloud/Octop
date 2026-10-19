@@ -16,7 +16,6 @@ from octop_gateway.models import (
     MessageEventType,
     TextContent,
 )
-from octop_gateway.utils import close_event_stream
 from octop_harness.slash import SlashSink
 from octop_harness.teams.inbox import InboxMessage
 from octop_harness.teams.processor import ReplyEvent
@@ -87,6 +86,7 @@ from octop.infra.users.preferences import (
     get_preferred_model_from_json,
 )
 from octop.infra.utils.locale import resolve_user_locale
+from octop.infra.utils.stream_close import close_event_stream
 from octop.infra.utils.turn_failure import log_failed_tool_results, log_turn_failure
 from octop.infra.utils.ulid import new_ulid
 

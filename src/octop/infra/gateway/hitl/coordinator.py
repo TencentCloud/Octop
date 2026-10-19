@@ -8,7 +8,6 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Literal
 
 from octop_gateway.models import MessageEvent
-from octop_gateway.utils import close_event_stream
 from octop_harness.slash import SlashCommand
 
 from octop.i18n.domains.slash import tr
@@ -26,6 +25,7 @@ from octop.infra.gateway.process.usage_record import UsageTracker
 from octop.infra.gateway.slash.ctx import ensure_thread_id
 from octop.infra.gateway.slash.formatting import markdown_bullets
 from octop.infra.utils.locale import Locale, normalize_locale
+from octop.infra.utils.stream_close import close_event_stream
 
 if TYPE_CHECKING:
     from octop.infra.agents.manager import AgentManager

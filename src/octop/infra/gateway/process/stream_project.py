@@ -8,7 +8,6 @@ from typing import TYPE_CHECKING, Any
 
 from octop_gateway.media import MediaBackend
 from octop_gateway.models import MessageEvent
-from octop_gateway.utils import close_event_stream
 
 from octop.i18n import channel_tool_hint_end, channel_tool_hint_start, tool_display_name
 from octop.infra.gateway.hitl.format import format_hitl_card, normalize_hitl_request
@@ -21,6 +20,7 @@ from octop.infra.gateway.process.agent_resolve import harness_workspace_for_agen
 from octop.infra.gateway.process.usage_record import UsageTracker
 from octop.infra.history.projection import TurnHistoryTracker
 from octop.infra.utils.locale import DEFAULT_LOCALE, Locale, normalize_locale
+from octop.infra.utils.stream_close import close_event_stream
 from octop.infra.utils.turn_failure import log_failed_tool_results
 
 if TYPE_CHECKING:

@@ -1,5 +1,5 @@
 version = 1
-revision = 3
+revision = 5
 requires-python = ">=3.12"
 resolution-markers = [
     "python_full_version >= '3.15'",
@@ -2629,7 +2629,7 @@ requires-dist = [
     { name = "mss", marker = "extra == 'desktop'", specifier = ">=9.0" },
     { name = "mypy", marker = "extra == 'dev'", specifier = ">=1.10" },
     { name = "octop-browser", specifier = ">=1.0.0" },
-    { name = "octop-gateway", specifier = ">=1.0.2" },
+    { name = "octop-gateway", specifier = ">=1.0.3" },
     { name = "octop-harness", extras = ["all"], git = "https://github.com/TencentCloud/octop-harness.git?rev=b96a8f91abdf3e81337206138c5bbc2cb31fabab" },
     { name = "octop-memory", specifier = ">=1.0.1" },
     { name = "onnxruntime", marker = "extra == 'knowledge-ocr'", specifier = ">=1.17" },
@@ -2695,7 +2695,7 @@ wheels = [
 
 [[package]]
 name = "octop-gateway"
-version = "1.0.2"
+version = "1.0.3"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "aiohttp" },
@@ -2713,9 +2713,9 @@ dependencies = [
     { name = "websockets" },
     { name = "wecom-aibot-sdk" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/82/fd/e68f630a50b3f0b426ab5ecc30b93cdf066a5739e86e50cf7c2811ddf1e3/octop_gateway-1.0.2.tar.gz", hash = "sha256:503bceef3fefbac80b102b5f9324aae77b680e67d62cced56c2f984390568c54", size = 614142, upload-time = "2026-10-14T07:57:28.759Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/f1/7f/cc6d7f7af425fbcc2d999b3a187288fd99a9220acca4bf33e27026a58769/octop_gateway-1.0.3.tar.gz", hash = "sha256:ff679fe583ad13a66b680eee88708a1a9602054f9ecd461577bf7d521572895a", size = 642266, upload-time = "2026-10-16T09:18:50.867Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/2f/36/60af23f212f06559357accf03c965637a0d1820f7f22d69072841f7bfd3a/octop_gateway-1.0.2-py3-none-any.whl", hash = "sha256:f8e62a4116cff4b866937d0c106547bd0cd7b91c5c4aa5439d75b06e45447095", size = 163921, upload-time = "2026-10-14T07:57:27.335Z" },
+    { url = "https://files.pythonhosted.org/packages/0b/2a/367c124660188fbd3a230057f28e33bdb09950a6684fc8c3cbd4215d494d/octop_gateway-1.0.3-py3-none-any.whl", hash = "sha256:66d4942cc26b9b1d8653b007540e928e40541185803c560853fc0acdfa444d1e", size = 178059, upload-time = "2026-10-16T09:18:49.638Z" },
 ]
 
 [[package]]
