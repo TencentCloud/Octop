@@ -252,6 +252,33 @@ def test_parse_skillhub_package_prefers_exact_manifest_under_wrapper() -> None:
     assert files == {"SKILL.md": b"---\nname: a\n---\n"}
 
 
+def test_parse_skillhub_package_drops_shadowed_wrapper_variant_and_keeps_siblings() -> None:
+    payload = _zip_bytes(
+        {
+            "nurse/SKILL.md": "---\nname: a\n---\n",
+            "nurse/skill.md": "---\nname: b\n---\n",
+            "nurse/_meta.json": "{}",
+        }
+    )
+
+    files = skillhub_market.parse_skillhub_package(payload)
+
+    assert dict(files) == {
+        "SKILL.md": b"---\nname: a\n---\n",
+        "_meta.json": b"{}",
+    }
+    assert sorted(name for name, _content in files) == ["SKILL.md", "_meta.json"]
+
+
+def test_parse_skillhub_package_rejects_multiple_case_variants_under_wrapper() -> None:
+    payload = _zip_bytes(
+        {"nurse/Skill.md": "---\nname: a\n---\n", "nurse/skill.md": "---\nname: b\n---\n"}
+    )
+
+    with pytest.raises(skillhub_market.SkillHubPackageError, match="multiple SKILL.md"):
+        skillhub_market.parse_skillhub_package(payload)
+
+
 def test_parse_skillhub_package_rejects_lowercase_manifest_with_invalid_utf8() -> None:
     payload = _zip_bytes({"skill.md": b"---\nname: bad\n---\n\xff\xfe"})
 
