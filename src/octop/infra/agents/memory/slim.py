@@ -32,11 +32,194 @@ class MemorySlimCoordinator:
         self._chat_phase = "idle"
         self._closing = False
         self._remove_directories = False
+        self._storage_states: dict[str, dict[str, Any]] = {}
 
     def status(self, agent_id: str) -> dict[str, Any] | None:
         if agent_id in self._chat_states:
             return {**self._chat_states[agent_id], "kind": "memory_slim"}
         return {**self.state, "kind": "memory_slim"} if agent_id == self.agent_id else None
+
+    @property
+    def busy(self) -> bool:
+        return self.task is not None and not self.task.done()
+
+    def storage_status(self, agent_id: str) -> dict[str, Any]:
+        """Keep each expert's last page job visible across navigation."""
+        return {"busy": self.busy, "job": self._storage_states.get(agent_id)}
+
+    def _storage_target(self, agent_id: str, locale: str) -> tuple[Any, str | None]:
+        from octop.infra.agents.memory.storage import sqlite_store_is_shared
+
+        kind = self._memory_kind(agent_id, locale)
+        memory = self._agent_manager.get_agent(agent_id)._memory_runtime.memory
+        assert memory is not None  # Validated by _memory_kind without yielding.
+        if kind == "postgres":
+            from octop.infra.agents.memory.thread_cleanup import memory_namespace
+
+            namespace = memory.backend._ns
+            if namespace != memory_namespace(agent_id):
+                raise ValueError(tr("memory_storage.namespace_mismatch", locale))
+            # Agent IDs differing only by case/punctuation can normalize to the
+            # same memory namespace. Refuse rather than touching shared data.
+            if any(
+                row.agent_id != agent_id and memory_namespace(row.agent_id) == namespace
+                for row in self._agent_manager._repos.agent_repo.list_all(include_disabled=True)
+            ):
+                return memory, "shared_namespace"
+            return memory, None
+        if sqlite_store_is_shared(self._agent_manager, agent_id, memory):
+            return memory, "shared_sqlite"
+        try:
+            self._require_memory(agent_id, locale)
+        except ValueError:
+            return memory, "incompatible"
+        return memory, None
+
+    async def inspect_storage(self, agent_id: str, *, locale: str = "en") -> dict[str, Any]:
+        from functools import partial
+
+        from octop.infra.agents.memory.storage import inspect_storage
+
+        self._check_ready(locale)
+        memory, blocked_reason = self._storage_target(agent_id, locale)
+        return await asyncio.get_running_loop().run_in_executor(
+            None, partial(inspect_storage, memory, blocked_reason=blocked_reason)
+        )
+
+    def start_current(self, agent_id: str, owner_id: int, *, locale: str = "en") -> dict[str, Any]:
+        """Page action: this expert's SQLite file or PostgreSQL namespace."""
+        self._check_ready(locale)
+        self._assert_owner(agent_id, owner_id, locale)
+        _memory, reason = self._storage_target(agent_id, locale)
+        if reason:
+            raise ValueError(tr(f"memory_storage.{reason}", locale))
+        self._chat_owner = None
+        self._chat_states = {}
+        self.agent_id = agent_id
+        self.state = {
+            "job_id": uuid.uuid4().hex,
+            "scope": "agent",
+            "backend": self._memory_kind(agent_id, locale),
+            "phase": "waiting",
+            "started_at": time.time(),
+            "updated_at": time.time(),
+        }
+        self._storage_states[agent_id] = self.state
+        self.task = asyncio.create_task(
+            self._run(agent_id, locale, owner_id=owner_id, current_only=True)
+        )
+        return self.storage_status(agent_id)
+
+    async def backups(self, agent_id: str, *, locale: str = "en") -> list[dict[str, Any]]:
+        from octop.infra.agents.memory.sqlite_restore import list_backups
+
+        memory, reason = self._storage_target(agent_id, locale)
+        if self._memory_kind(agent_id, locale) != "sqlite" or reason:
+            return []
+        path = Path(memory.backend._db_path).expanduser().resolve(strict=True)
+        return await asyncio.to_thread(list_backups, path)
+
+    async def delete_backup(
+        self, agent_id: str, owner_id: int, backup_id: str, *, locale: str = "en"
+    ) -> None:
+        from octop.infra.agents.memory.sqlite_restore import delete_backup
+
+        self._check_ready(locale)
+        self._assert_owner(agent_id, owner_id, locale)
+        memory, reason = self._storage_target(agent_id, locale)
+        if self._memory_kind(agent_id, locale) != "sqlite" or reason:
+            raise ValueError(tr("memory_storage.delete_sqlite_only", locale))
+        path = Path(memory.backend._db_path).expanduser().resolve(strict=True)
+        # Reserve the same coordinator slot as maintenance/restore before yielding.
+        # Shield keeps deletion tracked even if the HTTP client disconnects.
+        self.task = asyncio.create_task(asyncio.to_thread(delete_backup, path, backup_id, locale))
+        await asyncio.shield(self.task)
+
+    def start_restore(
+        self, agent_id: str, owner_id: int, backup_id: str, *, locale: str = "en"
+    ) -> dict[str, Any]:
+        from octop.infra.agents.memory.sqlite_restore import backup_path
+
+        self._check_ready(locale)
+        self._assert_owner(agent_id, owner_id, locale)
+        memory, reason = self._storage_target(agent_id, locale)
+        if self._memory_kind(agent_id, locale) != "sqlite" or reason:
+            raise ValueError(tr("memory_storage.restore_sqlite_only", locale))
+        path = Path(memory.backend._db_path).expanduser().resolve(strict=True)
+        backup_path(path, backup_id, locale)
+        self._chat_owner = None
+        self._chat_states = {}
+        self.agent_id = agent_id
+        self.state = {
+            "job_id": uuid.uuid4().hex,
+            "scope": "agent",
+            "backend": "sqlite",
+            "operation": "restore",
+            "phase": "waiting",
+            "started_at": time.time(),
+            "updated_at": time.time(),
+            "restored_backup_id": backup_id,
+        }
+        self._storage_states[agent_id] = self.state
+        self.task = asyncio.create_task(
+            self._run_restore(agent_id, owner_id, path, backup_id, locale)
+        )
+        return self.storage_status(agent_id)
+
+    async def _run_restore(
+        self, agent_id: str, owner_id: int, path: Path, backup_id: str, locale: str
+    ) -> None:
+        from octop.infra.agents.memory.sqlite_restore import restore_sqlite
+
+        registry = self._agent_manager
+        reserved = False
+        try:
+            deadline = time.monotonic() + 120
+            while agent_id in registry._reclaim_holds or not registry.try_begin_history_backfill(
+                agent_id
+            ):
+                if time.monotonic() >= deadline:
+                    raise ValueError(tr("memory_slim.wait_timeout", locale))
+                await asyncio.sleep(0.25)
+            reserved = True
+            self._assert_owner(agent_id, owner_id, locale)
+            memory, reason = self._storage_target(agent_id, locale)
+            if reason or Path(memory.backend._db_path).expanduser().resolve(strict=True) != path:
+                raise ValueError(tr("memory_storage.restore_changed", locale))
+            self._update({"phase": "draining"})
+            loop = asyncio.get_running_loop()
+
+            def progress(values: dict[str, Any]) -> None:
+                loop.call_soon_threadsafe(self._update, values)
+
+            def operation() -> dict[str, Any]:
+                from octop.infra.agents.memory.storage import sqlite_store_is_shared
+
+                self._assert_owner(agent_id, owner_id, locale)
+                if sqlite_store_is_shared(registry, agent_id, memory):
+                    raise ValueError(tr("memory_storage.shared_sqlite", locale))
+                result = restore_sqlite(
+                    path, str(memory.backend._ns), backup_id, locale=locale, progress=progress
+                )
+                progress({"phase": "restarting", "report": result})
+                return result
+
+            result = await registry.restore_memory_store(agent_id, memory, operation, locale=locale)
+            self._update({"phase": "done", "report": result})
+        except asyncio.CancelledError:
+            self._update({"phase": "failed", "error": tr("memory_slim.interrupted", locale)})
+            raise
+        except Exception as exc:
+            logger.exception("Memory restore failed for agent=%s", agent_id)
+            self._update(
+                {
+                    "phase": "failed",
+                    "error": tr("memory_slim.error_detail", locale, detail=str(exc)),
+                }
+            )
+        finally:
+            if reserved:
+                registry.end_history_backfill(agent_id)
 
     def list_agents(self, *, locale: str = "en") -> list[dict[str, str]]:
         """List compatible live agents without opening another memory connection."""
@@ -228,16 +411,12 @@ class MemorySlimCoordinator:
     def _update(self, values: dict[str, Any]) -> None:
         self.state.update(values, updated_at=time.time())
 
-    async def _run(self, agent_id: str, locale: str, *, owner_id: int | None = None) -> None:
+    async def _run(
+        self, agent_id: str, locale: str, *, owner_id: int | None = None, current_only: bool = False
+    ) -> None:
         registry = self._agent_manager
         reserved = False
         try:
-            from octop_memory.application import checkpoint_maintenance
-
-            slim_live_checkpoints = getattr(checkpoint_maintenance, "slim_live_checkpoints", None)
-            if not callable(slim_live_checkpoints):
-                raise ValueError(tr("memory_slim.upgrade", locale))
-
             deadline = time.monotonic() + 120
             while not registry.try_begin_history_backfill(agent_id):
                 if time.monotonic() >= deadline:
@@ -250,15 +429,31 @@ class MemorySlimCoordinator:
                 sweep_deleted_residuals,
             )
 
-            sweep = await asyncio.to_thread(
-                sweep_deleted_residuals,
-                registry,
-                remove_directories=self._remove_directories,
-            )
-            self._update({"phase": "sweeping", "sweep": sweep})
+            sweep: dict[str, Any] = {}
+            if current_only:
+                # Recheck after waiting: ownership/backend/config may have changed.
+                _memory, reason = self._storage_target(agent_id, locale)
+                if reason:
+                    raise ValueError(tr(f"memory_storage.{reason}", locale))
+            else:
+                sweep = await asyncio.to_thread(
+                    sweep_deleted_residuals,
+                    registry,
+                    remove_directories=self._remove_directories,
+                )
+                self._update({"phase": "sweeping", "sweep": sweep})
             if self._memory_kind(agent_id, locale) == "postgres":
-                self._update({"phase": "done", "sweep": sweep, "dedup_skipped": True})
+                if current_only:
+                    await self._run_postgres(_memory, locale)
+                else:
+                    self._update({"phase": "done", "sweep": sweep, "dedup_skipped": True})
                 return
+            from octop_memory.application import checkpoint_maintenance
+
+            slim_live_checkpoints = getattr(checkpoint_maintenance, "slim_live_checkpoints", None)
+            if not callable(slim_live_checkpoints):
+                raise ValueError(tr("memory_slim.upgrade", locale))
+
             memory = self._require_memory(agent_id, locale)
             # Ask the live saver for its actual file; never infer a path from agent_id.
             # Its connection may be busy, so use the existing backend's configured path.
@@ -278,9 +473,21 @@ class MemorySlimCoordinator:
 
             # Joining the worker before releasing the gate is essential: cancelling
             # an asyncio to_thread await does not stop the SQLite operation.
-            worker = asyncio.create_task(
-                asyncio.to_thread(slim_live_checkpoints, path, backup=backup, progress=progress)
-            )
+            def maintain() -> dict[str, Any]:
+                from octop.infra.agents.memory.storage import inspect_storage
+
+                before = inspect_storage(memory, blocked_reason=None) if current_only else None
+                if before and not before["maintenance_supported"]:
+                    raise ValueError(tr("memory_storage.shared_sqlite", locale))
+                result: dict[str, Any] = slim_live_checkpoints(
+                    path, backup=backup, progress=progress
+                )
+                if before is not None:
+                    result["inspection_before"] = before
+                    result["inspection_after"] = inspect_storage(memory, blocked_reason=None)
+                return result
+
+            worker = asyncio.create_task(asyncio.to_thread(maintain))
             try:
                 report = await asyncio.shield(worker)
             except asyncio.CancelledError:
@@ -291,6 +498,8 @@ class MemorySlimCoordinator:
             self._update({"phase": "failed", "error": tr("memory_slim.interrupted", locale)})
             raise
         except Exception as exc:
+            if self.state.get("backup_path") and not Path(self.state["backup_path"]).is_file():
+                self.state.pop("backup_path", None)
             logger.exception("Memory maintenance failed for agent=%s", agent_id)
             self._update(
                 {
@@ -301,6 +510,39 @@ class MemorySlimCoordinator:
         finally:
             if reserved:
                 registry.end_history_backfill(agent_id)
+
+    async def _run_postgres(self, memory: Any, locale: str) -> None:
+        from functools import partial
+
+        from octop.infra.agents.memory.postgres_storage import maintain_postgres_storage
+
+        backup = (
+            self._agent_manager._paths.root
+            / "backups"
+            / "memory-maintenance"
+            / f"{self.state['job_id']}.jsonl"
+        )
+        loop = asyncio.get_running_loop()
+
+        def progress(values: dict[str, Any]) -> None:
+            loop.call_soon_threadsafe(self._update, values)
+
+        worker = loop.run_in_executor(
+            None,
+            partial(
+                maintain_postgres_storage,
+                memory.backend,
+                backup=backup,
+                progress=progress,
+                locale=locale,
+            ),
+        )
+        try:
+            report = await asyncio.shield(worker)
+        except asyncio.CancelledError:
+            await worker
+            raise
+        self._update({"phase": "done", "report": report, "scanned": report["total_deleted"]})
 
     async def close(self) -> None:
         self._closing = True

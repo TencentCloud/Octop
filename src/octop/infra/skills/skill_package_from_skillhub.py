@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 from collections.abc import Callable
 from dataclasses import dataclass
 
@@ -19,7 +20,12 @@ from octop.infra.skills.skill_package_store import (
     is_skill_package_name_conflict,
     raise_skill_package_name_taken,
 )
-from octop.infra.skills.skillhub_market import download_skillhub_package_files
+from octop.infra.skills.skillhub_market import (
+    SkillHubSkillNotFound,
+    download_skillhub_package_files,
+)
+
+logger = logging.getLogger(__name__)
 
 SkillFiles = list[tuple[str, bytes]]
 FetchSkillset = Callable[[str], SkillHubSkillset]
@@ -29,6 +35,7 @@ DownloadSkillFiles = Callable[[str], SkillFiles]
 @dataclass(frozen=True)
 class CreatePackageFromSkillHubResult:
     row: SkillPackageRow
+    skipped_slugs: tuple[str, ...] = ()
 
 
 def create_package_from_skillhub(
@@ -58,7 +65,11 @@ def create_package_from_skillhub(
         raise_skill_package_name_taken(package_name)
 
     skill_slugs = skill_slugs_for_skillset(item)
-    skill_files = [(skill_slug, download_skill_files_fn(skill_slug)) for skill_slug in skill_slugs]
+    skill_files, skipped_slugs = _download_skillset_skills(
+        slug,
+        skill_slugs,
+        download_skill_files_fn,
+    )
     try:
         row = store.create(
             name=package_name,
@@ -80,4 +91,42 @@ def create_package_from_skillhub(
     refreshed = store.repo.get(row.id)
     if refreshed is None:
         raise RuntimeError(f"skill package {row.id} missing after create")
-    return CreatePackageFromSkillHubResult(row=refreshed)
+    return CreatePackageFromSkillHubResult(
+        row=refreshed,
+        skipped_slugs=tuple(skipped_slugs),
+    )
+
+
+def _download_skillset_skills(
+    skillset_slug: str,
+    skill_slugs: list[str],
+    download_skill_files_fn: DownloadSkillFiles,
+) -> tuple[list[tuple[str, SkillFiles]], list[str]]:
+    """Download each skill. A missing package (HTTP 404) is skipped.
+
+    SkillHub skillsets can list a slug whose metadata still exists while the
+    zip object is gone. Failing the whole import on that one 404 blocks every
+    other skill in the set.
+    """
+    downloaded: list[tuple[str, SkillFiles]] = []
+    skipped: list[str] = []
+    missing: SkillHubSkillNotFound | None = None
+    for skill_slug in skill_slugs:
+        try:
+            downloaded.append((skill_slug, download_skill_files_fn(skill_slug)))
+        except SkillHubSkillNotFound as exc:
+            logger.warning(
+                "skipping unpublished SkillHub skill %s from skillset %s: %s",
+                skill_slug,
+                skillset_slug,
+                exc,
+            )
+            skipped.append(skill_slug)
+            missing = exc
+    if not downloaded:
+        if missing is not None:
+            raise missing
+        raise SkillHubSkillNotFound(
+            f"SkillHub skillset {skillset_slug!r} has no downloadable skills"
+        )
+    return downloaded, skipped

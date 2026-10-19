@@ -8,8 +8,10 @@ from dataclasses import asdict
 from typing import Any, Literal
 
 from fastapi import APIRouter, Depends, Request, status
+from fastapi.responses import Response
 from pydantic import BaseModel, Field
 
+from octop.api.common.content_disposition import content_disposition
 from octop.api.deps import get_server, require_permission
 from octop.infra.agents.experts.skillhub_market import (
     SkillHubMarketError,
@@ -19,12 +21,14 @@ from octop.infra.db.repos.skill_packages import SkillPackageRow
 from octop.infra.errors import ErrorCode, OctopError
 from octop.infra.server import OctopServer
 from octop.infra.skills.install import valid_skillhub_icon_url
+from octop.infra.skills.skill_archive import build_skills_zip
 from octop.infra.skills.skill_package_from_skillhub import create_package_from_skillhub
 from octop.infra.skills.skill_package_store import (
     SkillPackageStore,
     is_skill_package_name_conflict,
     raise_skill_package_name_taken,
 )
+from octop.infra.skills.skill_packages import SkillPackageError, read_skill_directory
 from octop.infra.skills.skillhub_market import SkillHubMarketError as SkillHubDownloadError
 from octop.infra.users.identity import User
 from octop.infra.utils.frontmatter import parse_frontmatter
@@ -59,6 +63,10 @@ class UpdateSkillPackageBody(BaseModel):
     copy_policy: Literal["snapshot", "lock", "deny"] | None = Field(
         default=None,
         description="Who may copy this package's skills into a workspace (#770).",
+    )
+    allow_download: bool | None = Field(
+        default=None,
+        description="When false, users other than the creator and admins cannot download this package as a ZIP.",
     )
 
 
@@ -266,6 +274,7 @@ async def list_skill_packages(
             **_creator_fields(server, row.created_by),
             "can_write": store.can_mutate(row, user),
             "can_copy": store.can_copy(row, user),
+            "can_download": store.can_download(row, user),
         }
         for row in store.repo.list_all()
         if not writable_only or store.can_mutate(row, user)
@@ -363,7 +372,10 @@ async def create_from_skillhub(
         )
     except (SkillHubMarketError, SkillHubDownloadError) as exc:
         raise _map_skillhub_error(exc) from exc
-    return _package_payload_with_creator(server, store, result.row)
+    payload = _package_payload_with_creator(server, store, result.row)
+    if result.skipped_slugs:
+        payload["skipped_skills"] = list(result.skipped_slugs)
+    return payload
 
 
 @router.get("/{package_id}", summary="Get a global skill package and its skills")
@@ -384,6 +396,7 @@ async def get_skill_package(
         ),
         "can_write": store.can_mutate(row, user),
         "can_copy": store.can_copy(row, user),
+        "can_download": store.can_download(row, user),
     }
 
 
@@ -410,6 +423,7 @@ async def update_skill_package(
             icon_name=icon_name,
             icon_url=icon_url,
             copy_policy=body.copy_policy,
+            allow_download=None if body.allow_download is None else int(body.allow_download),
         )
     except Exception as exc:
         if name is not None and is_skill_package_name_conflict(exc):
@@ -475,6 +489,53 @@ async def get_package_skill(
     raw = (store.package_skills_dir(package_id) / slug / "SKILL.md").read_text(encoding="utf-8")
     frontmatter, body = parse_frontmatter(raw)
     return {**skill, "frontmatter": frontmatter, "body": body, "raw": raw}
+
+
+def _read_package_skill_files(
+    store: SkillPackageStore, package_id: str
+) -> list[tuple[str, list[tuple[str, bytes]]]]:
+    packed: list[tuple[str, list[tuple[str, bytes]]]] = []
+    root = store.package_skills_dir(package_id)
+    for summary in store.list_skill_summaries(package_id):
+        if summary.get("corrupt"):
+            continue
+        slug = str(summary.get("slug") or "")
+        packed.append((slug, read_skill_directory(root / slug)))
+    if not packed:
+        raise SkillPackageError("skill package has no skills")
+    return packed
+
+
+@router.get(
+    "/{package_id}/export",
+    summary="Download a skill package as a ZIP",
+    description=(
+        "Pack every skill in the package into one ZIP. Each skill is a top-level "
+        "folder containing SKILL.md, matching the dashboard ZIP importer."
+    ),
+    response_class=Response,
+    responses={200: {"content": {"application/zip": {}}}},
+)
+async def export_skill_package(
+    package_id: str,
+    request: Request,
+    server: OctopServer = Depends(get_server),
+    _user: User = Depends(require_permission("skill_packages")),
+) -> Response:
+    store = _store(server)
+    row = _package_or_404(store, package_id, locale=resolve_request_locale(request))
+    store.assert_can_download(row, _user)
+    try:
+        packed = await asyncio.to_thread(_read_package_skill_files, store, package_id)
+        payload = await asyncio.to_thread(build_skills_zip, packed)
+    except SkillPackageError as exc:
+        raise OctopError(ErrorCode.SLASH_BAD_ARGS, str(exc)) from exc
+    filename = f"{(row.name or package_id).strip() or package_id}.zip"
+    return Response(
+        content=payload,
+        media_type="application/zip",
+        headers={"Content-Disposition": content_disposition(filename)},
+    )
 
 
 @router.post("/{package_id}/skills", summary="Add a skill to a global skill package")

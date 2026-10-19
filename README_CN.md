@@ -15,7 +15,7 @@
 <p align="center">
   <a href="https://www.python.org/downloads/"><img alt="Python 3.12+" src="https://img.shields.io/badge/python-3.12%2B-blue?logo=python&logoColor=white" /></a>
   <a href="https://github.com/TencentCloud/Octop/blob/main/LICENSE"><img alt="License: MIT" src="https://img.shields.io/badge/license-MIT-green" /></a>
-  <a href="https://github.com/TencentCloud/Octop/releases"><img alt="Version" src="https://img.shields.io/badge/version-1.0.2b7-orange" /></a>
+  <a href="https://github.com/TencentCloud/Octop/releases"><img alt="Version" src="https://img.shields.io/badge/version-1.0.2-orange" /></a>
   <a href="https://pypi.org/project/octop/"><img src="https://img.shields.io/pypi/v/octop" alt="PyPI" /></a>
   <a href="https://github.com/astral-sh/ruff"><img alt="Code Style: Ruff" src="https://img.shields.io/badge/code%20style-ruff-000000?logo=ruff&logoColor=white" /></a>
   <a href="https://github.com/TencentCloud/Octop"><img alt="GitHub stars" src="https://img.shields.io/github/stars/TencentCloud/Octop?style=social" /></a>
@@ -280,6 +280,9 @@ octop service start
 # 构建并启动
 docker compose -f docker/docker-compose.yml up -d
 
+# 官方 GHCR 拉取失败时用国内源（不本地构建）
+docker compose -f docker/docker-compose.cn.yml up -d
+
 # 或手动构建
 bash docker/docker_build.sh
 docker run -d \
@@ -303,6 +306,12 @@ docker run -d \
 
 完整变量列表见 [`.env.example`](.env.example)。
 
+### 云端部署
+
+<p>
+  <a href="https://buy.cloud.tencent.com/lighthouse?blueprintType=APP_OS&blueprintOfficialId=lhbp-nxq7695q&regionId=1&zone=ap-guangzhou-6&bundleId=bundle_rs_mc_med2_01&loginSet=AUTO_PASSWORD&goodsNum=0&from=lh-console"><img alt="部署到轻量云" width="194" height="49" src="docs/assets/deploy-on-lighthouse.png" /></a><br>
+  <a href="https://buy.cloud.tencent.com/cvm?tab=custom&step=1&devPayMode=monthly&regionId=1&zoneId=100007&instanceType=SA9.64XLARGE1152&supportConfidentiality=false&platform=TencentOS&imageId=img-n3gxkolf&systemDiskType=CLOUD_HSSD&systemDiskSize=100&systemDiskBackupQuota=0&isBackup=false&backupDiskType=ALL&backupDiskCustomizeValue=&backupQuotaSegment=1&backupQuota=1&wanIp=0&loginSet=BIND_SSH_KEY&tags=null&templateCreateMode=createLt"><img alt="部署到 CVM" width="194" height="49" src="docs/assets/deploy-on-cvm.png" /></a>
+</p>
 
 ## 📑 目录
 
@@ -339,7 +348,7 @@ docker run -d \
 | 本地脚本 | macOS / Linux | `bash scripts/install.sh` |
 | 本地脚本 | Windows | `scripts\install.bat` 或 `install.ps1` |
 | PyPI | 全平台 | `pip install octop`（可选 extras 如 `local-embedding`） |
-| Docker | 全平台 | `docker/docker-compose.yml` |
+| Docker | 全平台 | `docker/docker-compose.yml`；国内镜像 `docker/docker-compose.cn.yml` |
 
 所有安装脚本均在 `~/.octop/venv` 创建隔离环境，并通过 `~/.octop/bin/octop` 包装 CLI，不会影响系统 Python。
 
