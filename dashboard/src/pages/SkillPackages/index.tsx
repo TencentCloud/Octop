@@ -91,10 +91,20 @@ type PackageFormValues = {
   description?: string;
   icon_name?: string;
   icon_url?: string;
+  shared?: boolean;
   copy_policy?: "snapshot" | "lock" | "deny";
   allow_download?: boolean;
   can_download?: boolean;
 };
+
+function isHttpUrl(value: string): boolean {
+  try {
+    const parsed = new URL(value);
+    return parsed.protocol === "http:" || parsed.protocol === "https:";
+  } catch {
+    return false;
+  }
+}
 
 const EMPTY_SKILL = "---\nname: \ndescription: \n---\n\n";
 const SKILL_URL_PREFIXES = [
@@ -134,11 +144,17 @@ function PackageIconPicker({
   value?: string;
   onChange?: (value?: string) => void;
 }) {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
+  // Skip icons without localized labels — otherwise the grid shows raw
+  // English kebab-case names (e.g. cloud-cog) that add clutter.
+  const iconNames = EXPERT_ICON_NAMES.filter((name) =>
+    i18n.exists(`experts.iconLabels.${name}`),
+  );
   return (
     <div className={styles.iconPicker}>
-      {EXPERT_ICON_NAMES.map((name) => {
+      {iconNames.map((name) => {
         const selected = value === name;
+        const label = t(`experts.iconLabels.${name}`);
         return (
           <button
             key={name}
@@ -147,14 +163,12 @@ function PackageIconPicker({
               selected ? ` ${styles.iconPickerItemActive}` : ""
             }`}
             onClick={() => onChange?.(selected ? undefined : name)}
-            title={t(`experts.iconLabels.${name}`, { defaultValue: name })}
+            title={label}
           >
             <span className={styles.iconPickerGlyph}>
               {iconForName(name, 18)}
             </span>
-            <span className={styles.iconPickerLabel}>
-              {t(`experts.iconLabels.${name}`, { defaultValue: name })}
-            </span>
+            <span className={styles.iconPickerLabel}>{label}</span>
           </button>
         );
       })}
@@ -329,7 +343,9 @@ export default function SkillPackagesPage() {
       description: "",
       icon_name: undefined,
       icon_url: "",
+      shared: false,
       copy_policy: "snapshot",
+      allow_download: true,
     });
     setPackageDrawerOpen(true);
   };
@@ -341,6 +357,7 @@ export default function SkillPackagesPage() {
       description: item.description,
       icon_name: item.icon_name,
       icon_url: item.icon_url,
+      shared: Boolean(item.shared),
       copy_policy: item.copy_policy ?? "snapshot",
       allow_download: item.allow_download !== false,
     });
@@ -718,6 +735,11 @@ export default function SkillPackagesPage() {
                               {item.name}
                             </span>
                           </Tooltip>
+                          {item.shared ? (
+                            <span className={styles.sharedBadge}>
+                              {t("skillPackages.sharedBadge")}
+                            </span>
+                          ) : null}
                           <div
                             className={styles.listId}
                             onClick={(event) => event.stopPropagation()}
@@ -1016,34 +1038,6 @@ export default function SkillPackagesPage() {
             );
           }}
         >
-          {editingPackageId ? (
-            <Form.Item
-              name="copy_policy"
-              label={t("skillPackages.copyPolicy")}
-              tooltip={t("skillPackages.copyPolicyHint")}
-            >
-              <Radio.Group
-                options={[
-                  {
-                    value: "snapshot",
-                    label: t("skillPackages.copyPolicySnapshot"),
-                  },
-                  { value: "lock", label: t("skillPackages.copyPolicyLock") },
-                  { value: "deny", label: t("skillPackages.copyPolicyDeny") },
-                ]}
-              />
-            </Form.Item>
-          ) : null}
-          {editingPackageId ? (
-            <Form.Item
-              name="allow_download"
-              label={t("skillPackages.allowDownload")}
-              tooltip={t("skillPackages.allowDownloadHint")}
-              valuePropName="checked"
-            >
-              <Switch />
-            </Form.Item>
-          ) : null}
           <Form.Item
             name="name"
             label={t("skillPackages.packageName")}
@@ -1072,7 +1066,24 @@ export default function SkillPackagesPage() {
           <Form.Item name="icon_name" label={t("skillPackages.iconName")}>
             <PackageIconPicker />
           </Form.Item>
-          <Form.Item name="icon_url" label={t("skillPackages.iconUrl")}>
+          <Form.Item
+            name="icon_url"
+            label={t("skillPackages.iconUrl")}
+            rules={[
+              {
+                validator: async (_, value) => {
+                  const text = String(value ?? "").trim();
+                  if (!text) return;
+                  if (text.length > 2048) {
+                    throw new Error(t("skillPackages.iconUrlTooLong"));
+                  }
+                  if (!isHttpUrl(text)) {
+                    throw new Error(t("skillPackages.iconUrlInvalid"));
+                  }
+                },
+              },
+            ]}
+          >
             <Input
               type="url"
               placeholder={t("skillPackages.iconUrlPlaceholder")}
@@ -1088,6 +1099,45 @@ export default function SkillPackagesPage() {
               }
             />
           </Form.Item>
+          <Form.Item
+            name="copy_policy"
+            label={t("skillPackages.copyPolicy")}
+            tooltip={t("skillPackages.copyPolicyHint")}
+          >
+            <Radio.Group
+              options={[
+                {
+                  value: "snapshot",
+                  label: t("skillPackages.copyPolicySnapshot"),
+                },
+                { value: "lock", label: t("skillPackages.copyPolicyLock") },
+                { value: "deny", label: t("skillPackages.copyPolicyDeny") },
+              ]}
+            />
+          </Form.Item>
+          <Form.Item
+            name="allow_download"
+            label={t("skillPackages.allowDownload")}
+            tooltip={t("skillPackages.allowDownloadHint")}
+            valuePropName="checked"
+          >
+            <Switch />
+          </Form.Item>
+          <div className={styles.formOptions}>
+            <div className={styles.formOptionRow}>
+              <div className={styles.formOptionCopy}>
+                <span className={styles.switchLabel}>
+                  {t("skillPackages.shared")}
+                </span>
+                <span className={styles.formOptionHint}>
+                  {t("skillPackages.sharedHint")}
+                </span>
+              </div>
+              <Form.Item name="shared" valuePropName="checked" noStyle>
+                <Switch size="small" />
+              </Form.Item>
+            </div>
+          </div>
         </Form>
       </Drawer>
 
@@ -1130,7 +1180,7 @@ export default function SkillPackagesPage() {
                 name: editingSkill.name,
                 description: editingSkill.description,
                 enabled: true,
-                kind: "workspace",
+                kind: "package",
                 frontmatter: editingSkill.frontmatter,
                 body: editingSkill.body,
                 raw: editingSkill.raw,
@@ -1138,6 +1188,7 @@ export default function SkillPackagesPage() {
             : null
         }
         form={skillForm}
+        packageId={selected?.id}
         onClose={() => setDrawerOpen(false)}
         onSubmit={(values) => void saveSkill(values)}
         readOnly={!canMutate}

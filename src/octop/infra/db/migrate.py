@@ -1593,6 +1593,12 @@ def _ensure_skill_package_download_schema(db: DatabasePool) -> None:
     _ensure_column(db, "skill_packages", "allow_download", "INTEGER NOT NULL DEFAULT 1")
 
 
+def _ensure_skill_package_shared_schema(db: DatabasePool) -> None:
+    if not _table_exists(db, "skill_packages"):
+        return
+    _ensure_column(db, "skill_packages", "shared", "INTEGER NOT NULL DEFAULT 0")
+
+
 def _ensure_bridge_connections_schema(db: DatabasePool) -> None:
     """Fold notes + unique display_name + auto_reconnect into unreleased v19."""
     if not _table_exists(db, "bridge_connections"):
@@ -1775,6 +1781,8 @@ def _reconcile_pre_squash_schema_version(db: DatabasePool) -> None:
         _ensure_user_role_schema(db)
     if max_version >= 21:
         _ensure_skill_package_download_schema(db)
+    if max_version >= 22:
+        _ensure_skill_package_shared_schema(db)
     with db.connect() as conn:
         conn.execute("UPDATE _schema_version SET version = ?", (max_version,))
 
@@ -1937,6 +1945,11 @@ def _apply_sqlite_migration(db: DatabasePool, version: int, path: Path) -> None:
         return
     if version == 21:
         _ensure_skill_package_download_schema(db)
+        with db.connect() as conn:
+            conn.execute("UPDATE _schema_version SET version = ?", (version,))
+        return
+    if version == 22:
+        _ensure_skill_package_shared_schema(db)
         with db.connect() as conn:
             conn.execute("UPDATE _schema_version SET version = ?", (version,))
         return
@@ -2106,5 +2119,8 @@ def run_migrations(db: DatabasePool) -> None:
     _ensure_sso_provider_kind_schema(db)
     _ensure_user_role_schema(db)
     _ensure_bridge_connections_schema(db)
+    _ensure_skill_copy_policy_schema(db)
+    _ensure_skill_package_download_schema(db)
+    _ensure_skill_package_shared_schema(db)
     _grant_default_nav_permissions(db)
     _grant_personalization_tab_permissions(db)
