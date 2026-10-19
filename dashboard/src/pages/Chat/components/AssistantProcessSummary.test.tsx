@@ -187,6 +187,35 @@ describe("thinking display preference", () => {
     );
   });
 
+  it("keeps a decision row collapsed like other tools", () => {
+    const split: AssistantTurnSplit = {
+      tools: [],
+      thinkings: [],
+      processSteps: [
+        {
+          kind: "decision",
+          notice: {
+            model: "laya",
+            empty: false,
+            parts: [
+              { kind: "result", kept: [{ name: "可以收工", score: 0.9 }] },
+            ],
+          },
+        },
+      ],
+      answerMessage: null,
+    };
+    render(<AssistantProcessSummary split={split} />);
+    expect(screen.getByRole("button")).toHaveAttribute(
+      "aria-expanded",
+      "false",
+    );
+    expect(screen.queryByText(/可以收工/)).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button"));
+    expect(screen.getByRole("button")).toHaveAttribute("aria-expanded", "true");
+    expect(screen.getByText(/可以收工/)).toBeInTheDocument();
+  });
+
   it("can restore automatic expansion from the menu", async () => {
     localStorage.setItem(COLLAPSE_THINKING_SOLO_KEY, "true");
     render(

@@ -29,6 +29,11 @@ def _harness_supports_channel_kind() -> bool:
         return False
 
 
+def _channel_fixture_ready() -> bool:
+    """The acme fixture lives in a sibling octop-harness checkout, not the wheel."""
+    return _harness_supports_channel_kind() and (_ACME / "plugin.yaml").is_file()
+
+
 @pytest.fixture(autouse=True)
 def reset_bridge(monkeypatch: pytest.MonkeyPatch) -> None:
     from octop.infra.gateway import plugin_channels as bridge
@@ -212,8 +217,8 @@ def test_api_kind_validator_tolerates_old_harness(
 
 
 @pytest.mark.skipif(
-    not _harness_supports_channel_kind(),
-    reason="installed octop-harness predates the 'channel' plugin kind",
+    not _channel_fixture_ready(),
+    reason="channel plugin fixture is only in a sibling octop-harness checkout",
 )
 def test_end_to_end_with_real_fixture_plugin() -> None:
     from octop_harness.plugins import registry as harness_registry

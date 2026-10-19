@@ -32,6 +32,8 @@ def test_allows_composer_readonly_paths() -> None:
     assert is_tunnel_path_allowed("GET", "/api/providers/active-model")
     assert is_tunnel_path_allowed("GET", "/api/knowledge-bases")
     assert is_tunnel_path_allowed("GET", "/api/knowledge-bases/capability")
+    assert is_tunnel_path_allowed("GET", "/api/settings/hitl")
+    assert not is_tunnel_path_allowed("PUT", "/api/settings/hitl")
     assert is_tunnel_path_allowed("GET", "/api/agents/01ABC/status")
     assert is_tunnel_path_allowed("GET", "/api/agents/01ABC/subagents")
     assert is_tunnel_path_allowed("GET", "/api/agents/01ABC/tool-settings")
