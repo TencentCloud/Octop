@@ -2,6 +2,7 @@ import {
   useCallback,
   useEffect,
   useMemo,
+  useRef,
   useState,
   type CSSProperties,
   type ReactNode,
@@ -42,7 +43,8 @@ import {
 import { useTranslation } from "react-i18next";
 import { useNavigate } from "react-router-dom";
 
-import { EmptyState } from "../../../components/EmptyState";
+import { OctopEmptyMascot } from "../../../components/EmptyState";
+import StreamSetupGuide from "../../../components/StreamSetupGuide/StreamSetupGuide";
 import { useAgent } from "../../../context/AgentContext";
 import { useCardTableView } from "../../../hooks/useCardTableView";
 import { apiErrorMessage } from "../../../utils/apiError";
@@ -54,6 +56,11 @@ import {
   type BridgeProbeResult,
   type BridgeRemoteAgent,
 } from "../../../api/modules/bridge";
+import {
+  inboundPeerAddress,
+  inboundSourceIp,
+  peerHostLabel,
+} from "./bridgePeerLabel";
 import { TabPanelHeader } from "./TabPanelHeader";
 import styles from "./BridgeSettings.module.less";
 
@@ -132,6 +139,43 @@ function connectionStatusText(
   return t(`advancedSettings.bridge.status.${row.status}`);
 }
 
+function InboundPeerFacts({ row }: { row: BridgeConnection }) {
+  const { t } = useTranslation();
+  const address = inboundPeerAddress(row);
+  const sourceIp = inboundSourceIp(row);
+  return (
+    <>
+      <div className={styles.infoRow}>
+        <span className={styles.infoLabel}>
+          {t("advancedSettings.bridge.peerUrl")}:
+        </span>
+        <span className={styles.infoValue} title={address || undefined}>
+          {address ? peerHostLabel(address) : "—"}
+        </span>
+      </div>
+      {sourceIp ? (
+        <div className={styles.infoRow}>
+          <span className={styles.infoLabel}>
+            {t("advancedSettings.bridge.peerIp")}:
+          </span>
+          <span className={styles.infoValue}>{sourceIp}</span>
+        </div>
+      ) : null}
+      <div className={styles.infoRow}>
+        <span className={styles.infoLabel}>
+          {t("advancedSettings.bridge.peerAccount")}:
+        </span>
+        <span
+          className={styles.infoValue}
+          title={t("advancedSettings.bridge.peerAccountHint")}
+        >
+          {row.peer_username}
+        </span>
+      </div>
+    </>
+  );
+}
+
 function InboundLockedControl({ children }: { children: ReactNode }) {
   const { t } = useTranslation();
   return (
@@ -191,6 +235,7 @@ function AgentListItem({
   color,
   kind,
   onClick,
+  flat,
 }: {
   agentId: string;
   name: string;
@@ -200,7 +245,9 @@ function AgentListItem({
   color?: string | null;
   kind?: string | null;
   onClick?: () => void;
+  flat?: boolean;
 }) {
+  const text = description?.trim();
   const body = (
     <>
       <AgentAvatar
@@ -214,9 +261,7 @@ function AgentListItem({
           <div className={styles.probeName}>{name}</div>
           <KindTag kind={kind} />
         </div>
-        {description?.trim() ? (
-          <div className={styles.probeDesc}>{description}</div>
-        ) : null}
+        {text ? <div className={styles.probeDesc}>{text}</div> : null}
       </div>
     </>
   );
@@ -225,7 +270,7 @@ function AgentListItem({
       <li>
         <button
           type="button"
-          className={styles.connectedAgentBtn}
+          className={flat ? styles.agentRowBtn : styles.connectedAgentBtn}
           onClick={onClick}
           data-agent-id={agentId}
         >
@@ -320,7 +365,7 @@ function RemoteAgentsBlock({
         : agents.slice(0, CARD_AGENT_PREVIEW_LIMIT);
     return (
       <>
-        <ul className={styles.probeList}>
+        <ul className={styles.agentList}>
           {visible.map((agent) => (
             <AgentListItem
               key={agent.id}
@@ -338,6 +383,7 @@ function RemoteAgentsBlock({
               color={typeof agent.color === "string" ? agent.color : null}
               kind={typeof agent.kind === "string" ? agent.kind : null}
               onClick={() => onOpen(agent.id)}
+              flat
             />
           ))}
         </ul>
@@ -358,6 +404,7 @@ function RemoteAgentsBlock({
 }
 
 interface ConnectionActions {
+  busyId: string | null;
   onConnect: (row: BridgeConnection) => Promise<void>;
   onDisconnect: (row: BridgeConnection) => Promise<void>;
   onDelete: (row: BridgeConnection) => Promise<void>;
@@ -373,12 +420,14 @@ function BridgeDisconnectButton({
   row,
   connected,
   link,
+  busy,
   onDisconnect,
   onConnect,
 }: {
   row: BridgeConnection;
   connected: boolean;
   link?: boolean;
+  busy?: boolean;
   onDisconnect: (row: BridgeConnection) => Promise<void>;
   onConnect: (row: BridgeConnection) => Promise<void>;
 }) {
@@ -409,6 +458,8 @@ function BridgeDisconnectButton({
         size="small"
         type={buttonType}
         icon={<Cloudy size={14} />}
+        loading={busy}
+        disabled={busy}
         onClick={() => void onConnect(row)}
       >
         {t("advancedSettings.bridge.connect")}
@@ -426,7 +477,13 @@ function BridgeDisconnectButton({
       okButtonProps={{ danger: true }}
       onConfirm={() => void onDisconnect(row)}
     >
-      <Button size="small" type={buttonType} icon={<Unplug size={14} />}>
+      <Button
+        size="small"
+        type={buttonType}
+        icon={<Unplug size={14} />}
+        loading={busy}
+        disabled={busy}
+      >
         {t("advancedSettings.bridge.disconnect")}
       </Button>
     </Popconfirm>
@@ -437,11 +494,13 @@ function BridgeDeleteButton({
   row,
   connected,
   link,
+  busy,
   onDelete,
 }: {
   row: BridgeConnection;
   connected: boolean;
   link?: boolean;
+  busy?: boolean;
   onDelete: (row: BridgeConnection) => Promise<void>;
 }) {
   const { t } = useTranslation();
@@ -452,12 +511,18 @@ function BridgeDeleteButton({
       size="small"
       type={link ? "link" : "text"}
       danger
-      disabled={locked}
+      disabled={locked || busy}
+      loading={busy}
       icon={<Trash2 size={14} />}
       aria-label={t("advancedSettings.bridge.delete")}
     >
       {link ? t("common.delete") : null}
     </Button>
+  );
+  const trigger = link ? (
+    button
+  ) : (
+    <Tooltip title={t("advancedSettings.bridge.delete")}>{button}</Tooltip>
   );
   if (locked) {
     return <InboundLockedControl>{button}</InboundLockedControl>;
@@ -476,7 +541,7 @@ function BridgeDeleteButton({
       okButtonProps={{ danger: true }}
       onConfirm={() => void onDelete(row)}
     >
-      {button}
+      {trigger}
     </Popconfirm>
   );
 }
@@ -484,10 +549,12 @@ function BridgeDeleteButton({
 function AutoReconnectControl({
   row,
   labeled,
+  busy,
   onToggle,
 }: {
   row: BridgeConnection;
   labeled?: boolean;
+  busy?: boolean;
   onToggle: (row: BridgeConnection, enabled: boolean) => Promise<void>;
 }) {
   const { t } = useTranslation();
@@ -496,7 +563,8 @@ function AutoReconnectControl({
     <span className={labeled ? styles.autoReconnectInline : undefined}>
       <Switch
         size="small"
-        disabled={inbound}
+        disabled={inbound || busy}
+        loading={busy}
         checked={inbound ? false : row.auto_reconnect !== false}
         onChange={(checked) => void onToggle(row, checked)}
       />
@@ -555,13 +623,15 @@ function BridgeConnectionCard({
         </div>
       </div>
 
+      {row.notes?.trim() ? (
+        <div className={styles.backendCardNote}>{row.notes}</div>
+      ) : null}
+
       <div className={styles.backendCardInfo}>
         {isInboundConnection(row) ? (
-          <p className={styles.meta}>
-            {connected
-              ? t("advancedSettings.bridge.inboundHint")
-              : t("advancedSettings.bridge.inboundOfflineHint")}
-          </p>
+          <>
+            <InboundPeerFacts row={row} />
+          </>
         ) : (
           <>
             <div className={styles.infoRow}>
@@ -569,19 +639,23 @@ function BridgeConnectionCard({
                 {t("advancedSettings.bridge.peerUrl")}:
               </span>
               <span className={styles.infoValue} title={row.peer_base_url}>
-                {row.peer_base_url}
+                {peerHostLabel(row.peer_base_url)}
               </span>
             </div>
             <div className={styles.infoRow}>
               <span className={styles.infoLabel}>
-                {t("advancedSettings.bridge.username")}:
+                {t("advancedSettings.bridge.peerAccount")}:
               </span>
               <span className={styles.infoValue}>{row.peer_username}</span>
             </div>
           </>
         )}
-        {row.notes ? (
-          <div className={styles.backendCardNote}>{row.notes}</div>
+        {isInboundConnection(row) ? (
+          <p className={styles.explain}>
+            {connected
+              ? t("advancedSettings.bridge.inboundHint")
+              : t("advancedSettings.bridge.inboundOfflineHint")}
+          </p>
         ) : null}
         {row.last_error ? (
           <p className={styles.metaError}>{row.last_error}</p>
@@ -594,28 +668,32 @@ function BridgeConnectionCard({
             <AutoReconnectControl
               row={row}
               labeled
+              busy={actions.busyId === row.connection_id}
               onToggle={actions.onToggleAutoReconnect}
             />
           )}
         </div>
         <div className={styles.backendActionsRight}>
-          <Button
-            size="small"
-            type="text"
-            icon={<Pencil size={14} />}
-            onClick={() => actions.onEdit(row)}
-          >
-            {t("common.edit")}
-          </Button>
+          <Tooltip title={t("common.edit")}>
+            <Button
+              size="small"
+              type="text"
+              icon={<Pencil size={14} />}
+              aria-label={t("common.edit")}
+              onClick={() => actions.onEdit(row)}
+            />
+          </Tooltip>
           <BridgeDisconnectButton
             row={row}
             connected={connected}
+            busy={actions.busyId === row.connection_id}
             onDisconnect={actions.onDisconnect}
             onConnect={actions.onConnect}
           />
           <BridgeDeleteButton
             row={row}
             connected={connected}
+            busy={actions.busyId === row.connection_id}
             onDelete={actions.onDelete}
           />
         </div>
@@ -640,6 +718,8 @@ export default function BridgeSettingsPanel({
   const { refresh: refreshAgents } = useAgent();
   const { viewMode, setViewMode, showCardView } = useCardTableView("card");
   const [loading, setLoading] = useState(true);
+  const [busyId, setBusyId] = useState<string | null>(null);
+  const busyRef = useRef<string | null>(null);
   const [rows, setRows] = useState<BridgeConnection[]>([]);
   const [agentsByConn, setAgentsByConn] = useState<
     Record<string, BridgeRemoteAgent[]>
@@ -760,7 +840,7 @@ export default function BridgeSettingsPanel({
       );
       message.success(t("advancedSettings.bridge.editSaved"));
       closeEditDrawer();
-      await reload();
+      await reload({ silent: true });
       await refreshAgents({ silent: true, force: true });
     } catch (err) {
       if (err && typeof err === "object" && "errorFields" in err) return;
@@ -820,7 +900,7 @@ export default function BridgeSettingsPanel({
       });
       message.success(t("advancedSettings.bridge.created"));
       closeCreateDrawer();
-      await reload();
+      await reload({ silent: true });
       await refreshAgents({ silent: true, force: true });
     } catch (err) {
       if (err && typeof err === "object" && "errorFields" in err) return;
@@ -860,63 +940,160 @@ export default function BridgeSettingsPanel({
     }
   };
 
+  const replaceRow = useCallback((updated: BridgeConnection) => {
+    setRows((prev) =>
+      prev.map((item) =>
+        item.connection_id === updated.connection_id ? updated : item,
+      ),
+    );
+  }, []);
+
+  const syncConnectionAgents = useCallback(
+    async (updated: BridgeConnection) => {
+      if (updated.status !== "connected") {
+        setAgentsByConn((prev) => {
+          if (!(updated.connection_id in prev)) return prev;
+          const next = { ...prev };
+          delete next[updated.connection_id];
+          return next;
+        });
+        return;
+      }
+      try {
+        const agents = await bridgeApi.listAgents(updated.connection_id);
+        setAgentsByConn((prev) => ({
+          ...prev,
+          [updated.connection_id]: agents,
+        }));
+      } catch {
+        setAgentsByConn((prev) => ({
+          ...prev,
+          [updated.connection_id]: [],
+        }));
+      }
+    },
+    [],
+  );
+
+  const refreshRow = useCallback(
+    async (connectionId: string) => {
+      try {
+        const updated = await bridgeApi.get(connectionId);
+        replaceRow(updated);
+        await syncConnectionAgents(updated);
+      } catch {
+        // The 5s poll reconciles if this single-row read fails.
+      }
+    },
+    [replaceRow, syncConnectionAgents],
+  );
+
+  const runOnRow = useCallback(
+    async (connectionId: string, task: () => Promise<void>) => {
+      if (busyRef.current) return;
+      busyRef.current = connectionId;
+      setBusyId(connectionId);
+      try {
+        await task();
+      } finally {
+        busyRef.current = null;
+        setBusyId(null);
+      }
+    },
+    [],
+  );
+
   const actions = useMemo<ConnectionActions>(
     () => ({
-      onConnect: async (row) => {
-        try {
-          await bridgeApi.connect(row.connection_id);
-          await reload();
-          await refreshAgents({ silent: true, force: true });
-        } catch (err) {
-          message.error(
-            apiErrorMessage(err, t("advancedSettings.bridge.createFailed"), t),
-          );
-        }
-      },
-      onDisconnect: async (row) => {
-        try {
-          await bridgeApi.disconnect(row.connection_id);
-          await reload();
-          await refreshAgents({ silent: true, force: true });
-        } catch (err) {
-          message.error(
-            apiErrorMessage(err, t("advancedSettings.bridge.loadFailed"), t),
-          );
-        }
-      },
-      onDelete: async (row) => {
-        try {
-          await bridgeApi.remove(row.connection_id);
-          message.success(t("advancedSettings.bridge.deleted"));
-          await reload();
-          await refreshAgents({ silent: true, force: true });
-        } catch (err) {
-          message.error(
-            apiErrorMessage(err, t("advancedSettings.bridge.deleteFailed"), t),
-          );
-        }
-      },
+      busyId,
+      onConnect: (row) =>
+        runOnRow(row.connection_id, async () => {
+          try {
+            const updated = await bridgeApi.connect(row.connection_id);
+            replaceRow(updated);
+            await syncConnectionAgents(updated);
+            await refreshAgents({ silent: true, force: true });
+          } catch (err) {
+            message.error(
+              apiErrorMessage(
+                err,
+                t("advancedSettings.bridge.createFailed"),
+                t,
+              ),
+            );
+            await refreshRow(row.connection_id);
+          }
+        }),
+      onDisconnect: (row) =>
+        runOnRow(row.connection_id, async () => {
+          try {
+            const updated = await bridgeApi.disconnect(row.connection_id);
+            replaceRow(updated);
+            await syncConnectionAgents(updated);
+            await refreshAgents({ silent: true, force: true });
+          } catch (err) {
+            message.error(
+              apiErrorMessage(err, t("advancedSettings.bridge.loadFailed"), t),
+            );
+            await refreshRow(row.connection_id);
+          }
+        }),
+      onDelete: (row) =>
+        runOnRow(row.connection_id, async () => {
+          try {
+            await bridgeApi.remove(row.connection_id);
+            setRows((prev) =>
+              prev.filter((item) => item.connection_id !== row.connection_id),
+            );
+            setAgentsByConn((prev) => {
+              if (!(row.connection_id in prev)) return prev;
+              const next = { ...prev };
+              delete next[row.connection_id];
+              return next;
+            });
+            message.success(t("advancedSettings.bridge.deleted"));
+            await refreshAgents({ silent: true, force: true });
+          } catch (err) {
+            message.error(
+              apiErrorMessage(
+                err,
+                t("advancedSettings.bridge.deleteFailed"),
+                t,
+              ),
+            );
+          }
+        }),
       onEdit: (row) => {
         openEditDrawer(row);
       },
-      onToggleAutoReconnect: async (row, enabled) => {
-        try {
-          await bridgeApi.patch(row.connection_id, {
-            auto_reconnect: enabled,
-          });
-          await reload();
-          await refreshAgents({ silent: true, force: true });
-        } catch (err) {
-          message.error(
-            apiErrorMessage(err, t("advancedSettings.bridge.loadFailed"), t),
-          );
-        }
-      },
+      onToggleAutoReconnect: (row, enabled) =>
+        runOnRow(row.connection_id, async () => {
+          try {
+            const updated = await bridgeApi.patch(row.connection_id, {
+              auto_reconnect: enabled,
+            });
+            replaceRow(updated);
+          } catch (err) {
+            message.error(
+              apiErrorMessage(err, t("advancedSettings.bridge.loadFailed"), t),
+            );
+          }
+        }),
       onOpenAgent: (agentId) => {
         navigate(`/chat/${encodeURIComponent(agentId)}`);
       },
     }),
-    [navigate, openEditDrawer, refreshAgents, reload, t],
+    [
+      busyId,
+      navigate,
+      openEditDrawer,
+      refreshAgents,
+      refreshRow,
+      replaceRow,
+      runOnRow,
+      syncConnectionAgents,
+      t,
+    ],
   );
 
   const columns = useMemo<ColumnsType<BridgeConnection>>(
@@ -950,10 +1127,11 @@ export default function BridgeSettingsPanel({
         dataIndex: "peer_base_url",
         key: "peer_base_url",
         ellipsis: true,
-        render: (url: string, row) => (isInboundConnection(row) ? "—" : url),
+        render: (url: string, row) =>
+          isInboundConnection(row) ? inboundPeerAddress(row) || "—" : url,
       },
       {
-        title: t("advancedSettings.bridge.username"),
+        title: t("advancedSettings.bridge.peerAccount"),
         dataIndex: "peer_username",
         key: "peer_username",
         width: 120,
@@ -981,6 +1159,7 @@ export default function BridgeSettingsPanel({
           ) : (
             <AutoReconnectControl
               row={row}
+              busy={actions.busyId === row.connection_id}
               onToggle={actions.onToggleAutoReconnect}
             />
           ),
@@ -1012,6 +1191,7 @@ export default function BridgeSettingsPanel({
               row={row}
               connected={row.status === "connected"}
               link
+              busy={actions.busyId === row.connection_id}
               onDisconnect={actions.onDisconnect}
               onConnect={actions.onConnect}
             />
@@ -1019,6 +1199,7 @@ export default function BridgeSettingsPanel({
               row={row}
               connected={row.status === "connected"}
               link
+              busy={actions.busyId === row.connection_id}
               onDelete={actions.onDelete}
             />
           </div>
@@ -1111,10 +1292,38 @@ export default function BridgeSettingsPanel({
           <Spin />
         </div>
       ) : rows.length === 0 ? (
-        <EmptyState
-          variant="mascot"
+        <StreamSetupGuide
+          className={styles.emptyGuide}
+          wide
+          plain
+          icon={<OctopEmptyMascot />}
           title={t("advancedSettings.bridge.emptyTitle")}
           description={t("advancedSettings.bridge.emptyDesc")}
+          steps={[
+            {
+              label: t("advancedSettings.bridge.emptyGuideStepWhat"),
+              detail: t("advancedSettings.bridge.emptyGuideStepWhatDetail"),
+            },
+            {
+              label: t("advancedSettings.bridge.emptyGuideStepHow"),
+              detail: t("advancedSettings.bridge.emptyGuideStepHowDetail"),
+            },
+            {
+              label: t("advancedSettings.bridge.emptyGuideStepChat"),
+              detail: t("advancedSettings.bridge.emptyGuideStepChatDetail"),
+            },
+          ]}
+          primaryAction={{
+            label: t("advancedSettings.bridge.add"),
+            onClick: () => setCreateOpen(true),
+            icon: <Plus size={14} />,
+            disabled: atConnectionLimit,
+            title: atConnectionLimit
+              ? t("advancedSettings.bridge.addDisabled", {
+                  limit: MAX_BRIDGE_CONNECTIONS,
+                })
+              : undefined,
+          }}
         />
       ) : (
         <>
@@ -1283,7 +1492,7 @@ export default function BridgeSettingsPanel({
             </Form.Item>
             <Form.Item
               name="peer_username"
-              label={t("advancedSettings.bridge.username")}
+              label={t("advancedSettings.bridge.peerAccount")}
               rules={[
                 {
                   required: true,
@@ -1294,7 +1503,7 @@ export default function BridgeSettingsPanel({
             >
               <Input
                 prefix={<User {...FIELD_ICON} />}
-                placeholder={t("advancedSettings.bridge.username")}
+                placeholder={t("advancedSettings.bridge.peerAccount")}
                 autoComplete="username"
               />
             </Form.Item>
@@ -1420,6 +1629,15 @@ export default function BridgeSettingsPanel({
             </Form.Item>
           </div>
 
+          {editTarget && isInboundConnection(editTarget) ? (
+            <div className={styles.createSection}>
+              <div className={styles.createSectionTitle}>
+                {t("advancedSettings.bridge.sectionRemote")}
+              </div>
+              <InboundPeerFacts row={editTarget} />
+            </div>
+          ) : null}
+
           {editTarget && !isInboundConnection(editTarget) ? (
             <div className={styles.createSection}>
               <div className={styles.createSectionTitle}>
@@ -1444,7 +1662,7 @@ export default function BridgeSettingsPanel({
               </Form.Item>
               <Form.Item
                 name="peer_username"
-                label={t("advancedSettings.bridge.username")}
+                label={t("advancedSettings.bridge.peerAccount")}
                 rules={[
                   {
                     required: true,
@@ -1455,7 +1673,7 @@ export default function BridgeSettingsPanel({
               >
                 <Input
                   prefix={<User {...FIELD_ICON} />}
-                  placeholder={t("advancedSettings.bridge.username")}
+                  placeholder={t("advancedSettings.bridge.peerAccount")}
                   autoComplete="username"
                 />
               </Form.Item>

@@ -175,6 +175,249 @@ async def test_require_live_session_waits_for_outbound_supervisor() -> None:
 
 
 @pytest.mark.asyncio
+async def test_relay_user_turn_closes_generating_when_peer_stops_at_done() -> None:
+    from octop.infra.bridge.manager import BridgeManager
+    from octop.infra.db.repos.bridge_connections import BridgeConnectionRow
+
+    row = BridgeConnectionRow(
+        pk=1,
+        connection_id="cid1",
+        owner_user_id=1,
+        peer_base_url="https://peer.example",
+        peer_username="alice",
+        display_name="云端",
+        notes=None,
+        icon_name=None,
+        credential_blob=b"enc",
+        access_token_blob=b"tok",
+        token_expires_at=None,
+        status="connected",
+        last_error=None,
+        last_seen_at=None,
+        auto_reconnect=True,
+        created_at=1,
+        updated_at=1,
+    )
+    mgr = BridgeManager(
+        bridge_repo=MagicMock(),
+        secret_repo=MagicMock(),
+        user_repo=MagicMock(),
+        advertise_base_url="http://local.test",
+    )
+    mgr.get_owned = MagicMock(return_value=row)  # type: ignore[method-assign]
+    sess = BridgeSession(connection_id="cid1", send_text=AsyncMock())
+    mgr._sessions["cid1"] = sess
+
+    async def send_json(payload: dict[str, Any]) -> None:
+        if payload.get("type") != "turn.start":
+            return
+        request_id = str(payload["request_id"])
+        queue = mgr._turn_waiters[request_id]
+        await queue.put(
+            {
+                "type": "turn.chunk",
+                "request_id": request_id,
+                "frame": {"type": "turn.started", "turn_id": "t1"},
+            }
+        )
+        await queue.put(
+            {
+                "type": "turn.chunk",
+                "request_id": request_id,
+                "frame": {"type": "done"},
+            }
+        )
+        await queue.put({"type": "turn.end", "request_id": request_id})
+
+    sess.send_json = send_json  # type: ignore[method-assign]
+    frames: list[dict[str, Any]] = []
+
+    async def on_frame(frame: dict[str, Any]) -> None:
+        frames.append(frame)
+
+    await mgr.relay_user_turn(
+        connection_id="cid1",
+        owner_user_id=1,
+        remote_agent_id="agent",
+        turn_payload={"text": "hi"},
+        on_frame=on_frame,
+    )
+    assert [frame["type"] for frame in frames] == ["turn.started", "done", "turn.ended"]
+
+
+@pytest.mark.asyncio
+async def test_relay_user_turn_unlistens_when_cancelled() -> None:
+    from octop.infra.bridge.manager import BridgeManager
+    from octop.infra.db.repos.bridge_connections import BridgeConnectionRow
+
+    row = BridgeConnectionRow(
+        pk=1,
+        connection_id="cid1",
+        owner_user_id=1,
+        peer_base_url="https://peer.example",
+        peer_username="alice",
+        display_name="云端",
+        notes=None,
+        icon_name=None,
+        credential_blob=b"enc",
+        access_token_blob=b"tok",
+        token_expires_at=None,
+        status="connected",
+        last_error=None,
+        last_seen_at=None,
+        auto_reconnect=True,
+        created_at=1,
+        updated_at=1,
+    )
+    mgr = BridgeManager(
+        bridge_repo=MagicMock(),
+        secret_repo=MagicMock(),
+        user_repo=MagicMock(),
+        advertise_base_url="http://local.test",
+    )
+    mgr.get_owned = MagicMock(return_value=row)  # type: ignore[method-assign]
+    sess = BridgeSession(connection_id="cid1", send_text=AsyncMock())
+    mgr._sessions["cid1"] = sess
+    started = asyncio.Event()
+    sent: list[str] = []
+
+    async def send_json(payload: dict[str, Any]) -> None:
+        sent.append(str(payload.get("type") or ""))
+        if payload.get("type") == "turn.start":
+            started.set()
+            request_id = str(payload["request_id"])
+            queue = mgr._turn_waiters[request_id]
+            await queue.put(
+                {
+                    "type": "turn.chunk",
+                    "request_id": request_id,
+                    "frame": {"type": "turn.ended", "thread_id": "thr-1"},
+                }
+            )
+            return
+        if payload.get("type") == "turn.unlisten":
+            request_id = str(payload["request_id"])
+            queue = mgr._turn_waiters.get(request_id)
+            if queue is not None:
+                await queue.put({"type": "turn.end", "request_id": request_id})
+
+    sess.send_json = send_json  # type: ignore[method-assign]
+    frames: list[dict[str, Any]] = []
+
+    async def on_frame(frame: dict[str, Any]) -> None:
+        frames.append(frame)
+
+    task = asyncio.create_task(
+        mgr.relay_user_turn(
+            connection_id="cid1",
+            owner_user_id=1,
+            remote_agent_id="agent",
+            turn_payload={"text": "hi"},
+            on_frame=on_frame,
+        )
+    )
+    await asyncio.wait_for(started.wait(), timeout=1.0)
+    await asyncio.sleep(0.02)
+    assert [frame["type"] for frame in frames] == ["turn.ended"]
+    task.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await task
+    assert "turn.unlisten" in sent
+
+
+@pytest.mark.asyncio
+async def test_relay_user_listen_forwards_member_frames_until_unlisten() -> None:
+    from octop.infra.bridge.manager import BridgeManager
+    from octop.infra.db.repos.bridge_connections import BridgeConnectionRow
+
+    row = BridgeConnectionRow(
+        pk=1,
+        connection_id="cid1",
+        owner_user_id=1,
+        peer_base_url="https://peer.example",
+        peer_username="alice",
+        display_name="云端",
+        notes=None,
+        icon_name=None,
+        credential_blob=b"enc",
+        access_token_blob=b"tok",
+        token_expires_at=None,
+        status="connected",
+        last_error=None,
+        last_seen_at=None,
+        auto_reconnect=True,
+        created_at=1,
+        updated_at=1,
+    )
+    mgr = BridgeManager(
+        bridge_repo=MagicMock(),
+        secret_repo=MagicMock(),
+        user_repo=MagicMock(),
+        advertise_base_url="http://local.test",
+    )
+    mgr.get_owned = MagicMock(return_value=row)  # type: ignore[method-assign]
+    sess = BridgeSession(connection_id="cid1", send_text=AsyncMock())
+    mgr._sessions["cid1"] = sess
+    started = asyncio.Event()
+
+    async def send_json(payload: dict[str, Any]) -> None:
+        if payload.get("type") == "turn.listen":
+            started.set()
+            request_id = str(payload["request_id"])
+            queue = mgr._turn_waiters[request_id]
+            await queue.put(
+                {
+                    "type": "turn.chunk",
+                    "request_id": request_id,
+                    "frame": {
+                        "type": "turn_status",
+                        "thread_id": "thr-room",
+                        "active": False,
+                    },
+                }
+            )
+            await queue.put(
+                {
+                    "type": "turn.chunk",
+                    "request_id": request_id,
+                    "frame": {
+                        "type": "token",
+                        "agent_id": "doctor",
+                        "content": "磁盘还剩 8G",
+                    },
+                }
+            )
+            return
+        if payload.get("type") == "turn.unlisten":
+            request_id = str(payload["request_id"])
+            queue = mgr._turn_waiters[request_id]
+            await queue.put({"type": "turn.end", "request_id": request_id})
+
+    sess.send_json = send_json  # type: ignore[method-assign]
+    frames: list[dict[str, Any]] = []
+
+    async def on_frame(frame: dict[str, Any]) -> None:
+        frames.append(frame)
+
+    task = asyncio.create_task(
+        mgr.relay_user_listen(
+            connection_id="cid1",
+            owner_user_id=1,
+            remote_agent_id="host",
+            thread_id="thr-room",
+            on_frame=on_frame,
+        )
+    )
+    await asyncio.wait_for(started.wait(), timeout=1.0)
+    await asyncio.sleep(0.05)
+    task.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await task
+    assert [frame.get("type") for frame in frames][:2] == ["turn_status", "token"]
+    assert frames[1].get("content") == "磁盘还剩 8G"
+
+
+@pytest.mark.asyncio
 async def test_relay_user_turn_fails_fast_when_session_closes() -> None:
     from octop.infra.bridge.manager import BridgeManager
     from octop.infra.db.repos.bridge_connections import BridgeConnectionRow
@@ -223,3 +466,161 @@ async def test_relay_user_turn_fails_fast_when_session_closes() -> None:
             on_frame=frames.append,
         )
     assert exc_info.value.code == ErrorCode.BRIDGE_NOT_CONNECTED
+
+
+def _bridge_row() -> Any:
+    from octop.infra.db.repos.bridge_connections import BridgeConnectionRow
+
+    return BridgeConnectionRow(
+        pk=1,
+        connection_id="cid1",
+        owner_user_id=1,
+        peer_base_url="https://peer.example",
+        peer_username="alice",
+        display_name="云端",
+        notes=None,
+        icon_name=None,
+        credential_blob=b"enc",
+        access_token_blob=b"tok",
+        token_expires_at=None,
+        status="connected",
+        last_error=None,
+        last_seen_at=None,
+        auto_reconnect=True,
+        created_at=1,
+        updated_at=1,
+    )
+
+
+@pytest.mark.asyncio
+async def test_relay_turn_cancel_sends_control_and_forwards_end() -> None:
+    from octop.infra.bridge.manager import BridgeManager
+    from octop.infra.bridge.transport import FEATURE_TURN_CONTROL
+
+    mgr = BridgeManager(
+        bridge_repo=MagicMock(),
+        secret_repo=MagicMock(),
+        user_repo=MagicMock(),
+        advertise_base_url="http://local.test",
+    )
+    mgr.get_owned = MagicMock(return_value=_bridge_row())  # type: ignore[method-assign]
+    sess = BridgeSession(
+        connection_id="cid1",
+        send_text=AsyncMock(),
+        peer_features={FEATURE_TURN_CONTROL},
+    )
+    mgr._sessions["cid1"] = sess
+    sent: list[dict[str, Any]] = []
+
+    async def send_json(payload: dict[str, Any]) -> None:
+        sent.append(payload)
+        if payload.get("type") != "turn.cancel":
+            return
+        request_id = str(payload["request_id"])
+        queue = mgr._turn_waiters[request_id]
+        await queue.put({"type": "turn.end", "request_id": request_id})
+
+    sess.send_json = send_json  # type: ignore[method-assign]
+    frames: list[dict[str, Any]] = []
+    await mgr.relay_turn_cancel(
+        connection_id="cid1",
+        owner_user_id=1,
+        remote_agent_id="agent",
+        thread_id="thr-1",
+        on_frame=frames.append,
+    )
+    assert sent[0]["type"] == "turn.cancel"
+    assert sent[0]["thread_id"] == "thr-1"
+    assert sent[0]["agent_id"] == "agent"
+    assert frames == []
+
+
+@pytest.mark.asyncio
+async def test_relay_turn_steer_remove_forwards_ack() -> None:
+    from octop.infra.bridge.manager import BridgeManager
+    from octop.infra.bridge.transport import FEATURE_TURN_CONTROL
+
+    mgr = BridgeManager(
+        bridge_repo=MagicMock(),
+        secret_repo=MagicMock(),
+        user_repo=MagicMock(),
+        advertise_base_url="http://local.test",
+    )
+    mgr.get_owned = MagicMock(return_value=_bridge_row())  # type: ignore[method-assign]
+    sess = BridgeSession(
+        connection_id="cid1",
+        send_text=AsyncMock(),
+        peer_features={FEATURE_TURN_CONTROL},
+    )
+    mgr._sessions["cid1"] = sess
+
+    async def send_json(payload: dict[str, Any]) -> None:
+        if payload.get("type") != "turn.steer_remove":
+            return
+        request_id = str(payload["request_id"])
+        queue = mgr._turn_waiters[request_id]
+        await queue.put(
+            {
+                "type": "turn.chunk",
+                "request_id": request_id,
+                "frame": {
+                    "type": "steer.ack",
+                    "status": "removed",
+                    "client_pending_id": "cp1",
+                },
+            }
+        )
+        await queue.put({"type": "turn.end", "request_id": request_id})
+
+    sess.send_json = send_json  # type: ignore[method-assign]
+    frames: list[dict[str, Any]] = []
+
+    async def on_frame(frame: dict[str, Any]) -> None:
+        frames.append(frame)
+
+    await mgr.relay_turn_steer_remove(
+        connection_id="cid1",
+        owner_user_id=1,
+        remote_agent_id="agent",
+        payload={
+            "thread_id": "thr-1",
+            "turn_id": "t1",
+            "client_pending_id": "cp1",
+            "pending_id": "p1",
+        },
+        on_frame=on_frame,
+    )
+    assert frames == [
+        {"type": "steer.ack", "status": "removed", "client_pending_id": "cp1"},
+    ]
+
+
+@pytest.mark.asyncio
+async def test_relay_turn_cancel_fails_fast_without_peer_feature() -> None:
+    from octop.infra.bridge.manager import BridgeManager
+
+    mgr = BridgeManager(
+        bridge_repo=MagicMock(),
+        secret_repo=MagicMock(),
+        user_repo=MagicMock(),
+        advertise_base_url="http://local.test",
+    )
+    mgr.get_owned = MagicMock(return_value=_bridge_row())  # type: ignore[method-assign]
+    sess = BridgeSession(connection_id="cid1", send_text=AsyncMock())
+    mgr._sessions["cid1"] = sess
+    sent: list[dict[str, Any]] = []
+    sess.send_json = AsyncMock(side_effect=lambda payload: sent.append(payload))  # type: ignore[method-assign]
+    frames: list[dict[str, Any]] = []
+
+    async def on_frame(frame: dict[str, Any]) -> None:
+        frames.append(frame)
+
+    await mgr.relay_turn_cancel(
+        connection_id="cid1",
+        owner_user_id=1,
+        remote_agent_id="agent",
+        thread_id="thr-1",
+        on_frame=on_frame,
+    )
+    assert sent == []
+    assert frames == [{"type": "error", "message": "peer does not support turn.cancel"}]

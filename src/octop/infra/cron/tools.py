@@ -25,7 +25,8 @@ if TYPE_CHECKING:
 
 _TRIGGER_HELP = (
     "Schedule spec: cron:<5-field expr> (e.g. cron:0 9 * * *), "
-    "interval:<seconds> (e.g. interval:3600), date:<ISO8601>, or "
+    "interval:<seconds> (e.g. interval:3600), date:<ISO8601> (runs once, then the job "
+    "disables itself whether the run succeeds or fails), or "
     "agently:<connector instance id> for new mail from a visible Agent Mail connector. "
     "The mail source runs message +watch in the background; never poll mail with the LLM."
 )

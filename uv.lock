@@ -1051,6 +1051,21 @@ wheels = [
 ]
 
 [[package]]
+name = "firecrawl-anydoc"
+version = "0.2.4"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/35/54/ee43b1661a954e53eaed85878a7ccc37ed73e02e6577bb26437ec5f9de94/firecrawl_anydoc-0.2.4.tar.gz", hash = "sha256:3e29460272fea81cde08fd5af11f6b0f1ff05919214ddc939867f72362c83032", size = 270706, upload-time = "2026-08-27T19:13:58.156Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/25/f1/5616b8d703b2bf5688eda86ede4b35620356d9c60346fe2d3efbec2a872d/firecrawl_anydoc-0.2.4-cp310-abi3-macosx_10_12_x86_64.whl", hash = "sha256:e3745a8b108d6575beafd37bcefe52e3f6c7ab44138e05cbdf4c6adf63caba84", size = 3441281, upload-time = "2026-08-27T19:13:43.408Z" },
+    { url = "https://files.pythonhosted.org/packages/59/7d/4b2a466c8953af3b9d94471081b04ce8636680111402d2140105f98c02e5/firecrawl_anydoc-0.2.4-cp310-abi3-macosx_11_0_arm64.whl", hash = "sha256:b2a01eecaa0b99f99ff6749a098f8c7a5250d41db9c53673eb93536ad575bfed", size = 3262365, upload-time = "2026-08-27T19:13:46.362Z" },
+    { url = "https://files.pythonhosted.org/packages/77/b5/5784fc514f58ca19328faee701d2cc2e25961389c2d4908b2a51a1071ee4/firecrawl_anydoc-0.2.4-cp310-abi3-manylinux_2_17_aarch64.manylinux2014_aarch64.whl", hash = "sha256:17720ba093820654162891d7995fd2dbae948b16fe1c174ba799bddfc0b92ad6", size = 3265363, upload-time = "2026-08-27T19:13:48.425Z" },
+    { url = "https://files.pythonhosted.org/packages/fc/16/feeca9705bfdb237f1cb69ede0b373b144c0d51df4297e595a74b815557e/firecrawl_anydoc-0.2.4-cp310-abi3-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:0e5aed01bf6d4e5c588d3363888293f2ceeb9feb00449a32e0ba993797cf0bd3", size = 3506751, upload-time = "2026-08-27T19:13:50.372Z" },
+    { url = "https://files.pythonhosted.org/packages/14/28/b4d0d3c5345cdd65c0b9113c6e6ff1b717fe360dccb658db2a9952315f9c/firecrawl_anydoc-0.2.4-cp310-abi3-musllinux_1_2_aarch64.whl", hash = "sha256:dd162b5eb64478fcf02f53abe7765e26f4350ba657f36c25f055c4cc3dbade0a", size = 3443075, upload-time = "2026-08-27T19:13:52.417Z" },
+    { url = "https://files.pythonhosted.org/packages/cb/29/50c52b0ea5dd645aea6d195da913c8d9e136601eec465bd9a590edd250c7/firecrawl_anydoc-0.2.4-cp310-abi3-musllinux_1_2_x86_64.whl", hash = "sha256:e57c79093c1592929dd8dfaf6c60b49eefe631721d96fb833c3f465472b37b9f", size = 3742860, upload-time = "2026-08-27T19:13:54.474Z" },
+    { url = "https://files.pythonhosted.org/packages/65/34/6d54fed906055e5507dd94efd63f4a05021f103dc684ea62a3b0876b7595/firecrawl_anydoc-0.2.4-cp310-abi3-win_amd64.whl", hash = "sha256:7c9ffc81946e6954c124560ed1d395e0103a1a08fdc0f6be382e2f35daf6dbc9", size = 3583555, upload-time = "2026-08-27T19:13:56.698Z" },
+]
+
+[[package]]
 name = "flatbuffers"
 version = "25.12.19"
 source = { registry = "https://pypi.org/simple" }
@@ -2505,7 +2520,7 @@ wheels = [
 
 [[package]]
 name = "octop"
-version = "1.0.2b6"
+version = "1.0.2"
 source = { editable = "." }
 dependencies = [
     { name = "acme" },
@@ -2516,6 +2531,7 @@ dependencies = [
     { name = "cryptography" },
     { name = "edge-tts" },
     { name = "fastapi" },
+    { name = "firecrawl-anydoc" },
     { name = "josepy" },
     { name = "langchain-core" },
     { name = "langgraph-checkpoint-postgres" },
@@ -2601,6 +2617,7 @@ requires-dist = [
     { name = "edge-tts", specifier = ">=6.1" },
     { name = "fastapi", specifier = ">=0.110" },
     { name = "fastembed", marker = "extra == 'local-embedding'", specifier = ">=0.4" },
+    { name = "firecrawl-anydoc", specifier = ">=0.2.4" },
     { name = "httpx", marker = "extra == 'dev'", specifier = ">=0.27" },
     { name = "huggingface-hub", marker = "extra == 'local-embedding'", specifier = ">=0.20" },
     { name = "josepy", specifier = ">=2.2.0" },
@@ -2612,9 +2629,9 @@ requires-dist = [
     { name = "mss", marker = "extra == 'desktop'", specifier = ">=9.0" },
     { name = "mypy", marker = "extra == 'dev'", specifier = ">=1.10" },
     { name = "octop-browser", specifier = ">=1.0.0" },
-    { name = "octop-gateway", specifier = ">=1.0.0" },
-    { name = "octop-harness", extras = ["all"], specifier = ">=1.0.2" },
-    { name = "octop-memory", specifier = ">=1.0.1" },
+    { name = "octop-gateway", specifier = ">=1.0.3" },
+    { name = "octop-harness", extras = ["all"], specifier = ">=1.0.4" },
+    { name = "octop-memory", specifier = ">=1.0.2" },
     { name = "onnxruntime", marker = "extra == 'knowledge-ocr'", specifier = ">=1.17" },
     { name = "openpyxl", specifier = ">=3.1" },
     { name = "pillow", specifier = ">=10.0" },
@@ -2678,7 +2695,7 @@ wheels = [
 
 [[package]]
 name = "octop-gateway"
-version = "1.0.0"
+version = "1.0.3"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "aiohttp" },
@@ -2696,14 +2713,14 @@ dependencies = [
     { name = "websockets" },
     { name = "wecom-aibot-sdk" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/94/6c/b24f7d8d9f975a7dbe47bcd616429d5a0d75153b2dc0866d6136e653b2db/octop_gateway-1.0.0.tar.gz", hash = "sha256:3630e9f9d40014d961bf8839c19759a676da6e311057df064885fc69cdd789fa", size = 608199, upload-time = "2026-09-24T09:52:46.666Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/f1/7f/cc6d7f7af425fbcc2d999b3a187288fd99a9220acca4bf33e27026a58769/octop_gateway-1.0.3.tar.gz", hash = "sha256:ff679fe583ad13a66b680eee88708a1a9602054f9ecd461577bf7d521572895a", size = 642266, upload-time = "2026-10-16T09:18:50.867Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/20/77/c6d42986b1140c148da0f4777bbff31d189179f2bc69ac276392a73f8589/octop_gateway-1.0.0-py3-none-any.whl", hash = "sha256:bb4aeee8b8bbf683f15d29f8adcff9f5c4963544276c56dca858b01eed78ecaa", size = 160304, upload-time = "2026-09-24T09:52:45.299Z" },
+    { url = "https://files.pythonhosted.org/packages/0b/2a/367c124660188fbd3a230057f28e33bdb09950a6684fc8c3cbd4215d494d/octop_gateway-1.0.3-py3-none-any.whl", hash = "sha256:66d4942cc26b9b1d8653b007540e928e40541185803c560853fc0acdfa444d1e", size = 178059, upload-time = "2026-10-16T09:18:49.638Z" },
 ]
 
 [[package]]
 name = "octop-harness"
-version = "1.0.2"
+version = "1.0.4"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "deepagents" },
@@ -2721,9 +2738,9 @@ dependencies = [
     { name = "octop-memory" },
     { name = "pyyaml" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/92/70/83c43eb4d0949c6e656075d9036d41425d2f128cf2c2898c16b696050f75/octop_harness-1.0.2.tar.gz", hash = "sha256:6a6287541bc7d7331ce4a6ad484de581ac46666355e7bb97906672e3b7a830cd", size = 949560, upload-time = "2026-10-10T02:22:14.664Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/9a/07/541b7ada368a49c4000f6718b3eb3349b6fff1bdfbcb3dc384c021da7aab/octop_harness-1.0.4.tar.gz", hash = "sha256:d87c8c6f2249107a7c3c0160fd043debdcf23529f25fea820f73f4c19fc20aae", size = 982534, upload-time = "2026-10-16T09:50:29.731Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/c7/ea/216ed5b31077ecf3b3dc7e88527020957b5a4c5db6c560c8fba0a79aabfe/octop_harness-1.0.2-py3-none-any.whl", hash = "sha256:5ffaed80f61d1b8f4ba04efcc57962ab6aab9671dbcb8e9d879bcfde32ae11ef", size = 1152741, upload-time = "2026-10-10T02:22:12.649Z" },
+    { url = "https://files.pythonhosted.org/packages/85/3d/319095f36f851cef3d9a386d6b685785ae27be303196dba499bc97860394/octop_harness-1.0.4-py3-none-any.whl", hash = "sha256:880316e9b34ddd397d0b5472770168a30af93abdea3f022cc134425a508c83fc", size = 1180128, upload-time = "2026-10-16T09:50:28.088Z" },
 ]
 
 [package.optional-dependencies]
@@ -2748,11 +2765,11 @@ all = [
 
 [[package]]
 name = "octop-memory"
-version = "1.0.1"
+version = "1.0.2"
 source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/44/56/04f1f5ba2b099ac0243f425beea61ee483feb090633ad1140c2c2336cd05/octop_memory-1.0.1.tar.gz", hash = "sha256:8750dee56dbbb43bbb41ff868d85a6e5efcf4aad20f140e0675213647cd52c22", size = 581647, upload-time = "2026-10-09T13:28:34.804Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/9b/e5/c0c9d2fcf6271bcd0711899b0d3cde1a5eceb8b2272e3a5e434ae5b49405/octop_memory-1.0.2.tar.gz", hash = "sha256:6234797fff4ea340cad2fc51b73f1e4e9931a8680ed448c1fe95d37c1e8ae961", size = 596906, upload-time = "2026-10-16T09:21:05.605Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/90/97/6caca9107a003db4373f83390d2bb3f0ff6756b150df0b5f489b9cd2a0cb/octop_memory-1.0.1-py3-none-any.whl", hash = "sha256:e8d1a2394ebdef1544b873d6f9adecf478756b8b540185369595d119bffdb82e", size = 376410, upload-time = "2026-10-09T13:28:33.484Z" },
+    { url = "https://files.pythonhosted.org/packages/91/ec/f51f5f91c1396d3f9dbdc9d4c5376fa102165c74b03df4b2f32ffbe6c601/octop_memory-1.0.2-py3-none-any.whl", hash = "sha256:e0b661883007f091c97cab4730031de87593d7bb11c94ec3d214ec37cbd71d71", size = 384679, upload-time = "2026-10-16T09:21:04.259Z" },
 ]
 
 [[package]]

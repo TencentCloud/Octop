@@ -56,6 +56,10 @@ class SkillHubMarketError(RuntimeError):
     """A SkillHub marketplace HTTP request failed."""
 
 
+class SkillHubSkillNotFound(SkillHubMarketError):
+    """The skill exists in a catalog but its package is not published (HTTP 404)."""
+
+
 class SkillHubMarketTimeout(SkillHubMarketError):
     """A SkillHub marketplace HTTP request timed out."""
 
@@ -121,6 +125,10 @@ def _http_request(
     except SkillHubPackageError:
         raise
     except urllib.error.HTTPError as exc:
+        if exc.code == 404:
+            raise SkillHubSkillNotFound(
+                f"SkillHub skill package not found: HTTP {exc.code}"
+            ) from exc
         raise SkillHubMarketError(f"SkillHub request failed: HTTP {exc.code}") from exc
     except urllib.error.URLError as exc:
         if isinstance(exc.reason, TimeoutError):

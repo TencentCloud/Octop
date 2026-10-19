@@ -75,7 +75,6 @@ does not set these headers itself.
 | `POST`   | `/setup/verify-password` | public | Exchange the wizard password for a session token |
 | `GET`    | `/setup/validate-token` | public | Check a wizard session token |
 | `POST`   | `/setup/initial-admin` | public | body `{username, password, display_name?, email?}` → `201` |
-| `POST`   | `/setup/resume-wizard` | public | Issue a fresh wizard token mid-setup |
 | `POST`   | `/setup/test-provider` | public | Ping a provider draft (kind/base_url/api_key/model) |
 | `POST`   | `/setup/finish` | public | Finalise setup and unlock the rest of the API |
 | `GET`    | `/auth/captcha` | public | `{provider, site_key?}` for the login widget; 503 while setup is required |
@@ -152,16 +151,54 @@ destination synchronized after the request completes.
 
 | Path | Auth | Notes |
 |------|------|-------|
-| `WS /agents/{id}/chat/ws?token=<jwt>` | owner | Primary dashboard turn endpoint. Send `{"type":"user_turn", ...}` frames (optional `hitl_policy` is a thread-scoped tool-approval bypass); server replies with harness stream chunks ending in `{"type":"done"}` or `{"type":"error","message":"..."}`. `{"type":"ping"}` → `{"type":"pong"}`. `{"type":"subscribe","thread_id"}` → `{"type":"turn_status","thread_id","active"}` (attach to an in-flight turn without cancelling on disconnect). `{"type":"cancel","thread_id"}` stops the active turn (explicit stop; disconnect alone does **not** cancel). |
+| `WS /agents/{id}/chat/ws?token=<jwt>` | owner | Primary dashboard turn endpoint. Send `{"type":"user_turn", ...}` frames (optional `hitl_policy` is a thread-scoped tool-approval bypass); server replies with harness stream chunks ending in `{"type":"done"}` or `{"type":"error","message":"..."}`. `{"type":"ping"}` → `{"type":"pong"}`. `{"type":"subscribe","thread_id"}` → `{"type":"turn_status","thread_id","active"}` plus a `steer.queue_snapshot` baseline (attach to an in-flight turn without cancelling on disconnect). `{"type":"cancel","thread_id"}` stops the active turn and discards its queued steers (explicit stop; disconnect alone does **not** cancel). See [Mid-turn steering](#mid-turn-steering) for steer frames. |
 | `GET /agents/{id}/chat/welcome` | agent access | `{welcome_message, quick_prompts, task_examples}`; `task_examples` is `null` when the workspace field is absent |
 | `POST /agents/{id}/chat/polish` | owner | body `{text, default_model?}` → `{text}` (one-shot prompt refinement) |
-| `POST /agents/{id}/chat/hitl/resume` | owner | body `{thread_id, decisions: [...], hitl_policy?}` → SSE chunk stream; finishes with `{"type":"done"}`. Optional `hitl_policy` (`ask` / `allow_all` / `allow_tools`) is a thread-scoped bypass and does not change global tool-approval settings. |
+| `POST /agents/{id}/chat/hitl/resume` | owner | body `{thread_id, decisions: [...], hitl_policy?}` → SSE chunk stream; finishes with `{"type":"done"}`. When the resume stops on another approval, the done frame is `{"type":"done","hitl_paused":true}` and parked steers stay queued. Optional `hitl_policy` (`ask` / `allow_all` / `allow_tools`) is a thread-scoped bypass and does not change global tool-approval settings. |
+
+Model calls retain LangChain's default retry eligibility and the configured
+retry budget/backoff. Exhausted calls raise and remain failed
+checkpoint tasks, without a synthetic assistant reply. WebUI, IM and team tasks
+display the failure separately. Team rooms publish an `error` frame followed by
+`done`; stored error bubbles carry `additional_kwargs.octop_stream_error` for
+history display. These diagnostics and automatic team failure notifications do
+not become long-term memory.
 
 ### Legacy SSE
 
 The previous `POST /agents/{id}/chat/stream` is gone. The dashboard
 streams turns over the WebSocket above; HITL resume stays on SSE
 because each request is a one-shot continuation.
+
+### Mid-turn steering
+
+While a turn is active, a `user_turn` frame may carry `delivery`
+(`auto` \| `steer` \| `follow_up`), `client_pending_id` (client UUID for
+correlation) and `expected_turn_id` (the `turn.started` id, for optimistic
+concurrency). The server is authoritative: busy `auto`/`steer` steers the
+active turn (queued server-side, bounded by depth and byte caps); idle `auto`
+starts a normal new turn; `follow_up` while busy is rejected; new steers are
+rejected while a HITL card is pending. Replies arrive on the thread:
+
+| Frame | Meaning |
+|-------|---------|
+| `turn.started` / `turn.resumed` / `turn.ended` | logical turn lifecycle; `turn.ended` carries `hitl_paused: true` when steers stay parked across an approval pause |
+| `steer.ack` | direct reply on the sending socket (`queued` / `rejected` / `removed`, with `reason`) |
+| `steer.queued` | steer accepted into the active turn queue (`pending_id`, `queue_length`, `preview`) |
+| `steer.drained` | queued steers injected as a user message; the same turn continues (`turn.resumed` follows) |
+| `steer.discarded` | queue dropped (`turn_cancelled` / `turn_failed` / `continuation_exhausted` / `park_expired`) |
+| `steer.removed` / `steer.rejected` | `steer_remove` confirmation / structured rejection |
+| `steer.queue_snapshot` | server-authoritative queue baseline (on subscribe) |
+
+Drain happens only at safe boundaries: when tools have run, the first model
+output after the completed tool batch preempts the stream (that chunk and
+anything after it, except `done` / `error`, are not forwarded) and the queued
+steers continue the same logical turn; after a pure-text answer steers drain
+at the natural turn end. Image and file blocks on the `user_turn` are queued
+with the text and replayed on drain. Steers parked across an HITL pause drain
+after the approval resumes, and only when that resume does not stop on a new
+approval card. A park older than 30 minutes is discarded (`park_expired`).
+`{"type":"steer_remove",...}` withdraws one queued item before it drains. The client puts the draft back only after `steer.ack` with `status: "removed"` and without `already_drained`; an already-drained item stays in the continuation.
 
 ## Threads & history
 
@@ -231,9 +268,13 @@ plugin returns a large `octop_ui` payload, the backend offloads the envelope's
 `"agent"` (run the prompt through the LLM and push the reply).
 Default: `"agent"`. `trigger` accepts cron expressions
 (`"0 9 * * *"`) plus the `interval:N` / `date:ISO8601` aliases
-documented in `infra/cron/trigger.py`. `prompt` must be non-empty and
-≤ 2000 characters. `name` is an optional display label; when omitted,
-the server derives one from `prompt`.
+documented in `infra/cron/trigger.py`. A `date:` job runs once and
+then disables itself, whether the run succeeds or fails; the row stays
+in the list. If the process is down for more than 24 hours past that
+time and the job never ran, `last_status` is `missed` and the job is
+disabled. `prompt` must be non-empty and ≤ 2000 characters. `name` is
+an optional display label; when omitted, the server derives one from
+`prompt`.
 
 ## Providers
 
@@ -322,6 +363,9 @@ Bundled experts live in `src/octop/infra/agents/experts/library/`
 | `GET`    | `/agents/{aid}/workspace/grep` | owner | grep backend files |
 | `GET`    | `/agents/{aid}/workspace/...` | owner | see `api/routers/workspace.py` |
 | `GET`    | `/agents/{aid}/skills` | owner | list installed skills |
+| `GET`    | `/agents/{aid}/skills/{slug}/export` | owner | download one workspace skill as a ZIP (`{slug}/SKILL.md` plus siblings) |
+| `POST`   | `/agents/{aid}/skills/export` | owner | body `{slugs: string[]}`; one ZIP, each slug a top-level folder |
+| `GET`    | `/skill-packages/{id}/export` | user (`skill_packages`) | download every skill in the package as one ZIP. `allow_download=false` returns 403 for users other than the creator and admins |
 | `PUT`    | `/agents/{aid}/skills/{slug}` | owner | enable / disable a skill |
 | `GET`    | `/agents/{aid}/skills/hub/search` | user | Skill Hub search |
 | `GET`    | `/agents/{aid}/skills/hub/rankings` | user | Skill Hub rankings |
@@ -334,9 +378,84 @@ Bundled experts live in `src/octop/infra/agents/experts/library/`
 | `GET`    | `/agents/{aid}/heartbeat-config` | owner | read heartbeat YAML |
 | `PUT`    | `/agents/{aid}/heartbeat-config` | owner | write heartbeat YAML |
 | `GET`    | `/agents/{aid}/memory/daily` | owner | list daily memory files |
+| `GET`/`PUT` | `/agents/{aid}/memory/strong` | owner | read/edit user-maintained MEMORY.md, including for stopped agents; new sessions snapshot full content once, existing sessions keep their snapshot |
+| `GET`/`PUT` | `/agents/{aid}/memory/user` | owner | read/edit user-maintained USER.md with the same session snapshot policy; distinct from the derived profile |
+| `GET` | `/agents/{aid}/memory/manual-review` | owner | read persisted reconciliation status against current documents; no model call or memory mutation |
+| `POST` | `/agents/{aid}/memory/manual-review` | owner | reconcile saved USER.md + MEMORY.md against up to 100 unchecked atoms; duplicates remain stored, proven conflicts retire the old atom and create a replacement review candidate with evidence |
 | `GET`    | `/agents/{aid}/memory/daily/{filename}` | owner | read one daily memory |
 | `DELETE` | `/agents/{aid}/memory/daily/{filename}` | owner | delete one daily memory |
 | `GET`/`POST` | `/memory/...` | user | memory API (dashboard memory tab) |
+
+### Manual document reconciliation
+
+The manual editors save files first, then request reconciliation. The response reports
+`complete`, `partial` (continue checking), `uncertain`, `unavailable`, `failed`, `stale`,
+`disabled`, `too_large`, or `not_checked`, plus conflict/duplicate counts and candidate IDs.
+Semantic checks use the configured memory auxiliary model and require literal document
+evidence; unavailable or uncertain checks never silently retire facts. Combined document
+input above 100,000 characters is explicitly refused. Current documents are checked again
+when accepting a document-derived candidate; stale candidates require review of the new
+version. The file save remains successful if the subsequent semantic check fails.
+
+### Current-expert memory storage maintenance
+
+SQLite restore requires a harness runtime with `MemoryMiddleware.pause_background`
+([octop-harness #69](https://github.com/TencentCloud/octop-harness/pull/69)). Older runtimes
+reject restore before stopping the expert or changing its database. Independent retry
+controls also require this runtime; the extraction config API reports supported options.
+
+| Method | Path | Auth | Notes |
+|--------|------|------|-------|
+| `GET` | `/agents/{aid}/memory/storage/check` | owner/admin | Read-only inspection; backend, scope, per-expert statistics and cleanup preview |
+| `GET` | `/agents/{aid}/memory/storage/maintenance` | owner/admin | Current progress and this expert's last result, retained until host restart |
+| `POST` | `/agents/{aid}/memory/storage/maintenance` | owner/admin | Body `{confirmed: true}` → `202`; run one host-owned maintenance job |
+| `GET` | `/agents/{aid}/memory/storage/backups` | owner/admin | List this expert’s maintenance and pre-restore SQLite backups from disk |
+| `DELETE` | `/agents/{aid}/memory/storage/backups` | owner/admin | Body `{confirmed: true, backup_id: "server-generated filename"}` → `204`; permanently delete only the selected backup; rejected while maintenance/restore is active |
+| `POST` | `/agents/{aid}/memory/storage/restore` | owner/admin | Body `{confirmed: true, backup_id: "server-generated filename"}` → `202`; back up current state, restore and reload only this expert |
+
+The job waits for the selected expert to become idle and reserves only that
+expert's turn admission. Ownership and storage isolation are checked again after
+waiting. Other experts' conversations can continue. Shared SQLite files and
+colliding PostgreSQL namespaces reject maintenance.
+
+SQLite creates a full file backup before checkpoint deduplication and compaction.
+SQLite restore accepts only regular sibling backup files matching the host’s naming scheme; arbitrary paths and symlinks are rejected. It validates SQLite integrity, namespace ownership and checkpoint references, drains this expert’s background workers, closes its runtime, and creates and fsyncs a full current-state backup before overwriting. SQLite’s backup API manages the database and WAL; files are not blindly replaced. A failed post-restore validation rolls back from the safety snapshot. The expert is recreated before waiting conversations are released. Backups remain discoverable after restart. The control-plane conversation lists/message archives, attachments and configuration are not restored.
+Its inspection uses a separate read-only connection and a consistent snapshot.
+`memory_counts` reports only the selected namespace's logical categories, excluding
+full-text index duplicates. `checkpoint_counts` reports checkpoints, writes, shared
+content blocks and distinct session IDs in a dedicated expert file. Shared files
+omit checkpoint counts because those tables have no expert namespace, and disable
+file maintenance, including when residual foreign namespaces are detected.
+Each count has `rows`, `status` (`ok`, `missing`, `timed_out`) and `elapsed_ms`;
+unavailable counts are null, never zero. Count queries share a five-second budget.
+`elapsed_ms` and `file_check_ms` measure server-side inspection only, excluding
+network transfer; they are not a performance benchmark. Completed SQLite jobs
+include `inspection_before` and `inspection_after` snapshots in `report`, alongside
+file/WAL totals, deduplication statistics and backup size. Counts may remain stable
+because maintenance preserves history; concurrent background writes may affect them.
+
+PostgreSQL limits every read/delete to the live expert's verified namespace and
+backs up exact target rows to a private JSONL file under
+`OCTOP_HOME/backups/memory-maintenance/` before committing a single transaction:
+
+- Rejected candidates decided more than 30 days ago, with no atom referencing them.
+- Operational journal entries older than 14 days (`extract_run`, `gc_*`,
+  `page_regen`, `page_regen_failed`; only the fixed action allowlist is eligible).
+- At most 500 rows per category per pass; locked rows are skipped and another pass
+  can process remaining eligible records.
+
+Active memories, raw evidence, decision journals (including consolidation), and
+all checkpoints remain intact. PostgreSQL results report deleted rows and backup
+size, **not physical disk reclamation**. No shared-table `VACUUM` or host-wide
+orphan sweep runs from this page. Row-byte statistics are estimates that exclude
+indexes, shared overhead and checkpoints. The JSONL header identifies the format,
+namespace and row count; subsequent records contain table names and original rows
+excluding generated search columns. PostgreSQL JSONL restore is not supported by this endpoint.
+
+To verify the PostgreSQL isolation/backup/rollback gate against a dedicated test
+database, set `OCTOP_MEMORY_MAINTENANCE_TEST_DSN` and run
+`uv run pytest tests/integration/test_postgres_memory_storage.py -q`. Never point
+this gate at production: it creates test namespaces and a temporary failure trigger.
 
 ## ACP (Agent Client Protocol)
 
@@ -412,6 +531,53 @@ discovery.
 |--------|------|------|-------|
 | `POST`/`GET`/… | `/internal/mcp/*` | public (mTLS / network-isolated) | MCP gateway used by octop-harness agents (not the dashboard) |
 
+## Octop Agent MCP Gateway
+
+External agents call installed Octop experts through the authenticated
+Streamable HTTP endpoint:
+
+`POST/GET/DELETE /mcp/agents`
+
+Use the same JWT bearer token as the REST API. Use HTTPS when the endpoint is
+available outside the local host. The default token lifetime is 24 hours.
+
+The server exposes three tools:
+
+| Tool | Purpose |
+|------|---------|
+| `list_octop_experts` | List experts visible to the authenticated user |
+| `call_octop_expert` | Start a new isolated expert conversation, or continue one with `thread_id` |
+| `resume_octop_expert` | Resume a call that stopped for tool approval or user input |
+
+`call_octop_expert` returns `thread_id`. Store this value in the external
+agent's working state. Pass it only when the next task must use the same Octop
+conversation. Omit it for a new task. MCP threads cannot attach to dashboard,
+CLI, or IM threads.
+
+When a tool needs approval, the call returns `status: "approval_required"` and
+an `approval` object. Read `approval.request.action_requests` and
+`approval.request.review_configs`. Send one allowed decision for each action to
+`resume_octop_expert`. A resumed call can return another approval request.
+
+Example client configuration:
+
+```json
+{
+  "mcpServers": {
+    "octop-agents": {
+      "type": "streamable_http",
+      "url": "http://127.0.0.1:8090/api/mcp/agents",
+      "headers": {
+        "Authorization": "Bearer <octop-access-token>"
+      }
+    }
+  }
+}
+```
+
+The exact transport key differs by MCP client. Some clients use `http`
+instead of `streamable_http`.
+
 ## Observability & security
 
 | Method | Path | Auth | Notes |
@@ -447,6 +613,8 @@ endpoint (public, mounted directly in `api/app.py`).
 | `POST` | `/agents/{aid}/upload` | user | multipart upload → `{workspace}/inbound/` |
 | `POST` | `/agents/{aid}/files/access-urls` | user | refresh inbound media URLs (signed) |
 | `GET`  | `/agents/{aid}/files/{path}` | owner | read an inbound file |
+| `POST` | `/downloads/link` | user | multipart `file` → `{url, filename, expires_in}`: short-lived link for in-app browsers (WeChat, …) that cannot save `blob:` downloads; capped at `max_upload_mb` |
+| `GET`  | `/downloads/link/{token}` | public (token) | serve that file as an attachment until it expires (10 min); the token is the only credential |
 
 ## Updates, ollama, i18n, plugins, slash, preferences
 

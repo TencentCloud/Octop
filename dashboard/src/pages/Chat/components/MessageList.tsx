@@ -21,7 +21,10 @@ import ScrollToBottomButton from "./ScrollToBottomButton";
 import GeneratingIndicator from "./GeneratingIndicator";
 import TurnTimelineRail from "./TurnTimelineRail";
 import { isLiveAssistantTurn } from "./liveAssistantTurn";
-import { chatGeneratingPhase } from "./generatingGate";
+import {
+  awaitingVisibleAssistantReply,
+  chatGeneratingPhase,
+} from "./generatingGate";
 import { useAutoScroll } from "../hooks/useAutoScroll";
 import { findLastBrowserTurnGroupIndex } from "../utils/messageContent";
 import {
@@ -35,6 +38,7 @@ import {
   shouldAutoFillOlderHistory,
   shouldReleaseLoadMoreLatch,
 } from "./loadOlderGate";
+import { prependAnchorShift } from "../utils/prependAnchor";
 import * as chatStore from "../hooks/chatStore";
 import { shouldBlockHistoryRefresh } from "../hooks/wsResumeGate";
 import styles from "../index.module.less";
@@ -102,6 +106,7 @@ interface MessageListProps {
   onRegenerate?: (messageId: string) => void;
   onDisableStreamUsage?: () => Promise<boolean>;
   onEditUserMessage?: (messageId: string, newText: string) => void;
+  onWithdrawSteer?: (messageId: string) => void;
   onForkAssistantMessage?: (messageId: string) => void;
   forkDisabled?: boolean;
   forkDisabledHint?: string;
@@ -128,6 +133,7 @@ interface GroupRenderContext {
   onRegenerate?: (messageId: string) => void;
   onDisableStreamUsage?: () => Promise<boolean>;
   onEditUserMessage?: (messageId: string, newText: string) => void;
+  onWithdrawSteer?: (messageId: string) => void;
   onForkAssistantMessage?: (messageId: string) => void;
   forkDisabled?: boolean;
   forkDisabledHint?: string;
@@ -207,6 +213,7 @@ function renderMessageGroup(
           onRegenerate={ctx.onRegenerate}
           onDisableStreamUsage={ctx.onDisableStreamUsage}
           onEditUserMessage={ctx.onEditUserMessage}
+          onWithdrawSteer={ctx.onWithdrawSteer}
         />
       </div>
     );
@@ -266,6 +273,7 @@ export default function MessageList(props: MessageListProps) {
     onRegenerate,
     onDisableStreamUsage,
     onEditUserMessage,
+    onWithdrawSteer,
     onForkAssistantMessage,
     forkDisabled,
     forkDisabledHint,
@@ -299,18 +307,25 @@ export default function MessageList(props: MessageListProps) {
   const [scrollerMountKey, setScrollerMountKey] = useState(0);
   const [useVirtualLocked, setUseVirtualLocked] = useState(false);
   const [firstItemIndex, setFirstItemIndex] = useState(VIRTUOSO_START_INDEX);
-  const prevGroupCountRef = useRef(0);
+  /** First group id when an older-page load starts. Appends must not count as prepends. */
+  const prependAnchorIdRef = useRef<string | null>(null);
 
   const messageGroups = useMemo(
     () => groupConsecutiveAssistantMessages(messages, agentId ?? undefined),
     [messages, agentId],
   );
+  const messageGroupsRef = useRef(messageGroups);
+  messageGroupsRef.current = messageGroups;
 
   const useVirtual =
     useVirtualLocked || messageGroups.length >= VIRTUALIZE_THRESHOLD;
 
   const lastMsg = messages[messages.length - 1];
   const hasLiveSpeakers = liveSpeakers.length > 0;
+  const awaitingVisibleReply = useMemo(
+    () => awaitingVisibleAssistantReply(messages),
+    [messages],
+  );
   const {
     showFooter: showGenerating,
     showElapsed: isAwaitingAssistantReply,
@@ -320,6 +335,7 @@ export default function MessageList(props: MessageListProps) {
     loading: Boolean(loading),
     lastMessageRole: lastMsg?.role,
     hasLiveSpeakers,
+    awaitingVisibleReply,
   });
   const liveSpeakerNames = useMemo(
     () =>
@@ -368,6 +384,8 @@ export default function MessageList(props: MessageListProps) {
     if (scroller instanceof HTMLElement) {
       scrollHeightBeforePrependRef.current = scroller.scrollHeight;
     }
+    const anchorGroup = messageGroupsRef.current[0];
+    prependAnchorIdRef.current = anchorGroup?.messages[0]?.id ?? null;
     loadMoreRequestedRef.current = true;
     void Promise.resolve(g.onLoadMoreHistory()).then(
       (started) => {
@@ -376,11 +394,13 @@ export default function MessageList(props: MessageListProps) {
         if (shouldReleaseLoadMoreLatch(started)) {
           loadMoreRequestedRef.current = false;
           scrollHeightBeforePrependRef.current = null;
+          prependAnchorIdRef.current = null;
         }
       },
       () => {
         loadMoreRequestedRef.current = false;
         scrollHeightBeforePrependRef.current = null;
+        prependAnchorIdRef.current = null;
       },
     );
   }, []);
@@ -499,33 +519,47 @@ export default function MessageList(props: MessageListProps) {
   }, [historyLoadingMore, requestOlderMessages]);
 
   useLayoutEffect(() => {
-    const prevCount = prevGroupCountRef.current;
-    const nextCount = messageGroups.length;
-    const prependedGroups = nextCount - prevCount;
-    prevGroupCountRef.current = nextCount;
-
     if (scrollHeightBeforePrependRef.current === null) return;
 
-    // Virtuoso items are groups — shift firstItemIndex by the number of new
-    // groups, not messages. Message-count deltas misalign absolute indices and
-    // break startReached / scroll-up load-earlier.
-    if (useVirtual && prependedGroups > 0) {
-      setFirstItemIndex((idx) => idx - prependedGroups);
+    const shift = prependAnchorShift(messageGroups, prependAnchorIdRef.current);
+    const clearPrependGuard = () => {
       scrollHeightBeforePrependRef.current = null;
+      prependAnchorIdRef.current = null;
+    };
+    const restoreScrollByHeight = () => {
+      const scroller = useVirtual ? scrollerRef.current : containerRef.current;
+      if (!(scroller instanceof HTMLElement)) return;
+      const before = scrollHeightBeforePrependRef.current;
+      if (before === null) return;
+      armProgrammaticGuard();
+      scroller.scrollTop += scroller.scrollHeight - before;
+    };
+
+    // A send while older history is loading grows the list at the bottom.
+    // Shifting firstItemIndex by that delta opens a blank slot and the new
+    // bubble never lands where the user is looking.
+    if (shift.prependedGroups === 0 && !shift.mergedIntoFirst) {
+      if (!historyLoadingMore) clearPrependGuard();
       return;
     }
 
-    // Non-virtual, or virtual with 0 new groups (older msgs merged into the
-    // first assistant group): restore scroll by height delta.
-    const scroller = useVirtual ? scrollerRef.current : containerRef.current;
-    if (scroller instanceof HTMLElement) {
-      armProgrammaticGuard();
-      const delta =
-        scroller.scrollHeight - scrollHeightBeforePrependRef.current;
-      scroller.scrollTop += delta;
+    if (useVirtual && shift.prependedGroups > 0) {
+      setFirstItemIndex((idx) => idx - shift.prependedGroups);
+      clearPrependGuard();
+      return;
     }
-    scrollHeightBeforePrependRef.current = null;
-  }, [messages, messageGroups.length, useVirtual, armProgrammaticGuard]);
+
+    // Non-virtual prepend, or older rows merged into the anchored group:
+    // keep the viewport on the same messages by the height delta.
+    restoreScrollByHeight();
+    clearPrependGuard();
+  }, [
+    messages,
+    messageGroups,
+    useVirtual,
+    historyLoadingMore,
+    armProgrammaticGuard,
+  ]);
 
   const historyHeader = useMemo(() => {
     if (!historyHasMore && !historyLoadingMore) return null;
@@ -613,7 +647,7 @@ export default function MessageList(props: MessageListProps) {
     atTopRef.current = false;
     lastSmoothScrolledUserIdRef.current = null;
     scrollHeightBeforePrependRef.current = null;
-    prevGroupCountRef.current = 0;
+    prependAnchorIdRef.current = null;
     setFirstItemIndex(VIRTUOSO_START_INDEX);
     scrollToBottomRef.current(true);
     // Intentionally only sessionKey — see scrollToBottomRef above.
@@ -717,6 +751,7 @@ export default function MessageList(props: MessageListProps) {
       onRegenerate,
       onDisableStreamUsage,
       onEditUserMessage,
+      onWithdrawSteer,
       onForkAssistantMessage,
       forkDisabled,
       forkDisabledHint,
@@ -741,6 +776,7 @@ export default function MessageList(props: MessageListProps) {
       onRegenerate,
       onDisableStreamUsage,
       onEditUserMessage,
+      onWithdrawSteer,
       onForkAssistantMessage,
       forkDisabled,
       forkDisabledHint,
@@ -766,6 +802,8 @@ export default function MessageList(props: MessageListProps) {
               showElapsed={isAwaitingAssistantReply}
               membersOnly={generatingMembersOnly}
               speakerNames={liveSpeakerNames}
+              showAvatar={isAwaitingAssistantReply}
+              agentId={agentId}
             />
           </div>
         )}
@@ -778,6 +816,7 @@ export default function MessageList(props: MessageListProps) {
       isAwaitingAssistantReply,
       generatingMembersOnly,
       liveSpeakerNames,
+      agentId,
       refreshFooter,
     ],
   );

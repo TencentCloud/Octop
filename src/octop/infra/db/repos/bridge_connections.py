@@ -27,6 +27,7 @@ class BridgeConnectionRow:
     auto_reconnect: bool
     created_at: int
     updated_at: int
+    peer_client_host: str | None = None
 
     @classmethod
     def from_row(cls, r: DbRow) -> BridgeConnectionRow:
@@ -36,6 +37,7 @@ class BridgeConnectionRow:
         raw_notes = r["notes"]
         raw_icon = r["icon_name"] if "icon_name" in keys else None
         auto_raw = r["auto_reconnect"] if "auto_reconnect" in keys else 1
+        raw_host = r["peer_client_host"] if "peer_client_host" in keys else None
         return cls(
             pk=int(r["id"]),
             connection_id=str(r["connection_id"]),
@@ -58,6 +60,11 @@ class BridgeConnectionRow:
             auto_reconnect=bool(int(auto_raw or 0)),
             created_at=int(r["created_at"]),
             updated_at=int(r["updated_at"]),
+            peer_client_host=(
+                str(raw_host).strip()
+                if isinstance(raw_host, str) and str(raw_host).strip()
+                else None
+            ),
         )
 
 
@@ -80,6 +87,7 @@ class BridgeConnectionRepo:
         token_expires_at: int | None = None,
         status: str = "disconnected",
         auto_reconnect: bool = True,
+        peer_client_host: str | None = None,
     ) -> BridgeConnectionRow:
         ts = now_ts()
         with self._db.transaction() as conn:
@@ -87,8 +95,8 @@ class BridgeConnectionRepo:
                 "INSERT INTO bridge_connections("
                 "connection_id, owner_user_id, peer_base_url, peer_username, display_name, "
                 "notes, icon_name, credential_blob, access_token_blob, token_expires_at, status, "
-                "auto_reconnect, created_at, updated_at"
-                ") VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                "auto_reconnect, peer_client_host, created_at, updated_at"
+                ") VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                 (
                     connection_id,
                     owner_user_id,
@@ -102,6 +110,7 @@ class BridgeConnectionRepo:
                     token_expires_at,
                     status,
                     1 if auto_reconnect else 0,
+                    (peer_client_host or "").strip() or None,
                     ts,
                     ts,
                 ),
@@ -287,9 +296,11 @@ class BridgeConnectionRepo:
         display_name: str,
         notes: str | None = None,
         status: str = "connected",
+        peer_client_host: str | None = None,
     ) -> BridgeConnectionRow:
         existing = self.get(connection_id)
         ts = now_ts()
+        host = (peer_client_host or "").strip() or None
         if existing is None:
             return self.create(
                 connection_id=connection_id,
@@ -300,15 +311,17 @@ class BridgeConnectionRepo:
                 notes=notes,
                 status=status,
                 auto_reconnect=False,
+                peer_client_host=host,
             )
         with self._db.transaction() as conn:
             # Keep the owner's chosen display_name / notes on reverse reconnect.
             # Reverse rows cannot dial out — never enable auto-reconnect.
+            # Refresh the observed client address; do not touch the local name.
             conn.execute(
                 "UPDATE bridge_connections SET "
                 "owner_user_id = ?, peer_base_url = ?, peer_username = ?, "
                 "status = ?, last_error = NULL, last_seen_at = ?, updated_at = ?, "
-                "auto_reconnect = 0 "
+                "auto_reconnect = 0, peer_client_host = COALESCE(?, peer_client_host) "
                 "WHERE connection_id = ?",
                 (
                     owner_user_id,
@@ -317,6 +330,7 @@ class BridgeConnectionRepo:
                     status,
                     ts,
                     ts,
+                    host,
                     connection_id,
                 ),
             )
