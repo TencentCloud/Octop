@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import re
 import unicodedata
+from collections.abc import Callable
 
 _FENCE_RE = re.compile(r"```.*?```", re.DOTALL)
 _ROW_SPLIT_RE = re.compile(r"(?<!\\)\|")
@@ -83,8 +84,10 @@ def _render_table(rows: list[list[str]]) -> str:
     return "```\n" + "\n".join(lines) + "\n```"
 
 
-def convert_markdown_tables(text: str) -> str:
-    """把文本中的 GFM 表格转换为对齐代码块；代码围栏内的内容不动。"""
+def convert_markdown_tables(
+    text: str, *, renderer: Callable[[list[list[str]]], str] = _render_table
+) -> str:
+    """把文本中的 GFM 表格经 renderer 重渲染；代码围栏内的内容不动。"""
     if "|" not in text:
         return text
 
@@ -111,7 +114,7 @@ def convert_markdown_tables(text: str) -> str:
                 block.append(_split_row(stripped))
                 index += 1
             if len(block) >= 2 and _is_separator_row(block[1]):
-                result.append(_render_table(block))
+                result.append(renderer(block))
             else:
                 result.extend(lines[index - len(block) : index])
         else:
