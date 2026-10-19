@@ -43,7 +43,8 @@ import {
 import { useTranslation } from "react-i18next";
 import { useNavigate } from "react-router-dom";
 
-import { EmptyState } from "../../../components/EmptyState";
+import { OctopEmptyMascot } from "../../../components/EmptyState";
+import StreamSetupGuide from "../../../components/StreamSetupGuide/StreamSetupGuide";
 import { useAgent } from "../../../context/AgentContext";
 import { useCardTableView } from "../../../hooks/useCardTableView";
 import { apiErrorMessage } from "../../../utils/apiError";
@@ -1291,10 +1292,38 @@ export default function BridgeSettingsPanel({
           <Spin />
         </div>
       ) : rows.length === 0 ? (
-        <EmptyState
-          variant="mascot"
+        <StreamSetupGuide
+          className={styles.emptyGuide}
+          wide
+          plain
+          icon={<OctopEmptyMascot />}
           title={t("advancedSettings.bridge.emptyTitle")}
           description={t("advancedSettings.bridge.emptyDesc")}
+          steps={[
+            {
+              label: t("advancedSettings.bridge.emptyGuideStepWhat"),
+              detail: t("advancedSettings.bridge.emptyGuideStepWhatDetail"),
+            },
+            {
+              label: t("advancedSettings.bridge.emptyGuideStepHow"),
+              detail: t("advancedSettings.bridge.emptyGuideStepHowDetail"),
+            },
+            {
+              label: t("advancedSettings.bridge.emptyGuideStepChat"),
+              detail: t("advancedSettings.bridge.emptyGuideStepChatDetail"),
+            },
+          ]}
+          primaryAction={{
+            label: t("advancedSettings.bridge.add"),
+            onClick: () => setCreateOpen(true),
+            icon: <Plus size={14} />,
+            disabled: atConnectionLimit,
+            title: atConnectionLimit
+              ? t("advancedSettings.bridge.addDisabled", {
+                  limit: MAX_BRIDGE_CONNECTIONS,
+                })
+              : undefined,
+          }}
         />
       ) : (
         <>
