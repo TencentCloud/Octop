@@ -8,6 +8,7 @@
 
 ### 修复
 - `OCTOP_HOME` 迁移数据目录后，首次配置向导密码文件随之写入 `<OCTOP_HOME>/octop-login.txt`；旧位置 `~/octop-login.txt` 自动继承，不再生成冲突密码（#2171）
+- 专家互调（ask_agent）时，被调方现在能使用自己绑定的 MCP 工具
 
 ## [1.0.2] - 2026-10-18
 
