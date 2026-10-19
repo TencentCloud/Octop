@@ -472,6 +472,32 @@ async def test_summary_agent_id_filter_for_user(env: Any) -> None:
     assert buckets[0]["total_tokens"] == 150
 
 
+async def test_by_agent_summary_labels_other_users_experts(env: Any) -> None:
+    """Admin rollup names experts the caller does not own."""
+    c, srv, admin_auth, alice_auth, ctx = env
+    with srv.services.db.connect() as conn:
+        conn.execute(
+            "UPDATE agents SET name = ? WHERE agent_id = ?",
+            ("晨报助手", "agt-b"),
+        )
+    srv.services.usage_repo.record(
+        agent_id="agt-b",
+        user_id=ctx["alice_id"],
+        input_tokens=100,
+        output_tokens=50,
+    )
+
+    for path, headers in (
+        ("/api/usage/summary?granularity=by_agent&window=all", alice_auth),
+        ("/api/admin/usage/summary?granularity=by_agent&window=all", admin_auth),
+    ):
+        r = await c.get(path, headers=headers)
+        assert r.status_code == 200
+        buckets = {b["key"]: b for b in r.json()["buckets"]}
+        assert buckets["agt-b"]["label"] == "晨报助手"
+        assert buckets["agt-b"]["key"] == "agt-b"
+
+
 async def test_window_presets_today_yesterday_rolling(env: Any) -> None:
     """Preset windows isolate rows when resolved against a pinned ``now``."""
     from datetime import datetime

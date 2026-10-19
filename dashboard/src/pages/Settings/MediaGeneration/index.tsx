@@ -42,7 +42,7 @@ import styles from "./index.module.less";
 
 const { Text } = Typography;
 
-interface MediaProviderDraft extends MediaProviderSettings {
+export interface MediaProviderDraft extends MediaProviderSettings {
   api_key: string;
 }
 
@@ -74,6 +74,44 @@ function nextProviderId(
   let suffix = 2;
   while (ids.has(`${provider}-${suffix}`)) suffix += 1;
   return `${provider}-${suffix}`;
+}
+
+/**
+ * Ant Design hands back whatever a mounted input produced, so a string field
+ * is only a string when its input was rendered. The image/video model inputs
+ * unmount when their tool switch is off, which makes them absent from
+ * ``validateFields()``; read every field defensively instead of calling
+ * ``.trim()`` on a value the form never supplied.
+ */
+export function trimmedFormString(value: unknown): string {
+  return typeof value === "string" ? value.trim() : "";
+}
+
+/**
+ * Build the provider draft a modal action (save, verify, test) should submit.
+ *
+ * ``validated`` holds the fields ``validateFields()`` returned — only the
+ * currently mounted ones. ``stored`` is the whole form store, which also keeps
+ * the preserved value of an unmounted field. The model inputs disappear from
+ * the form when "启用生图工具"/"启用生视频工具" is switched off, and without
+ * the fallback the model was read as ``undefined``, ``.trim()`` threw, and
+ * every button in the modal silently did nothing.
+ */
+export function buildProviderDraft(
+  editingProvider: MediaProviderDraft,
+  validated: Partial<ProviderFormValues>,
+  stored: Partial<ProviderFormValues>,
+): MediaProviderDraft {
+  const merged = { ...stored, ...validated };
+  return {
+    ...editingProvider,
+    ...validated,
+    display_name: trimmedFormString(validated.display_name),
+    base_url: trimmedFormString(validated.base_url),
+    image_model: trimmedFormString(merged.image_model),
+    video_model: trimmedFormString(merged.video_model),
+    api_key: trimmedFormString(validated.api_key),
+  };
 }
 
 function providerInput(provider: MediaProviderDraft): MediaProviderInput {
@@ -272,15 +310,11 @@ export function MediaGenerationSettingsPanel() {
     if (!editingProvider) return null;
     try {
       const values = await form.validateFields();
-      return {
-        ...editingProvider,
-        ...values,
-        display_name: values.display_name.trim(),
-        base_url: values.base_url.trim(),
-        image_model: values.image_model.trim(),
-        video_model: values.video_model.trim(),
-        api_key: values.api_key.trim(),
-      };
+      // `validateFields()` only covers mounted fields, and the model inputs
+      // unmount when their tool switch is off. Read the preserved store values
+      // back in so a disabled tool keeps the model it was configured with.
+      const stored = form.getFieldsValue(true) as Partial<ProviderFormValues>;
+      return buildProviderDraft(editingProvider, values, stored);
     } catch {
       return null;
     }

@@ -73,6 +73,87 @@ def _seed_test_provider(manager: AgentManager) -> None:
     )
 
 
+@pytest.mark.asyncio
+@pytest.mark.parametrize("cancel_review", [False, True])
+async def test_manual_review_serializes_profile_edits_without_changing_session(
+    manager: AgentManager, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, cancel_review: bool
+) -> None:
+    from deepagents.backends import FilesystemBackend
+    from octop_harness.backends.workspace import BackendWorkspace
+
+    ws = BackendWorkspace(FilesystemBackend(root_dir=str(tmp_path), virtual_mode=True), tmp_path)
+    ws.write_text("USER.md", "Original profile", force=True)
+    entered, release = threading.Event(), threading.Event()
+
+    def review(documents: dict[str, str], *, is_current: Any) -> dict[str, Any]:
+        entered.set()
+        assert release.wait(timeout=3)
+        assert documents["USER.md"] == "Original profile" and is_current()
+        return {"status": "complete"}
+
+    service = SimpleNamespace(reconcile_manual_documents=review)
+    agent = SimpleNamespace(_memory_runtime=SimpleNamespace(service=service))
+    monkeypatch.setattr(manager, "workspace_for_agent", lambda _: ws)
+    monkeypatch.setattr(manager, "get_agent", lambda _: agent)
+    task = asyncio.create_task(manager.review_manual_memory_documents("a1"))
+    assert await asyncio.to_thread(entered.wait, 2)
+    edit = asyncio.create_task(
+        manager.save_manual_memory_document("a1", "USER.md", "Updated profile")
+    )
+    if cancel_review:
+        task.cancel()
+    await asyncio.sleep(0.01)
+    assert not edit.done() and ws.read_text("USER.md") == "Original profile"
+    release.set()
+    if cancel_review:
+        with pytest.raises(asyncio.CancelledError):
+            await task
+    else:
+        assert await task == {"status": "complete"}
+    await edit
+    assert ws.read_text("USER.md") == "Updated profile"
+    with pytest.raises(ValueError, match="Unsupported"):
+        await manager.save_manual_memory_document("a1", "AGENTS.md", "invalid")
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("failure", [False, True])
+async def test_stopped_agent_manual_review_closes_temporary_runtime(
+    manager: AgentManager, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, failure: bool
+) -> None:
+    from deepagents.backends import FilesystemBackend
+    from octop_harness.backends.workspace import BackendWorkspace
+
+    ws = BackendWorkspace(FilesystemBackend(root_dir=str(tmp_path), virtual_mode=True), tmp_path)
+    ws.write_text("USER.md", "Current profile", force=True)
+    monkeypatch.setattr(manager, "workspace_for_agent", lambda _: ws)
+
+    def stopped(_: str) -> Any:
+        raise OctopError(ErrorCode.AGENT_NOT_RUNNING, "stopped")
+
+    monkeypatch.setattr(manager, "get_agent", stopped)
+    monkeypatch.setattr(manager, "get_row", lambda _: _row())
+    cfg = SimpleNamespace(memory_enabled=True, providers=[], workspace_dir=str(tmp_path))
+    monkeypatch.setattr(manager, "_build_harness_config", lambda _: cfg)
+    factory, runtime = MagicMock(), MagicMock()
+    runtime.service.reconcile_manual_documents.return_value = {"status": "complete"}
+    if failure:
+        runtime.service.reconcile_manual_documents.side_effect = RuntimeError("audit failed")
+    factory_type = MagicMock(return_value=factory)
+    runtime_type = MagicMock(return_value=runtime)
+    monkeypatch.setattr("octop_harness.llm.factory.ChatModelFactory", factory_type)
+    monkeypatch.setattr("octop_harness.memory.runtime.MemoryRuntime", runtime_type)
+    if failure:
+        with pytest.raises(RuntimeError, match="audit failed"):
+            await manager.review_manual_memory_documents("a1")
+    else:
+        assert await manager.review_manual_memory_documents("a1") == {"status": "complete"}
+        assert runtime.service.reconcile_manual_documents.call_args.kwargs["is_current"]()
+    assert runtime_type.call_args.kwargs["workspace"] is ws
+    runtime.close.assert_called_once()
+    factory.close.assert_called_once()
+
+
 def _row(
     *,
     agent_id: str = "01AGENT",
@@ -828,14 +909,22 @@ def test_build_harness_config_defaults_local_shell_backend(manager: AgentManager
 
 
 @pytest.mark.asyncio
-async def test_boot_passes_process_log_dir_to_harness_manager(manager: AgentManager) -> None:
+async def test_boot_reuses_process_log_instead_of_dated_harness_files(
+    manager: AgentManager,
+) -> None:
+    from octop_harness.observability.logging import teardown_logging
+
     await manager.boot()
     try:
         hm = manager._harness_manager
         assert hm is not None
-        assert hm._log_dir == manager.paths.logs_dir.resolve()
+        assert hm._log_file is None
+        log_dir = manager.paths.logs_dir
+        dated = list(log_dir.glob("????-??-??.log")) if log_dir.is_dir() else []
+        assert dated == []
     finally:
         await manager.shutdown()
+        teardown_logging()
 
 
 @pytest.mark.asyncio
@@ -1011,6 +1100,21 @@ def test_apply_pending_bootstrap_graph_refresh_recompiles_graph(manager: AgentMa
 
 def test_is_bootstrapped_returns_false_when_agent_not_running(manager: AgentManager) -> None:
     assert manager.is_bootstrapped("NOPE") is False
+
+
+def test_is_bootstrapped_does_not_cache_an_incomplete_marker(manager: AgentManager) -> None:
+    agent = MagicMock()
+    agent.is_bootstrapped.side_effect = [False, True]
+    harness_manager = MagicMock()
+    harness_manager.get_agent.return_value = MagicMock(agent=agent)
+    manager._harness_manager = harness_manager
+    manager._repos.agent_repo.create(agent_id="AGT_COS", user_id=None, name="cos", config_json="{}")
+
+    assert manager.is_bootstrapped("AGT_COS") is False
+    assert manager.is_bootstrapped("AGT_COS") is True
+    assert agent.is_bootstrapped.call_count == 2
+    assert manager.is_bootstrapped("AGT_COS") is True
+    assert agent.is_bootstrapped.call_count == 2
 
 
 def test_is_bootstrapped_assumes_true_when_backend_check_fails(manager: AgentManager) -> None:
@@ -1504,8 +1608,10 @@ async def test_model_retry_exhaustion_fails_background_job(
     cfg = manager._build_harness_config(_row())
     retries = [m for m in cfg.middleware or [] if isinstance(m, ModelRetryMiddleware)]
     assert len(retries) == 1
-    assert not cfg.model_retry_enabled  # Do not nest the harness's continue-on-error retry.
+    assert not cfg.model_retry_enabled  # The host installs exactly one retry middleware.
     retry = retries[0]
+    assert retry.on_failure == "error"
+    assert retry.retry_on is ModelRetryMiddleware().retry_on
     assert retry.max_retries == cfg.model_retry_max_retries
     assert retry.initial_delay == cfg.model_retry_initial_delay
     assert retry.max_delay == cfg.model_retry_max_delay
@@ -1522,11 +1628,9 @@ async def test_model_retry_exhaustion_fails_background_job(
         response = await retry.awrap_model_call(None, fail)
         return {"messages": response.result}
 
-    # Exhausted retries become a model-visible prompt, not a raised exception.
-    response = await retry.awrap_model_call(None, fail)
-    text = str(response.result[0].content)
-    assert "provider unavailable" in text
-    assert "[model_call_failed]" in text
+    with pytest.raises(failure_type) as caught:
+        await retry.awrap_model_call(None, fail)
+    assert caught.value is failure
     assert attempts == cfg.model_retry_max_retries + 1
     attempts = 0
 
@@ -1546,15 +1650,6 @@ async def test_model_retry_exhaustion_fails_background_job(
     )
     await inbox._process(msg)
     assert attempts == cfg.model_retry_max_retries + 1
-    try:
-        from octop_harness.messages import is_model_retry_failure_text
-    except ImportError:
-        is_model_retry_failure_text = None  # type: ignore[assignment]
-    if is_model_retry_failure_text is None:
-        # Published harness still treats a continue-on-error AIMessage as success.
-        assert msg.status == "done"
-        return
-    assert is_model_retry_failure_text(text)
     assert msg.status == "failed"
     event = processor.on_reply.call_args.args[0]
     assert event.status == "failed"
@@ -1572,14 +1667,80 @@ def test_model_retry_sync_failure_and_recovery(manager: AgentManager) -> None:
     retry.initial_delay = 0
     failure = TypeError("model failed")
     handler = MagicMock(side_effect=failure)
-    exhausted = retry.wrap_model_call(None, handler)
-    assert "model failed" in str(exhausted.result[0].content)
-    assert "[model_call_failed]" in str(exhausted.result[0].content)
+    with pytest.raises(TypeError) as caught:
+        retry.wrap_model_call(None, handler)
+    assert caught.value is failure
     assert handler.call_count == cfg.model_retry_max_retries + 1
     response = ModelResponse(result=[AIMessage(content="recovered")])
     handler = MagicMock(side_effect=[failure, response])
     assert retry.wrap_model_call(None, handler) is response
     assert handler.call_count == 2
+
+
+@pytest.mark.parametrize("status", [400, 401, 403, 422])
+def test_host_model_sdk_errors_keep_original_retry_budget(
+    manager: AgentManager, status: int
+) -> None:
+    from langchain.agents.middleware import ModelRetryMiddleware
+    from openai import APIStatusError
+
+    cfg = manager._build_harness_config(_row())
+    retry = next(m for m in cfg.middleware or [] if isinstance(m, ModelRetryMiddleware))
+    retry.initial_delay = 0
+    error = APIStatusError(
+        "opaque rejection",
+        response=httpx.Response(
+            status, request=httpx.Request("POST", "https://provider.example/v1/messages")
+        ),
+        body={},
+    )
+    handler = MagicMock(side_effect=error)
+    with pytest.raises(APIStatusError) as caught:
+        retry.wrap_model_call(None, handler)
+    assert caught.value is error
+    assert handler.call_count == cfg.model_retry_max_retries + 1
+
+
+def test_runtime_uses_health_aware_model_failover(manager: AgentManager) -> None:
+    from octop.infra.agents.middleware.model_failover import SafeModelFailoverMiddleware
+
+    _seed_test_provider(manager)
+    factory = MagicMock()
+    factory.get_chat_model.return_value = object()
+    manager._harness_manager = MagicMock(shared_factory=factory)
+
+    cfg = manager._build_harness_config(_row())
+
+    failovers = [
+        item for item in (cfg.middleware or []) if isinstance(item, SafeModelFailoverMiddleware)
+    ]
+    assert len(failovers) == 1
+    assert not cfg.model_retry_enabled
+    assert failovers[0]._on_failure == "error"
+
+
+def test_auto_route_fallback_skips_model_in_cooldown(manager: AgentManager) -> None:
+    from octop.infra.agents.providers.health import FailureScope
+
+    manager._repos.provider_repo.create(
+        name="p",
+        kind="openai",
+        base_url="https://api.example.com/v1",
+        api_key="sk-test",
+        models_json=json.dumps(
+            [
+                {"id": "bad", "enabled": True},
+                {"id": "ready", "enabled": True},
+            ]
+        ),
+    )
+    manager._model_health.record_failure(
+        "p/bad",
+        kind="provider_unavailable",
+        scope=FailureScope.MODEL,
+    )
+
+    assert manager.resolve_fallback_model_ref() == "p/ready"
 
 
 def test_build_harness_config_auto_expert_falls_back_to_first_model(
@@ -1590,6 +1751,23 @@ def test_build_harness_config_auto_expert_falls_back_to_first_model(
     cfg = manager._build_harness_config(_row(default_model=None))
     assert cfg.default_model == "test-openai/gpt-4o-mini"
     assert cfg.providers == []
+
+
+def test_build_harness_config_keeps_model_during_runtime_cooldown(
+    manager: AgentManager,
+) -> None:
+    from octop.infra.agents.providers.health import FailureScope
+
+    _seed_test_provider(manager)
+    manager._model_health.record_failure(
+        "test-openai/gpt-4o-mini",
+        kind="timeout",
+        scope=FailureScope.MODEL,
+    )
+
+    cfg = manager._build_harness_config(_row(default_model=None))
+
+    assert cfg.default_model == "test-openai/gpt-4o-mini"
 
 
 def test_build_harness_config_uses_active_model_before_first(

@@ -120,6 +120,14 @@
   gap: 0;
   overflow-y: auto;
   padding-top: 2px;
+
+  .sessionSearchWrap {
+    margin: 0 4px 8px;
+  }
+
+  .sessionScopeTabs {
+    margin: 0 4px 8px;
+  }
 }
 
 .minimalAgentSection {
@@ -210,14 +218,19 @@
   transition: opacity var(--fn-transition-fast);
 }
 
-.minimalAgentNewChatBtn {
+.minimalAgentHeader .expertNavActions {
+  margin-right: 2px;
+}
+
+.minimalAgentNewChatBtn,
+.minimalAgentPinBtn {
   display: inline-flex;
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
   width: 22px;
   height: 22px;
-  margin-right: 2px;
+  margin-right: 0;
   padding: 0;
   border: none;
   border-radius: 4px;
@@ -233,6 +246,26 @@
   }
 }
 
+.agentPinBtn.agentPinBtnActive,
+.minimalAgentPinBtn.agentPinBtnActive,
+.agentCardProfile:hover .agentPinBtn.agentPinBtnActive,
+.agentCardProfile:focus-within .agentPinBtn.agentPinBtnActive,
+.agentRow:hover .agentPinBtn.agentPinBtnActive,
+.agentRow:focus-within .agentPinBtn.agentPinBtnActive,
+.minimalAgentHeader:hover .minimalAgentPinBtn.agentPinBtnActive,
+.minimalAgentHeader:focus-within .minimalAgentPinBtn.agentPinBtnActive {
+  opacity: 0.7;
+  pointer-events: auto;
+  color: var(--fn-text-tertiary);
+  background: transparent;
+}
+
+.agentPinBtn.agentPinBtnActive:hover,
+.minimalAgentPinBtn.agentPinBtnActive:hover {
+  color: var(--fn-text-tertiary);
+  background: var(--fn-bg-hover, rgba(0, 0, 0, 0.06));
+}
+
 .minimalAgentHeader:hover,
 .minimalAgentHeader:focus-within {
   .minimalAgentAvatar {
@@ -240,7 +273,8 @@
   }
 
   .minimalAgentChevronBtn,
-  .minimalAgentNewChatBtn {
+  .minimalAgentNewChatBtn,
+  .minimalAgentPinBtn {
     opacity: 1;
     pointer-events: auto;
   }
@@ -253,7 +287,8 @@
   }
 
   .minimalAgentChevronBtn,
-  .minimalAgentNewChatBtn {
+  .minimalAgentNewChatBtn,
+  .minimalAgentPinBtn {
     opacity: 1;
     pointer-events: auto;
   }
@@ -360,6 +395,49 @@
   position: relative;
   flex-shrink: 0;
   margin: 0 12px 10px 0;
+}
+
+.sessionScopeTabs {
+  display: flex;
+  flex-shrink: 0;
+  gap: 2px;
+  margin: 0 12px 10px 0;
+  padding: 2px;
+  border-radius: 10px;
+  background: var(--fn-bg-secondary, rgba(0, 0, 0, 0.04));
+}
+
+.sessionScopeTab {
+  flex: 1;
+  min-width: 0;
+  height: 28px;
+  padding: 0 6px;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--fn-text-secondary);
+  font-size: 12px;
+  line-height: 28px;
+  cursor: pointer;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+
+  &:hover {
+    color: var(--fn-text-primary);
+  }
+
+  &:focus-visible {
+    outline: 2px solid var(--fn-color-brand);
+    outline-offset: 1px;
+  }
+}
+
+.sessionScopeTabActive {
+  background: var(--fn-bg-elevated, #fff);
+  color: var(--fn-text-primary);
+  font-weight: 600;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.06);
 }
 
 .sessionSearchIcon {

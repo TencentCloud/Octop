@@ -42,45 +42,6 @@
   white-space: nowrap;
 }
 
-.listPanelToggle,
-.listPanelExpandBtn {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  flex-shrink: 0;
-  padding: 0;
-  border: none;
-  border-radius: 8px;
-  background: transparent;
-  color: var(--fn-text-tertiary);
-  cursor: pointer;
-  transition:
-    background 0.15s ease,
-    color 0.15s ease;
-
-  &:hover {
-    background: var(--fn-bg-hover);
-    color: var(--fn-text-primary);
-  }
-}
-
-.listPanelToggle {
-  width: 28px;
-  height: 28px;
-}
-
-.listPanelExpandBtn {
-  position: absolute;
-  top: 16px;
-  left: 12px;
-  z-index: 1;
-  width: 32px;
-  height: 32px;
-  border: 1px solid var(--fn-border-secondary);
-  background: var(--fn-bg-container);
-  box-shadow: var(--fn-shadow-sm);
-}
-
 .packageListActions {
   display: flex;
   gap: 8px;
@@ -115,10 +76,10 @@
 }
 
 .listItem {
-  display: block !important;
+  display: flex !important;
+  flex-direction: column;
   width: 100%;
   box-sizing: border-box;
-  min-height: 116px;
   padding: 12px !important;
   border: 1px solid var(--fn-border-secondary) !important;
   border-radius: var(--fn-radius-md);
@@ -155,19 +116,18 @@
 .listName {
   display: flex;
   align-items: center;
-  gap: 10px;
-  overflow: hidden;
+  gap: 8px;
+  min-width: 0;
   color: var(--fn-text-primary);
   font-weight: 600;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 
 .listNameText {
-  flex: 1;
+  flex: 1 1 auto;
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .listMoreBtn {
@@ -253,6 +213,64 @@
   font-size: 13px;
 }
 
+.formOptions {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  margin: 4px 0 16px;
+  border: 1px solid var(--fn-border-secondary);
+  border-radius: var(--fn-radius-md);
+  overflow: hidden;
+}
+
+.formOptionRow {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 14px;
+  background: var(--fn-bg-primary);
+
+  :global(.ant-switch) {
+    flex-shrink: 0;
+    margin-top: 2px;
+  }
+}
+
+.formOptionCopy {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+  flex: 1;
+}
+
+.formOptionHint {
+  color: var(--fn-text-tertiary);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.switchLabel {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--fn-text-primary);
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.sharedBadge {
+  flex-shrink: 0;
+  padding: 1px 6px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--fn-color-brand) 12%, transparent);
+  color: var(--fn-color-brand);
+  font-size: 11px;
+  line-height: 1.4;
+  white-space: nowrap;
+}
+
 .iconPicker {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
@@ -328,18 +346,46 @@
   word-break: break-word;
 }
 
+.listId {
+  display: flex;
+  flex: 0 1 auto;
+  align-items: center;
+  min-width: 0;
+  max-width: 46%;
+  margin-left: auto;
+}
+
+.listIdButton {
+  max-width: 100%;
+  border-radius: 4px;
+}
+
+.listId .listIdButton {
+  padding: 0 2px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 11px;
+  letter-spacing: 0.02em;
+
+  &:hover {
+    background: var(--fn-bg-hover);
+  }
+}
+
 .listMeta {
   display: flex;
   justify-content: space-between;
   align-items: center;
   gap: 8px;
+  min-width: 0;
   margin-top: auto;
 }
 
 .listCreator {
+  flex: 1 1 auto;
   min-width: 0;
   color: var(--fn-text-tertiary);
   font-size: 12px;
+  line-height: 20px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -360,6 +406,44 @@
   margin: 0 -1px;
   z-index: 2;
   background: var(--fn-border-secondary);
+}
+
+.splitDividerCollapsed {
+  width: 0;
+  margin: 0;
+  background: transparent;
+}
+
+.listPanelEdgeToggle {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  z-index: 3;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 44px;
+  padding: 0;
+  border: 1px solid var(--fn-border-secondary);
+  border-radius: 8px;
+  background: var(--fn-bg-elevated, var(--fn-bg-secondary));
+  color: var(--fn-text-secondary);
+  box-shadow: 0 1px 4px
+    color-mix(in srgb, var(--fn-text-primary) 8%, transparent);
+  cursor: pointer;
+  transform: translate(-50%, -50%);
+
+  &:hover {
+    border-color: var(--fn-border-primary);
+    background: var(--fn-bg-secondary);
+    color: var(--fn-text-primary);
+  }
+}
+
+.splitDividerCollapsed .listPanelEdgeToggle {
+  left: 8px;
+  transform: translate(0, -50%);
 }
 
 .resizeHandle {
@@ -398,11 +482,8 @@
   flex: 1;
   min-width: 0;
   overflow: hidden;
-  padding: 16px 20px 0;
-}
-
-.detailListCollapsed {
-  padding-left: 52px;
+  // Extra left inset so the edge toggle does not sit against the skill list.
+  padding: 16px 20px 0 40px;
 }
 
 .detailLoadingOverlay {
@@ -417,52 +498,43 @@
   pointer-events: none;
 }
 
-.detailHeader {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  flex-shrink: 0;
-  padding-bottom: 12px;
-  border-bottom: 1px solid var(--fn-border-secondary);
-}
-
-.detailTitleRow {
-  display: flex;
-  align-items: center;
-  gap: 16px;
-}
-
-.detailTitleGroup {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  min-width: 0;
-  flex: 1;
-  flex-wrap: wrap;
-}
-
-.detailTitle {
-  margin: 0 !important;
-  min-width: 0;
-  flex: 0 1 auto;
-}
-
-.titleActions {
+.toolbarStart {
   display: inline-flex;
+  flex: 1;
   align-items: center;
-  gap: 2px;
-  flex-shrink: 0;
+  gap: 10px;
+  min-width: 0;
+  overflow: hidden;
 }
 
-.titleActionBtn {
-  width: 28px;
-  height: 28px;
-  padding: 0;
-  color: var(--fn-text-tertiary);
+.packageNav {
+  display: inline-flex;
+  flex: 0 1 auto;
+  align-items: center;
+  min-width: 0;
+  overflow: hidden;
+  color: var(--fn-text-primary);
+  font-size: 12px;
+  font-family: var(--fn-font-mono, ui-monospace, monospace);
+}
 
-  &:hover {
-    color: var(--fn-text-secondary) !important;
-  }
+.packageNavIcon {
+  display: inline-flex;
+  flex-shrink: 0;
+  align-items: center;
+  margin-right: 6px;
+  color: var(--fn-text-tertiary);
+}
+
+.packageNavLabel {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.skillCount {
+  flex-shrink: 0;
 }
 
 .mobileBackBtn {
@@ -472,8 +544,7 @@
   flex-shrink: 0;
   width: 32px;
   height: 32px;
-  margin-top: 2px;
-  margin-right: 2px;
+  margin: 0;
   padding: 0;
   border: none;
   border-radius: 8px;
@@ -485,27 +556,6 @@
     background: var(--fn-bg-hover);
     color: var(--fn-text-primary);
   }
-}
-
-.detailDescription {
-  margin: 0 !important;
-  max-width: 100%;
-}
-
-.detailMeta {
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 8px 16px;
-  margin-top: 4px;
-  max-width: 100%;
-}
-
-.detailCreator {
-  margin: 0 !important;
-  max-width: 100%;
-  font-size: 12px;
-  line-height: 1.5715;
 }
 
 .actions {
@@ -526,7 +576,7 @@
 }
 
 .skillsToolbar {
-  margin: 12px 0 16px;
+  margin: 0 0 16px;
 }
 
 .centered {
@@ -583,10 +633,6 @@
   background: transparent;
 }
 
-.layoutMobile .listItem {
-  min-height: 104px;
-}
-
 .layoutMobile .detail {
   flex: 1;
   min-height: 0;
@@ -594,15 +640,6 @@
   background: var(--fn-bg-container);
   border: 1px solid var(--fn-border-secondary);
   border-radius: var(--fn-radius-lg);
-}
-
-.layoutMobile .detailHeader {
-  padding: 0 4px 12px;
-}
-
-.layoutMobile .detailTitleRow {
-  flex-wrap: wrap;
-  gap: 10px;
 }
 
 .layoutMobile .detailBody {
