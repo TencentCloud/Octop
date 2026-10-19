@@ -1,11 +1,14 @@
-import { render, screen } from "@testing-library/react";
+import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter, Route, Routes, useLocation } from "react-router-dom";
-import { beforeEach, vi } from "vitest";
+import { afterEach, beforeEach, vi } from "vitest";
 import type { OctopAgent } from "../../../context/AgentContext";
 import { octopThreadsApi } from "../../../api/modules/octopThreads";
 import MinimalAgentSessionNav from "./MinimalAgentSessionNav";
 import SessionList from "./SessionList";
+import { resetSessionStoreForTests, useSessions } from "../hooks/useSessions";
+
+afterEach(() => vi.restoreAllMocks());
 
 function agent(
   partial: Pick<OctopAgent, "agent_id" | "name"> &
@@ -62,6 +65,8 @@ function renderList() {
         onDelete={() => undefined}
         onRename={() => undefined}
         onPin={() => undefined}
+        onArchive={() => undefined}
+        showArchived={false}
         onFork={() => undefined}
       />
     </MemoryRouter>,
@@ -88,6 +93,8 @@ describe("MinimalAgentSessionNav nav scopes", () => {
           onDeleteActive={() => undefined}
           onRenameActive={() => undefined}
           onPinActive={() => undefined}
+          onArchiveActive={() => undefined}
+          showArchived={false}
           onFork={() => undefined}
         />
       </MemoryRouter>,
@@ -165,6 +172,8 @@ describe("SessionList nav scopes", () => {
                 onDelete={() => undefined}
                 onRename={() => undefined}
                 onPin={() => undefined}
+                onArchive={() => undefined}
+                showArchived={false}
                 onFork={() => undefined}
               />
             }
@@ -180,3 +189,173 @@ describe("SessionList nav scopes", () => {
     expect(screen.getByText("/experts?tab=teams")).toBeInTheDocument();
   });
 });
+
+describe("SessionList archive search pagination", () => {
+  beforeEach(() => resetSessionStoreForTests());
+  afterEach(() => resetSessionStoreForTests());
+
+  it("keeps the search term and loads the eleventh archived session", async () => {
+    const user = userEvent.setup();
+    vi.spyOn(octopThreadsApi, "list").mockImplementation(
+      async (_agentId, limit = 50, archived = false) =>
+        Array.from({ length: 11 }, (_, index) => ({
+          thread_id: `${archived ? "archive" : "current"}-${index}`,
+          title:
+            index === 10
+              ? `needle ${archived ? "archived" : "current"}`
+              : `Session ${index}`,
+          last_active: 20 - index,
+          session_key: "key",
+          channel_type: "dashboard",
+          archived,
+        })).slice(0, limit),
+    );
+
+    function ActiveArchiveSearch() {
+      const sessions = useSessions("local-expert");
+      return (
+        <>
+          <button onClick={() => sessions.setShowArchived(true)}>
+            Show archived
+          </button>
+          <SessionList
+            agents={[
+              agent({ agent_id: "local-expert", name: "needle expert" }),
+            ]}
+            sessions={sessions.sessions}
+            activeId={null}
+            activeAgentId="local-expert"
+            hasMore={sessions.hasMore}
+            loadingMore={sessions.loadingMore}
+            onLoadMore={sessions.loadMoreSessions}
+            onFetchAllSessions={sessions.fetchAllSessions}
+            onSelect={vi.fn()}
+            onAgentSelect={vi.fn()}
+            onNewChat={vi.fn()}
+            onDelete={vi.fn()}
+            onRename={vi.fn()}
+            onPin={vi.fn()}
+            onArchive={vi.fn()}
+            onFork={vi.fn()}
+            showArchived={sessions.showArchived}
+          />
+        </>
+      );
+    }
+    render(
+      <MemoryRouter>
+        <ActiveArchiveSearch />
+      </MemoryRouter>,
+    );
+    await screen.findByText("Session 0");
+    await user.type(
+      screen.getByRole("searchbox", { name: "搜索会话" }),
+      "needle",
+    );
+    await screen.findByText("needle current");
+    await user.click(screen.getByRole("button", { name: "Show archived" }));
+
+    expect(await screen.findByText("needle archived")).toBeInTheDocument();
+    expect(screen.getByRole("searchbox", { name: "搜索会话" })).toHaveValue(
+      "needle",
+    );
+  });
+});
+
+describe.each(["classic", "minimal"] as const)(
+  "%s cross-expert archive actions",
+  (variant) => {
+    it.each([false, true])(
+      "routes archived=%s to the selected expert",
+      async (showArchived) => {
+        const user = userEvent.setup();
+        const onArchive = vi.fn();
+        vi.spyOn(octopThreadsApi, "list").mockImplementation(
+          async (agentId, _limit, archived) =>
+            agentId === "other-expert"
+              ? [
+                  {
+                    thread_id: "other-thread",
+                    title: "matching session",
+                    session_key: "other-key",
+                    channel_type: "dashboard",
+                    last_active: 1,
+                    archived: Boolean(archived),
+                  },
+                ]
+              : [],
+        );
+        const patch = vi.spyOn(octopThreadsApi, "patch").mockResolvedValue({
+          thread_id: "other-thread",
+          title: "matching session",
+        });
+        const common = {
+          agents: [
+            agents[0],
+            agent({ agent_id: "other-expert", name: "Other expert" }),
+          ],
+          activeId: null,
+          activeAgentId: "local-expert",
+          onSelect: vi.fn(),
+          onAgentSelect: vi.fn(),
+          onNewChat: vi.fn(),
+          onFork: vi.fn(),
+          showArchived,
+        };
+        render(
+          <MemoryRouter>
+            {variant === "classic" ? (
+              <SessionList
+                {...common}
+                sessions={[]}
+                hasMore={false}
+                loadingMore={false}
+                onLoadMore={vi.fn()}
+                onFetchAllSessions={vi.fn()}
+                onDelete={vi.fn()}
+                onRename={vi.fn()}
+                onPin={vi.fn()}
+                onArchive={onArchive}
+              />
+            ) : (
+              <MinimalAgentSessionNav
+                {...common}
+                activeSessions={[]}
+                onDeleteActive={vi.fn()}
+                onRenameActive={vi.fn()}
+                onPinActive={vi.fn()}
+                onArchiveActive={onArchive}
+              />
+            )}
+          </MemoryRouter>,
+        );
+
+        await user.type(
+          screen.getByRole("searchbox", { name: "搜索会话" }),
+          "matching",
+        );
+        expect(await screen.findByText("matching session")).toBeInTheDocument();
+        await user.click(screen.getByRole("button", { name: "More" }));
+        await user.click(
+          await screen.findByText(
+            showArchived
+              ? "chat.restoreConversation"
+              : "chat.archiveConversation",
+          ),
+        );
+
+        await waitFor(() =>
+          expect(patch).toHaveBeenCalledWith("other-expert", "other-thread", {
+            archived: !showArchived,
+          }),
+        );
+        await waitFor(() =>
+          expect(
+            screen.queryByText("matching session"),
+          ).not.toBeInTheDocument(),
+        );
+        expect(onArchive).not.toHaveBeenCalled();
+      },
+    );
+  },
+);

@@ -4,6 +4,8 @@ import { useNavigate } from "react-router-dom";
 import { Dropdown } from "antd";
 import type { MenuProps } from "antd";
 import {
+  Archive,
+  ArchiveRestore,
   ChevronRight,
   GitFork,
   MoreHorizontal,
@@ -94,7 +96,9 @@ interface MinimalAgentSessionNavProps {
   ) => void | Promise<boolean | void>;
   onRenameActive: (id: string, name: string) => void;
   onPinActive: (id: string, pinned: boolean) => void;
+  onArchiveActive: (id: string, archived: boolean) => void;
   onFork: (id: string, agentId?: string | null) => void;
+  showArchived: boolean;
   activeForkDisabled?: boolean;
   activeForkDisabledHint?: string;
 }
@@ -120,6 +124,7 @@ const PreviewSessionRow = memo(function PreviewSessionRow({
   onDelete,
   onRename,
   onPin,
+  onArchive,
   onFork,
   forkDisabled,
   forkDisabledHint,
@@ -131,6 +136,7 @@ const PreviewSessionRow = memo(function PreviewSessionRow({
   onDelete: (id: string, compact: boolean) => void | Promise<boolean | void>;
   onRename: (id: string, name: string) => void;
   onPin: (id: string, pinned: boolean) => void;
+  onArchive: (id: string, archived: boolean) => void;
   onFork: (id: string) => void;
   forkDisabled?: boolean;
   forkDisabledHint?: string;
@@ -196,6 +202,21 @@ const PreviewSessionRow = memo(function PreviewSessionRow({
       onClick: ({ domEvent }) => {
         domEvent.stopPropagation();
         setIsEditing(true);
+      },
+    },
+    {
+      key: "archive",
+      label: session.archived
+        ? t("chat.restoreConversation")
+        : t("chat.archiveConversation"),
+      icon: session.archived ? (
+        <ArchiveRestore size={14} />
+      ) : (
+        <Archive size={14} />
+      ),
+      onClick: ({ domEvent }) => {
+        domEvent.stopPropagation();
+        onArchive(session.id, !session.archived);
       },
     },
     {
@@ -288,13 +309,36 @@ export default function MinimalAgentSessionNav({
   onDeleteActive,
   onRenameActive,
   onPinActive,
+  onArchiveActive,
   onFork,
+  showArchived,
   activeForkDisabled,
   activeForkDisabledHint,
 }: MinimalAgentSessionNavProps) {
   const { t } = useTranslation();
   const navigate = useNavigate();
   const [byAgent, setByAgent] = useState<Record<string, Session[]>>({});
+  const archiveViewRef = useRef(showArchived);
+  archiveViewRef.current = showArchived;
+  const viewActiveSessions = useMemo(
+    () =>
+      activeSessions.filter(
+        (session) => Boolean(session.archived) === showArchived,
+      ),
+    [activeSessions, showArchived],
+  );
+  const previewByAgent = useMemo(
+    () =>
+      Object.fromEntries(
+        Object.entries(byAgent).map(([id, sessions]) => [
+          id,
+          sessions.filter(
+            (session) => Boolean(session.archived) === showArchived,
+          ),
+        ]),
+      ),
+    [byAgent, showArchived],
+  );
   const liveWorkingIds = useSessionWorkIds();
   const [loading, setLoading] = useState(false);
   const [collapsedFolders, setCollapsedFolders] = useState<Set<string>>(() =>
@@ -324,14 +368,22 @@ export default function MinimalAgentSessionNav({
     [agents, pinnedIds, navScope],
   );
   const searching = searchQuery.trim().length > 0;
-  const catalog = useExpertSessionCatalog(sortedAgents, searching);
+  const catalog = useExpertSessionCatalog(
+    sortedAgents,
+    searching,
+    undefined,
+    showArchived,
+  );
+  const patchCatalog = catalog.patch;
   const visibleAgents = useMemo(() => {
     if (!searching) return sortedAgents;
     return sortedAgents.filter((agent) => {
       const own =
-        agent.agent_id === activeAgentId && activeSessions.length > 0
-          ? activeSessions
-          : catalog.byAgent[agent.agent_id] ?? byAgent[agent.agent_id] ?? [];
+        agent.agent_id === activeAgentId && viewActiveSessions.length > 0
+          ? viewActiveSessions
+          : catalog.byAgent[agent.agent_id] ??
+            previewByAgent[agent.agent_id] ??
+            [];
       return expertVisibleInNavSearch(
         agent.name,
         own.map((session) => session.name),
@@ -340,8 +392,8 @@ export default function MinimalAgentSessionNav({
     });
   }, [
     activeAgentId,
-    activeSessions,
-    byAgent,
+    viewActiveSessions,
+    previewByAgent,
     catalog.byAgent,
     searchQuery,
     searching,
@@ -384,22 +436,27 @@ export default function MinimalAgentSessionNav({
     [onAgentSelect],
   );
 
-  const refreshAgentPreview = useCallback(async (agentId: string) => {
-    if (!agentId) return;
-    try {
-      const rows = await octopThreadsApi.list(
-        agentId,
-        MINIMAL_AGENT_SESSION_PREVIEW,
-      );
-      const list = sortSessions(rows.map(toSession)).slice(
-        0,
-        MINIMAL_AGENT_SESSION_PREVIEW,
-      );
-      setByAgent((prev) => ({ ...prev, [agentId]: list }));
-    } catch {
-      /* ignore */
-    }
-  }, []);
+  const refreshAgentPreview = useCallback(
+    async (agentId: string) => {
+      if (!agentId) return;
+      try {
+        const rows = await octopThreadsApi.list(
+          agentId,
+          MINIMAL_AGENT_SESSION_PREVIEW,
+          showArchived,
+        );
+        if (archiveViewRef.current !== showArchived) return;
+        const list = sortSessions(rows.map(toSession)).slice(
+          0,
+          MINIMAL_AGENT_SESSION_PREVIEW,
+        );
+        setByAgent((prev) => ({ ...prev, [agentId]: list }));
+      } catch {
+        /* ignore */
+      }
+    },
+    [showArchived],
+  );
 
   // Fetch preview threads for every expert (independent of classic session store).
   useEffect(() => {
@@ -417,6 +474,7 @@ export default function MinimalAgentSessionNav({
             const rows = await octopThreadsApi.list(
               id,
               MINIMAL_AGENT_SESSION_PREVIEW,
+              showArchived,
             );
             return [
               id,
@@ -438,21 +496,21 @@ export default function MinimalAgentSessionNav({
     return () => {
       cancelled = true;
     };
-  }, [agentKey]);
+  }, [agentKey, showArchived]);
 
   // Keep the active agent's preview aligned with live chat session store.
   // Skip empty lists — standalone host passes [] and must not wipe fetched previews
   // when the user selects a session (activeAgentId updates).
   useEffect(() => {
-    if (!activeAgentId || activeSessions.length === 0) return;
+    if (!activeAgentId || viewActiveSessions.length === 0) return;
     setByAgent((prev) => ({
       ...prev,
-      [activeAgentId]: sortSessions(activeSessions).slice(
+      [activeAgentId]: sortSessions(viewActiveSessions).slice(
         0,
         MINIMAL_AGENT_SESSION_PREVIEW,
       ),
     }));
-  }, [activeAgentId, activeSessions]);
+  }, [activeAgentId, viewActiveSessions]);
 
   useEffect(() => {
     return onSessionEvent((event) => {
@@ -474,6 +532,7 @@ export default function MinimalAgentSessionNav({
 
   const patchLocal = useCallback(
     (agentId: string, updater: (prev: Session[]) => Session[]) => {
+      if (archiveViewRef.current !== showArchived) return;
       setByAgent((prev) => ({
         ...prev,
         [agentId]: sortSessions(updater(prev[agentId] ?? [])).slice(
@@ -481,9 +540,9 @@ export default function MinimalAgentSessionNav({
           MINIMAL_AGENT_SESSION_PREVIEW,
         ),
       }));
-      catalog.patch(agentId, updater);
+      patchCatalog(agentId, updater);
     },
-    [catalog.patch],
+    [patchCatalog, showArchived],
   );
 
   const handleDelete = useCallback(
@@ -533,6 +592,22 @@ export default function MinimalAgentSessionNav({
     [activeAgentId, onPinActive, patchLocal],
   );
 
+  const handleArchive = useCallback(
+    async (agentId: string, sessionId: string, archived: boolean) => {
+      if (agentId === activeAgentId) {
+        onArchiveActive(sessionId, archived);
+        return;
+      }
+      try {
+        await octopThreadsApi.patch(agentId, sessionId, { archived });
+      } catch {
+        return;
+      }
+      patchLocal(agentId, (prev) => prev.filter((s) => s.id !== sessionId));
+    },
+    [activeAgentId, onArchiveActive, patchLocal],
+  );
+
   if (agents.length === 0) {
     return (
       <div className={styles.sessionEmptyAgents}>
@@ -580,11 +655,11 @@ export default function MinimalAgentSessionNav({
         )
       ) : null}
       {visibleAgents.map((agent) => {
-        const preview = byAgent[agent.agent_id] ?? [];
+        const preview = previewByAgent[agent.agent_id] ?? [];
         const catalogList = catalog.byAgent[agent.agent_id] ?? [];
         const live =
-          agent.agent_id === activeAgentId && activeSessions.length > 0
-            ? activeSessions
+          agent.agent_id === activeAgentId && viewActiveSessions.length > 0
+            ? viewActiveSessions
             : null;
         const source = searching
           ? live && live.length >= catalogList.length
@@ -676,7 +751,9 @@ export default function MinimalAgentSessionNav({
                   </div>
                 ) : list.length === 0 ? (
                   <div className={styles.minimalAgentEmpty}>
-                    {t("chat.noSessionsYet", "直接发消息即可开始对话")}
+                    {showArchived
+                      ? t("chat.noArchivedConversations")
+                      : t("chat.noSessionsYet", "直接发消息即可开始对话")}
                   </div>
                 ) : (
                   list.map((session) => (
@@ -697,6 +774,9 @@ export default function MinimalAgentSessionNav({
                       }
                       onPin={(id, pinned) =>
                         handlePin(agent.agent_id, id, pinned)
+                      }
+                      onArchive={(id, archived) =>
+                        void handleArchive(agent.agent_id, id, archived)
                       }
                       onFork={(id) => onFork(id, agent.agent_id)}
                       forkDisabled={

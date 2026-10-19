@@ -107,6 +107,34 @@
   height: 100%;
 }
 
+.sessionArchiveFilter {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 4px;
+  margin: 10px 10px 6px;
+  padding: 3px;
+  border-radius: var(--fn-radius-md);
+  background: var(--fn-bg-subtle, rgba(0, 0, 0, 0.025));
+  flex-shrink: 0;
+
+  button {
+    min-width: 0;
+    padding: 5px 8px;
+    border: 0;
+    border-radius: calc(var(--fn-radius-md) - 2px);
+    background: transparent;
+    color: var(--fn-text-tertiary);
+    font-size: 12px;
+    cursor: pointer;
+  }
+}
+
+.sessionArchiveFilterActive {
+  background: var(--fn-bg-elevated) !important;
+  color: var(--fn-text-primary) !important;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+}
+
 .sessionHeader {
   display: flex;
   flex-direction: column;

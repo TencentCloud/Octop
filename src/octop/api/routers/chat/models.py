@@ -194,6 +194,7 @@ class ForkThreadBody(BaseModel):
 class RenameThreadBody(BaseModel):
     title: str | None = None
     pinned: bool | None = None
+    archived: bool | None = None
     model_ref: str | None = None
     reasoning_mode: Literal["auto", "enabled", "disabled"] | None = None
     reasoning_effort: str | None = None

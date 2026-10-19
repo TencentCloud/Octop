@@ -1581,6 +1581,17 @@ def _ensure_thread_conversation_mode_schema(db: DatabasePool) -> None:
     _ensure_column(db, "threads", "hitl_policy", "TEXT")
 
 
+def _ensure_thread_archive_schema(db: DatabasePool) -> None:
+    if not _table_exists(db, "threads"):
+        return
+    _ensure_column(db, "threads", "archived", "INTEGER NOT NULL DEFAULT 0")
+    with db.connect() as conn:
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_threads_agent_user_archived "
+            "ON threads(agent_id, user_id, archived, pinned, last_active, created_at)"
+        )
+
+
 def _ensure_skill_copy_policy_schema(db: DatabasePool) -> None:
     if not _table_exists(db, "skill_packages"):
         return
@@ -1729,6 +1740,8 @@ def _reconcile_pre_squash_schema_version(db: DatabasePool) -> None:
                 _ensure_thread_conversation_mode_schema(db)
             if max_version >= 18:
                 _ensure_user_role_schema(db)
+            if max_version >= 22:
+                _ensure_thread_archive_schema(db)
             with db.connect() as conn:
                 conn.execute("UPDATE _schema_version SET version = %s", (max_version,))
             return
@@ -1775,6 +1788,8 @@ def _reconcile_pre_squash_schema_version(db: DatabasePool) -> None:
         _ensure_user_role_schema(db)
     if max_version >= 21:
         _ensure_skill_package_download_schema(db)
+    if max_version >= 22:
+        _ensure_thread_archive_schema(db)
     with db.connect() as conn:
         conn.execute("UPDATE _schema_version SET version = ?", (max_version,))
 
@@ -1815,6 +1830,7 @@ def _apply_sqlite_migration(db: DatabasePool, version: int, path: Path) -> None:
     Version 16 adds ``agents.kind`` so team hosts can be listed.
     Version 17 adds sticky ``conversation_mode`` and ``pending_plan_path`` on threads.
     Version 18 adds ``user_role`` templates and non-FK role id/name snapshots.
+    Version 22 adds reversible thread archiving.
     """
     if version == 2:
         if _table_exists(db, "cron_jobs"):
@@ -2070,6 +2086,11 @@ def run_migrations(db: DatabasePool) -> None:
                 else:
                     conn.execute("UPDATE _schema_version SET version = ?", (version,))
             continue
+        if version == 22 and db.dialect == "sqlite":
+            _ensure_thread_archive_schema(db)
+            with db.connect() as conn:
+                conn.execute("UPDATE _schema_version SET version = ?", (version,))
+            continue
         if db.dialect == "postgresql":
             sql = path.read_text(encoding="utf-8")
             with db.connect() as conn, conn.transaction():
@@ -2105,6 +2126,7 @@ def run_migrations(db: DatabasePool) -> None:
     _ensure_agent_profile_columns(db)
     _ensure_sso_provider_kind_schema(db)
     _ensure_user_role_schema(db)
+    _ensure_thread_archive_schema(db)
     _ensure_bridge_connections_schema(db)
     _grant_default_nav_permissions(db)
     _grant_personalization_tab_permissions(db)

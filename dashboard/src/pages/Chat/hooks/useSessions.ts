@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useSyncExternalStore } from "react";
+import { useCallback, useEffect, useState, useSyncExternalStore } from "react";
 import { useTranslation } from "react-i18next";
 import { deleteConversation } from "../utils/deleteConversation";
 import {
@@ -21,6 +21,7 @@ export interface Session {
   isActive?: boolean;
   hasActivity?: boolean;
   pinned?: boolean;
+  archived?: boolean;
   modelRef?: string | null;
   reasoningMode?: "auto" | "enabled" | "disabled" | null;
   reasoningEffort?: string | null;
@@ -44,6 +45,7 @@ export function toSession(row: {
   is_active?: boolean;
   has_messages?: boolean;
   pinned?: boolean;
+  archived?: boolean;
   model_ref?: string | null;
   reasoning_mode?: "auto" | "enabled" | "disabled" | null;
   reasoning_effort?: string | null;
@@ -74,6 +76,7 @@ export function toSession(row: {
     isActive: row.is_active ?? false,
     hasActivity,
     pinned: Boolean(row.pinned),
+    archived: Boolean(row.archived),
     modelRef: row.model_ref ?? null,
     reasoningMode: row.reasoning_mode ?? null,
     reasoningEffort: row.reasoning_effort ?? null,
@@ -121,6 +124,8 @@ let _hasMore = false;
 let _loadingMore = false;
 export const SESSION_PAGE_SIZE = 10;
 let _storeAgentId: string | null = null;
+let _storeArchived = false;
+let _storeView = 0;
 const _loadedLimitByAgent = new Map<string, number>();
 const _listeners = new Set<() => void>();
 
@@ -317,8 +322,9 @@ function visibleSessionsForAgent(
 async function fetchSessionsPage(
   agentId: string,
   limit: number,
+  archived = false,
 ): Promise<{ sessions: Session[]; hasMore: boolean }> {
-  const rows = await octopThreadsApi.list(agentId, limit + 1);
+  const rows = await octopThreadsApi.list(agentId, limit + 1, archived);
   const hasMore = rows.length > limit;
   const sessions = sortSessions(
     rows.slice(0, limit).map((row) => toSession({ ...row, agent_id: agentId })),
@@ -356,9 +362,11 @@ function setModuleLoadingMore(value: boolean) {
  * Clearing only in useEffect leaks stale sessions for one render, and
  * chat nav can then write `/chat/{newAgent}/{oldThread}` into the URL.
  */
-function syncStoreToAgent(agentId: string | null) {
-  if (_storeAgentId === agentId) return;
+function syncStoreToAgent(agentId: string | null, archived: boolean) {
+  if (_storeAgentId === agentId && _storeArchived === archived) return;
   _storeAgentId = agentId;
+  _storeArchived = archived;
+  _storeView += 1;
   _sessions = [];
   _loading = agentId != null;
   _hasMore = false;
@@ -374,6 +382,8 @@ function syncStoreToAgent(agentId: string | null) {
 /** Reset module session store between vitest cases. */
 export function resetSessionStoreForTests() {
   _storeAgentId = null;
+  _storeArchived = false;
+  _storeView += 1;
   _sessions = [];
   _loading = true;
   _hasMore = false;
@@ -390,7 +400,8 @@ export function resetSessionStoreForTests() {
 
 export function useSessions(agentId: string | null) {
   const { t } = useTranslation();
-  syncStoreToAgent(agentId);
+  const [showArchived, setShowArchived] = useState(false);
+  syncStoreToAgent(agentId, showArchived);
   const { sessions, loading, hasMore, loadingMore } = useSyncExternalStore(
     subscribeSessionStore,
     getSessionSnapshot,
@@ -403,77 +414,114 @@ export function useSessions(agentId: string | null) {
         setModuleLoading(false);
         return [];
       }
+      const view = _storeView;
       try {
         const limit = getLoadedLimit(agentId);
         const { sessions: valid, hasMore: more } = await fetchSessionsPage(
           agentId,
           limit,
+          showArchived,
         );
-        if (_storeAgentId !== agentId) return _sessions;
+        if (
+          _storeAgentId !== agentId ||
+          _storeArchived !== showArchived ||
+          _storeView !== view
+        )
+          return _sessions;
         applySessionPage(valid, more, limit, agentId, activeThreadId);
         return visibleSessionsForAgent(valid, agentId, activeThreadId);
       } catch {
         return _sessions;
       } finally {
-        if (_storeAgentId === agentId) {
+        if (
+          _storeAgentId === agentId &&
+          _storeArchived === showArchived &&
+          _storeView === view
+        ) {
           setModuleLoading(false);
         }
       }
     },
-    [agentId],
+    [agentId, showArchived],
   );
 
   const loadMoreSessions = useCallback(
     async (activeThreadId?: string) => {
       if (!agentId || _loadingMore || !_hasMore) return;
+      const view = _storeView;
       setModuleLoadingMore(true);
       try {
         const nextLimit = getLoadedLimit(agentId) + SESSION_PAGE_SIZE;
         const { sessions: valid, hasMore: more } = await fetchSessionsPage(
           agentId,
           nextLimit,
+          showArchived,
         );
-        if (_storeAgentId !== agentId) return;
+        if (
+          _storeAgentId !== agentId ||
+          _storeArchived !== showArchived ||
+          _storeView !== view
+        )
+          return;
         applySessionPage(valid, more, nextLimit, agentId, activeThreadId);
       } catch {
         /* ignore */
       } finally {
-        setModuleLoadingMore(false);
+        if (
+          _storeAgentId === agentId &&
+          _storeArchived === showArchived &&
+          _storeView === view
+        )
+          setModuleLoadingMore(false);
       }
     },
-    [agentId],
+    [agentId, showArchived],
   );
 
   const fetchAllSessions = useCallback(
     async (activeThreadId?: string) => {
       if (!agentId) return;
+      const view = _storeView;
       try {
         const { sessions: valid, hasMore: more } = await fetchSessionsPage(
           agentId,
           50,
+          showArchived,
         );
-        if (_storeAgentId !== agentId) return;
+        if (
+          _storeAgentId !== agentId ||
+          _storeArchived !== showArchived ||
+          _storeView !== view
+        )
+          return;
         applySessionPage(valid, more, valid.length, agentId, activeThreadId);
       } catch {
         /* ignore */
       }
     },
-    [agentId],
+    [agentId, showArchived],
   );
 
   const ensureThreadInList = useCallback(
     async (threadId: string): Promise<ThreadProbeResult> => {
       if (!agentId || !threadId) return "missing";
       if (_sessions.some((s) => s.id === threadId)) return "found";
+      const view = _storeView;
       try {
         const limit = getLoadedLimit(agentId);
         const probeLimit = Math.max(limit + 1, 50);
         const { sessions: valid, hasMore: more } = await fetchSessionsPage(
           agentId,
           probeLimit,
+          showArchived,
         );
-        // Agent switched while the probe was in flight — do not rewrite URL.
-        if (_storeAgentId !== agentId) return "unknown";
+        // Agent or archive view switched in flight — do not rewrite URL.
+        if (
+          _storeAgentId !== agentId ||
+          _storeArchived !== showArchived ||
+          _storeView !== view
+        )
+          return "unknown";
         const found = valid.some((s) => s.id === threadId);
         if (!found) return "missing";
         applySessionPage(
@@ -489,32 +537,44 @@ export function useSessions(agentId: string | null) {
         return "unknown";
       }
     },
-    [agentId],
+    [agentId, showArchived],
   );
 
   // Fetch only: agent switches are synced in-render via syncStoreToAgent.
   useEffect(() => {
     if (!agentId) return;
+    const view = _storeView;
     resetSessionPagination(agentId);
     setModuleLoading(true);
+    setModuleSessions([]);
     void (async () => {
       const requestedAgent = agentId;
       try {
         const { sessions: valid, hasMore: more } = await fetchSessionsPage(
           requestedAgent,
           SESSION_PAGE_SIZE,
+          showArchived,
         );
-        if (_storeAgentId !== requestedAgent) return;
+        if (
+          _storeAgentId !== agentId ||
+          _storeArchived !== showArchived ||
+          _storeView !== view
+        )
+          return;
         applySessionPage(valid, more, SESSION_PAGE_SIZE, requestedAgent);
       } catch {
         /* ignore */
       } finally {
-        if (_storeAgentId === requestedAgent) {
+        if (
+          _storeAgentId === agentId &&
+          _storeArchived === showArchived &&
+          _storeView === view
+        ) {
           setModuleLoading(false);
         }
       }
     })();
-  }, [agentId]);
+  }, [agentId, showArchived]);
 
   useEffect(() => {
     return onSessionEvent((event) => {
@@ -600,6 +660,29 @@ export function useSessions(agentId: string | null) {
     [agentId],
   );
 
+  const archiveSession = useCallback(
+    async (id: string, archived: boolean) => {
+      if (!agentId || !id) return false;
+      const view = _storeView;
+      try {
+        await octopThreadsApi.patch(agentId, id, { archived });
+        if (
+          _storeAgentId === agentId &&
+          _storeArchived === showArchived &&
+          _storeView === view
+        ) {
+          setModuleSessions((prev) => prev.filter((s) => s.id !== id));
+          // This event removes navigation entries; archiving keeps chat history.
+          chatStore.emitSessionEvent({ kind: "sessionDeleted", sessionId: id });
+        }
+        return true;
+      } catch {
+        return false;
+      }
+    },
+    [agentId, showArchived],
+  );
+
   const renameSession = useCallback(
     (id: string, name: string) => {
       const next = formatThreadTitle(name) || name.trim();
@@ -631,6 +714,9 @@ export function useSessions(agentId: string | null) {
     deleteSession,
     renameSession,
     pinSession,
+    archiveSession,
+    showArchived,
+    setShowArchived,
     fetchSessions,
     loadMoreSessions,
     fetchAllSessions,

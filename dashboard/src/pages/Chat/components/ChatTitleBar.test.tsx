@@ -22,6 +22,7 @@ describe("ChatTitleBar", () => {
         onRename={noop}
         onPin={noop}
         onFork={noop}
+        onArchive={noop}
         onDelete={noop}
       />,
     );
@@ -42,6 +43,7 @@ describe("ChatTitleBar", () => {
         onRename={noop}
         onPin={noop}
         onFork={noop}
+        onArchive={noop}
         onDelete={noop}
       />,
     );
@@ -57,6 +59,7 @@ describe("ChatTitleBar", () => {
         onRename={noop}
         onPin={noop}
         onFork={noop}
+        onArchive={noop}
         onDelete={noop}
         isTeam
       />,
@@ -73,6 +76,7 @@ describe("ChatTitleBar", () => {
         onRename={noop}
         onPin={noop}
         onFork={noop}
+        onArchive={noop}
         onDelete={noop}
         isTeam
         agent={{
@@ -96,6 +100,7 @@ describe("ChatTitleBar", () => {
         onRename={noop}
         onPin={noop}
         onFork={noop}
+        onArchive={noop}
         onDelete={noop}
         agent={{ bridge: true }}
       />,
@@ -115,6 +120,7 @@ describe("ChatTitleBar", () => {
         onRename={onRename}
         onPin={noop}
         onFork={noop}
+        onArchive={noop}
         onDelete={noop}
       />,
     );
@@ -129,5 +135,24 @@ describe("ChatTitleBar", () => {
 
     fireEvent.keyDown(input, { key: "Enter", keyCode: 13 });
     expect(onRename).toHaveBeenCalledWith("s1", "周报 zhou");
+  });
+  it("archives the current conversation from the more menu", async () => {
+    const onArchive = vi.fn();
+    render(
+      <ChatTitleBar
+        session={session}
+        title="Weekly recap"
+        onRename={noop}
+        onPin={noop}
+        onFork={noop}
+        onArchive={onArchive}
+        onDelete={noop}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "更多" }));
+    fireEvent.click(await screen.findByText("chat.archiveConversation"));
+
+    expect(onArchive).toHaveBeenCalledWith("s1", true);
   });
 });
