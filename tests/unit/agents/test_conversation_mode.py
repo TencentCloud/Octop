@@ -68,6 +68,13 @@ def test_workspace_plan_path_rewrites_container_root() -> None:
     assert workspace_plan_path("plans/foo.md", "D:/octop/agents/ABC") == "plans/foo.md"
 
 
+def test_workspace_plan_path_rewrites_windows_host_path() -> None:
+    ws = PureWindowsPath("C:/Users/runner/AppData/Local/Temp/agent")
+    assert workspace_plan_path("plans/foo.md", ws) == (
+        "C:/Users/runner/AppData/Local/Temp/agent/plans/foo.md"
+    )
+
+
 posix_only = pytest.mark.skipif(
     os.name != "posix", reason="host-root /plans is a POSIX container bug"
 )

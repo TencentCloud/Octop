@@ -89,7 +89,7 @@ def test_compute_next_trigger_outside_active_hours_deferred():
     # Current time is UTC 14:00, active window is 09:00-22:00, interval is 10h.
     now = datetime(2026, 7, 1, 14, 0, 0, tzinfo=UTC)
     with pytest.MonkeyPatch.context() as mp:
-        mp.setattr("random.randint", lambda a, b: 600)  # Fixed 600 minutes = 10h.
+        mp.setattr("random.randint", lambda a, b: 600 if a >= 60 else 120)
         result = compute_next_trigger(
             now=now,
             active_hours_start="09:00",
@@ -102,6 +102,22 @@ def test_compute_next_trigger_outside_active_hours_deferred():
     assert time(9, 0) <= result_t < time(22, 0)
     # The result should be on the next day.
     assert result.date() > now.date()
+
+
+def test_compute_next_trigger_short_active_window_stays_inside_window():
+    """Fallback offsets must not move a trigger past a short active window."""
+    now = datetime(2026, 7, 1, 14, 0, 0, tzinfo=UTC)
+    with pytest.MonkeyPatch.context() as mp:
+        mp.setattr("random.randint", lambda a, b: 600 if a >= 60 else b)
+        result = compute_next_trigger(
+            now=now,
+            active_hours_start="09:00",
+            active_hours_end="09:30",
+            min_interval_hours=8,
+            max_interval_hours=24,
+        )
+
+    assert result == datetime(2026, 7, 2, 9, 29, tzinfo=UTC)
 
 
 def test_compute_next_trigger_already_past_active_hours():

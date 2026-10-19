@@ -7,7 +7,7 @@ hours, rather than triggered at a fixed moment.
 Random scheduling algorithm:
     next_push_time = now + random(min_interval_hours, max_interval_hours)
     if next_push_time is outside [active_hours_start, active_hours_end]:
-        -> shift to the next day's active_hours_start + random(0, 120min) offset
+        -> shift to the next day's active_hours_start + a bounded random offset
 """
 
 from __future__ import annotations
@@ -56,7 +56,8 @@ def compute_next_trigger(
     1. Pick a random interval within [min_interval_hours, max_interval_hours].
     2. Compute candidate time = now + random interval.
     3. If the candidate falls within active hours, return it directly.
-    4. Otherwise shift to the next active-hours start + random(0, 120min).
+    4. Otherwise shift to the next active-hours start + a random offset that is
+       capped at 120 minutes and kept inside the active window.
 
     Args:
         now: Current time (UTC).
@@ -90,8 +91,10 @@ def compute_next_trigger(
     if start_t <= candidate_t < end_t:
         return candidate.astimezone(UTC)
 
-    # Outside active hours -> shift to next active-hours start + random(0, 120min)
-    random_offset_minutes = random.randint(0, 120)
+    # Outside active hours -> shift to the next active-hours start. Keep the
+    # fallback inside the half-open active window even when it is short.
+    window_minutes = (end_t.hour * 60 + end_t.minute) - (start_t.hour * 60 + start_t.minute)
+    random_offset_minutes = random.randint(0, min(120, window_minutes - 1))
 
     # Find the start of the next active-hours window
     # First try today's active_hours_start

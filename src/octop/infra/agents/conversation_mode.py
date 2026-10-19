@@ -91,8 +91,10 @@ def workspace_plan_path(path: str, workspace_dir: Path | str) -> str:
     if not rel:
         return path
     ws = str(workspace_dir).strip().replace("\\", "/").rstrip("/")
-    # write_file rejects Windows drive paths; those backends already scope to workspace.
-    if not ws or (len(ws) >= 2 and ws[1] == ":") or ws.startswith("//"):
+    # String drive paths are agent-facing roots whose backend already scopes to workspace.
+    if not ws or (
+        isinstance(workspace_dir, str) and ((len(ws) >= 2 and ws[1] == ":") or ws.startswith("//"))
+    ):
         return path
     mapped = join_agent_facing(ws, *rel.split("/"))
     raw = (path or "").strip().replace("\\", "/").rstrip("/")
