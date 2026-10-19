@@ -25,6 +25,7 @@ import { teamsApi } from "../../../api/modules/teams";
 import { request } from "../../../api/request";
 import type { OctopAgent } from "../../../context/AgentContext";
 import { useAgent } from "../../../context/AgentContext";
+import { useUserRole } from "../../../hooks/useUserRole";
 import { ExpertIcon } from "./iconForName";
 import {
   formatAgentError,
@@ -105,6 +106,8 @@ export const TeamCard = memo(function TeamCard({
   const { t } = useTranslation();
   const navigate = useNavigate();
   const { setActiveAgent, refresh: refreshAgents } = useAgent();
+  const role = useUserRole();
+  const canReadStatus = agent.is_owner !== false || role === "admin";
 
   const [localState, setLocalState] = useState(agent.state);
   const [localError, setLocalError] = useState(agent.last_error);
@@ -128,7 +131,7 @@ export const TeamCard = memo(function TeamCard({
 
   // Poll during transient states (local agents only — bridge shadows have no runtime status).
   useEffect(() => {
-    if (agent.bridge || !TRANSIENT.has(localState)) {
+    if (!canReadStatus || agent.bridge || !TRANSIENT.has(localState)) {
       if (pollRef.current) clearInterval(pollRef.current);
       pollRef.current = null;
       return;
@@ -153,7 +156,14 @@ export const TeamCard = memo(function TeamCard({
       if (pollRef.current) clearInterval(pollRef.current);
       pollRef.current = null;
     };
-  }, [localState, agent.agent_id, agent.bridge, onStateChange, refreshAgents]);
+  }, [
+    localState,
+    canReadStatus,
+    agent.agent_id,
+    agent.bridge,
+    onStateChange,
+    refreshAgents,
+  ]);
 
   const isTransient = TRANSIENT.has(localState);
   const switchChecked = localState === "running" || localState === "starting";

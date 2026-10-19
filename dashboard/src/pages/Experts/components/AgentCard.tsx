@@ -27,6 +27,7 @@ import PluginCatalogDrawer from "./PluginCatalogDrawer";
 import { request } from "../../../api/request";
 import type { OctopAgent } from "../../../context/AgentContext";
 import { useAgent } from "../../../context/AgentContext";
+import { useUserRole } from "../../../hooks/useUserRole";
 import MbtiPersonaTag from "../../../components/MbtiPersonaTag";
 import { ExpertIcon } from "./iconForName";
 import {
@@ -90,6 +91,8 @@ export const AgentCard = memo(function AgentCard({
   const { t } = useTranslation();
   const navigate = useNavigate();
   const { setActiveAgent, refresh: refreshAgents } = useAgent();
+  const role = useUserRole();
+  const canReadStatus = agent.is_owner !== false || role === "admin";
 
   const [localState, setLocalState] = useState(agent.state);
   const [localError, setLocalError] = useState(agent.last_error);
@@ -116,7 +119,7 @@ export const AgentCard = memo(function AgentCard({
 
   // Poll during transient states (local agents only — bridge shadows have no runtime status).
   useEffect(() => {
-    if (agent.bridge || !TRANSIENT.has(localState)) {
+    if (!canReadStatus || agent.bridge || !TRANSIENT.has(localState)) {
       if (pollRef.current) clearInterval(pollRef.current);
       pollRef.current = null;
       return;
@@ -144,6 +147,7 @@ export const AgentCard = memo(function AgentCard({
     };
   }, [
     localState,
+    canReadStatus,
     agent.agent_id,
     agent.bridge,
     onStateChange,
@@ -152,7 +156,7 @@ export const AgentCard = memo(function AgentCard({
   ]);
 
   useEffect(() => {
-    if (agent.bridge || localState !== "running") {
+    if (!canReadStatus || agent.bridge || localState !== "running") {
       setMemorySlimming(false);
       if (maintPollRef.current) {
         clearInterval(maintPollRef.current);
@@ -194,7 +198,7 @@ export const AgentCard = memo(function AgentCard({
         maintPollRef.current = null;
       }
     };
-  }, [localState, agent.agent_id, agent.bridge]);
+  }, [localState, canReadStatus, agent.agent_id, agent.bridge]);
 
   const isTransient = TRANSIENT.has(localState);
   const switchChecked = localState === "running" || localState === "starting";
