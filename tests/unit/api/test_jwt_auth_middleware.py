@@ -165,10 +165,14 @@ async def test_middleware_localizes_auth_errors_by_accept_language(client) -> No
 
     r = await c.get("/api/agents")
     assert r.status_code == 401
-    assert r.json()["error"]["message"] == "认证失败。"  # no header: existing DEFAULT_LOCALE (zh) fallback
+    assert (
+        r.json()["error"]["message"] == "认证失败。"
+    )  # no header: existing DEFAULT_LOCALE (zh) fallback
 
     # Invalid token follows the same localization.
-    r = await c.get("/api/agents", headers={"Authorization": "Bearer not-a-token", "Accept-Language": "zh-CN"})
+    r = await c.get(
+        "/api/agents", headers={"Authorization": "Bearer not-a-token", "Accept-Language": "zh-CN"}
+    )
     assert r.status_code == 401
     assert r.json()["error"]["message"] == "认证失败。"
 
@@ -179,8 +183,12 @@ async def test_middleware_localizes_auth_errors_by_accept_language(client) -> No
     assert user is not None
     secret = srv.services.secret_repo.get("jwt")
     assert secret is not None
-    expired = sign_token(secret, sub=user.id, uname=user.username, role=user.role, ttl_seconds=-3600)
-    r = await c.get("/api/agents", headers={"Authorization": f"Bearer {expired}", "Accept-Language": "zh-CN"})
+    expired = sign_token(
+        secret, sub=user.id, uname=user.username, role=user.role, ttl_seconds=-3600
+    )
+    r = await c.get(
+        "/api/agents", headers={"Authorization": f"Bearer {expired}", "Accept-Language": "zh-CN"}
+    )
     assert r.status_code == 401
     assert r.json()["error"]["code"] == "TOKEN_EXPIRED"
     assert r.json()["error"]["message"] == "登录已过期，请重新登录。"
