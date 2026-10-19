@@ -53,15 +53,33 @@ interface MediaGenerationDraft
 
 type ProviderModalMode = "create" | "edit";
 
-interface ProviderFormValues {
+export interface ProviderFormValues {
   provider: MediaProviderName;
   display_name: string;
   base_url: string;
   api_key: string;
   image_enabled: boolean;
   video_enabled: boolean;
-  image_model: string;
-  video_model: string;
+  image_model?: string;
+  video_model?: string;
+}
+
+export function normalizeProviderFormValues(
+  editingProvider: MediaProviderDraft,
+  values: ProviderFormValues,
+): MediaProviderDraft {
+  return {
+    ...editingProvider,
+    ...values,
+    display_name: values.display_name.trim(),
+    base_url: values.base_url.trim(),
+    // Disabled model fields are conditionally unmounted, so their values may
+    // be absent from the form. The API still expects string fields, even when
+    // the corresponding capability is disabled.
+    image_model: String(values.image_model ?? "").trim(),
+    video_model: String(values.video_model ?? "").trim(),
+    api_key: values.api_key.trim(),
+  };
 }
 
 function nextProviderId(
@@ -272,15 +290,7 @@ export function MediaGenerationSettingsPanel() {
     if (!editingProvider) return null;
     try {
       const values = await form.validateFields();
-      return {
-        ...editingProvider,
-        ...values,
-        display_name: values.display_name.trim(),
-        base_url: values.base_url.trim(),
-        image_model: values.image_model.trim(),
-        video_model: values.video_model.trim(),
-        api_key: values.api_key.trim(),
-      };
+      return normalizeProviderFormValues(editingProvider, values);
     } catch {
       return null;
     }
