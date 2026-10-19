@@ -745,15 +745,6 @@ class Gateway:
         else:
             response_mode = normalize_channel_response_mode(config.get("response_mode"))
         processor = processor_for_response_mode(self._processor, response_mode)
-        if row.kind == "telegram":
-            from octop.infra.gateway.channels.telegram_bridge import (
-                TelegramBridge,
-                validate_telegram_config,
-            )
-
-            validate_telegram_config(row.kind, config)
-            processor = TelegramBridge(self, processor, row.channel_id)
-
         if row.kind == "weixin" and response_mode == "stream":
             processor = wrap_weixin_stream_processor(processor)
         manager = self._require_channel_manager()

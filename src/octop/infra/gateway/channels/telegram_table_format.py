@@ -127,11 +127,24 @@ def convert_markdown_tables(
     return converted
 
 
+def has_gfm_table(text: str) -> bool:
+    """文本是否含代码围栏外的 GFM 表格（决定能否走原生 rich message）。"""
+    return convert_markdown_tables(text, renderer=lambda rows: "") != text
+
+
 def install() -> None:
-    """包裹 gateway 的 markdown_to_telegram_html；重复调用安全。"""
+    """两层策略：表格优先原生 sendRichMessage，失败回退代码块渲染。
+
+    - 包装 TelegramChannel._send_text：含 GFM 表格的消息整条经
+      Bot API 10.1 ``sendRichMessage``（rich_message.markdown）发送，
+      客户端原生渲染表格；任何失败回退原发送路径（代码块对齐方案）。
+    - 保留 markdown_to_telegram_html 包裹：回退路径仍把表格转代码块。
+    重复调用安全。
+    """
     try:
         from octop_gateway.channels.telegram import channel as gateway_channel
         from octop_gateway.channels.telegram import format_html as gateway_format_html
+        from octop_gateway.channels.telegram.channel import TelegramChannel
     except ImportError:  # gateway 未安装时静默跳过
         return
 
@@ -146,3 +159,24 @@ def install() -> None:
     markdown_to_telegram_html.__wrapped_base__ = base  # type: ignore[attr-defined]
     gateway_format_html.markdown_to_telegram_html = markdown_to_telegram_html
     gateway_channel.markdown_to_telegram_html = markdown_to_telegram_html
+
+    base_send_text = TelegramChannel._send_text
+
+    async def send_text(self, subject, text):  # type: ignore[no-untyped-def]
+        if text and self._app and has_gfm_table(text):
+            chat_id = subject.metadata.get("chat_id") if subject else None
+            try:
+                await self._app.bot._post(
+                    "sendRichMessage",
+                    {
+                        "chat_id": int(chat_id) if chat_id else int(subject.subject_id),
+                        "rich_message": {"markdown": text},
+                    },
+                )
+                return
+            except Exception:  # noqa: BLE001 任何失败都回退到代码块方案
+                pass
+        return await base_send_text(self, subject, text)
+
+    send_text.__wrapped_base__ = base_send_text  # type: ignore[attr-defined]
+    TelegramChannel._send_text = send_text  # type: ignore[method-assign]
