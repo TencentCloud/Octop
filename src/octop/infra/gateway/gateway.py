@@ -19,6 +19,9 @@ from octop.i18n import channel_probe_incomplete, channel_runtime_reason, tr
 from octop.infra.db.repos.channels import ChannelRow
 from octop.infra.db.repos.sessions import SessionRow
 from octop.infra.errors import ErrorCode, OctopError
+from octop.infra.gateway.channels.telegram_table_format import (
+    install as _install_telegram_table_format,
+)
 from octop.infra.gateway.cli import CLI_CHANNEL_ID, CliChannel, CliHub
 from octop.infra.gateway.history_backfill import HistoryBackfillQueue
 from octop.infra.gateway.process import media_backend_for_agent
@@ -43,6 +46,9 @@ from octop.infra.utils.locale import DEFAULT_LOCALE, Locale
 if TYPE_CHECKING:
     from octop.infra.agents.manager import AgentManager
     from octop.infra.db.services import RepoBundle
+
+# Telegram 无表格语法，发送前把 Markdown 表格转为对齐代码块（本地补丁）
+_install_telegram_table_format()
 
 logger = logging.getLogger(__name__)
 
