@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import click
 
+from octop.cli.support.db import resolve_cli_locale
 from octop.infra.setup.self_update import (
     fetch_pypi_info,
     get_editable_path,
@@ -66,6 +67,7 @@ def update(check: bool, yes: bool, verbose: bool, allow_prerelease: bool) -> Non
         verbose=verbose,
         allow_prerelease=is_prerelease(latest),
         version=latest,
+        locale=resolve_cli_locale(),
     )
     if not result.success:
         click.echo(f"upgrade failed: {result.error}", err=True)

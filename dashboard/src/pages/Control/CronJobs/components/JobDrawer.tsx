@@ -9,7 +9,9 @@ import {
   Divider,
   Typography,
   Alert,
+  DatePicker,
 } from "antd";
+import dayjs, { type Dayjs } from "dayjs";
 import { useTranslation } from "react-i18next";
 import type { FormInstance } from "antd";
 import { providerApi } from "../../../../api/modules/provider";
@@ -24,6 +26,7 @@ import {
 } from "./constants";
 import { CRON_NAME_MAX_LEN, CRON_PROMPT_MAX_LEN } from "../constants";
 import { channelFromSessionKey } from "../cronDisplay";
+import { defaultOnceRunAt, isFutureWallClock } from "../onceSchedule";
 import type { CronJobFormValues } from "../useCronJobs";
 import {
   buildModelSelectOptions,
@@ -31,6 +34,7 @@ import {
   MODEL_AUTO_VALUE,
   type ModelPickerOption,
 } from "../../../../utils/modelOptions";
+import styles from "../index.module.less";
 
 const { Text } = Typography;
 
@@ -101,6 +105,9 @@ export function JobDrawer({
     Array<{ label: string; value: string }>
   >([]);
   const [connectorsLoading, setConnectorsLoading] = useState(false);
+  const [mailOptions, setMailOptions] = useState<
+    Array<{ label: string; value: string }>
+  >([]);
 
   const presetOptions = useMemo(
     () =>
@@ -115,11 +122,19 @@ export function JobDrawer({
     if (!open) return;
     if (editingJob) {
       const matchedPreset = cronToPreset(editingJob.schedule?.cron || "");
+      const mode =
+        editingJob._scheduleMode === "once" ||
+        editingJob._scheduleMode === "agently"
+          ? editingJob._scheduleMode
+          : matchedPreset
+          ? "preset"
+          : "custom";
       form.setFieldsValue({
         ...editingJob,
         model: defaultModelToForm(editingJob.model),
-        _scheduleMode: matchedPreset ? "preset" : "custom",
+        _scheduleMode: mode,
         _preset: matchedPreset || editingJob._preset || "daily_9am",
+        run_at: editingJob.run_at ? dayjs(editingJob.run_at) : undefined,
       });
     } else {
       form.resetFields();
@@ -175,6 +190,19 @@ export function JobDrawer({
     void connectorsApi
       .listInstances(remote ? activeAgentId : undefined)
       .then((instances) => {
+        setMailOptions(
+          (instances || [])
+            .filter(
+              (i) =>
+                i.kind === "agently-cli" &&
+                i.status === "active" &&
+                i.has_credentials,
+            )
+            .map((i) => ({
+              value: i.instance_id,
+              label: i.display_name || i.instance_id,
+            })),
+        );
         setConnectorOptions(
           (instances || [])
             .filter((i) => i.status === "active" && i.has_credentials)
@@ -190,7 +218,10 @@ export function JobDrawer({
             })),
         );
       })
-      .catch(() => setConnectorOptions([]))
+      .catch(() => {
+        setConnectorOptions([]);
+        setMailOptions([]);
+      })
       .finally(() => setConnectorsLoading(false));
   }, [open, activeAgentId, remote]);
 
@@ -282,17 +313,88 @@ export function JobDrawer({
           label={t("cronJobs.form.scheduleMode")}
           tooltip={t("cronJobs.form.scheduleModeTooltip")}
         >
-          <Select>
+          <Select
+            onChange={(mode) => {
+              if (mode === "once" && !form.getFieldValue("run_at")) {
+                form.setFieldValue(
+                  "run_at",
+                  dayjs(defaultOnceRunAt(cronTimezone)),
+                );
+              }
+            }}
+          >
+            <Select.Option value="once">
+              {t("cronJobs.form.scheduleModeOnce")}
+            </Select.Option>
             <Select.Option value="preset">
               {t("cronJobs.form.scheduleModePreset")}
             </Select.Option>
             <Select.Option value="custom">
               {t("cronJobs.form.scheduleModeCustom")}
             </Select.Option>
+            {(mailOptions.length > 0 || scheduleMode === "agently") && (
+              <Select.Option value="agently">
+                {t("cronJobs.form.agentlyNewMail")}
+              </Select.Option>
+            )}
           </Select>
         </Form.Item>
 
-        {scheduleMode === "preset" ? (
+        {scheduleMode === "once" ? (
+          <Form.Item
+            name="run_at"
+            label={t("cronJobs.form.onceAt")}
+            dependencies={["enabled"]}
+            rules={[
+              {
+                validator: (_, value: Dayjs | undefined) => {
+                  if (!value || !dayjs.isDayjs(value)) {
+                    return Promise.reject(
+                      new Error(t("cronJobs.form.pleaseSelectOnceTime")),
+                    );
+                  }
+                  const enabled = Boolean(form.getFieldValue("enabled"));
+                  const text = value.format("YYYY-MM-DDTHH:mm:ss");
+                  if (enabled && !isFutureWallClock(text, cronTimezone)) {
+                    return Promise.reject(
+                      new Error(t("cronJobs.form.onceMustBeFuture")),
+                    );
+                  }
+                  return Promise.resolve();
+                },
+              },
+            ]}
+            extra={
+              <span className={styles.mailTriggerHint}>
+                {t("cronJobs.form.onceHint")}
+              </span>
+            }
+          >
+            <DatePicker
+              showTime={{ format: "HH:mm" }}
+              format="YYYY-MM-DD HH:mm"
+              style={{ width: "100%" }}
+            />
+          </Form.Item>
+        ) : scheduleMode === "agently" ? (
+          <Form.Item
+            name="mail_instance_id"
+            label={t("cronJobs.form.agentlyMailbox")}
+            rules={[
+              {
+                required: true,
+                message: t("cronJobs.form.agentlySelectMailbox"),
+              },
+            ]}
+            extra={
+              <span className={styles.mailTriggerHint}>
+                {t("cronJobs.form.agentlyHint")}
+              </span>
+            }
+          >
+            <Select options={mailOptions} loading={connectorsLoading} />
+          </Form.Item>
+        ) : scheduleMode === "preset" ? (
           <Form.Item
             name="_preset"
             label={t("cronJobs.form.preset")}

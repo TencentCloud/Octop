@@ -37,6 +37,7 @@ import {
 } from "../../../utils/agentError";
 import styles from "../index.module.less";
 import RemoteExpertHint from "../../Chat/components/RemoteExpertHint";
+import { expertDeleteConfirm } from "../../../utils/remoteExpert";
 import { isSharedExpertViewer } from "../../../utils/sharedExpert";
 import type { PublishedExpert } from "../../../api/modules/publishedExperts";
 import PublishTemplateButton from "./PublishTemplateButton";
@@ -285,6 +286,7 @@ export const AgentCard = memo(function AgentCard({
   const chatReady = isAgentChatReady(localState);
   const sharedViewer = isSharedExpertViewer(agent);
   const isOwner = agent.is_owner !== false;
+  const deleteConfirm = expertDeleteConfirm(agent, t);
 
   return (
     <>
@@ -450,8 +452,8 @@ export const AgentCard = memo(function AgentCard({
               </Tooltip>
 
               <Popconfirm
-                title={t("experts.confirmDelete", { name: agent.name })}
-                description={t("experts.confirmDeleteHint")}
+                title={deleteConfirm.title}
+                description={deleteConfirm.description}
                 onConfirm={() => void handleDelete()}
                 okText={t("common.delete", "Delete")}
                 cancelText={t("common.cancel")}

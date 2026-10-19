@@ -2,12 +2,15 @@ import tencentArdot from "./tencent-ardot.png";
 import baiduMap from "./baidu-map.png";
 import ctripWendao from "./ctrip-wendao.png";
 import didi from "./didi.svg";
+import dingtalkCli from "./dingtalk-cli.png";
 import dida365 from "./dida365.png";
 import dify from "./dify.svg";
+import agentlyCli from "./agently-cli.png";
 import feishuCli from "./feishu-cli.png";
 import fliggy from "./fliggy.png";
 import meituanTravel from "./meituan-travel.png";
 import notion from "./notion.png";
+import obsidianCli from "./obsidian-cli.svg";
 import openalex from "./openalex.svg";
 import qcc from "./qcc.png";
 import qqMail from "./qq-mail.png";
@@ -23,6 +26,7 @@ import wecomCli from "./wecom-cli.png";
 import weknora from "./weknora.svg";
 import youdaoNote from "./youdao-note.png";
 import yuandian from "./yuandian.png";
+import yuqueMcp from "./yuque-mcp.png";
 
 export const CONNECTOR_LOGOS: Record<string, string> = {
   "tencent-ardot": tencentArdot,
@@ -36,11 +40,14 @@ export const CONNECTOR_LOGOS: Record<string, string> = {
   "meituan-travel": meituanTravel,
   yuandian,
   "tencent-ima": tencentIma,
+  "agently-cli": agentlyCli,
   "feishu-cli": feishuCli,
   "wecom-cli": wecomCli,
+  "dingtalk-cli": dingtalkCli,
   "tencent-lexiang": tencentLexiang,
   "tencent-meeting": tencentMeeting,
   notion,
+  "obsidian-cli": obsidianCli,
   openalex,
   qcc,
   dida365: dida365,
@@ -50,6 +57,7 @@ export const CONNECTOR_LOGOS: Record<string, string> = {
   "youdao-note": youdaoNote,
   "tencent-weiyun": tencentWeiyun,
   weknora,
+  "yuque-mcp": yuqueMcp,
 };
 
 export function getConnectorLogo(kind: string): string | undefined {

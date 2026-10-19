@@ -96,6 +96,12 @@ export interface OauthStatus {
   providers: OauthProviderStatus[];
 }
 
+/** Public LDAP login availability probe (no auth required). */
+export interface LdapStatus {
+  enabled: boolean;
+  display_name: string;
+}
+
 export interface SetupBody {
   username: string;
   password: string;
@@ -203,6 +209,9 @@ export const authApi = {
 
   /** Return enabled dashboard SSO providers for the login page. */
   getOauthStatus: () => request<OauthStatus>("/auth/oauth/status"),
+
+  /** Return whether directory (LDAP) logins are available, and its label. */
+  getLdapStatus: () => request<LdapStatus>("/auth/ldap/status"),
 
   /** Start an OIDC authorization-code login flow. */
   startOidc: (redirect_after?: string) =>

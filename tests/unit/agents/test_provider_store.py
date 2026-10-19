@@ -10,6 +10,10 @@ import pytest
 from octop.config import OctopConfig
 from octop.infra.agents.manager import AgentManager
 from octop.infra.agents.providers import KIND_TO_PROTOCOL, ProviderStore
+from octop.infra.agents.providers.store import (
+    merge_stream_usage_extra,
+    resolve_provider_stream_usage,
+)
 from octop.infra.db.migrate import run_migrations
 from octop.infra.db.pool import SqlitePool
 from octop.infra.db.repos.agents import AgentRow
@@ -49,6 +53,34 @@ def _row(
         last_error=None,
         created_at=0,
         updated_at=0,
+    )
+
+
+def test_resolve_provider_stream_usage_defaults_custom_off() -> None:
+    assert resolve_provider_stream_usage(provider_name="mindie-arm") is False
+    assert resolve_provider_stream_usage(provider_name="私有化") is False
+
+
+def test_resolve_provider_stream_usage_keeps_bundled_presets_on() -> None:
+    assert resolve_provider_stream_usage(provider_name="openai") is True
+    assert resolve_provider_stream_usage(provider_name="DeepSeek") is True
+
+
+def test_merge_stream_usage_extra_preserves_headers() -> None:
+    merged = merge_stream_usage_extra('{"headers": {"X-A": "1"}}', False)
+    assert json.loads(merged or "") == {"headers": {"X-A": "1"}, "stream_usage": False}
+    assert (
+        merge_stream_usage_extra('{"headers": {"X-A": "1"}}', None) == '{"headers": {"X-A": "1"}}'
+    )
+
+
+def test_resolve_provider_stream_usage_extra_json_wins() -> None:
+    assert (
+        resolve_provider_stream_usage(provider_name="openai", extra={"stream_usage": False})
+        is False
+    )
+    assert (
+        resolve_provider_stream_usage(provider_name="mindie", extra={"stream_usage": True}) is True
     )
 
 
@@ -108,6 +140,32 @@ def test_has_usable_providers_requires_enabled_model(store: ProviderStore) -> No
         models_json=json.dumps([{"id": "m1", "name": "m1", "enabled": True}]),
     )
     assert store.has_usable_providers() is True
+
+
+def test_build_harness_configs_disables_stream_usage_for_custom(store: ProviderStore) -> None:
+    store._provider_repo.create(
+        name="mindie-private",
+        kind="openai",
+        base_url="http://10.0.0.8:1025/v1",
+        api_key="sk-test",
+        extra_json=json.dumps({"headers": {"X-Test": "1"}}),
+        models_json=json.dumps([{"id": "qwen", "name": "qwen", "enabled": True}]),
+    )
+    providers = store.build_harness_configs()
+    assert providers[0].stream_usage is False
+    assert providers[0].headers == {"X-Test": "1"}
+
+
+def test_build_harness_configs_honors_stream_usage_override(store: ProviderStore) -> None:
+    store._provider_repo.create(
+        name="mindie-private",
+        kind="openai",
+        base_url="http://10.0.0.8:1025/v1",
+        api_key="sk-test",
+        extra_json=json.dumps({"stream_usage": True}),
+        models_json=json.dumps([{"id": "qwen", "name": "qwen", "enabled": True}]),
+    )
+    assert store.build_harness_configs()[0].stream_usage is True
 
 
 def test_build_harness_configs_maps_kind_to_protocol(store: ProviderStore) -> None:
@@ -336,3 +394,42 @@ def test_resolve_multimodal_model_ref_prefers_inferred_vision_model(store: Provi
         ),
     )
     assert store.resolve_multimodal_model_ref() == "p/gpt-4o"
+
+
+def test_list_auto_route_candidates_filters_and_preserves_capacity(
+    store: ProviderStore,
+) -> None:
+    store._provider_repo.create(
+        name="p",
+        kind="openai",
+        base_url="https://api.example.com/v1",
+        api_key="sk-test",
+        models_json=json.dumps(
+            [
+                {
+                    "id": "text",
+                    "enabled": True,
+                    "input": ["text"],
+                    "max_input_tokens": 8_000,
+                },
+                {
+                    "id": "vision",
+                    "enabled": True,
+                    "input": ["text", "image"],
+                    "context_window": 32_000,
+                },
+                {"id": "disabled", "enabled": False, "context_window": 99_000},
+            ]
+        ),
+    )
+
+    all_candidates = store.list_auto_route_candidates(needs_multimodal=False)
+    vision_candidates = store.list_auto_route_candidates(needs_multimodal=True)
+
+    assert [(item.ref, item.max_input_tokens) for item in all_candidates] == [
+        ("p/text", 8_000),
+        ("p/vision", 32_000),
+    ]
+    assert [(item.ref, item.max_input_tokens) for item in vision_candidates] == [
+        ("p/vision", 32_000)
+    ]

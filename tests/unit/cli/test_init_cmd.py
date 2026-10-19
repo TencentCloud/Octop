@@ -57,6 +57,28 @@ def test_init_non_interactive_creates_admin(fake_home: Path) -> None:
     assert row.role == "admin"
 
 
+def test_init_allows_sidecar_files_without_database(fake_home: Path) -> None:
+    """NAS / Docker shares often have login.txt before the first octop.db exists."""
+    home = fake_home / ".octop"
+    home.mkdir()
+    (home / "octop-login.txt").write_text("placeholder\n", encoding="utf-8")
+    runner = CliRunner()
+    result = runner.invoke(
+        cli,
+        [
+            "init",
+            "--admin-username",
+            "alice",
+            "--admin-password",
+            "Wonderland1",
+            "--yes",
+        ],
+    )
+    assert result.exit_code == 0, result.output
+    assert (home / "octop.db").is_file()
+    assert (home / "octop-login.txt").read_text(encoding="utf-8") == "placeholder\n"
+
+
 def test_init_refuses_to_overwrite_without_force(fake_home: Path) -> None:
     runner = CliRunner()
     args = [
@@ -108,6 +130,42 @@ def test_init_force_resets(fake_home: Path) -> None:
     paths = PathLayout(fake_home / ".octop")
     repo = UserRepo(SqlitePool(paths.db))
     assert repo.get_by_username("bob") is not None
+
+
+def test_init_rerun_skips_existing_admin_without_local_db(
+    fake_home: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """PostgreSQL-style layout (no ``~/.octop/octop.db``): a rerun must not hit UNIQUE(username).
+
+    Issue #1866: the Docker entrypoint re-invoked ``octop init`` on every restart for
+    external-DB backends, and the unconditional admin INSERT crashed with
+    ``UniqueViolation`` / ``UNIQUE constraint failed``.
+    """
+    external = fake_home / "external"
+    external.mkdir()
+    monkeypatch.setenv("OCTOP_DATABASE_DRIVER", "sqlite")
+    monkeypatch.setenv("OCTOP_DATABASE_SQLITE_PATH", str(external / "control.db"))
+    runner = CliRunner()
+    args = [
+        "init",
+        "--admin-username",
+        "octop",
+        "--admin-password",
+        "TestPass12",
+        "--yes",
+    ]
+    r1 = runner.invoke(cli, args)
+    assert r1.exit_code == 0, r1.output
+    assert not (fake_home / ".octop" / "octop.db").exists()
+
+    r2 = runner.invoke(cli, args)
+    assert r2.exit_code == 0, r2.output or str(r2.exception)
+    assert "already exists, skipping" in r2.output
+
+    from octop.infra.db.pool import SqlitePool
+    from octop.infra.db.repos.users import UserRepo
+
+    assert UserRepo(SqlitePool(external / "control.db")).count() == 1
 
 
 def test_init_password_too_short_rejects(fake_home: Path) -> None:

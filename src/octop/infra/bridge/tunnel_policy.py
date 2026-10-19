@@ -1,4 +1,13 @@
-"""Path policy for Bridge HTTP tunnel requests against the local ASGI app."""
+"""Path policy for Bridge HTTP tunnel requests against the local ASGI app.
+
+Keep the allowlist aligned with ``dashboard/src/utils/remoteExpert.ts``
+``SURFACES``: chat / history / tasks / workspace / memory / mbti / subagents
+are fully tunneled; tools / plugins / channels are limited writes (the
+Personalization UI still PATCHes tool-settings and may POST reload);
+skill packages, global ACP, connector admin, and knowledge-base admin stay
+peer-only in the UI even when a matching path would otherwise match.
+Management / auth / bridge control planes stay local-only.
+"""
 
 from __future__ import annotations
 
@@ -10,7 +19,7 @@ _AGENT_COLLECTION = re.compile(r"^/api/agents/?$")
 _AGENT_RESOURCE = re.compile(
     r"^/api/agents/"
     r"(?:bridge:[^/]+|[^/]+)"
-    r"(?:/(?:threads|history|uploads|avatar|icon|chat|messages|files|workspace"
+    r"(?:/(?:threads|history|uploads|upload|avatar|icon|chat|messages|files|workspace"
     r"|attachments|media|turns|memory|skills|tools|tool-settings|mbti|persona"
     r"|channels|cron|config|state|status|welcome|members|subagents|reload|acp"
     r")(?:/.*)?)?$"
@@ -23,7 +32,8 @@ _COMPOSER_READONLY = re.compile(
     r"providers/resolved|"
     r"providers/active-model|"
     r"knowledge-bases|"
-    r"knowledge-bases/capability"
+    r"knowledge-bases/capability|"
+    r"settings/hitl"
     r")$"
 )
 

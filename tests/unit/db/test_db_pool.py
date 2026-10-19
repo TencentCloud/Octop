@@ -99,7 +99,7 @@ def test_run_migrations_idempotent(db: SqlitePool):
         sso_indexes = {
             r["name"] for r in conn.execute("PRAGMA index_list(sso_providers)").fetchall()
         }
-    assert v == 21
+    assert v == 22
     assert "login_failed_count" in cols
     assert "login_locked_until" in cols
     assert "preferences_json" in cols
@@ -147,6 +147,48 @@ def test_run_migrations_idempotent(db: SqlitePool):
     assert {"document_id", "path", "is_dir"}.issubset(doc_cols)
 
 
+def test_legacy_cron_trigger_column_renamed_to_schedule_spec(tmp_path: Path) -> None:
+    """Old cron_jobs.trigger must become schedule_spec without dropping job rows."""
+    from octop.infra.db.repos.agents import AgentRepo
+    from octop.infra.db.repos.cron import CronJobRepo
+    from octop.infra.db.repos.users import UserRepo
+    from octop.infra.utils.ulid import new_ulid
+
+    pool = SqlitePool(tmp_path / "octop.db")
+    run_migrations(pool)
+    user_id = UserRepo(pool).create(username="alice", password_hash="h", role="admin")
+    agent_id = new_ulid()
+    AgentRepo(pool).create(agent_id=agent_id, user_id=user_id, name="bot")
+    cron_id = new_ulid()
+    with pool.connect() as conn:
+        conn.execute('ALTER TABLE cron_jobs RENAME COLUMN schedule_spec TO "trigger"')
+        conn.execute(
+            "INSERT INTO cron_jobs("
+            "cron_id, agent_id, user_id, trigger, prompt, session_key, created_at, updated_at"
+            ") VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+            (cron_id, agent_id, user_id, "interval:3600", "ping", "sess", 1, 1),
+        )
+    run_migrations(pool)
+    with pool.connect() as conn:
+        cols = {row["name"] for row in conn.execute("PRAGMA table_info(cron_jobs)").fetchall()}
+    assert "schedule_spec" in cols
+    assert "trigger" not in cols
+    row = CronJobRepo(pool).get(cron_id)
+    assert row is not None
+    assert row.trigger == "interval:3600"
+    created = new_ulid()
+    CronJobRepo(pool).create(
+        cron_id=created,
+        agent_id=agent_id,
+        user_id=user_id,
+        name="hourly",
+        trigger="interval:60",
+        prompt="again",
+        session_key="sess",
+    )
+    assert CronJobRepo(pool).get(created) is not None
+
+
 def test_repair_legacy_schema_ensures_columns(tmp_path: Path) -> None:
     """DBs missing columns must be repaired on boot even if schema version is ahead."""
     db_path = tmp_path / "octop.db"
@@ -183,7 +225,7 @@ def test_migration_002_idempotent_when_column_already_present(tmp_path: Path) ->
     with pool.connect() as conn:
         v = conn.execute("SELECT version FROM _schema_version").fetchone()[0]
         cron_cols = {r["name"] for r in conn.execute("PRAGMA table_info(cron_jobs)").fetchall()}
-    assert v == 21
+    assert v == 22
     assert "mcp_servers" in cron_cols
     assert "skill_packages" in {
         r["name"]
@@ -322,7 +364,7 @@ def test_stuck_version_6_without_permissions_column_is_repaired(tmp_path: Path) 
     with pool.connect() as conn:
         cols = {r["name"] for r in conn.execute("PRAGMA table_info(users)").fetchall()}
         version = conn.execute("SELECT version FROM _schema_version").fetchone()[0]
-    assert version == 21
+    assert version == 22
     assert "permissions" in cols
 
 
@@ -347,7 +389,7 @@ def test_schema_v10_without_projection_tables_is_repaired(tmp_path: Path) -> Non
         }
         kb_cols = {r["name"] for r in conn.execute("PRAGMA table_info(knowledge_bases)").fetchall()}
         cron_cols = {r["name"] for r in conn.execute("PRAGMA table_info(cron_jobs)").fetchall()}
-    assert version == 21
+    assert version == 22
     assert {"thread_messages", "thread_history_projection", "trajectory_events"}.issubset(
         table_names
     )
@@ -382,7 +424,7 @@ def test_ahead_of_max_schema_version_clamps_to_max(tmp_path: Path) -> None:
             r["name"]
             for r in conn.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchall()
         }
-    assert version == 21
+    assert version == 22
     assert "skill_package_id" in pkg_cols
     assert "published_expert_id" in pub_cols
     assert "user_invites" in invite_tables
@@ -465,7 +507,7 @@ def test_pre_squash_schema_version_clamped_and_knowledge_tables_filled(
             for row in conn.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchall()
         }
         user_cols = {r["name"] for r in conn.execute("PRAGMA table_info(users)").fetchall()}
-    assert version == 21
+    assert version == 22
     assert "permissions" in user_cols
     assert {
         "published_experts",
@@ -671,7 +713,7 @@ def test_v14_to_v15_adds_sso_provider_kind_without_rebuilding(tmp_path: Path) ->
         bound = conn.execute(
             "SELECT sso_provider_id FROM users WHERE username = 'sso-admin'"
         ).fetchone()[0]
-    assert version == 21
+    assert version == 22
     assert int(row["id"]) == int(provider_id)
     assert row["kind"] == "oidc"
     assert row["extra"] == "{}"
@@ -679,14 +721,14 @@ def test_v14_to_v15_adds_sso_provider_kind_without_rebuilding(tmp_path: Path) ->
     assert int(bound) == int(provider_id)
 
 
-def test_v20_to_v21_adds_thread_organization_without_rebuilding(tmp_path: Path) -> None:
+def test_v21_to_v22_adds_thread_organization_without_rebuilding(tmp_path: Path) -> None:
     pool = SqlitePool(tmp_path / "octop.db")
     run_migrations(pool)
     with pool.connect() as conn:
         conn.execute("DROP INDEX IF EXISTS idx_threads_folder")
         conn.execute("ALTER TABLE threads DROP COLUMN tags")
         conn.execute("ALTER TABLE threads DROP COLUMN folder")
-        conn.execute("UPDATE _schema_version SET version = 20")
+        conn.execute("UPDATE _schema_version SET version = 21")
         conn.execute(
             """
             INSERT INTO users(
@@ -714,7 +756,7 @@ def test_v20_to_v21_adds_thread_organization_without_rebuilding(tmp_path: Path) 
         version = conn.execute("SELECT version FROM _schema_version").fetchone()[0]
         row = conn.execute("SELECT thread_id, folder, tags FROM threads").fetchone()
         indexes = {r["name"] for r in conn.execute("PRAGMA index_list(threads)").fetchall()}
-    assert version == 21
+    assert version == 22
     assert row["thread_id"] == "t-1"
     assert row["folder"] is None
     assert row["tags"] == "[]"

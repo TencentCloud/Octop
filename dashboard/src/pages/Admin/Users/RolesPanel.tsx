@@ -55,8 +55,21 @@ import {
 
 interface RoleFormValues extends PolicyFormValues {
   name: string;
+  user_role_id?: string;
   description?: string;
   permissions?: string[];
+}
+
+const ROLE_ID_MAX = 64;
+
+function isValidRoleId(value: string): boolean {
+  return (
+    value.length >= 1 &&
+    value.length <= ROLE_ID_MAX &&
+    /^[A-Za-z_]+$/.test(value) &&
+    !value.startsWith("_") &&
+    !value.endsWith("_")
+  );
 }
 
 export default function RolesPanel() {
@@ -64,7 +77,7 @@ export default function RolesPanel() {
   const [rows, setRows] = useState<UserRole[]>([]);
   const [loading, setLoading] = useState(false);
   const [permCatalog, setPermCatalog] = useState<PermissionCatalogItem[]>([]);
-  const [fsTreeRoot, setFsTreeRoot] = useState(HOST_FS_ROOT);
+  const [fsTreeRoots, setFsTreeRoots] = useState<string[]>([HOST_FS_ROOT]);
   const [workspaceRootAllowed, setWorkspaceRootAllowed] = useState(true);
   const [editor, setEditor] = useState<UserRole | "new" | null>(null);
   const [submitting, setSubmitting] = useState(false);
@@ -76,7 +89,9 @@ export default function RolesPanel() {
   const baselinePermissions = useMemo(
     () =>
       permCatalog
-        .filter((item) => item.category === "settings")
+        .filter(
+          (item) => item.category === "settings" || item.category === "nav",
+        )
         .map((item) => item.key),
     [permCatalog],
   );
@@ -99,11 +114,15 @@ export default function RolesPanel() {
       .catch(() => setPermCatalog([]));
     fetchFilesystemDefaults()
       .then((defaults) => {
-        setFsTreeRoot(defaults.tree_root);
+        setFsTreeRoots(
+          defaults.browse_roots?.length
+            ? defaults.browse_roots
+            : [defaults.tree_root],
+        );
         setWorkspaceRootAllowed(!defaults.in_container);
       })
       .catch(() => {
-        setFsTreeRoot(HOST_FS_ROOT);
+        setFsTreeRoots([HOST_FS_ROOT]);
         setWorkspaceRootAllowed(true);
       });
   }, [refresh]);
@@ -136,6 +155,7 @@ export default function RolesPanel() {
     !editor || editor === "new"
       ? {
           name: "",
+          user_role_id: "",
           description: "",
           permissions: [...baselinePermissions],
           limit_workspace_root: false,
@@ -196,6 +216,7 @@ export default function RolesPanel() {
         message.success(t("adminUsers.roleUpdateSuccess"));
       } else {
         const created = await userRolesApi.create({
+          user_role_id: values.user_role_id?.trim(),
           user_role_name: values.name.trim(),
           description: values.description?.trim() || null,
           permissions: values.permissions ?? [],
@@ -399,7 +420,7 @@ export default function RolesPanel() {
                     url={row.avatar_url}
                     icon={row.avatar_icon}
                     kind="role"
-                    className={styles.userCellAvatar}
+                    className={styles.roleCellAvatar}
                   />
                   <span className={styles.userCellText}>
                     <span className={styles.userCellName}>
@@ -625,7 +646,36 @@ export default function RolesPanel() {
                 {editing.user_role_id}
               </Typography.Text>
             </Form.Item>
-          ) : null}
+          ) : (
+            <Form.Item
+              label={t("adminUsers.roleColId")}
+              name="user_role_id"
+              extra={t("adminUsers.roleIdHint")}
+              rules={[
+                {
+                  required: true,
+                  whitespace: true,
+                  message: t("adminUsers.roleIdRequired"),
+                },
+                {
+                  validator: (_, value: string | undefined) => {
+                    const roleId = value?.trim() ?? "";
+                    if (!roleId || isValidRoleId(roleId)) {
+                      return Promise.resolve();
+                    }
+                    return Promise.reject(
+                      new Error(t("adminUsers.roleIdInvalid")),
+                    );
+                  },
+                },
+              ]}
+            >
+              <Input
+                maxLength={ROLE_ID_MAX}
+                placeholder={t("adminUsers.roleIdPlaceholder")}
+              />
+            </Form.Item>
+          )}
           <Form.Item label={t("adminUsers.roleDescription")} name="description">
             <Input.TextArea
               maxLength={500}
@@ -653,7 +703,7 @@ export default function RolesPanel() {
                 <PermissionCheckboxPicker catalog={permCatalog} />
               </Form.Item>
               <ResourcePolicyFields
-                fsTreeRoot={fsTreeRoot}
+                fsTreeRoots={fsTreeRoots}
                 workspaceRootAllowed={workspaceRootAllowed}
               />
             </>

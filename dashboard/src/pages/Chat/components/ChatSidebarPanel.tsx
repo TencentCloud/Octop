@@ -29,7 +29,10 @@ interface ChatSidebarPanelProps {
   onAgentSelect: (agentId: string) => void;
   /** Start a fresh chat from an expert row (classic + minimal). */
   onNewChatWithAgent: (agentId: string) => void;
-  onDeleteSession: (id: string) => void;
+  onDeleteSession: (
+    id: string,
+    compact: boolean,
+  ) => void | Promise<boolean | void>;
   onRenameSession: (id: string, name: string) => void;
   onPinSession: (id: string, pinned: boolean) => void;
   onForkSession: (id: string, agentId?: string | null) => void;
@@ -189,6 +192,7 @@ export default function ChatSidebarPanel({
           side={sidebarOpen ? "end" : "start"}
           /* Collapsed: share the nav rail divider — avoid a second gapped line. */
           showLine={sidebarOpen}
+          placement={sidebarOpen ? "center" : "after"}
           className={
             sidebarOpen ? styles.chatRailEdgeOpen : styles.chatRailEdgeClosed
           }

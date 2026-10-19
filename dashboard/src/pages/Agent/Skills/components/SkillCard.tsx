@@ -1,3 +1,4 @@
+import { Checkbox } from "antd";
 import {
   Archive,
   Code2,
@@ -10,6 +11,10 @@ import {
   Trash2,
 } from "lucide-react";
 import { useTranslation } from "react-i18next";
+import {
+  resolveBuiltinSkillIcon,
+  resolveFigurativeSkillIcon,
+} from "../builtinSkillIcon";
 import type { SkillSpec } from "../useSkills";
 import { useSkillDisplayName } from "../skillDisplayNames";
 import styles from "../index.module.less";
@@ -22,6 +27,8 @@ interface SkillCardProps {
   onMouseLeave: () => void;
   onToggleEnabled: (e: React.MouseEvent) => void;
   onDelete?: (e?: React.MouseEvent) => void;
+  selected?: boolean;
+  onToggleSelected?: () => void;
   /** When false, hide the enable/disable action (e.g. package not mounted). */
   showEnableToggle?: boolean;
 }
@@ -181,16 +188,23 @@ export function SkillCard({
   onMouseLeave,
   onToggleEnabled,
   onDelete,
+  selected = false,
+  onToggleSelected,
   showEnableToggle = true,
 }: SkillCardProps) {
   const { t } = useTranslation();
   const skillDisplayName = useSkillDisplayName();
   const isBuiltin = skill.kind === "builtin";
   const isCustomized = skill.kind === "workspace";
-  const iconColor = DEFAULT_COLOR;
-  const iconBg = `${iconColor}18`; // ~10% opacity tint
-
   const displayName = skillDisplayName(skill);
+  const tileLabel = [skill.name, skill.displayName, displayName]
+    .filter(Boolean)
+    .join(" ");
+  const tileVisual = isBuiltin
+    ? resolveBuiltinSkillIcon(skill.slug, skill.emoji, 44, tileLabel)
+    : resolveFigurativeSkillIcon(skill.slug, skill.emoji, tileLabel);
+  const iconColor = tileVisual?.color ?? DEFAULT_COLOR;
+  const iconBg = `${iconColor}18`; // ~10% opacity tint
   const displayDesc = skill.description;
   const hubIcon = skill.iconUrl;
 
@@ -213,11 +227,20 @@ export function SkillCard({
     >
       <div className={styles.cardBody}>
         <div className={styles.cardHeader}>
+          {onToggleSelected ? (
+            <Checkbox
+              className={styles.cardSelect}
+              checked={selected}
+              onClick={(event) => event.stopPropagation()}
+              onChange={() => onToggleSelected()}
+            />
+          ) : null}
           <div
             className={styles.iconWrapper}
             style={{
               color: iconColor,
-              backgroundColor: hubIcon ? "transparent" : iconBg,
+              backgroundColor:
+                hubIcon || tileVisual?.image ? "transparent" : iconBg,
             }}
           >
             {hubIcon ? (
@@ -231,6 +254,8 @@ export function SkillCard({
                   objectFit: "cover",
                 }}
               />
+            ) : tileVisual ? (
+              tileVisual.node
             ) : (
               renderSkillIcon(skill)
             )}

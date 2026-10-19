@@ -1,4 +1,6 @@
 import { useCallback, useEffect, useState, useSyncExternalStore } from "react";
+import { useTranslation } from "react-i18next";
+import { deleteConversation } from "../utils/deleteConversation";
 import {
   normalizeThreadArtifacts,
   octopThreadsApi,
@@ -28,6 +30,8 @@ export interface Session {
   pendingPlanPath?: string | null;
   hitlPolicy?: HitlSessionPolicy | null;
   artifacts?: ThreadArtifact[];
+  turnActive?: boolean;
+  awaitingUser?: boolean;
 }
 
 /** Result of probing whether a thread exists for the current agent. */
@@ -53,6 +57,8 @@ export function toSession(row: {
   artifacts?: Array<string | ThreadArtifact> | null;
   artifact_refs?: ThreadArtifact[] | null;
   agent_id?: string | null;
+  turn_active?: boolean;
+  awaiting_user?: boolean;
 }): Session {
   const hasActivity =
     Boolean(row.has_messages) || Boolean(row.title) || row.last_active > 0;
@@ -92,6 +98,8 @@ export function toSession(row: {
       row.agent_id,
       row.artifact_refs,
     ),
+    turnActive: Boolean(row.turn_active),
+    awaitingUser: Boolean(row.awaiting_user),
   };
 }
 
@@ -392,6 +400,7 @@ export function resetSessionStoreForTests() {
 }
 
 export function useSessions(agentId: string | null) {
+  const { t } = useTranslation();
   syncStoreToAgent(agentId);
   const { sessions, loading, hasMore, loadingMore } = useSyncExternalStore(
     subscribeSessionStore,
@@ -613,19 +622,16 @@ export function useSessions(agentId: string | null) {
   }, [agentId]);
 
   const deleteSession = useCallback(
-    async (id: string) => {
+    async (id: string, compact: boolean) => {
       if (!agentId || !id) return false;
-      try {
-        await octopThreadsApi.delete(agentId, id);
-        setModuleSessions((prev) => prev.filter((s) => s.id !== id));
-        chatStore.removeSession(id);
-        chatStore.emitSessionEvent({ kind: "sessionDeleted", sessionId: id });
-        return true;
-      } catch {
-        return false;
-      }
+      const deleted = await deleteConversation(agentId, id, compact, t);
+      if (!deleted) return false;
+      setModuleSessions((prev) => prev.filter((s) => s.id !== id));
+      chatStore.removeSession(id);
+      chatStore.emitSessionEvent({ kind: "sessionDeleted", sessionId: id });
+      return true;
     },
-    [agentId],
+    [agentId, t],
   );
 
   const pinSession = useCallback(

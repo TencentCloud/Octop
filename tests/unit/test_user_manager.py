@@ -123,10 +123,12 @@ async def test_authenticate_rejects_null_password_hash(manager: UserManager):
 
 
 async def test_change_password_rejects_null_password_hash(manager: UserManager):
+    """Directory/SSO-provisioned accounts have no local password to change."""
     manager._services.user_repo.create(username="sso_user", password_hash=None, role="user")
     with pytest.raises(OctopError) as ei:
         await manager.change_password("sso_user", "any", "NewPass12")
-    assert ei.value.code is ErrorCode.AUTH_FAILED
+    assert ei.value.code is ErrorCode.PASSWORD_NOT_SET
+    assert ei.value.status == 400
 
 
 async def test_sso_create_then_updates_same_subject(manager: UserManager):

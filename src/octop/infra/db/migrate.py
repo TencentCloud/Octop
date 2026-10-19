@@ -159,9 +159,32 @@ def _ensure_thread_organization_schema(db: DatabasePool) -> None:
         )
 
 
+def _rename_legacy_cron_schedule_column(db: DatabasePool) -> None:
+    """Rename pre-squash ``cron_jobs.trigger`` to ``schedule_spec``.
+
+    Current inserts and reads use ``schedule_spec``. Databases created before
+    that rename kept the old column, so cron creation failed with
+    "no column named schedule_spec" even after later columns were added.
+    """
+    cols = _table_columns(db, "cron_jobs")
+    if "trigger" not in cols:
+        return
+    if "schedule_spec" not in cols:
+        with db.connect() as conn:
+            conn.execute('ALTER TABLE cron_jobs RENAME COLUMN "trigger" TO schedule_spec')
+        return
+    with db.connect() as conn:
+        conn.execute(
+            'UPDATE cron_jobs SET schedule_spec = "trigger" '
+            "WHERE schedule_spec IS NULL OR schedule_spec = ''"
+        )
+    _drop_column(db, "cron_jobs", "trigger")
+
+
 def _ensure_cron_jobs_schema(db: DatabasePool) -> None:
     if not _table_exists(db, "cron_jobs"):
         return
+    _rename_legacy_cron_schedule_column(db)
     _ensure_column(db, "cron_jobs", "name", "TEXT NOT NULL DEFAULT ''")
     _ensure_column(
         db,
@@ -1576,6 +1599,12 @@ def _ensure_skill_copy_policy_schema(db: DatabasePool) -> None:
     _ensure_column(db, "skill_packages", "copy_policy", "TEXT NOT NULL DEFAULT 'snapshot'")
 
 
+def _ensure_skill_package_download_schema(db: DatabasePool) -> None:
+    if not _table_exists(db, "skill_packages"):
+        return
+    _ensure_column(db, "skill_packages", "allow_download", "INTEGER NOT NULL DEFAULT 1")
+
+
 def _ensure_bridge_connections_schema(db: DatabasePool) -> None:
     """Fold notes + unique display_name + auto_reconnect into unreleased v19."""
     if not _table_exists(db, "bridge_connections"):
@@ -1583,6 +1612,7 @@ def _ensure_bridge_connections_schema(db: DatabasePool) -> None:
     _ensure_column(db, "bridge_connections", "notes", "TEXT")
     _ensure_column(db, "bridge_connections", "icon_name", "TEXT")
     _ensure_column(db, "bridge_connections", "auto_reconnect", "INTEGER NOT NULL DEFAULT 1")
+    _ensure_column(db, "bridge_connections", "peer_client_host", "TEXT")
     # Make every (owner, display_name) unique before creating the index.
     # Empty names are filled from peer username / URL; colliding names get a suffix.
     with db.connect() as conn:
@@ -1712,7 +1742,7 @@ def _reconcile_pre_squash_schema_version(db: DatabasePool) -> None:
                 _ensure_thread_conversation_mode_schema(db)
             if max_version >= 18:
                 _ensure_user_role_schema(db)
-            if max_version >= 21:
+            if max_version >= 22:
                 _ensure_thread_organization_schema(db)
             with db.connect() as conn:
                 conn.execute("UPDATE _schema_version SET version = %s", (max_version,))
@@ -1759,6 +1789,8 @@ def _reconcile_pre_squash_schema_version(db: DatabasePool) -> None:
     if max_version >= 18:
         _ensure_user_role_schema(db)
     if max_version >= 21:
+        _ensure_skill_package_download_schema(db)
+    if max_version >= 22:
         _ensure_thread_organization_schema(db)
     with db.connect() as conn:
         conn.execute("UPDATE _schema_version SET version = ?", (max_version,))
@@ -1800,7 +1832,7 @@ def _apply_sqlite_migration(db: DatabasePool, version: int, path: Path) -> None:
     Version 16 adds ``agents.kind`` so team hosts can be listed.
     Version 17 adds sticky ``conversation_mode`` and ``pending_plan_path`` on threads.
     Version 18 adds ``user_role`` templates and non-FK role id/name snapshots.
-    Version 21 adds thread organization (folder + tags). SQLite uses the
+    Version 22 adds thread organization (folder + tags). SQLite uses the
     idempotent helper because ``_repair_legacy_schema`` may already have
     added the columns before the migration loop runs.
     """
@@ -1924,6 +1956,11 @@ def _apply_sqlite_migration(db: DatabasePool, version: int, path: Path) -> None:
             conn.execute("UPDATE _schema_version SET version = ?", (version,))
         return
     if version == 21:
+        _ensure_skill_package_download_schema(db)
+        with db.connect() as conn:
+            conn.execute("UPDATE _schema_version SET version = ?", (version,))
+        return
+    if version == 22:
         _ensure_thread_organization_schema(db)
         with db.connect() as conn:
             conn.execute("UPDATE _schema_version SET version = ?", (version,))
@@ -1931,6 +1968,115 @@ def _apply_sqlite_migration(db: DatabasePool, version: int, path: Path) -> None:
     sql = path.read_text(encoding="utf-8")
     with db.connect() as conn:
         conn.executescript(sql)
+
+
+_NAV_PAGE_PERMISSIONS = ("experts", "tasks", "token_usage")
+_NAV_PAGE_PERMISSIONS_FLAG = "granted_nav_page_permissions"
+_PERSONALIZATION_TAB_PERMISSIONS = (
+    "skills",
+    "subagents",
+    "tools",
+    "agent_plugins",
+    "mbti",
+    "memory",
+)
+_PERSONALIZATION_TAB_PERMISSIONS_FLAG = "granted_personalization_tab_permissions"
+
+
+def _parse_perm_list(raw: Any) -> list[str] | None:
+    if isinstance(raw, list):
+        return [str(item) for item in raw]
+    if raw is None:
+        return []
+    if isinstance(raw, str):
+        text = raw.strip()
+        if not text:
+            return []
+        try:
+            parsed = json.loads(text)
+        except json.JSONDecodeError:
+            return None
+        if isinstance(parsed, list):
+            return [str(item) for item in parsed]
+    return None
+
+
+def _grant_permission_keys_once(
+    db: DatabasePool,
+    keys: tuple[str, ...],
+    flag: str,
+) -> None:
+    """Grant ``keys`` once to accounts that already had those pages open.
+
+    Later removals stick: the settings flag stops this from running again.
+    Admins are skipped; an empty permission list means "all" for that role.
+    """
+    if not _table_exists(db, "settings"):
+        return
+    with db.connect() as conn:
+        existing = conn.execute(
+            "SELECT value FROM settings WHERE key = ?",
+            (flag,),
+        ).fetchone()
+    if existing is not None:
+        return
+
+    def grant(table: str, id_col: str, skip_where: str) -> None:
+        if not _table_exists(db, table):
+            return
+        with db.connect() as conn:
+            rows = conn.execute(
+                f"SELECT {id_col}, permissions FROM {table} WHERE {skip_where}"
+            ).fetchall()
+        updates: list[tuple[str, object]] = []
+        for row in rows:
+            current = _parse_perm_list(row[1])
+            if current is None:
+                continue
+            merged = list(current)
+            changed = False
+            for key in keys:
+                if key not in merged:
+                    merged.append(key)
+                    changed = True
+            if changed:
+                updates.append((json.dumps(merged, ensure_ascii=False), row[0]))
+        if not updates:
+            return
+        with db.transaction() as conn:
+            for payload, pk in updates:
+                conn.execute(
+                    f"UPDATE {table} SET permissions = ? WHERE {id_col} = ?",
+                    (payload, pk),
+                )
+
+    grant("users", "id", "role <> 'admin'")
+    grant("user_role", "id", "user_role_id <> 'admin'")
+    with db.transaction() as conn:
+        if db.dialect == "postgresql":
+            conn.execute(
+                "INSERT INTO settings(key, value) VALUES (?, ?) ON CONFLICT (key) DO NOTHING",
+                (flag, "1"),
+            )
+        else:
+            conn.execute(
+                "INSERT OR IGNORE INTO settings(key, value) VALUES (?, ?)",
+                (flag, "1"),
+            )
+
+
+def _grant_default_nav_permissions(db: DatabasePool) -> None:
+    """Grant experts/tasks/token usage once to accounts that already had them open."""
+    _grant_permission_keys_once(db, _NAV_PAGE_PERMISSIONS, _NAV_PAGE_PERMISSIONS_FLAG)
+
+
+def _grant_personalization_tab_permissions(db: DatabasePool) -> None:
+    """Grant personalization tab keys once; those pages used to be open to everyone."""
+    _grant_permission_keys_once(
+        db,
+        _PERSONALIZATION_TAB_PERMISSIONS,
+        _PERSONALIZATION_TAB_PERMISSIONS_FLAG,
+    )
 
 
 def run_migrations(db: DatabasePool) -> None:
@@ -1986,3 +2132,5 @@ def run_migrations(db: DatabasePool) -> None:
     _ensure_sso_provider_kind_schema(db)
     _ensure_user_role_schema(db)
     _ensure_bridge_connections_schema(db)
+    _grant_default_nav_permissions(db)
+    _grant_personalization_tab_permissions(db)

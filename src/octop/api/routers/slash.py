@@ -8,6 +8,7 @@ from fastapi import APIRouter, Depends, Query
 from pydantic import BaseModel, Field
 
 from octop.api.deps import current_user, get_server
+from octop.infra.agents.security import tool_execution_may_pause
 
 router = APIRouter()
 
@@ -52,7 +53,11 @@ async def list_slash_commands(
     """
     assert server.app_runtime is not None
     dispatcher = server.app_runtime.gateway.slash_dispatcher
-    specs = dispatcher.list_command_specs(origin=origin)
+    include_hitl = tool_execution_may_pause(server.app_runtime.agent_registry.security.load())
+    specs = dispatcher.list_command_specs(
+        origin=origin,
+        include_hitl_approval=include_hitl,
+    )
     commands = [
         SlashCommandOut(
             name=spec.name,

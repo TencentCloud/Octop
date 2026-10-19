@@ -74,6 +74,12 @@ def _is_unique_violation(exc: BaseException) -> bool:
     return pg_errors is not None and isinstance(exc, pg_errors.UniqueViolation)
 
 
+def _unique_conflict(exc: BaseException) -> str:
+    if "user_role_id" in str(exc).lower():
+        return "id_taken"
+    return "name_taken"
+
+
 @dataclass(frozen=True)
 class UserRoleRow:
     id: int
@@ -156,6 +162,8 @@ class UserRoleRepo:
     ) -> UserRoleRow:
         ts = now_ts()
         public_id = user_role_id or new_ulid()
+        if user_role_id is not None and self.get(user_role_id) is not None:
+            raise ValueError("id_taken")
         try:
             with self._db.transaction() as conn:
                 insert_returning_id(
@@ -176,7 +184,7 @@ class UserRoleRepo:
                 )
         except Exception as exc:
             if _is_unique_violation(exc):
-                raise ValueError("name_taken") from exc
+                raise ValueError(_unique_conflict(exc)) from exc
             raise
         row = self.get(public_id)
         assert row is not None
@@ -238,18 +246,32 @@ class UserRoleRepo:
             return int(cur.rowcount or 0) > 0
 
 
+def role_assignment_for(
+    db: DatabasePool,
+    user_role_id: str,
+) -> tuple[str, str | None, builtins.list[str], builtins.list[tuple[str, str]]] | None:
+    """Defaults from one role template.
+
+    Returns ``(user_role_id, user_role_name, permissions, policies)``, or ``None``
+    when that template no longer exists. Permission keys are filtered to those the
+    running build knows, so a template saved by a newer build cannot smuggle in
+    unknown keys.
+    """
+    from octop.infra.users.permissions import PERMISSIONS
+
+    role = UserRoleRepo(db).get(user_role_id)
+    if role is None:
+        return None
+    permissions = [key for key in role.permissions if key in PERMISSIONS]
+    return role.user_role_id, role.user_role_name, permissions, list(role.policies)
+
+
 def seeded_user_role_assignment(
     db: DatabasePool,
-) -> tuple[str, str, builtins.list[str], builtins.list[tuple[str, str]]] | None:
+) -> tuple[str, str | None, builtins.list[str], builtins.list[tuple[str, str]]] | None:
     """Defaults from the preset user role, when that role still exists.
 
     Returns ``(user_role_id, user_role_name, permissions, policies)``. ``None`` means the
     preset was deleted, and new SSO or CLI users keep an empty permission set.
     """
-    from octop.infra.users.permissions import PERMISSIONS
-
-    role = UserRoleRepo(db).get(SEEDED_USER_ROLE_ID)
-    if role is None:
-        return None
-    permissions = [key for key in role.permissions if key in PERMISSIONS]
-    return role.user_role_id, role.user_role_name, permissions, list(role.policies)
+    return role_assignment_for(db, SEEDED_USER_ROLE_ID)

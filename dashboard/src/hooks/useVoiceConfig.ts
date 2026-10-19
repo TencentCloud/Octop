@@ -30,10 +30,14 @@ export function prefetchVoiceConfig(): void {
 }
 
 export function useVoiceConfig() {
-  const [active, setActive] = useState<ActiveVoice>({
-    stt: "browser",
-    tts: "browser",
-  });
+  const [active, setActive] = useState<ActiveVoice>(
+    () =>
+      cachedActiveVoice() ?? {
+        stt: "browser",
+        tts: "browser",
+        stt_realtime: false,
+      },
+  );
   const [loading, setLoading] = useState(true);
 
   const refresh = useCallback(async () => {

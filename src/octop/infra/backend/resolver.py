@@ -119,6 +119,10 @@ def resolve_agent_backend_spec(
     cleaned = dict(spec)
     if kind not in ("named", "composite") and "name" in cleaned:
         del cleaned["name"]
+    if kind == "postgres":
+        from octop.infra.backend.postgres_spec import normalize_postgres_spec
+
+        return normalize_postgres_spec(cleaned)
     return cleaned
 
 

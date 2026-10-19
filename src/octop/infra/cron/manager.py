@@ -3,20 +3,36 @@
 from __future__ import annotations
 
 import asyncio
+import datetime as dt
 import logging
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from typing import TYPE_CHECKING, Any
+from zoneinfo import ZoneInfo
 
+from apscheduler.events import EVENT_JOB_MISSED, JobEvent
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
+from apscheduler.triggers.date import DateTrigger
 
+from octop.i18n import tr
+from octop.infra.connectors.crypto import decrypt_credentials
+from octop.infra.connectors.gateway.adapters.agently_cli import read_auth_status
+from octop.infra.connectors.gateway.agently_watch import AgentlyWatchManager
 from octop.infra.cron.delivery import CronDeliveryService
 from octop.infra.cron.job import CronJob
-from octop.infra.cron.trigger import build_trigger
+from octop.infra.cron.trigger import (
+    ONE_SHOT_MISFIRE_GRACE_SECONDS,
+    RECURRING_MISFIRE_GRACE_SECONDS,
+    AgentlyMailTrigger,
+    build_trigger,
+    one_shot_disposition,
+)
 from octop.infra.db.repos.audit import ACTOR_SYSTEM
 from octop.infra.errors import ErrorCode, OctopError
 from octop.infra.gateway.threads import ThreadRegistry
+from octop.infra.utils.locale import resolve_user_locale
 
 if TYPE_CHECKING:
+    from octop.infra.db.repos.connectors import ConnectorRow
     from octop.infra.db.repos.cron import CronJobRow
     from octop.infra.db.services import RepoBundle
     from octop.infra.gateway.gateway import Gateway
@@ -63,7 +79,9 @@ class CronManager:
         self._repos = repos
         self._timezone = timezone
         self._scheduler: AsyncIOScheduler = AsyncIOScheduler(timezone=timezone)
+        self._scheduler.add_listener(self._on_job_missed, EVENT_JOB_MISSED)
         self._lock = asyncio.Lock()
+        self._mail_watch = AgentlyWatchManager()
         # Process-level jobs (e.g. TLS auto-renew) that must survive reload_from_db.
         self._system_job_ids: set[str] = set()
 
@@ -87,6 +105,7 @@ class CronManager:
         :meth:`schedule_system_job` are left in place.
         """
         async with self._lock:
+            await self._mail_watch.close()
             for job in list(self._scheduler.get_jobs()):
                 job_id = getattr(job, "id", None)
                 if job_id is None or job_id in self._system_job_ids:
@@ -98,6 +117,7 @@ class CronManager:
             logger.info("CronManager reloaded from DB; scheduled %d jobs", len(rows))
 
     async def shutdown(self) -> None:
+        await self._mail_watch.close()
         if self._scheduler.running:
             self._scheduler.shutdown(wait=False)
             logger.info("CronManager shut down")
@@ -105,7 +125,7 @@ class CronManager:
     async def create(self, spec: CronCreateSpec | None = None, **kwargs: Any) -> CronJobRow:
         if spec is None:
             spec = CronCreateSpec(**kwargs)
-        build_trigger(spec.trigger)
+        self._mail_source(spec.trigger, spec.user_id)
         session_key = spec.session_key or ThreadRegistry.dashboard_key(
             agent_id=spec.agent_id,
             user_id=spec.user_id,
@@ -134,6 +154,8 @@ class CronManager:
             assert row is not None
             if spec.enabled:
                 self._schedule(row)
+                row = self._repos.cron_repo.get(spec.cron_id)
+                assert row is not None
             self._repos.audit_repo.write(
                 actor=spec.username or str(spec.user_id),
                 action="cron.create",
@@ -176,13 +198,13 @@ class CronManager:
         model: str | None | object = UNSET,
         mcp_servers: list[str] | None | object = UNSET,
     ) -> CronJobRow:
-        if trigger is not None:
-            build_trigger(trigger)
         enabled_bool: bool | None = bool(enabled) if enabled is not None else None
         async with self._lock:
             existing = self._repos.cron_repo.get(cron_id)
             if existing is None:
                 raise OctopError(ErrorCode.NOT_FOUND, f"cron job {cron_id!r} not found")
+            if trigger is not None or enabled_bool is True:
+                self._mail_source(trigger or existing.trigger, existing.user_id)
             repo_kwargs: dict[str, Any] = {
                 "trigger": trigger,
                 "name": name,
@@ -204,15 +226,18 @@ class CronManager:
             row = self._repos.cron_repo.get(cron_id)
             if row is None:
                 raise OctopError(ErrorCode.NOT_FOUND, f"cron job {cron_id!r} not found")
-            self._unschedule(cron_id)
+            await self._unschedule(cron_id)
             if row.enabled:
                 self._schedule(row)
+                row = self._repos.cron_repo.get(cron_id)
+                if row is None:
+                    raise OctopError(ErrorCode.NOT_FOUND, f"cron job {cron_id!r} not found")
             logger.info("CronJob %s updated", cron_id)
             return row
 
     async def delete(self, cron_id: str) -> None:
         async with self._lock:
-            self._unschedule(cron_id)
+            await self._unschedule(cron_id)
             self._repos.cron_repo.delete(cron_id)
             self._repos.audit_repo.write(actor=ACTOR_SYSTEM, action="cron.delete", target=cron_id)
             logger.info("CronJob %s deleted", cron_id)
@@ -222,12 +247,37 @@ class CronManager:
         row = self._repos.cron_repo.get(cron_id)
         if row is None:
             raise OctopError(ErrorCode.NOT_FOUND, f"cron job {cron_id!r} not found")
-        job = self._make_job(row)
         logger.info("CronJob %s triggered manually", cron_id)
         if wait:
-            await job.run(raise_on_error=True)
+            await self._run_user_job(cron_id, raise_on_error=True, force=True)
         else:
-            asyncio.ensure_future(job.run())
+            asyncio.ensure_future(self._run_user_job(cron_id, force=True))
+
+    async def _run_user_job(
+        self,
+        cron_id: str,
+        *,
+        raise_on_error: bool = False,
+        force: bool = False,
+    ) -> None:
+        row = self._repos.cron_repo.get(cron_id)
+        if row is None or (not row.enabled and not force):
+            return
+        try:
+            await self._make_job(row).run(raise_on_error=raise_on_error)
+        finally:
+            await self._finish_one_shot(cron_id)
+
+    async def _finish_one_shot(self, cron_id: str) -> None:
+        """Disable a ``date:`` job after it runs, success or failure."""
+        row = self._repos.cron_repo.get(cron_id)
+        if row is None or not row.trigger.startswith("date:"):
+            return
+        if row.last_status not in {"ok", "error"}:
+            return
+        if row.enabled:
+            self._repos.cron_repo.update(cron_id, enabled=False)
+        await self._unschedule(cron_id)
 
     def _make_job(self, row: Any) -> CronJob:
         return CronJob.from_row(
@@ -237,11 +287,27 @@ class CronManager:
             audit_repo=self._repos.audit_repo,
         )
 
+    def _on_job_missed(self, event: JobEvent) -> None:
+        """A one-shot that the scheduler skipped after the grace window is finished."""
+        job_id = event.job_id
+        if not job_id or job_id in self._system_job_ids:
+            return
+        row = self._repos.cron_repo.get(job_id)
+        if row is None or not row.trigger.startswith("date:"):
+            return
+        if row.last_status in {"ok", "error"} or row.last_run_at is not None:
+            if row.enabled:
+                self._repos.cron_repo.update(job_id, enabled=False)
+            return
+        self._repos.cron_repo.mark_missed(job_id)
+        logger.info("CronJob %s missed its one-shot window; disabling", job_id)
+
     def _schedule(self, row: Any) -> None:
         if not row.enabled:
             return
         try:
             trigger = build_trigger(row.trigger, timezone=self._timezone)
+            source = self._mail_source(row.trigger, row.user_id)
         except OctopError:
             logger.warning(
                 "CronJob %s has invalid trigger %r; skipping schedule",
@@ -249,20 +315,141 @@ class CronManager:
                 row.trigger,
             )
             return
-        job = self._make_job(row)
+        if isinstance(trigger, AgentlyMailTrigger):
+            assert source is not None
+            assert source.credential_blob is not None
+            creds = decrypt_credentials(self._repos.secret_repo, source.credential_blob)
+
+            async def on_mail(message_id: str) -> None:
+                await self._run_mail_event(row.cron_id, message_id)
+
+            self._mail_watch.subscribe(source.instance_id, row.cron_id, creds, on_mail)
+            return
+        grace = RECURRING_MISFIRE_GRACE_SECONDS
+        if isinstance(trigger, DateTrigger):
+            run_at = trigger.run_date
+            tzinfo = run_at.tzinfo or ZoneInfo(self._timezone)
+            if run_at.tzinfo is None:
+                run_at = run_at.replace(tzinfo=tzinfo)
+            action = one_shot_disposition(
+                run_at,
+                now=dt.datetime.now(tzinfo),
+                last_run_at=row.last_run_at,
+            )
+            if action == "miss":
+                self._repos.cron_repo.mark_missed(row.cron_id)
+                logger.info("CronJob %s missed its one-shot time; disabling", row.cron_id)
+                return
+            if action == "close":
+                self._repos.cron_repo.update(row.cron_id, enabled=False)
+                logger.info("CronJob %s one-shot already ran; disabling", row.cron_id)
+                return
+            grace = ONE_SHOT_MISFIRE_GRACE_SECONDS
         if self._scheduler.get_job(row.cron_id):
             self._scheduler.remove_job(row.cron_id)
         self._scheduler.add_job(
-            job.run,
+            self._run_user_job,
             trigger=trigger,
+            args=[row.cron_id],
             id=row.cron_id,
             replace_existing=True,
-            misfire_grace_time=60,
+            misfire_grace_time=grace,
         )
 
-    def _unschedule(self, cron_id: str) -> None:
+    async def _unschedule(self, cron_id: str) -> None:
+        await self._mail_watch.unsubscribe(cron_id)
         if self._scheduler.get_job(cron_id):
             self._scheduler.remove_job(cron_id)
+
+    def _mailbox_authorized(self, source: ConnectorRow) -> bool:
+        if source.credential_blob is None:
+            return False
+        creds = decrypt_credentials(self._repos.secret_repo, source.credential_blob)
+        try:
+            data = read_auth_status({**creds, "instance_id": source.instance_id})
+        except (OSError, ValueError):
+            return False
+        return data.get("logged_in") is True and data.get("token_status") != "expired"
+
+    def _mail_source(self, spec: str, user_id: int) -> ConnectorRow | None:
+        trigger = build_trigger(spec)
+        if not isinstance(trigger, AgentlyMailTrigger):
+            return None
+        source = self._repos.connector_repo.get(trigger.instance_id)
+        if (
+            source is None
+            or source.kind != "agently-cli"
+            or source.status != "active"
+            or not source.has_credentials
+        ):
+            raise OctopError(ErrorCode.CRON_TRIGGER_INVALID, "Agent Mail source is unavailable")
+        if source.user_id != user_id and not source.shared:
+            raise OctopError(
+                ErrorCode.FORBIDDEN, "Agent Mail source is not visible to the job owner"
+            )
+        if not self._mailbox_authorized(source):
+            raise OctopError(ErrorCode.CRON_TRIGGER_INVALID, "Agent Mail mailbox is not authorized")
+        return source
+
+    async def _run_mail_event(self, cron_id: str, message_id: str) -> None:
+        row = self._repos.cron_repo.get(cron_id)
+        if row is None or not row.enabled:
+            return
+        # Recheck visibility after sharing, credentials, or the job has changed.
+        source = self._mail_source(row.trigger, row.user_id)
+        if source is None:
+            return
+        locale = resolve_user_locale(user_repo=self._repos.user_repo, user_id=row.user_id)
+        prompt = (
+            row.prompt
+            + "\n\n"
+            + tr(
+                "connector.agently.new_mail_event",
+                locale,
+                tool=source.mcp_server_name + "_agently_read",
+                message_id=message_id,
+            )
+        )
+        event_row = replace(
+            row,
+            prompt=prompt,
+            mcp_servers=list(dict.fromkeys([source.mcp_server_name, *row.mcp_servers])),
+        )
+        await self._make_job(event_row).run()
+
+    async def reload_mail_watches(self) -> None:
+        """Rebuild every mailbox watch after a full cron reload."""
+        async with self._lock:
+            await self._mail_watch.close()
+            for row in self._repos.cron_repo.list_all(include_disabled=False):
+                if row.trigger.startswith("agently:"):
+                    self._schedule(row)
+
+    async def sync_mail_watch(self, instance_id: str) -> None:
+        """Start or stop watches for one mailbox without touching others."""
+        async with self._lock:
+            source = self._repos.connector_repo.get(instance_id)
+            available = (
+                source is not None
+                and source.kind == "agently-cli"
+                and source.status == "active"
+                and source.has_credentials
+                and self._mailbox_authorized(source)
+            )
+            if not available:
+                await self._mail_watch.stop_instance(instance_id)
+                return
+            for row in self._repos.cron_repo.list_all(include_disabled=False):
+                if row.trigger == f"agently:{instance_id}" and not self._mail_watch.has_job(
+                    row.cron_id
+                ):
+                    self._schedule(row)
+
+    async def stop_mail_watch(self, instance_id: str) -> None:
+        await self._mail_watch.stop_instance(instance_id)
+
+    async def resume_mail_watch(self, instance_id: str) -> None:
+        await self.sync_mail_watch(instance_id)
 
     async def _ensure_session(self, session_key: str, *, agent_id: str, user_id: int) -> None:
         registry = self._gateway.thread_registry
@@ -294,6 +481,10 @@ class CronManager:
     def schedule_system_job(self, job_id: str, *, trigger: str, func: Any) -> None:
         """Register a process-level job that is not stored in the cron DB."""
         built = build_trigger(trigger, timezone=self._timezone)
+        if isinstance(built, AgentlyMailTrigger):
+            raise OctopError(
+                ErrorCode.CRON_TRIGGER_INVALID, "system jobs cannot use Agent Mail triggers"
+            )
         self._system_job_ids.add(job_id)
         self._scheduler.add_job(
             func,

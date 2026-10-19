@@ -122,22 +122,9 @@ def row_to_backend_spec(row: BackendRow) -> dict[str, Any] | None:
         return {"type": "local_shell", "root_dir": str(root), "virtual_mode": True}
 
     if kind == "postgres":
-        if not row.endpoint:
-            return None
-        conn = cfg.get("connection_string")
-        if not conn:
-            user = row.access_key or cfg.get("user")
-            password = row.secret_key or cfg.get("password")
-            dbname = row.bucket or cfg.get("database")
-            if user and password and dbname:
-                host = row.endpoint
-                schema = row.region or cfg.get("schema") or "public"
-                conn = f"postgresql://{user}:{password}@{host}/{dbname}"
-                if schema != "public":
-                    cfg = {**cfg, "schema": schema}
-        if not conn:
-            return None
-        return {"type": "postgres", "connection_string": conn, **cfg}
+        from octop.infra.backend.postgres_spec import row_to_postgres_spec
+
+        return row_to_postgres_spec(row, cfg)
 
     if kind == "docker":
         image = cfg.get("image") or row.bucket

@@ -190,6 +190,14 @@ export interface FeishuUserAuthCompleteResult {
   cli_config_key: string;
 }
 
+export interface AgentlyAuthStatus {
+  status: "idle" | "pending" | "authorized" | "expired" | "error";
+  verification_url: string | null;
+  user_code: string | null;
+  expires_at: number | null;
+  error: string | null;
+}
+
 export const connectorsApi = {
   catalog: () => request<ConnectorCatalogEntry[]>("/connectors/catalog"),
 
@@ -315,6 +323,17 @@ export const connectorsApi = {
     request<ConnectorCliInstallResult>(
       `/connectors/${encodeURIComponent(kind)}/install-cli`,
       { method: "POST" },
+    ),
+
+  agentlyAuth: (
+    instanceId: string,
+    action: "start" | "status" | "logout" | "refresh",
+  ) =>
+    request<AgentlyAuthStatus>(
+      `/connector-instances/${encodeURIComponent(
+        instanceId,
+      )}/agently-auth/${action}`,
+      { method: action === "status" ? "GET" : "POST" },
     ),
 
   feishuUserAuthStart: (body: {

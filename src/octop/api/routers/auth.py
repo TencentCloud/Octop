@@ -2,16 +2,22 @@
 
 from __future__ import annotations
 
+import asyncio
+import logging
 from typing import Any
 
 from fastapi import APIRouter, Depends, File, Request, Response, UploadFile
 from pydantic import BaseModel, Field
 
+from octop.api.common.client_ip import resolve_client_ip
 from octop.api.deps import current_user, get_server, sign_token
 from octop.infra.auth.captcha import current_env, ensure_captcha, load_effective, public_config
 from octop.infra.errors import ErrorCode, OctopError
+from octop.infra.users.email import normalize_email
 from octop.infra.users.permissions import effective_permissions
 from octop.infra.utils.locale import normalize_locale
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
@@ -89,19 +95,90 @@ async def get_captcha(server: Any = Depends(get_server)) -> CaptchaPublicRespons
 
 
 def _client_ip(request: Request) -> str:
-    forwarded = request.headers.get("x-forwarded-for")
-    if forwarded:
-        return forwarded.split(",", 1)[0].strip() or "unknown"
-    if request.client and request.client.host:
-        return request.client.host
-    return "unknown"
+    """Trusted client address for throttling and captcha verification.
+
+    A spoofable value here would let a caller reset the directory bind throttle
+    by varying one header, so this delegates to the shared resolver.
+    """
+    return resolve_client_ip(request)
+
+
+def _local_row(server: Any, identifier: str) -> Any:
+    """The local account for a username-or-email identifier, when one exists."""
+    text = (identifier or "").strip()
+    if not text:
+        return None
+    repo = server.services.user_repo
+    row = repo.get_by_username(text)
+    if row is None:
+        email = normalize_email(text)
+        if email is not None:
+            row = repo.get_by_email(email)
+    return row
+
+
+def _directory_may_own(row: Any) -> bool:
+    """Whether an unresolved local login may legitimately belong to the directory.
+
+    ``False`` as soon as the identifier has a local password of its own: the
+    submitted secret then belongs to *this* system, and forwarding it would hand a
+    local credential to another server and spend one attempt against the
+    directory's own lockout policy. Such an account still signs in — the local
+    check runs first and succeeds on the right password — it just never falls
+    through on a wrong one.
+
+    Only identifiers with no local password, or none at all, may fall through.
+    """
+    if row is None:
+        return True
+    return not row.password_hash
+
+
+async def _authenticate_ldap(server: Any, username: str, password: str, client_ip: str) -> Any:
+    """Bind against the directory, throttled before the attempt reaches it."""
+    service = server.ldap_service
+    if not service.is_enabled():
+        return None
+    throttle = server.ldap_bind_throttle
+    _raise_if_throttled(throttle.retry_after(username, client_ip))
+    # An OctopError raised here (LDAP_UNAVAILABLE, LDAP_GROUP_NOT_ALLOWED, …) is a
+    # real answer and propagates unchanged. Outages are not credential failures,
+    # so they never count towards the brute-force budget.
+    identity = await asyncio.get_running_loop().run_in_executor(
+        None, service.directory_authenticate, username, password
+    )
+    if identity is None:
+        retry_after = throttle.record_failure(username, client_ip)
+        server.services.audit_repo.write(actor=username, action="auth.ldap_failed", target=username)
+        _raise_if_throttled(retry_after)
+        return None
+    throttle.clear(username, client_ip)
+    return await service.resolve_user(identity)
+
+
+def _raise_if_throttled(retry_after: int) -> None:
+    if retry_after <= 0:
+        return
+    minutes = max(1, (retry_after + 59) // 60)
+    raise OctopError(
+        ErrorCode.LOGIN_LOCKED,
+        "too many directory login attempts",
+        details={"retry_after_seconds": retry_after, "minutes": minutes},
+    )
 
 
 @router.post("/login", summary="Sign in")
 async def login(
     body: LoginBody, request: Request, server: Any = Depends(get_server)
 ) -> dict[str, Any]:
-    """Exchange username (or email) and password for a JWT access token and user profile."""
+    """Exchange username (or email) and password for a JWT access token and user profile.
+
+    When no local password matches, the credentials are retried against the
+    configured LDAP directory — but only for identifiers the directory could
+    legitimately own. Any account holding its own password stops at the local
+    check, so a mistyped local password is never forwarded to the directory nor
+    counted against the directory's lockout policy.
+    """
     if server.user_manager.count() == 0:
         raise OctopError(ErrorCode.SETUP_REQUIRED, "initial admin not created")
     server.user_manager.raise_if_login_locked(body.username)
@@ -110,8 +187,13 @@ async def login(
         server.services.secret_repo,
         current_env(),
     )
-    await ensure_captcha(effective, body.captcha_token, _client_ip(request))
+    client_ip = _client_ip(request)
+    await ensure_captcha(effective, body.captcha_token, client_ip)
     user = await server.user_manager.authenticate(body.username, body.password)
+    if user is None:
+        local_row = _local_row(server, body.username)
+        if _directory_may_own(local_row):
+            user = await _authenticate_ldap(server, body.username, body.password, client_ip)
     if user is None:
         raise OctopError(ErrorCode.AUTH_FAILED, "invalid credentials")
     secret = server.services.secret_repo.get("jwt")

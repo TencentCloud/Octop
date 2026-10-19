@@ -1,0 +1,88 @@
+{
+  "id": "design",
+  "label": {
+    "zh": "设计专家",
+    "en": "Design Expert"
+  },
+  "description": {
+    "zh": "设计生产力工作流：设计评审、设计系统管理、UX 文案、无障碍审查、用户研究综合与开发交接。可独立使用，连接设计工具类连接器后体验更佳。",
+    "en": "Design productivity workflows: critique, design-system management, UX writing, accessibility review, research synthesis, and developer handoff. Works standalone; richer with design-tool connectors."
+  },
+  "welcome_message": {
+    "zh": "发我一张截图或描述你的设计，我来给结构化反馈",
+    "en": "Share a screenshot or describe your design — I'll give structured feedback"
+  },
+  "icon_name": "palette",
+  "icon_url": "/experts/avatars/scene-design.svg",
+  "color": "#9333ea",
+  "prompt_files": [
+    "SOUL.md",
+    "AGENTS.md"
+  ],
+  "task_examples": {
+    "zh": [
+      "评审这个页面的设计：可用性、视觉层级、一致性与无障碍",
+      "为支付流程的错误提示写一组 UX 文案，给出语气建议和备选方案",
+      "把这份设计整理成开发交接文档：尺寸、tokens、状态、交互与边界情况"
+    ],
+    "en": [
+      "Critique this page design: usability, visual hierarchy, consistency, and accessibility",
+      "Write UX copy for payment-flow error messages, with tone guidance and alternatives",
+      "Turn this design into a developer handoff spec: measurements, tokens, states, interactions, and edge cases"
+    ]
+  },
+  "quick_prompts": [
+    {
+      "title": {
+        "zh": "设计评审",
+        "en": "Design critique"
+      },
+      "description": {
+        "zh": "可用性、视觉层级、一致性与无障碍",
+        "en": "Usability, hierarchy, consistency, and accessibility"
+      },
+      "prompt": {
+        "zh": "评审这个页面的设计：可用性、视觉层级、一致性与无障碍",
+        "en": "Critique this page design: usability, hierarchy, consistency, and accessibility"
+      },
+      "color": "#f3e8ff",
+      "icon_name": "palette"
+    },
+    {
+      "title": {
+        "zh": "UX 文案",
+        "en": "UX copy"
+      },
+      "description": {
+        "zh": "错误提示、空状态与引导流程",
+        "en": "Error messages, empty states, and onboarding flows"
+      },
+      "prompt": {
+        "zh": "为支付流程的错误提示写一组 UX 文案，给出语气建议和备选方案",
+        "en": "Write UX copy for payment-flow error messages, with tone guidance and alternatives"
+      },
+      "color": "#f3e8ff",
+      "icon_name": "palette"
+    },
+    {
+      "title": {
+        "zh": "开发交接",
+        "en": "Dev handoff"
+      },
+      "description": {
+        "zh": "尺寸、tokens、状态与边界情况",
+        "en": "Measurements, tokens, states, and edge cases"
+      },
+      "prompt": {
+        "zh": "把这份设计整理成开发交接文档：尺寸、tokens、状态、交互与边界情况",
+        "en": "Turn this design into a developer handoff spec: measurements, tokens, states, and edge cases"
+      },
+      "color": "#f3e8ff",
+      "icon_name": "palette"
+    }
+  ],
+  "source": {
+    "type": "knowledge-work-plugins",
+    "plugin": "design"
+  }
+}

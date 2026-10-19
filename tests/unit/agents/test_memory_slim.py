@@ -34,6 +34,10 @@ def make_manager(tmp_path):
     registry._active_invocations = {}
     registry._invocation_waiters = {}
     registry._history_backfills = {}
+    registry._reclaim_pending = set()
+    registry._reclaim_holds = {}
+    registry._reclaim_task = None
+    registry._reclaim_wake = None
     registry.get_agent = lambda _: agent
     registry.memory_slim = MemorySlimCoordinator(registry)
     registry._lock = asyncio.Lock()
@@ -177,9 +181,10 @@ def test_cli_prints_localized_progress_without_booting_another_host(tmp_path, mo
     monkeypatch.setenv("OCTOP_HOME", str(tmp_path))
     monkeypatch.setattr(command, "resolve_cli_locale", lambda: "zh")
 
-    def events(root, agent_id, *, locale):
+    def events(root, agent_id, *, locale, remove_directories=False):
         assert root == tmp_path and agent_id == "main"
         assert locale == "zh"
+        assert remove_directories is False
         yield {"phase": "backing_up"}
         yield {
             "phase": "done",
@@ -191,6 +196,7 @@ def test_cli_prints_localized_progress_without_booting_another_host(tmp_path, mo
         }
 
     monkeypatch.setattr(command, "request_memory_slim", events)
+    monkeypatch.setattr(command, "list_orphan_agent_dirs", lambda *args, **kwargs: [])
     result = CliRunner().invoke(cli, ["memory", "slim", "--agent", "main"])
     assert result.exit_code == 0, result.output
     assert "正在备份" in result.output and "2.00 → 1.00" in result.output
@@ -293,6 +299,7 @@ def test_cli_selects_by_number_and_shows_counts(tmp_path, monkeypatch):
         yield {"phase": "failed", "error": "test failure", "elapsed_seconds": 10}
 
     monkeypatch.setattr(command, "request_memory_slim", events)
+    monkeypatch.setattr(command, "list_orphan_agent_dirs", lambda *args, **kwargs: [])
     result = CliRunner().invoke(cli, ["memory", "slim"], input="9\n2\n")
     assert result.exit_code == 1
     assert selected == ["second"]
@@ -447,6 +454,7 @@ def batch_cli(tmp_path, monkeypatch):
         pytest.fail("--all must ignore the pinned default")
 
     monkeypatch.setattr(command, "resolve_agent", no_default)
+    monkeypatch.setattr(command, "list_orphan_agent_dirs", lambda *args, **kwargs: [])
     return CliRunner(), cli, command
 
 
@@ -689,12 +697,15 @@ def test_preview_reports_specific_ineligibility_without_starting(tmp_path, monke
     chat_registry(registry)
     try:
         if reason == "postgres":
-            # No PostgreSQL connection: this test checks backend rejection only.
+            # PostgreSQL agents stay eligible: slim sweeps deleted leftovers and
+            # skips SQLite dedup instead of refusing the command.
             backend = type("PostgresMemoryBackend", (), {})()
             registry.get_agent = lambda _: SimpleNamespace(
                 _memory_runtime=SimpleNamespace(memory=SimpleNamespace(backend=backend))
             )
-            expected = "PostgreSQL"
+            assert coordinator.preview_chat("a", 1, locale="zh") == [{"agent_id": "a", "name": "a"}]
+            assert coordinator.task is None and not registry._history_backfills
+            return
         elif reason == "disabled":
             registry.get_agent = lambda _: SimpleNamespace(
                 _memory_runtime=SimpleNamespace(memory=None)
@@ -712,12 +723,8 @@ def test_preview_reports_specific_ineligibility_without_starting(tmp_path, monke
             expected = "未提供在线整理接口"
             with pytest.raises(ValueError, match=expected):
                 coordinator.list_agents(locale="zh")
-        with pytest.raises(ValueError, match=expected) as error:
+        with pytest.raises(ValueError, match=expected):
             coordinator.preview_chat("a", 1, locale="zh")
-        if reason == "postgres":
-            assert "也可能出现重复数据或空间膨胀" in str(error.value)
-            assert "尚未支持 PostgreSQL 瘦身" in str(error.value)
-            assert "未执行任何整理，聊天可继续" in str(error.value)
         assert coordinator.task is None and not registry._history_backfills
         assert not list(tmp_path.glob("*.bak"))
     finally:

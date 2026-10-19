@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import contextlib
 import os
+import shutil
 import uuid
 from pathlib import Path
 from typing import Any, Literal
@@ -46,6 +47,50 @@ def host_fs_tree_root() -> str:
     if os.name == "posix":
         return "/"
     return host_path_text(Path(host_home_dir().anchor))
+
+
+def _ready_drive_roots() -> list[str]:
+    """Every ready Windows drive root, POSIX-serialized (``C:/``)."""
+    return [
+        f"{chr(ord('A') + index)}:/"
+        for index in range(26)
+        if os.path.isdir(f"{chr(ord('A') + index)}:\\")
+    ]
+
+
+def host_browse_roots() -> list[str]:
+    """Browse-tree roots for unrestricted users.
+
+    Host ``/`` on POSIX; every ready drive root on Windows. Enumerating drives
+    (rather than deriving a single root from :func:`host_fs_tree_root`) keeps a
+    user whose home lives on ``C:`` from being unable to browse ``D:``.
+
+    Drive probing uses ``os.path.isdir`` rather than ``GetLogicalDrives`` so it
+    also covers mapped network drives and stays correct without a ctypes call.
+    """
+    if os.name == "posix":
+        return ["/"]
+    roots = _ready_drive_roots()
+    # No ready drive (rare, e.g. a locked-down host) — fall back to the home
+    # anchor so the picker still has exactly one usable root.
+    return roots or [host_path_text(Path(host_home_dir().anchor))]
+
+
+def _bwrap_on_path() -> bool:
+    return shutil.which("bwrap") is not None
+
+
+def host_jail_enforced() -> bool:
+    """True when a non-root ``root_dir`` gets real OS-level confinement.
+
+    Only Linux + bubblewrap qualifies (see :mod:`octop.infra.utils.bwrap`).
+    Elsewhere ``root_dir`` bounds the agent's *tool* paths, but the agent
+    process still runs with the server user's own filesystem access — so the
+    UI must not describe it as a sandbox.
+    """
+    if os.name != "posix":
+        return False
+    return _bwrap_on_path()
 
 
 def running_in_container() -> bool:

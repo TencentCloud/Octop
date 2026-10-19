@@ -54,6 +54,8 @@ import {
   omitAgentRuntimeConfig,
   readAgentRuntimeFormValues,
 } from "../../../utils/agentRuntimeConfig";
+import { isBridgeAgentId } from "../../../utils/remoteExpert";
+import EditExpertDrawerTitle from "./EditExpertDrawerTitle";
 import { useSkillDisplayName } from "../../Agent/Skills/skillDisplayNames";
 import { DEFAULT_SKILL_EMOJI } from "../../Agent/Skills/skillMarkdown";
 import FileEditModal from "./FileEditModal";
@@ -236,8 +238,9 @@ function EditAgentDrawerBody({
   const [workspaceFiles, setWorkspaceFiles] = useState<string[]>([]);
   const [agentSkills, setAgentSkills] = useState<SkillSummary[]>([]);
   const [agentSubagents, setAgentSubagents] = useState<SubagentSummary[]>([]);
+  const remote = Boolean(agent.bridge) || isBridgeAgentId(agent.agent_id);
   const { models, modelsLoading, backends, backendsLoading } =
-    useAgentFormResources(true);
+    useAgentFormResources(true, agent.agent_id);
   const [pathMappings, setPathMappings] = useState<PathMapping[]>([]);
   const [agentConfig, setAgentConfig] = useState<Record<string, unknown>>({});
   const [colorPalette, setColorPalette] = useState<string>(
@@ -399,7 +402,7 @@ function EditAgentDrawerBody({
         return;
       }
     }
-    if (shouldProbeRootDir(values.backend_choice, values.root_dir)) {
+    if (!remote && shouldProbeRootDir(values.backend_choice, values.root_dir)) {
       const probe = await probeRootDir(values.root_dir ?? "/");
       if (!probe.ok) {
         message.error(
@@ -413,7 +416,10 @@ function EditAgentDrawerBody({
     setSaving(true);
     let bwrapToast: { kind: "success" | "warning"; text: string } | null = null;
     try {
-      if (shouldProbeRootDir(values.backend_choice, values.root_dir)) {
+      if (
+        !remote &&
+        shouldProbeRootDir(values.backend_choice, values.root_dir)
+      ) {
         const bwrap = await ensureBubblewrapAfterProbe();
         const kind = ensureBwrapToastKind(bwrap.status);
         if (kind !== "none") {
@@ -490,7 +496,7 @@ function EditAgentDrawerBody({
         }),
       });
 
-      if (!skillPackagesSupported) {
+      if (!remote && !skillPackagesSupported) {
         try {
           await skillPackagesApi.replaceMounted(agent.agent_id, []);
         } catch (pkgErr) {
@@ -526,6 +532,7 @@ function EditAgentDrawerBody({
     agent.agent_id,
     agent.state,
     agentConfig,
+    remote,
     colorPalette,
     form,
     iconUrl,
@@ -707,6 +714,14 @@ function EditAgentDrawerBody({
         </div>
       ) : (
         <>
+          {remote ? (
+            <Alert
+              type="info"
+              showIcon
+              message={t("chat.remoteExpert.editBanner")}
+              style={{ marginBottom: 16 }}
+            />
+          ) : null}
           <div className={styles.drawerSection} style={{ marginBottom: 0 }}>
             <div className={styles.drawerSectionTitle}>
               {t("experts.basicInfo")}
@@ -848,6 +863,7 @@ function EditAgentDrawerBody({
                 pathMappings={pathMappings}
                 rootDirMode="edit"
                 disabled
+                skipHostFilesystem={remote}
                 onAddPathMapping={addPathMapping}
                 onRemovePathMapping={removePathMapping}
                 onUpdatePathMapping={updatePathMapping}
@@ -861,7 +877,7 @@ function EditAgentDrawerBody({
               >
                 <Switch />
               </Form.Item>
-              <ExpertComposerDefaultsFields />
+              <ExpertComposerDefaultsFields agentId={agent.agent_id} />
               {!skillPackagesSupported ? (
                 <Alert
                   type="info"
@@ -1371,7 +1387,7 @@ export default function EditAgentDrawer({
   return (
     <Drawer
       open={open}
-      title={t("experts.editExpert")}
+      title={<EditExpertDrawerTitle agent={agent} />}
       width={520}
       onClose={onClose}
       destroyOnHidden
