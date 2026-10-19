@@ -10,6 +10,11 @@ from octop_gateway.models import ChannelSubject
 
 from octop.infra.db.pool import DatabasePool
 from octop.infra.db.repos._base import DbRow, now_ts, sql_in_placeholders
+from octop.infra.utils.weixin_context import (
+    merge_weixin_context_token,
+    selected_weixin_token,
+    with_weixin_send_token,
+)
 
 
 def _decode_metadata(raw: str | None) -> dict[str, Any] | None:
@@ -144,6 +149,15 @@ class SessionRepo:
         )
         ts = now_ts()
         with self._db.transaction() as conn:
+            current = conn.execute(
+                "SELECT channel_metadata FROM sessions WHERE session_key = ?",
+                (session_key,),
+            ).fetchone()
+            if current is not None:
+                metadata = merge_weixin_context_token(
+                    _decode_metadata(current["channel_metadata"]),
+                    metadata,
+                )
             conn.execute(
                 "INSERT INTO sessions(session_key, agent_id, user_id, channel_type, "
                 "chat_type, thread_id, updated_at, channel_subject_id, channel_chat_type, "
@@ -169,6 +183,40 @@ class SessionRepo:
                     channel_id,
                 ),
             )
+
+    def remember_weixin_context_token(
+        self,
+        *,
+        agent_id: str,
+        subject_id: str,
+        token: str,
+        token_ms: int,
+    ) -> None:
+        """Store a newer iLink send token on matching WeChat sessions.
+
+        A session that already holds a newer token is left unchanged.
+        """
+        cleaned = token.strip()
+        if not cleaned or token_ms <= 0 or not agent_id or not subject_id:
+            return
+        with self._db.transaction() as conn:
+            rows = conn.execute(
+                "SELECT session_key, channel_metadata FROM sessions "
+                "WHERE agent_id = ? AND channel_type = 'weixin' AND channel_subject_id = ?",
+                (agent_id, subject_id),
+            ).fetchall()
+            for row in rows:
+                current = _decode_metadata(row["channel_metadata"]) or {}
+                merged = merge_weixin_context_token(
+                    current,
+                    with_weixin_send_token(current, cleaned, token_ms),
+                )
+                if not selected_weixin_token(merged, cleaned, token_ms):
+                    continue
+                conn.execute(
+                    "UPDATE sessions SET channel_metadata = ?, updated_at = ? WHERE session_key = ?",
+                    (_encode_metadata(merged), now_ts(), row["session_key"]),
+                )
 
     def set_thread(self, session_key: str, thread_id: str) -> None:
         with self._db.transaction() as conn:

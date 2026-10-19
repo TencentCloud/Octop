@@ -19,7 +19,7 @@ _AGENT_COLLECTION = re.compile(r"^/api/agents/?$")
 _AGENT_RESOURCE = re.compile(
     r"^/api/agents/"
     r"(?:bridge:[^/]+|[^/]+)"
-    r"(?:/(?:threads|history|uploads|avatar|icon|chat|messages|files|workspace"
+    r"(?:/(?:threads|history|uploads|upload|avatar|icon|chat|messages|files|workspace"
     r"|attachments|media|turns|memory|skills|tools|tool-settings|mbti|persona"
     r"|channels|cron|config|state|status|welcome|members|subagents|reload|acp"
     r")(?:/.*)?)?$"
@@ -32,7 +32,8 @@ _COMPOSER_READONLY = re.compile(
     r"providers/resolved|"
     r"providers/active-model|"
     r"knowledge-bases|"
-    r"knowledge-bases/capability"
+    r"knowledge-bases/capability|"
+    r"settings/hitl"
     r")$"
 )
 

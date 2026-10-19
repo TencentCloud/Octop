@@ -302,6 +302,7 @@ def build_harness_request(
     content: str | list[dict[str, Any]] | None = None,
     messages: list[Any] | None = None,
     model: str | None = None,
+    auto_route: bool = False,
     message_kwargs: dict[str, Any] | None = None,
     reasoning_overrides: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
@@ -315,6 +316,8 @@ def build_harness_request(
         if agent_id is not None:
             req["agent_id"] = agent_id
         configurable: dict[str, Any] = {}
+        if auto_route:
+            configurable["octop_auto_route"] = True
         if session_key is not None:
             configurable["session_key"] = session_key
         if reasoning_overrides:
@@ -349,6 +352,8 @@ def build_harness_request(
     if agent_id is not None:
         req["agent_id"] = agent_id
     configurable = {}
+    if auto_route:
+        configurable["octop_auto_route"] = True
     if session_key is not None:
         configurable["session_key"] = session_key
     if reasoning_overrides:

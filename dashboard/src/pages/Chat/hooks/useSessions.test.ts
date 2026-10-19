@@ -1,5 +1,6 @@
 import { act, renderHook, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import * as chatStore from "./chatStore";
 import {
   resetSessionStoreForTests,
   sortSessions,
@@ -99,6 +100,7 @@ describe("useSessions agent switch", () => {
 
   afterEach(() => {
     resetSessionStoreForTests();
+    chatStore.removeSession("thr_current");
   });
 
   it("clears previous-agent threads on the first render of a new agent", async () => {
@@ -210,6 +212,15 @@ describe("useSessions agent switch", () => {
     patchMock.mockResolvedValue({ archived: true });
     const { result } = renderHook(() => useSessions("agent-new"));
     await waitFor(() => expect(result.current.sessions).toHaveLength(1));
+    const history = [
+      {
+        id: "message",
+        role: "user" as const,
+        content: "Keep me",
+        timestamp: 1,
+      },
+    ];
+    chatStore.setMessages("thr_current", history);
 
     let ok = false;
     await act(async () => {
@@ -221,5 +232,55 @@ describe("useSessions agent switch", () => {
       archived: true,
     });
     expect(result.current.sessions).toEqual([]);
+    expect(chatStore.getSnapshot("thr_current").messages).toEqual(history);
+  });
+
+  it("ignores a current-view fetch that finishes after switching to archived", async () => {
+    let resolveCurrent!: (rows: ReturnType<typeof threadRow>[]) => void;
+    listMock.mockImplementation(
+      async (_agentId: string, _limit: number, archived: boolean) =>
+        archived
+          ? [{ ...threadRow("thr_archived"), archived: true }]
+          : new Promise<ReturnType<typeof threadRow>[]>((resolve) => {
+              resolveCurrent = resolve;
+            }),
+    );
+    const { result } = renderHook(() => useSessions("agent-new"));
+    act(() => result.current.setShowArchived(true));
+    await waitFor(() =>
+      expect(result.current.sessions.map((session) => session.id)).toEqual([
+        "thr_archived",
+      ]),
+    );
+
+    await act(async () => resolveCurrent([threadRow("thr_stale_current")]));
+
+    expect(result.current.sessions.map((session) => session.id)).toEqual([
+      "thr_archived",
+    ]);
+  });
+
+  it("ignores an old refresh callback invoked after the archive view changes", async () => {
+    listMock.mockImplementation(
+      async (_agentId: string, _limit: number, archived: boolean) =>
+        archived
+          ? [{ ...threadRow("thr_archived"), archived: true }]
+          : [threadRow("thr_current")],
+    );
+    const { result } = renderHook(() => useSessions("agent-new"));
+    await waitFor(() =>
+      expect(result.current.sessions[0]?.id).toBe("thr_current"),
+    );
+    const refreshCurrent = result.current.fetchSessions;
+    act(() => result.current.setShowArchived(true));
+    await waitFor(() =>
+      expect(result.current.sessions[0]?.id).toBe("thr_archived"),
+    );
+
+    await act(async () => {
+      await refreshCurrent();
+    });
+
+    expect(result.current.sessions[0].id).toBe("thr_archived");
   });
 });

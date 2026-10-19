@@ -82,6 +82,7 @@ export interface OctopThreadHistory {
     error_code?: string;
     agent_id?: string;
     team_wrapup?: boolean;
+    decision?: unknown;
   }>;
   pinned?: boolean;
   model_ref?: string | null;
@@ -143,6 +144,8 @@ export interface ContextUsageBreakdown {
   max_tokens: number;
   used_tokens: number;
   segments: ContextUsageSegment[];
+  /** Tokens the decision filter kept out of the latest model request. */
+  decision_saved?: number;
 }
 
 export interface HistoryMigrationStatus {

@@ -147,9 +147,32 @@ def _ensure_agent_profile_columns(db: DatabasePool) -> None:
     _collapse_legacy_agent_welcome_columns(db)
 
 
+def _rename_legacy_cron_schedule_column(db: DatabasePool) -> None:
+    """Rename pre-squash ``cron_jobs.trigger`` to ``schedule_spec``.
+
+    Current inserts and reads use ``schedule_spec``. Databases created before
+    that rename kept the old column, so cron creation failed with
+    "no column named schedule_spec" even after later columns were added.
+    """
+    cols = _table_columns(db, "cron_jobs")
+    if "trigger" not in cols:
+        return
+    if "schedule_spec" not in cols:
+        with db.connect() as conn:
+            conn.execute('ALTER TABLE cron_jobs RENAME COLUMN "trigger" TO schedule_spec')
+        return
+    with db.connect() as conn:
+        conn.execute(
+            'UPDATE cron_jobs SET schedule_spec = "trigger" '
+            "WHERE schedule_spec IS NULL OR schedule_spec = ''"
+        )
+    _drop_column(db, "cron_jobs", "trigger")
+
+
 def _ensure_cron_jobs_schema(db: DatabasePool) -> None:
     if not _table_exists(db, "cron_jobs"):
         return
+    _rename_legacy_cron_schedule_column(db)
     _ensure_column(db, "cron_jobs", "name", "TEXT NOT NULL DEFAULT ''")
     _ensure_column(
         db,
@@ -1575,6 +1598,12 @@ def _ensure_skill_copy_policy_schema(db: DatabasePool) -> None:
     _ensure_column(db, "skill_packages", "copy_policy", "TEXT NOT NULL DEFAULT 'snapshot'")
 
 
+def _ensure_skill_package_download_schema(db: DatabasePool) -> None:
+    if not _table_exists(db, "skill_packages"):
+        return
+    _ensure_column(db, "skill_packages", "allow_download", "INTEGER NOT NULL DEFAULT 1")
+
+
 def _ensure_bridge_connections_schema(db: DatabasePool) -> None:
     """Fold notes + unique display_name + auto_reconnect into unreleased v19."""
     if not _table_exists(db, "bridge_connections"):
@@ -1582,6 +1611,7 @@ def _ensure_bridge_connections_schema(db: DatabasePool) -> None:
     _ensure_column(db, "bridge_connections", "notes", "TEXT")
     _ensure_column(db, "bridge_connections", "icon_name", "TEXT")
     _ensure_column(db, "bridge_connections", "auto_reconnect", "INTEGER NOT NULL DEFAULT 1")
+    _ensure_column(db, "bridge_connections", "peer_client_host", "TEXT")
     # Make every (owner, display_name) unique before creating the index.
     # Empty names are filled from peer username / URL; colliding names get a suffix.
     with db.connect() as conn:
@@ -1710,6 +1740,7 @@ def _reconcile_pre_squash_schema_version(db: DatabasePool) -> None:
                 _ensure_thread_conversation_mode_schema(db)
             if max_version >= 18:
                 _ensure_user_role_schema(db)
+            if max_version >= 22:
                 _ensure_thread_archive_schema(db)
             with db.connect() as conn:
                 conn.execute("UPDATE _schema_version SET version = %s", (max_version,))
@@ -1755,6 +1786,9 @@ def _reconcile_pre_squash_schema_version(db: DatabasePool) -> None:
         _ensure_thread_conversation_mode_schema(db)
     if max_version >= 18:
         _ensure_user_role_schema(db)
+    if max_version >= 21:
+        _ensure_skill_package_download_schema(db)
+    if max_version >= 22:
         _ensure_thread_archive_schema(db)
     with db.connect() as conn:
         conn.execute("UPDATE _schema_version SET version = ?", (max_version,))
@@ -1795,8 +1829,8 @@ def _apply_sqlite_migration(db: DatabasePool, version: int, path: Path) -> None:
     multi-identity ``user_sso_identities``.
     Version 16 adds ``agents.kind`` so team hosts can be listed.
     Version 17 adds sticky ``conversation_mode`` and ``pending_plan_path`` on threads.
-    Version 18 adds ``user_role`` templates, non-FK role id/name snapshots,
-    and reversible thread archiving.
+    Version 18 adds ``user_role`` templates and non-FK role id/name snapshots.
+    Version 22 adds reversible thread archiving.
     """
     if version == 2:
         if _table_exists(db, "cron_jobs"):
@@ -1917,6 +1951,11 @@ def _apply_sqlite_migration(db: DatabasePool, version: int, path: Path) -> None:
         with db.connect() as conn:
             conn.execute("UPDATE _schema_version SET version = ?", (version,))
         return
+    if version == 21:
+        _ensure_skill_package_download_schema(db)
+        with db.connect() as conn:
+            conn.execute("UPDATE _schema_version SET version = ?", (version,))
+        return
     sql = path.read_text(encoding="utf-8")
     with db.connect() as conn:
         conn.executescript(sql)
@@ -1924,6 +1963,15 @@ def _apply_sqlite_migration(db: DatabasePool, version: int, path: Path) -> None:
 
 _NAV_PAGE_PERMISSIONS = ("experts", "tasks", "token_usage")
 _NAV_PAGE_PERMISSIONS_FLAG = "granted_nav_page_permissions"
+_PERSONALIZATION_TAB_PERMISSIONS = (
+    "skills",
+    "subagents",
+    "tools",
+    "agent_plugins",
+    "mbti",
+    "memory",
+)
+_PERSONALIZATION_TAB_PERMISSIONS_FLAG = "granted_personalization_tab_permissions"
 
 
 def _parse_perm_list(raw: Any) -> list[str] | None:
@@ -1944,8 +1992,12 @@ def _parse_perm_list(raw: Any) -> list[str] | None:
     return None
 
 
-def _grant_default_nav_permissions(db: DatabasePool) -> None:
-    """Grant experts/tasks/token usage once to accounts that already had them open.
+def _grant_permission_keys_once(
+    db: DatabasePool,
+    keys: tuple[str, ...],
+    flag: str,
+) -> None:
+    """Grant ``keys`` once to accounts that already had those pages open.
 
     Later removals stick: the settings flag stops this from running again.
     Admins are skipped; an empty permission list means "all" for that role.
@@ -1953,11 +2005,11 @@ def _grant_default_nav_permissions(db: DatabasePool) -> None:
     if not _table_exists(db, "settings"):
         return
     with db.connect() as conn:
-        flag = conn.execute(
+        existing = conn.execute(
             "SELECT value FROM settings WHERE key = ?",
-            (_NAV_PAGE_PERMISSIONS_FLAG,),
+            (flag,),
         ).fetchone()
-    if flag is not None:
+    if existing is not None:
         return
 
     def grant(table: str, id_col: str, skip_where: str) -> None:
@@ -1974,7 +2026,7 @@ def _grant_default_nav_permissions(db: DatabasePool) -> None:
                 continue
             merged = list(current)
             changed = False
-            for key in _NAV_PAGE_PERMISSIONS:
+            for key in keys:
                 if key not in merged:
                     merged.append(key)
                     changed = True
@@ -1995,13 +2047,27 @@ def _grant_default_nav_permissions(db: DatabasePool) -> None:
         if db.dialect == "postgresql":
             conn.execute(
                 "INSERT INTO settings(key, value) VALUES (?, ?) ON CONFLICT (key) DO NOTHING",
-                (_NAV_PAGE_PERMISSIONS_FLAG, "1"),
+                (flag, "1"),
             )
         else:
             conn.execute(
                 "INSERT OR IGNORE INTO settings(key, value) VALUES (?, ?)",
-                (_NAV_PAGE_PERMISSIONS_FLAG, "1"),
+                (flag, "1"),
             )
+
+
+def _grant_default_nav_permissions(db: DatabasePool) -> None:
+    """Grant experts/tasks/token usage once to accounts that already had them open."""
+    _grant_permission_keys_once(db, _NAV_PAGE_PERMISSIONS, _NAV_PAGE_PERMISSIONS_FLAG)
+
+
+def _grant_personalization_tab_permissions(db: DatabasePool) -> None:
+    """Grant personalization tab keys once; those pages used to be open to everyone."""
+    _grant_permission_keys_once(
+        db,
+        _PERSONALIZATION_TAB_PERMISSIONS,
+        _PERSONALIZATION_TAB_PERMISSIONS_FLAG,
+    )
 
 
 def run_migrations(db: DatabasePool) -> None:
@@ -2010,16 +2076,20 @@ def run_migrations(db: DatabasePool) -> None:
     for version, path in _discover(db.dialect):
         if version <= _current_version(db):
             continue
-        # v18 touches optional ``user_invites`` and ``threads``; use idempotent
-        # helpers for both dialects so partial legacy schemas do not fail.
+        # v18 touches optional ``user_invites``; use the idempotent helper for both
+        # dialects so restores from pre-invite physical schemas do not fail.
         if version == 18:
             _ensure_user_role_schema(db)
-            _ensure_thread_archive_schema(db)
             with db.connect() as conn:
                 if db.dialect == "postgresql":
                     conn.execute("UPDATE _schema_version SET version = %s", (version,))
                 else:
                     conn.execute("UPDATE _schema_version SET version = ?", (version,))
+            continue
+        if version == 22 and db.dialect == "sqlite":
+            _ensure_thread_archive_schema(db)
+            with db.connect() as conn:
+                conn.execute("UPDATE _schema_version SET version = ?", (version,))
             continue
         if db.dialect == "postgresql":
             sql = path.read_text(encoding="utf-8")
@@ -2059,3 +2129,4 @@ def run_migrations(db: DatabasePool) -> None:
     _ensure_thread_archive_schema(db)
     _ensure_bridge_connections_schema(db)
     _grant_default_nav_permissions(db)
+    _grant_personalization_tab_permissions(db)

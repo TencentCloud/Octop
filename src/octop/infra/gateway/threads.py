@@ -15,13 +15,18 @@ class ThreadRegistry:
 
     CHANNEL_DASHBOARD = "dashboard"
     CHANNEL_CLI = "cli"
+    CHANNEL_MCP = "mcp"
     CHAT_TYPE_DM = "dm"
     CHAT_TYPE_GROUP = "group"
 
     @classmethod
     def is_virtual_channel(cls, channel_type: str) -> bool:
-        """Dashboard and CLI are in-process; they are not IM outbound targets."""
-        return channel_type in {cls.CHANNEL_DASHBOARD, cls.CHANNEL_CLI}
+        """In-process channels are not IM outbound targets."""
+        return channel_type in {
+            cls.CHANNEL_DASHBOARD,
+            cls.CHANNEL_CLI,
+            cls.CHANNEL_MCP,
+        }
 
     @classmethod
     def is_im_session(cls, session: SessionRow) -> bool:
@@ -94,6 +99,16 @@ class ThreadRegistry:
             channel_type=ThreadRegistry.CHANNEL_CLI,
             channel_subject_id=str(user_id),
             channel_chat_type=ThreadRegistry.CHAT_TYPE_DM,
+        )
+
+    @staticmethod
+    def mcp_key(*, agent_id: str, user_id: int, call_id: str) -> str:
+        """Return an isolated session key for one external MCP conversation."""
+        return ThreadRegistry.make_key(
+            agent_id=agent_id,
+            channel_type=ThreadRegistry.CHANNEL_MCP,
+            channel_subject_id=str(user_id),
+            channel_chat_type=f"call-{call_id}",
         )
 
     def __init__(self, *, session_repo: SessionRepo, thread_repo: ThreadRepo) -> None:
