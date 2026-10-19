@@ -290,6 +290,21 @@ class Gateway:
             if backend is not None:
                 channel.set_media_backend(backend)
 
+    async def reload_plugin_channels(self, apply: Callable[[], None], *, kinds: set[str]) -> None:
+        """Stop plugin channels before replacing factories; preserve DB rows."""
+        rows = [
+            row
+            for row in self._repos.channel_repo.list_all(include_disabled=False)
+            if row.kind in kinds
+        ]
+        if self._channel_manager is not None:
+            for row in rows:
+                await self._unregister(row.channel_id)
+        apply()
+        if self._channel_manager is not None:
+            for row in rows:
+                await self._safe_register_channel(row)
+
     async def reload_channels_from_db(self) -> None:
         """Drop and re-register enabled IM channels from the DB.
 
@@ -448,14 +463,18 @@ class Gateway:
     ) -> None:
         """Deliver one complete proactive message to a resolved session."""
         channel_id = self._channel_id_for_session(session)
-        await self.push_text(
-            session.channel_type,
-            channel_id,
-            self._resolve_push_subject(session),
-            text,
-        )
-        if ThreadRegistry.is_virtual_channel(session.channel_type):
-            self._bump_virtual_session(session, title_source or text)
+        try:
+            await self.push_text(
+                session.channel_type,
+                channel_id,
+                self._resolve_push_subject(session),
+                text,
+            )
+        finally:
+            # Title the conversation even when the channel push fails. Otherwise
+            # the thread stays "New Chat" until the user sends a follow-up.
+            if ThreadRegistry.is_virtual_channel(session.channel_type):
+                self._bump_virtual_session(session, title_source or text)
 
     @staticmethod
     def _channel_id_for_session(session: SessionRow) -> str:

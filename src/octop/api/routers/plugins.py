@@ -13,6 +13,7 @@ from fastapi.responses import FileResponse, Response
 from pydantic import BaseModel, Field
 
 from octop.api.common.agent import assert_agent_owner as _assert_agent_owner
+from octop.api.common.upload_limit import read_upload_capped
 from octop.api.deps import current_user, get_server, require_permission
 from octop.infra.agents.plugins.manager import PluginManager
 from octop.infra.agents.plugins.plugin_tool_defaults import (
@@ -117,6 +118,7 @@ async def reload_plugins(
     mgr = _plugin_manager(server)
     loaded = mgr.load_installed(install_deps=True)
     if server.app_runtime is not None:
+        await server.refresh_plugin_channels()
         await server.app_runtime.agent_registry.reload_all()
     return {
         "status": "ok",
@@ -150,6 +152,7 @@ async def install_plugin(
         ) from exc
     if server.app_runtime is not None:
         mgr.load_installed(install_deps=False)
+        await server.refresh_plugin_channels()
         await server.app_runtime.agent_registry.reload_all()
     return {
         "id": loaded.manifest.id,
@@ -171,7 +174,16 @@ async def upload_plugin(
     ``force=True`` overwrites an already-installed plugin with the same id.
     """
     mgr = _plugin_manager(server)
-    raw = await file.read()
+    max_bytes = (
+        int(server.services.config.max_upload_bytes)
+        if server.services is not None
+        else 100 * 1024 * 1024
+    )
+    raw = await read_upload_capped(
+        file,
+        max_bytes=max_bytes,
+        code=ErrorCode.PLUGIN_INVALID_ARCHIVE,
+    )
     if not raw:
         raise OctopError(ErrorCode.PLUGIN_INVALID_ARCHIVE, "empty plugin archive")
     try:
@@ -192,6 +204,7 @@ async def upload_plugin(
         ) from exc
     if server.app_runtime is not None:
         mgr.load_installed(install_deps=False)
+        await server.refresh_plugin_channels()
         await server.app_runtime.agent_registry.reload_all()
     return {
         "id": loaded.manifest.id,
@@ -238,6 +251,7 @@ async def install_market_plugin(
         ) from exc
     # install_from_market already loads the plugin into the process registry.
     if server.app_runtime is not None:
+        await server.refresh_plugin_channels()
         await server.app_runtime.agent_registry.reload_all()
     return {
         "id": loaded.manifest.id,
@@ -289,6 +303,7 @@ async def patch_plugin(
     mgr = _plugin_manager(server)
     item = mgr.set_enabled(plugin_id, body.enabled)
     if server.app_runtime is not None:
+        await server.refresh_plugin_channels()
         await server.app_runtime.agent_registry.reload_all()
     return item
 
@@ -301,6 +316,7 @@ async def uninstall_plugin(
 ) -> dict[str, str]:
     _plugin_manager(server).uninstall(plugin_id)
     if server.app_runtime is not None:
+        await server.refresh_plugin_channels()
         await server.app_runtime.agent_registry.reload_all()
     return {"status": "ok", "id": plugin_id}
 
@@ -402,7 +418,7 @@ async def patch_agent_plugins(
     agent_id: str,
     body: AgentPluginsPatch,
     server: OctopServer = Depends(get_server),
-    user: Any = Depends(current_user),
+    user: Any = Depends(require_permission("agent_plugins")),
 ) -> AgentPluginsResponse:
     """Merge plugin switches, preserve tool settings, and reload only this agent."""
     _, cfg = _agent_row_and_config(server, agent_id, user)
@@ -483,7 +499,7 @@ async def patch_agent_plugin_tools(
     agent_id: str,
     body: AgentPluginToolsPatch,
     server: OctopServer = Depends(get_server),
-    user: Any = Depends(current_user),
+    user: Any = Depends(require_permission("tools")),
 ) -> dict[str, str]:
     """Persist per-agent plugin tool enable flags and hot-sync the denylist.
 

@@ -1,3 +1,4 @@
+import { ChevronLeft, ChevronRight } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import styles from "./RailEdgeControl.module.less";
 
@@ -18,36 +19,16 @@ interface RailEdgeControlProps {
    * (used when this edge shares a line with a neighboring rail).
    */
   showLine?: boolean;
-}
-
-/** Tall, wide-angle chevron (no circular chrome). */
-function WideChevron({ dir }: { dir: "left" | "right" }) {
-  return (
-    <svg
-      className={styles.chevron}
-      viewBox="0 0 10 22"
-      width="10"
-      height="22"
-      aria-hidden
-    >
-      <path
-        d={
-          dir === "left"
-            ? "M7.5 2.5 L2.5 11 L7.5 19.5"
-            : "M2.5 2.5 L7.5 11 L2.5 19.5"
-        }
-        fill="none"
-        stroke="currentColor"
-        strokeWidth="1.75"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-    </svg>
-  );
+  /**
+   * ``center`` straddles the divider (folder-tree toggle).
+   * ``before`` / ``after`` sit on either side when two rails share one line.
+   */
+  placement?: "center" | "before" | "after";
 }
 
 /**
- * Hover-revealed collapse/expand control anchored to a vertical rail line.
+ * Collapse/expand control anchored to a vertical rail line.
+ * Matches the knowledge-base folder tree edge button.
  */
 export default function RailEdgeControl({
   expanded,
@@ -56,6 +37,7 @@ export default function RailEdgeControl({
   label,
   className,
   showLine = true,
+  placement = "center",
 }: RailEdgeControlProps) {
   const { t } = useTranslation();
   const ariaLabel =
@@ -66,21 +48,34 @@ export default function RailEdgeControl({
 
   return (
     <div
-      className={`${styles.edge} ${
-        side === "start" ? styles.edgeStart : styles.edgeEnd
-      } ${expanded ? styles.edgeExpanded : styles.edgeCollapsed} ${
-        className ?? ""
-      }`}
+      className={[
+        styles.edge,
+        side === "start" ? styles.edgeStart : styles.edgeEnd,
+        expanded ? null : styles.edgeCollapsed,
+        className,
+      ]
+        .filter(Boolean)
+        .join(" ")}
     >
       {showLine ? <div className={styles.line} aria-hidden /> : null}
       <button
         type="button"
-        className={styles.btn}
+        className={`${styles.btn} ${
+          placement === "before"
+            ? styles.btnBefore
+            : placement === "after"
+            ? styles.btnAfter
+            : ""
+        }`}
         onClick={onToggle}
         aria-label={ariaLabel}
         title={ariaLabel}
       >
-        <WideChevron dir={expanded ? "left" : "right"} />
+        {expanded ? (
+          <ChevronLeft size={14} strokeWidth={2} aria-hidden />
+        ) : (
+          <ChevronRight size={14} strokeWidth={2} aria-hidden />
+        )}
       </button>
     </div>
   );

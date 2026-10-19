@@ -652,11 +652,11 @@ class ConnectorService:
                 raise OctopError.localized(ErrorCode.CONNECTOR_NOT_FOUND, locale)
             if inst.user_id != user_id:
                 raise OctopError.localized(ErrorCode.FORBIDDEN, locale)
-            if inst.kind != "agently-cli":
+            if inst.kind not in ("agently-cli", "dingtalk-cli"):
                 raise OctopError.localized(ErrorCode.CONNECTOR_KIND_UNSUPPORTED, locale)
             creds = self.decrypt(instance_id)
             creds.setdefault("instance_id", instance_id)
-            result = await agently_auth.authorize(creds, action, locale=locale)
+            result = await agently_auth.authorize(creds, action, kind=inst.kind, locale=locale)
             if action == "disconnect" and result["status"] == "idle":
                 self._repo.delete(instance_id)
             return result
