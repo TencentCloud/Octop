@@ -41,6 +41,22 @@ def test_classify_rate_limit() -> None:
         classify_stream_error_message("Error code: 429 - {'error': {'type': 'rate_limit_error'}}")
         == "octop:stream_errors.rate_limit"
     )
+    # Zhipu GLM 1302 error code and Chinese busy message
+    assert (
+        classify_stream_error_message(
+            "Error code: 1302 - {'error': {'message': '系统繁忙，请稍后再试'}}"
+        )
+        == "octop:stream_errors.rate_limit"
+    )
+    assert (
+        classify_stream_error_message("模型调用失败: 系统繁忙，请重试")
+        == "octop:stream_errors.rate_limit"
+    )
+    # Formatted stream error produces user-friendly localized message
+    zh_text = format_stream_error("Error code: 1302 - 系统繁忙", "zh")
+    assert "限流" in zh_text or "频繁" in zh_text
+    en_text = format_stream_error("Error code: 1302 - 系统繁忙", "en")
+    assert "rate-limited" in en_text or "Wait a moment" in en_text
 
 
 def test_classify_insufficient_balance() -> None:

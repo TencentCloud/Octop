@@ -550,6 +550,10 @@ class AgentManager:
             provider_repo=repos.provider_repo,
         )
         self._model_health = ModelHealthRegistry()
+        from octop.infra.agents.providers.rate_limiter import RATE_LIMIT_REGISTRY
+
+        self._rate_limiter_registry = RATE_LIMIT_REGISTRY
+        self._providers.sync_rate_limiters(self._rate_limiter_registry)
         self._connector_svc = ConnectorService(
             repo=repos.connector_repo,
             secret_repo=repos.secret_repo,
@@ -2081,6 +2085,7 @@ class AgentManager:
             providers,
             shared_factory=self._harness_manager.shared_factory,
         )
+        self._providers.sync_rate_limiters(self._rate_limiter_registry)
         if self._harness_manager.shared_factory is None:
             return
         await self._reload_agents(
@@ -4217,6 +4222,8 @@ class AgentManager:
                     initial_delay=applied.model_retry_initial_delay,
                     max_delay=applied.model_retry_max_delay,
                     on_failure="error",
+                    rate_limit_registry=self._rate_limiter_registry,
+                    limiter_key_resolver=self._providers.get_limiter_key_for_ref,
                 )
             else:
                 from langchain.agents.middleware import ModelRetryMiddleware
