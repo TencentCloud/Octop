@@ -1,8 +1,12 @@
 services:
   octop:
-    image: ghcr.io/tencentcloud/octop:1.0.2b8
+    image: ghcr.io/tencentcloud/octop:1.0.2
     container_name: octop
     restart: unless-stopped
+    ulimits:
+      nofile:
+        soft: 65535
+        hard: 65535
     pull_policy: missing
     ports:
       - "8088:8088"

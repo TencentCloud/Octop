@@ -1,4 +1,4 @@
-import { request } from "../request";
+import { request, requestBlob } from "../request";
 import type {
   CreateSkillPackageBody,
   CopyPackageSkillsBody,
@@ -55,6 +55,9 @@ export const skillPackagesApi = {
   get: (packageId: string) =>
     request<SkillPackageDetail>(`/skill-packages/${packageId}`),
 
+  exportPackage: (packageId: string) =>
+    requestBlob(`/skill-packages/${encodeURIComponent(packageId)}/export`),
+
   create: (body: CreateSkillPackageBody) =>
     request<SkillPackageDetail>("/skill-packages", {
       method: "POST",
@@ -85,6 +88,22 @@ export const skillPackagesApi = {
   getSkill: (packageId: string, slug: string) =>
     request<SkillPackageSkillDetail>(
       `/skill-packages/${packageId}/skills/${encodeURIComponent(slug)}`,
+    ),
+
+  listSkillTree: (packageId: string, slug: string, path = "") => {
+    const qs = path ? `?path=${encodeURIComponent(path)}` : "";
+    return request<Array<{ path: string; is_dir?: boolean; size?: number }>>(
+      `/skill-packages/${packageId}/skills/${encodeURIComponent(
+        slug,
+      )}/tree${qs}`,
+    );
+  },
+
+  readSkillFile: (packageId: string, slug: string, path: string) =>
+    request<{ path: string; content: string }>(
+      `/skill-packages/${packageId}/skills/${encodeURIComponent(
+        slug,
+      )}/file?path=${encodeURIComponent(path)}`,
     ),
 
   createSkill: (packageId: string, body: CreateSkillPackageSkillBody) =>

@@ -146,6 +146,7 @@ interface ChatInputActionsRowProps {
   threadId?: string | null;
   contextUsedTokens?: number | null;
   contextMaxTokens?: number;
+  decisionSaved?: number;
   availableModels?: ResolvedModel[];
   selectedModel?: string | null;
   defaultModel?: string | null;
@@ -211,6 +212,7 @@ export default function ChatInputActionsRow({
   agentId,
   threadId,
   contextUsedTokens = null,
+  decisionSaved = 0,
   contextMaxTokens = 128_000,
   availableModels,
   selectedModel,
@@ -1129,6 +1131,7 @@ export default function ChatInputActionsRow({
           threadId={threadId}
           selectedConnectors={selectedConnectors}
           isMobile={isMobile}
+          decisionSaved={decisionSaved}
         />
         {/* Desktop: dedicated newChatBtn; mobile: replace polish with new-chat */}
         {useCompactControls ? (
@@ -1310,7 +1313,7 @@ export default function ChatInputActionsRow({
               mouseEnterDelay={0.4}
             >
               <button
-                className={`${styles.sendBtn} ${styles.cancelBtn}`}
+                className={styles.sendBtn}
                 onClick={onCancel}
                 title={
                   isTeam
