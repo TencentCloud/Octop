@@ -172,7 +172,9 @@ class TeamManager:
         session_key = None
         uid = _octop_user_id(call.user_id)
         group = self._is_group_dispatch(call)
-        extra = self._member_runtime(call)
+        extra = self._member_runtime(call) or {}
+        if not group:
+            await self._attach_member_mcp(call, uid, extra)
         question = ""
         dispatch_message = None
         if group:
@@ -226,7 +228,7 @@ class TeamManager:
         return _make_peer_session(
             thread_id=thread_id,
             session_key=session_key,
-            configurable=extra,
+            configurable=extra or None,
             message=question or dispatch_message,
         )
 
@@ -794,6 +796,43 @@ class TeamManager:
                 if member_id != call.to_agent_id
             ]
         return extra
+
+    async def _attach_member_mcp(
+        self, call: PeerCall, uid: int | None, extra: dict[str, Any]
+    ) -> None:
+        """Expose the callee's own bound MCP servers to a sync expert ask.
+
+        The callee decides which tools it brings (same list as its 1:1 chat),
+        but every name is validated against the *initiator's* allowed servers
+        (``AgentManager.validate_mcp_servers``), mirroring the 1:1 chain — a
+        shared expert's owner-private data sources never reach another user's
+        ask. Room dispatch keeps its current behaviour (#1939). Any failure is
+        logged and never blocks the ask — a raising prepare would make the
+        harness drop the whole ``PeerSession``, losing the callee thread and
+        session key too.
+        """
+        if uid is None:
+            logger.debug("peer mcp skipped: user_id %r is not an octop uid", call.user_id)
+            return
+        try:
+            row = self._agent_manager.get_row(call.to_agent_id)
+            if row is None or is_team_agent(row):
+                return
+            servers = self._agent_manager.validate_mcp_servers(
+                uid, self._agent_manager.default_mcp_servers(call.to_agent_id)
+            )
+            if not servers:
+                return
+            failed = await self._agent_manager.prepare_chat_mcp(
+                call.to_agent_id, servers, connector_user_id=uid
+            )
+        except Exception:  # peer MCP is best-effort; never break the ask
+            logger.exception("peer mcp prepare failed agent=%s", call.to_agent_id)
+            return
+        if failed:
+            logger.warning("peer mcp load failed agent=%s failed=%s", call.to_agent_id, failed)
+            return
+        extra["mcp_servers"] = servers
 
     def _ensure_projection(self, thread_id: str) -> None:
         """Mark a brand-new empty peer thread ready so we can append.
