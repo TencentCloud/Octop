@@ -5,6 +5,7 @@
 格式遵循 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)，版本号遵循 [语义化版本规范](https://semver.org/spec/v2.0.0.html)。
 
 ## [Unreleased]
+- Linux 桌面客户端无边框窗口支持拖拽边缘与角落调整大小。
 
 ### 修复
 - `OCTOP_HOME` 迁移数据目录后，首次配置向导密码文件随之写入 `<OCTOP_HOME>/octop-login.txt`；旧位置 `~/octop-login.txt` 自动继承，不再生成冲突密码（#2171）
@@ -94,6 +95,7 @@
 - 权限选择与自定义侧栏对齐，对话始终可用
 
 ### 修复
+- 便携版启动时向 Python 子进程传递 packages 路径，修复 Linux 安装浏览器报找不到 playwright 的问题（#1996）
 - 回复操作始终可见；无 PostgreSQL 驱动时仍用 SQLite 启动
 - 团队审批期间保留成员回复；删除会话或用户时清理 checkpoint 与工作区
 - 桌面端保留监听配置，支持拖入文件夹，端口占用时不另起实例
