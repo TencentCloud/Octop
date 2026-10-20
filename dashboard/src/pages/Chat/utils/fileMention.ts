@@ -98,7 +98,9 @@ export function workspaceMentionHintState(input: {
 
 export function workspaceGlobPattern(query: string): string {
   const trimmed = query.trim().replace(/\\/g, "/");
-  const escaped = trimmed.replace(/[*?[\]{}]/g, "\\$&");
+  // BackendWorkspace normalizes backslashes to path separators, so use
+  // singleton glob classes rather than backslash escapes for literal symbols.
+  const escaped = trimmed.replace(/[*?[\]{}]/g, (char) => `[${char}]`);
   if (escaped.includes("/")) return `**/${escaped}*`;
   return `**/*${escaped}*`;
 }

@@ -71,8 +71,23 @@ describe("workspace file mention helpers", () => {
   it("builds a glob around the typed fragment", () => {
     expect(workspaceGlobPattern("soul")).toBe("**/*soul*");
     expect(workspaceGlobPattern("docs/api")).toBe("**/docs/api*");
-    expect(workspaceGlobPattern("foo*bar")).toBe("**/*foo\\*bar*");
+    expect(workspaceGlobPattern("foo*bar")).toBe("**/*foo[*]bar*");
   });
+
+  it.each([
+    ["report[1]", "**/*report[[]1[]]*"],
+    ["draft{final}", "**/*draft[{]final[}]*"],
+    ["what?", "**/*what[?]*"],
+    ["docs/report[1]", "**/docs/report[[]1[]]*"],
+    [String.raw`docs\report[1]`, "**/docs/report[[]1[]]*"],
+  ])(
+    "keeps %s literal across workspace path normalization",
+    (query, expected) => {
+      const pattern = workspaceGlobPattern(query);
+      expect(pattern).toBe(expected);
+      expect(pattern).not.toContain("\\");
+    },
+  );
 
   it("ranks basename hits first and keeps the relative full path", () => {
     const ranked = rankWorkspaceMentionFiles(
