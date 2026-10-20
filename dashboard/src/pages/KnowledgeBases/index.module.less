@@ -320,45 +320,6 @@
   white-space: nowrap;
 }
 
-.listPanelToggle,
-.listPanelExpandBtn {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  flex-shrink: 0;
-  padding: 0;
-  border: none;
-  border-radius: 8px;
-  background: transparent;
-  color: var(--fn-text-tertiary);
-  cursor: pointer;
-  transition:
-    background 0.15s ease,
-    color 0.15s ease;
-
-  &:hover {
-    background: var(--fn-bg-hover);
-    color: var(--fn-text-primary);
-  }
-}
-
-.listPanelToggle {
-  width: 28px;
-  height: 28px;
-}
-
-.listPanelExpandBtn {
-  position: absolute;
-  top: 16px;
-  left: 12px;
-  z-index: 1;
-  width: 32px;
-  height: 32px;
-  border: 1px solid var(--fn-border-secondary);
-  background: var(--fn-bg-container);
-  box-shadow: var(--fn-shadow-sm);
-}
-
 .listActions > :first-child {
   flex: 1;
 }
@@ -392,7 +353,6 @@
   flex-direction: column;
   width: 100%;
   box-sizing: border-box;
-  min-height: 116px;
   padding: 12px !important;
   border: 1px solid var(--fn-border-secondary) !important;
   border-radius: var(--fn-radius-md);
@@ -429,19 +389,18 @@
 .listName {
   display: flex;
   align-items: center;
-  gap: 10px;
-  overflow: hidden;
+  gap: 8px;
+  min-width: 0;
   color: var(--fn-text-primary);
   font-weight: 600;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 
 .listNameText {
-  flex: 1;
+  flex: 1 1 auto;
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .listMoreBtn {
@@ -494,13 +453,59 @@
   -webkit-line-clamp: 2;
 }
 
+.listId {
+  display: flex;
+  flex: 0 1 auto;
+  align-items: center;
+  min-width: 0;
+  max-width: 46%;
+  margin-left: auto;
+}
+
+.listIdButton {
+  max-width: 100%;
+  border-radius: 4px;
+}
+
+.listId .listIdButton {
+  padding: 0 2px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 11px;
+  letter-spacing: 0.02em;
+
+  &:hover {
+    background: var(--fn-bg-hover);
+  }
+}
+
 .listMeta {
   display: flex;
   align-items: center;
   justify-content: space-between;
   flex-wrap: nowrap;
   gap: 8px;
+  min-width: 0;
   margin-top: auto;
+}
+
+.listCreator {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  color: var(--fn-text-tertiary);
+  font-size: 12px;
+  line-height: 20px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.listMetaEnd {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 4px;
+  margin-left: auto;
 }
 
 .listCountTag {
@@ -548,6 +553,46 @@
   background: var(--fn-border-secondary);
 }
 
+.splitDividerCollapsed {
+  width: 0;
+  margin: 0;
+  background: transparent;
+}
+
+.listPanelEdgeToggle {
+  position: absolute;
+  // Match the folder-tree toggle, which is centered in the file pane
+  // below the detail padding, toolbar, and path row (16+44+30 = 90).
+  top: calc(50% + 45px);
+  left: 50%;
+  z-index: 3;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 44px;
+  padding: 0;
+  border: 1px solid var(--fn-border-secondary);
+  border-radius: 8px;
+  background: var(--fn-bg-elevated, var(--fn-bg-secondary));
+  color: var(--fn-text-secondary);
+  box-shadow: 0 1px 4px
+    color-mix(in srgb, var(--fn-text-primary) 8%, transparent);
+  cursor: pointer;
+  transform: translate(-50%, -50%);
+
+  &:hover {
+    border-color: var(--fn-border-primary);
+    background: var(--fn-bg-secondary);
+    color: var(--fn-text-primary);
+  }
+}
+
+.splitDividerCollapsed .listPanelEdgeToggle {
+  left: 8px;
+  transform: translate(0, -50%);
+}
+
 .resizeHandle {
   position: absolute;
   inset: 0;
@@ -587,10 +632,6 @@
   padding: 16px 20px 0;
 }
 
-.detailListCollapsed {
-  padding-left: 52px;
-}
-
 .detailLoading,
 .centered {
   display: flex;
@@ -611,74 +652,13 @@
   pointer-events: none;
 }
 
-.detailHeader {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  flex-shrink: 0;
-  padding-bottom: 12px;
-  border-bottom: 1px solid var(--fn-border-secondary);
-}
-
-.titleRow,
-.titleGroup,
-.sectionHeader {
-  display: flex;
-  align-items: center;
-  gap: 16px;
-}
-
-.titleGroup {
-  justify-content: flex-start;
-  min-width: 0;
-  flex: 1;
-  gap: 4px;
-  flex-wrap: wrap;
-}
-
-.detailTitle {
-  margin: 0 !important;
-  min-width: 0;
-  flex: 0 1 auto;
-}
-
-.titleActions {
+.toolbarStart {
   display: inline-flex;
+  flex: 1;
   align-items: center;
-  gap: 2px;
-  flex-shrink: 0;
-}
-
-.titleActionBtn {
-  width: 28px;
-  height: 28px;
-  padding: 0;
-  color: var(--fn-text-tertiary);
-
-  &:hover {
-    color: var(--fn-text-secondary) !important;
-  }
-}
-
-.detailDescription {
-  margin: 0 !important;
-  max-width: 100%;
-}
-
-.detailMeta {
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 8px 16px;
-  margin-top: 4px;
-  max-width: 100%;
-}
-
-.detailCreator {
-  margin: 0 !important;
-  max-width: 100%;
-  font-size: 12px;
-  line-height: 1.5715;
+  gap: 6px;
+  min-width: 0;
+  overflow: hidden;
 }
 
 .detailBody {
@@ -687,9 +667,7 @@
   flex: 1;
   flex-direction: column;
   min-height: 0;
-  overflow: auto;
-  /* Keep document cards clear of the vertical scrollbar. */
-  padding-right: 12px;
+  overflow: hidden;
 }
 
 .detailBodyDropActive {
@@ -721,7 +699,230 @@
 }
 
 .docsToolbar {
-  margin: 12px 0 8px;
+  margin: 0 0 8px;
+}
+
+.docsSplit {
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.docsSplitFramed {
+  border: 1px solid var(--fn-border-secondary);
+  border-radius: var(--fn-radius-lg);
+  background: var(--fn-bg-container);
+}
+
+.docTreePane {
+  display: flex;
+  flex-direction: column;
+  flex-shrink: 0;
+  min-height: 0;
+  overflow: hidden;
+  background: color-mix(
+    in srgb,
+    var(--fn-bg-secondary) 88%,
+    var(--fn-bg-container)
+  );
+}
+
+.docTreeHeader {
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+  height: 38px;
+  margin-top: 12px;
+  padding: 0 12px;
+  border-bottom: 1px solid var(--fn-border-secondary);
+  color: var(--fn-text-secondary);
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 22px;
+}
+
+.docTreeScroll {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding: 8px 8px 12px;
+
+  :global(.ant-tree) {
+    background: transparent;
+    font-size: 13px;
+  }
+
+  :global(.ant-tree-switcher) {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 18px;
+    color: var(--fn-text-tertiary);
+  }
+
+  :global(.ant-tree-treenode) {
+    align-items: center;
+    padding-bottom: 2px;
+  }
+
+  :global(.ant-tree-indent-unit) {
+    width: 14px;
+  }
+
+  :global(.ant-tree-node-content-wrapper) {
+    display: inline-flex;
+    align-items: center;
+    min-width: 0;
+    min-height: 28px;
+    padding-inline: 6px;
+    border-radius: 6px;
+    line-height: 28px;
+    transition: background 0.15s ease;
+  }
+
+  :global(.ant-tree-node-content-wrapper:hover) {
+    background: var(--fn-bg-hover);
+  }
+
+  :global(.ant-tree-node-content-wrapper.ant-tree-node-selected),
+  :global(.ant-tree-node-content-wrapper.ant-tree-node-selected:hover) {
+    background: color-mix(
+      in srgb,
+      var(--fn-color-brand) 12%,
+      transparent
+    ) !important;
+    color: var(--fn-text-primary);
+  }
+
+  :global(.ant-tree-title) {
+    display: inline-flex;
+    max-width: 100%;
+    min-width: 0;
+  }
+}
+
+.docTreeNode {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  max-width: 100%;
+}
+
+.docTreeName {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.docTreeFolderIcon {
+  flex-shrink: 0;
+  color: #d97706;
+}
+
+.docTreeDivider {
+  position: relative;
+  flex-shrink: 0;
+  align-self: stretch;
+  width: 12px;
+  margin: 0;
+  z-index: 2;
+  background: transparent;
+
+  &::before {
+    content: "";
+    position: absolute;
+    top: 10px;
+    bottom: 10px;
+    left: 50%;
+    width: 1px;
+    background: var(--fn-border-secondary);
+    transform: translateX(-50%);
+  }
+}
+
+.docTreeDividerCollapsed {
+  width: 0;
+  background: transparent;
+
+  &::before {
+    display: none;
+  }
+}
+
+.docTreeResize {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  cursor: col-resize;
+
+  &::after {
+    content: "";
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: 2px;
+    height: 36px;
+    border-radius: 2px;
+    background: var(--fn-border-secondary);
+    opacity: 0;
+    transform: translate(-50%, -50%);
+    transition:
+      opacity 0.15s,
+      background 0.15s;
+  }
+
+  &:hover::after {
+    background: var(--fn-text-tertiary);
+    opacity: 1;
+  }
+}
+
+.docTreeToggle {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  z-index: 3;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 44px;
+  padding: 0;
+  border: 1px solid var(--fn-border-secondary);
+  border-radius: 8px;
+  background: var(--fn-bg-elevated, var(--fn-bg-secondary));
+  color: var(--fn-text-secondary);
+  box-shadow: 0 1px 4px
+    color-mix(in srgb, var(--fn-text-primary) 8%, transparent);
+  cursor: pointer;
+  transform: translate(-50%, -50%);
+
+  &:hover {
+    border-color: var(--fn-border-primary);
+    background: var(--fn-bg-secondary);
+    color: var(--fn-text-primary);
+  }
+}
+
+.docTreeDividerCollapsed .docTreeToggle {
+  left: 8px;
+  transform: translate(0, -50%);
+}
+
+.docsMain {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  overflow: auto;
+  padding: 12px 14px 16px;
+  background: var(--fn-bg-container);
 }
 
 .docsPathRow {
@@ -729,17 +930,20 @@
   align-items: center;
   justify-content: space-between;
   gap: 12px 16px;
-  flex-wrap: wrap;
-  margin: 4px 0 8px;
+  flex-shrink: 0;
+  flex-wrap: nowrap;
+  min-width: 0;
+  margin: 0 0 8px;
 }
 
 .uploadHint {
   display: block;
+  flex: 1 1 auto;
+  min-width: 0;
   margin: 0 0 0 auto;
   font-size: 12px;
   line-height: 1.5;
   text-align: right;
-  flex: 1 1 auto;
 }
 
 .docsCount {
@@ -1247,8 +1451,7 @@
   flex-shrink: 0;
   width: 32px;
   height: 32px;
-  margin-top: 2px;
-  margin-right: 2px;
+  margin: 0;
   padding: 0;
   border: 0;
   border-radius: 8px;
@@ -1277,10 +1480,6 @@
     background: transparent;
   }
 
-  .layoutMobile .listItem {
-    min-height: 104px;
-  }
-
   .layoutMobile .detail {
     flex: 1;
     min-height: 0;
@@ -1290,28 +1489,25 @@
     background: var(--fn-bg-container);
   }
 
-  .layoutMobile .detailHeader {
-    padding: 0 4px 12px;
-  }
-
-  .layoutMobile .titleRow {
-    flex-wrap: wrap;
-    gap: 10px;
-  }
-
   .layoutMobile .detailBody {
     padding: 0 4px;
     padding-right: 4px;
+  }
+
+  .layoutMobile .docsMain {
+    padding: 0;
+    background: transparent;
   }
 }
 
 .pathBreadcrumb {
   display: flex;
-  flex-wrap: wrap;
+  flex: 1 1 auto;
+  flex-wrap: nowrap;
   align-items: center;
-  margin: 0;
   min-width: 0;
-  flex: 1 1 160px;
+  margin: 0;
+  overflow: hidden;
   font-size: 12px;
   font-family: var(--fn-font-mono, ui-monospace, monospace);
 }
@@ -1322,6 +1518,21 @@
   min-width: 0;
 }
 
+.pathBreadcrumbIcon {
+  display: inline-flex;
+  flex-shrink: 0;
+  align-items: center;
+  margin-right: 6px;
+  color: var(--fn-text-tertiary);
+}
+
+.pathBreadcrumbLabel {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .pathBreadcrumbSep {
   color: var(--fn-text-tertiary);
   padding: 0 2px;
@@ -1329,16 +1540,17 @@
 }
 
 .pathBreadcrumbLink {
+  display: inline-flex;
+  align-items: center;
+  min-width: 0;
   border: none;
   background: transparent;
   padding: 2px 4px;
   border-radius: 4px;
   color: var(--fn-text-secondary);
   cursor: pointer;
-  max-width: 140px;
+  max-width: 160px;
   overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
   font: inherit;
 
   &:hover {
@@ -1348,12 +1560,13 @@
 }
 
 .pathBreadcrumbCurrent {
+  display: inline-flex;
+  align-items: center;
+  min-width: 0;
   padding: 2px 4px;
   color: var(--fn-text-primary);
-  max-width: 160px;
+  max-width: 180px;
   overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 
 .textEditorLoading {

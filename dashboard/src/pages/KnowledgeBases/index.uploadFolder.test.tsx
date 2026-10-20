@@ -147,6 +147,13 @@ function selectFolder(files: File[]) {
   return input;
 }
 
+function selectedBaseName() {
+  const active = document.querySelector('[class*="_active_"]');
+  const name = active?.querySelector('[class*="_listNameText_"]');
+  if (!name?.textContent) throw new Error("no selected knowledge base");
+  return name.textContent;
+}
+
 describe("knowledge-base folder upload", () => {
   it("opens a directory picker and preserves root, nested paths, same names and original files", async () => {
     await openPage();
@@ -407,15 +414,9 @@ describe("knowledge-base folder upload", () => {
         "42",
       ),
     );
-    expect(
-      screen.getByRole("heading", { name: "Upload target" }),
-    ).toBeInTheDocument();
+    expect(selectedBaseName()).toBe("Upload target");
     fireEvent.click(screen.getByText("Other base"));
-    await waitFor(() =>
-      expect(
-        screen.getByRole("heading", { name: "Other base" }),
-      ).toBeInTheDocument(),
-    );
+    await waitFor(() => expect(selectedBaseName()).toBe("Other base"));
     expect(screen.queryByRole("progressbar")).not.toBeInTheDocument();
     expect(
       screen.getByRole("button", { name: "knowledgeBases.uploadFolder" }),
@@ -425,9 +426,7 @@ describe("knowledge-base folder upload", () => {
     await waitFor(() =>
       expect(notice.success).toHaveBeenCalledWith("knowledgeBases.uploaded"),
     );
-    expect(
-      screen.getByRole("heading", { name: "Other base" }),
-    ).toBeInTheDocument();
+    expect(selectedBaseName()).toBe("Other base");
     expect(screen.queryByRole("progressbar")).not.toBeInTheDocument();
     expect(vi.mocked(knowledgeBasesApi.get).mock.calls.length).toBe(
       getsBeforeFinish,
