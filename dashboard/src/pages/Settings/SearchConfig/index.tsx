@@ -45,14 +45,6 @@ const SEARCH_PROVIDERS: SearchProvider[] = [
     configured: false,
   },
   {
-    id: "deepseek",
-    name: "DeepSeek Search",
-    descriptionKey: "setupWizard.search.providers.deepseek.desc",
-    docs_url: "https://api-docs.deepseek.com/guides/search/",
-    required_keys: ["DEEPSEEK_API_KEY"],
-    configured: false,
-  },
-  {
     id: "google",
     name: "Google Search",
     descriptionKey: "setupWizard.search.providers.google.desc",

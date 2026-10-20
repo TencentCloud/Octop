@@ -688,9 +688,6 @@
         "brave": {
           "desc": "注重隐私的独立搜索引擎"
         },
-        "deepseek": {
-          "desc": "DeepSeek AI 原生搜索，返回排序结果、摘要和来源链接"
-        },
         "google": {
           "desc": "基于 Google 自定义搜索引擎的网络搜索"
         },
@@ -1824,7 +1821,6 @@
     "memory_save": "保存记忆",
     "tavily_search": "Tavily 联网搜索",
     "brave_search": "Brave 联网搜索",
-    "deepseek_search": "DeepSeek 联网搜索",
     "google_search": "Google 联网搜索",
     "kimi_search": "Kimi 联网搜索",
     "searchfree_search": "AI 联网搜索",
