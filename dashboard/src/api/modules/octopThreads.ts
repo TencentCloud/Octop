@@ -1,5 +1,5 @@
 import type { HitlPendingPayload, HitlSessionPolicy } from "../types/hitl";
-import { request } from "../request";
+import { request, requestBlob } from "../request";
 
 /** Workspace file produced in a thread; ``agent_id`` is the producer. */
 export type ThreadArtifact = {
@@ -198,6 +198,13 @@ export const octopThreadsApi = {
       }`,
     );
   },
+
+  exportHistory: (agentId: string, threadId: string) =>
+    requestBlob(
+      `/agents/${encodeURIComponent(agentId)}/threads/${encodeURIComponent(
+        threadId,
+      )}/history/export`,
+    ),
 
   contextUsage: (
     agentId: string,
