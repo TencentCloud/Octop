@@ -113,13 +113,21 @@ def _compat_row_factory(cursor: Any) -> Any:
 
 
 class _PgConnectionProxy:
-    """Expose sqlite-like ``execute`` / ``executescript`` on a psycopg connection."""
+    """Expose sqlite-like ``execute`` / ``executemany`` / ``executescript`` on a psycopg connection."""
 
     def __init__(self, conn: Any) -> None:
         self._conn = conn
 
     def execute(self, sql: str, params: Any = None) -> Any:
         return self._conn.execute(qmark_to_pyformat(sql), params)
+
+    def executemany(self, sql: str, params_seq: Sequence[Any]) -> Any:
+        # psycopg3 defines ``executemany`` on the cursor only, so forwarding this name
+        # through ``__getattr__`` raises AttributeError on the connection. Mirror
+        # ``sqlite3.Connection.executemany`` here, including its ``?`` placeholders.
+        cursor = self._conn.cursor()
+        cursor.executemany(qmark_to_pyformat(sql), params_seq)
+        return cursor
 
     def executescript(self, sql: str) -> None:
         # Used only if something still calls it; prefer migrate splitter.
