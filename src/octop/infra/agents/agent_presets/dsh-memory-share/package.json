@@ -1,0 +1,12 @@
+{
+  "name": "octop-dsh-memory-share",
+  "version": "0.1.0",
+  "private": true,
+  "description": "DSH agent preset 记忆共享模式: the shipped cordis toolset plus octop memory hooks (UserPromptSubmit recall, Stop capture).",
+  "type": "module",
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    }
+  }
+}
