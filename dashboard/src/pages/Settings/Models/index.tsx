@@ -37,6 +37,7 @@ import type { ProviderPreset } from "./useProviders";
 import {
   CustomProviderModal,
   ActiveModelPool,
+  ModelDefaults,
   LoadingState,
   PresetGroupCard,
   PresetProviderCard,
@@ -86,7 +87,8 @@ export default function ModelsPage() {
     providers,
     presets,
     resolvedModels,
-    activeModel,
+    globalActiveModel,
+    preferredModel,
     modelReasoning,
     loading,
     error,
@@ -357,9 +359,15 @@ export default function ModelsPage() {
         <Empty description={t("models.noProvidersHint")} />
       ) : (
         <>
+          <ModelDefaults
+            globalActiveModel={globalActiveModel}
+            preferredModel={preferredModel}
+            resolvedModels={resolvedModels}
+            onSaved={fetchAll}
+          />
           <ActiveModelPool
             resolvedModels={resolvedModels}
-            activeModel={activeModel}
+            preferredModel={preferredModel}
             modelReasoning={modelReasoning}
             providers={providers}
             onSaved={fetchAll}

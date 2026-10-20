@@ -83,7 +83,8 @@ export interface UseProvidersResult {
   providers: ProviderRow[];
   presets: ProviderPreset[];
   resolvedModels: ResolvedModel[];
-  activeModel: { provider_name: string; model: string };
+  globalActiveModel: { provider_name: string; model: string };
+  preferredModel: string;
   modelReasoning: Record<
     string,
     { mode: "auto" | "enabled" | "disabled"; effort?: string | null }
@@ -98,10 +99,11 @@ export function useProviders(): UseProvidersResult {
   const [providers, setProviders] = useState<ProviderRow[]>([]);
   const [presets, setPresets] = useState<ProviderPreset[]>([]);
   const [resolvedModels, setResolvedModels] = useState<ResolvedModel[]>([]);
-  const [activeModel, setActiveModel] = useState({
+  const [globalActiveModel, setGlobalActiveModel] = useState({
     provider_name: "",
     model: "",
   });
+  const [preferredModel, setPreferredModel] = useState("");
   const [modelReasoning, setModelReasoning] = useState<
     UseProvidersResult["modelReasoning"]
   >({});
@@ -119,9 +121,7 @@ export function useProviders(): UseProvidersResult {
         request<ProviderRow[]>("/admin/providers"),
         request<ProviderPreset[]>("/providers/presets"),
         providerApi.listResolvedModels(),
-        request<{ provider_name: string; model: string }>(
-          "/providers/active-model",
-        ),
+        providerApi.getActiveModel(),
         preferencesApi.get(),
       ]);
       const rows =
@@ -157,20 +157,15 @@ export function useProviders(): UseProvidersResult {
       setProviders(normalized);
       setPresets(presetList);
       setResolvedModels(resolved);
-      const preferredParts = (preferences?.preferred_model || "").split("/");
-      setActiveModel(
-        preferredParts.length > 1
-          ? {
-              provider_name: preferredParts[0],
-              model: preferredParts.slice(1).join("/"),
-            }
-          : active && typeof active === "object"
+      setGlobalActiveModel(
+        active && typeof active === "object"
           ? {
               provider_name: active.provider_name ?? "",
               model: active.model ?? "",
             }
           : { provider_name: "", model: "" },
       );
+      setPreferredModel(preferences?.preferred_model || "");
       setModelReasoning(preferences?.model_reasoning || {});
     } catch (err) {
       const msg =
@@ -191,7 +186,8 @@ export function useProviders(): UseProvidersResult {
     providers,
     presets,
     resolvedModels,
-    activeModel,
+    globalActiveModel,
+    preferredModel,
     modelReasoning,
     loading,
     error,
