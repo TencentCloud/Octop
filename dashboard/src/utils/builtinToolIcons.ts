@@ -58,6 +58,7 @@ export const BUILTIN_TOOL_ICONS: Record<string, LucideIcon> = {
   ask_user_question: CircleHelp,
   tavily_search: Globe,
   brave_search: Globe,
+  deepseek_search: Globe,
   google_search: Globe,
   kimi_search: Globe,
   searchfree_search: Globe,
