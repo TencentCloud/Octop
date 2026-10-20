@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import io
+import os
 import zipfile
 from pathlib import Path
 from types import SimpleNamespace
@@ -100,6 +101,31 @@ async def test_replace_clears_local_dir(tmp_path: Path) -> None:
     assert result["imported"] == 1
     assert not (ws / "old.txt").exists()
     assert (ws / "new.txt").read_bytes() == b"new"
+
+
+@pytest.mark.asyncio
+@pytest.mark.skipif(os.name != "posix", reason="directory symlinks need extra rights on Windows")
+async def test_replace_removes_a_linked_folder_as_a_link(tmp_path: Path) -> None:
+    ws = tmp_path / "ws"
+    (ws / "notes").mkdir(parents=True)
+    (ws / "notes" / "old.md").write_text("old", encoding="utf-8")
+    elsewhere = tmp_path / "project"
+    elsewhere.mkdir()
+    (elsewhere / "main.py").write_text("keep", encoding="utf-8")
+    (ws / "linked").symlink_to(elsewhere, target_is_directory=True)
+
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w") as zf:
+        zf.writestr("new.txt", "new")
+
+    backend = LocalShellBackend(root_dir=str(ws), virtual_mode=False)
+    workspace = BackendWorkspace(backend, ws)
+    result = await import_workspace_zip(
+        workspace, buf.getvalue(), mode="replace", local_workspace_dir=ws
+    )
+    assert result["imported"] == 1
+    assert sorted(p.name for p in ws.iterdir()) == ["new.txt"]
+    assert (elsewhere / "main.py").read_text(encoding="utf-8") == "keep"
 
 
 @pytest.mark.asyncio
