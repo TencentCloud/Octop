@@ -313,7 +313,7 @@
     "subtitle": "Create and maintain reusable skill packages, add skills, then mount them on experts",
     "createPackage": "Create Skill Package",
     "editPackage": "Edit Skill Package",
-    "createPackageHint": "A skill package is a shared collection of skills. After creating it, add skills and mount the package on agents.",
+    "createPackageHint": "A skill package groups reusable skills. After creating it, add skills and mount it on agents; turn on sharing when other users should use it.",
     "packageName": "Package name",
     "packageNameRequired": "Please enter a package name",
     "packageNamePlaceholder": "e.g. Research toolkit",
@@ -323,6 +323,8 @@
     "iconNamePlaceholder": "Select an icon",
     "iconUrl": "Custom icon URL",
     "iconUrlPlaceholder": "https://example.com/icon.png",
+    "iconUrlInvalid": "Enter a valid http(s) icon URL",
+    "iconUrlTooLong": "Icon URL is too long",
     "fromSkillHub": "Import from Market",
     "fromSkillHubHint": "Import a SkillHub skillset as a new skill package.",
     "addAsPackage": "Add as package",
@@ -334,7 +336,7 @@
     "emptyGuideStepHow": "How to use it",
     "emptyGuideStepHowDetail": "Create a package, add skills or import them from the market, then mount the package on an expert. Those skills will be available in chat.",
     "emptyGuideStepShare": "What sharing does",
-    "emptyGuideStepShareDetail": "Packages are visible to signed-in users on this instance. Others can mount them; only the creator can edit or delete.",
+    "emptyGuideStepShareDetail": "Packages are private by default. When shared, other signed-in users on this instance can view and mount them; only the creator can edit or delete.",
     "selectPackage": "Select a skill package to view its skills",
     "backToList": "Back to list",
     "noDescription": "No description",
@@ -365,13 +367,16 @@
     "copyPackageId": "Click to copy package ID",
     "collapseListPanel": "Collapse list",
     "expandListPanel": "Expand list",
+    "shared": "Share with others",
+    "sharedHint": "When on, other signed-in users on this instance can view and mount this package; only the creator can edit. When off, only you can use it.",
+    "sharedBadge": "Shared",
     "copyPolicy": "Copy policy",
-    "copyPolicyHint": "Controls whether users other than the creator can copy this package's skills into their agents. Read-only copies are enforced on Dashboard and workspace HTTP writes; Agent tool writes still need harness support (#770).",
+    "copyPolicyHint": "Controls whether users who can already access this package (including your other experts) may copy its skills into a workspace. Read-only copies are enforced on Dashboard and workspace HTTP writes; Agent tool writes still need harness support (#770).",
     "copyPolicySnapshot": "Copy freely",
     "copyPolicyLock": "Copy (console read-only)",
     "copyPolicyDeny": "No copying",
     "allowDownload": "Allow download",
-    "allowDownloadHint": "When off, other users can still view and mount this package, but cannot export it as a ZIP. The creator and admins can still download it."
+    "allowDownloadHint": "When off, other users who can view this package cannot export it as a ZIP. The creator and admins can still download it."
   },
   "knowledgeBases": {
     "title": "Knowledge Bases",
@@ -683,6 +688,9 @@
         },
         "brave": {
           "desc": "Privacy-focused search engine with independent index"
+        },
+        "deepseek": {
+          "desc": "AI-native search with ranked results, summaries, and source links"
         },
         "google": {
           "desc": "Google Custom Search with your own search engine"
@@ -1817,6 +1825,7 @@
     "memory_save": "Save memory",
     "tavily_search": "Tavily web search",
     "brave_search": "Brave web search",
+    "deepseek_search": "DeepSeek web search",
     "google_search": "Google web search",
     "kimi_search": "Kimi web search",
     "searchfree_search": "AI web search",
@@ -2110,6 +2119,7 @@
     "source": "Source",
     "kindBuiltin": "Built-in",
     "kindWorkspace": "Workspace",
+    "kindPackage": "Skill package",
     "path": "Path",
     "skillDescription": "Description",
     "displayNameZh": "Chinese display name",
@@ -3323,6 +3333,15 @@
     "contextWindowHint": "Used for the context-usage hint. An inexact value does not block chat.",
     "maxTokens": "Max Output Tokens",
     "maxTokensPlaceholder": "e.g. 16000 (16K)",
+    "apiMode": "OpenAI API Mode",
+    "apiModeHint": "Choose the generation endpoint supported by this model provider. Existing configurations default to Chat Completions.",
+    "apiModeChatCompletions": "Chat Completions (/v1/chat/completions)",
+    "apiModeResponses": "Responses (/v1/responses)",
+    "apiFallback": "Protocol Fallback",
+    "apiFallbackHint": "Optional and off by default. Retry with Chat Completions only when the provider clearly reports that Responses is unsupported. Authentication, rate-limit, timeout, and server errors are never retried across protocols.",
+    "apiFallbackNone": "None (recommended)",
+    "apiFallbackChatCompletions": "Fallback to Chat Completions",
+    "apiFallbackTestUsed": "Responses is unavailable; the connection succeeded only after falling back to Chat Completions.",
     "reasoning": "Reasoning Support",
     "reasoningToggle": "Allow turning thinking off in chat",
     "reasoningToggleHint": "When off, chat cannot disable reasoning and always uses Default thinking.",

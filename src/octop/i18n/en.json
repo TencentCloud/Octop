@@ -616,6 +616,7 @@
     "memory_save": "Save memory",
     "tavily_search": "Tavily web search",
     "brave_search": "Brave web search",
+    "deepseek_search": "DeepSeek web search",
     "google_search": "Google web search",
     "kimi_search": "Kimi web search",
     "searchfree_search": "AI web search",

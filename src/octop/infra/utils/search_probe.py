@@ -13,14 +13,23 @@ from typing import Any, Literal
 
 import httpx
 
-ErrorType = Literal["auth_error", "timeout", "network_error", "invalid_config", "unknown"]
+ErrorType = Literal[
+    "auth_error",
+    "insufficient_balance",
+    "rate_limit",
+    "timeout",
+    "network_error",
+    "invalid_config",
+    "unknown",
+]
 
 _TIMEOUT_S = 30.0
 _TEST_QUERY = "octop connectivity probe"
-_KNOWN: frozenset[str] = frozenset({"tavily", "brave", "google", "kimi"})
+_KNOWN: frozenset[str] = frozenset({"tavily", "brave", "deepseek", "google", "kimi"})
 _REQUIRED: dict[str, tuple[str, ...]] = {
     "tavily": ("TAVILY_API_KEY",),
     "brave": ("BRAVE_API_KEY",),
+    "deepseek": ("DEEPSEEK_API_KEY",),
     "google": ("GOOGLE_API_KEY", "GOOGLE_CSE_ID"),
     "kimi": ("MOONSHOT_API_KEY",),
 }
@@ -78,6 +87,8 @@ async def _probe(provider_id: str, env_vars: Mapping[str, str]) -> dict[str, Any
             return await _tavily(client, creds["TAVILY_API_KEY"])
         if provider_id == "brave":
             return await _brave(client, creds["BRAVE_API_KEY"])
+        if provider_id == "deepseek":
+            return await _deepseek(client, creds["DEEPSEEK_API_KEY"])
         if provider_id == "google":
             return await _google(client, creds["GOOGLE_API_KEY"], creds["GOOGLE_CSE_ID"])
         return await _kimi(client, creds["MOONSHOT_API_KEY"])
@@ -102,6 +113,18 @@ async def _brave(client: httpx.AsyncClient, api_key: str) -> dict[str, Any]:
         params={"q": _TEST_QUERY, "count": 1},
     )
     return _from_brave(response)
+
+
+async def _deepseek(client: httpx.AsyncClient, api_key: str) -> dict[str, Any]:
+    response = await client.post(
+        "https://api.deepseek.com/v1/tools/search",
+        headers={
+            "Authorization": f"Bearer {api_key}",
+            "Content-Type": "application/json",
+        },
+        json={"query": _TEST_QUERY, "count": 1, "need_content": False},
+    )
+    return _from_response(response, provider="DeepSeek", results_key="results")
 
 
 async def _google(client: httpx.AsyncClient, api_key: str, cse_id: str) -> dict[str, Any]:
@@ -214,8 +237,10 @@ def _http_failure(response: httpx.Response) -> dict[str, Any] | None:
     error = f"HTTP {response.status_code}: {detail}"
     if response.status_code in {401, 403}:
         error_type: ErrorType = "auth_error"
+    elif response.status_code == 402:
+        error_type = "insufficient_balance"
     elif response.status_code == 429:
-        error_type = "auth_error"
+        error_type = "rate_limit"
     else:
         error_type = "network_error" if response.status_code >= 500 else "unknown"
     return {"success": False, "error": error, "error_type": error_type}
