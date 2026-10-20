@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import io
+import zipfile
 from pathlib import Path
 
 import pytest
@@ -13,7 +15,15 @@ from octop.infra.db.repos.skill_packages import SkillPackageRepo
 from octop.infra.errors import ErrorCode, OctopError
 from octop.infra.skills.skill_package_from_skillhub import create_package_from_skillhub
 from octop.infra.skills.skill_package_store import SkillPackageStore
-from octop.infra.skills.skillhub_market import SkillHubSkillNotFound
+from octop.infra.skills.skillhub_market import SkillHubSkillNotFound, parse_skillhub_package
+
+
+def _zip_bytes(files: dict[str, bytes | str]) -> bytes:
+    buffer = io.BytesIO()
+    with zipfile.ZipFile(buffer, "w", compression=zipfile.ZIP_DEFLATED) as archive:
+        for name, content in files.items():
+            archive.writestr(name, content)
+    return buffer.getvalue()
 
 
 @pytest.fixture
@@ -169,3 +179,25 @@ def test_write_failure_deletes_new_package(
 
     assert store.repo.list_all() == []
     assert list(store.root.iterdir()) == []
+
+
+def test_imports_package_with_lowercase_skill_md(store: SkillPackageStore) -> None:
+    payloads = {
+        "alpha": _zip_bytes({"SKILL.md": "---\nname: alpha\n---\n"}),
+        "nurse": _zip_bytes({"skill.md": "---\nname: nurse\n---\n", "_meta.json": "{}"}),
+    }
+
+    result = create_package_from_skillhub(
+        store,
+        slug="demo-skillset",
+        created_by="1",
+        fetch_skillset_fn=lambda _slug: _item(skill_slugs=("alpha", "nurse")),
+        download_skill_files_fn=lambda slug: parse_skillhub_package(payloads[slug]),
+    )
+
+    assert result.row.skill_count == 2
+    assert [s["slug"] for s in store.list_skill_summaries(result.row.id)] == ["alpha", "nurse"]
+    skill_dir = store.package_skills_dir(result.row.id) / "nurse"
+    assert (skill_dir / "SKILL.md").read_text(encoding="utf-8") == "---\nname: nurse\n---\n"
+    assert (skill_dir / "_meta.json").is_file()
+    assert result.skipped_slugs == ()

@@ -248,17 +248,72 @@ def _read_zip_member(zf: zipfile.ZipFile, member: zipfile.ZipInfo) -> bytes:
     return b"".join(chunks)
 
 
+def _manifest_renames(
+    validated: list[tuple[zipfile.ZipInfo, str]],
+) -> tuple[dict[str, str], set[str]]:
+    """Map case-variant manifests to ``SKILL.md``, dropping shadowed variants.
+
+    SkillHub ships packages whose manifest is lowercase ``skill.md``. The store
+    and every reader require ``SKILL.md``, so the name is canonicalized here,
+    before UTF-8 coercion. An exact-case manifest wins and shadows its
+    variants; several non-canonical variants in one directory are rejected.
+
+    Returns ``(renames, drops)``: names to rewrite, and names to omit because
+    another entry already owns the canonical path. Emitting both would let the
+    variant overwrite the exact-case manifest on a case-insensitive filesystem.
+    """
+    files = [clean for member, clean in validated if not member.is_dir()]
+    candidates = [name for name in files if "/" not in name and name.casefold() == "skill.md"]
+    if not candidates:
+        top_levels = {name.split("/", 1)[0] for name in files}
+        if len(top_levels) == 1:
+            prefix = f"{next(iter(top_levels))}/"
+            candidates = [
+                name
+                for name in files
+                if name.startswith(prefix)
+                and "/" not in name[len(prefix) :]
+                and name[len(prefix) :].casefold() == "skill.md"
+            ]
+    if not candidates:
+        return {}, set()
+
+    canonical = {
+        name: f"{name.rsplit('/', 1)[0]}/SKILL.md" if "/" in name else "SKILL.md"
+        for name in candidates
+    }
+    exact = {name for name in candidates if canonical[name] == name}
+    others = set(files) - set(candidates)
+    drops = {
+        name
+        for name in candidates
+        if name not in exact and (canonical[name] in exact or canonical[name] in others)
+    }
+    remaining = [name for name in candidates if name not in drops]
+    if len(remaining) > 1:
+        raise SkillHubPackageError(
+            f"SkillHub package has multiple SKILL.md entries: {', '.join(sorted(remaining))}"
+        )
+    if not remaining:
+        return {}, drops
+    only = remaining[0]
+    return ({only: canonical[only]} if only not in exact else {}), drops
+
+
 def parse_skillhub_package(payload: bytes) -> list[tuple[str, bytes]]:
     """Validate a SkillHub ZIP and return workspace-relative file payloads."""
     try:
         with zipfile.ZipFile(io.BytesIO(payload)) as zf:
+            validated = _validate_zip(zf)
+            renames, drops = _manifest_renames(validated)
             files: list[tuple[str, bytes]] = []
-            for member, clean in _validate_zip(zf):
-                if member.is_dir():
+            for member, clean in validated:
+                if member.is_dir() or clean in drops:
                     continue
+                target = renames.get(clean, clean)
                 raw = _read_zip_member(zf, member)
                 try:
-                    files.append((clean, coerce_utf8_text_bytes(raw, path=clean)))
+                    files.append((target, coerce_utf8_text_bytes(raw, path=target)))
                 except InvalidSkillManifestEncodingError as exc:
                     raise SkillHubPackageError(str(exc)) from exc
     except SkillHubPackageError:
