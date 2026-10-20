@@ -1,5 +1,5 @@
 /**
- * Remote Browser page — octop-browser sessions (same backend as chat).
+ * Remote Browser page — agentbuddy-browser sessions (same backend as chat).
  *
  * UI matches the original Playwright page: install flow, address bar,
  * tab bar, canvas interaction, viewport / refresh controls.
@@ -115,16 +115,16 @@ type InstallPhase =
   | "install_success"
   | "install_failed";
 
-const REFRESH_STORAGE_KEY = "octop:remote-browser:refresh-interval";
-const PROFILE_STORAGE_KEY = "octop:remote-browser:harness-profile";
-const LEGACY_SESSION_STORAGE_KEY = "octop:remote-browser:session-id";
+const REFRESH_STORAGE_KEY = "agentbuddy:remote-browser:refresh-interval";
+const PROFILE_STORAGE_KEY = "agentbuddy:remote-browser:harness-profile";
+const LEGACY_SESSION_STORAGE_KEY = "agentbuddy:remote-browser:session-id";
 /** Whether the user left the remote-browser stream open last time. */
-const STREAM_ACTIVE_KEY = "octop:remote-browser:stream-active";
+const STREAM_ACTIVE_KEY = "agentbuddy:remote-browser:stream-active";
 const DEFAULT_REFRESH_INTERVAL = 500;
 const DEFAULT_START_URL = "about:blank";
-const BROWSER_AI_PANEL_KEY = "octop:remote-browser:ai-panel-open";
-const BROWSER_AI_PANEL_WIDTH_KEY = "octop:remote-browser:ai-panel-width";
-const BROWSER_AI_PANEL_HEIGHT_KEY = "octop:remote-browser:ai-panel-height";
+const BROWSER_AI_PANEL_KEY = "agentbuddy:remote-browser:ai-panel-open";
+const BROWSER_AI_PANEL_WIDTH_KEY = "agentbuddy:remote-browser:ai-panel-width";
+const BROWSER_AI_PANEL_HEIGHT_KEY = "agentbuddy:remote-browser:ai-panel-height";
 const BROWSER_AI_PANEL_MIN_WIDTH = 260;
 const BROWSER_AI_PANEL_MAX_WIDTH = 620;
 const BROWSER_AI_PANEL_MIN_HEIGHT = 200;
@@ -375,7 +375,7 @@ export default function RemoteBrowserPage({
     mode: viewportMode,
     setMode: setViewportMode,
     resolve: resolveViewport,
-  } = useViewportMode("octop:remote-browser:viewport", "auto");
+  } = useViewportMode("agentbuddy:remote-browser:viewport", "auto");
 
   const viewportSelectOptions = useMemo(
     () =>
@@ -608,7 +608,7 @@ export default function RemoteBrowserPage({
       title: t("remoteBrowser.uninstallTitle", "卸载内置浏览器"),
       content: t(
         "remoteBrowser.uninstallConfirm",
-        "将关闭当前浏览器窗口，并卸载 wkbuddy 自动安装的浏览器。你电脑上已有的 Chrome 等浏览器不受影响。",
+        "将关闭当前浏览器窗口，并卸载 agentbuddy 自动安装的浏览器。你电脑上已有的 Chrome 等浏览器不受影响。",
       ),
       okText: t("remoteBrowser.uninstall", "卸载"),
       okButtonProps: { danger: true },
@@ -1113,7 +1113,7 @@ export default function RemoteBrowserPage({
             >
               {t(
                 "common.askOctopHint",
-                "若安装失败，可复制下方错误信息发给 wkbuddy 排查。",
+                "若安装失败，可复制下方错误信息发给 agentbuddy 排查。",
               )}
             </div>
           </div>
@@ -1138,7 +1138,7 @@ export default function RemoteBrowserPage({
     }
 
     if (!envStatus?.playwright) {
-      // octop-browser works without Playwright, so this is informational
+      // agentbuddy-browser works without Playwright, so this is informational
       // rather than a blocking error
       if (envStatus?.harness_browser) {
         return (
@@ -1151,7 +1151,7 @@ export default function RemoteBrowserPage({
             )}
             description={t(
               "remoteBrowser.playwrightOptionalDesc",
-              "octop-browser (CDP) 已就绪，浏览器功能可用。如需 Playwright 备用模式，可安装 octop[browser] extras。",
+              "agentbuddy-browser (CDP) 已就绪，浏览器功能可用。如需 Playwright 备用模式，可安装 octop[browser] extras。",
             )}
           />
         );
@@ -1172,7 +1172,7 @@ export default function RemoteBrowserPage({
         title={t("remoteBrowser.notInstalled", "未检测到可用浏览器")}
         subTitle={t(
           "remoteBrowser.notInstalledHint",
-          "wkbuddy 需要浏览器才能帮你自动打开网页、填写表单和截图。点击下方按钮即可自动安装，无需手动配置。",
+          "agentbuddy 需要浏览器才能帮你自动打开网页、填写表单和截图。点击下方按钮即可自动安装，无需手动配置。",
         )}
         style={{ padding: "8px 0" }}
       />

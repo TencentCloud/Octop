@@ -243,7 +243,7 @@ async def create_agent_from_skillhub_skillset(
     slug: str,
     options: SkillHubMarketAgentCreateOptions,
 ) -> SkillHubMarketAgentCreateResult:
-    """Install a SkillHub skillset template and create a wkbuddy agent from it.
+    """Install a SkillHub skillset template and create a agentbuddy agent from it.
 
     Welcome / quick-prompt cards use the deterministic SkillHub workflow first so
     create stays fast. Optional LLM enrichment runs in the background and updates

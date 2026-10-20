@@ -11,9 +11,9 @@ const AUTH_REMEMBER_PREF_KEY = "auth_remember_pref";
  * React tree calls ``preventDefault()`` to route to /login itself, which keeps
  * the SPA alive instead of tearing the document down mid-render.
  */
-export const UNAUTHORIZED_EVENT = "octop:unauthorized";
+export const UNAUTHORIZED_EVENT = "agentbuddy:unauthorized";
 /** Fired when an agent-scoped API request is forbidden. */
-export const FORBIDDEN_EVENT = "octop:forbidden";
+export const FORBIDDEN_EVENT = "agentbuddy:forbidden";
 
 /** Response header used by the server for JWT sliding renewal. */
 export const ACCESS_TOKEN_RESPONSE_HEADER = "X-Octop-Access-Token";
@@ -96,7 +96,7 @@ export function clearAuthToken() {
   localStorage.removeItem(AUTH_TOKEN_KEY);
   sessionStorage.removeItem(AUTH_TOKEN_KEY);
   sessionStorage.removeItem(AUTH_REMEMBER_PREF_KEY);
-  localStorage.removeItem("octop:active-agent");
+  localStorage.removeItem("agentbuddy:active-agent");
   setActiveAgentId(null);
 }
 
@@ -189,7 +189,7 @@ async function check503ForSetupRequired(
  * module scope so plain functions like ``request()`` can read it without
  * threading a context through every call site.
  *
- * The value is ALSO mirrored to ``localStorage["octop:active-agent"]`` by
+ * The value is ALSO mirrored to ``localStorage["agentbuddy:active-agent"]`` by
  * the provider — but the source of truth at request time is this variable
  * so reactions stay synchronous.
  */
@@ -302,6 +302,9 @@ function buildAuthHeaders(path: string): Record<string, string> {
 
 let _redirectingToLogin = false;
 
+/** 401 codes that mean this Octop session is no longer valid. */
+const SESSION_UNAUTHORIZED_CODES = new Set(["AUTH_FAILED", "TOKEN_EXPIRED"]);
+
 /**
  * Send the user to the login screen exactly once, no matter how many parallel
  * requests report an expired session.
@@ -330,11 +333,32 @@ function handleUnauthorized(): void {
  * Handle 401 responses: clear token, redirect to login, and throw.
  * Shared by request(), requestBlob(), and requestUpload().
  */
+async function errorCodeOf(response: Response): Promise<string | undefined> {
+  try {
+    const body = (await response.clone().json()) as {
+      error?: { code?: string };
+    };
+    const code = body?.error?.code;
+    return typeof code === "string" && code.trim() ? code : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 async function throwIfUnauthorized(
   path: string,
   response: Response,
 ): Promise<void> {
   if (response.status !== 401 || path.startsWith("/auth/")) {
+    return;
+  }
+  const code = await errorCodeOf(response);
+  // Business 401s (peer login, etc.) are not a dead local session.
+  if (
+    code &&
+    !SESSION_UNAUTHORIZED_CODES.has(code) &&
+    !path.startsWith("/setup/")
+  ) {
     return;
   }
   clearAuthToken();

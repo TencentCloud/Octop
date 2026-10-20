@@ -7,13 +7,13 @@ includes:
   linux: ./build/linux/Taskfile.yml
 
 vars:
-  APP_NAME: "wkbuddy"
+  APP_NAME: "agentbuddy"
   BIN_DIR: "bin"
   VITE_PORT: '{{.WAILS_VITE_PORT | default 9245}}'
 
 tasks:
   build:
-    summary: Builds the wkbuddy desktop shell
+    summary: Builds the agentbuddy desktop shell
     cmds:
       - task: "{{OS}}:build"
 

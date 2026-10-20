@@ -36,7 +36,7 @@ export default function ScrollToBottomButton({
       frame = requestAnimationFrame(() => {
         const buttonRect = button.getBoundingClientRect();
         const toolRenderers = wrapper.querySelectorAll<HTMLElement>(
-          "[data-octop-tool-renderer]",
+          "[data-agentbuddy-tool-renderer]",
         );
         const overlaps = Array.from(toolRenderers).some((tool) => {
           const toolRect = tool.getBoundingClientRect();
@@ -61,7 +61,7 @@ export default function ScrollToBottomButton({
         : new ResizeObserver(updateOverlap);
     resizeObserver?.observe(wrapper);
     wrapper
-      .querySelectorAll<HTMLElement>("[data-octop-tool-renderer]")
+      .querySelectorAll<HTMLElement>("[data-agentbuddy-tool-renderer]")
       .forEach((tool) => resizeObserver?.observe(tool));
 
     return () => {

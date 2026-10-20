@@ -922,7 +922,7 @@ def _run_managed_upgrade(
         if cmd is None:
             return UpgradeResult(
                 success=False,
-                error="pip is not available for the wkbuddy virtual environment.",
+                error="pip is not available for the agentbuddy virtual environment.",
                 mirror_errors=mirror_errors,
             )
         fast_path = installer == "pip" and target is not None

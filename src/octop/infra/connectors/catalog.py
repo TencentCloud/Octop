@@ -70,7 +70,7 @@ class ConnectorCatalogEntry:
     phase: ConnectorPhase
     # remote: harness talks to the vendor URL.
     # gateway: in-process Python adapter; harness config is a name-only placeholder.
-    # internal: wkbuddy-hosted HTTP MCP at /api/internal/mcp; harness loads via HTTP.
+    # internal: agentbuddy-hosted HTTP MCP at /api/internal/mcp; harness loads via HTTP.
     mcp_mode: McpMode
     category: ConnectorCategory
     quick_auth_url: str | None = None
@@ -83,7 +83,7 @@ class ConnectorCatalogEntry:
     allowed_tools: tuple[str, ...] | None = None
     # Catalog-driven remote MCP OAuth (Notion / Ardot / Linear…):
     # when auth_kind=oauth2 + mcp_mode=remote/internal and issuer + mcp_url are set,
-    # wkbuddy uses DCR + PKCE against oauth_issuer and talks to mcp_url.
+    # agentbuddy uses DCR + PKCE against oauth_issuer and talks to mcp_url.
     oauth_issuer: str | None = None
     mcp_url: str | None = None
     oauth_resource: str | None = None
@@ -99,7 +99,7 @@ def is_inprocess_gateway(entry: ConnectorCatalogEntry) -> bool:
 
 
 def uses_internal_http_mcp(entry: ConnectorCatalogEntry) -> bool:
-    """Harness loads wkbuddy-hosted HTTP MCP at ``/api/internal/mcp``."""
+    """Harness loads agentbuddy-hosted HTTP MCP at ``/api/internal/mcp``."""
     return entry.mcp_mode == "internal"
 
 

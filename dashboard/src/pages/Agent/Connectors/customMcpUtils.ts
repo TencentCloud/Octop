@@ -255,7 +255,7 @@ export function newCard(
 }
 
 /** Notify chat composer to refresh connector list after custom MCP save. */
-export const CONNECTORS_CHANGED_EVENT = "octop:connectors-changed";
+export const CONNECTORS_CHANGED_EVENT = "agentbuddy:connectors-changed";
 
 export function notifyConnectorsChanged(): void {
   window.dispatchEvent(new CustomEvent(CONNECTORS_CHANGED_EVENT));

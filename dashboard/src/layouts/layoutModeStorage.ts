@@ -4,9 +4,9 @@ export type LayoutMode = "classic" | "minimal";
 /** Minimal-mode lower pane: merged settings nav vs agent/session records. */
 export type MinimalNavPane = "settings" | "records";
 
-export const LAYOUT_MODE_KEY = "octop:layout-mode";
+export const LAYOUT_MODE_KEY = "agentbuddy:layout-mode";
 /** v2: default pane is records (primary). */
-export const MINIMAL_NAV_PANE_KEY = "octop:sidebar-minimal-pane-v2";
+export const MINIMAL_NAV_PANE_KEY = "agentbuddy:sidebar-minimal-pane-v2";
 
 export function loadLayoutMode(): LayoutMode {
   try {

@@ -1,0 +1,25 @@
+# https://editorconfig.org
+# Matches the project formatter: 4-space indent, LF, UTF-8, 120-column Python.
+
+root = true
+
+[*]
+indent_style = space
+indent_size = 4
+trim_trailing_whitespace = true
+insert_final_newline = true
+charset = utf-8
+end_of_line = lf
+
+[*.py]
+max_line_length = 120
+
+[*.md]
+trim_trailing_whitespace = false
+
+[*.bat]
+indent_style = tab
+end_of_line = crlf
+
+[Makefile]
+indent_style = tab

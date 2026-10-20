@@ -9,7 +9,7 @@ from typing import Any
 import httpx
 from octop_harness.plugins import PluginContext
 
-_UA = "wkbuddy-github-trending/0.1.0"
+_UA = "agentbuddy-github-trending/0.1.0"
 
 
 def _payload(data: dict[str, Any], text: str) -> str:

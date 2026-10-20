@@ -1,4 +1,4 @@
-"""wkbuddy-specific storage backend probes (docker + row → harness probe)."""
+"""agentbuddy-specific storage backend probes (docker + row → harness probe)."""
 
 from __future__ import annotations
 

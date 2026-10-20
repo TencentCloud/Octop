@@ -1,7 +1,7 @@
 import type { ReactNode } from "react";
 import styles from "./StreamConnectingIndicator.module.less";
 
-const MASCOT_TYPE = `${import.meta.env.BASE_URL}octop-mascot-type.webp`;
+const MASCOT_TYPE = `${import.meta.env.BASE_URL}agentbuddy-mascot-type.webp`;
 
 interface StreamConnectingIndicatorProps {
   /** Status line under the animation (e.g. 「连接中」). */
@@ -16,7 +16,7 @@ interface StreamConnectingIndicatorProps {
 
 /**
  * Shared connecting / waiting-frame indicator for remote browser & desktop.
- * Uses the same wkbuddy mascot loop as chat thinking bubbles.
+ * Uses the same agentbuddy mascot loop as chat thinking bubbles.
  */
 export default function StreamConnectingIndicator({
   label,

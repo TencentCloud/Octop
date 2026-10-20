@@ -14,7 +14,7 @@ import { showApiError } from "../../../utils/showApiToast";
  *
  * Field-name reconciliation: finnie's UI treats the identifier as ``slug``
  * and uses ``kind`` (``builtin`` | ``workspace``) to split built-in vs
- * customised skills. wkbuddy only returns ``name`` and has no kind concept.
+ * customised skills. agentbuddy only returns ``name`` and has no kind concept.
  *
  * To reuse finnie-style components without renaming everything, this
  * hook exposes ``slug`` (= server's ``name``) and synthesises ``kind``

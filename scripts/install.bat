@@ -1,7 +1,7 @@
 @echo off
 setlocal EnableDelayedExpansion
 
-REM wkbuddy Installer for Windows (cmd.exe)
+REM agentbuddy Installer for Windows (cmd.exe)
 REM Usage: install.bat [-Version X.Y.Z] [-FromSource] [-SourceDir DIR] [-Extras browser] [-Help]
 
 if defined OCTOP_HOME (set "OCTOP_HOME=%OCTOP_HOME%") else (set "OCTOP_HOME=%USERPROFILE%\.octop")
@@ -29,7 +29,7 @@ shift
 goto :parse_args
 
 :show_help
-echo wkbuddy Installer for Windows
+echo agentbuddy Installer for Windows
 echo.
 echo Usage: install.bat [OPTIONS]
 echo   -Version ^<VER^>     Install specific version
@@ -43,7 +43,7 @@ echo         to install it, or install later from the dashboard.
 exit /b 0
 
 :done_args
-echo [octop] Installing wkbuddy into %OCTOP_HOME%
+echo [octop] Installing agentbuddy into %OCTOP_HOME%
 
 call :ensure_uv
 if errorlevel 1 exit /b 1
@@ -108,7 +108,7 @@ if errorlevel 1 (echo [octop] ERROR: install failed & exit /b 1)
 call :verify_install
 if errorlevel 1 exit /b 1
 if not exist "%VENV_OCTOP%" (echo [octop] ERROR: octop CLI not found & exit /b 1)
-echo [octop] wkbuddy installed successfully
+echo [octop] agentbuddy installed successfully
 
 if "%CONSOLE_AVAILABLE%"=="0" (
     "%VENV_PYTHON%" -c "import importlib.resources, octop; p=importlib.resources.files('octop')/'dashboard'/'index.html'; print('yes' if p.is_file() else 'no')" > "%TEMP%\_octop_ui.tmp" 2>&1
@@ -151,7 +151,7 @@ set "OCTOP_BIN_FOR_PS="
 echo %PATH% | findstr /i /c:"%OCTOP_BIN%" >nul || set "PATH=%OCTOP_BIN%;%PATH%"
 
 echo.
-echo wkbuddy installed successfully!
+echo agentbuddy installed successfully!
 echo   Location: %OCTOP_HOME%
 echo   Python:   %PY_VERSION%
 echo.

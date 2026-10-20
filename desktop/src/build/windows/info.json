@@ -6,10 +6,10 @@
     "0000": {
       "ProductVersion": "0.9.26",
       "CompanyName": "道晟科技",
-      "FileDescription": "wkbuddy desktop",
+      "FileDescription": "agentbuddy desktop",
       "LegalCopyright": "Copyright © 2026 汇智道晟（舟山）科技有限公司",
-      "ProductName": "wkbuddy",
-      "Comments": "wkbuddy desktop shell"
+      "ProductName": "agentbuddy",
+      "Comments": "agentbuddy desktop shell"
     }
   }
 }

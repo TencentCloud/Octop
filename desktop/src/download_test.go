@@ -40,7 +40,7 @@ func TestEnsurePortableUsesBundledPackage(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("OCTOP_HOME", home)
 
-	zipPath := filepath.Join(t.TempDir(), "wkbuddy-"+greenPlat()+".zip")
+	zipPath := filepath.Join(t.TempDir(), "agentbuddy-"+greenPlat()+".zip")
 	t.Setenv("OCTOP_DESKTOP_PORTABLE_ZIP", zipPath)
 	writeTestGreenZip(t, zipPath, "1.0.0")
 
@@ -132,7 +132,7 @@ func TestEnsurePortableUpgradesBundledVersionAfterDatabaseBackup(t *testing.T) {
 	if got := portableVersion(root); got != "0.9.32" {
 		t.Fatalf("portable version = %q, want 0.9.32", got)
 	}
-	backups, err := filepath.Glob(filepath.Join(home, "backups", "octop-desktop-pre-upgrade-*.db"))
+	backups, err := filepath.Glob(filepath.Join(home, "backups", "agentbuddy-desktop-pre-upgrade-*.db"))
 	if err != nil || len(backups) != 1 {
 		t.Fatalf("upgrade backup = %v, err = %v", backups, err)
 	}
@@ -248,7 +248,7 @@ func TestPortableVersionPrefersNewerMetadataOverVersionTxt(t *testing.T) {
 	}
 
 	// An in-app upgrade can leave both the old VERSION.txt and old dist-info.
-	metadata := filepath.Join(root, "packages", "octop-1.0.2b5.dist-info", "METADATA")
+	metadata := filepath.Join(root, "packages", "agentbuddy-1.0.2b5.dist-info", "METADATA")
 	if err := os.MkdirAll(filepath.Dir(metadata), 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -552,10 +552,10 @@ func TestFormatHealthWaitErrorIsActionableChinese(t *testing.T) {
 func TestFormatHealthWaitErrorUsesEnglishWhenLocaleIsEn(t *testing.T) {
 	msg := formatHealthWaitError(LocaleEN, "http://127.0.0.1:8088", time.Minute, errors.New("connection refused"), 0).Error()
 	for _, needle := range []string{
-		"wkbuddy did not become ready within",
+		"agentbuddy did not become ready within",
 		"1 minute",
 		"http://127.0.0.1:8088",
-		"make sure wkbuddy is running",
+		"make sure agentbuddy is running",
 	} {
 		if !strings.Contains(msg, needle) {
 			t.Fatalf("English health error missing %q: %s", needle, msg)
@@ -595,7 +595,7 @@ func TestWaitHealthTimesOutWithFriendlyMessage(t *testing.T) {
 	if strings.Contains(err.Error(), "did not become healthy") {
 		t.Fatalf("should not use the old English diagnostic: %s", err)
 	}
-	if !strings.Contains(err.Error(), "wkbuddy did not become ready within") {
+	if !strings.Contains(err.Error(), "agentbuddy did not become ready within") {
 		t.Fatalf("timeout should follow the desktop locale: %s", err)
 	}
 }
@@ -608,16 +608,16 @@ func writeTestGreenZip(t *testing.T, path, version string) {
 	}
 	w := zip.NewWriter(f)
 	files := []string{
-		"wkbuddy-test/launch.py",
-		"wkbuddy-test/VERSION.txt",
-		"wkbuddy-test/packages/octop-" + version + ".dist-info/METADATA",
+		"agentbuddy-test/launch.py",
+		"agentbuddy-test/VERSION.txt",
+		"agentbuddy-test/packages/agentbuddy-" + version + ".dist-info/METADATA",
 	}
 	if runtime.GOOS == "windows" {
-		files = append(files, "wkbuddy-test/runtime/python.exe")
+		files = append(files, "agentbuddy-test/runtime/python.exe")
 	} else {
 		files = append(files,
-			"wkbuddy-test/runtime/bin/python3",
-			"wkbuddy-test/runtime/bin/python3.12",
+			"agentbuddy-test/runtime/bin/python3",
+			"agentbuddy-test/runtime/bin/python3.12",
 		)
 	}
 	for _, name := range files {
@@ -659,7 +659,7 @@ func writeMetadataOnlyZip(t *testing.T, path, version string) {
 		t.Fatal(err)
 	}
 	w := zip.NewWriter(f)
-	entry, err := w.Create("wkbuddy-test/packages/octop-" + version + ".dist-info/METADATA")
+	entry, err := w.Create("agentbuddy-test/packages/agentbuddy-" + version + ".dist-info/METADATA")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -681,7 +681,7 @@ func writeVersionOnlyZip(t *testing.T, path, version string) {
 		t.Fatal(err)
 	}
 	w := zip.NewWriter(f)
-	entry, err := w.Create("wkbuddy-test/VERSION.txt")
+	entry, err := w.Create("agentbuddy-test/VERSION.txt")
 	if err != nil {
 		t.Fatal(err)
 	}

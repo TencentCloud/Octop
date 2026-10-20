@@ -18,7 +18,7 @@ logger = logging.getLogger(__name__)
 
 _BROWSER_TOOL = "browser_use"
 _MISSING_USER = (
-    "browser_use blocked: the current turn has no wkbuddy user id, "
+    "browser_use blocked: the current turn has no agentbuddy user id, "
     "so a browser profile cannot be isolated."
 )
 
@@ -45,7 +45,7 @@ def _bind_browser_profile(request: ToolCallRequest) -> ToolCallRequest | ToolMes
 
 
 class BrowserProfileMiddleware(AgentMiddleware[Any, Any]):
-    """Prevent model-selected profiles from crossing wkbuddy user boundaries."""
+    """Prevent model-selected profiles from crossing agentbuddy user boundaries."""
 
     def wrap_tool_call(
         self,

@@ -106,7 +106,7 @@ describe("tryReloadOnStaleChunk", () => {
     const err = new Error("Failed to fetch dynamically imported module: /a.js");
     expect(tryReloadOnStaleChunk(err)).toBe(true);
     await vi.waitFor(() => expect(reload).toHaveBeenCalledOnce());
-    expect(sessionStorage.getItem("octop:chunk-reload")).toBe("1");
+    expect(sessionStorage.getItem("agentbuddy:chunk-reload")).toBe("1");
   });
 
   it("does not loop on a second consecutive chunk error", async () => {
@@ -125,7 +125,7 @@ describe("tryReloadOnStaleChunk", () => {
 
     expect(mod.tryReloadOnStaleChunk(err)).toBe(false);
     expect(reload).not.toHaveBeenCalled();
-    expect(sessionStorage.getItem("octop:chunk-reload")).toBeNull();
+    expect(sessionStorage.getItem("agentbuddy:chunk-reload")).toBeNull();
   });
 
   it("ignores concurrent chunk errors without clearing the one-shot flag", async () => {
@@ -133,7 +133,7 @@ describe("tryReloadOnStaleChunk", () => {
     expect(tryReloadOnStaleChunk(err)).toBe(true);
     expect(tryReloadOnStaleChunk(err)).toBe(true);
     await vi.waitFor(() => expect(reload).toHaveBeenCalledOnce());
-    expect(sessionStorage.getItem("octop:chunk-reload")).toBe("1");
+    expect(sessionStorage.getItem("agentbuddy:chunk-reload")).toBe("1");
   });
 
   it("ignores non-chunk errors", () => {
@@ -172,11 +172,13 @@ describe("bustServiceWorkerAndReload", () => {
 describe("index.html boot recover", () => {
   it("embeds a classic script that shares the chunk-reload flag", () => {
     const html = readFileSync(resolve(__dirname, "../../index.html"), "utf8");
-    expect(html).toContain('var KEY = "octop:chunk-reload"');
+    expect(html).toContain('var KEY = "agentbuddy:chunk-reload"');
     expect(html).toContain("serviceWorker");
     expect(html).toContain("isStylesheetLink");
     expect(html).toContain("modulepreload");
-    expect(html).not.toMatch(/<script type="module">[\s\S]*octop:chunk-reload/);
+    expect(html).not.toMatch(
+      /<script type="module">[\s\S]*agentbuddy:chunk-reload/,
+    );
   });
 
   it("does not recover on arbitrary LINK asset errors", () => {
@@ -209,7 +211,7 @@ describe("navigation-aborted chunk errors", () => {
     const err = new Error("Failed to fetch dynamically imported module: /a.js");
     expect(mod.tryReloadOnStaleChunk(err)).toBe(false);
     expect(reload).not.toHaveBeenCalled();
-    expect(sessionStorage.getItem("octop:chunk-reload")).toBeNull();
+    expect(sessionStorage.getItem("agentbuddy:chunk-reload")).toBeNull();
   });
 
   it("skips the reload after the browser fires pagehide", () => {

@@ -1,4 +1,4 @@
-"""Materialize wecom-cli bot.enc + mcp_config.enc for headless wkbuddy instances."""
+"""Materialize wecom-cli bot.enc + mcp_config.enc for headless agentbuddy instances."""
 
 from __future__ import annotations
 

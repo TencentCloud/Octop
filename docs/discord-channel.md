@@ -7,7 +7,7 @@
 Discord 适配器已随 `octop-gateway 0.9.9` 发布。政务伙伴要求 `octop-gateway>=0.9.9`，可直接使用发布包，无需克隆相邻网关仓库：
 
 ```sh
-cd wkbuddy
+cd agentbuddy
 uv sync --locked --extra dev
 uv run octop run
 ```

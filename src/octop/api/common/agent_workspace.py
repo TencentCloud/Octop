@@ -7,7 +7,7 @@ from typing import Any, cast
 
 
 def resolve_agent_workspace_dir(server: Any, agent_id: str) -> Path:
-    """Prefer ``config.workspace_dir`` via agent registry; else wkbuddy default layout."""
+    """Prefer ``config.workspace_dir`` via agent registry; else agentbuddy default layout."""
     runtime = getattr(server, "app_runtime", None)
     registry = getattr(runtime, "agent_registry", None) if runtime is not None else None
     if registry is not None and hasattr(registry, "resolve_workspace_dir"):

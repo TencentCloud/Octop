@@ -118,7 +118,7 @@ def cli(
     agent_id: str | None,
     json_out: bool,
 ) -> None:
-    """wkbuddy command-line interface."""
+    """agentbuddy command-line interface."""
     _ensure_utf8_stdio()
     ctx.ensure_object(dict)
     ctx.obj["as_user"] = as_user

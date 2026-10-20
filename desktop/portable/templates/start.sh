@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# wkbuddy green portable launcher (macOS / Linux).
+# agentbuddy green portable launcher (macOS / Linux).
 # Usage:
 #   ./start.sh
 #   ./start.sh --home /path/to/data
@@ -33,7 +33,7 @@ while [[ $# -gt 0 ]]; do
       ;;
     -h|--help)
       cat <<EOF
-wkbuddy green portable launcher
+agentbuddy green portable launcher
 
 Usage: ./start.sh [--home DIR] [--host HOST] [--port PORT] [octop run args...]
 

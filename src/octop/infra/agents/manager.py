@@ -1430,7 +1430,7 @@ class AgentManager:
         self._repos.agent_repo.update_config(agent_id, **kwargs)
 
     def resolve_workspace_dir(self, agent_id: str, *, persist_if_missing: bool = True) -> Path:
-        """On-disk workspace for wkbuddy host FS ops (delete, memory path, …).
+        """On-disk workspace for agentbuddy host FS ops (delete, memory path, …).
 
         May map agent-facing ``/.octop/workspaces/…`` onto scoped ``root_dir``.
         ``_build_harness_config`` parses the persisted string directly from
@@ -1463,7 +1463,7 @@ class AgentManager:
                     self.persist_harness_config(agent_id, new_cfg)
             return out
 
-        # Legacy / incomplete row: classic wkbuddy layout only (not scoped create default).
+        # Legacy / incomplete row: classic agentbuddy layout only (not scoped create default).
         out = self._paths.ensure_agent_workspace(agent_id)
         if persist_if_missing and self._repos.agent_repo.get(agent_id) is not None:
             new_cfg = dict(cfg)
@@ -1972,7 +1972,7 @@ class AgentManager:
     def reload_octop_harnesss(self) -> None:
         """Rebuild harness agents in place (e.g. after tool-guard rules changed on disk).
 
-        Does not rebuild wkbuddy-side agent config from the DB — use :meth:`reload` for that.
+        Does not rebuild agentbuddy-side agent config from the DB — use :meth:`reload` for that.
         """
         if self._harness_manager is not None:
             self._harness_manager.rebuild_all_agents()
@@ -2937,7 +2937,7 @@ class AgentManager:
         """Installed skills for *agent_id* (harness catalog + package ``kind`` labels).
 
         Harness lists builtin / workspace / ``skills_dir`` entries (all non-builtin as
-        ``kind="workspace"``). wkbuddy relabels mounted skill-package slugs to
+        ``kind="workspace"``). agentbuddy relabels mounted skill-package slugs to
         ``kind="package"`` unless the agent workspace has its own copy.
         """
         from octop.infra.utils.frontmatter import parse_frontmatter
@@ -3283,13 +3283,13 @@ class AgentManager:
 
                 synced_skills = await sync_octop_builtin_skills(ws)
                 logger.info(
-                    "Agent %s: synced wkbuddy built-in skills=%s",
+                    "Agent %s: synced agentbuddy built-in skills=%s",
                     row.agent_id,
                     synced_skills,
                 )
             except Exception:
                 logger.warning(
-                    "Agent %s: failed to sync wkbuddy built-in skills",
+                    "Agent %s: failed to sync agentbuddy built-in skills",
                     row.agent_id,
                     exc_info=True,
                 )
@@ -3371,7 +3371,7 @@ class AgentManager:
         return windows_neutralize_host_root(resolved, workspace_dir=workspace_dir)
 
     def resolved_backend_spec(self, agent_id: str) -> Any:
-        """Backend spec for *agent_id* with wkbuddy docker enrichments applied."""
+        """Backend spec for *agent_id* with agentbuddy docker enrichments applied."""
         row = self._repos.agent_repo.get(agent_id)
         if row is None:
             return None
@@ -3390,7 +3390,7 @@ class AgentManager:
         return isinstance(spec, dict) and str(spec.get("type") or "").lower() == "opensandbox"
 
     def _prepare_docker_backend(self, backend: Any, row: AgentRow) -> Any:
-        """Inject wkbuddy docker defaults (prefix / agent_id / username) without overwrite."""
+        """Inject agentbuddy docker defaults (prefix / agent_id / username) without overwrite."""
         if not isinstance(backend, dict) or backend.get("type") != "docker":
             return backend
         from octop.infra.utils.env_file import env_file_path  # noqa: PLC0415
@@ -3871,7 +3871,7 @@ class AgentManager:
         from octop.infra.knowledge.hint import KnowledgeSearchHintMiddleware
 
         # FilesystemGuard + ModelSettings live in octop-harness (auto-mounted).
-        # BinaryReadGuard stays wkbuddy-specific (inbound/attachment product policy).
+        # BinaryReadGuard stays agentbuddy-specific (inbound/attachment product policy).
         # ThreadArtifacts writes workspace paths onto threads after successful tools.
         # WorkspaceImageMaterialize expands path-only vision refs at model-call time.
         # OctopUiOffload stays innermost so every outer middleware observes the

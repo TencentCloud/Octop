@@ -1,0 +1,140 @@
+name: Release
+
+# 版本标签 v* → 测包、发 PyPI、建 GitHub Release，再级联 Sync Main Into Develop。
+# 合并 release/* / hotfix/* 到 main 后由 Auto Tag On Release Merge 打 tag 并
+# workflow_dispatch 本工作流（GITHUB_TOKEN 推送的 tag 不会自动级联）。
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  id-token: write
+  actions: write
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: Build distributions
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/v')
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - uses: astral-sh/setup-uv@v7
+        with:
+          enable-cache: true
+
+      - name: Set up Python
+        run: uv python install 3.11
+
+      - name: Install Chromium (integration tests)
+        run: sudo apt-get update && sudo apt-get install -y chromium-browser
+
+      - name: Install dependencies
+        run: make install
+
+      - name: Run tests
+        run: make test
+
+      - name: Build package
+        run: make build
+
+      - name: Upload distributions
+        uses: actions/upload-artifact@v7
+        with:
+          name: dist
+          path: dist/
+
+  publish:
+    name: Publish to PyPI
+    needs: build
+    runs-on: ubuntu-latest
+    environment: pypi
+    steps:
+      - name: Download distributions
+        uses: actions/download-artifact@v8
+        with:
+          name: dist
+          path: dist/
+
+      - name: Publish package
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          password: ${{ secrets.PYPI_API_TOKEN }}
+
+  github-release:
+    name: Create GitHub Release
+    needs: publish
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Download distributions
+        uses: actions/download-artifact@v8
+        with:
+          name: dist
+          path: dist/
+
+      - name: Extract version from tag
+        id: version
+        run: echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+
+      - name: Extract release notes
+        run: |
+          version=${{ steps.version.outputs.version }}
+          if [ -f CHANGELOG.md ]; then
+            awk "/^## \[?$version\]?/{flag=1;next}/^## /{flag=0}flag" CHANGELOG.md > .release-notes.md || true
+          fi
+          if [ ! -s .release-notes.md ]; then
+            PREV=$(git tag --sort=-version:refname | grep -v "^${GITHUB_REF_NAME}$" | head -1)
+            {
+              echo "## What's changed"
+              echo ""
+              if [ -n "$PREV" ]; then
+                git log "${PREV}..${GITHUB_REF_NAME}" --oneline --no-decorate
+              else
+                git log --oneline --no-decorate | head -20
+              fi
+              echo ""
+              echo "## Install"
+              echo ""
+              echo '```bash'
+              echo "pip install octop-browser==$version"
+              echo '```'
+            } > .release-notes.md
+          fi
+
+      - name: Create release
+        uses: softprops/action-gh-release@v3
+        with:
+          body_path: .release-notes.md
+          files: dist/*
+          generate_release_notes: true
+
+  # Explicit cascade after GitHub Release (GITHUB_TOKEN tag push does not
+  # retrigger push workflows; same for sync — dispatch from here).
+  sync-develop:
+    name: Trigger sync main into develop
+    needs: github-release
+    runs-on: ubuntu-latest
+    steps:
+      - name: Dispatch Sync Main Into Develop
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh workflow run sync-main-to-develop.yml \
+            --repo "${{ github.repository }}" \
+            --ref main \
+            -f version="${{ github.ref_name }}"
+

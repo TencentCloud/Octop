@@ -34,11 +34,11 @@ def md_link(label: str, tag: str, filename: str) -> str:
 
 
 def desktop_name(os_name: str, arch: str, version: str, ext: str) -> str:
-    return f"wkbuddy-desktop-{os_name}-{arch}-{version}.{ext}"
+    return f"agentbuddy-desktop-{os_name}-{arch}-{version}.{ext}"
 
 
 def portable_name(os_name: str, arch: str, version: str) -> str:
-    return f"wkbuddy-portable-{os_name}-{arch}-{version}.zip"
+    return f"agentbuddy-portable-{os_name}-{arch}-{version}.zip"
 
 
 def render_download_section(raw_version: str) -> str:
@@ -89,7 +89,9 @@ def render_download_section(raw_version: str) -> str:
 
 
 def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(description="Print wkbuddy GitHub Release download markdown.")
+    parser = argparse.ArgumentParser(
+        description="Print agentbuddy GitHub Release download markdown."
+    )
     parser.add_argument("version", help="Package version, with or without a leading v")
     args = parser.parse_args(argv)
     sys.stdout.write(render_download_section(args.version))

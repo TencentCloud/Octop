@@ -74,7 +74,7 @@ const BrowserWorkspace: React.FC<BrowserWorkspaceProps> = ({
     mode: vpMode,
     setMode: setVpMode,
     resolve: resolveViewport,
-  } = useViewportMode("octop:browser-panel:viewport-mode", "1280x800");
+  } = useViewportMode("agentbuddy:browser-panel:viewport-mode", "1280x800");
   const {
     status,
     tabs,

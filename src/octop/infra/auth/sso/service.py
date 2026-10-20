@@ -186,7 +186,7 @@ class SsoService:
                 body,
                 "display_name",
                 current,
-                default_names.get(kind, "wkbuddy SSO"),
+                default_names.get(kind, "agentbuddy SSO"),
             ),
             issuer=issuer,
             client_id=self._string(body, "client_id", current, ""),

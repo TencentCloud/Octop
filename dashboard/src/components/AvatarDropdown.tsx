@@ -19,7 +19,6 @@ import {
   Settings,
   Palette,
   CircleHelp,
-  Github,
   KeyRound,
   Lock,
   LockOpen,
@@ -53,7 +52,6 @@ import {
 } from "../pages/Admin/Users/ProfileAvatar";
 import styles from "./AvatarDropdown.module.less";
 
-const GITHUB_URL = "about:blank";
 const HELP_FEEDBACK_URL = "about:blank";
 const APP_OAUTH_KINDS = new Set(["feishu", "dingtalk", "wecom"]);
 
@@ -376,17 +374,6 @@ export default function AvatarDropdown({
       >
         <CircleHelp size={16} strokeWidth={1.8} />
         <span>{t("account.helpFeedback")}</span>
-      </a>
-
-      <a
-        className={styles.menuItem}
-        href={GITHUB_URL}
-        target="_blank"
-        rel="noopener noreferrer"
-        onClick={() => setMenuOpen(false)}
-      >
-        <Github size={16} strokeWidth={1.8} />
-        <span>{t("account.projectUrl")}</span>
       </a>
 
       {onCustomizeNav ? (

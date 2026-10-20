@@ -21,7 +21,7 @@ function clickDownloadAnchor(blob: Blob, filename: string): void {
  * Persist a blob as a user download.
  *
  * Wails WebView ignores ``<a download>``. On the desktop shell we POST the
- * bytes to wkbuddy (loopback-only) so they land in the host Downloads folder.
+ * bytes to agentbuddy (loopback-only) so they land in the host Downloads folder.
  * In-app browsers (WeChat, …) refuse ``blob:`` downloads, so they get a
  * short-lived link to open in the system browser instead.
  */

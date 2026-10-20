@@ -1,8 +1,8 @@
-# wkbuddy Docker Deployment
+# agentbuddy Docker Deployment
 
 ---
 
-This directory contains the Docker build and deployment assets for wkbuddy.
+This directory contains the Docker build and deployment assets for agentbuddy.
 
 ### Files
 
@@ -14,7 +14,7 @@ This directory contains the Docker build and deployment assets for wkbuddy.
 | `docker-compose.yml` | One-command local / self-hosted deployment |
 | `docker-compose.cn.yml` | Same stack, pulls a pre-built image instead of building locally (set `image:` to your own registry) |
 | `docker-compose.postgres.yml` | PostgreSQL (+ pgvector) for dual-backend dev/tests |
-| `postgres/init-vector.sql` | Instance-level `CREATE EXTENSION vector` (initdb.d; **not** wkbuddy migrations) |
+| `postgres/init-vector.sql` | Instance-level `CREATE EXTENSION vector` (initdb.d; **not** agentbuddy migrations) |
 | `docker-entrypoint.sh` | Container entrypoint: first-run init + start server |
 
 ### Quick start
@@ -41,7 +41,7 @@ docker run -d \
   -p 8088:8088 \
   -v octop-data:/data/.octop \
   -e HOME=/data \
-  wkbuddy:latest
+  agentbuddy:latest
 ```
 
 ### Faster downloads (China mirrors)

@@ -382,7 +382,7 @@ def render_systemd_unit(runtime: ServiceRuntime, *, user_unit: bool | None = Non
     if user_unit is None:
         user_unit = runtime.scope == "user"
     account_home = _account_home(runtime.run_as_user)
-    # LightClaw-style: HOME + service mode + config-driven ``run``.  wkbuddy also
+    # LightClaw-style: HOME + service mode + config-driven ``run``.  agentbuddy also
     # sets ``OCTOP_HOME`` explicitly.  No ``WorkingDirectory`` — avoids CHDIR
     # failures when ``User=`` and data paths disagree.
     if user_unit or runtime.run_as_user == "root":
@@ -401,7 +401,7 @@ def render_systemd_unit(runtime: ServiceRuntime, *, user_unit: bool | None = Non
     nofile_line = f"LimitNOFILE={nofile}\n" if nofile is not None else ""
     return (
         "[Unit]\n"
-        "Description=wkbuddy AI Server\n"
+        "Description=agentbuddy AI Server\n"
         "After=network.target\n"
         "\n"
         "[Service]\n"

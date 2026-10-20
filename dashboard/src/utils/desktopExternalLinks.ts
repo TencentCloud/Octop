@@ -23,7 +23,7 @@ export function isDesktopExternalURL(
 }
 
 /**
- * Wails WebView cannot host named popups (e.g. `octop-connector-auth`).
+ * Wails WebView cannot host named popups (e.g. `agentbuddy-connector-auth`).
  * Treat every non in-page target like `_blank` and open the system browser.
  */
 export function isDesktopExternalWindowTarget(target?: string): boolean {

@@ -37,7 +37,7 @@ export function isCuratedPalette(value: string): value is ThemePalette {
 export const THEME_STORAGE_KEY = "theme";
 
 /** Legacy palette-only key; migrated into {@link THEME_STORAGE_KEY}.palette. */
-export const LEGACY_PALETTE_STORAGE_KEY = "octop:ui-palette";
+export const LEGACY_PALETTE_STORAGE_KEY = "agentbuddy:ui-palette";
 
 /** @deprecated Use {@link LEGACY_PALETTE_STORAGE_KEY}; kept for import compatibility. */
 export const PALETTE_STORAGE_KEY = LEGACY_PALETTE_STORAGE_KEY;

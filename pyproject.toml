@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "octop"
-version = "1.0.2b9"
+version = "1.0.2"
 description = "Smarter self-hosted AI assistant for multiple users and agents, built on octop-harness"
 readme = "README.md"
 license = { text = "MIT" }
@@ -96,6 +96,15 @@ dev = [
 
 [project.scripts]
 octop = "octop.cli.main:cli"
+
+[tool.uv.workspace]
+members = ["packages/*"]
+
+[tool.uv.sources]
+octop-harness = { workspace = true }
+octop-gateway = { workspace = true }
+octop-memory = { workspace = true }
+octop-browser = { workspace = true }
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/octop"]

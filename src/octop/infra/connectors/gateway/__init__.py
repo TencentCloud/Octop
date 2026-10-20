@@ -1,4 +1,4 @@
-"""In-process MCP gateway for wkbuddy-hosted connector adapters."""
+"""In-process MCP gateway for agentbuddy-hosted connector adapters."""
 
 from octop.infra.connectors.gateway.langchain import build_gateway_langchain_tools
 from octop.infra.connectors.gateway.protocol import handle_mcp_request

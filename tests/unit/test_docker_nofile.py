@@ -19,6 +19,6 @@ import yaml
 def test_octop_container_has_explicit_nofile_limit(relative_path):
     root = Path(__file__).resolve().parents[2]
     compose = yaml.safe_load((root / relative_path).read_text(encoding="utf-8"))
-    limit = compose["services"]["wkbuddy"]["ulimits"]["nofile"]
+    limit = compose["services"]["agentbuddy"]["ulimits"]["nofile"]
     assert limit["soft"] >= 65535
     assert limit["hard"] >= limit["soft"]

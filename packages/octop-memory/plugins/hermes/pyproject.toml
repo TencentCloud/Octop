@@ -1,0 +1,48 @@
+[build-system]
+requires = ["hatchling>=1.25"]
+build-backend = "hatchling.build"
+
+[project]
+name = "octop-memory-hermes"
+version = "0.3.0"
+description = "Hermes MemoryProvider installer for OctopMemory backed by octop-memory."
+readme = "octopmemory/README.md"
+license = "MIT"
+requires-python = ">=3.12"
+authors = [{ name = "orcakit" }]
+keywords = ["hermes", "memory", "agent", "llm", "octop-memory"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+]
+dependencies = [
+    "click>=8.0",
+    "octop-memory[cli]>=0.9.2",
+]
+
+[project.scripts]
+octop-memory-hermes = "octopmemory.installer:main"
+octopmemory-hermes = "octopmemory.installer:main"
+
+[project.urls]
+Homepage = "https://github.com/TencentCloud/octop-memory"
+Repository = "https://github.com/TencentCloud/octop-memory"
+Issues = "https://github.com/TencentCloud/octop-memory/issues"
+
+[tool.hatch.build.targets.wheel]
+packages = ["octopmemory"]
+
+[tool.hatch.build.targets.wheel.force-include]
+"octopmemory/plugin.yaml" = "octopmemory/plugin.yaml"
+"octopmemory/README.md" = "octopmemory/README.md"
+
+[tool.hatch.build.targets.sdist]
+include = [
+    "octopmemory",
+    "pyproject.toml",
+]

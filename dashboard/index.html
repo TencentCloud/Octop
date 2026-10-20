@@ -36,7 +36,7 @@
       so a stored "light" preference wins over an OS dark setting.
       Storage shape matches appearanceStorage.ts (THEME_STORAGE_KEY = "theme").
     -->
-    <script id="octop-boot-theme">
+    <script id="agentbuddy-boot-theme">
       (function () {
         var KEY = "theme";
         var mode = "light";
@@ -93,7 +93,7 @@
         min-height: 100%;
         min-height: 100lvh;
       }
-      #octop-boot {
+      #agentbuddy-boot {
         /* fixed + inset: always viewport-centered before app CSS sets #root height */
         position: fixed;
         inset: 0;
@@ -118,30 +118,30 @@
       html[data-theme="dark"] body {
         background: #12141c;
       }
-      html[data-theme="dark"] #octop-boot {
+      html[data-theme="dark"] #agentbuddy-boot {
         background: #12141c;
         color: rgba(255, 255, 255, 0.55);
       }
-      #octop-boot-mark {
+      #agentbuddy-boot-mark {
         position: relative;
         width: 88px;
         height: 88px;
         flex: none;
       }
-      #octop-boot-ring {
+      #agentbuddy-boot-ring {
         box-sizing: border-box;
         position: absolute;
         inset: 0;
         border-radius: 50%;
         border: 3px solid rgba(232, 93, 117, 0.18);
         border-top-color: #e85d75;
-        animation: octop-boot-spin 0.85s linear infinite;
+        animation: agentbuddy-boot-spin 0.85s linear infinite;
       }
-      html[data-theme="dark"] #octop-boot-ring {
+      html[data-theme="dark"] #agentbuddy-boot-ring {
         border-color: rgba(240, 139, 154, 0.22);
         border-top-color: #f08b9a;
       }
-      .octop-boot-logo {
+      .agentbuddy-boot-logo {
         position: absolute;
         inset: 14px;
         width: 60px;
@@ -149,29 +149,29 @@
         border-radius: 14px;
         object-fit: contain;
         display: block;
-        animation: octop-boot-breathe 1.6s ease-in-out infinite;
+        animation: agentbuddy-boot-breathe 1.6s ease-in-out infinite;
       }
-      .octop-boot-logo--dark {
+      .agentbuddy-boot-logo--dark {
         display: none;
       }
-      html[data-theme="dark"] .octop-boot-logo--light {
+      html[data-theme="dark"] .agentbuddy-boot-logo--light {
         display: none;
       }
-      html[data-theme="dark"] .octop-boot-logo--dark {
+      html[data-theme="dark"] .agentbuddy-boot-logo--dark {
         display: block;
       }
-      #octop-boot-text {
+      #agentbuddy-boot-text {
         font-size: 14px;
         font-weight: 500;
         letter-spacing: 0.04em;
         user-select: none;
       }
-      @keyframes octop-boot-spin {
+      @keyframes agentbuddy-boot-spin {
         to {
           transform: rotate(360deg);
         }
       }
-      @keyframes octop-boot-breathe {
+      @keyframes agentbuddy-boot-breathe {
         0%,
         100% {
           transform: scale(1);
@@ -183,15 +183,15 @@
         }
       }
       @media (prefers-reduced-motion: reduce) {
-        #octop-boot-ring,
-        .octop-boot-logo {
+        #agentbuddy-boot-ring,
+        .agentbuddy-boot-logo {
           animation: none;
         }
       }
     </style>
     <!--
       Classic script (not type=module) so it runs even when hashed chunks 404.
-      Shares octop:chunk-reload with reloadOnStaleChunk.ts.
+      Shares agentbuddy:chunk-reload with reloadOnStaleChunk.ts.
     -->
     <script>
       (function () {
@@ -207,7 +207,7 @@
           });
         }
 
-        var KEY = "octop:chunk-reload";
+        var KEY = "agentbuddy:chunk-reload";
         // Firefox fires error on <link rel="modulepreload"> for /assets/*.js
         // even when the file is fine; treating those as stale chunks caused
         // infinite location.reload() loops (and aborted real dynamic imports).
@@ -274,30 +274,30 @@
   </head>
   <body>
     <div id="root">
-      <div id="octop-boot" role="status" aria-live="polite">
-        <div id="octop-boot-mark" aria-hidden="true">
-          <div id="octop-boot-ring"></div>
+      <div id="agentbuddy-boot" role="status" aria-live="polite">
+        <div id="agentbuddy-boot-mark" aria-hidden="true">
+          <div id="agentbuddy-boot-ring"></div>
           <img
-            class="octop-boot-logo octop-boot-logo--light"
+            class="agentbuddy-boot-logo agentbuddy-boot-logo--light"
             src="/logo_vertical_dark.svg"
             alt=""
             width="60"
             height="60"
           />
           <img
-            class="octop-boot-logo octop-boot-logo--dark"
+            class="agentbuddy-boot-logo agentbuddy-boot-logo--dark"
             src="/logo_vertical_white.svg"
             alt=""
             width="60"
             height="60"
           />
         </div>
-        <div id="octop-boot-text">Loading…</div>
+        <div id="agentbuddy-boot-text">Loading…</div>
       </div>
     </div>
     <script>
       (function () {
-        var el = document.getElementById("octop-boot-text");
+        var el = document.getElementById("agentbuddy-boot-text");
         if (!el) return;
         try {
           var lang = (

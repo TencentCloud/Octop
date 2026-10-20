@@ -1,6 +1,6 @@
 import type { SkillHubSkill } from "./SkillHubDetailDrawer";
 
-const RANKINGS_CACHE_KEY = "octop:skillhub-rankings:v1";
+const RANKINGS_CACHE_KEY = "agentbuddy:skillhub-rankings:v1";
 const RANKINGS_CACHE_TTL = 24 * 60 * 60 * 1000;
 
 interface RankingsCache {

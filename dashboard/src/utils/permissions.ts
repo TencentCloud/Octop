@@ -9,6 +9,21 @@ export type PermissionHolder = {
 export type PermissionKeys = readonly string[] | "admin";
 
 export const PERM = {
+  skills: ["skills"],
+  subagents: ["subagents"],
+  tools: ["tools"],
+  agentPlugins: ["agent_plugins"],
+  mbti: ["mbti"],
+  memory: ["memory"],
+  /** Personalization tabs other than channels, which has its own nav item. */
+  personalization: [
+    "skills",
+    "subagents",
+    "tools",
+    "agent_plugins",
+    "mbti",
+    "memory",
+  ],
   channels: ["channels"],
   connectors: ["connectors"],
   skillPackages: ["skill_packages"],
@@ -32,10 +47,21 @@ export const PERM = {
 } as const satisfies Record<string, readonly string[]>;
 
 /** Sidebar item key → permission keys. Shared with path guards. */
+export const PERSONALIZATION_TAB_PERMISSIONS = {
+  skills: "skills",
+  subagents: "subagents",
+  tools: "tools",
+  plugins: "agent_plugins",
+  mbti: "mbti",
+  memory: "memory",
+  channels: "channels",
+} as const;
+
 export const NAV_PERMISSIONS = {
   experts: PERM.experts,
   tasks: PERM.tasks,
   "token-usage": PERM.tokenUsage,
+  personalization: PERM.personalization,
   channels: PERM.channels,
   connectors: PERM.connectors,
   "skill-packages": PERM.skillPackages,
@@ -165,12 +191,34 @@ export function pathPermissionKeys(pathname: string): PermissionKeys | null {
   if (pathname.startsWith("/admin/")) {
     return "admin";
   }
-  if (
-    pathname === "/personalization/channels" ||
-    pathname === "/channels" ||
-    pathname.startsWith("/personalization/channels/")
-  ) {
+  if (pathname === "/channels" || pathname.startsWith("/channels/")) {
     return PERM.channels;
+  }
+  if (
+    pathname === "/personalization" ||
+    pathname.startsWith("/personalization/") ||
+    pathname === "/skills" ||
+    pathname === "/subagents" ||
+    pathname === "/mbti" ||
+    pathname === "/memory"
+  ) {
+    const tab =
+      pathname === "/skills"
+        ? "skills"
+        : pathname === "/subagents"
+        ? "subagents"
+        : pathname === "/mbti"
+        ? "mbti"
+        : pathname === "/memory"
+        ? "memory"
+        : pathname.split("/")[2] ?? "";
+    const key =
+      PERSONALIZATION_TAB_PERMISSIONS[
+        tab as keyof typeof PERSONALIZATION_TAB_PERMISSIONS
+      ];
+    if (key) return [key];
+    if (tab) return null;
+    return [...PERM.personalization, ...PERM.channels];
   }
   if (pathname === "/connectors" || pathname.startsWith("/connectors/")) {
     return PERM.connectors;

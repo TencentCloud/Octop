@@ -49,3 +49,47 @@ async def test_search_test_tavily_ok(env: Any) -> None:
     assert body["provider_id"] == "tavily"
     assert body["result_count"] == 1
     assert isinstance(body["response_time_ms"], int)
+
+
+async def test_search_test_new_providers_ok(env: Any) -> None:
+    c, _srv, auth = env
+    cases = [
+        ("doubao", "DOUBAO_SEARCH_API_KEY"),
+        ("deepseek", "DEEPSEEK_API_KEY"),
+        ("exa", "EXA_API_KEY"),
+    ]
+    for provider_id, env_key in cases:
+        with patch(
+            f"octop.infra.utils.search_probe._{'doubao' if provider_id == 'doubao' else provider_id}",
+            new=AsyncMock(
+                return_value={
+                    "success": True,
+                    "result_count": 2,
+                    "message": "ok",
+                }
+            ),
+        ):
+            r = await c.post(
+                f"/api/search/{provider_id}/test",
+                headers=auth,
+                json={"env_vars": {env_key: "x"}},
+            )
+        assert r.status_code == 200
+        body = r.json()
+        assert body["success"] is True
+        assert body["provider_id"] == provider_id
+        assert body["result_count"] == 2
+
+
+async def test_search_test_removed_providers_rejected(env: Any) -> None:
+    c, _srv, auth = env
+    for legacy in ("brave", "google"):
+        r = await c.post(
+            f"/api/search/{legacy}/test",
+            headers=auth,
+            json={"env_vars": {}},
+        )
+        assert r.status_code == 200
+        body = r.json()
+        assert body["success"] is False
+        assert body["error_type"] == "invalid_config"

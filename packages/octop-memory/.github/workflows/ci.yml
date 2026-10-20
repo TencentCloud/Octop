@@ -1,0 +1,57 @@
+name: CI
+
+# Pull requests only. GitHub runs PR checks on the merge result, so a push
+# build on main would re-test content that the release / feature PR already
+# proved green.
+on:
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  quality:
+    name: "Python ${{ matrix.python-version }}"
+    runs-on: ubuntu-latest
+    # Post-release main → develop sync PRs carry main's already-tested tree.
+    if: ${{ !startsWith(github.head_ref, 'chore/sync-develop-after-') }}
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.12", "3.13"]
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: octop_test
+          POSTGRES_PASSWORD: octop_test
+          POSTGRES_DB: octop_memory_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U octop_test -d octop_memory_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      TEST_POSTGRES_DSN: postgresql://octop_test:octop_test@localhost:5432/octop_memory_test
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v4
+        with:
+          enable-cache: true
+          python-version: ${{ matrix.python-version }}
+
+      - name: Install dependencies
+        run: make install
+
+      - name: Lint
+        run: make lint
+
+      - name: Type check
+        run: make typecheck
+
+      - name: Test
+        run: make test

@@ -17,7 +17,7 @@ def resolve_binary(name: str) -> str:
     if not path:
         raise ValueError(
             f"未找到主机命令 {name!r}。"
-            "请打开 wkbuddy「连接器」抽屉，由管理员安装 CLI，或在主机 PATH 中自行安装。"
+            "请打开 agentbuddy「连接器」抽屉，由管理员安装 CLI，或在主机 PATH 中自行安装。"
             "禁止在 Agent 终端中查找或安装该命令。"
         )
     return path
@@ -71,7 +71,8 @@ def _format_cli_error(returncode: int, stdout: str, stderr: str) -> str:
                 hint = str(err.get("hint") or "").strip()
         # Never forward CLI "run xxx" hints to agents — they cause shell/auth loops.
         if hint and any(
-            name in hint.lower() for name in ("lark-cli", "wecom-cli", "agently-cli", "obsidian")
+            name in hint.lower()
+            for name in ("lark-cli", "wecom-cli", "agently-cli", "obsidian", "dws ")
         ):
             hint = ""
         parts = [p for p in (message, hint) if p]

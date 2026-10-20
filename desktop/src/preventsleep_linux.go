@@ -18,8 +18,8 @@ func startSleepInhibitor() (func(), error) {
 		"org.freedesktop.login1.Manager.Inhibit",
 		0,
 		"idle:sleep",
-		"wkbuddy",
-		"wkbuddy desktop is running",
+		"agentbuddy",
+		"agentbuddy desktop is running",
 		"block",
 	)
 	if call.Err != nil {

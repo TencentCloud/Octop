@@ -1,4 +1,4 @@
-"""Map wkbuddy ``storage_backends`` rows to octop-harness backend specs (no I/O)."""
+"""Map agentbuddy ``storage_backends`` rows to octop-harness backend specs (no I/O)."""
 
 from __future__ import annotations
 

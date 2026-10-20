@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { render, screen, waitFor } from "@testing-library/react";
 import { App } from "antd";
 
-const TREE_COLLAPSED_KEY = "octop:workspace-drawer-tree-collapsed";
+const TREE_COLLAPSED_KEY = "agentbuddy:workspace-drawer-tree-collapsed";
 
 vi.mock("../../../../api/request", () => ({
   request: vi.fn(async () => []),

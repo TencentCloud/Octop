@@ -4,7 +4,7 @@ import { terminalStoreTestApi } from "./useTerminal.testUtils";
 describe("ensureDefaultSession", () => {
   beforeEach(() => {
     terminalStoreTestApi.reset();
-    localStorage.removeItem("octop:terminal-sessions");
+    localStorage.removeItem("agentbuddy:terminal-sessions");
   });
 
   it("creates one session when the store is empty", () => {

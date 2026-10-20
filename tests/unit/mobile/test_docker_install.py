@@ -215,7 +215,7 @@ async def test_auto_install_missing_script_reports_error() -> None:
 
     with patch.object(docker_install, "bundled_install_script", return_value=Path("/nonexistent")):
         lines = await collect()
-    assert any("missing from the wkbuddy package" in line for line in lines)
+    assert any("missing from the agentbuddy package" in line for line in lines)
 
 
 @pytest.mark.asyncio

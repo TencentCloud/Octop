@@ -1,7 +1,7 @@
 """Delete LangGraph checkpoints without a live HarnessAgent.
 
 Conversation text lives in the agent's memory store (SQLite file or
-Postgres), not in wkbuddy's ``threads`` table. Callers delete checkpoints
+Postgres), not in agentbuddy's ``threads`` table. Callers delete checkpoints
 first and drop the thread row only after this succeeds, so a failure
 leaves the conversation visible and retryable.
 

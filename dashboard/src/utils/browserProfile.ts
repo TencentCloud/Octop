@@ -1,5 +1,5 @@
 /**
- * Harness browser profile for one wkbuddy user.
+ * Harness browser profile for one agentbuddy user.
  *
  * Shared across that user's agents and conversations. The backend also
  * derives this from the authenticated user and ignores client-supplied names.

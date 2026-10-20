@@ -1,12 +1,6 @@
 import { useTranslation } from "react-i18next";
 import { Navigate, useSearchParams } from "react-router-dom";
-import {
-  Archive,
-  Lock,
-  ShieldCheck,
-  Variable,
-  Activity,
-} from "lucide-react";
+import { Archive, Lock, ShieldCheck, Variable, Activity } from "lucide-react";
 import EnvironmentsPage from "../Environments";
 import { ObservabilitySettingsPanel } from "../Observability";
 import BackupRestorePanel from "../BackupRestore";

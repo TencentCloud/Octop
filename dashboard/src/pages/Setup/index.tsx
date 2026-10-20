@@ -262,7 +262,7 @@ export default function SetupPage() {
                     ? "/logo_horizontal_white.png"
                     : "/logo_horizontal_dark.png"
                 }
-                alt="wkbuddy"
+                alt="agentbuddy"
                 className={styles.wizardHeaderLogo}
               />
               <div className={styles.wizardHeaderBrandText}>

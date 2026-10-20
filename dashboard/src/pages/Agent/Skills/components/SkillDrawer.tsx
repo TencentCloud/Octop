@@ -275,7 +275,7 @@ function parseSkillFormFromDetail(detail: SkillDetail): SkillFormValues {
 type ViewTab = "preview" | "source";
 type EditorTab = "form" | "source";
 
-const FILE_TREE_COLLAPSED_KEY = "octop:skill-drawer-tree-collapsed";
+const FILE_TREE_COLLAPSED_KEY = "agentbuddy:skill-drawer-tree-collapsed";
 
 interface SkillDrawerProps {
   open: boolean;

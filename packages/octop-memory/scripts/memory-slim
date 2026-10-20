@@ -1,0 +1,22 @@
+#!/bin/sh
+# Run the local source without reinstalling the published octop-memory package.
+set -eu
+task_root=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
+if [ -x "$task_root/../Octop/.venv/bin/python" ]; then
+    task_python="$task_root/../Octop/.venv/bin/python"
+elif [ -x "$task_root/.venv/bin/python" ]; then
+    task_python="$task_root/.venv/bin/python"
+else
+    echo "No local Python environment found. Install octop-memory and use: octop-memory db slim FILE" >&2
+    exit 1
+fi
+export PYTHONPATH="$task_root/src${PYTHONPATH:+:$PYTHONPATH}"
+if [ "${1-}" = "--online" ]; then
+    shift
+    export PYTHONPATH="$task_root/../Octop/src:$PYTHONPATH"
+    if [ "$#" -gt 0 ] && [ "${1#-}" = "$1" ]; then
+        set -- --agent "$@"
+    fi
+    exec "$task_python" -c 'from octop.cli.main import cli; cli(prog_name="octop")' memory slim "$@"
+fi
+exec "$task_python" -c 'from octop_memory.adapters.cli import main; main(prog_name="octop-memory")' --backend sqlite db slim "$@"

@@ -82,11 +82,11 @@ async def list_envs(
     "",
     summary="Replace global environment variables",
     description=(
-        "Overwrite ~/.octop/env and align the wkbuddy process environment "
+        "Overwrite ~/.octop/env and align the agentbuddy process environment "
         "(including deleting keys removed from the list). Running execute "
         "shells and Docker sandboxes pick up keys on the next command without "
         "an agent reload. Agents reload in the background only when search "
-        "API keys (Tavily, Brave, …) change."
+        "API keys (Tavily, Doubao, …) change."
     ),
 )
 async def batch_save_envs(

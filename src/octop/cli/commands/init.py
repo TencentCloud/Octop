@@ -1,4 +1,4 @@
-"""`octop init` — bootstrap a fresh wkbuddy install (DB + first admin)."""
+"""`octop init` — bootstrap a fresh agentbuddy install (DB + first admin)."""
 
 from __future__ import annotations
 
@@ -46,7 +46,7 @@ def init(
     force: bool,
     non_interactive: bool,
 ) -> None:
-    """Bootstrap a wkbuddy server (~/.octop dir, DB migrations, first admin)."""
+    """Bootstrap a agentbuddy server (~/.octop dir, DB migrations, first admin)."""
     from octop.config import load_config
     from octop.infra.agents.plugins.manager import PluginManager
     from octop.infra.db.factory import open_database
@@ -75,7 +75,7 @@ def init(
                 from octop.cli.support import prompts as _prompts
 
                 if not _prompts.confirm(
-                    f"Wipe {home}? This deletes ALL wkbuddy state.", default=False
+                    f"Wipe {home}? This deletes ALL agentbuddy state.", default=False
                 ):
                     click.echo("aborted", err=True)
                     raise SystemExit(1)
@@ -128,6 +128,6 @@ def init(
     finally:
         db.close()
 
-    click.echo(f"\u2705 wkbuddy bootstrapped at {home}")
+    click.echo(f"\u2705 agentbuddy bootstrapped at {home}")
     click.echo(f"   admin user: {username}")
     click.echo("   next: `octop run` (optional: `octop agent use <id>` to pin default agent)")

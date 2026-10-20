@@ -62,7 +62,7 @@ process starts. `GET /api/envs` redacts `OCTOP_CAPTCHA_SECRET` as
 If you serve the dashboard behind a CSP, allow
 `challenges.cloudflare.com`; `js.hcaptcha.com`, `newassets.hcaptcha.com`,
 `api.hcaptcha.com`; `www.google.com`, `www.gstatic.com`;
-`turing.captcha.qcloud.com`, `captcha.qq.com`, `ssl.captcha.qq.com`. wkbuddy
+`turing.captcha.qcloud.com`, `captcha.qq.com`, `ssl.captcha.qq.com`. agentbuddy
 does not set these headers itself.
 
 ## Setup & auth
@@ -78,7 +78,7 @@ does not set these headers itself.
 | `POST`   | `/setup/test-provider` | public | Ping a provider draft (kind/base_url/api_key/model) |
 | `POST`   | `/setup/finish` | public | Finalise setup and unlock the rest of the API |
 | `GET`    | `/auth/captcha` | public | `{provider, site_key?}` for the login widget; 503 while setup is required |
-| `POST`   | `/auth/login` | public | body `{username, password, captcha_token?}` (`username` may be email) → `{access_token, role, user, ...}`. When no local password matches, the credentials are retried against the configured LDAP directory; a first directory login provisions a wkbuddy account (unless `auto_provision` is off) and derives the role from `admin_groups` |
+| `POST`   | `/auth/login` | public | body `{username, password, captcha_token?}` (`username` may be email) → `{access_token, role, user, ...}`. When no local password matches, the credentials are retried against the configured LDAP directory; a first directory login provisions a agentbuddy account (unless `auto_provision` is off) and derives the role from `admin_groups` |
 | `GET`    | `/auth/oidc/status` | public | OIDC login availability and provider display name |
 | `POST`   | `/auth/oidc/start` | public | body `{redirect_after?}` → identity-provider authorization URL |
 | `GET`    | `/auth/oidc/callback` | public | Identity-provider callback; redirects to dashboard login completion |
@@ -268,9 +268,13 @@ plugin returns a large `octop_ui` payload, the backend offloads the envelope's
 `"agent"` (run the prompt through the LLM and push the reply).
 Default: `"agent"`. `trigger` accepts cron expressions
 (`"0 9 * * *"`) plus the `interval:N` / `date:ISO8601` aliases
-documented in `infra/cron/trigger.py`. `prompt` must be non-empty and
-≤ 2000 characters. `name` is an optional display label; when omitted,
-the server derives one from `prompt`.
+documented in `infra/cron/trigger.py`. A `date:` job runs once and
+then disables itself, whether the run succeeds or fails; the row stays
+in the list. If the process is down for more than 24 hours past that
+time and the job never ran, `last_status` is `missed` and the job is
+disabled. `prompt` must be non-empty and ≤ 2000 characters. `name` is
+an optional display label; when omitted, the server derives one from
+`prompt`.
 
 ## Providers
 
@@ -515,7 +519,7 @@ for non-`/` paths.
 | `GET`    | `/connectors/oauth/callback` | public | OAuth redirect target |
 | `GET`    | `/connectors/oauth/pending/{state_id}` | user | poll the OAuth result |
 
-Custom MCP OAuth (streamable HTTP, public HTTPS URL only): wkbuddy discovers the authorization
+Custom MCP OAuth (streamable HTTP, public HTTPS URL only): agentbuddy discovers the authorization
 server from the MCP URL (401 / RFC 9728 protected-resource metadata), requires dynamic client
 registration (DCR), stores encrypted tokens in the custom MCP spec, and injects `Authorization:
 Bearer` when loading tools. Loopback and LAN MCP URLs may use HTTP and do not use remote OAuth
@@ -605,7 +609,7 @@ endpoint (public, mounted directly in `api/app.py`).
 | `WS`/`POST`/`GET`/… | `/agents/{aid}/terminal` | owner | AI-assisted remote PTY |
 | `GET` | `/agents/{aid}/terminal/context` | owner | recent terminal context for the AI helper |
 | `WS`/`POST`/`GET`/… | `/browser/...` | user | octop-browser sessions, live stream, record/replay |
-| `POST` | `/browser/shutdown` | user | stop the current user's wkbuddy-managed Chrome |
+| `POST` | `/browser/shutdown` | user | stop the current user's agentbuddy-managed Chrome |
 | `POST` | `/agents/{aid}/upload` | user | multipart upload → `{workspace}/inbound/` |
 | `POST` | `/agents/{aid}/files/access-urls` | user | refresh inbound media URLs (signed) |
 | `GET`  | `/agents/{aid}/files/{path}` | owner | read an inbound file |

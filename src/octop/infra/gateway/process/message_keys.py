@@ -83,9 +83,9 @@ def resolve_user_id_for_message(
     *,
     agent_owner_id: int | None,
 ) -> int:
-    """Resolve wkbuddy ``users.id`` for thread/session persistence.
+    """Resolve agentbuddy ``users.id`` for thread/session persistence.
 
-    Dashboard and CLI use numeric ``subject_id`` values as wkbuddy user ids.
+    Dashboard and CLI use numeric ``subject_id`` values as agentbuddy user ids.
     External IM subject ids belong to a platform-specific identity domain and
     may also be numeric, so those sessions always belong to the agent owner.
     Browser cookies follow this same id (``user-<id>``): IM members of one

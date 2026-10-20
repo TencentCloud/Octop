@@ -152,7 +152,7 @@ def setup(ctx: PluginContext) -> None:
         "get_server_status",
         get_server_status,
         description=(
-            "查询当前 wkbuddy 所在服务器的基本信息与资源负载："
+            "查询当前 agentbuddy 所在服务器的基本信息与资源负载："
             "操作系统、内核版本、主机名、运行时长，以及 CPU / 内存 / 磁盘使用率。"
             "在聊天中渲染可视化状态卡片。无需参数；需要最新数据时再次调用即可。"
         ),

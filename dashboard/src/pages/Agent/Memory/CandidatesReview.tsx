@@ -298,7 +298,7 @@ export default function CandidatesReview({ agentId }: Props) {
             <Typography.Paragraph type="secondary">
               “{selected.verbatim_quote}”
             </Typography.Paragraph>
-            <Typography.Title level={5}>wkbuddy 的建议</Typography.Title>
+            <Typography.Title level={5}>agentbuddy 的建议</Typography.Title>
             <Typography.Paragraph>
               {selected.recommended_action}
               {selected.promotion_reason
@@ -359,7 +359,9 @@ function GuidanceBanner({ status }: { status: CandidateStatus | "" }) {
         message="关于「待处理」草稿"
         description={
           <ul style={{ margin: "4px 0 0", paddingLeft: 18, lineHeight: "1.8" }}>
-            <li>这些草稿由 wkbuddy 从对话中自动提取，正在等待系统规则判断。</li>
+            <li>
+              这些草稿由 agentbuddy 从对话中自动提取，正在等待系统规则判断。
+            </li>
             <li>
               系统会自动决定：直接采纳、合并到已有记忆、标记为待复核或丢弃——
               <strong>无需手动干预</strong>。

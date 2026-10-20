@@ -1,6 +1,6 @@
 export type UiLocale = "zh" | "en";
 
-export const UI_LOCALE_STORAGE_KEY = "octop:ui-locale";
+export const UI_LOCALE_STORAGE_KEY = "agentbuddy:ui-locale";
 
 /** Map browser language tags to a supported dashboard locale. */
 export function detectBrowserLocale(): UiLocale {

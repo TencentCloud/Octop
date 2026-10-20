@@ -251,13 +251,13 @@ async def import_workspace_zip(
         )
 
     # ``DELETE`` / ``move`` refuse this prefix, so writing it from an archive would
-    # leave entries the user cannot remove; the files wkbuddy owns are re-seeded on
+    # leave entries the user cannot remove; the files agentbuddy owns are re-seeded on
     # every agent start anyway.
     pairs = [(rel, blob) for rel, blob in entries if not is_octop_builtin_skills_path(rel)]
     skipped = len(entries) - len(pairs)
     if skipped:
         warnings.append(
-            f"skipped {skipped} {OCTOP_BUILTIN_SKILLS_ROOT!r} entry/entries (owned by wkbuddy)"
+            f"skipped {skipped} {OCTOP_BUILTIN_SKILLS_ROOT!r} entry/entries (owned by agentbuddy)"
         )
     if pairs:
         await workspace.aupload_many(pairs)

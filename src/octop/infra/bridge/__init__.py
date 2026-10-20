@@ -1,4 +1,4 @@
-"""wkbuddy↔wkbuddy instance bridge — remote agents, HTTP tunnel, chat relay."""
+"""agentbuddy↔agentbuddy instance bridge — remote agents, HTTP tunnel, chat relay."""
 
 from __future__ import annotations
 

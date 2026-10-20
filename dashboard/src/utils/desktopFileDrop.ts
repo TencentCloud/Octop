@@ -1,5 +1,5 @@
 /** CustomEvent the desktop shell dispatches after it has expanded dropped paths. */
-export const DESKTOP_FILE_DROP_EVENT = "octop:desktop-file-drop";
+export const DESKTOP_FILE_DROP_EVENT = "agentbuddy:desktop-file-drop";
 
 export interface DesktopDropFileRef {
   name: string;

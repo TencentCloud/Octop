@@ -484,7 +484,7 @@ export default function MemorySettings({ agentId }: Props) {
                           )}
                           description={t(
                             "memory.settings.upgradeHint",
-                            "请配套更新记忆运行组件（octop-harness）。当前不可用的设置已禁用，更新后会恢复。",
+                            "请配套更新记忆运行组件（agentbuddy-harness）。当前不可用的设置已禁用，更新后会恢复。",
                           )}
                         />
                       )}

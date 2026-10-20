@@ -1,4 +1,4 @@
-export const SSO_MESSAGE_TYPE = "octop-sso";
+export const SSO_MESSAGE_TYPE = "agentbuddy-sso";
 
 export type SsoPopupMessage = {
   type: typeof SSO_MESSAGE_TYPE;
@@ -32,7 +32,7 @@ export function notifySsoOpener(
 export function openSsoPopup(): Window | null {
   return window.open(
     "about:blank",
-    "octop-sso",
+    "agentbuddy-sso",
     "popup=yes,width=520,height=720,noopener=no",
   );
 }

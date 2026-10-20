@@ -21,9 +21,7 @@ export default function SidebarCollapsedIconNav({
         return (
           <Tooltip
             key={item.key}
-            title={`${t(item.labelKey)}${
-              item.badge ? ` (${item.badge})` : ""
-            }`}
+            title={`${t(item.labelKey)}${item.badge ? ` (${item.badge})` : ""}`}
             placement="right"
             mouseEnterDelay={0.2}
           >

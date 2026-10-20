@@ -1,9 +1,9 @@
 import { useLocalStorageState } from "ahooks";
 
 /** Solo / 1:1 chat preference (default: expand while streaming). */
-export const COLLAPSE_THINKING_SOLO_KEY = "octop:collapse-thinking";
+export const COLLAPSE_THINKING_SOLO_KEY = "agentbuddy:collapse-thinking";
 /** Team room preference (default: collapse while streaming). */
-export const COLLAPSE_THINKING_TEAM_KEY = "octop:collapse-thinking:team";
+export const COLLAPSE_THINKING_TEAM_KEY = "agentbuddy:collapse-thinking:team";
 
 export function collapseThinkingStorageKey(isTeam: boolean): string {
   return isTeam ? COLLAPSE_THINKING_TEAM_KEY : COLLAPSE_THINKING_SOLO_KEY;

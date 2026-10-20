@@ -1,0 +1,54 @@
+name: CI
+
+# Pull requests only. GitHub runs PR checks on the merge result, so a push
+# build on main would re-test content that the release / feature PR already
+# proved green.
+on:
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  quality:
+    name: "Python ${{ matrix.python-version }}"
+    runs-on: ubuntu-latest
+    # Post-release main → develop sync PRs carry main's already-tested tree.
+    if: ${{ !startsWith(github.head_ref, 'chore/sync-develop-after-') }}
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.12"]
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: astral-sh/setup-uv@v7
+        with:
+          enable-cache: true
+          python-version: ${{ matrix.python-version }}
+
+      - name: Install system dependencies
+        # Skip bubblewrap on GitHub-hosted runners: unprivileged user namespaces
+        # are often blocked ("bwrap: setting up uid map: Permission denied"),
+        # and Linux bwrap integration tests already skip when bwrap is absent.
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends ca-certificates
+
+      - name: Install dependencies
+        run: make install
+
+      - name: Lint
+        run: make lint
+
+      - name: Type check
+        run: make typecheck
+
+      - name: Test
+        env:
+          # Isolate HOME so host PATH/PSModulePath entries under /root do not
+          # trip PermissionError during local_shell path resolution on runners.
+          HOME: /home/runner/harness-ci-home
+          PSModulePath: ""
+        run: |
+          mkdir -p "$HOME"
+          make test

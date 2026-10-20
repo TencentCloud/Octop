@@ -19,7 +19,7 @@ export function showConfirmModal(
     ...(isMobile
       ? {
           width: Math.min(400, Math.max(280, window.innerWidth - 32)),
-          rootClassName: "octop-confirm-modal--mobile",
+          rootClassName: "agentbuddy-confirm-modal--mobile",
         }
       : {}),
     ...props,

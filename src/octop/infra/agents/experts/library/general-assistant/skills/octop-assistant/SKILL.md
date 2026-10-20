@@ -14,17 +14,17 @@ metadata:
     requires: {}
     label:
       zh: "政务伙伴助手"
-      en: "wkbuddy Assistant"
+      en: "agentbuddy Assistant"
     summary:
       zh: "介绍政务伙伴、解答使用问题并指引官网与文档；也可通过 CLI 配置模型、通道、Skill、定时任务以及备份升级。"
-      en: "Introduce wkbuddy, answer usage questions, and point to the site and docs; also configure models, channels, skills, cron, backup, and upgrades via the CLI."
+      en: "Introduce agentbuddy, answer usage questions, and point to the site and docs; also configure models, channels, skills, cron, backup, and upgrades via the CLI."
 ---
 
-# wkbuddy Assistant ⚙️
+# agentbuddy Assistant ⚙️
 
 你是政务伙伴助手。先帮用户理解政务伙伴、找到官网和帮助文档；当用户要改当前这台实例时，再通过 **CLI**（`octop` 命令）配置和管理服务器、Agent、通道与模型。
 
-与 LightClaw 不同，政务伙伴的 CLI 大多通过 **HTTP API** 访问正在运行的 `octop run` 进程，且许多子命令是 **按 Agent 隔离** 的，必须先解析当前用户与 Agent 上下文。
+政务伙伴的 CLI 大多通过 **HTTP API** 访问正在运行的 `octop run` 进程，且许多子命令是 **按 Agent 隔离** 的，必须先解析当前用户与 Agent 上下文。
 
 ---
 
@@ -97,7 +97,6 @@ metadata:
 | 文档首页 / 产品简介 | /guide/ |
 | 安装、五分钟上手 | /guide/quickstart |
 | Docker 部署 | /guide/quickstart-docker |
-| 在腾讯云上使用 | /guide/use-in-tencent-cloud |
 | 核心概念 | /guide/concepts/overview |
 | 专家 / Agent | /guide/concepts/agents |
 | 人格、MBTI | /guide/concepts/experts-personas |
@@ -113,7 +112,6 @@ metadata:
 | 远程手机 | /guide/guides/remote-phone |
 | 备份与恢复 | /guide/guides/backup-restore |
 | 忘记 / 重置密码 | /guide/guides/reset-password |
-| 从 LightClaw 迁移 | /guide/guides/migrate-from-lightclaw |
 | macOS 提示未签名 | /guide/guides/macos-unsigned-app |
 | 配置文件 | /guide/configuration/config-file |
 | 环境变量 | /guide/configuration/environment-variables |

@@ -3,8 +3,8 @@ name: create-cowork-plugin
 description: >
   Guide users through creating a new plugin from scratch in a cowork session.
   Use when users want to create a plugin, build a plugin, make a new plugin, develop a plugin, scaffold a plugin, start a plugin from scratch, or design a plugin.
-  This skill runs in the wkbuddy agent workspace and delivers the final .plugin file as a workspace file.
-compatibility: Runs in the wkbuddy agent workspace; deliverables are workspace files (no mounted plugin directories or outputs folder required).
+  This skill runs in the agentbuddy agent workspace and delivers the final .plugin file as a workspace file.
+compatibility: Runs in the agentbuddy agent workspace; deliverables are workspace files (no mounted plugin directories or outputs folder required).
 ---
 
 # Create Cowork Plugin
@@ -248,7 +248,7 @@ If the user says "whatever you think is best," provide specific recommendations 
 cd /path/to/plugin-dir && zip -r deliverables/plugin-name.plugin . -x "*.DS_Store"
 ```
 
-Create the archive inside this workspace (e.g., a `deliverables/` folder) — do not write to `/tmp/` or other system paths, since the user can only access files inside the workspace. Tell the user they can download `<name>.plugin` from the workspace file panel and install it into Claude Code / Cowork. The package format is the Claude plugin format; it is consumed by Claude, not by wkbuddy.
+Create the archive inside this workspace (e.g., a `deliverables/` folder) — do not write to `/tmp/` or other system paths, since the user can only access files inside the workspace. Tell the user they can download `<name>.plugin` from the workspace file panel and install it into Claude Code / Cowork. The package format is the Claude plugin format; it is consumed by Claude, not by agentbuddy.
 
 > **Naming**: Use the plugin name from `plugin.json` for the `.plugin` file (e.g., if name is `code-reviewer`, output `code-reviewer.plugin`).
 

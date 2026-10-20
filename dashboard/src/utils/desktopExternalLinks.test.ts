@@ -33,7 +33,9 @@ describe("isDesktopExternalWindowTarget", () => {
   it("treats named connector popups like _blank", () => {
     expect(isDesktopExternalWindowTarget()).toBe(true);
     expect(isDesktopExternalWindowTarget("_blank")).toBe(true);
-    expect(isDesktopExternalWindowTarget("octop-connector-auth")).toBe(true);
+    expect(isDesktopExternalWindowTarget("agentbuddy-connector-auth")).toBe(
+      true,
+    );
     expect(isDesktopExternalWindowTarget("_self")).toBe(false);
     expect(isDesktopExternalWindowTarget("_parent")).toBe(false);
     expect(isDesktopExternalWindowTarget("_top")).toBe(false);
@@ -49,7 +51,7 @@ describe("tryInstallDesktopExternalLinks", () => {
 
     const result = window.open(
       "https://example.com/authorize",
-      "octop-connector-auth",
+      "agentbuddy-connector-auth",
       "width=720,height=800",
     );
 
@@ -68,9 +70,9 @@ describe("tryInstallDesktopExternalLinks", () => {
     window.open = fallback as typeof window.open;
     const uninstall = tryInstallDesktopExternalLinks();
 
-    window.open("", "octop-oauth", "width=520,height=720");
+    window.open("", "agentbuddy-oauth", "width=520,height=720");
     window.open("https://example.com/next", "_self");
-    window.open("about:blank", "octop-connector-auth");
+    window.open("about:blank", "agentbuddy-connector-auth");
 
     expect(invoke).not.toHaveBeenCalled();
     expect(fallback).toHaveBeenCalledTimes(3);

@@ -10,7 +10,7 @@ describe("parseKnowledgeCitations", () => {
 
   it("extracts citations and strips the marker", () => {
     const raw =
-      'passages\n\n<!--octop-kb-citations:[{"kb_id":"kb1","kb_name":"Docs","doc_id":"d1","filename":"a.md"}]-->';
+      'passages\n\n<!--agentbuddy-kb-citations:[{"kb_id":"kb1","kb_name":"Docs","doc_id":"d1","filename":"a.md"}]-->';
     expect(parseKnowledgeCitations(raw)).toEqual({
       text: "passages",
       citations: [
@@ -26,13 +26,13 @@ describe("parseKnowledgeCitations", () => {
 
   it("dedupes by doc id", () => {
     const raw =
-      'x<!--octop-kb-citations:[{"doc_id":"d1","filename":"a.md"},{"doc_id":"d1","filename":"a.md"}]-->';
+      'x<!--agentbuddy-kb-citations:[{"doc_id":"d1","filename":"a.md"},{"doc_id":"d1","filename":"a.md"}]-->';
     expect(parseKnowledgeCitations(raw).citations).toHaveLength(1);
   });
 
   it("parses optional path", () => {
     const raw =
-      'x<!--octop-kb-citations:[{"kb_id":"kb1","kb_name":"Docs","doc_id":"d1","filename":"a.md","path":"notes/a.md"}]-->';
+      'x<!--agentbuddy-kb-citations:[{"kb_id":"kb1","kb_name":"Docs","doc_id":"d1","filename":"a.md","path":"notes/a.md"}]-->';
     expect(parseKnowledgeCitations(raw).citations[0]).toMatchObject({
       path: "notes/a.md",
     });
@@ -40,7 +40,7 @@ describe("parseKnowledgeCitations", () => {
 
   it("omits path when absent", () => {
     const raw =
-      'x<!--octop-kb-citations:[{"doc_id":"d1","filename":"a.md"}]-->';
+      'x<!--agentbuddy-kb-citations:[{"doc_id":"d1","filename":"a.md"}]-->';
     expect(parseKnowledgeCitations(raw).citations[0].path).toBeUndefined();
   });
 });

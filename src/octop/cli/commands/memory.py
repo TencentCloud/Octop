@@ -1,4 +1,4 @@
-"""Manual memory maintenance coordinated by the running wkbuddy process."""
+"""Manual memory maintenance coordinated by the running agentbuddy process."""
 
 from __future__ import annotations
 
@@ -21,7 +21,7 @@ from octop.infra.utils.paths import PathLayout
 
 @click.group()
 def memory() -> None:
-    """Memory maintenance through the running local wkbuddy server."""
+    """Memory maintenance through the running local agentbuddy server."""
 
 
 def _print_agents(agents: list[dict[str, str]], locale: str) -> None:

@@ -22,7 +22,7 @@ router = APIRouter()
 
 class BridgeCreateBody(BaseModel):
     peer_base_url: str = Field(
-        ..., description="Remote wkbuddy base URL, e.g. https://cloud.example"
+        ..., description="Remote agentbuddy base URL, e.g. https://cloud.example"
     )
     peer_username: str = Field(..., min_length=1)
     password: str = Field(..., min_length=1)
@@ -42,13 +42,13 @@ class BridgeCreateBody(BaseModel):
 
 
 class BridgeProbeBody(BaseModel):
-    peer_base_url: str = Field(..., description="Remote wkbuddy base URL")
+    peer_base_url: str = Field(..., description="Remote agentbuddy base URL")
     peer_username: str = Field(..., min_length=1)
     password: str = Field(..., min_length=1)
 
 
 class BridgeConnectionProbeBody(BaseModel):
-    peer_base_url: str = Field(..., description="Remote wkbuddy base URL")
+    peer_base_url: str = Field(..., description="Remote agentbuddy base URL")
     peer_username: str = Field(..., min_length=1)
     password: str | None = Field(
         default=None,
@@ -63,7 +63,7 @@ def _bridge(server: Any) -> Any:
     return rt.bridge_manager
 
 
-@router.post("/bridge/probe", summary="Probe a remote wkbuddy (login + list experts)")
+@router.post("/bridge/probe", summary="Probe a remote agentbuddy (login + list experts)")
 async def probe_peer(
     body: BridgeProbeBody,
     user: Any = Depends(current_user),
@@ -204,7 +204,7 @@ class BridgePatchBody(BaseModel):
     peer_base_url: str | None = Field(
         default=None,
         min_length=1,
-        description="Remote wkbuddy base URL (re-login when changed)",
+        description="Remote agentbuddy base URL (re-login when changed)",
     )
     peer_username: str | None = Field(
         default=None,
@@ -507,7 +507,7 @@ async def bridge_browser_stream_ws(
 async def bridge_inbound_ws(
     websocket: WebSocket,
 ) -> None:
-    """Peer wkbuddy dials in; JWT is the peer user's token on this instance."""
+    """Peer agentbuddy dials in; JWT is the peer user's token on this instance."""
     server = websocket.app.state.octop_server
     # Accept before any rejection. Closing first makes uvicorn answer HTTP 403
     # with an empty body, which the dialer misreads as "route missing".

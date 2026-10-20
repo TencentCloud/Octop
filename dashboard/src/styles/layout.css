@@ -28,40 +28,44 @@ html {
 }
 
 /* Wails v3 frameless drag: the element under the cursor must set this. */
-html[data-octop-desktop-chrome] .octop-desktop-drag {
+html[data-agentbuddy-desktop-chrome] .agentbuddy-desktop-drag {
   --wails-draggable: drag;
   user-select: none;
 }
 
-html[data-octop-desktop-chrome] .octop-desktop-no-drag,
-html[data-octop-desktop-chrome] .octop-desktop-drag button,
-html[data-octop-desktop-chrome] .octop-desktop-drag a,
-html[data-octop-desktop-chrome] .octop-desktop-drag input,
-html[data-octop-desktop-chrome] .octop-desktop-drag textarea,
-html[data-octop-desktop-chrome] .octop-desktop-drag select,
-html[data-octop-desktop-chrome] .octop-desktop-drag [role="button"],
-html[data-octop-desktop-chrome] [data-octop-no-drag] {
+html[data-agentbuddy-desktop-chrome] .agentbuddy-desktop-no-drag,
+html[data-agentbuddy-desktop-chrome] .agentbuddy-desktop-drag button,
+html[data-agentbuddy-desktop-chrome] .agentbuddy-desktop-drag a,
+html[data-agentbuddy-desktop-chrome] .agentbuddy-desktop-drag input,
+html[data-agentbuddy-desktop-chrome] .agentbuddy-desktop-drag textarea,
+html[data-agentbuddy-desktop-chrome] .agentbuddy-desktop-drag select,
+html[data-agentbuddy-desktop-chrome] .agentbuddy-desktop-drag [role="button"],
+html[data-agentbuddy-desktop-chrome] [data-agentbuddy-no-drag] {
   --wails-draggable: no-drag;
 }
 
 /* Right-edge overlays sit under the frameless caption buttons unless inset. */
-html[data-octop-desktop-chrome] [data-octop-chrome-end-pad] {
+html[data-agentbuddy-desktop-chrome] [data-agentbuddy-chrome-end-pad] {
   padding-inline-end: max(
     12px,
     var(--window-controls-inset-end, 0px)
   ) !important;
 }
 
-html[data-octop-desktop-chrome] .octop-drawer-right .octop-drawer-header,
-html[data-octop-desktop-chrome] .ant-drawer-right .ant-drawer-header {
+html[data-agentbuddy-desktop-chrome]
+  .agentbuddy-drawer-right
+  .agentbuddy-drawer-header,
+html[data-agentbuddy-desktop-chrome] .ant-drawer-right .ant-drawer-header {
   padding-inline-end: max(
     24px,
     var(--window-controls-inset-end, 0px)
   ) !important;
 }
 
-html[data-octop-desktop-chrome] .octop-drawer-right .octop-drawer-close,
-html[data-octop-desktop-chrome] .ant-drawer-right .ant-drawer-close {
+html[data-agentbuddy-desktop-chrome]
+  .agentbuddy-drawer-right
+  .agentbuddy-drawer-close,
+html[data-agentbuddy-desktop-chrome] .ant-drawer-right .ant-drawer-close {
   inset-inline-end: var(--window-controls-inset-end, 0px) !important;
 }
 
@@ -76,22 +80,22 @@ html[data-octop-desktop-chrome] .ant-drawer-right .ant-drawer-close {
   overscroll-behavior: none;
 }
 
-/* ConfigProvider prefixCls="octop" → antd <App> is .octop-app.
+/* ConfigProvider prefixCls="octop" → antd <App> is .agentbuddy-app.
    Without an explicit height, MainLayout's height:100% cannot fill #root. */
-.octop-app,
+.agentbuddy-app,
 .ant-app {
   height: 100%;
 }
 
 /* Chat paints to the screen edge; don't leak page-layout gray under the
    composer or in the iOS home-indicator letterbox. */
-html.octop-chat-open,
-html.octop-chat-open body,
-html.octop-chat-open #root {
+html.agentbuddy-chat-open,
+html.agentbuddy-chat-open body,
+html.agentbuddy-chat-open #root {
   background: var(--fn-bg-elevated, #fff);
 }
 
-html.octop-chat-open .page-container {
+html.agentbuddy-chat-open .page-container {
   background: var(--fn-bg-elevated, #fff);
 }
 
@@ -104,14 +108,14 @@ a,
 }
 
 .ant-layout,
-.octop-layout {
+.agentbuddy-layout {
   min-height: 0;
   max-height: 100%;
   overflow: hidden;
 }
 
 .ant-layout-content,
-.octop-layout-content {
+.agentbuddy-layout-content {
   overflow: hidden;
   height: 100%;
 }
@@ -163,7 +167,7 @@ a,
 /* ---- Dark mode: force antd component backgrounds ---- */
 /* Cards */
 html[data-theme="dark"] .ant-card,
-html[data-theme="dark"] .octop-ant-card,
+html[data-theme="dark"] .agentbuddy-ant-card,
 html[data-theme="dark"] [class$="-card"]:not([class*="-card-"]) {
   background-color: var(--fn-bg-secondary) !important;
   border-color: var(--fn-border-primary) !important;
@@ -171,96 +175,96 @@ html[data-theme="dark"] [class$="-card"]:not([class*="-card-"]) {
 
 /* Tables */
 html[data-theme="dark"] .ant-table-wrapper,
-html[data-theme="dark"] .octop-ant-table-wrapper {
+html[data-theme="dark"] .agentbuddy-ant-table-wrapper {
   background-color: transparent !important;
 }
 
 html[data-theme="dark"] .ant-table,
-html[data-theme="dark"] .octop-ant-table {
+html[data-theme="dark"] .agentbuddy-ant-table {
   background-color: var(--fn-bg-primary) !important;
 }
 
 html[data-theme="dark"] .ant-table-container,
-html[data-theme="dark"] .octop-ant-table-container {
+html[data-theme="dark"] .agentbuddy-ant-table-container {
   border-color: var(--fn-border-primary) !important;
 }
 
 html[data-theme="dark"] .ant-table-thead > tr > th,
-html[data-theme="dark"] .octop-ant-table-thead > tr > th,
+html[data-theme="dark"] .agentbuddy-ant-table-thead > tr > th,
 html[data-theme="dark"] .ant-table-thead > tr > td,
-html[data-theme="dark"] .octop-ant-table-thead > tr > td {
+html[data-theme="dark"] .agentbuddy-ant-table-thead > tr > td {
   background-color: var(--fn-bg-tertiary) !important;
   border-color: var(--fn-border-primary) !important;
   color: var(--fn-text-secondary) !important;
 }
 
 html[data-theme="dark"] .ant-table-tbody > tr > td,
-html[data-theme="dark"] .octop-ant-table-tbody > tr > td {
+html[data-theme="dark"] .agentbuddy-ant-table-tbody > tr > td {
   border-color: var(--fn-border-primary) !important;
   color: var(--fn-text-primary) !important;
 }
 
 html[data-theme="dark"] .ant-table-tbody > tr.ant-table-row:hover > td,
-html[data-theme="dark"] .octop-ant-table-tbody > tr:hover > td {
+html[data-theme="dark"] .agentbuddy-ant-table-tbody > tr:hover > td {
   background-color: var(--fn-bg-hover) !important;
 }
 
 html[data-theme="dark"] .ant-table-cell-row-hover,
-html[data-theme="dark"] .octop-ant-table-cell-row-hover {
+html[data-theme="dark"] .agentbuddy-ant-table-cell-row-hover {
   background-color: var(--fn-bg-hover) !important;
 }
 
 html[data-theme="dark"] .ant-table-placeholder td,
-html[data-theme="dark"] .octop-ant-table-placeholder td {
+html[data-theme="dark"] .agentbuddy-ant-table-placeholder td {
   background-color: transparent !important;
 }
 
 html[data-theme="dark"] .ant-empty-description,
-html[data-theme="dark"] .octop-ant-empty-description {
+html[data-theme="dark"] .agentbuddy-ant-empty-description {
   color: var(--fn-text-tertiary) !important;
 }
 
 /* Inputs */
 html[data-theme="dark"] .ant-input,
-html[data-theme="dark"] .octop-ant-input,
+html[data-theme="dark"] .agentbuddy-ant-input,
 html[data-theme="dark"] .ant-input-affix-wrapper,
-html[data-theme="dark"] .octop-ant-input-affix-wrapper {
+html[data-theme="dark"] .agentbuddy-ant-input-affix-wrapper {
   background-color: var(--fn-bg-primary) !important;
   border-color: var(--fn-border-input) !important;
   color: var(--fn-text-primary) !important;
 }
 
 html[data-theme="dark"] .ant-input::placeholder,
-html[data-theme="dark"] .octop-ant-input::placeholder {
+html[data-theme="dark"] .agentbuddy-ant-input::placeholder {
   color: var(--fn-text-placeholder) !important;
 }
 
 /* Select */
 html[data-theme="dark"] .ant-select-selector,
-html[data-theme="dark"] .octop-ant-select-selector {
+html[data-theme="dark"] .agentbuddy-ant-select-selector {
   background-color: var(--fn-bg-primary) !important;
   border-color: var(--fn-border-input) !important;
   color: var(--fn-text-primary) !important;
 }
 
 html[data-theme="dark"] .ant-select-dropdown,
-html[data-theme="dark"] .octop-ant-select-dropdown {
+html[data-theme="dark"] .agentbuddy-ant-select-dropdown {
   background-color: var(--fn-bg-elevated) !important;
 }
 
 html[data-theme="dark"] .ant-select-item-option-active,
-html[data-theme="dark"] .octop-ant-select-item-option-active {
+html[data-theme="dark"] .agentbuddy-ant-select-item-option-active {
   background-color: var(--fn-bg-hover) !important;
 }
 
 html[data-theme="dark"] .ant-select-item-option-selected,
-html[data-theme="dark"] .octop-ant-select-item-option-selected {
+html[data-theme="dark"] .agentbuddy-ant-select-item-option-selected {
   background-color: var(--fn-bg-active) !important;
 }
 
 /* InputNumber */
 html[data-theme="dark"] .ant-input-number,
-html[data-theme="dark"] .octop-ant-input-number {
+html[data-theme="dark"] .agentbuddy-ant-input-number {
   background-color: var(--fn-bg-primary) !important;
   border-color: var(--fn-border-input) !important;
   color: var(--fn-text-primary) !important;
@@ -268,78 +272,78 @@ html[data-theme="dark"] .octop-ant-input-number {
 
 /* Modal */
 html[data-theme="dark"] .ant-modal-content,
-html[data-theme="dark"] .octop-ant-modal-content {
+html[data-theme="dark"] .agentbuddy-ant-modal-content {
   background-color: var(--fn-bg-elevated) !important;
 }
 
 html[data-theme="dark"] .ant-modal-header,
-html[data-theme="dark"] .octop-ant-modal-header {
+html[data-theme="dark"] .agentbuddy-ant-modal-header {
   background-color: var(--fn-bg-elevated) !important;
 }
 
 /* Form */
 html[data-theme="dark"] .ant-form-item-label > label,
-html[data-theme="dark"] .octop-ant-form-item-label > label {
+html[data-theme="dark"] .agentbuddy-ant-form-item-label > label {
   color: var(--fn-text-secondary) !important;
 }
 
 /* Drawer */
 html[data-theme="dark"] .ant-drawer-content,
-html[data-theme="dark"] .octop-ant-drawer-content {
+html[data-theme="dark"] .agentbuddy-ant-drawer-content {
   background-color: var(--fn-bg-elevated) !important;
 }
 
 /* Pagination */
 html[data-theme="dark"] .ant-pagination-item,
-html[data-theme="dark"] .octop-ant-pagination-item {
+html[data-theme="dark"] .agentbuddy-ant-pagination-item {
   background-color: transparent !important;
   border-color: var(--fn-border-input) !important;
 }
 
 html[data-theme="dark"] .ant-pagination-item a,
-html[data-theme="dark"] .octop-ant-pagination-item a {
+html[data-theme="dark"] .agentbuddy-ant-pagination-item a {
   color: var(--fn-text-primary) !important;
 }
 
 /* Checkbox */
 html[data-theme="dark"] .ant-checkbox-inner,
-html[data-theme="dark"] .octop-ant-checkbox-inner {
+html[data-theme="dark"] .agentbuddy-ant-checkbox-inner {
   background-color: transparent !important;
   border-color: var(--fn-border-input) !important;
 }
 
 /* Tabs */
 html[data-theme="dark"] .ant-tabs-tab,
-html[data-theme="dark"] .octop-ant-tabs-tab {
+html[data-theme="dark"] .agentbuddy-ant-tabs-tab {
   color: var(--fn-text-secondary) !important;
 }
 
 /* Tooltip */
 html[data-theme="dark"] .ant-tooltip-inner,
-html[data-theme="dark"] .octop-ant-tooltip-inner {
+html[data-theme="dark"] .agentbuddy-ant-tooltip-inner {
   background-color: var(--fn-bg-elevated) !important;
 }
 
 /* Popover */
 html[data-theme="dark"] .ant-popover-inner,
-html[data-theme="dark"] .octop-ant-popover-inner {
+html[data-theme="dark"] .agentbuddy-ant-popover-inner {
   background-color: var(--fn-bg-elevated) !important;
 }
 
 /* Tag */
 html[data-theme="dark"] .ant-tag,
-html[data-theme="dark"] .octop-ant-tag {
+html[data-theme="dark"] .agentbuddy-ant-tag {
   border-color: var(--fn-border-primary) !important;
 }
 
 /* Switch */
 html[data-theme="dark"] .ant-switch,
-html[data-theme="dark"] .octop-ant-switch {
+html[data-theme="dark"] .agentbuddy-ant-switch {
   background: var(--fn-text-quaternary) !important;
 }
 
 html[data-theme="dark"] .ant-switch-checked,
-html[data-theme="dark"] .octop-ant-switch-checked {
+html[data-theme="dark"] .agentbuddy-ant-switch-checked {
   background: var(--fn-color-brand) !important;
 }
 
@@ -389,10 +393,10 @@ html[data-theme="dark"] .octop-ant-switch-checked {
   }
 
   /* Tables scroll inside their own wrapper on mobile — do not set
-     min-width on .octop-table (that expands the page and creates a
+     min-width on .agentbuddy-table (that expands the page and creates a
      second, page-level horizontal scrollbar). */
   .ant-table-wrapper,
-  .octop-table-wrapper {
+  .agentbuddy-table-wrapper {
     max-width: 100%;
     min-width: 0;
   }
@@ -409,18 +413,18 @@ html[data-theme="dark"] .octop-ant-switch-checked {
   .ant-drawer-left .ant-drawer-header,
   .ant-drawer-right .ant-drawer-header,
   .ant-drawer-top .ant-drawer-header,
-  .octop-drawer-left .octop-drawer-header,
-  .octop-drawer-right .octop-drawer-header,
-  .octop-drawer-top .octop-drawer-header {
+  .agentbuddy-drawer-left .agentbuddy-drawer-header,
+  .agentbuddy-drawer-right .agentbuddy-drawer-header,
+  .agentbuddy-drawer-top .agentbuddy-drawer-header {
     padding-top: max(16px, env(safe-area-inset-top, 0px));
   }
 
   .ant-drawer-left .ant-drawer-footer,
   .ant-drawer-right .ant-drawer-footer,
   .ant-drawer-bottom .ant-drawer-footer,
-  .octop-drawer-left .octop-drawer-footer,
-  .octop-drawer-right .octop-drawer-footer,
-  .octop-drawer-bottom .octop-drawer-footer {
+  .agentbuddy-drawer-left .agentbuddy-drawer-footer,
+  .agentbuddy-drawer-right .agentbuddy-drawer-footer,
+  .agentbuddy-drawer-bottom .agentbuddy-drawer-footer {
     padding-bottom: max(10px, env(safe-area-inset-bottom, 0px));
   }
 
@@ -436,40 +440,44 @@ html[data-theme="dark"] .octop-ant-switch-checked {
   }
 
   /* Confirm dialogs — full-width stacked action buttons */
-  .octop-confirm-modal--mobile.octop-modal-root .octop-modal,
-  .octop-confirm-modal--mobile [class*="-modal"] {
+  .agentbuddy-confirm-modal--mobile.agentbuddy-modal-root .agentbuddy-modal,
+  .agentbuddy-confirm-modal--mobile [class*="-modal"] {
     max-width: calc(100vw - 32px) !important;
     margin: 0 auto !important;
     padding-bottom: 0;
   }
 
-  .octop-confirm-modal--mobile .octop-modal-confirm-body-wrapper,
-  .octop-confirm-modal--mobile [class*="-modal-confirm-body-wrapper"] {
+  .agentbuddy-confirm-modal--mobile .agentbuddy-modal-confirm-body-wrapper,
+  .agentbuddy-confirm-modal--mobile [class*="-modal-confirm-body-wrapper"] {
     padding: 0 2px;
   }
 
-  .octop-confirm-modal--mobile .octop-modal-confirm-title,
-  .octop-confirm-modal--mobile [class*="-modal-confirm-title"] {
+  .agentbuddy-confirm-modal--mobile .agentbuddy-modal-confirm-title,
+  .agentbuddy-confirm-modal--mobile [class*="-modal-confirm-title"] {
     font-size: 17px;
     line-height: 1.35;
   }
 
-  .octop-confirm-modal--mobile .octop-modal-confirm-content,
-  .octop-confirm-modal--mobile [class*="-modal-confirm-content"] {
+  .agentbuddy-confirm-modal--mobile .agentbuddy-modal-confirm-content,
+  .agentbuddy-confirm-modal--mobile [class*="-modal-confirm-content"] {
     font-size: 15px;
     line-height: 1.5;
   }
 
-  .octop-confirm-modal--mobile .octop-modal-confirm-btns,
-  .octop-confirm-modal--mobile [class*="-modal-confirm-btns"] {
+  .agentbuddy-confirm-modal--mobile .agentbuddy-modal-confirm-btns,
+  .agentbuddy-confirm-modal--mobile [class*="-modal-confirm-btns"] {
     display: flex;
     flex-direction: column-reverse;
     gap: 8px;
     margin-top: 20px;
   }
 
-  .octop-confirm-modal--mobile .octop-modal-confirm-btns .octop-btn,
-  .octop-confirm-modal--mobile [class*="-modal-confirm-btns"] [class*="-btn"] {
+  .agentbuddy-confirm-modal--mobile
+    .agentbuddy-modal-confirm-btns
+    .agentbuddy-btn,
+  .agentbuddy-confirm-modal--mobile
+    [class*="-modal-confirm-btns"]
+    [class*="-btn"] {
     width: 100%;
     margin-inline-start: 0 !important;
     min-height: 40px;

@@ -5,15 +5,15 @@
         <key>CFBundlePackageType</key>
         <string>APPL</string>
         <key>CFBundleName</key>
-        <string>wkbuddy</string>
+        <string>agentbuddy</string>
         <key>CFBundleExecutable</key>
-        <string>wkbuddy</string>
+        <string>agentbuddy</string>
         <key>CFBundleIdentifier</key>
-        <string>com.daoshengtech.wkbuddy</string>
+        <string>com.daoshengtech.agentbuddy</string>
         <key>CFBundleVersion</key>
         <string>0.9.26</string>
         <key>CFBundleGetInfoString</key>
-        <string>wkbuddy desktop shell</string>
+        <string>agentbuddy desktop shell</string>
         <key>CFBundleShortVersionString</key>
         <string>0.9.26</string>
         <key>CFBundleIconFile</key>

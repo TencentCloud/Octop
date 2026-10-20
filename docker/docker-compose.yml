@@ -1,5 +1,5 @@
 # =============================================================================
-# wkbuddy — Docker Compose
+# agentbuddy — Docker Compose
 #
 # 用法（在仓库根目录执行）:
 #   docker compose -f docker/docker-compose.yml up -d
@@ -21,12 +21,12 @@
 # =============================================================================
 
 services:
-  wkbuddy:
+  agentbuddy:
     build:
       context: ..
       dockerfile: docker/Dockerfile
-    image: wkbuddy:latest
-    container_name: wkbuddy
+    image: agentbuddy:latest
+    container_name: agentbuddy
     restart: unless-stopped
     ulimits:
       nofile:

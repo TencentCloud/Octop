@@ -1,0 +1,93 @@
+# OS
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+
+# Environment / secrets
+.env
+.env.*
+!.env.example
+.envrc
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+dist/
+*.egg-info/
+*.egg
+.eggs/
+wheels/
+*.whl
+pip-wheel-metadata/
+
+# Virtual environments
+.venv/
+venv/
+env/
+ENV/
+
+# Test / coverage
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+.coverage.*
+htmlcov/
+coverage.xml
+.tox/
+.nox/
+.hypothesis/
+
+# IDE / editors
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.project
+.pydevproject
+
+# uv
+.uv/
+
+# Local agent runtime artifacts
+agent_root/
+.e2e_root/
+.cos_e2e_root/
+.init_demo_root/
+.skills_tour_root/
+sessions/
+*.sqlite
+*.sqlite-journal
+*.sqlite-wal
+*.sqlite-shm
+*.db
+*.db-wal
+*.db-shm
+
+# Per-project octop-harness runtime (contains secrets, DB, JSONL logs).
+# NOTE: to make !exceptions work, the parent dir must NOT be blanket-ignored.
+# So we ignore individual sensitive files inside .octop-harness/ instead of
+# ignoring the whole directory.
+.octop-harness/config.json
+.octop-harness/credentials.json
+.octop-harness/*.sqlite
+.octop-harness/*.sqlite-*
+.octop-harness/*.db
+.octop-harness/*.db-*
+.octop-harness/sessions/
+.octop-harness/logs/
+.octop-harness/jsonl/
+
+# Logs
+*.log
+logs/

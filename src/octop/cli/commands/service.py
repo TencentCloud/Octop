@@ -1,4 +1,4 @@
-"""`octop service` — install and manage the wkbuddy system service."""
+"""`octop service` — install and manage the agentbuddy system service."""
 
 from __future__ import annotations
 
@@ -27,7 +27,7 @@ from octop.infra.setup.service import (
 
 @click.group()
 def service() -> None:
-    """Manage the wkbuddy system service (systemd on Linux, launchd on macOS)."""
+    """Manage the agentbuddy system service (systemd on Linux, launchd on macOS)."""
 
 
 def _runtime(host: str | None, port: int | None, scope: ServiceScope | None) -> ServiceRuntime:

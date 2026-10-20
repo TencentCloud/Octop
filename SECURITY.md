@@ -18,7 +18,7 @@ We aim to acknowledge reports within **3 business days** and provide a fix timel
 
 ## Scope
 
-wkbuddy is a self-hosted control plane. Operators are responsible for:
+agentbuddy is a self-hosted control plane. Operators are responsible for:
 
 - Securing the host and network exposure of `octop run`
 - Rotating JWT secrets and admin credentials

@@ -98,7 +98,7 @@ func backupSQLiteBeforeUpgrade(root, currentVersion, nextVersion string) (string
 		return "", fmt.Errorf("create backup directory: %w", err)
 	}
 	name := fmt.Sprintf(
-		"octop-desktop-pre-upgrade-%s-to-%s-%s.db",
+		"agentbuddy-desktop-pre-upgrade-%s-to-%s-%s.db",
 		safeVersion(currentVersion),
 		safeVersion(nextVersion),
 		time.Now().UTC().Format("20060102T150405.000000000Z"),

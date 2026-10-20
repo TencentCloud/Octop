@@ -478,6 +478,22 @@ def validate_create_credentials(
             return {"internal_token": new_internal_token(), "cli_config_key": new_ulid()}
         if entry.kind == "obsidian-cli":
             return _obsidian_cli_credentials(credentials)
+        if entry.kind == "dingtalk-cli":
+            client_id = str(credentials.get("client_id") or "").strip()
+            client_secret = str(credentials.get("client_secret") or "").strip()
+            # dws accepts only a complete pair; none means DingTalk's official app.
+            if bool(client_id) != bool(client_secret):
+                raise ValueError(
+                    "client_id and client_secret must be set together for DingTalk CLI"
+                )
+            out = {
+                "internal_token": new_internal_token(),
+                "cli_config_key": str(credentials.get("cli_config_key") or "").strip()
+                or new_ulid(),
+            }
+            if client_id:
+                out.update(client_id=client_id, client_secret=client_secret)
+            return out
         if entry.kind == "weknora":
             base_url = normalize_weknora_base_url(str(credentials.get("base_url") or ""))
             out = {

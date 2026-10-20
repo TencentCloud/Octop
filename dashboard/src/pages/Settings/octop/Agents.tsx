@@ -58,7 +58,7 @@ const STATE_COLORS: Record<string, string> = {
 const STARTABLE = new Set(["stopped", "created", "error", "failed"]);
 
 type ViewMode = "card" | "table";
-const VIEW_STORAGE_KEY = "octop:admin-agents-view";
+const VIEW_STORAGE_KEY = "agentbuddy:admin-agents-view";
 
 function loadViewMode(): ViewMode {
   const stored = localStorage.getItem(VIEW_STORAGE_KEY);

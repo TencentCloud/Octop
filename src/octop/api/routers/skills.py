@@ -752,7 +752,7 @@ async def export_skill_zip(
     name: str,
     request: Request,
     as_user: int | None = None,
-    user: Any = Depends(current_user),
+    user: Any = Depends(require_permission("skills")),
     server: Any = Depends(get_server),
 ) -> Response:
     ctx = await _ctx(agent_id, user=user, as_user=as_user, server=server)
@@ -790,7 +790,7 @@ async def export_skills_zip(
     body: ExportSkillsBody,
     request: Request,
     as_user: int | None = None,
-    user: Any = Depends(current_user),
+    user: Any = Depends(require_permission("skills")),
     server: Any = Depends(get_server),
 ) -> Response:
     ctx = await _ctx(agent_id, user=user, as_user=as_user, server=server)
@@ -881,7 +881,7 @@ async def create_skill(
     agent_id: str,
     body: CreateSkillBody,
     as_user: int | None = None,
-    user: Any = Depends(current_user),
+    user: Any = Depends(require_permission("skills")),
     server: Any = Depends(get_server),
 ) -> dict[str, Any]:
     ctx = await _ctx(agent_id, user=user, as_user=as_user, server=server)
@@ -927,7 +927,7 @@ async def update_skill(
     name: str,
     body: UpdateSkillBody,
     as_user: int | None = None,
-    user: Any = Depends(current_user),
+    user: Any = Depends(require_permission("skills")),
     server: Any = Depends(get_server),
 ) -> dict[str, Any]:
     """Overwrite an installed workspace skill via BackendWorkspace only.
@@ -1026,7 +1026,7 @@ async def copy_skill_from_agent(
     body: CopyWorkspaceSkillBody,
     request: Request,
     as_user: int | None = None,
-    user: Any = Depends(current_user),
+    user: Any = Depends(require_permission("skills")),
     server: Any = Depends(get_server),
 ) -> dict[str, Any]:
     dest = await _ctx(agent_id, user=user, as_user=as_user, server=server)
@@ -1061,7 +1061,7 @@ async def import_skill_from_url(
     body: ImportSkillBody,
     request: Request,
     as_user: int | None = None,
-    user: Any = Depends(current_user),
+    user: Any = Depends(require_permission("skills")),
     server: Any = Depends(get_server),
 ) -> dict[str, Any]:
     """Import a skill bundle from a supported external URL into the agent workspace."""
@@ -1151,7 +1151,7 @@ async def delete_skill(
     agent_id: str,
     name: str,
     as_user: int | None = None,
-    user: Any = Depends(current_user),
+    user: Any = Depends(require_permission("skills")),
     server: Any = Depends(get_server),
 ) -> None:
     """Soft-delete via marker — see module docstring for rationale."""
@@ -1215,7 +1215,7 @@ async def enable_skill(
     agent_id: str,
     name: str,
     as_user: int | None = None,
-    user: Any = Depends(current_user),
+    user: Any = Depends(require_permission("skills")),
     server: Any = Depends(get_server),
 ) -> None:
     ctx = await _ctx(agent_id, user=user, as_user=as_user, server=server)
@@ -1231,7 +1231,7 @@ async def disable_skill(
     agent_id: str,
     name: str,
     as_user: int | None = None,
-    user: Any = Depends(current_user),
+    user: Any = Depends(require_permission("skills")),
     server: Any = Depends(get_server),
 ) -> None:
     ctx = await _ctx(agent_id, user=user, as_user=as_user, server=server)
@@ -1498,7 +1498,7 @@ async def hub_install_skill(
     agent_id: str,
     body: HubInstallBody,
     as_user: int | None = None,
-    user: Any = Depends(current_user),
+    user: Any = Depends(require_permission("skills")),
     server: Any = Depends(get_server),
 ) -> dict[str, Any]:
     """Install a SkillHub skill into the specified agent's workspace.

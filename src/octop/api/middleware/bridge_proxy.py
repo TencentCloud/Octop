@@ -64,6 +64,7 @@ def _is_header_tunneled_path(path: str) -> bool:
         "/api/knowledge-bases/capability",
         "/api/browser/env-status",
         "/api/browser/harness-sessions",
+        "/api/settings/hitl",
     }:
         return True
     return raw == "/api/acp" or raw.startswith("/api/acp/")
@@ -172,7 +173,7 @@ def _local_bridge_shadow_response(
             )
         raise OctopError(
             ErrorCode.BRIDGE_REMOTE_UNSUPPORTED,
-            "This action is not available through the remote bridge. Manage it on the peer wkbuddy.",
+            "This action is not available through the remote bridge. Manage it on the peer agentbuddy.",
         )
 
     return None

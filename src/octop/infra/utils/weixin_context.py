@@ -2,7 +2,7 @@
 
 ``context_token`` itself is ephemeral: a proactive push strips it. These two
 keys are the copy cron still needs after a restart. They match
-``octop_gateway.push_routing``, and live here so wkbuddy does not import names
+``octop_gateway.push_routing``, and live here so agentbuddy does not import names
 from a gateway build that does not export them yet.
 """
 

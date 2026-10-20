@@ -19,7 +19,7 @@ def _bootstrap() -> Path:
     root = Path(__file__).resolve().parent
     # The bundled interpreter is launched by absolute path, so its bin dir is
     # rarely on PATH. Prepend it so inherited envs (agent shells, subprocesses)
-    # resolve ``python3`` to the same interpreter wkbuddy runs with.
+    # resolve ``python3`` to the same interpreter agentbuddy runs with.
     interpreter_dir = os.path.dirname(sys.executable)
     if interpreter_dir:
         _path = os.environ.get("PATH", "")

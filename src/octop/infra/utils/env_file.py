@@ -24,9 +24,9 @@ _PROTECTED_EXACT = frozenset(
 SEARCH_ENV_KEYS = frozenset(
     {
         "TAVILY_API_KEY",
-        "BRAVE_API_KEY",
-        "GOOGLE_API_KEY",
-        "GOOGLE_CSE_ID",
+        "DOUBAO_SEARCH_API_KEY",
+        "DEEPSEEK_API_KEY",
+        "EXA_API_KEY",
         "MOONSHOT_API_KEY",
     }
 )

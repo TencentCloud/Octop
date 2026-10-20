@@ -1,5 +1,5 @@
 /**
- * Download an authenticated wkbuddy API file URL via blob (Bearer token),
+ * Download an authenticated agentbuddy API file URL via blob (Bearer token),
  * instead of navigating the browser tab (which would drop JWT and land on the SPA).
  */
 
@@ -29,7 +29,7 @@ function filenameFromUrl(url: string): string | undefined {
   try {
     const parsed = url.startsWith("http")
       ? new URL(url)
-      : new URL(url, "http://octop.local");
+      : new URL(url, "http://agentbuddy.local");
     const pathParam = parsed.searchParams.get("path");
     if (pathParam) {
       const name = pathParam.split("/").pop();

@@ -1,0 +1,892 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>octop-memory 记忆面板</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --bg: #0f1117;
+      --surface: #1a1d27;
+      --surface2: #22263a;
+      --border: #2e3250;
+      --accent: #6c8ef5;
+      --accent2: #a78bfa;
+      --green: #34d399;
+      --yellow: #fbbf24;
+      --red: #f87171;
+      --text: #e2e8f0;
+      --text2: #94a3b8;
+      --text3: #64748b;
+      --radius: 10px;
+      --shadow: 0 4px 24px rgba(0,0,0,0.4);
+    }
+    body { background: var(--bg); color: var(--text); font-family: 'Inter', 'PingFang SC', system-ui, sans-serif; font-size: 14px; min-height: 100vh; }
+
+    /* ── Top bar ── */
+    .topbar { display: flex; align-items: center; gap: 12px; padding: 14px 24px; background: var(--surface); border-bottom: 1px solid var(--border); position: sticky; top: 0; z-index: 100; }
+    .topbar .logo { font-size: 16px; font-weight: 700; color: var(--accent); letter-spacing: -0.5px; }
+    .topbar .logo span { color: var(--text2); font-weight: 400; }
+    .topbar .spacer { flex: 1; }
+    .badge { display: inline-flex; align-items: center; gap: 5px; padding: 3px 10px; border-radius: 20px; font-size: 12px; font-weight: 500; }
+    .badge.connected { background: rgba(52,211,153,0.15); color: var(--green); }
+    .badge.disconnected { background: rgba(248,113,113,0.15); color: var(--red); }
+    .badge.dot::before { content: ''; width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
+
+    /* ── Connection config panel ── */
+    #connect-panel { max-width: 560px; margin: 60px auto; padding: 36px; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); box-shadow: var(--shadow); }
+    #connect-panel h2 { font-size: 20px; font-weight: 700; margin-bottom: 6px; }
+    #connect-panel p { color: var(--text2); margin-bottom: 28px; font-size: 13px; line-height: 1.6; }
+    .preset-row { display: flex; gap: 8px; margin-bottom: 20px; }
+    .preset-btn { flex: 1; padding: 9px 0; border-radius: 8px; border: 1px solid var(--border); background: var(--surface2); color: var(--text2); cursor: pointer; font-size: 13px; font-weight: 500; transition: all .15s; }
+    .preset-btn:hover, .preset-btn.active { border-color: var(--accent); color: var(--accent); background: rgba(108,142,245,0.1); }
+    .form-group { margin-bottom: 16px; }
+    .form-group label { display: block; font-size: 12px; color: var(--text2); margin-bottom: 6px; font-weight: 500; letter-spacing: 0.3px; }
+    .form-group input { width: 100%; padding: 10px 14px; background: var(--surface2); border: 1px solid var(--border); border-radius: 8px; color: var(--text); font-size: 13px; outline: none; transition: border-color .15s; }
+    .form-group input:focus { border-color: var(--accent); }
+    .btn-primary { width: 100%; padding: 11px; background: var(--accent); color: #fff; border: none; border-radius: 8px; font-size: 14px; font-weight: 600; cursor: pointer; transition: opacity .15s; margin-top: 8px; }
+    .btn-primary:hover { opacity: 0.88; }
+    .btn-primary:disabled { opacity: 0.5; cursor: not-allowed; }
+    .error-msg { margin-top: 14px; padding: 10px 14px; background: rgba(248,113,113,0.1); border: 1px solid rgba(248,113,113,0.3); border-radius: 8px; color: var(--red); font-size: 13px; line-height: 1.5; display: none; }
+
+    /* ── Main content area ── */
+    #main-panel { display: none; padding: 24px; max-width: 1280px; margin: 0 auto; }
+
+    /* ── Stats cards ── */
+    .stats-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 14px; margin-bottom: 28px; }
+    .stat-card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 18px 20px; }
+    .stat-card .label { font-size: 11px; color: var(--text3); text-transform: uppercase; letter-spacing: 0.8px; margin-bottom: 8px; }
+    .stat-card .value { font-size: 28px; font-weight: 700; color: var(--text); line-height: 1; }
+    .stat-card .value.zero { color: var(--text3); }
+    .stat-card .sub { font-size: 11px; color: var(--text3); margin-top: 5px; }
+    .stat-card.highlight .value { color: var(--accent); }
+    .skeleton { background: linear-gradient(90deg, var(--surface2) 25%, var(--border) 50%, var(--surface2) 75%); background-size: 200% 100%; animation: shimmer 1.4s infinite; border-radius: 6px; height: 28px; width: 60px; }
+    @keyframes shimmer { 0% { background-position: 200% 0; } 100% { background-position: -200% 0; } }
+
+    /* ── Toolbar ── */
+    .toolbar { display: flex; align-items: center; gap: 10px; margin-bottom: 16px; flex-wrap: wrap; }
+    .toolbar .ns-select { padding: 7px 12px; background: var(--surface2); border: 1px solid var(--border); border-radius: 8px; color: var(--text); font-size: 13px; outline: none; cursor: pointer; }
+    .toolbar .ns-select:focus { border-color: var(--accent); }
+    .btn-sm { padding: 7px 14px; border-radius: 8px; border: 1px solid var(--border); background: var(--surface2); color: var(--text2); cursor: pointer; font-size: 12px; font-weight: 500; transition: all .15s; }
+    .btn-sm:hover { border-color: var(--accent); color: var(--accent); }
+    .btn-disconnect { border-color: rgba(248,113,113,0.4); color: var(--red); }
+    .btn-disconnect:hover { background: rgba(248,113,113,0.1); border-color: var(--red); }
+
+    /* ── Tabs ── */
+    .tabs { display: flex; gap: 2px; border-bottom: 1px solid var(--border); margin-bottom: 20px; }
+    .tab { padding: 10px 18px; cursor: pointer; font-size: 13px; font-weight: 500; color: var(--text3); border-bottom: 2px solid transparent; margin-bottom: -1px; transition: all .15s; white-space: nowrap; }
+    .tab:hover { color: var(--text2); }
+    .tab.active { color: var(--accent); border-bottom-color: var(--accent); }
+    .tab .cnt { display: inline-block; margin-left: 6px; padding: 1px 7px; background: var(--surface2); border-radius: 10px; font-size: 11px; color: var(--text3); }
+    .tab.active .cnt { background: rgba(108,142,245,0.2); color: var(--accent); }
+
+    /* ── Table ── */
+    .table-wrap { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; }
+    table { width: 100%; border-collapse: collapse; }
+    thead th { padding: 11px 16px; text-align: left; font-size: 11px; font-weight: 600; color: var(--text3); text-transform: uppercase; letter-spacing: 0.6px; background: var(--surface2); border-bottom: 1px solid var(--border); white-space: nowrap; }
+    tbody tr { border-bottom: 1px solid var(--border); transition: background .1s; }
+    tbody tr:last-child { border-bottom: none; }
+    tbody tr:hover { background: var(--surface2); }
+    tbody tr.clickable { cursor: pointer; }
+    td { padding: 11px 16px; font-size: 13px; color: var(--text); vertical-align: top; }
+    td.mono { font-family: 'JetBrains Mono', 'Fira Code', monospace; font-size: 12px; color: var(--text2); }
+    td.truncate { max-width: 320px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .empty-state { padding: 60px 20px; text-align: center; color: var(--text3); }
+    .empty-state .icon { font-size: 36px; margin-bottom: 12px; }
+    .empty-state p { font-size: 13px; line-height: 1.6; }
+
+    /* ── Status chips ── */
+    .chip { display: inline-block; padding: 2px 9px; border-radius: 12px; font-size: 11px; font-weight: 600; }
+    .chip.pending { background: rgba(251,191,36,0.15); color: var(--yellow); }
+    .chip.promoted { background: rgba(52,211,153,0.15); color: var(--green); }
+    .chip.rejected { background: rgba(248,113,113,0.15); color: var(--red); }
+    .chip.needs_review { background: rgba(167,139,250,0.15); color: var(--accent2); }
+    .chip.conflict { background: rgba(248,113,113,0.15); color: var(--red); }
+    .chip.high { background: rgba(248,113,113,0.15); color: var(--red); }
+    .chip.medium { background: rgba(251,191,36,0.15); color: var(--yellow); }
+    .chip.low { background: rgba(100,116,139,0.15); color: var(--text3); }
+    .chip.deprecated { background: rgba(100,116,139,0.15); color: var(--text3); }
+    .chip.fact { background: rgba(108,142,245,0.15); color: var(--accent); }
+    .chip.decision { background: rgba(167,139,250,0.15); color: var(--accent2); }
+    .chip.task { background: rgba(52,211,153,0.15); color: var(--green); }
+    .chip.preference { background: rgba(251,191,36,0.15); color: var(--yellow); }
+
+    /* ── Pagination ── */
+    .pagination { display: flex; align-items: center; justify-content: space-between; padding: 14px 16px; border-top: 1px solid var(--border); }
+    .pagination .info { font-size: 12px; color: var(--text3); }
+    .pagination .btns { display: flex; gap: 6px; }
+    .page-btn { padding: 5px 12px; border-radius: 6px; border: 1px solid var(--border); background: var(--surface2); color: var(--text2); cursor: pointer; font-size: 12px; transition: all .15s; }
+    .page-btn:hover:not(:disabled) { border-color: var(--accent); color: var(--accent); }
+    .page-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+    /* ── Detail modal ── */
+    .modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.6); z-index: 200; display: none; align-items: center; justify-content: center; padding: 20px; }
+    .modal-overlay.open { display: flex; }
+    .modal { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); box-shadow: var(--shadow); width: 100%; max-width: 680px; max-height: 80vh; overflow-y: auto; }
+    .modal-header { display: flex; align-items: center; justify-content: space-between; padding: 18px 22px; border-bottom: 1px solid var(--border); }
+    .modal-header h3 { font-size: 15px; font-weight: 600; }
+    .modal-close { background: none; border: none; color: var(--text3); cursor: pointer; font-size: 20px; line-height: 1; padding: 2px 6px; border-radius: 4px; }
+    .modal-close:hover { color: var(--text); background: var(--surface2); }
+    .modal-body { padding: 22px; }
+    .detail-row { display: flex; gap: 12px; margin-bottom: 14px; }
+    .detail-row .key { min-width: 130px; font-size: 12px; color: var(--text3); font-weight: 500; padding-top: 1px; }
+    .detail-row .val { flex: 1; font-size: 13px; color: var(--text); word-break: break-all; line-height: 1.6; }
+    .detail-row .val.mono { font-family: 'JetBrains Mono', monospace; font-size: 12px; color: var(--text2); }
+    .detail-section { margin-top: 18px; padding-top: 18px; border-top: 1px solid var(--border); }
+    .detail-section h4 { font-size: 12px; color: var(--text3); text-transform: uppercase; letter-spacing: 0.6px; margin-bottom: 12px; }
+
+    /* ── Loading ── */
+    .loading-row td { text-align: center; padding: 40px; color: var(--text3); }
+    .spinner { display: inline-block; width: 18px; height: 18px; border: 2px solid var(--border); border-top-color: var(--accent); border-radius: 50%; animation: spin .7s linear infinite; vertical-align: middle; margin-right: 8px; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* ── Action buttons ── */
+    .action-btns { display: flex; gap: 5px; flex-wrap: nowrap; }
+    .btn-action { padding: 3px 10px; border-radius: 6px; border: 1px solid; font-size: 11px; font-weight: 600; cursor: pointer; transition: all .15s; white-space: nowrap; background: transparent; }
+    .btn-approve { border-color: rgba(52,211,153,0.5); color: var(--green); }
+    .btn-approve:hover { background: rgba(52,211,153,0.15); border-color: var(--green); }
+    .btn-reject { border-color: rgba(248,113,113,0.5); color: var(--red); }
+    .btn-reject:hover { background: rgba(248,113,113,0.15); border-color: var(--red); }
+    .btn-deprecate { border-color: rgba(100,116,139,0.5); color: var(--text3); }
+    .btn-deprecate:hover { background: rgba(100,116,139,0.15); border-color: var(--text3); }
+    .btn-delete { border-color: rgba(248,113,113,0.4); color: var(--red); }
+    .btn-delete:hover { background: rgba(248,113,113,0.12); border-color: var(--red); }
+    .btn-action:disabled { opacity: 0.4; cursor: not-allowed; }
+
+    /* ── Confirmation modal ── */
+    .confirm-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.65); z-index: 300; display: none; align-items: center; justify-content: center; }
+    .confirm-overlay.open { display: flex; }
+    .confirm-box { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); box-shadow: var(--shadow); padding: 28px 30px; max-width: 420px; width: 100%; }
+    .confirm-box h4 { font-size: 15px; font-weight: 600; margin-bottom: 10px; }
+    .confirm-box p { font-size: 13px; color: var(--text2); line-height: 1.6; margin-bottom: 22px; }
+    .confirm-actions { display: flex; gap: 10px; justify-content: flex-end; }
+    .btn-cancel { padding: 8px 18px; border-radius: 8px; border: 1px solid var(--border); background: var(--surface2); color: var(--text2); cursor: pointer; font-size: 13px; }
+    .btn-cancel:hover { border-color: var(--accent); color: var(--accent); }
+    .btn-confirm-ok { padding: 8px 18px; border-radius: 8px; border: none; font-size: 13px; font-weight: 600; cursor: pointer; transition: opacity .15s; }
+    .btn-confirm-ok:hover { opacity: 0.85; }
+    .btn-confirm-ok.danger { background: var(--red); color: #fff; }
+    .btn-confirm-ok.success { background: var(--green); color: #0f1117; }
+    .btn-confirm-ok.warning { background: var(--yellow); color: #0f1117; }
+  </style>
+</head>
+<body>
+
+<!-- Top bar -->
+<div class="topbar">
+  <div class="logo">octop-memory <span>Dashboard</span></div>
+  <div class="spacer"></div>
+  <div id="conn-badge" class="badge disconnected dot">未连接</div>
+</div>
+
+<!-- Connection config panel -->
+<div id="connect-panel">
+  <h2>🧠 连接记忆数据库</h2>
+  <p>选择预设或手动填写 SQLite 路径和命名空间，即可可视化查看 OpenClaw / Hermes 的记忆状态。</p>
+
+  <div class="preset-row">
+    <button class="preset-btn" data-preset="openclaw" onclick="applyPreset('openclaw', this)">OpenClaw</button>
+    <button class="preset-btn" data-preset="hermes" onclick="applyPreset('hermes', this)">Hermes</button>
+    <button class="preset-btn" data-preset="custom" onclick="applyPreset('custom', this)">自定义</button>
+  </div>
+
+  <div class="form-group">
+    <label>数据库路径 (db_path)</label>
+    <input id="inp-db" type="text" placeholder="~/.octopmemory/openclaw__default/memory.sqlite" />
+  </div>
+  <div class="form-group">
+    <label>命名空间 (namespace)</label>
+    <input id="inp-ns" type="text" placeholder="openclaw__default" />
+  </div>
+
+  <button class="btn-primary" id="btn-connect" onclick="doConnect()">连接</button>
+  <div class="error-msg" id="connect-error"></div>
+</div>
+
+<!-- Main panel -->
+<div id="main-panel">
+  <!-- Toolbar -->
+  <div class="toolbar">
+    <select class="ns-select" id="ns-switcher" onchange="switchNamespace(this.value)" title="切换命名空间"></select>
+    <button class="btn-sm" onclick="refreshAll()">🔄 刷新</button>
+    <button class="btn-sm btn-disconnect" onclick="disconnect()">断开连接</button>
+    <span style="font-size:12px;color:var(--text3);margin-left:4px;" id="db-path-hint"></span>
+  </div>
+
+  <!-- Stats cards -->
+  <div class="stats-grid" id="stats-grid">
+    <div class="stat-card"><div class="label">Raw Events</div><div class="value skeleton" id="s-raw"></div></div>
+    <div class="stat-card highlight"><div class="label">活跃 Atoms</div><div class="value skeleton" id="s-atoms-active"></div></div>
+    <div class="stat-card"><div class="label">已废弃 Atoms</div><div class="value skeleton" id="s-atoms-dep"></div></div>
+    <div class="stat-card"><div class="label">待审 Candidates</div><div class="value skeleton" id="s-cands"></div></div>
+    <div class="stat-card"><div class="label">Episodes</div><div class="value skeleton" id="s-eps"></div></div>
+    <div class="stat-card"><div class="label">最近 Capture</div><div class="value skeleton" id="s-last" style="font-size:13px;"></div><div class="sub" id="s-last-sub"></div></div>
+  </div>
+
+  <!-- Tabs -->
+  <div class="tabs">
+    <div class="tab active" onclick="switchTab('raw_events', this)">Raw Events <span class="cnt" id="tab-cnt-raw_events">-</span></div>
+    <div class="tab" onclick="switchTab('candidates', this)">Candidates <span class="cnt" id="tab-cnt-candidates">-</span></div>
+    <div class="tab" onclick="switchTab('atoms', this)">Atoms <span class="cnt" id="tab-cnt-atoms">-</span></div>
+    <div class="tab" onclick="switchTab('journal', this)">Journal <span class="cnt" id="tab-cnt-journal">-</span></div>
+    <div class="tab" onclick="switchTab('episodes', this)">Episodes <span class="cnt" id="tab-cnt-episodes">-</span></div>
+  </div>
+
+  <!-- Table container -->
+  <div class="table-wrap">
+    <table id="data-table">
+      <thead id="table-head"></thead>
+      <tbody id="table-body"></tbody>
+    </table>
+    <div class="pagination" id="pagination" style="display:none;">
+      <span class="info" id="page-info"></span>
+      <div class="btns">
+        <button class="page-btn" id="btn-prev" onclick="changePage(-1)">← 上一页</button>
+        <button class="page-btn" id="btn-next" onclick="changePage(1)">下一页 →</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Atom detail modal -->
+<div class="modal-overlay" id="atom-modal" onclick="closeModal(event)">
+  <div class="modal">
+    <div class="modal-header">
+      <h3>Atom 详情</h3>
+      <button class="modal-close" onclick="closeAtomModal()">×</button>
+    </div>
+    <div class="modal-body" id="atom-modal-body"></div>
+  </div>
+</div>
+
+<!-- Confirmation modal -->
+<div class="confirm-overlay" id="confirm-overlay">
+  <div class="confirm-box">
+    <h4 id="confirm-title">确认操作</h4>
+    <p id="confirm-desc">确定要执行此操作吗？</p>
+    <div class="confirm-actions">
+      <button class="btn-cancel" onclick="closeConfirm()">取消</button>
+      <button class="btn-confirm-ok danger" id="confirm-ok-btn" onclick="confirmAction()">确认</button>
+    </div>
+  </div>
+</div>
+
+<script>
+// ── Global state ───────────────────────────────────────────────────────────
+const state = {
+  dbPath: '',
+  namespace: '',
+  currentTab: 'raw_events',
+  page: 1,
+  pageSize: 20,
+  totals: {},
+};
+
+// Confirmation modal internal state.
+let _confirmCallback = null;
+const PRESETS = {
+  openclaw: {
+    db: '~/.octopmemory/openclaw__default/memory.sqlite',
+    ns: 'openclaw__default',
+  },
+  hermes: {
+    // Hermes storage is configured by the installer; ask for the actual path.
+    db: '',
+    ns: '',
+  },
+  custom: { db: '', ns: '' },
+};
+
+const TAB_HEADERS = {
+  raw_events: [
+    { key: 'timestamp', label: '时间', cls: 'mono' },
+    { key: 'event_type', label: '类型' },
+    { key: 'host', label: 'Host' },
+    { key: 'session_id', label: 'Session', cls: 'mono truncate' },
+    { key: 'content', label: '内容', cls: 'truncate' },
+    { key: '_actions', label: '操作' },
+  ],
+  candidates: [
+    { key: 'created_at', label: '时间', cls: 'mono' },
+    { key: 'candidate_type', label: '类型' },
+    { key: 'status', label: '状态' },
+    { key: 'importance', label: '重要性' },
+    { key: 'assertion', label: '断言', cls: 'truncate' },
+    { key: 'subject_name', label: '主体' },
+    { key: '_actions', label: '操作' },
+  ],
+  atoms: [
+    { key: 'created_at', label: '时间', cls: 'mono' },
+    { key: 'importance', label: '重要性' },
+    { key: 'assertion', label: '断言', cls: 'truncate' },
+    { key: 'confidence', label: '置信度' },
+    { key: 'deprecated_at', label: '状态' },
+    { key: '_actions', label: '操作' },
+  ],
+  journal: [
+    { key: 'timestamp', label: '时间', cls: 'mono' },
+    { key: 'action', label: '操作' },
+    { key: 'actor', label: '执行者' },
+    { key: 'note', label: '备注', cls: 'truncate' },
+  ],
+  episodes: [
+    { key: 'occurred_at', label: '发生时间', cls: 'mono' },
+    { key: 'emotion', label: '情绪' },
+    { key: 'intensity', label: '强度' },
+    { key: 'summary', label: '摘要', cls: 'truncate' },
+  ],
+};
+
+// ── Utilities ──────────────────────────────────────────────────────────────
+function apiBase() { return ''; }
+
+async function apiFetch(path, params = {}, options = {}) {
+  const url = new URL(apiBase() + path, location.href);
+  url.searchParams.set('db_path', state.dbPath);
+  url.searchParams.set('namespace', state.namespace);
+  Object.entries(params).forEach(([k, v]) => v != null && url.searchParams.set(k, v));
+  const res = await fetch(url, options);
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ detail: res.statusText }));
+    throw new Error(err.detail || res.statusText);
+  }
+  return res.json();
+}
+
+function fmtTime(ts) {
+  if (!ts) return '—';
+  try {
+    const d = new Date(ts);
+    return d.toLocaleString('zh-CN', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit' });
+  } catch { return ts; }
+}
+
+function fmtTimeAgo(ts) {
+  if (!ts) return '';
+  const diff = Date.now() - new Date(ts).getTime();
+  const m = Math.floor(diff / 60000);
+  if (m < 1) return '刚刚';
+  if (m < 60) return `${m} 分钟前`;
+  const h = Math.floor(m / 60);
+  if (h < 24) return `${h} 小时前`;
+  return `${Math.floor(h / 24)} 天前`;
+}
+
+function chip(text, cls) {
+  if (!text) return '—';
+  return `<span class="chip ${(cls || text).toLowerCase()}">${text}</span>`;
+}
+
+function truncate(text, n = 80) {
+  if (!text) return '—';
+  return text.length > n ? text.slice(0, n) + '…' : text;
+}
+
+// ── Connection ─────────────────────────────────────────────────────────────
+function applyPreset(name, btn) {
+  document.querySelectorAll('.preset-btn').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  const p = PRESETS[name];
+  if (p.db) document.getElementById('inp-db').value = p.db;
+  if (p.ns) document.getElementById('inp-ns').value = p.ns;
+}
+
+async function doConnect() {
+  const dbPath = document.getElementById('inp-db').value.trim();
+  const ns = document.getElementById('inp-ns').value.trim();
+  const errEl = document.getElementById('connect-error');
+  errEl.style.display = 'none';
+
+  if (!dbPath || !ns) {
+    errEl.textContent = '请填写数据库路径和命名空间。';
+    errEl.style.display = 'block';
+    return;
+  }
+
+  const btn = document.getElementById('btn-connect');
+  btn.disabled = true;
+  btn.textContent = '连接中…';
+
+  try {
+    const url = new URL('/api/connect', location.href);
+    url.searchParams.set('db_path', dbPath);
+    url.searchParams.set('namespace', ns);
+    const res = await fetch(url);
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ detail: res.statusText }));
+      throw new Error(err.detail || res.statusText);
+    }
+    const data = await res.json();
+    state.dbPath = dbPath;
+    state.namespace = ns;
+    showMainPanel(data);
+  } catch (e) {
+    errEl.textContent = `连接失败：${e.message}`;
+    errEl.style.display = 'block';
+  } finally {
+    btn.disabled = false;
+    btn.textContent = '连接';
+  }
+}
+
+async function showMainPanel(connectData) {
+  document.getElementById('connect-panel').style.display = 'none';
+  document.getElementById('main-panel').style.display = 'block';
+  document.getElementById('conn-badge').className = 'badge connected dot';
+  document.getElementById('conn-badge').textContent = '已连接';
+  document.getElementById('db-path-hint').textContent = state.dbPath;
+
+  // Load the namespace list.
+  await loadNamespaces();
+  // Load stats.
+  await loadStats();
+  // Load the first tab.
+  state.currentTab = 'raw_events';
+  state.page = 1;
+  await loadTabData();
+}
+
+function disconnect() {
+  state.dbPath = '';
+  state.namespace = '';
+  document.getElementById('connect-panel').style.display = 'block';
+  document.getElementById('main-panel').style.display = 'none';
+  document.getElementById('conn-badge').className = 'badge disconnected dot';
+  document.getElementById('conn-badge').textContent = '未连接';
+}
+
+// ── Namespace switching ────────────────────────────────────────────────────
+async function loadNamespaces() {
+  try {
+    const url = new URL('/api/namespaces', location.href);
+    url.searchParams.set('db_path', state.dbPath);
+    const data = await fetch(url).then(r => r.json());
+    const sel = document.getElementById('ns-switcher');
+    sel.innerHTML = '';
+    (data.namespaces || []).forEach(ns => {
+      const opt = document.createElement('option');
+      opt.value = ns;
+      opt.textContent = ns;
+      if (ns === state.namespace || ns === state.namespace.replace(/__$/, '')) opt.selected = true;
+      sel.appendChild(opt);
+    });
+    // Add the current namespace manually when it is not returned by the list.
+    if (!data.namespaces.includes(state.namespace)) {
+      const opt = document.createElement('option');
+      opt.value = state.namespace;
+      opt.textContent = state.namespace;
+      opt.selected = true;
+      sel.insertBefore(opt, sel.firstChild);
+    }
+  } catch (e) {
+    console.warn('loadNamespaces failed:', e);
+  }
+}
+
+async function switchNamespace(ns) {
+  state.namespace = ns;
+  state.page = 1;
+  await loadStats();
+  await loadTabData();
+}
+
+// ── Stats ──────────────────────────────────────────────────────────────────
+async function loadStats() {
+  // Show skeletons first.
+  ['s-raw','s-atoms-active','s-atoms-dep','s-cands','s-eps','s-last'].forEach(id => {
+    const el = document.getElementById(id);
+    el.className = 'value skeleton';
+    el.textContent = '';
+  });
+
+  try {
+    const data = await apiFetch('/api/stats');
+    const set = (id, val, zero) => {
+      const el = document.getElementById(id);
+      el.className = 'value' + (val === 0 ? ' zero' : '');
+      el.textContent = val ?? '—';
+    };
+    set('s-raw', data.raw_events);
+    set('s-atoms-active', data.atoms_active);
+    set('s-atoms-dep', data.atoms_deprecated);
+    set('s-cands', data.candidates_pending);
+    set('s-eps', data.episodes);
+
+    const lastEl = document.getElementById('s-last');
+    lastEl.className = 'value' + (!data.last_capture ? ' zero' : '');
+    lastEl.style.fontSize = '13px';
+    lastEl.textContent = data.last_capture ? fmtTime(data.last_capture) : '暂无数据';
+    document.getElementById('s-last-sub').textContent = data.last_capture ? fmtTimeAgo(data.last_capture) : '请先与 AI 进行对话';
+
+    // Update tab counts.
+    state.totals = data;
+    document.getElementById('tab-cnt-raw_events').textContent = data.raw_events ?? '-';
+    document.getElementById('tab-cnt-atoms').textContent = data.atoms_active ?? '-';
+    document.getElementById('tab-cnt-episodes').textContent = data.episodes ?? '-';
+  } catch (e) {
+    console.error('loadStats error:', e);
+  }
+}
+
+// ── Tab switching ──────────────────────────────────────────────────────────
+function switchTab(tab, el) {
+  document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+  el.classList.add('active');
+  state.currentTab = tab;
+  state.page = 1;
+  loadTabData();
+}
+
+async function loadTabData() {
+  const tab = state.currentTab;
+  renderTableHead(tab);
+  renderLoading();
+
+  try {
+    let data;
+    const p = { page: state.page, page_size: state.pageSize };
+    if (tab === 'raw_events') data = await apiFetch('/api/raw_events', p);
+    else if (tab === 'candidates') data = await apiFetch('/api/candidates', p);
+    else if (tab === 'atoms') data = await apiFetch('/api/atoms', p);
+    else if (tab === 'journal') data = await apiFetch('/api/journal', p);
+    else if (tab === 'episodes') data = await apiFetch('/api/episodes', p);
+
+    renderTableBody(tab, data.items || []);
+    renderPagination(data);
+
+    // Update tab counts.
+    const cntEl = document.getElementById(`tab-cnt-${tab}`);
+    if (cntEl) cntEl.textContent = data.total ?? '-';
+  } catch (e) {
+    renderError(e.message);
+  }
+}
+
+function renderTableHead(tab) {
+  const headers = TAB_HEADERS[tab] || [];
+  document.getElementById('table-head').innerHTML =
+    '<tr>' + headers.map(h => `<th>${h.label}</th>`).join('') + '</tr>';
+}
+
+function renderLoading() {
+  document.getElementById('table-body').innerHTML =
+    `<tr class="loading-row"><td colspan="10"><span class="spinner"></span>加载中…</td></tr>`;
+  document.getElementById('pagination').style.display = 'none';
+}
+
+function renderError(msg) {
+  document.getElementById('table-body').innerHTML =
+    `<tr><td colspan="10" style="color:var(--red);padding:30px 16px;">⚠ ${msg}</td></tr>`;
+}
+
+function renderTableBody(tab, items) {
+  if (!items.length) {
+    document.getElementById('table-body').innerHTML =
+      `<tr><td colspan="10"><div class="empty-state"><div class="icon">🗂</div><p>暂无数据<br>请先与 AI 进行对话以生成记忆数据</p></div></td></tr>`;
+    return;
+  }
+
+  const headers = TAB_HEADERS[tab];
+  const rows = items.map(item => {
+    const cells = headers.map(h => {
+      let val = item[h.key];
+      let html = '';
+
+      if (h.key === '_actions') {
+        if (tab === 'candidates') {
+          const isPending = item.status === 'pending' || item.status === 'needs_review';
+          html = `<div class="action-btns">
+            <button class="btn-action btn-approve" ${!isPending ? 'disabled' : ''}
+              onclick="event.stopPropagation();approveCandidate('${item.id}', this)" title="批准晋升为 Atom">✅ 批准</button>
+            <button class="btn-action btn-reject" ${!isPending ? 'disabled' : ''}
+              onclick="event.stopPropagation();rejectCandidate('${item.id}', this)" title="拒绝，不写入长期记忆">❌ 拒绝</button>
+          </div>`;
+        } else if (tab === 'atoms') {
+          const isActive = !item.deprecated_at;
+          html = `<div class="action-btns">
+            <button class="btn-action btn-deprecate" ${!isActive ? 'disabled' : ''}
+              onclick="event.stopPropagation();deprecateAtom('${item.id}', this)" title="废弃此记忆">🗑 废弃</button>
+          </div>`;
+        } else if (tab === 'raw_events') {
+          html = `<div class="action-btns">
+            <button class="btn-action btn-delete"
+              onclick="event.stopPropagation();deleteRawEvent('${item.id}', this)" title="永久删除此事件">🗑 删除</button>
+          </div>`;
+        } else {
+          html = '—';
+        }
+      } else if (h.key === 'timestamp' || h.key === 'created_at' || h.key === 'occurred_at') {
+        html = `<span title="${val || ''}">${fmtTime(val)}</span>`;
+      } else if (h.key === 'status') {
+        html = chip(val, val);
+      } else if (h.key === 'importance') {
+        html = chip(val, val);
+      } else if (h.key === 'candidate_type') {
+        html = chip(val, val ? val.toLowerCase() : '');
+      } else if (h.key === 'deprecated_at') {
+        html = val ? chip('已废弃', 'deprecated') : chip('活跃', 'promoted');
+      } else if (h.key === 'content' || h.key === 'assertion' || h.key === 'summary' || h.key === 'note') {
+        html = `<span title="${(val || '').replace(/"/g, '&quot;')}">${truncate(val)}</span>`;
+      } else if (h.key === 'session_id') {
+        html = val ? `<span title="${val}">${val.slice(0, 12)}…</span>` : '—';
+      } else {
+        html = val != null ? String(val) : '—';
+      }
+
+      return `<td class="${h.cls || ''}">${html}</td>`;
+    }).join('');
+
+    const clickable = tab === 'atoms' ? 'clickable' : '';
+    const onclick = tab === 'atoms' ? `onclick="showAtomDetail('${item.id}')"` : '';
+    return `<tr class="${clickable}" ${onclick}>${cells}</tr>`;
+  }).join('');
+
+  document.getElementById('table-body').innerHTML = rows;
+}
+
+function renderPagination(data) {
+  const pag = document.getElementById('pagination');
+  if (!data || data.total <= state.pageSize) {
+    pag.style.display = 'none';
+    return;
+  }
+  pag.style.display = 'flex';
+  const totalPages = Math.ceil(data.total / state.pageSize);
+  document.getElementById('page-info').textContent =
+    `第 ${state.page} / ${totalPages} 页，共 ${data.total} 条`;
+  document.getElementById('btn-prev').disabled = state.page <= 1;
+  document.getElementById('btn-next').disabled = !data.has_more;
+}
+
+function changePage(delta) {
+  state.page = Math.max(1, state.page + delta);
+  loadTabData();
+}
+
+// ── Atom detail modal ──────────────────────────────────────────────────────
+async function showAtomDetail(atomId) {
+  const modal = document.getElementById('atom-modal');
+  const body = document.getElementById('atom-modal-body');
+  body.innerHTML = '<div style="text-align:center;padding:30px;color:var(--text3)"><span class="spinner"></span>加载中…</div>';
+  modal.classList.add('open');
+
+  try {
+    const url = new URL(`/api/atoms/${atomId}`, location.href);
+    url.searchParams.set('db_path', state.dbPath);
+    url.searchParams.set('namespace', state.namespace);
+    const atom = await fetch(url).then(r => r.json());
+
+    const rows = [
+      ['断言', atom.assertion],
+      ['重要性', chip(atom.importance, atom.importance)],
+      ['置信度', atom.confidence],
+      ['主体 Entity', atom.entity_id],
+      ['发生时间', fmtTime(atom.occurred_at)],
+      ['创建时间', fmtTime(atom.created_at)],
+      ['状态', atom.deprecated_at ? chip('已废弃', 'deprecated') : chip('活跃', 'promoted')],
+      ['原文引用', atom.verbatim_quote || '—'],
+      ['搜索词', Array.isArray(atom.search_terms) ? atom.search_terms.join(', ') : (atom.search_terms || '—')],
+      ['Atom ID', `<span class="mono">${atom.id}</span>`],
+      ['Candidate ID', `<span class="mono">${atom.candidate_id}</span>`],
+    ].map(([k, v]) => `<div class="detail-row"><div class="key">${k}</div><div class="val">${v}</div></div>`).join('');
+
+    let candSection = '';
+    if (atom.candidate) {
+      const c = atom.candidate;
+      candSection = `
+        <div class="detail-section">
+          <h4>关联 Candidate</h4>
+          <div class="detail-row"><div class="key">类型</div><div class="val">${chip(c.candidate_type, c.candidate_type ? c.candidate_type.toLowerCase() : '')}</div></div>
+          <div class="detail-row"><div class="key">状态</div><div class="val">${chip(c.status, c.status)}</div></div>
+          <div class="detail-row"><div class="key">断言</div><div class="val">${c.assertion || '—'}</div></div>
+          <div class="detail-row"><div class="key">Session</div><div class="val mono">${c.session_id || '—'}</div></div>
+          <div class="detail-row"><div class="key">创建时间</div><div class="val">${fmtTime(c.created_at)}</div></div>
+        </div>`;
+    }
+
+    // Add a deprecate button inside the modal as well.
+    const isActive = !atom.deprecated_at;
+    const actionSection = `
+      <div class="detail-section">
+        <h4>操作</h4>
+        <button class="btn-action btn-deprecate" style="font-size:13px;padding:7px 16px;" ${!isActive ? 'disabled' : ''}
+          onclick="deprecateAtom('${atom.id}', this)">
+          🗑 ${isActive ? '废弃此记忆' : '已废弃'}
+        </button>
+      </div>`;
+
+    body.innerHTML = rows + candSection + actionSection;
+  } catch (e) {
+    body.innerHTML = `<p style="color:var(--red)">加载失败：${e.message}</p>`;
+  }
+}
+
+function closeAtomModal() {
+  document.getElementById('atom-modal').classList.remove('open');
+}
+
+function closeModal(e) {
+  if (e.target === document.getElementById('atom-modal')) closeAtomModal();
+}
+
+// ── Confirmation modal ─────────────────────────────────────────────────────
+function showConfirm({ title, desc, okLabel = '确认', okClass = 'danger', onOk }) {
+  document.getElementById('confirm-title').textContent = title;
+  document.getElementById('confirm-desc').textContent = desc;
+  const okBtn = document.getElementById('confirm-ok-btn');
+  okBtn.textContent = okLabel;
+  okBtn.className = `btn-confirm-ok ${okClass}`;
+  _confirmCallback = onOk;
+  document.getElementById('confirm-overlay').classList.add('open');
+}
+
+function closeConfirm() {
+  document.getElementById('confirm-overlay').classList.remove('open');
+  _confirmCallback = null;
+}
+
+function confirmAction() {
+  closeConfirm();
+  if (_confirmCallback) _confirmCallback();
+}
+
+// ── Candidate review ───────────────────────────────────────────────────────
+function approveCandidate(id, btn) {
+  showConfirm({
+    title: '批准候选记忆',
+    desc: '确定批准此 Candidate？它将被标记为 promoted，下次记忆周期运行时将被正式写入长期记忆。',
+    okLabel: '✅ 批准',
+    okClass: 'success',
+    onOk: async () => {
+      btn.disabled = true;
+      try {
+        const url = new URL(`/api/candidates/${id}`, location.href);
+        url.searchParams.set('db_path', state.dbPath);
+        url.searchParams.set('namespace', state.namespace);
+        await fetch(url, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ status: 'promoted' }),
+        });
+        await loadTabData();
+        await loadStats();
+      } catch (e) {
+        alert('操作失败：' + e.message);
+        btn.disabled = false;
+      }
+    },
+  });
+}
+
+function rejectCandidate(id, btn) {
+  showConfirm({
+    title: '拒绝候选记忆',
+    desc: '确定拒绝此 Candidate？它将被标记为 rejected，不会写入长期记忆。',
+    okLabel: '❌ 拒绝',
+    okClass: 'danger',
+    onOk: async () => {
+      btn.disabled = true;
+      try {
+        const url = new URL(`/api/candidates/${id}`, location.href);
+        url.searchParams.set('db_path', state.dbPath);
+        url.searchParams.set('namespace', state.namespace);
+        await fetch(url, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ status: 'rejected' }),
+        });
+        await loadTabData();
+        await loadStats();
+      } catch (e) {
+        alert('操作失败：' + e.message);
+        btn.disabled = false;
+      }
+    },
+  });
+}
+
+// ── Deprecate Atom ─────────────────────────────────────────────────────────
+function deprecateAtom(id, btn) {
+  showConfirm({
+    title: '废弃记忆',
+    desc: '确定废弃此 Atom？它将被标记为已废弃，不会被 AI 检索到（不物理删除，可恢复）。',
+    okLabel: '🗑 废弃',
+    okClass: 'warning',
+    onOk: async () => {
+      btn.disabled = true;
+      try {
+        const url = new URL(`/api/atoms/${id}`, location.href);
+        url.searchParams.set('db_path', state.dbPath);
+        url.searchParams.set('namespace', state.namespace);
+        await fetch(url, { method: 'DELETE' });
+        closeAtomModal();
+        await loadTabData();
+        await loadStats();
+      } catch (e) {
+        alert('操作失败：' + e.message);
+        btn.disabled = false;
+      }
+    },
+  });
+}
+
+// ── Delete Raw Event ───────────────────────────────────────────────────────
+function deleteRawEvent(id, btn) {
+  showConfirm({
+    title: '删除原始事件',
+    desc: '确定永久删除此事件？此操作不可恢复，通常用于隐私清理。',
+    okLabel: '🗑 永久删除',
+    okClass: 'danger',
+    onOk: async () => {
+      btn.disabled = true;
+      try {
+        const url = new URL(`/api/raw_events/${id}`, location.href);
+        url.searchParams.set('db_path', state.dbPath);
+        url.searchParams.set('namespace', state.namespace);
+        await fetch(url, { method: 'DELETE' });
+        await loadTabData();
+        await loadStats();
+      } catch (e) {
+        alert('操作失败：' + e.message);
+        btn.disabled = false;
+      }
+    },
+  });
+}
+// ── Refresh ────────────────────────────────────────────────────────────────
+async function refreshAll() {
+  await loadStats();
+  await loadTabData();
+}
+
+// ── Keyboard shortcuts ─────────────────────────────────────────────────────
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape') {
+    closeAtomModal();
+    closeConfirm();
+  }
+});
+
+// ── Check whether the server injected default params ───────────────────────
+(async () => {
+  try {
+    const res = await fetch('/api/defaults');
+    if (res.ok) {      const d = await res.json();
+      if (d.db_path) document.getElementById('inp-db').value = d.db_path;
+      if (d.namespace) document.getElementById('inp-ns').value = d.namespace;
+      if (d.db_path && d.namespace) {
+        // Auto-connect.
+        state.dbPath = d.db_path;
+        state.namespace = d.namespace;
+        const connRes = await fetch(`/api/connect?db_path=${encodeURIComponent(d.db_path)}&namespace=${encodeURIComponent(d.namespace)}`);
+        if (connRes.ok) {
+          const data = await connRes.json();
+          await showMainPanel(data);
+        }
+      }
+    }
+  } catch (_) { /* No default params; show the connection page normally. */ }
+})();
+</script>
+</body>
+</html>

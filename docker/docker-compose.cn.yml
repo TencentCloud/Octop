@@ -14,9 +14,9 @@
 # =============================================================================
 
 services:
-  wkbuddy:
+  agentbuddy:
     image: ghcr.io/kolehank/octop:latest
-    container_name: wkbuddy
+    container_name: agentbuddy
     restart: unless-stopped
     ulimits:
       nofile:

@@ -104,7 +104,7 @@ octop_write_setup_hint() {
     local pw
     pw="$(tr -d '\n\r' < "$WIZARD_FILE")"
     cat > "$CREDENTIAL_FILE" << EOF
-wkbuddy Setup Required
+agentbuddy Setup Required
 ====================
 URL:      http://<host>:${PORT}
 
@@ -122,7 +122,7 @@ EOF
 octop_write_admin_credential() {
     local password="$1"
     cat > "$CREDENTIAL_FILE" << EOF
-wkbuddy Login Credential
+agentbuddy Login Credential
 ======================
 URL:      http://<host>:${PORT}
 Username: ${ADMIN_USERNAME}

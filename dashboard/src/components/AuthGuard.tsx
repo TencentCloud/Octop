@@ -14,7 +14,7 @@ interface AuthGuardProps {
 
 /**
  * Gate every protected route on (a) the initial admin existing and
- * (b) a valid JWT in localStorage. wkbuddy always requires auth — there is
+ * (b) a valid JWT in localStorage. agentbuddy always requires auth — there is
  * no "password protection disabled" mode like finnie had.
  *
  * Always wait for ``/api/setup/status`` (and ``/auth/me`` when a token

@@ -1,8 +1,8 @@
 import { useCallback, useRef, useState, useSyncExternalStore } from "react";
 import { beginPointerDragSession } from "../../../hooks/usePointerDragSession";
 
-export const CHAT_SIDEBAR_KEY = "octop:chat-sidebar:open";
-export const CHAT_SIDEBAR_WIDTH_KEY = "octop:chat-sidebar:width";
+export const CHAT_SIDEBAR_KEY = "agentbuddy:chat-sidebar:open";
+export const CHAT_SIDEBAR_WIDTH_KEY = "agentbuddy:chat-sidebar:width";
 export const SIDEBAR_WIDTH_MIN = 200;
 export const SIDEBAR_WIDTH_MAX = 360;
 export const SIDEBAR_WIDTH_DEFAULT = 248;

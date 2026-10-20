@@ -18,7 +18,7 @@ interface EmptyStateProps {
    * Visual variant:
    * - empty: inbox icon
    * - error: alert icon
-   * - mascot: shared wkbuddy empty mascot (prefer for list/detail empty shells)
+   * - mascot: shared agentbuddy empty mascot (prefer for list/detail empty shells)
    */
   variant?: "empty" | "error" | "mascot";
   className?: string;

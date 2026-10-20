@@ -9,7 +9,7 @@ _OAUTH_CALLBACK_PATH = "/api/auth/oauth/callback"
 
 
 def build_redirect_uri(public_base: str, callback_path: str = _OIDC_CALLBACK_PATH) -> str:
-    """Build wkbuddy's SSO callback URL from a public origin.
+    """Build agentbuddy's SSO callback URL from a public origin.
 
     ``callback_path`` defaults to the OIDC callback so existing one-argument
     callers and IdP registrations stay on ``/api/auth/oidc/callback``.

@@ -8,7 +8,7 @@ import {
 /**
  * Auth + setup module — adapted to octop's multi-user backend.
  *
- * wkbuddy endpoints (spec §11.3):
+ * agentbuddy endpoints (spec §11.3):
  *  - GET  /api/setup/status         → { setup_required }
  *  - POST /api/setup/initial-admin  → 201 { id, username, role }
  *  - POST /api/auth/login           → { access_token, token_type, expires_in, user }
@@ -27,11 +27,11 @@ export interface AuthStatus {
   setup_required: boolean;
   /** Legacy alias of ``!setup_required`` kept for compat. */
   setup_done: boolean;
-  /** wkbuddy always requires auth; kept true so legacy components don't unguard. */
+  /** agentbuddy always requires auth; kept true so legacy components don't unguard. */
   enabled: boolean;
   /** Legacy field — octop always uses passwords. */
   has_password: boolean;
-  /** True when ~/.octop/octop-login.txt exists on the server (wizard-only). */
+  /** True when ~/.octop/agentbuddy-login.txt exists on the server (wizard-only). */
   wizard_password_exists: boolean;
   /** When false, the wizard skips the CLI bootstrap password step. */
   wizard_password_required: boolean;
@@ -297,16 +297,16 @@ export const authApi = {
   // settings UI is rewritten in phase 14.6. Stubs return rejected
   // promises with a clear message to make accidental use loud.
 
-  /** @deprecated wkbuddy always requires auth — there is no first-time set step. */
+  /** @deprecated agentbuddy always requires auth — there is no first-time set step. */
   setPassword: (): Promise<never> =>
     Promise.reject(
       new Error("setPassword is not supported in octop; use change-password"),
     ),
 
-  /** @deprecated wkbuddy cannot disable auth. */
+  /** @deprecated agentbuddy cannot disable auth. */
   disableAuth: (): Promise<never> =>
     Promise.reject(new Error("disableAuth is not supported in octop")),
 
-  /** @deprecated wkbuddy's setup wizard is single-step; nothing to mark done. */
+  /** @deprecated agentbuddy's setup wizard is single-step; nothing to mark done. */
   markSetupDone: (): Promise<{ ok: boolean }> => Promise.resolve({ ok: true }),
 };

@@ -1,4 +1,4 @@
-# wkbuddy desktop (Wails v3 + green portable)
+# agentbuddy desktop (Wails v3 + green portable)
 
 All desktop-client code lives here. This is **not** `src/octop/infra/desktop`
 (remote desktop streaming).
@@ -6,12 +6,12 @@ All desktop-client code lives here. This is **not** `src/octop/infra/desktop`
 | Path | Role |
 |------|------|
 | [`portable/`](portable/) | Green zip packaging (was `scripts/green/`) |
-| [`src/`](src/) | Wails v3 shell: load bundled zip, spawn wkbuddy, tray/settings |
+| [`src/`](src/) | Wails v3 shell: load bundled zip, spawn agentbuddy, tray/settings |
 | [`package-release.sh`](package-release.sh) | Native end-to-end portable + Wails release build |
 
 ## Data directory
 
-Same as the wkbuddy CLI/server default:
+Same as the agentbuddy CLI/server default:
 
 - `OCTOP_HOME` → `~/.octop` (or the existing `OCTOP_HOME` env)
 - Green runtime extract → `~/.octop/portable/`
@@ -38,7 +38,7 @@ the final native package:
 
 ```bash
 desktop/package-release.sh
-# Reuse an existing desktop/portable/release/wkbuddy-portable-<plat>-<version>.zip:
+# Reuse an existing desktop/portable/release/agentbuddy-portable-<plat>-<version>.zip:
 desktop/package-release.sh darwin-arm64 --reuse-portable
 ```
 
@@ -59,10 +59,10 @@ cd desktop/src
 go mod tidy
 wails3 build            # development binary under desktop/src/bin/
 wails3 task package ARCH=arm64 VERSION=<version> \
-  PORTABLE_ZIP=../portable/release/wkbuddy-portable-darwin-arm64-<version>.zip
+  PORTABLE_ZIP=../portable/release/agentbuddy-portable-darwin-arm64-<version>.zip
 ```
 
-Dev against an already-running wkbuddy (skips the bundled green zip):
+Dev against an already-running agentbuddy (skips the bundled green zip):
 
 ```bash
 cd desktop/src
@@ -72,27 +72,27 @@ OCTOP_DESKTOP_URL=http://127.0.0.1:8088 wails3 dev
 Without `OCTOP_DESKTOP_URL`, first launch uses `~/.octop/portable/` if valid,
 otherwise extracts the matching zip shipped with the desktop package (embedded
 in the Windows and Linux binaries, under `Contents/Resources` on macOS). The
-Wails shell never downloads wkbuddy. For local runtime debugging, set
-`OCTOP_DESKTOP_PORTABLE_ZIP=/absolute/path/wkbuddy-portable-<plat>-<version>.zip`.
+Wails shell never downloads agentbuddy. For local runtime debugging, set
+`OCTOP_DESKTOP_PORTABLE_ZIP=/absolute/path/agentbuddy-portable-<plat>-<version>.zip`.
 On later launches, a newer bundled portable version replaces the extracted
 runtime after creating a consistent SQLite backup under `~/.octop/backups/`.
-The upgraded wkbuddy process then applies the normal database migrations during
+The upgraded agentbuddy process then applies the normal database migrations during
 startup. Newer extracted runtimes are never downgraded; PostgreSQL remains
 externally managed and is not copied by the desktop shell.
 
-GitHub Release names follow `wkbuddy-<kind>-<os>-<arch>-<version>.<ext>`:
+GitHub Release names follow `agentbuddy-<kind>-<os>-<arch>-<version>.<ext>`:
 
-- Desktop GUI: `wkbuddy-desktop-<plat>-<version>.dmg` (macOS; open and drag
-  `wkbuddy.app` into Applications), `.exe` (Windows NSIS installer — copies
-  into `Program Files\wkbuddy` and creates Start Menu + desktop shortcuts),
+- Desktop GUI: `agentbuddy-desktop-<plat>-<version>.dmg` (macOS; open and drag
+  `agentbuddy.app` into Applications), `.exe` (Windows NSIS installer — copies
+  into `Program Files\agentbuddy` and creates Start Menu + desktop shortcuts),
   `.tar.gz` (Linux)
-- Green runtime zip: `wkbuddy-portable-<plat>-<version>.zip`
+- Green runtime zip: `agentbuddy-portable-<plat>-<version>.zip`
 - PyPI wheels stay `octop-<version>-py3-none-any.whl` (PEP 427)
 
 The Linux tar.gz contains only the GUI binary; it has no separate portable zip or
-server terminal process. Runtime upgrades remain owned by wkbuddy:
+server terminal process. Runtime upgrades remain owned by agentbuddy:
 the shell sets `OCTOP_GREEN_PACKAGES`, so `octop update` upgrades the extracted
-`packages/` directory through wkbuddy's existing `--target` logic.
+`packages/` directory through agentbuddy's existing `--target` logic.
 
 Linux also needs GTK4 + WebKitGTK 6 to link. macOS 12+.
 

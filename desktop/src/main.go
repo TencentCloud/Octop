@@ -146,7 +146,7 @@ func (a *App) applyDashboardPrefs(s Settings) {
 		return
 	}
 	js := fmt.Sprintf(
-		`(function(){try{localStorage.setItem('octop:ui-locale',%s);}catch(e){}})();`,
+		`(function(){try{localStorage.setItem('agentbuddy:ui-locale',%s);}catch(e){}})();`,
 		jsonString(string(s.Locale)),
 	)
 	a.window.ExecJS(js)
@@ -336,8 +336,8 @@ func main() {
 	}
 
 	app := application.New(application.Options{
-		Name:        "wkbuddy",
-		Description: "wkbuddy desktop",
+		Name:        "agentbuddy",
+		Description: "agentbuddy desktop",
 		Services: []application.Service{
 			application.NewService(api),
 		},
@@ -362,7 +362,7 @@ func main() {
 	})
 
 	win := app.Window.NewWithOptions(application.WebviewWindowOptions{
-		Title:                "wkbuddy",
+		Title:                "agentbuddy",
 		Width:                1200,
 		Height:               800,
 		URL:                  "/",
@@ -430,7 +430,7 @@ func main() {
 
 	tray := app.SystemTray.New()
 	applyTrayIcon(tray)
-	tray.SetTooltip("wkbuddy")
+	tray.SetTooltip("agentbuddy")
 	tray.AttachWindow(settingsWin).WindowOffset(6)
 	showSettings := func() { tray.ShowWindow() }
 	if trayLeftClickShowsSettings(runtime.GOOS) {

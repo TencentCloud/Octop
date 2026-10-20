@@ -1,5 +1,5 @@
 /**
- * Browser client for wkbuddy's realtime STT WebSocket (`/api/voice/stt-stream`).
+ * Browser client for agentbuddy's realtime STT WebSocket (`/api/voice/stt-stream`).
  *
  * Tencent refines a sentence (`interim`) before confirming it (`final`), so the
  * client tracks confirmed sentences by id and reports the *cumulative*

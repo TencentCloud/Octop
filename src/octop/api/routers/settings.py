@@ -151,7 +151,7 @@ async def create_download_link(
     """Keep an already-fetched blob behind a credential-free link for a few minutes.
 
     In-app browsers such as WeChat cannot save ``blob:`` downloads, and the
-    system browser they hand off to has no wkbuddy session.
+    system browser they hand off to has no agentbuddy session.
     """
     data = await read_upload_capped(file, max_bytes=server.services.config.max_upload_bytes)
     filename = sanitize_download_filename(file.filename)

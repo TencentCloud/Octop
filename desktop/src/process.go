@@ -127,8 +127,8 @@ func clearDesktopPort() {
 	_ = os.Remove(desktopPortPath())
 }
 
-// findRunningDashboard returns a live wkbuddy URL. The saved port wins. When that
-// port is not wkbuddy, the port this shell last bound (desktop-port) is checked
+// findRunningDashboard returns a live agentbuddy URL. The saved port wins. When that
+// port is not agentbuddy, the port this shell last bound (desktop-port) is checked
 // so a second launch attaches instead of starting another server.
 func findRunningDashboard(host string, preferred int) string {
 	preferredURL := dashboardURL(host, preferred)

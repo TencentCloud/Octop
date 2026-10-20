@@ -26,18 +26,18 @@ def test_render_download_section_matches_github_asset_names() -> None:
     mod = _load()
     body = mod.render_download_section("0.9.31")
     base = f"https://github.com/{mod.GITHUB_REPO}/releases/download/v0.9.31"
-    assert f"{base}/wkbuddy-desktop-windows-amd64-0.9.31.exe" in body
-    assert f"{base}/wkbuddy-desktop-windows-arm64-0.9.31.exe" in body
-    assert f"{base}/wkbuddy-portable-windows-amd64-0.9.31.zip" in body
-    assert f"{base}/wkbuddy-portable-windows-arm64-0.9.31.zip" in body
-    assert f"{base}/wkbuddy-desktop-darwin-arm64-0.9.31.dmg" in body
-    assert f"{base}/wkbuddy-desktop-darwin-amd64-0.9.31.dmg" in body
-    assert f"{base}/wkbuddy-portable-darwin-arm64-0.9.31.zip" in body
-    assert f"{base}/wkbuddy-portable-darwin-amd64-0.9.31.zip" in body
-    assert f"{base}/wkbuddy-desktop-linux-amd64-0.9.31.tar.gz" in body
-    assert f"{base}/wkbuddy-desktop-linux-arm64-0.9.31.tar.gz" in body
-    assert f"{base}/wkbuddy-portable-linux-amd64-0.9.31.zip" in body
-    assert f"{base}/wkbuddy-portable-linux-arm64-0.9.31.zip" in body
+    assert f"{base}/agentbuddy-desktop-windows-amd64-0.9.31.exe" in body
+    assert f"{base}/agentbuddy-desktop-windows-arm64-0.9.31.exe" in body
+    assert f"{base}/agentbuddy-portable-windows-amd64-0.9.31.zip" in body
+    assert f"{base}/agentbuddy-portable-windows-arm64-0.9.31.zip" in body
+    assert f"{base}/agentbuddy-desktop-darwin-arm64-0.9.31.dmg" in body
+    assert f"{base}/agentbuddy-desktop-darwin-amd64-0.9.31.dmg" in body
+    assert f"{base}/agentbuddy-portable-darwin-arm64-0.9.31.zip" in body
+    assert f"{base}/agentbuddy-portable-darwin-amd64-0.9.31.zip" in body
+    assert f"{base}/agentbuddy-desktop-linux-amd64-0.9.31.tar.gz" in body
+    assert f"{base}/agentbuddy-desktop-linux-arm64-0.9.31.tar.gz" in body
+    assert f"{base}/agentbuddy-portable-linux-amd64-0.9.31.zip" in body
+    assert f"{base}/agentbuddy-portable-linux-arm64-0.9.31.zip" in body
     assert "Docker (recommended; x86 and ARM)" not in body
     assert "### fnOS NAS" not in body
     assert "pip install" not in body

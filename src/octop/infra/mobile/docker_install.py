@@ -186,7 +186,7 @@ async def auto_install_docker_stream(*, locale: str = "en") -> AsyncIterator[str
     Success is judged by the caller via :func:`docker_daemon_ready`, so this
     generator only reports what happened.
     """
-    # 0) The vendored official script must ship with this wkbuddy install.
+    # 0) The vendored official script must ship with this agentbuddy install.
     script = bundled_install_script()
     if not script.is_file():
         yield _log(locale, "docker_install_script_missing")

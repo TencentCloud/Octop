@@ -17,7 +17,7 @@ Create-time defaults when unset:
 
 User-assigned ``workspace_dir`` always wins (strip only).
 
-:func:`resolve_workspace_host_path` is only for wkbuddy host FS ops (delete,
+:func:`resolve_workspace_host_path` is only for agentbuddy host FS ops (delete,
 memory sqlite path, etc.) when the persisted value is the agent-facing
 ``/.octop/workspaces/…`` form.
 """
@@ -296,7 +296,7 @@ def _path_under(child: Path, root: Path) -> bool:
 
 
 def resolve_workspace_host_path(raw: str, cfg: dict[str, Any] | None = None) -> Path:
-    """Map persisted ``workspace_dir`` to an on-disk path for wkbuddy host FS ops.
+    """Map persisted ``workspace_dir`` to an on-disk path for agentbuddy host FS ops.
 
     Harness receives the persisted string as-is (no join here). When the DB
     holds agent-facing ``/.octop/workspaces/…`` and the backend has a scoped
@@ -438,7 +438,7 @@ def workspace_dir_from_config(
     agent_id: str,
     ensure: bool = True,
 ) -> Path:
-    """On-disk workspace for wkbuddy host ops (may map ``/.octop/…`` under root_dir).
+    """On-disk workspace for agentbuddy host ops (may map ``/.octop/…`` under root_dir).
 
     Read-only callers (backup) pass ``ensure=False`` so a stale or unwritable
     ``workspace_dir`` is not created.

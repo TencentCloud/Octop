@@ -34,7 +34,7 @@ describe("SkillDrawer emoji metadata", () => {
       body: "Do things.",
     });
     expect(md).toMatch(/emoji:\s*"?⚙️"?/);
-    expect(md).toContain("octop:");
+    expect(md).toContain("agentbuddy:");
   });
 
   it("writes localized presentation fields into octop metadata", () => {

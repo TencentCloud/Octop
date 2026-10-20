@@ -12,7 +12,7 @@ export default function ThinkingBubble({
   startedAt,
 }: ThinkingBubbleProps) {
   const { t } = useTranslation();
-  const typingSrc = `${import.meta.env.BASE_URL}octop-mascot-type.webp`;
+  const typingSrc = `${import.meta.env.BASE_URL}agentbuddy-mascot-type.webp`;
   const elapsed = useElapsedSince(startedAt);
 
   return (

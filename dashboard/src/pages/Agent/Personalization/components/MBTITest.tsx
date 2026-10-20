@@ -206,7 +206,9 @@ export default function MBTITest({
       navigate("/chat");
       setTimeout(
         () =>
-          window.dispatchEvent(new CustomEvent("octop:pending-chat-message")),
+          window.dispatchEvent(
+            new CustomEvent("agentbuddy:pending-chat-message"),
+          ),
         100,
       );
     } catch {

@@ -1,6 +1,6 @@
 #!/bin/bash
-# Desktop shell against a source wkbuddy (hot reload). Not ~/.octop/portable.
-# Starts wkbuddy in this shell and stops it when wails3 / this script exits.
+# Desktop shell against a source agentbuddy (hot reload). Not ~/.octop/portable.
+# Starts agentbuddy in this shell and stops it when wails3 / this script exits.
 set -euo pipefail
 
 REPO="$(cd "$(dirname "$0")/.." && pwd)"
@@ -42,7 +42,7 @@ cleanup() {
 trap cleanup EXIT INT TERM
 
 if curl -sf -o /dev/null --max-time 1 "$HEALTH"; then
-  echo "wkbuddy already listening at ${URL}; stop it first so this script can own the process." >&2
+  echo "agentbuddy already listening at ${URL}; stop it first so this script can own the process." >&2
   exit 1
 fi
 

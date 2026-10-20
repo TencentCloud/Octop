@@ -57,7 +57,10 @@ export function IosGuide({ onClose }: { onClose: () => void }) {
           {t("pwa.addToHomeScreen", "添加到主屏幕")}
         </div>
         <p className={styles.guideDesc}>
-          {t("pwa.installAsAppDesc", "将 wkbuddy 安装为 App，随时一键打开。")}
+          {t(
+            "pwa.installAsAppDesc",
+            "将 agentbuddy 安装为 App，随时一键打开。",
+          )}
         </p>
         <ol className={styles.guideList}>
           <li>

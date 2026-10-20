@@ -1,4 +1,4 @@
-export const CONNECTORS_STORAGE_PREFIX = "octop:chat-connectors:";
+export const CONNECTORS_STORAGE_PREFIX = "agentbuddy:chat-connectors:";
 
 function loadSavedStringList(key: string): string[] {
   try {
@@ -39,7 +39,7 @@ export function saveConnectors(agentId: string, names: string[]): void {
   }
 }
 
-export const KNOWLEDGE_STORAGE_PREFIX = "octop:chat-knowledge:";
+export const KNOWLEDGE_STORAGE_PREFIX = "agentbuddy:chat-knowledge:";
 
 export function loadSavedKnowledgeBaseIds(agentId: string): string[] {
   return loadSavedStringList(`${KNOWLEDGE_STORAGE_PREFIX}${agentId}`);

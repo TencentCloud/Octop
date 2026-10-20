@@ -219,9 +219,9 @@ curl -fsSL <YOUR_RELEASE_BASE>/install.sh | bash -s -- --extras browser
 
 | 平台 | 制品 |
 |------|------|
-| Windows | `wkbuddy-desktop-windows-amd64-<version>.exe`（64 位）/ `wkbuddy-desktop-windows-arm64-<version>.exe`（ARM64）— NSIS 安装程序 |
-| macOS | `wkbuddy-desktop-darwin-arm64-<version>.dmg`（Apple 芯片）/ `wkbuddy-desktop-darwin-amd64-<version>.dmg`（Intel） |
-| Linux | `wkbuddy-desktop-linux-amd64-<version>.tar.gz` / `wkbuddy-desktop-linux-arm64-<version>.tar.gz` |
+| Windows | `agentbuddy-desktop-windows-amd64-<version>.exe`（64 位）/ `agentbuddy-desktop-windows-arm64-<version>.exe`（ARM64）— NSIS 安装程序 |
+| macOS | `agentbuddy-desktop-darwin-arm64-<version>.dmg`（Apple 芯片）/ `agentbuddy-desktop-darwin-amd64-<version>.dmg`（Intel） |
+| Linux | `agentbuddy-desktop-linux-amd64-<version>.tar.gz` / `agentbuddy-desktop-linux-arm64-<version>.tar.gz` |
 
 桌面客户端说明见 [desktop/README.md](desktop/README.md)。
 
@@ -280,7 +280,7 @@ docker run -d \
   -v octop-data:/data/.octop \
   -e HOME=/data \
   -e OCTOP_DEFAULT_PASSWORD="<自定义强密码，留空则进入设置向导>" \
-  wkbuddy:latest
+  agentbuddy:latest
 ```
 
 打开 `http://localhost:8088`。`OCTOP_DEFAULT_PASSWORD` 合格时首次启动会创建管理员，并把凭据写入 `/data/.octop/credential.txt`。未设置或密码被策略拒绝时不自动建账号，打开页面走设置向导（向导口令在 `/data/.octop/octop-login.txt`）。可通过 `OCTOP_ADMIN_USERNAME` 覆盖用户名。

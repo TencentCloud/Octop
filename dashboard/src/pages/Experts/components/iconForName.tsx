@@ -154,7 +154,7 @@ export function normalizeAgentScopedApiUrl(url: string): string {
   try {
     const abs = trimmed.startsWith("http")
       ? new URL(trimmed)
-      : new URL(trimmed, "http://octop.local");
+      : new URL(trimmed, "http://agentbuddy.local");
     const match = abs.pathname.match(/^(\/api\/agents\/)([^/]+)(\/.*)?$/);
     if (!match) return trimmed;
     let agentId = match[2];

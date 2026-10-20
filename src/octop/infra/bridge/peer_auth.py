@@ -1,4 +1,4 @@
-"""HTTP login against a peer wkbuddy instance."""
+"""HTTP login against a peer agentbuddy instance."""
 
 from __future__ import annotations
 
@@ -81,7 +81,7 @@ def peer_identity_key(base_url: str, username: str) -> tuple[str, str]:
 
 
 def is_self_peer_url(peer_base_url: str, advertise_base_url: str) -> bool:
-    """True when *peer_base_url* is this wkbuddy instance's advertised URL."""
+    """True when *peer_base_url* is this agentbuddy instance's advertised URL."""
     advertise = (advertise_base_url or "").strip()
     if not advertise:
         return False

@@ -1,7 +1,7 @@
 /**
  * Docker host environment panel for the Docker backend drawer.
  *
- * Three install paths: auto / manual script / wkbuddy agent prompt.
+ * Three install paths: auto / manual script / agentbuddy agent prompt.
  */
 import { useCallback, useEffect, useState } from "react";
 import { Button, Spin, Typography } from "antd";
@@ -216,7 +216,7 @@ export function DockerEnvFooter() {
         </div>
       </section>
 
-      {/* 3. wkbuddy agent install */}
+      {/* 3. agentbuddy agent install */}
       <section className={styles.section}>
         <div className={styles.sectionTitle}>
           {t("storage.dockerEnv.sectionOctop")}

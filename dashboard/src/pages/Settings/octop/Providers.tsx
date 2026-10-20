@@ -1,5 +1,5 @@
 /**
- * wkbuddy settings — Providers editor.
+ * agentbuddy settings — Providers editor.
  *
  * Plan §14.6: list providers visible to the current user, show a "shared"
  * badge for admin-scope rows (``user_id === null``) with their ``note``

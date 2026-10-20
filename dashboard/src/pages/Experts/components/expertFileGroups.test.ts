@@ -10,7 +10,7 @@ describe("groupExpertFiles", () => {
       {
         name: "skills/demo/SKILL.md",
         content:
-          '---\nname: Demo Skill\ndescription: A demo\nmetadata:\n  octop:\n    emoji: "🎯"\n---\n\n# Skill',
+          '---\nname: Demo Skill\ndescription: A demo\nmetadata:\n  agentbuddy:\n    emoji: "🎯"\n---\n\n# Skill',
       },
       {
         name: "agents/reviewer.md",

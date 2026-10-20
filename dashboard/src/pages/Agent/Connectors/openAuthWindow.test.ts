@@ -24,7 +24,7 @@ describe("tryOpenAuthPopup", () => {
     window.open = open as typeof window.open;
     (window as DesktopWindow)._wails = { invoke: () => undefined };
     expect(
-      tryOpenAuthPopup("", "octop-oauth", "width=520,height=720"),
+      tryOpenAuthPopup("", "agentbuddy-oauth", "width=520,height=720"),
     ).toBeNull();
     expect(open).not.toHaveBeenCalled();
     expect(isAuthPopupBlocked(null)).toBe(false);
@@ -33,7 +33,7 @@ describe("tryOpenAuthPopup", () => {
   it("still reports a blocked popup in the browser", () => {
     window.open = vi.fn(() => null) as typeof window.open;
     expect(
-      tryOpenAuthPopup("", "octop-oauth", "width=520,height=720"),
+      tryOpenAuthPopup("", "agentbuddy-oauth", "width=520,height=720"),
     ).toBeNull();
     expect(isAuthPopupBlocked(null)).toBe(true);
   });

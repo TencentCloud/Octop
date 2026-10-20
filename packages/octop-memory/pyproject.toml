@@ -1,0 +1,166 @@
+[build-system]
+requires = ["hatchling>=1.25"]
+build-backend = "hatchling.build"
+
+[project]
+name = "octop-memory"
+version = "1.0.2"
+description = "Pluggable memory system with hierarchical recall, FTS search, and multiple backend support."
+readme = "README.md"
+license = { text = "MIT" }
+requires-python = ">=3.12"
+authors = [{ name = "orcakit" }]
+keywords = ["memory", "agent", "llm", "recall", "fts", "sqlite"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+]
+dependencies = []
+
+[project.optional-dependencies]
+# Storage backends
+postgres = ["psycopg[binary]>=3.1", "psycopg-pool>=3.2"]  # PostgreSQL (psycopg3)
+
+# Vector search
+chroma = ["chromadb>=0.4"]  # local / embedded ChromaDB index
+qdrant = ["qdrant-client>=1.7"]  # local / remote Qdrant index
+embeddings = ["sentence-transformers>=2.2"]  # local embeddings for chroma/qdrant
+
+# LangGraph checkpointers
+langgraph = [  # SQLite (default; no extra runtime deps beyond these)
+    "langgraph-checkpoint>=2.0",
+    "langgraph-checkpoint-sqlite>=2.0",
+]
+langgraph-postgres = [
+    "langgraph-checkpoint>=2.0",
+    "langgraph-checkpoint-postgres>=2.0",
+    "psycopg[binary]>=3.1",
+]
+
+cli = ["click>=8.0"]
+
+# Local visualization dashboard
+dashboard = [
+    "click>=8.0",
+    "fastapi>=0.110",
+    "uvicorn[standard]>=0.29",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=8.0",
+    "pytest-asyncio>=0.23",
+    "pytest-cov>=5.0",
+    "ruff>=0.8",
+    "mypy>=1.13",
+    "click>=8.0",
+    "langgraph>=0.2",
+    "langgraph-checkpoint>=2.0",
+    "langgraph-checkpoint-sqlite>=2.0",
+    # Without this the whole tests/test_postgres.py suite skips silently, so
+    # the Postgres backend ships untested. Needs a reachable server too; the
+    # suite still skips (rather than fails) when it cannot connect.
+    "psycopg[binary]>=3.1",
+    # Same trap one level up: without this, _create_postgres_checkpointer takes
+    # its ImportError branch and returns None, so the Postgres-checkpointer
+    # tests exercise the degraded path instead of the real builder. Brings
+    # psycopg_pool with it. Mirrors the langgraph-postgres extra.
+    "langgraph-checkpoint-postgres>=2.0",
+]
+
+[project.scripts]
+octop-memory = "octop_memory.adapters.cli:main"
+octopmemory-bridge = "octop_memory.adapters.bridge.server:main"
+
+[project.urls]
+Homepage = "https://github.com/TencentCloud/octop-memory"
+Repository = "https://github.com/TencentCloud/octop-memory"
+Issues = "https://github.com/TencentCloud/octop-memory/issues"
+Changelog = "https://github.com/TencentCloud/octop-memory/blob/main/CHANGELOG.md"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/octop_memory"]
+exclude = [
+    "src/octop_memory/adapters/dashboard",
+    "src/octop_memory/adapters/cli/dashboard.py",
+]
+
+# The PyPI source distribution rebuilds the Python wheel. The full contributor
+# checkout (tests, plugins, CI, maintainer notes) remains in the source repository.
+# An allowlist prevents local tools and database assessments from leaking into it.
+[tool.hatch.build.targets.sdist]
+include = [
+    "/src/octop_memory",
+    "/pyproject.toml",
+    "/README.md",
+    "/README_CN.md",
+    "/LICENSE",
+    "/CHANGELOG.md",
+    "/AGENTS.md",
+    "/CONTRIBUTING.md",
+    "/SECURITY.md",
+    "/docs/integrations.md",
+    "/docs/agent/*.md",
+    "/assets/images/banner.jpeg",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src", "plugins/hermes"]
+asyncio_mode = "auto"
+
+[tool.ruff]
+line-length = 120
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "UP", "B", "SIM", "PLC", "PLE", "PLW", "RUF"]
+# This codebase intentionally mixes English source with Chinese comments,
+# docstrings, and test/eval fixtures (design-doc references, LLM few-shot
+# examples, user-facing CN strings). Chinese full-width punctuation is not
+# actually ambiguous in that context, so we allowlist it globally instead of
+# scattering RUF001/RUF002/RUF003 per-file-ignores across the repo. Plain
+# CJK ideographs are never flagged by these rules in the first place; only
+# full-width punctuation is.
+allowed-confusables = ["\uFF0C", "\uFF08", "\uFF09", "\uFF1A", "\uFF1F"]
+# Note: several modules (core.py, service.py, storage/backends/sqlite.py, the
+# adapters/bridge/server.py entrypoint, adapters/cli/portable_cmd.py, etc.) keep
+# heavy or optional imports lazy inside functions to avoid circular imports
+# and import-time cost. PLC0415 (function-level import) became a stable rule
+# in newer ruff releases and would flag every one of those intentional lazy
+# imports, so it is ignored globally. All previously-ignored per-file issues
+# (E402 import ordering, an intentionally unused probe import, a `global`
+# statement, and a reused loop variable) have been fixed at the source
+# instead of ignored.
+ignore = ["PLC0415"]
+
+[tool.ruff.lint.per-file-ignores]
+# The extractor few-shot examples embed long English `promotion_reason`
+# strings inside a triple-quoted prompt. They cannot be wrapped without
+# altering the prompt content the LLM receives, so E501 is ignored here.
+"src/octop_memory/pipeline/extractor/prompts.py" = ["E501"]
+# Raising the runtime minimum does not require rewriting the existing TypeVar API.
+"src/octop_memory/pipeline/recall/timeout.py" = ["UP047"]
+
+[tool.mypy]
+strict = true
+python_version = "3.12"
+files = ["src/octop_memory"]
+
+[[tool.mypy.overrides]]
+# Optional extras: present in the dev env, absent in a bare install. Tolerating
+# the missing import keeps `mypy --strict` honest either way, which a blanket
+# `type: ignore[import-not-found]` at each site cannot do (it flips to
+# "unused ignore" as soon as the package is installed).
+module = ["fastapi.*", "uvicorn", "psycopg", "psycopg.*", "psycopg_pool"]
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = "octop_memory.adapters.dashboard.server"
+disallow_untyped_decorators = false

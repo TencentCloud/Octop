@@ -24,7 +24,7 @@ import (
 
 const (
 	fileDropEventPrefix = "desktop:file-drop:"
-	desktopDropEvent    = "octop:desktop-file-drop"
+	desktopDropEvent    = "agentbuddy:desktop-file-drop"
 	maxDesktopDropFiles = 500
 	dropBatchTTL        = 2 * time.Minute
 )
@@ -333,7 +333,7 @@ func fileDropJS() string {
 		function zoneAt(x, y) {
 			var el = document.elementFromPoint(x, y);
 			if (!el || !el.closest) return null;
-			return el.closest("[data-octop-chat-drop]");
+			return el.closest("[data-agentbuddy-chat-drop]");
 		}
 		function clearZone() {
 			if (current) current.classList.remove("file-drop-target-active");
@@ -374,7 +374,7 @@ func fileDropJS() string {
 			var transfer = event.dataTransfer;
 			if (!transfer || !transfer.types || Array.prototype.indexOf.call(transfer.types, "Files") < 0) return;
 			var node = event.target && event.target.nodeType === 1 ? event.target : (event.target && event.target.parentElement);
-			var zone = node && node.closest ? node.closest("[data-octop-chat-drop]") : null;
+			var zone = node && node.closest ? node.closest("[data-agentbuddy-chat-drop]") : null;
 			if (!zone) return;
 			event.preventDefault();
 			var webview = window.chrome && window.chrome.webview;

@@ -1,0 +1,44 @@
+name: CI
+
+# Pull requests only. GitHub runs PR checks on the merge result, so a push
+# build on main would re-test content that the release / feature PR already
+# proved green.
+on:
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  quality:
+    name: "Python ${{ matrix.python-version }}"
+    runs-on: ubuntu-latest
+    # Post-release main → develop sync PRs carry main's already-tested tree.
+    if: ${{ !startsWith(github.head_ref, 'chore/sync-develop-after-') }}
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.11", "3.12"]
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: astral-sh/setup-uv@v7
+        with:
+          enable-cache: true
+          python-version: ${{ matrix.python-version }}
+
+      - name: Install dependencies
+        run: make install
+
+      - name: Install Chromium (integration tests)
+        run: sudo apt-get update && sudo apt-get install -y chromium-browser
+
+      - name: Lint
+        run: make lint
+
+      - name: Type check
+        run: make typecheck
+
+      - name: Test
+        run: make test

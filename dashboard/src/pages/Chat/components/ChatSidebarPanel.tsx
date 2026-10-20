@@ -9,7 +9,7 @@ import RailEdgeControl from "../../../components/RailEdgeControl";
 import styles from "../index.module.less";
 
 /** Dispatched when the chat history rail expand control is clicked. */
-export const EXPAND_CHAT_RAIL_EVENT = "octop:expand-chat-rail";
+export const EXPAND_CHAT_RAIL_EVENT = "agentbuddy:expand-chat-rail";
 
 interface ChatSidebarPanelProps {
   isMobile: boolean;
@@ -180,6 +180,7 @@ export default function ChatSidebarPanel({
           side={sidebarOpen ? "end" : "start"}
           /* Collapsed: share the nav rail divider — avoid a second gapped line. */
           showLine={sidebarOpen}
+          placement={sidebarOpen ? "center" : "after"}
           className={
             sidebarOpen ? styles.chatRailEdgeOpen : styles.chatRailEdgeClosed
           }

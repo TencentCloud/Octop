@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="docs/assets/readme-banner.png" alt="wkbuddy Banner" width="600" />
+  <img src="docs/assets/readme-banner.png" alt="agentbuddy Banner" width="600" />
 </p>
 
 <p align="center">
@@ -30,7 +30,7 @@
 
 ---
 
-**wkbuddy** is an open-source, self-hosted AI assistant. It's not just a tool — it's a digital life form that can operate in parallel. Through its multi-agent architecture, it builds an intelligent environment that is both independent and collaborative for teams, families, and individuals. Best of all, it runs entirely on your machine — the fully self-hosted design means privacy is never a compromise, while single-process startup makes the powerful web console, CLI, and IM integrations readily accessible.
+**agentbuddy** is an open-source, self-hosted AI assistant. It's not just a tool — it's a digital life form that can operate in parallel. Through its multi-agent architecture, it builds an intelligent environment that is both independent and collaborative for teams, families, and individuals. Best of all, it runs entirely on your machine — the fully self-hosted design means privacy is never a compromise, while single-process startup makes the powerful web console, CLI, and IM integrations readily accessible.
 
 Chat through the Web Dashboard, Feishu, DingTalk, QQ, WeChat, Telegram, Discord, WeCom, or programmatic HTTP/SSE/WebSocket. Extend capabilities with the **expert library**, **Connectors** (OAuth + MCP), and **ACP** integration for IDE workflows.
 
@@ -39,7 +39,7 @@ Chat through the Web Dashboard, Feishu, DingTalk, QQ, WeChat, Telegram, Discord,
 | | Feature | Description |
 |---|---------|-------------|
 | 👥 | **Multi-user expert team** | One admin, shared household; built-in expert library and expert market — switch specialists per scenario |
-| 🤝 | **Cloud collaboration** | Link this wkbuddy to another instance to browse peer experts and chat across instances; history stays on the expert's side |
+| 🤝 | **Cloud collaboration** | Link this agentbuddy to another instance to browse peer experts and chat across instances; history stays on the expert's side |
 | 🎭 | **MBTI personas** | 16 personality templates plus an interactive quiz — give each agent a distinct character |
 | 🎯 | **AgentTeams** *(Beta)* | A coordinator schedules multiple experts on multi-step work; [details](docs/expert-teams.md) |
 | 🔒 | **Security built-in** | JWT multi-user isolation, tool approval, shell command guardrails, and PII redaction — data stays local |
@@ -47,7 +47,7 @@ Chat through the Web Dashboard, Feishu, DingTalk, QQ, WeChat, Telegram, Discord,
 | 💾 | **Pluggable workspace backends** | Local disk, Docker sandbox, PostgreSQL, or COS/S3 for agent files — separate from the control-plane DB |
 | 🧠 | **Portable memory** | Powered by [Octop Memory](about:blank); memory migrates with the workspace |
 | 📚 | **Knowledge base** | RAG over your documents; share corpora within a deployment and ground answers in your private data |
-| 🧩 | **Plugins** | Extend wkbuddy with third-party plugins; bundled plugins are seeded and toggled on demand |
+| 🧩 | **Plugins** | Extend agentbuddy with third-party plugins; bundled plugins are seeded and toggled on demand |
 | ↔️ | **ACP bidirectional** | `octop acp` for IDE/terminal AI; delegate to OpenCode / Claude Code with permission gates |
 | 💻 | **Terminal AI+** | Interactive shell in the browser — AI-assisted command execution and troubleshooting |
 | 🌐 | **Browser AI+** | Headless Chromium sessions for web automation, screenshots, and remote browsing |
@@ -57,12 +57,12 @@ Chat through the Web Dashboard, Feishu, DingTalk, QQ, WeChat, Telegram, Discord,
 
 ## 📌 Overview
 
-wkbuddy is a self-hosted AI assistant platform for households and small teams. It runs a single process that serves a web dashboard, a CLI, IM channels (Feishu, DingTalk, QQ, WeChat, Telegram, Discord, WeCom, and more), and cron automation — all sharing one control-plane database under `~/.octop/` (SQLite by default; PostgreSQL optional).
+agentbuddy is a self-hosted AI assistant platform for households and small teams. It runs a single process that serves a web dashboard, a CLI, IM channels (Feishu, DingTalk, QQ, WeChat, Telegram, Discord, WeCom, and more), and cron automation — all sharing one control-plane database under `~/.octop/` (SQLite by default; PostgreSQL optional).
 
-> wkbuddy's design goal: keep every conversation, workspace, and credential on your own machine, while giving each user a personal team of specialized agents they can switch between per task.
+> agentbuddy's design goal: keep every conversation, workspace, and credential on your own machine, while giving each user a personal team of specialized agents they can switch between per task.
 
 <details>
-<summary>🐾 What can you do with wkbuddy</summary>
+<summary>🐾 What can you do with agentbuddy</summary>
 
 - **Personal assistant** — let a dedicated agent write weekly reports, organize notes, and manage your schedule; memory persists with the workspace.
 - **Family sharing** — one admin account, the whole household; assign different agents and experts per member; share experts and knowledge bases when useful.
@@ -87,14 +87,14 @@ wkbuddy is a self-hosted AI assistant platform for households and small teams. I
 | **ACP** | agent-client-protocol |
 | **Build / quality** | hatchling · ruff · mypy · pytest |
 
-wkbuddy is built on the Octop Harness stack — a set of focused runtimes that wkbuddy composes into one process:
+agentbuddy is built on the Octop Harness stack — a set of focused runtimes that agentbuddy composes into one process:
 
 - **[Octop Harness](about:blank)** — Agent runtime: model routing, tools, skills, and conversation checkpointing.
 - **[Octop Gateway](about:blank)** — multi-platform IM channel bridge that normalizes incoming messages into a single processing pipeline.
 - **[Octop Memory](about:blank)** — hierarchical recall with full-text search, so an agent's memory travels with its workspace.
 - **[Octop Browser](about:blank)** — CDP-based browser automation with persistent profiles for web tasks.
 
-Instead of an external queue or message broker, wkbuddy routes every surface — Web UI, IM, and cron — through one in-process `HarnessProcessor`. The result is a single, restart-safe process whose entire state is rebuilt from the control-plane database on boot (local SQLite by default; PostgreSQL optional).
+Instead of an external queue or message broker, agentbuddy routes every surface — Web UI, IM, and cron — through one in-process `HarnessProcessor`. The result is a single, restart-safe process whose entire state is rebuilt from the control-plane database on boot (local SQLite by default; PostgreSQL optional).
 
 ## 🤔 Features
 
@@ -128,14 +128,14 @@ Instead of an external queue or message broker, wkbuddy routes every surface —
 
 ### ACP (Agent Client Protocol)
 
-wkbuddy supports ACP in two directions:
+agentbuddy supports ACP in two directions:
 
-1. **Inbound** — external tools use **your** wkbuddy agent
+1. **Inbound** — external tools use **your** agentbuddy agent
    ```bash
    octop acp --agent main   # stdio ACP server for Zed, OpenCode, …
    ```
 
-2. **Outbound** — wkbuddy delegates to external coding agents
+2. **Outbound** — agentbuddy delegates to external coding agents
    - Dashboard → **ACP** (`/acp`): configure runners (global per user)
    - Enable **acp_runner** per agent, then delegate in chat
 
@@ -161,9 +161,9 @@ Here are our mid-to-long term plans:
 - [ ] **Self-evolution** — automatically distill everyday conversations into reusable skills, so the assistant grows with you.
 - [ ] **Managed Agents** — platform-hosted agent lifecycle (provision, scale, and operate agents without managing the full self-hosted stack yourself).
 - [ ] **Project** — project-scoped workspaces that group agents, files, and conversations around a shared goal.
-- [ ] **Cloud–edge continuum** — run wkbuddy locally while offloading selected tasks to the cloud, so light work stays on-device and heavier jobs use remote capacity when you need it.
-- [ ] **Plugin marketplace** — a curated market to discover, install, and update third-party plugins without leaving wkbuddy.
-- [ ] **Conversational control plane** — deepen wkbuddy’s own skills so chat can cover the full dashboard surface: create experts, wire channels, manage knowledge bases, and scaffold plugins end-to-end.
+- [ ] **Cloud–edge continuum** — run agentbuddy locally while offloading selected tasks to the cloud, so light work stays on-device and heavier jobs use remote capacity when you need it.
+- [ ] **Plugin marketplace** — a curated market to discover, install, and update third-party plugins without leaving agentbuddy.
+- [ ] **Conversational control plane** — deepen agentbuddy’s own skills so chat can cover the full dashboard surface: create experts, wire channels, manage knowledge bases, and scaffold plugins end-to-end.
 
 This roadmap may shift as the community grows; treat it as indicative only.
 
@@ -217,9 +217,9 @@ See [scripts/README.md](scripts/README.md) for all install options (`--version`,
 
 | Platform | Artifact |
 |----------|----------|
-| Windows | `wkbuddy-desktop-windows-amd64-<version>.exe` (64-bit) / `wkbuddy-desktop-windows-arm64-<version>.exe` (ARM64) — NSIS installer |
-| macOS | `wkbuddy-desktop-darwin-arm64-<version>.dmg` (Apple Silicon) / `wkbuddy-desktop-darwin-amd64-<version>.dmg` (Intel) |
-| Linux | `wkbuddy-desktop-linux-amd64-<version>.tar.gz` / `wkbuddy-desktop-linux-arm64-<version>.tar.gz` |
+| Windows | `agentbuddy-desktop-windows-amd64-<version>.exe` (64-bit) / `agentbuddy-desktop-windows-arm64-<version>.exe` (ARM64) — NSIS installer |
+| macOS | `agentbuddy-desktop-darwin-arm64-<version>.dmg` (Apple Silicon) / `agentbuddy-desktop-darwin-amd64-<version>.dmg` (Intel) |
+| Linux | `agentbuddy-desktop-linux-amd64-<version>.tar.gz` / `agentbuddy-desktop-linux-arm64-<version>.tar.gz` |
 
 See [desktop/README.md](desktop/README.md) for the desktop shell.
 
@@ -278,7 +278,7 @@ docker run -d \
   -v octop-data:/data/.octop \
   -e HOME=/data \
   -e OCTOP_DEFAULT_PASSWORD="<strong-password-or-omit-for-setup-wizard>" \
-  wkbuddy:latest
+  agentbuddy:latest
 ```
 
 Open `http://localhost:8088`. A valid `OCTOP_DEFAULT_PASSWORD` creates the admin on first boot and writes credentials to `/data/.octop/credential.txt`. If it is unset or rejected by the password policy, no admin is created — complete the setup wizard (unlock password in `/data/.octop/octop-login.txt`). Override the username via `OCTOP_ADMIN_USERNAME`.
@@ -342,7 +342,7 @@ All install scripts provision an isolated environment at `~/.octop/venv` and a `
 
 ### Upgrade
 
-wkbuddy ships no built-in updater: replace the wheel/binary yourself and restart the service.
+agentbuddy ships no built-in updater: replace the wheel/binary yourself and restart the service.
 Your `~/.octop/` database, workspaces, secrets, and `config.json` are preserved:
 
 ```bash
@@ -406,7 +406,7 @@ Full catalog, auth kinds, and MCP modes: **[docs/connectors.md](docs/connectors.
 | Command | Description |
 |---------|-------------|
 | `octop init` | Bootstrap `~/.octop/` (DB, admin, JWT secret) |
-| `octop run` | Start wkbuddy in the foreground |
+| `octop run` | Start agentbuddy in the foreground |
 | `octop service start` | Install and start as a system service |
 | `octop service stop` | Stop the system service |
 | `octop agent` | Create, list, start/stop agents |
@@ -435,7 +435,7 @@ Full reference: **[docs/cli.md](docs/cli.md)**.
 After `octop run`, open **http://127.0.0.1:8088**.
 
 <p align="center">
-  <img src="docs/assets/readme-chat.png" alt="wkbuddy Web Dashboard" width="800" />
+  <img src="docs/assets/readme-chat.png" alt="agentbuddy Web Dashboard" width="800" />
 </p>
 
 - **Chat** — real-time conversation with experts and teams

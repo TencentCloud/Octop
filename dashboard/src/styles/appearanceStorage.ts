@@ -40,7 +40,7 @@ function readLegacyPalette(): ThemePalette {
 
 /**
  * Read light/dark preference + brand palette from the shared `theme` key.
- * Migrates legacy plain-string `theme` and `octop:ui-palette` values.
+ * Migrates legacy plain-string `theme` and `agentbuddy:ui-palette` values.
  */
 export function readStoredAppearance(): StoredAppearance {
   const raw = localStorage.getItem(THEME_STORAGE_KEY);

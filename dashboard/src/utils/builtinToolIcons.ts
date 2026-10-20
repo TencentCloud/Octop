@@ -37,7 +37,7 @@ import {
   Wrench,
 } from "lucide-react";
 
-/** Lucide icons for built-in harness / wkbuddy host tools. */
+/** Lucide icons for built-in harness / agentbuddy host tools. */
 export const BUILTIN_TOOL_ICONS: Record<string, LucideIcon> = {
   ls: Folder,
   read_file: FileSearch,
@@ -57,8 +57,9 @@ export const BUILTIN_TOOL_ICONS: Record<string, LucideIcon> = {
   write_env_file: FileKey,
   ask_user_question: CircleHelp,
   tavily_search: Globe,
-  brave_search: Globe,
-  google_search: Globe,
+  doubao_search: Globe,
+  deepseek_search: Globe,
+  exa_search: Globe,
   kimi_search: Globe,
   searchfree_search: Globe,
   generate_image: Image,

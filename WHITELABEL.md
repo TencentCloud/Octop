@@ -315,6 +315,7 @@ grep -rn $INC "com.tencent.octop" desktop                                       
 **执行前必须先拿到的设计参数**
 
 已收到（2026-10-15）：产品名 `wkbuddy`、定位「政务办公伙伴」、自有域名主域 `daoshengtech.com`、桌面 bundle id `com.daoshengtech.wkbuddy`。
+**品牌名更新（2026-10-20）：英文名 `wkbuddy` → `agentbuddy`（全小写连体，Q 大小写口径已裁决：不用 `Agent Buddy` 空格式、不用驼峰）；中文名不变仍为「政务伙伴」。** 全仓 `wkbuddy` 字面量约 911 处 / 734 行需统一替换为 `agentbuddy`，含契约点：桌面 bundle id `com.daoshengtech.agentbuddy`（须同步 `stamp_version.py` 正则）、镜像名 `agentbuddy:latest` / `agentbuddy-sandbox:*`、产物名 `agentbuddy-desktop-*`、compose 服务键、OpenAPI `title="agentbuddy API"`。zh 界面文案不受影响。
 
 仍缺（P6/P8 的阻塞项，均已向用户提问）：
 
@@ -348,7 +349,7 @@ grep -rn $INC "com.tencent.octop" desktop                                       
 
 ## 8. 本轮落地情况（2026-10-15 → 10-16）
 
-**口径确认**（本轮按这些参数执行）：中文名 **政务伙伴**（`zh` 界面）/ 英文名 **`wkbuddy`**（全小写，`en` 界面与发行物字面量）；版权主体 **汇智道晟（舟山）科技有限公司**；**所有对外品牌 URL 暂填空白页 `about:blank`**（功能性第三方端点不动，只清来源痕迹）；**logo/图标素材沿用原样**，§8.2 是将来要替换的文件清单。工作树改动**未 commit、未 push**。
+**口径确认**（本轮按这些参数执行）：中文名 **政务伙伴**（`zh` 界面）/ 英文名 **`wkbuddy`**（全小写，`en` 界面与发行物字面量；**2026-10-20 起更新为 `agentbuddy`，见附录 B 开头的品牌名更新**）；版权主体 **汇智道晟（舟山）科技有限公司**；**所有对外品牌 URL 暂填空白页 `about:blank`**（功能性第三方端点不动，只清来源痕迹）；**logo/图标素材沿用原样**，§8.2 是将来要替换的文件清单。工作树改动**未 commit、未 push**。
 
 ### 8.1 各阶段实际落点（step → 怎么验证）
 
@@ -415,7 +416,7 @@ grep -rn $INC "com.tencent.octop" desktop                                       
 
 ### 8.5 残留计数与待你决策清单
 
-**残留计数（2026-10-16 第二轮实测，命令已固化进 §6）**：品牌词 `Octop`（排除保护名单后）**38 处 / 28 文件**（P2–P8 那轮记的 43/32 是因为 `upload-release-cos.yml`、`release.yml` 的 PyPI job 等已随本轮删除）。分布：`tests/**` 30 行（fixture 与注释，例如 `"You are Octop."`）、`scripts/**` 3 行（就是你要求填的仓库地址 `kolehank/Octop.git` ×2 + `release_download_links.py` 的 `GITHUB_REPO`）、`src/octop` 2 行（`octop-assistant/SKILL.md:67,76` 的 `Octop Memory`/`Octop Harness` 组件真名，属保护名单）、`docs` 1 行（`octop-ui-payload-offload.md:3` 的上游 issue 链接，随 docs 重写一并处理）、`.github` 2 行（`ISSUE_TEMPLATE/config.yml` 两条 link 已改指 `kolehank/Octop`，命中只是因为 URL 里带仓库名）。`dashboard/src` 与 `src/octop` 的用户可见面为 0。代号行数：`finnie` 24、`lightclaw` 7、`openclaw` 26、`workbuddy` 18（A3 #15/#16 判定保留）。`desktop/` 里的 `com.tencent.octop` 已归零。
+**残留计数（2026-10-17 第四轮复核，命令已固化进 §6，数字以本轮为准）**：品牌词 `Octop`（排除保护名单后）**66 处 / 49 文件**——比 2026-10-16 记的 38/28 多出部分来自合并上游 1.0.2b9 带回的新代码/新文档，且都落在非用户可见面（`scripts/**` 那 3 处均为 `kolehank/Octop` 仓库地址）。分布：`tests/**` 35 行（fixture 与注释）、`src/octop` 21 行（逐条核实**全是** docstring/注释/专家技能说明：`laya_runtime.py` 4、`agent_mcp/` 与 `routers/agent_mcp.py` 5、`routers/decision.py` 2、`backend/grep_safety.py` 1、`business-operations/**` 7、`octop-assistant/SKILL.md` 2 处组件真名，均属保护名单/内部注释）、`docs` 5 行（`api.md` 3 + `plugin-channels.md` 1 属「doc 先不动」范围；`octop-ui-payload-offload.md:3` 1 行上游 issue 链接）、`scripts/**` 3 行（`kolehank/Octop.git` ×2 + `release_download_links.py` 的 `GITHUB_REPO`）、`.github` 2 行（`ISSUE_TEMPLATE/config.yml` 的 link 因 URL 带仓库名命中）。代号行数：`finnie` 24、`lightclaw` 6（§10.2 删 SKILL.md 一行后）、`openclaw` 26、`workbuddy` 18（A3 #15/#16 判定保留）。`desktop/` 里的 `com.tencent.octop` 已归零。
 
 **§6 扫描口径之外还有一批（2026-10-16 补测，19 行 / 3 个文件，都要你定去留）**：`AGENTS.md` 8 处（`:37` 开篇 "**Octop** — self-hosted AI assistant platform"、`:60` 包布局、`:166/183/210/312/326` 等 —— 这是**给协作者和 coding agent 看的门面**，最终用户看不到，但"看起来是我的产品"这条它最显眼）；`.cursor/skills/publish/SKILL.md` 2 处（`:4` front-matter "Publish the Octop Python package"、`:13` 同义中文）；`CHANGELOG.md` 9 处（历史条目里的 "项目重命名为 Octop"、"Octop↔Octop 云端桥接" 等 —— **属既成事实的记录，改了等于伪造历史，我建议不动**）。
 
@@ -548,3 +549,217 @@ uv run pytest tests/integration/test_update_api.py \
 **重要变化：本机已经跑不了全量测试了。** 上游 #2114/#2130 把本地 Embedding 依赖探测接进了服务启动链，`infra/agents/providers/onnx_service.py:67` 的 `local_embedding_deps_available()` 会 `import fastembed`，而这台机器 `uv run python -c "import fastembed"` 直接段错误（exit 139，onnxruntime 装坏了）。现在**凡是启动 `OctopServer` 的测试**都会连带崩掉 —— 不再只是 §8.6 记的那两个 ONNX 文件。已核实这是本机环境而非合并引入：崩掉的调用栈落在 `.venv/Lib/site-packages/onnxruntime/capi/_pybind_state.py:32`。
 
 换到 Linux 电脑后请跑 `make all`（它是本轮唯一没能在本机完成的验证）。顺带提醒两件事：`make install-hooks` 会执行 `git config core.hooksPath .githooks`，我一次都没跑，所以这三个提交（`ff1c3420` / `6d5adc51` / `14a77d0c`）**没有经过 pre-commit 钩子**（我用的是手拆的 ruff/format/mypy/build/pytest，等价但不含 `git config` 改动）；`commit 6d5adc51` 我多带了 `--no-verify`，由于钩子未安装它其实没有跳过任何东西，写在这里是为了透明。
+
+---
+
+## 10. 第四轮复核与修补（2026-10-17，macOS arm64 干净检出）
+
+上轮「换 Linux 电脑后跑 make all」在本机 macOS 完成；同时在**干净检出**（无 `.venv`、无 `node_modules`、无 `src/octop/dashboard/` 构建产物）上复跑了全部自检命令，发现并修补了三类问题。
+
+### 10.1 船闸发现：两条集成测试依赖前端构建产物
+
+`make test`（`pytest -n auto -m "not live"`）在干净检出上有 2 条失败：
+
+- `tests/integration/test_update_api.py::test_update_chain_routes_are_not_mounted`：断言未挂载的 `/api/update/*` 在 POST/PATCH 下回 405；
+- `tests/integration/test_channels_api.py::test_disabled_channel_kind_is_rejected`：对已摘除的 bot-creator 路由同样断言 405。
+
+根因：`src/octop/api/app.py:318` 的 SPA 兜底路由被 `index_file.exists()` 包着，`src/octop/dashboard/` 是 gitignore 的构建产物、CI（`ci.yml` 只跑 `make install` + `make test`）从不构建前端，所以产物缺失时未匹配路径是**纯 404**，产物存在时才是「路径部分匹配 → 405」。上轮 §8.6「11 passed」是在已构建前端的机器上验的，环境掩盖了这条依赖。
+
+**处置**：断言放宽为 `in (404, 405)`（GET 仍断 404——两种情况都是 404），注释写明两种环境的语义。带产物/不带产物两种状态各跑一遍均通过。未给 `make test` 加前端构建依赖（会把 CI 拖到需要 Node 工具链）。
+
+### 10.2 用户可见面补扫（§6 口径之外的漏网）
+
+§6 的两条 grep 只扫 `*.ts/*.tsx`，**从来看不到 locale JSON 的值**，而品牌文本恰恰藏在值里：
+
+| 位置 | 内容 | 处置 |
+|---|---|---|
+| `dashboard/src/locales/{en,zh}.json:3054,3590,5938` | `octop.example.com` / `https://octop.example.com` / 「如 localhost 或 octop.example.com」 | **已清**：改成 `example.com`（TLS 域名占位符、Bridge 对端地址占位符、企微回调域提示三处 × 两份语言） |
+| `dashboard/src/pages/Admin/Users/SsoPanel.tsx:641` | `<Input placeholder="https://octop.example.com" />`（SSO 面板"回调域名"输入框，硬编码，非 locale） | **已清**：改成 `https://example.com` |
+| `dashboard/src/utils/toolMediaBlocks.ts`（×3）、`components/AuthFileDownloadLink.tsx`、`pages/Experts/components/iconForName.tsx` | `new URL(url, "http://octop.local")`（相对 URL 的解析基准，仅内部解析用） | **已清**：改成 `http://wkbuddy.local`，行为不变 |
+| `octop-assistant/SKILL.md:27,100,116` | 「与 LightClaw 不同…」「\| 在腾讯云上使用 \|」「\| 从 LightClaw 迁移 \|」（agent 会念给用户） | **已清**：对比句去掉 LightClaw 前缀；两行文档索引删除（无自有文档站，`/guide/*` 本就是上游相对路径） |
+| `dashboard/src/components/AvatarDropdown.tsx:56` | `GITHUB_URL = "about:blank"`（「项目地址」菜单项） | **已删整项**（2026-10-18 你确认不对外挂仓库地址）：菜单项、`Github` 图标导入、`GITHUB_URL` 常量、locale 键 `account.projectUrl`（en/zh）一并移除；`HELP_FEEDBACK_URL` 无官网仍留空白页 |
+
+未动（按已定取向保留）：`OctopBot` 渠道 label/介绍、元宝介绍文案（第三方平台真名，属 A2「事实描述」；且 `CHANNEL_KEYS` 已不含 octopbot/yuanbao，当前不渲染）；`tencentSkillHubDesc` 等死键同样在包内但不渲染。§8.3 的其余 `about:blank`（README 17×2、`catalog.json` 8、SKILL.md 5、渠道常量 3 及零星）**仍待回填**，需要自有域名/制品站/各家官方文档地址后统一处理。
+
+### 10.3 前端格式漂移与钩子
+
+`npm run format:check` 报 3 个文件不合规（`SidebarCollapsedIconNav.tsx`、`Settings/AdvancedSettings/index.tsx`、`Control/RemoteDesktop/DesktopPanel.tsx`），三个文件在上游版本均合规——是本轮白标编辑后没跑 prettier 留下的（根因即 §9.4 承认的「钩子从未安装」）。**处置**：已跑 `make format-all` 并确认 `npm run format:check` 归零；`make install-hooks` 已安装（`core.hooksPath=.githooks`）。eslint 的 3 个 error（`constants.test.ts:5` 未用变量、`chatStore.ts:1283`、`ModelListEditor.tsx:348` 冗余布尔）经比对**上游版本同样报错**，非白标引入，且 CI 的 `make lint` 不含 eslint，本次不动。
+
+### 10.4 验证证据（本机 macOS arm64，2026-10-17）
+
+```
+uv run ruff check src tests scripts                    -> All checks passed
+uv run ruff format --check src tests                   -> 1229 files already formatted
+uv run mypy --strict src/octop                          -> Success: 594 source files
+cd dashboard && npx tsc -b                              -> exit 0
+npm run format:check                                    -> 全部合规
+uv run pytest tests/unit/i18n -q                        -> 通过（locale 值改动无键差异）
+uv run pytest -n auto -m "not live"（已构建前端）       -> 4886 passed, 31 skipped
+```
+
+全量还余 2 个失败，均为**本机环境**、与白标无关、CI（Linux/Windows）不受影响：`tests/unit/desktop/test_capture_display.py::test_display_str_defaults`（本机 XQuartz 把 `DISPLAY` 设为 launchd 路径，断言 `startswith(":")` 落空，上游原有测试）；`tests/unit/agents/test_laya_runtime.py::test_install_reports_ready_and_keeps_log`（本机磁盘只剩 3.7 GB，低于代码里 4 GB 的最小空间门槛，安装在任何命令执行前退出）。前者建议后续补平台守卫，后者清磁盘即可。
+
+---
+
+## 12. 英文品牌名更新决策(2026-10-20,待实施)
+
+**决策**:英文名 `wkbuddy` → **`agentbuddy`**(全小写连体);中文名**不变**,仍为「政务伙伴」。
+大小写口径裁决:不采用 `Agent Buddy`(空格式)或 `AgentBuddy`(驼峰),理由与原 `wkbuddy` 一词两用的
+口径一致——**显示文案与契约标识符共用同一个全小写连体词**,改名只换词根、不动结构,契约点风险最小。
+
+**实施范围(实测)**:全仓 `wkbuddy` 字面量约 **911 处 / 734 行**(排除三份审计文档与
+`docs/sandbox-image-management.md` 自身),零 `WKBuddy`/`WKBUDDY` 混用,替换可全量安全进行。
+
+**必须同步的契约点**(改了会断的):
+
+| 类别 | 现 wkbuddy 形态 | 改为 |
+|---|---|---|
+| 桌面 bundle id | `com.daoshengtech.wkbuddy` | `com.daoshengtech.agentbuddy`,**必须同步 `desktop/src/build/stamp_version.py` 的正则与报错文案**(不同步则 Windows 打包直接失败) |
+| 服务镜像 | `wkbuddy:latest`(`docker_build.sh`、compose 服务键/container_name、Dockerfile LABEL) | `agentbuddy:latest` |
+| 沙箱镜像 | `wkbuddy-sandbox:*`(Dockerfile.sandbox、README 文档) | `agentbuddy-sandbox:*` |
+| 下载产物名 | `wkbuddy-desktop-<os>-<arch>-<version>.<ext>`(`download.go`、release_download_links、README 表格) | `agentbuddy-desktop-…` |
+| systemd/服务描述 | `Description=agentbuddy AI Server` 等 | 同词根替换 |
+| OpenAPI | `title="wkbuddy API"`、`openapi_meta.py` 文案 | `agentbuddy API` |
+| 浏览器 profile/目录名 | `browserProfile.ts`、`host_dirs.py` 等 | 同词根替换(纯新路径,无历史数据兼容问题;若有已生成的旧目录名,属用户可重建缓存) |
+
+**不受影响**:zh 界面「政务伙伴」全部文案;深水区(`octop` CLI 名、`~/.octop`、`OCTOP_*`、
+`X-Octop-*`、`ChannelKind`、组件真名 `Octop Harness|Gateway|…`)。
+
+**未实施**:等待与沙箱镜像版本管理(docs/sandbox-image-management.md)、title 调整等
+待办一并排期;实施时执行顺序 = 全量替换 → 契约点专项核对(stamp_version 正则/compose 服务键
+一致性)→ `make all` + `cd dashboard && npm run build` → 桌面端在有 Go 工具链的机器上
+跑一次 `task build` 验证 exe 属性页/托盘。
+
+### §12.1 浏览器存储 key 与前端标识符前缀(2026-10-20 补充决策)
+
+**决策**:`octop:` / `octop-` 前缀的浏览器端标识符在白标化时**未处理**(原归入深水区,
+实测属审计分级缝隙:开发者 DevTools 可见,政务交付检查时会暴露来源)。本次定案:
+**随品牌名更新一并换为 `agentbuddy:` / `agentbuddy-` 前缀**,按风险分三档执行:
+
+| 档 | 范围(实测) | 处置 |
+|---|---|---|
+| **A. 纯前端 localStorage/sessionStorage key(约 26 个)** | `octop:active-agent`、`octop:chat-dock:{mode,size}`、`octop:workbench:tab`、`octop:remote-desktop:tab`、`octop:browser-panel:*`、`octop:ui-locale` 之外的 UI 偏好类、`octop:form-draft:*`、`octop:sidebar*`、`octop:layout-mode`、`octop:pinned-experts`、`octop:chat-connectors:*`、`octop:remote-browser/-phone`、`octop:admin-agents-view`、`octop:chunk-reload`、`octop:ui-palette`、`octop:custom-palette`、CSS id `octop-custom-palette` 等 | **直接换 `agentbuddy:`**。老用户 UI 偏好重置一次可接受;实现时对低成本低价值的偏好(active-agent、ui-palette)可顺带读旧 key 迁移一次 |
+| **B. 跨层契约 key(3 个,须同步改)** | ① `octop:ui-locale` —— **桌面壳 Go 注入**(`desktop/src/main.go:149` 硬编码 `localStorage.setItem('octop:ui-locale',…)`)② `octop:connector-oauth` —— **后端 OAuth 回调页 postMessage 类型**(`api/routers/connectors.py:1553`)③ `octop:agent_errors.*` —— **后端写 agents.last_error 落库**(`manager.py:3195`),前端 `utils/agentError.ts:47` 按前缀解析 | ①与桌面壳同 commit 改;②前后端同 commit 改;③**前后端同改 + 前端兼容读旧前缀**(存量 agents.last_error 已带 `octop:` 前缀落库,翻译函数对两种前缀都识别,防止存量 agent 报错显示成原文) |
+| **C. 与上游 harness 的协议(不动)** | i18n `stream_errors` 的 `octop:` 前缀(`i18n/domains/stream.py:16`,与上游 `octop_harness` 的消息标记机制联动)、`octop-harness`/`octop-gateway` 等组件真名、`data-octop-*` 桌面拖拽区 CSS 契约类(若桌面壳同步依赖) | **保留 octop 前缀**,与"组件真名"同类深水区,改了与上游包断链 |
+
+**截图勘误**:`octop:update-status` 是已删更新链路的存量残留(P2 摘除时连
+`updateStatusCache.ts` 一起删了,源码已无此 key),浏览器里清掉即消失,不在清单内。
+
+**实施归并**:本节与 §12 的 agentbuddy 改名是同一批工作;执行顺序 =
+A 档全量替换 → B 档三个契约点前后端(含桌面壳)同步 → C 档核对不动 →
+`make all` + 前端构建 + i18n 四份测试;localStorage 无服务端迁移脚本需求(纯浏览器侧)。
+
+### §12.2 技能依赖离线分发:方案备忘与镜像站点前提(2026-10-20 补充)
+
+**修正方案(断网沙箱装新依赖)**:下载动作不放在 agentdock(它是 Go 单二进制,为信创
+"零 Python 依赖"而生,不跑 pip/npm),也不放在沙箱运行期(断网)。分工:
+
+1. **有网构建/中转机**:`pip download -r requirements.txt --platform <沙箱平台>
+   --only-binary=:all: -d wheels/` + npm pack → 打 deps.zip(带 SHA256);
+2. **agentdock(信创机)**:纯 Go 的"登记+搬运"工具(deps_register/fetch),台账记录
+   谁在何时给哪个技能装了什么版本 —— 高频统计的数据源;
+3. **传输**:deps.zip 走政务伙伴附件上传通道(inbound/,默认 100MB 可调)或共享目录,
+   MCP 只传元数据清单(torch 类大 wheel 不走 MCP 逐段传);
+4. **沙箱内**:agent 执行 `pip install --no-index --find-links .octop/deps/<skill>/wheels/ -r requirements.txt` 离线安装;
+5. **回流**:agentdock 台账周期性汇总,高频依赖沉淀进 Dockerfile.sandbox 的
+   SKILL_PIP_PKGS 白名单(镜像基线解决高频,依赖分发解决长尾)。
+
+⚠️ **实施前提(待确认)**:需要确认政务内网**是否已有镜像站点**——
+
+- **Python**:`pip` / `uv` 走的 PyPI 镜像(Nexus / pypi.tuna.tsinghua.edu.cn /
+  mirrors.aliyun.com 之一,或自建 devpi);
+- **Node.js**:`npm` 镜像(registry.npmmirror.com 或 Nexus npm 仓库);
+- 若内网无镜像站点:选项 A 由镜像分发覆盖全部依赖(纯 --no-index,不依赖任何站点,
+  但每技能都要带全 wheel);选项 B 先在政务网内自建/接入一个镜像站再走方案
+  (一劳永逸,`Dockerfile.sandbox` 的 `--build-arg PIP_INDEX_URL/NPM_REGISTRY` 直接指向它)。
+
+**确认结果(2026-10-20)**:**假设政务网当前无镜像站点**(pip/npm 均无内网站点),
+**暂不考虑龙芯**(目标环境按海光 x86_64 + 鲲鹏/飞腾 aarch64 处理,轮子分发路线可行,
+见 §12.2.1)。按此假设的当前执行路径:
+
+- 走**选项 A:纯依赖分发**(每技能带全 wheel,`pip install --no-index --find-links`),
+  不依赖任何内网站点;
+- `Dockerfile.sandbox` 构建用**默认国内源**(清华 apt / 阿里 PyPI / npmmirror)——构建机
+  在有网侧,不依赖政务网内有站;
+- 自建镜像站(Nexus)作为**将来的升级项**保留(§12.2.2 流程已记),触发条件:多实例/
+  多单位部署、或客户环境出现龙芯、或依赖分发流程运维成本明显上升时再启动;
+- 每次分发前在目标架构机器上冒烟验证(`pip install --no-index --find-links` +
+  import 检查),作为流程纪律。
+
+完整选型背景见 `docs/storage-backend-guide.md`(存储后端选型指南,已入库)。
+
+#### §12.2.1 "每技能带全 wheel"的靠谱性评估(2026-10-20 实测补充)
+
+**结论:靠谱,但有一个硬前提 + 一个例外**。评估基于对 PyPI 最新版本轮子覆盖的实测:
+
+**平台矩阵**(对应 Dockerfile.sandbox 头注):
+
+| 目标平台 | PyPI 轮子覆盖 | 实测证据 |
+|---|---|---|
+| **海光/兆芯(x86_64,amd64)** | **最好**(PyPI 生态的主平台) | 全部包有 amd64 轮子 |
+| **鲲鹏/飞腾(aarch64,arm64)** | **好**,主流包齐全 | numpy/pandas/lxml/cryptography/pymupdf/pyyaml/pillow/markupsafe/pydantic-core 均有 20+ 个 aarch64 轮子;纯 Python 包(requests/httpx/openpyxl/python-docx/python-pptx/pydantic 外壳)走 `py3-none-any` 通用轮 |
+| **龙芯(loongarch64)** | **差,基本为零** | numpy/pandas/cryptography/pydantic-core/lxml/pillow 实测 **0 个** loongarch 轮子 —— 龙芯不在主流 CI 构建矩阵里 |
+
+**硬前提:构建机平台必须与沙箱一致**。`pip download --platform` 下载的轮子要匹配:
+① 架构(aarch64 ≠ amd64);② Python 版本(`cp312`);③ ABI tag(`manylinux_2_27_aarch64`
+等,国产化 OS(C麒麟/统信)内核 glibc 版本要 ≥ 轮子的 manylinux 要求——麒麟 V10 SP 系内核
+较老时,优先下载 `manylinux2014` 档或更保守的档位)。这三件事都由构建机上的
+`pip download --platform linux_aarch64 --python-version 312` 参数解决,**不需要手工逐个挑**;
+但构建机/验证机必须能"代表"目标环境,建议流程里加一步:**在目标架构的国产化机器上
+`pip install --no-index --find-links` 冒烟验证后再分发**(信创 arm64 机常见,龙芯需特殊处理)。
+
+**例外:龙芯(loongarch64)不能走"下载轮子"路线**。PyPI 无轮子可用,只能两条路:
+① 在龙芯机上用 `WITH_BUILD_TOOLS=1` 源码编译(`pip download` 换成下载 sdist tar 包,
+`--no-binary :all:`),构建慢且需龙芯适配的工具链;② 龙芯单位通常有本地软件源/承包商
+适配包,优先找现成的。**若客户环境含龙芯,建议直接按"自建镜像站"路线走**(见 §12.2.2),
+让龙芯生态的适配源承担编译产物。
+
+**综合判断**:对政务常见的海光+鲲鹏/飞腾组合,"每技能带全 wheel"是可靠的——轮子覆盖
+齐全、`pip download` 参数化处理平台差异、分发包可离线审计。风险不在"能不能跑",在
+"流程纪律":构建机平台/Python 版本一旦与沙箱不一致,装上去的轮子就是错的——所以
+流程里必须有目标架构冒烟验证这道关。
+
+#### §12.2.2 自建镜像站流程(政务内网,Nexus 为例)
+
+若政务网无现成 pip/npm 镜像站,自建是最一劳永逸的路(一次搭好,依赖分发、镜像构建、
+沙箱开网场景全部受益)。推荐 **Sonatype Nexus 3**(一个实例同时当 PyPI + npm + Docker
+registry + Maven 代理,Java 单包,信创 arm64 有官方包)或 **Harbor**(纯 Docker registry,
+配合镜像分发)。流程:
+
+```
+① 硬件/环境:政务网内一台服务器(Docker 或 systemd 跑 Nexus),磁盘 500GB+
+② 建仓库(Nexus):
+   - pypi-proxy  → 上游填公网或 collector 中转的 PyPI(https://pypi.org)
+   - pypi-hosted → 放自研包/手工导入的 wheel
+   - npm-proxy / npm-hosted 同理
+   - docker-proxy / docker-hosted(可选,把基底镜像/沙箱镜像也收进来,
+     解决 docker save/load 逐台拷贝的痛点 → 改用 docker pull 走内网)
+③ 纳新(有网侧):定期(或一次性)把需要的 PyPI 包同步进 hosted 仓库:
+   pip download -r all-requirements.txt -d wheels/  # 构建机上按目标平台参数跑
+   然后 twine upload --repository-url https://nexus.internal/repository/pypi-hosted/ wheels/*
+   (npm 侧:npmmirror 同步或直接 npm publish 到 hosted)
+④ 消费端指向:
+   - 沙箱镜像构建:--build-arg PIP_INDEX_URL=https://nexus.internal/repository/pypi-proxy/simple \
+                  --build-arg PIP_TRUSTED_HOST=nexus.internal \
+                  --build-arg NPM_REGISTRY=https://nexus.internal/repository/npm-proxy/
+   - 政务伙伴容器/宿主 pip.conf / uv:同上(index-url 指向 nexus)
+   - 沙箱 allow_network=true 场景:容器内 pip 天然走内网站(需把 nexus 域名可达性
+     给到 docker bridge 网络)
+⑤ 账号/凭据:Nexus 建内部账号,消费端 credentials 存政务伙伴的 secret 体系或
+   环境文件;公网匿名只读可开(内网站点)
+⑥ 日常运维:定期清 hosted 里无用包;proxy 缓存磁盘告警;上游同步断网不影响已有缓存
+```
+
+**Nexus vs "纯依赖分发"的取舍**:
+
+| 维度 | 自建镜像站(Nexus) | 纯依赖分发(每技能 wheels) |
+|---|---|---|
+| 首次投入 | 一台服务器 + 半天搭建 | 零(流程即可) |
+| 新依赖上线 | `pip download` → 上传一次,全实例受益 | 每技能每实例走一遍分发 |
+| 覆盖范围 | PyPI/npm/Docker 全家桶 | 仅按需技能包 |
+| 龙芯适配 | 依赖适配源/本地编译产物进 hosted | 不可行(无轮子) |
+| 适用规模 | **多实例/多单位/长期运维 → 推荐** | 单实例/试点/快速验证 → 够用 |
+
+**建议**:试点阶段先用"纯依赖分发"跑通闭环(零基建),同时并行申请/搭建 Nexus;
+Nexus 就绪后,`Dockerfile.sandbox` 构建与技能依赖分发都切到镜像站,依赖分发的
+wheels 目录改由 Nexus hosted 承担(pip --no-index 改 --index-url 指向内网站)。

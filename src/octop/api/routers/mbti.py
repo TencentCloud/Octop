@@ -1,6 +1,6 @@
 """MBTI personality type API — profiles, test, and per-agent persona apply.
 
-wkbuddy is multi-agent: the MBTI code lives on ``agents.persona_mbti`` /
+agentbuddy is multi-agent: the MBTI code lives on ``agents.persona_mbti`` /
 ``config_json["persona"]`` and is rendered into workspace ``SOUL.md`` on
 agent reload.  The active agent is selected via ``X-Octop-Agent-Id``.
 """
@@ -15,7 +15,7 @@ from fastapi import APIRouter, Depends, Header, HTTPException
 from pydantic import BaseModel, Field
 
 from octop.api.common.agent import assert_agent_owner
-from octop.api.deps import current_user, get_server
+from octop.api.deps import current_user, get_server, require_permission
 from octop.infra.agents.persona.mbti_profiles import (
     MBTIProfile,
     get_all_profiles,
@@ -25,7 +25,11 @@ from octop.infra.errors import ErrorCode, OctopError
 
 logger = logging.getLogger(__name__)
 
-router = APIRouter(prefix="/mbti", tags=["mbti"])
+router = APIRouter(
+    prefix="/mbti",
+    tags=["mbti"],
+    dependencies=[Depends(require_permission("mbti"))],
+)
 
 
 # ---------------------------------------------------------------------------

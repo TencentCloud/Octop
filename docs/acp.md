@@ -1,13 +1,13 @@
 # ACP (Agent Client Protocol)
 
-wkbuddy integrates [ACP](https://agentclientprotocol.com/) in two directions:
+agentbuddy integrates [ACP](https://agentclientprotocol.com/) in two directions:
 
 | Direction | ACP server | ACP client | Typical use |
 |-----------|------------|------------|-------------|
-| **Inbound** | wkbuddy (`octop acp`) | Zed, OpenCode, … | External IDE drives your wkbuddy agent |
-| **Outbound** | OpenCode, CodeBuddy, … | wkbuddy (`acp_runner` tool) | wkbuddy agent delegates coding tasks |
+| **Inbound** | agentbuddy (`octop acp`) | Zed, OpenCode, … | External IDE drives your agentbuddy agent |
+| **Outbound** | OpenCode, CodeBuddy, … | agentbuddy (`acp_runner` tool) | agentbuddy agent delegates coding tasks |
 
-Both use **stdio** JSON-RPC today. wkbuddy does not expose an HTTP ACP endpoint.
+Both use **stdio** JSON-RPC today. agentbuddy does not expose an HTTP ACP endpoint.
 
 ---
 
@@ -63,13 +63,13 @@ Use acp_runner: action=start, runner=opencode, message=find the README in the wo
 
 Permission prompts from the external agent appear in chat; pick an option or instruct the agent to call `action=respond` with the option id.
 
-After changing global runners, wkbuddy reloads your agents automatically. Changing only `tool_enabled` reloads that agent.
+After changing global runners, agentbuddy reloads your agents automatically. Changing only `tool_enabled` reloads that agent.
 
 ---
 
-## CLI: inbound — expose wkbuddy as an ACP server
+## CLI: inbound — expose agentbuddy as an ACP server
 
-Let external clients (e.g. Zed) use a wkbuddy agent as their coding agent:
+Let external clients (e.g. Zed) use a agentbuddy agent as their coding agent:
 
 ```bash
 octop acp --agent main
@@ -97,7 +97,7 @@ octop --agent main acp
 ```json
 {
   "agent_servers": {
-    "wkbuddy": {
+    "agentbuddy": {
       "command": "octop",
       "args": ["acp", "--agent", "main"],
       "env": {}
@@ -111,7 +111,7 @@ From a dev checkout:
 ```json
 {
   "agent_servers": {
-    "wkbuddy": {
+    "agentbuddy": {
       "command": "uv",
       "args": ["run", "octop", "acp", "--agent", "main"],
       "env": {}
@@ -164,7 +164,7 @@ Runner shape:
 
 ## Prerequisites
 
-- **octop-harness `[acp]` extra** — pulls in `agent-client-protocol` (included in the wkbuddy wheel dependency on octop-harness).
+- **octop-harness `[acp]` extra** — pulls in `agent-client-protocol` (included in the agentbuddy wheel dependency on octop-harness).
 - **Outbound:** install external CLIs (`opencode`, `codebuddy`, …) on the machine running `octop run`.
 - **Inbound:** agent must start successfully (provider + model configured).
 

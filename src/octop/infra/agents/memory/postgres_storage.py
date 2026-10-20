@@ -143,7 +143,7 @@ def maintain_postgres_storage(
         cur.execute("SET LOCAL lock_timeout = '1s'")
         cur.execute(
             "SELECT pg_try_advisory_xact_lock(hashtextextended(%s, 0)) AS acquired",
-            (f"octop:memory-maintenance:{namespace}",),
+            (f"agentbuddy:memory-maintenance:{namespace}",),
         )
         if not cur.fetchone()["acquired"]:
             raise ValueError(tr("memory_storage.namespace_busy", locale))

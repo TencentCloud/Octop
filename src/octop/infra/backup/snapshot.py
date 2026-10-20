@@ -233,7 +233,7 @@ def remap_ownership_to_user(pool: DatabasePool, owner_user_id: int) -> dict[str,
     """Reassign all user-scoped rows to *owner_user_id* (LightClaw migration import).
 
     Also rewrites dashboard/cli ``session_key`` / ``channel_subject_id`` and
-    patches ``channel_metadata.user_id`` when they encode the old wkbuddy user id.
+    patches ``channel_metadata.user_id`` when they encode the old agentbuddy user id.
 
     Caller must ensure *owner_user_id* already exists in ``users`` before
     invoking this (so FK checks succeed), and should prune leftover backup
@@ -270,7 +270,7 @@ def remap_ownership_to_user(pool: DatabasePool, owner_user_id: int) -> dict[str,
                 )
                 remapped_tables += 1
 
-            # Dashboard / CLI session keys embed the wkbuddy user id as subject.
+            # Dashboard / CLI session keys embed the agentbuddy user id as subject.
             if _table_exists(conn, "sessions", dialect=dialect):
                 session_rows = conn.execute(
                     "SELECT session_key, channel_type, channel_subject_id, channel_metadata "

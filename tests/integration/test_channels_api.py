@@ -176,6 +176,7 @@ async def test_disabled_channel_kind_is_rejected(env: Any) -> None:
         headers=alice_auth,
         json={},
     )
-    # Route no longer exists; unmatched non-GET paths hit the GET-only SPA
-    # catch-all (`api/app.py` ``spa_fallback``), which answers 405 rather than 404.
-    assert r.status_code == 405
+    # Route no longer exists. Unmatched non-GET paths partial-match the GET-only
+    # SPA catch-all when the built dashboard is present (405) and are plain 404
+    # without it — CI runs `make test` before building the frontend, so both are valid.
+    assert r.status_code in (404, 405)

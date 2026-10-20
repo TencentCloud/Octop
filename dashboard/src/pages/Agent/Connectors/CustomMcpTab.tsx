@@ -447,7 +447,11 @@ export function CustomMcpTab({ focusServerName }: CustomMcpTabProps) {
       message.warning(t("connectors.customMcp.emptyName", "请填写服务器名称"));
       return;
     }
-    const popup = tryOpenAuthPopup("", "octop-oauth", "width=520,height=720");
+    const popup = tryOpenAuthPopup(
+      "",
+      "agentbuddy-oauth",
+      "width=520,height=720",
+    );
     if (isAuthPopupBlocked(popup)) {
       message.error(
         t(
@@ -515,7 +519,7 @@ export function CustomMcpTab({ focusServerName }: CustomMcpTabProps) {
     };
 
     const onMessage = (ev: MessageEvent) => {
-      if (ev.data?.type !== "octop:connector-oauth") return;
+      if (ev.data?.type !== "agentbuddy:connector-oauth") return;
       if (ev.data.state_id !== stateId) return;
       void claimPending();
     };

@@ -30,7 +30,7 @@ def _service(server: Any) -> AgentMcpGatewayService:
     )
 
 
-@router.post("/mcp/agents", summary="Call wkbuddy experts through MCP")
+@router.post("/mcp/agents", summary="Call agentbuddy experts through MCP")
 async def agent_mcp_post(
     request: Request,
     user: Any = Depends(current_user),
@@ -65,7 +65,7 @@ async def agent_mcp_post(
     return JSONResponse(content=response, headers=headers)
 
 
-@router.get("/mcp/agents", summary="Open the wkbuddy Agent MCP event stream")
+@router.get("/mcp/agents", summary="Open the agentbuddy Agent MCP event stream")
 async def agent_mcp_get(
     request: Request,
     _user: Any = Depends(current_user),
@@ -86,7 +86,7 @@ async def agent_mcp_get(
     )
 
 
-@router.delete("/mcp/agents", status_code=204, summary="Close a wkbuddy Agent MCP session")
+@router.delete("/mcp/agents", status_code=204, summary="Close a agentbuddy Agent MCP session")
 async def agent_mcp_delete(_user: Any = Depends(current_user)) -> Response:
     """Acknowledge Streamable HTTP session cleanup."""
     return Response(status_code=204)

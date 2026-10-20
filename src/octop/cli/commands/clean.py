@@ -1,4 +1,4 @@
-"""`octop clean` — remove CLI state and (optionally) all wkbuddy data."""
+"""`octop clean` — remove CLI state and (optionally) all agentbuddy data."""
 
 from __future__ import annotations
 
@@ -31,7 +31,7 @@ def clean(wipe_all: bool, yes: bool, dry_run: bool) -> None:
     if dry_run:
         return
     if wipe_all and not yes:
-        click.confirm("This deletes ALL wkbuddy data (DB, configs, logs). Continue?", abort=True)
+        click.confirm("This deletes ALL agentbuddy data (DB, configs, logs). Continue?", abort=True)
     elif not yes:
         click.confirm("Remove CLI state?", abort=True)
     for t in targets:

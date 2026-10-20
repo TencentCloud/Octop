@@ -47,8 +47,8 @@ export function BuiltinOctopUiFallback({
 
   return (
     <div
-      className="octop-builtin-ui-fallback"
-      data-octop-plugin-ui="builtin-fallback"
+      className="agentbuddy-builtin-ui-fallback"
+      data-agentbuddy-plugin-ui="builtin-fallback"
       style={{
         ...cardStyle,
         ...(running
@@ -69,7 +69,7 @@ export function BuiltinOctopUiFallback({
       </div>
       {annotateMissingPlugin ? (
         <div
-          data-octop-plugin-ui-note=""
+          data-agentbuddy-plugin-ui-note=""
           style={{ fontSize: 12, opacity: 0.7, marginBottom: 8 }}
         >
           {t("chat.pluginUiNotInstalled")}

@@ -1,0 +1,257 @@
+{
+  "id": "octopmemory",
+  "name": "OctopMemory",
+  "description": "Pluggable hierarchical memory for OpenClaw — raw events, atom cards, entity pages with FTS5-backed recall.",
+  "version": "0.9.0",
+  "kind": "memory",
+  "activation": {
+    "onStartup": false
+  },
+  "contracts": {
+    "tools": ["memory_search", "memory_get"]
+  },
+  "commandAliases": [
+    {
+      "name": "octopmemory",
+      "cliCommand": "octopmemory"
+    }
+  ],
+  "uiHints": {
+    "bridge.python": {
+      "label": "Python interpreter",
+      "placeholder": "python3",
+      "help": "Python ≥3.12 used to spawn the octopmemory-bridge subprocess. Defaults to the octop-memory installed in the same environment."
+    },
+    "profile": {
+      "label": "Memory scenario profile",
+      "placeholder": "balanced",
+      "help": "Scenario preset: balanced, low_latency, proactive, privacy, archive, or eval. Explicit config values override the profile defaults."
+    },
+    "recall.mode": {
+      "label": "Memory prompt mode",
+      "placeholder": "tool_hint",
+      "help": "off = no memory prompt; tool_hint = tools-only hint (default); hybrid = opt into hybrid semantics when the host exposes query context."
+    },
+    "backend": {
+      "label": "Storage backend",
+      "placeholder": "sqlite",
+      "help": "sqlite (default) writes a local file; postgres shares a PostgreSQL cluster across agents. Postgres requires OCTOP_MEMORY_DSN to be set in this process's own environment before the bridge is spawned — never put a DSN in this config, it would leak into process listings."
+    }
+  },
+  "configSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "profile": {
+        "type": "string",
+        "enum": ["balanced", "low_latency", "proactive", "privacy", "archive", "eval"],
+        "default": "balanced",
+        "description": "Scenario preset. Profile defaults are applied first; explicit fields in this config override them."
+      },
+      "mode": {
+        "type": "string",
+        "enum": ["self-hosted"],
+        "description": "Deployment mode. Only 'self-hosted' is supported; the process still owns its own storage (see 'backend' for sqlite vs. shared postgres)."
+      },
+      "backend": {
+        "type": "string",
+        "enum": ["sqlite", "postgres"],
+        "default": "sqlite",
+        "description": "Storage engine for this namespace. postgres requires OCTOP_MEMORY_DSN set in the environment of the process that spawns the bridge (inherited by the subprocess automatically) — the DSN must never be placed in this config file, since it embeds a password and config-json is visible in process listings."
+      },
+      "db_path": {
+        "type": "string",
+        "description": "SQLite db path. setup always writes it explicitly (default: ~/.openclaw/octopmemory/<namespace>/memory.sqlite — under the OpenClaw home so sandboxed deployments can see it). When unset the bridge falls back to ~/.octopmemory/<namespace>/memory.sqlite, which is invisible inside openclaw-security sandboxes."
+      },
+      "namespace": {
+        "type": "string",
+        "description": "Memory namespace identifier. When omitted the plugin builds it as '<host_name>__<user_id_hash[:12]>'."
+      },
+      "host_files_root": {
+        "type": "string",
+        "description": "Workspace dir for the D51-C host_files watcher (MEMORY.md / USER.md / DREAMS.md / memory/YYYY-MM-DD.md). Required when capture.host_files_watcher is true; otherwise ignored. Use an absolute path."
+      },
+      "host_files_allow": {
+        "type": "array",
+        "items": { "type": "string" },
+        "description": "Additional relative Markdown globs under host_files_root for user-managed topical memory, for example topics/*.md or projects/*.md. Defaults to topics/*.md and projects/*.md."
+      },
+      "bridge": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "command": {
+            "type": "string",
+            "description": "Explicit octopmemory-bridge console-script path (preferred). Set by `setup` from the resolved uv/pipx tool env. When present it is spawned directly and `python` is ignored."
+          },
+          "python": {
+            "type": "string",
+            "description": "Python interpreter used to spawn the bridge subprocess via `python -m`. Used only when `command` is unset. Defaults to 'python3'."
+          },
+          "log_level": {
+            "type": "string",
+            "enum": ["debug", "info", "warning", "error"],
+            "description": "Bridge subprocess log verbosity (stderr)."
+          },
+          "spawn_timeout_ms": {
+            "type": "integer",
+            "minimum": 100,
+            "description": "Max wait for the bridge to answer the initial handshake before the plugin gives up."
+          }
+        }
+      },
+      "recall": {
+        "type": "object",
+        "additionalProperties": false,
+        "description": "Prompt and search recall behaviour. Some fields are V1 contract only and become runtime-active in V2.",
+        "properties": {
+          "mode": {
+            "type": "string",
+            "enum": ["off", "tool_hint", "hybrid"],
+            "default": "tool_hint",
+            "description": "Memory prompt mode. Default: tool_hint."
+          },
+          "default_max_results": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "Default snippet count for memory_search when the agent omits maxResults."
+          },
+          "default_corpus": {
+            "type": "string",
+            "enum": ["all", "memory", "sessions", "wiki"],
+            "description": "Default corpus for memory_search when omitted."
+          },
+          "raw_policy": {
+            "type": "string",
+            "enum": ["never", "fallback", "always"],
+            "description": "Whether raw transcripts participate in recall: never, fallback, or always."
+          },
+          "host_files_policy": {
+            "type": "string",
+            "enum": ["off", "include", "only"],
+            "description": "How host-written MEMORY.md / memory/*.md files participate in recall."
+          },
+          "citation_policy": {
+            "type": "string",
+            "enum": ["off", "auto", "always"],
+            "description": "Whether the prompt should encourage Source: <path> citations."
+          },
+          "max_prompt_chars": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Character budget for future hybrid auto-recall prompt injection."
+          },
+          "layer_order": {
+            "type": "array",
+            "items": { "type": "string", "enum": ["atom", "host_file", "page", "raw"] },
+            "description": "Preferred ordering across memory layers."
+          },
+          "limit": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "Legacy alias for default_max_results; kept for v0.2 compatibility."
+          },
+          "total_chars": {
+            "type": "integer",
+            "minimum": 100,
+            "description": "Legacy soft cap on total chars returned by memory_search; kept for v0.2 compatibility."
+          }
+        }
+      },
+      "capture": {
+        "type": "object",
+        "additionalProperties": false,
+        "description": "D52-C capture paths and filters.",
+        "properties": {
+          "agent_end_hook": {
+            "type": "boolean",
+            "description": "Capture raw user/assistant messages on the agent_end hook. Default true."
+          },
+          "host_files_watcher": {
+            "type": "boolean",
+            "description": "Watch host-written memory/*.md and MEMORY.md to index host compaction silent-turn output. Default true."
+          },
+          "min_message_chars": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Skip messages shorter than this on the agent_end path."
+          },
+          "include_roles": {
+            "type": "array",
+            "items": { "type": "string", "enum": ["user", "assistant", "tool"] },
+            "description": "Conversation roles to capture."
+          },
+          "include_tool_calls": {
+            "type": "boolean",
+            "description": "Whether to store tool call metadata."
+          },
+          "include_tool_results": {
+            "type": "boolean",
+            "description": "Whether to store tool result content. Usually disabled for privacy."
+          },
+          "skip_memory_echo": {
+            "type": "boolean",
+            "description": "Drop content that echoes the injected ## Memory Recall section, preventing self-pollution."
+          },
+          "extract_on_agent_end": {
+            "type": "boolean",
+            "description": "Trigger L0->L1/L2/L3 extraction (bridge extract) after each agent_end capture. Only takes effect when llm.endpoint is configured. Default true."
+          }
+        }
+      },
+      "privacy": {
+        "type": "object",
+        "additionalProperties": false,
+        "description": "Privacy and redaction controls. Some fields are V1 contract only and become runtime-active in V2.",
+        "properties": {
+          "redact_secrets": {
+            "type": "boolean",
+            "description": "Enable built-in secret/token redaction patterns before storage."
+          },
+          "redact_patterns": {
+            "type": "array",
+            "items": { "type": "string" },
+            "description": "Additional regex patterns to redact before storage."
+          },
+          "store_raw_content": {
+            "type": "boolean",
+            "description": "Whether to store original raw message content."
+          },
+          "store_tool_payloads": {
+            "type": "boolean",
+            "description": "Whether to store tool payloads and results."
+          }
+        }
+      },
+      "compaction": {
+        "type": "object",
+        "additionalProperties": false,
+        "description": "Overrides for the host's compaction silent-turn flush plan (D52-C).",
+        "properties": {
+          "enabled": {
+            "type": "boolean",
+            "description": "When false the plugin returns null from flushPlanResolver and the host falls back to its default plan."
+          },
+          "soft_threshold_tokens": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "Token budget that triggers the compaction silent turn (default 4000, mirrors memory-core)."
+          },
+          "force_flush_transcript_bytes": {
+            "type": "integer",
+            "minimum": 1024,
+            "description": "Transcript byte size that forces a compaction flush regardless of token count (default 2 MiB)."
+          },
+          "model": {
+            "type": "string",
+            "description": "Optional model override for the silent flush turn (e.g. 'ollama/qwen3:8b')."
+          },
+          "host_file_index_after_flush": {
+            "type": "boolean",
+            "description": "Whether host flush output is expected to be indexed by host_files watcher."
+          }
+        }
+      }
+    }
+  }
+}

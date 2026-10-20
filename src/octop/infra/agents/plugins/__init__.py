@@ -1,4 +1,4 @@
-"""wkbuddy host-side plugin management."""
+"""agentbuddy host-side plugin management."""
 
 from octop.infra.agents.plugins.manager import PluginManager
 from octop.infra.agents.plugins.plugin_tool_defaults import (

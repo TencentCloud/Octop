@@ -16,6 +16,7 @@
 | `docker-compose.postgres.yml` | 仅 PostgreSQL（+ pgvector）开发/测试库；扩展在 `postgres/init-vector.sql` |
 | `postgres/init-vector.sql` | 实例级 `CREATE EXTENSION vector`（initdb.d；**不**进政务伙伴迁移） |
 | `docker-entrypoint.sh` | 容器入口：首次初始化数据库并启动服务 |
+| `Dockerfile.sandbox` | **Agent 沙箱基础镜像**（Docker 沙箱后端用，非本服务镜像）：预装 git/curl/jq/node20/uv 与技能常用 Python 包，见[下节](#agent-沙箱镜像dockerfile-sandbox) |
 
 ### 快速开始
 
@@ -41,7 +42,7 @@ docker run -d \
   -p 8088:8088 \
   -v octop-data:/data/.octop \
   -e HOME=/data \
-  wkbuddy:latest
+  agentbuddy:latest
 ```
 
 ### 国内镜像加速
@@ -104,3 +105,88 @@ docker exec -it octop octop --version
 docker compose -f docker/docker-compose.yml down
 docker compose -f docker/docker-compose.yml up -d --build
 ```
+
+### Agent 沙箱镜像（Dockerfile.sandbox）
+
+把 agent 的文件工具与命令执行隔离进 Docker 容器时（存储后端 `type: "docker"`，
+见 [agent-backend-file-io.md](../docs/agent-backend-file-io.md) §13），容器用的镜像默认是
+`python:3.12-slim`——里面只有一个 Python 解释器。`Dockerfile.sandbox` 在此之上补齐
+agent 干活需要的工具链：git / curl / wget / jq / rsync / ssh、Node 20 LTS、uv、ffmpeg、
+中文字体（Noto CJK）、常用 Python 包白名单，并保留 harness 的运行前提
+（bash、root、无 ENTRYPOINT——细节见文件头注释，改前必读）。
+
+**构建**（默认已走国内源：清华 apt / 阿里 PyPI / npmmirror，国内构建机直接 build 即可）：
+
+```bash
+cd docker
+docker build -f Dockerfile.sandbox -t agentbuddy-sandbox:1.0.0 .
+
+# 海外构建机回官方源：
+docker build -f Dockerfile.sandbox -t agentbuddy-sandbox:1.0.0 \
+  --build-arg APT_MIRROR=deb.debian.org \
+  --build-arg PIP_INDEX_URL=https://pypi.org/simple \
+  --build-arg NPM_REGISTRY=https://registry.npmjs.org .
+
+# 有内网 Nexus 源时（apt/pip/npm 全走内网）：
+docker build -f Dockerfile.sandbox -t agentbuddy-sandbox:1.0.0 \
+  --build-arg APT_MIRROR=nexus.internal.corp/debian \
+  --build-arg PIP_INDEX_URL=https://nexus.internal.corp/repository/pypi/simple \
+  --build-arg PIP_TRUSTED_HOST=nexus.internal.corp \
+  --build-arg NPM_REGISTRY=https://nexus.internal.corp/repository/npm/ .
+```
+
+构建参数：
+
+| 参数 | 默认 | 说明 |
+|------|------|------|
+| `BASE` | `python:3.12-slim` | 沙箱基底镜像 |
+| `APT_MIRROR` / `PIP_INDEX_URL` / `PIP_TRUSTED_HOST` / `NPM_REGISTRY` | 国内源（清华/阿里/npmmirror） | 软件源；源配置只在构建期使用、**不写入镜像 ENV**，`docker load` 到内网后运行期不会带着不可达的死源 |
+| `SKILL_PIP_PKGS` | 办公/文档/抓取类常用包 | 构建期烤进镜像的 Python 包（空格分隔）。沙箱运行期默认无网络（`allow_network=false`），技能只能用镜像里已有的包，按需增删 |
+| `SKILL_NPM_PKGS` | 空 | 同上，Node 全局包 |
+| `WITH_BUILD_TOOLS` | `1` | 编译工具链（gcc/python3-dev 等）。sdist-only 包（如内网 arm64 上的 pydantic-core）没它装不上；镜像可以小，但**鲲鹏/飞腾等 arm64 国产化环境建议保持 1** |
+
+构建完成后镜像内 `/opt/sandbox-manifest-{pip,npm}.txt` 记录了实际装入的包清单，便于审计。
+
+**离线导入（政务内网）**：
+
+1. 在有网的构建机上构建（架构必须与内网服务器一致，见下）；
+2. 导出：
+
+   ```bash
+   docker save agentbuddy-sandbox:1.0.0 | gzip > agentbuddy-sandbox-1.0.0.tar.gz
+   ```
+
+3. 用受控渠道（光盘/涉密 U 盘/内部文件系统）拷入内网，导入：
+
+   ```bash
+   docker load < agentbuddy-sandbox-1.0.0.tar.gz
+   docker images | grep agentbuddy-sandbox   # 确认导入成功
+   ```
+
+4. 政务伙伴侧配置存储后端时把 `image` 填成 `agentbuddy-sandbox:1.0.0`（Admin「支持类型 →
+   Docker」卡片或 storage_backends 配置）。镜像在本地已存在时不会触发 pull，
+   配置即用；建议同时把主服务镜像按同样方式离线导入。
+
+**架构（CPU 平台）必须匹配**：官方 `python`/`node` 基底是 multi-arch，构建机是什么
+架构就出什么架构的镜像——x86_64 构建机（海光/兆芯/普通 x86 服务器）出 amd64 镜像，
+鲲鹏/飞腾（arm64）构建机出 arm64 镜像，**amd64 镜像导入 arm64 服务器后要么跑不起来
+要么走 qemu 模拟慢一个数量级**。跨架构构建用 buildx：
+
+```bash
+docker buildx build --platform linux/arm64 -f Dockerfile.sandbox \
+  -t agentbuddy-sandbox:1.0.0 --load .
+```
+
+（arm64 机器较少时，也可在 x86 构建机上用 `--platform linux/arm64` 交叉构建，
+但 pip 编译类包会慢很多；龙芯 loongarch64 无官方基底镜像，需自备基底后改造本文件。）
+
+**验证**（导入后建议先起一个空沙箱自检，不必启动政务伙伴）：
+
+```bash
+docker run --rm --network none agentbuddy-sandbox:1.0.0 \
+  bash -lc 'git --version && node -v && uv --version && python -V && pip list | head'
+```
+
+与 harness 的行为对齐：容器以 `sleep infinity` 常驻、命令经 `bash -lc` 执行、
+工作区文件经 `put_archive` 写入（与宿主同名绝对路径）——这也是文件头三条硬约束的由来。
+

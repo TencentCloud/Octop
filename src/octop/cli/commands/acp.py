@@ -1,4 +1,4 @@
-"""`octop acp` — run wkbuddy agent as an ACP server over stdio."""
+"""`octop acp` — run agentbuddy agent as an ACP server over stdio."""
 
 from __future__ import annotations
 
@@ -51,7 +51,7 @@ async def _run_acp_server(*, agent_id: str | None, debug: bool) -> None:
 )
 @click.option("--debug", is_flag=True, default=False, help="Enable debug logging to stderr")
 def acp_cmd(agent_id: str | None, debug: bool) -> None:
-    """Start wkbuddy as an ACP agent (stdio) for IDE clients (Zed, OpenCode, …)."""
+    """Start agentbuddy as an ACP agent (stdio) for IDE clients (Zed, OpenCode, …)."""
     from octop.cli.support.ctx import resolve_agent
 
     aid = resolve_agent(agent_id)

@@ -28,13 +28,13 @@ def _server_version() -> str:
 TOOLS: list[dict[str, Any]] = [
     {
         "name": "list_octop_experts",
-        "description": "List wkbuddy experts that the authenticated user can call.",
+        "description": "List agentbuddy experts that the authenticated user can call.",
         "inputSchema": {"type": "object", "properties": {}, "additionalProperties": False},
     },
     {
         "name": "call_octop_expert",
         "description": (
-            "Send one task to a wkbuddy expert. Omit thread_id for a new isolated conversation. "
+            "Send one task to a agentbuddy expert. Omit thread_id for a new isolated conversation. "
             "Pass the returned thread_id to continue that conversation."
         ),
         "inputSchema": {

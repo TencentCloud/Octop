@@ -132,7 +132,7 @@ async def test_search_parses_atom_metadata_and_keeps_complete_im_text(
         "sortBy": "submittedDate",
         "sortOrder": "ascending",
     }
-    assert "wkbuddy" in request.headers["User-Agent"]
+    assert "agentbuddy" in request.headers["User-Agent"]
     assert payload["data"]["query"] == "representation learning"
     assert payload["data"]["total"] == 42
     assert payload["data"]["start"] == 10

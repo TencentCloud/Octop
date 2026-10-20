@@ -1,4 +1,4 @@
-# Shared NSIS helpers for the wkbuddy desktop installer.
+# Shared NSIS helpers for the agentbuddy desktop installer.
 # INFO_PRODUCTVERSION: display string (pep440 OK, e.g. 1.0.2b1).
 # INFO_FILEVERSION: numeric X.X.X.X for VIProductVersion / VIFileVersion
 # (stamp_version.py four-part). Fallbacks below are for local makensis without -D.
@@ -8,13 +8,13 @@
 !include "FileFunc.nsh"
 
 !ifndef INFO_PROJECTNAME
-    !define INFO_PROJECTNAME "wkbuddy"
+    !define INFO_PROJECTNAME "agentbuddy"
 !endif
 !ifndef INFO_COMPANYNAME
-    !define INFO_COMPANYNAME "wkbuddy"
+    !define INFO_COMPANYNAME "agentbuddy"
 !endif
 !ifndef INFO_PRODUCTNAME
-    !define INFO_PRODUCTNAME "wkbuddy"
+    !define INFO_PRODUCTNAME "agentbuddy"
 !endif
 !ifndef INFO_PRODUCTVERSION
     !define INFO_PRODUCTVERSION "0.9.31"

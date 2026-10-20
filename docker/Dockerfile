@@ -6,8 +6,8 @@
 # 阶段 2: Python 运行时 + 预构建前端
 #
 # 用法（在仓库根目录执行，构建上下文为根目录）:
-#   docker build -f docker/Dockerfile -t wkbuddy:latest .
-#   docker run -d -p 8088:8088 -v octop-data:/data/.octop -e HOME=/data wkbuddy:latest
+#   docker build -f docker/Dockerfile -t agentbuddy:latest .
+#   docker run -d -p 8088:8088 -v octop-data:/data/.octop -e HOME=/data agentbuddy:latest
 #
 # 国内加速（可选，需 BuildKit，docker/docker_build.sh 默认已开启）:
 #   PIP_INDEX_URL=https://mirrors.example.com/pypi/simple \
@@ -24,7 +24,7 @@
 #     --build-arg NPM_REGISTRY=https://mirrors.example.com/npm/ \
 #     --build-arg APT_MIRROR=mirrors.example.com \
 #     --build-arg NODE_MAX_OLD_SPACE_SIZE=1024 \
-#     -t wkbuddy:latest .
+#     -t agentbuddy:latest .
 #
 # 或使用 Compose:
 #   docker compose -f docker/docker-compose.yml up -d
@@ -63,8 +63,8 @@ RUN NODE_ENV=production NODE_OPTIONS="--max-old-space-size=${NODE_MAX_OLD_SPACE_
 # ---------------------------------------------------------------------------
 FROM python:3.12-slim AS runtime
 
-LABEL maintainer="wkbuddy"
-LABEL org.opencontainers.image.title="wkbuddy"
+LABEL maintainer="agentbuddy"
+LABEL org.opencontainers.image.title="agentbuddy"
 LABEL org.opencontainers.image.description="Smarter self-hosted AI assistant — multi-user, multi-agent."
 LABEL org.opencontainers.image.source="about:blank"
 LABEL org.opencontainers.image.licenses="MIT"

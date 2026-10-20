@@ -5,8 +5,8 @@ import WelcomeQuickCards, { WelcomeQuickCardProbe } from "./WelcomeQuickCards";
 import styles from "../index.module.less";
 
 // Animated WebP keeps alpha on Safari; VP9 WebM alpha is unreliable there.
-const MASCOT_PEEK = "/octop-mascot-peek.webp";
-const MASCOT_TYPE = "/octop-mascot-type.webp";
+const MASCOT_PEEK = "/agentbuddy-mascot-peek.webp";
+const MASCOT_TYPE = "/agentbuddy-mascot-type.webp";
 const MASCOT_IMAGES = [MASCOT_PEEK, MASCOT_TYPE];
 
 function getRandomMascot(current?: string): string {
@@ -80,7 +80,7 @@ export default function WelcomeScreen({
               role="button"
               tabIndex={0}
               title={t("chatWelcome.mascotSwitchHint")}
-              aria-label="wkbuddy mascot"
+              aria-label="agentbuddy mascot"
               onKeyDown={(e) => {
                 if (e.key === "Enter" || e.key === " ") {
                   e.preventDefault();

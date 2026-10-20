@@ -20,6 +20,8 @@ export interface TokenChunk {
   agent?: string;
   /** Full member turn replay — replace/merge instead of appending fragments. */
   team_snapshot?: boolean;
+  /** Snapshot of a member who is still speaking. Keep the bubble streaming. */
+  team_live?: boolean;
   /** Host wrap-up after members finish — start a new bubble, do not continue dispatch. */
   team_wrapup?: boolean;
 }
@@ -37,7 +39,7 @@ export interface ToolCallChunk {
   id?: string;
   /** Tool name; absent on continuation chunks for the same call. */
   name?: string;
-  /** Server-localized label (when provided by wkbuddy gateway). */
+  /** Server-localized label (when provided by agentbuddy gateway). */
   display_name?: string;
   /** Streamed JSON-encoded args fragment. */
   args?: string;
@@ -189,6 +191,7 @@ export function parseHarnessChunk(line: string): HarnessChunk | null {
         content: typeof obj.content === "string" ? obj.content : "",
         agent_id: agentId,
         team_snapshot: obj.team_snapshot === true,
+        team_live: obj.team_live === true,
         team_wrapup: obj.team_wrapup === true,
       };
     case "reasoning":

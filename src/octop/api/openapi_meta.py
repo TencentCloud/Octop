@@ -10,7 +10,7 @@ from fastapi.openapi.utils import get_openapi
 from octop.api.deps import is_jwt_exempt_path
 
 API_DESCRIPTION = """\
-**wkbuddy** is a smarter, self-hosted AI assistant for multiple users and agents. All routes are served under `/api`.
+**agentbuddy** is a smarter, self-hosted AI assistant for multiple users and agents. All routes are served under `/api`.
 
 ## Authentication
 
@@ -83,7 +83,7 @@ OPENAPI_TAGS: list[dict[str, str]] = [
     },
     {
         "name": "bridge",
-        "description": "Link this wkbuddy instance to remote wkbuddy instances (HTTP tunnel + remote chat).",
+        "description": "Link this agentbuddy instance to remote agentbuddy instances (HTTP tunnel + remote chat).",
     },
     {
         "name": "knowledge",
@@ -95,7 +95,7 @@ OPENAPI_TAGS: list[dict[str, str]] = [
     },
     {
         "name": "agent-mcp",
-        "description": "Authenticated MCP gateway for external agents to call wkbuddy experts.",
+        "description": "Authenticated MCP gateway for external agents to call agentbuddy experts.",
     },
     {
         "name": "channels",
@@ -115,7 +115,7 @@ OPENAPI_TAGS: list[dict[str, str]] = [
     },
     {
         "name": "search",
-        "description": "Web-search provider API key probes (Tavily, Brave, Google, Kimi).",
+        "description": "Web-search provider API key probes (Tavily, Doubao, DeepSeek, Exa, Kimi).",
     },
     {"name": "providers", "description": "LLM provider configuration and active model selection."},
     {"name": "voice", "description": "Speech-to-text and text-to-speech provider configuration."},

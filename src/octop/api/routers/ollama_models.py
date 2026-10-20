@@ -277,7 +277,7 @@ _SETTINGS_KEY_OLLAMA_SERVICE = "ollama_service_enabled"
 class OllamaServiceBody(BaseModel):
     enabled: bool | None = Field(
         default=None,
-        description="Whether wkbuddy should keep the Ollama service running. Omit to leave unchanged.",
+        description="Whether agentbuddy should keep the Ollama service running. Omit to leave unchanged.",
     )
     models_dir: str | None = Field(
         default=None,

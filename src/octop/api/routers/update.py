@@ -312,7 +312,7 @@ async def _upgrade_worker(
     )
 
 
-@router.post("/upgrade", summary="Upgrade wkbuddy")
+@router.post("/upgrade", summary="Upgrade agentbuddy")
 async def trigger_upgrade(
     request: Request,
     body: UpgradeBody = Body(default_factory=UpgradeBody),

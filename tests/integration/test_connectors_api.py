@@ -470,6 +470,7 @@ async def test_catalog_weknora_dify_last(env):
     kinds = [e["kind"] for e in r.json()]
     assert "feishu-cli" in kinds
     assert "wecom-cli" in kinds
+    assert kinds.index("dingtalk-cli") < kinds.index("weknora")
     assert kinds.index("feishu-cli") < kinds.index("weknora")
     assert kinds.index("obsidian-cli") < kinds.index("weknora")
     assert kinds.index("wecom-cli") < kinds.index("dify")
@@ -715,7 +716,7 @@ async def test_custom_mcp_oauth_callback_applies_tokens(env):
             follow_redirects=False,
         )
     assert callback.status_code == 200
-    assert "octop:connector-oauth" in callback.text
+    assert "agentbuddy:connector-oauth" in callback.text
 
     stored = await c.get("/api/connectors/custom-mcp", headers=auth)
     assert stored.status_code == 200

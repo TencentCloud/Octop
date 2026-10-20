@@ -83,7 +83,7 @@ describe("classifyChatStreamError", () => {
 
   it("classifies leftover Windows outside-root paths", () => {
     const msg =
-      String.raw`ValueError: Path:D:\octop-data\data\文章存稿\x.md ` +
+      String.raw`ValueError: Path:D:\agentbuddy-data\data\文章存稿\x.md ` +
       String.raw`outside root directory: C:\Users\Administrator`;
     expect(classifyChatStreamError(msg)).toBe(
       "stream_errors.path_outside_root",

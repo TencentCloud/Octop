@@ -54,4 +54,26 @@ describe("<SearchConfigPage />", () => {
 
     expect(screen.getByText("当前搜索源：Tavily")).toBeInTheDocument();
   });
+
+  it("renders the three new provider cards and drops brave/google", async () => {
+    api.listEnvs.mockResolvedValue(envResp([]));
+
+    render(<SearchConfigPage />);
+    await waitFor(() => expect(api.listEnvs).toHaveBeenCalled());
+
+    for (const name of ["Doubao Search", "DeepSeek Search", "Exa", "Tavily"]) {
+      expect(screen.getByText(name)).toBeInTheDocument();
+    }
+    expect(screen.queryByText("Brave Search")).not.toBeInTheDocument();
+    expect(screen.queryByText("Google Search")).not.toBeInTheDocument();
+  });
+
+  it("marks a doubao key as configuring the doubao provider", async () => {
+    api.listEnvs.mockResolvedValue(envResp(["DOUBAO_SEARCH_API_KEY"]));
+
+    render(<SearchConfigPage />);
+    await waitFor(() => expect(api.listEnvs).toHaveBeenCalled());
+
+    expect(screen.getByText("当前搜索源：Doubao Search")).toBeInTheDocument();
+  });
 });

@@ -4,15 +4,15 @@ package main
 // Frameless moving uses CSS `--wails-draggable: drag` plus this injected starter:
 // the remote dashboard origin never loads Wails `/wails/runtime.js`.
 // clientY <= 32 must match dashboard DESKTOP_TITLEBAR_DRAG_HEIGHT.
-const desktopDragRegionClass = "octop-desktop-drag"
+const desktopDragRegionClass = "agentbuddy-desktop-drag"
 
 func dragOverlayJS() string {
 	return `(function(){
 		if (!document.body || !window._wails || typeof window._wails.invoke !== 'function') return;
-		if (document.documentElement.dataset.octopDragReady === '1') return;
-		document.documentElement.dataset.octopDragReady = '1';
+		if (document.documentElement.dataset.agentbuddyDragReady === '1') return;
+		document.documentElement.dataset.agentbuddyDragReady = '1';
 		var armed = false, startX = 0, startY = 0;
-		var noDrag = 'button, a, input, textarea, select, [role="button"], [role="menuitem"], [data-octop-no-drag], .octop-desktop-no-drag';
+		var noDrag = 'button, a, input, textarea, select, [role="button"], [role="menuitem"], [data-agentbuddy-no-drag], .agentbuddy-desktop-no-drag';
 		function targetEl(t) {
 			if (t && t.nodeType === 1) return t;
 			return t && t.parentElement ? t.parentElement : null;

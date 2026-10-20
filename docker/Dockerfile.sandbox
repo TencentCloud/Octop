@@ -1,0 +1,138 @@
+# syntax=docker/dockerfile:1
+# =============================================================================
+# Octop Agent 沙箱基础镜像（政务内网版）
+#
+# 用途：替换 backend spec 里的 image，让 docker 沙箱开箱具备 git/curl/node/uv
+#       与一批白名单 Python/Node 包。技能脚本经 execute（bash -lc）跑在本镜像里。
+#
+# 构建（在有网的构建机上，产物用 docker save 拷进内网 docker load）:
+#   docker build -f Dockerfile.sandbox -t agentbuddy-sandbox:1.0.0 .
+#   默认走国内源（清华 apt / 阿里 PyPI / npmmirror），国外构建机显式回官方源:
+#   docker build -f Dockerfile.sandbox -t agentbuddy-sandbox:1.0.0 \
+#     --build-arg APT_MIRROR=deb.debian.org \
+#     --build-arg PIP_INDEX_URL=https://pypi.org/simple \
+#     --build-arg NPM_REGISTRY=https://registry.npmjs.org .
+#   内网 Nexus 源:
+#   docker build -f Dockerfile.sandbox -t agentbuddy-sandbox:1.0.0 \
+#     --build-arg APT_MIRROR=mirrors.internal/debian \
+#     --build-arg PIP_INDEX_URL=https://nexus.internal/repository/pypi/simple \
+#     --build-arg PIP_TRUSTED_HOST=nexus.internal \
+#     --build-arg NPM_REGISTRY=https://nexus.internal/repository/npm/ .
+#
+# 三条硬约束（改这个 Dockerfile 时不能碰，否则沙箱起不来）：
+#   1. 不要设 ENTRYPOINT。harness 用 containers.run(command=["sleep","infinity"])
+#      只覆盖 CMD，不覆盖 ENTRYPOINT —— 设了就把沙箱顶掉了。
+#   2. 必须保留 bash。execute 走 ["bash","-lc",...]，alpine/busybox 基底会直接失败。
+#   3. 不要改默认用户（root）。技能文件由 container.put_archive 写入「与宿主同名
+#      的绝对路径」，非 root 时该路径不可写，文件铺不进容器。
+#
+# 架构：python:3.12-slim / node:20 官方镜像都是 multi-arch，
+#       海光(x86_64) 走 amd64，鲲鹏/飞腾 走 arm64；龙芯 loongarch64 无现成基底。
+# =============================================================================
+
+ARG BASE=python:3.12-slim
+ARG NODE_BASE=node:20-bookworm-slim
+ARG UV_BASE=ghcr.io/astral-sh/uv:0.7
+
+# ---- 取 node 与 uv 的二进制（multi-stage，不引入它们的 apt 层）--------------
+FROM ${NODE_BASE} AS node-src
+FROM ${UV_BASE} AS uv-src
+
+FROM ${BASE}
+
+# ---- 软件源：默认国内源（本产品主部署环境），海外/内网 Nexus 用 build-arg 覆盖 ----
+# 显式回官方源：--build-arg APT_MIRROR=deb.debian.org --build-arg PIP_INDEX_URL=https://pypi.org/simple
+#   （PIP_TRUSTED_HOST 对 https 官方源可留空；NPM_REGISTRY=https://registry.npmjs.org）
+ARG APT_MIRROR=mirrors.tuna.tsinghua.edu.cn
+ARG PIP_INDEX_URL=https://mirrors.aliyun.com/pypi/simple/
+ARG PIP_TRUSTED_HOST=mirrors.aliyun.com
+ARG NPM_REGISTRY=https://registry.npmmirror.com
+# 技能白名单：空格分隔，构建期一次性烤进镜像（沙箱默认 allow_network=false，
+# 运行期装不了包，技能只能用镜像里已有的）。默认清单覆盖 harness 内置技能点名
+# 的办公/文档/抓取类依赖；重依赖（manim/texlive 类）用 --build-arg 按需追加。
+ARG SKILL_PIP_PKGS="requests httpx pandas openpyxl python-docx python-pptx pdfplumber pymupdf beautifulsoup4 lxml markdown pyyaml pydantic fastmcp cryptography"
+ARG SKILL_NPM_PKGS=""
+
+ENV DEBIAN_FRONTEND=noninteractive \
+    PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    LANG=C.UTF-8 \
+    LC_ALL=C.UTF-8 \
+    TZ=Asia/Shanghai
+
+# ---- 基础工具链 -------------------------------------------------------------
+RUN set -eu; \
+    if [ -n "$APT_MIRROR" ]; then \
+        sed -i "s|http://deb.debian.org|http://${APT_MIRROR}|g" /etc/apt/sources.list.d/debian.sources; \
+    fi; \
+    apt-get update; \
+    apt-get install -y --no-install-recommends \
+        ca-certificates tzdata locales \
+        git curl wget jq rsync openssh-client unzip zip gzip tar \
+        procps iproute2 iputils-ping \
+        ffmpeg \
+        fonts-noto-cjk fonts-noto-cjk-extra; \
+    sed -i 's/^# *zh_CN.UTF-8/zh_CN.UTF-8/' /etc/locale.gen; \
+    locale-gen; \
+    rm -rf /var/lib/apt/lists/*
+
+# ---- 编译工具（很多 PyPI 包只有 sdist，没这套就装不上）---------------------
+# 想让镜像更小可把 WITH_BUILD_TOOLS 设为 0，代价是只能装 wheel。
+ARG WITH_BUILD_TOOLS=1
+RUN set -eu; \
+    if [ "$WITH_BUILD_TOOLS" = "1" ]; then \
+        apt-get update; \
+        apt-get install -y --no-install-recommends build-essential python3-dev pkg-config; \
+        rm -rf /var/lib/apt/lists/*; \
+    fi
+
+# ---- Node 20 LTS：从官方 node 镜像合并 /usr/local（无同名文件冲突）---------
+COPY --from=node-src /usr/local/ /usr/local/
+RUN set -eu; \
+    node -v; \
+    ln -sf /usr/local/lib/node_modules/npm/bin/npm-cli.js /usr/local/bin/npm; \
+    ln -sf /usr/local/lib/node_modules/npm/bin/npx-cli.js /usr/local/bin/npx; \
+    npm -v
+
+# ---- uv：Octop 自带技能与安装脚本大量用 uv pip ------------------------------
+COPY --from=uv-src /uv /uvx /usr/local/bin/
+RUN uv --version
+
+# ---- Python / Node 包白名单 -------------------------------------------------
+# npm 的 audit/fund 关闭与源无关，恒定生效。
+# 源参数默认国内源（文件头 ARG，构建期安装用）；只在安装命令内联传入、不写进 ENV——
+# 这样 `docker save/load` 到内网后，运行期 pip/npm 不会带着一个内外都不可达的死源。
+# 内网 Nexus 场景 --build-arg 覆盖；纯离线把 SKILL_*_PKGS 留空即可（安装层整体跳过）。
+ENV npm_config_audit=false \
+    npm_config_fund=false
+RUN set -eu; \
+    pip_src=""; uv_src=""; npm_src=""; \
+    if [ -n "$PIP_INDEX_URL" ]; then \
+        pip_src="--index-url $PIP_INDEX_URL"; \
+        uv_src="--default-index $PIP_INDEX_URL"; \
+        if [ -n "$PIP_TRUSTED_HOST" ]; then \
+            pip_src="$pip_src --trusted-host $PIP_TRUSTED_HOST"; \
+            uv_src="$uv_src --allow-insecure-host $PIP_TRUSTED_HOST"; \
+        fi; \
+    fi; \
+    if [ -n "$NPM_REGISTRY" ]; then \
+        npm_src="--registry $NPM_REGISTRY"; \
+    fi; \
+    if [ -n "$SKILL_PIP_PKGS" ]; then \
+        python -m pip install --no-cache-dir --upgrade pip $pip_src; \
+        python -m pip install --no-cache-dir $pip_src $SKILL_PIP_PKGS; \
+    fi; \
+    if [ -n "$SKILL_NPM_PKGS" ]; then \
+        npm install -g --omit=dev $npm_src $SKILL_NPM_PKGS; \
+    fi; \
+    python -m pip list --format=freeze > /opt/sandbox-manifest-pip.txt; \
+    npm ls -g --depth=0 > /opt/sandbox-manifest-npm.txt || true
+
+# ---- 自检：这层挂了说明镜像不满足 harness 的前提 ----------------------------
+RUN set -eu; \
+    test -x /bin/bash -o -x /usr/bin/bash; \
+    for t in git curl jq node npm npx uv python pip; do command -v "$t" >/dev/null || { echo "MISSING: $t"; exit 1; }; done; \
+    echo "sandbox image OK: $(python -V) / $(node -v) / $(git --version) / $(curl --version | head -1)"
+
+# 故意不写 ENTRYPOINT / CMD / USER —— 见文件头三条硬约束
+WORKDIR /

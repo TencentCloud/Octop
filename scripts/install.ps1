@@ -1,8 +1,8 @@
-# wkbuddy Installer for Windows (PowerShell)
+# agentbuddy Installer for Windows (PowerShell)
 # Usage: irm <url>/install.ps1 | iex
 #    or: .\install.ps1 [-Version X.Y.Z] [-FromSource] [-SourceDir DIR] [-Extras "browser"]
 #
-# Installs wkbuddy into ~/.octop with a uv-managed Python environment.
+# Installs agentbuddy into ~/.octop with a uv-managed Python environment.
 
 & {
 param(
@@ -28,7 +28,7 @@ function Stop-WithError { param([string]$Message) Write-Host "[octop] ERROR: $Me
 
 if ($Help) {
     @"
-wkbuddy Installer for Windows
+agentbuddy Installer for Windows
 
 Usage: .\install.ps1 [OPTIONS]
 
@@ -51,7 +51,7 @@ Environment:
     exit 0
 }
 
-Write-Host "[octop] Installing wkbuddy into $OctopHome" -ForegroundColor Green
+Write-Host "[octop] Installing agentbuddy into $OctopHome" -ForegroundColor Green
 
 $policy = Get-ExecutionPolicy
 if ($policy -eq "Restricted") {
@@ -247,7 +247,7 @@ Pin-McpCompat
 Test-Install
 
 if (-not (Test-Path $VenvOctop)) { Stop-WithError "Installation failed: octop CLI not found in venv" }
-Write-Info "wkbuddy installed successfully"
+Write-Info "agentbuddy installed successfully"
 
 if (-not $script:ConsoleAvailable) {
     $check = & $VenvPython -c "import importlib.resources, octop; p=importlib.resources.files('octop')/'dashboard'/'index.html'; print('yes' if p.is_file() else 'no')" 2>&1
@@ -312,7 +312,7 @@ $ErrorActionPreference = "Stop"
 $OctopHome = if ($env:OCTOP_HOME) { $env:OCTOP_HOME } else { Join-Path $HOME ".octop" }
 $RealBin = Join-Path $OctopHome "venv\Scripts\octop.exe"
 if (-not (Test-Path $RealBin)) {
-    Write-Error "wkbuddy environment not found at $OctopHome\venv"
+    Write-Error "agentbuddy environment not found at $OctopHome\venv"
     exit 1
 }
 & $RealBin @args
@@ -325,7 +325,7 @@ set "OCTOP_HOME=%OCTOP_HOME%"
 if "%OCTOP_HOME%"=="" set "OCTOP_HOME=%USERPROFILE%\.octop"
 set "REAL_BIN=%OCTOP_HOME%\venv\Scripts\octop.exe"
 if not exist "%REAL_BIN%" (
-    echo Error: wkbuddy environment not found at %OCTOP_HOME%\venv >&2
+    echo Error: agentbuddy environment not found at %OCTOP_HOME%\venv >&2
     exit /b 1
 )
 "%REAL_BIN%" %*
@@ -356,7 +356,7 @@ if ($env:Path -notlike "*$targetPath*") {
 }
 
 Write-Host ""
-Write-Host "wkbuddy installed successfully!" -ForegroundColor Green
+Write-Host "agentbuddy installed successfully!" -ForegroundColor Green
 Write-Host ""
 Write-Host "  Install location:  $OctopHome"
 Write-Host "  Python:            $pyVersion"

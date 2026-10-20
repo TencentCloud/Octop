@@ -1,6 +1,6 @@
-# Contributing to wkbuddy
+# Contributing to agentbuddy
 
-Thank you for your interest in contributing! wkbuddy is the control-plane application in the [Octop Harness](https://github.com/TencentCloud) ecosystem.
+Thank you for your interest in contributing! agentbuddy is the control-plane application in the [Octop Harness](https://github.com/TencentCloud) ecosystem.
 
 ## Getting started
 

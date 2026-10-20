@@ -322,7 +322,7 @@ def print_welcome(*, agent_id: str, model: str, session_key: str, thread_id: str
         ver = pkg_version("octop")
     except Exception:
         ver = "unknown"
-    console.print(f"  [bold green]wkbuddy[/] [dim]v{ver}[/] — interactive chat")
+    console.print(f"  [bold green]agentbuddy[/] [dim]v{ver}[/] — interactive chat")
     console.print(f"  [dim]Agent: {agent_id}  Model: {model or 'default'}[/]")
     console.print(f"  [dim]Session: {session_key}[/]", end="")
     if thread_id:

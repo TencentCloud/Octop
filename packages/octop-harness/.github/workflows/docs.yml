@@ -1,0 +1,16 @@
+# Documentation workflow placeholder.
+#
+# v1 ships without a published docs site; the design doc lives in
+# ``docs/plans/``. When a real site (mkdocs / sphinx) is added, replace
+# this file with a real build+deploy pipeline.
+
+name: Docs (placeholder)
+
+on:
+  workflow_dispatch:
+
+jobs:
+  noop:
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo "Docs site not yet enabled. See docs/plans/ for design notes."

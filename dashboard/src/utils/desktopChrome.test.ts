@@ -21,7 +21,7 @@ import {
 describe("desktopChrome", () => {
   afterEach(() => {
     applyDesktopChrome(null);
-    delete document.documentElement.dataset.octopDragReady;
+    delete document.documentElement.dataset.agentbuddyDragReady;
     vi.unstubAllGlobals();
   });
 
@@ -63,9 +63,9 @@ describe("desktopChrome", () => {
     );
     expect(titleRowEndPadding(32)).toContain("--window-controls-inset-end");
     expect(titleRowEndPadding(32)).toContain("32px");
-    expect(CHROME_END_PAD_ATTR).toBe("data-octop-chrome-end-pad");
+    expect(CHROME_END_PAD_ATTR).toBe("data-agentbuddy-chrome-end-pad");
     expect(WINDOW_CONTROLS_SPACER_ATTR).toBe(
-      "data-octop-window-controls-spacer",
+      "data-agentbuddy-window-controls-spacer",
     );
     expect(chromeEndPadValue(12)).toContain("--window-controls-inset-end");
     expect(chromeEndPadValue(12)).toContain("12px");
@@ -93,14 +93,14 @@ describe("desktopChrome", () => {
       resolve(__dirname, "../styles/layout.css"),
       "utf8",
     );
-    expect(css).toContain("[data-octop-chrome-end-pad]");
+    expect(css).toContain("[data-agentbuddy-chrome-end-pad]");
     expect(css).not.toContain("[data-dock-panel]");
-    expect(css).toContain(".octop-drawer-right");
+    expect(css).toContain(".agentbuddy-drawer-right");
     expect(css).toMatch(/padding-inline-end:\s*max\(/);
   });
 
   it("exports a stable class for Wails title-bar dragging", () => {
-    expect(DESKTOP_DRAG_REGION_CLASS).toBe("octop-desktop-drag");
+    expect(DESKTOP_DRAG_REGION_CLASS).toBe("agentbuddy-desktop-drag");
   });
 
   it("writes the inset token on <html> and can clear it", () => {
@@ -188,7 +188,7 @@ describe("desktopChrome", () => {
     );
     expect(invoke).toHaveBeenCalledWith("wails:drag:doubleclick");
     region.remove();
-    delete document.documentElement.dataset.octopDragReady;
+    delete document.documentElement.dataset.agentbuddyDragReady;
     delete (window as Window & { _wails?: unknown })._wails;
   });
 });

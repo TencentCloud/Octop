@@ -54,7 +54,7 @@ interface UseBrowserViewControllerOptions {
   onError: (message: string) => void;
   onBeforeConnect?: (sessionId: string) => void;
   onAfterConnect?: (sessionId: string) => void;
-  /** When set, screencast is relayed to the peer wkbuddy via Bridge. */
+  /** When set, screencast is relayed to the peer agentbuddy via Bridge. */
   bridgeConnectionId?: string | null;
 }
 

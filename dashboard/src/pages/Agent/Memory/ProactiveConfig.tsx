@@ -150,7 +150,7 @@ export default function ProactiveConfig({
           <p className={styles.configDesc}>
             {t(
               "proactiveConfig.description",
-              "让 wkbuddy 在合适的时机，主动向你发送一句关心",
+              "让 agentbuddy 在合适的时机，主动向你发送一句关心",
             )}
           </p>
         </div>
@@ -164,7 +164,7 @@ export default function ProactiveConfig({
           <span>
             {t(
               "proactiveConfig.episodeBannerText",
-              "wkbuddy 会从你的情绪日记中挑选合适的时机，主动发来一句关心。你可以在「情绪日记」中查看哪些记录会被参考。",
+              "agentbuddy 会从你的情绪日记中挑选合适的时机，主动发来一句关心。你可以在「情绪日记」中查看哪些记录会被参考。",
             )}
             {onSwitchToEpisodes && (
               <>

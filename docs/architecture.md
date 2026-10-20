@@ -1,6 +1,6 @@
 # Architecture
 
-wkbuddy is a self-hosted AI assistant platform for multiple users and agents,
+agentbuddy is a self-hosted AI assistant platform for multiple users and agents,
 delivered as a single Python process.
 It glues three reusable libraries — `octop-harness` (LangGraph-based
 chat runtime), `octop-gateway` (IM channel pipeline), and a React
@@ -74,7 +74,7 @@ a separate per-user `AgentManager`. The single global registry
 dispatches to whichever harness runtime matches the row, which keeps
 admin tooling (`/api/admin/*`) and cross-user diagnostics simple.
 
-The dashboard always talks to wkbuddy over `/api` HTTP/WebSocket; the
+The dashboard always talks to agentbuddy over `/api` HTTP/WebSocket; the
 React SPA never imports a Python module and never opens the SQLite
 file directly.
 
@@ -123,7 +123,7 @@ read and written through the agent's `BackendWorkspace`
 (`octop.infra.backend` → `octop_harness.backends`). The default
 backend is a `filesystem` adapter rooted at
 `~/.octop/agents/<agent_id>/`; remote backends (S3, COS) are mounted
-on top of the same root_dir and the wkbuddy service never reads
+on top of the same root_dir and the agentbuddy service never reads
 content files via `Path.write_text` / `read_text` (see
 [agent-backend-file-io.md](./agent-backend-file-io.md) for the full
 rules). Checkpointing, langgraph state, and the
@@ -148,7 +148,7 @@ tool labels from `GET /api/i18n/tools`.
 [agent-interop-mailbox.md](./agent-interop-mailbox.md) for the queue
 contract and [agent-call-agent.md](./agent-call-agent.md) /
 [agent-delegation.md](./agent-delegation.md) for the two user-side
-entry points. wkbuddy's `GlobalProcessor` implements the
+entry points. agentbuddy's `GlobalProcessor` implements the
 `TeamProcessor` protocol so replies land back in the parent thread
 checkpoint and are pushed to the dashboard / IM channel by
 `on_reply`.

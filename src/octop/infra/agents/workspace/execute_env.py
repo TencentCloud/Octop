@@ -6,7 +6,7 @@ Global admin env (``~/.octop/env``) and workspace ``.env`` are merged at
 
 ``OCTOP_AUTH_DIR`` / ``OCTOP_SKILLS_DIR`` use agent-facing paths when the
 backend is scoped (bwrap / virtual rootfs), so skill scripts resolve the same
-locations inside the jail. Host paths are still mkdir'd for wkbuddy host ops.
+locations inside the jail. Host paths are still mkdir'd for agentbuddy host ops.
 """
 
 from __future__ import annotations
@@ -98,7 +98,7 @@ def inject_agent_execute_env(
     workspace_dir: Path,
     cfg: dict[str, Any] | None = None,
 ) -> Any:
-    """Fold wkbuddy platform identity into shell/sandbox backend specs."""
+    """Fold agentbuddy platform identity into shell/sandbox backend specs."""
     if not isinstance(backend, dict):
         return backend
 

@@ -3,7 +3,7 @@ import { renderHook, act } from "@testing-library/react";
 import { useListPanelCollapsed } from "./useListPanelCollapsed";
 
 describe("useListPanelCollapsed", () => {
-  const key = "octop:test-list-collapsed";
+  const key = "agentbuddy:test-list-collapsed";
 
   beforeEach(() => {
     localStorage.removeItem(key);

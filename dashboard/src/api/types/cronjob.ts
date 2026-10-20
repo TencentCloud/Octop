@@ -58,7 +58,7 @@ export type CronJobSpecOutputLegacy = Record<string, unknown>;
 export type CronJobViewLegacy = Record<string, unknown>;
 
 // ---------------------------------------------------------------------------
-// wkbuddy-native flat cron row — returned by /api/agents/:id/cron endpoints
+// agentbuddy-native flat cron row — returned by /api/agents/:id/cron endpoints
 // ---------------------------------------------------------------------------
 
 /**

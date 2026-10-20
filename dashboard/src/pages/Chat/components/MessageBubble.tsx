@@ -515,7 +515,7 @@ export function ToolDetailsInline({
     return (
       <div
         ref={wrapRef}
-        data-octop-tool-renderer=""
+        data-agentbuddy-tool-renderer=""
         className={styles.toolUiRendererWrap}
       >
         <ToolUiErrorBoundary propsForFallback={props}>
@@ -536,7 +536,7 @@ export function ToolDetailsInline({
     return (
       <div
         ref={wrapRef}
-        data-octop-tool-renderer=""
+        data-agentbuddy-tool-renderer=""
         className={styles.toolUiRendererWrap}
       >
         <BuiltinOctopUiFallback
@@ -549,7 +549,7 @@ export function ToolDetailsInline({
   }
 
   return (
-    <div data-octop-tool-renderer="">
+    <div data-agentbuddy-tool-renderer="">
       <DefaultToolRenderer {...props} />
     </div>
   );

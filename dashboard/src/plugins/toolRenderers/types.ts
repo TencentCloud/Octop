@@ -66,7 +66,7 @@ export interface OctopPluginUIHost {
   getToolContext(): ToolRenderContext;
   /** L2: update display payload for a tool call without re-running the LLM. */
   patchResult(callId: string, nextData: unknown): void;
-  /** Authenticated wkbuddy API request (path starts with ``/`` under ``/api``). */
+  /** Authenticated agentbuddy API request (path starts with ``/`` under ``/api``). */
   request<T = unknown>(path: string, init?: RequestInit): Promise<T>;
   /** Open this tool call's UI in the chat side dock (one tab per callId). */
   openSidePanel(opts: OpenSidePanelOptions): void;

@@ -6,7 +6,7 @@ export interface ParsedApiError {
   details?: Record<string, unknown>;
 }
 
-/** Parse wkbuddy API error envelope from a thrown request() Error. */
+/** Parse agentbuddy API error envelope from a thrown request() Error. */
 export function parseApiError(error: unknown): ParsedApiError | null {
   if (!(error instanceof Error)) return null;
   const raw = error.message;

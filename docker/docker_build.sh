@@ -22,7 +22,7 @@ set -euo pipefail
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$REPO_ROOT"
 
-IMAGE_TAG="${1:-wkbuddy:latest}"
+IMAGE_TAG="${1:-agentbuddy:latest}"
 shift 2>/dev/null || true
 
 # BuildKit 启用 Dockerfile 缓存挂载，加速 npm / pip / apt 下载

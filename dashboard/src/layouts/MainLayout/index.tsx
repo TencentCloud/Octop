@@ -32,7 +32,7 @@ const WorkbenchPage = lazy(() => import("../../pages/Control/Workbench"));
 
 const { Content } = Layout;
 
-const SIDEBAR_COLLAPSED_KEY = "octop:sidebar:collapsed";
+const SIDEBAR_COLLAPSED_KEY = "agentbuddy:sidebar:collapsed";
 
 function getSavedCollapsed(): boolean {
   try {
@@ -135,8 +135,8 @@ export default function MainLayout() {
   // navigation sidebar (since the global Header is hidden on mobile fullscreen).
   useEffect(() => {
     const handler = () => setCollapsed((prev) => !prev);
-    window.addEventListener("octop:toggle-nav", handler);
-    return () => window.removeEventListener("octop:toggle-nav", handler);
+    window.addEventListener("agentbuddy:toggle-nav", handler);
+    return () => window.removeEventListener("agentbuddy:toggle-nav", handler);
   }, []);
 
   // Chat history rail expand: if nav is also collapsed, open both rails.
@@ -170,9 +170,12 @@ export default function MainLayout() {
   const isChatRoute = isChatPath(currentPath);
 
   useEffect(() => {
-    document.documentElement.classList.toggle("octop-chat-open", isChatRoute);
+    document.documentElement.classList.toggle(
+      "agentbuddy-chat-open",
+      isChatRoute,
+    );
     return () => {
-      document.documentElement.classList.remove("octop-chat-open");
+      document.documentElement.classList.remove("agentbuddy-chat-open");
     };
   }, [isChatRoute]);
 
@@ -229,6 +232,11 @@ export default function MainLayout() {
                 expanded={!collapsed}
                 onToggle={handleNavRailToggle}
                 side="end"
+                placement={
+                  isChatRoute && !isMinimalLayout && !chatSidebarOpen
+                    ? "before"
+                    : "center"
+                }
               />
             )}
           </div>

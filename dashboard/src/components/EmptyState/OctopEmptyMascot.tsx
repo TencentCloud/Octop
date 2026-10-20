@@ -8,7 +8,7 @@ interface OctopEmptyMascotProps {
 }
 
 /**
- * wkbuddy empty-state mascot image with shared sizing.
+ * agentbuddy empty-state mascot image with shared sizing.
  * Use inside custom empty UIs or pass as ``EmptyState`` icon /
  * antd ``Empty`` ``image``.
  */

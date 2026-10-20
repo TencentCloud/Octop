@@ -107,7 +107,7 @@ def build_app(server: OctopServer) -> FastAPI:
     )
 
     app = FastAPI(
-        title="wkbuddy API",
+        title="agentbuddy API",
         version="0.1.0",
         description=API_DESCRIPTION,
         openapi_url="/api/openapi.json" if enable_api_docs else None,
@@ -308,7 +308,7 @@ def build_app(server: OctopServer) -> FastAPI:
         async def api_docs() -> HTMLResponse:
             return get_scalar_api_reference(
                 openapi_url=app.openapi_url,
-                title="wkbuddy API",
+                title="agentbuddy API",
             )
 
     if enable_dashboard:

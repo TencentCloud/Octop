@@ -85,8 +85,8 @@ export function extractWorkspaceRel(path: string): string | null {
 /**
  * Build the ``source`` query for ``/media/preview``.
  *
- * Workspace tree entries use leading-slash keys (``/octop-logo.png``). Wrapping
- * those as ``file:///octop-logo.png`` makes the backend look on the host root
+ * Workspace tree entries use leading-slash keys (``/agentbuddy-logo.png``). Wrapping
+ * those as ``file:///agentbuddy-logo.png`` makes the backend look on the host root
  * and returns NOT_FOUND. Prefer workspace-relative keys whenever we can.
  */
 export function toMediaPreviewSource(
@@ -150,7 +150,7 @@ export function workspacePathFromAccessUrl(url: string): string | undefined {
   try {
     const parsed = url.startsWith("http")
       ? new URL(url)
-      : new URL(url, "http://octop.local");
+      : new URL(url, "http://agentbuddy.local");
     for (const key of ["source", "path"] as const) {
       const raw = parsed.searchParams.get(key);
       if (!raw) continue;
@@ -281,7 +281,7 @@ export function canonicalizeMediaApiUrl(
   try {
     const parsed = url.startsWith("http")
       ? new URL(url)
-      : new URL(url, "http://octop.local");
+      : new URL(url, "http://agentbuddy.local");
     const pathMatch = parsed.pathname.match(
       /^\/api\/agents\/([^/]+)\/(media\/preview|workspace\/download)$/,
     );
@@ -331,7 +331,7 @@ export function normalizeStoredMediaUrl(
   try {
     const parsed = url.startsWith("http")
       ? new URL(url)
-      : new URL(url, "http://octop.local");
+      : new URL(url, "http://agentbuddy.local");
     const pathParam = parsed.searchParams.get("path") || "";
     if (!pathParam) return url;
     const rel = extractWorkspaceRel(pathParam);

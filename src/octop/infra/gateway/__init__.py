@@ -1,1 +1,1 @@
-"""wkbuddy Gateway — global AI interaction entry point."""
+"""agentbuddy Gateway — global AI interaction entry point."""

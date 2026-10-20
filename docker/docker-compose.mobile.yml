@@ -1,11 +1,11 @@
 # =============================================================================
-# wkbuddy — Remote Phone (mobile) compose overlay for local / DinD testing
+# agentbuddy — Remote Phone (mobile) compose overlay for local / DinD testing
 #
 # Usage (from repo root):
 #   # once: download platform-tools next to the repo
 #   mkdir -p .tools && cd /tmp && curl -fsSL -o pt.zip \
 #     https://dl.google.com/android/repository/platform-tools-latest-linux.zip \
-#     && unzip -qo pt.zip -d /workspace/wkbuddy/.tools
+#     && unzip -qo pt.zip -d /workspace/agentbuddy/.tools
 #
 #   docker compose -f docker/docker-compose.mobile.yml up -d --build
 #
@@ -19,12 +19,12 @@
 # =============================================================================
 
 services:
-  wkbuddy:
+  agentbuddy:
     build:
       context: ..
       dockerfile: docker/Dockerfile
-    image: wkbuddy:latest
-    container_name: wkbuddy
+    image: agentbuddy:latest
+    container_name: agentbuddy
     restart: unless-stopped
     ulimits:
       nofile:

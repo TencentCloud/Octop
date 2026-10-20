@@ -7,10 +7,10 @@ const INDEX_HTML = readFileSync(resolve(__dirname, "../../index.html"), "utf8");
 
 function bootThemeScript(): string {
   const match = INDEX_HTML.match(
-    /<script id="octop-boot-theme">([\s\S]*?)<\/script>/,
+    /<script id="agentbuddy-boot-theme">([\s\S]*?)<\/script>/,
   );
   if (!match) {
-    throw new Error("octop-boot-theme script missing from index.html");
+    throw new Error("agentbuddy-boot-theme script missing from index.html");
   }
   return match[1];
 }
@@ -44,16 +44,16 @@ describe("index.html boot theme", () => {
   });
 
   it("styles the splash from data-theme, not OS color scheme", () => {
-    expect(INDEX_HTML).toContain('html[data-theme="dark"] #octop-boot');
+    expect(INDEX_HTML).toContain('html[data-theme="dark"] #agentbuddy-boot');
     expect(INDEX_HTML).not.toMatch(
-      /@media \(prefers-color-scheme: dark\)[\s\S]*#octop-boot/,
+      /@media \(prefers-color-scheme: dark\)[\s\S]*#agentbuddy-boot/,
     );
   });
 
   it("uses the white vertical mark in dark mode", () => {
     expect(INDEX_HTML).toContain('src="/logo_vertical_white.svg"');
     expect(INDEX_HTML).toContain(
-      'html[data-theme="dark"] .octop-boot-logo--dark',
+      'html[data-theme="dark"] .agentbuddy-boot-logo--dark',
     );
   });
 

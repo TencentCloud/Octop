@@ -239,7 +239,7 @@ uv run octop run --host 127.0.0.1 --port 8799
 
 ```
 ╔══════════════════════════════════════════════════════════╗
-║  wkbuddy first-run wizard password (one-time use):          ║
+║  agentbuddy first-run wizard password (one-time use):          ║
 ║  xxxxxxxxxxxxxxxxxxxx                                     ║
 ║  File: ~/octop-login.txt                                  ║
 ╚══════════════════════════════════════════════════════════╝

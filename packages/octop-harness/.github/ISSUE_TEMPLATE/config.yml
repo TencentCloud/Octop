@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Security advisory
+    url: https://github.com/TencentCloud/octop-harness/security/policy
+    about: Report security vulnerabilities privately (do not open a public issue)
+  - name: Contributing guide
+    url: https://github.com/TencentCloud/octop-harness/blob/main/CONTRIBUTING.md
+    about: Development setup, branching, and release workflow

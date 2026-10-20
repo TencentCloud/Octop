@@ -701,6 +701,35 @@ describe("team member live stream", () => {
     expect(host[1]?.status).toBe("streaming");
   });
 
+  it("restores an in-progress member answer after refresh and keeps streaming", () => {
+    ingestHarnessChunk(SESSION, {
+      type: "token",
+      content: "hello ",
+      agent_id: "doctor",
+      team_snapshot: true,
+      team_live: true,
+    });
+    let member = getSnapshot(SESSION).messages.filter(
+      (item) => item.speakerAgentId === "doctor",
+    );
+    expect(member).toHaveLength(1);
+    expect(member[0]?.content).toBe("hello ");
+    expect(member[0]?.status).toBe("streaming");
+    expect(getSnapshot(SESSION).liveSpeakers).toContain("doctor");
+
+    ingestHarnessChunk(SESSION, {
+      type: "token",
+      content: "doc",
+      agent_id: "doctor",
+    });
+    member = getSnapshot(SESSION).messages.filter(
+      (item) => item.speakerAgentId === "doctor" && !item.toolData,
+    );
+    expect(member).toHaveLength(1);
+    expect(member[0]?.content).toBe("hello doc");
+    expect(member[0]?.status).toBe("streaming");
+  });
+
   it("merges a member snapshot onto the live bubble", () => {
     ingestHarnessChunk(SESSION, {
       type: "token",

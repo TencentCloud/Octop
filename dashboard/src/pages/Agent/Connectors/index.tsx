@@ -307,9 +307,13 @@ function configuredExtra(
 }
 
 function isHostCliConnector(kind: string): boolean {
-  return ["feishu-cli", "wecom-cli", "agently-cli", "obsidian-cli"].includes(
-    kind,
-  );
+  return [
+    "feishu-cli",
+    "wecom-cli",
+    "agently-cli",
+    "obsidian-cli",
+    "dingtalk-cli",
+  ].includes(kind);
 }
 
 function ConnectorConfigDrawer({
@@ -464,7 +468,7 @@ function ConnectorConfigDrawer({
   const openAuthPopupPlaceholder = (): Window | null => {
     const popup = tryOpenAuthPopup(
       "about:blank",
-      "octop-connector-auth",
+      "agentbuddy-connector-auth",
       "width=720,height=800",
     );
     if (popup) {
@@ -844,7 +848,11 @@ function ConnectorConfigDrawer({
 
   const handleOAuth = async () => {
     if (!entry || authorizing) return;
-    const popup = tryOpenAuthPopup("", "octop-oauth", "width=520,height=720");
+    const popup = tryOpenAuthPopup(
+      "",
+      "agentbuddy-oauth",
+      "width=520,height=720",
+    );
     if (isAuthPopupBlocked(popup)) {
       message.error(
         t(
@@ -948,7 +956,7 @@ function ConnectorConfigDrawer({
 
     const onMessage = (ev: MessageEvent) => {
       if (ev.origin !== window.location.origin) return;
-      if (ev.data?.type !== "octop:connector-oauth") return;
+      if (ev.data?.type !== "agentbuddy:connector-oauth") return;
       if (ev.data.state_id !== stateId) return;
       void claimPending();
     };
@@ -1139,7 +1147,7 @@ function ConnectorConfigDrawer({
           default_open: values.default_open === true,
           shared: values.shared === true,
         });
-        if (entry.kind === "agently-cli") {
+        if (entry.kind === "agently-cli" || entry.kind === "dingtalk-cli") {
           clearFormDraft(draftScope);
           message.success(t("connectors.createSuccess", "连接器已创建"));
           onSaved(created);
@@ -1498,7 +1506,7 @@ function ConnectorConfigDrawer({
                 {cliInfo.error ??
                   t(
                     "connectors.cliMissingHint",
-                    "主机尚未安装 CLI。可点击「安装 CLI」，或在 wkbuddy 主机终端手动执行下方命令。",
+                    "主机尚未安装 CLI。可点击「安装 CLI」，或在 agentbuddy 主机终端手动执行下方命令。",
                   )}
               </div>
             )}
@@ -1548,26 +1556,29 @@ function ConnectorConfigDrawer({
           </div>
         )}
 
-        {open && entry.kind === "agently-cli" && instance && (
-          <AgentlyAuth
-            key={instance.instance_id}
-            instanceId={instance.instance_id}
-            installed={cliInfo?.installed === true}
-            onChanged={() => {
-              void connectorsApi
-                .getInstance(instance.instance_id)
-                .then((detail) =>
-                  setInstanceDetail((current) =>
-                    current?.instance_id === detail.instance_id
-                      ? detail
-                      : current,
-                  ),
-                )
-                .catch(() => undefined);
-              onSaved();
-            }}
-          />
-        )}
+        {open &&
+          (entry.kind === "agently-cli" || entry.kind === "dingtalk-cli") &&
+          instance && (
+            <AgentlyAuth
+              key={instance.instance_id}
+              kind={entry.kind}
+              instanceId={instance.instance_id}
+              installed={cliInfo?.installed === true}
+              onChanged={() => {
+                void connectorsApi
+                  .getInstance(instance.instance_id)
+                  .then((detail) =>
+                    setInstanceDetail((current) =>
+                      current?.instance_id === detail.instance_id
+                        ? detail
+                        : current,
+                    ),
+                  )
+                  .catch(() => undefined);
+                onSaved();
+              }}
+            />
+          )}
 
         <Form
           form={form}

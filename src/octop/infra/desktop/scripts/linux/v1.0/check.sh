@@ -1,6 +1,6 @@
 #!/bin/bash
 #
-# Check wkbuddy virtual desktop readiness.
+# Check agentbuddy virtual desktop readiness.
 # Output (last line JSON):
 #   {"ready": true, "vnc_running": true, "display": ":99", ...}
 

@@ -31,7 +31,7 @@ def test_skill_display_name_empty_passthrough():
 def test_all_skill_labels_includes_pdf():
     labels = all_skill_labels("en")
     assert labels["docx"] == "Word"
-    assert labels["octop-assistant"] == "wkbuddy Assistant"
+    assert labels["octop-assistant"] == "agentbuddy Assistant"
 
 
 def test_dashboard_skill_labels_match_backend():

@@ -50,7 +50,7 @@ export interface TerminalSession {
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
-const STORAGE_KEY = "octop:terminal-sessions";
+const STORAGE_KEY = "agentbuddy:terminal-sessions";
 const STORAGE_VERSION = 1;
 const MAX_RECONNECT_ATTEMPTS = 10;
 const RECONNECT_BASE_MS = 1000;

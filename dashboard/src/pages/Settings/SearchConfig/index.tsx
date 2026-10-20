@@ -37,19 +37,27 @@ const SEARCH_PROVIDERS: SearchProvider[] = [
     configured: false,
   },
   {
-    id: "brave",
-    name: "Brave Search",
-    descriptionKey: "setupWizard.search.providers.brave.desc",
-    docs_url: "https://api.search.brave.com/",
-    required_keys: ["BRAVE_API_KEY"],
+    id: "doubao",
+    name: "Doubao Search",
+    descriptionKey: "setupWizard.search.providers.doubao.desc",
+    docs_url: "https://console.volcengine.com/search-infinity/web-search",
+    required_keys: ["DOUBAO_SEARCH_API_KEY"],
     configured: false,
   },
   {
-    id: "google",
-    name: "Google Search",
-    descriptionKey: "setupWizard.search.providers.google.desc",
-    docs_url: "https://programmablesearchengine.google.com/",
-    required_keys: ["GOOGLE_API_KEY", "GOOGLE_CSE_ID"],
+    id: "deepseek",
+    name: "DeepSeek Search",
+    descriptionKey: "setupWizard.search.providers.deepseek.desc",
+    docs_url: "https://api-docs.deepseek.com/zh-cn/api/search",
+    required_keys: ["DEEPSEEK_API_KEY"],
+    configured: false,
+  },
+  {
+    id: "exa",
+    name: "Exa",
+    descriptionKey: "setupWizard.search.providers.exa.desc",
+    docs_url: "https://dashboard.exa.ai/api-keys",
+    required_keys: ["EXA_API_KEY"],
     configured: false,
   },
   {
@@ -226,23 +234,7 @@ function ConfigureDrawer({
               },
             ]}
             extra={
-              key === "GOOGLE_CSE_ID" ? (
-                <span>
-                  {t("setupWizard.search.googleCseIdHint")}
-                  {provider.docs_url ? (
-                    <>
-                      {" · "}
-                      <a
-                        href={provider.docs_url}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                      >
-                        {t("setupWizard.search.getApiKey")}
-                      </a>
-                    </>
-                  ) : null}
-                </span>
-              ) : provider.docs_url && key === provider.required_keys[0] ? (
+              provider.docs_url && key === provider.required_keys[0] ? (
                 <a
                   href={provider.docs_url}
                   target="_blank"

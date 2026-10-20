@@ -72,19 +72,19 @@ const PHONE_TAB_ICONS = {
   shell: TerminalSquare,
 } as const;
 
-const MOBILE_AI_PANEL_KEY = "octop:remote-phone:ai-panel-open";
-const MOBILE_AI_PANEL_WIDTH_KEY = "octop:remote-phone:ai-panel-width";
-const MOBILE_AI_PANEL_HEIGHT_KEY = "octop:remote-phone:ai-panel-height";
+const MOBILE_AI_PANEL_KEY = "agentbuddy:remote-phone:ai-panel-open";
+const MOBILE_AI_PANEL_WIDTH_KEY = "agentbuddy:remote-phone:ai-panel-width";
+const MOBILE_AI_PANEL_HEIGHT_KEY = "agentbuddy:remote-phone:ai-panel-height";
 const MOBILE_AI_PANEL_MIN_WIDTH = 260;
 const MOBILE_AI_PANEL_MAX_WIDTH = 620;
 const MOBILE_AI_PANEL_MIN_HEIGHT = 200;
 const MOBILE_AI_PANEL_MAX_HEIGHT = 520;
-const SHELL_SPLIT_WIDTH_KEY = "octop:remote-phone:shell-split-width";
+const SHELL_SPLIT_WIDTH_KEY = "agentbuddy:remote-phone:shell-split-width";
 const SHELL_SPLIT_MIN_WIDTH = 280;
 const SHELL_SPLIT_MAX_WIDTH = 720;
 const SHELL_SPLIT_DEFAULT_WIDTH = 420;
-const SHELL_PANEL_OPEN_KEY = "octop:remote-phone:shell-panel-open";
-const STREAM_QUALITY_KEY = "octop:remote-phone:stream-quality";
+const SHELL_PANEL_OPEN_KEY = "agentbuddy:remote-phone:shell-panel-open";
+const STREAM_QUALITY_KEY = "agentbuddy:remote-phone:stream-quality";
 
 type StreamQualityPreset = "low" | "balanced" | "high" | "max";
 
@@ -143,7 +143,7 @@ export default function RemoteAndroidPage({
   } = usePathTabs({
     basePath: "/remote-desktop/phone",
     tabs: REMOTE_PHONE_VIEW_TABS,
-    storageKey: "octop:remote-phone:view-tab",
+    storageKey: "agentbuddy:remote-phone:view-tab",
     defaultTab: "screen",
   });
   const { activeAgent, activeAgentId, agents } = useAgent();
@@ -724,7 +724,7 @@ export default function RemoteAndroidPage({
       const url = canvas.toDataURL("image/png");
       const a = document.createElement("a");
       a.href = url;
-      a.download = `octop-phone-${device || "screen"}-${Date.now()}.png`;
+      a.download = `agentbuddy-phone-${device || "screen"}-${Date.now()}.png`;
       a.click();
     } catch {
       message.error(t("remoteAndroid.screenshotFailed", "Screenshot failed"));

@@ -49,11 +49,11 @@ describe("isHostAbsoluteMediaPath", () => {
 describe("toMediaPreviewSource", () => {
   it("does not wrap workspace tree keys as host file:// paths", () => {
     expect(
-      toMediaPreviewSource("/octop-logo.png", {
+      toMediaPreviewSource("/agentbuddy-logo.png", {
         agentId: "ED7N8B",
         fromWorkspace: true,
       }),
-    ).toBe("octop-logo.png");
+    ).toBe("agentbuddy-logo.png");
     expect(
       toMediaPreviewSource("/generated/slide.png", { fromWorkspace: true }),
     ).toBe("generated/slide.png");
@@ -61,10 +61,13 @@ describe("toMediaPreviewSource", () => {
 
   it("keeps agent-home host abs as file:// for chat/tools (virtual failback)", () => {
     expect(
-      toMediaPreviewSource("/Users/me/.octop/agents/ED7N8B/octop-logo.png", {
-        agentId: "ED7N8B",
-      }),
-    ).toBe("file:///Users/me/.octop/agents/ED7N8B/octop-logo.png");
+      toMediaPreviewSource(
+        "/Users/me/.octop/agents/ED7N8B/agentbuddy-logo.png",
+        {
+          agentId: "ED7N8B",
+        },
+      ),
+    ).toBe("file:///Users/me/.octop/agents/ED7N8B/agentbuddy-logo.png");
     expect(
       toMediaPreviewSource("file:///tmp/x/outbound/chart.png", {
         agentId: "main",
@@ -81,11 +84,11 @@ describe("toMediaPreviewSource", () => {
   it("feeds agentMediaPreviewUrl file:// for agent-home pngs from chat", () => {
     const url = agentMediaPreviewUrl(
       "ED7N8B",
-      "/Users/me/.octop/agents/ED7N8B/octop-logo.png",
+      "/Users/me/.octop/agents/ED7N8B/agentbuddy-logo.png",
       "image/png",
     );
     expect(url).toContain("source=file");
-    expect(url).toContain("octop-logo.png");
+    expect(url).toContain("agentbuddy-logo.png");
   });
 });
 

@@ -4,15 +4,15 @@ import { useNavigate } from "react-router-dom";
 import { Dropdown } from "antd";
 import type { MenuProps } from "antd";
 import {
-  Pencil,
+  Eye,
+  EyeOff,
+  GitFork,
   MoreHorizontal,
-  Trash2,
+  Pencil,
   Pin,
   PinOff,
   Search,
-  GitFork,
-  Eye,
-  EyeOff,
+  Trash2,
 } from "lucide-react";
 import type { Session } from "../hooks/useSessions";
 import type { OctopAgent } from "../../../context/AgentContext";
@@ -39,6 +39,12 @@ import {
   matchesNavQuery,
 } from "../utils/navSessionSearch";
 import { sortExpertsByPin } from "../utils/pinnedExpertsPrefs";
+import {
+  initialChatNavScope,
+  matchesChatNavScope,
+  type ChatNavScope,
+} from "../utils/chatNavScope";
+import ChatNavScopeTabs, { ChatNavScopeEmpty } from "./ChatNavScopeTabs";
 import ExpertNameLabel from "./ExpertNameLabel";
 import ExpertNavActions from "./ExpertNavActions";
 import {
@@ -565,31 +571,46 @@ export default function SessionList({
   const liveWorkingIds = useSessionWorkIds();
   const [searchQuery, setSearchQuery] = useState("");
   const [showingHidden, setShowingHidden] = useState(false);
+  const [navScope, setNavScope] = useState<ChatNavScope>(() =>
+    initialChatNavScope(
+      agents.find((agent) => agent.agent_id === activeAgentId),
+    ),
+  );
   const { filterVisible, pickHidden, hide, unhide, canHide } =
     useHiddenSharedExperts();
   const { pinnedIds, isPinned, togglePin } = usePinnedExperts();
 
   const hiddenAgents = useMemo(
-    () => sortExpertsByPin(pickHidden(agents), pinnedIds),
-    [agents, pickHidden, pinnedIds],
+    () =>
+      sortExpertsByPin(pickHidden(agents), pinnedIds).filter((agent) =>
+        matchesChatNavScope(agent, navScope),
+      ),
+    [agents, pickHidden, pinnedIds, navScope],
   );
 
   const sortedAgents = useMemo(() => {
     const visible = filterVisible(agents, {
       keepAgentIds: activeAgentId ? [activeAgentId] : [],
     });
-    return sortExpertsByPin(visible, pinnedIds);
-  }, [agents, filterVisible, activeAgentId, pinnedIds]);
+    return sortExpertsByPin(visible, pinnedIds).filter((agent) =>
+      matchesChatNavScope(agent, navScope),
+    );
+  }, [agents, filterVisible, activeAgentId, pinnedIds, navScope]);
 
   // Leave the hidden-only view once nothing remains hidden.
   const viewingHidden = showingHidden && hiddenAgents.length > 0;
   const agentsToRender = viewingHidden ? hiddenAgents : sortedAgents;
 
-  const expandedAgentId = useMemo(
-    () =>
-      viewingHidden ? null : activeAgentId ?? sortedAgents[0]?.agent_id ?? null,
-    [activeAgentId, sortedAgents, viewingHidden],
-  );
+  const expandedAgentId = useMemo(() => {
+    if (viewingHidden) return null;
+    const activeInScope = sortedAgents.some(
+      (agent) => agent.agent_id === activeAgentId,
+    );
+    if (activeInScope) return activeAgentId;
+    // Browsing another tab keeps the open chat; don't expand a stranger.
+    if (activeAgentId) return null;
+    return sortedAgents[0]?.agent_id ?? null;
+  }, [activeAgentId, sortedAgents, viewingHidden]);
   const searching = searchQuery.trim().length > 0;
   const fetchAllRequestedRef = useRef(false);
   useEffect(() => {
@@ -692,6 +713,10 @@ export default function SessionList({
         </div>
       ) : null}
 
+      {agents.length > 0 ? (
+        <ChatNavScopeTabs value={navScope} onChange={setNavScope} />
+      ) : null}
+
       {agents.length === 0 ? (
         <div className={styles.sessionEmptyAgents}>
           <p className={styles.sessionEmptyAgentsText}>
@@ -721,11 +746,15 @@ export default function SessionList({
               />
             ))
           ) : listedAgents.length === 0 ? (
-            <div className={styles.agentCardSessionsEmpty}>
-              {catalog.loading
-                ? t("common.loading")
-                : t("chat.noSearchResults", "没有匹配的会话")}
-            </div>
+            searching || catalog.loading ? (
+              <div className={styles.agentCardSessionsEmpty}>
+                {catalog.loading
+                  ? t("common.loading")
+                  : t("chat.noSearchResults", "没有匹配的会话")}
+              </div>
+            ) : (
+              <ChatNavScopeEmpty scope={navScope} />
+            )
           ) : (
             listedAgents.map((agent) => {
               const isActive = agent.agent_id === activeAgentId;

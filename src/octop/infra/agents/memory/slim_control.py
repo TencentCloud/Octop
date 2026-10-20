@@ -131,7 +131,7 @@ def request_memory_slim(
     locale: str = "en",
     remove_directories: bool = False,
 ) -> Iterator[dict[str, Any]]:
-    """Stream progress from an already running host; never starts another wkbuddy."""
+    """Stream progress from an already running host; never starts another agentbuddy."""
     yield from _request_control(
         root,
         {
@@ -149,7 +149,7 @@ def list_orphan_agent_dirs(root: Path) -> list[str]:
             raise RuntimeError(status["error"])
         directories: list[str] = status["directories"]
         return directories
-    raise RuntimeError("wkbuddy returned no directory list")
+    raise RuntimeError("agentbuddy returned no directory list")
 
 
 def list_memory_slim_agents(root: Path, *, locale: str = "en") -> list[dict[str, str]]:
@@ -159,7 +159,7 @@ def list_memory_slim_agents(root: Path, *, locale: str = "en") -> list[dict[str,
             raise RuntimeError(status["error"])
         agents: list[dict[str, str]] = status["agents"]
         return agents
-    raise RuntimeError("wkbuddy returned no agent list")
+    raise RuntimeError("agentbuddy returned no agent list")
 
 
 def _request_control(root: Path, request: dict[str, Any]) -> Iterator[dict[str, Any]]:
@@ -173,4 +173,4 @@ def _request_control(root: Path, request: dict[str, Any]) -> Iterator[dict[str, 
                 yield status
                 if status.get("phase") in {"done", "failed", "agents", "directories"}:
                     return
-    raise RuntimeError("wkbuddy disconnected; check the dashboard before retrying maintenance")
+    raise RuntimeError("agentbuddy disconnected; check the dashboard before retrying maintenance")

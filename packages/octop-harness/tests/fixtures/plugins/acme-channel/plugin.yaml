@@ -1,0 +1,6 @@
+id: acme-channel
+version: 0.1.0
+name: Acme IM Channel
+kind: channel
+entry: main.py
+description: Example plugin that contributes a custom IM channel kind.

@@ -1,6 +1,6 @@
 /** localStorage preference: experts pinned to the top of the chat nav. */
 
-export const PINNED_EXPERTS_STORAGE_KEY = "octop:pinned-experts";
+export const PINNED_EXPERTS_STORAGE_KEY = "agentbuddy:pinned-experts";
 
 export function pinnedExpertsStorageKey(userId?: number | null): string {
   return userId == null || userId <= 0

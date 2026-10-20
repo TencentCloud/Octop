@@ -366,7 +366,7 @@ def merge_preserved_oauth(
 
 
 def harness_spec_for_server(spec: dict[str, Any]) -> dict[str, Any]:
-    """Strip wkbuddy meta keys; keep langchain-mcp-adapters connection fields."""
+    """Strip agentbuddy meta keys; keep langchain-mcp-adapters connection fields."""
     out = {k: v for k, v in spec.items() if k not in _HARNESS_STRIP_KEYS}
     # Ensure stdio always has args list for adapters.
     if out.get("transport") == "stdio" and "args" not in out:

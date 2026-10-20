@@ -19,7 +19,7 @@ BROWSER_PROFILES_REL = "browser-profiles"
 
 
 def parse_octop_user_id(raw: object) -> int | None:
-    """Return a positive wkbuddy ``users.id``, or ``None`` if *raw* is unusable."""
+    """Return a positive agentbuddy ``users.id``, or ``None`` if *raw* is unusable."""
     if isinstance(raw, bool) or not isinstance(raw, (int, str)):
         return None
     try:
@@ -32,7 +32,7 @@ def parse_octop_user_id(raw: object) -> int | None:
 
 
 def user_browser_profile(user_id: int) -> str:
-    """Stable octop-browser profile name for one wkbuddy user.
+    """Stable octop-browser profile name for one agentbuddy user.
 
     Dashboard and CLI turns use the logged-in user. IM turns use the agent
     owner (the same id already stored on the thread). A leftover on-disk
@@ -49,7 +49,7 @@ def agent_outbound_screenshots_dir(workspace_dir: Path) -> Path:
 
 
 def legacy_harness_profiles_dir() -> Path:
-    """Pre-wkbuddy default: ``~/.harness-browser/profiles``."""
+    """Pre-agentbuddy default: ``~/.harness-browser/profiles``."""
     return Path.home() / ".harness-browser" / "profiles"
 
 
@@ -84,12 +84,12 @@ def _maybe_migrate_legacy_profiles(dest: Path) -> None:
 def octop_browser_profiles_dir(paths: PathLayout | None = None) -> Path:
     """Shared Chrome profiles root: ``~/.octop/browser-profiles``.
 
-    Profiles live under one wkbuddy-owned root and are named ``user-<id>``.
+    Profiles live under one agentbuddy-owned root and are named ``user-<id>``.
     A pre-isolation ``default`` directory, if present, is left untouched.
     Prefer this directory over ``~/.harness-browser/profiles`` or system
     ``/tmp``.
 
-    When the wkbuddy dir is empty and a legacy ``~/.harness-browser`` profiles tree
+    When the agentbuddy dir is empty and a legacy ``~/.harness-browser`` profiles tree
     exists, contents are moved once so login cookies survive the cutover.
     """
     if paths is None:
@@ -130,7 +130,7 @@ def configure_browser_profiles_dir(profiles_dir: Path | None = None) -> Path:
 
 
 def configure_browser_idle_timeout(timeout_minutes: int) -> None:
-    """Apply wkbuddy's browser idle policy to octop-browser."""
+    """Apply agentbuddy's browser idle policy to octop-browser."""
     timeout = max(int(timeout_minutes), 0)
     os.environ["BROWSER_USE_IDLE_TIMEOUT_MINUTES"] = str(timeout)
     with contextlib.suppress(Exception):

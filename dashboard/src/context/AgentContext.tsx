@@ -19,7 +19,7 @@ import {
  *
  * Plan §14.3: the dashboard fetches the current user's agents on login,
  * stores the list + selected id in this context, persists the selection
- * in ``localStorage`` (``octop:active-agent``), and pipes the selected id
+ * in ``localStorage`` (``agentbuddy:active-agent``), and pipes the selected id
  * into ``api/request.ts`` so every agent-scoped HTTP call gets an
  * ``X-Octop-Agent-Id`` header.
  */
@@ -111,7 +111,7 @@ export interface EnabledExpertsOptions {
   pinActive?: boolean;
 }
 
-const STORAGE_KEY = "octop:active-agent";
+const STORAGE_KEY = "agentbuddy:active-agent";
 
 /**
  * Pure helper: narrow ``agents`` down to those that are "enabled" for the

@@ -1,4 +1,4 @@
-"""wkbuddy infrastructure — domain logic and utilities.
+"""agentbuddy infrastructure — domain logic and utilities.
 
 Sub-packages (see ``AGENTS.md`` §5 for ownership boundaries):
     agents      — AgentManager, providers, settings, workspace, threads, experts, …

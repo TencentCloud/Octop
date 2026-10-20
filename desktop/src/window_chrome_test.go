@@ -7,7 +7,7 @@ import (
 )
 
 func TestDesktopDragRegionClassMatchesDashboard(t *testing.T) {
-	if desktopDragRegionClass != "octop-desktop-drag" {
+	if desktopDragRegionClass != "agentbuddy-desktop-drag" {
 		t.Fatalf("drag region class is %q, dashboard CSS will not apply", desktopDragRegionClass)
 	}
 }
@@ -18,14 +18,14 @@ func TestDragOverlayJSStartsWailsDragWithoutCapturingOverlay(t *testing.T) {
 		"wails:drag",
 		"wails:drag:doubleclick",
 		"--wails-draggable",
-		"data-octop-no-drag",
+		"data-agentbuddy-no-drag",
 		"clientY <= 32",
 	} {
 		if !strings.Contains(js, needle) {
 			t.Fatalf("drag JS missing %q", needle)
 		}
 	}
-	if strings.Contains(js, "octop-window-drag-overlay") {
+	if strings.Contains(js, "agentbuddy-window-drag-overlay") {
 		t.Fatal("full-width capturing overlay would steal title-bar clicks")
 	}
 }
@@ -38,8 +38,8 @@ func TestSplashHTMLHasFramelessWindowControls(t *testing.T) {
 	body := string(html)
 	for _, needle := range []string{
 		`id="window-chrome"`,
-		`octop-desktop-drag`,
-		`data-octop-no-drag`,
+		`agentbuddy-desktop-drag`,
+		`data-agentbuddy-no-drag`,
 		`data-action="toggle-maximise"`,
 		`data-action="minimise"`,
 		`data-action="close"`,

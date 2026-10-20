@@ -155,7 +155,7 @@ async def probe_host_dir(
     user: User = Depends(current_user),
     server: Any = Depends(get_server),
 ) -> dict[str, Any]:
-    """Check whether wkbuddy can use *path* as a local backend root_dir."""
+    """Check whether agentbuddy can use *path* as a local backend root_dir."""
     allowed = _user_workspace_root(server, user)
     return await asyncio.to_thread(
         probe_host_root_dir,

@@ -5,7 +5,9 @@ from __future__ import annotations
 from octop.i18n.loader import lookup, tr
 from octop.infra.utils.locale import Locale
 
-_START_ERROR_PREFIX = "octop:"
+_START_ERROR_PREFIX = "agentbuddy:"
+# Pre-rename rows persist ``last_error`` with the legacy prefix; keep parsing it.
+_LEGACY_ERROR_PREFIX = "octop:"
 NO_MODELS_CONFIGURED = f"{_START_ERROR_PREFIX}agent_errors.no_models_configured"
 MODEL_REF_UNAVAILABLE = f"{_START_ERROR_PREFIX}agent_errors.model_ref_unavailable"
 AGENT_START_TIMEOUT = f"{_START_ERROR_PREFIX}agent_errors.start_timeout"
@@ -83,11 +85,14 @@ def agent_error_message(error: str | None, locale: str | Locale = "en") -> str:
     """Localized agent ``last_error`` for user-facing output."""
     if not error:
         return ""
-    if error.startswith("octop:"):
-        key = error.removeprefix("octop:")
-        if lookup(key, locale) is not None:
-            return tr(key, locale)
+    # Legacy rows (pre-rename) carry the ``octop:`` prefix; current writes use
+    # ``agentbuddy:``. Both resolve to the same i18n key tree.
+    for prefix in (_START_ERROR_PREFIX, _LEGACY_ERROR_PREFIX):
+        if error.startswith(prefix):
+            key = error.removeprefix(prefix)
+            if lookup(key, locale) is not None:
+                return tr(key, locale)
     classified = classify_agent_start_error_message(error)
     if classified is not None:
-        return tr(classified.removeprefix("octop:"), locale)
+        return tr(classified.removeprefix("agentbuddy:"), locale)
     return error

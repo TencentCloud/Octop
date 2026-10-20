@@ -1,4 +1,4 @@
--- Schema v19: wkbuddy↔wkbuddy bridge connections (per-user remote links).
+-- Schema v19: agentbuddy↔agentbuddy bridge connections (per-user remote links).
 
 CREATE TABLE IF NOT EXISTS bridge_connections (
   id                      INTEGER PRIMARY KEY AUTOINCREMENT,

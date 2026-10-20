@@ -135,7 +135,7 @@ _MANIFEST_MEMBER_NAMES = frozenset({"manifest.json", "./manifest.json"})
 def peek_backup_contents(path: Path) -> BackupContentFlags:
     """Read ``manifest.json`` from the start of an archive.
 
-    wkbuddy writes ``manifest.json`` as the first tar member. Only that member
+    agentbuddy writes ``manifest.json`` as the first tar member. Only that member
     is read so listing multi-GB ``.tar.gz`` backups stays cheap. Looking up the
     member by name would force ``tarfile`` to scan the whole archive.
 

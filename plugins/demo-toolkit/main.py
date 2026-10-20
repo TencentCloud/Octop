@@ -1,6 +1,6 @@
 """Demo Toolkit — sample tool plugin (kind=tool).
 
-How to write a wkbuddy plugin (copy this file as a template):
+How to write a agentbuddy plugin (copy this file as a template):
   1. This directory must contain plugin.yaml (id / version / name / kind / entry).
   2. The entry file (main.py here) must define setup(ctx: PluginContext).
   3. Register callable tools with ctx.tool(...) inside setup.

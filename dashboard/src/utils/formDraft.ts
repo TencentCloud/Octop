@@ -5,7 +5,7 @@
  * or when the page is refreshed (sessionStorage).
  */
 
-const PREFIX = "octop:form-draft:";
+const PREFIX = "agentbuddy:form-draft:";
 
 export function draftStorageKey(scope: string): string {
   return `${PREFIX}${scope}`;

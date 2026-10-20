@@ -325,9 +325,9 @@ export function useChatSend({
     consumePending();
 
     const handler = () => consumePending();
-    window.addEventListener("octop:pending-chat-message", handler);
+    window.addEventListener("agentbuddy:pending-chat-message", handler);
     return () =>
-      window.removeEventListener("octop:pending-chat-message", handler);
+      window.removeEventListener("agentbuddy:pending-chat-message", handler);
   }, [handleSend, activeThreadId, onAutoRecordingStarted, t]);
 
   return { handleSend };

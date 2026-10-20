@@ -1,0 +1,14 @@
+name: octopmemory
+version: 0.3.0
+description: "OctopMemory provider for Hermes — SQLite + FTS5 atom/tree/raw recall."
+pip_dependencies:
+  - "octop-memory[cli]>=0.9.2"
+hooks:
+  - system_prompt_block
+  - prefetch
+  - queue_prefetch
+  - sync_turn
+  - on_pre_compress
+  - on_memory_write
+  - on_session_switch
+  - shutdown

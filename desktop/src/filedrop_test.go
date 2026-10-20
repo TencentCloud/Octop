@@ -138,7 +138,7 @@ func TestFileDropJSBridgesNativeDrops(t *testing.T) {
 	for _, needle := range []string{
 		"handlePlatformFileDrop",
 		"handleDragOver",
-		"data-octop-chat-drop",
+		"data-agentbuddy-chat-drop",
 		"postMessageWithAdditionalObjects",
 		fileDropEventPrefix,
 		"wails:runtime:ready",

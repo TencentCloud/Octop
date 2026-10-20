@@ -73,8 +73,8 @@ import { sendDesktopAction } from "./desktopShortcuts";
 import { OctopEmptyMascot } from "../../../components/EmptyState";
 import styles from "./DesktopPanel.module.less";
 
-const RESOLUTION_STORAGE_KEY = "octop:remote-desktop:resolution";
-const FPS_STORAGE_KEY = "octop:remote-desktop:max-fps";
+const RESOLUTION_STORAGE_KEY = "agentbuddy:remote-desktop:resolution";
+const FPS_STORAGE_KEY = "agentbuddy:remote-desktop:max-fps";
 const DEFAULT_RESOLUTION: DesktopResolution = "1920x1080";
 const DEFAULT_MAX_FPS = 10;
 
@@ -448,7 +448,7 @@ export default function DesktopPanel({
         message.warning(
           t(
             "remoteDesktop.connectDisabledPerms",
-            "请先在系统设置中开启屏幕录制与辅助功能权限，然后重启 wkbuddy",
+            "请先在系统设置中开启屏幕录制与辅助功能权限，然后重启 agentbuddy",
           ),
         );
         return;
@@ -858,7 +858,7 @@ export default function DesktopPanel({
             >
               {t(
                 "common.askOctopHint",
-                "若安装失败，可复制下方错误信息发给 wkbuddy 排查。",
+                "若安装失败，可复制下方错误信息发给 agentbuddy 排查。",
               )}
             </div>
           </div>
@@ -996,7 +996,7 @@ export default function DesktopPanel({
   const pageTitle = t("nav.remoteDesktop", "远程桌面");
   const pageSubtitle = t(
     "pageShell.desktop.subtitle",
-    "查看并操控 wkbuddy 主机操作系统桌面，远程完成桌面操作",
+    "查看并操控 agentbuddy 主机操作系统桌面，远程完成桌面操作",
   );
   const setupMascot = <OctopEmptyMascot />;
 
@@ -1071,7 +1071,7 @@ export default function DesktopPanel({
       : needsMacPermissions
       ? t(
           "remoteDesktop.connectDisabledPerms",
-          "请先在系统设置中开启屏幕录制与辅助功能权限，然后重启 wkbuddy",
+          "请先在系统设置中开启屏幕录制与辅助功能权限，然后重启 agentbuddy",
         )
       : t("remoteDesktop.connectDisabled"),
   };
@@ -1166,7 +1166,10 @@ export default function DesktopPanel({
                         "remoteDesktop.macPermissionsTitle",
                         "需要 macOS 系统权限",
                       )
-                    : t("remoteDesktop.subtitle", "控制 wkbuddy 主机操作系统桌面")
+                    : t(
+                        "remoteDesktop.subtitle",
+                        "控制 agentbuddy 主机操作系统桌面",
+                      )
                 }
                 description={
                   envReady
@@ -1219,7 +1222,7 @@ export default function DesktopPanel({
                         {
                           label: t(
                             "remoteDesktop.macPermStep3",
-                            "重启 wkbuddy（octop run），再回到本页点击「重新检测」",
+                            "重启 agentbuddy（octop run），再回到本页点击「重新检测」",
                           ),
                         },
                       ]

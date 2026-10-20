@@ -189,7 +189,7 @@ function expandedKeysForDir(dirPath: string): string[] {
   return keys;
 }
 
-const TREE_COLLAPSED_KEY = "octop:workspace-drawer-tree-collapsed";
+const TREE_COLLAPSED_KEY = "agentbuddy:workspace-drawer-tree-collapsed";
 
 function parentDir(path: string): string {
   const parts = path.split("/").filter(Boolean);
@@ -304,7 +304,7 @@ export default function WorkspaceDrawer({
     min: 180,
     max: 420,
     defaultSize: 240,
-    storageKey: "octop:workspace-drawer-tree-width",
+    storageKey: "agentbuddy:workspace-drawer-tree-width",
   });
 
   const buildWorkspaceRootNode = useCallback(

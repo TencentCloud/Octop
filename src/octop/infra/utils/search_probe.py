@@ -17,11 +17,12 @@ ErrorType = Literal["auth_error", "timeout", "network_error", "invalid_config", 
 
 _TIMEOUT_S = 30.0
 _TEST_QUERY = "octop connectivity probe"
-_KNOWN: frozenset[str] = frozenset({"tavily", "brave", "google", "kimi"})
+_KNOWN: frozenset[str] = frozenset({"tavily", "doubao", "deepseek", "exa", "kimi"})
 _REQUIRED: dict[str, tuple[str, ...]] = {
     "tavily": ("TAVILY_API_KEY",),
-    "brave": ("BRAVE_API_KEY",),
-    "google": ("GOOGLE_API_KEY", "GOOGLE_CSE_ID"),
+    "doubao": ("DOUBAO_SEARCH_API_KEY",),
+    "deepseek": ("DEEPSEEK_API_KEY",),
+    "exa": ("EXA_API_KEY",),
     "kimi": ("MOONSHOT_API_KEY",),
 }
 
@@ -76,10 +77,12 @@ async def _probe(provider_id: str, env_vars: Mapping[str, str]) -> dict[str, Any
     async with httpx.AsyncClient(timeout=_TIMEOUT_S) as client:
         if provider_id == "tavily":
             return await _tavily(client, creds["TAVILY_API_KEY"])
-        if provider_id == "brave":
-            return await _brave(client, creds["BRAVE_API_KEY"])
-        if provider_id == "google":
-            return await _google(client, creds["GOOGLE_API_KEY"], creds["GOOGLE_CSE_ID"])
+        if provider_id == "doubao":
+            return await _doubao(client, creds["DOUBAO_SEARCH_API_KEY"])
+        if provider_id == "deepseek":
+            return await _deepseek(client, creds["DEEPSEEK_API_KEY"])
+        if provider_id == "exa":
+            return await _exa(client, creds["EXA_API_KEY"])
         return await _kimi(client, creds["MOONSHOT_API_KEY"])
 
 
@@ -92,24 +95,45 @@ async def _tavily(client: httpx.AsyncClient, api_key: str) -> dict[str, Any]:
     return _from_response(response, provider="Tavily", results_key="results")
 
 
-async def _brave(client: httpx.AsyncClient, api_key: str) -> dict[str, Any]:
-    response = await client.get(
-        "https://api.search.brave.com/res/v1/web/search",
+async def _doubao(client: httpx.AsyncClient, api_key: str) -> dict[str, Any]:
+    response = await client.post(
+        "https://open.feedcoopapi.com/search_api/global_search",
         headers={
-            "Accept": "application/json",
-            "X-Subscription-Token": api_key,
+            "Content-Type": "application/json",
+            "Authorization": f"Bearer {api_key}",
         },
-        params={"q": _TEST_QUERY, "count": 1},
+        json={
+            "SearchType": "web",
+            "Query": _TEST_QUERY[:100],
+            "DocCount": 1,
+            "MaxSnippetLength": 300,
+        },
     )
-    return _from_brave(response)
+    return _from_doubao(response)
 
 
-async def _google(client: httpx.AsyncClient, api_key: str, cse_id: str) -> dict[str, Any]:
-    response = await client.get(
-        "https://www.googleapis.com/customsearch/v1",
-        params={"key": api_key, "cx": cse_id, "q": _TEST_QUERY, "num": 1},
+async def _deepseek(client: httpx.AsyncClient, api_key: str) -> dict[str, Any]:
+    response = await client.post(
+        "https://api.deepseek.com/v1/tools/search",
+        headers={
+            "Content-Type": "application/json",
+            "Authorization": f"Bearer {api_key}",
+        },
+        json={"query": _TEST_QUERY[:128], "count": 1, "need_content": False},
     )
-    return _from_google(response)
+    return _from_response(response, provider="DeepSeek", results_key="results")
+
+
+async def _exa(client: httpx.AsyncClient, api_key: str) -> dict[str, Any]:
+    response = await client.post(
+        "https://api.exa.ai/search",
+        headers={
+            "Content-Type": "application/json",
+            "x-api-key": api_key,
+        },
+        json={"query": _TEST_QUERY, "numResults": 1, "contents": {"highlights": True}},
+    )
+    return _from_response(response, provider="Exa", results_key="results")
 
 
 async def _kimi(client: httpx.AsyncClient, api_key: str) -> dict[str, Any]:
@@ -150,7 +174,7 @@ def _from_response(
     }
 
 
-def _from_brave(response: httpx.Response) -> dict[str, Any]:
+def _from_doubao(response: httpx.Response) -> dict[str, Any]:
     fail = _http_failure(response)
     if fail is not None:
         return fail
@@ -158,30 +182,38 @@ def _from_brave(response: httpx.Response) -> dict[str, Any]:
         payload = response.json()
     except ValueError:
         return {"success": False, "error": "invalid JSON response", "error_type": "unknown"}
-    web = payload.get("web") if isinstance(payload, dict) else None
-    results = web.get("results") if isinstance(web, dict) else None
-    count = len(results) if isinstance(results, list) else 1
+    # Business errors ride HTTP 200: ResponseMetadata.Error (API layer) and
+    # Result.ErrorCode/ErrorMsg (search layer).
+    meta = payload.get("ResponseMetadata") if isinstance(payload, dict) else None
+    api_err = meta.get("Error") if isinstance(meta, dict) else None
+    if isinstance(api_err, dict):
+        code = api_err.get("Code", "unknown")
+        message = api_err.get("Message", "")
+        error_type: ErrorType = "auth_error" if code in {"10401", "10403", "700901"} else "unknown"
+        return {
+            "success": False,
+            "error": f"doubao error {code}: {message}",
+            "error_type": error_type,
+        }
+    result = payload.get("Result") if isinstance(payload, dict) else None
+    if not isinstance(result, dict):
+        return {"success": False, "error": "missing Result payload", "error_type": "unknown"}
+    err_code = result.get("ErrorCode")
+    if err_code not in (None, 0, "0"):
+        error_type = (
+            "auth_error" if str(err_code) in {"10403", "10406", "10408", "700901"} else "unknown"
+        )
+        return {
+            "success": False,
+            "error": f"doubao error {err_code}: {result.get('ErrorMsg', '')}",
+            "error_type": error_type,
+        }
+    documents = result.get("Documents")
+    count = len(documents) if isinstance(documents, list) else 0
     return {
         "success": True,
         "result_count": count,
-        "message": "Brave search test successful",
-    }
-
-
-def _from_google(response: httpx.Response) -> dict[str, Any]:
-    fail = _http_failure(response)
-    if fail is not None:
-        return fail
-    try:
-        payload = response.json()
-    except ValueError:
-        return {"success": False, "error": "invalid JSON response", "error_type": "unknown"}
-    items = payload.get("items") if isinstance(payload, dict) else None
-    count = len(items) if isinstance(items, list) else 0
-    return {
-        "success": True,
-        "result_count": count,
-        "message": "Google search test successful",
+        "message": "Doubao search test successful",
     }
 
 

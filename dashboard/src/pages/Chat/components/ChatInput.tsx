@@ -846,9 +846,9 @@ const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
     return (
       <div
         ref={shellRef}
-        id="octop-chat-file-drop"
+        id="agentbuddy-chat-file-drop"
         data-file-drop-target=""
-        data-octop-chat-drop="1"
+        data-agentbuddy-chat-drop="1"
         className={`${styles.chatInput} ${showDrop ? styles.dropActive : ""}`}
         onDragEnter={handleDragEnter}
         onDragLeave={handleDragLeave}
@@ -900,7 +900,7 @@ const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
                       "chat.steer.placeholder",
                       "Keep typing to queue a mid-turn steer…",
                     )
-                  : t("chatWelcome.inputPlaceholder", "Message wkbuddy...")
+                  : t("chatWelcome.inputPlaceholder", "Message agentbuddy...")
               }
               rows={1}
               disabled={disabled}

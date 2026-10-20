@@ -16,7 +16,7 @@ _SETTINGS_KEY = "security_policy"
 
 
 def _default_policy() -> SecurityPolicy:
-    """wkbuddy defaults when no ``security_policy`` row exists in settings."""
+    """agentbuddy defaults when no ``security_policy`` row exists in settings."""
     data = SecurityPolicy.defaults().to_dict()
     data["hitl"]["enabled"] = False
     data["tool_guard"] = {"enabled": True, "mode": "warn"}

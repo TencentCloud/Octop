@@ -1,0 +1,111 @@
+# OS
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+
+# Environment / secrets
+.env
+.env.*
+!.env.example
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+dist/
+*.egg-info/
+*.egg
+.eggs/
+wheels/
+*.whl
+pip-wheel-metadata/
+
+# Virtual environments
+.venv/
+venv/
+env/
+ENV/
+
+# Node
+# hatchling only honours the ROOT .gitignore when collecting sdist files, so a
+# nested plugins/openclaw/octopmemory/.gitignore is not enough: a local
+# `npm install` (373MB / ~17k files) ends up inside the published sdist.
+node_modules/
+
+# Test / coverage
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+.coverage.*
+htmlcov/
+coverage.xml
+.tox/
+.nox/
+.hypothesis/
+
+# IDE / editors
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.project
+.pydevproject
+
+# uv
+.uv/
+
+# hatch-vcs auto-generated version file
+src/octop_memory/_version.py
+
+# Personal assistant settings; shared project rules live in AGENTS.md.
+# Track the shared publish skill (Octop-style); ignore everything else under these dirs.
+/.codebuddy/*
+!/.codebuddy/skills/
+!/.codebuddy/skills/publish/
+!/.codebuddy/skills/publish/**
+/.cursor/*
+!/.cursor/skills/
+!/.cursor/skills/publish/
+!/.cursor/skills/publish/**
+/.claude/
+# Local database diagnostics, never public fixtures.
+/scripts/_smoke_dashboard.py
+*.hmpkg
+*.sqlite.bak
+*.sqlite.before-slim.*.bak
+*.db-journal
+*.sqlite3
+*.sqlite3-wal
+*.sqlite3-shm
+
+# 本地规划文档（开发期 planning，不外发）
+/docs/plans/*.md
+
+# 本地集成自检脚本（dogfood，不属于对外示例）
+/examples/dogfood_*.py
+
+# Local-only checkpoint benchmark
+/scripts/benchmark_checkpoint_storage.py
+
+# Local databases
+*.sqlite
+*.sqlite-journal
+*.sqlite-wal
+*.sqlite-shm
+*.db
+*.db-wal
+*.db-shm
+
+# Logs
+*.log
+logs/

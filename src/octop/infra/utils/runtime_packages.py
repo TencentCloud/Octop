@@ -1,6 +1,6 @@
 """Install optional Python packages into the active interpreter at runtime.
 
-wkbuddy deployments vary: uv venvs often omit ``pip``, systemd services may not
+agentbuddy deployments vary: uv venvs often omit ``pip``, systemd services may not
 have ``uv`` on ``PATH``, and some hosts only ship the stdlib. Callers should
 use :func:`install_packages` / :func:`install_packages_async` instead of
 hand-rolling ``pip`` / ``uv pip`` commands.

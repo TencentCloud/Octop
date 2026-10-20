@@ -1,6 +1,6 @@
 """Bilibili anime search + episode list for chat UI player.
 
-Uses public Bilibili HTTP APIs from the wkbuddy server (avoids browser CORS).
+Uses public Bilibili HTTP APIs from the agentbuddy server (avoids browser CORS).
 Playback in the Dashboard uses the official iframe player.
 """
 
