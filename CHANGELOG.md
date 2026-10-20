@@ -12,6 +12,7 @@
 - 技能包查看/编辑技能时展示左侧文件树（与个性化技能一致），并支持预览同级文件
 
 ### 修复
+- 本地下载按 UTF-8 字节数限制文件名并保留常见扩展名，避免较长中文或 emoji 文件名超出文件系统限制
 - `SKILL.md` 带 UTF-8 BOM（如 Windows 记事本 / PowerShell 5.1 保存）时不再丢失 YAML frontmatter；技能路由改为复用统一的 `parse_frontmatter`（#2215）
 - `OCTOP_HOME` 迁移数据目录后，首次配置向导密码文件随之写入 `<OCTOP_HOME>/octop-login.txt`；旧位置 `~/octop-login.txt` 自动继承，不再生成冲突密码（#2171）
 

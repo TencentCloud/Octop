@@ -70,3 +70,27 @@ async def test_save_local_download_rejects_public_host(
             assert response.json()["error"]["code"] == "LOCAL_DOWNLOAD_UNAVAILABLE"
     finally:
         await srv.stop()
+
+
+async def test_save_local_download_bounds_emoji_filename(
+    client, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    c, _srv, home = client
+    downloads = home / "Downloads"
+    downloads.mkdir()
+    monkeypatch.setattr(
+        "octop.infra.utils.user_downloads.downloads_dir", lambda home=None: downloads
+    )
+    monkeypatch.setattr("octop.api.routers.settings.reveal_download", lambda _path: None)
+    await bootstrap_admin(c, home)
+    token = await login(c)
+    response = await c.post(
+        "/api/downloads/local",
+        headers=bearer(token),
+        files={"file": ("\U0001f600" * 130 + ".txt", b"hello", "text/plain")},
+    )
+    assert response.status_code == 200, response.text
+    filename = response.json()["filename"]
+    assert filename.endswith(".txt")
+    assert len(filename.encode("utf-8")) <= 200
+    assert (downloads / filename).read_bytes() == b"hello"

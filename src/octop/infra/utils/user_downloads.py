@@ -49,7 +49,17 @@ def sanitize_download_filename(raw: str | None) -> str:
     name = name.lstrip(".")
     if name in {"", ".", ".."}:
         return "download"
-    return name[:200]
+    # Bound bytes as well as characters: CJK/emoji names can exceed filesystem
+    # component limits even when they contain fewer than 200 Python characters.
+    encoded = name.encode("utf-8")
+    if len(encoded) <= 200:
+        return name
+    suffix = Path(name).suffix
+    suffix_bytes = suffix.encode("utf-8")
+    if suffix and len(suffix_bytes) < 200:
+        stem = name[: -len(suffix)].encode("utf-8")
+        return stem[: 200 - len(suffix_bytes)].decode("utf-8", errors="ignore") + suffix
+    return encoded[:200].decode("utf-8", errors="ignore")
 
 
 def downloads_dir(*, home: Path | None = None) -> Path:
