@@ -298,3 +298,49 @@ async def test_provider_failure_skips_sibling_model(monkeypatch) -> None:
     assert response.result[0].content == "ok"
     assert attempts == ["p/a", "q/c"]
     assert configurable["model"] == "q/c"
+
+
+@pytest.mark.asyncio
+async def test_non_health_failure_releases_the_half_open_probe(monkeypatch) -> None:
+    """A policy error during a half-open probe must not strand the AUTO route."""
+    now = 100.0
+    models = {"p/a": _model("p/a", 100_000)}
+    health = ModelHealthRegistry(clock=lambda: now)
+    middleware = SafeModelFailoverMiddleware(
+        health=health,
+        candidates=lambda _current, _vision: [],
+        model_for_ref=models.__getitem__,
+        max_retries=0,
+        initial_delay=0,
+        max_delay=0,
+    )
+    monkeypatch.setattr(
+        model_failover,
+        "_configurable",
+        lambda _request: {"model": "p/a", "octop_auto_route": True},
+    )
+    outcomes: list[Exception | None] = [
+        RuntimeError("HTTP 429 too many requests"),
+        RuntimeError("context_length_exceeded"),
+        None,
+    ]
+    attempts: list[str] = []
+
+    async def handler(request: ModelRequest) -> ModelResponse:
+        attempts.append(request.model.model)
+        exc = outcomes.pop(0)
+        if exc is not None:
+            raise exc
+        return ModelResponse(result=[AIMessage(content="ok")])
+
+    request = ModelRequest(model=models["p/a"], messages=[HumanMessage(content="hello")])
+    await middleware.awrap_model_call(request, handler)
+    assert not health.is_routable("p/a")
+
+    now = 161.0
+    await middleware.awrap_model_call(request, handler)
+    assert health.is_routable("p/a")
+
+    response = await middleware.awrap_model_call(request, handler)
+    assert response.result[0].content == "ok"
+    assert attempts == ["p/a", "p/a", "p/a"]
