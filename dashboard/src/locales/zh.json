@@ -3860,9 +3860,9 @@
   },
   "proactiveConfig": {
     "title": "主动关心设置",
-    "description": "让政务伙伴定期回顾记忆，在合适的时机主动找你说话。",
+    "description": "等对话闲下来、并且处在关心时段里，政务伙伴才会主动说一句，不会在你正在聊天时插话。",
     "enabled": "开启主动关心",
-    "enabledTip": "开启后，政务伙伴会定期翻看记忆，遇到值得提醒的事会主动给你发消息。",
+    "enabledTip": "开启后，政务伙伴会在关心时段里、等对话闲下来再发一句关心，不会在你正在聊天时插话。",
     "every": "检查频率",
     "everyTip": "政务伙伴检查记忆的频率，支持 30m、1h、2h30m 这类格式。",
     "everyPlaceholder": "如 1h，每小时一次",
@@ -3896,7 +3896,7 @@
     "minIntervalHours": "最短间隔（小时）",
     "minIntervalMin": "最小间隔不能小于 1 小时",
     "minIntervalRequired": "请输入最小间隔",
-    "timeRangeError": "关心时段的开始时间必须早于结束时间",
+    "timeRangeError": "关心时段的开始和结束不能相同；结束早于开始表示跨过午夜",
     "viewEpisodes": "去看情绪日记 →"
   },
   "chatWelcome": {
