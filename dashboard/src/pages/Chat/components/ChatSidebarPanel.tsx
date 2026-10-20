@@ -180,6 +180,7 @@ export default function ChatSidebarPanel({
           side={sidebarOpen ? "end" : "start"}
           /* Collapsed: share the nav rail divider — avoid a second gapped line. */
           showLine={sidebarOpen}
+          placement={sidebarOpen ? "center" : "after"}
           className={
             sidebarOpen ? styles.chatRailEdgeOpen : styles.chatRailEdgeClosed
           }

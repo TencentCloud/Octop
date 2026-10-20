@@ -20,6 +20,11 @@ class PathLayout:
         return cls(Path.home() / ".octop")
 
     @property
+    def wizard_password_file(self) -> Path:
+        """Initial wizard password file: ``~/.octop/octop-login.txt`` (or ``$OCTOP_HOME/octop-login.txt``)."""
+        return self.root / "octop-login.txt"
+
+    @property
     def db(self) -> Path:
         return self.root / "octop.db"
 

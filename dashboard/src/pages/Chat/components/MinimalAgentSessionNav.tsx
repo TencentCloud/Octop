@@ -30,6 +30,12 @@ import { usePinnedExperts } from "../hooks/usePinnedExperts";
 import { useSessionWorkIds } from "../hooks/useSessionWorkIds";
 import { sortExpertsByPin } from "../utils/pinnedExpertsPrefs";
 import {
+  initialChatNavScope,
+  matchesChatNavScope,
+  type ChatNavScope,
+} from "../utils/chatNavScope";
+import ChatNavScopeTabs, { ChatNavScopeEmpty } from "./ChatNavScopeTabs";
+import {
   expertVisibleInNavSearch,
   matchesNavQuery,
 } from "../utils/navSessionSearch";
@@ -304,10 +310,18 @@ export default function MinimalAgentSessionNav({
   );
 
   const [searchQuery, setSearchQuery] = useState("");
+  const [navScope, setNavScope] = useState<ChatNavScope>(() =>
+    initialChatNavScope(
+      agents.find((agent) => agent.agent_id === activeAgentId),
+    ),
+  );
   const { pinnedIds, isPinned, togglePin } = usePinnedExperts();
   const sortedAgents = useMemo(
-    () => sortExpertsByPin(agents, pinnedIds),
-    [agents, pinnedIds],
+    () =>
+      sortExpertsByPin(agents, pinnedIds).filter((agent) =>
+        matchesChatNavScope(agent, navScope),
+      ),
+    [agents, pinnedIds, navScope],
   );
   const searching = searchQuery.trim().length > 0;
   const catalog = useExpertSessionCatalog(sortedAgents, searching);
@@ -553,12 +567,17 @@ export default function MinimalAgentSessionNav({
           aria-label={t("chat.searchSessions", "搜索会话")}
         />
       </div>
-      {searching && visibleAgents.length === 0 ? (
-        <div className={styles.minimalAgentEmpty}>
-          {catalog.loading
-            ? t("common.loading")
-            : t("chat.noSearchResults", "没有匹配的会话")}
-        </div>
+      <ChatNavScopeTabs value={navScope} onChange={setNavScope} />
+      {visibleAgents.length === 0 ? (
+        searching ? (
+          <div className={styles.minimalAgentEmpty}>
+            {catalog.loading
+              ? t("common.loading")
+              : t("chat.noSearchResults", "没有匹配的会话")}
+          </div>
+        ) : (
+          <ChatNavScopeEmpty scope={navScope} />
+        )
       ) : null}
       {visibleAgents.map((agent) => {
         const preview = byAgent[agent.agent_id] ?? [];
