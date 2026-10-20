@@ -13,6 +13,7 @@
 
 ### 修复
 - `SKILL.md` 带 UTF-8 BOM（如 Windows 记事本 / PowerShell 5.1 保存）时不再丢失 YAML frontmatter；技能路由改为复用统一的 `parse_frontmatter`（#2215）
+- 手机浏览器点消息「朗读」不再没声音：解锁音频时设的 0.001 音量不会再带到正式朗读上（#2234）
 - `OCTOP_HOME` 迁移数据目录后，首次配置向导密码文件随之写入 `<OCTOP_HOME>/octop-login.txt`；旧位置 `~/octop-login.txt` 自动继承，不再生成冲突密码（#2171）
 
 ### 变更
