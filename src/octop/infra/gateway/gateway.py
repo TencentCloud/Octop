@@ -755,6 +755,17 @@ class Gateway:
         processor = processor_for_response_mode(self._processor, response_mode)
         if row.kind == "weixin" and response_mode == "stream":
             processor = wrap_weixin_stream_processor(processor)
+        if row.kind == "telegram":
+            from octop.infra.gateway.channels.telegram_bridge import (
+                TelegramBridge,
+                validate_telegram_config,
+            )
+
+            validate_telegram_config(row.kind, config)
+            # Wrap once: the bridge sends choice menus on COMPLETED, so a second layer
+            # would push every menu twice.
+            if not isinstance(processor, TelegramBridge):
+                processor = TelegramBridge(self, processor, row.channel_id)
         manager = self._require_channel_manager()
         await manager.add_channel(
             row.kind,
