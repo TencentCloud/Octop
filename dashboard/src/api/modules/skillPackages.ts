@@ -90,6 +90,22 @@ export const skillPackagesApi = {
       `/skill-packages/${packageId}/skills/${encodeURIComponent(slug)}`,
     ),
 
+  listSkillTree: (packageId: string, slug: string, path = "") => {
+    const qs = path ? `?path=${encodeURIComponent(path)}` : "";
+    return request<Array<{ path: string; is_dir?: boolean; size?: number }>>(
+      `/skill-packages/${packageId}/skills/${encodeURIComponent(
+        slug,
+      )}/tree${qs}`,
+    );
+  },
+
+  readSkillFile: (packageId: string, slug: string, path: string) =>
+    request<{ path: string; content: string }>(
+      `/skill-packages/${packageId}/skills/${encodeURIComponent(
+        slug,
+      )}/file?path=${encodeURIComponent(path)}`,
+    ),
+
   createSkill: (packageId: string, body: CreateSkillPackageSkillBody) =>
     request<SkillPackageSkill>(`/skill-packages/${packageId}/skills`, {
       method: "POST",

@@ -1,4 +1,4 @@
--- Schema v22: user groups and per-resource visibility grants.
+-- Schema v23: user groups and per-resource visibility grants.
 -- No grant row means the resource stays as visible as it is today.
 
 CREATE TABLE IF NOT EXISTS user_group (
@@ -26,4 +26,4 @@ CREATE TABLE IF NOT EXISTS resource_group_grant (
 );
 CREATE INDEX IF NOT EXISTS idx_resource_group_grant_group ON resource_group_grant(user_group_id);
 
-UPDATE _schema_version SET version = 22;
+UPDATE _schema_version SET version = 23;

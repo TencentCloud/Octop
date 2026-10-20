@@ -2905,9 +2905,19 @@ class AgentManager:
                 is_owner=False,
             )
 
+    def _skill_package_shared_with(self, user_id: int, package: Any) -> bool:
+        """Private packages stay with the owner. Groups cannot open them."""
+        if self._user_is_admin(user_id):
+            return True
+        if str(user_id) == str(getattr(package, "created_by", "")):
+            return True
+        return bool(getattr(package, "shared", False))
+
     def _skill_package_visible(self, user_id: int, package: Any) -> bool:
         from octop.infra.users.groups import RESOURCE_SKILL_PACKAGE, GroupAccess
 
+        if not self._skill_package_shared_with(user_id, package):
+            return False
         return GroupAccess(self._repos).allows(
             user_id=user_id,
             is_admin=self._user_is_admin(user_id),
@@ -2925,6 +2935,8 @@ class AgentManager:
             package = self._repos.skill_package_repo.get(package_id)
             if package is None:
                 continue
+            if not self._skill_package_shared_with(user_id, package):
+                raise OctopError(ErrorCode.SKILL_PACKAGE_NOT_FOUND, "skill package not found")
             access.assert_allowed(
                 user_id=user_id,
                 is_admin=is_admin,

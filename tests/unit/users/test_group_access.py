@@ -36,7 +36,7 @@ def test_schema_version_includes_user_groups(repos: RepoBundle) -> None:
             row["name"]
             for row in conn.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchall()
         }
-    assert version == 22
+    assert version == 23
     assert {"user_group", "user_group_member", "resource_group_grant"}.issubset(names)
 
 
