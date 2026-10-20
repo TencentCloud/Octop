@@ -6,7 +6,13 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
-from octop_gateway.models import ChannelSubject, InboundMessage, MessageEvent, TextContent
+from octop_gateway.models import (
+    ChannelSubject,
+    InboundMessage,
+    MessageEvent,
+    MessageEventType,
+    TextContent,
+)
 
 from octop.infra.errors import OctopError
 from octop.infra.gateway.channels.telegram_bridge import TelegramBridge, validate_telegram_config
@@ -124,7 +130,9 @@ async def test_callback_returns_before_session_lock_and_agent_turn():
 @pytest.mark.asyncio
 async def test_choice_uses_original_scope_and_rejects_stale_siblings():
     bridge, msg, channel, record = setup_bridge()
-    assert len([event async for event in bridge(msg)]) == 2
+    # 卡片文本被按钮取代：只发按钮 + 终止事件，不再重复发一条选项文本。
+    events = [event async for event in bridge(msg)]
+    assert [event.type for event in events] == [MessageEventType.COMPLETED]
     subject, text, actions = channel.send_buttons.call_args.args
     assert subject.metadata["user_id"] == "telegram-user"
     assert subject.metadata["message_thread_id"] == 7

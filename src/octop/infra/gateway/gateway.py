@@ -19,15 +19,7 @@ from octop.i18n import channel_probe_incomplete, channel_runtime_reason, tr
 from octop.infra.db.repos.channels import ChannelRow
 from octop.infra.db.repos.sessions import SessionRow
 from octop.infra.errors import ErrorCode, OctopError
-from octop.infra.gateway.channels.plain_table_format import (
-    install as _install_plain_table_format,
-)
-from octop.infra.gateway.channels.telegram_button_ux import (
-    install as _install_telegram_button_ux,
-)
-from octop.infra.gateway.channels.telegram_table_format import (
-    install as _install_telegram_table_format,
-)
+from octop.infra.gateway.channels.patch_entry import install as _install_channel_patches
 from octop.infra.gateway.cli import CLI_CHANNEL_ID, CliChannel, CliHub
 from octop.infra.gateway.history_backfill import HistoryBackfillQueue
 from octop.infra.gateway.process import media_backend_for_agent
@@ -53,12 +45,8 @@ if TYPE_CHECKING:
     from octop.infra.agents.manager import AgentManager
     from octop.infra.db.services import RepoBundle
 
-# Telegram 无表格语法，发送前把 Markdown 表格转为对齐代码块（本地补丁）
-_install_telegram_table_format()
-# QQ/微信无可靠等宽渲染，表格降维为键值列表（本地补丁）
-_install_plain_table_format()
-# Telegram 按钮选择后 toast + 收起原消息键盘（本地补丁）
-_install_telegram_button_ux()
+# 本地通道补丁：表格原生渲染、QQ/微信键值化、按钮收尾、回调 topic 放宽、引用正文
+_install_channel_patches()
 
 logger = logging.getLogger(__name__)
 

@@ -92,5 +92,5 @@ def test_button_validation_failure_is_logged(caplog):
     )
     reply = _ButtonReply(**msg.model_dump(), button_state=state)
     with caplog.at_level(logging.WARNING, logger="octop.infra.gateway.channels.telegram_bridge"):
-        assert bridge._button_is_current(reply) is False
+        assert bridge._button_reject_reason_call(reply) is not None
     assert any("button reply dropped" in rec.message for rec in caplog.records)

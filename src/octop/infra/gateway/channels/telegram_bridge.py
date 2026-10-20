@@ -17,6 +17,7 @@ from octop_gateway.models import (
     TextContent,
 )
 
+from octop.i18n.domains.channel import telegram_quote_prompt, telegram_reject_notice
 from octop.infra.errors import ErrorCode, OctopError
 from octop.infra.gateway.hitl.format import extract_questions
 from octop.infra.gateway.process.message_keys import (
@@ -24,9 +25,13 @@ from octop.infra.gateway.process.message_keys import (
     session_key_from_message,
 )
 from octop.infra.gateway.slash.parser import parse_slash
+from octop.infra.utils.locale import Locale, resolve_user_locale
 from octop.infra.utils.stream_close import close_event_stream
 
 logger = logging.getLogger(__name__)
+
+# HITL pending 记录存活 30 分钟，按钮回调不能比它先过期（gateway 默认 300s）。
+_BUTTON_TTL = 1800.0
 
 
 def validate_telegram_config(kind: str, config: dict[str, Any]) -> None:
@@ -79,6 +84,17 @@ class _ButtonReply(InboundMessage):
     button_state: _ButtonState
 
 
+def _is_ask_card(event: MessageEvent) -> bool:
+    """HITL card text in this event lists the same options the buttons offer.
+
+    Telegram renders those options natively, so the card is only a fallback
+    for channels without button support or when sending buttons fails.
+    """
+    return event.type == MessageEventType.MESSAGE and bool(
+        event.metadata.get("octop_hitl_pending_id")
+    )
+
+
 def is_telegram_button_reply(msg: InboundMessage) -> bool:
     """Keep trusted button replies out of manager-level text batching."""
     return isinstance(msg, _ButtonReply)
@@ -93,20 +109,49 @@ class TelegramBridge:
     async def __call__(self, msg: InboundMessage) -> AsyncIterator[MessageEvent]:
         if isinstance(msg, _ButtonReply):
             # The normal worker holds the session lock for validation and execution.
-            if not self._button_is_current(msg):
+            reason = self._button_reject_reason_call(msg)
+            if reason is not None:
+                await self._notify_button_rejected(msg, reason)
                 return
             if msg.button_state.model_page is not None:
                 if msg.channel_subject is not None:
                     await self._send_models(msg, msg.channel_subject, msg.button_state.model_page)
                 return
             msg = InboundMessage(**msg.model_dump(exclude={"button_state"}))
+
         # Gateway has already checked that an addressed command names this bot.
-        text = re.sub(r"^(\s*/[\w-]+)@[\w]+(?=\s|$)", r"\1", msg.text)
+        mention = self._own_mention_patterns()
+
+        def _clean(text: str) -> str:
+            stripped = re.sub(r"^(\s*/[\w-]+)@[\w]+(?=\s|$)", r"\1", text)
+            if mention is None:
+                return stripped
+            # 只移除本 bot 的 @用户名（寻址噪音）；其他 @（含其他 bot、邮箱）可能是正文语义。
+            # 行首提及连同后随的逗号/空白一起吃掉，行中提及只吃前导空白，
+            # 这样不会误动正文里的缩进和多空格。
+            at_line_start, inline = mention
+            return inline.sub("", at_line_start.sub("", stripped)).strip()
+
+        text = _clean(msg.text)
         if text != msg.text:
             msg = msg.model_copy(
                 update={
                     "content": [
-                        TextContent(text=re.sub(r"^(\s*/[\w-]+)@[\w]+(?=\s|$)", r"\1", part.text))
+                        TextContent(text=_clean(part.text))
+                        if isinstance(part, TextContent)
+                        else part
+                        for part in msg.content
+                    ]
+                }
+            )
+        # 引用消息正文注入：gateway 只传 id，这里把被引正文补给 agent。
+        quote = msg.metadata.get("reply_quote_text") or msg.metadata.get("reply_to_text")
+        if quote:
+            prefix = telegram_quote_prompt(quote, self._locale(msg))
+            msg = msg.model_copy(
+                update={
+                    "content": [
+                        TextContent(text=prefix + part.text)
                         if isinstance(part, TextContent)
                         else part
                         for part in msg.content
@@ -117,14 +162,39 @@ class TelegramBridge:
         session_key = session_key_from_message(msg, agent_id=agent_id)
         pending_id = None
         failed = False
+        # 问询卡片先扣住：Telegram 有原生按钮时只发按钮版，文本卡片会重复。
+        held_card = None
         stream = self.processor(msg)
         try:
             async for event in stream:
                 failed = failed or event.type == MessageEventType.ERROR
-                pending_id = event.metadata.get("octop_hitl_pending_id") or pending_id
+                event_pending = event.metadata.get("octop_hitl_pending_id")
+                if not failed and event_pending:
+                    pending_id = event_pending
+                    if _is_ask_card(event):
+                        held_card = event
+                        continue
                 if event.type == MessageEventType.COMPLETED and not failed:
-                    await self._send_choices(msg, session_key, pending_id)
+                    if held_card is not None:
+                        try:
+                            sent = await self._send_choices(msg, session_key, pending_id)
+                        except Exception:  # noqa: BLE001 按钮发送失败时文本卡片是唯一入口
+                            logger.warning("telegram choice buttons failed; using text card")
+                            sent = False
+                        if not sent:
+                            yield held_card
+                        held_card = None
+                    else:
+                        await self._send_choices(msg, session_key, pending_id)
+                elif held_card is not None and event.type in (
+                    MessageEventType.ERROR,
+                    MessageEventType.MESSAGE,
+                ):
+                    yield held_card
+                    held_card = None
                 yield event
+            if held_card is not None:
+                yield held_card
         except asyncio.CancelledError:
             # Harness execution can outlive consumption of its stream iterator.
             thread_id = self.gateway.thread_registry.get_bound_thread_id(session_key)
@@ -137,19 +207,33 @@ class TelegramBridge:
             # ContextVar reset 崩溃、resume 中途丢失）。
             await close_event_stream(stream)
 
+    def _own_mention_patterns(self) -> tuple[re.Pattern[str], re.Pattern[str]] | None:
+        """本 bot 用户名的提及正则；用户名未知（通道未就绪）时不做任何剥离。"""
+        manager = self.gateway.channel_manager
+        channel = manager.get_channel(self.channel_id) if manager else None
+        username = str(getattr(channel, "_bot_username", "") or "").lstrip("@")
+        if not username:
+            return None
+        name = re.escape(username)
+        return (
+            re.compile(rf"^[ \t]*@{name}(?!\w)[ \t]*[,，]?[ \t]*", re.IGNORECASE | re.MULTILINE),
+            re.compile(rf"[ \t]*(?<![\w.])@{name}(?!\w)", re.IGNORECASE),
+        )
+
     async def _send_choices(
         self, msg: InboundMessage, session_key: str, pending_id: str | None
-    ) -> None:
+    ) -> bool:
+        """Render pending choices as native buttons; False when text must carry them."""
         agent_id = msg.tenant_id or ""
         manager = self.gateway.channel_manager
         channel = manager.get_channel(self.channel_id) if manager else None
         if channel is None or not callable(getattr(channel, "send_buttons", None)):
-            return
+            return False
         if not callable(getattr(manager, "run_in_session", None)):
-            return
+            return False
         subject = msg.channel_subject
         if subject is None or not msg.metadata.get("user_id"):
-            return
+            return False
         subject = ChannelSubject(
             subject_id=subject.subject_id,
             display_name=subject.display_name,
@@ -166,11 +250,11 @@ class TelegramBridge:
             questions = extract_questions(record.action_requests)
             index = record.ask_question_index
             if index >= len(questions):
-                return
+                return False
             question = questions[index]
             # Multi-select continues to use the existing text answer parser.
             if question.get("multiSelect") or question.get("multi_select"):
-                return
+                return False
             text = str(question.get("question") or question.get("header") or "?")
             for number, option in enumerate(question.get("options") or [], start=1):
                 if isinstance(option, dict) and option.get("label"):
@@ -183,13 +267,47 @@ class TelegramBridge:
         else:
             cmd = parse_slash(msg.text)
             if cmd is None or cmd.name not in ("model", "models") or cmd.args.strip():
-                return
+                return False
             if owner is None:
-                return
+                return False
             await self._send_models(msg, subject)
-            return
+            return False
         if actions:
-            await channel.send_buttons(subject, text, actions)
+            await channel.send_buttons(subject, text, actions, ttl=_BUTTON_TTL)
+            return True
+        return False
+
+    def _locale(self, msg: InboundMessage) -> Locale:
+        """Per-user locale for host-generated copy (stored preference, then channel hint)."""
+        agent_id = msg.tenant_id or ""
+        owner = self.gateway._repos.agent_repo.get(agent_id)
+        user_id = resolve_user_id_for_message(
+            msg, agent_owner_id=owner.user_id if owner is not None else None
+        )
+        return resolve_user_locale(
+            user_repo=getattr(self.gateway._repos, "user_repo", None),
+            user_id=user_id if isinstance(user_id, int) else 0,
+            channel_type=msg.channel_type or "telegram",
+            metadata=msg.metadata,
+        )
+
+    async def _notify_button_rejected(self, msg: _ButtonReply, reason: str) -> None:
+        """按钮失效不再静默：按 reason 给一句短提示。
+
+        gateway 已在 invoke 前应答过 callback query，无法再用 toast，只能发一条消息。
+        不先发 typing：单 chat 1 req/s 限流下它只会拖慢提示本身。
+        """
+        manager = self.gateway.channel_manager
+        channel = manager.get_channel(self.channel_id) if manager else None
+        subject = msg.channel_subject
+        if channel is None or subject is None:
+            return
+        send_text = getattr(channel, "_send_text", None)
+        if callable(send_text):
+            try:
+                await send_text(subject, telegram_reject_notice(reason, self._locale(msg)))
+            except Exception:  # noqa: BLE001 反馈失败不应再抛
+                logger.warning("reject notice send failed reason=%s", reason)
 
     def _model_refs(self) -> list[str]:
         from octop.infra.agents.providers.store import enabled_model_refs
@@ -222,7 +340,7 @@ class TelegramBridge:
             if target >= 0 and target * size < len(refs):
                 actions.append((label, self._action(msg, subject, "", model_page=target)))
         if actions:
-            await channel.send_buttons(subject, f"/model ({page + 1})", actions)
+            await channel.send_buttons(subject, f"/model ({page + 1})", actions, ttl=_BUTTON_TTL)
 
     def _action(
         self,
@@ -258,13 +376,13 @@ class TelegramBridge:
 
         return action
 
-    def _button_is_current(self, msg: _ButtonReply) -> bool:
+    def _button_reject_reason_call(self, msg: _ButtonReply) -> str | None:
         state = msg.button_state
         agent_id = msg.tenant_id or ""
         session_key = session_key_from_message(msg, agent_id=agent_id)
         reason = self._button_reject_reason(msg, state, agent_id, session_key)
         if reason is not None:
-            # 按钮点击被静默丢弃是"点击没反应"的直接表现，必须留下线索。
+            # 按钮点击被丢弃必须留下线索，同时把 reason 交给上层做用户反馈。
             logger.warning(
                 "telegram button reply dropped: agent=%s session=%s reason=%s text=%r",
                 agent_id,
@@ -272,8 +390,7 @@ class TelegramBridge:
                 reason,
                 state.text,
             )
-            return False
-        return True
+        return reason
 
     def _button_reject_reason(
         self, msg: _ButtonReply, state: _ButtonState, agent_id: str, session_key: str
@@ -281,7 +398,14 @@ class TelegramBridge:
         current_owner = self.gateway._repos.agent_repo.get(agent_id)
         if current_owner is None or current_owner.user_id != state.owner_id:
             return "owner_changed"
-        if self.gateway.thread_registry.get_bound_thread_id(session_key) != state.thread_id:
+        # 群聊里任何人的新消息都会重绑 thread，thread 硬校验会让仍然有效的按钮在几秒内
+        # 失效（点击后毫无反应）；此时归属由 gateway 的 user+chat 校验、owner/model 校验
+        # 以及 HITL 的 session+user+question index 兜住。私聊保持 thread 严格校验。
+        strict_thread = not msg.metadata.get("is_group")
+        if (
+            strict_thread
+            and self.gateway.thread_registry.get_bound_thread_id(session_key) != state.thread_id
+        ):
             return "thread_rebound"
         if (
             state.text.startswith("/model ")
@@ -299,8 +423,9 @@ class TelegramBridge:
             if record.user_id != resolve_user_id_for_message(msg, agent_owner_id=state.owner_id):
                 return "user_mismatch"
             if (
-                self.gateway.thread_registry.get_bound_thread_id(record.session_key)
+                strict_thread
+                and self.gateway.thread_registry.get_bound_thread_id(record.session_key)
                 != record.thread_id
             ):
-                return "record_thread_rebound"
+                return "thread_rebound"
         return None
