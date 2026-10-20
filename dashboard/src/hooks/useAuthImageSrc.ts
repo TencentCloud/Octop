@@ -18,6 +18,30 @@ type AuthImageCacheEntry = {
 
 const authImageCache = new Map<string, AuthImageCacheEntry>();
 
+/**
+ * Keep decoded blobs around after their last consumer unmounts so that
+ * switching back to an already-seen avatar (or reopening a thread) reuses the
+ * existing object URL instead of re-downloading the whole file. Bounded so a
+ * long session cannot grow without limit; the Map doubles as an LRU list.
+ */
+const RETAINED_ENTRY_LIMIT = 32;
+
+function touchCacheEntry(key: string, entry: AuthImageCacheEntry): void {
+  // Re-insert so the Map keeps least-recently-used order.
+  authImageCache.delete(key);
+  authImageCache.set(key, entry);
+}
+
+function evictRetainedEntries(): void {
+  if (authImageCache.size <= RETAINED_ENTRY_LIMIT) return;
+  for (const [key, entry] of authImageCache) {
+    if (authImageCache.size <= RETAINED_ENTRY_LIMIT) break;
+    if (entry.refs > 0 || entry.inflight) continue; // still in use
+    if (entry.objectUrl) URL.revokeObjectURL(entry.objectUrl);
+    authImageCache.delete(key);
+  }
+}
+
 function apiPathFromUrl(url: string): string {
   if (url.startsWith("http")) {
     const parsed = new URL(url);
@@ -34,7 +58,10 @@ export async function fetchAuthImageBlob(
     const res = await fetch(url);
     return asImageBlob(await res.blob(), filename);
   }
-  const blob = await requestBlob(apiPathFromUrl(url), { cache: "no-store" });
+  // Let the browser HTTP cache honour the server's
+  // ``Cache-Control: private, max-age=60`` (the URL already carries ``?v=`` as
+  // a cache-buster) instead of forcing a full re-download on every mount.
+  const blob = await requestBlob(apiPathFromUrl(url));
   return asImageBlob(blob, filename);
 }
 
@@ -51,6 +78,8 @@ export function acquireAuthImageSrc(
   if (!entry) {
     entry = { refs: 0 };
     authImageCache.set(key, entry);
+  } else {
+    touchCacheEntry(key, entry);
   }
   entry.refs += 1;
   if (entry.objectUrl) {
@@ -64,8 +93,9 @@ export function acquireAuthImageSrc(
         pending.objectUrl = objectUrl;
         pending.inflight = undefined;
         if (pending.refs <= 0) {
-          URL.revokeObjectURL(objectUrl);
-          authImageCache.delete(key);
+          // Unmounted before the fetch resolved — retain the blob so a later
+          // remount reuses it instead of fetching again.
+          evictRetainedEntries();
         }
         return objectUrl;
       })
@@ -89,10 +119,10 @@ export function releaseAuthImageSrc(url: string, filename?: string): void {
   if (!entry) return;
   entry.refs -= 1;
   if (entry.refs > 0 || entry.inflight) return;
-  if (entry.objectUrl) {
-    URL.revokeObjectURL(entry.objectUrl);
-  }
-  authImageCache.delete(key);
+  // Retain the decoded blob instead of revoking it right away: the same avatar
+  // is usually shown again moments later (switching experts / reopening a
+  // thread), and reusing the object URL avoids a redundant network round-trip.
+  evictRetainedEntries();
 }
 
 function releaseHeld(held: HeldAuthImage | undefined): void {
