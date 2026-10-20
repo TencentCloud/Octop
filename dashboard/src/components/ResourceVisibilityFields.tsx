@@ -67,7 +67,10 @@ export function ResourceVisibilityFields({
           placeholder={t("resourceVisibility.groupPlaceholder")}
           options={groups.map((group) => ({
             value: group.user_group_id,
-            label: group.name,
+            label:
+              group.enabled === false
+                ? `${group.name} (${t("adminUsers.statusDisabled")})`
+                : group.name,
           }))}
           onChange={(ids) => onChange({ visibility, groupIds: ids })}
         />

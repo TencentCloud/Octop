@@ -14,8 +14,10 @@ from octop.infra.errors import ErrorCode, OctopError
 RESOURCE_SKILL_PACKAGE = "skill_package"
 RESOURCE_KNOWLEDGE_BASE = "knowledge_base"
 RESOURCE_CONNECTOR = "connector"
+CONNECTOR_FEATURE_KEY = "feature"
 RESOURCE_MODEL = "model"
 RESOURCE_STORAGE_BACKEND = "storage_backend"
+STORAGE_FEATURE_KEY = "feature"
 
 RESOURCE_TYPES = frozenset(
     {
@@ -76,6 +78,7 @@ def group_visibility_sql(resource_type: str, key_expr: str) -> str:
         ") OR EXISTS ("
         " SELECT 1 FROM resource_group_grant g"
         " JOIN user_group_member m ON m.user_group_id = g.user_group_id"
+        " JOIN user_group ug ON ug.user_group_id = g.user_group_id AND ug.enabled = 1"
         f" WHERE g.resource_type = '{resource_type}' AND g.resource_key = {key_expr}"
         " AND m.user_id = ?"
         ")"
@@ -104,7 +107,10 @@ class GroupAccess:
         granted = self._grants.group_ids(resource_type, resource_key)
         if not granted:
             return True
-        return bool(granted & self._members.group_ids_for_user(user_id))
+        active = granted & self._enabled_group_ids()
+        if not active:
+            return False
+        return bool(active & self._members.group_ids_for_user(user_id))
 
     def assert_allowed(
         self,
@@ -140,6 +146,7 @@ class GroupAccess:
         granted_by_key = self._grants.group_ids_by_resource(resource_type)
         if not granted_by_key:
             return list(rows)
+        enabled = self._enabled_group_ids()
         member_groups = self._members.group_ids_for_user(user_id)
         kept: list[T] = []
         for row in rows:
@@ -147,9 +154,16 @@ class GroupAccess:
                 kept.append(row)
                 continue
             granted = granted_by_key.get(key_of(row))
-            if not granted or member_groups & granted:
+            if not granted:
+                kept.append(row)
+                continue
+            active = granted & enabled
+            if active and member_groups & active:
                 kept.append(row)
         return kept
+
+    def _enabled_group_ids(self) -> set[str]:
+        return {row.user_group_id for row in self._groups.list_all() if row.enabled}
 
     def visibility(
         self, resource_type: str, resource_key: str, *, shared: bool | None
@@ -201,3 +215,155 @@ class GroupAccess:
 
     def clear(self, resource_type: str, resource_key: str) -> None:
         self._grants.delete_resource(resource_type, resource_key)
+
+
+def empty_group_access() -> dict[str, Any]:
+    return {
+        "connectors": "all",
+        "storage": "all",
+        "models": [],
+        "skill_packages": [],
+        "knowledge_bases": [],
+    }
+
+
+def _access_item(key: str, label: str, *, audience: str, missing: bool = False) -> dict[str, Any]:
+    return {"key": key, "label": label, "missing": missing, "audience": audience}
+
+
+def _model_catalog(repos: Any) -> tuple[dict[str, str], set[str]]:
+    """Return ``(labels, usable keys)``. Disabled providers and models are not usable."""
+    labels: dict[str, str] = {}
+    usable: set[str] = set()
+    for provider in repos.provider_repo.list_all():
+        provider_on = bool(provider.enabled)
+        for model in provider.get_models():
+            if not isinstance(model, dict):
+                continue
+            model_id = str(model.get("id") or "").strip()
+            if not model_id:
+                continue
+            name = str(model.get("name") or model_id).strip() or model_id
+            key = model_resource_key(provider.name, model_id)
+            labels[key] = f"{name} · {provider.name}"
+            if provider_on and model.get("enabled") is not False:
+                usable.add(key)
+    return labels, usable
+
+
+def _feature_audience(granted: set[str], group_id: str) -> str:
+    if not granted:
+        return "all"
+    if group_id in granted:
+        return "groups"
+    return "none"
+
+
+_AUDIENCE_ORDER = {"groups": 0, "all": 1, "creator": 2, "owner": 3}
+
+
+def _resource_items(
+    *,
+    catalog: dict[str, str],
+    private: dict[str, str],
+    private_audience: str,
+    known: set[str],
+    grants: dict[str, set[str]],
+    group_id: str,
+) -> list[dict[str, Any]]:
+    """Resources this group can see in the access list.
+
+    ``catalog`` is already shared or otherwise open to the group layer.
+    ``private`` stays with the creator or owner; groups cannot open those, but
+    they are still listed so the category is not blank.
+    """
+    items: list[dict[str, Any]] = []
+    seen: set[str] = set()
+    for key, label in catalog.items():
+        granted = grants.get(key, set())
+        if not granted:
+            audience = "all"
+        elif group_id in granted:
+            audience = "groups"
+        else:
+            continue
+        seen.add(key)
+        items.append(_access_item(key, label, audience=audience))
+    for key, label in private.items():
+        if key in seen:
+            continue
+        seen.add(key)
+        items.append(_access_item(key, label, audience=private_audience))
+    for key, granted in grants.items():
+        if key in seen or key in known or group_id not in granted:
+            continue
+        items.append(_access_item(key, key, audience="groups", missing=True))
+    items.sort(
+        key=lambda item: (
+            _AUDIENCE_ORDER.get(str(item["audience"]), 9),
+            str(item["label"]).lower(),
+        )
+    )
+    return items
+
+
+def group_access_by_group(repos: Any) -> dict[str, dict[str, Any]]:
+    """What each group can use.
+
+    No grant means the resource stays open to everyone, and that is listed too.
+    A grant narrows the resource to those groups. Private skill packages and
+    unshared knowledge bases are listed as creator-only or owner-only.
+    """
+    model_labels, usable_models = _model_catalog(repos)
+    package_rows = repos.skill_package_repo.list_all()
+    base_rows = repos.knowledge_repo.list_all()
+    packages = {row.id: row.name for row in package_rows if row.shared}
+    private_packages = {row.id: row.name for row in package_rows if not row.shared}
+    bases = {row.id: row.name for row in base_rows if row.shared}
+    private_bases = {row.id: row.name for row in base_rows if not row.shared}
+    grants: dict[tuple[str, str], set[str]] = {}
+    for group_id, resource_type, resource_key in repos.resource_group_grant_repo.list_all():
+        grants.setdefault((resource_type, resource_key), set()).add(group_id)
+
+    def keys(resource_type: str) -> dict[str, set[str]]:
+        return {
+            key: group_ids for (kind, key), group_ids in grants.items() if kind == resource_type
+        }
+
+    connector_grants = grants.get((RESOURCE_CONNECTOR, CONNECTOR_FEATURE_KEY), set())
+    storage_grants = grants.get((RESOURCE_STORAGE_BACKEND, STORAGE_FEATURE_KEY), set())
+    model_grants = keys(RESOURCE_MODEL)
+    package_grants = keys(RESOURCE_SKILL_PACKAGE)
+    base_grants = keys(RESOURCE_KNOWLEDGE_BASE)
+    out: dict[str, dict[str, Any]] = {}
+    for group in repos.user_group_repo.list_all():
+        group_id = group.user_group_id
+        summary = empty_group_access()
+        summary["connectors"] = _feature_audience(connector_grants, group_id)
+        summary["storage"] = _feature_audience(storage_grants, group_id)
+        summary["models"] = _resource_items(
+            catalog={key: model_labels[key] for key in usable_models},
+            private={},
+            private_audience="owner",
+            known=set(model_labels),
+            grants=model_grants,
+            group_id=group_id,
+        )
+        summary["skill_packages"] = _resource_items(
+            catalog=packages,
+            private=private_packages,
+            private_audience="creator",
+            known={row.id for row in package_rows},
+            grants=package_grants,
+            group_id=group_id,
+        )
+        summary["knowledge_bases"] = _resource_items(
+            catalog=bases,
+            private=private_bases,
+            private_audience="owner",
+            known={row.id for row in base_rows},
+            grants=base_grants,
+            group_id=group_id,
+        )
+        out[group_id] = summary
+    return out

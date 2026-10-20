@@ -156,80 +156,93 @@ function buildCredentials(
   return credentials;
 }
 
-function visibilityFromDetail(
-  detail: {
-    shared?: boolean;
-    visibility?: string;
-    group_ids?: string[];
-  } | null,
-): {
-  visibility: ResourceVisibilityMode;
-  group_ids: string[];
+function sharedFromDetail(detail: { shared?: boolean } | null): {
   shared: boolean;
 } {
-  if (!detail) {
-    return { visibility: "owner", group_ids: [], shared: false };
-  }
-  const visibility =
-    detail.visibility === "all" ||
-    detail.visibility === "groups" ||
-    detail.visibility === "owner"
-      ? detail.visibility
-      : detail.shared
-      ? "all"
-      : "owner";
-  return {
-    visibility,
-    group_ids: detail.group_ids ?? [],
-    shared: visibility !== "owner",
-  };
+  return { shared: Boolean(detail?.shared) };
 }
 
-function shareFields(values: Record<string, unknown>): {
-  shared: boolean;
-  visibility?: ResourceVisibilityMode;
-  group_ids?: string[];
-} {
-  const visibility = values.visibility;
-  if (
-    visibility !== "all" &&
-    visibility !== "groups" &&
-    visibility !== "owner"
-  ) {
-    return { shared: values.shared === true };
-  }
-  const groupIds = Array.isArray(values.group_ids)
-    ? values.group_ids.filter(
-        (item): item is string => typeof item === "string",
-      )
-    : [];
-  return {
-    shared: visibility !== "owner",
-    visibility,
-    group_ids: groupIds,
-  };
+function shareFields(values: Record<string, unknown>): { shared: boolean } {
+  return { shared: values.shared === true };
 }
 
-function ConnectorVisibilityFields() {
-  const form = Form.useFormInstance();
-  const visibility =
-    (Form.useWatch("visibility", form) as ResourceVisibilityMode | undefined) ??
-    "owner";
-  const groupIds =
-    (Form.useWatch("group_ids", form) as string[] | undefined) ?? [];
-  return (
-    <ResourceVisibilityFields
-      allowOwner
-      visibility={visibility}
-      groupIds={groupIds}
-      onChange={(next) => {
-        form.setFieldsValue({
-          visibility: next.visibility,
-          group_ids: next.groupIds,
-          shared: next.visibility !== "owner",
+function ConnectorFeatureAccess() {
+  const { t } = useTranslation();
+  const [visibility, setVisibility] = useState<ResourceVisibilityMode>("all");
+  const [groupIds, setGroupIds] = useState<string[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    let cancelled = false;
+    void connectorsApi
+      .getAccess()
+      .then((row) => {
+        if (cancelled) return;
+        setVisibility(row.visibility === "groups" ? "groups" : "all");
+        setGroupIds(row.group_ids ?? []);
+      })
+      .catch((err: unknown) => {
+        if (!cancelled) {
+          message.error(
+            apiErrorMessage(err, t("connectors.featureAccessFailed")),
+          );
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [t]);
+
+  const save = useCallback(
+    async (nextVisibility: "all" | "groups", nextIds: string[]) => {
+      try {
+        const saved = await connectorsApi.setAccess({
+          visibility: nextVisibility,
+          group_ids: nextIds,
         });
-      }}
-    />
+        setVisibility(saved.visibility === "groups" ? "groups" : "all");
+        setGroupIds(saved.group_ids ?? []);
+        message.success(t("connectors.featureAccessSaved"));
+      } catch (err) {
+        message.error(
+          apiErrorMessage(err, t("connectors.featureAccessFailed")),
+        );
+      }
+    },
+    [t],
+  );
+
+  return (
+    <div className={styles.featureAccess}>
+      <div className={styles.featureAccessTitle}>
+        {t("connectors.featureAccessTitle")}
+      </div>
+      <p className={styles.featureAccessHint}>
+        {t("connectors.featureAccessHint")}
+      </p>
+      {loading ? (
+        <Spin size="small" />
+      ) : (
+        <ResourceVisibilityFields
+          allowOwner={false}
+          visibility={visibility}
+          groupIds={groupIds}
+          onChange={(next) => {
+            const nextVisibility =
+              next.visibility === "groups" ? "groups" : "all";
+            setVisibility(nextVisibility);
+            setGroupIds(next.groupIds);
+            if (nextVisibility === "groups" && next.groupIds.length === 0) {
+              return;
+            }
+            void save(nextVisibility, next.groupIds);
+          }}
+        />
+      )}
+    </div>
   );
 }
 
@@ -243,7 +256,7 @@ function previewToFormValues(
       description: entry.description,
       mail_provider: "qq",
       default_open: false,
-      ...visibilityFromDetail(null),
+      ...sharedFromDetail(null),
     };
   }
   const preview = detail.credentials_preview ?? {};
@@ -252,7 +265,7 @@ function previewToFormValues(
     description: detail.description || entry.description,
     default_open:
       detail.default_open === true || detail.config?.default_open === true,
-    ...visibilityFromDetail(detail),
+    ...sharedFromDetail(detail),
   };
   if (preview.email) values.email = preview.email;
   if (preview.mail_provider) values.mail_provider = preview.mail_provider;
@@ -476,7 +489,7 @@ function ConnectorConfigDrawer({
       display_name: entry.name,
       description: entry.description,
       default_open: false,
-      ...visibilityFromDetail(null),
+      ...sharedFromDetail(null),
     });
 
     void connectorsApi
@@ -529,7 +542,7 @@ function ConnectorConfigDrawer({
             display_name: instance.display_name || entry.name,
             description: instance.description || entry.description,
             default_open: instance.default_open === true,
-            ...visibilityFromDetail(instance),
+            ...sharedFromDetail(instance),
           });
           applyConnectorDraft();
         })
@@ -2244,8 +2257,13 @@ function ConnectorConfigDrawer({
             </>
           )}
 
-          <Form.Item label={t("resourceVisibility.label")}>
-            <ConnectorVisibilityFields />
+          <Form.Item
+            name="shared"
+            label={t("connectors.shared")}
+            valuePropName="checked"
+            extra={t("connectors.sharedHint")}
+          >
+            <Switch />
           </Form.Item>
 
           <Form.Item
@@ -2434,83 +2452,90 @@ export default function ConnectorsPage() {
           <div className={styles.loadingState}>
             <Spin />
           </div>
-        ) : instances.length === 0 ? (
-          <div className={styles.emptyLayout}>
-            <StreamSetupGuide
-              className={styles.emptyGuide}
-              wide
-              plain
-              icon={<OctopEmptyMascot />}
-              title={t("connectors.emptyGuideTitle")}
-              description={t("connectors.emptyGuideDesc")}
-              steps={[
-                {
-                  label: t("connectors.emptyGuideStepWhat"),
-                  detail: t("connectors.emptyGuideStepWhatDetail"),
-                },
-                {
-                  label: t("connectors.emptyGuideStepHow"),
-                  detail: t("connectors.emptyGuideStepHowDetail"),
-                },
-                {
-                  label: t("connectors.emptyGuideStepShare"),
-                  detail: t("connectors.emptyGuideStepShareDetail"),
-                },
-              ]}
-              primaryAction={{
-                label: t("connectors.emptyGuideBrowseBuiltin"),
-                onClick: () => setActiveTab("builtin"),
-                icon: <Plug size={14} />,
-              }}
-              secondaryAction={{
-                label: t("connectors.emptyGuideAddCustom"),
-                onClick: () => {
-                  setCustomFocusServerName(null);
-                  setActiveTab("custom");
-                },
-                icon: <Plus size={14} />,
-                type: "default",
-              }}
-            />
-          </div>
         ) : (
           <>
-            <div className={styles.listToolbar}>
-              <span className={styles.listToolbarMeta}>
-                {t("connectors.enabledSummary", {
-                  count: instances.length,
-                  defaultValue: "已启用 {{count}} 个连接器实例",
-                })}
-              </span>
-              <Button
-                icon={<RefreshCw size={14} />}
-                loading={loading}
-                onClick={() => void refresh()}
-              >
-                {t("common.refresh")}
-              </Button>
-            </div>
-            <div className={styles.typeGrid}>
-              {instances.map((instance) => (
-                <ConnectorInstanceCard
-                  key={instance.instance_id}
-                  instance={instance}
-                  catalogEntry={catalog.find(
-                    (entry) => entry.kind === instance.kind,
-                  )}
-                  onEdit={(item) => {
-                    if (item.kind === "custom-mcp") {
-                      setCustomFocusServerName(item.mcp_server_name);
-                      setActiveTab("custom");
-                      return;
-                    }
-                    const entry = catalog.find((row) => row.kind === item.kind);
-                    if (entry) handleConfigure(entry, item);
+            <ConnectorFeatureAccess />
+            {instances.length === 0 ? (
+              <div className={styles.emptyLayout}>
+                <StreamSetupGuide
+                  className={styles.emptyGuide}
+                  wide
+                  plain
+                  icon={<OctopEmptyMascot />}
+                  title={t("connectors.emptyGuideTitle")}
+                  description={t("connectors.emptyGuideDesc")}
+                  steps={[
+                    {
+                      label: t("connectors.emptyGuideStepWhat"),
+                      detail: t("connectors.emptyGuideStepWhatDetail"),
+                    },
+                    {
+                      label: t("connectors.emptyGuideStepHow"),
+                      detail: t("connectors.emptyGuideStepHowDetail"),
+                    },
+                    {
+                      label: t("connectors.emptyGuideStepShare"),
+                      detail: t("connectors.emptyGuideStepShareDetail"),
+                    },
+                  ]}
+                  primaryAction={{
+                    label: t("connectors.emptyGuideBrowseBuiltin"),
+                    onClick: () => setActiveTab("builtin"),
+                    icon: <Plug size={14} />,
                   }}
-                  onChanged={handleSaved}
+                  secondaryAction={{
+                    label: t("connectors.emptyGuideAddCustom"),
+                    onClick: () => {
+                      setCustomFocusServerName(null);
+                      setActiveTab("custom");
+                    },
+                    icon: <Plus size={14} />,
+                    type: "default",
+                  }}
                 />
-              ))}
-            </div>
+              </div>
+            ) : (
+              <>
+                <div className={styles.listToolbar}>
+                  <span className={styles.listToolbarMeta}>
+                    {t("connectors.enabledSummary", {
+                      count: instances.length,
+                      defaultValue: "已启用 {{count}} 个连接器实例",
+                    })}
+                  </span>
+                  <Button
+                    icon={<RefreshCw size={14} />}
+                    loading={loading}
+                    onClick={() => void refresh()}
+                  >
+                    {t("common.refresh")}
+                  </Button>
+                </div>
+                <div className={styles.typeGrid}>
+                  {instances.map((instance) => (
+                    <ConnectorInstanceCard
+                      key={instance.instance_id}
+                      instance={instance}
+                      catalogEntry={catalog.find(
+                        (entry) => entry.kind === instance.kind,
+                      )}
+                      onEdit={(item) => {
+                        if (item.kind === "custom-mcp") {
+                          setCustomFocusServerName(item.mcp_server_name);
+                          setActiveTab("custom");
+                          return;
+                        }
+                        const entry = catalog.find(
+                          (row) => row.kind === item.kind,
+                        );
+                        if (entry) handleConfigure(entry, item);
+                      }}
+                      onChanged={handleSaved}
+                    />
+                  ))}
+                </div>
+              </>
+            )}
           </>
         )
       ) : (

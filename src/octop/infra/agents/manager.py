@@ -2481,6 +2481,8 @@ class AgentManager:
         in-process injection at the end of ``_post_start_agent``.
         """
         repo = self._repos.connector_repo
+        if not repo.connector_feature_allows(user_id):
+            return
         for inst in repo.list_visible(user_id):
             if inst.status != "active" or inst.mcp_server_name not in server_names:
                 continue
@@ -2889,21 +2891,21 @@ class AgentManager:
 
     def _assert_named_storage_backends(self, user_id: int, backend: Any) -> None:
         from octop.infra.backend.resolver import collect_named_storage_backend_refs
-        from octop.infra.users.groups import RESOURCE_STORAGE_BACKEND, GroupAccess
+        from octop.infra.users.groups import (
+            RESOURCE_STORAGE_BACKEND,
+            STORAGE_FEATURE_KEY,
+            GroupAccess,
+        )
 
-        names = collect_named_storage_backend_refs(backend)
-        if not names:
+        if not collect_named_storage_backend_refs(backend):
             return
-        access = GroupAccess(self._repos)
-        is_admin = self._user_is_admin(user_id)
-        for name in sorted(names):
-            access.assert_allowed(
-                user_id=user_id,
-                is_admin=is_admin,
-                resource_type=RESOURCE_STORAGE_BACKEND,
-                resource_key=name,
-                is_owner=False,
-            )
+        GroupAccess(self._repos).assert_allowed(
+            user_id=user_id,
+            is_admin=self._user_is_admin(user_id),
+            resource_type=RESOURCE_STORAGE_BACKEND,
+            resource_key=STORAGE_FEATURE_KEY,
+            is_owner=False,
+        )
 
     def _skill_package_shared_with(self, user_id: int, package: Any) -> bool:
         """Private packages stay with the owner. Groups cannot open them."""
@@ -4267,6 +4269,8 @@ class AgentManager:
         from octop.infra.connectors.gateway.adapters.agently_cli import write_interrupt_on
 
         if user_id is None:
+            return {}
+        if not self._repos.connector_repo.connector_feature_allows(user_id):
             return {}
         return write_interrupt_on(
             [

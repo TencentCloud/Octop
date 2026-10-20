@@ -9,6 +9,18 @@ class ResourceGroupGrantRepo:
     def __init__(self, db: DatabasePool) -> None:
         self._db = db
 
+    def list_all(self) -> list[tuple[str, str, str]]:
+        """Return ``(user_group_id, resource_type, resource_key)`` rows."""
+        with self._db.connect() as conn:
+            rows = conn.execute(
+                "SELECT user_group_id, resource_type, resource_key FROM resource_group_grant"
+                " ORDER BY resource_type, resource_key"
+            ).fetchall()
+        return [
+            (str(row["user_group_id"]), str(row["resource_type"]), str(row["resource_key"]))
+            for row in rows
+        ]
+
     def group_ids(self, resource_type: str, resource_key: str) -> set[str]:
         with self._db.connect() as conn:
             rows = conn.execute(

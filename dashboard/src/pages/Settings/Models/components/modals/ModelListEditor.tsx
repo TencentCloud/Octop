@@ -74,18 +74,22 @@ const INPUT_TYPE_OPTIONS = [
   { value: "audio", label: "inputTypeAudio" as const },
 ];
 
-function ModelGroupVisibility({
-  visibility,
-  groupIds,
-  onChange,
+function ModelGroupAccess({
+  models,
+  onPatch,
 }: {
-  visibility: "all" | "groups";
-  groupIds: string[];
-  onChange: (visibility: "all" | "groups", groupIds: string[]) => void;
+  models: ProviderModel[];
+  onPatch: (modelId: string, patch: Partial<ProviderModel>) => void;
 }) {
   const { t } = useTranslation();
-  const [groups, setGroups] = useState<UserGroup[]>([]);
+  const [open, setOpen] = useState(false);
+  const [groups, setGroups] = useState<UserGroup[] | null>(null);
+  const restricted = models.filter(
+    (model) => model.visibility === "groups",
+  ).length;
+
   useEffect(() => {
+    if (!open || groups !== null) return;
     let cancelled = false;
     userGroupsApi
       .list()
@@ -98,34 +102,89 @@ function ModelGroupVisibility({
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [open, groups]);
+
   return (
-    <span style={{ display: "inline-flex", gap: 8, marginLeft: 8 }}>
-      <Select
-        size="small"
-        value={visibility}
-        style={{ width: 140 }}
-        options={[
-          { value: "all", label: t("resourceVisibility.all") },
-          { value: "groups", label: t("resourceVisibility.groups") },
-        ]}
-        onChange={(next) => onChange(next, next === "groups" ? groupIds : [])}
-      />
-      {visibility === "groups" ? (
-        <Select
-          size="small"
-          mode="multiple"
-          style={{ minWidth: 180 }}
-          value={groupIds}
-          placeholder={t("resourceVisibility.groupPlaceholder")}
-          options={groups.map((group) => ({
-            value: group.user_group_id,
-            label: group.name,
-          }))}
-          onChange={(ids) => onChange("groups", ids)}
-        />
+    <div className={styles.modelAccess}>
+      <button
+        type="button"
+        className={styles.modelAccessToggle}
+        onClick={() => setOpen((current) => !current)}
+      >
+        <span>{t("models.groupAccessTitle")}</span>
+        {restricted > 0 ? (
+          <span className={styles.modelAccessCount}>
+            {t("models.groupAccessCount", { count: restricted })}
+          </span>
+        ) : null}
+        {open ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+      </button>
+      {open ? (
+        <div className={styles.modelAccessBody}>
+          <p className={styles.modelAccessHint}>
+            {t("models.groupAccessHint")}
+          </p>
+          <div className={styles.modelAccessList}>
+            {models.map((model) => {
+              const visibility =
+                model.visibility === "groups" ? "groups" : "all";
+              const groupIds = model.group_ids ?? [];
+              return (
+                <div key={model.id} className={styles.modelAccessRow}>
+                  <div className={styles.modelAccessName}>
+                    <span>{model.name}</span>
+                    {model.name !== model.id ? (
+                      <span className={styles.modelListItemId}>{model.id}</span>
+                    ) : null}
+                  </div>
+                  <Select
+                    size="small"
+                    value={visibility}
+                    options={[
+                      { value: "all", label: t("resourceVisibility.all") },
+                      {
+                        value: "groups",
+                        label: t("resourceVisibility.groups"),
+                      },
+                    ]}
+                    onChange={(next: "all" | "groups") =>
+                      onPatch(model.id, {
+                        visibility: next,
+                        group_ids: next === "groups" ? groupIds : [],
+                      })
+                    }
+                  />
+                  {visibility === "groups" ? (
+                    <Select
+                      className={styles.modelAccessGroups}
+                      size="small"
+                      mode="multiple"
+                      value={groupIds}
+                      placeholder={t("resourceVisibility.groupPlaceholder")}
+                      options={(groups ?? []).map((group) => ({
+                        value: group.user_group_id,
+                        label:
+                          group.enabled === false
+                            ? `${group.name} (${t(
+                                "adminUsers.statusDisabled",
+                              )})`
+                            : group.name,
+                      }))}
+                      onChange={(ids) =>
+                        onPatch(model.id, {
+                          visibility: "groups",
+                          group_ids: ids,
+                        })
+                      }
+                    />
+                  ) : null}
+                </div>
+              );
+            })}
+          </div>
+        </div>
       ) : null}
-    </span>
+    </div>
   );
 }
 
@@ -525,16 +584,6 @@ export function ModelListEditor({
                 </Tooltip>
                 <div className={styles.modelListItemInfo}>
                   <span className={styles.modelListItemName}>{m.name}</span>
-                  <ModelGroupVisibility
-                    visibility={m.visibility === "groups" ? "groups" : "all"}
-                    groupIds={m.group_ids ?? []}
-                    onChange={(visibility, groupIds) =>
-                      patchModel(m.id, {
-                        visibility,
-                        group_ids: groupIds,
-                      })
-                    }
-                  />
                   {m.name !== m.id && (
                     <span className={styles.modelListItemId}>{m.id}</span>
                   )}
@@ -630,6 +679,9 @@ export function ModelListEditor({
           })
         )}
       </div>
+      {models.length > 0 ? (
+        <ModelGroupAccess models={models} onPatch={patchModel} />
+      ) : null}
 
       {isFormVisible ? (
         <div ref={formAnchorRef} className={styles.modelAddForm}>

@@ -26,6 +26,16 @@ class UserGroupMemberRepo:
             ).fetchall()
         return [int(row["user_id"]) for row in rows]
 
+    def user_ids_by_group(self) -> dict[str, list[int]]:
+        with self._db.connect() as conn:
+            rows = conn.execute(
+                "SELECT user_group_id, user_id FROM user_group_member ORDER BY user_id"
+            ).fetchall()
+        grouped: dict[str, list[int]] = {}
+        for row in rows:
+            grouped.setdefault(str(row["user_group_id"]), []).append(int(row["user_id"]))
+        return grouped
+
     def counts_by_group(self) -> dict[str, int]:
         with self._db.connect() as conn:
             rows = conn.execute(

@@ -466,8 +466,10 @@ class ConnectorService:
     def list_instances_for_api(self, user_id: int) -> list[dict[str, Any]]:
         """Built-in rows + expanded custom servers (hide parent custom-mcp row)."""
         out: list[dict[str, Any]] = []
+        can_use = self._repo.connector_feature_allows(user_id)
         custom_row = self._repo.get_by_user_kind(user_id, CUSTOM_MCP_KIND)
-        for inst in self._repo.list_visible(user_id):
+        visible = self._repo.list_visible(user_id) if can_use else self._repo.list_by_user(user_id)
+        for inst in visible:
             if is_custom_mcp_kind(inst.kind):
                 continue
             config = ConnectorRepo.parse_config_json(inst)
@@ -494,24 +496,26 @@ class ConnectorService:
                     servers=extract_servers(self.decrypt(custom_row.instance_id)),
                 )
             )
-        for parent in self._repo.list_by_kind(CUSTOM_MCP_KIND):
-            if parent.user_id == user_id or not parent.has_credentials:
-                continue
-            if not self._repo.group_grant_allows(user_id, parent.instance_id):
-                continue
-            out.extend(
-                expand_custom_instances(
-                    parent=parent,
-                    servers=extract_servers(self.decrypt(parent.instance_id)),
-                    shared_view=True,
+        if can_use:
+            for parent in self._repo.list_by_kind(CUSTOM_MCP_KIND):
+                if parent.user_id == user_id or not parent.has_credentials:
+                    continue
+                out.extend(
+                    expand_custom_instances(
+                        parent=parent,
+                        servers=extract_servers(self.decrypt(parent.instance_id)),
+                        shared_view=True,
+                    )
                 )
-            )
         for item in out:
             item.setdefault("owner_user_id", user_id)
             item.setdefault("shared", False)
+            item["usable"] = can_use
         return out
 
     def list_active_mcp_server_names(self, user_id: int) -> list[str]:
+        if not self._repo.connector_feature_allows(user_id):
+            return []
         names: list[str] = []
         for inst in self._repo.list_visible(user_id):
             if is_custom_mcp_kind(inst.kind):
@@ -525,8 +529,6 @@ class ConnectorService:
         for parent in self._repo.list_by_kind(CUSTOM_MCP_KIND):
             if parent.user_id == user_id or not parent.has_credentials:
                 continue
-            if not self._repo.group_grant_allows(user_id, parent.instance_id):
-                continue
             for name, spec in extract_servers(self.decrypt(parent.instance_id)).items():
                 if isinstance(spec, dict) and spec.get("shared") is True and server_enabled(spec):
                     names.append(shared_mcp_server_name(parent.instance_id, name))
@@ -534,6 +536,8 @@ class ConnectorService:
 
     def list_default_open_mcp_server_names(self, user_id: int) -> list[str]:
         """Active connectors marked default_open (dashboard + all IM channels)."""
+        if not self._repo.connector_feature_allows(user_id):
+            return []
         names: list[str] = []
         for inst in self._repo.list_by_user(user_id):
             if is_custom_mcp_kind(inst.kind):
@@ -586,11 +590,11 @@ class ConnectorService:
         return list(names)
 
     def custom_harness_configs(self, user_id: int) -> dict[str, Any]:
+        if not self._repo.connector_feature_allows(user_id):
+            return {}
         configs = enabled_harness_configs(self.get_custom_servers(user_id))
         for parent in self._repo.list_by_kind(CUSTOM_MCP_KIND):
             if parent.user_id == user_id or not parent.has_credentials:
-                continue
-            if not self._repo.group_grant_allows(user_id, parent.instance_id):
                 continue
             servers = extract_servers(self.decrypt(parent.instance_id))
             for name, spec in servers.items():
@@ -606,6 +610,8 @@ class ConnectorService:
         return configs
 
     async def mcp_configs_for_user(self, user_id: int) -> dict[str, Any]:
+        if not self._repo.connector_feature_allows(user_id):
+            return {}
         configs: dict[str, Any] = {}
         for inst in self._repo.list_visible(user_id):
             if inst.status != "active":
@@ -627,8 +633,6 @@ class ConnectorService:
         await self.ensure_fresh_custom_servers(user_id)
         for parent in self._repo.list_by_kind(CUSTOM_MCP_KIND):
             if parent.user_id == user_id or not parent.has_credentials:
-                continue
-            if not self._repo.group_grant_allows(user_id, parent.instance_id):
                 continue
             servers = extract_servers(self.decrypt(parent.instance_id))
             if any(

@@ -60,8 +60,8 @@ export interface ConnectorInstance {
   /** When true, chat composer pre-selects this connector. */
   default_open?: boolean;
   shared: boolean;
-  visibility?: "all" | "groups" | "owner";
-  group_ids?: string[];
+  /** False when the connector feature is restricted to groups this user is not in. */
+  usable?: boolean;
   owner_user_id: number;
   owner_username?: string | null;
   owner_display_name?: string | null;
@@ -203,6 +203,17 @@ export interface AgentlyAuthStatus {
 export const connectorsApi = {
   catalog: () => request<ConnectorCatalogEntry[]>("/connectors/catalog"),
 
+  getAccess: () =>
+    request<{ visibility: "all" | "groups"; group_ids: string[] }>(
+      "/connectors/access",
+    ),
+
+  setAccess: (body: { visibility: "all" | "groups"; group_ids?: string[] }) =>
+    request<{ visibility: "all" | "groups"; group_ids: string[] }>(
+      "/connectors/access",
+      { method: "PUT", body: JSON.stringify(body) },
+    ),
+
   detectLocalWeKnora: () =>
     request<WeKnoraLocalDetection>("/connectors/weknora/detect-local"),
 
@@ -225,8 +236,6 @@ export const connectorsApi = {
     credentials: Record<string, unknown>;
     default_open?: boolean;
     shared?: boolean;
-    visibility?: "all" | "groups" | "owner";
-    group_ids?: string[];
   }) =>
     request<ConnectorInstance>("/connector-instances", {
       method: "POST",
@@ -247,8 +256,6 @@ export const connectorsApi = {
       description?: string;
       credentials?: Record<string, unknown>;
       shared?: boolean;
-      visibility?: "all" | "groups" | "owner";
-      group_ids?: string[];
     },
   ) =>
     request<ConnectorInstance>(

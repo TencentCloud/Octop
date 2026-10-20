@@ -348,11 +348,10 @@ export default function SkillPackagesPage() {
       description: "",
       icon_name: undefined,
       icon_url: "",
-      shared: false,
       copy_policy: "snapshot",
       allow_download: true,
     });
-    setPackageVisibility("all");
+    setPackageVisibility("owner");
     setPackageGroupIds([]);
     setPackageDrawerOpen(true);
   };
@@ -364,31 +363,34 @@ export default function SkillPackagesPage() {
       description: item.description,
       icon_name: item.icon_name,
       icon_url: item.icon_url,
-      shared: Boolean(item.shared),
       copy_policy: item.copy_policy ?? "snapshot",
       allow_download: item.allow_download !== false,
     });
-    setPackageVisibility(item.visibility === "groups" ? "groups" : "all");
-    setPackageGroupIds(item.group_ids ?? []);
+    setPackageVisibility(
+      !item.shared || item.visibility === "owner"
+        ? "owner"
+        : item.visibility === "groups"
+        ? "groups"
+        : "all",
+    );
+    setPackageGroupIds(
+      item.shared && item.visibility === "groups" ? item.group_ids ?? [] : [],
+    );
     setPackageDrawerOpen(true);
   };
 
   const savePackage = async () => {
     const values = await packageForm.validateFields();
-    if (
-      editingPackageId &&
-      packageVisibility === "groups" &&
-      packageGroupIds.length === 0
-    ) {
+    if (packageVisibility === "groups" && packageGroupIds.length === 0) {
       message.error(t("resourceVisibility.needGroup"));
       return;
     }
     const payload = {
       ...values,
       icon_url: values.icon_url?.trim() || undefined,
-      ...(editingPackageId
-        ? { visibility: packageVisibility, group_ids: packageGroupIds }
-        : {}),
+      shared: packageVisibility !== "owner",
+      visibility: packageVisibility,
+      group_ids: packageVisibility === "groups" ? packageGroupIds : [],
     };
     try {
       const next = editingPackageId
@@ -1143,34 +1145,22 @@ export default function SkillPackagesPage() {
           >
             <Switch />
           </Form.Item>
-          <div className={styles.formOptions}>
-            <div className={styles.formOptionRow}>
-              <div className={styles.formOptionCopy}>
-                <span className={styles.switchLabel}>
-                  {t("skillPackages.shared")}
-                </span>
-                <span className={styles.formOptionHint}>
-                  {t("skillPackages.sharedHint")}
-                </span>
-              </div>
-              <Form.Item name="shared" valuePropName="checked" noStyle>
-                <Switch size="small" />
-              </Form.Item>
-            </div>
-          </div>
-          {editingPackageId ? (
-            <Form.Item label={t("resourceVisibility.label")}>
-              <ResourceVisibilityFields
-                allowOwner={false}
-                visibility={packageVisibility}
-                groupIds={packageGroupIds}
-                onChange={(next) => {
-                  setPackageVisibility(next.visibility);
-                  setPackageGroupIds(next.groupIds);
-                }}
-              />
-            </Form.Item>
-          ) : null}
+          <Form.Item
+            label={t("resourceVisibility.label")}
+            extra={t("skillPackages.visibilityHint")}
+          >
+            <ResourceVisibilityFields
+              allowOwner
+              visibility={packageVisibility}
+              groupIds={packageGroupIds}
+              onChange={(next) => {
+                setPackageVisibility(next.visibility);
+                setPackageGroupIds(
+                  next.visibility === "groups" ? next.groupIds : [],
+                );
+              }}
+            />
+          </Form.Item>
         </Form>
       </Drawer>
 
