@@ -203,6 +203,44 @@ def test_build_harness_configs_maps_context_window_to_max_input_tokens(
     assert providers[0].models[0].max_input_tokens == 1_000_000
 
 
+def test_build_harness_configs_preserves_api_mode(store: ProviderStore) -> None:
+    store._provider_repo.create(
+        name="relay",
+        kind="openai",
+        base_url="https://api.example.com/v1",
+        api_key="sk-test",
+        models_json=json.dumps(
+            [{"id": "gpt-X", "name": "GPT X", "enabled": True, "api_mode": "responses"}]
+        ),
+    )
+
+    providers = store.build_harness_configs()
+    assert providers[0].models[0].api_mode == "responses"
+
+
+def test_build_harness_configs_preserves_api_fallback(store: ProviderStore) -> None:
+    store._provider_repo.create(
+        name="relay",
+        kind="openai",
+        base_url="https://api.example.com/v1",
+        api_key="sk-test",
+        models_json=json.dumps(
+            [
+                {
+                    "id": "gpt-X",
+                    "name": "GPT X",
+                    "enabled": True,
+                    "api_mode": "responses",
+                    "api_fallback": "chat_completions",
+                }
+            ]
+        ),
+    )
+
+    providers = store.build_harness_configs()
+    assert providers[0].models[0].api_fallback == "chat_completions"
+
+
 def test_resolve_default_model_returns_none_when_stale(store: ProviderStore) -> None:
     store._provider_repo.create(
         name="hai",
