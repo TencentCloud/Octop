@@ -30,6 +30,56 @@ from octop.infra.gateway.steer.types import preview_text
 from octop.infra.gateway.ws import WS_CHANNEL_ID
 
 logger = logging.getLogger(__name__)
+_ATTACH_ERROR_NOT_FOUND = "thread_not_found"
+_ATTACH_ERROR_AGENT_MISMATCH = "thread_agent_mismatch"
+_ATTACH_ERROR_BAD_REQUEST = "attach_bad_request"
+
+
+def _attach_error(
+    *,
+    op: str,
+    thread_id: str,
+    code: str,
+    retryable: bool,
+    message: str,
+) -> dict[str, Any]:
+    """Attach (subscribe/cancel) failure frame.
+
+    ``op``/``thread_id`` let the dashboard attribute the failure to the frame it
+    sent, and ``retryable`` marks races that a re-attach can resolve (#476)
+    instead of reporting the attach failure as a turn error.
+    """
+    return {
+        "type": "error",
+        "op": op,
+        "thread_id": thread_id,
+        "error_code": code,
+        "retryable": retryable,
+        "message": message,
+    }
+
+
+def _audit_attach_failure(
+    server: Any,
+    user: Any,
+    op: str,
+    thread_id: str,
+    code: str,
+) -> None:
+    """Record terminal attach failures; retryable misses are logged, not audited."""
+    services = getattr(server, "services", None)
+    if services is None:
+        return
+    try:
+        services.audit_repo.write(
+            actor=getattr(user, "username", None),
+            action="chat.attach_failed",
+            target=f"{op}:{thread_id}",
+            payload=code,
+        )
+    except Exception:
+        logger.warning("could not write attach-failure audit", exc_info=True)
+
 
 router = APIRouter()
 
@@ -105,12 +155,56 @@ async def dashboard_chat_ws(
             if msg_type == "subscribe":
                 thread_id = str(payload.get("thread_id") or "").strip()
                 if not thread_id:
-                    await send_frame({"type": "error", "message": "subscribe requires thread_id"})
-                    continue
-                row = gateway.thread_registry.get_thread(thread_id)
-                if row is None or row.agent_id != agent_id or row.user_id != user.id:
                     await send_frame(
-                        {"type": "error", "message": f"thread {thread_id!r} not found"},
+                        _attach_error(
+                            op="subscribe",
+                            thread_id="",
+                            code=_ATTACH_ERROR_BAD_REQUEST,
+                            retryable=False,
+                            message="subscribe requires thread_id",
+                        )
+                    )
+                    continue
+
+                row = gateway.thread_registry.get_thread(thread_id)
+                if row is None or row.user_id != user.id:
+                    # Missing rows and other users' threads stay indistinguishable
+                    # on the wire; keep the distinction in logs for observability.
+                    # A fresh thread may also be racing registry warm-up (#476),
+                    # so let the dashboard re-attach with backoff.
+                    logger.info(
+                        "chat attach failed op=%s code=%s thread=%s reason=%s",
+                        "subscribe",
+                        _ATTACH_ERROR_NOT_FOUND,
+                        thread_id,
+                        "missing" if row is None else "not_owned",
+                    )
+                    await send_frame(
+                        _attach_error(
+                            op="subscribe",
+                            thread_id=thread_id,
+                            code=_ATTACH_ERROR_NOT_FOUND,
+                            retryable=True,
+                            message=f"thread {thread_id!r} not found",
+                        )
+                    )
+                    continue
+                if row.agent_id != agent_id:
+                    await send_frame(
+                        _attach_error(
+                            op="subscribe",
+                            thread_id=thread_id,
+                            code=_ATTACH_ERROR_AGENT_MISMATCH,
+                            retryable=False,
+                            message=(f"thread {thread_id!r} does not belong to agent {agent_id!r}"),
+                        )
+                    )
+                    _audit_attach_failure(
+                        server,
+                        user,
+                        "subscribe",
+                        thread_id,
+                        _ATTACH_ERROR_AGENT_MISMATCH,
                     )
                     continue
 
@@ -150,12 +244,56 @@ async def dashboard_chat_ws(
             if msg_type == "cancel":
                 thread_id = str(payload.get("thread_id") or "").strip()
                 if not thread_id:
-                    await send_frame({"type": "error", "message": "cancel requires thread_id"})
-                    continue
-                row = gateway.thread_registry.get_thread(thread_id)
-                if row is None or row.agent_id != agent_id or row.user_id != user.id:
                     await send_frame(
-                        {"type": "error", "message": f"thread {thread_id!r} not found"},
+                        _attach_error(
+                            op="cancel",
+                            thread_id="",
+                            code=_ATTACH_ERROR_BAD_REQUEST,
+                            retryable=False,
+                            message="cancel requires thread_id",
+                        )
+                    )
+                    continue
+
+                row = gateway.thread_registry.get_thread(thread_id)
+                if row is None or row.user_id != user.id:
+                    # Missing rows and other users' threads stay indistinguishable
+                    # on the wire; keep the distinction in logs for observability.
+                    # A fresh thread may also be racing registry warm-up (#476),
+                    # so let the dashboard re-attach with backoff.
+                    logger.info(
+                        "chat attach failed op=%s code=%s thread=%s reason=%s",
+                        "cancel",
+                        _ATTACH_ERROR_NOT_FOUND,
+                        thread_id,
+                        "missing" if row is None else "not_owned",
+                    )
+                    await send_frame(
+                        _attach_error(
+                            op="cancel",
+                            thread_id=thread_id,
+                            code=_ATTACH_ERROR_NOT_FOUND,
+                            retryable=True,
+                            message=f"thread {thread_id!r} not found",
+                        )
+                    )
+                    continue
+                if row.agent_id != agent_id:
+                    await send_frame(
+                        _attach_error(
+                            op="cancel",
+                            thread_id=thread_id,
+                            code=_ATTACH_ERROR_AGENT_MISMATCH,
+                            retryable=False,
+                            message=(f"thread {thread_id!r} does not belong to agent {agent_id!r}"),
+                        )
+                    )
+                    _audit_attach_failure(
+                        server,
+                        user,
+                        "cancel",
+                        thread_id,
+                        _ATTACH_ERROR_AGENT_MISMATCH,
                     )
                     continue
                 gateway.steer.mark_cancelling(thread_id)
@@ -440,7 +578,15 @@ async def _bridge_chat_ws(
             if msg_type == "cancel":
                 thread_id = str(payload.get("thread_id") or last_thread_id).strip()
                 if not thread_id:
-                    await send_frame({"type": "error", "message": "cancel requires thread_id"})
+                    await send_frame(
+                        _attach_error(
+                            op="cancel",
+                            thread_id="",
+                            code=_ATTACH_ERROR_BAD_REQUEST,
+                            retryable=False,
+                            message="cancel requires thread_id",
+                        )
+                    )
                     continue
                 try:
                     await mgr.relay_turn_cancel(

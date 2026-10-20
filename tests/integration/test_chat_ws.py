@@ -298,7 +298,7 @@ async def test_ws_subscribe_turn_status_idle(env: Any) -> None:
 
 
 async def test_ws_subscribe_rejects_another_users_thread(env: Any) -> None:
-    c, _srv, _fake, alice_auth, bob_auth, aid = env
+    c, srv, _fake, alice_auth, bob_auth, aid = env
     response = await c.patch(
         f"/api/agents/{aid}",
         headers=alice_auth,
@@ -311,7 +311,14 @@ async def test_ws_subscribe_rejects_another_users_thread(env: Any) -> None:
     tid = response.json()["thread_id"]
 
     frame = await _subscribe_ws(c, aid, alice_auth, tid)
-    assert frame == {"type": "error", "message": f"thread {tid!r} not found"}
+    assert frame == {
+        "type": "error",
+        "op": "subscribe",
+        "thread_id": tid,
+        "error_code": "thread_not_found",
+        "retryable": True,
+        "message": f"thread {tid!r} not found",
+    }
 
 
 async def test_ws_cancel_frame_cancels_active_turn(env: Any) -> None:
@@ -532,3 +539,76 @@ async def test_fork_thread_from_assistant_message(env: Any) -> None:
         json={"message_id": "a1", "assistant_turns_from_end": 2},
     )
     assert denied.status_code in {403, 404}
+
+
+async def test_ws_subscribe_thread_of_other_agent_reports_mismatch(env: Any) -> None:
+    """Another agent's thread is a non-retryable mismatch the client can drop."""
+    c, srv, _fake, alice_auth, _bob_auth, aid = env
+    created = await c.post(f"/api/agents/{aid}/threads", headers=alice_auth)
+    tid = created.json()["thread_id"]
+
+    other_agent = await create_agent(c, alice_auth, name="other-bot")
+    async with _chat_ws(c, other_agent, alice_auth) as ws:
+        await ws.send_json({"type": "subscribe", "thread_id": tid})
+        frame = await ws.receive_json()
+
+    assert frame == {
+        "type": "error",
+        "op": "subscribe",
+        "thread_id": tid,
+        "error_code": "thread_agent_mismatch",
+        "retryable": False,
+        "message": f"thread {tid!r} does not belong to agent {other_agent!r}",
+    }
+    audit = srv.services.audit_repo.query(action="chat.attach_failed")
+    assert audit[-1].payload == "thread_agent_mismatch"
+
+    # cancel goes through the same validation and reports ``op: cancel``.
+    async with _chat_ws(c, other_agent, alice_auth) as ws:
+        await ws.send_json({"type": "cancel", "thread_id": tid})
+        cancel_frame = await ws.receive_json()
+    assert cancel_frame == {
+        "type": "error",
+        "op": "cancel",
+        "thread_id": tid,
+        "error_code": "thread_agent_mismatch",
+        "retryable": False,
+        "message": f"thread {tid!r} does not belong to agent {other_agent!r}",
+    }
+
+
+async def test_ws_subscribe_unknown_thread_reports_not_found(env: Any) -> None:
+    """Unknown ids are retryable: a just-created thread may still be registering."""
+    c, _srv, _fake, alice_auth, _bob_auth, aid = env
+    missing = "thr_01M0000000000000000000000Y"
+
+    async with _chat_ws(c, aid, alice_auth) as ws:
+        await ws.send_json({"type": "subscribe", "thread_id": missing})
+        frame = await ws.receive_json()
+
+    assert frame == {
+        "type": "error",
+        "op": "subscribe",
+        "thread_id": missing,
+        "error_code": "thread_not_found",
+        "retryable": True,
+        "message": f"thread {missing!r} not found",
+    }
+
+
+async def test_ws_attach_without_thread_id_uses_protocol_frame(env: Any) -> None:
+    """Parameter errors also go through the attach-error frame."""
+    c, _srv, _fake, alice_auth, _bob_auth, aid = env
+
+    async with _chat_ws(c, aid, alice_auth) as ws:
+        await ws.send_json({"type": "subscribe"})
+        frame = await ws.receive_json()
+
+    assert frame == {
+        "type": "error",
+        "op": "subscribe",
+        "thread_id": "",
+        "error_code": "attach_bad_request",
+        "retryable": False,
+        "message": "subscribe requires thread_id",
+    }

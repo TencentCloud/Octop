@@ -51,8 +51,10 @@ import {
 } from "../utils/pendingHitl";
 import { frameBelongsToThread } from "./frameThread";
 import {
+  MAX_ATTACH_ATTEMPTS,
   MAX_STREAM_RESUME_ATTEMPTS,
   STREAM_STALE_WITHOUT_SOCKET_MS,
+  attachRetryDelayMs,
   shouldEmitStreamResumeNotice,
   shouldForceSealStream,
   shouldResumeStreamAfterClose,
@@ -877,6 +879,32 @@ function closeLiveSocket(
     // ignore
   }
   clearLiveSocket(sessionId);
+  if (opts.intentional) clearAttachRetry(sessionId);
+}
+
+/** Pending re-attach backoff timers, one per session (deleted with the session). */
+const attachRetryTimers = new Map<string, number>();
+
+function clearAttachRetry(sessionId: string): void {
+  const timer = attachRetryTimers.get(sessionId);
+  if (timer === undefined) return;
+  window.clearTimeout(timer);
+  attachRetryTimers.delete(sessionId);
+}
+
+/** Schedule one re-attach attempt; a newer attach or a removed session cancels it. */
+function scheduleAttachRetry(
+  sessionId: string,
+  delay: number,
+  run: () => void,
+): void {
+  clearAttachRetry(sessionId);
+  const timer = window.setTimeout(() => {
+    attachRetryTimers.delete(sessionId);
+    if (!sessionStates.has(sessionId) || liveSockets.has(sessionId)) return;
+    run();
+  }, delay);
+  attachRetryTimers.set(sessionId, timer);
 }
 
 /** Cancel any in-flight stream for a session (user stop). */
@@ -919,6 +947,7 @@ export function removeSession(sessionId: string) {
     sessionStates.delete(sessionId);
   }
   pendingResumeBySession.delete(sessionId);
+  clearAttachRetry(sessionId);
   clearStreamActivity(sessionId);
   clearStreamWatchdog(sessionId);
   closeLiveSocket(sessionId, { intentional: true, userCancelled: true });
@@ -1336,9 +1365,16 @@ function handleHarnessChunk(
         }
       }
       break;
-    case "error":
+    case "error": {
+      // Attach (subscribe/cancel) failures are control-plane errors: they are
+      // owned and handled by the socket that sent them, and must never become a
+      // permanent assistant error bubble in the transcript (see #476).
+      if (chunk.op === "subscribe" || chunk.op === "cancel") {
+        break;
+      }
       appendErrorBubble(state, chunk.message, chunk.error_code);
       break;
+    }
     case "hitl_required":
       handleHitlRequired(state, chunk.request, speaker);
       break;
@@ -2485,8 +2521,10 @@ export async function attachThread(
   onStreamEnd?: () => void,
   resumeAttempt = 0,
   opts?: { afterUnexpectedDrop?: boolean },
+  attachAttempt = 0,
 ): Promise<void> {
   if (!agentId || !threadId || threadId === "__empty__") return;
+  clearAttachRetry(sessionId);
 
   const existing = liveSockets.get(sessionId);
   if (existing && !existing.listenOnly && isLiveSocketOpen(sessionId)) {
@@ -2595,6 +2633,50 @@ export async function attachThread(
       try {
         const data = JSON.parse(String(event.data)) as Record<string, unknown>;
         if (!data || typeof data !== "object") return;
+
+        // Control-plane attach failures (subscribe/cancel) are not turn errors.
+        // Never route them into the transcript: retry with backoff when the
+        // server says the thread may still be registering (#476), otherwise
+        // drop the stale binding and let navigation re-resolve the thread.
+        if (
+          data.type === "error" &&
+          (data.op === "subscribe" || data.op === "cancel")
+        ) {
+          const frameThreadId =
+            typeof data.thread_id === "string" && data.thread_id.trim()
+              ? data.thread_id.trim()
+              : threadId;
+          closeLiveSocket(sessionId, { intentional: true });
+          if (data.error_code === "attach_bad_request") {
+            // Client-side bug (e.g. empty thread id): no history reload needed.
+            return;
+          }
+          if (
+            data.retryable === true &&
+            attachAttempt < MAX_ATTACH_ATTEMPTS
+          ) {
+            scheduleAttachRetry(
+              sessionId,
+              attachRetryDelayMs(attachAttempt),
+              () => {
+                void attachThread(
+                  sessionId,
+                  agentId,
+                  frameThreadId,
+                  onStreamEnd,
+                  resumeAttempt,
+                  opts,
+                  attachAttempt + 1,
+                );
+              },
+            );
+            return;
+          }
+          invalidateHistory(sessionId);
+          emitSessionEvent({ kind: "sessionsChanged", sessionId, agentId });
+          return;
+        }
+
         if (!frameBelongsToThread(data, live.threadId)) return;
 
         if (data.type === "turn_status") {

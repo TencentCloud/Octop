@@ -97,3 +97,18 @@ export function shouldEmitStreamResumeNotice(opts: {
 }): boolean {
   return opts.resumeAttempt > 0 && opts.turnActive;
 }
+
+/** Max re-subscribe attempts after a retryable attach failure. */
+export const MAX_ATTACH_ATTEMPTS = 5;
+
+/**
+ * Backoff before re-attaching after a retryable attach failure.
+ *
+ * Attach failures are registration races (#476) that resolve in seconds, so
+ * this intentionally does not share the stream-resume budget. 100/200/400/
+ * 800/1600 ms with ±20 % jitter.
+ */
+export function attachRetryDelayMs(attempt: number): number {
+  const base = 100 * 2 ** Math.max(0, attempt);
+  return Math.round(base * (0.8 + Math.random() * 0.4));
+}

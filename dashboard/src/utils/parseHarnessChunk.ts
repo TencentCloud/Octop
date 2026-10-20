@@ -103,6 +103,12 @@ export interface ErrorChunk {
   type: "error";
   message: string;
   error_code?: string;
+  /** Control-plane attach failure (subscribe/cancel), not a turn failure. */
+  op?: "subscribe" | "cancel";
+  /** Thread the failed attach frame referred to (echoed by the server). */
+  thread_id?: string;
+  /** Whether re-attaching may succeed (e.g. a just-created thread). */
+  retryable?: boolean;
   agent_id?: string;
 }
 
@@ -273,6 +279,11 @@ export function parseHarnessChunk(line: string): HarnessChunk | null {
           typeof obj.message === "string" ? obj.message : "unknown error",
         error_code:
           typeof obj.error_code === "string" ? obj.error_code : undefined,
+        op:
+          obj.op === "subscribe" || obj.op === "cancel" ? obj.op : undefined,
+        thread_id:
+          typeof obj.thread_id === "string" ? obj.thread_id : undefined,
+        retryable: obj.retryable === true ? true : undefined,
         agent_id: agentId,
       };
     case "hitl_required":
