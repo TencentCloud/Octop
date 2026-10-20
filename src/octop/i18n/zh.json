@@ -706,6 +706,21 @@
       "discord_connection_failed": "Discord 连接失败，请检查网络、代理和机器人配置。",
       "discord_disconnected": "Discord 尚未连接或正在重连。",
       "discord_proxy_auth_invalid": "代理认证格式应为 user:password。"
+    },
+    "telegram": {
+      "reject": {
+        "pending_expired_or_resolved": "这张卡片已过期，请重新提问",
+        "question_index_changed": "问题已更新，请用新卡片",
+        "user_mismatch": "该卡片不属于当前会话",
+        "owner_changed": "该卡片不属于当前会话",
+        "model_unavailable": "该模型已不可用，请重新选择",
+        "thread_rebound": "会话已切换，请重新操作",
+        "default": "操作未生效，请重试"
+      },
+      "quote": {
+        "header": "[引用消息]",
+        "current": "[当前消息]"
+      }
     }
   },
   "threads": {

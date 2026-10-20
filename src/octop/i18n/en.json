@@ -706,6 +706,21 @@
       "discord_connection_failed": "Discord connection failed. Check the network, proxy and bot configuration.",
       "discord_disconnected": "Discord is disconnected or reconnecting.",
       "discord_proxy_auth_invalid": "Proxy authentication must use user:password."
+    },
+    "telegram": {
+      "reject": {
+        "pending_expired_or_resolved": "This card has expired. Please ask again.",
+        "question_index_changed": "The question has changed. Please use the new card.",
+        "user_mismatch": "This card does not belong to the current session.",
+        "owner_changed": "This card does not belong to the current session.",
+        "model_unavailable": "This model is no longer available. Please choose again.",
+        "thread_rebound": "The conversation has changed. Please try again.",
+        "default": "The action did not take effect. Please try again."
+      },
+      "quote": {
+        "header": "[Quoted message]",
+        "current": "[Current message]"
+      }
     }
   },
   "threads": {
