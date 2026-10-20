@@ -14,6 +14,7 @@
 ### 修复
 - `SKILL.md` 带 UTF-8 BOM（如 Windows 记事本 / PowerShell 5.1 保存）时不再丢失 YAML frontmatter；技能路由改为复用统一的 `parse_frontmatter`（#2215）
 - `OCTOP_HOME` 迁移数据目录后，首次配置向导密码文件随之写入 `<OCTOP_HOME>/octop-login.txt`；旧位置 `~/octop-login.txt` 自动继承，不再生成冲突密码（#2171）
+- Windows 上 dashboard 静态资源不再受注册表 MIME 覆盖影响：`.js` 等资源的类型改为固定映射，避免因 `HKCU\Software\Classes\.js` 等历史关联被当作 `text/plain` 返回导致页面卡在 Loading（#2231）
 
 ### 变更
 - 技能包编辑抽屉：过滤无中文文案的预设图标；自定义图标 URL 增加 http(s) 校验；复制策略移至自定义图标下方
