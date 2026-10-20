@@ -16,7 +16,7 @@ logger = logging.getLogger(__name__)
 _STREAM_CLOSE_TIMEOUT = 5.0
 
 try:  # gateway >= 1.0.3
-    from octop_gateway.utils import close_event_stream  # type: ignore[assignment]
+    from octop_gateway.utils import close_event_stream
 except ImportError:
 
     async def close_event_stream(stream: AsyncIterator[Any]) -> None:
