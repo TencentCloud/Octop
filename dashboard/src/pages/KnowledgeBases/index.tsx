@@ -119,6 +119,7 @@ import {
   shouldOpenKnowledgeFolder,
   type KnowledgeFileTreeNode,
 } from "./knowledgeFolder";
+import { filesFromKnowledgeDrop } from "./knowledgeDropFiles";
 import { resolveKnowledgeDeepLink } from "./knowledgeDeepLink";
 import {
   isKnowledgeDocumentLimitReached,
@@ -1537,7 +1538,14 @@ export default function KnowledgeBasesPage() {
     event.stopPropagation();
     resetDragActive();
     if (!canDropUpload) return;
-    void uploadDocuments(event.dataTransfer.files);
+    const transfer = event.dataTransfer;
+    void filesFromKnowledgeDrop(transfer)
+      .then((files) => uploadDocuments(files))
+      .catch((error: unknown) => {
+        message.error(
+          apiErrorMessage(error, t("knowledgeBases.uploadFailed"), t),
+        );
+      });
   };
 
   const createFolder = async () => {

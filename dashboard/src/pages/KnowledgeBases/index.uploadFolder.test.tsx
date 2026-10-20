@@ -489,4 +489,82 @@ describe("knowledge-base folder upload", () => {
       screen.getByRole("button", { name: "knowledgeBases.uploadFolder" }),
     ).toBeEnabled();
   });
+
+  it("uploads a dropped folder through the existing drop target and upload path", async () => {
+    documents = [
+      {
+        id: "folder",
+        filename: "现有目录",
+        path: "现有目录",
+        is_dir: true,
+      } as KnowledgeDocument,
+    ];
+    await openPage();
+    fireEvent.click(await screen.findByRole("button", { name: /现有目录/ }));
+    const nested = new File(["a"], "a.txt", { type: "text/plain" });
+    const loose = new File(["b"], "b.txt", { type: "text/plain" });
+    const folder = {
+      isFile: false,
+      isDirectory: true,
+      name: "资料",
+      createReader() {
+        const batches = [
+          [
+            {
+              isFile: true,
+              isDirectory: false,
+              name: "a.txt",
+              file(success: (next: File) => void) {
+                success(nested);
+              },
+            },
+          ],
+          [],
+        ];
+        let index = 0;
+        return {
+          readEntries(success: (entries: FileSystemEntry[]) => void) {
+            const batch = batches[index] ?? [];
+            index += 1;
+            success(batch as FileSystemEntry[]);
+          },
+        };
+      },
+    };
+    const zone = document.querySelector('[class*="_detailBody_"]');
+    expect(zone).toBeTruthy();
+    fireEvent.drop(zone!, {
+      dataTransfer: {
+        types: ["Files"],
+        files: [loose],
+        items: [
+          {
+            kind: "file",
+            webkitGetAsEntry: () => folder,
+            getAsFile: () => new File([], "资料"),
+          },
+          {
+            kind: "file",
+            webkitGetAsEntry: () => ({
+              isFile: true,
+              isDirectory: false,
+              name: "b.txt",
+              file(success: (next: File) => void) {
+                success(loose);
+              },
+            }),
+            getAsFile: () => loose,
+          },
+        ],
+      },
+    });
+    await waitFor(() =>
+      expect(knowledgeBasesApi.uploadDocument).toHaveBeenCalledTimes(2),
+    );
+    expect(
+      vi
+        .mocked(knowledgeBasesApi.uploadDocument)
+        .mock.calls.map((call) => call[2]),
+    ).toEqual(["现有目录/资料/a.txt", "现有目录/b.txt"]);
+  });
 });
