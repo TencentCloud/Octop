@@ -37,6 +37,17 @@ def env_file_path(root: Path) -> Path:
     return root / "env"
 
 
+def _is_entry_line(line: str) -> bool:
+    """Whether *line* itself starts a new ``KEY=VALUE`` entry."""
+    stripped = line.strip()
+    if stripped.startswith("export "):
+        stripped = stripped[7:].strip()
+    if "=" not in stripped:
+        return False
+    key = stripped.partition("=")[0].strip()
+    return bool(_KEY_RE.match(key))
+
+
 def parse_env_text(text: str) -> dict[str, str]:
     out: dict[str, str] = {}
     lines = text.splitlines()
@@ -62,10 +73,21 @@ def parse_env_text(text: str) -> dict[str, str]:
         # the rest of the file.
         if value[:1] in {'"', "'"} and value[0] not in value[1:]:
             quote = value[0]
+            consumed_start = index
+            first_entry_offset: int | None = None
             while index < len(lines) and quote not in value[1:]:
+                if first_entry_offset is None and _is_entry_line(lines[index]):
+                    first_entry_offset = index - consumed_start
                 value = f"{value}\n{lines[index]}"
                 index += 1
             value = value.strip()
+            if quote not in value[1:] and first_entry_offset is not None:
+                # The quote never closes, so the entry is malformed: it must not
+                # swallow the rest of the file. Rewind to the first line that is
+                # itself a valid ``KEY=VALUE`` entry so the main loop parses it
+                # (and everything after it) as normal entries.
+                index = consumed_start + first_entry_offset
+                value = "\n".join(value.split("\n")[: first_entry_offset + 1])
         if len(value) >= 2 and value[0] == value[-1] and value[0] in {'"', "'"}:
             quote = value[0]
             value = value[1:-1]
