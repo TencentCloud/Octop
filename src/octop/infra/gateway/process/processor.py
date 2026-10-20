@@ -870,7 +870,7 @@ class GlobalProcessor:
         yield MessageEvent.typing()
         stream_ok = False
         hitl_paused = False
-        persist_failed_turn = False
+        failure_saved = False
         usage_tracker = UsageTracker()
         history_tracker = await self._begin_history(agent_id, thread_id, request)
         projection_state = StreamProjectionState()
@@ -907,7 +907,6 @@ class GlobalProcessor:
             message, error_code = _stream_error(exc, locale)
             if error_code:
                 message = f"[{error_code}] {message}"
-            persist_failed_turn = True
             history_tracker.observe(
                 {
                     "type": "error",
@@ -915,6 +914,8 @@ class GlobalProcessor:
                     **({"error_code": error_code} if error_code else {}),
                 }
             )
+            await self._persist_incomplete_turn(thread_id, history_tracker, title_source=msg.text)
+            failure_saved = True
             yield MessageEvent.error_event(message)
         else:
             if stream_ok and not hitl_paused:
@@ -933,11 +934,11 @@ class GlobalProcessor:
                         content=[TextContent(text=hint)],
                     )
         finally:
-            if persist_failed_turn or (not stream_ok and not hitl_paused):
+            if not failure_saved and (not stream_ok and not hitl_paused):
                 await self._persist_incomplete_turn(
                     thread_id, history_tracker, title_source=msg.text
                 )
-            else:
+            elif not failure_saved:
                 await self._finish_history(history_tracker, completed=stream_ok and not hitl_paused)
         yield MessageEvent.completed()
 
@@ -1188,7 +1189,7 @@ class GlobalProcessor:
         )
 
         stream_ok = False
-        persist_failed_turn = False
+        failure_saved = False
         harness_workspace = harness_workspace_for_agent(self._agent_manager, agent_id)
         usage_tracker = UsageTracker()
         # Align with IM stream_project: only push after a live tool_call this
@@ -1288,15 +1289,16 @@ class GlobalProcessor:
             if error_code:
                 payload["error_code"] = error_code
             history_tracker.observe(payload)
-            persist_failed_turn = True
+            await self._persist_incomplete_turn(thread_id, history_tracker, title_source=msg.text)
+            failure_saved = True
             yield _maybe_stamp_team_host(payload, agent_id, team_host)
         finally:
             self._finish_trajectory(thread_id=thread_id, usage=usage_tracker.usage, enabled=traj_on)
-            if persist_failed_turn or not stream_ok:
+            if not failure_saved and not stream_ok:
                 await self._persist_incomplete_turn(
                     thread_id, history_tracker, title_source=msg.text
                 )
-            else:
+            elif not failure_saved:
                 await self._finish_history(history_tracker, completed=stream_ok)
         if stream_ok:
             self._touch_thread_after_turn(thread_id, msg.text)
@@ -1321,7 +1323,7 @@ class GlobalProcessor:
         usage_tracker = UsageTracker()
         history_tracker = await self._begin_history(agent_id, thread_id, {}, resume=True)
         completed = False
-        persist_failed_turn = False
+        failure_saved = False
         traj_on = self._agent_trajectory_enabled(agent_id)
         team_host = is_team_agent(self._agent_manager.get_row(agent_id))
         saw_tool_call = False
@@ -1376,13 +1378,14 @@ class GlobalProcessor:
             if error_code:
                 payload["error_code"] = error_code
             history_tracker.observe(payload)
-            persist_failed_turn = True
+            await self._persist_incomplete_turn(thread_id, history_tracker, title_source=None)
+            failure_saved = True
             yield _maybe_stamp_team_host(payload, agent_id, team_host)
         finally:
             self._finish_trajectory(thread_id=thread_id, usage=usage_tracker.usage, enabled=traj_on)
-            if persist_failed_turn or not completed:
+            if not failure_saved and not completed:
                 await self._persist_incomplete_turn(thread_id, history_tracker, title_source=None)
-            else:
+            elif not failure_saved:
                 await self._finish_history(history_tracker, completed=completed)
             if completed:
                 self._touch_thread_after_turn(thread_id, None)

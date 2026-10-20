@@ -1071,6 +1071,69 @@ async def test_stream_team_peer_relays_tokens_to_room(processor_env: dict) -> No
 
 
 @pytest.mark.asyncio
+async def test_live_member_catchup_replays_partial_then_clears(
+    processor_env: dict,
+) -> None:
+    from octop_harness.request import ChatRequest
+
+    processor = processor_env["processor"]
+    gateway = processor_env["gateway"]
+    started = asyncio.Event()
+    release = asyncio.Event()
+
+    async def fake_stream(_agent_id: str, _request: dict[str, object]) -> object:
+        yield {"type": "token", "content": "hello "}
+        started.set()
+        await release.wait()
+        yield {"type": "token", "content": "doc"}
+
+    processor._agent_manager.stream = fake_stream
+    harness = MagicMock()
+    harness.aget_history = AsyncMock(return_value=[])
+    processor._agent_manager.get_agent.return_value = harness
+
+    task = asyncio.create_task(
+        processor.teams.stream_peer_to_room(
+            ChatRequest(messages="task", thread_id="thr_parent~child", agent_id="child"),
+            room_thread_id="thr_parent",
+            speaker_id="child",
+        )
+    )
+    await asyncio.wait_for(started.wait(), timeout=2)
+
+    caught: list[dict[str, object]] = []
+
+    async def send(frame: dict[str, object]) -> None:
+        caught.append(frame)
+
+    await processor.teams.deliver_live_member_catchup(
+        "thr_parent",
+        subscribe=lambda: None,
+        send=send,
+    )
+    assert caught == [
+        {
+            "type": "token",
+            "content": "hello ",
+            "agent_id": "child",
+            "agent": "child",
+            "team_snapshot": True,
+            "team_live": True,
+            "thread_id": "thr_parent",
+        }
+    ]
+    release.set()
+    await asyncio.wait_for(task, timeout=2)
+    caught.clear()
+    await processor.teams.deliver_live_member_catchup(
+        "thr_parent",
+        subscribe=lambda: gateway.ws_hub.subscribe("thr_parent", "late"),
+        send=send,
+    )
+    assert caught == []
+
+
+@pytest.mark.asyncio
 async def test_stream_team_peer_relays_tokens_to_member_and_room(
     processor_env: dict,
 ) -> None:
@@ -1992,6 +2055,17 @@ async def test_on_reply_failed_releases_job(processor_env: dict) -> None:
     jobs = TeamJobTracker()
     processor._agent_manager._team_jobs = jobs
     jobs.begin("host", "child", job_id="job-9")
+    frames: list[dict] = []
+
+    async def capture(frame: dict) -> None:
+        frames.append(frame)
+
+    gateway = processor_env["gateway"]
+    gateway.ws_hub.register("failed-task-watch", capture)
+    gateway.ws_hub.subscribe("thr_parent", "failed-task-watch")
+    processor._thread_message_repo = MagicMock()
+    processor._thread_message_repo.projection_status.return_value = "ready"
+    processor.teams._thread_message_repo = processor._thread_message_repo
     await processor.on_reply(
         ReplyEvent(
             inbox_id="job-9",
@@ -2000,11 +2074,46 @@ async def test_on_reply_failed_releases_job(processor_env: dict) -> None:
             source_thread_id="thr_parent",
             target_agent_id="child",
             user_id=1,
-            error_text="offline",
+            error_text="Error code: 401 - token expired",
             metadata={"session_key": parent_sk},
         )
     )
     assert not jobs.is_busy("host", "child")
+    assert any(
+        frame.get("type") == "error" and "失败" in str(frame.get("message")) for frame in frames
+    )
+    assert not any(frame.get("type") == "token" for frame in frames)
+    assert frames[-1]["type"] == "done"
+    inputs = processor._thread_message_repo.append_if_ready.call_args.args[1]
+    assert json.loads(inputs[0].message_json)["data"]["additional_kwargs"]["octop_stream_error"]
+
+
+@pytest.mark.asyncio
+async def test_failed_host_wrapup_is_excluded_from_memory() -> None:
+    from octop.infra.agents.teams.team_manager import _patch_inbox_wrapup
+
+    inbox = SimpleNamespace(
+        _synthesize_reply=AsyncMock(return_value="fallback"),
+        _processor=SimpleNamespace(
+            compose_followup=lambda *args, **kwargs: "System failure notification"
+        ),
+    )
+    stream = AsyncMock(return_value={"messages": []})
+    _patch_inbox_wrapup(inbox, stream_followup=stream, is_team=lambda _: True)
+    msg = InboxMessage(
+        id="failed-wrapup",
+        source_agent_id="host",
+        source_thread_id="room",
+        target_agent_id="child",
+        message="work",
+        user_id=1,
+    )
+    await inbox._synthesize_reply(msg, None, "Authentication failed")
+    request = stream.call_args.args[0]
+    assert request.to_runnable_config()["configurable"]["octop_memory_capture_exclude"] is True
+    configurable = request.to_runnable_config()["configurable"]
+    assert configurable["octop_decision_followup"] is True
+    assert configurable["peer_invoke_mode"] == "async"
 
 
 def test_resolve_harness_model_auto_expert_omits_model() -> None:

@@ -16,7 +16,7 @@ import asyncio
 import inspect
 import json
 import logging
-from collections.abc import Callable, Sequence
+from collections.abc import Awaitable, Callable, Sequence
 from dataclasses import fields
 from types import SimpleNamespace
 from typing import TYPE_CHECKING, Any
@@ -33,6 +33,7 @@ from octop_harness.teams.util import (
 )
 
 from octop.i18n import tr
+from octop.i18n.domains.stream import format_stream_error
 from octop.infra.agents.teams.service import _user_may_use_member, is_team_agent
 from octop.infra.agents.threads.artifact import artifact_path_allowed, extract_artifact_paths
 from octop.infra.db.repos.agents import AgentRow
@@ -112,6 +113,23 @@ def host_system_prompt(row: Any, user_repo: Any) -> str:
     return f"{custom}\n\n{briefing}".strip() if custom else briefing
 
 
+async def subscribe_with_member_catchup(
+    gateway: Any,
+    room_thread_id: str,
+    *,
+    subscribe: Callable[[], None],
+    send: Callable[[dict[str, Any]], Awaitable[None]],
+) -> None:
+    """Attach a room subscriber and replay an in-progress member answer."""
+    processor = getattr(gateway, "_processor", None)
+    teams = getattr(processor, "teams", None)
+    deliver = getattr(teams, "deliver_live_member_catchup", None)
+    if not callable(deliver):
+        subscribe()
+        return
+    await deliver(room_thread_id, subscribe=subscribe, send=send)
+
+
 class TeamManager:
     """Octop-side team room. Harness still owns ``ask_agent`` / inbox."""
 
@@ -134,6 +152,10 @@ class TeamManager:
         self._hitl_waiters: dict[str, asyncio.Future[list[dict[str, Any]]]] = {}
         self._peer_prompts: dict[tuple[str, str], tuple[str, str]] = {}
         self._live_host_replies: set[str] = set()
+        # Room text a member has already pushed and not yet persisted.
+        # A refresh mid-answer has no history row; the new subscriber gets this.
+        self._live_member_text: dict[str, dict[str, str]] = {}
+        self._member_wall_lock = asyncio.Lock()
 
     def replace_thread_message_repo(self, repo: Any) -> None:
         self._thread_message_repo = repo
@@ -303,6 +325,9 @@ class TeamManager:
             if event.status != "done"
             else (event.reply_text or "(empty)")
         )
+        failed = event.status == "failed"
+        if failed:
+            text = format_stream_error(text, self._locale_for(_octop_user_id(event.user_id)))
         if room:
             await self._push_room_to_channels(room, speaker, text, wrapup=True)
         live_ws = self._take_live_host_reply(room) and event.status == "done"
@@ -322,12 +347,15 @@ class TeamManager:
                 str(session.session_key),
                 text,
                 speaker_id=speaker,
+                **({"error": True} if failed else {}),
             )
             return
         if session is not None:
             return
         if room:
-            await self._publish_room_text(room, speaker, text)
+            await self._publish_room_text(
+                room, speaker, text, **({"error": True} if failed else {})
+            )
             self._thread_registry.touch_last_active(room)
             return
         logger.warning("team reply %s: no room to publish", event.inbox_id)
@@ -501,16 +529,19 @@ class TeamManager:
             )
             raise
         finally:
-            await release_held_room()
-            done: dict[str, Any] = {"type": "done"}
-            if extra_stamp:
-                done = {**done, **extra_stamp}
-            await self._relay_chunk(
-                done,
-                room_thread_id=room_thread_id,
-                member_thread_id=member_tid,
-                speaker_id=speaker_id,
-            )
+            try:
+                await release_held_room()
+                done: dict[str, Any] = {"type": "done"}
+                if extra_stamp:
+                    done = {**done, **extra_stamp}
+                await self._relay_chunk(
+                    done,
+                    room_thread_id=room_thread_id,
+                    member_thread_id=member_tid,
+                    speaker_id=speaker_id,
+                )
+            finally:
+                await self._clear_live_member(room_thread_id, speaker_id)
         stream_text = "".join(text_parts).strip()
         return {
             "messages": await self._peer_result_messages(
@@ -986,6 +1017,64 @@ class TeamManager:
         )
         self._thread_registry.set_title_if_null(thread_id, title)
 
+    def _append_live_member(self, room_thread_id: str, speaker_id: str, piece: str) -> None:
+        room = room_thread_id.strip()
+        speaker = speaker_id.strip()
+        if not room or not speaker or not piece:
+            return
+        bucket = self._live_member_text.setdefault(room, {})
+        bucket[speaker] = bucket.get(speaker, "") + piece
+
+    async def _clear_live_member(self, room_thread_id: str, speaker_id: str) -> None:
+        room = room_thread_id.strip()
+        speaker = speaker_id.strip()
+        if not room or not speaker:
+            return
+        async with self._member_wall_lock:
+            bucket = self._live_member_text.get(room)
+            if not bucket:
+                return
+            bucket.pop(speaker, None)
+            if not bucket:
+                self._live_member_text.pop(room, None)
+
+    def _live_member_frames(self, room_thread_id: str) -> list[dict[str, Any]]:
+        room = room_thread_id.strip()
+        bucket = self._live_member_text.get(room) or {}
+        frames: list[dict[str, Any]] = []
+        for speaker, text in bucket.items():
+            if not speaker or not text:
+                continue
+            frames.append(
+                {
+                    "type": "token",
+                    "content": text,
+                    "agent_id": speaker,
+                    "agent": speaker,
+                    "team_snapshot": True,
+                    "team_live": True,
+                    "thread_id": room,
+                }
+            )
+        return frames
+
+    async def deliver_live_member_catchup(
+        self,
+        room_thread_id: str,
+        *,
+        subscribe: Callable[[], None],
+        send: Callable[[dict[str, Any]], Awaitable[None]],
+    ) -> None:
+        """Subscribe, then replay member text that is on the wall but not in history.
+
+        The lock covers subscribe and the replay so a token cannot land twice:
+        once inside the snapshot and again as a live delta.
+        """
+        async with self._member_wall_lock:
+            subscribe()
+            for frame in self._live_member_frames(room_thread_id):
+                await send(frame)
+
     async def _relay_chunk(
         self,
         chunk: dict[str, Any],
@@ -999,9 +1088,13 @@ class TeamManager:
         if hub is None:
             return
         stamped = stamp_stream_speaker(chunk, speaker_id, include_done=True)
+        piece = str(chunk.get("content") or "") if str(chunk.get("type") or "") == "token" else ""
         try:
             if include_room and room_thread_id:
-                await hub.push_to_thread(room_thread_id, stamped)
+                async with self._member_wall_lock:
+                    await hub.push_to_thread(room_thread_id, stamped)
+                    if piece:
+                        self._append_live_member(room_thread_id, speaker_id, piece)
             if member_thread_id and member_thread_id != room_thread_id:
                 await hub.push_to_thread(member_thread_id, chunk)
         except Exception:
@@ -1023,8 +1116,12 @@ class TeamManager:
         if hub is None or not room_thread_id:
             return
         stamped = stamp_stream_speaker(chunk, speaker_id, include_done=True)
+        piece = str(chunk.get("content") or "") if str(chunk.get("type") or "") == "token" else ""
         try:
-            await hub.push_to_thread(room_thread_id, stamped)
+            async with self._member_wall_lock:
+                await hub.push_to_thread(room_thread_id, stamped)
+                if piece:
+                    self._append_live_member(room_thread_id, speaker_id, piece)
         except Exception:
             logger.warning(
                 "failed to flush team room frame speaker=%s room=%s",
@@ -1218,6 +1315,7 @@ class TeamManager:
         text: str,
         *,
         wrapup: bool = False,
+        error: bool = False,
         decision: dict[str, Any] | None = None,
     ) -> None:
         body = (text or "").strip()
@@ -1227,6 +1325,8 @@ class TeamManager:
         extra: dict[str, Any] = {"speaker_agent_id": speaker_id}
         if wrapup:
             extra["team_wrapup"] = True
+        if error:
+            extra["octop_stream_error"] = {"code": "stream_error", "source": "team_task"}
         if decision:
             extra["octop_decision"] = dict(decision)
         msg = AIMessage(
@@ -1321,16 +1421,19 @@ class TeamManager:
                     exc_info=True,
                 )
 
-    async def _publish_room_text(self, thread_id: str, speaker_id: str, text: str) -> None:
+    async def _publish_room_text(
+        self, thread_id: str, speaker_id: str, text: str, *, error: bool = False
+    ) -> None:
         body = (text or "").strip()
         if not thread_id or not body:
             return
-        self._persist_room_assistant(thread_id, speaker_id, body, wrapup=True)
+        self._persist_room_assistant(thread_id, speaker_id, body, wrapup=True, error=error)
         await self._push_room_snapshot(
             thread_id,
             speaker_id,
             body,
             wrapup=True,
+            error=error,
         )
 
     async def _push_room_snapshot(
@@ -1340,6 +1443,7 @@ class TeamManager:
         text: str,
         *,
         wrapup: bool = False,
+        error: bool = False,
     ) -> None:
         body = (text or "").strip()
         if not thread_id or not body:
@@ -1352,7 +1456,11 @@ class TeamManager:
             await hub.push_to_thread(
                 thread_id,
                 stamp_stream_speaker(
-                    {"type": "token", "content": body, **extra},
+                    (
+                        {"type": "error", "message": body, **extra}
+                        if error
+                        else {"type": "token", "content": body, **extra}
+                    ),
                     speaker_id,
                 ),
             )
@@ -1384,6 +1492,7 @@ class TeamManager:
         text: str,
         *,
         speaker_id: str | None = None,
+        error: bool = False,
     ) -> None:
         if self._thread_registry.is_im_session(session):
             await self._push_session_channel(session, text)
@@ -1392,6 +1501,7 @@ class TeamManager:
             session.thread_id,
             speaker_id or session.agent_id,
             text,
+            error=error,
         )
         if not self._thread_is_watched(session.thread_id):
             self._thread_registry.increment_unread(session_key)
@@ -1904,6 +2014,7 @@ def _patch_inbox_wrapup(
             text=prompt,
             source="inbox",
             configurable={
+                **({"octop_memory_capture_exclude": True} if error_text else {}),
                 "octop_decision_followup": True,
                 "peer_invoke_mode": "async",
                 "octop_decision_finished_member": str(getattr(msg, "target_agent_id", "") or ""),

@@ -78,7 +78,7 @@ function decisionPartBody(
 /** Same chrome as a built-in tool row, for one decision-model pass. */
 export function DecisionToolRow({ notice }: { notice: DecisionNotice }) {
   const { t } = useTranslation();
-  const [expanded, setExpanded] = useState(true);
+  const [expanded, setExpanded] = useState(false);
   const title = decisionTitle(notice, t);
   const parts = notice.empty ? [] : notice.parts;
   return (

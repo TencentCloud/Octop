@@ -1856,7 +1856,6 @@ export function ChannelDrawer({
           <Form.Item name="kind" hidden>
             <Input />
           </Form.Item>
-          {selectedKind === "qq" && <QqGroupContextPolicyFields form={form} />}
 
           {(configMode === "quick" || isQuickOnly) &&
             supportsQuickConfig &&
@@ -1981,6 +1980,7 @@ export function ChannelDrawer({
           )}
 
           <DisplaySettingsFields />
+          {selectedKind === "qq" && <QqGroupContextPolicyFields form={form} />}
         </Form>
       )}
     </Drawer>

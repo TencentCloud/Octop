@@ -156,6 +156,14 @@ destination synchronized after the request completes.
 | `POST /agents/{id}/chat/polish` | owner | body `{text, default_model?}` → `{text}` (one-shot prompt refinement) |
 | `POST /agents/{id}/chat/hitl/resume` | owner | body `{thread_id, decisions: [...], hitl_policy?}` → SSE chunk stream; finishes with `{"type":"done"}`. When the resume stops on another approval, the done frame is `{"type":"done","hitl_paused":true}` and parked steers stay queued. Optional `hitl_policy` (`ask` / `allow_all` / `allow_tools`) is a thread-scoped bypass and does not change global tool-approval settings. |
 
+Model calls retain LangChain's default retry eligibility and the configured
+retry budget/backoff. Exhausted calls raise and remain failed
+checkpoint tasks, without a synthetic assistant reply. WebUI, IM and team tasks
+display the failure separately. Team rooms publish an `error` frame followed by
+`done`; stored error bubbles carry `additional_kwargs.octop_stream_error` for
+history display. These diagnostics and automatic team failure notifications do
+not become long-term memory.
+
 ### Legacy SSE
 
 The previous `POST /agents/{id}/chat/stream` is gone. The dashboard
@@ -260,9 +268,13 @@ plugin returns a large `octop_ui` payload, the backend offloads the envelope's
 `"agent"` (run the prompt through the LLM and push the reply).
 Default: `"agent"`. `trigger` accepts cron expressions
 (`"0 9 * * *"`) plus the `interval:N` / `date:ISO8601` aliases
-documented in `infra/cron/trigger.py`. `prompt` must be non-empty and
-≤ 2000 characters. `name` is an optional display label; when omitted,
-the server derives one from `prompt`.
+documented in `infra/cron/trigger.py`. A `date:` job runs once and
+then disables itself, whether the run succeeds or fails; the row stays
+in the list. If the process is down for more than 24 hours past that
+time and the job never ran, `last_status` is `missed` and the job is
+disabled. `prompt` must be non-empty and ≤ 2000 characters. `name` is
+an optional display label; when omitted, the server derives one from
+`prompt`.
 
 ## Providers
 
@@ -351,6 +363,9 @@ Bundled experts live in `src/octop/infra/agents/experts/library/`
 | `GET`    | `/agents/{aid}/workspace/grep` | owner | grep backend files |
 | `GET`    | `/agents/{aid}/workspace/...` | owner | see `api/routers/workspace.py` |
 | `GET`    | `/agents/{aid}/skills` | owner | list installed skills |
+| `GET`    | `/agents/{aid}/skills/{slug}/export` | owner | download one workspace skill as a ZIP (`{slug}/SKILL.md` plus siblings) |
+| `POST`   | `/agents/{aid}/skills/export` | owner | body `{slugs: string[]}`; one ZIP, each slug a top-level folder |
+| `GET`    | `/skill-packages/{id}/export` | user (`skill_packages`) | download every skill in the package as one ZIP. `allow_download=false` returns 403 for users other than the creator and admins |
 | `PUT`    | `/agents/{aid}/skills/{slug}` | owner | enable / disable a skill |
 | `GET`    | `/agents/{aid}/skills/hub/search` | user | Skill Hub search |
 | `GET`    | `/agents/{aid}/skills/hub/rankings` | user | Skill Hub rankings |
@@ -363,9 +378,24 @@ Bundled experts live in `src/octop/infra/agents/experts/library/`
 | `GET`    | `/agents/{aid}/heartbeat-config` | owner | read heartbeat YAML |
 | `PUT`    | `/agents/{aid}/heartbeat-config` | owner | write heartbeat YAML |
 | `GET`    | `/agents/{aid}/memory/daily` | owner | list daily memory files |
+| `GET`/`PUT` | `/agents/{aid}/memory/strong` | owner | read/edit user-maintained MEMORY.md, including for stopped agents; new sessions snapshot full content once, existing sessions keep their snapshot |
+| `GET`/`PUT` | `/agents/{aid}/memory/user` | owner | read/edit user-maintained USER.md with the same session snapshot policy; distinct from the derived profile |
+| `GET` | `/agents/{aid}/memory/manual-review` | owner | read persisted reconciliation status against current documents; no model call or memory mutation |
+| `POST` | `/agents/{aid}/memory/manual-review` | owner | reconcile saved USER.md + MEMORY.md against up to 100 unchecked atoms; duplicates remain stored, proven conflicts retire the old atom and create a replacement review candidate with evidence |
 | `GET`    | `/agents/{aid}/memory/daily/{filename}` | owner | read one daily memory |
 | `DELETE` | `/agents/{aid}/memory/daily/{filename}` | owner | delete one daily memory |
 | `GET`/`POST` | `/memory/...` | user | memory API (dashboard memory tab) |
+
+### Manual document reconciliation
+
+The manual editors save files first, then request reconciliation. The response reports
+`complete`, `partial` (continue checking), `uncertain`, `unavailable`, `failed`, `stale`,
+`disabled`, `too_large`, or `not_checked`, plus conflict/duplicate counts and candidate IDs.
+Semantic checks use the configured memory auxiliary model and require literal document
+evidence; unavailable or uncertain checks never silently retire facts. Combined document
+input above 100,000 characters is explicitly refused. Current documents are checked again
+when accepting a document-derived candidate; stale candidates require review of the new
+version. The file save remains successful if the subsequent semantic check fails.
 
 ### Current-expert memory storage maintenance
 
