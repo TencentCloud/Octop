@@ -11,13 +11,17 @@ from-import 绑定，只改前者不生效。
 
 from __future__ import annotations
 
+import logging
 import re
 import unicodedata
 from collections.abc import Callable
+from typing import Any
 
 _FENCE_RE = re.compile(r"```.*?```", re.DOTALL)
 _ROW_SPLIT_RE = re.compile(r"(?<!\\)\|")
 _SEPARATOR_CELL_RE = re.compile(r"^:?\-{2,}:?$")
+logger = logging.getLogger(__name__)
+
 _PLACEHOLDER = "\x00TBL{}\x00"
 
 
@@ -132,12 +136,70 @@ def has_gfm_table(text: str) -> bool:
     return convert_markdown_tables(text, renderer=lambda rows: "") != text
 
 
+async def _send_rich(channel: Any, subject: Any, text: str, state: dict[str, Any] | None) -> bool:
+    """经 Bot API 10.1 rich_message 投递；明确拒绝返回 False 交给代码块回退。
+
+    - 预览消息已进入收尾阶段且正文一致时原地编辑（与 gateway ``_finish_preview``
+      同一判据），成功后复刻它的状态收尾，否则下一段输出会继续编辑这条消息，
+      把已渲染的表格覆盖掉。
+    - 其余情况 sendRichMessage，并复用 ``_send_options``，保证话题、回复引用、
+      静默/保护内容配置与普通消息一致。
+    - 只对 BadRequest / InvalidToken（旧 Bot API 服务端对未知方法返回 404）回退；
+      超时等含糊错误可能已送达，不能再重发，沿用 gateway 的 delivery_failed 约定。
+    """
+    from telegram.error import BadRequest, InvalidToken, NetworkError
+
+    chat_id = subject.metadata.get("chat_id") if subject else None
+    target = int(chat_id) if chat_id else int(subject.subject_id)
+    message_id = state.get("message_id") if state else None
+    in_place = bool(
+        state
+        and message_id
+        and state.get("finalizing")
+        and text == channel._clean_output(state.get("text", ""))
+    )
+
+    async def post(*, chat_id: int, endpoint: str, data: dict[str, Any]) -> Any:
+        return await channel._app.bot._post(endpoint, data)
+
+    if in_place:
+        endpoint = "editMessageText"
+        data = {
+            "chat_id": target,
+            "message_id": int(message_id or 0),
+            "rich_message": {"markdown": text},
+        }
+    else:
+        endpoint = "sendRichMessage"
+        data = {
+            "chat_id": target,
+            "rich_message": {"markdown": text},
+            **channel._send_options(subject),
+        }
+    try:
+        await channel._request(post, chat_id=target, endpoint=endpoint, data=data)
+    except (BadRequest, InvalidToken) as exc:
+        # 旧客户端/API 拒绝属预期回退；留痕以免掩盖代码缺陷。
+        logger.debug("rich table delivery failed, falling back: %s", exc)
+        return False
+    except NetworkError:
+        if state is not None:
+            state["delivery_failed"] = True
+        raise
+    if in_place and state is not None:
+        state.pop("message_id", None)
+        state["finalizing"] = False
+        if state.get("stop_token"):
+            channel.interactions.pending.pop(state.pop("stop_token"), None)
+    return True
+
+
 def install() -> None:
     """两层策略：表格优先原生 sendRichMessage，失败回退代码块渲染。
 
     - 包装 TelegramChannel._send_text：含 GFM 表格的消息整条经
       Bot API 10.1 ``sendRichMessage``（rich_message.markdown）发送，
-      客户端原生渲染表格；任何失败回退原发送路径（代码块对齐方案）。
+      客户端原生渲染表格；被明确拒绝时回退原发送路径（代码块对齐方案）。
     - 保留 markdown_to_telegram_html 包裹：回退路径仍把表格转代码块。
     重复调用安全。
     """
@@ -158,24 +220,17 @@ def install() -> None:
 
     markdown_to_telegram_html.__wrapped_base__ = base  # type: ignore[attr-defined]
     gateway_format_html.markdown_to_telegram_html = markdown_to_telegram_html
-    gateway_channel.markdown_to_telegram_html = markdown_to_telegram_html
+    gateway_channel.markdown_to_telegram_html = markdown_to_telegram_html  # type: ignore[attr-defined]
 
     base_send_text = TelegramChannel._send_text
 
     async def send_text(self, subject, text):  # type: ignore[no-untyped-def]
         if text and self._app and has_gfm_table(text):
-            chat_id = subject.metadata.get("chat_id") if subject else None
-            try:
-                await self._app.bot._post(
-                    "sendRichMessage",
-                    {
-                        "chat_id": int(chat_id) if chat_id else int(subject.subject_id),
-                        "rich_message": {"markdown": text},
-                    },
-                )
+            state = self._stream.get()
+            if not (state and state.get("delivery_failed")) and await _send_rich(
+                self, subject, text, state
+            ):
                 return
-            except Exception:  # noqa: BLE001 任何失败都回退到代码块方案
-                pass
         return await base_send_text(self, subject, text)
 
     send_text.__wrapped_base__ = base_send_text  # type: ignore[attr-defined]
