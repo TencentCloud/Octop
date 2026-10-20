@@ -1,6 +1,6 @@
 ---
 name: Feature request
-about: Propose an enhancement to wkbuddy
+about: Propose an enhancement to agentbuddy
 title: "[feature] "
 labels: enhancement
 ---

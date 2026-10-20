@@ -1,4 +1,4 @@
-name: "wkbuddy CodeQL"
+name: "agentbuddy CodeQL"
 
 # Upstream connectors that must SHA-256 secrets for protocol request signing
 # (not password storage). GHAS does not reliably honor inline # codeql[...]

@@ -20,6 +20,7 @@ export function parseSkillPreviewFromMarkdown(
   const name = yamlTopLevel(fm, "name") || slug;
   const description = yamlTopLevel(fm, "description") || "";
   let emoji = DEFAULT_SKILL_EMOJI;
+  // Skill frontmatter contract: metadata.octop is cross-package (harness reads it too).
   const emojiMatch = fm.match(/octop:\s*\n\s*emoji:\s*(.+)/);
   if (emojiMatch?.[1]) {
     const value = emojiMatch[1].trim().replace(/^["']|["']$/g, "");
