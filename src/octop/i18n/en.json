@@ -412,6 +412,7 @@
     "AGENT_NOT_FOUND": "Agent not found.",
     "AGENT_NOT_RUNNING": "This expert is not enabled.",
     "CHECKPOINT_DELETE_FAILED": "Conversation data was not deleted. The thread is still here; try again.",
+    "THREAD_TURN_ACTIVE": "A reply is still in progress. Stop it, then delete this conversation.",
     "AGENT_FAILED": "Agent failed to start.",
     "AGENT_BUSY": "Agent is busy.",
     "AGENT_NAME_TAKEN": "This name is already in use. Please choose another.",

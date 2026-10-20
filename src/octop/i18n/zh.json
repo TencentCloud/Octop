@@ -412,6 +412,7 @@
     "AGENT_NOT_FOUND": "未找到 Agent。",
     "AGENT_NOT_RUNNING": "此专家未启用。",
     "CHECKPOINT_DELETE_FAILED": "对话数据没有删除，会话已保留，请重试。",
+    "THREAD_TURN_ACTIVE": "回复进行中，请先停止再删除。",
     "AGENT_FAILED": "Agent 启动失败。",
     "AGENT_BUSY": "Agent 正忙。",
     "AGENT_NAME_TAKEN": "该名称已被使用，请换一个名称。",

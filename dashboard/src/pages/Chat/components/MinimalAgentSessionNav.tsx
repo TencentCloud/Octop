@@ -92,7 +92,7 @@ interface MinimalAgentSessionNavProps {
   onDeleteActive: (
     id: string,
     compact: boolean,
-  ) => void | Promise<boolean | void>;
+  ) => void | Promise<boolean | null | void>;
   onRenameActive: (id: string, name: string) => void;
   onPinActive: (id: string, pinned: boolean) => void;
   onFork: (id: string, agentId?: string | null) => void;
@@ -129,7 +129,10 @@ const PreviewSessionRow = memo(function PreviewSessionRow({
   isActive: boolean;
   workStatus: SessionWorkStatus;
   onSelect: (id: string) => void;
-  onDelete: (id: string, compact: boolean) => void | Promise<boolean | void>;
+  onDelete: (
+    id: string,
+    compact: boolean,
+  ) => void | Promise<boolean | null | void>;
   onRename: (id: string, name: string) => void;
   onPin: (id: string, pinned: boolean) => void;
   onFork: (id: string) => void;
@@ -206,9 +209,9 @@ const PreviewSessionRow = memo(function PreviewSessionRow({
       danger: true,
       onClick: ({ domEvent }) => {
         domEvent.stopPropagation();
-        confirmDeleteConversation(t, (compact) => {
-          void onDelete(session.id, compact);
-        });
+        confirmDeleteConversation(t, (compact) =>
+          onDelete(session.id, compact),
+        );
       },
     },
   ];
@@ -492,13 +495,14 @@ export default function MinimalAgentSessionNav({
     async (agentId: string, sessionId: string, compact: boolean) => {
       if (agentId === activeAgentId) {
         const deleted = await onDeleteActive(sessionId, compact);
-        if (deleted === false) return;
+        if (deleted !== true) return deleted;
         patchLocal(agentId, (prev) => prev.filter((s) => s.id !== sessionId));
-        return;
+        return true;
       }
       const deleted = await deleteConversation(agentId, sessionId, compact, t);
-      if (!deleted) return;
+      if (deleted !== true) return deleted;
       patchLocal(agentId, (prev) => prev.filter((s) => s.id !== sessionId));
+      return true;
     },
     [activeAgentId, onDeleteActive, patchLocal, t],
   );
@@ -691,7 +695,7 @@ export default function MinimalAgentSessionNav({
                       )}
                       onSelect={(id) => onSelect(id, agent.agent_id)}
                       onDelete={(id, compact) =>
-                        void handleDelete(agent.agent_id, id, compact)
+                        handleDelete(agent.agent_id, id, compact)
                       }
                       onRename={(id, name) =>
                         handleRename(agent.agent_id, id, name)

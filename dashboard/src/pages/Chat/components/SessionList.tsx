@@ -72,7 +72,10 @@ interface SessionItemProps {
   isActive: boolean;
   workStatus?: SessionWorkStatus;
   onSelect: (id: string) => void;
-  onDelete: (id: string, compact: boolean) => void | Promise<boolean | void>;
+  onDelete: (
+    id: string,
+    compact: boolean,
+  ) => void | Promise<boolean | null | void>;
   onRename: (id: string, name: string) => void;
   onPin: (id: string, pinned: boolean) => void;
   onFork: (id: string) => void;
@@ -162,9 +165,9 @@ const SessionItem = memo(function SessionItem({
       danger: true,
       onClick: ({ domEvent }) => {
         domEvent.stopPropagation();
-        confirmDeleteConversation(t, (compact) => {
-          void onDelete(session.id, compact);
-        });
+        confirmDeleteConversation(t, (compact) =>
+          onDelete(session.id, compact),
+        );
       },
     },
   ];
@@ -253,7 +256,10 @@ interface AgentCardProps {
   onFetchAllSessions: () => void;
   onSelect: (sessionId: string, agentId: string) => void;
   onNewChat: (agentId: string) => void;
-  onDelete: (id: string, compact: boolean) => void | Promise<boolean | void>;
+  onDelete: (
+    id: string,
+    compact: boolean,
+  ) => void | Promise<boolean | null | void>;
   onRename: (id: string, name: string) => void;
   onPin: (id: string, pinned: boolean) => void;
   onFork: (id: string, agentId?: string | null) => void;
@@ -540,7 +546,10 @@ interface SessionListProps {
   onSelect: (sessionId: string, agentId: string) => void;
   onAgentSelect: (agentId: string) => void;
   onNewChat: (agentId: string) => void;
-  onDelete: (id: string, compact: boolean) => void | Promise<boolean | void>;
+  onDelete: (
+    id: string,
+    compact: boolean,
+  ) => void | Promise<boolean | null | void>;
   onRename: (id: string, name: string) => void;
   onPin: (id: string, pinned: boolean) => void;
   onFork: (id: string, agentId?: string | null) => void;
@@ -662,7 +671,7 @@ export default function SessionList({
   const deleteOther = useCallback(
     async (agentId: string, id: string, compact: boolean) => {
       const deleted = await deleteConversation(agentId, id, compact, t);
-      if (!deleted) return false;
+      if (deleted !== true) return deleted;
       catalog.patch(agentId, (prev) =>
         prev.filter((session) => session.id !== id),
       );
