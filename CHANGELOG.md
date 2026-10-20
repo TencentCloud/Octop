@@ -12,6 +12,7 @@
 - 技能包查看/编辑技能时展示左侧文件树（与个性化技能一致），并支持预览同级文件
 
 ### 修复
+- 对话中使用 @ 搜索含方括号、花括号等 glob 特殊字符的工作区文件时，正确匹配文件名
 - `SKILL.md` 带 UTF-8 BOM（如 Windows 记事本 / PowerShell 5.1 保存）时不再丢失 YAML frontmatter；技能路由改为复用统一的 `parse_frontmatter`（#2215）
 - `OCTOP_HOME` 迁移数据目录后，首次配置向导密码文件随之写入 `<OCTOP_HOME>/octop-login.txt`；旧位置 `~/octop-login.txt` 自动继承，不再生成冲突密码（#2171）
 
