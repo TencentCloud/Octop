@@ -702,6 +702,85 @@
   padding: 2px 0;
 }
 
+.modelAccess {
+  margin-top: 8px;
+}
+
+.modelAccessToggle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 8px 2px;
+  border: none;
+  background: transparent;
+  color: var(--fn-text-secondary);
+  font-size: 13px;
+  cursor: pointer;
+  text-align: left;
+
+  &:hover {
+    color: var(--fn-text-primary);
+  }
+}
+
+.modelAccessCount {
+  color: var(--fn-text-tertiary);
+  font-size: 12px;
+}
+
+.modelAccessToggle svg {
+  margin-left: auto;
+  flex-shrink: 0;
+}
+
+.modelAccessHint {
+  margin: 0 0 8px;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--fn-text-secondary);
+}
+
+.modelAccessList {
+  max-height: 280px;
+  overflow-y: auto;
+  border: 1px solid var(--fn-border-secondary);
+  border-radius: var(--fn-radius-md);
+}
+
+.modelAccessRow {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 148px;
+  align-items: center;
+  column-gap: 12px;
+  row-gap: 8px;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--fn-border-tertiary);
+
+  &:last-child {
+    border-bottom: none;
+  }
+}
+
+.modelAccessName {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+
+  > span:first-child {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: 13px;
+    color: var(--fn-text-primary);
+  }
+}
+
+.modelAccessGroups {
+  grid-column: 1 / -1;
+}
+
 .modelListItemActions {
   display: flex;
   align-items: center;

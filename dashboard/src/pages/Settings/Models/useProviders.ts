@@ -27,6 +27,8 @@ export interface ProviderModel {
   /** Embedding-only: excluded from chat picker and auto-route. */
   embedding?: boolean;
   task?: string;
+  visibility?: "all" | "groups";
+  group_ids?: string[];
 }
 
 export function isEmbeddingModel(

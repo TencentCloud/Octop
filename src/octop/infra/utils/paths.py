@@ -143,6 +143,11 @@ class PathLayout:
         return self.root / "avatars" / "roles"
 
     @property
+    def group_avatars_dir(self) -> Path:
+        """Uploaded user-group portraits: ``~/.octop/avatars/groups/``."""
+        return self.root / "avatars" / "groups"
+
+    @property
     def ssl_dir(self) -> Path:
         """TLS certificates and ACME account keys: ``~/.agentbuddy/ssl/``."""
         return self.root / "ssl"

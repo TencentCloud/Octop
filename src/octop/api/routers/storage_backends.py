@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Literal
 
 from fastapi import APIRouter, Depends, Query
 from fastapi.responses import Response
@@ -12,6 +12,11 @@ from octop.api.common.content_disposition import content_disposition
 from octop.api.deps import current_user, get_server, require_permission
 from octop.infra.backend.adapter import row_to_backend_spec, storage_spec_previewable
 from octop.infra.errors import ErrorCode, OctopError
+from octop.infra.users.groups import (
+    RESOURCE_STORAGE_BACKEND,
+    STORAGE_FEATURE_KEY,
+    GroupAccess,
+)
 
 admin_router = APIRouter()
 
@@ -90,12 +95,51 @@ def _row_to_dict(r: Any) -> dict[str, Any]:
     }
 
 
+class StorageAccessBody(BaseModel):
+    visibility: Literal["all", "groups"]
+    group_ids: list[str] | None = None
+
+
+@admin_router.get("/access", summary="Who can use storage backends")
+async def get_storage_access(
+    _: Any = Depends(require_permission("storage_backends")),
+    server: Any = Depends(get_server),
+) -> dict[str, Any]:
+    """Feature-wide audience. ``all`` is today's behavior; ``groups`` narrows selection."""
+    return GroupAccess(server.services.repos).visibility(
+        RESOURCE_STORAGE_BACKEND,
+        STORAGE_FEATURE_KEY,
+        shared=None,
+    )
+
+
+@admin_router.put("/access", summary="Set who can use storage backends")
+async def put_storage_access(
+    body: StorageAccessBody,
+    _: Any = Depends(require_permission("storage_backends")),
+    server: Any = Depends(get_server),
+) -> dict[str, Any]:
+    """Restrict selecting named storage backends, or clear that restriction."""
+    access = GroupAccess(server.services.repos)
+    access.set_visibility(
+        RESOURCE_STORAGE_BACKEND,
+        STORAGE_FEATURE_KEY,
+        body.visibility,
+        body.group_ids,
+    )
+    return access.visibility(
+        RESOURCE_STORAGE_BACKEND,
+        STORAGE_FEATURE_KEY,
+        shared=None,
+    )
+
+
 @admin_router.get("")
 async def list_storage_backends(
     _: Any = Depends(require_permission("storage_backends")),
     server: Any = Depends(get_server),
 ) -> list[dict[str, Any]]:
-    return [_row_to_dict(r) for r in server.services.storage_backend_repo.list_all()]
+    return [_row_to_dict(row) for row in server.services.storage_backend_repo.list_all()]
 
 
 @admin_router.post("", status_code=201)
@@ -203,6 +247,7 @@ async def delete_storage_backend(
 
     await release_browse_session(backend_id)
     server.services.storage_backend_repo.delete(backend_id)
+    GroupAccess(server.services.repos).clear(RESOURCE_STORAGE_BACKEND, row.name)
 
 
 @admin_router.post("/probe")
@@ -365,8 +410,17 @@ user_router = APIRouter()
 
 @user_router.get("")
 async def list_storage_backends_for_user(
-    _: Any = Depends(current_user),
+    user: Any = Depends(current_user),
     server: Any = Depends(get_server),
 ) -> list[dict[str, Any]]:
     """Read-only storage backend list for regular users (secrets masked)."""
-    return [_row_to_dict(r) for r in server.services.storage_backend_repo.list_all()]
+    allowed = GroupAccess(server.services.repos).allows(
+        user_id=user.id,
+        is_admin=bool(user.is_admin),
+        resource_type=RESOURCE_STORAGE_BACKEND,
+        resource_key=STORAGE_FEATURE_KEY,
+        is_owner=False,
+    )
+    if not allowed:
+        return []
+    return [_row_to_dict(row) for row in server.services.storage_backend_repo.list_all()]

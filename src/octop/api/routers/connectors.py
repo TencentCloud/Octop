@@ -69,6 +69,11 @@ from octop.infra.connectors.probe import (
 from octop.infra.connectors.service import ConnectorNameTakenError, ConnectorService
 from octop.infra.db.repos.connectors import ConnectorRepo
 from octop.infra.errors import ErrorCode, OctopError
+from octop.infra.users.groups import (
+    CONNECTOR_FEATURE_KEY,
+    RESOURCE_CONNECTOR,
+    GroupAccess,
+)
 from octop.infra.utils.locale import resolve_request_locale
 from octop.infra.utils.ulid import new_ulid
 
@@ -551,6 +556,47 @@ async def detect_weknora_on_octop_host(
     return await detect_local_weknora()
 
 
+class ConnectorAccessBody(BaseModel):
+    visibility: Literal["all", "groups"]
+    group_ids: list[str] | None = None
+
+
+@router.get("/connectors/access", summary="Who can use connectors")
+async def get_connector_access(
+    user: Any = Depends(require_permission("connectors")),
+    server: Any = Depends(get_server),
+) -> dict[str, Any]:
+    """Feature-wide audience. ``all`` is today's behavior; ``groups`` narrows use."""
+    del user
+    return GroupAccess(server.services.repos).visibility(
+        RESOURCE_CONNECTOR,
+        CONNECTOR_FEATURE_KEY,
+        shared=None,
+    )
+
+
+@router.put("/connectors/access", summary="Set who can use connectors")
+async def put_connector_access(
+    body: ConnectorAccessBody,
+    user: Any = Depends(require_permission("connectors")),
+    server: Any = Depends(get_server),
+) -> dict[str, Any]:
+    """Restrict connector use to groups, or clear that restriction."""
+    del user
+    access = GroupAccess(server.services.repos)
+    access.set_visibility(
+        RESOURCE_CONNECTOR,
+        CONNECTOR_FEATURE_KEY,
+        body.visibility,
+        body.group_ids,
+    )
+    return access.visibility(
+        RESOURCE_CONNECTOR,
+        CONNECTOR_FEATURE_KEY,
+        shared=None,
+    )
+
+
 @router.get("/connector-instances", summary="List connector instances")
 async def list_instances(
     user: Any = Depends(current_user),
@@ -757,13 +803,14 @@ async def create_instance(
         ) from exc
 
     instance_id = new_ulid()
+    shared = body.shared
     repo.create(
         instance_id=instance_id,
         user_id=user.id,
         kind=body.kind,
         display_name=display_name,
         mcp_server_name=mcp_server_name(body.kind, instance_id),
-        shared=body.shared,
+        shared=shared,
         config_json=build_instance_config_json(
             kind=body.kind,
             default_open=bool(body.default_open),
@@ -783,7 +830,7 @@ async def create_instance(
     _schedule_connector_reload(
         server,
         user.id,
-        all_users=body.shared,
+        all_users=shared,
         mail_instance_id=instance_id if body.kind == "agently-cli" else None,
     )
     return _instance_to_dict(inst)
@@ -981,6 +1028,7 @@ async def delete_instance(
             raise OctopError(ErrorCode.CONNECTOR_INVALID_CREDENTIALS, str(exc)) from exc
     elif inst.kind not in ("agently-cli", "dingtalk-cli"):
         repo.delete(instance_id)
+        GroupAccess(server.services.repos).clear(RESOURCE_CONNECTOR, instance_id)
     if cli_creds is not None:
         cleanup_creds_cli_dirs(inst.kind, cli_creds)
     _schedule_connector_reload(

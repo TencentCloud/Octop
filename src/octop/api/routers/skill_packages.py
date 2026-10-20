@@ -31,6 +31,10 @@ from octop.infra.skills.skill_package_store import (
 )
 from octop.infra.skills.skill_packages import SkillPackageError, read_skill_directory
 from octop.infra.skills.skillhub_market import SkillHubMarketError as SkillHubDownloadError
+from octop.infra.users.groups import (
+    RESOURCE_SKILL_PACKAGE,
+    GroupAccess,
+)
 from octop.infra.users.identity import User
 from octop.infra.utils.frontmatter import parse_frontmatter
 from octop.infra.utils.locale import Locale, resolve_request_locale
@@ -55,6 +59,8 @@ class CreateSkillPackageBody(BaseModel):
     icon_name: str = ""
     icon_url: str = ""
     shared: bool = False
+    visibility: Literal["all", "groups", "owner"] | None = None
+    group_ids: list[str] | None = None
     copy_policy: Literal["snapshot", "lock", "deny"] = "snapshot"
     allow_download: bool = True
 
@@ -76,6 +82,8 @@ class UpdateSkillPackageBody(BaseModel):
         default=None,
         description="When false, non-owner users who can view the package cannot export a ZIP.",
     )
+    visibility: Literal["all", "groups", "owner"] | None = None
+    group_ids: list[str] | None = None
 
 
 class FromSkillHubBody(BaseModel):
@@ -188,6 +196,15 @@ def _package_payload(
     }
 
 
+def _package_access(server: OctopServer) -> GroupAccess:
+    assert server.services is not None
+    return GroupAccess(server.services.repos)
+
+
+def _package_owner(user: User, row: SkillPackageRow) -> bool:
+    return str(user.id) == str(row.created_by)
+
+
 def _creator_fields(server: OctopServer, created_by: str) -> dict[str, str | None]:
     raw = str(created_by or "").strip()
     if not raw.isdigit():
@@ -238,15 +255,36 @@ def _visible_packages(store: SkillPackageStore, user: User) -> list[SkillPackage
     return store.repo.list_visible(user.id)
 
 
+def _assert_group_visible(
+    server: OctopServer,
+    user: User,
+    row: SkillPackageRow,
+    *,
+    locale: str,
+) -> None:
+    """User groups only narrow packages the shared flag already exposes."""
+    if _package_access(server).allows(
+        user_id=user.id,
+        is_admin=user.is_admin,
+        resource_type=RESOURCE_SKILL_PACKAGE,
+        resource_key=row.id,
+        is_owner=_package_owner(user, row),
+    ):
+        return
+    raise OctopError.localized(ErrorCode.SKILL_PACKAGE_NOT_FOUND, locale)
+
+
 def _package_visible_or_404(
     store: SkillPackageStore,
     package_id: str,
     user: User,
+    server: OctopServer,
     *,
     locale: str,
 ) -> SkillPackageRow:
     row = _package_or_404(store, package_id, locale=locale)
     store.assert_can_view(row, user)
+    _assert_group_visible(server, user, row, locale=locale)
     return row
 
 
@@ -297,15 +335,25 @@ async def list_skill_packages(
     user: User = Depends(require_permission("skill_packages")),
 ) -> list[dict[str, Any]]:
     store = _store(server)
+    access = _package_access(server)
+    rows = access.filter_rows(
+        _visible_packages(store, user),
+        user_id=user.id,
+        is_admin=user.is_admin,
+        resource_type=RESOURCE_SKILL_PACKAGE,
+        key_of=lambda row: row.id,
+        is_owner=lambda row: _package_owner(user, row),
+    )
     return [
         {
             **_row_public_dict(row),
             **_creator_fields(server, row.created_by),
+            **access.visibility(RESOURCE_SKILL_PACKAGE, row.id, shared=bool(row.shared)),
             "can_write": store.can_mutate(row, user),
             "can_copy": store.can_copy(row, user),
             "can_download": store.can_download(row, user),
         }
-        for row in _visible_packages(store, user)
+        for row in rows
         if not writable_only or store.can_mutate(row, user)
     ]
 
@@ -363,13 +411,18 @@ async def create_skill_package(
     store = _store(server)
     name = _required(body.name, "name")
     try:
+        shared = bool(body.shared)
+        if body.visibility == "owner":
+            shared = False
+        elif body.visibility in {"all", "groups"}:
+            shared = True
         row = store.create(
             name=name,
             description=body.description.strip(),
             created_by=str(user.id),
             icon_name=body.icon_name.strip(),
             icon_url=_icon_url(body.icon_url),
-            shared=bool(body.shared),
+            shared=shared,
             copy_policy=body.copy_policy,
             allow_download=bool(body.allow_download),
         )
@@ -377,7 +430,19 @@ async def create_skill_package(
         if is_skill_package_name_conflict(exc):
             raise_skill_package_name_taken(name)
         raise
-    return _package_payload_with_creator(server, store, row)
+    if body.visibility is not None:
+        _package_access(server).set_visibility(
+            RESOURCE_SKILL_PACKAGE,
+            row.id,
+            body.visibility,
+            body.group_ids,
+        )
+    return {
+        **_package_payload_with_creator(server, store, row),
+        **_package_access(server).visibility(
+            RESOURCE_SKILL_PACKAGE, row.id, shared=bool(row.shared)
+        ),
+    }
 
 
 @router.post(
@@ -420,13 +485,16 @@ async def get_skill_package(
 ) -> dict[str, Any]:
     store = _store(server)
     locale = resolve_request_locale(request)
-    row = _package_visible_or_404(store, package_id, user, locale=locale)
+    row = _package_visible_or_404(store, package_id, user, server, locale=locale)
     return {
         **_package_payload_with_creator(
             server,
             store,
             row,
             locale=locale,
+        ),
+        **_package_access(server).visibility(
+            RESOURCE_SKILL_PACKAGE, row.id, shared=bool(row.shared)
         ),
         "can_write": store.can_mutate(row, user),
         "can_copy": store.can_copy(row, user),
@@ -450,6 +518,11 @@ async def update_skill_package(
     description = body.description.strip() if body.description is not None else None
     icon_name = body.icon_name.strip() if body.icon_name is not None else None
     icon_url = _icon_url(body.icon_url) if body.icon_url is not None else None
+    shared_value = None if body.shared is None else int(body.shared)
+    if body.visibility == "owner":
+        shared_value = 0
+    elif body.visibility in {"all", "groups"}:
+        shared_value = 1
     try:
         store.repo.update(
             package_id,
@@ -459,19 +532,31 @@ async def update_skill_package(
             icon_url=icon_url,
             copy_policy=body.copy_policy,
             allow_download=None if body.allow_download is None else int(body.allow_download),
-            shared=None if body.shared is None else int(body.shared),
+            shared=shared_value,
         )
     except Exception as exc:
         if name is not None and is_skill_package_name_conflict(exc):
             raise_skill_package_name_taken(name)
         raise
+    if body.visibility is not None:
+        _package_access(server).set_visibility(
+            RESOURCE_SKILL_PACKAGE,
+            package_id,
+            body.visibility,
+            body.group_ids,
+        )
     updated = _package_or_404(store, package_id, locale=locale)
-    return _package_payload_with_creator(
-        server,
-        store,
-        updated,
-        locale=locale,
-    )
+    return {
+        **_package_payload_with_creator(
+            server,
+            store,
+            updated,
+            locale=locale,
+        ),
+        **_package_access(server).visibility(
+            RESOURCE_SKILL_PACKAGE, package_id, shared=bool(updated.shared)
+        ),
+    }
 
 
 @router.delete(
@@ -487,6 +572,7 @@ async def delete_skill_package(
     row = _package_or_404(store, package_id, locale=resolve_request_locale(request))
     store.assert_can_mutate(row, user)
     store.delete_package(package_id)
+    _package_access(server).clear(RESOURCE_SKILL_PACKAGE, package_id)
     if server.app_runtime is not None:
         await server.app_runtime.agent_registry.strip_skill_package_id(package_id)
 
@@ -500,7 +586,7 @@ async def list_package_skills(
 ) -> list[dict[str, Any]]:
     store = _store(server)
     locale = resolve_request_locale(request)
-    _package_visible_or_404(store, package_id, user, locale=locale)
+    _package_visible_or_404(store, package_id, user, server, locale=locale)
     return store.list_skill_summaries(package_id, locale=locale)
 
 
@@ -514,7 +600,7 @@ async def get_package_skill(
 ) -> dict[str, Any]:
     store = _store(server)
     locale = resolve_request_locale(request)
-    _package_visible_or_404(store, package_id, user, locale=locale)
+    _package_visible_or_404(store, package_id, user, server, locale=locale)
     skill = _package_skill_or_404(store, package_id, slug, locale=locale)
     raw = (store.package_skills_dir(package_id) / slug / "SKILL.md").read_text(encoding="utf-8")
     frontmatter, body = parse_frontmatter(raw)
@@ -535,7 +621,7 @@ async def list_package_skill_tree(
 ) -> list[dict[str, Any]]:
     store = _store(server)
     locale = resolve_request_locale(request)
-    _package_visible_or_404(store, package_id, user, locale=locale)
+    _package_visible_or_404(store, package_id, user, server, locale=locale)
     _package_skill_or_404(store, package_id, slug, locale=locale)
     return await asyncio.to_thread(store.list_skill_tree, package_id, slug, path)
 
@@ -554,7 +640,7 @@ async def read_package_skill_file(
 ) -> dict[str, Any]:
     store = _store(server)
     locale = resolve_request_locale(request)
-    _package_visible_or_404(store, package_id, user, locale=locale)
+    _package_visible_or_404(store, package_id, user, server, locale=locale)
     _package_skill_or_404(store, package_id, slug, locale=locale)
     content = await asyncio.to_thread(store.read_skill_file_text, package_id, slug, path)
     return {"path": path, "content": coerce_read_content(content)}
@@ -576,7 +662,7 @@ async def download_package_skill_file(
 ) -> Response:
     store = _store(server)
     locale = resolve_request_locale(request)
-    _package_visible_or_404(store, package_id, user, locale=locale)
+    _package_visible_or_404(store, package_id, user, server, locale=locale)
     _package_skill_or_404(store, package_id, slug, locale=locale)
     payload = await asyncio.to_thread(store.read_skill_file_bytes, package_id, slug, path)
     fname = path.replace("\\", "/").rstrip("/").rsplit("/", 1)[-1] or "download.bin"
@@ -619,8 +705,10 @@ async def export_skill_package(
     _user: User = Depends(require_permission("skill_packages")),
 ) -> Response:
     store = _store(server)
-    row = _package_or_404(store, package_id, locale=resolve_request_locale(request))
+    locale = resolve_request_locale(request)
+    row = _package_or_404(store, package_id, locale=locale)
     store.assert_can_download(row, _user)
+    _assert_group_visible(server, _user, row, locale=locale)
     try:
         packed = await asyncio.to_thread(_read_package_skill_files, store, package_id)
         payload = await asyncio.to_thread(build_skills_zip, packed)
