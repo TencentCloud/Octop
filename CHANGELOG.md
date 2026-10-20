@@ -16,6 +16,7 @@
 - 未登录、令牌无效或过期时，API 错误信息会按请求的 `Accept-Language` 语言返回（如中文返回「认证失败。」），不再固定英文；无请求头时保持原默认回退语言（#2187）
 - `SKILL.md` 带 UTF-8 BOM（如 Windows 记事本 / PowerShell 5.1 保存）时不再丢失 YAML frontmatter；技能路由改为复用统一的 `parse_frontmatter`（#2215）
 - `OCTOP_HOME` 迁移数据目录后，首次配置向导密码文件随之写入 `<OCTOP_HOME>/octop-login.txt`；旧位置 `~/octop-login.txt` 自动继承，不再生成冲突密码（#2171）
+- 热榜技能（`get_hot_topics`）抓取失败（网络异常、上游 403、超时）时如实返回错误信息，不再伪装成「今天没有热榜」的空列表；确实为空时仍按静默处理
 
 ### 变更
 - 技能包编辑抽屉：过滤无中文文案的预设图标；自定义图标 URL 增加 http(s) 校验；复制策略移至自定义图标下方

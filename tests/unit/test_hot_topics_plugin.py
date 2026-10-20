@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import asyncio
 import importlib.util
+import json
 from typing import Any
 
 from octop.infra.agents.plugins.bundled import default_bundled_plugins_root
@@ -88,3 +90,29 @@ def test_zhihu_uses_public_hot_list(monkeypatch: Any) -> None:
     assert items[0]["title"] == "测试知乎"
     assert items[0]["url"] == "https://www.zhihu.com/question/123"
     assert "100 万热度" in items[0]["extra"]
+
+
+class _FailingClient(_RecordingClient):
+    def get(self, url: str, **kwargs: Any) -> _FakeResp:
+        raise RuntimeError("http 403")
+
+
+class _EmptyClient(_RecordingClient):
+    def get(self, url: str, **kwargs: Any) -> _FakeResp:
+        return _FakeResp({"data": {"realtime": []}})
+
+
+def test_fetch_failure_is_not_reported_as_an_empty_hot_list(monkeypatch: Any) -> None:
+    """A transport/HTTP failure must not look like "the hot list has no entries today"."""
+    mod = _load_hot_topics()
+    monkeypatch.setattr(mod.httpx, "Client", _FailingClient)
+    data = json.loads(asyncio.run(mod.get_hot_topics(source="weibo")))
+    assert data["data"]["error"] == "http 403"
+    assert not data["data"].get("silent")
+    assert "403" in data["text"]
+
+    # An actually empty hot list keeps the silent convention.
+    monkeypatch.setattr(mod.httpx, "Client", _EmptyClient)
+    empty = json.loads(asyncio.run(mod.get_hot_topics(source="weibo")))
+    assert empty["data"] == {"source": "weibo", "items": [], "silent": True}
+    assert empty["text"] == ""

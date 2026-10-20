@@ -132,10 +132,10 @@ async def get_hot_topics(source: str = "weibo", limit: int = 20) -> str:
         )
     try:
         items = fetchers[src](n)
-    except Exception:
+    except Exception as exc:
         return _payload(
-            {"source": src, "items": [], "silent": True},
-            "",
+            {"source": src, "items": [], "error": str(exc)},
+            f"获取 {src} 热榜失败：{exc}",
         )
     if not items:
         return _payload({"source": src, "items": [], "silent": True}, "")
