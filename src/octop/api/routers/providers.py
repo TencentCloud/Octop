@@ -41,6 +41,7 @@ from octop.infra.agents.providers.store import (
     merge_stream_usage_extra,
     resolve_provider_stream_usage,
 )
+from octop.infra.db.repos._base import is_unique_violation
 from octop.infra.errors import ErrorCode, OctopError
 from octop.infra.utils.locale import resolve_request_locale
 from octop.infra.utils.ulid import new_ulid
@@ -274,16 +275,32 @@ async def admin_create_provider(
 ) -> dict[str, Any]:
     import json as _json
 
+    if server.services.provider_repo.get_by_name(body.name) is not None:
+        raise OctopError(
+            ErrorCode.PROVIDER_NAME_TAKEN,
+            f"provider {body.name!r} already exists",
+        )
     models_json = _json.dumps(body.models) if body.models is not None else None
-    pid = server.services.provider_repo.create(
-        name=body.name,
-        kind=body.kind,
-        base_url=body.base_url,
-        api_key=body.api_key,
-        extra_json=merge_stream_usage_extra(body.extra_json, body.stream_usage),
-        models_json=models_json,
-        note=body.note,
-    )
+    try:
+        pid = server.services.provider_repo.create(
+            name=body.name,
+            kind=body.kind,
+            base_url=body.base_url,
+            api_key=body.api_key,
+            extra_json=merge_stream_usage_extra(body.extra_json, body.stream_usage),
+            models_json=models_json,
+            note=body.note,
+        )
+    except Exception as exc:
+        # Two concurrent creates can both pass the pre-check; the loser then
+        # hits the UNIQUE(name) index. Report the same 409 as the pre-check
+        # instead of letting the IntegrityError surface as a 500.
+        if not is_unique_violation(exc):
+            raise
+        raise OctopError(
+            ErrorCode.PROVIDER_NAME_TAKEN,
+            f"provider {body.name!r} already exists",
+        ) from exc
     if server.app_runtime:
         await server.app_runtime.agent_registry.on_provider_changed(provider_name=body.name)
     return _row_to_dict(server.services.provider_repo.get(pid))

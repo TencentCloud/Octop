@@ -13,6 +13,7 @@ from pydantic import BaseModel, Field
 from octop.api.deps import get_server, require_database, resolve_user_from_token, sign_token
 from octop.infra.agents.providers.presets import load_provider_presets
 from octop.infra.agents.providers.probe import make_probe_provider_row, probe_provider_row
+from octop.infra.db.repos._base import is_unique_violation
 from octop.infra.errors import ErrorCode, OctopError
 from octop.infra.setup import password_file as _wizard
 from octop.infra.setup.wizard_tokens import RateLimited
@@ -199,14 +200,29 @@ async def _apply_provider_draft(server: Any, draft: ProviderDraftBody) -> None:
         models[0]["enabled"] = True
     if not models:
         raise OctopError(ErrorCode.INTERNAL_ERROR, "at least one model is required", status=400)
-    server.services.provider_repo.create(
-        name=draft.name,
-        kind=draft.type,
-        base_url=base_url,
-        api_key=api_key,
-        models_json=json.dumps(models),
-        extra_json=json.dumps(draft.extras) if draft.extras else None,
-    )
+    if server.services.provider_repo.get_by_name(draft.name) is not None:
+        raise OctopError(
+            ErrorCode.PROVIDER_NAME_TAKEN,
+            f"provider {draft.name!r} already exists",
+        )
+    try:
+        server.services.provider_repo.create(
+            name=draft.name,
+            kind=draft.type,
+            base_url=base_url,
+            api_key=api_key,
+            models_json=json.dumps(models),
+            extra_json=json.dumps(draft.extras) if draft.extras else None,
+        )
+    except Exception as exc:
+        # The wizard and the admin API can race on the same name; the loser
+        # hits the UNIQUE(name) index and must still report 409, not 500.
+        if not is_unique_violation(exc):
+            raise
+        raise OctopError(
+            ErrorCode.PROVIDER_NAME_TAKEN,
+            f"provider {draft.name!r} already exists",
+        ) from exc
     server.services.settings_repo.set_active_model(draft.name, models[0]["id"])
     if server.app_runtime is not None:
         await server.app_runtime.agent_registry.on_provider_changed()

@@ -2,9 +2,15 @@
 
 from __future__ import annotations
 
+import sqlite3
 import time
 from collections.abc import Mapping, Sequence
 from typing import Any, Protocol, TypeVar
+
+try:
+    from psycopg import errors as _pg_errors
+except ImportError:  # pragma: no cover - optional PostgreSQL driver
+    _pg_errors = None  # type: ignore[assignment]
 
 R_co = TypeVar("R_co", covariant=True)
 
@@ -12,6 +18,19 @@ UNSET = object()
 
 # Row mapping returned by the DB driver (sqlite3.Row today; asyncpg.Record later).
 DbRow = Mapping[str, Any]
+
+
+def is_unique_violation(exc: BaseException) -> bool:
+    """Whether *exc* is a UNIQUE-constraint violation from either driver.
+
+    SQLite reports every constraint kind through ``sqlite3.IntegrityError``
+    with the violated constraint named in the message; psycopg exposes a
+    dedicated ``UniqueViolation`` subclass. Callers use this to turn a lost
+    check-then-insert race into the same conflict response as the pre-check.
+    """
+    if isinstance(exc, sqlite3.IntegrityError):
+        return "unique" in str(exc).lower()
+    return _pg_errors is not None and isinstance(exc, _pg_errors.UniqueViolation)
 
 
 class _FromRow(Protocol[R_co]):
