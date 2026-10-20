@@ -34,8 +34,9 @@ def _extract_model_ref(request: ModelRequest[Any]) -> str:
     config = getattr(configurable, "config", None)
     if isinstance(config, dict):
         cfg = config.get("configurable")
-        if isinstance(cfg, dict) and isinstance(cfg.get("model"), str):
-            return cfg["model"].strip()
+        model_ref = cfg.get("model") if isinstance(cfg, dict) else None
+        if isinstance(model_ref, str):
+            return model_ref.strip()
     # Check model attributes
     model = getattr(request, "model", None)
     if model is not None:
@@ -58,6 +59,7 @@ class ProviderRateLimitRetryMiddleware(AgentMiddleware[Any, Any]):
         jitter: bool = True,
         on_failure: Callable[[Exception], str] | Literal["error"] | None = None,
         key_resolver: Callable[[ModelRequest[Any]], str] | None = None,
+        limiter_key_resolver: Callable[[str], str] | None = None,
     ) -> None:
         super().__init__()
         self._registry = registry or RATE_LIMIT_REGISTRY
@@ -67,6 +69,7 @@ class ProviderRateLimitRetryMiddleware(AgentMiddleware[Any, Any]):
         self.jitter = jitter
         self.on_failure = on_failure
         self._key_resolver = key_resolver
+        self._limiter_key_resolver = limiter_key_resolver
 
     def _resolve_limiter(self, request: ModelRequest[Any]) -> ProviderLimiter:
         if self._key_resolver is not None:
@@ -75,6 +78,10 @@ class ProviderRateLimitRetryMiddleware(AgentMiddleware[Any, Any]):
                 return self._registry.get(key)
 
         ref = _extract_model_ref(request)
+        if self._limiter_key_resolver is not None:
+            key = self._limiter_key_resolver(ref)
+            if key:
+                return self._registry.get(key)
         provider = ref.partition("/")[0] if "/" in ref else ref
         key = make_limiter_key(provider)
         return self._registry.get(key)
@@ -98,6 +105,7 @@ class ProviderRateLimitRetryMiddleware(AgentMiddleware[Any, Any]):
         last_error: Exception | None = None
 
         for attempt in range(self.max_retries + 1):
+            delay = 0.0
             limiter.acquire()
             try:
                 return handler(request)
@@ -122,10 +130,10 @@ class ProviderRateLimitRetryMiddleware(AgentMiddleware[Any, Any]):
                     delay,
                     exc,
                 )
-                if delay > 0:
-                    time.sleep(delay)
             finally:
                 limiter.release_concurrency()
+            if delay > 0:
+                time.sleep(delay)
 
         return self._handle_failure(last_error or RuntimeError("retry loop exhausted"))
 
@@ -138,6 +146,7 @@ class ProviderRateLimitRetryMiddleware(AgentMiddleware[Any, Any]):
         last_error: Exception | None = None
 
         for attempt in range(self.max_retries + 1):
+            delay = 0.0
             await limiter.aacquire()
             try:
                 return await handler(request)
@@ -162,10 +171,10 @@ class ProviderRateLimitRetryMiddleware(AgentMiddleware[Any, Any]):
                     delay,
                     exc,
                 )
-                if delay > 0:
-                    await asyncio.sleep(delay)
             finally:
                 limiter.arelease_concurrency()
+            if delay > 0:
+                await asyncio.sleep(delay)
 
         return self._handle_failure(last_error or RuntimeError("retry loop exhausted"))
 

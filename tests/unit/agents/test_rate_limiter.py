@@ -149,6 +149,37 @@ async def test_concurrency_limiter_async_context_manager() -> None:
     assert limiter.current_in_flight == 0
 
 
+@pytest.mark.asyncio
+async def test_concurrency_limiter_shares_capacity_between_sync_and_async_callers() -> None:
+    limiter = ConcurrencyLimiter(max_concurrency=1)
+
+    assert limiter.acquire(timeout=0) is True
+    assert await limiter.aacquire(timeout=0.01) is False
+    assert limiter.current_in_flight == 1
+
+    limiter.release()
+    assert await limiter.aacquire(timeout=0.01) is True
+    assert limiter.current_in_flight == 1
+    limiter.arelease()
+
+    assert limiter.current_in_flight == 0
+
+
+@pytest.mark.asyncio
+async def test_concurrency_limiter_honors_a_decreased_limit_for_async_callers() -> None:
+    limiter = ConcurrencyLimiter(max_concurrency=2)
+
+    assert await limiter.aacquire(timeout=0) is True
+    assert await limiter.aacquire(timeout=0) is True
+    limiter.update_limit(1)
+
+    limiter.arelease()
+    assert await limiter.aacquire(timeout=0.01) is False
+    limiter.arelease()
+    assert await limiter.aacquire(timeout=0.01) is True
+    limiter.arelease()
+
+
 def test_make_limiter_key_hashing() -> None:
     # Empty / None key
     assert make_limiter_key("glm") == "glm:default"

@@ -207,7 +207,6 @@ class ConcurrencyLimiter:
         self._current = 0
         self._lock = threading.Lock()
         self._cond = threading.Condition(self._lock)
-        self._async_sem = asyncio.Semaphore(max_concurrency)
 
     @property
     def max_concurrency(self) -> int:
@@ -223,12 +222,8 @@ class ConcurrencyLimiter:
         if max_concurrency < 1:
             return
         with self._cond:
-            diff = max_concurrency - self._max
             self._max = max_concurrency
-            if diff > 0:
-                for _ in range(diff):
-                    self._async_sem.release()
-                self._cond.notify_all()
+            self._cond.notify_all()
 
     def acquire(self, *, timeout: float | None = None) -> bool:
         """Acquire a concurrency slot synchronously."""
@@ -246,24 +241,25 @@ class ConcurrencyLimiter:
                 self._cond.notify()
 
     async def aacquire(self, *, timeout: float | None = None) -> bool:
-        """Acquire a concurrency slot asynchronously."""
-        try:
-            if timeout is not None:
-                await asyncio.wait_for(self._async_sem.acquire(), timeout=timeout)
-            else:
-                await self._async_sem.acquire()
+        """Acquire from the same counter used by synchronous callers."""
+        start = time.monotonic()
+        while True:
             with self._lock:
-                self._current += 1
-            return True
-        except TimeoutError:
-            return False
+                if self._current < self._max:
+                    self._current += 1
+                    return True
+
+            if timeout is not None:
+                remaining = timeout - (time.monotonic() - start)
+                if remaining <= 0:
+                    return False
+                await asyncio.sleep(min(0.01, remaining))
+            else:
+                await asyncio.sleep(0.01)
 
     def arelease(self) -> None:
         """Release a concurrency slot asynchronously."""
-        with self._lock:
-            if self._current > 0:
-                self._current -= 1
-        self._async_sem.release()
+        self.release()
 
     @contextmanager
     def concurrency(self, *, timeout: float | None = None) -> Iterator[None]:

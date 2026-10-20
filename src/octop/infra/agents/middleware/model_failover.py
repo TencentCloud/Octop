@@ -6,7 +6,7 @@ import asyncio
 import logging
 import time
 from collections.abc import Awaitable, Callable, Sequence
-from typing import Any, Literal, cast
+from typing import Any, Literal
 
 from langchain.agents.middleware import AgentMiddleware, ModelRequest, ModelResponse
 from langchain.agents.middleware.model_retry import ModelRetryMiddleware
@@ -140,6 +140,7 @@ class SafeModelFailoverMiddleware(AgentMiddleware[Any, Any]):
         )
 
         for attempt in range(retries + 1):
+            delay = 0.0
             limiter.acquire()
             try:
                 return handler(routed)
@@ -164,10 +165,10 @@ class SafeModelFailoverMiddleware(AgentMiddleware[Any, Any]):
                     delay,
                     exc,
                 )
-                if delay > 0:
-                    time.sleep(delay)
             finally:
                 limiter.release_concurrency()
+            if delay > 0:
+                time.sleep(delay)
 
         raise RuntimeError("retry loop exhausted")
 
@@ -200,6 +201,7 @@ class SafeModelFailoverMiddleware(AgentMiddleware[Any, Any]):
         )
 
         for attempt in range(retries + 1):
+            delay = 0.0
             await limiter.aacquire()
             try:
                 return await handler(routed)
@@ -224,10 +226,10 @@ class SafeModelFailoverMiddleware(AgentMiddleware[Any, Any]):
                     delay,
                     exc,
                 )
-                if delay > 0:
-                    await asyncio.sleep(delay)
             finally:
                 limiter.arelease_concurrency()
+            if delay > 0:
+                await asyncio.sleep(delay)
 
         raise RuntimeError("retry loop exhausted")
 
@@ -302,7 +304,7 @@ class SafeModelFailoverMiddleware(AgentMiddleware[Any, Any]):
                 logger.warning("AUTO model route failed; trying next candidate: model=%s", ref)
                 continue
             self._health.record_success(ref)
-            return cast(ModelResponse[Any], response)
+            return response
 
         return self._failure_response(
             last_error or RuntimeError("no healthy AUTO model is available")
@@ -342,7 +344,7 @@ class SafeModelFailoverMiddleware(AgentMiddleware[Any, Any]):
                 logger.warning("AUTO model route failed; trying next candidate: model=%s", ref)
                 continue
             self._health.record_success(ref)
-            return cast(ModelResponse[Any], response)
+            return response
 
         return self._failure_response(
             last_error or RuntimeError("no healthy AUTO model is available")

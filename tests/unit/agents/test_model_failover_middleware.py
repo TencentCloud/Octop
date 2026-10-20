@@ -13,6 +13,11 @@ from octop.infra.agents.middleware.model_failover import (
     SafeModelFailoverMiddleware,
 )
 from octop.infra.agents.providers.health import ModelHealthRegistry
+from octop.infra.agents.providers.rate_limiter import (
+    ProviderRateLimitConfig,
+    RateLimitRegistry,
+    make_limiter_key,
+)
 
 
 def _model(ref: str, cap: int) -> SimpleNamespace:
@@ -61,6 +66,99 @@ async def test_auto_route_switches_after_retry_exhaustion(monkeypatch) -> None:
     assert attempts == [("p/a", "p/a"), ("p/a", "p/a"), ("p/b", "p/b")]
     assert configurable["model"] == "p/b"
     assert not health.is_routable("p/a")
+
+
+def test_failover_releases_concurrency_before_retry_sleep(monkeypatch) -> None:
+    model = _model("p/a", 100_000)
+    registry = RateLimitRegistry()
+    limiter = registry.configure(
+        make_limiter_key("p"),
+        ProviderRateLimitConfig(max_concurrent_requests=1),
+    )
+    middleware = SafeModelFailoverMiddleware(
+        health=ModelHealthRegistry(clock=lambda: 100.0),
+        candidates=lambda _current, _vision: [],
+        model_for_ref=lambda _ref: model,
+        max_retries=1,
+        initial_delay=1,
+        max_delay=1,
+        rate_limit_registry=registry,
+        on_failure="error",
+    )
+    monkeypatch.setattr(
+        model_failover,
+        "_configurable",
+        lambda _request: {"model": "p/a", "octop_auto_route": False},
+    )
+    in_flight_during_sleep: list[int] = []
+    attempts = 0
+
+    def fake_sleep(_delay: float) -> None:
+        in_flight_during_sleep.append(limiter.concurrency_limiter.current_in_flight)
+
+    def handler(_request: ModelRequest) -> ModelResponse:
+        nonlocal attempts
+        attempts += 1
+        if attempts == 1:
+            raise RuntimeError("HTTP 503 service unavailable")
+        return ModelResponse(result=[AIMessage(content="success")])
+
+    monkeypatch.setattr(model_failover.time, "sleep", fake_sleep)
+
+    response = middleware.wrap_model_call(
+        ModelRequest(model=model, messages=[HumanMessage(content="hello")]),
+        handler,
+    )
+
+    assert response.result[0].content == "success"
+    assert in_flight_during_sleep == [0]
+
+
+@pytest.mark.asyncio
+async def test_failover_async_releases_concurrency_before_retry_sleep(monkeypatch) -> None:
+    model = _model("p/a", 100_000)
+    registry = RateLimitRegistry()
+    limiter = registry.configure(
+        make_limiter_key("p"),
+        ProviderRateLimitConfig(max_concurrent_requests=1),
+    )
+    middleware = SafeModelFailoverMiddleware(
+        health=ModelHealthRegistry(clock=lambda: 100.0),
+        candidates=lambda _current, _vision: [],
+        model_for_ref=lambda _ref: model,
+        max_retries=1,
+        initial_delay=1,
+        max_delay=1,
+        rate_limit_registry=registry,
+        on_failure="error",
+    )
+    monkeypatch.setattr(
+        model_failover,
+        "_configurable",
+        lambda _request: {"model": "p/a", "octop_auto_route": False},
+    )
+    in_flight_during_sleep: list[int] = []
+    attempts = 0
+
+    async def fake_sleep(_delay: float) -> None:
+        in_flight_during_sleep.append(limiter.concurrency_limiter.current_in_flight)
+
+    async def handler(_request: ModelRequest) -> ModelResponse:
+        nonlocal attempts
+        attempts += 1
+        if attempts == 1:
+            raise RuntimeError("HTTP 503 service unavailable")
+        return ModelResponse(result=[AIMessage(content="success")])
+
+    monkeypatch.setattr(model_failover.asyncio, "sleep", fake_sleep)
+
+    response = await middleware.awrap_model_call(
+        ModelRequest(model=model, messages=[HumanMessage(content="hello")]),
+        handler,
+    )
+
+    assert response.result[0].content == "success"
+    assert in_flight_during_sleep == [0]
 
 
 @pytest.mark.parametrize("automatic", [False, True])

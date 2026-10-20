@@ -186,7 +186,7 @@ def calculate_backoff_delay(
             delay += rng(0.0, min(1.0, retry_after * 0.1))
         return min(max_delay, max(0.0, delay))
 
-    ceiling = min(max_delay, base_delay * (2**attempt))
+    ceiling = float(min(max_delay, base_delay * (2**attempt)))
     if jitter:
         return rng(0.0, ceiling)
     return ceiling
