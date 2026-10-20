@@ -81,6 +81,8 @@ import { showConfirmModal } from "../../utils/confirmModal";
 import { saveBlobAsFile } from "../../utils/saveBlobAsFile";
 import { createDetailRequestGate } from "../../utils/detailRequestGate";
 import { PackageIcon } from "./PackageIcon";
+import { ResourceVisibilityFields } from "../../components/ResourceVisibilityFields";
+import type { ResourceVisibilityMode } from "../../api/modules/userGroups";
 import { PackageSkillCard } from "./PackageSkillCard";
 import PackageSkillsTable from "./PackageSkillsTable";
 import { SkillsetFromHubDrawer } from "./SkillsetFromHubDrawer";
@@ -189,6 +191,9 @@ export default function SkillPackagesPage() {
   const [detailLoading, setDetailLoading] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [packageDrawerOpen, setPackageDrawerOpen] = useState(false);
+  const [packageVisibility, setPackageVisibility] =
+    useState<ResourceVisibilityMode>("all");
+  const [packageGroupIds, setPackageGroupIds] = useState<string[]>([]);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [importModalOpen, setImportModalOpen] = useState(false);
   const [hubOpen, setHubOpen] = useState(false);
@@ -343,10 +348,11 @@ export default function SkillPackagesPage() {
       description: "",
       icon_name: undefined,
       icon_url: "",
-      shared: false,
       copy_policy: "snapshot",
       allow_download: true,
     });
+    setPackageVisibility("owner");
+    setPackageGroupIds([]);
     setPackageDrawerOpen(true);
   };
 
@@ -357,18 +363,34 @@ export default function SkillPackagesPage() {
       description: item.description,
       icon_name: item.icon_name,
       icon_url: item.icon_url,
-      shared: Boolean(item.shared),
       copy_policy: item.copy_policy ?? "snapshot",
       allow_download: item.allow_download !== false,
     });
+    setPackageVisibility(
+      !item.shared || item.visibility === "owner"
+        ? "owner"
+        : item.visibility === "groups"
+        ? "groups"
+        : "all",
+    );
+    setPackageGroupIds(
+      item.shared && item.visibility === "groups" ? item.group_ids ?? [] : [],
+    );
     setPackageDrawerOpen(true);
   };
 
   const savePackage = async () => {
     const values = await packageForm.validateFields();
+    if (packageVisibility === "groups" && packageGroupIds.length === 0) {
+      message.error(t("resourceVisibility.needGroup"));
+      return;
+    }
     const payload = {
       ...values,
       icon_url: values.icon_url?.trim() || undefined,
+      shared: packageVisibility !== "owner",
+      visibility: packageVisibility,
+      group_ids: packageVisibility === "groups" ? packageGroupIds : [],
     };
     try {
       const next = editingPackageId
@@ -1123,21 +1145,22 @@ export default function SkillPackagesPage() {
           >
             <Switch />
           </Form.Item>
-          <div className={styles.formOptions}>
-            <div className={styles.formOptionRow}>
-              <div className={styles.formOptionCopy}>
-                <span className={styles.switchLabel}>
-                  {t("skillPackages.shared")}
-                </span>
-                <span className={styles.formOptionHint}>
-                  {t("skillPackages.sharedHint")}
-                </span>
-              </div>
-              <Form.Item name="shared" valuePropName="checked" noStyle>
-                <Switch size="small" />
-              </Form.Item>
-            </div>
-          </div>
+          <Form.Item
+            label={t("resourceVisibility.label")}
+            extra={t("skillPackages.visibilityHint")}
+          >
+            <ResourceVisibilityFields
+              allowOwner
+              visibility={packageVisibility}
+              groupIds={packageGroupIds}
+              onChange={(next) => {
+                setPackageVisibility(next.visibility);
+                setPackageGroupIds(
+                  next.visibility === "groups" ? next.groupIds : [],
+                );
+              }}
+            />
+          </Form.Item>
         </Form>
       </Drawer>
 

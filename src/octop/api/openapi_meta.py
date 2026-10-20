@@ -64,7 +64,7 @@ OPENAPI_TAGS: list[dict[str, str]] = [
     },
     {"name": "auth", "description": "Sign in, sign out, and manage the current user profile."},
     {"name": "health", "description": "Liveness probe for load balancers and monitoring."},
-    {"name": "users", "description": "Admin user management (create, disable, reset passwords)."},
+    {"name": "users", "description": "Admin user management, roles, and user groups."},
     {
         "name": "agents",
         "description": "Create and configure AI agents; start, stop, and inspect runtime status.",
@@ -115,7 +115,7 @@ OPENAPI_TAGS: list[dict[str, str]] = [
     },
     {
         "name": "search",
-        "description": "Web-search provider API key probes (Tavily, Brave, Google, Kimi).",
+        "description": "Web-search provider API key probes (Tavily, Brave, DeepSeek, Google, Kimi).",
     },
     {"name": "providers", "description": "LLM provider configuration and active model selection."},
     {"name": "voice", "description": "Speech-to-text and text-to-speech provider configuration."},

@@ -21,6 +21,10 @@ import {
 } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { request } from "../../../../../api/request";
+import {
+  userGroupsApi,
+  type UserGroup,
+} from "../../../../../api/modules/userGroups";
 import type { ProviderRow, ProviderModel } from "../../useProviders";
 import { isEmbeddingModel } from "../../useProviders";
 import { isOnnxProviderRow } from "../../presetUtils";
@@ -61,7 +65,15 @@ interface ModelListEditorProps {
   onTestModel?: (
     modelId: string,
     modelName: string,
-  ) => Promise<{ ok: boolean; latency_ms?: number; error?: string }>;
+    apiMode?: ProviderModel["api_mode"],
+    apiFallback?: ProviderModel["api_fallback"],
+  ) => Promise<{
+    ok: boolean;
+    latency_ms?: number;
+    error?: string;
+    fallback_used?: boolean;
+    api_mode_used?: ProviderModel["api_mode"];
+  }>;
 }
 
 const INPUT_TYPE_OPTIONS = [
@@ -69,6 +81,120 @@ const INPUT_TYPE_OPTIONS = [
   { value: "image", label: "inputTypeImage" as const },
   { value: "audio", label: "inputTypeAudio" as const },
 ];
+
+function ModelGroupAccess({
+  models,
+  onPatch,
+}: {
+  models: ProviderModel[];
+  onPatch: (modelId: string, patch: Partial<ProviderModel>) => void;
+}) {
+  const { t } = useTranslation();
+  const [open, setOpen] = useState(false);
+  const [groups, setGroups] = useState<UserGroup[] | null>(null);
+  const restricted = models.filter(
+    (model) => model.visibility === "groups",
+  ).length;
+
+  useEffect(() => {
+    if (!open || groups !== null) return;
+    let cancelled = false;
+    userGroupsApi
+      .list()
+      .then((rows) => {
+        if (!cancelled) setGroups(rows);
+      })
+      .catch(() => {
+        if (!cancelled) setGroups([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [open, groups]);
+
+  return (
+    <div className={styles.modelAccess}>
+      <button
+        type="button"
+        className={styles.modelAccessToggle}
+        onClick={() => setOpen((current) => !current)}
+      >
+        <span>{t("models.groupAccessTitle")}</span>
+        {restricted > 0 ? (
+          <span className={styles.modelAccessCount}>
+            {t("models.groupAccessCount", { count: restricted })}
+          </span>
+        ) : null}
+        {open ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+      </button>
+      {open ? (
+        <div className={styles.modelAccessBody}>
+          <p className={styles.modelAccessHint}>
+            {t("models.groupAccessHint")}
+          </p>
+          <div className={styles.modelAccessList}>
+            {models.map((model) => {
+              const visibility =
+                model.visibility === "groups" ? "groups" : "all";
+              const groupIds = model.group_ids ?? [];
+              return (
+                <div key={model.id} className={styles.modelAccessRow}>
+                  <div className={styles.modelAccessName}>
+                    <span>{model.name}</span>
+                    {model.name !== model.id ? (
+                      <span className={styles.modelListItemId}>{model.id}</span>
+                    ) : null}
+                  </div>
+                  <Select
+                    size="small"
+                    value={visibility}
+                    options={[
+                      { value: "all", label: t("resourceVisibility.all") },
+                      {
+                        value: "groups",
+                        label: t("resourceVisibility.groups"),
+                      },
+                    ]}
+                    onChange={(next: "all" | "groups") =>
+                      onPatch(model.id, {
+                        visibility: next,
+                        group_ids: next === "groups" ? groupIds : [],
+                      })
+                    }
+                  />
+                  {visibility === "groups" ? (
+                    <Select
+                      className={styles.modelAccessGroups}
+                      size="small"
+                      mode="multiple"
+                      value={groupIds}
+                      placeholder={t("resourceVisibility.groupPlaceholder")}
+                      options={(groups ?? []).map((group) => ({
+                        value: group.user_group_id,
+                        label:
+                          group.enabled === false
+                            ? `${group.name} (${t(
+                                "adminUsers.statusDisabled",
+                              )})`
+                            : group.name,
+                      }))}
+                      onChange={(ids) =>
+                        onPatch(model.id, {
+                          visibility: "groups",
+                          group_ids: ids,
+                        })
+                      }
+                    />
+                  ) : null}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      ) : null}
+    </div>
+  );
+}
 
 export function ModelListEditor({
   provider,
@@ -106,6 +232,7 @@ export function ModelListEditor({
   const formAnchorRef = useRef<HTMLDivElement>(null);
   const isOnnx = isOnnxProviderRow(provider);
   const purposeValue = Form.useWatch("purpose", form);
+  const apiModeValue = Form.useWatch("api_mode", form);
   const embeddingOn = isOnnx || purposeValue === "embedding";
 
   const handleToggleEnabled = (
@@ -124,6 +251,14 @@ export function ModelListEditor({
     }
     onModelsChange(
       models.map((m) => (m.id === modelId ? { ...m, enabled } : m)),
+    );
+  };
+
+  const patchModel = (modelId: string, patch: Partial<ProviderModel>) => {
+    onModelsChange(
+      models.map((model) =>
+        model.id === modelId ? { ...model, ...patch } : model,
+      ),
     );
   };
 
@@ -149,9 +284,17 @@ export function ModelListEditor({
     modelId: string,
     modelName: string,
     embedding?: boolean,
-  ): Promise<{ ok: boolean; latency_ms?: number; error?: string }> => {
+    apiMode?: ProviderModel["api_mode"],
+    apiFallback?: ProviderModel["api_fallback"],
+  ): Promise<{
+    ok: boolean;
+    latency_ms?: number;
+    error?: string;
+    fallback_used?: boolean;
+    api_mode_used?: ProviderModel["api_mode"];
+  }> => {
     if (onTestModel) {
-      return onTestModel(modelId, modelName);
+      return onTestModel(modelId, modelName, apiMode, apiFallback);
     }
     const isEmbedding =
       embedding ??
@@ -160,23 +303,40 @@ export function ModelListEditor({
       ok: boolean;
       latency_ms?: number;
       error?: string;
+      fallback_used?: boolean;
+      api_mode_used?: ProviderModel["api_mode"];
     }>(`${apiPrefix}/${provider.id}/test`, {
       method: "POST",
-      body: JSON.stringify({ model_id: modelId, embedding: isEmbedding }),
+      body: JSON.stringify({
+        model_id: modelId,
+        api_mode: apiMode,
+        api_fallback: apiFallback,
+        embedding: isEmbedding,
+      }),
     });
   };
 
   const handleTestModel = async (modelId: string, modelName: string) => {
     setTestingIds((prev) => new Set(prev).add(modelId));
     try {
-      const result = await runTest(modelId, modelName);
+      const result = await runTest(
+        modelId,
+        modelName,
+        undefined,
+        models.find((m) => m.id === modelId)?.api_mode,
+        models.find((m) => m.id === modelId)?.api_fallback,
+      );
       if (result.ok) {
-        message.success(
-          t("models.testSuccess", {
-            name: modelName,
-            time: result.latency_ms ?? 0,
-          }),
-        );
+        if (result.fallback_used) {
+          message.warning(t("models.apiFallbackTestUsed"));
+        } else {
+          message.success(
+            t("models.testSuccess", {
+              name: modelName,
+              time: result.latency_ms ?? 0,
+            }),
+          );
+        }
         setTestResults((prev) => new Map(prev).set(modelId, "success"));
       } else {
         message.error(
@@ -216,16 +376,35 @@ export function ModelListEditor({
     }
     setTestingForm(true);
     try {
-      const result = await runTest(modelId, modelId, embeddingOn);
+      const apiMode = form.getFieldValue("api_mode") as
+        | ProviderModel["api_mode"]
+        | undefined;
+      const apiFallback =
+        apiMode === "responses"
+          ? (form.getFieldValue("api_fallback") as
+              | ProviderModel["api_fallback"]
+              | undefined)
+          : "none";
+      const result = await runTest(
+        modelId,
+        modelId,
+        embeddingOn,
+        apiMode,
+        apiFallback,
+      );
       const modelName =
         (form.getFieldValue("name") as string | undefined)?.trim() || modelId;
       if (result.ok) {
-        message.success(
-          t("models.testSuccess", {
-            name: modelName,
-            time: result.latency_ms ?? 0,
-          }),
-        );
+        if (result.fallback_used) {
+          message.warning(t("models.apiFallbackTestUsed"));
+        } else {
+          message.success(
+            t("models.testSuccess", {
+              name: modelName,
+              time: result.latency_ms ?? 0,
+            }),
+          );
+        }
       } else {
         message.error(
           t("models.testFailed", { error: result.error ?? "unknown" }),
@@ -262,6 +441,14 @@ export function ModelListEditor({
       entry.context_window = values.context_window as number;
     if (values.max_tokens != null)
       entry.max_tokens = values.max_tokens as number;
+    entry.api_mode =
+      (values.api_mode as ProviderModel["api_mode"] | undefined) ||
+      "chat_completions";
+    entry.api_fallback =
+      entry.api_mode === "responses"
+        ? (values.api_fallback as ProviderModel["api_fallback"] | undefined) ??
+          "none"
+        : "none";
     if (values.reasoning != null) entry.reasoning = values.reasoning as boolean;
     if (values.reasoning === true) {
       const efforts = (values.reasoning_efforts as string[] | undefined) || [];
@@ -336,6 +523,8 @@ export function ModelListEditor({
       context_window:
         (model as Record<string, unknown>).context_window ?? undefined,
       max_tokens: (model as Record<string, unknown>).max_tokens ?? undefined,
+      api_mode: model.api_mode ?? "chat_completions",
+      api_fallback: model.api_fallback ?? "none",
       reasoning: (model as Record<string, unknown>).reasoning ?? undefined,
       reasoning_toggle: model.reasoning_config?.toggle ?? true,
       reasoning_efforts: model.reasoning_config?.efforts ?? [],
@@ -345,9 +534,8 @@ export function ModelListEditor({
       reasoning_effort_type: model.reasoning_config?.effort_type ?? "enum",
       reasoning_adapter: model.reasoning_config?.adapter ?? "thinking",
       input: model.input ?? ["text"],
-      purpose: Boolean(model.embedding || model.task === "embedding")
-        ? "embedding"
-        : "chat",
+      purpose:
+        model.embedding || model.task === "embedding" ? "embedding" : "chat",
     });
     const hasAdvanced = (model as Record<string, unknown>).reasoning != null;
     setShowAdvanced(hasAdvanced);
@@ -553,6 +741,9 @@ export function ModelListEditor({
           })
         )}
       </div>
+      {models.length > 0 ? (
+        <ModelGroupAccess models={models} onPatch={patchModel} />
+      ) : null}
 
       {isFormVisible ? (
         <div ref={formAnchorRef} className={styles.modelAddForm}>
@@ -595,6 +786,53 @@ export function ModelListEditor({
 
             {embeddingOn ? null : (
               <>
+                {provider.kind !== "anthropic" &&
+                  provider.kind !== "bedrock" && (
+                    <Form.Item
+                      name="api_mode"
+                      label={t("models.apiMode")}
+                      extra={t("models.apiModeHint")}
+                      initialValue="chat_completions"
+                      style={{ marginBottom: 12 }}
+                    >
+                      <Select
+                        options={[
+                          {
+                            value: "chat_completions",
+                            label: t("models.apiModeChatCompletions"),
+                          },
+                          {
+                            value: "responses",
+                            label: t("models.apiModeResponses"),
+                          },
+                        ]}
+                      />
+                    </Form.Item>
+                  )}
+                {provider.kind !== "anthropic" &&
+                  provider.kind !== "bedrock" &&
+                  apiModeValue === "responses" && (
+                    <Form.Item
+                      name="api_fallback"
+                      label={t("models.apiFallback")}
+                      extra={t("models.apiFallbackHint")}
+                      initialValue="none"
+                      style={{ marginBottom: 12 }}
+                    >
+                      <Select
+                        options={[
+                          {
+                            value: "none",
+                            label: t("models.apiFallbackNone"),
+                          },
+                          {
+                            value: "chat_completions",
+                            label: t("models.apiFallbackChatCompletions"),
+                          },
+                        ]}
+                      />
+                    </Form.Item>
+                  )}
                 <Form.Item
                   name="input"
                   label={t("models.inputTypes")}

@@ -57,7 +57,12 @@ export default function ExpertComposerDefaultsFields({
         if (cancelled) return;
         setConnectors(
           (instances ?? [])
-            .filter((item) => item.status === "active" && item.has_credentials)
+            .filter(
+              (item) =>
+                item.status === "active" &&
+                item.has_credentials &&
+                item.usable !== false,
+            )
             .map((item) => ({
               value: item.mcp_server_name,
               label:

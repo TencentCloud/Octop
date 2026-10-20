@@ -20,6 +20,7 @@ from octop.api.routers.chat.serialize import (
     _clamp_history_limit,
     _load_projected_thread_messages,
 )
+from octop.i18n import error_message
 from octop.infra.agents.security.hitl_session import parse_hitl_session_policy
 from octop.infra.agents.threads.artifact import thread_artifacts_payload
 from octop.infra.agents.threads.context_breakdown import SEGMENT_KEYS, compute_context_breakdown
@@ -573,6 +574,14 @@ async def patch_thread(
                 ErrorCode.SLASH_BAD_ARGS,
                 "model_ref must reference an enabled model",
             )
+        if (
+            model_ref is not None
+            and not server.app_runtime.agent_registry.model_ref_allowed_for_user(
+                user.id,
+                model_ref,
+            )
+        ):
+            raise OctopError(ErrorCode.RESOURCE_NOT_ALLOWED, "resource is not visible to this user")
     if "reasoning_mode" in body.model_fields_set:
         reasoning_mode = body.reasoning_mode
     if "reasoning_effort" in body.model_fields_set:
@@ -631,6 +640,11 @@ async def delete_thread(
     expert is idle. Omitting ``compact`` keeps the previous empty 204.
     """
     _require_thread(server, agent_id, thread_id, user, as_user)
+    if server.app_runtime.gateway.ws_hub.is_turn_active(thread_id):
+        raise OctopError(
+            ErrorCode.THREAD_TURN_ACTIVE,
+            error_message(ErrorCode.THREAD_TURN_ACTIVE.value, "en"),
+        )
     registry = server.app_runtime.agent_registry
     await registry.delete_thread_checkpoint(agent_id, thread_id)
     server.app_runtime.gateway.thread_registry.delete_thread(thread_id)

@@ -90,3 +90,43 @@ async def test_brave_ok(monkeypatch: pytest.MonkeyPatch) -> None:
     )
     assert result["success"] is True
     assert result["result_count"] == 1
+
+
+@pytest.mark.asyncio
+async def test_deepseek_ok(monkeypatch: pytest.MonkeyPatch) -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        assert request.url == "https://api.deepseek.com/v1/tools/search"
+        assert request.headers.get("Authorization") == "Bearer deepseek-key"
+        assert request.read()
+        return httpx.Response(200, json={"results": [{"url": "https://example.com"}]})
+
+    _patch_client(monkeypatch, httpx.MockTransport(handler))
+    result = await search_probe.probe_search_provider(
+        "deepseek",
+        {"DEEPSEEK_API_KEY": "deepseek-key"},
+    )
+    assert result["success"] is True
+    assert result["result_count"] == 1
+    assert result["provider_id"] == "deepseek"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("status", "error_type"),
+    [(402, "insufficient_balance"), (429, "rate_limit")],
+)
+async def test_deepseek_actionable_errors(
+    monkeypatch: pytest.MonkeyPatch,
+    status: int,
+    error_type: str,
+) -> None:
+    def handler(_request: httpx.Request) -> httpx.Response:
+        return httpx.Response(status, text="probe failed")
+
+    _patch_client(monkeypatch, httpx.MockTransport(handler))
+    result = await search_probe.probe_search_provider(
+        "deepseek",
+        {"DEEPSEEK_API_KEY": "deepseek-key"},
+    )
+    assert result["success"] is False
+    assert result["error_type"] == error_type

@@ -13,6 +13,8 @@
 - 技能包查看/编辑技能时展示左侧文件树（与个性化技能一致），并支持预览同级文件
 
 ### 修复
+- 回复还在生成时删除会话，会提示先停止再删，会话留在原地。不再在这一轮还在写记录时把会话删掉，从而把外键错误显示成「模型调用失败」
+- 未登录、令牌无效或过期时，API 错误信息会按请求的 `Accept-Language` 语言返回（如中文返回「认证失败。」），不再固定英文；无请求头时保持原默认回退语言（#2187）
 - `SKILL.md` 带 UTF-8 BOM（如 Windows 记事本 / PowerShell 5.1 保存）时不再丢失 YAML frontmatter；技能路由改为复用统一的 `parse_frontmatter`（#2215）
 - `OCTOP_HOME` 迁移数据目录后，首次配置向导密码文件随之写入 `<OCTOP_HOME>/octop-login.txt`；旧位置 `~/octop-login.txt` 自动继承，不再生成冲突密码（#2171）
 
@@ -115,6 +117,9 @@
 ### 变更
 - 头像、技能卡片、个人设置抽屉与登录页外观
 - 升级 octop-harness 与 octop-memory；README 加入 Octop Pet
+
+### 新增
+- 模型配置支持显式选择 OpenAI Chat Completions 或 Responses API，并可按模型启用受限的 Responses → Chat Completions 协议回退
 
 ## [1.0.2b6] - 2026-10-04
 

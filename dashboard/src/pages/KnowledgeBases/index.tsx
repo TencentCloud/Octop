@@ -82,6 +82,8 @@ import DocumentPreviewLoading from "../../components/DocumentPreviewLoading";
 import Markdown from "../../components/Markdown";
 import StreamSetupGuide from "../../components/StreamSetupGuide/StreamSetupGuide";
 import { CopyableResourceId } from "../../components/CopyableResourceId";
+import { ResourceVisibilityFields } from "../../components/ResourceVisibilityFields";
+import type { ResourceVisibilityMode } from "../../api/modules/userGroups";
 import { useCardTableView } from "../../hooks/useCardTableView";
 import { useHorizontalResize } from "../../hooks/useHorizontalResize";
 import { useIsMobile } from "../../hooks/useIsMobile";
@@ -675,7 +677,9 @@ export default function KnowledgeBasesPage() {
   }, [previewOpen, previewAsMarkdown]);
   const [baseForm] = Form.useForm<BaseFormValues>();
   const [defaultOpenChecked, setDefaultOpenChecked] = useState(false);
-  const [sharedChecked, setSharedChecked] = useState(false);
+  const [baseVisibility, setBaseVisibility] =
+    useState<ResourceVisibilityMode>("owner");
+  const [baseGroupIds, setBaseGroupIds] = useState<string[]>([]);
   const [uploadState, setUploadState] = useState<{
     baseId: string;
     filename: string;
@@ -1072,7 +1076,8 @@ export default function KnowledgeBasesPage() {
       max_documents: 100,
     });
     setDefaultOpenChecked(false);
-    setSharedChecked(false);
+    setBaseVisibility("owner");
+    setBaseGroupIds([]);
     setEditingBaseId(null);
     setBaseDrawerOpen(true);
   };
@@ -1085,17 +1090,24 @@ export default function KnowledgeBasesPage() {
       max_documents: base.max_documents,
     });
     setDefaultOpenChecked(base.default_open);
-    setSharedChecked(base.shared);
+    setBaseVisibility(base.visibility ?? (base.shared ? "all" : "owner"));
+    setBaseGroupIds(base.group_ids ?? []);
     setEditingBaseId(base.id);
     setBaseDrawerOpen(true);
   };
 
   const saveBase = async () => {
     const values = await baseForm.validateFields();
+    if (baseVisibility === "groups" && baseGroupIds.length === 0) {
+      message.error(t("resourceVisibility.needGroup"));
+      return;
+    }
     const payload = {
       ...values,
       default_open: defaultOpenChecked,
-      shared: sharedChecked,
+      shared: baseVisibility !== "owner",
+      visibility: baseVisibility,
+      group_ids: baseGroupIds,
     };
     try {
       const next = editingBaseId
@@ -3336,16 +3348,17 @@ export default function KnowledgeBasesPage() {
             <div className={styles.formOptionRow}>
               <div className={styles.formOptionCopy}>
                 <span className={styles.switchLabel}>
-                  {t("knowledgeBases.shared")}
-                </span>
-                <span className={styles.formOptionHint}>
-                  {t("knowledgeBases.sharedHint")}
+                  {t("resourceVisibility.label")}
                 </span>
               </div>
-              <Switch
-                size="small"
-                checked={sharedChecked}
-                onChange={setSharedChecked}
+              <ResourceVisibilityFields
+                allowOwner
+                visibility={baseVisibility}
+                groupIds={baseGroupIds}
+                onChange={(next) => {
+                  setBaseVisibility(next.visibility);
+                  setBaseGroupIds(next.groupIds);
+                }}
               />
             </div>
           </div>
