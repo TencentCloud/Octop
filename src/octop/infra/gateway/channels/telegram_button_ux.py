@@ -44,7 +44,9 @@ def install() -> None:
     if getattr(TelegramChannel._handle_callback, _MARK, False):
         return
 
-    async def handle_callback(self, update, _context=None):  # type: ignore[no-untyped-def]  noqa: ANN001
+    base_handle_callback = TelegramChannel._handle_callback
+
+    async def handle_callback(self, update, _context=None):  # type: ignore[no-untyped-def]
         query = update.callback_query
         if not query:
             return
@@ -85,4 +87,5 @@ def install() -> None:
             logger.debug("choice message settle unavailable")
 
     handle_callback.__octop_button_ux__ = True  # type: ignore[attr-defined]
+    handle_callback.__wrapped_base__ = base_handle_callback  # type: ignore[attr-defined]
     TelegramChannel._handle_callback = handle_callback  # type: ignore[method-assign]
