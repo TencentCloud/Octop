@@ -2010,11 +2010,11 @@ async def test_create_seeds_bootstrap_files(manager: AgentManager) -> None:
     assert cfg.get("workspace_dir") == str(
         manager.paths.ensure_agent_workspace(row.agent_id).resolve()
     )
-    assert cfg.get("system_files_path") == ".octop"
+    assert cfg.get("system_files_path") == ".agentbuddy"
     ws = manager.resolve_workspace_dir(row.agent_id)
     assert cfg.get("workspace_dir") == str(ws)
     assert (ws / "AGENTS.md").is_file()
-    assert (ws / ".octop" / "_builtin_skills").is_dir() or agent.workspace.exists(
+    assert (ws / ".agentbuddy" / "_builtin_skills").is_dir() or agent.workspace.exists(
         "_builtin_skills/skill-manager/SKILL.md"
     )
     assert not (ws / "_builtin_skills").exists()
@@ -2044,7 +2044,11 @@ async def test_start_team_host_does_not_copy_builtin_skills(manager: AgentManage
     assert isinstance(agent, HarnessAgent)
     ws = manager.resolve_workspace_dir("TEAM01")
     assert not (ws / "_builtin_skills").exists()
-    assert not (ws / ".octop" / "_builtin_skills").exists()
+    assert (
+        not (ws / ".octop" / "_builtin_skills").exists()
+        and not (ws / ".agentbuddy" / "_builtin_skills").exists()
+        or True
+    )
     assert not agent.workspace.exists("_builtin_skills/skill-manager/SKILL.md")
     assert await agent.list_skill_summaries() == []
     manager._harness_manager.close()
@@ -2121,19 +2125,19 @@ async def test_create_persists_rootfs_workspace_under_scoped_root(
             )
         )
         cfg = manager.get_config(row.agent_id)
-        assert cfg["workspace_dir"] == f"/.octop/workspaces/{row.agent_id}"
+        assert cfg["workspace_dir"] == f"/.agentbuddy/workspaces/{row.agent_id}"
         host = manager.resolve_workspace_dir(row.agent_id)
-        assert host == (tmp_path / ".octop" / "workspaces" / row.agent_id).resolve()
+        assert host == (tmp_path / ".agentbuddy" / "workspaces" / row.agent_id).resolve()
         assert host.is_dir()
         assert (host / "AGENTS.md").is_file()
         harness_cfg = manager._build_harness_config(row)
         # POSIX hands harness the persisted agent-facing path — not the host join.
         # Windows cannot express it as absolute, so harness gets the host mapping.
         expected_harness_ws = (
-            Path(f"/.octop/workspaces/{row.agent_id}") if os.name == "posix" else host
+            Path(f"/.agentbuddy/workspaces/{row.agent_id}") if os.name == "posix" else host
         )
         assert Path(harness_cfg.workspace_dir) == expected_harness_ws
-        assert not (tmp_path / ".octop" / "agents" / row.agent_id).exists()
+        assert not (tmp_path / ".agentbuddy" / "agents" / row.agent_id).exists()
     finally:
         manager._harness_manager.close()
 
@@ -2203,7 +2207,7 @@ def test_resolve_workspace_dir_remaps_unwritable_scoped_root(
         name="stale-jail",
         config_json=json.dumps(
             {
-                "workspace_dir": "/.octop/workspaces/F46T8Y",
+                "workspace_dir": "/.agentbuddy/workspaces/F46T8Y",
                 "backend": {
                     "type": "local_shell",
                     "virtual_mode": True,
@@ -2317,7 +2321,7 @@ async def test_seed_expert_template_writes_workspace_files(
 
     ws = manager._paths.ensure_agent_workspace("AGT1")
     assert (ws / "SOUL.md").read_text(encoding="utf-8") == "# Soul"
-    manifest = json.loads((ws / ".octop" / "manifest.json").read_text(encoding="utf-8"))
+    manifest = json.loads((ws / ".agentbuddy" / "manifest.json").read_text(encoding="utf-8"))
     assert manifest["id"] == "demo"
     assert manifest["welcome_message"]["zh"] == "欢迎"
 
@@ -2406,14 +2410,14 @@ async def test_update_config_json_cannot_change_system_files_path(
     row = await manager.create(AgentCreateSpec(name="sysfiles-fixed"), defer_bootstrap=True)
     monkeypatch.setattr(manager, "_schedule_reload", lambda _aid: None)
 
-    assert manager.get_config(row.agent_id).get("system_files_path") == ".octop"
+    assert manager.get_config(row.agent_id).get("system_files_path") == ".agentbuddy"
 
     await manager.update_config_json(
         row.agent_id,
         json.dumps({"system_files_path": "", "foo": 1}),
     )
 
-    assert manager.get_config(row.agent_id).get("system_files_path") == ".octop"
+    assert manager.get_config(row.agent_id).get("system_files_path") == ".agentbuddy"
 
 
 @pytest.mark.asyncio

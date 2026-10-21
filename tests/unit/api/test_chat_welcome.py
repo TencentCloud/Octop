@@ -34,7 +34,7 @@ async def test_read_workspace_manifest_welcome() -> None:
     with tempfile.TemporaryDirectory() as ws_dir:
         workspace = _workspace(ws_dir)
         await workspace.awrite_text(
-            ".octop/manifest.json",
+            ".agentbuddy/manifest.json",
             json.dumps(
                 {
                     "id": "demo",
@@ -92,7 +92,7 @@ async def test_seed_expert_directory_includes_manifest() -> None:
             seed_paths=["SOUL.md"],
         )
         assert count == 2
-        text = await workspace.aread_text(".octop/manifest.json")
+        text = await workspace.aread_text(".agentbuddy/manifest.json")
         assert text is not None
         assert json.loads(text)["id"] == "demo"
         soul = await workspace.aread_text("SOUL.md")
@@ -263,7 +263,7 @@ async def test_read_workspace_manifest_task_examples() -> None:
     with tempfile.TemporaryDirectory() as ws_dir:
         workspace = _workspace(ws_dir)
         await workspace.awrite_text(
-            ".octop/manifest.json",
+            ".agentbuddy/manifest.json",
             json.dumps({"id": "demo", "task_examples": {"zh": ["巡检"], "en": ["Patrol"]}}),
             force=True,
         )
@@ -278,7 +278,7 @@ async def test_read_workspace_manifest_task_examples_missing() -> None:
     with tempfile.TemporaryDirectory() as ws_dir:
         workspace = _workspace(ws_dir)
         await workspace.awrite_text(
-            ".octop/manifest.json",
+            ".agentbuddy/manifest.json",
             json.dumps({"id": "demo"}),
             force=True,
         )

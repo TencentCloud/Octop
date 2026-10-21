@@ -341,10 +341,10 @@ def remote_workspace_virtual_root(workspace_dir: Path) -> str:
     of ``SOUL.md`` / ``skills`` mixed with host-home prefixes.
     """
     text = workspace_dir.as_posix().replace("\\", "/").rstrip("/")
-    if text.startswith("/.octop/"):
+    if text.startswith("/.octop/") or text.startswith("/.agentbuddy/"):
         return text or "/"
     name = workspace_dir.name.strip() or "workspace"
-    return f"/.octop/workspaces/{name}"
+    return f"/.agentbuddy/workspaces/{name}"
 
 
 def _local_workspace_path(fragment: str, workspace_dir: Path) -> Path:

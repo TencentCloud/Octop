@@ -70,7 +70,7 @@ def _default_workspace() -> Path:
         raise SkillManagerError("cannot infer workspace from the manager script path") from exc
     if script.parents[1].name != "skill-manager" or builtin_root.name != "_builtin_skills":
         raise SkillManagerError("--workspace is required outside a deployed expert workspace")
-    if container.name == ".octop":
+    if container.name in (".agentbuddy", ".octop"):
         try:
             return _workspace(str(script.parents[4]))
         except IndexError as exc:  # pragma: no cover
@@ -85,8 +85,14 @@ def _skills_dir(workspace: Path) -> Path:
         path = _workspace(env_dir)
         path.mkdir(parents=True, exist_ok=True)
         return path
-    nested_builtin = workspace / ".octop" / "_builtin_skills"
-    nested_skills = workspace / ".octop" / "skills"
+    nested_builtin = workspace / ".agentbuddy" / "_builtin_skills"
+    nested_skills = workspace / ".agentbuddy" / "skills"
+    legacy_builtin = workspace / ".octop" / "_builtin_skills"
+    legacy_skills = workspace / ".octop" / "skills"
+    if legacy_builtin.is_dir() or legacy_skills.exists():
+        # legacy agent keeps its legacy layout
+        legacy_skills.mkdir(parents=True, exist_ok=True)
+        return legacy_skills
     if nested_builtin.is_dir() or nested_skills.exists():
         nested_skills.mkdir(parents=True, exist_ok=True)
         return nested_skills

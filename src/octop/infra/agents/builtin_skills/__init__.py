@@ -18,10 +18,14 @@ def is_octop_builtin_skills_path(rel: str) -> bool:
     """True for workspace-relative paths inside the agentbuddy-owned built-in Skills root.
 
     Mirrors the two spellings ``_assert_workspace_mutable`` guards: the API name, and
-    the ``.octop/``-prefixed system location newer agents keep it in.
+    the ``.agentbuddy/`` (or legacy ``.octop/``)-prefixed system location.
     """
     posix = str(rel).replace("\\", "/").strip("/")
-    for prefix in (AGENTBUDDY_BUILTIN_SKILLS_ROOT, f".octop/{AGENTBUDDY_BUILTIN_SKILLS_ROOT}"):
+    for prefix in (
+        AGENTBUDDY_BUILTIN_SKILLS_ROOT,
+        f".agentbuddy/{AGENTBUDDY_BUILTIN_SKILLS_ROOT}",
+        f".octop/{AGENTBUDDY_BUILTIN_SKILLS_ROOT}",
+    ):
         if posix == prefix or posix.startswith(f"{prefix}/"):
             return True
     return False

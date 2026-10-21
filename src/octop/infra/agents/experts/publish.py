@@ -56,6 +56,8 @@ _SEEDABLE_GLOB_PATTERNS = (
     "*.md",
     "skills/**/*",
     "agents/*.md",
+    ".agentbuddy/skills/**/*",
+    ".agentbuddy/agents/*.md",
     ".octop/skills/**/*",
     ".octop/agents/*.md",
 )
@@ -268,9 +270,9 @@ async def _workspace_file_paths(workspace: BackendWorkspace) -> list[str]:
 
 def _logical_seed_path(path: str) -> str:
     rel = path.replace("\\", "/").lstrip("/")
-    prefix = ".octop/"
-    if rel.startswith(prefix):
-        return rel[len(prefix) :]
+    for prefix in (".agentbuddy/", ".octop/"):
+        if rel.startswith(prefix):
+            return rel[len(prefix) :]
     return rel
 
 

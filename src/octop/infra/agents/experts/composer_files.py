@@ -62,7 +62,7 @@ class ComposerWorkspacePatch:
 def normalize_composer_relpath(name: str, *, allow_skill_dir: bool = False) -> str:
     """Normalize a composer-editable workspace path or raise ``SLASH_BAD_ARGS``."""
     rel = name.strip().replace("\\", "/").lstrip("/")
-    if not rel or ".." in rel.split("/") or rel.startswith(".octop"):
+    if not rel or ".." in rel.split("/") or rel.startswith((".octop", ".agentbuddy")):
         raise OctopError(ErrorCode.SLASH_BAD_ARGS, f"invalid file path {name!r}")
     parts = rel.split("/")
     if any(not part for part in parts):

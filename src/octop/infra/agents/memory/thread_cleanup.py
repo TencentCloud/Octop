@@ -377,11 +377,13 @@ def _sqlite_memory_files(
     candidates = [
         host_system_dir(workspace_dir, cfg) / "memory.sqlite",
         workspace_dir / "memory.sqlite",
+        workspace_dir / ".agentbuddy" / "memory.sqlite",
         workspace_dir / ".octop" / "memory.sqlite",
     ]
     if paths is not None:
         for directory in agent_host_data_dirs(cfg, paths=paths, agent_id=agent_id):
             candidates.append(directory / "memory.sqlite")
+            candidates.append(directory / ".agentbuddy" / "memory.sqlite")
             candidates.append(directory / ".octop" / "memory.sqlite")
     found: list[Path] = []
     seen: set[Path] = set()

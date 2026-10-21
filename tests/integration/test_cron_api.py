@@ -192,7 +192,7 @@ async def test_cron_examples_reads_workspace_manifest(env: Any) -> None:
     workspace = srv.app_runtime.agent_registry.workspace_for_agent(aid)
     assert workspace is not None
     await workspace.awrite_text(
-        ".octop/manifest.json",
+        ".agentbuddy/manifest.json",
         json.dumps(
             {
                 "id": "demo",
@@ -219,7 +219,7 @@ async def test_cron_examples_display_normalizes_four_or_five_to_three(env: Any) 
     workspace = srv.app_runtime.agent_registry.workspace_for_agent(aid)
     assert workspace is not None
     await workspace.awrite_text(
-        ".octop/manifest.json",
+        ".agentbuddy/manifest.json",
         json.dumps(
             {
                 "id": "demo",

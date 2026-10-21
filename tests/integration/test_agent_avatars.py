@@ -36,7 +36,7 @@ async def test_upload_get_delete_avatar(env):
 
     workspace = srv.app_runtime.agent_registry.workspace_for_agent(agent_id)
     assert workspace is not None
-    stored = await workspace.adownload_bytes(".octop/avatar.png")
+    stored = await workspace.adownload_bytes(".agentbuddy/avatar.png")
     assert stored == PNG
 
     deleted = await c.delete(f"/api/agents/{agent_id}/avatar", headers=auth)

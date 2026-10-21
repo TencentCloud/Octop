@@ -1155,7 +1155,7 @@ async def test_create_with_template_writes_files(tmp_path: Path) -> None:
     )
     assert (ws / "SOUL.md").read_text(encoding="utf-8") == "# Soul"
     # New agents use system_files_path=.octop — BackendWorkspace remaps skills/.
-    skill_md = ws / ".octop" / "skills" / "my-skill" / "SKILL.md"
+    skill_md = ws / ".agentbuddy" / "skills" / "my-skill" / "SKILL.md"
     assert skill_md.read_text(encoding="utf-8") == "# Skill"
 
 

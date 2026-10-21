@@ -54,16 +54,16 @@ def test_sniff_and_reject() -> None:
 @pytest.mark.asyncio
 async def test_write_read_delete_roundtrip() -> None:
     workspace = _MemoryWorkspace()
-    assert await write_workspace_avatar(workspace, JPEG) == ".octop/avatar.jpg"
+    assert await write_workspace_avatar(workspace, JPEG) == ".agentbuddy/avatar.jpg"
     found = await read_workspace_avatar(workspace)
     assert found is not None
     data, media_type = found
     assert media_type == "image/jpeg"
     assert data == JPEG
-    assert workspace.files == {".octop/avatar.jpg": JPEG}
+    assert workspace.files == {".agentbuddy/avatar.jpg": JPEG}
     assert agent_avatar_api_path("agent01") == "/api/agents/agent01/avatar"
     await write_workspace_avatar(workspace, PNG)
-    assert set(workspace.files) == {".octop/avatar.png"}
+    assert set(workspace.files) == {".agentbuddy/avatar.png"}
     await delete_workspace_avatar(workspace)
     assert await read_workspace_avatar(workspace) is None
 
@@ -75,8 +75,8 @@ async def test_write_skips_unsupported_mkdir() -> None:
             raise BackendOperationNotSupportedError("mkdir", "CosBackend")
 
     workspace = _NoMkdir()
-    assert await write_workspace_avatar(workspace, PNG) == ".octop/avatar.png"
-    assert workspace.files[".octop/avatar.png"] == PNG
+    assert await write_workspace_avatar(workspace, PNG) == ".agentbuddy/avatar.png"
+    assert workspace.files[".agentbuddy/avatar.png"] == PNG
 
 
 @pytest.mark.asyncio
@@ -191,7 +191,7 @@ async def test_materialize_remote_icon_url_writes_workspace_avatar(
         "https://cdn.example.com/a.png",
     )
     assert ok is True
-    assert workspace.files[".octop/avatar.png"] == PNG
+    assert workspace.files[".agentbuddy/avatar.png"] == PNG
     assert registry.icon_url == "/api/agents/agt1/avatar"
 
     assert (

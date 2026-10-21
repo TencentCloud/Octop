@@ -14,7 +14,8 @@ from octop.infra.errors import ErrorCode, OctopError
 from octop.infra.gateway.media.attachment_hints import sniff_image_media_type
 
 MAX_AVATAR_BYTES = 5 * 1024 * 1024
-AVATAR_DIR = ".octop"
+AVATAR_DIR = ".agentbuddy"
+LEGACY_AVATAR_DIR = ".octop"
 _AVATAR_NAMES: tuple[str, ...] = (
     "avatar.png",
     "avatar.jpg",
@@ -23,8 +24,9 @@ _AVATAR_NAMES: tuple[str, ...] = (
     "avatar.gif",
 )
 AVATAR_RELPATHS: tuple[str, ...] = tuple(f"{AVATAR_DIR}/{name}" for name in _AVATAR_NAMES)
+_LEGACY_PREFIXED: tuple[str, ...] = tuple(f"{LEGACY_AVATAR_DIR}/{name}" for name in _AVATAR_NAMES)
 LEGACY_AVATAR_RELPATHS: tuple[str, ...] = _AVATAR_NAMES
-_ALL_AVATAR_RELPATHS: tuple[str, ...] = AVATAR_RELPATHS + LEGACY_AVATAR_RELPATHS
+_ALL_AVATAR_RELPATHS: tuple[str, ...] = AVATAR_RELPATHS + _LEGACY_PREFIXED + LEGACY_AVATAR_RELPATHS
 _MEDIA_TO_RELPATH: dict[str, str] = {
     "image/png": f"{AVATAR_DIR}/avatar.png",
     "image/jpeg": f"{AVATAR_DIR}/avatar.jpg",

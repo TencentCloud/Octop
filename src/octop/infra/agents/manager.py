@@ -3645,12 +3645,21 @@ class AgentManager:
         row_description: str | None,
     ) -> dict[str, Any]:
         """Guidance cards (and fallback description) from workspace ``manifest.json``."""
+        from octop.infra.agents.workspace.dir import (  # noqa: PLC0415
+            DEFAULT_SYSTEM_FILES_PATH,
+            LEGACY_SYSTEM_FILES_PATH,
+        )
+
         extra: dict[str, Any] = {}
         try:
             host = self.resolve_workspace_dir(agent_id, persist_if_missing=False)
         except Exception:
             return extra
-        for rel in (Path(".octop") / "manifest.json", Path("manifest.json")):
+        for rel in (
+            Path(DEFAULT_SYSTEM_FILES_PATH) / "manifest.json",
+            Path(LEGACY_SYSTEM_FILES_PATH) / "manifest.json",
+            Path("manifest.json"),
+        ):
             path = host / rel
             if not path.is_file():
                 continue

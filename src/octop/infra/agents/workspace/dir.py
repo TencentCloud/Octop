@@ -33,8 +33,20 @@ from typing import Any
 
 from octop.infra.utils.paths import PathLayout
 
-DEFAULT_SYSTEM_FILES_PATH = ".octop"
+DEFAULT_SYSTEM_FILES_PATH = ".agentbuddy"
+LEGACY_SYSTEM_FILES_PATH = ".octop"
+_SYSTEM_FILES_PREFIXES = (DEFAULT_SYSTEM_FILES_PATH, LEGACY_SYSTEM_FILES_PATH)
 SCOPED_WORKSPACE_DIRNAME = "workspaces"
+
+
+def is_system_files_prefixed(text: str) -> bool:
+    """True for ``/{prefix}/…`` agent-facing paths (new or legacy prefix)."""
+    normalized = str(text).replace("\\", "/").strip()
+    return any(
+        normalized == f"/{prefix}" or normalized.startswith(f"/{prefix}/")
+        for prefix in _SYSTEM_FILES_PREFIXES
+    )
+
 
 _WINDOWS_HOST_PATH_RE = re.compile(r"^(?:[A-Za-z]:[/\\]|\\\\|//)")
 # Drive-letter root (C:/, C:\, D:) — Windows counterpart of POSIX ``/``.
@@ -316,7 +328,7 @@ def resolve_workspace_host_path(raw: str, cfg: dict[str, Any] | None = None) -> 
     normalized = text.replace("\\", "/").strip()
     candidate = Path(text).expanduser()
 
-    if normalized == "/" or normalized.startswith("/.octop/"):
+    if normalized == "/" or is_system_files_prefixed(normalized):
         rel = normalized.lstrip("/")
         return (root / rel).resolve() if rel else root
 
@@ -385,7 +397,7 @@ def agent_facing_workspace_root(
     text = str(workspace_dir).strip().replace("\\", "/")
     if not text:
         return ""
-    if text == "/" or text.startswith("/.octop/"):
+    if text == "/" or is_system_files_prefixed(text):
         return text if text != "/" else "/"
     if not virtual_mode or root_dir is None or _is_host_root_sentinel(root_dir):
         return text
@@ -406,7 +418,7 @@ def agent_facing_workspace_dir_from_config(cfg: dict[str, Any] | None) -> str:
     if not isinstance(raw, str) or not raw.strip():
         return ""
     text = raw.strip().replace("\\", "/")
-    if text == "/" or text.startswith("/.octop/"):
+    if text == "/" or is_system_files_prefixed(text):
         return text
     return agent_facing_workspace_root(
         text,
@@ -487,7 +499,11 @@ def agent_auth_dir(workspace_dir: Path, cfg: dict[str, Any] | None) -> Path:
 
 
 def skills_discovery_roots(workspace_dir: Path) -> list[Path]:
-    return [workspace_dir / DEFAULT_SYSTEM_FILES_PATH / "skills", workspace_dir / "skills"]
+    return [
+        workspace_dir / DEFAULT_SYSTEM_FILES_PATH / "skills",
+        workspace_dir / LEGACY_SYSTEM_FILES_PATH / "skills",
+        workspace_dir / "skills",
+    ]
 
 
 def workspace_dir_from_config_json(

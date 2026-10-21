@@ -45,7 +45,9 @@ def _agent_facing_auth_and_skills(
             root_dir=local_backend_root_dir(cfg),
             virtual_mode=True,
         )
-    scoped = uses_scoped_workspace_default(cfg) or facing.startswith("/.octop/")
+    from octop.infra.agents.workspace.dir import is_system_files_prefixed  # noqa: PLC0415
+
+    scoped = uses_scoped_workspace_default(cfg) or is_system_files_prefixed(facing)
     if not scoped:
         return str(auth_host), str(skills_host)
 

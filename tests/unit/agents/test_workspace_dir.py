@@ -37,33 +37,33 @@ def test_scoped_default_persists_agent_facing_path(tmp_path: Path) -> None:
     paths = PathLayout(tmp_path / "octop-home")
     cfg = _scoped_cfg(root)
     host = seed_workspace_dir_on_create(cfg, paths=paths, agent_id="J1BT2X")
-    assert cfg["workspace_dir"] == "/.octop/workspaces/J1BT2X"
+    assert cfg["workspace_dir"] == "/.agentbuddy/workspaces/J1BT2X"
     # On-disk tree still lands under the jail root_dir.
-    assert host == (root / ".octop" / "workspaces" / "J1BT2X").resolve()
+    assert host == (root / ".agentbuddy" / "workspaces" / "J1BT2X").resolve()
     assert host.is_dir()
     # Host ops map; harness should keep the persisted string as-is.
     assert resolve_workspace_host_path(cfg["workspace_dir"], cfg) == host
     assert Path(cfg["workspace_dir"]) != host
-    assert agent_facing_workspace_dir_from_config(cfg) == "/.octop/workspaces/J1BT2X"
+    assert agent_facing_workspace_dir_from_config(cfg) == "/.agentbuddy/workspaces/J1BT2X"
     assert (
         agent_facing_workspace_root(
             host,
             root_dir=root,
             virtual_mode=True,
         )
-        == "/.octop/workspaces/J1BT2X"
+        == "/.agentbuddy/workspaces/J1BT2X"
     )
-    assert join_agent_facing("/.octop/workspaces/J1BT2X", "inbound/a.zip") == (
-        "/.octop/workspaces/J1BT2X/inbound/a.zip"
+    assert join_agent_facing("/.agentbuddy/workspaces/J1BT2X", "inbound/a.zip") == (
+        "/.agentbuddy/workspaces/J1BT2X/inbound/a.zip"
     )
 
 
 def test_host_ops_map_octop_workspaces_under_root(tmp_path: Path) -> None:
     root = tmp_path / "home"
-    expected = root / ".octop" / "workspaces" / "J1BT2X"
+    expected = root / ".agentbuddy" / "workspaces" / "J1BT2X"
     expected.mkdir(parents=True)
     cfg = _scoped_cfg(root)
-    assert resolve_workspace_host_path("/.octop/workspaces/J1BT2X", cfg) == expected.resolve()
+    assert resolve_workspace_host_path("/.agentbuddy/workspaces/J1BT2X", cfg) == expected.resolve()
 
 
 def test_user_assigned_workspace_wins(tmp_path: Path) -> None:
@@ -171,7 +171,7 @@ def test_neutralize_unwritable_local_root(tmp_path: Path) -> None:
 
     blocker = tmp_path / "not-a-dir"
     blocker.write_text("x", encoding="utf-8")
-    cfg = _scoped_cfg(blocker, workspace_dir="/.octop/workspaces/F46T8Y")
+    cfg = _scoped_cfg(blocker, workspace_dir="/.agentbuddy/workspaces/F46T8Y")
     out = neutralize_unwritable_local_root(cfg)
     assert out["backend"]["root_dir"] == "/"
     writable = tmp_path / "home"
