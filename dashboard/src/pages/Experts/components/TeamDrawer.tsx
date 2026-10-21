@@ -16,6 +16,7 @@ import {
   splitExpertAvatarUrl,
   TEAM_AVATAR_PRESETS,
 } from "../../../components/AvatarPicker";
+import { TextAssistBar } from "../../../components/TextAssistBar";
 import type { OctopAgent } from "../../../context/AgentContext";
 import { useAgentFormResources } from "../../../hooks/useAgentFormResources";
 import { apiErrorMessage } from "../../../utils/apiError";
@@ -355,6 +356,12 @@ export default function TeamDrawer({
         <Form.Item name="description" label={t("experts.agentDescription")}>
           <Input.TextArea rows={2} />
         </Form.Item>
+        <TextAssistBar
+          kind="team.description"
+          getName={() => String(form.getFieldValue("name") ?? "")}
+          getText={() => String(form.getFieldValue("description") ?? "")}
+          onApply={(text) => form.setFieldsValue({ description: text })}
+        />
         <Form.Item
           name="welcome_message"
           label={t("experts.welcomeMessageTitle")}
@@ -369,6 +376,12 @@ export default function TeamDrawer({
             placeholder={t("experts.welcomeMessagePlaceholder")}
           />
         </Form.Item>
+        <TextAssistBar
+          kind="team.welcome_message"
+          getName={() => String(form.getFieldValue("name") ?? "")}
+          getText={() => String(form.getFieldValue("welcome_message") ?? "")}
+          onApply={(text) => form.setFieldsValue({ welcome_message: text })}
+        />
         <Form.Item name="default_model" label={t("experts.defaultModelLabel")}>
           <Select
             loading={modelsLoading}

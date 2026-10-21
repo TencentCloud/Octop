@@ -19,6 +19,7 @@ import {
 import { MoreHorizontal } from "lucide-react";
 import { request } from "../../../api/request";
 import { AgentAdvancedConfigFields } from "../../../components/AgentAdvancedConfigFields";
+import { TextAssistBar } from "../../../components/TextAssistBar";
 import {
   expertPresetSrc,
   isUploadedAvatarUrl,
@@ -837,6 +838,12 @@ function EditAgentDrawerBody({
               >
                 <Input.TextArea rows={2} />
               </Form.Item>
+              <TextAssistBar
+                kind="expert.description"
+                getName={() => String(form.getFieldValue("name") ?? "")}
+                getText={() => String(form.getFieldValue("description") ?? "")}
+                onApply={(text) => form.setFieldsValue({ description: text })}
+              />
               <Form.Item
                 name="welcome_message"
                 label={t("experts.welcomeMessageTitle")}
@@ -847,6 +854,16 @@ function EditAgentDrawerBody({
                   placeholder={t("experts.welcomeMessagePlaceholder")}
                 />
               </Form.Item>
+              <TextAssistBar
+                kind="expert.welcome_message"
+                getName={() => String(form.getFieldValue("name") ?? "")}
+                getText={() =>
+                  String(form.getFieldValue("welcome_message") ?? "")
+                }
+                onApply={(text) =>
+                  form.setFieldsValue({ welcome_message: text })
+                }
+              />
               <Form.Item
                 name="is_shared"
                 label={t("experts.share.toggle")}
