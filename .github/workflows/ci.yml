@@ -11,6 +11,37 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  frontend:
+    name: Dashboard
+    runs-on: ubuntu-latest
+    if: ${{ !startsWith(github.head_ref, 'chore/sync-develop-after-') }}
+    defaults:
+      run:
+        working-directory: dashboard
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: dashboard/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Check formatting
+        run: npm run format:check
+
+      - name: Test
+        run: npm test -- --maxWorkers=2
+
+      - name: Build and type check
+        run: npm run build
+
   quality:
     name: "Python ${{ matrix.python-version }}"
     runs-on: ubuntu-latest

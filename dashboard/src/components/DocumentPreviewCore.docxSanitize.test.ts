@@ -1,5 +1,12 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { clampAbsurdDocxCssLengths } from "./DocumentPreviewCore";
+
+// These tests exercise metadata / CSS helpers, not the browser PDF renderer.
+vi.mock("react-pdf", () => ({
+  Document: () => null,
+  Page: () => null,
+  pdfjs: { GlobalWorkerOptions: { workerSrc: "" } },
+}));
 
 describe("clampAbsurdDocxCssLengths", () => {
   it("zeros out overflow-scale min-height / line-height from corrupt DOCX spacing", () => {
