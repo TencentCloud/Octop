@@ -1346,7 +1346,10 @@ async def test_member_hitl_waits_for_each_approval_before_finishing(processor_en
             },
         }
 
-    async def fake_resume(agent_id: str, thread_id: str, decisions: list[dict[str, str]]) -> object:
+    async def fake_resume(
+        agent_id: str, thread_id: str, decisions: list[dict[str, str]], *, user_id: int
+    ) -> object:
+        assert user_id == 1
         assert agent_id == "child"
         assert thread_id == "thr_parent~child"
         resumes["n"] += 1

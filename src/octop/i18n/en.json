@@ -597,6 +597,10 @@
     },
     "preflight_failed_summary": "One or more preflight checks failed"
   },
+  "mcp_scope": {
+    "unauthorized": "MCP tool is not authorized for this turn.",
+    "tool": "MCP tool"
+  },
   "tools": {
     "unknown": "Unknown tool",
     "read_file": "Read file",
