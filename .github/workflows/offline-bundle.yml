@@ -128,11 +128,18 @@ jobs:
         with:
           path: bundles/
 
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.ref }}
+
       - name: Attach to GitHub Release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAG: ${{ github.ref_name }}
         run: |
           set -euo pipefail
+          # gh release upload needs a git repository context (it resolves the
+          # repo from the checkout, not from the release event alone).
           gh release upload "$TAG" bundles/offline-bundle-*/agentbuddy-offline-*.tar.gz --clobber
           echo "attached offline bundles to release $TAG"
