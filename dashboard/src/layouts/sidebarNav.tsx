@@ -232,7 +232,6 @@ export function buildNavSections(
       path: "/bridge",
       icon: <Cloudy size={iconSize} strokeWidth={iconStroke} />,
       labelKey: "nav.bridge",
-      badge: "Beta",
     });
   }
   if (settingsItems.length > 0) {

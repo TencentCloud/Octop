@@ -905,14 +905,7 @@ export default function ExpertsPage() {
           },
           {
             key: "teams",
-            label: (
-              <TabLabel icon={Users}>
-                {t("experts.myTeams")}
-                <span className={styles.tabBetaBadge}>
-                  {t("experts.teams.betaBadge")}
-                </span>
-              </TabLabel>
-            ),
+            label: <TabLabel icon={Users}>{t("experts.myTeams")}</TabLabel>,
             children: teamsContent,
           },
           {
