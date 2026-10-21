@@ -8,6 +8,8 @@ import pytest
 
 from octop.infra.setup.tls import acme_issue
 
+posix_only = pytest.mark.skipif(os.name != "posix", reason="POSIX-only mode bits")
+
 
 def test_a_failed_publish_leaves_no_key_behind(tmp_path, monkeypatch):
     path = tmp_path / "account.key"
@@ -26,6 +28,7 @@ def test_a_failed_publish_leaves_no_key_behind(tmp_path, monkeypatch):
     assert not path.exists()
 
 
+@posix_only
 def test_the_key_is_created_with_owner_only_permissions(tmp_path):
     path = tmp_path / "account.key"
 
