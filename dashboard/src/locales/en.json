@@ -7065,5 +7065,12 @@
     "step4Desc": "When finished, type \"结束\" (or \"end\") to stop; after confirmation the skill is saved under the task goal. Type the goal keyword later to replay it.",
     "envNotReady": "Browser environment required first",
     "title": "Skill recording guide"
+  },
+  "textAssist": {
+    "hint": "Generate from the name with AI, or polish the current text",
+    "action": "AI polish",
+    "nameRequired": "Enter a name first",
+    "failed": "Polish failed. Please try again later.",
+    "emptyResult": "The model returned an empty result"
   }
 }

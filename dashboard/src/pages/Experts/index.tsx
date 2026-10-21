@@ -24,7 +24,7 @@ import { Input, Spin, Tabs, Segmented, Tooltip } from "antd";
 import { message } from "@/utils/antdMessage";
 
 import {
-  BookOpen,
+  CopyPlus,
   GraduationCap,
   LayoutGrid,
   List,
@@ -486,7 +486,7 @@ export default function ExpertsPage() {
             secondaryAction={{
               label: t("experts.goToLibrary"),
               onClick: openExpertLibrary,
-              icon: <BookOpen size={14} />,
+              icon: <CopyPlus size={14} />,
               type: "default",
             }}
           />
@@ -911,7 +911,7 @@ export default function ExpertsPage() {
           {
             key: "library",
             label: (
-              <TabLabel icon={BookOpen}>{t("experts.expertLibrary")}</TabLabel>
+              <TabLabel icon={CopyPlus}>{t("experts.expertLibrary")}</TabLabel>
             ),
             children: libraryContent,
           },

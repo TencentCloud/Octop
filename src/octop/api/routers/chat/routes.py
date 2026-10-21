@@ -25,7 +25,6 @@ from octop.infra.agents.experts.catalog import (
 from octop.infra.agents.settings.profile import welcome_from_row
 from octop.infra.agents.teams import is_team_agent
 from octop.infra.agents.teams.welcome import team_host_welcome_payload
-from octop.infra.errors import ErrorCode, OctopError
 from octop.infra.gateway.hitl.coordinator import (
     HitlChannelCoordinator,
     HitlStreamContext,
@@ -33,25 +32,11 @@ from octop.infra.gateway.hitl.coordinator import (
 )
 from octop.infra.gateway.hitl.format import normalize_hitl_request
 from octop.infra.gateway.hitl.store import HitlPendingRecord
-from octop.infra.utils.llm_text import ainvoke_text
+from octop.infra.text_assist import run_text_assist
 from octop.infra.utils.locale import resolve_request_locale
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
-
-_POLISH_SYSTEM_PROMPT = (
-    "You are a prompt editor, not an assistant that answers questions.\n"
-    "The user message is a DRAFT PROMPT they will later send to another AI. "
-    "Your only job is to rewrite that draft so another AI can understand it more "
-    "clearly — improve clarity, specificity, structure, and actionable detail.\n"
-    "Hard rules:\n"
-    "- Do NOT answer the draft, solve the task, or provide the requested content.\n"
-    "- Do NOT add explanations, greetings, or meta commentary.\n"
-    "- Preserve the user's original intent and language (e.g. keep Chinese if the "
-    "draft is Chinese).\n"
-    "- Output ONLY the rewritten prompt text — no preamble, labels, quotes, "
-    "thinking blocks, or XML tags."
-)
 
 
 @router.get("/agents/{agent_id}/chat/welcome", summary="Chat welcome quick cards")
@@ -306,45 +291,25 @@ async def resume_hitl(
     return StreamingResponse(gen(), media_type="text/event-stream")
 
 
-@router.post("/agents/{agent_id}/chat/polish", summary="Polish prompt")
+@router.post(
+    "/agents/{agent_id}/chat/polish",
+    summary="Polish prompt (compat)",
+    deprecated=True,
+)
 async def polish_prompt(
     agent_id: str,
     body: PolishBody,
+    request: Request,
     user: Any = Depends(current_user),
     server: Any = Depends(get_server),
 ) -> dict[str, str]:
-    """One-shot prompt refinement without touching thread history."""
-    from langchain_core.messages import HumanMessage, SystemMessage  # noqa: PLC0415
-
+    """Compat alias for ``POST /api/text/assist`` with ``kind=chat.prompt``."""
     assert_agent_access(server, agent_id, user)
-
-    draft = body.text.strip()
-    if not draft:
-        raise OctopError(ErrorCode.SLASH_BAD_ARGS, "text is required")
-
-    harness = server.app_runtime.agent_registry.get_agent(agent_id)
-    model_ref = (body.default_model or "").strip() or harness.config.pick_default_model_ref()
-    llm = harness.model_factory.get(model_ref)
-    try:
-        polished = await ainvoke_text(
-            llm,
-            [
-                SystemMessage(content=_POLISH_SYSTEM_PROMPT),
-                HumanMessage(
-                    content=(
-                        "Rewrite the following draft prompt. Do not answer it.\n\n"
-                        f"---\n{draft}\n---"
-                    ),
-                ),
-            ],
-            timeout=30.0,
-        )
-    except TimeoutError:
-        raise OctopError(ErrorCode.INTERNAL_ERROR, "polish request timed out") from None
-    except Exception:
-        logger.exception("polish failed agent=%s model=%s", agent_id, model_ref)
-        raise OctopError(ErrorCode.INTERNAL_ERROR, "polish request failed") from None
-
-    if not polished:
-        raise OctopError(ErrorCode.INTERNAL_ERROR, "model returned empty polish result")
+    polished = await run_text_assist(
+        server=server,
+        kind="chat.prompt",
+        text=body.text,
+        locale=resolve_request_locale(request),
+        default_model=body.default_model,
+    )
     return {"text": polished}

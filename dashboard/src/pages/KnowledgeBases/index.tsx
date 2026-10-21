@@ -87,6 +87,7 @@ import Markdown from "../../components/Markdown";
 import StreamSetupGuide from "../../components/StreamSetupGuide/StreamSetupGuide";
 import { CopyableResourceId } from "../../components/CopyableResourceId";
 import { ResourceVisibilityFields } from "../../components/ResourceVisibilityFields";
+import { TextAssistBar } from "../../components/TextAssistBar";
 import type { ResourceVisibilityMode } from "../../api/modules/userGroups";
 import { useCardTableView } from "../../hooks/useCardTableView";
 import { useHorizontalResize } from "../../hooks/useHorizontalResize";
@@ -3356,6 +3357,12 @@ export default function KnowledgeBasesPage() {
               showCount
             />
           </Form.Item>
+          <TextAssistBar
+            kind="knowledge_base.description"
+            getName={() => String(baseForm.getFieldValue("name") ?? "")}
+            getText={() => String(baseForm.getFieldValue("description") ?? "")}
+            onApply={(text) => baseForm.setFieldsValue({ description: text })}
+          />
           <Form.Item
             name="max_documents"
             label={t("knowledgeBases.maxDocuments")}
