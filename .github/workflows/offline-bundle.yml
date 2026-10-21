@@ -1,0 +1,135 @@
+name: Offline Wheel Bundle
+
+# 为政务内网构建离线安装包:5 个本仓库 wheel(octop + harness/gateway/memory/
+# browser)+ 锁定树全部第三方依赖的 wheel,按目标平台分目录打包成 tar.gz,
+# 上传为 workflow artifact(30 天保留)。
+#
+# 政务机安装流程(产物拷入内网后):
+#   1. 解包 offline-bundle-<platform>.tar.gz
+#   2. bash scripts/install-offline.sh <解包出的 offline 目录>
+#    (Python 3.12 venv + pip --no-index --find-links,零出网、零编译)
+#
+# 触发:
+#   1. push v* tag → 与 Release/Docker 同批自动出包
+#   2. workflow_dispatch 手动(选平台;默认双平台全出)
+#
+# 平台说明:
+#   - amd64(ubuntu-latest 原生构建)覆盖海光/兆芯等 x86_64 政务机
+#   - arm64(ubuntu-24.04-arm 原生构建)覆盖鲲鹏/飞腾政务机
+#   - 下载时同时声明新旧 manylinux 标签(pip --platform 是精确匹配,
+#     cffi 用 2014 档而 argon2 用 2_26 档,只传一个必缺)
+#   - crcmod 等 sdist-only 老包在 runner 上按目标平台编译成 wheel
+#     (ubuntu runner 自带 gcc),政务机零编译
+#   - 依赖锁定树的下载走官方 PyPI(锁文件已钉 pypi.org)
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "v* tag to build from (e.g. v1.0.3). Required when not running on a tag."
+        required: false
+        type: string
+      platforms:
+        description: "Comma-separated: amd64,arm64 (default: both)"
+        required: false
+        type: string
+        default: "amd64,arm64"
+
+permissions:
+  contents: read
+
+jobs:
+  bundle:
+    name: Bundle ${{ matrix.arch }}
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: ubuntu-latest
+            arch: amd64
+          - runner: ubuntu-24.04-arm
+            arch: arm64
+    steps:
+      # workflow_dispatch 平台过滤:job 级 if 读不到 matrix.*,用 step 级短路。
+      # 平台被过滤时 checkout 等步骤全部跳过,run 空转结束(绿)。
+      - name: Skip filtered platform (workflow_dispatch)
+        id: skip
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ] \
+            && ! grep -q "\b${{ matrix.arch }}\b" <<< "${{ inputs.platforms }}"; then
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+            echo "platform ${{ matrix.arch }} not in ${{ inputs.platforms }} — skipped"
+          fi
+
+      - name: Checkout
+        if: steps.skip.outputs.skip != 'true'
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ (github.event_name == 'push' && github.ref) || inputs.tag }}
+          fetch-depth: 0
+
+      - name: Install uv
+        if: steps.skip.outputs.skip != 'true'
+        uses: astral-sh/setup-uv@v4
+        with:
+          enable-cache: true
+
+      - name: Set up Node.js (dashboard build)
+        if: steps.skip.outputs.skip != 'true'
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: dashboard/package-lock.json
+
+      - name: Build offline bundle
+        if: steps.skip.outputs.skip != 'true'
+        env:
+          # 原生 runner 上平台标签与本机一致;脚本按传入标签下载
+          PLATFORM_TAG_AMD64: "manylinux2014_x86_64 manylinux_2_17_x86_64 manylinux_2_26_x86_64 manylinux_2_28_x86_64"
+          PLATFORM_TAG_ARM64: "manylinux2014_aarch64 manylinux_2_17_aarch64 manylinux_2_26_aarch64 manylinux_2_28_aarch64"
+        run: |
+          set -euo pipefail
+          # runner 架构 → 平台标签组(新+旧 manylinux 并列,精确匹配全覆盖)
+          case "$(uname -m)" in
+            x86_64) TAGS="$PLATFORM_TAG_AMD64" ;;
+            aarch64) TAGS="$PLATFORM_TAG_ARM64" ;;
+            *) echo "::error::unexpected runner arch $(uname -m)"; exit 1 ;;
+          esac
+          # 允许在 runner 上按目标平台编译 sdist-only 包(crcmod 等;runner 自带 gcc)
+          export PIP_INDEX_URL="https://pypi.org/simple"
+          bash scripts/offline_bundle.sh $TAGS cp312
+
+      - name: Upload bundle artifact
+        if: steps.skip.outputs.skip != 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: offline-bundle-${{ matrix.arch }}
+          path: |
+            dist/agentbuddy-offline-*.tar.gz
+            dist/SHA256SUMS.txt
+          retention-days: 30
+          if-no-files-found: error
+
+  attach-to-release:
+    name: Attach bundles to Release
+    needs: bundle
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download all bundle artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: bundles/
+
+      - name: Attach to GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          gh release upload "$TAG" bundles/offline-bundle-*/agentbuddy-offline-*.tar.gz --clobber
+          echo "attached offline bundles to release $TAG"
