@@ -88,7 +88,7 @@ def test_anthropic_adaptive_uses_native_model_fields() -> None:
         }
     )
     assert reasoning_request_parameters(capability, mode="enabled", effort="high") == {
-        "model_fields": {"thinking": {"type": "adaptive"}, "reasoning_effort": "high"}
+        "model_fields": {"thinking": {"type": "adaptive"}, "output_config": {"effort": "high"}}
     }
 
 
@@ -137,3 +137,52 @@ def test_status_only_model_does_not_emit_fake_controls() -> None:
     assert capability is not None
     assert capability["efforts"] == []
     assert reasoning_request_parameters(capability, mode="disabled", effort="high") == {}
+
+
+def test_direct_minimax_flash_defaults_to_adaptive_max_effort() -> None:
+    capability = reasoning_capability(
+        {"id": "MiniMax-M3.1-Flash", "reasoning": True},
+        base_url="https://api.minimax.io/v1",
+    )
+    assert capability == {
+        "supported": True,
+        "toggle": False,
+        "default_mode": "enabled",
+        "efforts": ["low", "medium", "high", "xhigh", "max"],
+        "default_effort": "max",
+        "effort_type": "enum",
+        "adapter": "openai_reasoning_effort",
+    }
+    assert reasoning_request_parameters(capability, mode=None, effort=None) == {
+        "model_fields": {"reasoning_effort": "max"}
+    }
+
+
+def test_direct_minimax_m3_preserves_openai_default_and_disabled_toggle() -> None:
+    capability = reasoning_capability(
+        {"id": "MiniMax-M3", "reasoning": True},
+        base_url="https://api.minimax.io/v1",
+    )
+    assert capability is not None
+    assert capability["default_mode"] == "auto"
+    assert capability["toggle"] is True
+    assert capability["efforts"] == []
+    assert reasoning_request_parameters(capability, mode=None, effort=None) == {}
+    assert reasoning_request_parameters(capability, mode="disabled", effort=None) == {
+        "model_fields": {"reasoning_effort": "none"}
+    }
+
+
+def test_direct_minimax_anthropic_uses_output_config_effort() -> None:
+    capability = reasoning_capability(
+        {"id": "MiniMax-M3.1-Flash", "reasoning": True},
+        base_url="https://api.minimax.io/anthropic",
+    )
+    assert capability is not None
+    assert capability["adapter"] == "minimax_anthropic_adaptive"
+    assert reasoning_request_parameters(capability, mode=None, effort=None) == {
+        "model_fields": {
+            "thinking": {"type": "adaptive"},
+            "output_config": {"effort": "max"},
+        }
+    }
