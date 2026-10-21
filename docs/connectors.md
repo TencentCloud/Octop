@@ -91,5 +91,13 @@ Optional: `quick_auth_url`, `login_url`, `guide_url`, `manual_url`, `auth_hint`,
 
 ## Deep dives / 深入说明
 
+DingTalk CLI stores configuration and file-backed credentials per connector instance.
+After upgrading from shared credential storage, authorize each instance again; old
+credentials are not copied. Native Windows credential storage cannot be isolated by
+dws's directory settings; run Octop in a Linux container on Windows.
+
+钉钉 CLI 的配置和文件凭据按连接器实例隔离。从共用凭据存储升级后，各实例需重新授权，
+旧凭据不会复制。dws 的目录设置不能隔离 Windows 原生凭据存储；Windows 请在 Linux 容器内运行 Octop。
+
 - [Agent Mail CLI](connectors-agently-mail.md)
 - [Qichacha / 企查查](connectors-qcc.md)

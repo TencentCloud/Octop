@@ -244,6 +244,8 @@ async def _login(spec: _Spec, creds: dict[str, Any], session: _Login) -> None:
         session.status, session.error_key = "expired", "login_expired"
     except FileNotFoundError:
         session.status, session.error_key = "error", "cli_missing"
+    except dingtalk_cli.UnsupportedPlatformError:
+        session.status, session.error_key = "error", "unsupported_platform"
     except Exception:
         # CLI output can contain tokens. Never return or log the raw exception/output.
         session.status, session.error_key = "error", "login_failed"
@@ -316,6 +318,10 @@ async def authorize(
             if disconnect:
                 return result("idle")
             return result("error", error_key="cli_missing")
+        except dingtalk_cli.UnsupportedPlatformError:
+            if disconnect:
+                return result("idle")
+            return result("error", error_key="unsupported_platform")
         except Exception:
             error_key = f"{action}_failed" if action in {"logout", "refresh"} else "login_failed"
             return result("error", error_key=error_key)
