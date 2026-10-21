@@ -36,7 +36,7 @@ class TestLoadConfig:
         assert config["backend"] == "postgres"
         assert config["postgres"]["dsn"] == "postgresql://myhost/db"
         # Defaults for other sections preserved
-        assert config["sqlite"]["db_path"] == "~/.octop-memory/memory.db"
+        assert config["sqlite"]["db_path"] == "~/.agentbuddy/memory/memory.db"
 
     def test_handles_malformed_file(self, tmp_path: Path) -> None:
         from octop_memory.adapters.cli.config import set_config_path
@@ -85,7 +85,7 @@ class TestConfigCommands:
         runner = CliRunner()
         result = runner.invoke(main, ["config", "path"])
         assert result.exit_code == 0
-        assert ".octop-memory" in result.output
+        assert ".agentbuddy/memory" in result.output
         assert "config.json" in result.output
 
     def test_config_set(self, tmp_path: Path) -> None:
@@ -139,8 +139,8 @@ class TestBackendResolution:
 
     def test_env_var_backend(self, tmp_path: Path, monkeypatch: object) -> None:
         db_path = str(tmp_path / "test.db")
-        monkeypatch.setenv("OCTOP_MEMORY_BACKEND", "sqlite")
-        monkeypatch.setenv("OCTOP_MEMORY_DB", db_path)
+        monkeypatch.setenv("AGENTBUDDY_MEMORY_BACKEND", "sqlite")
+        monkeypatch.setenv("AGENTBUDDY_MEMORY_DB", db_path)
         runner = CliRunner()
         result = runner.invoke(main, ["--namespace", "test", "memory", "tree"])
         assert result.exit_code == 0
@@ -163,7 +163,7 @@ class TestBackendResolution:
         assert result.exit_code == 0
 
     def test_config_file_env_var(self, tmp_path: Path, monkeypatch: object) -> None:
-        """OCTOP_MEMORY_CONFIG env var specifies custom config file path."""
+        """AGENTBUDDY_MEMORY_CONFIG env var specifies custom config file path."""
         config_file = tmp_path / "env-config.json"
         db_path = str(tmp_path / "env.db")
         config_file.write_text(
@@ -174,7 +174,7 @@ class TestBackendResolution:
                 }
             )
         )
-        monkeypatch.setenv("OCTOP_MEMORY_CONFIG", str(config_file))
+        monkeypatch.setenv("AGENTBUDDY_MEMORY_CONFIG", str(config_file))
         runner = CliRunner()
         result = runner.invoke(main, ["--namespace", "test", "memory", "tree"])
         assert result.exit_code == 0

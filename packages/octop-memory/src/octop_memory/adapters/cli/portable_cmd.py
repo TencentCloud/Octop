@@ -78,7 +78,7 @@ def list_sources_cmd(output_json: bool) -> None:
     "out_path",
     default=None,
     type=click.Path(),
-    help="Output file path (default: ~/.octop-memory/portable/<ns>-<ts>.hmpkg).",
+    help="Output file path (default: ~/.agentbuddy/memory/portable/<ns>-<ts>.hmpkg).",
 )
 def pack_cmd(source: str, out_path: str | None) -> None:
     """Pack the specified agent's memory into a .hmpkg file.

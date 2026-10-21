@@ -83,7 +83,7 @@ class SqliteMemoryBackend:
     """Memory backend using SQLite + FTS5.
 
     Multi-agent isolation via table-name prefix (namespace).
-    Default database path: ``~/.octop-memory/session.sqlite``.
+    Default database path: ``~/.agentbuddy/memory/session.sqlite``.
 
     One connection per backend, serialized for a full operation/transaction.
     Worker pools do not multiply persistent handles by agent count. Each
@@ -94,7 +94,7 @@ class SqliteMemoryBackend:
     def __init__(
         self,
         namespace: str,
-        db_path: str | Path = "~/.octop-memory/session.sqlite",
+        db_path: str | Path = "~/.agentbuddy/memory/session.sqlite",
     ) -> None:
         self._ns = re.sub(r"[^a-z0-9_]", "_", namespace.lower())
         self._db_path = Path(db_path).expanduser()

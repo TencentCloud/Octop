@@ -21,8 +21,8 @@ logger = logging.getLogger(__name__)
 # short-lived (one process per command) so without this file each new process
 # would attach to whatever target Chrome happens to list first — which can be
 # a stale ``about:blank`` tab rather than the one the user was driving.
-_TARGET_STATE_FILE = ".octop-browser-target.json"
-_PROFILE_PORTS_FILE = ".octop-browser-profiles.json"
+_TARGET_STATE_FILE = ".agentbuddy-browser-target.json"
+_PROFILE_PORTS_FILE = ".agentbuddy-browser-profiles.json"
 
 # Older alternate filenames, read as a fallback so an existing profile keeps
 # its port assignment and target binding instead of re-attaching to a random tab.

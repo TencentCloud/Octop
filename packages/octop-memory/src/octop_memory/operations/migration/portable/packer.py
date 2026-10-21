@@ -39,7 +39,7 @@ logger = logging.getLogger(__name__)
 _TOOL_VERSION = f"octop_memory.portable/{_HM_VERSION}"
 
 # Default output directory
-_DEFAULT_OUT_DIR = Path("~/.octop-memory/portable")
+_DEFAULT_OUT_DIR = Path("~/.agentbuddy/memory/portable")
 
 
 def _resolve_source(source: SourceInfo | str) -> SourceInfo:
@@ -135,7 +135,7 @@ def pack(
     Args:
         source: A SourceInfo object or a 'host:name' format string.
         out: Output file path. If not given, writes to
-            ~/.octop-memory/portable/<ns>-<yyyymmdd-HHMM>.hmpkg.
+            ~/.agentbuddy/memory/portable/<ns>-<yyyymmdd-HHMM>.hmpkg.
         progress: Progress callback (done, total, phase).
 
     Returns:

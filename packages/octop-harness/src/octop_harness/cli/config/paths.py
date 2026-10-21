@@ -4,7 +4,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
-_OCTOP_HARNESS_DIR_NAME = ".octop-harness"
+_AGENTBUDDY_HARNESS_DIR_NAME = "harness"
+_HARNESS_FALLBACK_DIR_NAME = ".octop-harness"
 _CONFIG_FILENAME = "config.json"
 _CREDENTIALS_FILENAME = "credentials.json"
 _SESSIONS_DIR_NAME = "sessions"
@@ -15,7 +16,7 @@ _ENV_FILENAME = ".env"
 class CliPaths:
     """Resolved paths for global and project-level config.
 
-    The CLI's primary home is **global** (``~/.octop-harness/``) — that's
+    The CLI's primary home is **global** (``~/.agentbuddy/harness/``) — that's
     where ``octop-harness init`` lays down config + workspace + sessions
     by default. A project-level ``<cwd>/.octop-harness/`` can still
     override fields in the global ``config.json`` (project wins on
@@ -26,27 +27,41 @@ class CliPaths:
         self._project_root = project_dir
 
     # ------------------------------------------------------------------
-    # Global (``~/.octop-harness``)
+    # Global (``~/.agentbuddy/harness``)
     # ------------------------------------------------------------------
 
     @property
     def global_dir(self) -> Path:
-        """``~/.octop-harness/`` — user-level Harness home."""
-        return Path.home() / _OCTOP_HARNESS_DIR_NAME
+        """``~/.agentbuddy/harness/`` — user-level Harness home.
+
+        Falls back to the legacy ``~/.octop-harness`` when that already
+        exists so existing CLI installs keep their config and sessions.
+        """
+        import os
+
+        root = os.environ.get("AGENTBUDDY_HOME", "").strip() or os.environ.get("OCTOP_HOME", "").strip()
+        base = Path(root).expanduser() if root else Path.home() / ".agentbuddy"
+        current = base / _AGENTBUDDY_HARNESS_DIR_NAME
+        if current.exists():
+            return current
+        legacy = Path.home() / _HARNESS_FALLBACK_DIR_NAME
+        if legacy.exists():
+            return legacy
+        return current
 
     @property
     def global_config_file(self) -> Path:
-        """``~/.octop-harness/config.json``"""
+        """``~/.agentbuddy/harness/config.json``"""
         return self.global_dir / _CONFIG_FILENAME
 
     @property
     def credentials_file(self) -> Path:
-        """``~/.octop-harness/credentials.json``"""
+        """``~/.agentbuddy/harness/credentials.json``"""
         return self.global_dir / _CREDENTIALS_FILENAME
 
     @property
     def global_workspace_dir(self) -> Path:
-        """``~/.octop-harness/workspace/`` — agent's default workspace.
+        """``~/.agentbuddy/harness/workspace/`` — agent's default workspace.
 
         Holds the bundled ``_builtin_skills/`` and seeded markdown
         templates (``AGENTS.md``, ``MEMORY.md``, …). Equivalent to
@@ -56,12 +71,12 @@ class CliPaths:
 
     @property
     def global_sessions_dir(self) -> Path:
-        """``~/.octop-harness/sessions/`` — CLI session metadata."""
+        """``~/.agentbuddy/harness/sessions/`` — CLI session metadata."""
         return self.global_dir / _SESSIONS_DIR_NAME
 
     @property
     def global_env_file(self) -> Path:
-        """``~/.octop-harness/.env``"""
+        """``~/.agentbuddy/harness/.env``"""
         return self.global_dir / _ENV_FILENAME
 
     # ------------------------------------------------------------------
@@ -83,7 +98,7 @@ class CliPaths:
         """Active sessions directory.
 
         Project-level if ``<project>/.octop-harness/sessions/`` exists,
-        otherwise the global ``~/.octop-harness/sessions/``. Lets users
+        otherwise the global ``~/.agentbuddy/harness/sessions/``. Lets users
         keep a per-project history without having to set anything up
         themselves.
         """

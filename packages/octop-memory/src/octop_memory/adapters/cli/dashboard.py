@@ -30,21 +30,21 @@ def _find_free_port(start: int = 7860, attempts: int = 10) -> int:
 @click.option(
     "--db-path",
     default=None,
-    envvar="OCTOP_MEMORY_DB",
+    envvar="AGENTBUDDY_MEMORY_DB",
     help="SQLite database path (default: fill in interactively in the dashboard).",
 )
 @click.option(
     "--namespace",
     "-n",
     default=None,
-    envvar="OCTOP_MEMORY_NAMESPACE",
+    envvar="AGENTBUDDY_MEMORY_NAMESPACE",
     help="Memory namespace (default: fill in interactively in the dashboard).",
 )
 @click.option(
     "--port",
     default=None,
     type=int,
-    envvar="OCTOP_MEMORY_DASHBOARD_PORT",
+    envvar="AGENTBUDDY_MEMORY_DASHBOARD_PORT",
     help="Listen port (default: auto-detect starting from 7860).",
 )
 @click.option(

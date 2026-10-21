@@ -6,7 +6,7 @@ library core and the CLI.
 
 ``load_provider_templates`` loads presets from JSON, with priority:
 1. ``templates_path`` argument (explicit file, no fallback).
-2. ``~/.octop-harness/providers_template.json`` (user-customisable).
+2. ``~/.agentbuddy/harness/providers_template.json`` (user-customisable).
 3. Bundled ``providers/provider_template.json`` (fallback).
 """
 
@@ -21,7 +21,18 @@ from octop_harness.providers.api import serialize_model_preset, serialize_provid
 
 _BUILTIN_PACKAGE = "octop_harness.providers"
 _TEMPLATE_FILENAME = "provider_template.json"
-_USER_DIR = Path.home() / ".octop-harness"
+
+
+def _harness_home() -> Path:
+    import os
+
+    root = os.environ.get("AGENTBUDDY_HOME", "").strip() or os.environ.get("OCTOP_HOME", "").strip()
+    if root:
+        return Path(root).expanduser() / "harness"
+    return Path.home() / ".agentbuddy" / "harness"
+
+
+_USER_DIR = _harness_home()
 
 _INPUT_MODALITIES = frozenset({"text", "image", "audio", "video"})
 
@@ -171,7 +182,7 @@ def load_provider_templates(
 
     Priority:
     1. ``templates_path`` (explicit path; raises ``FileNotFoundError`` if missing).
-    2. ``~/.octop-harness/providers_template.json`` (user-customisable).
+    2. ``~/.agentbuddy/harness/providers_template.json`` (user-customisable).
     3. Bundled ``providers/provider_template.json`` (fallback).
 
     Args:

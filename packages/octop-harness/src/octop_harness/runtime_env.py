@@ -54,7 +54,7 @@ PROTECTED_ENV_KEYS = frozenset(
         "PROGRAMFILES(X86)",
     }
 )
-PROTECTED_ENV_PREFIXES = ("OCTOP_",)
+PROTECTED_ENV_PREFIXES = ("AGENTBUDDY_", "OCTOP_")
 
 DOCKER_MINIMAL_PATH = "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
 

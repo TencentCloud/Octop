@@ -526,7 +526,7 @@ def test_slim_rejects_missing_offline_and_postgres_without_mutation(tmp_path):
 
 
 def test_memory_switch_preserves_compatible_reader(tmp_path, monkeypatch):
-    monkeypatch.setenv("OCTOP_MEMORY_CHECKPOINT_DEDUP", "0")
+    monkeypatch.setenv("AGENTBUDDY_MEMORY_CHECKPOINT_DEDUP", "0")
     memory = Memory(namespace="switch", backend_config={"db_path": str(tmp_path / "switch.sqlite")})
     try:
         memory.put(config(), checkpoint(), {}, {})

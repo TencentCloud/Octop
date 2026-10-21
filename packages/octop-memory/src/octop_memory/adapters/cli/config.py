@@ -43,8 +43,8 @@ def get_memory(ctx: click.Context) -> Memory:
 
     Resolution order (highest priority first):
     1. CLI flags (--backend, --db, --dsn)
-    2. Environment variables (OCTOP_MEMORY_BACKEND, OCTOP_MEMORY_DB, OCTOP_MEMORY_DSN)
-    3. Config file (~/.octop-memory/config.json)
+    2. Environment variables (AGENTBUDDY_MEMORY_BACKEND, AGENTBUDDY_MEMORY_DB, AGENTBUDDY_MEMORY_DSN)
+    3. Config file (~/.agentbuddy/memory/config.json)
     4. Defaults
     """
     # ctx.obj already has the resolved values from CLI flags + env vars

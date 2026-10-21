@@ -222,9 +222,7 @@ class TestDoubaoSearch:
         assert "DOUBAO_SEARCH_API_KEY" in result
 
     @pytest.mark.asyncio
-    async def test_success_returns_trimmed_results(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    async def test_success_returns_trimmed_results(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setenv("DOUBAO_SEARCH_API_KEY", "secret")
         payload = {
             "ResponseMetadata": {"RequestId": "r1"},
@@ -291,9 +289,7 @@ class TestDoubaoSearch:
         assert len(captured["json"]["Query"]) == 100
 
     @pytest.mark.asyncio
-    async def test_http_error_surfaces_api_error_code(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    async def test_http_error_surfaces_api_error_code(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setenv("DOUBAO_SEARCH_API_KEY", "secret")
         payload = {
             "ResponseMetadata": {
@@ -358,9 +354,7 @@ class TestDeepseekSearch:
         assert "DEEPSEEK_API_KEY" in result
 
     @pytest.mark.asyncio
-    async def test_success_prefers_summary_over_snippet(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    async def test_success_prefers_summary_over_snippet(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setenv("DEEPSEEK_API_KEY", "secret")
         payload = {
             "results": [

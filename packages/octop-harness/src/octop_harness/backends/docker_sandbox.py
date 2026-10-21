@@ -3,7 +3,7 @@
 **Same path, two places (no bind-mount):**
 
 - Host ``workspace_dir``: set by the host when the agent is created/started
-  (Octop default is ``{OCTOP_HOME}/agents/<id>/``, but it is whatever value the
+  (the server default is ``{AGENTBUDDY_HOME}/agents/<id>/``, but it is whatever value the
   host passes — not a hardcoded constant). Used for sessions / memory /
   checkpoints on the host filesystem.
 - In-container workspace root: by default the **same absolute path string** as
