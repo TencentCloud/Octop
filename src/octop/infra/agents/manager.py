@@ -3991,6 +3991,7 @@ class AgentManager:
 
         from octop.infra.agents.middleware.binary_read_guard import BinaryReadGuardMiddleware
         from octop.infra.agents.middleware.browser_profile import BrowserProfileMiddleware
+        from octop.infra.agents.middleware.mcp_tool_error import McpToolErrorMiddleware
         from octop.infra.agents.middleware.octop_ui_offload import OctopUiOffloadMiddleware
         from octop.infra.agents.middleware.reasoning import ReasoningRequestMiddleware
         from octop.infra.agents.middleware.thread_artifacts import ThreadArtifactsMiddleware
@@ -4004,9 +4005,14 @@ class AgentManager:
         # BinaryReadGuard stays Octop-specific (inbound/attachment product policy).
         # ThreadArtifacts writes workspace paths onto threads after successful tools.
         # WorkspaceImageMaterialize expands path-only vision refs at model-call time.
-        # OctopUiOffload stays innermost so every outer middleware observes the
-        # slimmed content consistently; it only touches octop_ui plugin envelopes,
-        # disjoint from the file-tool results ThreadArtifacts cares about.
+        # OctopUiOffload stays innermost of the content transformers so every
+        # outer middleware observes the slimmed content consistently; it only
+        # touches octop_ui plugin envelopes, disjoint from the file-tool
+        # results ThreadArtifacts cares about.
+        # McpToolErrorMiddleware goes last so it converts a rejected MCP tool
+        # call into an error tool result as close to the MCP call as this list
+        # allows; the outer middleware then sees a regular tool result instead
+        # of an exception tearing down the whole turn.
         agent_middleware: list[Any] = [
             *plugin_middleware,
             TokenQuotaMiddleware(
@@ -4024,6 +4030,7 @@ class AgentManager:
                 agent_id=row.agent_id,
             ),
             OctopUiOffloadMiddleware(),
+            McpToolErrorMiddleware(),
         ]
 
         merged_tools: list[Any] = []
