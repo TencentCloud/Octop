@@ -49,7 +49,15 @@ PLATFORMS=("${ARGS[@]}")
 MIRROR="${MIRROR:-https://pypi.org/simple}"
 OUT="$REPO_ROOT/dist/offline"
 
+# ---- 0) 准备 3.12 解释器(sdist 编译必须用目标 Python 版本;系统 python3 往往是 3.10) ----
+PY312="$REPO_ROOT/.offline-py312"
+uv python install 3.12 >/dev/null 2>&1 || true
+uv venv "$PY312" --python 3.12 >/dev/null 2>&1 || { echo "[offline_bundle] ERROR: 无法准备 Python 3.12(sdist 编译需要)" >&2; exit 1; }
+"$PY312/bin/python" -m ensurepip --upgrade >/dev/null 2>&1 || true
+
 echo "[offline_bundle] platforms=${PLATFORMS[*]} python=$PYTAG mirror=$MIRROR"
+# pip 的 --python-version 只接受 x.y 形态(cp312 会报 invalid);crcmod 编译仍用 cp312 语义
+PYVER="${PYTAG:2:1}.${PYTAG:3}"
 
 PLATFORM_ARGS=()
 for p in "${PLATFORMS[@]}"; do
@@ -80,7 +88,7 @@ uv export --frozen --no-dev --no-hashes --no-emit-project \
 echo "[offline_bundle] Downloading wheels (binary only)..."
 python3 -m pip install --quiet --upgrade pip
 if ! python3 -m pip download -q --dest "$OUT" \
-    "${PLATFORM_ARGS[@]}" --python-version "$PYTAG" --implementation cp \
+    "${PLATFORM_ARGS[@]}" --python-version "$PYVER" --implementation cp \
     --only-binary=:all: --index-url "$MIRROR" \
     -r "$OUT/requirements-third-party.txt"; then
     echo "[offline_bundle] 第一轮(仅 wheel)有缺口——多为 sdist-only 老包或镜像滞后,进入第二轮"
@@ -101,10 +109,11 @@ PY
 )
 if [ -n "$MISSING" ]; then
     echo "[offline_bundle] 第二轮:构建机按目标平台预编译 sdist-only 包: $MISSING"
-    # 逐包编译:需要构建机自身有 gcc(只为产出 wheel,产物拷入内网后政务机不编译)
+    # 逐包编译:必须用 3.12 解释器(runner/构建机的系统 python3 往往是 3.10,
+    # 编出的 ABI 不对);产物拷入内网后政务机不编译。
     for pkg in $MISSING; do
         echo "[offline_bundle] Building wheel for $pkg ($PLATFORMS[0] / $PYTAG)..."
-        python3 -m pip wheel -q --wheel-dir "$OUT" --no-deps \
+        "$PY312/bin/python" -m pip wheel -q --wheel-dir "$OUT" --no-deps \
             --index-url "$MIRROR" "$pkg" \
             || echo "[offline_bundle] WARNING: $pkg wheel 编译失败,回退下载 sdist(政务机需 gcc)"
     done
@@ -123,7 +132,7 @@ PY
         echo "[offline_bundle] 预编译后仍缺(下载 sdist 兜底,政务机需 gcc): $STILL_MISSING"
         python3 -m pip download -q --dest "$OUT" \
             --no-binary :none: --prefer-binary --no-deps \
-            --python-version "$PYTAG" --index-url "$MIRROR" \
+            --python-version "$PYVER" --index-url "$MIRROR" \
             $STILL_MISSING || echo "[offline_bundle] WARNING: 部分 sdist 包下载失败(逐包检查)"
     fi
 fi
