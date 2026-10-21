@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from types import SimpleNamespace
 
+import pytest
+
 from octop.infra.knowledge import embed
 
 
@@ -26,7 +28,7 @@ def test_remote_embedding_routes_to_provider_embeddings_endpoint(monkeypatch) ->
             return None
 
         def json(self):
-            return {"data": [{"embedding": [1.0, 2.0]}]}
+            return {"data": [{"index": 0, "embedding": [1.0, 2.0]}]}
 
     class Client:
         def __enter__(self):
@@ -72,7 +74,7 @@ def test_remote_embedding_merges_provider_extra_headers(monkeypatch) -> None:
             return None
 
         def json(self):
-            return {"data": [{"embedding": [0.5]}]}
+            return {"data": [{"index": 0, "embedding": [0.5]}]}
 
     class Client:
         def __enter__(self):
@@ -111,7 +113,10 @@ def test_remote_embedding_batches_large_input(monkeypatch) -> None:
     class Response:
         def __init__(self, batch: list[str]) -> None:
             # One embedding per input, tagged with the input's global position.
-            self._data = [{"embedding": [float(t.split("-")[1])]} for t in batch]
+            self._data = [
+                {"index": index, "embedding": [float(t.split("-")[1])]}
+                for index, t in enumerate(batch)
+            ]
 
         def raise_for_status(self):
             return None
@@ -143,3 +148,68 @@ def test_remote_embedding_batches_large_input(monkeypatch) -> None:
     # Merged vectors stay aligned with input order.
     assert len(result) == 45
     assert result == [[float(i)] for i in range(45)]
+
+
+def test_remote_embedding_restores_order_from_response_indexes(monkeypatch) -> None:
+    provider = SimpleNamespace(base_url="https://example.test/v1/", api_key="secret")
+    services = SimpleNamespace(
+        settings_repo=SimpleNamespace(
+            get=lambda key: {
+                "knowledge_embedding_backend": "remote",
+                "knowledge_embedding_model": "embed-1",
+                "knowledge_embedding_provider_id": "7",
+            }.get(key)
+        ),
+        provider_repo=SimpleNamespace(
+            get=lambda provider_id: provider if provider_id == 7 else None
+        ),
+    )
+
+    class Response:
+        def raise_for_status(self):
+            return None
+
+        def json(self):
+            return {
+                "data": [
+                    {"index": 1, "embedding": [20.0]},
+                    {"index": 0, "embedding": [10.0]},
+                ]
+            }
+
+    class Client:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            return None
+
+        def post(self, url, *, headers, json):
+            return Response()
+
+    monkeypatch.setattr(embed.httpx, "Client", lambda **_kwargs: Client())
+
+    assert embed.embed_knowledge_texts(services, ["first", "second"]) == [[10.0], [20.0]]
+
+
+def test_remote_embedding_rejects_duplicate_response_indexes() -> None:
+    class Response:
+        def raise_for_status(self):
+            return None
+
+        def json(self):
+            return {
+                "data": [
+                    {"index": 0, "embedding": [10.0]},
+                    {"index": 0, "embedding": [20.0]},
+                ]
+            }
+
+    class Client:
+        def post(self, url, *, headers, json):
+            return Response()
+
+    with pytest.raises(RuntimeError, match="duplicate index"):
+        embed._embed_remote_batched(
+            Client(), "https://example.test/v1", {}, "embed-1", ["first", "second"]
+        )
