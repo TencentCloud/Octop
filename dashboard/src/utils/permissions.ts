@@ -30,6 +30,7 @@ export const PERM = {
   knowledgeBases: ["knowledge_bases"],
   knowledgeSettings: ["knowledge_settings"],
   knowledgeBasesPage: ["knowledge_bases", "knowledge_settings"],
+  bridge: ["bridge"],
   workbench: ["browser", "terminal"],
   browser: ["browser"],
   terminal: ["terminal"],
@@ -66,6 +67,7 @@ export const NAV_PERMISSIONS = {
   connectors: PERM.connectors,
   "skill-packages": PERM.skillPackages,
   "knowledge-bases": PERM.knowledgeBasesPage,
+  bridge: PERM.bridge,
   workbench: PERM.workbench,
   "remote-desktop": ["desktop", "mobile"],
   "remote-phone": PERM.mobile,
@@ -237,7 +239,7 @@ export function pathPermissionKeys(pathname: string): PermissionKeys | null {
     return PERM.knowledgeBasesPage;
   }
   if (pathname === "/bridge" || pathname.startsWith("/bridge/")) {
-    return null;
+    return PERM.bridge;
   }
   if (pathname === "/remote-desktop/desktop") {
     return PERM.desktop;

@@ -115,6 +115,7 @@ PERMISSIONS: dict[str, PermissionDef] = {
     "connectors": _p("connectors", "settings", "连接器", "Connectors"),
     "skill_packages": _p("skill_packages", "settings", "技能包", "Skill Packages"),
     "knowledge_bases": _p("knowledge_bases", "settings", "知识库", "Knowledge Base"),
+    "bridge": _p("bridge", "settings", "云端协同", "Cloud collab"),
     # --- control (nav.control) — page/tab labels ---
     "terminal": _p("terminal", "control", "工作台/终端", "Workbench / Terminal"),
     "browser": _p("browser", "control", "工作台/浏览器", "Workbench / Browser"),

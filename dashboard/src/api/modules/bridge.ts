@@ -1,4 +1,4 @@
-import { request } from "../request";
+import { request, requestUpload } from "../request";
 import type { ResolvedModel } from "../types";
 import type { KnowledgeBase, KnowledgeCapability } from "./knowledgeBases";
 
@@ -9,6 +9,7 @@ export interface BridgeConnection {
   display_name: string;
   notes: string | null;
   icon_name?: string | null;
+  icon_url?: string | null;
   status: string;
   last_error: string | null;
   last_seen_at: number | null;
@@ -135,6 +136,21 @@ export const bridgeApi = {
 
   remove: (connectionId: string) =>
     request<void>(`/bridge/connections/${connectionId}`, { method: "DELETE" }),
+
+  uploadAvatar: (connectionId: string, file: File) => {
+    const body = new FormData();
+    body.append("file", file);
+    return requestUpload<{ icon_url: string }>(
+      `/bridge/connections/${encodeURIComponent(connectionId)}/avatar`,
+      body,
+    );
+  },
+
+  deleteAvatar: (connectionId: string) =>
+    request<void>(
+      `/bridge/connections/${encodeURIComponent(connectionId)}/avatar`,
+      { method: "DELETE" },
+    ),
 
   listAgents: (connectionId: string) =>
     request<BridgeRemoteAgent[]>(`/bridge/connections/${connectionId}/agents`),

@@ -12,6 +12,13 @@
     "maximize": "最大化",
     "close": "关闭"
   },
+  "avatarPicker": {
+    "presets": {
+      "skill": {
+        "package": "技能包"
+      }
+    }
+  },
   "common": {
     "save": "保存",
     "saveSuccess": "保存成功",
@@ -326,12 +333,13 @@
     "packageNamePlaceholder": "例如：调研工具包",
     "packageDescription": "描述",
     "packageDescriptionPlaceholder": "可选，简要说明该技能包的用途",
-    "iconName": "预设图标",
+    "iconName": "头像",
     "iconNamePlaceholder": "选择图标",
     "iconUrl": "自定义图标 URL",
     "iconUrlPlaceholder": "https://example.com/icon.png",
     "iconUrlInvalid": "请输入有效的 http(s) 图标地址",
     "iconUrlTooLong": "图标地址过长",
+    "avatarUploadLater": "技能包已创建，头像未能上传，可稍后在编辑中添加。",
     "fromSkillHub": "从技能市场导入",
     "fromSkillHubHint": "将 SkillHub 技能集导入为新的技能包。",
     "addAsPackage": "添加为技能包",
@@ -477,8 +485,9 @@
     "previewFailed": "预览文档失败",
     "downloadOriginal": "下载",
     "downloadOriginalFailed": "下载失败",
-    "icon": "图标",
+    "icon": "头像",
     "iconPlaceholder": "选择知识库图标",
+    "avatarUploadLater": "知识库已创建，头像未能上传，可稍后在编辑中添加。",
     "iconLabels": {
       "book-open": "人文",
       "landmark": "历史",
@@ -808,7 +817,7 @@
       "proactive": "主动推送"
     },
     "myExperts": "我的专家",
-    "expertLibrary": "内置专家",
+    "expertLibrary": "内置专家模板",
     "expertMarket": "专家市场",
     "viewCard": "卡片",
     "viewTable": "表格",
@@ -830,6 +839,10 @@
     "totalAgents": "共 {{count}} 个专家",
     "searchPlaceholder": "搜索专家",
     "searchEmpty": "没有匹配的专家",
+    "filterEmpty": "没有符合当前筛选的结果",
+    "locationAll": "全部",
+    "locationLocal": "本地",
+    "locationCloud": "云端",
     "totalLibrary": "共 {{count}} 个内置专家",
     "totalMarket": "共 {{count}} 个市场专家",
     "addFromLibrary": "+ 从内置专家新建",
@@ -3635,8 +3648,9 @@
       "displayNamePlaceholder": "例如：公司云端",
       "displayNameRequired": "请输入显示名",
       "displayNameHint": "聊天页切换对端分组时显示此名称，须唯一",
-      "icon": "图标",
-      "iconHint": "显示在对端专家卡片上（图标 + 显示名）",
+      "icon": "头像",
+      "iconHint": "显示在对端专家卡片上（头像 + 显示名）",
+      "avatarUploadLater": "Bridge 已创建，头像未能上传，可稍后在编辑连接中添加。",
       "iconLabels": {
         "cloudy": "云端",
         "cloud": "云",

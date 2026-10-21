@@ -48,6 +48,11 @@ import type {
   SkillPackageDetail,
   SkillPackageSkillDetail,
 } from "../../api/types/skillPackage";
+import {
+  isUploadedAvatarUrl,
+  ResourceAvatarPicker,
+  SKILL_PACKAGE_AVATAR_PRESETS,
+} from "../../components/AvatarPicker";
 import { CardSkeleton } from "../../components/Skeleton";
 import { CopyableResourceId } from "../../components/CopyableResourceId";
 import { EmptyState, OctopEmptyMascot } from "../../components/EmptyState";
@@ -73,10 +78,6 @@ import {
 import SkillHubTab from "../Agent/Skills/components/SkillHubTab";
 import skillStyles from "../Agent/Skills/index.module.less";
 import type { ParsedZipSkill } from "../Agent/Skills/components/parseSkillZip";
-import {
-  EXPERT_ICON_NAMES,
-  iconForName,
-} from "../Experts/components/iconForName";
 import { showConfirmModal } from "../../utils/confirmModal";
 import { saveBlobAsFile } from "../../utils/saveBlobAsFile";
 import { createDetailRequestGate } from "../../utils/detailRequestGate";
@@ -98,15 +99,6 @@ type PackageFormValues = {
   allow_download?: boolean;
   can_download?: boolean;
 };
-
-function isHttpUrl(value: string): boolean {
-  try {
-    const parsed = new URL(value);
-    return parsed.protocol === "http:" || parsed.protocol === "https:";
-  } catch {
-    return false;
-  }
-}
 
 const EMPTY_SKILL = "---\nname: \ndescription: \n---\n\n";
 const SKILL_URL_PREFIXES = [
@@ -139,45 +131,6 @@ function formatPackageCreator(
   return displayName || username || item.created_by;
 }
 
-function PackageIconPicker({
-  value,
-  onChange,
-}: {
-  value?: string;
-  onChange?: (value?: string) => void;
-}) {
-  const { t, i18n } = useTranslation();
-  // Skip icons without localized labels — otherwise the grid shows raw
-  // English kebab-case names (e.g. cloud-cog) that add clutter.
-  const iconNames = EXPERT_ICON_NAMES.filter((name) =>
-    i18n.exists(`experts.iconLabels.${name}`),
-  );
-  return (
-    <div className={styles.iconPicker}>
-      {iconNames.map((name) => {
-        const selected = value === name;
-        const label = t(`experts.iconLabels.${name}`);
-        return (
-          <button
-            key={name}
-            type="button"
-            className={`${styles.iconPickerItem}${
-              selected ? ` ${styles.iconPickerItemActive}` : ""
-            }`}
-            onClick={() => onChange?.(selected ? undefined : name)}
-            title={label}
-          >
-            <span className={styles.iconPickerGlyph}>
-              {iconForName(name, 18)}
-            </span>
-            <span className={styles.iconPickerLabel}>{label}</span>
-          </button>
-        );
-      })}
-    </div>
-  );
-}
-
 export default function SkillPackagesPage() {
   const { t } = useTranslation();
   const isMobile = useIsMobile();
@@ -206,6 +159,8 @@ export default function SkillPackagesPage() {
   const [skillForm] = Form.useForm<SkillFormValues>();
   const iconName = Form.useWatch("icon_name", packageForm);
   const iconUrl = Form.useWatch("icon_url", packageForm);
+  const [pendingAvatarFile, setPendingAvatarFile] = useState<File | null>(null);
+  const [avatarBusy, setAvatarBusy] = useState(false);
   const detailRequestGate = useRef(createDetailRequestGate());
   const initialLoadDone = useRef(false);
 
@@ -343,10 +298,11 @@ export default function SkillPackagesPage() {
 
   const openCreatePackage = () => {
     setEditingPackageId(null);
+    setPendingAvatarFile(null);
     packageForm.setFieldsValue({
       name: "",
       description: "",
-      icon_name: undefined,
+      icon_name: "package",
       icon_url: "",
       copy_policy: "snapshot",
       allow_download: true,
@@ -358,6 +314,7 @@ export default function SkillPackagesPage() {
 
   const openEditPackage = (item: SkillPackage) => {
     setEditingPackageId(item.id);
+    setPendingAvatarFile(null);
     packageForm.setFieldsValue({
       name: item.name,
       description: item.description,
@@ -387,16 +344,33 @@ export default function SkillPackagesPage() {
     }
     const payload = {
       ...values,
-      icon_url: values.icon_url?.trim() || undefined,
+      // Blob previews are local-only; upload runs after create/update.
+      icon_url: pendingAvatarFile
+        ? ""
+        : values.icon_url?.startsWith("blob:")
+        ? ""
+        : values.icon_url?.trim() || "",
       shared: packageVisibility !== "owner",
       visibility: packageVisibility,
       group_ids: packageVisibility === "groups" ? packageGroupIds : [],
     };
     try {
-      const next = editingPackageId
+      let next = editingPackageId
         ? await skillPackagesApi.update(editingPackageId, payload)
         : await skillPackagesApi.create(payload);
+      if (pendingAvatarFile) {
+        try {
+          const uploaded = await skillPackagesApi.uploadAvatar(
+            next.id,
+            pendingAvatarFile,
+          );
+          next = { ...next, icon_url: uploaded.icon_url };
+        } catch {
+          message.warning(t("skillPackages.avatarUploadLater"));
+        }
+      }
       setPackageDrawerOpen(false);
+      setPendingAvatarFile(null);
       await loadPackages({ silent: true });
       setSelected(next);
       setSelectedId(next.id);
@@ -1060,6 +1034,109 @@ export default function SkillPackagesPage() {
             );
           }}
         >
+          <Form.Item name="icon_name" hidden>
+            <Input />
+          </Form.Item>
+          <Form.Item name="icon_url" hidden>
+            <Input />
+          </Form.Item>
+          <Form.Item label={t("skillPackages.iconName")}>
+            <ResourceAvatarPicker
+              imageUrl={
+                iconUrl?.trim() &&
+                (isUploadedAvatarUrl(iconUrl) ||
+                  Boolean(pendingAvatarFile) ||
+                  iconUrl.startsWith("blob:") ||
+                  /^https?:\/\//i.test(iconUrl))
+                  ? iconUrl
+                  : null
+              }
+              presetId={iconName || null}
+              presets={SKILL_PACKAGE_AVATAR_PRESETS}
+              disabled={avatarBusy}
+              onPick={(file) => {
+                if (editingPackageId) {
+                  void (async () => {
+                    setAvatarBusy(true);
+                    try {
+                      const result = await skillPackagesApi.uploadAvatar(
+                        editingPackageId,
+                        file,
+                      );
+                      packageForm.setFieldsValue({
+                        icon_url: result.icon_url,
+                      });
+                      setPendingAvatarFile(null);
+                    } catch (err) {
+                      message.error(
+                        apiErrorMessage(
+                          err,
+                          t("experts.avatarUploadFailed"),
+                          t,
+                        ),
+                      );
+                      throw err;
+                    } finally {
+                      setAvatarBusy(false);
+                    }
+                  })();
+                  return;
+                }
+                setPendingAvatarFile(file);
+                packageForm.setFieldsValue({
+                  icon_url: URL.createObjectURL(file),
+                });
+              }}
+              onSelectPreset={(presetId) => {
+                void (async () => {
+                  setPendingAvatarFile(null);
+                  const nextName = presetId ?? "package";
+                  if (editingPackageId && isUploadedAvatarUrl(iconUrl)) {
+                    setAvatarBusy(true);
+                    try {
+                      await skillPackagesApi.deleteAvatar(editingPackageId);
+                    } catch {
+                      // Preset still applied locally / on save.
+                    } finally {
+                      setAvatarBusy(false);
+                    }
+                  }
+                  packageForm.setFieldsValue({
+                    icon_name: nextName,
+                    icon_url: "",
+                  });
+                })();
+              }}
+              onRemove={
+                iconUrl || pendingAvatarFile
+                  ? () => {
+                      void (async () => {
+                        setPendingAvatarFile(null);
+                        if (editingPackageId && isUploadedAvatarUrl(iconUrl)) {
+                          setAvatarBusy(true);
+                          try {
+                            await skillPackagesApi.deleteAvatar(
+                              editingPackageId,
+                            );
+                          } catch (err) {
+                            message.error(
+                              apiErrorMessage(
+                                err,
+                                t("experts.avatarRemoveFailed"),
+                                t,
+                              ),
+                            );
+                          } finally {
+                            setAvatarBusy(false);
+                          }
+                        }
+                        packageForm.setFieldsValue({ icon_url: "" });
+                      })();
+                    }
+                  : undefined
+              }
+            />
+          </Form.Item>
           <Form.Item
             name="name"
             label={t("skillPackages.packageName")}
@@ -1083,42 +1160,6 @@ export default function SkillPackagesPage() {
             <Input.TextArea
               autoSize={{ minRows: 2, maxRows: 5 }}
               placeholder={t("skillPackages.packageDescriptionPlaceholder")}
-            />
-          </Form.Item>
-          <Form.Item name="icon_name" label={t("skillPackages.iconName")}>
-            <PackageIconPicker />
-          </Form.Item>
-          <Form.Item
-            name="icon_url"
-            label={t("skillPackages.iconUrl")}
-            rules={[
-              {
-                validator: async (_, value) => {
-                  const text = String(value ?? "").trim();
-                  if (!text) return;
-                  if (text.length > 2048) {
-                    throw new Error(t("skillPackages.iconUrlTooLong"));
-                  }
-                  if (!isHttpUrl(text)) {
-                    throw new Error(t("skillPackages.iconUrlInvalid"));
-                  }
-                },
-              },
-            ]}
-          >
-            <Input
-              type="url"
-              placeholder={t("skillPackages.iconUrlPlaceholder")}
-              suffix={
-                <span className={styles.iconPreview}>
-                  <PackageIcon
-                    iconUrl={iconUrl}
-                    iconName={iconName}
-                    size={18}
-                    className={styles.iconPreviewImage}
-                  />
-                </span>
-              }
             />
           </Form.Item>
           <Form.Item
