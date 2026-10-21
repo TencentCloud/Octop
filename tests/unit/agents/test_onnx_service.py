@@ -34,7 +34,7 @@ from octop.infra.agents.providers.onnx_service import (
 def isolate_embedding_instance(monkeypatch, tmp_path):
     from octop.infra.agents.providers import onnx_service as mod
 
-    monkeypatch.setenv("OCTOP_HOME", str(tmp_path))
+    monkeypatch.setenv("AGENTBUDDY_HOME", str(tmp_path))
     monkeypatch.setattr(mod, "_embedding_instance", None)
 
 
@@ -50,7 +50,7 @@ def test_ui_progress_from_bytes_is_byte_fraction() -> None:
 def test_download_sync_reports_tqdm_bytes(monkeypatch, tmp_path) -> None:
     from octop.infra.agents.providers import onnx_service as mod
 
-    monkeypatch.setenv("OCTOP_HOME", str(tmp_path))
+    monkeypatch.setenv("AGENTBUDDY_HOME", str(tmp_path))
     mgr = OnnxDownloadManager()
     mgr._set(
         status=OnnxDownloadStatus.DOWNLOADING,
@@ -116,7 +116,7 @@ def test_catalog_models_have_approximate_sizes() -> None:
 
 
 def test_config_roundtrip_via_settings_dict(tmp_path, monkeypatch) -> None:
-    monkeypatch.setenv("OCTOP_HOME", str(tmp_path))
+    monkeypatch.setenv("AGENTBUDDY_HOME", str(tmp_path))
     store: dict[str, str] = {}
 
     def getter(key: str) -> str | None:
@@ -156,7 +156,7 @@ def test_ensure_deps_noop_when_available(monkeypatch) -> None:
 def test_ensure_deps_refuses_install_by_default(monkeypatch) -> None:
     from octop.infra.agents.providers import onnx_service as mod
 
-    monkeypatch.delenv("OCTOP_ALLOW_RUNTIME_PIP", raising=False)
+    monkeypatch.delenv("AGENTBUDDY_ALLOW_RUNTIME_PIP", raising=False)
     monkeypatch.setattr(mod, "local_embedding_deps_available", lambda: False)
     with pytest.raises(RuntimeError, match="Enable the ONNX service"):
         mod.ensure_local_embedding_deps()
@@ -165,7 +165,7 @@ def test_ensure_deps_refuses_install_by_default(monkeypatch) -> None:
 def test_ensure_deps_installs_when_env_allows(monkeypatch) -> None:
     from octop.infra.agents.providers import onnx_service as mod
 
-    monkeypatch.setenv("OCTOP_ALLOW_RUNTIME_PIP", "1")
+    monkeypatch.setenv("AGENTBUDDY_ALLOW_RUNTIME_PIP", "1")
     state = {"ok": False}
 
     def available() -> bool:
@@ -184,7 +184,7 @@ def test_ensure_deps_installs_when_env_allows(monkeypatch) -> None:
 def test_ensure_deps_installs_when_allow_install_true(monkeypatch) -> None:
     from octop.infra.agents.providers import onnx_service as mod
 
-    monkeypatch.delenv("OCTOP_ALLOW_RUNTIME_PIP", raising=False)
+    monkeypatch.delenv("AGENTBUDDY_ALLOW_RUNTIME_PIP", raising=False)
     state = {"ok": False}
 
     def available() -> bool:
@@ -201,7 +201,7 @@ def test_ensure_deps_installs_when_allow_install_true(monkeypatch) -> None:
 
 
 def test_status_payload_omits_install_commands(tmp_path, monkeypatch) -> None:
-    monkeypatch.setenv("OCTOP_HOME", str(tmp_path))
+    monkeypatch.setenv("AGENTBUDDY_HOME", str(tmp_path))
     store: dict[str, str] = {}
 
     payload = status_payload(store.get, OnnxDownloadState())
@@ -221,7 +221,7 @@ def test_assert_catalog_rejects_unknown_and_path_tricks() -> None:
 
 
 def test_partial_cache_without_onnx_is_not_downloaded(tmp_path, monkeypatch) -> None:
-    monkeypatch.setenv("OCTOP_HOME", str(tmp_path))
+    monkeypatch.setenv("AGENTBUDDY_HOME", str(tmp_path))
     from octop.infra.agents.providers import onnx_service as mod
 
     mid = ONNX_PRESET_MODEL_IDS[0]
@@ -233,7 +233,7 @@ def test_partial_cache_without_onnx_is_not_downloaded(tmp_path, monkeypatch) -> 
 
 
 def test_is_downloaded_recognizes_fastembed_hf_alias(tmp_path, monkeypatch) -> None:
-    monkeypatch.setenv("OCTOP_HOME", str(tmp_path))
+    monkeypatch.setenv("AGENTBUDDY_HOME", str(tmp_path))
     from octop.infra.agents.providers import onnx_catalog as catalog
     from octop.infra.agents.providers import onnx_service as mod
 
@@ -250,7 +250,7 @@ def test_is_downloaded_recognizes_fastembed_hf_alias(tmp_path, monkeypatch) -> N
 
 
 def test_build_embedding_uses_local_snapshot_without_hf_lookup(tmp_path, monkeypatch) -> None:
-    monkeypatch.setenv("OCTOP_HOME", str(tmp_path))
+    monkeypatch.setenv("AGENTBUDDY_HOME", str(tmp_path))
     from octop.infra.agents.providers import onnx_catalog as catalog
     from octop.infra.agents.providers import onnx_service as mod
 
@@ -279,7 +279,7 @@ def test_embedding_prerequisites_ignore_service_enabled(tmp_path, monkeypatch) -
     from octop.infra.agents.providers import onnx_service as mod
 
     store: dict[str, str] = {}
-    monkeypatch.setenv("OCTOP_HOME", str(tmp_path))
+    monkeypatch.setenv("AGENTBUDDY_HOME", str(tmp_path))
     monkeypatch.setattr(mod, "local_embedding_deps_available", lambda: True)
     monkeypatch.setattr(mod, "is_model_downloaded", lambda _m: True)
     mod.save_config(
@@ -407,7 +407,7 @@ def test_embed_texts_releases_cache_on_model_or_home_change(monkeypatch, tmp_pat
     monkeypatch.setattr(mod, "_build_text_embedding", build)
     mod.embed_texts("first", ["text"])
     mod.embed_texts("second", ["text"])
-    monkeypatch.setenv("OCTOP_HOME", str(tmp_path / "other"))
+    monkeypatch.setenv("AGENTBUDDY_HOME", str(tmp_path / "other"))
     mod.embed_texts("second", ["text"])
     assert builds == ["first", "second", "second"]
     assert mod.delete_downloaded_model("second") is False
@@ -460,7 +460,7 @@ def test_require_embedding_prerequisites_for_model_raises(monkeypatch) -> None:
 
 
 def test_delete_stays_under_cache_root(tmp_path, monkeypatch) -> None:
-    monkeypatch.setenv("OCTOP_HOME", str(tmp_path))
+    monkeypatch.setenv("AGENTBUDDY_HOME", str(tmp_path))
     from octop.infra.agents.providers import onnx_service as mod
 
     mid = ONNX_PRESET_MODEL_IDS[0]
@@ -485,7 +485,7 @@ def test_is_downloaded_finds_nested_onnx_weights(tmp_path, monkeypatch) -> None:
     ``onnx/vision_model.onnx``. Fixed-name matching missed both, so the model
     downloaded fine but every enable attempt reported it as missing.
     """
-    monkeypatch.setenv("OCTOP_HOME", str(tmp_path))
+    monkeypatch.setenv("AGENTBUDDY_HOME", str(tmp_path))
     from octop.infra.agents.providers import onnx_service as mod
 
     mid = "jinaai/jina-clip-v1"
@@ -504,7 +504,7 @@ def test_is_downloaded_finds_nested_onnx_weights(tmp_path, monkeypatch) -> None:
 
 def test_is_downloaded_ignores_dangling_snapshot_symlink(tmp_path, monkeypatch) -> None:
     """A snapshot entry whose blob is still downloading must not count."""
-    monkeypatch.setenv("OCTOP_HOME", str(tmp_path))
+    monkeypatch.setenv("AGENTBUDDY_HOME", str(tmp_path))
     from octop.infra.agents.providers import onnx_service as mod
 
     mid = ONNX_PRESET_MODEL_IDS[0]

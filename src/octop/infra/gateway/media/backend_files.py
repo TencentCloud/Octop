@@ -58,7 +58,7 @@ _BLOCKED_WIN_DRIVE_PREFIXES = (
     "c:/program files (x86)/",
 )
 
-# New default is ``~/.octop-browser``; keep ``~/.harness-browser`` as a deny
+# New default is ``~/.agentbuddy-browser``; keep ``~/.harness-browser`` as a deny
 # source so leftover profiles cannot be downloaded after migration.
 _DENIED_BROWSER_HOME_SEGMENTS = (".harness-browser", ".octop-browser")
 

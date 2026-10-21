@@ -53,7 +53,7 @@ def _expected_default_backend(manager: AgentManager, agent_id: str) -> dict[str,
 
 @pytest.fixture
 def manager(tmp_path: Path) -> AgentManager:
-    paths = PathLayout(tmp_path / ".octop")
+    paths = PathLayout(tmp_path / ".agentbuddy")
     paths.ensure_root()
     db = SqlitePool(paths.db)
     run_migrations(db)
@@ -2105,7 +2105,7 @@ async def test_create_persists_rootfs_workspace_under_scoped_root(
         log_dir=str(manager.paths.logs_dir),
     )
     try:
-        # manager fixture uses ``{tmp_path}/.octop`` as OCTOP_HOME, so scoping
+        # manager fixture uses ``{tmp_path}/.octop`` as AGENTBUDDY_HOME, so scoping
         # root_dir to tmp_path places the default workspace inside the rootfs.
         row = await manager.create(
             AgentCreateSpec(
@@ -2123,7 +2123,7 @@ async def test_create_persists_rootfs_workspace_under_scoped_root(
         cfg = manager.get_config(row.agent_id)
         assert cfg["workspace_dir"] == f"/.octop/workspaces/{row.agent_id}"
         host = manager.resolve_workspace_dir(row.agent_id)
-        assert host == (tmp_path / ".octop" / "workspaces" / row.agent_id).resolve()
+        assert host == (tmp_path / ".agentbuddy" / "workspaces" / row.agent_id).resolve()
         assert host.is_dir()
         assert (host / "AGENTS.md").is_file()
         harness_cfg = manager._build_harness_config(row)
@@ -2133,7 +2133,7 @@ async def test_create_persists_rootfs_workspace_under_scoped_root(
             Path(f"/.octop/workspaces/{row.agent_id}") if os.name == "posix" else host
         )
         assert Path(harness_cfg.workspace_dir) == expected_harness_ws
-        assert not (tmp_path / ".octop" / "agents" / row.agent_id).exists()
+        assert not (tmp_path / ".agentbuddy" / "agents" / row.agent_id).exists()
     finally:
         manager._harness_manager.close()
 
@@ -2469,7 +2469,7 @@ async def test_reload_agent_does_not_block_event_loop(
 
     from octop.infra.agents.manager import AgentCreateSpec, AgentManager
 
-    paths = PathLayout(tmp_path / ".octop")
+    paths = PathLayout(tmp_path / ".agentbuddy")
     paths.ensure_root()
     db = SqlitePool(paths.db)
     run_migrations(db)

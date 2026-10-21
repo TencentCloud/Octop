@@ -65,13 +65,13 @@ func startOctop(root string, port int) (*exec.Cmd, error) {
 	py := pythonExe(root)
 	launch := filepath.Join(root, "launch.py")
 	// Omit --host/--port. `octop run` writes those flags back to config.json.
-	// OCTOP_PORT selects the free port for this process and is not saved.
+	// AGENTBUDDY_PORT selects the free port for this process and is not saved.
 	cmd := exec.Command(py, launch, "run")
 	cmd.Dir = root
 	mustEnv(cmd, map[string]string{
-		"OCTOP_HOME":           octopHome(),
-		"OCTOP_GREEN_PACKAGES": filepath.Join(root, "packages"),
-		"OCTOP_PORT":           strconv.Itoa(port),
+		"AGENTBUDDY_HOME":           agentbuddyHome(),
+		"AGENTBUDDY_GREEN_PACKAGES": filepath.Join(root, "packages"),
+		"AGENTBUDDY_PORT":           strconv.Itoa(port),
 		"PYTHONNOUSERSITE":     "1",
 		"PYTHONPATH":           "",
 	})
@@ -101,7 +101,7 @@ func stopOctop(cmd *exec.Cmd) {
 const desktopPortFileName = "desktop-port"
 
 func desktopPortPath() string {
-	return filepath.Join(octopHome(), desktopPortFileName)
+	return filepath.Join(agentbuddyHome(), desktopPortFileName)
 }
 
 func readDesktopPort() (int, bool) {
@@ -154,7 +154,7 @@ func resolveDashboardURL() string {
 func resolveListen() (string, int) {
 	host := "127.0.0.1"
 	port := 8088
-	if data, err := os.ReadFile(filepath.Join(octopHome(), "config.json")); err == nil {
+	if data, err := os.ReadFile(filepath.Join(agentbuddyHome(), "config.json")); err == nil {
 		var raw struct {
 			BindHost string `json:"bind_host"`
 			Host     string `json:"host"`
@@ -172,10 +172,10 @@ func resolveListen() (string, int) {
 			}
 		}
 	}
-	if v := strings.TrimSpace(os.Getenv("OCTOP_BIND_HOST")); v != "" {
+	if v := strings.TrimSpace(os.Getenv("AGENTBUDDY_BIND_HOST")); v != "" {
 		host = v
 	}
-	if v := strings.TrimSpace(os.Getenv("OCTOP_PORT")); v != "" {
+	if v := strings.TrimSpace(os.Getenv("AGENTBUDDY_PORT")); v != "" {
 		if parsed, err := strconv.Atoi(v); err == nil && parsed > 0 && parsed <= 65535 {
 			port = parsed
 		}

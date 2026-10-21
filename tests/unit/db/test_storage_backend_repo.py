@@ -13,7 +13,7 @@ from octop.infra.db.repos.backends import BackendRepo
 
 @pytest.fixture
 def repo(tmp_path: Path) -> BackendRepo:
-    db = SqlitePool(tmp_path / "octop.db")
+    db = SqlitePool(tmp_path / "agentbuddy.db")
     run_migrations(db)
     return BackendRepo(db)
 

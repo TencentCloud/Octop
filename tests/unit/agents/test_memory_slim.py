@@ -178,7 +178,7 @@ def test_cli_prints_localized_progress_without_booting_another_host(tmp_path, mo
     from octop.cli.commands import memory as command
     from octop.cli.main import cli
 
-    monkeypatch.setenv("OCTOP_HOME", str(tmp_path))
+    monkeypatch.setenv("AGENTBUDDY_HOME", str(tmp_path))
     monkeypatch.setattr(command, "resolve_cli_locale", lambda: "zh")
 
     def events(root, agent_id, *, locale, remove_directories=False):
@@ -278,7 +278,7 @@ def test_cli_selects_by_number_and_shows_counts(tmp_path, monkeypatch):
     from octop.cli.commands import memory as command
     from octop.cli.main import cli
 
-    monkeypatch.setenv("OCTOP_HOME", str(tmp_path))
+    monkeypatch.setenv("AGENTBUDDY_HOME", str(tmp_path))
     monkeypatch.setattr(command, "resolve_cli_locale", lambda: "zh")
     monkeypatch.setattr(command, "resolve_agent", lambda _: None)
     monkeypatch.setattr(
@@ -317,7 +317,7 @@ def test_discovery_never_starts_maintenance(tmp_path, monkeypatch, args):
     from octop.cli.commands import memory as command
     from octop.cli.main import cli
 
-    monkeypatch.setenv("OCTOP_HOME", str(tmp_path))
+    monkeypatch.setenv("AGENTBUDDY_HOME", str(tmp_path))
     monkeypatch.setattr(command, "resolve_agent", lambda _: None)
     monkeypatch.setattr(command, "resolve_cli_locale", lambda: "zh")
     monkeypatch.setattr(
@@ -344,7 +344,7 @@ def test_empty_discovery_exits_without_a_prompt(tmp_path, monkeypatch):
     from octop.cli.commands import memory as command
     from octop.cli.main import cli
 
-    monkeypatch.setenv("OCTOP_HOME", str(tmp_path))
+    monkeypatch.setenv("AGENTBUDDY_HOME", str(tmp_path))
     monkeypatch.setattr(command, "resolve_agent", lambda _: None)
     monkeypatch.setattr(command, "resolve_cli_locale", lambda: "zh")
     monkeypatch.setattr(command, "list_memory_slim_agents", lambda *args, **kwargs: [])
@@ -441,8 +441,8 @@ def batch_cli(tmp_path, monkeypatch):
     from octop.cli.commands import memory as command
     from octop.cli.main import cli
 
-    monkeypatch.setenv("OCTOP_HOME", str(tmp_path))
-    monkeypatch.delenv("OCTOP_AGENT", raising=False)
+    monkeypatch.setenv("AGENTBUDDY_HOME", str(tmp_path))
+    monkeypatch.delenv("AGENTBUDDY_AGENT", raising=False)
     monkeypatch.setattr(command, "resolve_cli_locale", lambda: "zh")
     monkeypatch.setattr(
         command,

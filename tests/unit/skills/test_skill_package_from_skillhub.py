@@ -18,7 +18,7 @@ from octop.infra.skills.skillhub_market import SkillHubSkillNotFound
 
 @pytest.fixture
 def store(tmp_path: Path) -> SkillPackageStore:
-    db = SqlitePool(tmp_path / "octop.db")
+    db = SqlitePool(tmp_path / "agentbuddy.db")
     run_migrations(db)
     return SkillPackageStore(
         repo=SkillPackageRepo(db),

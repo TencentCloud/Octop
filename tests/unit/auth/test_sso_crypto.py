@@ -11,7 +11,7 @@ from octop.infra.db.repos.secrets import SecretRepo
 
 
 def test_sso_secret_round_trip_uses_its_own_fernet_key(tmp_path: Path) -> None:
-    db = SqlitePool(tmp_path / "octop.db")
+    db = SqlitePool(tmp_path / "agentbuddy.db")
     run_migrations(db)
     secret_repo = SecretRepo(db)
 

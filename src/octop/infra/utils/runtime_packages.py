@@ -41,7 +41,7 @@ class PackageInstallSpec:
 
 def find_uv_binary() -> str | None:
     """Resolve ``uv`` from env, PATH, or common install locations."""
-    override = os.environ.get("OCTOP_UV_BIN", "").strip()
+    override = os.environ.get("AGENTBUDDY_UV_BIN", "").strip()
     if override:
         path = Path(override)
         if path.is_file():

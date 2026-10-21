@@ -97,7 +97,7 @@ def resolve_tunnel_target(
     path: str,
     agent_header: str | None = None,
 ) -> TunnelTarget | None:
-    """Return a tunnel target when ``path`` / ``X-Octop-Agent-Id`` names a Bridge agent."""
+    """Return a tunnel target when ``path`` / ``X-Agentbuddy-Agent-Id`` names a Bridge agent."""
     raw = (path or "").split("?", 1)[0] or "/"
 
     match = _BRIDGE_AGENT_PATH.match(raw)
@@ -194,12 +194,12 @@ def _forward_headers(request: Request, remote_agent_id: str) -> dict[str, str]:
     }
     rewritten = False
     for key in list(headers):
-        if key.lower() == "x-octop-agent-id":
+        if key.lower() == "x-agentbuddy-agent-id":
             headers[key] = remote_agent_id
             rewritten = True
             break
     if not rewritten:
-        headers["X-Octop-Agent-Id"] = remote_agent_id
+        headers["X-Agentbuddy-Agent-Id"] = remote_agent_id
     return headers
 
 
@@ -216,7 +216,7 @@ def install(app: Any, server: Any) -> None:
         path = request.url.path
         target = resolve_tunnel_target(
             path,
-            request.headers.get("x-octop-agent-id"),
+            request.headers.get("x-agentbuddy-agent-id"),
         )
         if target is None:
             return await call_next(request)

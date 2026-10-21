@@ -89,7 +89,7 @@ def test_root_help_lists_global_options() -> None:
 
 def test_channel_list_uses_root_agent_fallback(monkeypatch) -> None:
     """``--agent`` is no longer required on subcommands; the root option
-    (or OCTOP_AGENT env) supplies a fallback when not given inline."""
+    (or AGENTBUDDY_AGENT env) supplies a fallback when not given inline."""
     captured: dict[str, str] = {}
 
     def _fake_resolve(*a, **k) -> int:

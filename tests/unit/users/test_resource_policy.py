@@ -27,13 +27,13 @@ from octop.infra.users.resource_policy import (
 
 @pytest.fixture
 def db(tmp_path: Path) -> SqlitePool:
-    pool = SqlitePool(tmp_path / "octop.db")
+    pool = SqlitePool(tmp_path / "agentbuddy.db")
     run_migrations(pool)
     return pool
 
 
 def test_normalize_workspace_root_dir_unlimited(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("OCTOP_IN_CONTAINER", "0")
+    monkeypatch.setenv("AGENTBUDDY_IN_CONTAINER", "0")
     assert normalize_workspace_root_dir(None) is None
     assert normalize_workspace_root_dir("  ") is None
 
@@ -41,7 +41,7 @@ def test_normalize_workspace_root_dir_unlimited(monkeypatch: pytest.MonkeyPatch)
 def test_normalize_workspace_root_dir_must_be_directory(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    monkeypatch.setenv("OCTOP_IN_CONTAINER", "0")
+    monkeypatch.setenv("AGENTBUDDY_IN_CONTAINER", "0")
     root = tmp_path / "jail"
     root.mkdir()
     assert normalize_workspace_root_dir(str(root)) == root.resolve().as_posix()
@@ -59,7 +59,7 @@ def test_normalize_workspace_root_dir_rejected_in_container(
 
     root = tmp_path / "jail"
     root.mkdir()
-    monkeypatch.setenv("OCTOP_IN_CONTAINER", "1")
+    monkeypatch.setenv("AGENTBUDDY_IN_CONTAINER", "1")
     assert normalize_workspace_root_dir(None) is None
     with pytest.raises(OctopError) as exc:
         normalize_workspace_root_dir(str(root))

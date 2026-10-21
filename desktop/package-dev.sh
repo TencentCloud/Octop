@@ -1,11 +1,11 @@
 #!/bin/bash
-# Desktop shell against a source agentbuddy (hot reload). Not ~/.octop/portable.
+# Desktop shell against a source agentbuddy (hot reload). Not ~/.agentbuddy/portable.
 # Starts agentbuddy in this shell and stops it when wails3 / this script exits.
 set -euo pipefail
 
 REPO="$(cd "$(dirname "$0")/.." && pwd)"
-PORT="${OCTOP_PORT:-8088}"
-URL="${OCTOP_DESKTOP_URL:-http://127.0.0.1:${PORT}}"
+PORT="${AGENTBUDDY_PORT:-8088}"
+URL="${AGENTBUDDY_DESKTOP_URL:-http://127.0.0.1:${PORT}}"
 HEALTH="${URL%/}/api/health"
 WAILS3_PKG="github.com/wailsapp/wails/v3/cmd/wails3@latest"
 
@@ -50,7 +50,7 @@ echo "starting octop --reload on port ${PORT}"
 (
   cd "$REPO"
   # Env overrides apply for this process and are not written back to config.json.
-  exec env OCTOP_DESKTOP=1 OCTOP_BIND_HOST=127.0.0.1 OCTOP_PORT="$PORT" uv run octop run --reload
+  exec env AGENTBUDDY_DESKTOP=1 AGENTBUDDY_BIND_HOST=127.0.0.1 AGENTBUDDY_PORT="$PORT" uv run octop run --reload
 ) &
 octop_pid=$!
 
@@ -72,4 +72,4 @@ if ! curl -sf -o /dev/null --max-time 1 "$HEALTH"; then
 fi
 
 cd "$REPO/desktop/src"
-OCTOP_DESKTOP_URL="$URL" wails3 dev
+AGENTBUDDY_DESKTOP_URL="$URL" wails3 dev

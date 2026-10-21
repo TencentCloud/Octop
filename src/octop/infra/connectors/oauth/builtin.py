@@ -6,7 +6,7 @@ import os
 from typing import Any
 
 # agentbuddy releases may pre-fill registered OAuth apps here; users need not set env vars.
-# Self-hosted deployments can still override via OCTOP_* env vars or settings.
+# Self-hosted deployments can still override via AGENTBUDDY_* env vars or settings.
 _BUILTIN_CLIENTS: dict[str, tuple[str, str]] = {}
 
 

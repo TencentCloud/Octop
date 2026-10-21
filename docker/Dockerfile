@@ -7,7 +7,7 @@
 #
 # 用法（在仓库根目录执行，构建上下文为根目录）:
 #   docker build -f docker/Dockerfile -t agentbuddy:latest .
-#   docker run -d -p 8088:8088 -v octop-data:/data/.octop -e HOME=/data agentbuddy:latest
+#   docker run -d -p 8088:8088 -v agentbuddy-data:/data/.agentbuddy -e HOME=/data agentbuddy:latest
 #
 # 国内加速（可选，需 BuildKit，docker/docker_build.sh 默认已开启）:
 #   PIP_INDEX_URL=https://mirrors.example.com/pypi/simple \
@@ -72,9 +72,9 @@ LABEL org.opencontainers.image.licenses="MIT"
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     HOME=/data \
-    OCTOP_BIND_HOST=0.0.0.0 \
-    OCTOP_PORT=8088 \
-    OCTOP_LOG_LEVEL=info \
+    AGENTBUDDY_BIND_HOST=0.0.0.0 \
+    AGENTBUDDY_PORT=8088 \
+    AGENTBUDDY_LOG_LEVEL=info \
     UV_COMPILE_BYTECODE=1 \
     UV_LINK_MODE=copy \
     UV_PYTHON_DOWNLOADS=never
@@ -137,12 +137,12 @@ RUN --mount=type=cache,target=/root/.cache/uv \
     && apt-get purge -y --auto-remove build-essential \
     && rm -rf /var/lib/apt/lists/* /tmp/*
 
-RUN mkdir -p /data/.octop
+RUN mkdir -p /data/.agentbuddy
 
 EXPOSE 8088
 
 HEALTHCHECK --interval=30s --timeout=10s --start-period=90s --retries=3 \
-    CMD ["sh", "-c", "curl -f http://localhost:${OCTOP_PORT:-8088}/api/health || exit 1"]
+    CMD ["sh", "-c", "curl -f http://localhost:${AGENTBUDDY_PORT:-8088}/api/health || exit 1"]
 
 ENTRYPOINT ["docker-entrypoint.sh"]
 CMD []

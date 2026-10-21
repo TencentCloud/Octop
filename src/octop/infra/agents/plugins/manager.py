@@ -1,4 +1,4 @@
-"""Install, load, and expose plugins under ``~/.octop/plugins/``."""
+"""Install, load, and expose plugins under ``~/.agentbuddy/plugins/``."""
 
 from __future__ import annotations
 

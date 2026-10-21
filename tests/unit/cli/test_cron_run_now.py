@@ -23,7 +23,7 @@ from octop.infra.utils.paths import PathLayout
 
 @pytest.fixture
 def cron_runtime(tmp_path, monkeypatch):
-    db = SqlitePool(tmp_path / "octop.db")
+    db = SqlitePool(tmp_path / "agentbuddy.db")
     run_migrations(db)
     services = build_shared_services(db=db, paths=PathLayout(tmp_path), config=OctopConfig())
     repos = services.repos

@@ -57,7 +57,7 @@ DEFAULT_HEALTH_DELAY_SECONDS = 1.5
 _EARLY_RETRY_DELAY_SECONDS = 0.5
 
 # Env var names used to override defaults.
-_ENV_SCOPE = "OCTOP_SERVICE_SCOPE"
+_ENV_SCOPE = "AGENTBUDDY_SERVICE_SCOPE"
 
 # systemd/launchd often inherit a 1024 soft NOFILE cap. SSE, SQLite, MCP, and
 # agent subprocesses exhaust that and surface as EMFILE on accept().
@@ -87,8 +87,8 @@ class ServiceStatus:
 
 
 def detect_service_mode() -> ServiceMode | None:
-    """Return the service mode for the current process (from OCTOP_SERVICE_MODE)."""
-    raw = os.environ.get("OCTOP_SERVICE_MODE", "").strip().lower()
+    """Return the service mode for the current process (from AGENTBUDDY_SERVICE_MODE)."""
+    raw = os.environ.get("AGENTBUDDY_SERVICE_MODE", "").strip().lower()
     if raw in {"systemd", "launchd"}:
         return raw  # type: ignore[return-value]
     return None
@@ -122,7 +122,7 @@ def resolve_service_scope(*, default: ServiceScope | None = None) -> ServiceScop
 
     Resolution order:
 
-    1. ``OCTOP_SERVICE_SCOPE`` env var (``user`` / ``system`` / ``auto``).
+    1. ``AGENTBUDDY_SERVICE_SCOPE`` env var (``user`` / ``system`` / ``auto``).
     2. ``default`` argument, if provided.
     3. Auto: root → ``system``, otherwise → ``user``.
 
@@ -222,17 +222,17 @@ def _account_home(user: str) -> Path:
 
 
 def resolve_service_home(*, run_as_user: str | None = None) -> Path:
-    """Resolve ``OCTOP_HOME`` for the service owner, not the installer's euid.
+    """Resolve ``AGENTBUDDY_HOME`` for the service owner, not the installer's euid.
 
     ``Path.home()`` follows the effective uid, so a ``sudo`` install as root
-    would otherwise point at ``/root/.octop`` while ``User=`` names the
+    would otherwise point at ``/root/.agentbuddy`` while ``User=`` names the
     invoking user — use that user's passwd home instead.
     """
-    raw = os.environ.get("OCTOP_HOME", "").strip()
+    raw = os.environ.get("AGENTBUDDY_HOME", "").strip() or os.environ.get("OCTOP_HOME", "").strip()
     if raw:
         return Path(raw).expanduser()
     user = run_as_user or resolve_run_as_user()
-    return _account_home(user) / ".octop"
+    return _account_home(user) / ".agentbuddy"
 
 
 def persist_bind_options(home: Path, *, host: str | None = None, port: int | None = None) -> None:
@@ -383,7 +383,7 @@ def render_systemd_unit(runtime: ServiceRuntime, *, user_unit: bool | None = Non
         user_unit = runtime.scope == "user"
     account_home = _account_home(runtime.run_as_user)
     # LightClaw-style: HOME + service mode + config-driven ``run``.  agentbuddy also
-    # sets ``OCTOP_HOME`` explicitly.  No ``WorkingDirectory`` — avoids CHDIR
+    # sets ``AGENTBUDDY_HOME`` explicitly.  No ``WorkingDirectory`` — avoids CHDIR
     # failures when ``User=`` and data paths disagree.
     if user_unit or runtime.run_as_user == "root":
         user_line = ""
@@ -392,11 +392,11 @@ def render_systemd_unit(runtime: ServiceRuntime, *, user_unit: bool | None = Non
     wanted_by = "default.target" if user_unit else "multi-user.target"
     env_lines = (
         f'Environment="HOME={account_home}"\n'
-        f"Environment=OCTOP_HOME={runtime.home}\n"
-        "Environment=OCTOP_SERVICE_MODE=systemd\n"
+        f"Environment=AGENTBUDDY_HOME={runtime.home}\n"
+        "Environment=AGENTBUDDY_SERVICE_MODE=systemd\n"
     )
     if user_unit:
-        env_lines += "Environment=OCTOP_SYSTEMD_USER=1\n"
+        env_lines += "Environment=AGENTBUDDY_SYSTEMD_USER=1\n"
     nofile = _user_nofile_cap() if user_unit else SERVICE_NOFILE_LIMIT
     nofile_line = f"LimitNOFILE={nofile}\n" if nofile is not None else ""
     return (
@@ -451,9 +451,9 @@ def render_launchd_plist(runtime: ServiceRuntime) -> str:
         "  <dict>\n"
         f"    <key>HOME</key>\n"
         f"    <string>{account_home}</string>\n"
-        f"    <key>OCTOP_HOME</key>\n"
+        f"    <key>AGENTBUDDY_HOME</key>\n"
         f"    <string>{runtime.home}</string>\n"
-        "    <key>OCTOP_SERVICE_MODE</key>\n"
+        "    <key>AGENTBUDDY_SERVICE_MODE</key>\n"
         "    <string>launchd</string>\n"
         "  </dict>\n"
         f"  <key>WorkingDirectory</key>\n"

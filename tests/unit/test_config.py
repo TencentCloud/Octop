@@ -20,7 +20,7 @@ def test_defaults_when_missing(tmp_path: Path):
     assert cfg.enable_api_docs is False
     assert cfg.require_setup_password is True
     assert cfg.database.driver == "sqlite"
-    assert cfg.database.sqlite_path == "octop.db"
+    assert cfg.database.sqlite_path == "agentbuddy.db"
     assert cfg.database.is_sqlite
     assert cfg.database_in_file is False
     assert cfg.backup.auto_enabled is False
@@ -73,15 +73,15 @@ def test_loads_backup_section(tmp_path: Path):
 
 
 def test_backup_env_overrides(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
-    monkeypatch.setenv("OCTOP_BACKUP_AUTO_ENABLED", "true")
-    monkeypatch.setenv("OCTOP_BACKUP_SCHEDULE", "cron:30 5 * * *")
-    monkeypatch.setenv("OCTOP_BACKUP_RETENTION_COUNT", "5")
-    monkeypatch.setenv("OCTOP_BACKUP_INCLUDE_CHATS", "true")
-    monkeypatch.setenv("OCTOP_BACKUP_INCLUDE_CONFIG", "false")
-    monkeypatch.setenv("OCTOP_BACKUP_INCLUDE_WORKSPACES", "false")
-    monkeypatch.setenv("OCTOP_BACKUP_INCLUDE_SKILL_PACKAGES", "false")
-    monkeypatch.setenv("OCTOP_BACKUP_INCLUDE_PLUGINS", "false")
-    monkeypatch.setenv("OCTOP_BACKUP_INCLUDE_KNOWLEDGE", "false")
+    monkeypatch.setenv("AGENTBUDDY_BACKUP_AUTO_ENABLED", "true")
+    monkeypatch.setenv("AGENTBUDDY_BACKUP_SCHEDULE", "cron:30 5 * * *")
+    monkeypatch.setenv("AGENTBUDDY_BACKUP_RETENTION_COUNT", "5")
+    monkeypatch.setenv("AGENTBUDDY_BACKUP_INCLUDE_CHATS", "true")
+    monkeypatch.setenv("AGENTBUDDY_BACKUP_INCLUDE_CONFIG", "false")
+    monkeypatch.setenv("AGENTBUDDY_BACKUP_INCLUDE_WORKSPACES", "false")
+    monkeypatch.setenv("AGENTBUDDY_BACKUP_INCLUDE_SKILL_PACKAGES", "false")
+    monkeypatch.setenv("AGENTBUDDY_BACKUP_INCLUDE_PLUGINS", "false")
+    monkeypatch.setenv("AGENTBUDDY_BACKUP_INCLUDE_KNOWLEDGE", "false")
     cfg = load_config(tmp_path / "config.json")
     assert cfg.backup.auto_enabled is True
     assert cfg.backup.schedule == "cron:30 5 * * *"
@@ -113,7 +113,7 @@ def test_loads_max_upload_mb(tmp_path: Path):
 
 
 def test_max_upload_mb_env_override(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
-    monkeypatch.setenv("OCTOP_MAX_UPLOAD_MB", "25")
+    monkeypatch.setenv("AGENTBUDDY_MAX_UPLOAD_MB", "25")
     cfg_path = tmp_path / "config.json"
     cfg_path.write_text(json.dumps({"max_upload_mb": 50}))
     cfg = load_config(cfg_path)
@@ -147,9 +147,9 @@ def test_loads_database_section(tmp_path: Path):
 
 
 def test_env_overrides(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
-    monkeypatch.setenv("OCTOP_PORT", "7000")
-    monkeypatch.setenv("OCTOP_LOG_LEVEL", "warning")
-    monkeypatch.setenv("OCTOP_BROWSER_IDLE_TIMEOUT_MINUTES", "12")
+    monkeypatch.setenv("AGENTBUDDY_PORT", "7000")
+    monkeypatch.setenv("AGENTBUDDY_LOG_LEVEL", "warning")
+    monkeypatch.setenv("AGENTBUDDY_BROWSER_IDLE_TIMEOUT_MINUTES", "12")
     cfg_path = tmp_path / "config.json"
     cfg_path.write_text(json.dumps({"port": 8088}))
     cfg = load_config(cfg_path)
@@ -168,7 +168,7 @@ def test_browser_idle_timeout_defaults_and_can_be_disabled(tmp_path: Path):
 
 
 def test_database_env_sqlite_path(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
-    monkeypatch.setenv("OCTOP_DATABASE_SQLITE_PATH", "/tmp/octop-test.db")
+    monkeypatch.setenv("AGENTBUDDY_DATABASE_SQLITE_PATH", "/tmp/octop-test.db")
     cfg = load_config(tmp_path / "config.json")
     assert cfg.database.sqlite_path == "/tmp/octop-test.db"
     resolved = cfg.database.resolve_sqlite_path(tmp_path)
@@ -177,7 +177,9 @@ def test_database_env_sqlite_path(tmp_path: Path, monkeypatch: pytest.MonkeyPatc
 
 
 def test_database_env_url_postgresql(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
-    monkeypatch.setenv("OCTOP_DATABASE_URL", "postgresql://alice:secret@db.example.com:5433/mydb")
+    monkeypatch.setenv(
+        "AGENTBUDDY_DATABASE_URL", "postgresql://alice:secret@db.example.com:5433/mydb"
+    )
     cfg = load_config(tmp_path / "config.json")
     assert cfg.database.is_postgresql
     assert cfg.database.host == "db.example.com"
@@ -189,7 +191,7 @@ def test_database_env_url_postgresql(tmp_path: Path, monkeypatch: pytest.MonkeyP
 
 def test_database_url_preserves_query_for_conninfo(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     monkeypatch.setenv(
-        "OCTOP_DATABASE_URL",
+        "AGENTBUDDY_DATABASE_URL",
         "postgresql://alice:secret@db.example.com:5433/mydb?sslmode=require",
     )
     cfg = load_config(tmp_path / "config.json")
@@ -235,13 +237,13 @@ def test_database_env_password_override(tmp_path: Path, monkeypatch: pytest.Monk
             }
         )
     )
-    monkeypatch.setenv("OCTOP_DATABASE_PASSWORD", "from-env")
+    monkeypatch.setenv("AGENTBUDDY_DATABASE_PASSWORD", "from-env")
     cfg = load_config(cfg_path)
     assert cfg.database.password == "from-env"
 
 
 def test_invalid_port_falls_back(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
-    monkeypatch.setenv("OCTOP_PORT", "not-a-number")
+    monkeypatch.setenv("AGENTBUDDY_PORT", "not-a-number")
     cfg_path = tmp_path / "config.json"
     cfg = load_config(cfg_path)
     assert cfg.port == 8088
@@ -267,9 +269,9 @@ def test_postgresql_missing_user_raises(tmp_path: Path):
 
 
 def test_feature_flags_env_overrides(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
-    monkeypatch.setenv("OCTOP_ENABLE_DASHBOARD", "false")
-    monkeypatch.setenv("OCTOP_ENABLE_API_DOCS", "true")
-    monkeypatch.setenv("OCTOP_REQUIRE_SETUP_PASSWORD", "0")
+    monkeypatch.setenv("AGENTBUDDY_ENABLE_DASHBOARD", "false")
+    monkeypatch.setenv("AGENTBUDDY_ENABLE_API_DOCS", "true")
+    monkeypatch.setenv("AGENTBUDDY_REQUIRE_SETUP_PASSWORD", "0")
     cfg = load_config(tmp_path / "config.json")
     assert cfg.enable_dashboard is False
     assert cfg.enable_api_docs is True
@@ -366,7 +368,7 @@ def test_default_timezone_prefers_new_key_over_legacy(tmp_path: Path):
 
 
 def test_default_timezone_env_override(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
-    monkeypatch.setenv("OCTOP_DEFAULT_TIMEZONE", "Pacific/Auckland")
+    monkeypatch.setenv("AGENTBUDDY_DEFAULT_TIMEZONE", "Pacific/Auckland")
     cfg_path = tmp_path / "config.json"
     cfg_path.write_text(json.dumps({"default_timezone": "UTC"}))
     cfg = load_config(cfg_path)
@@ -374,8 +376,8 @@ def test_default_timezone_env_override(tmp_path: Path, monkeypatch: pytest.Monke
 
 
 def test_legacy_cron_timezone_env_still_works(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
-    monkeypatch.delenv("OCTOP_DEFAULT_TIMEZONE", raising=False)
-    monkeypatch.setenv("OCTOP_CRON_TIMEZONE", "Asia/Tokyo")
+    monkeypatch.delenv("AGENTBUDDY_DEFAULT_TIMEZONE", raising=False)
+    monkeypatch.setenv("AGENTBUDDY_CRON_TIMEZONE", "Asia/Tokyo")
     cfg_path = tmp_path / "config.json"
     cfg_path.write_text(json.dumps({"default_timezone": "UTC"}))
     cfg = load_config(cfg_path)
@@ -383,8 +385,8 @@ def test_legacy_cron_timezone_env_still_works(tmp_path: Path, monkeypatch: pytes
 
 
 def test_new_timezone_env_wins_over_legacy_env(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
-    monkeypatch.setenv("OCTOP_DEFAULT_TIMEZONE", "UTC")
-    monkeypatch.setenv("OCTOP_CRON_TIMEZONE", "Asia/Tokyo")
+    monkeypatch.setenv("AGENTBUDDY_DEFAULT_TIMEZONE", "UTC")
+    monkeypatch.setenv("AGENTBUDDY_CRON_TIMEZONE", "Asia/Tokyo")
     cfg = load_config(tmp_path / "config.json")
     assert cfg.default_timezone == "UTC"
 

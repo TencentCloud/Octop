@@ -78,16 +78,16 @@ def _isolated_user_home(
 
     Keeping HOME off ``tmp_path`` avoids polluting directory listings and
     colliding with tests that create ``tmp_path / \"home\"`` themselves.
-    Required for xdist so workers never share ``~/.octop`` / CLI state.
+    Required for xdist so workers never share ``~/.agentbuddy`` / CLI state.
     """
     home = tmp_path_factory.mktemp("user-home")
     monkeypatch.setenv("HOME", str(home))
     monkeypatch.setenv("USERPROFILE", str(home))
     for key in (
-        "OCTOP_CAPTCHA_PROVIDER",
-        "OCTOP_CAPTCHA_SITE_KEY",
-        "OCTOP_CAPTCHA_SECRET",
-        "OCTOP_CAPTCHA_V3_MIN_SCORE",
+        "AGENTBUDDY_CAPTCHA_PROVIDER",
+        "AGENTBUDDY_CAPTCHA_SITE_KEY",
+        "AGENTBUDDY_CAPTCHA_SECRET",
+        "AGENTBUDDY_CAPTCHA_V3_MIN_SCORE",
     ):
         monkeypatch.delenv(key, raising=False)
     return home
@@ -95,7 +95,7 @@ def _isolated_user_home(
 
 @pytest.fixture
 def tmp_octop_home(_isolated_user_home: Path) -> Iterator[Path]:
-    """Redirect ``~/.octop`` under the autouse isolated HOME."""
-    octop = _isolated_user_home / ".octop"
+    """Redirect ``~/.agentbuddy`` under the autouse isolated HOME."""
+    octop = _isolated_user_home / ".agentbuddy"
     octop.mkdir(exist_ok=True)
     yield octop

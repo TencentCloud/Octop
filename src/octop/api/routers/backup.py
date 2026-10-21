@@ -155,7 +155,7 @@ def _create_ephemeral_backup(
     options: CreateBackupBody,
 ) -> tuple[Path, str]:
     """Write a backup to a temp file; caller must delete after the response is sent."""
-    fd, name = tempfile.mkstemp(prefix="octop-export-", suffix=".tar.gz")
+    fd, name = tempfile.mkstemp(prefix="agentbuddy-export-", suffix=".tar.gz")
     os.close(fd)
     tmp_path = Path(name)
     try:
@@ -215,7 +215,7 @@ async def list_backups(
     _: Any = Depends(require_permission("backup")),
     server: Any = Depends(get_server),
 ) -> dict[str, Any]:
-    """List ``.tar.gz`` files in ``~/.octop/backups/``.
+    """List ``.tar.gz`` files in ``~/.agentbuddy/backups/``.
 
     Disk/manifest peek runs in a worker thread so the event loop stays free.
     """

@@ -31,7 +31,7 @@ def manager(tmp_path: Path) -> AgentManager:
     from octop.infra.db.services import build_shared_services
     from octop.infra.utils.paths import PathLayout
 
-    paths = PathLayout(tmp_path / ".octop")
+    paths = PathLayout(tmp_path / ".agentbuddy")
     paths.ensure_root()
     db = SqlitePool(paths.db)
     run_migrations(db)

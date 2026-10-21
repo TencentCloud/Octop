@@ -200,7 +200,7 @@ def test_custom_import_source_can_be_enabled_without_frontend_changes(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setenv(
-        "OCTOP_SKILLS_IMPORT_URL_PREFIXES",
+        "AGENTBUDDY_SKILLS_IMPORT_URL_PREFIXES",
         "https://market.example/skills/",
     )
 
@@ -213,7 +213,7 @@ def test_custom_json_source_resolves_through_generic_adapter(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setenv(
-        "OCTOP_SKILLS_IMPORT_URL_PREFIXES",
+        "AGENTBUDDY_SKILLS_IMPORT_URL_PREFIXES",
         "https://market.example/skills/",
     )
     payload = {

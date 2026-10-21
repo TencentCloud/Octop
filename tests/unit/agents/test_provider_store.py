@@ -23,7 +23,7 @@ from octop.infra.utils.paths import PathLayout
 
 @pytest.fixture
 def store(tmp_path: Path) -> ProviderStore:
-    paths = PathLayout(tmp_path / ".octop")
+    paths = PathLayout(tmp_path / ".agentbuddy")
     paths.ensure_root()
     db = SqlitePool(paths.db)
     run_migrations(db)
@@ -232,7 +232,7 @@ def test_enabled_model_refs_excludes_disabled() -> None:
 def test_clear_stale_pins_for_provider(tmp_path: Path) -> None:
     from octop.infra.agents.providers.store import clear_stale_pins_for_provider
 
-    paths = PathLayout(tmp_path / ".octop")
+    paths = PathLayout(tmp_path / ".agentbuddy")
     paths.ensure_root()
     db = SqlitePool(paths.db)
     run_migrations(db)
@@ -300,7 +300,7 @@ def test_resolve_default_model_returns_explicit_ref_when_usable(store: ProviderS
 
 
 def test_manager_exposes_provider_store(tmp_path: Path) -> None:
-    paths = PathLayout(tmp_path / ".octop")
+    paths = PathLayout(tmp_path / ".agentbuddy")
     paths.ensure_root()
     db = SqlitePool(paths.db)
     run_migrations(db)

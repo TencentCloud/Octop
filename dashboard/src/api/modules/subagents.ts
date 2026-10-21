@@ -37,7 +37,7 @@ export interface AgentSubagentSummary {
 function agentHeaders(agentId?: string | null): HeadersInit | undefined {
   const id = (agentId ?? "").trim();
   if (!id) return undefined;
-  return { "X-Octop-Agent-Id": id };
+  return { "X-Agentbuddy-Agent-Id": id };
 }
 
 export function listSubagentDivisions(

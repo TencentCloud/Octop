@@ -97,7 +97,7 @@ async def live_agent_manager(
     tmp_path: Path,
     live_openai_config: LiveOpenAIConfig,
 ) -> AsyncIterator[AgentManager]:
-    paths = PathLayout(tmp_path / ".octop")
+    paths = PathLayout(tmp_path / ".agentbuddy")
     paths.ensure_root()
     db = SqlitePool(paths.db)
     run_migrations(db)

@@ -9,7 +9,7 @@
 
 Create-time defaults when unset:
 
-* Host-rooted backend → on-disk ``{OCTOP_HOME}/agents/<id>/``, persist that
+* Host-rooted backend → on-disk ``{AGENTBUDDY_HOME}/agents/<id>/``, persist that
   host absolute path.
 * Scoped ``root_dir`` → on-disk ``{root_dir}/.octop/workspaces/<id>/`` (so files
   land inside the jail), but persist ``/.octop/workspaces/<id>`` — the
@@ -51,7 +51,7 @@ def _is_host_root_sentinel(root: str | Path | None) -> bool:
     POSIX uses ``/``. Windows uses a drive root such as ``C:/`` (what
     :func:`host_fs_tree_root` returns). Treating drive roots as scoped jails
     would put default workspaces under ``{drive}/.octop/workspaces/…`` instead
-    of ``{OCTOP_HOME}/agents/<id>/``.
+    of ``{AGENTBUDDY_HOME}/agents/<id>/``.
     """
     if root is None:
         return True
@@ -133,9 +133,9 @@ def agent_host_data_dirs(
 ) -> list[Path]:
     """Every on-disk directory that belongs to this agent and may be removed.
 
-    Covers the persisted workspace, ``~/.octop/agents/<id>``, a scoped jail
-    workspace, and ``~/.octop/workspaces/<id>``. Roots such as ``/``, the
-    home directory, and ``OCTOP_HOME`` itself are never included.
+    Covers the persisted workspace, ``~/.agentbuddy/agents/<id>``, a scoped jail
+    workspace, and ``~/.agentbuddy/workspaces/<id>``. Roots such as ``/``, the
+    home directory, and ``AGENTBUDDY_HOME`` itself are never included.
     """
     candidates: list[Path] = []
     raw = (cfg or {}).get("workspace_dir")
@@ -191,7 +191,7 @@ def remove_agent_host_dirs(
 
 
 def _safe_agent_dir(path: Path, *, paths: PathLayout) -> bool:
-    """Refuse to delete a filesystem root, the home directory, or OCTOP_HOME."""
+    """Refuse to delete a filesystem root, the home directory, or AGENTBUDDY_HOME."""
     try:
         resolved = path.expanduser().resolve()
     except OSError:

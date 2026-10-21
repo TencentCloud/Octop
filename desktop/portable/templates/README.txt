@@ -10,7 +10,7 @@ Start
   Windows:        start.bat
 
 Listen address and port come from data/config.json (default
-http://127.0.0.1:8088). Data dir = ./data (OCTOP_HOME).
+http://127.0.0.1:8088). Data dir = ./data (AGENTBUDDY_HOME).
 
   ./start.sh --home /path/to/data
   ./start.sh --host 0.0.0.0 --port 8088

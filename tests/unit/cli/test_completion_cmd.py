@@ -15,7 +15,7 @@ def test_completion_show_emits_script(shell: str) -> None:
     runner = CliRunner()
     result = runner.invoke(cli, ["completion", "show", "--shell", shell])
     assert result.exit_code == 0
-    assert "_OCTOP_COMPLETE" in result.output
+    assert "_AGENTBUDDY_COMPLETE" in result.output
 
 
 def test_completion_install_appends_eval_line_idempotent(
@@ -29,12 +29,12 @@ def test_completion_install_appends_eval_line_idempotent(
     r1 = runner.invoke(cli, ["completion", "install", "--shell", "bash", "--rc-file", str(rc)])
     assert r1.exit_code == 0, r1.output
     contents = rc.read_text()
-    assert "_OCTOP_COMPLETE" in contents
-    line_count_first = contents.count("_OCTOP_COMPLETE")
+    assert "_AGENTBUDDY_COMPLETE" in contents
+    line_count_first = contents.count("_AGENTBUDDY_COMPLETE")
 
     r2 = runner.invoke(cli, ["completion", "install", "--shell", "bash", "--rc-file", str(rc)])
     assert r2.exit_code == 0
-    assert rc.read_text().count("_OCTOP_COMPLETE") == line_count_first
+    assert rc.read_text().count("_AGENTBUDDY_COMPLETE") == line_count_first
 
 
 def test_completion_in_help() -> None:

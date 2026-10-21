@@ -14,7 +14,7 @@ TEST_PASSWORD = "TestPass12"
 
 
 def _wizard_password_home(home: Path) -> Path:
-    """Resolve wizard password dir: file lives at ``~/octop-login.txt``, not under ``~/.octop/``."""
+    """Resolve wizard password dir: file lives at ``~/agentbuddy-login.txt``, not under ``~/.agentbuddy/``."""
     for cand in (home, home.parent, Path.home()):
         if (cand / WIZARD_FILE_NAME).exists():
             return cand

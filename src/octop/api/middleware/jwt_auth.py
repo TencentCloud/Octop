@@ -4,7 +4,7 @@ Validated users are cached on ``request.state.octop_user`` so route-level
 ``Depends(current_user)`` can reuse the result without re-decoding.
 
 When the access token is past the sliding-renew threshold, a fresh token is
-attached as ``X-Octop-Access-Token`` on the response.
+attached as ``X-Agentbuddy-Access-Token`` on the response.
 """
 
 from __future__ import annotations

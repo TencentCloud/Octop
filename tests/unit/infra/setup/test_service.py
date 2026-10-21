@@ -57,7 +57,7 @@ def test_resolve_octop_executable_falls_back_to_path(
     python = python_dir / "python"
     python.write_text("#!/bin/sh\n", encoding="utf-8")
 
-    monkeypatch.setenv("OCTOP_HOME", str(tmp_path / "empty-home"))
+    monkeypatch.setenv("AGENTBUDDY_HOME", str(tmp_path / "empty-home"))
     monkeypatch.setattr(sys, "executable", str(python))
     monkeypatch.setattr(shutil, "which", lambda _name: str(fake_octop))
 
@@ -67,8 +67,8 @@ def test_resolve_octop_executable_falls_back_to_path(
 def test_render_systemd_unit_user_scope(tmp_path: Path) -> None:
     runtime = _runtime(tmp_path)
     unit = render_systemd_unit(runtime, user_unit=True)
-    assert "OCTOP_SERVICE_MODE=systemd" in unit
-    assert "OCTOP_SYSTEMD_USER=1" in unit
+    assert "AGENTBUDDY_SERVICE_MODE=systemd" in unit
+    assert "AGENTBUDDY_SYSTEMD_USER=1" in unit
     assert "WantedBy=default.target" in unit
     assert f"User={getpass.getuser()}" not in unit
     assert f"ExecStart={runtime.octop_bin} run\n" in unit
@@ -82,7 +82,7 @@ def test_render_systemd_unit_system_scope(tmp_path: Path) -> None:
     assert f"User={getpass.getuser()}" in unit
     assert 'Environment="HOME=' in unit
     assert "WantedBy=multi-user.target" in unit
-    assert "OCTOP_SYSTEMD_USER=1" not in unit
+    assert "AGENTBUDDY_SYSTEMD_USER=1" not in unit
     assert f"LimitNOFILE={service_mod.SERVICE_NOFILE_LIMIT}" in unit
 
 
@@ -104,7 +104,7 @@ def test_render_systemd_unit_system_scope_uses_runtime_scope_by_default(
     unit = render_systemd_unit(runtime)
     assert f"User={user}" in unit
     assert f'Environment="HOME={account_home}"' in unit
-    assert f"Environment=OCTOP_HOME={tmp_path}" in unit
+    assert f"Environment=AGENTBUDDY_HOME={tmp_path}" in unit
     assert "WorkingDirectory=" not in unit
     assert "WantedBy=multi-user.target" in unit
 
@@ -426,7 +426,7 @@ def test_ensure_nofile_dropin_skips_when_user_limit_unknown(
 def test_render_systemd_unit_includes_service_mode(tmp_path: Path) -> None:
     runtime = _runtime(tmp_path)
     unit = render_systemd_unit(runtime, user_unit=True)
-    assert "OCTOP_SERVICE_MODE=systemd" in unit
+    assert "AGENTBUDDY_SERVICE_MODE=systemd" in unit
     assert "ExecStart=" in unit
     assert f"ExecStart={runtime.octop_bin} run\n" in unit
     assert "LimitNOFILE=" in unit
@@ -437,7 +437,7 @@ def test_render_systemd_unit_includes_service_mode(tmp_path: Path) -> None:
 def test_render_launchd_plist_includes_service_mode(tmp_path: Path) -> None:
     runtime = replace(_runtime(tmp_path), mode="launchd")
     plist = render_launchd_plist(runtime)
-    assert "<key>OCTOP_SERVICE_MODE</key>" in plist
+    assert "<key>AGENTBUDDY_SERVICE_MODE</key>" in plist
     assert "<string>launchd</string>" in plist
     assert "<string>run</string>" in plist
     assert "<key>NumberOfFiles</key>" in plist
@@ -571,17 +571,17 @@ def test_probe_health_with_retry_succeeds_on_second_attempt(
 
 
 def test_resolve_service_scope_honours_env(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("OCTOP_SERVICE_SCOPE", "user")
+    monkeypatch.setenv("AGENTBUDDY_SERVICE_SCOPE", "user")
     assert resolve_service_scope() == "user"
-    monkeypatch.setenv("OCTOP_SERVICE_SCOPE", "system")
+    monkeypatch.setenv("AGENTBUDDY_SERVICE_SCOPE", "system")
     assert resolve_service_scope() == "system"
-    monkeypatch.setenv("OCTOP_SERVICE_SCOPE", "auto")
+    monkeypatch.setenv("AGENTBUDDY_SERVICE_SCOPE", "auto")
     assert resolve_service_scope() in ("user", "system")  # depends on euid
 
 
 def test_resolve_service_scope_rejects_garbage(monkeypatch: pytest.MonkeyPatch) -> None:
     """Unknown values are treated as 'auto' rather than crashing the CLI."""
-    monkeypatch.setenv("OCTOP_SERVICE_SCOPE", "nonsense")
+    monkeypatch.setenv("AGENTBUDDY_SERVICE_SCOPE", "nonsense")
     assert resolve_service_scope() in ("user", "system")
 
 
@@ -641,7 +641,7 @@ def test_unit_path_launchd_user_is_under_home(monkeypatch: pytest.MonkeyPatch) -
     import pwd
 
     monkeypatch.setattr(service_mod, "is_root", lambda: False)
-    monkeypatch.setenv("OCTOP_SERVICE_SCOPE", "user")
+    monkeypatch.setenv("AGENTBUDDY_SERVICE_SCOPE", "user")
     path = unit_path("launchd")
     owner_home = Path(pwd.getpwnam(getpass.getuser()).pw_dir)
     assert path == owner_home / "Library" / "LaunchAgents" / "octop.plist"
@@ -649,7 +649,7 @@ def test_unit_path_launchd_user_is_under_home(monkeypatch: pytest.MonkeyPatch) -
 
 def test_unit_path_launchd_system_is_under_library(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(service_mod, "is_root", lambda: True)
-    monkeypatch.setenv("OCTOP_SERVICE_SCOPE", "system")
+    monkeypatch.setenv("AGENTBUDDY_SERVICE_SCOPE", "system")
     path = unit_path("launchd")
     assert path == Path("/Library/LaunchDaemons/octop.plist")
 
@@ -769,16 +769,19 @@ def test_resolve_run_as_user_root_always_returns_root(monkeypatch: pytest.Monkey
 def test_resolve_service_home_uses_passwd_not_effective_uid(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """sudo install as root must still target the invoking user's ~/.octop."""
-    monkeypatch.delenv("OCTOP_HOME", raising=False)
+    """sudo install as root must still target the invoking user's ~/.agentbuddy."""
+    monkeypatch.delenv("AGENTBUDDY_HOME", raising=False)
     monkeypatch.setattr(service_mod, "is_root", lambda: True)
     monkeypatch.setenv("SUDO_USER", "ubuntu")
-    assert resolve_service_home(run_as_user="ubuntu") == Path("/home/ubuntu") / ".octop"
+    assert resolve_service_home(run_as_user="ubuntu") == Path("/home/ubuntu") / ".agentbuddy"
 
 
 def test_resolve_service_home_root_session(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.delenv("OCTOP_HOME", raising=False)
-    assert resolve_service_home(run_as_user="root") == Path(pwd.getpwnam("root").pw_dir) / ".octop"
+    monkeypatch.delenv("AGENTBUDDY_HOME", raising=False)
+    assert (
+        resolve_service_home(run_as_user="root")
+        == Path(pwd.getpwnam("root").pw_dir) / ".agentbuddy"
+    )
 
 
 def test_build_runtime_root_always_system_scope(
@@ -788,14 +791,14 @@ def test_build_runtime_root_always_system_scope(
     # not a user-scope unit for the original invoker.
     root_home = tmp_path / "root-home"
     root_home.mkdir()
-    octop_bin = root_home / ".octop" / "bin" / "octop"
+    octop_bin = root_home / ".agentbuddy" / "bin" / "octop"
     octop_bin.parent.mkdir(parents=True)
     octop_bin.write_text("#!/bin/sh\n", encoding="utf-8")
 
     monkeypatch.setattr(service_mod, "is_root", lambda: True)
     monkeypatch.setenv("SUDO_USER", "ubuntu")
     monkeypatch.setenv("USER", "root")
-    monkeypatch.delenv("OCTOP_HOME", raising=False)
+    monkeypatch.delenv("AGENTBUDDY_HOME", raising=False)
     monkeypatch.setattr(
         service_mod.pwd,
         "getpwnam",
@@ -859,7 +862,7 @@ def test_build_runtime_picks_user_scope_for_non_root(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     monkeypatch.setattr(service_mod, "is_root", lambda: False)
-    monkeypatch.setenv("OCTOP_SERVICE_SCOPE", "auto")
+    monkeypatch.setenv("AGENTBUDDY_SERVICE_SCOPE", "auto")
     (tmp_path / "bin").mkdir()
     (tmp_path / "bin" / "octop").write_text("#!/bin/sh\n", encoding="utf-8")
     monkeypatch.setattr(service_mod, "resolve_bind_options", lambda home=None: ("127.0.0.1", 8088))

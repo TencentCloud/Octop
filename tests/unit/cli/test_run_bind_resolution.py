@@ -15,9 +15,9 @@ from octop.infra.errors import ErrorCode, OctopError
 
 @pytest.fixture
 def octop_home(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
-    monkeypatch.setenv("OCTOP_HOME", str(tmp_path))
-    monkeypatch.delenv("OCTOP_PORT", raising=False)
-    monkeypatch.delenv("OCTOP_BIND_HOST", raising=False)
+    monkeypatch.setenv("AGENTBUDDY_HOME", str(tmp_path))
+    monkeypatch.delenv("AGENTBUDDY_PORT", raising=False)
+    monkeypatch.delenv("AGENTBUDDY_BIND_HOST", raising=False)
     return tmp_path
 
 
@@ -36,14 +36,14 @@ def test_config_file_values(octop_home: Path) -> None:
 
 def test_env_overrides_config_file(octop_home: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     _write_config(octop_home, bind_host="127.0.0.1", port=8088)
-    monkeypatch.setenv("OCTOP_PORT", "9001")
-    monkeypatch.setenv("OCTOP_BIND_HOST", "0.0.0.0")
+    monkeypatch.setenv("AGENTBUDDY_PORT", "9001")
+    monkeypatch.setenv("AGENTBUDDY_BIND_HOST", "0.0.0.0")
     assert resolve_bind(None, None) == ("0.0.0.0", 9001)
 
 
 def test_cli_flags_win_over_env_and_file(octop_home: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     _write_config(octop_home, bind_host="127.0.0.1", port=8088)
-    monkeypatch.setenv("OCTOP_PORT", "9001")
+    monkeypatch.setenv("AGENTBUDDY_PORT", "9001")
     assert resolve_bind("10.0.0.1", 7777) == ("10.0.0.1", 7777)
 
 
@@ -51,7 +51,7 @@ def test_invalid_env_port_falls_back_to_file(
     octop_home: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     _write_config(octop_home, port=8088)
-    monkeypatch.setenv("OCTOP_PORT", "not-a-number")
+    monkeypatch.setenv("AGENTBUDDY_PORT", "not-a-number")
     assert resolve_bind(None, None) == (None, 8088)
 
 
@@ -60,7 +60,7 @@ def test_out_of_range_env_port_falls_back_to_file(
     octop_home: Path, monkeypatch: pytest.MonkeyPatch, value: str
 ) -> None:
     _write_config(octop_home, port=8088)
-    monkeypatch.setenv("OCTOP_PORT", value)
+    monkeypatch.setenv("AGENTBUDDY_PORT", value)
     assert resolve_bind(None, None) == (None, 8088)
 
 
@@ -68,7 +68,7 @@ def test_zero_env_port_still_requests_an_os_assigned_port(
     octop_home: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     _write_config(octop_home, port=8088)
-    monkeypatch.setenv("OCTOP_PORT", "0")
+    monkeypatch.setenv("AGENTBUDDY_PORT", "0")
     assert resolve_bind(None, None) == (None, 0)
 
 

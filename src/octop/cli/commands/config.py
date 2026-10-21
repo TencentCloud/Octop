@@ -11,7 +11,7 @@ from octop.cli.support.state import default_state_path, load, save
 
 @click.group("config")
 def config_group() -> None:
-    """View or update CLI defaults (~/.octop/cli_state.json)."""
+    """View or update CLI defaults (~/.agentbuddy/cli_state.json)."""
 
 
 @config_group.command("show")

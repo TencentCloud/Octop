@@ -1,4 +1,4 @@
-"""Persisted environment variables at ``~/.octop/env`` (dotenv format)."""
+"""Persisted environment variables at ``~/.agentbuddy/env`` (dotenv format)."""
 
 from __future__ import annotations
 
@@ -138,7 +138,7 @@ def search_env_changed(previous: Mapping[str, str], new: Mapping[str, str]) -> b
 
 
 def _is_protected_env_key(key: str) -> bool:
-    return key in _PROTECTED_EXACT or key.startswith("OCTOP_")
+    return key in _PROTECTED_EXACT or key.startswith("AGENTBUDDY_") or key.startswith("OCTOP_")
 
 
 def overlay_stdio_spec_env(spec: dict[str, Any], global_env: Mapping[str, str]) -> dict[str, Any]:

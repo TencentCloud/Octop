@@ -6,12 +6,12 @@
 #   tar -xzf agentbuddy-offline-<platform>-<pytag>.tar.gz
 #   bash offline/../scripts/install-offline.sh <解包目录>/offline/
 #
-#   也可以指定安装目录(默认 ~/.octop)与 Python:
-#   OCTOP_HOME=/data/agentbuddy bash install-offline.sh ./offline/
+#   也可以指定安装目录(默认 ~/.agentbuddy)与 Python:
+#   AGENTBUDDY_HOME=/data/agentbuddy bash install-offline.sh ./offline/
 #
 # 行为:
 #   1. 校验 SHA256SUMS(产物自带);
-#   2. 建/复用 Python 3.12 venv(OCTOP_VENV 可覆盖);
+#   2. 建/复用 Python 3.12 venv(AGENTBUDDY_VENV 可覆盖);
 #   3. 纯 --no-index 安装:主包 octop + 四上游(harness/gateway/memory/browser)
 #      + 全部第三方依赖,全部来自本地 wheels,不出网;
 #   4. octop init 初始化本地数据目录;
@@ -23,10 +23,10 @@ set -euo pipefail
 
 BUNDLE_DIR="${1:?用法: install-offline.sh <offline 解包目录>}"
 BUNDLE_DIR="$(cd "$BUNDLE_DIR" && pwd)"
-OCTOP_HOME="${OCTOP_HOME:-$HOME/.octop}"
-OCTOP_VENV="${OCTOP_VENV:-$OCTOP_HOME/venv}"
+AGENTBUDDY_HOME="${AGENTBUDDY_HOME:-$HOME/.agentbuddy}"
+AGENTBUDDY_VENV="${AGENTBUDDY_VENV:-$AGENTBUDDY_HOME/venv}"
 
-echo "[install-offline] bundle=$BUNDLE_DIR home=$OCTOP_HOME venv=$OCTOP_VENV"
+echo "[install-offline] bundle=$BUNDLE_DIR home=$AGENTBUDDY_HOME venv=$AGENTBUDDY_VENV"
 
 # ---- 1) 校验和 ----------------------------------------------------------------
 if [ -f "$BUNDLE_DIR/../SHA256SUMS.txt" ]; then
@@ -45,8 +45,8 @@ command -v "$PY" >/dev/null 2>&1 || PY=python3
     || { echo "[install-offline] ERROR: 需要 Python 3.12+,当前 $($PY -V)" >&2; exit 1; }
 echo "[install-offline] Using $($PY -V)"
 
-mkdir -p "$OCTOP_HOME"
-[ -d "$OCTOP_VENV" ] || "$PY" -m venv "$OCTOP_VENV"
+mkdir -p "$AGENTBUDDY_HOME"
+[ -d "$AGENTBUDDY_VENV" ] || "$PY" -m venv "$AGENTBUDDY_VENV"
 
 # ---- 3) 编译工具链检测(少数 sdist-only 老包需要;政务镜像一般自带) ------------
 if ! command -v gcc >/dev/null 2>&1 && ls "$BUNDLE_DIR"/*.tar.gz >/dev/null 2>&1; then
@@ -57,25 +57,25 @@ fi
 
 # ---- 4) 纯离线安装 --------------------------------------------------------------
 echo "[install-offline] Installing (no network)..."
-"$OCTOP_VENV/bin/python" -m pip install --quiet --upgrade pip \
+"$AGENTBUDDY_VENV/bin/python" -m pip install --quiet --upgrade pip \
     --no-index --find-links "$BUNDLE_DIR" pip || {
     # pip 自身可能不在 wheels 里;venv 自带 ensurepip 兜底
-    "$OCTOP_VENV/bin/python" -m ensurepip --upgrade >/dev/null 2>&1 || true
+    "$AGENTBUDDY_VENV/bin/python" -m ensurepip --upgrade >/dev/null 2>&1 || true
 }
-"$OCTOP_VENV/bin/python" -m pip install --no-index --find-links "$BUNDLE_DIR" \
+"$AGENTBUDDY_VENV/bin/python" -m pip install --no-index --find-links "$BUNDLE_DIR" \
     octop \
     || { echo "[install-offline] ERROR: pip install failed(缺 wheel / 平台不匹配 / sdist 缺编译工具链?对照 SHA256SUMS)" >&2; exit 1; }
-echo "[install-offline] Installed: $("$OCTOP_VENV/bin/octop" --version)"
+echo "[install-offline] Installed: $("$AGENTBUDDY_VENV/bin/octop" --version)"
 
 # ---- 5) 初始化 ------------------------------------------------------------------
 echo "[install-offline] Init local data dir..."
-"$OCTOP_VENV/bin/octop" init || echo "[install-offline] (init 提示已存在,跳过)"
+"$AGENTBUDDY_VENV/bin/octop" init || echo "[install-offline] (init 提示已存在,跳过)"
 
 cat <<EOF
 
 [install-offline] 完成。
-  启动:  $OCTOP_VENV/bin/octop run
-  数据:  $OCTOP_HOME
-  首次打开 Web 控制台走设置向导(口令见 $OCTOP_HOME/octop-login.txt)。
+  启动:  $AGENTBUDDY_VENV/bin/octop run
+  数据:  $AGENTBUDDY_HOME
+  首次打开 Web 控制台走设置向导(口令见 $AGENTBUDDY_HOME/octop-login.txt)。
 
 EOF

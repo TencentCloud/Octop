@@ -33,19 +33,19 @@ services:
     privileged: true
     network_mode: host
     volumes:
-      - ${OCTOP_DATA:-~/.octop}:/data/.octop
+      - ${AGENTBUDDY_DATA:-~/.agentbuddy}:/data/.agentbuddy
       - /var/run/docker.sock:/var/run/docker.sock
       - /dev/binderfs:/dev/binderfs
-      - ${OCTOP_PLATFORM_TOOLS:-../.tools/platform-tools}:/opt/android-sdk/platform-tools:ro
+      - ${AGENTBUDDY_PLATFORM_TOOLS:-../.tools/platform-tools}:/opt/android-sdk/platform-tools:ro
     environment:
       - HOME=/data
-      - OCTOP_BIND_HOST=0.0.0.0
-      - OCTOP_PORT=${OCTOP_PORT:-8088}
-      - OCTOP_LOG_LEVEL=${OCTOP_LOG_LEVEL:-info}
-      - OCTOP_DEFAULT_PASSWORD=${OCTOP_DEFAULT_PASSWORD:-}
-      - OCTOP_ADMIN_USERNAME=${OCTOP_ADMIN_USERNAME:-admin}
-      - OCTOP_MOBILE_ADB_HOST=${OCTOP_MOBILE_ADB_HOST:-127.0.0.1:5555}
-      - OCTOP_MOBILE_CONTAINER=${OCTOP_MOBILE_CONTAINER:-octop-mobile-android}
-      - OCTOP_ENABLE_MOBILE=${OCTOP_ENABLE_MOBILE:-1}
+      - AGENTBUDDY_BIND_HOST=0.0.0.0
+      - AGENTBUDDY_PORT=${AGENTBUDDY_PORT:-8088}
+      - AGENTBUDDY_LOG_LEVEL=${AGENTBUDDY_LOG_LEVEL:-info}
+      - AGENTBUDDY_DEFAULT_PASSWORD=${AGENTBUDDY_DEFAULT_PASSWORD:-}
+      - AGENTBUDDY_ADMIN_USERNAME=${AGENTBUDDY_ADMIN_USERNAME:-admin}
+      - AGENTBUDDY_MOBILE_ADB_HOST=${AGENTBUDDY_MOBILE_ADB_HOST:-127.0.0.1:5555}
+      - AGENTBUDDY_MOBILE_CONTAINER=${AGENTBUDDY_MOBILE_CONTAINER:-octop-mobile-android}
+      - AGENTBUDDY_ENABLE_MOBILE=${AGENTBUDDY_ENABLE_MOBILE:-1}
       - ANDROID_HOME=/opt/android-sdk
       - ANDROID_SDK_ROOT=/opt/android-sdk

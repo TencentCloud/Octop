@@ -100,9 +100,9 @@ def running_in_container() -> bool:
     policy (the container is already the isolation boundary) and so the UI can
     surface container-specific copy.
 
-    Override with ``OCTOP_IN_CONTAINER=1|0`` (also ``true``/``false``).
+    Override with ``AGENTBUDDY_IN_CONTAINER=1|0`` (also ``true``/``false``).
     """
-    forced = os.environ.get("OCTOP_IN_CONTAINER", "").strip().lower()
+    forced = os.environ.get("AGENTBUDDY_IN_CONTAINER", "").strip().lower()
     if forced in {"1", "true", "yes", "on"}:
         return True
     if forced in {"0", "false", "no", "off"}:

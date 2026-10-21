@@ -44,16 +44,16 @@ async def test_envs_redacts_captcha_secret_and_put_keeps_sentinel(env: Any) -> N
         "/api/envs",
         headers=auth,
         json={
-            "OCTOP_CAPTCHA_SECRET": "live-secret",
-            "OCTOP_CAPTCHA_CAM_SECRET_KEY": "cam-live",
+            "AGENTBUDDY_CAPTCHA_SECRET": "live-secret",
+            "AGENTBUDDY_CAPTCHA_CAM_SECRET_KEY": "cam-live",
             "FOO": "bar",
         },
     )
     assert r.status_code == 200
     body = r.json()
     by_key = {row["key"]: row["value"] for row in body}
-    assert by_key["OCTOP_CAPTCHA_SECRET"] == "********"
-    assert by_key["OCTOP_CAPTCHA_CAM_SECRET_KEY"] == "********"
+    assert by_key["AGENTBUDDY_CAPTCHA_SECRET"] == "********"
+    assert by_key["AGENTBUDDY_CAPTCHA_CAM_SECRET_KEY"] == "********"
     assert "live-secret" not in str(body)
     assert "cam-live" not in str(body)
     env_path = srv.paths.root / "env"
@@ -64,8 +64,8 @@ async def test_envs_redacts_captcha_secret_and_put_keeps_sentinel(env: Any) -> N
         "/api/envs",
         headers=auth,
         json={
-            "OCTOP_CAPTCHA_SECRET": "********",
-            "OCTOP_CAPTCHA_CAM_SECRET_KEY": "********",
+            "AGENTBUDDY_CAPTCHA_SECRET": "********",
+            "AGENTBUDDY_CAPTCHA_CAM_SECRET_KEY": "********",
             "FOO": "bar",
         },
     )

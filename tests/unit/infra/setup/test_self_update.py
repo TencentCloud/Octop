@@ -163,7 +163,7 @@ def test_fetch_pypi_info_skips_versioned_fetch_when_stable_is_latest(
 def test_build_upgrade_command_prerelease_flags(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    python = "/home/user/.octop/venv/bin/python"
+    python = "/home/user/.agentbuddy/venv/bin/python"
     uv_cmd = build_upgrade_command("uv", python, allow_prerelease=True, version="0.9.34b1")
     assert uv_cmd is not None
     assert uv_cmd[uv_cmd.index("--prerelease") + 1] == "allow"
@@ -185,7 +185,7 @@ def test_portable_upgrade_prefers_bundled_uv(
     executable.parent.mkdir(parents=True)
     executable.write_text("bundled updater")
     executable.chmod(0o755)
-    monkeypatch.setenv("OCTOP_GREEN_PACKAGES", str(packages))
+    monkeypatch.setenv("AGENTBUDDY_GREEN_PACKAGES", str(packages))
     monkeypatch.setattr(self_update.shutil, "which", lambda _: "global-uv")
 
     assert self_update.detect_installer() == "uv"
@@ -201,7 +201,7 @@ def test_portable_without_bundled_uv_keeps_pip_fallback(
 ) -> None:
     from octop.infra.setup import self_update
 
-    monkeypatch.setenv("OCTOP_GREEN_PACKAGES", str(tmp_path / "packages"))
+    monkeypatch.setenv("AGENTBUDDY_GREEN_PACKAGES", str(tmp_path / "packages"))
     monkeypatch.setattr(self_update.shutil, "which", lambda _: None)
     monkeypatch.setattr(self_update, "_COMMON_UV_PATHS", [])
     assert self_update.detect_installer() == "pip"
@@ -210,7 +210,7 @@ def test_portable_without_bundled_uv_keeps_pip_fallback(
 def test_build_upgrade_command_pins_stable_without_pre(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    python = "/home/user/.octop/venv/bin/python"
+    python = "/home/user/.agentbuddy/venv/bin/python"
     uv_cmd = build_upgrade_command("uv", python, version="0.9.33")
     assert uv_cmd is not None
     assert "octop==0.9.33" in uv_cmd
@@ -485,8 +485,8 @@ def test_target_versions_load_package_despite_stale_metadata(
 ) -> None:
     from octop.infra.setup import self_update
 
-    monkeypatch.delenv("OCTOP_GREEN_PACKAGES", raising=False)
-    monkeypatch.setenv("OCTOP_GREEN_PACKAGES", str(tmp_path))
+    monkeypatch.delenv("AGENTBUDDY_GREEN_PACKAGES", raising=False)
+    monkeypatch.setenv("AGENTBUDDY_GREEN_PACKAGES", str(tmp_path))
     for version in versions:
         _write_octop_metadata(tmp_path, version)
     expected = max(versions, key=parse_version)
@@ -542,7 +542,7 @@ def test_new_metadata_cannot_hide_old_or_broken_package(
 ) -> None:
     from octop.infra.setup import self_update
 
-    monkeypatch.setenv("OCTOP_GREEN_PACKAGES", str(tmp_path))
+    monkeypatch.setenv("AGENTBUDDY_GREEN_PACKAGES", str(tmp_path))
     monkeypatch.setattr(self_update.time, "sleep", lambda _: None)
     _write_octop_metadata(tmp_path, "1.0.2b5")
     _write_octop_package(tmp_path, "1.0.2b4")
@@ -576,7 +576,7 @@ def test_target_version_prevents_downgrade_before_service_restart(
     from octop.infra.setup import self_update
 
     monkeypatch.setattr(octop, "__version__", "1.0.2b4")
-    monkeypatch.setenv("OCTOP_GREEN_PACKAGES", str(tmp_path))
+    monkeypatch.setenv("AGENTBUDDY_GREEN_PACKAGES", str(tmp_path))
     _write_octop_package(tmp_path, "1.0.2b6")
     assert self_update.get_local_version() == "1.0.2b6"
     result = run_upgrade(version="1.0.2b5", locale="en")
@@ -589,7 +589,7 @@ def test_target_verification_exercises_cli_instead_of_accepting_import_alone(
 ) -> None:
     from octop.infra.setup import self_update
 
-    monkeypatch.setenv("OCTOP_GREEN_PACKAGES", str(tmp_path))
+    monkeypatch.setenv("AGENTBUDDY_GREEN_PACKAGES", str(tmp_path))
     monkeypatch.setattr(self_update.time, "sleep", lambda _: None)
     _write_octop_package(tmp_path, "1.0.2b5")
     (tmp_path / "octop" / "__main__.py").write_text(
@@ -702,7 +702,7 @@ def test_legacy_pip_fast_path_falls_back_and_verifies_full_install(
 ) -> None:
     from octop.infra.setup import self_update
 
-    monkeypatch.setenv("OCTOP_GREEN_PACKAGES", str(tmp_path))
+    monkeypatch.setenv("AGENTBUDDY_GREEN_PACKAGES", str(tmp_path))
     monkeypatch.setattr(self_update, "detect_installer", lambda: "pip")
     monkeypatch.setattr(self_update, "has_pip", lambda _: True)
     monkeypatch.setattr(self_update, "get_local_version", lambda: "1.0.2b4")
@@ -782,7 +782,7 @@ def test_verify_upgrade_requires_newer_requested_version(
 ) -> None:
     from octop.infra.setup import self_update
 
-    monkeypatch.delenv("OCTOP_GREEN_PACKAGES", raising=False)
+    monkeypatch.delenv("AGENTBUDDY_GREEN_PACKAGES", raising=False)
     monkeypatch.setattr(self_update, "get_installed_version", lambda _: actual)
     monkeypatch.setattr(self_update.time, "sleep", lambda _: None)
     result = self_update._verify_upgrade(
@@ -801,7 +801,7 @@ def test_verify_green_upgrade_reads_only_target(
     from octop.i18n import tr
     from octop.infra.setup import self_update
 
-    monkeypatch.setenv("OCTOP_GREEN_PACKAGES", str(tmp_path))
+    monkeypatch.setenv("AGENTBUDDY_GREEN_PACKAGES", str(tmp_path))
     monkeypatch.setattr(self_update.time, "sleep", lambda _: None)
 
     def unexpected_global_read(_: str) -> str:
@@ -836,7 +836,7 @@ def test_pip_target_upgrade_with_stale_metadata_succeeds_without_retry(
 ) -> None:
     from octop.infra.setup import self_update
 
-    monkeypatch.setenv("OCTOP_GREEN_PACKAGES", str(tmp_path))
+    monkeypatch.setenv("AGENTBUDDY_GREEN_PACKAGES", str(tmp_path))
     _write_octop_metadata(tmp_path, "1.0.2b4")
     _write_octop_package(tmp_path, "1.0.2b4")
     monkeypatch.setattr(self_update, "detect_installer", lambda: "pip")
@@ -888,7 +888,7 @@ def test_application_download_failure_retries_without_modifying_target(
 ) -> None:
     from octop.infra.setup import self_update
 
-    monkeypatch.setenv("OCTOP_GREEN_PACKAGES", str(tmp_path))
+    monkeypatch.setenv("AGENTBUDDY_GREEN_PACKAGES", str(tmp_path))
     monkeypatch.setattr(self_update, "detect_installer", lambda: "pip")
     monkeypatch.setattr(self_update, "has_pip", lambda _: True)
     _write_octop_package(tmp_path, "1.0.2b4")
@@ -922,7 +922,7 @@ def test_legacy_pip_fallback_window_is_shared_across_mirrors(
 ) -> None:
     from octop.infra.setup import self_update
 
-    monkeypatch.setenv("OCTOP_GREEN_PACKAGES", str(tmp_path))
+    monkeypatch.setenv("AGENTBUDDY_GREEN_PACKAGES", str(tmp_path))
     monkeypatch.setattr(self_update, "detect_installer", lambda: "pip")
     monkeypatch.setattr(self_update, "has_pip", lambda _: True)
     _write_octop_package(tmp_path, "1.0.2b4")
@@ -998,7 +998,7 @@ def test_upgrade_keeps_locale_bundle_when_installer_replaces_resources(
         (bundles / f"{language}.json").write_text(content, encoding="utf-8")
     target = tmp_path / "packages"
     target.mkdir()
-    monkeypatch.setenv("OCTOP_GREEN_PACKAGES", str(target))
+    monkeypatch.setenv("AGENTBUDDY_GREEN_PACKAGES", str(target))
     monkeypatch.setattr(loader.resources, "files", lambda _: bundles)
     monkeypatch.setattr(self_update, "get_local_version", lambda: "1.0.2b4")
     monkeypatch.setattr(self_update, "get_version_in_dir", lambda *args, **kwargs: actual)
@@ -1064,7 +1064,7 @@ def test_run_managed_upgrade_retries_after_failed_verification(
 ) -> None:
     from octop.infra.setup import self_update
 
-    monkeypatch.delenv("OCTOP_GREEN_PACKAGES", raising=False)
+    monkeypatch.delenv("AGENTBUDDY_GREEN_PACKAGES", raising=False)
     monkeypatch.setattr(self_update, "detect_installer", lambda: "uv")
     monkeypatch.setattr(self_update, "get_local_version", lambda: "1.0.2b4")
     monkeypatch.setattr(self_update.time, "sleep", lambda _: None)
@@ -1098,7 +1098,7 @@ def test_cold_target_install_budget_preserves_regular_timeout(
 ) -> None:
     from octop.infra.setup import self_update
 
-    monkeypatch.setenv("OCTOP_GREEN_PACKAGES", str(tmp_path) if portable else "")
+    monkeypatch.setenv("AGENTBUDDY_GREEN_PACKAGES", str(tmp_path) if portable else "")
     monkeypatch.setattr(self_update, "detect_installer", lambda: installer)
     monkeypatch.setattr(self_update, "has_pip", lambda _: True)
     monkeypatch.setattr(self_update, "get_local_version", lambda: "1.0.2b4")

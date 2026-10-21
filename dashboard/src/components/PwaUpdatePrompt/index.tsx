@@ -21,7 +21,7 @@ export const PWA_UPDATE_DISMISSED_KEY = "pwa:update-dismissed";
  * Only users allowed to update see the banner: applying it restarts the backend
  * service, which requires the ``update`` permission. Non-admins are not prompted.
  *
- * When the process is running as a system service (OCTOP_SERVICE_MODE is
+ * When the process is running as a system service (AGENTBUDDY_SERVICE_MODE is
  * set), clicking the update-now action also triggers a backend service restart so that
  * the new Python package takes effect alongside the new frontend bundle.
  */

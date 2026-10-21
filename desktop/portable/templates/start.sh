@@ -7,8 +7,8 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-export OCTOP_HOME="${OCTOP_HOME:-${ROOT}/data}"
-export OCTOP_GREEN_PACKAGES="${ROOT}/packages"
+export AGENTBUDDY_HOME="${AGENTBUDDY_HOME:-${ROOT}/data}"
+export AGENTBUDDY_GREEN_PACKAGES="${ROOT}/packages"
 
 HOST=""
 PORT=""
@@ -18,7 +18,7 @@ while [[ $# -gt 0 ]]; do
   case "$1" in
     --home)
       [[ $# -ge 2 ]] || { echo "start.sh: --home requires a path" >&2; exit 1; }
-      OCTOP_HOME="$2"
+      AGENTBUDDY_HOME="$2"
       shift 2
       ;;
     --host)
@@ -38,16 +38,16 @@ agentbuddy green portable launcher
 Usage: ./start.sh [--home DIR] [--host HOST] [--port PORT] [octop run args...]
 
 Defaults:
-  OCTOP_HOME / --home   ${ROOT}/data
+  AGENTBUDDY_HOME / --home   ${ROOT}/data
   bind_host / port      config.json (127.0.0.1:8088 when unset)
 
 --host and --port override config.json and are saved back to it.
 Pass them only when you want to change the saved listen address.
 
 Environment:
-  OCTOP_HOME            User data directory (overridden by --home)
-  OCTOP_BIND_HOST       Listen address for this process (not saved)
-  OCTOP_PORT            Listen port for this process (not saved)
+  AGENTBUDDY_HOME            User data directory (overridden by --home)
+  AGENTBUDDY_BIND_HOST       Listen address for this process (not saved)
+  AGENTBUDDY_PORT            Listen port for this process (not saved)
 EOF
       exit 0
       ;;
@@ -58,8 +58,8 @@ EOF
   esac
 done
 
-export OCTOP_HOME
-mkdir -p "$OCTOP_HOME"
+export AGENTBUDDY_HOME
+mkdir -p "$AGENTBUDDY_HOME"
 
 PY=""
 if [[ -x "${ROOT}/runtime/bin/python3" ]]; then
@@ -75,7 +75,7 @@ fi
 export PYTHONNOUSERSITE=1
 unset PYTHONPATH || true
 
-echo "[octop] home=${OCTOP_HOME}"
+echo "[agentbuddy] home=${AGENTBUDDY_HOME}"
 args=(run)
 if [[ -n "$HOST" ]]; then
   args+=(--host "$HOST")
@@ -84,13 +84,13 @@ if [[ -n "$PORT" ]]; then
   args+=(--port "$PORT")
 fi
 if [[ -n "$HOST" && -n "$PORT" ]]; then
-  echo "[octop] http://${HOST}:${PORT}"
+  echo "[agentbuddy] http://${HOST}:${PORT}"
 elif [[ -n "$HOST" ]]; then
-  echo "[octop] host=${HOST} (port from config.json)"
+  echo "[agentbuddy] host=${HOST} (port from config.json)"
 elif [[ -n "$PORT" ]]; then
-  echo "[octop] port=${PORT} (host from config.json)"
+  echo "[agentbuddy] port=${PORT} (host from config.json)"
 else
-  echo "[octop] bind from config.json"
+  echo "[agentbuddy] bind from config.json"
 fi
 if [[ ${#EXTRA[@]} -gt 0 ]]; then
   exec "$PY" "${ROOT}/launch.py" "${args[@]}" "${EXTRA[@]}"

@@ -205,7 +205,7 @@ def test_list_bridge_connections_reads_local_db(tmp_octop_home: Path, monkeypatc
     from octop.cli.support.embedded_ops import list_bridge_connections
     from octop.infra.db.repos.users import UserRepo
 
-    monkeypatch.setenv("OCTOP_HOME", str(tmp_octop_home))
+    monkeypatch.setenv("AGENTBUDDY_HOME", str(tmp_octop_home))
     runner = CliRunner()
     result = runner.invoke(
         cli,

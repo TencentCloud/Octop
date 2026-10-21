@@ -1,6 +1,6 @@
 """Built-in provider template loading (octop-harness bundles).
 
-Publishers retune the shipped list with ``~/.octop/provider_presets.json`` —
+Publishers retune the shipped list with ``~/.agentbuddy/provider_presets.json`` —
 see :func:`apply_preset_overrides`.
 """
 
@@ -27,7 +27,7 @@ DEFAULT_GROUP_ORDER: tuple[str, ...] = (
 
 
 def preset_overrides_path() -> Path:
-    """``~/.octop/provider_presets.json`` — optional, publisher-authored."""
+    """``~/.agentbuddy/provider_presets.json`` — optional, publisher-authored."""
     return PathLayout.from_env().root / "provider_presets.json"
 
 

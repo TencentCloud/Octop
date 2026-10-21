@@ -21,7 +21,7 @@ from octop.infra.utils.paths import PathLayout
 
 @pytest.fixture
 def layout(tmp_path: Path) -> PathLayout:
-    root = tmp_path / ".octop"
+    root = tmp_path / ".agentbuddy"
     root.mkdir()
     return PathLayout(root)
 
@@ -167,7 +167,7 @@ def test_backup_packs_config_workspace_dir(layout: PathLayout, tmp_path: Path) -
 
 
 def test_backup_skips_unwritable_workspace_dir(layout: PathLayout, tmp_path: Path) -> None:
-    """Stale host paths (e.g. former /root/.octop/agents/…) must not abort backup."""
+    """Stale host paths (e.g. former /root/.agentbuddy/agents/…) must not abort backup."""
     pool = SqlitePool(layout.db)
     run_migrations(pool)
     reachable = layout.ensure_agent_workspace("ok01")

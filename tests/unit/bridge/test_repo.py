@@ -13,7 +13,7 @@ from octop.infra.utils.ulid import new_ulid
 
 
 def test_bridge_connection_crud(tmp_path: Path) -> None:
-    pool = SqlitePool(tmp_path / "octop.db")
+    pool = SqlitePool(tmp_path / "agentbuddy.db")
     run_migrations(pool)
     users = UserRepo(pool)
     uid = users.create(username="alice", password_hash="x", role="user")
@@ -51,7 +51,7 @@ def test_bridge_connection_crud(tmp_path: Path) -> None:
 
 
 def test_upsert_reverse_disables_auto_reconnect(tmp_path: Path) -> None:
-    pool = SqlitePool(tmp_path / "octop.db")
+    pool = SqlitePool(tmp_path / "agentbuddy.db")
     run_migrations(pool)
     users = UserRepo(pool)
     uid = users.create(username="alice", password_hash="x", role="user")
@@ -80,7 +80,7 @@ def test_upsert_reverse_disables_auto_reconnect(tmp_path: Path) -> None:
 
 
 def test_ensure_bridge_dedupes_duplicate_display_names(tmp_path: Path) -> None:
-    pool = SqlitePool(tmp_path / "octop.db")
+    pool = SqlitePool(tmp_path / "agentbuddy.db")
     run_migrations(pool)
     users = UserRepo(pool)
     uid = users.create(username="alice", password_hash="x", role="user")

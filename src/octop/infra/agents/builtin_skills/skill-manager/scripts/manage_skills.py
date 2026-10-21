@@ -80,7 +80,7 @@ def _default_workspace() -> Path:
 
 def _skills_dir(workspace: Path) -> Path:
     """Return the writable skills directory (legacy root or ``.octop/skills``)."""
-    env_dir = os.environ.get("OCTOP_SKILLS_DIR", "").strip()
+    env_dir = os.environ.get("AGENTBUDDY_SKILLS_DIR", "").strip()
     if env_dir:
         path = _workspace(env_dir)
         path.mkdir(parents=True, exist_ok=True)

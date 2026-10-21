@@ -29,7 +29,7 @@ class ToolGuardRulesStore:
         return self._paths.tool_guard_rules_file
 
     def display_path(self) -> str:
-        return f"~/.octop/security/tool_guard/{self.rules_file.name}"
+        return f"~/.agentbuddy/security/tool_guard/{self.rules_file.name}"
 
     def ensure_seeded(self) -> None:
         self.rules_dir.mkdir(parents=True, exist_ok=True)

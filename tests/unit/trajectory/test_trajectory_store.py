@@ -55,7 +55,7 @@ def _event(
 
 
 def _store(tmp_path: Path) -> TrajectoryStore:
-    db = SqlitePool(tmp_path / "octop.db")
+    db = SqlitePool(tmp_path / "agentbuddy.db")
     run_migrations(db)
     _seed_threads(db, "T1")
     return TrajectoryStore(TrajectoryEventRepo(db))

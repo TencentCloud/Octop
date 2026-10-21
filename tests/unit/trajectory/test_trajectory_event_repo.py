@@ -57,7 +57,7 @@ def _event(
 
 
 def _repo(tmp_path: Path) -> TrajectoryEventRepo:
-    db = SqlitePool(tmp_path / "octop.db")
+    db = SqlitePool(tmp_path / "agentbuddy.db")
     run_migrations(db)
     _seed_threads(db, "T1", "T2")
     return TrajectoryEventRepo(db)
@@ -116,7 +116,7 @@ def test_get_delete_and_iter_for_export(tmp_path: Path) -> None:
 
 
 def test_thread_delete_cascades_trajectory_events(tmp_path: Path) -> None:
-    db = SqlitePool(tmp_path / "octop.db")
+    db = SqlitePool(tmp_path / "agentbuddy.db")
     run_migrations(db)
     with db.connect() as conn:
         fks = conn.execute("PRAGMA foreign_key_list(trajectory_events)").fetchall()

@@ -1,4 +1,4 @@
-"""Live Docker image boot: valid vs invalid OCTOP_DEFAULT_PASSWORD.
+"""Live Docker image boot: valid vs invalid AGENTBUDDY_DEFAULT_PASSWORD.
 
 Requires a built image (default ``octop:test``) and a working Docker daemon.
 These tests start real containers; they are marked ``slow``.
@@ -17,7 +17,7 @@ from typing import Any
 
 import pytest
 
-IMAGE = os.environ.get("OCTOP_TEST_IMAGE", "octop:test")
+IMAGE = os.environ.get("AGENTBUDDY_TEST_IMAGE", "octop:test")
 READY_TIMEOUT_S = 180
 
 
@@ -119,14 +119,14 @@ def docker_boot() -> Iterator[Any]:
             "-e",
             "HOME=/data",
             "-e",
-            "OCTOP_PORT=8088",
+            "AGENTBUDDY_PORT=8088",
             "-e",
-            "OCTOP_LOG_LEVEL=warning",
+            "AGENTBUDDY_LOG_LEVEL=warning",
             "-v",
             f"{volume}:/data/.octop",
         ]
         if password is not None:
-            cmd.extend(["-e", f"OCTOP_DEFAULT_PASSWORD={password}"])
+            cmd.extend(["-e", f"AGENTBUDDY_DEFAULT_PASSWORD={password}"])
         cmd.append(IMAGE)
         run = _run(cmd)
         assert run.returncode == 0, run.stderr
@@ -179,10 +179,10 @@ def test_docker_valid_password_creates_admin_and_serves(docker_boot: Any) -> Non
     assert login_status == 200, login
     assert login.get("access_token")
     assert (login.get("user") or {}).get("username") == "admin"
-    cred = _exec_text(name, "/data/.octop/credential.txt")
+    cred = _exec_text(name, "/data/.agentbuddy/credential.txt")
     assert "agentbuddy Login Credential" in cred
     assert f"Password: {password}" in cred
-    wizard = _run(["docker", "exec", name, "test", "-f", "/data/.octop/octop-login.txt"])
+    wizard = _run(["docker", "exec", name, "test", "-f", "/data/.agentbuddy/agentbuddy-login.txt"])
     assert wizard.returncode != 0
 
 
@@ -204,9 +204,9 @@ def test_docker_invalid_password_starts_setup_wizard(docker_boot: Any, password:
     # Setup lockdown blocks /api/auth/login before the route can emit SETUP_REQUIRED.
     assert login_status == 503, login
     assert login.get("setup_required") is True
-    hint = _exec_text(name, "/data/.octop/credential.txt")
+    hint = _exec_text(name, "/data/.agentbuddy/credential.txt")
     assert "Setup Required" in hint
-    wizard = _exec_text(name, "/data/.octop/octop-login.txt").strip()
+    wizard = _exec_text(name, "/data/.agentbuddy/agentbuddy-login.txt").strip()
     assert wizard
     logs = _run(["docker", "logs", name], timeout=20).stdout
     assert "未通过密码策略" in logs
@@ -222,8 +222,8 @@ def test_docker_unset_password_starts_setup_wizard(docker_boot: Any) -> None:
     assert setup["setup_required"] is True
     assert setup["wizard_password_exists"] is True
     logs = _run(["docker", "logs", name], timeout=20).stdout
-    assert "未设置 OCTOP_DEFAULT_PASSWORD" in logs
-    assert "Setup Required" in _exec_text(name, "/data/.octop/credential.txt")
+    assert "未设置 AGENTBUDDY_DEFAULT_PASSWORD" in logs
+    assert "Setup Required" in _exec_text(name, "/data/.agentbuddy/credential.txt")
     login_status, login = _http_json(
         name,
         "/api/auth/login",

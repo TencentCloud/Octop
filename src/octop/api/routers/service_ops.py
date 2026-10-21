@@ -35,7 +35,7 @@ def is_desktop_process() -> bool:
     """True when hosted by the Wails desktop shell (or a green portable install)."""
     if green_packages_dir() is not None:
         return True
-    raw = (os.environ.get("OCTOP_DESKTOP") or "").strip().lower()
+    raw = (os.environ.get("AGENTBUDDY_DESKTOP") or "").strip().lower()
     return raw in {"1", "true", "yes", "on"}
 
 
@@ -86,7 +86,7 @@ async def restart_service_endpoint(
     if mode is None:
         raise OctopError(
             ErrorCode.FORBIDDEN,
-            "service restart is only available when OCTOP_SERVICE_MODE is set",
+            "service restart is only available when AGENTBUDDY_SERVICE_MODE is set",
         )
     try:
         runtime = build_runtime(mode=mode)

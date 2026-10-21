@@ -26,7 +26,7 @@ Most endpoints require a JWT bearer token:
 
 Access tokens use sliding renewal: when less than one-third of
 `access_token_ttl_seconds` remains, authenticated responses may include a fresh
-token in the `X-Octop-Access-Token` header. Clients should replace the stored
+token in the `X-Agentbuddy-Access-Token` header. Clients should replace the stored
 token when present.
 
 Public endpoints (no token): `/api/docs`, `/api/openapi.json`, `/api/health`,
@@ -111,7 +111,7 @@ OPENAPI_TAGS: list[dict[str, str]] = [
     },
     {
         "name": "envs",
-        "description": "Global environment variables (~/.octop/env) inherited by every agent.",
+        "description": "Global environment variables (~/.agentbuddy/env) inherited by every agent.",
     },
     {
         "name": "search",

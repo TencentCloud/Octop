@@ -7,12 +7,12 @@ from octop.api.common.workspace import reanchor_entry_path
 
 def test_root_listing_entry_keeps_basename_only() -> None:
     # Backend leaked a virtual key (root_dir above the workspace).
-    assert reanchor_entry_path(".octop/agents/MSPHTQ/agents/", parent=".") == "agents"
+    assert reanchor_entry_path(".agentbuddy/agents/MSPHTQ/agents/", parent=".") == "agents"
 
 
 def test_subdir_listing_entry_is_prefixed_with_requested_dir() -> None:
     assert (
-        reanchor_entry_path(".octop/agents/MSPHTQ/agents/general.md", parent="agents")
+        reanchor_entry_path(".agentbuddy/agents/MSPHTQ/agents/general.md", parent="agents")
         == "agents/general.md"
     )
 

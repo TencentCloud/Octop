@@ -14,7 +14,7 @@ from octop.infra.db.repos.published_experts import PublishedExpertRepo
 
 @pytest.fixture
 def db(tmp_path: Path) -> SqlitePool:
-    pool = SqlitePool(tmp_path / "octop.db")
+    pool = SqlitePool(tmp_path / "agentbuddy.db")
     run_migrations(pool)
     return pool
 
@@ -111,7 +111,7 @@ def test_published_expert_repo_get_by_source_and_update_meta(db: SqlitePool) -> 
 
 
 def test_legacy_text_pk_published_experts_keep_public_id(tmp_path: Path) -> None:
-    pool = SqlitePool(tmp_path / "octop.db")
+    pool = SqlitePool(tmp_path / "agentbuddy.db")
     migrations = Path(__file__).resolve().parents[3] / "src/octop/infra/db/migrations"
     with pool.connect() as conn:
         conn.executescript((migrations / "001_initial.sql").read_text())

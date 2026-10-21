@@ -15,7 +15,7 @@ from octop.infra.db.repos.settings import SettingsRepo
 
 
 def _repos(tmp_path: Path) -> tuple[SettingsRepo, SecretRepo]:
-    db = SqlitePool(tmp_path / "octop.db")
+    db = SqlitePool(tmp_path / "agentbuddy.db")
     run_migrations(db)
     return SettingsRepo(db), SecretRepo(db)
 
@@ -51,9 +51,9 @@ def test_settings_slider_beats_strong_env(tmp_path: Path) -> None:
     _put_blob(settings, secrets, active="slider", providers={})
     env = snapshot_env(
         {
-            "OCTOP_CAPTCHA_PROVIDER": "turnstile",
-            "OCTOP_CAPTCHA_SITE_KEY": "0xenv",
-            "OCTOP_CAPTCHA_SECRET": "env-secret",
+            "AGENTBUDDY_CAPTCHA_PROVIDER": "turnstile",
+            "AGENTBUDDY_CAPTCHA_SITE_KEY": "0xenv",
+            "AGENTBUDDY_CAPTCHA_SECRET": "env-secret",
         }
     )
     effective = load_effective(settings, secrets, env)
@@ -71,9 +71,9 @@ def test_complete_settings_strong_wins_over_different_env(tmp_path: Path) -> Non
     )
     env = snapshot_env(
         {
-            "OCTOP_CAPTCHA_PROVIDER": "turnstile",
-            "OCTOP_CAPTCHA_SITE_KEY": "0xenv",
-            "OCTOP_CAPTCHA_SECRET": "env-secret",
+            "AGENTBUDDY_CAPTCHA_PROVIDER": "turnstile",
+            "AGENTBUDDY_CAPTCHA_SITE_KEY": "0xenv",
+            "AGENTBUDDY_CAPTCHA_SECRET": "env-secret",
         }
     )
     effective = load_effective(settings, secrets, env)
@@ -87,9 +87,9 @@ def test_incomplete_pair_gap_fills_same_provider_env(tmp_path: Path) -> None:
     settings.set(SETTINGS_KEY, json.dumps({"active": "turnstile", "providers": {}}))
     env = snapshot_env(
         {
-            "OCTOP_CAPTCHA_PROVIDER": "turnstile",
-            "OCTOP_CAPTCHA_SITE_KEY": "0xenv",
-            "OCTOP_CAPTCHA_SECRET": "env-secret",
+            "AGENTBUDDY_CAPTCHA_PROVIDER": "turnstile",
+            "AGENTBUDDY_CAPTCHA_SITE_KEY": "0xenv",
+            "AGENTBUDDY_CAPTCHA_SECRET": "env-secret",
         }
     )
     effective = load_effective(settings, secrets, env)
@@ -121,9 +121,9 @@ def test_unreadable_blob_falls_through_to_env(tmp_path: Path) -> None:
     settings.set(SETTINGS_KEY, "{not-json")
     env = snapshot_env(
         {
-            "OCTOP_CAPTCHA_PROVIDER": "turnstile",
-            "OCTOP_CAPTCHA_SITE_KEY": "0xenv",
-            "OCTOP_CAPTCHA_SECRET": "env-secret",
+            "AGENTBUDDY_CAPTCHA_PROVIDER": "turnstile",
+            "AGENTBUDDY_CAPTCHA_SITE_KEY": "0xenv",
+            "AGENTBUDDY_CAPTCHA_SECRET": "env-secret",
         }
     )
     effective = load_effective(settings, secrets, env)

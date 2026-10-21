@@ -83,7 +83,7 @@ def test_observe_ws_client_host_prefers_forwarded_when_peer_is_loopback() -> Non
 
 @pytest.mark.asyncio
 async def test_two_logins_to_same_account_stay_separate(tmp_path: Path) -> None:
-    pool = SqlitePool(tmp_path / "octop.db")
+    pool = SqlitePool(tmp_path / "agentbuddy.db")
     run_migrations(pool)
     users = UserRepo(pool)
     uid = users.create(username="jubaoliang", password_hash="x", role="admin")
@@ -143,7 +143,7 @@ async def test_two_logins_to_same_account_stay_separate(tmp_path: Path) -> None:
 def _manager(
     tmp_path: Path, *, advertise_base_url: str
 ) -> tuple[BridgeManager, SimpleNamespace, int]:
-    pool = SqlitePool(tmp_path / "octop.db")
+    pool = SqlitePool(tmp_path / "agentbuddy.db")
     run_migrations(pool)
     users = UserRepo(pool)
     uid = users.create(username="jubaoliang", password_hash="x", role="admin")

@@ -16,8 +16,8 @@ from octop.infra.knowledge.index import KnowledgeIndex
 
 
 def test_retrieve_context_filters_unreadable_knowledge_base(tmp_path, monkeypatch) -> None:
-    monkeypatch.setenv("OCTOP_HOME", str(tmp_path / "home"))
-    pool = SqlitePool(tmp_path / "octop.db")
+    monkeypatch.setenv("AGENTBUDDY_HOME", str(tmp_path / "home"))
+    pool = SqlitePool(tmp_path / "agentbuddy.db")
     run_migrations(pool)
     services = SimpleNamespace(
         knowledge_repo=KnowledgeRepo(pool),

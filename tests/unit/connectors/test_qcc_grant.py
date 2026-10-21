@@ -30,7 +30,7 @@ def service(pool: SqlitePool, repo: ConnectorRepo | None = None) -> ConnectorSer
 
 @pytest.fixture
 def grant(tmp_path: Path):
-    pool = SqlitePool(tmp_path / "octop.db")
+    pool = SqlitePool(tmp_path / "agentbuddy.db")
     run_migrations(pool)
     with pool.transaction() as conn:
         conn.execute(

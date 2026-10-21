@@ -29,7 +29,7 @@ class CaptchaEnv:
 
 def snapshot_env(environ: Mapping[str, str] | None = None) -> CaptchaEnv:
     src = os.environ if environ is None else environ
-    raw = (src.get("OCTOP_CAPTCHA_PROVIDER") or "").strip()
+    raw = (src.get("AGENTBUDDY_CAPTCHA_PROVIDER") or "").strip()
     if not raw:
         provider = "slider"
     else:
@@ -37,18 +37,18 @@ def snapshot_env(environ: Mapping[str, str] | None = None) -> CaptchaEnv:
             provider = parse_slug(raw)
         except ValueError:
             provider = raw.strip().lower()
-    score_raw = (src.get("OCTOP_CAPTCHA_V3_MIN_SCORE") or "").strip()
+    score_raw = (src.get("AGENTBUDDY_CAPTCHA_V3_MIN_SCORE") or "").strip()
     try:
         v3_min_score = float(score_raw) if score_raw else _DEFAULT_V3_MIN_SCORE
     except ValueError:
         v3_min_score = _DEFAULT_V3_MIN_SCORE
     return CaptchaEnv(
         provider=provider,
-        site_key=(src.get("OCTOP_CAPTCHA_SITE_KEY") or "").strip(),
-        secret=(src.get("OCTOP_CAPTCHA_SECRET") or "").strip(),
+        site_key=(src.get("AGENTBUDDY_CAPTCHA_SITE_KEY") or "").strip(),
+        secret=(src.get("AGENTBUDDY_CAPTCHA_SECRET") or "").strip(),
         v3_min_score=v3_min_score,
-        cam_secret_id=(src.get("OCTOP_CAPTCHA_CAM_SECRET_ID") or "").strip(),
-        cam_secret_key=(src.get("OCTOP_CAPTCHA_CAM_SECRET_KEY") or "").strip(),
+        cam_secret_id=(src.get("AGENTBUDDY_CAPTCHA_CAM_SECRET_ID") or "").strip(),
+        cam_secret_key=(src.get("AGENTBUDDY_CAPTCHA_CAM_SECRET_KEY") or "").strip(),
     )
 
 
@@ -70,16 +70,16 @@ def validate_boot(env: CaptchaEnv, *, has_readable_blob: bool) -> None:
         return
     provider = get_provider(env.provider)
     if provider is None or not provider.requires_token:
-        raise ValueError(f"unknown or incomplete OCTOP_CAPTCHA_PROVIDER={env.provider!r}")
+        raise ValueError(f"unknown or incomplete AGENTBUDDY_CAPTCHA_PROVIDER={env.provider!r}")
     missing: list[str] = []
     if not env.site_key:
-        missing.append("OCTOP_CAPTCHA_SITE_KEY")
+        missing.append("AGENTBUDDY_CAPTCHA_SITE_KEY")
     if not env.secret:
-        missing.append("OCTOP_CAPTCHA_SECRET")
+        missing.append("AGENTBUDDY_CAPTCHA_SECRET")
     if env.provider == "tencent":
         if not env.cam_secret_id:
-            missing.append("OCTOP_CAPTCHA_CAM_SECRET_ID")
+            missing.append("AGENTBUDDY_CAPTCHA_CAM_SECRET_ID")
         if not env.cam_secret_key:
-            missing.append("OCTOP_CAPTCHA_CAM_SECRET_KEY")
+            missing.append("AGENTBUDDY_CAPTCHA_CAM_SECRET_KEY")
     if missing:
         raise ValueError("incomplete captcha env (no settings blob): " + ", ".join(missing))

@@ -37,7 +37,7 @@ def test_snapshot_sqlite_file_with_special_chars_in_path(tmp_path: Path) -> None
 
 
 def test_jwt_secret_capture_and_restore(tmp_path: Path) -> None:
-    pool = SqlitePool(tmp_path / "octop.db")
+    pool = SqlitePool(tmp_path / "agentbuddy.db")
     run_migrations(pool)
     secret = b"session-jwt-secret-value-32bytes!!"
 

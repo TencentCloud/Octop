@@ -43,7 +43,7 @@ class _PathWorkspace:
 
 @pytest.fixture
 def team_env(tmp_path: Path) -> dict[str, object]:
-    db = SqlitePool(tmp_path / "octop.db")
+    db = SqlitePool(tmp_path / "agentbuddy.db")
     run_migrations(db)
     users = UserRepo(db)
     users.create(username="owner", password_hash="h", role="user")

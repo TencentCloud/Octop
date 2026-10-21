@@ -59,8 +59,10 @@ async def test_create_agent_seeds_workspace_and_starts(
     # execute-env injection (PR #376): platform identity folded into shell env
     assert backend.get("inherit_env") is True
     env = backend["env"]
-    assert env["OCTOP_AGENT_ID"] == row.agent_id
-    assert "OCTOP_AUTH_DIR" in env and "OCTOP_HOME" in env and "OCTOP_SKILLS_DIR" in env
+    assert env["AGENTBUDDY_AGENT_ID"] == row.agent_id
+    assert (
+        "AGENTBUDDY_AUTH_DIR" in env and "AGENTBUDDY_HOME" in env and "AGENTBUDDY_SKILLS_DIR" in env
+    )
     assert str(cfg.workspace_dir) == str(ws)
 
 

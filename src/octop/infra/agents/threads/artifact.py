@@ -41,7 +41,9 @@ _PATH_KEYS = (
 )
 
 _PATH_EXT_RE = re.compile(r"\.[A-Za-z][A-Za-z0-9._+-]{0,11}$")
-_ABS_OCTOP_RE = re.compile(r"(?:/[\w.-]+)*/\.octop/agents/[^\s\"'<>]+", re.IGNORECASE)
+_ABS_OCTOP_RE = re.compile(
+    r"(?:/[\w.-]+)*/\.(?:agentbuddy|octop)/agents/[^\s\"'<>]+", re.IGNORECASE
+)
 _REL_DIR_RE = re.compile(
     r"(?:^|[\s\"'`])((?:outbound|inbound|generated)/[^\s\"'<>]+)",
     re.IGNORECASE,

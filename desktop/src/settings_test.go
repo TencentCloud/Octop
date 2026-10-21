@@ -8,7 +8,7 @@ import (
 
 func TestLoadSettingsMigratesLegacyPreventSleepMac(t *testing.T) {
 	temp := t.TempDir()
-	t.Setenv("OCTOP_HOME", temp)
+	t.Setenv("AGENTBUDDY_HOME", temp)
 	if err := os.WriteFile(
 		filepath.Join(temp, "desktop-settings.json"),
 		[]byte(`{"preventSleepMac":true}`),

@@ -90,7 +90,7 @@ def test_wecom_materialize_roundtrip(tmp_path: Path, monkeypatch: pytest.MonkeyP
 def test_feishu_prepare_avoids_external_env(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    monkeypatch.setenv("OCTOP_HOME", str(tmp_path))
+    monkeypatch.setenv("AGENTBUDDY_HOME", str(tmp_path))
     monkeypatch.setenv("LARKSUITE_CLI_APP_ID", "should-be-cleared")
     monkeypatch.setenv("LARKSUITE_CLI_APP_SECRET", "should-be-cleared")
     monkeypatch.setattr(
@@ -148,7 +148,7 @@ def test_feishu_prepare_avoids_external_env(
 def test_wecom_doc_invokes_cli(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     captured: dict[str, Any] = {}
 
-    monkeypatch.setenv("OCTOP_HOME", str(tmp_path))
+    monkeypatch.setenv("AGENTBUDDY_HOME", str(tmp_path))
     monkeypatch.setattr(
         "octop.infra.connectors.gateway.adapters.wecom_cli.resolve_binary",
         lambda _name: fake_bin_path("wecom-cli"),
@@ -198,7 +198,7 @@ def test_wecom_doc_invokes_cli(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) 
 
 def test_feishu_calendar_shortcut_flags(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     captured: dict[str, Any] = {}
-    monkeypatch.setenv("OCTOP_HOME", str(tmp_path))
+    monkeypatch.setenv("AGENTBUDDY_HOME", str(tmp_path))
     monkeypatch.setattr(
         "octop.infra.connectors.gateway.adapters.feishu_cli.resolve_binary",
         lambda _name: fake_bin_path("lark-cli"),
@@ -252,7 +252,7 @@ def test_feishu_calendar_shortcut_flags(monkeypatch: pytest.MonkeyPatch, tmp_pat
 def test_probe_requires_bot_even_when_default_as_user(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    monkeypatch.setenv("OCTOP_HOME", str(tmp_path))
+    monkeypatch.setenv("AGENTBUDDY_HOME", str(tmp_path))
     monkeypatch.setattr(
         "octop.infra.connectors.gateway.adapters.feishu_cli.resolve_binary",
         lambda _name: fake_bin_path("lark-cli"),
@@ -320,7 +320,7 @@ def test_tool_counts() -> None:
 def test_docs_search_requires_user_auth_without_shell_hint(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    monkeypatch.setenv("OCTOP_HOME", str(tmp_path))
+    monkeypatch.setenv("AGENTBUDDY_HOME", str(tmp_path))
     monkeypatch.setattr(
         "octop.infra.connectors.gateway.adapters.feishu_cli.resolve_binary",
         lambda _name: fake_bin_path("lark-cli"),
@@ -357,7 +357,7 @@ def test_docs_search_requires_user_auth_without_shell_hint(
 
 def test_docs_search_uses_as_user(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     captured: dict[str, Any] = {}
-    monkeypatch.setenv("OCTOP_HOME", str(tmp_path))
+    monkeypatch.setenv("AGENTBUDDY_HOME", str(tmp_path))
     monkeypatch.setattr(
         "octop.infra.connectors.gateway.adapters.feishu_cli.resolve_binary",
         lambda _name: fake_bin_path("lark-cli"),
@@ -407,7 +407,7 @@ def test_docs_search_uses_as_user(monkeypatch: pytest.MonkeyPatch, tmp_path: Pat
 
 
 def test_docs_search_missing_scope_message(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
-    monkeypatch.setenv("OCTOP_HOME", str(tmp_path))
+    monkeypatch.setenv("AGENTBUDDY_HOME", str(tmp_path))
     monkeypatch.setattr(
         "octop.infra.connectors.gateway.adapters.feishu_cli.resolve_binary",
         lambda _name: fake_bin_path("lark-cli"),

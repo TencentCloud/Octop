@@ -1,7 +1,7 @@
 """ONNX local embedding service: config, cache, and download lifecycle.
 
 This is **not** a chat Provider. It prepares local ONNX / fastembed embedding
-models under ``~/.octop/embedding_models`` for the Models admin local tab.
+models under ``~/.agentbuddy/embedding_models`` for the Models admin local tab.
 """
 
 from __future__ import annotations
@@ -52,8 +52,8 @@ _LOCAL_PROBE_TEXT = "octop onnx probe"
 
 
 def runtime_pip_allowed() -> bool:
-    """Runtime pip is off by default; set OCTOP_ALLOW_RUNTIME_PIP=1 to enable."""
-    return os.environ.get("OCTOP_ALLOW_RUNTIME_PIP", "").strip().lower() in {
+    """Runtime pip is off by default; set AGENTBUDDY_ALLOW_RUNTIME_PIP=1 to enable."""
+    return os.environ.get("AGENTBUDDY_ALLOW_RUNTIME_PIP", "").strip().lower() in {
         "1",
         "true",
         "yes",

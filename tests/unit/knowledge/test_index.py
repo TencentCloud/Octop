@@ -6,7 +6,7 @@ from octop.infra.knowledge.index import KnowledgeIndex
 
 
 def test_index_replaces_document_chunks_and_returns_cosine_top_k(tmp_path, monkeypatch) -> None:
-    monkeypatch.setenv("OCTOP_HOME", str(tmp_path))
+    monkeypatch.setenv("AGENTBUDDY_HOME", str(tmp_path))
     index = KnowledgeIndex("kb-1")
 
     index.replace_doc_chunks(

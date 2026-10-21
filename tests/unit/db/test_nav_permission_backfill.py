@@ -25,7 +25,7 @@ def _perms(pool: SqlitePool, sql: str, params: tuple[object, ...]) -> list[str]:
 
 
 def test_nav_page_permissions_are_granted_once(tmp_path: Path) -> None:
-    pool = SqlitePool(tmp_path / "octop.db")
+    pool = SqlitePool(tmp_path / "agentbuddy.db")
     run_migrations(pool)
     with pool.transaction() as conn:
         conn.execute(
@@ -91,7 +91,7 @@ def test_nav_page_permissions_are_granted_once(tmp_path: Path) -> None:
 
 
 def test_personalization_tab_permissions_are_granted_once(tmp_path: Path) -> None:
-    pool = SqlitePool(tmp_path / "octop.db")
+    pool = SqlitePool(tmp_path / "agentbuddy.db")
     run_migrations(pool)
     with pool.transaction() as conn:
         conn.execute(

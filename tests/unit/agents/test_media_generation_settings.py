@@ -24,7 +24,7 @@ from octop.infra.db.repos.settings import SettingsRepo
 def store(
     tmp_path: Path,
 ) -> tuple[MediaGenerationSettingsStore, SettingsRepo, SecretRepo]:
-    db = SqlitePool(tmp_path / "octop.db")
+    db = SqlitePool(tmp_path / "agentbuddy.db")
     run_migrations(db)
     settings = SettingsRepo(db)
     secrets = SecretRepo(db)

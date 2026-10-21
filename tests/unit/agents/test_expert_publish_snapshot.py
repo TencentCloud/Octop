@@ -10,7 +10,7 @@ import pytest
 from deepagents.backends.local_shell import LocalShellBackend
 from octop_harness.backends.workspace import BackendWorkspace
 
-from octop.infra.agents.builtin_skills import OCTOP_BUILTIN_SKILLS_ROOT
+from octop.infra.agents.builtin_skills import AGENTBUDDY_BUILTIN_SKILLS_ROOT
 from octop.infra.agents.experts.catalog import (
     MANIFEST_FILENAME,
     WORKSPACE_MANIFEST_PATH,
@@ -193,7 +193,7 @@ async def test_export_snapshot_excludes_runtime_workspace_dirs(tmp_path: Path) -
         [
             (MANIFEST_FILENAME, json.dumps(manifest, ensure_ascii=False).encode()),
             ("SOUL.md", b"# Source soul"),
-            (f"{OCTOP_BUILTIN_SKILLS_ROOT}/skill-manager/SKILL.md", b"# Builtin"),
+            (f"{AGENTBUDDY_BUILTIN_SKILLS_ROOT}/skill-manager/SKILL.md", b"# Builtin"),
             ("logs/agent.log", b"runtime log line"),
         ]
     )
@@ -216,7 +216,7 @@ async def test_export_snapshot_excludes_runtime_workspace_dirs(tmp_path: Path) -
     )
 
     assert set(exported) == {MANIFEST_FILENAME, "SOUL.md"}
-    assert not (destination / OCTOP_BUILTIN_SKILLS_ROOT).exists()
+    assert not (destination / AGENTBUDDY_BUILTIN_SKILLS_ROOT).exists()
     assert not (destination / "logs").exists()
     merged = json.loads((destination / MANIFEST_FILENAME).read_text(encoding="utf-8"))
     assert merged["id"] == "published-expert"

@@ -340,7 +340,7 @@ async def download_file(
 
     See ``from_workspace``: workspace UI uses true; chat/tool downloads use false.
     ``file://`` and other host-absolute paths are allowed for agent/OS tool
-    outputs (Desktop, ``~/.octop/agents/…``, workspace tree) but denied for
+    outputs (Desktop, ``~/.agentbuddy/agents/…``, workspace tree) but denied for
     sensitive system roots (``/etc``, ``.harness-browser``, ``.octop-browser``, Windows system dirs).
     """
     ws = await require_agent_workspace(agent_id, user=user, as_user=as_user, server=server)
