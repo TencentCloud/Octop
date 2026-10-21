@@ -1392,6 +1392,8 @@
     "selectModel": "Model",
     "modelAuto": "Auto",
     "modelAutoHint": "Use agent default model",
+    "modelDefault": "Default: {{model}}",
+    "modelDefaultHint": "Use agent default: {{model}}",
     "reasoningMode": "Thinking mode",
     "reasoningAuto": "Auto",
     "reasoningEnabled": "On",

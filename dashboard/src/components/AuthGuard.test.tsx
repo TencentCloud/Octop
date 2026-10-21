@@ -74,7 +74,7 @@ describe("AuthGuard offline boot", () => {
       useEffect(() => {
         navigate("/b");
       }, [navigate]);
-      return <div>protected-shell</div>;
+      return <div>initial-shell</div>;
     }
 
     render(

@@ -13,6 +13,16 @@ from starlette.requests import Request
 from octop.infra.errors import ErrorCode, OctopError
 
 
+@pytest.fixture(autouse=True)
+def _isolate_embedding_install(monkeypatch: pytest.MonkeyPatch) -> None:
+    from octop.api.routers import knowledge_bases
+
+    async def ready(**_kwargs: object) -> str:
+        return "ready"
+
+    monkeypatch.setattr(knowledge_bases, "ensure_local_embedding_deps_async", ready)
+
+
 def _request() -> Request:
     return Request(
         {"type": "http", "method": "POST", "path": "/api/knowledge-bases", "headers": []}

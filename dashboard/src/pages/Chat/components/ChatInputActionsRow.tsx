@@ -216,6 +216,7 @@ export default function ChatInputActionsRow({
   contextMaxTokens = 128_000,
   availableModels,
   selectedModel,
+  defaultModel,
   onModelChange,
   reasoningMode = "auto",
   reasoningEffort = null,
@@ -388,11 +389,13 @@ export default function ChatInputActionsRow({
     showSubagentPicker;
 
   const overflowBadgeCount =
-    selectedConnectors.length +
     selectedKnowledgeBaseIds.length +
-    activeSkillSlugs.length +
-    mentionedExperts.length +
-    mentionedSubagents.length;
+    (allowWriteTools
+      ? selectedConnectors.length +
+        activeSkillSlugs.length +
+        mentionedExperts.length +
+        mentionedSubagents.length
+      : 0);
 
   const closeCompactPicker = () => {
     setCompactPicker(null);
@@ -443,6 +446,17 @@ export default function ChatInputActionsRow({
       ? t("chat.reasoningEnabled", "开启")
       : t("chat.reasoningDisabled", "关闭");
 
+  const expertDefaultModel = availableModels?.find(
+    (model) => modelOptionValue(model) === defaultModel,
+  );
+  const defaultModelLabel = defaultModel
+    ? t("chat.modelDefault", "Default: {{model}}", {
+        model:
+          expertDefaultModel?.name ||
+          defaultModel.split("/").slice(1).join("/") ||
+          defaultModel,
+      })
+    : t("chat.modelAuto", "Auto");
   const selectedModelTriggerLabel = selectedModel
     ? modelOptionLabel(
         availableModels?.find((m) => modelOptionValue(m) === selectedModel) ?? {
@@ -450,7 +464,7 @@ export default function ChatInputActionsRow({
           model: selectedModel.split("/").slice(1).join("/") || selectedModel,
         },
       )
-    : t("chat.modelAuto", "Auto");
+    : defaultModelLabel;
 
   const modelQueryNormalized = modelQuery.trim().toLowerCase();
   const filteredModels = (availableModels ?? []).filter((model) => {
@@ -461,8 +475,14 @@ export default function ChatInputActionsRow({
       model.provider_name.toLowerCase().includes(modelQueryNormalized)
     );
   });
-  const autoLabel = t("chat.modelAuto", "Auto");
-  const autoHint = t("chat.modelAutoHint", "Use agent default");
+  const autoLabel = defaultModelLabel;
+  const autoHint = defaultModel
+    ? t("chat.modelDefaultHint", "Use agent default: {{model}}", {
+        model: expertDefaultModel
+          ? modelOptionLabel(expertDefaultModel)
+          : defaultModel,
+      })
+    : t("chat.modelAutoHint", "Use agent default");
   const showAutoModel = !modelQueryNormalized
     ? true
     : autoLabel.toLowerCase().includes(modelQueryNormalized) ||

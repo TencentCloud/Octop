@@ -1,10 +1,15 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
   buildSkillMarkdown,
   isValidSkillName,
   OCTOP_EMOJI_META_KEY,
   parseSkillEmojiAndMetadata,
 } from "./SkillDrawer";
+
+vi.mock("../../../../components/PdfDocumentPreview", () => ({
+  default: () => null,
+  PdfViewerSkeleton: () => null,
+}));
 
 describe("isValidSkillName", () => {
   it("accepts CJK, letters, digits and . _ -", () => {
