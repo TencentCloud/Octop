@@ -97,16 +97,15 @@ fi
 # ---- 5) 第二轮:对第一轮缺的包,先在构建机上按目标平台预编译成 wheel --------
 # sdist-only 老包(实测锁定树里只有 crcmod 1.7,oss2 的 CRC64 依赖)没有现成
 # wheel;在**构建机**上编译成目标平台 wheel,政务机零编译、不需要 gcc。
-MISSING=$(python3 - "$OUT/requirements-third-party.txt" <<'PY'
+MISSING=$(python3 -c '
 import re, sys
-req = {m.group(1) for m in re.finditer(r'^([A-Za-z0-9_.-]+)==', sys.stdin.read(), re.M)}
+req = {m.group(1) for m in re.finditer(r"^([A-Za-z0-9_.-]+)==", open(sys.argv[1]).read(), re.M)}
 import pathlib, glob
-have = {re.split(r'[-_]', pathlib.Path(f).name)[0].lower().replace('_', '-')
-        for f in glob.glob('*.whl')}
-missing = sorted(n for n in req if n.lower().replace('_', '-') not in have)
-print(' '.join(missing))
-PY
-)
+have = {re.split(r"[-_]", pathlib.Path(f).name)[0].lower().replace("_", "-")
+        for f in glob.glob("*.whl")}
+missing = sorted(n for n in req if n.lower().replace("_", "-") not in have)
+print(" ".join(missing))
+' "$OUT/requirements-third-party.txt")
 if [ -n "$MISSING" ]; then
     echo "[offline_bundle] 第二轮:构建机按目标平台预编译 sdist-only 包: $MISSING"
     # 逐包编译:必须用 3.12 解释器(runner/构建机的系统 python3 往往是 3.10,
@@ -118,16 +117,15 @@ if [ -n "$MISSING" ]; then
             || echo "[offline_bundle] WARNING: $pkg wheel 编译失败,回退下载 sdist(政务机需 gcc)"
     done
     # 兜底:仍缺的(编译失败)下载 sdist,政务机有 gcc 时可现场编译
-    STILL_MISSING=$(python3 - "$OUT/requirements-third-party.txt" <<'PY'
+    STILL_MISSING=$(python3 -c '
 import re, sys
-req = {m.group(1) for m in re.finditer(r'^([A-Za-z0-9_.-]+)==', sys.stdin.read(), re.M)}
+req = {m.group(1) for m in re.finditer(r"^([A-Za-z0-9_.-]+)==", open(sys.argv[1]).read(), re.M)}
 import pathlib, glob
-have = {re.split(r'[-_]', pathlib.Path(f).name)[0].lower().replace('_', '-')
-        for f in list(glob.glob('*.whl')) + list(glob.glob('*.tar.gz'))}
-missing = sorted(n for n in req if n.lower().replace('_', '-') not in have)
-print(' '.join(missing))
-PY
-)
+have = {re.split(r"[-_]", pathlib.Path(f).name)[0].lower().replace("_", "-")
+        for f in list(glob.glob("*.whl")) + list(glob.glob("*.tar.gz"))}
+missing = sorted(n for n in req if n.lower().replace("_", "-") not in have)
+print(" ".join(missing))
+' "$OUT/requirements-third-party.txt")
     if [ -n "$STILL_MISSING" ]; then
         echo "[offline_bundle] 预编译后仍缺(下载 sdist 兜底,政务机需 gcc): $STILL_MISSING"
         python3 -m pip download -q --dest "$OUT" \
