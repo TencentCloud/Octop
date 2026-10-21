@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from typing import Any
+from urllib.parse import urlsplit
 
 REASONING_MODES = frozenset({"auto", "enabled", "disabled"})
 REASONING_ADAPTERS = frozenset(
@@ -13,6 +14,7 @@ REASONING_ADAPTERS = frozenset(
         "openai_reasoning_effort",
         "anthropic_adaptive",
         "minimax_anthropic_adaptive",
+        "minimax_openai_thinking",
         "anthropic_budget",
         "dashscope",
         "openrouter",
@@ -70,22 +72,26 @@ def reasoning_capability(
     options = model.get("options")
     thinking_option = options.get("thinking") if isinstance(options, dict) else None
     model_id = str(model.get("id") or "").strip().lower()
-    minimax_url = (base_url or "").lower()
-    direct_minimax = "minimax.io" in minimax_url or "minimaxi.com" in minimax_url
-    minimax_anthropic = direct_minimax and "/anthropic" in minimax_url
+    minimax_url = urlsplit(base_url or "")
+    direct_minimax = minimax_url.hostname in {"api.minimax.io", "api.minimaxi.com"}
+    minimax_anthropic = direct_minimax and minimax_url.path.rstrip("/") == "/anthropic"
     if not isinstance(raw, dict) and direct_minimax and model_id == "minimax-m3.1-flash":
         raw = {
             "toggle": False,
             "default_mode": "enabled",
             "efforts": ["low", "medium", "high", "xhigh", "max"],
             "default_effort": "max",
-            "adapter": "minimax_anthropic_adaptive" if minimax_anthropic else "openai_reasoning_effort",
+            "adapter": "minimax_anthropic_adaptive"
+            if minimax_anthropic
+            else "openai_reasoning_effort",
         }
     elif not isinstance(raw, dict) and direct_minimax and model_id == "minimax-m3":
         raw = {
             "toggle": True,
             "default_mode": "disabled" if minimax_anthropic else "auto",
-            "adapter": "minimax_anthropic_adaptive" if minimax_anthropic else "openai_reasoning_effort",
+            "adapter": "minimax_anthropic_adaptive"
+            if minimax_anthropic
+            else "minimax_openai_thinking",
         }
     known_token_plan_model = model_id in TOKEN_PLAN_REASONING_MODELS
     if not isinstance(raw, dict):
@@ -197,6 +203,11 @@ def reasoning_request_parameters(
             model_fields["reasoning_effort"] = "none"
         elif selected_effort:
             model_fields["reasoning_effort"] = selected_effort
+    elif adapter == "minimax_openai_thinking":
+        if selected_mode != "auto":
+            extra_body["thinking"] = {
+                "type": "adaptive" if selected_mode == "enabled" else "disabled"
+            }
     elif adapter == "anthropic_adaptive":
         if selected_mode == "enabled" or (selected_mode == "auto" and selected_effort):
             model_fields["thinking"] = {"type": "adaptive"}

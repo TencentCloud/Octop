@@ -87,8 +87,9 @@ def test_anthropic_adaptive_uses_native_model_fields() -> None:
             },
         }
     )
+    # ChatAnthropic serializes this model field as output_config.effort.
     assert reasoning_request_parameters(capability, mode="enabled", effort="high") == {
-        "model_fields": {"thinking": {"type": "adaptive"}, "output_config": {"effort": "high"}}
+        "model_fields": {"thinking": {"type": "adaptive"}, "reasoning_effort": "high"}
     }
 
 
@@ -169,7 +170,10 @@ def test_direct_minimax_m3_preserves_openai_default_and_disabled_toggle() -> Non
     assert capability["efforts"] == []
     assert reasoning_request_parameters(capability, mode=None, effort=None) == {}
     assert reasoning_request_parameters(capability, mode="disabled", effort=None) == {
-        "model_fields": {"reasoning_effort": "none"}
+        "extra_body": {"thinking": {"type": "disabled"}}
+    }
+    assert reasoning_request_parameters(capability, mode="enabled", effort="max") == {
+        "extra_body": {"thinking": {"type": "adaptive"}}
     }
 
 
@@ -186,3 +190,23 @@ def test_direct_minimax_anthropic_uses_output_config_effort() -> None:
             "output_config": {"effort": "max"},
         }
     }
+
+
+def test_minimax_inference_preserves_explicit_custom_config() -> None:
+    explicit = {"adapter": "status_only", "toggle": False}
+    model = {"id": "MiniMax-M3.1-Flash", "reasoning_config": explicit.copy()}
+    capability = reasoning_capability(model, base_url="https://api.minimax.io/v1")
+    assert capability is not None
+    assert capability["adapter"] == "status_only"
+    assert model["reasoning_config"] == explicit
+    assert reasoning_request_parameters(capability, mode=None, effort=None) == {}
+
+
+def test_custom_gateway_with_minimax_in_url_keeps_legacy_adapter() -> None:
+    for url in ("https://custom.invalid/minimax.io/v1", "https://api.minimax.io.invalid/v1"):
+        capability = reasoning_capability(
+            {"id": "MiniMax-M3.1-Flash", "reasoning": True}, base_url=url
+        )
+        assert capability is not None
+        assert capability["adapter"] == "thinking"
+        assert capability["default_effort"] is None
