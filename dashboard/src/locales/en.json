@@ -3454,7 +3454,7 @@
     "decisionOffHint": "While this is off, skills, tools, and members stay as they are. Turn it on to choose where the decision applies.",
     "decisionScope": "Where it applies",
     "decisionSkillsDesc": "Pass only the relevant skills to the chat model",
-    "decisionToolsDesc": "When there are many tools, drop the ones this turn does not need",
+    "decisionToolsDesc": "Drop plugin/MCP tools this turn does not need. Built-in file delivery, browser, and screenshot stay available.",
     "decisionTeamDesc": "Only the relevant members stay on this turn's dispatch list",
     "decisionMore": "Score to keep and tool count",
     "decisionThresholdHint": "Each item is scored from 0 to 1. It stays only at or above this line. Further right is harder to keep. A near miss stays too.",

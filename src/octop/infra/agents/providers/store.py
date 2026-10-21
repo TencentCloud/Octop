@@ -14,6 +14,7 @@ from octop.infra.agents.providers.opencode_session import session_header_for_pro
 from octop.infra.agents.providers.reasoning import reasoning_capability
 
 if TYPE_CHECKING:
+    from octop.infra.crypto.sealed_repos import SealedProviderRepo
     from octop.infra.db.repos.agents import AgentRow
     from octop.infra.db.repos.providers import ProviderRepo
 
@@ -178,7 +179,7 @@ class ProviderStore:
 
     def __init__(
         self,
-        provider_repo: ProviderRepo,
+        provider_repo: ProviderRepo | SealedProviderRepo,
     ) -> None:
         self._provider_repo = provider_repo
 

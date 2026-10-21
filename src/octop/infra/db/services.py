@@ -5,6 +5,11 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from octop.config import OctopConfig
+from octop.infra.crypto.sealed_repos import (
+    SealedBackendRepo,
+    SealedProviderRepo,
+    SealedVoiceProviderRepo,
+)
 from octop.infra.db.pool import DatabasePool
 from octop.infra.db.repos.agents import AgentRepo
 from octop.infra.db.repos.audit import AuditRepo
@@ -45,7 +50,7 @@ class RepoBundle:
     user_policy_repo: UserPolicyRepo
     invite_repo: InviteRepo
     agent_repo: AgentRepo
-    provider_repo: ProviderRepo
+    provider_repo: SealedProviderRepo
     channel_repo: ChannelRepo
     cron_repo: CronJobRepo
     session_repo: SessionRepo
@@ -56,13 +61,13 @@ class RepoBundle:
     audit_repo: AuditRepo
     usage_repo: UsageRepo
     settings_repo: SettingsRepo
-    storage_backend_repo: BackendRepo
+    storage_backend_repo: SealedBackendRepo
     bridge_connection_repo: BridgeConnectionRepo
     connector_repo: ConnectorRepo
     skill_package_repo: SkillPackageRepo
     published_expert_repo: PublishedExpertRepo
     knowledge_repo: KnowledgeRepo
-    voice_provider_repo: VoiceProviderRepo
+    voice_provider_repo: SealedVoiceProviderRepo
     care_push_repo: CarePushRepo
     proactive_care_config_repo: ProactiveCareConfigRepo
     sso_repo: SsoRepo
@@ -72,30 +77,31 @@ class RepoBundle:
 
     @classmethod
     def from_pool(cls, db: DatabasePool) -> RepoBundle:
+        secret_repo = SecretRepo(db)
         return cls(
             db=db,
             user_repo=UserRepo(db),
             user_policy_repo=UserPolicyRepo(db),
             invite_repo=InviteRepo(db),
             agent_repo=AgentRepo(db),
-            provider_repo=ProviderRepo(db),
+            provider_repo=SealedProviderRepo(ProviderRepo(db), secret_repo),
             channel_repo=ChannelRepo(db),
             cron_repo=CronJobRepo(db),
             session_repo=SessionRepo(db),
             thread_repo=ThreadRepo(db),
             thread_message_repo=ThreadMessageRepo(db),
             trajectory_event_repo=TrajectoryEventRepo(db),
-            secret_repo=SecretRepo(db),
+            secret_repo=secret_repo,
             audit_repo=AuditRepo(db),
             usage_repo=UsageRepo(db),
             settings_repo=SettingsRepo(db),
-            storage_backend_repo=BackendRepo(db),
+            storage_backend_repo=SealedBackendRepo(BackendRepo(db), secret_repo),
             bridge_connection_repo=BridgeConnectionRepo(db),
             connector_repo=ConnectorRepo(db),
             skill_package_repo=SkillPackageRepo(db),
             published_expert_repo=PublishedExpertRepo(db),
             knowledge_repo=KnowledgeRepo(db),
-            voice_provider_repo=VoiceProviderRepo(db),
+            voice_provider_repo=SealedVoiceProviderRepo(VoiceProviderRepo(db), secret_repo),
             care_push_repo=CarePushRepo(db),
             proactive_care_config_repo=ProactiveCareConfigRepo(db),
             sso_repo=SsoRepo(db),
@@ -132,7 +138,7 @@ class SharedServices:
         return self.repos.agent_repo
 
     @property
-    def provider_repo(self) -> ProviderRepo:
+    def provider_repo(self) -> SealedProviderRepo:
         return self.repos.provider_repo
 
     @property
@@ -176,7 +182,7 @@ class SharedServices:
         return self.repos.settings_repo
 
     @property
-    def storage_backend_repo(self) -> BackendRepo:
+    def storage_backend_repo(self) -> SealedBackendRepo:
         return self.repos.storage_backend_repo
 
     @property
@@ -200,7 +206,7 @@ class SharedServices:
         return self.repos.knowledge_repo
 
     @property
-    def voice_provider_repo(self) -> VoiceProviderRepo:
+    def voice_provider_repo(self) -> SealedVoiceProviderRepo:
         return self.repos.voice_provider_repo
 
     @property
