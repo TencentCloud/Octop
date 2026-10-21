@@ -68,7 +68,10 @@ jobs:
         if: steps.skip.outputs.skip != 'true'
         uses: actions/checkout@v4
         with:
-          ref: ${{ (github.event_name == 'push' && github.ref) || inputs.tag }}
+          # push(tag)时用 tag ref;手动 dispatch 时用 main——dispatch 的 tag 输入
+          # 仅用于把产物关联到某个 Release,脚本与 wheel 版本来自所 checkout 的树
+          # (tag 分支上可能还没有最新的打包脚本)。
+          ref: ${{ (github.event_name == 'push' && github.ref) || github.ref }}
           fetch-depth: 0
 
       - name: Install uv
