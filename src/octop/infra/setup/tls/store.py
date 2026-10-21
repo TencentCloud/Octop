@@ -10,6 +10,7 @@ from typing import Any
 
 from octop.config import TlsConfig
 from octop.infra.setup.tls.listeners import TLS_HTTP_PORT, TLS_HTTPS_PORT
+from octop.infra.utils.json_file import write_json_atomic
 from octop.infra.utils.paths import PathLayout
 
 REL_CERT_FILE = "ssl/fullchain.pem"
@@ -51,7 +52,8 @@ def _merge_config_file(config_path: Path, patch: dict[str, Any]) -> None:
             data[key] = merged
         else:
             data[key] = value
-    _atomic_write_bytes(config_path, (json.dumps(data, indent=2) + "\n").encode("utf-8"))
+    # Cleans up the temp file when replace fails, and keeps the existing mode.
+    write_json_atomic(config_path, data)
 
 
 def install_letsencrypt_cert(
