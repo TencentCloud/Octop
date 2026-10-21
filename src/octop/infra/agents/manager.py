@@ -3991,6 +3991,7 @@ class AgentManager:
 
         from octop.infra.agents.middleware.binary_read_guard import BinaryReadGuardMiddleware
         from octop.infra.agents.middleware.browser_profile import BrowserProfileMiddleware
+        from octop.infra.agents.middleware.disabled_tools import DisabledToolsMiddleware
         from octop.infra.agents.middleware.octop_ui_offload import OctopUiOffloadMiddleware
         from octop.infra.agents.middleware.reasoning import ReasoningRequestMiddleware
         from octop.infra.agents.middleware.thread_artifacts import ThreadArtifactsMiddleware
@@ -3998,7 +3999,6 @@ class AgentManager:
         from octop.infra.agents.middleware.workspace_image import (
             WorkspaceImageMaterializeMiddleware,
         )
-        from octop.infra.knowledge.hint import KnowledgeSearchHintMiddleware
 
         # FilesystemGuard + ModelSettings live in octop-harness (auto-mounted).
         # BinaryReadGuard stays Octop-specific (inbound/attachment product policy).
@@ -4007,7 +4007,22 @@ class AgentManager:
         # OctopUiOffload stays innermost so every outer middleware observes the
         # slimmed content consistently; it only touches octop_ui plugin envelopes,
         # disjoint from the file-tool results ThreadArtifacts cares about.
+        from octop.infra.agents.settings.tool_catalog import effective_tools_disabled
+        from octop.infra.agents.teams import host_tools_disabled
+        from octop.infra.knowledge.hint import KnowledgeSearchHintMiddleware
+
+        disabled_tools = effective_tools_disabled(
+            cfg,
+            registered_plugin_tools=[
+                (reg.plugin_id, reg.name) for reg in PluginRegistry().all_tools()
+            ],
+            global_plugins=effective_plugins,
+        )
+        if team_host:
+            disabled_tools = set(host_tools_disabled(disabled_tools))
+
         agent_middleware: list[Any] = [
+            DisabledToolsMiddleware(disabled_tools),
             *plugin_middleware,
             TokenQuotaMiddleware(
                 policy_repo=self._repos.user_policy_repo,
