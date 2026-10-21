@@ -160,6 +160,7 @@
     "VOICE_PROVIDER_DISABLED": "Voice provider is disabled.",
     "VOICE_REALTIME_UNAVAILABLE": "Realtime speech recognition is unavailable. Check the Tencent Cloud voice settings.",
     "INTERNAL_ERROR": "Internal server error.",
+    "BROWSER_SANDBOX_UNAVAILABLE": "Chromium could not start because no usable sandbox is available. On Linux, AppArmor restrictions on unprivileged user namespaces may cause this. Install a system Chrome/Chromium package or ask the host administrator to review its AppArmor policy. See https://chromium.googlesource.com/chromium/src/+/main/docs/security/apparmor-userns-restrictions.md",
     "TLS_NOT_ELIGIBLE": "TLS issuance is not available in the current server configuration.",
     "TLS_ISSUE_IN_PROGRESS": "A certificate issuance task is already running.",
     "TLS_DOMAIN_MISMATCH": "The domain does not match the existing certificate.",
