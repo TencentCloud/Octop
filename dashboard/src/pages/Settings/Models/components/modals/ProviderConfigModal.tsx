@@ -657,9 +657,9 @@ export function ProviderConfigModal({
     if (!open) return;
     // Only hydrate when the modal opens (or provider id changes), so
     // background refreshes / local model toggles do not reset the form.
-    const currentDefaultModel = provider.models?.length
-      ? provider.models[0].id
-      : "";
+    // Only a saved default is shown: defaulting to models[0] made a model the
+    // user never picked look selected and saved again (#2031).
+    const currentDefaultModel = provider.default_model?.trim() ?? "";
     form.setFieldsValue({
       kind: provider.kind,
       base_url: provider.base_url ?? "",
@@ -702,10 +702,8 @@ export function ProviderConfigModal({
       ) {
         payload.stream_usage = Boolean(values.stream_usage);
       }
-      // default model
-      const existingDefault = provider.models?.length
-        ? provider.models[0].id
-        : "";
+      // default model — compare against what the form was hydrated with
+      const existingDefault = provider.default_model?.trim() ?? "";
       if ((values.model ?? "") !== existingDefault)
         payload.model = values.model?.trim() || null;
 

@@ -77,6 +77,8 @@ export interface ProviderRow {
   enabled: boolean;
   /** Resolved: custom defaults off, bundled presets default on. */
   stream_usage?: boolean;
+  /** Saved default model; null/blank means cleared, absent means never saved. */
+  default_model?: string | null;
 }
 
 export interface UseProvidersResult {

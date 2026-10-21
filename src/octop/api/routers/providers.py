@@ -246,6 +246,9 @@ def _row_to_dict(r: Any) -> dict[str, Any]:
         "note": r.note,
         "enabled": bool(r.enabled),
         "stream_usage": resolve_provider_stream_usage(provider_name=r.name, extra=extra),
+        # Saved default only: absent or cleared stays null so the dashboard
+        # reopens the field empty instead of autofilling models[0] (#2031).
+        "default_model": extra.get("default_model") or None,
     }
 
 
