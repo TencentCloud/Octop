@@ -86,7 +86,9 @@ if ! python3 -m pip download -q --dest "$OUT" \
     echo "[offline_bundle] 第一轮(仅 wheel)有缺口——多为 sdist-only 老包或镜像滞后,进入第二轮"
 fi
 
-# ---- 5) 第二轮:对第一轮缺的包放行 sdist(需要目标机有编译工具链) -----------
+# ---- 5) 第二轮:对第一轮缺的包,先在构建机上按目标平台预编译成 wheel --------
+# sdist-only 老包(实测锁定树里只有 crcmod 1.7,oss2 的 CRC64 依赖)没有现成
+# wheel;在**构建机**上编译成目标平台 wheel,政务机零编译、不需要 gcc。
 MISSING=$(python3 - "$OUT/requirements-third-party.txt" <<'PY'
 import re, sys
 req = {m.group(1) for m in re.finditer(r'^([A-Za-z0-9_.-]+)==', sys.stdin.read(), re.M)}
@@ -98,11 +100,32 @@ print(' '.join(missing))
 PY
 )
 if [ -n "$MISSING" ]; then
-    echo "[offline_bundle] 第二轮(允许 sdist,目标机需 gcc): $MISSING"
-    python3 -m pip download -q --dest "$OUT" \
-        --no-binary :none: --prefer-binary --no-deps \
-        --python-version "$PYTAG" --index-url "$MIRROR" \
-        $MISSING || echo "[offline_bundle] WARNING: 部分 sdist 包下载失败(逐包检查)"
+    echo "[offline_bundle] 第二轮:构建机按目标平台预编译 sdist-only 包: $MISSING"
+    # 逐包编译:需要构建机自身有 gcc(只为产出 wheel,产物拷入内网后政务机不编译)
+    for pkg in $MISSING; do
+        echo "[offline_bundle] Building wheel for $pkg ($PLATFORMS[0] / $PYTAG)..."
+        python3 -m pip wheel -q --wheel-dir "$OUT" --no-deps \
+            --index-url "$MIRROR" "$pkg" \
+            || echo "[offline_bundle] WARNING: $pkg wheel 编译失败,回退下载 sdist(政务机需 gcc)"
+    done
+    # 兜底:仍缺的(编译失败)下载 sdist,政务机有 gcc 时可现场编译
+    STILL_MISSING=$(python3 - "$OUT/requirements-third-party.txt" <<'PY'
+import re, sys
+req = {m.group(1) for m in re.finditer(r'^([A-Za-z0-9_.-]+)==', sys.stdin.read(), re.M)}
+import pathlib, glob
+have = {re.split(r'[-_]', pathlib.Path(f).name)[0].lower().replace('_', '-')
+        for f in list(glob.glob('*.whl')) + list(glob.glob('*.tar.gz'))}
+missing = sorted(n for n in req if n.lower().replace('_', '-') not in have)
+print(' '.join(missing))
+PY
+)
+    if [ -n "$STILL_MISSING" ]; then
+        echo "[offline_bundle] 预编译后仍缺(下载 sdist 兜底,政务机需 gcc): $STILL_MISSING"
+        python3 -m pip download -q --dest "$OUT" \
+            --no-binary :none: --prefer-binary --no-deps \
+            --python-version "$PYTAG" --index-url "$MIRROR" \
+            $STILL_MISSING || echo "[offline_bundle] WARNING: 部分 sdist 包下载失败(逐包检查)"
+    fi
 fi
 
 # ---- 6) 打包 + 校验和 --------------------------------------------------------
