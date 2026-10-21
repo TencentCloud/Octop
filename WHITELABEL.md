@@ -606,6 +606,11 @@ uv run pytest -n auto -m "not live"（已构建前端）       -> 4886 passed, 3
 **决策**:英文名 `wkbuddy` → **`agentbuddy`**(全小写连体);中文名**不变**,仍为「政务伙伴」。
 大小写口径裁决:不采用 `Agent Buddy`(空格式)或 `AgentBuddy`(驼峰),理由与原 `wkbuddy` 一词两用的
 口径一致——**显示文案与契约标识符共用同一个全小写连体词**,改名只换词根、不动结构,契约点风险最小。
+**显示字样口径补充(2026-10-21,随新 logo 素材裁定)**:**视觉字样允许 `Agent Buddy` 带空格式**
+(横标图 `logo_horizontal_*.png` 里就是带空格的 "agent buddy" 字样),**标识符(代码/契约/路径)
+一律连体 `agentbuddy`**——两套口径分工明确:像素/图像里用品牌字样(设计稿为准),代码与
+契约里用连体词。界面文案里若出现品牌英文,以设计稿字样为参考、可用 "Agent Buddy";连体
+`agentbuddy` 仅用于文件名/镜像名/bundle id/协议标识符。
 
 **实施范围(实测)**:全仓 `wkbuddy` 字面量约 **911 处 / 734 行**(排除三份审计文档与
 `docs/sandbox-image-management.md` 自身),零 `WKBuddy`/`WKBUDDY` 混用,替换可全量安全进行。
