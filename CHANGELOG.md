@@ -13,6 +13,19 @@
 ### 移除
 - 下线 Brave Search 与 Google CSE 两个内置搜索引擎（国内/政务网络环境无法访问其 API）。设置页不再出现这两张卡片，环境变量白名单移除 `BRAVE_API_KEY`、`GOOGLE_API_KEY`、`GOOGLE_CSE_ID`。已写入 `~/.octop/env` 的旧 Key 保留但不再被读取，可手动删除；`web_search_tools` 显式列出 `brave`/`google` 的 agent 配置需改为可用引擎名或恢复默认 `auto`
 
+## [1.0.3] - 2026-10-21
+
+### 新增
+- Agent 沙箱镜像进入 CI 发布流程：推 `v*` tag 时与主镜像一起构建 `agentbuddy-sandbox`（amd64 + arm64 双原生构建），产物进 GHCR，政务内网可 `docker pull` 或离线导入；沙箱 Dockerfile 自检层成为 CI 回归保护
+- 全新的品牌视觉：新 logo/图标全套（favicon/PWA/横标/竖标），吉祥物文件统一为 `agentbuddy-mascot-*`，桌面壳图标（appicon/tray）从新素材重新生成
+
+### 变更
+- 英文品牌名 `wkbuddy` → `agentbuddy`（全小写连体；显示字样允许 "Agent Buddy" 带空格）。桌面 bundle id `com.daoshengtech.agentbuddy`、镜像名、下载产物名、OpenAPI 标题同步；浏览器存储 key 前缀 `octop:` → `agentbuddy:`（旧前缀的存量报错数据兼容读取）。内部标识（Python 包名、`OCTOP_*` 环境变量、`~/.octop`、技能 frontmatter 元数据键）保持不变
+- 修复头像菜单的「项目地址」外链问题后按决策移除了该菜单项；升级链路维持本机服务控制（不访问任何包索引）
+
+### 修复
+- 头像菜单/浏览器起始页等遗留外链清理；`SSO` 面板与 `TLS`/桥接设置的占位符改用中性示例域名；技能文档索引移除失效的迁移指引
+
 ## [1.0.2] - 2026-10-18
 
 ### 新增
