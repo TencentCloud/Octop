@@ -37,6 +37,7 @@ class _Base:
     default_open: bool = False
     shared: bool = False
     icon_name: str = ""
+    icon_url: str = ""
     embedding_model: str = "model"
     embedding_dim: int = 0
     doc_count: int = 0
@@ -201,6 +202,7 @@ async def test_create_base_uses_selected_model_when_usable(
         "default_open": False,
         "shared": False,
         "icon_name": "",
+        "icon_url": "",
         "max_documents": 100,
     }
 

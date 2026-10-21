@@ -8,16 +8,38 @@ import json
 import logging
 from typing import Any, cast
 
-from fastapi import APIRouter, Depends, WebSocket, WebSocketDisconnect
+from fastapi import APIRouter, Depends, File, UploadFile, WebSocket, WebSocketDisconnect
+from fastapi.responses import Response
 from pydantic import BaseModel, Field
 from starlette.websockets import WebSocketState
 
 from octop.api.deps import current_user, get_server, resolve_user_from_token
 from octop.infra.errors import ErrorCode, OctopError
+from octop.infra.users.profile_avatar import (
+    avatar_response,
+    delete_profile_avatar,
+    profile_avatar_url,
+    write_profile_avatar,
+)
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
+
+
+def _bridge_avatar_api_path(connection_id: str) -> str:
+    return f"/api/bridge/connections/{connection_id}/avatar"
+
+
+def _enrich_connection_icon(server: Any, payload: dict[str, Any]) -> dict[str, Any]:
+    connection_id = str(payload.get("connection_id") or "")
+    text = str(payload.get("icon_url") or "").strip()
+    api = _bridge_avatar_api_path(connection_id)
+    if connection_id and text.split("?", 1)[0] == api:
+        payload["icon_url"] = (
+            profile_avatar_url(server.paths.bridge_avatars_dir, connection_id, api) or api
+        )
+    return payload
 
 
 class BridgeCreateBody(BaseModel):
@@ -114,7 +136,10 @@ async def list_connections(
 ) -> list[dict[str, Any]]:
     mgr = _bridge(server)
     rows = mgr.list_connections(user.id)
-    return [cast(dict[str, Any], mgr.connection_public(r)) for r in rows]
+    return [
+        _enrich_connection_icon(server, cast(dict[str, Any], mgr.connection_public(r)))
+        for r in rows
+    ]
 
 
 @router.post("/bridge/connections", status_code=201, summary="Add a bridge connection")
@@ -134,7 +159,7 @@ async def create_connection(
         icon_name=body.icon_name,
         connect=body.connect,
     )
-    return cast(dict[str, Any], mgr.connection_public(row))
+    return _enrich_connection_icon(server, cast(dict[str, Any], mgr.connection_public(row)))
 
 
 @router.get("/bridge/connections/{connection_id}", summary="Get a bridge connection")
@@ -145,7 +170,7 @@ async def get_connection(
 ) -> dict[str, Any]:
     mgr = _bridge(server)
     row = mgr.get_owned(connection_id, user.id)
-    return cast(dict[str, Any], mgr.connection_public(row))
+    return _enrich_connection_icon(server, cast(dict[str, Any], mgr.connection_public(row)))
 
 
 @router.post(
@@ -159,7 +184,7 @@ async def connect_connection(
 ) -> dict[str, Any]:
     mgr = _bridge(server)
     row = await mgr.connect(connection_id, owner_user_id=user.id)
-    return cast(dict[str, Any], mgr.connection_public(row))
+    return _enrich_connection_icon(server, cast(dict[str, Any], mgr.connection_public(row)))
 
 
 @router.post(
@@ -175,7 +200,7 @@ async def disconnect_connection(
     mgr.get_owned(connection_id, user.id)
     await mgr.disconnect(connection_id)
     row = mgr.get_owned(connection_id, user.id)
-    return cast(dict[str, Any], mgr.connection_public(row))
+    return _enrich_connection_icon(server, cast(dict[str, Any], mgr.connection_public(row)))
 
 
 class BridgePatchBody(BaseModel):
@@ -256,7 +281,7 @@ async def patch_connection(
         )
     if row is None:
         row = mgr.get_owned(connection_id, user.id)
-    return cast(dict[str, Any], mgr.connection_public(row))
+    return _enrich_connection_icon(server, cast(dict[str, Any], mgr.connection_public(row)))
 
 
 @router.delete(
@@ -271,6 +296,63 @@ async def delete_connection(
 ) -> None:
     mgr = _bridge(server)
     await mgr.delete_connection(connection_id, owner_user_id=user.id)
+    delete_profile_avatar(server.paths.bridge_avatars_dir, connection_id)
+
+
+@router.post(
+    "/bridge/connections/{connection_id}/avatar",
+    status_code=201,
+    summary="Upload a bridge connection portrait",
+)
+async def upload_bridge_avatar(
+    connection_id: str,
+    file: UploadFile = File(...),  # noqa: B008
+    user: Any = Depends(current_user),
+    server: Any = Depends(get_server),
+) -> dict[str, str]:
+    mgr = _bridge(server)
+    mgr.get_owned(connection_id, user.id)
+    write_profile_avatar(
+        server.paths.bridge_avatars_dir,
+        connection_id,
+        await file.read(),
+    )
+    icon_url = _bridge_avatar_api_path(connection_id)
+    mgr.set_icon_url(connection_id, owner_user_id=user.id, icon_url=icon_url)
+    display = (
+        profile_avatar_url(server.paths.bridge_avatars_dir, connection_id, icon_url) or icon_url
+    )
+    return {"icon_url": display}
+
+
+@router.get(
+    "/bridge/connections/{connection_id}/avatar",
+    summary="Read a bridge connection portrait",
+)
+async def get_bridge_avatar(
+    connection_id: str,
+    user: Any = Depends(current_user),
+    server: Any = Depends(get_server),
+) -> Response:
+    mgr = _bridge(server)
+    mgr.get_owned(connection_id, user.id)
+    return avatar_response(server.paths.bridge_avatars_dir, connection_id)
+
+
+@router.delete(
+    "/bridge/connections/{connection_id}/avatar",
+    status_code=204,
+    summary="Delete a bridge connection portrait",
+)
+async def delete_bridge_avatar(
+    connection_id: str,
+    user: Any = Depends(current_user),
+    server: Any = Depends(get_server),
+) -> None:
+    mgr = _bridge(server)
+    mgr.get_owned(connection_id, user.id)
+    delete_profile_avatar(server.paths.bridge_avatars_dir, connection_id)
+    mgr.set_icon_url(connection_id, owner_user_id=user.id, icon_url="")
 
 
 @router.get(

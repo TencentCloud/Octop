@@ -382,6 +382,7 @@ class BridgeManager:
             "display_name": row.display_name,
             "notes": row.notes,
             "icon_name": row.icon_name,
+            "icon_url": str(getattr(row, "icon_url", "") or "").strip(),
             "status": status,
             "last_error": row.last_error,
             "last_seen_at": row.last_seen_at,
@@ -583,6 +584,15 @@ class BridgeManager:
                 await asyncio.sleep(0.1)
         await self.disconnect(connection_id)
         self._repo.delete(connection_id)
+
+    def set_icon_url(
+        self, connection_id: str, *, owner_user_id: int, icon_url: str | None
+    ) -> BridgeConnectionRow:
+        self.get_owned(connection_id, owner_user_id)
+        updated = self._repo.set_icon_url(connection_id, icon_url)
+        if updated is None:
+            raise OctopError(ErrorCode.BRIDGE_NOT_FOUND, "bridge connection not found")
+        return updated
 
     async def connect(self, connection_id: str, *, owner_user_id: int) -> BridgeConnectionRow:
         row = self.get_owned(connection_id, owner_user_id)

@@ -103,6 +103,7 @@ class KnowledgeService:
         default_open: bool = False,
         shared: bool = False,
         icon_name: str = "",
+        icon_url: str = "",
         max_documents: int = MAX_DOCS_PER_KB,
     ) -> KnowledgeBaseRow:
         assert_knowledge_usable(
@@ -123,6 +124,7 @@ class KnowledgeService:
                 default_open=default_open,
                 shared=shared,
                 icon_name=icon_name,
+                icon_url=icon_url,
                 embedding_model=model,
                 max_documents=max_documents,
             ),
@@ -145,6 +147,7 @@ class KnowledgeService:
         default_open: bool | None = None,
         shared: bool | None = None,
         icon_name: str | None = None,
+        icon_url: str | None = None,
         max_documents: int | None = None,
         is_admin: bool = False,
     ) -> KnowledgeBaseRow:
@@ -160,6 +163,7 @@ class KnowledgeService:
             default_open=default_open,
             shared=shared,
             icon_name=icon_name,
+            icon_url=icon_url,
             max_documents=max_documents,
         )
         return self._require_base(kb_id)

@@ -141,6 +141,21 @@ class PathLayout:
         return self.root / "avatars" / "groups"
 
     @property
+    def skill_package_avatars_dir(self) -> Path:
+        """Uploaded skill-package portraits: ``~/.octop/avatars/skill_packages/``."""
+        return self.root / "avatars" / "skill_packages"
+
+    @property
+    def knowledge_base_avatars_dir(self) -> Path:
+        """Uploaded knowledge-base portraits: ``~/.octop/avatars/knowledge_bases/``."""
+        return self.root / "avatars" / "knowledge_bases"
+
+    @property
+    def bridge_avatars_dir(self) -> Path:
+        """Uploaded Bridge connection portraits: ``~/.octop/avatars/bridge/``."""
+        return self.root / "avatars" / "bridge"
+
+    @property
     def ssl_dir(self) -> Path:
         """TLS certificates and ACME account keys: ``~/.octop/ssl/``."""
         return self.root / "ssl"

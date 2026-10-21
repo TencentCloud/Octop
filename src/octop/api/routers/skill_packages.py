@@ -7,7 +7,7 @@ import base64
 from dataclasses import asdict
 from typing import Any, Literal
 
-from fastapi import APIRouter, Depends, Query, Request, status
+from fastapi import APIRouter, Depends, File, Query, Request, UploadFile, status
 from fastapi.responses import Response
 from pydantic import BaseModel, Field
 
@@ -178,9 +178,31 @@ def _package_or_404(
     return row
 
 
-def _row_public_dict(row: SkillPackageRow) -> dict[str, Any]:
+def _package_avatar_api_path(package_id: str) -> str:
+    return f"/api/skill-packages/{package_id}/avatar"
+
+
+def _is_package_avatar_url(value: str, package_id: str | None = None) -> bool:
+    path = value.strip().split("?", 1)[0]
+    if package_id:
+        return path == _package_avatar_api_path(package_id)
+    return path.startswith("/api/skill-packages/") and path.endswith("/avatar")
+
+
+def _display_package_icon_url(server: OctopServer, row: SkillPackageRow) -> str:
+    from octop.infra.users.profile_avatar import profile_avatar_url  # noqa: PLC0415
+
+    text = str(row.icon_url or "").strip()
+    api = _package_avatar_api_path(row.id)
+    if text.split("?", 1)[0] == api:
+        return profile_avatar_url(server.paths.skill_package_avatars_dir, row.id, api) or api
+    return text
+
+
+def _row_public_dict(server: OctopServer, row: SkillPackageRow) -> dict[str, Any]:
     payload = asdict(row)
     payload.pop("pk", None)
+    payload["icon_url"] = _display_package_icon_url(server, row)
     return payload
 
 
@@ -189,9 +211,15 @@ def _package_payload(
     row: SkillPackageRow,
     *,
     locale: Locale | None = None,
+    server: OctopServer | None = None,
 ) -> dict[str, Any]:
+    if server is None:
+        payload = asdict(row)
+        payload.pop("pk", None)
+    else:
+        payload = _row_public_dict(server, row)
     return {
-        **_row_public_dict(row),
+        **payload,
         "skills": store.list_skill_summaries(row.id, locale=locale),
     }
 
@@ -228,7 +256,7 @@ def _package_payload_with_creator(
     locale: Locale | None = None,
 ) -> dict[str, Any]:
     return {
-        **_package_payload(store, row, locale=locale),
+        **_package_payload(store, row, locale=locale, server=server),
         **_creator_fields(server, row.created_by),
     }
 
@@ -240,12 +268,19 @@ def _required(value: str, field: str) -> str:
     return value
 
 
-def _icon_url(value: str) -> str:
+def _icon_url(value: str, *, package_id: str | None = None) -> str:
     value = value.strip()
     if len(value) > 2048:
         raise OctopError(ErrorCode.SLASH_BAD_ARGS, "icon_url is too long")
-    if value and not valid_skillhub_icon_url(value):
-        raise OctopError(ErrorCode.SLASH_BAD_ARGS, "icon_url must be an HTTP(S) URL")
+    if (
+        value
+        and not valid_skillhub_icon_url(value)
+        and not _is_package_avatar_url(value, package_id)
+    ):
+        raise OctopError(
+            ErrorCode.SLASH_BAD_ARGS,
+            "icon_url must be an HTTP(S) URL or package avatar path",
+        )
     return value
 
 
@@ -346,7 +381,7 @@ async def list_skill_packages(
     )
     return [
         {
-            **_row_public_dict(row),
+            **_row_public_dict(server, row),
             **_creator_fields(server, row.created_by),
             **access.visibility(RESOURCE_SKILL_PACKAGE, row.id, shared=bool(row.shared)),
             "can_write": store.can_mutate(row, user),
@@ -517,7 +552,9 @@ async def update_skill_package(
     name = _required(body.name, "name") if body.name is not None else None
     description = body.description.strip() if body.description is not None else None
     icon_name = body.icon_name.strip() if body.icon_name is not None else None
-    icon_url = _icon_url(body.icon_url) if body.icon_url is not None else None
+    icon_url = (
+        _icon_url(body.icon_url, package_id=package_id) if body.icon_url is not None else None
+    )
     shared_value = None if body.shared is None else int(body.shared)
     if body.visibility == "owner":
         shared_value = 0
@@ -538,6 +575,10 @@ async def update_skill_package(
         if name is not None and is_skill_package_name_conflict(exc):
             raise_skill_package_name_taken(name)
         raise
+    if icon_url is not None and not _is_package_avatar_url(icon_url, package_id):
+        from octop.infra.users.profile_avatar import delete_profile_avatar  # noqa: PLC0415
+
+        delete_profile_avatar(server.paths.skill_package_avatars_dir, package_id)
     if body.visibility is not None:
         _package_access(server).set_visibility(
             RESOURCE_SKILL_PACKAGE,
@@ -572,9 +613,82 @@ async def delete_skill_package(
     row = _package_or_404(store, package_id, locale=resolve_request_locale(request))
     store.assert_can_mutate(row, user)
     store.delete_package(package_id)
+    from octop.infra.users.profile_avatar import delete_profile_avatar  # noqa: PLC0415
+
+    delete_profile_avatar(server.paths.skill_package_avatars_dir, package_id)
     _package_access(server).clear(RESOURCE_SKILL_PACKAGE, package_id)
     if server.app_runtime is not None:
         await server.app_runtime.agent_registry.strip_skill_package_id(package_id)
+
+
+@router.post(
+    "/{package_id}/avatar",
+    status_code=201,
+    summary="Upload a skill-package portrait",
+)
+async def upload_skill_package_avatar(
+    package_id: str,
+    request: Request,
+    file: UploadFile = File(...),  # noqa: B008
+    server: OctopServer = Depends(get_server),
+    user: User = Depends(require_permission("skill_packages")),
+) -> dict[str, str]:
+    from octop.infra.users.profile_avatar import (  # noqa: PLC0415
+        profile_avatar_url,
+        write_profile_avatar,
+    )
+
+    store = _store(server)
+    locale = resolve_request_locale(request)
+    row = _package_or_404(store, package_id, locale=locale)
+    store.assert_can_mutate(row, user)
+    write_profile_avatar(
+        server.paths.skill_package_avatars_dir,
+        package_id,
+        await file.read(),
+    )
+    icon_url = _package_avatar_api_path(package_id)
+    store.repo.update(package_id, icon_url=icon_url)
+    display = (
+        profile_avatar_url(server.paths.skill_package_avatars_dir, package_id, icon_url) or icon_url
+    )
+    return {"icon_url": display}
+
+
+@router.get("/{package_id}/avatar", summary="Read a skill-package portrait")
+async def get_skill_package_avatar(
+    package_id: str,
+    request: Request,
+    server: OctopServer = Depends(get_server),
+    user: User = Depends(require_permission("skill_packages")),
+) -> Response:
+    from octop.infra.users.profile_avatar import avatar_response  # noqa: PLC0415
+
+    store = _store(server)
+    locale = resolve_request_locale(request)
+    _package_visible_or_404(store, package_id, user, server, locale=locale)
+    return avatar_response(server.paths.skill_package_avatars_dir, package_id)
+
+
+@router.delete(
+    "/{package_id}/avatar",
+    status_code=status.HTTP_204_NO_CONTENT,
+    summary="Delete a skill-package portrait",
+)
+async def delete_skill_package_avatar(
+    package_id: str,
+    request: Request,
+    server: OctopServer = Depends(get_server),
+    user: User = Depends(require_permission("skill_packages")),
+) -> None:
+    from octop.infra.users.profile_avatar import delete_profile_avatar  # noqa: PLC0415
+
+    store = _store(server)
+    locale = resolve_request_locale(request)
+    row = _package_or_404(store, package_id, locale=locale)
+    store.assert_can_mutate(row, user)
+    delete_profile_avatar(server.paths.skill_package_avatars_dir, package_id)
+    store.repo.update(package_id, icon_url="")
 
 
 @router.get("/{package_id}/skills", summary="List skills in a global skill package")

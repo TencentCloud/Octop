@@ -12,6 +12,13 @@
     "maximize": "Maximize",
     "close": "Close"
   },
+  "avatarPicker": {
+    "presets": {
+      "skill": {
+        "package": "Package"
+      }
+    }
+  },
   "common": {
     "save": "Save",
     "saveSuccess": "Saved successfully",
@@ -320,12 +327,13 @@
     "packageNamePlaceholder": "e.g. Research toolkit",
     "packageDescription": "Description",
     "packageDescriptionPlaceholder": "Optional short description of this package",
-    "iconName": "Preset icon",
+    "iconName": "Avatar",
     "iconNamePlaceholder": "Select an icon",
     "iconUrl": "Custom icon URL",
     "iconUrlPlaceholder": "https://example.com/icon.png",
     "iconUrlInvalid": "Enter a valid http(s) icon URL",
     "iconUrlTooLong": "Icon URL is too long",
+    "avatarUploadLater": "Package created. Avatar could not be uploaded — add it when editing the package.",
     "fromSkillHub": "Import from Market",
     "fromSkillHubHint": "Import a SkillHub skillset as a new skill package.",
     "addAsPackage": "Add as package",
@@ -471,8 +479,9 @@
     "previewFailed": "Failed to preview document",
     "downloadOriginal": "Download",
     "downloadOriginalFailed": "Download failed",
-    "icon": "Icon",
+    "icon": "Avatar",
     "iconPlaceholder": "Choose a knowledge-base icon",
+    "avatarUploadLater": "Knowledge base created. Avatar could not be uploaded — add it when editing.",
     "iconLabels": {
       "book-open": "Humanities",
       "landmark": "History",
@@ -853,6 +862,10 @@
     "totalAgents": "{{count}} expert(s)",
     "searchPlaceholder": "Search experts",
     "searchEmpty": "No matching experts",
+    "filterEmpty": "Nothing matches the current filters",
+    "locationAll": "All",
+    "locationLocal": "Local",
+    "locationCloud": "Cloud",
     "totalLibrary": "{{count}} built-in expert(s)",
     "totalMarket": "{{count}} market expert(s)",
     "addFromLibrary": "+ Add from Built-in",
@@ -3668,8 +3681,9 @@
       "displayNamePlaceholder": "e.g. Company cloud",
       "displayNameRequired": "Enter a display name",
       "displayNameHint": "Shown when switching peer groups in chat; must be unique",
-      "icon": "Icon",
-      "iconHint": "Shown on peer expert cards (icon + display name)",
+      "icon": "Avatar",
+      "iconHint": "Shown on peer expert cards (avatar + display name)",
+      "avatarUploadLater": "Bridge created. Avatar could not be uploaded — add it when editing the connection.",
       "iconLabels": {
         "cloudy": "Cloud",
         "cloud": "Cloud outline",
