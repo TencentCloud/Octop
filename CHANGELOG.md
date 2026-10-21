@@ -18,6 +18,9 @@
 - `SKILL.md` 带 UTF-8 BOM（如 Windows 记事本 / PowerShell 5.1 保存）时不再丢失 YAML frontmatter；技能路由改为复用统一的 `parse_frontmatter`（#2215）
 - `OCTOP_HOME` 迁移数据目录后，首次配置向导密码文件随之写入 `<OCTOP_HOME>/octop-login.txt`；旧位置 `~/octop-login.txt` 自动继承，不再生成冲突密码（#2171）
 
+### 修复
+
+- 启动界面语言跟随用户设置，不再因系统语言为英文而显示英文（#685）
 ### 变更
 - 技能包编辑抽屉：过滤无中文文案的预设图标；自定义图标 URL 增加 http(s) 校验；复制策略移至自定义图标下方
 
