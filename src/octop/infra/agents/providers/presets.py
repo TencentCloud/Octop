@@ -211,6 +211,29 @@ def _reasoning_profile(provider_id: str, model_id: str) -> dict[str, Any] | None
     return None
 
 
+def _direct_minimax_models() -> list[dict[str, Any]]:
+    """Return the active direct MiniMax text catalog in picker order."""
+    return [
+        {
+            "id": "MiniMax-M3.1-Flash",
+            "name": "MiniMax M3.1 Flash",
+            "max_input_tokens": 1_000_000,
+            "context_window": 1_000_000,
+            "max_output_tokens": 524_288,
+            "input": ["text", "image", "video"],
+            "reasoning": True,
+        },
+        {
+            "id": "MiniMax-M3",
+            "name": "MiniMax M3",
+            "max_input_tokens": 1_000_000,
+            "context_window": 1_000_000,
+            "input": ["text", "image", "video"],
+            "reasoning": True,
+        },
+    ]
+
+
 def load_provider_presets() -> list[dict[str, Any]]:
     """Serialize octop-harness provider templates for API / CLI."""
     from importlib import resources
@@ -219,6 +242,9 @@ def load_provider_presets() -> list[dict[str, Any]]:
 
     bundled = resources.files("octop_harness.providers").joinpath("provider_template.json")
     out = [serialize_provider_preset(p) for p in load_provider_templates(str(bundled))]
+    for preset in out:
+        if preset.get("id") in {"minimax-cn", "minimax-intl"}:
+            preset["models"] = _direct_minimax_models()
     if not any(p.get("id") == "openai-codex" for p in out):
         out.insert(
             0,
