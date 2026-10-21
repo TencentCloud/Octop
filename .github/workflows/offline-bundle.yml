@@ -141,5 +141,15 @@ jobs:
           set -euo pipefail
           # gh release upload needs a git repository context (it resolves the
           # repo from the checkout, not from the release event alone).
-          gh release upload "$TAG" bundles/offline-bundle-*/agentbuddy-offline-*.tar.gz --clobber
+          # zsh(no matches found)与 bash nullglob 行为差异:显式收集文件
+          files=()
+          for f in bundles/offline-bundle-*/agentbuddy-offline-*.tar.gz; do
+            [ -e "$f" ] && files+=("$f")
+          done
+          if [ ${#files[@]} -eq 0 ]; then
+            echo "::error::no offline bundle tar.gz found under bundles/"
+            ls -R bundles/ >&2
+            exit 1
+          fi
+          gh release upload "$TAG" "${files[@]}" --clobber
           echo "attached offline bundles to release $TAG"
