@@ -13,6 +13,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, PlainTextResponse
 from scalar_fastapi import get_scalar_api_reference
 
+from octop.api.content_types import ui_content_type
 from octop.api.middleware.jwt_auth import install as install_jwt_auth
 from octop.api.middleware.setup_lockdown import install as install_setup_lockdown
 from octop.api.openapi_meta import API_DESCRIPTION, OPENAPI_TAGS, configure_openapi
@@ -45,7 +46,10 @@ def dashboard_cache_control(full_path: str) -> str | None:
 
 
 def _dashboard_response(path: Path, full_path: str) -> FileResponse:
-    response = FileResponse(path)
+    # Pass the type explicitly: ``FileResponse`` otherwise asks
+    # ``mimetypes.guess_type``, which on Windows reads the registry and can
+    # report ``text/plain`` for ``.js`` (#1940).
+    response = FileResponse(path, media_type=ui_content_type(path.name))
     cache_control = dashboard_cache_control(full_path)
     if cache_control is not None:
         response.headers["Cache-Control"] = cache_control
