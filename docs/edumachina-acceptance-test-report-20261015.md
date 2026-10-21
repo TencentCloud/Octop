@@ -91,3 +91,22 @@ EduMachina is an Octop expert package (manifest + SOUL.md + compliance knowledge
 3. 铁律 10 只能降低「思考期长空窗」概率（首 token 提前 + 分段输出），传输层 120 秒判定仍属平台参数，根治见 issue #2072
 
 **结论**：补齐后包内容与本地已跑通版本等价（仅一行措辞差异），门禁断言与结构检查全部通过，可随 PR 合入。
+
+
+## 七、2026-10-21 补充：仓库内契约测试入库
+
+应评审机器人「未检测到测试文件变更」要求，新增 `tests/unit/agents/test_edumachina_template.py`（b5a28c7 新增，f619729 过 ruff format + ruff check），命名与写法对齐库内既有惯例（`test_business_operations_template.py` / `test_library_task_examples.py`）。
+
+**5 项契约测试**：
+
+| 测试 | 覆盖点 | 与第六节包级校验的对应 |
+|---|---|---|
+| `test_edumachina_manifest_contract` | id / icon_name / color / prompt_files / 6 组双语 quick_prompts / welcome_message | manifest 结构类校验 |
+| `test_edumachina_task_examples` | task_examples 6+6，zh/en 等长非空，不拷贝 dashboard 兜底文案 | `parse_task_examples` 门禁 + 文案卫生 |
+| `test_edumachina_avatar_follows_library_convention` | 头像符合库内 `<expert_id>.svg` 约定，合法 SVG（viewBox 128×128） | `discover_bundled_avatar_ids` 约定 |
+| `test_edumachina_soul_front_matter_and_rules` | front matter + 恰 11 条行为铁律（含铁律 10 流式保活、铁律 11 幂等确认）+ 固定合规免责尾注 | SOUL 行为铁律同步 |
+| `test_edumachina_kb_compliance_table` | 双法域 [CN]/[MY] 口径表、跨境速查、变更留痕、`[待核实]` 标注纪律 | kb 事实源纪律 |
+
+**验证方式**：以仓库自身 `pyproject.toml` ruff 配置（line-length 100，E/F/W/I/B/UP/SIM/C4）本地执行 `ruff format` + `ruff check` 通过；pytest 以「上游 catalog.py 逐字函数 + PR head 包文件 + 头像物化」的最小 harness 本地跑通 **5/5 passed**（日志 `localtest-newtest-20261021.log`）。仓库完整套件仍由 CI 代跑，结论见 PR 检查区。
+
+**结论**：新增测试使包约定进入仓库回归防线，后续对 manifest/SOUL/kb/头像的改动若破坏库内约定将在 CI 直接报错。
