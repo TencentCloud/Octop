@@ -83,6 +83,26 @@ uv export --frozen --no-dev --no-hashes --no-emit-project \
     --no-emit-package octop-harness --no-emit-package octop-gateway \
     --no-emit-package octop-memory --no-emit-package octop-browser \
     --format requirements-txt -o "$OUT/requirements-third-party.txt"
+# 过滤跨平台 marker 行:Windows-only(pywin32)、Python>3.13(audioop-lts)等
+# 在目标(cp312/linux)下不可装,pip download 又不吃 marker 会整体失败。
+python3 - "$OUT/requirements-third-party.txt" <<'FILTER'
+import re, sys
+p = sys.argv[1]
+lines = open(p).read().splitlines()
+out = []
+skip = False
+for line in lines:
+    if ";" in line:
+        marker = line.split(";", 1)[1]
+        if "win32" in marker or "sys_platform" in marker:
+            continue
+        m = re.search(r"python_full_version >= '3\.1[3-9]|3\.[2-9]\d", marker)
+        if m:
+            continue
+    out.append(line)
+open(p, "w").write("\n".join(out) + "\n")
+print(f"filtered to {sum(1 for l in out if l and not l.startswith('#'))} lines")
+FILTER
 
 # ---- 4) 下载依赖 wheel(第一轮:只要二进制轮子) ------------------------------
 echo "[offline_bundle] Downloading wheels (binary only)..."
