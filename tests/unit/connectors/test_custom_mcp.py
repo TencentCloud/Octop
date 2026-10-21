@@ -115,13 +115,58 @@ def test_shared_custom_server_uses_collision_safe_name_for_viewer(
     )
 
     visible = svc.list_instances_for_api(viewer_id)
-    assert [row["display_name"] for row in visible] == ["linear"]
-    shared_name = str(visible[0]["mcp_server_name"])
-    assert shared_name.startswith("custom__")
+    # The shared server is surfaced twice in the UI list: the mangled key (always
+    # present, and what other users' bindings already persist) plus a collision-safe
+    # *literal* alias, so a connector bound by its plain name stays selectable in
+    # the composer for non-owner viewers.
+    names = {row["mcp_server_name"] for row in visible}
+    shared_name = next(n for n in names if n.startswith("custom__"))
     assert shared_name.endswith("__linear")
-    assert svc.list_active_mcp_server_names(viewer_id) == [shared_name]
-    assert list(svc.custom_harness_configs(viewer_id)) == [shared_name]
+    assert "linear" in names  # literal alias exposed for composer selection
+    assert names == {"linear", shared_name}
+    assert sorted(row["display_name"] for row in visible) == ["linear", "linear"]
+    assert svc.list_active_mcp_server_names(viewer_id) == sorted(["linear", shared_name])
+    assert set(svc.custom_harness_configs(viewer_id)) == {"linear", shared_name}
     assert svc.list_default_open_mcp_server_names(viewer_id) == []
+
+
+def test_shared_literal_alias_yields_to_own_server(
+    svc: ConnectorService,
+    db: SqlitePool,
+) -> None:
+    """A viewer who owns a server named like a shared one keeps the literal name for
+    their own spec; the shared server stays reachable via its mangled key.
+    """
+    owner_id = _ensure_user(db)
+    viewer_id = _ensure_second_user(db)
+    svc.put_custom_servers(
+        owner_id,
+        {
+            "dup": {
+                "transport": "streamable_http",
+                "url": "https://owner.example.com/mcp",
+                "shared": True,
+            },
+        },
+    )
+    # The viewer owns a *different* server literally named "dup".
+    svc.put_custom_servers(
+        viewer_id,
+        {
+            "dup": {
+                "transport": "streamable_http",
+                "url": "https://viewer.example.com/mcp",
+            },
+        },
+    )
+
+    active = svc.list_active_mcp_server_names(viewer_id)
+    assert "dup" in active
+    mangled = next(n for n in active if n.startswith("custom__"))
+    cfgs = svc.custom_harness_configs(viewer_id)
+    # Own server wins the literal name; the shared server survives only as mangled.
+    assert cfgs["dup"]["url"] == "https://viewer.example.com/mcp"
+    assert cfgs[mangled]["url"] == "https://owner.example.com/mcp"
 
 
 def test_rejects_public_http_and_allows_lan():
