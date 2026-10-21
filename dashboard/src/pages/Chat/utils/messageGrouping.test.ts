@@ -394,6 +394,42 @@ describe("groupConsecutiveAssistantMessages", () => {
     expect(split.answerMessage?.content).toBe("here is the summary");
   });
 
+  it("keeps the main answer when an ordinary tool sits between text bubbles", () => {
+    // Regression: an edit_file round must not collapse the answer to only the
+    // trailing note — the pre-tool text is part of the same reply.
+    const split = splitAssistantTurn([
+      msg("assistant", "a1", {
+        content: "我先说明一下原因。",
+      }),
+      msg("assistant", "tool", {
+        toolData: {
+          name: "edit_file",
+          arguments: "{}",
+          output: "Successfully replaced 1 instance(s)",
+        },
+      }),
+      msg("assistant", "a2", { content: "补充说明已经写好。" }),
+    ]);
+    expect(split.answerMessage?.content).toBe(
+      "我先说明一下原因。 补充说明已经写好。",
+    );
+  });
+
+  it("keeps the main answer across several ordinary tool rounds", () => {
+    const split = splitAssistantTurn([
+      msg("assistant", "a1", { content: "先看第一部分" }),
+      msg("assistant", "t1", {
+        toolData: { name: "run_shell", arguments: "{}", output: "ok" },
+      }),
+      msg("assistant", "a2", { content: "再看第二部分" }),
+      msg("assistant", "t2", {
+        toolData: { name: "read_file", arguments: "{}", output: "ok" },
+      }),
+      msg("assistant", "a3", { content: "结论如上" }),
+    ]);
+    expect(split.answerMessage?.content).toBe("先看第一部分 再看第二部分 结论如上");
+  });
+
   it("does not join an identical host dispatch twice", () => {
     const split = splitAssistantTurn([
       msg("assistant", "h1", {
