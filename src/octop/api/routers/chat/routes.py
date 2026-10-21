@@ -13,6 +13,7 @@ from octop.api.common.agent import assert_agent_access
 from octop.api.deps import current_user, get_server
 from octop.api.routers.chat.models import HitlResumeBody, PolishBody
 from octop.api.routers.chat.sse import format_sse
+from octop.i18n import tr
 from octop.i18n.domains.stream import format_stream_error
 from octop.infra.agents.experts.catalog import (
     default_welcome_payload,
@@ -128,14 +129,28 @@ async def iter_dashboard_hitl_resume_sse(
         ):
             if not disconnected:
                 disconnected = await is_disconnected()
-            if isinstance(chunk, dict) and chunk.get("type") == "hitl_required":
-                request_payload = chunk.get("request")
-                if isinstance(request_payload, dict):
-                    hitl_coordinator.register_from_request(request_payload, ctx=hitl_ctx)
+            if isinstance(chunk, dict):
+                if chunk.get("type") == "hitl_required":
+                    request_payload = chunk.get("request")
+                    if isinstance(request_payload, dict):
+                        hitl_coordinator.register_from_request(request_payload, ctx=hitl_ctx)
+                elif chunk.get("type") == "error":
+                    # The harness reports its own failures as a chunk, so the ``except``
+                    # below never sees them. Log it here, or it stays invisible (#582).
+                    logger.warning(
+                        "dashboard hitl resume error chunk thread=%s agent=%s user=%s: %s",
+                        thread_id,
+                        agent_id,
+                        user_id,
+                        chunk.get("message"),
+                    )
             emitted = True
             if not disconnected:
                 yield format_sse("chunk", chunk)
-        if pending is not None:
+        if pending is not None and emitted:
+            # Only consume the approval when the resume actually ran. A resume that did
+            # nothing leaves the thread stuck, so the card must stay pending: it is the
+            # only way back into a retry, and the reinject path can still show it (#582).
             hitl_coordinator.store.mark_resolved(
                 pending.pending_id,
                 "rejected" if rejected else "approved",
@@ -144,7 +159,8 @@ async def iter_dashboard_hitl_resume_sse(
             if not emitted:
                 logger.warning(
                     "dashboard hitl resume did no work thread=%s agent=%s user=%s "
-                    "(no pending interrupt and harness produced no chunks)",
+                    "(no pending interrupt and harness produced no chunks); "
+                    "the approval stays pending",
                     thread_id,
                     agent_id,
                     user_id,
@@ -153,10 +169,7 @@ async def iter_dashboard_hitl_resume_sse(
                     "chunk",
                     {
                         "type": "error",
-                        "message": (
-                            "No pending approval to resume — this thread is not "
-                            "paused for a decision."
-                        ),
+                        "message": tr("stream_errors.hitl_no_pending", locale),
                     },
                 )
             else:

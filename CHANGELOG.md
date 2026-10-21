@@ -22,6 +22,8 @@
 - `config.json` 无法解析时，`load_config` 的报错现在带上文件路径与行列号（此前是裸 `JSONDecodeError`，不说哪个文件出错），并拒绝“合法 JSON 但不是 object”的文件；报错不回显内容
 - 腾讯验证码票据校验改用 DescribeCaptchaResult 接口（旧端点对新票据返回 decrypt fail）；校验需云 API 密钥签名，设置页新增对应字段
 - 修复 HITL resume 对待暂停线程的空转静默 no-op（#582）：当 graph 线程没有待审批 interrupt 时，dashboard 的 `POST /chat/hitl/resume` 过去返回 200 却无任何输出、服务端零日志，前端误以为已恢复；现在 SSE 层检测到整轮 resume 零产出即下发明确的 error 帧并记录 warning，异常路径也补了服务端异常日志
+- HITL resume 空转时不再消费掉那张审批卡（#582）：过去零产出的 resume 也会把 pending 标成 approved，卡片随即消失且无法重试；现在只有 resume 真的跑过才消费审批，空转时它保持 pending，重试和历史重注入都还能拿到它
+- HITL resume 的 harness 错误帧补上服务端日志（#582）：harness 把失败作为 error 帧吐出来，不抛异常，所以过去 `except` 分支记不到、失败在服务端不可见；现在这类错误帧也记 warning，错误文案走 i18n 词条
 
 ### 变更
 

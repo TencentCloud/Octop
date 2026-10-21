@@ -9,7 +9,11 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 
 from octop.api.routers.chat.routes import iter_dashboard_hitl_resume_sse
-from octop.infra.gateway.hitl.coordinator import HitlChannelCoordinator
+from octop.i18n import tr
+from octop.infra.gateway.hitl.coordinator import (
+    HitlChannelCoordinator,
+    pending_hitl_payload,
+)
 
 
 def _parse_sse_chunks(raw: str) -> list[dict[str, Any]]:
@@ -169,6 +173,7 @@ async def test_dashboard_hitl_resume_no_pending_zero_output_errors_not_silent_do
     When the harness produces no resume chunks at all, the SSE stream should
     emit an explicit error instead of a bare ``done`` and log server-side.
     """
+
     async def _resume(*_args: object, **_kwargs: object):
         if False:
             yield None  # pragma: no cover
@@ -204,8 +209,45 @@ async def test_dashboard_hitl_resume_no_pending_zero_output_errors_not_silent_do
 
 
 @pytest.mark.asyncio
-async def test_dashboard_hitl_resume_error_chunk_finishes_normally() -> None:
+async def test_dashboard_hitl_resume_no_pending_message_is_localized() -> None:
+    """The error frame is user-facing, so it comes from the i18n bundle (#582)."""
+
+    async def _resume(*_args: object, **_kwargs: object):
+        if False:
+            yield None  # pragma: no cover
+        return
+
+    processor = MagicMock()
+    processor.iter_hitl_resume_chunks = _resume
+    hitl = HitlChannelCoordinator()
+
+    frames = [
+        frame
+        async for frame in iter_dashboard_hitl_resume_sse(
+            processor=processor,
+            hitl_coordinator=hitl,
+            agent_id="agent-1",
+            thread_id="thr-zh",
+            user_id=9,
+            decisions=[{"type": "approve"}],
+            pending=None,
+            session_key="sk-zh",
+            channel_type="dashboard",
+            locale="zh",
+            is_disconnected=AsyncMock(return_value=False),
+        )
+    ]
+
+    chunks = _parse_sse_chunks("".join(frames))
+    assert chunks[-1]["type"] == "error"
+    assert chunks[-1]["message"] == tr("stream_errors.hitl_no_pending", "zh")
+    assert "No pending approval" not in chunks[-1]["message"]
+
+
+@pytest.mark.asyncio
+async def test_dashboard_hitl_resume_error_chunk_finishes_normally(caplog: Any) -> None:
     """A harness error chunk is a real resume outcome → done, not a silent no-op."""
+
     async def _resume(*_args: object, **_kwargs: object):
         yield {"type": "error", "message": "boom"}
 
@@ -235,3 +277,72 @@ async def test_dashboard_hitl_resume_error_chunk_finishes_normally() -> None:
     assert chunks[0]["type"] == "error"
     assert "boom" in chunks[0]["message"]
     assert chunks[-1]["type"] == "done"
+    # The harness reports its own failures as a chunk, so the ``except`` never sees
+    # them. Without this log the failure is invisible server-side (#582).
+    assert "resume error chunk" in caplog.text
+    assert "boom" in caplog.text
+
+
+@pytest.mark.asyncio
+async def test_dashboard_hitl_resume_no_output_keeps_the_approval_pending() -> None:
+    """A resume that did nothing must not consume the approval (#582).
+
+    The card is the only way back into a retry, and the reinject path can still
+    show it, so it stays pending when the harness produced no chunks.
+    """
+
+    async def _resume(*_args: object, **_kwargs: object):
+        if False:
+            yield None  # pragma: no cover
+        return
+
+    processor = MagicMock()
+    processor.iter_hitl_resume_chunks = _resume
+    hitl = HitlChannelCoordinator()
+    card = hitl.store.register(
+        thread_id="thr-stuck",
+        agent_id="agent-1",
+        user_id=9,
+        session_key="sk-stuck",
+        channel_type="dashboard",
+        action_requests=[{"name": "execute", "args": {"command": "ls"}}],
+        review_configs=None,
+    )
+
+    frames = [
+        frame
+        async for frame in iter_dashboard_hitl_resume_sse(
+            processor=processor,
+            hitl_coordinator=hitl,
+            agent_id="agent-1",
+            thread_id="thr-stuck",
+            user_id=9,
+            decisions=[{"type": "approve"}],
+            pending=card,
+            session_key="sk-stuck",
+            channel_type="dashboard",
+            locale="en",
+            is_disconnected=AsyncMock(return_value=False),
+        )
+    ]
+
+    chunks = _parse_sse_chunks("".join(frames))
+    assert chunks[-1]["type"] == "error"
+    # The card was not consumed: it is still pending, so a retry can find it.
+    assert hitl.store.get(card.pending_id).status == "pending"  # type: ignore[union-attr]
+    still = hitl.store.resolve_pending_for_thread(
+        "thr-stuck",
+        agent_id="agent-1",
+        user_id=9,
+    )
+    assert still is not None
+    assert still.pending_id == card.pending_id
+    # And the reinject path can still hand the card back to the dashboard.
+    payload = pending_hitl_payload(
+        hitl.store,
+        thread_id="thr-stuck",
+        agent_id="agent-1",
+        user_id=9,
+    )
+    assert payload is not None
+    assert payload["pending_id"] == card.pending_id
