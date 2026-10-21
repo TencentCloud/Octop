@@ -78,6 +78,9 @@
 - 用户消息的复制、编辑按钮一直显示
 - 升级 octop-memory 1.0.2、octop-harness 1.0.4、octop-gateway 1.0.3
 
+### 修复
+- CLI `octop user create` / `octop user passwd` 与管理端统一使用密码策略，不再接受长度不足、缺少字母/数字或常见弱密码。
+
 ## [1.0.2b8] - 2026-10-14
 
 ### 新增
