@@ -12,6 +12,7 @@ from octop.infra.crypto.fernet import (
     open_text,
     seal_text,
 )
+from octop.infra.db.pool import DatabasePool
 from octop.infra.db.repos._base import UNSET
 from octop.infra.db.repos.backends import BackendRepo, BackendRow
 from octop.infra.db.repos.providers import ProviderRepo, ProviderRow
@@ -25,6 +26,11 @@ class SealedProviderRepo:
     def __init__(self, inner: ProviderRepo, secrets: SecretRepo) -> None:
         self._inner = inner
         self._secrets = secrets
+
+    @property
+    def _db(self) -> DatabasePool:
+        """Expose the inner pool so runtime rebind checks keep working."""
+        return self._inner._db
 
     def create(self, *, api_key: str | None = None, **kwargs: Any) -> int:
         return self._inner.create(
@@ -75,6 +81,10 @@ class SealedVoiceProviderRepo:
         self._inner = inner
         self._secrets = secrets
 
+    @property
+    def _db(self) -> DatabasePool:
+        return self._inner._db
+
     def create(self, *, api_key: str | None = None, **kwargs: Any) -> int:
         return self._inner.create(
             api_key=seal_text(self._secrets, PURPOSE_VOICE, api_key),
@@ -113,6 +123,10 @@ class SealedBackendRepo:
     def __init__(self, inner: BackendRepo, secrets: SecretRepo) -> None:
         self._inner = inner
         self._secrets = secrets
+
+    @property
+    def _db(self) -> DatabasePool:
+        return self._inner._db
 
     def create(self, *, secret_key: str | None = None, **kwargs: Any) -> int:
         return self._inner.create(
