@@ -406,6 +406,9 @@ class OctopServer:
         from octop.infra.utils.env_file import apply_env_file, env_file_path  # noqa: PLC0415
 
         apply_env_file(env_file_path(self.paths.root))
+        from octop.infra.utils.ssl_cert_file import ensure_ssl_cert_file  # noqa: PLC0415
+
+        ensure_ssl_cert_file()
         self._setup_logging()
         ensure_nofile_limit()
         from octop.infra.backend.grep_safety import install_safe_grep_fallback  # noqa: PLC0415
