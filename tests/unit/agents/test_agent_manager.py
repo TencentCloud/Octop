@@ -898,6 +898,14 @@ def test_build_harness_config_includes_search_knowledge_without_cron(
     assert any(isinstance(item, KnowledgeSearchHintMiddleware) for item in (cfg.middleware or []))
 
 
+def test_build_harness_config_mounts_mcp_tool_error_middleware(manager: AgentManager) -> None:
+    """MCP tool failures must be softened inside the agent, not in the harness."""
+    from octop.infra.agents.middleware.mcp_tool_error import McpToolErrorMiddleware
+
+    cfg = manager._build_harness_config(_row(agent_id="AGT001"))
+    assert any(isinstance(item, McpToolErrorMiddleware) for item in (cfg.middleware or []))
+
+
 def test_build_harness_config_defaults_local_shell_backend(manager: AgentManager) -> None:
     cfg = manager._build_harness_config(_row(agent_id="AGT001"))
     assert cfg.backend == _expected_default_backend(manager, "AGT001")
