@@ -1998,6 +1998,8 @@ _PERSONALIZATION_TAB_PERMISSIONS = (
     "memory",
 )
 _PERSONALIZATION_TAB_PERMISSIONS_FLAG = "granted_personalization_tab_permissions"
+_BRIDGE_PERMISSIONS = ("bridge",)
+_BRIDGE_PERMISSIONS_FLAG = "granted_bridge_permission"
 
 
 def _parse_perm_list(raw: Any) -> list[str] | None:
@@ -2096,6 +2098,11 @@ def _grant_personalization_tab_permissions(db: DatabasePool) -> None:
     )
 
 
+def _grant_bridge_permission(db: DatabasePool) -> None:
+    """Grant cloud-collab once; /bridge used to be ungated for every signed-in user."""
+    _grant_permission_keys_once(db, _BRIDGE_PERMISSIONS, _BRIDGE_PERMISSIONS_FLAG)
+
+
 def run_migrations(db: DatabasePool) -> None:
     if db.dialect == "sqlite":
         _repair_legacy_schema(db)
@@ -2156,3 +2163,4 @@ def run_migrations(db: DatabasePool) -> None:
     _ensure_bridge_icon_url_schema(db)
     _grant_default_nav_permissions(db)
     _grant_personalization_tab_permissions(db)
+    _grant_bridge_permission(db)
