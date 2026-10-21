@@ -167,6 +167,13 @@ docker build -f Dockerfile.sandbox -t agentbuddy-sandbox:1.0.0 \
    Docker」卡片或 storage_backends 配置）。镜像在本地已存在时不会触发 pull，
    配置即用；建议同时把主服务镜像按同样方式离线导入。
 
+**不用 Docker 的政务机（wheel 离线安装）**：GitHub Actions 的 `Offline Wheel Bundle`
+workflow（推 `v*` tag 自动跑，也可手动 Run workflow）会在 amd64/arm64 双平台产出
+`offline-bundle-<platform>` artifact——内含主包与四上游 wheel、全部锁定依赖、
+SHA256SUMS。下载后：解包 → `bash scripts/install-offline.sh <offline 目录>`
+（需要政务机有 Python 3.12；零出网、零编译）。也可在本仓库检出后用
+`bash scripts/offline_bundle.sh <平台标签…> cp312` 自行构建。
+
 **架构（CPU 平台）必须匹配**：官方 `python`/`node` 基底是 multi-arch，构建机是什么
 架构就出什么架构的镜像——x86_64 构建机（海光/兆芯/普通 x86 服务器）出 amd64 镜像，
 鲲鹏/飞腾（arm64）构建机出 arm64 镜像，**amd64 镜像导入 arm64 服务器后要么跑不起来
