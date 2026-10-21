@@ -54,4 +54,7 @@ def test_workspace_download_url_outbound_and_absolute() -> None:
     file_url = workspace_download_url(
         "agent-1", "file:///root/.agentbuddy/agents/main/generated/a.pptx"
     )
-    assert "path=file%3A%2F%2F%2Froot%2F.octop%2Fagents%2Fmain%2Fgenerated%2Fa.pptx" in file_url
+    assert (
+        "path=file%3A%2F%2F%2Froot%2F.agentbuddy%2Fagents%2Fmain%2Fgenerated%2Fa.pptx"
+        in file_url
+    )

@@ -58,7 +58,7 @@ def test_sqlite_explicit_uses_system_files_path(tmp_path: Path) -> None:
         octop_config=OctopConfig(),
         workspace_dir=tmp_path,
     )
-    assert Path(out["memory_backend"]["db_path"]) == tmp_path / ".agentbuddy" / "memory.sqlite"
+    assert Path(out["memory_backend"]["db_path"]) == tmp_path / ".octop" / "memory.sqlite"
 
 
 def test_postgres_explicit_dsn() -> None:
@@ -121,7 +121,7 @@ def test_open_memory_kwargs_follows_postgresql_control_plane(tmp_path: Path) -> 
 def test_memory_db_path_prefers_existing_nested(tmp_path: Path) -> None:
     from octop.api.common.memory_client import memory_db_path
 
-    nested = tmp_path / ".agentbuddy" / "memory.sqlite"
+    nested = tmp_path / ".octop" / "memory.sqlite"
     nested.parent.mkdir(parents=True)
     nested.write_text("", encoding="utf-8")
     assert memory_db_path(tmp_path) == nested
@@ -138,12 +138,12 @@ def test_memory_db_path_legacy_when_only_root_exists(tmp_path: Path) -> None:
 def test_memory_db_path_new_layout_signal_without_sqlite_yet(tmp_path: Path) -> None:
     from octop.api.common.memory_client import memory_db_path
 
-    (tmp_path / ".agentbuddy" / "_builtin_skills").mkdir(parents=True)
-    assert memory_db_path(tmp_path) == tmp_path / ".agentbuddy" / "memory.sqlite"
+    (tmp_path / ".octop" / "_builtin_skills").mkdir(parents=True)
+    assert memory_db_path(tmp_path) == tmp_path / ".octop" / "memory.sqlite"
 
 
 def test_memory_db_path_empty_octop_dir_stays_legacy(tmp_path: Path) -> None:
     from octop.api.common.memory_client import memory_db_path
 
-    (tmp_path / ".agentbuddy").mkdir()
+    (tmp_path / ".octop").mkdir()
     assert memory_db_path(tmp_path) == tmp_path / "memory.sqlite"
