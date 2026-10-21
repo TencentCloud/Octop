@@ -86,8 +86,8 @@ async def test_sync_uses_system_files_path(tmp_path: Path) -> None:
     manager = await agent.workspace.aread_text("_builtin_skills/skill-manager/SKILL.md")
     assert manager is not None
     assert "{{AGENTBUDDY_SKILLS}}" not in manager
-    assert str(tmp_path / ".octop" / "skills") in manager.replace("\\", "/") or (
-        tmp_path / ".agentbuddy" / "skills"
+    assert (tmp_path / ".octop" / "skills").as_posix() in manager.replace("\\", "/") or (
+        tmp_path / "skills"
     ).as_posix() in manager.replace("\\", "/")
     assert (tmp_path / ".octop" / "_builtin_skills" / "skill-manager" / "SKILL.md").is_file()
     assert not (tmp_path / "_builtin_skills").exists()
