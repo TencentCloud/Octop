@@ -101,6 +101,7 @@ def tool_message_name(message: Any, *, chunk_name: str | None = None) -> str | N
 def dedup_tool_result_messages(
     chunk: dict[str, Any],
     emitted_ids: set[str],
+    current_call_ids: set[str] | None = None,
 ) -> dict[str, Any] | None:
     """Keep only ``tool_result`` messages not yet emitted in this stream.
 
@@ -120,6 +121,8 @@ def dedup_tool_result_messages(
         msg_id = getattr(msg, "tool_call_id", None) or (
             msg.get("tool_call_id") if isinstance(msg, dict) else None
         )
+        if current_call_ids and (not msg_id or msg_id not in current_call_ids):
+            continue
         if msg_id and msg_id in emitted_ids:
             continue
         new_messages.append(msg)
