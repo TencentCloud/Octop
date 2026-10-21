@@ -121,3 +121,17 @@
 
 - §3.5 sandbox 前缀 `octop_sandbox` 是否随本期改——待 owner 一句话确认(建议:改)。
 - wheel/sdist 的 `octop` PyPI 名是否从 Release 撤下(一期遗留,独立决策,与本任务无阻塞关系)。
+
+## 7. 验证结论(2026-10-22 补充)
+
+| 端 | 验证方式 | 结果 |
+|----|---------|------|
+| 本地 ship bar | `make all`(ruff + mypy strict + pytest 4961 + dashboard build) | ✅ 全绿 |
+| CI 双平台 | PR #1 run 39643493727(Linux + Windows / Python 3.12) | ✅ 全绿 |
+| Desktop 四平台 | run 39643493826(windows/darwin × amd64/arm64) | ✅ 全绿 |
+| Docker 主镜像 | 分支代码本地 `docker build -f docker/Dockerfile`(arm64);起容器 + `AGENTBUDDY_DEFAULT_PASSWORD` 走 entrypoint init 路径 | ✅ 构建成功;`/data/.agentbuddy/` 布局正确(agentbuddy.db(+wal/shm)、config.json、credential.txt、.initialized、logs/agentbuddy.log);`/api/health` 200;镜像内 `ACCESS_TOKEN_RESPONSE_HEADER = X-Agentbuddy-Access-Token`、`PathLayout.from_env().root = /data/.agentbuddy`;dashboard 产物扫描 `X-Octop`/`__OCTOP_` 均 0 处 |
+| Docker 沙箱镜像 | 分支代码本地 `docker build -f docker/Dockerfile.sandbox`;`--network none` 重跑自检层 | ✅ 构建成功,sandbox image OK(Python 3.12.15);镜像按设计不含 octop_harness(运行期注入),保护前缀逻辑在主仓测试覆盖 |
+| Offline Wheel Bundle | 从分支 dispatch workflow run 39654043867(amd64 + arm64) | ✅ 双平台 bundle 成功(各 ~200MB);下载 amd64 产物校验:SHA256 一致,202 个文件,`offline/octop-1.0.3-py3-none-any.whl` 内含 `.agentbuddy` 家目录默认、`AGENTBUDDY_HOME` 读取与 `OCTOP_HOME` 兼容 fallback(包名保持深水区 `octop`) |
+| Compose | `docker compose config`(主 + cn) | ✅ 解析通过,`AGENTBUDDY_DATA:-~/.agentbuddy` → `/data/.agentbuddy` 挂载一致 |
+
+至此三端(桌面 / Docker / 离线 wheel 包)的分支级验证全部完成,后续打 `v*` tag 时各 publish workflow 以 tag 构建即为同一代码。
