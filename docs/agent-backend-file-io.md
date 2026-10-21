@@ -7,13 +7,13 @@
 
 ## 1. 背景与问题
 
-当前部分代码在 agent 已配置远程 backend（S3/COS 等）时，仍向本地 `~/.octop/agents/<agent_id>/` 读写内容文件，导致：
+当前部分代码在 agent 已配置远程 backend（S3/COS 等）时，仍向本地 `~/.agentbuddy/agents/<agent_id>/` 读写内容文件，导致：
 
 - 用户配置了 backend，agent 工具读的是远程存储；
 - 政务伙伴服务端 seed / 写 SOUL / 同步插件 skills 等仍写本地；
 - Dashboard 部分读路径优先本地，展示与真实存储不一致。
 
-默认未配置 backend 时，harness 使用 `filesystem` + `virtual_mode`，`root_dir` 由 `workspace_dir`（即 `~/.octop/agents/<id>/`）在创建 backend 时挂载。此时直连磁盘与经 backend 写入**同一物理文件**，但远程 backend 场景下必须统一走 backend。
+默认未配置 backend 时，harness 使用 `filesystem` + `virtual_mode`，`root_dir` 由 `workspace_dir`（即 `~/.agentbuddy/agents/<id>/`）在创建 backend 时挂载。此时直连磁盘与经 backend 写入**同一物理文件**，但远程 backend 场景下必须统一走 backend。
 
 ---
 
@@ -34,7 +34,7 @@ backend = await agent_registry.resolve_harness_backend(agent_id)
 await backend.aupload_files([(soul_path, text.encode("utf-8"))])
 ```
 
-- **禁止**在政务伙伴层把 `~/.octop/agents/<id>/SOUL.md`「转换」为 `/SOUL.md`、`SOUL.md` 等另一套命名。
+- **禁止**在政务伙伴层把 `~/.agentbuddy/agents/<id>/SOUL.md`「转换」为 `/SOUL.md`、`SOUL.md` 等另一套命名。
 - 专家模板、skills、seed 等：backend 参数中的 path 与原先 `disk_path = workspace_dir / rel` 的字符串形式一致。
 
 ### 2.2 Backend 获取方式
@@ -58,7 +58,7 @@ await backend.aupload_files([(soul_path, text.encode("utf-8"))])
 
 ### 2.4 `workspace_dir` 的保留用途
 
-`~/.octop/agents/<id>/` 仍作为 harness 的 `workspace_dir`，用于：
+`~/.agentbuddy/agents/<id>/` 仍作为 harness 的 `workspace_dir`，用于：
 
 - 构造 backend 时的 `root_dir` 挂载（默认 filesystem）；
 - checkpoint、sessions JSONL、octop-memory SQLite 等**本地产物**（不由 backend 协议管理）；
@@ -96,7 +96,7 @@ await backend.aupload_files([(soul_path, text.encode("utf-8"))])
 ### 3.3 不在范围
 
 - Expert library 内 skill 脚本（agent 运行时经 harness 工具执行）
-- `~/.octop/plugins/` 安装、`~/.octop/security/` tool guard
+- `~/.agentbuddy/plugins/` 安装、`~/.agentbuddy/security/` tool guard
 - Expert catalog  bundled 源码读取
 
 ---
@@ -247,7 +247,7 @@ do not collapse host abs before calling BackendWorkspace.
 需要把 agent 的文件系统工具与 `execute` 隔离到 Docker 容器时，配置 harness `type: "docker"`（需 `octop-harness[docker]`，本机 Docker daemon 可用）。
 
 宿主 ``workspace_dir`` 在**创建专家时**写入 ``config_json.workspace_dir``（默认
-``{OCTOP_HOME}/agents/<agent_id>/``；创建时可覆盖）。**所有 backend 类型**共用这
+``{AGENTBUDDY_HOME}/agents/<agent_id>/``；创建时可覆盖）。**所有 backend 类型**共用这
 一路径作为 harness ``HarnessAgentConfig.workspace_dir``：
 
 | Backend | 专家可见内容 | 宿主 ``workspace_dir`` |
@@ -313,7 +313,7 @@ Harness 侧只认调用方传入的 ``workspace_dir``；Docker 默认把它镜�
 行为要点：
 
 - **同名路径、两处落盘（不自动挂载）**：
-  - 专家 ``workspace_dir``（创建时写入配置/库；政务伙伴默认 ``{OCTOP_HOME}/agents/<id>/``）：宿主上放 sessions / memory / checkpoints
+  - 专家 ``workspace_dir``（创建时写入配置/库；政务伙伴默认 ``{AGENTBUDDY_HOME}/agents/<id>/``）：宿主上放 sessions / memory / checkpoints
   - 容器内同一绝对路径：专家可见工作区（由传入的 ``workspace_dir`` 决定；可用 ``workspace_path`` 覆盖；皆无时回退 ``/workspace``）
 - **沙箱 FS**：`ls` / `read` / `write` / `execute` 都在容器内，经 Docker Python SDK 完成
 - **专家工作区**（专家页文件树 / SOUL.md 等）始终可预览；走 agent backend API（Docker 时即该专家对应容器内同名路径）

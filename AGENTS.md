@@ -160,12 +160,12 @@ Only `launch.py` may import both `infra/server` and `api/app` in the same module
 
 | Layer | When | Examples |
 |-------|------|----------|
-| **Offline** | Read/write local `~/.octop` SQLite only | `user *`, `provider *`, `cron` list/create/delete, `agent list/delete`, `chats` CRUD, `models` presets/list/active, `channel` CRUD, `admin`, `skills` enable/disable, `bridge` list/get |
+| **Offline** | Read/write local `~/.agentbuddy` SQLite only | `user *`, `provider *`, `cron` list/create/delete, `agent list/delete`, `chats` CRUD, `models` presets/list/active, `channel` CRUD, `admin`, `skills` enable/disable, `bridge` list/get |
 | **Embedded** | Needs harness/gateway runtime; boots in-process `OctopServer` | `chats send/repl`, `chats get` (history), `cron run-now`, `agent` create/start/stop/reload, `provider test`, `channel test`, `skills list`, `acp` |
 | **Embedded (bridge)** | In-process `BridgeManager` (no full server); CLI cannot keep Bridge WS after exit | `bridge` probe/create/patch/delete/connect/disconnect/agents |
 | **External** | Talks to OS/daemon directly, no Octop HTTP | `models ollama-*`, channel QR bind (WeCom/WeChat), Feishu bot-creator subprocess |
 
-No `octop user login` — CLI trusts local filesystem access to `~/.octop`. Pin acting user with `octop config set-user` or root `--user`; pin agent with `octop agent use` or root `--agent`. If `octop run` is already running, config CLI writes take effect after server restart (cron, channels loaded at boot).
+No `octop user login` — CLI trusts local filesystem access to `~/.agentbuddy`. Pin acting user with `octop config set-user` or root `--user`; pin agent with `octop agent use` or root `--agent`. If `octop run` is already running, config CLI writes take effect after server restart (cron, channels loaded at boot).
 
 ### `dashboard/src/` layout
 
@@ -207,7 +207,7 @@ make build-frontend                     # dashboard/ → src/octop/dashboard/
 
 **Agent scope:** Most agent routes use `/api/agents/{agent_id}/…` in the URL. A few legacy endpoints (e.g. MBTI) still take `X-Octop-Agent-Id`. Always validate ownership: load the agent row → `_assert_agent_owner(row, user)` (or admin bypass).
 
-**Agent workspace I/O:** All reads/writes of agent workspace **content files** go through `HarnessAgent.workspace` (`BackendWorkspace` from `octop-harness`). Do **not** use `agent.backend` directly, `resolve_harness_backend`, or `Path.write_text` / `read_text` on `~/.octop/agents/<id>/` for workspace content. Do **not** branch on backend type or `virtual_mode` in Octop — path rules live in `BackendWorkspace`.
+**Agent workspace I/O:** All reads/writes of agent workspace **content files** go through `HarnessAgent.workspace` (`BackendWorkspace` from `octop-harness`). Do **not** use `agent.backend` directly, `resolve_harness_backend`, or `Path.write_text` / `read_text` on `~/.agentbuddy/agents/<id>/` for workspace content. Do **not** branch on backend type or `virtual_mode` in Octop — path rules live in `BackendWorkspace`.
 
 New agents additionally keep system-scoped files under `{workspace}/.octop/` (e.g. sessions/sqlite, skills/agents system trees, auth tokens under `.octop/auth`). `system_files_path` is internal and not user-configurable; the `.octop` directory is created on first harness workspace init. Legacy agents keep auth at `{workspace}/.octop-auth`.
 
@@ -219,7 +219,7 @@ New agents additionally keep system-scoped files under `{workspace}/.octop/` (e.
 
 **Path conventions:** Pass workspace-relative paths to `BackendWorkspace` (`SOUL.md`, `skills/foo/SKILL.md`). Directory listing defaults to `"."` (current workspace directory). `"/"` is a distinct backend-root path inside `BackendWorkspace` — do **not** conflate it with `"."` there. The dashboard may send leading-`/` paths; HTTP adapters normalize those in `workspace_api_path()` before calling `BackendWorkspace`.
 
-**Chat attachments:** Dashboard uploads go to `{workspace}/inbound/` via `api/common/attachments.py` + `api/routers/uploads.py`, not a separate `~/.octop/uploads/` store.
+**Chat attachments:** Dashboard uploads go to `{workspace}/inbound/` via `api/common/attachments.py` + `api/routers/uploads.py`, not a separate `~/.agentbuddy/uploads/` store.
 
 **Database:** SQLite and PostgreSQL share one schema. Add or change tables via a numbered pair
 `infra/db/migrations/00N_description.sql` **and** `00N_description.pg.sql`, then bump the
@@ -330,7 +330,7 @@ User-facing datetime display and cron/scheduling defaults MUST use the server ti
 - Prefer `tmp_path` / `tmp_path_factory` and `pathlib.Path` over OS-specific literals; compare paths with `Path` equality (`tmp_path / "a" / "b"`), not string prefixes with `/`. Use `Path.as_posix()` / `os.sep` only when a serialized path string is part of the contract under test.
 - Do not assert `chmod` mode bits, symlink semantics, or Unix-only subprocess shells unless the test is marked `posix_only` (and production code short-circuits on non-POSIX the same way).
 - When a feature's semantics are inherently POSIX-only (e.g. the host root_dir denied prefixes in `infra/utils/host_dirs.py`), keep the source guards (`os.name != "posix"` short-circuit) and mirror them in the tests.
-- New connector/CLI/gateway tests that materialize files under `OCTOP_HOME` must set `monkeypatch.setenv("OCTOP_HOME", str(tmp_path))` and assert dirs with `Path` joins — never assume `~/.octop/...` string shape.
+- New connector/CLI/gateway tests that materialize files under `AGENTBUDDY_HOME` must set `monkeypatch.setenv("AGENTBUDDY_HOME", str(tmp_path))` and assert dirs with `Path` joins — never assume `~/.agentbuddy/...` string shape.
 
 ## 8. Do not
 

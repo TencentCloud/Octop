@@ -22,7 +22,7 @@
 **强烈建议用独立数据目录**，别碰你已经装好的那份：
 
 ```bash
-export OCTOP_HOME="$HOME/.octop-review"   # Windows Git Bash 同样有效（OCTOP_HOME 是环境变量，不是路径常量）
+export AGENTBUDDY_HOME="$HOME/.agentbuddy-review"   # Windows Git Bash 同样有效（AGENTBUDDY_HOME 是环境变量，不是路径常量）
 ```
 
 ---
@@ -44,7 +44,7 @@ uv run octop --version                   # → octop v1.0.2b8
 uv run python -c "import octop.launch"   # → 无输出即成功（启动链路不碰 onnx）
 
 # 3) 起后端（单独一个终端）
-PYTHONUTF8=1 OCTOP_HOME="$HOME/.octop-review" uv run octop run
+PYTHONUTF8=1 AGENTBUDDY_HOME="$HOME/.agentbuddy-review" uv run octop run
 #    首次会进设置向导；也可以先 uv run octop init
 
 # 4) 起前端（再开一个终端）                            # ⚠️ 未在本机跑过 npm run dev
@@ -61,7 +61,7 @@ cd /c/Users/Administrator/Documents/code/Octop/dashboard && npm run build
 1. **`PYTHONUTF8=1` 必须带**。默认 cp936 码页会让 pytest 多出 **23 个假失败**（`UnicodeDecodeError: 'gbk' … 0x92`、`result.stderr is None`），也会让打印 emoji 的脚本 `UnicodeEncodeError`（另加 `PYTHONIOENCODING=utf-8`）。
 2. **`onnxruntime` 1.30.0 在这台机器 `import` 就段错误**（exit 139，CPU 有 AVX2，不是指令集问题）。所以：**知识库 / 本地 Embedding / 语音相关界面在本机复查不了**，换 Linux 或 macOS 看；跑测试要 `--ignore` 4 个文件（见 §5）。
 3. **端口**：`netstat -ano | grep :8088` 查占用（本机 8088/5173 当前空闲 ✅）。被占就 `uv run octop run --port 8090`，同时前端 `VITE_API_PORT=8090 npm run dev`。
-4. **PowerShell 里环境变量写法不同**：`$env:PYTHONUTF8="1"; $env:OCTOP_HOME="$HOME\.octop-review"; uv run octop run`。
+4. **PowerShell 里环境变量写法不同**：`$env:PYTHONUTF8="1"; $env:AGENTBUDDY_HOME="$HOME\.agentbuddy-review"; uv run octop run`。
 
 ---
 
@@ -75,7 +75,7 @@ sudo apt update && sudo apt install -y python3.12 python3.12-venv nodejs npm mak
 
 git clone <你的仓库> octop && cd octop
 uv sync                       # 若系统 Python 不是 3.12：uv python install 3.12 && uv sync
-export OCTOP_HOME="$HOME/.octop-review"
+export AGENTBUDDY_HOME="$HOME/.agentbuddy-review"
 
 make dev                      # 前端 + 后端一起起（Makefile:159）
 # 或分开：
@@ -100,7 +100,7 @@ make dev-frontend             # = cd dashboard && npm run dev
 brew install uv python@3.12 node make
 git clone <你的仓库> octop && cd octop
 uv sync
-export OCTOP_HOME="$HOME/.octop-review"
+export AGENTBUDDY_HOME="$HOME/.agentbuddy-review"
 make dev                      # 或 make dev-backend / make dev-frontend
 open http://127.0.0.1:5173
 ```
@@ -122,7 +122,7 @@ open http://127.0.0.1:5173
 | 3 | 登录页、首启口令横幅、初始化向导 | 全文无 `Octop`；向导能建管理员（密码 ≥8 位且含字母数字） | `src/octop/infra/setup/*`、i18n `zh/en` 4 份 |
 | 4 | **头像下拉菜单** | 「GitHub」「帮助与反馈」链接是 `about:blank`；**没有"检查更新"入口、没有版本徽标** | P2/P3：`components/AvatarDropdown.tsx:56,57` |
 | 5 | **设置 → 高级** | **不出现「更新」卡片**（原来在那儿） | P2：`UpdateConfig.tsx` 已删 |
-| 6 | **设置 → 模型（预设卡片）** | 分组顺序按后端数组首现顺序；写 `~/.octop-review/provider_presets.json` 后重启，隐藏/改名/置顶立刻生效 | P4：`providers/presets.py:42`、`presetUtils.ts` |
+| 6 | **设置 → 模型（预设卡片）** | 分组顺序按后端数组首现顺序；写 `~/.agentbuddy-review/provider_presets.json` 后重启，隐藏/改名/置顶立刻生效 | P4：`providers/presets.py:42`、`presetUtils.ts` |
 | 7 | **渠道抽屉 → 新建渠道** | **列表里没有"元宝"**；其余渠道（企微/钉钉/飞书/QQ…）仍在 | P5：`channels/constants.ts`、`DISABLED_CHANNEL_KINDS` |
 | 8 | 内置浏览器起始页 / 远程浏览器起始页 | 空白页（原为 `cloud.tencent.com`） | `BrowserWorkspace/index.tsx:42`、`RemoteBrowser/index.tsx:124` |
 | 9 | 技能页 → SkillHub 标签 | 外链是 `about:blank`；技能列表与安装仍可用（这是功能，不该坏） | `SkillHubTab.tsx:381` |
@@ -188,7 +188,7 @@ uv run ruff check src tests && uv run ruff format --check src tests && uv run my
 | 后端启动即 `Segmentation fault (core dumped)` / exit 139 | 本机 onnxruntime | 换 Linux/macOS；本机走 §5 的 `--ignore` |
 | pytest 一堆 `UnicodeDecodeError` / `stderr is None` | Windows cp936 | 加 `PYTHONUTF8=1`，那批文件即转绿 |
 | 8088 被占 | 本机已有实例或服务 | `uv run octop run --port 8090`；Windows `netstat -ano \| grep :8088` |
-| 登录不进去 / 忘了管理员密码 | 管理员凭据落在数据目录 | 看 `$OCTOP_HOME/octop-login.txt`（向导解锁口令）与 `credential.txt`；复查环境直接换新 `OCTOP_HOME` 最省事 |
+| 登录不进去 / 忘了管理员密码 | 管理员凭据落在数据目录 | 看 `$AGENTBUDDY_HOME/octop-login.txt`（向导解锁口令）与 `credential.txt`；复查环境直接换新 `AGENTBUDDY_HOME` 最省事 |
 | 未挂载的 API 返回 405 而不是 404 | SPA GET 兜底路由（正常行为） | 按 §4 末的说明判断，别改代码 |
 | `make: command not found` | Windows 无 make | 按 §1 手拆；或 `choco install make` 后用 `make dev` |
 

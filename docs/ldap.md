@@ -223,7 +223,7 @@ memberOf: cn=admin,ou=groups,dc=example,dc=org
 
 ### 3.2 启动政务伙伴（独立 HOME，避免污染现有实例）
 
-用独立 `HOME` + `OCTOP_HOME` 起一个一次性实例，数据库与向导密码都落在临时目录：
+用独立 `HOME` + `AGENTBUDDY_HOME` 起一个一次性实例，数据库与向导密码都落在临时目录：
 
 ```bash
 cd <repo 根目录>
@@ -231,17 +231,17 @@ RUNTIME=/tmp/octop-ldap-dev
 mkdir -p "$RUNTIME/home"
 
 HOME="$RUNTIME/home" \
-OCTOP_HOME="$RUNTIME/home/.octop" \
+AGENTBUDDY_HOME="$RUNTIME/home/.octop" \
 uv run octop run --host 127.0.0.1 --port 8799
 ```
 
-首次启动会打印一次性的设置向导密码，同时写入 `$RUNTIME/home/octop-login.txt`：
+首次启动会打印一次性的设置向导密码，同时写入 `$RUNTIME/home/agentbuddy-login.txt`：
 
 ```
 ╔══════════════════════════════════════════════════════════╗
 ║  agentbuddy first-run wizard password (one-time use):          ║
 ║  xxxxxxxxxxxxxxxxxxxx                                     ║
-║  File: ~/octop-login.txt                                  ║
+║  File: ~/agentbuddy-login.txt                                  ║
 ╚══════════════════════════════════════════════════════════╝
 ```
 
@@ -254,7 +254,7 @@ uv run octop run --host 127.0.0.1 --port 8799
 ```bash
 API=http://127.0.0.1:8799/api
 RUNTIME=/tmp/octop-ldap-dev
-PW=$(head -1 "$RUNTIME/home/octop-login.txt")
+PW=$(head -1 "$RUNTIME/home/agentbuddy-login.txt")
 
 # 1) 校验向导密码 → 拿到一次性 wizard_token
 TOK=$(curl -sS -X POST "$API/setup/verify-password" \
@@ -474,18 +474,18 @@ uv run pytest tests/integration/test_auth_ldap.py -q
 需要 3.1 的目录在跑：
 
 ```bash
-OCTOP_LDAP_TEST_URL=ldap://127.0.0.1:3893 \
-OCTOP_LDAP_TEST_BIND_DN='uid=svc-octop,cn=users,dc=example,dc=org' \
-OCTOP_LDAP_TEST_BIND_PASSWORD=bindpw \
-OCTOP_LDAP_TEST_BASE_DN='dc=example,dc=org' \
-OCTOP_LDAP_TEST_ADMIN_GROUP=admin \
-OCTOP_LDAP_TEST_USER=alice \
-OCTOP_LDAP_TEST_PASSWORD=alicepw \
-OCTOP_LDAP_TEST_EXPECTED_ROLE=admin \
+AGENTBUDDY_LDAP_TEST_URL=ldap://127.0.0.1:3893 \
+AGENTBUDDY_LDAP_TEST_BIND_DN='uid=svc-octop,cn=users,dc=example,dc=org' \
+AGENTBUDDY_LDAP_TEST_BIND_PASSWORD=bindpw \
+AGENTBUDDY_LDAP_TEST_BASE_DN='dc=example,dc=org' \
+AGENTBUDDY_LDAP_TEST_ADMIN_GROUP=admin \
+AGENTBUDDY_LDAP_TEST_USER=alice \
+AGENTBUDDY_LDAP_TEST_PASSWORD=alicepw \
+AGENTBUDDY_LDAP_TEST_EXPECTED_ROLE=admin \
 uv run pytest tests/live/test_ldap_live.py -m live -v
 ```
 
-它经由真实 HTTP API 完成配置 → 连通性测试 → 目录登录 → `has_password=false` 校验 → 错误密码拒绝。换 `OCTOP_LDAP_TEST_USER` / `_PASSWORD` / `_EXPECTED_ROLE` 为 `bob`/`bobpw`/`user` 或 `carol`/`carolpw`/`user` 即可验证非管理员映射。缺任一环境变量则自动跳过，不会让 CI 变红。
+它经由真实 HTTP API 完成配置 → 连通性测试 → 目录登录 → `has_password=false` 校验 → 错误密码拒绝。换 `AGENTBUDDY_LDAP_TEST_USER` / `_PASSWORD` / `_EXPECTED_ROLE` 为 `bob`/`bobpw`/`user` 或 `carol`/`carolpw`/`user` 即可验证非管理员映射。缺任一环境变量则自动跳过，不会让 CI 变红。
 
 ### 7.4 浏览器验证要点
 

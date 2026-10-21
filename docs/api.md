@@ -5,7 +5,7 @@ endpoints emit `text/event-stream`; chat turns use a WebSocket
 described in [Chat (WebSocket)](#chat-websocket).
 
 > **Interactive docs** (Scalar) live at `/api/docs` when
-> `enable_api_docs=true` (or `OCTOP_ENABLE_API_DOCS=1`). The schema
+> `enable_api_docs=true` (or `AGENTBUDDY_ENABLE_API_DOCS=1`). The schema
 > is at `/api/openapi.json`.
 
 ## Authentication
@@ -14,10 +14,10 @@ described in [Chat (WebSocket)](#chat-websocket).
 |--------|-------|
 | `Authorization` | `Bearer <access_token>` from `POST /api/auth/login` |
 
-Tokens expire after `OCTOP_ACCESS_TOKEN_TTL` seconds (default 24 h).
+Tokens expire after `AGENTBUDDY_ACCESS_TOKEN_TTL` seconds (default 24 h).
 Rotating the JWT secret (`octop admin rotate-jwt-secret`) invalidates
 every outstanding token immediately. Login attempts are rate-limited
-(`OCTOP_LOGIN_MAX_ATTEMPTS` / `OCTOP_LOGIN_LOCKOUT_SECONDS`); the
+(`AGENTBUDDY_LOGIN_MAX_ATTEMPTS` / `AGENTBUDDY_LOGIN_LOCKOUT_SECONDS`); the
 admin can clear the lockout with `POST /api/users/{id}/unlock-login`.
 
 ### Auth column legend
@@ -53,10 +53,10 @@ rejected before siteverify.
 
 Offline recovery: delete the `captcha.settings` row via local CLI /
 `settings_repo` if a settings-sourced strong provider is unreachable. If
-the process refused to start because `OCTOP_CAPTCHA_PROVIDER` is strong
-without both keys and no readable settings blob, edit `~/.octop/env` on
+the process refused to start because `AGENTBUDDY_CAPTCHA_PROVIDER` is strong
+without both keys and no readable settings blob, edit `~/.agentbuddy/env` on
 disk — the dashboard and `PUT /api/envs` are unreachable until the
-process starts. `GET /api/envs` redacts `OCTOP_CAPTCHA_SECRET` as
+process starts. `GET /api/envs` redacts `AGENTBUDDY_CAPTCHA_SECRET` as
 `********`; sending that sentinel on PUT keeps the on-disk value.
 
 If you serve the dashboard behind a CSP, allow
@@ -436,7 +436,7 @@ because maintenance preserves history; concurrent background writes may affect t
 
 PostgreSQL limits every read/delete to the live expert's verified namespace and
 backs up exact target rows to a private JSONL file under
-`OCTOP_HOME/backups/memory-maintenance/` before committing a single transaction:
+`AGENTBUDDY_HOME/backups/memory-maintenance/` before committing a single transaction:
 
 - Rejected candidates decided more than 30 days ago, with no atom referencing them.
 - Operational journal entries older than 14 days (`extract_run`, `gc_*`,
@@ -453,7 +453,7 @@ namespace and row count; subsequent records contain table names and original row
 excluding generated search columns. PostgreSQL JSONL restore is not supported by this endpoint.
 
 To verify the PostgreSQL isolation/backup/rollback gate against a dedicated test
-database, set `OCTOP_MEMORY_MAINTENANCE_TEST_DSN` and run
+database, set `AGENTBUDDY_MEMORY_MAINTENANCE_TEST_DSN` and run
 `uv run pytest tests/integration/test_postgres_memory_storage.py -q`. Never point
 this gate at production: it creates test namespaces and a temporary failure trigger.
 

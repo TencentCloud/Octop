@@ -13,8 +13,8 @@ Usage: octop [OPTIONS] COMMAND [ARGS]...
 Options:
   -v, --version           Show the installed octop version.
   --user TEXT             Default --user for subcommands (admin acting on behalf
-                          of a user). [env: OCTOP_USER]
-  --agent TEXT            Default --agent for subcommands. [env: OCTOP_AGENT]
+                          of a user). [env: AGENTBUDDY_USER]
+  --agent TEXT            Default --agent for subcommands. [env: AGENTBUDDY_AGENT]
   --json                  Emit machine-readable JSON for list-style commands.
   -h, --help              Show this message and exit.
 
@@ -27,7 +27,7 @@ Commands:
   chat       [deprecated] Alias for `octop chats`.
   chats      Chat REPL and session management.
   channel    Channel management commands.
-  clean      Remove CLI state or wipe all of ~/.octop.
+  clean      Remove CLI state or wipe all of ~/.agentbuddy.
   completion Shell completion utilities.
   config     CLI state (base URL, defaults).
   cron       Cron job management commands.
@@ -50,8 +50,8 @@ Commands:
 
 | Option | Env | Effect |
 |--------|-----|--------|
-| `--user NAME` | `OCTOP_USER` | Default `--user` for subcommands (admin acting on behalf of a user) |
-| `--agent ID` | `OCTOP_AGENT` | Default `--agent` for subcommands |
+| `--user NAME` | `AGENTBUDDY_USER` | Default `--user` for subcommands (admin acting on behalf of a user) |
+| `--agent ID` | `AGENTBUDDY_AGENT` | Default `--agent` for subcommands |
 | `--json` | — | Emit machine-readable JSON for list-style commands |
 | `-v, --version` | — | Print version and exit |
 
@@ -61,29 +61,29 @@ agentbuddy commands pick one of these transports:
 
 | Layer | When | Login? | Examples |
 |-------|------|--------|----------|
-| **Offline** (local DB only) | Need to read/write `~/.octop` without a running server | No | `init`, `backup`, `plugin`, `agent list`, `chats list/get/create/update/delete`, `cron list`, `user *`, `admin overview/audit`, `models presets/list/active`, `bridge list/get` |
+| **Offline** (local DB only) | Need to read/write `~/.agentbuddy` without a running server | No | `init`, `backup`, `plugin`, `agent list`, `chats list/get/create/update/delete`, `cron list`, `user *`, `admin overview/audit`, `models presets/list/active`, `bridge list/get` |
 | **Attach** (HTTP / WS) | Need a live `octop run` process (IM, streams, model pulls) | Yes (`octop user login`) | `chats send/repl`, `channel test/probe`, `models ollama-*`, `skills enable/disable`, `provider test` |
 | **Embedded** (in-process) | CLI boots `OctopServer` for a single command | No | `octop acp`, `octop chats repl`, `octop chats send` (defaults to embedded), `octop agent create/from-expert/start/stop/reload` |
 | **Embedded (bridge)** | In-process `BridgeManager` (no full server); CLI cannot keep the WS after exit | No | `bridge probe/create/patch/delete/connect/disconnect/agents` |
 
 The dashboards and HTTP callers manage their own JWTs and do **not**
-share `~/.octop/cli_state.json`.
+share `~/.agentbuddy/cli_state.json`.
 
 ## `octop init`
 
 Bootstrap a fresh install (DB migrations, JWT secret, first admin).
-Idempotent on the DB; pass `--force` to wipe `~/.octop` first.
+Idempotent on the DB; pass `--force` to wipe `~/.agentbuddy` first.
 
 ```
 Usage: octop init [OPTIONS]
 
-  Bootstrap a agentbuddy server (~/.octop dir, DB migrations, JWT secret, first admin).
+  Bootstrap a agentbuddy server (~/.agentbuddy dir, DB migrations, JWT secret, first admin).
 
 Options:
-  --admin-username TEXT       [env: OCTOP_ADMIN_USERNAME]
-  --admin-password TEXT       [env: OCTOP_ADMIN_PASSWORD]
-  --admin-display-name TEXT   [env: OCTOP_ADMIN_DISPLAY_NAME]
-  --force                     Wipe existing ~/.octop contents before bootstrapping.
+  --admin-username TEXT       [env: AGENTBUDDY_ADMIN_USERNAME]
+  --admin-password TEXT       [env: AGENTBUDDY_ADMIN_PASSWORD]
+  --admin-display-name TEXT   [env: AGENTBUDDY_ADMIN_DISPLAY_NAME]
+  --force                     Wipe existing ~/.agentbuddy contents before bootstrapping.
   --yes                       Skip all interactive prompts.
   -h, --help                  Show this message and exit.
 ```
@@ -99,8 +99,8 @@ Usage: octop run [OPTIONS]
   Start the agentbuddy server (foreground; uvicorn).
 
 Options:
-  --host TEXT                 Override OCTOP_BIND_HOST.
-  --port INTEGER RANGE        Override OCTOP_PORT (0-65535, 0 = OS-assigned).
+  --host TEXT                 Override AGENTBUDDY_BIND_HOST.
+  --port INTEGER RANGE        Override AGENTBUDDY_PORT (0-65535, 0 = OS-assigned).
   --reload / --no-reload      Enable uvicorn auto-reload (dev only).
   --ssl / --no-ssl            Enable HTTPS with a self-signed cert (or a real one).
   --certfile PATH             TLS certificate (PEM).
@@ -114,7 +114,7 @@ Options:
 Install and manage the agentbuddy system service. The backend is detected
 automatically (systemd on Linux, launchd on macOS); the scope
 (`user` vs `system`) can be forced via `--scope` or
-`OCTOP_SERVICE_SCOPE`.
+`AGENTBUDDY_SERVICE_SCOPE`.
 
 ```
 Usage: octop service [OPTIONS] COMMAND [ARGS]...
@@ -184,13 +184,13 @@ Commands:
 
 `create` and `from-expert` accept `--user` (admin only) to create
 agents on behalf of another user. `use` writes the agent id into
-`~/.octop/cli_state.json` so subsequent commands default to it.
+`~/.agentbuddy/cli_state.json` so subsequent commands default to it.
 
 ## `octop chats`
 
 Thread CRUD + interactive REPL. The REPL and `send` use an embedded
 server (no separate `octop run` needed); `list` / `get` / `create` /
-`update` / `delete` work fully offline against `~/.octop/octop.db`.
+`update` / `delete` work fully offline against `~/.agentbuddy/agentbuddy.db`.
 
 ```
 Usage: octop chats [OPTIONS] COMMAND [ARGS]...
@@ -328,7 +328,7 @@ Commands:
 ## `octop skills`
 
 Per-agent skill enable / disable. All subcommands need a running
-server (the dashboard's Skill Hub and bundled `~/.octop/skills/`
+server (the dashboard's Skill Hub and bundled `~/.agentbuddy/skills/`
 library are queried at boot).
 
 ```
@@ -377,7 +377,7 @@ Commands:
   reset    Clear stored captcha settings so login falls back to the slider default.
 ```
 
-Boot-env captcha (`OCTOP_CAPTCHA_*`) is not touched by `reset` — unset
+Boot-env captcha (`AGENTBUDDY_CAPTCHA_*`) is not touched by `reset` — unset
 those in the environment file if they are the actual lockout cause.
 Restart `octop run` (if already running) for the change to apply.
 
@@ -392,7 +392,7 @@ Usage: octop backup [OPTIONS] COMMAND [ARGS]...
 
 Commands:
   create     Create a backup archive (DB + workspaces + config).
-  restore    Restore a backup archive into ~/.octop.
+  restore    Restore a backup archive into ~/.agentbuddy.
   auto       Automatic backup status and one-shot run.
 ```
 
@@ -401,8 +401,8 @@ Commands:
 Automatic backups are scheduled **inside** a running `octop run` process
 (via the same system-job mechanism as TLS renewal). Configure in
 `config.json` under `backup`, with env overrides
-`OCTOP_BACKUP_AUTO_ENABLED`, `OCTOP_BACKUP_SCHEDULE`,
-`OCTOP_BACKUP_RETENTION_COUNT`, or via the dashboard Backup settings.
+`AGENTBUDDY_BACKUP_AUTO_ENABLED`, `AGENTBUDDY_BACKUP_SCHEDULE`,
+`AGENTBUDDY_BACKUP_RETENTION_COUNT`, or via the dashboard Backup settings.
 
 ```
 Usage: octop backup auto [OPTIONS] COMMAND [ARGS]...
@@ -419,10 +419,10 @@ retention only deletes those files and never touches manual
 
 ## `octop plugin`
 
-Install and manage third-party plugins (drop into `~/.octop/plugins/`).
+Install and manage third-party plugins (drop into `~/.agentbuddy/plugins/`).
 The same plugin manager powers the dashboard's "Plugins" page.
 
-agentbuddy also **seeds bundled plugins** into `~/.octop/plugins/` during
+agentbuddy also **seeds bundled plugins** into `~/.agentbuddy/plugins/` during
 `octop init` and every `octop run` start. They are listed in Admin →
 Plugins but stay **globally disabled** until you turn them on. An id
 already recorded in `config.json` → `bundled_plugins_seeded` is not
@@ -443,7 +443,7 @@ Commands:
 ## `octop acp`
 
 Expose a agentbuddy agent as a stdio JSON-RPC ACP server. Boots a
-standalone `OctopServer` (reads `~/.octop`); does **not** require
+standalone `OctopServer` (reads `~/.agentbuddy`); does **not** require
 `octop run` to be running.
 
 ```
@@ -452,7 +452,7 @@ Usage: octop acp [OPTIONS]
   Run agentbuddy agent as ACP server (stdio).
 
 Options:
-  --agent TEXT   Agent to expose (default: OCTOP_AGENT or first agent).
+  --agent TEXT   Agent to expose (default: AGENTBUDDY_AGENT or first agent).
   --debug        Log to stderr.
   -h, --help     Show this message and exit.
 ```
@@ -462,13 +462,13 @@ runner object schema.
 
 ## `octop clean`
 
-Reset CLI state or wipe the whole `~/.octop` tree. Destructive — read
+Reset CLI state or wipe the whole `~/.agentbuddy` tree. Destructive — read
 the help carefully.
 
 ```
 Usage: octop clean [OPTIONS]
 
-  Remove CLI state or wipe all of ~/.octop.
+  Remove CLI state or wipe all of ~/.agentbuddy.
 
 Options:
   --state / --all       What to remove.
@@ -478,7 +478,7 @@ Options:
 
 ## `octop config`
 
-Inspect / edit `~/.octop/cli_state.json` (default base URL, user,
+Inspect / edit `~/.agentbuddy/cli_state.json` (default base URL, user,
 agent).
 
 ```
@@ -501,7 +501,7 @@ $ octop version                # print the installed octop version
 
 ## CLI state file
 
-`~/.octop/cli_state.json` stores:
+`~/.agentbuddy/cli_state.json` stores:
 
 ```json
 {
@@ -513,6 +513,6 @@ $ octop version                # print the installed octop version
 ```
 
 The path is exposed as `octop.cli.support.state.default_state_path()`
-and can be overridden via `OCTOP_HOME`. Delete the file to log out
+and can be overridden via `AGENTBUDDY_HOME`. Delete the file to log out
 the CLI without hitting the server. The dashboard and HTTP callers
 do not share this file — they manage their own tokens.

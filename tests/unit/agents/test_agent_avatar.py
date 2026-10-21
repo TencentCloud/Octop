@@ -138,7 +138,7 @@ def test_read_snapshot_avatar_and_display_url(tmp_path) -> None:
         is None
     )
 
-    avatar = tmp_path / ".agentbuddy" / "avatar.png"
+    avatar = tmp_path / ".octop" / "avatar.png"
     avatar.parent.mkdir(parents=True)
     avatar.write_bytes(PNG)
     found = read_snapshot_avatar(tmp_path)

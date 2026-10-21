@@ -27,7 +27,7 @@ From the repository root:
 docker compose -f docker/docker-compose.yml up -d --build
 ```
 
-Open `http://localhost:8088`. A valid `OCTOP_DEFAULT_PASSWORD` (≥8 characters with letters and digits) creates the admin on first boot and writes credentials to `/data/.octop/credential.txt`. If the variable is unset, or the password fails policy (too short, missing letters/digits, or a common password), **no** admin is created — open the dashboard and complete the setup wizard. The wizard unlock password is in `/data/.octop/octop-login.txt` (also noted in `credential.txt`).
+Open `http://localhost:8088`. A valid `AGENTBUDDY_DEFAULT_PASSWORD` (≥8 characters with letters and digits) creates the admin on first boot and writes credentials to `/data/.agentbuddy/credential.txt`. If the variable is unset, or the password fails policy (too short, missing letters/digits, or a common password), **no** admin is created — open the dashboard and complete the setup wizard. The wizard unlock password is in `/data/.agentbuddy/agentbuddy-login.txt` (also noted in `credential.txt`).
 
 Compose sets the open-file limit to 65535 for multi-agent workloads. Server startup also raises the soft limit up to 65535 within the inherited hard limit and logs the effective limits. Recreate existing containers to apply changed Compose limits; a restart alone does not change their hard limit.
 
@@ -39,7 +39,7 @@ docker run -d \
   --name octop \
   --ulimit nofile=65535:65535 \
   -p 8088:8088 \
-  -v octop-data:/data/.octop \
+  -v octop-data:/data/.agentbuddy \
   -e HOME=/data \
   agentbuddy:latest
 ```
@@ -60,16 +60,16 @@ bash docker/docker_build.sh
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `HOME` | `/data` | Must be `/data` so `~/.octop` maps to the data volume |
-| `OCTOP_PORT` | `8088` | HTTP listen port |
-| `OCTOP_DEFAULT_PASSWORD` | _(unset)_ | First-run admin password (≥8 chars, letters + digits). Valid → `octop init`; unset or rejected → web setup wizard |
-| `OCTOP_ADMIN_USERNAME` | `admin` | Initial admin username |
-| `OCTOP_DATABASE_URL` | — | PostgreSQL DSN (or other `OCTOP_DATABASE_*`; see [configuration.md](../docs/configuration.md)) |
-| `OCTOP_DATABASE_DRIVER` | — | `sqlite` \| `postgresql` when overriding defaults via env |
+| `HOME` | `/data` | Must be `/data` so `~/.agentbuddy` maps to the data volume |
+| `AGENTBUDDY_PORT` | `8088` | HTTP listen port |
+| `AGENTBUDDY_DEFAULT_PASSWORD` | _(unset)_ | First-run admin password (≥8 chars, letters + digits). Valid → `octop init`; unset or rejected → web setup wizard |
+| `AGENTBUDDY_ADMIN_USERNAME` | `admin` | Initial admin username |
+| `AGENTBUDDY_DATABASE_URL` | — | PostgreSQL DSN (or other `AGENTBUDDY_DATABASE_*`; see [configuration.md](../docs/configuration.md)) |
+| `AGENTBUDDY_DATABASE_DRIVER` | — | `sqlite` \| `postgresql` when overriding defaults via env |
 | `OPENAI_API_KEY` | — | OpenAI-compatible API key |
 | `DASHSCOPE_API_KEY` | — | Alibaba DashScope API key |
 
-For Compose, put these in `docker/.env`. Values only reach the container if listed under `environment:` in `docker-compose.yml` (Compose interpolates `.env`; it does not auto-export every key). Alternatively write the same keys into the mounted data dir as `~/.octop/env`.
+For Compose, put these in `docker/.env`. Values only reach the container if listed under `environment:` in `docker-compose.yml` (Compose interpolates `.env`; it does not auto-export every key). Alternatively write the same keys into the mounted data dir as `~/.agentbuddy/env`.
 
 ### Knowledge-base dependencies
 
@@ -81,15 +81,15 @@ be imported; it does not download model weights or enable either feature.
 Dependencies installed from the dashboard into a running container live in its
 writable layer and disappear when that container is recreated. Rebuild or pull
 an image containing these extras instead of relying on runtime installation.
-Keep the `/data/.octop` volume to preserve settings, knowledge indexes and the
+Keep the `/data/.agentbuddy` volume to preserve settings, knowledge indexes and the
 local embedding model cache. Existing deployments must rebuild or upgrade their
 image to receive these dependencies; restarting an older image is insufficient.
 
 ### Data persistence
 
-- Compose mounts host `~/.octop` → container `/data/.octop`
+- Compose mounts host `~/.agentbuddy` → container `/data/.agentbuddy`
 - `docker run` example uses named volume `octop-data`
-- First boot: a valid `OCTOP_DEFAULT_PASSWORD` runs `octop init` and writes `credential.txt`; unset or rejected passwords skip admin creation and write the wizard unlock password to `/data/.octop/octop-login.txt`. The container does not exit because of a weak default.
+- First boot: a valid `AGENTBUDDY_DEFAULT_PASSWORD` runs `octop init` and writes `credential.txt`; unset or rejected passwords skip admin creation and write the wizard unlock password to `/data/.agentbuddy/agentbuddy-login.txt`. The container does not exit because of a weak default.
 
 ### Health check
 
