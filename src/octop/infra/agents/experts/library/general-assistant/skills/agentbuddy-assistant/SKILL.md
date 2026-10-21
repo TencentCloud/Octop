@@ -1,13 +1,13 @@
 ---
-name: octop-assistant
+name: agentbuddy-assistant
 description: >-
   帮助用户了解政务伙伴、解答产品与使用问题，并配置当前实例。当用户提出以下类型的问题时使用此 skill：
   政务伙伴是什么、能做什么、有哪些功能或亮点；官网、帮助文档、安装、快速开始、Docker；
   专家、人格、知识库、连接器、通道、定时任务、ACP、远程桌面等概念或求助；
   配置或切换 LLM 模型与 Provider；添加或管理 IM 通道（飞书、企业微信、QQ 等）；
-  启用或禁用 Agent Skill；管理定时任务；备份与升级；询问「octop 怎么用」「怎么配置」、
+  启用或禁用 Agent Skill；管理定时任务；备份与升级；询问「政务伙伴怎么用」「怎么配置」、
   「怎么接入 xxx」「怎么换模型」「怎么加通道」「CLI 怎么用」「有没有文档」等。
-  即使用户只是问「政务伙伴是什么」或「怎么配置 octop」，也应触发此 skill。
+  即使用户只是问「政务伙伴是什么」或「怎么配置政务伙伴」，也应触发此 skill。
 metadata:
   octop:
     emoji: "⚙️"
@@ -38,7 +38,7 @@ metadata:
 
 **政务伙伴** 是开源、自托管的 AI 助手，支持多用户、多 Agent。口号是：更聪明，更懂你；文档站上的说法是「懂你、帮你、陪你成长的智能伙伴」。
 
-它不只是聊天窗口，而是可以并行运作的数字助手。通过多 Agent 架构，为团队、家庭和个人提供既独立又协作的环境。全部跑在用户自己的机器上：对话、工作区和凭据都留在本地。一条 `octop run` 同时提供 Web 控制台、CLI、IM 通道和定时任务。数据目录默认 `~/.octop/`（控制面数据库默认 SQLite，可选 PostgreSQL）。
+它不只是聊天窗口，而是可以并行运作的数字助手。通过多 Agent 架构，为团队、家庭和个人提供既独立又协作的环境。全部跑在用户自己的机器上：对话、工作区和凭据都留在本地。一条 `octop run` 同时提供 Web 控制台、CLI、IM 通道和定时任务。数据目录默认 `~/.agentbuddy/`（控制面数据库默认 SQLite，可选 PostgreSQL）。
 
 设计目标：每一次对话、工作区与凭据都留在自己的机器上，同时每个用户可以按场景切换一组专业 Agent。
 
@@ -71,7 +71,7 @@ metadata:
 | 💻 | 终端 / 浏览器 AI+ | 浏览器里的交互式 Shell，以及无头 Chromium 会话 |
 | 🖥️ | 远程桌面 | 控制台看屏和键鼠，覆盖 Linux / Windows / macOS |
 | 🪟 | 桌面客户端 | Windows / macOS / Linux 原生应用 |
-| 🏠 | 自托管 | 单进程 `octop run`，数据在 `~/.octop/` |
+| 🏠 | 自托管 | 单进程 `octop run`，数据在 `~/.agentbuddy/` |
 
 底层是 Python 3.12+、FastAPI，Agent 运行时为 Octop Harness，IM 桥接为 Octop Gateway。不依赖外部消息队列。
 
@@ -122,7 +122,7 @@ metadata:
 
 ### 安装（用户还没装、或问怎么装）
 
-详细步骤以文档为准：/guide/quickstart 。一键安装脚本的下载地址由发布方填入；在填入正式地址之前，**不要向用户输出任何 `curl … | bash` / `irm … | iex` 命令**。占位形式如下：
+当前支持的安装方式：**Docker**（服务器推荐）、**离线 wheel 包**（政务内网， `agentbuddy-offline-<平台>.tar.gz` + `install-offline.sh`）、**桌面客户端**（发布页下载）。详细步骤以文档为准：/guide/quickstart 。一键安装脚本的下载地址由发布方填入；在填入正式地址之前，**不要向用户输出任何 `curl … | bash` / `irm … | iex` 命令**。占位形式如下：
 
 ```bash
 # macOS / Linux —— 把 <INSTALL_SCRIPT_BASE> 换成发布方自己的下载地址
@@ -137,7 +137,7 @@ irm <INSTALL_SCRIPT_BASE>/install.ps1 | iex
 装好后新开终端，再：
 
 ```bash
-octop init    # 创建 ~/.octop/、管理员账号
+octop init    # 创建 ~/.agentbuddy/、管理员账号
 octop run     # 前台启动，浏览器打开 http://127.0.0.1:8088
 ```
 
@@ -170,7 +170,7 @@ octop run     # 前台启动，浏览器打开 http://127.0.0.1:8088
 | **Agent ID** | 后续 `octop --agent <id>` 的必填参数 |
 | **归属用户** | Agent 所有者（共享 Agent 会标注「无单一归属」） |
 | **对话用户** | **本次对话** 的政务伙伴用户（username + id）— 比 CLI `config show` 可靠 |
-| **工作区** | `~/.octop/agents/<id>/` 路径 |
+| **工作区** | `~/.agentbuddy/agents/<id>/` 路径 |
 | **专家模板** | 若从专家库创建，显示 template 名 |
 | **模型 / 渠道 / 定时任务** | 当前会话与运行态摘要 |
 
@@ -178,7 +178,7 @@ octop run     # 前台启动，浏览器打开 http://127.0.0.1:8088
 
 1. 请用户发送 `/status`（或在对话中提示「请先输入 /status」）。
 2. 根据输出中的 **Agent ID**、**对话用户**、**工作区** 规划后续操作。
-3. 若需 CLI 且服务器终端 CLI 已登录为同一用户，再执行 `octop --agent <id> …`；否则引导 **Dashboard 设置** 或让用户在终端 `octop user login`。
+3. 若需 CLI 且服务器终端 CLI 已配置同一用户，再执行 `octop --agent <id> …`；否则引导 **Dashboard 设置**，或让用户在终端用 `octop config set-user` 固定默认用户。
 
 Agent 自身无法代替用户触发斜杠指令时，明确提示用户发送 `/status` 并把结果贴回对话。
 
@@ -188,7 +188,7 @@ Agent 自身无法代替用户触发斜杠指令时，明确提示用户发送 `
 |------|------------------|-------------------------------------|
 | **Web Dashboard** | 浏览器 JWT；服务端在消息里带 `user_id`（`channel_subject.subject_id`） | **不能** |
 | **IM Channel** | 通道映射的政务伙伴用户 id（同上） | **不能** |
-| **服务器终端 CLI** | `octop user login` 写入 `~/.octop/cli_state.json` | **能**（仅反映该文件里的账号） |
+| **服务器终端 CLI** | `octop config set-user` 写入 `~/.agentbuddy/cli_state.json` | **能**（仅反映该文件里的账号） |
 
 `octop config show` 的 `default_user` / `token` 是 **运行 shell 的那台机器、那个 OS 用户** 上次 CLI 登录的结果，**不是** 正在 Dashboard 里和你对话的用户，也 **不是** IM 里发消息的用户。
 
@@ -196,13 +196,13 @@ Agent 自身无法代替用户触发斜杠指令时，明确提示用户发送 `
 
 - 用户从 **Dashboard / 飞书 / QQ 等** 问「帮我配置」时，**不要假设** `octop config show` 就是 TA 的账号。
 - Agent 代跑 `execute_shell_command` 时，CLI 实际用的是 **服务器上已保存的 token**（常为管理员安装时登录的账号）。
-- 若 CLI 未登录或登录者不是目标用户，应 **引导用户自己在终端 `octop user login`**，或 **在 Dashboard 设置页完成**（Provider、通道、环境变量等），而不是反复执行会 401 的命令。
+- 若 CLI 未登录或登录者不是目标用户，应 **引导用户自己在终端 `octop config set-user <用户名>`**，或 **在 Dashboard 设置页完成**（Provider、通道、环境变量等），而不是反复执行会 401 的命令。
 
 **当前对话中可直接确定的上下文（无需 CLI）：**
 
 | 信息 | 如何获得 |
 |------|----------|
-| **Agent ID** | 让用户发 `/status`，或从工作区路径 `~/.octop/agents/<id>/` 推断 |
+| **Agent ID** | 让用户发 `/status`，或从工作区路径 `~/.agentbuddy/agents/<id>/` 推断 |
 | **对话用户** | `/status` 的 **对话用户** 行（权威来源） |
 | **归属用户** | `/status` 的 **归属用户** 行 |
 | **工作区路径** | `/status` 的 **工作区** 行 |
@@ -218,11 +218,11 @@ Agent 自身无法代替用户触发斜杠指令时，明确提示用户发送 `
 
 你正在为用户服务的 Agent，其 ID 通常可从工作区路径推断：
 
-- 工作区目录：`~/.octop/agents/<AGENT_ID>/`
+- 工作区目录：`~/.agentbuddy/agents/<AGENT_ID>/`
 - 若 shell 当前目录在工作区内，可执行：
 
 ```bash
-# 从当前工作区路径解析 agent id（在 ~/.octop/agents/<id>/ 下时有效）
+# 从当前工作区路径解析 agent id（在 ~/.agentbuddy/agents/<id>/ 下时有效）
 AGENT_ID="$(basename "$(cd .. 2>/dev/null && pwd)")"
 echo "agent=$AGENT_ID"
 ```
@@ -232,15 +232,15 @@ echo "agent=$AGENT_ID"
 ```bash
 octop agent list
 # 记下 id 列，例如 main
-export OCTOP_AGENT=main
-octop agent use main   # 写入 ~/.octop/cli_state.json，后续可省略 --agent
+export AGENTBUDDY_AGENT=main
+octop agent use main   # 写入 ~/.agentbuddy/cli_state.json，后续可省略 --agent
 ```
 
 **规则**：下文凡标注「需 `--agent`」的命令，统一使用以下任一写法（不要裸跑）：
 
 ```bash
 octop --agent "$AGENT_ID" <子命令> ...
-# 或（已 octop agent use / 已 export OCTOP_AGENT）
+# 或（已 octop agent use / 已 export AGENTBUDDY_AGENT）
 octop <子命令> ...
 ```
 
@@ -253,14 +253,14 @@ octop config show
 | 字段 | 含义 |
 |------|------|
 | `base_url` | API 地址，默认 `http://127.0.0.1:8088` |
-| `default_user` | **CLI** 上次 `octop user login` 的用户名（≠ Dashboard 当前用户，见 0.1） |
+| `default_user` | **CLI** 上次 `octop config set-user` 固定的用户名（≠ Dashboard 当前用户，见 0.1） |
 | `default_agent` | CLI 固定的默认 Agent（`octop agent use` 写入） |
 | `token` | `(set)` 表示 CLI 已登录；`null` 表示 shell 侧无 token |
 
 未登录时，**不要**反复执行会失败的 API 命令。告知用户在 **服务器终端** 执行（交互式）：
 
 ```bash
-octop user login --username <用户名>
+octop config set-user <用户名>
 ```
 
 或引导其在 **Web 控制台** 完成操作（无需 CLI）。管理员在 CLI 已登录且为目标用户时，代管命令可加 `--user <username>`。
@@ -278,7 +278,7 @@ octop service status
 代劳非交互命令前，可先执行（将 `main` 替换为实际 Agent ID）：
 
 ```bash
-export OCTOP_AGENT=main
+export AGENTBUDDY_AGENT=main
 octop config show
 octop service status
 octop agent list
@@ -305,7 +305,7 @@ octop agent list
 
 ### 查看 Provider 与模型（直接执行）
 
-**禁止**直接查 `~/.octop/octop.db`。`json_each(providers.models_json).id` 是 SQLite 内部序号，不是模型名，会拼出非法的 `"model": 1`。
+**禁止**直接查 `~/.agentbuddy/agentbuddy.db`。`json_each(providers.models_json).id` 是 SQLite 内部序号，不是模型名，会拼出非法的 `"model": 1`。
 
 用 CLI（`models[].id` / 输出里的模型 id 才是发给网关的字符串）：
 
@@ -534,7 +534,7 @@ octop agent experts
 ### 登录（指导用户，交互式）
 
 ```bash
-octop user login --username <name>
+octop config set-user <name>
 ```
 
 ### 用户管理（admin）
@@ -574,7 +574,7 @@ octop update -y
 
 升级后需 **重启** `octop run`（或 Docker 容器）才生效。先用 `octop service status` 确认服务状态，再告知用户重启方式。
 
-### 插件（直接执行，读写本地 ~/.octop/plugins）
+### 插件（直接执行，读写本地 ~/.agentbuddy/plugins）
 
 ```bash
 octop plugin list
@@ -592,11 +592,11 @@ octop plugin uninstall <plugin_id>
 
 | 层 | 位置 | 谁继承 |
 |---|---|---|
-| 全局 | `~/.octop/env` | 所有 Agent（shell / Docker 沙箱 / ACP） |
+| 全局 | `~/.agentbuddy/env` | 所有 Agent（shell / Docker 沙箱 / ACP） |
 | Agent | 工作区 `.env` | 仅该 Agent（同名覆盖全局；不可覆盖 `OCTOP_*` / `HOME` / `USER`） |
 
 - 查看 / 编辑全局：Web 控制台 → **Admin → 应用设置 → 环境变量**
-- 或直接编辑 `~/.octop/env`（控制台保存会立刻对齐进程环境；搜索类 key 变化会后台 reload Agent。手改文件后需保存一次或 `octop agent reload`）
+- 或直接编辑 `~/.agentbuddy/env`（控制台保存会立刻对齐进程环境；搜索类 key 变化会后台 reload Agent。手改文件后需保存一次或 `octop agent reload`）
 - Agent 专用变量写入工作区 `.env`（也可用 `write_env_file`）；下一句 shell / Docker exec 即生效，不必 reload
 - 搜索 API Key（如 `TAVILY_API_KEY`）请放全局，不要只写在某个 Agent 的 `.env`
 
@@ -634,7 +634,7 @@ octop plugin uninstall <plugin_id>
 
 1. 说明：这是 **服务器 CLI** 未登录，与 Dashboard 是否已登录无关
 2. `octop config show` 确认 `token` 为空
-3. 指导用户在 **服务器终端** `octop user login --username ...`，或改用 **Dashboard** 操作
+3. 指导用户在 **服务器终端** `octop config set-user <用户名>`，或改用 **Dashboard** 操作
 4. `octop service status` 确认为 OK
 
 ### 场景：Dashboard 用户问配置，但 Agent 代跑 CLI 失败
@@ -642,12 +642,12 @@ octop plugin uninstall <plugin_id>
 1. 先请用户发送 `/status`，用 **对话用户** 确认身份
 2. 不要用 `octop config show` 推断对话用户
 3. 优先引导 **Dashboard 设置页**（Provider / Channels / Environments）
-4. 若必须用 CLI，确认 `default_user` 与 `/status` 对话用户一致；否则让用户自行 `octop user login`
+4. 若必须用 CLI，确认 `default_user` 与 `/status` 对话用户一致；否则让用户自行 `octop config set-user`
 
 ### 场景：CLI 报 `--agent is required`
 
 1. `octop agent list` 确定目标 id
-2. `export OCTOP_AGENT=<id>` 或 `octop agent use <id>`
+2. `export AGENTBUDDY_AGENT=<id>` 或 `octop agent use <id>`
 3. 所有 channel / cron / skills 命令带上 `--agent`
 
 ---
@@ -659,7 +659,7 @@ octop plugin uninstall <plugin_id>
 | 产品介绍、概念、安装说明 | 直接回答，并给 about:blank 或 /guide/ |
 | 首次向导、Provider、用户 | Web 控制台或 `octop init` / `models config` |
 | 脚本化、批量、排障 | CLI（本 skill） |
-| 环境变量 | 控制台 Environments 或编辑 `~/.octop/env` |
+| 环境变量 | 控制台 Environments 或编辑 `~/.agentbuddy/env` |
 | 对话与文件 | Web / IM 通道，非 CLI |
 
-数据目录：`~/.octop/`（`octop.db`、`config.json`、`agents/`、`env`、`cli_state.json`）。
+数据目录：`~/.agentbuddy/`（`agentbuddy.db`、`config.json`、`agents/`、`env`、`cli_state.json`）。
