@@ -8,6 +8,10 @@ import pytest
 
 from octop.infra.setup import service
 
+# Windows reports a newly created file as 0o666; os.chmod(0o644) only toggles
+# the read-only flag there, so Unix mode bits are not observable.
+posix_only = pytest.mark.skipif(os.name != "posix", reason="POSIX-only mode bits")
+
 
 def test_a_failed_publish_keeps_the_previous_unit(tmp_path, monkeypatch):
     destination = tmp_path / "octop.service"
@@ -28,11 +32,21 @@ def test_a_failed_publish_keeps_the_previous_unit(tmp_path, monkeypatch):
     assert list(tmp_path.glob("*.tmp")) == []
 
 
-def test_the_unit_is_written_with_the_expected_permissions(tmp_path, monkeypatch):
+def test_the_unit_content_is_replaced(tmp_path, monkeypatch):
     destination = tmp_path / "octop.service"
     monkeypatch.setattr(service, "_needs_sudo", lambda path: False)
 
     service._write_managed_file(destination, "[Unit]\nDescription=new\n", run_as_user="root")
 
     assert destination.read_text(encoding="utf-8") == "[Unit]\nDescription=new\n"
+    assert list(tmp_path.glob("*.tmp")) == []
+
+
+@posix_only
+def test_the_unit_is_written_with_the_expected_permissions(tmp_path, monkeypatch):
+    destination = tmp_path / "octop.service"
+    monkeypatch.setattr(service, "_needs_sudo", lambda path: False)
+
+    service._write_managed_file(destination, "[Unit]\nDescription=new\n", run_as_user="root")
+
     assert os.stat(destination).st_mode & 0o777 == 0o644
