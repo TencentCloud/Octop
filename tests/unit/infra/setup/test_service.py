@@ -446,12 +446,17 @@ def test_render_launchd_plist_includes_service_mode(tmp_path: Path) -> None:
     assert "<string>--port</string>" not in plist
 
 
-def test_stop_service_noop_when_not_installed(tmp_path: Path) -> None:
+def test_stop_service_noop_when_not_installed(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    # Hermetic: do not depend on whether the host running the suite has a unit.
+    monkeypatch.setattr(service_mod, "is_service_installed", lambda *_a, **_k: False)
     runtime = _runtime(tmp_path)
     stop_service(runtime)
 
 
-def test_restart_service_requires_install(tmp_path: Path) -> None:
+def test_restart_service_requires_install(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    monkeypatch.setattr(service_mod, "is_service_installed", lambda *_a, **_k: False)
     runtime = _runtime(tmp_path)
     with pytest.raises(RuntimeError, match="not installed"):
         restart_service(runtime)
@@ -583,6 +588,107 @@ def test_resolve_service_scope_rejects_garbage(monkeypatch: pytest.MonkeyPatch) 
     """Unknown values are treated as 'auto' rather than crashing the CLI."""
     monkeypatch.setenv("OCTOP_SERVICE_SCOPE", "nonsense")
     assert resolve_service_scope() in ("user", "system")
+
+
+def _fake_unit_paths(monkeypatch: pytest.MonkeyPatch, tmp_path: Path, present: set[str]) -> None:
+    """Redirect unit-path probing to tmp files so scope tests are hermetic.
+
+    Without this, ``unit_path`` hits the real ``/etc/systemd/system`` and
+    ``~/Library/LaunchAgents``, which differ per host and per CI OS.
+    """
+    paths = {
+        "system": tmp_path / "system" / "octop.unit",
+        "user": tmp_path / "user" / "octop.unit",
+    }
+    for scope, path in paths.items():
+        if scope in present:
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text("unit\n", encoding="utf-8")
+    monkeypatch.setattr(
+        service_mod, "unit_path", lambda _mode, scope=None, **_kw: paths[scope or "system"]
+    )
+
+
+def test_build_runtime_prefers_installed_system_unit_over_non_root_heuristic(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """Regression: a SYSTEM unit run as a normal user must resolve to system scope.
+
+    The euid heuristic says ``user`` for non-root, but the unit actually lives in
+    ``/etc/systemd/system`` (e.g. installed via sudo with ``User=<owner>``).  The
+    old behaviour managed it with ``systemctl --user ...``, which fails on
+    headless hosts with ``Failed to connect to bus: No medium found``.
+    """
+    monkeypatch.setattr(service_mod, "is_root", lambda: False)
+    monkeypatch.setenv("OCTOP_SERVICE_SCOPE", "auto")
+    monkeypatch.setattr(service_mod, "resolve_bind_options", lambda home=None: ("127.0.0.1", 8088))
+    _fake_unit_paths(monkeypatch, tmp_path, present={"system"})
+
+    assert resolve_service_scope() == "user"  # heuristic still says user
+    runtime = service_mod.build_runtime(home=tmp_path, mode="systemd")
+    assert runtime.scope == "system"
+
+
+def test_build_runtime_keeps_heuristic_when_no_unit_installed(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """Fresh installs keep the historical non-root → ``user`` behaviour."""
+    monkeypatch.setattr(service_mod, "is_root", lambda: False)
+    monkeypatch.setenv("OCTOP_SERVICE_SCOPE", "auto")
+    monkeypatch.setattr(service_mod, "resolve_bind_options", lambda home=None: ("127.0.0.1", 8088))
+    _fake_unit_paths(monkeypatch, tmp_path, present=set())
+
+    runtime = service_mod.build_runtime(home=tmp_path, mode="systemd")
+    assert runtime.scope == "user"
+
+
+def test_build_runtime_prefers_provisional_scope_when_both_units_exist(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """A hybrid host keeps the euid-preferred scope instead of flipping."""
+    monkeypatch.setattr(service_mod, "is_root", lambda: False)
+    monkeypatch.setenv("OCTOP_SERVICE_SCOPE", "auto")
+    monkeypatch.setattr(service_mod, "resolve_bind_options", lambda home=None: ("127.0.0.1", 8088))
+    _fake_unit_paths(monkeypatch, tmp_path, present={"user", "system"})
+
+    runtime = service_mod.build_runtime(home=tmp_path, mode="systemd")
+    assert runtime.scope == "user"
+
+
+def test_build_runtime_respects_explicit_scope(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """An explicit caller scope is never overridden by the installed-location probe."""
+    monkeypatch.setattr(service_mod, "resolve_bind_options", lambda home=None: ("127.0.0.1", 8088))
+    _fake_unit_paths(monkeypatch, tmp_path, present={"system"})
+
+    runtime = service_mod.build_runtime(home=tmp_path, mode="systemd", scope="user")
+    assert runtime.scope == "user"
+
+
+def test_is_service_installed_accepts_system_unit_when_scope_is_user(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """Regression: the dual-location probe must not report a false negative.
+
+    ``/api/update/restart`` and ``octop service status`` used to answer
+    ``octop system service is not installed`` for a healthy system-scope unit
+    because only the euid-inferred (user) location was probed.
+    """
+    _fake_unit_paths(monkeypatch, tmp_path, present={"system"})
+
+    assert service_mod.is_service_installed("systemd", scope="user") is True
+    assert service_mod.is_service_installed("systemd") is True
+    assert service_mod.is_service_installed("systemd", scope="system") is True
+
+
+def test_is_service_installed_false_when_nothing_installed(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    _fake_unit_paths(monkeypatch, tmp_path, present=set())
+
+    assert service_mod.is_service_installed("systemd", scope="user") is False
+    assert service_mod.is_service_installed("systemd", scope="system") is False
 
 
 def test_launchd_domain_user_vs_system() -> None:

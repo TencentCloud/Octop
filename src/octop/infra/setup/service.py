@@ -267,6 +267,43 @@ def resolve_bind_options(home: Path | None = None) -> tuple[str, int]:
     return "127.0.0.1", 8088
 
 
+def _unit_scope_candidates(scope: ServiceScope | None) -> tuple[ServiceScope, ServiceScope]:
+    """Return the two standard scopes to probe, the preferred one first.
+
+    ``scope=None`` keeps the historical ``is_service_installed`` ordering
+    (system-standard location first); an explicit ``scope`` keeps that scope as
+    the caller's emphasis and falls back to the other one.
+    """
+    if scope is None:
+        return ("system", "user")
+    return (scope, "user" if scope == "system" else "system")
+
+
+def _installed_scope(
+    mode: ServiceMode,
+    provisional: ServiceScope,
+    *,
+    run_as_user: str | None = None,
+) -> ServiceScope:
+    """Return the scope whose standard unit file actually exists.
+
+    :func:`resolve_service_scope` infers the scope from the *caller's* euid
+    (root → ``system``, non-root → ``user``).  That is right for a fresh
+    install, but wrong when managing an existing deployment: a system unit
+    installed under ``/etc/systemd/system`` (or ``/Library/LaunchDaemons``) by
+    root and later run as ``User=<owner>`` would be managed with
+    ``systemctl --user ...``, which needs a user D-Bus/session that headless
+    hosts do not have.  Probe both standard locations (``provisional`` first to
+    preserve caller emphasis) and adopt the first unit file present; fall back
+    to ``provisional`` when neither exists yet (fresh installs keep prior
+    behaviour).
+    """
+    for candidate in _unit_scope_candidates(provisional):
+        if unit_path(mode, scope=candidate, run_as_user=run_as_user).is_file():
+            return candidate
+    return provisional
+
+
 def build_runtime(
     *,
     home: Path | None = None,
@@ -281,6 +318,12 @@ def build_runtime(
     run_as_user = resolve_run_as_user()
     root = home or resolve_service_home(run_as_user=run_as_user)
     bind_host, bind_port = resolve_bind_options(root)
+    if scope is None:
+        scope = _installed_scope(
+            resolved_mode,
+            provisional=resolve_service_scope(),
+            run_as_user=run_as_user,
+        )
     return ServiceRuntime(
         mode=resolved_mode,
         host=host or bind_host,
@@ -288,7 +331,7 @@ def build_runtime(
         home=root,
         octop_bin=resolve_octop_executable(root),
         run_as_user=run_as_user,
-        scope=scope or resolve_service_scope(),
+        scope=scope,
     )
 
 
@@ -375,7 +418,20 @@ def is_service_installed(
     *,
     run_as_user: str | None = None,
 ) -> bool:
-    return unit_path(mode, scope=scope, run_as_user=run_as_user).is_file()
+    """Return True when a unit file for ``mode`` exists in either standard scope.
+
+    Probing both locations (instead of only the caller-supplied ``scope``) keeps
+    a legitimately-installed SYSTEM unit such as
+    ``/etc/systemd/system/octop.service`` recognised when the auto-inferred scope
+    points at the user location — the mismatch that used to surface as a spurious
+    ``octop system service is not installed (expected unit for mode=systemd)``
+    from ``/api/update/restart`` and ``octop service status``.  Purely
+    filesystem-based (no D-Bus), so it stays headless- and container-friendly.
+    """
+    return any(
+        unit_path(mode, scope=candidate, run_as_user=run_as_user).is_file()
+        for candidate in _unit_scope_candidates(scope)
+    )
 
 
 def render_systemd_unit(runtime: ServiceRuntime, *, user_unit: bool | None = None) -> str:

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import threading
 import time
 from typing import Any
 
@@ -65,14 +66,14 @@ async def test_update_status_reprobes_after_cache_ttl(
 
 
 @pytest.mark.asyncio
-async def test_restart_endpoint_schedules_background_restart(
+async def test_restart_endpoint_runs_service_restart_without_waiting_for_it(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     restarted: list[object] = []
     fake_runtime = type(
         "Runtime",
         (),
-        {"mode": "systemd", "scope": None, "run_as_user": None},
+        {"mode": "systemd", "scope": "system", "run_as_user": "tester"},
     )()
 
     monkeypatch.setattr(update_router, "detect_service_mode", lambda: "systemd")
@@ -91,12 +92,124 @@ async def test_restart_endpoint_schedules_background_restart(
     result = await update_router.restart_service_endpoint(bg, _=None)
 
     assert result == {"status": "restarting", "service_mode": "systemd"}
-    assert restarted == []
-
-    for task in bg.tasks:
-        await task()
-
     assert restarted == [fake_runtime]
+    # A failure must be observable while the request is still open, so the
+    # service bounce is no longer deferred behind the HTTP response.
+    assert bg.tasks == []
+
+
+@pytest.mark.asyncio
+async def test_restart_endpoint_reports_missing_privileges(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A non-root service managing a SYSTEM unit must return an actionable error."""
+
+    def _failing_restart(_runtime: object) -> None:
+        raise RuntimeError(
+            "sudo: a terminal is required to read the password; either use the -S "
+            "option to read from standard input or configure an askpass helper\n"
+            "sudo: a password is required"
+        )
+
+    fake_runtime = type(
+        "Runtime",
+        (),
+        {"mode": "systemd", "scope": "system", "run_as_user": "tester"},
+    )()
+
+    monkeypatch.setattr(update_router, "detect_service_mode", lambda: "systemd")
+    monkeypatch.setattr(update_router, "_is_desktop_process", lambda: False)
+    monkeypatch.setattr(update_router, "build_runtime", lambda mode: fake_runtime)
+    monkeypatch.setattr(update_router, "is_service_installed", lambda *_, **__: True)
+    monkeypatch.setattr(update_router, "restart_service", _failing_restart)
+
+    from fastapi import BackgroundTasks
+
+    bg = BackgroundTasks()
+    with pytest.raises(OctopError) as exc_info:
+        await update_router.restart_service_endpoint(bg, _=None)
+
+    assert exc_info.value.code == ErrorCode.RESTART_PRIVILEGE_REQUIRED
+    envelope = exc_info.value.to_envelope(locale="en")
+    message = envelope["error"]["message"]
+    assert "tester" in message
+    assert "systemctl restart octop" in message
+    assert envelope["error"]["details"] == {"run_as_user": "tester"}
+
+
+@pytest.mark.asyncio
+async def test_restart_endpoint_reports_other_early_failures(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def _failing_restart(_runtime: object) -> None:
+        raise RuntimeError("systemd is not running")
+
+    fake_runtime = type(
+        "Runtime",
+        (),
+        {"mode": "systemd", "scope": "system", "run_as_user": "tester"},
+    )()
+
+    monkeypatch.setattr(update_router, "detect_service_mode", lambda: "systemd")
+    monkeypatch.setattr(update_router, "_is_desktop_process", lambda: False)
+    monkeypatch.setattr(update_router, "build_runtime", lambda mode: fake_runtime)
+    monkeypatch.setattr(update_router, "is_service_installed", lambda *_, **__: True)
+    monkeypatch.setattr(update_router, "restart_service", _failing_restart)
+
+    from fastapi import BackgroundTasks
+
+    bg = BackgroundTasks()
+    with pytest.raises(OctopError) as exc_info:
+        await update_router.restart_service_endpoint(bg, _=None)
+
+    assert exc_info.value.code == ErrorCode.INTERNAL_ERROR
+    assert "systemd is not running" in exc_info.value.message
+
+
+@pytest.mark.asyncio
+async def test_restart_endpoint_answers_before_a_slow_restart_finishes(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A restart that is still running must not hold the request open."""
+    release = threading.Event()
+
+    def _blocking_restart(_runtime: object) -> None:
+        release.wait(5)
+
+    fake_runtime = type(
+        "Runtime",
+        (),
+        {"mode": "systemd", "scope": "system", "run_as_user": "tester"},
+    )()
+
+    monkeypatch.setattr(update_router, "_RESTART_EARLY_FAILURE_WINDOW_SECONDS", 0.05)
+    monkeypatch.setattr(update_router, "detect_service_mode", lambda: "systemd")
+    monkeypatch.setattr(update_router, "_is_desktop_process", lambda: False)
+    monkeypatch.setattr(update_router, "build_runtime", lambda mode: fake_runtime)
+    monkeypatch.setattr(update_router, "is_service_installed", lambda *_, **__: True)
+    monkeypatch.setattr(update_router, "restart_service", _blocking_restart)
+
+    from fastapi import BackgroundTasks
+
+    bg = BackgroundTasks()
+    started = time.monotonic()
+    try:
+        result = await update_router.restart_service_endpoint(bg, _=None)
+    finally:
+        release.set()
+
+    assert result == {"status": "restarting", "service_mode": "systemd"}
+    assert time.monotonic() - started < 1.0
+
+
+def test_looks_like_privilege_error_matches_sudo_failures() -> None:
+    assert update_router._looks_like_privilege_error("sudo: a password is required")
+    assert update_router._looks_like_privilege_error(
+        "sudo: a terminal is required to read the password"
+    )
+    assert not update_router._looks_like_privilege_error(
+        "octop system service is not installed (expected unit for mode=systemd)"
+    )
 
 
 @pytest.mark.asyncio

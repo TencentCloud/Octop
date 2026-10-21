@@ -398,6 +398,7 @@
     "BACKUP_IN_PROGRESS": "A backup or restore is already in progress. Try again shortly.",
     "FORBIDDEN": "Permission denied.",
     "UPDATE_TARGET_NOT_NEWER": "Target version {target} must be newer than installed version {current}. Reinstalling or downgrading is not supported.",
+    "RESTART_PRIVILEGE_REQUIRED": "Cannot restart the service: Octop runs as the non-root user ({run_as_user}) while the service is a system-scope unit, which requires administrator privileges. Run `sudo systemctl restart octop` in a terminal, or grant {run_as_user} passwordless systemctl access, then retry.",
     "NOT_FOUND": "Not found.",
     "USER_DISABLED": "This account has been disabled.",
     "LOGIN_LOCKED": "Too many failed sign-in attempts. Try again in {minutes} minutes.",
