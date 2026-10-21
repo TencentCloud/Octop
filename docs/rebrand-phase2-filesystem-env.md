@@ -135,3 +135,14 @@
 | Compose | `docker compose config`(主 + cn) | ✅ 解析通过,`AGENTBUDDY_DATA:-~/.agentbuddy` → `/data/.agentbuddy` 挂载一致 |
 
 至此三端(桌面 / Docker / 离线 wheel 包)的分支级验证全部完成,后续打 `v*` tag 时各 publish workflow 以 tag 构建即为同一代码。
+
+## 8. 追加改造:工作区内部 `.octop` → `.agentbuddy`(2026-10-22)
+
+应 owner 要求(用户在文件树里能看到工作区内部的 `.octop`),原"C 层不动"的裁定撤销,改为**改默认 + 双前缀兼容**:
+
+- `DEFAULT_SYSTEM_FILES_PATH` → `.agentbuddy`;`LEGACY_SYSTEM_FILES_PATH = ".octop"` 保留。
+- **兼容策略与 Q2 一致(不迁移)**:新 agent 一律 `.agentbuddy`;存量 agent 的 `system_files_path` 已按 agent 存 DB,继续用 `.octop` 正常工作。
+- 所有 agent-facing `/.octop/` 哨兵改为双前缀(`is_system_files_prefixed`):`workspace/dir.py` ×3、`execute_env.py`、harness `agent.py` ×2;harness 云存储工作区目录名构建改为 `/​.agentbuddy/workspaces/<id>`(读取兼容两种)。
+- 硬编码消费方跟随:teams manifest 改用裸逻辑名 `manifest.json`(由 BackendWorkspace 按各自前缀落位)、avatar(`AVATAR_DIR` 新 + legacy 读)、builtin_skills 守卫、memory 清理候选、skills 发现根、publish 种子 glob、`manage_skills.py`(随技能下发)。
+- harness/主仓测试同步:assert 默认 `.agentbuddy`,legacy `.octop` 用例保留;harness 失败集合与基线逐条 diff 为零(26 个失败全部为改造前已存在的 env 依赖用例)。
+- **容器端到端复核**(镜像重建后):创建 agent → `config.system_files_path=".agentbuddy"`、`workspace_dir=/data/.agentbuddy/agents/<id>`;`find /data -name .octop` 零命中;容器内直调解析函数确认 legacy `/.octop/workspaces/A1` 仍正确映射。
