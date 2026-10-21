@@ -97,6 +97,13 @@ dev = [
 [project.scripts]
 octop = "octop.cli.main:cli"
 
+# Pin the official index so lockfile URLs never drift to a developer's
+# local mirror config (~/.config/uv/uv.toml). CI and offline bundles rely on
+# these URLs being canonical.
+[[tool.uv.index]]
+url = "https://pypi.org/simple"
+default = true
+
 [tool.uv.workspace]
 members = ["packages/*"]
 
