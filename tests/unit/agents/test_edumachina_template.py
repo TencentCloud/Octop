@@ -68,9 +68,7 @@ def test_edumachina_soul_front_matter_and_rules() -> None:
     assert "read_when:" in front_matter
 
     body = _soul_body()
-    section = re.search(
-        r"## 行为铁律\n(.*?)(?=\n## )", body, re.S
-    )
+    section = re.search(r"## 行为铁律\n(.*?)(?=\n## )", body, re.S)
     assert section is not None, "SOUL.md must keep the 行为铁律 section"
     rules = re.findall(r"^\d+\.\s\*\*", section.group(1), re.M)
     assert len(rules) == 11, "EduMachina ships exactly 11 行为铁律"
