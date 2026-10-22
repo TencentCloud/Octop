@@ -57,6 +57,7 @@ import { CardSkeleton } from "../../components/Skeleton";
 import { CopyableResourceId } from "../../components/CopyableResourceId";
 import { EmptyState, OctopEmptyMascot } from "../../components/EmptyState";
 import StreamSetupGuide from "../../components/StreamSetupGuide/StreamSetupGuide";
+import { TextAssistBar } from "../../components/TextAssistBar";
 import { useCardTableView } from "../../hooks/useCardTableView";
 import { useHorizontalResize } from "../../hooks/useHorizontalResize";
 import { useIsMobile } from "../../hooks/useIsMobile";
@@ -1162,6 +1163,16 @@ export default function SkillPackagesPage() {
               placeholder={t("skillPackages.packageDescriptionPlaceholder")}
             />
           </Form.Item>
+          <TextAssistBar
+            kind="skill_package.description"
+            getName={() => String(packageForm.getFieldValue("name") ?? "")}
+            getText={() =>
+              String(packageForm.getFieldValue("description") ?? "")
+            }
+            onApply={(text) =>
+              packageForm.setFieldsValue({ description: text })
+            }
+          />
           <Form.Item
             name="copy_policy"
             label={t("skillPackages.copyPolicy")}

@@ -26,6 +26,7 @@ import {
 import { skillPackagesApi } from "../../../api/modules/skillPackages";
 import type { SkillPackage } from "../../../api/types/skillPackage";
 import { AgentAdvancedConfigFields } from "../../../components/AgentAdvancedConfigFields";
+import { TextAssistBar } from "../../../components/TextAssistBar";
 import { expertPresetSrc } from "../../../components/AvatarPicker";
 import ExpertColorPicker from "../../../components/ExpertColorPicker";
 import AgentTrajectoryField from "./AgentTrajectoryField";
@@ -763,6 +764,12 @@ export default function CreateFromExpertDrawer({
         <Form.Item name="description" label={t("experts.agentDescription")}>
           <Input.TextArea rows={2} />
         </Form.Item>
+        <TextAssistBar
+          kind="expert.description"
+          getName={() => String(form.getFieldValue("name") ?? "")}
+          getText={() => String(form.getFieldValue("description") ?? "")}
+          onApply={(text) => form.setFieldsValue({ description: text })}
+        />
 
         <Form.Item
           name="welcome_message"
@@ -774,6 +781,12 @@ export default function CreateFromExpertDrawer({
             placeholder={t("experts.welcomeMessagePlaceholder")}
           />
         </Form.Item>
+        <TextAssistBar
+          kind="expert.welcome_message"
+          getName={() => String(form.getFieldValue("name") ?? "")}
+          getText={() => String(form.getFieldValue("welcome_message") ?? "")}
+          onApply={(text) => form.setFieldsValue({ welcome_message: text })}
+        />
 
         <Collapse
           ghost

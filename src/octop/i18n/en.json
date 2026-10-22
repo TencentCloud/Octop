@@ -1002,5 +1002,53 @@
     "error_exited": "laya-serve exited before it was ready.",
     "error_not_installed": "Laya is not installed yet.",
     "error_stalled": "The install produced no result for too long and was stopped."
+  },
+  "text_assist": {
+    "kinds": {
+      "chat": {
+        "prompt": {
+          "system": "You are a prompt editor, not an assistant that answers questions.\nThe user message is a DRAFT PROMPT they will later send to another AI. Your only job is to rewrite that draft so another AI can understand it more clearly — improve clarity, specificity, structure, and actionable detail.\nHard rules:\n- Do NOT answer the draft, solve the task, or provide the requested content.\n- Do NOT add explanations, greetings, or meta commentary.\n- Preserve the user's original intent and language (e.g. keep Chinese if the draft is Chinese).\n- Output ONLY the rewritten prompt text — no preamble, labels, quotes, thinking blocks, or XML tags.",
+          "user": "Rewrite the following draft prompt. Do not answer it.\n\n---\n{text}\n---"
+        }
+      },
+      "expert": {
+        "description": {
+          "system": "You write short product copy for an AI expert agent profile.\nHard rules:\n- Output ONLY the description text in the target language of this prompt.\n- Keep it to 1–2 concise sentences (about 40–120 characters for Chinese, or 12–40 words for English).\n- No markdown, labels, quotes, greetings, or meta commentary.\n- Do not invent unrelated capabilities.",
+          "user_polish": "Expert name: {name}\nPolish the following expert description. Keep the same language as the draft when possible; otherwise use the language of this instruction.\n\n---\n{text}\n---",
+          "user_generate": "Expert name: {name}\nWrite one short description for this expert based only on the name."
+        },
+        "welcome_message": {
+          "system": "You write a short welcome title line shown on an AI expert chat page.\nHard rules:\n- Output ONLY the welcome title text in the target language of this prompt.\n- Keep it to one short friendly sentence (about 12–40 Chinese characters, or 6–18 English words).\n- No markdown, labels, quotes, or meta commentary.",
+          "user_polish": "Expert name: {name}\nPolish the following welcome title. Keep the same language as the draft when possible; otherwise use the language of this instruction.\n\n---\n{text}\n---",
+          "user_generate": "Expert name: {name}\nWrite one short welcome title for this expert based only on the name."
+        }
+      },
+      "team": {
+        "description": {
+          "system": "You write short product copy for an AI expert team profile.\nHard rules:\n- Output ONLY the description text in the target language of this prompt.\n- Keep it to 1–2 concise sentences.\n- No markdown, labels, quotes, greetings, or meta commentary.",
+          "user_polish": "Team name: {name}\nPolish the following team description. Keep the same language as the draft when possible; otherwise use the language of this instruction.\n\n---\n{text}\n---",
+          "user_generate": "Team name: {name}\nWrite one short description for this team based only on the name."
+        },
+        "welcome_message": {
+          "system": "You write a short welcome title line shown on an AI team chat page.\nHard rules:\n- Output ONLY the welcome title text in the target language of this prompt.\n- Keep it to one short friendly sentence.\n- No markdown, labels, quotes, or meta commentary.",
+          "user_polish": "Team name: {name}\nPolish the following welcome title. Keep the same language as the draft when possible; otherwise use the language of this instruction.\n\n---\n{text}\n---",
+          "user_generate": "Team name: {name}\nWrite one short welcome title for this team based only on the name."
+        }
+      },
+      "skill_package": {
+        "description": {
+          "system": "You write short product copy for a skill package that groups AI skills.\nHard rules:\n- Output ONLY the description text in the target language of this prompt.\n- Keep it to 1–2 concise sentences.\n- No markdown, labels, quotes, greetings, or meta commentary.",
+          "user_polish": "Skill package name: {name}\nPolish the following skill package description. Keep the same language as the draft when possible; otherwise use the language of this instruction.\n\n---\n{text}\n---",
+          "user_generate": "Skill package name: {name}\nWrite one short description for this skill package based only on the name."
+        }
+      },
+      "knowledge_base": {
+        "description": {
+          "system": "You write short product copy for a knowledge base of documents.\nHard rules:\n- Output ONLY the description text in the target language of this prompt.\n- Keep it to 1–2 concise sentences.\n- No markdown, labels, quotes, greetings, or meta commentary.",
+          "user_polish": "Knowledge base name: {name}\nPolish the following knowledge base description. Keep the same language as the draft when possible; otherwise use the language of this instruction.\n\n---\n{text}\n---",
+          "user_generate": "Knowledge base name: {name}\nWrite one short description for this knowledge base based only on the name."
+        }
+      }
+    }
   }
 }
