@@ -1089,6 +1089,7 @@ export function useChat(
         refreshInFlightRef.current ||
         historyRefreshing ||
         historyLoading ||
+        snap.historyLoadingMore ||
         shouldBlockHistoryRefresh({
           isStreaming: snap.isStreaming,
           hasLiveSocket: chatStore.hasLiveSocket(key),
@@ -1106,19 +1107,48 @@ export function useChat(
       setHistoryRefreshing(true);
 
       try {
-        const {
-          messages: latest,
-          hasMore,
-          nextOffset,
-          nextCursor,
-        } = await loadThreadHistory(agentId, key, { offset: 0 });
+        let loaded = await loadThreadHistory(agentId, key, { offset: 0 });
+        while (loaded.projectionLoading && loadGenRef.current === gen) {
+          await new Promise((resolve) =>
+            window.setTimeout(
+              resolve,
+              Math.max(500, Math.min(loaded.retryAfterMs, 5000)),
+            ),
+          );
+          if (loadGenRef.current !== gen) return;
+          const current = chatStore.getSnapshot(key);
+          if (
+            current.messages !== snap.messages ||
+            shouldBlockHistoryRefresh({
+              isStreaming: current.isStreaming,
+              hasLiveSocket: chatStore.hasLiveSocket(key),
+            })
+          ) {
+            return;
+          }
+          loaded = await loadThreadHistory(agentId, key, { offset: 0 });
+        }
         // Stale after a concurrent loadHistory / newer refresh — drop apply only.
         if (loadGenRef.current !== gen) return;
+        const current = chatStore.getSnapshot(key);
+        // A stream/push/load-more may update the local tail while the request is
+        // in flight. Never replace that newer state with an older server page;
+        // the user can refresh again after the live update settles.
+        if (
+          current.messages !== snap.messages ||
+          shouldBlockHistoryRefresh({
+            isStreaming: current.isStreaming,
+            hasLiveSocket: chatStore.hasLiveSocket(key),
+          })
+        ) {
+          return;
+        }
+
+        const { messages: latest, hasMore, nextOffset, nextCursor } = loaded;
 
         // Keep older pages and any local turn sent while this refresh was
         // in flight. `snap` is from before the await and must not be the
         // message source — a send during the fetch lives only on the store.
-        const current = chatStore.getSnapshot(key);
         const latestIds = new Set(latest.map((m) => m.id));
         const firstOverlap = current.messages.findIndex((m) =>
           latestIds.has(m.id),
