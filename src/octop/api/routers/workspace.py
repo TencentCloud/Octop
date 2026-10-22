@@ -6,7 +6,7 @@ import logging
 import re
 from typing import Any, Literal
 
-from fastapi import APIRouter, Depends, File, Query, UploadFile
+from fastapi import APIRouter, Depends, File, Query, Request, UploadFile
 from fastapi.responses import Response, StreamingResponse
 from octop_harness.backends.utils import BackendOperationNotSupportedError
 from pydantic import BaseModel
@@ -32,6 +32,7 @@ from octop.infra.gateway.media.backend_files import (
     resolve_preview_payload,
 )
 from octop.infra.utils.doc_edit import DocConverter, get_doc_converter
+from octop.infra.utils.locale import resolve_request_locale
 
 logger = logging.getLogger(__name__)
 
@@ -553,6 +554,7 @@ async def export_workspace_archive(
 )
 async def import_workspace_archive(
     agent_id: str,
+    request: Request,
     file: UploadFile = File(...),  # noqa: B008
     mode: Literal["merge", "replace"] = Query(default="merge"),
     as_user: int | None = None,
@@ -575,5 +577,6 @@ async def import_workspace_archive(
         raw,
         mode=mode,
         local_workspace_dir=local_ws,
+        locale=resolve_request_locale(request),
     )
     return {"ok": True, **result}

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import io
+import sqlite3
 import zipfile
 from pathlib import Path
 from types import SimpleNamespace
@@ -13,7 +14,11 @@ from deepagents.backends.local_shell import LocalShellBackend
 from octop_harness.backends import resolve_backend
 from octop_harness.backends.workspace import BackendWorkspace
 
-from octop.infra.backup.workspace_archive import export_workspace_zip, import_workspace_zip
+from octop.infra.backup.workspace_archive import (
+    WorkspaceImportMode,
+    export_workspace_zip,
+    import_workspace_zip,
+)
 
 
 @pytest.mark.asyncio
@@ -266,3 +271,139 @@ async def test_import_skips_octop_builtin_skills(tmp_path: Path) -> None:
     assert not (ws / ".octop" / "_builtin_skills").exists()
     assert result["imported"] == 1
     assert any("_builtin_skills" in warning for warning in result["warnings"])
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("system_files_path", ["", ".octop", ".state/runtime"])
+async def test_export_skips_only_octop_sqlite_shm(tmp_path: Path, system_files_path: str) -> None:
+    files = {
+        "memory.sqlite": b"memory db",
+        "memory.sqlite-wal": b"memory wal",
+        "memory.sqlite-shm": b"memory shm",
+        "checkpoints.sqlite": b"checkpoints db",
+        "checkpoints.sqlite-wal": b"checkpoints wal",
+        "checkpoints.sqlite-shm": b"checkpoints shm",
+    }
+    system_dir = tmp_path / system_files_path
+    system_dir.mkdir(parents=True, exist_ok=True)
+    for name, content in files.items():
+        (system_dir / name).write_bytes(content)
+    (tmp_path / "notes").mkdir()
+    (tmp_path / "notes" / "memory.sqlite-shm").write_bytes(b"user file")
+    (system_dir / "other.sqlite-shm").write_bytes(b"other db")
+    workspace = BackendWorkspace(
+        LocalShellBackend(root_dir=str(tmp_path), virtual_mode=False),
+        tmp_path,
+        system_files_path=system_files_path,
+    )
+
+    blob = await export_workspace_zip(workspace)
+
+    with zipfile.ZipFile(io.BytesIO(blob)) as zf:
+        names = set(zf.namelist())
+        assert (Path(system_files_path) / "memory.sqlite-shm").as_posix() not in names
+        assert (Path(system_files_path) / "checkpoints.sqlite-shm").as_posix() not in names
+        for name in (
+            "memory.sqlite",
+            "memory.sqlite-wal",
+            "checkpoints.sqlite",
+            "checkpoints.sqlite-wal",
+        ):
+            assert zf.read((Path(system_files_path) / name).as_posix()) == files[name]
+        assert zf.read("notes/memory.sqlite-shm") == b"user file"
+        assert zf.read((Path(system_files_path) / "other.sqlite-shm").as_posix()) == b"other db"
+
+
+@pytest.mark.asyncio
+async def test_export_mountless_skips_legacy_and_current_sqlite_shm(tmp_path: Path) -> None:
+    workspace = BackendWorkspace(
+        _MountlessBackend(
+            {
+                "/memory.sqlite-shm": b"legacy shm",
+                "/.octop/checkpoints.sqlite-shm": b"current shm",
+                "/.octop/memory.sqlite-wal": b"wal",
+                "/notes/checkpoints.sqlite-shm": b"user file",
+            }
+        ),
+        tmp_path,
+    )
+
+    blob = await export_workspace_zip(workspace)
+
+    with zipfile.ZipFile(io.BytesIO(blob)) as zf:
+        assert set(zf.namelist()) == {".octop/memory.sqlite-wal", "notes/checkpoints.sqlite-shm"}
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("mode", ["merge", "replace"])
+@pytest.mark.parametrize("system_files_path", ["", ".octop", ".state/runtime"])
+@pytest.mark.parametrize("locale", ["en", "zh"])
+async def test_import_skips_sqlite_shm_and_counts_uploaded_files(
+    tmp_path: Path, mode: WorkspaceImportMode, system_files_path: str, locale: str
+) -> None:
+    system_dir = tmp_path / system_files_path
+    system_dir.mkdir(parents=True, exist_ok=True)
+    (system_dir / "memory.sqlite-shm").write_bytes(b"live shm")
+    backend = LocalShellBackend(root_dir=str(tmp_path), virtual_mode=False)
+    workspace = BackendWorkspace(backend, tmp_path, system_files_path=system_files_path)
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w") as zf:
+        for name in ("memory.sqlite-shm", "checkpoints.sqlite-shm"):
+            zf.writestr((Path(system_files_path) / name).as_posix(), b"stale shm")
+        zf.writestr((Path(system_files_path) / "memory.sqlite").as_posix(), b"db")
+        zf.writestr((Path(system_files_path) / "memory.sqlite-wal").as_posix(), b"wal")
+        zf.writestr("notes/memory.sqlite-shm", b"user file")
+
+    result = await import_workspace_zip(
+        workspace, buf.getvalue(), mode=mode, local_workspace_dir=tmp_path, locale=locale
+    )
+
+    assert (system_dir / "memory.sqlite-shm").read_bytes() == b"live shm"
+    assert not (system_dir / "checkpoints.sqlite-shm").exists()
+    assert (system_dir / "memory.sqlite").read_bytes() == b"db"
+    assert (system_dir / "memory.sqlite-wal").read_bytes() == b"wal"
+    assert (tmp_path / "notes" / "memory.sqlite-shm").read_bytes() == b"user file"
+    assert result["imported"] == 3
+    expected_warning = (
+        "Skipped 2 SQLite shared-memory file(s); SQLite regenerates them."
+        if locale == "en"
+        else "已跳过 2 个 SQLite 共享内存文件；SQLite 会自动重新生成。"
+    )
+    assert result["warnings"] == [expected_warning]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("mode", ["merge", "replace"])
+async def test_import_with_active_sqlite_shared_memory(
+    tmp_path: Path, mode: WorkspaceImportMode
+) -> None:
+    """Windows refuses truncating the memory-mapped SHM file (issue #2303)."""
+    system_dir = tmp_path / ".octop"
+    system_dir.mkdir()
+    conn = sqlite3.connect(system_dir / "memory.sqlite")
+    try:
+        conn.execute("PRAGMA journal_mode=WAL")
+        conn.execute("CREATE TABLE notes (body TEXT)")
+        conn.execute("INSERT INTO notes VALUES ('keep me')")
+        conn.commit()
+        assert (system_dir / "memory.sqlite-shm").is_file()
+        workspace = BackendWorkspace(
+            LocalShellBackend(root_dir=str(tmp_path), virtual_mode=False),
+            tmp_path,
+            system_files_path=".octop",
+        )
+        buf = io.BytesIO()
+        with zipfile.ZipFile(buf, "w") as zf:
+            zf.writestr(".octop/memory.sqlite-shm", b"stale shm")
+            zf.writestr("new.txt", b"imported")
+
+        result = await import_workspace_zip(
+            workspace, buf.getvalue(), mode=mode, local_workspace_dir=tmp_path
+        )
+
+        assert result["imported"] == 1
+        assert result["warnings"]
+        assert (tmp_path / "new.txt").read_bytes() == b"imported"
+        assert conn.execute("SELECT body FROM notes").fetchall() == [("keep me",)]
+    finally:
+        conn.close()

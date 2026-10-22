@@ -1,4 +1,7 @@
 {
+  "workspace_archive": {
+    "skipped_sqlite_shm": "已跳过 {count} 个 SQLite 共享内存文件；SQLite 会自动重新生成。"
+  },
   "slash": {
     "error": {
       "unknown_command": "未知指令：/{name}。输入 /help 查看可用指令。"
