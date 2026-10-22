@@ -364,7 +364,7 @@ def is_allowed_host_download_abs_path(path: str, *, workspace: Path) -> bool:
     except ValueError:
         pass
 
-    if "/.octop/agents/" in norm:
+    if "/.octop/agents/" in norm or "/.agentbuddy/agents/" in norm:
         return True
     if is_allowed_host_temp_path(resolved):
         return True

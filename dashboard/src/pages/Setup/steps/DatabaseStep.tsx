@@ -62,7 +62,7 @@ export default function DatabaseStep({ onContinue, onBack }: Props) {
 
   const buildSqliteBody = (values: DatabaseSetupBody): DatabaseSetupBody => ({
     driver: "sqlite",
-    sqlite_path: values.sqlite_path?.trim() || "octop.db",
+    sqlite_path: values.sqlite_path?.trim() || "agentbuddy.db",
   });
 
   const buildPostgresBody = (values: DatabaseSetupBody): DatabaseSetupBody => ({
@@ -176,7 +176,7 @@ export default function DatabaseStep({ onContinue, onBack }: Props) {
         form={form}
         layout="vertical"
         initialValues={{
-          sqlite_path: "octop.db",
+          sqlite_path: "agentbuddy.db",
           host: "127.0.0.1",
           port: 5432,
           database: "octop",
@@ -194,7 +194,7 @@ export default function DatabaseStep({ onContinue, onBack }: Props) {
           ]}
           extra={t("wizard.database.sqlitePathHint")}
         >
-          <Input prefix={<Database size={14} />} placeholder="octop.db" />
+          <Input prefix={<Database size={14} />} placeholder="agentbuddy.db" />
         </Form.Item>
 
         <Button

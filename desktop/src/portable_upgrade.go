@@ -29,7 +29,7 @@ type desktopDatabaseConfig struct {
 
 func desktopSQLitePath(home string) (string, bool, error) {
 	driver := "sqlite"
-	sqlitePath := "octop.db"
+	sqlitePath := "agentbuddy.db"
 	configPath := filepath.Join(home, "config.json")
 	if data, err := os.ReadFile(configPath); err == nil {
 		var config desktopDatabaseConfig

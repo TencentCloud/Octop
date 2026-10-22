@@ -145,8 +145,10 @@ function resolveImageSrc(src: string): string {
     }
   }
 
-  // Match workspace path: ends in /.octop/workspace/<rest>
-  const workspaceMatch = filePath.match(/[/\\]\.octop[/\\]workspace[/\\](.*)/);
+  // Match workspace path: ends in /.{agentbuddy,octop}/workspace/<rest>
+  const workspaceMatch = filePath.match(
+    /[/\\]\.(?:agentbuddy|octop)[/\\]workspace[/\\](.*)/,
+  );
   if (workspaceMatch) {
     const relPath = workspaceMatch[1].replace(/\\/g, "/");
     return `/api/workspace/media?path=${encodeURIComponent(relPath)}`;

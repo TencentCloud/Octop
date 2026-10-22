@@ -25,11 +25,23 @@ export function toWorkspaceRelativePath(raw: string, agentId: string): string {
     .replace(/\\/g, "/")
     .replace(/^file:\/\//i, "");
 
-  const agentMarker = `/.octop/agents/${agentId.toLowerCase()}/`;
+  // New agents use /.agentbuddy/; legacy ones keep /.octop/.
+  const agentMarkers = [
+    `/.octop/agents/${agentId.toLowerCase()}/`,
+    `/.agentbuddy/agents/${agentId.toLowerCase()}/`,
+  ];
   const lower = p.toLowerCase();
-  const idx = lower.lastIndexOf(agentMarker);
-  if (idx >= 0) {
-    p = p.slice(idx + agentMarker.length);
+  let matched = -1;
+  let markerLen = 0;
+  for (const marker of agentMarkers) {
+    const idx = lower.lastIndexOf(marker);
+    if (idx > matched) {
+      matched = idx;
+      markerLen = marker.length;
+    }
+  }
+  if (matched >= 0) {
+    p = p.slice(matched + markerLen);
   } else if (p === "/workspace") {
     p = "";
   } else if (p.includes("/workspace/")) {

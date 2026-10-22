@@ -106,7 +106,7 @@ function PlatformHelp({ platform }: { platform: Platform }) {
           <CopyCommand
             text={t(
               "login.forgotPasswordWindowsPs",
-              '& "$env:USERPROFILE\\.octop\\bin\\octop.cmd" user passwd <username> --password <new-password>',
+              '& "$env:USERPROFILE\\.agentbuddy\\bin\\octop.cmd" user passwd <username> --password <new-password>',
             )}
           />
           <p className={styles.label}>
@@ -115,7 +115,7 @@ function PlatformHelp({ platform }: { platform: Platform }) {
           <CopyCommand
             text={t(
               "login.forgotPasswordWindowsCmd",
-              "%USERPROFILE%\\.octop\\bin\\octop.cmd user passwd <username> --password <new-password>",
+              "%USERPROFILE%\\.agentbuddy\\bin\\octop.cmd user passwd <username> --password <new-password>",
             )}
           />
         </div>
