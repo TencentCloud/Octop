@@ -2891,21 +2891,21 @@ class AgentManager:
 
     def _assert_named_storage_backends(self, user_id: int, backend: Any) -> None:
         from octop.infra.backend.resolver import collect_named_storage_backend_refs
-        from octop.infra.users.groups import (
-            RESOURCE_STORAGE_BACKEND,
-            STORAGE_FEATURE_KEY,
-            GroupAccess,
-        )
+        from octop.infra.users.groups import RESOURCE_STORAGE_BACKEND, GroupAccess
 
-        if not collect_named_storage_backend_refs(backend):
+        refs = collect_named_storage_backend_refs(backend)
+        if not refs:
             return
-        GroupAccess(self._repos).assert_allowed(
-            user_id=user_id,
-            is_admin=self._user_is_admin(user_id),
-            resource_type=RESOURCE_STORAGE_BACKEND,
-            resource_key=STORAGE_FEATURE_KEY,
-            is_owner=False,
-        )
+        access = GroupAccess(self._repos)
+        is_admin = self._user_is_admin(user_id)
+        for name in refs:
+            access.assert_allowed(
+                user_id=user_id,
+                is_admin=is_admin,
+                resource_type=RESOURCE_STORAGE_BACKEND,
+                resource_key=str(name),
+                is_owner=False,
+            )
 
     def _skill_package_shared_with(self, user_id: int, package: Any) -> bool:
         """Private packages stay with the owner. Groups cannot open them."""

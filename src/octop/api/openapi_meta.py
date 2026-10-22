@@ -143,6 +143,13 @@ OPENAPI_TAGS: list[dict[str, str]] = [
         "name": "teams",
         "description": "Expert teams: roster, create/edit, and member dispatch.",
     },
+    {
+        "name": "text-assist",
+        "description": (
+            "One-shot LLM polish/generate for form copy and chat composer prompts. "
+            "Prompts are managed in backend i18n."
+        ),
+    },
     {"name": "workspace", "description": "Agent workspace file tree: list, read, write, upload."},
     {"name": "agent_files", "description": "Agent-owned configuration files (SOUL.md, skills, …)."},
     {"name": "usage", "description": "Token usage summaries for billing and dashboards."},

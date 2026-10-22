@@ -404,6 +404,26 @@ async def test_polish_rejects_empty_text(env: Any) -> None:
     assert r.status_code == 400
 
 
+async def test_text_assist_chat_prompt_rejects_empty_text(env: Any) -> None:
+    c, _srv, _fake, alice_auth, _bob_auth, aid = env
+    r = await c.post(
+        "/api/text/assist",
+        headers=alice_auth,
+        json={"kind": "chat.prompt", "text": "   ", "agent_id": aid},
+    )
+    assert r.status_code == 400
+
+
+async def test_text_assist_form_requires_name(env: Any) -> None:
+    c, _srv, _fake, alice_auth, _bob_auth, _aid = env
+    r = await c.post(
+        "/api/text/assist",
+        headers=alice_auth,
+        json={"kind": "expert.description", "text": "", "context": {}},
+    )
+    assert r.status_code == 400
+
+
 async def test_threads_list_after_stream(env: Any) -> None:
     c, _srv, _fake, alice_auth, _bob_auth, aid = env
     await _consume_ws_turn(c, aid, alice_auth, text="What's up?")

@@ -7,11 +7,7 @@ from dataclasses import dataclass
 
 from octop.infra.db.pool import DatabasePool
 from octop.infra.db.repos._base import DbRow, bool_int, map_rows, now_ts
-from octop.infra.users.groups import (
-    CONNECTOR_FEATURE_KEY,
-    RESOURCE_CONNECTOR,
-    group_visibility_sql,
-)
+from octop.infra.users.groups import RESOURCE_CONNECTOR, group_visibility_sql
 
 
 @dataclass(frozen=True)
@@ -132,6 +128,13 @@ class ConnectorRepo:
             ).fetchone()
         return ConnectorRow.from_row(r) if r else None
 
+    def list_all(self) -> list[ConnectorRow]:
+        with self._db.connect() as conn:
+            rows = conn.execute(
+                "SELECT * FROM connectors ORDER BY display_name, instance_id"
+            ).fetchall()
+        return map_rows(rows, ConnectorRow)
+
     def list_by_user(self, user_id: int) -> list[ConnectorRow]:
         with self._db.connect() as conn:
             rows = conn.execute(
@@ -141,31 +144,22 @@ class ConnectorRepo:
         return map_rows(rows, ConnectorRow)
 
     def list_visible(self, user_id: int) -> list[ConnectorRow]:
-        """Owned instances plus ones marked shared. Group narrowing is feature-wide."""
+        """Owned instances plus shared ones that pass the per-instance group layer."""
         with self._db.connect() as conn:
+            clause = group_visibility_sql(RESOURCE_CONNECTOR, "c.instance_id")
             rows = conn.execute(
-                "SELECT * FROM connectors WHERE user_id = ? OR shared = 1 "
-                "ORDER BY display_name, instance_id",
-                (user_id,),
+                "SELECT c.* FROM connectors c "
+                "WHERE (c.user_id = ? OR c.shared = 1) "
+                f"AND (c.user_id = ? OR {clause}) "
+                "ORDER BY c.display_name, c.instance_id",
+                (user_id, user_id, user_id),
             ).fetchall()
         return map_rows(rows, ConnectorRow)
 
     def connector_feature_allows(self, user_id: int) -> bool:
-        """Whether *user_id* may use connectors. Admins always pass.
-
-        No grant on the feature key keeps today's audience. Grants narrow use
-        to those groups. Owning an instance does not bypass this.
-        """
-        with self._db.connect() as conn:
-            role = conn.execute("SELECT role FROM users WHERE id = ?", (user_id,)).fetchone()
-            if role is not None and str(role["role"]) == "admin":
-                return True
-            clause = group_visibility_sql(RESOURCE_CONNECTOR, "?")
-            row = conn.execute(
-                f"SELECT 1 WHERE {clause}",
-                (CONNECTOR_FEATURE_KEY, CONNECTOR_FEATURE_KEY, user_id),
-            ).fetchone()
-        return row is not None
+        """Deprecated feature-wide gate. Always True; visibility is per instance."""
+        del user_id
+        return True
 
     def list_by_kind(self, kind: str) -> list[ConnectorRow]:
         with self._db.connect() as conn:

@@ -1,6 +1,7 @@
 export type { AvatarPreset, AvatarPresetCatalog } from "./types";
 export { ResourceAvatar, resolveAvatarPreset } from "./ResourceAvatar";
 export { ResourceAvatarPicker } from "./ResourceAvatarPicker";
+export { default as avatarPickerStyles } from "./AvatarPicker.module.less";
 export {
   AVATAR_ACCEPT,
   AVATAR_MAX_BYTES,

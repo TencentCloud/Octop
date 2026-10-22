@@ -6,7 +6,7 @@ import asyncio
 import mimetypes
 import tempfile
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 from fastapi import APIRouter, Depends, File, Form, UploadFile
 from fastapi.responses import FileResponse, Response
@@ -102,7 +102,9 @@ async def list_plugins(
     server: OctopServer = Depends(get_server),
     _user: Any = Depends(current_user),
 ) -> list[dict[str, Any]]:
-    return _plugin_manager(server).list_installed()
+    return [
+        _with_plugin_visibility(server, item) for item in _plugin_manager(server).list_installed()
+    ]
 
 
 @router.post("/reload", summary="Reload plugins from disk (admin)")
@@ -285,7 +287,30 @@ async def get_market_plugin_ui_asset(
 
 
 class PluginPatchBody(BaseModel):
-    enabled: bool = Field(..., description="Global enable switch for this plugin")
+    enabled: bool | None = Field(default=None, description="Global enable switch")
+    visibility: Literal["all", "groups"] | None = None
+    group_ids: list[str] | None = None
+
+
+def _plugin_group_access(server: OctopServer) -> Any:
+    from octop.infra.users.groups import GroupAccess
+
+    services = server.services
+    if services is None:
+        raise OctopError(ErrorCode.INTERNAL_ERROR, "services unavailable")
+    return GroupAccess(services.repos)
+
+
+def _with_plugin_visibility(server: OctopServer, item: dict[str, Any]) -> dict[str, Any]:
+    from octop.infra.users.groups import RESOURCE_PLUGIN
+
+    plugin_id = str(item.get("id") or "")
+    if not plugin_id:
+        return item
+    access = _plugin_group_access(server)
+    out = dict(item)
+    out.update(access.visibility(RESOURCE_PLUGIN, plugin_id, shared=None))
+    return out
 
 
 @router.patch("/{plugin_id}", summary="Update plugin settings (admin)")
@@ -295,17 +320,37 @@ async def patch_plugin(
     server: OctopServer = Depends(get_server),
     _user: Any = Depends(require_permission("plugins")),
 ) -> dict[str, Any]:
-    """Enable or disable an installed plugin server-wide.
+    """Enable/disable a plugin and/or set who may use it on agents.
 
     Disabled plugins are unloaded from the process registry so their tools /
     skills / hooks are unavailable to all agents until re-enabled.
     """
+    if body.enabled is None and body.visibility is None:
+        raise OctopError(ErrorCode.FORBIDDEN, "provide enabled and/or visibility", status=400)
     mgr = _plugin_manager(server)
-    item = mgr.set_enabled(plugin_id, body.enabled)
-    if server.app_runtime is not None:
-        await server.refresh_plugin_channels()
-        await server.app_runtime.agent_registry.reload_all()
-    return item
+    item: dict[str, Any] | None = None
+    if body.enabled is not None:
+        item = mgr.set_enabled(plugin_id, body.enabled)
+        if server.app_runtime is not None:
+            await server.refresh_plugin_channels()
+            await server.app_runtime.agent_registry.reload_all()
+    if body.visibility is not None:
+        from octop.infra.users.groups import RESOURCE_PLUGIN
+
+        _plugin_group_access(server).set_visibility(
+            RESOURCE_PLUGIN,
+            plugin_id,
+            body.visibility,
+            body.group_ids,
+        )
+    if item is None:
+        for row in mgr.list_installed():
+            if str(row.get("id")) == plugin_id:
+                item = row
+                break
+    if item is None:
+        raise OctopError(ErrorCode.NOT_FOUND, "plugin not found")
+    return _with_plugin_visibility(server, item)
 
 
 @router.delete("/{plugin_id}", summary="Uninstall plugin (admin)")
@@ -314,7 +359,10 @@ async def uninstall_plugin(
     server: OctopServer = Depends(get_server),
     _user: Any = Depends(require_permission("plugins")),
 ) -> dict[str, str]:
+    from octop.infra.users.groups import RESOURCE_PLUGIN
+
     _plugin_manager(server).uninstall(plugin_id)
+    _plugin_group_access(server).clear(RESOURCE_PLUGIN, plugin_id)
     if server.app_runtime is not None:
         await server.refresh_plugin_channels()
         await server.app_runtime.agent_registry.reload_all()
@@ -365,14 +413,28 @@ def _agent_row_and_config(
 def _agent_plugins_response(
     server: OctopServer,
     agent_cfg: dict[str, Any],
+    *,
+    user: Any,
 ) -> AgentPluginsResponse:
+    from octop.infra.users.groups import RESOURCE_PLUGIN
+
     raw_plugins = agent_cfg.get("plugins")
     plugins_cfg = raw_plugins if isinstance(raw_plugins, dict) else {}
+    access = _plugin_group_access(server)
+    is_admin = bool(getattr(user, "is_admin", False) or getattr(user, "role", "") == "admin")
     items: list[AgentPluginItem] = []
     for plugin in _plugin_manager(server).list_installed():
         if plugin.get("error"):
             continue
         plugin_id = str(plugin["id"])
+        if not access.allows(
+            user_id=int(user.id),
+            is_admin=is_admin,
+            resource_type=RESOURCE_PLUGIN,
+            resource_key=plugin_id,
+            is_owner=False,
+        ):
+            continue
         global_enabled = plugin.get("enabled", True) is not False
         per_agent_enabled = agent_plugin_enabled(plugins_cfg, plugin_id)
         items.append(
@@ -406,7 +468,7 @@ async def list_agent_plugins(
 ) -> AgentPluginsResponse:
     """List global and per-agent plugin state. Missing agent switches default on."""
     _, cfg = _agent_row_and_config(server, agent_id, user)
-    return _agent_plugins_response(server, cfg)
+    return _agent_plugins_response(server, cfg, user=user)
 
 
 @router.patch(
@@ -440,7 +502,7 @@ async def patch_agent_plugins(
     )
     await registry.persist_plugin_tools_config(agent_id, merged)
     await registry.reload(agent_id)
-    return _agent_plugins_response(server, registry.get_config(agent_id))
+    return _agent_plugins_response(server, registry.get_config(agent_id), user=user)
 
 
 @router.get("/agents/{agent_id}/tools", summary="List plugin tools for an agent")

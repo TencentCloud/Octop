@@ -7,6 +7,7 @@ import { useTranslation } from "react-i18next";
 import type { FormInstance } from "antd";
 import EmojiPicker from "../../../../components/EmojiPicker";
 import Markdown from "../../../../components/Markdown/LazyMarkdown";
+import { TextAssistBar } from "../../../../components/TextAssistBar";
 import { request } from "../../../../api/request";
 import { splitMarkdownFrontmatter } from "../../../../utils/markdown";
 import { withFromWorkspace } from "../../../../utils/fromWorkspace";
@@ -311,11 +312,14 @@ export function SkillDrawer({
   onPushToPackage,
   readOnly = false,
 }: SkillDrawerProps) {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const isCreate = !editingSkill;
   const [localEditMode, setLocalEditMode] = useState(false);
   const [viewTab, setViewTab] = useState<ViewTab>("preview");
   const [editorTab, setEditorTab] = useState<EditorTab>("form");
+  const [presentationLocale, setPresentationLocale] = useState<"zh" | "en">(
+    () => (i18n.language?.startsWith("zh") ? "zh" : "en"),
+  );
   const [selectedFilePath, setSelectedFilePath] = useState<string | null>(null);
   const [siblingContent, setSiblingContent] = useState("");
   const [siblingLoading, setSiblingLoading] = useState(false);
@@ -366,6 +370,7 @@ export function SkillDrawer({
     setViewTab("preview");
     setEditorTab("form");
     setSiblingViewTab("preview");
+    setPresentationLocale(i18n.language?.startsWith("zh") ? "zh" : "en");
     if (editingSkill) {
       setSelectedFilePath(skillManifestPath(editingSkill));
       const parsed = parseSkillFormFromDetail(editingSkill);
@@ -389,7 +394,7 @@ export function SkillDrawer({
       body: t("skills.newSkillBodyTemplate"),
       content: "",
     });
-  }, [editingSkill, form, open, packageId, t]);
+  }, [editingSkill, form, i18n.language, open, packageId, t]);
 
   const loadSiblingFile = useCallback(
     async (path: string) => {
@@ -525,6 +530,13 @@ export function SkillDrawer({
     ? t("skills.editSkill")
     : t("skills.viewSkill");
 
+  const skillAssistName = () => {
+    const name = String(form.getFieldValue("name") ?? "").trim();
+    const labelZh = String(form.getFieldValue("labelZh") ?? "").trim();
+    const labelEn = String(form.getFieldValue("labelEn") ?? "").trim();
+    return name || labelZh || labelEn;
+  };
+
   const nameField = (
     <Form.Item
       name="name"
@@ -554,52 +566,146 @@ export function SkillDrawer({
   );
 
   const descriptionField = (
-    <Form.Item
-      name="description"
-      label={t("skills.skillDescription")}
-      rules={
-        fieldsEditable && editorTab === "form"
-          ? [{ required: true, message: t("skills.pleaseInputDescription") }]
-          : undefined
-      }
-    >
-      <Input.TextArea
-        placeholder={t("skills.descriptionPlaceholder")}
-        autoSize={{ minRows: 2, maxRows: fieldsEditable ? 4 : 6 }}
-        disabled={!fieldsEditable}
-      />
-    </Form.Item>
+    <>
+      <Form.Item
+        name="description"
+        label={t("skills.skillDescription")}
+        className={fieldsEditable ? styles.textAssistField : undefined}
+        rules={
+          fieldsEditable && editorTab === "form"
+            ? [{ required: true, message: t("skills.pleaseInputDescription") }]
+            : undefined
+        }
+      >
+        <Input.TextArea
+          placeholder={t("skills.descriptionPlaceholder")}
+          autoSize={{ minRows: 2, maxRows: fieldsEditable ? 4 : 6 }}
+          disabled={!fieldsEditable}
+        />
+      </Form.Item>
+      {fieldsEditable ? (
+        <TextAssistBar
+          kind="skill.description"
+          getName={skillAssistName}
+          getText={() => String(form.getFieldValue("description") ?? "")}
+          onApply={(text) => form.setFieldsValue({ description: text })}
+        />
+      ) : null}
+    </>
   );
 
   const presentationFields = (
-    <>
-      <Form.Item name="labelZh" label={t("skills.displayNameZh")}>
-        <Input
-          placeholder={t("skills.displayNameZhPlaceholder")}
-          disabled={!fieldsEditable}
+    <div className={styles.presentationBlock}>
+      <div className={styles.presentationHeader}>
+        <div className={styles.presentationCopy}>
+          <span className={styles.presentationTitle}>
+            {t("skills.presentationSection")}
+          </span>
+          <span className={styles.presentationHint}>
+            {t("skills.presentationHint")}
+          </span>
+        </div>
+        <Segmented
+          size="small"
+          value={presentationLocale}
+          onChange={(value) => setPresentationLocale(value as "zh" | "en")}
+          options={[
+            { value: "zh", label: t("skills.presentationTabZh") },
+            { value: "en", label: t("skills.presentationTabEn") },
+          ]}
         />
-      </Form.Item>
-      <Form.Item name="labelEn" label={t("skills.displayNameEn")}>
-        <Input
-          placeholder={t("skills.displayNameEnPlaceholder")}
-          disabled={!fieldsEditable}
-        />
-      </Form.Item>
-      <Form.Item name="summaryZh" label={t("skills.displaySummaryZh")}>
-        <Input.TextArea
-          placeholder={t("skills.displaySummaryZhPlaceholder")}
-          autoSize={{ minRows: 2, maxRows: 3 }}
-          disabled={!fieldsEditable}
-        />
-      </Form.Item>
-      <Form.Item name="summaryEn" label={t("skills.displaySummaryEn")}>
-        <Input.TextArea
-          placeholder={t("skills.displaySummaryEnPlaceholder")}
-          autoSize={{ minRows: 2, maxRows: 3 }}
-          disabled={!fieldsEditable}
-        />
-      </Form.Item>
-    </>
+      </div>
+      <div
+        className={
+          presentationLocale === "zh"
+            ? undefined
+            : styles.presentationPaneHidden
+        }
+      >
+        <Form.Item
+          name="labelZh"
+          label={t("skills.presentationDisplayName")}
+          className={fieldsEditable ? styles.textAssistField : undefined}
+        >
+          <Input
+            placeholder={t("skills.displayNameZhPlaceholder")}
+            disabled={!fieldsEditable}
+          />
+        </Form.Item>
+        {fieldsEditable ? (
+          <TextAssistBar
+            kind="skill.label_zh"
+            getName={skillAssistName}
+            getText={() => String(form.getFieldValue("labelZh") ?? "")}
+            onApply={(text) => form.setFieldsValue({ labelZh: text })}
+          />
+        ) : null}
+        <Form.Item
+          name="summaryZh"
+          label={t("skills.presentationSummary")}
+          className={fieldsEditable ? styles.textAssistField : undefined}
+        >
+          <Input.TextArea
+            placeholder={t("skills.displaySummaryZhPlaceholder")}
+            autoSize={{ minRows: 2, maxRows: 3 }}
+            disabled={!fieldsEditable}
+          />
+        </Form.Item>
+        {fieldsEditable ? (
+          <TextAssistBar
+            kind="skill.summary_zh"
+            getName={skillAssistName}
+            getText={() => String(form.getFieldValue("summaryZh") ?? "")}
+            onApply={(text) => form.setFieldsValue({ summaryZh: text })}
+          />
+        ) : null}
+      </div>
+      <div
+        className={
+          presentationLocale === "en"
+            ? undefined
+            : styles.presentationPaneHidden
+        }
+      >
+        <Form.Item
+          name="labelEn"
+          label={t("skills.presentationDisplayName")}
+          className={fieldsEditable ? styles.textAssistField : undefined}
+        >
+          <Input
+            placeholder={t("skills.displayNameEnPlaceholder")}
+            disabled={!fieldsEditable}
+          />
+        </Form.Item>
+        {fieldsEditable ? (
+          <TextAssistBar
+            kind="skill.label_en"
+            getName={skillAssistName}
+            getText={() => String(form.getFieldValue("labelEn") ?? "")}
+            onApply={(text) => form.setFieldsValue({ labelEn: text })}
+          />
+        ) : null}
+        <Form.Item
+          name="summaryEn"
+          label={t("skills.presentationSummary")}
+          className={fieldsEditable ? styles.textAssistField : undefined}
+        >
+          <Input.TextArea
+            placeholder={t("skills.displaySummaryEnPlaceholder")}
+            autoSize={{ minRows: 2, maxRows: 3 }}
+            disabled={!fieldsEditable}
+          />
+        </Form.Item>
+        {fieldsEditable ? (
+          <TextAssistBar
+            kind="skill.summary_en"
+            getName={skillAssistName}
+            getText={() => String(form.getFieldValue("summaryEn") ?? "")}
+            onApply={(text) => form.setFieldsValue({ summaryEn: text })}
+          />
+        ) : null}
+      </div>
+    </div>
   );
 
   const emojiField = (
@@ -689,6 +795,12 @@ export function SkillDrawer({
           placeholder={t("skills.bodyPlaceholder")}
         />
       </Form.Item>
+      <TextAssistBar
+        kind="skill.body"
+        getName={skillAssistName}
+        getText={() => String(form.getFieldValue("body") ?? "")}
+        onApply={(text) => form.setFieldsValue({ body: text })}
+      />
     </div>
   );
 
