@@ -509,7 +509,8 @@ for non-`/` paths.
 | Method | Path | Auth | Notes |
 |--------|------|------|-------|
 | `GET`    | `/connectors/catalog` | user | connector catalog (Notion, Figma, …) |
-| `GET`    | `/connectors/test-credentials` | user | preflight credentials |
+| `POST`   | `/connectors/test-credentials` | user | preflight credentials |
+| `GET`    | `/connectors/open-design/local-status` | user | read-only host discovery; returns `installed` and `state` (`ready`, `missing`, `stopped`, `multiple`), never launch credentials |
 | `GET`    | `/connector-instances` | user | list instances |
 | `POST`   | `/connector-instances` | user | create instance |
 | `GET`/`PATCH`/`DELETE` | `/connector-instances/{id}` | user | CRUD on an instance |
@@ -702,3 +703,13 @@ dashboard mirrors every code under `apiErrors.*` in
 | `STORAGE_BACKEND_UNREACHABLE` | 502 | Remote backend connect / list failed |
 | `CONNECTOR_OAUTH_FAILED` | 400 | OAuth flow could not complete |
 | `INTERNAL_ERROR` | 500 | Unhandled exception (logged with traceback) |
+
+### OpenDesign local configuration
+
+For `open-design`, create an instance or test credentials with
+`"credentials": {"auto_detect": true}` to resolve the running installation on the
+Octop host. Detection does not launch or install the application. The backend
+reads the canonical MCP configuration and uses existing credential validation
+and encryption; status responses do not contain it. Advanced clients may supply
+`command`, `args` and `env` explicitly instead. See
+[OpenDesign](connectors-open-design.md) for installation and deployment limits.

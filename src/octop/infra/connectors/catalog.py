@@ -21,7 +21,7 @@ AuthKind = Literal[
 ]
 CredentialFieldType = Literal["text", "password", "url", "tags"]
 RemoteTransport = Literal["raw_http", "streamable_http", "sse"]
-McpMode = Literal["remote", "gateway", "internal", "stdio"]
+McpMode = Literal["remote", "gateway", "internal", "stdio", "managed"]
 ConnectorCategory = Literal[
     "office",
     "knowledge",
@@ -71,6 +71,7 @@ class ConnectorCatalogEntry:
     # remote: harness talks to the vendor URL.
     # gateway: in-process Python adapter; harness config is a name-only placeholder.
     # internal: Octop-hosted HTTP MCP at /api/internal/mcp; harness loads via HTTP.
+    # managed: registered handler owns configuration, tool assembly and sessions.
     mcp_mode: McpMode
     category: ConnectorCategory
     quick_auth_url: str | None = None
@@ -91,6 +92,7 @@ class ConnectorCatalogEntry:
     mcp_user_agent: str | None = None
     credential_fields: tuple[ConnectorCredentialField, ...] = ()
     remote_transport: RemoteTransport = "raw_http"
+    runtime_handler: str | None = None
 
 
 def is_inprocess_gateway(entry: ConnectorCatalogEntry) -> bool:
@@ -203,6 +205,7 @@ def _parse_entry(raw: object) -> ConnectorCatalogEntry:
         raise ValueError(f"catalog field {kind}.credential_fields must be a list")
     return ConnectorCatalogEntry(
         kind=kind,
+        runtime_handler=_optional_str(raw.get("runtime_handler"), f"{kind}.runtime_handler"),
         name=_localized(raw.get("name"), f"{kind}.name"),
         description=_localized(raw.get("description"), f"{kind}.description"),
         auth_kind=_literal(raw.get("auth_kind"), f"{kind}.auth_kind", get_args(AuthKind)),

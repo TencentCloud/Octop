@@ -6604,7 +6604,27 @@
     "weknoraFound": "已检测到本机 WeKnora 并填入地址",
     "weknoraNotFound": "未在 OCTOP 主机的 127.0.0.1:8080 检测到 WeKnora",
     "weknoraStep1": "打开 WeKnora 并创建 API Key",
-    "weknoraStep2": "检测本机服务，或手动填写部署地址"
+    "weknoraStep2": "检测本机服务，或手动填写部署地址",
+    "openDesignImportHint": "粘贴 OpenDesign「Settings → MCP server」的启动配置。",
+    "openDesignImportInvalid": "请填写有效的 stdio 启动配置，参数和环境变量值必须为字符串。",
+    "openDesignSelectServer": "选择要导入的 OpenDesign 服务",
+    "openDesignImport": "导入启动配置",
+    "openDesignAutomatic": "自动连接本机 OpenDesign",
+    "openDesignImported": "MCP 启动配置已就绪",
+    "openDesignImportedHint": "已保存或导入的配置包含启动程序、启动参数和环境变量，无需逐项填写。",
+    "openDesignDetect": "重新检测",
+    "openDesignInstall": "下载与安装指引",
+    "openDesignUseAutomatic": "改用本机自动检测",
+    "openDesignAdvanced": "高级：导入 MCP 配置",
+    "openDesignAdvancedHint": "远程 SSH 连接、非标准安装位置或不支持自动发现的版本，可粘贴 OpenDesign → Settings → MCP server 的完整 JSON。这会替换启动配置，无需填写 API Key。",
+    "openDesignLocal": {
+      "loading": "正在检测 Octop 主机上的 OpenDesign…",
+      "ready": "OpenDesign 正在运行。保存时将自动获取完整 MCP 启动配置并加密保存。",
+      "missing": "请在 Octop 所在主机安装并打开 OpenDesign，然后重新检测。使用 Docker 或远程部署时，需要确保 Octop 主机能够访问该应用。",
+      "stopped": "已安装 OpenDesign。请打开应用后重新检测；若当前版本不支持自动发现，可在下方导入 MCP 配置。",
+      "multiple": "检测到多个运行中的 OpenDesign 安装，请在下方导入需要连接的实例的配置。",
+      "error": "检测失败，请重试或在下方导入 MCP 配置。"
+    }
   },
   "mbtiPage": {
     "pickAgent": "请先选择一个专家"

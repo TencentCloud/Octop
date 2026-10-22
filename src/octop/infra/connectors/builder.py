@@ -18,6 +18,7 @@ from octop.infra.connectors.catalog import (
 )
 from octop.infra.connectors.custom_mcp import validate_mcp_http_url
 from octop.infra.connectors.mail_servers import resolve_mail_servers
+from octop.infra.connectors.managed import managed_handler
 from octop.infra.utils.ulid import new_ulid
 
 # MCP Streamable HTTP transport (Notion, etc.) requires both content types.
@@ -100,6 +101,8 @@ def build_http_mcp_spec(
     creds: dict[str, Any],
     config: OctopConfig,
 ) -> dict[str, Any]:
+    if entry.mcp_mode == "managed":
+        return managed_handler(entry).connection_spec(creds)
     if entry.mcp_mode == "remote":
         return _build_remote_spec(entry, creds)
     if entry.mcp_mode == "stdio":
@@ -287,6 +290,9 @@ def validate_create_credentials(
         raise ValueError(f"unknown connector kind: {kind}")
     if entry.phase != "available":
         raise ValueError(f"connector {kind} is not available yet")
+
+    if entry.mcp_mode == "managed":
+        return managed_handler(entry).normalize_credentials(credentials)
 
     out: dict[str, Any] = {}  # pre-declare to avoid mypy no-redef errors
 
@@ -598,15 +604,16 @@ def build_mcp_server_configs_for_user(
         )
     for inst, entry, creds in _iter_active_connectors(svc, connector_repo, user_id):
         try:
-            if is_inprocess_gateway(entry):
+            if is_inprocess_gateway(entry) or entry.mcp_mode == "managed":
                 # Name-only placeholder: harness skips specs without ``transport``;
-                # tools are injected in-process in AgentManager._post_start_agent.
+                # gateway tools load after startup; managed tools load when selected.
                 configs[inst.mcp_server_name] = {}
                 if log:
                     logger.info(
-                        "  register %s (%s) mcp_mode=gateway (in-process, no HTTP preload)",
+                        "  register %s (%s) mcp_mode=%s (host-owned tool assembly)",
                         inst.mcp_server_name,
                         inst.kind,
+                        entry.mcp_mode,
                     )
                 continue
             configs[inst.mcp_server_name] = build_http_mcp_spec(

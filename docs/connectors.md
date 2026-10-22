@@ -52,6 +52,7 @@ are updating `catalog.json` in the same change.
 | `qcc` | Qichacha | 企查查 | professional | oauth2 | internal |
 | `tencent-ardot` | Tencent Ardot | 腾讯设计 Ardot | office | oauth2 | remote |
 | `youdao-note` | Youdao Note | 有道云笔记 | knowledge | personal_token | remote |
+| `open-design` | OpenDesign | OpenDesign | self_hosted | custom_fields | managed |
 | `notion` | Notion | Notion | knowledge | oauth2 | remote |
 | `openalex` | OpenAlex | OpenAlex | knowledge | oauth2 | remote |
 | `dida365` | TickTick | 滴答清单 | productivity | oauth2 | remote |
@@ -70,6 +71,7 @@ are updating `catalog.json` in the same change.
 |------|---------|------|
 | `remote` | The harness talks to the vendor MCP URL. | Harness 直连厂商 MCP 地址。 |
 | `gateway` | An in-process Python adapter; the harness config is a name-only placeholder. | 进程内 Python 适配器；Harness 配置只占位。 |
+| `stdio` | Managed persistent MCP subprocess, isolated per conversation. | 按对话隔离的持续 MCP 子进程。 |
 | `internal` | Octop hosts HTTP MCP at `/api/internal/mcp`; the harness loads it over HTTP. | Octop 在 `/api/internal/mcp` 托管 HTTP MCP，Harness 经 HTTP 加载。 |
 
 ## Catalog JSON / 目录 JSON
@@ -91,5 +93,6 @@ Optional: `quick_auth_url`, `login_url`, `guide_url`, `manual_url`, `auth_hint`,
 
 ## Deep dives / 深入说明
 
+- [OpenDesign](connectors-open-design.md)
 - [Agent Mail CLI](connectors-agently-mail.md)
 - [Qichacha / 企查查](connectors-qcc.md)

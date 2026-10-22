@@ -410,6 +410,11 @@ async def probe_connector(
 
         return await probe(bearer_token(cred_payload))
 
+    if entry.kind == "open-design":
+        from octop.infra.connectors.open_design import probe_open_design
+
+        return await probe_open_design(cred_payload)
+
     if entry.mcp_mode == "gateway":
         try:
             await asyncio.to_thread(probe_gateway_credentials, entry.kind, cred_payload)
