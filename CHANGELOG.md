@@ -6,6 +6,12 @@
 
 ## [Unreleased]
 
+## [1.0.7] - 2026-10-22
+
+### 变更
+- antd 组件类名前缀 `octop-*` → `agentbuddy-*`(ConfigProvider `prefixCls`;浏览器 Elements 面板可见的品牌痕迹,78 处自定义样式覆盖同步)。技能工具协议的 `octop_ui` 包络键与技能 frontmatter `metadata.octop` 保持不变(工具格式契约)
+
+
 ## [1.0.6] - 2026-10-22
 
 ### 修复
