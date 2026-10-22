@@ -122,6 +122,8 @@ jobs:
     needs: bundle
     if: startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     steps:
       # Checkout must run BEFORE downloading artifacts: actions/checkout
       # performs a `git clean -ffdx` that would wipe the bundles otherwise.
