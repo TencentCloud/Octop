@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import errno
+import shutil
 import tempfile
 from pathlib import Path
 
@@ -79,7 +81,16 @@ def create(
             else:
                 dest = output
                 dest.parent.mkdir(parents=True, exist_ok=True)
-                tmp_path.replace(dest)
+                try:
+                    tmp_path.replace(dest)
+                except OSError as exc:
+                    if exc.errno != errno.EXDEV:
+                        raise
+                    # Stage on the destination filesystem before replacing an existing backup.
+                    with tempfile.TemporaryDirectory(dir=dest.parent) as staging:
+                        staged = Path(staging) / "backup.tar.gz"
+                        shutil.copy2(tmp_path, staged)
+                        staged.replace(dest)
                 size = dest.stat().st_size
     finally:
         db.close()
