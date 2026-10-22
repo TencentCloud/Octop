@@ -6,9 +6,22 @@
 
 ## [Unreleased]
 
+## [1.0.4] - 2026-10-22
+
 ### 新增
 - 内置搜索引擎扩展：新增豆包搜索（火山引擎 Global 版）、DeepSeek 网页搜索、Exa 语义搜索三个引擎，在「设置 → 高级 → 搜索」中填入对应 API Key 即可使用；连通性测试同步支持三个新引擎
 - octop-harness、octop-gateway、octop-memory、octop-browser 四个上游包源码收进本仓库 `packages/` 目录，以 uv workspace 管理，锁文件完全自包含，离线环境可从本仓库直接构建全部 wheel
+
+### 变更
+- **品牌标识全面切换（文件系统与环境变量层）**：
+  - 安装数据目录 `~/.octop` → `~/.agentbuddy`（控制面数据库 `agentbuddy.db`、日志 `agentbuddy.log`、向导口令 `agentbuddy-login.txt`）；环境变量 `OCTOP_HOME` → `AGENTBUDDY_HOME`（旧名保留兼容读取）
+  - 环境变量前缀 `OCTOP_*` → `AGENTBUDDY_*`（数据库、端口、备份、技能等约 80 个）；agent 执行环境与 Docker 沙箱镜像同步
+  - 浏览器 F12 可见面：请求/响应头 `X-Octop-*` → `X-Agentbuddy-*`、SSO Cookie、`window.__OCTOP_*` 全局、备份导出文件名
+  - agent 工作区内部系统目录 `.octop/` → `.agentbuddy/`（存量工作区按各自配置继续使用 `.octop`，无需迁移）
+  - 上游包家目录收编：`~/.octop-memory` / `~/.octop-browser` / `~/.octop-harness` → `~/.agentbuddy/{memory,browser,harness}`（旧目录存在时自动沿用）
+  - 内置技能 `octop-assistant` → `agentbuddy-assistant`，正文同步更新安装方式与数据目录说明
+  - Docker 沙箱容器前缀 `octop_sandbox` → `agentbuddy_sandbox`（配置键已存在，老配置不受影响）
+  - **不迁移、全新安装即生效**；从旧版本原地升级的实例需手动 `mv ~/.octop ~/.agentbuddy`（或设置 `AGENTBUDDY_HOME` 指向旧目录）
 
 ### 移除
 - 下线 Brave Search 与 Google CSE 两个内置搜索引擎（国内/政务网络环境无法访问其 API）。设置页不再出现这两张卡片，环境变量白名单移除 `BRAVE_API_KEY`、`GOOGLE_API_KEY`、`GOOGLE_CSE_ID`。已写入 `~/.octop/env` 的旧 Key 保留但不再被读取，可手动删除；`web_search_tools` 显式列出 `brave`/`google` 的 agent 配置需改为可用引擎名或恢复默认 `auto`
