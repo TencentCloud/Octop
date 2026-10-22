@@ -62,7 +62,7 @@ export function canonicalizeDockFilePath(
         return posix.slice(idx + marker.length);
       }
     }
-    for (const dir of ([".agentbuddy", ".octop"] as const)) {
+    for (const dir of [".agentbuddy", ".octop"] as const) {
       const agentRoot = `/${dir}/agents/${idLower}`;
       if (
         lower === agentRoot ||

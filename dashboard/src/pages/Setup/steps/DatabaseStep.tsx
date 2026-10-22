@@ -69,8 +69,8 @@ export default function DatabaseStep({ onContinue, onBack }: Props) {
     driver: "postgresql",
     host: values.host?.trim() || "127.0.0.1",
     port: values.port ?? 5432,
-    database: values.database?.trim() || "octop",
-    user: values.user?.trim() || "octop",
+    database: values.database?.trim() || "agentbuddy",
+    user: values.user?.trim() || "agentbuddy",
     password: values.password || undefined,
   });
 
@@ -179,8 +179,8 @@ export default function DatabaseStep({ onContinue, onBack }: Props) {
           sqlite_path: "agentbuddy.db",
           host: "127.0.0.1",
           port: 5432,
-          database: "octop",
-          user: "octop",
+          database: "agentbuddy",
+          user: "agentbuddy",
         }}
       >
         <Form.Item

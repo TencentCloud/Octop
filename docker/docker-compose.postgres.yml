@@ -26,9 +26,9 @@ services:
     ports:
       - "${AGENTBUDDY_PG_PORT:-5432}:5432"
     environment:
-      POSTGRES_USER: ${AGENTBUDDY_PG_USER:-octop}
-      POSTGRES_PASSWORD: ${AGENTBUDDY_PG_PASSWORD:-octop}
-      POSTGRES_DB: ${AGENTBUDDY_PG_DB:-octop}
+      POSTGRES_USER: ${AGENTBUDDY_PG_USER:-agentbuddy}
+      POSTGRES_PASSWORD: ${AGENTBUDDY_PG_PASSWORD:-agentbuddy}
+      POSTGRES_DB: ${AGENTBUDDY_PG_DB:-agentbuddy}
     volumes:
       - agentbuddy_pgdata:/var/lib/postgresql/data
       - ./postgres/init-vector.sql:/docker-entrypoint-initdb.d/01-vector.sql:ro

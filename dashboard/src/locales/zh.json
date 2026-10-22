@@ -5394,7 +5394,7 @@
     "sandboxScopeUser": "按用户（user）",
     "sandboxScopeFixed": "固定（fixed）",
     "sandboxPrefixLabel": "容器名前缀",
-    "sandboxPrefixExtra": "默认 octop_sandbox；命名如 {prefix}_agent_{id}",
+    "sandboxPrefixExtra": "默认 agentbuddy_sandbox；命名如 {prefix}_agent_{id}",
     "sandboxIdLabel": "固定沙箱 ID",
     "pleaseEnterSandboxId": "请输入固定沙箱 ID",
     "sandboxUsernameLabel": "用户名（可选覆盖）",

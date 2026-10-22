@@ -5394,7 +5394,7 @@
     "sandboxScopeUser": "Per user (user)",
     "sandboxScopeFixed": "Fixed (fixed)",
     "sandboxPrefixLabel": "Container name prefix",
-    "sandboxPrefixExtra": "Default octop_sandbox; names like {prefix}_agent_{id}",
+    "sandboxPrefixExtra": "Default agentbuddy_sandbox; names like {prefix}_agent_{id}",
     "sandboxIdLabel": "Fixed sandbox ID",
     "pleaseEnterSandboxId": "Please enter a fixed sandbox ID",
     "sandboxUsernameLabel": "Username (optional override)",

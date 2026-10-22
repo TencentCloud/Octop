@@ -201,7 +201,7 @@ export default function MBTITest({
         lang === "zh"
           ? `我刚刚把你的 MBTI 人格设定为了 ${result.code}（${name}），快用你的新性格跟我打个招呼吧！`
           : `I just set your MBTI personality to ${result.code} (${name}). Say hi with your new character!`;
-      localStorage.setItem("octop.pendingChatMessage", pendingMsg);
+      localStorage.setItem("agentbuddy.pendingChatMessage", pendingMsg);
       onComplete(result.code);
       navigate("/chat");
       setTimeout(
