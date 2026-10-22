@@ -7,7 +7,7 @@ import {
 } from "./desktopExternalLinks";
 
 type DesktopWindow = Window & {
-  __OCTOP_EXTERNAL_LINKS_INSTALLED__?: boolean;
+  __AGENTBUDDY_EXTERNAL_LINKS_INSTALLED__?: boolean;
   _wails?: { invoke?: (message: string) => void };
 };
 
@@ -16,7 +16,7 @@ const originalOpen = window.open;
 afterEach(() => {
   window.open = originalOpen;
   const w = window as DesktopWindow;
-  delete w.__OCTOP_EXTERNAL_LINKS_INSTALLED__;
+  delete w.__AGENTBUDDY_EXTERNAL_LINKS_INSTALLED__;
   delete w._wails;
 });
 

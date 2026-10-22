@@ -6,11 +6,11 @@ from importlib import resources
 from importlib.resources.abc import Traversable
 from typing import Any
 
-OCTOP_BUILTIN_SKILLS_ROOT = "_builtin_skills"
+AGENTBUDDY_BUILTIN_SKILLS_ROOT = "_builtin_skills"
 RETIRED_BUILTIN_SKILLS = ("install-skill",)
-_WORKSPACE_TOKEN = b"{{OCTOP_WORKSPACE}}"
-_SKILLS_TOKEN = b"{{OCTOP_SKILLS}}"
-_BUILTIN_TOKEN = b"{{OCTOP_BUILTIN_SKILLS}}"
+_WORKSPACE_TOKEN = b"{{AGENTBUDDY_WORKSPACE}}"
+_SKILLS_TOKEN = b"{{AGENTBUDDY_SKILLS}}"
+_BUILTIN_TOKEN = b"{{AGENTBUDDY_BUILTIN_SKILLS}}"
 _PACKAGE = "octop.infra.agents.builtin_skills"
 
 
@@ -18,10 +18,14 @@ def is_octop_builtin_skills_path(rel: str) -> bool:
     """True for workspace-relative paths inside the agentbuddy-owned built-in Skills root.
 
     Mirrors the two spellings ``_assert_workspace_mutable`` guards: the API name, and
-    the ``.octop/``-prefixed system location newer agents keep it in.
+    the ``.agentbuddy/`` (or legacy ``.octop/``)-prefixed system location.
     """
     posix = str(rel).replace("\\", "/").strip("/")
-    for prefix in (OCTOP_BUILTIN_SKILLS_ROOT, f".octop/{OCTOP_BUILTIN_SKILLS_ROOT}"):
+    for prefix in (
+        AGENTBUDDY_BUILTIN_SKILLS_ROOT,
+        f".agentbuddy/{AGENTBUDDY_BUILTIN_SKILLS_ROOT}",
+        f".octop/{AGENTBUDDY_BUILTIN_SKILLS_ROOT}",
+    ):
         if posix == prefix or posix.startswith(f"{prefix}/"):
             return True
     return False
@@ -54,7 +58,7 @@ async def sync_octop_builtin_skills(workspace: Any) -> list[str]:
         if not entry.joinpath("SKILL.md").is_file():
             continue
         skill_names.append(entry.name)
-        _collect_files(entry, f"{OCTOP_BUILTIN_SKILLS_ROOT}/{entry.name}", uploads)
+        _collect_files(entry, f"{AGENTBUDDY_BUILTIN_SKILLS_ROOT}/{entry.name}", uploads)
 
     # Render the agent-facing workspace path into the instructions (not the
     # host ``root_dir`` join that ``resolve_path`` returns for I/O).
@@ -64,7 +68,7 @@ async def sync_octop_builtin_skills(workspace: Any) -> list[str]:
 
     workspace_path = agent_facing_workspace_path(workspace, ".").encode("utf-8")
     skills_rel = workspace.system_rel("skills")
-    builtin_rel = workspace.system_rel(OCTOP_BUILTIN_SKILLS_ROOT)
+    builtin_rel = workspace.system_rel(AGENTBUDDY_BUILTIN_SKILLS_ROOT)
     skills_path = agent_facing_workspace_path(workspace, skills_rel).encode("utf-8")
     builtin_path = agent_facing_workspace_path(workspace, builtin_rel).encode("utf-8")
     uploads = [
@@ -81,14 +85,14 @@ async def sync_octop_builtin_skills(workspace: Any) -> list[str]:
         await workspace.aupload_many(uploads)
 
     for name in RETIRED_BUILTIN_SKILLS:
-        path = f"{OCTOP_BUILTIN_SKILLS_ROOT}/{name}"
+        path = f"{AGENTBUDDY_BUILTIN_SKILLS_ROOT}/{name}"
         if await workspace.aexists(path):
             await workspace.adelete(path)
     return sorted(skill_names)
 
 
 __all__ = [
-    "OCTOP_BUILTIN_SKILLS_ROOT",
+    "AGENTBUDDY_BUILTIN_SKILLS_ROOT",
     "is_octop_builtin_skills_path",
     "sync_octop_builtin_skills",
 ]

@@ -76,7 +76,7 @@ def _candidate_to_dict(c: Candidate) -> dict[str, Any]:
 # Ollama exposes an OpenAI-compatible API at /v1, so both --dev-llm
 # providers ride the production OpenAICompatClient.
 _OLLAMA_OPENAI_BASE_URL = "http://localhost:11434/v1"
-_DEV_LLM_KEY_ENV = "OCTOP_MEMORY_DEV_LLM_KEY"
+_DEV_LLM_KEY_ENV = "AGENTBUDDY_MEMORY_DEV_LLM_KEY"
 
 
 def _parse_dev_llm(spec: str | None, *, timeout_seconds: float = 600.0) -> LLMClient:
@@ -88,7 +88,7 @@ def _parse_dev_llm(spec: str | None, *, timeout_seconds: float = 600.0) -> LLMCl
       endpoint), e.g. ``ollama:qwen3:4b``
     - ``remote:<base_url>:<model>`` — OpenAI-compatible remote endpoint,
       e.g. ``remote:https://api.openai.com/v1:gpt-4o-mini``. The API key
-      MUST come from the ``OCTOP_MEMORY_DEV_LLM_KEY`` environment
+      MUST come from the ``AGENTBUDDY_MEMORY_DEV_LLM_KEY`` environment
       variable (never the CLI to keep keys out of shell history).
 
     Returns ``NoopLLMClient`` when ``spec`` is ``None`` so extract can

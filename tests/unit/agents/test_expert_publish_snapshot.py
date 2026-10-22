@@ -10,7 +10,7 @@ import pytest
 from deepagents.backends.local_shell import LocalShellBackend
 from octop_harness.backends.workspace import BackendWorkspace
 
-from octop.infra.agents.builtin_skills import OCTOP_BUILTIN_SKILLS_ROOT
+from octop.infra.agents.builtin_skills import AGENTBUDDY_BUILTIN_SKILLS_ROOT
 from octop.infra.agents.experts.catalog import (
     MANIFEST_FILENAME,
     WORKSPACE_MANIFEST_PATH,
@@ -100,7 +100,7 @@ async def test_export_snapshot_writes_manifest_and_seed_files(tmp_path: Path) ->
             ("inbound/note.txt", b"user upload"),
             ("daily/2026-01-01.md", b"journal"),
             ("uploads/tmp.bin", b"binary"),
-            (".octop/avatar.png", b"\x89PNG\r\n\x1a\n" + b"\x00" * 8),
+            (".agentbuddy/avatar.png", b"\x89PNG\r\n\x1a\n" + b"\x00" * 8),
         ]
     )
 
@@ -111,7 +111,7 @@ async def test_export_snapshot_writes_manifest_and_seed_files(tmp_path: Path) ->
         MANIFEST_FILENAME,
         "SOUL.md",
         "skills/research/SKILL.md",
-        ".octop/avatar.png",
+        ".agentbuddy/avatar.png",
     }
     assert json.loads((destination / MANIFEST_FILENAME).read_text(encoding="utf-8")) == manifest
     assert (destination / "SOUL.md").read_text(encoding="utf-8") == "# Source soul"
@@ -132,12 +132,14 @@ async def test_export_snapshot_writes_manifest_and_seed_files(tmp_path: Path) ->
     )
 
     assert copied == 4
-    assert (installed_dir / ".octop" / "manifest.json").read_text(encoding="utf-8") == json.dumps(
+    assert (installed_dir / ".agentbuddy" / "manifest.json").read_text(
+        encoding="utf-8"
+    ) == json.dumps(
         manifest,
         ensure_ascii=False,
     )
     assert (installed_dir / "skills" / "research" / "SKILL.md").read_bytes() == b"# Research"
-    assert (installed_dir / ".octop" / "avatar.png").read_bytes().startswith(b"\x89PNG")
+    assert (installed_dir / ".agentbuddy" / "avatar.png").read_bytes().startswith(b"\x89PNG")
     assert not (installed_dir / "MEMORY.md").exists()
 
 
@@ -193,7 +195,7 @@ async def test_export_snapshot_excludes_runtime_workspace_dirs(tmp_path: Path) -
         [
             (MANIFEST_FILENAME, json.dumps(manifest, ensure_ascii=False).encode()),
             ("SOUL.md", b"# Source soul"),
-            (f"{OCTOP_BUILTIN_SKILLS_ROOT}/skill-manager/SKILL.md", b"# Builtin"),
+            (f"{AGENTBUDDY_BUILTIN_SKILLS_ROOT}/skill-manager/SKILL.md", b"# Builtin"),
             ("logs/agent.log", b"runtime log line"),
         ]
     )
@@ -216,7 +218,7 @@ async def test_export_snapshot_excludes_runtime_workspace_dirs(tmp_path: Path) -
     )
 
     assert set(exported) == {MANIFEST_FILENAME, "SOUL.md"}
-    assert not (destination / OCTOP_BUILTIN_SKILLS_ROOT).exists()
+    assert not (destination / AGENTBUDDY_BUILTIN_SKILLS_ROOT).exists()
     assert not (destination / "logs").exists()
     merged = json.loads((destination / MANIFEST_FILENAME).read_text(encoding="utf-8"))
     assert merged["id"] == "published-expert"

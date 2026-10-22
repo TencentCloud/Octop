@@ -14,14 +14,14 @@ metadata:
 
 # Skill Manager
 
-只管理当前实例的 `{{OCTOP_SKILLS}}/`。当前实例工作区固定为 `{{OCTOP_WORKSPACE}}`；上传文件通常位于其中的 `inbound/`。系统文件（skills、内置 skills、会话等）在 `{{OCTOP_SKILLS}}` 所在目录。不要用 `pwd`、`$HOME`、`~/.octop-harness/workspace`、记忆文件或搜索结果重新猜测工作区。不要改其他实例、全局 Skill 目录或 `{{OCTOP_BUILTIN_SKILLS}}/`。
+只管理当前实例的 `{{AGENTBUDDY_SKILLS}}/`。当前实例工作区固定为 `{{AGENTBUDDY_WORKSPACE}}`；上传文件通常位于其中的 `inbound/`。系统文件（skills、内置 skills、会话等）在 `{{AGENTBUDDY_SKILLS}}` 所在目录。不要用 `pwd`、`$HOME`、`~/.octop-harness/workspace`、记忆文件或搜索结果重新猜测工作区。不要改其他实例、全局 Skill 目录或 `{{AGENTBUDDY_BUILTIN_SKILLS}}/`。
 
 ## 操作入口
 
 使用内置脚本完成检查、下载、安全解包、安装、列出和删除：
 
 ```bash
-python "{{OCTOP_BUILTIN_SKILLS}}/skill-manager/scripts/manage_skills.py" <command>
+python "{{AGENTBUDDY_BUILTIN_SKILLS}}/skill-manager/scripts/manage_skills.py" <command>
 ```
 
 ```bash
@@ -54,7 +54,7 @@ python "{{OCTOP_BUILTIN_SKILLS}}/skill-manager/scripts/manage_skills.py" <comman
 3. **SkillHub 页面 URL**：`https://skillhub.cn/skills/<namespace>/<slug>` 可直接传给 `inspect` 或 `install`；脚本会解析 namespace 和 slug。不要自行安装/升级 CLI，不要直接运行 `skillhub install`。
 4. **普通 HTTP(S) URL**：脚本处理直接文件和压缩包。若 URL 是其他介绍网页，先用现有网页工具读取并找到公开仓库、下载地址或 `SKILL.md`，再交给脚本。不得绕过登录、付费墙或访问控制。
 5. **SkillHub 搜索**：用户只描述能力时，先搜索并给出 1–3 个候选的 slug、名称、用途和来源，让用户选择；用户已点名具体 Skill 时，可直接检查并安装。
-6. **任意非 Skill 文件**：普通资料不会因复制而自动成为 Skill。先读取和理解材料，再使用内置 `skill-creator` 工作流，将可复用知识、步骤和必要资源整理为合法 Skill，写入 `{{OCTOP_SKILLS}}/<slug>/`，然后执行 `inspect` 校验。
+6. **任意非 Skill 文件**：普通资料不会因复制而自动成为 Skill。先读取和理解材料，再使用内置 `skill-creator` 工作流，将可复用知识、步骤和必要资源整理为合法 Skill，写入 `{{AGENTBUDDY_SKILLS}}/<slug>/`，然后执行 `inspect` 校验。
 
 ## 变更规则
 

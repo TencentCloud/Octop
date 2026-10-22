@@ -1,6 +1,6 @@
 """Plain config IO module (no click dependency).
 
-Provides load/save for ``~/.octop-memory/config.json``, used by:
+Provides load/save for ``~/.agentbuddy/memory/config.json``, used by:
 
 - :mod:`octop_memory.adapters.cli.config` when building CLI commands (adds the
   click dependency on top)
@@ -16,7 +16,18 @@ import json
 from pathlib import Path
 from typing import Any
 
-CONFIG_DIR = Path("~/.octop-memory").expanduser()
+
+def _default_config_dir() -> Path:
+    """``~/.agentbuddy/memory``, or under ``AGENTBUDDY_HOME`` when set."""
+    import os
+
+    root = os.environ.get("AGENTBUDDY_HOME", "").strip() or os.environ.get("OCTOP_HOME", "").strip()
+    if root:
+        return Path(root).expanduser() / "memory"
+    return Path("~/.agentbuddy/memory").expanduser()
+
+
+CONFIG_DIR = _default_config_dir()
 CONFIG_FILE = CONFIG_DIR / "config.json"
 
 
@@ -48,7 +59,7 @@ DEFAULTS: dict[str, Any] = {
     "backend": "sqlite",
     "namespace": "default",
     "sqlite": {
-        "db_path": "~/.octop-memory/memory.db",
+        "db_path": "~/.agentbuddy/memory/memory.db",
     },
     "postgres": {
         "dsn": "postgresql://localhost/octop_memory",

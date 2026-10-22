@@ -33,7 +33,7 @@ def _bootstrap(fake_home: Path) -> None:
 
 def test_list_agents_offline(fake_home: Path) -> None:
     _bootstrap(fake_home)
-    paths = PathLayout(fake_home / ".octop")
+    paths = PathLayout(fake_home / ".agentbuddy")
     db = SqlitePool(paths.db)
     AgentRepo(db).create(agent_id="ag1", user_id=1, name="Bot")
     db.close()
@@ -47,7 +47,7 @@ def test_list_agents_offline(fake_home: Path) -> None:
 
 def test_list_threads_offline(fake_home: Path) -> None:
     _bootstrap(fake_home)
-    paths = PathLayout(fake_home / ".octop")
+    paths = PathLayout(fake_home / ".agentbuddy")
     db = SqlitePool(paths.db)
     AgentRepo(db).create(agent_id="ag1", user_id=1, name="Bot")
     tid = new_ulid()
@@ -71,7 +71,7 @@ def test_list_threads_offline(fake_home: Path) -> None:
 
 def test_agent_list_offline_flag(fake_home: Path) -> None:
     _bootstrap(fake_home)
-    paths = PathLayout(fake_home / ".octop")
+    paths = PathLayout(fake_home / ".agentbuddy")
     db = SqlitePool(paths.db)
     AgentRepo(db).create(agent_id="ag1", user_id=1, name="Bot")
     db.close()
@@ -91,7 +91,7 @@ def english_cli(monkeypatch: pytest.MonkeyPatch) -> None:
 @pytest.mark.usefixtures("english_cli")
 def test_agent_list_shows_which_agents_run_on_the_global_model(fake_home: Path) -> None:
     _bootstrap(fake_home)
-    paths = PathLayout(fake_home / ".octop")
+    paths = PathLayout(fake_home / ".agentbuddy")
     db = SqlitePool(paths.db)
     AgentRepo(db).create(agent_id="ag1", user_id=1, name="Bot")
     AgentRepo(db).create(agent_id="ag2", user_id=1, name="Coder", default_model="acme/big")
@@ -113,7 +113,7 @@ def test_agent_list_shows_which_agents_run_on_the_global_model(fake_home: Path) 
 @pytest.mark.usefixtures("english_cli")
 def test_agent_list_says_when_no_model_is_set_anywhere(fake_home: Path) -> None:
     _bootstrap(fake_home)
-    paths = PathLayout(fake_home / ".octop")
+    paths = PathLayout(fake_home / ".agentbuddy")
     db = SqlitePool(paths.db)
     AgentRepo(db).create(agent_id="ag1", user_id=1, name="Bot")
     db.close()

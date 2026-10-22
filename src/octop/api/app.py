@@ -78,7 +78,7 @@ def _install_exception_handlers(app: FastAPI) -> None:
     @app.exception_handler(OctopError)
     async def _octop(request: Request, exc: OctopError) -> JSONResponse:
         # Client responses are locale-localized; log the original English message
-        # so INTERNAL_ERROR (and other 5xx) remain diagnosable in ~/.octop/logs.
+        # so INTERNAL_ERROR (and other 5xx) remain diagnosable in ~/.agentbuddy/logs.
         if exc.status >= 500:
             logger.error(
                 "OctopError %s in %s: %s",

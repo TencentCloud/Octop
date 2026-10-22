@@ -13,7 +13,7 @@ from octop.infra.users.permissions import BASELINE_PERMISSIONS
 
 
 def test_seeded_roles_leave_existing_users_unchanged(tmp_path: Path) -> None:
-    db = SqlitePool(tmp_path / "octop.db")
+    db = SqlitePool(tmp_path / "agentbuddy.db")
     run_migrations(db)
     users = UserRepo(db)
     uid = users.create(
@@ -56,7 +56,7 @@ def test_policies_array_omits_disabled_names() -> None:
 
 
 def test_role_repo_roundtrip(tmp_path: Path) -> None:
-    db = SqlitePool(tmp_path / "octop.db")
+    db = SqlitePool(tmp_path / "agentbuddy.db")
     run_migrations(db)
     roles = UserRoleRepo(db)
     created = roles.create(
@@ -88,7 +88,7 @@ def test_cli_and_seed_follow_preset_user_role(tmp_path: Path) -> None:
         home=home,
     )
     assert created["role"] == "user"
-    db = SqlitePool(home / "octop.db")
+    db = SqlitePool(home / "agentbuddy.db")
     row = UserRepo(db).get_by_username("cliuser")
     assert row is not None
     assert row.role == "user"

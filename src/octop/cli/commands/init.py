@@ -10,19 +10,19 @@ import click
 @click.command("init")
 @click.option(
     "--admin-username",
-    envvar="OCTOP_ADMIN_USERNAME",
+    envvar="AGENTBUDDY_ADMIN_USERNAME",
     default=None,
-    help="First admin username (or set OCTOP_ADMIN_USERNAME).",
+    help="First admin username (or set AGENTBUDDY_ADMIN_USERNAME).",
 )
 @click.option(
     "--admin-password",
-    envvar="OCTOP_ADMIN_PASSWORD",
+    envvar="AGENTBUDDY_ADMIN_PASSWORD",
     default=None,
-    help="First admin password (or set OCTOP_ADMIN_PASSWORD).",
+    help="First admin password (or set AGENTBUDDY_ADMIN_PASSWORD).",
 )
 @click.option(
     "--admin-display-name",
-    envvar="OCTOP_ADMIN_DISPLAY_NAME",
+    envvar="AGENTBUDDY_ADMIN_DISPLAY_NAME",
     default=None,
     help="Optional display name for the admin user.",
 )
@@ -30,7 +30,7 @@ import click
     "--force",
     is_flag=True,
     default=False,
-    help="Wipe existing ~/.octop contents before bootstrapping.",
+    help="Wipe existing ~/.agentbuddy contents before bootstrapping.",
 )
 @click.option(
     "--yes",
@@ -46,7 +46,7 @@ def init(
     force: bool,
     non_interactive: bool,
 ) -> None:
-    """Bootstrap a agentbuddy server (~/.octop dir, DB migrations, first admin)."""
+    """Bootstrap a agentbuddy server (~/.agentbuddy dir, DB migrations, first admin)."""
     from octop.config import load_config
     from octop.infra.agents.plugins.manager import PluginManager
     from octop.infra.db.factory import open_database
@@ -60,9 +60,9 @@ def init(
     paths = PathLayout.from_env()
     home = paths.root
 
-    # Sidecar files (octop-login.txt, NAS share metadata) must not block first
+    # Sidecar files (agentbuddy-login.txt, NAS share metadata) must not block first
     # bootstrap. Only an existing control-plane DB counts as an install.
-    has_db = (home / "octop.db").is_file()
+    has_db = (home / "agentbuddy.db").is_file()
     if home.exists() and any(home.iterdir()):
         if has_db and not force:
             click.echo(
@@ -114,8 +114,8 @@ def init(
 
         user_repo = UserRepo(db)
         if user_repo.get_by_username(username) is not None:
-            # 幂等引导（issue #1866）：外部数据库（PostgreSQL）不会在 ~/.octop
-            # 生成 octop.db，容器重启后 entrypoint 会重跑 init；此时跳过创建，
+            # 幂等引导（issue #1866）：外部数据库（PostgreSQL）不会在 ~/.agentbuddy
+            # 生成 agentbuddy.db，容器重启后 entrypoint 会重跑 init；此时跳过创建，
             # 避免管理员 INSERT 撞 UNIQUE(username) 直接崩溃。
             click.echo(f"  admin user '{username}' already exists, skipping.")
         else:

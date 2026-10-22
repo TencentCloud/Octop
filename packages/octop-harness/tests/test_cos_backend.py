@@ -254,7 +254,7 @@ class TestBinaryUpload:
         png = b"\x89PNG\r\n\x1a\n" + b"\x00" * 8
         ws = BackendWorkspace(backend, tmp_path)
         await ws.aupload_bytes(".octop/avatar.png", png)
-        stored_key = f"ws/.octop/workspaces/{tmp_path.name}/.octop/avatar.png"
+        stored_key = f"ws/.agentbuddy/workspaces/{tmp_path.name}/.octop/avatar.png"
         assert stored_key in fake_client.objects
         envelope = json.loads(fake_client.objects[stored_key].decode("utf-8"))
         assert envelope["encoding"] == "base64"
@@ -279,10 +279,10 @@ class TestBinaryUpload:
 
         root = backend.ls("/")
         root_paths = {e["path"] for e in root.entries or []}
-        assert "/.octop" in root_paths
-        assert all(e.get("is_dir") for e in root.entries or [] if e["path"] == "/.octop")
+        assert "/.agentbuddy" in root_paths
+        assert all(e.get("is_dir") for e in root.entries or [] if e["path"] == "/.agentbuddy")
 
-        workspaces = backend.ls("/.octop/workspaces")
+        workspaces = backend.ls("/.agentbuddy/workspaces")
         ws_paths = {e["path"] for e in workspaces.entries or []}
         assert virt in ws_paths
 
@@ -302,7 +302,7 @@ class TestBinaryUpload:
         assert await ws.aread_text("SOUL.md") == "legacy-root"
         await ws.awrite_text("SOUL.md", "nested")
         assert await ws.aread_text("SOUL.md") == "nested"
-        assert f"ws/.octop/workspaces/{tmp_path.name}/SOUL.md" in fake_client.objects
+        assert f"ws/.agentbuddy/workspaces/{tmp_path.name}/SOUL.md" in fake_client.objects
 
 
 class TestEdit:

@@ -100,7 +100,7 @@ class SizeTimedRotatingFileHandler(TimedRotatingFileHandler):
 
 
 def _dated_log_namer(default_name: str) -> str:
-    """Turn ``octop.log.2026-10-16`` into ``octop.2026-10-16.log``."""
+    """Turn ``agentbuddy.log.2026-10-16`` into ``agentbuddy.2026-10-16.log``."""
     directory, filename = os.path.split(default_name)
     if "." not in filename:
         return default_name
@@ -112,11 +112,14 @@ def _dated_log_namer(default_name: str) -> str:
     return os.path.join(directory, renamed) if directory else renamed
 
 
-# ``octop.log.2026-10-16``, ``octop.log.2026-10-16-001``, and their ``.gz`` forms.
-_LEGACY_ROTATED_LOG = re.compile(r"^octop\.log\.(\d{4}-\d{2}-\d{2})(?:-(\d+))?(\.gz)?$")
+# ``agentbuddy.log.2026-10-16``, ``agentbuddy.log.2026-10-16-001``, and their ``.gz``
+# forms, plus the pre-rebrand ``octop.log.*`` names.
+_LEGACY_ROTATED_LOG = re.compile(
+    r"^(?:agentbuddy|octop)\.log\.(\d{4}-\d{2}-\d{2})(?:-(\d+))?(\.gz)?$"
+)
 # New names plus any legacy file a rename could not move.
 _ROTATED_LOG_NAME = re.compile(
-    r"^octop\.(?:"
+    r"^(?:agentbuddy|octop)\.(?:"
     r"\d{4}-\d{2}-\d{2}\.log(?:\.\d+)?"
     r"|"
     r"log\.\d{4}-\d{2}-\d{2}(?:-\d+)?"
@@ -125,7 +128,7 @@ _ROTATED_LOG_NAME = re.compile(
 
 
 def _migrate_legacy_rotated_logs(log_dir: Path) -> None:
-    """Rename ``octop.log.YYYY-MM-DD`` to ``octop.YYYY-MM-DD.log``."""
+    """Rename ``agentbuddy.log.YYYY-MM-DD`` (or legacy ``octop.log.…``) to the dated form."""
     if not log_dir.is_dir():
         return
     for entry in list(log_dir.iterdir()):
@@ -134,7 +137,8 @@ def _migrate_legacy_rotated_logs(log_dir: Path) -> None:
             continue
         date, index, gz = match.group(1), match.group(2), match.group(3) or ""
         index_part = f".{index}" if index else ""
-        dest = log_dir / f"octop.{date}.log{index_part}{gz}"
+        stem = entry.name.split(".", 1)[0]
+        dest = log_dir / f"{stem}.{date}.log{index_part}{gz}"
         if dest.exists():
             continue
         with suppress(OSError):
@@ -167,7 +171,7 @@ def gzip_rotated_log(path: Path) -> None:
 
 
 def _parse_log_compress() -> bool:
-    raw = (os.environ.get("OCTOP_LOG_COMPRESS", "1") or "1").strip().lower()
+    raw = (os.environ.get("AGENTBUDDY_LOG_COMPRESS", "1") or "1").strip().lower()
     return raw not in ("0", "false", "no", "off")
 
 
@@ -197,7 +201,7 @@ def delaycompress_rotated_logs(
 
 
 def _parse_log_retention_days() -> int:
-    raw = os.environ.get("OCTOP_LOG_RETENTION_DAYS", str(DEFAULT_LOG_RETENTION_DAYS)) or str(
+    raw = os.environ.get("AGENTBUDDY_LOG_RETENTION_DAYS", str(DEFAULT_LOG_RETENTION_DAYS)) or str(
         DEFAULT_LOG_RETENTION_DAYS
     )
     try:
@@ -207,7 +211,7 @@ def _parse_log_retention_days() -> int:
 
 
 def _parse_log_max_bytes() -> int:
-    raw = os.environ.get("OCTOP_LOG_MAX_BYTES", str(DEFAULT_LOG_MAX_BYTES)) or str(
+    raw = os.environ.get("AGENTBUDDY_LOG_MAX_BYTES", str(DEFAULT_LOG_MAX_BYTES)) or str(
         DEFAULT_LOG_MAX_BYTES
     )
     try:
@@ -727,7 +731,7 @@ class OctopServer:
                 "║  agentbuddy first-run wizard password (one-time use):          ║\n"
                 f"║  {new_pw:<54}  ║\n"
                 "║  Open the dashboard and paste it into the setup wizard.  ║\n"
-                "║  File: ~/octop-login.txt                                   ║\n"
+                "║  File: ~/agentbuddy-login.txt                                   ║\n"
                 "╚══════════════════════════════════════════════════════════╝"
                 "\033[0m\n"
             )
@@ -771,7 +775,7 @@ class OctopServer:
         log_dir.mkdir(parents=True, exist_ok=True)
         log_path = self.paths.log
 
-        # Migrate the legacy single-file log (~/.octop/octop.log) into the new logs dir.
+        # Migrate the legacy single-file log into the new logs dir.
         legacy = self.paths.root / "octop.log"
         if legacy.exists() and not log_path.exists():
             with suppress(OSError):
@@ -797,7 +801,7 @@ class OctopServer:
         for name in ("uvicorn", "uvicorn.access", "uvicorn.error"):
             _attach_log_handler(logging.getLogger(name), handler)
 
-        level = os.environ.get("OCTOP_LOG_LEVEL", "info").upper()
+        level = os.environ.get("AGENTBUDDY_LOG_LEVEL", "info").upper()
         root.setLevel(getattr(logging, level, logging.INFO))
         if root.level > logging.DEBUG:
             # httpx logs full request URLs at INFO, leaking query-string

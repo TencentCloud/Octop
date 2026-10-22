@@ -44,7 +44,7 @@ Workspace content files (SOUL, skills, inbound, JSONL) remain files via `Backend
 - Single active agentbuddy writer; no multi-instance write promise.
 - Greenfield only — no SQLite→PG data migrator.
 - Backup: SQLite file snapshot vs `pg_dump -Fc`; manifest carries `database_driver` + `database_dump_format`; refuse cross-engine restore.
-- Default dependency includes `psycopg[binary]`. Live PG tests are gated by `@pytest.mark.postgresql` + `OCTOP_TEST_DATABASE_URL`.
+- Default dependency includes `psycopg[binary]`. Live PG tests are gated by `@pytest.mark.postgresql` + `AGENTBUDDY_TEST_DATABASE_URL`.
 - Hot rebind during empty setup: `rebind_control_plane` opens the new pool, then `AppRuntime.replace_services` retargets singletons via each component’s public `replace_*` API (db layer does not poke runtime private fields).
 
 ### Where initialization SQL lives (do not conflate)

@@ -153,7 +153,7 @@ def list_agents(as_user: str | None) -> None:
 @agent.command("use")
 @click.argument("agent_id")
 def use_agent(agent_id: str) -> None:
-    """Pin default agent in CLI state (~/.octop/cli_state.json)."""
+    """Pin default agent in CLI state (~/.agentbuddy/cli_state.json)."""
     from octop.cli.support.state import default_state_path, load, save
 
     path = default_state_path()

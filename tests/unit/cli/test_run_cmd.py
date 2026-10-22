@@ -49,7 +49,7 @@ def test_run_dispatches_to_uvicorn(monkeypatch: pytest.MonkeyPatch) -> None:
 
 def _patch_home(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     """Point PathLayout.from_env() at a fresh tmp directory."""
-    monkeypatch.setenv("OCTOP_HOME", str(tmp_path))
+    monkeypatch.setenv("AGENTBUDDY_HOME", str(tmp_path))
 
 
 def test_run_reads_host_port_from_config_by_default(

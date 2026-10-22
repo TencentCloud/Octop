@@ -50,7 +50,7 @@ def test_repair_legacy_passthrough_short() -> None:
 
 
 def test_migration_003_repairs_stored_hard_cuts(tmp_path: Path) -> None:
-    pool = SqlitePool(tmp_path / "octop.db")
+    pool = SqlitePool(tmp_path / "agentbuddy.db")
     with pool.connect() as conn:
         conn.executescript(
             (

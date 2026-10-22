@@ -50,7 +50,7 @@ SUPPORTED_URL_PREFIXES = (
 
 def supported_skill_url_prefixes() -> tuple[str, ...]:
     """Return built-in and operator-configured import source prefixes."""
-    configured = os.environ.get("OCTOP_SKILLS_IMPORT_URL_PREFIXES", "")
+    configured = os.environ.get("AGENTBUDDY_SKILLS_IMPORT_URL_PREFIXES", "")
     values = [*SUPPORTED_URL_PREFIXES, *(part.strip() for part in configured.split(","))]
     prefixes: list[str] = []
     for value in values:
@@ -102,7 +102,7 @@ RETRYABLE_HTTP_STATUS = {
 
 
 def _hub_http_timeout() -> float:
-    raw = os.environ.get("OCTOP_SKILLS_HUB_HTTP_TIMEOUT", "15")
+    raw = os.environ.get("AGENTBUDDY_SKILLS_HUB_HTTP_TIMEOUT", "15")
     try:
         return max(3.0, float(raw))
     except Exception:
@@ -110,7 +110,7 @@ def _hub_http_timeout() -> float:
 
 
 def _hub_http_retries() -> int:
-    raw = os.environ.get("OCTOP_SKILLS_HUB_HTTP_RETRIES", "3")
+    raw = os.environ.get("AGENTBUDDY_SKILLS_HUB_HTTP_RETRIES", "3")
     try:
         return max(0, int(raw))
     except Exception:
@@ -118,7 +118,7 @@ def _hub_http_retries() -> int:
 
 
 def _hub_http_backoff_base() -> float:
-    raw = os.environ.get("OCTOP_SKILLS_HUB_HTTP_BACKOFF_BASE", "0.8")
+    raw = os.environ.get("AGENTBUDDY_SKILLS_HUB_HTTP_BACKOFF_BASE", "0.8")
     try:
         return max(0.1, float(raw))
     except Exception:
@@ -126,7 +126,7 @@ def _hub_http_backoff_base() -> float:
 
 
 def _hub_http_backoff_cap() -> float:
-    raw = os.environ.get("OCTOP_SKILLS_HUB_HTTP_BACKOFF_CAP", "6")
+    raw = os.environ.get("AGENTBUDDY_SKILLS_HUB_HTTP_BACKOFF_CAP", "6")
     try:
         return max(0.5, float(raw))
     except Exception:
@@ -140,33 +140,33 @@ def _compute_backoff_seconds(attempt: int) -> float:
 
 
 def _hub_base_url() -> str:
-    return os.environ.get("OCTOP_SKILLS_HUB_BASE_URL", "https://clawhub.ai")
+    return os.environ.get("AGENTBUDDY_SKILLS_HUB_BASE_URL", "https://clawhub.ai")
 
 
 def _hub_search_path() -> str:
     return os.environ.get(
-        "OCTOP_SKILLS_HUB_SEARCH_PATH",
+        "AGENTBUDDY_SKILLS_HUB_SEARCH_PATH",
         "/api/v1/search",
     )
 
 
 def _hub_version_path() -> str:
     return os.environ.get(
-        "OCTOP_SKILLS_HUB_VERSION_PATH",
+        "AGENTBUDDY_SKILLS_HUB_VERSION_PATH",
         "/api/v1/skills/{slug}/versions/{version}",
     )
 
 
 def _hub_detail_path() -> str:
     return os.environ.get(
-        "OCTOP_SKILLS_HUB_DETAIL_PATH",
+        "AGENTBUDDY_SKILLS_HUB_DETAIL_PATH",
         "/api/v1/skills/{slug}",
     )
 
 
 def _hub_file_path() -> str:
     return os.environ.get(
-        "OCTOP_SKILLS_HUB_FILE_PATH",
+        "AGENTBUDDY_SKILLS_HUB_FILE_PATH",
         "/api/v1/skills/{slug}/file",
     )
 

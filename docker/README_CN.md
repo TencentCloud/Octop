@@ -28,7 +28,7 @@
 docker compose -f docker/docker-compose.yml up -d --build
 ```
 
-访问 `http://localhost:8088`。设置了合格的 `OCTOP_DEFAULT_PASSWORD`（≥8 位且同时包含字母和数字）时，首次启动会创建管理员，并把凭据写入 `/data/.octop/credential.txt`。未设置，或密码被策略拒绝（过短、缺字母/数字、常见弱密码）时，**不**自动建账号，打开页面走设置向导；向导口令在 `/data/.octop/octop-login.txt`（`credential.txt` 里也有说明）。在向导里自行设置管理员密码。
+访问 `http://localhost:8088`。设置了合格的 `AGENTBUDDY_DEFAULT_PASSWORD`（≥8 位且同时包含字母和数字）时，首次启动会创建管理员，并把凭据写入 `/data/.agentbuddy/credential.txt`。未设置，或密码被策略拒绝（过短、缺字母/数字、常见弱密码）时，**不**自动建账号，打开页面走设置向导；向导口令在 `/data/.agentbuddy/agentbuddy-login.txt`（`credential.txt` 里也有说明）。在向导里自行设置管理员密码。
 
 Compose 将多 agent 服务的文件描述符限制设为 65535。服务启动时也会在继承的 hard limit 内将 soft limit 提升至最多 65535，并记录实际限额。已有容器需重新创建才能应用 Compose 限额变化；仅重启不会改变容器的 hard limit。
 
@@ -40,7 +40,7 @@ docker run -d \
   --name octop \
   --ulimit nofile=65535:65535 \
   -p 8088:8088 \
-  -v octop-data:/data/.octop \
+  -v octop-data:/data/.agentbuddy \
   -e HOME=/data \
   agentbuddy:latest
 ```
@@ -61,16 +61,16 @@ bash docker/docker_build.sh
 
 | 变量 | 默认值 | 说明 |
 |------|--------|------|
-| `HOME` | `/data` | 必须为 `/data`，数据目录映射到 `~/.octop` |
-| `OCTOP_PORT` | `8088` | HTTP 服务端口 |
-| `OCTOP_DEFAULT_PASSWORD` | _(未设置)_ | 首次管理员密码（≥8 位，字母+数字）。合格则 `octop init` 建账号；未设置或不合格则走 Web 设置向导 |
-| `OCTOP_ADMIN_USERNAME` | `admin` | 首次管理员用户名 |
-| `OCTOP_DATABASE_URL` | — | PostgreSQL DSN（或其他 `OCTOP_DATABASE_*`，见 [configuration.md](../docs/configuration.md)） |
-| `OCTOP_DATABASE_DRIVER` | — | 通过环境变量覆盖时：`sqlite` \| `postgresql` |
+| `HOME` | `/data` | 必须为 `/data`，数据目录映射到 `~/.agentbuddy` |
+| `AGENTBUDDY_PORT` | `8088` | HTTP 服务端口 |
+| `AGENTBUDDY_DEFAULT_PASSWORD` | _(未设置)_ | 首次管理员密码（≥8 位，字母+数字）。合格则 `octop init` 建账号；未设置或不合格则走 Web 设置向导 |
+| `AGENTBUDDY_ADMIN_USERNAME` | `admin` | 首次管理员用户名 |
+| `AGENTBUDDY_DATABASE_URL` | — | PostgreSQL DSN（或其他 `AGENTBUDDY_DATABASE_*`，见 [configuration.md](../docs/configuration.md)） |
+| `AGENTBUDDY_DATABASE_DRIVER` | — | 通过环境变量覆盖时：`sqlite` \| `postgresql` |
 | `OPENAI_API_KEY` | — | OpenAI 兼容 API Key |
 | `DASHSCOPE_API_KEY` | — | 阿里云通义千问 API Key |
 
-Compose 可在 `docker/.env` 中配置上述变量。注意：`.env` 只参与 Compose 插值，变量必须出现在 `docker-compose.yml` 的 `environment:` 中才会进入容器。也可把相同键写入挂载数据目录下的 `~/.octop/env`。
+Compose 可在 `docker/.env` 中配置上述变量。注意：`.env` 只参与 Compose 插值，变量必须出现在 `docker-compose.yml` 的 `environment:` 中才会进入容器。也可把相同键写入挂载数据目录下的 `~/.agentbuddy/env`。
 
 ### 知识库依赖
 
@@ -79,15 +79,15 @@ Compose 可在 `docker/.env` 中配置上述变量。注意：`.env` 只参与 C
 嵌入与 OCR 模块能否导入；不会下载模型权重，也不会自动开启知识库或 OCR。
 
 通过控制台安装到运行中容器的依赖位于容器可写层，重建容器后会丢失。应重新构建或
-拉取已包含这些 extras 的镜像，而不是依赖运行时安装。保留 `/data/.octop` 数据卷，
+拉取已包含这些 extras 的镜像，而不是依赖运行时安装。保留 `/data/.agentbuddy` 数据卷，
 即可保留配置、知识库索引与本地嵌入模型缓存。已有部署需要重新构建或升级镜像才能
 获得这些依赖，仅重启旧镜像无效。
 
 ### 数据持久化
 
-- Compose 默认将宿主机 `~/.octop` 挂载到容器 `/data/.octop`
+- Compose 默认将宿主机 `~/.agentbuddy` 挂载到容器 `/data/.agentbuddy`
 - `docker run` 示例使用命名卷 `octop-data`
-- 首次启动：`OCTOP_DEFAULT_PASSWORD` 合格则执行 `octop init` 并写入 `credential.txt`；未设置或不合格则不建管理员，向导口令写入 `/data/.octop/octop-login.txt`，打开页面完成设置（容器不会因弱密码退出）。
+- 首次启动：`AGENTBUDDY_DEFAULT_PASSWORD` 合格则执行 `octop init` 并写入 `credential.txt`；未设置或不合格则不建管理员，向导口令写入 `/data/.agentbuddy/agentbuddy-login.txt`，打开页面完成设置（容器不会因弱密码退出）。
 
 ### 健康检查
 

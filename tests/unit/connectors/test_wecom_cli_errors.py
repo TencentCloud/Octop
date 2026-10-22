@@ -39,7 +39,7 @@ def test_humanize_unrecognized_method_not_bad_creds() -> None:
 
 
 def test_call_tool_humanizes_errors(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
-    monkeypatch.setenv("OCTOP_HOME", str(tmp_path))
+    monkeypatch.setenv("AGENTBUDDY_HOME", str(tmp_path))
     monkeypatch.setattr(
         "octop.infra.connectors.gateway.adapters.wecom_cli.resolve_binary",
         lambda _n: fake_bin_path("wecom-cli"),
@@ -68,7 +68,7 @@ def test_call_tool_humanizes_errors(monkeypatch: pytest.MonkeyPatch, tmp_path: P
 def test_probe_requires_non_empty_mcp_cache(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    monkeypatch.setenv("OCTOP_HOME", str(tmp_path))
+    monkeypatch.setenv("AGENTBUDDY_HOME", str(tmp_path))
     monkeypatch.setattr(
         "octop.infra.connectors.gateway.adapters.wecom_cli.resolve_binary",
         lambda _n: fake_bin_path("wecom-cli"),
@@ -93,7 +93,7 @@ def test_probe_requires_non_empty_mcp_cache(
 
 
 def test_probe_ok_with_mcp_items(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
-    monkeypatch.setenv("OCTOP_HOME", str(tmp_path))
+    monkeypatch.setenv("AGENTBUDDY_HOME", str(tmp_path))
     monkeypatch.setattr(
         "octop.infra.connectors.gateway.adapters.wecom_cli.resolve_binary",
         lambda _n: fake_bin_path("wecom-cli"),

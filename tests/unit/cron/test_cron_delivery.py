@@ -53,7 +53,7 @@ def _session(*, channel_type: str, thread_id: str = "thr1") -> MagicMock:
 
 
 def _seed_dashboard_thread(tmp_path: Path, *, thread_id: str) -> tuple[SqlitePool, Any]:
-    db = SqlitePool(tmp_path / "octop.db")
+    db = SqlitePool(tmp_path / "agentbuddy.db")
     run_migrations(db)
     UserRepo(db).create(username="u", password_hash="h", role="user")
     AgentRepo(db).create(agent_id="a1", user_id=1, name="bot")

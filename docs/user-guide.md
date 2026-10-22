@@ -1,7 +1,7 @@
 # 政务伙伴用户帮助文档
 
 > 本帮助文档面向最终用户，介绍 **安装 → 设置向导 → 配置模型 → 基本使用** 的完整流程。
-> 所有运行时数据默认存放在 `~/.octop/`（可通过 `OCTOP_HOME` 覆盖）。
+> 所有运行时数据默认存放在 `~/.agentbuddy/`（可通过 `AGENTBUDDY_HOME` 覆盖）。
 
 ---
 
@@ -63,7 +63,7 @@
 ### 2.1 环境要求
 
 - 操作系统：**macOS / Linux / Windows**。
-- **无需** 预先安装 Python —— 安装脚本会通过 [uv](https://docs.astral.sh/uv/) 在 `~/.octop/` 下自动创建隔离的 Python 3.12 虚拟环境。
+- **无需** 预先安装 Python —— 安装脚本会通过 [uv](https://docs.astral.sh/uv/) 在 `~/.agentbuddy/` 下自动创建隔离的 Python 3.12 虚拟环境。
 - 需要可访问外网，用于下载安装脚本与依赖。
 
 ### 2.2 一键脚本安装（推荐）
@@ -95,7 +95,7 @@ source ~/.zshrc   # Zsh
 source ~/.bashrc  # Bash
 ```
 
-安装脚本会把 `octop` 命令放入 `~/.octop/bin` 并加入 PATH，并在 `~/.octop/venv` 创建隔离环境；**不会改动系统 Python**。
+安装脚本会把 `octop` 命令放入 `~/.agentbuddy/bin` 并加入 PATH，并在 `~/.agentbuddy/venv` 创建隔离环境；**不会改动系统 Python**。
 
 > **可选附加组件**：安装脚本支持通过 `--extras` 追加能力，例如浏览器自动化 `--extras browser`；也可用 `--version` 指定版本、`--mirror <url>` 使用国内 PyPI 镜像。更多选项见 [scripts/README.md](../scripts/README.md)。
 
@@ -106,7 +106,7 @@ octop --version
 octop run --help
 ```
 
-若提示 `command not found: octop`，请确认已重新加载 shell 或检查 `~/.octop/bin` 是否在 PATH 中。
+若提示 `command not found: octop`，请确认已重新加载 shell 或检查 `~/.agentbuddy/bin` 是否在 PATH 中。
 
 ### 2.4 Docker 安装（生产推荐）
 
@@ -118,9 +118,9 @@ docker compose -f docker/docker-compose.yml up -d
 bash docker/docker_build.sh
 docker run -d \
   -p 8088:8088 \
-  -v octop-data:/data/.octop \
+  -v octop-data:/data/.agentbuddy \
   -e HOME=/data \
-  -e OCTOP_DEFAULT_PASSWORD="<自定义强密码，留空则进入设置向导>" \
+  -e AGENTBUDDY_DEFAULT_PASSWORD="<自定义强密码，留空则进入设置向导>" \
   octop:latest
 ```
 
@@ -128,12 +128,12 @@ docker run -d \
 
 | 变量 | 默认值 | 说明 |
 |------|--------|------|
-| `OCTOP_PORT` | `8088` | HTTP 监听端口 |
-| `OCTOP_DEFAULT_PASSWORD` | _(空)_ | 首次运行管理员密码（Docker 引导；≥8 位且含字母+数字；合格则建账号；留空或不合格则走设置向导） |
-| `OCTOP_ADMIN_USERNAME` | `admin` | 首次运行管理员用户名 |
-| `OCTOP_DATA` | `~/.octop` | 宿主机数据目录（compose 挂载） |
+| `AGENTBUDDY_PORT` | `8088` | HTTP 监听端口 |
+| `AGENTBUDDY_DEFAULT_PASSWORD` | _(空)_ | 首次运行管理员密码（Docker 引导；≥8 位且含字母+数字；合格则建账号；留空或不合格则走设置向导） |
+| `AGENTBUDDY_ADMIN_USERNAME` | `admin` | 首次运行管理员用户名 |
+| `AGENTBUDDY_DATA` | `~/.agentbuddy` | 宿主机数据目录（compose 挂载） |
 
-> 未设置或不合格的 `OCTOP_DEFAULT_PASSWORD` 不会静默换成随机管理员密码；打开页面走设置向导，向导口令在 `/data/.octop/octop-login.txt`。
+> 未设置或不合格的 `AGENTBUDDY_DEFAULT_PASSWORD` 不会静默换成随机管理员密码；打开页面走设置向导，向导口令在 `/data/.agentbuddy/agentbuddy-login.txt`。
 
 ---
 
@@ -166,15 +166,15 @@ octop service start   # Linux(systemd) / macOS(launchd) / Windows 服务
 **步骤 1：设置密码（可选）**
 
 - 首次配置需要一个临时「设置密码」作为保护（默认开启）。
-- 密码打印在启动终端，并写入服务器上的引导文件（常见为 `~/octop-login.txt`）。
+- 密码打印在启动终端，并写入服务器上的引导文件（常见为 `~/agentbuddy-login.txt`）。
 - 此步**不依赖**控制面数据库是否已打开。
 
 **步骤 2：选择控制面数据库**
 
-- 默认使用本地 **SQLite**（路径相对 `~/.octop/`，通常为 `octop.db`），点击「保存并继续」即可。
+- 默认使用本地 **SQLite**（路径相对 `~/.agentbuddy/`，通常为 `agentbuddy.db`），点击「保存并继续」即可。
 - 「展开更多」可配置 **PostgreSQL**（内测）：填写主机等并先「测试连接」，再「使用 PostgreSQL 并继续」。
 - 向导会把选择写入 `config.json` 的 `database` 段，并在服务进程内**首次绑定**连接池、跑迁移。
-- 也可事先用环境变量指定（见 [configuration.md](configuration.md) 的 `OCTOP_DATABASE_*`）；已有库文件的升级安装不会延后建连。
+- 也可事先用环境变量指定（见 [configuration.md](configuration.md) 的 `AGENTBUDDY_DATABASE_*`）；已有库文件的升级安装不会延后建连。
 - 本步只配置**控制面**；若选用 PostgreSQL，Agent 记忆默认复用同一 DSN（可用 `memory.backend.type=sqlite` 强制文件记忆）。详见 [configuration.md](configuration.md)。
 
 **步骤 3：创建管理员账号**
@@ -209,8 +209,8 @@ octop service start   # Linux(systemd) / macOS(launchd) / Windows 服务
 对于自动化部署，可省略向导中的"设置密码"步骤，直接在 Web 控制台通过环境变量预设管理员身份后启动：
 
 ```bash
-export OCTOP_ADMIN_USERNAME=admin
-export OCTOP_ADMIN_PASSWORD="<你的强密码，≥8 位且含字母和数字>"
+export AGENTBUDDY_ADMIN_USERNAME=admin
+export AGENTBUDDY_ADMIN_PASSWORD="<你的强密码，≥8 位且含字母和数字>"
 octop run
 ```
 
@@ -301,7 +301,7 @@ octop provider --help     # 供应商增删改查帮助
 
 打开 **http://127.0.0.1:8088**，使用向导创建的账号登录。
 
-> ⚠️ **安全提醒**：Docker 若未设置合格的 `OCTOP_DEFAULT_PASSWORD`，首次打开会进入设置向导（向导口令在 `/data/.octop/octop-login.txt`，可用 `docker exec <容器> cat /data/.octop/octop-login.txt` 查看）。无论哪种方式，都请尽快在 **个人设置 → 修改密码** 中更换，避免服务暴露到公网时被未授权访问。
+> ⚠️ **安全提醒**：Docker 若未设置合格的 `AGENTBUDDY_DEFAULT_PASSWORD`，首次打开会进入设置向导（向导口令在 `/data/.agentbuddy/agentbuddy-login.txt`，可用 `docker exec <容器> cat /data/.agentbuddy/agentbuddy-login.txt` 查看）。无论哪种方式，都请尽快在 **个人设置 → 修改密码** 中更换，避免服务暴露到公网时被未授权访问。
 
 ![图 5.1 — 登录页面](assets/use-01-login.png)
 
@@ -368,11 +368,11 @@ octop provider --help     # 供应商增删改查帮助
 ### 5.8 设置（用户 / 安全 / TLS / 系统）
 
 - **用户**：管理账号、角色、修改密码。
-- **安全**：工具审批、Shell 命令护栏（`~/.octop/security/tool_guard/`）。
+- **安全**：工具审批、Shell 命令护栏（`~/.agentbuddy/security/tool_guard/`）。
 - **TLS**：配置 HTTPS（自签或 Let's Encrypt）。
 - **系统**：监听地址 / 端口、日志级别、定时任务时区等。
 
-> 手动编辑配置文件：运行时参数保存在 `~/.octop/config.json`，可用环境变量覆盖（如 `OCTOP_PORT`、`OCTOP_BIND_HOST`）。详见 [docs/configuration.md](configuration.md)。
+> 手动编辑配置文件：运行时参数保存在 `~/.agentbuddy/config.json`，可用环境变量覆盖（如 `AGENTBUDDY_PORT`、`AGENTBUDDY_BIND_HOST`）。详见 [docs/configuration.md](configuration.md)。
 
 ![图 5.6 — 设置页面](assets/use-06-settings.png)
 
@@ -428,15 +428,15 @@ octop provider --help     # 供应商增删改查帮助
 - 检查 API Key、Base URL 是否正确，网络是否可访问该服务，账户是否有配额。
 
 **Q：如何修改监听地址让局域网访问？**
-- 启动时：`octop run --host 0.0.0.0 --port 8088`；或设置环境变量 `OCTOP_BIND_HOST=0.0.0.0`、`OCTOP_PORT=8088`。
+- 启动时：`octop run --host 0.0.0.0 --port 8088`；或设置环境变量 `AGENTBUDDY_BIND_HOST=0.0.0.0`、`AGENTBUDDY_PORT=8088`。
 
 **Q：数据存放在哪里？**
-- 全部在 `~/.octop/`：
+- 全部在 `~/.agentbuddy/`：
 
 ```
-~/.octop/
+~/.agentbuddy/
 ├── config.json              # 进程级配置（地址、端口、CORS、TLS、database …）
-├── octop.db                 # 默认 SQLite 控制面 — 用户、Agent、通道、定时任务 …
+├── agentbuddy.db                 # 默认 SQLite 控制面 — 用户、Agent、通道、定时任务 …
 ├── secrets/                 # JWT 密钥、通道 Token
 ├── agents/<agent_id>/       # 各 Agent 工作区（SOUL.md、skills …）
 ├── security/tool_guard/     # Shell 命令允许 / 拒绝规则

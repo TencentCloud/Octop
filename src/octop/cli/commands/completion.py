@@ -8,8 +8,8 @@ from pathlib import Path
 import click
 
 _EVAL_TEMPLATE = {
-    "bash": 'eval "$(_OCTOP_COMPLETE=bash_source octop)"\n',
-    "zsh": 'autoload -U compinit && compinit\neval "$(_OCTOP_COMPLETE=zsh_source octop)"\n',
+    "bash": 'eval "$(_AGENTBUDDY_COMPLETE=bash_source octop)"\n',
+    "zsh": 'autoload -U compinit && compinit\neval "$(_AGENTBUDDY_COMPLETE=zsh_source octop)"\n',
 }
 
 _DEFAULT_RC = {
@@ -49,7 +49,7 @@ def install(shell: str | None, rc_file: str | None) -> None:
     snippet = _EVAL_TEMPLATE[sh]
 
     existing = rc_path.read_text() if rc_path.exists() else ""
-    if "_OCTOP_COMPLETE" in existing:
+    if "_AGENTBUDDY_COMPLETE" in existing:
         click.echo(f"already installed in {rc_path}")
         return
     with rc_path.open("a", encoding="utf-8") as f:

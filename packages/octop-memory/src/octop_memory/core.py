@@ -1755,7 +1755,7 @@ class Memory(_CheckpointerBase):  # type: ignore[misc]
 
             conn.execute(f"PRAGMA busy_timeout={SQLITE_BUSY_TIMEOUT_MS}")
             # The switch changes new writes only; both formats remain readable.
-            compact = os.environ.get("OCTOP_MEMORY_CHECKPOINT_DEDUP", "1") != "0"
+            compact = os.environ.get("AGENTBUDDY_MEMORY_CHECKPOINT_DEDUP", "1") != "0"
             saver = CompactSqliteSaver(conn=conn, compact=compact)
             saver.setup()
             return saver
@@ -1824,7 +1824,7 @@ def _resolve_memory_backend(
 
         return SqliteMemoryBackend(
             namespace=namespace,
-            db_path=config.get("db_path", "~/.octop-memory/session.sqlite"),
+            db_path=config.get("db_path", "~/.agentbuddy/memory/session.sqlite"),
         )
     if backend_type == "postgres":
         try:

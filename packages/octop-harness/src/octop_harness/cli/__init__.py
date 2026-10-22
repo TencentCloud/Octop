@@ -30,7 +30,7 @@ def _check_cli_deps() -> None:
 
 
 def load_dotenv_files(project_dir: Path, *, override: bool = False) -> Path | None:
-    """Load the first .env file found (project dir → global ~/.octop-harness/).
+    """Load the first .env file found (project dir → global ~/.agentbuddy/harness/).
 
     Args:
         project_dir: The current working directory to check for a project .env.
@@ -44,7 +44,7 @@ def load_dotenv_files(project_dir: Path, *, override: bool = False) -> Path | No
 
     candidates = [
         project_dir / ".env",
-        Path.home() / ".octop-harness" / ".env",
+        Path.home() / ".agentbuddy" / "harness" / ".env",
     ]
     for path in candidates:
         if path.is_file():

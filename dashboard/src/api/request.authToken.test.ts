@@ -45,7 +45,7 @@ describe("auth token remember / session-only", () => {
   it("preserves session-only mode when renewing the access token", () => {
     mod.setAuthToken("old", false);
     const response = new Response(null, {
-      headers: { "X-Octop-Access-Token": "renewed" },
+      headers: { "X-Agentbuddy-Access-Token": "renewed" },
     });
     mod.applyRenewedAccessToken(response);
     expect(mod.getAuthToken()).toBe("renewed");

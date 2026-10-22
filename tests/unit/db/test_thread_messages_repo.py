@@ -11,7 +11,7 @@ from octop.infra.db.repos.users import UserRepo
 
 
 def _repos(tmp_path: Path) -> tuple[SqlitePool, ThreadRepo, ThreadMessageRepo]:
-    db = SqlitePool(tmp_path / "octop.db")
+    db = SqlitePool(tmp_path / "agentbuddy.db")
     run_migrations(db)
     user_id = UserRepo(db).create(username="u", password_hash="hash", role="user")
     AgentRepo(db).create(agent_id="agt", user_id=user_id, name="Agent")

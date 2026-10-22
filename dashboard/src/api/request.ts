@@ -16,7 +16,7 @@ export const UNAUTHORIZED_EVENT = "agentbuddy:unauthorized";
 export const FORBIDDEN_EVENT = "agentbuddy:forbidden";
 
 /** Response header used by the server for JWT sliding renewal. */
-export const ACCESS_TOKEN_RESPONSE_HEADER = "X-Octop-Access-Token";
+export const ACCESS_TOKEN_RESPONSE_HEADER = "X-Agentbuddy-Access-Token";
 
 /** Quiet error thrown when setup lockdown blocks a non-wizard API call. */
 export class SetupRequiredError extends Error {
@@ -206,7 +206,7 @@ export function getActiveAgentId(): string | null {
 }
 
 /**
- * Optional ``X-Octop-Agent-Id`` for caller-opted header tunnels (composer
+ * Optional ``X-Agentbuddy-Agent-Id`` for caller-opted header tunnels (composer
  * GETs, connector lists). Do not auto-attach these on settings pages.
  */
 export function bridgeAgentHeaders(
@@ -214,13 +214,13 @@ export function bridgeAgentHeaders(
 ): Record<string, string> | undefined {
   const id = (agentId ?? "").trim();
   if (!id) return undefined;
-  return { "X-Octop-Agent-Id": id };
+  return { "X-Agentbuddy-Agent-Id": id };
 }
 
 /**
  * Decide whether a request path is "agent-scoped" — i.e. talking to a
  * concrete agent's resource — and therefore should carry the
- * ``X-Octop-Agent-Id`` header. Health, admin, auth, setup, providers, and
+ * ``X-Agentbuddy-Agent-Id`` header. Health, admin, auth, setup, providers, and
  * personas don't need it.
  *
  * Composer / knowledge / browser host GETs are NOT auto-scoped: those
@@ -271,9 +271,9 @@ function buildHeaders(path: string, extra?: HeadersInit): HeadersInit {
   if (
     activeAgentId &&
     isAgentScopedPath(path) &&
-    !headers["X-Octop-Agent-Id"]
+    !headers["X-Agentbuddy-Agent-Id"]
   ) {
-    headers["X-Octop-Agent-Id"] = activeAgentId;
+    headers["X-Agentbuddy-Agent-Id"] = activeAgentId;
   }
 
   return headers;
@@ -293,9 +293,9 @@ function buildAuthHeaders(path: string): Record<string, string> {
   if (
     activeAgentId &&
     isAgentScopedPath(path) &&
-    !headers["X-Octop-Agent-Id"]
+    !headers["X-Agentbuddy-Agent-Id"]
   ) {
-    headers["X-Octop-Agent-Id"] = activeAgentId;
+    headers["X-Agentbuddy-Agent-Id"] = activeAgentId;
   }
   return headers;
 }

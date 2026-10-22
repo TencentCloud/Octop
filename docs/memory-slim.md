@@ -22,16 +22,16 @@ octop memory slim --all       # 顺序整理列表中所有符合条件的智能
 ./scripts/memory-slim --online --all # 顺序整理所有符合条件的智能体
 ```
 
-`--all` 在启动时获取一次 `memory list` 的候选列表，范围是当前 OCTOP_HOME 内所有用户的
+`--all` 在启动时获取一次 `memory list` 的候选列表，范围是当前 AGENTBUDDY_HOME 内所有用户的
 运行中、使用兼容 SQLite 记忆库的智能体；不启动已停止的 agent，也不扫描其他目录中的离线库。
-忽略已保存的默认智能体，但不能与显式 `--agent`（含根命令参数）或 `OCTOP_AGENT` 同时使用。
+忽略已保存的默认智能体，但不能与显式 `--agent`（含根命令参数）或 `AGENTBUDDY_AGENT` 同时使用。
 终端显示 `[1/3] 名称 [ID]` 及该智能体的阶段、耗时和扫描数；每个完成并恢复后才开始下一个。
 每个库分别备份、分别显示前后大小。遇到失败或连接中断立即停止批次，报告已完成数和未执行数，
 不自动重试。关闭终端后当前已启动的作业仍由宿主完成，后续尚未提交的项目不会继续执行。
 `octop --json memory slim --all` 的进度带 `agent_id`、`index`、`total_agents`，批次终态为
 `batch_done` 或 `batch_failed`。`memory list` 可用于提前查看范围，它本身不执行瘦身。
 
-上述终端命令直接触发维护，不是预览。它连接运行中的同一个 OCTOP_HOME 实例，不会启动第二份政务伙伴；
+上述终端命令直接触发维护，不是预览。它连接运行中的同一个 AGENTBUDDY_HOME 实例，不会启动第二份政务伙伴；
 不指定数据库路径，服务使用该智能体实际打开的 SQLite 文件。
 原 `octop-memory db slim FILE` / `scripts/memory-slim FILE` 仍然是离线预览入口。
 
@@ -106,7 +106,7 @@ IM 暂不开放：现有 IM `user_id` 是用于会话存储的 agent owner，不
 ### 协调与存储
 
 - `cli/commands/memory.py` → `infra/agents/memory_slim_control.py` 的本机 loopback 通道。
-  控制端口随机，仅绑定 127.0.0.1；`OCTOP_HOME/memory-slim-control.json` 包含私有 token，
+  控制端口随机，仅绑定 127.0.0.1；`AGENTBUDDY_HOME/memory-slim-control.json` 包含私有 token，
   通过权限为 0600 的临时文件原子发布（Windows 依赖用户目录 ACL）。权限语义沿用本机 CLI 的文件系统信任。
   不提供无认证的远程 HTTP 管理入口。该文件随正常退出删除，旧 token 不能调用新进程。
 - `launch.py` 启动/关闭控制 listener；`AgentManager.memory_slim` 持有任务协调器，Manager shutdown 先等待维护结束再关闭 Agent。

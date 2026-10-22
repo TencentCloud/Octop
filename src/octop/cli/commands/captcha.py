@@ -20,7 +20,7 @@ def reset() -> None:
     Use this when a misconfigured provider (wrong keys, unreachable vendor,
     hostname not allowlisted) locks everyone out of the dashboard: the
     settings UI requires login, so the only offline escape is this command
-    or restoring a backup. Boot-env captcha (OCTOP_CAPTCHA_*) is not touched
+    or restoring a backup. Boot-env captcha (AGENTBUDDY_CAPTCHA_*) is not touched
     — unset those in the environment file if they are the lockout cause.
     If `octop run` is already running, restart it for the change to apply.
     """

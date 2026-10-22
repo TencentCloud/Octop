@@ -170,7 +170,7 @@ def run(
     """Run octop-server in the foreground.
 
     Host and port are resolved with the following precedence: explicit CLI
-    flags > ``OCTOP_BIND_HOST``/``OCTOP_PORT`` env > ``~/.octop/config.json``
+    flags > ``AGENTBUDDY_BIND_HOST``/``AGENTBUDDY_PORT`` env > ``~/.agentbuddy/config.json``
     > launch defaults. When ``--host`` or ``--port`` is passed on the CLI,
     that override is persisted to ``config.json`` immediately before uvicorn
     starts.

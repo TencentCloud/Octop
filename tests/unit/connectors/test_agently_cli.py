@@ -20,7 +20,7 @@ from octop.infra.connectors.gateway.protocol import handle_mcp_request
 
 @pytest.fixture
 def cli(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> list[dict[str, Any]]:
-    monkeypatch.setenv("OCTOP_HOME", str(tmp_path))
+    monkeypatch.setenv("AGENTBUDDY_HOME", str(tmp_path))
     monkeypatch.setattr(agently_cli, "resolve_binary", lambda _: fake_bin_path("agently-cli"))
     calls: list[dict[str, Any]] = []
 

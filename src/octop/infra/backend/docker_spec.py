@@ -5,7 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
-DEFAULT_SANDBOX_PREFIX = "octop_sandbox"
+DEFAULT_SANDBOX_PREFIX = "agentbuddy_sandbox"
 
 _DOCKER_PASSTHROUGH_KEYS = (
     "allow_network",
@@ -60,7 +60,7 @@ def enrich_docker_backend_spec(
 ) -> dict[str, Any]:
     """Inject agentbuddy defaults into a docker harness spec (does not overwrite set keys).
 
-    - ``sandbox_prefix`` defaults to ``octop_sandbox``
+    - ``sandbox_prefix`` defaults to ``agentbuddy_sandbox``
     - ``sandbox_scope`` defaults to ``agent``
     - ``agent`` scope: set ``agent_id`` when missing
     - ``user`` scope: set ``username`` from the agent owner when missing
@@ -82,7 +82,7 @@ def inject_docker_global_environment(
     spec: dict[str, Any],
     env_file: str | Path | None,
 ) -> dict[str, Any]:
-    """Point a docker spec at Admin ``~/.octop/env`` (re-read on each execute)."""
+    """Point a docker spec at Admin ``~/.agentbuddy/env`` (re-read on each execute)."""
     if str(spec.get("type") or "").lower() != "docker":
         return spec
     out = dict(spec)

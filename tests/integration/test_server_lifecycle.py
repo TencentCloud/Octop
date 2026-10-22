@@ -29,11 +29,11 @@ async def test_start_defers_db_until_bind(tmp_octop_home: Path):
     try:
         assert tmp_octop_home.is_dir()
         assert (tmp_octop_home / "config.json").exists()
-        assert not (tmp_octop_home / "octop.db").exists()
+        assert not (tmp_octop_home / "agentbuddy.db").exists()
         assert srv.database_bound is False
         assert srv.services is None
         await _bind_default_sqlite(srv)
-        assert (tmp_octop_home / "octop.db").exists()
+        assert (tmp_octop_home / "agentbuddy.db").exists()
         assert srv.database_bound is True
     finally:
         await srv.stop()
@@ -41,7 +41,7 @@ async def test_start_defers_db_until_bind(tmp_octop_home: Path):
 
 async def test_start_creates_root_and_db(server: OctopServer, tmp_octop_home: Path):
     assert tmp_octop_home.is_dir()
-    assert (tmp_octop_home / "octop.db").exists()
+    assert (tmp_octop_home / "agentbuddy.db").exists()
     assert (tmp_octop_home / "config.json").exists()
 
 

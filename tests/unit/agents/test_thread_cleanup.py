@@ -27,7 +27,7 @@ from octop.infra.utils.paths import PathLayout
 
 
 def _services(tmp_path: Path):
-    paths = PathLayout(tmp_path / ".octop")
+    paths = PathLayout(tmp_path / ".agentbuddy")
     paths.ensure_root()
     db = SqlitePool(paths.db)
     run_migrations(db)
@@ -116,7 +116,7 @@ def test_sweep_removes_deleted_agent_dir_and_orphan_checkpoints(tmp_path: Path) 
 def test_thread_delete_clears_sqlite_file_outside_active_workspace(tmp_path: Path) -> None:
     from octop.infra.utils.paths import PathLayout
 
-    paths = PathLayout(tmp_path / ".octop")
+    paths = PathLayout(tmp_path / ".agentbuddy")
     paths.ensure_root()
     active = paths.agent_workspace("Ab1")
     active.mkdir(parents=True)

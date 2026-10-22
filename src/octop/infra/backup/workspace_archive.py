@@ -13,7 +13,7 @@ from typing import TYPE_CHECKING, Any, Literal
 from octop_harness.backends.utils import materialize_storage_path
 
 from octop.infra.agents.builtin_skills import (
-    OCTOP_BUILTIN_SKILLS_ROOT,
+    AGENTBUDDY_BUILTIN_SKILLS_ROOT,
     is_octop_builtin_skills_path,
 )
 
@@ -257,7 +257,7 @@ async def import_workspace_zip(
     skipped = len(entries) - len(pairs)
     if skipped:
         warnings.append(
-            f"skipped {skipped} {OCTOP_BUILTIN_SKILLS_ROOT!r} entry/entries (owned by agentbuddy)"
+            f"skipped {skipped} {AGENTBUDDY_BUILTIN_SKILLS_ROOT!r} entry/entries (owned by agentbuddy)"
         )
     if pairs:
         await workspace.aupload_many(pairs)

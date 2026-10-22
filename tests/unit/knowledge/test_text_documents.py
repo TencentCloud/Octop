@@ -19,7 +19,7 @@ from octop.infra.utils.paths import PathLayout
 
 @pytest.fixture
 def services(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> SimpleNamespace:
-    monkeypatch.setenv("OCTOP_HOME", str(tmp_path / ".octop"))
+    monkeypatch.setenv("AGENTBUDDY_HOME", str(tmp_path / ".agentbuddy"))
     paths = PathLayout.from_env()
     paths.ensure_root()
     db = SqlitePool(paths.db)

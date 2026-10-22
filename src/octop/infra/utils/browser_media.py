@@ -82,7 +82,7 @@ def _maybe_migrate_legacy_profiles(dest: Path) -> None:
 
 
 def octop_browser_profiles_dir(paths: PathLayout | None = None) -> Path:
-    """Shared Chrome profiles root: ``~/.octop/browser-profiles``.
+    """Shared Chrome profiles root: ``~/.agentbuddy/browser-profiles``.
 
     Profiles live under one agentbuddy-owned root and are named ``user-<id>``.
     A pre-isolation ``default`` directory, if present, is left untouched.

@@ -50,7 +50,7 @@ async def test_export_includes_hidden_and_runtime_dirs(tmp_path: Path) -> None:
     handful of root markdown files.
     """
     home = tmp_path / "home"
-    workspace_dir = home / ".octop" / "workspaces" / "AGT1"
+    workspace_dir = home / ".agentbuddy" / "workspaces" / "AGT1"
     (workspace_dir / "outbound" / "shots").mkdir(parents=True)
     (workspace_dir / "inbound").mkdir(parents=True)
     (workspace_dir / ".octop" / "sessions").mkdir(parents=True)
@@ -112,7 +112,7 @@ async def test_export_ignores_same_named_file_at_backend_root(tmp_path: Path) ->
     while the entry name still said ``AGENTS.md``.
     """
     home = tmp_path / "home"
-    workspace_dir = home / ".octop" / "workspaces" / "AGT1"
+    workspace_dir = home / ".agentbuddy" / "workspaces" / "AGT1"
     workspace_dir.mkdir(parents=True)
 
     (home / "AGENTS.md").write_bytes(b"backend-root AGENTS.md")
@@ -170,7 +170,7 @@ async def test_export_reads_legacy_root_system_dir_from_workspace(tmp_path: Path
     ``skills/`` misses and falls back to the shadowed relative read.
     """
     home = tmp_path / "home"
-    workspace_dir = home / ".octop" / "workspaces" / "AGT1"
+    workspace_dir = home / ".agentbuddy" / "workspaces" / "AGT1"
     (workspace_dir / "skills" / "demo").mkdir(parents=True)
     (home / "skills" / "demo").mkdir(parents=True)
 

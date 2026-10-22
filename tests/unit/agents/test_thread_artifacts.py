@@ -29,7 +29,7 @@ from octop.infra.utils.thread_artifact import ThreadArtifact
 
 
 def _ws(tmp_path: Path) -> Path:
-    return tmp_path / ".octop" / "agents" / "ABC123"
+    return tmp_path / ".agentbuddy" / "agents" / "ABC123"
 
 
 class _FakeThreads:
@@ -77,8 +77,8 @@ def test_normalize_artifact_path_absolute_passthrough_relative_joins_workspace(
     assert normalize_artifact_path(abs_path, ws) == abs_path
     # Absolute-looking paths are stored as-is (no rewrite).
     assert (
-        normalize_artifact_path("/.octop/agents/main/skills/env-reader/SKILL.md", ws)
-        == "/.octop/agents/main/skills/env-reader/SKILL.md"
+        normalize_artifact_path("/.agentbuddy/agents/main/skills/env-reader/SKILL.md", ws)
+        == "/.agentbuddy/agents/main/skills/env-reader/SKILL.md"
     )
     assert normalize_artifact_path("outbound/screenshots/harness.png", ws) == str(
         (ws / "outbound/screenshots/harness.png").as_posix()
@@ -98,14 +98,14 @@ def test_artifacts_for_response_upgrades_legacy_relative_paths(tmp_path: Path) -
     ws = _ws(tmp_path)
     abs_path = str((ws / "docs" / "a.md").as_posix())
     out = artifacts_for_response(
-        ["docs/a.md", abs_path, "/.octop/agents/main/skills/x.md"],
+        ["docs/a.md", abs_path, "/.agentbuddy/agents/main/skills/x.md"],
         ws,
         default_agent_id="host",
     )
     # Relative upgrades to workspace abs; identical abs dedupes; other abs kept.
     assert out == [
         ThreadArtifact(path=str((ws / "docs/a.md").as_posix()), agent_id="host"),
-        ThreadArtifact(path="/.octop/agents/main/skills/x.md", agent_id="host"),
+        ThreadArtifact(path="/.agentbuddy/agents/main/skills/x.md", agent_id="host"),
     ]
 
 
@@ -167,7 +167,7 @@ def test_extract_prefers_args_over_result_text(tmp_path: Path) -> None:
 
 def test_extract_screenshot_from_tool_result_text(tmp_path: Path) -> None:
     ws = _ws(tmp_path)
-    abs_path = "/Users/me/.octop/agents/A1/outbound/screenshots/harness.png"
+    abs_path = "/Users/me/.agentbuddy/agents/A1/outbound/screenshots/harness.png"
     paths = extract_artifact_paths(
         tool_name="desktop_screenshot",
         args={},
@@ -179,7 +179,7 @@ def test_extract_screenshot_from_tool_result_text(tmp_path: Path) -> None:
 
 def test_middleware_rewrites_plan_write_onto_workspace() -> None:
     # POSIX-style so the container-root rewrite branch is exercised on Windows too.
-    ws = Path("/data/.octop/agents/ABC123")
+    ws = Path("/data/.agentbuddy/agents/ABC123")
     mw = ThreadArtifactsMiddleware(thread_repo=_FakeThreads(), workspace_dir=ws)
     seen: list[str] = []
 
@@ -236,7 +236,7 @@ def test_middleware_records_absolute_write_as_is(tmp_path: Path) -> None:
     ws = _ws(tmp_path)
     store = _FakeThreads()
     mw = ThreadArtifactsMiddleware(thread_repo=store, workspace_dir=ws)
-    abs_path = "/.octop/agents/main/skills/env-reader/SKILL.md"
+    abs_path = "/.agentbuddy/agents/main/skills/env-reader/SKILL.md"
     request = _request("write_file", {"path": abs_path})
     with patch(
         "octop.infra.agents.middleware.thread_artifacts.current_thread_id",
@@ -279,7 +279,7 @@ def test_middleware_skips_without_thread_id(tmp_path: Path) -> None:
 
 
 def test_append_artifacts_merges_unique(tmp_path: Path) -> None:
-    db = SqlitePool(tmp_path / "octop.db")
+    db = SqlitePool(tmp_path / "agentbuddy.db")
     run_migrations(db)
     UserRepo(db).create(username="u", password_hash="h", role="user")
     AgentRepo(db).create(agent_id="a1", user_id=1, name="Agent 1")
@@ -302,7 +302,7 @@ def test_append_artifacts_merges_unique(tmp_path: Path) -> None:
 
 
 def test_append_artifacts_dedupes_by_agent_and_path(tmp_path: Path) -> None:
-    db = SqlitePool(tmp_path / "octop.db")
+    db = SqlitePool(tmp_path / "agentbuddy.db")
     run_migrations(db)
     UserRepo(db).create(username="u", password_hash="h", role="user")
     AgentRepo(db).create(agent_id="host", user_id=1, name="Host")

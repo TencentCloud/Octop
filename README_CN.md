@@ -53,11 +53,11 @@
 | 🌐 | **浏览器 AI+** | 基于 Chromium 的无头浏览器会话，支持网页自动化、截图与远程操控 |
 | 🖥️ | **远程桌面** | 控制台内实时看屏与键鼠操控，跨 Linux / Windows / macOS；适合远程办公、GUI 软件操作，无图形 Linux 可一键搭建隔离桌面 |
 | 🪟 | **桌面客户端** | Windows / macOS / Linux 原生应用，可与 Web 控制台并行使用 |
-| 🏠 | **可自托管** | 一条 `octop run` 即可运行控制台、CLI、IM 通道与定时任务，数据存于 `~/.octop/` |
+| 🏠 | **可自托管** | 一条 `octop run` 即可运行控制台、CLI、IM 通道与定时任务，数据存于 `~/.agentbuddy/` |
 
 ## 📌 概述
 
-是面向家庭与小团队的自托管 AI 助手平台。单进程同时提供 Web 控制台、CLI、IM 通道（飞书、钉钉、QQ、微信、企业微信等）与定时任务，共享 `~/.octop/` 下的控制面数据库（默认 SQLite；可选 PostgreSQL）。
+是面向家庭与小团队的自托管 AI 助手平台。单进程同时提供 Web 控制台、CLI、IM 通道（飞书、钉钉、QQ、微信、企业微信等）与定时任务，共享 `~/.agentbuddy/` 下的控制面数据库（默认 SQLite；可选 PostgreSQL）。
 
 > 的设计目标：让每一次对话、工作区与凭据都留在你自己的机器上，同时为每个用户配备一组可按场景切换的专业 Agent。
 
@@ -96,7 +96,7 @@
 - **[Octop Memory](about:blank)** — 分层记忆与全文检索，让 Agent 的记忆随工作区一同迁移。
 - **[Octop Browser](about:blank)** — 基于 CDP 的浏览器自动化，支持持久化配置，用于网页类任务。
 
-不依赖外部消息队列或中间件，而是通过进程内的 `HarnessProcessor` 统一路由所有入口——Web UI、IM 与定时任务。最终呈现为一个可重启恢复的单进程：启动时整个状态都从控制面数据库重建（默认 `~/.octop/octop.db`，亦可配置 PostgreSQL）。
+不依赖外部消息队列或中间件，而是通过进程内的 `HarnessProcessor` 统一路由所有入口——Web UI、IM 与定时任务。最终呈现为一个可重启恢复的单进程：启动时整个状态都从控制面数据库重建（默认 `~/.agentbuddy/agentbuddy.db`，亦可配置 PostgreSQL）。
 
 ## 🤔 功能特性
 
@@ -174,7 +174,7 @@
 ### 环境要求
 
 - **macOS / Linux / Windows**
-- 无需预先安装 Python — 安装脚本通过 [uv](https://docs.astral.sh/uv/) 在 `~/.octop/` 下创建隔离的 Python 3.12 虚拟环境
+- 无需预先安装 Python — 安装脚本通过 [uv](https://docs.astral.sh/uv/) 在 `~/.agentbuddy/` 下创建隔离的 Python 3.12 虚拟环境
 - 现代多核 CPU，并预留数 GB 内存供进程与模型/Embedding 缓存使用；磁盘需容纳数据库、Agent 工作区与文档语料
 
 ### 1. 安装
@@ -206,7 +206,7 @@ source ~/.zshrc   # Zsh
 source ~/.bashrc  # Bash
 ```
 
-安装脚本会将 `octop` 加入 PATH（`~/.octop/bin`）。可选附加组件：
+安装脚本会将 `octop` 加入 PATH（`~/.agentbuddy/bin`）。可选附加组件：
 
 ```bash
 # 下载 Playwright Chromium 用于浏览器自动化（若系统已有 Chrome / Chromium 则会跳过）
@@ -230,7 +230,7 @@ curl -fsSL <YOUR_RELEASE_BASE>/install.sh | bash -s -- --extras browser
 ```bash
 pip install octop
 # 可选本地 ONNX Embedding 模型缓存（设置 → 模型 → 本地）：pip install "octop[local-embedding]"
-# 仅下载目录模型到 ~/.octop/embedding_models；不用于对话，也不接入 Memory。
+# 仅下载目录模型到 ~/.agentbuddy/embedding_models；不用于对话，也不接入 Memory。
 # 浏览器自动化依赖已内置 Playwright；Chromium 可通过安装脚本 --extras browser、
 # 控制台，或执行：python -m playwright install chromium
 ```
@@ -247,7 +247,7 @@ uv sync --extra local-embedding
 octop init
 ```
 
-交互式向导会在 `~/.octop/` 下创建 SQLite 数据库、JWT 密钥，并引导你设置首个管理员账号。
+交互式向导会在 `~/.agentbuddy/` 下创建 SQLite 数据库、JWT 密钥，并引导你设置首个管理员账号。
 
 ### 3. 启动
 
@@ -262,7 +262,7 @@ octop run --host 0.0.0.0 --port 8088
 octop service start
 ```
 
-打开 **http://127.0.0.1:8088**。Docker 若设置了合格的 `OCTOP_DEFAULT_PASSWORD`，首次启动会创建管理员（凭据写入 `/data/.octop/credential.txt`）；未设置或密码不合格则打开设置向导（向导口令在 `/data/.octop/octop-login.txt`）。交互式 `octop init` / 设置向导会让你自行设置密码（至少 8 位，且同时包含字母和数字）。
+打开 **http://127.0.0.1:8088**。Docker 若设置了合格的 `AGENTBUDDY_DEFAULT_PASSWORD`，首次启动会创建管理员（凭据写入 `/data/.agentbuddy/credential.txt`）；未设置或密码不合格则打开设置向导（向导口令在 `/data/.agentbuddy/octop-login.txt`）。交互式 `octop init` / 设置向导会让你自行设置密码（至少 8 位，且同时包含字母和数字）。
 
 ### Docker（推荐用于生产部署）
 
@@ -277,22 +277,22 @@ docker compose -f docker/docker-compose.cn.yml up -d
 bash docker/docker_build.sh
 docker run -d \
   -p 8088:8088 \
-  -v octop-data:/data/.octop \
+  -v octop-data:/data/.agentbuddy \
   -e HOME=/data \
-  -e OCTOP_DEFAULT_PASSWORD="<自定义强密码，留空则进入设置向导>" \
+  -e AGENTBUDDY_DEFAULT_PASSWORD="<自定义强密码，留空则进入设置向导>" \
   agentbuddy:latest
 ```
 
-打开 `http://localhost:8088`。`OCTOP_DEFAULT_PASSWORD` 合格时首次启动会创建管理员，并把凭据写入 `/data/.octop/credential.txt`。未设置或密码被策略拒绝时不自动建账号，打开页面走设置向导（向导口令在 `/data/.octop/octop-login.txt`）。可通过 `OCTOP_ADMIN_USERNAME` 覆盖用户名。
+打开 `http://localhost:8088`。`AGENTBUDDY_DEFAULT_PASSWORD` 合格时首次启动会创建管理员，并把凭据写入 `/data/.agentbuddy/credential.txt`。未设置或密码被策略拒绝时不自动建账号，打开页面走设置向导（向导口令在 `/data/.agentbuddy/octop-login.txt`）。可通过 `AGENTBUDDY_ADMIN_USERNAME` 覆盖用户名。
 
 > **密码策略：** 至少 8 位，且同时包含字母和数字。
 
 | 变量 | 默认值 | 说明 |
 |------|--------|------|
-| `OCTOP_PORT` | `8088` | HTTP 监听端口 |
-| `OCTOP_DEFAULT_PASSWORD` | _(未设置)_ | 首次运行管理员密码（Docker 引导）。合格则建账号；未设置或不合格则走设置向导 |
-| `OCTOP_ADMIN_USERNAME` | `admin` | 首次运行管理员用户名 |
-| `OCTOP_DATA` | `~/.octop` | 宿主机数据目录（compose 挂载） |
+| `AGENTBUDDY_PORT` | `8088` | HTTP 监听端口 |
+| `AGENTBUDDY_DEFAULT_PASSWORD` | _(未设置)_ | 首次运行管理员密码（Docker 引导）。合格则建账号；未设置或不合格则走设置向导 |
+| `AGENTBUDDY_ADMIN_USERNAME` | `admin` | 首次运行管理员用户名 |
+| `AGENTBUDDY_DATA` | `~/.agentbuddy` | 宿主机数据目录（compose 挂载） |
 
 完整变量列表见 [`.env.example`](.env.example)。
 
@@ -340,11 +340,11 @@ docker run -d \
 | PyPI | 全平台 | `pip install octop`（可选 extras 如 `local-embedding`） |
 | Docker | 全平台 | `docker/docker-compose.yml`；国内镜像 `docker/docker-compose.cn.yml` |
 
-所有安装脚本均在 `~/.octop/venv` 创建隔离环境，并通过 `~/.octop/bin/octop` 包装 CLI，不会影响系统 Python。
+所有安装脚本均在 `~/.agentbuddy/venv` 创建隔离环境，并通过 `~/.agentbuddy/bin/octop` 包装 CLI，不会影响系统 Python。
 
 ### 升级
 
-不带内置更新器，请自行替换 wheel / 二进制后重启服务。你的 `~/.octop/` 数据库、工作区、密钥与 `config.json` 均会保留：
+不带内置更新器，请自行替换 wheel / 二进制后重启服务。你的 `~/.agentbuddy/` 数据库、工作区、密钥与 `config.json` 均会保留：
 
 ```bash
 pip install --upgrade octop      # 或 uv tool upgrade octop / 直接替换内置二进制
@@ -355,7 +355,7 @@ octop service restart            # 已注册系统服务时
 
 ## ⚙️ 配置
 
-所有运行时数据存放在 `~/.octop/`。可通过 CLI 管理，也可直接编辑文件。
+所有运行时数据存放在 `~/.agentbuddy/`。可通过 CLI 管理，也可直接编辑文件。
 
 ```bash
 # LLM 供应商与模型
@@ -404,7 +404,7 @@ OpenAI 兼容 API、DashScope（千问）、Ollama 等预设 — 在控制台或
 
 | 命令 | 说明 |
 |------|------|
-| `octop init` | 初始化 `~/.octop/`（数据库、管理员、JWT 密钥） |
+| `octop init` | 初始化 `~/.agentbuddy/`（数据库、管理员、JWT 密钥） |
 | `octop run` | 前台启动政务伙伴 |
 | `octop service start` | 安装并启动系统服务 |
 | `octop service stop` | 停止系统服务 |
@@ -417,7 +417,7 @@ OpenAI 兼容 API、DashScope（千问）、Ollama 等预设 — 在控制台或
 | `octop skills` | 按 Agent 启用/禁用 Skill |
 | `octop plugin` | 安装并管理第三方插件 |
 | `octop backup` | 导出 / 恢复备份 |
-| `octop clean` | 清理 CLI 状态或清空 `~/.octop/` |
+| `octop clean` | 清理 CLI 状态或清空 `~/.agentbuddy/` |
 | `octop memory list` | 列出可参与记忆维护的运行中 Agent；不改动数据库。 |
 | `octop memory slim [--agent ID]` | 通过运行中的宿主备份并精简 SQLite 记忆；使用指定 Agent 或按提示选择。在终端与控制台显示进度。[详情](docs/memory-slim.md) |
 | `octop memory slim --all` | 依次维护所有符合条件的运行中 Agent，逐个显示进度；首个失败即停止。 |
@@ -454,9 +454,9 @@ OpenAI 兼容 API、DashScope（千问）、Ollama 等预设 — 在控制台或
 ## 📁 数据目录
 
 ```
-~/.octop/                          ← 安装与数据根目录
+~/.agentbuddy/                          ← 安装与数据根目录
 ├── config.json                    # 进程配置（含可选 database 段）
-├── octop.db                       # 默认 SQLite 控制面（用户、Agent、通道、定时任务 …）
+├── agentbuddy.db                       # 默认 SQLite 控制面（用户、Agent、通道、定时任务 …）
 ├── secrets/                       # JWT 密钥、通道 Token
 ├── agents/<agent_id>/             # 各 Agent 工作区（SOUL.md、skills …）
 ├── security/tool_guard/           # Shell 命令允许/拒绝规则
@@ -465,7 +465,7 @@ OpenAI 兼容 API、DashScope（千问）、Ollama 等预设 — 在控制台或
 └── bin/octop                      # PATH 包装脚本 → venv/bin/octop
 ```
 
-控制面也可改用 PostgreSQL（`config.json` → `database`，或 `OCTOP_DATABASE_*` / 首次设置向导）。控制面为 PostgreSQL 时，Agent 记忆**默认复用同一 DSN**（per-agent schema）；若需继续用文件记忆，在 agent 配置里设 `"memory": { "backend": { "type": "sqlite" } }`。详见 [docs/configuration.md](docs/configuration.md) 与 [docs/adr/002-database-backends.md](docs/adr/002-database-backends.md)。
+控制面也可改用 PostgreSQL（`config.json` → `database`，或 `AGENTBUDDY_DATABASE_*` / 首次设置向导）。控制面为 PostgreSQL 时，Agent 记忆**默认复用同一 DSN**（per-agent schema）；若需继续用文件记忆，在 agent 配置里设 `"memory": { "backend": { "type": "sqlite" } }`。详见 [docs/configuration.md](docs/configuration.md) 与 [docs/adr/002-database-backends.md](docs/adr/002-database-backends.md)。
 
 环境变量与 `config.json` 详见 [docs/configuration.md](docs/configuration.md)。
 
@@ -527,10 +527,10 @@ cd dashboard && npx tsc -b
 
 ## 🔒 安全与隐私
 
-- **本地优先**：配置、对话、工作区与凭证均存储在 `~/.octop/`。
+- **本地优先**：配置、对话、工作区与凭证均存储在 `~/.agentbuddy/`。
 - **多用户隔离**：JWT 认证，按用户隔离 Agent 与工作区。
 - **敏感信息脱敏与工具审批**：离开工作区前自动脱敏敏感数据；高风险工具或 Shell 命令需依据护栏规则显式审批。
-- **工具护栏**：可在 `~/.octop/security/tool_guard/` 编辑 Shell 命令规则。
+- **工具护栏**：可在 `~/.agentbuddy/security/tool_guard/` 编辑 Shell 命令规则。
 - **无厂商锁定**：可自由切换 LLM 供应商、存储后端与 IM 通道。
 
 ## 🤝 参与贡献

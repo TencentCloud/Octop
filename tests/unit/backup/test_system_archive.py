@@ -21,7 +21,7 @@ from octop.infra.utils.paths import PathLayout
 
 @pytest.fixture
 def layout(tmp_path: Path) -> PathLayout:
-    root = tmp_path / ".octop"
+    root = tmp_path / ".agentbuddy"
     root.mkdir()
     return PathLayout(root)
 
@@ -167,7 +167,7 @@ def test_backup_packs_config_workspace_dir(layout: PathLayout, tmp_path: Path) -
 
 
 def test_backup_skips_unwritable_workspace_dir(layout: PathLayout, tmp_path: Path) -> None:
-    """Stale host paths (e.g. former /root/.octop/agents/…) must not abort backup."""
+    """Stale host paths (e.g. former /root/.agentbuddy/agents/…) must not abort backup."""
     pool = SqlitePool(layout.db)
     run_migrations(pool)
     reachable = layout.ensure_agent_workspace("ok01")
@@ -253,10 +253,10 @@ def test_default_backup_omits_chats_and_restore_preserves_current_chats(
 
     source_ws = source_layout.ensure_agent_workspace("agent01")
     (source_ws / "SOUL.md").write_text("# source", encoding="utf-8")
-    source_sessions = source_ws / ".octop" / "sessions"
+    source_sessions = source_ws / ".agentbuddy" / "sessions"
     source_sessions.mkdir(parents=True)
     (source_sessions / "large.jsonl").write_text("chat", encoding="utf-8")
-    (source_ws / ".octop" / "checkpoints.sqlite").write_bytes(b"chat-db")
+    (source_ws / ".agentbuddy" / "checkpoints.sqlite").write_bytes(b"chat-db")
     user_sessions = source_ws / "project" / "sessions"
     user_sessions.mkdir(parents=True)
     (user_sessions / "notes.txt").write_text("keep", encoding="utf-8")
@@ -264,7 +264,7 @@ def test_default_backup_omits_chats_and_restore_preserves_current_chats(
     class Row:
         agent_id = "agent01"
         name = "Agent"
-        config_json = '{"system_files_path": ".octop"}'
+        config_json = '{"system_files_path": ".agentbuddy"}'
 
     archive = tmp_path / "without-chats.tar.gz"
     create_system_backup(
@@ -282,8 +282,8 @@ def test_default_backup_omits_chats_and_restore_preserves_current_chats(
     assert manifest["includes_chats"] is False
     assert "workspaces/agent01/SOUL.md" in names
     assert "workspaces/agent01/project/sessions/notes.txt" in names
-    assert "workspaces/agent01/.octop/sessions/large.jsonl" not in names
-    assert "workspaces/agent01/.octop/checkpoints.sqlite" not in names
+    assert "workspaces/agent01/.agentbuddy/sessions/large.jsonl" not in names
+    assert "workspaces/agent01/.agentbuddy/checkpoints.sqlite" not in names
 
     target_layout = PathLayout(tmp_path / "target")
     target_layout.root.mkdir()
@@ -318,7 +318,7 @@ def test_default_backup_omits_chats_and_restore_preserves_current_chats(
             ") VALUES ('event-1', 'agent01', 'thread-1', 1, 1, 'user', 'keep', '{}')"
         )
 
-    target_sessions = target_layout.ensure_agent_workspace("agent01") / ".octop" / "sessions"
+    target_sessions = target_layout.ensure_agent_workspace("agent01") / ".agentbuddy" / "sessions"
     target_sessions.mkdir(parents=True)
     current_log = target_sessions / "current.jsonl"
     current_log.write_text("keep", encoding="utf-8")
@@ -447,7 +447,7 @@ def test_restore_skips_chat_workspace_files_when_manifest_omits_chats(
     class Row:
         agent_id = "agent01"
         name = "Agent"
-        config_json = '{"system_files_path": ".octop"}'
+        config_json = '{"system_files_path": ".agentbuddy"}'
 
     archive = tmp_path / "inject-chats.tar.gz"
     create_system_backup(
@@ -468,7 +468,7 @@ def test_restore_skips_chat_workspace_files_when_manifest_omits_chats(
                 f = tf.extractfile(m)
                 assert f is not None
                 members[m.name] = f.read()
-    members["workspaces/agent01/.octop/sessions/injected.jsonl"] = b"overwrite-me"
+    members["workspaces/agent01/.agentbuddy/sessions/injected.jsonl"] = b"overwrite-me"
     with tarfile.open(archive, mode="w:gz") as tf:
         for name, blob in members.items():
             info = tarfile.TarInfo(name=name)
@@ -479,7 +479,7 @@ def test_restore_skips_chat_workspace_files_when_manifest_omits_chats(
     target.root.mkdir()
     target_pool = SqlitePool(target.db)
     run_migrations(target_pool)
-    keep = target.ensure_agent_workspace("agent01") / ".octop" / "sessions" / "current.jsonl"
+    keep = target.ensure_agent_workspace("agent01") / ".agentbuddy" / "sessions" / "current.jsonl"
     keep.parent.mkdir(parents=True)
     keep.write_text("keep", encoding="utf-8")
     restore_system_backup(
@@ -492,7 +492,7 @@ def test_restore_skips_chat_workspace_files_when_manifest_omits_chats(
     target_pool.close()
     assert keep.read_text(encoding="utf-8") == "keep"
     assert not (
-        target.ensure_agent_workspace("agent01") / ".octop" / "sessions" / "injected.jsonl"
+        target.ensure_agent_workspace("agent01") / ".agentbuddy" / "sessions" / "injected.jsonl"
     ).exists()
 
 

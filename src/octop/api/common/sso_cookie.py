@@ -5,7 +5,7 @@ from __future__ import annotations
 from fastapi import Request
 from fastapi.responses import JSONResponse, Response
 
-SSO_STATE_COOKIE = "octop_sso_state"
+SSO_STATE_COOKIE = "agentbuddy_sso_state"
 SSO_COOKIE_PATH = "/api/auth"
 SSO_STATE_TTL_SECONDS = 600
 

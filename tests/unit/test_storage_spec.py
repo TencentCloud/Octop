@@ -21,7 +21,7 @@ from octop.infra.db.repos.backends import BackendRepo, BackendRow
 
 @pytest.fixture
 def repo(tmp_path: Path) -> BackendRepo:
-    db = SqlitePool(tmp_path / "octop.db")
+    db = SqlitePool(tmp_path / "agentbuddy.db")
     run_migrations(db)
     return BackendRepo(db)
 
@@ -201,7 +201,7 @@ def test_row_to_backend_spec_docker() -> None:
         secret_key=None,
         bucket="python:3.12-slim",
         region=None,
-        config_json='{"allow_network": false, "memory": "512m", "sandbox_scope": "user", "sandbox_prefix": "octop_sandbox"}',
+        config_json='{"allow_network": false, "memory": "512m", "sandbox_scope": "user", "sandbox_prefix": "agentbuddy_sandbox"}',
         note=None,
         enabled=1,
         created_at=0,
@@ -213,7 +213,7 @@ def test_row_to_backend_spec_docker() -> None:
         "allow_network": False,
         "memory": "512m",
         "sandbox_scope": "user",
-        "sandbox_prefix": "octop_sandbox",
+        "sandbox_prefix": "agentbuddy_sandbox",
     }
 
 
@@ -227,7 +227,7 @@ def test_enrich_docker_backend_spec_defaults() -> None:
         {"type": "docker", "image": "python:3.12-slim"},
         agent_id="ZE6GR2",
     )
-    assert agent["sandbox_prefix"] == "octop_sandbox"
+    assert agent["sandbox_prefix"] == "agentbuddy_sandbox"
     assert agent["sandbox_scope"] == "agent"
     assert agent["agent_id"] == "ZE6GR2"
     assert docker_spec_previewable(agent) is False

@@ -696,7 +696,7 @@ async def test_global_processor_iter_turn_chunks_slash(tmp_path: Path) -> None:
     from octop.infra.gateway.process.processor import GlobalProcessor
     from octop.infra.gateway.slash.dispatcher import build_default_dispatcher
 
-    db = SqlitePool(tmp_path / "octop.db")
+    db = SqlitePool(tmp_path / "agentbuddy.db")
     run_migrations(db)
     user_id = UserRepo(db).create(username="u", password_hash="hash", role="user")
     agent_repo = AgentRepo(db)

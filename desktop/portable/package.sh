@@ -8,7 +8,7 @@
 # Usage:
 #   bash desktop/portable/package.sh                # host platform (online install)
 #   bash desktop/portable/package.sh darwin-arm64
-#   OCTOP_GREEN_OFFLINE=1 bash desktop/portable/package.sh   # require local wheels
+#   AGENTBUDDY_GREEN_OFFLINE=1 bash desktop/portable/package.sh   # require local wheels
 #
 # Layout of each zip:
 #   agentbuddy-<plat>/
@@ -175,9 +175,9 @@ assemble_one() {
     echo "[package] ${plat}: cross-assemble from ${host} (binary wheels only)" >&2
   fi
 
-  if [[ "${OCTOP_GREEN_OFFLINE:-0}" == "1" ]]; then
+  if [[ "${AGENTBUDDY_GREEN_OFFLINE:-0}" == "1" ]]; then
     if ! wheel_cache_usable "$wheel_dir"; then
-      echo "[package] OCTOP_GREEN_OFFLINE=1 but wheels cache incomplete (requires uv==${GREEN_UV_VERSION}): ${wheel_dir}" >&2
+      echo "[package] AGENTBUDDY_GREEN_OFFLINE=1 but wheels cache incomplete (requires uv==${GREEN_UV_VERSION}): ${wheel_dir}" >&2
       echo "  Run: bash desktop/portable/vendor-wheels.sh ${plat}" >&2
       exit 1
     fi

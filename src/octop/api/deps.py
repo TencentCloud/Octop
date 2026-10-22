@@ -24,7 +24,7 @@ else:
 
 # Sliding renew: when remaining life is below this fraction of configured TTL,
 # middleware issues a fresh access token via ACCESS_TOKEN_RESPONSE_HEADER.
-ACCESS_TOKEN_RESPONSE_HEADER = "X-Octop-Access-Token"
+ACCESS_TOKEN_RESPONSE_HEADER = "X-Agentbuddy-Access-Token"
 _SLIDING_RENEW_REMAINING_FRACTION = 1 / 3
 
 

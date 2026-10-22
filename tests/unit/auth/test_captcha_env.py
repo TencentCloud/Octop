@@ -24,40 +24,40 @@ def test_empty_env_snapshots_as_slider() -> None:
 
 
 def test_slider_env_is_complete() -> None:
-    env = snapshot_env({"OCTOP_CAPTCHA_PROVIDER": "slider"})
+    env = snapshot_env({"AGENTBUDDY_CAPTCHA_PROVIDER": "slider"})
     assert env.provider == "slider"
     validate_boot(env, has_readable_blob=False)
 
 
 def test_strong_env_without_keys_refuses_boot_when_no_blob() -> None:
-    env = snapshot_env({"OCTOP_CAPTCHA_PROVIDER": "turnstile"})
-    with pytest.raises(ValueError, match="OCTOP_CAPTCHA_SITE_KEY"):
+    env = snapshot_env({"AGENTBUDDY_CAPTCHA_PROVIDER": "turnstile"})
+    with pytest.raises(ValueError, match="AGENTBUDDY_CAPTCHA_SITE_KEY"):
         validate_boot(env, has_readable_blob=False)
 
 
 def test_tencent_env_without_cam_keys_refuses_boot_when_no_blob() -> None:
     env = snapshot_env(
         {
-            "OCTOP_CAPTCHA_PROVIDER": "tencent",
-            "OCTOP_CAPTCHA_SITE_KEY": "195642000",
-            "OCTOP_CAPTCHA_SECRET": "app-secret",
+            "AGENTBUDDY_CAPTCHA_PROVIDER": "tencent",
+            "AGENTBUDDY_CAPTCHA_SITE_KEY": "195642000",
+            "AGENTBUDDY_CAPTCHA_SECRET": "app-secret",
         }
     )
-    with pytest.raises(ValueError, match="OCTOP_CAPTCHA_CAM_SECRET_ID"):
+    with pytest.raises(ValueError, match="AGENTBUDDY_CAPTCHA_CAM_SECRET_ID"):
         validate_boot(env, has_readable_blob=False)
 
 
 def test_strong_env_without_keys_is_ok_when_blob_exists() -> None:
-    env = snapshot_env({"OCTOP_CAPTCHA_PROVIDER": "turnstile"})
+    env = snapshot_env({"AGENTBUDDY_CAPTCHA_PROVIDER": "turnstile"})
     validate_boot(env, has_readable_blob=True)
 
 
 def test_installed_snapshot_ignores_later_os_environ_changes(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setenv("OCTOP_CAPTCHA_PROVIDER", "slider")
+    monkeypatch.setenv("AGENTBUDDY_CAPTCHA_PROVIDER", "slider")
     install_env(snapshot_env())
-    monkeypatch.setenv("OCTOP_CAPTCHA_PROVIDER", "turnstile")
-    monkeypatch.setenv("OCTOP_CAPTCHA_SITE_KEY", "0xsite")
-    monkeypatch.setenv("OCTOP_CAPTCHA_SECRET", "0xsecret")
+    monkeypatch.setenv("AGENTBUDDY_CAPTCHA_PROVIDER", "turnstile")
+    monkeypatch.setenv("AGENTBUDDY_CAPTCHA_SITE_KEY", "0xsite")
+    monkeypatch.setenv("AGENTBUDDY_CAPTCHA_SECRET", "0xsecret")
     assert current_env().provider == "slider"

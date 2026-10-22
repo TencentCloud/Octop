@@ -267,7 +267,7 @@ class TestBackendWorkspaceAsync:
         workspace_dir.mkdir()
         ws = BackendWorkspace(_StubCloud(), workspace_dir)
         virt = remote_workspace_virtual_root(workspace_dir)
-        assert virt == "/.octop/workspaces/AGT1B2"
+        assert virt == "/.agentbuddy/workspaces/AGT1B2"
         assert ws._backend_storage_key("SOUL.md") == f"{virt}/SOUL.md"
         assert ws._backend_storage_key(".") == virt
         assert ws._backend_storage_key("skills/demo/SKILL.md") == f"{virt}/skills/demo/SKILL.md"

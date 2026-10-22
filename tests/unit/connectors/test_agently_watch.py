@@ -12,7 +12,7 @@ from octop.infra.connectors.gateway import agently_watch
 
 @pytest.mark.asyncio
 async def test_watch_fanout_isolation_and_process_cleanup(tmp_path, monkeypatch):
-    monkeypatch.setenv("OCTOP_HOME", str(tmp_path))
+    monkeypatch.setenv("AGENTBUDDY_HOME", str(tmp_path))
     script = tmp_path / "watch.py"
     script.write_text(
         "import json, time\n"

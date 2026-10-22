@@ -67,7 +67,7 @@ def test_ensure_chromium_reports_missing_playwright_when_skip(monkeypatch, capsy
     """If playwright is missing AND skip-pip is set, fail fast with a clear message."""
     monkeypatch.setattr(install_mod, "_find_playwright_chromium", lambda: None)
     monkeypatch.setattr(install_mod, "_playwright_available", lambda: False)
-    monkeypatch.setenv("OCTOP_SKIP_PLAYWRIGHT_PIP", "1")
+    monkeypatch.setenv("AGENTBUDDY_SKIP_PLAYWRIGHT_PIP", "1")
     assert ensure_chromium(quiet=False) is False
     err = capsys.readouterr().err
     assert "Playwright is not installed" in err
@@ -76,7 +76,7 @@ def test_ensure_chromium_reports_missing_playwright_when_skip(monkeypatch, capsy
 def test_ensure_chromium_pip_then_install(monkeypatch):
     """Missing playwright triggers pip install, then the playwright installer."""
     monkeypatch.setattr(install_mod, "_find_playwright_chromium", lambda: None)
-    monkeypatch.delenv("OCTOP_SKIP_PLAYWRIGHT_PIP", raising=False)
+    monkeypatch.delenv("AGENTBUDDY_SKIP_PLAYWRIGHT_PIP", raising=False)
     monkeypatch.setattr(install_mod.shutil, "which", lambda name: None)
 
     avail = {"flag": False}
@@ -112,7 +112,7 @@ def test_ensure_chromium_pip_failure_aborts(monkeypatch):
     """If pip install fails, ensure_chromium returns False without running playwright."""
     monkeypatch.setattr(install_mod, "_find_playwright_chromium", lambda: None)
     monkeypatch.setattr(install_mod, "_playwright_available", lambda: False)
-    monkeypatch.delenv("OCTOP_SKIP_PLAYWRIGHT_PIP", raising=False)
+    monkeypatch.delenv("AGENTBUDDY_SKIP_PLAYWRIGHT_PIP", raising=False)
 
     calls: list[list[str]] = []
 
@@ -326,7 +326,7 @@ async def test_install_stream_reports_missing_playwright_when_skip(monkeypatch):
     """When skip-pip is set and playwright is missing, fail with a clear message."""
     monkeypatch.setattr(install_mod, "_find_playwright_chromium", lambda: None)
     monkeypatch.setattr(install_mod, "_playwright_available", lambda: False)
-    monkeypatch.setenv("OCTOP_SKIP_PLAYWRIGHT_PIP", "1")
+    monkeypatch.setenv("AGENTBUDDY_SKIP_PLAYWRIGHT_PIP", "1")
     events = [e async for e in install_chromium_stream()]
     assert events[0].get("error", "").startswith("Playwright is not installed")
     final = events[-1]
@@ -338,7 +338,7 @@ async def test_install_stream_reports_missing_playwright_when_skip(monkeypatch):
 async def test_install_stream_pip_then_install(monkeypatch):
     """Missing playwright -> two streamed subprocesses (pip, then playwright)."""
     monkeypatch.setattr(install_mod, "_find_playwright_chromium", lambda: None)
-    monkeypatch.delenv("OCTOP_SKIP_PLAYWRIGHT_PIP", raising=False)
+    monkeypatch.delenv("AGENTBUDDY_SKIP_PLAYWRIGHT_PIP", raising=False)
     monkeypatch.setattr(install_mod.shutil, "which", lambda name: None)
 
     avail = {"flag": False}
@@ -376,7 +376,7 @@ async def test_install_stream_pip_failure_aborts(monkeypatch):
     """If pip install fails, the stream emits a terminal failure and stops."""
     monkeypatch.setattr(install_mod, "_find_playwright_chromium", lambda: None)
     monkeypatch.setattr(install_mod, "_playwright_available", lambda: False)
-    monkeypatch.delenv("OCTOP_SKIP_PLAYWRIGHT_PIP", raising=False)
+    monkeypatch.delenv("AGENTBUDDY_SKIP_PLAYWRIGHT_PIP", raising=False)
 
     invoked: list[list[str]] = []
 

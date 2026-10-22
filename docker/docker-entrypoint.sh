@@ -3,38 +3,38 @@
 # 政务伙伴容器入口脚本
 #
 # 环境变量:
-#   HOME                      — 必须为 /data，使 ~/.octop 映射到数据卷
-#   OCTOP_DEFAULT_PASSWORD    — 首次管理员密码（须 ≥8 位且含字母和数字）。
+#   HOME                      — 必须为 /data，使 ~/.agentbuddy 映射到数据卷
+#   AGENTBUDDY_DEFAULT_PASSWORD    — 首次管理员密码（须 ≥8 位且含字母和数字）。
 #                               合格则 octop init 建账号；未设置或未通过
 #                               策略则不建管理员，启动后走 Web 设置向导。
-#   OCTOP_ADMIN_USERNAME      — 首次管理员用户名（默认: admin）
-#   OCTOP_ADMIN_DISPLAY_NAME  — 可选显示名
-#   OCTOP_PORT                — 服务端口（默认: 8088）
+#   AGENTBUDDY_ADMIN_USERNAME      — 首次管理员用户名（默认: admin）
+#   AGENTBUDDY_ADMIN_DISPLAY_NAME  — 可选显示名
+#   AGENTBUDDY_PORT                — 服务端口（默认: 8088）
 #
 # 首次引导（issue #502）：容器不得因弱默认密码重启循环。未设置或不合格
-# 的 OCTOP_DEFAULT_PASSWORD 不再静默换成随机管理员密码，而是把向导口令
-# 写到数据卷（/data/.octop/octop-login.txt），打开页面走设置向导。
+# 的 AGENTBUDDY_DEFAULT_PASSWORD 不再静默换成随机管理员密码，而是把向导口令
+# 写到数据卷（/data/.agentbuddy/agentbuddy-login.txt），打开页面走设置向导。
 #
 # 初始化标记（issue #1866）：PostgreSQL 等外部数据库不会在数据卷生成
-# octop.db，仅凭 DB_FILE 判断会在每次重启重复执行 octop init（管理员
+ # agentbuddy.db，仅凭 DB_FILE 判断会在每次重启重复执行 octop init（管理员
 # INSERT 撞 UNIQUE 约束直接崩溃）。octop init 成功后写入
-# /data/.octop/.initialized，重启命中该标记即跳过引导直接启动。
+# /data/.agentbuddy/.initialized，重启命中该标记即跳过引导直接启动。
 # =============================================================================
 set -euo pipefail
 
 export HOME="${HOME:-/data}"
-OCTOP_HOME="${OCTOP_HOME:-${HOME}/.octop}"
-export OCTOP_HOME
-DB_FILE="${OCTOP_HOME}/octop.db"
-INIT_MARKER="${OCTOP_HOME}/.initialized"
-CREDENTIAL_FILE="${OCTOP_HOME}/credential.txt"
-WIZARD_FILE="${OCTOP_HOME}/octop-login.txt"
-ADMIN_USERNAME="${OCTOP_ADMIN_USERNAME:-admin}"
-ADMIN_DISPLAY_NAME="${OCTOP_ADMIN_DISPLAY_NAME:-Admin}"
-PORT="${OCTOP_PORT:-8088}"
+AGENTBUDDY_HOME="${AGENTBUDDY_HOME:-${HOME}/.agentbuddy}"
+export AGENTBUDDY_HOME
+DB_FILE="${AGENTBUDDY_HOME}/agentbuddy.db"
+INIT_MARKER="${AGENTBUDDY_HOME}/.initialized"
+CREDENTIAL_FILE="${AGENTBUDDY_HOME}/credential.txt"
+WIZARD_FILE="${AGENTBUDDY_HOME}/agentbuddy-login.txt"
+ADMIN_USERNAME="${AGENTBUDDY_ADMIN_USERNAME:-admin}"
+ADMIN_DISPLAY_NAME="${AGENTBUDDY_ADMIN_DISPLAY_NAME:-Admin}"
+PORT="${AGENTBUDDY_PORT:-8088}"
 
 # 与 src/octop/infra/users/password.py 的 _COMMON_PASSWORDS 保持一致。
-_OCTOP_COMMON_PASSWORDS="password password1 password12 password123 12345678 123456789 qwerty123 admin123 welcome1 letmein1 changeme1 octop123 abc12345 iloveyou1"
+_AGENTBUDDY_COMMON_PASSWORDS="password password1 password12 password123 12345678 123456789 qwerty123 admin123 welcome1 letmein1 changeme1 octop123 abc12345 iloveyou1"
 
 # 生成随机口令（首字符字母、末字符数字，避开易混淆字符）。
 octop_random_password() {
@@ -72,7 +72,7 @@ octop_validate_password() {
         return 1
     fi
     lower="$(printf '%s' "$pw" | tr 'A-Z' 'a-z')"
-    case " ${_OCTOP_COMMON_PASSWORDS} " in
+    case " ${_AGENTBUDDY_COMMON_PASSWORDS} " in
         *" ${lower} "*)
             echo "密码过于常见" >&2
             return 1
@@ -81,14 +81,14 @@ octop_validate_password() {
     return 0
 }
 
-# 向导口令写到数据卷，并让 $HOME/octop-login.txt 指向同一文件（服务端读 HOME）。
+# 向导口令写到数据卷，并让 $HOME/agentbuddy-login.txt 指向同一文件（服务端读 HOME）。
 octop_seed_wizard_password() {
-    mkdir -p "$OCTOP_HOME" "$HOME"
+    mkdir -p "$AGENTBUDDY_HOME" "$HOME"
     if [ ! -s "$WIZARD_FILE" ]; then
         octop_random_password > "$WIZARD_FILE"
         chmod 600 "$WIZARD_FILE"
     fi
-    local home_file="${HOME}/octop-login.txt"
+    local home_file="${HOME}/agentbuddy-login.txt"
     if [ "$home_file" = "$WIZARD_FILE" ]; then
         return 0
     fi
@@ -113,7 +113,7 @@ Open the dashboard and complete the setup wizard.
 
 Wizard password: ${pw}
 
-This password only unlocks the wizard (same value as octop-login.txt).
+This password only unlocks the wizard (same value as agentbuddy-login.txt).
 Choose the admin username and password in the browser.
 EOF
     chmod 600 "$CREDENTIAL_FILE"
@@ -156,12 +156,12 @@ octop_run_init() {
 }
 
 octop_entrypoint_main() {
-    local default_password="${OCTOP_DEFAULT_PASSWORD:-}"
+    local default_password="${AGENTBUDDY_DEFAULT_PASSWORD:-}"
     local init_log reason
 
     if [ ! -f "$DB_FILE" ] && [ ! -f "$INIT_MARKER" ]; then
         echo "[entrypoint] 首次启动，正在初始化政务伙伴..."
-        mkdir -p "$OCTOP_HOME"
+        mkdir -p "$AGENTBUDDY_HOME"
 
         if [ -n "$default_password" ] && octop_validate_password "$default_password" 2>/dev/null; then
             init_log="$(mktemp)"
@@ -186,15 +186,15 @@ octop_entrypoint_main() {
             else
                 cat "$init_log" >&2 || true
                 rm -f "$init_log"
-                echo "[entrypoint] 初始化失败（不是密码策略问题）。若数据目录已有文件但没有 octop.db（或使用外部数据库后端），请检查卷挂载与数据库连接。" >&2
+                echo "[entrypoint] 初始化失败（不是密码策略问题）。若数据目录已有文件但没有 agentbuddy.db（或使用外部数据库后端），请检查卷挂载与数据库连接。" >&2
                 exit 1
             fi
         else
             if [ -z "$default_password" ]; then
-                echo "[entrypoint] 未设置 OCTOP_DEFAULT_PASSWORD，不自动创建管理员。"
+                echo "[entrypoint] 未设置 AGENTBUDDY_DEFAULT_PASSWORD，不自动创建管理员。"
             else
                 reason="$(octop_validate_password "$default_password" 2>&1 || true)"
-                echo "[entrypoint] OCTOP_DEFAULT_PASSWORD 未通过密码策略（${reason:-过弱或过于常见}），不自动创建管理员。"
+                echo "[entrypoint] AGENTBUDDY_DEFAULT_PASSWORD 未通过密码策略（${reason:-过弱或过于常见}），不自动创建管理员。"
             fi
             octop_start_setup_wizard
         fi
@@ -215,7 +215,7 @@ octop_entrypoint_main() {
 }
 
 # Allow tests to source helpers without starting the server.
-if [ "${OCTOP_ENTRYPOINT_LIB:-}" = "1" ]; then
+if [ "${AGENTBUDDY_ENTRYPOINT_LIB:-}" = "1" ]; then
     return 0 2>/dev/null || exit 0
 fi
 

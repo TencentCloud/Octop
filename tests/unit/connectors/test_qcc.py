@@ -92,7 +92,7 @@ def test_qcc_merge_switches_auth_mode() -> None:
     "payload", [{"api_key": "k"}, {"access_token": "a", "oauth_client_id": "client"}]
 )
 def test_qcc_harness_config_uses_http_not_inprocess_gateway(tmp_path: Path, payload: dict) -> None:
-    pool = SqlitePool(tmp_path / "octop.db")
+    pool = SqlitePool(tmp_path / "agentbuddy.db")
     run_migrations(pool)
     with pool.transaction() as conn:
         conn.execute(

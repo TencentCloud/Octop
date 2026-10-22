@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Prefetch wheels for OCTOP_GREEN_OFFLINE=1 packaging.
+# Prefetch wheels for AGENTBUDDY_GREEN_OFFLINE=1 packaging.
 #
 # Usage:
 #   bash desktop/portable/vendor-wheels.sh              # host platform

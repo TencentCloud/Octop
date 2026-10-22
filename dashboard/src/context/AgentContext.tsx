@@ -21,13 +21,13 @@ import {
  * stores the list + selected id in this context, persists the selection
  * in ``localStorage`` (``agentbuddy:active-agent``), and pipes the selected id
  * into ``api/request.ts`` so every agent-scoped HTTP call gets an
- * ``X-Octop-Agent-Id`` header.
+ * ``X-Agentbuddy-Agent-Id`` header.
  */
 
 export interface OctopAgent {
   /** Surrogate integer primary key from the database. */
   id: number;
-  /** Public agent id used in API paths and ``X-Octop-Agent-Id``. */
+  /** Public agent id used in API paths and ``X-Agentbuddy-Agent-Id``. */
   agent_id: string;
   /** Owning user id (present on list responses). */
   user_id?: number | null;

@@ -17,10 +17,10 @@ def fake_home(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
 
 
 def test_clean_default_removes_only_cli_state(fake_home: Path) -> None:
-    state = fake_home / ".octop" / "cli_state.json"
+    state = fake_home / ".agentbuddy" / "cli_state.json"
     state.parent.mkdir(parents=True)
     state.write_text("{}")
-    db = fake_home / ".octop" / "octop.db"
+    db = fake_home / ".agentbuddy" / "agentbuddy.db"
     db.write_text("DB-CONTENT")
 
     runner = CliRunner()
@@ -32,7 +32,7 @@ def test_clean_default_removes_only_cli_state(fake_home: Path) -> None:
 
 
 def test_clean_all_requires_confirmation(fake_home: Path) -> None:
-    db = fake_home / ".octop" / "octop.db"
+    db = fake_home / ".agentbuddy" / "agentbuddy.db"
     db.parent.mkdir(parents=True)
     db.write_text("DB-CONTENT")
 
@@ -43,7 +43,7 @@ def test_clean_all_requires_confirmation(fake_home: Path) -> None:
 
 
 def test_clean_dry_run_lists_targets(fake_home: Path) -> None:
-    state = fake_home / ".octop" / "cli_state.json"
+    state = fake_home / ".agentbuddy" / "cli_state.json"
     state.parent.mkdir(parents=True)
     state.write_text("{}")
 

@@ -10,7 +10,7 @@ _DIR = default_library_root() / "general-assistant"
 
 
 def test_all_required_files_present() -> None:
-    for name in ("SOUL.md", "manifest.json", "skills/octop-assistant/SKILL.md"):
+    for name in ("SOUL.md", "manifest.json", "skills/agentbuddy-assistant/SKILL.md"):
         assert (_DIR / name).is_file(), f"missing {name}"
 
 

@@ -15,8 +15,8 @@ import (
 
 func TestEnsurePortableUsesEmbeddedPackage(t *testing.T) {
 	home := t.TempDir()
-	t.Setenv("OCTOP_HOME", home)
-	t.Setenv("OCTOP_DESKTOP_PORTABLE_ZIP", "")
+	t.Setenv("AGENTBUDDY_HOME", home)
+	t.Setenv("AGENTBUDDY_DESKTOP_PORTABLE_ZIP", "")
 
 	zipPath := filepath.Join(t.TempDir(), "embedded.zip")
 	writeTestGreenZip(t, zipPath, "1.0.0")
@@ -38,10 +38,10 @@ func TestEnsurePortableUsesEmbeddedPackage(t *testing.T) {
 
 func TestEnsurePortableUsesBundledPackage(t *testing.T) {
 	home := t.TempDir()
-	t.Setenv("OCTOP_HOME", home)
+	t.Setenv("AGENTBUDDY_HOME", home)
 
 	zipPath := filepath.Join(t.TempDir(), "agentbuddy-"+greenPlat()+".zip")
-	t.Setenv("OCTOP_DESKTOP_PORTABLE_ZIP", zipPath)
+	t.Setenv("AGENTBUDDY_DESKTOP_PORTABLE_ZIP", zipPath)
 	writeTestGreenZip(t, zipPath, "1.0.0")
 
 	var statuses []string
@@ -64,7 +64,7 @@ func TestEnsurePortableUsesBundledPackage(t *testing.T) {
 
 func TestEnsurePortableReplacesOlderRuntime(t *testing.T) {
 	home := t.TempDir()
-	t.Setenv("OCTOP_HOME", home)
+	t.Setenv("AGENTBUDDY_HOME", home)
 	root := portableDir()
 
 	oldZip := filepath.Join(t.TempDir(), "old.zip")
@@ -79,7 +79,7 @@ func TestEnsurePortableReplacesOlderRuntime(t *testing.T) {
 
 	newZip := filepath.Join(t.TempDir(), "new.zip")
 	writeTestGreenZip(t, newZip, "0.9.32")
-	t.Setenv("OCTOP_DESKTOP_PORTABLE_ZIP", newZip)
+	t.Setenv("AGENTBUDDY_DESKTOP_PORTABLE_ZIP", newZip)
 	var statuses []string
 	if err := ensurePortable(LocaleZH, func(status string) { statuses = append(statuses, status) }); err != nil {
 		t.Fatal(err)
@@ -100,7 +100,7 @@ func TestEnsurePortableReplacesOlderRuntime(t *testing.T) {
 
 func TestEnsurePortableUpgradesBundledVersionAfterDatabaseBackup(t *testing.T) {
 	home := t.TempDir()
-	t.Setenv("OCTOP_HOME", home)
+	t.Setenv("AGENTBUDDY_HOME", home)
 	root := portableDir()
 
 	oldZip := filepath.Join(t.TempDir(), "old.zip")
@@ -115,7 +115,7 @@ func TestEnsurePortableUpgradesBundledVersionAfterDatabaseBackup(t *testing.T) {
 
 	newZip := filepath.Join(t.TempDir(), "new.zip")
 	writeTestGreenZip(t, newZip, "0.9.32")
-	t.Setenv("OCTOP_DESKTOP_PORTABLE_ZIP", newZip)
+	t.Setenv("AGENTBUDDY_DESKTOP_PORTABLE_ZIP", newZip)
 
 	previousBackup := runSQLiteBackup
 	runSQLiteBackup = func(_ string, source string, destination string) error {
@@ -140,7 +140,7 @@ func TestEnsurePortableUpgradesBundledVersionAfterDatabaseBackup(t *testing.T) {
 
 func TestEnsurePortableKeepsRuntimeWhenDatabaseBackupFails(t *testing.T) {
 	home := t.TempDir()
-	t.Setenv("OCTOP_HOME", home)
+	t.Setenv("AGENTBUDDY_HOME", home)
 	root := portableDir()
 
 	oldZip := filepath.Join(t.TempDir(), "old.zip")
@@ -153,7 +153,7 @@ func TestEnsurePortableKeepsRuntimeWhenDatabaseBackupFails(t *testing.T) {
 	}
 	newZip := filepath.Join(t.TempDir(), "new.zip")
 	writeTestGreenZip(t, newZip, "0.9.32")
-	t.Setenv("OCTOP_DESKTOP_PORTABLE_ZIP", newZip)
+	t.Setenv("AGENTBUDDY_DESKTOP_PORTABLE_ZIP", newZip)
 
 	previousBackup := runSQLiteBackup
 	runSQLiteBackup = func(_, _, _ string) error { return errors.New("backup unavailable") }
@@ -176,7 +176,7 @@ func TestEnsurePortableKeepsNewerExistingRuntime(t *testing.T) {
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			home := t.TempDir()
-			t.Setenv("OCTOP_HOME", home)
+			t.Setenv("AGENTBUDDY_HOME", home)
 			root := portableDir()
 
 			newZip := filepath.Join(t.TempDir(), "new.zip")
@@ -198,7 +198,7 @@ func TestEnsurePortableKeepsNewerExistingRuntime(t *testing.T) {
 
 			oldZip := filepath.Join(t.TempDir(), "old.zip")
 			writeTestGreenZip(t, oldZip, test.bundled)
-			t.Setenv("OCTOP_DESKTOP_PORTABLE_ZIP", oldZip)
+			t.Setenv("AGENTBUDDY_DESKTOP_PORTABLE_ZIP", oldZip)
 			if got, err := bundledPortableVersion(); err != nil || got != test.bundled {
 				t.Fatalf("bundled version = %q, err = %v, want %q", got, err, test.bundled)
 			}
@@ -239,7 +239,7 @@ func TestEnsurePortableKeepsNewerExistingRuntime(t *testing.T) {
 
 func TestPortableVersionPrefersNewerMetadataOverVersionTxt(t *testing.T) {
 	home := t.TempDir()
-	t.Setenv("OCTOP_HOME", home)
+	t.Setenv("AGENTBUDDY_HOME", home)
 	root := portableDir()
 	b4Zip := filepath.Join(t.TempDir(), "b4.zip")
 	writeTestGreenZip(t, b4Zip, "1.0.2b4")
@@ -271,7 +271,7 @@ func TestPortableVersionPrefersNewerMetadataOverVersionTxt(t *testing.T) {
 	}
 	b5Zip := filepath.Join(t.TempDir(), "b5.zip")
 	writeTestGreenZip(t, b5Zip, "1.0.2b5")
-	t.Setenv("OCTOP_DESKTOP_PORTABLE_ZIP", b5Zip)
+	t.Setenv("AGENTBUDDY_DESKTOP_PORTABLE_ZIP", b5Zip)
 	backupCalls := 0
 	previousBackup := runSQLiteBackup
 	runSQLiteBackup = func(_, _, _ string) error {
@@ -304,7 +304,7 @@ func TestPortableVersionPrefersNewerMetadataOverVersionTxt(t *testing.T) {
 
 func TestEnsurePortableKeepsCurrentRuntimeWhenReplacementIsInvalid(t *testing.T) {
 	home := t.TempDir()
-	t.Setenv("OCTOP_HOME", home)
+	t.Setenv("AGENTBUDDY_HOME", home)
 	root := portableDir()
 
 	currentZip := filepath.Join(t.TempDir(), "current.zip")
@@ -315,7 +315,7 @@ func TestEnsurePortableKeepsCurrentRuntimeWhenReplacementIsInvalid(t *testing.T)
 
 	invalidZip := filepath.Join(t.TempDir(), "invalid.zip")
 	writeVersionOnlyZip(t, invalidZip, "0.9.32")
-	t.Setenv("OCTOP_DESKTOP_PORTABLE_ZIP", invalidZip)
+	t.Setenv("AGENTBUDDY_DESKTOP_PORTABLE_ZIP", invalidZip)
 	var statuses []string
 	if err := ensurePortable(LocaleZH, func(status string) { statuses = append(statuses, status) }); err != nil {
 		t.Fatalf("existing runtime should still boot after a failed replacement: %v", err)
@@ -334,7 +334,7 @@ func TestEnsurePortableKeepsCurrentRuntimeWhenReplacementIsInvalid(t *testing.T)
 
 func TestEnsurePortableReplacesLegacyRuntimeWithoutVersionFiles(t *testing.T) {
 	home := t.TempDir()
-	t.Setenv("OCTOP_HOME", home)
+	t.Setenv("AGENTBUDDY_HOME", home)
 	root := portableDir()
 
 	oldZip := filepath.Join(t.TempDir(), "old.zip")
@@ -351,7 +351,7 @@ func TestEnsurePortableReplacesLegacyRuntimeWithoutVersionFiles(t *testing.T) {
 
 	newZip := filepath.Join(t.TempDir(), "new.zip")
 	writeTestGreenZip(t, newZip, "0.9.32")
-	t.Setenv("OCTOP_DESKTOP_PORTABLE_ZIP", newZip)
+	t.Setenv("AGENTBUDDY_DESKTOP_PORTABLE_ZIP", newZip)
 	if err := ensurePortable(LocaleZH, func(string) {}); err != nil {
 		t.Fatal(err)
 	}
@@ -363,7 +363,7 @@ func TestEnsurePortableReplacesLegacyRuntimeWithoutVersionFiles(t *testing.T) {
 func TestBundledPortableVersionFallsBackToMetadata(t *testing.T) {
 	zipPath := filepath.Join(t.TempDir(), "meta-only.zip")
 	writeMetadataOnlyZip(t, zipPath, "0.9.32")
-	t.Setenv("OCTOP_DESKTOP_PORTABLE_ZIP", zipPath)
+	t.Setenv("AGENTBUDDY_DESKTOP_PORTABLE_ZIP", zipPath)
 	got, err := bundledPortableVersion()
 	if err != nil {
 		t.Fatal(err)
@@ -420,7 +420,7 @@ func TestEnsurePortablePrereleaseUpgrade(t *testing.T) {
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			home := t.TempDir()
-			t.Setenv("OCTOP_HOME", home)
+			t.Setenv("AGENTBUDDY_HOME", home)
 			root := portableDir()
 			oldZip := filepath.Join(t.TempDir(), "old.zip")
 			writeTestGreenZip(t, oldZip, test.installed)
@@ -436,7 +436,7 @@ func TestEnsurePortablePrereleaseUpgrade(t *testing.T) {
 			}
 			newZip := filepath.Join(t.TempDir(), "new.zip")
 			writeTestGreenZip(t, newZip, test.bundled)
-			t.Setenv("OCTOP_DESKTOP_PORTABLE_ZIP", newZip)
+			t.Setenv("AGENTBUDDY_DESKTOP_PORTABLE_ZIP", newZip)
 
 			backupCalls := 0
 			previousBackup := runSQLiteBackup
@@ -501,7 +501,7 @@ func TestEnsurePortablePrereleaseUpgrade(t *testing.T) {
 }
 
 func TestBundledPortableZipRequiresMatchingPackage(t *testing.T) {
-	t.Setenv("OCTOP_DESKTOP_PORTABLE_ZIP", filepath.Join(t.TempDir(), "missing.zip"))
+	t.Setenv("AGENTBUDDY_DESKTOP_PORTABLE_ZIP", filepath.Join(t.TempDir(), "missing.zip"))
 	if _, err := bundledPortableZip(); err == nil {
 		t.Fatal("missing bundled package should fail")
 	}
@@ -509,7 +509,7 @@ func TestBundledPortableZipRequiresMatchingPackage(t *testing.T) {
 
 func TestLaunchReadyRejectsFlattenedPythonSymlink(t *testing.T) {
 	home := t.TempDir()
-	t.Setenv("OCTOP_HOME", home)
+	t.Setenv("AGENTBUDDY_HOME", home)
 	root := portableDir()
 	if err := os.MkdirAll(filepath.Join(root, "runtime", "bin"), 0o755); err != nil {
 		t.Fatal(err)

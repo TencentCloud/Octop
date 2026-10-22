@@ -76,7 +76,7 @@ bash desktop/portable/rebuild.sh
 
 ```bash
 bash desktop/portable/vendor-wheels.sh          # 按当前 uv.lock 预取 wheel
-OCTOP_GREEN_OFFLINE=1 bash desktop/portable/package.sh
+AGENTBUDDY_GREEN_OFFLINE=1 bash desktop/portable/package.sh
 ```
 
 离线缓存必须来自**当前分支**的 `uv.lock`，不要复用旧分叉的 wheel 目录。

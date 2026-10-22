@@ -150,8 +150,8 @@ def test_script_path_from_env_rejects_outside_bundle(tmp_path, monkeypatch) -> N
 
     outside = tmp_path / "evil.sh"
     outside.write_text("#!/bin/bash\n", encoding="utf-8")
-    monkeypatch.setenv("OCTOP_DESKTOP_INSTALL_SCRIPT", str(outside))
-    assert _script_path_from_env("OCTOP_DESKTOP_INSTALL_SCRIPT") is None
+    monkeypatch.setenv("AGENTBUDDY_DESKTOP_INSTALL_SCRIPT", str(outside))
+    assert _script_path_from_env("AGENTBUDDY_DESKTOP_INSTALL_SCRIPT") is None
 
 
 def test_parse_geometry() -> None:

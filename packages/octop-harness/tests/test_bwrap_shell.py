@@ -433,21 +433,21 @@ def test_map_virtual_paths_in_env_maps_path_lists_only_when_credible(tmp_path: P
 
     mapped = map_virtual_paths_in_env(
         {
-            "OCTOP_SKILLS_DIR": "/.octop/workspaces/QH53B8/.octop/skills",
+            "AGENTBUDDY_SKILLS_DIR": "/.octop/workspaces/QH53B8/.octop/skills",
             "PYTHONPATH": f"/.octop/workspaces/QH53B8/lib{os.pathsep}/usr/lib",
             "PATH": f"/usr/bin{os.pathsep}/.octop/workspaces/QH53B8/bin",
             "URL": "https://example.com/a",
-            "OCTOP_HOME": str(root),
+            "AGENTBUDDY_HOME": str(root),
         },
         root,
         workspace_dir=workspace,
     )
 
-    assert mapped["OCTOP_SKILLS_DIR"] == str(skills)
+    assert mapped["AGENTBUDDY_SKILLS_DIR"] == str(skills)
     assert mapped["PYTHONPATH"] == f"{workspace / 'lib'}{os.pathsep}/usr/lib"
     assert mapped["PATH"] == f"/usr/bin{os.pathsep}{custom_bin}"
     assert mapped["URL"] == "https://example.com/a"
-    assert mapped["OCTOP_HOME"] == str(root)
+    assert mapped["AGENTBUDDY_HOME"] == str(root)
 
 
 @pytest.mark.skipif(os.name != "posix", reason="user report uses POSIX shell path semantics")
@@ -462,7 +462,7 @@ def test_scoped_workspace_skill_script_executes_without_bwrap(tmp_path: Path) ->
         "import os\n"
         "from pathlib import Path\n"
         "print(Path.cwd().name)\n"
-        "print(Path(os.environ['OCTOP_SKILLS_DIR']).name)\n",
+        "print(Path(os.environ['AGENTBUDDY_SKILLS_DIR']).name)\n",
         encoding="utf-8",
     )
     (workspace / "workspace_probe.py").write_text("print('workspace-cwd')\n", encoding="utf-8")
@@ -472,7 +472,7 @@ def test_scoped_workspace_skill_script_executes_without_bwrap(tmp_path: Path) ->
         workspace_dir=workspace,
         virtual_mode=True,
         inherit_env=False,
-        env={"OCTOP_SKILLS_DIR": "/.octop/workspaces/QH53B8/.octop/skills"},
+        env={"AGENTBUDDY_SKILLS_DIR": "/.octop/workspaces/QH53B8/.octop/skills"},
     )
     virtual_skill = "/.octop/workspaces/QH53B8/.octop/skills/commind-data-fetch"
     assert backend.read(f"{virtual_skill}/SKILL.md").error is not None
@@ -484,7 +484,7 @@ def test_scoped_workspace_skill_script_executes_without_bwrap(tmp_path: Path) ->
     assert "commind-data-fetch" in listed.output
 
     via_env = backend.execute(
-        f'{shlex.quote(sys.executable)} "$OCTOP_SKILLS_DIR/commind-data-fetch/scripts/fetch_gateway.py"'
+        f'{shlex.quote(sys.executable)} "$AGENTBUDDY_SKILLS_DIR/commind-data-fetch/scripts/fetch_gateway.py"'
     )
     assert via_env.exit_code == 0
     assert "QH53B8" in via_env.output

@@ -41,7 +41,7 @@ def cleanup_keys_for_creds(kind: str, creds: dict[str, Any]) -> set[str]:
 
 
 def remove_connector_cli_dirs(kind: str, *keys: str, keep: set[str] | None = None) -> None:
-    """Best-effort remove ``~/.octop/connector-cli/<kind>/<key>/`` trees."""
+    """Best-effort remove ``~/.agentbuddy/connector-cli/<kind>/<key>/`` trees."""
     if kind not in _CLI_KINDS:
         return
     retain = {str(k).strip() for k in (keep or set()) if str(k).strip()}

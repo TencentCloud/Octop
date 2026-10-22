@@ -13,9 +13,9 @@ import (
 
 func TestResolveDashboardURLReadsConfig(t *testing.T) {
 	home := t.TempDir()
-	t.Setenv("OCTOP_HOME", home)
-	t.Setenv("OCTOP_BIND_HOST", "")
-	t.Setenv("OCTOP_PORT", "")
+	t.Setenv("AGENTBUDDY_HOME", home)
+	t.Setenv("AGENTBUDDY_BIND_HOST", "")
+	t.Setenv("AGENTBUDDY_PORT", "")
 	if err := os.WriteFile(
 		filepath.Join(home, "config.json"),
 		[]byte(`{"bind_host":"0.0.0.0","port":9000}`),
@@ -30,9 +30,9 @@ func TestResolveDashboardURLReadsConfig(t *testing.T) {
 
 func TestResolveDashboardURLUsesSpecificHost(t *testing.T) {
 	home := t.TempDir()
-	t.Setenv("OCTOP_HOME", home)
-	t.Setenv("OCTOP_BIND_HOST", "")
-	t.Setenv("OCTOP_PORT", "")
+	t.Setenv("AGENTBUDDY_HOME", home)
+	t.Setenv("AGENTBUDDY_BIND_HOST", "")
+	t.Setenv("AGENTBUDDY_PORT", "")
 	if err := os.WriteFile(
 		filepath.Join(home, "config.json"),
 		[]byte(`{"bind_host":"10.0.0.8","port":80}`),
@@ -47,9 +47,9 @@ func TestResolveDashboardURLUsesSpecificHost(t *testing.T) {
 
 func TestResolveDashboardURLFallsBackToLegacyHost(t *testing.T) {
 	home := t.TempDir()
-	t.Setenv("OCTOP_HOME", home)
-	t.Setenv("OCTOP_BIND_HOST", "")
-	t.Setenv("OCTOP_PORT", "")
+	t.Setenv("AGENTBUDDY_HOME", home)
+	t.Setenv("AGENTBUDDY_BIND_HOST", "")
+	t.Setenv("AGENTBUDDY_PORT", "")
 	if err := os.WriteFile(
 		filepath.Join(home, "config.json"),
 		[]byte(`{"host":"::1","port":8088}`),
@@ -64,9 +64,9 @@ func TestResolveDashboardURLFallsBackToLegacyHost(t *testing.T) {
 
 func TestResolveDashboardURLEnvOverridesFile(t *testing.T) {
 	home := t.TempDir()
-	t.Setenv("OCTOP_HOME", home)
-	t.Setenv("OCTOP_BIND_HOST", "0.0.0.0")
-	t.Setenv("OCTOP_PORT", "80")
+	t.Setenv("AGENTBUDDY_HOME", home)
+	t.Setenv("AGENTBUDDY_BIND_HOST", "0.0.0.0")
+	t.Setenv("AGENTBUDDY_PORT", "80")
 	if err := os.WriteFile(
 		filepath.Join(home, "config.json"),
 		[]byte(`{"bind_host":"10.0.0.8","port":9000}`),
@@ -80,9 +80,9 @@ func TestResolveDashboardURLEnvOverridesFile(t *testing.T) {
 }
 
 func TestResolveDashboardURLDefaultsWhenConfigMissing(t *testing.T) {
-	t.Setenv("OCTOP_HOME", t.TempDir())
-	t.Setenv("OCTOP_BIND_HOST", "")
-	t.Setenv("OCTOP_PORT", "")
+	t.Setenv("AGENTBUDDY_HOME", t.TempDir())
+	t.Setenv("AGENTBUDDY_BIND_HOST", "")
+	t.Setenv("AGENTBUDDY_PORT", "")
 	if got := resolveDashboardURL(); got != "http://127.0.0.1:8088/" {
 		t.Fatalf("dashboard URL = %q", got)
 	}
@@ -173,7 +173,7 @@ func TestOctopAlreadyRunningRejectsOtherServers(t *testing.T) {
 }
 
 func TestFindRunningDashboardUsesRememberedPort(t *testing.T) {
-	t.Setenv("OCTOP_HOME", t.TempDir())
+	t.Setenv("AGENTBUDDY_HOME", t.TempDir())
 	srv := httptest.NewServer(octopHealthHandler())
 	defer srv.Close()
 	port := srv.Listener.Addr().(*net.TCPAddr).Port
@@ -187,7 +187,7 @@ func TestFindRunningDashboardUsesRememberedPort(t *testing.T) {
 }
 
 func TestFindRunningDashboardPrefersConfiguredPort(t *testing.T) {
-	t.Setenv("OCTOP_HOME", t.TempDir())
+	t.Setenv("AGENTBUDDY_HOME", t.TempDir())
 	preferred := httptest.NewServer(octopHealthHandler())
 	defer preferred.Close()
 	other := httptest.NewServer(octopHealthHandler())
@@ -205,7 +205,7 @@ func TestFindRunningDashboardPrefersConfiguredPort(t *testing.T) {
 
 func TestFindRunningDashboardIgnoresDeadRememberedPort(t *testing.T) {
 	home := t.TempDir()
-	t.Setenv("OCTOP_HOME", home)
+	t.Setenv("AGENTBUDDY_HOME", home)
 	if err := os.WriteFile(desktopPortPath(), []byte("nope"), 0o644); err != nil {
 		t.Fatal(err)
 	}

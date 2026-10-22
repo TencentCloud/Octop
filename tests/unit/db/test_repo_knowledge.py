@@ -15,7 +15,7 @@ from octop.infra.utils.paths import PathLayout
 
 @pytest.fixture
 def db(tmp_path: Path) -> SqlitePool:
-    pool = SqlitePool(tmp_path / "octop.db")
+    pool = SqlitePool(tmp_path / "agentbuddy.db")
     run_migrations(pool)
     return pool
 
@@ -58,14 +58,14 @@ def test_knowledge_tables_migrated(db: SqlitePool) -> None:
 
 
 def test_path_layout_knowledge_dir(tmp_path: Path) -> None:
-    paths = PathLayout(tmp_path / ".octop")
-    assert paths.knowledge_dir == tmp_path / ".octop" / "knowledge"
+    paths = PathLayout(tmp_path / ".agentbuddy")
+    assert paths.knowledge_dir == tmp_path / ".agentbuddy" / "knowledge"
 
 
 def test_knowledge_migrate_and_create(
     repo: KnowledgeRepo, owner_id: int, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    monkeypatch.setenv("OCTOP_HOME", str(tmp_path))
+    monkeypatch.setenv("AGENTBUDDY_HOME", str(tmp_path))
     paths = PathLayout.from_env()
     assert paths.knowledge_dir == tmp_path / "knowledge"
 
@@ -162,7 +162,7 @@ def test_create_document_applies_limit_within_insert_transaction(
 
 
 def test_migration_007_rebuilds_text_primary_keys(tmp_path: Path) -> None:
-    db_path = tmp_path / "octop.db"
+    db_path = tmp_path / "agentbuddy.db"
     pool = SqlitePool(db_path)
     with pool.connect() as conn:
         conn.executescript(

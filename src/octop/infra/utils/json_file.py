@@ -1,4 +1,4 @@
-"""Safe read/write helpers for the small JSON config files under ``OCTOP_HOME``.
+"""Safe read/write helpers for the small JSON config files under ``AGENTBUDDY_HOME``.
 
 Leaf module (AGENTS.md §5): stdlib only, no ``infra`` imports. Callers translate
 :class:`JsonFileCorruptError` into ``OctopError`` via

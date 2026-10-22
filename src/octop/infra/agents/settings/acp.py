@@ -16,7 +16,7 @@ logger = logging.getLogger(__name__)
 _SETTINGS_PREFIX = "acp_runners:user:"
 _HIDDEN_RUNNERS = frozenset({"qwen_code"})
 # Until octop-harness ships these builtins, merge agentbuddy-side defaults.
-_OCTOP_BUILTIN_RUNNERS: dict[str, dict[str, Any]] = {
+_AGENTBUDDY_BUILTIN_RUNNERS: dict[str, dict[str, Any]] = {
     "kimi_code": {
         "command": "kimi",
         "args": ["acp"],
@@ -123,7 +123,7 @@ class ACPSettingsStore:
 def _runners_response(raw_runners: dict[str, Any]) -> dict[str, Any]:
     merged_raw = dict(raw_runners)
     harness_names = set(default_acp_runners())
-    for name, spec in _OCTOP_BUILTIN_RUNNERS.items():
+    for name, spec in _AGENTBUDDY_BUILTIN_RUNNERS.items():
         if name not in harness_names and name not in merged_raw:
             merged_raw[name] = spec
     merged = ACPConfig.from_dict({"runners": merged_raw})

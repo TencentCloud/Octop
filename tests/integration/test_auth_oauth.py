@@ -53,7 +53,7 @@ async def test_oauth_public_routes_and_oidc_kind_share_redirect(
 
     start = await c.post("/api/auth/oauth/start", json={"kind": "oidc", "redirect_after": "/chat"})
     assert start.status_code == 200
-    assert start.cookies["octop_sso_state"] == "browser-state"
+    assert start.cookies["agentbuddy_sso_state"] == "browser-state"
     assert "Path=/api/auth" in start.headers["set-cookie"]
 
     callback_response = await c.get(

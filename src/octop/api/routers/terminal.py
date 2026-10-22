@@ -186,7 +186,7 @@ def _shell_env(*, shell: str) -> dict[str, str]:
     # web terminal and is confusing to users.
     env["PROMPT_EOL_MARK"] = ""
     if "zsh" in shell:
-        env["OCTOP_WEB_TERMINAL"] = "1"
+        env["AGENTBUDDY_WEB_TERMINAL"] = "1"
     return env
 
 
