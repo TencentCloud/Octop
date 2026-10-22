@@ -2028,6 +2028,8 @@
     "createButton": "新建备份",
     "createModalTitle": "选择备份内容",
     "createModalDesc": "数据库基础数据始终备份，其他内容可按需选择。",
+    "noteLabel": "备注（可选）",
+    "notePlaceholder": "例如：升级前的稳定版本",
     "includeDatabase": "数据库基础数据（必选）",
     "includeConfig": "配置文件（config.json 与 env）",
     "includeWorkspaces": "专家工作区",

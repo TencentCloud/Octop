@@ -2028,6 +2028,8 @@
     "createButton": "Create backup",
     "createModalTitle": "Choose backup contents",
     "createModalDesc": "Core database data is always included. Select any additional content you need.",
+    "noteLabel": "Note (optional)",
+    "notePlaceholder": "For example: stable version before upgrading",
     "includeDatabase": "Core database data (required)",
     "includeConfig": "Configuration (config.json and env)",
     "includeWorkspaces": "Agent workspaces",

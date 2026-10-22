@@ -66,6 +66,9 @@ class CreateBackupBody(BaseModel):
     include_plugins: bool = True
     include_knowledge: bool = True
     include_chats: bool = False
+    note: str = Field(
+        default="", max_length=500, description="Optional note to identify this backup."
+    )
 
 
 def _agent_rows(server: Any) -> list[Any]:
@@ -121,6 +124,7 @@ def _create_and_store_manual_backup(
             include_plugins=options.include_plugins,
             include_knowledge=options.include_knowledge,
             include_chats=options.include_chats,
+            note=options.note,
         )
         return place_backup_file(paths, filename, tmp_path)
 
@@ -171,6 +175,7 @@ def _create_ephemeral_backup(
             include_plugins=options.include_plugins,
             include_knowledge=options.include_knowledge,
             include_chats=options.include_chats,
+            note=options.note,
         )
     except Exception:
         tmp_path.unlink(missing_ok=True)

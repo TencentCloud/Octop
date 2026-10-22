@@ -55,6 +55,7 @@ class BackupFileInfo:
     includes_plugins: bool = True
     includes_knowledge: bool = True
     includes_chats: bool = True
+    note: str = ""
 
     def to_dict(self) -> dict[str, str | int | bool]:
         return {
@@ -68,6 +69,7 @@ class BackupFileInfo:
             "includes_plugins": self.includes_plugins,
             "includes_knowledge": self.includes_knowledge,
             "includes_chats": self.includes_chats,
+            "note": self.note,
         }
 
 
@@ -115,6 +117,7 @@ def backup_file_info(path: Path) -> BackupFileInfo:
         includes_plugins=contents.includes_plugins,
         includes_knowledge=contents.includes_knowledge,
         includes_chats=contents.includes_chats,
+        note=contents.note,
     )
 
 
@@ -126,6 +129,7 @@ class BackupContentFlags:
     includes_plugins: bool = True
     includes_knowledge: bool = True
     includes_chats: bool = True
+    note: str = ""
 
 
 _FULL_CONTENTS = BackupContentFlags()
@@ -173,6 +177,7 @@ def peek_backup_contents(path: Path) -> BackupContentFlags:
         includes_plugins=bool(manifest.includes_plugins),
         includes_knowledge=bool(manifest.includes_knowledge),
         includes_chats=bool(manifest.includes_chats),
+        note=manifest.note,
     )
 
 
