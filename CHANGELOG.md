@@ -6,6 +6,13 @@
 
 ## [Unreleased]
 
+## [1.0.6] - 2026-10-22
+
+### 修复
+- **全部页面无法滚动**(技能市场 / 模型 / 插件市场 / 聊天 / 侧边栏,浏览器与桌面壳一致):白标替换时布局高度规则把 `.octop-app` 误改为 `.agentbuddy-app`,而 antd `<App>` 实际渲染的类名仍是 `octop-app`(由 `prefixCls` 决定),导致最顶层 100% 高度丢失、整个 flex 高度链失效,内容被固定高度的 `#root` 裁掉且无滚动条。恢复该选择器。
+- 安装向导 PostgreSQL 默认库名 / 用户名 `octop` → `agentbuddy`(与 compose 默认一致);Docker 沙箱「容器名前缀」默认值 `octop_sandbox` → `agentbuddy_sandbox`(与后端一致);浏览器 localStorage 键前缀 `octop.` → `agentbuddy.`
+
+
 ## [1.0.5] - 2026-10-22
 
 ### 修复
