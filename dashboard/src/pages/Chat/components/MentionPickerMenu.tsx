@@ -150,7 +150,7 @@ export default function MentionPickerMenu({
 
   if (items.length === 0 && !fileHint) {
     return (
-      <div className={styles.mentionMenu}>
+      <div id="octop-chat-pick-menu" className={styles.mentionMenu}>
         <div className={styles.mentionEmpty}>
           {t("mention.empty", "No matches")}
         </div>
@@ -172,7 +172,12 @@ export default function MentionPickerMenu({
 
   let flatIndex = -1;
   return (
-    <div className={styles.mentionMenu}>
+    <div
+      id="octop-chat-pick-menu"
+      className={styles.mentionMenu}
+      role="listbox"
+      aria-label={t("mention.menuLabel", "Mention suggestions")}
+    >
       {sections.map((section) => (
         <div key={section.title}>
           <div className={styles.mentionCategory}>{section.title}</div>
@@ -206,6 +211,8 @@ export default function MentionPickerMenu({
               <button
                 key={mentionPickKey(item)}
                 type="button"
+                role="option"
+                aria-selected={active}
                 className={`${styles.mentionItem} ${
                   active ? styles.mentionItemActive : ""
                 }`}
