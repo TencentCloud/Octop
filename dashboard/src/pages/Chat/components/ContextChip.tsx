@@ -22,6 +22,8 @@ interface ContextChipProps {
   icon: ReactNode;
   label: string;
   onRemove?: () => void;
+  onOpen?: () => void;
+  openLabel?: string;
   /** Smaller read-only chips above user messages in history. */
   compact?: boolean;
 }
@@ -31,6 +33,8 @@ export default function ContextChip({
   icon,
   label,
   onRemove,
+  onOpen,
+  openLabel,
   compact = false,
 }: ContextChipProps) {
   return (
@@ -40,7 +44,19 @@ export default function ContextChip({
       }`}
     >
       <span className={styles.contextChipIcon}>{icon}</span>
-      <span className={styles.contextChipLabel}>{label}</span>
+      {onOpen ? (
+        <button
+          type="button"
+          className={`${styles.contextChipLabel} ${styles.contextChipOpen}`}
+          onClick={onOpen}
+          aria-label={openLabel ?? label}
+          title={openLabel}
+        >
+          {label}
+        </button>
+      ) : (
+        <span className={styles.contextChipLabel}>{label}</span>
+      )}
       {onRemove ? (
         <button
           type="button"

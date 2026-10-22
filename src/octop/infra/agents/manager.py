@@ -556,6 +556,9 @@ class AgentManager:
             settings_repo=repos.settings_repo,
             config=self._config,
         )
+        from octop.infra.connectors.runtime import ConnectorRuntime
+
+        self._connector_runtime = ConnectorRuntime(self._connector_svc, repos)
         # User-scoped custom MCP tools: (user_id, server_name, fingerprint) -> tools
         self._mcp_tool_cache: dict[tuple[int, str, str], list[Any]] = {}
         self._mcp_tool_cache_locks: dict[tuple[int, str], asyncio.Lock] = {}
@@ -591,6 +594,7 @@ class AgentManager:
             settings_repo=repos.settings_repo,
             config=self._config,
         )
+        self._connector_runtime.replace_persistence(self._connector_svc, repos)
 
     def set_cron_manager(self, cron_manager: CronManager) -> None:
         """Attach the process-wide CronManager (must be set before boot())."""
@@ -672,7 +676,12 @@ class AgentManager:
                     error=AGENT_START_TIMEOUT,
                 )
 
+    @property
+    def connector_runtime(self) -> Any:
+        return self._connector_runtime
+
     async def shutdown(self) -> None:
+        await self._connector_runtime.shutdown()
         self._reclaim_pending.clear()
         reclaim_task = self._reclaim_task
         self._reclaim_task = None
@@ -1184,6 +1193,7 @@ class AgentManager:
 
     async def stop(self, agent_id: str) -> None:
         """Unload agent from harness runtime and persist ``last_state=stopped``."""
+        await self._connector_runtime.close(agent_id=agent_id)
         async with self._lock:
             row = self._repos.agent_repo.get(agent_id)
             if row is None:
@@ -2125,6 +2135,7 @@ class AgentManager:
             self._connector_user_override.pop(agent_id, None)
 
     async def reload_connectors_for_user(self, user_id: int) -> None:
+        await self._connector_runtime.close(user_id=user_id)
         self.invalidate_mcp_tool_cache(user_id)
         reloaded: set[str] = set()
         for row in self._repos.agent_repo.list_by_user(user_id, include_disabled=False):
@@ -2309,6 +2320,10 @@ class AgentManager:
         uid = self._connector_uid_for(row, connector_user_id=connector_user_id) if row else None
         if uid is None and connector_user_id is not None:
             uid = connector_user_id
+
+        await self._connector_runtime.prepare_tools(
+            agent, agent_id=agent_id, user_id=uid, names=names
+        )
 
         tool_set: frozenset[str] = getattr(agent, "_mcp_tool_name_set", frozenset())
         missing_tools = [n for n in names if not any(t.startswith(f"{n}_") for t in tool_set)]
@@ -3644,6 +3659,7 @@ class AgentManager:
 
     async def _reload_agent(self, agent_id: str) -> None:
         assert self._harness_manager is not None
+        await self._connector_runtime.close(agent_id=agent_id)
         async with self._lifecycle_lock_for(agent_id):
             self._bootstrap_graph_refresh_pending.discard(agent_id)
             row = self._repos.agent_repo.get(agent_id)

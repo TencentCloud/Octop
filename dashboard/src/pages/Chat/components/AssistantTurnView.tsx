@@ -133,7 +133,7 @@ function turnHasLiveSpeaker(
 export default function AssistantTurnView({
   messages,
   agentId: agentIdProp,
-  isTurnInProgress = false,
+  isTurnInProgress,
   liveSpeakers = [],
   onRegenerate,
   onDisableStreamUsage,
@@ -158,7 +158,9 @@ export default function AssistantTurnView({
 
   const speakerLive = turnHasLiveSpeaker(messages, liveSpeakers);
   const hasStreamingMsg = messages.some((m) => m.status === "streaming");
-  const turnStreaming = isTurnInProgress || hasStreamingMsg || speakerLive;
+  // The list knows whether this is a live turn. Historical message flags may
+  // be stale after reconnecting and must not reopen a finished process panel.
+  const turnStreaming = (isTurnInProgress ?? hasStreamingMsg) || speakerLive;
 
   const hitlLayout = useMemo(
     () => layoutAssistantTurnHitl(messages),

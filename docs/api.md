@@ -509,7 +509,8 @@ for non-`/` paths.
 | Method | Path | Auth | Notes |
 |--------|------|------|-------|
 | `GET`    | `/connectors/catalog` | user | connector catalog (Notion, Figma, …) |
-| `GET`    | `/connectors/test-credentials` | user | preflight credentials |
+| `POST`   | `/connectors/test-credentials` | user | preflight credentials |
+| `GET`    | `/connectors/open-design/local-status` | user | read-only host discovery; returns `installed` and `state` (`ready`, `missing`, `stopped`, `multiple`), never launch credentials |
 | `GET`    | `/connector-instances` | user | list instances |
 | `POST`   | `/connector-instances` | user | create instance |
 | `GET`/`PATCH`/`DELETE` | `/connector-instances/{id}` | user | CRUD on an instance |
@@ -531,6 +532,38 @@ server from the MCP URL (401 / RFC 9728 protected-resource metadata), requires d
 registration (DCR), stores encrypted tokens in the custom MCP spec, and injects `Authorization:
 Bearer` when loading tools. Loopback and LAN MCP URLs may use HTTP and do not use remote OAuth
 discovery.
+
+OpenDesign adds the following authenticated routes. `S` below means
+`/agents/{agent_id}/threads/{thread_id}/open-design`; the caller must own the
+conversation and have access to its agent. Instance operations additionally
+require an active, visible OpenDesign connector. Defaults belong to the caller,
+including when the connector is shared.
+
+| Method | Path | Notes |
+|--------|------|-------|
+| `GET` | `/connector-instances/{id}/open-design/health` | read-only layered checks; does not verify actual generation |
+| `GET` | `/connector-instances/{id}/open-design/catalog` | paginated materials, runtimes and personal defaults |
+| `PUT` | `/connector-instances/{id}/open-design/selection` | validate and save personal defaults |
+| `GET` | `/connector-instances/{id}/open-design/resource?uri=…` | bounded plain-text material preview |
+| `GET` | `S/tasks` | latest 50 persisted task summaries |
+| `GET` | `S/events` | SSE snapshots, including initial/reconnected state; no LLM invocation |
+| `POST` | `S/tasks/{task_id}/refresh` | refresh status/preview without resubmitting generation |
+| `POST` | `S/tasks/{task_id}/cancel` | explicit upstream cancellation |
+| `GET` | `S/instances/{id}/catalog` | catalog and conversation selection, falling back to personal defaults |
+| `PUT` | `S/instances/{id}/selection` | validated conversation override |
+| `GET` | `S/instances/{id}/resource?uri=…` | bounded material preview |
+| `GET` | `S/instances/{id}/projects/{project}/search?query=…` | bounded source search in a project used by the conversation |
+| `GET` | `S/instances/{id}/projects/{project}/file?path=…` | source, SHA-256 digest and truncation flag |
+| `PUT` | `S/instances/{id}/projects/{project}/file` | `{path,digest,content}`; recheck, write, verify and refresh preview |
+
+Task summaries include `anchor_message_ids`: assistant messages from the original
+submission turn, newest first. These keep cards attached across status updates and
+history pagination. New submissions retain their original turn even if rejected
+before receiving a run ID; legacy tasks recover it from the original `start_run` result.
+
+Source writes reject changed/partial files and known active tasks. This is a
+read-compare-write check, not an atomic upstream version check. Launch credentials
+and full source are excluded from task summaries. See [OpenDesign](connectors-open-design.md).
 
 ## Internal MCP (octop-harness agents)
 
@@ -702,3 +735,13 @@ dashboard mirrors every code under `apiErrors.*` in
 | `STORAGE_BACKEND_UNREACHABLE` | 502 | Remote backend connect / list failed |
 | `CONNECTOR_OAUTH_FAILED` | 400 | OAuth flow could not complete |
 | `INTERNAL_ERROR` | 500 | Unhandled exception (logged with traceback) |
+
+### OpenDesign local configuration
+
+For `open-design`, create an instance or test credentials with
+`"credentials": {"auto_detect": true}` to resolve the running installation on the
+Octop host. Detection does not launch or install the application. The backend
+reads the canonical MCP configuration and uses existing credential validation
+and encryption; status responses do not contain it. Advanced clients may supply
+`command`, `args` and `env` explicitly instead. See
+[OpenDesign](connectors-open-design.md) for installation and deployment limits.

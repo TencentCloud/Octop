@@ -662,6 +662,7 @@ class OctopServer:
             self.services.provider_repo,
         )
         resume_pending_index_jobs(self.services)
+        await registry.connector_runtime.start()
 
         # Resume Bridge links that opted into auto-reconnect (best-effort).
         async def _resume_bridges() -> None:

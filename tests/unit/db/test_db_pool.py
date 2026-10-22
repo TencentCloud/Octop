@@ -778,3 +778,18 @@ def test_transaction_completes_while_a_competing_writer_waits(
         keys = {row["k"] for row in conn.execute("SELECT k FROM scratch").fetchall()}
     assert keys == {"competitor", "ours"}
     competitor.close()
+
+
+@pytest.mark.parametrize("watermark", [21, 24])
+def test_current_watermark_repairs_missing_open_design_tasks(
+    db: SqlitePool, watermark: int
+) -> None:
+    with db.connect() as conn:
+        conn.execute("DROP TABLE open_design_tasks")
+        conn.execute("UPDATE _schema_version SET version = ?", (watermark,))
+    run_migrations(db)
+    run_migrations(db)
+    with db.connect() as conn:
+        columns = {row["name"] for row in conn.execute("PRAGMA table_info(open_design_tasks)")}
+        assert {"task_id", "request_id", "run_id", "revision", "next_check"} <= columns
+        assert conn.execute("SELECT version FROM _schema_version").fetchone()[0] == 24

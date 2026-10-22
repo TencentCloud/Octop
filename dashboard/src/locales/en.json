@@ -232,8 +232,12 @@
     "TEAM_NOT_SHAREABLE": "Teams cannot be shared in this version.",
     "LOCAL_DOWNLOAD_UNAVAILABLE": "Saving to the host Downloads folder is only available when Octop is opened on this computer.",
     "SKILL_PACKAGE_COPY_DENIED": "The creator of this skill package has disabled copying its skills.",
-    "SKILL_PACKAGE_DOWNLOAD_DENIED": "Downloading this skill package is disabled.",
-    "SKILL_PACKAGE_LOCKED": "This skill was copied from a locked skill package and cannot be edited in the workspace."
+    "SKILL_PACKAGE_LOCKED": "This skill was copied from a locked skill package and cannot be edited in the workspace.",
+    "OPEN_DESIGN_SELECTION_INVALID": "The selected runtime, model or material is no longer available. Refresh the catalog.",
+    "OPEN_DESIGN_FILE_CONFLICT": "The file changed or was truncated. Reload it and review the changes before saving.",
+    "OPEN_DESIGN_TASK_RUNNING": "A design task is still running. Wait or explicitly cancel it before editing source.",
+    "OPEN_DESIGN_PATH_INVALID": "Select a relative file path inside this OpenDesign project.",
+    "SKILL_PACKAGE_DOWNLOAD_DENIED": "Downloading this skill package is disabled."
   },
   "nav": {
     "chat": "Conversation",
@@ -6604,7 +6608,27 @@
     "weknoraFound": "Detected local WeKnora and filled in the URL",
     "weknoraNotFound": "WeKnora not found at 127.0.0.1:8080 on the Octop host",
     "weknoraStep1": "Open WeKnora and create an API Key",
-    "weknoraStep2": "Detect the local service or enter the deployment URL manually"
+    "weknoraStep2": "Detect the local service or enter the deployment URL manually",
+    "openDesignImportHint": "Paste the launch configuration from OpenDesign Settings → MCP server.",
+    "openDesignImportInvalid": "Enter a valid stdio launch configuration with string arguments and environment values.",
+    "openDesignSelectServer": "Select the OpenDesign server to import",
+    "openDesignImport": "Import launch configuration",
+    "openDesignAutomatic": "Connect to local OpenDesign automatically",
+    "openDesignImported": "MCP launch configuration ready",
+    "openDesignImportedHint": "The saved or imported configuration includes the executable, startup arguments and environment. You do not need to enter them separately.",
+    "openDesignDetect": "Detect again",
+    "openDesignInstall": "Download and installation guide",
+    "openDesignUseAutomatic": "Use local auto-detection",
+    "openDesignAdvanced": "Advanced: import MCP configuration",
+    "openDesignAdvancedHint": "For remote SSH connections, non-standard installation locations or versions without discovery, paste the full JSON from OpenDesign → Settings → MCP server. This replaces the launch configuration; no API key is needed.",
+    "openDesignLocal": {
+      "loading": "Detecting OpenDesign on the Octop host…",
+      "ready": "OpenDesign is running. Octop will retrieve and encrypt its complete MCP launch configuration when you save.",
+      "missing": "Install OpenDesign on the Octop host, open it, then detect again. In Docker or on a remote server, the application must be reachable from the Octop host.",
+      "stopped": "OpenDesign is installed. Open the app and detect again. If your version does not support discovery, import its MCP configuration below.",
+      "multiple": "Multiple OpenDesign installations are running. Import the configuration of the instance you want to use below.",
+      "error": "Detection failed. Retry or import the MCP configuration below."
+    }
   },
   "mbtiPage": {
     "pickAgent": "Select an Agent first"
@@ -7130,6 +7154,80 @@
     "step4Desc": "When finished, type \"结束\" (or \"end\") to stop; after confirmation the skill is saved under the task goal. Type the goal keyword later to replay it.",
     "envNotReady": "Browser environment required first",
     "title": "Skill recording guide"
+  },
+  "openDesignTasks": {
+    "title": "OpenDesign tasks",
+    "updated": "Updated {{time}}",
+    "disconnected": "Live updates disconnected. Reconnecting; generation continues.",
+    "preview": "Open preview",
+    "refresh": "Refresh status / preview",
+    "expand": "Show more",
+    "status": {
+      "submitting": "Submitting",
+      "queued": "Queued",
+      "running": "Generating",
+      "unavailable": "Cannot query",
+      "paused": "Tracking paused",
+      "succeeded": "Completed",
+      "failed": "Failed",
+      "canceled": "Canceled",
+      "cancelled": "Canceled"
+    },
+    "errors": {
+      "access_revoked": "Tracking paused because access to the connector was revoked.",
+      "connection_unavailable": "OpenDesign is temporarily unreachable. Retrying without restarting generation.",
+      "generation_rejected": "OpenDesign rejected this generation request."
+    },
+    "cancel": "Cancel generation",
+    "collapse": "Collapse"
+  },
+  "openDesignStudio": {
+    "title": "OpenDesign materials & runtime",
+    "failed": "Unable to load OpenDesign",
+    "connector": "Choose a connector",
+    "scopeThread": "Choices apply to this conversation",
+    "scopeDefault": "Your defaults for new conversations",
+    "bindingHint": "Skills apply to generation. The design system applies to newly created projects. Explicit choices override inferred settings.",
+    "agent": "Generation runtime",
+    "model": "Generation model",
+    "default": "Use OpenDesign / CLI default",
+    "modelHint": "OpenDesign returns a sample of model choices. Leave blank to reuse the runtime configuration. Availability does not verify login, credits or model access.",
+    "skills": "Skills / templates",
+    "designSystem": "Design system",
+    "saved": "Choices saved",
+    "resources": "Material library",
+    "search": "Search loaded materials",
+    "read": "Read",
+    "more": "Load more materials",
+    "truncated": "Preview is truncated.",
+    "healthCheck": "Check connection layers",
+    "ready": "Available",
+    "notReady": "Unavailable / unchecked",
+    "unverified": "Generation has not been verified by this check.",
+    "runtimeHint": "Install and configure a supported runtime in OpenDesign, then check again.",
+    "health": {
+      "launch": "Launch config",
+      "protocol": "MCP protocol",
+      "daemon": "OpenDesign service",
+      "runtime": "Generation runtimes",
+      "resources": "Materials"
+    },
+    "category": {
+      "all": "All materials",
+      "skills": "Skills / templates",
+      "design-systems": "Design systems"
+    }
+  },
+  "openDesignSource": {
+    "title": "Project source",
+    "safety": "Saving re-reads and compares the file and blocks known active tasks. OpenDesign does not provide atomic version checks; avoid simultaneous edits in other apps.",
+    "search": "Search project source",
+    "path": "Project-relative file path, e.g. index.html",
+    "load": "Read file",
+    "truncated": "Only part of this file is available. Editing is disabled.",
+    "content": "File content",
+    "review": "Review changes",
+    "save": "Save reviewed changes"
   },
   "textAssist": {
     "hint": "Generate from the name with AI, or polish the current text",

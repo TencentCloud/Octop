@@ -1983,6 +1983,7 @@ def _apply_sqlite_migration(db: DatabasePool, version: int, path: Path) -> None:
             conn.execute("UPDATE _schema_version SET version = ?", (version,))
         return
     if version == 24:
+        _ensure_open_design_tasks_schema(db)
         _ensure_user_group_profile_schema(db)
         _ensure_knowledge_base_icon_url_schema(db)
         _ensure_bridge_icon_url_schema(db)
@@ -2092,6 +2093,22 @@ def _grant_permission_keys_once(
             )
 
 
+def _ensure_open_design_tasks_schema(db: DatabasePool) -> None:
+    """Repair databases whose recorded version skipped the task-table DDL."""
+    if _table_exists(db, "open_design_tasks"):
+        return
+    suffix = ".pg.sql" if db.dialect == "postgresql" else ".sql"
+    sql = (_MIGRATIONS_DIR / ("024_user_group_profile" + suffix)).read_text(encoding="utf-8")
+    sql = sql.split("-- OpenDesign task tracking.\n", 1)[1]
+    sql = sql.rsplit("UPDATE _schema_version", 1)[0]
+    with db.connect() as conn:
+        if db.dialect == "postgresql":
+            with conn.transaction():
+                _apply_postgresql_migration(conn, sql)
+        else:
+            conn.executescript(sql)
+
+
 def _grant_default_nav_permissions(db: DatabasePool) -> None:
     """Grant experts/tasks/token usage once to accounts that already had them open."""
     _grant_permission_keys_once(db, _NAV_PAGE_PERMISSIONS, _NAV_PAGE_PERMISSIONS_FLAG)
@@ -2163,6 +2180,8 @@ def run_migrations(db: DatabasePool) -> None:
     _ensure_sso_provider_kind_schema(db)
     _ensure_user_role_schema(db)
     _ensure_bridge_connections_schema(db)
+    _ensure_open_design_tasks_schema(db)
+
     _ensure_skill_copy_policy_schema(db)
     _ensure_skill_package_download_schema(db)
     _ensure_skill_package_shared_schema(db)

@@ -1,6 +1,6 @@
 import { App, Switch, Tag, Tooltip, Typography } from "antd";
 
-import { Trash2 } from "lucide-react";
+import { Settings2, Trash2 } from "lucide-react";
 import { useTranslation } from "react-i18next";
 
 import {
@@ -9,6 +9,7 @@ import {
   type ConnectorInstance,
 } from "../../../api/modules/connectors";
 import { useCurrentUser } from "../../../hooks/useCurrentUser";
+import { OpenDesignStudio } from "./OpenDesignStudio";
 import { ConnectorLogo, connectorAccent } from "./connectorDefs";
 import styles from "./index.module.less";
 
@@ -134,12 +135,32 @@ export function ConnectorInstanceCard({
             ? t("connectors.clickToManage", "点击管理连接")
             : t("connectors.sharedReadonly", "共享连接器，仅所有者可管理")}
         </div>
-        {instance.can_manage ? (
-          <div
-            className={styles.instanceCardActions}
-            onClick={(e) => e.stopPropagation()}
-            onKeyDown={(e) => e.stopPropagation()}
-          >
+        <div
+          className={styles.instanceCardActions}
+          onClick={(e) => e.stopPropagation()}
+          onKeyDown={(e) => e.stopPropagation()}
+        >
+          {instance.kind === "open-design" && instance.status === "active" && (
+            <OpenDesignStudio
+              instanceId={instance.instance_id}
+              trigger={(open) => (
+                <Tooltip
+                  title={t("openDesignStudio.title")}
+                  mouseEnterDelay={0.5}
+                >
+                  <button
+                    type="button"
+                    className={`${styles.instanceCardDelBtn} ${styles.instanceCardConfigBtn}`}
+                    onClick={open}
+                    aria-label={t("openDesignStudio.title")}
+                  >
+                    <Settings2 size={13} />
+                  </button>
+                </Tooltip>
+              )}
+            />
+          )}
+          {instance.can_manage && (
             <Tooltip title={t("common.delete")} mouseEnterDelay={0.5}>
               <button
                 type="button"
@@ -150,8 +171,8 @@ export function ConnectorInstanceCard({
                 <Trash2 size={13} />
               </button>
             </Tooltip>
-          </div>
-        ) : null}
+          )}
+        </div>
       </div>
     </div>
   );

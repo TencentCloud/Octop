@@ -9,7 +9,7 @@ import {
   type HTMLAttributes,
   type ReactNode,
 } from "react";
-import { Spin, Button } from "antd";
+import { Spin, Button, Alert } from "antd";
 import { Virtuoso, type Components, type VirtuosoHandle } from "react-virtuoso";
 import { useTranslation } from "react-i18next";
 import type { HitlDecisionHandler } from "../../../api/types/hitl";
@@ -19,6 +19,10 @@ import MessageBubble from "./MessageBubble";
 import AssistantTurnView from "./AssistantTurnView";
 import ScrollToBottomButton from "./ScrollToBottomButton";
 import GeneratingIndicator from "./GeneratingIndicator";
+import OpenDesignTasks from "./OpenDesignTasks";
+import { useOpenDesignTasks } from "../hooks/useOpenDesignTasks";
+import { placeOpenDesignTasks } from "../utils/openDesignTaskPlacement";
+import type { DesignTask } from "../../../api/modules/openDesign";
 import TurnTimelineRail from "./TurnTimelineRail";
 import { isLiveAssistantTurn } from "./liveAssistantTurn";
 import {
@@ -123,6 +127,9 @@ interface MessageListProps {
 }
 
 interface GroupRenderContext {
+  threadId?: string;
+  designTasks: Map<string, DesignTask[]>;
+  onDesignTasks: (tasks: DesignTask[]) => void;
   agentId?: string | null;
   composerLookups?: ComposerTagLookups;
   isStreaming?: boolean;
@@ -163,6 +170,8 @@ function renderMessageGroup(
     lastAssistantGroupIndex: ctx.lastAssistantGroupIndex,
     lastUserGroupIndex: ctx.lastUserGroupIndex,
   });
+  const turnLiveSpeakers =
+    groupIndex > ctx.lastUserGroupIndex ? ctx.liveSpeakers : [];
 
   if (!group.isGroup || group.messages.length === 1) {
     const msg = group.messages[0];
@@ -179,7 +188,7 @@ function renderMessageGroup(
             messages={[msg]}
             agentId={ctx.agentId}
             isTurnInProgress={isTurnInProgress}
-            liveSpeakers={ctx.liveSpeakers}
+            liveSpeakers={turnLiveSpeakers}
             onRegenerate={ctx.onRegenerate}
             onDisableStreamUsage={ctx.onDisableStreamUsage}
             onEditUserMessage={ctx.onEditUserMessage}
@@ -235,7 +244,7 @@ function renderMessageGroup(
         messages={group.messages}
         agentId={ctx.agentId}
         isTurnInProgress={isTurnInProgress}
-        liveSpeakers={ctx.liveSpeakers}
+        liveSpeakers={turnLiveSpeakers}
         onRegenerate={ctx.onRegenerate}
         onDisableStreamUsage={ctx.onDisableStreamUsage}
         onEditUserMessage={ctx.onEditUserMessage}
@@ -252,6 +261,27 @@ function renderMessageGroup(
         compactProcess={ctx.compactProcess}
       />
     </div>
+  );
+}
+
+function renderTurn(
+  group: MessageGroup,
+  index: number,
+  ctx: GroupRenderContext,
+) {
+  const tasks = ctx.designTasks.get(group.messages[0]?.id);
+  return (
+    <>
+      {renderMessageGroup(group, index, ctx)}
+      {ctx.agentId && ctx.threadId && tasks?.length ? (
+        <OpenDesignTasks
+          agentId={ctx.agentId}
+          threadId={ctx.threadId}
+          tasks={tasks}
+          onTasks={ctx.onDesignTasks}
+        />
+      ) : null}
+    </>
   );
 }
 
@@ -313,6 +343,15 @@ export default function MessageList(props: MessageListProps) {
   const messageGroups = useMemo(
     () => groupConsecutiveAssistantMessages(messages, agentId ?? undefined),
     [messages, agentId],
+  );
+  const {
+    tasks: designTasks,
+    disconnected: designDisconnected,
+    setTasks: setDesignTasks,
+  } = useOpenDesignTasks(agentId, sessionKey);
+  const designPlacement = useMemo(
+    () => placeOpenDesignTasks(messageGroups, designTasks),
+    [messageGroups, designTasks],
   );
   const messageGroupsRef = useRef(messageGroups);
   messageGroupsRef.current = messageGroups;
@@ -741,6 +780,9 @@ export default function MessageList(props: MessageListProps) {
 
   const groupContext = useMemo<GroupRenderContext>(
     () => ({
+      threadId: sessionKey,
+      designTasks: designPlacement.byGroup,
+      onDesignTasks: setDesignTasks,
       agentId,
       composerLookups,
       isStreaming,
@@ -789,6 +831,9 @@ export default function MessageList(props: MessageListProps) {
       shellCommandDisabledTitle,
       compactProcess,
       registerBubbleRef,
+      sessionKey,
+      designPlacement.byGroup,
+      setDesignTasks,
     ],
   );
 
@@ -808,6 +853,22 @@ export default function MessageList(props: MessageListProps) {
           </div>
         )}
         {refreshFooter}
+        {designDisconnected && designTasks.length > 0 && (
+          <Alert
+            type="warning"
+            showIcon
+            message={t("openDesignTasks.disconnected")}
+          />
+        )}
+        {agentId && sessionKey && designPlacement.pending.length > 0 && (
+          <OpenDesignTasks
+            key={`${agentId}:${sessionKey}`}
+            agentId={agentId}
+            threadId={sessionKey}
+            tasks={designPlacement.pending}
+            onTasks={setDesignTasks}
+          />
+        )}
       </>
     ),
     [
@@ -818,10 +879,20 @@ export default function MessageList(props: MessageListProps) {
       liveSpeakerNames,
       agentId,
       refreshFooter,
+      sessionKey,
+      designDisconnected,
+      designTasks.length,
+      designPlacement.pending,
+      setDesignTasks,
+      t,
     ],
   );
 
-  const hasFooter = showGenerating || Boolean(refreshFooter);
+  const hasFooter =
+    showGenerating ||
+    Boolean(refreshFooter) ||
+    designPlacement.pending.length > 0 ||
+    (designDisconnected && designTasks.length > 0);
 
   const virtuosoContext = useMemo<VirtuosoListContext>(
     () => ({
@@ -895,7 +966,7 @@ export default function MessageList(props: MessageListProps) {
           }}
           components={virtuosoComponents}
           itemContent={(index, group) =>
-            renderMessageGroup(group, index - firstItemIndex, groupContext)
+            renderTurn(group, index - firstItemIndex, groupContext)
           }
         />
       ) : (
@@ -906,7 +977,7 @@ export default function MessageList(props: MessageListProps) {
               // Stable key: first message id only. Joining all ids remounts the
               // whole assistant turn whenever a tool/thinking bubble is appended.
               <div key={group.messages[0]?.id ?? `g-${groupIndex}`}>
-                {renderMessageGroup(group, groupIndex, groupContext)}
+                {renderTurn(group, groupIndex, groupContext)}
               </div>
             ))}
             {footer}

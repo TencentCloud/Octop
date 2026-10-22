@@ -7,6 +7,7 @@ import subprocess
 import sys
 from pathlib import Path
 
+import pytest
 from octop_harness.backends.local_shell import HarnessLocalShellBackend
 
 from octop.infra.backend.shell_output import (
@@ -70,7 +71,21 @@ def test_cp1252_locale_accepts_gbk_text_but_not_every_gbk_byte(monkeypatch) -> N
     assert decode_child_output(mixed) == "beforeÿafter"
 
 
-def test_install_is_idempotent_and_leaves_stdlib() -> None:
+@pytest.fixture
+def legacy_shell(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Exercise Octop's fallback even when the installed Harness has a decoder."""
+    import octop_harness.backends.bwrap_shell as bwrap_shell
+    import octop_harness.backends.local_shell as local_shell
+
+    import octop.infra.backend.shell_output as shell_output
+
+    monkeypatch.setattr(shell_output, "_INSTALLED", False)
+    monkeypatch.delattr(local_shell, "decode_child_output", raising=False)
+    for module in (local_shell, bwrap_shell):
+        monkeypatch.setattr(module, "subprocess", subprocess)
+
+
+def test_install_is_idempotent_and_leaves_stdlib(legacy_shell: None) -> None:
     import octop_harness.backends.bwrap_shell as bwrap_shell
     import octop_harness.backends.local_shell as local_shell
 
@@ -124,7 +139,7 @@ def test_execute_decodes_utf8_and_gbk(tmp_path: Path) -> None:
     assert "<no output>" not in mixed.output
 
 
-def test_bwrap_module_run_uses_the_same_decoder() -> None:
+def test_bwrap_module_run_uses_the_same_decoder(legacy_shell: None) -> None:
     import octop_harness.backends.bwrap_shell as bwrap_shell
 
     install_shell_output_decoding()

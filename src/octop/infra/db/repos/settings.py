@@ -24,6 +24,13 @@ class SettingsRepo:
                 (key, value),
             )
 
+    def list_prefix(self, prefix: str) -> list[tuple[str, str]]:
+        with self._db.connect() as conn:
+            rows = conn.execute(
+                "SELECT key, value FROM settings WHERE substr(key, 1, ?) = ?", (len(prefix), prefix)
+            ).fetchall()
+        return [(r["key"], r["value"]) for r in rows]
+
     def delete(self, key: str) -> None:
         with self._db.transaction() as conn:
             conn.execute("DELETE FROM settings WHERE key = ?", (key,))

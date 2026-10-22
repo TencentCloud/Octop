@@ -232,8 +232,12 @@
     "TEAM_NOT_SHAREABLE": "当前版本不支持分享团队。",
     "LOCAL_DOWNLOAD_UNAVAILABLE": "仅在本机打开 Octop 时才能保存到系统「下载」文件夹。",
     "SKILL_PACKAGE_COPY_DENIED": "该技能包的创建者已禁止复制其中的技能。",
-    "SKILL_PACKAGE_DOWNLOAD_DENIED": "该技能包已禁止打包下载。",
-    "SKILL_PACKAGE_LOCKED": "此技能复制自锁定策略的技能包，无法在工作区编辑。"
+    "SKILL_PACKAGE_LOCKED": "此技能复制自锁定策略的技能包，无法在工作区编辑。",
+    "OPEN_DESIGN_SELECTION_INVALID": "所选运行时、模型或素材已不可用，请刷新目录后重新选择。",
+    "OPEN_DESIGN_FILE_CONFLICT": "文件已变更或被截断，请重新加载并确认差异后保存。",
+    "OPEN_DESIGN_TASK_RUNNING": "设计任务仍在运行，请等待完成或明确取消后再编辑源码。",
+    "OPEN_DESIGN_PATH_INVALID": "请选择当前 OpenDesign 项目内的相对文件路径。",
+    "SKILL_PACKAGE_DOWNLOAD_DENIED": "该技能包已禁止打包下载。"
   },
   "nav": {
     "chat": "对话",
@@ -6604,7 +6608,27 @@
     "weknoraFound": "已检测到本机 WeKnora 并填入地址",
     "weknoraNotFound": "未在 OCTOP 主机的 127.0.0.1:8080 检测到 WeKnora",
     "weknoraStep1": "打开 WeKnora 并创建 API Key",
-    "weknoraStep2": "检测本机服务，或手动填写部署地址"
+    "weknoraStep2": "检测本机服务，或手动填写部署地址",
+    "openDesignImportHint": "粘贴 OpenDesign「Settings → MCP server」的启动配置。",
+    "openDesignImportInvalid": "请填写有效的 stdio 启动配置，参数和环境变量值必须为字符串。",
+    "openDesignSelectServer": "选择要导入的 OpenDesign 服务",
+    "openDesignImport": "导入启动配置",
+    "openDesignAutomatic": "自动连接本机 OpenDesign",
+    "openDesignImported": "MCP 启动配置已就绪",
+    "openDesignImportedHint": "已保存或导入的配置包含启动程序、启动参数和环境变量，无需逐项填写。",
+    "openDesignDetect": "重新检测",
+    "openDesignInstall": "下载与安装指引",
+    "openDesignUseAutomatic": "改用本机自动检测",
+    "openDesignAdvanced": "高级：导入 MCP 配置",
+    "openDesignAdvancedHint": "远程 SSH 连接、非标准安装位置或不支持自动发现的版本，可粘贴 OpenDesign → Settings → MCP server 的完整 JSON。这会替换启动配置，无需填写 API Key。",
+    "openDesignLocal": {
+      "loading": "正在检测 Octop 主机上的 OpenDesign…",
+      "ready": "OpenDesign 正在运行。保存时将自动获取完整 MCP 启动配置并加密保存。",
+      "missing": "请在 Octop 所在主机安装并打开 OpenDesign，然后重新检测。使用 Docker 或远程部署时，需要确保 Octop 主机能够访问该应用。",
+      "stopped": "已安装 OpenDesign。请打开应用后重新检测；若当前版本不支持自动发现，可在下方导入 MCP 配置。",
+      "multiple": "检测到多个运行中的 OpenDesign 安装，请在下方导入需要连接的实例的配置。",
+      "error": "检测失败，请重试或在下方导入 MCP 配置。"
+    }
   },
   "mbtiPage": {
     "pickAgent": "请先选择一个专家"
@@ -7130,6 +7154,80 @@
     "step4Desc": "操作完成后，输入\"结束\"停止录制，确认后技能将以任务目标为名保存。之后只需输入任务目标关键词即可触发回放。",
     "envNotReady": "请先安装浏览器环境",
     "title": "技能录制引导"
+  },
+  "openDesignTasks": {
+    "title": "OpenDesign 任务",
+    "updated": "更新于 {{time}}",
+    "disconnected": "实时更新已断开，正在重连；生成任务仍会继续。",
+    "preview": "打开预览",
+    "refresh": "刷新状态 / 预览",
+    "expand": "展开",
+    "status": {
+      "submitting": "正在提交",
+      "queued": "排队中",
+      "running": "生成中",
+      "unavailable": "暂时无法查询",
+      "paused": "跟踪已暂停",
+      "succeeded": "已完成",
+      "failed": "失败",
+      "canceled": "已取消",
+      "cancelled": "已取消"
+    },
+    "errors": {
+      "access_revoked": "连接器访问权限已撤销，任务跟踪已暂停。",
+      "connection_unavailable": "暂时无法连接 OpenDesign，正在重试，不会重新提交生成。",
+      "generation_rejected": "OpenDesign 拒绝了本次生成请求。"
+    },
+    "cancel": "取消生成",
+    "collapse": "收起"
+  },
+  "openDesignStudio": {
+    "title": "OpenDesign 素材与生成配置",
+    "failed": "无法加载 OpenDesign",
+    "connector": "选择连接器",
+    "scopeThread": "配置应用于当前会话",
+    "scopeDefault": "新会话使用的个人默认配置",
+    "bindingHint": "技能用于生成，设计系统用于新建项目。手动选择将优先于助手推断的配置。",
+    "agent": "生成运行时",
+    "model": "生成模型",
+    "default": "使用 OpenDesign / CLI 默认配置",
+    "modelHint": "OpenDesign 仅返回部分模型选项；留空可复用运行时已有配置。检测到运行时不代表已登录、有额度或有模型权限。",
+    "skills": "技能 / 模板",
+    "designSystem": "设计系统",
+    "saved": "配置已保存",
+    "resources": "素材库",
+    "search": "搜索已加载的素材",
+    "read": "阅读",
+    "more": "加载更多素材",
+    "truncated": "预览内容已截断。",
+    "healthCheck": "分层检查连接",
+    "ready": "可用",
+    "notReady": "不可用 / 未检查",
+    "unverified": "此检查尚未验证实际生成。",
+    "runtimeHint": "请在 OpenDesign 中安装并配置支持的生成运行时，然后重新检查。",
+    "health": {
+      "launch": "启动配置",
+      "protocol": "MCP 协议",
+      "daemon": "OpenDesign 服务",
+      "runtime": "生成运行时",
+      "resources": "素材读取"
+    },
+    "category": {
+      "all": "全部素材",
+      "skills": "技能 / 模板",
+      "design-systems": "设计系统"
+    }
+  },
+  "openDesignSource": {
+    "title": "项目源码",
+    "safety": "保存前会重新读取并比对文件，同时阻止已知的生成中任务。OpenDesign 不提供原子版本校验，请避免在其他应用中同时修改。",
+    "search": "搜索项目源码",
+    "path": "项目内文件路径，例如 index.html",
+    "load": "读取文件",
+    "truncated": "当前仅返回了部分文件，已禁用编辑。",
+    "content": "文件内容",
+    "review": "查看修改对比",
+    "save": "保存已复核的修改"
   },
   "textAssist": {
     "hint": "可用 AI 根据名称生成，或润色当前内容",
