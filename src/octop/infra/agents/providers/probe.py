@@ -116,11 +116,20 @@ def make_probe_provider_row(
 
 
 def _probe_model_id(row: Any, model_id: str | None) -> str:
+    """Explicit request wins, then the first enabled model, then the first one.
+
+    A disabled model may be unavailable upstream, so probing it can fail a
+    provider that has healthy enabled models.
+    """
     models = row.get_models() if hasattr(row, "get_models") else []
     if model_id:
         return model_id
-    if models:
-        return str(models[0].get("id") or "gpt-4o-mini")
+    entries = [m for m in models if isinstance(m, dict)]
+    chosen = next((m for m in entries if m.get("enabled", True)), None) or (
+        entries[0] if entries else None
+    )
+    if chosen:
+        return str(chosen.get("id") or "gpt-4o-mini")
     return "gpt-4o-mini"
 
 
