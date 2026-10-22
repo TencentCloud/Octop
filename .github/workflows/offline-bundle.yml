@@ -155,5 +155,17 @@ jobs:
             ls -R bundles/ >&2
             exit 1
           fi
+          # The Release workflow (same tag) may still be creating the
+          # release when this job runs — poll before uploading.
+          for i in $(seq 1 60); do
+            if gh release view "$TAG" > /dev/null 2>&1; then
+              break
+            fi
+            if [ "$i" = "60" ]; then
+              echo "::error::release $TAG not found after 10 minutes"
+              exit 1
+            fi
+            sleep 10
+          done
           gh release upload "$TAG" "${files[@]}" --clobber
           echo "attached offline bundles to release $TAG"
