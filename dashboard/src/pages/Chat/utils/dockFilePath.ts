@@ -49,25 +49,35 @@ export function canonicalizeDockFilePath(
   if (agentId) {
     const id = agentId.replace(/\\/g, "/");
     const idLower = id.toLowerCase();
-    const markers = [`/.octop/agents/${idLower}/`, `.octop/agents/${idLower}/`];
+    // New agents use .agentbuddy; legacy ones keep .octop.
+    const markers = [
+      `/.agentbuddy/agents/${idLower}/`,
+      `.agentbuddy/agents/${idLower}/`,
+      `/.octop/agents/${idLower}/`,
+      `.octop/agents/${idLower}/`,
+    ];
     for (const marker of markers) {
       const idx = lower.lastIndexOf(marker);
       if (idx >= 0) {
         return posix.slice(idx + marker.length);
       }
     }
-    const agentRoot = `/.octop/agents/${idLower}`;
-    if (
-      lower === agentRoot ||
-      lower.endsWith(agentRoot) ||
-      lower === agentRoot.slice(1) ||
-      lower.endsWith(`.octop/agents/${idLower}`)
-    ) {
-      return "";
+    for (const dir of ([".agentbuddy", ".octop"] as const)) {
+      const agentRoot = `/${dir}/agents/${idLower}`;
+      if (
+        lower === agentRoot ||
+        lower.endsWith(agentRoot) ||
+        lower === agentRoot.slice(1) ||
+        lower.endsWith(`${dir}/agents/${idLower}`)
+      ) {
+        return "";
+      }
     }
   }
 
-  const anyAgent = posix.match(/(?:^|\/)\.octop\/agents\/[^/]+\/(.+)$/i);
+  const anyAgent = posix.match(
+    /(?:^|\/)\.(?:agentbuddy|octop)\/agents\/[^/]+\/(.+)$/i,
+  );
   if (anyAgent?.[1]) return anyAgent[1];
 
   if (posix === "/workspace") return "";

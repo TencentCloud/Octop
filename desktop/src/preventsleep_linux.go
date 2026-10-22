@@ -35,7 +35,7 @@ func startSleepInhibitor() (func(), error) {
 		_ = conn.Close()
 		return nil, fmt.Errorf("inhibit sleep through logind: invalid file descriptor")
 	}
-	file := os.NewFile(uintptr(fd), "octop-sleep-inhibitor")
+	file := os.NewFile(uintptr(fd), "agentbuddy-sleep-inhibitor")
 	if file == nil {
 		_ = conn.Close()
 		return nil, fmt.Errorf("inhibit sleep through logind: open file descriptor")

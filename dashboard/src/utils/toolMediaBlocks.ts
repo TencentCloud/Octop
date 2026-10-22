@@ -120,6 +120,8 @@ export function toMediaPreviewSource(
     if (agentId) {
       const idLower = agentId.toLowerCase();
       for (const marker of [
+        `/.agentbuddy/agents/${idLower}/`,
+        `.agentbuddy/agents/${idLower}/`,
         `/.octop/agents/${idLower}/`,
         `.octop/agents/${idLower}/`,
       ]) {
@@ -129,7 +131,9 @@ export function toMediaPreviewSource(
         }
       }
     }
-    const anyAgent = posix.match(/(?:^|\/)\.octop\/agents\/[^/]+\/(.+)$/i);
+    const anyAgent = posix.match(
+      /(?:^|\/)\.(?:agentbuddy|octop)\/agents\/[^/]+\/(.+)$/i,
+    );
     if (anyAgent?.[1]) return anyAgent[1];
     const stripped = stripVirtualWorkspaceRoot(posix);
     if (stripped !== posix) return stripped;
