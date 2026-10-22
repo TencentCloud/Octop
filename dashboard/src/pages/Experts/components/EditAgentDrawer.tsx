@@ -21,6 +21,7 @@ import { request } from "../../../api/request";
 import { AgentAdvancedConfigFields } from "../../../components/AgentAdvancedConfigFields";
 import { TextAssistBar } from "../../../components/TextAssistBar";
 import {
+  avatarPickerStyles,
   expertPresetSrc,
   isUploadedAvatarUrl,
 } from "../../../components/AvatarPicker";
@@ -729,7 +730,10 @@ function EditAgentDrawerBody({
               {t("experts.basicInfo")}
             </div>
             <Form form={form} layout="vertical" size="middle">
-              <Form.Item label={t("experts.avatar")}>
+              <Form.Item
+                label={t("experts.avatar")}
+                className={avatarPickerStyles.formItem}
+              >
                 <ExpertAvatarPicker
                   iconUrl={iconUrl}
                   iconName={agent.icon_name}
@@ -835,8 +839,9 @@ function EditAgentDrawerBody({
               <Form.Item
                 name="description"
                 label={t("experts.agentDescription")}
+                className={styles.textAssistField}
               >
-                <Input.TextArea rows={2} />
+                <Input.TextArea autoSize={{ minRows: 2, maxRows: 5 }} />
               </Form.Item>
               <TextAssistBar
                 kind="expert.description"
@@ -847,10 +852,11 @@ function EditAgentDrawerBody({
               <Form.Item
                 name="welcome_message"
                 label={t("experts.welcomeMessageTitle")}
-                extra={t("experts.editWelcomeHint")}
+                tooltip={t("experts.editWelcomeHint")}
+                className={styles.textAssistField}
               >
                 <Input.TextArea
-                  rows={2}
+                  autoSize={{ minRows: 2, maxRows: 5 }}
                   placeholder={t("experts.welcomeMessagePlaceholder")}
                 />
               </Form.Item>

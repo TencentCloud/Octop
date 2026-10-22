@@ -6,7 +6,7 @@ from dataclasses import dataclass
 
 from octop.infra.db.pool import DatabasePool
 from octop.infra.db.repos._base import DbRow, insert_returning_id, map_rows, now_ts
-from octop.infra.utils.ulid import new_ulid
+from octop.infra.utils.ulid import new_short_id
 
 
 @dataclass(frozen=True)
@@ -74,9 +74,20 @@ class UserGroupRepo:
         description: str | None,
         enabled: bool = True,
         avatar_icon: str | None = None,
+        user_group_id: str | None = None,
     ) -> UserGroupRow:
         ts = now_ts()
-        group_id = new_ulid()
+        if user_group_id:
+            group_id = user_group_id
+        else:
+            group_id = ""
+            for _ in range(8):
+                candidate = new_short_id()
+                if self.get(candidate) is None:
+                    group_id = candidate
+                    break
+            if not group_id:
+                raise RuntimeError("failed to allocate unique user_group_id")
         with self._db.transaction() as conn:
             insert_returning_id(
                 conn,

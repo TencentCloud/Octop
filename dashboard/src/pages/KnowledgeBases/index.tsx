@@ -79,6 +79,7 @@ import {
   isUploadedAvatarUrl,
   KNOWLEDGE_AVATAR_PRESETS,
   ResourceAvatarPicker,
+  avatarPickerStyles,
 } from "../../components/AvatarPicker";
 import { OctopEmptyMascot } from "../../components/EmptyState";
 import DocumentPreviewCore from "../../components/DocumentPreviewCore";
@@ -3244,7 +3245,10 @@ export default function KnowledgeBasesPage() {
           <Form.Item name="icon_url" hidden>
             <Input />
           </Form.Item>
-          <Form.Item label={t("knowledgeBases.icon")}>
+          <Form.Item
+            label={t("knowledgeBases.icon")}
+            className={avatarPickerStyles.formItem}
+          >
             <ResourceAvatarPicker
               imageUrl={
                 iconUrl?.trim() &&
@@ -3350,23 +3354,25 @@ export default function KnowledgeBasesPage() {
           >
             <Input autoFocus maxLength={200} />
           </Form.Item>
-          <Form.Item name="description" label={t("knowledgeBases.description")}>
-            <Input.TextArea
-              autoSize={{ minRows: 2, maxRows: 5 }}
-              maxLength={2000}
-              showCount
-            />
+          <Form.Item
+            name="description"
+            label={t("knowledgeBases.description")}
+            className={styles.textAssistField}
+          >
+            <Input.TextArea autoSize={{ minRows: 2, maxRows: 5 }} />
           </Form.Item>
           <TextAssistBar
             kind="knowledge_base.description"
             getName={() => String(baseForm.getFieldValue("name") ?? "")}
             getText={() => String(baseForm.getFieldValue("description") ?? "")}
-            onApply={(text) => baseForm.setFieldsValue({ description: text })}
+            onApply={(text) =>
+              baseForm.setFieldsValue({ description: text.slice(0, 2000) })
+            }
           />
           <Form.Item
             name="max_documents"
             label={t("knowledgeBases.maxDocuments")}
-            extra={t("knowledgeBases.maxDocumentsHint")}
+            tooltip={t("knowledgeBases.maxDocumentsHint")}
           >
             <InputNumber
               min={0}
@@ -3392,7 +3398,7 @@ export default function KnowledgeBasesPage() {
                 onChange={setDefaultOpenChecked}
               />
             </div>
-            <div className={styles.formOptionRow}>
+            <div className={styles.formOptionRowVisibility}>
               <div className={styles.formOptionCopy}>
                 <span className={styles.switchLabel}>
                   {t("resourceVisibility.label")}

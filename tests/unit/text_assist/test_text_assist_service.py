@@ -103,3 +103,10 @@ def test_assist_kinds_cover_p0() -> None:
     assert "chat.prompt" in ASSIST_KINDS
     assert "expert.description" in ASSIST_KINDS
     assert "knowledge_base.description" in ASSIST_KINDS
+    assert "connector.description" in ASSIST_KINDS
+    assert "bridge.notes" in ASSIST_KINDS
+    assert "user_group.description" in ASSIST_KINDS
+    assert "user_role.description" in ASSIST_KINDS
+    assert "skill.description" in ASSIST_KINDS
+    assert "skill.label_zh" in ASSIST_KINDS
+    assert "skill.body" in ASSIST_KINDS

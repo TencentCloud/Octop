@@ -6,7 +6,7 @@ import asyncio
 import contextlib
 import json
 import logging
-from typing import Any, cast
+from typing import Any, Literal, cast
 
 from fastapi import APIRouter, Depends, File, UploadFile, WebSocket, WebSocketDisconnect
 from fastapi.responses import Response
@@ -15,6 +15,7 @@ from starlette.websockets import WebSocketState
 
 from octop.api.deps import get_server, require_permission, resolve_user_from_token
 from octop.infra.errors import ErrorCode, OctopError
+from octop.infra.users.groups import RESOURCE_BRIDGE, GroupAccess
 from octop.infra.users.permissions import user_has_permission
 from octop.infra.users.profile_avatar import (
     avatar_response,
@@ -32,6 +33,18 @@ def _bridge_avatar_api_path(connection_id: str) -> str:
     return f"/api/bridge/connections/{connection_id}/avatar"
 
 
+def _group_access(server: Any) -> GroupAccess | None:
+    services = getattr(server, "services", None)
+    repos = getattr(services, "repos", None) if services is not None else None
+    if repos is None:
+        return None
+    return GroupAccess(repos)
+
+
+def _is_admin(user: Any) -> bool:
+    return bool(getattr(user, "is_admin", False))
+
+
 def _enrich_connection_icon(server: Any, payload: dict[str, Any]) -> dict[str, Any]:
     connection_id = str(payload.get("connection_id") or "")
     text = str(payload.get("icon_url") or "").strip()
@@ -41,6 +54,73 @@ def _enrich_connection_icon(server: Any, payload: dict[str, Any]) -> dict[str, A
             profile_avatar_url(server.paths.bridge_avatars_dir, connection_id, api) or api
         )
     return payload
+
+
+def _connection_payload(server: Any, mgr: Any, row: Any, user: Any) -> dict[str, Any]:
+    payload = _enrich_connection_icon(server, cast(dict[str, Any], mgr.connection_public(row)))
+    payload["is_owner"] = int(row.owner_user_id) == int(user.id)
+    payload["shared"] = bool(getattr(row, "shared", False))
+    access = _group_access(server)
+    if access is not None:
+        payload.update(
+            access.visibility(
+                RESOURCE_BRIDGE,
+                row.connection_id,
+                shared=bool(getattr(row, "shared", False)),
+            )
+        )
+    return payload
+
+
+def _require_readable(server: Any, connection_id: str, user: Any) -> Any:
+    """Owner, admin, or shared+group-allowed may use the link."""
+    mgr = _bridge(server)
+    row = mgr.get(connection_id)
+    if row is None:
+        raise OctopError(ErrorCode.BRIDGE_NOT_FOUND, "bridge connection not found")
+    if int(row.owner_user_id) == int(user.id) or _is_admin(user):
+        return row
+    if not bool(getattr(row, "shared", False)):
+        raise OctopError(ErrorCode.BRIDGE_NOT_FOUND, "bridge connection not found")
+    access = _group_access(server)
+    if access is None:
+        raise OctopError(ErrorCode.BRIDGE_NOT_FOUND, "bridge connection not found")
+    access.assert_allowed(
+        user_id=user.id,
+        is_admin=False,
+        resource_type=RESOURCE_BRIDGE,
+        resource_key=connection_id,
+        is_owner=False,
+    )
+    return row
+
+
+def _apply_bridge_visibility(
+    server: Any,
+    connection_id: str,
+    *,
+    visibility: str,
+    group_ids: list[str] | None,
+) -> None:
+    access = _group_access(server)
+    if access is None:
+        return
+    access.set_visibility(RESOURCE_BRIDGE, connection_id, visibility, group_ids)
+
+
+def _validate_bridge_visibility(
+    server: Any,
+    *,
+    visibility: str | None,
+    group_ids: list[str] | None,
+) -> None:
+    """Raise before any ``shared`` write when visibility args are invalid."""
+    if visibility is None:
+        return
+    access = _group_access(server)
+    if access is None:
+        return
+    access.validate_visibility(visibility, group_ids)
 
 
 class BridgeCreateBody(BaseModel):
@@ -58,6 +138,15 @@ class BridgeCreateBody(BaseModel):
         default=None,
         max_length=64,
         description="Optional Lucide icon key shown on remote expert badges",
+    )
+    shared: bool = Field(default=False, description="Share this link beyond the owner")
+    visibility: Literal["all", "groups", "owner"] | None = Field(
+        default=None,
+        description="Who can use this bridge link (owner / all / groups)",
+    )
+    group_ids: list[str] | None = Field(
+        default=None,
+        description="User group ids when visibility is groups",
     )
     connect: bool = Field(default=True, description="Dial Bridge WS immediately after login")
 
@@ -136,11 +225,8 @@ async def list_connections(
     server: Any = Depends(get_server),
 ) -> list[dict[str, Any]]:
     mgr = _bridge(server)
-    rows = mgr.list_connections(user.id)
-    return [
-        _enrich_connection_icon(server, cast(dict[str, Any], mgr.connection_public(r)))
-        for r in rows
-    ]
+    rows = mgr.list_visible_connections(user.id)
+    return [_connection_payload(server, mgr, r, user) for r in rows]
 
 
 @router.post("/bridge/connections", status_code=201, summary="Add a bridge connection")
@@ -150,6 +236,14 @@ async def create_connection(
     server: Any = Depends(get_server),
 ) -> dict[str, Any]:
     mgr = _bridge(server)
+    _validate_bridge_visibility(server, visibility=body.visibility, group_ids=body.group_ids)
+    shared = (
+        False
+        if body.visibility == "owner"
+        else True
+        if body.visibility in {"all", "groups"}
+        else body.shared
+    )
     row = await mgr.create_connection(
         owner_user_id=user.id,
         peer_base_url=body.peer_base_url,
@@ -158,9 +252,20 @@ async def create_connection(
         display_name=body.display_name,
         notes=body.notes,
         icon_name=body.icon_name,
+        shared=shared,
         connect=body.connect,
     )
-    return _enrich_connection_icon(server, cast(dict[str, Any], mgr.connection_public(row)))
+    if body.visibility is not None:
+        _apply_bridge_visibility(
+            server,
+            row.connection_id,
+            visibility=body.visibility,
+            group_ids=body.group_ids,
+        )
+        refreshed = mgr.get(row.connection_id)
+        if refreshed is not None:
+            row = refreshed
+    return _connection_payload(server, mgr, row, user)
 
 
 @router.get("/bridge/connections/{connection_id}", summary="Get a bridge connection")
@@ -170,8 +275,8 @@ async def get_connection(
     server: Any = Depends(get_server),
 ) -> dict[str, Any]:
     mgr = _bridge(server)
-    row = mgr.get_owned(connection_id, user.id)
-    return _enrich_connection_icon(server, cast(dict[str, Any], mgr.connection_public(row)))
+    row = _require_readable(server, connection_id, user)
+    return _connection_payload(server, mgr, row, user)
 
 
 @router.post(
@@ -185,7 +290,7 @@ async def connect_connection(
 ) -> dict[str, Any]:
     mgr = _bridge(server)
     row = await mgr.connect(connection_id, owner_user_id=user.id)
-    return _enrich_connection_icon(server, cast(dict[str, Any], mgr.connection_public(row)))
+    return _connection_payload(server, mgr, row, user)
 
 
 @router.post(
@@ -201,7 +306,7 @@ async def disconnect_connection(
     mgr.get_owned(connection_id, user.id)
     await mgr.disconnect(connection_id)
     row = mgr.get_owned(connection_id, user.id)
-    return _enrich_connection_icon(server, cast(dict[str, Any], mgr.connection_public(row)))
+    return _connection_payload(server, mgr, row, user)
 
 
 class BridgePatchBody(BaseModel):
@@ -224,6 +329,18 @@ class BridgePatchBody(BaseModel):
         default=None,
         max_length=64,
         description="Lucide icon key; send empty string to clear",
+    )
+    shared: bool | None = Field(
+        default=None,
+        description="Share this link beyond the owner",
+    )
+    visibility: Literal["all", "groups", "owner"] | None = Field(
+        default=None,
+        description="Who can use this bridge link (owner / all / groups)",
+    )
+    group_ids: list[str] | None = Field(
+        default=None,
+        description="User group ids when visibility is groups",
     )
     peer_base_url: str | None = Field(
         default=None,
@@ -280,9 +397,27 @@ async def patch_connection(
         row = await mgr.set_auto_reconnect(
             connection_id, owner_user_id=user.id, enabled=bool(body.auto_reconnect)
         )
+    _validate_bridge_visibility(server, visibility=body.visibility, group_ids=body.group_ids)
+    shared = body.shared
+    if body.visibility == "owner":
+        shared = False
+    elif body.visibility in {"all", "groups"}:
+        shared = True
+    if shared is not None:
+        row = mgr.set_shared(connection_id, owner_user_id=user.id, shared=bool(shared))
+    if body.visibility is not None:
+        _apply_bridge_visibility(
+            server,
+            connection_id,
+            visibility=body.visibility,
+            group_ids=body.group_ids,
+        )
+        refreshed = mgr.get(connection_id)
+        if refreshed is not None:
+            row = refreshed
     if row is None:
         row = mgr.get_owned(connection_id, user.id)
-    return _enrich_connection_icon(server, cast(dict[str, Any], mgr.connection_public(row)))
+    return _connection_payload(server, mgr, row, user)
 
 
 @router.delete(
@@ -297,6 +432,9 @@ async def delete_connection(
 ) -> None:
     mgr = _bridge(server)
     await mgr.delete_connection(connection_id, owner_user_id=user.id)
+    access = _group_access(server)
+    if access is not None:
+        access.clear(RESOURCE_BRIDGE, connection_id)
     delete_profile_avatar(server.paths.bridge_avatars_dir, connection_id)
 
 
@@ -335,8 +473,7 @@ async def get_bridge_avatar(
     user: Any = Depends(require_permission("bridge")),
     server: Any = Depends(get_server),
 ) -> Response:
-    mgr = _bridge(server)
-    mgr.get_owned(connection_id, user.id)
+    _require_readable(server, connection_id, user)
     return avatar_response(server.paths.bridge_avatars_dir, connection_id)
 
 
@@ -366,7 +503,8 @@ async def list_remote_agents(
     server: Any = Depends(get_server),
 ) -> list[dict[str, Any]]:
     mgr = _bridge(server)
-    agents = await mgr.list_remote_agents(connection_id, owner_user_id=user.id)
+    row = _require_readable(server, connection_id, user)
+    agents = await mgr.list_remote_agents(connection_id, owner_user_id=row.owner_user_id)
     return [cast(dict[str, Any], item) for item in agents]
 
 
@@ -381,7 +519,8 @@ async def list_remote_resolved_models(
 ) -> list[dict[str, Any]]:
     """Read-only: peer ``GET /api/providers/resolved`` for remote chat model picker."""
     mgr = _bridge(server)
-    models = await mgr.list_remote_resolved_models(connection_id, owner_user_id=user.id)
+    row = _require_readable(server, connection_id, user)
+    models = await mgr.list_remote_resolved_models(connection_id, owner_user_id=row.owner_user_id)
     return [cast(dict[str, Any], item) for item in models]
 
 
@@ -396,9 +535,10 @@ async def get_remote_active_model(
 ) -> dict[str, Any]:
     """Read-only: peer ``GET /api/providers/active-model``."""
     mgr = _bridge(server)
+    row = _require_readable(server, connection_id, user)
     return cast(
         dict[str, Any],
-        await mgr.get_remote_active_model(connection_id, owner_user_id=user.id),
+        await mgr.get_remote_active_model(connection_id, owner_user_id=row.owner_user_id),
     )
 
 
@@ -413,7 +553,8 @@ async def list_remote_knowledge_bases(
 ) -> list[dict[str, Any]]:
     """Read-only: peer ``GET /api/knowledge-bases`` for remote chat KB picker."""
     mgr = _bridge(server)
-    bases = await mgr.list_remote_knowledge_bases(connection_id, owner_user_id=user.id)
+    row = _require_readable(server, connection_id, user)
+    bases = await mgr.list_remote_knowledge_bases(connection_id, owner_user_id=row.owner_user_id)
     return [cast(dict[str, Any], item) for item in bases]
 
 
@@ -428,9 +569,10 @@ async def get_remote_knowledge_capability(
 ) -> dict[str, Any]:
     """Read-only: peer ``GET /api/knowledge-bases/capability``."""
     mgr = _bridge(server)
+    row = _require_readable(server, connection_id, user)
     return cast(
         dict[str, Any],
-        await mgr.get_remote_knowledge_capability(connection_id, owner_user_id=user.id),
+        await mgr.get_remote_knowledge_capability(connection_id, owner_user_id=row.owner_user_id),
     )
 
 
@@ -445,9 +587,10 @@ async def get_remote_browser_env_status(
 ) -> dict[str, Any]:
     """Read-only: peer ``GET /api/browser/env-status`` for remote chat dock."""
     mgr = _bridge(server)
+    row = _require_readable(server, connection_id, user)
     return cast(
         dict[str, Any],
-        await mgr.get_remote_browser_env_status(connection_id, owner_user_id=user.id),
+        await mgr.get_remote_browser_env_status(connection_id, owner_user_id=row.owner_user_id),
     )
 
 
@@ -462,9 +605,10 @@ async def get_remote_browser_sessions(
 ) -> dict[str, Any]:
     """Read-only: peer ``GET /api/browser/harness-sessions``."""
     mgr = _bridge(server)
+    row = _require_readable(server, connection_id, user)
     return cast(
         dict[str, Any],
-        await mgr.get_remote_browser_sessions(connection_id, owner_user_id=user.id),
+        await mgr.get_remote_browser_sessions(connection_id, owner_user_id=row.owner_user_id),
     )
 
 
@@ -486,11 +630,12 @@ async def post_remote_browser_handoff(
 ) -> dict[str, Any]:
     """Proxy peer ``POST /api/browser/sessions/{id}/handoff``."""
     mgr = _bridge(server)
+    row = _require_readable(server, connection_id, user)
     return cast(
         dict[str, Any],
         await mgr.post_remote_browser_handoff(
             connection_id,
-            owner_user_id=user.id,
+            owner_user_id=row.owner_user_id,
             session_id=session_id,
             body=body.model_dump(),
         ),
@@ -522,7 +667,7 @@ async def bridge_browser_stream_ws(
         await websocket.close(code=1011, reason="bridge not ready")
         return
     try:
-        mgr.get_owned(connection_id, user.id)
+        row = _require_readable(server, connection_id, user)
         mgr.require_session(connection_id)
     except OctopError as exc:
         await websocket.close(code=1011, reason=str(exc.code.value))
@@ -564,7 +709,7 @@ async def bridge_browser_stream_ws(
     try:
         await mgr.relay_browser_stream(
             connection_id=connection_id,
-            owner_user_id=user.id,
+            owner_user_id=row.owner_user_id,
             listen_only=listen_only,
             width=width,
             height=height,

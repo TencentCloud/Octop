@@ -7,7 +7,17 @@ export type TextAssistKind =
   | "team.description"
   | "team.welcome_message"
   | "skill_package.description"
-  | "knowledge_base.description";
+  | "skill.description"
+  | "skill.label_zh"
+  | "skill.label_en"
+  | "skill.summary_zh"
+  | "skill.summary_en"
+  | "skill.body"
+  | "knowledge_base.description"
+  | "connector.description"
+  | "bridge.notes"
+  | "user_group.description"
+  | "user_role.description";
 
 export type TextAssistRequest = {
   kind: TextAssistKind;

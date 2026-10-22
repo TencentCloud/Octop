@@ -509,6 +509,8 @@
     "USER_ROLE_IN_USE": "仍有用户使用此角色，请先改派后再删除。",
     "USER_ROLE_ID_INVALID": "角色 ID 须为 1-64 位字母或下划线，且不能以下划线开头或结尾。",
     "USER_ROLE_ID_TAKEN": "该角色 ID 已被使用。",
+    "USER_GROUP_ID_INVALID": "分组 ID 须为 3-64 位字母/数字/下划线/连字符，且以字母或数字开头结尾。",
+    "USER_GROUP_ID_TAKEN": "该分组 ID 已被使用。",
     "INVITE_USED": "该邀请码已被使用。",
     "INVITE_EXPIRED": "该邀请码已过期。",
     "INVITE_REVOKED": "该邀请码已被撤销。",
@@ -1038,11 +1040,71 @@
           "user_generate": "技能包名称：{name}\n请仅根据名称，为该技能包写一句简短描述。"
         }
       },
+      "skill": {
+        "description": {
+          "system": "你为 AI 技能撰写 YAML `description`（说明何时应使用该技能）。\n硬性规则：\n- 只输出描述正文，使用本提示词的目标语言（中文）。\n- 控制在 1–3 句，说明适用场景。\n- 不要使用 markdown、标签、引号、问候或元评论。\n- 不要编造未提及的工具或文件。",
+          "user_polish": "技能名称：{name}\n请润色以下技能描述。尽量保持与草稿相同的语言；否则使用本指令的语言。\n\n---\n{text}\n---",
+          "user_generate": "技能名称：{name}\n请仅根据名称，写一句简短的技能描述（何时使用）。"
+        },
+        "label_zh": {
+          "system": "你为 AI 技能撰写界面展示用的中文显示名。\n硬性规则：\n- 只输出中文显示名。\n- 控制在约 2–12 个汉字或简短词组。\n- 不要使用 markdown、标签、引号、问候或元评论。\n- 除非技能名本身是通用英文专名，否则不要输出英文。",
+          "user_polish": "技能标识/名称：{name}\n请润色以下中文显示名，只输出中文。\n\n---\n{text}\n---",
+          "user_generate": "技能标识/名称：{name}\n请为该技能写一个简短的中文显示名。"
+        },
+        "label_en": {
+          "system": "You write a short English display name for an AI skill shown in the UI.\nHard rules:\n- Output ONLY the English display name.\n- Keep it to about 2–6 words, Title Case when natural.\n- No markdown, labels, quotes, greetings, or meta commentary.",
+          "user_polish": "Skill id/name: {name}\nPolish the following English display name. Output English only.\n\n---\n{text}\n---",
+          "user_generate": "Skill id/name: {name}\nWrite a short English display name for this skill."
+        },
+        "summary_zh": {
+          "system": "你为 AI 技能卡片撰写简短中文摘要。\n硬性规则：\n- 只输出中文摘要。\n- 控制在 1–2 句。\n- 不要使用 markdown、标签、引号、问候或元评论。",
+          "user_polish": "技能标识/名称：{name}\n请润色以下中文技能摘要，只输出中文。\n\n---\n{text}\n---",
+          "user_generate": "技能标识/名称：{name}\n请为该技能写一句简短的中文界面摘要。"
+        },
+        "summary_en": {
+          "system": "You write a short English UI summary for an AI skill card.\nHard rules:\n- Output ONLY the English summary.\n- Keep it to 1–2 concise sentences.\n- No markdown, labels, quotes, greetings, or meta commentary.",
+          "user_polish": "Skill id/name: {name}\nPolish the following English skill summary. Output English only.\n\n---\n{text}\n---",
+          "user_generate": "Skill id/name: {name}\nWrite a short English UI summary for this skill."
+        },
+        "body": {
+          "system": "你撰写或润色 AI 技能的 Markdown 正文（YAML frontmatter 之后、供智能体遵循的说明）。\n硬性规则：\n- 只输出技能正文 Markdown，使用本提示词的目标语言（中文）。\n- 结构清晰实用（可含简短引言、步骤或列表）。\n- 不要包含 YAML frontmatter（不要输出带 name/description 的 --- 块）。\n- 不要添加问候、元评论，也不要编造未提及的工具或路径。\n- 保持作者意图，以理清与组织为主，不要改写成另一个技能。",
+          "user_polish": "技能名称：{name}\n请润色以下技能正文。尽量保持与草稿相同的语言；否则使用本指令的语言。不要包裹 YAML frontmatter。\n\n---\n{text}\n---",
+          "user_generate": "技能名称：{name}\n请仅根据名称，为该技能写一份简洁的正文（Markdown 说明）。不要包含 YAML frontmatter。"
+        }
+      },
       "knowledge_base": {
         "description": {
           "system": "你为文档知识库撰写简短产品文案。\n硬性规则：\n- 只输出描述正文，使用本提示词的目标语言（中文）。\n- 控制在 1–2 句。\n- 不要使用 markdown、标签、引号、问候或元评论。",
           "user_polish": "知识库名称：{name}\n请润色以下知识库描述。尽量保持与草稿相同的语言；否则使用本指令的语言。\n\n---\n{text}\n---",
           "user_generate": "知识库名称：{name}\n请仅根据名称，为该知识库写一句简短描述。"
+        }
+      },
+      "connector": {
+        "description": {
+          "system": "你为第三方连接器账号撰写简短说明，帮助同事识别这个连接用途。\n硬性规则：\n- 只输出描述正文，使用本提示词的目标语言（中文）。\n- 控制在 1–2 句。\n- 不要使用 markdown、标签、引号、问候或元评论。\n- 不要编造密钥、权限或未提及的能力。",
+          "user_polish": "连接器名称：{name}\n请润色以下连接器描述。尽量保持与草稿相同的语言；否则使用本指令的语言。\n\n---\n{text}\n---",
+          "user_generate": "连接器名称：{name}\n请仅根据名称，为该连接器写一句简短描述。"
+        }
+      },
+      "bridge": {
+        "notes": {
+          "system": "你为云端协同连接撰写简短备注，帮助管理员识别这对端点。\n硬性规则：\n- 只输出备注正文，使用本提示词的目标语言（中文）。\n- 控制在 1–2 句。\n- 不要使用 markdown、标签、引号、问候或元评论。\n- 不要编造地址、账号或未提及的环境信息。",
+          "user_polish": "连接显示名：{name}\n请润色以下云端协同备注。尽量保持与草稿相同的语言；否则使用本指令的语言。\n\n---\n{text}\n---",
+          "user_generate": "连接显示名：{name}\n请仅根据显示名，为该云端协同连接写一句简短备注。"
+        }
+      },
+      "user_group": {
+        "description": {
+          "system": "你为「用户分组」撰写简短管理说明。分组用来限制谁能看到共享资源，不授予编辑权。\n硬性规则：\n- 只输出描述正文，使用本提示词的目标语言（中文）。\n- 控制在 1–2 句。\n- 不要使用 markdown、标签、引号、问候或元评论。\n- 不要编造该分组并不具备的权限或编辑能力。",
+          "user_polish": "用户分组名称：{name}\n请润色以下用户分组说明。尽量保持与草稿相同的语言；否则使用本指令的语言。\n\n---\n{text}\n---",
+          "user_generate": "用户分组名称：{name}\n请仅根据名称，为该用户分组写一句简短说明。"
+        }
+      },
+      "user_role": {
+        "description": {
+          "system": "你为「用户角色」模板撰写简短管理说明。角色提供默认权限与资源策略。\n硬性规则：\n- 只输出描述正文，使用本提示词的目标语言（中文）。\n- 控制在 1–2 句。\n- 不要使用 markdown、标签、引号、问候或元评论。\n- 不要编造该角色并不具备的权限。",
+          "user_polish": "角色名称：{name}\n请润色以下角色描述。尽量保持与草稿相同的语言；否则使用本指令的语言。\n\n---\n{text}\n---",
+          "user_generate": "角色名称：{name}\n请仅根据名称，为该角色写一句简短描述。"
         }
       }
     }
