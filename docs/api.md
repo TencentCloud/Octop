@@ -385,6 +385,7 @@ Bundled experts live in `src/octop/infra/agents/experts/library/`
 | `GET`    | `/agents/{aid}/heartbeat-config` | owner | read heartbeat YAML |
 | `PUT`    | `/agents/{aid}/heartbeat-config` | owner | write heartbeat YAML |
 | `GET`    | `/agents/{aid}/memory/daily` | owner | list daily memory files |
+| `GET`/`PUT` | `/agents/{aid}/memory/extract-config` | owner/admin | Read/update memory runtime and extraction options; omitted fields retain their stored values |
 | `GET`/`PUT` | `/agents/{aid}/memory/strong` | owner | read/edit user-maintained MEMORY.md, including for stopped agents; new sessions snapshot full content once, existing sessions keep their snapshot |
 | `GET`/`PUT` | `/agents/{aid}/memory/user` | owner | read/edit user-maintained USER.md with the same session snapshot policy; distinct from the derived profile |
 | `GET` | `/agents/{aid}/memory/manual-review` | owner | read persisted reconciliation status against current documents; no model call or memory mutation |
@@ -392,6 +393,13 @@ Bundled experts live in `src/octop/infra/agents/experts/library/`
 | `GET`    | `/agents/{aid}/memory/daily/{filename}` | owner | read one daily memory |
 | `DELETE` | `/agents/{aid}/memory/daily/{filename}` | owner | delete one daily memory |
 | `GET`/`POST` | `/memory/...` | user | memory API (dashboard memory tab) |
+
+The extraction-config API accepts independent `memory_capture_enabled` and
+`memory_recall_inject_enabled` booleans. Both default to `true`: set the first to
+`false` to stop automatic conversation-event capture, or the second to `false` to
+stop automatically injecting recalled memory into model context. These switches
+do not disable explicit memory tools. Check `supported_call_options` before using
+them with an older harness; unsupported options are not forwarded to its config.
 
 ### Manual document reconciliation
 
