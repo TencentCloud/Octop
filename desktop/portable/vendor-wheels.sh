@@ -25,6 +25,9 @@ vendor_one() {
   req_file="${GREEN_ROOT}/requirements-${plat}.txt"
   echo "[wheels] ${plat}: exporting frozen deps → ${req_file}" >&2
   uv export --frozen --no-dev --no-emit-project --no-hashes -o "$req_file" >/dev/null
+  # Drop editable workspace-member lines (-e ./packages/…): vendoring resolves
+  # third-party deps only; the workspace wheels are built fresh by package.sh.
+  grep -v '^\s*-e\s' "$req_file" > "${req_file}.filtered" && mv "${req_file}.filtered" "$req_file"
   # Keep offline bundles equipped with the same online updater as package.sh.
   echo "uv==${GREEN_UV_VERSION}" >> "$req_file"
 
