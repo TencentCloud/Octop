@@ -138,10 +138,61 @@ def test_ensure_chrome_runtime_env_uses_platform_runtime_dir(
     path = ensure_chrome_runtime_env()
     # Linux uses /tmp/<uid>; other POSIX (e.g. macOS) uses tempfile + pid.
     assert path == _runtime_dir_for_uid()
-    assert os.environ["XDG_RUNTIME_DIR"] == str(path)
     assert path.is_dir()
     assert os.access(path, os.W_OK | os.X_OK)
     assert S_IMODE(path.stat().st_mode) == 0o700
+    # The path is *returned*, never written into the process env: XDG_RUNTIME_DIR
+    # is process-global and systemctl --user resolves the user bus through it
+    # (#1833). Chrome receives it via the launcher's subprocess env instead.
+    assert os.environ["XDG_RUNTIME_DIR"] == "/run/user/0"
+
+
+@posix_only
+def test_ensure_chrome_runtime_env_keeps_usable_runtime_dir(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """An already usable $XDG_RUNTIME_DIR is used as-is, not replaced by /tmp.
+
+    Wayland clients (Chromium included) resolve their compositor socket as
+    ``$XDG_RUNTIME_DIR/$WAYLAND_DISPLAY``. Pointing Chrome at a private ``/tmp``
+    dir hides ``wayland-0`` and makes it abort with "Failed to connect to
+    Wayland display: No such file or directory (2)" instead of starting.
+    """
+    runtime = tmp_path / "runtime"
+    runtime.mkdir()
+    (runtime / "wayland-0").write_text("")
+    monkeypatch.setenv("XDG_RUNTIME_DIR", str(runtime))
+    monkeypatch.setenv("WAYLAND_DISPLAY", "wayland-0")
+    monkeypatch.setenv("DISPLAY", ":0")
+
+    path = ensure_chrome_runtime_env()
+
+    assert path == runtime
+    # A live session keeps its runtime dir and Wayland hint untouched.
+    assert os.environ["XDG_RUNTIME_DIR"] == str(runtime)
+    assert os.environ["WAYLAND_DISPLAY"] == "wayland-0"
+
+
+@posix_only
+def test_ensure_chrome_runtime_env_never_writes_process_env(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Falling back to the private dir must not leak into ``os.environ``.
+
+    Both the runtime dir and any Wayland hint stay as the process had them; the
+    launcher clears a stale ``WAYLAND_DISPLAY`` in the *child* env when it points
+    Chrome at a runtime dir that cannot resolve the compositor socket.
+    """
+    monkeypatch.setenv("XDG_RUNTIME_DIR", str(tmp_path / "missing"))
+    monkeypatch.setenv("WAYLAND_DISPLAY", "wayland-0")
+    monkeypatch.setenv("XDG_SESSION_TYPE", "wayland")
+
+    path = ensure_chrome_runtime_env()
+
+    assert path == _runtime_dir_for_uid()
+    assert os.environ["XDG_RUNTIME_DIR"] == str(tmp_path / "missing")
+    assert os.environ["WAYLAND_DISPLAY"] == "wayland-0"
+    assert os.environ["XDG_SESSION_TYPE"] == "wayland"
 
 
 def test_non_linux_temp_dirs_use_gettempdir_with_stable_token(
