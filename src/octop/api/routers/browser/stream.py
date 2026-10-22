@@ -266,9 +266,11 @@ async def _dispatch_key(sess: Any, msg: dict[str, Any]) -> None:
     down = {**params, "type": "rawKeyDown", "autoRepeat": bool(msg.get("repeat"))}
     if key == "Enter":
         down.update(type="keyDown", text="\r", unmodifiedText="\r")
-    if key.lower() == "a" and modifiers & 6 and not modifiers & 1:
-        # Chromium's native editing shortcuts depend on the server OS. Keep
-        # Ctrl+A / Cmd+A working when the dashboard and Chrome run on different OSes.
+    # Modifier bits: alt=1, ctrl=2, meta=4, shift=8. Chromium's native editing
+    # shortcuts depend on the server OS, so keep Ctrl+A / Cmd+A working when the
+    # dashboard and Chrome run on different OSes — but only the bare chord: with
+    # Shift held the page owns the shortcut, same reason alt is excluded.
+    if key.lower() == "a" and modifiers & 6 and not modifiers & (1 | 8):
         down["commands"] = ["selectAll"]
     await sess._internal.client.send("Input.dispatchKeyEvent", down)  # noqa: SLF001
     await sess._internal.client.send(  # noqa: SLF001
