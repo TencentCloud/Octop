@@ -185,7 +185,7 @@ export default function LdapPanel() {
         timeout_seconds: values.timeout_seconds,
       };
       // Write-only: an untouched field must never clobber the stored secret.
-      const bindPassword = values.bind_password?.trim();
+      const bindPassword = values.bind_password;
       if (bindPassword) body.bind_password = bindPassword;
       applyConfig(await ssoApi.putLdapConfig(body));
       message.success(t("adminSso.ldap.saved"));
