@@ -278,9 +278,9 @@
 
   /* Stretch plugin cards that use chat-column maxWidth (often inline). */
   .toolUiRendererWrap,
-  [data-octop-tool-renderer],
-  [data-octop-plugin-ui],
-  .octop-builtin-ui-fallback {
+  [data-agentbuddy-tool-renderer],
+  [data-agentbuddy-plugin-ui],
+  .agentbuddy-builtin-ui-fallback {
     display: block;
     width: 100% !important;
     max-width: 100% !important;
@@ -559,13 +559,13 @@
 .fileModalSelect {
   max-width: min(100%, 360px);
 
-  &:global(.octop-select),
+  &:global(.agentbuddy-select),
   &:global(.ant-select),
-  &:global(.octop-select-outlined),
+  &:global(.agentbuddy-select-outlined),
   &:global(.ant-select-outlined),
-  &:global(.octop-select-borderless),
+  &:global(.agentbuddy-select-borderless),
   &:global(.ant-select-borderless) {
-    :global(.octop-select-selector),
+    :global(.agentbuddy-select-selector),
     :global(.ant-select-selector) {
       border: none !important;
       border-width: 0 !important;
@@ -576,10 +576,10 @@
     }
   }
 
-  &:global(.octop-select-focused),
+  &:global(.agentbuddy-select-focused),
   &:global(.ant-select-focused),
   &:hover {
-    :global(.octop-select-selector),
+    :global(.agentbuddy-select-selector),
     :global(.ant-select-selector) {
       border: none !important;
       box-shadow: none !important;

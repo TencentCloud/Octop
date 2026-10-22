@@ -1,10 +1,10 @@
-// Sizing vars come from `.octop-spin` in styles/spin-override.css so the
+// Sizing vars come from `.agentbuddy-spin` in styles/spin-override.css so the
 // indicator can follow antd's size prop; fallbacks cover standalone usage.
 .host {
   position: relative;
   display: inline-block;
-  width: var(--octop-spinner-size, 48px);
-  height: var(--octop-spinner-size, 48px);
+  width: var(--agentbuddy-spinner-size, 48px);
+  height: var(--agentbuddy-spinner-size, 48px);
   font-size: 0;
   vertical-align: middle;
 }
@@ -13,7 +13,7 @@
   position: absolute;
   inset: 0;
   box-sizing: border-box;
-  border: var(--octop-spinner-ring-width, 4px) solid
+  border: var(--agentbuddy-spinner-ring-width, 4px) solid
     color-mix(in srgb, var(--fn-color-brand) 20%, transparent);
   border-top-color: var(--fn-color-brand);
   border-radius: 50%;

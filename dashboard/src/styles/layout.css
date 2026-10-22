@@ -81,11 +81,11 @@ html[data-agentbuddy-desktop-chrome] .ant-drawer-right .ant-drawer-close {
 }
 
 /* ConfigProvider prefixCls stays "octop" → antd <App> renders class
-   "octop-app" (NOT .agentbuddy-app). Without an explicit height here,
+   "agentbuddy-app" (NOT .agentbuddy-app). Without an explicit height here,
    MainLayout's height:100% resolves against content and the whole flex
    chain loses its viewport constraint — every page's inner scroll dies
    (content gets clipped by fixed #root with no scrollbar). */
-.octop-app,
+.agentbuddy-app,
 .agentbuddy-app,
 .ant-app {
   height: 100%;

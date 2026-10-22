@@ -122,7 +122,7 @@ function ThemedApp() {
   return (
     <ConfigProvider
       theme={themeConfig}
-      prefixCls="octop"
+      prefixCls="agentbuddy"
       locale={antdLocale}
       spin={{ indicator: <OctopSpinner /> }}
     >
