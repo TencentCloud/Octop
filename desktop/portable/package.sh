@@ -27,25 +27,31 @@ source "${REPO_ROOT}/desktop/portable/_common.sh"
 TEMPLATES="${REPO_ROOT}/desktop/portable/templates"
 require_uv
 
-build_octop_wheel() {
+build_workspace_wheels() {
+  # Build the root wheel plus every workspace member (octop-harness /
+  # octop-gateway / octop-browser / octop-memory). The octop wheel declares
+  # all four as Requires-Dist, and the portable install is --no-deps, so
+  # they must ship as real wheels alongside it.
   local wheel_dir="$1"
   mkdir -p "$wheel_dir"
-  # Drop previous local octop wheels so we pick the fresh build.
-  find "$wheel_dir" -maxdepth 1 -type f -name 'octop-*.whl' -delete 2>/dev/null || true
+  # Drop previous local workspace wheels so we pick the fresh builds.
+  find "$wheel_dir" -maxdepth 1 -type f -name 'octop*.whl' -delete 2>/dev/null || true
   if [[ ! -f "${REPO_ROOT}/src/octop/dashboard/index.html" ]]; then
     echo "[package] WARNING: dashboard not built (src/octop/dashboard/index.html missing)." >&2
     echo "  Run: make build-frontend" >&2
   fi
-  echo "[package] building octop wheel → ${wheel_dir}" >&2
-  uv build --wheel --out-dir "$wheel_dir" "$REPO_ROOT" >&2
-  local whl
-  whl="$(ls -1 "${wheel_dir}"/octop-*.whl 2>/dev/null | sort | tail -1 || true)"
-  if [[ -z "$whl" ]]; then
-    echo "[package] failed to build octop-*.whl" >&2
+  echo "[package] building workspace wheels → ${wheel_dir}" >&2
+  uv build --wheel --all-packages --out-dir "$wheel_dir" >&2
+  local whls
+  whls="$(ls -1 "${wheel_dir}"/octop*.whl 2>/dev/null | sort || true)"
+  local count
+  count="$(printf '%s\n' "$whls" | grep -c . || true)"
+  if [[ "$count" -lt 5 ]]; then
+    echo "[package] expected 5 workspace wheels (octop + 4 members), built ${count:-0}" >&2
     exit 1
   fi
-  # stdout: wheel path only (captured by caller)
-  echo "$whl"
+  # stdout: wheel paths only (captured by caller)
+  echo "$whls"
 }
 
 wheel_cache_usable() {
@@ -101,12 +107,15 @@ assemble_one() {
   fi
 
   mkdir -p "$wheel_dir" "$GREEN_RELEASE" "$GREEN_ROOT"
-  local octop_whl
-  octop_whl="$(build_octop_wheel "$wheel_dir")"
+  local workspace_whls
+  workspace_whls="$(build_workspace_wheels "$wheel_dir")"
 
   local req_file="${GREEN_ROOT}/requirements-${plat}.txt"
   echo "[package] ${plat}: exporting frozen deps → ${req_file}" >&2
   uv export --project "$REPO_ROOT" --frozen --no-dev --no-emit-project --no-hashes -o "$req_file" >/dev/null
+  # Drop editable workspace-member lines (-e ./packages/…): they point at the
+  # build machine's checkout; the real code ships via the workspace wheels.
+  grep -v '^\s*-e\s' "$req_file" > "${req_file}.filtered" && mv "${req_file}.filtered" "$req_file"
   # Online --target upgrades need uv to reuse the bundled dependencies. pip
   # ignores installed packages with --target and resolves/downloads them again.
   echo "uv==${GREEN_UV_VERSION}" >> "$req_file"
@@ -197,14 +206,14 @@ assemble_one() {
     uv pip install "${common_args[@]}" "${offline_args[@]}" -r "$req_file"
     status=$?
     if [[ $status -eq 0 ]]; then
-      uv pip install "${common_args[@]}" "${offline_args[@]}" --no-deps "$octop_whl"
+      uv pip install "${common_args[@]}" "${offline_args[@]}" --no-deps ${workspace_whls}
       status=$?
     fi
   else
     uv pip install "${common_args[@]}" -r "$req_file"
     status=$?
     if [[ $status -eq 0 ]]; then
-      uv pip install "${common_args[@]}" --no-deps "$octop_whl"
+      uv pip install "${common_args[@]}" --no-deps ${workspace_whls}
       status=$?
     fi
   fi
