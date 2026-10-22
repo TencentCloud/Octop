@@ -1719,6 +1719,35 @@ def test_runtime_uses_health_aware_model_failover(manager: AgentManager) -> None
     assert failovers[0]._on_failure == "error"
 
 
+def test_runtime_keeps_provider_limits_when_model_retry_is_disabled(
+    manager: AgentManager, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from dataclasses import replace
+
+    from octop_harness.security.models import SecurityPolicy
+
+    from octop.infra.agents.middleware.rate_limit import ProviderRateLimitRetryMiddleware
+
+    original_apply = SecurityPolicy.apply_to_config
+
+    def disable_retry(policy: SecurityPolicy, cfg: Any) -> Any:
+        return replace(original_apply(policy, cfg), model_retry_enabled=False)
+
+    monkeypatch.setattr(SecurityPolicy, "apply_to_config", disable_retry)
+    _seed_test_provider(manager)
+
+    cfg = manager._build_harness_config(_row())
+
+    limiters = [
+        item
+        for item in (cfg.middleware or [])
+        if isinstance(item, ProviderRateLimitRetryMiddleware)
+    ]
+    assert len(limiters) == 1
+    assert limiters[0].max_retries == 0
+    assert not cfg.model_retry_enabled
+
+
 def test_auto_route_fallback_skips_model_in_cooldown(manager: AgentManager) -> None:
     from octop.infra.agents.providers.health import FailureScope
 

@@ -120,6 +120,12 @@ def classify_stream_error_message(message: str) -> str | None:
         or "rate_limit" in lower
         or "ratelimiterror" in compact
         or "too many requests" in lower
+        or "1302" in lower
+        or "系统繁忙" in msg
+        or "system is busy" in lower
+        or "rate_limit_exceeded" in lower
+        or "requests per minute" in lower
+        or "concurrency limit" in lower
     ):
         return RATE_LIMIT
 

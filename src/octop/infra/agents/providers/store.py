@@ -11,6 +11,11 @@ from octop_harness.config import ModelConfig, ProviderConfig
 
 from octop.infra.agents.providers.model_flags import is_chat_eligible_model, is_vision_model
 from octop.infra.agents.providers.opencode_session import session_header_for_provider
+from octop.infra.agents.providers.rate_limiter import (
+    ProviderRateLimitConfig,
+    RateLimitRegistry,
+    make_limiter_key,
+)
 from octop.infra.agents.providers.reasoning import reasoning_capability
 
 if TYPE_CHECKING:
@@ -90,6 +95,56 @@ def _provider_extra_dict(row: Any) -> dict[str, Any]:
     except json.JSONDecodeError:
         return {}
     return extra if isinstance(extra, dict) else {}
+
+
+def get_provider_rate_limit_config(row: Any) -> ProviderRateLimitConfig:
+    """Extract ProviderRateLimitConfig from a provider row's extra_json."""
+    extra = _provider_extra_dict(row)
+    return ProviderRateLimitConfig.from_dict(extra)
+
+
+def merge_rate_limit_extra(
+    extra_json: str | None,
+    *,
+    requests_per_minute: int | None = None,
+    max_concurrent_requests: int | None = None,
+    retry_max_attempts: int | None = None,
+    retry_base_delay: float | None = None,
+) -> str | None:
+    """Merge rate limiting and concurrency fields into *extra_json*."""
+    extra: dict[str, Any] = {}
+    if extra_json:
+        try:
+            parsed = json.loads(extra_json)
+            if isinstance(parsed, dict):
+                extra = dict(parsed)
+        except json.JSONDecodeError:
+            extra = {}
+    if requests_per_minute is not None:
+        if requests_per_minute > 0:
+            extra["requests_per_minute"] = requests_per_minute
+        else:
+            extra.pop("requests_per_minute", None)
+            extra.pop("rate_limit_rpm", None)
+    if max_concurrent_requests is not None:
+        if max_concurrent_requests > 0:
+            extra["max_concurrent_requests"] = max_concurrent_requests
+        else:
+            extra.pop("max_concurrent_requests", None)
+            extra.pop("max_concurrency", None)
+    if retry_max_attempts is not None:
+        if retry_max_attempts > 0:
+            extra["retry_max_attempts"] = retry_max_attempts
+        else:
+            extra.pop("retry_max_attempts", None)
+            extra.pop("retry_attempts", None)
+    if retry_base_delay is not None:
+        if retry_base_delay > 0:
+            extra["retry_base_delay"] = retry_base_delay
+        else:
+            extra.pop("retry_base_delay", None)
+            extra.pop("retry_delay", None)
+    return json.dumps(extra)
 
 
 @dataclass(frozen=True)
@@ -407,6 +462,26 @@ class ProviderStore:
                 refs.append({"agent_id": row.agent_id, "name": row.name})
         return refs
 
+    def sync_rate_limiters(self, registry: RateLimitRegistry) -> None:
+        """Configure shared rate limiters in *registry* for all usable providers."""
+        for row in self._provider_repo.list_all():
+            key = make_limiter_key(row.name, row.api_key)
+            config = get_provider_rate_limit_config(row)
+            registry.configure(key, config)
+
+    def get_limiter_key_for_ref(self, ref: str) -> str:
+        """Return the shared rate limiter key for a `provider/model` reference."""
+        provider_name = ref.partition("/")[0] if "/" in ref else ref
+        row = self._provider_repo.get_by_name(provider_name)
+        api_key = row.api_key if row is not None else None
+        return make_limiter_key(provider_name, api_key)
+
+    def get_rate_limit_config_for_ref(self, ref: str) -> ProviderRateLimitConfig:
+        """Return the ProviderRateLimitConfig for a `provider/model` reference."""
+        provider_name = ref.partition("/")[0] if "/" in ref else ref
+        row = self._provider_repo.get_by_name(provider_name)
+        return get_provider_rate_limit_config(row) if row is not None else ProviderRateLimitConfig()
+
 
 __all__ = [
     "AutoRouteCandidate",
@@ -414,4 +489,6 @@ __all__ = [
     "ProviderStore",
     "clear_stale_pins_for_provider",
     "enabled_model_refs",
+    "get_provider_rate_limit_config",
+    "merge_rate_limit_extra",
 ]

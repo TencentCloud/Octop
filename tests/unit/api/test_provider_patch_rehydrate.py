@@ -133,3 +133,25 @@ async def test_admin_patch_models_clears_stale_agent_default_and_active() -> Non
         models=body.models,
     )
     on_changed.assert_awaited_once_with(provider_name="hai")
+
+
+def test_rate_limit_patch_rewrites_extra_and_requires_rehydrate() -> None:
+    import json
+
+    body = ProviderPatchBody.model_validate(
+        {
+            "requests_per_minute": 60,
+            "max_concurrent_requests": 3,
+            "retry_max_attempts": 5,
+            "retry_base_delay": 2.0,
+        }
+    )
+    assert _patch_requires_provider_rehydrate(body) is True
+    updates = _provider_patch_updates(body, current_extra_json='{"headers": {"X-Custom": "val"}}')
+    assert "extra_json" in updates
+    parsed = json.loads(updates["extra_json"])
+    assert parsed["headers"] == {"X-Custom": "val"}
+    assert parsed["requests_per_minute"] == 60
+    assert parsed["max_concurrent_requests"] == 3
+    assert parsed["retry_max_attempts"] == 5
+    assert parsed["retry_base_delay"] == 2.0

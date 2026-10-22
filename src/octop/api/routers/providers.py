@@ -38,6 +38,8 @@ from octop.infra.agents.providers.reasoning import reasoning_capability
 from octop.infra.agents.providers.resolved import list_resolved_models as _list_resolved_models
 from octop.infra.agents.providers.store import (
     clear_stale_pins_for_provider,
+    get_provider_rate_limit_config,
+    merge_rate_limit_extra,
     merge_stream_usage_extra,
     resolve_provider_stream_usage,
 )
@@ -58,6 +60,10 @@ class ProviderCreateBody(BaseModel):
     api_key: str | None = None
     extra_json: str | None = None
     stream_usage: bool | None = None
+    requests_per_minute: int | None = None
+    max_concurrent_requests: int | None = None
+    retry_max_attempts: int | None = None
+    retry_base_delay: float | None = None
     models: list[dict[str, Any]] | None = None
     note: str | None = None
 
@@ -68,6 +74,10 @@ class ProviderPatchBody(BaseModel):
     api_key: str | None = None
     extra_json: str | None = None
     stream_usage: bool | None = None
+    requests_per_minute: int | None = None
+    max_concurrent_requests: int | None = None
+    retry_max_attempts: int | None = None
+    retry_base_delay: float | None = None
     models: list[dict[str, Any]] | None = None
     note: str | None = None
     enabled: bool | None = None
@@ -75,7 +85,19 @@ class ProviderPatchBody(BaseModel):
 
 # Fields that affect harness factory / agent runtime when patched.
 _PROVIDER_REHYDRATE_FIELDS = frozenset(
-    {"kind", "base_url", "api_key", "extra_json", "stream_usage", "models", "enabled"}
+    {
+        "kind",
+        "base_url",
+        "api_key",
+        "extra_json",
+        "stream_usage",
+        "requests_per_minute",
+        "max_concurrent_requests",
+        "retry_max_attempts",
+        "retry_base_delay",
+        "models",
+        "enabled",
+    }
 )
 
 
@@ -166,12 +188,31 @@ def _provider_patch_updates(
         updates["base_url"] = _blank_to_none(body.base_url)
     if "api_key" in fields:
         updates["api_key"] = _blank_to_none(body.api_key)
-    if "extra_json" in fields or "stream_usage" in fields:
+    rate_limit_fields = {
+        "requests_per_minute",
+        "max_concurrent_requests",
+        "retry_max_attempts",
+        "retry_base_delay",
+    }
+    if "extra_json" in fields or "stream_usage" in fields or bool(fields & rate_limit_fields):
+        base = body.extra_json if "extra_json" in fields else current_extra_json
         if "stream_usage" in fields:
-            base = body.extra_json if "extra_json" in fields else current_extra_json
-            updates["extra_json"] = merge_stream_usage_extra(base, body.stream_usage)
-        else:
-            updates["extra_json"] = body.extra_json
+            base = merge_stream_usage_extra(base, body.stream_usage)
+        if fields & rate_limit_fields:
+            base = merge_rate_limit_extra(
+                base,
+                requests_per_minute=body.requests_per_minute
+                if "requests_per_minute" in fields
+                else None,
+                max_concurrent_requests=body.max_concurrent_requests
+                if "max_concurrent_requests" in fields
+                else None,
+                retry_max_attempts=body.retry_max_attempts
+                if "retry_max_attempts" in fields
+                else None,
+                retry_base_delay=body.retry_base_delay if "retry_base_delay" in fields else None,
+            )
+        updates["extra_json"] = base
     if "models" in fields:
         updates["models_json"] = json.dumps(body.models) if body.models is not None else None
     if "note" in fields:
@@ -236,6 +277,7 @@ def _row_to_dict(r: Any) -> dict[str, Any]:
             model["reasoning_config"] = capability
         models.append(model)
     extra = parse_provider_extra(r)
+    rate_cfg = get_provider_rate_limit_config(r)
     return {
         "id": r.id,
         "name": r.name,
@@ -246,6 +288,10 @@ def _row_to_dict(r: Any) -> dict[str, Any]:
         "note": r.note,
         "enabled": bool(r.enabled),
         "stream_usage": resolve_provider_stream_usage(provider_name=r.name, extra=extra),
+        "requests_per_minute": rate_cfg.requests_per_minute,
+        "max_concurrent_requests": rate_cfg.max_concurrent_requests,
+        "retry_max_attempts": rate_cfg.retry_max_attempts,
+        "retry_base_delay": rate_cfg.retry_base_delay,
     }
 
 
@@ -344,7 +390,13 @@ async def admin_create_provider(
         kind=body.kind,
         base_url=body.base_url,
         api_key=body.api_key,
-        extra_json=merge_stream_usage_extra(body.extra_json, body.stream_usage),
+        extra_json=merge_rate_limit_extra(
+            merge_stream_usage_extra(body.extra_json, body.stream_usage),
+            requests_per_minute=body.requests_per_minute,
+            max_concurrent_requests=body.max_concurrent_requests,
+            retry_max_attempts=body.retry_max_attempts,
+            retry_base_delay=body.retry_base_delay,
+        ),
         models_json=models_json,
         note=body.note,
     )

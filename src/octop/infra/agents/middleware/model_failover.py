@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+import asyncio
 import logging
+import time
 from collections.abc import Awaitable, Callable, Sequence
-from typing import Any, Literal, cast
+from typing import Any, Literal
 
 from langchain.agents.middleware import AgentMiddleware, ModelRequest, ModelResponse
 from langchain.agents.middleware.model_retry import ModelRetryMiddleware
@@ -15,10 +17,22 @@ from octop_harness.middleware.runtime import runtime_config
 from octop_harness.middleware.turn_model import latest_human_needs_multimodal
 
 from octop.i18n.domains.stream import model_retry_failure_prompt
+from octop.infra.agents.providers.backoff import (
+    calculate_backoff_delay,
+    extract_retry_after,
+    is_retryable_provider_error,
+    is_transient_rate_limit,
+)
 from octop.infra.agents.providers.health import (
     FailureScope,
     ModelHealthRegistry,
     classify_model_failure,
+)
+from octop.infra.agents.providers.rate_limiter import (
+    RATE_LIMIT_REGISTRY,
+    ProviderLimiter,
+    RateLimitRegistry,
+    make_limiter_key,
 )
 from octop.infra.agents.providers.store import AutoRouteCandidate
 from octop.infra.agents.settings.runtime_limits import CONFIGURABLE_MAX_INPUT_TOKENS
@@ -65,18 +79,159 @@ class SafeModelFailoverMiddleware(AgentMiddleware[Any, Any]):
         initial_delay: float,
         max_delay: float,
         on_failure: Callable[[Exception], str] | Literal["error"] | None = None,
+        rate_limit_registry: RateLimitRegistry | None = None,
+        limiter_key_resolver: Callable[[str], str] | None = None,
     ) -> None:
         super().__init__()
         self._health = health
         self._candidates = candidates
         self._model_for_ref = model_for_ref
         self._on_failure = on_failure
+        self._max_retries = max_retries
+        self.max_retries = max_retries
+        self._initial_delay = initial_delay
+        self.initial_delay = initial_delay
+        self._max_delay = max_delay
+        self.max_delay = max_delay
+        self._rate_limit_registry = rate_limit_registry or RATE_LIMIT_REGISTRY
+        self._limiter_key_resolver = limiter_key_resolver
         self._retry = ModelRetryMiddleware(
             max_retries=max_retries,
             initial_delay=initial_delay,
             max_delay=max_delay,
             on_failure="error",
         )
+
+    def _limiter_for_ref(self, ref: str) -> ProviderLimiter:
+        if self._limiter_key_resolver is not None:
+            key = self._limiter_key_resolver(ref)
+            if key:
+                return self._rate_limit_registry.get(key)
+        provider = ref.partition("/")[0] if "/" in ref else ref
+        key = make_limiter_key(provider)
+        return self._rate_limit_registry.get(key)
+
+    def _execute_candidate(
+        self,
+        ref: str,
+        routed: ModelRequest[Any],
+        handler: Callable[[ModelRequest[Any]], ModelResponse[Any]],
+    ) -> ModelResponse[Any]:
+        limiter = self._limiter_for_ref(ref)
+        retries = (
+            limiter.config.retry_max_attempts
+            if limiter.config.retry_max_attempts is not None
+            else self._max_retries
+        )
+        base_delay = (
+            limiter.config.retry_base_delay
+            if limiter.config.retry_base_delay is not None
+            else self._initial_delay
+        )
+        max_delay = (
+            limiter.config.retry_max_delay
+            if limiter.config.retry_max_delay is not None
+            else self._max_delay
+        )
+        jitter = (
+            limiter.config.retry_jitter
+            if limiter.config.retry_jitter is not None
+            else (base_delay > 0 and max_delay > 0)
+        )
+
+        for attempt in range(retries + 1):
+            delay = 0.0
+            limiter.acquire()
+            try:
+                return handler(routed)
+            except GraphBubbleUp:
+                raise
+            except Exception as exc:
+                if not is_retryable_provider_error(exc) or attempt >= retries:
+                    raise
+                retry_after = extract_retry_after(exc) if is_transient_rate_limit(exc) else None
+                delay = calculate_backoff_delay(
+                    attempt,
+                    base_delay=base_delay,
+                    max_delay=max_delay,
+                    retry_after=retry_after,
+                    jitter=jitter,
+                )
+                logger.warning(
+                    "Model %s call transient error (attempt %d/%d), retrying in %.2fs: %s",
+                    ref,
+                    attempt + 1,
+                    retries + 1,
+                    delay,
+                    exc,
+                )
+            finally:
+                limiter.release_concurrency()
+            if delay > 0:
+                time.sleep(delay)
+
+        raise RuntimeError("retry loop exhausted")
+
+    async def _aexecute_candidate(
+        self,
+        ref: str,
+        routed: ModelRequest[Any],
+        handler: Callable[[ModelRequest[Any]], Awaitable[ModelResponse[Any]]],
+    ) -> ModelResponse[Any]:
+        limiter = self._limiter_for_ref(ref)
+        retries = (
+            limiter.config.retry_max_attempts
+            if limiter.config.retry_max_attempts is not None
+            else self._max_retries
+        )
+        base_delay = (
+            limiter.config.retry_base_delay
+            if limiter.config.retry_base_delay is not None
+            else self._initial_delay
+        )
+        max_delay = (
+            limiter.config.retry_max_delay
+            if limiter.config.retry_max_delay is not None
+            else self._max_delay
+        )
+        jitter = (
+            limiter.config.retry_jitter
+            if limiter.config.retry_jitter is not None
+            else (base_delay > 0 and max_delay > 0)
+        )
+
+        for attempt in range(retries + 1):
+            delay = 0.0
+            await limiter.aacquire()
+            try:
+                return await handler(routed)
+            except GraphBubbleUp:
+                raise
+            except Exception as exc:
+                if not is_retryable_provider_error(exc) or attempt >= retries:
+                    raise
+                retry_after = extract_retry_after(exc) if is_transient_rate_limit(exc) else None
+                delay = calculate_backoff_delay(
+                    attempt,
+                    base_delay=base_delay,
+                    max_delay=max_delay,
+                    retry_after=retry_after,
+                    jitter=jitter,
+                )
+                logger.warning(
+                    "Model %s call transient error (attempt %d/%d), retrying in %.2fs: %s",
+                    ref,
+                    attempt + 1,
+                    retries + 1,
+                    delay,
+                    exc,
+                )
+            finally:
+                limiter.arelease_concurrency()
+            if delay > 0:
+                await asyncio.sleep(delay)
+
+        raise RuntimeError("retry loop exhausted")
 
     def _failure_response(self, exc: Exception) -> ModelResponse[Any]:
         if self._on_failure == "error":
@@ -138,7 +293,7 @@ class SafeModelFailoverMiddleware(AgentMiddleware[Any, Any]):
             if automatic and ref and ref != current_ref:
                 _configurable(request)["model"] = ref
             try:
-                response = self._retry.wrap_model_call(routed, handler)
+                response = self._execute_candidate(ref, routed, handler)
             except GraphBubbleUp:
                 raise
             except Exception as exc:
@@ -149,7 +304,7 @@ class SafeModelFailoverMiddleware(AgentMiddleware[Any, Any]):
                 logger.warning("AUTO model route failed; trying next candidate: model=%s", ref)
                 continue
             self._health.record_success(ref)
-            return cast(ModelResponse[Any], response)
+            return response
 
         return self._failure_response(
             last_error or RuntimeError("no healthy AUTO model is available")
@@ -178,7 +333,7 @@ class SafeModelFailoverMiddleware(AgentMiddleware[Any, Any]):
             if automatic and ref and ref != current_ref:
                 _configurable(request)["model"] = ref
             try:
-                response = await self._retry.awrap_model_call(routed, handler)
+                response = await self._aexecute_candidate(ref, routed, handler)
             except GraphBubbleUp:
                 raise
             except Exception as exc:
@@ -189,7 +344,7 @@ class SafeModelFailoverMiddleware(AgentMiddleware[Any, Any]):
                 logger.warning("AUTO model route failed; trying next candidate: model=%s", ref)
                 continue
             self._health.record_success(ref)
-            return cast(ModelResponse[Any], response)
+            return response
 
         return self._failure_response(
             last_error or RuntimeError("no healthy AUTO model is available")

@@ -550,6 +550,10 @@ class AgentManager:
             provider_repo=repos.provider_repo,
         )
         self._model_health = ModelHealthRegistry()
+        from octop.infra.agents.providers.rate_limiter import RATE_LIMIT_REGISTRY
+
+        self._rate_limiter_registry = RATE_LIMIT_REGISTRY
+        self._providers.sync_rate_limiters(self._rate_limiter_registry)
         self._connector_svc = ConnectorService(
             repo=repos.connector_repo,
             secret_repo=repos.secret_repo,
@@ -2081,6 +2085,7 @@ class AgentManager:
             providers,
             shared_factory=self._harness_manager.shared_factory,
         )
+        self._providers.sync_rate_limiters(self._rate_limiter_registry)
         if self._harness_manager.shared_factory is None:
             return
         await self._reload_agents(
@@ -4217,9 +4222,15 @@ class AgentManager:
                     initial_delay=applied.model_retry_initial_delay,
                     max_delay=applied.model_retry_max_delay,
                     on_failure="error",
+                    rate_limit_registry=self._rate_limiter_registry,
+                    limiter_key_resolver=self._providers.get_limiter_key_for_ref,
                 )
             else:
                 from langchain.agents.middleware import ModelRetryMiddleware
+
+                from octop.infra.agents.middleware.rate_limit import (
+                    ProviderRateLimitRetryMiddleware,
+                )
 
                 retry_middleware = ModelRetryMiddleware(
                     max_retries=applied.model_retry_max_retries,
@@ -4227,12 +4238,39 @@ class AgentManager:
                     max_delay=applied.model_retry_max_delay,
                     on_failure="error",
                 )
+                rate_limit_middleware: Any | None = ProviderRateLimitRetryMiddleware(
+                    registry=self._rate_limiter_registry,
+                    max_retries=0,
+                    on_failure="error",
+                    limiter_key_resolver=self._providers.get_limiter_key_for_ref,
+                )
+
+            if callable(get_chat_model):
+                rate_limit_middleware = None
 
             applied = replace(
                 applied,
                 model_retry_enabled=False,
                 middleware=[
                     retry_middleware,
+                    *([rate_limit_middleware] if rate_limit_middleware is not None else []),
+                    *(applied.middleware or []),
+                ],
+            )
+        else:
+            from octop.infra.agents.middleware.rate_limit import (
+                ProviderRateLimitRetryMiddleware,
+            )
+
+            applied = replace(
+                applied,
+                middleware=[
+                    ProviderRateLimitRetryMiddleware(
+                        registry=self._rate_limiter_registry,
+                        max_retries=0,
+                        on_failure="error",
+                        limiter_key_resolver=self._providers.get_limiter_key_for_ref,
+                    ),
                     *(applied.middleware or []),
                 ],
             )
