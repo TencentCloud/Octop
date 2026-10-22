@@ -6,6 +6,12 @@
 
 ## [Unreleased]
 
+## [1.0.5] - 2026-10-22
+
+### 修复
+- Windows / macOS 便携包(zip)首次启动报 `ModuleNotFoundError: No module named 'octop_harness'`:便携包只装了主程序 wheel,而四个上游包(octop-harness / octop-gateway / octop-browser / octop-memory)没有随包分发。现在打包时构建并安装全部五个 wheel,并从依赖导出中剔除指向打包机源码路径的 editable 条目。Docker / wheel 安装不受影响。
+
+
 ## [1.0.4] - 2026-10-22
 
 ### 新增
