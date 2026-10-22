@@ -44,8 +44,8 @@ class DatabaseConfig:
     sqlite_path: str = "agentbuddy.db"
     host: str = "127.0.0.1"
     port: int = 5432
-    database: str = "octop"
-    user: str = "octop"
+    database: str = "agentbuddy"
+    user: str = "agentbuddy"
     password: str | None = None
     url: str | None = None  # verbatim AGENTBUDDY_DATABASE_URL when set
 

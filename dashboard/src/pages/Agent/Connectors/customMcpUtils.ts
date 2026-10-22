@@ -24,7 +24,7 @@ export interface ServerCardState {
   oauthExpiresAt?: number;
 }
 
-export const PROBE_ON_SAVE_KEY = "octop.customMcp.probeOnSave";
+export const PROBE_ON_SAVE_KEY = "agentbuddy.customMcp.probeOnSave";
 
 export const EXAMPLE_JSON = `{
   "deepwiki": {
