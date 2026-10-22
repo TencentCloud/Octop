@@ -532,6 +532,10 @@
   }
 }
 
+.textAssistField {
+  margin-bottom: 4px !important;
+}
+
 .createSection {
   margin-bottom: 8px;
 
@@ -591,4 +595,39 @@
   align-items: center;
   flex-wrap: wrap;
   gap: 8px;
+}
+
+.formOptions {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  margin-top: 8px;
+  border: 1px solid var(--fn-border-secondary);
+  border-radius: var(--fn-radius-md, 8px);
+  overflow: hidden;
+}
+
+.formOptionRowVisibility {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 10px;
+  padding: 12px 14px;
+  background: var(--fn-bg-primary);
+}
+
+.formOptionCopy {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+  flex: 1;
+}
+
+.switchLabel {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-weight: 500;
+  color: var(--fn-text-primary);
 }

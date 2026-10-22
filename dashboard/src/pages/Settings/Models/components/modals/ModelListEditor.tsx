@@ -24,8 +24,10 @@ import { request } from "../../../../../api/request";
 import { useImeSearchInput } from "../../../../../hooks/useImeSearchInput";
 import {
   userGroupsApi,
+  type ResourceVisibilityMode,
   type UserGroup,
 } from "../../../../../api/modules/userGroups";
+import { ResourceVisibilityFields } from "../../../../../components/ResourceVisibilityFields";
 import type { ProviderRow, ProviderModel } from "../../useProviders";
 import { isEmbeddingModel } from "../../useProviders";
 import { isOnnxProviderRow } from "../../presetUtils";
@@ -83,120 +85,6 @@ const INPUT_TYPE_OPTIONS = [
   { value: "audio", label: "inputTypeAudio" as const },
 ];
 
-function ModelGroupAccess({
-  models,
-  onPatch,
-}: {
-  models: ProviderModel[];
-  onPatch: (modelId: string, patch: Partial<ProviderModel>) => void;
-}) {
-  const { t } = useTranslation();
-  const [open, setOpen] = useState(false);
-  const [groups, setGroups] = useState<UserGroup[] | null>(null);
-  const restricted = models.filter(
-    (model) => model.visibility === "groups",
-  ).length;
-
-  useEffect(() => {
-    if (!open || groups !== null) return;
-    let cancelled = false;
-    userGroupsApi
-      .list()
-      .then((rows) => {
-        if (!cancelled) setGroups(rows);
-      })
-      .catch(() => {
-        if (!cancelled) setGroups([]);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [open, groups]);
-
-  return (
-    <div className={styles.modelAccess}>
-      <button
-        type="button"
-        className={styles.modelAccessToggle}
-        onClick={() => setOpen((current) => !current)}
-      >
-        <span>{t("models.groupAccessTitle")}</span>
-        {restricted > 0 ? (
-          <span className={styles.modelAccessCount}>
-            {t("models.groupAccessCount", { count: restricted })}
-          </span>
-        ) : null}
-        {open ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
-      </button>
-      {open ? (
-        <div className={styles.modelAccessBody}>
-          <p className={styles.modelAccessHint}>
-            {t("models.groupAccessHint")}
-          </p>
-          <div className={styles.modelAccessList}>
-            {models.map((model) => {
-              const visibility =
-                model.visibility === "groups" ? "groups" : "all";
-              const groupIds = model.group_ids ?? [];
-              return (
-                <div key={model.id} className={styles.modelAccessRow}>
-                  <div className={styles.modelAccessName}>
-                    <span>{model.name}</span>
-                    {model.name !== model.id ? (
-                      <span className={styles.modelListItemId}>{model.id}</span>
-                    ) : null}
-                  </div>
-                  <Select
-                    size="small"
-                    value={visibility}
-                    options={[
-                      { value: "all", label: t("resourceVisibility.all") },
-                      {
-                        value: "groups",
-                        label: t("resourceVisibility.groups"),
-                      },
-                    ]}
-                    onChange={(next: "all" | "groups") =>
-                      onPatch(model.id, {
-                        visibility: next,
-                        group_ids: next === "groups" ? groupIds : [],
-                      })
-                    }
-                  />
-                  {visibility === "groups" ? (
-                    <Select
-                      className={styles.modelAccessGroups}
-                      size="small"
-                      mode="multiple"
-                      value={groupIds}
-                      placeholder={t("resourceVisibility.groupPlaceholder")}
-                      options={(groups ?? []).map((group) => ({
-                        value: group.user_group_id,
-                        label:
-                          group.enabled === false
-                            ? `${group.name} (${t(
-                                "adminUsers.statusDisabled",
-                              )})`
-                            : group.name,
-                      }))}
-                      onChange={(ids) =>
-                        onPatch(model.id, {
-                          visibility: "groups",
-                          group_ids: ids,
-                        })
-                      }
-                    />
-                  ) : null}
-                </div>
-              );
-            })}
-          </div>
-        </div>
-      ) : null}
-    </div>
-  );
-}
-
 export function ModelListEditor({
   provider,
   models,
@@ -225,6 +113,9 @@ export function ModelListEditor({
   const [editingModelId, setEditingModelId] = useState<string | null>(null);
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [showReasoningProtocol, setShowReasoningProtocol] = useState(false);
+  const [modelVisibility, setModelVisibility] =
+    useState<ResourceVisibilityMode>("all");
+  const [modelGroupIds, setModelGroupIds] = useState<string[]>([]);
   const [testingIds, setTestingIds] = useState<Set<string>>(new Set());
   const [testResults, setTestResults] = useState<
     Map<string, "success" | "failure">
@@ -253,14 +144,6 @@ export function ModelListEditor({
     }
     onModelsChange(
       models.map((m) => (m.id === modelId ? { ...m, enabled } : m)),
-    );
-  };
-
-  const patchModel = (modelId: string, patch: Partial<ProviderModel>) => {
-    onModelsChange(
-      models.map((model) =>
-        model.id === modelId ? { ...model, ...patch } : model,
-      ),
     );
   };
 
@@ -431,6 +314,8 @@ export function ModelListEditor({
       input: ["text"],
       thinking: null,
     };
+    entry.visibility = modelVisibility === "groups" ? "groups" : "all";
+    entry.group_ids = modelVisibility === "groups" ? [...modelGroupIds] : [];
     if (embedding) {
       entry.embedding = true;
       entry.task = "embedding";
@@ -483,6 +368,10 @@ export function ModelListEditor({
   const handleAddModel = async () => {
     try {
       const values = await form.validateFields();
+      if (modelVisibility === "groups" && modelGroupIds.length === 0) {
+        message.error(t("resourceVisibility.needGroup"));
+        return;
+      }
       const entry = buildModelEntry(values as Record<string, unknown>);
       if (models.some((m) => m.id === entry.id)) {
         message.error(t("models.initialModelDuplicate", { name: entry.id }));
@@ -503,6 +392,10 @@ export function ModelListEditor({
     if (!editingModelId) return;
     try {
       const values = await form.validateFields();
+      if (modelVisibility === "groups" && modelGroupIds.length === 0) {
+        message.error(t("resourceVisibility.needGroup"));
+        return;
+      }
       const entry = buildModelEntry(values as Record<string, unknown>);
       const existing = models.find((m) => m.id === editingModelId);
       if (existing) {
@@ -539,6 +432,8 @@ export function ModelListEditor({
       purpose:
         model.embedding || model.task === "embedding" ? "embedding" : "chat",
     });
+    setModelVisibility(model.visibility === "groups" ? "groups" : "all");
+    setModelGroupIds(model.group_ids ?? []);
     const hasAdvanced = (model as Record<string, unknown>).reasoning != null;
     setShowAdvanced(hasAdvanced);
     const cfg = model.reasoning_config;
@@ -558,6 +453,8 @@ export function ModelListEditor({
     setAdding(true);
     setShowAdvanced(false);
     setShowReasoningProtocol(false);
+    setModelVisibility("all");
+    setModelGroupIds([]);
     form.setFieldsValue({
       purpose: "chat",
       context_window: DEFAULT_CONTEXT_WINDOW,
@@ -570,6 +467,8 @@ export function ModelListEditor({
     setEditingModelId(null);
     setShowAdvanced(false);
     setShowReasoningProtocol(false);
+    setModelVisibility("all");
+    setModelGroupIds([]);
     form.resetFields();
   };
 
@@ -742,9 +641,6 @@ export function ModelListEditor({
           })
         )}
       </div>
-      {models.length > 0 ? (
-        <ModelGroupAccess models={models} onPatch={patchModel} />
-      ) : null}
 
       {isFormVisible ? (
         <div ref={formAnchorRef} className={styles.modelAddForm}>
@@ -1118,6 +1014,28 @@ export function ModelListEditor({
                 )}
               </>
             )}
+
+            <div className={styles.modelVisibilityBlock}>
+              <div className={styles.modelVisibilityTitle}>
+                {t("resourceVisibility.groupAccess")}
+              </div>
+              <p className={styles.modelVisibilityHint}>
+                {t("resourceVisibility.groupAccessHint")}
+              </p>
+              <ResourceVisibilityFields
+                allowOwner={false}
+                visibility={modelVisibility === "groups" ? "groups" : "all"}
+                groupIds={modelGroupIds}
+                onChange={(next) => {
+                  const nextVisibility =
+                    next.visibility === "groups" ? "groups" : "all";
+                  setModelVisibility(nextVisibility);
+                  setModelGroupIds(
+                    nextVisibility === "groups" ? next.groupIds : [],
+                  );
+                }}
+              />
+            </div>
 
             <div
               style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}

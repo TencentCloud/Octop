@@ -27,7 +27,10 @@ import { skillPackagesApi } from "../../../api/modules/skillPackages";
 import type { SkillPackage } from "../../../api/types/skillPackage";
 import { AgentAdvancedConfigFields } from "../../../components/AgentAdvancedConfigFields";
 import { TextAssistBar } from "../../../components/TextAssistBar";
-import { expertPresetSrc } from "../../../components/AvatarPicker";
+import {
+  avatarPickerStyles,
+  expertPresetSrc,
+} from "../../../components/AvatarPicker";
 import ExpertColorPicker from "../../../components/ExpertColorPicker";
 import AgentTrajectoryField from "./AgentTrajectoryField";
 import { apiErrorMessage } from "../../../utils/apiError";
@@ -669,7 +672,10 @@ export default function CreateFromExpertDrawer({
       )}
 
       <Form form={form} layout="vertical" size="middle">
-        <Form.Item label={t("experts.avatar")}>
+        <Form.Item
+          label={t("experts.avatar")}
+          className={avatarPickerStyles.formItem}
+        >
           <ExpertAvatarPicker
             iconUrl={
               avatarPreview ??
@@ -761,8 +767,12 @@ export default function CreateFromExpertDrawer({
           <Input placeholder={t("experts.customIdPlaceholder")} allowClear />
         </Form.Item>
 
-        <Form.Item name="description" label={t("experts.agentDescription")}>
-          <Input.TextArea rows={2} />
+        <Form.Item
+          name="description"
+          label={t("experts.agentDescription")}
+          className={styles.textAssistField}
+        >
+          <Input.TextArea autoSize={{ minRows: 2, maxRows: 5 }} />
         </Form.Item>
         <TextAssistBar
           kind="expert.description"
@@ -774,10 +784,11 @@ export default function CreateFromExpertDrawer({
         <Form.Item
           name="welcome_message"
           label={t("experts.welcomeMessageTitle")}
-          extra={t("experts.createWelcomeHint")}
+          tooltip={t("experts.createWelcomeHint")}
+          className={styles.textAssistField}
         >
           <Input.TextArea
-            rows={2}
+            autoSize={{ minRows: 2, maxRows: 5 }}
             placeholder={t("experts.welcomeMessagePlaceholder")}
           />
         </Form.Item>

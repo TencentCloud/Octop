@@ -583,6 +583,9 @@ async def create_base(
     locale = resolve_request_locale(request)
     try:
         _require_usable(server, request)
+        access = _group_access(server)
+        if body.visibility is not None and access is not None:
+            access.validate_visibility(body.visibility, body.group_ids)
         base = _knowledge_service(server).create_base(
             owner_user_id=user.id,
             name=body.name.strip(),
@@ -599,7 +602,6 @@ async def create_base(
             icon_url=body.icon_url.strip(),
             max_documents=body.max_documents if body.max_documents is not None else MAX_DOCS_PER_KB,
         )
-        access = _group_access(server)
         if body.visibility is not None and access is not None:
             access.set_visibility(
                 RESOURCE_KNOWLEDGE_BASE,
@@ -658,6 +660,9 @@ async def update_base(
     user: User = Depends(require_permission("knowledge_bases")),
 ) -> dict[str, Any]:
     try:
+        access = _group_access(server)
+        if body.visibility is not None and access is not None:
+            access.validate_visibility(body.visibility, body.group_ids)
         shared = body.shared
         if body.visibility == "owner":
             shared = False
@@ -675,7 +680,6 @@ async def update_base(
             max_documents=body.max_documents,
             is_admin=_is_admin(user),
         )
-        access = _group_access(server)
         if body.visibility is not None and access is not None:
             access.set_visibility(
                 RESOURCE_KNOWLEDGE_BASE,

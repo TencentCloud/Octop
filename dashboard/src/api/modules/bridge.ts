@@ -10,6 +10,11 @@ export interface BridgeConnection {
   notes: string | null;
   icon_name?: string | null;
   icon_url?: string | null;
+  shared?: boolean;
+  visibility?: "owner" | "all" | "groups";
+  group_ids?: string[];
+  /** True when the current user owns this link (can connect / edit / delete). */
+  is_owner?: boolean;
   status: string;
   last_error: string | null;
   last_seen_at: number | null;
@@ -95,6 +100,9 @@ export const bridgeApi = {
     display_name: string;
     notes?: string;
     icon_name?: string;
+    shared?: boolean;
+    visibility?: "owner" | "all" | "groups";
+    group_ids?: string[];
     connect?: boolean;
   }) =>
     request<BridgeConnection>("/bridge/connections", {
@@ -123,6 +131,9 @@ export const bridgeApi = {
       display_name?: string;
       notes?: string;
       icon_name?: string;
+      shared?: boolean;
+      visibility?: "owner" | "all" | "groups";
+      group_ids?: string[];
       peer_base_url?: string;
       peer_username?: string;
       /** Omit or empty to keep the stored password. */

@@ -11,6 +11,7 @@ import {
   Space,
   Spin,
   Switch,
+  Typography,
 } from "antd";
 import {
   LayoutGrid,
@@ -23,6 +24,7 @@ import {
 } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { ResizableTable } from "@/components/ResizableTable";
+import { TextAssistBar } from "@/components/TextAssistBar";
 import { message } from "@/utils/antdMessage";
 import { request } from "../../../api/request";
 import {
@@ -49,83 +51,42 @@ interface Account {
 
 interface GroupFormValues {
   name: string;
+  user_group_id?: string;
   description?: string;
   enabled?: boolean;
   user_ids?: number[];
 }
 
-function audienceLabel(
-  audience: GroupAccessItem["audience"] | "none" | "missing",
-  t: (key: string) => string,
-): string {
-  if (audience === "all") return t("adminUsers.groupAccessAudienceAll");
-  if (audience === "creator") return t("adminUsers.groupAccessAudienceCreator");
-  if (audience === "owner") return t("adminUsers.groupAccessAudienceOwner");
-  if (audience === "none") return t("adminUsers.groupAccessUnavailable");
-  if (audience === "missing") return t("adminUsers.groupAccessMissing");
-  return t("adminUsers.groupAccessAudienceGroup");
+const GROUP_ID_RE = /^[a-zA-Z0-9][a-zA-Z0-9_-]{1,62}[a-zA-Z0-9]$/;
+
+/** Only resources granted to this group (not “everyone” / private). */
+function groupGrantedItems(items: GroupAccessItem[]): GroupAccessItem[] {
+  return items.filter((item) => item.audience === "groups" || item.missing);
 }
 
-function featureTag(
-  key: string,
-  audience: GroupAccessSummary["connectors"] | undefined,
-  label: string,
-): GroupAccessItem | null {
-  if (audience !== "all" && audience !== "groups") return null;
-  return { key, label, missing: false, audience };
+function summarizeLabels(items: GroupAccessItem[]): string | null {
+  const granted = groupGrantedItems(items);
+  if (granted.length === 0) return null;
+  return granted.map((item) => item.label).join(" · ");
 }
 
-function summarizeItems(
-  items: GroupAccessItem[],
-  t: (key: string) => string,
-): string {
-  if (items.length === 0) return t("adminUsers.groupAccessNoneYet");
-  const counts = new Map<string, number>();
-  for (const item of items) {
-    const key = item.missing ? "missing" : item.audience;
-    counts.set(key, (counts.get(key) ?? 0) + 1);
-  }
-  return ["groups", "all", "creator", "owner", "missing"]
-    .filter((key) => counts.has(key))
-    .map(
-      (key) =>
-        `${audienceLabel(
-          key as GroupAccessItem["audience"] | "missing",
-          t,
-        )} ${counts.get(key)}`,
-    )
-    .join(" · ");
-}
-
-function accessTags(
-  access: GroupAccessSummary | undefined,
-  t: (key: string) => string,
-): GroupAccessItem[] {
+function accessTags(access: GroupAccessSummary | undefined): GroupAccessItem[] {
   if (!access) return [];
-  const tags: GroupAccessItem[] = [];
-  const connectors = featureTag(
-    "connectors",
-    access.connectors,
-    t("adminUsers.groupAccessConnectors"),
-  );
-  const storage = featureTag(
-    "storage",
-    access.storage,
-    t("adminUsers.groupAccessStorage"),
-  );
-  if (connectors) tags.push(connectors);
-  if (storage) tags.push(storage);
-  tags.push(
-    ...access.models,
-    ...access.skill_packages,
-    ...access.knowledge_bases,
-  );
-  return tags;
+  return [
+    ...groupGrantedItems(access.connectors ?? []),
+    ...groupGrantedItems(access.storage ?? []),
+    ...groupGrantedItems(access.models),
+    ...groupGrantedItems(access.plugins ?? []),
+    ...groupGrantedItems(access.skill_packages),
+    ...groupGrantedItems(access.knowledge_bases),
+    ...groupGrantedItems(access.bridges ?? []),
+  ];
 }
 
 function AccessItemTags({ items }: { items: GroupAccessItem[] }) {
   const { t } = useTranslation();
-  if (items.length === 0) {
+  const granted = groupGrantedItems(items);
+  if (granted.length === 0) {
     return (
       <span className={styles.userCellMuted}>
         {t("adminUsers.groupAccessNoneYet")}
@@ -134,7 +95,7 @@ function AccessItemTags({ items }: { items: GroupAccessItem[] }) {
   }
   return (
     <span className={styles.groupAccessTags}>
-      {items.map((tag) => (
+      {granted.map((tag) => (
         <span
           key={`${tag.key}:${tag.label}`}
           className={
@@ -142,16 +103,9 @@ function AccessItemTags({ items }: { items: GroupAccessItem[] }) {
               ? `${styles.groupAccessTag} ${styles.groupAccessTagMissing}`
               : styles.groupAccessTag
           }
-          title={
-            tag.missing
-              ? t("adminUsers.groupAccessMissing")
-              : `${tag.label} · ${audienceLabel(tag.audience, t)}`
-          }
+          title={tag.missing ? t("adminUsers.groupAccessMissing") : tag.label}
         >
           {tag.label}
-          <span className={styles.groupAccessAudience}>
-            {audienceLabel(tag.missing ? "missing" : tag.audience, t)}
-          </span>
         </span>
       ))}
     </span>
@@ -164,29 +118,48 @@ function AccessSummary({ access }: { access?: GroupAccessSummary }) {
     {
       key: "connectors",
       label: t("adminUsers.groupAccessConnectors"),
-      value: audienceLabel(access?.connectors ?? "all", t),
+      value: summarizeLabels(access?.connectors ?? []),
     },
     {
       key: "storage",
       label: t("adminUsers.groupAccessStorage"),
-      value: audienceLabel(access?.storage ?? "all", t),
+      value: summarizeLabels(access?.storage ?? []),
     },
     {
       key: "models",
       label: t("adminUsers.groupAccessModels"),
-      value: summarizeItems(access?.models ?? [], t),
+      value: summarizeLabels(access?.models ?? []),
+    },
+    {
+      key: "plugins",
+      label: t("adminUsers.groupAccessPlugins"),
+      value: summarizeLabels(access?.plugins ?? []),
     },
     {
       key: "packages",
       label: t("adminUsers.groupAccessSkillPackages"),
-      value: summarizeItems(access?.skill_packages ?? [], t),
+      value: summarizeLabels(access?.skill_packages ?? []),
     },
     {
       key: "bases",
       label: t("adminUsers.groupAccessKnowledge"),
-      value: summarizeItems(access?.knowledge_bases ?? [], t),
+      value: summarizeLabels(access?.knowledge_bases ?? []),
     },
-  ];
+    {
+      key: "bridges",
+      label: t("adminUsers.groupAccessBridges"),
+      value: summarizeLabels(access?.bridges ?? []),
+    },
+  ].filter((row) => row.value);
+
+  if (rows.length === 0) {
+    return (
+      <span className={styles.userCellMuted}>
+        {t("adminUsers.groupAccessEmpty")}
+      </span>
+    );
+  }
+
   return (
     <ul className={styles.groupAccessSummary}>
       {rows.map((row) => (
@@ -201,50 +174,47 @@ function AccessSummary({ access }: { access?: GroupAccessSummary }) {
 
 function AccessDetail({ access }: { access?: GroupAccessSummary }) {
   const { t } = useTranslation();
-  const connector = featureTag(
-    "connectors",
-    access?.connectors,
-    t("adminUsers.groupAccessConnectorsOn"),
-  );
-  const storage = featureTag(
-    "storage",
-    access?.storage,
-    t("adminUsers.groupAccessStorageOn"),
-  );
   const sections: {
     key: string;
     title: string;
-    note?: string;
     items: GroupAccessItem[];
   }[] = [
     {
       key: "connectors",
       title: t("adminUsers.groupAccessConnectors"),
-      items: connector ? [connector] : [],
+      items: groupGrantedItems(access?.connectors ?? []),
     },
     {
       key: "storage",
       title: t("adminUsers.groupAccessStorage"),
-      items: storage ? [storage] : [],
+      items: groupGrantedItems(access?.storage ?? []),
     },
     {
       key: "models",
       title: t("adminUsers.groupAccessModels"),
-      items: access?.models ?? [],
+      items: groupGrantedItems(access?.models ?? []),
+    },
+    {
+      key: "plugins",
+      title: t("adminUsers.groupAccessPlugins"),
+      items: groupGrantedItems(access?.plugins ?? []),
     },
     {
       key: "packages",
       title: t("adminUsers.groupAccessSkillPackages"),
-      note: t("adminUsers.groupAccessSkillNote"),
-      items: access?.skill_packages ?? [],
+      items: groupGrantedItems(access?.skill_packages ?? []),
     },
     {
       key: "bases",
       title: t("adminUsers.groupAccessKnowledge"),
-      note: t("adminUsers.groupAccessKnowledgeNote"),
-      items: access?.knowledge_bases ?? [],
+      items: groupGrantedItems(access?.knowledge_bases ?? []),
     },
-  ];
+    {
+      key: "bridges",
+      title: t("adminUsers.groupAccessBridges"),
+      items: groupGrantedItems(access?.bridges ?? []),
+    },
+  ].filter((section) => section.items.length > 0);
 
   return (
     <section className={styles.groupAccessDetail}>
@@ -254,22 +224,20 @@ function AccessDetail({ access }: { access?: GroupAccessSummary }) {
       <p className={styles.groupAccessHint}>
         {t("adminUsers.groupAccessHint")}
       </p>
-      {sections.map((section) => (
-        <div key={section.key} className={styles.groupAccessSection}>
-          <div className={styles.groupAccessSectionTitle}>{section.title}</div>
-          {section.note ? (
-            <p className={styles.groupAccessNote}>{section.note}</p>
-          ) : null}
-          {section.items.length === 0 &&
-          (section.key === "connectors" || section.key === "storage") ? (
-            <span className={styles.userCellMuted}>
-              {t("adminUsers.groupAccessUnavailable")}
-            </span>
-          ) : (
+      {sections.length === 0 ? (
+        <p className={styles.groupAccessEmpty}>
+          {t("adminUsers.groupAccessEmpty")}
+        </p>
+      ) : (
+        sections.map((section) => (
+          <div key={section.key} className={styles.groupAccessSection}>
+            <div className={styles.groupAccessSectionTitle}>
+              {section.title}
+            </div>
             <AccessItemTags items={section.items} />
-          )}
-        </div>
-      ))}
+          </div>
+        ))
+      )}
     </section>
   );
 }
@@ -365,10 +333,16 @@ export default function GroupsPanel() {
           return user ? accountLabel(user) : "";
         })
         .join(" ");
-      const accessText = accessTags(row.access, (key) => t(key))
+      const accessText = accessTags(row.access)
         .map((item) => item.label)
         .join(" ");
-      return [row.name, row.description ?? "", memberText, accessText]
+      return [
+        row.user_group_id,
+        row.name,
+        row.description ?? "",
+        memberText,
+        accessText,
+      ]
         .join(" ")
         .toLowerCase()
         .includes(needle);
@@ -381,6 +355,7 @@ export default function GroupsPanel() {
     setPendingAvatar(null);
     form.setFieldsValue({
       name: "",
+      user_group_id: "",
       description: "",
       enabled: true,
       user_ids: [],
@@ -394,6 +369,7 @@ export default function GroupsPanel() {
     setPendingAvatar(null);
     form.setFieldsValue({
       name: row.name,
+      user_group_id: row.user_group_id,
       description: row.description ?? "",
       enabled: row.enabled !== false,
       user_ids: row.member_ids ?? [],
@@ -426,15 +402,18 @@ export default function GroupsPanel() {
     const values = await form.validateFields();
     setSaving(true);
     try {
+      const description = values.description?.trim() || "";
       const body = {
         name: values.name.trim(),
-        description: values.description?.trim() || null,
+        description: description ? description.slice(0, 500) : null,
         enabled: values.enabled !== false,
       };
+      const customId = values.user_group_id?.trim() || undefined;
       const saved = editing
         ? await userGroupsApi.update(editing.user_group_id, body)
         : await userGroupsApi.create({
             ...body,
+            user_group_id: customId,
             avatar_icon: pendingAvatar ? null : pendingIcon,
           });
       if (!editing && pendingAvatar) {
@@ -479,9 +458,6 @@ export default function GroupsPanel() {
           </span>
           <div className={styles.roleLegendNotes}>
             <p className={styles.roleLegendText}>{t("adminUsers.groupHint")}</p>
-            <p className={styles.roleLegendText}>
-              {t("adminUsers.groupAccessHint")}
-            </p>
           </div>
         </div>
         <div className={styles.roleToolbar}>
@@ -550,22 +526,19 @@ export default function GroupsPanel() {
               >
                 <div className={styles.roleCardBody}>
                   <div className={styles.roleCardTop}>
-                    <span className={styles.userCardAvatarWrap}>
-                      <ProfileAvatar
-                        url={row.avatar_url}
-                        icon={row.avatar_icon}
-                        kind="user"
-                        className={styles.roleCardAvatar}
-                      />
-                      <span
-                        className={
-                          row.enabled === false
-                            ? `${styles.userCardStatusDot} ${styles.userCardStatusDotOff}`
-                            : styles.userCardStatusDot
-                        }
-                      />
-                    </span>
+                    <ProfileAvatar
+                      url={row.avatar_url}
+                      icon={row.avatar_icon}
+                      kind="role"
+                      className={styles.roleCardAvatar}
+                    />
                     <div className={styles.roleCardTitle}>
+                      <span
+                        className={styles.roleIdMeta}
+                        title={row.user_group_id}
+                      >
+                        {row.user_group_id}
+                      </span>
                       <h3>{row.name}</h3>
                       <span className={styles.roleIdMeta}>
                         {t("adminUsers.groupMemberCount", {
@@ -649,10 +622,16 @@ export default function GroupsPanel() {
                   <ProfileAvatar
                     url={row.avatar_url}
                     icon={row.avatar_icon}
-                    kind="user"
+                    kind="role"
                     className={styles.userCellAvatar}
                   />
                   <span className={styles.userCellText}>
+                    <span
+                      className={styles.roleIdMeta}
+                      title={row.user_group_id}
+                    >
+                      {row.user_group_id}
+                    </span>
                     <span className={styles.userCellName}>{row.name}</span>
                   </span>
                 </div>
@@ -749,20 +728,25 @@ export default function GroupsPanel() {
         title={
           editing
             ? t("adminUsers.groupEditTitle", { name: editing.name })
-            : t("adminUsers.groupCreate")
+            : t("adminUsers.groupCreateTitle")
         }
         open={open}
         onClose={() => setOpen(false)}
         width={480}
         destroyOnHidden
-        extra={
-          <Button type="primary" loading={saving} onClick={() => void save()}>
-            {t("common.save")}
-          </Button>
+        className={styles.createUserDrawer}
+        styles={{ body: { paddingTop: 12, paddingBottom: 24 } }}
+        footer={
+          <div className={styles.createUserFooter}>
+            <Button onClick={() => setOpen(false)}>{t("common.cancel")}</Button>
+            <Button type="primary" loading={saving} onClick={() => void save()}>
+              {t("common.save")}
+            </Button>
+          </div>
         }
       >
         <ProfileAvatarPicker
-          kind="user"
+          kind="role"
           avatarUrl={pendingAvatar ? undefined : editing?.avatar_url}
           icon={editing ? editing.avatar_icon : pendingIcon}
           onSelectIcon={async (icon) => {
@@ -805,7 +789,49 @@ export default function GroupsPanel() {
               : undefined
           }
         />
-        <Form form={form} layout="vertical" style={{ marginTop: 16 }}>
+        <Form
+          form={form}
+          layout="vertical"
+          className={styles.createUserForm}
+          style={{ marginTop: 16 }}
+        >
+          {editing ? (
+            <Form.Item label={t("adminUsers.groupColId")}>
+              <Typography.Text
+                code
+                copyable={{ text: editing.user_group_id }}
+                className={styles.roleIdField}
+              >
+                {editing.user_group_id}
+              </Typography.Text>
+            </Form.Item>
+          ) : (
+            <Form.Item
+              name="user_group_id"
+              label={t("adminUsers.groupColId")}
+              extra={t("adminUsers.groupIdHint")}
+              rules={[
+                {
+                  validator: (_: unknown, value: string | undefined) => {
+                    const id = value?.trim() ?? "";
+                    if (!id) return Promise.resolve();
+                    if (!GROUP_ID_RE.test(id)) {
+                      return Promise.reject(
+                        new Error(t("adminUsers.groupIdInvalid")),
+                      );
+                    }
+                    return Promise.resolve();
+                  },
+                },
+              ]}
+            >
+              <Input
+                maxLength={64}
+                allowClear
+                placeholder={t("adminUsers.groupIdPlaceholder")}
+              />
+            </Form.Item>
+          )}
           <Form.Item
             name="name"
             label={t("adminUsers.groupName")}
@@ -816,16 +842,18 @@ export default function GroupsPanel() {
           <Form.Item
             name="description"
             label={t("adminUsers.groupDescription")}
+            className={styles.textAssistField}
           >
-            <Input.TextArea rows={3} maxLength={500} />
+            <Input.TextArea rows={3} />
           </Form.Item>
-          <Form.Item
-            name="enabled"
-            label={t("adminUsers.groupEnabled")}
-            valuePropName="checked"
-          >
-            <Switch />
-          </Form.Item>
+          <TextAssistBar
+            kind="user_group.description"
+            getName={() => String(form.getFieldValue("name") ?? "")}
+            getText={() => String(form.getFieldValue("description") ?? "")}
+            onApply={(text) =>
+              form.setFieldsValue({ description: text.slice(0, 500) })
+            }
+          />
           <Form.Item name="user_ids" label={t("adminUsers.groupMembers")}>
             <Select
               mode="multiple"
@@ -852,7 +880,31 @@ export default function GroupsPanel() {
                   </span>
                 );
               }}
+              labelRender={(option) => {
+                const user = usersById.get(Number(option.value));
+                if (!user) return option.label;
+                return (
+                  <span className={styles.roleSelectOption}>
+                    <ProfileAvatar
+                      url={user.avatar_url}
+                      icon={user.avatar_icon}
+                      kind="user"
+                      className={styles.roleSelectIcon}
+                    />
+                    <span className={styles.roleSelectName}>
+                      {accountLabel(user)}
+                    </span>
+                  </span>
+                );
+              }}
             />
+          </Form.Item>
+          <Form.Item
+            name="enabled"
+            label={t("adminUsers.groupEnabled")}
+            valuePropName="checked"
+          >
+            <Switch />
           </Form.Item>
         </Form>
         {editing ? <AccessDetail access={editing.access} /> : null}

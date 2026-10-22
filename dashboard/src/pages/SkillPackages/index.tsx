@@ -51,6 +51,7 @@ import type {
 import {
   isUploadedAvatarUrl,
   ResourceAvatarPicker,
+  avatarPickerStyles,
   SKILL_PACKAGE_AVATAR_PRESETS,
 } from "../../components/AvatarPicker";
 import { CardSkeleton } from "../../components/Skeleton";
@@ -1041,7 +1042,10 @@ export default function SkillPackagesPage() {
           <Form.Item name="icon_url" hidden>
             <Input />
           </Form.Item>
-          <Form.Item label={t("skillPackages.iconName")}>
+          <Form.Item
+            label={t("skillPackages.iconName")}
+            className={avatarPickerStyles.formItem}
+          >
             <ResourceAvatarPicker
               imageUrl={
                 iconUrl?.trim() &&
@@ -1157,6 +1161,7 @@ export default function SkillPackagesPage() {
           <Form.Item
             name="description"
             label={t("skillPackages.packageDescription")}
+            className={styles.textAssistField}
           >
             <Input.TextArea
               autoSize={{ minRows: 2, maxRows: 5 }}
@@ -1197,22 +1202,29 @@ export default function SkillPackagesPage() {
           >
             <Switch />
           </Form.Item>
-          <Form.Item
-            label={t("resourceVisibility.label")}
-            extra={t("skillPackages.visibilityHint")}
-          >
-            <ResourceVisibilityFields
-              allowOwner
-              visibility={packageVisibility}
-              groupIds={packageGroupIds}
-              onChange={(next) => {
-                setPackageVisibility(next.visibility);
-                setPackageGroupIds(
-                  next.visibility === "groups" ? next.groupIds : [],
-                );
-              }}
-            />
-          </Form.Item>
+          <div className={styles.formOptions}>
+            <div className={styles.formOptionRowVisibility}>
+              <div className={styles.formOptionCopy}>
+                <span className={styles.switchLabel}>
+                  {t("resourceVisibility.label")}
+                </span>
+                <span className={styles.formOptionHint}>
+                  {t("skillPackages.visibilityHint")}
+                </span>
+              </div>
+              <ResourceVisibilityFields
+                allowOwner
+                visibility={packageVisibility}
+                groupIds={packageGroupIds}
+                onChange={(next) => {
+                  setPackageVisibility(next.visibility);
+                  setPackageGroupIds(
+                    next.visibility === "groups" ? next.groupIds : [],
+                  );
+                }}
+              />
+            </div>
+          </div>
         </Form>
       </Drawer>
 

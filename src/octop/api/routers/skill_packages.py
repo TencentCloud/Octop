@@ -445,6 +445,8 @@ async def create_skill_package(
 ) -> dict[str, Any]:
     store = _store(server)
     name = _required(body.name, "name")
+    if body.visibility is not None:
+        _package_access(server).validate_visibility(body.visibility, body.group_ids)
     try:
         shared = bool(body.shared)
         if body.visibility == "owner":
@@ -555,6 +557,8 @@ async def update_skill_package(
     icon_url = (
         _icon_url(body.icon_url, package_id=package_id) if body.icon_url is not None else None
     )
+    if body.visibility is not None:
+        _package_access(server).validate_visibility(body.visibility, body.group_ids)
     shared_value = None if body.shared is None else int(body.shared)
     if body.visibility == "owner":
         shared_value = 0
