@@ -36,7 +36,7 @@ def _seed_threads(db: SqlitePool, *thread_ids: str, agent_id: str = "A1") -> Non
 
 
 def _service(tmp_path: Path) -> tuple[TrajectoryService, TrajectoryLiveBus]:
-    db = SqlitePool(tmp_path / "octop.db")
+    db = SqlitePool(tmp_path / "agentbuddy.db")
     run_migrations(db)
     _seed_threads(db, "T1")
     bus = TrajectoryLiveBus()

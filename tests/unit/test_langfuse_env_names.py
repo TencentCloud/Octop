@@ -26,7 +26,9 @@ def _shipped_langfuse_names() -> set[str]:
         for line in path.read_text(encoding="utf-8").splitlines():
             if line.lstrip().startswith("#"):
                 continue
-            names.update(re.findall(r"\b(LANGFUSE_[A-Z0-9_]+|OCTOP_LANGFUSE_[A-Z0-9_]+)\b", line))
+            names.update(
+                re.findall(r"\b(LANGFUSE_[A-Z0-9_]+|AGENTBUDDY_LANGFUSE_[A-Z0-9_]+)\b", line)
+            )
     return names
 
 
@@ -51,7 +53,7 @@ def test_octop_reads_no_langfuse_env_var() -> None:
     """Guard the premise: Octop's switch lives in the settings table, not env."""
     source = (REPO_ROOT / "src/octop/infra/agents/settings/langfuse.py").read_text(encoding="utf-8")
     assert '"observability_langfuse_enabled"' in source
-    assert not re.search(r"(?:getenv|environ(?:\.get)?)\(\s*[\"']OCTOP_LANGFUSE", source)
+    assert not re.search(r"(?:getenv|environ(?:\.get)?)\(\s*[\"']AGENTBUDDY_LANGFUSE", source)
 
 
 def test_shipped_langfuse_names_have_a_reader() -> None:

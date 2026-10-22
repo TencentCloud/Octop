@@ -208,7 +208,7 @@ def test_format_stream_error_unknown_keeps_actual_cause() -> None:
 def test_format_stream_error_passes_through_send_file_failures() -> None:
     msg = (
         "send_file_to_user: no such file: "
-        "/home/octop/.octop/agents/CS6ZRF/.octop/generated/expense_stats/x.xlsx"
+        "/home/octop/.agentbuddy/agents/CS6ZRF/.octop/generated/expense_stats/x.xlsx"
     )
     assert format_stream_error(msg, "zh") == msg
     assert format_stream_error(FileNotFoundError(msg), "en") == msg

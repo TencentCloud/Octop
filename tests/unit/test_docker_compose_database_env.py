@@ -1,4 +1,4 @@
-"""Compose must forward OCTOP_DATABASE_* into the container (issue #152)."""
+"""Compose must forward AGENTBUDDY_DATABASE_* into the container (issue #152)."""
 
 from __future__ import annotations
 

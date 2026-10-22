@@ -131,7 +131,7 @@ func installedPackageVersion(root string) string {
 }
 
 func bundledPortableVersion() (string, error) {
-	if os.Getenv("OCTOP_DESKTOP_PORTABLE_ZIP") == "" && len(embeddedPortable) > 0 {
+	if os.Getenv("AGENTBUDDY_DESKTOP_PORTABLE_ZIP") == "" && len(embeddedPortable) > 0 {
 		reader, err := zip.NewReader(bytes.NewReader(embeddedPortable), int64(len(embeddedPortable)))
 		if err != nil {
 			return "", err
@@ -215,7 +215,7 @@ func metadataVersion(text string) string {
 }
 
 func extractPortable(root string) error {
-	if os.Getenv("OCTOP_DESKTOP_PORTABLE_ZIP") != "" {
+	if os.Getenv("AGENTBUDDY_DESKTOP_PORTABLE_ZIP") != "" {
 		zipPath, err := bundledPortableZip()
 		if err != nil {
 			return err
@@ -233,7 +233,7 @@ func extractPortable(root string) error {
 }
 
 func bundledPortableZip() (string, error) {
-	if override := os.Getenv("OCTOP_DESKTOP_PORTABLE_ZIP"); override != "" {
+	if override := os.Getenv("AGENTBUDDY_DESKTOP_PORTABLE_ZIP"); override != "" {
 		if _, err := os.Stat(override); err != nil {
 			return "", fmt.Errorf("bundled portable package: %w", err)
 		}

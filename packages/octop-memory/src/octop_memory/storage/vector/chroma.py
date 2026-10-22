@@ -14,7 +14,7 @@ Usage example:
 
     index = ChromaVectorIndex(
         collection_name="my_agent",
-        persist_directory="~/.octop-memory/chroma",
+        persist_directory="~/.agentbuddy/memory/chroma",
     )
     index.ensure_collection(vector_size=1536)
     index.upsert("atom-123", [0.1, 0.2, ...], {"entity_id": "proj-A"})
@@ -44,7 +44,7 @@ class ChromaVectorIndex:
 
     Args:
         collection_name: ChromaDB collection name; recommended to match the Memory namespace.
-        persist_directory: data persistence directory. Defaults to ``~/.octop-memory/chroma``.
+        persist_directory: data persistence directory. Defaults to ``~/.agentbuddy/memory/chroma``.
         host: if using ChromaDB in HTTP server mode, specify the host (persist_directory is
             ignored in this case).
         port: ChromaDB HTTP server port, default 8000.
@@ -54,7 +54,7 @@ class ChromaVectorIndex:
         self,
         collection_name: str,
         *,
-        persist_directory: str = "~/.octop-memory/chroma",
+        persist_directory: str = "~/.agentbuddy/memory/chroma",
         host: str | None = None,
         port: int = 8000,
     ) -> None:

@@ -32,12 +32,12 @@ agentbuddy-<plat>/
    beside the executable (Linux); the desktop shell does not download it at runtime.
 2. Extract to a writable user directory **outside** `app.asar`.
 3. On macOS, after checksum: `xattr -dr com.apple.quarantine <extractDir>`.
-4. Set `OCTOP_HOME` to agentbuddy's default data dir (`~/.octop`, or `$OCTOP_HOME`
+4. Set `AGENTBUDDY_HOME` to agentbuddy's default data dir (`~/.agentbuddy`, or `$AGENTBUDDY_HOME`
    if already set). Do **not** use the zip's `./data` folder when launching
    from the Wails desktop shell (`desktop/src`).
-   Extract the zip under `~/.octop/portable/` so runtime files stay next to
+   Extract the zip under `~/.agentbuddy/portable/` so runtime files stay next to
    user data without overwriting `octop.db`.
-5. Set `PYTHONNOUSERSITE=1` and `OCTOP_GREEN_PACKAGES=<extract>/packages`.
+5. Set `PYTHONNOUSERSITE=1` and `AGENTBUDDY_GREEN_PACKAGES=<extract>/packages`.
    **Do not set `PYTHONPATH`.**
 
 6. Spawn `launch.py run` **without** `--host` or `--port`. Those flags are
@@ -45,11 +45,11 @@ agentbuddy-<plat>/
    `bind_host` on every start. Pass them only when the user asked to change
    the saved listen address. If `GET /api/health` on the preferred port is
    already agentbuddy (`ok`, `users_loaded`, and `agents_running`), do not spawn;
-   load that URL. Also check `OCTOP_HOME/desktop-port` when the preferred port
+   load that URL. Also check `AGENTBUDDY_HOME/desktop-port` when the preferred port
    is not agentbuddy: that file is the port a previous desktop start actually bound
    after a conflict, and a live health check there means attach instead of
    starting a second server. If the port is taken by something else, set
-   `OCTOP_PORT` to the next free port, then write that port to `desktop-port`.
+   `AGENTBUDDY_PORT` to the next free port, then write that port to `desktop-port`.
    The override applies to this process only and is not saved to `config.json`.
    Delete `desktop-port` when the process you started exits. A listen failure
    other than "address already in use" is reported immediately — do not scan
@@ -58,9 +58,9 @@ agentbuddy-<plat>/
    - macOS / Linux: `<extract>/runtime/bin/python3 <extract>/launch.py run`
    - Windows: `<extract>/runtime/python.exe <extract>/launch.py run`
 
-7. Read `bind_host` and `port` from `OCTOP_HOME/config.json` (defaults
-   `127.0.0.1` and `8088` when the file or keys are absent; `OCTOP_BIND_HOST`
-   / `OCTOP_PORT` override the file for this process and are not saved).
+7. Read `bind_host` and `port` from `AGENTBUDDY_HOME/config.json` (defaults
+   `127.0.0.1` and `8088` when the file or keys are absent; `AGENTBUDDY_BIND_HOST`
+   / `AGENTBUDDY_PORT` override the file for this process and are not saved).
    When `bind_host` is `0.0.0.0` or `::`, poll and load
    `http://127.0.0.1:<port>/`. Otherwise use the configured host.
 8. First run uses the **normal agentbuddy setup wizard** (create admin). The

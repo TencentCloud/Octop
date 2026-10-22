@@ -42,7 +42,7 @@ PostgreSQL 不进入 SQLite 读取入口，继续经 graph 恢复消息；这不
 1. 先停止新请求，等待运行中的任务结束。保留当前应用版本及完整数据目录备份。
 2. 在测试数据副本中安装包含上述变更的兼容版本。
 3. 在现有 `config.json` 增加 `"history_v2_enabled": true`，或设置
-   `OCTOP_HISTORY_V2_ENABLED=true` 后重启。默认值为 false。
+   `AGENTBUDDY_HISTORY_V2_ENABLED=true` 后重启。默认值为 false。
 4. 新文件位于政务伙伴数据根目录下的 `history_v2.sqlite`，旁边有
    `history_v2.required` 标记。不要单独删除或移动其中之一。
 5. 对一段旧会话继续聊天，刷新并翻到切换边界之前；再测试工具调用、可见 thinking、

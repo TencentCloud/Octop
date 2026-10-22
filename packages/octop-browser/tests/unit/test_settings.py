@@ -28,8 +28,10 @@ def test_defaults_match_expected():
 
 
 def test_state_dir_prefers_new_name_for_fresh_installs(monkeypatch, tmp_path):
+    monkeypatch.delenv("AGENTBUDDY_HOME", raising=False)
+    monkeypatch.delenv("OCTOP_HOME", raising=False)
     monkeypatch.setattr(Path, "home", staticmethod(lambda: tmp_path))
-    assert state_dir() == tmp_path / ".octop-browser"
+    assert state_dir() == tmp_path / ".agentbuddy" / "browser"
 
 
 def test_state_dir_keeps_using_legacy_dir_when_present(monkeypatch, tmp_path):
@@ -44,12 +46,14 @@ def test_state_dir_keeps_using_legacy_dir_when_present(monkeypatch, tmp_path):
 
 
 def test_state_dir_prefers_new_dir_when_both_exist(monkeypatch, tmp_path):
-    from octop_browser.settings import _LEGACY_STATE_DIR, _STATE_DIR
+    from octop_browser.settings import _LEGACY_STATE_DIR, _STANDALONE_STATE_DIR
 
+    monkeypatch.delenv("AGENTBUDDY_HOME", raising=False)
+    monkeypatch.delenv("OCTOP_HOME", raising=False)
+    (tmp_path / _STANDALONE_STATE_DIR).mkdir()
     (tmp_path / _LEGACY_STATE_DIR).mkdir()
-    (tmp_path / _STATE_DIR).mkdir()
     monkeypatch.setattr(Path, "home", staticmethod(lambda: tmp_path))
-    assert state_dir() == tmp_path / _STATE_DIR
+    assert state_dir() == tmp_path / _STANDALONE_STATE_DIR
 
 
 def test_env_override_profiles_dir(monkeypatch, tmp_path):

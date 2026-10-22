@@ -13,7 +13,7 @@ from uuid import uuid4
 
 from octop_harness.backends.workspace import BackendWorkspace
 
-from octop.infra.agents.builtin_skills import OCTOP_BUILTIN_SKILLS_ROOT
+from octop.infra.agents.builtin_skills import AGENTBUDDY_BUILTIN_SKILLS_ROOT
 from octop.infra.agents.experts.avatar import copy_workspace_avatar_to_dir
 from octop.infra.agents.experts.catalog import (
     MANIFEST_FILENAME,
@@ -29,7 +29,7 @@ _EXCLUDED_PARTS = frozenset(
         ".git",
         "__pycache__",
         ".harness-materialize",
-        OCTOP_BUILTIN_SKILLS_ROOT,
+        AGENTBUDDY_BUILTIN_SKILLS_ROOT,
         # Runtime / user-session data — never seed into published templates.
         "inbound",
         "daily",
@@ -56,6 +56,8 @@ _SEEDABLE_GLOB_PATTERNS = (
     "*.md",
     "skills/**/*",
     "agents/*.md",
+    ".agentbuddy/skills/**/*",
+    ".agentbuddy/agents/*.md",
     ".octop/skills/**/*",
     ".octop/agents/*.md",
 )
@@ -268,9 +270,9 @@ async def _workspace_file_paths(workspace: BackendWorkspace) -> list[str]:
 
 def _logical_seed_path(path: str) -> str:
     rel = path.replace("\\", "/").lstrip("/")
-    prefix = ".octop/"
-    if rel.startswith(prefix):
-        return rel[len(prefix) :]
+    for prefix in (".agentbuddy/", ".octop/"):
+        if rel.startswith(prefix):
+            return rel[len(prefix) :]
     return rel
 
 

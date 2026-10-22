@@ -186,7 +186,7 @@ def test_download_uses_winner_then_falls_back(monkeypatch, tmp_path: Path) -> No
 def test_hf_snapshot_emits_tqdm_byte_progress(monkeypatch, tmp_path: Path) -> None:
     import types
 
-    monkeypatch.setenv("OCTOP_HOME", str(tmp_path))
+    monkeypatch.setenv("AGENTBUDDY_HOME", str(tmp_path))
     seen: list[tuple[int, int | None, str]] = []
 
     def fake_snapshot_download(**kwargs: object) -> str:
@@ -257,7 +257,7 @@ def test_snapshot_disables_xet_before_hub_import(monkeypatch, tmp_path: Path) ->
 
 
 def test_cos_base_env_override(monkeypatch) -> None:
-    monkeypatch.setenv("OCTOP_ONNX_COS_BASE", "https://example-cos.example.com/")
+    monkeypatch.setenv("AGENTBUDDY_ONNX_COS_BASE", "https://example-cos.example.com/")
     assert cos_file_url("BAAI/bge-small-zh-v1.5", "config.json") == (
         "https://example-cos.example.com/models/embedding/BAAI/bge-small-zh-v1.5/config.json"
     )

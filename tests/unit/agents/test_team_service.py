@@ -43,7 +43,7 @@ class _PathWorkspace:
 
 @pytest.fixture
 def team_env(tmp_path: Path) -> dict[str, object]:
-    db = SqlitePool(tmp_path / "octop.db")
+    db = SqlitePool(tmp_path / "agentbuddy.db")
     run_migrations(db)
     users = UserRepo(db)
     users.create(username="owner", password_hash="h", role="user")
@@ -145,7 +145,7 @@ def test_roster_lives_in_workspace_manifest(team_env: dict[str, object]) -> None
     assert isinstance(teams, TeamService)
     teams.replace_members("host", ["a", "b"])
     assert teams.member_ids("host") == ["a", "b"]
-    raw = workspace_for("host").read_text(".octop/manifest.json")
+    raw = workspace_for("host").read_text("manifest.json")
     assert raw is not None
     manifest = json.loads(raw)
     assert manifest["kind"] == "team"
@@ -171,7 +171,7 @@ def test_team_icon_url_falls_back_to_cartoon() -> None:
 
 
 @pytest.mark.asyncio
-async def test_seed_team_template_writes_octop_manifest() -> None:
+async def test_seed_team_template_writes_workspace_manifest() -> None:
     from octop.infra.agents.teams.service import seed_team_template
 
     uploaded: dict[str, bytes] = {}
@@ -186,7 +186,7 @@ async def test_seed_team_template_writes_octop_manifest() -> None:
 
     await seed_team_template(_Workspace(), member_ids=["a", "b"])
     assert "AGENTS.md" in uploaded
-    raw = uploaded[".octop/manifest.json"]
+    raw = uploaded["manifest.json"]
     data = json.loads(raw.decode("utf-8"))
     assert data["kind"] == "team"
     assert data["members"] == ["a", "b"]

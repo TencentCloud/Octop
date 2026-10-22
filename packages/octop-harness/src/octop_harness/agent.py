@@ -1119,7 +1119,7 @@ class HarnessAgent:
             return configured.resolve()
 
         # Agent-facing form under Octop scoped defaults (and ``/`` alone).
-        if text == "/" or text.startswith("/.octop/"):
+        if text == "/" or text.startswith(("/.octop/", "/.agentbuddy/")):
             rel = text.lstrip("/")
             return (root / rel).resolve() if rel else root
 
@@ -1143,7 +1143,7 @@ class HarnessAgent:
         """
         configured = Path(self._config.workspace_dir)
         text = configured.as_posix().replace("\\", "/").strip()
-        if text == "/" or text.startswith("/.octop/"):
+        if text == "/" or text.startswith(("/.octop/", "/.agentbuddy/")):
             return Path("/") if text == "/" else Path(text)
 
         ws = self._workspace_path.expanduser().resolve()

@@ -55,7 +55,7 @@ def test_update_yes_runs_upgrade(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(update_cmd, "get_local_version", lambda: "0.1.0")
     monkeypatch.setattr(update_cmd, "get_editable_path", lambda: None)
     monkeypatch.setattr(
-        update_cmd, "resolve_venv_python", lambda: "/home/user/.octop/venv/bin/python"
+        update_cmd, "resolve_venv_python", lambda: "/home/user/.agentbuddy/venv/bin/python"
     )
 
     called: dict[str, bool] = {}
@@ -73,7 +73,7 @@ def test_update_yes_runs_upgrade(monkeypatch: pytest.MonkeyPatch) -> None:
     assert called.get("ran") is True
     assert called["kwargs"]["version"] == "9.9.9"
     assert called["kwargs"]["allow_prerelease"] is False
-    assert "/home/user/.octop/venv/bin/python" in result.output
+    assert "/home/user/.agentbuddy/venv/bin/python" in result.output
 
 
 def test_update_already_latest(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -94,7 +94,7 @@ def test_update_already_latest(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 def test_build_upgrade_command_uses_managed_venv_python() -> None:
-    python = "/home/user/.octop/venv/bin/python"
+    python = "/home/user/.agentbuddy/venv/bin/python"
     cmd = self_update.build_upgrade_command("uv", python, index_url="https://mirror.example/simple")
     assert cmd is not None
     assert "--python" in cmd
@@ -106,7 +106,7 @@ def test_build_upgrade_command_uses_managed_venv_python() -> None:
 
 
 def test_build_upgrade_command_pins_version() -> None:
-    python = "/home/user/.octop/venv/bin/python"
+    python = "/home/user/.agentbuddy/venv/bin/python"
     cmd = self_update.build_upgrade_command("uv", python, version="0.9.33")
     assert cmd is not None
     assert "octop==0.9.33" in cmd
@@ -118,7 +118,7 @@ def test_build_upgrade_command_green_packages_target(
 ) -> None:
     packages = tmp_path / "packages"
     packages.mkdir()
-    monkeypatch.setenv("OCTOP_GREEN_PACKAGES", str(packages))
+    monkeypatch.setenv("AGENTBUDDY_GREEN_PACKAGES", str(packages))
     python = "/opt/octop/runtime/bin/python3"
     cmd = self_update.build_upgrade_command("uv", python)
     assert cmd is not None
@@ -134,8 +134,8 @@ def test_resolve_venv_python_green_uses_current_interpreter(
     venv_python = tmp_path / "venv" / "bin" / "python"
     venv_python.parent.mkdir(parents=True)
     venv_python.write_text("#!/bin/sh\n", encoding="utf-8")
-    monkeypatch.setenv("OCTOP_HOME", str(tmp_path))
-    monkeypatch.setenv("OCTOP_GREEN_PACKAGES", str(packages))
+    monkeypatch.setenv("AGENTBUDDY_HOME", str(tmp_path))
+    monkeypatch.setenv("AGENTBUDDY_GREEN_PACKAGES", str(packages))
     monkeypatch.setattr(self_update.sys, "executable", "/bundled/python3")
     monkeypatch.setattr(self_update.sys, "prefix", "/usr")
     monkeypatch.setattr(self_update.sys, "base_prefix", "/usr")
@@ -149,7 +149,7 @@ def test_resolve_venv_python_prefers_octop_home(
     venv_python.parent.mkdir(parents=True)
     venv_python.write_text("#!/bin/sh\n", encoding="utf-8")
 
-    monkeypatch.setenv("OCTOP_HOME", str(tmp_path))
+    monkeypatch.setenv("AGENTBUDDY_HOME", str(tmp_path))
     monkeypatch.setattr(self_update.sys, "prefix", "/usr")
     monkeypatch.setattr(self_update.sys, "base_prefix", "/usr")
     monkeypatch.delenv("VIRTUAL_ENV", raising=False)
@@ -208,7 +208,7 @@ def test_update_allow_prerelease_installs_prerelease(
     monkeypatch.setattr(update_cmd, "get_local_version", lambda: "0.1.0")
     monkeypatch.setattr(update_cmd, "get_editable_path", lambda: None)
     monkeypatch.setattr(
-        update_cmd, "resolve_venv_python", lambda: "/home/user/.octop/venv/bin/python"
+        update_cmd, "resolve_venv_python", lambda: "/home/user/.agentbuddy/venv/bin/python"
     )
 
     called: dict[str, object] = {}

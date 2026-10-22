@@ -15,7 +15,7 @@ AUTH_KEY = "meituan-c-user-auth"
 LOG_FILE = Path(tempfile.gettempdir()) / "huisheng" / "huisheng_auth.log"
 TOKEN_FILE = (
     Path(
-        os.environ.get("OCTOP_AUTH_DIR")
+        os.environ.get("AGENTBUDDY_AUTH_DIR")
         or Path.home() / ".workbuddy" / "credentials" / "meituan-living-deals-assistant"
     )
     / "token.json"

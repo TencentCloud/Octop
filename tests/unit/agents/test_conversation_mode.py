@@ -41,7 +41,7 @@ def test_plan_relpath_from_artifact() -> None:
 def test_is_allowed_plan_path_accepts_workspace_prefix() -> None:
     assert is_allowed_plan_path("plans/foo.md")
     assert is_allowed_plan_path("/plans/foo.md")
-    assert is_allowed_plan_path("/data/.octop/agents/ABC/plans/foo.md")
+    assert is_allowed_plan_path("/data/.agentbuddy/agents/ABC/plans/foo.md")
     assert not is_allowed_plan_path("SOUL.md")
     assert not is_allowed_plan_path("docs/foo.md")
 
@@ -51,7 +51,7 @@ def test_harness_allowlist_accepts_workspace_plan_after_octop_patch() -> None:
         is_allowed_plan_path as harness_ok,
     )
 
-    assert harness_ok("/data/.octop/agents/ABC/plans/foo.md")
+    assert harness_ok("/data/.agentbuddy/agents/ABC/plans/foo.md")
     assert harness_ok("plans/foo.md")
     assert not harness_ok("SOUL.md")
 
@@ -59,7 +59,7 @@ def test_harness_allowlist_accepts_workspace_plan_after_octop_patch() -> None:
 def test_workspace_plan_path_rewrites_container_root() -> None:
     # POSIX-style so the container-root rewrite branch is exercised on Windows too;
     # drive-path workspaces are intentionally passed through below.
-    ws = PurePosixPath("/data/.octop/agents/ABC123")
+    ws = PurePosixPath("/data/.agentbuddy/agents/ABC123")
     expected = f"{ws.as_posix()}/plans/foo.md"
     assert workspace_plan_path("plans/foo.md", ws) == expected
     assert workspace_plan_path("/plans/foo.md", ws) == expected

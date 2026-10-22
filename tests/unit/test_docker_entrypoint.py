@@ -24,7 +24,7 @@ ENTRYPOINT = REPO / "docker" / "docker-entrypoint.sh"
 
 
 def _source_helpers() -> str:
-    return f'OCTOP_ENTRYPOINT_LIB=1; source "{ENTRYPOINT}"'
+    return f'AGENTBUDDY_ENTRYPOINT_LIB=1; source "{ENTRYPOINT}"'
 
 
 def _bash(script: str, *, env: dict[str, str] | None = None) -> subprocess.CompletedProcess[str]:
@@ -44,8 +44,8 @@ def _bash(script: str, *, env: dict[str, str] | None = None) -> subprocess.Compl
 @posix_only
 def test_entrypoint_common_passwords_match_python() -> None:
     text = ENTRYPOINT.read_text(encoding="utf-8")
-    match = re.search(r'^_OCTOP_COMMON_PASSWORDS="([^"]+)"$', text, re.MULTILINE)
-    assert match, "entrypoint must declare _OCTOP_COMMON_PASSWORDS"
+    match = re.search(r'^_AGENTBUDDY_COMMON_PASSWORDS="([^"]+)"$', text, re.MULTILINE)
+    assert match, "entrypoint must declare _AGENTBUDDY_COMMON_PASSWORDS"
     shell_set = set(match.group(1).split())
     assert shell_set == set(_COMMON_PASSWORDS)
 
@@ -109,19 +109,19 @@ def test_entrypoint_rejects_passwords_that_miss_policy(password: str) -> None:
 @posix_only
 def test_seed_wizard_password_writes_volume_and_home_link(tmp_path: Path) -> None:
     home = tmp_path / "data"
-    octop_home = home / ".octop"
+    octop_home = home / ".agentbuddy"
     home.mkdir()
     script = _source_helpers() + "\noctop_seed_wizard_password\noctop_write_setup_hint\n"
     result = _bash(
         script,
         env={
             "HOME": str(home),
-            "OCTOP_HOME": str(octop_home),
+            "AGENTBUDDY_HOME": str(octop_home),
             "PORT": "8088",
         },
     )
     assert result.returncode == 0, result.stderr
-    wizard = octop_home / "octop-login.txt"
+    wizard = octop_home / "agentbuddy-login.txt"
     assert wizard.is_file()
     pw = wizard.read_text(encoding="utf-8").strip()
     assert pw
@@ -148,13 +148,13 @@ def _run_first_boot(
     args: str = "true",
 ) -> tuple[subprocess.CompletedProcess[str], Path]:
     home = tmp_path / "data"
-    octop_home = home / ".octop"
+    octop_home = home / ".agentbuddy"
     home.mkdir(exist_ok=True)
     stub = (
         run_init
         or """
 octop_run_init() {
-  printf '%s' "$1" > "$OCTOP_HOME/init-password.txt"
+  printf '%s' "$1" > "$AGENTBUDDY_HOME/init-password.txt"
   : > "$2"
   return 0
 }
@@ -162,10 +162,10 @@ octop_run_init() {
     )
     env = {
         "HOME": str(home),
-        "OCTOP_HOME": str(octop_home),
+        "AGENTBUDDY_HOME": str(octop_home),
         "PORT": "8088",
-        "OCTOP_ADMIN_USERNAME": "admin",
-        "OCTOP_DEFAULT_PASSWORD": "" if password is None else password,
+        "AGENTBUDDY_ADMIN_USERNAME": "admin",
+        "AGENTBUDDY_DEFAULT_PASSWORD": "" if password is None else password,
     }
     script = _source_helpers() + "\n" + stub + f"\noctop_entrypoint_main {args}\n"
     return _bash(script, env=env), octop_home
@@ -181,7 +181,7 @@ def test_first_boot_valid_password_creates_admin(tmp_path: Path, password: str) 
     assert "agentbuddy Login Credential" in cred
     assert f"Password: {password}" in cred
     assert "Username: admin" in cred
-    assert not (octop_home / "octop-login.txt").exists()
+    assert not (octop_home / "agentbuddy-login.txt").exists()
 
 
 @posix_only
@@ -204,7 +204,7 @@ def test_first_boot_invalid_or_missing_password_starts_wizard(
     result, octop_home = _run_first_boot(tmp_path, password=password)
     assert result.returncode == 0, result.stderr + result.stdout
     assert not (octop_home / "init-password.txt").exists()
-    wizard = octop_home / "octop-login.txt"
+    wizard = octop_home / "agentbuddy-login.txt"
     assert wizard.is_file()
     hint = (octop_home / "credential.txt").read_text(encoding="utf-8")
     assert "Setup Required" in hint
@@ -212,7 +212,7 @@ def test_first_boot_invalid_or_missing_password_starts_wizard(
     if password:
         assert "未通过密码策略" in result.stdout
     else:
-        assert "未设置 OCTOP_DEFAULT_PASSWORD" in result.stdout
+        assert "未设置 AGENTBUDDY_DEFAULT_PASSWORD" in result.stdout
 
 
 @posix_only
@@ -229,7 +229,7 @@ octop_run_init() {
     )
     assert result.returncode == 0, result.stderr + result.stdout
     assert "改为启动设置向导" in result.stdout
-    assert (octop_home / "octop-login.txt").is_file()
+    assert (octop_home / "agentbuddy-login.txt").is_file()
     assert "Setup Required" in (octop_home / "credential.txt").read_text(encoding="utf-8")
 
 
@@ -247,15 +247,15 @@ octop_run_init() {
     )
     assert result.returncode != 0
     assert "不是密码策略问题" in result.stderr
-    assert not (octop_home / "octop-login.txt").exists()
+    assert not (octop_home / "agentbuddy-login.txt").exists()
 
 
 @posix_only
 def test_existing_db_skips_password_init(tmp_path: Path) -> None:
     home = tmp_path / "data"
-    octop_home = home / ".octop"
+    octop_home = home / ".agentbuddy"
     octop_home.mkdir(parents=True)
-    (octop_home / "octop.db").write_text("stub", encoding="utf-8")
+    (octop_home / "agentbuddy.db").write_text("stub", encoding="utf-8")
     result, _ = _run_first_boot(tmp_path, password="GoodPass1")
     assert result.returncode == 0, result.stderr + result.stdout
     assert not (octop_home / "init-password.txt").exists()
@@ -280,19 +280,19 @@ octop_validate_password "$pw"
 
 # ---------------------------------------------------------------------------
 # Init guard across restarts (issue #1866). PostgreSQL / external backends
-# never create ``octop.db`` in the data volume, so "already bootstrapped"
+# never create ``agentbuddy.db`` in the data volume, so "already bootstrapped"
 # must be tracked with a backend-agnostic marker written by the entrypoint
 # after a successful ``octop init``.
 # ---------------------------------------------------------------------------
 
 _STUB_OCTOP = r"""#!/usr/bin/env bash
-printf '%s\n' "$*" >> "$OCTOP_STUB_LOG"
+printf '%s\n' "$*" >> "$AGENTBUDDY_STUB_LOG"
 if [ "$1" = "init" ]; then
-    if [ "${OCTOP_STUB_INIT_FAIL:-0}" = "1" ]; then
+    if [ "${AGENTBUDDY_STUB_INIT_FAIL:-0}" = "1" ]; then
         echo "unexpected database error" >&2
         exit 1
     fi
-    if [ "${OCTOP_STUB_INIT_ALREADY_EXISTS:-0}" = "1" ]; then
+    if [ "${AGENTBUDDY_STUB_INIT_ALREADY_EXISTS:-0}" = "1" ]; then
         printf "  admin user 'octop' already exists, skipping.\n"
     fi
 fi
@@ -301,7 +301,7 @@ exit 0
 
 
 def _init_marker(tmp_path: Path) -> Path:
-    return tmp_path / "data" / ".octop" / ".initialized"
+    return tmp_path / "data" / ".agentbuddy" / ".initialized"
 
 
 def _run_entrypoint(
@@ -325,11 +325,11 @@ def _run_entrypoint(
     env.update(
         {
             "HOME": str(home),
-            "OCTOP_HOME": str(home / ".octop"),
+            "AGENTBUDDY_HOME": str(home / ".agentbuddy"),
             "PATH": str(stub_dir) + os.pathsep + env.get("PATH", ""),
-            "OCTOP_STUB_LOG": str(log),
-            "OCTOP_DEFAULT_PASSWORD": "Str0ngPass1",
-            "OCTOP_PORT": "8088",
+            "AGENTBUDDY_STUB_LOG": str(log),
+            "AGENTBUDDY_DEFAULT_PASSWORD": "Str0ngPass1",
+            "AGENTBUDDY_PORT": "8088",
         }
     )
     if extra_env:
@@ -349,16 +349,16 @@ def _run_entrypoint(
 
 @bash_only
 def test_entrypoint_restart_skips_init_for_external_db(tmp_path: Path) -> None:
-    """Issue #1866: with PostgreSQL there is no octop.db; a restart must not re-run init."""
+    """Issue #1866: with PostgreSQL there is no agentbuddy.db; a restart must not re-run init."""
     pg_env = {
-        "OCTOP_DATABASE_DRIVER": "postgresql",
-        "OCTOP_DATABASE_URL": "postgresql://octop:octop@postgres:5432/octop",
+        "AGENTBUDDY_DATABASE_DRIVER": "postgresql",
+        "AGENTBUDDY_DATABASE_URL": "postgresql://octop:octop@postgres:5432/octop",
     }
     first, calls = _run_entrypoint(tmp_path, extra_env=pg_env)
     assert first.returncode == 0, first.stderr
     assert any(call.startswith("init ") for call in calls), calls
     assert any(call.startswith("run --host") for call in calls), calls
-    assert not (tmp_path / "data" / ".octop" / "octop.db").exists()
+    assert not (tmp_path / "data" / ".agentbuddy" / "agentbuddy.db").exists()
     assert _init_marker(tmp_path).is_file(), first.stdout
 
     second, calls = _run_entrypoint(tmp_path, extra_env=pg_env)
@@ -369,10 +369,10 @@ def test_entrypoint_restart_skips_init_for_external_db(tmp_path: Path) -> None:
 
 @bash_only
 def test_entrypoint_sqlite_install_skips_init_without_marker(tmp_path: Path) -> None:
-    """Backward compat: an existing octop.db still short-circuits the guard."""
-    octop_home = tmp_path / "data" / ".octop"
+    """Backward compat: an existing agentbuddy.db still short-circuits the guard."""
+    octop_home = tmp_path / "data" / ".agentbuddy"
     octop_home.mkdir(parents=True)
-    (octop_home / "octop.db").write_text("", encoding="utf-8")
+    (octop_home / "agentbuddy.db").write_text("", encoding="utf-8")
 
     result, calls = _run_entrypoint(tmp_path)
     assert result.returncode == 0, result.stderr
@@ -383,12 +383,12 @@ def test_entrypoint_sqlite_install_skips_init_without_marker(tmp_path: Path) -> 
 @bash_only
 def test_entrypoint_adopts_existing_admin_without_rewriting_credentials(tmp_path: Path) -> None:
     """Upgrade path: init now no-ops on an already-bootstrapped DB; the credential card must survive."""
-    octop_home = tmp_path / "data" / ".octop"
+    octop_home = tmp_path / "data" / ".agentbuddy"
     octop_home.mkdir(parents=True)
     credential = octop_home / "credential.txt"
     credential.write_text("ORIGINAL CREDENTIALS\n", encoding="utf-8")
 
-    result, _ = _run_entrypoint(tmp_path, extra_env={"OCTOP_STUB_INIT_ALREADY_EXISTS": "1"})
+    result, _ = _run_entrypoint(tmp_path, extra_env={"AGENTBUDDY_STUB_INIT_ALREADY_EXISTS": "1"})
     assert result.returncode == 0, result.stderr
     assert credential.read_text(encoding="utf-8") == "ORIGINAL CREDENTIALS\n"
     assert _init_marker(tmp_path).is_file()
@@ -400,7 +400,7 @@ def test_entrypoint_adopts_existing_admin_without_rewriting_credentials(tmp_path
 
 @bash_only
 def test_entrypoint_init_failure_leaves_no_marker_and_retries_next_boot(tmp_path: Path) -> None:
-    first, _ = _run_entrypoint(tmp_path, extra_env={"OCTOP_STUB_INIT_FAIL": "1"})
+    first, _ = _run_entrypoint(tmp_path, extra_env={"AGENTBUDDY_STUB_INIT_FAIL": "1"})
     assert first.returncode == 1, first.stdout
     assert not _init_marker(tmp_path).exists()
 

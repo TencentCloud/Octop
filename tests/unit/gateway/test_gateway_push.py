@@ -22,7 +22,7 @@ from octop.infra.gateway.ws import WS_CHANNEL_ID
 
 @pytest.fixture
 def gateway(tmp_path: Path) -> Gateway:
-    db = SqlitePool(tmp_path / "octop.db")
+    db = SqlitePool(tmp_path / "agentbuddy.db")
     run_migrations(db)
     UserRepo(db).create(username="u", password_hash="h", role="user")
     AgentRepo(db).create(agent_id="a1", user_id=1, name="Agent 1")

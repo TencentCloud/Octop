@@ -14,12 +14,12 @@ from octop.cli.main import cli
 
 @pytest.fixture
 def fake_home(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
-    octop_home = tmp_path / ".octop"
+    octop_home = tmp_path / ".agentbuddy"
     monkeypatch.setenv("HOME", str(tmp_path))
-    monkeypatch.setenv("OCTOP_HOME", str(octop_home))
+    monkeypatch.setenv("AGENTBUDDY_HOME", str(octop_home))
     monkeypatch.setattr(Path, "home", classmethod(lambda cls: tmp_path))
     for key in list(os.environ):
-        if key.startswith("OCTOP_DATABASE_"):
+        if key.startswith("AGENTBUDDY_DATABASE_"):
             monkeypatch.delenv(key, raising=False)
     return tmp_path
 
@@ -38,19 +38,19 @@ def test_init_non_interactive_creates_admin(fake_home: Path) -> None:
         ],
     )
     assert result.exit_code == 0, result.output
-    assert (fake_home / ".octop").is_dir()
-    assert (fake_home / ".octop" / "octop.db").is_file()
+    assert (fake_home / ".agentbuddy").is_dir()
+    assert (fake_home / ".agentbuddy" / "agentbuddy.db").is_file()
     # New catalog plugins are installed via the marketplace, not auto-seeded.
-    weather = fake_home / ".octop" / "plugins" / "weather" / "plugin.yaml"
+    weather = fake_home / ".agentbuddy" / "plugins" / "weather" / "plugin.yaml"
     assert not weather.is_file()
-    cfg = json.loads((fake_home / ".octop" / "config.json").read_text(encoding="utf-8"))
+    cfg = json.loads((fake_home / ".agentbuddy" / "config.json").read_text(encoding="utf-8"))
     assert "weather" not in (cfg.get("plugins") or {})
 
     from octop.infra.db.pool import SqlitePool
     from octop.infra.db.repos.users import UserRepo
     from octop.infra.utils.paths import PathLayout
 
-    paths = PathLayout(fake_home / ".octop")
+    paths = PathLayout(fake_home / ".agentbuddy")
     db = SqlitePool(paths.db)
     row = UserRepo(db).get_by_username("alice")
     assert row is not None
@@ -58,10 +58,10 @@ def test_init_non_interactive_creates_admin(fake_home: Path) -> None:
 
 
 def test_init_allows_sidecar_files_without_database(fake_home: Path) -> None:
-    """NAS / Docker shares often have login.txt before the first octop.db exists."""
-    home = fake_home / ".octop"
+    """NAS / Docker shares often have login.txt before the first agentbuddy.db exists."""
+    home = fake_home / ".agentbuddy"
     home.mkdir()
-    (home / "octop-login.txt").write_text("placeholder\n", encoding="utf-8")
+    (home / "agentbuddy-login.txt").write_text("placeholder\n", encoding="utf-8")
     runner = CliRunner()
     result = runner.invoke(
         cli,
@@ -75,8 +75,8 @@ def test_init_allows_sidecar_files_without_database(fake_home: Path) -> None:
         ],
     )
     assert result.exit_code == 0, result.output
-    assert (home / "octop.db").is_file()
-    assert (home / "octop-login.txt").read_text(encoding="utf-8") == "placeholder\n"
+    assert (home / "agentbuddy.db").is_file()
+    assert (home / "agentbuddy-login.txt").read_text(encoding="utf-8") == "placeholder\n"
 
 
 def test_init_refuses_to_overwrite_without_force(fake_home: Path) -> None:
@@ -127,7 +127,7 @@ def test_init_force_resets(fake_home: Path) -> None:
     from octop.infra.db.repos.users import UserRepo
     from octop.infra.utils.paths import PathLayout
 
-    paths = PathLayout(fake_home / ".octop")
+    paths = PathLayout(fake_home / ".agentbuddy")
     repo = UserRepo(SqlitePool(paths.db))
     assert repo.get_by_username("bob") is not None
 
@@ -135,7 +135,7 @@ def test_init_force_resets(fake_home: Path) -> None:
 def test_init_rerun_skips_existing_admin_without_local_db(
     fake_home: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """PostgreSQL-style layout (no ``~/.octop/octop.db``): a rerun must not hit UNIQUE(username).
+    """PostgreSQL-style layout (no ``~/.agentbuddy/octop.db``): a rerun must not hit UNIQUE(username).
 
     Issue #1866: the Docker entrypoint re-invoked ``octop init`` on every restart for
     external-DB backends, and the unconditional admin INSERT crashed with
@@ -143,8 +143,8 @@ def test_init_rerun_skips_existing_admin_without_local_db(
     """
     external = fake_home / "external"
     external.mkdir()
-    monkeypatch.setenv("OCTOP_DATABASE_DRIVER", "sqlite")
-    monkeypatch.setenv("OCTOP_DATABASE_SQLITE_PATH", str(external / "control.db"))
+    monkeypatch.setenv("AGENTBUDDY_DATABASE_DRIVER", "sqlite")
+    monkeypatch.setenv("AGENTBUDDY_DATABASE_SQLITE_PATH", str(external / "control.db"))
     runner = CliRunner()
     args = [
         "init",
@@ -156,7 +156,7 @@ def test_init_rerun_skips_existing_admin_without_local_db(
     ]
     r1 = runner.invoke(cli, args)
     assert r1.exit_code == 0, r1.output
-    assert not (fake_home / ".octop" / "octop.db").exists()
+    assert not (fake_home / ".agentbuddy" / "agentbuddy.db").exists()
 
     r2 = runner.invoke(cli, args)
     assert r2.exit_code == 0, r2.output or str(r2.exception)
@@ -179,8 +179,8 @@ def test_init_password_too_short_rejects(fake_home: Path) -> None:
 
 
 def test_init_env_vars_supply_credentials(fake_home: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("OCTOP_ADMIN_USERNAME", "fromenv")
-    monkeypatch.setenv("OCTOP_ADMIN_PASSWORD", "EnvPass12")
+    monkeypatch.setenv("AGENTBUDDY_ADMIN_USERNAME", "fromenv")
+    monkeypatch.setenv("AGENTBUDDY_ADMIN_PASSWORD", "EnvPass12")
     runner = CliRunner()
     result = runner.invoke(cli, ["init", "--yes"])
     assert result.exit_code == 0, result.output
@@ -189,6 +189,6 @@ def test_init_env_vars_supply_credentials(fake_home: Path, monkeypatch: pytest.M
     from octop.infra.db.repos.users import UserRepo
     from octop.infra.utils.paths import PathLayout
 
-    paths = PathLayout(fake_home / ".octop")
+    paths = PathLayout(fake_home / ".agentbuddy")
     repo = UserRepo(SqlitePool(paths.db))
     assert repo.get_by_username("fromenv") is not None

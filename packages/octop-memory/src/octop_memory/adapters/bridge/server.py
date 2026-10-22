@@ -14,7 +14,7 @@ Usage::
 
     # PostgreSQL backend: the DSN is read from an environment variable,
     # never passed as a flag (argv is visible in process listings).
-    OCTOP_MEMORY_DSN=postgresql://user:pass@host/db octopmemory-bridge \\
+    AGENTBUDDY_MEMORY_DSN=postgresql://user:pass@host/db octopmemory-bridge \\
         --namespace openclaw__a3f2c891 \\
         --backend postgres \\
         --log-level info
@@ -84,10 +84,10 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--dsn-env",
-        default="OCTOP_MEMORY_DSN",
+        default="AGENTBUDDY_MEMORY_DSN",
         help=(
             "Name of the environment variable holding the PostgreSQL connection "
-            "string, read when --backend=postgres (default: OCTOP_MEMORY_DSN — "
+            "string, read when --backend=postgres (default: AGENTBUDDY_MEMORY_DSN — "
             "same convention as the main octop-memory CLI). The DSN itself is "
             "never accepted as a CLI flag: argv is visible in process listings."
         ),

@@ -18,7 +18,7 @@ from octop.infra.utils.paths import PathLayout
 
 @pytest.fixture
 def manager(tmp_path: Path) -> AgentManager:
-    paths = PathLayout(tmp_path / ".octop")
+    paths = PathLayout(tmp_path / ".agentbuddy")
     paths.ensure_root()
     db = SqlitePool(paths.db)
     run_migrations(db)

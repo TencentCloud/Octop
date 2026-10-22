@@ -23,6 +23,8 @@ def test_protected_keys() -> None:
     assert is_protected_env_key("HOME")
     assert is_protected_env_key("OCTOP_HOME")
     assert is_protected_env_key("OCTOP_DATABASE_URL")
+    assert is_protected_env_key("AGENTBUDDY_HOME")
+    assert is_protected_env_key("AGENTBUDDY_DATABASE_URL")
     assert not is_protected_env_key("TAVILY_API_KEY")
 
 

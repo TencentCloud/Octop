@@ -29,7 +29,7 @@ COS_ENDPOINT_DEFAULT = "https://octop-1258344699.cos.ap-guangzhou.myqcloud.com"
 COS_PREFIX = "models/embedding"
 COS_MANIFEST_NAME = "files.json"
 COS_REVISION = "cos-mirror"
-_COS_BASE_ENV = "OCTOP_ONNX_COS_BASE"
+_COS_BASE_ENV = "AGENTBUDDY_ONNX_COS_BASE"
 
 _PROBE_TIMEOUT_S = 4.0
 _USER_AGENT = "octop-onnx-download"
@@ -79,7 +79,7 @@ def _hf_repo_id(model_name: str) -> str:
 
 
 def cos_base_url() -> str:
-    """Public COS origin; override with ``OCTOP_ONNX_COS_BASE`` for a private bucket."""
+    """Public COS origin; override with ``AGENTBUDDY_ONNX_COS_BASE`` for a private bucket."""
     return os.environ.get(_COS_BASE_ENV, COS_ENDPOINT_DEFAULT).rstrip("/")
 
 

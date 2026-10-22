@@ -23,7 +23,7 @@ class BackupManifest:
     schema_version: int
     created_at: str
     home: str
-    db_file: str = "db/octop.db"
+    db_file: str = "db/agentbuddy.db"
     database_driver: str = "sqlite"
     database_dump_format: str = "sqlite_file"
     agents: list[AgentBackupEntry] = field(default_factory=list)
@@ -72,18 +72,18 @@ class BackupManifest:
             schema_version=int(data.get("schema_version", 0)),
             created_at=str(data.get("created_at", "")),
             home=str(data.get("home", "")),
-            db_file=str(data.get("db_file", "db/octop.db")),
+            db_file=str(data.get("db_file", "db/agentbuddy.db")),
             database_driver=str(data.get("database_driver", "sqlite")),
             database_dump_format=str(data.get("database_dump_format", "sqlite_file")),
             agents=agents,
             includes_config=bool(data.get("includes_config", True)),
             includes_env=bool(data.get("includes_env", False)),
             includes_skill_packages=bool(data.get("includes_skill_packages", True)),
-            # Older archives never packed ~/.octop/plugins; missing key means omit on restore.
+            # Older archives never packed ~/.agentbuddy/plugins; missing key means omit on restore.
             includes_plugins=(
                 bool(data["includes_plugins"]) if "includes_plugins" in data else False
             ),
-            # Older archives never packed ~/.octop/knowledge.
+            # Older archives never packed ~/.agentbuddy/knowledge.
             includes_knowledge=(
                 bool(data["includes_knowledge"]) if "includes_knowledge" in data else False
             ),

@@ -53,4 +53,4 @@ def test_launch_has_no_provider_seed() -> None:
     source = inspect.getsource(_load_launch_module())
     assert "_seed_initial_provider" not in source
     assert "nexusapi" not in source
-    assert "OCTOP_DESKTOP_OOB" not in source
+    assert "AGENTBUDDY_DESKTOP_OOB" not in source

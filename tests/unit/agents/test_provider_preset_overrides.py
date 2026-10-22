@@ -1,4 +1,4 @@
-"""Unit tests for publisher preset overrides (``~/.octop/provider_presets.json``)."""
+"""Unit tests for publisher preset overrides (``~/.agentbuddy/provider_presets.json``)."""
 
 from __future__ import annotations
 
@@ -79,19 +79,19 @@ def test_unknown_group_sorts_after_known_ones() -> None:
 
 
 def test_overrides_path_follows_octop_home(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("OCTOP_HOME", str(tmp_path))
+    monkeypatch.setenv("AGENTBUDDY_HOME", str(tmp_path))
     assert preset_overrides_path() == tmp_path / "provider_presets.json"
 
 
 def test_missing_file_means_no_overrides(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("OCTOP_HOME", str(tmp_path))
+    monkeypatch.setenv("AGENTBUDDY_HOME", str(tmp_path))
     assert load_preset_overrides() == {}
 
 
 def test_corrupt_file_raises_without_touching_settings(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    monkeypatch.setenv("OCTOP_HOME", str(tmp_path))
+    monkeypatch.setenv("AGENTBUDDY_HOME", str(tmp_path))
     preset_overrides_path().write_text("{", encoding="utf-8")
     with pytest.raises(OctopError) as excinfo:
         load_preset_overrides()

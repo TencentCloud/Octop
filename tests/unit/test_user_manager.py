@@ -28,7 +28,7 @@ def _insert_sso_provider(manager: UserManager, *, kind: str = "oidc") -> int:
 
 @pytest.fixture
 async def manager(tmp_path: Path) -> UserManager:
-    paths = PathLayout(tmp_path / ".octop")
+    paths = PathLayout(tmp_path / ".agentbuddy")
     paths.ensure_root()
     db = SqlitePool(paths.db)
     run_migrations(db)
@@ -428,7 +428,7 @@ async def test_enable_restores_memory(manager: UserManager):
 async def test_remove_deletes_db_and_dir(manager: UserManager, tmp_path: Path):
     await manager.create(username="a", password="TestPass12", role=Role.USER)
     await manager.remove("a")
-    assert (tmp_path / ".octop" / "users" / "a").exists() is False
+    assert (tmp_path / ".agentbuddy" / "users" / "a").exists() is False
     assert manager.get("a") is None
 
 
@@ -439,7 +439,7 @@ async def test_count(manager: UserManager):
 
 
 async def test_boot_loads_existing_users(tmp_path: Path):
-    paths = PathLayout(tmp_path / ".octop")
+    paths = PathLayout(tmp_path / ".agentbuddy")
     paths.ensure_root()
     db = SqlitePool(paths.db)
     run_migrations(db)
@@ -455,7 +455,7 @@ async def test_boot_loads_existing_users(tmp_path: Path):
 
 async def test_boot_loads_users(tmp_path: Path):
     """UserManager.boot() loads user identity objects (agents are now global)."""
-    paths = PathLayout(tmp_path / ".octop")
+    paths = PathLayout(tmp_path / ".agentbuddy")
     paths.ensure_root()
     db = SqlitePool(paths.db)
     run_migrations(db)

@@ -32,7 +32,7 @@ Docker 沙箱的容器生命周期由 harness 决定,当前有三个"不会自�
 
 | 数据 | 住哪 | 换容器时 |
 |---|---|---|
-| 会话记录 sessions / 记忆 memory / checkpoints | 宿主 `workspace_dir`(`~/.octop/agents/<id>/`) | **不受影响**(天然保留) |
+| 会话记录 sessions / 记忆 memory / checkpoints | 宿主 `workspace_dir`(`~/.agentbuddy/agents/<id>/`) | **不受影响**(天然保留) |
 | 对话历史 | 宿主(harness history) | 不受影响 |
 | 专家工作区内容文件(SOUL.md、技能、agent 生成的文档) | **容器可写层**(容器内同名绝对路径) | **随删除丢失** → recreate 第 2 步备份兜住 |
 | pip/npm 已装依赖 | 容器可写层(若有开网时装的) | 丢失;新镜像自带白名单,依赖升级正是换代的目的 |
@@ -144,7 +144,7 @@ POST /api/admin/sandboxes/{container_name}/recreate
 3. 影响面确认:user scope 容器反查引用该后端的全部专家,响应/前端确认弹窗
    列出专家清单(Q3 裁决)
 4. 备份:get_archive(tar 流)导出容器内工作区 →
-        宿主 {OCTOP_HOME}/sandbox-backups/{container_name}/{YYYYMMDD-HHmmss}/
+        宿主 {AGENTBUDDY_HOME}/sandbox-backups/{container_name}/{YYYYMMDD-HHmmss}/
    - workspace_root 从容器 attrs WorkingDir / agent_id 推导
      (与 harness _in_container_workspace_root 同规则);推导失败时
      备份容器 label 标记的 .octop 全目录

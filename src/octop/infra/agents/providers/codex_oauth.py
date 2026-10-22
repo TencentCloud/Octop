@@ -1,7 +1,7 @@
 """OpenAI Codex (ChatGPT) OAuth — device code flow.
 
 Ported from finnie/lightclaw; constants match openclaw wire contract.
-Tokens live at ``~/.octop/codex_oauth.json``.
+Tokens live at ``~/.agentbuddy/codex_oauth.json``.
 
 agentbuddy is a server (not a local CLI), so it cannot use the PKCE browser
 redirect flow: that flow's shared client only accepts the exact
@@ -43,7 +43,7 @@ TOKEN_EXPIRY_BUFFER_MS = 5 * 60 * 1000
 CODEX_ATTRIBUTION_ORIGINATOR = "openclaw"
 _OPENCLAW_UPSTREAM_VERSION = "2026.6.9"
 CODEX_ATTRIBUTION_VERSION = (
-    os.environ.get("OCTOP_CODEX_ATTRIBUTION_VERSION", "").strip() or _OPENCLAW_UPSTREAM_VERSION
+    os.environ.get("AGENTBUDDY_CODEX_ATTRIBUTION_VERSION", "").strip() or _OPENCLAW_UPSTREAM_VERSION
 )
 CODEX_BASE_URL = "https://chatgpt.com/backend-api/codex"
 

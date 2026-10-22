@@ -59,11 +59,11 @@ def test_overlay_stdio_spec_env_skips_protected() -> None:
 
     spec = overlay_stdio_spec_env(
         {"transport": "stdio", "command": "npx", "env": {"SPEC": "1"}},
-        {"TAVILY_API_KEY": "tvly", "OCTOP_HOME": "/nope", "HOME": "/hack"},
+        {"TAVILY_API_KEY": "tvly", "AGENTBUDDY_HOME": "/nope", "HOME": "/hack"},
     )
     assert spec["env"]["TAVILY_API_KEY"] == "tvly"
     assert spec["env"]["SPEC"] == "1"
-    assert "OCTOP_HOME" not in spec["env"]
+    assert "AGENTBUDDY_HOME" not in spec["env"]
     assert "HOME" not in spec["env"]
 
 

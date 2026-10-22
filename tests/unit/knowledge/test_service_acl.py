@@ -19,8 +19,8 @@ from octop.infra.utils.paths import PathLayout
 
 @pytest.fixture
 def service(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> KnowledgeService:
-    monkeypatch.setenv("OCTOP_HOME", str(tmp_path / "home"))
-    pool = SqlitePool(tmp_path / "octop.db")
+    monkeypatch.setenv("AGENTBUDDY_HOME", str(tmp_path / "home"))
+    pool = SqlitePool(tmp_path / "agentbuddy.db")
     run_migrations(pool)
     services = SimpleNamespace(
         knowledge_repo=KnowledgeRepo(pool),

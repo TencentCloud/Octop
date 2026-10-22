@@ -28,19 +28,19 @@ ALL_PLATS=(
 # Public GitHub Release names: agentbuddy-<kind>-<os>-<arch>-<version>.<ext>
 # Zip payload directory stays agentbuddy-<plat>/ (the desktop unzip strips the first
 # path component). PyPI wheels keep the PEP 427 name and are not renamed here.
-octop_version() {
+agentbuddy_version() {
   sed -nE 's/^version[[:space:]]*=[[:space:]]*"([^"]+)".*/\1/p' \
     "${REPO_ROOT}/pyproject.toml" | head -1
 }
 
 portable_zip_basename() {
-  echo "agentbuddy-portable-${1}-$(octop_version).zip"
+  echo "agentbuddy-portable-${1}-$(agentbuddy_version).zip"
 }
 
 desktop_pkg_basename() {
   local plat="$1"
   local ver
-  ver="$(octop_version)"
+  ver="$(agentbuddy_version)"
   case "$plat" in
     darwin-*) echo "agentbuddy-desktop-${plat}-${ver}.dmg" ;;
     windows-*) echo "agentbuddy-desktop-${plat}-${ver}.exe" ;;
@@ -255,8 +255,8 @@ write_green_overrides() {
   case "$plat" in
     windows-arm64)
       {
-        echo "psycopg-binary ; sys_platform == 'octop-unsupported'"
-        echo "sqlite-vec ; sys_platform == 'octop-unsupported'"
+        echo "psycopg-binary ; sys_platform == 'agentbuddy-unsupported'"
+        echo "sqlite-vec ; sys_platform == 'agentbuddy-unsupported'"
         # 46.0.0 is the only release shipping a win_arm64 wheel; newer ones would
         # fall back to a Rust + OpenSSL source build that fails on the runner.
         echo "cryptography==46.0.0"

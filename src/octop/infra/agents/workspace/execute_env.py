@@ -1,10 +1,10 @@
 """Inject platform execute defaults into harness backend specs.
 
-Global admin env (``~/.octop/env``) and workspace ``.env`` are merged at
+Global admin env (``~/.agentbuddy/env``) and workspace ``.env`` are merged at
 **execute** time inside harness (``inherit_env`` / ``environment_file`` /
 ``BackendWorkspace`` reader) — not snapshotted here.
 
-``OCTOP_AUTH_DIR`` / ``OCTOP_SKILLS_DIR`` use agent-facing paths when the
+``AGENTBUDDY_AUTH_DIR`` / ``AGENTBUDDY_SKILLS_DIR`` use agent-facing paths when the
 backend is scoped (bwrap / virtual rootfs), so skill scripts resolve the same
 locations inside the jail. Host paths are still mkdir'd for agentbuddy host ops.
 """
@@ -45,7 +45,9 @@ def _agent_facing_auth_and_skills(
             root_dir=local_backend_root_dir(cfg),
             virtual_mode=True,
         )
-    scoped = uses_scoped_workspace_default(cfg) or facing.startswith("/.octop/")
+    from octop.infra.agents.workspace.dir import is_system_files_prefixed  # noqa: PLC0415
+
+    scoped = uses_scoped_workspace_default(cfg) or is_system_files_prefixed(facing)
     if not scoped:
         return str(auth_host), str(skills_host)
 
@@ -83,10 +85,10 @@ def agent_execute_env_defaults(
         skills_host=skills_dir,
     )
     return {
-        "OCTOP_AGENT_ID": agent_id,
-        "OCTOP_AUTH_DIR": auth_env,
-        "OCTOP_HOME": str(paths.root),
-        "OCTOP_SKILLS_DIR": skills_env,
+        "AGENTBUDDY_AGENT_ID": agent_id,
+        "AGENTBUDDY_AUTH_DIR": auth_env,
+        "AGENTBUDDY_HOME": str(paths.root),
+        "AGENTBUDDY_SKILLS_DIR": skills_env,
     }
 
 

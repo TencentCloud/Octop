@@ -9,9 +9,9 @@ All settings can be overridden by:
 Environment variables (all optional):
 
   BROWSER_USE_PROFILES_DIR   - base directory for Chrome user-data-dirs
-                          default: ~/.octop-browser/profiles
+                          default: ~/.agentbuddy/browser/profiles
   BROWSER_USE_SCREENSHOTS_DIR - base directory where the screenshot action writes
-                          PNG files. Defaults to ~/.octop-browser/screenshots.
+                          PNG files. Defaults to ~/.agentbuddy/browser/screenshots.
   BROWSER_USE_CDP_HOST       - host or IP serving Chrome's HTTP/WebSocket CDP endpoint
                           default: localhost
   BROWSER_USE_CDP_PORT_START - first CDP debug port assigned to profiles
@@ -68,27 +68,41 @@ def _env_path(key: str, default: Path) -> Path:
     return Path(val) if val else default
 
 
-#: State directory under ``$HOME``. Prefer ``.octop-browser``; fall back to a
-#: previously used alternate name when that directory already exists so login
-#: cookies and recordings are not orphaned.
-_STATE_DIR = ".octop-browser"
+#: State directory under the agentbuddy home. Prefer ``<home>/browser``;
+#: fall back to a previously used alternate name when that directory already
+#: exists so login cookies and recordings are not orphaned.
+_STATE_DIR = "browser"
+_STANDALONE_STATE_DIR = ".octop-browser"
 _LEGACY_STATE_DIR = ".harness-browser"
+
+
+def _agentbuddy_home() -> Path:
+    import os
+
+    root = (
+        os.environ.get("AGENTBUDDY_HOME", "").strip()
+        or os.environ.get("OCTOP_HOME", "").strip()
+    )
+    if root:
+        return Path(root).expanduser()
+    return Path.home() / ".agentbuddy"
 
 
 def state_dir() -> Path:
     """Return the base directory holding profiles, screenshots and recordings.
 
-    Fresh installs use ``~/.octop-browser``. If that path does not exist but an
-    older alternate state directory is already present, that one is reused so
-    existing Chrome profiles (cookies) and recordings stay attached.
+    Fresh installs use ``~/.agentbuddy/browser``. If that path does not exist
+    but an older alternate state directory (``~/.octop-browser`` or
+    ``~/.harness-browser``) is already present, that one is reused so existing
+    Chrome profiles (cookies) and recordings stay attached.
     """
-    home = Path.home()
-    current = home / _STATE_DIR
+    current = _agentbuddy_home() / _STATE_DIR
     if current.exists():
         return current
-    legacy = home / _LEGACY_STATE_DIR
-    if legacy.exists():
-        return legacy
+    home = Path.home()
+    for legacy in (home / _STANDALONE_STATE_DIR, home / _LEGACY_STATE_DIR):
+        if legacy.exists():
+            return legacy
     return current
 
 

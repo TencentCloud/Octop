@@ -2,7 +2,7 @@
 # Usage: irm <url>/install.ps1 | iex
 #    or: .\install.ps1 [-Version X.Y.Z] [-FromSource] [-SourceDir DIR] [-Extras "browser"]
 #
-# Installs agentbuddy into ~/.octop with a uv-managed Python environment.
+# Installs agentbuddy into ~/.agentbuddy with a uv-managed Python environment.
 
 & {
 param(
@@ -16,11 +16,11 @@ param(
 
 $ErrorActionPreference = "Stop"
 
-$OctopHome     = if ($env:OCTOP_HOME) { $env:OCTOP_HOME } else { Join-Path $HOME ".octop" }
+$OctopHome     = if ($env:AGENTBUDDY_HOME) { $env:AGENTBUDDY_HOME } else { Join-Path $HOME ".agentbuddy" }
 $OctopVenv     = Join-Path $OctopHome "venv"
 $OctopBin      = Join-Path $OctopHome "bin"
 $PythonVersion = "3.12"
-$OctopRepo     = if ($env:OCTOP_REPO) { $env:OCTOP_REPO } else { "https://github.com/kolehank/Octop.git" }
+$OctopRepo     = if ($env:AGENTBUDDY_REPO) { $env:AGENTBUDDY_REPO } else { "https://github.com/kolehank/Octop.git" }
 
 function Write-Info { param([string]$Message) Write-Host "[octop] " -ForegroundColor Green  -NoNewline; Write-Host $Message }
 function Write-Warn { param([string]$Message) Write-Host "[octop] " -ForegroundColor Yellow -NoNewline; Write-Host $Message }
@@ -45,8 +45,8 @@ to install it, or install later from the dashboard. If a system Chrome already
 exists, that download is skipped even with -Extras browser.
 
 Environment:
-  OCTOP_HOME            Installation directory (default: ~/.octop)
-  OCTOP_REPO            Git clone URL for -FromSource without -SourceDir
+  AGENTBUDDY_HOME            Installation directory (default: ~/.agentbuddy)
+  AGENTBUDDY_REPO            Git clone URL for -FromSource without -SourceDir
 "@
     exit 0
 }
@@ -309,7 +309,7 @@ New-Item -ItemType Directory -Path $OctopBin -Force | Out-Null
 $wrapperPs1 = Join-Path $OctopBin "octop.ps1"
 @'
 $ErrorActionPreference = "Stop"
-$OctopHome = if ($env:OCTOP_HOME) { $env:OCTOP_HOME } else { Join-Path $HOME ".octop" }
+$OctopHome = if ($env:AGENTBUDDY_HOME) { $env:AGENTBUDDY_HOME } else { Join-Path $HOME ".agentbuddy" }
 $RealBin = Join-Path $OctopHome "venv\Scripts\octop.exe"
 if (-not (Test-Path $RealBin)) {
     Write-Error "agentbuddy environment not found at $OctopHome\venv"
@@ -321,11 +321,11 @@ if (-not (Test-Path $RealBin)) {
 $cmdWrapper = Join-Path $OctopBin "octop.cmd"
 @'
 @echo off
-set "OCTOP_HOME=%OCTOP_HOME%"
-if "%OCTOP_HOME%"=="" set "OCTOP_HOME=%USERPROFILE%\.octop"
-set "REAL_BIN=%OCTOP_HOME%\venv\Scripts\octop.exe"
+set "AGENTBUDDY_HOME=%AGENTBUDDY_HOME%"
+if "%AGENTBUDDY_HOME%"=="" set "AGENTBUDDY_HOME=%USERPROFILE%\.agentbuddy"
+set "REAL_BIN=%AGENTBUDDY_HOME%\venv\Scripts\octop.exe"
 if not exist "%REAL_BIN%" (
-    echo Error: agentbuddy environment not found at %OCTOP_HOME%\venv >&2
+    echo Error: agentbuddy environment not found at %AGENTBUDDY_HOME%\venv >&2
     exit /b 1
 )
 "%REAL_BIN%" %*

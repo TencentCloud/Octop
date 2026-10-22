@@ -1,4 +1,4 @@
-"""Filesystem layout for ``~/.octop/``."""
+"""Filesystem layout for ``~/.agentbuddy/``."""
 
 from __future__ import annotations
 
@@ -13,24 +13,31 @@ class PathLayout:
 
     @classmethod
     def from_env(cls) -> PathLayout:
-        """Resolve install root from ``OCTOP_HOME`` or ``~/.octop``."""
-        raw = os.environ.get("OCTOP_HOME", "").strip()
+        """Resolve install root from ``AGENTBUDDY_HOME`` or ``~/.agentbuddy``.
+
+        ``OCTOP_HOME`` is accepted as a legacy fallback; the new name wins
+        when both are set.
+        """
+        raw = (
+            os.environ.get("AGENTBUDDY_HOME", "").strip()
+            or os.environ.get("OCTOP_HOME", "").strip()
+        )
         if raw:
             return cls(Path(raw).expanduser())
-        return cls(Path.home() / ".octop")
+        return cls(Path.home() / ".agentbuddy")
 
     @property
     def db(self) -> Path:
-        return self.root / "octop.db"
+        return self.root / "agentbuddy.db"
 
     @property
     def logs_dir(self) -> Path:
-        """Structured runtime logs: ``~/.octop/logs/``."""
+        """Structured runtime logs: ``~/.agentbuddy/logs/``."""
         return self.root / "logs"
 
     @property
     def log(self) -> Path:
-        return self.logs_dir / "octop.log"
+        return self.logs_dir / "agentbuddy.log"
 
     def ensure_logs_dir(self) -> Path:
         """Create the logs directory and return it."""
@@ -39,7 +46,7 @@ class PathLayout:
         return out
 
     def ensure_log(self) -> Path:
-        """Create the logs directory and return ``octop.log``."""
+        """Create the logs directory and return ``agentbuddy.log``."""
         self.ensure_logs_dir()
         return self.log
 
@@ -56,31 +63,31 @@ class PathLayout:
 
     @property
     def agents_dir(self) -> Path:
-        """Global agents directory: ~/.octop/agents/"""
+        """Global agents directory: ~/.agentbuddy/agents/"""
         return self.root / "agents"
 
     @property
     def expert_market_dir(self) -> Path:
-        """Cached SkillHub expert templates: ``~/.octop/expert_market/``."""
+        """Cached SkillHub expert templates: ``~/.agentbuddy/expert_market/``."""
         return self.root / "expert_market"
 
     @property
     def published_experts_dir(self) -> Path:
-        """User-published expert snapshots: ``~/.octop/published_experts/``."""
+        """User-published expert snapshots: ``~/.agentbuddy/published_experts/``."""
         return self.root / "published_experts"
 
     @property
     def skill_packages_dir(self) -> Path:
-        """Global skill package content: ``~/.octop/skill-packages/``."""
+        """Global skill package content: ``~/.agentbuddy/skill-packages/``."""
         return self.root / "skill-packages"
 
     @property
     def knowledge_dir(self) -> Path:
-        """Global knowledge base files: ``~/.octop/knowledge/``."""
+        """Global knowledge base files: ``~/.agentbuddy/knowledge/``."""
         return self.root / "knowledge"
 
     def agent_workspace(self, agent_id: str) -> Path:
-        """Global agent workspace: ~/.octop/agents/<agent_id>/"""
+        """Global agent workspace: ~/.agentbuddy/agents/<agent_id>/"""
         return self.agents_dir / agent_id
 
     def ensure_agent_workspace(self, agent_id: str) -> Path:
@@ -99,7 +106,7 @@ class PathLayout:
 
     @property
     def tool_guard_rules_dir(self) -> Path:
-        """User-editable command guard rules: ``~/.octop/security/tool_guard/``."""
+        """User-editable command guard rules: ``~/.agentbuddy/security/tool_guard/``."""
         return self.root / "security" / "tool_guard"
 
     @property
@@ -108,7 +115,7 @@ class PathLayout:
 
     @property
     def backups_dir(self) -> Path:
-        """Stored system backup archives: ``~/.octop/backups/``."""
+        """Stored system backup archives: ``~/.agentbuddy/backups/``."""
         return self.root / "backups"
 
     def ensure_backups_dir(self) -> Path:
@@ -122,17 +129,17 @@ class PathLayout:
 
     @property
     def user_avatars_dir(self) -> Path:
-        """Uploaded user portraits: ``~/.octop/avatars/users/``."""
+        """Uploaded user portraits: ``~/.agentbuddy/avatars/users/``."""
         return self.root / "avatars" / "users"
 
     @property
     def role_avatars_dir(self) -> Path:
-        """Uploaded role portraits: ``~/.octop/avatars/roles/``."""
+        """Uploaded role portraits: ``~/.agentbuddy/avatars/roles/``."""
         return self.root / "avatars" / "roles"
 
     @property
     def ssl_dir(self) -> Path:
-        """TLS certificates and ACME account keys: ``~/.octop/ssl/``."""
+        """TLS certificates and ACME account keys: ``~/.agentbuddy/ssl/``."""
         return self.root / "ssl"
 
     def ensure_ssl_dir(self) -> Path:
@@ -142,7 +149,7 @@ class PathLayout:
 
     @property
     def connector_cli_dir(self) -> Path:
-        """Per-instance CLI config roots: ``~/.octop/connector-cli/``."""
+        """Per-instance CLI config roots: ``~/.agentbuddy/connector-cli/``."""
         return self.root / "connector-cli"
 
     def connector_cli_instance_dir(self, kind: str, instance_key: str) -> Path:

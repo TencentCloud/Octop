@@ -1,4 +1,4 @@
-"""Environment variables API — backed by ``~/.octop/env`` (inherited by all agents)."""
+"""Environment variables API — backed by ``~/.agentbuddy/env`` (inherited by all agents)."""
 
 from __future__ import annotations
 
@@ -24,7 +24,7 @@ router = APIRouter(prefix="/envs", tags=["envs"])
 logger = logging.getLogger(__name__)
 
 _KEY_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
-_CAPTCHA_SECRET_KEYS = frozenset({"OCTOP_CAPTCHA_SECRET", "OCTOP_CAPTCHA_CAM_SECRET_KEY"})
+_CAPTCHA_SECRET_KEYS = frozenset({"AGENTBUDDY_CAPTCHA_SECRET", "AGENTBUDDY_CAPTCHA_CAM_SECRET_KEY"})
 _SECRET_SENTINEL = "********"
 
 
@@ -82,7 +82,7 @@ async def list_envs(
     "",
     summary="Replace global environment variables",
     description=(
-        "Overwrite ~/.octop/env and align the agentbuddy process environment "
+        "Overwrite ~/.agentbuddy/env and align the agentbuddy process environment "
         "(including deleting keys removed from the list). Running execute "
         "shells and Docker sandboxes pick up keys on the next command without "
         "an agent reload. Agents reload in the background only when search "
@@ -114,7 +114,7 @@ async def batch_save_envs(
 @router.delete(
     "/{key}",
     summary="Delete one global environment variable",
-    description="Remove a key from ~/.octop/env and the process environment.",
+    description="Remove a key from ~/.agentbuddy/env and the process environment.",
 )
 async def delete_env(
     key: str,

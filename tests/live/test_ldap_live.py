@@ -8,13 +8,13 @@ that group-derived roles are mapped onto an Octop account.
 Point it at any directory — a local :program:`glauth` instance is the reference
 setup (see ``docs/ldap.md`` §3.1)::
 
-    OCTOP_LDAP_TEST_URL=ldap://127.0.0.1:3893 \
-    OCTOP_LDAP_TEST_BIND_DN='uid=svc-octop,cn=users,dc=example,dc=org' \
-    OCTOP_LDAP_TEST_BIND_PASSWORD=bindpw \
-    OCTOP_LDAP_TEST_BASE_DN='dc=example,dc=org' \
-    OCTOP_LDAP_TEST_USER=alice \
-    OCTOP_LDAP_TEST_PASSWORD=alicepw \
-    OCTOP_LDAP_TEST_ADMIN_GROUP=admin \
+    AGENTBUDDY_LDAP_TEST_URL=ldap://127.0.0.1:3893 \
+    AGENTBUDDY_LDAP_TEST_BIND_DN='uid=svc-octop,cn=users,dc=example,dc=org' \
+    AGENTBUDDY_LDAP_TEST_BIND_PASSWORD=bindpw \
+    AGENTBUDDY_LDAP_TEST_BASE_DN='dc=example,dc=org' \
+    AGENTBUDDY_LDAP_TEST_USER=alice \
+    AGENTBUDDY_LDAP_TEST_PASSWORD=alicepw \
+    AGENTBUDDY_LDAP_TEST_ADMIN_GROUP=admin \
     uv run pytest tests/live/test_ldap_live.py -m live -v
 """
 
@@ -48,20 +48,20 @@ def _config_body() -> dict[str, object]:
     test server needs certificate verification off — both are env-driven so a
     real CA-signed directory can keep verification on.
     """
-    start_tls = optional_env("OCTOP_LDAP_TEST_START_TLS", "1") not in ("0", "false", "no")
-    verify_tls = optional_env("OCTOP_LDAP_TEST_VERIFY_TLS", "0") in ("1", "true", "yes")
+    start_tls = optional_env("AGENTBUDDY_LDAP_TEST_START_TLS", "1") not in ("0", "false", "no")
+    verify_tls = optional_env("AGENTBUDDY_LDAP_TEST_VERIFY_TLS", "0") in ("1", "true", "yes")
     return {
         "enabled": True,
         "display_name": "Live Directory",
-        "server_url": require_env("OCTOP_LDAP_TEST_URL"),
+        "server_url": require_env("AGENTBUDDY_LDAP_TEST_URL"),
         "start_tls": start_tls,
         "verify_tls": verify_tls,
-        "bind_dn": require_env("OCTOP_LDAP_TEST_BIND_DN"),
-        "bind_password": require_env("OCTOP_LDAP_TEST_BIND_PASSWORD"),
-        "user_base_dn": require_env("OCTOP_LDAP_TEST_BASE_DN"),
-        "admin_groups": require_env("OCTOP_LDAP_TEST_ADMIN_GROUP"),
+        "bind_dn": require_env("AGENTBUDDY_LDAP_TEST_BIND_DN"),
+        "bind_password": require_env("AGENTBUDDY_LDAP_TEST_BIND_PASSWORD"),
+        "user_base_dn": require_env("AGENTBUDDY_LDAP_TEST_BASE_DN"),
+        "admin_groups": require_env("AGENTBUDDY_LDAP_TEST_ADMIN_GROUP"),
         # Blank keeps the DN as the identity key, matching this fixture.
-        "subject_attribute": optional_env("OCTOP_LDAP_TEST_SUBJECT_ATTRIBUTE", "") or "",
+        "subject_attribute": optional_env("AGENTBUDDY_LDAP_TEST_SUBJECT_ATTRIBUTE", "") or "",
         "auto_provision": True,
         "timeout_seconds": 10,
     }
@@ -69,8 +69,8 @@ def _config_body() -> dict[str, object]:
 
 async def test_live_directory_login_and_role_mapping(client) -> None:
     http, srv = client
-    username = require_env("OCTOP_LDAP_TEST_USER")
-    password = require_env("OCTOP_LDAP_TEST_PASSWORD")
+    username = require_env("AGENTBUDDY_LDAP_TEST_USER")
+    password = require_env("AGENTBUDDY_LDAP_TEST_PASSWORD")
 
     admin_token = (
         await http.post("/api/auth/login", json={"username": "admin", "password": "TestPass12"})
@@ -94,7 +94,7 @@ async def test_live_directory_login_and_role_mapping(client) -> None:
     assert login.status_code == 200, login.text
     body = login.json()
     assert body["user"]["username"] == username
-    assert body["user"]["role"] == optional_env("OCTOP_LDAP_TEST_EXPECTED_ROLE", "admin")
+    assert body["user"]["role"] == optional_env("AGENTBUDDY_LDAP_TEST_EXPECTED_ROLE", "admin")
 
     # The JWT issued from a directory login is a normal Octop token.
     me = await http.get("/api/auth/me", headers={"Authorization": f"Bearer {body['access_token']}"})

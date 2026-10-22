@@ -4,11 +4,11 @@ setlocal EnableDelayedExpansion
 REM agentbuddy Installer for Windows (cmd.exe)
 REM Usage: install.bat [-Version X.Y.Z] [-FromSource] [-SourceDir DIR] [-Extras browser] [-Help]
 
-if defined OCTOP_HOME (set "OCTOP_HOME=%OCTOP_HOME%") else (set "OCTOP_HOME=%USERPROFILE%\.octop")
-set "OCTOP_VENV=%OCTOP_HOME%\venv"
-set "OCTOP_BIN=%OCTOP_HOME%\bin"
+if defined AGENTBUDDY_HOME (set "AGENTBUDDY_HOME=%AGENTBUDDY_HOME%") else (set "AGENTBUDDY_HOME=%USERPROFILE%\.agentbuddy")
+set "AGENTBUDDY_VENV=%AGENTBUDDY_HOME%\venv"
+set "AGENTBUDDY_BIN=%AGENTBUDDY_HOME%\bin"
 set "PYTHON_VERSION=3.12"
-if defined OCTOP_REPO (set "OCTOP_REPO=%OCTOP_REPO%") else (set "OCTOP_REPO=https://github.com/kolehank/Octop.git")
+if defined AGENTBUDDY_REPO (set "AGENTBUDDY_REPO=%AGENTBUDDY_REPO%") else (set "AGENTBUDDY_REPO=https://github.com/kolehank/Octop.git")
 
 set "ARG_VERSION="
 set "ARG_FROM_SOURCE=0"
@@ -43,21 +43,21 @@ echo         to install it, or install later from the dashboard.
 exit /b 0
 
 :done_args
-echo [octop] Installing agentbuddy into %OCTOP_HOME%
+echo [octop] Installing agentbuddy into %AGENTBUDDY_HOME%
 
 call :ensure_uv
 if errorlevel 1 exit /b 1
 
-if exist "%OCTOP_VENV%" (
+if exist "%AGENTBUDDY_VENV%" (
     echo [octop] Existing environment found, upgrading...
 ) else (
     echo [octop] Creating Python %PYTHON_VERSION% environment...
 )
 
-uv venv "%OCTOP_VENV%" --python %PYTHON_VERSION% --quiet --clear
+uv venv "%AGENTBUDDY_VENV%" --python %PYTHON_VERSION% --quiet --clear
 if errorlevel 1 (echo [octop] ERROR: Failed to create venv & exit /b 1)
 
-set "VENV_PYTHON=%OCTOP_VENV%\Scripts\python.exe"
+set "VENV_PYTHON=%AGENTBUDDY_VENV%\Scripts\python.exe"
 if not exist "%VENV_PYTHON%" (echo [octop] ERROR: venv python missing & exit /b 1)
 
 for /f "delims=" %%v in ('"%VENV_PYTHON%" --version 2^>^&1') do set "PY_VERSION=%%v"
@@ -65,7 +65,7 @@ echo [octop] Python environment ready (%PY_VERSION%)
 
 set "EXTRAS_SUFFIX=[browser]"
 if defined ARG_EXTRAS set "EXTRAS_SUFFIX=[browser,%ARG_EXTRAS%]"
-set "VENV_OCTOP=%OCTOP_VENV%\Scripts\octop.exe"
+set "VENV_OCTOP=%AGENTBUDDY_VENV%\Scripts\octop.exe"
 
 if "%ARG_FROM_SOURCE%"=="1" goto :install_from_source
 goto :install_from_pypi
@@ -86,7 +86,7 @@ goto :install_verify
 where git >nul 2>&1
 if errorlevel 1 (echo [octop] ERROR: git required & exit /b 1)
 set "CLONE_DIR=%TEMP%\octop-install-%RANDOM%"
-git clone --depth 1 %OCTOP_REPO% "%CLONE_DIR%"
+git clone --depth 1 %AGENTBUDDY_REPO% "%CLONE_DIR%"
 if errorlevel 1 exit /b 1
 call :prepare_console "%CLONE_DIR%"
 uv pip install "%CLONE_DIR%%EXTRAS_SUFFIX%" --python "%VENV_PYTHON%"
@@ -125,8 +125,8 @@ if errorlevel 1 (
     goto :after_browser
 )
 call :detect_chrome
-if defined OCTOP_SYSTEM_CHROME (
-    echo [octop] Found system Chrome/Chromium: %OCTOP_SYSTEM_CHROME%
+if defined AGENTBUDDY_SYSTEM_CHROME (
+    echo [octop] Found system Chrome/Chromium: %AGENTBUDDY_SYSTEM_CHROME%
     echo [octop] Using system browser; skipping Playwright Chromium download.
     echo [octop] To use bundled Chromium instead, run: "%VENV_PYTHON%" -m playwright install chromium
     goto :after_browser
@@ -138,25 +138,25 @@ if errorlevel 1 (
 )
 :after_browser
 
-if not exist "%OCTOP_BIN%" mkdir "%OCTOP_BIN%"
+if not exist "%AGENTBUDDY_BIN%" mkdir "%AGENTBUDDY_BIN%"
 
-echo @echo off > "%OCTOP_BIN%\octop.cmd"
-echo set "OCTOP_HOME=%%OCTOP_HOME%%" >> "%OCTOP_BIN%\octop.cmd"
-echo if "%%OCTOP_HOME%%"=="" set "OCTOP_HOME=%%USERPROFILE%%\.octop" >> "%OCTOP_BIN%\octop.cmd"
-echo "%%OCTOP_HOME%%\venv\Scripts\octop.exe" %%* >> "%OCTOP_BIN%\octop.cmd"
+echo @echo off > "%AGENTBUDDY_BIN%\octop.cmd"
+echo set "AGENTBUDDY_HOME=%%AGENTBUDDY_HOME%%" >> "%AGENTBUDDY_BIN%\octop.cmd"
+echo if "%%AGENTBUDDY_HOME%%"=="" set "AGENTBUDDY_HOME=%%USERPROFILE%%\.agentbuddy" >> "%AGENTBUDDY_BIN%\octop.cmd"
+echo "%%AGENTBUDDY_HOME%%\venv\Scripts\octop.exe" %%* >> "%AGENTBUDDY_BIN%\octop.cmd"
 
-set "OCTOP_BIN_FOR_PS=%OCTOP_BIN%"
-powershell -NoProfile -ExecutionPolicy Bypass -Command "$bin=$env:OCTOP_BIN_FOR_PS; $cur=[Environment]::GetEnvironmentVariable('Path','User'); if(-not $cur){$cur=''}; $parts=$cur.Split(';')|?{$_}; $ok=$false; foreach($p in $parts){if($p.TrimEnd('\') -ieq $bin.TrimEnd('\')){$ok=$true}}; if(-not $ok){$new=if($cur){$cur.TrimEnd(';')+';'+$bin}else{$bin}; [Environment]::SetEnvironmentVariable('Path',$new,'User'); Write-Host '[octop] Added to User PATH'} else {Write-Host '[octop] Already in User PATH'}"
-set "OCTOP_BIN_FOR_PS="
-echo %PATH% | findstr /i /c:"%OCTOP_BIN%" >nul || set "PATH=%OCTOP_BIN%;%PATH%"
+set "AGENTBUDDY_BIN_FOR_PS=%AGENTBUDDY_BIN%"
+powershell -NoProfile -ExecutionPolicy Bypass -Command "$bin=$env:AGENTBUDDY_BIN_FOR_PS; $cur=[Environment]::GetEnvironmentVariable('Path','User'); if(-not $cur){$cur=''}; $parts=$cur.Split(';')|?{$_}; $ok=$false; foreach($p in $parts){if($p.TrimEnd('\') -ieq $bin.TrimEnd('\')){$ok=$true}}; if(-not $ok){$new=if($cur){$cur.TrimEnd(';')+';'+$bin}else{$bin}; [Environment]::SetEnvironmentVariable('Path',$new,'User'); Write-Host '[octop] Added to User PATH'} else {Write-Host '[octop] Already in User PATH'}"
+set "AGENTBUDDY_BIN_FOR_PS="
+echo %PATH% | findstr /i /c:"%AGENTBUDDY_BIN%" >nul || set "PATH=%AGENTBUDDY_BIN%;%PATH%"
 
 echo.
 echo agentbuddy installed successfully!
-echo   Location: %OCTOP_HOME%
+echo   Location: %AGENTBUDDY_HOME%
 echo   Python:   %PY_VERSION%
 echo.
 echo If 'octop' is not found in this session, run:
-echo   set PATH=%OCTOP_BIN%;%%PATH%%
+echo   set PATH=%AGENTBUDDY_BIN%;%%PATH%%
 echo Or open a new terminal ^(saved to User PATH^).
 echo.
 echo Then run:
@@ -167,7 +167,7 @@ echo   http://127.0.0.1:8088
 exit /b 0
 
 ::detect_chrome
-set "OCTOP_SYSTEM_CHROME="
+set "AGENTBUDDY_SYSTEM_CHROME="
 REM Prefer octop-browser's own detector (same path used at runtime)
 "%VENV_PYTHON%" -c "from octop_browser.cdp.launcher import find_chrome; p=find_chrome(); print(p or '', end='')" > "%TEMP%\_octop_chrome.tmp" 2>nul
 if not errorlevel 1 (
@@ -175,14 +175,14 @@ if not errorlevel 1 (
 )
 del "%TEMP%\_octop_chrome.tmp" >nul 2>&1
 if defined _CHROME (
-    set "OCTOP_SYSTEM_CHROME=%_CHROME%"
+    set "AGENTBUDDY_SYSTEM_CHROME=%_CHROME%"
     goto :detect_chrome_done
 )
 REM Fallback: common commands on PATH
 for %%c in (chrome google-chrome google-chrome-stable chromium chromium-browser) do (
     where %%c >nul 2>&1
     if not errorlevel 1 (
-        for /f "delims=" %%p in ('where %%c') do (set "OCTOP_SYSTEM_CHROME=%%p" & goto :detect_chrome_done)
+        for /f "delims=" %%p in ('where %%c') do (set "AGENTBUDDY_SYSTEM_CHROME=%%p" & goto :detect_chrome_done)
     )
 )
 REM Fallback: well-known GUI install paths
@@ -192,7 +192,7 @@ for %%p in (
     "%LOCALAPPDATA%\Google\Chrome\Application\chrome.exe"
     "%ProgramFiles%\Chromium\Application\chrome.exe"
 ) do (
-    if exist %%p (set "OCTOP_SYSTEM_CHROME=%%~p" & goto :detect_chrome_done)
+    if exist %%p (set "AGENTBUDDY_SYSTEM_CHROME=%%~p" & goto :detect_chrome_done)
 )
 :detect_chrome_done
 exit /b 0

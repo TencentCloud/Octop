@@ -19,7 +19,7 @@ from octop.infra.voice.manager import VoiceManager
 
 @pytest.fixture
 def voice_mgr(tmp_path: Path) -> VoiceManager:
-    db = SqlitePool(tmp_path / "octop.db")
+    db = SqlitePool(tmp_path / "agentbuddy.db")
     run_migrations(db)
     settings = SettingsRepo(db)
     repo = VoiceProviderRepo(db)
@@ -28,7 +28,7 @@ def voice_mgr(tmp_path: Path) -> VoiceManager:
 
 @pytest.fixture
 def tencent_mgr(tmp_path: Path) -> tuple[VoiceManager, VoiceProviderRepo]:
-    db = SqlitePool(tmp_path / "octop.db")
+    db = SqlitePool(tmp_path / "agentbuddy.db")
     run_migrations(db)
     repo = VoiceProviderRepo(db)
     manager = VoiceManager(settings_repo=SettingsRepo(db), voice_provider_repo=repo)

@@ -4,7 +4,7 @@
 
 ## 安装政务伙伴（终端用户）
 
-将政务伙伴安装到隔离虚拟环境 `~/.octop/venv`，并创建 `~/.octop/bin/octop` 包装脚本加入 PATH。
+将政务伙伴安装到隔离虚拟环境 `~/.agentbuddy/venv`，并创建 `~/.agentbuddy/bin/octop` 包装脚本加入 PATH。
 
 ### 远程一键安装（推荐）
 
@@ -48,9 +48,9 @@ Windows PowerShell 等价参数：`-Version`、`-FromSource`、`-SourceDir`、`-
 
 | 变量 | 说明 |
 |------|------|
-| `OCTOP_HOME` | 安装根目录，默认 `~/.octop` |
-| `OCTOP_REPO` | `--from-source` 无本地目录时的 git 克隆地址 |
-| `OCTOP_PYPI_MIRROR` | PyPI 镜像（与 `--mirror` 等效） |
+| `AGENTBUDDY_HOME` | 安装根目录，默认 `~/.agentbuddy` |
+| `AGENTBUDDY_REPO` | `--from-source` 无本地目录时的 git 克隆地址 |
+| `AGENTBUDDY_PYPI_MIRROR` | PyPI 镜像（与 `--mirror` 等效） |
 | `PLAYWRIGHT_DOWNLOAD_HOST` | Playwright 浏览器下载镜像（仅 `--extras browser`） |
 
 默认不下载 Playwright Chromium。需要远程浏览器自动化时加 `--extras browser`，或安装后在控制台 / `python -m playwright install chromium` 按需安装。若系统已有 Chrome / Chromium，即使加了 `--extras browser` 也会跳过下载。

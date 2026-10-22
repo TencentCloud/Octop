@@ -34,23 +34,26 @@ func defaultSettings() Settings {
 	}
 }
 
-func octopHome() string {
+func agentbuddyHome() string {
+	if v := os.Getenv("AGENTBUDDY_HOME"); v != "" {
+		return v
+	}
 	if v := os.Getenv("OCTOP_HOME"); v != "" {
 		return v
 	}
 	home, err := os.UserHomeDir()
 	if err != nil {
-		return ".octop"
+		return ".agentbuddy"
 	}
-	return filepath.Join(home, ".octop")
+	return filepath.Join(home, ".agentbuddy")
 }
 
 func portableDir() string {
-	return filepath.Join(octopHome(), "portable")
+	return filepath.Join(agentbuddyHome(), "portable")
 }
 
 func settingsPath() string {
-	return filepath.Join(octopHome(), "desktop-settings.json")
+	return filepath.Join(agentbuddyHome(), "desktop-settings.json")
 }
 
 type settingsStore struct {
@@ -93,7 +96,7 @@ func (st *settingsStore) save(next Settings) error {
 	if next.Port == 0 {
 		next.Port = 8088
 	}
-	if err := os.MkdirAll(octopHome(), 0o755); err != nil {
+	if err := os.MkdirAll(agentbuddyHome(), 0o755); err != nil {
 		return err
 	}
 	data, err := json.MarshalIndent(next, "", "  ")

@@ -21,7 +21,7 @@ def should_defer_control_plane_db(config: OctopConfig, paths: PathLayout) -> boo
     """True when first-run setup should delay opening the control-plane DB.
 
     Defer only for greenfield SQLite installs with no existing DB file and no
-    ``OCTOP_DATABASE_*`` / PostgreSQL configuration. Password verification and
+    ``AGENTBUDDY_DATABASE_*`` / PostgreSQL configuration. Password verification and
     early wizard steps then run without a pool.
     """
     if config.database.is_postgresql:
@@ -34,7 +34,7 @@ def should_defer_control_plane_db(config: OctopConfig, paths: PathLayout) -> boo
 def open_database(config: OctopConfig, paths: PathLayout) -> DatabasePool:
     """Return a DB pool for the configured driver.
 
-    When ``config.json`` has no ``database`` section and no ``OCTOP_DATABASE_*``
+    When ``config.json`` has no ``database`` section and no ``AGENTBUDDY_DATABASE_*``
     env overrides are set, falls back to ``paths.db`` (legacy layout).
     """
     db_cfg = config.database

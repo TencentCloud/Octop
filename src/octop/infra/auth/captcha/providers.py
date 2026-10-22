@@ -282,7 +282,7 @@ class _TencentProvider:
         if not cam_id or not cam_key:
             logger.warning(
                 "tencent captcha ticket verification needs CAM API keys "
-                "(captcha settings cam_secret_id/cam_secret or OCTOP_CAPTCHA_CAM_SECRET_*)"
+                "(captcha settings cam_secret_id/cam_secret or AGENTBUDDY_CAPTCHA_CAM_SECRET_*)"
             )
             raise _failed()
         try:

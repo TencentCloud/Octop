@@ -1,8 +1,8 @@
-const INSTALL_FLAG = "__OCTOP_EXTERNAL_LINKS_INSTALLED__";
+const INSTALL_FLAG = "__AGENTBUDDY_EXTERNAL_LINKS_INSTALLED__";
 const OPEN_URL_EVENT_PREFIX = "desktop:open-url:";
 
 type DesktopWindow = Window & {
-  __OCTOP_EXTERNAL_LINKS_INSTALLED__?: boolean;
+  __AGENTBUDDY_EXTERNAL_LINKS_INSTALLED__?: boolean;
   _wails?: { invoke?: (message: string) => void };
 };
 

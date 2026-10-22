@@ -10,7 +10,7 @@ from octop.infra.db.repos.users import UserRepo, UserRow
 
 
 def test_user_row_carries_permissions(tmp_path: Path) -> None:
-    db = SqlitePool(tmp_path / "octop.db")
+    db = SqlitePool(tmp_path / "agentbuddy.db")
     run_migrations(db)
     repo = UserRepo(db)
     uid = repo.create(
@@ -25,7 +25,7 @@ def test_user_row_carries_permissions(tmp_path: Path) -> None:
 
 
 def test_set_permissions_roundtrip(tmp_path: Path) -> None:
-    db = SqlitePool(tmp_path / "octop.db")
+    db = SqlitePool(tmp_path / "agentbuddy.db")
     run_migrations(db)
     repo = UserRepo(db)
     uid = repo.create(username="bob", password_hash="x", role="user")

@@ -14,7 +14,7 @@ from octop.infra.connectors.gateway import agently_auth
 
 @pytest.fixture
 async def cli(monkeypatch: pytest.MonkeyPatch, tmp_path: Path):
-    monkeypatch.setenv("OCTOP_HOME", str(tmp_path / "home"))
+    monkeypatch.setenv("AGENTBUDDY_HOME", str(tmp_path / "home"))
     monkeypatch.setenv("PYTHONIOENCODING", "utf-8")  # Match the native CLI on Windows too.
     monkeypatch.chdir(tmp_path)
     (tmp_path / "auth").write_text(

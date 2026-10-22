@@ -1,6 +1,6 @@
 """Real PostgreSQL safety gate; use a dedicated disposable database, never production.
 
-Run with OCTOP_MEMORY_MAINTENANCE_TEST_DSN. An explicitly supplied but
+Run with AGENTBUDDY_MEMORY_MAINTENANCE_TEST_DSN. An explicitly supplied but
 unreachable database fails the gate instead of silently skipping it.
 """
 
@@ -22,7 +22,7 @@ from octop_memory.types import AtomCard, Candidate, JournalEntry
 from octop.infra.agents.memory import postgres_storage as storage
 from octop.infra.agents.memory.thread_cleanup import memory_namespace
 
-DSN = os.environ.get("OCTOP_MEMORY_MAINTENANCE_TEST_DSN")
+DSN = os.environ.get("AGENTBUDDY_MEMORY_MAINTENANCE_TEST_DSN")
 pytestmark = pytest.mark.skipif(not DSN, reason="dedicated PostgreSQL test DSN not configured")
 
 

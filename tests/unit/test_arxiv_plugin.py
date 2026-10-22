@@ -370,7 +370,7 @@ def test_market_installs_arxiv_plugin_and_ui_assets(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setenv("OCTOP_HOME", str(tmp_path))
+    monkeypatch.setenv("AGENTBUDDY_HOME", str(tmp_path))
     PluginRegistry.reset()
     try:
         manager = PluginManager(

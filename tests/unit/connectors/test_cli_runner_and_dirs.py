@@ -31,14 +31,14 @@ def test_format_cli_error_strips_cli_hints() -> None:
 
 
 def test_cleanup_removes_instance_dir(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("OCTOP_HOME", str(tmp_path))
+    monkeypatch.setenv("AGENTBUDDY_HOME", str(tmp_path))
     from octop.infra.utils.paths import PathLayout
 
     layout = PathLayout.from_env()
     target = layout.ensure_connector_cli_instance_dir("feishu-cli", "inst1")
     (target / "config.json").write_text("{}", encoding="utf-8")
     assert target.is_dir()
-    # PathLayout must nest under OCTOP_HOME without assuming POSIX separators.
+    # PathLayout must nest under AGENTBUDDY_HOME without assuming POSIX separators.
     assert target == tmp_path / "connector-cli" / "feishu-cli" / "inst1"
     cli_dirs.remove_connector_cli_dirs("feishu-cli", "inst1", "unused")
     assert not target.exists()

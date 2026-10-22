@@ -83,7 +83,7 @@ async def test_start_writes_wizard_password_when_no_users(tmp_octop_home: Path) 
     srv = OctopServer(home=tmp_octop_home)
     await srv.start()
     try:
-        assert (tmp_octop_home.parent / "octop-login.txt").exists()
+        assert (tmp_octop_home.parent / "agentbuddy-login.txt").exists()
     finally:
         await srv.stop()
 
@@ -93,7 +93,7 @@ async def test_start_skips_wizard_password_when_disabled(tmp_octop_home: Path) -
     srv = OctopServer(home=tmp_octop_home)
     await srv.start()
     try:
-        assert not (tmp_octop_home / "octop-login.txt").exists()
+        assert not (tmp_octop_home / "agentbuddy-login.txt").exists()
     finally:
         await srv.stop()
 
@@ -104,8 +104,8 @@ async def test_main_agent_seeds_general_assistant_workspace(patched_app_client: 
     await bootstrap_admin(c, home)
     ws = home / "agents" / "main"
     assert (ws / "SOUL.md").is_file()
-    # New agents use system_files_path=.octop — BackendWorkspace remaps skills/.
-    assert (ws / ".octop" / "skills" / "octop-assistant" / "SKILL.md").is_file()
+    # New agents use system_files_path=.agentbuddy — BackendWorkspace remaps skills/.
+    assert (ws / ".agentbuddy" / "skills" / "agentbuddy-assistant" / "SKILL.md").is_file()
 
 
 async def test_main_agent_uses_fs_root_backend(patched_app_client: Any) -> None:

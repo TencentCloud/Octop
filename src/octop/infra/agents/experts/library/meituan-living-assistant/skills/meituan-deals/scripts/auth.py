@@ -28,7 +28,7 @@ def _resolve_auth_file() -> Path:
     """
     跨平台确定存储路径，优先级：
     1. 环境变量 WORKBUDDY_AUTH_FILE（由 run.js 注入，最高优先级）
-    2. 环境变量 OCTOP_AUTH_DIR（agentbuddy 多 Agent 隔离目录）
+    2. 环境变量 AGENTBUDDY_AUTH_DIR（agentbuddy 多 Agent 隔离目录）
     3. ~/.workbuddy/credentials/meituan-living-deals-assistant/token.json
     """
     import os
@@ -37,7 +37,7 @@ def _resolve_auth_file() -> Path:
     if env_path:
         return Path(env_path)
 
-    octop_dir = os.environ.get("OCTOP_AUTH_DIR")
+    octop_dir = os.environ.get("AGENTBUDDY_AUTH_DIR")
     if octop_dir:
         return Path(octop_dir) / "token.json"
 

@@ -80,13 +80,13 @@ octop acp --agent main
 | `--agent ID` | Agent to expose (default: CLI `default_agent` or first agent) |
 | `--debug` | Log to stderr |
 
-This starts a **standalone** `OctopServer` (reads `~/.octop`), boots the agent, and speaks ACP on stdin/stdout. It does **not** require `octop run` to be running; it is a separate process.
+This starts a **standalone** `OctopServer` (reads `~/.agentbuddy`), boots the agent, and speaks ACP on stdin/stdout. It does **not** require `octop run` to be running; it is a separate process.
 
 Pin the default agent for convenience:
 
 ```bash
 octop user login --username you
-# set default_agent in ~/.octop/cli_state.json, or:
+# set default_agent in ~/.agentbuddy/cli_state.json, or:
 octop --agent main acp
 ```
 
@@ -120,7 +120,7 @@ From a dev checkout:
 }
 ```
 
-Create an agent thread in Zed and prompt as usual. Sessions map to `thread_id`; the agent workspace remains under `~/.octop/agents/<agent_id>/`.
+Create an agent thread in Zed and prompt as usual. Sessions map to `thread_id`; the agent workspace remains under `~/.agentbuddy/agents/<agent_id>/`.
 
 ---
 

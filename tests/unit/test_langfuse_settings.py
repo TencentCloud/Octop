@@ -19,7 +19,7 @@ from octop.infra.errors import OctopError
 
 @pytest.fixture
 def store(tmp_path: Path) -> LangfuseSettingsStore:
-    db = SqlitePool(tmp_path / "octop.db")
+    db = SqlitePool(tmp_path / "agentbuddy.db")
     run_migrations(db)
     return LangfuseSettingsStore(settings_repo=SettingsRepo(db), secret_repo=SecretRepo(db))
 

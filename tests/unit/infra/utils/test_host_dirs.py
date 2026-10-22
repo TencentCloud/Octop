@@ -159,7 +159,7 @@ def test_assert_safe_host_path_allows_root_when_home(
         pytest.skip("/root not available")
     monkeypatch.setattr("octop.infra.utils.host_dirs.Path.home", lambda: root_home)
     assert assert_safe_host_path("/root") == root_home.resolve()
-    nested = root_home / ".octop"
+    nested = root_home / ".agentbuddy"
     # Nested path under home is allowed even if the parent is denylisted for others.
     assert assert_safe_host_path(str(nested)) == nested.resolve()
 
@@ -331,11 +331,11 @@ def test_host_fs_tree_root_admin_posix(monkeypatch: pytest.MonkeyPatch) -> None:
 def test_running_in_container_env_override(monkeypatch: pytest.MonkeyPatch) -> None:
     from octop.infra.utils.host_dirs import running_in_container
 
-    monkeypatch.setenv("OCTOP_IN_CONTAINER", "1")
+    monkeypatch.setenv("AGENTBUDDY_IN_CONTAINER", "1")
     assert running_in_container() is True
-    monkeypatch.setenv("OCTOP_IN_CONTAINER", "0")
+    monkeypatch.setenv("AGENTBUDDY_IN_CONTAINER", "0")
     assert running_in_container() is False
-    monkeypatch.setenv("OCTOP_IN_CONTAINER", "false")
+    monkeypatch.setenv("AGENTBUDDY_IN_CONTAINER", "false")
     assert running_in_container() is False
 
 
@@ -343,7 +343,7 @@ def test_running_in_container_env_override(monkeypatch: pytest.MonkeyPatch) -> N
 def test_running_in_container_detects_dockerenv(monkeypatch: pytest.MonkeyPatch) -> None:
     from octop.infra.utils.host_dirs import running_in_container
 
-    monkeypatch.delenv("OCTOP_IN_CONTAINER", raising=False)
+    monkeypatch.delenv("AGENTBUDDY_IN_CONTAINER", raising=False)
 
     class _FakePath:
         def __init__(self, path: object) -> None:

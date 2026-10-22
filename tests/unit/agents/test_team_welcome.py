@@ -52,7 +52,7 @@ def _prompt(title: str) -> dict[str, object]:
 
 async def _write_manifest(workspace: BackendWorkspace, payload: dict[str, object]) -> None:
     await workspace.awrite_text(
-        ".octop/manifest.json",
+        "manifest.json",
         json.dumps(payload, ensure_ascii=False),
         force=True,
     )

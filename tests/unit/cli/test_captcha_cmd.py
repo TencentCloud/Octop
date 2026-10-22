@@ -16,7 +16,7 @@ from octop.infra.auth.captcha.store import SETTINGS_KEY, load_effective
 
 @pytest.fixture
 def octop_home(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
-    monkeypatch.setenv("OCTOP_HOME", str(tmp_path))
+    monkeypatch.setenv("AGENTBUDDY_HOME", str(tmp_path))
     return tmp_path
 
 

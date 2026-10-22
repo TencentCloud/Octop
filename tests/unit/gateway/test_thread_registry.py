@@ -17,7 +17,7 @@ from octop.infra.gateway.threads import ThreadRegistry
 
 @pytest.fixture
 def registry(tmp_path: Path) -> ThreadRegistry:
-    db = SqlitePool(tmp_path / "octop.db")
+    db = SqlitePool(tmp_path / "agentbuddy.db")
     run_migrations(db)
     UserRepo(db).create(username="testuser", password_hash="x", role="user")
     AgentRepo(db).create(agent_id="a1", user_id=1, name="Agent 1")

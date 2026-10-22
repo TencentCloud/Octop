@@ -16,7 +16,7 @@ from octop.infra.utils.paths import PathLayout
 
 
 def default_state_path() -> Path:
-    """Default location for the CLI state file (``~/.octop/cli_state.json``)."""
+    """Default location for the CLI state file (``~/.agentbuddy/cli_state.json``)."""
     return PathLayout.from_env().root / "cli_state.json"
 
 
@@ -33,7 +33,7 @@ def load(path: Path) -> CLIState:
     read by nearly every CLI command (``config``, ``agent``, ``db``, the REPL),
     so one truncated file — the exact shape a torn write leaves behind — would
     otherwise abort all of them with an unhandled ``JSONDecodeError``. Same
-    policy and same helper as every other ``OCTOP_HOME`` JSON reader
+    policy and same helper as every other ``AGENTBUDDY_HOME`` JSON reader
     (``infra/utils/json_file.py``, issue #730).
     """
     try:

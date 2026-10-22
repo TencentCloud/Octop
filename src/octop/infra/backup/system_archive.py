@@ -56,8 +56,8 @@ _SKILL_PACKAGES_DIR = "skill-packages"
 _PLUGINS_DIR = "plugins"
 _KNOWLEDGE_DIR = "knowledge"
 _MANIFEST_NAME = "manifest.json"
-_SQLITE_DB_ARC = f"{_DB_DIR}/octop.db"
-_PG_DUMP_ARC = f"{_DB_DIR}/octop.dump"
+_SQLITE_DB_ARC = f"{_DB_DIR}/agentbuddy.db"
+_PG_DUMP_ARC = f"{_DB_DIR}/agentbuddy.dump"
 _MIGRATION_VERSION_SUFFIX = "-migrated-from-lightclaw"
 
 # Align with workspace zip export; keep backups smaller / faster.

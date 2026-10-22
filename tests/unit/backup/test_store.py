@@ -23,15 +23,15 @@ from octop.infra.utils.paths import PathLayout
 
 
 def test_backups_dir_paths(tmp_path: Path) -> None:
-    layout = PathLayout(tmp_path / ".octop")
-    assert layout.backups_dir == tmp_path / ".octop" / "backups"
+    layout = PathLayout(tmp_path / ".agentbuddy")
+    assert layout.backups_dir == tmp_path / ".agentbuddy" / "backups"
     out = layout.ensure_backups_dir()
     assert out.is_dir()
     assert layout.backup_file("x.tar.gz") == layout.backups_dir / "x.tar.gz"
 
 
 def test_store_roundtrip(tmp_path: Path) -> None:
-    layout = PathLayout(tmp_path / ".octop")
+    layout = PathLayout(tmp_path / ".agentbuddy")
     write_backup_file(layout, "octop-backup-test.tar.gz", b"payload")
     items = list_backup_files(layout)
     assert len(items) == 1
@@ -49,7 +49,7 @@ def test_reject_unsafe_filename() -> None:
 
 
 def test_created_at_from_canonical_filename(tmp_path: Path) -> None:
-    layout = PathLayout(tmp_path / ".octop")
+    layout = PathLayout(tmp_path / ".agentbuddy")
     name = "octop-backup-20260721T013000Z.tar.gz"
     write_backup_file(layout, name, b"x")
     items = list_backup_files(layout)
@@ -59,7 +59,7 @@ def test_created_at_from_canonical_filename(tmp_path: Path) -> None:
 
 
 def test_created_at_falls_back_without_timestamp_in_name(tmp_path: Path) -> None:
-    layout = PathLayout(tmp_path / ".octop")
+    layout = PathLayout(tmp_path / ".agentbuddy")
     write_backup_file(layout, "manual-upload.tar.gz", b"x")
     items = list_backup_files(layout)
     assert len(items) == 1
@@ -69,7 +69,7 @@ def test_created_at_falls_back_without_timestamp_in_name(tmp_path: Path) -> None
 
 
 def test_created_at_falls_back_on_invalid_filename_stamp(tmp_path: Path) -> None:
-    layout = PathLayout(tmp_path / ".octop")
+    layout = PathLayout(tmp_path / ".agentbuddy")
     # Matches regex but is not a real calendar datetime
     write_backup_file(layout, "octop-backup-20261399T999999Z.tar.gz", b"x")
     items = list_backup_files(layout)
@@ -78,7 +78,7 @@ def test_created_at_falls_back_on_invalid_filename_stamp(tmp_path: Path) -> None
 
 
 def test_created_at_from_auto_filename(tmp_path: Path) -> None:
-    layout = PathLayout(tmp_path / ".octop")
+    layout = PathLayout(tmp_path / ".agentbuddy")
     name = "octop-auto-backup-20260721T020000Z.tar.gz"
     write_backup_file(layout, name, b"x")
     items = list_backup_files(layout)
@@ -89,7 +89,7 @@ def test_created_at_from_auto_filename(tmp_path: Path) -> None:
 
 
 def test_prune_auto_backups_keeps_newest_and_spares_manual(tmp_path: Path) -> None:
-    layout = PathLayout(tmp_path / ".octop")
+    layout = PathLayout(tmp_path / ".agentbuddy")
     write_backup_file(layout, "octop-backup-20260101T000000Z.tar.gz", b"manual")
     write_backup_file(layout, "octop-auto-backup-20260101T010000Z.tar.gz", b"a1")
     write_backup_file(layout, "octop-auto-backup-20260102T010000Z.tar.gz", b"a2")
@@ -106,7 +106,7 @@ def test_prune_auto_backups_keeps_newest_and_spares_manual(tmp_path: Path) -> No
 
 
 def test_prune_auto_backups_keep_zero_deletes_all_auto(tmp_path: Path) -> None:
-    layout = PathLayout(tmp_path / ".octop")
+    layout = PathLayout(tmp_path / ".agentbuddy")
     write_backup_file(layout, "octop-backup-20260101T000000Z.tar.gz", b"manual")
     write_backup_file(layout, "octop-auto-backup-20260101T010000Z.tar.gz", b"a1")
     deleted = prune_auto_backups(layout, keep=0)
@@ -121,7 +121,7 @@ def test_peek_backup_contents_reads_manifest(tmp_path: Path) -> None:
     from octop.infra.db.migrate import run_migrations
     from octop.infra.db.pool import SqlitePool
 
-    layout = PathLayout(tmp_path / ".octop")
+    layout = PathLayout(tmp_path / ".agentbuddy")
     layout.root.mkdir()
     pool = SqlitePool(layout.db)
     run_migrations(pool)

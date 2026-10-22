@@ -40,7 +40,7 @@ def test_init_completes_with_gbk_stdout(tmp_path: Path) -> None:
     user were already created."""
     home = tmp_path / "octop-home"
     env = dict(os.environ)
-    env["OCTOP_HOME"] = str(home)
+    env["AGENTBUDDY_HOME"] = str(home)
     env["PYTHONIOENCODING"] = "gbk"
     env.pop("PYTHONUTF8", None)
     proc = subprocess.run(
@@ -63,4 +63,4 @@ def test_init_completes_with_gbk_stdout(tmp_path: Path) -> None:
     assert proc.returncode == 0, proc.stdout.decode("utf-8", "replace") + proc.stderr.decode(
         "utf-8", "replace"
     )
-    assert (home / "octop.db").is_file()
+    assert (home / "agentbuddy.db").is_file()

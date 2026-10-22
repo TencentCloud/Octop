@@ -4,14 +4,14 @@ setlocal EnableExtensions EnableDelayedExpansion
 rem agentbuddy green portable launcher (Windows)
 rem Usage:
 rem   start.bat
-rem   start.bat --home D:\octop-data
+rem   start.bat --home D:\agentbuddy-data
 rem   start.bat --home .\data --host 0.0.0.0 --port 8088
 
 set "ROOT=%~dp0"
 if "%ROOT:~-1%"=="\" set "ROOT=%ROOT:~0,-1%"
-set "OCTOP_GREEN_PACKAGES=%ROOT%\packages"
+set "AGENTBUDDY_GREEN_PACKAGES=%ROOT%\packages"
 
-if not defined OCTOP_HOME set "OCTOP_HOME=%ROOT%\data"
+if not defined AGENTBUDDY_HOME set "AGENTBUDDY_HOME=%ROOT%\data"
 set "HOST="
 set "PORT="
 set "EXTRA="
@@ -23,7 +23,7 @@ if /I "%~1"=="--home" (
     echo start.bat: --home requires a path
     exit /b 1
   )
-  set "OCTOP_HOME=%~2"
+  set "AGENTBUDDY_HOME=%~2"
   shift
   shift
   goto parse
@@ -57,17 +57,17 @@ goto parse
 :help
 echo agentbuddy green portable launcher
 echo.
-echo Usage: start.bat [--home DIR] [--host HOST] [--port PORT] [octop run args...]
+echo Usage: start.bat [--home DIR] [--host HOST] [--port PORT] [agentbuddy run args...]
 echo.
 echo Defaults:
-echo   OCTOP_HOME / --home   %%ROOT%%\data
+echo   AGENTBUDDY_HOME / --home   %%ROOT%%\data
 echo   bind_host / port      config.json ^(127.0.0.1:8088 when unset^)
 echo.
 echo --host and --port override config.json and are saved back to it.
 exit /b 0
 
 :run
-if not exist "%OCTOP_HOME%" mkdir "%OCTOP_HOME%"
+if not exist "%AGENTBUDDY_HOME%" mkdir "%AGENTBUDDY_HOME%"
 
 set "PY=%ROOT%\runtime\python.exe"
 if not exist "%PY%" (
@@ -84,7 +84,7 @@ rem Prefer launch.py (site.addsitedir + pywin32 DLL path). Do not set PYTHONPATH
 set "PYTHONNOUSERSITE=1"
 set "PYTHONPATH="
 
-echo [octop] home=%OCTOP_HOME%
+echo [agentbuddy] home=%AGENTBUDDY_HOME%
 set "BIND_ARGS="
 if defined HOST set "BIND_ARGS=--host %HOST%"
 if defined PORT (
@@ -94,9 +94,9 @@ if defined PORT (
     set "BIND_ARGS=--port %PORT%"
   )
 )
-if defined HOST if defined PORT echo [octop] http://%HOST%:%PORT%
-if defined HOST if not defined PORT echo [octop] host=%HOST% ^(port from config.json^)
-if not defined HOST if defined PORT echo [octop] port=%PORT% ^(host from config.json^)
-if not defined HOST if not defined PORT echo [octop] bind from config.json
+if defined HOST if defined PORT echo [agentbuddy] http://%HOST%:%PORT%
+if defined HOST if not defined PORT echo [agentbuddy] host=%HOST% ^(port from config.json^)
+if not defined HOST if defined PORT echo [agentbuddy] port=%PORT% ^(host from config.json^)
+if not defined HOST if not defined PORT echo [agentbuddy] bind from config.json
 "%PY%" "%ROOT%\launch.py" run !BIND_ARGS! %EXTRA%
 exit /b %ERRORLEVEL%

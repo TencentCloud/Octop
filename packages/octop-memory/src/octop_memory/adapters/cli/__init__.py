@@ -47,22 +47,22 @@ except ImportError:
 @click.option(
     "--config",
     "config_path",
-    envvar="OCTOP_MEMORY_CONFIG",
+    envvar="AGENTBUDDY_MEMORY_CONFIG",
     default=None,
     type=click.Path(dir_okay=False),
-    help="Path to config file (default: ~/.octop-memory/config.json).",
+    help="Path to config file (default: ~/.agentbuddy/memory/config.json).",
 )
 @click.option(
     "--backend",
     "-b",
-    envvar="OCTOP_MEMORY_BACKEND",
+    envvar="AGENTBUDDY_MEMORY_BACKEND",
     default=None,
     type=click.Choice(["sqlite", "postgres"], case_sensitive=False),
     help="Storage backend type.",
 )
-@click.option("--db", envvar="OCTOP_MEMORY_DB", default=None, help="SQLite database path.")
-@click.option("--dsn", envvar="OCTOP_MEMORY_DSN", default=None, help="PostgreSQL connection string.")
-@click.option("--namespace", "-n", envvar="OCTOP_MEMORY_NAMESPACE", default=None, help="Memory namespace.")
+@click.option("--db", envvar="AGENTBUDDY_MEMORY_DB", default=None, help="SQLite database path.")
+@click.option("--dsn", envvar="AGENTBUDDY_MEMORY_DSN", default=None, help="PostgreSQL connection string.")
+@click.option("--namespace", "-n", envvar="AGENTBUDDY_MEMORY_NAMESPACE", default=None, help="Memory namespace.")
 @click.option("--json", "output_json", is_flag=True, default=False, help="Output as JSON.")
 @click.pass_context
 def main(
@@ -93,9 +93,9 @@ def main(
     resolved_backend = ctx.obj["backend"]
     if resolved_backend == "sqlite":
         sqlite_config = file_config.get("sqlite", {})
-        ctx.obj["db"] = db or sqlite_config.get("db_path", "~/.octop-memory/memory.db")
+        ctx.obj["db"] = db or sqlite_config.get("db_path", "~/.agentbuddy/memory/memory.db")
     else:
-        ctx.obj["db"] = db or "~/.octop-memory/memory.db"
+        ctx.obj["db"] = db or "~/.agentbuddy/memory/memory.db"
 
     if resolved_backend == "postgres":
         postgres_config = file_config.get("postgres", {})

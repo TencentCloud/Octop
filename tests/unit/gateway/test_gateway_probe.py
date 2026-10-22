@@ -17,7 +17,7 @@ from octop.infra.utils.paths import PathLayout
 
 
 def _make_gateway(tmp_path: Path) -> Gateway:
-    db = SqlitePool(tmp_path / "octop.db")
+    db = SqlitePool(tmp_path / "agentbuddy.db")
     run_migrations(db)
     services = build_shared_services(db=db, paths=PathLayout(tmp_path), config=OctopConfig())
     registry = AgentManager(

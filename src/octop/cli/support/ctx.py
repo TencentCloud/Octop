@@ -63,6 +63,6 @@ def require_agent(agent_id: str | None) -> str:
     """Resolve agent id or exit with code 2."""
     aid = resolve_agent(agent_id)
     if aid is None:
-        click.echo("error: --agent is required (or set root --agent / OCTOP_AGENT)", err=True)
+        click.echo("error: --agent is required (or set root --agent / AGENTBUDDY_AGENT)", err=True)
         raise SystemExit(2)
     return aid

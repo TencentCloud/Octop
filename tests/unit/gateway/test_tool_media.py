@@ -403,7 +403,7 @@ async def test_enrich_send_file_rewrites_path_to_dashboard_api() -> None:
 def test_dashboard_media_url_uses_path_agent_id() -> None:
     from octop.infra.gateway.media.backend_files import dashboard_media_url
 
-    path = "file:///Users/me/.octop/agents/W4MFVJ/outbound/screenshots/harness.png"
+    path = "file:///Users/me/.agentbuddy/agents/W4MFVJ/outbound/screenshots/harness.png"
     url = dashboard_media_url("6X3Z7C", path)
     assert url is not None
     assert url.startswith("/api/agents/W4MFVJ/media/preview?")
@@ -442,7 +442,7 @@ async def test_enrich_plain_text_screenshot_output() -> None:
     from octop.infra.gateway.media.tool_media import enrich_tool_output_string
 
     text = (
-        "Screenshot saved to /Users/me/.octop/agents/A1/outbound/screenshots/harness.png "
+        "Screenshot saved to /Users/me/.agentbuddy/agents/A1/outbound/screenshots/harness.png "
         "(116 KB, 1440x900)"
     )
     enriched = await enrich_tool_output_string(

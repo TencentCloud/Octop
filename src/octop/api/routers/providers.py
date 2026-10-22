@@ -198,7 +198,7 @@ async def list_provider_presets(
 ) -> list[dict[str, Any]]:
     """Return built-in provider presets from octop-harness.
 
-    Order and visibility follow ``~/.octop/provider_presets.json`` when present
+    Order and visibility follow ``~/.agentbuddy/provider_presets.json`` when present
     (``hidden`` / ``order`` / ``group_names``); groups arrive before loose presets.
     """
     return load_provider_presets()

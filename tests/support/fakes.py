@@ -159,7 +159,7 @@ description: General-purpose agent
         from octop.infra.utils.frontmatter import parse_frontmatter
 
         paths: set[str] = set()
-        for root in ("agents", ".octop/agents"):
+        for root in ("agents", ".agentbuddy/agents"):
             agents_dir = self._workspace_dir / root
             if agents_dir.is_dir():
                 for fpath in agents_dir.glob("*.md"):

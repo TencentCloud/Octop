@@ -46,13 +46,13 @@ func desktopSQLitePath(home string) (string, bool, error) {
 		return "", false, fmt.Errorf("read database config: %w", err)
 	}
 
-	if os.Getenv("OCTOP_DATABASE_URL") != "" {
+	if os.Getenv("AGENTBUDDY_DATABASE_URL") != "" {
 		driver = "postgresql"
 	}
-	if value := strings.TrimSpace(os.Getenv("OCTOP_DATABASE_DRIVER")); value != "" {
+	if value := strings.TrimSpace(os.Getenv("AGENTBUDDY_DATABASE_DRIVER")); value != "" {
 		driver = strings.ToLower(value)
 	}
-	if value := os.Getenv("OCTOP_DATABASE_SQLITE_PATH"); value != "" {
+	if value := os.Getenv("AGENTBUDDY_DATABASE_SQLITE_PATH"); value != "" {
 		sqlitePath = value
 	}
 	if driver == "postgresql" {
@@ -82,7 +82,7 @@ func safeVersion(value string) string {
 }
 
 func backupSQLiteBeforeUpgrade(root, currentVersion, nextVersion string) (string, error) {
-	home := octopHome()
+	home := agentbuddyHome()
 	source, isSQLite, err := desktopSQLitePath(home)
 	if err != nil || !isSQLite {
 		return "", err

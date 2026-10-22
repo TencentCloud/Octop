@@ -70,7 +70,7 @@ async def test_deferred_verify_password_then_bind(tmp_octop_home: Path) -> None:
     """Greenfield: password works with no pool; /setup/database binds once."""
     async with octop_client(tmp_octop_home, bind_database=False) as (client, srv):
         assert srv.database_bound is False
-        assert not (tmp_octop_home / "octop.db").exists()
+        assert not (tmp_octop_home / "agentbuddy.db").exists()
 
         status = await client.get("/api/setup/status")
         assert status.status_code == 200
@@ -100,11 +100,11 @@ async def test_deferred_verify_password_then_bind(tmp_octop_home: Path) -> None:
 
         applied = await client.post(
             "/api/setup/database",
-            json={"driver": "sqlite", "sqlite_path": "octop.db"},
+            json={"driver": "sqlite", "sqlite_path": "agentbuddy.db"},
         )
         assert applied.status_code == 200, applied.text
         assert srv.database_bound is True
-        assert (tmp_octop_home / "octop.db").is_file()
+        assert (tmp_octop_home / "agentbuddy.db").is_file()
 
         status2 = await client.get("/api/setup/status")
         assert status2.json()["database_bound"] is True
@@ -151,6 +151,6 @@ async def test_setup_database_refused_after_admin(patched_app_client) -> None:
     await bootstrap_admin(client, home)
     r = await client.post(
         "/api/setup/database",
-        json={"driver": "sqlite", "sqlite_path": "octop.db"},
+        json={"driver": "sqlite", "sqlite_path": "agentbuddy.db"},
     )
     assert r.status_code == 410

@@ -146,7 +146,8 @@ async def _iter_subprocess_lines(stream: asyncio.StreamReader) -> AsyncIterator[
 
 
 def octop_home() -> Path:
-    return Path(os.environ.get("OCTOP_HOME", Path.home() / ".octop"))
+    raw = os.environ.get("AGENTBUDDY_HOME", "").strip() or os.environ.get("OCTOP_HOME", "").strip()
+    return Path(raw) if raw else Path.home() / ".agentbuddy"
 
 
 def desktop_state_dir() -> Path:
@@ -170,19 +171,21 @@ def bundled_scripts_dir() -> Path:
 
 
 def resolve_install_script_path() -> Path | None:
-    return _script_path_from_env("OCTOP_DESKTOP_INSTALL_SCRIPT") or _bundled_script("install.sh")
+    return _script_path_from_env("AGENTBUDDY_DESKTOP_INSTALL_SCRIPT") or _bundled_script(
+        "install.sh"
+    )
 
 
 def resolve_start_script_path() -> Path | None:
-    return _script_path_from_env("OCTOP_DESKTOP_START_SCRIPT") or _bundled_script("start.sh")
+    return _script_path_from_env("AGENTBUDDY_DESKTOP_START_SCRIPT") or _bundled_script("start.sh")
 
 
 def resolve_stop_script_path() -> Path | None:
-    return _script_path_from_env("OCTOP_DESKTOP_STOP_SCRIPT") or _bundled_script("stop.sh")
+    return _script_path_from_env("AGENTBUDDY_DESKTOP_STOP_SCRIPT") or _bundled_script("stop.sh")
 
 
 def resolve_resize_script_path() -> Path | None:
-    return _script_path_from_env("OCTOP_DESKTOP_RESIZE_SCRIPT") or _bundled_script("resize.sh")
+    return _script_path_from_env("AGENTBUDDY_DESKTOP_RESIZE_SCRIPT") or _bundled_script("resize.sh")
 
 
 _DEFAULT_VNC_PORT = 5900
@@ -268,15 +271,15 @@ def read_geometry() -> str:
     if path.is_file():
         for line in path.read_text(encoding="utf-8", errors="replace").splitlines():
             line = line.strip()
-            if line.startswith("export OCTOP_DESKTOP_GEOMETRY="):
+            if line.startswith("export AGENTBUDDY_DESKTOP_GEOMETRY="):
                 value = line.split("=", 1)[1].strip().strip('"').strip("'")
                 if _GEOMETRY_RE.match(value):
                     return value
-            if line.startswith("OCTOP_DESKTOP_GEOMETRY="):
+            if line.startswith("AGENTBUDDY_DESKTOP_GEOMETRY="):
                 value = line.split("=", 1)[1].strip().strip('"').strip("'")
                 if _GEOMETRY_RE.match(value):
                     return value
-    return os.environ.get("OCTOP_DESKTOP_GEOMETRY", _DEFAULT_GEOMETRY)
+    return os.environ.get("AGENTBUDDY_DESKTOP_GEOMETRY", _DEFAULT_GEOMETRY)
 
 
 def _write_geometry_env(geometry: str) -> None:
@@ -292,8 +295,8 @@ def _write_geometry_env(geometry: str) -> None:
         "\n".join(
             [
                 f"export DISPLAY={display}",
-                f"export OCTOP_DESKTOP_DISPLAY={display}",
-                f"export OCTOP_DESKTOP_GEOMETRY={geometry}",
+                f"export AGENTBUDDY_DESKTOP_DISPLAY={display}",
+                f"export AGENTBUDDY_DESKTOP_GEOMETRY={geometry}",
                 "",
             ]
         ),

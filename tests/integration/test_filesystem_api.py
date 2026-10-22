@@ -110,7 +110,7 @@ async def test_filesystem_defaults_for_admin(
     home = tmp_path / "os_home"
     home.mkdir()
     monkeypatch.setattr("octop.infra.utils.host_dirs.Path.home", lambda: home)
-    monkeypatch.setenv("OCTOP_IN_CONTAINER", "0")
+    monkeypatch.setenv("AGENTBUDDY_IN_CONTAINER", "0")
 
     r = await client.get("/api/filesystem/defaults", headers=auth)
     assert r.status_code == 200, r.text
@@ -140,7 +140,7 @@ async def test_filesystem_roots_lists_every_drive_not_just_home_drive(
     home = tmp_path / "os_home"
     home.mkdir()
     monkeypatch.setattr("octop.infra.utils.host_dirs.Path.home", lambda: home)
-    monkeypatch.setenv("OCTOP_IN_CONTAINER", "0")
+    monkeypatch.setenv("AGENTBUDDY_IN_CONTAINER", "0")
 
     r = await client.get("/api/filesystem/roots", headers=auth)
     assert r.status_code == 200, r.text
@@ -175,7 +175,7 @@ async def test_filesystem_defaults_in_container(
     home = tmp_path / "os_home"
     home.mkdir()
     monkeypatch.setattr("octop.infra.utils.host_dirs.Path.home", lambda: home)
-    monkeypatch.setenv("OCTOP_IN_CONTAINER", "1")
+    monkeypatch.setenv("AGENTBUDDY_IN_CONTAINER", "1")
 
     r = await client.get("/api/filesystem/defaults", headers=auth)
     assert r.status_code == 200, r.text
@@ -202,7 +202,7 @@ async def test_non_admin_can_list_outside_home(
     outside = tmp_path / "outside"
     outside.mkdir()
     monkeypatch.setattr("octop.infra.utils.host_dirs.Path.home", lambda: home)
-    monkeypatch.setenv("OCTOP_IN_CONTAINER", "0")
+    monkeypatch.setenv("AGENTBUDDY_IN_CONTAINER", "0")
 
     user_auth = await create_user(client, admin_auth, username="alice", password="TestPass12")
 
@@ -358,7 +358,7 @@ async def test_filesystem_respects_user_workspace_root(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setenv("OCTOP_IN_CONTAINER", "0")
+    monkeypatch.setenv("AGENTBUDDY_IN_CONTAINER", "0")
     from tests.support.auth import TEST_PASSWORD, create_user
 
     client, _srv, admin_auth = env
