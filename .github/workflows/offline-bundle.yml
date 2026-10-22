@@ -123,15 +123,17 @@ jobs:
     if: startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
     steps:
-      - name: Download all bundle artifacts
-        uses: actions/download-artifact@v4
-        with:
-          path: bundles/
-
+      # Checkout must run BEFORE downloading artifacts: actions/checkout
+      # performs a `git clean -ffdx` that would wipe the bundles otherwise.
       - name: Checkout
         uses: actions/checkout@v4
         with:
           ref: ${{ github.ref }}
+
+      - name: Download all bundle artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: bundles/
 
       - name: Attach to GitHub Release
         env:
