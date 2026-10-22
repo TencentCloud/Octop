@@ -35,6 +35,9 @@ export interface OctopAgent {
   owner_username?: string | null;
   /** Whether the owner has shared this expert with other users. */
   is_shared?: boolean;
+  /** Who may use a shared expert: owner, all logged-in users, or user groups. */
+  visibility?: "owner" | "all" | "groups";
+  group_ids?: string[];
   /** Whether the current user owns this expert. */
   is_owner?: boolean;
   name: string;

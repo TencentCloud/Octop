@@ -8,8 +8,12 @@ from unittest.mock import patch
 
 import pytest
 
-from octop.infra.mobile import docker_install
-from octop.infra.mobile.docker_install import select_download_source
+from octop.infra.control.mobile import docker_install
+from octop.infra.control.mobile.docker_install import (
+    _merge_registry_mirror,
+    _probe_tencent_mirror,
+    select_download_source,
+)
 
 
 def _with_measure(delays: dict[str, float | None]):
@@ -74,7 +78,7 @@ async def test_select_download_source_all_unreachable_falls_back() -> None:
 
 @pytest.mark.asyncio
 async def test_install_mobile_stream_auto_installs_docker_then_proceeds() -> None:
-    from octop.infra.mobile import setup as mobile_setup
+    from octop.infra.control.mobile import setup as mobile_setup
 
     async def fake_auto_install(*, locale: str = "en"):
         yield "docker install log line"
@@ -124,7 +128,7 @@ async def test_install_mobile_stream_auto_installs_docker_then_proceeds() -> Non
 
 @pytest.mark.asyncio
 async def test_install_mobile_stream_auto_install_fails_reports_docker_missing() -> None:
-    from octop.infra.mobile import setup as mobile_setup
+    from octop.infra.control.mobile import setup as mobile_setup
 
     async def fake_auto_install(*, locale: str = "en"):
         yield "failed log"
@@ -152,7 +156,7 @@ async def test_install_mobile_stream_auto_install_fails_reports_docker_missing()
 
 @pytest.mark.asyncio
 async def test_install_mobile_stream_no_sudo_reports_docker_missing() -> None:
-    from octop.infra.mobile import setup as mobile_setup
+    from octop.infra.control.mobile import setup as mobile_setup
 
     async def collect():
         events = []

@@ -52,6 +52,12 @@ import {
 } from "../../../components/AvatarPicker";
 import { OctopEmptyMascot } from "../../../components/EmptyState";
 import { ResourceVisibilityFields } from "../../../components/ResourceVisibilityFields";
+import { ResourceAudienceFilter } from "../../../components/ResourceAudienceFilter";
+import { SharedResourceBadge } from "../../../components/SharedResourceBadge";
+import {
+  matchesResourceAudience,
+  type ResourceAudience,
+} from "../../../utils/resourceAudience";
 import StreamSetupGuide from "../../../components/StreamSetupGuide/StreamSetupGuide";
 import { TextAssistBar } from "../../../components/TextAssistBar";
 import type { ResourceVisibilityMode } from "../../../api/modules/userGroups";
@@ -108,17 +114,8 @@ function isOwnedConnection(row: BridgeConnection): boolean {
   return row.is_owner !== false;
 }
 
-function sharedAudienceLabel(
-  row: BridgeConnection,
-  t: (key: string) => string,
-): string {
-  if (row.visibility === "groups") {
-    return t("resourceVisibility.groups");
-  }
-  if (row.visibility === "all" || row.shared) {
-    return t("resourceVisibility.all");
-  }
-  return t("resourceVisibility.owner");
+function bridgeOwnerLabel(row: BridgeConnection): string {
+  return (row.owner_display_name || row.owner_username || "").trim();
 }
 
 const FIELD_ICON = {
@@ -655,6 +652,11 @@ function BridgeConnectionCard({
                 {t("advancedSettings.bridge.inboundTag")}
               </Tag>
             ) : null}
+            <SharedResourceBadge
+              shared={row.shared}
+              owned={isOwnedConnection(row)}
+              ownerName={bridgeOwnerLabel(row)}
+            />
           </div>
         </div>
         <div
@@ -714,11 +716,6 @@ function BridgeConnectionCard({
               onToggle={actions.onToggleAutoReconnect}
             />
           ) : null}
-          {!isOwnedConnection(row) ? (
-            <Tag style={{ marginInlineEnd: 0 }}>
-              {sharedAudienceLabel(row, t)}
-            </Tag>
-          ) : null}
         </div>
         <div className={styles.backendActionsRight}>
           {isOwnedConnection(row) ? (
@@ -769,6 +766,7 @@ export default function BridgeSettingsPanel({
   const isMobile = useIsMobile();
   const { refresh: refreshAgents } = useAgent();
   const { viewMode, setViewMode, showCardView } = useCardTableView("card");
+  const [audience, setAudience] = useState<ResourceAudience>("all");
   const [loading, setLoading] = useState(true);
   const [busyId, setBusyId] = useState<string | null>(null);
   const busyRef = useRef<string | null>(null);
@@ -1210,12 +1208,19 @@ export default function BridgeSettingsPanel({
               />
             </span>
             <div className={styles.tableNameText}>
-              <strong>{name}</strong>
-              {isInboundConnection(row) ? (
-                <Tag style={{ marginInlineStart: 6, marginInlineEnd: 0 }}>
-                  {t("advancedSettings.bridge.inboundTag")}
-                </Tag>
-              ) : null}
+              <span className={styles.tableNameTitle}>
+                <strong>{name}</strong>
+                {isInboundConnection(row) ? (
+                  <Tag style={{ marginInlineEnd: 0 }}>
+                    {t("advancedSettings.bridge.inboundTag")}
+                  </Tag>
+                ) : null}
+                <SharedResourceBadge
+                  shared={row.shared}
+                  owned={isOwnedConnection(row)}
+                  ownerName={bridgeOwnerLabel(row)}
+                />
+              </span>
               {row.notes ? (
                 <span className={styles.tableNameNote}>{row.notes}</span>
               ) : null}
@@ -1280,9 +1285,7 @@ export default function BridgeSettingsPanel({
         width: 240,
         render: (_: unknown, row) =>
           !isOwnedConnection(row) ? (
-            <Tag style={{ marginInlineEnd: 0 }}>
-              {sharedAudienceLabel(row, t)}
-            </Tag>
+            "—"
           ) : (
             <div className={styles.tableActions}>
               <Button
@@ -1343,6 +1346,24 @@ export default function BridgeSettingsPanel({
     />
   );
 
+  const visibleRows = useMemo(
+    () =>
+      rows.filter((row) =>
+        matchesResourceAudience(audience, {
+          owned: isOwnedConnection(row),
+          shared: row.shared,
+        }),
+      ),
+    [audience, rows],
+  );
+  const audienceFilter =
+    rows.length > 0 ? (
+      <ResourceAudienceFilter
+        value={audience}
+        onChange={(value) => setAudience(value as ResourceAudience)}
+      />
+    ) : null;
+
   const atConnectionLimit = rows.length >= MAX_BRIDGE_CONNECTIONS;
   const headerActions = (
     <>
@@ -1375,13 +1396,16 @@ export default function BridgeSettingsPanel({
     <>
       {asPage ? (
         <div className={styles.pageToolbar}>
-          <span className={styles.gridCount}>
-            {!loading && rows.length > 0
-              ? t("advancedSettings.bridge.totalConnections", {
-                  count: rows.length,
-                })
-              : null}
-          </span>
+          <div className={styles.pageToolbarStart}>
+            <span className={styles.gridCount}>
+              {!loading && rows.length > 0
+                ? t("advancedSettings.bridge.totalConnections", {
+                    count: visibleRows.length,
+                  })
+                : null}
+            </span>
+            {audienceFilter}
+          </div>
           <div className={styles.pageToolbarActions}>{headerActions}</div>
         </div>
       ) : (
@@ -1437,14 +1461,19 @@ export default function BridgeSettingsPanel({
             <div className={styles.gridToolbar}>
               <span className={styles.gridCount}>
                 {t("advancedSettings.bridge.totalConnections", {
-                  count: rows.length,
+                  count: visibleRows.length,
                 })}
               </span>
+              {audienceFilter}
             </div>
           ) : null}
-          {showCardView ? (
+          {visibleRows.length === 0 ? (
+            <div className={styles.filterEmpty}>
+              {t("resourceAudience.empty")}
+            </div>
+          ) : showCardView ? (
             <div className={styles.cardGrid}>
-              {rows.map((row) => (
+              {visibleRows.map((row) => (
                 <BridgeConnectionCard
                   key={row.connection_id}
                   row={row}
@@ -1460,7 +1489,7 @@ export default function BridgeSettingsPanel({
                 size="middle"
                 pagination={false}
                 columns={columns}
-                dataSource={rows}
+                dataSource={visibleRows}
                 scroll={{ x: 900 }}
                 expandable={{
                   expandedRowRender: (row) => (

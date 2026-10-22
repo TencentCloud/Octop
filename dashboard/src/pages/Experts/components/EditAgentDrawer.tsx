@@ -13,7 +13,6 @@ import {
   Modal,
   Select,
   Spin,
-  Switch,
 } from "antd";
 
 import { MoreHorizontal } from "lucide-react";
@@ -88,6 +87,8 @@ import {
   type PathMapping,
 } from "./agentBackendForm";
 import AgentBackendFields from "./AgentBackendFields";
+import { ResourceVisibilityFormItem } from "../../../components/ResourceVisibilityFields";
+import type { ResourceVisibilityMode } from "../../../api/modules/userGroups";
 import ExpertComposerDefaultsFields from "./ExpertComposerDefaultsFields";
 import SkillCatalogDrawer from "./SkillCatalogDrawer";
 import SubagentCatalogDrawer from "./SubagentCatalogDrawer";
@@ -106,6 +107,9 @@ interface AgentDetail {
   top_p?: number | null;
   max_tokens?: number | null;
   welcome_message?: string | null;
+  is_shared?: boolean;
+  visibility?: ResourceVisibilityMode | null;
+  group_ids?: string[];
   knowledge_base_ids?: string[];
   mcp_servers?: string[];
   config?: Record<string, unknown>;
@@ -143,7 +147,6 @@ interface EditFormValues {
   name: string;
   description: string;
   welcome_message?: string;
-  is_shared?: boolean;
   default_model: string;
   conversation_mode: ConversationMode;
   backend_choice: string;
@@ -258,6 +261,9 @@ function EditAgentDrawerBody({
   const [loading, setLoading] = useState(false);
   const [filesLoading, setFilesLoading] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [expertVisibility, setExpertVisibility] =
+    useState<ResourceVisibilityMode>(agent.is_shared ? "all" : "owner");
+  const [expertGroupIds, setExpertGroupIds] = useState<string[]>([]);
   const [fileModalOpen, setFileModalOpen] = useState(false);
   const [editingFile, setEditingFile] = useState<string | null>(null);
   const [listRenameOpen, setListRenameOpen] = useState(false);
@@ -328,7 +334,6 @@ function EditAgentDrawerBody({
           description: ag.description ?? "",
           welcome_message:
             typeof ag.welcome_message === "string" ? ag.welcome_message : "",
-          is_shared: agent.is_shared ?? false,
           default_model: defaultModelToForm(ag.default_model),
           conversation_mode: parseConversationMode(cfg.conversation_mode),
           backend_choice: parsedBackend.backendChoice,
@@ -341,6 +346,18 @@ function EditAgentDrawerBody({
             : [],
           mcp_servers: Array.isArray(ag.mcp_servers) ? ag.mcp_servers : [],
         });
+        const nextVisibility: ResourceVisibilityMode =
+          ag.visibility === "groups" ||
+          ag.visibility === "all" ||
+          ag.visibility === "owner"
+            ? ag.visibility
+            : ag.is_shared
+            ? "all"
+            : "owner";
+        setExpertVisibility(nextVisibility);
+        setExpertGroupIds(
+          nextVisibility === "groups" ? ag.group_ids ?? [] : [],
+        );
         setLoading(false);
 
         if (isAgentChatReady(agent.state)) {
@@ -498,7 +515,9 @@ function EditAgentDrawerBody({
         body: JSON.stringify({
           name: values.name,
           description: values.description || null,
-          is_shared: values.is_shared ?? false,
+          is_shared: expertVisibility !== "owner",
+          visibility: expertVisibility,
+          group_ids: expertVisibility === "groups" ? expertGroupIds : [],
           default_model: defaultModelFromForm(values.default_model),
           color: nextColor,
           config: nextConfig,
@@ -531,7 +550,7 @@ function EditAgentDrawerBody({
         name: values.name,
         description: values.description || null,
         default_model: defaultModel,
-        is_shared: values.is_shared ?? false,
+        is_shared: expertVisibility !== "owner",
         color: nextColor,
         icon_url: iconUrl,
       });
@@ -547,6 +566,8 @@ function EditAgentDrawerBody({
     agentConfig,
     remote,
     colorPalette,
+    expertGroupIds,
+    expertVisibility,
     form,
     iconUrl,
     onClose,
@@ -880,13 +901,18 @@ function EditAgentDrawerBody({
                   form.setFieldsValue({ welcome_message: text })
                 }
               />
-              <Form.Item
-                name="is_shared"
-                label={t("experts.share.toggle")}
-                valuePropName="checked"
-              >
-                <Switch />
-              </Form.Item>
+              <ResourceVisibilityFormItem
+                allowOwner
+                visibility={expertVisibility}
+                groupIds={expertGroupIds}
+                extra={t("experts.visibilityHint")}
+                onChange={(next) => {
+                  setExpertVisibility(next.visibility);
+                  setExpertGroupIds(
+                    next.visibility === "groups" ? next.groupIds : [],
+                  );
+                }}
+              />
               <Form.Item
                 name="conversation_mode"
                 label={t("experts.defaultModeLabel")}

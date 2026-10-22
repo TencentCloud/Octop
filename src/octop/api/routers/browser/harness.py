@@ -130,7 +130,7 @@ async def resolve_harness_session(
         shots = agent_outbound_screenshots_dir(resolve_agent_workspace_dir(server, agent_id))
         harness_settings = harness_settings_for_screenshots_dir(shots)
 
-    from octop.infra.browser.setup import (  # noqa: PLC0415
+    from octop.infra.control.browser.setup import (  # noqa: PLC0415
         prepare_harness_profile_for_launch,
         resolve_browser_display,
     )

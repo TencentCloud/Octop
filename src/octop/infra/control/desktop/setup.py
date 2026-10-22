@@ -1043,7 +1043,7 @@ async def uninstall_linux_stack_stream(locale: str) -> AsyncIterator[str]:
 
 
 async def uninstall_desktop_stream(*, locale: str = "en") -> AsyncIterator[str]:
-    from octop.infra.desktop.session import disconnect_all_streams
+    from octop.infra.control.desktop.session import disconnect_all_streams
 
     yield _sse({"log": _install_log(locale, "install_log_closing_streams")})
     await disconnect_all_streams()

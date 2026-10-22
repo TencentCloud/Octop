@@ -509,7 +509,7 @@ ENSURE_PANEL_EOF
 
 download_wallpaper() {
     # Install the agentbuddy wallpaper shipped next to this script (packaged in the
-    # wheel under infra/desktop/scripts/linux/v1.0/wallpaper.png).
+    # wheel under infra/control/desktop/scripts/linux/v1.0/wallpaper.png).
     mkdir -p /usr/share/backgrounds "${INSTALL_ROOT}"
     local ok=false
     local bundled script_dir

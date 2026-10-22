@@ -1111,7 +1111,7 @@ if [ -f "$AGENTBUDDY_VENV/bin/python" ] && [ -d "$AGENTBUDDY_HOME" ]; then
   if [ ! -f "$CONFIG_PATH" ]; then
     echo "{}" > "$CONFIG_PATH"
   fi
-  "$AGENTBUDDY_VENV/bin/python" -m octop.infra.mobile "$CONFIG_PATH" || true
+  "$AGENTBUDDY_VENV/bin/python" -m octop.infra.control.mobile "$CONFIG_PATH" || true
 fi
 
 # ── 完成 ──────────────────────────────────────────────────────────────────────

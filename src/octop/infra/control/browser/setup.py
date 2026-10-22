@@ -109,7 +109,7 @@ def resolve_browser_display() -> str | None:
     if current:
         candidates.append(current)
     try:
-        from octop.infra.desktop.setup import _display_from_env_file  # noqa: PLC0415
+        from octop.infra.control.desktop.setup import _display_from_env_file  # noqa: PLC0415
 
         from_file = _display_from_env_file()
         if from_file and from_file not in candidates:

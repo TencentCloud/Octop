@@ -396,6 +396,7 @@ def test_group_access_summary_includes_everyone_and_group_grants(repos: RepoBund
         }
     ]
     assert summary["bridges"] == []
+    assert summary["experts"] == []
     other_summary = summaries[other.user_group_id]
     assert other_summary["connectors"] == [
         {
@@ -486,3 +487,41 @@ def test_bridge_list_visible_respects_shared_and_grants(repos: RepoBundle) -> No
     assert private.connection_id not in outsider_ids
     assert open_link.connection_id in outsider_ids
     assert group_link.connection_id not in outsider_ids
+
+
+def test_shared_expert_list_respects_group_grants(repos: RepoBundle) -> None:
+    from octop.infra.users.groups import RESOURCE_EXPERT, expert_visible_to
+
+    owner = _user(repos, "expert-owner")
+    member = _user(repos, "expert-member")
+    outsider = _user(repos, "expert-outsider")
+    group = repos.user_group_repo.create(name="expert-ops", description=None)
+    repos.user_group_member_repo.add(group.user_group_id, member)
+
+    repos.agent_repo.create(agent_id="ex-private", user_id=owner, name="Private")
+    repos.agent_repo.create(agent_id="ex-open", user_id=owner, name="Open")
+    repos.agent_repo.create(agent_id="ex-group", user_id=owner, name="Grouped")
+    repos.agent_repo.set_shared("ex-open", True)
+    repos.agent_repo.set_shared("ex-group", True)
+    GroupAccess(repos).set_visibility(RESOURCE_EXPERT, "ex-group", "groups", [group.user_group_id])
+
+    def ids(user_id: int) -> set[str]:
+        return {
+            row.agent_id
+            for row in repos.agent_repo.list_shared(
+                exclude_user_id=user_id,
+                viewer_user_id=user_id,
+            )
+        }
+
+    assert ids(member) == {"ex-open", "ex-group"}
+    assert ids(outsider) == {"ex-open"}
+
+    grouped = repos.agent_repo.get("ex-group")
+    assert grouped is not None
+    assert expert_visible_to(repos, grouped, user_id=member, is_admin=False)
+    assert not expert_visible_to(repos, grouped, user_id=outsider, is_admin=False)
+    assert expert_visible_to(repos, grouped, user_id=owner, is_admin=False)
+    private = repos.agent_repo.get("ex-private")
+    assert private is not None
+    assert not expert_visible_to(repos, private, user_id=member, is_admin=False)

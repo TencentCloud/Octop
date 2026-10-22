@@ -14,8 +14,8 @@ from pydantic import Field
 
 from octop.config import OctopConfig
 from octop.i18n import tr
-from octop.infra.mobile.adb import find_adb, list_devices, screencap_png, shell, swipe, tap
-from octop.infra.mobile.setup import mobile_status
+from octop.infra.control.mobile.adb import find_adb, list_devices, screencap_png, shell, swipe, tap
+from octop.infra.control.mobile.setup import mobile_status
 from octop.infra.users.permissions import user_has_permission
 from octop.infra.utils.paths import PathLayout
 
@@ -55,7 +55,7 @@ def _require_ready(config: OctopConfig, *, locale: str) -> None:
 
 
 async def _resolve_device(device: str | None) -> str:
-    from octop.infra.mobile.agent_control import get_mobile_agent_control
+    from octop.infra.control.mobile.agent_control import get_mobile_agent_control
 
     control = get_mobile_agent_control()
     if not control.enabled or not control.device:

@@ -76,6 +76,8 @@ import {
 } from "./agentBackendForm";
 import AgentBackendFields from "./AgentBackendFields";
 import ExpertAvatarPicker from "./ExpertAvatarPicker";
+import { ResourceVisibilityFormItem } from "../../../components/ResourceVisibilityFields";
+import type { ResourceVisibilityMode } from "../../../api/modules/userGroups";
 import ExpertComposerDefaultsFields from "./ExpertComposerDefaultsFields";
 import WelcomeConfig, { type WelcomeConfigRef } from "./WelcomeConfig";
 import {
@@ -264,6 +266,9 @@ export default function CreateFromExpertDrawer({
   const [skillPackages, setSkillPackages] = useState<SkillPackage[]>([]);
   const [skillPackagesLoading, setSkillPackagesLoading] = useState(false);
   const [colorPalette, setColorPalette] = useState<string>("rose");
+  const [expertVisibility, setExpertVisibility] =
+    useState<ResourceVisibilityMode>("owner");
+  const [expertGroupIds, setExpertGroupIds] = useState<string[]>([]);
   const [avatarFile, setAvatarFile] = useState<File | null>(null);
   const [avatarPreview, setAvatarPreview] = useState<string | null>(null);
   const [avatarPresetId, setAvatarPresetId] = useState<string | null>(null);
@@ -308,6 +313,8 @@ export default function CreateFromExpertDrawer({
     let cancelled = false;
 
     setPathMappings([]);
+    setExpertVisibility("owner");
+    setExpertGroupIds([]);
     const defaults = sourceDefaults(source, lang);
     setColorPalette(parseStoredColor(defaults.color) ?? DEFAULT_PALETTE);
     setAvatarFile(null);
@@ -470,6 +477,8 @@ export default function CreateFromExpertDrawer({
         ...buildAgentRuntimeRequest(values),
         enable_trajectory: values.enable_trajectory === true,
         conversation_mode: values.conversation_mode,
+        visibility: expertVisibility,
+        group_ids: expertVisibility === "groups" ? expertGroupIds : [],
         ...(composerPatch.file_overrides.length
           ? { file_overrides: composerPatch.file_overrides }
           : {}),
@@ -779,6 +788,18 @@ export default function CreateFromExpertDrawer({
           getName={() => String(form.getFieldValue("name") ?? "")}
           getText={() => String(form.getFieldValue("description") ?? "")}
           onApply={(text) => form.setFieldsValue({ description: text })}
+        />
+        <ResourceVisibilityFormItem
+          allowOwner
+          visibility={expertVisibility}
+          groupIds={expertGroupIds}
+          extra={t("experts.visibilityHint")}
+          onChange={(next) => {
+            setExpertVisibility(next.visibility);
+            setExpertGroupIds(
+              next.visibility === "groups" ? next.groupIds : [],
+            );
+          }}
         />
 
         <Form.Item
