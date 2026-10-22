@@ -1,16 +1,16 @@
-"""CLI entry: ``python -m octop.infra.mobile <config.json>`` (install.sh hook)."""
+"""CLI entry: ``python -m octop.infra.control.mobile <config.json>`` (install.sh hook)."""
 
 from __future__ import annotations
 
 import sys
 from pathlib import Path
 
-from octop.infra.mobile.config_probe import persist_mobile_probe
+from octop.infra.control.mobile.config_probe import persist_mobile_probe
 
 
 def main() -> int:
     if len(sys.argv) != 2:
-        print("usage: python -m octop.infra.mobile <config.json>", file=sys.stderr)
+        print("usage: python -m octop.infra.control.mobile <config.json>", file=sys.stderr)
         return 2
     path = Path(sys.argv[1])
     result = persist_mobile_probe(path)

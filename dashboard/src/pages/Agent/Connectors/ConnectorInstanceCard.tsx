@@ -1,4 +1,5 @@
-import { App, Switch, Tag, Tooltip, Typography } from "antd";
+import { App, Switch, Tooltip, Typography } from "antd";
+import { SharedResourceBadge } from "../../../components/SharedResourceBadge";
 
 import { Trash2 } from "lucide-react";
 import { useTranslation } from "react-i18next";
@@ -92,16 +93,11 @@ export function ConnectorInstanceCard({
             >
               {instance.display_name}
             </Typography.Text>
-            {instance.shared ? (
-              <Tag color="blue" className={styles.instanceCardTag}>
-                {isOwner || !ownerLabel
-                  ? t("connectors.sharedBadge", "共享")
-                  : t("connectors.sharedFrom", {
-                      name: ownerLabel,
-                      defaultValue: `来自 ${ownerLabel}`,
-                    })}
-              </Tag>
-            ) : null}
+            <SharedResourceBadge
+              shared={instance.shared}
+              owned={isOwner}
+              ownerName={ownerLabel}
+            />
           </div>
           <div
             className={styles.instanceCardHeaderActions}

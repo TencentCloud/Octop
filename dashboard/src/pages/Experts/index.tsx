@@ -62,25 +62,18 @@ import AgentExpertsTable from "./components/AgentExpertsTable";
 import ExpertMarketTab from "./components/ExpertMarketTab";
 import { OctopEmptyMascot } from "../../components/EmptyState";
 import { pickLocale } from "../../utils/localizedText";
-import { isRemoteShadowAgent } from "../../utils/remoteExpert";
 import { isOwnedExpert, ownedExperts } from "../../utils/sharedExpert";
+import {
+  matchesExpertLocation,
+  type ExpertLocationFilter,
+} from "../../utils/resourceAudience";
+import { ResourceAudienceFilter } from "../../components/ResourceAudienceFilter";
 import { apiErrorMessage } from "../../utils/apiError";
 import styles from "./index.module.less";
 
 type TabKey = "my" | "teams" | "library" | "market";
 type ViewMode = "card" | "table";
-/** Quick filter on My Experts / My Teams: local instance vs cloud-collab shadows. */
-type LocationFilter = "all" | "local" | "cloud";
 const VIEW_STORAGE_KEY = "octop:experts-view";
-
-function matchesLocationFilter(
-  agent: { bridge?: boolean | null; agent_id?: string | null },
-  filter: LocationFilter,
-): boolean {
-  if (filter === "all") return true;
-  const remote = isRemoteShadowAgent(agent);
-  return filter === "cloud" ? remote : !remote;
-}
 
 function loadViewMode(): ViewMode {
   const stored = localStorage.getItem(VIEW_STORAGE_KEY);
@@ -155,7 +148,8 @@ export default function ExpertsPage() {
   const [refreshing, setRefreshing] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const searchNeedle = searchQuery.trim().toLowerCase();
-  const [locationFilter, setLocationFilter] = useState<LocationFilter>("all");
+  const [locationFilter, setLocationFilter] =
+    useState<ExpertLocationFilter>("all");
 
   const handleRefresh = useCallback(async () => {
     setRefreshing(true);
@@ -165,7 +159,7 @@ export default function ExpertsPage() {
         fetchExpertLibrary(),
         fetchPublishedExperts(),
       ]);
-      setLocalAgents(ownedExperts(agentList));
+      setLocalAgents(agentList);
       setExperts(expertList);
       setPublishedExperts(publishedList);
       await refreshAgents({ silent: true, force: true });
@@ -242,7 +236,7 @@ export default function ExpertsPage() {
 
   // ── Local agent state (extends AgentContext for optimistic updates) ──
   const ownedAgents = useMemo(() => ownedExperts(agents), [agents]);
-  const [localAgents, setLocalAgents] = useState<OctopAgent[]>(ownedAgents);
+  const [localAgents, setLocalAgents] = useState<OctopAgent[]>(agents);
   const expertAgents = useMemo(
     () => localAgents.filter((item) => item.kind !== "team"),
     [localAgents],
@@ -255,7 +249,7 @@ export default function ExpertsPage() {
     () =>
       expertAgents.filter(
         (agent) =>
-          matchesLocationFilter(agent, locationFilter) &&
+          matchesExpertLocation(agent, locationFilter) &&
           textMatchesQuery(
             searchNeedle,
             agent.name,
@@ -269,7 +263,7 @@ export default function ExpertsPage() {
     () =>
       teamAgents.filter(
         (agent) =>
-          matchesLocationFilter(agent, locationFilter) &&
+          matchesExpertLocation(agent, locationFilter) &&
           textMatchesQuery(searchNeedle, agent.name, agent.description),
       ),
     [locationFilter, searchNeedle, teamAgents],
@@ -277,18 +271,13 @@ export default function ExpertsPage() {
 
   const locationFilterControl = useMemo(
     () => (
-      <Segmented
-        size="small"
+      <ResourceAudienceFilter
+        includeCloud
         value={locationFilter}
-        onChange={(value) => setLocationFilter(value as LocationFilter)}
-        options={[
-          { value: "all", label: t("experts.locationAll") },
-          { value: "local", label: t("experts.locationLocal") },
-          { value: "cloud", label: t("experts.locationCloud") },
-        ]}
+        onChange={(value) => setLocationFilter(value as ExpertLocationFilter)}
       />
     ),
-    [locationFilter, t],
+    [locationFilter],
   );
   const pickableExperts = useMemo(
     () =>
@@ -305,7 +294,7 @@ export default function ExpertsPage() {
   const [newAgentId, setNewAgentId] = useState<string | null>(null);
 
   useEffect(() => {
-    setLocalAgents(ownedExperts(agents));
+    setLocalAgents(agents);
   }, [agents]);
 
   const handleStateChange = useCallback((agentId: string, newState: string) => {

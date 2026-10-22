@@ -47,6 +47,7 @@ import {
 import styles from "../index.module.less";
 import RemoteExpertHint from "../../Chat/components/RemoteExpertHint";
 import { expertDeleteConfirm } from "../../../utils/remoteExpert";
+import { SharedResourceBadge } from "../../../components/SharedResourceBadge";
 import { isSharedExpertViewer } from "../../../utils/sharedExpert";
 import type { PublishedExpert } from "../../../api/modules/publishedExperts";
 import PublishTemplateButton from "./PublishTemplateButton";
@@ -311,15 +312,11 @@ export default function AgentExpertsTable({
             />
           </span>
           <span className={styles.tableNameText}>{name}</span>
-          {row.is_shared && (
-            <Tag color="blue">
-              {isSharedExpertViewer(row)
-                ? t("experts.share.fromOwner", {
-                    name: row.owner_username,
-                  })
-                : t("experts.share.badge")}
-            </Tag>
-          )}
+          <SharedResourceBadge
+            shared={row.is_shared}
+            owned={!isSharedExpertViewer(row)}
+            ownerName={row.owner_username}
+          />
           <RemoteExpertHint agent={row} />
         </div>
       ),

@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import Any
 
 from octop.config import OctopConfig, load_config
-from octop.infra.mobile.probe import MobileProbeResult, probe_host_capability
+from octop.infra.control.mobile.probe import MobileProbeResult, probe_host_capability
 
 logger = logging.getLogger(__name__)
 

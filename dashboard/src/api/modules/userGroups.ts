@@ -16,6 +16,7 @@ export interface GroupAccessSummary {
   skill_packages: GroupAccessItem[];
   knowledge_bases: GroupAccessItem[];
   bridges: GroupAccessItem[];
+  experts: GroupAccessItem[];
 }
 
 export interface UserGroup {

@@ -11,7 +11,7 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
-from octop.infra.desktop.capture import display_env, is_linux_virtual_display
+from octop.infra.control.desktop.capture import display_env, is_linux_virtual_display
 
 logger = logging.getLogger(__name__)
 

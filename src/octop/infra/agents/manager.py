@@ -26,7 +26,7 @@ from octop.i18n.domains.agents import (
 )
 from octop.infra.agents.memory.backend import memory_backend_from_agent_config
 from octop.infra.agents.memory.slim import MemorySlimCoordinator
-from octop.infra.agents.providers import ProviderStore, sync_providers_to_harness
+from octop.infra.agents.providers import HostModelFactory, ProviderStore, sync_providers_to_harness
 from octop.infra.agents.providers.health import ModelHealthRegistry
 from octop.infra.agents.security import SecuritySettingsStore, ToolGuardRulesStore
 from octop.infra.agents.security.hitl_session import (
@@ -549,6 +549,7 @@ class AgentManager:
         self._providers = ProviderStore(
             provider_repo=repos.provider_repo,
         )
+        self._host_models = HostModelFactory()
         self._model_health = ModelHealthRegistry()
         self._connector_svc = ConnectorService(
             repo=repos.connector_repo,
@@ -623,6 +624,7 @@ class AgentManager:
             team_processor=self._team_processor,
             file_logging=False,
         )
+        self._host_models.sync(providers)
         if self._harness_manager is not None:
             self._harness_manager.team.bind_peer_enrich(self._refresh_peer_entry)
             proc = self._team_processor
@@ -689,6 +691,7 @@ class AgentManager:
                 except Exception:
                     logger.exception("harness_manager.aclose() failed")
                 self._harness_manager = None
+            self._host_models.close()
 
     # ------------------------------------------------------------------
     # Exposed stores & paths (read-only accessors)
@@ -697,6 +700,11 @@ class AgentManager:
     @property
     def providers(self) -> ProviderStore:
         return self._providers
+
+    @property
+    def host_models(self) -> HostModelFactory:
+        """One-shot model access outside an agent turn."""
+        return self._host_models
 
     @property
     def security(self) -> SecuritySettingsStore:
@@ -1138,6 +1146,9 @@ class AgentManager:
         except OSError:
             logger.exception("rmtree failed for %s; agent removed from DB anyway", workspace_dir)
         self._repos.agent_repo.delete(agent_id)
+        from octop.infra.users.groups import RESOURCE_EXPERT, GroupAccess  # noqa: PLC0415
+
+        GroupAccess(self._repos).clear(RESOURCE_EXPERT, agent_id)
         if self._proactive_scheduler is not None:
             self._proactive_scheduler.cancel(agent_id)
         self._repos.audit_repo.write(actor=ACTOR_SYSTEM, action="agent.delete", target=agent_id)
@@ -2076,6 +2087,7 @@ class AgentManager:
         if self._harness_manager is None:
             return
         providers = self._providers.build_harness_configs()
+        self._host_models.sync(providers)
         sync_providers_to_harness(
             self._harness_manager,
             providers,
@@ -3922,7 +3934,7 @@ class AgentManager:
 
         mobile_tools: list[Any] = []
         if not team_host and self._config.capabilities.mobile.enabled:
-            from octop.infra.mobile.tools import build_mobile_tools  # noqa: PLC0415
+            from octop.infra.control.mobile.tools import build_mobile_tools  # noqa: PLC0415
 
             mobile_tools = build_mobile_tools(
                 self._config,

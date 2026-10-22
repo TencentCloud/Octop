@@ -695,8 +695,10 @@ export function ProviderConfigModal({
         payload.api_key = values.api_key.trim();
       if ((values.note ?? "") !== (provider.note ?? ""))
         payload.note = values.note?.trim() || null;
+      const embeddingLane = provider.purpose === "embedding" || isOnnx;
       if (
         !isOnnx &&
+        !embeddingLane &&
         provider.kind === "openai" &&
         Boolean(values.stream_usage) !== (provider.stream_usage !== false)
       ) {
@@ -709,15 +711,23 @@ export function ProviderConfigModal({
       if ((values.model ?? "") !== existingDefault)
         payload.model = values.model?.trim() || null;
 
+      const modelsForSave =
+        embeddingLane && !isOnnx
+          ? draftModels.map((m) => ({
+              ...m,
+              embedding: true,
+              task: "embedding",
+            }))
+          : draftModels;
       const modelsChanged =
         JSON.stringify(
           (provider.models ?? []).map((m) => ({
             ...m,
             enabled: m.enabled !== false,
           })),
-        ) !== JSON.stringify(draftModels);
+        ) !== JSON.stringify(modelsForSave);
       if (modelsChanged) {
-        payload.models = draftModels;
+        payload.models = modelsForSave;
       }
 
       if (Object.keys(payload).length === 0) {
@@ -824,9 +834,10 @@ export function ProviderConfigModal({
         return;
       }
 
-      const embedding = isEmbeddingModel(
-        draftModels.find((m) => m.id === modelId),
-      );
+      const embedding =
+        provider.purpose === "embedding" ||
+        isOnnx ||
+        isEmbeddingModel(draftModels.find((m) => m.id === modelId));
       const apiMode = draftModels.find((m) => m.id === modelId)?.api_mode;
       const apiFallback = draftModels.find((m) => m.id === modelId)
         ?.api_fallback;
@@ -995,7 +1006,7 @@ export function ProviderConfigModal({
       title={t("models.configureProviderTitle", { name: provider.name })}
       open={open}
       onClose={onClose}
-      width={600}
+      width={640}
       placement="right"
       destroyOnHidden
       footer={
@@ -1132,6 +1143,9 @@ export function ProviderConfigModal({
         models={draftModels}
         onModelsChange={handleModelsChange}
         apiPrefix={apiPrefix}
+        forcePurpose={
+          provider.purpose === "embedding" || isOnnx ? "embedding" : undefined
+        }
         localDownload={
           isOllama || isOnnx
             ? {
