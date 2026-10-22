@@ -174,3 +174,146 @@ async def test_fetch_models_server_error_friendly() -> None:
     assert result["ok"] is False
     assert "temporarily unavailable" in result["error"].lower()
     assert "503" not in result["error"]
+
+
+_KVMEM_REASONING = {
+    "supported": True,
+    "toggle": True,
+    "default_mode": "disabled",
+    "efforts": ["low", "medium", "xhigh"],
+    "default_effort": None,
+    "effort_type": "enum",
+    "adapter": "llamacpp",
+    "budget_tokens": 1024,
+}
+
+
+@pytest.mark.asyncio
+async def test_fetch_models_maps_kvmem_model_metadata() -> None:
+    response = _mock_response(
+        200,
+        {
+            "object": "list",
+            "data": [
+                {
+                    "id": "m",
+                    "name": "m",
+                    "object": "model",
+                    "status": {"value": "loaded"},
+                    "context_length": 8192,
+                    "max_output_tokens": 2048,
+                    "api_mode": "chat_completions",
+                    "input": ["text"],
+                    "kvmem": {
+                        "generation_limit": 4096,
+                        "capabilities": {
+                            "tools": True,
+                            "thinking": True,
+                            "vision": False,
+                        },
+                        "reasoning": _KVMEM_REASONING,
+                    },
+                },
+                {"id": "legacy-model"},
+            ],
+        },
+    )
+    mock_client = AsyncMock()
+    mock_client.get = AsyncMock(return_value=response)
+    mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+    mock_client.__aexit__ = AsyncMock(return_value=None)
+
+    with patch("octop.infra.agents.providers.probe.httpx.AsyncClient", return_value=mock_client):
+        result = await fetch_openai_compatible_models(
+            base_url="https://api.example.com/v1",
+            api_key="sk-test",
+        )
+
+    assert result["ok"] is True
+    assert result["models"] == [
+        {"id": "legacy-model", "name": "legacy-model"},
+        {
+            "id": "m",
+            "name": "m",
+            "context_window": 8192,
+            "max_tokens": 2048,
+            "input": ["text"],
+            "api_mode": "chat_completions",
+            "reasoning": True,
+            "reasoning_config": _KVMEM_REASONING,
+        },
+    ]
+
+
+@pytest.mark.asyncio
+async def test_fetch_models_skips_invalid_kvmem_fields() -> None:
+    response = _mock_response(
+        200,
+        {
+            "data": [
+                {
+                    "id": "bad-types",
+                    "context_length": "8192",
+                    "max_output_tokens": True,
+                    "input": ["text", 1],
+                    "api_mode": "",
+                    "kvmem": {"reasoning": "yes"},
+                },
+                {
+                    "id": "bad-reasoning",
+                    "context_length": -1,
+                    "max_output_tokens": 0,
+                    "input": "text",
+                    "api_mode": 42,
+                    "kvmem": {"reasoning": ["supported"]},
+                },
+                {"id": "kvmem-not-dict", "kvmem": "broken", "context_length": 4096},
+            ]
+        },
+    )
+    mock_client = AsyncMock()
+    mock_client.get = AsyncMock(return_value=response)
+    mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+    mock_client.__aexit__ = AsyncMock(return_value=None)
+
+    with patch("octop.infra.agents.providers.probe.httpx.AsyncClient", return_value=mock_client):
+        result = await fetch_openai_compatible_models(
+            base_url="https://api.example.com/v1",
+            api_key="sk-test",
+        )
+
+    assert result["ok"] is True
+    assert result["models"] == [
+        {"id": "bad-reasoning", "name": "bad-reasoning"},
+        {"id": "bad-types", "name": "bad-types"},
+        {"id": "kvmem-not-dict", "name": "kvmem-not-dict"},
+    ]
+
+
+@pytest.mark.asyncio
+async def test_fetch_models_invalid_kvmem_does_not_raise() -> None:
+    response = _mock_response(
+        200,
+        {
+            "data": [
+                {
+                    "id": "m",
+                    "kvmem": {"reasoning": {"supported": "yes", "efforts": "low"}},
+                    "context_length": [8192],
+                },
+            ]
+        },
+    )
+    mock_client = AsyncMock()
+    mock_client.get = AsyncMock(return_value=response)
+    mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+    mock_client.__aexit__ = AsyncMock(return_value=None)
+
+    with patch("octop.infra.agents.providers.probe.httpx.AsyncClient", return_value=mock_client):
+        result = await fetch_openai_compatible_models(
+            base_url="https://api.example.com/v1",
+            api_key="sk-test",
+        )
+
+    assert result["ok"] is True
+    assert result["models"] == [{"id": "m", "name": "m"}]

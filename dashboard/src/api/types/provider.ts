@@ -16,6 +16,7 @@ export interface ModelInfo {
   reasoning_config?: ReasoningCapability | null;
   input?: string[];
   cost?: ModelCost;
+  api_mode?: string;
 }
 
 export interface ReasoningCapability {
@@ -33,7 +34,8 @@ export interface ReasoningCapability {
     | "anthropic_adaptive"
     | "anthropic_budget"
     | "dashscope"
-    | "openrouter";
+    | "openrouter"
+    | "llamacpp";
 }
 
 export interface ProviderInfo {
