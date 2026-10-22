@@ -15,6 +15,7 @@ REASONING_ADAPTERS = frozenset(
         "anthropic_budget",
         "dashscope",
         "openrouter",
+        "llamacpp",
     }
 )
 EFFORT_TYPES = frozenset({"enum", "token_budget"})
@@ -53,6 +54,10 @@ def _legacy_adapter(model_id: str, *, base_url: str | None) -> str:
         return "thinking"
     if any(host in url for host in ("openai.com", "generativelanguage.googleapis.com", "groq.com")):
         return "openai_reasoning_effort"
+    # Local llama.cpp / KVMem endpoints understand chat_template_kwargs and
+    # plain reasoning_effort rather than a ``thinking`` object.
+    if any(port in url for port in (":18200", ":18202")):
+        return "llamacpp"
     # Existing Octop metadata historically meant an OpenAI-compatible model
     # with a ``thinking`` object. Keep that behaviour for unknown gateways.
     return "thinking"
@@ -208,6 +213,30 @@ def reasoning_request_parameters(
             reasoning["effort"] = selected_effort
         if reasoning:
             extra_body["reasoning"] = reasoning
+    elif adapter == "llamacpp":
+        chat_template_kwargs: dict[str, Any] = {}
+        if selected_mode == "disabled":
+            chat_template_kwargs["enable_thinking"] = False
+            extra_body["reasoning_effort"] = "none"
+            # 清掉上游可能塞进请求体的 budget tokens（模板禁用思考后没有
+            # <think> 标记，KVMem 收 reasoning_budget_tokens 会 400）
+            extra_body.pop("reasoning_budget_tokens", None)
+        elif selected_mode == "enabled":
+            chat_template_kwargs["enable_thinking"] = True
+        if chat_template_kwargs:
+            extra_body["chat_template_kwargs"] = chat_template_kwargs
+        if selected_effort and selected_mode != "disabled":
+            if capability.get("effort_type") == "token_budget":
+                try:
+                    extra_body["reasoning_budget_tokens"] = int(selected_effort)
+                except (TypeError, ValueError):
+                    pass
+            else:
+                # 跨 provider effort 名兼容：harness 偏好 high/max，
+                # 但本地 llama.cpp / Bonsai 2 模板只认 xhigh/medium/low。
+                effort_map = {"high": "xhigh", "max": "xhigh"}
+                mapped = effort_map.get(selected_effort, selected_effort)
+                extra_body["reasoning_effort"] = mapped
     elif adapter in {"thinking", "thinking_nested_effort"}:
         if selected_mode != "auto":
             extra_body["thinking"] = {"type": selected_mode}
