@@ -51,12 +51,14 @@ import type {
 import {
   isUploadedAvatarUrl,
   ResourceAvatarPicker,
+  avatarPickerStyles,
   SKILL_PACKAGE_AVATAR_PRESETS,
 } from "../../components/AvatarPicker";
 import { CardSkeleton } from "../../components/Skeleton";
 import { CopyableResourceId } from "../../components/CopyableResourceId";
 import { EmptyState, OctopEmptyMascot } from "../../components/EmptyState";
 import StreamSetupGuide from "../../components/StreamSetupGuide/StreamSetupGuide";
+import { TextAssistBar } from "../../components/TextAssistBar";
 import { useCardTableView } from "../../hooks/useCardTableView";
 import { useHorizontalResize } from "../../hooks/useHorizontalResize";
 import { useIsMobile } from "../../hooks/useIsMobile";
@@ -83,6 +85,7 @@ import { saveBlobAsFile } from "../../utils/saveBlobAsFile";
 import { createDetailRequestGate } from "../../utils/detailRequestGate";
 import { PackageIcon } from "./PackageIcon";
 import { ResourceVisibilityFields } from "../../components/ResourceVisibilityFields";
+import { SharedResourceBadge } from "../../components/SharedResourceBadge";
 import type { ResourceVisibilityMode } from "../../api/modules/userGroups";
 import { PackageSkillCard } from "./PackageSkillCard";
 import PackageSkillsTable from "./PackageSkillsTable";
@@ -118,6 +121,13 @@ function canMutatePackage(
   return Boolean(
     user && (user.role === "admin" || item.created_by === String(user.id)),
   );
+}
+
+function isPackageOwner(
+  item: Pick<SkillPackage, "created_by">,
+  user: OctopUser | null,
+): boolean {
+  return Boolean(user && item.created_by === String(user.id));
 }
 
 function formatPackageCreator(
@@ -731,11 +741,11 @@ export default function SkillPackagesPage() {
                               {item.name}
                             </span>
                           </Tooltip>
-                          {item.shared ? (
-                            <span className={styles.sharedBadge}>
-                              {t("skillPackages.sharedBadge")}
-                            </span>
-                          ) : null}
+                          <SharedResourceBadge
+                            shared={item.shared}
+                            owned={isPackageOwner(item, user)}
+                            ownerName={formatPackageCreator(item)}
+                          />
                           <div
                             className={styles.listId}
                             onClick={(event) => event.stopPropagation()}
@@ -1040,7 +1050,10 @@ export default function SkillPackagesPage() {
           <Form.Item name="icon_url" hidden>
             <Input />
           </Form.Item>
-          <Form.Item label={t("skillPackages.iconName")}>
+          <Form.Item
+            label={t("skillPackages.iconName")}
+            className={avatarPickerStyles.formItem}
+          >
             <ResourceAvatarPicker
               imageUrl={
                 iconUrl?.trim() &&
@@ -1156,12 +1169,23 @@ export default function SkillPackagesPage() {
           <Form.Item
             name="description"
             label={t("skillPackages.packageDescription")}
+            className={styles.textAssistField}
           >
             <Input.TextArea
               autoSize={{ minRows: 2, maxRows: 5 }}
               placeholder={t("skillPackages.packageDescriptionPlaceholder")}
             />
           </Form.Item>
+          <TextAssistBar
+            kind="skill_package.description"
+            getName={() => String(packageForm.getFieldValue("name") ?? "")}
+            getText={() =>
+              String(packageForm.getFieldValue("description") ?? "")
+            }
+            onApply={(text) =>
+              packageForm.setFieldsValue({ description: text })
+            }
+          />
           <Form.Item
             name="copy_policy"
             label={t("skillPackages.copyPolicy")}
@@ -1186,22 +1210,29 @@ export default function SkillPackagesPage() {
           >
             <Switch />
           </Form.Item>
-          <Form.Item
-            label={t("resourceVisibility.label")}
-            extra={t("skillPackages.visibilityHint")}
-          >
-            <ResourceVisibilityFields
-              allowOwner
-              visibility={packageVisibility}
-              groupIds={packageGroupIds}
-              onChange={(next) => {
-                setPackageVisibility(next.visibility);
-                setPackageGroupIds(
-                  next.visibility === "groups" ? next.groupIds : [],
-                );
-              }}
-            />
-          </Form.Item>
+          <div className={styles.formOptions}>
+            <div className={styles.formOptionRowVisibility}>
+              <div className={styles.formOptionCopy}>
+                <span className={styles.switchLabel}>
+                  {t("resourceVisibility.label")}
+                </span>
+                <span className={styles.formOptionHint}>
+                  {t("skillPackages.visibilityHint")}
+                </span>
+              </div>
+              <ResourceVisibilityFields
+                allowOwner
+                visibility={packageVisibility}
+                groupIds={packageGroupIds}
+                onChange={(next) => {
+                  setPackageVisibility(next.visibility);
+                  setPackageGroupIds(
+                    next.visibility === "groups" ? next.groupIds : [],
+                  );
+                }}
+              />
+            </div>
+          </div>
         </Form>
       </Drawer>
 

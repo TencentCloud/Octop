@@ -6,6 +6,7 @@ open to people who can edit a resource that has a visibility picker.
 
 from __future__ import annotations
 
+import re
 import sqlite3
 from typing import Any
 
@@ -36,9 +37,17 @@ _CATALOG_KEYS = (
     "storage_backends",
 )
 
+# Same shape as expert / agent ids (short Crockford ids also match).
+_CUSTOM_GROUP_ID_RE = re.compile(r"^[a-zA-Z0-9][a-zA-Z0-9_-]{1,62}[a-zA-Z0-9]$")
+
 
 class UserGroupBody(BaseModel):
     name: str = Field(min_length=1, max_length=64)
+    user_group_id: str | None = Field(
+        default=None,
+        max_length=64,
+        description=("Public group id. Same rules as expert ids; omit to auto-assign a short id."),
+    )
     description: str | None = Field(default=None, max_length=500)
     enabled: bool = True
     avatar_icon: str | None = Field(default=None, max_length=32)
@@ -69,14 +78,41 @@ def _clean_description(raw: str | None) -> str | None:
     return text or None
 
 
-def _unique_name(exc: BaseException) -> bool:
+def _clean_user_group_id(raw: str | None) -> str | None:
+    """Return a caller-supplied group id, or ``None`` when the server should assign one."""
+    if raw is None:
+        return None
+    group_id = raw.strip()
+    if not group_id:
+        return None
+    if not _CUSTOM_GROUP_ID_RE.fullmatch(group_id):
+        raise OctopError(
+            ErrorCode.USER_GROUP_ID_INVALID,
+            "group id must be 3-64 chars of letters/digits/underscore/hyphen, "
+            "starting and ending with a letter or digit",
+        )
+    return group_id
+
+
+def _unique_kind(exc: BaseException) -> str | None:
+    """Return ``id``, ``name``, or ``None`` when *exc* is not a unique violation."""
     try:
         from psycopg import errors as pg_errors
     except ImportError:
         pg_errors = None  # type: ignore[assignment]
+    is_unique = False
     if isinstance(exc, sqlite3.IntegrityError):
-        return "unique" in str(exc).lower()
-    return pg_errors is not None and isinstance(exc, pg_errors.UniqueViolation)
+        is_unique = "unique" in str(exc).lower()
+    elif pg_errors is not None and isinstance(exc, pg_errors.UniqueViolation):
+        is_unique = True
+    if not is_unique:
+        return None
+    msg = str(exc).lower()
+    if "user_group_id" in msg:
+        return "id"
+    if "name" in msg:
+        return "name"
+    return "name"
 
 
 async def catalog_reader(user: User = Depends(current_user)) -> User:
@@ -147,15 +183,22 @@ async def create_user_group(
     server: Any = Depends(get_server),
     _: User = Depends(require_permission("users")),
 ) -> dict[str, Any]:
+    group_id = _clean_user_group_id(body.user_group_id)
+    if group_id and server.services.repos.user_group_repo.get(group_id) is not None:
+        raise OctopError(ErrorCode.USER_GROUP_ID_TAKEN, "user group id already exists")
     try:
         row = server.services.repos.user_group_repo.create(
             name=_clean_name(body.name),
             description=_clean_description(body.description),
             enabled=body.enabled,
             avatar_icon=clean_avatar_icon(body.avatar_icon),
+            user_group_id=group_id,
         )
     except Exception as exc:
-        if _unique_name(exc):
+        kind = _unique_kind(exc)
+        if kind == "id":
+            raise OctopError(ErrorCode.USER_GROUP_ID_TAKEN, "user group id already exists") from exc
+        if kind == "name":
             raise OctopError(
                 ErrorCode.FORBIDDEN, "user group name is already in use", status=409
             ) from exc
@@ -185,7 +228,7 @@ async def update_user_group(
             update_avatar_icon="avatar_icon" in fields,
         )
     except Exception as exc:
-        if _unique_name(exc):
+        if _unique_kind(exc) == "name":
             raise OctopError(
                 ErrorCode.FORBIDDEN, "user group name is already in use", status=409
             ) from exc

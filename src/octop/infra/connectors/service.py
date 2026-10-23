@@ -466,9 +466,8 @@ class ConnectorService:
     def list_instances_for_api(self, user_id: int) -> list[dict[str, Any]]:
         """Built-in rows + expanded custom servers (hide parent custom-mcp row)."""
         out: list[dict[str, Any]] = []
-        can_use = self._repo.connector_feature_allows(user_id)
+        visible = self._repo.list_visible(user_id)
         custom_row = self._repo.get_by_user_kind(user_id, CUSTOM_MCP_KIND)
-        visible = self._repo.list_visible(user_id) if can_use else self._repo.list_by_user(user_id)
         for inst in visible:
             if is_custom_mcp_kind(inst.kind):
                 continue
@@ -496,21 +495,22 @@ class ConnectorService:
                     servers=extract_servers(self.decrypt(custom_row.instance_id)),
                 )
             )
-        if can_use:
-            for parent in self._repo.list_by_kind(CUSTOM_MCP_KIND):
-                if parent.user_id == user_id or not parent.has_credentials:
-                    continue
-                out.extend(
-                    expand_custom_instances(
-                        parent=parent,
-                        servers=extract_servers(self.decrypt(parent.instance_id)),
-                        shared_view=True,
-                    )
+        # Per-server ``shared`` lives in the encrypted bag, not on the parent row.
+        for parent in self._repo.list_by_kind(CUSTOM_MCP_KIND):
+            if parent.user_id == user_id or not parent.has_credentials:
+                continue
+            out.extend(
+                expand_custom_instances(
+                    parent=parent,
+                    servers=extract_servers(self.decrypt(parent.instance_id)),
+                    shared_view=True,
                 )
+            )
         for item in out:
             item.setdefault("owner_user_id", user_id)
             item.setdefault("shared", False)
-            item["usable"] = can_use
+            # list_visible already applied the per-instance group layer.
+            item["usable"] = True
         return out
 
     def list_active_mcp_server_names(self, user_id: int) -> list[str]:

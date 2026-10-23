@@ -1,8 +1,9 @@
 {
   "id": "business-operations",
+  "scene": "hr",
   "label": {
     "zh": "业务流程专家",
-    "en": "Business Process Specialist"
+    "en": "Business Operations Expert"
   },
   "description": {
     "zh": "基于 Anthropic Knowledge Work Plugins 的运营插件改编。帮你编写 SOP 和操作手册、优化业务流程、评估风险与供应商、整理运营报告。",

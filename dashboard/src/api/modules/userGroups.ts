@@ -8,11 +8,15 @@ export interface GroupAccessItem {
 }
 
 export interface GroupAccessSummary {
-  connectors: "all" | "groups" | "none";
-  storage: "all" | "groups" | "none";
+  /** Per-instance grants (legacy feature-wide enum is no longer returned). */
+  connectors: GroupAccessItem[];
+  storage: GroupAccessItem[];
   models: GroupAccessItem[];
+  plugins: GroupAccessItem[];
   skill_packages: GroupAccessItem[];
   knowledge_bases: GroupAccessItem[];
+  bridges: GroupAccessItem[];
+  experts: GroupAccessItem[];
 }
 
 export interface UserGroup {
@@ -31,6 +35,7 @@ export interface UserGroup {
 
 export interface UserGroupWrite {
   name?: string;
+  user_group_id?: string | null;
   description?: string | null;
   enabled?: boolean;
   avatar_icon?: string | null;

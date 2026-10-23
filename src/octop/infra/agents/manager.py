@@ -26,7 +26,7 @@ from octop.i18n.domains.agents import (
 )
 from octop.infra.agents.memory.backend import memory_backend_from_agent_config
 from octop.infra.agents.memory.slim import MemorySlimCoordinator
-from octop.infra.agents.providers import ProviderStore, sync_providers_to_harness
+from octop.infra.agents.providers import HostModelFactory, ProviderStore, sync_providers_to_harness
 from octop.infra.agents.providers.health import ModelHealthRegistry
 from octop.infra.agents.security import SecuritySettingsStore, ToolGuardRulesStore
 from octop.infra.agents.security.hitl_session import (
@@ -549,6 +549,7 @@ class AgentManager:
         self._providers = ProviderStore(
             provider_repo=repos.provider_repo,
         )
+        self._host_models = HostModelFactory()
         self._model_health = ModelHealthRegistry()
         self._connector_svc = ConnectorService(
             repo=repos.connector_repo,
@@ -623,6 +624,7 @@ class AgentManager:
             team_processor=self._team_processor,
             file_logging=False,
         )
+        self._host_models.sync(providers)
         if self._harness_manager is not None:
             self._harness_manager.team.bind_peer_enrich(self._refresh_peer_entry)
             proc = self._team_processor
@@ -689,6 +691,7 @@ class AgentManager:
                 except Exception:
                     logger.exception("harness_manager.aclose() failed")
                 self._harness_manager = None
+            self._host_models.close()
 
     # ------------------------------------------------------------------
     # Exposed stores & paths (read-only accessors)
@@ -697,6 +700,11 @@ class AgentManager:
     @property
     def providers(self) -> ProviderStore:
         return self._providers
+
+    @property
+    def host_models(self) -> HostModelFactory:
+        """One-shot model access outside an agent turn."""
+        return self._host_models
 
     @property
     def security(self) -> SecuritySettingsStore:
@@ -1138,6 +1146,9 @@ class AgentManager:
         except OSError:
             logger.exception("rmtree failed for %s; agent removed from DB anyway", workspace_dir)
         self._repos.agent_repo.delete(agent_id)
+        from octop.infra.users.groups import RESOURCE_EXPERT, GroupAccess  # noqa: PLC0415
+
+        GroupAccess(self._repos).clear(RESOURCE_EXPERT, agent_id)
         if self._proactive_scheduler is not None:
             self._proactive_scheduler.cancel(agent_id)
         self._repos.audit_repo.write(actor=ACTOR_SYSTEM, action="agent.delete", target=agent_id)
@@ -1584,7 +1595,9 @@ class AgentManager:
         for agent_id in agent_ids:
             self._teams.assert_can_delete_agent(agent_id)
 
-    async def delete_thread_checkpoint(self, agent_id: str, thread_id: str) -> None:
+    async def delete_thread_checkpoint(
+        self, agent_id: str, thread_id: str, *, reclaim: bool = True
+    ) -> None:
         """Delete a thread's conversation data from the checkpoint store.
 
         Uses the live harness checkpointer when the agent is loaded.
@@ -1594,6 +1607,9 @@ class AgentManager:
         removed. Returns normally when the store has nothing for this
         thread. Callers should invoke this *before* removing their own
         thread row, so a failure leaves the thread visible and retryable.
+
+        ``reclaim=False`` skips the incremental SQLite vacuum. Delete-only
+        uses that so the request itself does not vacuum.
         """
         row = self.get_row(agent_id)
         harness = None
@@ -1621,7 +1637,9 @@ class AgentManager:
                 ) from live_error
             return
         try:
-            await asyncio.to_thread(self._delete_thread_from_store, agent_id, thread_id, row)
+            await asyncio.to_thread(
+                self._delete_thread_from_store, agent_id, thread_id, row, reclaim
+            )
         except OctopError:
             if live_error is not None:
                 raise OctopError(
@@ -1630,7 +1648,9 @@ class AgentManager:
                 ) from live_error
             raise
 
-    def _delete_thread_from_store(self, agent_id: str, thread_id: str, row: Any) -> None:
+    def _delete_thread_from_store(
+        self, agent_id: str, thread_id: str, row: Any, reclaim: bool = True
+    ) -> None:
         from octop.infra.agents.memory.thread_cleanup import (  # noqa: PLC0415
             delete_thread_from_agent_stores,
             workspace_for_agent_row,
@@ -1645,6 +1665,7 @@ class AgentManager:
             octop_config=self._config,
             workspace_dir=workspace,
             paths=self._paths,
+            reclaim=reclaim,
         )
 
     def _reclaim_thread_store(self, agent_id: str, thread_id: str, row: Any) -> None:
@@ -1666,9 +1687,8 @@ class AgentManager:
     def schedule_store_reclaim(self, agent_id: str) -> None:
         """Shrink this agent's database after it is idle.
 
-        Used when a conversation is deleted without compacting now. The
-        rebuild runs once no turn is in progress, and again after restart
-        if the file still holds a large freelist.
+        Used when compact-now could not run, and when the idle sweep finds
+        a large freelist. Delete-only does not call this.
         """
         self._reclaim_pending.add(agent_id)
         self._ensure_reclaim_task()
@@ -2076,6 +2096,7 @@ class AgentManager:
         if self._harness_manager is None:
             return
         providers = self._providers.build_harness_configs()
+        self._host_models.sync(providers)
         sync_providers_to_harness(
             self._harness_manager,
             providers,
@@ -2891,21 +2912,21 @@ class AgentManager:
 
     def _assert_named_storage_backends(self, user_id: int, backend: Any) -> None:
         from octop.infra.backend.resolver import collect_named_storage_backend_refs
-        from octop.infra.users.groups import (
-            RESOURCE_STORAGE_BACKEND,
-            STORAGE_FEATURE_KEY,
-            GroupAccess,
-        )
+        from octop.infra.users.groups import RESOURCE_STORAGE_BACKEND, GroupAccess
 
-        if not collect_named_storage_backend_refs(backend):
+        refs = collect_named_storage_backend_refs(backend)
+        if not refs:
             return
-        GroupAccess(self._repos).assert_allowed(
-            user_id=user_id,
-            is_admin=self._user_is_admin(user_id),
-            resource_type=RESOURCE_STORAGE_BACKEND,
-            resource_key=STORAGE_FEATURE_KEY,
-            is_owner=False,
-        )
+        access = GroupAccess(self._repos)
+        is_admin = self._user_is_admin(user_id)
+        for name in refs:
+            access.assert_allowed(
+                user_id=user_id,
+                is_admin=is_admin,
+                resource_type=RESOURCE_STORAGE_BACKEND,
+                resource_key=str(name),
+                is_owner=False,
+            )
 
     def _skill_package_shared_with(self, user_id: int, package: Any) -> bool:
         """Private packages stay with the owner. Groups cannot open them."""
@@ -3922,7 +3943,7 @@ class AgentManager:
 
         mobile_tools: list[Any] = []
         if not team_host and self._config.capabilities.mobile.enabled:
-            from octop.infra.mobile.tools import build_mobile_tools  # noqa: PLC0415
+            from octop.infra.control.mobile.tools import build_mobile_tools  # noqa: PLC0415
 
             mobile_tools = build_mobile_tools(
                 self._config,

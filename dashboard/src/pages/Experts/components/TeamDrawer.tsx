@@ -10,12 +10,14 @@ import {
 } from "../../../api/modules/teams";
 import { octopAgentsApi } from "../../../api/modules/octopAgents";
 import {
+  avatarPickerStyles,
   expertPresetSrc,
   isUploadedAvatarUrl,
   ResourceAvatarPicker,
   splitExpertAvatarUrl,
   TEAM_AVATAR_PRESETS,
 } from "../../../components/AvatarPicker";
+import { TextAssistBar } from "../../../components/TextAssistBar";
 import type { OctopAgent } from "../../../context/AgentContext";
 import { useAgentFormResources } from "../../../hooks/useAgentFormResources";
 import { apiErrorMessage } from "../../../utils/apiError";
@@ -252,7 +254,10 @@ export default function TeamDrawer({
       )}
 
       <Form form={form} layout="vertical" size="middle">
-        <Form.Item label={t("experts.avatar")}>
+        <Form.Item
+          label={t("experts.avatar")}
+          className={avatarPickerStyles.formItem}
+        >
           <ResourceAvatarPicker
             imageUrl={imageUrl}
             presetId={presetId === "team-host" ? null : presetId}
@@ -352,23 +357,40 @@ export default function TeamDrawer({
         >
           <Input />
         </Form.Item>
-        <Form.Item name="description" label={t("experts.agentDescription")}>
-          <Input.TextArea rows={2} />
+        <Form.Item
+          name="description"
+          label={t("experts.agentDescription")}
+          className={styles.textAssistField}
+        >
+          <Input.TextArea autoSize={{ minRows: 2, maxRows: 5 }} />
         </Form.Item>
+        <TextAssistBar
+          kind="team.description"
+          getName={() => String(form.getFieldValue("name") ?? "")}
+          getText={() => String(form.getFieldValue("description") ?? "")}
+          onApply={(text) => form.setFieldsValue({ description: text })}
+        />
         <Form.Item
           name="welcome_message"
           label={t("experts.welcomeMessageTitle")}
-          extra={
+          tooltip={
             mode === "edit"
               ? t("experts.editWelcomeHint")
               : t("experts.createWelcomeHint")
           }
+          className={styles.textAssistField}
         >
           <Input.TextArea
-            rows={2}
+            autoSize={{ minRows: 2, maxRows: 5 }}
             placeholder={t("experts.welcomeMessagePlaceholder")}
           />
         </Form.Item>
+        <TextAssistBar
+          kind="team.welcome_message"
+          getName={() => String(form.getFieldValue("name") ?? "")}
+          getText={() => String(form.getFieldValue("welcome_message") ?? "")}
+          onApply={(text) => form.setFieldsValue({ welcome_message: text })}
+        />
         <Form.Item name="default_model" label={t("experts.defaultModelLabel")}>
           <Select
             loading={modelsLoading}

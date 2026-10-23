@@ -1621,6 +1621,13 @@ def _ensure_bridge_icon_url_schema(db: DatabasePool) -> None:
     _ensure_column(db, "bridge_connections", "icon_url", "TEXT NOT NULL DEFAULT ''")
 
 
+def _ensure_bridge_shared_schema(db: DatabasePool) -> None:
+    """Owner can share a bridge link with everyone or selected groups. Idempotent."""
+    if not _table_exists(db, "bridge_connections"):
+        return
+    _ensure_column(db, "bridge_connections", "shared", "INTEGER NOT NULL DEFAULT 0")
+
+
 def _ensure_bridge_connections_schema(db: DatabasePool) -> None:
     """Fold notes + unique display_name + auto_reconnect into unreleased v19."""
     if not _table_exists(db, "bridge_connections"):
@@ -1979,6 +1986,7 @@ def _apply_sqlite_migration(db: DatabasePool, version: int, path: Path) -> None:
         _ensure_user_group_profile_schema(db)
         _ensure_knowledge_base_icon_url_schema(db)
         _ensure_bridge_icon_url_schema(db)
+        _ensure_bridge_shared_schema(db)
         with db.connect() as conn:
             conn.execute("UPDATE _schema_version SET version = ?", (version,))
         return
@@ -2161,6 +2169,7 @@ def run_migrations(db: DatabasePool) -> None:
     _ensure_user_group_profile_schema(db)
     _ensure_knowledge_base_icon_url_schema(db)
     _ensure_bridge_icon_url_schema(db)
+    _ensure_bridge_shared_schema(db)
     _grant_default_nav_permissions(db)
     _grant_personalization_tab_permissions(db)
     _grant_bridge_permission(db)

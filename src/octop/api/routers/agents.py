@@ -9,7 +9,11 @@ from typing import Any, Literal
 from fastapi import APIRouter, Depends, File, Query, UploadFile
 from fastapi.responses import Response
 
-from octop.api.common.agent import assert_agent_access_row, assert_agent_owner
+from octop.api.common.agent import (
+    apply_agent_audience,
+    assert_agent_access_row,
+    assert_agent_owner,
+)
 from octop.api.common.agent_runtime import AgentRuntimeFields, runtime_field_updates
 from octop.api.common.validators import assert_user_backend_root_dirs
 from octop.api.common.workspace import require_agent_workspace
@@ -33,6 +37,7 @@ from octop.infra.agents.settings.runtime_limits import (
     agent_runtime_values,
 )
 from octop.infra.errors import ErrorCode, OctopError
+from octop.infra.users.groups import RESOURCE_EXPERT, GroupAccess
 from octop.infra.users.permissions import user_has_permission
 
 logger = logging.getLogger(__name__)
@@ -50,6 +55,8 @@ class AgentCreateBody(AgentRuntimeFields):
     icon: str | None = None
     template_name: str | None = None
     is_shared: bool = False
+    visibility: Literal["owner", "all", "groups"] | None = None
+    group_ids: list[str] | None = None
     color: str | None = None
     icon_name: str | None = None
     icon_url: str | None = None
@@ -69,6 +76,8 @@ class AgentPatchBody(AgentRuntimeFields):
     icon: str | None = None
     template_name: str | None = None
     is_shared: bool | None = None
+    visibility: Literal["owner", "all", "groups"] | None = None
+    group_ids: list[str] | None = None
     color: str | None = None
     icon_name: str | None = None
     icon_url: str | None = None
@@ -203,6 +212,15 @@ def _row_dict(
             payload["member_ids"] = []
     if bootstrap_pending is not None:
         payload["bootstrap_pending"] = bootstrap_pending
+    repos = getattr(getattr(server, "services", None), "repos", None)
+    if repos is not None:
+        payload.update(
+            GroupAccess(repos).visibility(
+                RESOURCE_EXPERT,
+                row.agent_id,
+                shared=payload["is_shared"],
+            )
+        )
     return payload
 
 
@@ -251,7 +269,10 @@ async def list_agents(
         return _attach_unread_counts(server, user.id, payloads)
 
     owned = registry.list_agents(user.id)
-    shared = server.services.agent_repo.list_shared(exclude_user_id=user.id)
+    shared = server.services.agent_repo.list_shared(
+        exclude_user_id=user.id,
+        viewer_user_id=None if user.is_admin else user.id,
+    )
     rows = list({row.agent_id: row for row in [*shared, *owned]}.values())
     shared_owner_username_by_id: dict[int, str] = {}
     for row in shared:
@@ -326,7 +347,17 @@ async def create_agent(
         knowledge_base_ids=knowledge_ids,
         mcp_servers=mcp_servers,
     )
+    if body.visibility is not None:
+        GroupAccess(server.services.repos).validate_visibility(body.visibility, body.group_ids)
     row = await server.app_runtime.agent_registry.create(spec)
+    if body.visibility is not None:
+        row = await apply_agent_audience(
+            server,
+            row.agent_id,
+            visibility=body.visibility,
+            group_ids=body.group_ids,
+            shared=body.is_shared,
+        )
     return _row_dict(
         row,
         viewer_user_id=user.id,
@@ -362,7 +393,7 @@ async def get_agent(
     row = server.app_runtime.agent_registry.get_row(agent_id)
     if row is None:
         raise OctopError(ErrorCode.AGENT_NOT_FOUND, f"agent {agent_id!r} not found")
-    assert_agent_access_row(row, user)
+    assert_agent_access_row(row, user, repos=server.services.repos)
     return _row_dict(
         row,
         viewer_user_id=user.id,
@@ -401,6 +432,8 @@ async def patch_agent(
         not in {
             "config",
             "is_shared",
+            "visibility",
+            "group_ids",
             "welcome_message",
             "skill_package_ids",
             "knowledge_base_ids",
@@ -432,8 +465,14 @@ async def patch_agent(
         refreshed = server.app_runtime.agent_registry.get_row(agent_id)
         if refreshed is not None:
             row = refreshed
-    if body.is_shared is not None:
-        row = await server.app_runtime.agent_registry.set_shared(agent_id, body.is_shared)
+    if body.visibility is not None or body.is_shared is not None:
+        row = await apply_agent_audience(
+            server,
+            agent_id,
+            visibility=body.visibility,
+            group_ids=body.group_ids,
+            shared=body.is_shared,
+        )
     return _row_dict(
         row,
         viewer_user_id=user.id,
