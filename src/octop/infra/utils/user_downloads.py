@@ -80,8 +80,13 @@ def save_user_download(
     home: Path | None = None,
 ) -> Path:
     path = unique_download_path(filename, home=home)
-    path.write_bytes(data)
-    return path
+    while True:
+        try:
+            with path.open("xb") as target:
+                target.write(data)
+            return path
+        except FileExistsError:
+            path = unique_download_path(path.name, home=home)
 
 
 def reveal_download(path: Path) -> None:
