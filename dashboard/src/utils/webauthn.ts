@@ -188,8 +188,8 @@ export function webauthnErrorMessage(
     error instanceof Error
       ? error.message
       : typeof error === "string"
-        ? error
-        : "";
+      ? error
+      : "";
   if (
     name === "NotAllowedError" ||
     /timed out or was not allowed|not allowed/i.test(message)
@@ -345,8 +345,8 @@ export function isWebAuthnAbortError(error: unknown): boolean {
     error instanceof Error
       ? error.message
       : typeof error === "string"
-        ? error
-        : "";
+      ? error
+      : "";
   return /aborted|AbortError|WebAuthn cancelled/i.test(message);
 }
 

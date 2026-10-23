@@ -66,7 +66,10 @@ export default function AccountSecurityDrawer({
 
   const [reauthOpen, setReauthOpen] = useState(false);
   const [reauthAction, setReauthAction] = useState<ReauthAction | null>(null);
-  const [reauthForm] = Form.useForm<{ password: string; passkeyName?: string }>();
+  const [reauthForm] = Form.useForm<{
+    password: string;
+    passkeyName?: string;
+  }>();
 
   const [totpUri, setTotpUri] = useState<string | null>(null);
   const [totpReauth, setTotpReauth] = useState<string | null>(null);
