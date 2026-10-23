@@ -1180,6 +1180,20 @@ export function setSessionTeamRoom(sessionId: string, isTeam: boolean): void {
   getOrCreate(sessionId).isTeamRoom = isTeam;
 }
 
+/** Keep the dashboard socket after host ``turn.ended``.
+ *
+ * Team rooms need it for member replies. Bridge rooms need it even when the
+ * shadow agent is not flagged ``kind: team``, because closing the socket
+ * unlistens the peer before members flush.
+ */
+function keepRoomSocket(
+  state: SessionStreamState,
+  agentId?: string | null,
+): boolean {
+  if (state.isTeamRoom) return true;
+  return Boolean(agentId?.startsWith("bridge:"));
+}
+
 function sessionHostAgentId(
   state: SessionStreamState,
   sessionId?: string,
@@ -1234,16 +1248,19 @@ function handleHarnessChunk(
   switch (chunk.type) {
     case "token": {
       const snapshot = Boolean(chunk.team_snapshot);
-      // Snapshots are complete wall copies — never leave the speaker "live".
-      if (!snapshot) markSpeakerLive(state, speaker);
+      const liveCatchup = snapshot && Boolean(chunk.team_live);
+      // A finished snapshot is a complete wall copy. A live catchup is the
+      // text already spoken when the page refreshes; the member is still talking.
+      if (!snapshot || liveCatchup) markSpeakerLive(state, speaker);
       appendStreamingToken(
         state,
         chunk.content,
         speaker,
         snapshot,
         Boolean(chunk.team_wrapup),
+        liveCatchup,
       );
-      if (snapshot) clearSpeakerLive(state, speaker);
+      if (snapshot && !liveCatchup) clearSpeakerLive(state, speaker);
       break;
     }
     case "reasoning":
@@ -1588,6 +1605,7 @@ function appendStreamingToken(
   speakerAgentId?: string,
   snapshot = false,
   wrapup = false,
+  keepLive = false,
 ): void {
   if (!content) return;
   const speaker = speakerAgentId?.trim() || undefined;
@@ -1611,7 +1629,7 @@ function appendStreamingToken(
         id: state.streamId,
         role: "assistant",
         content,
-        status: snapshot ? "done" : "streaming",
+        status: snapshot && !keepLive ? "done" : "streaming",
         timestamp: Date.now(),
         speakerAgentId: speaker,
         teamWrapup: true,
@@ -1640,7 +1658,7 @@ function appendStreamingToken(
           id: generateId(),
           role: "assistant",
           content,
-          status: "done",
+          status: keepLive ? "streaming" : "done",
           timestamp: Date.now(),
           speakerAgentId: speaker,
         },
@@ -1652,10 +1670,11 @@ function appendStreamingToken(
         ? content
         : prev
       : content;
-    if (next !== prev || target.status !== "done") {
+    const snapStatus = keepLive ? "streaming" : "done";
+    if (next !== prev || target.status !== snapStatus) {
       state.messages = [
         ...state.messages.slice(0, idx),
-        { ...target, content: next, status: "done" },
+        { ...target, content: next, status: snapStatus },
         ...state.messages.slice(idx + 1),
       ];
     }
@@ -1669,7 +1688,7 @@ function appendStreamingToken(
         id: generateId(),
         role: "assistant",
         content,
-        status: "done",
+        status: keepLive ? "streaming" : "done",
         timestamp: Date.now(),
         speakerAgentId: speaker,
       },
@@ -2616,7 +2635,7 @@ export async function attachThread(
           ) {
             if (hitlKeepsSocket(data)) {
               parkLiveSocketForHitl(data, state, sessionId, live);
-            } else if (state.isTeamRoom) {
+            } else if (keepRoomSocket(state, agentId)) {
               live.listenOnly = true;
               finish("host");
             } else {
@@ -2637,7 +2656,7 @@ export async function attachThread(
         ) {
           if (hitlKeepsSocket(data)) {
             parkLiveSocketForHitl(data, state, sessionId, live);
-          } else if (state.isTeamRoom) {
+          } else if (keepRoomSocket(state, agentId)) {
             live.listenOnly = true;
             finish("host");
           } else {
@@ -2860,7 +2879,7 @@ async function sendTurnWebSocket(
               parkLiveSocketForHitl(data, state, sessionId, live);
             } else {
               controller.signal.removeEventListener("abort", onAbort);
-              if (state.isTeamRoom) {
+              if (keepRoomSocket(state, agentId)) {
                 live.listenOnly = true;
                 finish("host");
               } else {
@@ -2884,7 +2903,7 @@ async function sendTurnWebSocket(
             parkLiveSocketForHitl(data, state, sessionId, live);
           } else {
             controller.signal.removeEventListener("abort", onAbort);
-            if (state.isTeamRoom) {
+            if (keepRoomSocket(state, agentId)) {
               live.listenOnly = true;
               finish("host");
             } else {
@@ -2980,7 +2999,7 @@ async function sendTurnWebSocket(
       if (
         settled &&
         !userCancelled &&
-        state.isTeamRoom &&
+        keepRoomSocket(state, agentId) &&
         resolvedThreadId &&
         resolvedThreadId !== "__empty__" &&
         !isLiveSocketOpen(sessionId)

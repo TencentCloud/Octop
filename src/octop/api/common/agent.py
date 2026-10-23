@@ -23,16 +23,22 @@ def assert_agent_owner(row: Any, user: Any) -> None:
         raise OctopError(ErrorCode.FORBIDDEN, "agent not owned by user")
 
 
-def _user_may_access(row: Any, user: Any) -> bool:
+def _user_may_access(row: Any, user: Any, *, repos: Any | None = None) -> bool:
     if user.is_admin:
         return True
     if row.user_id is not None and row.user_id == user.id:
         return True
-    return bool(agent_is_shared(row))
+    if not agent_is_shared(row):
+        return False
+    if repos is None:
+        return True
+    from octop.infra.users.groups import expert_visible_to  # noqa: PLC0415
+
+    return expert_visible_to(repos, row, user_id=user.id, is_admin=False)
 
 
-def assert_agent_access_row(row: Any, user: Any) -> None:
-    if not _user_may_access(row, user):
+def assert_agent_access_row(row: Any, user: Any, *, repos: Any | None = None) -> None:
+    if not _user_may_access(row, user, repos=repos):
         raise OctopError(ErrorCode.FORBIDDEN, "agent not accessible to user")
 
 
@@ -57,7 +63,8 @@ def require_agent_row(
         if row.user_id is not None and row.user_id != as_user:
             raise OctopError(ErrorCode.FORBIDDEN, "agent not owned by as_user")
     else:
-        assert_agent_access_row(row, user)
+        repos = getattr(getattr(server, "services", None), "repos", None)
+        assert_agent_access_row(row, user, repos=repos)
     return row
 
 
@@ -71,6 +78,34 @@ def require_agent_owner_row(
     """Load an agent row and require owner-level access."""
     row = require_agent_row(agent_id, user=user, as_user=as_user, server=server)
     assert_agent_owner(row, user)
+    return row
+
+
+async def apply_agent_audience(
+    server: Any,
+    agent_id: str,
+    *,
+    visibility: str | None,
+    group_ids: list[str] | None,
+    shared: bool | None,
+) -> Any:
+    """Persist who may use an expert. ``visibility`` overrides ``shared``.
+
+    Callers must validate ``visibility`` before creating the row when a failed
+    group choice should not leave a new expert behind.
+    """
+    from octop.infra.users.groups import RESOURCE_EXPERT, GroupAccess  # noqa: PLC0415
+
+    access = GroupAccess(server.services.repos)
+    registry = server.app_runtime.agent_registry
+    if visibility is not None:
+        access.validate_visibility(visibility, group_ids)
+        row = await registry.set_shared(agent_id, visibility != "owner")
+        access.set_visibility(RESOURCE_EXPERT, agent_id, visibility, group_ids)
+        return row
+    flag = bool(shared)
+    row = await registry.set_shared(agent_id, flag)
+    access.set_visibility(RESOURCE_EXPERT, agent_id, "all" if flag else "owner", [])
     return row
 
 

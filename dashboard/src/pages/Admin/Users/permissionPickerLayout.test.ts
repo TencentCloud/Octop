@@ -5,10 +5,17 @@ const CATALOG = [
   "experts",
   "tasks",
   "token_usage",
+  "skills",
+  "subagents",
+  "tools",
+  "agent_plugins",
+  "mbti",
+  "memory",
   "channels",
   "connectors",
   "skill_packages",
   "knowledge_bases",
+  "bridge",
   "terminal",
   "browser",
   "desktop",
@@ -84,13 +91,27 @@ describe("buildPermissionPickerGroups", () => {
         blocks: [
           {
             kind: "chips",
-            keys: ["channels", "connectors", "skill_packages"],
+            keys: [
+              "skills",
+              "subagents",
+              "tools",
+              "agent_plugins",
+              "mbti",
+              "memory",
+              "channels",
+              "connectors",
+              "skill_packages",
+            ],
           },
           {
             kind: "page",
             id: "knowledge-bases",
             title: "nav.knowledgeBases",
             keys: ["knowledge_bases", "knowledge_settings"],
+          },
+          {
+            kind: "chips",
+            keys: ["bridge"],
           },
         ],
       },
@@ -198,11 +219,58 @@ describe("buildPermissionPickerGroups", () => {
       "envs",
     ]);
     expect(groups[3]?.blocks[0]).toMatchObject({
-      keys: ["connectors", "skill_packages"],
+      kind: "chips",
+      keys: [
+        "skills",
+        "subagents",
+        "tools",
+        "agent_plugins",
+        "mbti",
+        "memory",
+        "connectors",
+        "skill_packages",
+      ],
     });
     expect(
       groups[4]?.blocks.map((block) => ("id" in block ? block.id : "")),
     ).toEqual(["workbench", "remote-desktop"]);
+  });
+
+  it("keeps personalization tabs with channels in the user's nav group", () => {
+    const groups = summarize({
+      groups: [
+        { id: "c_abcdef01", name: "常用" },
+        { id: "settings", name: "配置" },
+      ],
+      items: [
+        { key: "personalization", group: "c_abcdef01" },
+        { key: "channels", group: "c_abcdef01" },
+        { key: "connectors", group: "settings" },
+      ],
+    });
+    expect(groups.find((group) => group.id === "other")).toBeUndefined();
+    expect(groups.find((group) => group.id === "c_abcdef01")?.blocks).toEqual([
+      {
+        kind: "chips",
+        keys: [
+          "skills",
+          "subagents",
+          "tools",
+          "agent_plugins",
+          "mbti",
+          "memory",
+          "channels",
+        ],
+      },
+    ]);
+    expect(
+      groups
+        .find((group) => group.id === "settings")
+        ?.blocks.some(
+          (block) =>
+            block.kind === "chips" && block.keys.includes("connectors"),
+        ),
+    ).toBe(true);
   });
 
   it("puts an unmapped permission in Other", () => {

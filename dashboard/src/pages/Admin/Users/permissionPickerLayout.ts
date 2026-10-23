@@ -11,6 +11,8 @@ const NAV_PERMISSION_CHIPS: readonly {
   key: string;
   labelKey: string;
   permissions: readonly string[];
+  /** Stay in the parent nav group as chips, beside siblings such as Channels. */
+  inline?: boolean;
 }[] = [
   { key: "chat", labelKey: "nav.chat", permissions: [] },
   { key: "experts", labelKey: "nav.experts", permissions: ["experts"] },
@@ -19,6 +21,19 @@ const NAV_PERMISSION_CHIPS: readonly {
     key: "token-usage",
     labelKey: "nav.tokenUsage",
     permissions: ["token_usage"],
+  },
+  {
+    key: "personalization",
+    labelKey: "nav.personalization",
+    inline: true,
+    permissions: [
+      "skills",
+      "subagents",
+      "tools",
+      "agent_plugins",
+      "mbti",
+      "memory",
+    ],
   },
   { key: "channels", labelKey: "nav.channels", permissions: ["channels"] },
   {
@@ -35,6 +50,11 @@ const NAV_PERMISSION_CHIPS: readonly {
     key: "knowledge-bases",
     labelKey: "nav.knowledgeBases",
     permissions: ["knowledge_bases", "knowledge_settings"],
+  },
+  {
+    key: "bridge",
+    labelKey: "nav.bridge",
+    permissions: ["bridge"],
   },
   {
     key: "workbench",
@@ -96,7 +116,14 @@ const DEFAULT_UNGROUPED = ["chat", "experts", "tasks", "token-usage"] as const;
 const DEFAULT_GROUPS: readonly { id: string; items: readonly string[] }[] = [
   {
     id: "settings",
-    items: ["channels", "connectors", "skill-packages", "knowledge-bases"],
+    items: [
+      "personalization",
+      "channels",
+      "connectors",
+      "skill-packages",
+      "knowledge-bases",
+      "bridge",
+    ],
   },
   { id: "control", items: ["workbench", "remote-desktop"] },
   {
@@ -225,8 +252,10 @@ export function buildPermissionPickerGroups<T extends { key: string }>(
         .filter((item): item is T => Boolean(item));
       if (items.length === 0) continue;
       const only = items[0];
-      if (items.length === 1 && only) {
-        chips.push({ kind: "permission", item: only });
+      if (nav.inline || (items.length === 1 && only)) {
+        for (const item of items) {
+          chips.push({ kind: "permission", item });
+        }
         continue;
       }
       flush();

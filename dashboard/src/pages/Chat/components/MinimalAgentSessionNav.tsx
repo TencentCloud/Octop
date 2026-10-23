@@ -30,6 +30,12 @@ import { usePinnedExperts } from "../hooks/usePinnedExperts";
 import { useSessionWorkIds } from "../hooks/useSessionWorkIds";
 import { sortExpertsByPin } from "../utils/pinnedExpertsPrefs";
 import {
+  initialChatNavScope,
+  matchesChatNavScope,
+  type ChatNavScope,
+} from "../utils/chatNavScope";
+import ChatNavScopeTabs, { ChatNavScopeEmpty } from "./ChatNavScopeTabs";
+import {
   expertVisibleInNavSearch,
   matchesNavQuery,
 } from "../utils/navSessionSearch";
@@ -85,7 +91,7 @@ interface MinimalAgentSessionNavProps {
   onDeleteActive: (
     id: string,
     compact: boolean,
-  ) => void | Promise<boolean | void>;
+  ) => void | Promise<boolean | null | void>;
   onRenameActive: (id: string, name: string) => void;
   onPinActive: (id: string, pinned: boolean) => void;
   onFork: (id: string, agentId?: string | null) => void;
@@ -122,7 +128,10 @@ const PreviewSessionRow = memo(function PreviewSessionRow({
   isActive: boolean;
   workStatus: SessionWorkStatus;
   onSelect: (id: string) => void;
-  onDelete: (id: string, compact: boolean) => void | Promise<boolean | void>;
+  onDelete: (
+    id: string,
+    compact: boolean,
+  ) => void | Promise<boolean | null | void>;
   onRename: (id: string, name: string) => void;
   onPin: (id: string, pinned: boolean) => void;
   onFork: (id: string) => void;
@@ -199,9 +208,9 @@ const PreviewSessionRow = memo(function PreviewSessionRow({
       danger: true,
       onClick: ({ domEvent }) => {
         domEvent.stopPropagation();
-        confirmDeleteConversation(t, (compact) => {
-          void onDelete(session.id, compact);
-        });
+        confirmDeleteConversation(t, (compact) =>
+          onDelete(session.id, compact),
+        );
       },
     },
   ];
@@ -304,10 +313,18 @@ export default function MinimalAgentSessionNav({
   );
 
   const [searchQuery, setSearchQuery] = useState("");
+  const [navScope, setNavScope] = useState<ChatNavScope>(() =>
+    initialChatNavScope(
+      agents.find((agent) => agent.agent_id === activeAgentId),
+    ),
+  );
   const { pinnedIds, isPinned, togglePin } = usePinnedExperts();
   const sortedAgents = useMemo(
-    () => sortExpertsByPin(agents, pinnedIds),
-    [agents, pinnedIds],
+    () =>
+      sortExpertsByPin(agents, pinnedIds).filter((agent) =>
+        matchesChatNavScope(agent, navScope),
+      ),
+    [agents, pinnedIds, navScope],
   );
   const searching = searchQuery.trim().length > 0;
   const catalog = useExpertSessionCatalog(sortedAgents, searching);
@@ -476,13 +493,14 @@ export default function MinimalAgentSessionNav({
     async (agentId: string, sessionId: string, compact: boolean) => {
       if (agentId === activeAgentId) {
         const deleted = await onDeleteActive(sessionId, compact);
-        if (deleted === false) return;
+        if (deleted !== true) return deleted;
         patchLocal(agentId, (prev) => prev.filter((s) => s.id !== sessionId));
-        return;
+        return true;
       }
       const deleted = await deleteConversation(agentId, sessionId, compact, t);
-      if (!deleted) return;
+      if (deleted !== true) return deleted;
       patchLocal(agentId, (prev) => prev.filter((s) => s.id !== sessionId));
+      return true;
     },
     [activeAgentId, onDeleteActive, patchLocal, t],
   );
@@ -553,12 +571,17 @@ export default function MinimalAgentSessionNav({
           aria-label={t("chat.searchSessions", "搜索会话")}
         />
       </div>
-      {searching && visibleAgents.length === 0 ? (
-        <div className={styles.minimalAgentEmpty}>
-          {catalog.loading
-            ? t("common.loading")
-            : t("chat.noSearchResults", "没有匹配的会话")}
-        </div>
+      <ChatNavScopeTabs value={navScope} onChange={setNavScope} />
+      {visibleAgents.length === 0 ? (
+        searching ? (
+          <div className={styles.minimalAgentEmpty}>
+            {catalog.loading
+              ? t("common.loading")
+              : t("chat.noSearchResults", "没有匹配的会话")}
+          </div>
+        ) : (
+          <ChatNavScopeEmpty scope={navScope} />
+        )
       ) : null}
       {visibleAgents.map((agent) => {
         const preview = byAgent[agent.agent_id] ?? [];
@@ -671,7 +694,7 @@ export default function MinimalAgentSessionNav({
                       )}
                       onSelect={(id) => onSelect(id, agent.agent_id)}
                       onDelete={(id, compact) =>
-                        void handleDelete(agent.agent_id, id, compact)
+                        handleDelete(agent.agent_id, id, compact)
                       }
                       onRename={(id, name) =>
                         handleRename(agent.agent_id, id, name)

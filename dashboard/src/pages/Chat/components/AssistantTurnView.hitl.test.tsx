@@ -84,4 +84,34 @@ describe("AssistantTurnView approval", () => {
     expect(screen.getByText("磁盘还剩 8G")).toBeInTheDocument();
     expect(screen.getByText("Confirm this action")).toBeInTheDocument();
   });
+
+  it("keeps host wrap-up below the divider and leaves the decision collapsed", () => {
+    render(
+      <AssistantTurnView
+        messages={[
+          message({
+            id: "wrap",
+            content: "今天就到这里",
+            teamWrapup: true,
+            speakerAgentId: "host",
+            decision: {
+              model: "laya",
+              empty: false,
+              parts: [
+                { kind: "result", kept: [{ name: "结果充分", score: 0.91 }] },
+              ],
+            },
+          }),
+        ]}
+      />,
+    );
+
+    const badge = screen.getByText("主持人总结");
+    const answer = screen.getByText("今天就到这里");
+    expect(
+      badge.compareDocumentPosition(answer) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+    expect(screen.getByText(/决策模型/)).toBeInTheDocument();
+    expect(screen.queryByText(/结果充分/)).not.toBeInTheDocument();
+  });
 });

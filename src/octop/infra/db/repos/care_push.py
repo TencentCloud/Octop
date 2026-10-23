@@ -46,6 +46,17 @@ class CarePushRepo:
                 rows,
             )
 
+    def latest_pushed_at(self, agent_id: str) -> int | None:
+        """Unix time of the most recent care push for ``agent_id``, if any."""
+        with self._db.connect() as conn:
+            row = conn.execute(
+                "SELECT MAX(pushed_at) FROM care_push_records WHERE agent_id = ?",
+                (agent_id,),
+            ).fetchone()
+        if row is None or row[0] is None:
+            return None
+        return int(row[0])
+
     def list_pushed_episode_ids(
         self,
         agent_id: str,
