@@ -29,6 +29,7 @@ if TYPE_CHECKING:
     from octop.infra.gateway.gateway import Gateway
 
 logger = logging.getLogger(__name__)
+SILENT_MARKER = "[SILENT]"
 
 
 @dataclass(frozen=True)
@@ -69,17 +70,45 @@ class CronDeliveryService:
         """Run one delivery under the target channel session lock."""
 
         async def _locked() -> None:
-            if command.fresh_thread:
-                await self._gateway.thread_registry.reset_by_session_key(command.session_key)
             session = self._gateway.require_session(command.agent_id, command.session_key)
             if session.user_id != command.user_id:
                 raise ValueError(
                     f"session {command.session_key!r} does not belong to user {command.user_id!r}"
                 )
+            if command.task_type == "text" and command.prompt.strip() == SILENT_MARKER:
+                logger.info("cron job %s has nothing to deliver", command.cron_id)
+                return
+            previous_thread_id = (
+                self._gateway.thread_registry.get_bound_thread_id(command.session_key)
+                if command.fresh_thread
+                else None
+            )
+            if command.fresh_thread:
+                await self._gateway.thread_registry.reset_by_session_key(command.session_key)
+                session = self._gateway.require_session(command.agent_id, command.session_key)
             if command.task_type == "text":
                 await self._deliver_text(command, session)
             else:
-                await self._deliver_agent(command, session)
+                silent = await self._deliver_agent(command, session)
+                if silent and previous_thread_id and session.thread_id != previous_thread_id:
+                    await self._gateway.thread_registry.rebind(
+                        session_key=command.session_key,
+                        thread_id=previous_thread_id,
+                        agent_id=command.agent_id,
+                    )
+                    try:
+                        await self._agent_manager.delete_thread_checkpoint(
+                            command.agent_id, session.thread_id, reclaim=False
+                        )
+                    except Exception:
+                        # A failed checkpoint delete must not hide its thread.
+                        await self._gateway.thread_registry.rebind(
+                            session_key=command.session_key,
+                            thread_id=session.thread_id,
+                            agent_id=command.agent_id,
+                        )
+                        raise
+                    self._gateway.thread_registry.delete_thread(session.thread_id)
 
         await self._gateway.run_in_session(
             command.agent_id,
@@ -135,12 +164,13 @@ class CronDeliveryService:
         self,
         command: CronDeliveryCommand,
         session: SessionRow,
-    ) -> None:
+    ) -> bool:
         request = await self._build_agent_request(command, session)
         tracker = TurnHistoryTracker.from_request(request)
         usage = UsageTracker()
         parts: list[str] = []
         interaction_required = False
+        silent = False
         saw_tool_call = False
         emitted_tool_error_ids: set[str] = set()
         try:
@@ -170,6 +200,7 @@ class CronDeliveryService:
             outbound = strip_thinking("".join(parts)).strip()
             if not outbound:
                 raise RuntimeError("cron agent run produced no visible response")
+            silent = outbound == SILENT_MARKER
         finally:
             # ``fresh_thread`` already put an empty thread on the session, so a run
             # that raised before this left a conversation with no rows at all.
@@ -184,12 +215,16 @@ class CronDeliveryService:
                 usage=usage.usage,
                 source="cron",
             )
+        if silent:
+            logger.info("cron job %s has nothing to deliver", command.cron_id)
+            return True
         await self._gateway.push_session_text(
             session,
             outbound,
             title_source=command.prompt,
         )
         await self._notify_best_effort(session, command.agent_id, outbound)
+        return False
 
     async def _build_agent_request(
         self,
