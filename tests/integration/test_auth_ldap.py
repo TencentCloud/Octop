@@ -478,6 +478,7 @@ async def test_new_directory_user_gets_the_preset_role_template(
         "connectors",
         "experts",
         "knowledge_bases",
+        "knowledge_bases:create",
         "mbti",
         "memory",
         "skill_packages",

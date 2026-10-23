@@ -107,6 +107,14 @@ does not set these headers itself.
 
 ## Users (admin)
 
+Knowledge-base creation requires both `knowledge_bases` and `knowledge_bases:create`
+on `POST /knowledge-bases`; administrators bypass these checks. The permission
+picker exposes creation separately so administrators can revoke it while retaining
+knowledge-base page access and shared-base reading/retrieval. This does not revoke
+ownership or write access to a user's existing bases. Existing users and role
+templates with `knowledge_bases` inherit creation once on upgrade; later revocation
+survives restart. New default roles include creation.
+
 | Method | Path | Auth | Notes |
 |--------|------|------|-------|
 | `GET`    | `/users` | admin | `[{id, username, role, display_name, email, enabled, ...}]` |

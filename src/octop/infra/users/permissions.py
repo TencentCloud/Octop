@@ -3,6 +3,8 @@
 A permission is a module key (e.g. ``"browser"``, ``"users"``). Possessing a
 key grants access to that module's management page and write/configure actions.
 Read access and agent use in chat are never gated. ``admin`` bypasses all.
+Action keys such as ``knowledge_bases:create`` further restrict individual
+operations without taking away the module's management page.
 
 Categories mirror dashboard nav groups: ``settings`` / ``control`` / ``admin``.
 ``nav`` is the ungrouped pages that can be granted (chat stays ungated).
@@ -115,6 +117,15 @@ PERMISSIONS: dict[str, PermissionDef] = {
     "connectors": _p("connectors", "settings", "连接器", "Connectors"),
     "skill_packages": _p("skill_packages", "settings", "技能包", "Skill Packages"),
     "knowledge_bases": _p("knowledge_bases", "settings", "知识库", "Knowledge Base"),
+    "knowledge_bases:create": _p(
+        "knowledge_bases:create",
+        "settings",
+        "创建知识库",
+        "Create knowledge bases",
+        page="knowledge_bases",
+        page_zh="知识库",
+        page_en="Knowledge Base",
+    ),
     "bridge": _p("bridge", "settings", "云端协同", "Cloud collab"),
     # --- control (nav.control) — page/tab labels ---
     "terminal": _p("terminal", "control", "工作台/终端", "Workbench / Terminal"),

@@ -573,7 +573,12 @@ async def list_bases(
     ]
 
 
-@router.post("", status_code=status.HTTP_201_CREATED, summary="Create a knowledge base")
+@router.post(
+    "",
+    status_code=status.HTTP_201_CREATED,
+    summary="Create a knowledge base",
+    dependencies=[Depends(require_permission("knowledge_bases:create"))],
+)
 async def create_base(
     body: CreateBaseBody,
     request: Request,
