@@ -190,7 +190,8 @@ async def test_prepare_chat_mcp_injects_custom_from_cache() -> None:
     assert aload.await_count == 1
     assert agent.append_mcp_tools.call_count == 1
     mgr.reload_connectors.assert_not_awaited()
-    assert agent.config.mcp_server_configs["deepwiki"]["transport"] == "streamable_http"
+    # The shared graph stores only names/proxies, never a user's connection spec.
+    assert agent.config.mcp_server_configs["deepwiki"] == {}
     injected = agent.append_mcp_tools.call_args.args[0]
     assert isinstance(injected[0], StructuredTool)
 
@@ -224,9 +225,12 @@ async def test_prepare_chat_mcp_attaches_gateway_tools_without_reload() -> None:
         agent._mcp_tools = [*tools, *agent._mcp_tools]
         agent._mcp_tool_name_set = frozenset(str(getattr(t, "name", "")) for t in agent._mcp_tools)
 
-    agent.inject_mcp_tools = MagicMock(side_effect=_inject)
+    agent.append_mcp_tools = MagicMock(side_effect=_inject)
 
     mgr = object.__new__(AgentManager)
+    mgr._mcp_tool_cache = {}
+    mgr._mcp_tool_cache_locks = {}
+    mgr._mcp_tool_cache_guard = asyncio.Lock()
     mgr._repos = MagicMock()
     mgr._repos.connector_repo.list_visible.return_value = [inst]
     mgr._connector_svc = MagicMock()
@@ -244,7 +248,7 @@ async def test_prepare_chat_mcp_attaches_gateway_tools_without_reload() -> None:
     # rather than surfacing as "tools missing".
     mgr.reload_connectors.assert_not_awaited()
     assert failed == []
-    assert agent.inject_mcp_tools.call_count == 1
+    assert agent.append_mcp_tools.call_count == 1
     assert all(name.startswith(f"{server}_") for name in agent._mcp_tool_name_set)
     assert server in agent.config.mcp_server_configs
     mgr._connector_svc.ensure_fresh_credentials.assert_awaited_once_with(instance_id, "qq-mail")
@@ -260,3 +264,15 @@ def test_wrap_tools_for_shared_use() -> None:
     wrapped = wrap_tools_for_shared_use([inner], lock)
     assert len(wrapped) == 1
     assert isinstance(wrapped[0], StructuredTool)
+
+
+@pytest.mark.parametrize(
+    "key,value",
+    [
+        ("allowed_tools", ["read"]),
+        ("tool_arg_aliases", {"read": {"query": "q"}}),
+    ],
+)
+def test_fingerprint_changes_with_tool_policy(key: str, value: Any) -> None:
+    spec = {"transport": "http", "url": "https://example.invalid/mcp"}
+    assert fingerprint_mcp_spec(spec) != fingerprint_mcp_spec({**spec, key: value})

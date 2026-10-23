@@ -599,6 +599,10 @@
     },
     "preflight_failed_summary": "一项或多项预检未通过"
   },
+  "mcp_scope": {
+    "unauthorized": "本轮对话未授权使用该 MCP 工具。",
+    "tool": "MCP 工具"
+  },
   "tools": {
     "unknown": "未知工具",
     "read_file": "读取文件",

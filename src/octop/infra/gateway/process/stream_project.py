@@ -256,7 +256,9 @@ async def project_resume_stream(
     hitl_ctx: HitlStreamContext | None = None,
 ) -> AsyncIterator[MessageEvent]:
     async for ev in _project_chunks(
-        agent_manager.resume_hitl(agent_id, thread_id, decisions),
+        agent_manager.resume_hitl(
+            agent_id, thread_id, decisions, user_id=hitl_ctx.user_id if hitl_ctx else None
+        ),
         agent_manager=agent_manager,
         agent_id=agent_id,
         locale=locale,

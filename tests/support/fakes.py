@@ -63,6 +63,7 @@ class FakeHarnessAgent:
             self._backend = _FakeBackend()
             self._workspace = BackendWorkspace(self._backend, self._workspace_dir)
         self.config = SimpleNamespace(
+            language="zh",
             mcp_server_configs={},
             skills_disabled=frozenset(),
             tools_disabled=frozenset(),
@@ -136,6 +137,11 @@ class FakeHarnessAgent:
         self._mcp_tool_name_set = frozenset(
             str(getattr(t, "name", "") or "") for t in self._mcp_tools if getattr(t, "name", None)
         )
+
+    def replace_mcp_tools(self, tools: list[Any]) -> None:
+        """Mirror harness replacement without compiling a graph."""
+        self._mcp_tools = list(tools)
+        self._mcp_tool_name_set = frozenset(tool.name for tool in tools)
 
     def inject_mcp_tools(self, extra_tools: list[Any]) -> None:
         """Alias for :meth:`append_mcp_tools` (gateway in-process MCP injection)."""
