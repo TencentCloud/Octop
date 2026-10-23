@@ -6,6 +6,19 @@
 
 ## [Unreleased]
 
+## [1.0.8] - 2026-10-23
+
+### 新增
+- **沙箱容器管理(Admin)**:容器台账 + 漂移检测 + 一键重建。台账按 Docker label 实时列出本机沙箱容器(scope/专家/实际镜像/实际网络模式);漂移检测比对实际镜像与配置期望镜像(`DRIFT`)、实际网络模式与配置期望 `allow_network`(`NETWORK-DRIFT`,分"配置未生效"与"应关网仍联网"两个方向);一键重建 = 备份容器工作区到宿主(`{AGENTBUDDY_HOME}/sandbox-backups/`,每容器保留 3 份)→ 校验期望镜像存在 → 删容器,下次对话按新配置自动重建;关联专家有进行中对话时 409 拒绝。入口:管理 → 存储 → 沙箱容器 tab、`/api/admin/sandboxes`、`octop sandbox list/recreate/images/backups`。
+- **沙箱联网可见性**:`allow_network` 配置(agent `config.backend` 经 API、或存储后端高级配置 JSON)的状态与漂移在台账一屏可见;重建即联网开关的生效动作。
+- **沙箱镜像白名单扩充**(Dockerfile.sandbox):pip += pymupdf4llm/Pillow/markitdown[pptx]/pyfiglet/numpy;npm 白名单首建 += pptxgenjs/mcporter;apt += cowsay。分层镜像变体 `--target variant-jupyter`(jupyter 全家桶)/ `variant-manim`(manim + texlive-full)按需构建、backend `image` 字段按需选择,基础镜像保持默认构建输出。
+
+### 修复
+- **专家编辑抽屉静默冲掉 backend**:每次保存都按表单重建整个 `config.backend`,内联 docker 后端的 `image`/`allow_network` 等未知键被静默替换为默认值。保存改为原样保留加载的 spec;内联 docker 后端开放受控的"镜像 tag"编辑。
+- **沙箱确认弹窗"受影响专家"为空**:user scope 容器的反查依赖了不存在的 registry 方法,且 named 引用反查漏掉内联默认后端。改为并集反查(named 引用 ∪ 内联 docker prefix 匹配),同时修复期望值计算与活跃会话检查在该场景下失效的问题;容器名 prefix 反推不再被带下划线的用户名破坏。
+- laya_runtime 测试的磁盘空间隐式依赖(注入 free_bytes 桩)。
+
+
 ## [1.0.7] - 2026-10-22
 
 ### 变更
