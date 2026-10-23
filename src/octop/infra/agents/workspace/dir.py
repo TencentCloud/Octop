@@ -15,6 +15,9 @@ Create-time defaults when unset:
   land inside the jail), but persist ``/.octop/workspaces/<id>`` — the
   agent-facing workspace path. Harness gets that persisted string as-is.
 
+On Windows, a drive root is host-rooted only when it is on the same drive as
+``OCTOP_HOME``. A different drive root is a scoped backend root.
+
 User-assigned ``workspace_dir`` always wins (strip only).
 
 :func:`resolve_workspace_host_path` is only for Octop host FS ops (delete,
@@ -28,7 +31,7 @@ import contextlib
 import json
 import os
 import re
-from pathlib import Path
+from pathlib import Path, PureWindowsPath
 from typing import Any
 
 from octop.infra.utils.paths import PathLayout
@@ -49,16 +52,25 @@ def _is_host_root_sentinel(root: str | Path | None) -> bool:
     """True when *root* means the whole host filesystem (not a jail).
 
     POSIX uses ``/``. Windows uses a drive root such as ``C:/`` (what
-    :func:`host_fs_tree_root` returns). Treating drive roots as scoped jails
-    would put default workspaces under ``{drive}/.octop/workspaces/…`` instead
-    of ``{OCTOP_HOME}/agents/<id>/``.
+    :func:`host_fs_tree_root` returns) only when that drive contains
+    ``OCTOP_HOME``. Other drive roots are scoped roots and need their workspace
+    under ``{drive}/.octop/workspaces/…``.
     """
     if root is None:
         return True
     text = str(root).strip()
     if text in ("/", "\\", ""):
         return True
-    return bool(_WINDOWS_DRIVE_ROOT_RE.match(text))
+    if not _WINDOWS_DRIVE_ROOT_RE.match(text):
+        return False
+    octop_home = PathLayout.from_env().root.expanduser()
+    octop_home_drive = PureWindowsPath(str(octop_home)).drive
+    if not octop_home_drive and _running_on_windows():
+        with contextlib.suppress(OSError):
+            octop_home_drive = octop_home.resolve().drive
+    if not octop_home_drive:
+        return True
+    return PureWindowsPath(text).drive.casefold() == octop_home_drive.casefold()
 
 
 def _is_windows_style_host_path(raw: str) -> bool:
