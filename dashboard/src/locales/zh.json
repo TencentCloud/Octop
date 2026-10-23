@@ -245,7 +245,13 @@
     "LOCAL_DOWNLOAD_UNAVAILABLE": "仅在本机打开 Octop 时才能保存到系统「下载」文件夹。",
     "SKILL_PACKAGE_COPY_DENIED": "该技能包的创建者已禁止复制其中的技能。",
     "SKILL_PACKAGE_DOWNLOAD_DENIED": "该技能包已禁止打包下载。",
-    "SKILL_PACKAGE_LOCKED": "此技能复制自锁定策略的技能包，无法在工作区编辑。"
+    "SKILL_PACKAGE_LOCKED": "此技能复制自锁定策略的技能包，无法在工作区编辑。",
+    "MFA_INVALID": "二次验证失败，请重试。",
+    "MFA_LOCKED": "二次验证尝试次数过多，请稍后再试。",
+    "MFA_REAUTH_REQUIRED": "请重新输入密码以继续。",
+    "MFA_LAST_FACTOR": "无法移除最后一个二次验证方式。",
+    "WEBAUTHN_CONFIG_INVALID": "此服务器尚未配置通行密钥。",
+    "WEBAUTHN_INVALID_DOMAIN": "通行密钥需要有效域名。请通过 http://localhost 打开（不要用 127.0.0.1 等 IP 地址）。"
   },
   "nav": {
     "chat": "对话",
@@ -327,7 +333,8 @@
     "groupNameRequired": "请填写分组名称",
     "saveFailed": "没能保存导航布局",
     "dragToReorder": "拖动排序",
-    "chatHistory": "会话列表"
+    "chatHistory": "会话列表",
+    "passkeys": "通行密钥"
   },
   "skillPackages": {
     "title": "技能包",
@@ -3915,6 +3922,22 @@
           "body": "包更新完成后需要重启进程才生效。任选与你的启动方式匹配的命令："
         }
       }
+    },
+    "webauthn": {
+      "title": "通行密钥（WebAuthn）",
+      "description": "通行密钥注册与登录的 Relying Party 设置。生产环境 HTTPS 域名需要配置；本机 localhost 可不配。",
+      "localhostHint": "未配置时，仅自动允许 http(s)://localhost。不能使用 IP（含 127.0.0.1）作为 RP ID。",
+      "rpId": "RP ID（域名）",
+      "rpIdHint": "一般为站点主机名（不含端口），例如 octop.example.com。不能是 IP 地址。",
+      "rpIdPlaceholder": "octop.example.com",
+      "origins": "允许的 Origin",
+      "originsHint": "每行一个 Origin（协议 + 主机 + 可选端口），例如 https://octop.example.com",
+      "originsPlaceholder": "https://octop.example.com",
+      "useCurrentOrigin": "填入当前站点",
+      "save": "保存",
+      "saved": "通行密钥设置已保存",
+      "saveFailed": "无法保存通行密钥设置",
+      "loadFailed": "无法加载通行密钥设置"
     }
   },
   "agentConfig": {
@@ -4223,7 +4246,57 @@
     "ssoUnbindSuccess": "已解除单点登录",
     "ssoBindFailed": "无法开始绑定",
     "ssoUnbindFailed": "无法解除绑定",
-    "ssoPopupBlocked": "请允许弹出窗口以继续单点登录。"
+    "ssoPopupBlocked": "请允许弹出窗口以继续单点登录。",
+    "security": "账户安全",
+    "securityHint": "两步验证与通行密钥保护密码登录。单点登录（SSO）不会走 Octop MFA。",
+    "securitySsoOnly": "此账户仅通过 SSO 登录，无法登记 Octop MFA（没有可用于再次确认的密码）。",
+    "securitySsoBypass": "SSO 登录不会使用 MFA。同时设有本地密码的混合账户仍可使用「密码 + MFA」或通行密钥。",
+    "securityCliNote": "Octop CLI 信任本机文件系统访问，不会要求 MFA。",
+    "securityTotp": "身份验证器（TOTP）",
+    "securityTotpEnabled": "已启用",
+    "securityTotpDisabled": "未启用",
+    "securityTotpEnroll": "设置身份验证器",
+    "securityTotpDisable": "关闭身份验证器",
+    "securityTotpConfirm": "确认",
+    "securityTotpCode": "输入 6 位验证码",
+    "securityTotpScan": "用身份验证器扫描此二维码，然后输入显示的验证码。",
+    "securityPasskeys": "通行密钥",
+    "securityPasskeyAdd": "添加通行密钥",
+    "securityPasskeyName": "通行密钥名称",
+    "securityPasskeyNamePlaceholder": "例如 MacBook Touch ID",
+    "securityPasskeyDefaultName": "通行密钥",
+    "securityPasskeyNameHint": "可选。方便以后辨认这台设备或密码管理器。",
+    "securityPasskeyRemove": "移除",
+    "securityPasskeyEmpty": "尚未添加通行密钥。",
+    "securityPasskeyLastUsed": "最近使用 {{time}}",
+    "securityPasskeyNeverUsed": "从未使用",
+    "securityPasskeyHttps": "通行密钥需要 HTTPS，或使用 http://localhost（不支持 127.0.0.1 等 IP 地址）。",
+    "securityRecovery": "恢复码",
+    "securityRecoveryRemaining": "剩余 {{count}} 个未使用恢复码",
+    "securityRecoveryRegenerate": "重新生成恢复码",
+    "securityRecoveryShowOnce": "请立即保存这些恢复码，之后不会再显示。",
+    "securityRecoverySaved": "我已保存这些恢复码",
+    "securityReauthTitle": "确认密码",
+    "securityReauthHint": "更改账户安全设置前请输入密码。",
+    "securityReauthSubmit": "继续",
+    "securityReauthFailed": "无法确认密码。",
+    "securityLoadFailed": "无法加载账户安全状态。",
+    "securityEnrollSuccess": "已启用两步验证。",
+    "securityDisableSuccess": "已关闭身份验证器。",
+    "securityPasskeyAdded": "已添加通行密钥。",
+    "securityPasskeyRemoved": "已移除通行密钥。",
+    "securityRecoveryRegenSuccess": "已生成新的恢复码。",
+    "securityUnavailable": "账户安全暂不可用（服务器 MFA 接口尚未就绪）。",
+    "securityTotpDesc": "使用身份验证器应用在密码登录时提供六位验证码。",
+    "securityPasskeyDesc": "用面容、触控 ID 或硬件密钥登录，无需输入密码。",
+    "securityPasskeyCount": "{{count}} 个通行密钥",
+    "securityRecoveryNeedFactor": "请先启用身份验证器或通行密钥，再生成恢复码。",
+    "securityRecoveryDesc": "丢失身份验证器或通行密钥时，可用一次性恢复码登录。",
+    "securityRecoveryDownload": "下载为文本文件",
+    "securityDisableMfaTitle": "关闭两步验证？",
+    "securityDisableMfaHint": "这将移除你最后一个登录验证方式。关闭后仅需密码即可登录，直到你再次启用。恢复码也会一并清除。",
+    "securityRecoveryCount": "剩余 {{count}} 个",
+    "securityPasskeyIpHost": "通行密钥无法在 IP 地址上使用。请改用 http://localhost:{{port}} 打开，不要用 {{host}}。"
   },
   "user": {
     "title": "用户设置",
@@ -5792,7 +5865,29 @@
       "missingCode": "单点登录响应缺少登录代码。",
       "failed": "无法完成单点登录",
       "backToLogin": "返回登录"
-    }
+    },
+    "mfaTitle": "两步验证",
+    "mfaHint": "请输入身份验证器中的验证码、恢复码，或使用通行密钥。",
+    "mfaTotp": "身份验证器验证码",
+    "mfaTotpPlaceholder": "6 位数字",
+    "mfaRecovery": "恢复码",
+    "mfaRecoveryPlaceholder": "xxxx-xxxx-xxxx",
+    "mfaUseRecovery": "使用恢复码",
+    "mfaUseTotp": "使用身份验证器",
+    "mfaUsePasskey": "使用通行密钥",
+    "mfaVerify": "验证",
+    "mfaBack": "返回登录",
+    "mfaPasskeyUnavailable": "通行密钥需要 HTTPS（或 localhost）。请改用验证码或恢复码。",
+    "passkeySignIn": "使用通行密钥登录",
+    "passkeyHttpsRequired": "通行密钥需要安全连接（HTTPS），或使用 http://localhost。不支持 127.0.0.1 等 IP 地址。",
+    "passkeyNotAllowed": "通行密钥已取消或超时，请重试。",
+    "passkeyCancelled": "已取消通行密钥操作。",
+    "passkeyInvalidState": "此通行密钥已在本账号注册过。",
+    "passkeyFailed": "通行密钥登录失败。",
+    "mfaFailed": "两步验证失败。",
+    "mfaHintTotp": "请输入身份验证器中的 6 位验证码。",
+    "mfaHintPasskey": "使用通行密钥完成登录。",
+    "mfaHintRecovery": "请输入一份恢复码。"
   },
   "invite": {
     "title": "邀请注册",
@@ -6110,7 +6205,12 @@
       "delete": "删除",
       "set_token_quota": "设置 Token 上限",
       "set_max_agents": "设置专家上限"
-    }
+    },
+    "mfaBadge": "MFA",
+    "mfaReset": "重置 MFA",
+    "mfaResetConfirm": "清除 {{username}} 的全部 MFA 因素？对方需要重新登记。",
+    "mfaResetSuccess": "已重置 MFA。",
+    "mfaResetFailed": "无法重置 MFA。"
   },
   "adminSso": {
     "panelTitle": "单点登录",
@@ -7089,7 +7189,12 @@
     "retry": "重试",
     "offlineTitle": "无法连接 Octop 服务",
     "offlineSubtitle": "网络不可用或后端未启动。请检查网络与服务状态后重试。",
-    "backHome": "返回首页"
+    "backHome": "返回首页",
+    "MFA_INVALID": "二次验证失败，请重试。",
+    "MFA_LOCKED": "二次验证尝试次数过多，请稍后再试。",
+    "MFA_REAUTH_REQUIRED": "请重新输入密码以继续。",
+    "MFA_LAST_FACTOR": "无法移除最后一个二次验证方式。",
+    "WEBAUTHN_CONFIG_INVALID": "此服务器尚未配置通行密钥。"
   },
   "adminProviders": {
     "title": "Providers",

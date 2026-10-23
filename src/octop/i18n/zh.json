@@ -530,7 +530,13 @@
     "LOCAL_DOWNLOAD_UNAVAILABLE": "仅在本机打开 Octop 时才能保存到系统「下载」文件夹。",
     "SKILL_PACKAGE_COPY_DENIED": "该技能包的创建者已禁止复制其中的技能。",
     "SKILL_PACKAGE_DOWNLOAD_DENIED": "该技能包已禁止打包下载。",
-    "SKILL_PACKAGE_LOCKED": "此技能复制自锁定策略的技能包，无法在工作区编辑。"
+    "SKILL_PACKAGE_LOCKED": "此技能复制自锁定策略的技能包，无法在工作区编辑。",
+    "MFA_INVALID": "二次验证失败，请重试。",
+    "MFA_LOCKED": "二次验证尝试次数过多，请稍后再试。",
+    "MFA_REAUTH_REQUIRED": "请重新输入密码以继续。",
+    "MFA_LAST_FACTOR": "无法移除最后一个二次验证方式。",
+    "WEBAUTHN_CONFIG_INVALID": "此服务器尚未配置通行密钥。",
+    "WEBAUTHN_INVALID_DOMAIN": "通行密钥需要有效域名。请通过 http://localhost 打开（不要用 127.0.0.1 等 IP 地址）。"
   },
   "desktop": {
     "install_log_deps": "正在安装 Python 依赖…",

@@ -149,6 +149,19 @@ def set_user_password_offline(username: str, password: str, *, home: Path | None
         svc.user_repo.set_password_hash(uid, hash_password(password))
 
 
+def reset_user_mfa_offline(username: str, *, home: Path | None = None) -> None:
+    """Clear TOTP, passkeys, and recovery codes; bump ``mfa_version``.
+
+    Local failsafe when a user is locked out of MFA (mirrors admin
+    ``DELETE /api/users/{id}/mfa``). Does not change the password.
+    """
+    from octop.infra.auth.mfa.service import MfaService
+
+    with open_cli_services(home) as svc:
+        uid = _require_username(svc, username)
+        MfaService(svc).admin_reset(target_user_id=uid, actor="cli")
+
+
 def set_user_role_offline(username: str, role: str, *, home: Path | None = None) -> None:
     with open_cli_services(home) as svc:
         uid = _require_username(svc, username)
