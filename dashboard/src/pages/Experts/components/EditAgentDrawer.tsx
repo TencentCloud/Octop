@@ -795,9 +795,7 @@ function EditAgentDrawerBody({
                         if (isUploadedAvatarUrl(iconUrl)) {
                           await octopAgentsApi.deleteAvatar(agent.agent_id);
                         }
-                        const nextUrl = presetId
-                          ? expertPresetSrc(presetId)
-                          : null;
+                        const nextUrl = expertPresetSrc(presetId ?? "default");
                         await request(`/agents/${agent.agent_id}`, {
                           method: "PATCH",
                           body: JSON.stringify({ icon_url: nextUrl }),
@@ -959,39 +957,27 @@ function EditAgentDrawerBody({
               ) : null}
             </Form>
 
-            <Collapse
-              ghost
-              className={styles.drawerCollapse}
-              style={{ margin: "8px 0 0", width: "100%" }}
-              defaultActiveKey={["configFiles"]}
-              items={[
-                {
-                  key: "advanced",
-                  label: t("experts.advancedOptions"),
-                  children: (
-                    <Form form={form} layout="vertical" size="middle">
-                      <AgentAdvancedConfigFields />
-                    </Form>
-                  ),
-                },
-                ...(isAgentChatReady(agent.state)
-                  ? [
-                      {
-                        key: "pageConfig",
-                        label: t("experts.pageConfigTitle"),
-                        children: (
-                          <div style={{ padding: 0 }}>
-                            <WelcomeConfig
-                              ref={welcomeConfigRef}
-                              agentId={agent.agent_id}
-                            />
-                          </div>
-                        ),
-                      },
-                    ]
-                  : []),
-              ]}
-            />
+            {isAgentChatReady(agent.state) ? (
+              <Collapse
+                ghost
+                className={styles.drawerCollapse}
+                style={{ width: "100%" }}
+                items={[
+                  {
+                    key: "pageConfig",
+                    label: t("experts.pageConfigTitle"),
+                    children: (
+                      <div style={{ padding: 0 }}>
+                        <WelcomeConfig
+                          ref={welcomeConfigRef}
+                          agentId={agent.agent_id}
+                        />
+                      </div>
+                    ),
+                  },
+                ]}
+              />
+            ) : null}
           </div>
 
           {isAgentChatReady(agent.state) && (
@@ -1000,7 +986,7 @@ function EditAgentDrawerBody({
                 ghost
                 className={styles.drawerCollapse}
                 defaultActiveKey={["configFiles"]}
-                style={{ margin: 0, width: "100%" }}
+                style={{ width: "100%" }}
                 items={[
                   {
                     key: "configFiles",
@@ -1385,6 +1371,22 @@ function EditAgentDrawerBody({
               />
             </div>
           )}
+          <Collapse
+            ghost
+            className={styles.drawerCollapse}
+            style={{ width: "100%" }}
+            items={[
+              {
+                key: "advanced",
+                label: t("experts.advancedOptions"),
+                children: (
+                  <Form form={form} layout="vertical" size="middle">
+                    <AgentAdvancedConfigFields />
+                  </Form>
+                ),
+              },
+            ]}
+          />
         </>
       )}
       <WorkspaceDrawer

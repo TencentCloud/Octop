@@ -883,7 +883,7 @@
     "filterEmpty": "没有符合当前筛选的结果",
     "totalLibrary": "共 {{count}} 个内置专家",
     "totalMarket": "共 {{count}} 个市场专家",
-    "addFromLibrary": "+ 从内置专家新建",
+    "addFromLibrary": "+ 从内置专家模板新建",
     "newExpert": "新建专家",
     "emptyMyExperts": "你还没有专家",
     "emptyMyExpertsHint": "点击新建专家，或从内置专家、专家市场选择模板。",
