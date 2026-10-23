@@ -75,6 +75,35 @@ def normalize_tools(raw: list[Any] | None) -> list[dict[str, str]]:
     return out
 
 
+# Guard against a misbehaving server that never clears ``nextCursor``.
+_MAX_TOOL_PAGES = 100
+
+
+async def _collect_mcp_tools(session: Any) -> list[dict[str, str]]:
+    """Page through ``session.list_tools`` following ``nextCursor``.
+
+    A server that returns ``nextCursor`` from ``tools/list`` is only partially
+    probed by a single call, so the reported tool list and ``tool_count`` omit
+    later pages (#2298). Walk every page in the same initialized session and
+    return the normalized tools across all of them.  Servers/SDK versions that
+    never set ``nextCursor`` yield exactly one page.  ``_MAX_TOOL_PAGES`` caps
+    the walk so a server returning a perpetually non-empty cursor cannot loop
+    forever.
+    """
+    collected: list[dict[str, str]] = []
+    cursor: str | None = None
+    for _ in range(_MAX_TOOL_PAGES):
+        listed = await session.list_tools(cursor=cursor)
+        collected.extend(
+            {"name": t.name, "description": t.description or ""}
+            for t in (getattr(listed, "tools", None) or [])
+        )
+        cursor = getattr(listed, "nextCursor", None) or None
+        if not cursor:
+            break
+    return normalize_tools(collected)
+
+
 def http_error_message(response: httpx.Response) -> str | None:
     if response.status_code < 400:
         return None
@@ -246,10 +275,7 @@ async def _probe_mcp_sse(
                 ClientSession(read, write) as session,
             ):
                 await session.initialize()
-                listed = await session.list_tools()
-                tools = normalize_tools(
-                    [{"name": t.name, "description": t.description or ""} for t in listed.tools]
-                )
+                tools = await _collect_mcp_tools(session)
                 return {"ok": True, "tool_count": len(tools), "tools": tools}
         except httpx.HTTPStatusError as exc:
             result = _probe_mcp_http_error(exc, kind=kind)
@@ -354,10 +380,7 @@ async def probe_streamable_http_mcp(
                 ClientSession(read, write) as session,
             ):
                 await session.initialize()
-                listed = await session.list_tools()
-                tools = normalize_tools(
-                    [{"name": t.name, "description": t.description or ""} for t in listed.tools]
-                )
+                tools = await _collect_mcp_tools(session)
                 return {"ok": True, "tool_count": len(tools), "tools": tools}
         except httpx.HTTPStatusError as exc:
             result = _probe_mcp_http_error(exc, kind=kind)
@@ -590,10 +613,7 @@ async def _probe_stdio_mcp(connection: dict[str, Any]) -> dict[str, Any]:
                 ClientSession(read, write) as session,
             ):
                 await session.initialize()
-                listed = await session.list_tools()
-                tools = normalize_tools(
-                    [{"name": t.name, "description": t.description or ""} for t in listed.tools]
-                )
+                tools = await _collect_mcp_tools(session)
                 return {"ok": True, "tool_count": len(tools), "tools": tools}
     except TimeoutError:
         return {"ok": False, "error": "stdio MCP probe timed out"}
