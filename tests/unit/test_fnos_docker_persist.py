@@ -226,6 +226,79 @@ octop_sync_fnos_compose "{compose}" "{data_dir}" "{env_file}"
     assert (data_dir / ".octop").is_dir()
 
 
+DOCKER_SOCKET_LINE = '- "/var/run/docker.sock:/var/run/docker.sock"'
+
+
+def _sync_compose(tmp_path: Path, compose: Path, data_dir: Path, env_text: str) -> None:
+    env_file = tmp_path / "docker" / ".env"
+    env_file.parent.mkdir(exist_ok=True)
+    env_file.write_text(env_text, encoding="utf-8")
+    script = f"""
+set -euo pipefail
+source "{COMMON_SH}"
+octop_sync_fnos_compose "{compose}" "{data_dir}" "{env_file}"
+"""
+    subprocess.check_call(["bash", "-c", script])
+
+
+def _socket_lines(compose: Path) -> list[str]:
+    return [
+        line.strip()
+        for line in compose.read_text(encoding="utf-8").splitlines()
+        if "docker.sock" in line
+    ]
+
+
+@posix_only
+def test_octop_sync_fnos_compose_leaves_docker_socket_out_by_default(tmp_path: Path) -> None:
+    """Mounting the host docker socket grants host root — it must stay opt-in."""
+    compose = tmp_path / "docker-compose.yaml"
+    compose.write_text(COMPOSE.read_text(encoding="utf-8"), encoding="utf-8")
+    data_dir = tmp_path / "share"
+    _sync_compose(tmp_path, compose, data_dir, "OCTOP_PORT=8088\nOCTOP_DOCKER_SOCKET=0\n")
+    assert _socket_lines(compose) == []
+
+
+@posix_only
+def test_octop_sync_fnos_compose_mounts_docker_socket_when_enabled(tmp_path: Path) -> None:
+    compose = tmp_path / "docker-compose.yaml"
+    compose.write_text(COMPOSE.read_text(encoding="utf-8"), encoding="utf-8")
+    data_dir = tmp_path / "share"
+    _sync_compose(tmp_path, compose, data_dir, "OCTOP_PORT=8088\nOCTOP_DOCKER_SOCKET=1\n")
+    assert _socket_lines(compose) == [DOCKER_SOCKET_LINE]
+    text = compose.read_text(encoding="utf-8")
+    assert f"{data_dir}/.octop:/data/.octop" in text
+
+
+@posix_only
+def test_octop_sync_fnos_compose_docker_socket_survives_resync(tmp_path: Path) -> None:
+    """Install and every upgrade both re-run the sync; the mount must not multiply."""
+    compose = tmp_path / "docker-compose.yaml"
+    compose.write_text(COMPOSE.read_text(encoding="utf-8"), encoding="utf-8")
+    data_dir = tmp_path / "share"
+    for _ in range(3):
+        _sync_compose(tmp_path, compose, data_dir, "OCTOP_DOCKER_SOCKET=1\n")
+    assert _socket_lines(compose) == [DOCKER_SOCKET_LINE]
+
+
+@posix_only
+def test_octop_sync_fnos_compose_drops_docker_socket_when_disabled(tmp_path: Path) -> None:
+    """Turning the switch off has to remove a mount an earlier run added."""
+    compose = tmp_path / "docker-compose.yaml"
+    compose.write_text(COMPOSE.read_text(encoding="utf-8"), encoding="utf-8")
+    data_dir = tmp_path / "share"
+    _sync_compose(tmp_path, compose, data_dir, "OCTOP_DOCKER_SOCKET=1\n")
+    assert _socket_lines(compose) == [DOCKER_SOCKET_LINE]
+    _sync_compose(tmp_path, compose, data_dir, "OCTOP_DOCKER_SOCKET=0\n")
+    assert _socket_lines(compose) == []
+
+
+def test_fnos_install_callback_writes_the_docker_socket_switch() -> None:
+    """The opt-in has to be discoverable from the generated .env."""
+    text = (FNOS_DOCKER / "cmd" / "install_callback").read_text(encoding="utf-8")
+    assert 'echo "OCTOP_DOCKER_SOCKET=0"' in text
+
+
 @posix_only
 def test_octop_write_fnos_bootstrap_script(tmp_path: Path) -> None:
     share = tmp_path / "share"

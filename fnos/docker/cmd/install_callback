@@ -55,6 +55,10 @@ ADMIN_PASS="$WIZARD_PASSWORD"
     echo "OCTOP_ADMIN_EMAIL=${ADMIN_EMAIL}"
     echo "TRIM_DATA_SHARE_PATHS=${DATA_DIR}"
     echo "OCTOP_DATA=${DATA_DIR}"
+    # Docker 沙箱工作区要能访问宿主 docker daemon，需要把 /var/run/docker.sock
+    # 挂进容器（等同交出宿主 root，故默认关闭）。改成 1 后由安装/升级回调写进
+    # docker-compose.yaml，升级重建 compose 也不会丢。
+    echo "OCTOP_DOCKER_SOCKET=0"
 } > "$ENV_FILE"
 
 chmod 600 "$ENV_FILE"
