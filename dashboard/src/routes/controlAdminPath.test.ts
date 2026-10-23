@@ -45,7 +45,8 @@ describe("pathPermissionKeys", () => {
     expect(NAV_PERMISSIONS["admin-advanced"]).toEqual(PERM.advancedPage);
     expect(ADVANCED_TAB_PERMISSIONS.captcha).toBe("captcha");
     expect("bridge" in ADVANCED_TAB_PERMISSIONS).toBe(false);
-    expect(pathPermissionKeys("/bridge")).toBeNull();
+    expect(pathPermissionKeys("/bridge")).toEqual([...PERM.bridge]);
+    expect(NAV_PERMISSIONS.bridge).toEqual(PERM.bridge);
     expect([...PERM.advancedPage]).toContain("captcha");
   });
 
@@ -61,8 +62,12 @@ describe("pathPermissionKeys", () => {
 
   it("does not gate common pages", () => {
     expect(pathPermissionKeys("/chat")).toBeNull();
-    expect(pathPermissionKeys("/bridge")).toBeNull();
     expect(pathPermissionKeys("/personalization/acp")).toBeNull();
+  });
+
+  it("gates cloud collab behind the bridge permission", () => {
+    expect(pathPermissionKeys("/bridge")).toEqual(["bridge"]);
+    expect(pathPermissionKeys("/bridge/settings")).toEqual(["bridge"]);
   });
 
   it("gates ungrouped pages except chat", () => {

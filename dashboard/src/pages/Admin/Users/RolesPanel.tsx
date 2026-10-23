@@ -31,6 +31,7 @@ import {
 } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { ResizableTable } from "@/components/ResizableTable";
+import { TextAssistBar } from "@/components/TextAssistBar";
 import { message } from "@/utils/antdMessage";
 import {
   userRolesApi,
@@ -60,6 +61,15 @@ interface RoleFormValues extends PolicyFormValues {
   permissions?: string[];
 }
 
+interface RoleAccount {
+  id: number;
+  role: string;
+  username: string;
+  display_name: string | null;
+  avatar_url?: string | null;
+  avatar_icon?: string | null;
+}
+
 const ROLE_ID_MAX = 64;
 
 function isValidRoleId(value: string): boolean {
@@ -72,9 +82,46 @@ function isValidRoleId(value: string): boolean {
   );
 }
 
+function RoleMemberFaces({
+  ids,
+  usersById,
+}: {
+  ids: number[];
+  usersById: Map<number, RoleAccount>;
+}) {
+  const { t } = useTranslation();
+  const shown = ids.slice(0, 4);
+  const extra = ids.length - shown.length;
+  if (shown.length === 0) {
+    return <span className={styles.userCellMuted}>—</span>;
+  }
+  return (
+    <span className={styles.groupMemberStack}>
+      {shown.map((id) => {
+        const user = usersById.get(id);
+        return (
+          <ProfileAvatar
+            key={id}
+            url={user?.avatar_url}
+            icon={user?.avatar_icon}
+            kind="user"
+            className={styles.groupMemberAvatar}
+          />
+        );
+      })}
+      {extra > 0 ? (
+        <span className={styles.groupMemberMore}>
+          {t("adminUsers.roleMemberMore", { count: extra })}
+        </span>
+      ) : null}
+    </span>
+  );
+}
+
 export default function RolesPanel() {
   const { t } = useTranslation();
   const [rows, setRows] = useState<UserRole[]>([]);
+  const [users, setUsers] = useState<RoleAccount[]>([]);
   const [loading, setLoading] = useState(false);
   const [permCatalog, setPermCatalog] = useState<PermissionCatalogItem[]>([]);
   const [fsTreeRoots, setFsTreeRoots] = useState<string[]>([HOST_FS_ROOT]);
@@ -96,10 +143,32 @@ export default function RolesPanel() {
     [permCatalog],
   );
 
+  const usersById = useMemo(
+    () => new Map(users.map((user) => [user.id, user])),
+    [users],
+  );
+
+  const membersByRole = useMemo(() => {
+    const map = new Map<string, number[]>();
+    for (const user of users) {
+      const roleId = user.role?.trim();
+      if (!roleId) continue;
+      const list = map.get(roleId);
+      if (list) list.push(user.id);
+      else map.set(roleId, [user.id]);
+    }
+    return map;
+  }, [users]);
+
   const refresh = useCallback(async () => {
     setLoading(true);
     try {
-      setRows(await userRolesApi.list());
+      const [roles, accounts] = await Promise.all([
+        userRolesApi.list(),
+        request<RoleAccount[]>("/users"),
+      ]);
+      setRows(roles);
+      setUsers(accounts);
     } catch (err) {
       message.error(apiErrorMessage(err, t("adminUsers.roleLoadFailed"), t));
     } finally {
@@ -200,16 +269,18 @@ export default function RolesPanel() {
     const editing = editor !== "new" ? editor : null;
     setSubmitting(true);
     try {
+      const descriptionRaw = values.description?.trim() || "";
+      const description = descriptionRaw ? descriptionRaw.slice(0, 500) : null;
       if (editing?.immutable) {
         await userRolesApi.update(editing.user_role_id, {
           user_role_name: values.name.trim(),
-          description: values.description?.trim() || null,
+          description,
         });
         message.success(t("adminUsers.roleUpdateSuccess"));
       } else if (editing) {
         await userRolesApi.update(editing.user_role_id, {
           user_role_name: values.name.trim(),
-          description: values.description?.trim() || null,
+          description,
           permissions: values.permissions ?? [],
           policies: rolePoliciesFromForm(values, { workspaceRootAllowed }),
         });
@@ -218,7 +289,7 @@ export default function RolesPanel() {
         const created = await userRolesApi.create({
           user_role_id: values.user_role_id?.trim(),
           user_role_name: values.name.trim(),
-          description: values.description?.trim() || null,
+          description,
           permissions: values.permissions ?? [],
           policies: rolePoliciesFromForm(values, { workspaceRootAllowed }),
         });
@@ -336,6 +407,12 @@ export default function RolesPanel() {
                         className={styles.roleCardAvatar}
                       />
                       <div className={styles.roleCardTitle}>
+                        <span
+                          className={styles.roleIdMeta}
+                          title={row.user_role_id}
+                        >
+                          {row.user_role_id}
+                        </span>
                         <h3>
                           {userRoleLabel(row, t)}
                           {!row.deletable ? (
@@ -344,20 +421,22 @@ export default function RolesPanel() {
                             </span>
                           ) : null}
                         </h3>
-                        <span
-                          className={styles.roleIdMeta}
-                          title={row.user_role_id}
-                        >
-                          {row.user_role_id}
-                        </span>
                       </div>
                     </div>
                     <p className={styles.roleCardDescription}>
                       {userRoleDescription(row, t)}
                     </p>
+                    <RoleMemberFaces
+                      ids={membersByRole.get(row.user_role_id) ?? []}
+                      usersById={usersById}
+                    />
                   </div>
                   <div className={styles.roleCardFooter}>
                     <span className={styles.roleCardFootNote}>
+                      {t("adminUsers.roleMemberCount", {
+                        count: membersByRole.get(row.user_role_id)?.length ?? 0,
+                      })}
+                      <span className={styles.userCardMetaSep}>·</span>
                       {row.system_role === "admin"
                         ? t("adminUsers.permAll")
                         : t("adminUsers.permCount", {
@@ -423,17 +502,17 @@ export default function RolesPanel() {
                     className={styles.roleCellAvatar}
                   />
                   <span className={styles.userCellText}>
-                    <span className={styles.userCellName}>
-                      {userRoleLabel(row, t)}
-                      {!row.deletable ? (
-                        <Tag>{t("adminUsers.roleBuiltin")}</Tag>
-                      ) : null}
-                    </span>
                     <span
                       className={styles.roleIdMeta}
                       title={row.user_role_id}
                     >
                       {row.user_role_id}
+                    </span>
+                    <span className={styles.userCellName}>
+                      {userRoleLabel(row, t)}
+                      {!row.deletable ? (
+                        <Tag>{t("adminUsers.roleBuiltin")}</Tag>
+                      ) : null}
                     </span>
                   </span>
                 </div>
@@ -445,6 +524,21 @@ export default function RolesPanel() {
               ellipsis: true,
               render: (_description: string | null, row) =>
                 userRoleDescription(row, t),
+            },
+            {
+              title: t("adminUsers.roleMembers"),
+              width: 200,
+              render: (_, row) => {
+                const ids = membersByRole.get(row.user_role_id) ?? [];
+                return (
+                  <Space size={8}>
+                    <RoleMemberFaces ids={ids} usersById={usersById} />
+                    <span className={styles.userCellMuted}>
+                      {t("adminUsers.roleMemberCount", { count: ids.length })}
+                    </span>
+                  </Space>
+                );
+              },
             },
             {
               title: t("adminUsers.colPermissions"),
@@ -627,15 +721,6 @@ export default function RolesPanel() {
                 : () => setPendingAvatar(null)
             }
           />
-          <Form.Item
-            label={t("adminUsers.roleColName")}
-            name="name"
-            rules={[
-              { required: true, message: t("adminUsers.roleNameRequired") },
-            ]}
-          >
-            <Input maxLength={64} autoFocus prefix={<IdCard size={16} />} />
-          </Form.Item>
           {editing ? (
             <Form.Item label={t("adminUsers.roleColId")}>
               <Typography.Text
@@ -676,14 +761,33 @@ export default function RolesPanel() {
               />
             </Form.Item>
           )}
-          <Form.Item label={t("adminUsers.roleDescription")} name="description">
+          <Form.Item
+            label={t("adminUsers.roleColName")}
+            name="name"
+            rules={[
+              { required: true, message: t("adminUsers.roleNameRequired") },
+            ]}
+          >
+            <Input maxLength={64} autoFocus prefix={<IdCard size={16} />} />
+          </Form.Item>
+          <Form.Item
+            label={t("adminUsers.roleDescription")}
+            name="description"
+            className={styles.textAssistField}
+          >
             <Input.TextArea
-              maxLength={500}
               rows={3}
-              showCount
               placeholder={t("adminUsers.roleDescriptionPlaceholder")}
             />
           </Form.Item>
+          <TextAssistBar
+            kind="user_role.description"
+            getName={() => String(form.getFieldValue("name") ?? "")}
+            getText={() => String(form.getFieldValue("description") ?? "")}
+            onApply={(text) =>
+              form.setFieldsValue({ description: text.slice(0, 500) })
+            }
+          />
           {locked ? (
             <div className={styles.permAdminHint}>
               <span>{t("adminUsers.roleAdminLocked")}</span>

@@ -11,6 +11,7 @@ import {
 import { useTranslation } from "react-i18next";
 
 import type { CustomMcpTransport } from "../../../api/modules/connectors";
+import { SharedResourceBadge } from "../../../components/SharedResourceBadge";
 import {
   accentForServerName,
   friendlyServerLabel,
@@ -116,8 +117,11 @@ export function CustomMcpServerCard({
             <Cable size={22} aria-hidden />
           </span>
           <div className={styles.customMcpServerMeta}>
-            <span className={styles.customMcpServerName} title={label}>
-              {label}
+            <span className={styles.customMcpServerNameRow}>
+              <span className={styles.customMcpServerName} title={label}>
+                {label}
+              </span>
+              <SharedResourceBadge shared={card.shared} owned />
             </span>
             <span
               className={`${styles.customMcpTransportBadge} ${

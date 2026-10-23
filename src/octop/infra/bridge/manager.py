@@ -295,7 +295,15 @@ class BridgeManager:
     # -- persistence helpers -------------------------------------------------
 
     def list_connections(self, owner_user_id: int) -> list[BridgeConnectionRow]:
+        """Owned connections only (management / limits)."""
         return self._repo.list_for_owner(owner_user_id)
+
+    def list_visible_connections(self, user_id: int) -> list[BridgeConnectionRow]:
+        """Owned plus shared links the user may use."""
+        return self._repo.list_visible(user_id)
+
+    def get(self, connection_id: str) -> BridgeConnectionRow | None:
+        return self._repo.get(connection_id)
 
     def get_owned(self, connection_id: str, owner_user_id: int) -> BridgeConnectionRow:
         row = self._repo.get_for_owner(connection_id, owner_user_id)
@@ -382,6 +390,8 @@ class BridgeManager:
             "display_name": row.display_name,
             "notes": row.notes,
             "icon_name": row.icon_name,
+            "icon_url": str(getattr(row, "icon_url", "") or "").strip(),
+            "shared": bool(getattr(row, "shared", False)),
             "status": status,
             "last_error": row.last_error,
             "last_seen_at": row.last_seen_at,
@@ -496,6 +506,7 @@ class BridgeManager:
         display_name: str,
         notes: str | None = None,
         icon_name: str | None = None,
+        shared: bool = False,
         connect: bool = True,
     ) -> BridgeConnectionRow:
         """Create a bridge link.
@@ -550,6 +561,7 @@ class BridgeManager:
             display_name=name,
             notes=note,
             icon_name=icon,
+            shared=bool(shared),
             credential_blob=cred_blob,
             access_token_blob=token_blob,
             token_expires_at=expires_at,
@@ -583,6 +595,24 @@ class BridgeManager:
                 await asyncio.sleep(0.1)
         await self.disconnect(connection_id)
         self._repo.delete(connection_id)
+
+    def set_shared(
+        self, connection_id: str, *, owner_user_id: int, shared: bool
+    ) -> BridgeConnectionRow:
+        self.get_owned(connection_id, owner_user_id)
+        updated = self._repo.set_shared(connection_id, shared)
+        if updated is None:
+            raise OctopError(ErrorCode.BRIDGE_NOT_FOUND, "bridge connection not found")
+        return updated
+
+    def set_icon_url(
+        self, connection_id: str, *, owner_user_id: int, icon_url: str | None
+    ) -> BridgeConnectionRow:
+        self.get_owned(connection_id, owner_user_id)
+        updated = self._repo.set_icon_url(connection_id, icon_url)
+        if updated is None:
+            raise OctopError(ErrorCode.BRIDGE_NOT_FOUND, "bridge connection not found")
+        return updated
 
     async def connect(self, connection_id: str, *, owner_user_id: int) -> BridgeConnectionRow:
         row = self.get_owned(connection_id, owner_user_id)

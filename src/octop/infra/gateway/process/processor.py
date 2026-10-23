@@ -567,6 +567,8 @@ class GlobalProcessor:
         automatic = False
         if model_ref and not providers.is_model_ref_usable(model_ref):
             model_ref = None
+        if model_ref and not self._agent_manager.model_ref_allowed_for_user(user_id, model_ref):
+            model_ref = None
         if not model_ref:
             row = self._agent_repo.get(agent_id)
             if row is not None:
@@ -574,18 +576,29 @@ class GlobalProcessor:
                     row,
                     self._agent_manager.get_config(agent_id),
                 )
+                if model_ref and not self._agent_manager.model_ref_allowed_for_user(
+                    user_id,
+                    model_ref,
+                ):
+                    model_ref = None
         if not model_ref:
             user_row = self._user_repo.get(user_id)
             preferred = get_preferred_model_from_json(
                 user_row.preferences_json if user_row is not None else None
             )
-            if preferred and self._agent_manager.is_auto_route_model_available(preferred):
+            if (
+                preferred
+                and self._agent_manager.is_auto_route_model_available(preferred)
+                and self._agent_manager.model_ref_allowed_for_user(user_id, preferred)
+            ):
                 model_ref = preferred
                 automatic = True
         if not model_ref:
             fallback = self._agent_manager.resolve_fallback_model_ref()
-            model_ref = fallback.strip() if isinstance(fallback, str) and fallback.strip() else None
-            automatic = model_ref is not None
+            candidate = fallback.strip() if isinstance(fallback, str) and fallback.strip() else None
+            if candidate and self._agent_manager.model_ref_allowed_for_user(user_id, candidate):
+                model_ref = candidate
+                automatic = True
         if not model_ref:
             return _ResolvedModelRoute(None, automatic=True)
         resolved = providers.resolve_model_for_multimodal_turn(

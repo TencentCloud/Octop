@@ -1151,10 +1151,11 @@ async def test_delete_thread_checkpoint_also_clears_configured_store(
     harness_manager = MagicMock()
     harness_manager.get_agent.return_value = MagicMock(agent=agent)
     manager._harness_manager = harness_manager
-    seen: dict[str, str] = {}
+    seen: dict[str, Any] = {}
 
     def _capture(**kwargs: Any) -> None:
         seen["thread_id"] = kwargs["thread_id"]
+        seen["reclaim"] = kwargs["reclaim"]
 
     monkeypatch.setattr(
         "octop.infra.agents.memory.thread_cleanup.delete_thread_from_agent_stores",
@@ -1165,6 +1166,28 @@ async def test_delete_thread_checkpoint_also_clears_configured_store(
 
     agent.adelete_thread.assert_awaited_once_with("thr_1")
     assert seen["thread_id"] == "thr_1"
+    assert seen["reclaim"] is True
+
+
+@pytest.mark.asyncio
+async def test_delete_thread_checkpoint_can_skip_sqlite_reclaim(
+    manager: AgentManager, monkeypatch: Any
+) -> None:
+    user_id = manager._repos.user_repo.create(username="alice", password_hash="x", role="admin")
+    manager._repos.agent_repo.create(agent_id="AGT1", user_id=user_id, name="a")
+    seen: dict[str, bool] = {}
+
+    def _capture(**kwargs: Any) -> None:
+        seen["reclaim"] = kwargs["reclaim"]
+
+    monkeypatch.setattr(
+        "octop.infra.agents.memory.thread_cleanup.delete_thread_from_agent_stores",
+        _capture,
+    )
+
+    await manager.delete_thread_checkpoint("AGT1", "thr_1", reclaim=False)
+
+    assert seen["reclaim"] is False
 
 
 @pytest.mark.asyncio

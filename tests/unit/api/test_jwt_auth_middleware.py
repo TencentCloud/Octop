@@ -147,3 +147,48 @@ async def test_maybe_sliding_renew_helper_threshold(client) -> None:
     renewed = maybe_sliding_renew_token(srv, short, user)
     assert renewed is not None
     assert renewed != short
+
+
+async def test_middleware_localizes_auth_errors_by_accept_language(client) -> None:
+    c, _srv, home = client
+    await bootstrap_admin(c, home)
+
+    # Missing credentials: zh / en / no header fallback.
+    r = await c.get("/api/agents", headers={"Accept-Language": "zh-CN,zh;q=0.9"})
+    assert r.status_code == 401
+    assert r.json()["error"]["code"] == "AUTH_FAILED"
+    assert r.json()["error"]["message"] == "认证失败。"
+
+    r = await c.get("/api/agents", headers={"Accept-Language": "en-US,en;q=0.9"})
+    assert r.status_code == 401
+    assert r.json()["error"]["message"] == "Authentication failed."
+
+    r = await c.get("/api/agents")
+    assert r.status_code == 401
+    assert r.json()["error"]["message"] == "认证失败。"  # no header: DEFAULT_LOCALE (zh)
+
+    # Invalid token follows the same localization.
+    r = await c.get(
+        "/api/agents",
+        headers={"Authorization": "Bearer not-a-token", "Accept-Language": "zh-CN"},
+    )
+    assert r.status_code == 401
+    assert r.json()["error"]["message"] == "认证失败。"
+
+    # Expired token follows the same localization.
+    srv = _srv
+    assert srv.user_manager is not None and srv.services is not None
+    user = srv.user_manager.get("admin")
+    assert user is not None
+    secret = srv.services.secret_repo.get("jwt")
+    assert secret is not None
+    expired = sign_token(
+        secret, sub=user.id, uname=user.username, role=user.role, ttl_seconds=-3600
+    )
+    r = await c.get(
+        "/api/agents",
+        headers={"Authorization": f"Bearer {expired}", "Accept-Language": "zh-CN"},
+    )
+    assert r.status_code == 401
+    assert r.json()["error"]["code"] == "TOKEN_EXPIRED"
+    assert r.json()["error"]["message"] == "登录已过期，请重新登录。"

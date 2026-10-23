@@ -18,7 +18,7 @@ from typing import Any, Literal
 from fastapi import APIRouter, Depends, Response
 from pydantic import BaseModel, Field
 
-from octop.api.common.agent import require_agent_owner_row, user_owns_agent
+from octop.api.common.agent import apply_agent_audience, require_agent_owner_row, user_owns_agent
 from octop.api.common.agent_runtime import AgentRuntimeFields, runtime_field_updates
 from octop.api.common.validators import assert_user_backend_root_dirs
 from octop.api.deps import current_user, get_server
@@ -153,6 +153,8 @@ class FromExpertBody(AgentRuntimeFields):
     hub_skills: list[ComposerHubSkillBody] | None = None
     copy_skills: list[ComposerCopySkillBody] | None = None
     quick_prompts: list[QuickPromptResponse] | None = None
+    visibility: Literal["owner", "all", "groups"] | None = None
+    group_ids: list[str] | None = None
 
 
 class PublishExpertBody(BaseModel):
@@ -198,6 +200,8 @@ class InstallPublishedExpertBody(AgentRuntimeFields):
     hub_skills: list[ComposerHubSkillBody] | None = None
     copy_skills: list[ComposerCopySkillBody] | None = None
     quick_prompts: list[QuickPromptResponse] | None = None
+    visibility: Literal["owner", "all", "groups"] | None = None
+    group_ids: list[str] | None = None
 
 
 def _composer_plan_from_body(
@@ -376,6 +380,7 @@ def _summary_dict(s: Any) -> dict[str, Any]:
         "icon_name": s.icon_name,
         "icon_url": getattr(s, "icon_url", None),
         "color": s.color,
+        "scene": getattr(s, "scene", "") or "",
         "quick_prompts": [_quick_prompt_dict(p) for p in getattr(s, "quick_prompts", ())],
         "task_examples": getattr(s, "task_examples", None),
     }
@@ -660,6 +665,10 @@ async def install_published_expert(
         mcp_servers=body.mcp_servers,
     )
     patch, copies, report = _composer_apply(body, user=user, server=server)
+    if body.visibility is not None:
+        from octop.infra.users.groups import GroupAccess  # noqa: PLC0415
+
+        GroupAccess(server.services.repos).validate_visibility(body.visibility, body.group_ids)
     result = await install_published_expert_agent(
         services=server.services,
         registry=server.app_runtime.agent_registry,
@@ -686,6 +695,14 @@ async def install_published_expert(
             quick_prompts=_quick_prompts_from_body(body),
         ),
     )
+    if body.visibility is not None:
+        await apply_agent_audience(
+            server,
+            str(result["agent_id"]),
+            visibility=body.visibility,
+            group_ids=body.group_ids,
+            shared=None,
+        )
     result.update(report.as_api_fields())
     return result
 
@@ -772,6 +789,10 @@ async def install_expert_hub_item(
         mcp_servers=body.mcp_servers,
     )
     patch, copies, report = _composer_apply(body, user=user, server=server)
+    if body.visibility is not None:
+        from octop.infra.users.groups import GroupAccess  # noqa: PLC0415
+
+        GroupAccess(server.services.repos).validate_visibility(body.visibility, body.group_ids)
     try:
         result = await create_skillhub_market_agent(
             server=server,
@@ -802,6 +823,15 @@ async def install_expert_hub_item(
         raise _map_skillhub_error(exc) from exc
 
     row = result.row
+    if body.visibility is not None:
+        await apply_agent_audience(
+            server,
+            row.agent_id,
+            visibility=body.visibility,
+            group_ids=body.group_ids,
+            shared=None,
+        )
+        row = server.app_runtime.agent_registry.get_row(row.agent_id) or row
     return {
         "id": row.id,
         "agent_id": row.agent_id,
@@ -901,6 +931,10 @@ async def create_agent_from_expert(
         mcp_servers=servers,
     )
     patch, copies, report = _composer_apply(body, user=user, server=server)
+    if body.visibility is not None:
+        from octop.infra.users.groups import GroupAccess  # noqa: PLC0415
+
+        GroupAccess(server.services.repos).validate_visibility(body.visibility, body.group_ids)
     row = await server.app_runtime.agent_registry.create(
         spec,
         defer_bootstrap=True,
@@ -911,6 +945,14 @@ async def create_agent_from_expert(
             quick_prompts=_quick_prompts_from_body(body),
         ),
     )
+    if body.visibility is not None:
+        row = await apply_agent_audience(
+            server,
+            row.agent_id,
+            visibility=body.visibility,
+            group_ids=body.group_ids,
+            shared=None,
+        )
     return {
         "id": row.id,
         "agent_id": row.agent_id,
