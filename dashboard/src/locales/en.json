@@ -403,6 +403,18 @@
     "allowDownloadHint": "When off, other users who can view this package cannot export it as a ZIP. The creator and admins can still download it."
   },
   "knowledgeBases": {
+    "batchSelectAll": "Select all files in this folder",
+    "batchSelectDocument": "Select {{name}}",
+    "batchSelected": "{{count}} files selected",
+    "batchProgress": "Processed {{completed}} of {{total}} files",
+    "batchClear": "Clear selection",
+    "batchReindex": "Rebuild selected indexes",
+    "batchDelete": "Delete selected files",
+    "batchDeleteConfirm": "Permanently delete {{count}} selected files and their indexes? This cannot be undone.",
+    "batchRequestFailed": "Request failed",
+    "batchDeleted": "Deleted {{count}} files; {{failed}} requests failed.",
+    "batchReindexed": "Queued {{count}} files for indexing; {{failed}} requests failed.",
+    "batchRefreshFailed": "Operations have finished, but refreshing the list failed. Refresh before retrying. Successful requests will not be repeated.",
     "title": "Knowledge Bases",
     "subtitle": "Upload and index documents for retrieval in chat, and share them if needed",
     "featureTitle": "Enable Knowledge Bases",

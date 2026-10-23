@@ -403,6 +403,18 @@
     "allowDownloadHint": "关闭后，其他已能访问此包的用户不能导出 ZIP。创建者和管理员仍可下载。"
   },
   "knowledgeBases": {
+    "batchSelectAll": "全选当前文件夹中的文件",
+    "batchSelectDocument": "选择 {{name}}",
+    "batchSelected": "已选择 {{count}} 个文件",
+    "batchProgress": "已处理 {{completed}} / {{total}} 个文件",
+    "batchClear": "清空选择",
+    "batchReindex": "批量重建索引",
+    "batchDelete": "批量删除文件",
+    "batchDeleteConfirm": "永久删除选中的 {{count}} 个文件及其索引？此操作无法撤销。",
+    "batchRequestFailed": "请求失败",
+    "batchDeleted": "已删除 {{count}} 个文件；{{failed}} 个请求失败。",
+    "batchReindexed": "已提交 {{count}} 个文件的索引重建；{{failed}} 个请求失败。",
+    "batchRefreshFailed": "操作已结束，但刷新列表失败。请先刷新再重试；成功的请求不会重复执行。",
     "title": "知识库",
     "subtitle": "上传文档建立索引，在对话中检索引用，也可共享给同实例用户",
     "featureTitle": "启用知识库",
