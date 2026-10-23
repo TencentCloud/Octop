@@ -170,3 +170,144 @@ async def test_admin_stream_usage_defaults_and_patch(env):
     )
     assert patched.status_code == 200
     assert patched.json()["stream_usage"] is False
+
+
+async def test_set_active_model_accepts_valid_ref(env):
+    """PUT /active-model persists a ref whose provider is enabled and lists the model."""
+    c, _, auth = env
+    r = await c.post(
+        "/api/admin/providers",
+        headers=auth,
+        json={
+            "name": "acme",
+            "kind": "openai",
+            "api_key": "k",
+            "base_url": "https://api.example.com/v1",
+            "models": [{"id": "acme-chat", "name": "chat", "enabled": True}],
+        },
+    )
+    assert r.status_code == 201
+
+    r = await c.put(
+        "/api/providers/active-model",
+        headers=auth,
+        json={"provider_name": "acme", "model": "acme-chat"},
+    )
+    assert r.status_code == 200
+    assert r.json() == {"provider_name": "acme", "model": "acme-chat"}
+
+    r = await c.get("/api/providers/active-model", headers=auth)
+    assert r.json() == {"provider_name": "acme", "model": "acme-chat"}
+
+
+async def test_set_active_model_rejects_unknown_provider(env):
+    """PUT /active-model 400s on an unknown provider and persists nothing."""
+    c, _, auth = env
+    r = await c.put(
+        "/api/providers/active-model",
+        headers=auth,
+        json={"provider_name": "ghost", "model": "acme-chat"},
+    )
+    assert r.status_code == 400
+    assert r.json()["error"]["code"] == "SLASH_BAD_ARGS"
+
+    r = await c.get("/api/providers/active-model", headers=auth)
+    assert r.json() == {"provider_name": "", "model": ""}
+
+
+async def test_set_active_model_rejects_disabled_provider(env):
+    """PUT /active-model 400s when the provider exists but is disabled."""
+    c, _, auth = env
+    created = await c.post(
+        "/api/admin/providers",
+        headers=auth,
+        json={
+            "name": "off",
+            "kind": "openai",
+            "api_key": "k",
+            "base_url": "https://api.example.com/v1",
+        },
+    )
+    assert created.status_code == 201
+    pid = created.json()["id"]
+
+    patched = await c.patch(f"/api/admin/providers/{pid}", headers=auth, json={"enabled": False})
+    assert patched.status_code == 200
+
+    r = await c.put(
+        "/api/providers/active-model",
+        headers=auth,
+        json={"provider_name": "off", "model": "acme-chat"},
+    )
+    assert r.status_code == 400
+    assert r.json()["error"]["code"] == "SLASH_BAD_ARGS"
+
+
+async def test_set_active_model_rejects_provider_without_api_key(env):
+    """PUT /active-model 400s when the provider has no api_key."""
+    c, _, auth = env
+    created = await c.post(
+        "/api/admin/providers",
+        headers=auth,
+        json={
+            "name": "no-key",
+            "kind": "openai",
+            "base_url": "https://api.example.com/v1",
+        },
+    )
+    assert created.status_code == 201
+
+    r = await c.put(
+        "/api/providers/active-model",
+        headers=auth,
+        json={"provider_name": "no-key", "model": "acme-chat"},
+    )
+    assert r.status_code == 400
+    assert r.json()["error"]["code"] == "SLASH_BAD_ARGS"
+
+
+async def test_set_active_model_rejects_provider_without_base_url(env):
+    """PUT /active-model 400s when the provider has no base_url."""
+    c, _, auth = env
+    created = await c.post(
+        "/api/admin/providers",
+        headers=auth,
+        json={"name": "no-url", "kind": "openai", "api_key": "k"},
+    )
+    assert created.status_code == 201
+
+    r = await c.put(
+        "/api/providers/active-model",
+        headers=auth,
+        json={"provider_name": "no-url", "model": "acme-chat"},
+    )
+    assert r.status_code == 400
+    assert r.json()["error"]["code"] == "SLASH_BAD_ARGS"
+
+
+async def test_set_active_model_rejects_model_not_in_provider_list(env):
+    """PUT /active-model 400s when the model id is not in the provider's model list."""
+    c, _, auth = env
+    r = await c.post(
+        "/api/admin/providers",
+        headers=auth,
+        json={
+            "name": "acme",
+            "kind": "openai",
+            "api_key": "k",
+            "base_url": "https://api.example.com/v1",
+            "models": [{"id": "acme-chat", "name": "chat", "enabled": True}],
+        },
+    )
+    assert r.status_code == 201
+
+    r = await c.put(
+        "/api/providers/active-model",
+        headers=auth,
+        json={"provider_name": "acme", "model": "acme-reasoner"},
+    )
+    assert r.status_code == 400
+    assert r.json()["error"]["code"] == "SLASH_BAD_ARGS"
+
+    r = await c.get("/api/providers/active-model", headers=auth)
+    assert r.json() == {"provider_name": "", "model": ""}

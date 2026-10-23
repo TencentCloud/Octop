@@ -444,6 +444,44 @@ def test_resolve_first_model_ref_returns_first_enabled_model(store: ProviderStor
     assert store.resolve_first_model_ref() == "p1/ready"
 
 
+def test_resolve_first_model_ref_deprioritizes_free_tier(store: ProviderStore) -> None:
+    """Free-tier models (id contains 'free') sort last inside a provider row.
+
+    Free tiers carry a small daily quota, so falling back to one surfaced as
+    confusing 429 rate-limit errors whenever the configured default model was
+    unusable.
+    """
+    store._provider_repo.create(
+        name="p1",
+        kind="openai",
+        base_url="https://api.example.com/v1",
+        api_key="sk-test",
+        models_json=json.dumps(
+            [
+                {"id": "free-daily", "name": "free", "enabled": True},
+                {"id": "paid", "name": "paid", "enabled": True},
+            ]
+        ),
+    )
+
+    assert store.resolve_first_model_ref() == "p1/paid"
+
+
+def test_resolve_first_model_ref_falls_back_to_free_when_only_option(
+    store: ProviderStore,
+) -> None:
+    """Free-tier models are a fallback, not excluded: used when nothing else exists."""
+    store._provider_repo.create(
+        name="p1",
+        kind="openai",
+        base_url="https://api.example.com/v1",
+        api_key="sk-test",
+        models_json=json.dumps([{"id": "free-daily", "name": "free", "enabled": True}]),
+    )
+
+    assert store.resolve_first_model_ref() == "p1/free-daily"
+
+
 def test_resolve_multimodal_model_ref_prefers_inferred_vision_model(store: ProviderStore) -> None:
     store._provider_repo.create(
         name="p",
