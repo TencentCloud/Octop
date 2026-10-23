@@ -236,12 +236,22 @@ jobs:
           set -euo pipefail
           # gh release upload needs a git repository context (it resolves the
           # repo from the checkout, not from the release event alone).
-          # zsh(no matches found)与 bash nullglob 行为差异:显式收集文件
+          # zsh(no matches found)与 bash nullglob 行为差异:显式收集文件。
+          # tar.gz 名字含平台标签天然唯一;SHA256SUMS/baselines 双架构同名,
+          # 上传前按架构后缀重命名(Release 资产名必须唯一,否则 422)。
           files=()
-          for f in bundles/offline-bundle-*/agentbuddy-offline-*.tar.gz \
-                   bundles/offline-bundle-*/SHA256SUMS-*.txt \
-                   bundles/offline-bundle-*/wheel-glibc-baselines.txt; do
-            [ -e "$f" ] && files+=("$f")
+          for archdir in bundles/offline-bundle-*; do
+            [ -d "$archdir" ] || continue
+            arch="${archdir##*offline-bundle-}"
+            for f in "$archdir"/agentbuddy-offline-*.tar.gz; do
+              [ -e "$f" ] && files+=("$f")
+            done
+            for f in "$archdir"/SHA256SUMS-*.txt "$archdir"/wheel-glibc-baselines.txt; do
+              [ -e "$f" ] || continue
+              base="$(basename "$f" .txt)"
+              cp "$f" "bundles/$base-$arch.txt"
+              files+=("bundles/$base-$arch.txt")
+            done
           done
           if [ ${#files[@]} -eq 0 ]; then
             echo "::error::no offline bundle tar.gz found under bundles/"
