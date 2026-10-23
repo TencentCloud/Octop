@@ -579,7 +579,7 @@ export function useSessions(agentId: string | null) {
     async (id: string, compact: boolean) => {
       if (!agentId || !id) return false;
       const deleted = await deleteConversation(agentId, id, compact, t);
-      if (!deleted) return false;
+      if (deleted !== true) return deleted;
       setModuleSessions((prev) => prev.filter((s) => s.id !== id));
       chatStore.removeSession(id);
       chatStore.emitSessionEvent({ kind: "sessionDeleted", sessionId: id });

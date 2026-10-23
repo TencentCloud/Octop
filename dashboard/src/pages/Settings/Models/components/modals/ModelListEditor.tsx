@@ -5,7 +5,7 @@
  * Connectivity tests still hit the live provider endpoint.
  */
 import { useEffect, useMemo, useRef, useState } from "react";
-import { App, Button, Form, Input, Radio, Select, Switch, Tooltip } from "antd";
+import { App, Button, Form, Input, Select, Switch, Tooltip } from "antd";
 
 import {
   Check,
@@ -21,6 +21,8 @@ import {
 } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { request } from "../../../../../api/request";
+import type { ResourceVisibilityMode } from "../../../../../api/modules/userGroups";
+import { ResourceVisibilityFields } from "../../../../../components/ResourceVisibilityFields";
 import type { ProviderRow, ProviderModel } from "../../useProviders";
 import { isEmbeddingModel } from "../../useProviders";
 import { isOnnxProviderRow } from "../../presetUtils";
@@ -57,11 +59,21 @@ interface ModelListEditorProps {
   /** API path prefix for test. Defaults to "/providers". */
   apiPrefix?: string;
   canTest?: boolean;
+  /** Lock model purpose (embedding lane providers). */
+  forcePurpose?: "chat" | "embedding";
   localDownload?: LocalModelDownloadControl;
   onTestModel?: (
     modelId: string,
     modelName: string,
-  ) => Promise<{ ok: boolean; latency_ms?: number; error?: string }>;
+    apiMode?: ProviderModel["api_mode"],
+    apiFallback?: ProviderModel["api_fallback"],
+  ) => Promise<{
+    ok: boolean;
+    latency_ms?: number;
+    error?: string;
+    fallback_used?: boolean;
+    api_mode_used?: ProviderModel["api_mode"];
+  }>;
 }
 
 const INPUT_TYPE_OPTIONS = [
@@ -76,6 +88,7 @@ export function ModelListEditor({
   onModelsChange,
   apiPrefix = "/providers",
   canTest,
+  forcePurpose,
   localDownload,
   onTestModel,
 }: ModelListEditorProps) {
@@ -97,6 +110,9 @@ export function ModelListEditor({
   const [editingModelId, setEditingModelId] = useState<string | null>(null);
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [showReasoningProtocol, setShowReasoningProtocol] = useState(false);
+  const [modelVisibility, setModelVisibility] =
+    useState<ResourceVisibilityMode>("all");
+  const [modelGroupIds, setModelGroupIds] = useState<string[]>([]);
   const [testingIds, setTestingIds] = useState<Set<string>>(new Set());
   const [testResults, setTestResults] = useState<
     Map<string, "success" | "failure">
@@ -105,8 +121,11 @@ export function ModelListEditor({
   const [form] = Form.useForm();
   const formAnchorRef = useRef<HTMLDivElement>(null);
   const isOnnx = isOnnxProviderRow(provider);
-  const purposeValue = Form.useWatch("purpose", form);
-  const embeddingOn = isOnnx || purposeValue === "embedding";
+  const apiModeValue = Form.useWatch("api_mode", form);
+  const lockedPurpose =
+    forcePurpose ??
+    (provider.purpose === "embedding" ? "embedding" : undefined);
+  const embeddingOn = isOnnx || lockedPurpose === "embedding";
 
   const handleToggleEnabled = (
     modelId: string,
@@ -149,9 +168,17 @@ export function ModelListEditor({
     modelId: string,
     modelName: string,
     embedding?: boolean,
-  ): Promise<{ ok: boolean; latency_ms?: number; error?: string }> => {
+    apiMode?: ProviderModel["api_mode"],
+    apiFallback?: ProviderModel["api_fallback"],
+  ): Promise<{
+    ok: boolean;
+    latency_ms?: number;
+    error?: string;
+    fallback_used?: boolean;
+    api_mode_used?: ProviderModel["api_mode"];
+  }> => {
     if (onTestModel) {
-      return onTestModel(modelId, modelName);
+      return onTestModel(modelId, modelName, apiMode, apiFallback);
     }
     const isEmbedding =
       embedding ??
@@ -160,23 +187,40 @@ export function ModelListEditor({
       ok: boolean;
       latency_ms?: number;
       error?: string;
+      fallback_used?: boolean;
+      api_mode_used?: ProviderModel["api_mode"];
     }>(`${apiPrefix}/${provider.id}/test`, {
       method: "POST",
-      body: JSON.stringify({ model_id: modelId, embedding: isEmbedding }),
+      body: JSON.stringify({
+        model_id: modelId,
+        api_mode: apiMode,
+        api_fallback: apiFallback,
+        embedding: isEmbedding,
+      }),
     });
   };
 
   const handleTestModel = async (modelId: string, modelName: string) => {
     setTestingIds((prev) => new Set(prev).add(modelId));
     try {
-      const result = await runTest(modelId, modelName);
+      const result = await runTest(
+        modelId,
+        modelName,
+        undefined,
+        models.find((m) => m.id === modelId)?.api_mode,
+        models.find((m) => m.id === modelId)?.api_fallback,
+      );
       if (result.ok) {
-        message.success(
-          t("models.testSuccess", {
-            name: modelName,
-            time: result.latency_ms ?? 0,
-          }),
-        );
+        if (result.fallback_used) {
+          message.warning(t("models.apiFallbackTestUsed"));
+        } else {
+          message.success(
+            t("models.testSuccess", {
+              name: modelName,
+              time: result.latency_ms ?? 0,
+            }),
+          );
+        }
         setTestResults((prev) => new Map(prev).set(modelId, "success"));
       } else {
         message.error(
@@ -216,16 +260,35 @@ export function ModelListEditor({
     }
     setTestingForm(true);
     try {
-      const result = await runTest(modelId, modelId, embeddingOn);
+      const apiMode = form.getFieldValue("api_mode") as
+        | ProviderModel["api_mode"]
+        | undefined;
+      const apiFallback =
+        apiMode === "responses"
+          ? (form.getFieldValue("api_fallback") as
+              | ProviderModel["api_fallback"]
+              | undefined)
+          : "none";
+      const result = await runTest(
+        modelId,
+        modelId,
+        embeddingOn,
+        apiMode,
+        apiFallback,
+      );
       const modelName =
         (form.getFieldValue("name") as string | undefined)?.trim() || modelId;
       if (result.ok) {
-        message.success(
-          t("models.testSuccess", {
-            name: modelName,
-            time: result.latency_ms ?? 0,
-          }),
-        );
+        if (result.fallback_used) {
+          message.warning(t("models.apiFallbackTestUsed"));
+        } else {
+          message.success(
+            t("models.testSuccess", {
+              name: modelName,
+              time: result.latency_ms ?? 0,
+            }),
+          );
+        }
       } else {
         message.error(
           t("models.testFailed", { error: result.error ?? "unknown" }),
@@ -242,7 +305,7 @@ export function ModelListEditor({
     const id = (values.id as string).trim();
     const name = (values.name as string | undefined)?.trim() || id;
     const isOnnx = isOnnxProviderRow(provider);
-    const embedding = isOnnx || values.purpose === "embedding";
+    const embedding = isOnnx || lockedPurpose === "embedding";
     const entry: ProviderModel = {
       id,
       name,
@@ -250,6 +313,8 @@ export function ModelListEditor({
       input: ["text"],
       thinking: null,
     };
+    entry.visibility = modelVisibility === "groups" ? "groups" : "all";
+    entry.group_ids = modelVisibility === "groups" ? [...modelGroupIds] : [];
     if (embedding) {
       entry.embedding = true;
       entry.task = "embedding";
@@ -262,6 +327,14 @@ export function ModelListEditor({
       entry.context_window = values.context_window as number;
     if (values.max_tokens != null)
       entry.max_tokens = values.max_tokens as number;
+    entry.api_mode =
+      (values.api_mode as ProviderModel["api_mode"] | undefined) ||
+      "chat_completions";
+    entry.api_fallback =
+      entry.api_mode === "responses"
+        ? (values.api_fallback as ProviderModel["api_fallback"] | undefined) ??
+          "none"
+        : "none";
     if (values.reasoning != null) entry.reasoning = values.reasoning as boolean;
     if (values.reasoning === true) {
       const efforts = (values.reasoning_efforts as string[] | undefined) || [];
@@ -294,6 +367,10 @@ export function ModelListEditor({
   const handleAddModel = async () => {
     try {
       const values = await form.validateFields();
+      if (modelVisibility === "groups" && modelGroupIds.length === 0) {
+        message.error(t("resourceVisibility.needGroup"));
+        return;
+      }
       const entry = buildModelEntry(values as Record<string, unknown>);
       if (models.some((m) => m.id === entry.id)) {
         message.error(t("models.initialModelDuplicate", { name: entry.id }));
@@ -314,6 +391,10 @@ export function ModelListEditor({
     if (!editingModelId) return;
     try {
       const values = await form.validateFields();
+      if (modelVisibility === "groups" && modelGroupIds.length === 0) {
+        message.error(t("resourceVisibility.needGroup"));
+        return;
+      }
       const entry = buildModelEntry(values as Record<string, unknown>);
       const existing = models.find((m) => m.id === editingModelId);
       if (existing) {
@@ -336,6 +417,8 @@ export function ModelListEditor({
       context_window:
         (model as Record<string, unknown>).context_window ?? undefined,
       max_tokens: (model as Record<string, unknown>).max_tokens ?? undefined,
+      api_mode: model.api_mode ?? "chat_completions",
+      api_fallback: model.api_fallback ?? "none",
       reasoning: (model as Record<string, unknown>).reasoning ?? undefined,
       reasoning_toggle: model.reasoning_config?.toggle ?? true,
       reasoning_efforts: model.reasoning_config?.efforts ?? [],
@@ -345,10 +428,9 @@ export function ModelListEditor({
       reasoning_effort_type: model.reasoning_config?.effort_type ?? "enum",
       reasoning_adapter: model.reasoning_config?.adapter ?? "thinking",
       input: model.input ?? ["text"],
-      purpose: Boolean(model.embedding || model.task === "embedding")
-        ? "embedding"
-        : "chat",
     });
+    setModelVisibility(model.visibility === "groups" ? "groups" : "all");
+    setModelGroupIds(model.group_ids ?? []);
     const hasAdvanced = (model as Record<string, unknown>).reasoning != null;
     setShowAdvanced(hasAdvanced);
     const cfg = model.reasoning_config;
@@ -368,8 +450,9 @@ export function ModelListEditor({
     setAdding(true);
     setShowAdvanced(false);
     setShowReasoningProtocol(false);
+    setModelVisibility("all");
+    setModelGroupIds([]);
     form.setFieldsValue({
-      purpose: "chat",
       context_window: DEFAULT_CONTEXT_WINDOW,
       input: ["text"],
     });
@@ -380,6 +463,8 @@ export function ModelListEditor({
     setEditingModelId(null);
     setShowAdvanced(false);
     setShowReasoningProtocol(false);
+    setModelVisibility("all");
+    setModelGroupIds([]);
     form.resetFields();
   };
 
@@ -576,25 +661,57 @@ export function ModelListEditor({
               <Input placeholder={t("models.modelNamePlaceholder")} />
             </Form.Item>
 
-            {isOnnx ? null : (
-              <Form.Item
-                name="purpose"
-                label={t("models.modelPurpose")}
-                extra={t("models.modelPurposeHint")}
-                initialValue="chat"
-                style={{ marginBottom: 12 }}
-              >
-                <Radio.Group>
-                  <Radio value="chat">{t("models.purposeChat")}</Radio>
-                  <Radio value="embedding">
-                    {t("models.purposeEmbedding")}
-                  </Radio>
-                </Radio.Group>
-              </Form.Item>
-            )}
+            {/* Purpose is fixed by tab/provider lane — no per-model toggle. */}
 
             {embeddingOn ? null : (
               <>
+                {provider.kind !== "anthropic" &&
+                  provider.kind !== "bedrock" && (
+                    <Form.Item
+                      name="api_mode"
+                      label={t("models.apiMode")}
+                      extra={t("models.apiModeHint")}
+                      initialValue="chat_completions"
+                      style={{ marginBottom: 12 }}
+                    >
+                      <Select
+                        options={[
+                          {
+                            value: "chat_completions",
+                            label: t("models.apiModeChatCompletions"),
+                          },
+                          {
+                            value: "responses",
+                            label: t("models.apiModeResponses"),
+                          },
+                        ]}
+                      />
+                    </Form.Item>
+                  )}
+                {provider.kind !== "anthropic" &&
+                  provider.kind !== "bedrock" &&
+                  apiModeValue === "responses" && (
+                    <Form.Item
+                      name="api_fallback"
+                      label={t("models.apiFallback")}
+                      extra={t("models.apiFallbackHint")}
+                      initialValue="none"
+                      style={{ marginBottom: 12 }}
+                    >
+                      <Select
+                        options={[
+                          {
+                            value: "none",
+                            label: t("models.apiFallbackNone"),
+                          },
+                          {
+                            value: "chat_completions",
+                            label: t("models.apiFallbackChatCompletions"),
+                          },
+                        ]}
+                      />
+                    </Form.Item>
+                  )}
                 <Form.Item
                   name="input"
                   label={t("models.inputTypes")}
@@ -879,6 +996,28 @@ export function ModelListEditor({
                 )}
               </>
             )}
+
+            <div className={styles.modelVisibilityBlock}>
+              <div className={styles.modelVisibilityTitle}>
+                {t("resourceVisibility.groupAccess")}
+              </div>
+              <p className={styles.modelVisibilityHint}>
+                {t("resourceVisibility.groupAccessHint")}
+              </p>
+              <ResourceVisibilityFields
+                allowOwner={false}
+                visibility={modelVisibility === "groups" ? "groups" : "all"}
+                groupIds={modelGroupIds}
+                onChange={(next) => {
+                  const nextVisibility =
+                    next.visibility === "groups" ? "groups" : "all";
+                  setModelVisibility(nextVisibility);
+                  setModelGroupIds(
+                    nextVisibility === "groups" ? next.groupIds : [],
+                  );
+                }}
+              />
+            </div>
 
             <div
               style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}

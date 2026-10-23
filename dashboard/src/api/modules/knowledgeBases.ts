@@ -50,7 +50,10 @@ export interface KnowledgeBase {
   description: string;
   default_open: boolean;
   shared: boolean;
+  visibility?: "all" | "groups" | "owner";
+  group_ids?: string[];
   icon_name: string;
+  icon_url?: string;
   embedding_model: string;
   embedding_dim: number;
   doc_count: number;
@@ -191,7 +194,10 @@ export const knowledgeBasesApi = {
     description?: string;
     default_open?: boolean;
     shared?: boolean;
+    visibility?: "all" | "groups" | "owner";
+    group_ids?: string[];
     icon_name?: string;
+    icon_url?: string;
     max_documents?: number;
   }) =>
     request<KnowledgeBase>("/knowledge-bases", {
@@ -206,7 +212,10 @@ export const knowledgeBasesApi = {
       description?: string;
       default_open?: boolean;
       shared?: boolean;
+      visibility?: "all" | "groups" | "owner";
+      group_ids?: string[];
       icon_name?: string;
+      icon_url?: string;
       max_documents?: number;
     },
   ) =>
@@ -217,6 +226,20 @@ export const knowledgeBasesApi = {
 
   delete: (id: string) =>
     request<void>(`/knowledge-bases/${id}`, { method: "DELETE" }),
+
+  uploadAvatar: (id: string, file: File) => {
+    const body = new FormData();
+    body.append("file", file);
+    return requestUpload<{ icon_url: string }>(
+      `/knowledge-bases/${encodeURIComponent(id)}/avatar`,
+      body,
+    );
+  },
+
+  deleteAvatar: (id: string) =>
+    request<void>(`/knowledge-bases/${encodeURIComponent(id)}/avatar`, {
+      method: "DELETE",
+    }),
 
   listDocuments: (id: string, prefix?: string) =>
     request<KnowledgeDocument[]>(

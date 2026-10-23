@@ -19,11 +19,12 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { useSearchParams } from "react-router-dom";
 import { Input, Spin, Tabs, Segmented, Tooltip } from "antd";
 import { message } from "@/utils/antdMessage";
 
 import {
-  BookOpen,
+  CopyPlus,
   GraduationCap,
   LayoutGrid,
   List,
@@ -62,6 +63,11 @@ import ExpertMarketTab from "./components/ExpertMarketTab";
 import { OctopEmptyMascot } from "../../components/EmptyState";
 import { pickLocale } from "../../utils/localizedText";
 import { isOwnedExpert, ownedExperts } from "../../utils/sharedExpert";
+import {
+  matchesExpertLocation,
+  type ExpertLocationFilter,
+} from "../../utils/resourceAudience";
+import { ResourceAudienceFilter } from "../../components/ResourceAudienceFilter";
 import { apiErrorMessage } from "../../utils/apiError";
 import styles from "./index.module.less";
 
@@ -123,13 +129,27 @@ export default function ExpertsPage() {
   );
 
   // ── Tab state ──────────────────────────────────────────────────
-  const [activeTab, setActiveTab] = useState<TabKey>("my");
+  const [searchParams] = useSearchParams();
+  const [activeTab, setActiveTab] = useState<TabKey>(() => {
+    const tab = searchParams.get("tab");
+    if (
+      tab === "my" ||
+      tab === "teams" ||
+      tab === "library" ||
+      tab === "market"
+    ) {
+      return tab;
+    }
+    return "my";
+  });
   const { viewMode, setViewMode, showCardView } = useCardTableView(
     loadViewMode(),
   );
   const [refreshing, setRefreshing] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const searchNeedle = searchQuery.trim().toLowerCase();
+  const [locationFilter, setLocationFilter] =
+    useState<ExpertLocationFilter>("all");
 
   const handleRefresh = useCallback(async () => {
     setRefreshing(true);
@@ -139,7 +159,7 @@ export default function ExpertsPage() {
         fetchExpertLibrary(),
         fetchPublishedExperts(),
       ]);
-      setLocalAgents(ownedExperts(agentList));
+      setLocalAgents(agentList);
       setExperts(expertList);
       setPublishedExperts(publishedList);
       await refreshAgents({ silent: true, force: true });
@@ -216,7 +236,7 @@ export default function ExpertsPage() {
 
   // ── Local agent state (extends AgentContext for optimistic updates) ──
   const ownedAgents = useMemo(() => ownedExperts(agents), [agents]);
-  const [localAgents, setLocalAgents] = useState<OctopAgent[]>(ownedAgents);
+  const [localAgents, setLocalAgents] = useState<OctopAgent[]>(agents);
   const expertAgents = useMemo(
     () => localAgents.filter((item) => item.kind !== "team"),
     [localAgents],
@@ -227,22 +247,37 @@ export default function ExpertsPage() {
   );
   const visibleExpertAgents = useMemo(
     () =>
-      expertAgents.filter((agent) =>
-        textMatchesQuery(
-          searchNeedle,
-          agent.name,
-          agent.description,
-          agent.template_name,
-        ),
+      expertAgents.filter(
+        (agent) =>
+          matchesExpertLocation(agent, locationFilter) &&
+          textMatchesQuery(
+            searchNeedle,
+            agent.name,
+            agent.description,
+            agent.template_name,
+          ),
       ),
-    [expertAgents, searchNeedle],
+    [expertAgents, locationFilter, searchNeedle],
   );
   const visibleTeamAgents = useMemo(
     () =>
-      teamAgents.filter((agent) =>
-        textMatchesQuery(searchNeedle, agent.name, agent.description),
+      teamAgents.filter(
+        (agent) =>
+          matchesExpertLocation(agent, locationFilter) &&
+          textMatchesQuery(searchNeedle, agent.name, agent.description),
       ),
-    [searchNeedle, teamAgents],
+    [locationFilter, searchNeedle, teamAgents],
+  );
+
+  const locationFilterControl = useMemo(
+    () => (
+      <ResourceAudienceFilter
+        includeCloud
+        value={locationFilter}
+        onChange={(value) => setLocationFilter(value as ExpertLocationFilter)}
+      />
+    ),
+    [locationFilter],
   );
   const pickableExperts = useMemo(
     () =>
@@ -259,7 +294,7 @@ export default function ExpertsPage() {
   const [newAgentId, setNewAgentId] = useState<string | null>(null);
 
   useEffect(() => {
-    setLocalAgents(ownedExperts(agents));
+    setLocalAgents(agents);
   }, [agents]);
 
   const handleStateChange = useCallback((agentId: string, newState: string) => {
@@ -440,7 +475,7 @@ export default function ExpertsPage() {
             secondaryAction={{
               label: t("experts.goToLibrary"),
               onClick: openExpertLibrary,
-              icon: <BookOpen size={14} />,
+              icon: <CopyPlus size={14} />,
               type: "default",
             }}
           />
@@ -451,9 +486,12 @@ export default function ExpertsPage() {
     return (
       <>
         <div className={styles.gridToolbar}>
-          <span className={styles.gridCount}>
-            {t("experts.totalAgents", { count: visibleExpertAgents.length })}
-          </span>
+          <div className={styles.gridToolbarLeft}>
+            <span className={styles.gridCount}>
+              {t("experts.totalAgents", { count: visibleExpertAgents.length })}
+            </span>
+            {locationFilterControl}
+          </div>
           <div className={styles.gridToolbarRight}>
             {toolbarSearch}
             <Segmented
@@ -497,7 +535,11 @@ export default function ExpertsPage() {
           </div>
         </div>
         {visibleExpertAgents.length === 0 ? (
-          <div className={styles.searchEmpty}>{t("experts.searchEmpty")}</div>
+          <div className={styles.searchEmpty}>
+            {searchNeedle || locationFilter !== "all"
+              ? t("experts.filterEmpty")
+              : t("experts.searchEmpty")}
+          </div>
         ) : showCardView ? (
           <div className={styles.cardGrid}>
             {visibleExpertAgents.map((agent) => (
@@ -552,13 +594,15 @@ export default function ExpertsPage() {
     defaultCreating,
     expertAgents,
     isMobile,
+    locationFilter,
+    locationFilterControl,
     newAgentId,
     openDefaultCreate,
     openExpertLibrary,
     publishedByAgentId,
     refreshButton,
     refreshPublishedExperts,
-    searchQuery,
+    searchNeedle,
     showCardView,
     t,
     toolbarSearch,
@@ -609,9 +653,12 @@ export default function ExpertsPage() {
     return (
       <>
         <div className={styles.gridToolbar}>
-          <span className={styles.gridCount}>
-            {t("experts.teams.total", { count: visibleTeamAgents.length })}
-          </span>
+          <div className={styles.gridToolbarLeft}>
+            <span className={styles.gridCount}>
+              {t("experts.teams.total", { count: visibleTeamAgents.length })}
+            </span>
+            {locationFilterControl}
+          </div>
           <div className={styles.gridToolbarRight}>
             {toolbarSearch}
             {refreshButton}
@@ -625,7 +672,11 @@ export default function ExpertsPage() {
           </div>
         </div>
         {visibleTeamAgents.length === 0 ? (
-          <div className={styles.searchEmpty}>{t("experts.searchEmpty")}</div>
+          <div className={styles.searchEmpty}>
+            {searchNeedle || locationFilter !== "all"
+              ? t("experts.filterEmpty")
+              : t("experts.searchEmpty")}
+          </div>
         ) : (
           <div className={styles.cardGrid}>
             {visibleTeamAgents.map((agent) => (
@@ -655,8 +706,11 @@ export default function ExpertsPage() {
     handleStateChange,
     isMobile,
     localTeamMembers,
+    locationFilter,
+    locationFilterControl,
     pickableExperts,
     refreshButton,
+    searchNeedle,
     t,
     teamAgents,
     toolbarSearch,
@@ -840,20 +894,13 @@ export default function ExpertsPage() {
           },
           {
             key: "teams",
-            label: (
-              <TabLabel icon={Users}>
-                {t("experts.myTeams")}
-                <span className={styles.tabBetaBadge}>
-                  {t("experts.teams.betaBadge")}
-                </span>
-              </TabLabel>
-            ),
+            label: <TabLabel icon={Users}>{t("experts.myTeams")}</TabLabel>,
             children: teamsContent,
           },
           {
             key: "library",
             label: (
-              <TabLabel icon={BookOpen}>{t("experts.expertLibrary")}</TabLabel>
+              <TabLabel icon={CopyPlus}>{t("experts.expertLibrary")}</TabLabel>
             ),
             children: libraryContent,
           },

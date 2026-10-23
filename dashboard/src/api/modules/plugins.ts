@@ -24,6 +24,8 @@ export interface InstalledPlugin {
   loaded?: boolean;
   /** Global enable switch from config.json (default true). */
   enabled?: boolean;
+  visibility?: "all" | "groups";
+  group_ids?: string[];
   error?: string;
   ui?: { entry: string; manifest: string } | null;
   tools?: {
@@ -138,6 +140,16 @@ export const pluginsApi = {
     return request(`/plugins/${encodeURIComponent(pluginId)}`, {
       method: "PATCH",
       body: JSON.stringify({ enabled }),
+    });
+  },
+
+  setVisibility(
+    pluginId: string,
+    body: { visibility: "all" | "groups"; group_ids?: string[] },
+  ): Promise<InstalledPlugin> {
+    return request(`/plugins/${encodeURIComponent(pluginId)}`, {
+      method: "PATCH",
+      body: JSON.stringify(body),
     });
   },
 

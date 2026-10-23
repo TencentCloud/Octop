@@ -66,7 +66,7 @@ describe("<ConnectorInstanceCard />", () => {
     renderCard(makeInstance({ can_manage: true }));
 
     const title = screen.getByText(LONG_TITLE);
-    const tag = screen.getByText("来自 Admin");
+    const tag = screen.getByTitle("来自 Admin");
     const switchEl = document.querySelector("button.ant-switch");
     expect(switchEl).not.toBeNull();
 

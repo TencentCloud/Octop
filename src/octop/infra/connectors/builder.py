@@ -557,6 +557,8 @@ def _iter_active_connectors(
     connector_repo: Any,
     user_id: int,
 ) -> Any:
+    if not connector_repo.connector_feature_allows(user_id):
+        return
     for inst in connector_repo.list_visible(user_id):
         if inst.status != "active":
             continue
@@ -653,6 +655,8 @@ def gateway_mcp_server_names(*, connector_repo: Any, user_id: int) -> set[str]:
     loads those via ``/api/internal/mcp``.
     """
     names: set[str] = set()
+    if not connector_repo.connector_feature_allows(user_id):
+        return names
     for inst in connector_repo.list_visible(user_id):
         if inst.status != "active":
             continue

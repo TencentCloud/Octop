@@ -52,6 +52,11 @@ const NAV_PERMISSION_CHIPS: readonly {
     permissions: ["knowledge_bases", "knowledge_settings"],
   },
   {
+    key: "bridge",
+    labelKey: "nav.bridge",
+    permissions: ["bridge"],
+  },
+  {
     key: "workbench",
     labelKey: "nav.workbench",
     permissions: ["terminal", "browser"],
@@ -117,6 +122,7 @@ const DEFAULT_GROUPS: readonly { id: string; items: readonly string[] }[] = [
       "connectors",
       "skill-packages",
       "knowledge-bases",
+      "bridge",
     ],
   },
   { id: "control", items: ["workbench", "remote-desktop"] },

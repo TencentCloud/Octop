@@ -15,7 +15,7 @@
 <p align="center">
   <a href="https://www.python.org/downloads/"><img alt="Python 3.12+" src="https://img.shields.io/badge/python-3.12%2B-blue?logo=python&logoColor=white" /></a>
   <a href="https://github.com/TencentCloud/Octop/blob/main/LICENSE"><img alt="License: MIT" src="https://img.shields.io/badge/license-MIT-green" /></a>
-  <a href="https://github.com/TencentCloud/Octop/releases"><img alt="Version" src="https://img.shields.io/badge/version-1.0.2b9-orange" /></a>
+  <a href="https://github.com/TencentCloud/Octop/releases"><img alt="Version" src="https://img.shields.io/badge/version-1.0.2-orange" /></a>
   <a href="https://pypi.org/project/octop/"><img src="https://img.shields.io/pypi/v/octop" alt="PyPI" /></a>
   <a href="https://github.com/astral-sh/ruff"><img alt="Code Style: Ruff" src="https://img.shields.io/badge/code%20style-ruff-000000?logo=ruff&logoColor=white" /></a>
   <a href="https://github.com/TencentCloud/Octop"><img alt="GitHub stars" src="https://img.shields.io/github/stars/TencentCloud/Octop?style=social" /></a>
@@ -303,6 +303,8 @@ Open `http://localhost:8088`. A valid `OCTOP_DEFAULT_PASSWORD` creates the admin
 | `OCTOP_DATA` | `~/.octop` | Host data directory (compose bind mount) |
 
 See [`.env.example`](.env.example) for the full list.
+
+To serve the dashboard under a reverse-proxy subpath (for example `https://example.com/octop/`), rebuild the frontend with `VITE_BASE_PATH=/octop/` and strip that prefix in the proxy (nginx `proxy_pass …/;`). The default build assumes the domain root.
 
 ### Deploy with Cloud
 
