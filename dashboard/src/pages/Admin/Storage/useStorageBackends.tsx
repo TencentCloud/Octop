@@ -35,6 +35,8 @@ export interface StorageBackendRow {
   enabled: boolean;
   /** Admin storage browse only (``/admin/backend``); expert workspace is always available. */
   previewable?: boolean;
+  visibility?: "all" | "groups";
+  group_ids?: string[];
   created_at: number;
   updated_at: number;
 }

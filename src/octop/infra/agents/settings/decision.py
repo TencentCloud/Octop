@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 from dataclasses import dataclass
 
+from octop.infra.crypto.fernet import PURPOSE_SETTINGS, open_secret_bytes, seal_secret_bytes
 from octop.infra.db.repos.secrets import SecretRepo
 from octop.infra.db.repos.settings import SettingsRepo
 from octop.infra.errors import ErrorCode, OctopError
@@ -94,7 +95,7 @@ class DecisionSettingsStore:
             provider=provider,
             services=services,
             skills=bool(data.get("skills", True)),
-            tools=bool(data.get("tools", True)),
+            tools=bool(data.get("tools", False)),
             team=bool(data.get("team", True)),
             threshold=_threshold(data.get("threshold", 0.6)),
             tool_min_count=_tool_min_count(data.get("tool_min_count", 8)),
@@ -247,24 +248,27 @@ class DecisionSettingsStore:
     def _stored_key(self, provider: str, *, legacy_owner: str) -> str:
         raw = self._secrets.get(_scoped_secret(provider))
         if raw is not None:
-            return raw.decode("utf-8").strip()
+            return open_secret_bytes(self._secrets, PURPOSE_SETTINGS, raw).decode("utf-8").strip()
         if provider != legacy_owner:
             return ""
         legacy = self._secrets.get(_SECRET_KEY)
         if not legacy:
             return ""
-        return legacy.decode("utf-8").strip()
+        return open_secret_bytes(self._secrets, PURPOSE_SETTINGS, legacy).decode("utf-8").strip()
 
     def _migrate_legacy_key(self, owner: str) -> None:
         if not owner or self._secrets.get(_scoped_secret(owner)) is not None:
             return
         legacy = self._secrets.get(_SECRET_KEY)
         if legacy:
-            self._write_secret(owner, legacy.decode("utf-8"))
+            plain = open_secret_bytes(self._secrets, PURPOSE_SETTINGS, legacy).decode("utf-8")
+            self._write_secret(owner, plain)
 
     def _write_secret(self, provider: str, api_key: str) -> None:
         key = _scoped_secret(provider)
-        encoded = api_key.strip().encode("utf-8")
+        encoded = seal_secret_bytes(
+            self._secrets, PURPOSE_SETTINGS, api_key.strip().encode("utf-8")
+        )
         existing = self._secrets.get(key)
         if existing is not None:
             self._secrets.rotate(key, encoded)

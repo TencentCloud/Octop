@@ -89,11 +89,11 @@ def test_probe_env_accepts_system_chrome() -> None:
             return_value="/usr/bin/google-chrome",
         ),
         patch(
-            "octop.infra.browser.setup.playwright_chromium_installed",
+            "octop.infra.control.browser.setup.playwright_chromium_installed",
             return_value=False,
         ),
         patch(
-            "octop.infra.browser.setup.chrome_source_for_path",
+            "octop.infra.control.browser.setup.chrome_source_for_path",
             return_value="system",
         ),
     ):

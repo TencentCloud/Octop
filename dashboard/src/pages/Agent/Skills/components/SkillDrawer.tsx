@@ -7,6 +7,7 @@ import { useTranslation } from "react-i18next";
 import type { FormInstance } from "antd";
 import EmojiPicker from "../../../../components/EmojiPicker";
 import Markdown from "../../../../components/Markdown/LazyMarkdown";
+import { TextAssistBar } from "../../../../components/TextAssistBar";
 import { request } from "../../../../api/request";
 import { splitMarkdownFrontmatter } from "../../../../utils/markdown";
 import { withFromWorkspace } from "../../../../utils/fromWorkspace";
@@ -21,7 +22,7 @@ import {
 import FileViewer from "../../Workspace/components/FileViewer";
 import { getDocKind } from "../../Workspace/utils/docKind";
 import { getMediaKind } from "../../Workspace/utils/mediaKind";
-import { SkillFileTree } from "./SkillFileTree";
+import { packageSkillRelativePath, SkillFileTree } from "./SkillFileTree";
 import styles from "./SkillDrawer.module.less";
 
 export interface MetadataEntry {
@@ -264,7 +265,12 @@ function parseSkillFormFromDetail(detail: SkillDetail): SkillFormValues {
     ),
     body: detail.body || "",
     content: detail.raw,
-    source: detail.kind === "builtin" ? "builtin" : "workspace",
+    source:
+      detail.kind === "builtin"
+        ? "builtin"
+        : detail.kind === "package"
+        ? "package"
+        : "workspace",
     path:
       detail.kind === "builtin"
         ? `/_builtin_skills/${detail.slug}/SKILL.md`
@@ -287,6 +293,8 @@ interface SkillDrawerProps {
   agentId?: string | null;
   /** Agent harness must be running for workspace file/tree APIs. */
   workspaceReady?: boolean;
+  /** When set, show skill directory file tree for a global skill package. */
+  packageId?: string | null;
   onPushToPackage?: (skill: SkillDetail) => void;
   /** Hide edit/push actions (e.g. viewing another user's skill package). */
   readOnly?: boolean;
@@ -300,14 +308,18 @@ export function SkillDrawer({
   onSubmit,
   agentId,
   workspaceReady = false,
+  packageId,
   onPushToPackage,
   readOnly = false,
 }: SkillDrawerProps) {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const isCreate = !editingSkill;
   const [localEditMode, setLocalEditMode] = useState(false);
   const [viewTab, setViewTab] = useState<ViewTab>("preview");
   const [editorTab, setEditorTab] = useState<EditorTab>("form");
+  const [presentationLocale, setPresentationLocale] = useState<"zh" | "en">(
+    () => (i18n.language?.startsWith("zh") ? "zh" : "en"),
+  );
   const [selectedFilePath, setSelectedFilePath] = useState<string | null>(null);
   const [siblingContent, setSiblingContent] = useState("");
   const [siblingLoading, setSiblingLoading] = useState(false);
@@ -316,7 +328,16 @@ export function SkillDrawer({
     useListPanelCollapsed(FILE_TREE_COLLAPSED_KEY, { defaultCollapsed: true });
 
   const skillRoot = editingSkill ? skillDirectoryPath(editingSkill) : null;
-  const showFileTree = Boolean(editingSkill && agentId && skillRoot);
+  const showFileTree = Boolean(
+    editingSkill && skillRoot && (agentId || packageId),
+  );
+  const filesReady = Boolean(packageId) || workspaceReady;
+  const canEditSkill =
+    !readOnly &&
+    !!editingSkill &&
+    (editingSkill.kind === "workspace" ||
+      editingSkill.kind === "package" ||
+      Boolean(packageId));
   const isEdit = !!editingSkill && localEditMode && !readOnly;
 
   const handleSelectFilePath = useCallback(
@@ -349,6 +370,7 @@ export function SkillDrawer({
     setViewTab("preview");
     setEditorTab("form");
     setSiblingViewTab("preview");
+    setPresentationLocale(i18n.language?.startsWith("zh") ? "zh" : "en");
     if (editingSkill) {
       setSelectedFilePath(skillManifestPath(editingSkill));
       const parsed = parseSkillFormFromDetail(editingSkill);
@@ -357,6 +379,8 @@ export function SkillDrawer({
         source:
           editingSkill.kind === "builtin"
             ? t("skills.kindBuiltin")
+            : editingSkill.kind === "package" || packageId
+            ? t("skills.kindPackage")
             : t("skills.kindWorkspace"),
       });
       return;
@@ -370,13 +394,29 @@ export function SkillDrawer({
       body: t("skills.newSkillBodyTemplate"),
       content: "",
     });
-  }, [editingSkill, form, open, t]);
+  }, [editingSkill, form, i18n.language, open, packageId, t]);
 
   const loadSiblingFile = useCallback(
     async (path: string) => {
-      if (!agentId || isSkillManifestPath(path)) return;
+      if (isSkillManifestPath(path)) return;
       setSiblingLoading(true);
       try {
+        if (packageId && editingSkill) {
+          const relative = packageSkillRelativePath(
+            path,
+            skillDirectoryPath(editingSkill),
+          );
+          const data = await request<{ content: string }>(
+            `/skill-packages/${encodeURIComponent(
+              packageId,
+            )}/skills/${encodeURIComponent(
+              editingSkill.slug,
+            )}/file?path=${encodeURIComponent(relative)}`,
+          );
+          setSiblingContent(data.content ?? "");
+          return;
+        }
+        if (!agentId) return;
         const data = await request<{ content: string }>(
           withFromWorkspace(
             `/agents/${agentId}/workspace/file?path=${encodeURIComponent(
@@ -391,19 +431,14 @@ export function SkillDrawer({
         setSiblingLoading(false);
       }
     },
-    [agentId],
+    [agentId, editingSkill, packageId],
   );
 
   useEffect(() => {
-    if (
-      !open ||
-      !selectedFilePath ||
-      viewingSkillMd ||
-      !agentId ||
-      !workspaceReady
-    ) {
+    if (!open || !selectedFilePath || viewingSkillMd || !filesReady) {
       return;
     }
+    if (!agentId && !packageId) return;
     if (getMediaKind(selectedFilePath) || getDocKind(selectedFilePath)) {
       setSiblingContent("");
       setSiblingLoading(false);
@@ -412,11 +447,12 @@ export function SkillDrawer({
     void loadSiblingFile(selectedFilePath);
   }, [
     agentId,
+    filesReady,
     loadSiblingFile,
     open,
+    packageId,
     selectedFilePath,
     viewingSkillMd,
-    workspaceReady,
   ]);
 
   const resetToViewForm = () => {
@@ -427,6 +463,8 @@ export function SkillDrawer({
       source:
         editingSkill.kind === "builtin"
           ? t("skills.kindBuiltin")
+          : editingSkill.kind === "package" || packageId
+          ? t("skills.kindPackage")
           : t("skills.kindWorkspace"),
     });
     setLocalEditMode(false);
@@ -492,6 +530,13 @@ export function SkillDrawer({
     ? t("skills.editSkill")
     : t("skills.viewSkill");
 
+  const skillAssistName = () => {
+    const name = String(form.getFieldValue("name") ?? "").trim();
+    const labelZh = String(form.getFieldValue("labelZh") ?? "").trim();
+    const labelEn = String(form.getFieldValue("labelEn") ?? "").trim();
+    return name || labelZh || labelEn;
+  };
+
   const nameField = (
     <Form.Item
       name="name"
@@ -521,52 +566,146 @@ export function SkillDrawer({
   );
 
   const descriptionField = (
-    <Form.Item
-      name="description"
-      label={t("skills.skillDescription")}
-      rules={
-        fieldsEditable && editorTab === "form"
-          ? [{ required: true, message: t("skills.pleaseInputDescription") }]
-          : undefined
-      }
-    >
-      <Input.TextArea
-        placeholder={t("skills.descriptionPlaceholder")}
-        autoSize={{ minRows: 2, maxRows: fieldsEditable ? 4 : 6 }}
-        disabled={!fieldsEditable}
-      />
-    </Form.Item>
+    <>
+      <Form.Item
+        name="description"
+        label={t("skills.skillDescription")}
+        className={fieldsEditable ? styles.textAssistField : undefined}
+        rules={
+          fieldsEditable && editorTab === "form"
+            ? [{ required: true, message: t("skills.pleaseInputDescription") }]
+            : undefined
+        }
+      >
+        <Input.TextArea
+          placeholder={t("skills.descriptionPlaceholder")}
+          autoSize={{ minRows: 2, maxRows: fieldsEditable ? 4 : 6 }}
+          disabled={!fieldsEditable}
+        />
+      </Form.Item>
+      {fieldsEditable ? (
+        <TextAssistBar
+          kind="skill.description"
+          getName={skillAssistName}
+          getText={() => String(form.getFieldValue("description") ?? "")}
+          onApply={(text) => form.setFieldsValue({ description: text })}
+        />
+      ) : null}
+    </>
   );
 
   const presentationFields = (
-    <>
-      <Form.Item name="labelZh" label={t("skills.displayNameZh")}>
-        <Input
-          placeholder={t("skills.displayNameZhPlaceholder")}
-          disabled={!fieldsEditable}
+    <div className={styles.presentationBlock}>
+      <div className={styles.presentationHeader}>
+        <div className={styles.presentationCopy}>
+          <span className={styles.presentationTitle}>
+            {t("skills.presentationSection")}
+          </span>
+          <span className={styles.presentationHint}>
+            {t("skills.presentationHint")}
+          </span>
+        </div>
+        <Segmented
+          size="small"
+          value={presentationLocale}
+          onChange={(value) => setPresentationLocale(value as "zh" | "en")}
+          options={[
+            { value: "zh", label: t("skills.presentationTabZh") },
+            { value: "en", label: t("skills.presentationTabEn") },
+          ]}
         />
-      </Form.Item>
-      <Form.Item name="labelEn" label={t("skills.displayNameEn")}>
-        <Input
-          placeholder={t("skills.displayNameEnPlaceholder")}
-          disabled={!fieldsEditable}
-        />
-      </Form.Item>
-      <Form.Item name="summaryZh" label={t("skills.displaySummaryZh")}>
-        <Input.TextArea
-          placeholder={t("skills.displaySummaryZhPlaceholder")}
-          autoSize={{ minRows: 2, maxRows: 3 }}
-          disabled={!fieldsEditable}
-        />
-      </Form.Item>
-      <Form.Item name="summaryEn" label={t("skills.displaySummaryEn")}>
-        <Input.TextArea
-          placeholder={t("skills.displaySummaryEnPlaceholder")}
-          autoSize={{ minRows: 2, maxRows: 3 }}
-          disabled={!fieldsEditable}
-        />
-      </Form.Item>
-    </>
+      </div>
+      <div
+        className={
+          presentationLocale === "zh"
+            ? undefined
+            : styles.presentationPaneHidden
+        }
+      >
+        <Form.Item
+          name="labelZh"
+          label={t("skills.presentationDisplayName")}
+          className={fieldsEditable ? styles.textAssistField : undefined}
+        >
+          <Input
+            placeholder={t("skills.displayNameZhPlaceholder")}
+            disabled={!fieldsEditable}
+          />
+        </Form.Item>
+        {fieldsEditable ? (
+          <TextAssistBar
+            kind="skill.label_zh"
+            getName={skillAssistName}
+            getText={() => String(form.getFieldValue("labelZh") ?? "")}
+            onApply={(text) => form.setFieldsValue({ labelZh: text })}
+          />
+        ) : null}
+        <Form.Item
+          name="summaryZh"
+          label={t("skills.presentationSummary")}
+          className={fieldsEditable ? styles.textAssistField : undefined}
+        >
+          <Input.TextArea
+            placeholder={t("skills.displaySummaryZhPlaceholder")}
+            autoSize={{ minRows: 2, maxRows: 3 }}
+            disabled={!fieldsEditable}
+          />
+        </Form.Item>
+        {fieldsEditable ? (
+          <TextAssistBar
+            kind="skill.summary_zh"
+            getName={skillAssistName}
+            getText={() => String(form.getFieldValue("summaryZh") ?? "")}
+            onApply={(text) => form.setFieldsValue({ summaryZh: text })}
+          />
+        ) : null}
+      </div>
+      <div
+        className={
+          presentationLocale === "en"
+            ? undefined
+            : styles.presentationPaneHidden
+        }
+      >
+        <Form.Item
+          name="labelEn"
+          label={t("skills.presentationDisplayName")}
+          className={fieldsEditable ? styles.textAssistField : undefined}
+        >
+          <Input
+            placeholder={t("skills.displayNameEnPlaceholder")}
+            disabled={!fieldsEditable}
+          />
+        </Form.Item>
+        {fieldsEditable ? (
+          <TextAssistBar
+            kind="skill.label_en"
+            getName={skillAssistName}
+            getText={() => String(form.getFieldValue("labelEn") ?? "")}
+            onApply={(text) => form.setFieldsValue({ labelEn: text })}
+          />
+        ) : null}
+        <Form.Item
+          name="summaryEn"
+          label={t("skills.presentationSummary")}
+          className={fieldsEditable ? styles.textAssistField : undefined}
+        >
+          <Input.TextArea
+            placeholder={t("skills.displaySummaryEnPlaceholder")}
+            autoSize={{ minRows: 2, maxRows: 3 }}
+            disabled={!fieldsEditable}
+          />
+        </Form.Item>
+        {fieldsEditable ? (
+          <TextAssistBar
+            kind="skill.summary_en"
+            getName={skillAssistName}
+            getText={() => String(form.getFieldValue("summaryEn") ?? "")}
+            onApply={(text) => form.setFieldsValue({ summaryEn: text })}
+          />
+        ) : null}
+      </div>
+    </div>
   );
 
   const emojiField = (
@@ -656,6 +795,12 @@ export function SkillDrawer({
           placeholder={t("skills.bodyPlaceholder")}
         />
       </Form.Item>
+      <TextAssistBar
+        kind="skill.body"
+        getName={skillAssistName}
+        getText={() => String(form.getFieldValue("body") ?? "")}
+        onApply={(text) => form.setFieldsValue({ body: text })}
+      />
     </div>
   );
 
@@ -736,6 +881,19 @@ export function SkillDrawer({
     selectedFilePath &&
       (getMediaKind(selectedFilePath) || getDocKind(selectedFilePath)),
   );
+  const packageSiblingFetchUrl =
+    packageId && editingSkill && selectedFilePath
+      ? `/skill-packages/${encodeURIComponent(
+          packageId,
+        )}/skills/${encodeURIComponent(
+          editingSkill.slug,
+        )}/download?path=${encodeURIComponent(
+          packageSkillRelativePath(
+            selectedFilePath,
+            skillDirectoryPath(editingSkill),
+          ),
+        )}`
+      : undefined;
 
   const siblingFileBlock = (
     <div className={styles.contentViewBlock}>
@@ -753,16 +911,17 @@ export function SkillDrawer({
           />
         ) : null}
       </div>
-      {!workspaceReady ? (
+      {!filesReady ? (
         <div className={styles.siblingEmpty}>
           {t("skills.fileTreeAgentNotReady")}
         </div>
-      ) : agentId && selectedFilePath ? (
+      ) : selectedFilePath && (agentId || packageId) ? (
         <div className={styles.siblingViewer}>
           <FileViewer
-            agentId={agentId}
+            agentId={agentId ?? undefined}
             path={selectedFilePath}
-            fromWorkspace
+            fromWorkspace={!packageId}
+            fetchUrl={packageSiblingFetchUrl}
             editMode={false}
             value={siblingContent}
             onChange={() => {}}
@@ -848,14 +1007,26 @@ export function SkillDrawer({
     >
       <div className={styles.shell}>
         <div className={showFileTree ? styles.splitBody : styles.singleBody}>
-          {showFileTree && skillRoot && agentId && !fileTreeCollapsed ? (
+          {showFileTree && skillRoot && !fileTreeCollapsed ? (
             <SkillFileTree
-              agentId={agentId}
-              skillRoot={skillRoot}
+              source={
+                packageId && editingSkill
+                  ? {
+                      type: "package",
+                      packageId,
+                      slug: editingSkill.slug,
+                      skillRoot,
+                    }
+                  : {
+                      type: "workspace",
+                      agentId: agentId ?? "",
+                      skillRoot,
+                      workspaceReady,
+                    }
+              }
               selectedPath={selectedFilePath}
               onSelectPath={handleSelectFilePath}
               onCollapse={toggleFileTreeCollapsed}
-              workspaceReady={workspaceReady}
               selectionDisabled={isEdit}
             />
           ) : null}
@@ -900,11 +1071,9 @@ export function SkillDrawer({
           ) : (
             <>
               <Button onClick={onClose}>{t("common.close")}</Button>
-              {!readOnly &&
-              editingSkill?.kind === "workspace" &&
-              viewingSkillMd ? (
+              {canEditSkill && viewingSkillMd ? (
                 <>
-                  {onPushToPackage ? (
+                  {onPushToPackage && editingSkill.kind === "workspace" ? (
                     <Button
                       icon={<Upload size={14} />}
                       onClick={() => onPushToPackage(editingSkill)}

@@ -220,7 +220,12 @@ export function useChatComposerResources(
         .then((instances) => {
           if (cancelled) return;
           const options = (instances ?? [])
-            .filter((i) => i.status === "active" && i.has_credentials)
+            .filter(
+              (i) =>
+                i.status === "active" &&
+                i.has_credentials &&
+                i.usable !== false,
+            )
             .map((i) => ({
               mcp_server_name: i.mcp_server_name,
               label:

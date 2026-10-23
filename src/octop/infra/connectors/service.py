@@ -466,8 +466,9 @@ class ConnectorService:
     def list_instances_for_api(self, user_id: int) -> list[dict[str, Any]]:
         """Built-in rows + expanded custom servers (hide parent custom-mcp row)."""
         out: list[dict[str, Any]] = []
+        visible = self._repo.list_visible(user_id)
         custom_row = self._repo.get_by_user_kind(user_id, CUSTOM_MCP_KIND)
-        for inst in self._repo.list_visible(user_id):
+        for inst in visible:
             if is_custom_mcp_kind(inst.kind):
                 continue
             config = ConnectorRepo.parse_config_json(inst)
@@ -494,6 +495,7 @@ class ConnectorService:
                     servers=extract_servers(self.decrypt(custom_row.instance_id)),
                 )
             )
+        # Per-server ``shared`` lives in the encrypted bag, not on the parent row.
         for parent in self._repo.list_by_kind(CUSTOM_MCP_KIND):
             if parent.user_id == user_id or not parent.has_credentials:
                 continue
@@ -507,9 +509,13 @@ class ConnectorService:
         for item in out:
             item.setdefault("owner_user_id", user_id)
             item.setdefault("shared", False)
+            # list_visible already applied the per-instance group layer.
+            item["usable"] = True
         return out
 
     def list_active_mcp_server_names(self, user_id: int) -> list[str]:
+        if not self._repo.connector_feature_allows(user_id):
+            return []
         names: list[str] = []
         for inst in self._repo.list_visible(user_id):
             if is_custom_mcp_kind(inst.kind):
@@ -530,6 +536,8 @@ class ConnectorService:
 
     def list_default_open_mcp_server_names(self, user_id: int) -> list[str]:
         """Active connectors marked default_open (dashboard + all IM channels)."""
+        if not self._repo.connector_feature_allows(user_id):
+            return []
         names: list[str] = []
         for inst in self._repo.list_by_user(user_id):
             if is_custom_mcp_kind(inst.kind):
@@ -582,6 +590,8 @@ class ConnectorService:
         return list(names)
 
     def custom_harness_configs(self, user_id: int) -> dict[str, Any]:
+        if not self._repo.connector_feature_allows(user_id):
+            return {}
         configs = enabled_harness_configs(self.get_custom_servers(user_id))
         for parent in self._repo.list_by_kind(CUSTOM_MCP_KIND):
             if parent.user_id == user_id or not parent.has_credentials:
@@ -600,6 +610,8 @@ class ConnectorService:
         return configs
 
     async def mcp_configs_for_user(self, user_id: int) -> dict[str, Any]:
+        if not self._repo.connector_feature_allows(user_id):
+            return {}
         configs: dict[str, Any] = {}
         for inst in self._repo.list_visible(user_id):
             if inst.status != "active":
@@ -652,11 +664,11 @@ class ConnectorService:
                 raise OctopError.localized(ErrorCode.CONNECTOR_NOT_FOUND, locale)
             if inst.user_id != user_id:
                 raise OctopError.localized(ErrorCode.FORBIDDEN, locale)
-            if inst.kind != "agently-cli":
+            if inst.kind not in ("agently-cli", "dingtalk-cli"):
                 raise OctopError.localized(ErrorCode.CONNECTOR_KIND_UNSUPPORTED, locale)
             creds = self.decrypt(instance_id)
             creds.setdefault("instance_id", instance_id)
-            result = await agently_auth.authorize(creds, action, locale=locale)
+            result = await agently_auth.authorize(creds, action, kind=inst.kind, locale=locale)
             if action == "disconnect" and result["status"] == "idle":
                 self._repo.delete(instance_id)
             return result

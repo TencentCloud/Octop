@@ -540,6 +540,45 @@
       }
     },
     {
+      "kind": "dingtalk-cli",
+      "name": { "en": "DingTalk CLI", "zh": "钉钉 CLI" },
+      "description": {
+        "en": "Use the official DingTalk Workspace CLI (dws) for contacts, chat, calendar, docs and more (host CLI required)",
+        "zh": "通过官方钉钉 Workspace CLI（dws）操作通讯录、聊天、日程、文档等（需主机安装 CLI）"
+      },
+      "auth_kind": "custom_fields",
+      "doc_url": "https://github.com/DingTalk-Real-AI/dingtalk-workspace-cli",
+      "icon": "dingtalk-cli",
+      "color": "#3296fa",
+      "phase": "available",
+      "mcp_mode": "gateway",
+      "category": "office",
+      "guide_url": "https://github.com/DingTalk-Real-AI/dingtalk-workspace-cli#getting-started",
+      "manual_url": "https://open-dev.dingtalk.com/fe/app#/corp/app",
+      "auth_hint": {
+        "en": "Save, then authorize your DingTalk account. AppKey and AppSecret are optional: leave both empty to use DingTalk's official app. The host must have dws installed",
+        "zh": "保存后登录授权钉钉账号。AppKey 与 AppSecret 可选：都留空则使用钉钉官方应用。主机需已安装 dws"
+      },
+      "credential_fields": [
+        {
+          "key": "client_id",
+          "label": { "en": "AppKey (Client ID)", "zh": "AppKey（Client ID）" },
+          "required": false,
+          "help": {
+            "en": "Only for a custom DingTalk app; fill both or leave both empty",
+            "zh": "仅自建钉钉应用需要；与 AppSecret 同时填写或同时留空"
+          }
+        },
+        {
+          "key": "client_secret",
+          "label": { "en": "AppSecret (Client Secret)", "zh": "AppSecret（Client Secret）" },
+          "field_type": "password",
+          "required": false,
+          "secret": true
+        }
+      ]
+    },
+    {
       "kind": "agently-cli",
       "name": { "en": "Agent Mail", "zh": "Agent Mail" },
       "description": {

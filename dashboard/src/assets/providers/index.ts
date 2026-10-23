@@ -67,6 +67,7 @@ export function getProviderLogo(providerId: string): string | undefined {
     volcengine: volcesLogo,
     siliconflow: siliconLogo,
     tencent: tencentCodingPlanLogo,
+    yuanbao: tencentCodingPlanLogo,
     opencode: opencodeLogo,
   };
   return groupLogo[base];

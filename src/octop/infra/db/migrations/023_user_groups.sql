@@ -1,0 +1,29 @@
+-- Schema v23: user groups and per-resource visibility grants.
+-- No grant row means the resource stays as visible as it is today.
+
+CREATE TABLE IF NOT EXISTS user_group (
+  id             INTEGER PRIMARY KEY AUTOINCREMENT,
+  user_group_id  TEXT NOT NULL UNIQUE,
+  name           TEXT NOT NULL UNIQUE,
+  description    TEXT,
+  created_at     INTEGER NOT NULL,
+  updated_at     INTEGER NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS user_group_member (
+  user_group_id  TEXT NOT NULL REFERENCES user_group(user_group_id) ON DELETE CASCADE,
+  user_id        INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  created_at     INTEGER NOT NULL,
+  PRIMARY KEY (user_group_id, user_id)
+);
+CREATE INDEX IF NOT EXISTS idx_user_group_member_user ON user_group_member(user_id);
+
+CREATE TABLE IF NOT EXISTS resource_group_grant (
+  resource_type  TEXT NOT NULL,
+  resource_key   TEXT NOT NULL,
+  user_group_id  TEXT NOT NULL REFERENCES user_group(user_group_id) ON DELETE CASCADE,
+  PRIMARY KEY (resource_type, resource_key, user_group_id)
+);
+CREATE INDEX IF NOT EXISTS idx_resource_group_grant_group ON resource_group_grant(user_group_id);
+
+UPDATE _schema_version SET version = 23;
