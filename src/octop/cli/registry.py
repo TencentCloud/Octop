@@ -32,6 +32,7 @@ COMMANDS: dict[str, tuple[str, str, str]] = {
     "clean": (".commands.clean", "clean", "Remove CLI state or wipe all of ~/.agentbuddy."),
     "backup": (".commands.backup", "backup", "Export and restore agentbuddy backups."),
     "bridge": (".commands.bridge", "bridge", "Manage remote agentbuddy bridge peers."),
+    "sandbox": (".commands.sandbox", "sandbox", "Manage sandbox containers."),
     "acp": (".commands.acp", "acp_cmd", "Run agentbuddy agent as ACP server (stdio)."),
     "plugin": (".commands.plugin", "plugin", "Install and manage plugins."),
 }

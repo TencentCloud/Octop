@@ -68,6 +68,22 @@ export function isValidCompositePath(path: string): boolean {
   return trimmed.length > 0 && trimmed.startsWith("/") && trimmed !== "/";
 }
 
+/**
+ * True when the edit drawer may offer the controlled "change image tag only"
+ * edit for this agent backend (docs/sandbox-image-management.md §7): the spec
+ * is an inline docker backend. Named refs are edited on the storage page.
+ */
+export function isInlineDockerSpec(
+  spec: unknown,
+): spec is Record<string, unknown> {
+  return (
+    !!spec &&
+    typeof spec === "object" &&
+    !Array.isArray(spec) &&
+    (spec as Record<string, unknown>).type === "docker"
+  );
+}
+
 export function needsRootDirProbe(choice: string): boolean {
   return choice === "local_shell" || choice === "filesystem";
 }
