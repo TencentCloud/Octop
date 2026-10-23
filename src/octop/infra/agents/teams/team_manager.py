@@ -16,7 +16,7 @@ import asyncio
 import inspect
 import json
 import logging
-from collections.abc import Callable, Sequence
+from collections.abc import Awaitable, Callable, Sequence
 from dataclasses import fields
 from types import SimpleNamespace
 from typing import TYPE_CHECKING, Any
@@ -113,6 +113,23 @@ def host_system_prompt(row: Any, user_repo: Any) -> str:
     return f"{custom}\n\n{briefing}".strip() if custom else briefing
 
 
+async def subscribe_with_member_catchup(
+    gateway: Any,
+    room_thread_id: str,
+    *,
+    subscribe: Callable[[], None],
+    send: Callable[[dict[str, Any]], Awaitable[None]],
+) -> None:
+    """Attach a room subscriber and replay an in-progress member answer."""
+    processor = getattr(gateway, "_processor", None)
+    teams = getattr(processor, "teams", None)
+    deliver = getattr(teams, "deliver_live_member_catchup", None)
+    if not callable(deliver):
+        subscribe()
+        return
+    await deliver(room_thread_id, subscribe=subscribe, send=send)
+
+
 class TeamManager:
     """Octop-side team room. Harness still owns ``ask_agent`` / inbox."""
 
@@ -135,6 +152,10 @@ class TeamManager:
         self._hitl_waiters: dict[str, asyncio.Future[list[dict[str, Any]]]] = {}
         self._peer_prompts: dict[tuple[str, str], tuple[str, str]] = {}
         self._live_host_replies: set[str] = set()
+        # Room text a member has already pushed and not yet persisted.
+        # A refresh mid-answer has no history row; the new subscriber gets this.
+        self._live_member_text: dict[str, dict[str, str]] = {}
+        self._member_wall_lock = asyncio.Lock()
 
     def replace_thread_message_repo(self, repo: Any) -> None:
         self._thread_message_repo = repo
@@ -508,16 +529,19 @@ class TeamManager:
             )
             raise
         finally:
-            await release_held_room()
-            done: dict[str, Any] = {"type": "done"}
-            if extra_stamp:
-                done = {**done, **extra_stamp}
-            await self._relay_chunk(
-                done,
-                room_thread_id=room_thread_id,
-                member_thread_id=member_tid,
-                speaker_id=speaker_id,
-            )
+            try:
+                await release_held_room()
+                done: dict[str, Any] = {"type": "done"}
+                if extra_stamp:
+                    done = {**done, **extra_stamp}
+                await self._relay_chunk(
+                    done,
+                    room_thread_id=room_thread_id,
+                    member_thread_id=member_tid,
+                    speaker_id=speaker_id,
+                )
+            finally:
+                await self._clear_live_member(room_thread_id, speaker_id)
         stream_text = "".join(text_parts).strip()
         return {
             "messages": await self._peer_result_messages(
@@ -993,6 +1017,64 @@ class TeamManager:
         )
         self._thread_registry.set_title_if_null(thread_id, title)
 
+    def _append_live_member(self, room_thread_id: str, speaker_id: str, piece: str) -> None:
+        room = room_thread_id.strip()
+        speaker = speaker_id.strip()
+        if not room or not speaker or not piece:
+            return
+        bucket = self._live_member_text.setdefault(room, {})
+        bucket[speaker] = bucket.get(speaker, "") + piece
+
+    async def _clear_live_member(self, room_thread_id: str, speaker_id: str) -> None:
+        room = room_thread_id.strip()
+        speaker = speaker_id.strip()
+        if not room or not speaker:
+            return
+        async with self._member_wall_lock:
+            bucket = self._live_member_text.get(room)
+            if not bucket:
+                return
+            bucket.pop(speaker, None)
+            if not bucket:
+                self._live_member_text.pop(room, None)
+
+    def _live_member_frames(self, room_thread_id: str) -> list[dict[str, Any]]:
+        room = room_thread_id.strip()
+        bucket = self._live_member_text.get(room) or {}
+        frames: list[dict[str, Any]] = []
+        for speaker, text in bucket.items():
+            if not speaker or not text:
+                continue
+            frames.append(
+                {
+                    "type": "token",
+                    "content": text,
+                    "agent_id": speaker,
+                    "agent": speaker,
+                    "team_snapshot": True,
+                    "team_live": True,
+                    "thread_id": room,
+                }
+            )
+        return frames
+
+    async def deliver_live_member_catchup(
+        self,
+        room_thread_id: str,
+        *,
+        subscribe: Callable[[], None],
+        send: Callable[[dict[str, Any]], Awaitable[None]],
+    ) -> None:
+        """Subscribe, then replay member text that is on the wall but not in history.
+
+        The lock covers subscribe and the replay so a token cannot land twice:
+        once inside the snapshot and again as a live delta.
+        """
+        async with self._member_wall_lock:
+            subscribe()
+            for frame in self._live_member_frames(room_thread_id):
+                await send(frame)
+
     async def _relay_chunk(
         self,
         chunk: dict[str, Any],
@@ -1006,9 +1088,13 @@ class TeamManager:
         if hub is None:
             return
         stamped = stamp_stream_speaker(chunk, speaker_id, include_done=True)
+        piece = str(chunk.get("content") or "") if str(chunk.get("type") or "") == "token" else ""
         try:
             if include_room and room_thread_id:
-                await hub.push_to_thread(room_thread_id, stamped)
+                async with self._member_wall_lock:
+                    await hub.push_to_thread(room_thread_id, stamped)
+                    if piece:
+                        self._append_live_member(room_thread_id, speaker_id, piece)
             if member_thread_id and member_thread_id != room_thread_id:
                 await hub.push_to_thread(member_thread_id, chunk)
         except Exception:
@@ -1030,8 +1116,12 @@ class TeamManager:
         if hub is None or not room_thread_id:
             return
         stamped = stamp_stream_speaker(chunk, speaker_id, include_done=True)
+        piece = str(chunk.get("content") or "") if str(chunk.get("type") or "") == "token" else ""
         try:
-            await hub.push_to_thread(room_thread_id, stamped)
+            async with self._member_wall_lock:
+                await hub.push_to_thread(room_thread_id, stamped)
+                if piece:
+                    self._append_live_member(room_thread_id, speaker_id, piece)
         except Exception:
             logger.warning(
                 "failed to flush team room frame speaker=%s room=%s",

@@ -472,13 +472,20 @@ async def test_new_directory_user_gets_the_preset_role_template(
     # helper the production path uses — otherwise a bug inside that helper is
     # invisible to this test.
     assert sorted(row.permissions) == [
+        "agent_plugins",
+        "bridge",
         "channels",
         "connectors",
         "experts",
         "knowledge_bases",
+        "mbti",
+        "memory",
         "skill_packages",
+        "skills",
+        "subagents",
         "tasks",
         "token_usage",
+        "tools",
     ]
     # The preset user template defines no policies; nothing extra may be applied.
     assert srv.services.user_policy_repo.list_for_user(row.id) == []

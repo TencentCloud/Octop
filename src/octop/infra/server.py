@@ -6,8 +6,10 @@ import asyncio
 import gzip
 import logging
 import os
+import re
 import shutil
 import time
+from collections.abc import Iterator
 from contextlib import suppress
 from dataclasses import dataclass
 from logging.handlers import TimedRotatingFileHandler
@@ -21,16 +23,15 @@ from octop.infra.agents.experts.catalog import ExpertCatalog, default_library_ro
 from octop.infra.agents.manager import AgentManager
 from octop.infra.agents.plugins.manager import PluginManager
 from octop.infra.agents.subagents.catalog import SubagentCatalog, default_package_root
+from octop.infra.control.mobile.config_probe import ensure_mobile_capabilities_probed
 from octop.infra.cron.manager import CronManager
 from octop.infra.db.factory import open_database, should_defer_control_plane_db
 from octop.infra.db.migrate import run_migrations
 from octop.infra.db.services import SharedServices, build_shared_services
 from octop.infra.gateway.gateway import Gateway
-from octop.infra.mobile.config_probe import ensure_mobile_capabilities_probed
 from octop.infra.proactive.scheduler import ProactiveCareScheduler
 from octop.infra.proactive.service import ProactiveCareService
 from octop.infra.setup import password_file as _wizard_pw
-from octop.infra.setup.password_file import WIZARD_FILE_NAME
 from octop.infra.setup.wizard_tokens import WizardTokenStore
 from octop.infra.users.manager import UserManager
 from octop.infra.utils.paths import PathLayout
@@ -82,15 +83,69 @@ class SizeTimedRotatingFileHandler(TimedRotatingFileHandler):
             delaycompress_rotated_logs(Path(dest).parent, enabled=True, keep=Path(dest))
 
     def rotation_filename(self, default_name: str) -> str:
-        """Avoid overwriting an existing daily backup when size rolls twice same day."""
-        if not os.path.exists(default_name) and not os.path.exists(f"{default_name}.gz"):
-            return default_name
+        """Place the date before ``.log``, and avoid clobbering an existing backup.
+
+        A second size-triggered roll the same day becomes ``octop.YYYY-MM-DD.log.001``.
+        """
+        named = super().rotation_filename(default_name)
+        if not os.path.exists(named) and not os.path.exists(f"{named}.gz"):
+            return named
         index = 1
         while True:
-            candidate = f"{default_name}-{index:03d}"
+            candidate = f"{named}.{index:03d}"
             if not os.path.exists(candidate) and not os.path.exists(f"{candidate}.gz"):
                 return candidate
             index += 1
+
+
+def _dated_log_namer(default_name: str) -> str:
+    """Turn ``octop.log.2026-10-16`` into ``octop.2026-10-16.log``."""
+    directory, filename = os.path.split(default_name)
+    if "." not in filename:
+        return default_name
+    base, date = filename.rsplit(".", 1)
+    stem, ext = os.path.splitext(base)
+    if not ext or not date:
+        return default_name
+    renamed = f"{stem}.{date}{ext}"
+    return os.path.join(directory, renamed) if directory else renamed
+
+
+# ``octop.log.2026-10-16``, ``octop.log.2026-10-16-001``, and their ``.gz`` forms.
+_LEGACY_ROTATED_LOG = re.compile(r"^octop\.log\.(\d{4}-\d{2}-\d{2})(?:-(\d+))?(\.gz)?$")
+# New names plus any legacy file a rename could not move.
+_ROTATED_LOG_NAME = re.compile(
+    r"^octop\.(?:"
+    r"\d{4}-\d{2}-\d{2}\.log(?:\.\d+)?"
+    r"|"
+    r"log\.\d{4}-\d{2}-\d{2}(?:-\d+)?"
+    r")(?:\.gz)?$"
+)
+
+
+def _migrate_legacy_rotated_logs(log_dir: Path) -> None:
+    """Rename ``octop.log.YYYY-MM-DD`` to ``octop.YYYY-MM-DD.log``."""
+    if not log_dir.is_dir():
+        return
+    for entry in list(log_dir.iterdir()):
+        match = _LEGACY_ROTATED_LOG.fullmatch(entry.name)
+        if match is None or not entry.is_file():
+            continue
+        date, index, gz = match.group(1), match.group(2), match.group(3) or ""
+        index_part = f".{index}" if index else ""
+        dest = log_dir / f"octop.{date}.log{index_part}{gz}"
+        if dest.exists():
+            continue
+        with suppress(OSError):
+            entry.rename(dest)
+
+
+def _iter_rotated_logs(log_dir: Path) -> Iterator[Path]:
+    if not log_dir.is_dir():
+        return
+    for entry in log_dir.iterdir():
+        if entry.is_file() and _ROTATED_LOG_NAME.fullmatch(entry.name):
+            yield entry
 
 
 def gzip_rotated_log(path: Path) -> None:
@@ -129,11 +184,7 @@ def delaycompress_rotated_logs(
     """
     if not enabled or not log_dir.is_dir():
         return
-    plains = [
-        entry
-        for entry in log_dir.glob("octop.log.*")
-        if entry.is_file() and not entry.name.endswith(".gz")
-    ]
+    plains = [entry for entry in _iter_rotated_logs(log_dir) if not entry.name.endswith(".gz")]
     if not plains:
         return
     keep_path = max(plains, key=lambda p: p.stat().st_mtime) if keep is None else keep
@@ -196,8 +247,9 @@ def _build_log_handler(
         max_bytes=max_bytes,
         compress_rotated=compress_rotated,
     )
-    # Rotated files get a date suffix, e.g. octop.log.2026-07-16
+    # Rotated files are ``octop.YYYY-MM-DD.log`` (date before the extension).
     handler.suffix = "%Y-%m-%d"
+    handler.namer = _dated_log_namer
     handler.setFormatter(_OctopLogFormatter("%(asctime)s %(levelname)-5s %(name)s — %(message)s"))
     return handler
 
@@ -212,8 +264,8 @@ def _purge_stale_logs(log_dir: Path, retention_days: int) -> None:
     if retention_days <= 0:
         return
     cutoff = time.time() - retention_days * 86400
-    for entry in log_dir.glob("octop.log.*"):
-        if entry.is_file() and entry.stat().st_mtime < cutoff:
+    for entry in _iter_rotated_logs(log_dir):
+        if entry.stat().st_mtime < cutoff:
             with suppress(OSError):
                 entry.unlink()
 
@@ -255,6 +307,7 @@ class AppRuntime:
             config_repo=services.repos.proactive_care_config_repo,
             session_repo=services.repos.session_repo,
             care_push_repo=services.repos.care_push_repo,
+            thread_repo=services.repos.thread_repo,
         )
         if self.trajectory_service is not None:
             from octop.infra.history.trajectory.store import TrajectoryStore  # noqa: PLC0415
@@ -356,8 +409,10 @@ class OctopServer:
         self._setup_logging()
         ensure_nofile_limit()
         from octop.infra.backend.grep_safety import install_safe_grep_fallback  # noqa: PLC0415
+        from octop.infra.backend.shell_output import install_shell_output_decoding  # noqa: PLC0415
 
         install_safe_grep_fallback()
+        install_shell_output_decoding()
         config = ensure_mobile_capabilities_probed(self.paths.config)
         self.config = config
 
@@ -538,6 +593,9 @@ class OctopServer:
             session_repo=self.services.repos.session_repo,
             agent_repo=self.services.repos.agent_repo,
             user_repo=self.services.repos.user_repo,
+            thread_repo=self.services.repos.thread_repo,
+            care_push_repo=self.services.repos.care_push_repo,
+            is_agent_busy=registry.is_agent_active,
             default_timezone=config.default_timezone,
         )
         registry.set_proactive_scheduler(proactive_scheduler)
@@ -656,30 +714,43 @@ class OctopServer:
         config = self.config
         if config is None:
             return
-        wizard_home = Path.home()
+        wizard_home = self.paths.root
         if config.require_setup_password:
             try:
-                new_pw = _wizard_pw.boot_self_heal(wizard_home, user_count=user_count)
+                new_pw = _wizard_pw.boot_self_heal(
+                    wizard_home,
+                    user_count=user_count,
+                    legacy_home=Path.home(),
+                )
             except OSError as err:
                 logger.warning("wizard self-heal failed: %s", err)
                 new_pw = None
         else:
             new_pw = None
         if new_pw is not None:
+            file_path = _wizard_pw.resolve_password_path(wizard_home, legacy_home=Path.home())
+            try:
+                rel = file_path.relative_to(Path.home())
+                display_file = f"~/{rel.as_posix()}"
+            except ValueError:
+                display_file = str(file_path)
+            file_label = f"File: {display_file}"
+            if len(file_label) > 54:
+                file_label = f"File: ...{str(file_path)[-(54 - 9) :]}"
             banner = (
                 "\n\033[33m"
                 "╔══════════════════════════════════════════════════════════╗\n"
                 "║  Octop first-run wizard password (one-time use):          ║\n"
                 f"║  {new_pw:<54}  ║\n"
                 "║  Open the dashboard and paste it into the setup wizard.  ║\n"
-                "║  File: ~/octop-login.txt                                   ║\n"
+                f"║  {file_label:<54}  ║\n"
                 "╚══════════════════════════════════════════════════════════╝"
                 "\033[0m\n"
             )
             print(banner, flush=True)
             logger.info(
                 "wizard password generated; file=%s",
-                wizard_home / WIZARD_FILE_NAME,
+                file_path,
             )
 
     async def stop(self) -> None:
@@ -725,6 +796,7 @@ class OctopServer:
         retention_days = _parse_log_retention_days()
         max_bytes = _parse_log_max_bytes()
         compress_rotated = _parse_log_compress()
+        _migrate_legacy_rotated_logs(log_dir)
         handler = _build_log_handler(
             log_path,
             retention_days,

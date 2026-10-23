@@ -32,7 +32,8 @@ _COMPOSER_READONLY = re.compile(
     r"providers/resolved|"
     r"providers/active-model|"
     r"knowledge-bases|"
-    r"knowledge-bases/capability"
+    r"knowledge-bases/capability|"
+    r"settings/hitl"
     r")$"
 )
 

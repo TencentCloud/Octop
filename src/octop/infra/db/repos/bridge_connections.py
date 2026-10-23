@@ -5,7 +5,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from octop.infra.db.pool import DatabasePool
-from octop.infra.db.repos._base import DbRow, map_rows, now_ts
+from octop.infra.db.repos._base import DbRow, bool_int, map_rows, now_ts
+from octop.infra.users.groups import RESOURCE_BRIDGE, group_visibility_sql
 
 
 @dataclass(frozen=True)
@@ -28,6 +29,8 @@ class BridgeConnectionRow:
     created_at: int
     updated_at: int
     peer_client_host: str | None = None
+    icon_url: str = ""
+    shared: bool = False
 
     @classmethod
     def from_row(cls, r: DbRow) -> BridgeConnectionRow:
@@ -36,8 +39,10 @@ class BridgeConnectionRow:
         keys = set(r.keys()) if hasattr(r, "keys") else set()
         raw_notes = r["notes"]
         raw_icon = r["icon_name"] if "icon_name" in keys else None
+        raw_icon_url = r["icon_url"] if "icon_url" in keys else ""
         auto_raw = r["auto_reconnect"] if "auto_reconnect" in keys else 1
         raw_host = r["peer_client_host"] if "peer_client_host" in keys else None
+        shared_raw = r["shared"] if "shared" in keys else 0
         return cls(
             pk=int(r["id"]),
             connection_id=str(r["connection_id"]),
@@ -51,6 +56,7 @@ class BridgeConnectionRow:
                 if isinstance(raw_icon, str) and str(raw_icon).strip()
                 else None
             ),
+            icon_url=str(raw_icon_url or "").strip(),
             credential_blob=bytes(cred) if cred is not None else None,
             access_token_blob=bytes(token) if token is not None else None,
             token_expires_at=r["token_expires_at"],
@@ -65,6 +71,7 @@ class BridgeConnectionRow:
                 if isinstance(raw_host, str) and str(raw_host).strip()
                 else None
             ),
+            shared=bool(int(shared_raw or 0)),
         )
 
 
@@ -82,6 +89,8 @@ class BridgeConnectionRepo:
         display_name: str,
         notes: str | None = None,
         icon_name: str | None = None,
+        icon_url: str = "",
+        shared: bool = False,
         credential_blob: bytes | None = None,
         access_token_blob: bytes | None = None,
         token_expires_at: int | None = None,
@@ -94,9 +103,10 @@ class BridgeConnectionRepo:
             conn.execute(
                 "INSERT INTO bridge_connections("
                 "connection_id, owner_user_id, peer_base_url, peer_username, display_name, "
-                "notes, icon_name, credential_blob, access_token_blob, token_expires_at, status, "
+                "notes, icon_name, icon_url, shared, credential_blob, access_token_blob, "
+                "token_expires_at, status, "
                 "auto_reconnect, peer_client_host, created_at, updated_at"
-                ") VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                ") VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                 (
                     connection_id,
                     owner_user_id,
@@ -105,6 +115,8 @@ class BridgeConnectionRepo:
                     display_name,
                     notes,
                     (icon_name or "").strip() or None,
+                    (icon_url or "").strip(),
+                    bool_int(shared),
                     credential_blob,
                     access_token_blob,
                     token_expires_at,
@@ -154,6 +166,35 @@ class BridgeConnectionRepo:
                 (owner_user_id,),
             ).fetchall()
         return map_rows(rows, BridgeConnectionRow)
+
+    def list_all(self) -> list[BridgeConnectionRow]:
+        with self._db.connect() as conn:
+            rows = conn.execute(
+                "SELECT * FROM bridge_connections ORDER BY updated_at DESC, id DESC"
+            ).fetchall()
+        return map_rows(rows, BridgeConnectionRow)
+
+    def list_visible(self, user_id: int) -> list[BridgeConnectionRow]:
+        """Owned links plus shared ones that pass the group layer."""
+        with self._db.connect() as conn:
+            clause = group_visibility_sql(RESOURCE_BRIDGE, "b.connection_id")
+            rows = conn.execute(
+                "SELECT b.* FROM bridge_connections b "
+                "WHERE (b.owner_user_id = ? OR b.shared = 1) "
+                f"AND (b.owner_user_id = ? OR {clause}) "
+                "ORDER BY b.updated_at DESC, b.id DESC",
+                (user_id, user_id, user_id),
+            ).fetchall()
+        return map_rows(rows, BridgeConnectionRow)
+
+    def set_shared(self, connection_id: str, shared: bool) -> BridgeConnectionRow | None:
+        ts = now_ts()
+        with self._db.transaction() as conn:
+            conn.execute(
+                "UPDATE bridge_connections SET shared = ?, updated_at = ? WHERE connection_id = ?",
+                (bool_int(shared), ts, connection_id),
+            )
+        return self.get(connection_id)
 
     def list_auto_reconnect(self) -> list[BridgeConnectionRow]:
         with self._db.connect() as conn:
@@ -284,6 +325,17 @@ class BridgeConnectionRepo:
                     "updated_at = ? WHERE connection_id = ?",
                     (name, note, icon, ts, connection_id),
                 )
+        return self.get(connection_id)
+
+    def set_icon_url(self, connection_id: str, icon_url: str | None) -> BridgeConnectionRow | None:
+        """Set or clear the uploaded portrait URL only."""
+        ts = now_ts()
+        with self._db.transaction() as conn:
+            conn.execute(
+                "UPDATE bridge_connections SET icon_url = ?, updated_at = ? "
+                "WHERE connection_id = ?",
+                ((icon_url or "").strip(), ts, connection_id),
+            )
         return self.get(connection_id)
 
     def upsert_reverse(

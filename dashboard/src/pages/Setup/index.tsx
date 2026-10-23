@@ -11,6 +11,7 @@ import { preferencesApi } from "../../api/modules/preferences";
 import BootOfflinePanel from "../../components/BootOfflinePanel";
 import { useTheme } from "../../context/ThemeContext";
 import { isNetworkFetchError } from "../../utils/networkError";
+import { publicUrl } from "../../utils/publicUrl";
 import DatabaseStep from "./steps/DatabaseStep";
 import PasswordStep from "./steps/PasswordStep";
 import AdminStep from "./steps/AdminStep";
@@ -259,8 +260,8 @@ export default function SetupPage() {
               <img
                 src={
                   isDark
-                    ? "/logo_horizontal_white.png"
-                    : "/logo_horizontal_dark.png"
+                    ? publicUrl("logo_horizontal_white.png")
+                    : publicUrl("logo_horizontal_dark.png")
                 }
                 alt="Octop"
                 className={styles.wizardHeaderLogo}
