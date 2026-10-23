@@ -411,6 +411,37 @@ async def test_ws_resize_updates_session_dims(monkeypatch) -> None:
     assert spawned[0].rows == 40
 
 
+@posix_only
+async def test_ws_resize_ignores_out_of_range_dims(monkeypatch) -> None:
+    server, _ = _make_server()
+    _patch_user(monkeypatch)
+    spawned: list[terminal._PtySession] = []
+    _patch_spawn(monkeypatch, spawned)
+
+    resize_frame = json.dumps({"type": "resize", "cols": 1, "rows": 999})
+    ws = _FakeWS(server, received=(resize_frame,))
+    await terminal.terminal_ws(ws, agent_id="a1", token="ok", session_id="r2", cols=80, rows=24)
+    assert spawned[0].cols == 80
+    assert spawned[0].rows == 24
+
+
+@posix_only
+@pytest.mark.parametrize("dimension", ["cols", "rows"])
+@pytest.mark.parametrize("value", [float("inf"), float("-inf")])
+async def test_ws_resize_ignores_infinite_dims_and_continues(monkeypatch, dimension, value) -> None:
+    server, _ = _make_server()
+    _patch_user(monkeypatch)
+    spawned: list[terminal._PtySession] = []
+    _patch_spawn(monkeypatch, spawned)
+
+    invalid_frame = json.dumps({"type": "resize", "cols": 80, "rows": 24, dimension: value})
+    valid_frame = json.dumps({"type": "resize", "cols": 120, "rows": 40})
+    ws = _FakeWS(server, received=(invalid_frame, valid_frame))
+    await terminal.terminal_ws(ws, agent_id="a1", token="ok", session_id="r3", cols=80, rows=24)
+    assert spawned[0].cols == 120
+    assert spawned[0].rows == 40
+
+
 def test_detect_shell_cmd_no_login_flag(monkeypatch) -> None:
     """Shell command must NOT include -l (login flag) to avoid trailing '%' on zsh exit."""
     import shutil
