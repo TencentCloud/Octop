@@ -25,6 +25,7 @@ from octop.infra.gateway.process.usage_record import UsageTracker
 from octop.infra.gateway.slash.ctx import ensure_thread_id
 from octop.infra.gateway.slash.formatting import markdown_bullets
 from octop.infra.utils.locale import Locale, normalize_locale
+from octop.infra.utils.stream_close import close_event_stream
 
 if TYPE_CHECKING:
     from octop.infra.agents.manager import AgentManager
@@ -128,16 +129,19 @@ async def iter_with_session_auto_approve(
         held = None
         decisions = None
         try:
-            async for chunk in source:
-                if isinstance(chunk, dict) and chunk.get("type") == "hitl_required":
-                    allowed = approve_decisions_if_allowed(policies, thread_id, chunk)
-                    if allowed is not None:
-                        held = chunk
-                        decisions = [dict(item) for item in allowed]
-                        continue
-                    held = None
-                    decisions = None
-                yield chunk
+            try:
+                async for chunk in source:
+                    if isinstance(chunk, dict) and chunk.get("type") == "hitl_required":
+                        allowed = approve_decisions_if_allowed(policies, thread_id, chunk)
+                        if allowed is not None:
+                            held = chunk
+                            decisions = [dict(item) for item in allowed]
+                            continue
+                        held = None
+                        decisions = None
+                    yield chunk
+            finally:
+                await close_event_stream(source)
         except Exception:
             card = held if held is not None else carried
             if card is None:
@@ -421,7 +425,10 @@ class HitlChannelCoordinator:
         if next_card is not None:
             if outcome is not None:
                 outcome.awaiting_more = True
-            yield MessageEvent.text(f"{tr('ask.answer_recorded', lang)}\n\n{next_card}")
+            yield MessageEvent.text(
+                f"{tr('ask.answer_recorded', lang)}\n\n{next_card}",
+                metadata={"octop_hitl_pending_id": record.pending_id},
+            )
             return
         if resume_message is None:
             yield MessageEvent.error_event(tr("hitl.expired", lang))
@@ -452,23 +459,26 @@ class HitlChannelCoordinator:
         # Resolve before streaming: a follow-up question registered mid-stream
         # must not be clobbered by a late mark_resolved on the old record.
         self._store.mark_resolved(record.pending_id, "approved")
+        resume_stream = project_resume_stream(
+            agent_manager,
+            record.agent_id,
+            record.thread_id,
+            decisions,
+            usage_tracker=usage_tracker or UsageTracker(),
+            history_tracker=history_tracker,
+            locale=lang,
+            projection_state=state,
+            hitl_coordinator=self,
+            hitl_ctx=hitl_ctx,
+        )
         try:
-            async for ev in project_resume_stream(
-                agent_manager,
-                record.agent_id,
-                record.thread_id,
-                decisions,
-                usage_tracker=usage_tracker or UsageTracker(),
-                history_tracker=history_tracker,
-                locale=lang,
-                projection_state=state,
-                hitl_coordinator=self,
-                hitl_ctx=hitl_ctx,
-            ):
+            async for ev in resume_stream:
                 yield ev
         except Exception as exc:
             yield MessageEvent.error_event(tr("hitl.resume_failed", lang, error=str(exc)))
             return
+        finally:
+            await close_event_stream(resume_stream)
         if outcome is not None:
             outcome.completed_turn = True
 
@@ -551,7 +561,7 @@ class HitlChannelCoordinator:
             "approved" if approve else "rejected"
         )
         try:
-            async for ev in project_resume_stream(
+            resume_stream = project_resume_stream(
                 agent_manager,
                 ctx.agent_id,
                 thread_id,
@@ -562,16 +572,22 @@ class HitlChannelCoordinator:
                 projection_state=projection_state,
                 hitl_coordinator=self,
                 hitl_ctx=hitl_ctx,
-            ):
-                if record is not None and not ack_sent:
-                    ack = (
-                        tr("hitl.approved_ack", lang) if approve else tr("hitl.rejected_ack", lang)
-                    )
-                    yield MessageEvent.text(ack)
-                    ack_sent = True
-                had_output = True
-                yield ev
-            history_completed = True
+            )
+            try:
+                async for ev in resume_stream:
+                    if record is not None and not ack_sent:
+                        ack = (
+                            tr("hitl.approved_ack", lang)
+                            if approve
+                            else tr("hitl.rejected_ack", lang)
+                        )
+                        yield MessageEvent.text(ack)
+                        ack_sent = True
+                    had_output = True
+                    yield ev
+                history_completed = True
+            finally:
+                await close_event_stream(resume_stream)
         except Exception as exc:
             if record is None and not had_output:
                 yield MessageEvent.text(tr("hitl.none_pending", lang))

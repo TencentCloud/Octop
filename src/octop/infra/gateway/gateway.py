@@ -248,7 +248,11 @@ class Gateway:
             history_archive=self._history_archive,
         )
 
-        self._channel_manager = ChannelManager(channels={})
+        from octop.infra.gateway.channels.telegram_bridge import is_telegram_button_reply
+
+        self._channel_manager = ChannelManager(
+            channels={}, control_message_predicate=is_telegram_button_reply
+        )
         self._channel_manager.set_pre_lock_handler(self._preempt_cancel_on_stop)
         await self._channel_manager.start()
 
@@ -348,6 +352,9 @@ class Gateway:
         return self._repos.channel_repo.get(channel_id)
 
     async def create_channel(self, spec: ChannelCreateSpec) -> ChannelRow:
+        from octop.infra.gateway.channels.telegram_bridge import validate_telegram_config
+
+        validate_telegram_config(str(spec.kind), spec.config)
         config_json = json.dumps(spec.config)
         existing = self._repos.channel_repo.get_by_agent_and_name(spec.agent_id, spec.name)
         if existing is not None:
@@ -391,6 +398,17 @@ class Gateway:
         config_json: str | None = None,
         enabled: int | None = None,
     ) -> ChannelRow | None:
+        from octop.infra.gateway.channels.telegram_bridge import validate_telegram_config
+
+        existing = self._repos.channel_repo.get(channel_id)
+        effective_kind = kind or (existing.kind if existing else "")
+        if effective_kind == "telegram":
+            config = (
+                json.loads(config_json)
+                if config_json is not None
+                else (self._config_from_row(existing) if existing else {})
+            )
+            validate_telegram_config(effective_kind, config)
         self._repos.channel_repo.update(
             channel_id,
             kind=kind,
@@ -646,6 +664,9 @@ class Gateway:
             raise RuntimeError("gateway not booted")
 
         try:
+            from octop.infra.gateway.channels.telegram_bridge import validate_telegram_config
+
+            validate_telegram_config(row.kind, raw_cfg)
             await manager.probe_channel(
                 row.kind,
                 raw_cfg,
@@ -730,6 +751,17 @@ class Gateway:
         processor = processor_for_response_mode(self._processor, response_mode)
         if row.kind == "weixin" and response_mode == "stream":
             processor = wrap_weixin_stream_processor(processor)
+        if row.kind == "telegram":
+            from octop.infra.gateway.channels.telegram_bridge import (
+                TelegramBridge,
+                validate_telegram_config,
+            )
+
+            validate_telegram_config(row.kind, config)
+            # Wrap once: the bridge sends choice menus on COMPLETED, so a second layer
+            # would push every menu twice.
+            if not isinstance(processor, TelegramBridge):
+                processor = TelegramBridge(self, processor, row.channel_id)
         manager = self._require_channel_manager()
         await manager.add_channel(
             row.kind,

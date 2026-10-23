@@ -11,6 +11,8 @@ __all__ = [
     "channel_runtime_reason",
     "channel_tool_hint_end",
     "channel_tool_hint_start",
+    "telegram_quote_prompt",
+    "telegram_reject_notice",
 ]
 
 
@@ -39,3 +41,16 @@ def channel_runtime_reason(reason: str, locale: str | Locale = "en") -> str:
     """Localized label for a runtime-status reason code (``disabled``/``error``/…)."""
     label = lookup(f"channel.runtime.{reason}", locale)
     return label if isinstance(label, str) else reason
+
+
+def telegram_reject_notice(reason: str, locale: str | Locale = "en") -> str:
+    """Short notice for a rejected Telegram button; unknown reasons use the default."""
+    text = lookup(f"channel.telegram.reject.{reason}", locale)
+    return text if isinstance(text, str) else tr("channel.telegram.reject.default", locale)
+
+
+def telegram_quote_prompt(quote: str, locale: str | Locale = "en") -> str:
+    """Prompt prefix that carries the quoted (replied-to) message body."""
+    header = tr("channel.telegram.quote.header", locale)
+    current = tr("channel.telegram.quote.current", locale)
+    return f"{header}\n{quote}\n\n{current}\n"

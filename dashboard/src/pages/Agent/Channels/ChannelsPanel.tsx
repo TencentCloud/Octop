@@ -229,12 +229,21 @@ export default function ChannelsPanel({ agentId }: ChannelsPanelProps) {
           }
           if (
             (row.kind === "discord" || row.kind === "telegram") &&
-            (k === "allowed_channel_ids" || k === "allowed_user_ids") &&
+            (k === "allowed_channel_ids" ||
+              k === "allowed_user_ids" ||
+              k === "allowed_chat_ids") &&
             Array.isArray(v)
           ) {
             formCfg[k] = v.join("\n");
           } else if (row.kind === "qq" && k === "group_context") {
             formCfg[k] = normalizeQqGroupContextConfig(v);
+          } else if (
+            typeof v === "boolean" &&
+            CHANNEL_FIELDS[row.kind as ChannelKey]?.some(
+              (f) => f.name === k && f.type === "switch",
+            )
+          ) {
+            formCfg[k] = v;
           } else if (typeof v === "string") formCfg[k] = v;
           else if (typeof v === "number" || typeof v === "boolean")
             formCfg[k] = String(v);

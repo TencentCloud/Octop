@@ -86,6 +86,7 @@ from octop.infra.users.preferences import (
     get_preferred_model_from_json,
 )
 from octop.infra.utils.locale import resolve_user_locale
+from octop.infra.utils.stream_close import close_event_stream
 from octop.infra.utils.turn_failure import log_failed_tool_results, log_turn_failure
 from octop.infra.utils.ulid import new_ulid
 
@@ -682,7 +683,7 @@ class GlobalProcessor:
         if cmd is not None and cmd.name in HITL_APPROVAL_COMMANDS:
             usage_tracker = UsageTracker()
             slash_outcome = HitlSlashOutcome()
-            async for ev in self._hitl.iter_slash_resolution(
+            slash_stream = self._hitl.iter_slash_resolution(
                 cmd,
                 self._slash_ctx(
                     agent_id=agent_id,
@@ -698,8 +699,12 @@ class GlobalProcessor:
                 history_factory=self._begin_history,
                 history_finalize=self._complete_resumed_history,
                 member_hitl=self.teams.deliver_member_hitl,
-            ):
-                yield ev
+            )
+            try:
+                async for ev in slash_stream:
+                    yield ev
+            finally:
+                await close_event_stream(slash_stream)
             if slash_outcome.completed_turn:
                 thread_id = self._thread_registry.get_bound_thread_id(session_key)
                 if thread_id is None:
@@ -737,19 +742,21 @@ class GlobalProcessor:
                     agent_id, ask_record.thread_id, {}, resume=True
                 )
                 answer_outcome = HitlAnswerOutcome()
+                answer_stream = self._hitl.iter_answer_resolution(
+                    ask_record,
+                    msg.text,
+                    agent_manager=self._agent_manager,
+                    locale=locale,
+                    usage_tracker=usage_tracker,
+                    history_tracker=history_tracker,
+                    outcome=answer_outcome,
+                    member_hitl=self.teams.deliver_member_hitl,
+                )
                 try:
-                    async for ev in self._hitl.iter_answer_resolution(
-                        ask_record,
-                        msg.text,
-                        agent_manager=self._agent_manager,
-                        locale=locale,
-                        usage_tracker=usage_tracker,
-                        history_tracker=history_tracker,
-                        outcome=answer_outcome,
-                        member_hitl=self.teams.deliver_member_hitl,
-                    ):
+                    async for ev in answer_stream:
                         yield ev
                 finally:
+                    await close_event_stream(answer_stream)
                     from octop.infra.history.recorder import RecordingTracker  # noqa: PLC0415
 
                     if (
@@ -881,7 +888,7 @@ class GlobalProcessor:
         history_tracker = await self._begin_history(agent_id, thread_id, request)
         projection_state = StreamProjectionState()
         try:
-            async for ev in project_stream(
+            turn_stream = project_stream(
                 self._agent_manager,
                 agent_id,
                 request,
@@ -898,8 +905,12 @@ class GlobalProcessor:
                     session_key=session_key,
                     channel_type=channel_type,
                 ),
-            ):
-                yield ev
+            )
+            try:
+                async for ev in turn_stream:
+                    yield ev
+            finally:
+                await close_event_stream(turn_stream)
             stream_ok = True
             hitl_paused = projection_state.hitl_paused
         except Exception as exc:
@@ -997,7 +1008,7 @@ class GlobalProcessor:
         if cmd is not None and cmd.name in HITL_APPROVAL_COMMANDS:
             usage_tracker = UsageTracker()
             slash_outcome = HitlSlashOutcome()
-            async for ev in self._hitl.iter_slash_resolution(
+            slash_stream = self._hitl.iter_slash_resolution(
                 cmd,
                 self._slash_ctx(
                     agent_id=agent_id,
@@ -1013,9 +1024,13 @@ class GlobalProcessor:
                 history_factory=self._begin_history,
                 history_finalize=self._complete_resumed_history,
                 member_hitl=self.teams.deliver_member_hitl,
-            ):
-                for frame in message_event_to_cli_chunks(ev):
-                    yield _maybe_stamp_team_host(frame, agent_id, team_host)
+            )
+            try:
+                async for ev in slash_stream:
+                    for frame in message_event_to_cli_chunks(ev):
+                        yield _maybe_stamp_team_host(frame, agent_id, team_host)
+            finally:
+                await close_event_stream(slash_stream)
             thread_id = self._thread_registry.get_bound_thread_id(session_key)
             if thread_id is None:
                 thread_id = await self._thread_registry.get_or_create_by_key(

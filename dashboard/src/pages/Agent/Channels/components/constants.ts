@@ -168,7 +168,10 @@ export interface ChannelField {
   /** Visible label (Chinese; falls back when no i18n key). */
   label: string;
   /** Antd input type. */
-  type?: "text" | "password" | "textarea" | "json" | "switch";
+  type?: "text" | "password" | "textarea" | "json" | "switch" | "select";
+  options?: string[];
+  defaultValue?: string | boolean;
+  legacyDefaultValue?: string | boolean;
   /** Placeholder for the input. */
   placeholder?: string;
   /** True when the field is required at create time. */
@@ -401,10 +404,110 @@ export const CHANNEL_FIELDS: Partial<Record<ChannelKey, ChannelField[]>> = {
   telegram: [
     { name: "bot_token", label: "Bot Token", type: "password", required: true },
     {
+      name: "group_activation",
+      label: "channels.telegram_group_activation",
+      type: "select",
+      defaultValue: "always",
+      legacyDefaultValue: "always",
+      options: ["always", "mention", "mention_or_reply"],
+      helpKey: "channels.telegram_group_activationHelp",
+    },
+    {
       name: "allowed_user_ids",
       label: "channels.telegramAllowedUsers",
       type: "textarea",
       helpKey: "channels.telegramAllowedUsersHelp",
+    },
+    {
+      name: "allowed_chat_ids",
+      label: "channels.telegram_allowed_chat_ids",
+      type: "textarea",
+    },
+    {
+      name: "allow_unaddressed_commands",
+      label: "channels.telegram_allow_unaddressed_commands",
+      type: "switch",
+      defaultValue: true,
+      legacyDefaultValue: true,
+    },
+    {
+      name: "topic_isolation",
+      label: "channels.telegram_topic_isolation",
+      type: "switch",
+      defaultValue: false,
+      legacyDefaultValue: false,
+      helpKey: "channels.telegram_topic_isolationHelp",
+    },
+    {
+      name: "reply_to_message",
+      label: "channels.telegram_reply_to_message",
+      type: "switch",
+      defaultValue: true,
+      legacyDefaultValue: true,
+    },
+    {
+      name: "edited_messages",
+      label: "channels.telegram_edited_messages",
+      type: "switch",
+      defaultValue: false,
+      legacyDefaultValue: false,
+    },
+    {
+      name: "streaming_mode",
+      label: "channels.telegram_streaming_mode",
+      type: "select",
+      defaultValue: "off",
+      legacyDefaultValue: "off",
+      options: ["off", "auto", "edit", "draft"],
+    },
+    {
+      name: "status_reactions",
+      label: "channels.telegram_status_reactions",
+      type: "switch",
+      defaultValue: false,
+      legacyDefaultValue: false,
+    },
+    {
+      name: "disable_notification",
+      label: "channels.telegram_disable_notification",
+      type: "switch",
+      defaultValue: false,
+      legacyDefaultValue: false,
+    },
+    {
+      name: "protect_content",
+      label: "channels.telegram_protect_content",
+      type: "switch",
+      defaultValue: false,
+      legacyDefaultValue: false,
+    },
+    {
+      name: "link_preview",
+      label: "channels.telegram_link_preview",
+      type: "switch",
+      defaultValue: true,
+      legacyDefaultValue: true,
+    },
+    {
+      name: "command_menu",
+      label: "channels.telegram_command_menu",
+      type: "switch",
+      defaultValue: false,
+      legacyDefaultValue: false,
+    },
+    {
+      name: "albums",
+      label: "channels.telegram_albums",
+      type: "switch",
+      defaultValue: false,
+      legacyDefaultValue: false,
+    },
+    {
+      name: "audio_as_voice",
+      label: "channels.telegram_audio_as_voice",
+      type: "switch",
+      defaultValue: false,
+      legacyDefaultValue: false,
     },
     {
       name: "http_proxy",
@@ -448,15 +551,26 @@ export function normalizeChannelFieldValue(
   fieldName: string,
   value: unknown,
 ): unknown {
-  if (fieldName === "allowed_channel_ids" || fieldName === "allowed_user_ids") {
+  if (
+    ["allowed_channel_ids", "allowed_user_ids", "allowed_chat_ids"].includes(
+      fieldName,
+    )
+  ) {
     const entries = Array.isArray(value)
       ? value
       : String(value ?? "")
           .trim()
           .split(/[,\s]+/)
           .filter(Boolean);
-    if (entries.some((entry) => !/^\d+$/.test(String(entry)))) {
-      throw new Error("Invalid Discord ID");
+    if (
+      entries.some(
+        (entry) =>
+          !(fieldName === "allowed_chat_ids" ? /^-?\d+$/ : /^\d+$/).test(
+            String(entry),
+          ),
+      )
+    ) {
+      throw new Error("Invalid channel ID");
     }
     return [...new Set(entries.map(String))];
   }
