@@ -332,6 +332,8 @@ class OctopServer:
         self._ldap_service: LdapAuthService | None = None
         self._ldap_bind_throttle: LdapBindThrottle | None = None
         self._ldap_bind_throttle_services: SharedServices | None = None
+        self._external_login_throttle: LdapBindThrottle | None = None
+        self._external_login_throttle_services: SharedServices | None = None
 
     # Backward compat: expose user_manager directly
     @property
@@ -389,6 +391,26 @@ class OctopServer:
             )
             self._ldap_bind_throttle_services = self.services
         return self._ldap_bind_throttle
+
+    @property
+    def external_login_throttle(self) -> LdapBindThrottle:
+        """受信外部系统免登接口的进程级暴力破解退避（与 ldap_bind_throttle 同型同参）。"""
+        from octop.infra.auth.ldap.throttle import LdapBindThrottle as ThrottleCls  # noqa: PLC0415
+
+        if self.services is None:
+            raise RuntimeError("external login throttle requires a started server")
+        if (
+            self._external_login_throttle is None
+            or self._external_login_throttle_services is not self.services
+        ):
+            config = self.services.config
+            self._external_login_throttle = ThrottleCls(
+                max_attempts=config.login_max_attempts,
+                window_seconds=60,
+                block_seconds=config.login_lockout_seconds,
+            )
+            self._external_login_throttle_services = self.services
+        return self._external_login_throttle
 
     @property
     def database_bound(self) -> bool:

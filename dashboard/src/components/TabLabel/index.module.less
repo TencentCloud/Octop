@@ -13,18 +13,12 @@
 
 .tabBar {
   display: flex;
+  flex-wrap: wrap;
   gap: 4px;
   margin-bottom: 20px;
   flex-shrink: 0;
   border-bottom: 1px solid var(--fn-border-primary);
   padding-bottom: 0;
-  overflow-x: auto;
-  scrollbar-width: none;
-  -ms-overflow-style: none;
-
-  &::-webkit-scrollbar {
-    display: none;
-  }
 }
 
 .tab {
