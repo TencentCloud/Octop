@@ -33,6 +33,7 @@ import {
   syncSessionHitlPolicy,
 } from "./useSessions";
 import { isTeamAgent } from "../../../utils/teamAgent";
+import { isBridgeAgentId } from "../../../utils/remoteExpert";
 import * as chatStore from "./chatStore";
 import {
   DEFAULT_CONVERSATION_MODE,
@@ -137,8 +138,10 @@ export function useChatComposerResources(
   }, [isNewSession]);
 
   // No thread override: show the expert default (same as knowledge bases and
-  // connectors). Account preferred model only fills in when the expert is Auto.
+  // connectors). Account preferences only fill in for local Auto experts.
   // Sending still omits a selection that matches the expert default.
+  const localPreferredModel =
+    !remoteBridge && !isBridgeAgentId(resolvedAgentId) ? preferredModel : null;
   useEffect(() => {
     const local = activeThreadId
       ? conversationOverrides[activeThreadId]
@@ -146,14 +149,14 @@ export function useChatComposerResources(
     setSelectedModel(
       local
         ? local.model
-        : stickyModel || expertDefaultModel || preferredModel || null,
+        : stickyModel || expertDefaultModel || localPreferredModel || null,
     );
   }, [
     resolvedAgentId,
     activeThreadId,
     stickyModel,
     expertDefaultModel,
-    preferredModel,
+    localPreferredModel,
     conversationOverrides,
   ]);
 

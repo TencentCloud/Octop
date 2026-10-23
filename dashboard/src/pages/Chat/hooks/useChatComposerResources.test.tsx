@@ -79,6 +79,7 @@ vi.mock("../../../context/AgentContext", () => ({
 
 import { preferencesApi } from "../../../api/modules/preferences";
 import { useChatComposerResources } from "./useChatComposerResources";
+import { resolveTurnModelRef } from "../utils/chatMessages";
 
 const baseAgents = [
   { agent_id: "expertA", knowledge_base_ids: ["k1"] },
@@ -249,6 +250,140 @@ describe("useChatComposerResources — expert default model", () => {
 });
 
 describe("useChatComposerResources — peer expert defaults", () => {
+  it("does not send the local account preference to an Auto peer when switching experts", async () => {
+    agentState.agents.push({
+      agent_id: "bridge:cid:peer",
+      bridge: true,
+      bridge_connection_id: "cid",
+    });
+    vi.mocked(preferencesApi.get).mockResolvedValue({
+      locale: "zh",
+      remote_browser_bookmarks: [],
+      preferred_model: "local-provider/local-model",
+      model_reasoning: {},
+    });
+    const { result, rerender } = renderHook(
+      ({ agentId }) => useChatComposerResources(agentId, null),
+      { initialProps: { agentId: "expertA" } },
+    );
+    await waitFor(() =>
+      expect(result.current.selectedModel).toBe("local-provider/local-model"),
+    );
+
+    rerender({ agentId: "bridge:cid:peer" });
+    await waitFor(() => expect(result.current.selectedModel).toBeNull());
+    expect(resolveTurnModelRef(result.current.selectedModel, null)).toBeNull();
+
+    rerender({ agentId: "expertA" });
+    await waitFor(() =>
+      expect(result.current.selectedModel).toBe("local-provider/local-model"),
+    );
+  });
+
+  it.each([true, false])(
+    "keeps peer Auto after preferences load, with shadow metadata present: %s",
+    async (withMetadata) => {
+      agentState.agents = withMetadata
+        ? [
+            {
+              agent_id: "bridge:cid:peer",
+              bridge: true,
+              bridge_connection_id: "cid",
+            },
+          ]
+        : [];
+      let finishPreferences!: (
+        value: Awaited<ReturnType<typeof preferencesApi.get>>,
+      ) => void;
+      vi.mocked(preferencesApi.get).mockReturnValue(
+        new Promise((resolve) => {
+          finishPreferences = resolve;
+        }),
+      );
+      const { result } = renderHook(() =>
+        useChatComposerResources("bridge:cid:peer", null),
+      );
+      await act(async () => {
+        finishPreferences({
+          locale: "zh",
+          remote_browser_bookmarks: [],
+          preferred_model: "local-provider/local-model",
+          model_reasoning: {},
+        });
+      });
+      expect(result.current.selectedModel).toBeNull();
+      expect(
+        resolveTurnModelRef(result.current.selectedModel, null),
+      ).toBeNull();
+    },
+  );
+
+  it("preserves an explicit peer thread model despite a different local preference", async () => {
+    agentState.agents = [
+      {
+        agent_id: "bridge:cid:peer",
+        bridge: true,
+        bridge_connection_id: "cid",
+      },
+    ];
+    vi.mocked(preferencesApi.get).mockResolvedValue({
+      locale: "zh",
+      remote_browser_bookmarks: [],
+      preferred_model: "local-provider/local-model",
+      model_reasoning: {},
+    });
+    const { result } = renderHook(() =>
+      useChatComposerResources(
+        "bridge:cid:peer",
+        "peer-thread",
+        "peer-provider/chosen",
+      ),
+    );
+    await waitFor(() => expect(result.current.modelsReady).toBe(true));
+    expect(resolveTurnModelRef(result.current.selectedModel, null)).toBe(
+      "peer-provider/chosen",
+    );
+  });
+
+  it("keeps a manual peer selection when shadow metadata and local preferences arrive late", async () => {
+    agentState.agents = [];
+    let finishPreferences!: (
+      value: Awaited<ReturnType<typeof preferencesApi.get>>,
+    ) => void;
+    vi.mocked(preferencesApi.get).mockReturnValue(
+      new Promise((resolve) => {
+        finishPreferences = resolve;
+      }),
+    );
+    const { result, rerender } = renderHook(() =>
+      useChatComposerResources("bridge:cid:peer", null),
+    );
+    await waitFor(() => expect(result.current.modelsReady).toBe(true));
+    act(() => result.current.setSelectedModel("peer-provider/picked"));
+
+    agentState.agents = [
+      {
+        agent_id: "bridge:cid:peer",
+        bridge: true,
+        bridge_connection_id: "cid",
+      },
+    ];
+    rerender();
+    expect(result.current.selectedModel).toBe("peer-provider/picked");
+
+    await act(async () => {
+      finishPreferences({
+        locale: "zh",
+        remote_browser_bookmarks: [],
+        preferred_model: "local-provider/local-model",
+        model_reasoning: {},
+      });
+    });
+    expect(resolveTurnModelRef(result.current.selectedModel, null)).toBe(
+      "peer-provider/picked",
+    );
+  });
+
   it("shows the peer expert's model, connectors, knowledge bases, and mode", async () => {
     agentState.agents = [
       {
