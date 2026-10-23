@@ -104,6 +104,18 @@ def test_loads_existing(tmp_path: Path):
     assert cfg.max_upload_mb == 100  # missing key uses default
 
 
+def test_load_config_with_utf8_bom(tmp_path: Path):
+    """Regression for #2213: a leading UTF-8 BOM (Notepad / PowerShell 5.1
+    Set-Content -Encoding UTF8) must not make config.json refuse to start."""
+    cfg_path = tmp_path / "config.json"
+    payload = json.dumps({"port": 9000, "log_level": "debug"}).encode("utf-8")
+    cfg_path.write_bytes(b"\xef\xbb\xbf" + payload)
+    cfg = load_config(cfg_path)
+    assert cfg.port == 9000
+    assert cfg.log_level == "debug"
+    assert cfg.bind_host == "127.0.0.1"  # default fills
+
+
 def test_loads_max_upload_mb(tmp_path: Path):
     cfg_path = tmp_path / "config.json"
     cfg_path.write_text(json.dumps({"max_upload_mb": 50}))

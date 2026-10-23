@@ -28,6 +28,22 @@ def test_read_valid_object(tmp_path: Path) -> None:
     assert read_json_object(path) == {"bind_host": "0.0.0.0", "port": 8088}
 
 
+def test_read_with_utf8_bom(tmp_path: Path) -> None:
+    """Regression for #2213: a leading UTF-8 BOM (Notepad / PowerShell 5.1)
+    must not be reported as corruption."""
+    path = tmp_path / "config.json"
+    payload = json.dumps({"default_timezone": "Asia/Shanghai"}).encode("utf-8")
+    path.write_bytes(b"\xef\xbb\xbf" + payload)
+    assert read_json_object(path) == {"default_timezone": "Asia/Shanghai"}
+
+
+def test_read_with_utf8_bom_and_nested_secret(tmp_path: Path) -> None:
+    path = tmp_path / "config.json"
+    payload = json.dumps({"database": {"password": "s3cret"}}).encode("utf-8")
+    path.write_bytes(b"\xef\xbb\xbf" + payload)
+    assert read_json_object(path) == {"database": {"password": "s3cret"}}
+
+
 def test_read_corrupt_raises_with_position_and_never_leaks_contents(tmp_path: Path) -> None:
     path = tmp_path / "config.json"
     # Trailing comma — the classic hand-edit slip. The password must not surface.

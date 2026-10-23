@@ -879,3 +879,4 @@
 
 ### 移除
 - 移除模型配置提示弹窗、旧聊天流模块、slash 上下文与附件签名测试
+- 配置文件（config.json 等）以 `utf-8-sig` 读取，容忍 Windows 记事本 / PowerShell 5.1 写出的 UTF-8 BOM，不再把带 BOM 的合法 JSON 误报为「not valid JSON」（#2213）
