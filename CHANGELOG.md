@@ -6,6 +6,16 @@
 
 ## [Unreleased]
 
+## [1.0.9] - 2026-10-23
+
+### 新增
+- **信创老机离线兼容包(legacy offline bundle)**:Offline Wheel Bundle 流水线每架构(amd64/arm64)新增 `agentbuddy-offline-legacy-*` 变体,仅收 manylinux2014(glibc 2.17 基线)档 wheel + 兼容替换表,适配银河麒麟 glibc 2.23 等 2014 基线政务机;`uv.lock` 不动,替换/剔除表落在 `scripts/offline_bundle.sh`(`LEGACY_PINNED`/`LEGACY_EXCLUDE`)。legacy 包附带 manylinux2014 容器预编译的 `libsqlite3.so.0`,目标机系统 SQLite < 3.35(缺窗口函数/RETURNING)时 `install-offline.sh` 自动启用并把 venv `octop` 入口包成 `LD_LIBRARY_PATH` wrapper(前台与 systemd 统一生效,不动系统文件)。安装脚本新增 glibc 预检:本机 glibc 低于包内 wheel 基线即硬失败并指路 legacy 包。选型/安装文档:`docs/kylin-legacy-deploy.md`。
+- **CI 出包闸门与冒烟**:`scripts/check_offline_bundle.py` 在构建后校验 legacy 每 wheel 的 glibc 标签基线、清单 vs 实际 wheel 版本一致性(防 mcp 2.x 那类"包与清单不一致"事故复发)、主包与 bundled 插件树齐全;并新增安装冒烟(实装 + 核心模块 import + `octop --version` + `octop init` 建库)。Release 资产附带 `SHA256SUMS-*` 与 wheel glibc 基线清单。
+
+### 修复
+- **离线打包管线存量坑**:`pip download --only-binary` 对单个解析失败包(如 sdist-only 的 crcmod)会中止整批下载 → 改为剔除失败包重试循环(含传递依赖 `(from HOST)` 形态);第二轮 `pip wheel` 不带版本会装**最新版**(即当年 bundle 混入 mcp 2.3.0/anthropic 2.1.0 的根源)→ 逐包 `pkg==ver` 钉定;下载/编译统一用 Python 3.12 解释器(旧解释器按错误 marker 分支选依赖);被剔除包经 `.dropped.txt` 以 `--no-deps` 补装回 bundle;legacy 变体的 sdist 预编译在 manylinux2014 容器内执行(产物 glibc 2.17 ABI)。
+- **install-offline.sh 改为 `--no-deps` 全量安装**:此前 `pip install octop` 带依赖解析,与"extras 被剔除的 legacy 包"不兼容;wheel 集合源自同一锁定树,全量直装更稳(kylin-fix 实战同款模式)。
+
 ## [1.0.8] - 2026-10-23
 
 ### 新增
