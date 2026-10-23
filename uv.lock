@@ -2629,7 +2629,7 @@ requires-dist = [
     { name = "mss", marker = "extra == 'desktop'", specifier = ">=9.0" },
     { name = "mypy", marker = "extra == 'dev'", specifier = ">=1.10" },
     { name = "octop-browser", specifier = ">=1.0.0" },
-    { name = "octop-gateway", specifier = ">=1.0.3" },
+    { name = "octop-gateway", git = "https://github.com/ideshun/octop-gateway.git?rev=590a71c395255d46907debd5d9978e6f288df637" },
     { name = "octop-harness", extras = ["all"], specifier = ">=1.0.4" },
     { name = "octop-memory", specifier = ">=1.0.2" },
     { name = "onnxruntime", marker = "extra == 'knowledge-ocr'", specifier = ">=1.17" },
@@ -2696,7 +2696,7 @@ wheels = [
 [[package]]
 name = "octop-gateway"
 version = "1.0.3"
-source = { registry = "https://pypi.org/simple" }
+source = { git = "https://github.com/ideshun/octop-gateway.git?rev=590a71c395255d46907debd5d9978e6f288df637#590a71c395255d46907debd5d9978e6f288df637" }
 dependencies = [
     { name = "aiohttp" },
     { name = "cryptography" },
@@ -2712,10 +2712,6 @@ dependencies = [
     { name = "websocket-client" },
     { name = "websockets" },
     { name = "wecom-aibot-sdk" },
-]
-sdist = { url = "https://files.pythonhosted.org/packages/f1/7f/cc6d7f7af425fbcc2d999b3a187288fd99a9220acca4bf33e27026a58769/octop_gateway-1.0.3.tar.gz", hash = "sha256:ff679fe583ad13a66b680eee88708a1a9602054f9ecd461577bf7d521572895a", size = 642266, upload-time = "2026-10-16T09:18:50.867Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/0b/2a/367c124660188fbd3a230057f28e33bdb09950a6684fc8c3cbd4215d494d/octop_gateway-1.0.3-py3-none-any.whl", hash = "sha256:66d4942cc26b9b1d8653b007540e928e40541185803c560853fc0acdfa444d1e", size = 178059, upload-time = "2026-10-16T09:18:49.638Z" },
 ]
 
 [[package]]

@@ -431,6 +431,7 @@
     "STORAGE_BROWSE_FAILED": "无法浏览此存储后端。",
     "CHANNEL_KIND_UNSUPPORTED": "不支持的通道类型。",
     "CHANNEL_INVALID_CREDENTIALS": "通道凭证无效。",
+    "CHANNEL_OPTIONS_UNSUPPORTED": "当前安装的 octop-gateway 不支持这些 Telegram 选项。请先安装兼容的 Gateway 构建再保存。",
     "CHANNEL_NAME_TAKEN": "该通道名称已被使用，请换一个名称。",
     "CONNECTOR_NOT_FOUND": "未找到连接器。",
     "CONNECTOR_NAME_TAKEN": "该连接器名称已被使用，请换一个名称。",
@@ -712,6 +713,21 @@
       "discord_connection_failed": "Discord 连接失败，请检查网络、代理和机器人配置。",
       "discord_disconnected": "Discord 尚未连接或正在重连。",
       "discord_proxy_auth_invalid": "代理认证格式应为 user:password。"
+    },
+    "telegram": {
+      "reject": {
+        "pending_expired_or_resolved": "这张卡片已过期，请重新提问",
+        "question_index_changed": "问题已更新，请用新卡片",
+        "user_mismatch": "该卡片不属于当前会话",
+        "owner_changed": "该卡片不属于当前会话",
+        "model_unavailable": "该模型已不可用，请重新选择",
+        "thread_rebound": "会话已切换，请重新操作",
+        "default": "操作未生效，请重试"
+      },
+      "quote": {
+        "header": "[引用消息]",
+        "current": "[当前消息]"
+      }
     }
   },
   "threads": {

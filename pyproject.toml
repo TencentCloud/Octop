@@ -49,6 +49,10 @@ dependencies = [
     "firecrawl-anydoc>=0.2.4",
 ]
 
+[tool.uv.sources]
+# Draft-only: replace with the published version requirement after Gateway #44 ships.
+octop-gateway = { git = "https://github.com/ideshun/octop-gateway.git", rev = "590a71c395255d46907debd5d9978e6f288df637" }
+
 [project.optional-dependencies]
 # PEP 621 extras — kept so `pip install -e ".[dev]"` keeps working for
 # legacy / CI flows. `uv sync` reads `[dependency-groups].dev` below.
