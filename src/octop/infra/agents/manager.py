@@ -1595,7 +1595,9 @@ class AgentManager:
         for agent_id in agent_ids:
             self._teams.assert_can_delete_agent(agent_id)
 
-    async def delete_thread_checkpoint(self, agent_id: str, thread_id: str) -> None:
+    async def delete_thread_checkpoint(
+        self, agent_id: str, thread_id: str, *, reclaim: bool = True
+    ) -> None:
         """Delete a thread's conversation data from the checkpoint store.
 
         Uses the live harness checkpointer when the agent is loaded.
@@ -1605,6 +1607,9 @@ class AgentManager:
         removed. Returns normally when the store has nothing for this
         thread. Callers should invoke this *before* removing their own
         thread row, so a failure leaves the thread visible and retryable.
+
+        ``reclaim=False`` skips the incremental SQLite vacuum. Delete-only
+        uses that so the request itself does not vacuum.
         """
         row = self.get_row(agent_id)
         harness = None
@@ -1632,7 +1637,9 @@ class AgentManager:
                 ) from live_error
             return
         try:
-            await asyncio.to_thread(self._delete_thread_from_store, agent_id, thread_id, row)
+            await asyncio.to_thread(
+                self._delete_thread_from_store, agent_id, thread_id, row, reclaim
+            )
         except OctopError:
             if live_error is not None:
                 raise OctopError(
@@ -1641,7 +1648,9 @@ class AgentManager:
                 ) from live_error
             raise
 
-    def _delete_thread_from_store(self, agent_id: str, thread_id: str, row: Any) -> None:
+    def _delete_thread_from_store(
+        self, agent_id: str, thread_id: str, row: Any, reclaim: bool = True
+    ) -> None:
         from octop.infra.agents.memory.thread_cleanup import (  # noqa: PLC0415
             delete_thread_from_agent_stores,
             workspace_for_agent_row,
@@ -1656,6 +1665,7 @@ class AgentManager:
             octop_config=self._config,
             workspace_dir=workspace,
             paths=self._paths,
+            reclaim=reclaim,
         )
 
     def _reclaim_thread_store(self, agent_id: str, thread_id: str, row: Any) -> None:
@@ -1677,9 +1687,8 @@ class AgentManager:
     def schedule_store_reclaim(self, agent_id: str) -> None:
         """Shrink this agent's database after it is idle.
 
-        Used when a conversation is deleted without compacting now. The
-        rebuild runs once no turn is in progress, and again after restart
-        if the file still holds a large freelist.
+        Used when compact-now could not run, and when the idle sweep finds
+        a large freelist. Delete-only does not call this.
         """
         self._reclaim_pending.add(agent_id)
         self._ensure_reclaim_task()
