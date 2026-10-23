@@ -243,6 +243,7 @@ interface ListAgentsResponse {
 interface FetchAgentsResult {
   agents: OctopAgent[];
   liveConnectionIds: Set<string>;
+  resolvedConnectionIds: Set<string>;
 }
 
 /**
@@ -261,24 +262,28 @@ async function fetchAgents(): Promise<FetchAgentsResult> {
     const { request } = await import("../api/request");
     local = await request<OctopAgent[]>("/agents");
   }
-  const { remote, liveConnectionIds } = await fetchBridgeShadowAgents();
+  const { remote, liveConnectionIds, resolvedConnectionIds } =
+    await fetchBridgeShadowAgents();
   if (remote.length === 0) {
-    return { agents: local, liveConnectionIds };
+    return { agents: local, liveConnectionIds, resolvedConnectionIds };
   }
   const localIds = new Set(local.map((a) => a.agent_id));
   return {
     agents: [...local, ...remote.filter((a) => !localIds.has(a.agent_id))],
     liveConnectionIds,
+    resolvedConnectionIds,
   };
 }
 
 async function fetchBridgeShadowAgents(): Promise<{
   remote: OctopAgent[];
   liveConnectionIds: Set<string>;
+  resolvedConnectionIds: Set<string>;
 }> {
   const empty = {
     remote: [] as OctopAgent[],
     liveConnectionIds: new Set<string>(),
+    resolvedConnectionIds: new Set<string>(),
   };
   try {
     const { bridgeApi } = await import("../api/modules/bridge");
@@ -288,19 +293,25 @@ async function fetchBridgeShadowAgents(): Promise<{
     );
     const connected = connections.filter((c) => c.status === "connected");
     if (connected.length === 0) {
-      return { remote: [], liveConnectionIds };
+      return {
+        remote: [],
+        liveConnectionIds,
+        resolvedConnectionIds: new Set<string>(),
+      };
     }
+    const resolvedConnectionIds = new Set<string>();
     const batches = await Promise.all(
       connected.map(async (conn) => {
         try {
           const agents = await bridgeApi.listAgents(conn.connection_id);
+          resolvedConnectionIds.add(conn.connection_id);
           return agents.map((agent) => mapBridgeAgent(agent, conn));
         } catch {
           return [] as OctopAgent[];
         }
       }),
     );
-    return { remote: batches.flat(), liveConnectionIds };
+    return { remote: batches.flat(), liveConnectionIds, resolvedConnectionIds };
   } catch {
     // Non-admin users or cloud-collab-unavailable installs — ignore.
     return empty;
@@ -437,6 +448,7 @@ export function AgentProvider({ children }: { children: ReactNode }) {
             prev,
             list,
             liveConnectionIds,
+            resolvedConnectionIds,
           );
           if (!options?.force && agentsSnapshotEqual(prev, merged)) {
             merged = prev;
@@ -518,3 +530,4 @@ export function AgentProvider({ children }: { children: ReactNode }) {
 export function useAgent(): AgentContextValue {
   return useContext(AgentContext);
 }
+
