@@ -10,10 +10,12 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from langchain_core.messages import HumanMessage, SystemMessage
+from octop_harness.llm.invoke_helpers import stringify_content
 from octop_harness.plugins import PluginContext
 from PIL import Image, UnidentifiedImageError
 
 _MAX_IMAGE_BYTES = 20 * 1024 * 1024
+_INTERNAL_LC_SOURCE = "image_inspector"
 _MEDIA_TYPES = {
     "PNG": "image/png",
     "JPEG": "image/jpeg",
@@ -135,12 +137,19 @@ def setup(ctx: PluginContext) -> None:
         ]
         try:
             access = ctx.get_model_access("auto", messages=messages)
-            result = await access.ainvoke(messages)
+            # The parent LangGraph stream must not expose this nested review call.
+            result = await access.chat_model.ainvoke(
+                messages,
+                config={
+                    "callbacks": [],
+                    "metadata": {"lc_source": _INTERNAL_LC_SOURCE},
+                },
+            )
         except Exception as exc:  # noqa: BLE001 — returned to the agent as a tool error
             detail = str(exc).strip()[:240] or exc.__class__.__name__
             return _error(f"visual review model call failed: {detail}")
 
-        text = str(result).strip()
+        text = stringify_content(getattr(result, "content", result))
         if not text:
             return _error("visual review model returned an empty result")
         return text
