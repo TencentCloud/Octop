@@ -112,6 +112,7 @@ async def test_install_reports_ready_and_keeps_log(tmp_path: Path) -> None:
         runner=runner,
         health_check=lambda: started,
         port_busy=lambda: False,
+        free_bytes=lambda: 10 * 1024**3,
         starter=starter,
         health_timeout=1,
         poll_interval=0.01,

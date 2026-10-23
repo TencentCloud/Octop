@@ -68,11 +68,11 @@ import {
 } from "./welcomeManifest";
 import { fetchConfigMdFiles } from "./expertFileGroups";
 import {
-  buildBackendSpec,
   DEFAULT_BACKEND,
   ensureBubblewrapAfterProbe,
   ensureBwrapMessage,
   ensureBwrapToastKind,
+  isInlineDockerSpec,
   parseBackendSpec,
   probeRootDir,
   rootDirProbeMessage,
@@ -242,6 +242,8 @@ function EditAgentDrawerBody({
     useAgentFormResources(true, agent.agent_id);
   const [pathMappings, setPathMappings] = useState<PathMapping[]>([]);
   const [agentConfig, setAgentConfig] = useState<Record<string, unknown>>({});
+  const [backendSpec, setBackendSpec] = useState<unknown>(null);
+  const [inlineImage, setInlineImage] = useState<string>("");
   const [colorPalette, setColorPalette] = useState<string>(
     () => parseStoredColor(agent.color) ?? DEFAULT_PALETTE,
   );
@@ -308,6 +310,12 @@ function EditAgentDrawerBody({
         );
         const parsedBackend = parseBackendSpec(cfg.backend);
         setPathMappings(parsedBackend.pathMappings);
+        setBackendSpec(cfg.backend ?? null);
+        setInlineImage(
+          isInlineDockerSpec(cfg.backend)
+            ? String(cfg.backend.image ?? "")
+            : "",
+        );
 
         form.setFieldsValue({
           name: ag.name,
@@ -425,19 +433,21 @@ function EditAgentDrawerBody({
         }
       }
 
-      const backendSpec = buildBackendSpec(
-        values.backend_choice,
-        values.composite_default ?? DEFAULT_BACKEND,
-        pathMappings,
-        values.root_dir,
-      );
+      // Backend editing is disabled in this drawer (create-time decision).
+      // Preserve the loaded spec verbatim so unknown harness keys (image,
+      // allow_network, …) survive every save; the only exception is the
+      // controlled image-tag edit for inline docker backends
+      // (docs/sandbox-image-management.md §7).
+      const backendSpecNext = isInlineDockerSpec(backendSpec)
+        ? { ...backendSpec, image: inlineImage.trim() || backendSpec.image }
+        : backendSpec;
 
       const nextColor = isCuratedPalette(colorPalette)
         ? expertPaletteColor(colorPalette)
         : colorPalette;
       const nextConfig = omitAgentRuntimeConfig({
         ...agentConfig,
-        backend: backendSpec,
+        ...(backendSpecNext !== null ? { backend: backendSpecNext } : {}),
         enable_trajectory: values.enable_trajectory === true,
         conversation_mode: values.conversation_mode,
       });
@@ -865,6 +875,18 @@ function EditAgentDrawerBody({
                 onRemovePathMapping={removePathMapping}
                 onUpdatePathMapping={updatePathMapping}
               />
+              {isInlineDockerSpec(backendSpec) ? (
+                <Form.Item
+                  label={t("experts.backendImageLabel")}
+                  extra={t("experts.backendImageHint")}
+                >
+                  <Input
+                    value={inlineImage}
+                    onChange={(e) => setInlineImage(e.target.value)}
+                    placeholder="agentbuddy-sandbox:1.0.0"
+                  />
+                </Form.Item>
+              ) : null}
               <AgentTrajectoryField />
               <ExpertComposerDefaultsFields agentId={agent.agent_id} />
               {!skillPackagesSupported ? (

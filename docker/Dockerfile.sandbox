@@ -49,9 +49,10 @@ ARG PIP_TRUSTED_HOST=mirrors.aliyun.com
 ARG NPM_REGISTRY=https://registry.npmmirror.com
 # 技能白名单：空格分隔，构建期一次性烤进镜像（沙箱默认 allow_network=false，
 # 运行期装不了包，技能只能用镜像里已有的）。默认清单覆盖 harness 内置技能点名
-# 的办公/文档/抓取类依赖；重依赖（manim/texlive 类）用 --build-arg 按需追加。
-ARG SKILL_PIP_PKGS="requests httpx pandas openpyxl python-docx python-pptx pdfplumber pymupdf beautifulsoup4 lxml markdown pyyaml pydantic fastmcp cryptography"
-ARG SKILL_NPM_PKGS=""
+# 的办公/文档/抓取/数值类依赖；重依赖（jupyter/manim 类）不进基础镜像——
+# 用本文件底部的分层镜像变体（-jupyter / -manim）按需构建。
+ARG SKILL_PIP_PKGS="requests httpx pandas openpyxl python-docx python-pptx pdfplumber pymupdf pymupdf4llm beautifulsoup4 lxml markdown pyyaml pydantic fastmcp cryptography Pillow markitdown[pptx] pyfiglet numpy"
+ARG SKILL_NPM_PKGS="pptxgenjs mcporter"
 
 ENV DEBIAN_FRONTEND=noninteractive \
     PYTHONDONTWRITEBYTECODE=1 \
@@ -71,6 +72,7 @@ RUN set -eu; \
         git curl wget jq rsync openssh-client unzip zip gzip tar \
         procps iproute2 iputils-ping \
         ffmpeg \
+        cowsay \
         fonts-noto-cjk fonts-noto-cjk-extra; \
     sed -i 's/^# *zh_CN.UTF-8/zh_CN.UTF-8/' /etc/locale.gen; \
     locale-gen; \
@@ -136,3 +138,59 @@ RUN set -eu; \
 
 # 故意不写 ENTRYPOINT / CMD / USER —— 见文件头三条硬约束
 WORKDIR /
+
+# =============================================================================
+# 分层镜像变体（B 档）：重依赖叠在基础镜像之上，按专家分配、backend 的 image 字段按需选。
+# 基础镜像 = 文件头至 WORKDIR 的主阶段；变体用 --target 显式选择（变体阶段
+# 不是默认构建输出，普通 docker build 不受影响）:
+#   docker build -f Dockerfile.sandbox -t agentbuddy-sandbox:1.1.0 .                     # 基础
+#   docker build -f Dockerfile.sandbox --target variant-jupyter \
+#     -t agentbuddy-sandbox:1.1.0-jupyter .                                              # jupyter
+#   docker build -f Dockerfile.sandbox --target variant-manim \
+#     -t agentbuddy-sandbox:1.1.0-manim .                                                # manim
+# 变体阶段从主阶段（python:3.12-slim + node/uv/工具链 + 白名单）之上重建缺失层，
+# 因此必须先成功构建基础镜像（buildkit 会复用其缓存层）。
+# =============================================================================
+
+# ---- jupyter 变体：jupyter-live-kernel 技能全家桶（jupyterlab 最重）---------
+FROM ${BASE} AS variant-jupyter
+ARG APT_MIRROR=mirrors.tuna.tsinghua.edu.cn
+ARG PIP_INDEX_URL=https://mirrors.aliyun.com/pypi/simple/
+ARG PIP_TRUSTED_HOST=mirrors.aliyun.com
+COPY --from=uv-src /uv /uvx /usr/local/bin/
+RUN set -eu; \
+    if [ -n "$APT_MIRROR" ]; then \
+        sed -i "s|http://deb.debian.org|http://${APT_MIRROR}|g" /etc/apt/sources.list.d/debian.sources; \
+    fi; \
+    pip_src=""; \
+    if [ -n "$PIP_INDEX_URL" ]; then \
+        pip_src="--index-url $PIP_INDEX_URL"; \
+        if [ -n "$PIP_TRUSTED_HOST" ]; then \
+            pip_src="$pip_src --trusted-host $PIP_TRUSTED_HOST"; \
+        fi; \
+    fi; \
+    python -m pip install --no-cache-dir $pip_src jupyterlab jupyter_client jupyter_server nbformat websocket-client
+
+# ---- manim 变体：manim + LaTeX（数 GB，ffmpeg 已在基础工具链思路内重装）------
+FROM ${BASE} AS variant-manim
+ARG APT_MIRROR=mirrors.tuna.tsinghua.edu.cn
+ARG PIP_INDEX_URL=https://mirrors.aliyun.com/pypi/simple/
+ARG PIP_TRUSTED_HOST=mirrors.aliyun.com
+RUN set -eu; \
+    if [ -n "$APT_MIRROR" ]; then \
+        sed -i "s|http://deb.debian.org|http://${APT_MIRROR}|g" /etc/apt/sources.list.d/debian.sources; \
+    fi; \
+    apt-get update; \
+    apt-get install -y --no-install-recommends texlive-full fonts-noto-cjk ffmpeg; \
+    pip_src=""; \
+    if [ -n "$PIP_INDEX_URL" ]; then \
+        pip_src="--index-url $PIP_INDEX_URL"; \
+        if [ -n "$PIP_TRUSTED_HOST" ]; then \
+            pip_src="$pip_src --trusted-host $PIP_TRUSTED_HOST"; \
+        fi; \
+    fi; \
+    python -m pip install --no-cache-dir $pip_src manim; \
+    rm -rf /var/lib/apt/lists/*; \
+    test -x /bin/bash -o -x /usr/bin/bash; \
+    command -v ffmpeg >/dev/null; \
+    echo "manim variant OK: $(python -V) / $(ffmpeg -version | head -1)"

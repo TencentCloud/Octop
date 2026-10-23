@@ -324,3 +324,58 @@ Harness 侧只认调用方传入的 ``workspace_dir``；Docker 默认把它镜�
 - storage backend 浏览 API 支持 docker kind（`previewable` 时）；探测走 test id 沙箱
 - Admin「支持类型」页的 Docker 卡片可配置沙箱镜像；打开配置抽屉后可探测本机 Docker，并提供一键安装 / 复制脚本 / 安装提示词
 
+### 13.1 镜像升级与容器换代（沙箱管理）
+
+容器创建后，harness 按**名字复用**已存在的容器：改配置里的 `image` 或
+`allow_network` 对运行中的容器**不生效**。镜像 / 网络的变更生效流程
+（台账 + 漂移检测 + 一键重建，详见 `docs/sandbox-image-management.md`）：
+
+1. 改配置：`image` 指向新 tag（永远用新 tag，禁止同名覆盖 / `latest`）；
+   `allow_network` 开关联网；
+2. 重建容器：「管理 → 存储 → 沙箱容器」面板（或 `octop sandbox recreate <container>`）
+   一键执行：备份容器工作区到宿主 `{AGENTBUDDY_HOME}/sandbox-backups/<container>/<时间戳>/`
+   → 校验期望镜像存在 → 删除容器；下次对话自动按新配置重建；
+   关联专家有进行中对话时拒绝（409 `SANDBOX_IN_USE`）；
+3. 验证：沙箱面板的镜像列 / 网络列显示 `DRIFT` / `NETWORK-DRIFT`，重建后恢复 `OK`。
+
+数据边界：sessions / memory / checkpoints 在宿主 `workspace_dir`，换代不受影响；
+容器可写层里的工作区内容文件由备份兜底；容器内 pip/npm 安装的依赖随容器删除
+（这正是换代 / 收回网络权限的目的之一）。
+
+### 13.2 技能依赖与镜像白名单（分层镜像）
+
+沙箱默认离线（`allow_network=false`），技能只能用镜像里已有的依赖。harness 内置技能
+（`octop_harness/builtin/skills/{en,zh}/`，24 个）按依赖分四档：
+
+| 档 | 技能 | 处理 |
+|---|---|---|
+| 零依赖（13 个） | plan、skill-creator、docker-management、memory-management、systematic-debugging、using-workspace、watchers、architecture-diagram、install-skill、apple-notes/reminders/findmy/imessage（macOS 本机技能，docker 沙箱不适用） | 无需处理 |
+| 轻依赖 | ocr-and-documents（pymupdf4llm）、powerpoint（markitdown/Pillow/pptxgenjs）、ascii-art（pyfiglet/cowsay）、mcporter、llm-wiki（obsidian-headless） | **基础镜像白名单已含**（SKILL_PIP_PKGS / SKILL_NPM_PKGS / apt cowsay，`docker/Dockerfile.sandbox`）；llm-wiki 需联网，离线不适用 |
+| 中依赖 | ascii-video（numpy✅/scipy 可选/Pillow✅） | numpy/Pillow 已进白名单；scipy 仅音频模式需要，未烤 |
+| 重依赖 | jupyter-live-kernel（jupyterlab 全家桶）、manim-video（manim + texlive-full） | **分层镜像变体**，不进基础镜像 |
+
+**分层镜像变体**（重依赖按需构建、按专家分配，backend 的 `image` 字段选择）：
+
+```
+docker build -f docker/Dockerfile.sandbox -t agentbuddy-sandbox:<ver> .                # 基础
+docker build -f docker/Dockerfile.sandbox --target variant-jupyter \
+  -t agentbuddy-sandbox:<ver>-jupyter .                                                # jupyter 全家桶
+docker build -f docker/Dockerfile.sandbox --target variant-manim \
+  -t agentbuddy-sandbox:<ver>-manim .                                                  # manim + texlive-full
+```
+
+- 基础镜像是默认构建输出（不传 `--target`）；变体阶段显式 `--target` 选择；
+- 变体选择 = 存储管理界面建多个 docker 后端行（各自 `config_json.image` 指向不同 tag），
+  专家创建时分配；或 agent 内联 `config.backend.image`；改 image 后需 recreate 生效（§13.1）；
+- 永远新 tag、禁止同名覆盖（`docs/sandbox-image-management.md` §5.2 纪律）。
+
+**技能禁用（裁剪）**：粒度 = 每 agent 的 `config_json.skills_disabled`（slug 列表）：
+
+- CLI：`octop skills disable <技能名> --agent <agent_id>`（逐 agent）；
+- 界面/API：技能列表 enabled 开关（`persist_skills_disabled` 热同步，无需重建容器）；
+- 无跨 agent 的全局开关：新建专家时不勾选 + 已有的用 CLI/API 逐个 disable；
+  （2026-10-23 定案：**不做部署级 `skills_disabled_default`**，维持现状靠管理纪律。）
+- **禁用而非删源码**（定案）：harness 内置技能不删，升级 resync 回来也无妨；禁用可逆、按部署环境定制。
+  政务环境建议禁用：apple-notes / apple-reminders / findmy / imessage（macOS 本机 API，
+  docker 沙箱永远跑不了）、nano-pdf（需 LLM API key，离线不可用）、marker-pdf（PyTorch ~5GB，
+  有 pymupdf 轻路径兜底）、llm-wiki（需联网）。
