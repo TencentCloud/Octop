@@ -130,6 +130,7 @@ class ExpertSummary:
     color: str | None = None
     quick_prompts: tuple[ExpertQuickPrompt, ...] = ()
     task_examples: dict[str, list[str]] | None = None
+    scene: str = ""
 
 
 @dataclass(frozen=True)
@@ -484,6 +485,14 @@ def resolve_expert_icon_url(
     return None
 
 
+def _catalog_scene(data: dict[str, Any]) -> str:
+    """Market scene used to group a bundled template. Empty when unclassified."""
+    scene = str(data.get("scene") or "").strip()
+    if scene:
+        return scene
+    return _manifest_scene(data) or ""
+
+
 def _manifest_scene(data: dict[str, Any]) -> str | None:
     source = data.get("source")
     if isinstance(source, dict):
@@ -814,6 +823,7 @@ class ExpertCatalog:
                     color=data.get("color"),
                     quick_prompts=_parse_quick_prompts(data),
                     task_examples=normalize_task_examples_for_display(parse_task_examples(data)),
+                    scene=_catalog_scene(data),
                 )
                 # Primary library wins on id collision; market cache fills gaps.
                 if ex_id in out and not from_primary:

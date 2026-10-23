@@ -857,7 +857,7 @@
     "filterEmpty": "Nothing matches the current filters",
     "totalLibrary": "{{count}} built-in expert(s)",
     "totalMarket": "{{count}} market expert(s)",
-    "addFromLibrary": "+ Add from Built-in",
+    "addFromLibrary": "+ New from Built-in Template",
     "newExpert": "New expert",
     "emptyMyExperts": "No experts yet",
     "emptyMyExpertsHint": "Create a new expert, or pick a template from Built-in Experts or the Expert Market.",

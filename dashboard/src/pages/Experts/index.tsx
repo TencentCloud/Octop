@@ -89,6 +89,25 @@ async function fetchPublishedExperts(): Promise<PublishedExpert[]> {
   return publishedExpertsApi.list();
 }
 
+const LIBRARY_SCENE_ORDER = [
+  "ecommerce",
+  "finance",
+  "content-creation",
+  "lifestyle",
+  "marketing",
+  "mysticism",
+  "academic",
+  "legal",
+  "tech",
+  "education",
+  "healthcare",
+  "hr",
+  "media",
+  "design",
+] as const;
+
+const LIBRARY_SCENE_ALL = "";
+
 function textMatchesQuery(
   query: string,
   ...parts: Array<string | null | undefined>
@@ -182,6 +201,7 @@ export default function ExpertsPage() {
   // ── Built-in expert library ────────────────────────────────────
   const [experts, setExperts] = useState<ExpertSummary[]>([]);
   const [expertLoading, setExpertLoading] = useState(false);
+  const [libraryScene, setLibraryScene] = useState(LIBRARY_SCENE_ALL);
   const [publishedExperts, setPublishedExperts] = useState<PublishedExpert[]>(
     [],
   );
@@ -729,10 +749,20 @@ export default function ExpertsPage() {
       ),
     [publishedExperts, searchNeedle],
   );
+  const libraryScenes = useMemo(() => {
+    const present = new Set(
+      experts.map((expert) => (expert.scene || "").trim()).filter(Boolean),
+    );
+    return LIBRARY_SCENE_ORDER.filter((scene) => present.has(scene));
+  }, [experts]);
   const visibleLibraryExperts = useMemo(
     () =>
-      experts.filter((expert) =>
-        textMatchesQuery(
+      experts.filter((expert) => {
+        const scene = (expert.scene || "").trim();
+        if (!searchNeedle && libraryScene && scene !== libraryScene) {
+          return false;
+        }
+        return textMatchesQuery(
           searchNeedle,
           expert.id,
           pickLocale(expert.label, lang),
@@ -741,9 +771,10 @@ export default function ExpertsPage() {
           pickLocale(expert.description, lang),
           expert.description?.zh,
           expert.description?.en,
-        ),
-      ),
-    [experts, lang, searchNeedle],
+          scene ? t(`experts.scenes.${scene}`, { defaultValue: scene }) : "",
+        );
+      }),
+    [experts, lang, libraryScene, searchNeedle, t],
   );
 
   const libraryContent = useMemo(() => {
@@ -828,6 +859,27 @@ export default function ExpertsPage() {
             {t("experts.published.emptyHint")}
           </p>
         )}
+        {!searchNeedle && libraryScenes.length > 0 && (
+          <div className={styles.marketSceneTabsWrap}>
+            <Segmented
+              block
+              size="large"
+              value={libraryScene}
+              onChange={(value) => setLibraryScene(String(value))}
+              options={[
+                {
+                  value: LIBRARY_SCENE_ALL,
+                  label: t("experts.sceneAll"),
+                },
+                ...libraryScenes.map((scene) => ({
+                  value: scene,
+                  label: t(`experts.scenes.${scene}`, { defaultValue: scene }),
+                })),
+              ]}
+              className={styles.marketSceneTabs}
+            />
+          </div>
+        )}
         {visibleLibraryExperts.length === 0 ? (
           <div className={styles.searchEmpty}>{t("experts.searchEmpty")}</div>
         ) : (
@@ -853,10 +905,13 @@ export default function ExpertsPage() {
     expertLoading,
     experts,
     lang,
+    libraryScene,
+    libraryScenes,
     publishedExpertLoading,
     publishedExperts,
     refreshButton,
     refreshPublishedExperts,
+    searchNeedle,
     t,
     toolbarSearch,
     visibleLibraryExperts,

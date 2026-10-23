@@ -1,5 +1,6 @@
 {
   "id": "productivity",
+  "scene": "hr",
   "label": {
     "zh": "效率专家",
     "en": "Productivity Expert"
@@ -34,27 +35,27 @@
   "quick_prompts": [
     {
       "title": {
-        "zh": "初始化",
-        "en": "Initialize"
+        "zh": "初始化任务",
+        "en": "Initialize tasks"
       },
       "description": {
-        "zh": "建立任务清单与工作记忆",
-        "en": "Set up the task list and workplace memory"
+        "zh": "建立任务清单，并了解角色和优先级",
+        "en": "Set up the task list, role, and priorities"
       },
       "prompt": {
         "zh": "初始化我的任务清单和工作记忆，先问我几个问题了解我的角色和优先级",
         "en": "Initialize my tasks and memory — ask about my role and priorities first"
       },
-      "color": "#dcfce7",
+      "color": "#e8f4ff",
       "icon_name": "zap"
     },
     {
       "title": {
-        "zh": "记任务",
+        "zh": "记录待办",
         "en": "Add tasks"
       },
       "description": {
-        "zh": "自然语言一次记多条",
+        "zh": "用一句话一次记下多条任务",
         "en": "Several tasks in one natural sentence"
       },
       "prompt": {
@@ -62,7 +63,7 @@
         "en": "Add these tasks: budget review by Friday, Q2 roadmap after syncing, follow up on the API spec"
       },
       "color": "#dcfce7",
-      "icon_name": "zap"
+      "icon_name": "list-todo"
     },
     {
       "title": {
@@ -77,8 +78,56 @@
         "zh": "做一次全面梳理：清理过期任务、检查记忆缺口",
         "en": "Do a full sweep: triage stale tasks and fill memory gaps"
       },
-      "color": "#dcfce7",
-      "icon_name": "zap"
+      "color": "#fef3c7",
+      "icon_name": "refresh-cw"
+    },
+    {
+      "title": {
+        "zh": "记住同事",
+        "en": "Remember people"
+      },
+      "description": {
+        "zh": "记下同事、项目和内部说法",
+        "en": "Save people, projects, and shorthand"
+      },
+      "prompt": {
+        "zh": "请把这些人和项目记进工作记忆。之后我用简称时直接对应，不要再问是谁：\n\n",
+        "en": "Save these people and projects in workplace memory. Next time I use a shorthand, map it without asking who they are:\n\n"
+      },
+      "color": "#f3e8ff",
+      "icon_name": "users"
+    },
+    {
+      "title": {
+        "zh": "任务看板",
+        "en": "Task board"
+      },
+      "description": {
+        "zh": "按状态把当前待办整理成看板",
+        "en": "Group current tasks into a board"
+      },
+      "prompt": {
+        "zh": "请根据当前任务清单做一块看板：按状态分组，标出过期项和今天该做的事。",
+        "en": "Build a board from the current task list: group by status, and mark what's overdue and what's due today."
+      },
+      "color": "#eef2ff",
+      "icon_name": "presentation"
+    },
+    {
+      "title": {
+        "zh": "同步待办",
+        "en": "Sync todos"
+      },
+      "description": {
+        "zh": "从聊天或邮件里收进新待办",
+        "en": "Pull new todos out of chat or email"
+      },
+      "prompt": {
+        "zh": "请从我贴出的聊天或邮件里抽出新待办，补进任务清单，并标出还缺负责人或截止日期的条目：\n\n",
+        "en": "Pull new todos from the chat or email below, add them to the task list, and flag items missing an owner or due date:\n\n"
+      },
+      "color": "#fdf4e7",
+      "icon_name": "mail"
     }
   ],
   "source": {
