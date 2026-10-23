@@ -250,6 +250,32 @@ async def test_prepare_chat_mcp_attaches_gateway_tools_without_reload() -> None:
     mgr._connector_svc.ensure_fresh_credentials.assert_awaited_once_with(instance_id, "qq-mail")
 
 
+@pytest.mark.asyncio
+async def test_wrap_tools_sync_invoke_from_running_loop_uses_locked_coroutine() -> None:
+    """2026-09-07 hardening: sync invoke inside a running loop must take the
+    locked coroutine path, not the raw (unlocked, loop-blocking) sync call.
+
+    The fake returns different values per path, so a regression to the old
+    behaviour (``_tool.invoke`` on the loop thread) fails this assertion.
+    """
+
+    class _FakeTool:
+        name = "demo_tool"
+        description = "demo"
+        args_schema = None
+
+        async def ainvoke(self, *_a: Any, **_k: Any) -> str:
+            await asyncio.sleep(0)
+            return "async-ok"
+
+        def invoke(self, *_a: Any, **_k: Any) -> str:
+            return "sync-stale"
+
+    lock = asyncio.Lock()
+    wrapped = wrap_tools_for_shared_use([_FakeTool()], lock)
+    assert wrapped[0].invoke({}) == "async-ok"
+
+
 def test_wrap_tools_for_shared_use() -> None:
     lock = asyncio.Lock()
     inner = MagicMock()

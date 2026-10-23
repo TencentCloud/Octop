@@ -62,6 +62,26 @@ def test_denied_octop_browser(tmp_path: Path) -> None:
     assert is_allowed_host_download_abs_path(str(path), workspace=tmp_path) is False
 
 
+def test_denied_host_download_other_agent_workspace(tmp_path: Path) -> None:
+    """2026-09-07 hardening: /.octop/agents/ no longer blanket-allowed.
+
+    A path under another agent's workspace used to pass the ownership check,
+    letting a shared/multi-user deployment read across agent workspaces.
+    """
+    agents_root = tmp_path / ".octop" / "agents"
+    mine = agents_root / "agentA" / "workspace"
+    other_secret = agents_root / "agentB" / "workspace" / "notes.txt"
+    other_secret.parent.mkdir(parents=True)
+    other_secret.write_bytes(b"x")
+
+    assert is_allowed_host_download_abs_path(str(other_secret), workspace=mine) is False
+    # The agent's own workspace tree stays allowed (relative_to branch).
+    mine_file = mine / "outbound" / "a.pptx"
+    mine_file.parent.mkdir(parents=True)
+    mine_file.write_bytes(b"x")
+    assert is_allowed_host_download_abs_path(str(mine_file), workspace=mine) is True
+
+
 def test_file_url_windows_drive_decodes_unicode() -> None:
     """file:///C:/… must unquote and match native Path form (Windows CI)."""
     url = "file:///C:/Users/me/out/%E4%BF%9D%E6%8A%A4.pptx"

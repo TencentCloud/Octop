@@ -729,6 +729,83 @@ async def test_custom_mcp_oauth_callback_applies_tokens(env):
     assert body["server_name"] == "my-oauth-mcp"
 
 
+async def test_custom_mcp_oauth_callback_escapes_redirect_in_html(env):
+    """2026-09-07 hardening: redirect_after / state_id are HTML-escaped.
+
+    redirect_after comes from the OAuth start body (user-controlled); the raw
+    value used to be interpolated into a JS string, a self-XSS vector.
+    """
+    c, srv, auth, _ = env
+    user_id = await resolve_user_id(c, auth, "admin")
+
+    put = await c.put(
+        "/api/connectors/custom-mcp",
+        headers=auth,
+        json={
+            "servers": {
+                "my-oauth-mcp": {
+                    "transport": "streamable_http",
+                    "url": "https://mcp.example.com/mcp",
+                    "enabled": False,
+                }
+            }
+        },
+    )
+    assert put.status_code == 200
+
+    evil_redirect = '/x"></script><script>alert(1)</script>'
+    oauth_state = "test-oauth-state-evil"
+    state_id = new_ulid()
+    srv.services.repos.connector_repo.create_oauth_state(
+        state_id=state_id,
+        state=oauth_state,
+        user_id=user_id,
+        kind=CUSTOM_MCP_KIND,
+        code_verifier="verifier123",
+        redirect_after=evil_redirect,
+    )
+    save_oauth_ctx(
+        srv.services.settings_repo,
+        state_id,
+        {
+            "flow": "custom_mcp",
+            "kind": CUSTOM_MCP_KIND,
+            "server_name": "my-oauth-mcp",
+            "issuer": "https://auth.example.com",
+            "resource": "https://mcp.example.com/mcp",
+            "client_id": "cid",
+            "client_secret": None,
+            "redirect_uri": "http://testserver/api/connectors/oauth/callback",
+            "metadata": {
+                "authorization_endpoint": "https://auth.example.com/authorize",
+                "token_endpoint": "https://auth.example.com/token",
+            },
+        },
+    )
+
+    with patch(
+        "octop.api.routers.connectors.exchange_oauth_code",
+        new_callable=AsyncMock,
+        return_value={
+            "access_token": "new-access-token",
+            "refresh_token": "refresh-tok",
+            "expires_at": 9_999_999_999,
+        },
+    ):
+        callback = await c.get(
+            f"/api/connectors/oauth/callback?code=authcode&state={oauth_state}",
+            follow_redirects=False,
+        )
+    assert callback.status_code == 200
+    assert "octop:connector-oauth" in callback.text
+    # The payload is neutralized: no raw tag can break out of the JS string or
+    # terminate the script element. The redirect is encoded with json.dumps +
+    # \u003c escaping (covers quotes / backslashes / newlines too, which plain
+    # HTML entities would not inside a JS string literal).
+    assert "</script><script>alert(1)</script>" not in callback.text
+    assert "\\u003c/script" in callback.text
+
+
 async def test_custom_mcp_oauth_start_unified(env):
     c, _, auth, _ = env
     put = await c.put(
