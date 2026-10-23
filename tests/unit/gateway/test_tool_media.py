@@ -72,6 +72,66 @@ def test_iter_media_blocks_supports_workbuddy_generation_envelopes() -> None:
 
 
 @pytest.mark.asyncio
+async def test_generated_image_im_media_reads_workspace_relative_file() -> None:
+    from octop_gateway.models import ImageContent
+
+    from octop.infra.gateway.media.tool_media import media_events_from_tool_result
+
+    with tempfile.TemporaryDirectory() as root:
+        workspace = _workspace(root)
+        await workspace.aupload_bytes("generated/images/a.png", b"image-bytes")
+        content = json.dumps(
+            {
+                "type": "image_gen_tool_result",
+                "images": [
+                    {
+                        "path": "generated/images/a.png",
+                        "localPath": "/private/do-not-expose.png",
+                        "mediaType": "image/png",
+                    }
+                ],
+            }
+        )
+        events = [
+            event
+            async for event in media_events_from_tool_result(
+                {"messages": [{"name": "generate_image", "content": content}]},
+                workspace=workspace,
+            )
+        ]
+
+    assert len(events) == 1
+    part = events[0].content[0]
+    assert isinstance(part, ImageContent)
+    assert part.data == "aW1hZ2UtYnl0ZXM="
+    assert not part.url
+    assert not part.local_path
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("path", ["generated/images/missing.png", "../secret.png"])
+async def test_generated_image_im_media_never_pushes_unreadable_path(path: str) -> None:
+    from octop.infra.gateway.media.tool_media import media_events_from_tool_result
+
+    with tempfile.TemporaryDirectory() as root:
+        workspace = _workspace(root)
+        content = json.dumps(
+            {
+                "type": "image_gen_tool_result",
+                "images": [{"path": path, "mediaType": "image/png"}],
+            }
+        )
+        events = [
+            event
+            async for event in media_events_from_tool_result(
+                {"messages": [{"name": "generate_image", "content": content}]},
+                workspace=workspace,
+            )
+        ]
+    assert events == []
+
+
+@pytest.mark.asyncio
 async def test_workspace_roundtrip() -> None:
     with tempfile.TemporaryDirectory() as ws:
         workspace = _workspace(ws)
