@@ -4,26 +4,38 @@ name: Build Octop FPK
 #
 # 触发：
 #   - Release 工作流在 GitHub Release（v*）创建成功后自动 dispatch（推荐）
-#   - 亦可手动 workflow_dispatch（需对应版本镜像已在 GHCR，且 v* Release 已存在）
+#   - 手动 workflow_dispatch：
+#       temporary=false（默认）：需对应版本镜像已在 GHCR，且 v* Release 已存在
+#       temporary=true：从当前分支打临时包。产物只留在本次 Actions artifact，
+#         文件名带 tmp-<shortsha>。不构建、不推送 Docker 镜像，也不等待 GHCR。
+#         不挂 Release，不上传 COS。Native 始终用当前源码构建 wheel。
+#         Docker 版 .fpk 仍只打包 compose，标签指向
+#         ghcr.io/tencentcloud/octop:{version}；本工作流不会把镜像推到 GHCR / Docker Hub。
 #
-# 制品复用：
+# 制品复用（仅 temporary=false）：
 #   - Docker 镜像：不再重建，等待 docker-publish 推送的
-#     ghcr.io/tencentcloud/octop:{version|latest}
+#     ghcr.io/tencentcloud/octop:{version|latest}。本工作流从不 push。
 #   - Native wheel：优先从同版本 GitHub Release（v*）下载；
 #     缺失时再回退到本仓源码构建
 #   - fnpack：fpk / native 用 Actions cache 复用 .verify/fnpack（key 含 FNPACK_VERSION）
 #   - 产物挂到同一个 v* GitHub Release（与 wheel / 桌面包并列），不再单独打 fnos-* tag
 #
 # Jobs：
-#   version → ensure-image → fpk（Docker 版 .fpk，仅打包 compose；镜像已是 amd64+arm64）
+#   version → ensure-image（temporary 时跳过）→ fpk（Docker 版 .fpk，仅打包 compose）
 #           ↘ native（amd64 本地版 Octop-fnos-native-amd64-*.fpk）
 #           ↘ native-arm64（ubuntu-24.04-arm 装 aarch64 site-packages）
 #             → native-arm64-pack（amd64 上用 fnpack 打 Octop-fnos-native-arm64-*.fpk）
-#           → release（把 .fpk 挂到已有的 v* GitHub Release）
-#           → upload-cos（把已挂上的 Octop-fnos-*.fpk 上传到 COS octop/release/<version>/）
+#           → release（temporary 时跳过；否则把 .fpk 挂到已有的 v* GitHub Release）
+#           → upload-cos（temporary 时跳过；否则上传到 COS octop/release/<version>/）
 
 on:
   workflow_dispatch:
+    inputs:
+      temporary:
+        description: "临时包：当前分支打包为 Actions artifact，不推送 Docker、不挂 Release、不上传 COS"
+        required: false
+        default: false
+        type: boolean
 
 permissions:
   contents: write
@@ -74,8 +86,10 @@ jobs:
           echo "[version] VER=$VER, TAG=v${VER}"
 
   # 复用 docker-publish 已推送的镜像，不在此重新 build/push。
+  # temporary 包不依赖、也不发布镜像，跳过等待。
   ensure-image:
     needs: version
+    if: inputs.temporary != true
     runs-on: ubuntu-latest
     outputs:
       lite: ${{ steps.wait.outputs.lite }}
@@ -135,6 +149,10 @@ jobs:
 
   fpk:
     needs: [ensure-image, version]
+    if: >-
+      always() &&
+      needs.version.result == 'success' &&
+      (inputs.temporary == true || needs.ensure-image.result == 'success')
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -148,11 +166,16 @@ jobs:
           path: .verify/fnpack
           key: fnpack-${{ env.FNPACK_VERSION }}-linux-amd64
 
+      - name: Mark temporary package suffix
+        if: inputs.temporary
+        run: echo "FPK_ITER=tmp-${GITHUB_SHA::7}" >> "$GITHUB_ENV"
+
       - name: Build Docker FPKs
         env:
           FPK_NAME_PREFIX: Octop-fnos
           LITE: ${{ needs.ensure-image.outputs.lite }}
         run: |
+          echo "temporary=${{ inputs.temporary }}; this workflow does not push images"
           bash scripts/build-fpk.sh docker
           if [ "$LITE" = "true" ]; then
             bash scripts/build-fpk.sh docker-lite
@@ -187,6 +210,7 @@ jobs:
 
       - name: Try download wheel from GitHub Release
         id: wheel
+        if: inputs.temporary != true
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           VER: ${{ needs.version.outputs.version }}
@@ -210,7 +234,7 @@ jobs:
           python-version: "3.12"
 
       - name: Set up Node.js 20 (frontend build)
-        if: steps.wheel.outputs.source == 'build'
+        if: inputs.temporary == true || steps.wheel.outputs.source == 'build'
         uses: actions/setup-node@v4
         with:
           node-version: "20"
@@ -218,7 +242,7 @@ jobs:
           cache-dependency-path: dashboard/package-lock.json
 
       - name: Build Octop wheel from current source
-        if: steps.wheel.outputs.source == 'build'
+        if: inputs.temporary == true || steps.wheel.outputs.source == 'build'
         run: |
           set -e
           echo "=== build frontend ==="
@@ -268,6 +292,10 @@ jobs:
               -c "import octop, mcp, langchain_mcp_adapters; from octop.launch import run_foreground_blocking; from octop_harness.backends.storage_errors import classify_storage_error; print('octop', octop.__version__, '| mcp', mcp.__name__, '| lcma', langchain_mcp_adapters.__name__, '| storage_errors', classify_storage_error.__name__)"
           } 2>&1 | tee -a "$LOG"
 
+      - name: Mark temporary package suffix
+        if: inputs.temporary
+        run: echo "FPK_ITER=tmp-${GITHUB_SHA::7}" >> "$GITHUB_ENV"
+
       - name: Build native FPK
         id: build_native
         env:
@@ -308,6 +336,7 @@ jobs:
 
       - name: Try download wheel from GitHub Release
         id: wheel
+        if: inputs.temporary != true
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           VER: ${{ needs.version.outputs.version }}
@@ -331,7 +360,7 @@ jobs:
           python-version: "3.12"
 
       - name: Set up Node.js 20 (frontend build)
-        if: steps.wheel.outputs.source == 'build'
+        if: inputs.temporary == true || steps.wheel.outputs.source == 'build'
         uses: actions/setup-node@v4
         with:
           node-version: "20"
@@ -339,7 +368,7 @@ jobs:
           cache-dependency-path: dashboard/package-lock.json
 
       - name: Build Octop wheel from current source
-        if: steps.wheel.outputs.source == 'build'
+        if: inputs.temporary == true || steps.wheel.outputs.source == 'build'
         run: |
           set -e
           echo "=== build frontend ==="
@@ -432,6 +461,10 @@ jobs:
           name: native-arm64-site-packages
           path: fnos/native/app/site-packages
 
+      - name: Mark temporary package suffix
+        if: inputs.temporary
+        run: echo "FPK_ITER=tmp-${GITHUB_SHA::7}" >> "$GITHUB_ENV"
+
       - name: Build native ARM64 FPK
         env:
           FPK_NAME_PREFIX: Octop-fnos
@@ -453,7 +486,8 @@ jobs:
 
   release:
     # 任一架构没打出来时仍运行，把已经打好的 .fpk 挂到 Release。
-    if: always()
+    # temporary 包只留在本次 Actions artifact，不挂 Release，因此也不会进 COS。
+    if: always() && inputs.temporary != true
     needs: [fpk, native, native-arm64-pack, version]
     runs-on: ubuntu-latest
     steps:

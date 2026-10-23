@@ -83,10 +83,11 @@ fnos/
 
 ## 工作机制
 
-1. **发版链路**：`v*` tag → `release.yml`（PyPI + GitHub Release）与 `docker-publish.yml`（GHCR / Hub）并行；Release 成功后自动 `workflow_dispatch` 本工作流。
-2. **镜像复用**：不再重新 build 镜像。`ensure-image` 等待完整版 `ghcr.io/tencentcloud/octop:{version}`。精简版 `:{version}-lite` 只有 amd64 和 arm64 都推送成功才会出现；缺了它仍会打完整版飞牛包，并在 Release 下载区去掉对应链接。
-3. **Wheel 复用**：Native 版优先从同版本 GitHub Release（`v*`）下载 `octop-*.whl`；若缺失再回退源码构建前端 + wheel。
-4. **安装包构建**：`fpk` / `native` / `native-arm64` job 用 `scripts/build-fpk.sh` 打包。官方 fnpack 只有 linux-amd64，ARM 本地版先在 `ubuntu-24.04-arm` 上装好 aarch64 `site-packages`，再回到 amd64 runner 打包。产物挂到同一个 `v*` GitHub Release（与 wheel、桌面包并列）。
+1. **发版链路**：`v*` tag → `release.yml`（PyPI + GitHub Release）与 `docker-publish.yml`（GHCR / Hub）并行；Release 成功后自动 `workflow_dispatch` 本工作流（`temporary=false`）。
+2. **镜像复用**：本工作流从不 push 镜像。正式包由 `ensure-image` 等待完整版 `ghcr.io/tencentcloud/octop:{version}`。精简版 `:{version}-lite` 只有 amd64 和 arm64 都推送成功才会出现；缺了它仍会打完整版飞牛包，并在 Release 下载区去掉对应链接。
+3. **Wheel 复用**：正式包的 Native 版优先从同版本 GitHub Release（`v*`）下载 `octop-*.whl`；若缺失再回退源码构建前端 + wheel。
+4. **安装包构建**：`fpk` / `native` / `native-arm64` job 用 `scripts/build-fpk.sh` 打包。官方 fnpack 只有 linux-amd64，ARM 本地版先在 `ubuntu-24.04-arm` 上装好 aarch64 `site-packages`，再回到 amd64 runner 打包。正式包挂到同一个 `v*` GitHub Release（与 wheel、桌面包并列）。
+5. **临时包**：手动 Run workflow 勾选 `temporary`。从当前分支打 `.fpk`，文件名带 `tmp-<shortsha>`，只出现在该次 Actions artifact。不推送 Docker、不等待 GHCR、不挂 Release、不上传 COS。Native 用当前源码构建 wheel。Docker 版 `.fpk` 仍指向 `ghcr.io/tencentcloud/octop:{version}`，飞牛上要能拉到该标签才能跑。精简版只在正式包且 lite 镜像已发布时构建。
 
 ## 本地构建 .fpk（无需 Docker）
 
