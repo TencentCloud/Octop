@@ -19,6 +19,7 @@ from octop.infra.db.repos.care_push import CarePushRepo
 from octop.infra.db.repos.channels import ChannelRepo
 from octop.infra.db.repos.connectors import ConnectorRepo
 from octop.infra.db.repos.cron import CronJobRepo
+from octop.infra.db.repos.hitl_pending import HitlPendingRepo
 from octop.infra.db.repos.invites import InviteRepo
 from octop.infra.db.repos.knowledge import KnowledgeRepo
 from octop.infra.db.repos.proactive_care_config import ProactiveCareConfigRepo
@@ -53,6 +54,7 @@ class RepoBundle:
     provider_repo: SealedProviderRepo
     channel_repo: ChannelRepo
     cron_repo: CronJobRepo
+    hitl_pending_repo: HitlPendingRepo
     session_repo: SessionRepo
     thread_repo: ThreadRepo
     thread_message_repo: ThreadMessageRepo
@@ -87,6 +89,7 @@ class RepoBundle:
             provider_repo=SealedProviderRepo(ProviderRepo(db), secret_repo),
             channel_repo=ChannelRepo(db),
             cron_repo=CronJobRepo(db),
+            hitl_pending_repo=HitlPendingRepo(db),
             session_repo=SessionRepo(db),
             thread_repo=ThreadRepo(db),
             thread_message_repo=ThreadMessageRepo(db),
@@ -148,6 +151,10 @@ class SharedServices:
     @property
     def cron_repo(self) -> CronJobRepo:
         return self.repos.cron_repo
+
+    @property
+    def hitl_pending_repo(self) -> HitlPendingRepo:
+        return self.repos.hitl_pending_repo
 
     @property
     def session_repo(self) -> SessionRepo:
