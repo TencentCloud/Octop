@@ -208,6 +208,7 @@ export function retainDisconnectedBridgeAgents<T extends BridgeShadowAgent>(
   prev: T[],
   next: T[],
   liveConnectionIds: ReadonlySet<string>,
+  resolvedConnectionIds: ReadonlySet<string> = new Set(),
 ): T[] {
   const connectedConnIds = new Set(
     next
@@ -221,6 +222,7 @@ export function retainDisconnectedBridgeAgents<T extends BridgeShadowAgent>(
       if (!agent.bridge || !conn) return false;
       if (!liveConnectionIds.has(conn)) return false;
       if (connectedConnIds.has(conn)) return false;
+      if (resolvedConnectionIds.has(conn)) return false;
       return !nextIds.has(agent.agent_id);
     })
     .map((agent) => ({
@@ -234,3 +236,4 @@ export function retainDisconnectedBridgeAgents<T extends BridgeShadowAgent>(
     .map((agent) => ({ ...agent, bridge_disconnected: false }));
   return [...locals, ...remotes, ...stale];
 }
+
