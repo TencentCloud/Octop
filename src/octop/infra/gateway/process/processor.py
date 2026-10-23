@@ -85,6 +85,7 @@ from octop.infra.users.preferences import (
     get_model_reasoning_from_json,
     get_preferred_model_from_json,
 )
+from octop.infra.utils.aiter import aclose
 from octop.infra.utils.locale import resolve_user_locale
 from octop.infra.utils.turn_failure import log_failed_tool_results, log_turn_failure
 from octop.infra.utils.ulid import new_ulid
@@ -880,25 +881,26 @@ class GlobalProcessor:
         usage_tracker = UsageTracker()
         history_tracker = await self._begin_history(agent_id, thread_id, request)
         projection_state = StreamProjectionState()
+        projected = project_stream(
+            self._agent_manager,
+            agent_id,
+            request,
+            media_backend=media_backend,
+            usage_tracker=usage_tracker,
+            history_tracker=history_tracker,
+            locale=locale,
+            projection_state=projection_state,
+            hitl_coordinator=self._hitl,
+            hitl_ctx=HitlStreamContext(
+                thread_id=thread_id,
+                agent_id=agent_id,
+                user_id=user_id,
+                session_key=session_key,
+                channel_type=channel_type,
+            ),
+        )
         try:
-            async for ev in project_stream(
-                self._agent_manager,
-                agent_id,
-                request,
-                media_backend=media_backend,
-                usage_tracker=usage_tracker,
-                history_tracker=history_tracker,
-                locale=locale,
-                projection_state=projection_state,
-                hitl_coordinator=self._hitl,
-                hitl_ctx=HitlStreamContext(
-                    thread_id=thread_id,
-                    agent_id=agent_id,
-                    user_id=user_id,
-                    session_key=session_key,
-                    channel_type=channel_type,
-                ),
-            ):
+            async for ev in projected:
                 yield ev
             stream_ok = True
             hitl_paused = projection_state.hitl_paused
@@ -936,6 +938,7 @@ class GlobalProcessor:
                         content=[TextContent(text=hint)],
                     )
         finally:
+            await aclose(projected)
             if not failure_saved and (not stream_ok and not hitl_paused):
                 await self._persist_incomplete_turn(
                     thread_id, history_tracker, title_source=msg.text
@@ -1197,15 +1200,16 @@ class GlobalProcessor:
         emitted_attachment_keys: set[str] = set()
         emitted_tool_error_ids: set[str] = set()
 
+        turn = iter_with_session_auto_approve(
+            self._agent_manager.stream(agent_id, request),
+            thread_id=thread_id,
+            policies=self._hitl.session_policies,
+            resume=lambda next_decisions: self._agent_manager.resume_hitl(
+                agent_id, thread_id, next_decisions
+            ),
+        )
         try:
-            async for chunk in iter_with_session_auto_approve(
-                self._agent_manager.stream(agent_id, request),
-                thread_id=thread_id,
-                policies=self._hitl.session_policies,
-                resume=lambda next_decisions: self._agent_manager.resume_hitl(
-                    agent_id, thread_id, next_decisions
-                ),
-            ):
+            async for chunk in turn:
                 usage_tracker.observe(chunk)
                 history_tracker.observe(chunk)
                 from octop.infra.history.recorder import flush_tracker  # noqa: PLC0415
@@ -1291,6 +1295,7 @@ class GlobalProcessor:
             failure_saved = True
             yield _maybe_stamp_team_host(payload, agent_id, team_host)
         finally:
+            await aclose(turn)
             self._finish_trajectory(thread_id=thread_id, usage=usage_tracker.usage, enabled=traj_on)
             if not failure_saved and not stream_ok:
                 await self._persist_incomplete_turn(
@@ -1326,19 +1331,20 @@ class GlobalProcessor:
         team_host = is_team_agent(self._agent_manager.get_row(agent_id))
         saw_tool_call = False
         emitted_tool_error_ids: set[str] = set()
+        turn = iter_with_session_auto_approve(
+            self._agent_manager.resume_hitl(
+                agent_id,
+                thread_id,
+                decisions,
+            ),
+            thread_id=thread_id,
+            policies=self._hitl.session_policies,
+            resume=lambda next_decisions: self._agent_manager.resume_hitl(
+                agent_id, thread_id, next_decisions
+            ),
+        )
         try:
-            async for chunk in iter_with_session_auto_approve(
-                self._agent_manager.resume_hitl(
-                    agent_id,
-                    thread_id,
-                    decisions,
-                ),
-                thread_id=thread_id,
-                policies=self._hitl.session_policies,
-                resume=lambda next_decisions: self._agent_manager.resume_hitl(
-                    agent_id, thread_id, next_decisions
-                ),
-            ):
+            async for chunk in turn:
                 usage_tracker.observe(chunk)
                 history_tracker.observe(chunk)
                 from octop.infra.history.recorder import flush_tracker  # noqa: PLC0415
@@ -1380,6 +1386,7 @@ class GlobalProcessor:
             failure_saved = True
             yield _maybe_stamp_team_host(payload, agent_id, team_host)
         finally:
+            await aclose(turn)
             self._finish_trajectory(thread_id=thread_id, usage=usage_tracker.usage, enabled=traj_on)
             if not failure_saved and not completed:
                 await self._persist_incomplete_turn(thread_id, history_tracker, title_source=None)

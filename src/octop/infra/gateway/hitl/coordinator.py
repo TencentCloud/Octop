@@ -24,6 +24,7 @@ from octop.infra.gateway.hitl.store import HitlPendingRecord, HitlPendingStore
 from octop.infra.gateway.process.usage_record import UsageTracker
 from octop.infra.gateway.slash.ctx import ensure_thread_id
 from octop.infra.gateway.slash.formatting import markdown_bullets
+from octop.infra.utils.aiter import aclose
 from octop.infra.utils.locale import Locale, normalize_locale
 
 if TYPE_CHECKING:
@@ -145,6 +146,8 @@ async def iter_with_session_auto_approve(
             _log.exception("session auto-approve resume failed thread=%s", thread_id)
             yield card
             return
+        finally:
+            await aclose(source)
         if decisions is None:
             return
         carried = held

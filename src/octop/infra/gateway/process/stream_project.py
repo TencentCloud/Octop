@@ -19,6 +19,7 @@ from octop.infra.gateway.media.tool_media import (
 from octop.infra.gateway.process.agent_resolve import harness_workspace_for_agent
 from octop.infra.gateway.process.usage_record import UsageTracker
 from octop.infra.history.projection import TurnHistoryTracker
+from octop.infra.utils.aiter import aclose
 from octop.infra.utils.locale import DEFAULT_LOCALE, Locale, normalize_locale
 from octop.infra.utils.turn_failure import log_failed_tool_results
 
@@ -114,104 +115,109 @@ async def _project_chunks(
             tool_hint_text=channel_tool_hint_end(label, loc),
         )
 
-    async for chunk in chunks:
-        if usage_tracker is not None:
-            usage_tracker.observe(chunk)
-        if history_tracker is not None:
-            history_tracker.observe(chunk)
-            from octop.infra.history.recorder import flush_tracker  # noqa: PLC0415
+    try:
+        async for chunk in chunks:
+            if usage_tracker is not None:
+                usage_tracker.observe(chunk)
+            if history_tracker is not None:
+                history_tracker.observe(chunk)
+                from octop.infra.history.recorder import flush_tracker  # noqa: PLC0415
 
-            await flush_tracker(history_tracker)
-        ctype: str = chunk.get("type", "")
-        node: str | None = chunk.get("node")
+                await flush_tracker(history_tracker)
+            ctype: str = chunk.get("type", "")
+            node: str | None = chunk.get("node")
 
-        if ctype == "token":
-            if tool_state.current_node is not None and node != tool_state.current_node:
-                yield MessageEvent.flush()
-            tool_state.current_node = node
-            content = chunk.get("content") or ""
-            if content:
-                yield MessageEvent.delta(content)
+            if ctype == "token":
+                if tool_state.current_node is not None and node != tool_state.current_node:
+                    yield MessageEvent.flush()
+                tool_state.current_node = node
+                content = chunk.get("content") or ""
+                if content:
+                    yield MessageEvent.delta(content)
 
-        elif ctype == "reasoning":
-            content = chunk.get("content") or ""
-            if content:
-                yield MessageEvent.thinking_delta(content)
+            elif ctype == "reasoning":
+                content = chunk.get("content") or ""
+                if content:
+                    yield MessageEvent.thinking_delta(content)
 
-        elif ctype == "tool_call_chunk":
-            tool_state.saw_tool_call = True
-            idx_key = f"_idx_{chunk.get('index', 0)}"
-            tool_state.active_tool_idx = idx_key
+            elif ctype == "tool_call_chunk":
+                tool_state.saw_tool_call = True
+                idx_key = f"_idx_{chunk.get('index', 0)}"
+                tool_state.active_tool_idx = idx_key
 
-            name_frag: str = chunk.get("name") or ""
-            args_frag: str = chunk.get("args") or ""
+                name_frag: str = chunk.get("name") or ""
+                args_frag: str = chunk.get("args") or ""
 
-            if name_frag:
-                tool_state.tool_name_buf[idx_key] = (
-                    tool_state.tool_name_buf.get(idx_key, "") + name_frag
+                if name_frag:
+                    tool_state.tool_name_buf[idx_key] = (
+                        tool_state.tool_name_buf.get(idx_key, "") + name_frag
+                    )
+
+                if (
+                    args_frag
+                    and idx_key not in tool_state.tool_started
+                    and tool_state.tool_name_buf.get(idx_key)
+                ):
+                    tool_state.tool_started.add(idx_key)
+                    yield _tool_start(tool_state.tool_name_buf[idx_key])
+
+            elif ctype == "tool_result":
+                log_failed_tool_results(
+                    chunk,
+                    agent_id=agent_id,
+                    thread_id=(hitl_ctx.thread_id if hitl_ctx is not None else ""),
+                    seen=tool_state.emitted_tool_error_ids,
+                    live=tool_state.saw_tool_call,
                 )
-
-            if (
-                args_frag
-                and idx_key not in tool_state.tool_started
-                and tool_state.tool_name_buf.get(idx_key)
-            ):
-                tool_state.tool_started.add(idx_key)
-                yield _tool_start(tool_state.tool_name_buf[idx_key])
-
-        elif ctype == "tool_result":
-            log_failed_tool_results(
-                chunk,
-                agent_id=agent_id,
-                thread_id=(hitl_ctx.thread_id if hitl_ctx is not None else ""),
-                seen=tool_state.emitted_tool_error_ids,
-                live=tool_state.saw_tool_call,
-            )
-            final_name = (
-                tool_state.tool_name_buf.get(tool_state.active_tool_idx or "", "") or "tool"
-            )
-            if tool_state.active_tool_idx is not None:
-                idx = tool_state.active_tool_idx
-                if idx not in tool_state.tool_started:
-                    tool_state.tool_started.add(idx)
-                    yield _tool_start(final_name)
-                yield _tool_end(final_name)
-                tool_state.tool_name_buf.pop(idx, None)
-                tool_state.tool_started.discard(idx)
-                tool_state.active_tool_idx = None
-            if harness_workspace is not None and tool_state.saw_tool_call:
-                chunk_for_media = dedup_tool_result_messages(chunk, tool_state.emitted_media_ids)
-                if chunk_for_media is not None:
-                    async for media_event in media_events_from_tool_result(
-                        chunk_for_media,
-                        workspace=harness_workspace,
-                    ):
-                        yield media_event
-            tool_state.current_node = node
-
-        elif ctype == "hitl_required":
-            request = chunk.get("request")
-            if not isinstance(request, dict):
-                request = {}
-            request = normalize_hitl_request(request)
-            if hitl_coordinator is not None and hitl_ctx is not None:
-                record = hitl_coordinator.register_from_request(request, ctx=hitl_ctx)
-                request["pending_id"] = record.pending_id
-                card = format_hitl_card(
-                    record.action_requests,
-                    pending_id=record.pending_id,
-                    locale=loc,
+                final_name = (
+                    tool_state.tool_name_buf.get(tool_state.active_tool_idx or "", "") or "tool"
                 )
-                if projection_state is not None:
-                    projection_state.hitl_paused = True
-                    projection_state.hitl_pending_id = record.pending_id
-                yield MessageEvent.text(card)
-            return
+                if tool_state.active_tool_idx is not None:
+                    idx = tool_state.active_tool_idx
+                    if idx not in tool_state.tool_started:
+                        tool_state.tool_started.add(idx)
+                        yield _tool_start(final_name)
+                    yield _tool_end(final_name)
+                    tool_state.tool_name_buf.pop(idx, None)
+                    tool_state.tool_started.discard(idx)
+                    tool_state.active_tool_idx = None
+                if harness_workspace is not None and tool_state.saw_tool_call:
+                    chunk_for_media = dedup_tool_result_messages(
+                        chunk, tool_state.emitted_media_ids
+                    )
+                    if chunk_for_media is not None:
+                        async for media_event in media_events_from_tool_result(
+                            chunk_for_media,
+                            workspace=harness_workspace,
+                        ):
+                            yield media_event
+                tool_state.current_node = node
 
-        elif ctype == "state_update":
-            if tool_state.current_node is not None and node != tool_state.current_node:
-                yield MessageEvent.flush()
-            tool_state.current_node = node
+            elif ctype == "hitl_required":
+                request = chunk.get("request")
+                if not isinstance(request, dict):
+                    request = {}
+                request = normalize_hitl_request(request)
+                if hitl_coordinator is not None and hitl_ctx is not None:
+                    record = hitl_coordinator.register_from_request(request, ctx=hitl_ctx)
+                    request["pending_id"] = record.pending_id
+                    card = format_hitl_card(
+                        record.action_requests,
+                        pending_id=record.pending_id,
+                        locale=loc,
+                    )
+                    if projection_state is not None:
+                        projection_state.hitl_paused = True
+                        projection_state.hitl_pending_id = record.pending_id
+                    yield MessageEvent.text(card)
+                return
+
+            elif ctype == "state_update":
+                if tool_state.current_node is not None and node != tool_state.current_node:
+                    yield MessageEvent.flush()
+                tool_state.current_node = node
+    finally:
+        await aclose(chunks)
 
 
 async def project_stream(
@@ -228,7 +234,7 @@ async def project_stream(
     hitl_ctx: HitlStreamContext | None = None,
 ) -> AsyncIterator[MessageEvent]:
     del media_backend  # IM tool media uses agent.backend directly
-    async for ev in _project_chunks(
+    projected = _project_chunks(
         agent_manager.stream(agent_id, request),
         agent_manager=agent_manager,
         agent_id=agent_id,
@@ -238,8 +244,12 @@ async def project_stream(
         projection_state=projection_state,
         hitl_coordinator=hitl_coordinator,
         hitl_ctx=hitl_ctx,
-    ):
-        yield ev
+    )
+    try:
+        async for ev in projected:
+            yield ev
+    finally:
+        await aclose(projected)
 
 
 async def project_resume_stream(
@@ -255,7 +265,7 @@ async def project_resume_stream(
     hitl_coordinator: HitlChannelCoordinator | None = None,
     hitl_ctx: HitlStreamContext | None = None,
 ) -> AsyncIterator[MessageEvent]:
-    async for ev in _project_chunks(
+    projected = _project_chunks(
         agent_manager.resume_hitl(agent_id, thread_id, decisions),
         agent_manager=agent_manager,
         agent_id=agent_id,
@@ -265,5 +275,9 @@ async def project_resume_stream(
         projection_state=projection_state,
         hitl_coordinator=hitl_coordinator,
         hitl_ctx=hitl_ctx,
-    ):
-        yield ev
+    )
+    try:
+        async for ev in projected:
+            yield ev
+    finally:
+        await aclose(projected)
