@@ -363,9 +363,7 @@ class ProviderStore:
             models = [
                 m
                 for m in row.get_models()
-                if is_chat_eligible_model(
-                    m, provider_name=row.name, provider_api_key=row.api_key
-                )
+                if is_chat_eligible_model(m, provider_name=row.name, provider_api_key=row.api_key)
             ]
             models.sort(key=lambda m: "free" in str(m.get("id") or "").lower())
             for model in models:
