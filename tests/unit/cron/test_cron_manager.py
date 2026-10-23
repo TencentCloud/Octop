@@ -526,6 +526,60 @@ async def test_update_reschedules_on_trigger_change(tmp_path: Path) -> None:
 
 
 @pytest.mark.asyncio
+async def test_update_metadata_only_keeps_pending_schedule(tmp_path: Path) -> None:
+    """A name/prompt-only edit must not restart the interval countdown."""
+    services = _make_services(tmp_path)
+    aid, uid = _make_agent(services)
+    mgr = _make_manager(services)
+    cid = _cron_id()
+    await mgr.create(cron_id=cid, agent_id=aid, user_id=uid, trigger="interval:10", prompt="p")
+    mgr._scheduler.get_job = MagicMock(return_value=MagicMock())
+    mgr._scheduler.add_job.reset_mock()
+    mgr._scheduler.remove_job.reset_mock()
+
+    updated = await mgr.update(cid, name="Renamed", prompt="Updated")
+
+    assert updated.prompt == "Updated"
+    assert updated.name == "Renamed"
+    mgr._scheduler.remove_job.assert_not_called()
+    mgr._scheduler.add_job.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_update_repeated_unchanged_trigger_keeps_pending_schedule(tmp_path: Path) -> None:
+    """A full-field PATCH that repeats the unchanged trigger also keeps the run."""
+    services = _make_services(tmp_path)
+    aid, uid = _make_agent(services)
+    mgr = _make_manager(services)
+    cid = _cron_id()
+    await mgr.create(cron_id=cid, agent_id=aid, user_id=uid, trigger="interval:10", prompt="p")
+    mgr._scheduler.get_job = MagicMock(return_value=MagicMock())
+    mgr._scheduler.add_job.reset_mock()
+    mgr._scheduler.remove_job.reset_mock()
+
+    await mgr.update(cid, trigger="interval:10", name="Renamed")
+
+    mgr._scheduler.remove_job.assert_not_called()
+    mgr._scheduler.add_job.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_update_restores_missing_schedule(tmp_path: Path) -> None:
+    """An enabled row whose scheduler job went missing is re-added on update."""
+    services = _make_services(tmp_path)
+    aid, uid = _make_agent(services)
+    mgr = _make_manager(services)
+    cid = _cron_id()
+    await mgr.create(cron_id=cid, agent_id=aid, user_id=uid, trigger="interval:10", prompt="p")
+    mgr._scheduler.get_job = MagicMock(return_value=None)
+    mgr._scheduler.add_job.reset_mock()
+
+    await mgr.update(cid, prompt="x")
+
+    mgr._scheduler.add_job.assert_called_once()
+
+
+@pytest.mark.asyncio
 async def test_update_unschedules_when_disabled(tmp_path: Path) -> None:
     """update(enabled=0) removes the APScheduler job."""
     services = _make_services(tmp_path)

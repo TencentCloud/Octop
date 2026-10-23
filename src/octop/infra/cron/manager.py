@@ -226,12 +226,20 @@ class CronManager:
             row = self._repos.cron_repo.get(cron_id)
             if row is None:
                 raise OctopError(ErrorCode.NOT_FOUND, f"cron job {cron_id!r} not found")
-            await self._unschedule(cron_id)
-            if row.enabled:
-                self._schedule(row)
-                row = self._repos.cron_repo.get(cron_id)
-                if row is None:
-                    raise OctopError(ErrorCode.NOT_FOUND, f"cron job {cron_id!r} not found")
+            # Metadata-only edits (name/prompt/session/model/...) must not restart
+            # the pending run of an unchanged schedule; the job re-reads the row
+            # at run time. Only a trigger change, an enabled-state flip, or a
+            # missing scheduler job rebuilds the schedule.
+            trigger_changed = trigger is not None and trigger != existing.trigger
+            enabled_changed = bool(row.enabled) != bool(existing.enabled)
+            schedule_missing = bool(row.enabled) and self._scheduler.get_job(cron_id) is None
+            if trigger_changed or enabled_changed or schedule_missing:
+                await self._unschedule(cron_id)
+                if row.enabled:
+                    self._schedule(row)
+                    row = self._repos.cron_repo.get(cron_id)
+                    if row is None:
+                        raise OctopError(ErrorCode.NOT_FOUND, f"cron job {cron_id!r} not found")
             logger.info("CronJob %s updated", cron_id)
             return row
 
