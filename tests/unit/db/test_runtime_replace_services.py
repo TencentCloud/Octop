@@ -6,6 +6,7 @@ from pathlib import Path
 
 from octop.config import OctopConfig
 from octop.infra.agents.manager import AgentManager
+from octop.infra.bridge.manager import BridgeManager
 from octop.infra.cron.delivery import CronDeliveryService
 from octop.infra.cron.manager import CronManager
 from octop.infra.db.migrate import run_migrations
@@ -71,6 +72,56 @@ def test_replace_services_retargets_user_and_provider_repos(tmp_path: Path) -> N
     assert gateway._repos is svc_b.repos  # noqa: SLF001
     assert cron._repos is svc_b.repos  # noqa: SLF001
     assert cron._delivery_service._repos is svc_b.repos  # noqa: SLF001
+
+
+def test_replace_services_retargets_bridge_manager_after_old_pool_closes(
+    tmp_path: Path,
+) -> None:
+    svc_a, cfg_a, paths_a = _services(tmp_path, "bridge-a")
+    svc_b, cfg_b, _paths_b = _services(tmp_path, "bridge-b")
+
+    registry = AgentManager(repos=svc_a.repos, paths=paths_a, config=cfg_a)
+    gateway = Gateway(agent_manager=registry, repos=svc_a.repos)
+    cron = CronManager(
+        gateway=gateway,
+        delivery_service=CronDeliveryService(
+            gateway=gateway,
+            agent_manager=registry,
+            repos=svc_a.repos,
+        ),
+        repos=svc_a.repos,
+        timezone=cfg_a.default_timezone,
+    )
+    care = ProactiveCareService(
+        gateway=gateway,
+        care_push_repo=svc_a.repos.care_push_repo,
+        agent_manager=registry,
+        timezone=cfg_a.default_timezone,
+    )
+    sched = ProactiveCareScheduler(
+        care_service=care,
+        config_repo=svc_a.repos.proactive_care_config_repo,
+        session_repo=svc_a.repos.session_repo,
+    )
+    bridge = BridgeManager(
+        bridge_repo=svc_a.bridge_connection_repo,
+        secret_repo=svc_a.secret_repo,
+        user_repo=svc_a.user_repo,
+        advertise_base_url="http://localhost",
+    )
+    rt = AppRuntime(
+        agent_registry=registry,
+        gateway=gateway,
+        cron_manager=cron,
+        user_manager=UserManager(svc_a),
+        proactive_scheduler=sched,
+        bridge_manager=bridge,
+    )
+
+    svc_a.db.close()
+    rt.replace_services(svc_b, cfg_b)
+
+    assert bridge.list_connections(1) == []
 
 
 def test_rebind_module_delegates_retarget_to_app_runtime() -> None:

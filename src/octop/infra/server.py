@@ -309,6 +309,12 @@ class AppRuntime:
             care_push_repo=services.repos.care_push_repo,
             thread_repo=services.repos.thread_repo,
         )
+        if self.bridge_manager is not None:
+            self.bridge_manager.replace_repos(
+                bridge_repo=services.bridge_connection_repo,
+                secret_repo=services.secret_repo,
+                user_repo=services.user_repo,
+            )
         if self.trajectory_service is not None:
             from octop.infra.history.trajectory.store import TrajectoryStore  # noqa: PLC0415
 
@@ -616,6 +622,9 @@ class OctopServer:
             raise RuntimeError("shared services not ready for bridge")
 
         def _sign_user_token(user: Any) -> str:
+            services = self.services
+            if services is None:
+                raise RuntimeError("shared services not ready for bridge")
             secret = services.secret_repo.get("jwt")
             if secret is None:
                 raise RuntimeError("jwt secret missing")

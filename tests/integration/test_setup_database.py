@@ -64,6 +64,19 @@ async def test_setup_database_sqlite_bind(patched_app_client) -> None:
     list(srv.app_runtime.agent_registry.providers.iter_usable_rows())
     assert srv.services.db is srv.app_runtime.agent_registry._providers._provider_repo._db  # noqa: SLF001
 
+    created = await bootstrap_admin(client, home)
+    auth = {"Authorization": f"Bearer {created.json()['access_token']}"}
+    listed = await client.get("/api/bridge/connections", headers=auth)
+    assert listed.status_code == 200, listed.text
+    assert listed.json() == []
+
+    bridge = srv.app_runtime.bridge_manager
+    user = srv.user_manager.get("admin")
+    assert user is not None
+    assert bridge._users.get(user.id) is not None  # noqa: SLF001
+    assert bridge._secrets.get("jwt") is not None  # noqa: SLF001
+    assert bridge._token_signer(user)  # noqa: SLF001 — signer must use the live pool
+
 
 @pytest.mark.asyncio
 async def test_deferred_verify_password_then_bind(tmp_octop_home: Path) -> None:

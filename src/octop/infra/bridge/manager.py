@@ -289,6 +289,18 @@ class BridgeManager:
     def set_token_signer(self, signer: Any) -> None:
         self._token_signer = signer
 
+    def replace_repos(
+        self,
+        *,
+        bridge_repo: BridgeConnectionRepo,
+        secret_repo: SecretRepo,
+        user_repo: UserRepo,
+    ) -> None:
+        """Retarget persistence after the control-plane database is rebound."""
+        self._repo = bridge_repo
+        self._secrets = secret_repo
+        self._users = user_repo
+
     def set_advertise_base_url(self, url: str) -> None:
         self._advertise_base_url = url.rstrip("/")
 
