@@ -4012,6 +4012,9 @@ class AgentManager:
 
         from octop.infra.agents.middleware.binary_read_guard import BinaryReadGuardMiddleware
         from octop.infra.agents.middleware.browser_profile import BrowserProfileMiddleware
+        from octop.infra.agents.middleware.mcp_tool_output_error import (
+            McpToolOutputErrorMiddleware,
+        )
         from octop.infra.agents.middleware.octop_ui_offload import OctopUiOffloadMiddleware
         from octop.infra.agents.middleware.reasoning import ReasoningRequestMiddleware
         from octop.infra.agents.middleware.thread_artifacts import ThreadArtifactsMiddleware
@@ -4028,6 +4031,9 @@ class AgentManager:
         # OctopUiOffload stays innermost so every outer middleware observes the
         # slimmed content consistently; it only touches octop_ui plugin envelopes,
         # disjoint from the file-tool results ThreadArtifacts cares about.
+        # McpToolOutputError goes last so an SDK output-schema validation
+        # failure becomes an error tool result as close to the MCP call as this
+        # list allows instead of tearing down the whole turn (#2344).
         agent_middleware: list[Any] = [
             *plugin_middleware,
             TokenQuotaMiddleware(
@@ -4045,6 +4051,7 @@ class AgentManager:
                 agent_id=row.agent_id,
             ),
             OctopUiOffloadMiddleware(),
+            McpToolOutputErrorMiddleware(),
         ]
 
         merged_tools: list[Any] = []
