@@ -189,7 +189,7 @@ export function ResourceVisibilityFormItem({
     <Form.Item
       label={label ?? t("resourceVisibility.label")}
       extra={extra}
-      className={className}
+      className={[styles.formItem, className].filter(Boolean).join(" ")}
       required={false}
     >
       <ResourceVisibilityFields

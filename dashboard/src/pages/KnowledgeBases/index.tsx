@@ -34,6 +34,7 @@ import {
 import type { MenuProps, TreeDataNode } from "antd";
 import type { InputRef } from "antd/es/input";
 import { ResizableTable } from "@/components/ResizableTable";
+import { SharedResourceBadge } from "../../components/SharedResourceBadge";
 import {
   Check,
   ChevronLeft,
@@ -194,6 +195,13 @@ function canManageKnowledgeBase(
   return Boolean(
     user && (user.role === "admin" || base.owner_user_id === user.id),
   );
+}
+
+function isKnowledgeOwner(
+  base: Pick<KnowledgeBase, "owner_user_id">,
+  user: OctopUser | null,
+): boolean {
+  return Boolean(user && base.owner_user_id === user.id);
 }
 
 function formatKnowledgeOwner(
@@ -2145,6 +2153,11 @@ export default function KnowledgeBasesPage() {
                               {base.name}
                             </span>
                           </Tooltip>
+                          <SharedResourceBadge
+                            shared={base.shared}
+                            owned={isKnowledgeOwner(base, user)}
+                            ownerName={formatKnowledgeOwner(base)}
+                          />
                           <div
                             className={styles.listId}
                             onClick={(event) => event.stopPropagation()}
@@ -2204,22 +2217,13 @@ export default function KnowledgeBasesPage() {
                                 count: base.doc_count,
                               })}
                             </Tag>
-                            {base.default_open || base.shared ? (
+                            {base.default_open ? (
                               <div className={styles.listMetaBadges}>
-                                {base.default_open ? (
-                                  <span
-                                    className={`${styles.listBadge} ${styles.listBadgeDefaultOpen}`}
-                                  >
-                                    {t("knowledgeBases.defaultOpenBadge")}
-                                  </span>
-                                ) : null}
-                                {base.shared ? (
-                                  <span
-                                    className={`${styles.listBadge} ${styles.listBadgeShared}`}
-                                  >
-                                    {t("knowledgeBases.sharedBadge")}
-                                  </span>
-                                ) : null}
+                                <span
+                                  className={`${styles.listBadge} ${styles.listBadgeDefaultOpen}`}
+                                >
+                                  {t("knowledgeBases.defaultOpenBadge")}
+                                </span>
                               </div>
                             ) : null}
                           </div>

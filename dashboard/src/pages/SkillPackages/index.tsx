@@ -85,6 +85,7 @@ import { saveBlobAsFile } from "../../utils/saveBlobAsFile";
 import { createDetailRequestGate } from "../../utils/detailRequestGate";
 import { PackageIcon } from "./PackageIcon";
 import { ResourceVisibilityFields } from "../../components/ResourceVisibilityFields";
+import { SharedResourceBadge } from "../../components/SharedResourceBadge";
 import type { ResourceVisibilityMode } from "../../api/modules/userGroups";
 import { PackageSkillCard } from "./PackageSkillCard";
 import PackageSkillsTable from "./PackageSkillsTable";
@@ -120,6 +121,13 @@ function canMutatePackage(
   return Boolean(
     user && (user.role === "admin" || item.created_by === String(user.id)),
   );
+}
+
+function isPackageOwner(
+  item: Pick<SkillPackage, "created_by">,
+  user: OctopUser | null,
+): boolean {
+  return Boolean(user && item.created_by === String(user.id));
 }
 
 function formatPackageCreator(
@@ -733,11 +741,11 @@ export default function SkillPackagesPage() {
                               {item.name}
                             </span>
                           </Tooltip>
-                          {item.shared ? (
-                            <span className={styles.sharedBadge}>
-                              {t("skillPackages.sharedBadge")}
-                            </span>
-                          ) : null}
+                          <SharedResourceBadge
+                            shared={item.shared}
+                            owned={isPackageOwner(item, user)}
+                            ownerName={formatPackageCreator(item)}
+                          />
                           <div
                             className={styles.listId}
                             onClick={(event) => event.stopPropagation()}

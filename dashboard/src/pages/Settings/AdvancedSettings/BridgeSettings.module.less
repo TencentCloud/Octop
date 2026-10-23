@@ -20,6 +20,14 @@
   max-width: 100%;
 }
 
+.pageToolbarStart {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px;
+  min-width: 0;
+}
+
 .pageToolbarActions {
   display: flex;
   align-items: center;
@@ -37,6 +45,15 @@
   align-items: center;
   justify-content: space-between;
   padding: 4px 0 0;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.filterEmpty {
+  padding: 28px 12px 12px;
+  text-align: center;
+  font-size: 13px;
+  color: var(--fn-text-tertiary);
 }
 
 .gridCount {
@@ -48,6 +65,16 @@
   display: inline-flex;
   align-items: center;
   gap: 4px;
+}
+
+.privacyToggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  color: var(--fn-text-secondary);
+  cursor: pointer;
+  white-space: nowrap;
 }
 
 /* ── Card grid (mirrors Admin Storage) ─────────────────────────── */
@@ -119,7 +146,7 @@
 
 .backendCardName {
   display: flex;
-  align-items: baseline;
+  align-items: center;
   gap: 8px;
   min-width: 0;
   font-size: 18px;
@@ -310,6 +337,13 @@
   flex-direction: column;
   min-width: 0;
   gap: 2px;
+}
+
+.tableNameTitle {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
 
   strong {
     overflow: hidden;

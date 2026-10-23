@@ -62,25 +62,18 @@ import AgentExpertsTable from "./components/AgentExpertsTable";
 import ExpertMarketTab from "./components/ExpertMarketTab";
 import { OctopEmptyMascot } from "../../components/EmptyState";
 import { pickLocale } from "../../utils/localizedText";
-import { isRemoteShadowAgent } from "../../utils/remoteExpert";
 import { isOwnedExpert, ownedExperts } from "../../utils/sharedExpert";
+import {
+  matchesExpertLocation,
+  type ExpertLocationFilter,
+} from "../../utils/resourceAudience";
+import { ResourceAudienceFilter } from "../../components/ResourceAudienceFilter";
 import { apiErrorMessage } from "../../utils/apiError";
 import styles from "./index.module.less";
 
 type TabKey = "my" | "teams" | "library" | "market";
 type ViewMode = "card" | "table";
-/** Quick filter on My Experts / My Teams: local instance vs cloud-collab shadows. */
-type LocationFilter = "all" | "local" | "cloud";
 const VIEW_STORAGE_KEY = "octop:experts-view";
-
-function matchesLocationFilter(
-  agent: { bridge?: boolean | null; agent_id?: string | null },
-  filter: LocationFilter,
-): boolean {
-  if (filter === "all") return true;
-  const remote = isRemoteShadowAgent(agent);
-  return filter === "cloud" ? remote : !remote;
-}
 
 function loadViewMode(): ViewMode {
   const stored = localStorage.getItem(VIEW_STORAGE_KEY);
@@ -94,6 +87,25 @@ async function fetchExpertLibrary(): Promise<ExpertSummary[]> {
 async function fetchPublishedExperts(): Promise<PublishedExpert[]> {
   return publishedExpertsApi.list();
 }
+
+const LIBRARY_SCENE_ORDER = [
+  "ecommerce",
+  "finance",
+  "content-creation",
+  "lifestyle",
+  "marketing",
+  "mysticism",
+  "academic",
+  "legal",
+  "tech",
+  "education",
+  "healthcare",
+  "hr",
+  "media",
+  "design",
+] as const;
+
+const LIBRARY_SCENE_ALL = "";
 
 function textMatchesQuery(
   query: string,
@@ -155,7 +167,8 @@ export default function ExpertsPage() {
   const [refreshing, setRefreshing] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const searchNeedle = searchQuery.trim().toLowerCase();
-  const [locationFilter, setLocationFilter] = useState<LocationFilter>("all");
+  const [locationFilter, setLocationFilter] =
+    useState<ExpertLocationFilter>("all");
 
   const handleRefresh = useCallback(async () => {
     setRefreshing(true);
@@ -165,7 +178,7 @@ export default function ExpertsPage() {
         fetchExpertLibrary(),
         fetchPublishedExperts(),
       ]);
-      setLocalAgents(ownedExperts(agentList));
+      setLocalAgents(agentList);
       setExperts(expertList);
       setPublishedExperts(publishedList);
       await refreshAgents({ silent: true, force: true });
@@ -187,6 +200,7 @@ export default function ExpertsPage() {
   // ── Built-in expert library ────────────────────────────────────
   const [experts, setExperts] = useState<ExpertSummary[]>([]);
   const [expertLoading, setExpertLoading] = useState(false);
+  const [libraryScene, setLibraryScene] = useState(LIBRARY_SCENE_ALL);
   const [publishedExperts, setPublishedExperts] = useState<PublishedExpert[]>(
     [],
   );
@@ -242,7 +256,7 @@ export default function ExpertsPage() {
 
   // ── Local agent state (extends AgentContext for optimistic updates) ──
   const ownedAgents = useMemo(() => ownedExperts(agents), [agents]);
-  const [localAgents, setLocalAgents] = useState<OctopAgent[]>(ownedAgents);
+  const [localAgents, setLocalAgents] = useState<OctopAgent[]>(agents);
   const expertAgents = useMemo(
     () => localAgents.filter((item) => item.kind !== "team"),
     [localAgents],
@@ -255,7 +269,7 @@ export default function ExpertsPage() {
     () =>
       expertAgents.filter(
         (agent) =>
-          matchesLocationFilter(agent, locationFilter) &&
+          matchesExpertLocation(agent, locationFilter) &&
           textMatchesQuery(
             searchNeedle,
             agent.name,
@@ -269,7 +283,7 @@ export default function ExpertsPage() {
     () =>
       teamAgents.filter(
         (agent) =>
-          matchesLocationFilter(agent, locationFilter) &&
+          matchesExpertLocation(agent, locationFilter) &&
           textMatchesQuery(searchNeedle, agent.name, agent.description),
       ),
     [locationFilter, searchNeedle, teamAgents],
@@ -277,18 +291,13 @@ export default function ExpertsPage() {
 
   const locationFilterControl = useMemo(
     () => (
-      <Segmented
-        size="small"
+      <ResourceAudienceFilter
+        includeCloud
         value={locationFilter}
-        onChange={(value) => setLocationFilter(value as LocationFilter)}
-        options={[
-          { value: "all", label: t("experts.locationAll") },
-          { value: "local", label: t("experts.locationLocal") },
-          { value: "cloud", label: t("experts.locationCloud") },
-        ]}
+        onChange={(value) => setLocationFilter(value as ExpertLocationFilter)}
       />
     ),
-    [locationFilter, t],
+    [locationFilter],
   );
   const pickableExperts = useMemo(
     () =>
@@ -305,7 +314,7 @@ export default function ExpertsPage() {
   const [newAgentId, setNewAgentId] = useState<string | null>(null);
 
   useEffect(() => {
-    setLocalAgents(ownedExperts(agents));
+    setLocalAgents(agents);
   }, [agents]);
 
   const handleStateChange = useCallback((agentId: string, newState: string) => {
@@ -740,10 +749,20 @@ export default function ExpertsPage() {
       ),
     [publishedExperts, searchNeedle],
   );
+  const libraryScenes = useMemo(() => {
+    const present = new Set(
+      experts.map((expert) => (expert.scene || "").trim()).filter(Boolean),
+    );
+    return LIBRARY_SCENE_ORDER.filter((scene) => present.has(scene));
+  }, [experts]);
   const visibleLibraryExperts = useMemo(
     () =>
-      experts.filter((expert) =>
-        textMatchesQuery(
+      experts.filter((expert) => {
+        const scene = (expert.scene || "").trim();
+        if (!searchNeedle && libraryScene && scene !== libraryScene) {
+          return false;
+        }
+        return textMatchesQuery(
           searchNeedle,
           expert.id,
           pickLocale(expert.label, lang),
@@ -752,9 +771,10 @@ export default function ExpertsPage() {
           pickLocale(expert.description, lang),
           expert.description?.zh,
           expert.description?.en,
-        ),
-      ),
-    [experts, lang, searchNeedle],
+          scene ? t(`experts.scenes.${scene}`, { defaultValue: scene }) : "",
+        );
+      }),
+    [experts, lang, libraryScene, searchNeedle, t],
   );
 
   const libraryContent = useMemo(() => {
@@ -839,6 +859,27 @@ export default function ExpertsPage() {
             {t("experts.published.emptyHint")}
           </p>
         )}
+        {!searchNeedle && libraryScenes.length > 0 && (
+          <div className={styles.marketSceneTabsWrap}>
+            <Segmented
+              block
+              size="large"
+              value={libraryScene}
+              onChange={(value) => setLibraryScene(String(value))}
+              options={[
+                {
+                  value: LIBRARY_SCENE_ALL,
+                  label: t("experts.sceneAll"),
+                },
+                ...libraryScenes.map((scene) => ({
+                  value: scene,
+                  label: t(`experts.scenes.${scene}`, { defaultValue: scene }),
+                })),
+              ]}
+              className={styles.marketSceneTabs}
+            />
+          </div>
+        )}
         {visibleLibraryExperts.length === 0 ? (
           <div className={styles.searchEmpty}>{t("experts.searchEmpty")}</div>
         ) : (
@@ -864,10 +905,13 @@ export default function ExpertsPage() {
     expertLoading,
     experts,
     lang,
+    libraryScene,
+    libraryScenes,
     publishedExpertLoading,
     publishedExperts,
     refreshButton,
     refreshPublishedExperts,
+    searchNeedle,
     t,
     toolbarSearch,
     visibleLibraryExperts,

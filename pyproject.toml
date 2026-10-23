@@ -113,7 +113,7 @@ include = [
     "src/octop/infra/agents/plugins/bundled/**/*",
     "src/octop/infra/agents/subagents/library/**/*",
     "src/octop/infra/agents/subagents/divisions.json",
-    "src/octop/infra/desktop/scripts/**/*",
+    "src/octop/infra/control/desktop/scripts/**/*",
 ]
 artifacts = [
     "src/octop/dashboard/**/*",
