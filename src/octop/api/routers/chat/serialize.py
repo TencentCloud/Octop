@@ -16,6 +16,7 @@ from langchain_core.runnables import RunnableConfig
 
 from octop.api.common.agent_workspace import resolve_agent_workspace_dir
 from octop.i18n.domains.attachment import attachment_empty_image
+from octop.infra.agents.providers.image_output import IMAGES_KEY
 from octop.infra.agents.threads.context_breakdown import usage_dict_from_message
 from octop.infra.gateway.process.message_keys import (
     CHECKPOINT_TS_KEY,
@@ -870,6 +871,9 @@ def _content_blocks_from_raw(
 ) -> list[dict[str, Any]]:
     blocks: list[dict[str, Any]] = []
     if isinstance(additional_kwargs, dict):
+        images = additional_kwargs.get(IMAGES_KEY)
+        if isinstance(images, list):
+            blocks.extend(dict(image) for image in images if isinstance(image, dict))
         reasoning = additional_kwargs.get("reasoning_content")
         if isinstance(reasoning, str) and reasoning.strip():
             blocks.append({"type": "thinking", "thinking": reasoning.strip()})

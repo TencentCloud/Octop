@@ -53,6 +53,29 @@ async def no_anchor(_anchor):
 
 
 @pytest.mark.asyncio
+async def test_model_image_reference_survives_archive_reload(archive):
+    from octop.infra.agents.providers.image_output import IMAGES_KEY
+
+    turn = archive.begin("a", "t")
+    tracker = RecordingTracker(archive, turn, [HumanMessage(content="cat", id="user")])
+    image = {"type": "image_url", "image_url": {"url": "workspace://outbound/cat.png"}}
+    tracker.observe(
+        {
+            "type": "state_update",
+            "data": {
+                "messages": [
+                    AIMessage(content="", id="image", additional_kwargs={IMAGES_KEY: [image]})
+                ]
+            },
+        }
+    )
+    await tracker.finish(completed=True)
+    page = await archive.page("t", limit=10, cursor=None, legacy_reader=no_anchor)
+    restored = messages_from_dict(page["messages"])[-1]
+    assert restored.additional_kwargs[IMAGES_KEY] == [image]
+
+
+@pytest.mark.asyncio
 async def test_no_migration_single_write_and_cross_boundary_cursor(archive):
     old = [HumanMessage(content="old question", id="u0"), AIMessage(content="old answer", id="a0")]
     archive.messages.append_if_ready("t", message_inputs(old))

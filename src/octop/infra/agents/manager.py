@@ -28,6 +28,7 @@ from octop.infra.agents.memory.backend import memory_backend_from_agent_config
 from octop.infra.agents.memory.slim import MemorySlimCoordinator
 from octop.infra.agents.providers import HostModelFactory, ProviderStore, sync_providers_to_harness
 from octop.infra.agents.providers.health import ModelHealthRegistry
+from octop.infra.agents.providers.image_output import project_image_event
 from octop.infra.agents.security import SecuritySettingsStore, ToolGuardRulesStore
 from octop.infra.agents.security.hitl_session import (
     HitlSessionPolicyStore,
@@ -1921,7 +1922,7 @@ class AgentManager:
                 turn_model_scope(self._stream_model_label(agent_id, req, thread_id)),
             ):
                 async for chunk in self._harness_manager.stream(agent_id, cast(Any, req)):
-                    yield chunk
+                    yield project_image_event(chunk)
             self._apply_pending_bootstrap_graph_refresh(agent_id)
 
     async def call(self, agent_id: str, request: dict[str, Any]) -> dict[str, Any]:
@@ -1963,7 +1964,7 @@ class AgentManager:
                 async for chunk in self._harness_manager.resume_hitl(
                     agent_id, thread_id, decisions
                 ):
-                    yield chunk
+                    yield project_image_event(chunk)
             self._apply_pending_bootstrap_graph_refresh(agent_id)
 
     def cancel_stream(self, agent_id: str, thread_id: str) -> None:
@@ -4012,6 +4013,7 @@ class AgentManager:
 
         from octop.infra.agents.middleware.binary_read_guard import BinaryReadGuardMiddleware
         from octop.infra.agents.middleware.browser_profile import BrowserProfileMiddleware
+        from octop.infra.agents.middleware.model_images import ModelImagesMiddleware
         from octop.infra.agents.middleware.octop_ui_offload import OctopUiOffloadMiddleware
         from octop.infra.agents.middleware.reasoning import ReasoningRequestMiddleware
         from octop.infra.agents.middleware.thread_artifacts import ThreadArtifactsMiddleware
@@ -4039,6 +4041,7 @@ class AgentManager:
             BrowserProfileMiddleware(),
             BinaryReadGuardMiddleware(),
             WorkspaceImageMaterializeMiddleware(workspace=ws),
+            ModelImagesMiddleware(workspace=ws),
             ThreadArtifactsMiddleware(
                 thread_repo=self._repos.thread_repo,
                 workspace_dir=harness_workspace,

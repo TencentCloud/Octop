@@ -159,7 +159,7 @@ export function splitAssistantTurn(
       });
       continue;
     }
-    if (textContent.trim()) {
+    if (textContent.trim() || msg.attachments?.length) {
       textParts.push(textContent);
       answerTemplate = msg;
       answerStreaming = msg.status === "streaming";
