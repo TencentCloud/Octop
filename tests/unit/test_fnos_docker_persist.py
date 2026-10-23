@@ -479,10 +479,13 @@ def test_octop_assert_native_arch_rejects_mismatch(tmp_path: Path) -> None:
 set -euo pipefail
 source "{COMMON_SH}"
 export OCTOP_FPK_ARCH_FILE="{marker}"
-export OCTOP_FPK_HOST_ARCH=amd64
+export OCTOP_FPK_HOST_ARCH=x86_64
 octop_assert_native_arch && exit 10
 export OCTOP_FPK_HOST_ARCH=arm64
 octop_assert_native_arch || exit 11
+printf '%s\n' amd64 > "{marker}"
+export OCTOP_FPK_HOST_ARCH=x86_64
+octop_assert_native_arch || exit 13
 unset OCTOP_FPK_ARCH_FILE
 octop_assert_native_arch || exit 12
 """

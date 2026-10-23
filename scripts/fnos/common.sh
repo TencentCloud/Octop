@@ -213,7 +213,7 @@ octop_assert_native_arch() {
     [ -n "$packed" ] || return 0
     host="$(octop_host_fpk_arch)"
     if [ "$packed" != "$host" ]; then
-        echo "此本地版安装包是 ${packed}，当前设备是 ${host}。请改用对应架构的包：x86_64 用 Octop-fnos-native，ARM64 用 Octop-fnos-native-arm64。ARM 飞牛已装 Docker 时优先用 Docker 版。"
+        echo "此本地版安装包是 ${packed}，当前设备是 ${host}。请改用对应架构的包：x86_64 用 Octop-fnos-native-amd64，ARM64 用 Octop-fnos-native-arm64。ARM 飞牛已装 Docker 时优先用 Docker 版。"
         return 1
     fi
     return 0

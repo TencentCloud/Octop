@@ -8,17 +8,17 @@
 # 用法（在仓库根目录执行):
 #   bash scripts/build-fpk.sh docker      # 完整 Docker 版 -> dist/Octop-fnos-docker-<ver>.fpk
 #   bash scripts/build-fpk.sh docker-lite # 精简 Docker 版 -> dist/Octop-fnos-docker-lite-<ver>.fpk
-#   bash scripts/build-fpk.sh native      # 构建本地版(非Docker) -> dist/Octop-fnos-native-<ver>.fpk
+#   bash scripts/build-fpk.sh native      # 构建本地版(非Docker) -> dist/Octop-fnos-native-amd64-<ver>.fpk
 #   bash scripts/build-fpk.sh             # 完整 Docker、精简 Docker、本地版都构建
 #
 # 环境变量：
 #   FPK_NAME_PREFIX  输出文件名前缀，默认 "octop"
-#                    例如 FPK_NAME_PREFIX=Octop-fnos 会生成 Octop-fnos-docker-<ver>.fpk / Octop-fnos-native-<ver>.fpk
+#                    例如 FPK_NAME_PREFIX=Octop-fnos 会生成 Octop-fnos-docker-<ver>.fpk / Octop-fnos-native-amd64-<ver>.fpk
 #   FPK_ITER         迭代号，默认空
 #                    例如 FPK_ITER=01 会生成 ...-<ver>-01.fpk（通常不需要，按版本号发布）
 #   FPK_ARCH         本地版架构。arm64 → Octop-fnos-native-arm64-<ver>.fpk，
 #                    并写入 manifest platform=arm（fnpack 只认 x86/arm/all）。
-#                    空或其它值保持 x86 包名，并写入 platform=x86。
+#                    空或其它值 → Octop-fnos-native-amd64-<ver>.fpk，并写入 platform=x86。
 #                    fnpack 官方只有 linux-amd64，ARM 包应在 amd64 主机上打包
 #                    （site-packages 先在 aarch64 上装好再拷过来）。
 #
@@ -122,7 +122,7 @@ build_one() {
       if [ "${FPK_ARCH:-}" = "arm64" ]; then
         OUTNAME="${PREFIX}-native-arm64-${VER}${ITER_SUFFIX}.fpk"
       else
-        OUTNAME="${PREFIX}-native-${VER}${ITER_SUFFIX}.fpk"
+        OUTNAME="${PREFIX}-native-amd64-${VER}${ITER_SUFFIX}.fpk"
       fi
       ;;
     *) echo "未知类型: $KIND"; return 1 ;;

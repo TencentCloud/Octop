@@ -35,13 +35,13 @@ octop backup --help     # 备份/恢复
 |------|------|------|----------|------|
 | **Docker 精简版** | `Octop-fnos-docker-lite-<ver>.fpk` | ~340 KB | 飞牛拉取 `ghcr.io/tencentcloud/octop:<本包版本>-lite` | 宿主需有 Docker。不含虚拟桌面、本地向量和 OCR |
 | **Docker 完整版** | `Octop-fnos-docker-<ver>.fpk` | ~340 KB | 飞牛拉取 `ghcr.io/tencentcloud/octop:<本包版本>`（`amd64` / `arm64` 多架构），重启不再重拉 | 宿主需有 Docker，且能访问 `ghcr.io`。含桌面、OCR 和本地向量 |
-| **本地版 x86_64** | `Octop-fnos-native-<ver>.fpk` | ~200 MB | 复用飞牛「Python 3.12」+ 包内核心依赖与前端 | 无需 Docker |
+| **本地版 x86_64** | `Octop-fnos-native-amd64-<ver>.fpk` | ~200 MB | 复用飞牛「Python 3.12」+ 包内核心依赖与前端 | 无需 Docker |
 | **本地版 ARM64** | `Octop-fnos-native-arm64-<ver>.fpk` | ~200 MB | 同上，site-packages 为 aarch64；勿装到 x86 | 无需 Docker；ARM 飞牛无 Docker 时再用 |
 
 - **Docker 版**实现为 FnOS `docker-project`：包体只含 `docker-compose.yaml` 与向导配置，运行时由飞牛从 GHCR 拉取镜像。x86 / ARM 飞牛各用同一份 FPK，Docker 按本机架构拉对应镜像层。需要虚拟桌面、OCR 或本地向量时选完整版；否则选精简版。两份镜像都带前端和 Node.js 20（`node` / `npm` / `npx`）。完整版内置 `desktop` 桌面控制但不会自动启动；Playwright Chromium 不预装，可在控制台按需安装。精简版不含桌面、OCR 和本地向量。
 - **本地版**实现为 FnOS 原生 `app`：解释器复用飞牛「Python 3.12」开发工具；包内是 Octop 核心依赖与前端。专家 shell / 技能若要跑 `node` / `npx`，会复用飞牛已装的 Node.js（不强制安装）。扩展里的 `.so` 与 CPU 架构绑定，因此 x86 与 ARM 各打一份；装错架构会在安装或启动时报错。
 
-> 上述包随正式版一起挂在 **`v*` GitHub Release** 上（例如 [v0.9.31](https://github.com/TencentCloud/Octop/releases/latest)）：`Octop-fnos-docker-lite-<ver>.fpk` / `Octop-fnos-docker-<ver>.fpk` / `Octop-fnos-native-<ver>.fpk` / `Octop-fnos-native-arm64-<ver>.fpk`。
+> 上述包随正式版一起挂在 **`v*` GitHub Release** 上（例如 [v0.9.31](https://github.com/TencentCloud/Octop/releases/latest)）：`Octop-fnos-docker-lite-<ver>.fpk` / `Octop-fnos-docker-<ver>.fpk` / `Octop-fnos-native-amd64-<ver>.fpk` / `Octop-fnos-native-arm64-<ver>.fpk`。
 
 ## 目录结构
 
@@ -94,7 +94,7 @@ fnos/
 bash scripts/build-fpk.sh            # 完整 Docker、精简 Docker、当前机器架构的本地版
 bash scripts/build-fpk.sh docker     # 完整版 → dist/Octop-fnos-docker-<version>.fpk
 bash scripts/build-fpk.sh docker-lite # 精简版 → dist/Octop-fnos-docker-lite-<version>.fpk
-bash scripts/build-fpk.sh native     # 仅本地版 → dist/Octop-fnos-native-<version>.fpk
+bash scripts/build-fpk.sh native     # 仅本地版 → dist/Octop-fnos-native-amd64-<version>.fpk
 FPK_ARCH=arm64 bash scripts/build-fpk.sh native   # ARM 本地版（需已放入 aarch64 site-packages）
 ```
 
@@ -105,7 +105,7 @@ FPK_ARCH=arm64 bash scripts/build-fpk.sh native   # ARM 本地版（需已放入
 1. 飞牛「应用中心 → 设置 → 手动安装应用」选择对应 `.fpk`：
    - 已装 Docker，不需要虚拟桌面、OCR、本地向量 → `Octop-fnos-docker-lite-<version>.fpk`
    - 已装 Docker，需要这些能力 → `Octop-fnos-docker-<version>.fpk`（x86 / ARM 通用）
-   - 不想依赖 Docker、x86_64 飞牛 → `Octop-fnos-native-<version>.fpk`
+   - 不想依赖 Docker、x86_64 飞牛 → `Octop-fnos-native-amd64-<version>.fpk`
    - 不想依赖 Docker、ARM64 飞牛 → `Octop-fnos-native-arm64-<version>.fpk`（不要装到 x86）
 2. 安装向导中设置管理员用户名与密码（显示名称、邮箱可选），并阅读「接下来怎么用」。
 3. 等到应用中心显示「运行中」再点「打开」，或用浏览器访问 Docker 版 `http://<设备IP>:8088` / 本地版 `http://<设备IP>:8089`，用刚才设置的账号登录。
