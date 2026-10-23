@@ -4,6 +4,13 @@ name: Offline Wheel Bundle
 # browser)+ 锁定树全部第三方依赖的 wheel,按目标平台分目录打包成 tar.gz,
 # 上传为 workflow artifact(30 天保留)。
 #
+# 每架构出两个变体:
+#   - standard:manylinux2014 + 2_17/2_26/2_28 四档标签,按 uv.lock 追新;
+#   - legacy:仅 manylinux2014(glibc 2.17 基线)+ 兼容替换表(offline_bundle.sh
+#     内 LEGACY_PINNED),适配银河麒麟 glibc 2.23 等老机器;
+#     另含 CI 在 manylinux2014 容器预编译的 libsqlite3.so.0(系统 SQLite < 3.35
+#     的机器启用,install-offline.sh 自动注入 LD_LIBRARY_PATH wrapper)。
+#
 # 政务机安装流程(产物拷入内网后):
 #   1. 解包 offline-bundle-<platform>.tar.gz
 #   2. bash scripts/install-offline.sh <解包出的 offline 目录>
@@ -11,13 +18,14 @@ name: Offline Wheel Bundle
 #
 # 触发:
 #   1. push v* tag → 与 Release/Docker 同批自动出包
-#   2. workflow_dispatch 手动(选平台;默认双平台全出)
+#   2. workflow_dispatch 手动(选平台/变体;默认双平台双变体全出)
 #
 # 平台说明:
 #   - amd64(ubuntu-latest 原生构建)覆盖海光/兆芯等 x86_64 政务机
 #   - arm64(ubuntu-24.04-arm 原生构建)覆盖鲲鹏/飞腾政务机
 #   - 下载时同时声明新旧 manylinux 标签(pip --platform 是精确匹配,
-#     cffi 用 2014 档而 argon2 用 2_26 档,只传一个必缺)
+#     cffi 用 2014 档而 argon2 用 2_26 档,只传一个必缺;legacy 变体除外——
+#     它只传 2014 档且按替换表降级)
 #   - crcmod 等 sdist-only 老包在 runner 上按目标平台编译成 wheel
 #     (ubuntu runner 自带 gcc),政务机零编译
 #   - 依赖锁定树的下载走官方 PyPI(锁文件已钉 pypi.org)
@@ -36,6 +44,11 @@ on:
         required: false
         type: string
         default: "amd64,arm64"
+      variants:
+        description: "Comma-separated: standard,legacy (default: both)"
+        required: false
+        type: string
+        default: "standard,legacy"
 
 permissions:
   contents: read
@@ -88,12 +101,42 @@ jobs:
           cache: npm
           cache-dependency-path: dashboard/package-lock.json
 
-      - name: Build offline bundle
+      # legacy 包附带预编译 SQLite:在 manylinux2014 容器(glibc 2.17)里编译,
+      # 保证产物在 glibc 2.23 的麒麟机上可用。源码 zip 从 sqlite.org 下载。
+      # 目录名用 uname -m 形态(x86_64/aarch64)——install-offline.sh 按 uname -m 查找。
+      - name: Precompile SQLite for legacy (manylinux2014 container)
+        if: steps.skip.outputs.skip != 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          case "$(uname -m)" in
+            x86_64) IMAGE=quay.io/pypa/manylinux2014_x86_64; ARCH_DIR=x86_64 ;;
+            aarch64) IMAGE=quay.io/pypa/manylinux2014_aarch64; ARCH_DIR=aarch64 ;;
+            *) echo "::error::unexpected runner arch $(uname -m)"; exit 1 ;;
+          esac
+          mkdir -p dist/sqlite-archive/sqlite3/${ARCH_DIR}
+          curl -fsSL -o dist/sqlite-archive/sqlite-amalgamation-3540100.zip \
+            https://www.sqlite.org/2026/sqlite-amalgamation-3540100.zip
+          docker run --rm \
+            -v "${{ github.workspace }}:/src" -w /src \
+            -e ARCH_DIR="${ARCH_DIR}" \
+            "$IMAGE" bash -c '
+              set -euo pipefail
+              yum install -y unzip >/dev/null 2>&1 || true
+              SQLITE_OUT=/src/dist/sqlite-archive/sqlite3/${ARCH_DIR} \
+              SQLITE_SRC_ZIP=/src/dist/sqlite-archive/sqlite-amalgamation-3540100.zip \
+              bash scripts/build_sqlite.sh
+            '
+          ls -la dist/sqlite-archive/sqlite3/${ARCH_DIR}/
+
+      - name: Build offline bundles (standard + legacy)
         if: steps.skip.outputs.skip != 'true'
         env:
           # 原生 runner 上平台标签与本机一致;脚本按传入标签下载
           PLATFORM_TAG_AMD64: "manylinux2014_x86_64 manylinux_2_17_x86_64 manylinux_2_26_x86_64 manylinux_2_28_x86_64"
           PLATFORM_TAG_ARM64: "manylinux2014_aarch64 manylinux_2_17_aarch64 manylinux_2_26_aarch64 manylinux_2_28_aarch64"
+          # workflow_dispatch 变体过滤(默认全出)
+          VARIANTS: ${{ inputs.variants || 'standard,legacy' }}
         run: |
           set -euo pipefail
           # runner 架构 → 平台标签组(新+旧 manylinux 并列,精确匹配全覆盖)
@@ -104,16 +147,64 @@ jobs:
           esac
           # 允许在 runner 上按目标平台编译 sdist-only 包(crcmod 等;runner 自带 gcc)
           export PIP_INDEX_URL="https://pypi.org/simple"
-          bash scripts/offline_bundle.sh $TAGS cp312
+          export SQLITE_ARCHIVEDIR="$PWD/dist/sqlite-archive"
+          VARIANTS="$(echo "$VARIANTS" | tr -d ' ')"
+          IFS=',' read -r -a VS <<< "$VARIANTS"
+          for v in "${VS[@]}"; do
+            echo "::group::Build variant $v"
+            VARIANT="$v" bash scripts/offline_bundle.sh $TAGS cp312
+            echo "::endgroup::"
+          done
 
-      - name: Upload bundle artifact
+      # ---- 构建后闸门:标签 / 一致性 / 主包齐全,失败即 workflow 红 --------------
+      - name: Gate — check bundles
+        if: steps.skip.outputs.skip != 'true'
+        run: |
+          set -euo pipefail
+          if [ -d dist/offline ]; then
+            python3 scripts/check_offline_bundle.py dist/offline --variant standard
+          fi
+          if [ -d dist/offline-legacy ]; then
+            python3 scripts/check_offline_bundle.py dist/offline-legacy --variant legacy
+          fi
+
+      # ---- 安装冒烟:runner(新 glibc)上从产物实装 -------------------------------
+      # legacy wheel(2014 档)向上兼容新 glibc,所以两种变体都能在 runner 冒烟。
+      # octop init 覆盖迁移 SQL(窗口函数)路径,可复现 kylin-fix 第 6 节的场景。
+      - name: Smoke — install from bundle + octop init
+        if: steps.skip.outputs.skip != 'true'
+        run: |
+          set -euo pipefail
+          for dir in dist/offline dist/offline-legacy; do
+            [ -d "$dir" ] || continue
+            name="$(basename "$dir")"
+            echo "::group::Smoke $name"
+            # venv 必须放在 AGENTBUDDY_HOME 之外:octop init --force 会 rmtree home,
+            # venv 在 home 内会被连带删除(进程自毁,报出误导性的 ModuleNotFoundError)。
+            # init 需要 admin 凭据(--yes 非交互不询问),与 docs/kylin-legacy-deploy.md 一致。
+            SMOKE_BASE="$(mktemp -d)"
+            AGENTBUDDY_HOME="$SMOKE_BASE/home" AGENTBUDDY_VENV="$SMOKE_BASE/venv" \
+              AGENTBUDDY_ADMIN_USERNAME=smoke-admin AGENTBUDDY_ADMIN_PASSWORD=smoke-pass-123 \
+              bash scripts/install-offline.sh "$dir" > /dev/null
+            VENV_PY="$SMOKE_BASE/venv/bin/python"
+            "$VENV_PY" -c "import fastapi, uvicorn, sqlalchemy, pydantic, pydantic_core, cryptography, lxml, numpy, PIL, greenlet, tiktoken, argon2, aiohttp, orjson, yaml; print('core imports OK')"
+            "$SMOKE_BASE/venv/bin/octop" --version
+            # install-offline.sh 内部已带凭据跑过 init(含迁移 SQL 的窗口函数路径);
+            # 断言数据库已建好
+            ls "$SMOKE_BASE/home"/*.db >/dev/null && echo "init database OK"
+            rm -rf "$SMOKE_BASE"
+            echo "::endgroup::"
+          done
+
+      - name: Upload bundle artifacts
         if: steps.skip.outputs.skip != 'true'
         uses: actions/upload-artifact@v4
         with:
           name: offline-bundle-${{ matrix.arch }}
           path: |
             dist/agentbuddy-offline-*.tar.gz
-            dist/SHA256SUMS.txt
+            dist/SHA256SUMS-*.txt
+            dist/wheel-glibc-baselines.txt
           retention-days: 30
           if-no-files-found: error
 
@@ -147,7 +238,9 @@ jobs:
           # repo from the checkout, not from the release event alone).
           # zsh(no matches found)与 bash nullglob 行为差异:显式收集文件
           files=()
-          for f in bundles/offline-bundle-*/agentbuddy-offline-*.tar.gz; do
+          for f in bundles/offline-bundle-*/agentbuddy-offline-*.tar.gz \
+                   bundles/offline-bundle-*/SHA256SUMS-*.txt \
+                   bundles/offline-bundle-*/wheel-glibc-baselines.txt; do
             [ -e "$f" ] && files+=("$f")
           done
           if [ ${#files[@]} -eq 0 ]; then
