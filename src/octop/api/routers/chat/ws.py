@@ -212,6 +212,12 @@ async def dashboard_chat_ws(
                 await send_frame({"type": "done"})
                 continue
 
+            # Subscribe before any further await: steer admission (and any
+            # concurrently running turn on this thread) pushes frames the
+            # moment control yields, and push_to_thread drops frames for
+            # connections that are not subscribed yet.
+            hub.subscribe(prepared_early.thread_id, connection_id)
+
             steered = await _maybe_admit_steer(
                 text=(turn.text or "").strip() or _plain_text_from_turn(turn),
                 thread_id=prepared_early.thread_id,
@@ -240,7 +246,6 @@ async def dashboard_chat_ws(
                 ws_connection_id=connection_id,
                 user_is_admin=bool(getattr(user, "is_admin", False)),
             )
-            hub.subscribe(prepared_early.thread_id, connection_id)
             channel_manager.enqueue(WS_CHANNEL_ID, inbound)
 
     except WebSocketDisconnect:
