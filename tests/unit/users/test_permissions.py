@@ -68,7 +68,9 @@ def test_categories_match_nav_groups() -> None:
         "connectors",
         "skill_packages",
         "knowledge_bases",
+        "bridge",
     }
+    assert "bridge" in BASELINE_PERMISSIONS
     assert PERMISSIONS["skills"].page == "personalization"
     assert PERMISSIONS["agent_plugins"].page == "personalization"
     assert {k for k, p in PERMISSIONS.items() if p.category == "control"} == {

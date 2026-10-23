@@ -13,6 +13,7 @@ Procedural flow (bypasses the LangGraph ReAct loop):
 from __future__ import annotations
 
 import logging
+from collections.abc import Callable
 from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING, Any
 from zoneinfo import ZoneInfo
@@ -114,12 +115,21 @@ class ProactiveCareService:
         """Point dedup storage at a rebound control-plane pool."""
         self._care_push_repo = care_push_repo
 
-    async def run(self, agent_id: str, session_key: str) -> None:
+    async def run(
+        self,
+        agent_id: str,
+        session_key: str,
+        *,
+        can_send: Callable[[], bool] | None = None,
+    ) -> None:
         """Run one proactive care push.
 
         Args:
             agent_id: The agent ID to push for.
             session_key: The session key to push to.
+            can_send: Rechecked after the message is written and before it is
+                delivered. A false result drops the message, matching finnie's
+                discard when the user starts a turn during generation.
         """
         logger.info(
             "ProactiveCareService: starting push agent=%s session=%s", agent_id, session_key
@@ -248,6 +258,12 @@ class ProactiveCareService:
             return  # do not push, do not write a record
 
         # 7. Push the message directly without invoking the agent.
+        if can_send is not None and not can_send():
+            logger.info(
+                "ProactiveCareService: user activity changed during generation, discarding agent=%s",
+                agent_id,
+            )
+            return
         try:
             await self._gateway.push_text_from_session(agent_id, session_key, care_text)
         except Exception as exc:

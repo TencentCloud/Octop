@@ -473,6 +473,7 @@ async def test_new_directory_user_gets_the_preset_role_template(
     # invisible to this test.
     assert sorted(row.permissions) == [
         "agent_plugins",
+        "bridge",
         "channels",
         "connectors",
         "experts",

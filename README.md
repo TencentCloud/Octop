@@ -304,6 +304,8 @@ Open `http://localhost:8088`. A valid `OCTOP_DEFAULT_PASSWORD` creates the admin
 
 See [`.env.example`](.env.example) for the full list.
 
+To serve the dashboard under a reverse-proxy subpath (for example `https://example.com/octop/`), rebuild the frontend with `VITE_BASE_PATH=/octop/` and strip that prefix in the proxy (nginx `proxy_pass …/;`). The default build assumes the domain root.
+
 ### Deploy with Cloud
 
 <p>

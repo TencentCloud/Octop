@@ -20,6 +20,14 @@
   max-width: 100%;
 }
 
+.pageToolbarStart {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px;
+  min-width: 0;
+}
+
 .pageToolbarActions {
   display: flex;
   align-items: center;
@@ -37,6 +45,15 @@
   align-items: center;
   justify-content: space-between;
   padding: 4px 0 0;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.filterEmpty {
+  padding: 28px 12px 12px;
+  text-align: center;
+  font-size: 13px;
+  color: var(--fn-text-tertiary);
 }
 
 .gridCount {
@@ -48,6 +65,16 @@
   display: inline-flex;
   align-items: center;
   gap: 4px;
+}
+
+.privacyToggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  color: var(--fn-text-secondary);
+  cursor: pointer;
+  white-space: nowrap;
 }
 
 /* ── Card grid (mirrors Admin Storage) ─────────────────────────── */
@@ -119,7 +146,7 @@
 
 .backendCardName {
   display: flex;
-  align-items: baseline;
+  align-items: center;
   gap: 8px;
   min-width: 0;
   font-size: 18px;
@@ -310,6 +337,13 @@
   flex-direction: column;
   min-width: 0;
   gap: 2px;
+}
+
+.tableNameTitle {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
 
   strong {
     overflow: hidden;
@@ -490,10 +524,13 @@
 }
 
 .drawerHint {
-  margin: 0 0 16px;
-  color: var(--fn-text-secondary, #6b7280);
+  margin: 0 0 12px;
+  padding: 10px 12px;
+  border-radius: var(--fn-radius-md);
+  background: var(--fn-surface-sunken);
+  color: var(--fn-text-tertiary);
   font-size: 13px;
-  line-height: 1.55;
+  line-height: 1.5;
 }
 
 .createDrawer {
@@ -527,6 +564,10 @@
   :global(.ant-input-prefix) {
     margin-inline-end: 8px;
   }
+}
+
+.textAssistField {
+  margin-bottom: 4px !important;
 }
 
 .createSection {
@@ -588,4 +629,39 @@
   align-items: center;
   flex-wrap: wrap;
   gap: 8px;
+}
+
+.formOptions {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  margin-top: 8px;
+  border: 1px solid var(--fn-border-secondary);
+  border-radius: var(--fn-radius-md, 8px);
+  overflow: hidden;
+}
+
+.formOptionRowVisibility {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 10px;
+  padding: 12px 14px;
+  background: var(--fn-bg-primary);
+}
+
+.formOptionCopy {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+  flex: 1;
+}
+
+.switchLabel {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-weight: 500;
+  color: var(--fn-text-primary);
 }

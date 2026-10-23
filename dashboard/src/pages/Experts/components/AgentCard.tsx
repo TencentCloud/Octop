@@ -38,6 +38,7 @@ import {
 import styles from "../index.module.less";
 import RemoteExpertHint from "../../Chat/components/RemoteExpertHint";
 import { expertDeleteConfirm } from "../../../utils/remoteExpert";
+import { SharedResourceBadge } from "../../../components/SharedResourceBadge";
 import { isSharedExpertViewer } from "../../../utils/sharedExpert";
 import type { PublishedExpert } from "../../../api/modules/publishedExperts";
 import PublishTemplateButton from "./PublishTemplateButton";
@@ -313,15 +314,11 @@ export const AgentCard = memo(function AgentCard({
           <div className={styles.agentCard2TitleBlock}>
             <div className={styles.agentCard2NameRow}>
               <div className={styles.agentCard2Name}>{agent.name}</div>
-              {agent.is_shared && (
-                <Tag color="blue">
-                  {sharedViewer
-                    ? t("experts.share.fromOwner", {
-                        name: agent.owner_username,
-                      })
-                    : t("experts.share.badge")}
-                </Tag>
-              )}
+              <SharedResourceBadge
+                shared={agent.is_shared}
+                owned={!sharedViewer}
+                ownerName={agent.owner_username}
+              />
               <RemoteExpertHint agent={agent} />
             </div>
             <div className={styles.agentCardIdRow}>

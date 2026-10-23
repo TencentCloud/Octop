@@ -1110,7 +1110,7 @@ if [ -f "$OCTOP_VENV/bin/python" ] && [ -d "$OCTOP_HOME" ]; then
   if [ ! -f "$CONFIG_PATH" ]; then
     echo "{}" > "$CONFIG_PATH"
   fi
-  "$OCTOP_VENV/bin/python" -m octop.infra.mobile "$CONFIG_PATH" || true
+  "$OCTOP_VENV/bin/python" -m octop.infra.control.mobile "$CONFIG_PATH" || true
 fi
 
 # ── 完成 ──────────────────────────────────────────────────────────────────────

@@ -272,6 +272,11 @@ async def prepare_dashboard_turn(
             ErrorCode.SLASH_BAD_ARGS,
             "default_model must reference an enabled model",
         )
+    if model_ref is not None and not server.app_runtime.agent_registry.model_ref_allowed_for_user(
+        user.id,
+        model_ref,
+    ):
+        raise OctopError(ErrorCode.RESOURCE_NOT_ALLOWED, "resource is not visible to this user")
     composer_updates: dict[str, Any] = {}
     if model_ref is not None:
         composer_updates["model_ref"] = model_ref

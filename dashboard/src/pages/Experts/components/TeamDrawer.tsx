@@ -8,6 +8,16 @@ import {
   type TeamRecord,
   type TeamTemplateFile,
 } from "../../../api/modules/teams";
+import { octopAgentsApi } from "../../../api/modules/octopAgents";
+import {
+  avatarPickerStyles,
+  expertPresetSrc,
+  isUploadedAvatarUrl,
+  ResourceAvatarPicker,
+  splitExpertAvatarUrl,
+  TEAM_AVATAR_PRESETS,
+} from "../../../components/AvatarPicker";
+import { TextAssistBar } from "../../../components/TextAssistBar";
 import type { OctopAgent } from "../../../context/AgentContext";
 import { useAgentFormResources } from "../../../hooks/useAgentFormResources";
 import { apiErrorMessage } from "../../../utils/apiError";
@@ -18,6 +28,7 @@ import {
   MODEL_AUTO_VALUE,
 } from "../../../utils/modelOptions";
 import { TEAM_AVATAR_URL, TEAM_ICON_NAME } from "../../../utils/teamAgent";
+import ExpertAgentAvatar from "../../Chat/components/ExpertAgentAvatar";
 import { metaForFile } from "./iconForName";
 import TeamMemberPicker, {
   mergeTeamPickerExperts,
@@ -58,6 +69,9 @@ export default function TeamDrawer({
   const [templateFiles, setTemplateFiles] = useState<TeamTemplateFile[]>([]);
   const [templateLoading, setTemplateLoading] = useState(false);
   const [rosterExtras, setRosterExtras] = useState<TeamMemberOption[]>([]);
+  const [iconUrl, setIconUrl] = useState<string | null>(TEAM_AVATAR_URL);
+  const [avatarFile, setAvatarFile] = useState<File | null>(null);
+  const [avatarBusy, setAvatarBusy] = useState(false);
   const pickerExperts = useMemo(
     () => mergeTeamPickerExperts(experts, rosterExtras),
     [experts, rosterExtras],
@@ -76,6 +90,8 @@ export default function TeamDrawer({
         welcome_message: team.welcome_message ?? "",
         member_ids: team.member_ids ?? [],
       });
+      setIconUrl(team.icon_url?.trim() || TEAM_AVATAR_URL);
+      setAvatarFile(null);
       let cancelled = false;
       void teamsApi
         .get(team.agent_id)
@@ -88,6 +104,7 @@ export default function TeamDrawer({
             welcome_message: record.welcome_message ?? "",
             member_ids: record.members.map((member) => member.agent_id),
           });
+          setIconUrl(record.icon_url?.trim() || TEAM_AVATAR_URL);
           setRosterExtras(
             record.members.map((member) => ({
               agent_id: member.agent_id,
@@ -115,6 +132,8 @@ export default function TeamDrawer({
       welcome_message: t("experts.teams.welcomeDefault"),
       member_ids: [],
     });
+    setIconUrl(TEAM_AVATAR_URL);
+    setAvatarFile(null);
     setRosterExtras([]);
   }, [form, mode, open, t, team]);
 
@@ -140,6 +159,7 @@ export default function TeamDrawer({
 
   const hasNoModels = !modelsLoading && models.length === 0;
   const blocked = submitting || hasNoModels;
+  const { imageUrl, presetId } = splitExpertAvatarUrl(iconUrl);
 
   const handleSubmit = async () => {
     const values = await form.validateFields();
@@ -148,7 +168,9 @@ export default function TeamDrawer({
       description: values.description?.trim() || null,
       default_model: defaultModelFromForm(values.default_model),
       icon_name: TEAM_ICON_NAME,
-      icon_url: TEAM_AVATAR_URL,
+      icon_url: avatarFile
+        ? TEAM_AVATAR_URL
+        : iconUrl?.trim() || TEAM_AVATAR_URL,
       welcome_message: values.welcome_message?.trim() || null,
       member_ids: selectedRosterIds(values.member_ids, pickerExperts),
     };
@@ -162,6 +184,17 @@ export default function TeamDrawer({
               name: body.name,
               member_ids: body.member_ids,
             });
+      if (avatarFile) {
+        try {
+          const result = await octopAgentsApi.uploadAvatar(
+            saved.agent_id,
+            avatarFile,
+          );
+          saved.icon_url = result.icon_url;
+        } catch {
+          message.warning(t("experts.teams.avatarUploadLater"));
+        }
+      }
       message.success(
         mode === "edit"
           ? t("experts.teams.updated")
@@ -222,29 +255,142 @@ export default function TeamDrawer({
 
       <Form form={form} layout="vertical" size="middle">
         <Form.Item
+          label={t("experts.avatar")}
+          className={avatarPickerStyles.formItem}
+        >
+          <ResourceAvatarPicker
+            imageUrl={imageUrl}
+            presetId={presetId === "team-host" ? null : presetId}
+            presets={TEAM_AVATAR_PRESETS}
+            disabled={submitting || avatarBusy}
+            onPick={(file) => {
+              if (mode === "edit" && team) {
+                void (async () => {
+                  setAvatarBusy(true);
+                  try {
+                    const result = await octopAgentsApi.uploadAvatar(
+                      team.agent_id,
+                      file,
+                    );
+                    setIconUrl(result.icon_url);
+                    setAvatarFile(null);
+                  } catch (err) {
+                    message.error(
+                      apiErrorMessage(err, t("experts.avatarUploadFailed"), t),
+                    );
+                    throw err;
+                  } finally {
+                    setAvatarBusy(false);
+                  }
+                })();
+                return;
+              }
+              setAvatarFile(file);
+              setIconUrl(URL.createObjectURL(file));
+            }}
+            onSelectPreset={(id) => {
+              void (async () => {
+                const nextUrl = id ? expertPresetSrc(id) : TEAM_AVATAR_URL;
+                setAvatarFile(null);
+                if (mode === "edit" && team && isUploadedAvatarUrl(iconUrl)) {
+                  setAvatarBusy(true);
+                  try {
+                    await octopAgentsApi.deleteAvatar(team.agent_id);
+                  } catch {
+                    // Preset path still wins on save / local state.
+                  } finally {
+                    setAvatarBusy(false);
+                  }
+                }
+                setIconUrl(nextUrl);
+              })();
+            }}
+            onRemove={
+              imageUrl || avatarFile
+                ? () => {
+                    void (async () => {
+                      setAvatarFile(null);
+                      if (
+                        mode === "edit" &&
+                        team &&
+                        isUploadedAvatarUrl(iconUrl)
+                      ) {
+                        setAvatarBusy(true);
+                        try {
+                          await octopAgentsApi.deleteAvatar(team.agent_id);
+                        } catch (err) {
+                          message.error(
+                            apiErrorMessage(
+                              err,
+                              t("experts.avatarRemoveFailed"),
+                              t,
+                            ),
+                          );
+                        } finally {
+                          setAvatarBusy(false);
+                        }
+                      }
+                      setIconUrl(TEAM_AVATAR_URL);
+                    })();
+                  }
+                : undefined
+            }
+            renderPreview={({ displayUrl, presetId: selected, hasPhoto }) => (
+              <ExpertAgentAvatar
+                iconUrl={
+                  hasPhoto
+                    ? displayUrl
+                    : selected
+                    ? expertPresetSrc(selected)
+                    : iconUrl
+                }
+                iconName={TEAM_ICON_NAME}
+                size={56}
+              />
+            )}
+          />
+        </Form.Item>
+        <Form.Item
           name="name"
           label={t("experts.agentName")}
           rules={[{ required: true, message: t("experts.pleaseEnterName") }]}
         >
           <Input />
         </Form.Item>
-        <Form.Item name="description" label={t("experts.agentDescription")}>
-          <Input.TextArea rows={2} />
+        <Form.Item
+          name="description"
+          label={t("experts.agentDescription")}
+          className={styles.textAssistField}
+        >
+          <Input.TextArea autoSize={{ minRows: 2, maxRows: 5 }} />
         </Form.Item>
+        <TextAssistBar
+          kind="team.description"
+          getName={() => String(form.getFieldValue("name") ?? "")}
+          getText={() => String(form.getFieldValue("description") ?? "")}
+          onApply={(text) => form.setFieldsValue({ description: text })}
+        />
         <Form.Item
           name="welcome_message"
           label={t("experts.welcomeMessageTitle")}
-          extra={
+          tooltip={
             mode === "edit"
               ? t("experts.editWelcomeHint")
               : t("experts.createWelcomeHint")
           }
+          className={styles.textAssistField}
         >
           <Input.TextArea
-            rows={2}
+            autoSize={{ minRows: 2, maxRows: 5 }}
             placeholder={t("experts.welcomeMessagePlaceholder")}
           />
         </Form.Item>
+        <TextAssistBar
+          kind="team.welcome_message"
+          getName={() => String(form.getFieldValue("name") ?? "")}
+          getText={() => String(form.getFieldValue("welcome_message") ?? "")}
+          onApply={(text) => form.setFieldsValue({ welcome_message: text })}
+        />
         <Form.Item name="default_model" label={t("experts.defaultModelLabel")}>
           <Select
             loading={modelsLoading}

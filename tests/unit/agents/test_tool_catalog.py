@@ -26,6 +26,7 @@ def test_team_host_tools_are_dispatch_only() -> None:
 def test_critical_tools_are_in_catalog() -> None:
     names = {e.name for e in BUILTIN_TOOL_CATALOG}
     assert names >= CRITICAL_TOOLS
+    assert "deepseek_search" in names
 
 
 def test_normalize_strips_critical_and_sorts() -> None:
