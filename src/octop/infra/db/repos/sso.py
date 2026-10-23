@@ -306,6 +306,24 @@ class SsoRepo:
                 ),
             )
 
+    def claim_once(self, *, state: str, provider_id: int, expires_at: int) -> bool:
+        """原子插入一次性占位行；state 已存在（唯一约束冲突，即重放）时返回 False。"""
+        try:
+            self.create_login_state(
+                state=state,
+                provider_id=provider_id,
+                nonce="",
+                code_verifier="",
+                redirect_after="",
+                expires_at=expires_at,
+                user_id=None,
+            )
+        except Exception as exc:
+            if _is_unique_violation(exc):
+                return False
+            raise
+        return True
+
     def take_login_state(self, state: str) -> SsoLoginStateRow | None:
         """Atomically claim a login state for one callback attempt."""
         with self._db.transaction() as conn:

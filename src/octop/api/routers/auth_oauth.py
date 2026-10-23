@@ -25,7 +25,7 @@ from octop.infra.users.identity import User
 
 router = APIRouter()
 
-SsoKind = Literal["oidc", "feishu", "dingtalk", "wecom"]
+SsoKind = Literal["oidc", "feishu", "dingtalk", "wecom", "external"]
 
 
 class OauthStartBody(BaseModel):

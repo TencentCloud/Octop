@@ -50,6 +50,7 @@ _JWT_EXEMPT_EXACT = (
     "/api/auth/oauth/start",
     "/api/auth/oauth/callback",
     "/api/auth/oauth/exchange",
+    "/api/auth/external/exchange",
     "/api/auth/ldap/status",
     "/api/auth/invite/validate",
     "/api/auth/invite/redeem",
