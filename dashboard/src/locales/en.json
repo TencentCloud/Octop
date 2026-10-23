@@ -245,7 +245,13 @@
     "LOCAL_DOWNLOAD_UNAVAILABLE": "Saving to the host Downloads folder is only available when Octop is opened on this computer.",
     "SKILL_PACKAGE_COPY_DENIED": "The creator of this skill package has disabled copying its skills.",
     "SKILL_PACKAGE_DOWNLOAD_DENIED": "Downloading this skill package is disabled.",
-    "SKILL_PACKAGE_LOCKED": "This skill was copied from a locked skill package and cannot be edited in the workspace."
+    "SKILL_PACKAGE_LOCKED": "This skill was copied from a locked skill package and cannot be edited in the workspace.",
+    "MFA_INVALID": "Authentication challenge failed. Try again.",
+    "MFA_LOCKED": "Too many MFA attempts. Try again later.",
+    "MFA_REAUTH_REQUIRED": "Re-enter your password to continue.",
+    "MFA_LAST_FACTOR": "Cannot remove the last MFA factor.",
+    "WEBAUTHN_CONFIG_INVALID": "Passkeys are not configured on this server.",
+    "WEBAUTHN_INVALID_DOMAIN": "Passkeys need a hostname. Open Octop via http://localhost (not an IP address such as 127.0.0.1)."
   },
   "nav": {
     "chat": "Conversation",
@@ -327,7 +333,8 @@
     "groupNameRequired": "Enter a group name",
     "saveFailed": "Could not save the navigation layout",
     "dragToReorder": "Drag to reorder",
-    "chatHistory": "Session list"
+    "chatHistory": "Session list",
+    "passkeys": "Passkeys"
   },
   "skillPackages": {
     "title": "Skill Packages",
@@ -3915,6 +3922,22 @@
           "body": "The new package only takes effect after the process restarts. Use the command that matches how you launched Octop:"
         }
       }
+    },
+    "webauthn": {
+      "title": "Passkeys (WebAuthn)",
+      "description": "Relying Party settings for passkey registration and sign-in. Required for production HTTPS hosts; localhost works without this.",
+      "localhostHint": "When unset, only http(s)://localhost is allowed automatically. IP addresses (including 127.0.0.1) cannot be used as an RP ID.",
+      "rpId": "RP ID (domain)",
+      "rpIdHint": "Usually the site hostname without port, e.g. octop.example.com. Must not be an IP address.",
+      "rpIdPlaceholder": "octop.example.com",
+      "origins": "Allowed origins",
+      "originsHint": "One origin per line (scheme + host + optional port), e.g. https://octop.example.com",
+      "originsPlaceholder": "https://octop.example.com",
+      "useCurrentOrigin": "Use current site",
+      "save": "Save",
+      "saved": "Passkey settings saved",
+      "saveFailed": "Could not save passkey settings",
+      "loadFailed": "Could not load passkey settings"
     }
   },
   "agentConfig": {
@@ -4223,7 +4246,57 @@
     "ssoUnbindSuccess": "Single sign-on unlinked",
     "ssoBindFailed": "Could not start account linking",
     "ssoUnbindFailed": "Could not unlink single sign-on",
-    "ssoPopupBlocked": "Allow pop-ups to continue with single sign-on."
+    "ssoPopupBlocked": "Allow pop-ups to continue with single sign-on.",
+    "security": "Account security",
+    "securityHint": "Two-factor authentication and passkeys protect password sign-in. Single sign-on (SSO) does not use Octop MFA.",
+    "securitySsoOnly": "This account signs in only through SSO and cannot enroll Octop MFA (no password to re-confirm).",
+    "securitySsoBypass": "SSO sign-in does not use MFA. Hybrid accounts with a local password can still use password + MFA or a passkey.",
+    "securityCliNote": "The Octop CLI trusts local filesystem access and does not prompt for MFA.",
+    "securityTotp": "Authenticator app (TOTP)",
+    "securityTotpEnabled": "Enabled",
+    "securityTotpDisabled": "Not enabled",
+    "securityTotpEnroll": "Set up authenticator",
+    "securityTotpDisable": "Disable authenticator",
+    "securityTotpConfirm": "Confirm",
+    "securityTotpCode": "Enter the 6-digit code",
+    "securityTotpScan": "Scan this QR code with your authenticator app, then enter the code it shows.",
+    "securityPasskeys": "Passkeys",
+    "securityPasskeyAdd": "Add passkey",
+    "securityPasskeyName": "Passkey name",
+    "securityPasskeyNamePlaceholder": "e.g. MacBook Touch ID",
+    "securityPasskeyDefaultName": "Passkey",
+    "securityPasskeyNameHint": "Optional. Helps you recognize this device or password manager later.",
+    "securityPasskeyRemove": "Remove",
+    "securityPasskeyEmpty": "No passkeys yet.",
+    "securityPasskeyLastUsed": "Last used {{time}}",
+    "securityPasskeyNeverUsed": "Never used",
+    "securityPasskeyHttps": "Passkeys require HTTPS, or http://localhost (IP addresses like 127.0.0.1 are not supported).",
+    "securityRecovery": "Recovery codes",
+    "securityRecoveryRemaining": "{{count}} unused codes remaining",
+    "securityRecoveryRegenerate": "Generate new recovery codes",
+    "securityRecoveryShowOnce": "Save these recovery codes now. They will not be shown again.",
+    "securityRecoverySaved": "I saved these codes",
+    "securityReauthTitle": "Confirm your password",
+    "securityReauthHint": "Enter your password to change account security settings.",
+    "securityReauthSubmit": "Continue",
+    "securityReauthFailed": "Could not confirm password.",
+    "securityLoadFailed": "Could not load account security status.",
+    "securityEnrollSuccess": "Two-factor authentication enabled.",
+    "securityDisableSuccess": "Authenticator disabled.",
+    "securityPasskeyAdded": "Passkey added.",
+    "securityPasskeyRemoved": "Passkey removed.",
+    "securityRecoveryRegenSuccess": "New recovery codes generated.",
+    "securityUnavailable": "Account security is not available yet (server MFA routes missing).",
+    "securityTotpDesc": "Use an authenticator app for a six-digit code when signing in with a password.",
+    "securityPasskeyDesc": "Sign in with Face ID, Touch ID, or a hardware security key — no password needed.",
+    "securityPasskeyCount": "{{count}} passkeys",
+    "securityRecoveryNeedFactor": "Enable an authenticator or passkey first to generate recovery codes.",
+    "securityRecoveryDesc": "One-time backup codes for signing in if you lose your authenticator or passkey.",
+    "securityRecoveryDownload": "Download as text file",
+    "securityDisableMfaTitle": "Turn off two-factor authentication?",
+    "securityDisableMfaHint": "This removes your last sign-in factor. Password-only sign-in will be enough until you enroll again. Recovery codes will also be cleared.",
+    "securityRecoveryCount": "{{count}} left",
+    "securityPasskeyIpHost": "Passkeys cannot run on an IP address. Open this page via http://localhost:{{port}} instead of {{host}}."
   },
   "user": {
     "title": "User Settings",
@@ -5792,7 +5865,26 @@
       "missingCode": "The single sign-on response is missing a login code.",
       "failed": "Could not complete single sign-on",
       "backToLogin": "Back to sign in"
-    }
+    },
+    "mfaTitle": "Two-factor authentication",
+    "mfaHint": "Enter a code from your authenticator app, a recovery code, or use a passkey.",
+    "mfaTotp": "Authenticator code",
+    "mfaTotpPlaceholder": "6-digit code",
+    "mfaRecovery": "Recovery code",
+    "mfaRecoveryPlaceholder": "xxxx-xxxx-xxxx",
+    "mfaUseRecovery": "Use a recovery code",
+    "mfaUseTotp": "Use authenticator app",
+    "mfaUsePasskey": "Use a passkey",
+    "mfaVerify": "Verify",
+    "mfaBack": "Back to sign in",
+    "mfaPasskeyUnavailable": "Passkeys require HTTPS (or localhost). Use an authenticator code or recovery code instead.",
+    "passkeySignIn": "Sign in with a passkey",
+    "passkeyHttpsRequired": "Passkeys require a secure connection (HTTPS), or http://localhost. IP addresses such as 127.0.0.1 are not supported.",
+    "passkeyFailed": "Passkey sign-in failed.",
+    "mfaFailed": "Two-factor verification failed.",
+    "mfaHintTotp": "Enter the 6-digit code from your authenticator app.",
+    "mfaHintPasskey": "Confirm with your passkey to finish signing in.",
+    "mfaHintRecovery": "Enter one of your recovery codes."
   },
   "invite": {
     "title": "Join with invite",
@@ -6110,7 +6202,12 @@
       "delete": "Delete",
       "set_token_quota": "Set token limit",
       "set_max_agents": "Set expert limit"
-    }
+    },
+    "mfaBadge": "MFA",
+    "mfaReset": "Reset MFA",
+    "mfaResetConfirm": "Clear all MFA factors for {{username}}? They will need to enroll again.",
+    "mfaResetSuccess": "MFA reset.",
+    "mfaResetFailed": "Could not reset MFA."
   },
   "adminSso": {
     "panelTitle": "Single sign-on",
@@ -7089,7 +7186,12 @@
     "retry": "Retry",
     "offlineTitle": "Cannot reach the Octop server",
     "offlineSubtitle": "The network may be offline or the backend is not running. Check connectivity and try again.",
-    "backHome": "Back to Home"
+    "backHome": "Back to Home",
+    "MFA_INVALID": "Authentication challenge failed. Try again.",
+    "MFA_LOCKED": "Too many MFA attempts. Try again later.",
+    "MFA_REAUTH_REQUIRED": "Re-enter your password to continue.",
+    "MFA_LAST_FACTOR": "Cannot remove the last MFA factor.",
+    "WEBAUTHN_CONFIG_INVALID": "Passkeys are not configured on this server."
   },
   "adminProviders": {
     "title": "Providers",

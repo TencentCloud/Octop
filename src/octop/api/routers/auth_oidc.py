@@ -20,6 +20,7 @@ from octop.api.common.sso_cookie import (
 from octop.api.deps import get_server, require_permission, sign_token
 from octop.api.routers.auth import _user_json
 from octop.infra.auth.sso.service import SsoService
+from octop.infra.auth.tokens import PURPOSE_ACCESS
 from octop.infra.errors import ErrorCode, OctopError
 
 router = APIRouter()
@@ -68,9 +69,17 @@ async def exchange_login_code_response(code: str, server: Any) -> dict[str, Any]
         raise _bad_request(exc) from exc
     secret = server.services.secret_repo.get("jwt")
     ttl = server.services.config.access_token_ttl_seconds
+    row = server.services.user_repo.get(user.id)
+    mfa_version = int(row.mfa_version) if row is not None else 0
     return {
         "access_token": sign_token(
-            secret, sub=user.id, uname=user.username, role=user.role, ttl_seconds=ttl
+            secret,
+            sub=user.id,
+            uname=user.username,
+            role=user.role,
+            purpose=PURPOSE_ACCESS,
+            ttl_seconds=ttl,
+            mfa_version=mfa_version,
         ),
         "token_type": "Bearer",
         "expires_in": ttl,

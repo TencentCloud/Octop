@@ -5,10 +5,11 @@ from __future__ import annotations
 import time
 from typing import Any, Literal
 
-from fastapi import APIRouter, Depends, File, Request, UploadFile
+from fastapi import APIRouter, Depends, File, Request, Response, UploadFile
 from pydantic import BaseModel, Field
 
 from octop.api.deps import current_user, get_server, require_permission
+from octop.infra.auth.mfa import MfaService
 from octop.infra.errors import ErrorCode, OctopError
 from octop.infra.users.identity import Role, User
 from octop.infra.users.permissions import PERMISSIONS, effective_permissions
@@ -95,6 +96,9 @@ def _row_to_dict(r: Any, policy: Any | None = None, server: Any = None) -> dict[
     locked_until = int(getattr(r, "login_locked_until", 0) or 0)
     locked = locked_until > now and not bool(r.disabled)
     retry_after = max(0, locked_until - now) if locked else 0
+    mfa_active = False
+    if server is not None and getattr(server, "services", None) is not None:
+        mfa_active = MfaService(server.services).has_verified_factor(int(r.id))
     return {
         "id": r.id,
         "username": r.username,
@@ -103,6 +107,7 @@ def _row_to_dict(r: Any, policy: Any | None = None, server: Any = None) -> dict[
         "email": r.email,
         "has_password": r.password_hash is not None,
         "sso_linked": r.sso_provider_id is not None and r.sso_subject is not None,
+        "mfa_active": mfa_active,
         "disabled": bool(r.disabled),
         "login_failed_count": int(getattr(r, "login_failed_count", 0) or 0),
         "login_locked": locked,
@@ -524,6 +529,20 @@ async def unlock_user_login(
     if row is None:
         raise OctopError(ErrorCode.NOT_FOUND, "user not found")
     await server.user_manager.unlock_login(row.username)
+
+
+@router.delete("/{user_id}/mfa", status_code=204, summary="Admin reset MFA factors")
+async def admin_reset_mfa(
+    user_id: int,
+    actor: Any = Depends(require_permission("users")),
+    server: Any = Depends(get_server),
+) -> Response:
+    """Clear TOTP, passkeys, and recovery codes for ``user_id``; bump their mfa_version."""
+    row = server.user_manager.get_row(user_id)
+    if row is None:
+        raise OctopError(ErrorCode.NOT_FOUND, "user not found")
+    MfaService(server.services).admin_reset(target_user_id=user_id, actor=actor.username)
+    return Response(status_code=204)
 
 
 @router.post("/{user_id}/reset-password", status_code=204)

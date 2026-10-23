@@ -8,6 +8,7 @@ from typing import TYPE_CHECKING, Any, cast
 
 from fastapi import Depends, Header, Query, Request
 
+from octop.infra.auth.tokens import PURPOSE_ACCESS, token_mfa_version, token_purpose
 from octop.infra.auth.tokens import InvalidToken as InvalidToken
 from octop.infra.auth.tokens import TokenExpired as TokenExpired
 from octop.infra.auth.tokens import decode_token as decode_token
@@ -42,6 +43,10 @@ _JWT_EXEMPT_EXACT = (
     "/api/health",
     "/api/auth/login",
     "/api/auth/captcha",
+    "/api/auth/mfa/verify",
+    "/api/auth/mfa/passkey/options",
+    "/api/auth/passkey/login/options",
+    "/api/auth/passkey/login/verify",
     "/api/auth/oidc/status",
     "/api/auth/oidc/start",
     "/api/auth/oidc/callback",
@@ -110,10 +115,30 @@ def _decode(server: OctopServer, token: str) -> dict[str, Any]:
 
 def resolve_user_from_token(server: OctopServer, token: str) -> User:
     payload = _decode(server, token)
+    try:
+        purpose = token_purpose(payload)
+    except InvalidToken as exc:
+        raise OctopError(ErrorCode.AUTH_FAILED, "invalid token") from exc
+    # Fail closed: only access tokens are accepted on normal API paths.
+    # Missing purpose ≡ access only while the user's mfa_version is still 0.
+    assert server.services is not None
     assert server.user_manager is not None
     user = server.user_manager.get_by_id(int(payload["sub"]))
     if user is None:
         raise OctopError(ErrorCode.USER_DISABLED, "user not active")
+    row = server.services.user_repo.get(user.id)
+    current_version = int(row.mfa_version) if row is not None else 0
+    if purpose is None:
+        if current_version != 0:
+            raise OctopError(ErrorCode.AUTH_FAILED, "invalid token")
+    elif purpose != PURPOSE_ACCESS:
+        raise OctopError(ErrorCode.AUTH_FAILED, "invalid token")
+    try:
+        claim_version = token_mfa_version(payload)
+    except InvalidToken as exc:
+        raise OctopError(ErrorCode.AUTH_FAILED, "invalid token") from exc
+    if claim_version != current_version:
+        raise OctopError(ErrorCode.AUTH_FAILED, "invalid token")
     return user
 
 
@@ -125,6 +150,16 @@ def maybe_sliding_renew_token(server: OctopServer, token: str, user: User) -> st
     """
     assert server.services is not None
     payload = _decode(server, token)
+    try:
+        purpose = token_purpose(payload)
+    except InvalidToken as exc:
+        raise OctopError(ErrorCode.AUTH_FAILED, "invalid token") from exc
+    if purpose is not None and purpose != PURPOSE_ACCESS:
+        return None
+    if purpose is None:
+        row = server.services.user_repo.get(user.id)
+        if row is not None and int(row.mfa_version) != 0:
+            return None
     ttl = int(server.services.config.access_token_ttl_seconds)
     remaining = int(payload["exp"]) - int(time.time())
     threshold = max(1, int(ttl * _SLIDING_RENEW_REMAINING_FRACTION))
@@ -133,12 +168,16 @@ def maybe_sliding_renew_token(server: OctopServer, token: str, user: User) -> st
     secret = server.services.secret_repo.get("jwt")
     if secret is None:
         raise OctopError(ErrorCode.INTERNAL_ERROR, "jwt secret missing")
+    row = server.services.user_repo.get(user.id)
+    mfa_version = int(row.mfa_version) if row is not None else 0
     return sign_token(
         secret,
         sub=user.id,
         uname=user.username,
         role=user.role,
+        purpose=PURPOSE_ACCESS,
         ttl_seconds=ttl,
+        mfa_version=mfa_version,
     )
 
 

@@ -1,0 +1,278 @@
+.drawer {
+  :global(.ant-drawer-header) {
+    padding: 14px 20px;
+    border-bottom: 1px solid var(--fn-border-subtle, rgba(0, 0, 0, 0.06));
+  }
+
+  :global(.ant-drawer-body) {
+    padding: 16px 20px 28px;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior: contain;
+    background: var(--fn-bg-secondary, #f7f8fa);
+  }
+}
+
+.body {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.introBlock {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 12px 14px;
+  border-radius: 12px;
+  background: var(--fn-bg-elevated, #fff);
+  border: 1px solid var(--fn-border-subtle, rgba(0, 0, 0, 0.06));
+}
+
+.intro {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.55;
+  color: var(--fn-text-secondary);
+  text-wrap: pretty;
+}
+
+.note {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--fn-text-tertiary);
+  text-wrap: pretty;
+}
+
+.stack {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.card {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 14px 16px;
+  border: 1px solid var(--fn-border-subtle, rgba(0, 0, 0, 0.08));
+  border-radius: 14px;
+  background: var(--fn-bg-elevated, #fff);
+}
+
+.cardRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px 16px;
+  min-width: 0;
+  min-height: 72px;
+}
+
+.cardMain {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+  flex: 1;
+}
+
+/* Fixed action column so every section's button shares the same footprint. */
+.cardSide {
+  flex: 0 0 148px;
+  width: 148px;
+  display: flex;
+  align-items: center;
+  justify-content: stretch;
+  align-self: center;
+
+  :global(.ant-btn) {
+    width: 100%;
+    height: 36px;
+    padding-inline: 10px;
+    font-size: 13px;
+    line-height: 1.2;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+}
+
+.iconWrap {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  flex-shrink: 0;
+  border-radius: 12px;
+  background: var(--fn-bg-tertiary, #f0f1f3);
+  color: var(--fn-text-secondary);
+}
+
+.iconWrapOn {
+  background: var(--fn-bg-success-light, #ecfdf5);
+  color: var(--fn-text-success, #059669);
+}
+
+.cardMeta {
+  min-width: 0;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.cardTitleRow {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  min-width: 0;
+  min-height: 22px;
+}
+
+.cardTitle {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 650;
+  color: var(--fn-text-primary);
+  line-height: 1.3;
+  text-wrap: balance;
+}
+
+.cardDesc {
+  margin: 0;
+  font-size: 12.5px;
+  line-height: 1.45;
+  color: var(--fn-text-secondary);
+  text-wrap: pretty;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow: hidden;
+  min-height: calc(12.5px * 1.45 * 2);
+}
+
+/* Full-width under the title row — avoids truncating beside the action button. */
+.cardDescFull {
+  margin: 0;
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: var(--fn-text-secondary);
+  text-wrap: pretty;
+}
+
+.statusTag {
+  margin: 0;
+  border-radius: 999px;
+  font-size: 12px;
+  line-height: 1.4;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.passkeyList {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.passkeyRow {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: var(--fn-bg-secondary, #f7f8fa);
+  border: 1px solid var(--fn-border-subtle, rgba(0, 0, 0, 0.04));
+}
+
+.passkeyMeta {
+  min-width: 0;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.passkeyName {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--fn-text-primary);
+  line-height: 1.3;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.passkeySub {
+  font-size: 12px;
+  color: var(--fn-text-tertiary);
+  line-height: 1.35;
+}
+
+.enrollBox {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 14px;
+  border-radius: 12px;
+  background: var(--fn-bg-secondary, #f7f8fa);
+  border: 1px solid var(--fn-border-subtle, rgba(0, 0, 0, 0.05));
+}
+
+.qrWrap {
+  align-self: center;
+  padding: 12px;
+  border-radius: 12px;
+  background: #fff;
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.06);
+}
+
+.loading {
+  display: flex;
+  justify-content: center;
+  padding: 48px 0;
+}
+
+.reauthHint {
+  margin: 0 0 12px;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--fn-text-secondary);
+}
+
+.recoveryPre {
+  margin: 0;
+  padding: 12px 14px;
+  border-radius: 10px;
+  background: var(--fn-bg-tertiary, rgba(0, 0, 0, 0.04));
+  font-size: 13px;
+  line-height: 1.7;
+  font-variant-numeric: tabular-nums;
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+
+@media (max-width: 480px) {
+  .cardRow {
+    flex-direction: column;
+    align-items: stretch;
+    min-height: 0;
+  }
+
+  .cardMain {
+    align-items: flex-start;
+  }
+
+  .cardSide {
+    flex-basis: auto;
+    width: 100%;
+  }
+}
