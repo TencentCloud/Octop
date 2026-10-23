@@ -104,8 +104,8 @@ class _MemoryCache:
                     _close_memory_instances(val[0], val[1])
                 self._entries.clear()
             else:
-                val = self._entries.pop(agent_id, None)
-                if val is not None:
+                if agent_id in self._entries:
+                    val = self._entries.pop(agent_id)
                     _close_memory_instances(val[0], val[1])
 
 
@@ -119,7 +119,9 @@ def _close_memory_instances(memory: Any, bridge: Any) -> None:
                 try:
                     fn()
                 except Exception:  # noqa: BLE001 - 释放失败不影响主流程
-                    logger.debug("memory instance %s.%s failed", type(inst).__name__, name, exc_info=True)
+                    logger.debug(
+                        "memory instance %s.%s failed", type(inst).__name__, name, exc_info=True
+                    )
                 break
 
 

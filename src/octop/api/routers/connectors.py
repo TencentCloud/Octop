@@ -78,7 +78,7 @@ from octop.infra.utils.locale import resolve_request_locale
 from octop.infra.utils.ulid import new_ulid
 
 # 2026-09-07 修复：后台任务强引用集合（asyncio 要求保存引用防 GC 回收）。
-_BACKGROUND_TASKS: set[asyncio.Task] = set()
+_BACKGROUND_TASKS: set[asyncio.Task[Any]] = set()
 
 logger = logging.getLogger(__name__)
 

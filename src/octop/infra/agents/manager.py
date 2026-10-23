@@ -524,7 +524,7 @@ class AgentManager:
         self._reload_worker_running: dict[str, bool] = {}
         # 2026-09-07 修复：后台任务强引用集合（asyncio 要求保存引用防 GC 回收——
         # 原 create_task 返回值只存 bool 标记，任务对象可能被回收导致 reload 静默失败）。
-        self._background_tasks: set[asyncio.Task] = set()
+        self._background_tasks: set[asyncio.Task[Any]] = set()
         self._bootstrap_graph_refresh_pending: set[str] = set()
         # Completion latch set by the bootstrap callback. Do not cache False:
         # the middleware can complete between dashboard polls.
