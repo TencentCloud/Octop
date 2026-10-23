@@ -186,6 +186,49 @@ def test_installed_proxy_replaces_invalid_utf8(tmp_path: Path) -> None:
     assert stdout == "\ufffd\ufffd"
 
 
+def test_single_file_target_does_not_search_siblings(tmp_path: Path) -> None:
+    """A file target must be searched in isolation.
+
+    The Python fallback used to resolve a file target's *parent* directory and
+    walk it, so a grep on ``/dir/target.txt`` also returned matches from
+    sibling and nested files (issue #2352).
+    """
+    install_safe_grep_fallback()
+    target = tmp_path / "target.txt"
+    target.write_text("needle in target\n", encoding="utf-8")
+    sibling = tmp_path / "sibling.txt"
+    sibling.write_text("needle in sibling\n", encoding="utf-8")
+    nested = tmp_path / "sub"
+    nested.mkdir()
+    (nested / "deep.txt").write_text("needle in nested\n", encoding="utf-8")
+    backend = FilesystemBackend(root_dir=tmp_path, virtual_mode=False)
+    results, truncated, error = backend._python_search("needle", target, None)
+    assert truncated is False
+    assert error is None
+    # Exactly one file is searched: the targeted file alone.
+    assert len(results) == 1
+    assert str(target) in results
+    assert str(sibling) not in results
+    assert str(nested / "deep.txt") not in results
+    texts = [text for matches in results.values() for _, text in matches]
+    assert texts == ["needle in target"]
+
+
+def test_single_file_target_with_no_match_returns_empty(tmp_path: Path) -> None:
+    """A file target that does not match yields no results and no siblings."""
+    install_safe_grep_fallback()
+    target = tmp_path / "target.txt"
+    target.write_text("nothing here\n", encoding="utf-8")
+    sibling = tmp_path / "sibling.txt"
+    sibling.write_text("needle in sibling\n", encoding="utf-8")
+    backend = FilesystemBackend(root_dir=tmp_path, virtual_mode=False)
+    results, truncated, error = backend._python_search("needle", target, None)
+    assert truncated is False
+    assert error is None
+    assert results == {}
+    assert str(sibling) not in results
+
+
 class _RecordingSubprocess:
     def __init__(self) -> None:
         self.calls: list[tuple[tuple[Any, ...], dict[str, Any]]] = []
