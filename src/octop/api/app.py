@@ -214,6 +214,7 @@ def build_app(server: OctopServer) -> FastAPI:
     from octop.api.routers.filesystem import router as filesystem_router
     from octop.api.routers.observability import router as observability_router
     from octop.api.routers.providers import admin_router as admin_providers_router
+    from octop.api.routers.sandbox_admin import admin_router as admin_sandbox_router
     from octop.api.routers.security import router as security_router
     from octop.api.routers.storage_backends import admin_router as admin_storage_router
     from octop.api.routers.storage_backends import user_router as storage_backends_user_router
@@ -266,6 +267,7 @@ def build_app(server: OctopServer) -> FastAPI:
             _RouterMount(tls_router, "/api/admin/tls", ["tls"]),
             _RouterMount(security_router, "/api/admin/security", ["security"]),
             _RouterMount(admin_storage_router, "/api/admin/storage-backends", ["admin"]),
+            _RouterMount(admin_sandbox_router, "/api/admin/sandboxes", ["admin"]),
             _RouterMount(
                 storage_backends_user_router, "/api/storage-backends", ["storage-backends"]
             ),

@@ -1,7 +1,8 @@
 # 沙箱镜像版本管理(设计稿)
 
 状态:**设计已定稿,未实施**(2026-10-20)。等待明确指令后动代码。
-解决"沙箱镜像更新后,已有容器不换代"的运维问题。
+2026-10-23 增补:allow_network 联网状态与联网漂移纳入台账(§5.7),recreate 同时作为联网开关的生效动作(§5.5)。
+解决"沙箱镜像更新后,已有容器不换代"与"沙箱联网开关改了不生效"两个运维问题。
 落点:后端 `src/octop/`,前端 `dashboard/src/`,文档 `docs/agent-backend-file-io.md` §13 增补。
 
 ---
@@ -10,7 +11,8 @@
 
 给 Admin 增加"沙箱容器台账 + 漂移检测 + 一键重建(CLI + API + 界面同步交付)":列出本机所有
 `harness.agent.sandbox` 标签的容器、比对容器实际镜像与后端配置期望镜像,标出 **DRIFT**;
-重建 = 自动备份容器内工作区到宿主 → 校验新镜像存在 → 删容器 → 下次对话自动用新镜像创建。
+同时读取容器实际网络模式与配置期望的 `allow_network`,标出 **NETWORK-DRIFT**;
+重建 = 自动备份容器内工作区到宿主 → 校验新镜像存在 → 删容器 → 下次对话自动用新镜像/新网络模式创建。
 P2 增加"备份写回新沙箱"。
 
 ## 1. 背景与问题
@@ -22,6 +24,10 @@ Docker 沙箱的容器生命周期由 harness 决定,当前有三个"不会自�
 | 镜像检查 | `ensure_docker_image` 只判断本地有没有该 tag(`:144`),不比较新旧 | 同名 tag 覆盖 `docker load` 后,已有容器感知不到 |
 | 容器复用 | `_acquire_container` 按名字找到且在运行就复用(`:387`),不检查容器跑在哪个镜像上 | 后端配置改成新 tag 也一样复用旧容器 |
 | 生命周期 | `close()` 永不删持久沙箱;只有 `destroy()` 删 | 没有任何管理面触发重建 |
+| 网络模式 | `allow_network` 只在 `_create_container` 时固化为 `network_mode`(`:476-477`),复用容器不再看 | 配置改成 `allow_network: true/false` 对已存在的容器**不生效**;且联网状态无任何界面可见 |
+
+与镜像换代同理,"改联网配置 → 想让它生效"也必须删容器重建,同样撞上"容器可写层
+工作文件会丢"的问题。两个场景需要同一个原语:**安全的容器重建**。
 
 于是"新镜像加了技能依赖 → 期望容器换代"这一步完全靠手工 `docker rm -f`,且容器内
 工作区文件(沙箱无 bind-mount,文件在容器可写层)会随删除丢失,容易被当成 bug。
@@ -35,7 +41,7 @@ Docker 沙箱的容器生命周期由 harness 决定,当前有三个"不会自�
 | 会话记录 sessions / 记忆 memory / checkpoints | 宿主 `workspace_dir`(`~/.agentbuddy/agents/<id>/`) | **不受影响**(天然保留) |
 | 对话历史 | 宿主(harness history) | 不受影响 |
 | 专家工作区内容文件(SOUL.md、技能、agent 生成的文档) | **容器可写层**(容器内同名绝对路径) | **随删除丢失** → recreate 第 2 步备份兜住 |
-| pip/npm 已装依赖 | 容器可写层(若有开网时装的) | 丢失;新镜像自带白名单,依赖升级正是换代的目的 |
+| pip/npm 已装依赖 | 容器可写层(若有开网时装的) | 丢失;新镜像自带白名单,依赖升级正是换代的目的;**关闭联网重建时一并清掉,与"回收网络权限"的意图一致** |
 
 结论:**换容器的唯一数据风险是工作区内容文件**,本设计的备份/写回机制专门覆盖它。
 "换容器 = 丢对话"是误解,不存在。
@@ -44,8 +50,9 @@ Docker 沙箱的容器生命周期由 harness 决定,当前有三个"不会自�
 
 **目标**
 
-1. 台账:列出本机全部沙箱容器(scope/agent 归属/实际镜像/状态/创建时间)。
-2. 漂移检测:容器实际镜像 ≠ 期望镜像(来自 agent 配置或 storage_backends `kind=docker` 行)→ 标记 `drift`。
+1. 台账:列出本机全部沙箱容器(scope/agent 归属/实际镜像/**实际网络模式**/状态/创建时间)。
+2. 漂移检测:容器实际镜像 ≠ 期望镜像(来自 agent 配置或 storage_backends `kind=docker` 行)→ 标记 `drift`;
+   容器实际网络模式 ≠ 期望 `allow_network` → 标记 `network_drift`(§5.7)。
 3. 重建:删除漂移(或任意)沙箱容器;**删除前自动备份容器内工作区到宿主**,新容器创建后自动写回(P2)。
 4. 镜像清单:列出本地镜像、体积、被哪些后端配置引用,辅助"导出新镜像前确认引用关系"。
 5. **镜像 tag 编辑路径**:专家编辑抽屉的存储后端区块当前整体禁用(见 §4),P1 打通"只改 image tag"的受控编辑,配合换代。
@@ -83,18 +90,24 @@ Docker 沙箱的容器生命周期由 harness 决定,当前有三个"不会自�
 
 ## 5. 核心设计
 
-### 5.1 镜像升级标准流程(本功能支撑的完整闭环)
+### 5.1 配置变更生效标准流程(本功能支撑的完整闭环)
+
+镜像换代与联网开关共用同一流程,recreate(③)是两者共同的生效动作:
 
 ```
-① 构建新镜像(有网机,新 tag!禁止同名覆盖/禁止 latest)
-   docker build -f Dockerfile.sandbox -t agentbuddy-sandbox:1.1.0 .
-   docker save | gzip → 内网 → docker load
-② 改配置指向新 tag
-   · storage_backends 管理的:PATCH 后端行 bucket/config_json.image(现有能力)
-   · agent 内联 backend:专家编辑抽屉"P1 新增的只改 image 编辑"或 API
-③ 换容器(本功能一键)
+① 准备新配置
+   · 镜像换代:构建新镜像(有网机,新 tag!禁止同名覆盖/禁止 latest)
+     docker build -f Dockerfile.sandbox -t agentbuddy-sandbox:1.1.0 .
+     docker save | gzip → 内网 → docker load
+   · 联网开关:改 agent config.backend.allow_network(API)或
+     storage_backends config_json(存储管理界面高级配置)——无构建步骤
+② 改配置指向新值
+   · 镜像:storage_backends 管理的:PATCH 后端行 bucket/config_json.image(现有能力)
+     agent 内联 backend:专家编辑抽屉"P1 新增的只改 image 编辑"或 API
+   · 网络:同上两条路径,键为 allow_network
+③ 换容器(本功能一键,镜像 + 网络同时生效)
    Admin 沙箱面板/CLI:recreate → 备份→校验→删容器
-   → 该用户/专家下次对话自动用新镜像创建 → P2 备份写回
+   → 该用户/专家下次对话自动用新镜像/新网络模式创建 → P2 备份写回
 ```
 
 ### 5.2 升级纪律(定死)
@@ -108,17 +121,17 @@ Docker 沙箱的容器生命周期由 harness 决定,当前有三个"不会自�
 
 不维护自建注册表,以 **Docker label 为事实来源** 实时查询:
 
-- harness 建容器时打的标签(`docker_sandbox.py:66-68`):
+- harness 建容器时打的标签(`docker_sandbox.py:66-68`;实际键名以 harness 源码为准):
   - `harness.agent.sandbox = "1"`
   - `harness.agent.sandbox_scope = agent|user|fixed`
   - `harness.agent.id = <agent_id>`(agent scope)
 - 发现逻辑:Octop 侧 lazy `import docker` → `docker.from_env()` →
   `client.containers.list(all=True, filters={"label": "harness.agent.sandbox=1"})`,
   对每个容器读 `attrs["Config"]["Image"]`(实际镜像)、`attrs["State"]["Status"]`、
-  `attrs["Created"]`。
+  `attrs["Created"]`、`attrs["NetworkSettings"]["Networks"]`(实际网络模式,§5.7)。
 - 探测失败(Docker 不可达)返回明确错误(`SANDBOX_DOCKER_UNAVAILABLE`),不静默空列表。
 
-### 5.4 期望镜像(漂移比对基准)
+### 5.4 期望值(漂移比对基准:镜像 + 网络)
 
 期望镜像按优先级取:
 
@@ -133,6 +146,15 @@ Docker 沙箱的容器生命周期由 harness 决定,当前有三个"不会自�
 3. 取不到期望值时 `expected_image = null`,`drift = null`(unknown,不误报)。
 
 比对口径:v1 用 **tag 字符串比对**(§5.2 纪律下够用);ID 级防呆在 P3(§10 Q2 裁决)。
+
+期望 `allow_network` 用**同一期望来源、同一条解析路径**:
+
+- 期望来源解析出的 harness spec 即包含 `allow_network`(透传链路:
+  agent `config.backend` / storage_backends `config_json` →
+  `apply_docker_cfg_keys`,`docker_spec.py:10-36`);spec 未写该键时取 harness 构造
+  默认 `False`(`docker_sandbox.py:305`)。
+- 期望值无法解析(同 `expected_image = null` 的情形)时 `expected_allow_network = null`,
+  不判 NETWORK-DRIFT。
 
 ### 5.5 重建(recreate)流程
 
@@ -150,10 +172,13 @@ POST /api/admin/sandboxes/{container_name}/recreate
      备份容器 label 标记的 .octop 全目录
    - meta.json 记录:容器名/scope/agent_id/旧镜像/时间/触发用户
 5. 预拉校验:ensure_docker_image(期望镜像)——镜像缺失且 pull 失败 →
-   409 SANDBOX_IMAGE_MISSING,**旧容器保留**(顺序刻意:先备份→校验→才删)
+   409 SANDBOX_IMAGE_MISSING,**旧容器保留**(顺序刻意:先备份→校验→才删)。
+   网络模式无需此步:不落镜像,由 harness 下次建容器时按期望 allow_network 写入。
 6. 删除:docker rm -f {container_name}
-7. 响应:{recreated: true, backup_path, old_image, expected_image}
-   新容器由 harness 在下次对话创建;P2 提供"备份写回新沙箱"
+7. 响应:{recreated: true, backup_path, old_image, expected_image,
+   old_network_mode, expected_allow_network}
+   新容器由 harness 在下次对话创建(新镜像 + 新网络模式随创建生效);
+   P2 提供"备份写回新沙箱"
 ```
 
 任何一步失败都终止且旧容器仍在。
@@ -170,11 +195,50 @@ POST /api/admin/sandboxes/{container_name}/recreate
   在跑容器数(台账反查)。
 - 用途:升级前确认"哪些容器还在用旧 tag"、导入后确认"新 tag 已就位"。
 
+### 5.7 联网状态与 NETWORK-DRIFT(2026-10-23 增补)
+
+背景:`allow_network` 配置存在于 agent `config.backend` 或 storage_backends
+`config_json`,但**没有任何界面能看到"某个沙箱现在到底通不通网"**,也没有任何机制让
+配置改动作用于已存在的容器(见 §1 第四行)。本节把网络纳入台账与漂移体系:
+
+**读取方式**:台账逐容器已读 `attrs`,顺手读 `attrs["NetworkSettings"]["Networks"]`
+的 key 集合 —— 只有 `none`(或为空)即实际 `network_mode: none`(离线);含
+`bridge`/自定义网络即联网。这是 Docker 的权威事实,无需读 harness 状态。
+
+**比对口径**:
+
+| 字段 | 实际值 | 期望值 | 不一致时 |
+|---|---|---|---|
+| 离线 | `Networks` 仅含 `none` | 期望 spec 的 `allow_network`(缺省 `False`) | `network_drift = true` |
+
+- 期望 `allow_network = true` 而容器离线 → **NETWORK-DRIFT(配置了联网但未生效)**
+- 期望 `false` 而容器联网 → **NETWORK-DRIFT(应关网但容器仍联网,需尽快 recreate 收回)**
+  ——这一行对政务场景是**安全信号**,面板上与镜像 DRIFT 同级高亮。
+- 期望值解析不到 → `network_drift = null`(unknown),不误报。
+
+**语义与联动**:
+
+1. NETWORK-DRIFT 的唯一修复动作就是 **recreate**(§5.5)——recreate 删除容器后,
+   harness 下次建容器按当前配置写入 `network_mode`,镜像与网络两个维度同时换新。
+   不为"只改网络"做单独的接口,避免两条重建路径。
+2. **关闭联网 = 变相的资源回收**:重建会清掉容器可写层里 `pip install` 装的依赖
+   (§2),这与"收回网络权限"的意图一致,写入面板确认弹窗文案,防止误以为"只是断网、
+   环境还在"。
+3. **审计视角**:台账的联网列本身就是政务场景的检查清单——哪些沙箱开着网、开了多久
+   (容器 Created 时间)、是否与配置意图一致,一屏可见。
+4. 网络粒度边界:本设计只覆盖 `none` ↔ 默认 bridge 的开/关。自定义网络、按域名出
+   口白名单(防火墙/代理)不在 harness 与本功能能力内,运维可在宿主机层面自行配置,
+   文档不展开。
+
+**风险提示(写进面板文案)**:开启联网的沙箱,容器内进程可达宿主机所在的局域网与公网;
+工作区文件存在被外传的可能。开关联网属于高风险配置变更,recreate 确认弹窗对
+"离线 → 联网"方向要展示这条提示。
+
 ## 6. 接口设计
 
 | 方法 | 路径 | 权限 | 说明 |
 |---|---|---|---|
-| GET | `/api/admin/sandboxes` | `storage_backends`(复用,Q4 裁决) | 容器台账(含 drift/受影响专家) |
+| GET | `/api/admin/sandboxes` | `storage_backends`(复用,Q4 裁决) | 容器台账(含 drift、network_drift/受影响专家) |
 | POST | `/api/admin/sandboxes/{name}/recreate` | 同上 | 重建(备份→校验→删除) |
 | GET | `/api/admin/sandboxes/images` | 同上 | 本地镜像清单+引用统计 |
 | GET | `/api/admin/sandboxes/backups/{name}` | 同上 | 某容器的历史备份列表 |
@@ -203,9 +267,13 @@ octop sandbox backups <container>      # 备份列表
 ## 7. 前端(Dashboard)
 
 - **Admin → 存储** 页新增「沙箱容器」卡片(与现有 Docker 类型卡片同页,不新开导航项):
-  容器表(名称/scope/受影响专家反查名/实际镜像/期望镜像/状态 `ok|DRIFT|unknown|STALE-TAG(P3)`/
-  操作列重建按钮);DRIFT 行橙色高亮;重建按钮二次确认弹窗,列受影响专家清单,
-  文案写明"容器内文件将备份到宿主后清空,对话与记忆不受影响"。
+  容器表(名称/scope/受影响专家反查名/实际镜像/期望镜像/**联网状态 + 期望联网(§5.7)**/
+  状态 `ok|DRIFT|NETWORK-DRIFT|unknown|STALE-TAG(P3)`/
+  操作列重建按钮);DRIFT 与 NETWORK-DRIFT 行橙色高亮(后者状态列文案区分
+  "配置未生效"与"应关网仍联网"两个方向);重建按钮二次确认弹窗,列受影响专家清单,
+  文案写明"容器内文件将备份到宿主后清空,对话与记忆不受影响";
+  **方向为"离线 → 联网"时追加联网风险提示**(§5.7 末),方向为"联网 → 离线"时追加
+  "已安装的 pip/npm 依赖将随容器清空"提示。
 - **专家编辑抽屉松绑(P1,只开 image)**:`AgentBackendFields` 增加受控模式——
   编辑时仅当 backend 为 docker/named 且属于"只改 image"场景时开放 tag 下拉/输入,
   其余字段维持禁用;提示文案说明"换镜像后需在沙箱面板执行换代,专家会话与记忆不受影响"。
@@ -217,9 +285,9 @@ octop sandbox backups <container>      # 备份列表
 
 | 期 | 内容 |
 |---|---|
-| **P1(待启动)** | 台账 + 漂移检测(tag 比对)+ recreate(备份/活跃会话硬拒绝/影响面清单)+ 镜像清单 + 专家编辑抽屉"只改 image"受控编辑;API + CLI + Dashboard 卡片;错误码六枚;i18n 四份 |
-| P2 | 备份"恢复到新沙箱"(写回 live workspace);备份保留策略配置化界面 |
-| P3 | STALE-TAG 防呆(容器镜像 ID vs tag 当前 ID);fixed scope 精细化;批量升级向导 |
+| **P1(已实现,2026-10-23,待提交)** | 台账(含联网状态列)+ 漂移检测(镜像 tag 比对 + 网络 NETWORK-DRIFT,§5.7)+ recreate(备份/活跃会话硬拒绝/影响面清单/联网方向提示)+ 镜像清单 + 专家编辑抽屉"只改 image"受控编辑 + 编辑抽屉防冲掉(backend 区块禁用时保存不重建 backend,Q12);API + CLI + Dashboard 卡片;错误码六枚;i18n 四份 |
+| P2 | 仅一项:备份"恢复到新沙箱"——**先演练再定**(Q13):真实升级 + 手工 docker cp 验证后决定;若做,恢复语义 = 全量覆盖,时序限"recreate 后首次对话前"或弹窗明确提示替换。~~保留策略配置化~~(Q13 划掉,固定 3 份为终态) |
+| P3 | 仅 STALE-TAG 防呆(Q13 立项:容器镜像 ID vs tag 当前本地 ID,不一致标 STALE-TAG 提示 recreate);~~批量升级向导~~(Q7 维持,不做);fixed scope 精细化(等真实痛点,未定义) |
 
 ## 9. 模块落点(实现时)
 
@@ -233,8 +301,8 @@ octop sandbox backups <container>      # 备份列表
 | `src/octop/infra/errors.py` | 6 个新 ErrorCode + status 映射 |
 | `src/octop/i18n/{en,zh}.json` + `dashboard/src/locales/{en,zh}.json` | 错误码与面板文案,四份对齐 |
 | `dashboard/src/pages/Admin/Storage/` | 沙箱卡片组件 + `api/modules/sandbox.ts` |
-| `dashboard/src/pages/Experts/components/AgentBackendFields.tsx` + `EditAgentDrawer.tsx` | 受控 image 编辑 |
-| `tests/unit/backend/test_sandbox_admin.py`(新) | fake docker client 覆盖发现/比对/备份/删除/拒绝分支 |
+| `dashboard/src/pages/Experts/components/AgentBackendFields.tsx` + `EditAgentDrawer.tsx` + `agentBackendForm.ts` | 受控 image 编辑;防冲掉:编辑模式保存不重建 backend(Q12) |
+| `tests/unit/backend/test_sandbox_admin.py`(新) | fake docker client 覆盖发现/比对(镜像+网络)/备份/删除/拒绝分支 |
 | `tests/integration/test_sandbox_admin_api.py`(新) | 路由鉴权与错误映射 |
 | `docs/agent-backend-file-io.md` §13 | 增补"镜像升级与容器换代"小节,引用本设计 |
 
@@ -255,6 +323,9 @@ octop sandbox backups <container>      # 备份列表
 | Q8 | 编辑抽屉禁用原因考证 | 上游无迁移/重建机制前的**防呆锁死**(root_dir 越狱语义起点,后扩大到全区块);本功能补机制后 P1 开"只改 image"受控编辑 |
 | Q9 | 入口形态 | **API + CLI + Dashboard 界面同步交付**(P1) |
 | Q10 | 容器重建的工作区处理 | **默认备份工作区**(备份→校验镜像→才删),不做可选开关 |
+| Q11 | 联网状态纳入(2026-10-23 增补) | 台账加联网列(实际网络模式 + 期望 allow_network);`network_drift` 与镜像 drift 并列;修复动作复用 recreate,**不做独立的"应用网络配置"接口**;关网方向提示依赖清空、开网方向提示外泄风险;粒度边界 = none ↔ bridge 开/关,出口白名单不在范围 |
+| Q12 | allow_network 配置入口(2026-10-23 增补,同日细化) | **本功能不加新的配置编辑 UI**,入口 = 现有两条路径:①**推荐:named 后端**——存储管理界面该后端行"高级配置 JSON"写 `allow_network`(现有 UI);专家编辑抽屉对 named 引用是无损往返(`parseBackendSpec→buildBackendSpec` 只重建 `{type:"named",name}`),不会冲掉;作用域为整个后端行,按专家控制则建"联网/离线"两个后端行、创建时分配。②agent 内联 backend:创建时 `POST /api/agents` 的 `config.backend` 直写;创建后 `PATCH /api/agents/{agent_id}` 的 `config`(agents.py:378,**全量替换 config_json**,须先 GET 再整体提交)。**现存冲掉风险(已考证,2026-10-23)**:专家编辑抽屉保存时按表单重建整个 `config.backend`(`EditAgentDrawer.tsx:428-443`;`agentBackendForm.ts:50-64,297-310` 对 inline docker spec 返回 DEFAULT_BACKEND,只保留已知键)——inline docker 的专家在编辑抽屉点保存,backend 连同 `allow_network`/`image` 被静默替换为默认,属现存 bug(锁 UI 未锁保存路径)。**P1 增加防冲掉小改**:编辑抽屉 backend 区块禁用(编辑模式)时,保存路径不重建 backend、原样保留 `agentConfig.backend`,仅创建抽屉照旧构建。修复前运维纪律:inline 后端的联网开关改完后,避免再经编辑抽屉保存该专家 |
+| Q13 | P2/P3 立项裁决(2026-10-23,用户确认) | **P2-1 备份写回:先演练再定**——提交 P1 后在真实环境跑一轮镜像升级,手工 `docker cp` 从备份目录恢复,验证是否需要一键写回,再决定实现形态;**恢复语义(将来若做)= 全量覆盖**(理由:`.octop` 内 auth token/系统树随镜像版本演进,升级即意味着启用新环境,旧内容无保留价值);实现时注意:恢复若发生在新容器已跑过对话之后会吃掉新文件,时序上应限制在"recreate 后首次对话前"或确认弹窗明确提示替换。**P2-2 保留策略:不做**,固定每容器 3 份为终态(无配置键、无界面)。**P3:仅立 STALE-TAG 防呆**(比对容器镜像 ID vs tag 当前本地 ID,不一致标 STALE-TAG 提示 recreate,便宜可随手做);批量升级向导不做(Q7 逐个确认裁决维持);fixed scope 精细化等真实痛点再议 |
 
 ## 11. 风险与实现前需实测的两件事
 

@@ -8,7 +8,7 @@
  */
 import { useMemo, useState } from "react";
 import { Spin, Tabs } from "antd";
-import { HardDrive, LayoutGrid } from "lucide-react";
+import { Container, HardDrive, LayoutGrid } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import PageShell from "../../../layouts/PageShell";
 import TabLabel from "../../../components/TabLabel";
@@ -22,9 +22,10 @@ import {
 import { StorageBackendCard } from "./StorageBackendCard";
 import { StorageTypeCard } from "./StorageTypeCard";
 import { StorageBackendDrawer } from "./StorageBackendModal";
+import { SandboxPanel } from "./SandboxPanel";
 import styles from "./storage.module.less";
 
-type TabKey = "my" | "types";
+type TabKey = "my" | "types" | "sandbox";
 
 export default function AdminStoragePage() {
   const { t } = useTranslation();
@@ -157,6 +158,10 @@ export default function AdminStoragePage() {
     [configuredKinds],
   );
 
+  // ── Tab: sandbox containers ───────────────────────────────────
+
+  const sandboxContent = useMemo(() => <SandboxPanel />, []);
+
   return (
     <PageShell.FillTabs
       title={t("storage.pageTitle")}
@@ -181,6 +186,13 @@ export default function AdminStoragePage() {
               </TabLabel>
             ),
             children: typesContent,
+          },
+          {
+            key: "sandbox",
+            label: (
+              <TabLabel icon={Container}>{t("storage.sandboxTab")}</TabLabel>
+            ),
+            children: sandboxContent,
           },
         ]}
       />
