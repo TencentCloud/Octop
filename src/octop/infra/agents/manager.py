@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import os
 import re
 import shutil
 import threading
@@ -563,6 +564,9 @@ class AgentManager:
         self._mcp_tool_cache_guard = asyncio.Lock()
         # Sanitized plugin tool name → original label (per agent, rebuilt on reload).
         self._plugin_tool_labels: dict[str, dict[str, str]] = {}
+        # Agents currently mounting the built-in DeepSeek web_search/web_fetch
+        # tools (per agent, refreshed on every harness-config build).
+        self._deepseek_web_tool_agents: set[str] = set()
 
     def replace_persistence(self, repos: RepoBundle, config: OctopConfig) -> None:
         """Retarget repos/config and rebuild settings stores after control-plane rebind."""
@@ -1127,6 +1131,7 @@ class AgentManager:
             await self._harness_manager.aremove_agent(agent_id)  # type: ignore[union-attr]
         self._bootstrap_known.pop(agent_id, None)
         self._plugin_tool_labels.pop(agent_id, None)
+        self._deepseek_web_tool_agents.discard(agent_id)
         cfg = agent_config_from_row(row)
         await asyncio.to_thread(
             delete_agent_memory_and_checkpoints,
@@ -3844,9 +3849,26 @@ class AgentManager:
         tool_configs = collect_plugin_tool_configs(
             plugins_cfg if isinstance(plugins_cfg, dict) else None
         )
+        configurable = dict(req.get("configurable") or {})
         if tool_configs:
-            configurable = dict(req.get("configurable") or {})
             configurable["plugin_tool_configs"] = tool_configs
+        if agent_id in self._deepseek_web_tool_agents:
+            # Ask mode only allows the harness allowlist + host extra-read tools;
+            # tell it about the DeepSeek search tool that is actually mounted.
+            from octop.infra.websearch.tools import (  # noqa: PLC0415
+                HARNESS_DEEPSEEK_TOOL,
+                WEB_SEARCH_TOOL,
+                harness_deepseek_provider_available,
+            )
+
+            search_tool = (
+                HARNESS_DEEPSEEK_TOOL if harness_deepseek_provider_available() else WEB_SEARCH_TOOL
+            )
+            extra_read = list(configurable.get("conversation_mode_extra_read_tools") or [])
+            if search_tool not in extra_read:
+                extra_read.append(search_tool)
+            configurable["conversation_mode_extra_read_tools"] = extra_read
+        if configurable:
             req["configurable"] = configurable
         return apply_agent_runtime_to_stream_request(req, agent_cfg)
 
@@ -4003,6 +4025,23 @@ class AgentManager:
             for tool in plugin_tools
             if (label := extract_original_plugin_label(str(getattr(tool, "description", "") or "")))
         }
+        # DeepSeek Search / Fetch (Admin → Models → Search) is a built-in
+        # Octop-side provider: the harness only auto-loads its own hard-coded
+        # provider list. Tools are rebuilt on every agent start, and saving a
+        # search env key triggers a background reload.
+        from octop.infra.utils.env_file import env_file_path, load_env_file  # noqa: PLC0415
+
+        env_file_values = load_env_file(env_file_path(self._paths.root))
+        deepseek_web: Any = None
+        if not team_host and cfg.get("web_search_tools") is not False:
+            from octop.infra.websearch.tools import build_deepseek_web_tools  # noqa: PLC0415
+
+            deepseek_web = build_deepseek_web_tools({**os.environ, **env_file_values})
+        if deepseek_web is not None:
+            self._deepseek_web_tool_agents.add(row.agent_id)
+        else:
+            self._deepseek_web_tool_agents.discard(row.agent_id)
+
         plugin_middleware = PluginRegistry().build_middleware_chain(
             global_enabled=effective_plugins
         )
@@ -4016,6 +4055,7 @@ class AgentManager:
         from octop.infra.agents.middleware.reasoning import ReasoningRequestMiddleware
         from octop.infra.agents.middleware.thread_artifacts import ThreadArtifactsMiddleware
         from octop.infra.agents.middleware.token_quota import TokenQuotaMiddleware
+        from octop.infra.agents.middleware.web_fetch_override import WebFetchOverrideMiddleware
         from octop.infra.agents.middleware.workspace_image import (
             WorkspaceImageMaterializeMiddleware,
         )
@@ -4046,6 +4086,10 @@ class AgentManager:
             ),
             OctopUiOffloadMiddleware(),
         ]
+        if deepseek_web is not None:
+            # DeepSeek's fetch tool reuses the product-level ``web_fetch`` name;
+            # hide the generic harness builtin so the model sees exactly one.
+            agent_middleware.append(WebFetchOverrideMiddleware())
 
         merged_tools: list[Any] = []
         if cron_tools:
@@ -4053,6 +4097,8 @@ class AgentManager:
         merged_tools.extend(knowledge_tools)
         merged_tools.extend(mobile_tools)
         merged_tools.extend(plugin_tools)
+        if deepseek_web is not None:
+            merged_tools.extend(deepseek_web.tools)
         # agent_list / ask_agent: PeerAgentMiddleware (team_enabled=True), not config.tools.
 
         acp_section = cfg.get("acp")
@@ -4098,14 +4144,12 @@ class AgentManager:
                 )
 
             from octop.infra.utils.env_file import (  # noqa: PLC0415
-                env_file_path,
-                load_env_file,
                 overlay_stdio_mcp_configs,
             )
 
             mcp_server_configs = overlay_stdio_mcp_configs(
                 mcp_server_configs,
-                load_env_file(env_file_path(self._paths.root)),
+                env_file_values,
             )
 
         skill_dirs: list[str] = []

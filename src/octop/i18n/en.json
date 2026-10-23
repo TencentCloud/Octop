@@ -625,6 +625,7 @@
     "kimi_search": "Kimi web search",
     "yuanbao_search": "Yuanbao web search",
     "searchfree_search": "AI web search",
+    "web_search": "Web search",
     "cronjob_list": "List cron jobs",
     "cronjob_get": "Get cron job",
     "cronjob_create": "Create cron job",

@@ -44,6 +44,16 @@ file are left alone). Every running agent inherits those keys:
   env. Put search API keys in the global file, not only in an agent's `.env`.
   Changing search keys triggers a background agent reload; other keys take
   effect on the next execute without reload.
+- **DeepSeek Search / Fetch** is a built-in provider configured in
+  **Models → Search** (`DEEPSEEK_API_KEY`, optionally
+  `DEEPSEEK_SEARCH_BASE_URL`, `DEEPSEEK_SEARCH_COUNT`,
+  `DEEPSEEK_SEARCH_NEED_CONTENT`, `DEEPSEEK_SEARCH_LOCALIZATION`;
+  an explicit `DEEPSEEK_SEARCH_API_KEY` wins over the shared key). It mounts the
+  `web_search` / `web_fetch` tools and replaces the generic `web_fetch`
+  builtin while the key is present. Once the installed `octop-harness` ships
+  its own `deepseek_search` provider, Octop stops mounting the duplicate
+  `web_search` and keeps only `web_fetch`. Saving any of those keys reloads
+  agents.
 
 Per-agent secrets belong in `{workspace}/.env` or, for new agents,
 `{workspace}/.octop/.env` (also writable via the `write_env_file` tool).
