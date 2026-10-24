@@ -105,6 +105,29 @@ def test_impact_ids_active_model_changed_only_auto_and_needing(
     assert set(ids) == {"auto-one", "created-one"}
 
 
+def test_impact_ids_include_auto_agents_for_any_provider_change(
+    tmp_path: Path,
+) -> None:
+    """AUTO agents bake a resolved fallback ref into their harness config at
+    build time (active model first, else first usable), so any provider change
+    can strand that ref — they must be rebuilt even when the changed provider
+    is not the currently active one (#2388)."""
+    services = _make_services(tmp_path)
+    services.repos.settings_repo.set_active_model("other-llm", "m1")
+
+    services.repos.agent_repo.create(agent_id="auto-one", user_id=None, name="Auto")
+    services.repos.agent_repo.set_state("auto-one", "running")
+
+    services.repos.agent_repo.create(agent_id="pinned", user_id=None, name="Pinned")
+    services.repos.agent_repo.set_state("pinned", "running")
+    services.repos.agent_repo.update_config("pinned", default_model="other-llm/m1")
+
+    registry = _registry(services)
+    ids = registry._provider_reload_impact_ids(provider_name="test-openai")
+    assert "auto-one" in ids
+    assert "pinned" not in ids
+
+
 @pytest.mark.asyncio
 async def test_reload_agents_runs_in_parallel(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch

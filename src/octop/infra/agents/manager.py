@@ -2040,17 +2040,20 @@ class AgentManager:
         provider_name: str | None = None,
         active_model_changed: bool = False,
     ) -> list[str]:
-        """Agent IDs that must be rebuilt after a provider / active-model change."""
+        """Agent IDs that must be rebuilt after a provider / active-model change.
+
+        AUTO agents bake a resolved fallback model ref into their harness config
+        at build time (active model first, else first usable), so *any* provider
+        change can strand that ref — they are always rebuilt, not only when the
+        changed provider is the currently active one.
+        """
         rows = self._repos.agent_repo.list_all(include_disabled=False)
         if provider_name is None and not active_model_changed:
             return [row.agent_id for row in rows]
 
         enabled_ids = {row.agent_id for row in rows}
         impact: set[str] = set()
-        include_auto = active_model_changed
-        if provider_name and not include_auto:
-            active_name, _ = self._repos.settings_repo.get_active_model()
-            include_auto = active_name == provider_name
+        include_auto = active_model_changed or provider_name is not None
 
         for row in rows:
             if row.last_state in _AGENT_STATES_NEEDING_MODEL_RELOAD or (

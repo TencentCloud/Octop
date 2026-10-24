@@ -939,7 +939,19 @@ async def test_on_provider_changed_reloads_agents_when_factory_bootstraps(
 async def test_impact_ids_needing_model_excludes_running(
     tmp_path: Path,
 ) -> None:
+    """Running agents with an explicit model ref to another provider stay
+    untouched; running AUTO agents are rebuilt on any provider change because
+    their harness config carries a baked resolved fallback (#2388)."""
     services = _make_services(tmp_path)
+    services.provider_repo.create(
+        name="other-llm",
+        kind="openai",
+        base_url="https://other.example.com/v1",
+        api_key="sk-other",
+        models_json=json.dumps(
+            [{"id": "m1", "name": "m1", "enabled": True}],
+        ),
+    )
     services.repos.agent_repo.create(
         agent_id="running-one",
         user_id=None,
@@ -947,17 +959,28 @@ async def test_impact_ids_needing_model_excludes_running(
     )
     services.repos.agent_repo.set_state("running-one", "running")
     services.repos.agent_repo.create(
+        agent_id="explicit-one",
+        user_id=None,
+        name="Explicit",
+    )
+    services.repos.agent_repo.set_state("explicit-one", "running")
+    services.repos.agent_repo.update_config(
+        "explicit-one",
+        default_model="other-llm/m1",
+    )
+    services.repos.agent_repo.create(
         agent_id="failed-one",
         user_id=None,
         name="Failed",
     )
     services.repos.agent_repo.set_state("failed-one", "failed")
     registry = _make_registry(services)
-    services.repos.settings_repo.set_active_model("other", "x")
+    services.repos.settings_repo.set_active_model("other-llm", "m1")
 
     ids = registry._provider_reload_impact_ids(provider_name="test-openai")
     assert "failed-one" in ids
-    assert "running-one" not in ids
+    assert "running-one" in ids
+    assert "explicit-one" not in ids
 
 
 @pytest.mark.asyncio
