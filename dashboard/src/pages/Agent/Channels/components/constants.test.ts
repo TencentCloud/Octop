@@ -100,6 +100,30 @@ describe("normalizeQqGroupContextConfig", () => {
     });
   });
 
+  it("protects legacy group configs and preserves explicit opt-out", () => {
+    expect(normalizeQqGroupContextConfig({ enabled: false })).toMatchObject({
+      enabled: false,
+      owner_commands_only: true,
+      owner_ids: [],
+    });
+    expect(
+      normalizeQqGroupContextConfig({ owner_commands_only: false }),
+    ).toMatchObject({ owner_commands_only: false });
+  });
+
+  it("normalizes owner IDs without losing per-group authorization overrides", () => {
+    const groups = { "group-1": { owner_ids: ["group-owner"] } };
+    expect(
+      normalizeQqGroupContextConfig({
+        owner_ids: [" owner-1 ", "owner-2", "owner-1", "", 123],
+        groups,
+      }),
+    ).toMatchObject({ owner_ids: ["owner-1", "owner-2"], groups });
+    expect(
+      normalizeQqGroupContextConfig({ owner_ids: "owner-1, owner-2\nowner-1" }),
+    ).toMatchObject({ owner_ids: ["owner-1", "owner-2"] });
+  });
+
   it("forces mention-only visibility to discard passive history", () => {
     expect(
       normalizeQqGroupContextConfig({

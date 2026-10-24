@@ -202,6 +202,98 @@ describe("<ChannelsPanel /> create-flow default", () => {
     expectBefore(displaySettings, groupPolicy);
   });
 
+  async function openQqEditDrawer(groupContext?: Record<string, unknown>) {
+    const row = { id: "qq-policy", kind: "qq", name: "qq", enabled: true };
+    api.mockImplementation(async (url, init) => {
+      if (init?.method === "PATCH") return row;
+      if (url.endsWith("/qq-policy")) {
+        return {
+          ...row,
+          config: {
+            app_id: "offline-app",
+            secret: "offline-secret",
+            group_context: groupContext,
+          },
+        };
+      }
+      return [row];
+    });
+    render(<ChannelsPanel agentId="ag1" />);
+    await userEvent.click((await screen.findAllByText("channels.label_qq"))[0]);
+  }
+
+  it.each([undefined, true, false])(
+    "round-trips QQ command protection %s and the owner allowlist",
+    async (ownerOnly) => {
+      await openQqEditDrawer({
+        enabled: true,
+        owner_ids: ["owner-1"],
+        ...(ownerOnly === undefined ? {} : { owner_commands_only: ownerOnly }),
+      });
+      const toggle = await screen.findByLabelText(
+        "channels.qqGroupOwnerCommandsOnly",
+      );
+      await waitFor(() => {
+        expect(toggle.getAttribute("aria-checked")).toBe(
+          String(ownerOnly ?? true),
+        );
+        expect(screen.getByText("owner-1")).toBeInTheDocument();
+      });
+      const owners = screen.getByRole("combobox", {
+        name: "channels.qqGroupOwnerIds",
+      });
+      if (ownerOnly === false) expect(owners).toBeDisabled();
+      else expect(owners).toBeEnabled();
+      await userEvent.click(
+        screen.getByRole("button", { name: "common.save" }),
+      );
+      await waitFor(() => {
+        const patch = api.mock.calls.find(
+          ([, init]) => init?.method === "PATCH",
+        );
+        expect(patch).toBeDefined();
+        expect(
+          JSON.parse(String(patch![1]!.body)).config.group_context,
+        ).toMatchObject({
+          enabled: true,
+          owner_commands_only: ownerOnly ?? true,
+          owner_ids: ["owner-1"],
+        });
+      });
+    },
+  );
+
+  it("hides QQ command controls while group context is off", async () => {
+    await openQqEditDrawer({ enabled: false, owner_ids: ["stored-owner"] });
+    expect(
+      screen.queryByLabelText("channels.qqGroupOwnerCommandsOnly"),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("combobox", { name: "channels.qqGroupOwnerIds" }),
+    ).not.toBeInTheDocument();
+
+    await userEvent.click(
+      screen.getByLabelText("channels.qqGroupContextEnabled"),
+    );
+    const toggle = await screen.findByLabelText(
+      "channels.qqGroupOwnerCommandsOnly",
+    );
+    expect(toggle).toBeChecked();
+    expect(await screen.findByText("stored-owner")).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "common.save" }));
+    await waitFor(() => {
+      const patch = api.mock.calls.find(([, init]) => init?.method === "PATCH");
+      expect(patch).toBeDefined();
+      expect(
+        JSON.parse(String(patch![1]!.body)).config.group_context,
+      ).toMatchObject({
+        enabled: true,
+        owner_commands_only: true,
+        owner_ids: ["stored-owner"],
+      });
+    });
+  });
+
   async function openTelegramCreateDrawer() {
     render(<ChannelsPanel agentId="ag1" />);
     // Telegram is collapsed behind "更多通道" until expanded.
