@@ -174,13 +174,14 @@ export default function FileEditModal({
                 minHeight: 240,
               }}
             >
-              <Spin tip="Loading editor…" />
+              <Spin />
             </div>
           }
         >
           <div style={{ flex: 1, minHeight: 0, height: "100%" }}>
             <MonacoEditor
               height="100%"
+              loading={t("common.loading")}
               language="markdown"
               theme={isDark ? "vs-dark" : "light"}
               value={value}

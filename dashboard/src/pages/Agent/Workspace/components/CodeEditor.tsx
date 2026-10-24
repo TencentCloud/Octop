@@ -11,6 +11,7 @@
  */
 
 import { lazy, Suspense, useEffect, useRef } from "react";
+import { useTranslation } from "react-i18next";
 import { Spin } from "antd";
 import type { OnMount } from "@monaco-editor/react";
 import { useTheme } from "../../../../context/ThemeContext";
@@ -35,6 +36,7 @@ export default function CodeEditor({
   readOnly = false,
   language,
 }: CodeEditorProps) {
+  const { t } = useTranslation();
   const resolvedLanguage = language ?? getEditorLanguage(path);
   const { isDark } = useTheme();
   const wrapRef = useRef<HTMLDivElement | null>(null);
@@ -85,6 +87,7 @@ export default function CodeEditor({
       <Suspense fallback={fallback}>
         <MonacoEditor
           height="100%"
+          loading={t("common.loading")}
           language={resolvedLanguage}
           theme={isDark ? "vs-dark" : "light"}
           value={value}
