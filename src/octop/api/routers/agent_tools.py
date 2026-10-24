@@ -9,6 +9,7 @@ from pydantic import BaseModel, Field
 
 from octop.api.common.agent import assert_agent_owner as _assert_agent_owner
 from octop.api.deps import get_server, require_permission
+from octop.i18n import tr
 from octop.i18n.domains.tools import tool_display_name
 from octop.infra.agents.plugins.plugin_tool_defaults import merge_plugins_tool_settings
 from octop.infra.agents.settings.tool_catalog import (
@@ -230,7 +231,7 @@ async def put_tool_settings(
     if is_team_agent(row):
         raise HTTPException(
             status_code=400,
-            detail="team host tools are fixed to member dispatch",
+            detail=tr("tool_settings.team_host_fixed", resolve_request_locale(request)),
         )
 
     registry = server.app_runtime.agent_registry
@@ -263,21 +264,22 @@ async def patch_tool_setting(
         raise OctopError(ErrorCode.AGENT_NOT_FOUND, f"agent {agent_id!r} not found")
     _assert_agent_owner(row, user)
 
+    locale = resolve_request_locale(request)
     name = tool_name.strip()
     if not name:
-        raise HTTPException(status_code=400, detail="tool name is required")
+        raise HTTPException(status_code=400, detail=tr("tool_settings.name_required", locale))
 
     registry = server.app_runtime.agent_registry
     if is_team_agent(row):
         raise HTTPException(
             status_code=400,
-            detail="team host tools are fixed to member dispatch",
+            detail=tr("tool_settings.team_host_fixed", locale),
         )
     if body.source == "builtin":
         if name in CRITICAL_TOOLS:
             raise HTTPException(
                 status_code=400,
-                detail=f"tool {name!r} cannot be disabled",
+                detail=tr("tool_settings.cannot_disable", locale, name=repr(name)),
             )
         cfg = registry.get_config(agent_id)
         disabled = set(normalize_tools_disabled(cfg.get("tools_disabled")))
@@ -291,7 +293,7 @@ async def patch_tool_setting(
         if not plugin_id:
             raise HTTPException(
                 status_code=400,
-                detail="plugin_id is required for plugin tools",
+                detail=tr("tool_settings.plugin_id_required", locale),
             )
         cfg = registry.get_config(agent_id)
         merged = merge_plugins_tool_settings(

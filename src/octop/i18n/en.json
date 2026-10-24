@@ -780,6 +780,12 @@
     "system_prompt": "Today is {today}.\n\nBased on the user's recent life events, write a warm and natural caring message in no more than 150 words.\nPay attention to when events occurred — do not describe something from a few days ago as happening \"today\".\nDo not mention that you are an AI; express care directly.",
     "system_prompt_with_soul": "{soul_md}\n\n---\n\nToday is {today}.\n\nBased on the user's recent life events, write a warm and natural caring message in no more than 150 words.\nPay attention to when events occurred — do not describe something from a few days ago as happening \"today\".\nDo not mention that you are an AI; express care directly."
   },
+  "tool_settings": {
+    "team_host_fixed": "team host tools are fixed to member dispatch",
+    "name_required": "tool name is required",
+    "cannot_disable": "tool {name} cannot be disabled",
+    "plugin_id_required": "plugin_id is required for plugin tools"
+  },
   "mobile": {
     "unsupported_reason": "Remote Phone is not supported on this host.",
     "adb_not_found": "adb was not found. Install Android platform-tools or Android Studio SDK.",
