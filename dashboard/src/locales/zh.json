@@ -2744,6 +2744,7 @@
     "jsonMustBeObject": "必须是 JSON 对象",
     "invalidJson": "非法 JSON",
     "rawConfigTooltip": "渠道特定配置 — 详见 octop-gateway 文档",
+    "viewPluginConfig": "查看配置说明",
     "getCredentials": "前往获取凭据",
     "channelSettingsNamed": "{{kind}} 频道设置",
     "deleteConfirmTitle": "删除频道「{{name}}」？",

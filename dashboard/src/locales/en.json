@@ -2744,6 +2744,7 @@
     "jsonMustBeObject": "Must be a JSON object",
     "invalidJson": "Invalid JSON",
     "rawConfigTooltip": "Channel-specific config — see octop-gateway docs",
+    "viewPluginConfig": "View configuration guide",
     "getCredentials": "Get credentials",
     "channelSettingsNamed": "{{kind}} channel settings",
     "deleteConfirmTitle": "Delete channel \"{{name}}\"?",

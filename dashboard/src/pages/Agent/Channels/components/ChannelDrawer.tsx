@@ -10,18 +10,21 @@ import {
   Select,
   Spin,
   Switch,
+  Tooltip,
 } from "antd";
-import { Activity } from "lucide-react";
+import { Activity, CircleHelp } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import type { FormInstance } from "antd";
 import type { Rule } from "antd/es/form";
 import { QRCodeSVG } from "qrcode.react";
 import {
+  isPluginChannelKind,
   CHANNEL_FIELDS,
   CHANNEL_ICONS,
   CHANNEL_KEYS,
   CHANNEL_LABELS,
+  CHANNEL_DESCRIPTIONS,
   CHANNEL_LABEL_KEYS,
   CHANNEL_URLS,
   DEFAULT_CHANNEL_DISPLAY_CONFIG,
@@ -160,7 +163,7 @@ interface ChannelDrawerProps {
   agentId: string;
 }
 
-function FormItemForField({
+export function FormItemForField({
   field,
   disabled = false,
 }: {
@@ -171,14 +174,22 @@ function FormItemForField({
   const label = field.label.startsWith("channels.")
     ? t(field.label)
     : field.label;
+  const help = field.helpKey ? t(field.helpKey) : undefined;
+  const fieldLabel = help ? (
+    <span>
+      {label}{" "}
+      <Tooltip title={help}>
+        <span role="img" aria-label={`${label}: ?`} tabIndex={0}>
+          <CircleHelp size={14} style={{ verticalAlign: "middle" }} />
+        </span>
+      </Tooltip>
+    </span>
+  ) : (
+    label
+  );
   if (field.type === "switch") {
     return (
-      <Form.Item
-        name={field.name}
-        label={label}
-        valuePropName="checked"
-        extra={field.helpKey ? t(field.helpKey) : undefined}
-      >
+      <Form.Item name={field.name} label={fieldLabel} valuePropName="checked">
         <Switch />
       </Form.Item>
     );
@@ -226,7 +237,7 @@ function FormItemForField({
     });
   }
   return (
-    <Form.Item name={field.name} label={label} rules={rules}>
+    <Form.Item name={field.name} label={fieldLabel} rules={rules}>
       <Input1
         disabled={disabled}
         placeholder={field.placeholder}
@@ -1839,21 +1850,28 @@ export function ChannelDrawer({
 
           {(configMode === "manual" || isEdit || !supportsQuickConfig) && (
             <>
-              {introUrl && (
+              {(introUrl || CHANNEL_DESCRIPTIONS[selectedKind]) && (
                 <div className={styles.channelIntroBanner}>
                   <div className={styles.bannerText}>
                     <div className={styles.bannerDesc}>
-                      {t(`channels.intro_${selectedKind}`, kindLabel)}
+                      {CHANNEL_DESCRIPTIONS[selectedKind] ||
+                        t(`channels.intro_${selectedKind}`, kindLabel)}
                     </div>
-                    <a
-                      href={introUrl}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className={styles.bannerLink}
-                    >
-                      {t("channels.getCredentials")}
-                      <span className={styles.bannerLinkArrow}>&#8250;</span>
-                    </a>
+                    {introUrl && (
+                      <a
+                        href={introUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className={styles.bannerLink}
+                      >
+                        {t(
+                          isPluginChannelKind(selectedKind)
+                            ? "channels.viewPluginConfig"
+                            : "channels.getCredentials",
+                        )}
+                        <span className={styles.bannerLinkArrow}>&#8250;</span>
+                      </a>
+                    )}
                   </div>
                 </div>
               )}
