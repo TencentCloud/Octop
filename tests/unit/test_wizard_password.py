@@ -44,6 +44,69 @@ def test_file_mode_is_0600(tmp_path: Path) -> None:
     assert mode == 0o600
 
 
+def _saved_sddl(path: Path) -> str:
+    """The file's SDDL via ``icacls /save`` — locale-independent."""
+    import subprocess
+
+    out = path.parent / "acl-save.txt"
+    subprocess.run(
+        ["icacls", str(path), "/save", str(out)],
+        check=True,
+        capture_output=True,
+    )
+    raw = out.read_bytes()
+    for encoding in ("utf-16", "mbcs"):
+        try:
+            return raw.decode(encoding)
+        except (UnicodeDecodeError, LookupError):
+            continue
+    return raw.decode("utf-8", errors="replace")
+
+
+def test_windows_dacl_restricted_to_owner_system_admins(tmp_path: Path) -> None:
+    """On Windows the wizard password file must not rely on ``os.chmod``:
+    a plain chmod'ed file keeps its inherited DACL, so any local user that
+    can reach the directory can read the plaintext password. The fix swaps
+    in a protected DACL granting only SYSTEM, Administrators and the file's
+    owner (#2370)."""
+    if os.name != "nt":
+        pytest.skip("Windows NTFS DACL")
+
+    ensure_password(tmp_path)
+    sddl = _saved_sddl(_file(tmp_path))
+    ace_part = sddl.split("D:", 1)[1]
+
+    # Protected: no inherited ACEs flow in from the parent directory.
+    assert "D:P" in sddl and ";ID;" not in ace_part
+    # Only SYSTEM, Administrators and the owner SID; no Everyone/Users.
+    assert ";FA;;;SY)" in ace_part
+    assert ";FA;;;BA)" in ace_part
+    assert "S-1-5-21-" in ace_part
+    assert ";FA;;;WD)" not in ace_part
+    assert ";FA;;;BU)" not in ace_part
+
+
+def test_windows_chmod_alone_leaves_inherited_dacl(tmp_path: Path) -> None:
+    """Red control for the DACL test: ``os.open(0o600)`` + ``os.chmod`` do
+    not protect a file on Windows — the inherited ACEs stay, which is the
+    bug the fix addresses."""
+    if os.name != "nt":
+        pytest.skip("Windows NTFS DACL")
+
+    fd = os.open(
+        str(_file(tmp_path)),
+        os.O_WRONLY | os.O_CREAT | os.O_EXCL,
+        0o600,
+    )
+    os.write(fd, b"pw\n")
+    os.close(fd)
+    os.chmod(_file(tmp_path), 0o600)
+
+    sddl = _saved_sddl(_file(tmp_path))
+    ace_part = sddl.split("D:", 1)[1]
+    assert ";ID;" in ace_part  # inherited ACEs — not protected
+
+
 def test_read_password_returns_stored_value(tmp_path: Path) -> None:
     pw = ensure_password(tmp_path)
     assert read_password(tmp_path) == pw

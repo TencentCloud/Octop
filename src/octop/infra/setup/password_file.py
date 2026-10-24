@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 import os
 import secrets
 from pathlib import Path
@@ -13,6 +14,165 @@ _PASSWORD_LABEL_PREFIX = "Password:"
 
 def _password_path(home: Path) -> Path:
     return home / WIZARD_FILE_NAME
+
+
+logger = logging.getLogger(__name__)
+
+
+def _harden_password_file(target: Path) -> None:
+    """Apply the ``0o600`` intent to the written password file.
+
+    POSIX: mode bits only. Windows: also swap the inherited DACL for a
+    protected one granting full control to SYSTEM, Administrators and the
+    file's owner — ``os.chmod`` cannot express that on NTFS, so a plain
+    chmod'ed file stays readable by any local user that can reach the
+    directory (#2370).
+    """
+    os.chmod(target, 0o600)
+    if os.name == "nt" and not _restrict_windows_dacl(target):
+        logger.warning(
+            "Could not restrict the DACL on %s; the wizard password "
+            "file may be readable by other local users.",
+            target,
+        )
+
+
+def _restrict_windows_dacl(target: Path) -> bool:
+    """Replace the inherited NTFS DACL on ``target`` with a protected one
+    (SYSTEM, Administrators, owner). True when the DACL was set."""
+    if os.name != "nt":
+        return False
+    import ctypes
+    from ctypes import wintypes
+
+    advapi32 = ctypes.WinDLL("advapi32", use_last_error=True)
+    SE_FILE_OBJECT = 1
+    OWNER_SECURITY_INFORMATION = 0x1
+    DACL_SECURITY_INFORMATION = 0x4
+    PROTECTED_DACL_SECURITY_INFORMATION = 0x80000000
+    SDDL_REVISION_1 = 1
+
+    advapi32.GetNamedSecurityInfoW.argtypes = [
+        wintypes.LPCWSTR,
+        ctypes.c_int,
+        ctypes.c_ulong,
+        ctypes.POINTER(ctypes.c_void_p),
+        ctypes.POINTER(ctypes.c_void_p),
+        ctypes.POINTER(ctypes.c_void_p),
+        ctypes.POINTER(ctypes.c_void_p),
+        ctypes.POINTER(ctypes.c_void_p),
+    ]
+    advapi32.ConvertSidToStringSidW.argtypes = [
+        ctypes.c_void_p,
+        ctypes.POINTER(wintypes.LPWSTR),
+    ]
+    advapi32.ConvertStringSecurityDescriptorToSecurityDescriptorW.argtypes = [
+        wintypes.LPCWSTR,
+        wintypes.DWORD,
+        ctypes.POINTER(ctypes.c_void_p),
+        ctypes.POINTER(wintypes.ULONG),
+    ]
+    advapi32.GetSecurityDescriptorDacl.argtypes = [
+        ctypes.c_void_p,
+        ctypes.POINTER(wintypes.BOOL),
+        ctypes.POINTER(ctypes.c_void_p),
+        ctypes.POINTER(wintypes.BOOL),
+    ]
+    advapi32.SetNamedSecurityInfoW.argtypes = [
+        wintypes.LPCWSTR,
+        ctypes.c_int,
+        ctypes.c_ulong,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+        ctypes.c_void_p,
+    ]
+    kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+    kernel32.LocalFree.restype = wintypes.HLOCAL
+    kernel32.LocalFree.argtypes = [wintypes.HLOCAL]
+
+    def _free(handle) -> None:
+        if handle:
+            kernel32.LocalFree(handle)
+
+    owner_sid = ctypes.c_void_p()
+    sd = ctypes.c_void_p()
+    path = str(target)
+    if (
+        advapi32.GetNamedSecurityInfoW(
+            path,
+            SE_FILE_OBJECT,
+            OWNER_SECURITY_INFORMATION,
+            ctypes.byref(owner_sid),
+            None,
+            None,
+            None,
+            ctypes.byref(sd),
+        )
+        != 0
+    ):
+        return False
+    _free(sd)
+    sid_string = wintypes.LPWSTR()
+    if (
+        advapi32.ConvertSidToStringSidW(
+            owner_sid,
+            ctypes.byref(sid_string),
+        )
+        == 0
+        or not sid_string.value
+    ):
+        return False
+    owner = sid_string.value
+    _free(sid_string)
+
+    # Protected DACL: no inherited ACEs, full control for SYSTEM,
+    # Administrators and the file's owner only.
+    sddl = f"D:P(A;OICI;FA;;;SY)(A;OICI;FA;;;BA)(A;OICI;FA;;;{owner})"
+    dacl_sd = ctypes.c_void_p()
+    dacl_len = wintypes.ULONG()
+    if (
+        advapi32.ConvertStringSecurityDescriptorToSecurityDescriptorW(
+            sddl,
+            SDDL_REVISION_1,
+            ctypes.byref(dacl_sd),
+            ctypes.byref(dacl_len),
+        )
+        == 0
+        or not dacl_sd.value
+    ):
+        return False
+
+    dacl = ctypes.c_void_p()
+    dacl_present = wintypes.BOOL()
+    defaulted = wintypes.BOOL()
+    if (
+        advapi32.GetSecurityDescriptorDacl(
+            dacl_sd,
+            ctypes.byref(dacl_present),
+            ctypes.byref(dacl),
+            ctypes.byref(defaulted),
+        )
+        == 0
+        or not dacl_present.value
+    ):
+        _free(dacl_sd)
+        return False
+
+    ok = (
+        advapi32.SetNamedSecurityInfoW(
+            path,
+            SE_FILE_OBJECT,
+            DACL_SECURITY_INFORMATION | PROTECTED_DACL_SECURITY_INFORMATION,
+            None,
+            None,
+            dacl,
+            None,
+        )
+        == 0
+    )
+    _free(dacl_sd)
+    return ok
 
 
 def resolve_password_path(home: Path, legacy_home: Path | None = None) -> Path:
@@ -52,7 +212,7 @@ def ensure_password(home: Path, legacy_home: Path | None = None) -> str | None:
                     os.write(fd, (legacy_pw + "\n").encode("utf-8"))
                 finally:
                     os.close(fd)
-                os.chmod(target, 0o600)
+                _harden_password_file(target)
                 return legacy_pw
             except FileExistsError:
                 return None
@@ -69,7 +229,7 @@ def ensure_password(home: Path, legacy_home: Path | None = None) -> str | None:
         os.write(fd, (pw + "\n").encode("utf-8"))
     finally:
         os.close(fd)
-    os.chmod(target, 0o600)
+    _harden_password_file(target)
     return pw
 
 
