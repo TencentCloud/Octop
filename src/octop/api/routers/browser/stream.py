@@ -53,8 +53,95 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
-_FRAME_INTERVAL_S = 1 / 12
+_FRAME_INTERVAL_S = 1 / 12  # poll fallback only (screencast is event-driven)
 _SESSION_INTERVAL_S = 1.0
+# screencast is event-driven; the frame rate follows page changes. This is just
+# an upper throttle so scrolling/animations do not flood the WS and the client.
+_SCREENCAST_MIN_INTERVAL_S = 0.05  # ~20fps cap (bounds bandwidth for remote clients)
+# Registered screencast listeners keyed by CDP client id. Values are
+# (client, handler) pairs so a tab switch can detach the *old* client's
+# handler (which would otherwise leak and keep acking a dead session).
+_screencast_handlers: dict[int, tuple[Any, Any]] = {}
+
+
+def _make_screencast_handler(client: Any, send_json: Any) -> Any:
+    """Construct a Page.screencastFrame listener: ack + forward frame.
+
+    The CDP client is captured at registration time: a tab switch replaces
+    ``sess._internal.client``, and acking via the *new* client would send the
+    ack for the old screencast session to the wrong connection, which makes
+    Chrome stop delivering frames for the old session. The ack is also sent
+    *before* forwarding so WS backpressure never delays it (a late ack halts
+    frame delivery too).
+    """
+    last_sent = 0.0
+
+    async def _on_frame(params: dict[str, Any]) -> None:
+        nonlocal last_sent
+        data = params.get("data")
+        sid = params.get("sessionId")
+        # Ack FIRST and always — Chrome halts frame delivery when an ack is
+        # late or goes to the wrong client.
+        if sid is not None:
+            with contextlib.suppress(Exception):
+                await _cdp_send_fast(
+                    None, "Page.screencastFrameAck", {"sessionId": sid}, client=client
+                )
+        now = time.monotonic()
+        if data and (now - last_sent) >= _SCREENCAST_MIN_INTERVAL_S:
+            last_sent = now
+            await send_json({"type": "frame", "data": data})
+
+    return _on_frame
+
+
+async def _start_screencast(sess: Any, send_json: Any, width: int, height: int) -> bool:
+    """Register a screencastFrame listener and start incremental-frame streaming.
+
+    Chrome pushes frames only when the page content changes (event-driven): a
+    static page costs zero frames, versus the poll loop that forces a full
+    JPEG capture every frame interval with a 1.5s timeout. Returns False when
+    the CDP endpoint does not support screencast (caller falls back to polling).
+    """
+    client = sess._internal.client  # noqa: SLF001
+    cid = id(client)
+    prev = _screencast_handlers.pop(cid, None)
+    if prev is not None:
+        client.off("Page.screencastFrame", prev[1])
+    handler = _make_screencast_handler(client, send_json)
+    client.on("Page.screencastFrame", handler)
+    _screencast_handlers[cid] = (client, handler)
+    try:
+        # Do not set maxWidth/maxHeight (default 0 = unlimited): the frame
+        # size always follows the page viewport, so canvas coordinates stay
+        # 1:1 with CDP coordinates (no pointer drift), and frames adapt to
+        # viewport resize without restarting screencast.
+        await client.send(
+            "Page.startScreencast",
+            {
+                "format": "jpeg",
+                "quality": 60,
+                "everyNthFrame": 1,
+            },
+        )
+        return True
+    except Exception as exc:  # noqa: BLE001
+        logger.debug("startScreencast failed (fallback to poll): %s", exc)
+        client.off("Page.screencastFrame", handler)
+        _screencast_handlers.pop(cid, None)
+        return False
+
+
+async def _stop_screencast(sess: Any) -> None:
+    # Stop on the *current* client and detach every registered handler —
+    # including handlers on replaced (pre-tab-switch) clients, which would
+    # otherwise leak and keep acking a dead screencast session.
+    with contextlib.suppress(Exception):
+        await sess._internal.client.send("Page.stopScreencast")  # noqa: SLF001
+    for cid, (client, handler) in list(_screencast_handlers.items()):
+        _screencast_handlers.pop(cid, None)
+        with contextlib.suppress(Exception):
+            client.off("Page.screencastFrame", handler)
 
 
 def _normalize_nav_url(raw: str) -> str:
@@ -143,23 +230,48 @@ async def _stream_loop(
     profile: str,
     *,
     listen_only: bool,
+    width: int = 1280,
+    height: int = 800,
 ) -> None:
     await send_json({"type": "status", "status": "browser_started"})
     await send_json({"type": "status", "status": "streaming"})
 
+    screencast_ok = False
+    last_client: Any = None
+    if not listen_only:
+        try:
+            screencast_ok = await _start_screencast(sess, send_json, width, height)
+            last_client = sess._internal.client  # noqa: SLF001
+        except Exception:  # noqa: BLE001
+            # A session without a usable CDP client (or an endpoint that
+            # rejects screencast) falls back to the poll loop below.
+            screencast_ok = False
+
     next_snapshot = 0.0
-    while is_connected():
-        started = time.monotonic()
-        if started >= next_snapshot:
-            await _send_session_snapshot(send_json, profile, sess=sess)
-            next_snapshot = started + _SESSION_INTERVAL_S
+    try:
+        while is_connected():
+            started = time.monotonic()
+            # A tab switch replaces the CDP client, so restart screencast on
+            # the new client to keep frames flowing.
+            if not listen_only and screencast_ok:
+                current_client = sess._internal.client  # noqa: SLF001
+                if current_client is not last_client:
+                    last_client = current_client
+                    screencast_ok = await _start_screencast(sess, send_json, width, height)
+            if started >= next_snapshot:
+                await _send_session_snapshot(send_json, profile, sess=sess)
+                next_snapshot = started + _SESSION_INTERVAL_S
 
+            # Poll fallback only when screencast is unavailable (old CDP)
+            if not listen_only and not screencast_ok:
+                frame = await _capture_jpeg(sess)
+                if frame:
+                    await send_json({"type": "frame", "data": frame})
+
+            await asyncio.sleep(max(0, _FRAME_INTERVAL_S - (time.monotonic() - started)))
+    finally:
         if not listen_only:
-            frame = await _capture_jpeg(sess)
-            if frame:
-                await send_json({"type": "frame", "data": frame})
-
-        await asyncio.sleep(max(0, _FRAME_INTERVAL_S - (time.monotonic() - started)))
+            await _stop_screencast(sess)
 
 
 async def _listen_state_loop(
@@ -200,6 +312,30 @@ def _cdp_buttons(msg: dict[str, Any], *, button: str, event: str) -> int:
     return _CDP_BUTTON_MASK.get(button, 0)
 
 
+async def _cdp_send_fast(
+    sess: Any,
+    method: str,
+    params: dict[str, Any] | None = None,
+    *,
+    client: Any | None = None,
+) -> None:
+    """Send a CDP command without waiting for its response, when supported.
+
+    harness-browser >= 0.7.7 exposes ``CDPClient.send_no_wait`` for
+    fire-and-forget high-frequency commands (input events, screencast acks).
+    Fall back to the awaiting ``send`` on older versions so the stream keeps
+    working without a hard dependency bump. ``client`` overrides the session's
+    current client — callers that hold a captured client (screencast ack)
+    must pass it so the command goes to the right connection.
+    """
+    c = client if client is not None else sess._internal.client  # noqa: SLF001
+    fn = getattr(c, "send_no_wait", None)
+    if fn is not None:
+        await fn(method, params)
+    else:
+        await c.send(method, params)
+
+
 async def _dispatch_mouse(
     sess: Any,
     *,
@@ -219,7 +355,7 @@ async def _dispatch_mouse(
     }
     if click_count:
         params["clickCount"] = click_count
-    await sess._internal.client.send("Input.dispatchMouseEvent", params)  # noqa: SLF001
+    await _cdp_send_fast(sess, "Input.dispatchMouseEvent", params)
 
 
 def _cdp_click_count(msg: dict[str, Any]) -> int:
@@ -499,6 +635,8 @@ async def run_browser_stream_session(
                     sess,
                     profile,
                     listen_only=False,
+                    width=vw,
+                    height=vh,
                 )
             )
 
