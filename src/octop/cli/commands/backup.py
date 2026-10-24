@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+import errno
+import os
+import shutil
 import tempfile
 from pathlib import Path
 
@@ -19,6 +22,47 @@ from octop.infra.utils.paths import PathLayout
 
 def _paths(home: Path | None = None) -> PathLayout:
     return PathLayout(home) if home is not None else PathLayout.from_env()
+
+
+def _atomic_move_to(src: Path, dest: Path, _replace=None) -> None:
+    """Move ``src`` onto ``dest`` even when they live on different filesystems.
+
+    Prefers an atomic ``Path.replace`` (works only on the same filesystem). When
+    ``--output`` points at a different mount than Python's temporary directory,
+    ``replace`` fails with ``EXDEV`` (cross-device link) and the freshly built
+    archive would be lost to temporary-directory cleanup. In that case fall back
+    to copying into a staging file on the *destination* filesystem and then
+    atomically swapping it into place, so a pre-existing destination is never
+    left half-written if the copy fails.
+    """
+    replace = _replace or Path.replace
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        replace(src, dest)
+        return
+    except OSError as exc:
+        if exc.errno != errno.EXDEV:
+            raise
+    _cross_device_copy(src, dest)
+
+
+def _cross_device_copy(src: Path, dest: Path) -> None:
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    fd, stage = tempfile.mkstemp(dir=str(dest.parent), prefix=".octop-backup-", suffix=".tmp")
+    os.close(fd)
+    stage_path = Path(stage)
+    try:
+        shutil.copy2(src, stage_path)
+        os.replace(stage_path, dest)
+    finally:
+        # The staging file is consumed by the atomic swap above; clean up only a
+        # leftover from a failed swap so it does not linger in the destination dir.
+        try:
+            stage_path.unlink()
+        except FileNotFoundError:
+            pass
+        except OSError:
+            pass
 
 
 @click.group()
@@ -79,7 +123,7 @@ def create(
             else:
                 dest = output
                 dest.parent.mkdir(parents=True, exist_ok=True)
-                tmp_path.replace(dest)
+                _atomic_move_to(tmp_path, dest)
                 size = dest.stat().st_size
     finally:
         db.close()
