@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import io
+import threading
 import zipfile
 from pathlib import Path
 from types import SimpleNamespace
@@ -13,6 +14,7 @@ from deepagents.backends.local_shell import LocalShellBackend
 from octop_harness.backends import resolve_backend
 from octop_harness.backends.workspace import BackendWorkspace
 
+from octop.infra.backup import workspace_archive
 from octop.infra.backup.workspace_archive import export_workspace_zip, import_workspace_zip
 
 
@@ -266,3 +268,49 @@ async def test_import_skips_octop_builtin_skills(tmp_path: Path) -> None:
     assert not (ws / ".octop" / "_builtin_skills").exists()
     assert result["imported"] == 1
     assert any("_builtin_skills" in warning for warning in result["warnings"])
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "helper_name", ["_pack_zip", "_iter_zip_entries", "_clear_local_workspace"]
+)
+async def test_workspace_archive_offloads_blocking_zip_work(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, helper_name: str
+) -> None:
+    """Archive packing, extraction and replace cleanup execute outside the event loop."""
+    payload = b"hello" * 4096
+    (tmp_path / "hello.txt").write_bytes(payload)
+    backend = LocalShellBackend(root_dir=str(tmp_path), virtual_mode=False)
+    workspace = BackendWorkspace(backend, tmp_path)
+    loop_thread = threading.get_ident()
+    worker_threads: list[int] = []
+    original = getattr(workspace_archive, helper_name)
+
+    def record_thread(*args: Any) -> Any:
+        worker_threads.append(threading.get_ident())
+        return original(*args)
+
+    monkeypatch.setattr(workspace_archive, helper_name, record_thread)
+
+    if helper_name == "_pack_zip":
+        blob = await export_workspace_zip(workspace)
+        with zipfile.ZipFile(io.BytesIO(blob)) as archive:
+            assert archive.read("hello.txt") == payload
+    else:
+        buffer = io.BytesIO()
+        with zipfile.ZipFile(buffer, "w", compression=zipfile.ZIP_DEFLATED) as archive:
+            archive.writestr("hello.txt", payload)
+        (tmp_path / "hello.txt").unlink()
+        (tmp_path / "obsolete.txt").write_bytes(b"old")
+        (tmp_path / ".env").write_bytes(b"keep")
+        mode = "replace" if helper_name == "_clear_local_workspace" else "merge"
+        result = await import_workspace_zip(
+            workspace, buffer.getvalue(), mode=mode, local_workspace_dir=tmp_path
+        )
+        assert result["imported"] == 1
+        assert (tmp_path / "hello.txt").read_bytes() == payload
+        assert (tmp_path / ".env").read_bytes() == b"keep"
+        assert (tmp_path / "obsolete.txt").exists() is (mode == "merge")
+
+    assert len(worker_threads) == 1
+    assert worker_threads[0] != loop_thread, f"{helper_name} ran on the event-loop thread"
