@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 from contextlib import contextmanager
 from types import SimpleNamespace
-from unittest.mock import MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from langgraph.config import var_child_runnable_config
@@ -100,6 +100,40 @@ async def test_mobile_tap_success() -> None:
         tap_fn.assert_called_once()
     finally:
         set_mobile_agent_control(enabled=False, device=None)
+
+
+@pytest.mark.asyncio
+async def test_mobile_screenshot_uploads_to_agent_workspace() -> None:
+    from octop.infra.control.mobile.agent_control import set_mobile_agent_control
+
+    workspace = SimpleNamespace(aupload_bytes=AsyncMock())
+    user_repo = MagicMock()
+    with patch("octop.infra.control.mobile.tools.find_adb", return_value="/adb"):
+        tools = build_mobile_tools(
+            _enabled_config(),
+            user_repo=user_repo,
+            workspace_for_agent=lambda agent_id: workspace if agent_id == "agent1" else None,
+        )
+    screenshot = _tool_by_name(tools, "mobile_screenshot")
+    set_mobile_agent_control(enabled=True, device="emulator-5554")
+    try:
+        with (
+            _configurable(user="1", user_is_admin=True, locale="en", agent_id="agent1"),
+            patch("octop.infra.control.mobile.tools.mobile_status") as status,
+            patch(
+                "octop.infra.control.mobile.tools.list_devices",
+                return_value=["emulator-5554"],
+            ),
+            patch("octop.infra.control.mobile.tools.screencap_png", return_value=b"png"),
+        ):
+            status.return_value = MagicMock(setup_state="ready", ok=True)
+            out = await screenshot.ainvoke({})
+    finally:
+        set_mobile_agent_control(enabled=False, device=None)
+
+    data = json.loads(out)
+    assert data["path"].startswith("mobile-screenshots/")
+    workspace.aupload_bytes.assert_awaited_once_with(data["path"], b"png")
 
 
 @pytest.mark.asyncio

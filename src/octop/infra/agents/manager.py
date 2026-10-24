@@ -3948,7 +3948,7 @@ class AgentManager:
             mobile_tools = build_mobile_tools(
                 self._config,
                 user_repo=self._repos.user_repo,
-                paths=self.paths,
+                workspace_for_agent=self.workspace_for_agent,
             )
 
         from octop_harness.plugins import PluginRegistry, build_plugin_tools  # noqa: PLC0415
