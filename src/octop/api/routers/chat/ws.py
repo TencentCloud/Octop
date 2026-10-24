@@ -278,7 +278,7 @@ async def _bridge_chat_ws(
         await websocket.close(code=1011, reason="bridge not ready")
         return
     try:
-        mgr.get_owned(ref.connection_id, user.id)
+        mgr.get_usable(ref.connection_id, user.id)
         mgr.require_session(ref.connection_id)
     except OctopError as exc:
         await websocket.close(code=1011, reason=str(exc.code.value))
