@@ -1460,6 +1460,9 @@
     "processThinkingLive": "Thinking",
     "send": "Send",
     "stop": "Stop",
+    "stopRequested": "Stop request sent. Waiting for the task to end.",
+    "stopInactive": "No running turn was detected.",
+    "stopUnconfirmed": "Stop request not confirmed. Check your connection and try again.",
     "steer": {
       "action": "Steer",
       "hint": "Send a mid-turn correction without stopping the current reply",
