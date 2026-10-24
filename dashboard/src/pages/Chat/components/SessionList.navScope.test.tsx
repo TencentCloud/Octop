@@ -116,6 +116,69 @@ function LocationProbe() {
 }
 
 describe("SessionList nav scopes", () => {
+  beforeEach(() => {
+    localStorage.clear();
+  });
+
+  it("shows a pin mark and expands hidden experts in place", async () => {
+    const user = userEvent.setup();
+    const onAgentSelect = vi.fn();
+    localStorage.setItem(
+      "octop:pinned-experts",
+      JSON.stringify(["local-expert"]),
+    );
+    localStorage.setItem(
+      "octop:hidden-shared-experts",
+      JSON.stringify(["shared-expert"]),
+    );
+    const shared = {
+      ...agent({ agent_id: "shared-expert", name: "共享专家" }),
+      is_shared: true,
+      is_owner: false,
+    };
+    render(
+      <MemoryRouter>
+        <SessionList
+          agents={[
+            agent({ agent_id: "local-expert", name: "本地专家" }),
+            shared,
+          ]}
+          sessions={[]}
+          activeId={null}
+          activeAgentId="local-expert"
+          hasMore={false}
+          loadingMore={false}
+          onLoadMore={() => undefined}
+          onFetchAllSessions={() => undefined}
+          onSelect={() => undefined}
+          onAgentSelect={onAgentSelect}
+          onNewChat={() => undefined}
+          onDelete={() => undefined}
+          onRename={() => undefined}
+          onPin={() => undefined}
+          onFork={() => undefined}
+        />
+      </MemoryRouter>,
+    );
+
+    expect(screen.getByTitle("chat.expertPin")).toBeInTheDocument();
+    expect(screen.queryByText("共享专家")).not.toBeInTheDocument();
+
+    await user.click(
+      screen.getByRole("button", { name: "chat.expertListHidden" }),
+    );
+    expect(screen.getByText("共享专家")).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "chat.expertListHiddenCollapse" }),
+    ).toHaveAttribute("aria-expanded", "true");
+
+    await user.click(screen.getByText("共享专家"));
+    expect(onAgentSelect).toHaveBeenCalledWith("shared-expert");
+    expect(
+      screen.getByRole("button", { name: "chat.expertListHiddenCollapse" }),
+    ).toBeInTheDocument();
+  });
+
   it("filters experts, teams, and cloud under the search box", async () => {
     const user = userEvent.setup();
     renderList();

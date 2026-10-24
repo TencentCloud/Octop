@@ -50,16 +50,40 @@ _ACP_GLOBAL = re.compile(r"^/api/acp(?:/[^/]+)?$")
 _CRON_SETTINGS = re.compile(r"^/api/cron/settings$")
 _CONNECTOR_INSTANCES_LIST = re.compile(r"^/api/connector-instances$")
 
+# Shared-link viewers may chat. Expert management (edit, start/stop, reload,
+# delete, workspace, skills, …) stays with the connection owner. The peer
+# executes the tunnel as that owner, so the hub must reject these writes.
+_VIEWER_CONVERSATION = re.compile(
+    r"^/api/agents/(?:bridge:[^/]+|[^/]+)"
+    r"/(?:threads|history|uploads|upload|chat|messages|attachments|media|turns)"
+    r"(?:/.*)?$"
+)
+
+
+def _normalize_path(path: str) -> str:
+    raw = (path or "").split("?", 1)[0].strip() or "/"
+    if not raw.startswith("/"):
+        raw = f"/{raw}"
+    if len(raw) > 1:
+        raw = raw.rstrip("/")
+    return raw
+
+
+def shared_viewer_may_tunnel(method: str, path: str) -> bool:
+    """Whether a non-owner of a shared cloud-collab link may send this hop.
+
+    Reads are allowed. Writes are limited to the conversation surface.
+    """
+    verb = (method or "GET").upper()
+    if verb in {"GET", "HEAD", "OPTIONS"}:
+        return True
+    return _VIEWER_CONVERSATION.fullmatch(_normalize_path(path)) is not None
+
 
 def is_tunnel_path_allowed(method: str, path: str) -> bool:
     """Return True when ``method`` + ``path`` may run via an inbound tunnel."""
     verb = (method or "GET").upper()
-    raw = (path or "").split("?", 1)[0].strip() or "/"
-    if not raw.startswith("/"):
-        raw = f"/{raw}"
-    # Normalize trailing slash except root.
-    if len(raw) > 1:
-        raw = raw.rstrip("/")
+    raw = _normalize_path(path)
 
     if _AGENT_COLLECTION.fullmatch(raw):
         return verb == "GET"
