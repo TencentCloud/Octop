@@ -32,6 +32,18 @@ async def test_admin_creates_provider(env):
     assert "user_id" not in body
 
 
+async def test_admin_duplicate_provider_name_returns_conflict(env):
+    """A duplicate provider name returns the localized domain conflict."""
+    c, _, auth = env
+    body = {"name": "duplicate-provider", "kind": "openai", "api_key": "k"}
+    first = await c.post("/api/admin/providers", headers=auth, json=body)
+    assert first.status_code == 201
+
+    duplicate = await c.post("/api/admin/providers", headers=auth, json=body)
+    assert duplicate.status_code == 409
+    assert duplicate.json()["error"]["code"] == "PROVIDER_NAME_TAKEN"
+
+
 async def test_regular_user_cannot_create_provider(env):
     """POST /admin/providers is admin-only."""
     c, _, admin_auth = env
