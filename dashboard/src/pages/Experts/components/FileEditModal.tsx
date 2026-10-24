@@ -8,7 +8,7 @@ import { request } from "../../../api/request";
 import { useTheme } from "../../../context/ThemeContext";
 import { withFromWorkspace } from "../../../utils/fromWorkspace";
 
-const MonacoEditor = lazy(() => import("@monaco-editor/react"));
+const MonacoEditor = lazy(() => import("@/components/monaco"));
 
 interface FileEditModalProps {
   open: boolean;
