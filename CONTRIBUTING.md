@@ -4,13 +4,15 @@ Thank you for your interest in contributing! Octop is the control-plane applicat
 
 ## Getting started
 
-**Prerequisites:** Python 3.12+, Node.js 18+, [uv](https://docs.astral.sh/uv/)
+**Prerequisites:** Python 3.12+, Node.js 22.13+, [uv](https://docs.astral.sh/uv/)
 
 ```bash
 git clone https://github.com/TencentCloud/Octop.git octop
 cd octop
+git switch develop
+cd dashboard && npm ci && cd ..
 make install          # backend dev dependencies
-make install-hooks    # once per clone: pre-commit runs make all + dashboard build
+make install-hooks    # once per clone: pre-commit runs make precommit + dashboard build
 make all              # format-all + backend lint + typecheck + test (ship bar)
 ```
 
@@ -20,6 +22,7 @@ For frontend work (separate terminal):
 make dev-frontend     # Vite dev server
 make lint-frontend
 make typecheck-frontend
+npm --prefix dashboard test
 make check-all        # full stack quality gate
 ```
 
@@ -28,9 +31,10 @@ make check-all        # full stack quality gate
 | Command | Description |
 |---------|-------------|
 | `make install` | Install Python dev dependencies |
-| `make install-hooks` | Point git at `.githooks` (pre-commit: `make all` + dashboard build) |
+| `make install-hooks` | Point git at `.githooks` (pre-commit: `make precommit` + dashboard build) |
 | `make all` | `format-all` + backend lint + typecheck + test |
-| `make check-all` | Full stack quality gate |
+| `make check-all` | Full stack lint / type checks + backend tests |
+| `npm --prefix dashboard test` | Frontend unit / component tests |
 | `make dev` | Start frontend + backend dev servers |
 | `make build` | Build dashboard + Python wheel |
 
@@ -60,7 +64,7 @@ hotfix/* ──PR──► main (+ tag) and ──PR──► develop
 1. Fork (if needed) and create a feature branch from **`develop`**
 2. Open the PR with base **`develop`** (not `main`, unless it is a release or hotfix)
 3. Add or update tests for behavior changes — CI runs on **Linux and Windows**; follow the cross-platform rules in [AGENTS.md](AGENTS.md) §7 (prefer `tmp_path` / `pathlib`, `fake_bin_path` for mocked binaries, `posix_only` for Unix-only cases)
-4. Ensure `make install-hooks` is enabled locally; run `make all` (backend) or `make check-all` (full stack) before submitting — pre-commit enforces the same gate
+4. Ensure `make install-hooks` is enabled locally; run `make all` (backend) or `make check-all` (full stack) before submitting. The hook runs `make precommit` (formatting, lint, type checking and testmon-selected tests), then builds the dashboard; the full backend suite remains required before submitting
 5. Update `CHANGELOG.md` when user-facing behavior changes
 6. Open a PR with a clear description and test plan
 
@@ -168,13 +172,15 @@ Branch from `main` → PR into `main` (tag if shipping a patch) → PR into `dev
 
 ## 环境搭建
 
-**前置条件：** Python 3.12+、Node.js 18+、[uv](https://docs.astral.sh/uv/)
+**前置条件：** Python 3.12+、Node.js 22.13+、[uv](https://docs.astral.sh/uv/)
 
 ```bash
 git clone https://github.com/TencentCloud/Octop.git octop
 cd octop
+git switch develop
+cd dashboard && npm ci && cd ..
 make install
-make install-hooks    # 每个 clone 执行一次：提交前跑 make all + 前端 build
+make install-hooks    # 每个 clone 执行一次：提交前跑 make precommit + 前端 build
 make all              # format-all + 后端 lint / typecheck / test
 ```
 
@@ -182,6 +188,7 @@ make all              # format-all + 后端 lint / typecheck / test
 
 ```bash
 make dev-frontend
+npm --prefix dashboard test
 make check-all        # 全栈质量门禁
 ```
 
@@ -206,7 +213,7 @@ make check-all        # 全栈质量门禁
 1. 从 **`develop`** 创建特性分支
 2. PR 的 base 选 **`develop`**（release / hotfix 除外）
 3. 补充测试（CI 同时跑 **Linux / Windows**，路径与假二进制遵循 [AGENTS.md](AGENTS.md) §7）
-4. 本地执行过 `make install-hooks`；提交前 `make all` 或 `make check-all` 必须绿（hooks 会强制执行）
+4. 本地执行过 `make install-hooks`；提交前 `make all` 或 `make check-all` 必须绿。hook 执行 `make precommit`（格式化、lint、类型检查和 testmon 选择的受影响测试），随后构建前端；提交 PR 前仍须跑完整后端测试
 5. 用户可见变更时更新 `CHANGELOG.md`
 6. 提交 Pull Request
 
