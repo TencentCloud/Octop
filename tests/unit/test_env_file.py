@@ -83,7 +83,6 @@ def test_overlay_stdio_mcp_configs_applies_to_stdio_only() -> None:
 
 def test_search_env_changed_detects_tavily() -> None:
     assert search_env_changed({}, {"TAVILY_API_KEY": "x"}) is True
-    assert search_env_changed({}, {"DEEPSEEK_API_KEY": "x"}) is True
     assert search_env_changed({"FOO": "1"}, {"FOO": "2"}) is False
 
 
@@ -129,3 +128,28 @@ def test_quoted_value_with_inner_quote_does_not_swallow_following_lines() -> Non
     text = 'MALFORMED="abc"def\nNEXT=1\n'
 
     assert parse_env_text(text) == {"MALFORMED": '"abc"def', "NEXT": "1"}
+
+
+def test_unterminated_quote_does_not_swallow_following_entries() -> None:
+    """Regression for #2269: an unterminated opening quote must not consume the
+    rest of the file. The malformed entry is isolated and the dangling quote is
+    dropped; later KEY=VALUE lines parse normally."""
+    text = 'FOO="bar\nBAZ=qux\nQUX=ok\n'
+
+    assert parse_env_text(text) == {"FOO": "bar", "BAZ": "qux", "QUX": "ok"}
+
+
+def test_unterminated_quote_stops_at_real_entry_not_comment() -> None:
+    """A comment line inside an unterminated value is continued (not a new entry),
+    but a following real KEY=VALUE still terminates the malformed entry."""
+    text = 'FOO="bar\n# a stray comment line\nBAZ=qux\n'
+
+    assert parse_env_text(text) == {"FOO": 'bar\n# a stray comment line', "BAZ": "qux"}
+
+
+def test_terminated_multiline_value_still_joined() -> None:
+    """A properly closed multi-line quoted value is still read back as one value
+    (the new entry-line guard must not break legitimate multi-line values)."""
+    text = 'FOO="line1\nline2\nline3"\nBAZ=qux\n'
+
+    assert parse_env_text(text) == {"FOO": "line1\nline2\nline3", "BAZ": "qux"}

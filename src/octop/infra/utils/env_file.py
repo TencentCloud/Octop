@@ -25,17 +25,33 @@ SEARCH_ENV_KEYS = frozenset(
     {
         "TAVILY_API_KEY",
         "BRAVE_API_KEY",
-        "DEEPSEEK_API_KEY",
         "GOOGLE_API_KEY",
         "GOOGLE_CSE_ID",
         "MOONSHOT_API_KEY",
-        "TENCENTCLOUD_WSA_APIKEY",
     }
 )
 
 
 def env_file_path(root: Path) -> Path:
     return root / "env"
+
+
+def _is_env_entry_line(line: str) -> bool:
+    """Return True if *line* is itself a fresh ``KEY=VALUE`` entry.
+
+    Used by :func:`parse_env_text` to stop an unterminated quoted value from
+    continuing onto a following line that is actually a new variable (issue #2269).
+    Mirrors the per-line validation in :func:`parse_env_text`.
+    """
+    s = line.strip()
+    if not s or s.startswith("#"):
+        return False
+    if s.startswith("export "):
+        s = s[7:].strip()
+    if "=" not in s:
+        return False
+    key = s.partition("=")[0].strip()
+    return bool(_KEY_RE.match(key))
 
 
 def parse_env_text(text: str) -> dict[str, str]:
@@ -59,12 +75,18 @@ def parse_env_text(text: str) -> dict[str, str]:
         # ``format_env_file`` quotes any value containing whitespace and leaves embedded line
         # breaks raw, so a multi-line value has to be read back across lines. Only a value with
         # an *unterminated* quote continues onto the next line; a value that already contains a
-        # closing quote (or no quote at all) is left alone, so a malformed entry cannot swallow
-        # the rest of the file.
+        # closing quote (or no quote at all) is left alone. If the opening quote is never closed,
+        # a following line that is itself a valid ``KEY=VALUE`` entry ends the continuation, so a
+        # single malformed entry cannot swallow the rest of the file (see issue #2269).
+        unterminated = False
         if value[:1] in {'"', "'"} and value[0] not in value[1:]:
             quote = value[0]
+            unterminated = True
             while index < len(lines) and quote not in value[1:]:
-                value = f"{value}\n{lines[index]}"
+                nxt = lines[index]
+                if _is_env_entry_line(nxt):
+                    break
+                value = f"{value}\n{nxt}"
                 index += 1
             value = value.strip()
         if len(value) >= 2 and value[0] == value[-1] and value[0] in {'"', "'"}:
@@ -85,6 +107,10 @@ def parse_env_text(text: str) -> dict[str, str]:
                         unescaped.append(c)
                         i += 1
                 value = "".join(unescaped)
+        elif unterminated and value and value[0] in {'"', "'"} and value[-1] != value[0]:
+            # Opening quote was never closed: drop the dangling quote, so the
+            # isolated malformed entry is not left half-open either.
+            value = value[1:]
         out[key] = value
     return out
 
