@@ -100,11 +100,17 @@ class ResourceGroupGrantRepo:
                 )
 
     def delete_prefix(self, resource_type: str, prefix: str) -> None:
-        needle = f"{prefix}/%"
-        exact = prefix
+        """Delete ``prefix`` itself and ``prefix/...`` keys.
+
+        Matches with ``substr`` instead of ``LIKE``: ``_`` and ``%`` in a name stay
+        literal parts of it, and letter case stays significant on SQLite (whose
+        ``LIKE`` folds ASCII case) and PostgreSQL alike — the same rule
+        ``knowledge.delete_document`` and :meth:`rewrite_prefix` use.
+        """
+        needle = f"{prefix}/"
         with self._db.transaction() as conn:
             conn.execute(
                 "DELETE FROM resource_group_grant"
-                " WHERE resource_type = ? AND (resource_key = ? OR resource_key LIKE ?)",
-                (resource_type, exact, needle),
+                " WHERE resource_type = ? AND (resource_key = ? OR substr(resource_key, 1, ?) = ?)",
+                (resource_type, prefix, len(needle), needle),
             )
