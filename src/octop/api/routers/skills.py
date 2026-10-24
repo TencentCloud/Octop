@@ -49,6 +49,7 @@ from pydantic import BaseModel, Field
 from octop.api.common.agent import require_agent_owner_row, require_agent_row
 from octop.api.common.content_disposition import content_disposition
 from octop.api.deps import current_user, get_server, require_permission
+from octop.infra.agents.extensions.catalog import ExtensionCatalog
 from octop.infra.agents.manager import (
     skill_package_ids_list,
 )
@@ -63,6 +64,7 @@ from octop.infra.skills.skill_packages import (
     SkillPackageError,
     SkillPackageTooLarge,
     read_cli_skill_install,
+    read_skill_directory,
     resolve_skill_package,
     validate_skill_slug,
 )
@@ -474,6 +476,81 @@ async def list_skills(
             locale=resolve_request_locale(request),
         ),
     )
+
+
+class InstallCreatedSkillBody(BaseModel):
+    overwrite: bool = False
+
+
+def _extension_catalog(server: Any) -> ExtensionCatalog:
+    return ExtensionCatalog(server.paths.extension_catalog_dir)
+
+
+@router.get(
+    "/agents/{agent_id}/created-skills",
+    summary="List current-user skills created by Extension Builder",
+)
+async def list_created_skills(
+    agent_id: str,
+    user: Any = Depends(current_user),
+    server: Any = Depends(get_server),
+) -> list[dict[str, Any]]:
+    ctx = await _ctx(agent_id, user=user, as_user=None, server=server)
+    entries = _extension_catalog(server).list_skills(user.id)
+    for entry in entries:
+        manifest = await _aread_text(ctx.workspace, f"skills/{entry['slug']}/SKILL.md")
+        entry["installed"] = manifest is not None
+    return entries
+
+
+@router.post(
+    "/agents/{agent_id}/created-skills/{slug}/install",
+    status_code=201,
+    summary="Install a created catalog skill into an agent",
+)
+async def install_created_skill(
+    agent_id: str,
+    slug: str,
+    body: InstallCreatedSkillBody,
+    user: Any = Depends(current_user),
+    server: Any = Depends(get_server),
+) -> dict[str, Any]:
+    ctx = await _ctx(agent_id, user=user, as_user=None, server=server)
+    try:
+        safe_slug = validate_skill_slug(slug)
+    except SkillPackageError as exc:
+        raise OctopError(ErrorCode.NOT_FOUND, "invalid skill name") from exc
+    source = _extension_catalog(server).resolve_skill_dir(user.id, safe_slug)
+    if source is None:
+        raise OctopError(ErrorCode.NOT_FOUND, f"created skill {safe_slug!r} not found")
+    existing = await _aread_text(ctx.workspace, f"skills/{safe_slug}/SKILL.md")
+    if existing is not None and not body.overwrite:
+        raise OctopError(ErrorCode.SKILL_ALREADY_EXISTS, f"skill {safe_slug!r} already exists")
+    try:
+        package = resolve_skill_package(
+            slug=safe_slug,
+            files=read_skill_directory(source),
+            source="extension-builder",
+        )
+    except SkillPackageError as exc:
+        raise OctopError(ErrorCode.SLASH_BAD_ARGS, str(exc)) from exc
+    await _guard_package_only_skill_write(
+        ctx.workspace,
+        ctx.config,
+        server,
+        safe_slug,
+        user,
+    )
+    with contextlib.suppress(Exception):
+        await ctx.workspace.adelete(f"skills/{safe_slug}")
+    await _write_skill_files(ctx.workspace, f"skills/{safe_slug}", package.files)
+    disabled = _disabled_set(ctx.config)
+    if safe_slug in disabled:
+        disabled.discard(safe_slug)
+        await _persist_disabled(server, agent_id, disabled)
+    skill_md = next(content for path, content in package.files if path == "SKILL.md")
+    metadata, _body = _parse_frontmatter(skill_md.decode("utf-8"))
+    return _summary_dict(safe_slug, metadata, enabled=True, kind="workspace")
 
 
 class SkillPackageMountBody(BaseModel):

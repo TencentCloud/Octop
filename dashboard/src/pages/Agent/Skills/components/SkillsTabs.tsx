@@ -11,12 +11,13 @@
 
 import { useMemo, useState } from "react";
 import { Empty } from "antd";
-import { Blocks, Package, Sparkles, Store } from "lucide-react";
+import { Blocks, Package, Sparkles, Store, WandSparkles } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import TabBar, {
   type TabBarItem,
 } from "../../../../components/TabLabel/TabBar";
 import InstalledSkillsTab from "./InstalledSkillsTab";
+import CreatedSkillsTab from "./CreatedSkillsTab";
 import SkillPackagesTab from "./SkillPackagesTab";
 import SkillHubTab from "./SkillHubTab";
 import { useSkills } from "../useSkills";
@@ -24,10 +25,11 @@ import styles from "../index.module.less";
 import { useCurrentUser } from "../../../../hooks/useCurrentUser";
 import { userCanAny, PERM } from "../../../../utils/permissions";
 
-type SkillsTab = "custom" | "builtin" | "skillhub" | "packages";
+type SkillsTab = "custom" | "created" | "builtin" | "skillhub" | "packages";
 
 const SKILL_TABS: TabBarItem<SkillsTab>[] = [
   { key: "custom", labelKey: "skills.customizedSkills", icon: Sparkles },
+  { key: "created", labelKey: "skills.createdSkills", icon: WandSparkles },
   { key: "builtin", labelKey: "skills.builtinSkills", icon: Blocks },
   { key: "skillhub", labelKey: "skills.tencentSkillHub", icon: Store },
   { key: "packages", labelKey: "skills.skillPackages", icon: Package },
@@ -85,6 +87,8 @@ export default function SkillsTabs({ agentId }: SkillsTabsProps) {
           ) : (
             noAgent
           )
+        ) : resolvedTab === "created" && agentId ? (
+          <CreatedSkillsTab key={agentId} agentId={agentId} />
         ) : resolvedTab === "skillhub" && agentId ? (
           <SkillHubTab key={agentId} target={{ type: "agent", agentId }} />
         ) : resolvedTab === "packages" && agentId && canSkillPackages ? (

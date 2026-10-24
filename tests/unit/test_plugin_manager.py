@@ -12,6 +12,7 @@ from typing import Any
 import pytest
 from octop_harness.plugins import PluginRegistry
 
+from octop.infra.agents.extensions.catalog import ExtensionCatalog
 from octop.infra.agents.plugins.manager import (
     PluginManager,
     normalize_plugin_download_url,
@@ -49,6 +50,115 @@ def test_install_and_list(tmp_path: Path) -> None:
     assert loaded.manifest.id == "echo-tool"
     items = mgr.list_installed()
     assert any(i.get("id") == "echo-tool" for i in items)
+
+
+def test_created_plugin_is_visible_only_to_owner_and_installable(tmp_path: Path) -> None:
+    catalog_root = tmp_path / "extensions"
+    ExtensionCatalog(catalog_root).publish(
+        owner_user_id=7,
+        project_id="01M51SZVMKP5XV917RJ24GQ7QX",
+        artifact_type="plugin",
+        slug="created-tool",
+        goal="Return a supplied value.",
+        created_at="2026-10-16T00:00:00+00:00",
+        revision="a" * 64,
+        sha256="b" * 64,
+        files={
+            "plugin.yaml": b"""id: created-tool
+version: 0.1.0
+name: Created Tool
+description: Return a supplied value.
+kind: tool
+entry: main.py
+requires: []
+""",
+            "main.py": b"""async def run(value: str) -> str:
+    return value
+
+def setup(ctx):
+    ctx.tool(\"created_tool\", run, description=\"Return the value.\")
+""",
+        },
+    )
+    config_path = tmp_path / "config.json"
+    config_path.write_text("{}", encoding="utf-8")
+    manager = PluginManager(
+        plugins_dir=tmp_path / "plugins",
+        config_path=config_path,
+        created_catalog_root=catalog_root,
+    )
+
+    owner_market = manager.list_market(owner_user_id=7)
+
+    assert any(
+        row.get("id") == "created-tool" and row.get("source") == "created" for row in owner_market
+    )
+    assert not any(row.get("id") == "created-tool" for row in manager.list_market(owner_user_id=8))
+    loaded = manager.install_from_market("created-tool", owner_user_id=7)
+    assert loaded.manifest.id == "created-tool"
+
+
+def test_tool_plugin_can_declare_companion_skills(tmp_path: Path) -> None:
+    source = tmp_path / "hybrid-tool"
+    skill_dir = source / "skills" / "hybrid-tool"
+    skill_dir.mkdir(parents=True)
+    (source / "plugin.yaml").write_text(
+        """id: hybrid-tool
+version: 0.1.0
+name: Hybrid Tool
+kind: tool
+entry: main.py
+requires: []
+skills: skills
+""",
+        encoding="utf-8",
+    )
+    (source / "main.py").write_text(
+        """async def run(value: str) -> str:
+    return value
+
+def setup(ctx):
+    ctx.tool("hybrid_tool", run, description="Return the value.")
+""",
+        encoding="utf-8",
+    )
+    (skill_dir / "SKILL.md").write_text(
+        "---\nname: hybrid-tool\ndescription: Use the hybrid tool.\n---\n",
+        encoding="utf-8",
+    )
+    config_path = tmp_path / "config.json"
+    config_path.write_text("{}", encoding="utf-8")
+    manager = PluginManager(plugins_dir=tmp_path / "plugins", config_path=config_path)
+
+    loaded = manager.install_path(source, force=True)
+
+    assert loaded.skills_dir == tmp_path / "plugins" / "hybrid-tool" / "skills"
+    assert manager.plugin_skill_names("hybrid-tool") == {"hybrid-tool"}
+
+
+def test_plugin_companion_skills_path_cannot_escape_plugin(tmp_path: Path) -> None:
+    source = tmp_path / "unsafe-hybrid"
+    source.mkdir()
+    (source / "plugin.yaml").write_text(
+        """id: unsafe-hybrid
+version: 0.1.0
+name: Unsafe Hybrid
+kind: tool
+entry: main.py
+skills: ../skills
+""",
+        encoding="utf-8",
+    )
+    (source / "main.py").write_text("def setup(ctx):\n    pass\n", encoding="utf-8")
+    config_path = tmp_path / "config.json"
+    config_path.write_text("{}", encoding="utf-8")
+    manager = PluginManager(plugins_dir=tmp_path / "plugins", config_path=config_path)
+
+    with pytest.raises(OctopError) as excinfo:
+        manager.install_path(source, force=True)
+
+    assert excinfo.value.code is ErrorCode.PLUGIN_INSTALL_FAILED
+    assert "safe relative directory" in str(excinfo.value)
 
 
 def test_global_disable(tmp_path: Path) -> None:

@@ -206,15 +206,22 @@ export function PluginMarketPanel() {
                         group={row.group}
                         version={row.version}
                         trailing={
-                          canUpdate ? (
-                            <Tag color="processing" bordered={false}>
-                              {t("plugins.marketUpdateAvailable")}
-                            </Tag>
-                          ) : installed ? (
-                            <Tag color="success" bordered={false}>
-                              {t("plugins.marketInstalled")}
-                            </Tag>
-                          ) : null
+                          <>
+                            {row.created ? (
+                              <Tag color="purple" bordered={false}>
+                                {t("plugins.marketCreated")}
+                              </Tag>
+                            ) : null}
+                            {canUpdate ? (
+                              <Tag color="processing" bordered={false}>
+                                {t("plugins.marketUpdateAvailable")}
+                              </Tag>
+                            ) : installed ? (
+                              <Tag color="success" bordered={false}>
+                                {t("plugins.marketInstalled")}
+                              </Tag>
+                            ) : null}
+                          </>
                         }
                       />
                     </div>

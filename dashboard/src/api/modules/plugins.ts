@@ -87,6 +87,9 @@ export interface MarketPlugin {
   installed_version?: string | null;
   update_available?: boolean;
   error?: string;
+  source?: "built_in" | "created";
+  created?: boolean;
+  published_at?: string | null;
 }
 
 export const pluginsApi = {

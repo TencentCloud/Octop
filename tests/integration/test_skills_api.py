@@ -13,6 +13,9 @@ from typing import Any
 
 import pytest
 
+from octop.infra.agents.extensions.catalog import ExtensionCatalog
+from tests.support.auth import resolve_user_id
+
 
 def _b64(text: str) -> str:
     return base64.b64encode(text.encode("utf-8")).decode("ascii")
@@ -89,6 +92,46 @@ async def test_create_then_list(env: Any) -> None:
     rows = r.json()
     names = {row["name"] for row in rows}
     assert "file-reader" in names
+
+
+async def test_created_skill_catalog_lists_and_installs(env: Any) -> None:
+    c, srv, auth, aid = env
+    owner_id = await resolve_user_id(c, auth, "admin")
+    ExtensionCatalog(srv.paths.extension_catalog_dir).publish(
+        owner_user_id=owner_id,
+        project_id="01M51SZVMKP5XV917RJ24GQ7QX",
+        artifact_type="skill",
+        slug="builder-visible",
+        goal="Verify builder-created skill visibility.",
+        created_at="2026-10-16T00:00:00+00:00",
+        revision="c" * 64,
+        sha256="d" * 64,
+        files={
+            "SKILL.md": b"""---
+name: builder-visible
+description: Verify builder-created skill visibility.
+---
+
+# Builder Visible
+"""
+        },
+    )
+
+    listed = await c.get(f"/api/agents/{aid}/created-skills", headers=auth)
+    assert listed.status_code == 200, listed.text
+    assert listed.json()[0]["slug"] == "builder-visible"
+    assert listed.json()[0]["installed"] is False
+
+    installed = await c.post(
+        f"/api/agents/{aid}/created-skills/builder-visible/install",
+        headers=auth,
+        json={"overwrite": False},
+    )
+    assert installed.status_code == 201, installed.text
+    assert installed.json()["slug"] == "builder-visible"
+
+    listed_again = await c.get(f"/api/agents/{aid}/created-skills", headers=auth)
+    assert listed_again.json()[0]["installed"] is True
 
 
 async def test_list_localizes_octop_presentation_metadata(env: Any) -> None:

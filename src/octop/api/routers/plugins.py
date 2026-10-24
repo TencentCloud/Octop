@@ -219,10 +219,10 @@ async def upload_plugin(
 @router.get("/market", summary="List marketplace catalog plugins")
 async def list_market_plugins(
     server: OctopServer = Depends(get_server),
-    _user: Any = Depends(current_user),
+    user: Any = Depends(current_user),
 ) -> list[dict[str, Any]]:
-    """Return the in-tree marketplace catalog (future: remote index API)."""
-    return _plugin_manager(server).list_market()
+    """Return built-in and current-user marketplace entries."""
+    return _plugin_manager(server).list_market(owner_user_id=user.id)
 
 
 @router.post(
@@ -233,7 +233,7 @@ async def install_market_plugin(
     plugin_id: str,
     force: bool = False,
     server: OctopServer = Depends(get_server),
-    _user: Any = Depends(require_permission("plugins")),
+    user: Any = Depends(require_permission("plugins")),
 ) -> dict[str, Any]:
     """Copy a catalog plugin into ``~/.octop/plugins`` (future: download ZIP)."""
     mgr = _plugin_manager(server)
@@ -241,7 +241,11 @@ async def install_market_plugin(
     try:
         loaded = await loop.run_in_executor(
             None,
-            lambda: mgr.install_from_market(plugin_id, force=force),
+            lambda: mgr.install_from_market(
+                plugin_id,
+                force=force,
+                owner_user_id=user.id,
+            ),
         )
     except OctopError:
         raise
@@ -272,10 +276,14 @@ async def get_market_plugin_ui_asset(
     plugin_id: str,
     file_path: str,
     server: OctopServer = Depends(get_server),
-    _user: Any = Depends(current_user),
+    user: Any = Depends(current_user),
 ) -> Response:
     """Static files from the in-tree catalog (icons before install)."""
-    target = _plugin_manager(server).resolve_market_ui_file(plugin_id, file_path)
+    target = _plugin_manager(server).resolve_market_ui_file(
+        plugin_id,
+        file_path,
+        owner_user_id=user.id,
+    )
     suffix = target.suffix.lower()
     media_type = _UI_CONTENT_TYPES.get(suffix) or mimetypes.guess_type(target.name)[0]
     return FileResponse(
