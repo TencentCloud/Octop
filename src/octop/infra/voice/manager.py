@@ -10,7 +10,18 @@ from octop.infra.db.repos.settings import SettingsRepo
 from octop.infra.db.repos.voice_providers import VoiceProviderRepo, VoiceProviderRow
 from octop.infra.errors import ErrorCode, OctopError
 from octop.infra.voice import adapters, realtime
-from octop.infra.voice.presets import is_builtin_preset
+from octop.infra.voice.presets import is_builtin_preset, load_voice_presets
+
+# Preset ids may carry an adapter kind that differs from the id (siliconflow /
+# openai-compatible both speak the openai wire protocol).
+_PRESET_KIND: dict[str, str] = {
+    preset["id"]: str(preset["kind"]) for preset in load_voice_presets()
+}
+
+
+def _preset_kind(name: str) -> str:
+    return _PRESET_KIND.get(name, name)
+
 
 if TYPE_CHECKING:
     from octop.infra.crypto.sealed_repos import SealedVoiceProviderRepo
@@ -56,9 +67,14 @@ class VoiceManager:
 
     def _validate_provider_name(self, name: str, *, capability: str) -> None:
         if is_builtin_preset(name):
-            if name == "edge" and capability == "stt":
+            kind = _preset_kind(name)
+            if kind == "edge" and capability == "stt":
                 raise OctopError(
                     ErrorCode.VOICE_CAPABILITY_MISMATCH, "Edge TTS does not support STT"
+                )
+            if kind == "piper" and capability == "stt":
+                raise OctopError(
+                    ErrorCode.VOICE_CAPABILITY_MISMATCH, "local Piper does not support STT"
                 )
             if name == "browser":
                 return
@@ -79,7 +95,11 @@ class VoiceManager:
 
     def resolve(self, name: str) -> ResolvedVoiceProvider:
         if is_builtin_preset(name):
-            return ResolvedVoiceProvider(name=name, kind=name, row=self._repo.get_by_name(name))
+            return ResolvedVoiceProvider(
+                name=name,
+                kind=_preset_kind(name),
+                row=self._repo.get_by_name(name),
+            )
         row = self._repo.get_by_name(name)
         if row is None:
             raise OctopError(ErrorCode.NOT_FOUND, f"voice provider {name!r} not found")
@@ -93,7 +113,7 @@ class VoiceManager:
         """HTTP content type of the synthesize() stream for the given provider."""
         name = provider_name or self.get_active()["tts"]
         kind = self.resolve(name).kind
-        return "audio/wav" if kind == "mimo" else "audio/mpeg"
+        return "audio/wav" if kind in {"mimo", "piper"} else "audio/mpeg"
 
     def realtime_stt_config(self) -> realtime.RealtimeConfig | None:
         """Credentials for streaming STT, or ``None`` when it is not available.
@@ -189,6 +209,25 @@ class VoiceManager:
                 updated_at=0,
             )
             async for chunk in adapters.synthesize_edge(
+                source, text, voice_id=voice_id, speed=speed
+            ):
+                yield chunk
+            return
+        if kind == "piper":
+            source = row or VoiceProviderRow(
+                id=0,
+                name="piper",
+                kind="piper",
+                capability="tts",
+                base_url=None,
+                api_key=None,
+                extra_json=None,
+                note=None,
+                enabled=1,
+                created_at=0,
+                updated_at=0,
+            )
+            async for chunk in adapters.synthesize_piper(
                 source, text, voice_id=voice_id, speed=speed
             ):
                 yield chunk
