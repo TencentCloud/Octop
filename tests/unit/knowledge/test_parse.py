@@ -159,6 +159,31 @@ def test_parse_docx_expands_word_alt_chunk(tmp_path: Path) -> None:
     assert parse_document(path) == "发布说明\n嵌套正文"
 
 
+@pytest.mark.parametrize("suffix", [".xls", ".xlsx", ".xlsm"])
+def test_parse_excel_preserves_boolean_and_numeric_cell_types(tmp_path: Path, suffix: str) -> None:
+    path = tmp_path / f"flags{suffix}"
+    values = [True, False, 1, 0, "TRUE", "FALSE"]
+    if suffix == ".xls":
+        import xlwt
+
+        workbook = xlwt.Workbook()
+        sheet = workbook.add_sheet("Flags")
+        for column, value in enumerate(values):
+            sheet.write(0, column, value)
+        workbook.save(str(path))
+    else:
+        from openpyxl import Workbook
+
+        workbook = Workbook()
+        sheet = workbook.active
+        sheet.title = "Flags"
+        sheet.append(values)
+        workbook.save(path)
+        workbook.close()
+
+    assert parse_document(path) == "# Flags\nTRUE\tFALSE\t1\t0\tTRUE\tFALSE"
+
+
 def test_parse_csv_xlsx_and_xls(tmp_path: Path) -> None:
     import xlwt
     from openpyxl import Workbook
