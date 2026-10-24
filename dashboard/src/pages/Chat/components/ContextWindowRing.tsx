@@ -50,7 +50,7 @@ export default function ContextWindowRing({
   maxTokens,
   agentId,
   threadId,
-  selectedConnectors = [],
+  selectedConnectors,
   isMobile = false,
   decisionSaved = 0,
 }: ContextWindowRingProps) {
@@ -65,12 +65,10 @@ export default function ContextWindowRing({
     at: number;
     data: ContextUsageBreakdown;
   } | null>(null);
-  // Stream hint — kept in a ref so prefetch does not re-fire on every token tick.
-  const hintUsedRef = useRef(usedTokens ?? 0);
-  hintUsedRef.current = usedTokens ?? 0;
+  const currentCacheKeyRef = useRef("");
 
   const max = maxTokens > 0 ? maxTokens : DEFAULT_MAX;
-  const hintUsed = usedTokens ?? 0;
+  const connectorKey = selectedConnectors?.join(",") ?? "";
 
   const cacheKey = useMemo(
     () =>
@@ -78,25 +76,21 @@ export default function ContextWindowRing({
         agentId ?? "",
         threadId ?? "",
         String(max),
-        selectedConnectors.join(","),
+        connectorKey,
+        String(usedTokens),
       ].join("|"),
-    [agentId, threadId, max, selectedConnectors],
+    [agentId, threadId, max, connectorKey, usedTokens],
   );
+  currentCacheKeyRef.current = cacheKey;
 
   const loadBreakdown = useCallback(
     async (opts?: { silent?: boolean; force?: boolean }) => {
       if (!agentId || !threadId || isPendingThread(threadId)) return;
       const cached = cacheRef.current;
-      const hint = hintUsedRef.current;
-      // A new model call moves the live total. The 30s cache would otherwise
-      // keep the previous request's decision savings on screen.
-      const hintMoved =
-        hint > 0 &&
-        (cached?.data.used_tokens ?? 0) > 0 &&
-        Math.abs(hint - (cached?.data.used_tokens ?? 0)) >= 64;
+      // cacheKey includes usedTokens, so a new model call already misses the
+      // cache and refreshes the decision savings shown below.
       if (
         !opts?.force &&
-        !hintMoved &&
         cached &&
         cached.key === cacheKey &&
         Date.now() - cached.at < BREAKDOWN_CACHE_TTL_MS
@@ -105,56 +99,46 @@ export default function ContextWindowRing({
         return;
       }
       if (!opts?.silent) setLoading(true);
+      const requestKey = cacheKey;
       try {
-        // Prefer a pure harness snapshot. Pass stream hint only as a fallback
-        // when we do not already have a segmented breakdown cached.
-        const haveSegments =
-          cached?.key === cacheKey &&
-          (cached.data.segments?.length ?? 0) > 0 &&
-          cached.data.used_tokens > 0;
         const data = await octopThreadsApi.contextUsage(agentId, threadId, {
           maxTokens: max,
-          inputTokens: !haveSegments && hint > 0 ? hint : undefined,
-          mcpServers: selectedConnectors,
         });
-        if (data.used_tokens > 0) {
+        if (requestKey !== currentCacheKeyRef.current) return;
+        if (data.available === true) {
           cacheRef.current = { key: cacheKey, at: Date.now(), data };
-          setBreakdown(data);
         } else {
-          // Empty harness snapshot (old threads) must not pin the ring at 0%.
           cacheRef.current = null;
+        }
+        setBreakdown(data);
+      } catch {
+        if (requestKey === currentCacheKeyRef.current && !opts?.silent) {
           setBreakdown(null);
         }
-      } catch {
-        if (!opts?.silent) setBreakdown(null);
       } finally {
-        if (!opts?.silent) setLoading(false);
+        if (requestKey === currentCacheKeyRef.current && !opts?.silent) {
+          setLoading(false);
+        }
       }
     },
-    [agentId, threadId, max, selectedConnectors, cacheKey],
+    [agentId, threadId, max, cacheKey],
   );
 
-  // Reset detail cache on thread/filter changes. The ring itself keeps growing
-  // from the live/persisted token hint and never needs a checkpoint read.
+  // Reset on thread/filter changes before requesting the current live snapshot.
   useEffect(() => {
     setBreakdown(null);
     cacheRef.current = null;
   }, [cacheKey]);
 
-  const ringUsed = useMemo(() => {
-    if (hintUsed > 0) return Math.min(hintUsed, max);
-    if (breakdown && breakdown.used_tokens > 0) {
-      const breakdownMax =
-        breakdown.max_tokens > 0 ? breakdown.max_tokens : max;
-      return Math.min(breakdown.used_tokens, breakdownMax);
-    }
-    // Until prefetch returns, show last-call hint (capped so a stale
-    // turn-sum cannot flash a full ring).
-    return 0;
-  }, [breakdown, hintUsed, max]);
+  useEffect(() => {
+    void loadBreakdown({ silent: true });
+  }, [cacheKey, usedTokens, loadBreakdown]);
 
+  const available =
+    cacheRef.current?.key === cacheKey && breakdown?.available === true;
+  const ringUsed = available ? breakdown.used_tokens : 0;
   const ringMax =
-    breakdown && breakdown.max_tokens > 0 ? breakdown.max_tokens : max;
+    available && breakdown.max_tokens > 0 ? breakdown.max_tokens : max;
 
   const { usedPct, strokeColor, dashOffset, circumference } = useMemo(() => {
     const usedRatio = ringMax > 0 ? Math.min(ringUsed / ringMax, 1) : 0;
@@ -175,35 +159,24 @@ export default function ContextWindowRing({
     };
   }, [ringUsed, ringMax]);
 
-  const tooltip = t("chat.contextWindow.tooltip", {
-    used: formatTokenK(ringUsed),
-    max: formatTokenK(ringMax),
-    percent: usedPct,
-  });
+  const tooltip = available
+    ? t("chat.contextWindow.tooltip", {
+        used: formatTokenK(ringUsed),
+        max: formatTokenK(ringMax),
+        percent: usedPct,
+      })
+    : t("chat.contextWindow.unavailableTooltip", {
+        max: formatTokenK(ringMax),
+      });
 
   const handleOpenChange = (next: boolean) => {
     setOpen(next);
     if (next) {
-      void loadBreakdown();
+      void loadBreakdown({ force: true });
     }
   };
 
-  const display = breakdown ?? {
-    max_tokens: ringMax,
-    used_tokens: ringUsed,
-    segments: [] as ContextUsageBreakdown["segments"],
-  };
-  const displayUsed = display.used_tokens > 0 ? display.used_tokens : ringUsed;
-  const displayMax = display.max_tokens > 0 ? display.max_tokens : ringMax;
-  const displayPct = contextUsedPercent(displayUsed, displayMax);
-  const segments =
-    display.segments.length > 0
-      ? display.segments
-      : displayUsed > 0
-      ? ([
-          { key: "conversation", tokens: displayUsed },
-        ] as ContextUsageBreakdown["segments"])
-      : display.segments;
+  const segments = available ? breakdown.segments : [];
   const segmentTotal = segments.reduce((sum, item) => sum + item.tokens, 0);
   // The legend row matches 本会话累计. The snapshot field is only the latest
   // model call, which is much smaller once a turn has called the model again.
@@ -215,19 +188,23 @@ export default function ContextWindowRing({
       <div className={styles.contextUsageTitle}>
         {t("chat.contextWindow.breakdownTitle")}
       </div>
-      <div className={styles.contextUsageSubtitle}>
-        {t("chat.contextWindow.breakdownPercent", { percent: displayPct })}
-      </div>
+      {available && (
+        <div className={styles.contextUsageSubtitle}>
+          {t("chat.contextWindow.breakdownPercent", { percent: usedPct })}
+        </div>
+      )}
       <div className={styles.contextUsageHint}>
-        {usageEstimated
+        {available
+          ? t("chat.contextWindow.breakdownHint")
+          : usageEstimated
           ? t("chat.contextWindow.estimateHint")
-          : t("chat.contextWindow.breakdownHint")}
+          : tooltip}
       </div>
       {loading ? (
         <div className={styles.contextUsageLoading}>
           <Spin size="small" />
         </div>
-      ) : (
+      ) : available ? (
         <>
           <div
             className={styles.contextUsageBar}
@@ -242,7 +219,7 @@ export default function ContextWindowRing({
                   style={{
                     // Provider input usage owns the total bar width. Segment
                     // estimates contribute only their relative composition.
-                    flexGrow: (displayUsed * segment.tokens) / segmentTotal,
+                    flexGrow: (ringUsed * segment.tokens) / segmentTotal,
                     background: SEGMENT_COLORS[segment.key],
                   }}
                 />
@@ -251,14 +228,14 @@ export default function ContextWindowRing({
               <span
                 className={styles.contextUsageBarSegment}
                 style={{
-                  flexGrow: displayUsed,
+                  flexGrow: ringUsed,
                   background: strokeColor,
                 }}
               />
             )}
             <span
               className={styles.contextUsageBarRemainder}
-              style={{ flexGrow: Math.max(displayMax - displayUsed, 0) }}
+              style={{ flexGrow: Math.max(ringMax - ringUsed, 0) }}
             />
           </div>
           <ul className={styles.contextUsageLegend}>
@@ -276,13 +253,6 @@ export default function ContextWindowRing({
                 </span>
               </li>
             ))}
-            {segments.length === 0 && (
-              <li className={styles.contextUsageLegendItem}>
-                <span className={styles.contextUsageLegendLabel}>
-                  {tooltip}
-                </span>
-              </li>
-            )}
             {savedTokens > 0 ? (
               <li className={styles.contextUsageLegendItem}>
                 <span
@@ -299,7 +269,7 @@ export default function ContextWindowRing({
             ) : null}
           </ul>
         </>
-      )}
+      ) : null}
     </div>
   );
 
@@ -328,11 +298,13 @@ export default function ContextWindowRing({
           transform="rotate(-90 16 16)"
         />
       </svg>
-      <span className={styles.contextRingLabel}>{usedPct}</span>
+      <span className={styles.contextRingLabel}>
+        {available ? usedPct : "—"}
+      </span>
     </>
   );
 
-  const ring = (
+  const ring = available ? (
     <div
       className={styles.contextRingBtn}
       role="progressbar"
@@ -341,6 +313,10 @@ export default function ContextWindowRing({
       aria-valuemax={100}
       aria-label={tooltip}
     >
+      {ringInner}
+    </div>
+  ) : (
+    <div className={styles.contextRingBtn} role="img" aria-label={tooltip}>
       {ringInner}
     </div>
   );
