@@ -636,8 +636,9 @@ async def delete_thread(
 
     ``compact=true`` rebuilds the SQLite file before the response returns,
     so the file can shrink immediately. The expert pauses while that runs.
-    ``compact=false`` only deletes the rows and compacts later, once the
-    expert is idle. Omitting ``compact`` keeps the previous empty 204.
+    ``compact=false`` only deletes the rows. It does not vacuum. Idle
+    maintenance reclaims the free space later, once the freelist is large
+    enough. Omitting ``compact`` keeps the previous empty 204.
     """
     _require_thread(server, agent_id, thread_id, user, as_user)
     if server.app_runtime.gateway.ws_hub.is_turn_active(thread_id):
@@ -646,7 +647,10 @@ async def delete_thread(
             error_message(ErrorCode.THREAD_TURN_ACTIVE.value, "en"),
         )
     registry = server.app_runtime.agent_registry
-    await registry.delete_thread_checkpoint(agent_id, thread_id)
+    if compact is False:
+        await registry.delete_thread_checkpoint(agent_id, thread_id, reclaim=False)
+    else:
+        await registry.delete_thread_checkpoint(agent_id, thread_id)
     server.app_runtime.gateway.thread_registry.delete_thread(thread_id)
     runtime = getattr(server, "app_runtime", None)
     trajectory = getattr(runtime, "trajectory_service", None) if runtime is not None else None
@@ -664,9 +668,4 @@ async def delete_thread(
         if callable(compact_now):
             compacted = bool(await compact_now(agent_id))
         scheduled = not compacted
-    else:
-        schedule = getattr(registry, "schedule_store_reclaim", None)
-        if callable(schedule):
-            schedule(agent_id)
-            scheduled = True
     return JSONResponse({"compacted": compacted, "scheduled": scheduled})

@@ -1595,7 +1595,9 @@ class AgentManager:
         for agent_id in agent_ids:
             self._teams.assert_can_delete_agent(agent_id)
 
-    async def delete_thread_checkpoint(self, agent_id: str, thread_id: str) -> None:
+    async def delete_thread_checkpoint(
+        self, agent_id: str, thread_id: str, *, reclaim: bool = True
+    ) -> None:
         """Delete a thread's conversation data from the checkpoint store.
 
         Uses the live harness checkpointer when the agent is loaded.
@@ -1605,6 +1607,9 @@ class AgentManager:
         removed. Returns normally when the store has nothing for this
         thread. Callers should invoke this *before* removing their own
         thread row, so a failure leaves the thread visible and retryable.
+
+        ``reclaim=False`` skips the incremental SQLite vacuum. Delete-only
+        uses that so the request itself does not vacuum.
         """
         row = self.get_row(agent_id)
         harness = None
@@ -1632,7 +1637,9 @@ class AgentManager:
                 ) from live_error
             return
         try:
-            await asyncio.to_thread(self._delete_thread_from_store, agent_id, thread_id, row)
+            await asyncio.to_thread(
+                self._delete_thread_from_store, agent_id, thread_id, row, reclaim
+            )
         except OctopError:
             if live_error is not None:
                 raise OctopError(
@@ -1641,7 +1648,9 @@ class AgentManager:
                 ) from live_error
             raise
 
-    def _delete_thread_from_store(self, agent_id: str, thread_id: str, row: Any) -> None:
+    def _delete_thread_from_store(
+        self, agent_id: str, thread_id: str, row: Any, reclaim: bool = True
+    ) -> None:
         from octop.infra.agents.memory.thread_cleanup import (  # noqa: PLC0415
             delete_thread_from_agent_stores,
             workspace_for_agent_row,
@@ -1656,6 +1665,7 @@ class AgentManager:
             octop_config=self._config,
             workspace_dir=workspace,
             paths=self._paths,
+            reclaim=reclaim,
         )
 
     def _reclaim_thread_store(self, agent_id: str, thread_id: str, row: Any) -> None:
@@ -1677,9 +1687,8 @@ class AgentManager:
     def schedule_store_reclaim(self, agent_id: str) -> None:
         """Shrink this agent's database after it is idle.
 
-        Used when a conversation is deleted without compacting now. The
-        rebuild runs once no turn is in progress, and again after restart
-        if the file still holds a large freelist.
+        Used when compact-now could not run, and when the idle sweep finds
+        a large freelist. Delete-only does not call this.
         """
         self._reclaim_pending.add(agent_id)
         self._ensure_reclaim_task()
@@ -3936,10 +3945,19 @@ class AgentManager:
         if not team_host and self._config.capabilities.mobile.enabled:
             from octop.infra.control.mobile.tools import build_mobile_tools  # noqa: PLC0415
 
+            def _mobile_workspace_for(agent_id: str) -> Any:
+                # Prefer the running agent's workspace — authoritative for
+                # docker / ephemeral remote sandboxes; ws is the start-time
+                # fallback for the agent being configured here.
+                if self._harness_manager is not None:
+                    with suppress(Exception):
+                        return self._harness_manager.get_agent(agent_id).agent.workspace
+                return ws if agent_id == row.agent_id else None
+
             mobile_tools = build_mobile_tools(
                 self._config,
                 user_repo=self._repos.user_repo,
-                paths=self.paths,
+                workspace_for=_mobile_workspace_for,
             )
 
         from octop_harness.plugins import PluginRegistry, build_plugin_tools  # noqa: PLC0415
@@ -4003,6 +4021,10 @@ class AgentManager:
 
         from octop.infra.agents.middleware.binary_read_guard import BinaryReadGuardMiddleware
         from octop.infra.agents.middleware.browser_profile import BrowserProfileMiddleware
+        from octop.infra.agents.middleware.mcp_output_schema import (
+            McpOutputSchemaMiddleware,
+            harness_handles_mcp_tool_errors,
+        )
         from octop.infra.agents.middleware.octop_ui_offload import OctopUiOffloadMiddleware
         from octop.infra.agents.middleware.reasoning import ReasoningRequestMiddleware
         from octop.infra.agents.middleware.thread_artifacts import ThreadArtifactsMiddleware
@@ -4029,6 +4051,7 @@ class AgentManager:
             KnowledgeSearchHintMiddleware(),
             BrowserProfileMiddleware(),
             BinaryReadGuardMiddleware(),
+            *(() if harness_handles_mcp_tool_errors() else (McpOutputSchemaMiddleware(),)),
             WorkspaceImageMaterializeMiddleware(workspace=ws),
             ThreadArtifactsMiddleware(
                 thread_repo=self._repos.thread_repo,

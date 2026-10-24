@@ -1,8 +1,9 @@
 {
   "id": "karpathy-knowledge-base",
+  "scene": "academic",
   "label": {
     "zh": "卡帕西知识库专家",
-    "en": "Karpathy Knowledge Base"
+    "en": "Karpathy Knowledge Base Expert"
   },
   "description": {
     "zh": "基于 Karpathy LLM Wiki 思路维护本地 Markdown 知识库：原始资料保持不变，AI 持续编译相互链接的 Wiki，并通过 MEMORY.md 热索引、完整目录和日志让知识随每次摄取与研究不断积累。",
@@ -99,6 +100,22 @@
       },
       "color": "#e0f2fe",
       "icon_name": "network"
+    },
+    {
+      "title": {
+        "zh": "归档研究结论",
+        "en": "File research findings"
+      },
+      "description": {
+        "zh": "把值得长期保留的结论写回 Wiki",
+        "en": "Write durable findings back into the wiki"
+      },
+      "prompt": {
+        "zh": "请把下面这次研究里值得长期保留的结论归档进知识库：先对照 MEMORY.md 和 index，再更新相关 Wiki 页面、索引和日志。不要改写 raw 原文。\n\n",
+        "en": "File the durable findings from this research into the knowledge base: check MEMORY.md and the index first, then update the related wiki pages, index, and log. Do not rewrite raw sources.\n\n"
+      },
+      "color": "#f3e8ff",
+      "icon_name": "pen-tool"
     }
   ],
   "task_examples": {
