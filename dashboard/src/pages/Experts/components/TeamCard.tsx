@@ -34,6 +34,7 @@ import {
 } from "../../../utils/agentError";
 import { apiErrorMessage } from "../../../utils/apiError";
 import { TEAM_ICON_NAME, teamPortraitUrl } from "../../../utils/teamAgent";
+import { SharedAvatarMark } from "../../../components/SharedResourceBadge";
 import RemoteExpertHint from "../../Chat/components/RemoteExpertHint";
 import {
   expertDeleteConfirm,
@@ -231,13 +232,19 @@ export const TeamCard = memo(function TeamCard({
     <>
       <div className={`${styles.agentCard2} ${styles.teamCard}`}>
         <div className={styles.agentCard2Header}>
-          <div className={`${styles.agentCard2Icon} ${styles.teamCardIcon}`}>
-            <ExpertIcon
-              iconUrl={teamPortraitUrl(agent.icon_url)}
-              iconName={TEAM_ICON_NAME}
-              size={40}
-            />
-          </div>
+          <SharedAvatarMark
+            shared={agent.is_shared}
+            owned={isOwner}
+            ownerName={agent.owner_username}
+          >
+            <div className={`${styles.agentCard2Icon} ${styles.teamCardIcon}`}>
+              <ExpertIcon
+                iconUrl={teamPortraitUrl(agent.icon_url)}
+                iconName={TEAM_ICON_NAME}
+                size={40}
+              />
+            </div>
+          </SharedAvatarMark>
 
           <div className={styles.agentCard2TitleBlock}>
             <div className={styles.agentCard2NameRow}>

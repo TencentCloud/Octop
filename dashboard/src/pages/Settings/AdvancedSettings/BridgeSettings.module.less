@@ -67,16 +67,6 @@
   gap: 4px;
 }
 
-.privacyToggle {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  font-size: 13px;
-  color: var(--fn-text-secondary);
-  cursor: pointer;
-  white-space: nowrap;
-}
-
 /* ── Card grid (mirrors Admin Storage) ─────────────────────────── */
 
 .cardGrid {
@@ -175,7 +165,7 @@
 
 .infoRow {
   display: flex;
-  align-items: baseline;
+  align-items: center;
   gap: 4px;
   min-width: 0;
   max-width: 100%;
@@ -188,12 +178,28 @@
   font-size: 11px;
 }
 
-.infoValue {
+.peerSecret {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  min-width: 0;
+  max-width: 100%;
+  flex: 1;
+}
+
+.peerSecretText {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  flex: 1;
   min-width: 0;
+}
+
+.peerRevealBtn {
+  flex-shrink: 0;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  color: var(--fn-text-tertiary);
 }
 
 .backendCardNote {
