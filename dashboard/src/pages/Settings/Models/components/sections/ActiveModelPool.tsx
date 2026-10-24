@@ -1,6 +1,6 @@
 /**
  * ActiveModelPool — shows all resolved (enabled + authorized) models
- * grouped by provider, with a star button to set the global preferred model.
+ * grouped by provider, with a star button to set the user's chat preference.
  *
  * Mirrors finnie's ActiveModelPool component.
  */
@@ -17,14 +17,9 @@ import { ModelMetaTags } from "../../modelMeta";
 import { modelOptionLabel } from "../../../../../utils/modelOptions";
 import styles from "../../index.module.less";
 
-interface ActiveModel {
-  provider_name: string;
-  model: string;
-}
-
 interface ActiveModelPoolProps {
   resolvedModels: ResolvedModel[];
-  activeModel: ActiveModel;
+  preferredModel: string;
   providers: ProviderRow[];
   modelReasoning: Record<
     string,
@@ -42,7 +37,7 @@ interface GroupedModels {
 
 export function ActiveModelPool({
   resolvedModels,
-  activeModel,
+  preferredModel,
   providers,
   modelReasoning,
   onSaved,
@@ -81,12 +76,10 @@ export function ActiveModelPool({
   }, [resolvedModels]);
 
   const handleSetPreferred = async (m: ResolvedModel) => {
-    const isAlready =
-      m.provider_name === activeModel.provider_name &&
-      m.model === activeModel.model;
+    const key = `${m.provider_name}/${m.model}`;
+    const isAlready = key === preferredModel;
     if (isAlready) return;
 
-    const key = `${m.provider_name}/${m.model}`;
     setSetting(key);
     try {
       await preferencesApi.patch({ preferred_model: key });
@@ -307,9 +300,7 @@ export function ActiveModelPool({
             <div className={styles.poolGroupModels}>
               {group.models.map((m) => {
                 const key = `${m.provider_name}/${m.model}`;
-                const isPreferred =
-                  m.provider_name === activeModel.provider_name &&
-                  m.model === activeModel.model;
+                const isPreferred = key === preferredModel;
                 const isLoading = setting === key;
                 const isTesting = testingKey === key;
                 const canTest = providerHasKey.get(m.provider_id) ?? false;
@@ -331,6 +322,11 @@ export function ActiveModelPool({
                       }
                     >
                       <Button
+                        aria-label={`${t(
+                          isPreferred
+                            ? "models.currentPreferred"
+                            : "models.setAsPreferred",
+                        )}: ${modelOptionLabel(m)}`}
                         type="text"
                         size="small"
                         loading={isLoading}

@@ -35,6 +35,12 @@ export const providerApi = {
       { headers: bridgeAgentHeaders(agentId) },
     ),
 
+  setActiveModel: (body: { provider_name: string; model: string }) =>
+    request<{ provider_name: string; model: string }>(
+      "/providers/active-model",
+      { method: "PUT", body: JSON.stringify(body) },
+    ),
+
   configureProvider: (providerId: string, body: ProviderConfigRequest) =>
     request<ProviderInfo>(`/models/${encodeURIComponent(providerId)}/config`, {
       method: "PUT",
