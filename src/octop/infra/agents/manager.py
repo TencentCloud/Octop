@@ -618,6 +618,34 @@ class AgentManager:
     async def boot(self) -> None:
         self._tool_guard_rules.ensure_seeded()
         providers = self._providers.build_harness_configs()
+
+        # Monkey-patch octop-harness _build_openai so every OpenAI-compatible
+        # model (including our local llama.cpp) asks the server for
+        # prompt-processing progress events. Without this, long prefill
+        # phases produce no SSE data chunks and langchain_openai's
+        # stream_chunk_timeout (120s) kills the turn.
+        # See: harness/llm/factory.py::_build_openai
+        import octop_harness.llm.factory as _hf_factory  # noqa: PLC0415
+        if not getattr(_hf_factory._build_openai, "_octop_patched", False):
+            _orig = _hf_factory._build_openai
+
+            def _build_openai_with_progress(*args, **kwargs):
+                instance = _orig(*args, **kwargs)
+                mk = getattr(instance, "model_kwargs", None)
+                if not isinstance(mk, dict):
+                    mk = {}
+                    try:
+                        object.__setattr__(instance, "model_kwargs", mk)
+                    except Exception:
+                        pass
+                eb = mk.setdefault("extra_body", {})
+                if isinstance(eb, dict):
+                    eb.setdefault("return_progress", True)
+                return instance
+
+            _build_openai_with_progress._octop_patched = True
+            _hf_factory._build_openai = _build_openai_with_progress
+
         self._harness_manager = HarnessAgentManager(
             providers=providers,
             langfuse=self._langfuse.harness_config(),

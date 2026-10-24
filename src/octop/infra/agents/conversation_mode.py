@@ -147,6 +147,14 @@ def stamp_conversation_mode(
         configurable["skills"] = []
         configurable["mcp_servers"] = []
         configurable.pop("mcp_use_default", None)
+    else:
+        # craft: drop any stale ask/plan overlays that may linger from a
+        # prior superstep or checkpoint so harness middleware sees a clean
+        # configurable and does not filter out MCP tools / skills.
+        configurable.pop(CONFIG_EXTRA_READ_KEY, None)
+        configurable.pop("skills", None)
+        configurable.pop("mcp_servers", None)
+        configurable.pop("mcp_use_default", None)
     request["configurable"] = configurable
     request["conversation_mode"] = mode
 

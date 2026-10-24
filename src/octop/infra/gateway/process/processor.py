@@ -1587,8 +1587,18 @@ class GlobalProcessor:
         if mode in ("ask", "plan"):
             request.pop("mcp_servers", None)
             request["skills"] = []
-        elif mcp_servers:
-            request["mcp_servers"] = mcp_servers
+        elif mode == "craft":
+            if mcp_servers:
+                request["mcp_servers"] = mcp_servers
+            # Also sync into configurable so harness middleware sees the
+            # correct MCP server list across every graph superstep.
+            cfg = request.setdefault("configurable", {})
+            if isinstance(cfg, dict):
+                if mcp_servers:
+                    cfg["mcp_servers"] = list(mcp_servers)
+                skills = request.get("skills")
+                if isinstance(skills, list):
+                    cfg["skills"] = list(skills)
         return request
 
     def _attach_conversation_mode(self, request: dict[str, Any], mode: Any) -> None:
