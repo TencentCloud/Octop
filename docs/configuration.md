@@ -26,10 +26,12 @@ on first server start (or by `octop init` / `octop run`).
 └── octop.log                # default foreground log path
 ```
 
-> **The setup wizard password is not inside `~/.octop/`.** On a native
-> install it is written to `<home>/octop-login.txt` (the user's home
-> directory) and stays there; `OCTOP_HOME` does not move it. Keep this in
-> mind when backing up an instance, and see
+> **The setup wizard password follows `OCTOP_HOME`.** It is written to
+> `<OCTOP_HOME>/octop-login.txt`, so relocating the data root relocates the
+> password file with it — which matters when `OCTOP_HOME` points at a
+> persistent mount, a portable drive, or a container volume. A pre-existing
+> legacy `~/octop-login.txt` is still honored and migrated on first read.
+> Keep this in mind when backing up an instance, and see
 > [user-guide](user-guide.md) ("首次启动与设置向导") for the format.
 
 `env` is dotenv format, applied before `config.json` is loaded
