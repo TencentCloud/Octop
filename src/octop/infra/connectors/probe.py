@@ -5,7 +5,7 @@ from __future__ import annotations
 import asyncio
 import logging
 from collections.abc import Awaitable, Callable
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import httpx
 from mcp.shared.exceptions import McpError
@@ -26,6 +26,9 @@ from octop.infra.connectors.gateway.registry import probe_gateway_credentials
 from octop.infra.connectors.oauth.discovery import discover_oauth_from_mcp_url
 from octop.infra.errors import OctopError
 from octop.infra.utils.ssrf_guard import UnsafeOutboundUrl, safe_request
+
+if TYPE_CHECKING:
+    from mcp import ClientSession
 
 logger = logging.getLogger(__name__)
 
@@ -222,6 +225,24 @@ def _unwrap_probe_exception_group(exc: BaseExceptionGroup, *, kind: str) -> dict
     return None
 
 
+async def _list_probe_tools(session: ClientSession) -> list[dict[str, str]]:
+    """Read every tool page within one probe session, rejecting cursor cycles."""
+    tools: list[Any] = []
+    seen: set[str] = set()
+    page = await session.list_tools()
+    while True:
+        tools.extend(page.tools)
+        cursor = page.nextCursor
+        if not cursor:
+            return normalize_tools(
+                [{"name": t.name, "description": t.description or ""} for t in tools]
+            )
+        if cursor in seen:
+            raise ValueError("MCP repeated tools cursor")
+        seen.add(cursor)
+        page = await session.list_tools(cursor=cursor)
+
+
 async def _probe_mcp_sse(
     url: str,
     headers: dict[str, str] | None = None,
@@ -242,14 +263,12 @@ async def _probe_mcp_sse(
         result: dict[str, Any] | None = None
         try:
             async with (
+                asyncio.timeout(20),
                 sse_client(url, headers or {}, timeout=20, sse_read_timeout=20) as (read, write),
                 ClientSession(read, write) as session,
             ):
                 await session.initialize()
-                listed = await session.list_tools()
-                tools = normalize_tools(
-                    [{"name": t.name, "description": t.description or ""} for t in listed.tools]
-                )
+                tools = await _list_probe_tools(session)
                 return {"ok": True, "tool_count": len(tools), "tools": tools}
         except httpx.HTTPStatusError as exc:
             result = _probe_mcp_http_error(exc, kind=kind)
@@ -280,7 +299,7 @@ async def _probe_mcp_sse(
                 logger.warning("%s SSE probe transient failure, retrying: %s", kind, exc)
                 continue
             logger.exception("%s SSE probe failed", kind)
-            return {"ok": False, "error": str(exc)}
+            return {"ok": False, "error": format_probe_exception(exc)}
     return {"ok": False, "error": "SSE probe failed after retry"}
 
 
@@ -346,6 +365,7 @@ async def probe_streamable_http_mcp(
     for attempt in range(2):
         try:
             async with (
+                asyncio.timeout(20),
                 streamablehttp_client(url, headers=headers, timeout=20, sse_read_timeout=20) as (
                     read,
                     write,
@@ -354,10 +374,7 @@ async def probe_streamable_http_mcp(
                 ClientSession(read, write) as session,
             ):
                 await session.initialize()
-                listed = await session.list_tools()
-                tools = normalize_tools(
-                    [{"name": t.name, "description": t.description or ""} for t in listed.tools]
-                )
+                tools = await _list_probe_tools(session)
                 return {"ok": True, "tool_count": len(tools), "tools": tools}
         except httpx.HTTPStatusError as exc:
             result = _probe_mcp_http_error(exc, kind=kind)
@@ -394,7 +411,7 @@ async def probe_streamable_http_mcp(
                 )
                 continue
             logger.exception("streamable HTTP MCP probe failed for %s", kind)
-            return {"ok": False, "error": str(exc)}
+            return {"ok": False, "error": format_probe_exception(exc)}
     return {"ok": False, "error": "streamable HTTP probe failed after retry"}
 
 
@@ -590,10 +607,7 @@ async def _probe_stdio_mcp(connection: dict[str, Any]) -> dict[str, Any]:
                 ClientSession(read, write) as session,
             ):
                 await session.initialize()
-                listed = await session.list_tools()
-                tools = normalize_tools(
-                    [{"name": t.name, "description": t.description or ""} for t in listed.tools]
-                )
+                tools = await _list_probe_tools(session)
                 return {"ok": True, "tool_count": len(tools), "tools": tools}
     except TimeoutError:
         return {"ok": False, "error": "stdio MCP probe timed out"}
