@@ -83,6 +83,7 @@ from octop.infra.history.trajectory.settings import agent_trajectory_enabled
 from octop.infra.knowledge.default_open import stamp_turn_knowledge_config
 from octop.infra.users.preferences import (
     get_model_reasoning_from_json,
+    get_model_routing_from_json,
     get_preferred_model_from_json,
 )
 from octop.infra.utils.locale import resolve_user_locale
@@ -609,6 +610,31 @@ class GlobalProcessor:
             automatic = True
         return _ResolvedModelRoute(resolved, automatic=automatic)
 
+    def _resolve_user_model_routing(
+        self,
+        user_id: int,
+        *,
+        needs_multimodal: bool,
+    ) -> list[str]:
+        """读用户模型路由链（偏好 model_routing），过滤不可用项并做多模态头位适配。
+
+        链非空时调用方应以 chain[0] 作为本轮主模型，并把整链透传给 harness
+        （ModelFailoverMiddleware 依序切换）。链空表示未配置路由，走原有单模型逻辑。
+        """
+        row = self._user_repo.get(user_id)
+        refs = get_model_routing_from_json(row.preferences_json if row is not None else None)
+        if not refs:
+            return []
+        providers = self._agent_manager.providers
+        usable = [ref for ref in refs if providers.is_model_ref_usable(ref)]
+        if not usable:
+            return []
+        head = providers.resolve_model_for_multimodal_turn(
+            usable[0],
+            needs_multimodal=needs_multimodal,
+        ) or usable[0]
+        return [head] + [ref for ref in usable[1:] if ref != head]
+
     def _resolve_reasoning_overrides(
         self,
         *,
@@ -814,7 +840,11 @@ class GlobalProcessor:
             user_id=user_id,
             needs_multimodal=content_blocks_need_vision(content),
         )
-        model_ref = model_route.model_ref
+        model_routing = self._resolve_user_model_routing(
+            user_id,
+            needs_multimodal=content_blocks_need_vision(content),
+        )
+        model_ref = model_routing[0] if model_routing else model_route.model_ref
         mcp_servers = await self._resolve_turn_mcp_servers(
             agent_id=agent_id,
             user_id=user_id,
@@ -852,6 +882,7 @@ class GlobalProcessor:
             content=content,
             model=model_ref,
             auto_route=model_route.automatic,
+            model_routing=model_routing or None,
             message_kwargs=message_kwargs or None,
         )
         self.teams.stamp_host_runtime(request, agent_id)
@@ -1427,7 +1458,11 @@ class GlobalProcessor:
             user_id=user_id,
             needs_multimodal=content_blocks_need_vision(content),
         )
-        model_ref = model_route.model_ref
+        model_routing = self._resolve_user_model_routing(
+            user_id,
+            needs_multimodal=content_blocks_need_vision(content),
+        )
+        model_ref = model_routing[0] if model_routing else model_route.model_ref
         reasoning_overrides = self._resolve_reasoning_overrides(
             user_id=user_id,
             thread_id=thread_id,
@@ -1491,6 +1526,7 @@ class GlobalProcessor:
             content=content,
             model=model_ref,
             auto_route=model_route.automatic,
+            model_routing=model_routing or None,
             message_kwargs=message_kwargs or None,
             reasoning_overrides=reasoning_overrides,
         )

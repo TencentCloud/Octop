@@ -30,6 +30,7 @@ export interface UserPreferences {
     { mode: "auto" | "enabled" | "disabled"; effort?: string | null }
   >;
   sidebar_nav?: SidebarNavLayoutPref | null;
+  model_routing: string[];
 }
 
 export type PatchPreferencesBody = {
@@ -38,6 +39,7 @@ export type PatchPreferencesBody = {
   preferred_model?: string | null;
   model_reasoning?: UserPreferences["model_reasoning"];
   sidebar_nav?: SidebarNavLayoutPref | null;
+  model_routing?: string[] | null;
 };
 
 export const preferencesApi = {
