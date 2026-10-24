@@ -652,6 +652,20 @@ endpoint (public, mounted directly in `api/app.py`).
 | `GET`    | `/admin/audit-log` | admin | recent audit rows |
 | `GET`    | `/admin/metrics` | admin | `{messages_total, stream_errors_total, cron_runs_total, cron_errors_total, agent_active, ...}` |
 
+## System backups
+
+These routes require the `backup` permission.
+
+| Method | Path | Notes |
+|--------|------|-------|
+| `POST` | `/admin/backup/create` | Optional body includes content-selection flags and `note` (string, max 500 characters; defaults to empty). Saves an archive and returns `{ok, item}` |
+| `GET` | `/admin/backup/list` | Returns `{dir, items}`; each item includes its `note` alongside the filename, timestamps and content flags |
+| `GET` | `/admin/backup/files/{filename}` | Download a stored archive, including its note |
+| `POST` | `/admin/backup/import` | Multipart `file`; stores an archive and returns `{ok, item}`, preserving its note |
+
+Notes are trimmed when creating a backup and stored in `manifest.json` inside
+the archive. Older backups without this field are listed with an empty note.
+
 ## Envs
 
 | Method | Path | Auth | Notes |

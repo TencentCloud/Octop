@@ -169,7 +169,7 @@ def _write_tar_gz_with_members(path: Path, members: list[tuple[str, bytes]]) -> 
             tf.addfile(info, io.BytesIO(payload))
 
 
-def _minimal_manifest_json(**flags: bool) -> bytes:
+def _minimal_manifest_json(*, note: str = "", **flags: bool) -> bytes:
     import json
 
     payload = {
@@ -178,6 +178,7 @@ def _minimal_manifest_json(**flags: bool) -> bytes:
         "schema_version": 1,
         "created_at": "2026-01-01T00:00:00+00:00",
         "home": "/tmp",
+        "note": note,
         "db_file": "db/octop.db",
         "agents": [],
         "includes_config": flags.get("includes_config", True),
@@ -207,6 +208,7 @@ def test_peek_reads_first_member_manifest_only(
             (
                 "manifest.json",
                 _minimal_manifest_json(
+                    note="升级前 / before upgrade",
                     includes_config=False,
                     includes_skill_packages=False,
                     includes_plugins=False,
@@ -263,6 +265,7 @@ def test_peek_reads_first_member_manifest_only(
     elapsed = time.perf_counter() - started
 
     assert flags == BackupContentFlags(
+        note="升级前 / before upgrade",
         includes_config=False,
         includes_workspaces=False,
         includes_skill_packages=False,
@@ -289,3 +292,32 @@ def test_peek_skips_scan_when_manifest_not_first(tmp_path: Path) -> None:
     )
     # Deliberately no deep scan: treat as full contents.
     assert peek_backup_contents(archive) == BackupContentFlags()
+
+
+@pytest.mark.parametrize("note", ["", "迁移前的稳定版\nBefore migration 🚀", None, 123])
+def test_list_backup_note_from_manifest(tmp_path: Path, note: object) -> None:
+    import json
+
+    layout = PathLayout(tmp_path / ".octop")
+    payload = json.loads(_minimal_manifest_json())
+    payload["note"] = note
+    archive = tmp_path / "with-note.tar.gz"
+    _write_tar_gz_with_members(archive, [("manifest.json", json.dumps(payload).encode())])
+    write_backup_file(layout, archive.name, archive.read_bytes())
+
+    item = list_backup_files(layout)[0]
+    expected = note if isinstance(note, str) else ""
+    assert item.note == expected
+    assert item.to_dict()["note"] == expected
+
+
+def test_legacy_backup_without_note_is_listed(tmp_path: Path) -> None:
+    import json
+
+    layout = PathLayout(tmp_path / ".octop")
+    payload = json.loads(_minimal_manifest_json())
+    del payload["note"]
+    archive = tmp_path / "legacy.tar.gz"
+    _write_tar_gz_with_members(archive, [("manifest.json", json.dumps(payload).encode())])
+    write_backup_file(layout, archive.name, archive.read_bytes())
+    assert list_backup_files(layout)[0].note == ""

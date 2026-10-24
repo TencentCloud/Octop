@@ -152,6 +152,7 @@ def _build_manifest(
     include_plugins: bool,
     include_knowledge: bool,
     include_chats: bool,
+    note: str,
 ) -> BackupManifest:
     try:
         schema_version = _current_version(pool)
@@ -181,6 +182,7 @@ def _build_manifest(
         includes_plugins=include_plugins,
         includes_knowledge=include_knowledge,
         includes_chats=include_chats,
+        note=note.strip(),
     )
 
 
@@ -197,6 +199,7 @@ def create_system_backup(
     include_plugins: bool = True,
     include_knowledge: bool = True,
     include_chats: bool = False,
+    note: str = "",
 ) -> str:
     """Write a ``.tar.gz`` archive to *dest* (streamed to disk).
 
@@ -205,6 +208,8 @@ def create_system_backup(
     because thread/session history usually dominates archive size. Restore
     keeps live chats and omitted directories when the manifest says they were
     not packed.
+
+    The optional note is stored in the manifest and travels with the archive.
 
     Returns the suggested basename (``octop-backup-….tar.gz``). Callers that
     need a different name should rename/move *dest* afterward.
@@ -237,6 +242,7 @@ def create_system_backup(
         include_plugins=include_plugins,
         include_knowledge=include_knowledge,
         include_chats=include_chats,
+        note=note,
     )
     filename = suggested_backup_filename()
     dest = Path(dest)

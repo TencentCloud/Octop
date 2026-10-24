@@ -113,6 +113,7 @@ function BackupFileCard({
   return (
     <div className={styles.backupCard}>
       <div className={styles.backupCardName}>{row.name}</div>
+      {row.note ? <div className={styles.backupNote}>{row.note}</div> : null}
       <div className={styles.backupCardMeta}>
         <span>
           {t("backup.colSize")}: {formatSize(row.size)}
@@ -186,6 +187,7 @@ export default function BackupRestorePanel() {
   const [dir, setDir] = useState("");
   const [loading, setLoading] = useState(false);
   const [createOpen, setCreateOpen] = useState(false);
+  const [note, setNote] = useState("");
   const [includeConfig, setIncludeConfig] = useState(true);
   const [includeWorkspaces, setIncludeWorkspaces] = useState(true);
   const [includeSkillPackages, setIncludeSkillPackages] = useState(true);
@@ -297,6 +299,7 @@ export default function BackupRestorePanel() {
 
   const onCreate = async () => {
     const ok = await createBackup({
+      note,
       include_config: includeConfig,
       include_workspaces: includeWorkspaces,
       include_skill_packages: includeSkillPackages,
@@ -304,7 +307,10 @@ export default function BackupRestorePanel() {
       include_knowledge: includeKnowledge,
       include_chats: includeChats,
     });
-    if (ok) setCreateOpen(false);
+    if (ok) {
+      setCreateOpen(false);
+      setNote("");
+    }
   };
 
   const onSaveAuto = async () => {
@@ -379,6 +385,16 @@ export default function BackupRestorePanel() {
       dataIndex: "name",
       key: "name",
       ellipsis: true,
+      render: (name: string, row: BackupFileItem) => (
+        <>
+          <div className={styles.backupFileName} title={name}>
+            {name}
+          </div>
+          {row.note ? (
+            <div className={styles.backupNote}>{row.note}</div>
+          ) : null}
+        </>
+      ),
     },
     {
       title: t("backup.colSize"),
@@ -480,7 +496,10 @@ export default function BackupRestorePanel() {
             icon={<Plus size={14} />}
             loading={creating}
             disabled={busy && !creating}
-            onClick={() => setCreateOpen(true)}
+            onClick={() => {
+              setNote("");
+              setCreateOpen(true);
+            }}
           >
             {creating ? t("backup.creating") : t("backup.createButton")}
           </Button>
@@ -765,6 +784,19 @@ export default function BackupRestorePanel() {
         cancelButtonProps={{ disabled: creating }}
       >
         <p>{t("backup.createModalDesc")}</p>
+        <label className={styles.noteField}>
+          <span>{t("backup.noteLabel")}</span>
+          <Input.TextArea
+            aria-label={t("backup.noteLabel")}
+            placeholder={t("backup.notePlaceholder")}
+            value={note}
+            onChange={(e) => setNote(e.target.value)}
+            maxLength={500}
+            showCount
+            autoSize={{ minRows: 2, maxRows: 4 }}
+            disabled={creating}
+          />
+        </label>
         <div className={styles.contentOptions}>
           <Checkbox checked disabled>
             {t("backup.includeDatabase")}
@@ -838,6 +870,9 @@ export default function BackupRestorePanel() {
             name: pendingRestore?.name ?? restoreTarget ?? "",
           })}
         </p>
+        {pendingRestore?.note ? (
+          <p className={styles.backupNote}>{pendingRestore.note}</p>
+        ) : null}
         {pendingRestore?.includes_chats === false ? (
           <p className={styles.restoreNote}>{t("backup.restoreKeepChats")}</p>
         ) : null}

@@ -5,6 +5,7 @@ export interface BackupFileItem {
   size: number;
   modified_at: string;
   created_at: string;
+  note?: string;
   includes_config?: boolean;
   includes_workspaces?: boolean;
   includes_skill_packages?: boolean;
@@ -32,6 +33,7 @@ export interface AutoBackupSettings {
 }
 
 export interface CreateBackupOptions {
+  note?: string;
   include_config: boolean;
   include_workspaces: boolean;
   include_skill_packages: boolean;

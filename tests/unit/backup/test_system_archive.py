@@ -57,9 +57,11 @@ def test_legacy_manifest_defaults_plugins_omitted() -> None:
     assert loaded.includes_plugins is False
     assert loaded.includes_knowledge is False
     assert loaded.includes_chats is True
+    assert loaded.note == ""
 
 
-def test_roundtrip_backup(layout: PathLayout, tmp_path: Path) -> None:
+@pytest.mark.parametrize("note", ["", "升级前的稳定版本\nBefore upgrading 🚀"])
+def test_roundtrip_backup(layout: PathLayout, tmp_path: Path, note: str) -> None:
     db_path = layout.db
     pool = SqlitePool(db_path)
     run_migrations(pool)
@@ -93,6 +95,7 @@ def test_roundtrip_backup(layout: PathLayout, tmp_path: Path) -> None:
         pool=pool,
         db_config=DatabaseConfig(),
         dest=archive,
+        note=note,
     )
     pool.close()
 
@@ -135,6 +138,8 @@ def test_roundtrip_backup(layout: PathLayout, tmp_path: Path) -> None:
         manifest = json.loads(tf.extractfile("manifest.json").read().decode("utf-8"))
     assert manifest["manifest_version"] == MANIFEST_VERSION
     assert manifest["database_driver"] == "sqlite"
+    assert manifest["note"] == note
+    assert BackupManifest.from_dict(manifest).note == note
 
 
 def test_backup_packs_config_workspace_dir(layout: PathLayout, tmp_path: Path) -> None:
