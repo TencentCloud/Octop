@@ -66,8 +66,15 @@ class DownloadLinkStore:
         ts = time.time() if now is None else now
         with self._lock:
             self._sweep(ts)
-            return self._links.get(token)
+            link = self._links.get(token)
+            return link if link is not None and link.expires_at > ts else None
 
     def _sweep(self, now: float) -> None:
         for token in [t for t, link in self._links.items() if link.expires_at <= now]:
-            self._links.pop(token).path.unlink(missing_ok=True)
+            try:
+                self._links[token].path.unlink(missing_ok=True)
+            except PermissionError:
+                # An active Windows download can still hold the file open.
+                # Keep it for a later cleanup attempt, but never serve it expired.
+                continue
+            self._links.pop(token)
