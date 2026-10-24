@@ -13,6 +13,14 @@ from typing import Any
 _UNSAFE_NAME = re.compile(r"[\\/:\0<>\"|?*]")
 _LOOPBACK_HOSTS = frozenset({"localhost", "127.0.0.1", "::1"})
 
+# Per-component filename limit budget (UTF-8 bytes). 200 bytes stays under the
+# 255 UTF-16 code-unit limit on Windows and the 255-byte limit on Unix
+# filesystems, and leaves room for the numbered collision suffix "(999)".
+_NAME_BYTE_BUDGET = 200
+# An extension longer than this is unlikely to be a real extension; treat the
+# trailing dot as part of the stem instead of splitting it off.
+_MAX_SUFFIX_CHARS = 11
+
 
 def is_loopback_address(address: str) -> bool:
     try:
@@ -44,12 +52,44 @@ def is_local_dashboard_request(request: Any) -> bool:
     return request_hostname(str(host or "")) in _LOOPBACK_HOSTS
 
 
+def _truncate_to_bytes(text: str, budget: int) -> str:
+    """Return *text* with its UTF-8 encoding capped at *budget* bytes.
+
+    Never splits a multi-byte character: the trailing incomplete byte
+    sequence is dropped, leaving a valid string on a character boundary.
+    """
+    encoded = text.encode("utf-8")
+    if len(encoded) <= budget:
+        return text
+    decoded = encoded[:budget].decode("utf-8", errors="ignore")
+    return decoded or text[:1]
+
+
 def sanitize_download_filename(raw: str | None) -> str:
     name = _UNSAFE_NAME.sub("_", (raw or "").strip()) or "download"
     name = name.lstrip(".")
     if name in {"", ".", ".."}:
         return "download"
-    return name[:200]
+    if len(name.encode("utf-8")) <= _NAME_BYTE_BUDGET:
+        return name
+    # Bound by encoded byte length instead of character count so that long
+    # non-ASCII names (CJK, emoji) stay under the 255 UTF-16 (Windows) /
+    # 255-byte (Unix) per-component filesystem limit that ``name[:200]`` missed.
+    dot = name.rfind(".")
+    if dot > 0 and (len(name) - dot) <= _MAX_SUFFIX_CHARS:
+        stem, suffix = name[:dot], name[dot:]
+    else:
+        stem, suffix = name, ""
+    suffix_len = len(suffix.encode("utf-8"))
+    stem_budget = _NAME_BYTE_BUDGET - suffix_len
+    if stem_budget < 1:
+        # The extension alone exceeds the budget; fall back to a whole-name
+        # truncation so we still honour the byte cap.
+        return _truncate_to_bytes(name, _NAME_BYTE_BUDGET)
+    truncated_stem = _truncate_to_bytes(stem, stem_budget)
+    if not truncated_stem:
+        truncated_stem = "download"
+    return truncated_stem + suffix
 
 
 def downloads_dir(*, home: Path | None = None) -> Path:
