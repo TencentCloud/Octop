@@ -14,7 +14,7 @@ import mimetypes
 import re
 import urllib.parse
 from collections.abc import AsyncIterator, Awaitable, Callable
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
@@ -855,6 +855,26 @@ async def block_to_content_part(
         data_field = payload
     elif raw_url.startswith("file://"):
         file_bytes = await read_file_url_bytes(workspace, raw_url, filename=filename, mime=mime)
+        if file_bytes is None:
+            return None
+        data_field = base64.b64encode(file_bytes).decode("ascii")
+        if not mime:
+            mime = mimetypes.guess_type(filename or raw_url)[0] or "application/octet-stream"
+    elif (
+        raw_url
+        and block.get("path") == raw_url
+        and urllib.parse.urlsplit(raw_url).scheme not in {"http", "https", "data"}
+    ):
+        # Generation tools return workspace-relative paths. An IM channel would
+        # otherwise try to fetch this string as an HTTP URL and expose it on
+        # media-load failure. Read through the agent workspace instead.
+        if (
+            urllib.parse.urlsplit(raw_url).scheme
+            or raw_url.startswith(("/", "\\"))
+            or ".." in PurePosixPath(raw_url.replace("\\", "/")).parts
+        ):
+            return None
+        file_bytes = await workspace.adownload_bytes(raw_url)
         if file_bytes is None:
             return None
         data_field = base64.b64encode(file_bytes).decode("ascii")
