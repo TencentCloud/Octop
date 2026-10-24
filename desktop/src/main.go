@@ -344,6 +344,12 @@ func main() {
 		Assets: application.AssetOptions{
 			Handler: application.BundledAssetFileServer(assets),
 		},
+		SingleInstance: &application.SingleInstanceOptions{
+			UniqueID: "com.tencent.octop.desktop",
+			OnSecondInstanceLaunch: func(application.SecondInstanceData) {
+				api.showWindow()
+			},
+		},
 		Windows: application.WindowsOptions{
 			DisableQuitOnLastWindowClosed: true,
 		},
