@@ -94,6 +94,7 @@ if TYPE_CHECKING:
     from octop.infra.cron.manager import CronManager
     from octop.infra.db.repos.agents import AgentRow
     from octop.infra.db.services import RepoBundle
+    from octop.infra.gateway.gateway import Gateway
     from octop.infra.proactive.scheduler import ProactiveCareScheduler
     from octop.infra.utils.paths import PathLayout
 
@@ -490,6 +491,7 @@ class AgentManager:
         self._expert_catalog = expert_catalog
         self._plugin_manager = plugin_manager
         self._cron_manager: CronManager | None = None
+        self._gateway: Gateway | None = None
         self._proactive_scheduler: ProactiveCareScheduler | None = None
         self._team_processor: Any | None = None
         self._hitl_session_store: HitlSessionPolicyStore | None = None
@@ -596,6 +598,10 @@ class AgentManager:
     def set_cron_manager(self, cron_manager: CronManager) -> None:
         """Attach the process-wide CronManager (must be set before boot())."""
         self._cron_manager = cron_manager
+
+    def set_gateway(self, gateway: Gateway) -> None:
+        """Attach the gateway so agent deletion also stops its live channels."""
+        self._gateway = gateway
 
     def set_proactive_scheduler(self, scheduler: ProactiveCareScheduler) -> None:
         """Attach the process-wide proactive-care scheduler (optional; used after create/delete)."""
@@ -1108,6 +1114,9 @@ class AgentManager:
         if row is None:
             raise OctopError(ErrorCode.AGENT_NOT_FOUND, f"agent {agent_id!r} not found")
         self._teams.assert_can_delete_agent(agent_id)
+        # Stop inbound traffic before removing the runtime or cascading channel rows.
+        if self._gateway is not None:
+            await self._gateway.unregister_agent_channels(agent_id)
         from octop.infra.agents.memory.thread_cleanup import (  # noqa: PLC0415
             agent_config_from_row,
             delete_agent_memory_and_checkpoints,

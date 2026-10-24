@@ -411,6 +411,12 @@ class Gateway:
         await self._unregister(channel_id)
         self._runtime_status.pop(channel_id, None)
 
+    async def unregister_agent_channels(self, agent_id: str) -> None:
+        """Stop an agent's IM channels before deleting its rows via DB cascade."""
+        for row in self._repos.channel_repo.list_by_agent(agent_id):
+            await self._unregister(row.channel_id)
+            self._runtime_status.pop(row.channel_id, None)
+
     def require_session(self, agent_id: str, session_key: str) -> SessionRow:
         """Return a session after validating its owning agent."""
         session = self._thread_registry.get_session(session_key)

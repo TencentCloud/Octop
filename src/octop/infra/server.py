@@ -541,6 +541,7 @@ class OctopServer:
             history_archive=history_archive,
         )
         await gateway.boot()
+        registry.set_gateway(gateway)
 
         from octop import __version__  # noqa: PLC0415
 
