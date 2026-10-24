@@ -12,24 +12,7 @@ import { authApi } from "../../api/modules/auth";
 import { refreshServerLabels } from "../../i18n";
 import { apiErrorMessage } from "../../utils/apiError";
 import { applyUserLocale } from "../../utils/locale";
-import { notifySsoOpener } from "../../utils/ssoPopup";
-
-const DEFAULT_REDIRECT = "/chat";
-
-/** Return an internal destination, never an absolute or protocol-relative URL. */
-export function safeRedirect(path: string | null): string {
-  if (
-    !path ||
-    !path.startsWith("/") ||
-    path.startsWith("//") ||
-    path.includes("\\") ||
-    path.includes("://") ||
-    path.startsWith("http:")
-  ) {
-    return DEFAULT_REDIRECT;
-  }
-  return path;
-}
+import { notifySsoOpener, safeRedirect } from "../../utils/ssoPopup";
 
 /** Prefer URL fragment (not sent to servers); fall back to query for old links. */
 export function readOidcCompleteParams(
