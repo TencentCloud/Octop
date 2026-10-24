@@ -1220,9 +1220,13 @@ class GlobalProcessor:
                 if chunk.get("type") == "hitl_required":
                     request_payload = chunk.get("request")
                     if isinstance(request_payload, dict):
+                        from octop.infra.agents.secret_file import (  # noqa: PLC0415
+                            maybe_annotate_secret_payload,
+                        )
                         from octop.infra.gateway.hitl.coordinator import HitlStreamContext
 
                         request_payload = normalize_hitl_request(request_payload)
+                        await maybe_annotate_secret_payload(request_payload, harness_workspace)
                         record = self._hitl.register_from_request(
                             request_payload,
                             ctx=HitlStreamContext(

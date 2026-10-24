@@ -336,6 +336,15 @@
       "compact_busy": "这个 Agent 正在对话。等它空闲后再发送 /memory compact --confirm。",
       "compact_not_running": "这个 Agent 没有在运行，无法从对话里压缩它的记忆库。",
       "compact_no_memory": "这个 Agent 没有可压缩的记忆库。"
+    },
+    "secret": {
+      "card_title": "🔐 凭据填写请求",
+      "card_intro": "智能体请求你安全填写一份凭据文件：",
+      "path_line": "目标路径：`{path}`",
+      "prompt_line": "用途：{prompt}",
+      "replace_line": "⚠️ 该文件已存在，提交后将替换原文件。",
+      "card_footer": "请在 Octop 网页端对话中完成填写；在 IM 中回复不会保存凭据。",
+      "dashboard_only": "当前有待处理的凭据填写请求，请在 Octop 网页端对话页面完成填写。"
     }
   },
   "connector": {
@@ -530,7 +539,11 @@
     "LOCAL_DOWNLOAD_UNAVAILABLE": "仅在本机打开 Octop 时才能保存到系统「下载」文件夹。",
     "SKILL_PACKAGE_COPY_DENIED": "该技能包的创建者已禁止复制其中的技能。",
     "SKILL_PACKAGE_DOWNLOAD_DENIED": "该技能包已禁止打包下载。",
-    "SKILL_PACKAGE_LOCKED": "此技能复制自锁定策略的技能包，无法在工作区编辑。"
+    "SKILL_PACKAGE_LOCKED": "此技能复制自锁定策略的技能包，无法在工作区编辑。",
+    "SECRET_PATH_INVALID": "凭据路径不合法：只能填写当前专家 auth 目录内的相对文件路径。",
+    "SECRET_REQUEST_INVALID": "该凭据填写请求已失效（过期、已取消或已提交），请等待新的填写卡片。",
+    "SECRET_BACKEND_UNSUPPORTED": "当前专家的工作区后端不支持私有凭据写入，已拒绝保存。",
+    "SECRET_WRITE_FAILED": "凭据文件写入失败，原有文件未受影响，请重试。"
   },
   "desktop": {
     "install_log_deps": "正在安装 Python 依赖…",
@@ -651,7 +664,8 @@
     "generate_image": "生成图片",
     "generate_video": "生成视频",
     "bilibili_search_anime": "搜索番剧",
-    "search_arxiv": "查询 arXiv 论文"
+    "search_arxiv": "查询 arXiv 论文",
+    "request_secret_file": "填写凭据文件"
   },
   "plugins": {
     "arxiv_search": {
@@ -1000,6 +1014,11 @@
     "error_exited": "laya-serve 在就绪前退出了。",
     "error_not_installed": "尚未安装 Laya。",
     "error_stalled": "安装长时间没有结果，已停止。"
+  },
+  "secret": {
+    "filled_message": "凭据文件已由用户安全写入：{path}（status=filled）。文件内容对你不可见，也不要读取或打印它；后续命令请直接使用该路径（如 --token-file \"{path}\"），并用命令自身的验证方式（如 whoami）确认凭据可用。",
+    "cancelled_message": "用户取消了凭据填写（status=cancelled），未写入任何文件。不要重复索要；询问用户希望如何处理。",
+    "headless_hint": "当前运行没有交互式凭据卡片，无法安全收集凭据。"
   },
   "text_assist": {
     "kinds": {

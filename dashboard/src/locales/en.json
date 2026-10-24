@@ -245,7 +245,11 @@
     "LOCAL_DOWNLOAD_UNAVAILABLE": "Saving to the host Downloads folder is only available when Octop is opened on this computer.",
     "SKILL_PACKAGE_COPY_DENIED": "The creator of this skill package has disabled copying its skills.",
     "SKILL_PACKAGE_DOWNLOAD_DENIED": "Downloading this skill package is disabled.",
-    "SKILL_PACKAGE_LOCKED": "This skill was copied from a locked skill package and cannot be edited in the workspace."
+    "SKILL_PACKAGE_LOCKED": "This skill was copied from a locked skill package and cannot be edited in the workspace.",
+    "SECRET_PATH_INVALID": "Invalid credential path: only a relative file path inside this agent's auth directory is allowed.",
+    "SECRET_REQUEST_INVALID": "This credential request is no longer valid (expired, cancelled, or already submitted).",
+    "SECRET_BACKEND_UNSUPPORTED": "This agent's workspace backend cannot store credential files privately; the write was refused.",
+    "SECRET_WRITE_FAILED": "Failed to store the credential file; the previous file was left untouched. Please retry."
   },
   "nav": {
     "chat": "Conversation",
@@ -1834,7 +1838,24 @@
     "historyRetry": "Retry",
     "creatingSession": "Creating session…",
     "resizePopup": "Resize window",
-    "unreadMessages": "Unread messages"
+    "unreadMessages": "Unread messages",
+    "secretCard": {
+      "title": "Provide credential",
+      "pathLabel": "Target: ",
+      "replaceWarning": "This file already exists; submitting will replace it.",
+      "invalidPath": "The requested path is not writable. Ask the agent to request it again.",
+      "placeholder": "Paste the token / key, then press Enter or Save",
+      "note": "Submitted directly to the server and written into the agent's private auth directory — never shown in chat history or to the model.",
+      "submit": "Save & continue",
+      "submitting": "Saving…",
+      "cancel": "Cancel",
+      "filledSummary": "Credential stored at {{path}}",
+      "cancelledSummary": "Credential request cancelled",
+      "chatNotReady": "The conversation is not ready. Please try again.",
+      "submitFailed": "Could not submit the credential. Please try again.",
+      "resumeFailed": "The credential was accepted, but the resumed response was interrupted. Refresh the conversation to check its status.",
+      "unsupported": "Safe credential storage requires a host-local backend on Linux or macOS; submission is unavailable for this agent."
+    }
   },
   "tools": {
     "unknown": "Unknown tool",
@@ -1888,7 +1909,8 @@
     "generate_image": "Generate image",
     "generate_video": "Generate video",
     "bilibili_search_anime": "Search Bilibili anime",
-    "search_arxiv": "Search arXiv papers"
+    "search_arxiv": "Search arXiv papers",
+    "request_secret_file": "Request credential file"
   },
   "toolSettings": {
     "title": "Tool settings",
