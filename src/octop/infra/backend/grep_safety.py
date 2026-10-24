@@ -212,12 +212,9 @@ def _safe_python_search(
     results: dict[str, list[tuple[int, str]]] = {}
     file_errors: list[str] = []
     try:
-        root = base_full if base_full.is_dir() else base_full.parent
+        target_is_dir = base_full.is_dir()
     except OSError:
         return {}, False, None
-    if _resolved_is_virtual_fs(os.fspath(root)):
-        return {}, False, None
-
     max_file_bytes = int(getattr(self, "max_file_size_bytes", 10 * 1024 * 1024))
 
     def _log_timeout() -> None:
@@ -232,6 +229,39 @@ def _safe_python_search(
         if not file_errors:
             return None
         return "One or more files could not be fully searched:\n" + "\n".join(file_errors)
+
+    if not target_is_dir:
+        # A file target searches only that file, never its parent directory: a
+        # bare parent walk would also return matches from sibling and nested
+        # files (issue #2352).
+        fp = base_full
+        size = _regular_file_size(fp)
+        if size is not None and size <= max_file_bytes:
+            virt_path = _virtual_path_for(self, fp)
+            if virt_path is not None:
+                status = _ReadStatus()
+                try:
+                    for line_num, line in _iter_capped_lines(
+                        fp, max_file_bytes=max_file_bytes, deadline=deadline, status=status
+                    ):
+                        if pattern not in line:
+                            continue
+                        if max_count is not None and total >= max_count:
+                            return results, True, _file_errors_msg()
+                        results.setdefault(virt_path, []).append((line_num, line))
+                        total += 1
+                    if status.hit_deadline:
+                        _log_timeout()
+                        return results, True, None
+                    if status.decode_partial:
+                        file_errors.append(f"- {virt_path}: UnicodeDecodeError")
+                except (OSError, RuntimeError) as exc:
+                    file_errors.append(f"- {virt_path}: {_safe_detail(self, exc)}")
+                    logger.debug("Could not fully read %s in grep fallback", fp, exc_info=True)
+        return results, False, _file_errors_msg()
+    root = base_full
+    if _resolved_is_virtual_fs(os.fspath(root)):
+        return {}, False, None
 
     try:
         for dirpath, dirnames, filenames in os.walk(os.fspath(root), followlinks=False):
