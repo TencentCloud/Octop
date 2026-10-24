@@ -424,6 +424,21 @@ def test_corrupt_config_names_file_and_position_without_leaking_contents(tmp_pat
     assert cfg_path.read_text(encoding="utf-8") == original
 
 
+def test_bom_prefixed_config_loads_instead_of_refusing_to_start(tmp_path: Path):
+    """A BOM (Notepad, Windows PowerShell 5.1 Set-Content -Encoding UTF8) is an
+    encoding artifact, not corruption: the payload is valid JSON and must load."""
+    cfg_path = tmp_path / "config.json"
+    payload = {"default_timezone": "Asia/Shanghai"}
+    cfg_path.write_bytes(b"\xef\xbb\xbf" + json.dumps(payload).encode("utf-8"))
+    assert cfg_path.read_bytes().startswith(b"\xef\xbb\xbf"), "fixture must carry a real BOM"
+
+    cfg = load_config(cfg_path)
+
+    assert cfg.default_timezone == "Asia/Shanghai"
+    # reading never rewrites the file
+    assert cfg_path.read_bytes().startswith(b"\xef\xbb\xbf")
+
+
 def test_non_object_config_raises(tmp_path: Path):
     cfg_path = tmp_path / "config.json"
     cfg_path.write_text("[1, 2]", encoding="utf-8")

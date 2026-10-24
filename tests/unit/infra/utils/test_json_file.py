@@ -28,6 +28,20 @@ def test_read_valid_object(tmp_path: Path) -> None:
     assert read_json_object(path) == {"bind_host": "0.0.0.0", "port": 8088}
 
 
+def test_read_object_saved_with_a_bom(tmp_path: Path) -> None:
+    """A BOM is an encoding artifact, not corruption: the payload is valid JSON.
+
+    Notepad and the Windows PowerShell 5.1 ``Set-Content -Encoding UTF8``
+    switch write one, and callers must not treat the file as corrupt (they
+    refuse to merge into ``{}`` precisely to avoid destroying settings).
+    """
+    path = tmp_path / "config.json"
+    path.write_bytes(b"\xef\xbb\xbf" + json.dumps({"port": 8088}).encode("utf-8"))
+    assert path.read_bytes().startswith(b"\xef\xbb\xbf"), "fixture must carry a real BOM"
+
+    assert read_json_object(path) == {"port": 8088}
+
+
 def test_read_corrupt_raises_with_position_and_never_leaks_contents(tmp_path: Path) -> None:
     path = tmp_path / "config.json"
     # Trailing comma — the classic hand-edit slip. The password must not surface.

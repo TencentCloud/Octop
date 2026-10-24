@@ -428,7 +428,11 @@ def load_config(path: Path) -> OctopConfig:
     file_defaults = _defaults_for_file()
     if path.exists():
         try:
-            raw = json.loads(path.read_text(encoding="utf-8"))
+            # utf-8-sig: Notepad and the Windows PowerShell 5.1
+            # `Set-Content -Encoding UTF8` switch prepend a BOM. The payload is
+            # still valid JSON, so plain utf-8 would report "not valid JSON"
+            # and refuse to start over an encoding artifact.
+            raw = json.loads(path.read_text(encoding="utf-8-sig"))
         except json.JSONDecodeError as exc:
             raise ValueError(
                 f"{path} is not valid JSON (line {exc.lineno}, column {exc.colno});"
