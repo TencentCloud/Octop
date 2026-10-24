@@ -43,7 +43,7 @@ import {
   AlertCircle,
 } from "lucide-react";
 import { useTranslation } from "react-i18next";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 
 import {
   avatarPickerStyles,
@@ -897,6 +897,7 @@ export default function BridgeSettingsPanel({
 }) {
   const { t } = useTranslation();
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
   const isMobile = useIsMobile();
   const { refresh: refreshAgents } = useAgent();
   const { viewMode, setViewMode, showCardView } = useCardTableView("card");
@@ -942,6 +943,25 @@ export default function BridgeSettingsPanel({
   const [editVisibility, setEditVisibility] =
     useState<ResourceVisibilityMode>("owner");
   const [editGroupIds, setEditGroupIds] = useState<string[]>([]);
+
+  const createFromQuery = searchParams.get("create") === "1";
+  const consumedCreateQuery = useRef(false);
+  useEffect(() => {
+    if (!createFromQuery || loading || consumedCreateQuery.current) return;
+    consumedCreateQuery.current = true;
+    if (rows.length >= MAX_BRIDGE_CONNECTIONS) {
+      message.warning(
+        t("advancedSettings.bridge.addDisabled", {
+          limit: MAX_BRIDGE_CONNECTIONS,
+        }),
+      );
+    } else {
+      setCreateOpen(true);
+    }
+    const next = new URLSearchParams(searchParams);
+    next.delete("create");
+    setSearchParams(next, { replace: true });
+  }, [createFromQuery, loading, rows.length, searchParams, setSearchParams, t]);
 
   const closeCreateDrawer = () => {
     setCreateOpen(false);
