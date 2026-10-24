@@ -42,8 +42,21 @@ def parse_json_lines(raw: bytes) -> list[dict[str, Any]]:
     return lines
 
 
-def parse_subprocess_json_lines(proc: Any) -> list[dict[str, Any]]:
-    """Non-blocking read of stdout JSON lines from a running subprocess."""
+def parse_subprocess_json_lines(proc: Any, *, final: bool = False) -> list[dict[str, Any]]:
+    """Read complete stdout lines, retaining partial bytes between polls.
+
+    Set ``final`` only after the child exits to drain stdout and flush a last
+    line without a newline. Buffer bytes until framing is complete so a split
+    UTF-8 character is not decoded prematurely.
+    """
     if proc.stdout is None:
         return []
-    return parse_json_lines(read_available_bytes(proc.stdout))
+    pending = getattr(proc, "_octop_json_line_buffer", b"")
+    chunk = proc.stdout.read() if final else read_available_bytes(proc.stdout)
+    raw = pending + chunk
+    if final:
+        proc._octop_json_line_buffer = b""
+        return parse_json_lines(raw)
+    complete, separator, pending = raw.rpartition(b"\n")
+    proc._octop_json_line_buffer = pending
+    return parse_json_lines(complete) if separator else []

@@ -894,20 +894,9 @@ async def feishu_bot_creator_poll(
         finished = return_code is not None
 
         if finished and proc.stdout:
-            remaining_bytes = proc.stdout.read()
-            if remaining_bytes:
-                remaining = remaining_bytes.decode("utf-8", errors="replace")
-                for line in remaining.strip().split("\n"):
-                    line = line.strip()
-                    if line:
-                        try:
-                            data = json.loads(line)
-                            new_lines.append(data)
-                            state["lines"].append(data)
-                        except json.JSONDecodeError:
-                            new_lines.append(
-                                {"action": "log", "level": "info", "step": "raw", "message": line}
-                            )
+            final_lines = await asyncio.to_thread(parse_subprocess_json_lines, proc, final=True)
+            new_lines.extend(final_lines)
+            state["lines"].extend(final_lines)
 
         status = "running"
         if finished:
@@ -1043,19 +1032,9 @@ async def yuanbao_bot_creator_poll(
         finished = return_code is not None
 
         if finished and proc.stdout:
-            remaining = proc.stdout.read()
-            if remaining:
-                for line in remaining.strip().split("\n"):
-                    line = line.strip()
-                    if line:
-                        try:
-                            data = json.loads(line)
-                            new_lines.append(data)
-                            state["lines"].append(data)
-                        except json.JSONDecodeError:
-                            new_lines.append(
-                                {"action": "log", "level": "info", "step": "raw", "message": line}
-                            )
+            final_lines = await asyncio.to_thread(parse_subprocess_json_lines, proc, final=True)
+            new_lines.extend(final_lines)
+            state["lines"].extend(final_lines)
 
         status = "running"
         if finished:

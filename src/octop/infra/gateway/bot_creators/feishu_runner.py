@@ -91,16 +91,9 @@ def poll_feishu_creator(
     return_code = proc.poll()
     finished = return_code is not None
     if finished and proc.stdout:
-        remaining_bytes = proc.stdout.read()
-        if remaining_bytes:
-            for line in remaining_bytes.decode("utf-8", errors="replace").strip().split("\n"):
-                line = line.strip()
-                if not line:
-                    continue
-                try:
-                    lines.append(json.loads(line))
-                except json.JSONDecodeError:
-                    lines.append({"action": "log", "level": "info", "step": "raw", "message": line})
+        final_lines = parse_subprocess_json_lines(proc, final=True)
+        new_lines.extend(final_lines)
+        lines.extend(final_lines)
     status = "running"
     if finished:
         status = "finished" if return_code == 0 else "failed"
