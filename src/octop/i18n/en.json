@@ -675,6 +675,7 @@
     "docker-management": "Docker Management"
   },
   "channel": {
+    "media_delivery_failed": "Could not send the media file. Please try again later.",
     "tool_hint_start": "🔧 Calling tool: {tool_name}",
     "tool_hint_end": "✅ {tool_name} done",
     "runtime": {
