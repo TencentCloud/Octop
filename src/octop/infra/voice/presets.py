@@ -6,7 +6,9 @@ from typing import Any, Literal
 
 VoiceCapability = Literal["stt", "tts", "both"]
 
-_BUILTIN_PRESET_IDS = frozenset({"browser", "edge", "tencent", "openai", "mimo"})
+_BUILTIN_PRESET_IDS = frozenset(
+    {"browser", "edge", "tencent", "openai", "mimo", "siliconflow", "openai-compatible", "piper"}
+)
 
 
 def is_builtin_preset(name: str) -> bool:
@@ -34,6 +36,15 @@ def load_voice_presets() -> list[dict[str, Any]]:
             "description": "Free Microsoft Edge neural voices via edge-tts.",
         },
         {
+            "id": "piper",
+            "name": "本地 Piper（免费）",
+            "kind": "piper",
+            "capability": "tts",
+            "free": True,
+            "requires_key": False,
+            "description": "本机 Piper TTS（127.0.0.1:8081）——零成本零 token；中文华妍 / 英文 lessac / 中英 mix 自动切换。",
+        },
+        {
             "id": "tencent",
             "name": "Tencent Cloud",
             "kind": "tencent",
@@ -50,6 +61,24 @@ def load_voice_presets() -> list[dict[str, Any]]:
             "free": False,
             "requires_key": True,
             "description": "Whisper STT and OpenAI TTS.",
+        },
+        {
+            "id": "siliconflow",
+            "name": "SiliconFlow",
+            "kind": "openai",
+            "capability": "both",
+            "free": False,
+            "requires_key": True,
+            "description": "SiliconFlow cloud TTS (CosyVoice2) and STT (SenseVoice) via the OpenAI-compatible API.",
+        },
+        {
+            "id": "openai-compatible",
+            "name": "OpenAI Compatible",
+            "kind": "openai",
+            "capability": "both",
+            "free": False,
+            "requires_key": True,
+            "description": "Any OpenAI-compatible relay or gateway (one-api, new-api, custom endpoint).",
         },
         {
             "id": "mimo-stt",
