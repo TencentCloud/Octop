@@ -8,6 +8,7 @@ import json
 import os
 import threading
 from collections.abc import AsyncIterator
+from datetime import UTC
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
@@ -1074,6 +1075,45 @@ def test_build_harness_config_keeps_system_prompt_after_bootstrap(
     )
     cfg = manager._build_harness_config(row)
     assert cfg.system_prompt == "MBTI persona prompt"
+
+
+def test_build_harness_config_renders_system_prompt_playbook_vars(
+    manager: AgentManager,
+) -> None:
+    """System prompt template variables render at graph-compile time.
+
+    {agent_id} {agent_name} {date} {datetime} {work_dir} {model} are filled
+    from the row; unknown placeholders are left untouched so template typos
+    stay visible to the model instead of silently vanishing.
+    """
+    from dataclasses import replace
+
+    _seed_test_provider(manager)
+
+    agent_id = "AGT_PB"
+    ws = manager._paths.ensure_agent_workspace(agent_id)
+    (ws / ".bootstrapped").write_text("", encoding="utf-8")
+    row = replace(
+        _row(agent_id=agent_id, default_model="gpt-4o-mini"),
+        system_prompt=(
+            "agent {agent_id} ({agent_name}) workdir {work_dir} "
+            "model {model} date {date} datetime {datetime} unknown {foo}"
+        ),
+        config_json=json.dumps({"backend": _fs_backend(ws)}),
+    )
+    import re
+
+    cfg = manager._build_harness_config(row)
+    assert cfg.system_prompt is not None
+    assert agent_id in cfg.system_prompt
+    assert "bot" in cfg.system_prompt  # row.name
+    assert str(ws) in cfg.system_prompt
+    assert "gpt-4o-mini" in cfg.system_prompt
+    # rendered date is a real YYYY-MM-DD, not just a bare substring
+    assert re.search(r"date \d{4}-\d{2}-\d{2}", cfg.system_prompt)
+    assert re.search(r"datetime \d{4}-\d{2}-\d{2} \d{2}:\d{2}", cfg.system_prompt)
+    assert "{foo}" in cfg.system_prompt  # unknown placeholder preserved
+    assert "{date}" not in cfg.system_prompt
 
 
 def test_bootstrap_complete_defers_graph_refresh(manager: AgentManager) -> None:
@@ -2898,3 +2938,32 @@ async def test_restore_respects_runtime_capability_and_expert_scope(
     finally:
         for row in rows:
             await manager.stop(row.agent_id)
+
+
+def test_render_system_prompt_timezone_aware() -> None:
+    """Rendered {date}/{datetime} follow the configured IANA zone; invalid or
+    missing zones fall back to UTC instead of the machine's local time."""
+    import re
+
+    from octop.infra.agents.manager import _render_system_prompt
+
+    base = {
+        "agent_id": "AGT_TZ",
+        "agent_name": "tz",
+        "work_dir": "/tmp/ws",
+        "model": "m",
+    }
+
+    rendered = _render_system_prompt("{date} {datetime}", timezone="Asia/Shanghai", **base)
+    # template renders to "<date> <date> <time>"
+    m = re.match(r"^(\d{4}-\d{2}-\d{2}) (\d{4}-\d{2}-\d{2}) (\d{2}:\d{2})$", rendered)
+    assert m is not None
+    # Shanghai is UTC+8 without DST: local wall-clock is always >= UTC.
+    from datetime import datetime
+
+    utc_wall = datetime.now(UTC).strftime("%H:%M")
+    assert m.group(2) >= utc_wall or m.group(1) > datetime.now(UTC).strftime("%Y-%m-%d")
+
+    # Invalid zone -> UTC fallback (renders without error).
+    rendered_fallback = _render_system_prompt("{date}", timezone="Not/AZone", **base)
+    assert re.match(r"\d{4}-\d{2}-\d{2}$", rendered_fallback)

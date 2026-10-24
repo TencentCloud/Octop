@@ -368,6 +368,10 @@
 - 控制台保存 QQ 通道时写入 `c2c_streaming: true`，并提示工具过程会另占每条入站约 4 条被动回复配额
 - 依赖 `harness-gateway>=0.9.7`（含 QQ C2C 替换流式与飞书话题修复）
 
+### 新增
+
+- 智能体 system_prompt 支持 playbook 插值变量（{agent_id}/{agent_name}/{date}/{datetime}/{work_dir}/{model}）：编译图时按当前 agent/工作目录/时间渲染，动态状态仍由 MEMORY.md 热索引承载（每轮注入）；未知占位符原样保留，模板写错变量名不静默丢失
+
 ## [0.9.32] - 2026-09-06
 
 ### 新增
