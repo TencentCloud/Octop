@@ -13,6 +13,9 @@ from zipfile import BadZipFile
 
 import pytest
 from docx import Document
+from docx.opc.constants import RELATIONSHIP_TYPE as RT
+from docx.oxml import OxmlElement
+from docx.oxml.ns import qn
 
 from octop.infra.utils.doc_edit import (
     DocxDocConverter,
@@ -26,6 +29,19 @@ def _docx_bytes(document: Any) -> bytes:
     buffer = BytesIO()
     document.save(buffer)
     return buffer.getvalue()
+
+
+def _add_hyperlink(paragraph: Any, text: str) -> None:
+    link = OxmlElement("w:hyperlink")
+    link.set(
+        qn("r:id"), paragraph.part.relate_to("https://example.com", RT.HYPERLINK, is_external=True)
+    )
+    run = OxmlElement("w:r")
+    content = OxmlElement("w:t")
+    content.text = text
+    run.append(content)
+    link.append(run)
+    paragraph._p.append(link)
 
 
 def _build_sample_docx() -> bytes:
@@ -103,6 +119,37 @@ def test_round_trip_preserves_structure() -> None:
     assert "**bold**" in markdown
     assert "*italic*" in markdown
     assert "- Item one" in markdown
+
+
+@pytest.mark.parametrize("before, after", [("Read ", " now"), ("", " now"), ("Read ", "")])
+def test_round_trip_preserves_inline_hyperlink_order(before: str, after: str) -> None:
+    document = Document()
+    paragraph = document.add_paragraph(before)
+    _add_hyperlink(paragraph, "the guide")
+    paragraph.add_run(after)
+    expected = f"{before}the guide{after}"
+
+    markdown = DocxDocConverter.to_markdown(_docx_bytes(document))
+    restored = Document(BytesIO(DocxDocConverter.from_markdown(markdown)))
+
+    assert markdown == expected
+    assert restored.paragraphs[0].text == expected
+
+
+def test_to_markdown_keeps_multiple_hyperlinks_around_formatted_runs() -> None:
+    document = Document()
+    paragraph = document.add_paragraph("Read ")
+    _add_hyperlink(paragraph, "first")
+    paragraph.add_run(" and ").bold = True
+    _add_hyperlink(paragraph, "second")
+    paragraph.add_run(" now")
+
+    markdown = DocxDocConverter.to_markdown(_docx_bytes(document))
+
+    assert markdown == "Read first** and **second now"
+    restored = Document(BytesIO(DocxDocConverter.from_markdown(markdown)))
+    assert restored.paragraphs[0].text == "Read first and second now"
+    assert any(run.bold for run in restored.paragraphs[0].runs)
 
 
 def test_to_markdown_empty_file_is_empty_document() -> None:
