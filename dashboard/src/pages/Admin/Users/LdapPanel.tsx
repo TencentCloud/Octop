@@ -159,30 +159,41 @@ export default function LdapPanel() {
     void loadConfig();
   }, [loadConfig]);
 
-  const saveConfig = async (values: LdapFormValues) => {
+  const saveConfig = async (rawValues: LdapFormValues) => {
     setSaving(true);
     try {
+      // Form.onFinish only carries values for fields mounted at submit time:
+      // the group-search inputs render conditionally and the timeout lives in
+      // a lazy Collapse, so those fields can be missing and their `.trim()`
+      // crashed the save before any request was sent (#2062, #2228). Pull the
+      // full store (includes values set for never-mounted fields) and fall
+      // back to safe defaults.
+      const values: LdapFormValues = {
+        ...form.getFieldsValue(true),
+        ...rawValues,
+      };
+      const trim = (value: string | undefined): string => value?.trim() ?? "";
       const body: LdapConfigPut = {
         enabled: values.enabled,
-        display_name: values.display_name.trim(),
-        server_url: values.server_url.trim(),
+        display_name: trim(values.display_name),
+        server_url: trim(values.server_url),
         start_tls: values.start_tls,
         verify_tls: values.verify_tls,
-        bind_dn: values.bind_dn.trim(),
-        user_base_dn: values.user_base_dn.trim(),
-        user_filter: values.user_filter.trim(),
-        username_attribute: values.username_attribute.trim(),
-        email_attribute: values.email_attribute.trim(),
-        display_name_attribute: values.display_name_attribute.trim(),
-        subject_attribute: values.subject_attribute.trim(),
-        group_attribute: values.group_attribute.trim(),
+        bind_dn: trim(values.bind_dn),
+        user_base_dn: trim(values.user_base_dn),
+        user_filter: trim(values.user_filter),
+        username_attribute: trim(values.username_attribute),
+        email_attribute: trim(values.email_attribute),
+        display_name_attribute: trim(values.display_name_attribute),
+        subject_attribute: trim(values.subject_attribute),
+        group_attribute: trim(values.group_attribute),
         group_search: values.group_search,
-        group_search_base: values.group_search_base.trim(),
-        group_member_attribute: values.group_member_attribute.trim(),
-        admin_groups: values.admin_groups.trim(),
-        allowed_groups: values.allowed_groups.trim(),
+        group_search_base: trim(values.group_search_base),
+        group_member_attribute: trim(values.group_member_attribute),
+        admin_groups: trim(values.admin_groups),
+        allowed_groups: trim(values.allowed_groups),
         auto_provision: values.auto_provision,
-        timeout_seconds: values.timeout_seconds,
+        timeout_seconds: values.timeout_seconds ?? DEFAULT_TIMEOUT_SECONDS,
       };
       // Write-only: an untouched field must never clobber the stored secret.
       const bindPassword = values.bind_password?.trim();
