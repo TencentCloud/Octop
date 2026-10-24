@@ -140,6 +140,9 @@ class CronDeliveryService:
         tracker = TurnHistoryTracker.from_request(request)
         usage = UsageTracker()
         parts: list[str] = []
+        # 助手在两次工具调用之间会输出「我先确认一下…」这类过程说明。
+        # 定时推送只该发最终答复，所以每次工具调用前把当前文本段封存作兜底。
+        previous_text = ""
         interaction_required = False
         saw_tool_call = False
         emitted_tool_error_ids: set[str] = set()
@@ -153,6 +156,8 @@ class CronDeliveryService:
                     kind = chunk.get("type")
                     if kind == "tool_call_chunk":
                         saw_tool_call = True
+                        if parts:/n                            previous_text = "".join(parts)
+                            parts.clear()
                     elif kind == "tool_result":
                         log_failed_tool_results(
                             chunk,
@@ -167,7 +172,11 @@ class CronDeliveryService:
                         interaction_required = True
             if interaction_required:
                 raise RuntimeError("cron agent run requires user interaction")
-            outbound = strip_thinking("".join(parts)).strip()
+            # 优先取「最后一次工具调用之后」的文本（真正的成品）；
+            # 末段为空时退回过程说明，避免投递空消息。
+            outbound = strip_thinking("".join(parts)).strip() or strip_thinking(
+                previous_text
+            ).strip()
             if not outbound:
                 raise RuntimeError("cron agent run produced no visible response")
         finally:
