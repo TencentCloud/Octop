@@ -684,6 +684,7 @@
   "channel": {
     "tool_hint_start": "🔧 正在调用工具：{tool_name}",
     "tool_hint_end": "✅ {tool_name} 已完成",
+    "media_delivery_failed": "生成的媒体文件无法读取，因此未发送。",
     "runtime": {
       "disabled": "频道已停用",
       "unregistered": "未注册",

@@ -30,6 +30,7 @@ from octop_gateway.models import (
     VideoContent,
 )
 
+from octop.i18n import tr
 from octop.infra.gateway.media.backend_files import (
     dashboard_media_url,
     extract_workspace_rel,
@@ -218,6 +219,21 @@ def _block_file_refs(block: dict[str, Any]) -> tuple[str, str, str]:
         mime = str(block.get("media_type") or block.get("mime_type") or "")
     filename = str(block.get("filename") or "")
     return raw_url, mime, filename
+
+
+def _workspace_relative_media_path(raw_url: str) -> str | None:
+    """Return a relative workspace path, leaving URLs and absolute paths alone."""
+    if not raw_url or raw_url.startswith(("/", "\\")):
+        return None
+    try:
+        parsed = urllib.parse.urlsplit(raw_url)
+    except ValueError:
+        return raw_url
+    if parsed.scheme.lower() in {"http", "https", "data", "file"} or parsed.netloc:
+        return None
+    if re.match(r"^[A-Za-z]:[\\/]", raw_url):
+        return None
+    return raw_url
 
 
 def _workspace_rel_from_preview(preview: str) -> str | None:
@@ -860,6 +876,14 @@ async def block_to_content_part(
         data_field = base64.b64encode(file_bytes).decode("ascii")
         if not mime:
             mime = mimetypes.guess_type(filename or raw_url)[0] or "application/octet-stream"
+    elif workspace_path := _workspace_relative_media_path(raw_url):
+        file_bytes = await workspace.adownload_bytes(workspace_path)
+        if not file_bytes:
+            logger.warning("tool_result media block: workspace file missing: %s", workspace_path)
+            return None
+        data_field = base64.b64encode(file_bytes).decode("ascii")
+        if not mime:
+            mime = mimetypes.guess_type(filename or workspace_path)[0] or "application/octet-stream"
     elif raw_url:
         url_field = raw_url
     else:
@@ -901,6 +925,7 @@ async def media_events_from_tool_result(
     chunk: dict[str, Any],
     *,
     workspace: BackendWorkspace,
+    locale: str = "en",
 ) -> AsyncIterator[MessageEvent]:
     """Yield IM media events from allowlisted delivery-tool results only."""
     messages = chunk.get("messages") or []
@@ -911,18 +936,25 @@ async def media_events_from_tool_result(
     for message in messages:
         if not is_media_push_tool(tool_message_name(message, chunk_name=chunk_name)):
             continue
+        workspace_media_failed = False
         for block in iter_media_blocks(extract_message_content(message)):
+            workspace_path = _workspace_relative_media_path(_block_file_refs(block)[0])
             try:
                 part = await block_to_content_part(block, workspace=workspace)
             except (FileNotFoundError, OSError, ValueError) as exc:
                 logger.warning("tool_result media block: file missing: %s", exc)
+                workspace_media_failed = workspace_media_failed or workspace_path is not None
                 continue
             except Exception:
                 logger.exception("tool_result media block: failed to resolve")
+                workspace_media_failed = workspace_media_failed or workspace_path is not None
                 continue
             if part is None:
+                workspace_media_failed = workspace_media_failed or workspace_path is not None
                 continue
             yield MessageEvent(type=MessageEventType.MESSAGE, content=[part])
+        if workspace_media_failed:
+            yield MessageEvent.text(tr("channel.media_delivery_failed", locale))
 
 
 __all__ = [

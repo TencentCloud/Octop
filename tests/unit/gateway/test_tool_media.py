@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import base64
 import json
 import tempfile
 import time
@@ -23,6 +24,7 @@ from octop.infra.gateway.media.tool_media import (
     enrich_media_block_preview,
     enrich_tool_result_with_backend,
     iter_media_blocks,
+    media_events_from_tool_result,
 )
 
 
@@ -69,6 +71,80 @@ def test_iter_media_blocks_supports_workbuddy_generation_envelopes() -> None:
             },
         }
     ]
+
+
+@pytest.mark.asyncio
+async def test_generated_relative_image_path_is_read_from_agent_workspace() -> None:
+    with tempfile.TemporaryDirectory() as ws:
+        workspace = _workspace(ws)
+        image_bytes = b"\x89PNG\r\n"
+        path = "generated/images/a.png"
+        await workspace.aupload_bytes(path, image_bytes)
+        chunk = {
+            "type": "tool_result",
+            "messages": [
+                {
+                    "name": "generate_image",
+                    "content": json.dumps(
+                        {
+                            "type": "image_gen_tool_result",
+                            "images": [
+                                {
+                                    "path": path,
+                                    "localPath": "/private/a.png",
+                                    "mediaType": "image/png",
+                                }
+                            ],
+                        }
+                    ),
+                }
+            ],
+        }
+
+        events = [
+            event
+            async for event in media_events_from_tool_result(chunk, workspace=workspace)
+        ]
+
+        assert len(events) == 1
+        part = events[0].content[0]
+        assert part.data == base64.b64encode(image_bytes).decode("ascii")
+        assert part.url == ""
+        assert part.mime_type == "image/png"
+
+
+@pytest.mark.asyncio
+async def test_missing_generated_relative_image_emits_localized_error_without_path() -> None:
+    with tempfile.TemporaryDirectory() as ws:
+        workspace = _workspace(ws)
+        path = "generated/images/missing.png"
+        chunk = {
+            "type": "tool_result",
+            "messages": [
+                {
+                    "name": "generate_image",
+                    "content": json.dumps(
+                        {
+                            "type": "image_gen_tool_result",
+                            "images": [{"path": path, "mediaType": "image/png"}],
+                        }
+                    ),
+                }
+            ],
+        }
+
+        events = [
+            event
+            async for event in media_events_from_tool_result(
+                chunk,
+                workspace=workspace,
+                locale="zh",
+            )
+        ]
+
+        assert len(events) == 1
+        assert events[0].content[0].text == "生成的媒体文件无法读取，因此未发送。"
+        assert path not in repr(events[0])
 
 
 @pytest.mark.asyncio
