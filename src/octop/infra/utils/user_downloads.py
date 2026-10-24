@@ -10,7 +10,7 @@ import sys
 from pathlib import Path
 from typing import Any
 
-_UNSAFE_NAME = re.compile(r"[\\/:\0<>\"|?*]")
+_UNSAFE_NAME = re.compile(r"[\\/:\x00-\x1f<>\"|?*]")
 _LOOPBACK_HOSTS = frozenset({"localhost", "127.0.0.1", "::1"})
 
 
