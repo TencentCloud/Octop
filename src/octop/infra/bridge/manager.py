@@ -1296,6 +1296,13 @@ class BridgeManager:
             raise self._bridge_link_error(exc) from exc
         if str(result.get("type") or "") == "tunnel.error":
             code_raw = str(result.get("code") or "").strip()
+            logger.warning(
+                "bridge peer tunnel rejected connection=%s method=%s path=%s code=%s",
+                connection_id,
+                method,
+                path,
+                code_raw or "unknown",
+            )
             if code_raw == ErrorCode.BRIDGE_REMOTE_UNSUPPORTED.value:
                 raise OctopError(
                     ErrorCode.BRIDGE_REMOTE_UNSUPPORTED,
@@ -1381,12 +1388,16 @@ class BridgeManager:
             mapped["bridge"] = True
             mapped["bridge_inbound"] = _is_inbound(row)
             # scope=mine also includes experts shared by other users. Keep the
-            # peer account's ownership so those rows are not offered for delete.
-            # Peers that omit the field predate this flag; treat them as owned.
-            mapped["is_owner"] = bool(item["is_owner"]) if "is_owner" in item else True
+            # peer account's ownership so mutation controls are shown only for
+            # peer-owned rows. Older peers may omit this field; fail closed so
+            # the UI does not offer an action that the peer will reject.
+            mapped["is_owner"] = item.get("is_owner") is True
             mapped["is_shared"] = bool(item.get("is_shared"))
-            # Shadow experts are chat-ready while the bridge link is live.
-            mapped["state"] = "running"
+            # Keep the peer runtime state. A stopped expert must not look chat-ready
+            # just because the bridge link itself is up.
+            raw_state = item.get("state")
+            state = raw_state.strip() if isinstance(raw_state, str) else ""
+            mapped["state"] = state or "stopped"
             # Keep bundled /experts/avatars and CDN URLs; proxy uploaded avatars.
             mapped["icon_url"] = rewrite_remote_icon_url(
                 str(mapped.get("icon_url") or mapped.get("icon") or "").strip() or None,

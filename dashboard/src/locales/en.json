@@ -885,6 +885,8 @@
     "totalMarket": "{{count}} market expert(s)",
     "addFromLibrary": "+ New from Built-in Template",
     "newExpert": "New expert",
+    "addCloudExpert": "Add cloud expert",
+    "addCloudExpertHint": "Open Cloud Collab to add experts from another Octop",
     "emptyMyExperts": "No experts yet",
     "emptyMyExpertsHint": "Create a new expert, or pick a template from Built-in Experts or the Expert Market.",
     "emptyGuideTitle": "No experts yet",
@@ -4088,6 +4090,7 @@
     "typeMore": "Type at least two characters to search files",
     "searching": "Searching…",
     "filesEmpty": "No matching files",
+    "filesTruncated": "This workspace is large, so the file index is partial and matches may be missing",
     "filesNeedAgent": "Start the agent to mention workspace files",
     "filesFailed": "Could not search workspace files"
   },
