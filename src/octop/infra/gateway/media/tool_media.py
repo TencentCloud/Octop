@@ -72,6 +72,20 @@ _OUTBOUND_IMAGE_PATH_RE = re.compile(
 )
 
 
+def _media_block_type(block: Any) -> str:
+    """Return ``block["type"]`` when it is a known media type, else ``""``.
+
+    Tool results occasionally carry a JSON object or list in ``type``; testing
+    such a value for membership in ``_MEDIA_BLOCK_TYPES`` raises ``TypeError``.
+    """
+    if not isinstance(block, dict):
+        return ""
+    btype = block.get("type")
+    if isinstance(btype, str) and btype in _MEDIA_BLOCK_TYPES:
+        return btype
+    return ""
+
+
 def tool_name_base(name: str) -> str:
     trimmed = (name or "").strip()
     slash = trimmed.rfind("/")
@@ -196,7 +210,7 @@ def iter_media_blocks(content: Any) -> list[dict[str, Any]]:
     blocks: list[dict[str, Any]] = []
     for candidate in candidates:
         blocks.extend(_generated_media_blocks(candidate))
-        if isinstance(candidate, dict) and candidate.get("type") in _MEDIA_BLOCK_TYPES:
+        if _media_block_type(candidate):
             blocks.append(candidate)
     return blocks
 
@@ -343,9 +357,9 @@ async def _amap_content_blocks(
 
 def enrich_media_block_preview(block: Any, *, agent_id: str) -> Any:
     """Rewrite media blocks for dashboard history (no workspace import)."""
-    if not isinstance(block, dict) or block.get("type") not in _MEDIA_BLOCK_TYPES:
+    if not _media_block_type(block):
         return block
-    btype = str(block.get("type") or "")
+    btype = _media_block_type(block)
     if btype == "file":
         raw_url, mime, _ = _block_file_refs(block)
         path = _file_block_path(block, raw_url)
@@ -492,9 +506,9 @@ def _file_block_path(block: dict[str, Any], raw_url: str) -> str | None:
 async def _enrich_block_with_backend(
     block: Any, *, agent_id: str, workspace: BackendWorkspace
 ) -> Any:
-    if not isinstance(block, dict) or block.get("type") not in _MEDIA_BLOCK_TYPES:
+    if not _media_block_type(block):
         return block
-    btype = str(block.get("type") or "")
+    btype = _media_block_type(block)
     # File blocks may already be path-only (no preview_url).
     if block.get("preview_url") and btype != "file":
         return block
@@ -831,8 +845,8 @@ async def block_to_content_part(
     *,
     workspace: BackendWorkspace,
 ) -> ContentPart | None:
-    btype = block.get("type")
-    if btype not in _MEDIA_BLOCK_TYPES:
+    btype = _media_block_type(block)
+    if not btype:
         return None
 
     source = block.get("source") or {}
