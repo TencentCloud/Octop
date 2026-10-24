@@ -126,6 +126,8 @@
     "SETUP_RATE_LIMITED": "Too many setup password attempts. Try again later.",
     "SETUP_TOKEN_INVALID": "Setup session is invalid or expired. Verify the setup password again.",
     "AGENT_NOT_FOUND": "Agent not found.",
+    "EXPERT_TEMPLATE_NOT_FOUND": "Expert template not found.",
+    "DEFAULT_EXPERT_FAILED": "Could not create the default expert.",
     "AGENT_NOT_RUNNING": "This expert is not enabled.",
     "CHECKPOINT_DELETE_FAILED": "Conversation data was not deleted. The thread is still here; try again.",
     "THREAD_TURN_ACTIVE": "A reply is still in progress. Stop it, then delete this conversation.",
@@ -1275,8 +1277,7 @@
   },
   "chat": {
     "sharedExpert": {
-      "banner": "Shared expert · provided by {{name}}",
-      "flag": "Shared"
+      "banner": "Shared expert · provided by {{name}}"
     },
     "remoteExpert": {
       "banner": "Peer expert · via “{{name}}”. Chat history stays on the expert’s instance.",
@@ -1553,6 +1554,7 @@
     "expertPickerHiddenSearch": "Search hidden experts",
     "expertPickerHiddenEmpty": "No hidden experts",
     "expertListHidden": "Hidden experts ({{count}})",
+    "expertListHiddenCollapse": "Collapse hidden experts",
     "expertListShowVisible": "Back to expert list",
     "expertListHiddenEmpty": "No hidden shared experts",
     "subagentPicker": "Subagents",
@@ -3742,8 +3744,6 @@
       "totalConnections": "{{count}} connection(s)",
       "colStatus": "Status",
       "colAgents": "Experts",
-      "peerPrivacy": "Hide peer info",
-      "peerPrivacyHint": "Mask peer address and account in cards and tables against screen-share leaks",
       "revealPeerInfo": "Reveal (this page only; masking returns on reload)",
       "hidePeerInfoAgain": "Mask again"
     },
@@ -6024,6 +6024,11 @@
     "permCount": "{{count}} selected",
     "createSectionAccount": "Account",
     "createSectionAccess": "Role & permissions",
+    "createSectionExpert": "Default expert",
+    "createDefaultExpert": "Create a default expert",
+    "createDefaultExpertHint": "Create an expert in the same request, using the setup-wizard and invite flow.",
+    "expertTemplate": "Expert template",
+    "expertTemplateRequired": "Choose an expert template",
     "createSectionPolicy": "Resource usage policy",
     "policyWorkspaceRoot": "Allowed storage root",
     "policyWorkspaceRootHint": "Restricts roots for “{{localShell}}” and “{{filesystem}}” when creating experts. Off means no extra limit.",

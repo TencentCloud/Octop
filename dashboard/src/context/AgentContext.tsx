@@ -359,9 +359,16 @@ export function mapBridgeAgent(
     icon_name?: string | null;
     inbound?: boolean;
     has_password?: boolean;
+    /** False when this user only received the link. Missing means owned. */
+    is_owner?: boolean;
+    owner_username?: string | null;
+    owner_display_name?: string | null;
   },
 ): OctopAgent {
   const agentId = String(agent.agent_id || agent.id || "");
+  const sharedLinkViewer = conn.is_owner === false;
+  const linkOwnedByViewer = !sharedLinkViewer;
+  const peerOwns = agent.is_owner !== false;
   const memberIds = Array.isArray(agent.member_ids)
     ? agent.member_ids
         .map((id) =>
@@ -395,8 +402,13 @@ export function mapBridgeAgent(
     kind,
     member_ids: memberIds,
     bridge: true,
-    is_owner: agent.is_owner !== false,
-    is_shared: agent.is_shared === true,
+    // A shared recipient can chat, but cannot edit / start / reload / delete.
+    // Peer ownership still applies when this user owns the link.
+    is_owner: linkOwnedByViewer && peerOwns,
+    is_shared: sharedLinkViewer || agent.is_shared === true,
+    owner_username: sharedLinkViewer
+      ? conn.owner_display_name || conn.owner_username || null
+      : null,
     bridge_disconnected: false,
     bridge_inbound: Boolean(conn.inbound) || conn.has_password === false,
     bridge_connection_id: conn.connection_id,

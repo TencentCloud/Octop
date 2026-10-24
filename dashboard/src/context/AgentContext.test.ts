@@ -215,6 +215,40 @@ describe("mapBridgeAgent", () => {
     ).toBe("stopped");
   });
 
+  it("treats a shared cloud-collab link as read-only for the recipient", () => {
+    const mapped = mapBridgeAgent(
+      {
+        agent_id: "bridge:cid:01AGENT",
+        name: "Peer",
+        is_owner: true,
+        is_shared: false,
+      },
+      {
+        ...conn,
+        is_owner: false,
+        owner_username: "alice",
+        owner_display_name: "Alice",
+      },
+    );
+    expect(mapped.is_owner).toBe(false);
+    expect(mapped.is_shared).toBe(true);
+    expect(mapped.owner_username).toBe("Alice");
+  });
+
+  it("keeps management when this user owns the link and the peer owns the expert", () => {
+    const mapped = mapBridgeAgent(
+      {
+        agent_id: "bridge:cid:01AGENT",
+        name: "Peer",
+        is_owner: true,
+        is_shared: false,
+      },
+      { ...conn, is_owner: true },
+    );
+    expect(mapped.is_owner).toBe(true);
+    expect(mapped.is_shared).toBe(false);
+  });
+
   it("drops connectors on a peer team and ignores a missing composer payload", () => {
     const team = mapBridgeAgent(
       {

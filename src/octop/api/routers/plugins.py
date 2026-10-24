@@ -219,7 +219,7 @@ async def upload_plugin(
 @router.get("/market", summary="List marketplace catalog plugins")
 async def list_market_plugins(
     server: OctopServer = Depends(get_server),
-    _user: Any = Depends(current_user),
+    _user: Any = Depends(require_permission("plugin_market")),
 ) -> list[dict[str, Any]]:
     """Return the in-tree marketplace catalog (future: remote index API)."""
     return _plugin_manager(server).list_market()
@@ -233,7 +233,7 @@ async def install_market_plugin(
     plugin_id: str,
     force: bool = False,
     server: OctopServer = Depends(get_server),
-    _user: Any = Depends(require_permission("plugins")),
+    _user: Any = Depends(require_permission("plugin_market")),
 ) -> dict[str, Any]:
     """Copy a catalog plugin into ``~/.agentbuddy/plugins`` (future: download ZIP)."""
     mgr = _plugin_manager(server)
@@ -272,7 +272,7 @@ async def get_market_plugin_ui_asset(
     plugin_id: str,
     file_path: str,
     server: OctopServer = Depends(get_server),
-    _user: Any = Depends(current_user),
+    _user: Any = Depends(require_permission("plugin_market")),
 ) -> Response:
     """Static files from the in-tree catalog (icons before install)."""
     target = _plugin_manager(server).resolve_market_ui_file(plugin_id, file_path)

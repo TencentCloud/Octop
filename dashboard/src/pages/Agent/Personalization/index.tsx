@@ -17,7 +17,7 @@ import { usePathTabs } from "../../../hooks/usePathTabs";
 import { useCurrentUser } from "../../../hooks/useCurrentUser";
 import {
   PERSONALIZATION_TAB_PERMISSIONS,
-  userCan,
+  userCanKey,
 } from "../../../utils/permissions";
 import { isTeamAgent } from "../../../utils/teamAgent";
 import SkillsTabs from "../Skills/components/SkillsTabs";
@@ -66,7 +66,7 @@ export default function PersonalizationPage() {
   const activeAgent = agents.find((a) => a.agent_id === activeAgentId);
   const isAllowed = useCallback(
     (tab: PersonalizationTab) =>
-      userCan(user, PERSONALIZATION_TAB_PERMISSIONS[tab]),
+      userCanKey(user, PERSONALIZATION_TAB_PERMISSIONS[tab]),
     [user],
   );
   const defaultTab =

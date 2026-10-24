@@ -311,6 +311,18 @@ class BridgeManager:
             raise OctopError(ErrorCode.BRIDGE_NOT_FOUND, "bridge connection not found")
         return row
 
+    def get_usable(self, connection_id: str, user_id: int) -> BridgeConnectionRow:
+        """Owner, or a user the link was shared with.
+
+        Management (connect, edit, delete) stays on ``get_owned``. Chat and
+        read tunnels use this so a shared recipient is not told the link is
+        missing.
+        """
+        row = self._repo.get_visible(connection_id, user_id)
+        if row is None:
+            raise OctopError(ErrorCode.BRIDGE_NOT_FOUND, "bridge connection not found")
+        return row
+
     def _find_peer_link(
         self,
         owner_user_id: int,
@@ -1260,9 +1272,21 @@ class BridgeManager:
         headers: dict[str, str] | None = None,
         body: bytes | None = None,
     ) -> httpx.Response:
-        from octop.infra.bridge.tunnel_policy import is_tunnel_path_allowed
+        from octop.infra.bridge.tunnel_policy import (  # noqa: PLC0415
+            is_tunnel_path_allowed,
+            shared_viewer_may_tunnel,
+        )
 
-        self.get_owned(connection_id, owner_user_id)
+        row = self.get_usable(connection_id, owner_user_id)
+        # The peer runs this hop as the connection owner. A shared recipient
+        # may chat and read, not edit / start / reload / delete the expert.
+        if int(row.owner_user_id) != int(owner_user_id) and not shared_viewer_may_tunnel(
+            method, path
+        ):
+            raise OctopError(
+                ErrorCode.FORBIDDEN,
+                "shared cloud collab users cannot manage this expert",
+            )
         # Fail fast with a user-facing "unsupported on remote" code before the hop.
         if not is_tunnel_path_allowed(method, path):
             raise OctopError(
@@ -2125,7 +2149,7 @@ class BridgeManager:
         """Send turn.start to peer and forward turn.chunk frames to ``on_frame``."""
         import uuid
 
-        self.get_owned(connection_id, owner_user_id)
+        self.get_usable(connection_id, owner_user_id)
         sess = await self._require_live_session(connection_id)
         request_id = uuid.uuid4().hex
         queue = await self.open_turn_waiter(request_id)
@@ -2202,7 +2226,7 @@ class BridgeManager:
         tid = (thread_id or "").strip()
         if not tid:
             return
-        self.get_owned(connection_id, owner_user_id)
+        self.get_usable(connection_id, owner_user_id)
         sess = await self._require_live_session(connection_id)
         request_id = uuid.uuid4().hex
         queue = await self.open_turn_waiter(request_id)
@@ -2265,7 +2289,7 @@ class BridgeManager:
         """One-shot peer control (cancel / steer_remove) with chunk forwarding."""
         import uuid
 
-        self.get_owned(connection_id, owner_user_id)
+        self.get_usable(connection_id, owner_user_id)
         sess = await self._require_live_session(connection_id)
         if FEATURE_TURN_CONTROL not in sess.peer_features:
             await on_frame(
@@ -2504,7 +2528,7 @@ class BridgeManager:
         """Relay dashboard browser WS traffic to the peer harness."""
         import uuid
 
-        self.get_owned(connection_id, owner_user_id)
+        self.get_usable(connection_id, owner_user_id)
         sess = await self._require_live_session(connection_id)
         request_id = uuid.uuid4().hex
         queue = await self.open_browser_waiter(request_id)
