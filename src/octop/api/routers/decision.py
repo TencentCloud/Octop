@@ -103,7 +103,7 @@ def _view(settings: DecisionSettings) -> DecisionSettingsResponse:
 
 @router.get("/settings/decision", summary="Get the decision-model switch")
 async def get_decision_settings(
-    _: Any = Depends(require_permission("providers")),
+    _: Any = Depends(require_permission("model_decision")),
     server: Any = Depends(get_server),
 ) -> DecisionSettingsResponse:
     """Return the decision-model settings. The API key itself is not included."""
@@ -113,7 +113,7 @@ async def get_decision_settings(
 @router.put("/settings/decision", summary="Update the decision-model switch")
 async def put_decision_settings(
     body: DecisionSettingsBody,
-    _: Any = Depends(require_permission("providers")),
+    _: Any = Depends(require_permission("model_decision")),
     server: Any = Depends(get_server),
 ) -> DecisionSettingsResponse:
     """Save the switch and rebuild running agents so the middleware mounts or unmounts."""
@@ -138,7 +138,7 @@ async def put_decision_settings(
 @router.post("/settings/decision/test", summary="Probe the decision-model endpoint")
 async def test_decision_settings(
     body: DecisionTestBody,
-    _: Any = Depends(require_permission("providers")),
+    _: Any = Depends(require_permission("model_decision")),
     server: Any = Depends(get_server),
 ) -> dict[str, Any]:
     """Send one yes/no question. A probability in the reply means the endpoint is reachable."""
@@ -155,7 +155,7 @@ async def test_decision_settings(
 
 @router.get("/settings/decision/laya", summary="Get the local Laya install status")
 async def get_laya_status(
-    _: Any = Depends(require_permission("providers")),
+    _: Any = Depends(require_permission("model_decision")),
 ) -> dict[str, Any]:
     """Report whether the managed Laya process is installed and responding."""
     return await get_laya_runtime().status()
@@ -164,7 +164,7 @@ async def get_laya_status(
 @router.post("/settings/decision/laya/install", summary="Install Laya on this machine")
 async def install_laya(
     request: Request,
-    _: Any = Depends(require_permission("providers")),
+    _: Any = Depends(require_permission("model_decision")),
 ) -> StreamingResponse:
     """Install Laya into Octop's environment and stream the log.
 
@@ -183,7 +183,7 @@ async def install_laya(
 @router.post("/settings/decision/laya/start", summary="Start the local Laya service")
 async def start_laya(
     request: Request,
-    _: Any = Depends(require_permission("providers")),
+    _: Any = Depends(require_permission("model_decision")),
 ) -> dict[str, Any]:
     """Start the already installed laya-serve process."""
     return await get_laya_runtime().start(resolve_request_locale(request))
@@ -192,7 +192,7 @@ async def start_laya(
 @router.post("/settings/decision/laya/stop", summary="Stop the local Laya service")
 async def stop_laya(
     request: Request,
-    _: Any = Depends(require_permission("providers")),
+    _: Any = Depends(require_permission("model_decision")),
 ) -> dict[str, Any]:
     """Stop only the Laya process Octop started."""
     return await get_laya_runtime().stop(resolve_request_locale(request))

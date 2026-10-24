@@ -2,7 +2,7 @@
  * BridgeSettings peer masking.
  *
  * The connection cards are the usual screen-share surface, so peer address and
- * account are masked by default, with a master switch and a per-card reveal.
+ * account are masked by default. Each field has its own reveal control.
  */
 
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -85,9 +85,12 @@ function renderPanel(initialEntry = "/bridge") {
   );
 }
 
-function revealButtons() {
+function revealButtons(field?: "peerUrl" | "peerAccount" | "peerIp") {
+  const fieldKey = field ? `advancedSettings.bridge.${field}` : "";
   return screen.findAllByRole("button", {
-    name: "advancedSettings.bridge.revealPeerInfo",
+    name: fieldKey
+      ? `advancedSettings.bridge.revealPeerInfo ${fieldKey}`
+      : /advancedSettings\.bridge\.revealPeerInfo/,
   });
 }
 
@@ -124,59 +127,29 @@ describe("<BridgeSettingsPanel /> peer masking", () => {
     expect(screen.queryByText("Deshun")).not.toBeInTheDocument();
   });
 
-  it("reveals a single card and keeps the others masked", async () => {
+  it("reveals one field and leaves the other fields masked", async () => {
     const user = userEvent.setup();
     renderPanel();
     await waitFor(() => expect(api.list).toHaveBeenCalled());
 
-    const buttons = await revealButtons();
-    expect(buttons).toHaveLength(2);
-    expect(buttons[0]).toHaveAttribute("aria-pressed", "false");
+    const addressButtons = await revealButtons("peerUrl");
+    const accountButtons = await revealButtons("peerAccount");
+    expect(addressButtons).toHaveLength(2);
+    expect(accountButtons).toHaveLength(2);
+    expect(addressButtons[0]).toHaveAttribute("aria-pressed", "false");
 
-    await user.click(buttons[0]);
+    await user.click(addressButtons[0]);
 
     expect(await screen.findByText("demo.octop.chat")).toBeInTheDocument();
-    expect(screen.getByText("alice")).toBeInTheDocument();
-    // The other card stays masked.
+    expect(screen.getByText("a••")).toBeInTheDocument();
+    expect(screen.queryByText("alice")).not.toBeInTheDocument();
     expect(screen.getByText("De••••••un")).toBeInTheDocument();
     expect(screen.getByText("203.•••.•••.8")).toBeInTheDocument();
-  });
 
-  it("unmasks every card when the master switch is turned off", async () => {
-    const user = userEvent.setup();
-    renderPanel();
-    await waitFor(() => expect(api.list).toHaveBeenCalled());
+    await user.click(accountButtons[0]);
 
-    expect(await screen.findByText("de••••••at")).toBeInTheDocument();
-    await user.click(
-      screen.getByRole("switch", {
-        name: "advancedSettings.bridge.peerPrivacy",
-      }),
-    );
-
-    expect(await screen.findByText("demo.octop.chat")).toBeInTheDocument();
-    expect(screen.getByText("Deshun")).toBeInTheDocument();
-    expect(screen.queryByText("de••••••at")).not.toBeInTheDocument();
-    // No per-card reveal while masking is off.
-    expect(
-      screen.queryByRole("button", {
-        name: "advancedSettings.bridge.revealPeerInfo",
-      }),
-    ).not.toBeInTheDocument();
-  });
-
-  it("remembers the master switch for the next session", async () => {
-    const user = userEvent.setup();
-    renderPanel();
-    await waitFor(() => expect(api.list).toHaveBeenCalled());
-    expect(localStorage.getItem("octop:bridge:hide-peer-info")).toBeNull();
-
-    await user.click(
-      screen.getByRole("switch", {
-        name: "advancedSettings.bridge.peerPrivacy",
-      }),
-    );
-
-    expect(localStorage.getItem("octop:bridge:hide-peer-info")).toBe("0");
+    expect(screen.getByText("alice")).toBeInTheDocument();
+    expect(screen.getByText("demo.octop.chat")).toBeInTheDocument();
+    expect(screen.getByText("De••••••un")).toBeInTheDocument();
   });
 });

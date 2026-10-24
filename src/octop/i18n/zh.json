@@ -411,6 +411,8 @@
     "SETUP_RATE_LIMITED": "尝试验证次数过多，请稍后再试。",
     "SETUP_TOKEN_INVALID": "向导会话无效或已过期，请重新验证启动密码。",
     "AGENT_NOT_FOUND": "未找到 Agent。",
+    "EXPERT_TEMPLATE_NOT_FOUND": "未找到专家模板。",
+    "DEFAULT_EXPERT_FAILED": "无法创建默认专家。",
     "AGENT_NOT_RUNNING": "此专家未启用。",
     "CHECKPOINT_DELETE_FAILED": "对话数据没有删除，会话已保留，请重试。",
     "THREAD_TURN_ACTIVE": "回复进行中，请先停止再删除。",
