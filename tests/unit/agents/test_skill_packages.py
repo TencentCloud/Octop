@@ -57,6 +57,10 @@ def test_resolve_legacy_import_uploads_uses_the_same_pipeline() -> None:
         "nested/../../escape",
         "nested\\escape",
         "C:/windows",
+        "D:outside.txt",
+        "d:outside.txt",
+        "./D:outside.txt",
+        "./D:/outside.txt",
     ],
 )
 def test_resolve_package_rejects_unsafe_paths(path: str) -> None:
@@ -65,6 +69,14 @@ def test_resolve_package_rejects_unsafe_paths(path: str) -> None:
             slug="safe",
             files=[("SKILL.md", b"# skill"), (path, b"unsafe")],
             source="test",
+        )
+
+
+@pytest.mark.parametrize("slug", ["C:demo", "d:demo", "C:"])
+def test_resolve_package_rejects_drive_qualified_slugs(slug: str) -> None:
+    with pytest.raises(skill_packages.SkillPackageError, match="invalid skill name"):
+        skill_packages.resolve_skill_package(
+            slug=slug, files=[("SKILL.md", b"# skill")], source="test"
         )
 
 

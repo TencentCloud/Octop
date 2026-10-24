@@ -5,7 +5,7 @@ from __future__ import annotations
 import os
 import stat
 from dataclasses import dataclass
-from pathlib import Path, PurePosixPath
+from pathlib import Path, PurePosixPath, PureWindowsPath
 
 MAX_SKILL_FILES = 2_000
 MAX_SKILL_BYTES = 64 * 1024 * 1024
@@ -43,6 +43,7 @@ def validate_skill_slug(slug: str) -> str:
         or "/" in normalized
         or "\\" in normalized
         or "\x00" in normalized
+        or PureWindowsPath(normalized).drive
     ):
         raise SkillPackageError("invalid skill name")
     return normalized
@@ -55,7 +56,12 @@ def _normalize_relative_path(value: str) -> str:
     # (PurePosixPath would silently strip it, turning the dir into a file).
     is_dir_marker = value.endswith("/")
     path = PurePosixPath(value)
-    if path.is_absolute() or ".." in path.parts or (path.parts and path.parts[0].endswith(":")):
+    if (
+        path.is_absolute()
+        or ".." in path.parts
+        or (path.parts and path.parts[0].endswith(":"))
+        or PureWindowsPath(path.as_posix()).drive
+    ):
         raise SkillPackageError(f"unsafe skill package path: {value}")
     normalized = path.as_posix()
     if normalized in {"", "."}:
