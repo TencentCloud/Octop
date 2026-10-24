@@ -185,6 +185,7 @@ async def _project_chunks(
                     async for media_event in media_events_from_tool_result(
                         chunk_for_media,
                         workspace=harness_workspace,
+                        locale=loc,
                     ):
                         yield media_event
             tool_state.current_node = node

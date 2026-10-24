@@ -675,6 +675,7 @@
     "docker-management": "Docker 管理"
   },
   "channel": {
+    "media_delivery_failed": "无法发送媒体文件，请稍后重试。",
     "tool_hint_start": "🔧 正在调用工具：{tool_name}",
     "tool_hint_end": "✅ {tool_name} 已完成",
     "runtime": {

@@ -2,13 +2,19 @@
 
 from __future__ import annotations
 
+import base64
 import json
 import tempfile
 import time
 from pathlib import Path
+from types import SimpleNamespace
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 from deepagents.backends.local_shell import LocalShellBackend
+from langchain_core.messages import ToolMessage
+from octop_gateway.channels.weixin.channel import WeixinAccountConfig, WeixinChannel, WeixinConfig
+from octop_gateway.models import ChannelSubject, ImageContent, MessageEventType, VideoContent
 from octop_harness.backends import resolve_backend
 from octop_harness.backends.workspace import BackendWorkspace
 
@@ -20,9 +26,11 @@ from octop.infra.gateway.media.constants import INBOUND_DIR, OUTBOUND_DIR
 from octop.infra.gateway.media.ingress import AgentBackedMediaBackend
 from octop.infra.gateway.media.tool_media import (
     attachment_frames_from_tool_result,
+    block_to_content_part,
     enrich_media_block_preview,
     enrich_tool_result_with_backend,
     iter_media_blocks,
+    media_events_from_tool_result,
 )
 
 
@@ -69,6 +77,202 @@ def test_iter_media_blocks_supports_workbuddy_generation_envelopes() -> None:
             },
         }
     ]
+
+
+def _generation_chunk(kind: str, path: str, local_path: str) -> dict:
+    return {
+        "type": "tool_result",
+        "messages": [
+            ToolMessage(
+                name=f"generate_{kind}",
+                tool_call_id="generate-1",
+                content=json.dumps(
+                    {
+                        "schema_version": 1,
+                        "type": f"{kind}_gen_tool_result",
+                        "tool": f"generate_{kind}",
+                        "status": "completed",
+                        "is_error": False,
+                        f"{kind}s": [
+                            {
+                                "path": path,
+                                "localPath": local_path,
+                                "mediaType": "image/png" if kind == "image" else "video/mp4",
+                                "sizeBytes": 3,
+                            }
+                        ],
+                    }
+                ),
+            )
+        ],
+    }
+
+
+@pytest.mark.parametrize("virtual_mode", [False, True])
+@pytest.mark.parametrize("kind", ["image", "video"])
+@pytest.mark.asyncio
+async def test_generated_media_is_readable_by_weixin(
+    tmp_path: Path, virtual_mode: bool, kind: str
+) -> None:
+    workspace = _workspace(str(tmp_path), virtual_mode=virtual_mode)
+    path = f"generated/{kind}s/result.{'png' if kind == 'image' else 'mp4'}"
+    await workspace.aupload_bytes(path, b"IMG")
+    # localPath is deliberately stale: workspace.path is the source of truth.
+    chunk = _generation_chunk(kind, path, str(tmp_path / "stale" / "result.png"))
+
+    events = [event async for event in media_events_from_tool_result(chunk, workspace=workspace)]
+
+    assert len(events) == 1
+    assert events[0].type == MessageEventType.MESSAGE
+    part = events[0].content[0]
+    assert isinstance(part, ImageContent if kind == "image" else VideoContent)
+    assert not part.url
+    assert part.local_path is None
+    assert base64.b64decode(part.data) == b"IMG"
+    account = WeixinAccountConfig(account_id="test-account", token="test-token")
+    channel = WeixinChannel(MagicMock(), config=WeixinConfig(accounts=[account]))
+    channel.fetch_remote_media = AsyncMock(side_effect=AssertionError("must not fetch a URL"))
+    assert await channel.load_media_bytes(part) == (
+        b"IMG",
+        "image/png" if kind == "image" else "video/mp4",
+    )
+    channel.fetch_remote_media.assert_not_awaited()
+    # Exercise the actual Weixin byte loader and delivery code; only remote APIs are mocked.
+    item = {"type": 2 if kind == "image" else 5, f"{kind}_item": {"media": {}}}
+    channel._upload_media_part = AsyncMock(return_value=item)
+    api = SimpleNamespace(
+        send_items=AsyncMock(return_value=SimpleNamespace(context_token="", data={}))
+    )
+    channel._api = AsyncMock(return_value=api)
+    subject = ChannelSubject(subject_id="user", metadata={"account_id": account.account_id})
+
+    assert await channel._deliver_media(subject, part) is True
+    channel._upload_media_part.assert_awaited_once_with(
+        data=b"IMG",
+        account=account,
+        to_user_id="user",
+        media_type=1 if kind == "image" else 2,
+        item_type=2 if kind == "image" else 5,
+        item_key=f"{kind}_item",
+    )
+    assert api.send_items.await_args.kwargs["items"] == [item]
+    channel.fetch_remote_media.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_generated_media_uses_backend_workspace_for_remote_storage(tmp_path: Path) -> None:
+    workspace = MagicMock(spec=BackendWorkspace)
+    workspace.adownload_bytes = AsyncMock(return_value=b"REMOTE")
+    path = "generated/images/remote.png"
+    chunk = _generation_chunk("image", path, str(tmp_path / "unavailable.png"))
+
+    events = [event async for event in media_events_from_tool_result(chunk, workspace=workspace)]
+
+    workspace.adownload_bytes.assert_awaited_once_with(path)
+    assert len(events) == 1
+    part = events[0].content[0]
+    assert isinstance(part, ImageContent)
+    assert not part.url
+    assert base64.b64decode(part.data) == b"REMOTE"
+
+
+@pytest.mark.parametrize("locale", ["zh", "en"])
+@pytest.mark.parametrize("failure", [None, FileNotFoundError, PermissionError, RuntimeError])
+@pytest.mark.asyncio
+async def test_unavailable_generated_media_emits_safe_localized_error(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture, locale: str, failure: type[Exception] | None
+) -> None:
+    workspace = MagicMock(spec=BackendWorkspace)
+    path = "generated/images/missing.png"
+    workspace.adownload_bytes = AsyncMock(
+        return_value=None, side_effect=failure(path) if failure else None
+    )
+    chunk = _generation_chunk("image", path, str(tmp_path / "missing.png"))
+
+    events = [
+        event
+        async for event in media_events_from_tool_result(chunk, workspace=workspace, locale=locale)
+    ]
+
+    assert len(events) == 1
+    assert events[0].type == MessageEventType.ERROR
+    assert events[0].error == (
+        "无法发送媒体文件，请稍后重试。"
+        if locale == "zh"
+        else "Could not send the media file. Please try again later."
+    )
+    assert path not in events[0].model_dump_json()
+    assert str(tmp_path) not in events[0].model_dump_json()
+    assert path in caplog.text
+    channel = WeixinChannel(MagicMock(), config=WeixinConfig())
+    channel._rate_limited_send = AsyncMock()
+    subject = ChannelSubject(subject_id="user")
+    await channel._deliver_event(subject, events[0])
+    channel._rate_limited_send.assert_awaited_once_with(subject, events[0].error)
+
+
+@pytest.mark.parametrize("kind", ["image", "video", "audio", "file"])
+@pytest.mark.asyncio
+async def test_workspace_media_paths_infer_mime(tmp_path: Path, kind: str) -> None:
+    workspace = _workspace(str(tmp_path))
+    path = "generated/images/图片.png"
+    await workspace.aupload_bytes(path, b"PNG")
+
+    part = await block_to_content_part(
+        {"type": kind, "source": {"type": "url", "url": path}}, workspace=workspace
+    )
+
+    assert part is not None
+    assert not part.url
+    assert part.mime_type == "image/png"
+    assert base64.b64decode(part.data) == b"PNG"
+
+
+@pytest.mark.parametrize(
+    "url",
+    ["https://example.com/image.png", "http://example.com/image.png", "data:image/png;base64,SU1H"],
+)
+@pytest.mark.asyncio
+async def test_tool_media_preserves_supported_urls(url: str) -> None:
+    workspace = MagicMock(spec=BackendWorkspace)
+
+    part = await block_to_content_part(
+        {"type": "image", "source": {"type": "url", "url": url}}, workspace=workspace
+    )
+
+    assert isinstance(part, ImageContent)
+    assert part.url == url
+    workspace.adownload_bytes.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_tool_media_preserves_file_urls(tmp_path: Path) -> None:
+    workspace = _workspace(str(tmp_path))
+    await workspace.aupload_bytes("generated/images/result.png", b"PNG")
+
+    part = await block_to_content_part(
+        {
+            "type": "image",
+            "source": {"type": "url", "url": (tmp_path / "generated/images/result.png").as_uri()},
+        },
+        workspace=workspace,
+    )
+
+    assert isinstance(part, ImageContent)
+    assert not part.url
+    assert base64.b64decode(part.data) == b"PNG"
+
+
+@pytest.mark.asyncio
+async def test_tool_media_rejects_unsupported_urls() -> None:
+    workspace = MagicMock(spec=BackendWorkspace)
+
+    with pytest.raises(ValueError, match="Unsupported media URL scheme"):
+        await block_to_content_part(
+            {"type": "image", "source": {"type": "url", "url": "ftp://example.com/image.png"}},
+            workspace=workspace,
+        )
+    workspace.adownload_bytes.assert_not_called()
 
 
 @pytest.mark.asyncio
