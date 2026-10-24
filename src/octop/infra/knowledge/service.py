@@ -295,9 +295,10 @@ class KnowledgeService:
         *,
         actor_user_id: int,
         content: str,
+        name: str | None = None,
         is_admin: bool = False,
     ) -> KnowledgeDocumentRow:
-        """Overwrite md/txt content and mark the document pending for reindex."""
+        """Overwrite md/txt content, optionally rename the document, mark it pending for reindex."""
         assert_knowledge_usable(
             self._services.settings_repo.get, getattr(self._services, "provider_repo", None)
         )
@@ -309,10 +310,20 @@ class KnowledgeService:
             raise LookupError("knowledge document not found")
         if document.content_type not in _TEXT_CONTENT_TYPES:
             raise ValueError("unsupported knowledge document content type: not editable text")
+        # Validate the payload before touching the document, so a rejected save
+        # never leaves a half-applied rename behind.
         encoded = content.encode("utf-8")
         limit = self._max_document_bytes()
         if len(encoded) > limit:
             raise ValueError(f"knowledge document size exceeds maximum of {limit} bytes")
+        if name is not None and name.strip() != document.filename:
+            document = self.rename_document(
+                kb_id,
+                doc_id,
+                new_name=name,
+                actor_user_id=actor_user_id,
+                is_admin=is_admin,
+            )
         write_document(kb_id, document.id, document.filename, encoded)
         self._repo.update_document(
             doc_id,
@@ -457,6 +468,20 @@ class KnowledgeService:
         cleaned = (new_name or "").strip()
         if not cleaned or "/" in cleaned or "\\" in cleaned:
             raise ValueError("invalid knowledge document name")
+        if not document.is_dir:
+            # A rename keeps the stored format: the on-disk file and
+            # ``content_type`` are keyed by the original suffix. A name without
+            # a known extension (``report``, ``v1.2 notes``) gets the original
+            # suffix appended; a known but different one (``report.txt`` on a
+            # ``.md`` document) is replaced. Mirrors ``create_text_document``.
+            orig_suffix = Path(document.filename).suffix
+            if orig_suffix:
+                cleaned = cleaned.rstrip(".")
+                new_suffix = Path(cleaned).suffix
+                if new_suffix.lower() not in _EXT_TO_CONTENT_TYPE:
+                    cleaned = f"{cleaned}{orig_suffix}"
+                elif new_suffix.lower() != orig_suffix.lower():
+                    cleaned = f"{cleaned[: -len(new_suffix)]}{orig_suffix}"
         new_path = normalize_kb_path(f"{path_parent(document.path)}/{cleaned}")
         if new_path == document.path:
             return cast(KnowledgeDocumentRow, document)

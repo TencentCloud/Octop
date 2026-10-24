@@ -123,6 +123,11 @@ class CreateTextDocumentBody(BaseModel):
 
 class UpdateTextDocumentBody(BaseModel):
     content: str = Field(max_length=_TEXT_DOC_MAX_LENGTH)
+    name: str | None = Field(
+        default=None,
+        max_length=255,
+        description="Optional new document name.",
+    )
 
 
 class UpdateBaseBody(BaseModel):
@@ -1023,6 +1028,7 @@ async def update_text_document(
             doc_id,
             actor_user_id=user.id,
             content=body.content,
+            name=body.name,
             is_admin=_is_admin(user),
         )
         assert server.services is not None

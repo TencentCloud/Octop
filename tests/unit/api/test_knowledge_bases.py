@@ -708,6 +708,17 @@ async def test_update_base_rejects_max_documents_out_of_range() -> None:
     assert knowledge_bases.UpdateBaseBody().max_documents is None
 
 
+def test_update_text_document_body_supports_optional_name() -> None:
+    from octop.api.routers import knowledge_bases
+
+    body_default = knowledge_bases.UpdateTextDocumentBody(content="content")
+    assert body_default.content == "content"
+    assert body_default.name is None
+
+    body_named = knowledge_bases.UpdateTextDocumentBody(content="content", name="new_title.md")
+    assert body_named.name == "new_title.md"
+
+
 def test_map_knowledge_error_unclassified_returns_internal_error() -> None:
     from octop.api.routers.knowledge_bases import _map_knowledge_error
 

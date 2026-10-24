@@ -1541,13 +1541,13 @@ export default function KnowledgeBasesPage() {
     }
   };
 
-  const openRenameFolder = (document: KnowledgeDocument) => {
+  const openRenameDocument = (document: KnowledgeDocument) => {
     setRenameTarget(document);
     setRenameName(knowledgeBasename(document.path || document.filename));
     setRenameModalOpen(true);
   };
 
-  const renameFolder = async () => {
+  const renameDocument = async () => {
     if (!selected || !renameTarget) return;
     const name = renameName.trim();
     if (!name) return;
@@ -1567,10 +1567,20 @@ export default function KnowledgeBasesPage() {
       setRenameTarget(null);
       setRenameName("");
       await loadDetail(selected.id);
-      message.success(t("knowledgeBases.renameFolderSuccess"));
+      message.success(
+        renameTarget.is_dir
+          ? t("knowledgeBases.renameFolderSuccess")
+          : t("knowledgeBases.renameFileSuccess"),
+      );
     } catch (error) {
       message.error(
-        apiErrorMessage(error, t("knowledgeBases.renameFolderFailed"), t),
+        apiErrorMessage(
+          error,
+          renameTarget.is_dir
+            ? t("knowledgeBases.renameFolderFailed")
+            : t("knowledgeBases.renameFileFailed"),
+          t,
+        ),
       );
     }
   };
@@ -1837,6 +1847,7 @@ export default function KnowledgeBasesPage() {
           selected.id,
           textEditorDocId,
           values.content,
+          values.name,
         );
         message.success(t("knowledgeBases.editDocumentSuccess"));
       }
@@ -1932,20 +1943,28 @@ export default function KnowledgeBasesPage() {
                 </Tooltip>
               </Popconfirm>
             )}
-            {document.is_dir ? (
-              <Tooltip title={t("knowledgeBases.renameFolder")}>
-                <Button
-                  type="text"
-                  size="small"
-                  icon={<PencilLine size={14} />}
-                  aria-label={t("knowledgeBases.renameFolder")}
-                  onClick={(event) => {
-                    event.stopPropagation();
-                    openRenameFolder(document);
-                  }}
-                />
-              </Tooltip>
-            ) : null}
+            <Tooltip
+              title={
+                document.is_dir
+                  ? t("knowledgeBases.renameFolder")
+                  : t("common.rename")
+              }
+            >
+              <Button
+                type="text"
+                size="small"
+                icon={<PencilLine size={14} />}
+                aria-label={
+                  document.is_dir
+                    ? t("knowledgeBases.renameFolder")
+                    : t("common.rename")
+                }
+                onClick={(event) => {
+                  event.stopPropagation();
+                  openRenameDocument(document);
+                }}
+              />
+            </Tooltip>
             <Popconfirm
               title={
                 document.is_dir
@@ -3186,10 +3205,14 @@ export default function KnowledgeBasesPage() {
       </Modal>
 
       <Modal
-        title={t("knowledgeBases.renameFolder")}
+        title={
+          renameTarget?.is_dir
+            ? t("knowledgeBases.renameFolder")
+            : t("common.rename")
+        }
         open={renameModalOpen}
         onCancel={() => setRenameModalOpen(false)}
-        onOk={() => void renameFolder()}
+        onOk={() => void renameDocument()}
         okText={t("common.save")}
         cancelText={t("common.cancel")}
         destroyOnHidden
@@ -3197,9 +3220,13 @@ export default function KnowledgeBasesPage() {
         <Input
           value={renameName}
           onChange={(event) => setRenameName(event.target.value)}
-          placeholder={t("knowledgeBases.folderNamePlaceholder")}
+          placeholder={
+            renameTarget?.is_dir
+              ? t("knowledgeBases.folderNamePlaceholder")
+              : t("knowledgeBases.filenamePlaceholder")
+          }
           onPressEnter={(event) => {
-            if (!isImeComposing(event)) void renameFolder();
+            if (!isImeComposing(event)) void renameDocument();
           }}
         />
       </Modal>
