@@ -66,10 +66,27 @@ describe("workspace file mention helpers", () => {
         fileCount: 0,
       }),
     ).toBe("searching");
+    expect(
+      workspaceMentionHintState({
+        query: "so",
+        loading: false,
+        error: null,
+        fileCount: 1,
+        truncated: true,
+      }),
+    ).toBe("filesTruncated");
+    expect(
+      workspaceMentionHintState({
+        query: "s",
+        loading: false,
+        error: null,
+        fileCount: 0,
+        truncated: true,
+      }),
+    ).toBe("typeMore");
   });
 
-  it("builds a glob around the typed fragment", () => {
-    expect(workspaceGlobPattern("soul")).toBe("**/*soul*");
+  it("builds a glob around a path-shaped fragment", () => {
     expect(workspaceGlobPattern("docs/api")).toBe("**/docs/api*");
     expect(workspaceGlobPattern("foo*bar")).toBe("**/*foo\\*bar*");
   });
