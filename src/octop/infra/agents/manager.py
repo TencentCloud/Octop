@@ -4021,6 +4021,10 @@ class AgentManager:
 
         from octop.infra.agents.middleware.binary_read_guard import BinaryReadGuardMiddleware
         from octop.infra.agents.middleware.browser_profile import BrowserProfileMiddleware
+        from octop.infra.agents.middleware.mcp_output_schema import (
+            McpOutputSchemaMiddleware,
+            harness_handles_mcp_tool_errors,
+        )
         from octop.infra.agents.middleware.octop_ui_offload import OctopUiOffloadMiddleware
         from octop.infra.agents.middleware.reasoning import ReasoningRequestMiddleware
         from octop.infra.agents.middleware.thread_artifacts import ThreadArtifactsMiddleware
@@ -4047,6 +4051,7 @@ class AgentManager:
             KnowledgeSearchHintMiddleware(),
             BrowserProfileMiddleware(),
             BinaryReadGuardMiddleware(),
+            *(() if harness_handles_mcp_tool_errors() else (McpOutputSchemaMiddleware(),)),
             WorkspaceImageMaterializeMiddleware(workspace=ws),
             ThreadArtifactsMiddleware(
                 thread_repo=self._repos.thread_repo,

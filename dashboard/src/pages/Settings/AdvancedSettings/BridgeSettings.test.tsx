@@ -77,9 +77,9 @@ const INBOUND = {
   peer_client_host: "203.0.113.8",
 };
 
-function renderPanel() {
+function renderPanel(initialEntry = "/bridge") {
   return render(
-    <MemoryRouter>
+    <MemoryRouter initialEntries={[initialEntry]}>
       <BridgeSettingsPanel />
     </MemoryRouter>,
   );
@@ -96,6 +96,15 @@ beforeEach(() => {
   localStorage.clear();
   api.list.mockResolvedValue([OUTBOUND, INBOUND] as never);
   api.listAgents.mockResolvedValue([] as never);
+});
+
+describe("<BridgeSettingsPanel /> create query", () => {
+  it("opens the add drawer from ?create=1", async () => {
+    renderPanel("/bridge?create=1");
+    expect(
+      await screen.findByText("advancedSettings.bridge.drawerHint"),
+    ).toBeInTheDocument();
+  });
 });
 
 describe("<BridgeSettingsPanel /> peer masking", () => {
