@@ -147,6 +147,13 @@ export interface PolicyFormValues {
   max_agents?: number | null;
 }
 
+const DEFAULT_EXPERT_TEMPLATE_ID = "general-assistant";
+
+interface ExpertTemplateOption {
+  id: string;
+  label: string;
+}
+
 interface CreateValues extends PolicyFormValues {
   username: string;
   display_name?: string;
@@ -156,6 +163,8 @@ interface CreateValues extends PolicyFormValues {
   role: string;
   permissions?: string[];
   role_name?: string | null;
+  create_default_expert?: boolean;
+  expert_template_id?: string;
 }
 
 interface EditValues extends PolicyFormValues {
@@ -1244,7 +1253,7 @@ function UserLoginLock({
 }
 
 export default function UsersListPanel() {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const setCurrentUser = useSetCurrentUser();
   const timeZone = useServerTimezone();
   const isMobile = useIsMobile();
@@ -1253,6 +1262,9 @@ export default function UsersListPanel() {
   const [rows, setRows] = useState<UserRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [createOpen, setCreateOpen] = useState(false);
+  const [expertTemplates, setExpertTemplates] = useState<
+    ExpertTemplateOption[]
+  >([]);
   const [pendingUserAvatar, setPendingUserAvatar] = useState<File | null>(null);
   const [pendingUserIcon, setPendingUserIcon] = useState<string | null>(null);
   const [inviteOpen, setInviteOpen] = useState(false);
@@ -1647,6 +1659,30 @@ export default function UsersListPanel() {
       });
   }, [refreshAll]);
 
+  useEffect(() => {
+    if (!createOpen) return;
+    let cancelled = false;
+    const lang = i18n.language.startsWith("zh") ? "zh" : "en";
+    void request<Array<{ id: string; label: { zh: string; en: string } }>>(
+      "/experts",
+    )
+      .then((rows) => {
+        if (cancelled) return;
+        setExpertTemplates(
+          rows.map((row) => ({
+            id: row.id,
+            label: row.label?.[lang] || row.label?.en || row.id,
+          })),
+        );
+      })
+      .catch(() => {
+        if (!cancelled) setExpertTemplates([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [createOpen, i18n.language]);
+
   const onCreate = async (values: CreateValues) => {
     setSubmitting(true);
     try {
@@ -1661,6 +1697,10 @@ export default function UsersListPanel() {
           permissions: values.role === "admin" ? [] : values.permissions ?? [],
           role_name: values.role_name?.trim() || null,
           ...policyPayload(values, { workspaceRootAllowed }),
+          create_default_expert: Boolean(values.create_default_expert),
+          expert_template_id: values.create_default_expert
+            ? values.expert_template_id || DEFAULT_EXPERT_TEMPLATE_ID
+            : null,
         }),
       });
       if (pendingUserAvatar) {
@@ -1719,6 +1759,8 @@ export default function UsersListPanel() {
       token_quota: undefined,
       limit_max_agents: false,
       max_agents: undefined,
+      create_default_expert: true,
+      expert_template_id: DEFAULT_EXPERT_TEMPLATE_ID,
       ...(userRole ? policyFieldsFromRole(userRole, workspaceRootAllowed) : {}),
     });
     setPendingUserAvatar(null);
@@ -2322,6 +2364,8 @@ export default function UsersListPanel() {
             limit_workspace_root: false,
             limit_token_quota: false,
             limit_max_agents: false,
+            create_default_expert: true,
+            expert_template_id: DEFAULT_EXPERT_TEMPLATE_ID,
           }}
           className={styles.createUserForm}
         >
@@ -2455,6 +2499,61 @@ export default function UsersListPanel() {
                   </Form.Item>
                 );
               }}
+            </Form.Item>
+          </div>
+
+          <div className={styles.createSection}>
+            <div className={styles.createSectionTitle}>
+              {t("adminUsers.createSectionExpert")}
+            </div>
+            <Form.Item
+              label={t("adminUsers.createDefaultExpert")}
+              name="create_default_expert"
+              valuePropName="checked"
+              extra={t("adminUsers.createDefaultExpertHint")}
+            >
+              <Switch />
+            </Form.Item>
+            <Form.Item
+              noStyle
+              shouldUpdate={(prev, cur) =>
+                prev.create_default_expert !== cur.create_default_expert
+              }
+            >
+              {({ getFieldValue }) =>
+                getFieldValue("create_default_expert") ? (
+                  <Form.Item
+                    label={t("adminUsers.expertTemplate")}
+                    name="expert_template_id"
+                    rules={[
+                      {
+                        required: true,
+                        message: t("adminUsers.expertTemplateRequired"),
+                      },
+                    ]}
+                  >
+                    <Select
+                      showSearch
+                      optionFilterProp="label"
+                      options={(expertTemplates.some(
+                        (item) => item.id === DEFAULT_EXPERT_TEMPLATE_ID,
+                      )
+                        ? expertTemplates
+                        : [
+                            {
+                              id: DEFAULT_EXPERT_TEMPLATE_ID,
+                              label: DEFAULT_EXPERT_TEMPLATE_ID,
+                            },
+                            ...expertTemplates,
+                          ]
+                      ).map((item) => ({
+                        value: item.id,
+                        label: item.label,
+                      }))}
+                    />
+                  </Form.Item>
+                ) : null
+              }
             </Form.Item>
           </div>
 

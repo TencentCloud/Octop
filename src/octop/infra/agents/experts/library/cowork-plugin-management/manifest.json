@@ -1,5 +1,6 @@
 {
   "id": "cowork-plugin-management",
+  "scene": "tech",
   "label": {
     "zh": "插件管理专家",
     "en": "Plugin Management Expert"
@@ -38,47 +39,95 @@
         "en": "New plugin"
       },
       "description": {
-        "zh": "从零脚手架一个插件",
-        "en": "Scaffold a plugin from scratch"
+        "zh": "从零脚手架清单、技能和连接器",
+        "en": "Scaffold a manifest, skills, and connectors"
       },
       "prompt": {
         "zh": "帮我从零创建一个新插件：清单、skills 目录和连接器说明",
         "en": "Scaffold a new plugin: manifest, skills directory, and connector docs"
       },
-      "color": "#ffedd5",
-      "icon_name": "puzzle"
+      "color": "#e8f4ff",
+      "icon_name": "rocket"
     },
     {
       "title": {
         "zh": "定制插件",
-        "en": "Customize plugin"
+        "en": "Customize a plugin"
       },
       "description": {
-        "zh": "适配团队工具链",
-        "en": "Adapt to your team's toolchain"
+        "zh": "在现有插件上适配团队工具链",
+        "en": "Adapt an existing plugin to the team's tools"
       },
       "prompt": {
         "zh": "把这个插件改造成适配我们团队工具链的版本",
         "en": "Adapt this plugin to our team's toolchain"
       },
-      "color": "#ffedd5",
-      "icon_name": "puzzle"
+      "color": "#dcfce7",
+      "icon_name": "wrench"
     },
     {
       "title": {
         "zh": "检查配置",
-        "en": "Check config"
+        "en": "Check MCP config"
       },
       "description": {
-        "zh": "审查清单里的 MCP 配置",
+        "zh": "审查清单里的 MCP 配置写法",
         "en": "Review the MCP configuration in a manifest"
       },
       "prompt": {
         "zh": "检查我插件清单里的 MCP 配置写法，指出问题并给出修复",
         "en": "Review the MCP configuration in my plugin manifest, flag issues, and suggest fixes"
       },
-      "color": "#ffedd5",
-      "icon_name": "puzzle"
+      "color": "#fef3c7",
+      "icon_name": "shield-check"
+    },
+    {
+      "title": {
+        "zh": "编写技能",
+        "en": "Write a skill"
+      },
+      "description": {
+        "zh": "补一个可复用技能：场景、步骤、交付",
+        "en": "Add a skill with trigger, steps, and output"
+      },
+      "prompt": {
+        "zh": "请为这个插件写一个技能。先问清目标用户和要用的工具类别，再写触发场景、步骤和交付物。",
+        "en": "Write a skill for this plugin. Ask who it's for and which tool categories it needs, then specify the trigger, steps, and deliverable."
+      },
+      "color": "#f3e8ff",
+      "icon_name": "book-open"
+    },
+    {
+      "title": {
+        "zh": "配置连接器",
+        "en": "Configure connectors"
+      },
+      "description": {
+        "zh": "只写工具类别和待填字段",
+        "en": "Document tool categories and fields to fill in"
+      },
+      "prompt": {
+        "zh": "请为这个插件补连接器说明：只写工具类别和需要用户填写的字段，不要编造端点或凭据。",
+        "en": "Document connectors for this plugin: tool categories and fields the user must fill in. Do not invent endpoints or credentials."
+      },
+      "color": "#eef2ff",
+      "icon_name": "network"
+    },
+    {
+      "title": {
+        "zh": "审查清单",
+        "en": "Review the manifest"
+      },
+      "description": {
+        "zh": "检查技能、子智能体和钩子是否齐全",
+        "en": "Check skills, agents, and hooks for gaps"
+      },
+      "prompt": {
+        "zh": "请审查这份插件清单：skills、agents、hooks 和 MCP 配置是否齐全，字段是否符合规范，并指出要改的地方。",
+        "en": "Review this plugin manifest: are skills, agents, hooks, and MCP config complete and valid? Point out what to change."
+      },
+      "color": "#fdf4e7",
+      "icon_name": "file-text"
     }
   ],
   "source": {

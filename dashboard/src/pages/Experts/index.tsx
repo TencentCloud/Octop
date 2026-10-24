@@ -19,11 +19,12 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { useSearchParams } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { Input, Spin, Tabs, Segmented, Tooltip } from "antd";
 import { message } from "@/utils/antdMessage";
 
 import {
+  Cloudy,
   CopyPlus,
   GraduationCap,
   LayoutGrid,
@@ -69,6 +70,7 @@ import {
 } from "../../utils/resourceAudience";
 import { ResourceAudienceFilter } from "../../components/ResourceAudienceFilter";
 import { apiErrorMessage } from "../../utils/apiError";
+import { navAllowed } from "../../utils/permissions";
 import styles from "./index.module.less";
 
 type TabKey = "my" | "teams" | "library" | "market";
@@ -87,6 +89,25 @@ async function fetchExpertLibrary(): Promise<ExpertSummary[]> {
 async function fetchPublishedExperts(): Promise<PublishedExpert[]> {
   return publishedExpertsApi.list();
 }
+
+const LIBRARY_SCENE_ORDER = [
+  "ecommerce",
+  "finance",
+  "content-creation",
+  "lifestyle",
+  "marketing",
+  "mysticism",
+  "academic",
+  "legal",
+  "tech",
+  "education",
+  "healthcare",
+  "hr",
+  "media",
+  "design",
+] as const;
+
+const LIBRARY_SCENE_ALL = "";
 
 function textMatchesQuery(
   query: string,
@@ -116,10 +137,15 @@ function installedExpertIdsFromAgents(
 
 export default function ExpertsPage() {
   const { t, i18n } = useTranslation();
+  const navigate = useNavigate();
   const lang: "zh" | "en" = i18n.language?.startsWith("zh") ? "zh" : "en";
   const isMobile = useIsMobile();
   const { agents, refresh: refreshAgents } = useAgent();
   const currentUser = useCurrentUser();
+  const canAddCloudExpert = navAllowed(currentUser, "bridge");
+  const openCloudCollab = useCallback(() => {
+    navigate("/bridge?create=1");
+  }, [navigate]);
 
   const canManagePublished = useCallback(
     (expert: PublishedExpert) =>
@@ -181,6 +207,7 @@ export default function ExpertsPage() {
   // ── Built-in expert library ────────────────────────────────────
   const [experts, setExperts] = useState<ExpertSummary[]>([]);
   const [expertLoading, setExpertLoading] = useState(false);
+  const [libraryScene, setLibraryScene] = useState(LIBRARY_SCENE_ALL);
   const [publishedExperts, setPublishedExperts] = useState<PublishedExpert[]>(
     [],
   );
@@ -478,6 +505,17 @@ export default function ExpertsPage() {
               icon: <CopyPlus size={14} />,
               type: "default",
             }}
+            extraAction={
+              canAddCloudExpert
+                ? {
+                    label: t("experts.addCloudExpert"),
+                    onClick: openCloudCollab,
+                    icon: <Cloudy size={14} />,
+                    type: "default",
+                    title: t("experts.addCloudExpertHint"),
+                  }
+                : undefined
+            }
           />
         </div>
       );
@@ -520,6 +558,18 @@ export default function ExpertsPage() {
               ]}
             />
             {refreshButton}
+            {canAddCloudExpert ? (
+              <Tooltip title={t("experts.addCloudExpertHint")}>
+                <button
+                  className={styles.toolbarBtn}
+                  type="button"
+                  onClick={openCloudCollab}
+                >
+                  <Cloudy size={14} />
+                  {t("experts.addCloudExpert")}
+                </button>
+              </Tooltip>
+            ) : null}
             <button
               className={styles.toolbarBtnPrimary}
               type="button"
@@ -591,12 +641,14 @@ export default function ExpertsPage() {
     );
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
+    canAddCloudExpert,
     defaultCreating,
     expertAgents,
     isMobile,
     locationFilter,
     locationFilterControl,
     newAgentId,
+    openCloudCollab,
     openDefaultCreate,
     openExpertLibrary,
     publishedByAgentId,
@@ -729,10 +781,20 @@ export default function ExpertsPage() {
       ),
     [publishedExperts, searchNeedle],
   );
+  const libraryScenes = useMemo(() => {
+    const present = new Set(
+      experts.map((expert) => (expert.scene || "").trim()).filter(Boolean),
+    );
+    return LIBRARY_SCENE_ORDER.filter((scene) => present.has(scene));
+  }, [experts]);
   const visibleLibraryExperts = useMemo(
     () =>
-      experts.filter((expert) =>
-        textMatchesQuery(
+      experts.filter((expert) => {
+        const scene = (expert.scene || "").trim();
+        if (!searchNeedle && libraryScene && scene !== libraryScene) {
+          return false;
+        }
+        return textMatchesQuery(
           searchNeedle,
           expert.id,
           pickLocale(expert.label, lang),
@@ -741,9 +803,10 @@ export default function ExpertsPage() {
           pickLocale(expert.description, lang),
           expert.description?.zh,
           expert.description?.en,
-        ),
-      ),
-    [experts, lang, searchNeedle],
+          scene ? t(`experts.scenes.${scene}`, { defaultValue: scene }) : "",
+        );
+      }),
+    [experts, lang, libraryScene, searchNeedle, t],
   );
 
   const libraryContent = useMemo(() => {
@@ -828,6 +891,27 @@ export default function ExpertsPage() {
             {t("experts.published.emptyHint")}
           </p>
         )}
+        {!searchNeedle && libraryScenes.length > 0 && (
+          <div className={styles.marketSceneTabsWrap}>
+            <Segmented
+              block
+              size="large"
+              value={libraryScene}
+              onChange={(value) => setLibraryScene(String(value))}
+              options={[
+                {
+                  value: LIBRARY_SCENE_ALL,
+                  label: t("experts.sceneAll"),
+                },
+                ...libraryScenes.map((scene) => ({
+                  value: scene,
+                  label: t(`experts.scenes.${scene}`, { defaultValue: scene }),
+                })),
+              ]}
+              className={styles.marketSceneTabs}
+            />
+          </div>
+        )}
         {visibleLibraryExperts.length === 0 ? (
           <div className={styles.searchEmpty}>{t("experts.searchEmpty")}</div>
         ) : (
@@ -853,10 +937,13 @@ export default function ExpertsPage() {
     expertLoading,
     experts,
     lang,
+    libraryScene,
+    libraryScenes,
     publishedExpertLoading,
     publishedExperts,
     refreshButton,
     refreshPublishedExperts,
+    searchNeedle,
     t,
     toolbarSearch,
     visibleLibraryExperts,

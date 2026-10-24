@@ -126,6 +126,8 @@
     "SETUP_RATE_LIMITED": "Too many setup password attempts. Try again later.",
     "SETUP_TOKEN_INVALID": "Setup session is invalid or expired. Verify the setup password again.",
     "AGENT_NOT_FOUND": "Agent not found.",
+    "EXPERT_TEMPLATE_NOT_FOUND": "Expert template not found.",
+    "DEFAULT_EXPERT_FAILED": "Could not create the default expert.",
     "AGENT_NOT_RUNNING": "This expert is not enabled.",
     "CHECKPOINT_DELETE_FAILED": "Conversation data was not deleted. The thread is still here; try again.",
     "THREAD_TURN_ACTIVE": "A reply is still in progress. Stop it, then delete this conversation.",
@@ -895,8 +897,10 @@
     "filterEmpty": "Nothing matches the current filters",
     "totalLibrary": "{{count}} built-in expert(s)",
     "totalMarket": "{{count}} market expert(s)",
-    "addFromLibrary": "+ Add from Built-in",
+    "addFromLibrary": "+ New from Built-in Template",
     "newExpert": "New expert",
+    "addCloudExpert": "Add cloud expert",
+    "addCloudExpertHint": "Open Cloud Collab to add experts from another Octop",
     "emptyMyExperts": "No experts yet",
     "emptyMyExpertsHint": "Create a new expert, or pick a template from Built-in Experts or the Expert Market.",
     "emptyGuideTitle": "No experts yet",
@@ -1309,8 +1313,7 @@
   },
   "chat": {
     "sharedExpert": {
-      "banner": "Shared expert · provided by {{name}}",
-      "flag": "Shared"
+      "banner": "Shared expert · provided by {{name}}"
     },
     "remoteExpert": {
       "banner": "Peer expert · via “{{name}}”. Chat history stays on the expert’s instance.",
@@ -1587,6 +1590,7 @@
     "expertPickerHiddenSearch": "Search hidden experts",
     "expertPickerHiddenEmpty": "No hidden experts",
     "expertListHidden": "Hidden experts ({{count}})",
+    "expertListHiddenCollapse": "Collapse hidden experts",
     "expertListShowVisible": "Back to expert list",
     "expertListHiddenEmpty": "No hidden shared experts",
     "subagentPicker": "Subagents",
@@ -3788,7 +3792,9 @@
       "viewTable": "Table",
       "totalConnections": "{{count}} connection(s)",
       "colStatus": "Status",
-      "colAgents": "Experts"
+      "colAgents": "Experts",
+      "revealPeerInfo": "Reveal (this page only; masking returns on reload)",
+      "hidePeerInfoAgain": "Mask again"
     },
     "captcha": {
       "title": "Login captcha",
@@ -4094,6 +4100,7 @@
     "typeMore": "Type at least two characters to search files",
     "searching": "Searching…",
     "filesEmpty": "No matching files",
+    "filesTruncated": "This workspace is large, so the file index is partial and matches may be missing",
     "filesNeedAgent": "Start the agent to mention workspace files",
     "filesFailed": "Could not search workspace files"
   },
@@ -6073,6 +6080,11 @@
     "permCount": "{{count}} selected",
     "createSectionAccount": "Account",
     "createSectionAccess": "Role & permissions",
+    "createSectionExpert": "Default expert",
+    "createDefaultExpert": "Create a default expert",
+    "createDefaultExpertHint": "Create an expert in the same request, using the setup-wizard and invite flow.",
+    "expertTemplate": "Expert template",
+    "expertTemplateRequired": "Choose an expert template",
     "createSectionPolicy": "Resource usage policy",
     "policyWorkspaceRoot": "Allowed storage root",
     "policyWorkspaceRootHint": "Restricts roots for “{{localShell}}” and “{{filesystem}}” when creating experts. Off means no extra limit.",
