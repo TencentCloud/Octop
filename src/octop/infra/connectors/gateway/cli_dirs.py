@@ -26,7 +26,12 @@ def resolve_cli_config_key(creds: dict[str, Any]) -> str:
 def cleanup_keys_for_creds(kind: str, creds: dict[str, Any]) -> set[str]:
     """Return CONFIG_DIR keys that may hold CLI state for these credentials."""
     keys: set[str] = set()
-    if kind in {"feishu-cli", "agently-cli", "dingtalk-cli"}:
+    if kind == "dingtalk-cli":
+        # Old caller-selected keys can name another instance; leave them untouched.
+        val = str(creds.get("instance_id") or "").strip()
+        if val:
+            keys.add(val)
+    elif kind in {"feishu-cli", "agently-cli"}:
         for field in ("cli_config_key", "instance_id"):
             val = str(creds.get(field) or "").strip()
             if val:
