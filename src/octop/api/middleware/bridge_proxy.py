@@ -280,6 +280,24 @@ def install(app: Any, server: Any) -> None:
             )
 
         content = peer_resp.content
+        if peer_resp.status_code >= 400:
+            peer_code: str | None = None
+            try:
+                payload = peer_resp.json()
+                error = payload.get("error") if isinstance(payload, dict) else None
+                if isinstance(error, dict):
+                    raw_code = error.get("code")
+                    peer_code = str(raw_code) if raw_code is not None else None
+            except (UnicodeDecodeError, json.JSONDecodeError):
+                pass
+            logger.warning(
+                "bridge peer request rejected connection=%s method=%s path=%s status=%s code=%s",
+                target.ref.connection_id,
+                request.method,
+                target.remote_path,
+                peer_resp.status_code,
+                peer_code or "unknown",
+            )
         media = peer_resp.headers.get("content-type", "")
         if "json" in media:
             try:

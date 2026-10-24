@@ -22,6 +22,7 @@ from octop.api.common.workspace import (
     workspace_api_path,
 )
 from octop.api.deps import current_user, get_server
+from octop.infra.backend.mention_index import collect_mention_paths
 from octop.infra.backend.tree_listing import dedupe_tree_rows
 from octop.infra.backup.workspace_archive import export_workspace_zip, import_workspace_zip
 from octop.infra.errors import ErrorCode, OctopError
@@ -141,6 +142,14 @@ async def list_tree(
         for row in rows:
             row["path"] = reanchor_entry_path(str(row.get("path") or ""), parent=io_path)
     return dedupe_tree_rows(rows, parent=io_path)
+
+
+class MentionIndexBody(BaseModel):
+    paths: list[str]
+    """Workspace-relative file paths, heavy trees omitted."""
+
+    truncated: bool = False
+    """True when the walk stopped at the path or directory cap."""
 
 
 class WriteFileBody(BaseModel):
@@ -463,6 +472,31 @@ async def preview_media(
             "X-Content-Type-Options": "nosniff",
         },
     )
+
+
+@router.get(
+    "/agents/{agent_id}/workspace/mention-index",
+    summary="Workspace file names for @ mentions",
+    description=(
+        "Bounded workspace-relative paths for the chat @ menu. "
+        "Listed through the workspace backend (never a host walk). "
+        "Skips dependency and system trees, stops at a file and directory cap, "
+        "and is cached briefly per running workspace. "
+        "``truncated`` means some names were left out. "
+        "The composer filters this list locally instead of globbing on each keystroke."
+    ),
+)
+async def mention_index(
+    agent_id: str,
+    as_user: int | None = None,
+    user: Any = Depends(current_user),
+    server: Any = Depends(get_server),
+) -> MentionIndexBody:
+    ws = await require_running_workspace(
+        agent_id, user=user, as_user=as_user, server=server, owner_only=True
+    )
+    paths, truncated = await collect_mention_paths(ws)
+    return MentionIndexBody(paths=paths, truncated=truncated)
 
 
 @router.get("/agents/{agent_id}/workspace/glob")

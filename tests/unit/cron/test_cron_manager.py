@@ -508,6 +508,93 @@ async def test_update_persists_prompt_change(tmp_path: Path) -> None:
 
 
 @pytest.mark.asyncio
+async def test_update_metadata_keeps_pending_schedule(tmp_path: Path) -> None:
+    """Name/prompt edits, including an echoed trigger and enabled flag, do not reschedule."""
+    services = _make_services(tmp_path)
+    aid, uid = _make_agent(services)
+    mgr = _make_manager(services)
+    cid = _cron_id()
+    await mgr.create(cron_id=cid, agent_id=aid, user_id=uid, trigger="interval:3600", prompt="p")
+    mgr._scheduler.get_job = MagicMock(return_value=MagicMock())
+    mgr._scheduler.add_job.reset_mock()
+    mgr._scheduler.remove_job.reset_mock()
+
+    await mgr.update(cid, name="Renamed", prompt="Updated", trigger="interval:3600", enabled=1)
+
+    mgr._scheduler.remove_job.assert_not_called()
+    mgr._scheduler.add_job.assert_not_called()
+    assert mgr.get(cid).prompt == "Updated"
+    assert mgr.get(cid).name == "Renamed"
+
+
+@pytest.mark.asyncio
+async def test_update_restores_missing_schedule(tmp_path: Path) -> None:
+    """An enabled job that fell off the scheduler is attached again on any update."""
+    services = _make_services(tmp_path)
+    aid, uid = _make_agent(services)
+    mgr = _make_manager(services)
+    cid = _cron_id()
+    await mgr.create(cron_id=cid, agent_id=aid, user_id=uid, trigger="interval:10", prompt="p")
+    mgr._scheduler.add_job.reset_mock()
+    mgr._scheduler.get_job = MagicMock(return_value=None)
+
+    await mgr.update(cid, prompt="still due")
+
+    mgr._scheduler.add_job.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_metadata_update_preserves_interval_deadline(tmp_path: Path) -> None:
+    """A real interval job keeps next_run_time when only name and prompt change."""
+    from datetime import timedelta  # noqa: PLC0415
+
+    services = _make_services(tmp_path)
+    aid, uid = _make_agent(services)
+    gw = _make_gateway()
+    mgr = CronManager(
+        gateway=gw,
+        delivery_service=CronDeliveryService(
+            gateway=gw,
+            agent_manager=MagicMock(),
+            repos=services.repos,
+        ),
+        repos=services.repos,
+        timezone="UTC",
+    )
+    cid = _cron_id()
+    await mgr.create(
+        cron_id=cid,
+        agent_id=aid,
+        user_id=uid,
+        trigger="interval:3600",
+        prompt="Original",
+        name="Hourly",
+    )
+    mgr._scheduler.start(paused=True)
+    try:
+        scheduled = mgr._scheduler.get_job(cid)
+        assert scheduled is not None
+        assert scheduled.next_run_time is not None
+        pending = scheduled.next_run_time - timedelta(minutes=30)
+        mgr._scheduler.modify_job(cid, next_run_time=pending)
+
+        await mgr.update(cid, name="Renamed", prompt="Updated", trigger="interval:3600", enabled=1)
+
+        kept = mgr._scheduler.get_job(cid)
+        assert kept is not None
+        assert kept.next_run_time == pending
+
+        await mgr.update(cid, trigger="interval:7200")
+        rebuilt = mgr._scheduler.get_job(cid)
+        assert rebuilt is not None
+        assert rebuilt.next_run_time is not None
+        assert rebuilt.next_run_time > pending
+    finally:
+        if mgr._scheduler.running:
+            mgr._scheduler.shutdown(wait=False)
+
+
+@pytest.mark.asyncio
 async def test_update_reschedules_on_trigger_change(tmp_path: Path) -> None:
     """update() with a new trigger removes old job and re-adds."""
     services = _make_services(tmp_path)
@@ -558,6 +645,16 @@ async def test_update_reschedules_when_re_enabled(tmp_path: Path) -> None:
     await mgr.update(cid, enabled=1)
 
     mgr._scheduler.add_job.assert_called_once()
+
+
+def test_mail_watch_counts_as_attached_schedule(tmp_path: Path) -> None:
+    services = _make_services(tmp_path)
+    mgr = _make_manager(services)
+    row = MagicMock(trigger="agently:box", cron_id="mail-job")
+    mgr._mail_watch.has_job = MagicMock(return_value=True)
+
+    assert mgr._schedule_is_attached(row) is True
+    mgr._scheduler.get_job.assert_not_called()
 
 
 @pytest.mark.asyncio

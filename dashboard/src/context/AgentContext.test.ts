@@ -100,6 +100,19 @@ describe("selectEnabledExperts", () => {
     );
     expect(result).toEqual(["S1", "G1"]);
   });
+
+  it("hides a connected remote expert the peer has stopped", () => {
+    const agents = [
+      agent("bridge:cid:aid", "stopped", {
+        bridge: true,
+        bridge_disconnected: false,
+      }),
+      agent("L1", "running"),
+    ];
+    expect(selectEnabledExperts(agents, null).map((a) => a.agent_id)).toEqual([
+      "L1",
+    ]);
+  });
 });
 
 describe("projectChatAgentOption", () => {
@@ -188,6 +201,18 @@ describe("mapBridgeAgent", () => {
     expect(mapped.knowledge_base_ids).toEqual(["kb1"]);
     expect(mapped.mcp_servers).toEqual(["mail"]);
     expect(mapped.config).toEqual({ conversation_mode: "plan" });
+    expect(mapped.state).toBe("stopped");
+  });
+
+  it("keeps a peer expert's running or stopped state", () => {
+    expect(
+      mapBridgeAgent({ agent_id: "bridge:cid:up", state: " running " }, conn)
+        .state,
+    ).toBe("running");
+    expect(
+      mapBridgeAgent({ agent_id: "bridge:cid:down", state: "stopped" }, conn)
+        .state,
+    ).toBe("stopped");
   });
 
   it("drops connectors on a peer team and ignores a missing composer payload", () => {
@@ -205,6 +230,7 @@ describe("mapBridgeAgent", () => {
     expect(team.default_model).toBeNull();
 
     const bare = mapBridgeAgent({ agent_id: "bridge:cid:bare" }, conn);
+    expect(bare.state).toBe("stopped");
     expect(bare.default_model).toBeNull();
     expect(bare.knowledge_base_ids).toBeUndefined();
     expect(bare.mcp_servers).toBeUndefined();

@@ -19,11 +19,12 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { useSearchParams } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { Input, Spin, Tabs, Segmented, Tooltip } from "antd";
 import { message } from "@/utils/antdMessage";
 
 import {
+  Cloudy,
   CopyPlus,
   GraduationCap,
   LayoutGrid,
@@ -70,6 +71,7 @@ import {
 } from "../../utils/resourceAudience";
 import { ResourceAudienceFilter } from "../../components/ResourceAudienceFilter";
 import { apiErrorMessage } from "../../utils/apiError";
+import { navAllowed } from "../../utils/permissions";
 import styles from "./index.module.less";
 
 type TabKey = "my" | "teams" | "library" | "market";
@@ -136,10 +138,15 @@ function installedExpertIdsFromAgents(
 
 export default function ExpertsPage() {
   const { t, i18n } = useTranslation();
+  const navigate = useNavigate();
   const lang: "zh" | "en" = i18n.language?.startsWith("zh") ? "zh" : "en";
   const isMobile = useIsMobile();
   const { agents, refresh: refreshAgents } = useAgent();
   const currentUser = useCurrentUser();
+  const canAddCloudExpert = navAllowed(currentUser, "bridge");
+  const openCloudCollab = useCallback(() => {
+    navigate("/bridge?create=1");
+  }, [navigate]);
 
   const canManagePublished = useCallback(
     (expert: PublishedExpert) =>
@@ -498,6 +505,17 @@ export default function ExpertsPage() {
               icon: <CopyPlus size={14} />,
               type: "default",
             }}
+            extraAction={
+              canAddCloudExpert
+                ? {
+                    label: t("experts.addCloudExpert"),
+                    onClick: openCloudCollab,
+                    icon: <Cloudy size={14} />,
+                    type: "default",
+                    title: t("experts.addCloudExpertHint"),
+                  }
+                : undefined
+            }
           />
         </div>
       );
@@ -540,6 +558,18 @@ export default function ExpertsPage() {
               ]}
             />
             {refreshButton}
+            {canAddCloudExpert ? (
+              <Tooltip title={t("experts.addCloudExpertHint")}>
+                <button
+                  className={styles.toolbarBtn}
+                  type="button"
+                  onClick={openCloudCollab}
+                >
+                  <Cloudy size={14} />
+                  {t("experts.addCloudExpert")}
+                </button>
+              </Tooltip>
+            ) : null}
             <button
               className={styles.toolbarBtnPrimary}
               type="button"
@@ -611,12 +641,14 @@ export default function ExpertsPage() {
     );
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
+    canAddCloudExpert,
     defaultCreating,
     expertAgents,
     isMobile,
     locationFilter,
     locationFilterControl,
     newAgentId,
+    openCloudCollab,
     openDefaultCreate,
     openExpertLibrary,
     publishedByAgentId,
