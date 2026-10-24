@@ -33,6 +33,20 @@ export function joinKnowledgePath(prefix: string, name: string): string {
   return parent ? `${parent}/${child}` : child;
 }
 
+/** Join a folder with a relative path, keeping nested segments.
+ *  ``joinKnowledgePath`` keeps only the child basename and is for new folder names.
+ */
+export function joinKnowledgeRelativePath(
+  prefix: string,
+  relative: string,
+): string {
+  const parent = normalizeKnowledgePath(prefix);
+  const child = normalizeKnowledgePath(relative);
+  if (!parent) return child;
+  if (!child) return parent;
+  return `${parent}/${child}`;
+}
+
 export function isDirectKnowledgeChild(path: string, prefix: string): boolean {
   const normalized = normalizeKnowledgePath(path);
   const parent = normalizeKnowledgePath(prefix);

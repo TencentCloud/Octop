@@ -12,6 +12,7 @@ import {
 export {
   isDirectKnowledgeChild,
   joinKnowledgePath,
+  joinKnowledgeRelativePath,
   knowledgeBasename,
   knowledgeBreadcrumb,
   knowledgePathParent,
