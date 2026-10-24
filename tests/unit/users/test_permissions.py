@@ -7,7 +7,7 @@ from dataclasses import dataclass
 import pytest
 
 from octop.infra.users.permissions import (
-    ALL_PERMISSION_KEYS,
+    ASSIGNABLE_PERMISSION_KEYS,
     BASELINE_PERMISSIONS,
     PERMISSIONS,
     effective_permissions,
@@ -32,7 +32,7 @@ def test_catalog_has_no_empty_keys_and_no_deferred_dead_keys() -> None:
 
 def test_user_has_permission_admin_bypass() -> None:
     admin = _FakeUser(is_admin=True, permissions=[])
-    for key in ALL_PERMISSION_KEYS:
+    for key in PERMISSIONS:
         assert user_has_permission(admin, key) is True
 
 
@@ -45,7 +45,9 @@ def test_user_has_permission_normal_hit_and_miss() -> None:
 
 def test_baseline_is_settings_group() -> None:
     assert {
-        key for key, p in PERMISSIONS.items() if p.category in {"settings", "nav"}
+        key
+        for key, perm in PERMISSIONS.items()
+        if perm.assignable and perm.category in {"settings", "nav"}
     } == BASELINE_PERMISSIONS
     assert BASELINE_PERMISSIONS
     assert "experts" in BASELINE_PERMISSIONS
@@ -59,6 +61,8 @@ def test_categories_match_nav_groups() -> None:
         assert p.category in allowed
     assert {k for k, p in PERMISSIONS.items() if p.category == "settings"} == {
         "skills",
+        "skill_builtin",
+        "skill_market",
         "subagents",
         "tools",
         "agent_plugins",
@@ -66,11 +70,18 @@ def test_categories_match_nav_groups() -> None:
         "memory",
         "channels",
         "connectors",
+        "connector_enabled",
+        "connector_builtin",
+        "connector_custom",
         "skill_packages",
         "knowledge_bases",
         "knowledge_bases:create",
         "bridge",
     }
+    assert not PERMISSIONS["connectors"].assignable
+    assert "connectors" not in BASELINE_PERMISSIONS
+    assert "connector_enabled" in BASELINE_PERMISSIONS
+    assert "skill_builtin" in BASELINE_PERMISSIONS
     assert "bridge" in BASELINE_PERMISSIONS
     assert PERMISSIONS["skills"].page == "personalization"
     assert PERMISSIONS["agent_plugins"].page == "personalization"
@@ -87,6 +98,13 @@ def test_categories_match_nav_groups() -> None:
     assert PERMISSIONS["knowledge_settings"].category == "admin"
     assert "knowledge_settings" not in BASELINE_PERMISSIONS
     assert PERMISSIONS["users"].page == "users"
+    assert PERMISSIONS["sso_wecom"].page == "users"
+    assert PERMISSIONS["sso_wecom"].label_zh == "企微登录"
+    assert not PERMISSIONS["sso"].assignable
+    assert PERMISSIONS["user_roles"].label_zh == "角色管理"
+    assert PERMISSIONS["security_hitl"].label_zh == "工具审批"
+    assert PERMISSIONS["plugin_market"].page == "plugins"
+    assert PERMISSIONS["model_generation"].page == "models"
     assert PERMISSIONS["plugins"].page == "plugins"
     assert not PERMISSIONS["plugins"].extra_tabs
     assert "agents" not in PERMISSIONS
@@ -100,7 +118,26 @@ def test_validate_permission_keys_rejects_unknown() -> None:
 
 def test_effective_permissions_admin_gets_catalog() -> None:
     admin = _FakeUser(is_admin=True, permissions=[])
-    assert effective_permissions(admin) == sorted(ALL_PERMISSION_KEYS)
+    assert effective_permissions(admin) == sorted(ASSIGNABLE_PERMISSION_KEYS)
+
+
+def test_legacy_umbrella_expands_to_tabs() -> None:
+    user = _FakeUser(is_admin=False, permissions=["sso", "browser"])
+    assert user_has_permission(user, "sso_wecom") is True
+    assert user_has_permission(user, "sso_ldap") is True
+    assert user_has_permission(user, "sso") is True
+    shown = effective_permissions(user)
+    assert "sso" not in shown
+    assert "sso_wecom" in shown
+    assert "browser" in shown
+    stored = validate_permission_keys(["sso", "browser"])
+    assert stored == ["sso_feishu", "sso_wecom", "sso_dingtalk", "sso_oidc", "sso_ldap", "browser"]
+
+
+def test_connector_tab_satisfies_legacy_route_key() -> None:
+    user = _FakeUser(is_admin=False, permissions=["connector_custom"])
+    assert user_has_permission(user, "connectors") is True
+    assert user_has_permission(user, "connector_enabled") is False
 
 
 def test_knowledge_creation_can_be_revoked_without_removing_module_access() -> None:

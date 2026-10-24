@@ -246,6 +246,8 @@ interface ListAgentsResponse {
 interface FetchAgentsResult {
   agents: OctopAgent[];
   liveConnectionIds: Set<string>;
+  /** Connections whose remote agent list returned successfully. */
+  resolvedConnectionIds: Set<string>;
 }
 
 /**
@@ -264,24 +266,25 @@ async function fetchAgents(): Promise<FetchAgentsResult> {
     const { request } = await import("../api/request");
     local = await request<OctopAgent[]>("/agents");
   }
-  const { remote, liveConnectionIds } = await fetchBridgeShadowAgents();
-  if (remote.length === 0) {
-    return { agents: local, liveConnectionIds };
-  }
+  const { remote, liveConnectionIds, resolvedConnectionIds } =
+    await fetchBridgeShadowAgents();
   const localIds = new Set(local.map((a) => a.agent_id));
   return {
     agents: [...local, ...remote.filter((a) => !localIds.has(a.agent_id))],
     liveConnectionIds,
+    resolvedConnectionIds,
   };
 }
 
 async function fetchBridgeShadowAgents(): Promise<{
   remote: OctopAgent[];
   liveConnectionIds: Set<string>;
+  resolvedConnectionIds: Set<string>;
 }> {
   const empty = {
     remote: [] as OctopAgent[],
     liveConnectionIds: new Set<string>(),
+    resolvedConnectionIds: new Set<string>(),
   };
   try {
     const { bridgeApi } = await import("../api/modules/bridge");
@@ -291,19 +294,21 @@ async function fetchBridgeShadowAgents(): Promise<{
     );
     const connected = connections.filter((c) => c.status === "connected");
     if (connected.length === 0) {
-      return { remote: [], liveConnectionIds };
+      return { ...empty, liveConnectionIds };
     }
+    const resolvedConnectionIds = new Set<string>();
     const batches = await Promise.all(
       connected.map(async (conn) => {
         try {
           const agents = await bridgeApi.listAgents(conn.connection_id);
+          resolvedConnectionIds.add(conn.connection_id);
           return agents.map((agent) => mapBridgeAgent(agent, conn));
         } catch {
           return [] as OctopAgent[];
         }
       }),
     );
-    return { remote: batches.flat(), liveConnectionIds };
+    return { remote: batches.flat(), liveConnectionIds, resolvedConnectionIds };
   } catch {
     // Non-admin users or cloud-collab-unavailable installs — ignore.
     return empty;
@@ -354,9 +359,16 @@ export function mapBridgeAgent(
     icon_name?: string | null;
     inbound?: boolean;
     has_password?: boolean;
+    /** False when this user only received the link. Missing means owned. */
+    is_owner?: boolean;
+    owner_username?: string | null;
+    owner_display_name?: string | null;
   },
 ): OctopAgent {
   const agentId = String(agent.agent_id || agent.id || "");
+  const sharedLinkViewer = conn.is_owner === false;
+  const linkOwnedByViewer = !sharedLinkViewer;
+  const peerOwns = agent.is_owner !== false;
   const memberIds = Array.isArray(agent.member_ids)
     ? agent.member_ids
         .map((id) =>
@@ -377,7 +389,7 @@ export function mapBridgeAgent(
     default_model: defaultModel || null,
     system_prompt: null,
     template_name: null,
-    state: "running",
+    state: agent.state?.trim() || "stopped",
     last_error: null,
     icon: null,
     icon_name: typeof agent.icon_name === "string" ? agent.icon_name : null,
@@ -390,8 +402,13 @@ export function mapBridgeAgent(
     kind,
     member_ids: memberIds,
     bridge: true,
-    is_owner: agent.is_owner !== false,
-    is_shared: agent.is_shared === true,
+    // A shared recipient can chat, but cannot edit / start / reload / delete.
+    // Peer ownership still applies when this user owns the link.
+    is_owner: linkOwnedByViewer && peerOwns,
+    is_shared: sharedLinkViewer || agent.is_shared === true,
+    owner_username: sharedLinkViewer
+      ? conn.owner_display_name || conn.owner_username || null
+      : null,
     bridge_disconnected: false,
     bridge_inbound: Boolean(conn.inbound) || conn.has_password === false,
     bridge_connection_id: conn.connection_id,
@@ -430,7 +447,11 @@ export function AgentProvider({ children }: { children: ReactNode }) {
       }
       setError(null);
       try {
-        const { agents: list, liveConnectionIds } = await fetchAgents();
+        const {
+          agents: list,
+          liveConnectionIds,
+          resolvedConnectionIds,
+        } = await fetchAgents();
         // Only update state when content actually changed, to prevent
         // unnecessary re-renders of every component subscribed to this context
         // (the chat page polls every 10 s to refresh unread badges).
@@ -440,6 +461,7 @@ export function AgentProvider({ children }: { children: ReactNode }) {
             prev,
             list,
             liveConnectionIds,
+            resolvedConnectionIds,
           );
           if (!options?.force && agentsSnapshotEqual(prev, merged)) {
             merged = prev;

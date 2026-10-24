@@ -34,7 +34,10 @@ import {
 import type { MenuProps, TreeDataNode } from "antd";
 import type { InputRef } from "antd/es/input";
 import { ResizableTable } from "@/components/ResizableTable";
-import { SharedResourceBadge } from "../../components/SharedResourceBadge";
+import {
+  SharedAvatarMark,
+  SharedResourceBadge,
+} from "../../components/SharedResourceBadge";
 import {
   Check,
   ChevronLeft,
@@ -2151,21 +2154,27 @@ export default function KnowledgeBasesPage() {
                         }`}
                       >
                         <div className={styles.listName}>
-                          <span className={styles.listIcon}>
-                            <KnowledgeBaseAvatar
-                              iconUrl={base.icon_url}
-                              iconName={base.icon_name}
-                              size={18}
-                            />
-                          </span>
+                          <SharedAvatarMark
+                            shared={base.shared}
+                            owned={isKnowledgeOwner(base, user)}
+                            ownerName={formatKnowledgeOwner(base)}
+                          >
+                            <span className={styles.listIcon}>
+                              <KnowledgeBaseAvatar
+                                iconUrl={base.icon_url}
+                                iconName={base.icon_name}
+                                size={18}
+                              />
+                            </span>
+                          </SharedAvatarMark>
                           <Tooltip title={base.name} placement="topLeft">
                             <span className={styles.listNameText}>
                               {base.name}
                             </span>
                           </Tooltip>
                           <SharedResourceBadge
-                            shared={base.shared}
-                            owned={isKnowledgeOwner(base, user)}
+                            shared={base.shared && isKnowledgeOwner(base, user)}
+                            owned
                             ownerName={formatKnowledgeOwner(base)}
                           />
                           <div

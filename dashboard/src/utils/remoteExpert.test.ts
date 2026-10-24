@@ -157,6 +157,24 @@ describe("retainDisconnectedBridgeAgents", () => {
     expect(merged).toEqual([]);
   });
 
+  it("drops removed remotes after a live connection resolves an empty list", () => {
+    const prev = [
+      {
+        agent_id: "bridge:c1:deleted",
+        state: "running",
+        bridge: true,
+        bridge_connection_id: "c1",
+      },
+    ];
+    const merged = retainDisconnectedBridgeAgents(
+      prev,
+      [],
+      new Set(["c1"]),
+      new Set(["c1"]),
+    );
+    expect(merged).toEqual([]);
+  });
+
   it("does not keep stale remotes once the connection is live again", () => {
     const prev = [
       {
