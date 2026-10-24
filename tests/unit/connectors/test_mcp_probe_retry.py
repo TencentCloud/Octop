@@ -53,7 +53,7 @@ def _install_fake_mcp(
         async def initialize(self) -> None:
             return None
 
-        async def list_tools(self) -> Any:
+        async def list_tools(self, cursor: Any = None, **kwargs: Any) -> Any:
             return SimpleNamespace(tools=[SimpleNamespace(name="read_file", description="read")])
 
     monkeypatch.setattr("mcp.client.streamable_http.streamablehttp_client", fake_client)

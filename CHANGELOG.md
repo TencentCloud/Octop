@@ -886,3 +886,4 @@
 
 ### 移除
 - 移除模型配置提示弹窗、旧聊天流模块、slash 上下文与附件签名测试
+- MCP 连接探测（SSE / Streamable HTTP / stdio）现在会按 `nextCursor` 翻页拉取 `tools/list`，避免服务端分页时漏报后续页的工具与计数（#2298）
