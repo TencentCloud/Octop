@@ -963,6 +963,12 @@
       "search_failed": "The directory refused the user search"
     }
   },
+  "onnx": {
+    "probe": {
+      "network_error": "Network access failed during the offline model probe. Check the local model cache and embedding dependencies. Details: {detail}",
+      "cache_load_failed": "The model is present but could not be loaded offline. Check the local cache layout and model files before testing again. Details: {detail}"
+    }
+  },
   "memory_storage": {
     "postgres": "PostgreSQL tables are shared. Per-expert maintenance is unavailable; ask an administrator to arrange database maintenance.",
     "shared_sqlite": "This SQLite file is shared by several experts and cannot be maintained for just this expert.",
