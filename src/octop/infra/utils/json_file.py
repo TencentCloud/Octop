@@ -65,7 +65,10 @@ def read_json_object(path: Path) -> dict[str, Any] | None:
     if not path.is_file():
         return None
     try:
-        raw = path.read_text(encoding="utf-8")
+        # utf-8-sig tolerates a leading UTF-8 BOM (Notepad / PowerShell 5.1
+        # Set-Content -Encoding UTF8 always writes one) without changing the
+        # bytes read for BOM-less files.
+        raw = path.read_text(encoding="utf-8-sig")
     except UnicodeDecodeError as exc:
         raise JsonFileCorruptError(path, "not valid UTF-8") from exc
     try:
