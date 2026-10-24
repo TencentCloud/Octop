@@ -5,10 +5,55 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import time
 from collections.abc import Awaitable, Callable
+from dataclasses import dataclass, field
 from typing import Any
 
 logger = logging.getLogger(__name__)
+
+
+@dataclass
+class ActiveTurn:
+    """One in-flight dashboard turn, tracked for the TURN watchdog.
+
+    ``last_progress_at`` advances on every chunk the turn produces, so the
+    watchdog can distinguish "model still thinking/tool still running" from
+    "turn is stuck with no output at all".
+
+    Tool phases are tracked separately so a long-running tool (bash fetching
+    pages for 10 minutes emits no chunk) is not treated as a stall: the
+    watchdog uses ``tool_stall_seconds`` while ``in_tool`` is True, and the
+    total-turn cap only counts model-phase time (tool time is excluded).
+    """
+
+    agent_id: str
+    thread_id: str
+    session_key: str = ""
+    started_at: float = field(default_factory=time.monotonic)
+    last_progress_at: float = field(default_factory=time.monotonic)
+    notified: bool = False
+    notified_at: float | None = None
+    in_tool: bool = False
+    tool_segment_started_at: float | None = None
+    tool_budget_spent: float = 0.0
+    # 2026-09-07 修复：同一 thread 多并发 WS 连接（多标签页）各自开启 turn 时，
+    # 先结束的一方不能把登记删掉（另一 turn 仍在跑）——引用计数，最后一个结束才置 idle。
+    refcount: int = 1
+
+    def __post_init__(self) -> None:
+        if self.started_at == self.last_progress_at:
+            self.last_progress_at = self.started_at
+
+    def model_time(self, now: float | None = None) -> float:
+        """Accumulated model-phase time (total minus tool segments)."""
+        now = now if now is not None else time.monotonic()
+        total = now - self.started_at
+        spent = self.tool_budget_spent
+        if self.in_tool and self.tool_segment_started_at is not None:
+            spent += now - self.tool_segment_started_at
+        return max(0.0, total - spent)
+
 
 SendFn = Callable[[dict[str, Any]], Awaitable[None]]
 
@@ -38,7 +83,7 @@ class WebSocketHub:
         self._conn_thread: dict[str, str] = {}
         self._user_conns: dict[int, set[str]] = {}
         self._conn_user: dict[str, int] = {}
-        self._active_turns: set[str] = set()
+        self._active_turns: dict[str, ActiveTurn] = {}
 
     def register(
         self,
@@ -100,16 +145,81 @@ class WebSocketHub:
         if not conns:
             self._thread_subscribers.pop(thread_id, None)
 
-    def mark_turn_active(self, thread_id: str) -> None:
+    def mark_turn_active(self, thread_id: str, agent_id: str = "", session_key: str = "") -> None:
+        tid = thread_id.strip()
+        if not tid:
+            return
+        existing = self._active_turns.get(tid)
+        if existing is not None and existing.notified:
+            # Watchdog already declared this turn dead and the harness is
+            # winding down; refuse to resurrect the zombie registration.
+            # The old turn's finally-path will mark_turn_idle soon, after
+            # which a retry registers fresh.
+            return
+        if existing is not None:
+            # 并发 turn（同 thread 多连接）：递增引用计数，不覆盖既有登记。
+            existing.refcount += 1
+            return
+        self._active_turns[tid] = ActiveTurn(
+            agent_id=agent_id,
+            thread_id=tid,
+            session_key=session_key,
+        )
+
+    def mark_turn_progress(self, thread_id: str) -> None:
+        """Advance the last-progress timestamp for an active turn."""
         tid = thread_id.strip()
         if tid:
-            self._active_turns.add(tid)
+            rec = self._active_turns.get(tid)
+            if rec is not None:
+                rec.last_progress_at = time.monotonic()
+
+    def mark_tool_state(self, thread_id: str, in_tool: bool) -> None:
+        """Track model vs tool phase so long tools are not treated as stalls."""
+        tid = thread_id.strip()
+        if not tid:
+            return
+        rec = self._active_turns.get(tid)
+        if rec is None:
+            return
+        now = time.monotonic()
+        if in_tool and not rec.in_tool:
+            rec.in_tool = True
+            rec.tool_segment_started_at = now
+            rec.last_progress_at = now
+        elif not in_tool and rec.in_tool:
+            if rec.tool_segment_started_at is not None:
+                rec.tool_budget_spent += now - rec.tool_segment_started_at
+            rec.in_tool = False
+            rec.tool_segment_started_at = None
+            rec.last_progress_at = now
 
     def mark_turn_idle(self, thread_id: str) -> None:
-        self._active_turns.discard(thread_id.strip())
+        tid = thread_id.strip()
+        rec = self._active_turns.get(tid)
+        if rec is None:
+            return
+        rec.refcount -= 1
+        if rec.refcount <= 0:
+            self._active_turns.pop(tid, None)
 
     def is_turn_active(self, thread_id: str) -> bool:
-        return thread_id.strip() in self._active_turns
+        rec = self._active_turns.get(thread_id.strip())
+        # A notified (watchdog-declared-dead) turn is no longer "active" for
+        # subscribers, even though its record lingers until the harness winds
+        # down.
+        return rec is not None and not rec.notified
+
+    def get_active_turn(self, thread_id: str) -> ActiveTurn | None:
+        return self._active_turns.get(thread_id.strip())
+
+    def snapshot_active_turns(self) -> dict[str, ActiveTurn]:
+        """Copy of live (non-notified) turn records for the TURN watchdog."""
+        return {tid: rec for tid, rec in self._active_turns.items() if not rec.notified}
+
+    def snapshot_notified_turns(self) -> dict[str, ActiveTurn]:
+        """Copy of watchdog-declared-dead records still awaiting wind-down."""
+        return {tid: rec for tid, rec in self._active_turns.items() if rec.notified}
 
     def has_subscribers(self, thread_id: str) -> bool:
         """True when at least one Dashboard socket is bound to *thread_id*."""
