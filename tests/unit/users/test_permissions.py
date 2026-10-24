@@ -68,6 +68,7 @@ def test_categories_match_nav_groups() -> None:
         "connectors",
         "skill_packages",
         "knowledge_bases",
+        "knowledge_bases:create",
         "bridge",
     }
     assert "bridge" in BASELINE_PERMISSIONS
@@ -100,3 +101,12 @@ def test_validate_permission_keys_rejects_unknown() -> None:
 def test_effective_permissions_admin_gets_catalog() -> None:
     admin = _FakeUser(is_admin=True, permissions=[])
     assert effective_permissions(admin) == sorted(ALL_PERMISSION_KEYS)
+
+
+def test_knowledge_creation_can_be_revoked_without_removing_module_access() -> None:
+    reader = _FakeUser(is_admin=False, permissions=["knowledge_bases"])
+    assert user_has_permission(reader, "knowledge_bases")
+    assert not user_has_permission(reader, "knowledge_bases:create")
+    creator = _FakeUser(is_admin=False, permissions=sorted(BASELINE_PERMISSIONS))
+    assert user_has_permission(creator, "knowledge_bases:create")
+    assert validate_permission_keys(["knowledge_bases:create"]) == ["knowledge_bases:create"]

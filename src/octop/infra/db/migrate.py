@@ -2008,6 +2008,7 @@ _PERSONALIZATION_TAB_PERMISSIONS = (
 _PERSONALIZATION_TAB_PERMISSIONS_FLAG = "granted_personalization_tab_permissions"
 _BRIDGE_PERMISSIONS = ("bridge",)
 _BRIDGE_PERMISSIONS_FLAG = "granted_bridge_permission"
+_KNOWLEDGE_CREATE_PERMISSIONS_FLAG = "granted_knowledge_base_create_permission"
 
 
 def _parse_perm_list(raw: Any) -> list[str] | None:
@@ -2032,9 +2033,12 @@ def _grant_permission_keys_once(
     db: DatabasePool,
     keys: tuple[str, ...],
     flag: str,
+    *,
+    required_permission: str | None = None,
 ) -> None:
     """Grant ``keys`` once to accounts that already had those pages open.
 
+    ``required_permission`` limits a split permission to existing holders.
     Later removals stick: the settings flag stops this from running again.
     Admins are skipped; an empty permission list means "all" for that role.
     """
@@ -2059,6 +2063,8 @@ def _grant_permission_keys_once(
         for row in rows:
             current = _parse_perm_list(row[1])
             if current is None:
+                continue
+            if required_permission is not None and required_permission not in current:
                 continue
             merged = list(current)
             changed = False
@@ -2109,6 +2115,16 @@ def _grant_personalization_tab_permissions(db: DatabasePool) -> None:
 def _grant_bridge_permission(db: DatabasePool) -> None:
     """Grant cloud-collab once; /bridge used to be ungated for every signed-in user."""
     _grant_permission_keys_once(db, _BRIDGE_PERMISSIONS, _BRIDGE_PERMISSIONS_FLAG)
+
+
+def _grant_knowledge_create_permission(db: DatabasePool) -> None:
+    """Preserve creation access for existing knowledge managers exactly once."""
+    _grant_permission_keys_once(
+        db,
+        ("knowledge_bases:create",),
+        _KNOWLEDGE_CREATE_PERMISSIONS_FLAG,
+        required_permission="knowledge_bases",
+    )
 
 
 def run_migrations(db: DatabasePool) -> None:
@@ -2173,3 +2189,4 @@ def run_migrations(db: DatabasePool) -> None:
     _grant_default_nav_permissions(db)
     _grant_personalization_tab_permissions(db)
     _grant_bridge_permission(db)
+    _grant_knowledge_create_permission(db)
