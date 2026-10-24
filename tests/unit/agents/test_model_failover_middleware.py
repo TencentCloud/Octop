@@ -12,7 +12,7 @@ from octop.infra.agents.middleware.model_failover import (
     AutoRouteCandidate,
     SafeModelFailoverMiddleware,
 )
-from octop.infra.agents.providers.health import ModelHealthRegistry
+from octop.infra.agents.providers.health import FailureScope, ModelHealthRegistry
 
 
 def _model(ref: str, cap: int) -> SimpleNamespace:
@@ -298,3 +298,61 @@ async def test_provider_failure_skips_sibling_model(monkeypatch) -> None:
     assert response.result[0].content == "ok"
     assert attempts == ["p/a", "q/c"]
     assert configurable["model"] == "q/c"
+
+
+@pytest.mark.parametrize(
+    "error_message",
+    [
+        "context_length_exceeded",
+        "HTTP 400 invalid tool schema",
+    ],
+)
+@pytest.mark.asyncio
+async def test_input_error_releases_expired_half_open_reservation(
+    monkeypatch, error_message: str
+) -> None:
+    """A request/input error must release the half-open probe reservation.
+
+    Reproduces #2144: after an AUTO circuit's cooldown expires, a half-open
+    probe that fails with a request/input error (no quarantine scope) used to
+    leave ``half_open_in_flight`` reserved forever, so later valid AUTO
+    requests never reached the endpoint again.
+    """
+    now = 100.0
+    clock = lambda: now  # noqa: E731
+    models = {"p/a": _model("p/a", 100_000), "p/b": _model("p/b", 100_000)}
+    configurable = {"model": "p/a", "octop_auto_route": True}
+    health = ModelHealthRegistry(clock=clock)
+    middleware = SafeModelFailoverMiddleware(
+        health=health,
+        candidates=lambda _current, _vision: [],
+        model_for_ref=models.__getitem__,
+        max_retries=0,
+        initial_delay=0,
+        max_delay=0,
+    )
+    monkeypatch.setattr(model_failover, "_configurable", lambda _request: configurable)
+    request = ModelRequest(model=models["p/a"], messages=[HumanMessage(content="hello")])
+
+    # Open the model circuit, then advance past its cooldown so the next
+    # AUTO request comes through as a half-open probe.
+    health.record_failure("p/a", kind="server", scope=FailureScope.MODEL)
+    now = 100.0 + 60.0
+
+    calls: list[str] = []
+
+    async def handler(inner: ModelRequest) -> ModelResponse:
+        calls.append("hit")
+        if len(calls) == 1:
+            raise RuntimeError(error_message)
+        return ModelResponse(result=[AIMessage(content="ok")])
+
+    first = await middleware.awrap_model_call(request, handler)
+    assert "[model_call_failed]" in str(first.result[0].content)
+    assert calls == ["hit"]
+
+    # The input error proves the endpoint answered, so the reservation is
+    # released: a later valid AUTO request must reach the model again.
+    second = await middleware.awrap_model_call(request, handler)
+    assert second.result[0].content == "ok"
+    assert calls == ["hit", "hit"]

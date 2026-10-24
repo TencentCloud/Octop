@@ -16,7 +16,6 @@ from octop_harness.middleware.turn_model import latest_human_needs_multimodal
 
 from octop.i18n.domains.stream import model_retry_failure_prompt
 from octop.infra.agents.providers.health import (
-    FailureScope,
     ModelHealthRegistry,
     classify_model_failure,
 )
@@ -111,8 +110,10 @@ class SafeModelFailoverMiddleware(AgentMiddleware[Any, Any]):
 
     def _record_failure(self, ref: str, exc: Exception) -> bool:
         decision = classify_model_failure(exc)
-        if decision.scope is not FailureScope.NONE:
-            self._health.record_failure(ref, kind=decision.kind, scope=decision.scope)
+        # Always forward to the registry: for FailureScope.NONE the registry
+        # releases an expired half-open reservation without quarantining the
+        # endpoint, so an input/policy error cannot wedge AUTO routing (#2144).
+        self._health.record_failure(ref, kind=decision.kind, scope=decision.scope)
         return decision.failover
 
     def wrap_model_call(
