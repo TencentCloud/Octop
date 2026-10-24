@@ -32,6 +32,38 @@ class _RouterMount:
 
 _NO_CACHE_DASHBOARD_NAMES = frozenset({"sw.js", "manifest.json", "index.html"})
 
+# Dashboard artifacts are a known, closed set — resolve them from a static
+# table instead of the platform MIME database. On Windows, ``mimetypes``
+# consults the registry and a per-user ``HKCU\Software\Classes\.js`` override
+# (a legacy editor association) downgrades every ES module to ``text/plain``,
+# which pins the SPA on its loading screen.
+_DASHBOARD_MEDIA_TYPES: dict[str, str] = {
+    ".js": "application/javascript",
+    ".mjs": "application/javascript",
+    ".css": "text/css",
+    ".html": "text/html",
+    ".json": "application/json",
+    ".map": "application/json",
+    ".svg": "image/svg+xml",
+    ".png": "image/png",
+    ".jpg": "image/jpeg",
+    ".jpeg": "image/jpeg",
+    ".gif": "image/gif",
+    ".webp": "image/webp",
+    ".ico": "image/x-icon",
+    ".woff": "font/woff",
+    ".woff2": "font/woff2",
+    ".ttf": "font/ttf",
+    ".otf": "font/otf",
+    ".wasm": "application/wasm",
+    ".webmanifest": "application/manifest+json",
+}
+
+
+def dashboard_media_type(path: Path) -> str | None:
+    """Fixed media type for a dashboard file, or ``None`` to let FileResponse guess."""
+    return _DASHBOARD_MEDIA_TYPES.get(path.suffix.lower())
+
 
 def dashboard_cache_control(full_path: str) -> str | None:
     """Cache-Control for a dashboard SPA path, or ``None`` to leave unset."""
@@ -45,7 +77,7 @@ def dashboard_cache_control(full_path: str) -> str | None:
 
 
 def _dashboard_response(path: Path, full_path: str) -> FileResponse:
-    response = FileResponse(path)
+    response = FileResponse(path, media_type=dashboard_media_type(path))
     cache_control = dashboard_cache_control(full_path)
     if cache_control is not None:
         response.headers["Cache-Control"] = cache_control
