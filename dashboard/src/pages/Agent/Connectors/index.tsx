@@ -29,7 +29,12 @@ import { TextAssistBar } from "../../../components/TextAssistBar";
 import type { ResourceVisibilityMode } from "../../../api/modules/userGroups";
 import { useCurrentUser } from "../../../hooks/useCurrentUser";
 import { useIsMobile } from "../../../hooks/useIsMobile";
-import { userCan } from "../../../utils/permissions";
+import {
+  CONNECTOR_TAB_PERMISSIONS,
+  userCan,
+  userCanAny,
+  PERM,
+} from "../../../utils/permissions";
 import { apiErrorMessage } from "../../../utils/apiError";
 import { copyText } from "../../../utils/copyText";
 import {
@@ -370,7 +375,7 @@ function ConnectorConfigDrawer({
   const { t } = useTranslation();
   const isMobile = useIsMobile();
   const user = useCurrentUser();
-  const canInstallCli = userCan(user, "connectors");
+  const canInstallCli = userCanAny(user, PERM.connectors);
   const [form] = Form.useForm();
   const [saving, setSaving] = useState(false);
   const [probing, setProbing] = useState(false);
@@ -2358,6 +2363,18 @@ export default function ConnectorsPage() {
   >(null);
   const { catalog, instances, loading, refresh } = useConnectorInstances();
   const user = useCurrentUser();
+  const visibleConnectorTabs = useMemo(
+    () =>
+      CONNECTOR_TABS.filter((tab) =>
+        userCan(user, CONNECTOR_TAB_PERMISSIONS[tab.key]),
+      ),
+    [user],
+  );
+  const resolvedConnectorTab = visibleConnectorTabs.some(
+    (tab) => tab.key === activeTab,
+  )
+    ? activeTab
+    : visibleConnectorTabs[0]?.key ?? "enabled";
   const [audience, setAudience] = useState<ResourceAudience>("all");
   const visibleInstances = useMemo(
     () =>
@@ -2441,8 +2458,8 @@ export default function ConnectorsPage() {
       subtitle={t("pageShell.connectors.subtitle")}
       tabBar={
         <TabBar
-          tabs={CONNECTOR_TABS}
-          activeKey={activeTab}
+          tabs={visibleConnectorTabs}
+          activeKey={resolvedConnectorTab}
           onChange={(key) => {
             if (key === "custom") setCustomFocusServerName(null);
             setActiveTab(key);
@@ -2450,9 +2467,9 @@ export default function ConnectorsPage() {
         />
       }
     >
-      {activeTab === "custom" ? (
+      {resolvedConnectorTab === "custom" ? (
         <CustomMcpTab focusServerName={customFocusServerName} />
-      ) : activeTab === "enabled" ? (
+      ) : resolvedConnectorTab === "enabled" ? (
         loading ? (
           <div className={styles.loadingState}>
             <Spin />
