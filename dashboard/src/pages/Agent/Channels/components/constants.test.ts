@@ -2,7 +2,6 @@ import { describe, expect, it } from "vitest";
 
 import {
   applyQqChannelSaveConfig,
-  DEFAULT_CHANNEL_DISPLAY_CONFIG,
   DEFAULT_QQ_GROUP_CONTEXT_CONFIG,
   normalizeQqGroupContextConfig,
   partitionChannelKeys,
@@ -98,6 +97,37 @@ describe("normalizeQqGroupContextConfig", () => {
       history: "recent",
       history_limit: 20,
     });
+  });
+
+  it("protects legacy group configs and preserves explicit opt-out", () => {
+    expect(normalizeQqGroupContextConfig({ enabled: false })).toMatchObject({
+      enabled: false,
+      owner_commands_only: true,
+      owner_tools_only: false,
+      owner_ids: [],
+    });
+    expect(
+      normalizeQqGroupContextConfig({ owner_commands_only: false }),
+    ).toMatchObject({ owner_commands_only: false });
+    expect(
+      normalizeQqGroupContextConfig({ owner_tools_only: true }),
+    ).toMatchObject({ owner_tools_only: true });
+    expect(
+      normalizeQqGroupContextConfig({ owner_tools_only: false }),
+    ).toMatchObject({ owner_tools_only: false });
+  });
+
+  it("normalizes owner IDs without losing per-group authorization overrides", () => {
+    const groups = { "group-1": { owner_ids: ["group-owner"] } };
+    expect(
+      normalizeQqGroupContextConfig({
+        owner_ids: [" owner-1 ", "owner-2", "owner-1", "", 123],
+        groups,
+      }),
+    ).toMatchObject({ owner_ids: ["owner-1", "owner-2"], groups });
+    expect(
+      normalizeQqGroupContextConfig({ owner_ids: "owner-1, owner-2\nowner-1" }),
+    ).toMatchObject({ owner_ids: ["owner-1", "owner-2"] });
   });
 
   it("forces mention-only visibility to discard passive history", () => {

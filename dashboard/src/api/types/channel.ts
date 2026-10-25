@@ -36,6 +36,9 @@ export interface QQConfig extends BaseChannelConfig {
     history_limit?: number;
     history_ttl_seconds?: number;
     clear_after_reply?: boolean;
+    owner_commands_only?: boolean;
+    owner_tools_only?: boolean;
+    owner_ids?: string[];
     groups?: Record<string, Record<string, unknown>>;
   };
 }

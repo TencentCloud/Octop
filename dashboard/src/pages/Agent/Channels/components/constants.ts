@@ -195,9 +195,12 @@ export interface QqGroupContextConfig {
   history_limit: number;
   history_ttl_seconds: number;
   clear_after_reply: boolean;
+  owner_commands_only: boolean;
+  owner_tools_only: boolean;
+  owner_ids: string[];
   groups?: Record<
     string,
-    Record<string, string | number | boolean | null | undefined>
+    Record<string, string | string[] | number | boolean | null | undefined>
   >;
 }
 
@@ -209,6 +212,9 @@ export const DEFAULT_QQ_GROUP_CONTEXT_CONFIG: QqGroupContextConfig = {
   history_limit: 10,
   history_ttl_seconds: 300,
   clear_after_reply: true,
+  owner_commands_only: true,
+  owner_tools_only: false,
+  owner_ids: [],
 };
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -240,6 +246,12 @@ export function normalizeQqGroupContextConfig(
     parsed.activation === "always" ? "always" : ("mention" as const);
   const rawLimit = Number(parsed.history_limit);
   const rawTtl = Number(parsed.history_ttl_seconds);
+  const rawOwnerIds =
+    typeof parsed.owner_ids === "string"
+      ? parsed.owner_ids.split(/[\s,，]+/u)
+      : Array.isArray(parsed.owner_ids)
+      ? parsed.owner_ids
+      : [];
 
   return {
     ...parsed,
@@ -265,6 +277,22 @@ export function normalizeQqGroupContextConfig(
       typeof parsed.clear_after_reply === "boolean"
         ? parsed.clear_after_reply
         : DEFAULT_QQ_GROUP_CONTEXT_CONFIG.clear_after_reply,
+    owner_commands_only:
+      typeof parsed.owner_commands_only === "boolean"
+        ? parsed.owner_commands_only
+        : DEFAULT_QQ_GROUP_CONTEXT_CONFIG.owner_commands_only,
+    owner_tools_only:
+      typeof parsed.owner_tools_only === "boolean"
+        ? parsed.owner_tools_only
+        : false,
+    owner_ids: [
+      ...new Set(
+        rawOwnerIds
+          .filter((id): id is string => typeof id === "string")
+          .map((id) => id.trim())
+          .filter(Boolean),
+      ),
+    ],
   };
 }
 
