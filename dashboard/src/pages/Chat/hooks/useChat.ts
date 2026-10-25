@@ -1113,6 +1113,10 @@ export function useChat(
         shouldBlockHistoryRefresh({
           isStreaming: snap.isStreaming,
           hasLiveSocket: chatStore.hasLiveSocket(key),
+          liveSpeakerCount: snap.liveSpeakers.length,
+          hasStreamingMessage: snap.messages.some(
+            (message) => message.status === "streaming",
+          ),
         }) ||
         !agentId ||
         key === "__empty__"
