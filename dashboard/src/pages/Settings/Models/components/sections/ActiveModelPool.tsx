@@ -1,6 +1,6 @@
 /**
  * ActiveModelPool — shows all resolved (enabled + authorized) models
- * grouped by provider, with a star button to set the global preferred model.
+ * grouped by provider, with a star button to toggle the user's preferred model.
  *
  * Mirrors finnie's ActiveModelPool component.
  */
@@ -80,20 +80,20 @@ export function ActiveModelPool({
     return Array.from(map.values());
   }, [resolvedModels]);
 
-  const handleSetPreferred = async (m: ResolvedModel) => {
-    const isAlready =
+  const handleTogglePreferred = async (m: ResolvedModel) => {
+    const key = `${m.provider_name}/${m.model}`;
+    const clear =
       m.provider_name === activeModel.provider_name &&
       m.model === activeModel.model;
-    if (isAlready) return;
-
-    const key = `${m.provider_name}/${m.model}`;
     setSetting(key);
     try {
-      await preferencesApi.patch({ preferred_model: key });
+      await preferencesApi.patch({ preferred_model: clear ? null : key });
       message.success(
-        t("models.preferredModelSet", {
-          model: modelOptionLabel(m),
-        }),
+        clear
+          ? t("models.preferredModelCleared")
+          : t("models.preferredModelSet", {
+              model: modelOptionLabel(m),
+            }),
       );
       await onSaved();
     } catch (err) {
@@ -326,7 +326,7 @@ export function ActiveModelPool({
                     <Tooltip
                       title={
                         isPreferred
-                          ? t("models.currentPreferred")
+                          ? t("models.clearPreferred")
                           : t("models.setAsPreferred")
                       }
                     >
@@ -334,10 +334,17 @@ export function ActiveModelPool({
                         type="text"
                         size="small"
                         loading={isLoading}
+                        disabled={setting !== null}
+                        aria-pressed={isPreferred}
+                        aria-label={`${t(
+                          isPreferred
+                            ? "models.clearPreferred"
+                            : "models.setAsPreferred",
+                        )}: ${modelOptionLabel(m)}`}
                         className={`${styles.preferredBtn} ${
                           isPreferred ? styles.preferredActive : ""
                         }`}
-                        onClick={() => void handleSetPreferred(m)}
+                        onClick={() => void handleTogglePreferred(m)}
                         icon={
                           <Star
                             size={14}
