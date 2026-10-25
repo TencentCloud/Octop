@@ -126,6 +126,8 @@
     "SETUP_RATE_LIMITED": "尝试验证次数过多，请稍后再试。",
     "SETUP_TOKEN_INVALID": "向导会话无效或已过期，请重新验证启动密码。",
     "AGENT_NOT_FOUND": "未找到专家。",
+    "EXPERT_TEMPLATE_NOT_FOUND": "未找到专家模板。",
+    "DEFAULT_EXPERT_FAILED": "无法创建默认专家。",
     "AGENT_NOT_RUNNING": "此专家未启用。",
     "CHECKPOINT_DELETE_FAILED": "对话数据没有删除，会话已保留，请重试。",
     "THREAD_TURN_ACTIVE": "回复进行中，请先停止再删除。",
@@ -885,6 +887,8 @@
     "totalMarket": "共 {{count}} 个市场专家",
     "addFromLibrary": "+ 从内置专家模板新建",
     "newExpert": "新建专家",
+    "addCloudExpert": "添加云端专家",
+    "addCloudExpertHint": "打开云端协同，添加对端 Octop 上的专家",
     "emptyMyExperts": "你还没有专家",
     "emptyMyExpertsHint": "点击新建专家，或从内置专家、专家市场选择模板。",
     "emptyGuideTitle": "还没有专家",
@@ -1297,8 +1301,7 @@
   },
   "chat": {
     "sharedExpert": {
-      "banner": "共享专家 · 由 {{name}} 提供",
-      "flag": "共享"
+      "banner": "共享专家 · 由 {{name}} 提供"
     },
     "remoteExpert": {
       "banner": "对端专家 · 经「{{name}}」云端协同。对话记录保存在专家所在侧。",
@@ -1575,6 +1578,7 @@
     "expertPickerHiddenSearch": "搜索已隐藏专家",
     "expertPickerHiddenEmpty": "暂无已隐藏专家",
     "expertListHidden": "已隐藏专家（{{count}}）",
+    "expertListHiddenCollapse": "收起已隐藏专家",
     "expertListShowVisible": "返回专家列表",
     "expertListHiddenEmpty": "暂无已隐藏的共享专家",
     "subagentPicker": "子智能体",
@@ -3777,8 +3781,6 @@
       "totalConnections": "共 {{count}} 条连接",
       "colStatus": "状态",
       "colAgents": "专家",
-      "peerPrivacy": "隐藏对端信息",
-      "peerPrivacyHint": "对端地址与账号在卡片和表格中打码，避免截图或共享屏幕时泄露",
       "revealPeerInfo": "显示明文（仅本页，刷新后恢复打码）",
       "hidePeerInfoAgain": "恢复打码"
     },
@@ -4086,6 +4088,7 @@
     "typeMore": "至少输入两个字符搜索文件",
     "searching": "正在搜索…",
     "filesEmpty": "没有匹配的文件",
+    "filesTruncated": "工作区较大，当前索引不完整，匹配结果可能不全",
     "filesNeedAgent": "专家运行后才能引用文件",
     "filesFailed": "无法搜索工作区文件"
   },
@@ -6065,6 +6068,11 @@
     "permCount": "{{count}} 项",
     "createSectionAccount": "账号信息",
     "createSectionAccess": "角色与权限",
+    "createSectionExpert": "默认专家",
+    "createDefaultExpert": "创建默认专家",
+    "createDefaultExpertHint": "创建用户时同时创建一个专家，流程与安装向导、邀请用户相同。",
+    "expertTemplate": "专家模板",
+    "expertTemplateRequired": "请选择专家模板",
     "createSectionPolicy": "资源使用策略",
     "policyWorkspaceRoot": "允许的存储根目录",
     "policyWorkspaceRootHint": "限制该用户创建专家时「{{localShell}}」/「{{filesystem}}」的根目录。关闭表示不额外限制。",
