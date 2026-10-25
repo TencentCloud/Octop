@@ -36,6 +36,7 @@ import {
 import { looksLikeOllamaProvider, isOnnxProviderRow } from "../../presetUtils";
 import { expandOllamaDownloadedIds } from "../../ollamaNames";
 import { ModelListEditor } from "./ModelListEditor";
+import { pickDefaultModelId } from "./defaultModel";
 import { StreamUsageAdvanced } from "../StreamUsageAdvanced";
 import { TestStreamHint } from "../TestStreamHint";
 import styles from "../../index.module.less";
@@ -657,9 +658,9 @@ export function ProviderConfigModal({
     if (!open) return;
     // Only hydrate when the modal opens (or provider id changes), so
     // background refreshes / local model toggles do not reset the form.
-    const currentDefaultModel = provider.models?.length
-      ? provider.models[0].id
-      : "";
+    // Prefer the first enabled model: a disabled model must not be preselected
+    // as the default "Test connection" probes (#2312).
+    const currentDefaultModel = pickDefaultModelId(provider.models);
     form.setFieldsValue({
       kind: provider.kind,
       base_url: provider.base_url ?? "",
