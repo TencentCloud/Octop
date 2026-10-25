@@ -350,7 +350,7 @@ function ActiveAgentCard({
               />
               <ExpertPinMark pinned={pinned} />
               <TeamChatBadge agent={agent} />
-              <RemoteExpertHint agent={agent} />
+              <RemoteExpertHint agent={agent} compact />
             </div>
             <AgentUnreadBadge count={agent.unread_count ?? 0} />
             {onTogglePin ? (
@@ -481,7 +481,7 @@ function InactiveAgentRow({
             />
             <ExpertPinMark pinned={pinned} />
             <TeamChatBadge agent={agent} />
-            <RemoteExpertHint agent={agent} />
+            <RemoteExpertHint agent={agent} compact />
           </div>
           <AgentUnreadBadge count={agent.unread_count ?? 0} />
           {onNewChat && onTogglePin ? (

@@ -870,7 +870,8 @@
   }
 
   /* Same gutter as processSummaryRow / left inset — do not use a different
-     gap that would shift only the answer bubble. */
+     gap that would shift only the answer bubble. The answer itself spans
+     from the avatar's left edge in chatMessages.partial.less. */
   .assistantBubble {
     column-gap: var(--chat-msg-gutter);
     row-gap: 0;
