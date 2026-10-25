@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 import time
 from typing import Any, Literal
 
@@ -11,7 +12,11 @@ from pydantic import BaseModel, Field
 from octop.api.deps import current_user, get_server, require_permission
 from octop.infra.errors import ErrorCode, OctopError
 from octop.infra.users.identity import Role, User
-from octop.infra.users.permissions import PERMISSIONS, effective_permissions
+from octop.infra.users.permissions import (
+    PERMISSIONS,
+    effective_permissions,
+    expand_permission_grants,
+)
 from octop.infra.users.resource_policy import (
     normalize_max_agents,
     normalize_token_quota,
@@ -21,6 +26,7 @@ from octop.infra.users.resource_policy import (
 from octop.infra.utils.locale import resolve_request_locale
 
 router = APIRouter()
+logger = logging.getLogger(__name__)
 
 UserBatchAction = Literal["enable", "disable", "delete", "set_token_quota", "set_max_agents"]
 
@@ -39,6 +45,15 @@ class UserCreateBody(BaseModel):
     workspace_root_dir: str | None = None
     token_quota: int | None = Field(default=None, ge=0)
     max_agents: int | None = Field(default=None, ge=0)
+    create_default_expert: bool = Field(
+        default=False,
+        description="When true, create one expert from expert_template_id in this request.",
+    )
+    expert_template_id: str | None = Field(
+        default=None,
+        max_length=128,
+        description="Expert catalog id. Defaults to general-assistant when omitted.",
+    )
 
 
 class UserPatchBody(BaseModel):
@@ -109,7 +124,7 @@ def _row_to_dict(r: Any, policy: Any | None = None, server: Any = None) -> dict[
         "login_locked_until": locked_until if locked else 0,
         "login_retry_after_seconds": retry_after,
         "created_at": int(r.created_at),
-        "permissions": list(getattr(r, "permissions", None) or []),
+        "permissions": expand_permission_grants(list(getattr(r, "permissions", None) or [])),
         "role_name": getattr(r, "role_name", None) or None,
         "avatar_icon": getattr(r, "avatar_icon", None) or None,
         "avatar_url": _user_avatar_url(server, int(r.id)) if server is not None else None,
@@ -204,7 +219,8 @@ def _assert_can_assign(actor: User, permissions: list[str]) -> None:
     """Non-admin actors may only grant permissions they themselves hold."""
     if actor.is_admin:
         return
-    missing = sorted(set(permissions) - set(actor.permissions or []))
+    held = set(expand_permission_grants(list(actor.permissions or [])))
+    missing = sorted(set(expand_permission_grants(permissions)) - held)
     if missing:
         raise OctopError(
             ErrorCode.FORBIDDEN,
@@ -253,6 +269,8 @@ async def list_permission_catalog(
     items: list[dict[str, str]] = []
     zh = locale.startswith("zh")
     for key, p in PERMISSIONS.items():
+        if not p.assignable:
+            continue
         labels = [(p.label_zh, p.label_en), *p.extra_tabs]
         for label_zh, label_en in labels:
             items.append(
@@ -276,12 +294,35 @@ async def list_users(
     return [_row_to_dict(r, policy_map.get(r.id), server) for r in rows]
 
 
+def _expert_template_id(body: UserCreateBody, server: Any) -> str | None:
+    """Catalog id to bootstrap, or ``None`` when the caller opted out."""
+    if not body.create_default_expert:
+        return None
+    from octop.infra.agents.experts.default_agent import DEFAULT_EXPERT_ID
+
+    template_id = (body.expert_template_id or "").strip() or DEFAULT_EXPERT_ID
+    catalog = getattr(server, "expert_catalog", None)
+    if catalog is None or catalog.get(template_id) is None:
+        raise OctopError(ErrorCode.EXPERT_TEMPLATE_NOT_FOUND, "expert template not found")
+    return template_id
+
+
+async def _discard_new_user(server: Any, username: str) -> None:
+    registry = getattr(getattr(server, "app_runtime", None), "agent_registry", None)
+    try:
+        await server.user_manager.remove(username, agent_manager=registry)
+    except Exception:
+        logger.exception("failed to roll back user %s after expert bootstrap error", username)
+
+
 @router.post("", status_code=201)
 async def create_user(
     body: UserCreateBody,
+    request: Request,
     actor: Any = Depends(require_permission("users")),
     server: Any = Depends(get_server),
 ) -> dict[str, Any]:
+    template_id = _expert_template_id(body, server)
     role_id, template_name, template_perms, template_policies = _resolve_role_template(
         server, body.role
     )
@@ -315,6 +356,31 @@ async def create_user(
         role_name=role_name,
     )
     await server.user_manager.set_resource_policy(user.username, **policy_kwargs)
+    if template_id is not None:
+        from octop.infra.agents.experts.default_agent import (
+            bootstrap_default_agent,
+            user_policy_workspace_root,
+        )
+
+        registry = getattr(getattr(server, "app_runtime", None), "agent_registry", None)
+        if registry is None:
+            await _discard_new_user(server, user.username)
+            raise OctopError(ErrorCode.DEFAULT_EXPERT_FAILED, "could not create default expert")
+        try:
+            created_agent = await bootstrap_default_agent(
+                registry,
+                server.expert_catalog,
+                user_id=user.id,
+                locale=resolve_request_locale(request),
+                root_dir=user_policy_workspace_root(server, user.id),
+                expert_id=template_id,
+            )
+        except Exception:
+            await _discard_new_user(server, user.username)
+            raise
+        if created_agent is None:
+            await _discard_new_user(server, user.username)
+            raise OctopError(ErrorCode.DEFAULT_EXPERT_FAILED, "could not create default expert")
     row = server.user_manager.get_row(user.id)
     assert row is not None
     return _row_to_dict(row, server.services.user_policy_repo.list_for_user(row.id), server)

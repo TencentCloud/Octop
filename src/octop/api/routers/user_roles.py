@@ -13,7 +13,7 @@ from typing import Any
 from fastapi import APIRouter, Depends, File, UploadFile
 from pydantic import BaseModel, Field
 
-from octop.api.deps import get_server, require_permission
+from octop.api.deps import get_server, require_any_permission, require_permission
 from octop.api.routers.users import _assert_can_assign
 from octop.infra.db.repos.user_roles import (
     BUILTIN_USER_ROLE_IDS,
@@ -22,7 +22,11 @@ from octop.infra.db.repos.user_roles import (
 )
 from octop.infra.errors import ErrorCode, OctopError
 from octop.infra.users.identity import User
-from octop.infra.users.permissions import ALL_PERMISSION_KEYS, validate_permission_keys
+from octop.infra.users.permissions import (
+    ASSIGNABLE_PERMISSION_KEYS,
+    expand_permission_grants,
+    validate_permission_keys,
+)
 from octop.infra.users.resource_policy import (
     POLICY_MAX_AGENTS,
     POLICY_TOKEN_QUOTA,
@@ -175,14 +179,14 @@ def _policies_for_write(body: UserRoleBody | UserRolePatchBody) -> list[tuple[st
 
 def public_role(row: UserRoleRow, *, avatar_url: str | None = None) -> dict[str, Any]:
     if row.is_admin:
-        permissions = sorted(ALL_PERMISSION_KEYS)
+        permissions = sorted(ASSIGNABLE_PERMISSION_KEYS)
         system_role = "admin"
         policies: list[dict[str, str]] = []
         workspace_root_dir = None
         token_quota = None
         max_agents = None
     else:
-        permissions = list(row.permissions)
+        permissions = expand_permission_grants(list(row.permissions))
         system_role = "user"
         policies = [{"name": name, "value": value} for name, value in row.policies]
         workspace_root_dir = workspace_root_dir_of(row.policy_value(POLICY_WORKSPACE_ROOT_DIR))
@@ -219,7 +223,7 @@ def _name_taken(exc: ValueError) -> None:
 
 @router.get("", summary="List role templates")
 async def list_user_roles(
-    _: Any = Depends(require_permission("users")),
+    _: Any = Depends(require_any_permission("users", "user_roles")),
     server: Any = Depends(get_server),
 ) -> list[dict[str, Any]]:
     return [_public(server, row) for row in _repo(server).list_all()]
@@ -228,7 +232,7 @@ async def list_user_roles(
 @router.post("", status_code=201, summary="Create a role template")
 async def create_user_role(
     body: UserRoleBody,
-    actor: User = Depends(require_permission("users")),
+    actor: User = Depends(require_permission("user_roles")),
     server: Any = Depends(get_server),
 ) -> dict[str, Any]:
     try:
@@ -260,7 +264,7 @@ async def create_user_role(
 async def patch_user_role(
     user_role_id: str,
     body: UserRolePatchBody,
-    actor: User = Depends(require_permission("users")),
+    actor: User = Depends(require_permission("user_roles")),
     server: Any = Depends(get_server),
 ) -> dict[str, Any]:
     current = _repo(server).get(user_role_id)
@@ -328,7 +332,7 @@ async def patch_user_role(
 @router.delete("/{user_role_id}", status_code=204, summary="Delete a role template")
 async def delete_user_role(
     user_role_id: str,
-    actor: User = Depends(require_permission("users")),
+    actor: User = Depends(require_permission("user_roles")),
     server: Any = Depends(get_server),
 ) -> None:
     current = _repo(server).get(user_role_id)
@@ -357,7 +361,7 @@ async def delete_user_role(
 async def upload_role_avatar(
     user_role_id: str,
     file: UploadFile = File(...),  # noqa: B008
-    _: Any = Depends(require_permission("users")),
+    _: Any = Depends(require_permission("user_roles")),
     server: Any = Depends(get_server),
 ) -> dict[str, str | None]:
     row = _repo(server).get(user_role_id)
@@ -376,7 +380,7 @@ async def upload_role_avatar(
 @router.get("/{user_role_id}/avatar")
 async def get_role_avatar(
     user_role_id: str,
-    _: Any = Depends(require_permission("users")),
+    _: Any = Depends(require_any_permission("users", "user_roles")),
     server: Any = Depends(get_server),
 ) -> Any:
     from octop.infra.users.profile_avatar import avatar_response
@@ -389,7 +393,7 @@ async def get_role_avatar(
 @router.delete("/{user_role_id}/avatar", status_code=204)
 async def delete_role_avatar(
     user_role_id: str,
-    _: Any = Depends(require_permission("users")),
+    _: Any = Depends(require_permission("user_roles")),
     server: Any = Depends(get_server),
 ) -> None:
     if _repo(server).get(user_role_id) is None:
