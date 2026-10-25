@@ -5,7 +5,7 @@ from __future__ import annotations
 import logging
 from contextlib import suppress
 from dataclasses import asdict
-from typing import Any
+from typing import Any, Literal
 
 from fastapi import APIRouter, Depends, File, Form, Query, Request, UploadFile, status
 from fastapi.responses import FileResponse
@@ -56,6 +56,7 @@ from octop.infra.knowledge.service import (
     KnowledgeService,
 )
 from octop.infra.server import OctopServer
+from octop.infra.users.groups import RESOURCE_KNOWLEDGE_BASE, GroupAccess
 from octop.infra.users.identity import User
 from octop.infra.utils.locale import resolve_request_locale
 
@@ -91,7 +92,10 @@ class CreateBaseBody(BaseModel):
     description: str = Field(default="", max_length=2000)
     default_open: bool = False
     shared: bool = False
+    visibility: Literal["all", "groups", "owner"] | None = None
+    group_ids: list[str] | None = None
     icon_name: str = Field(default="", max_length=64)
+    icon_url: str = Field(default="", max_length=2048)
     max_documents: int | None = Field(
         default=None,
         ge=0,
@@ -126,7 +130,10 @@ class UpdateBaseBody(BaseModel):
     description: str | None = Field(default=None, max_length=2000)
     default_open: bool | None = None
     shared: bool | None = None
+    visibility: Literal["all", "groups", "owner"] | None = None
+    group_ids: list[str] | None = None
     icon_name: str | None = Field(default=None, max_length=64)
+    icon_url: str | None = Field(default=None, max_length=2048)
     max_documents: int | None = Field(
         default=None,
         ge=0,
@@ -172,9 +179,41 @@ def _owner_fields(server: OctopServer, owner_user_id: int) -> dict[str, str | No
     }
 
 
+def _group_access(server: OctopServer) -> GroupAccess | None:
+    services = server.services
+    repos = getattr(services, "repos", None) if services is not None else None
+    if repos is None:
+        return None
+    return GroupAccess(repos)
+
+
+def _kb_avatar_api_path(kb_id: str) -> str:
+    return f"/api/knowledge-bases/{kb_id}/avatar"
+
+
+def _display_kb_icon_url(server: OctopServer, row: Any) -> str:
+    from octop.infra.users.profile_avatar import profile_avatar_url  # noqa: PLC0415
+
+    text = str(getattr(row, "icon_url", "") or "").strip()
+    api = _kb_avatar_api_path(row.id)
+    if text.split("?", 1)[0] == api:
+        return profile_avatar_url(server.paths.knowledge_base_avatars_dir, row.id, api) or api
+    return text
+
+
 def _base_payload(server: OctopServer, row: Any) -> dict[str, Any]:
     payload = asdict(row)
     payload["knowledge_base_id"] = row.id
+    payload["icon_url"] = _display_kb_icon_url(server, row)
+    access = _group_access(server)
+    if access is not None:
+        payload.update(
+            access.visibility(
+                RESOURCE_KNOWLEDGE_BASE,
+                row.id,
+                shared=bool(row.shared),
+            )
+        )
     return {**payload, **_owner_fields(server, row.owner_user_id)}
 
 
@@ -544,15 +583,32 @@ async def create_base(
     locale = resolve_request_locale(request)
     try:
         _require_usable(server, request)
+        access = _group_access(server)
+        if body.visibility is not None and access is not None:
+            access.validate_visibility(body.visibility, body.group_ids)
         base = _knowledge_service(server).create_base(
             owner_user_id=user.id,
             name=body.name.strip(),
             description=body.description.strip(),
             default_open=body.default_open,
-            shared=body.shared,
+            shared=(
+                False
+                if body.visibility == "owner"
+                else True
+                if body.visibility in {"all", "groups"}
+                else body.shared
+            ),
             icon_name=body.icon_name.strip(),
+            icon_url=body.icon_url.strip(),
             max_documents=body.max_documents if body.max_documents is not None else MAX_DOCS_PER_KB,
         )
+        if body.visibility is not None and access is not None:
+            access.set_visibility(
+                RESOURCE_KNOWLEDGE_BASE,
+                base.id,
+                body.visibility,
+                body.group_ids,
+            )
         return _base_payload(server, base)
     except Exception as exc:
         raise _map_knowledge_error(exc, locale=locale, server=server) from exc
@@ -604,20 +660,34 @@ async def update_base(
     user: User = Depends(require_permission("knowledge_bases")),
 ) -> dict[str, Any]:
     try:
-        return _base_payload(
-            server,
-            _knowledge_service(server).update_base(
-                kb_id,
-                actor_user_id=user.id,
-                name=body.name.strip() if body.name is not None else None,
-                description=body.description.strip() if body.description is not None else None,
-                default_open=body.default_open,
-                shared=body.shared,
-                icon_name=body.icon_name.strip() if body.icon_name is not None else None,
-                max_documents=body.max_documents,
-                is_admin=_is_admin(user),
-            ),
+        access = _group_access(server)
+        if body.visibility is not None and access is not None:
+            access.validate_visibility(body.visibility, body.group_ids)
+        shared = body.shared
+        if body.visibility == "owner":
+            shared = False
+        elif body.visibility in {"all", "groups"}:
+            shared = True
+        updated = _knowledge_service(server).update_base(
+            kb_id,
+            actor_user_id=user.id,
+            name=body.name.strip() if body.name is not None else None,
+            description=body.description.strip() if body.description is not None else None,
+            default_open=body.default_open,
+            shared=shared,
+            icon_name=body.icon_name.strip() if body.icon_name is not None else None,
+            icon_url=body.icon_url.strip() if body.icon_url is not None else None,
+            max_documents=body.max_documents,
+            is_admin=_is_admin(user),
         )
+        if body.visibility is not None and access is not None:
+            access.set_visibility(
+                RESOURCE_KNOWLEDGE_BASE,
+                kb_id,
+                body.visibility,
+                body.group_ids,
+            )
+        return _base_payload(server, updated)
     except Exception as exc:
         raise _map_knowledge_error(
             exc, locale=resolve_request_locale(request), server=server
@@ -636,6 +706,103 @@ async def delete_base(
     try:
         _knowledge_service(server).delete_base(
             kb_id, actor_user_id=user.id, is_admin=_is_admin(user)
+        )
+        from octop.infra.users.profile_avatar import delete_profile_avatar  # noqa: PLC0415
+
+        delete_profile_avatar(server.paths.knowledge_base_avatars_dir, kb_id)
+    except Exception as exc:
+        raise _map_knowledge_error(
+            exc, locale=resolve_request_locale(request), server=server
+        ) from exc
+
+
+@router.post("/{kb_id}/avatar", status_code=201, summary="Upload a knowledge-base portrait")
+async def upload_kb_avatar(
+    kb_id: str,
+    request: Request,
+    file: UploadFile = File(...),  # noqa: B008
+    server: OctopServer = Depends(get_server),
+    user: User = Depends(require_permission("knowledge_bases")),
+) -> dict[str, str]:
+    from octop.infra.users.profile_avatar import (  # noqa: PLC0415
+        profile_avatar_url,
+        write_profile_avatar,
+    )
+
+    try:
+        _knowledge_service(server).require_owner(
+            kb_id, actor_user_id=user.id, is_admin=_is_admin(user)
+        )
+        write_profile_avatar(
+            server.paths.knowledge_base_avatars_dir,
+            kb_id,
+            await file.read(),
+        )
+        icon_url = _kb_avatar_api_path(kb_id)
+        updated = _knowledge_service(server).update_base(
+            kb_id,
+            actor_user_id=user.id,
+            icon_url=icon_url,
+            is_admin=_is_admin(user),
+        )
+        display = (
+            profile_avatar_url(
+                server.paths.knowledge_base_avatars_dir,
+                kb_id,
+                icon_url,
+            )
+            or icon_url
+        )
+        return {"icon_url": display or updated.icon_url}
+    except Exception as exc:
+        raise _map_knowledge_error(
+            exc, locale=resolve_request_locale(request), server=server
+        ) from exc
+
+
+@router.get("/{kb_id}/avatar", summary="Read a knowledge-base portrait")
+async def get_kb_avatar(
+    kb_id: str,
+    request: Request,
+    server: OctopServer = Depends(get_server),
+    user: User = Depends(current_user),
+) -> Any:
+    from octop.infra.users.profile_avatar import avatar_response  # noqa: PLC0415
+
+    try:
+        _knowledge_service(server).get_readable_base(
+            kb_id, actor_user_id=user.id, is_admin=_is_admin(user)
+        )
+        return avatar_response(server.paths.knowledge_base_avatars_dir, kb_id)
+    except Exception as exc:
+        raise _map_knowledge_error(
+            exc, locale=resolve_request_locale(request), server=server
+        ) from exc
+
+
+@router.delete(
+    "/{kb_id}/avatar",
+    status_code=status.HTTP_204_NO_CONTENT,
+    summary="Delete a knowledge-base portrait",
+)
+async def delete_kb_avatar(
+    kb_id: str,
+    request: Request,
+    server: OctopServer = Depends(get_server),
+    user: User = Depends(require_permission("knowledge_bases")),
+) -> None:
+    from octop.infra.users.profile_avatar import delete_profile_avatar  # noqa: PLC0415
+
+    try:
+        _knowledge_service(server).require_owner(
+            kb_id, actor_user_id=user.id, is_admin=_is_admin(user)
+        )
+        delete_profile_avatar(server.paths.knowledge_base_avatars_dir, kb_id)
+        _knowledge_service(server).update_base(
+            kb_id,
+            actor_user_id=user.id,
+            icon_url="",
+            is_admin=_is_admin(user),
         )
     except Exception as exc:
         raise _map_knowledge_error(

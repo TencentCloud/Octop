@@ -415,7 +415,7 @@ async def test_create_from_expert_default_name_uses_expert_label(env: Any) -> No
         json={},
     )
     assert r.status_code == 201, r.text
-    assert r.json()["name"] == "运维工程师 Ops"
+    assert r.json()["name"] == "Ops · 运维工程师"
 
 
 async def test_create_from_expert_stores_backend(env: Any) -> None:

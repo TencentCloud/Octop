@@ -7,6 +7,7 @@ from datetime import datetime
 
 from octop.infra.db.pool import DatabasePool
 from octop.infra.db.repos._base import UNSET, DbRow, bool_int, map_rows, now_ts, optional_updates
+from octop.infra.users.groups import RESOURCE_EXPERT, group_visibility_sql
 
 
 def _unix_ts(value: object) -> int:
@@ -237,13 +238,22 @@ class AgentRepo:
                 (bool_int(shared), now_ts(), agent_id),
             )
 
-    def list_shared(self, *, exclude_user_id: int | None = None) -> list[AgentRow]:
-        sql = "SELECT * FROM agents WHERE is_shared = 1 AND enabled = 1"
+    def list_shared(
+        self,
+        *,
+        exclude_user_id: int | None = None,
+        viewer_user_id: int | None = None,
+    ) -> list[AgentRow]:
+        """Enabled shared agents. ``viewer_user_id`` applies the group layer."""
+        sql = "SELECT a.* FROM agents a WHERE a.is_shared = 1 AND a.enabled = 1"
         params: list[object] = []
         if exclude_user_id is not None:
-            sql += " AND user_id != ?"
+            sql += " AND a.user_id != ?"
             params.append(exclude_user_id)
-        sql += " ORDER BY created_at ASC, id ASC"
+        if viewer_user_id is not None:
+            sql += f" AND {group_visibility_sql(RESOURCE_EXPERT, 'a.agent_id')}"
+            params.append(viewer_user_id)
+        sql += " ORDER BY a.created_at ASC, a.id ASC"
         with self._db.connect() as conn:
             rows = conn.execute(sql, params).fetchall()
         return map_rows(rows, AgentRow)

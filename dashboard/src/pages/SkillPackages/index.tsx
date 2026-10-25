@@ -48,10 +48,17 @@ import type {
   SkillPackageDetail,
   SkillPackageSkillDetail,
 } from "../../api/types/skillPackage";
+import {
+  isUploadedAvatarUrl,
+  ResourceAvatarPicker,
+  avatarPickerStyles,
+  SKILL_PACKAGE_AVATAR_PRESETS,
+} from "../../components/AvatarPicker";
 import { CardSkeleton } from "../../components/Skeleton";
 import { CopyableResourceId } from "../../components/CopyableResourceId";
 import { EmptyState, OctopEmptyMascot } from "../../components/EmptyState";
 import StreamSetupGuide from "../../components/StreamSetupGuide/StreamSetupGuide";
+import { TextAssistBar } from "../../components/TextAssistBar";
 import { useCardTableView } from "../../hooks/useCardTableView";
 import { useHorizontalResize } from "../../hooks/useHorizontalResize";
 import { useIsMobile } from "../../hooks/useIsMobile";
@@ -73,14 +80,16 @@ import {
 import SkillHubTab from "../Agent/Skills/components/SkillHubTab";
 import skillStyles from "../Agent/Skills/index.module.less";
 import type { ParsedZipSkill } from "../Agent/Skills/components/parseSkillZip";
-import {
-  EXPERT_ICON_NAMES,
-  iconForName,
-} from "../Experts/components/iconForName";
 import { showConfirmModal } from "../../utils/confirmModal";
 import { saveBlobAsFile } from "../../utils/saveBlobAsFile";
 import { createDetailRequestGate } from "../../utils/detailRequestGate";
 import { PackageIcon } from "./PackageIcon";
+import { ResourceVisibilityFields } from "../../components/ResourceVisibilityFields";
+import {
+  SharedAvatarMark,
+  SharedResourceBadge,
+} from "../../components/SharedResourceBadge";
+import type { ResourceVisibilityMode } from "../../api/modules/userGroups";
 import { PackageSkillCard } from "./PackageSkillCard";
 import PackageSkillsTable from "./PackageSkillsTable";
 import { SkillsetFromHubDrawer } from "./SkillsetFromHubDrawer";
@@ -91,6 +100,7 @@ type PackageFormValues = {
   description?: string;
   icon_name?: string;
   icon_url?: string;
+  shared?: boolean;
   copy_policy?: "snapshot" | "lock" | "deny";
   allow_download?: boolean;
   can_download?: boolean;
@@ -116,6 +126,13 @@ function canMutatePackage(
   );
 }
 
+function isPackageOwner(
+  item: Pick<SkillPackage, "created_by">,
+  user: OctopUser | null,
+): boolean {
+  return Boolean(user && item.created_by === String(user.id));
+}
+
 function formatPackageCreator(
   item: Pick<
     SkillPackage,
@@ -125,41 +142,6 @@ function formatPackageCreator(
   const displayName = item.creator_display_name?.trim() || "";
   const username = item.creator_username?.trim() || "";
   return displayName || username || item.created_by;
-}
-
-function PackageIconPicker({
-  value,
-  onChange,
-}: {
-  value?: string;
-  onChange?: (value?: string) => void;
-}) {
-  const { t } = useTranslation();
-  return (
-    <div className={styles.iconPicker}>
-      {EXPERT_ICON_NAMES.map((name) => {
-        const selected = value === name;
-        return (
-          <button
-            key={name}
-            type="button"
-            className={`${styles.iconPickerItem}${
-              selected ? ` ${styles.iconPickerItemActive}` : ""
-            }`}
-            onClick={() => onChange?.(selected ? undefined : name)}
-            title={t(`experts.iconLabels.${name}`, { defaultValue: name })}
-          >
-            <span className={styles.iconPickerGlyph}>
-              {iconForName(name, 18)}
-            </span>
-            <span className={styles.iconPickerLabel}>
-              {t(`experts.iconLabels.${name}`, { defaultValue: name })}
-            </span>
-          </button>
-        );
-      })}
-    </div>
-  );
 }
 
 export default function SkillPackagesPage() {
@@ -175,6 +157,9 @@ export default function SkillPackagesPage() {
   const [detailLoading, setDetailLoading] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [packageDrawerOpen, setPackageDrawerOpen] = useState(false);
+  const [packageVisibility, setPackageVisibility] =
+    useState<ResourceVisibilityMode>("all");
+  const [packageGroupIds, setPackageGroupIds] = useState<string[]>([]);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [importModalOpen, setImportModalOpen] = useState(false);
   const [hubOpen, setHubOpen] = useState(false);
@@ -187,6 +172,8 @@ export default function SkillPackagesPage() {
   const [skillForm] = Form.useForm<SkillFormValues>();
   const iconName = Form.useWatch("icon_name", packageForm);
   const iconUrl = Form.useWatch("icon_url", packageForm);
+  const [pendingAvatarFile, setPendingAvatarFile] = useState<File | null>(null);
+  const [avatarBusy, setAvatarBusy] = useState(false);
   const detailRequestGate = useRef(createDetailRequestGate());
   const initialLoadDone = useRef(false);
 
@@ -324,18 +311,23 @@ export default function SkillPackagesPage() {
 
   const openCreatePackage = () => {
     setEditingPackageId(null);
+    setPendingAvatarFile(null);
     packageForm.setFieldsValue({
       name: "",
       description: "",
-      icon_name: undefined,
+      icon_name: "package",
       icon_url: "",
       copy_policy: "snapshot",
+      allow_download: true,
     });
+    setPackageVisibility("owner");
+    setPackageGroupIds([]);
     setPackageDrawerOpen(true);
   };
 
   const openEditPackage = (item: SkillPackage) => {
     setEditingPackageId(item.id);
+    setPendingAvatarFile(null);
     packageForm.setFieldsValue({
       name: item.name,
       description: item.description,
@@ -344,20 +336,54 @@ export default function SkillPackagesPage() {
       copy_policy: item.copy_policy ?? "snapshot",
       allow_download: item.allow_download !== false,
     });
+    setPackageVisibility(
+      !item.shared || item.visibility === "owner"
+        ? "owner"
+        : item.visibility === "groups"
+        ? "groups"
+        : "all",
+    );
+    setPackageGroupIds(
+      item.shared && item.visibility === "groups" ? item.group_ids ?? [] : [],
+    );
     setPackageDrawerOpen(true);
   };
 
   const savePackage = async () => {
     const values = await packageForm.validateFields();
+    if (packageVisibility === "groups" && packageGroupIds.length === 0) {
+      message.error(t("resourceVisibility.needGroup"));
+      return;
+    }
     const payload = {
       ...values,
-      icon_url: values.icon_url?.trim() || undefined,
+      // Blob previews are local-only; upload runs after create/update.
+      icon_url: pendingAvatarFile
+        ? ""
+        : values.icon_url?.startsWith("blob:")
+        ? ""
+        : values.icon_url?.trim() || "",
+      shared: packageVisibility !== "owner",
+      visibility: packageVisibility,
+      group_ids: packageVisibility === "groups" ? packageGroupIds : [],
     };
     try {
-      const next = editingPackageId
+      let next = editingPackageId
         ? await skillPackagesApi.update(editingPackageId, payload)
         : await skillPackagesApi.create(payload);
+      if (pendingAvatarFile) {
+        try {
+          const uploaded = await skillPackagesApi.uploadAvatar(
+            next.id,
+            pendingAvatarFile,
+          );
+          next = { ...next, icon_url: uploaded.icon_url };
+        } catch {
+          message.warning(t("skillPackages.avatarUploadLater"));
+        }
+      }
       setPackageDrawerOpen(false);
+      setPendingAvatarFile(null);
       await loadPackages({ silent: true });
       setSelected(next);
       setSelectedId(next.id);
@@ -705,19 +731,30 @@ export default function SkillPackagesPage() {
                         }`}
                       >
                         <div className={styles.listName}>
-                          <span className={styles.listIcon}>
-                            <PackageIcon
-                              iconUrl={item.icon_url}
-                              iconName={item.icon_name}
-                              size={24}
-                              imageClassName={styles.listIconImage}
-                            />
-                          </span>
+                          <SharedAvatarMark
+                            shared={item.shared}
+                            owned={isPackageOwner(item, user)}
+                            ownerName={formatPackageCreator(item)}
+                          >
+                            <span className={styles.listIcon}>
+                              <PackageIcon
+                                iconUrl={item.icon_url}
+                                iconName={item.icon_name}
+                                size={24}
+                                imageClassName={styles.listIconImage}
+                              />
+                            </span>
+                          </SharedAvatarMark>
                           <Tooltip title={item.name} placement="topLeft">
                             <span className={styles.listNameText}>
                               {item.name}
                             </span>
                           </Tooltip>
+                          <SharedResourceBadge
+                            shared={item.shared && isPackageOwner(item, user)}
+                            owned
+                            ownerName={formatPackageCreator(item)}
+                          />
                           <div
                             className={styles.listId}
                             onClick={(event) => event.stopPropagation()}
@@ -1016,34 +1053,112 @@ export default function SkillPackagesPage() {
             );
           }}
         >
-          {editingPackageId ? (
-            <Form.Item
-              name="copy_policy"
-              label={t("skillPackages.copyPolicy")}
-              tooltip={t("skillPackages.copyPolicyHint")}
-            >
-              <Radio.Group
-                options={[
-                  {
-                    value: "snapshot",
-                    label: t("skillPackages.copyPolicySnapshot"),
-                  },
-                  { value: "lock", label: t("skillPackages.copyPolicyLock") },
-                  { value: "deny", label: t("skillPackages.copyPolicyDeny") },
-                ]}
-              />
-            </Form.Item>
-          ) : null}
-          {editingPackageId ? (
-            <Form.Item
-              name="allow_download"
-              label={t("skillPackages.allowDownload")}
-              tooltip={t("skillPackages.allowDownloadHint")}
-              valuePropName="checked"
-            >
-              <Switch />
-            </Form.Item>
-          ) : null}
+          <Form.Item name="icon_name" hidden>
+            <Input />
+          </Form.Item>
+          <Form.Item name="icon_url" hidden>
+            <Input />
+          </Form.Item>
+          <Form.Item
+            label={t("skillPackages.iconName")}
+            className={avatarPickerStyles.formItem}
+          >
+            <ResourceAvatarPicker
+              imageUrl={
+                iconUrl?.trim() &&
+                (isUploadedAvatarUrl(iconUrl) ||
+                  Boolean(pendingAvatarFile) ||
+                  iconUrl.startsWith("blob:") ||
+                  /^https?:\/\//i.test(iconUrl))
+                  ? iconUrl
+                  : null
+              }
+              presetId={iconName || null}
+              presets={SKILL_PACKAGE_AVATAR_PRESETS}
+              disabled={avatarBusy}
+              onPick={(file) => {
+                if (editingPackageId) {
+                  void (async () => {
+                    setAvatarBusy(true);
+                    try {
+                      const result = await skillPackagesApi.uploadAvatar(
+                        editingPackageId,
+                        file,
+                      );
+                      packageForm.setFieldsValue({
+                        icon_url: result.icon_url,
+                      });
+                      setPendingAvatarFile(null);
+                    } catch (err) {
+                      message.error(
+                        apiErrorMessage(
+                          err,
+                          t("experts.avatarUploadFailed"),
+                          t,
+                        ),
+                      );
+                      throw err;
+                    } finally {
+                      setAvatarBusy(false);
+                    }
+                  })();
+                  return;
+                }
+                setPendingAvatarFile(file);
+                packageForm.setFieldsValue({
+                  icon_url: URL.createObjectURL(file),
+                });
+              }}
+              onSelectPreset={(presetId) => {
+                void (async () => {
+                  setPendingAvatarFile(null);
+                  const nextName = presetId ?? "package";
+                  if (editingPackageId && isUploadedAvatarUrl(iconUrl)) {
+                    setAvatarBusy(true);
+                    try {
+                      await skillPackagesApi.deleteAvatar(editingPackageId);
+                    } catch {
+                      // Preset still applied locally / on save.
+                    } finally {
+                      setAvatarBusy(false);
+                    }
+                  }
+                  packageForm.setFieldsValue({
+                    icon_name: nextName,
+                    icon_url: "",
+                  });
+                })();
+              }}
+              onRemove={
+                iconUrl || pendingAvatarFile
+                  ? () => {
+                      void (async () => {
+                        setPendingAvatarFile(null);
+                        if (editingPackageId && isUploadedAvatarUrl(iconUrl)) {
+                          setAvatarBusy(true);
+                          try {
+                            await skillPackagesApi.deleteAvatar(
+                              editingPackageId,
+                            );
+                          } catch (err) {
+                            message.error(
+                              apiErrorMessage(
+                                err,
+                                t("experts.avatarRemoveFailed"),
+                                t,
+                              ),
+                            );
+                          } finally {
+                            setAvatarBusy(false);
+                          }
+                        }
+                        packageForm.setFieldsValue({ icon_url: "" });
+                      })();
+                    }
+                  : undefined
+              }
+            />
+          </Form.Item>
           <Form.Item
             name="name"
             label={t("skillPackages.packageName")}
@@ -1063,31 +1178,70 @@ export default function SkillPackagesPage() {
           <Form.Item
             name="description"
             label={t("skillPackages.packageDescription")}
+            className={styles.textAssistField}
           >
             <Input.TextArea
               autoSize={{ minRows: 2, maxRows: 5 }}
               placeholder={t("skillPackages.packageDescriptionPlaceholder")}
             />
           </Form.Item>
-          <Form.Item name="icon_name" label={t("skillPackages.iconName")}>
-            <PackageIconPicker />
-          </Form.Item>
-          <Form.Item name="icon_url" label={t("skillPackages.iconUrl")}>
-            <Input
-              type="url"
-              placeholder={t("skillPackages.iconUrlPlaceholder")}
-              suffix={
-                <span className={styles.iconPreview}>
-                  <PackageIcon
-                    iconUrl={iconUrl}
-                    iconName={iconName}
-                    size={18}
-                    className={styles.iconPreviewImage}
-                  />
-                </span>
-              }
+          <TextAssistBar
+            kind="skill_package.description"
+            getName={() => String(packageForm.getFieldValue("name") ?? "")}
+            getText={() =>
+              String(packageForm.getFieldValue("description") ?? "")
+            }
+            onApply={(text) =>
+              packageForm.setFieldsValue({ description: text })
+            }
+          />
+          <Form.Item
+            name="copy_policy"
+            label={t("skillPackages.copyPolicy")}
+            tooltip={t("skillPackages.copyPolicyHint")}
+          >
+            <Radio.Group
+              options={[
+                {
+                  value: "snapshot",
+                  label: t("skillPackages.copyPolicySnapshot"),
+                },
+                { value: "lock", label: t("skillPackages.copyPolicyLock") },
+                { value: "deny", label: t("skillPackages.copyPolicyDeny") },
+              ]}
             />
           </Form.Item>
+          <Form.Item
+            name="allow_download"
+            label={t("skillPackages.allowDownload")}
+            tooltip={t("skillPackages.allowDownloadHint")}
+            valuePropName="checked"
+          >
+            <Switch />
+          </Form.Item>
+          <div className={styles.formOptions}>
+            <div className={styles.formOptionRowVisibility}>
+              <div className={styles.formOptionCopy}>
+                <span className={styles.switchLabel}>
+                  {t("resourceVisibility.label")}
+                </span>
+                <span className={styles.formOptionHint}>
+                  {t("skillPackages.visibilityHint")}
+                </span>
+              </div>
+              <ResourceVisibilityFields
+                allowOwner
+                visibility={packageVisibility}
+                groupIds={packageGroupIds}
+                onChange={(next) => {
+                  setPackageVisibility(next.visibility);
+                  setPackageGroupIds(
+                    next.visibility === "groups" ? next.groupIds : [],
+                  );
+                }}
+              />
+            </div>
+          </div>
         </Form>
       </Drawer>
 
@@ -1130,7 +1284,7 @@ export default function SkillPackagesPage() {
                 name: editingSkill.name,
                 description: editingSkill.description,
                 enabled: true,
-                kind: "workspace",
+                kind: "package",
                 frontmatter: editingSkill.frontmatter,
                 body: editingSkill.body,
                 raw: editingSkill.raw,
@@ -1138,6 +1292,7 @@ export default function SkillPackagesPage() {
             : null
         }
         form={skillForm}
+        packageId={selected?.id}
         onClose={() => setDrawerOpen(false)}
         onSubmit={(values) => void saveSkill(values)}
         readOnly={!canMutate}
