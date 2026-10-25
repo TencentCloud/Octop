@@ -11,6 +11,7 @@ import urllib.request
 from dataclasses import dataclass
 from typing import Any
 
+from octop.infra.crypto.fernet import PURPOSE_SETTINGS, open_secret_bytes, seal_secret_bytes
 from octop.infra.db.repos.secrets import SecretRepo
 from octop.infra.db.repos.settings import SettingsRepo
 from octop.infra.errors import ErrorCode, OctopError
@@ -120,7 +121,7 @@ class LangfuseSettingsStore:
         self._settings.set(_KEY_PUBLIC, public_key)
         self._settings.set(_KEY_HOST, host)
         if secret_key:
-            encoded = secret_key.encode("utf-8")
+            encoded = seal_secret_bytes(self._secrets, PURPOSE_SETTINGS, secret_key.encode("utf-8"))
             existing = self._secrets.get(_SECRET_KEY)
             if existing is not None:
                 self._secrets.rotate(_SECRET_KEY, encoded)
@@ -141,7 +142,11 @@ class LangfuseSettingsStore:
         sk = secret_key
         if sk is None:
             raw = self._secrets.get(_SECRET_KEY)
-            sk = raw.decode("utf-8") if raw else None
+            sk = (
+                open_secret_bytes(self._secrets, PURPOSE_SETTINGS, raw).decode("utf-8")
+                if raw
+                else None
+            )
         if not pk or not h or not sk:
             raise OctopError(ErrorCode.SLASH_BAD_ARGS, "Langfuse credentials are incomplete")
 
@@ -162,5 +167,5 @@ class LangfuseSettingsStore:
             enabled=True,
             public_key=view.public_key,
             host=view.host,
-            secret_key=raw.decode("utf-8"),
+            secret_key=open_secret_bytes(self._secrets, PURPOSE_SETTINGS, raw).decode("utf-8"),
         )

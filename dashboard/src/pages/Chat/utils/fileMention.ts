@@ -3,6 +3,8 @@ import { withFromWorkspace } from "../../../utils/fromWorkspace";
 
 export const WORKSPACE_MENTION_LIMIT = 20;
 
+// Same names as ``MENTION_SKIP_DIRS`` in ``src/octop/infra/backend/mention_index.py``.
+// The index already omits them; this filter still applies to the truncated-index glob.
 const SKIP_SEGMENTS = new Set([
   ".octop",
   ".octop-auth",
@@ -31,7 +33,8 @@ export type WorkspaceMentionHint =
   | "failed"
   | "typeToSearch"
   | "typeMore"
-  | "filesEmpty";
+  | "filesEmpty"
+  | "filesTruncated";
 
 const WORKSPACE_MENTION_MIN_CHARS = 2;
 
@@ -51,7 +54,7 @@ export function isSkippedWorkspacePath(path: string): boolean {
   return rel.split("/").some((seg) => SKIP_SEGMENTS.has(seg));
 }
 
-/** True when the composer should hit glob — never empty `@`, never a single character. */
+/** True when the cached file index should be filtered. Empty `@` and one character stay hints. */
 export function shouldSearchWorkspaceMentions(query: string): boolean {
   return query.trim().length >= WORKSPACE_MENTION_MIN_CHARS;
 }
@@ -86,16 +89,19 @@ export function workspaceMentionHintState(input: {
   loading: boolean;
   error: "need_agent" | "failed" | null;
   fileCount: number;
+  truncated?: boolean;
 }): WorkspaceMentionHint | null {
   if (input.loading) return "searching";
   if (input.error) return input.error;
   const q = input.query.trim();
   if (!q) return "typeToSearch";
   if (!shouldSearchWorkspaceMentions(q)) return "typeMore";
+  if (input.truncated) return "filesTruncated";
   if (input.fileCount === 0) return "filesEmpty";
   return null;
 }
 
+/** Glob used only when the cached index was truncated and the query is path-shaped. */
 export function workspaceGlobPattern(query: string): string {
   const trimmed = query.trim().replace(/\\/g, "/");
   const escaped = trimmed.replace(/[*?[\]{}]/g, "\\$&");
@@ -143,12 +149,65 @@ export function rankWorkspaceMentionFiles(
   return hits.slice(0, WORKSPACE_MENTION_LIMIT);
 }
 
+const MENTION_INDEX_TTL_MS = 30_000;
+
+export type WorkspaceMentionIndex = {
+  paths: WorkspaceMentionEntry[];
+  truncated: boolean;
+};
+
+type MentionIndexCacheEntry = WorkspaceMentionIndex & {
+  at: number;
+};
+
+const mentionIndexCache = new Map<string, MentionIndexCacheEntry>();
+
+export function clearWorkspaceMentionIndexCache(): void {
+  mentionIndexCache.clear();
+}
+
+export function cachedWorkspaceMentionIndex(
+  agentId: string,
+): WorkspaceMentionIndex | null {
+  const hit = mentionIndexCache.get(agentId);
+  if (!hit) return null;
+  if (Date.now() - hit.at >= MENTION_INDEX_TTL_MS) {
+    mentionIndexCache.delete(agentId);
+    return null;
+  }
+  return { paths: hit.paths, truncated: hit.truncated };
+}
+
+/** One pruned listing per agent. Callers filter it locally. */
+export async function loadWorkspaceMentionIndex(
+  agentId: string,
+  signal?: AbortSignal,
+): Promise<WorkspaceMentionIndex> {
+  const cached = cachedWorkspaceMentionIndex(agentId);
+  if (cached) return cached;
+  const body = await request<{ paths?: string[]; truncated?: boolean }>(
+    `/agents/${encodeURIComponent(agentId)}/workspace/mention-index`,
+    signal ? { signal } : {},
+  );
+  const index: WorkspaceMentionIndex = {
+    paths: (body?.paths ?? [])
+      .map((path) => ({ path: String(path || "") }))
+      .filter((entry) => entry.path),
+    truncated: Boolean(body?.truncated),
+  };
+  mentionIndexCache.set(agentId, { ...index, at: Date.now() });
+  return index;
+}
+
+/** One bounded glob for a path-shaped query that the capped index may have missed. */
 export async function searchWorkspaceMentionFiles(
   agentId: string,
   query: string,
   signal?: AbortSignal,
-): Promise<WorkspaceMentionFile[]> {
-  if (!shouldSearchWorkspaceMentions(query)) return [];
+): Promise<WorkspaceMentionEntry[]> {
+  if (!shouldSearchWorkspaceMentions(query) || !isPathLikeMentionQuery(query)) {
+    return [];
+  }
   const pattern = workspaceGlobPattern(query);
   const entries = await request<WorkspaceMentionEntry[]>(
     withFromWorkspace(
@@ -158,5 +217,5 @@ export async function searchWorkspaceMentionFiles(
     ),
     signal ? { signal } : {},
   );
-  return rankWorkspaceMentionFiles(entries ?? [], query);
+  return entries ?? [];
 }

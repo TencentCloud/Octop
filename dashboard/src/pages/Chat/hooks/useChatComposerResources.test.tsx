@@ -279,4 +279,41 @@ describe("useChatComposerResources — peer expert defaults", () => {
       expect(result.current.conversationMode).toBe("plan");
     });
   });
+
+  it("leaves a remote Auto expert unset instead of the local preferred model", async () => {
+    agentState.agents = [
+      {
+        agent_id: "bridge:cid:peer",
+        bridge: true,
+        bridge_connection_id: "cid",
+        default_model: null,
+      },
+    ];
+    let resolvePrefs: (value: {
+      locale: string;
+      remote_browser_bookmarks: never[];
+      preferred_model: string;
+      model_reasoning: Record<string, never>;
+    }) => void = () => undefined;
+    vi.mocked(preferencesApi.get).mockReturnValue(
+      new Promise((resolve) => {
+        resolvePrefs = resolve;
+      }),
+    );
+
+    const { result } = renderHook(() =>
+      useChatComposerResources("bridge:cid:peer", null),
+    );
+
+    await waitFor(() => expect(preferencesApi.get).toHaveBeenCalled());
+    await act(async () => {
+      resolvePrefs({
+        locale: "zh",
+        remote_browser_bookmarks: [],
+        preferred_model: "prov/local",
+        model_reasoning: {},
+      });
+    });
+    expect(result.current.selectedModel).toBeNull();
+  });
 });
