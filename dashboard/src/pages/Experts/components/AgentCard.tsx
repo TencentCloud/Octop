@@ -39,7 +39,10 @@ import { apiErrorMessage } from "../../../utils/apiError";
 import styles from "../index.module.less";
 import RemoteExpertHint from "../../Chat/components/RemoteExpertHint";
 import { expertDeleteConfirm } from "../../../utils/remoteExpert";
-import { SharedResourceBadge } from "../../../components/SharedResourceBadge";
+import {
+  SharedAvatarMark,
+  SharedResourceBadge,
+} from "../../../components/SharedResourceBadge";
 import { isSharedExpertViewer } from "../../../utils/sharedExpert";
 import type { PublishedExpert } from "../../../api/modules/publishedExperts";
 import PublishTemplateButton from "./PublishTemplateButton";
@@ -305,23 +308,29 @@ export const AgentCard = memo(function AgentCard({
 
         {/* Header */}
         <div className={styles.agentCard2Header}>
-          <div
-            className={styles.agentCard2Icon}
-            style={{ color: accent, background: `${accent}1a` }}
+          <SharedAvatarMark
+            shared={agent.is_shared}
+            owned={!sharedViewer}
+            ownerName={agent.owner_username}
           >
-            <ExpertIcon
-              iconUrl={iconUrl ?? agent.icon_url}
-              iconName={iconName ?? agent.icon_name}
-              size={iconUrl ?? agent.icon_url ? 42 : 22}
-            />
-          </div>
+            <div
+              className={styles.agentCard2Icon}
+              style={{ color: accent, background: `${accent}1a` }}
+            >
+              <ExpertIcon
+                iconUrl={iconUrl ?? agent.icon_url}
+                iconName={iconName ?? agent.icon_name}
+                size={iconUrl ?? agent.icon_url ? 42 : 22}
+              />
+            </div>
+          </SharedAvatarMark>
 
           <div className={styles.agentCard2TitleBlock}>
             <div className={styles.agentCard2NameRow}>
               <div className={styles.agentCard2Name}>{agent.name}</div>
               <SharedResourceBadge
-                shared={agent.is_shared}
-                owned={!sharedViewer}
+                shared={Boolean(agent.is_shared) && !sharedViewer}
+                owned
                 ownerName={agent.owner_username}
               />
               <RemoteExpertHint agent={agent} />
