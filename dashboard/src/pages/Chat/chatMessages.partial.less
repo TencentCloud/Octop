@@ -201,7 +201,8 @@
 
 /* ---------- Message bubbles ---------- */
 /* Desktop: 3 columns — expert avatar | composer-aligned text | user avatar.
-   Mobile (≤767): only the active side keeps a slot (see overrides below). */
+   Mobile (≤767): user rows and the process summary keep an avatar track.
+   The final answer starts at the avatar's left edge (see overrides below). */
 .chatMsgColumns() {
   display: grid;
   grid-template-columns:
@@ -894,15 +895,13 @@
   }
 }
 
-/* Mobile: drop the unused opposite avatar track so the text column gains ~44px.
-   Two-column grids (not 0-width third tracks) so row `gap` does not still reserve space.
-   Placed after all `.chatMsgColumns()` call sites so these overrides win the cascade.
-   Avatar↔bubble gutter matches the left inset (--chat-msg-gutter). Apply it on
-   every assistant row so thinking / tools / answer share the same left edge. */
+/* Mobile: keep the avatar beside user copy and beside the process summary.
+   The final answer spans from the avatar's left edge, so it is not indented
+   past that avatar. Placed after `.chatMsgColumns()` so these overrides win. */
 @media (max-width: 767px) {
-  .assistantBubble,
   .processSummaryRow,
-  .turnInset {
+  .turnInset,
+  .assistantBubble {
     grid-template-columns: var(--chat-msg-avatar-slot, 44px) minmax(0, 1fr);
     column-gap: var(--chat-msg-gutter);
 
@@ -910,7 +909,6 @@
       grid-column: 1;
     }
 
-    .bubbleContent,
     .processSummary {
       grid-column: 2;
       justify-self: stretch;
@@ -919,15 +917,28 @@
     }
   }
 
-  .assistantBubble {
-    /* Beat themeOverrides `.messageBubble { gap }` so the answer row does not
-       pick up a different column-gap than processSummaryRow. */
-    column-gap: var(--chat-msg-gutter);
-    row-gap: 0;
-  }
-
   .turnInset > * {
     grid-column: 2;
+  }
+
+  .assistantBubble .bubbleContent {
+    grid-column: 1 / -1;
+    grid-row: 1;
+    justify-self: stretch;
+    width: 100%;
+    min-width: 0;
+  }
+
+  .assistantBubble:has(.avatarCol) {
+    row-gap: 6px;
+
+    .avatarCol {
+      grid-row: 1;
+    }
+
+    .bubbleContent {
+      grid-row: 2;
+    }
   }
 
   .userBubble {
@@ -962,8 +973,8 @@
   background: rgba(15, 23, 42, 0.025);
 }
 
-/* Mobile: same gutter on every row, assistant copy uses the empty right
-   avatar slot so replies are not a narrow center column. */
+/* Mobile: hide the list scrollbar. Process summary and insets keep the text
+   track; the final answer still starts at the avatar's left edge. */
 @media (max-width: 767px) {
   .messageList {
     scrollbar-gutter: auto;
@@ -975,10 +986,13 @@
     }
   }
 
-  .assistantBubble .bubbleContent,
   .processSummaryRow .processSummary,
   .turnInset > * {
     grid-column: 2 / -1;
+  }
+
+  .assistantBubble .bubbleContent {
+    grid-column: 1 / -1;
   }
 
   .processSummary {
