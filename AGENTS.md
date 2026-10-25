@@ -110,6 +110,7 @@ cli/ ──► launch.py ──► api/ + infra/
 | `infra/agents/` | Agent registry (`manager.py`), harness runtime, providers, settings (`settings/`), workspace paths (`workspace/`), threads helpers (`threads/`), security, persona/MBTI, experts, plugins, teams, memory | `server.py`, `gateway/`, `api/routers/agents.py` |
 | `infra/backend/` | Workspace storage adapter, resolver, remote probe (COS/S3/…) | `agents/`, `api/routers/workspace*.py` |
 | `infra/connectors/` | Connector catalog, OAuth, MCP gateway, credential crypto | `api/routers/connectors.py`, `internal_mcp.py`, `agents/manager.py` (MCP assembly) |
+| `infra/control/` | Host control surfaces: `browser/`, `desktop/`, `mobile/` | `api/routers/browser/`, `desktop/`, `mobile/` |
 | `infra/cron/` | Cron jobs, triggers, agent tool hooks | `server.py`, `api/routers/cron.py` |
 | `infra/db/` | `SqlitePool`, migrations, `RepoBundle` / `SharedServices` in `services.py` | all domain code needing persistence |
 | `infra/gateway/` | IM ingress (`processor.py`), threads, slash commands (`slash/`), bot setup (`bot_creators/`) | `server.py`, `api/routers/chat.py`, `channels.py` |

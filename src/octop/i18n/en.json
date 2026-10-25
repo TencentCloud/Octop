@@ -411,6 +411,8 @@
     "SETUP_RATE_LIMITED": "Too many setup password attempts. Try again later.",
     "SETUP_TOKEN_INVALID": "Setup session is invalid or expired. Verify the setup password again.",
     "AGENT_NOT_FOUND": "Agent not found.",
+    "EXPERT_TEMPLATE_NOT_FOUND": "Expert template not found.",
+    "DEFAULT_EXPERT_FAILED": "Could not create the default expert.",
     "AGENT_NOT_RUNNING": "This expert is not enabled.",
     "CHECKPOINT_DELETE_FAILED": "Conversation data was not deleted. The thread is still here; try again.",
     "THREAD_TURN_ACTIVE": "A reply is still in progress. Stop it, then delete this conversation.",
@@ -509,6 +511,8 @@
     "USER_ROLE_IN_USE": "This role is still assigned to users. Reassign them before deleting it.",
     "USER_ROLE_ID_INVALID": "Role ID must be 1-64 letters or underscores, and cannot start or end with an underscore.",
     "USER_ROLE_ID_TAKEN": "This role ID is already in use.",
+    "USER_GROUP_ID_INVALID": "Group ID must be 3-64 chars of letters/digits/underscore/hyphen, starting and ending with a letter or digit.",
+    "USER_GROUP_ID_TAKEN": "This group ID is already in use.",
     "INVITE_USED": "This invite code has already been used.",
     "INVITE_EXPIRED": "This invite code has expired.",
     "INVITE_REVOKED": "This invite code has been revoked.",
@@ -998,5 +1002,113 @@
     "error_exited": "laya-serve exited before it was ready.",
     "error_not_installed": "Laya is not installed yet.",
     "error_stalled": "The install produced no result for too long and was stopped."
+  },
+  "text_assist": {
+    "kinds": {
+      "chat": {
+        "prompt": {
+          "system": "You are a prompt editor, not an assistant that answers questions.\nThe user message is a DRAFT PROMPT they will later send to another AI. Your only job is to rewrite that draft so another AI can understand it more clearly — improve clarity, specificity, structure, and actionable detail.\nHard rules:\n- Do NOT answer the draft, solve the task, or provide the requested content.\n- Do NOT add explanations, greetings, or meta commentary.\n- Preserve the user's original intent and language (e.g. keep Chinese if the draft is Chinese).\n- Output ONLY the rewritten prompt text — no preamble, labels, quotes, thinking blocks, or XML tags.",
+          "user": "Rewrite the following draft prompt. Do not answer it.\n\n---\n{text}\n---"
+        }
+      },
+      "expert": {
+        "description": {
+          "system": "You write short product copy for an AI expert agent profile.\nHard rules:\n- Output ONLY the description text in the target language of this prompt.\n- Keep it to 1–2 concise sentences (about 40–120 characters for Chinese, or 12–40 words for English).\n- No markdown, labels, quotes, greetings, or meta commentary.\n- Do not invent unrelated capabilities.",
+          "user_polish": "Expert name: {name}\nPolish the following expert description. Keep the same language as the draft when possible; otherwise use the language of this instruction.\n\n---\n{text}\n---",
+          "user_generate": "Expert name: {name}\nWrite one short description for this expert based only on the name."
+        },
+        "welcome_message": {
+          "system": "You write a short welcome title line shown on an AI expert chat page.\nHard rules:\n- Output ONLY the welcome title text in the target language of this prompt.\n- Keep it to one short friendly sentence (about 12–40 Chinese characters, or 6–18 English words).\n- No markdown, labels, quotes, or meta commentary.",
+          "user_polish": "Expert name: {name}\nPolish the following welcome title. Keep the same language as the draft when possible; otherwise use the language of this instruction.\n\n---\n{text}\n---",
+          "user_generate": "Expert name: {name}\nWrite one short welcome title for this expert based only on the name."
+        }
+      },
+      "team": {
+        "description": {
+          "system": "You write short product copy for an AI expert team profile.\nHard rules:\n- Output ONLY the description text in the target language of this prompt.\n- Keep it to 1–2 concise sentences.\n- No markdown, labels, quotes, greetings, or meta commentary.",
+          "user_polish": "Team name: {name}\nPolish the following team description. Keep the same language as the draft when possible; otherwise use the language of this instruction.\n\n---\n{text}\n---",
+          "user_generate": "Team name: {name}\nWrite one short description for this team based only on the name."
+        },
+        "welcome_message": {
+          "system": "You write a short welcome title line shown on an AI team chat page.\nHard rules:\n- Output ONLY the welcome title text in the target language of this prompt.\n- Keep it to one short friendly sentence.\n- No markdown, labels, quotes, or meta commentary.",
+          "user_polish": "Team name: {name}\nPolish the following welcome title. Keep the same language as the draft when possible; otherwise use the language of this instruction.\n\n---\n{text}\n---",
+          "user_generate": "Team name: {name}\nWrite one short welcome title for this team based only on the name."
+        }
+      },
+      "skill_package": {
+        "description": {
+          "system": "You write short product copy for a skill package that groups AI skills.\nHard rules:\n- Output ONLY the description text in the target language of this prompt.\n- Keep it to 1–2 concise sentences.\n- No markdown, labels, quotes, greetings, or meta commentary.",
+          "user_polish": "Skill package name: {name}\nPolish the following skill package description. Keep the same language as the draft when possible; otherwise use the language of this instruction.\n\n---\n{text}\n---",
+          "user_generate": "Skill package name: {name}\nWrite one short description for this skill package based only on the name."
+        }
+      },
+      "skill": {
+        "description": {
+          "system": "You write the YAML `description` for an AI skill (when the agent should use it).\nHard rules:\n- Output ONLY the description text in the target language of this prompt.\n- Keep it to 1–3 concise sentences that say when/why to use the skill.\n- No markdown, labels, quotes, greetings, or meta commentary.\n- Do not invent tools or files that were not mentioned.",
+          "user_polish": "Skill name: {name}\nPolish the following skill description. Keep the same language as the draft when possible; otherwise use the language of this instruction.\n\n---\n{text}\n---",
+          "user_generate": "Skill name: {name}\nWrite one short skill description (when to use it) based only on the name."
+        },
+        "label_zh": {
+          "system": "You write a short Chinese display name for an AI skill shown in the UI.\nHard rules:\n- Output ONLY the Chinese display name.\n- Keep it to about 2–12 Chinese characters (or a short phrase).\n- No markdown, labels, quotes, greetings, or meta commentary.\n- Do not output English unless the skill name itself is an established English product term.",
+          "user_polish": "Skill id/name: {name}\nPolish the following Chinese display name. Output Chinese only.\n\n---\n{text}\n---",
+          "user_generate": "Skill id/name: {name}\nWrite a short Chinese display name for this skill."
+        },
+        "label_en": {
+          "system": "You write a short English display name for an AI skill shown in the UI.\nHard rules:\n- Output ONLY the English display name.\n- Keep it to about 2–6 words, Title Case when natural.\n- No markdown, labels, quotes, greetings, or meta commentary.",
+          "user_polish": "Skill id/name: {name}\nPolish the following English display name. Output English only.\n\n---\n{text}\n---",
+          "user_generate": "Skill id/name: {name}\nWrite a short English display name for this skill."
+        },
+        "summary_zh": {
+          "system": "You write a short Chinese UI summary for an AI skill card.\nHard rules:\n- Output ONLY the Chinese summary.\n- Keep it to 1–2 concise sentences.\n- No markdown, labels, quotes, greetings, or meta commentary.",
+          "user_polish": "Skill id/name: {name}\nPolish the following Chinese skill summary. Output Chinese only.\n\n---\n{text}\n---",
+          "user_generate": "Skill id/name: {name}\nWrite a short Chinese UI summary for this skill."
+        },
+        "summary_en": {
+          "system": "You write a short English UI summary for an AI skill card.\nHard rules:\n- Output ONLY the English summary.\n- Keep it to 1–2 concise sentences.\n- No markdown, labels, quotes, greetings, or meta commentary.",
+          "user_polish": "Skill id/name: {name}\nPolish the following English skill summary. Output English only.\n\n---\n{text}\n---",
+          "user_generate": "Skill id/name: {name}\nWrite a short English UI summary for this skill."
+        },
+        "body": {
+          "system": "You write or polish the markdown body of an AI skill (instructions the agent follows after the YAML frontmatter).\nHard rules:\n- Output ONLY the skill body markdown in the target language of this prompt.\n- Keep practical structure (short intro, steps or bullets when helpful).\n- Do not include YAML frontmatter (no --- blocks with name/description).\n- Do not add greetings, meta commentary, or invent tools/paths that were not mentioned.\n- Preserve the author's intent; clarify and organize rather than rewrite into a different skill.",
+          "user_polish": "Skill name: {name}\nPolish the following skill body. Keep the same language as the draft when possible; otherwise use the language of this instruction. Do not wrap with YAML frontmatter.\n\n---\n{text}\n---",
+          "user_generate": "Skill name: {name}\nWrite a concise skill body (markdown instructions) for this skill based only on the name. Do not include YAML frontmatter."
+        }
+      },
+      "knowledge_base": {
+        "description": {
+          "system": "You write short product copy for a knowledge base of documents.\nHard rules:\n- Output ONLY the description text in the target language of this prompt.\n- Keep it to 1–2 concise sentences.\n- No markdown, labels, quotes, greetings, or meta commentary.",
+          "user_polish": "Knowledge base name: {name}\nPolish the following knowledge base description. Keep the same language as the draft when possible; otherwise use the language of this instruction.\n\n---\n{text}\n---",
+          "user_generate": "Knowledge base name: {name}\nWrite one short description for this knowledge base based only on the name."
+        }
+      },
+      "connector": {
+        "description": {
+          "system": "You write short copy for a third-party connector account so teammates can tell what it is for.\nHard rules:\n- Output ONLY the description text in the target language of this prompt.\n- Keep it to 1–2 concise sentences.\n- No markdown, labels, quotes, greetings, or meta commentary.\n- Do not invent secrets, permissions, or capabilities that were not mentioned.",
+          "user_polish": "Connector name: {name}\nPolish the following connector description. Keep the same language as the draft when possible; otherwise use the language of this instruction.\n\n---\n{text}\n---",
+          "user_generate": "Connector name: {name}\nWrite one short description for this connector based only on the name."
+        }
+      },
+      "bridge": {
+        "notes": {
+          "system": "You write short admin notes for a Bridge (cloud collaboration) connection so operators can recognize the peer.\nHard rules:\n- Output ONLY the notes text in the target language of this prompt.\n- Keep it to 1–2 concise sentences.\n- No markdown, labels, quotes, greetings, or meta commentary.\n- Do not invent URLs, accounts, or environment details that were not mentioned.",
+          "user_polish": "Connection display name: {name}\nPolish the following Bridge notes. Keep the same language as the draft when possible; otherwise use the language of this instruction.\n\n---\n{text}\n---",
+          "user_generate": "Connection display name: {name}\nWrite one short note for this Bridge connection based only on the display name."
+        }
+      },
+      "user_group": {
+        "description": {
+          "system": "You write short admin copy for a user group that controls who can see shared resources.\nHard rules:\n- Output ONLY the description text in the target language of this prompt.\n- Keep it to 1–2 concise sentences.\n- No markdown, labels, quotes, greetings, or meta commentary.\n- Do not invent permissions or edit rights the group does not have.",
+          "user_polish": "User group name: {name}\nPolish the following user group description. Keep the same language as the draft when possible; otherwise use the language of this instruction.\n\n---\n{text}\n---",
+          "user_generate": "User group name: {name}\nWrite one short description for this user group based only on the name."
+        }
+      },
+      "user_role": {
+        "description": {
+          "system": "You write short admin copy for a user role template that supplies default permissions and resource policies.\nHard rules:\n- Output ONLY the description text in the target language of this prompt.\n- Keep it to 1–2 concise sentences.\n- No markdown, labels, quotes, greetings, or meta commentary.\n- Do not invent permissions the role does not grant.",
+          "user_polish": "Role name: {name}\nPolish the following role description. Keep the same language as the draft when possible; otherwise use the language of this instruction.\n\n---\n{text}\n---",
+          "user_generate": "Role name: {name}\nWrite one short description for this role based only on the name."
+        }
+      }
+    }
   }
 }

@@ -1,7 +1,8 @@
 {
   "id": "ops-engineer",
+  "scene": "tech",
   "label": {
-    "zh": "运维工程师 Ops",
+    "zh": "Ops · 运维工程师",
     "en": "Ops · SRE Engineer"
   },
   "description": {

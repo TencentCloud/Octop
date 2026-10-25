@@ -159,7 +159,8 @@ and `allow_download` still apply to users who can already view the package.
 |------|------|-------|
 | `WS /agents/{id}/chat/ws?token=<jwt>` | owner | Primary dashboard turn endpoint. Send `{"type":"user_turn", ...}` frames (optional `hitl_policy` is a thread-scoped tool-approval bypass); server replies with harness stream chunks ending in `{"type":"done"}` or `{"type":"error","message":"..."}`. `{"type":"ping"}` → `{"type":"pong"}`. `{"type":"subscribe","thread_id"}` → `{"type":"turn_status","thread_id","active"}` plus a `steer.queue_snapshot` baseline (attach to an in-flight turn without cancelling on disconnect). `{"type":"cancel","thread_id"}` stops the active turn and discards its queued steers (explicit stop; disconnect alone does **not** cancel). See [Mid-turn steering](#mid-turn-steering) for steer frames. |
 | `GET /agents/{id}/chat/welcome` | agent access | `{welcome_message, quick_prompts, task_examples}`; `task_examples` is `null` when the workspace field is absent |
-| `POST /agents/{id}/chat/polish` | owner | body `{text, default_model?}` → `{text}` (one-shot prompt refinement) |
+| `POST /text/assist` | JWT | Unified polish/generate: body `{kind, text?, context?, locale?, default_model?, agent_id?}` → `{text}`. Form kinds require `context.name`; `chat.prompt` requires `text`. Model defaults to automatic routing. |
+| `POST /agents/{id}/chat/polish` | owner | **Deprecated** compat alias for `POST /text/assist` with `kind=chat.prompt` |
 | `POST /agents/{id}/chat/hitl/resume` | owner | body `{thread_id, decisions: [...], hitl_policy?}` → SSE chunk stream; finishes with `{"type":"done"}`. When the resume stops on another approval, the done frame is `{"type":"done","hitl_paused":true}` and parked steers stay queued. Optional `hitl_policy` (`ask` / `allow_all` / `allow_tools`) is a thread-scoped bypass and does not change global tool-approval settings. |
 
 Model calls retain LangChain's default retry eligibility and the configured
@@ -365,6 +366,7 @@ Bundled experts live in `src/octop/infra/agents/experts/library/`
 | `POST`   | `/agents/{aid}/workspace/rename` | owner | rename / move |
 | `POST`   | `/agents/{aid}/workspace/upload` | owner | multipart upload → backend (not `max_upload_mb`) |
 | `GET`    | `/agents/{aid}/workspace/download` | owner | download a file |
+| `GET`    | `/agents/{aid}/workspace/mention-index` | owner | bounded `@` file names via the workspace backend (`truncated` when capped; short cache) |
 | `GET`    | `/agents/{aid}/workspace/glob` | owner | glob backend paths |
 | `GET`    | `/agents/{aid}/workspace/grep` | owner | grep backend files |
 | `GET`    | `/agents/{aid}/workspace/...` | owner | see `api/routers/workspace.py` |

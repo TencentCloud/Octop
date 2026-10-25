@@ -35,6 +35,10 @@ import type { MenuProps, TreeDataNode } from "antd";
 import type { InputRef } from "antd/es/input";
 import { ResizableTable } from "@/components/ResizableTable";
 import {
+  SharedAvatarMark,
+  SharedResourceBadge,
+} from "../../components/SharedResourceBadge";
+import {
   Check,
   ChevronLeft,
   ChevronRight,
@@ -79,6 +83,7 @@ import {
   isUploadedAvatarUrl,
   KNOWLEDGE_AVATAR_PRESETS,
   ResourceAvatarPicker,
+  avatarPickerStyles,
 } from "../../components/AvatarPicker";
 import { OctopEmptyMascot } from "../../components/EmptyState";
 import DocumentPreviewCore from "../../components/DocumentPreviewCore";
@@ -87,6 +92,7 @@ import Markdown from "../../components/Markdown";
 import StreamSetupGuide from "../../components/StreamSetupGuide/StreamSetupGuide";
 import { CopyableResourceId } from "../../components/CopyableResourceId";
 import { ResourceVisibilityFields } from "../../components/ResourceVisibilityFields";
+import { TextAssistBar } from "../../components/TextAssistBar";
 import type { ResourceVisibilityMode } from "../../api/modules/userGroups";
 import { useCardTableView } from "../../hooks/useCardTableView";
 import { useHorizontalResize } from "../../hooks/useHorizontalResize";
@@ -192,6 +198,13 @@ function canManageKnowledgeBase(
   return Boolean(
     user && (user.role === "admin" || base.owner_user_id === user.id),
   );
+}
+
+function isKnowledgeOwner(
+  base: Pick<KnowledgeBase, "owner_user_id">,
+  user: OctopUser | null,
+): boolean {
+  return Boolean(user && base.owner_user_id === user.id);
 }
 
 function formatKnowledgeOwner(
@@ -2131,18 +2144,29 @@ export default function KnowledgeBasesPage() {
                         }`}
                       >
                         <div className={styles.listName}>
-                          <span className={styles.listIcon}>
-                            <KnowledgeBaseAvatar
-                              iconUrl={base.icon_url}
-                              iconName={base.icon_name}
-                              size={18}
-                            />
-                          </span>
+                          <SharedAvatarMark
+                            shared={base.shared}
+                            owned={isKnowledgeOwner(base, user)}
+                            ownerName={formatKnowledgeOwner(base)}
+                          >
+                            <span className={styles.listIcon}>
+                              <KnowledgeBaseAvatar
+                                iconUrl={base.icon_url}
+                                iconName={base.icon_name}
+                                size={18}
+                              />
+                            </span>
+                          </SharedAvatarMark>
                           <Tooltip title={base.name} placement="topLeft">
                             <span className={styles.listNameText}>
                               {base.name}
                             </span>
                           </Tooltip>
+                          <SharedResourceBadge
+                            shared={base.shared && isKnowledgeOwner(base, user)}
+                            owned
+                            ownerName={formatKnowledgeOwner(base)}
+                          />
                           <div
                             className={styles.listId}
                             onClick={(event) => event.stopPropagation()}
@@ -2202,22 +2226,13 @@ export default function KnowledgeBasesPage() {
                                 count: base.doc_count,
                               })}
                             </Tag>
-                            {base.default_open || base.shared ? (
+                            {base.default_open ? (
                               <div className={styles.listMetaBadges}>
-                                {base.default_open ? (
-                                  <span
-                                    className={`${styles.listBadge} ${styles.listBadgeDefaultOpen}`}
-                                  >
-                                    {t("knowledgeBases.defaultOpenBadge")}
-                                  </span>
-                                ) : null}
-                                {base.shared ? (
-                                  <span
-                                    className={`${styles.listBadge} ${styles.listBadgeShared}`}
-                                  >
-                                    {t("knowledgeBases.sharedBadge")}
-                                  </span>
-                                ) : null}
+                                <span
+                                  className={`${styles.listBadge} ${styles.listBadgeDefaultOpen}`}
+                                >
+                                  {t("knowledgeBases.defaultOpenBadge")}
+                                </span>
                               </div>
                             ) : null}
                           </div>
@@ -3243,7 +3258,10 @@ export default function KnowledgeBasesPage() {
           <Form.Item name="icon_url" hidden>
             <Input />
           </Form.Item>
-          <Form.Item label={t("knowledgeBases.icon")}>
+          <Form.Item
+            label={t("knowledgeBases.icon")}
+            className={avatarPickerStyles.formItem}
+          >
             <ResourceAvatarPicker
               imageUrl={
                 iconUrl?.trim() &&
@@ -3349,17 +3367,25 @@ export default function KnowledgeBasesPage() {
           >
             <Input autoFocus maxLength={200} />
           </Form.Item>
-          <Form.Item name="description" label={t("knowledgeBases.description")}>
-            <Input.TextArea
-              autoSize={{ minRows: 2, maxRows: 5 }}
-              maxLength={2000}
-              showCount
-            />
+          <Form.Item
+            name="description"
+            label={t("knowledgeBases.description")}
+            className={styles.textAssistField}
+          >
+            <Input.TextArea autoSize={{ minRows: 2, maxRows: 5 }} />
           </Form.Item>
+          <TextAssistBar
+            kind="knowledge_base.description"
+            getName={() => String(baseForm.getFieldValue("name") ?? "")}
+            getText={() => String(baseForm.getFieldValue("description") ?? "")}
+            onApply={(text) =>
+              baseForm.setFieldsValue({ description: text.slice(0, 2000) })
+            }
+          />
           <Form.Item
             name="max_documents"
             label={t("knowledgeBases.maxDocuments")}
-            extra={t("knowledgeBases.maxDocumentsHint")}
+            tooltip={t("knowledgeBases.maxDocumentsHint")}
           >
             <InputNumber
               min={0}
@@ -3385,7 +3411,7 @@ export default function KnowledgeBasesPage() {
                 onChange={setDefaultOpenChecked}
               />
             </div>
-            <div className={styles.formOptionRow}>
+            <div className={styles.formOptionRowVisibility}>
               <div className={styles.formOptionCopy}>
                 <span className={styles.switchLabel}>
                   {t("resourceVisibility.label")}

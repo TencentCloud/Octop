@@ -2520,7 +2520,7 @@ wheels = [
 
 [[package]]
 name = "octop"
-version = "1.0.2"
+version = "1.0.3b1"
 source = { editable = "." }
 dependencies = [
     { name = "acme" },
@@ -2630,7 +2630,7 @@ requires-dist = [
     { name = "mypy", marker = "extra == 'dev'", specifier = ">=1.10" },
     { name = "octop-browser", specifier = ">=1.0.0" },
     { name = "octop-gateway", specifier = ">=1.0.3" },
-    { name = "octop-harness", extras = ["all"], specifier = ">=1.0.4" },
+    { name = "octop-harness", extras = ["all"], specifier = ">=1.0.5" },
     { name = "octop-memory", specifier = ">=1.0.2" },
     { name = "onnxruntime", marker = "extra == 'knowledge-ocr'", specifier = ">=1.17" },
     { name = "openpyxl", specifier = ">=3.1" },
@@ -2720,7 +2720,7 @@ wheels = [
 
 [[package]]
 name = "octop-harness"
-version = "1.0.4"
+version = "1.0.5"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "deepagents" },
@@ -2738,9 +2738,9 @@ dependencies = [
     { name = "octop-memory" },
     { name = "pyyaml" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/9a/07/541b7ada368a49c4000f6718b3eb3349b6fff1bdfbcb3dc384c021da7aab/octop_harness-1.0.4.tar.gz", hash = "sha256:d87c8c6f2249107a7c3c0160fd043debdcf23529f25fea820f73f4c19fc20aae", size = 982534, upload-time = "2026-10-16T09:50:29.731Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/9d/8b/65507f27e1c45c7feab5e9bfca06732e8b494a7cfb8f3c6699c104dc4ed7/octop_harness-1.0.5.tar.gz", hash = "sha256:100c9cf9624b722c6ea2873a294df2ef9f2bea7efe02b23238cf4ee5e3733547", size = 991842, upload-time = "2026-10-24T12:31:02.333Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/85/3d/319095f36f851cef3d9a386d6b685785ae27be303196dba499bc97860394/octop_harness-1.0.4-py3-none-any.whl", hash = "sha256:880316e9b34ddd397d0b5472770168a30af93abdea3f022cc134425a508c83fc", size = 1180128, upload-time = "2026-10-16T09:50:28.088Z" },
+    { url = "https://files.pythonhosted.org/packages/56/c9/7be50f102fd9b09afb95ac3d5abc7771d9ba5275098b7ccf7d9ca1712f8c/octop_harness-1.0.5-py3-none-any.whl", hash = "sha256:40a27c3ba62eb7cb6e555ed73f8e888b668cfbf447fc7ed4229e200f780ae1b4", size = 1191847, upload-time = "2026-10-24T12:31:00.67Z" },
 ]
 
 [package.optional-dependencies]

@@ -931,6 +931,17 @@ def test_build_harness_config_includes_search_knowledge_without_cron(
     assert any(isinstance(item, KnowledgeSearchHintMiddleware) for item in (cfg.middleware or []))
 
 
+def test_build_harness_config_softens_mcp_output_schema_errors(manager: AgentManager) -> None:
+    from octop.infra.agents.middleware.mcp_output_schema import (
+        McpOutputSchemaMiddleware,
+        harness_handles_mcp_tool_errors,
+    )
+
+    cfg = manager._build_harness_config(_row(agent_id="AGT001"))
+    mounted = any(isinstance(item, McpOutputSchemaMiddleware) for item in (cfg.middleware or []))
+    assert mounted is not harness_handles_mcp_tool_errors()
+
+
 def test_build_harness_config_defaults_local_shell_backend(manager: AgentManager) -> None:
     cfg = manager._build_harness_config(_row(agent_id="AGT001"))
     assert cfg.backend == _expected_default_backend(manager, "AGT001")
@@ -1179,10 +1190,11 @@ async def test_delete_thread_checkpoint_also_clears_configured_store(
     harness_manager = MagicMock()
     harness_manager.get_agent.return_value = MagicMock(agent=agent)
     manager._harness_manager = harness_manager
-    seen: dict[str, str] = {}
+    seen: dict[str, Any] = {}
 
     def _capture(**kwargs: Any) -> None:
         seen["thread_id"] = kwargs["thread_id"]
+        seen["reclaim"] = kwargs["reclaim"]
 
     monkeypatch.setattr(
         "octop.infra.agents.memory.thread_cleanup.delete_thread_from_agent_stores",
@@ -1193,6 +1205,28 @@ async def test_delete_thread_checkpoint_also_clears_configured_store(
 
     agent.adelete_thread.assert_awaited_once_with("thr_1")
     assert seen["thread_id"] == "thr_1"
+    assert seen["reclaim"] is True
+
+
+@pytest.mark.asyncio
+async def test_delete_thread_checkpoint_can_skip_sqlite_reclaim(
+    manager: AgentManager, monkeypatch: Any
+) -> None:
+    user_id = manager._repos.user_repo.create(username="alice", password_hash="x", role="admin")
+    manager._repos.agent_repo.create(agent_id="AGT1", user_id=user_id, name="a")
+    seen: dict[str, bool] = {}
+
+    def _capture(**kwargs: Any) -> None:
+        seen["reclaim"] = kwargs["reclaim"]
+
+    monkeypatch.setattr(
+        "octop.infra.agents.memory.thread_cleanup.delete_thread_from_agent_stores",
+        _capture,
+    )
+
+    await manager.delete_thread_checkpoint("AGT1", "thr_1", reclaim=False)
+
+    assert seen["reclaim"] is False
 
 
 @pytest.mark.asyncio

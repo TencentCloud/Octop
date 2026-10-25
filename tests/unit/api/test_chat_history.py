@@ -482,7 +482,7 @@ async def test_delete_thread_without_compact_returns_204_when_idle() -> None:
 
 
 @pytest.mark.asyncio
-async def test_delete_thread_compact_false_returns_schedule_json() -> None:
+async def test_delete_thread_compact_false_does_not_vacuum() -> None:
     hub = WebSocketHub()
     server, user = _delete_server(hub)
 
@@ -491,12 +491,13 @@ async def test_delete_thread_compact_false_returns_schedule_json() -> None:
     )
 
     assert response.status_code == 200
-    assert json.loads(response.body) == {"compacted": False, "scheduled": True}
+    assert json.loads(response.body) == {"compacted": False, "scheduled": False}
     server.app_runtime.agent_registry.delete_thread_checkpoint.assert_awaited_once_with(
-        "agt_1", "thr_1"
+        "agt_1", "thr_1", reclaim=False
     )
     server.app_runtime.gateway.thread_registry.delete_thread.assert_called_once_with("thr_1")
-    server.app_runtime.agent_registry.schedule_store_reclaim.assert_called_once_with("agt_1")
+    server.app_runtime.agent_registry.schedule_store_reclaim.assert_not_called()
+    server.app_runtime.agent_registry.compact_agent_database.assert_not_called()
 
 
 @pytest.mark.asyncio

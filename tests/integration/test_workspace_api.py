@@ -223,6 +223,31 @@ async def test_glob_after_seeding(env: Any) -> None:
     assert "b.md" in matched
 
 
+async def test_mention_index_skips_heavy_dirs(env: Any) -> None:
+    c, _srv, auth, aid = env
+    await c.put(
+        f"/api/agents/{aid}/workspace/file",
+        params={**FROM_WORKSPACE, "path": "/notes/api.md"},
+        headers=auth,
+        json={"content": "x"},
+    )
+    await c.put(
+        f"/api/agents/{aid}/workspace/file",
+        params={**FROM_WORKSPACE, "path": "/node_modules/pkg/index.js"},
+        headers=auth,
+        json={"content": "x"},
+    )
+    r = await c.get(f"/api/agents/{aid}/workspace/mention-index", headers=auth)
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert "notes/api.md" in body["paths"]
+    assert body["truncated"] is False
+    for path in body["paths"]:
+        parts = path.split("/")
+        assert "node_modules" not in parts
+        assert ".octop" not in parts
+
+
 async def test_grep_after_seeding(env: Any) -> None:
     c, _srv, auth, aid = env
     await c.put(
