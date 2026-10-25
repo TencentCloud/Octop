@@ -488,8 +488,7 @@ def validate_create_credentials(
                 )
             out = {
                 "internal_token": new_internal_token(),
-                "cli_config_key": str(credentials.get("cli_config_key") or "").strip()
-                or new_ulid(),
+                "cli_config_key": new_ulid(),
             }
             if client_id:
                 out.update(client_id=client_id, client_secret=client_secret)
