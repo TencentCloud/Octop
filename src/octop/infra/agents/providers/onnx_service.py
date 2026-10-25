@@ -21,6 +21,9 @@ from enum import StrEnum
 from pathlib import Path
 from typing import Any
 
+import httpx
+
+from octop.i18n import tr
 from octop.infra.agents.providers.onnx_catalog import (
     ONNX_PRESET_MODEL_IDS,
     get_onnx_model_meta,
@@ -428,7 +431,7 @@ _embedding_inference_lock = threading.Lock()
 _embedding_instance: tuple[str, str, Any] | None = None
 
 
-def _build_text_embedding(model: str) -> Any:
+def _build_text_embedding(model: str, *, local_files_only: bool = False) -> Any:
     from fastembed import TextEmbedding
 
     cache = embedding_models_dir()
@@ -441,10 +444,20 @@ def _build_text_embedding(model: str) -> Any:
             specific_model_path=str(local_snapshot),
             local_files_only=True,
         )
-    return TextEmbedding(model_name=model, cache_dir=str(cache), threads=2)
+    return TextEmbedding(
+        model_name=model,
+        cache_dir=str(cache),
+        threads=2,
+        local_files_only=local_files_only,
+    )
 
 
-def embed_texts(model: str, texts: Sequence[str]) -> list[list[float]]:
+def embed_texts(
+    model: str,
+    texts: Sequence[str],
+    *,
+    local_files_only: bool = False,
+) -> list[list[float]]:
     global _embedding_instance
     if not texts:
         return []
@@ -458,7 +471,11 @@ def embed_texts(model: str, texts: Sequence[str]) -> list[list[float]]:
             if _embedding_instance is None or _embedding_instance[:2] != (model, cache_path):
                 # Release the old session before loading another model's weights.
                 _embedding_instance = None
-                _embedding_instance = (model, cache_path, _build_text_embedding(model))
+                _embedding_instance = (
+                    model,
+                    cache_path,
+                    _build_text_embedding(model, local_files_only=local_files_only),
+                )
             vectors = [
                 [float(x) for x in vec]
                 for vec in _embedding_instance[2].embed([text], batch_size=1)
@@ -469,25 +486,45 @@ def embed_texts(model: str, texts: Sequence[str]) -> list[list[float]]:
     return out
 
 
+def _probe_error_message(exc: Exception) -> str:
+    """Explain known offline-load failures without hiding unrelated errors."""
+    text = str(exc)
+    if isinstance(exc, httpx.TransportError):
+        return tr("onnx.probe.network_error", detail=text)
+    if (
+        isinstance(exc, ValueError)
+        and text.startswith("Could not load model ")
+        and text.endswith(" from any source.")
+    ):
+        return tr("onnx.probe.cache_load_failed", detail=text)
+    return text
+
+
 async def probe_local_model(model: str) -> dict[str, Any]:
     """Time a tiny local embedding and report the vector width.
 
     Shared by the ONNX admin test endpoint and the generic provider probe so
     the local service is never mistaken for a remote OpenAI-compatible API.
-    Runs entirely on-device: it must not issue any network request.
+    Runs entirely on-device: it must not issue any network request. The model
+    is loaded with ``local_files_only=True`` and dependencies are never
+    installed here, so an incomplete cache surfaces as an actionable error
+    instead of a bare ``[Errno 101]`` from a hidden HuggingFace/GCS fallback.
     """
     if not model:
         return {"ok": False, "error": "no ONNX model selected"}
     try:
         model = assert_catalog_model(model)
-        await ensure_local_embedding_deps_async(allow_install=True)
+        await ensure_local_embedding_deps_async(allow_install=False)
     except (ValueError, RuntimeError) as exc:
         return {"ok": False, "error": str(exc)}
     if not is_model_downloaded(model):
         return {"ok": False, "error": "model is not downloaded yet; download it before testing"}
 
     def _run() -> int:
-        vectors = embed_texts(model, [_LOCAL_PROBE_TEXT])
+        # local_files_only=True: fastembed falls back to HuggingFace/GCS
+        # downloads when local resolution fails, which would break the
+        # offline promise and surface a bare errno on offline hosts.
+        vectors = embed_texts(model, [_LOCAL_PROBE_TEXT], local_files_only=True)
         if not vectors:
             raise RuntimeError("embedding returned no vectors")
         return len(vectors[0])
@@ -497,7 +534,7 @@ async def probe_local_model(model: str) -> dict[str, Any]:
         loop = asyncio.get_running_loop()
         dim = await loop.run_in_executor(None, _run)
     except Exception as exc:
-        return {"ok": False, "error": str(exc)}
+        return {"ok": False, "error": _probe_error_message(exc)}
     return {"ok": True, "latency_ms": (time.perf_counter() - started) * 1000.0, "dim": dim}
 
 

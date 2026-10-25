@@ -249,7 +249,10 @@ def test_is_downloaded_recognizes_fastembed_hf_alias(tmp_path, monkeypatch) -> N
     assert "BAAI/bge-small-zh-v1.5" in mod.list_downloaded_models()
 
 
-def test_build_embedding_uses_local_snapshot_without_hf_lookup(tmp_path, monkeypatch) -> None:
+@pytest.mark.parametrize("local_files_only", [False, True])
+def test_build_embedding_uses_local_snapshot_without_hf_lookup(
+    tmp_path, monkeypatch, local_files_only
+) -> None:
     monkeypatch.setenv("OCTOP_HOME", str(tmp_path))
     from octop.infra.agents.providers import onnx_catalog as catalog
     from octop.infra.agents.providers import onnx_service as mod
@@ -269,7 +272,7 @@ def test_build_embedding_uses_local_snapshot_without_hf_lookup(tmp_path, monkeyp
 
     monkeypatch.setitem(sys.modules, "fastembed", SimpleNamespace(TextEmbedding=FakeTextEmbedding))
 
-    mod._build_text_embedding("BAAI/bge-small-zh-v1.5")
+    mod._build_text_embedding("BAAI/bge-small-zh-v1.5", local_files_only=local_files_only)
 
     assert seen["specific_model_path"] == str(snapshot)
     assert seen["local_files_only"] is True
@@ -299,7 +302,7 @@ def test_embed_texts_returns_vectors(monkeypatch) -> None:
                 yield [0.1, 0.2, 0.3]
 
     monkeypatch.setattr(mod, "local_embedding_deps_available", lambda: True)
-    monkeypatch.setattr(mod, "_build_text_embedding", lambda _model: FakeEmb())
+    monkeypatch.setattr(mod, "_build_text_embedding", lambda _model, **_kwargs: FakeEmb())
     vectors = mod.embed_texts("BAAI/bge-small-zh-v1.5", ["hello"])
     assert len(vectors) == 1 and len(vectors[0]) == 3
 
@@ -309,7 +312,7 @@ def test_embed_texts_empty_input(monkeypatch) -> None:
 
     called = {"n": 0}
 
-    def boom(_model: str) -> None:
+    def boom(_model: str, **_kwargs: object) -> None:
         called["n"] += 1
         raise AssertionError("should not build embedding for empty input")
 
@@ -318,10 +321,11 @@ def test_embed_texts_empty_input(monkeypatch) -> None:
     assert called["n"] == 0
 
 
-def test_embed_texts_bounds_batches_and_reuses_model(monkeypatch) -> None:
+@pytest.mark.parametrize("local_files_only", [False, True])
+def test_embed_texts_bounds_batches_and_reuses_model(monkeypatch, local_files_only) -> None:
     from octop.infra.agents.providers import onnx_service as mod
 
-    builds: list[str] = []
+    builds: list[tuple[str, bool]] = []
     batches: list[list[str]] = []
 
     class FakeEmb:
@@ -330,17 +334,19 @@ def test_embed_texts_bounds_batches_and_reuses_model(monkeypatch) -> None:
             batches.append(list(texts))
             yield [float(texts[0])]
 
-    def build(model):
-        builds.append(model)
+    def build(model, *, local_files_only=False):
+        builds.append((model, local_files_only))
         return FakeEmb()
 
     monkeypatch.setattr(mod, "require_local_embedding_deps", lambda: None)
     monkeypatch.setattr(mod, "assert_catalog_model", lambda model: model)
     monkeypatch.setattr(mod, "_build_text_embedding", build)
     texts = [str(i) for i in range(96)]
-    assert mod.embed_texts("model", texts) == [[float(i)] for i in range(96)]
-    assert mod.embed_texts("model", ["100"]) == [[100.0]]
-    assert builds == ["model"]
+    assert mod.embed_texts("model", texts, local_files_only=local_files_only) == [
+        [float(i)] for i in range(96)
+    ]
+    assert mod.embed_texts("model", ["100"], local_files_only=not local_files_only) == [[100.0]]
+    assert builds == [("model", local_files_only)]
     assert all(len(batch) == 1 for batch in batches)
 
 
@@ -363,7 +369,7 @@ def test_embed_texts_serializes_loading_and_inference(monkeypatch) -> None:
                 assert release.is_set(), "query inference overlapped indexing"
             yield [1.0]
 
-    def build(model):
+    def build(model, *, local_files_only=False):
         builds.append(model)
         return FakeEmb()
 
@@ -397,7 +403,7 @@ def test_embed_texts_releases_cache_on_model_or_home_change(monkeypatch, tmp_pat
         def embed(self, texts, *, batch_size):
             yield [1.0]
 
-    def build(model):
+    def build(model, *, local_files_only=False):
         assert mod._embedding_instance is None
         builds.append(model)
         return FakeEmb()
@@ -420,7 +426,9 @@ def test_embed_texts_rejects_incomplete_batch(monkeypatch) -> None:
     monkeypatch.setattr(mod, "require_local_embedding_deps", lambda: None)
     monkeypatch.setattr(mod, "assert_catalog_model", lambda model: model)
     monkeypatch.setattr(
-        mod, "_build_text_embedding", lambda _: SimpleNamespace(embed=lambda *_a, **_kw: [])
+        mod,
+        "_build_text_embedding",
+        lambda _, **_kwargs: SimpleNamespace(embed=lambda *_a, **_kw: []),
     )
     with pytest.raises(RuntimeError, match="embedding count mismatch"):
         mod.embed_texts("model", ["text"])
@@ -586,3 +594,143 @@ async def test_provider_probe_never_leaves_the_host_for_local_onnx(monkeypatch) 
     )
     assert explicit["ok"] is True
     assert explicit["model"] == "BAAI/bge-small-zh-v1.5"
+
+
+async def test_probe_local_model_loads_cached_model_offline(monkeypatch) -> None:
+    """Regression #1165: the probe must force fastembed's local-only load path.
+
+    With the default load, fastembed falls back to HuggingFace/GCS downloads
+    whenever local resolution fails, and the raw connection error escapes as a
+    bare ``[Errno 101]`` on offline hosts.
+    """
+    from octop.infra.agents.providers import onnx_service as mod
+
+    class FakeEmb:
+        def embed(self, texts, *, batch_size):
+            for _ in texts:
+                yield [0.1, 0.2, 0.3]
+
+    captured: dict[str, object] = {}
+
+    def fake_build(model: str, *, local_files_only: bool = False) -> FakeEmb:
+        captured["model"] = model
+        captured["local_files_only"] = local_files_only
+        return FakeEmb()
+
+    monkeypatch.setattr(mod, "local_embedding_deps_available", lambda: True)
+    monkeypatch.setattr(mod, "is_model_downloaded", lambda _m: True)
+    monkeypatch.setattr(mod, "_build_text_embedding", fake_build)
+
+    result = await mod.probe_local_model("BAAI/bge-small-zh-v1.5")
+
+    assert result["ok"] is True
+    assert result["dim"] == 3
+    assert captured["local_files_only"] is True
+    assert captured["model"] == "BAAI/bge-small-zh-v1.5"
+
+
+async def test_probe_local_model_never_installs_deps(monkeypatch) -> None:
+    """The probe is a healthcheck: missing components surface, pip never runs."""
+    from octop.infra.agents.providers import onnx_service as mod
+
+    def boom(*_args: object, **_kwargs: object) -> str:
+        raise AssertionError("probe must not install packages")
+
+    monkeypatch.setattr(mod, "local_embedding_deps_available", lambda: False)
+    monkeypatch.setattr(mod, "install_packages", boom)
+
+    result = await mod.probe_local_model("BAAI/bge-small-zh-v1.5")
+
+    assert result["ok"] is False
+    assert "not installed" in result["error"]
+
+
+async def test_probe_local_model_maps_network_error_to_hint(monkeypatch) -> None:
+    """A network error escaping the load becomes actionable, not bare Errno 101."""
+    import httpx
+
+    from octop.infra.agents.providers import onnx_service as mod
+
+    def fake_build(_model: str, *, local_files_only: bool = False) -> object:
+        del local_files_only
+        raise httpx.ConnectError("[Errno 101] Network is unreachable")
+
+    monkeypatch.setattr(mod, "local_embedding_deps_available", lambda: True)
+    monkeypatch.setattr(mod, "is_model_downloaded", lambda _m: True)
+    monkeypatch.setattr(mod, "_build_text_embedding", fake_build)
+
+    result = await mod.probe_local_model("BAAI/bge-small-zh-v1.5")
+
+    assert result["ok"] is False
+    assert "Errno 101" in result["error"], "original detail kept for diagnosis"
+    assert "local model cache" in result["error"]
+    assert "offline" in result["error"]
+    assert "re-download" not in result["error"]
+
+
+async def test_probe_local_model_maps_incomplete_cache_to_hint(monkeypatch) -> None:
+    """A failed local load must not promise that re-downloading repairs the cache."""
+    from octop.infra.agents.providers import onnx_service as mod
+
+    def fake_build(_model: str, *, local_files_only: bool = False) -> object:
+        del local_files_only
+        raise ValueError("Could not load model BAAI/bge-small-zh-v1.5 from any source.")
+
+    monkeypatch.setattr(mod, "local_embedding_deps_available", lambda: True)
+    monkeypatch.setattr(mod, "is_model_downloaded", lambda _m: True)
+    monkeypatch.setattr(mod, "_build_text_embedding", fake_build)
+
+    result = await mod.probe_local_model("BAAI/bge-small-zh-v1.5")
+
+    assert result["ok"] is False
+    assert "from any source" in result["error"]
+    assert "local cache layout and model files" in result["error"]
+    assert "re-download" not in result["error"]
+
+
+@pytest.mark.parametrize(
+    "exc",
+    [
+        ValueError("invalid network input shape"),
+        ValueError("invalid tokenizer configuration"),
+        PermissionError(13, "Permission denied"),
+        RuntimeError("connection between graph nodes is invalid"),
+    ],
+)
+async def test_probe_local_model_preserves_unrelated_errors(monkeypatch, exc) -> None:
+    from octop.infra.agents.providers import onnx_service as mod
+
+    def fake_build(_model: str, *, local_files_only: bool = False) -> object:
+        raise exc
+
+    monkeypatch.setattr(mod, "local_embedding_deps_available", lambda: True)
+    monkeypatch.setattr(mod, "is_model_downloaded", lambda _m: True)
+    monkeypatch.setattr(mod, "_build_text_embedding", fake_build)
+
+    assert await mod.probe_local_model("BAAI/bge-small-zh-v1.5") == {
+        "ok": False,
+        "error": str(exc),
+    }
+
+
+@pytest.mark.parametrize("local_files_only", [False, True])
+def test_build_text_embedding_preserves_thread_limit_and_offline_mode(
+    monkeypatch, local_files_only
+) -> None:
+    from octop.infra.agents.providers import onnx_service as mod
+
+    captured = {}
+    embedding = object()
+
+    def build(**kwargs):
+        captured.update(kwargs)
+        return embedding
+
+    monkeypatch.setitem(sys.modules, "fastembed", SimpleNamespace(TextEmbedding=build))
+    assert mod._build_text_embedding("model", local_files_only=local_files_only) is embedding
+    assert captured == {
+        "model_name": "model",
+        "cache_dir": str(mod.embedding_models_dir()),
+        "threads": 2,
+        "local_files_only": local_files_only,
+    }

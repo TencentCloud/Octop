@@ -965,6 +965,12 @@
       "search_failed": "目录服务拒绝了用户检索"
     }
   },
+  "onnx": {
+    "probe": {
+      "network_error": "离线模型检测期间发生网络访问错误。请检查本地模型缓存和嵌入依赖。详细信息：{detail}",
+      "cache_load_failed": "模型文件已存在，但无法离线加载。请检查本地缓存目录结构和模型文件后再检测。详细信息：{detail}"
+    }
+  },
   "memory_storage": {
     "postgres": "PostgreSQL 使用共享表，暂不支持仅维护当前专家。请由管理员安排数据库维护。",
     "shared_sqlite": "该 SQLite 文件由多个专家共用，无法仅维护当前专家。",
