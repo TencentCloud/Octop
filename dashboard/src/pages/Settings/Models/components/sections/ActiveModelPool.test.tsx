@@ -1,4 +1,10 @@
-import { act, render, screen, waitFor } from "@testing-library/react";
+import {
+  act,
+  render,
+  renderHook,
+  screen,
+  waitFor,
+} from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { preferencesApi } from "../../../../../api/modules/preferences";
@@ -77,6 +83,37 @@ describe("ActiveModelPool personal preference", () => {
     expect(star).toHaveAttribute("aria-pressed", "false");
     expect(screen.queryAllByRole("button", { pressed: true })).toHaveLength(0);
     expect(request).not.toHaveBeenCalledWith("/providers/active-model");
+  });
+
+  it("reports an initial preference load failure instead of assuming no preference", async () => {
+    vi.mocked(preferencesApi.get).mockRejectedValueOnce(new Error("offline"));
+    const { result } = renderHook(() => useProviders());
+
+    await waitFor(() => expect(result.current.loading).toBe(false));
+    expect(result.current.error).toBe("offline");
+  });
+
+  it("preserves the last loaded preference and reasoning when refreshing fails", async () => {
+    savedPreference = "prov/a";
+    const reasoning = {
+      "prov/a": { mode: "enabled" as const, effort: "high" },
+    };
+    vi.mocked(preferencesApi.get).mockResolvedValueOnce({
+      ...preferences(),
+      model_reasoning: reasoning,
+    });
+    const { result } = renderHook(() => useProviders());
+    await waitFor(() => expect(result.current.loading).toBe(false));
+
+    vi.mocked(preferencesApi.get).mockRejectedValueOnce(new Error("offline"));
+    await act(async () => result.current.fetchAll());
+
+    expect(result.current.error).toBe("offline");
+    expect(result.current.activeModel).toEqual({
+      provider_name: "prov",
+      model: "a",
+    });
+    expect(result.current.modelReasoning).toEqual(reasoning);
   });
 
   it("sets and clears a preference, keeping it cleared after a remount", async () => {

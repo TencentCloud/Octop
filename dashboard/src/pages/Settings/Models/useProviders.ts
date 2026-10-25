@@ -158,6 +158,9 @@ export function useProviders(): UseProvidersResult {
           ? settled[0].reason
           : new Error(t("models.loadProvidersFailed"));
       }
+      if (settled[3].status === "rejected") {
+        throw settled[3].reason;
+      }
 
       const normalized = rows.map((r) => ({
         ...r,
