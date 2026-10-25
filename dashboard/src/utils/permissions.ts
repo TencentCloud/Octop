@@ -9,22 +9,64 @@ export type PermissionHolder = {
 export type PermissionKeys = readonly string[] | "admin";
 
 export const PERM = {
+  skills: ["skills"],
+  subagents: ["subagents"],
+  tools: ["tools"],
+  agentPlugins: ["agent_plugins"],
+  mbti: ["mbti"],
+  memory: ["memory"],
+  /** Personalization tabs other than channels, which has its own nav item. */
+  personalization: [
+    "skills",
+    "skill_builtin",
+    "skill_market",
+    "subagents",
+    "tools",
+    "agent_plugins",
+    "mbti",
+    "memory",
+  ],
   channels: ["channels"],
-  connectors: ["connectors"],
+  connectors: ["connector_enabled", "connector_builtin", "connector_custom"],
   skillPackages: ["skill_packages"],
   knowledgeBases: ["knowledge_bases"],
   knowledgeSettings: ["knowledge_settings"],
   knowledgeBasesPage: ["knowledge_bases", "knowledge_settings"],
+  bridge: ["bridge"],
   workbench: ["browser", "terminal"],
   browser: ["browser"],
   terminal: ["terminal"],
   desktop: ["desktop"],
   mobile: ["mobile"],
-  usersPage: ["users", "sso"],
-  modelsPage: ["providers", "ollama_models", "onnx_models", "voice", "search"],
+  usersPage: [
+    "users",
+    "user_roles",
+    "user_groups",
+    "sso_feishu",
+    "sso_wecom",
+    "sso_dingtalk",
+    "sso_oidc",
+    "sso_ldap",
+  ],
+  modelsPage: [
+    "providers",
+    "ollama_models",
+    "onnx_models",
+    "model_generation",
+    "voice",
+    "model_decision",
+    "search",
+  ],
   storage: ["storage_backends"],
-  plugins: ["plugins"],
-  securityPage: ["security", "admin_console"],
+  plugins: ["plugins", "plugin_market"],
+  securityPage: [
+    "security_hitl",
+    "security_filesystem",
+    "security_pii",
+    "security_tool_guard",
+    "security_skill_scan",
+    "admin_console",
+  ],
   advancedPage: ["update", "envs", "tls", "observability", "backup", "captcha"],
   experts: ["experts"],
   tasks: ["tasks"],
@@ -32,14 +74,37 @@ export const PERM = {
 } as const satisfies Record<string, readonly string[]>;
 
 /** Sidebar item key → permission keys. Shared with path guards. */
+export const PERSONALIZATION_TAB_PERMISSIONS = {
+  skills: ["skills", "skill_builtin", "skill_market"],
+  subagents: "subagents",
+  tools: "tools",
+  plugins: "agent_plugins",
+  mbti: "mbti",
+  memory: "memory",
+  channels: "channels",
+} as const;
+
+export const CONNECTOR_TAB_PERMISSIONS = {
+  enabled: "connector_enabled",
+  builtin: "connector_builtin",
+  custom: "connector_custom",
+} as const;
+
+export const PLUGIN_TAB_PERMISSIONS = {
+  installed: "plugins",
+  market: "plugin_market",
+} as const;
+
 export const NAV_PERMISSIONS = {
   experts: PERM.experts,
   tasks: PERM.tasks,
   "token-usage": PERM.tokenUsage,
+  personalization: PERM.personalization,
   channels: PERM.channels,
   connectors: PERM.connectors,
   "skill-packages": PERM.skillPackages,
   "knowledge-bases": PERM.knowledgeBasesPage,
+  bridge: PERM.bridge,
   workbench: PERM.workbench,
   "remote-desktop": ["desktop", "mobile"],
   "remote-phone": PERM.mobile,
@@ -56,12 +121,13 @@ export type NavPermissionKey = keyof typeof NAV_PERMISSIONS;
 
 export const USERS_TAB_PERMISSIONS = {
   local: "users",
-  roles: "users",
-  feishu: "sso",
-  wecom: "sso",
-  dingtalk: "sso",
-  oidc: "sso",
-  ldap: "sso",
+  roles: "user_roles",
+  groups: "user_groups",
+  feishu: "sso_feishu",
+  wecom: "sso_wecom",
+  dingtalk: "sso_dingtalk",
+  oidc: "sso_oidc",
+  ldap: "sso_ldap",
 } as const;
 
 export const ADVANCED_TAB_PERMISSIONS = {
@@ -74,11 +140,11 @@ export const ADVANCED_TAB_PERMISSIONS = {
 } as const;
 
 export const SECURITY_TAB_PERMISSIONS = {
-  hitl: "security",
-  filesystem: "security",
-  pii: "security",
-  tool_guard: "security",
-  skill_scan: "security",
+  hitl: "security_hitl",
+  filesystem: "security_filesystem",
+  pii: "security_pii",
+  tool_guard: "security_tool_guard",
+  skill_scan: "security_skill_scan",
   audit: "admin_console",
 } as const;
 
@@ -166,12 +232,34 @@ export function pathPermissionKeys(pathname: string): PermissionKeys | null {
   if (pathname.startsWith("/admin/")) {
     return "admin";
   }
-  if (
-    pathname === "/personalization/channels" ||
-    pathname === "/channels" ||
-    pathname.startsWith("/personalization/channels/")
-  ) {
+  if (pathname === "/channels" || pathname.startsWith("/channels/")) {
     return PERM.channels;
+  }
+  if (
+    pathname === "/personalization" ||
+    pathname.startsWith("/personalization/") ||
+    pathname === "/skills" ||
+    pathname === "/subagents" ||
+    pathname === "/mbti" ||
+    pathname === "/memory"
+  ) {
+    const tab =
+      pathname === "/skills"
+        ? "skills"
+        : pathname === "/subagents"
+        ? "subagents"
+        : pathname === "/mbti"
+        ? "mbti"
+        : pathname === "/memory"
+        ? "memory"
+        : pathname.split("/")[2] ?? "";
+    const key =
+      PERSONALIZATION_TAB_PERMISSIONS[
+        tab as keyof typeof PERSONALIZATION_TAB_PERMISSIONS
+      ];
+    if (key) return typeof key === "string" ? [key] : [...key];
+    if (tab) return null;
+    return [...PERM.personalization, ...PERM.channels];
   }
   if (pathname === "/connectors" || pathname.startsWith("/connectors/")) {
     return PERM.connectors;
@@ -189,7 +277,7 @@ export function pathPermissionKeys(pathname: string): PermissionKeys | null {
     return PERM.knowledgeBasesPage;
   }
   if (pathname === "/bridge" || pathname.startsWith("/bridge/")) {
-    return null;
+    return PERM.bridge;
   }
   if (pathname === "/remote-desktop/desktop") {
     return PERM.desktop;

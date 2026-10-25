@@ -72,7 +72,11 @@ import {
 } from "../../../plugins/toolRenderers";
 import { BuiltinOctopUiFallback } from "../../../plugins/toolRenderers/builtin/BuiltinOctopUiFallback";
 import { ToolUiErrorBoundary } from "../../../plugins/toolRenderers/ToolUiErrorBoundary";
-import { lookupPluginIdForTool } from "../../../plugins/toolRenderers/toolPluginIndex";
+import { remotePluginUiUnavailable } from "../../../plugins/toolRenderers/remotePluginUi";
+import {
+  lookupPluginIdForTool,
+  useToolPluginIndexVersion,
+} from "../../../plugins/toolRenderers/toolPluginIndex";
 import { useChatToolDock } from "../ChatToolDockContext";
 import { useToolUiDockButtonStyle } from "../hooks/useToolUiDockButtonStyle";
 import type { ParsedToolOutput } from "../../../plugins/toolRenderers/types";
@@ -105,7 +109,13 @@ interface MessageBubbleProps {
 
 function formatTokenUsage(
   usage: ChatMessage["usage"],
-  labels: { input: string; output: string; total: string; cacheHit: string },
+  labels: {
+    input: string;
+    output: string;
+    total: string;
+    cacheHit: string;
+    decisionSaved: string;
+  },
 ): string[] {
   if (!usage) return [];
 
@@ -130,6 +140,9 @@ function formatTokenUsage(
   }
   if (typeof usage.total_tokens === "number") {
     parts.push(`${usage.total_tokens} ${labels.total}`);
+  }
+  if (typeof usage.decision_saved === "number" && usage.decision_saved > 0) {
+    parts.push(`${usage.decision_saved} ${labels.decisionSaved}`);
   }
   return parts;
 }
@@ -379,6 +392,7 @@ export function ToolDetailsInline({
   const toolDock = useChatToolDock();
   // Plugin UIs load async after mount — bump forces resolve() to re-run.
   const rendererVersion = useToolRendererVersion();
+  useToolPluginIndexVersion();
   const parsed = useMemo(
     () => parseOctopToolOutput(toolData.output),
     [toolData.output],
@@ -514,13 +528,21 @@ export function ToolDetailsInline({
 
   // Structured plugin envelope without a loaded custom renderer — still show a card.
   if (parsed.octopUi) {
+    const annotateMissingPlugin = remotePluginUiUnavailable({
+      agentId,
+      toolName: toolData.name,
+      hasOctopUi: true,
+    });
     return (
       <div
         ref={wrapRef}
         data-octop-tool-renderer=""
         className={styles.toolUiRendererWrap}
       >
-        <BuiltinOctopUiFallback {...props} />
+        <BuiltinOctopUiFallback
+          {...props}
+          annotateMissingPlugin={annotateMissingPlugin}
+        />
         {dockActions}
       </div>
     );
@@ -615,6 +637,7 @@ function MessageBubble({
         output: t("chatUsage.output"),
         total: t("chatUsage.total"),
         cacheHit: t("chatUsage.cacheHit"),
+        decisionSaved: t("chatUsage.decisionSaved"),
       }),
     [message.usage, t],
   );

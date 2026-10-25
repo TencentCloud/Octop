@@ -6,7 +6,7 @@ import asyncio
 import json
 import logging
 from types import SimpleNamespace
-from typing import Any, cast
+from typing import Any, Literal, cast
 
 from fastapi import APIRouter, Depends, Request
 from pydantic import BaseModel
@@ -38,10 +38,14 @@ from octop.infra.agents.providers.reasoning import reasoning_capability
 from octop.infra.agents.providers.resolved import list_resolved_models as _list_resolved_models
 from octop.infra.agents.providers.store import (
     clear_stale_pins_for_provider,
+    merge_provider_purpose_extra,
     merge_stream_usage_extra,
+    resolve_provider_purpose,
     resolve_provider_stream_usage,
+    stamp_embedding_models,
 )
 from octop.infra.errors import ErrorCode, OctopError
+from octop.infra.users.groups import RESOURCE_MODEL, GroupAccess, model_resource_key
 from octop.infra.utils.locale import resolve_request_locale
 from octop.infra.utils.ulid import new_ulid
 
@@ -57,6 +61,7 @@ class ProviderCreateBody(BaseModel):
     api_key: str | None = None
     extra_json: str | None = None
     stream_usage: bool | None = None
+    purpose: Literal["chat", "embedding"] | None = None
     models: list[dict[str, Any]] | None = None
     note: str | None = None
 
@@ -67,6 +72,7 @@ class ProviderPatchBody(BaseModel):
     api_key: str | None = None
     extra_json: str | None = None
     stream_usage: bool | None = None
+    purpose: Literal["chat", "embedding"] | None = None
     models: list[dict[str, Any]] | None = None
     note: str | None = None
     enabled: bool | None = None
@@ -74,13 +80,74 @@ class ProviderPatchBody(BaseModel):
 
 # Fields that affect harness factory / agent runtime when patched.
 _PROVIDER_REHYDRATE_FIELDS = frozenset(
-    {"kind", "base_url", "api_key", "extra_json", "stream_usage", "models", "enabled"}
+    {
+        "kind",
+        "base_url",
+        "api_key",
+        "extra_json",
+        "stream_usage",
+        "purpose",
+        "models",
+        "enabled",
+    }
 )
 
 
 def _patch_requires_provider_rehydrate(body: ProviderPatchBody) -> bool:
     """True when the patch touches fields that require ``on_provider_changed``."""
     return bool(body.model_fields_set & _PROVIDER_REHYDRATE_FIELDS)
+
+
+def _annotate_provider_models(server: Any, payload: dict[str, Any]) -> dict[str, Any]:
+    access = GroupAccess(server.services.repos)
+    provider_name = str(payload.get("name") or "")
+    for model in payload.get("models") or []:
+        if not isinstance(model, dict):
+            continue
+        model_id = str(model.get("id") or "")
+        model.update(
+            access.visibility(
+                RESOURCE_MODEL,
+                model_resource_key(provider_name, model_id),
+                shared=None,
+            )
+        )
+    return payload
+
+
+def _sync_model_visibility(
+    server: Any,
+    provider_name: str,
+    models: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    access = GroupAccess(server.services.repos)
+    existing = server.services.provider_repo.get_by_name(provider_name)
+    previous = (
+        {str(model.get("id") or "") for model in existing.get_models()}
+        if existing is not None
+        else set()
+    )
+    cleaned: list[dict[str, Any]] = []
+    kept: set[str] = set()
+    for model in models:
+        item = dict(model)
+        model_id = str(item.get("id") or "").strip()
+        visibility = item.pop("visibility", None)
+        group_ids = item.pop("group_ids", None)
+        if model_id:
+            kept.add(model_id)
+        if visibility is not None and model_id:
+            access.set_visibility(
+                RESOURCE_MODEL,
+                model_resource_key(provider_name, model_id),
+                str(visibility),
+                group_ids if isinstance(group_ids, list) else [],
+            )
+        cleaned.append(item)
+    for model_id in previous - kept:
+        if model_id:
+            access.clear(RESOURCE_MODEL, model_resource_key(provider_name, model_id))
+    return cleaned
 
 
 def _blank_to_none(value: str | None) -> str | None:
@@ -102,8 +169,9 @@ def _provider_patch_updates(
     sends ``{"api_key": null}``; treating that the same as "field absent" left
     the key in place and the provider still looked authorized.
 
-    ``stream_usage`` is stored inside ``extra_json``. A patch that only sets
-    that flag rewrites the current blob and must not clear the API key.
+    ``stream_usage`` / ``purpose`` are stored inside ``extra_json``. A patch
+    that only sets those flags rewrites the current blob and must not clear
+    the API key.
     """
     fields = body.model_fields_set
     updates: dict[str, Any] = {}
@@ -113,14 +181,30 @@ def _provider_patch_updates(
         updates["base_url"] = _blank_to_none(body.base_url)
     if "api_key" in fields:
         updates["api_key"] = _blank_to_none(body.api_key)
-    if "extra_json" in fields or "stream_usage" in fields:
+    if "extra_json" in fields or "stream_usage" in fields or "purpose" in fields:
+        base = body.extra_json if "extra_json" in fields else current_extra_json
         if "stream_usage" in fields:
-            base = body.extra_json if "extra_json" in fields else current_extra_json
-            updates["extra_json"] = merge_stream_usage_extra(base, body.stream_usage)
-        else:
-            updates["extra_json"] = body.extra_json
+            base = merge_stream_usage_extra(base, body.stream_usage)
+        if "purpose" in fields:
+            base = merge_provider_purpose_extra(base, body.purpose)
+        updates["extra_json"] = base
     if "models" in fields:
-        updates["models_json"] = json.dumps(body.models) if body.models is not None else None
+        models = body.models
+        if models is not None:
+            purpose = None
+            if "purpose" in fields:
+                purpose = body.purpose
+            else:
+                raw_extra = current_extra_json if isinstance(current_extra_json, str) else ""
+                try:
+                    parsed = json.loads(raw_extra) if raw_extra else {}
+                except json.JSONDecodeError:
+                    parsed = {}
+                if isinstance(parsed, dict) and parsed.get("purpose") == "embedding":
+                    purpose = "embedding"
+            if purpose == "embedding":
+                models = stamp_embedding_models(models)
+        updates["models_json"] = json.dumps(models) if models is not None else None
     if "note" in fields:
         updates["note"] = _blank_to_none(body.note)
     if "enabled" in fields:
@@ -130,6 +214,8 @@ def _provider_patch_updates(
 
 class ProviderTestBody(BaseModel):
     model_id: str | None = None
+    api_mode: Literal["chat_completions", "responses"] | None = None
+    api_fallback: Literal["none", "chat_completions"] | None = None
     embedding: bool = False
 
 
@@ -139,6 +225,8 @@ class ProviderTestDraftBody(BaseModel):
     api_key: str | None = None
     base_url: str | None = None
     model_id: str
+    api_mode: Literal["chat_completions", "responses"] = "chat_completions"
+    api_fallback: Literal["none", "chat_completions"] = "none"
     extra_json: str | None = None
     embedding: bool = False
 
@@ -189,6 +277,12 @@ def _row_to_dict(r: Any) -> dict[str, Any]:
         "note": r.note,
         "enabled": bool(r.enabled),
         "stream_usage": resolve_provider_stream_usage(provider_name=r.name, extra=extra),
+        "purpose": resolve_provider_purpose(
+            provider_name=r.name,
+            provider_api_key=r.api_key,
+            extra=extra,
+            models=models,
+        ),
     }
 
 
@@ -202,14 +296,19 @@ async def list_provider_presets(
 
 @router.get("/resolved")
 async def list_resolved_models(
-    _: Any = Depends(current_user),
+    user: Any = Depends(current_user),
     server: Any = Depends(get_server),
 ) -> list[dict[str, Any]]:
-    """Return all enabled models across all providers.
-
-    Used by the Agent model selector to show available candidates.
-    """
-    return _list_resolved_models(server.services.provider_repo.list_all())
+    """Return enabled chat models the caller may select."""
+    models = _list_resolved_models(server.services.provider_repo.list_all())
+    return GroupAccess(server.services.repos).filter_rows(
+        models,
+        user_id=user.id,
+        is_admin=bool(user.is_admin),
+        resource_type=RESOURCE_MODEL,
+        key_of=lambda item: model_resource_key(str(item["provider_name"]), str(item["model"])),
+        is_owner=lambda _item: False,
+    )
 
 
 class ActiveModelBody(BaseModel):
@@ -259,7 +358,10 @@ async def admin_list_providers(
     _: Any = Depends(require_permission("providers")),
     server: Any = Depends(get_server),
 ) -> list[dict[str, Any]]:
-    return [_row_to_dict(r) for r in server.services.provider_repo.list_all()]
+    return [
+        _annotate_provider_models(server, _row_to_dict(row))
+        for row in server.services.provider_repo.list_all()
+    ]
 
 
 @admin_router.post("", status_code=201)
@@ -270,19 +372,26 @@ async def admin_create_provider(
 ) -> dict[str, Any]:
     import json as _json
 
-    models_json = _json.dumps(body.models) if body.models is not None else None
+    models = (
+        _sync_model_visibility(server, body.name, body.models) if body.models is not None else None
+    )
+    if body.purpose == "embedding":
+        models = stamp_embedding_models(models)
+    models_json = _json.dumps(models) if models is not None else None
+    extra_json = merge_stream_usage_extra(body.extra_json, body.stream_usage)
+    extra_json = merge_provider_purpose_extra(extra_json, body.purpose)
     pid = server.services.provider_repo.create(
         name=body.name,
         kind=body.kind,
         base_url=body.base_url,
         api_key=body.api_key,
-        extra_json=merge_stream_usage_extra(body.extra_json, body.stream_usage),
+        extra_json=extra_json,
         models_json=models_json,
         note=body.note,
     )
     if server.app_runtime:
         await server.app_runtime.agent_registry.on_provider_changed(provider_name=body.name)
-    return _row_to_dict(server.services.provider_repo.get(pid))
+    return _annotate_provider_models(server, _row_to_dict(server.services.provider_repo.get(pid)))
 
 
 @admin_router.patch("/{provider_id}")
@@ -295,6 +404,8 @@ async def admin_patch_provider(
     row = server.services.provider_repo.get(provider_id)
     if row is None:
         raise OctopError(ErrorCode.NOT_FOUND, "provider not found")
+    if body.models is not None:
+        body.models = _sync_model_visibility(server, row.name, body.models)
     server.services.provider_repo.update(
         provider_id,
         **_provider_patch_updates(body, current_extra_json=row.extra_json),
@@ -308,7 +419,9 @@ async def admin_patch_provider(
         )
     if server.app_runtime and _patch_requires_provider_rehydrate(body):
         await server.app_runtime.agent_registry.on_provider_changed(provider_name=row.name)
-    return _row_to_dict(server.services.provider_repo.get(provider_id))
+    return _annotate_provider_models(
+        server, _row_to_dict(server.services.provider_repo.get(provider_id))
+    )
 
 
 @admin_router.delete("/{provider_id}", status_code=204)
@@ -338,6 +451,7 @@ async def admin_delete_provider(
         )
     name = row.name
     server.services.provider_repo.delete(provider_id)
+    server.services.repos.resource_group_grant_repo.delete_prefix(RESOURCE_MODEL, name)
     if server.app_runtime:
         await server.app_runtime.agent_registry.on_provider_changed(provider_name=name)
 
@@ -361,12 +475,16 @@ async def admin_test_provider_draft(
         api_key=api_key,
         base_url=(body.base_url or "").strip() or None,
         model_id=model_id,
+        api_mode=body.api_mode,
+        api_fallback=body.api_fallback,
         extra_json=body.extra_json,
         embedding=body.embedding,
     )
     return await probe_provider_row(
         row,
         model_id=model_id,
+        api_mode=body.api_mode,
+        api_fallback=body.api_fallback,
         embedding=body.embedding,
         locale=resolve_request_locale(request),
     )
@@ -535,10 +653,14 @@ async def admin_test_provider(
         raise OctopError(ErrorCode.NOT_FOUND, "provider not found")
     row = await _maybe_refresh_codex_row(server, row)
     model_id = body.model_id if body else None
+    api_mode = body.api_mode if body else None
+    api_fallback = body.api_fallback if body else None
     embedding = body.embedding if body else None
     return await probe_provider_row(
         row,
         model_id=model_id,
+        api_mode=api_mode,
+        api_fallback=api_fallback,
         embedding=embedding,
         locale=resolve_request_locale(request),
     )

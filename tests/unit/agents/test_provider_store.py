@@ -11,8 +11,11 @@ from octop.config import OctopConfig
 from octop.infra.agents.manager import AgentManager
 from octop.infra.agents.providers import KIND_TO_PROTOCOL, ProviderStore
 from octop.infra.agents.providers.store import (
+    merge_provider_purpose_extra,
     merge_stream_usage_extra,
+    resolve_provider_purpose,
     resolve_provider_stream_usage,
+    stamp_embedding_models,
 )
 from octop.infra.db.migrate import run_migrations
 from octop.infra.db.pool import SqlitePool
@@ -71,6 +74,29 @@ def test_merge_stream_usage_extra_preserves_headers() -> None:
     assert json.loads(merged or "") == {"headers": {"X-A": "1"}, "stream_usage": False}
     assert (
         merge_stream_usage_extra('{"headers": {"X-A": "1"}}', None) == '{"headers": {"X-A": "1"}}'
+    )
+
+
+def test_merge_provider_purpose_and_stamp_embedding_models() -> None:
+    merged = merge_provider_purpose_extra('{"headers": {"X-A": "1"}}', "embedding")
+    assert json.loads(merged or "") == {"headers": {"X-A": "1"}, "purpose": "embedding"}
+    assert merge_provider_purpose_extra('{"purpose": "chat"}', None) == '{"purpose": "chat"}'
+    stamped = stamp_embedding_models([{"id": "emb-1", "name": "Emb"}])
+    assert stamped == [{"id": "emb-1", "name": "Emb", "embedding": True, "task": "embedding"}]
+    assert (
+        resolve_provider_purpose(
+            provider_name="Embed API",
+            extra={"purpose": "embedding"},
+            models=[],
+        )
+        == "embedding"
+    )
+    assert (
+        resolve_provider_purpose(
+            provider_name="OpenAI",
+            models=[{"id": "gpt-4o", "enabled": True}],
+        )
+        == "chat"
     )
 
 
@@ -201,6 +227,44 @@ def test_build_harness_configs_maps_context_window_to_max_input_tokens(
     )
     providers = store.build_harness_configs()
     assert providers[0].models[0].max_input_tokens == 1_000_000
+
+
+def test_build_harness_configs_preserves_api_mode(store: ProviderStore) -> None:
+    store._provider_repo.create(
+        name="relay",
+        kind="openai",
+        base_url="https://api.example.com/v1",
+        api_key="sk-test",
+        models_json=json.dumps(
+            [{"id": "gpt-X", "name": "GPT X", "enabled": True, "api_mode": "responses"}]
+        ),
+    )
+
+    providers = store.build_harness_configs()
+    assert providers[0].models[0].api_mode == "responses"
+
+
+def test_build_harness_configs_preserves_api_fallback(store: ProviderStore) -> None:
+    store._provider_repo.create(
+        name="relay",
+        kind="openai",
+        base_url="https://api.example.com/v1",
+        api_key="sk-test",
+        models_json=json.dumps(
+            [
+                {
+                    "id": "gpt-X",
+                    "name": "GPT X",
+                    "enabled": True,
+                    "api_mode": "responses",
+                    "api_fallback": "chat_completions",
+                }
+            ]
+        ),
+    )
+
+    providers = store.build_harness_configs()
+    assert providers[0].models[0].api_fallback == "chat_completions"
 
 
 def test_resolve_default_model_returns_none_when_stale(store: ProviderStore) -> None:
@@ -394,3 +458,42 @@ def test_resolve_multimodal_model_ref_prefers_inferred_vision_model(store: Provi
         ),
     )
     assert store.resolve_multimodal_model_ref() == "p/gpt-4o"
+
+
+def test_list_auto_route_candidates_filters_and_preserves_capacity(
+    store: ProviderStore,
+) -> None:
+    store._provider_repo.create(
+        name="p",
+        kind="openai",
+        base_url="https://api.example.com/v1",
+        api_key="sk-test",
+        models_json=json.dumps(
+            [
+                {
+                    "id": "text",
+                    "enabled": True,
+                    "input": ["text"],
+                    "max_input_tokens": 8_000,
+                },
+                {
+                    "id": "vision",
+                    "enabled": True,
+                    "input": ["text", "image"],
+                    "context_window": 32_000,
+                },
+                {"id": "disabled", "enabled": False, "context_window": 99_000},
+            ]
+        ),
+    )
+
+    all_candidates = store.list_auto_route_candidates(needs_multimodal=False)
+    vision_candidates = store.list_auto_route_candidates(needs_multimodal=True)
+
+    assert [(item.ref, item.max_input_tokens) for item in all_candidates] == [
+        ("p/text", 8_000),
+        ("p/vision", 32_000),
+    ]
+    assert [(item.ref, item.max_input_tokens) for item in vision_candidates] == [
+        ("p/vision", 32_000)
+    ]
