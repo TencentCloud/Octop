@@ -199,12 +199,40 @@
   gap: 8px;
 }
 
-.permGroupHeader {
+.permFoldHeader {
   display: flex;
   align-items: center;
-  justify-content: space-between;
   gap: 8px;
   min-height: 28px;
+}
+
+.permCollapseBtn {
+  display: inline-flex;
+  align-items: center;
+  align-self: stretch;
+  gap: 4px;
+  flex: 1;
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+
+  &:focus-visible {
+    outline: 2px solid var(--fn-color-brand);
+    outline-offset: 2px;
+    border-radius: 4px;
+  }
+}
+
+.permChevron {
+  display: inline-flex;
+  flex-shrink: 0;
+  color: var(--fn-text-tertiary);
 }
 
 .permGroupTitle {
@@ -228,11 +256,8 @@
   background: var(--fn-bg-secondary, var(--fn-bg-elevated));
 }
 
-.permPageHeader {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
+.permPageCollapsed {
+  padding-bottom: 8px;
 }
 
 .permPageTitle {

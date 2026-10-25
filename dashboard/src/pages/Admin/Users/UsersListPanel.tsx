@@ -42,6 +42,8 @@ import { ResizableTable } from "@/components/ResizableTable";
 import {
   Bot,
   Check,
+  ChevronDown,
+  ChevronRight,
   CircleHelp,
   Coins,
   IdCard,
@@ -749,6 +751,62 @@ interface PermissionCheckboxPickerProps {
   disabled?: boolean;
 }
 
+function PermFoldHeader({
+  title,
+  titleClassName,
+  open,
+  disabled,
+  checkable,
+  checked,
+  indeterminate,
+  countLabel,
+  onToggle,
+  onCheck,
+}: {
+  title: string;
+  titleClassName: string;
+  open: boolean;
+  disabled?: boolean;
+  checkable: boolean;
+  checked: boolean;
+  indeterminate: boolean;
+  countLabel: string | null;
+  onToggle: () => void;
+  onCheck: (checked: boolean) => void;
+}) {
+  return (
+    <div className={styles.permFoldHeader}>
+      {checkable ? (
+        <Checkbox
+          checked={checked}
+          indeterminate={indeterminate}
+          disabled={disabled}
+          aria-label={title}
+          onChange={(e) => onCheck(e.target.checked)}
+        />
+      ) : null}
+      <button
+        type="button"
+        className={styles.permCollapseBtn}
+        aria-expanded={open}
+        onClick={onToggle}
+      >
+        <span className={styles.permChevron} aria-hidden>
+          {open ? (
+            <ChevronDown size={14} strokeWidth={2} />
+          ) : (
+            <ChevronRight size={14} strokeWidth={2} />
+          )}
+        </span>
+        <span className={titleClassName}>{title}</span>
+      </button>
+      {countLabel ? (
+        <span className={styles.permGroupCount}>{countLabel}</span>
+      ) : null}
+    </div>
+  );
+}
+
 export function PermissionCheckboxPicker({
   value,
   onChange,
@@ -760,6 +818,9 @@ export function PermissionCheckboxPicker({
   const selectedSet = useMemo(() => new Set(selected), [selected]);
   const [navLayout, setNavLayout] = useState<SidebarNavLayout | null>(null);
   const [navReady, setNavReady] = useState(false);
+  const [collapsedIds, setCollapsedIds] = useState<ReadonlySet<string>>(
+    () => new Set(),
+  );
 
   useEffect(() => {
     let cancelled = false;
@@ -803,6 +864,15 @@ export function PermissionCheckboxPicker({
     }
     const drop = new Set(keys);
     onChange?.(selected.filter((k) => !drop.has(k)));
+  };
+
+  const toggleCollapsed = (id: string) => {
+    setCollapsedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
   };
 
   if (catalog.length === 0) {
@@ -876,69 +946,73 @@ export function PermissionCheckboxPicker({
             })}
           </div>
         );
+        const groupOpen = !collapsedIds.has(group.id);
         return (
           <section key={group.id} className={styles.permGroup}>
-            <div className={styles.permGroupHeader}>
-              {keys.length > 0 ? (
-                <Checkbox
-                  checked={allChecked}
-                  indeterminate={indeterminate}
-                  disabled={disabled}
-                  onChange={(e) => setGroup(keys, e.target.checked)}
-                >
-                  <span className={styles.permGroupTitle}>{group.label}</span>
-                </Checkbox>
-              ) : (
-                <span className={styles.permGroupTitle}>{group.label}</span>
-              )}
-              {keys.length > 0 ? (
-                <span className={styles.permGroupCount}>
-                  {checkedCount}/{keys.length}
-                </span>
-              ) : null}
-            </div>
-            {group.blocks.map((block) => {
-              if (block.kind === "chips") {
-                const chipKey = block.items
-                  .map((chip) =>
-                    chip.kind === "always" ? chip.key : chip.item.key,
-                  )
-                  .join(",");
-                return <div key={chipKey}>{renderChips(block.items)}</div>;
+            <PermFoldHeader
+              title={group.label}
+              titleClassName={styles.permGroupTitle}
+              open={groupOpen}
+              disabled={disabled}
+              checkable={keys.length > 0}
+              checked={allChecked}
+              indeterminate={indeterminate}
+              countLabel={
+                keys.length > 0 ? `${checkedCount}/${keys.length}` : null
               }
-              const pageKeys = block.items.map((item) => item.key);
-              const pageChecked = pageKeys.filter((k) =>
-                selectedSet.has(k),
-              ).length;
-              const pageAll =
-                pageChecked === pageKeys.length && pageKeys.length > 0;
-              const pageIndeterminate = pageChecked > 0 && !pageAll;
-              return (
-                <div key={block.id} className={styles.permPage}>
-                  <div className={styles.permPageHeader}>
-                    <Checkbox
-                      checked={pageAll}
-                      indeterminate={pageIndeterminate}
-                      disabled={disabled}
-                      onChange={(e) => setGroup(pageKeys, e.target.checked)}
+              onToggle={() => toggleCollapsed(group.id)}
+              onCheck={(checked) => setGroup(keys, checked)}
+            />
+            {groupOpen
+              ? group.blocks.map((block) => {
+                  if (block.kind === "chips") {
+                    const chipKey = block.items
+                      .map((chip) =>
+                        chip.kind === "always" ? chip.key : chip.item.key,
+                      )
+                      .join(",");
+                    return <div key={chipKey}>{renderChips(block.items)}</div>;
+                  }
+                  const pageId = `${group.id}:${block.id}`;
+                  const pageOpen = !collapsedIds.has(pageId);
+                  const pageKeys = block.items.map((item) => item.key);
+                  const pageChecked = pageKeys.filter((k) =>
+                    selectedSet.has(k),
+                  ).length;
+                  const pageAll =
+                    pageChecked === pageKeys.length && pageKeys.length > 0;
+                  const pageIndeterminate = pageChecked > 0 && !pageAll;
+                  return (
+                    <div
+                      key={block.id}
+                      className={`${styles.permPage} ${
+                        pageOpen ? "" : styles.permPageCollapsed
+                      }`}
                     >
-                      <span className={styles.permPageTitle}>
-                        {block.title}
-                      </span>
-                    </Checkbox>
-                    <span className={styles.permGroupCount}>
-                      {pageChecked}/{pageKeys.length}
-                    </span>
-                  </div>
-                  {renderChips(
-                    block.items.map((item) => ({
-                      kind: "permission" as const,
-                      item,
-                    })),
-                  )}
-                </div>
-              );
-            })}
+                      <PermFoldHeader
+                        title={block.title}
+                        titleClassName={styles.permPageTitle}
+                        open={pageOpen}
+                        disabled={disabled}
+                        checkable={pageKeys.length > 0}
+                        checked={pageAll}
+                        indeterminate={pageIndeterminate}
+                        countLabel={`${pageChecked}/${pageKeys.length}`}
+                        onToggle={() => toggleCollapsed(pageId)}
+                        onCheck={(checked) => setGroup(pageKeys, checked)}
+                      />
+                      {pageOpen
+                        ? renderChips(
+                            block.items.map((item) => ({
+                              kind: "permission" as const,
+                              item,
+                            })),
+                          )
+                        : null}
+                    </div>
+                  );
+                })
+              : null}
           </section>
         );
       })}
