@@ -957,6 +957,9 @@
     "version_mismatch": "安装程序已结束，但已安装版本 {actual} 与目标版本 {expected} 不一致。",
     "version_not_newer": "安装程序已结束，但已安装版本 {actual} 不高于原版本 {previous}。"
   },
+  "providers": {
+    "codex_models_invalid_response": "Codex 模型列表格式无效（应包含 models 列表和 slug 标识）。"
+  },
   "ldap": {
     "test": {
       "ok": "已连接 LDAP 目录服务",
