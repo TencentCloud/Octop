@@ -940,8 +940,8 @@ async def test_impact_ids_needing_model_excludes_running(
     tmp_path: Path,
 ) -> None:
     """Running agents with an explicit model ref to another provider stay
-    untouched; running AUTO agents are rebuilt on any provider change because
-    their harness config carries a baked resolved fallback (#2388)."""
+    untouched; a running AUTO agent whose baked fallback ref points at the
+    changed provider is rebuilt (#2388)."""
     services = _make_services(tmp_path)
     services.provider_repo.create(
         name="other-llm",
@@ -976,6 +976,10 @@ async def test_impact_ids_needing_model_excludes_running(
     services.repos.agent_repo.set_state("failed-one", "failed")
     registry = _make_registry(services)
     services.repos.settings_repo.set_active_model("other-llm", "m1")
+    registry._harness_manager.create_agent(
+        SimpleNamespace(default_model="test-openai/gpt-4o-mini"),
+        agent_id="running-one",
+    )
 
     ids = registry._provider_reload_impact_ids(provider_name="test-openai")
     assert "failed-one" in ids

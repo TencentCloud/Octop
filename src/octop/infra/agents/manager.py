@@ -2043,21 +2043,23 @@ class AgentManager:
         """Agent IDs that must be rebuilt after a provider / active-model change.
 
         AUTO agents bake a resolved fallback model ref into their harness config
-        at build time (active model first, else first usable), so *any* provider
-        change can strand that ref — they are always rebuilt, not only when the
-        changed provider is the currently active one.
+        at build time (active model first, else first usable) and that ref is
+        invisible to the DB config scan, so a provider change can strand it
+        (#2388). An AUTO agent is rebuilt when the active model changed or,
+        for a named provider change, when its baked ref points at that provider
+        or no longer matches what a build would resolve now. Explicit refs to
+        other providers are left alone.
         """
         rows = self._repos.agent_repo.list_all(include_disabled=False)
         if provider_name is None and not active_model_changed:
             return [row.agent_id for row in rows]
 
         enabled_ids = {row.agent_id for row in rows}
+        auto_ids = {row.agent_id for row in rows if self._agent_uses_auto_default(row)}
         impact: set[str] = set()
-        include_auto = active_model_changed or provider_name is not None
-
         for row in rows:
             if row.last_state in _AGENT_STATES_NEEDING_MODEL_RELOAD or (
-                include_auto and self._agent_uses_auto_default(row)
+                active_model_changed and row.agent_id in auto_ids
             ):
                 impact.add(row.agent_id)
 
@@ -2066,8 +2068,44 @@ class AgentManager:
                 aid = ref.get("agent_id")
                 if isinstance(aid, str) and aid in enabled_ids:
                     impact.add(aid)
+            impact.update(
+                self._stale_auto_default_ids(
+                    provider_name=provider_name,
+                    enabled_ids=enabled_ids,
+                    auto_ids=auto_ids,
+                )
+            )
 
         return sorted(impact)
+
+    def _stale_auto_default_ids(
+        self,
+        *,
+        provider_name: str,
+        enabled_ids: set[str],
+        auto_ids: set[str],
+    ) -> set[str]:
+        """AUTO agents whose baked fallback ref went stale after a provider change.
+
+        The DB config only shows AUTO, so read the built harness configs:
+        rebuild when the baked ref points at the changed provider or differs
+        from what a build would resolve now.
+        """
+        if self._harness_manager is None or not auto_ids:
+            return set()
+        new_fallback = self._resolve_configured_fallback_model_ref()
+        prefix = f"{provider_name}/"
+        stale: set[str] = set()
+        for entry in self._harness_manager.list_agents():
+            aid = getattr(entry, "agent_id", None)
+            if not isinstance(aid, str) or aid not in auto_ids:
+                continue
+            built = getattr(getattr(entry, "config", None), "default_model", None)
+            if not isinstance(built, str) or not built:
+                continue
+            if built.startswith(prefix) or (new_fallback is not None and built != new_fallback):
+                stale.add(aid)
+        return stale & enabled_ids
 
     async def _reload_agents(self, agent_ids: list[str]) -> None:
         """Reload agents concurrently with a fixed concurrency cap."""
