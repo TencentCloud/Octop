@@ -12,6 +12,7 @@
  *   - saving a new channel sends exactly one POST (no PATCH churn)
  */
 
+import "@testing-library/jest-dom/vitest";
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
@@ -263,10 +264,49 @@ describe("<ChannelsPanel /> create-flow default", () => {
     },
   );
 
+  it("keeps the shared allowlist enabled when only tool protection is on", async () => {
+    await openQqEditDrawer({
+      enabled: true,
+      owner_commands_only: false,
+      owner_tools_only: true,
+      owner_ids: ["owner-1"],
+    });
+    const owners = await screen.findByRole("combobox", {
+      name: "channels.qqGroupOwnerIds",
+    });
+    expect(owners).toBeEnabled();
+    await userEvent.click(
+      screen.getByLabelText("channels.qqGroupOwnerToolsOnly"),
+    );
+    expect(owners).toBeDisabled();
+    await userEvent.click(screen.getByRole("button", { name: "common.save" }));
+    await waitFor(() => {
+      const patch = api.mock.calls.find(([, init]) => init?.method === "PATCH");
+      expect(
+        JSON.parse(String(patch![1]!.body)).config.group_context,
+      ).toMatchObject({
+        owner_commands_only: false,
+        owner_tools_only: false,
+        owner_ids: ["owner-1"],
+      });
+    });
+  });
+
+  it("enables tool protection for new QQ channels", async () => {
+    render(<ChannelsPanel agentId="ag1" />);
+    await userEvent.click((await screen.findAllByText("channels.label_qq"))[0]);
+    expect(
+      await screen.findByLabelText("channels.qqGroupOwnerToolsOnly"),
+    ).toBeChecked();
+  });
+
   it("hides QQ command controls while group context is off", async () => {
     await openQqEditDrawer({ enabled: false, owner_ids: ["stored-owner"] });
     expect(
       screen.queryByLabelText("channels.qqGroupOwnerCommandsOnly"),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByLabelText("channels.qqGroupOwnerToolsOnly"),
     ).not.toBeInTheDocument();
     expect(
       screen.queryByRole("combobox", { name: "channels.qqGroupOwnerIds" }),

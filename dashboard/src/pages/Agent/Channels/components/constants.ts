@@ -196,6 +196,7 @@ export interface QqGroupContextConfig {
   history_ttl_seconds: number;
   clear_after_reply: boolean;
   owner_commands_only: boolean;
+  owner_tools_only: boolean;
   owner_ids: string[];
   groups?: Record<
     string,
@@ -212,6 +213,7 @@ export const DEFAULT_QQ_GROUP_CONTEXT_CONFIG: QqGroupContextConfig = {
   history_ttl_seconds: 300,
   clear_after_reply: true,
   owner_commands_only: true,
+  owner_tools_only: false,
   owner_ids: [],
 };
 
@@ -279,6 +281,10 @@ export function normalizeQqGroupContextConfig(
       typeof parsed.owner_commands_only === "boolean"
         ? parsed.owner_commands_only
         : DEFAULT_QQ_GROUP_CONTEXT_CONFIG.owner_commands_only,
+    owner_tools_only:
+      typeof parsed.owner_tools_only === "boolean"
+        ? parsed.owner_tools_only
+        : false,
     owner_ids: [
       ...new Set(
         rawOwnerIds

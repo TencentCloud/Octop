@@ -313,6 +313,10 @@ function QqGroupContextPolicyFields({
     ["group_context", "owner_commands_only"],
     form,
   );
+  const watchedOwnerToolsOnly = Form.useWatch(
+    ["group_context", "owner_tools_only"],
+    form,
+  );
   const policy = normalizeQqGroupContextConfig(
     form.getFieldValue("group_context"),
   );
@@ -326,6 +330,10 @@ function QqGroupContextPolicyFields({
     typeof watchedOwnerCommandsOnly === "boolean"
       ? watchedOwnerCommandsOnly
       : policy.owner_commands_only;
+  const ownerToolsOnly =
+    typeof watchedOwnerToolsOnly === "boolean"
+      ? watchedOwnerToolsOnly
+      : policy.owner_tools_only;
 
   const updatePolicy = (patch: Partial<QqGroupContextConfig>) => {
     form.setFieldValue("group_context", {
@@ -441,6 +449,14 @@ function QqGroupContextPolicyFields({
             <Switch />
           </Form.Item>
           <Form.Item
+            name={["group_context", "owner_tools_only"]}
+            label={t("channels.qqGroupOwnerToolsOnly")}
+            tooltip={t("channels.qqGroupOwnerToolsOnlyDesc")}
+            valuePropName="checked"
+          >
+            <Switch />
+          </Form.Item>
+          <Form.Item
             name={["group_context", "owner_ids"]}
             label={t("channels.qqGroupOwnerIds")}
             extra={
@@ -453,7 +469,7 @@ function QqGroupContextPolicyFields({
               mode="tags"
               open={false}
               suffixIcon={null}
-              disabled={!ownerCommandsOnly}
+              disabled={!ownerCommandsOnly && !ownerToolsOnly}
               tokenSeparators={[",", "，", " ", "\n"]}
               placeholder={t("channels.qqGroupOwnerIdsPlaceholder")}
             />
