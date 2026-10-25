@@ -5,6 +5,7 @@ from __future__ import annotations
 import logging
 import os
 import secrets
+import sys
 from pathlib import Path
 
 WIZARD_FILE_NAME = "octop-login.txt"
@@ -40,7 +41,10 @@ def _harden_password_file(target: Path) -> None:
 def _restrict_windows_dacl(target: Path) -> bool:
     """Replace the inherited NTFS DACL on ``target`` with a protected one
     (SYSTEM, Administrators, owner). True when the DACL was set."""
-    if os.name != "nt":
+    # sys.platform (not os.name) is what both the runtime and mypy use to
+    # prune platform-specific branches; typeshed only exposes ctypes.WinDLL
+    # under win32, so a POSIX typecheck must never see the body below.
+    if sys.platform != "win32":
         return False
     import ctypes
     from ctypes import wintypes
@@ -91,9 +95,9 @@ def _restrict_windows_dacl(target: Path) -> bool:
     kernel32.LocalFree.restype = wintypes.HLOCAL
     kernel32.LocalFree.argtypes = [wintypes.HLOCAL]
 
-    def _free(handle) -> None:
+    def _free(handle: ctypes.c_void_p | wintypes.LPWSTR) -> None:
         if handle:
-            kernel32.LocalFree(handle)
+            kernel32.LocalFree(ctypes.cast(handle, wintypes.HLOCAL))
 
     owner_sid = ctypes.c_void_p()
     sd = ctypes.c_void_p()
@@ -159,7 +163,7 @@ def _restrict_windows_dacl(target: Path) -> bool:
         _free(dacl_sd)
         return False
 
-    ok = (
+    ok: bool = (
         advapi32.SetNamedSecurityInfoW(
             path,
             SE_FILE_OBJECT,
