@@ -11,6 +11,8 @@ const NAV_PERMISSION_CHIPS: readonly {
   key: string;
   labelKey: string;
   permissions: readonly string[];
+  /** Stay in the parent nav group as chips, beside siblings such as Channels. */
+  inline?: boolean;
 }[] = [
   { key: "chat", labelKey: "nav.chat", permissions: [] },
   { key: "experts", labelKey: "nav.experts", permissions: ["experts"] },
@@ -20,11 +22,26 @@ const NAV_PERMISSION_CHIPS: readonly {
     labelKey: "nav.tokenUsage",
     permissions: ["token_usage"],
   },
+  {
+    key: "personalization",
+    labelKey: "nav.personalization",
+    inline: true,
+    permissions: [
+      "skills",
+      "skill_builtin",
+      "skill_market",
+      "subagents",
+      "tools",
+      "agent_plugins",
+      "mbti",
+      "memory",
+    ],
+  },
   { key: "channels", labelKey: "nav.channels", permissions: ["channels"] },
   {
     key: "connectors",
     labelKey: "nav.connectors",
-    permissions: ["connectors"],
+    permissions: ["connector_enabled", "connector_builtin", "connector_custom"],
   },
   {
     key: "skill-packages",
@@ -35,6 +52,11 @@ const NAV_PERMISSION_CHIPS: readonly {
     key: "knowledge-bases",
     labelKey: "nav.knowledgeBases",
     permissions: ["knowledge_bases", "knowledge_settings"],
+  },
+  {
+    key: "bridge",
+    labelKey: "nav.bridge",
+    permissions: ["bridge"],
   },
   {
     key: "workbench",
@@ -49,7 +71,16 @@ const NAV_PERMISSION_CHIPS: readonly {
   {
     key: "admin-users",
     labelKey: "nav.adminUsers",
-    permissions: ["users", "sso"],
+    permissions: [
+      "users",
+      "user_roles",
+      "user_groups",
+      "sso_feishu",
+      "sso_wecom",
+      "sso_dingtalk",
+      "sso_oidc",
+      "sso_ldap",
+    ],
   },
   {
     key: "models",
@@ -58,8 +89,10 @@ const NAV_PERMISSION_CHIPS: readonly {
       "providers",
       "ollama_models",
       "onnx_models",
-      "search",
+      "model_generation",
       "voice",
+      "model_decision",
+      "search",
     ],
   },
   {
@@ -70,12 +103,19 @@ const NAV_PERMISSION_CHIPS: readonly {
   {
     key: "admin-plugins",
     labelKey: "nav.adminPlugins",
-    permissions: ["plugins"],
+    permissions: ["plugins", "plugin_market"],
   },
   {
     key: "admin-security",
     labelKey: "nav.security",
-    permissions: ["security", "admin_console"],
+    permissions: [
+      "security_hitl",
+      "security_filesystem",
+      "security_pii",
+      "security_tool_guard",
+      "security_skill_scan",
+      "admin_console",
+    ],
   },
   {
     key: "admin-advanced",
@@ -96,7 +136,14 @@ const DEFAULT_UNGROUPED = ["chat", "experts", "tasks", "token-usage"] as const;
 const DEFAULT_GROUPS: readonly { id: string; items: readonly string[] }[] = [
   {
     id: "settings",
-    items: ["channels", "connectors", "skill-packages", "knowledge-bases"],
+    items: [
+      "personalization",
+      "channels",
+      "connectors",
+      "skill-packages",
+      "knowledge-bases",
+      "bridge",
+    ],
   },
   { id: "control", items: ["workbench", "remote-desktop"] },
   {
@@ -225,8 +272,10 @@ export function buildPermissionPickerGroups<T extends { key: string }>(
         .filter((item): item is T => Boolean(item));
       if (items.length === 0) continue;
       const only = items[0];
-      if (items.length === 1 && only) {
-        chips.push({ kind: "permission", item: only });
+      if (nav.inline || (items.length === 1 && only)) {
+        for (const item of items) {
+          chips.push({ kind: "permission", item });
+        }
         continue;
       }
       flush();

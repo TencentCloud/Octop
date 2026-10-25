@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -10,6 +11,46 @@ from pypdf import PdfWriter
 
 from octop.infra.knowledge import ocr
 from octop.infra.knowledge.parse import parse_document
+
+
+def test_warns_when_enabled_local_ocr_deps_are_missing(
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    monkeypatch.setattr(ocr, "local_ocr_deps_available", lambda: False)
+    monkeypatch.setattr(ocr, "pdf_ocr_deps_available", lambda: False)
+    values = {
+        "knowledge_ocr_enabled": "true",
+        "knowledge_ocr_backend": "onnx",
+    }
+
+    with caplog.at_level(logging.WARNING):
+        ocr.warn_if_local_ocr_deps_missing(values.get)
+
+    assert "knowledge-ocr" in caplog.text
+
+
+def test_skips_ocr_dep_warning_when_runtime_is_present_or_unused(
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    monkeypatch.setattr(ocr, "local_ocr_deps_available", lambda: True)
+    enabled = {"knowledge_ocr_enabled": "true", "knowledge_ocr_backend": "onnx"}
+    disabled = {"knowledge_ocr_enabled": "false", "knowledge_ocr_backend": "onnx"}
+    remote = {
+        "knowledge_ocr_enabled": "true",
+        "knowledge_ocr_backend": "remote",
+        "knowledge_ocr_model": "vision-1",
+        "knowledge_ocr_provider_id": "7",
+    }
+
+    with caplog.at_level(logging.WARNING):
+        ocr.warn_if_local_ocr_deps_missing(enabled.get)
+        ocr.warn_if_local_ocr_deps_missing(disabled.get)
+        monkeypatch.setattr(ocr, "local_ocr_deps_available", lambda: False)
+        ocr.warn_if_local_ocr_deps_missing(remote.get)
+
+    assert caplog.records == []
 
 
 def test_ocr_disabled_by_default() -> None:

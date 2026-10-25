@@ -13,11 +13,12 @@ import type { TokenUsage } from "../../../api/types";
 import { buildDashboardChatWsUrl } from "../../../api/modules/wsChat";
 import { rewritePeerSpeakerId } from "../../../utils/remoteExpert";
 import { generateId } from "../../../utils/messageParser";
-import type {
-  ChatAttachment,
-  ChatMessage,
-  SessionSnapshot,
-  SessionStreamState,
+import {
+  parseDecisionNotice,
+  type ChatAttachment,
+  type ChatMessage,
+  type SessionSnapshot,
+  type SessionStreamState,
 } from "./sseHelpers";
 import {
   parseHarnessChunk,
@@ -491,9 +492,26 @@ function getOrCreate(sessionId: string): SessionStreamState {
   return state;
 }
 
-function notify(state: SessionStreamState) {
-  // Rebuild the snapshot reference so useSyncExternalStore sees the change.
-  state._snapshot = buildSnapshot(state);
+/**
+ * Token / reasoning paints. A fast stream used to call React on every
+ * fragment and starve in-flight fetches (expert profile, context usage).
+ * The snapshot stays current immediately; listeners flush on this interval.
+ */
+const STREAM_PAINT_MS = 50;
+
+const streamPaintTimers = new Map<
+  SessionStreamState,
+  ReturnType<typeof setTimeout>
+>();
+
+function cancelStreamPaint(state: SessionStreamState): void {
+  const timer = streamPaintTimers.get(state);
+  if (timer === undefined) return;
+  clearTimeout(timer);
+  streamPaintTimers.delete(state);
+}
+
+function publish(state: SessionStreamState): void {
   for (const fn of state.listeners) {
     try {
       fn();
@@ -501,6 +519,36 @@ function notify(state: SessionStreamState) {
       /* ignore */
     }
   }
+}
+
+function notify(state: SessionStreamState) {
+  // Rebuild the snapshot reference so useSyncExternalStore sees the change.
+  cancelStreamPaint(state);
+  state._snapshot = buildSnapshot(state);
+  publish(state);
+}
+
+/** Coalesce high-frequency stream fragments onto one paint. */
+function notifyStreamingPaint(state: SessionStreamState): void {
+  state._snapshot = buildSnapshot(state);
+  if (streamPaintTimers.has(state)) return;
+  streamPaintTimers.set(
+    state,
+    setTimeout(() => {
+      streamPaintTimers.delete(state);
+      publish(state);
+    }, STREAM_PAINT_MS),
+  );
+}
+
+function chunkPaintsImmediately(type: string): boolean {
+  return (
+    type !== "token" &&
+    type !== "reasoning" &&
+    type !== "usage" &&
+    type !== "state_update" &&
+    type !== "state_snapshot"
+  );
 }
 
 function beginStream(state: SessionStreamState, sessionId: string): void {
@@ -581,7 +629,14 @@ function isLiveSocketOpen(sessionId: string): boolean {
 
 /** True when this session currently owns an open/connecting chat WebSocket. */
 export function hasLiveSocket(sessionId: string): boolean {
-  return isLiveSocketOpen(sessionId);
+  if (isLiveSocketOpen(sessionId)) return true;
+  if (!sessionId || sessionId === "__empty__" || sessionId === "__default__") {
+    return false;
+  }
+  for (const [key, live] of liveSockets) {
+    if (live.threadId === sessionId && isLiveSocketOpen(key)) return true;
+  }
+  return false;
 }
 
 function clearStreamWatchdog(sessionId: string): void {
@@ -914,6 +969,7 @@ export function cancelStream(sessionId: string) {
 export function removeSession(sessionId: string) {
   const state = sessionStates.get(sessionId);
   if (state) {
+    cancelStreamPaint(state);
     state.abortController?.abort();
     sessionStates.delete(sessionId);
   }
@@ -1025,9 +1081,44 @@ function updateContextUsageFromChunk(
       : typeof meta.prompt_tokens === "number"
       ? meta.prompt_tokens
       : null;
-  if (input === null || input <= 0) return;
+  if (input !== null && input > 0) {
+    state.contextUsage = { input_tokens: input };
+  }
+  attachDecisionSaved(state, messages);
+}
 
-  state.contextUsage = { input_tokens: input };
+function decisionSavedOnMessage(message: Record<string, unknown>): number {
+  const kwargs = message.additional_kwargs;
+  if (!kwargs || typeof kwargs !== "object" || Array.isArray(kwargs)) return 0;
+  const ctx = (kwargs as Record<string, unknown>).context_usage;
+  if (!ctx || typeof ctx !== "object" || Array.isArray(ctx)) return 0;
+  return usageCount((ctx as Record<string, unknown>).decision_saved);
+}
+
+function attachDecisionSaved(
+  state: SessionStreamState,
+  messages: unknown[],
+): void {
+  const samples = usageSamplesByState.get(state);
+  if (!samples) return;
+  let changed = false;
+  for (const item of messages) {
+    if (!item || typeof item !== "object" || Array.isArray(item)) continue;
+    const message = item as Record<string, unknown>;
+    const saved = decisionSavedOnMessage(message);
+    const id = typeof message.id === "string" ? message.id : "";
+    if (saved <= 0 || !id || !samples.has(id)) continue;
+    const current = samples.get(id);
+    if (!current || usageCount(current.decision_saved) === saved) continue;
+    samples.set(id, { ...current, decision_saved: saved });
+    changed = true;
+  }
+  if (!changed || !state.runUsage) return;
+  let total = 0;
+  for (const sample of samples.values()) {
+    total += usageCount(sample.decision_saved);
+  }
+  state.runUsage = { ...state.runUsage, decision_saved: total };
 }
 
 function usageCount(value: unknown): number {
@@ -1043,7 +1134,13 @@ function applyUsageChunk(state: SessionStreamState, chunk: UsageChunk): void {
       samples = new Map();
       usageSamplesByState.set(state, samples);
     }
-    samples.set(chunk.call_id, chunk.usage);
+    const previousSample = samples.get(chunk.call_id);
+    samples.set(chunk.call_id, {
+      ...chunk.usage,
+      decision_saved:
+        usageCount(chunk.usage.decision_saved) ||
+        usageCount(previousSample?.decision_saved),
+    });
     const latestInput = usageCount(chunk.usage.input_tokens);
     state.runUsage = Array.from(samples.values()).reduce<TokenUsage>(
       (total, usage) => {
@@ -1068,6 +1165,8 @@ function applyUsageChunk(state: SessionStreamState, chunk: UsageChunk): void {
             usageCount(total.total_tokens) +
             usageCount(usage.total_tokens || input + output),
           model_calls: usageCount(total.model_calls) + 1,
+          decision_saved:
+            usageCount(total.decision_saved) + usageCount(usage.decision_saved),
           last_input_tokens: latestInput,
         };
       },
@@ -1100,6 +1199,8 @@ function applyUsageChunk(state: SessionStreamState, chunk: UsageChunk): void {
       usageCount(previous.total_tokens) +
       usageCount(usage.total_tokens || input + output),
     model_calls: usageCount(previous.model_calls) + 1,
+    decision_saved:
+      usageCount(previous.decision_saved) + usageCount(usage.decision_saved),
     last_input_tokens: input,
   };
   state.contextUsage = { input_tokens: input };
@@ -1142,6 +1243,20 @@ function isHostTurnTerminal(
 /** Persist whether this session is a team host room (listen-only / ask_agent). */
 export function setSessionTeamRoom(sessionId: string, isTeam: boolean): void {
   getOrCreate(sessionId).isTeamRoom = isTeam;
+}
+
+/** Keep the dashboard socket after host ``turn.ended``.
+ *
+ * Team rooms need it for member replies. Bridge rooms need it even when the
+ * shadow agent is not flagged ``kind: team``, because closing the socket
+ * unlistens the peer before members flush.
+ */
+function keepRoomSocket(
+  state: SessionStreamState,
+  agentId?: string | null,
+): boolean {
+  if (state.isTeamRoom) return true;
+  return Boolean(agentId?.startsWith("bridge:"));
 }
 
 function sessionHostAgentId(
@@ -1198,16 +1313,19 @@ function handleHarnessChunk(
   switch (chunk.type) {
     case "token": {
       const snapshot = Boolean(chunk.team_snapshot);
-      // Snapshots are complete wall copies — never leave the speaker "live".
-      if (!snapshot) markSpeakerLive(state, speaker);
+      const liveCatchup = snapshot && Boolean(chunk.team_live);
+      // A finished snapshot is a complete wall copy. A live catchup is the
+      // text already spoken when the page refreshes; the member is still talking.
+      if (!snapshot || liveCatchup) markSpeakerLive(state, speaker);
       appendStreamingToken(
         state,
         chunk.content,
         speaker,
         snapshot,
         Boolean(chunk.team_wrapup),
+        liveCatchup,
       );
-      if (snapshot) clearSpeakerLive(state, speaker);
+      if (snapshot && !liveCatchup) clearSpeakerLive(state, speaker);
       break;
     }
     case "reasoning":
@@ -1343,10 +1461,109 @@ function handleHarnessChunk(
       updateContextUsageFromChunk(state, chunk);
       break;
     case "custom":
-      // Debug-only — phase 15 will add a debug toggle that surfaces these.
+      // Decision runs on the host model call and the frame has no speaker.
+      // In a team room an unlabeled chip would sit on its own invisible turn.
+      // A wrap-up evaluation is a new host turn, not a rewrite of the dispatch.
+      applyDecisionNotice(
+        state,
+        chunk.data,
+        speaker ||
+          (state.isTeamRoom ? sessionHostAgentId(state, sessionId) : undefined),
+        Boolean(chunk.team_wrapup),
+      );
       break;
   }
-  notify(state);
+  if (chunkPaintsImmediately(chunk.type)) notify(state);
+  else notifyStreamingPaint(state);
+}
+
+/** Attach the latest decision result to this turn. One chip, updated in place. */
+function applyDecisionNotice(
+  state: SessionStreamState,
+  data: unknown,
+  speakerAgentId?: string,
+  wrapup = false,
+): void {
+  const notice = parseDecisionNotice(data);
+  if (!notice) return;
+  const speaker = speakerAgentId?.trim() || undefined;
+  const hostId = sessionHostAgentId(state);
+  const teamRoom = Boolean(state.isTeamRoom);
+  for (let index = state.messages.length - 1; index >= 0; index -= 1) {
+    const message = state.messages[index];
+    if (message.role === "user") break;
+    if (message.role !== "assistant" || message.toolData || message.hitlData) {
+      continue;
+    }
+    if (wrapup ? !message.teamWrapup : Boolean(message.teamWrapup)) continue;
+    if (
+      !sameStreamingSpeaker(message.speakerAgentId, speaker, hostId, teamRoom)
+    ) {
+      continue;
+    }
+    if (!message.decision) continue;
+    state.messages = [
+      ...state.messages.slice(0, index),
+      { ...message, decision: notice },
+      ...state.messages.slice(index + 1),
+    ];
+    return;
+  }
+  if (wrapup) {
+    const wrapIdx = findWrapupTextToContinue(state.messages, speaker, hostId);
+    if (wrapIdx >= 0) {
+      const target = state.messages[wrapIdx];
+      state.messages = [
+        ...state.messages.slice(0, wrapIdx),
+        { ...target, decision: notice },
+        ...state.messages.slice(wrapIdx + 1),
+      ];
+      return;
+    }
+    markSpeakerLive(state, speaker);
+    state.messages = [
+      ...state.messages,
+      {
+        id: generateId(),
+        role: "assistant",
+        content: "",
+        status: "streaming",
+        timestamp: Date.now(),
+        speakerAgentId: speaker,
+        teamWrapup: true,
+        decision: notice,
+      },
+    ];
+    return;
+  }
+  const idx = findSpeakerTextToContinue(
+    state.messages,
+    speaker,
+    hostId,
+    continueTokenOpts(state),
+  );
+  if (idx >= 0) {
+    const target = state.messages[idx];
+    state.messages = [
+      ...state.messages.slice(0, idx),
+      { ...target, decision: notice },
+      ...state.messages.slice(idx + 1),
+    ];
+    return;
+  }
+  markSpeakerLive(state, speaker);
+  state.messages = [
+    ...state.messages,
+    {
+      id: generateId(),
+      role: "assistant",
+      content: "",
+      status: "streaming",
+      timestamp: Date.now(),
+      speakerAgentId: speaker,
+      decision: notice,
+    },
+  ];
 }
 
 /** Apply one live harness frame (used by WS and unit tests). */
@@ -1454,6 +1671,7 @@ function appendStreamingToken(
   speakerAgentId?: string,
   snapshot = false,
   wrapup = false,
+  keepLive = false,
 ): void {
   if (!content) return;
   const speaker = speakerAgentId?.trim() || undefined;
@@ -1477,7 +1695,7 @@ function appendStreamingToken(
         id: state.streamId,
         role: "assistant",
         content,
-        status: snapshot ? "done" : "streaming",
+        status: snapshot && !keepLive ? "done" : "streaming",
         timestamp: Date.now(),
         speakerAgentId: speaker,
         teamWrapup: true,
@@ -1506,7 +1724,7 @@ function appendStreamingToken(
           id: generateId(),
           role: "assistant",
           content,
-          status: "done",
+          status: keepLive ? "streaming" : "done",
           timestamp: Date.now(),
           speakerAgentId: speaker,
         },
@@ -1518,10 +1736,11 @@ function appendStreamingToken(
         ? content
         : prev
       : content;
-    if (next !== prev || target.status !== "done") {
+    const snapStatus = keepLive ? "streaming" : "done";
+    if (next !== prev || target.status !== snapStatus) {
       state.messages = [
         ...state.messages.slice(0, idx),
-        { ...target, content: next, status: "done" },
+        { ...target, content: next, status: snapStatus },
         ...state.messages.slice(idx + 1),
       ];
     }
@@ -1535,7 +1754,7 @@ function appendStreamingToken(
         id: generateId(),
         role: "assistant",
         content,
-        status: "done",
+        status: keepLive ? "streaming" : "done",
         timestamp: Date.now(),
         speakerAgentId: speaker,
       },
@@ -2482,7 +2701,7 @@ export async function attachThread(
           ) {
             if (hitlKeepsSocket(data)) {
               parkLiveSocketForHitl(data, state, sessionId, live);
-            } else if (state.isTeamRoom) {
+            } else if (keepRoomSocket(state, agentId)) {
               live.listenOnly = true;
               finish("host");
             } else {
@@ -2503,7 +2722,7 @@ export async function attachThread(
         ) {
           if (hitlKeepsSocket(data)) {
             parkLiveSocketForHitl(data, state, sessionId, live);
-          } else if (state.isTeamRoom) {
+          } else if (keepRoomSocket(state, agentId)) {
             live.listenOnly = true;
             finish("host");
           } else {
@@ -2726,7 +2945,7 @@ async function sendTurnWebSocket(
               parkLiveSocketForHitl(data, state, sessionId, live);
             } else {
               controller.signal.removeEventListener("abort", onAbort);
-              if (state.isTeamRoom) {
+              if (keepRoomSocket(state, agentId)) {
                 live.listenOnly = true;
                 finish("host");
               } else {
@@ -2750,7 +2969,7 @@ async function sendTurnWebSocket(
             parkLiveSocketForHitl(data, state, sessionId, live);
           } else {
             controller.signal.removeEventListener("abort", onAbort);
-            if (state.isTeamRoom) {
+            if (keepRoomSocket(state, agentId)) {
               live.listenOnly = true;
               finish("host");
             } else {
@@ -2846,7 +3065,7 @@ async function sendTurnWebSocket(
       if (
         settled &&
         !userCancelled &&
-        state.isTeamRoom &&
+        keepRoomSocket(state, agentId) &&
         resolvedThreadId &&
         resolvedThreadId !== "__empty__" &&
         !isLiveSocketOpen(sessionId)

@@ -362,3 +362,43 @@ async def test_create_role_accepts_caller_role_id(env):
     )
     assert builtin.status_code == 409, builtin.text
     assert builtin.json()["error"]["code"] == "USER_ROLE_ID_TAKEN"
+
+
+async def test_create_user_bootstraps_selected_expert(env):
+    c, _srv, auth = env
+    created = await c.post(
+        "/api/users",
+        headers=auth,
+        json={
+            "username": "with_expert",
+            "password": TEST_PASSWORD,
+            "role": "user",
+            "create_default_expert": True,
+            "expert_template_id": "general-assistant",
+        },
+    )
+    assert created.status_code == 201, created.text
+    user_id = created.json()["id"]
+    agents = await c.get("/api/agents", headers=auth, params={"scope": "all"})
+    assert agents.status_code == 200, agents.text
+    owned = [row for row in agents.json() if row["user_id"] == user_id]
+    assert len(owned) == 1
+    assert owned[0]["template_name"] == "general-assistant"
+
+
+async def test_create_user_rejects_unknown_expert_template(env):
+    c, _srv, auth = env
+    created = await c.post(
+        "/api/users",
+        headers=auth,
+        json={
+            "username": "no_expert",
+            "password": TEST_PASSWORD,
+            "role": "user",
+            "create_default_expert": True,
+            "expert_template_id": "not-a-real-template",
+        },
+    )
+    assert created.status_code == 404, created.text
+    listed = await c.get("/api/users", headers=auth)
+    assert all(item["username"] != "no_expert" for item in listed.json())

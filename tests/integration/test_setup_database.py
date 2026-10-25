@@ -83,7 +83,7 @@ async def test_deferred_verify_password_then_bind(tmp_octop_home: Path) -> None:
         assert health.status_code == 200
         assert health.json()["db"] is False
 
-        pw = read_password(tmp_octop_home.parent)
+        pw = read_password(tmp_octop_home)
         assert pw is not None
         verified = await client.post("/api/setup/verify-password", json={"password": pw})
         assert verified.status_code == 200, verified.text

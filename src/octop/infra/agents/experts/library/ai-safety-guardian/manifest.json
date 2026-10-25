@@ -1,5 +1,6 @@
 {
   "id": "ai-safety-guardian",
+  "scene": "tech",
   "label": {
     "zh": "AI 安全合规卫士",
     "en": "AI Safety Guardian"
@@ -25,14 +26,14 @@
       },
       "description": {
         "zh": "按 8 层防御做一遍安全与合规体检",
-        "en": "Run an 8-layer safety & compliance scan"
+        "en": "Run an 8-layer safety and compliance scan"
       },
       "prompt": {
         "zh": "请按 8 层防御（promptGuard / outputScanner / toolBlocker / inputAuditor / securityGate / outboundGuard / dataFlowGuard / sessionGuard）帮我做一次 AI 工具安全体检，并给出加固建议。",
         "en": "Please run an 8-layer safety scan and give hardening advice."
       },
-      "color": "#fee2e2",
-      "icon_name": "shield"
+      "color": "#e8f4ff",
+      "icon_name": "shield-check"
     },
     {
       "title": {
@@ -40,8 +41,8 @@
         "en": "Check a command"
       },
       "description": {
-        "zh": "检查某条命令是否危险",
-        "en": "Check if a command is dangerous"
+        "zh": "判断这条命令会不会触发危险规则",
+        "en": "See if a command hits a dangerous-command rule"
       },
       "prompt": {
         "zh": "请检查这条命令是否触发 toolBlocker 危险规则（rm -rf / curl|sh / 反弹 shell / fork bomb 等），并说明风险与更安全的替代。",
@@ -56,15 +57,63 @@
         "en": "Data export check"
       },
       "description": {
-        "zh": "识别敏感数据是否会被发往境外大模型",
-        "en": "Detect sensitive data sent to overseas LLMs"
+        "zh": "识别敏感数据是否会被发往境外模型",
+        "en": "Detect sensitive data sent to overseas models"
       },
       "prompt": {
-        "zh": "请帮我识别：当前任务中是否有敏感数据可能被发往境外大模型端点（数据出境风险），并给出境内路由 / 脱敏建议（依据 PIPL 与数据出境规定）。",
+        "zh": "请帮我识别：当前任务中是否有敏感数据可能被发往境外大模型端点（数据出境风险），并给出境内路由或脱敏建议（依据 PIPL 与数据出境规定）。",
         "en": "Identify data-export risk to overseas LLM endpoints per PIPL."
       },
-      "color": "#dbeafe",
+      "color": "#dcfce7",
       "icon_name": "globe"
+    },
+    {
+      "title": {
+        "zh": "提示注入检查",
+        "en": "Check prompt injection"
+      },
+      "description": {
+        "zh": "判断输入或输出会不会把任务带偏",
+        "en": "See if input or output tries to hijack the task"
+      },
+      "prompt": {
+        "zh": "请检查下面这段内容是否有提示注入风险（套出系统提示、忽略既有规则或改写任务）。命中就说明原因，以及该在哪一层拦住：\n\n",
+        "en": "Check the text below for prompt injection (leaking the system prompt, ignoring existing rules, or rewriting the task). If it hits, say why and which layer should block it:\n\n"
+      },
+      "color": "#f3e8ff",
+      "icon_name": "message-square"
+    },
+    {
+      "title": {
+        "zh": "等保合规检查",
+        "en": "MLPS compliance check"
+      },
+      "description": {
+        "zh": "看身份认证、访问控制和审计缺口",
+        "en": "Review identity, access control, and audit gaps"
+      },
+      "prompt": {
+        "zh": "请按等保 2.0 帮我做一次差距检查：身份认证、访问控制、审计留痕。只根据我提供的材料下结论，缺的标成待确认：\n\n",
+        "en": "Review this against MLPS 2.0: identity, access control, and audit logging. Conclude only from the materials I provide, and mark gaps as unconfirmed:\n\n"
+      },
+      "color": "#eef2ff",
+      "icon_name": "file-text"
+    },
+    {
+      "title": {
+        "zh": "会话审计摘要",
+        "en": "Session audit summary"
+      },
+      "description": {
+        "zh": "汇总工具调用、外发数据和子代理行为",
+        "en": "Summarize tool calls, outbound data, and sub-agents"
+      },
+      "prompt": {
+        "zh": "请按会话审计汇总这次会话：工具调用、外发了哪些数据、子代理做了什么，并标出需要留痕的风险。",
+        "en": "Summarize this session for audit: tool calls, what data left the session, what sub-agents did, and which risks need a record."
+      },
+      "color": "#fdf4e7",
+      "icon_name": "activity"
     }
   ],
   "task_examples": {

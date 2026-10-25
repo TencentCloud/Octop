@@ -197,6 +197,56 @@ async def test_ws_concurrent_subscribers_both_receive_later_chunks(env: Any) -> 
     assert b_frames[-1].get("type") == "done"
 
 
+async def test_ws_steer_first_frame_on_new_connection_keeps_stream(env: Any) -> None:
+    """A steer sent as a fresh connection's first user_turn must reach that socket.
+
+    hub.subscribe used to run after _maybe_admit_steer — and was skipped
+    entirely for steered frames — so steer.queued plus the running turn's
+    tail were dropped when the original connection was already gone.
+    """
+    c, srv, _fake, alice_auth, _bob_auth, aid = env
+    create = await c.post(f"/api/agents/{aid}/threads", headers=alice_auth)
+    tid = create.json()["thread_id"]
+    agent = srv.app_runtime.agent_registry.get_agent(aid)
+
+    gate = asyncio.Event()
+
+    async def slow_stream(request: dict[str, Any]) -> AsyncIterator[dict[str, Any]]:
+        yield {"type": "token", "node": "agent", "content": "first"}
+        await gate.wait()
+        yield {"type": "token", "node": "agent", "content": "second"}
+
+    agent.stream = slow_stream
+
+    async with _chat_ws(c, aid, alice_auth) as ws_a:
+        await ws_a.send_json({"type": "user_turn", "text": "slow please", "thread_id": tid})
+        first = await ws_a.receive_json()
+        while first.get("type") != "token":
+            first = await ws_a.receive_json()
+    # A is closed; the turn stays active, blocked on the gate.
+
+    async with _chat_ws(c, aid, alice_auth) as ws_b:
+        await ws_b.send_json(
+            {
+                "type": "user_turn",
+                "text": "steer this",
+                "thread_id": tid,
+                "delivery": "auto",
+                "client_pending_id": "cpid-steer-1",
+            }
+        )
+        ack = await ws_b.receive_json()
+        assert ack["type"] == "steer.ack"
+        assert ack["status"] == "queued"
+        gate.set()
+        frames = await ws_b.drain_turn()
+
+    types = [f.get("type") for f in frames]
+    assert "steer.queued" in types
+    assert [f.get("content") for f in frames if f.get("type") == "token"] == ["second"]
+    assert frames[-1].get("type") == "done"
+
+
 async def test_ws_two_threads_do_not_cross_stream(env: Any) -> None:
     """Two live turns on different threads must not mix tokens across sockets."""
     c, srv, _fake, alice_auth, _bob_auth, aid = env
@@ -352,6 +402,23 @@ async def test_ws_emits_error_frame_on_exception(env: Any) -> None:
     assert chunks[-1]["type"] == "error"
 
 
+async def test_ws_auth_failure_has_actionable_error_and_releases_turn(env: Any) -> None:
+    from langchain_core.exceptions import ModelAuthenticationError
+
+    from octop.i18n.domains.stream import AUTH, stream_error_message
+
+    c, srv, _fake, alice_auth, _bob_auth, aid = env
+    agent = srv.app_runtime.agent_registry.get_agent(aid)
+    agent.raise_on_stream = ModelAuthenticationError("opaque credential rejection")
+    frames = await _consume_ws_turn(c, aid, alice_auth, text="check auth")
+    error = next(frame for frame in frames if frame.get("type") == "error")
+    assert error["message"] in (stream_error_message(AUTH, "zh"), stream_error_message(AUTH, "en"))
+    # A corrected credential can be used by the very next turn.
+    agent.raise_on_stream = None
+    following = await _consume_ws_turn(c, aid, alice_auth, text="try after fixing credentials")
+    assert not any(frame.get("type") == "error" for frame in following)
+
+
 async def test_ws_bad_agent_rejected(env: Any) -> None:
     c, _srv, _fake, alice_auth, _bob_auth, _aid = env
     with pytest.raises(WebSocketDisconnect):
@@ -383,6 +450,26 @@ async def test_polish_rejects_empty_text(env: Any) -> None:
         f"/api/agents/{aid}/chat/polish",
         headers=alice_auth,
         json={"text": "   "},
+    )
+    assert r.status_code == 400
+
+
+async def test_text_assist_chat_prompt_rejects_empty_text(env: Any) -> None:
+    c, _srv, _fake, alice_auth, _bob_auth, aid = env
+    r = await c.post(
+        "/api/text/assist",
+        headers=alice_auth,
+        json={"kind": "chat.prompt", "text": "   ", "agent_id": aid},
+    )
+    assert r.status_code == 400
+
+
+async def test_text_assist_form_requires_name(env: Any) -> None:
+    c, _srv, _fake, alice_auth, _bob_auth, _aid = env
+    r = await c.post(
+        "/api/text/assist",
+        headers=alice_auth,
+        json={"kind": "expert.description", "text": "", "context": {}},
     )
     assert r.status_code == 400
 

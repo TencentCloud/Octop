@@ -28,7 +28,7 @@ def test_skill_packages_table_exists(db: SqlitePool) -> None:
         v = conn.execute("SELECT version FROM _schema_version").fetchone()[0]
         cols = {r["name"] for r in conn.execute("PRAGMA table_info(skill_packages)").fetchall()}
     assert "skill_packages" in names
-    assert v == 20
+    assert v == 24
     assert "skill_package_id" in cols
 
 
@@ -38,6 +38,7 @@ def test_skill_package_repo_create_get(db: SqlitePool) -> None:
         id="01TESTPACK000000000000000", name="Office", description="d", created_by="1"
     )
     assert row.pk >= 1
+    assert row.shared is False
     assert repo.get(row.id).name == "Office"
     assert repo.list_all()[0].id == row.id
     with db.connect() as conn:
@@ -47,6 +48,35 @@ def test_skill_package_repo_create_get(db: SqlitePool) -> None:
         ).fetchone()
     assert stored["skill_package_id"] == row.id
     assert int(stored["id"]) == row.pk
+
+
+def test_skill_package_repo_list_visible(db: SqlitePool) -> None:
+    repo = SkillPackageRepo(db)
+    private = repo.create(
+        id="01PRIV000000000000000000",
+        name="Private",
+        created_by="1",
+        shared=False,
+    )
+    shared = repo.create(
+        id="01SHARE00000000000000000",
+        name="Shared",
+        created_by="1",
+        shared=True,
+    )
+    other = repo.create(
+        id="01OTHER00000000000000000",
+        name="Other",
+        created_by="2",
+        shared=False,
+    )
+
+    visible_to_2 = {row.id for row in repo.list_visible(2)}
+    assert visible_to_2 == {shared.id, other.id}
+    assert private.id not in visible_to_2
+
+    visible_to_1 = {row.id for row in repo.list_visible("1")}
+    assert visible_to_1 == {private.id, shared.id}
 
 
 def test_legacy_text_pk_skill_packages_keep_public_id(tmp_path: Path) -> None:

@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import logging
 from collections.abc import AsyncIterator
+from dataclasses import dataclass
 from types import SimpleNamespace
 from typing import TYPE_CHECKING, Any, Literal
 
@@ -132,6 +133,12 @@ class _MessageEventSink(SlashSink):
 
     async def complete(self) -> None:
         pass
+
+
+@dataclass(frozen=True)
+class _ResolvedModelRoute:
+    model_ref: str | None
+    automatic: bool
 
 
 class GlobalProcessor:
@@ -524,6 +531,23 @@ class GlobalProcessor:
         needs_multimodal: bool,
         user_id: int = 0,
     ) -> str | None:
+        return self._resolve_harness_model_route(
+            agent_id,
+            thread_id,
+            meta,
+            needs_multimodal=needs_multimodal,
+            user_id=user_id,
+        ).model_ref
+
+    def _resolve_harness_model_route(
+        self,
+        agent_id: str,
+        thread_id: str,
+        meta: dict[str, Any] | None,
+        *,
+        needs_multimodal: bool,
+        user_id: int = 0,
+    ) -> _ResolvedModelRoute:
         """Per-turn ``model`` for harness requests.
 
         - Expert AUTO (no ``default_model`` on row): omit ``model`` → harness routes.
@@ -540,7 +564,10 @@ class GlobalProcessor:
             meta,
             thread_row.model_ref if thread_row is not None else None,
         )
+        automatic = False
         if model_ref and not providers.is_model_ref_usable(model_ref):
+            model_ref = None
+        if model_ref and not self._agent_manager.model_ref_allowed_for_user(user_id, model_ref):
             model_ref = None
         if not model_ref:
             row = self._agent_repo.get(agent_id)
@@ -549,22 +576,38 @@ class GlobalProcessor:
                     row,
                     self._agent_manager.get_config(agent_id),
                 )
+                if model_ref and not self._agent_manager.model_ref_allowed_for_user(
+                    user_id,
+                    model_ref,
+                ):
+                    model_ref = None
         if not model_ref:
             user_row = self._user_repo.get(user_id)
             preferred = get_preferred_model_from_json(
                 user_row.preferences_json if user_row is not None else None
             )
-            if preferred and self._agent_manager.providers.is_model_ref_usable(preferred):
+            if (
+                preferred
+                and self._agent_manager.is_auto_route_model_available(preferred)
+                and self._agent_manager.model_ref_allowed_for_user(user_id, preferred)
+            ):
                 model_ref = preferred
+                automatic = True
         if not model_ref:
             fallback = self._agent_manager.resolve_fallback_model_ref()
-            model_ref = fallback.strip() if isinstance(fallback, str) and fallback.strip() else None
+            candidate = fallback.strip() if isinstance(fallback, str) and fallback.strip() else None
+            if candidate and self._agent_manager.model_ref_allowed_for_user(user_id, candidate):
+                model_ref = candidate
+                automatic = True
         if not model_ref:
-            return None
-        return providers.resolve_model_for_multimodal_turn(
+            return _ResolvedModelRoute(None, automatic=True)
+        resolved = providers.resolve_model_for_multimodal_turn(
             model_ref,
             needs_multimodal=needs_multimodal,
         )
+        if resolved != model_ref:
+            automatic = True
+        return _ResolvedModelRoute(resolved, automatic=automatic)
 
     def _resolve_reasoning_overrides(
         self,
@@ -764,13 +807,14 @@ class GlobalProcessor:
             media_backend=media_backend,
             locale=locale,
         )
-        model_ref = self._resolve_harness_model(
+        model_route = self._resolve_harness_model_route(
             agent_id,
             thread_id,
             None,
             user_id=user_id,
             needs_multimodal=content_blocks_need_vision(content),
         )
+        model_ref = model_route.model_ref
         mcp_servers = await self._resolve_turn_mcp_servers(
             agent_id=agent_id,
             user_id=user_id,
@@ -807,6 +851,7 @@ class GlobalProcessor:
             source=f"{msg.channel_type}/{msg.channel_id}",
             content=content,
             model=model_ref,
+            auto_route=model_route.automatic,
             message_kwargs=message_kwargs or None,
         )
         self.teams.stamp_host_runtime(request, agent_id)
@@ -831,7 +876,7 @@ class GlobalProcessor:
         yield MessageEvent.typing()
         stream_ok = False
         hitl_paused = False
-        persist_failed_turn = False
+        failure_saved = False
         usage_tracker = UsageTracker()
         history_tracker = await self._begin_history(agent_id, thread_id, request)
         projection_state = StreamProjectionState()
@@ -864,7 +909,6 @@ class GlobalProcessor:
             message, error_code = _stream_error(exc, locale)
             if error_code:
                 message = f"[{error_code}] {message}"
-            persist_failed_turn = True
             history_tracker.observe(
                 {
                     "type": "error",
@@ -872,6 +916,8 @@ class GlobalProcessor:
                     **({"error_code": error_code} if error_code else {}),
                 }
             )
+            await self._persist_incomplete_turn(thread_id, history_tracker, title_source=msg.text)
+            failure_saved = True
             yield MessageEvent.error_event(message)
         else:
             if stream_ok and not hitl_paused:
@@ -890,11 +936,11 @@ class GlobalProcessor:
                         content=[TextContent(text=hint)],
                     )
         finally:
-            if persist_failed_turn or (not stream_ok and not hitl_paused):
+            if not failure_saved and (not stream_ok and not hitl_paused):
                 await self._persist_incomplete_turn(
                     thread_id, history_tracker, title_source=msg.text
                 )
-            else:
+            elif not failure_saved:
                 await self._finish_history(history_tracker, completed=stream_ok and not hitl_paused)
         yield MessageEvent.completed()
 
@@ -1141,7 +1187,7 @@ class GlobalProcessor:
         )
 
         stream_ok = False
-        persist_failed_turn = False
+        failure_saved = False
         harness_workspace = harness_workspace_for_agent(self._agent_manager, agent_id)
         usage_tracker = UsageTracker()
         # Align with IM stream_project: only push after a live tool_call this
@@ -1241,15 +1287,16 @@ class GlobalProcessor:
             if error_code:
                 payload["error_code"] = error_code
             history_tracker.observe(payload)
-            persist_failed_turn = True
+            await self._persist_incomplete_turn(thread_id, history_tracker, title_source=msg.text)
+            failure_saved = True
             yield _maybe_stamp_team_host(payload, agent_id, team_host)
         finally:
             self._finish_trajectory(thread_id=thread_id, usage=usage_tracker.usage, enabled=traj_on)
-            if persist_failed_turn or not stream_ok:
+            if not failure_saved and not stream_ok:
                 await self._persist_incomplete_turn(
                     thread_id, history_tracker, title_source=msg.text
                 )
-            else:
+            elif not failure_saved:
                 await self._finish_history(history_tracker, completed=stream_ok)
         if stream_ok:
             self._touch_thread_after_turn(thread_id, msg.text)
@@ -1274,7 +1321,7 @@ class GlobalProcessor:
         usage_tracker = UsageTracker()
         history_tracker = await self._begin_history(agent_id, thread_id, {}, resume=True)
         completed = False
-        persist_failed_turn = False
+        failure_saved = False
         traj_on = self._agent_trajectory_enabled(agent_id)
         team_host = is_team_agent(self._agent_manager.get_row(agent_id))
         saw_tool_call = False
@@ -1329,13 +1376,14 @@ class GlobalProcessor:
             if error_code:
                 payload["error_code"] = error_code
             history_tracker.observe(payload)
-            persist_failed_turn = True
+            await self._persist_incomplete_turn(thread_id, history_tracker, title_source=None)
+            failure_saved = True
             yield _maybe_stamp_team_host(payload, agent_id, team_host)
         finally:
             self._finish_trajectory(thread_id=thread_id, usage=usage_tracker.usage, enabled=traj_on)
-            if persist_failed_turn or not completed:
+            if not failure_saved and not completed:
                 await self._persist_incomplete_turn(thread_id, history_tracker, title_source=None)
-            else:
+            elif not failure_saved:
                 await self._finish_history(history_tracker, completed=completed)
             if completed:
                 self._touch_thread_after_turn(thread_id, None)
@@ -1372,13 +1420,14 @@ class GlobalProcessor:
             media_backend=media_backend,
             locale=locale,
         )
-        model_ref = self._resolve_harness_model(
+        model_route = self._resolve_harness_model_route(
             agent_id,
             thread_id,
             meta,
             user_id=user_id,
             needs_multimodal=content_blocks_need_vision(content),
         )
+        model_ref = model_route.model_ref
         reasoning_overrides = self._resolve_reasoning_overrides(
             user_id=user_id,
             thread_id=thread_id,
@@ -1441,6 +1490,7 @@ class GlobalProcessor:
             source=source,
             content=content,
             model=model_ref,
+            auto_route=model_route.automatic,
             message_kwargs=message_kwargs or None,
             reasoning_overrides=reasoning_overrides,
         )

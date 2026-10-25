@@ -508,6 +508,93 @@ async def test_update_persists_prompt_change(tmp_path: Path) -> None:
 
 
 @pytest.mark.asyncio
+async def test_update_metadata_keeps_pending_schedule(tmp_path: Path) -> None:
+    """Name/prompt edits, including an echoed trigger and enabled flag, do not reschedule."""
+    services = _make_services(tmp_path)
+    aid, uid = _make_agent(services)
+    mgr = _make_manager(services)
+    cid = _cron_id()
+    await mgr.create(cron_id=cid, agent_id=aid, user_id=uid, trigger="interval:3600", prompt="p")
+    mgr._scheduler.get_job = MagicMock(return_value=MagicMock())
+    mgr._scheduler.add_job.reset_mock()
+    mgr._scheduler.remove_job.reset_mock()
+
+    await mgr.update(cid, name="Renamed", prompt="Updated", trigger="interval:3600", enabled=1)
+
+    mgr._scheduler.remove_job.assert_not_called()
+    mgr._scheduler.add_job.assert_not_called()
+    assert mgr.get(cid).prompt == "Updated"
+    assert mgr.get(cid).name == "Renamed"
+
+
+@pytest.mark.asyncio
+async def test_update_restores_missing_schedule(tmp_path: Path) -> None:
+    """An enabled job that fell off the scheduler is attached again on any update."""
+    services = _make_services(tmp_path)
+    aid, uid = _make_agent(services)
+    mgr = _make_manager(services)
+    cid = _cron_id()
+    await mgr.create(cron_id=cid, agent_id=aid, user_id=uid, trigger="interval:10", prompt="p")
+    mgr._scheduler.add_job.reset_mock()
+    mgr._scheduler.get_job = MagicMock(return_value=None)
+
+    await mgr.update(cid, prompt="still due")
+
+    mgr._scheduler.add_job.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_metadata_update_preserves_interval_deadline(tmp_path: Path) -> None:
+    """A real interval job keeps next_run_time when only name and prompt change."""
+    from datetime import timedelta  # noqa: PLC0415
+
+    services = _make_services(tmp_path)
+    aid, uid = _make_agent(services)
+    gw = _make_gateway()
+    mgr = CronManager(
+        gateway=gw,
+        delivery_service=CronDeliveryService(
+            gateway=gw,
+            agent_manager=MagicMock(),
+            repos=services.repos,
+        ),
+        repos=services.repos,
+        timezone="UTC",
+    )
+    cid = _cron_id()
+    await mgr.create(
+        cron_id=cid,
+        agent_id=aid,
+        user_id=uid,
+        trigger="interval:3600",
+        prompt="Original",
+        name="Hourly",
+    )
+    mgr._scheduler.start(paused=True)
+    try:
+        scheduled = mgr._scheduler.get_job(cid)
+        assert scheduled is not None
+        assert scheduled.next_run_time is not None
+        pending = scheduled.next_run_time - timedelta(minutes=30)
+        mgr._scheduler.modify_job(cid, next_run_time=pending)
+
+        await mgr.update(cid, name="Renamed", prompt="Updated", trigger="interval:3600", enabled=1)
+
+        kept = mgr._scheduler.get_job(cid)
+        assert kept is not None
+        assert kept.next_run_time == pending
+
+        await mgr.update(cid, trigger="interval:7200")
+        rebuilt = mgr._scheduler.get_job(cid)
+        assert rebuilt is not None
+        assert rebuilt.next_run_time is not None
+        assert rebuilt.next_run_time > pending
+    finally:
+        if mgr._scheduler.running:
+            mgr._scheduler.shutdown(wait=False)
+
+
+@pytest.mark.asyncio
 async def test_update_reschedules_on_trigger_change(tmp_path: Path) -> None:
     """update() with a new trigger removes old job and re-adds."""
     services = _make_services(tmp_path)
@@ -558,6 +645,16 @@ async def test_update_reschedules_when_re_enabled(tmp_path: Path) -> None:
     await mgr.update(cid, enabled=1)
 
     mgr._scheduler.add_job.assert_called_once()
+
+
+def test_mail_watch_counts_as_attached_schedule(tmp_path: Path) -> None:
+    services = _make_services(tmp_path)
+    mgr = _make_manager(services)
+    row = MagicMock(trigger="agently:box", cron_id="mail-job")
+    mgr._mail_watch.has_job = MagicMock(return_value=True)
+
+    assert mgr._schedule_is_attached(row) is True
+    mgr._scheduler.get_job.assert_not_called()
 
 
 @pytest.mark.asyncio
@@ -894,3 +991,280 @@ def test_system_job_rejects_agently_trigger(tmp_path):
     with pytest.raises(OctopError) as exc:
         mgr.schedule_system_job("sys", trigger="agently:mailbox", func=lambda: None)
     assert exc.value.code == ErrorCode.CRON_TRIGGER_INVALID
+
+
+def _date_trigger(delta_hours: float) -> str:
+    import datetime as dt
+
+    moment = dt.datetime.now(dt.UTC) + dt.timedelta(hours=delta_hours)
+    return "date:" + moment.replace(microsecond=0).strftime("%Y-%m-%dT%H:%M:%S")
+
+
+@pytest.mark.asyncio
+async def test_run_now_disables_one_shot_after_success(tmp_path: Path) -> None:
+    services = _make_services(tmp_path)
+    aid, uid = _make_agent(services)
+    mgr = _make_manager(services)
+    mgr._delivery_service.deliver = AsyncMock()
+    cid = _cron_id()
+    await mgr.create(
+        cron_id=cid,
+        agent_id=aid,
+        user_id=uid,
+        trigger="date:2099-01-01T00:00:00",
+        prompt="once",
+    )
+    mgr._scheduler.get_job = MagicMock(return_value=MagicMock())
+
+    await mgr.run_now(cid, wait=True)
+
+    row = services.repos.cron_repo.get(cid)
+    assert row is not None
+    assert row.enabled == 0
+    assert row.last_status == "ok"
+    mgr._scheduler.remove_job.assert_called_with(cid)
+
+
+@pytest.mark.asyncio
+async def test_run_now_disables_one_shot_after_failure(tmp_path: Path) -> None:
+    services = _make_services(tmp_path)
+    aid, uid = _make_agent(services)
+    mgr = _make_manager(services)
+    mgr._delivery_service.deliver = AsyncMock(side_effect=RuntimeError("boom"))
+    cid = _cron_id()
+    await mgr.create(
+        cron_id=cid,
+        agent_id=aid,
+        user_id=uid,
+        trigger="date:2099-01-01T00:00:00",
+        prompt="once",
+    )
+
+    with pytest.raises(RuntimeError, match="boom"):
+        await mgr.run_now(cid, wait=True)
+
+    row = services.repos.cron_repo.get(cid)
+    assert row is not None
+    assert row.enabled == 0
+    assert row.last_status == "error"
+
+
+@pytest.mark.asyncio
+async def test_run_now_keeps_recurring_job_enabled(tmp_path: Path) -> None:
+    services = _make_services(tmp_path)
+    aid, uid = _make_agent(services)
+    mgr = _make_manager(services)
+    mgr._delivery_service.deliver = AsyncMock()
+    cid = _cron_id()
+    await mgr.create(
+        cron_id=cid,
+        agent_id=aid,
+        user_id=uid,
+        trigger="interval:3600",
+        prompt="again",
+    )
+
+    await mgr.run_now(cid, wait=True)
+
+    row = services.repos.cron_repo.get(cid)
+    assert row is not None
+    assert row.enabled == 1
+    assert row.last_status == "ok"
+
+
+@pytest.mark.asyncio
+async def test_create_marks_expired_one_shot_missed(tmp_path: Path) -> None:
+    services = _make_services(tmp_path)
+    aid, uid = _make_agent(services)
+    mgr = _make_manager(services)
+    cid = _cron_id()
+
+    row = await mgr.create(
+        cron_id=cid,
+        agent_id=aid,
+        user_id=uid,
+        trigger=_date_trigger(-25),
+        prompt="late",
+    )
+
+    assert row.enabled == 0
+    assert row.last_status == "missed"
+    assert row.last_run_at is None
+    mgr._scheduler.add_job.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_boot_schedules_one_shot_inside_grace(tmp_path: Path) -> None:
+    from octop.infra.cron.trigger import ONE_SHOT_MISFIRE_GRACE_SECONDS
+
+    services = _make_services(tmp_path)
+    aid, uid = _make_agent(services)
+    cid = _cron_id()
+    services.repos.cron_repo.create(
+        cron_id=cid,
+        agent_id=aid,
+        user_id=uid,
+        trigger=_date_trigger(-1),
+        prompt="catch up",
+        session_key=_cron_session_key(aid, cid),
+    )
+    mgr = _make_manager(services)
+
+    await mgr.boot()
+
+    mgr._scheduler.add_job.assert_called_once()
+    assert (
+        mgr._scheduler.add_job.call_args.kwargs["misfire_grace_time"]
+        == ONE_SHOT_MISFIRE_GRACE_SECONDS
+    )
+    row = services.repos.cron_repo.get(cid)
+    assert row is not None and row.enabled == 1
+
+
+@pytest.mark.asyncio
+async def test_boot_marks_one_shot_missed_past_grace(tmp_path: Path) -> None:
+    services = _make_services(tmp_path)
+    aid, uid = _make_agent(services)
+    cid = _cron_id()
+    services.repos.cron_repo.create(
+        cron_id=cid,
+        agent_id=aid,
+        user_id=uid,
+        trigger=_date_trigger(-25),
+        prompt="gone",
+        session_key=_cron_session_key(aid, cid),
+    )
+    mgr = _make_manager(services)
+
+    await mgr.boot()
+
+    mgr._scheduler.add_job.assert_not_called()
+    row = services.repos.cron_repo.get(cid)
+    assert row is not None
+    assert row.enabled == 0
+    assert row.last_status == "missed"
+    assert row.last_run_at is None
+
+
+@pytest.mark.asyncio
+async def test_boot_does_not_rerun_a_finished_one_shot(tmp_path: Path) -> None:
+    import time
+
+    services = _make_services(tmp_path)
+    aid, uid = _make_agent(services)
+    cid = _cron_id()
+    services.repos.cron_repo.create(
+        cron_id=cid,
+        agent_id=aid,
+        user_id=uid,
+        trigger=_date_trigger(-1),
+        prompt="done",
+        session_key=_cron_session_key(aid, cid),
+    )
+    services.repos.cron_repo.set_run_status(cid, ts=int(time.time()), status="ok")
+    mgr = _make_manager(services)
+
+    await mgr.boot()
+
+    mgr._scheduler.add_job.assert_not_called()
+    row = services.repos.cron_repo.get(cid)
+    assert row is not None
+    assert row.enabled == 0
+    assert row.last_status == "ok"
+
+
+@pytest.mark.asyncio
+async def test_reenable_future_one_shot_schedules_again(tmp_path: Path) -> None:
+    services = _make_services(tmp_path)
+    aid, uid = _make_agent(services)
+    mgr = _make_manager(services)
+    mgr._delivery_service.deliver = AsyncMock()
+    cid = _cron_id()
+    await mgr.create(
+        cron_id=cid,
+        agent_id=aid,
+        user_id=uid,
+        trigger="date:2099-06-01T08:00:00",
+        prompt="later",
+    )
+    await mgr.run_now(cid, wait=True)
+    mgr._scheduler.add_job.reset_mock()
+
+    updated = await mgr.update(cid, enabled=1)
+
+    assert updated.enabled == 1
+    mgr._scheduler.add_job.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_reenable_past_one_shot_stays_finished(tmp_path: Path) -> None:
+    import time
+
+    services = _make_services(tmp_path)
+    aid, uid = _make_agent(services)
+    cid = _cron_id()
+    services.repos.cron_repo.create(
+        cron_id=cid,
+        agent_id=aid,
+        user_id=uid,
+        trigger=_date_trigger(-2),
+        prompt="past",
+        session_key=_cron_session_key(aid, cid),
+    )
+    services.repos.cron_repo.set_run_status(cid, ts=int(time.time()), status="ok")
+    mgr = _make_manager(services)
+
+    updated = await mgr.update(cid, enabled=1)
+
+    assert updated.enabled == 0
+    assert updated.last_status == "ok"
+    mgr._scheduler.add_job.assert_not_called()
+
+
+def test_scheduler_miss_marks_unrun_one_shot(tmp_path: Path) -> None:
+    from apscheduler.events import EVENT_JOB_MISSED, JobEvent
+
+    services = _make_services(tmp_path)
+    aid, uid = _make_agent(services)
+    cid = _cron_id()
+    services.repos.cron_repo.create(
+        cron_id=cid,
+        agent_id=aid,
+        user_id=uid,
+        trigger="date:2099-01-01T00:00:00",
+        prompt="later",
+        session_key=_cron_session_key(aid, cid),
+    )
+    mgr = _make_manager(services)
+
+    mgr._on_job_missed(JobEvent(EVENT_JOB_MISSED, cid, "default"))
+
+    row = services.repos.cron_repo.get(cid)
+    assert row is not None
+    assert row.enabled == 0
+    assert row.last_status == "missed"
+    assert row.last_run_at is None
+
+
+def test_scheduler_miss_leaves_recurring_job_enabled(tmp_path: Path) -> None:
+    from apscheduler.events import EVENT_JOB_MISSED, JobEvent
+
+    services = _make_services(tmp_path)
+    aid, uid = _make_agent(services)
+    cid = _cron_id()
+    services.repos.cron_repo.create(
+        cron_id=cid,
+        agent_id=aid,
+        user_id=uid,
+        trigger="interval:3600",
+        prompt="again",
+        session_key=_cron_session_key(aid, cid),
+    )
+    mgr = _make_manager(services)
+
+    mgr._on_job_missed(JobEvent(EVENT_JOB_MISSED, cid, "default"))
+
+    row = services.repos.cron_repo.get(cid)
+    assert row is not None
+    assert row.enabled == 1
+    assert row.last_status is None
