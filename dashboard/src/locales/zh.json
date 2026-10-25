@@ -3419,6 +3419,8 @@
     "modelUnit": "个",
     "noModelsAvailable": "暂无可用模型，请先授权至少一个提供商并配置模型。",
     "preferredModelSet": "已将 {{model}} 设为偏好模型",
+    "preferredModelCleared": "已取消个人偏好模型",
+    "clearPreferred": "取消个人偏好",
     "setAsPreferred": "设为偏好模型",
     "currentPreferred": "当前偏好模型",
     "capReasoning": "推理",

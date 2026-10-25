@@ -3419,6 +3419,8 @@
     "modelUnit": "models",
     "noModelsAvailable": "No models available. Please authorize at least one provider and configure models.",
     "preferredModelSet": "{{model}} set as preferred model",
+    "preferredModelCleared": "Personal model preference cleared",
+    "clearPreferred": "Clear personal preference",
     "setAsPreferred": "Set as preferred",
     "currentPreferred": "Current preferred model",
     "capReasoning": "Reasoning",

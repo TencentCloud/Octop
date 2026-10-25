@@ -133,9 +133,6 @@ export function useProviders(): UseProvidersResult {
         request<ProviderRow[]>("/admin/providers"),
         request<ProviderPreset[]>("/providers/presets"),
         providerApi.listResolvedModels(),
-        request<{ provider_name: string; model: string }>(
-          "/providers/active-model",
-        ),
         preferencesApi.get(),
       ]);
       const rows =
@@ -150,10 +147,8 @@ export function useProviders(): UseProvidersResult {
         settled[2].status === "fulfilled" && Array.isArray(settled[2].value)
           ? settled[2].value
           : [];
-      const active =
-        settled[3].status === "fulfilled" ? settled[3].value : null;
       const preferences =
-        settled[4].status === "fulfilled" ? settled[4].value : null;
+        settled[3].status === "fulfilled" ? settled[3].value : null;
 
       if (
         settled[0].status === "rejected" &&
@@ -177,11 +172,6 @@ export function useProviders(): UseProvidersResult {
           ? {
               provider_name: preferredParts[0],
               model: preferredParts.slice(1).join("/"),
-            }
-          : active && typeof active === "object"
-          ? {
-              provider_name: active.provider_name ?? "",
-              model: active.model ?? "",
             }
           : { provider_name: "", model: "" },
       );
