@@ -17,7 +17,10 @@ RESOURCE_CONNECTOR = "connector"
 CONNECTOR_FEATURE_KEY = "feature"
 RESOURCE_MODEL = "model"
 RESOURCE_STORAGE_BACKEND = "storage_backend"
-STORAGE_FEATURE_KEY = "feature"
+STORAGE_FEATURE_KEY = "feature"  # legacy feature-wide key; prefer backend name
+RESOURCE_PLUGIN = "plugin"
+RESOURCE_BRIDGE = "bridge"
+RESOURCE_EXPERT = "expert"
 
 RESOURCE_TYPES = frozenset(
     {
@@ -26,6 +29,9 @@ RESOURCE_TYPES = frozenset(
         RESOURCE_CONNECTOR,
         RESOURCE_MODEL,
         RESOURCE_STORAGE_BACKEND,
+        RESOURCE_PLUGIN,
+        RESOURCE_BRIDGE,
+        RESOURCE_EXPERT,
     }
 )
 
@@ -180,18 +186,19 @@ class GroupAccess:
             return {"visibility": VISIBILITY_ALL, "group_ids": []}
         return {"visibility": VISIBILITY_GROUPS, "group_ids": group_ids}
 
-    def set_visibility(
+    def validate_visibility(
         self,
-        resource_type: str,
-        resource_key: str,
         visibility: str,
         group_ids: Sequence[str] | None,
-    ) -> None:
-        if resource_type not in RESOURCE_TYPES:
-            raise OctopError(ErrorCode.FORBIDDEN, "unknown resource type", status=400)
+    ) -> list[str]:
+        """Validate visibility args before any ``shared`` write.
+
+        Returns cleaned group ids (empty for ``all`` / ``owner``). Call this
+        before persisting ``shared=True`` so a failed ``groups`` choice cannot
+        leave a resource open to everyone with no grants.
+        """
         if visibility in {VISIBILITY_ALL, VISIBILITY_OWNER}:
-            self._grants.delete_resource(resource_type, resource_key)
-            return
+            return []
         if visibility != VISIBILITY_GROUPS:
             raise OctopError(ErrorCode.FORBIDDEN, "unknown visibility", status=400)
         cleaned: list[str] = []
@@ -211,19 +218,61 @@ class GroupAccess:
         missing = [group_id for group_id in cleaned if self._groups.get(group_id) is None]
         if missing:
             raise OctopError(ErrorCode.NOT_FOUND, "user group not found")
+        return cleaned
+
+    def set_visibility(
+        self,
+        resource_type: str,
+        resource_key: str,
+        visibility: str,
+        group_ids: Sequence[str] | None,
+    ) -> None:
+        if resource_type not in RESOURCE_TYPES:
+            raise OctopError(ErrorCode.FORBIDDEN, "unknown resource type", status=400)
+        cleaned = self.validate_visibility(visibility, group_ids)
+        if visibility in {VISIBILITY_ALL, VISIBILITY_OWNER}:
+            self._grants.delete_resource(resource_type, resource_key)
+            return
         self._grants.replace(resource_type, resource_key, cleaned)
 
     def clear(self, resource_type: str, resource_key: str) -> None:
         self._grants.delete_resource(resource_type, resource_key)
 
 
+def expert_visible_to(
+    repos: Any,
+    row: Any,
+    *,
+    user_id: int,
+    is_admin: bool,
+) -> bool:
+    """Owner and admin always pass. Others need ``is_shared`` plus the group layer."""
+    if is_admin:
+        return True
+    owner_id = getattr(row, "user_id", None)
+    if owner_id is not None and int(owner_id) == int(user_id):
+        return True
+    if int(getattr(row, "is_shared", 0) or 0) != 1:
+        return False
+    return GroupAccess(repos).allows(
+        user_id=user_id,
+        is_admin=False,
+        resource_type=RESOURCE_EXPERT,
+        resource_key=str(getattr(row, "agent_id", "")),
+        is_owner=False,
+    )
+
+
 def empty_group_access() -> dict[str, Any]:
     return {
-        "connectors": "all",
-        "storage": "all",
+        "connectors": [],
+        "storage": [],
         "models": [],
+        "plugins": [],
         "skill_packages": [],
         "knowledge_bases": [],
+        "bridges": [],
+        "experts": [],
     }
 
 
@@ -249,14 +298,6 @@ def _model_catalog(repos: Any) -> tuple[dict[str, str], set[str]]:
             if provider_on and model.get("enabled") is not False:
                 usable.add(key)
     return labels, usable
-
-
-def _feature_audience(granted: set[str], group_id: str) -> str:
-    if not granted:
-        return "all"
-    if group_id in granted:
-        return "groups"
-    return "none"
 
 
 _AUDIENCE_ORDER = {"groups": 0, "all": 1, "creator": 2, "owner": 3}
@@ -330,23 +371,74 @@ def group_access_by_group(repos: Any) -> dict[str, dict[str, Any]]:
             key: group_ids for (kind, key), group_ids in grants.items() if kind == resource_type
         }
 
-    connector_grants = grants.get((RESOURCE_CONNECTOR, CONNECTOR_FEATURE_KEY), set())
-    storage_grants = grants.get((RESOURCE_STORAGE_BACKEND, STORAGE_FEATURE_KEY), set())
     model_grants = keys(RESOURCE_MODEL)
     package_grants = keys(RESOURCE_SKILL_PACKAGE)
     base_grants = keys(RESOURCE_KNOWLEDGE_BASE)
+    connector_grants = keys(RESOURCE_CONNECTOR)
+    storage_grants = keys(RESOURCE_STORAGE_BACKEND)
+    plugin_grants = keys(RESOURCE_PLUGIN)
+    bridge_grants = keys(RESOURCE_BRIDGE)
+    expert_grants = keys(RESOURCE_EXPERT)
+    agent_rows = list(repos.agent_repo.list_all())
+    shared_experts = {
+        row.agent_id: row.name for row in agent_rows if int(getattr(row, "is_shared", 0) or 0) == 1
+    }
+    private_experts = {
+        row.agent_id: row.name for row in agent_rows if int(getattr(row, "is_shared", 0) or 0) != 1
+    }
+    bridge_rows = list(repos.bridge_connection_repo.list_all())
+    shared_bridges = {row.connection_id: row.display_name for row in bridge_rows if row.shared}
+    private_bridges = {row.connection_id: row.display_name for row in bridge_rows if not row.shared}
+    connector_rows = [
+        row
+        for row in repos.connector_repo.list_all()
+        if str(getattr(row, "kind", "") or "") != "custom-mcp"
+    ]
+    shared_connectors = {row.instance_id: row.display_name for row in connector_rows if row.shared}
+    private_connectors = {
+        row.instance_id: row.display_name for row in connector_rows if not row.shared
+    }
+    # Ignore the legacy feature-wide key in per-instance summaries.
+    connector_grants.pop(CONNECTOR_FEATURE_KEY, None)
+    storage_grants.pop(STORAGE_FEATURE_KEY, None)
+    storage_rows = list(repos.storage_backend_repo.list_all())
+    storage_catalog = {row.name: row.name for row in storage_rows}
+    # Plugins live on disk; surface grant keys (labels = plugin id) until loaded.
+    plugin_catalog = {key: key for key in plugin_grants}
     out: dict[str, dict[str, Any]] = {}
     for group in repos.user_group_repo.list_all():
         group_id = group.user_group_id
         summary = empty_group_access()
-        summary["connectors"] = _feature_audience(connector_grants, group_id)
-        summary["storage"] = _feature_audience(storage_grants, group_id)
+        summary["connectors"] = _resource_items(
+            catalog=shared_connectors,
+            private=private_connectors,
+            private_audience="owner",
+            known={row.instance_id for row in connector_rows},
+            grants=connector_grants,
+            group_id=group_id,
+        )
+        summary["storage"] = _resource_items(
+            catalog=storage_catalog,
+            private={},
+            private_audience="owner",
+            known=set(storage_catalog),
+            grants=storage_grants,
+            group_id=group_id,
+        )
         summary["models"] = _resource_items(
             catalog={key: model_labels[key] for key in usable_models},
             private={},
             private_audience="owner",
             known=set(model_labels),
             grants=model_grants,
+            group_id=group_id,
+        )
+        summary["plugins"] = _resource_items(
+            catalog=plugin_catalog,
+            private={},
+            private_audience="owner",
+            known=set(plugin_catalog),
+            grants=plugin_grants,
             group_id=group_id,
         )
         summary["skill_packages"] = _resource_items(
@@ -363,6 +455,22 @@ def group_access_by_group(repos: Any) -> dict[str, dict[str, Any]]:
             private_audience="owner",
             known={row.id for row in base_rows},
             grants=base_grants,
+            group_id=group_id,
+        )
+        summary["bridges"] = _resource_items(
+            catalog=shared_bridges,
+            private=private_bridges,
+            private_audience="owner",
+            known={row.connection_id for row in bridge_rows},
+            grants=bridge_grants,
+            group_id=group_id,
+        )
+        summary["experts"] = _resource_items(
+            catalog=shared_experts,
+            private=private_experts,
+            private_audience="owner",
+            known={row.agent_id for row in agent_rows},
+            grants=expert_grants,
             group_id=group_id,
         )
         out[group_id] = summary

@@ -8,8 +8,8 @@ from collections.abc import Awaitable, Callable
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 
-from octop.infra.desktop.capture import ScreenCapture
-from octop.infra.desktop.input import InputInjector
+from octop.infra.control.desktop.capture import ScreenCapture
+from octop.infra.control.desktop.input import InputInjector
 
 _capture_executor = ThreadPoolExecutor(max_workers=4, thread_name_prefix="desktop-capture")
 _input_executor = ThreadPoolExecutor(max_workers=8, thread_name_prefix="desktop-input")

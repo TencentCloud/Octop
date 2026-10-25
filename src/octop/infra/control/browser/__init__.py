@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from octop.infra.browser.setup import (
+from octop.infra.control.browser.setup import (
     chrome_source_for_path,
     playwright_chromium_installed,
     prepare_harness_profile_for_launch,

@@ -52,10 +52,19 @@ export function ProviderCard({
   const isLocalRuntime = isOllama || isOnnx;
 
   const hasApiKey = !!provider.api_key && provider.api_key.length > 0;
-  const statusReady = hasApiKey;
-  const statusLabel = hasApiKey
-    ? t("models.authorized")
-    : t("models.unauthorized");
+  /** green = ready, blue = configured but off, gray = missing credentials */
+  const statusTone: "active" | "configured" | "inactive" = !hasApiKey
+    ? "inactive"
+    : provider.enabled
+    ? "active"
+    : "configured";
+  const statusReady = statusTone === "active";
+  const statusLabel =
+    statusTone === "active"
+      ? t("models.statusReady")
+      : statusTone === "configured"
+      ? t("models.statusConfigured")
+      : t("models.statusNeedsKey");
 
   const handleTestConnection = async (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -219,6 +228,7 @@ export function ProviderCard({
         hoverable
         onMouseEnter={onMouseEnter}
         onMouseLeave={onMouseLeave}
+        onClick={() => setModalOpen(true)}
         className={
           isHover
             ? `${styles.providerCard} ${styles.hover}`
@@ -226,7 +236,7 @@ export function ProviderCard({
             ? `${styles.providerCard} ${styles.enabled}`
             : `${styles.providerCard} ${styles.normal}`
         }
-        style={{ opacity: provider.enabled ? 1 : 0.7 }}
+        style={provider.enabled ? undefined : { opacity: 0.85 }}
       >
         <div className={styles.cardContent}>
           <div className={styles.cardHeader}>
@@ -243,12 +253,20 @@ export function ProviderCard({
             <div className={styles.statusContainer}>
               <span
                 className={`${styles.statusDot} ${
-                  statusReady ? styles.active : styles.inactive
+                  statusTone === "active"
+                    ? styles.active
+                    : statusTone === "configured"
+                    ? styles.configured
+                    : styles.inactive
                 }`}
               />
               <span
                 className={`${styles.statusText} ${
-                  statusReady ? styles.enabled : styles.disabled
+                  statusTone === "active"
+                    ? styles.enabled
+                    : statusTone === "configured"
+                    ? styles.configured
+                    : styles.disabled
                 }`}
               >
                 {statusLabel}

@@ -14,8 +14,8 @@ from typing import Literal
 
 from octop.config import OctopConfig
 from octop.i18n import tr
-from octop.infra.mobile.adb import adb_connect, find_adb, list_devices
-from octop.infra.mobile.docker_install import (
+from octop.infra.control.mobile.adb import adb_connect, find_adb, list_devices
+from octop.infra.control.mobile.docker_install import (
     auto_install_docker_stream,
     can_install_without_password,
     docker_daemon_ready,

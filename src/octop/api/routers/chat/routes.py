@@ -32,7 +32,7 @@ from octop.infra.gateway.hitl.coordinator import (
 )
 from octop.infra.gateway.hitl.format import normalize_hitl_request
 from octop.infra.gateway.hitl.store import HitlPendingRecord
-from octop.infra.text_assist import run_text_assist
+from octop.infra.text_assist import require_host_models, run_text_assist
 from octop.infra.utils.locale import resolve_request_locale
 
 router = APIRouter()
@@ -306,7 +306,7 @@ async def polish_prompt(
     """Compat alias for ``POST /api/text/assist`` with ``kind=chat.prompt``."""
     assert_agent_access(server, agent_id, user)
     polished = await run_text_assist(
-        server=server,
+        models=require_host_models(server),
         kind="chat.prompt",
         text=body.text,
         locale=resolve_request_locale(request),

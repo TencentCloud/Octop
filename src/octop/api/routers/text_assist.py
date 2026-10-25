@@ -2,27 +2,17 @@
 
 from __future__ import annotations
 
-from typing import Any, Literal
+from typing import Any
 
 from fastapi import APIRouter, Depends, Request
 from pydantic import BaseModel, Field
 
 from octop.api.common.agent import assert_agent_access
 from octop.api.deps import current_user, get_server
-from octop.infra.text_assist import run_text_assist
+from octop.infra.text_assist import AssistKind, require_host_models, run_text_assist
 from octop.infra.utils.locale import resolve_request_locale
 
 router = APIRouter()
-
-AssistKind = Literal[
-    "chat.prompt",
-    "expert.description",
-    "expert.welcome_message",
-    "team.description",
-    "team.welcome_message",
-    "skill_package.description",
-    "knowledge_base.description",
-]
 
 
 class TextAssistBody(BaseModel):
@@ -66,9 +56,9 @@ async def text_assist(
 ) -> TextAssistResponse:
     """One-shot LLM rewrite/generate for form fields and chat composer polish.
 
-    Prompts live in backend i18n (`text_assist.kinds.*`). Model selection uses
-    an explicit usable ``default_model`` when provided; otherwise the automatic
-    route. Does not touch thread history.
+    Prompts live in backend i18n (`text_assist.kinds.*`). An explicit
+    ``default_model`` is forwarded to harness; omit it or pass ``auto`` and
+    harness selects the model. Does not touch thread history.
     """
     agent_id = (body.agent_id or "").strip()
     if agent_id:
@@ -76,7 +66,7 @@ async def text_assist(
 
     locale = (body.locale or "").strip() or resolve_request_locale(request)
     text = await run_text_assist(
-        server=server,
+        models=require_host_models(server),
         kind=body.kind,
         text=body.text,
         context=body.context,

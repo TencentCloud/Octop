@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import base64
 import json
+from collections.abc import Callable
 from datetime import UTC, datetime
 from typing import Annotated, Any
 
@@ -14,10 +15,10 @@ from pydantic import Field
 
 from octop.config import OctopConfig
 from octop.i18n import tr
-from octop.infra.mobile.adb import find_adb, list_devices, screencap_png, shell, swipe, tap
-from octop.infra.mobile.setup import mobile_status
+from octop.infra.control.mobile.adb import find_adb, list_devices, screencap_png, shell, swipe, tap
+from octop.infra.control.mobile.setup import mobile_status
 from octop.infra.users.permissions import user_has_permission
-from octop.infra.utils.paths import PathLayout
+from octop.infra.utils.ulid import new_short_id
 
 MOBILE_SCREENSHOT = "mobile_screenshot"
 MOBILE_TAP = "mobile_tap"
@@ -55,7 +56,7 @@ def _require_ready(config: OctopConfig, *, locale: str) -> None:
 
 
 async def _resolve_device(device: str | None) -> str:
-    from octop.infra.mobile.agent_control import get_mobile_agent_control
+    from octop.infra.control.mobile.agent_control import get_mobile_agent_control
 
     control = get_mobile_agent_control()
     if not control.enabled or not control.device:
@@ -74,12 +75,21 @@ async def _resolve_device(device: str | None) -> str:
 
 
 def build_mobile_tools(
-    config: OctopConfig, *, user_repo: Any, paths: PathLayout | None = None
+    config: OctopConfig,
+    *,
+    user_repo: Any,
+    workspace_for: Callable[[str], Any] | None = None,
 ) -> list[StructuredTool]:
-    """Return adb mobile tools when ``capabilities.mobile.enabled``."""
+    """Return adb mobile tools when ``capabilities.mobile.enabled``.
+
+    ``workspace_for(agent_id)`` resolves the agent's harness
+    ``BackendWorkspace`` so screenshots land in the agent's real workspace
+    (scoped root, docker sandbox, or remote backend). Without it — or when it
+    returns ``None`` — the PNG is returned inline as base64 instead of
+    writing a file.
+    """
     if not config.capabilities.mobile.enabled:
         return []
-    layout = paths or PathLayout.from_env()
 
     async def mobile_screenshot(
         device: Annotated[
@@ -97,18 +107,16 @@ def build_mobile_tools(
             if not png:
                 return json.dumps({"error": "screenshot failed"}, ensure_ascii=False)
             agent_id = str(ctx.get("agent_id") or "").strip()
-            if not agent_id:
+            workspace = workspace_for(agent_id) if agent_id and workspace_for else None
+            if workspace is None:
                 b64 = base64.b64encode(png).decode("ascii")
                 return json.dumps(
                     {"device": serial, "image_base64": b64, "format": "png"},
                     ensure_ascii=False,
                 )
-            out_dir = layout.agent_workspace(agent_id) / "mobile-screenshots"
-            out_dir.mkdir(parents=True, exist_ok=True)
             stamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
-            rel = f"mobile-screenshots/mobile_{stamp}.png"
-            path = layout.agent_workspace(agent_id) / rel
-            path.write_bytes(png)
+            rel = f"mobile-screenshots/mobile_{stamp}_{new_short_id(6)}.png"
+            await asyncio.to_thread(workspace.upload_bytes, rel, png)
             return json.dumps({"device": serial, "path": rel, "format": "png"}, ensure_ascii=False)
         except Exception as exc:
             return json.dumps({"error": str(exc)}, ensure_ascii=False)

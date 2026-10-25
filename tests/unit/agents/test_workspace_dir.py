@@ -97,7 +97,7 @@ def test_octop_home_drive_root_uses_host_workspace(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     paths = PathLayout(tmp_path / ".octop")
-    monkeypatch.setenv("OCTOP_HOME", str(paths.root))
+    monkeypatch.setenv("OCTOP_HOME", "C:/octop-home")
     cfg = {
         "backend": {
             "type": "local_shell",
@@ -124,12 +124,11 @@ def test_windows_drive_root_sentinel_matches_octop_home_drive(
 
 @pytest.mark.skipif(os.name != "nt", reason="Windows drive semantics")
 def test_other_drive_root_uses_scoped_workspace(
-    tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     from octop.infra.agents.workspace import dir as workspace_dir
 
-    paths = PathLayout(tmp_path / ".octop")
+    paths = PathLayout(Path("C:/octop-home"))
     monkeypatch.setenv("OCTOP_HOME", str(paths.root))
     monkeypatch.setattr(workspace_dir, "_ensure_dir", lambda _path: True)
     cfg = {

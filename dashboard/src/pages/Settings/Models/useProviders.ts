@@ -47,6 +47,8 @@ export interface ProviderPresetModel {
   input?: string[];
   reasoning?: boolean | null;
   description?: string | null;
+  embedding?: boolean;
+  task?: string;
 }
 
 export interface ProviderPreset {
@@ -64,6 +66,8 @@ export interface ProviderPreset {
   provider_variant?: string;
   logo_id?: string;
   auth_method?: string;
+  /** Embedding-only presets appear on the embedding Models tab. */
+  purpose?: "chat" | "embedding";
 }
 
 export interface ProviderRow {
@@ -77,6 +81,16 @@ export interface ProviderRow {
   enabled: boolean;
   /** Resolved: custom defaults off, bundled presets default on. */
   stream_usage?: boolean;
+  /** UI lane: embedding providers are managed on the embedding Models tab. */
+  purpose?: "chat" | "embedding";
+}
+
+/** True when this provider belongs on the embedding Models tab. */
+export function isEmbeddingProvider(provider: ProviderRow): boolean {
+  if (provider.purpose === "embedding") return true;
+  const models = provider.models ?? [];
+  if (models.length === 0) return false;
+  return models.every((model) => isEmbeddingModel(model));
 }
 
 export interface UseProvidersResult {

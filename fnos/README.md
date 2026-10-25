@@ -68,7 +68,7 @@ fnos/
 │   │       └── images/icon-{64,256}.png
 │   └── Dockerfile          # 从仓库源码构建镜像，安装 desktop extra（不预装 Chromium）
 └── native/                 # 本地版（非 Docker 的 FnOS 原生 app）
-    ├── manifest            # platform=all + 原生 app 元信息
+    ├── manifest            # platform=x86（ARM 包构建时改为 platform=arm）+ 原生 app 元信息
     ├── cmd/                # 生命周期脚本（main / install_callback / config_callback）
     ├── config/
     │   ├── privilege       # 权限声明（root，用于 sudo / 远程桌面等）
