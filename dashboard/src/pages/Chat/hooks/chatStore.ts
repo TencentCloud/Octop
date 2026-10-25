@@ -492,9 +492,26 @@ function getOrCreate(sessionId: string): SessionStreamState {
   return state;
 }
 
-function notify(state: SessionStreamState) {
-  // Rebuild the snapshot reference so useSyncExternalStore sees the change.
-  state._snapshot = buildSnapshot(state);
+/**
+ * Token / reasoning paints. A fast stream used to call React on every
+ * fragment and starve in-flight fetches (expert profile, context usage).
+ * The snapshot stays current immediately; listeners flush on this interval.
+ */
+const STREAM_PAINT_MS = 50;
+
+const streamPaintTimers = new Map<
+  SessionStreamState,
+  ReturnType<typeof setTimeout>
+>();
+
+function cancelStreamPaint(state: SessionStreamState): void {
+  const timer = streamPaintTimers.get(state);
+  if (timer === undefined) return;
+  clearTimeout(timer);
+  streamPaintTimers.delete(state);
+}
+
+function publish(state: SessionStreamState): void {
   for (const fn of state.listeners) {
     try {
       fn();
@@ -502,6 +519,36 @@ function notify(state: SessionStreamState) {
       /* ignore */
     }
   }
+}
+
+function notify(state: SessionStreamState) {
+  // Rebuild the snapshot reference so useSyncExternalStore sees the change.
+  cancelStreamPaint(state);
+  state._snapshot = buildSnapshot(state);
+  publish(state);
+}
+
+/** Coalesce high-frequency stream fragments onto one paint. */
+function notifyStreamingPaint(state: SessionStreamState): void {
+  state._snapshot = buildSnapshot(state);
+  if (streamPaintTimers.has(state)) return;
+  streamPaintTimers.set(
+    state,
+    setTimeout(() => {
+      streamPaintTimers.delete(state);
+      publish(state);
+    }, STREAM_PAINT_MS),
+  );
+}
+
+function chunkPaintsImmediately(type: string): boolean {
+  return (
+    type !== "token" &&
+    type !== "reasoning" &&
+    type !== "usage" &&
+    type !== "state_update" &&
+    type !== "state_snapshot"
+  );
 }
 
 function beginStream(state: SessionStreamState, sessionId: string): void {
@@ -582,7 +629,14 @@ function isLiveSocketOpen(sessionId: string): boolean {
 
 /** True when this session currently owns an open/connecting chat WebSocket. */
 export function hasLiveSocket(sessionId: string): boolean {
-  return isLiveSocketOpen(sessionId);
+  if (isLiveSocketOpen(sessionId)) return true;
+  if (!sessionId || sessionId === "__empty__" || sessionId === "__default__") {
+    return false;
+  }
+  for (const [key, live] of liveSockets) {
+    if (live.threadId === sessionId && isLiveSocketOpen(key)) return true;
+  }
+  return false;
 }
 
 function clearStreamWatchdog(sessionId: string): void {
@@ -915,6 +969,7 @@ export function cancelStream(sessionId: string) {
 export function removeSession(sessionId: string) {
   const state = sessionStates.get(sessionId);
   if (state) {
+    cancelStreamPaint(state);
     state.abortController?.abort();
     sessionStates.delete(sessionId);
   }
@@ -1418,7 +1473,8 @@ function handleHarnessChunk(
       );
       break;
   }
-  notify(state);
+  if (chunkPaintsImmediately(chunk.type)) notify(state);
+  else notifyStreamingPaint(state);
 }
 
 /** Attach the latest decision result to this turn. One chip, updated in place. */
