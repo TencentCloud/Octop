@@ -25,13 +25,14 @@ ErrorType = Literal[
 
 _TIMEOUT_S = 30.0
 _TEST_QUERY = "octop connectivity probe"
-_KNOWN: frozenset[str] = frozenset({"tavily", "brave", "deepseek", "google", "kimi"})
+_KNOWN: frozenset[str] = frozenset({"tavily", "brave", "deepseek", "google", "kimi", "yuanbao"})
 _REQUIRED: dict[str, tuple[str, ...]] = {
     "tavily": ("TAVILY_API_KEY",),
     "brave": ("BRAVE_API_KEY",),
     "deepseek": ("DEEPSEEK_API_KEY",),
     "google": ("GOOGLE_API_KEY", "GOOGLE_CSE_ID"),
     "kimi": ("MOONSHOT_API_KEY",),
+    "yuanbao": ("TENCENTCLOUD_WSA_APIKEY",),
 }
 
 
@@ -91,7 +92,9 @@ async def _probe(provider_id: str, env_vars: Mapping[str, str]) -> dict[str, Any
             return await _deepseek(client, creds["DEEPSEEK_API_KEY"])
         if provider_id == "google":
             return await _google(client, creds["GOOGLE_API_KEY"], creds["GOOGLE_CSE_ID"])
-        return await _kimi(client, creds["MOONSHOT_API_KEY"])
+        if provider_id == "kimi":
+            return await _kimi(client, creds["MOONSHOT_API_KEY"])
+        return await _yuanbao(client, creds["TENCENTCLOUD_WSA_APIKEY"])
 
 
 async def _tavily(client: httpx.AsyncClient, api_key: str) -> dict[str, Any]:
@@ -205,6 +208,42 @@ def _from_google(response: httpx.Response) -> dict[str, Any]:
         "success": True,
         "result_count": count,
         "message": "Google search test successful",
+    }
+
+
+async def _yuanbao(client: httpx.AsyncClient, api_key: str) -> dict[str, Any]:
+    response = await client.post(
+        "https://api.wsa.cloud.tencent.com/SearchPro",
+        headers={"Authorization": f"Bearer {api_key}"},
+        json={"Query": _TEST_QUERY, "Cnt": 10},
+    )
+    fail = _http_failure(response)
+    if fail is not None:
+        return fail
+    try:
+        payload = response.json()
+    except ValueError:
+        return {"success": False, "error": "invalid JSON response", "error_type": "unknown"}
+    body = payload.get("Response") if isinstance(payload, dict) else None
+    error = body.get("Error") if isinstance(body, dict) else None
+    if isinstance(error, dict):
+        code = str(error.get("Code") or "")
+        message = str(error.get("Message") or code or "Yuanbao search failed")
+        if code in {"UnauthorizedOperation", "AuthFailure"}:
+            error_type: ErrorType = "auth_error"
+        elif code == "RequestLimitExceeded":
+            error_type = "rate_limit"
+        elif code in {"ResourceNotFound", "ResourceUnavailable", "InvalidParameter"}:
+            error_type = "invalid_config"
+        else:
+            error_type = "unknown"
+        return {"success": False, "error": message, "error_type": error_type}
+    pages = body.get("Pages") if isinstance(body, dict) else None
+    count = len(pages) if isinstance(pages, list) else 0
+    return {
+        "success": True,
+        "result_count": count,
+        "message": "Yuanbao search test successful",
     }
 
 

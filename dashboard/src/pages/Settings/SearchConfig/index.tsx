@@ -68,6 +68,14 @@ const SEARCH_PROVIDERS: SearchProvider[] = [
     required_keys: ["MOONSHOT_API_KEY"],
     configured: false,
   },
+  {
+    id: "yuanbao",
+    name: "元宝搜索",
+    descriptionKey: "setupWizard.search.providers.yuanbao.desc",
+    docs_url: "https://cloud.tencent.com/document/product/1806/130615",
+    required_keys: ["TENCENTCLOUD_WSA_APIKEY"],
+    configured: false,
+  },
 ];
 
 function searchProviderLogo(providerId: string): string {

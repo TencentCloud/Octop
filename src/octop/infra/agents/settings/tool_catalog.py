@@ -26,6 +26,7 @@ _WEB_SEARCH_TOOLS: frozenset[str] = frozenset(
         "deepseek_search",
         "google_search",
         "kimi_search",
+        "yuanbao_search",
         "searchfree_search",
     }
 )
@@ -75,6 +76,7 @@ BUILTIN_TOOL_CATALOG: tuple[BuiltinToolEntry, ...] = (
     BuiltinToolEntry("deepseek_search", "web"),
     BuiltinToolEntry("google_search", "web"),
     BuiltinToolEntry("kimi_search", "web"),
+    BuiltinToolEntry("yuanbao_search", "web"),
     BuiltinToolEntry("searchfree_search", "web"),
     BuiltinToolEntry("generate_image", "media"),
     BuiltinToolEntry("generate_video", "media"),

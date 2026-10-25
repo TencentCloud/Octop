@@ -16,7 +16,8 @@
 #   FPK_ITER         迭代号，默认空
 #                    例如 FPK_ITER=01 会生成 ...-<ver>-01.fpk（通常不需要，按版本号发布）
 #   FPK_ARCH         本地版架构。arm64 → Octop-fnos-native-arm64-<ver>.fpk，
-#                    并写入 manifest platform=arm（fnpack 只认 x86/arm/all）。空或其它值保持现有 x86 包名。
+#                    并写入 manifest platform=arm（fnpack 只认 x86/arm/all）。
+#                    空或其它值保持 x86 包名，并写入 platform=x86。
 #                    fnpack 官方只有 linux-amd64，ARM 包应在 amd64 主机上打包
 #                    （site-packages 先在 aarch64 上装好再拷过来）。
 #
@@ -138,10 +139,16 @@ build_one() {
   sed -i.bak "s/^version=.*/version=$STORE_VER/" "$BUILD/manifest" && rm -f "$BUILD/manifest.bak"
   echo "[build-fpk] manifest version=$STORE_VER"
 
-  # ARM 本地版写入 fnpack 允许的 platform=arm；更细的 aarch64 用 cmd/fpk-arch。
-  if [ "$KIND" = "native" ] && [ "${FPK_ARCH:-}" = "arm64" ]; then
-    sed -i.bak "s/^platform=.*/platform=arm/" "$BUILD/manifest" && rm -f "$BUILD/manifest.bak"
-    echo "[build-fpk] native manifest platform=arm"
+  # fnpack 只认 x86/arm/all。本地版按架构写入；Docker 版多架构共用，保持 platform=all。
+  # 更细的 aarch64 / amd64 标记在 cmd/fpk-arch。
+  if [ "$KIND" = "native" ]; then
+    if [ "${FPK_ARCH:-}" = "arm64" ]; then
+      native_platform=arm
+    else
+      native_platform=x86
+    fi
+    sed -i.bak "s/^platform=.*/platform=${native_platform}/" "$BUILD/manifest" && rm -f "$BUILD/manifest.bak"
+    echo "[build-fpk] native manifest platform=${native_platform}"
   fi
 
   # 本地版写入架构标记，安装/启动时对一下，避免装错包。

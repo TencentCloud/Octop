@@ -64,7 +64,7 @@ OPENAPI_TAGS: list[dict[str, str]] = [
     },
     {"name": "auth", "description": "Sign in, sign out, and manage the current user profile."},
     {"name": "health", "description": "Liveness probe for load balancers and monitoring."},
-    {"name": "users", "description": "Admin user management (create, disable, reset passwords)."},
+    {"name": "users", "description": "Admin user management, roles, and user groups."},
     {
         "name": "agents",
         "description": "Create and configure AI agents; start, stop, and inspect runtime status.",
@@ -142,6 +142,13 @@ OPENAPI_TAGS: list[dict[str, str]] = [
     {
         "name": "teams",
         "description": "Expert teams: roster, create/edit, and member dispatch.",
+    },
+    {
+        "name": "text-assist",
+        "description": (
+            "One-shot LLM polish/generate for form copy and chat composer prompts. "
+            "Prompts are managed in backend i18n."
+        ),
     },
     {"name": "workspace", "description": "Agent workspace file tree: list, read, write, upload."},
     {"name": "agent_files", "description": "Agent-owned configuration files (SOUL.md, skills, …)."},

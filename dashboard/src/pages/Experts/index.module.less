@@ -655,6 +655,27 @@
   text-overflow: ellipsis;
 }
 
+.expertSceneBadge {
+  display: inline-flex;
+  align-items: center;
+  max-width: 100%;
+  margin-top: 4px;
+  padding: 0 6px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 500;
+  line-height: 18px;
+  color: var(--expert-accent, var(--fn-color-brand));
+  background: color-mix(
+    in srgb,
+    var(--expert-accent, var(--fn-color-brand)) 14%,
+    transparent
+  );
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 .agentCardStateRow {
   display: flex;
   align-items: center;
@@ -1317,6 +1338,14 @@
   flex-wrap: wrap;
 }
 
+.gridToolbarLeft {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  min-width: 0;
+}
+
 .gridToolbarRight {
   display: flex;
   align-items: center;
@@ -1465,6 +1494,10 @@
 
 /* ── Drawer shared styles ──────────────────────────────────────── */
 
+.textAssistField {
+  margin-bottom: 4px !important;
+}
+
 .drawerSection {
   margin-bottom: 24px;
 }
@@ -1485,22 +1518,36 @@
   min-width: 0;
 }
 
-/* Match collapse header width with sibling sections (config / skills / …). */
+/* Section toggles in the create/edit drawers. Headers only — expanded bodies stay as-is. */
 .drawerCollapse {
   width: 100%;
+  margin: 0;
 
-  :global(.ant-collapse-item) {
+  > :global(.octop-collapse-item) {
     width: 100%;
+    border: none !important;
   }
 
-  :global(.ant-collapse-header) {
+  > :global(.octop-collapse-item) > :global(.octop-collapse-header) {
     width: 100% !important;
     align-items: center !important;
+    padding: 6px 0 !important;
+    padding-inline: 0 !important;
+    margin: 0 !important;
   }
 
-  :global(.ant-collapse-header-text) {
+  > :global(.octop-collapse-item)
+    > :global(.octop-collapse-header)
+    :global(.octop-collapse-expand-icon) {
+    padding-inline-start: 0 !important;
+    padding-inline-end: 8px !important;
+    margin-inline-start: 0 !important;
+  }
+
+  :global(.octop-collapse-header-text) {
     flex: 1 1 auto;
     min-width: 0;
+    margin-inline: 0 !important;
   }
 }
 

@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import json
+
 import httpx
 import pytest
 
@@ -130,3 +132,43 @@ async def test_deepseek_actionable_errors(
     )
     assert result["success"] is False
     assert result["error_type"] == error_type
+
+
+@pytest.mark.asyncio
+async def test_yuanbao_ok(monkeypatch: pytest.MonkeyPatch) -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        assert request.url.host == "api.wsa.cloud.tencent.com"
+        assert request.url.path == "/SearchPro"
+        assert request.headers.get("Authorization") == "Bearer sk-test"
+        body = json.loads(request.content)
+        assert body["Query"] == "octop connectivity probe"
+        assert body["Cnt"] == 10
+        return httpx.Response(
+            200,
+            json={"Response": {"Pages": ['{"title":"a"}', '{"title":"b"}']}},
+        )
+
+    _patch_client(monkeypatch, httpx.MockTransport(handler))
+    result = await search_probe.probe_search_provider(
+        "yuanbao",
+        {"TENCENTCLOUD_WSA_APIKEY": "sk-test"},
+    )
+    assert result["success"] is True
+    assert result["result_count"] == 2
+
+
+@pytest.mark.asyncio
+async def test_yuanbao_auth_error_in_body(monkeypatch: pytest.MonkeyPatch) -> None:
+    def handler(_request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            200,
+            json={"Response": {"Error": {"Code": "UnauthorizedOperation", "Message": "bad key"}}},
+        )
+
+    _patch_client(monkeypatch, httpx.MockTransport(handler))
+    result = await search_probe.probe_search_provider(
+        "yuanbao",
+        {"TENCENTCLOUD_WSA_APIKEY": "sk-bad"},
+    )
+    assert result["success"] is False
+    assert result["error_type"] == "auth_error"

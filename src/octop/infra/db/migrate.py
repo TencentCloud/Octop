@@ -1599,6 +1599,35 @@ def _ensure_skill_package_shared_schema(db: DatabasePool) -> None:
     _ensure_column(db, "skill_packages", "shared", "INTEGER NOT NULL DEFAULT 0")
 
 
+def _ensure_user_group_profile_schema(db: DatabasePool) -> None:
+    """Enable flag and preset avatar on user groups. Idempotent."""
+    if not _table_exists(db, "user_group"):
+        return
+    _ensure_column(db, "user_group", "enabled", "INTEGER NOT NULL DEFAULT 1")
+    _ensure_column(db, "user_group", "avatar_icon", "TEXT")
+
+
+def _ensure_knowledge_base_icon_url_schema(db: DatabasePool) -> None:
+    """Optional portrait URL on knowledge bases. Idempotent."""
+    if not _table_exists(db, "knowledge_bases"):
+        return
+    _ensure_column(db, "knowledge_bases", "icon_url", "TEXT NOT NULL DEFAULT ''")
+
+
+def _ensure_bridge_icon_url_schema(db: DatabasePool) -> None:
+    """Optional portrait URL on bridge connections. Idempotent."""
+    if not _table_exists(db, "bridge_connections"):
+        return
+    _ensure_column(db, "bridge_connections", "icon_url", "TEXT NOT NULL DEFAULT ''")
+
+
+def _ensure_bridge_shared_schema(db: DatabasePool) -> None:
+    """Owner can share a bridge link with everyone or selected groups. Idempotent."""
+    if not _table_exists(db, "bridge_connections"):
+        return
+    _ensure_column(db, "bridge_connections", "shared", "INTEGER NOT NULL DEFAULT 0")
+
+
 def _ensure_bridge_connections_schema(db: DatabasePool) -> None:
     """Fold notes + unique display_name + auto_reconnect into unreleased v19."""
     if not _table_exists(db, "bridge_connections"):
@@ -1953,6 +1982,14 @@ def _apply_sqlite_migration(db: DatabasePool, version: int, path: Path) -> None:
         with db.connect() as conn:
             conn.execute("UPDATE _schema_version SET version = ?", (version,))
         return
+    if version == 24:
+        _ensure_user_group_profile_schema(db)
+        _ensure_knowledge_base_icon_url_schema(db)
+        _ensure_bridge_icon_url_schema(db)
+        _ensure_bridge_shared_schema(db)
+        with db.connect() as conn:
+            conn.execute("UPDATE _schema_version SET version = ?", (version,))
+        return
     sql = path.read_text(encoding="utf-8")
     with db.connect() as conn:
         conn.executescript(sql)
@@ -1969,6 +2006,8 @@ _PERSONALIZATION_TAB_PERMISSIONS = (
     "memory",
 )
 _PERSONALIZATION_TAB_PERMISSIONS_FLAG = "granted_personalization_tab_permissions"
+_BRIDGE_PERMISSIONS = ("bridge",)
+_BRIDGE_PERMISSIONS_FLAG = "granted_bridge_permission"
 
 
 def _parse_perm_list(raw: Any) -> list[str] | None:
@@ -2067,6 +2106,81 @@ def _grant_personalization_tab_permissions(db: DatabasePool) -> None:
     )
 
 
+def _grant_bridge_permission(db: DatabasePool) -> None:
+    """Grant cloud-collab once; /bridge used to be ungated for every signed-in user."""
+    _grant_permission_keys_once(db, _BRIDGE_PERMISSIONS, _BRIDGE_PERMISSIONS_FLAG)
+
+
+_PAGE_TAB_EXPANSIONS_FLAG = "expanded_page_tab_permissions_v1"
+
+
+def _expand_page_tab_permissions(db: DatabasePool) -> None:
+    """Copy collapsed page tabs onto grants that already had the parent key.
+
+    Runs once. Removing a tab afterwards stays removed.
+    """
+    if not _table_exists(db, "settings"):
+        return
+    with db.connect() as conn:
+        existing = conn.execute(
+            "SELECT value FROM settings WHERE key = ?",
+            (_PAGE_TAB_EXPANSIONS_FLAG,),
+        ).fetchone()
+    if existing is not None:
+        return
+
+    from octop.infra.users.permissions import PAGE_TAB_EXPANSIONS
+
+    def expand(table: str, id_col: str, skip_where: str) -> None:
+        if not _table_exists(db, table):
+            return
+        with db.connect() as conn:
+            rows = conn.execute(
+                f"SELECT {id_col}, permissions FROM {table} WHERE {skip_where}"
+            ).fetchall()
+        updates: list[tuple[str, object]] = []
+        for row in rows:
+            current = _parse_perm_list(row[1])
+            if current is None:
+                continue
+            merged = list(current)
+            changed = False
+            for parent, children, retire in PAGE_TAB_EXPANSIONS:
+                if parent not in merged:
+                    continue
+                for child in children:
+                    if child not in merged:
+                        merged.append(child)
+                        changed = True
+                if retire:
+                    merged = [key for key in merged if key != parent]
+                    changed = True
+            if changed:
+                updates.append((json.dumps(merged, ensure_ascii=False), row[0]))
+        if not updates:
+            return
+        with db.transaction() as conn:
+            for payload, pk in updates:
+                conn.execute(
+                    f"UPDATE {table} SET permissions = ? WHERE {id_col} = ?",
+                    (payload, pk),
+                )
+
+    expand("users", "id", "role <> 'admin'")
+    expand("user_role", "id", "user_role_id <> 'admin'")
+    with db.transaction() as conn:
+        if db.dialect == "postgresql":
+            conn.execute(
+                "INSERT INTO settings(key, value) VALUES (?, ?) ON CONFLICT (key) DO NOTHING",
+                (_PAGE_TAB_EXPANSIONS_FLAG, "1"),
+            )
+        else:
+            conn.execute(
+                "INSERT OR IGNORE INTO settings(key, value) VALUES (?, ?)",
+                (_PAGE_TAB_EXPANSIONS_FLAG, "1"),
+            )
+
+
 def run_migrations(db: DatabasePool) -> None:
     if db.dialect == "sqlite":
         _repair_legacy_schema(db)
@@ -2122,5 +2236,11 @@ def run_migrations(db: DatabasePool) -> None:
     _ensure_skill_copy_policy_schema(db)
     _ensure_skill_package_download_schema(db)
     _ensure_skill_package_shared_schema(db)
+    _ensure_user_group_profile_schema(db)
+    _ensure_knowledge_base_icon_url_schema(db)
+    _ensure_bridge_icon_url_schema(db)
+    _ensure_bridge_shared_schema(db)
     _grant_default_nav_permissions(db)
     _grant_personalization_tab_permissions(db)
+    _grant_bridge_permission(db)
+    _expand_page_tab_permissions(db)

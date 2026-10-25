@@ -5,7 +5,7 @@
  * Connectivity tests still hit the live provider endpoint.
  */
 import { useEffect, useMemo, useRef, useState } from "react";
-import { App, Button, Form, Input, Radio, Select, Switch, Tooltip } from "antd";
+import { App, Button, Form, Input, Select, Switch, Tooltip } from "antd";
 
 import {
   Check,
@@ -21,6 +21,8 @@ import {
 } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { request } from "../../../../../api/request";
+import type { ResourceVisibilityMode } from "../../../../../api/modules/userGroups";
+import { ResourceVisibilityFields } from "../../../../../components/ResourceVisibilityFields";
 import type { ProviderRow, ProviderModel } from "../../useProviders";
 import { isEmbeddingModel } from "../../useProviders";
 import { isOnnxProviderRow } from "../../presetUtils";
@@ -57,6 +59,8 @@ interface ModelListEditorProps {
   /** API path prefix for test. Defaults to "/providers". */
   apiPrefix?: string;
   canTest?: boolean;
+  /** Lock model purpose (embedding lane providers). */
+  forcePurpose?: "chat" | "embedding";
   localDownload?: LocalModelDownloadControl;
   onTestModel?: (
     modelId: string,
@@ -84,6 +88,7 @@ export function ModelListEditor({
   onModelsChange,
   apiPrefix = "/providers",
   canTest,
+  forcePurpose,
   localDownload,
   onTestModel,
 }: ModelListEditorProps) {
@@ -105,6 +110,9 @@ export function ModelListEditor({
   const [editingModelId, setEditingModelId] = useState<string | null>(null);
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [showReasoningProtocol, setShowReasoningProtocol] = useState(false);
+  const [modelVisibility, setModelVisibility] =
+    useState<ResourceVisibilityMode>("all");
+  const [modelGroupIds, setModelGroupIds] = useState<string[]>([]);
   const [testingIds, setTestingIds] = useState<Set<string>>(new Set());
   const [testResults, setTestResults] = useState<
     Map<string, "success" | "failure">
@@ -113,9 +121,11 @@ export function ModelListEditor({
   const [form] = Form.useForm();
   const formAnchorRef = useRef<HTMLDivElement>(null);
   const isOnnx = isOnnxProviderRow(provider);
-  const purposeValue = Form.useWatch("purpose", form);
   const apiModeValue = Form.useWatch("api_mode", form);
-  const embeddingOn = isOnnx || purposeValue === "embedding";
+  const lockedPurpose =
+    forcePurpose ??
+    (provider.purpose === "embedding" ? "embedding" : undefined);
+  const embeddingOn = isOnnx || lockedPurpose === "embedding";
 
   const handleToggleEnabled = (
     modelId: string,
@@ -295,7 +305,7 @@ export function ModelListEditor({
     const id = (values.id as string).trim();
     const name = (values.name as string | undefined)?.trim() || id;
     const isOnnx = isOnnxProviderRow(provider);
-    const embedding = isOnnx || values.purpose === "embedding";
+    const embedding = isOnnx || lockedPurpose === "embedding";
     const entry: ProviderModel = {
       id,
       name,
@@ -303,6 +313,8 @@ export function ModelListEditor({
       input: ["text"],
       thinking: null,
     };
+    entry.visibility = modelVisibility === "groups" ? "groups" : "all";
+    entry.group_ids = modelVisibility === "groups" ? [...modelGroupIds] : [];
     if (embedding) {
       entry.embedding = true;
       entry.task = "embedding";
@@ -355,6 +367,10 @@ export function ModelListEditor({
   const handleAddModel = async () => {
     try {
       const values = await form.validateFields();
+      if (modelVisibility === "groups" && modelGroupIds.length === 0) {
+        message.error(t("resourceVisibility.needGroup"));
+        return;
+      }
       const entry = buildModelEntry(values as Record<string, unknown>);
       if (models.some((m) => m.id === entry.id)) {
         message.error(t("models.initialModelDuplicate", { name: entry.id }));
@@ -375,6 +391,10 @@ export function ModelListEditor({
     if (!editingModelId) return;
     try {
       const values = await form.validateFields();
+      if (modelVisibility === "groups" && modelGroupIds.length === 0) {
+        message.error(t("resourceVisibility.needGroup"));
+        return;
+      }
       const entry = buildModelEntry(values as Record<string, unknown>);
       const existing = models.find((m) => m.id === editingModelId);
       if (existing) {
@@ -408,9 +428,9 @@ export function ModelListEditor({
       reasoning_effort_type: model.reasoning_config?.effort_type ?? "enum",
       reasoning_adapter: model.reasoning_config?.adapter ?? "thinking",
       input: model.input ?? ["text"],
-      purpose:
-        model.embedding || model.task === "embedding" ? "embedding" : "chat",
     });
+    setModelVisibility(model.visibility === "groups" ? "groups" : "all");
+    setModelGroupIds(model.group_ids ?? []);
     const hasAdvanced = (model as Record<string, unknown>).reasoning != null;
     setShowAdvanced(hasAdvanced);
     const cfg = model.reasoning_config;
@@ -430,8 +450,9 @@ export function ModelListEditor({
     setAdding(true);
     setShowAdvanced(false);
     setShowReasoningProtocol(false);
+    setModelVisibility("all");
+    setModelGroupIds([]);
     form.setFieldsValue({
-      purpose: "chat",
       context_window: DEFAULT_CONTEXT_WINDOW,
       input: ["text"],
     });
@@ -442,6 +463,8 @@ export function ModelListEditor({
     setEditingModelId(null);
     setShowAdvanced(false);
     setShowReasoningProtocol(false);
+    setModelVisibility("all");
+    setModelGroupIds([]);
     form.resetFields();
   };
 
@@ -638,22 +661,7 @@ export function ModelListEditor({
               <Input placeholder={t("models.modelNamePlaceholder")} />
             </Form.Item>
 
-            {isOnnx ? null : (
-              <Form.Item
-                name="purpose"
-                label={t("models.modelPurpose")}
-                extra={t("models.modelPurposeHint")}
-                initialValue="chat"
-                style={{ marginBottom: 12 }}
-              >
-                <Radio.Group>
-                  <Radio value="chat">{t("models.purposeChat")}</Radio>
-                  <Radio value="embedding">
-                    {t("models.purposeEmbedding")}
-                  </Radio>
-                </Radio.Group>
-              </Form.Item>
-            )}
+            {/* Purpose is fixed by tab/provider lane — no per-model toggle. */}
 
             {embeddingOn ? null : (
               <>
@@ -988,6 +996,28 @@ export function ModelListEditor({
                 )}
               </>
             )}
+
+            <div className={styles.modelVisibilityBlock}>
+              <div className={styles.modelVisibilityTitle}>
+                {t("resourceVisibility.groupAccess")}
+              </div>
+              <p className={styles.modelVisibilityHint}>
+                {t("resourceVisibility.groupAccessHint")}
+              </p>
+              <ResourceVisibilityFields
+                allowOwner={false}
+                visibility={modelVisibility === "groups" ? "groups" : "all"}
+                groupIds={modelGroupIds}
+                onChange={(next) => {
+                  const nextVisibility =
+                    next.visibility === "groups" ? "groups" : "all";
+                  setModelVisibility(nextVisibility);
+                  setModelGroupIds(
+                    nextVisibility === "groups" ? next.groupIds : [],
+                  );
+                }}
+              />
+            </div>
 
             <div
               style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}

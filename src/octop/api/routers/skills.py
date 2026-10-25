@@ -558,6 +558,25 @@ async def replace_skill_package_mounts(
     return {"package_ids": package_ids}
 
 
+def _assert_skill_package_group(server: Any, user: Any, row: Any, locale: str) -> None:
+    """Groups narrow a shared package. They do not open a private one."""
+    services = getattr(server, "services", None)
+    repos = getattr(services, "repos", None) if services is not None else None
+    if repos is None:
+        return
+    from octop.infra.users.groups import RESOURCE_SKILL_PACKAGE, GroupAccess
+
+    if GroupAccess(repos).allows(
+        user_id=user.id,
+        is_admin=bool(getattr(user, "is_admin", False)),
+        resource_type=RESOURCE_SKILL_PACKAGE,
+        resource_key=row.id,
+        is_owner=str(user.id) == str(row.created_by),
+    ):
+        return
+    raise OctopError.localized(ErrorCode.SKILL_PACKAGE_NOT_FOUND, locale)
+
+
 def _skill_package_store(server: Any) -> SkillPackageStore:
     if server.services is None:
         raise OctopError(ErrorCode.INTERNAL_ERROR, "skill package store not initialized")
@@ -601,6 +620,7 @@ async def copy_skill_package_to_workspace(
             resolve_request_locale(request),
         )
     store.assert_can_copy(package_row, user)
+    _assert_skill_package_group(server, user, package_row, resolve_request_locale(request))
     try:
         requested_slugs = list(
             dict.fromkeys(validate_skill_slug(slug) for slug in body.skill_slugs)

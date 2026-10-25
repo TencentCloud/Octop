@@ -32,7 +32,7 @@ interface ChatSidebarPanelProps {
   onDeleteSession: (
     id: string,
     compact: boolean,
-  ) => void | Promise<boolean | void>;
+  ) => void | Promise<boolean | null | void>;
   onRenameSession: (id: string, name: string) => void;
   onPinSession: (id: string, pinned: boolean) => void;
   onForkSession: (id: string, agentId?: string | null) => void;
