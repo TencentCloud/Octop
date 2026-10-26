@@ -1,6 +1,14 @@
+import type { ChangeEvent, CompositionEvent } from "react";
 import { Clock, Search, SquareMinus, SquarePlus } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import styles from "./TrajectoryToolbar.module.less";
+
+export interface TrajectorySearchInputProps {
+  value: string;
+  onChange: (event: ChangeEvent<HTMLInputElement>) => void;
+  onCompositionStart: (event: CompositionEvent<HTMLInputElement>) => void;
+  onCompositionEnd: (event: CompositionEvent<HTMLInputElement>) => void;
+}
 
 export interface TrajectoryToolbarProps {
   durationOn: boolean;
@@ -9,8 +17,11 @@ export interface TrajectoryToolbarProps {
   onToggleAllTurns: () => void;
   allCallsCollapsed: boolean;
   onToggleAllCalls: () => void;
-  searchQuery: string;
+  /** Fallback when ``searchInputProps`` is not provided. */
+  searchQuery?: string;
   onSearchQueryChange: (query: string) => void;
+  /** IME-safe input props from useImeSearchInput (owner component). */
+  searchInputProps?: TrajectorySearchInputProps;
 }
 
 export default function TrajectoryToolbar({
@@ -20,8 +31,9 @@ export default function TrajectoryToolbar({
   onToggleAllTurns,
   allCallsCollapsed,
   onToggleAllCalls,
-  searchQuery,
+  searchQuery = "",
   onSearchQueryChange,
+  searchInputProps,
 }: TrajectoryToolbarProps) {
   const { t } = useTranslation();
   const searchLabel = t("chat.trajectoryToolbarSearch", "Search trajectory");
@@ -112,10 +124,13 @@ export default function TrajectoryToolbar({
         />
         <input
           type="search"
-          value={searchQuery}
+          {...(searchInputProps ?? {
+            value: searchQuery,
+            onChange: (event: ChangeEvent<HTMLInputElement>) =>
+              onSearchQueryChange(event.target.value),
+          })}
           placeholder={searchLabel}
           aria-label={searchLabel}
-          onChange={(event) => onSearchQueryChange(event.target.value)}
         />
       </label>
     </div>

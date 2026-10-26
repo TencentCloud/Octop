@@ -46,6 +46,7 @@ import {
 import { useAgent } from "../../context/AgentContext";
 import { useCurrentUser } from "../../hooks/useCurrentUser";
 import { useCardTableView } from "../../hooks/useCardTableView";
+import { useImeSearchInput } from "../../hooks/useImeSearchInput";
 import type { OctopAgent } from "../../context/AgentContext";
 import { AgentCard } from "./components/AgentCard";
 import { ExpertCard } from "./components/ExpertCard";
@@ -141,8 +142,8 @@ export default function ExpertsPage() {
     loadViewMode(),
   );
   const [refreshing, setRefreshing] = useState(false);
-  const [searchQuery, setSearchQuery] = useState("");
-  const searchNeedle = searchQuery.trim().toLowerCase();
+  const { committed: searchNeedle, inputProps: searchQueryInputProps } =
+    useImeSearchInput("");
 
   const handleRefresh = useCallback(async () => {
     setRefreshing(true);
@@ -404,12 +405,11 @@ export default function ExpertsPage() {
         className={styles.toolbarSearch}
         prefix={<Search size={14} />}
         allowClear
-        value={searchQuery}
+        {...searchQueryInputProps}
         placeholder={t("experts.searchPlaceholder")}
-        onChange={(event) => setSearchQuery(event.target.value)}
       />
     ),
-    [searchQuery, t],
+    [searchQueryInputProps, t],
   );
 
   // ── Render helpers ─────────────────────────────────────────────
@@ -571,7 +571,7 @@ export default function ExpertsPage() {
     publishedByAgentId,
     refreshButton,
     refreshPublishedExperts,
-    searchQuery,
+    searchNeedle,
     showCardView,
     t,
     toolbarSearch,

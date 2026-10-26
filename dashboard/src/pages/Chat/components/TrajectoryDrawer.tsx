@@ -6,6 +6,7 @@ import { message } from "@/utils/antdMessage";
 import { trajectoryApi } from "../../../api/modules/trajectory";
 import { saveBlobAsFile } from "../../../utils/saveBlobAsFile";
 import { useIsMobile } from "../../../hooks/useIsMobile";
+import { useImeSearchInput } from "../../../hooks/useImeSearchInput";
 import { useTrajectorySession } from "../hooks/useTrajectorySession";
 import {
   collapseCallRows,
@@ -62,7 +63,11 @@ export default function TrajectoryDrawer({
   const [collapseTurn, setCollapseTurn] = useState(false);
   const [collapsedAssistants, setCollapsedAssistants] =
     useState<ReadonlySet<string>>(EMPTY_IDS);
-  const [query, setQuery] = useState("");
+  const {
+    committed: query,
+    setValue: setQuery,
+    inputProps: queryInputProps,
+  } = useImeSearchInput("");
   const [range, setRange] = useState<TrajectoryTimeRange | null>(null);
   const [selectedEventId, setSelectedEventId] = useState<string | null>(null);
 
@@ -73,7 +78,7 @@ export default function TrajectoryDrawer({
     setCollapseTurn(false);
     setCollapsedAssistants(EMPTY_IDS);
     setDurationOn(false);
-  }, [agentId, threadId]);
+  }, [agentId, threadId, setQuery]);
 
   const mode = durationOn ? "duration" : "sequence";
   const toolCallOnlyLabel = t(
@@ -254,8 +259,8 @@ export default function TrajectoryDrawer({
           onToggleAllTurns={() => setCollapseTurn((value) => !value)}
           allCallsCollapsed={allCallsCollapsed}
           onToggleAllCalls={toggleAllCalls}
-          searchQuery={query}
           onSearchQueryChange={setQuery}
+          searchInputProps={queryInputProps}
         />
         <TrajectoryTimeline
           events={displayEvents}

@@ -31,6 +31,7 @@ import {
 } from "lucide-react";
 import { Tooltip, Popover } from "antd";
 import { message } from "@/utils/antdMessage";
+import { useImeSearchInput } from "../../../hooks/useImeSearchInput";
 import type { ResolvedModel } from "../../../api/types";
 import type { KnowledgeBase } from "../../../api/modules/knowledgeBases";
 import type { SkillSpec } from "../../Agent/Skills/useSkills";
@@ -259,7 +260,11 @@ export default function ChatInputActionsRow({
     null,
   );
   const [plusPanelAlignBottom, setPlusPanelAlignBottom] = useState(false);
-  const [modelQuery, setModelQuery] = useState("");
+  const {
+    committed: modelQuery,
+    setValue: setModelQuery,
+    inputProps: modelQueryInputProps,
+  } = useImeSearchInput("");
   const [isCompact, setIsCompact] = useState(false);
   const [shortcutOpen, setShortcutOpen] = useState(false);
   const [uploadOpen, setUploadOpen] = useState(false);
@@ -575,8 +580,7 @@ export default function ChatInputActionsRow({
               type="search"
               className={styles.skillPickerSearchInput}
               placeholder={t("chat.modelPickerSearch", "Search models")}
-              value={modelQuery}
-              onChange={(event) => setModelQuery(event.target.value)}
+              {...modelQueryInputProps}
             />
             <Search
               size={15}

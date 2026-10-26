@@ -8,6 +8,7 @@ import {
   type SubagentCatalogItem,
 } from "../../../api/modules/subagents";
 import { apiErrorMessage } from "../../../utils/apiError";
+import { useImeSearchInput } from "../../../hooks/useImeSearchInput";
 import { normalizeUiLocale } from "../../../utils/locale";
 import { pickLocale } from "../../../utils/localizedText";
 import { message } from "@/utils/antdMessage";
@@ -36,7 +37,11 @@ export default function SubagentSourcePickerModal({
   const lang = normalizeUiLocale(i18n.language);
   const [items, setItems] = useState<SubagentCatalogItem[]>([]);
   const [loading, setLoading] = useState(false);
-  const [query, setQuery] = useState("");
+  const {
+    committed: query,
+    setValue: setQuery,
+    inputProps: queryInputProps,
+  } = useImeSearchInput("");
   const [pickingSlug, setPickingSlug] = useState<string | null>(null);
 
   useEffect(() => {
@@ -62,7 +67,7 @@ export default function SubagentSourcePickerModal({
     return () => {
       cancelled = true;
     };
-  }, [open, t]);
+  }, [open, t, setQuery]);
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -107,8 +112,7 @@ export default function SubagentSourcePickerModal({
     >
       <Input
         allowClear
-        value={query}
-        onChange={(e) => setQuery(e.target.value)}
+        {...queryInputProps}
         placeholder={t("subagents.searchPlaceholder")}
         style={{ marginBottom: 16 }}
       />

@@ -77,6 +77,7 @@ import { preferencesApi } from "../../../api/modules/preferences";
 import type { SidebarNavLayout } from "../../../layouts/sidebarNavLayout";
 import { buildPermissionPickerGroups } from "./permissionPickerLayout";
 import { useCardTableView } from "../../../hooks/useCardTableView";
+import { useImeSearchInput } from "../../../hooks/useImeSearchInput";
 import { useSetCurrentUser } from "../../../hooks/useCurrentUser";
 import { useIsMobile } from "../../../hooks/useIsMobile";
 import { useServerTimezone } from "../../../hooks/useServerTimezone";
@@ -1268,7 +1269,8 @@ export default function UsersListPanel() {
   const [actorIsAdmin, setActorIsAdmin] = useState(true);
   const [agentDrawerUser, setAgentDrawerUser] = useState<UserRow | null>(null);
   const [editAgent, setEditAgent] = useState<OctopAgent | null>(null);
-  const [searchQuery, setSearchQuery] = useState("");
+  const { committed: committedSearch, inputProps: searchQueryInputProps } =
+    useImeSearchInput("");
   const [selectedIds, setSelectedIds] = useState<number[]>([]);
   const [batchSubmitting, setBatchSubmitting] = useState(false);
   const [batchTokenOpen, setBatchTokenOpen] = useState(false);
@@ -1344,7 +1346,7 @@ export default function UsersListPanel() {
     : [];
 
   const filteredRows = useMemo(() => {
-    const query = searchQuery.trim().toLowerCase();
+    const query = committedSearch.trim().toLowerCase();
     if (!query) return rows;
     return rows.filter((row) => {
       const username = row.username.toLowerCase();
@@ -1358,7 +1360,7 @@ export default function UsersListPanel() {
         roleName.includes(query)
       );
     });
-  }, [rows, searchQuery]);
+  }, [rows, committedSearch]);
 
   const selectedIdSet = useMemo(() => new Set(selectedIds), [selectedIds]);
   const selectedVisibleCount = useMemo(
@@ -1875,8 +1877,7 @@ export default function UsersListPanel() {
             <Input
               allowClear
               prefix={<Search size={14} />}
-              value={searchQuery}
-              onChange={(event) => setSearchQuery(event.target.value)}
+              {...searchQueryInputProps}
               placeholder={t("adminUsers.searchPlaceholder")}
               className={styles.userSearch}
             />

@@ -22,6 +22,7 @@ import {
 } from "../utils/deleteConversation";
 import { isAgentChatReady } from "../../../utils/agentError";
 import { isImeComposing } from "../../../utils/ime";
+import { useImeSearchInput } from "../../../hooks/useImeSearchInput";
 import { sortSessions, toSession, type Session } from "../hooks/useSessions";
 import { formatThreadTitle } from "../utils/threadTitle";
 import { onSessionEvent } from "../hooks/chatStore";
@@ -309,7 +310,8 @@ export default function MinimalAgentSessionNav({
     [agents],
   );
 
-  const [searchQuery, setSearchQuery] = useState("");
+  const { committed: searchQuery, inputProps: searchInputProps } =
+    useImeSearchInput("");
   const [navScope, setNavScope] = useState<ChatNavScope>(() =>
     initialChatNavScope(
       agents.find((agent) => agent.agent_id === activeAgentId),
@@ -561,8 +563,7 @@ export default function MinimalAgentSessionNav({
         <input
           type="search"
           className={styles.sessionSearchInput}
-          value={searchQuery}
-          onChange={(e) => setSearchQuery(e.target.value)}
+          {...searchInputProps}
           placeholder={t("chat.searchSessions", "搜索会话")}
           aria-label={t("chat.searchSessions", "搜索会话")}
         />
