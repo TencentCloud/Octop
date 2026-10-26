@@ -5,6 +5,7 @@ from __future__ import annotations
 import time
 import uuid
 from collections.abc import AsyncGenerator
+from contextlib import aclosing
 from typing import Any
 
 from langchain_core.messages import (
@@ -89,25 +90,26 @@ class OpenAIProtocol(LangGraphProtocol):
         """
         completion_id = f"chatcmpl-{uuid.uuid4().hex[:24]}"
         created = int(time.time())
-        async for event in super().stream(messages, config, **kwargs):
-            if event.get("type") != "token":
-                continue
-            token = event.get("content", "")
-            if not token:
-                continue
-            yield {
-                "id": completion_id,
-                "object": "chat.completion.chunk",
-                "created": created,
-                "model": "octop-harness",
-                "choices": [
-                    {
-                        "index": 0,
-                        "delta": {"role": "assistant", "content": token},
-                        "finish_reason": None,
-                    }
-                ],
-            }
+        async with aclosing(super().stream(messages, config, **kwargs)) as events:
+            async for event in events:
+                if event.get("type") != "token":
+                    continue
+                token = event.get("content", "")
+                if not token:
+                    continue
+                yield {
+                    "id": completion_id,
+                    "object": "chat.completion.chunk",
+                    "created": created,
+                    "model": "octop-harness",
+                    "choices": [
+                        {
+                            "index": 0,
+                            "delta": {"role": "assistant", "content": token},
+                            "finish_reason": None,
+                        }
+                    ],
+                }
 
     async def stream_events(self, messages: list[Any], config: dict[str, Any], **kwargs: Any) -> Any:
         """Return an OpenAI-wrapped v3 stream object."""

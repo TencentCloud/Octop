@@ -24,6 +24,7 @@ from deepagents.backends.protocol import ExecuteResponse
 
 from octop_harness.backends.local_shell import (
     HarnessLocalShellBackend,
+    decode_child_output,
     format_execute_result,
     is_host_root,
     map_virtual_abs_path,
@@ -224,11 +225,19 @@ class BubbledLocalShellBackend(HarnessLocalShellBackend):
                 shell=False,
                 capture_output=True,
                 stdin=subprocess.DEVNULL,
-                text=True,
                 timeout=effective_timeout,
                 env=self._env,
             )
-            return format_execute_result(result, max_output_bytes=self._max_output_bytes)
+            # Decode explicitly instead of passing ``text=True``: a non-UTF-8
+            # host locale makes the pipe reader thread raise and the sandboxed
+            # command's output disappears (see :func:`decode_child_output`).
+            decoded = subprocess.CompletedProcess(
+                result.args,
+                result.returncode,
+                decode_child_output(result.stdout),
+                decode_child_output(result.stderr),
+            )
+            return format_execute_result(decoded, max_output_bytes=self._max_output_bytes)
         except FileNotFoundError as exc:
             self._bwrap_path = None
             logger.warning(

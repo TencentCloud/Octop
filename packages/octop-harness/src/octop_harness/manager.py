@@ -5,7 +5,7 @@ from __future__ import annotations
 import asyncio
 import logging
 from collections.abc import AsyncGenerator
-from contextlib import asynccontextmanager
+from contextlib import aclosing, asynccontextmanager
 from dataclasses import replace
 from datetime import UTC, datetime
 from pathlib import Path
@@ -393,8 +393,9 @@ class HarnessAgentManager:
     ) -> AsyncGenerator[Any, None]:
         entry = self._registry[agent_id]
         prepared = await self._prepare_request(agent_id, request)
-        async for chunk in entry.agent.stream(prepared, **kwargs):
-            yield chunk
+        async with aclosing(entry.agent.stream(prepared, **kwargs)) as chunks:
+            async for chunk in chunks:
+                yield chunk
 
     async def call(
         self,
@@ -459,8 +460,11 @@ class HarnessAgentManager:
         **kwargs: Any,
     ) -> AsyncGenerator[Any, None]:
         entry = self._registry[agent_id]
-        async with self._cancellable_stream(agent_id, thread_id) as event:
-            async for chunk in entry.agent.resume_hitl(thread_id, decisions, **kwargs):
+        async with (
+            self._cancellable_stream(agent_id, thread_id) as event,
+            aclosing(entry.agent.resume_hitl(thread_id, decisions, **kwargs)) as chunks,
+        ):
+            async for chunk in chunks:
                 if event.is_set():
                     break
                 yield chunk

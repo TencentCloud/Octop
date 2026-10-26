@@ -154,6 +154,10 @@ class TestTemplatePresetModelInput:
         kimi = next(m for m in hai.models if m.id == "Kimi-K2.5")
         assert kimi.input == ["text", "image"]
         assert kimi.is_multimodal is True
+        flash = next(m for m in hai.models if m.id == "deepseek-flash")
+        assert flash.input == ["text", "image"]
+        glm_flash = next(m for m in hai.models if m.id == "glm-5.3-flash")
+        assert glm_flash.input == ["text", "image"]
 
     def test_openai_preset_propagates_image_input(self, monkeypatch) -> None:
         presets = load_provider_templates(templates_path=_BUNDLED_TEMPLATE)

@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-from collections.abc import AsyncIterator, Awaitable, Callable
+from collections.abc import AsyncGenerator, AsyncIterator, Awaitable, Callable
+from contextlib import aclosing
 from typing import TYPE_CHECKING, Any
 
 from octop_harness.request import ChatRequest
@@ -17,7 +18,7 @@ from octop_harness.slash.core import (
 if TYPE_CHECKING:
     from octop_harness.agent import HarnessAgent
 
-StreamBody = Callable[[ChatRequest], AsyncIterator[Any]]
+StreamBody = Callable[[ChatRequest], AsyncGenerator[Any, None]]
 CallBody = Callable[[ChatRequest], Awaitable[dict[str, Any]]]
 
 
@@ -119,8 +120,12 @@ async def iter_with_runtime_slash(
             for chunk in chunks:
                 yield chunk
             return
-    async for chunk in stream(request):
-        yield chunk
+    # ``async for`` does not close its source. An early ``aclose()`` (HITL pause,
+    # cancel, client disconnect) would otherwise leave ``stream`` — and any
+    # ContextVar it set — to the loop finalizer in a different context.
+    async with aclosing(stream(request)) as inner:
+        async for chunk in inner:
+            yield chunk
 
 
 async def call_with_runtime_slash(

@@ -18,13 +18,9 @@ You don't need everything in one turn. Name and basic preferences are enough for
 
 ## Write the dossier
 
-Ask the user to fill `USER.md` in Memory → User profile, including agent identity,
-their name and communication preferences. Agents must not edit this file.
-
-`MEMORY.md` is maintained manually by the user in Memory → Strong memory. Leave it unchanged during onboarding. Save remember requests to octop-memory through `memory_save`.
+Update `USER.md` and `MEMORY.md` according to the memory rules in the system prompt. Confirm the name, how to address them, and communication preferences, then save them that way.
 
 Talk about what matters to them, how they want you to work, and any hard lines.
-They can maintain these rules in the profile editor. Save explicit remember requests through `memory_save`.
 
 ## Wrap up
 

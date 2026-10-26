@@ -312,9 +312,76 @@
     "logo": "tencent-hai.png",
     "models": [
       {
+        "id": "hy4-preview",
+        "name": "Hy4 Preview",
+        "max_input_tokens": 1000000,
+        "max_output_tokens": 64000,
+        "reasoning": true
+      },
+      {
+        "id": "deepseek-flash",
+        "name": "DeepSeek Flash",
+        "max_input_tokens": 1000000,
+        "max_output_tokens": 384000,
+        "reasoning": true,
+        "input": [
+          "text",
+          "image"
+        ]
+      },
+      {
+        "id": "DeepSeek-V4-Pro",
+        "name": "DeepSeek V4 Pro",
+        "max_input_tokens": 1000000,
+        "max_output_tokens": 384000,
+        "reasoning": true
+      },
+      {
+        "id": "DeepSeek-V3.1-Terminus-W4AFP8",
+        "name": "DeepSeek V3.1 Terminus W4AFP8",
+        "max_input_tokens": 128000,
+        "reasoning": true
+      },
+      {
+        "id": "glm-5.3",
+        "name": "GLM 5.3",
+        "max_input_tokens": 1000000,
+        "max_output_tokens": 131072,
+        "reasoning": true
+      },
+      {
+        "id": "glm-5.3-flash",
+        "name": "GLM 5.3 Flash",
+        "max_input_tokens": 1000000,
+        "max_output_tokens": 131072,
+        "reasoning": true,
+        "input": [
+          "text",
+          "image"
+        ]
+      },
+      {
+        "id": "glm-5.2",
+        "name": "GLM 5.2",
+        "max_input_tokens": 1000000,
+        "max_output_tokens": 131072,
+        "reasoning": true
+      },
+      {
+        "id": "Kimi-K2.5",
+        "name": "Kimi K2.5",
+        "max_input_tokens": 262144,
+        "reasoning": true,
+        "input": [
+          "text",
+          "image"
+        ]
+      },
+      {
         "id": "MiniMax-M2.7",
         "name": "MiniMax M2.7",
-        "max_input_tokens": 204800
+        "max_input_tokens": 204800,
+        "reasoning": true
       },
       {
         "id": "Qwen3.5-397B-A17B-FP8",
@@ -330,63 +397,6 @@
         "name": "Qwen3 32B FP8",
         "max_input_tokens": 40960,
         "max_output_tokens": 32768
-      },
-      {
-        "id": "Qwen3-VL-32B-Instruct-FP8",
-        "name": "Qwen3 VL 32B Instruct FP8",
-        "max_input_tokens": 262144,
-        "max_output_tokens": 32768,
-        "input": [
-          "text",
-          "image"
-        ]
-      },
-      {
-        "id": "Qwen2.5-VL-32B-Instruct",
-        "name": "Qwen2.5 VL 32B Instruct",
-        "max_input_tokens": 32768,
-        "input": [
-          "text",
-          "image"
-        ]
-      },
-      {
-        "id": "Qwen3-VL-2B-Instruct",
-        "name": "Qwen3 VL 2B Instruct",
-        "max_input_tokens": 262144,
-        "input": [
-          "text",
-          "image"
-        ]
-      },
-      {
-        "id": "Kimi-K2.5",
-        "name": "Kimi K2.5",
-        "max_input_tokens": 262144,
-        "input": [
-          "text",
-          "image"
-        ]
-      },
-      {
-        "id": "DeepSeek-V4-Pro",
-        "name": "DeepSeek V4 Pro",
-        "max_input_tokens": 128000
-      },
-      {
-        "id": "DeepSeek-V4-Flash",
-        "name": "DeepSeek V4 Flash",
-        "max_input_tokens": 128000
-      },
-      {
-        "id": "GLM-5.1-FP8",
-        "name": "GLM 5.1 FP8",
-        "max_input_tokens": 200000
-      },
-      {
-        "id": "DeepSeek-V3.1-Terminus-W4AFP8",
-        "name": "DeepSeek V3.1 Terminus W4AFP8",
-        "max_input_tokens": 128000
       }
     ],
     "vendor": "tencent",
@@ -403,16 +413,22 @@
     "logo": "deepseek.png",
     "models": [
       {
-        "id": "deepseek-v4-flash",
-        "name": "DeepSeek V4 Flash",
+        "id": "deepseek-flash",
+        "name": "DeepSeek Flash",
         "max_input_tokens": 1000000,
-        "max_output_tokens": 384000
+        "max_output_tokens": 384000,
+        "reasoning": true,
+        "input": [
+          "text",
+          "image"
+        ]
       },
       {
         "id": "deepseek-v4-pro",
         "name": "DeepSeek V4 Pro",
         "max_input_tokens": 1000000,
-        "max_output_tokens": 384000
+        "max_output_tokens": 384000,
+        "reasoning": true
       }
     ]
   },

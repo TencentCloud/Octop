@@ -7,6 +7,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.0.5] - 2026-10-24
+
+### 新增
+
+- 可选网页搜索：you.com、腾讯元宝 SearchPro、DeepSeek Search。
+- 新增 `ManagedMCPClient`，支持持久 MCP 会话。
+- 刷新腾讯云 HAI 预设，DeepSeek Flash 标为多模态。
+
+### 修复
+
+- MCP 工具失败改为工具错误结果，本轮继续，并保留参数 schema。
+- HITL 恢复时保留请求身份、工具选择和语言。
+- 决策筛选保留发文件、浏览和截图工具。
+- 提前结束 agent 流时关闭内层生成器，避免 ContextVar 报错。
+- 修复中文 Windows 下 shell 的 UTF-8 输出被丢弃。
+
+### 变更
+
+- 记忆开关决定 `USER.md` / `MEMORY.md` 只读还是可编辑，并可用 `manual_document_policy` 覆盖。
+
 ## [1.0.4] - 2026-10-16
 
 ### 新增

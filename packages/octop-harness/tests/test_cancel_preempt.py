@@ -22,6 +22,7 @@ def _bare_agent() -> HarnessAgent:
 
     agent = object.__new__(HarnessAgent)
     agent._cancel_events = {}
+    agent._hitl_resume_configs = {}
     agent._thread_models = {}
     agent._agent_id = None
     agent._config = _Config()  # type: ignore[assignment]

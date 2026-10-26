@@ -80,16 +80,18 @@ octop-harness is a library (not an app) that turns deepagents into a deployable 
 - 17 user-editable provider presets, including Hunyuan, Kimi, GLM, DeepSeek, MiniMax, and Moonshot.
 
 #### Memory (tiered)
-- `MEMORY.md` (strong memory) and `USER.md` (profile) are user-maintained, including
-  onboarding. Their full contents are snapshotted
-  once per session and reused from the checkpoint, even when structured memory
-  is disabled. Manual edits apply to new sessions. Agent file
-  tools cannot edit them. Hosts can expose manual editors.
+- `MEMORY.md` (strong memory) and `USER.md` (profile) are snapshotted once per
+  session and reused from the checkpoint. Edits apply to new sessions. With
+  structured memory on, the user maintains both files, agent file tools are
+  read-only, and remember requests use `memory_save`. With structured memory
+  off, the agent edits both files directly; delete and move stay blocked.
+  `manual_document_policy` defaults to `auto` and follows that switch; `user`
+  keeps the files owner-maintained, and `agent` allows edits even while
+  structured memory is on. The compiled system prompt owns this policy and
+  overrides older rules left in workspace `AGENTS.md`.
 - Workspace context loading, session snapshots, prompt formatting and cache
-  breakpoints use deepagents' native `MemoryMiddleware`. Memory rules live in
-  workspace `AGENTS.md`; the existing filesystem guard enforces both documents'
-  file-tool write protection. Template updates do not overwrite existing user
-  documents; update legacy auto-writing rules in `AGENTS.md` / `USER.md` when migrating.
+  breakpoints use deepagents' native `MemoryMiddleware`. Template updates do
+  not overwrite existing user documents.
 - Ordinary saves and automatic promotions check current owner documents through
   `BackendWorkspace`, without refreshing the chat snapshot. Proven conflicts
   retire the old atom and create a replacement review candidate, retaining evidence.
@@ -226,7 +228,7 @@ Optional dependency extras (install only what you need; missing extras fail at u
 | `bedrock` | AWS Bedrock provider |
 | `object-storage` | Tencent COS + Alibaba OSS + Huawei OBS SDKs |
 | `desktop` | Desktop screenshot / input (`mss`, `pynput`, `pillow`) |
-| `web-search-all` | All web-search backends (Tavily / Brave / Google) |
+| `web-search-all` | Optional web-search SDKs (Tavily / Brave / Google). DeepSeek uses core HTTP support. |
 | `remote-backends` | Postgres workspace backend (`psycopg`). S3 uses the bundled boto3 backend. |
 | `observability` | Langfuse |
 | `acp` | ACP agent runner |
@@ -309,6 +311,11 @@ Responses. Models using Responses may also opt in to
 used only for clear unsupported-endpoint/model errors, before any streamed
 output. It does not apply to native tool search or other Responses-only request
 features, and never masks authentication, rate-limit, timeout, or server errors.
+
+HITL `resume_hitl(thread_id, decisions)` retains the paused stream's user, tool
+selections and other request configuration across nested approvals. The host must
+authorize the resume caller. This context is process-local, isolated by thread,
+and released when the resumed stream finishes or the agent closes.
 
 ## Documentation
 
@@ -406,3 +413,23 @@ own their kinds: updates replace the same plugin, and conflicting owners are
 rejected. Hosts must stop affected live instances before replacing or removing
 registrations. Installing this library alone does not add channels to a host
 that has not implemented the bridge.
+
+## Persistent MCP sessions
+
+Use `ManagedMCPClient` when tools keep state across calls, such as a design brief.
+The client owns its transport in one task and serializes concurrent callers.
+It returns original MCP SDK results, including structured content and errors.
+
+```python
+from octop_harness import ManagedMCPClient
+
+async with ManagedMCPClient({"transport": "stdio", "command": "my-mcp", "args": []}) as client:
+    definitions = await client.get_tools()
+    result = await client.call_tool("collect", {"title": "Demo"})
+    resources = await client.list_resources()
+    resource = await client.read_resource("example://design")
+```
+
+Explicit `await client.aclose()` is also supported. Closed or disconnected clients
+must be replaced; writes are never retried automatically. Default MCP tool loading
+remains stateless.

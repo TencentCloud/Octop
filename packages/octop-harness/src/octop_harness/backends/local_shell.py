@@ -8,6 +8,7 @@ runs from the host workspace.
 
 from __future__ import annotations
 
+import locale
 import os
 import re
 import shlex
@@ -184,6 +185,39 @@ def present_host_paths_in_output(text: str, root_dir: Path | str) -> str:
     return re.sub(rf"{re.escape(root)}(?=$|[\s'\"),:;])", "/", replaced)
 
 
+def decode_child_output(data: bytes | str | None) -> str:
+    """Decode child-process output without ever raising.
+
+    ``subprocess`` in text mode decodes with ``locale.getpreferredencoding(False)``
+    — ``cp936`` on a Chinese Windows host — while the tools we run emit UTF-8.
+    On Windows the mismatch raises inside ``subprocess``'s pipe reader thread,
+    where the exception is swallowed: the caller only sees ``stdout=None`` with
+    exit code 0, so the command's output silently becomes ``<no output>``.
+
+    Shell output is a mixed ecosystem, though, so no single encoding is correct:
+    ``python`` / ``git`` / ``rg`` emit UTF-8 while ``cmd`` builtins emit the
+    console code page. Try strict UTF-8 first, then the locale code page, then
+    GBK, and only then degrade to replacement characters.
+
+    Already-decoded ``str`` payloads (``CompletedProcess`` is routinely built by
+    hand and ``format_execute_result`` is public) are returned unchanged.
+    """
+    if not data:
+        return ""
+    if isinstance(data, str):
+        return data
+    seen: set[str] = set()
+    for encoding in ("utf-8", locale.getpreferredencoding(False), "gbk"):
+        if not encoding or encoding.lower() in seen:
+            continue
+        seen.add(encoding.lower())
+        try:
+            return data.decode(encoding)
+        except (UnicodeDecodeError, LookupError):
+            continue
+    return data.decode("utf-8", errors="replace")
+
+
 def format_execute_result(
     result: subprocess.CompletedProcess[str],
     *,
@@ -295,12 +329,19 @@ class HarnessLocalShellBackend(LocalShellBackend):
                 shell=True,
                 capture_output=True,
                 stdin=subprocess.DEVNULL,
-                text=True,
                 timeout=effective_timeout,
                 env=self._env,
                 cwd=str(self._host_execute_cwd()),
             )
-            return format_execute_result(result, max_output_bytes=self._max_output_bytes)
+            # Decode explicitly instead of passing ``text=True``: see
+            # :func:`decode_child_output` for why the locale code page is wrong.
+            decoded = subprocess.CompletedProcess(
+                result.args,
+                result.returncode,
+                decode_child_output(result.stdout),
+                decode_child_output(result.stderr),
+            )
+            return format_execute_result(decoded, max_output_bytes=self._max_output_bytes)
         except subprocess.TimeoutExpired:
             if timeout is not None:
                 detail = f"{effective_timeout} seconds (custom timeout)"

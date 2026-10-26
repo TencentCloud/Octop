@@ -6,7 +6,7 @@ read_when:
 
 ## About Me (Agent)
 
-> User-maintained profile. The user edits this document manually in Memory → User profile; agents are read-only.
+> Name, how to address them, and communication preferences. Follow the memory rules in the system prompt when updating this file.
 
 - **Name:**
 - **Form:** *(AI assistant, cyber sidekick, something else…)*
@@ -24,7 +24,7 @@ read_when:
 
 ### Style tuning
 
-The user can edit "Tone" and these rules manually. Remember requests use octop-memory; agents leave this document unchanged.
+"Tone" and these rules live in this file. Follow the memory rules in the system prompt when updating it.
 
 ---
 

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import AsyncGenerator
+from contextlib import aclosing
 from enum import StrEnum
 from typing import Any
 
@@ -160,15 +161,18 @@ class LangGraphProtocol(ChatProtocol):
         **kwargs: Any,
     ) -> AsyncGenerator[dict[str, Any], None]:
         splitter = ThinkSplitter()
-        async for chunk in self._graph.astream(
-            {"messages": messages},
-            config=config,
-            stream_mode=["values", "updates", "messages", "custom"],
-            version="v2",
-            **kwargs,
-        ):
-            for event in self._project_chunk(chunk, splitter):
-                yield event
+        async with aclosing(
+            self._graph.astream(
+                {"messages": messages},
+                config=config,
+                stream_mode=["values", "updates", "messages", "custom"],
+                version="v2",
+                **kwargs,
+            )
+        ) as graph_chunks:
+            async for chunk in graph_chunks:
+                for event in self._project_chunk(chunk, splitter):
+                    yield event
         for event in self._drain_splitter(splitter):
             yield event
 
@@ -185,15 +189,18 @@ class LangGraphProtocol(ChatProtocol):
         merged_config["configurable"] = configurable
 
         splitter = ThinkSplitter()
-        async for chunk in self._graph.astream(
-            Command(resume={"decisions": decisions}),
-            config=merged_config,
-            stream_mode=["values", "updates", "messages", "custom"],
-            version="v2",
-            **kwargs,
-        ):
-            for event in self._project_chunk(chunk, splitter):
-                yield event
+        async with aclosing(
+            self._graph.astream(
+                Command(resume={"decisions": decisions}),
+                config=merged_config,
+                stream_mode=["values", "updates", "messages", "custom"],
+                version="v2",
+                **kwargs,
+            )
+        ) as graph_chunks:
+            async for chunk in graph_chunks:
+                for event in self._project_chunk(chunk, splitter):
+                    yield event
         for event in self._drain_splitter(splitter):
             yield event
 

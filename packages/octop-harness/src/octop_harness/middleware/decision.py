@@ -48,9 +48,10 @@ _QUESTION_LIMIT = 20
 _CATALOG_LIMIT = 12
 # Near misses stay. 0.6 still prefers a clear yes; 0.45 is kept while there is room.
 _KEEP_SLACK = 0.15
-# Filesystem, todos, memory, team dispatch, and web lookup. These are the
-# agent's hands. Decision may drop the long tail (MCP, browser, media).
-# Dropping this set makes the chat model print a raw tool call and stop.
+# Filesystem, todos, memory, team dispatch, web lookup, and irreplaceable
+# delivery/browse/screenshot tools. Decision may still drop the long tail
+# (MCP/plugins, env file, media generation, etc.).
+# Dropping the core set makes the chat model print a raw tool call and stop.
 # ask_agent / agent_list are how a team host schedules; they stay even when
 # every other tool is filtered out.
 _TOOLS_ALWAYS_KEPT = frozenset(
@@ -76,7 +77,13 @@ _TOOLS_ALWAYS_KEPT = frozenset(
         "brave_search",
         "google_search",
         "kimi_search",
+        "deepseek_search",
+        "yuanbao_search",
         "searchfree_search",
+        "you_search",
+        "send_file_to_user",
+        "browser_use",
+        "desktop_screenshot",
     }
 )
 # Shown on the host decision card. They are not scored: a low score must not

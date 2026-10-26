@@ -1,8 +1,8 @@
 """Optional web-search tools.
 
 Each provider lives in its own module so the heavy / region-locked
-dependencies (``langchain-tavily``, ``openai`` …) only get imported when
-the
+dependencies (``langchain-tavily``, ``langchain-community``,
+``google-api-python-client``, ``openai`` …) only get imported when the
 caller actually wants them. The registry in :mod:`._registry` decides
 what to expose based on environment variables (just like
 LightClaw's original ``builtins.py``).

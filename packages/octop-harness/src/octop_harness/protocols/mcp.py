@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import AsyncGenerator
+from contextlib import aclosing
 from typing import Any
 
 from langchain_core.messages import AIMessage, BaseMessage, HumanMessage
@@ -68,17 +69,18 @@ class MCPProtocol(LangGraphProtocol):
         internal model calls such as conversation summarization are filtered
         consistently before conversion to the MCP wire format.
         """
-        async for event in super().stream(messages, config, **kwargs):
-            if event.get("type") != "token":
-                continue
-            token = event.get("content", "")
-            if not token:
-                continue
-            yield {
-                "role": "assistant",
-                "content": {"type": "text", "text": token},
-                "model": "octop-harness",
-            }
+        async with aclosing(super().stream(messages, config, **kwargs)) as events:
+            async for event in events:
+                if event.get("type") != "token":
+                    continue
+                token = event.get("content", "")
+                if not token:
+                    continue
+                yield {
+                    "role": "assistant",
+                    "content": {"type": "text", "text": token},
+                    "model": "octop-harness",
+                }
 
     async def stream_events(self, messages: list[Any], config: dict[str, Any], **kwargs: Any) -> Any:
         """Return an MCP-wrapped v3 stream object."""

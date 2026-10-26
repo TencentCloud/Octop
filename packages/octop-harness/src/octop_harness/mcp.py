@@ -8,7 +8,7 @@ import inspect
 import logging
 import re
 from collections.abc import Callable
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Literal
 
 from langchain_mcp_adapters.client import MultiServerMCPClient
 from pydantic import BaseModel, Field, GetJsonSchemaHandler, create_model, model_validator
@@ -130,6 +130,23 @@ class _McpArgsBase(BaseModel):
         return json_schema
 
 
+def _schema_value_type(schema: dict[str, Any]) -> Any:
+    enum = schema.get("enum")
+    if isinstance(enum, list) and enum and all(isinstance(v, str | int | bool) for v in enum):
+        literal: Any = Literal
+        return literal[tuple(enum)]
+    kind = schema.get("type")
+    if not isinstance(kind, str):
+        return Any
+    if kind == "object":
+        return dict[str, Any]
+    if kind == "array":
+        items = schema.get("items")
+        list_type: Any = list
+        return list_type[_schema_value_type(items) if isinstance(items, dict) else Any]
+    return {"string": str, "integer": int, "number": float, "boolean": bool}.get(kind, Any)
+
+
 def mcp_args_model(tool_name: str, input_schema: dict[str, Any]) -> type[Any]:
     """Build a Pydantic args model from an MCP tool ``inputSchema``."""
     props = input_schema.get("properties") or {}
@@ -141,28 +158,26 @@ def mcp_args_model(tool_name: str, input_schema: dict[str, Any]) -> type[Any]:
     used_names: set[str] = set()
     for key, spec in props.items():
         spec_dict: dict[str, Any] = spec if isinstance(spec, dict) else {}
-        json_type = spec_dict.get("type")
-        if json_type == "integer":
-            py_type: Any = int
-        elif json_type == "number":
-            py_type = float
-        elif json_type == "boolean":
-            py_type = bool
-        else:
-            py_type = str
+        py_type = _schema_value_type(spec_dict)
         desc = spec_dict.get("description")
         field_name = _pydantic_field_name(str(key), used_names)
         if field_name != key:
-            field = Field(description=desc, validation_alias=key, serialization_alias=key)
+            field = Field(description=desc, validation_alias=key, serialization_alias=key, json_schema_extra=spec_dict)
         else:
-            field = Field(description=desc)
+            field = Field(description=desc, json_schema_extra=spec_dict)
         if key in required:
             fields[field_name] = (py_type, field)
         else:
             optional_field = (
-                Field(default=None, description=desc, validation_alias=key, serialization_alias=key)
+                Field(
+                    default=None,
+                    description=desc,
+                    validation_alias=key,
+                    serialization_alias=key,
+                    json_schema_extra=spec_dict,
+                )
                 if field_name != key
-                else Field(default=None, description=desc)
+                else Field(default=None, description=desc, json_schema_extra=spec_dict)
             )
             fields[field_name] = (py_type | None, optional_field)
 
@@ -443,6 +458,14 @@ def _coerce_tool_args_schema(tool: Any) -> None:
     """Replace raw JSON Schema dicts with Pydantic models for clearer LLM binding."""
     schema = getattr(tool, "args_schema", None)
     if schema is None or not isinstance(schema, dict):
+        return
+    # Keep complex MCP schemas intact. The upstream server owns validation of
+    # nested constraints and JSON Schema references; a partial conversion loses it.
+    if any(
+        isinstance(prop, dict)
+        and (prop.get("type") in ("object", "array") or any(k in prop for k in ("anyOf", "oneOf", "$ref")))
+        for prop in (schema.get("properties") or {}).values()
+    ):
         return
     try:
         tool.args_schema = mcp_args_model(_tool_name(tool), schema)

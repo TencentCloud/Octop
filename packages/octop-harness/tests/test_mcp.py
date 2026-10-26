@@ -162,6 +162,27 @@ class TestAloadMcpToolPostprocess:
 
 
 class TestMcpArgsModel:
+    def test_preserves_design_inputs(self) -> None:
+        schema = {
+            "type": "object",
+            "properties": {
+                "answers": {"type": "object", "additionalProperties": True},
+                "skills": {"type": "array", "items": {"type": "string"}},
+                "mode": {"type": "string", "enum": ["new", "edit"]},
+            },
+            "required": ["answers"],
+        }
+        model = mcp_args_model("design", schema)
+        parsed = model.model_validate({"answers": {"color": None}, "skills": ["web"], "mode": "edit"})
+        assert parsed.model_dump()["answers"] == {"color": None}
+        assert parsed.model_dump()["skills"] == ["web"]
+        props = model.model_json_schema()["properties"]
+        assert props["answers"]["additionalProperties"] is True
+        assert props["skills"]["items"] == {"type": "string"}
+        assert props["mode"]["enum"] == ["new", "edit"]
+        with pytest.raises(ValidationError):
+            model.model_validate({"answers": {}, "mode": "invalid"})
+
     def test_builds_required_fields(self) -> None:
         model = mcp_args_model(
             "docs_manage_search_file",

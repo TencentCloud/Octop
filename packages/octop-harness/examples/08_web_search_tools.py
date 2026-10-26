@@ -11,7 +11,7 @@ Walks through the four configuration policies for
     4. ``"all"`` — debugging mode; every provider is registered, the
        ones missing env vars return a plain-text error on invocation.
 
-We do NOT make real Tavily / Brave / Google / Kimi network calls in
+We do NOT make real Tavily / Brave / Google / Kimi / Yuanbao network calls in
 this demo: each script run prints whether the tool would be available
 given the current shell environment, plus a short demonstration of the
 error-handling path.
@@ -36,13 +36,9 @@ from octop_harness.backends.utils import DEFENSIVE_OP_ERRORS
 from octop_harness.builtin.tools.web_search import load_web_search_tools
 from octop_harness.builtin.tools.web_search._registry import WEB_SEARCH_PROVIDERS
 
-_ENV_LABELS = {
-    "tavily": ("TAVILY_API_KEY",),
-    "brave": ("BRAVE_API_KEY",),
-    "google": ("GOOGLE_API_KEY", "GOOGLE_CSE_ID"),
-    "kimi": ("MOONSHOT_API_KEY",),
-    "searchfree": (),  # zero-config public fallback
-}
+# Mirror the registry so new providers show up without editing this demo.
+# ``you`` is keyless when named explicitly; ``YDC_API_KEY`` only gates ``auto``.
+_ENV_LABELS = {name: env_vars for name, (env_vars, _) in WEB_SEARCH_PROVIDERS.items()}
 
 
 def _heading(label: str) -> None:

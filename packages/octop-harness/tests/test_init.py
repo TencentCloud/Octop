@@ -103,9 +103,9 @@ class TestInitWorkspaceInstanceMethod:
         assert loaded is not None
         assert list(loaded["memory_contents"].values()) == ["user-owned strong memory"]
 
-    def test_memory_writes_stay_blocked_with_optional_guards_disabled(self, agent: HarnessAgent) -> None:
+    def test_memory_writes_follow_the_structured_memory_switch(self, agent: HarnessAgent) -> None:
         agent._config.tool_guard_enabled = False
-        agent._config.memory_enabled = False
+        agent._config.memory_enabled = True
         with patch("deepagents.create_deep_agent", return_value=MagicMock()) as create:
             agent._init_graph()
         guard = next(m for m in create.call_args.kwargs["middleware"] if m.name == "FilesystemGuardMiddleware")
@@ -116,6 +116,43 @@ class TestInitWorkspaceInstanceMethod:
         assert result.status == "error"
         assert "memory_save" in str(result.content)
         handler.assert_not_called()
+
+        agent._config.memory_enabled = False
+        with patch("deepagents.create_deep_agent", return_value=MagicMock()) as create:
+            agent._init_graph()
+        guard = next(m for m in create.call_args.kwargs["middleware"] if m.name == "FilesystemGuardMiddleware")
+        handler = MagicMock(return_value=ToolMessage(content="edited", tool_call_id="edit-1"))
+        assert guard.wrap_tool_call(request, handler).content == "edited"
+        handler.assert_called_once()
+        delete = MagicMock(tool_call={"name": "delete", "args": {"file_path": "USER.md"}, "id": "del-1"})
+        blocked = guard.wrap_tool_call(delete, MagicMock())
+        assert isinstance(blocked, ToolMessage)
+        assert blocked.status == "error"
+        assert "workspace path" in str(blocked.content)
+
+        agent._config.memory_enabled = False
+        agent._config.manual_document_policy = "user"
+        with patch("deepagents.create_deep_agent", return_value=MagicMock()) as create:
+            agent._init_graph()
+        guard = next(m for m in create.call_args.kwargs["middleware"] if m.name == "FilesystemGuardMiddleware")
+        kept = guard.wrap_tool_call(request, MagicMock())
+        assert isinstance(kept, ToolMessage) and kept.status == "error"
+        assert "memory_save" in str(kept.content)
+
+        agent._config.memory_enabled = True
+        agent._config.manual_document_policy = "agent"
+        with patch("deepagents.create_deep_agent", return_value=MagicMock()) as create:
+            agent._init_graph()
+        guard = next(m for m in create.call_args.kwargs["middleware"] if m.name == "FilesystemGuardMiddleware")
+        opened = MagicMock(return_value=ToolMessage(content="edited", tool_call_id="edit-1"))
+        assert guard.wrap_tool_call(request, opened).content == "edited"
+
+    def test_agents_template_leaves_memory_policy_to_the_runtime_prompt(self) -> None:
+        for language in ("zh", "en"):
+            agents = dict(iter_md_template_files(language))["AGENTS.md"].decode("utf-8")
+            assert "memory_save" not in agents
+            assert "## 记忆系统" not in agents
+            assert "## Memory System" not in agents
 
     def test_seeds_templates_via_backend(self, agent: HarnessAgent) -> None:
         result = agent.init_workspace()

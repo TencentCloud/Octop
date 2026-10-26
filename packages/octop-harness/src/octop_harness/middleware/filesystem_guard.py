@@ -46,10 +46,15 @@ _FS_TOOL_OPS: dict[str, Literal["read", "write"]] = {
     "delete": "write",
 }
 _FS_WCMATCH_FLAGS = wcglob.BRACE | wcglob.GLOBSTAR
-_MEMORY_WRITE_TOOLS = frozenset({"write_file", "edit_file", "append_file", "delete", "delete_file", "move_file"})
+_MEMORY_CONTENT_TOOLS = frozenset({"write_file", "edit_file", "append_file"})
+_MEMORY_REMOVE_TOOLS = frozenset({"delete", "delete_file", "move_file"})
+_MEMORY_WRITE_TOOLS = _MEMORY_CONTENT_TOOLS | _MEMORY_REMOVE_TOOLS
 _MEMORY_READ_ONLY_MESSAGE = (
     "{filename} is user-maintained memory. Edit it manually in the memory dashboard. "
     "Use memory_save to remember information in octop-memory."
+)
+_MEMORY_KEEP_PATH_MESSAGE = (
+    "{filename} must stay at its workspace path. Clear it by writing empty content instead of deleting or moving it."
 )
 
 _OUTSIDE_ROOT_REMEDIATION = (
@@ -272,8 +277,11 @@ def _tool_call_meta(request: ToolCallRequest) -> tuple[str, str]:
 class FilesystemGuardMiddleware(AgentMiddleware[Any, Any]):
     """Filesystem tool boundary: user-owned memory, denies and soft failures.
 
-    When a workspace is bound, MEMORY.md / USER.md writes are blocked independently of
-    optional permission rules and shell-command guard settings.
+    When a workspace is bound and user-memory protection is on, MEMORY.md / USER.md
+    writes are blocked. Protection follows structured memory: on means the user
+    edits those files and the agent uses memory_save; off means content edits are
+    allowed. Delete and move stay blocked so the loader paths remain. This is
+    independent of optional permission rules and shell-command guard settings.
     Outside-root softening applies only to filesystem tools (``ls``,
     ``read_file``, …), not arbitrary tool ValueErrors.
     """
@@ -285,11 +293,13 @@ class FilesystemGuardMiddleware(AgentMiddleware[Any, Any]):
         root_dir: str | Path | None = None,
         workspace_dir: str | Path | None = None,
         workspace: BackendWorkspace | None = None,
+        protect_user_memory: bool = True,
     ) -> None:
         self._permissions = list(permissions or ())
         self._root_dir = root_dir
         self._workspace_dir = workspace_dir
         self._workspace = workspace
+        self._protect_user_memory = protect_user_memory
         self._rewritten_logged: set[str] = set()
 
     def _rewrite_legacy_windows_request(self, request: ToolCallRequest) -> ToolCallRequest:
@@ -354,6 +364,10 @@ class FilesystemGuardMiddleware(AgentMiddleware[Any, Any]):
                 except (OSError, ValueError, PermissionError):
                     continue
             if matched_filename is not None:
+                if not self._protect_user_memory and _tool_base_name(tool_name) in _MEMORY_CONTENT_TOOLS:
+                    return None
+                if not self._protect_user_memory:
+                    return _MEMORY_KEEP_PATH_MESSAGE.format(filename=matched_filename)
                 return _MEMORY_READ_ONLY_MESSAGE.format(filename=matched_filename)
         return None
 

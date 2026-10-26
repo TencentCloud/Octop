@@ -1,8 +1,4 @@
-"""DeepSeek web search tool. Requires ``DEEPSEEK_API_KEY``.
-
-Uses the standalone DeepSeek search API (``POST /v1/tools/search``).
-Queries support ``site:`` / ``-site:`` operators.
-"""
+"""DeepSeek Search tool. Requires ``DEEPSEEK_API_KEY``."""
 
 from __future__ import annotations
 
@@ -12,70 +8,84 @@ import os
 import httpx
 from langchain_core.tools import tool
 
-_SEARCH_URL = "https://api.deepseek.com/v1/tools/search"
+DEFAULT_ENDPOINT = "https://api.deepseek.com/v1/tools/search"
+DEFAULT_TIMEOUT = 30.0
+
+
+def _http_error(status_code: int) -> str:
+    if status_code == 401:
+        return "Error: DeepSeek Search authentication failed. Check DEEPSEEK_API_KEY."
+    if status_code == 402:
+        return "Error: DeepSeek Search account has insufficient balance."
+    if status_code == 429:
+        return "Error: DeepSeek Search rate limit reached. Retry later."
+    return f"Error: DeepSeek Search returned HTTP {status_code}."
 
 
 @tool
-async def deepseek_search(
+async def deepseek_search(  # noqa: PLR0911 - explicit API failures keep remediation clear
     query: str,
-    max_results: int = 5,
+    count: int = 5,
+    need_content: bool = False,
+    ori_question: str | None = None,
 ) -> str:
-    """Search the web with DeepSeek Search.
+    """Search the web with DeepSeek Search and return ranked results.
+
+    Keep ``need_content`` disabled for normal searches. Each result already
+    includes a model-ready summary and source URL. Enable page content only
+    when the task requires the full source text.
 
     Args:
-        query: The search query string (1-128 chars; supports ``site:`` and
-            ``-site:`` operators and quoted exact phrases).
-        max_results: Maximum number of results to return (default 5, max 50).
+        query: Search query, from 1 to 128 Unicode characters.
+        count: Number of results to return, from 1 to 50. The default is 5.
+        need_content: Include extracted page content. The default is false.
+        ori_question: Optional original user question, up to 128 characters.
 
     Returns:
-        A JSON string with the trimmed results, or a plain-text error if
-        the API key is missing or the API reports an error.
+        A JSON array of ranked results, or a plain-text error message.
     """
     api_key = os.getenv("DEEPSEEK_API_KEY", "")
     if not api_key:
         return "Error: DEEPSEEK_API_KEY environment variable is not set."
 
-    payload = {
-        "query": query[:128],
-        "count": max(1, min(max_results, 50)),
-        "need_content": False,
+    clean_query = query.strip()
+    if not clean_query or len(clean_query) > 128:
+        return "Error: DeepSeek Search query must contain 1 to 128 characters."
+    if not 1 <= count <= 50:
+        return "Error: DeepSeek Search count must be between 1 and 50."
+
+    payload: dict[str, str | int | bool] = {
+        "query": clean_query,
+        "count": count,
+        "need_content": need_content,
     }
+    if ori_question is not None:
+        clean_question = ori_question.strip()
+        if not clean_question or len(clean_question) > 128:
+            return "Error: DeepSeek Search ori_question must contain 1 to 128 characters."
+        payload["ori_question"] = clean_question
+
     try:
-        async with httpx.AsyncClient(timeout=30.0) as client:
+        async with httpx.AsyncClient(timeout=DEFAULT_TIMEOUT) as client:
             response = await client.post(
-                _SEARCH_URL,
+                DEFAULT_ENDPOINT,
                 headers={
-                    "Content-Type": "application/json",
                     "Authorization": f"Bearer {api_key}",
+                    "Content-Type": "application/json",
                 },
                 json=payload,
             )
     except httpx.HTTPError as exc:
-        return f"Error: deepseek_search request failed: {exc}"
-
-    try:
-        data = response.json()
-    except ValueError:
-        return f"Error: deepseek_search returned invalid JSON (HTTP {response.status_code})."
+        return f"Error: DeepSeek Search request failed: {exc}"
 
     if response.status_code >= 400:
-        detail = response.text[:300]
-        return f"Error: deepseek_search failed (HTTP {response.status_code}): {detail}"
+        return _http_error(response.status_code)
 
-    results = data.get("results") if isinstance(data, dict) else None
+    try:
+        body = response.json()
+    except ValueError:
+        return "Error: DeepSeek Search returned a non-JSON response."
+    results = body.get("results") if isinstance(body, dict) else None
     if not isinstance(results, list):
-        return "Error: deepseek_search returned no results payload."
-
-    trimmed = [
-        {
-            "title": item.get("title", ""),
-            "url": item.get("url", ""),
-            "snippet": item.get("summary") or item.get("snippet", ""),
-            "date": item.get("date", ""),
-            "site": item.get("site_name", ""),
-            "rerank_score": item.get("rerank_score"),
-        }
-        for item in results
-        if isinstance(item, dict)
-    ]
-    return json.dumps({"results": trimmed}, ensure_ascii=False)
+        return "Error: DeepSeek Search returned an invalid response."
+    return json.dumps(results, ensure_ascii=False) if results else "No results found."

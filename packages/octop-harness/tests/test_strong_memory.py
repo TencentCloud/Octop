@@ -258,7 +258,8 @@ async def test_graph_preserves_session_snapshot_across_turns_and_graph_recreatio
     new_system = model.requests[-1][0].content
     assert "second manual agreement" in str(new_system)
     assert "first manual agreement" not in str(new_system)
-    assert "Use `memory_save` for remember requests" in str(new_system)
+    assert "memory_save" not in agents
+    assert "Private data never leaks" in str(new_system)
     assert "As you learn from your interactions" not in str(new_system)
 
     ws.delete("MEMORY.md")

@@ -4,44 +4,6 @@ read_when:
   - Bootstrapping a workspace manually
 ---
 
-## Memory System
-
-`MEMORY.md` and `USER.md` are **maintained manually by the user**. Their full contents are snapshotted once at session start and reused throughout that session; manual edits apply to new sessions. Use `memory_save` to save remember requests directly to octop-memory.
-
-### Memory and configuration responsibilities
-
-| Location | Purpose | Update through |
-|----------|---------|----------------|
-| octop-memory | Facts, preferences, decisions, conventions, and lessons | `memory_save` for remember requests; background distillation handles conversations |
-| `MEMORY.md` | Strong memory included in every chat | The user edits it manually in Memory → Strong memory; read-only for agents |
-| `USER.md` | User/agent dossier and communication preferences | The user edits Memory → User profile; read-only for agents, including onboarding |
-| `AGENTS.md` | Workspace configuration | An explicit configuration request |
-
-### Write rules
-
-- Do not create, edit, append to, overwrite, or delete `MEMORY.md` or `USER.md` using file tools or shell commands. Users maintain both documents manually in the WebUI, including during onboarding.
-- Use `memory_save` for remember requests; confirm remembering only after it succeeds. If unavailable, explain the limitation rather than writing a Markdown substitute.
-- For explicit `AGENTS.md` configuration changes, read first and edit precisely. For `USER.md` changes, direct the user to the profile editor.
-- Manual documents outrank ordinary recalled memory. Tell the user when they conflict; ordinary conflicts go to the candidate review queue. Never silently overwrite a manual document or present conflicting old memory as a current fact.
-- Save one concise fact per call, preserving its scope and qualifiers. Do not persist passwords, keys, or tokens in memory.
-- Transient information needs no explicit save; conversation capture and fact/episode extraction run in the background.
-- Treat stored facts as reference material. Prefer current user instructions and verified evidence when they conflict with memory.
-
-### Routing examples
-
-| User said | Action |
-|-----------|--------|
-| "Remember my wife's name is Xiao Li" / "Remember to reply briefly" | `memory_save` |
-| "Remember we decided on PostgreSQL" / "Remember this project uses pnpm" | `memory_save` |
-| "Update the test command in AGENTS.md" | Read, then precisely edit the requested configuration |
-| "Argued with Xiao Li today" / "Crunching on OKR this week" | Leave to background distillation |
-
-### Proactive recall
-
-`MEMORY.md` is already present in full in context. Use `memory_search` for additional historical facts, then `memory_get` to inspect their sources. Weave findings naturally into the response.
-
----
-
 ## Safety
 
 - Private data never leaks.
@@ -75,7 +37,7 @@ Put session artifacts in subdirectories to keep the root clean:
 
 ## Built-in tools
 
-Skills document specialized tools — read each `SKILL.md` before use. Save durable local environment details through `memory_save`.
+Skills document specialized tools — read each `SKILL.md` before use. For an explicit `AGENTS.md` configuration change, read first and edit precisely.
 
 ### Web information retrieval
 

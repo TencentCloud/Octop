@@ -4,7 +4,8 @@ Each provider declares a *required env-var tuple*. A provider is
 considered "available" iff every variable in its tuple is non-empty.
 Providers with an empty tuple (``()``) need no configuration and are
 therefore always available — that's the case for ``searchfree``, the
-zero-config public fallback.
+zero-config public fallback. ``you`` also needs no env vars when named
+explicitly, but only joins ``auto`` once ``YDC_API_KEY`` is set.
 
 The registry exposes two entry points:
 
@@ -17,7 +18,8 @@ Policies accepted by ``HarnessAgentConfig.web_search_tools``:
 
 - ``False`` (default): no web-search tools are auto-loaded.
 - ``True`` / ``"auto"``: every provider whose env vars are present is
-  loaded. (``searchfree`` always qualifies because it has none.)
+  loaded. ``searchfree`` always qualifies; ``you`` joins only when
+  ``YDC_API_KEY`` is set (see ``_AUTO_REQUIRED_ENV``).
 - ``"all"``: every provider is loaded *unconditionally* — useful for
   testing; tools without their env var return an "Error: ..." string
   on invocation.
@@ -33,7 +35,9 @@ import os
 from collections.abc import Iterable
 from typing import Any, Literal, cast
 
-WebSearchToolName = Literal["tavily", "doubao", "deepseek", "exa", "kimi", "searchfree"]
+WebSearchToolName = Literal[
+    "tavily", "brave", "doubao", "deepseek", "exa", "google", "kimi", "yuanbao", "searchfree", "you"
+]
 
 # ``provider name → (required env vars, lazy loader returning a langchain tool)``.
 # Loaders are deliberately lazy so importing this module is cheap.
@@ -43,6 +47,12 @@ def _load_tavily() -> Any:
     from octop_harness.builtin.tools.web_search.tavily import tavily_search
 
     return tavily_search
+
+
+def _load_brave() -> Any:
+    from octop_harness.builtin.tools.web_search.brave import brave_search
+
+    return brave_search
 
 
 def _load_doubao() -> Any:
@@ -63,10 +73,22 @@ def _load_exa() -> Any:
     return exa_search
 
 
+def _load_google() -> Any:
+    from octop_harness.builtin.tools.web_search.google import google_search
+
+    return google_search
+
+
 def _load_kimi() -> Any:
     from octop_harness.builtin.tools.web_search.kimi import kimi_search
 
     return kimi_search
+
+
+def _load_yuanbao() -> Any:
+    from octop_harness.builtin.tools.web_search.yuanbao import yuanbao_search
+
+    return yuanbao_search
 
 
 def _load_searchfree() -> Any:
@@ -75,15 +97,34 @@ def _load_searchfree() -> Any:
     return searchfree_search
 
 
+def _load_you() -> Any:
+    from octop_harness.builtin.tools.web_search.you import you_search
+
+    return you_search
+
+
 WEB_SEARCH_PROVIDERS: dict[WebSearchToolName, tuple[tuple[str, ...], Any]] = {
     "tavily": (("TAVILY_API_KEY",), _load_tavily),
+    "brave": (("BRAVE_API_KEY",), _load_brave),
     "doubao": (("DOUBAO_SEARCH_API_KEY",), _load_doubao),
     "deepseek": (("DEEPSEEK_API_KEY",), _load_deepseek),
     "exa": (("EXA_API_KEY",), _load_exa),
+    "google": (("GOOGLE_API_KEY", "GOOGLE_CSE_ID"), _load_google),
     "kimi": (("MOONSHOT_API_KEY",), _load_kimi),
+    "yuanbao": (("TENCENTCLOUD_WSA_APIKEY",), _load_yuanbao),
     # ``searchfree`` needs no env vars — empty tuple makes it always
     # available under the ``auto`` policy.
     "searchfree": ((), _load_searchfree),
+    # ``you`` works without a key when named explicitly; ``YDC_API_KEY``
+    # raises its limits. See ``_AUTO_REQUIRED_ENV`` for the ``auto`` gate.
+    "you": ((), _load_you),
+}
+
+# Providers that need no env vars when named explicitly but should only join
+# the ``auto`` policy once the user has configured them. This keeps the
+# default tool set unchanged for users who never set the variable.
+_AUTO_REQUIRED_ENV: dict[str, tuple[str, ...]] = {
+    "you": ("YDC_API_KEY",),
 }
 
 
@@ -106,8 +147,8 @@ def load_web_search_tools(
         return []
     if policy is True or policy == "auto":
         out: list[Any] = []
-        for env_vars, loader in WEB_SEARCH_PROVIDERS.values():
-            if _provider_available(env_vars):
+        for name, (env_vars, loader) in WEB_SEARCH_PROVIDERS.items():
+            if _provider_available(env_vars + _AUTO_REQUIRED_ENV.get(name, ())):
                 out.append(loader())
         return out
     if policy == "all":

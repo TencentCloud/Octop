@@ -5,6 +5,7 @@ from __future__ import annotations
 from octop_harness.middleware.client_tool_search import ClientToolSearchMiddleware
 from octop_harness.middleware.conversation_mode import ConversationModeMiddleware
 from octop_harness.middleware.filesystem_guard import FilesystemGuardMiddleware
+from octop_harness.middleware.mcp_tool_error import McpToolErrorMiddleware
 from octop_harness.middleware.media_offload import MediaOffloadMiddleware
 from octop_harness.middleware.memory import MemoryMiddleware
 from octop_harness.middleware.model_settings import (
@@ -23,6 +24,7 @@ __all__ = [
     "ClientToolSearchMiddleware",
     "ConversationModeMiddleware",
     "FilesystemGuardMiddleware",
+    "McpToolErrorMiddleware",
     "MediaOffloadMiddleware",
     "MemoryMiddleware",
     "ModelSettingsMiddleware",

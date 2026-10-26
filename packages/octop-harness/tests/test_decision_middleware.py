@@ -248,13 +248,15 @@ def test_middleware_keeps_skill_runtime_tools_beside_the_shortlist() -> None:
         "write_todos",
         "execute",
         "web_fetch",
+        "browser_use",
     ]
 
 
-def test_low_tool_scores_keep_only_basic_tools() -> None:
+def test_low_tool_scores_keep_capability_tools() -> None:
     tools = [_tool("read_file", "读取文件"), _tool("web_fetch", "抓取网页"), _tool("execute", "运行命令")]
     tools.extend(_tool(f"misc_{i}", "unrelated") for i in range(6))
     tools.append(_tool("browser_use", "打开网页"))
+    tools.append(_tool("send_file_to_user", "把文件发给用户"))
     scorer = _Scorer({"tool:browser_use": 0.12, **{f"tool:misc_{i}": 0.1 for i in range(6)}})
     mw = DecisionMiddleware(config=_config(skills=False, team=False, tool_min_count=2), scorer=scorer)
     request = _request(tools=tools, text="今天天气")
@@ -265,12 +267,24 @@ def test_low_tool_scores_keep_only_basic_tools() -> None:
         return ModelResponse(result=[AIMessage(content="好")])
 
     first = mw.wrap_model_call(request, reply)
-    assert events[0]["tools"] == ["read_file", "web_fetch", "execute"]
+    assert events[0]["tools"] == [
+        "read_file",
+        "web_fetch",
+        "execute",
+        "browser_use",
+        "send_file_to_user",
+    ]
     part = first.result[0].additional_kwargs["octop_decision"]["parts"][0]
     assert part == {"kind": "tool", "kept": []}
     scorer.probabilities = {"tool:browser_use": 0.95}
     mw.wrap_model_call(request, reply)
-    assert events[1]["tools"] == ["read_file", "web_fetch", "execute"]
+    assert events[1]["tools"] == [
+        "read_file",
+        "web_fetch",
+        "execute",
+        "browser_use",
+        "send_file_to_user",
+    ]
     assert scorer.calls == 1
 
 
@@ -285,18 +299,18 @@ def test_unscored_tools_stay_in_the_catalog() -> None:
 
 def test_middleware_keeps_tools_it_already_allowed_this_turn() -> None:
     tools = [_tool(f"misc_{i}", "unrelated") for i in range(8)]
-    tools.extend([_tool("read_pdf", "读取 pdf 合同"), _tool("browser_use", "打开网页")])
+    tools.extend([_tool("read_pdf", "读取 pdf 合同"), _tool("plugin_browser", "打开网页")])
     scorer = _Scorer({"tool:read_pdf": 0.91})
     mw = DecisionMiddleware(config=_config(skills=False, team=False, tool_min_count=2), scorer=scorer)
     request = _request(tools=tools, text="读取 pdf 合同")
     first = mw.wrap_model_call(request, lambda item: item)
     assert "read_pdf" in [tool.name for tool in first.tools]
-    assert "browser_use" not in [tool.name for tool in first.tools]
-    scorer.probabilities = {"tool:browser_use": 0.93}
+    assert "plugin_browser" not in [tool.name for tool in first.tools]
+    scorer.probabilities = {"tool:plugin_browser": 0.93}
     second = mw.wrap_model_call(request, lambda item: item)
     names = [tool.name for tool in second.tools]
     assert "read_pdf" in names
-    assert "browser_use" not in names
+    assert "plugin_browser" not in names
     assert scorer.calls == 1
 
 
