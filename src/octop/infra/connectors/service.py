@@ -531,6 +531,12 @@ class ConnectorService:
                 continue
             for name, spec in extract_servers(self.decrypt(parent.instance_id)).items():
                 if isinstance(spec, dict) and spec.get("shared") is True and server_enabled(spec):
+                    # Expose a collision-safe *literal* alias next to the mangled key so a
+                    # shared server can be referenced by its plain name (UI + binding +
+                    # runtime). Own servers win the literal name; the mangled key always
+                    # stays and is what other users' bindings already persist.
+                    if name not in names:
+                        names.append(name)
                     names.append(shared_mcp_server_name(parent.instance_id, name))
         return sorted(names)
 
@@ -606,6 +612,12 @@ class ConnectorService:
                     continue
                 built = enabled_harness_configs({name: spec}).get(name)
                 if built is not None:
+                    # Mirror the literal alias exposed by list_active_mcp_server_names:
+                    # own servers keep the literal name (added first above); a shared
+                    # server only claims it when it is free, so admins can select and
+                    # bind a shared connector by plain name without a parent id.
+                    if name not in configs:
+                        configs[name] = built
                     configs[shared_mcp_server_name(parent.instance_id, name)] = built
         return configs
 

@@ -408,26 +408,32 @@ def expand_custom_instances(
         enabled = server_enabled(spec)
         if shared_view and spec.get("shared") is not True:
             continue
-        items.append(
-            {
-                "instance_id": (
-                    shared_synthetic_instance_id(parent.instance_id, name)
-                    if shared_view
-                    else synthetic_instance_id(name)
-                ),
-                "kind": CUSTOM_MCP_KIND,
-                "display_name": server_display_name(name, spec),
-                "status": "active" if enabled else "disabled",
-                "mcp_server_name": (
-                    shared_mcp_server_name(parent.instance_id, name) if shared_view else name
-                ),
-                "has_credentials": True,
-                "default_open": spec.get("default_open") is True,
-                "shared": spec.get("shared") is True,
-                "owner_user_id": parent.user_id,
-                "created_at": parent.created_at,
-                "updated_at": parent.updated_at,
-            }
-        )
+        item: dict[str, Any] = {
+            "instance_id": (
+                shared_synthetic_instance_id(parent.instance_id, name)
+                if shared_view
+                else synthetic_instance_id(name)
+            ),
+            "kind": CUSTOM_MCP_KIND,
+            "display_name": server_display_name(name, spec),
+            "status": "active" if enabled else "disabled",
+            "mcp_server_name": (
+                shared_mcp_server_name(parent.instance_id, name) if shared_view else name
+            ),
+            "has_credentials": True,
+            "default_open": spec.get("default_open") is True,
+            "shared": spec.get("shared") is True,
+            "owner_user_id": parent.user_id,
+            "created_at": parent.created_at,
+            "updated_at": parent.updated_at,
+        }
+        items.append(item)
+        if shared_view:
+            # Expose the collision-safe *literal* alias next to the mangled key so a
+            # shared connector bound by its plain name (UI + binding + runtime) stays
+            # selectable in the composer. Mirrors
+            # ConnectorService.list_active_mcp_server_names, which already authorizes
+            # the plain name for non-owner users.
+            items.append({**item, "mcp_server_name": name})
     items.sort(key=lambda row: str(row["display_name"]).casefold())
     return items
