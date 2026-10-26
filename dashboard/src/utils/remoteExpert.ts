@@ -203,11 +203,17 @@ export interface BridgeShadowAgent {
 /**
  * Keep experts from cloud-collab links that dropped this session so the
  * picker can still show them offline instead of jumping to a local expert.
+ *
+ * ``resolvedConnectionIds`` are links whose agent list came back successfully,
+ * including an empty list. Those results replace the previous shadows. A live
+ * link that is absent from both ``next`` and ``resolvedConnectionIds`` failed
+ * to list, so its previous shadows stay pinned as disconnected.
  */
 export function retainDisconnectedBridgeAgents<T extends BridgeShadowAgent>(
   prev: T[],
   next: T[],
   liveConnectionIds: ReadonlySet<string>,
+  resolvedConnectionIds: ReadonlySet<string> = new Set(),
 ): T[] {
   const connectedConnIds = new Set(
     next
@@ -221,6 +227,7 @@ export function retainDisconnectedBridgeAgents<T extends BridgeShadowAgent>(
       if (!agent.bridge || !conn) return false;
       if (!liveConnectionIds.has(conn)) return false;
       if (connectedConnIds.has(conn)) return false;
+      if (resolvedConnectionIds.has(conn)) return false;
       return !nextIds.has(agent.agent_id);
     })
     .map((agent) => ({

@@ -42,7 +42,6 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, cast
 
-import yaml
 from fastapi import APIRouter, Depends, Request
 from fastapi.responses import Response
 from pydantic import BaseModel, Field
@@ -75,6 +74,7 @@ from octop.infra.skills.skill_transfer import (
     copy_workspace_skill_to_workspace,
     read_workspace_skill_files,
 )
+from octop.infra.utils.frontmatter import parse_frontmatter
 from octop.infra.utils.locale import Locale, resolve_request_locale
 
 logger = logging.getLogger(__name__)
@@ -111,31 +111,6 @@ async def _ctx(
     cfg = registry.get_config(agent_id)
     agent = registry.get_agent(agent_id)
     return _AgentCtx(runtime=row, workspace=agent.workspace, config=cfg)
-
-
-def _parse_frontmatter(text: str) -> tuple[dict[str, Any], str]:
-    """Split a markdown file with optional YAML frontmatter.
-
-    Accepts both ``---``-delimited and ``+++`` (TOML) blocks; we only
-    handle YAML for simplicity since finnie's skills all use YAML.
-    Returns ``(metadata_dict, body)``. Malformed frontmatter is treated
-    as no-frontmatter (the file is its own body).
-    """
-    if not text.startswith("---\n"):
-        return {}, text
-    # Find the closing delimiter
-    end = text.find("\n---", 4)
-    if end == -1:
-        return {}, text
-    raw = text[4:end]
-    body = text[end + 4 :].lstrip("\n")
-    try:
-        meta = yaml.safe_load(raw) or {}
-        if not isinstance(meta, dict):
-            return {}, text
-        return meta, body
-    except yaml.YAMLError:
-        return {}, text
 
 
 async def _aread_text(workspace: Any, path: str) -> str | None:
@@ -198,7 +173,7 @@ async def _resolve_skill(
         manifest = await _aread_text(workspace, manifest_path)
         if manifest is None:
             continue
-        meta, body = _parse_frontmatter(manifest)
+        meta, body = parse_frontmatter(manifest)
         if meta.get("removed"):
             continue
         return manifest_path, kind, body
@@ -220,7 +195,7 @@ async def _guard_package_only_skill_write(
     """
     workspace_manifest = await _aread_text(workspace, f"{_SKILLS_ROOT}/{slug}/SKILL.md")
     if workspace_manifest is not None:
-        metadata, _body = _parse_frontmatter(workspace_manifest)
+        metadata, _body = parse_frontmatter(workspace_manifest)
         if not metadata.get("removed"):
             origin = str(metadata.get("origin") or "").strip()
             if metadata.get("locked") and origin and server.services is not None:
@@ -564,6 +539,7 @@ async def list_skill_package_mounts(
 async def replace_skill_package_mounts(
     agent_id: str,
     body: SkillPackageMountBody,
+    request: Request,
     as_user: int | None = None,
     user: Any = Depends(current_user),
     server: Any = Depends(get_server),
@@ -571,8 +547,34 @@ async def replace_skill_package_mounts(
     require_agent_owner_row(agent_id, user=user, as_user=as_user, server=server)
     assert server.app_runtime is not None
     package_ids = skill_package_ids_list({"skill_package_ids": body.package_ids})
+    store = _skill_package_store(server)
+    locale = resolve_request_locale(request)
+    for package_id in package_ids:
+        package_row = store.repo.get(package_id)
+        if package_row is None:
+            raise OctopError.localized(ErrorCode.SKILL_PACKAGE_NOT_FOUND, locale)
+        store.assert_can_view(package_row, user)
     await server.app_runtime.agent_registry.persist_skill_package_ids(agent_id, package_ids)
     return {"package_ids": package_ids}
+
+
+def _assert_skill_package_group(server: Any, user: Any, row: Any, locale: str) -> None:
+    """Groups narrow a shared package. They do not open a private one."""
+    services = getattr(server, "services", None)
+    repos = getattr(services, "repos", None) if services is not None else None
+    if repos is None:
+        return
+    from octop.infra.users.groups import RESOURCE_SKILL_PACKAGE, GroupAccess
+
+    if GroupAccess(repos).allows(
+        user_id=user.id,
+        is_admin=bool(getattr(user, "is_admin", False)),
+        resource_type=RESOURCE_SKILL_PACKAGE,
+        resource_key=row.id,
+        is_owner=str(user.id) == str(row.created_by),
+    ):
+        return
+    raise OctopError.localized(ErrorCode.SKILL_PACKAGE_NOT_FOUND, locale)
 
 
 def _skill_package_store(server: Any) -> SkillPackageStore:
@@ -618,6 +620,7 @@ async def copy_skill_package_to_workspace(
             resolve_request_locale(request),
         )
     store.assert_can_copy(package_row, user)
+    _assert_skill_package_group(server, user, package_row, resolve_request_locale(request))
     try:
         requested_slugs = list(
             dict.fromkeys(validate_skill_slug(slug) for slug in body.skill_slugs)
@@ -719,7 +722,7 @@ async def get_skill(
     manifest_path, kind, _body = resolved
     manifest = await _aread_text(ctx.workspace, manifest_path)
     assert manifest is not None
-    meta, body = _parse_frontmatter(manifest)
+    meta, body = parse_frontmatter(manifest)
     disabled = _disabled_set(ctx.config)
     return {
         **_summary_dict(
@@ -901,7 +904,7 @@ async def create_skill(
     # and soft-delete only marks the manifest (leaving sibling files behind).
     existing = await _aread_text(ctx.workspace, f"skills/{name}/SKILL.md")
     if existing is not None:
-        meta, _ = _parse_frontmatter(existing)
+        meta, _ = parse_frontmatter(existing)
         if not meta.get("removed") and not body.overwrite:
             raise OctopError(ErrorCode.SKILL_ALREADY_EXISTS, f"skill {name!r} already exists")
     with contextlib.suppress(Exception):
@@ -917,7 +920,7 @@ async def create_skill(
         (content for path, content in package.files if path == "SKILL.md"),
         body.content.encode("utf-8"),
     )
-    meta, _body = _parse_frontmatter(skill_md.decode("utf-8", errors="replace"))
+    meta, _body = parse_frontmatter(skill_md.decode("utf-8", errors="replace"))
     return _summary_dict(name, meta, enabled=True, kind="workspace")
 
 
@@ -954,7 +957,7 @@ async def update_skill(
     existing = await _aread_text(ctx.workspace, f"skills/{slug}/SKILL.md")
     if existing is None:
         raise OctopError(ErrorCode.NOT_FOUND, f"skill {slug!r} not found")
-    meta_existing, _ = _parse_frontmatter(existing)
+    meta_existing, _ = parse_frontmatter(existing)
     if meta_existing.get("removed"):
         raise OctopError(ErrorCode.NOT_FOUND, f"skill {slug!r} not found")
 
@@ -973,7 +976,7 @@ async def update_skill(
         (content for path, content in package.files if path == "SKILL.md"),
         body.content.encode("utf-8"),
     )
-    meta, _body = _parse_frontmatter(skill_md.decode("utf-8", errors="replace"))
+    meta, _body = parse_frontmatter(skill_md.decode("utf-8", errors="replace"))
     disabled = _disabled_set(ctx.config)
     return _summary_dict(
         slug,
@@ -1137,7 +1140,7 @@ async def import_skill_from_url(
         (content for path, content in package.files if path == "SKILL.md"),
         b"",
     )
-    meta, _body = _parse_frontmatter(skill_md.decode("utf-8"))
+    meta, _body = parse_frontmatter(skill_md.decode("utf-8"))
     return _summary_dict(
         package.slug,
         meta,
@@ -1198,7 +1201,7 @@ async def _skill_disable_keys(ctx: _AgentCtx, name: str) -> set[str]:
     manifest = await _aread_text(ctx.workspace, manifest_path)
     if manifest is None:
         return keys
-    meta, _ = _parse_frontmatter(manifest)
+    meta, _ = parse_frontmatter(manifest)
     summary = _summary_dict(slug, meta, enabled=False, kind=kind)
     keys |= skill_identity_keys(
         {

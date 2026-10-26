@@ -23,16 +23,15 @@ from octop.infra.agents.experts.catalog import ExpertCatalog, default_library_ro
 from octop.infra.agents.manager import AgentManager
 from octop.infra.agents.plugins.manager import PluginManager
 from octop.infra.agents.subagents.catalog import SubagentCatalog, default_package_root
+from octop.infra.control.mobile.config_probe import ensure_mobile_capabilities_probed
 from octop.infra.cron.manager import CronManager
 from octop.infra.db.factory import open_database, should_defer_control_plane_db
 from octop.infra.db.migrate import run_migrations
 from octop.infra.db.services import SharedServices, build_shared_services
 from octop.infra.gateway.gateway import Gateway
-from octop.infra.mobile.config_probe import ensure_mobile_capabilities_probed
 from octop.infra.proactive.scheduler import ProactiveCareScheduler
 from octop.infra.proactive.service import ProactiveCareService
 from octop.infra.setup import password_file as _wizard_pw
-from octop.infra.setup.password_file import WIZARD_FILE_NAME
 from octop.infra.setup.wizard_tokens import WizardTokenStore
 from octop.infra.users.manager import UserManager
 from octop.infra.utils.paths import PathLayout
@@ -308,6 +307,7 @@ class AppRuntime:
             config_repo=services.repos.proactive_care_config_repo,
             session_repo=services.repos.session_repo,
             care_push_repo=services.repos.care_push_repo,
+            thread_repo=services.repos.thread_repo,
         )
         if self.trajectory_service is not None:
             from octop.infra.history.trajectory.store import TrajectoryStore  # noqa: PLC0415
@@ -593,6 +593,9 @@ class OctopServer:
             session_repo=self.services.repos.session_repo,
             agent_repo=self.services.repos.agent_repo,
             user_repo=self.services.repos.user_repo,
+            thread_repo=self.services.repos.thread_repo,
+            care_push_repo=self.services.repos.care_push_repo,
+            is_agent_busy=registry.is_agent_active,
             default_timezone=config.default_timezone,
         )
         registry.set_proactive_scheduler(proactive_scheduler)
@@ -711,30 +714,43 @@ class OctopServer:
         config = self.config
         if config is None:
             return
-        wizard_home = Path.home()
+        wizard_home = self.paths.root
         if config.require_setup_password:
             try:
-                new_pw = _wizard_pw.boot_self_heal(wizard_home, user_count=user_count)
+                new_pw = _wizard_pw.boot_self_heal(
+                    wizard_home,
+                    user_count=user_count,
+                    legacy_home=Path.home(),
+                )
             except OSError as err:
                 logger.warning("wizard self-heal failed: %s", err)
                 new_pw = None
         else:
             new_pw = None
         if new_pw is not None:
+            file_path = _wizard_pw.resolve_password_path(wizard_home, legacy_home=Path.home())
+            try:
+                rel = file_path.relative_to(Path.home())
+                display_file = f"~/{rel.as_posix()}"
+            except ValueError:
+                display_file = str(file_path)
+            file_label = f"File: {display_file}"
+            if len(file_label) > 54:
+                file_label = f"File: ...{str(file_path)[-(54 - 9) :]}"
             banner = (
                 "\n\033[33m"
                 "╔══════════════════════════════════════════════════════════╗\n"
                 "║  Octop first-run wizard password (one-time use):          ║\n"
                 f"║  {new_pw:<54}  ║\n"
                 "║  Open the dashboard and paste it into the setup wizard.  ║\n"
-                "║  File: ~/octop-login.txt                                   ║\n"
+                f"║  {file_label:<54}  ║\n"
                 "╚══════════════════════════════════════════════════════════╝"
                 "\033[0m\n"
             )
             print(banner, flush=True)
             logger.info(
                 "wizard password generated; file=%s",
-                wizard_home / WIZARD_FILE_NAME,
+                file_path,
             )
 
     async def stop(self) -> None:

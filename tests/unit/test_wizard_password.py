@@ -13,6 +13,7 @@ from octop.infra.setup.password_file import (
     boot_self_heal,
     ensure_password,
     read_password,
+    resolve_password_path,
 )
 
 
@@ -77,3 +78,64 @@ def test_boot_self_heal_no_op_when_users_exist_and_no_file(tmp_path: Path) -> No
     pw = boot_self_heal(tmp_path, user_count=1)
     assert pw is None
     assert not _file(tmp_path).exists()
+
+
+def test_resolve_password_path_prefers_primary(tmp_path: Path) -> None:
+    primary_home = tmp_path / "octop_home"
+    legacy_home = tmp_path / "legacy_user_home"
+    primary_home.mkdir()
+    legacy_home.mkdir()
+    (primary_home / WIZARD_FILE_NAME).write_text("primary-pw\n", encoding="utf-8")
+    (legacy_home / WIZARD_FILE_NAME).write_text("legacy-pw\n", encoding="utf-8")
+
+    assert (
+        resolve_password_path(primary_home, legacy_home=legacy_home)
+        == primary_home / WIZARD_FILE_NAME
+    )
+
+
+def test_resolve_password_path_falls_back_to_legacy(tmp_path: Path) -> None:
+    primary_home = tmp_path / "octop_home"
+    legacy_home = tmp_path / "legacy_user_home"
+    legacy_home.mkdir()
+    (legacy_home / WIZARD_FILE_NAME).write_text("legacy-pw\n", encoding="utf-8")
+
+    assert (
+        resolve_password_path(primary_home, legacy_home=legacy_home)
+        == legacy_home / WIZARD_FILE_NAME
+    )
+
+
+def test_read_password_falls_back_to_legacy_home(tmp_path: Path) -> None:
+    primary_home = tmp_path / "octop_home"
+    legacy_home = tmp_path / "legacy_user_home"
+    legacy_home.mkdir()
+    (legacy_home / WIZARD_FILE_NAME).write_text("legacy-secret-123\n", encoding="utf-8")
+
+    assert read_password(primary_home, legacy_home=legacy_home) == "legacy-secret-123"
+
+
+def test_ensure_password_migrates_legacy_secret(tmp_path: Path) -> None:
+    primary_home = tmp_path / "octop_home"
+    legacy_home = tmp_path / "legacy_user_home"
+    legacy_home.mkdir()
+    (legacy_home / WIZARD_FILE_NAME).write_text("legacy-secret-123\n", encoding="utf-8")
+
+    pw = ensure_password(primary_home, legacy_home=legacy_home)
+    assert pw == "legacy-secret-123"
+    assert (primary_home / WIZARD_FILE_NAME).read_text(
+        encoding="utf-8"
+    ).strip() == "legacy-secret-123"
+
+
+def test_boot_self_heal_migrates_legacy_secret(tmp_path: Path) -> None:
+    primary_home = tmp_path / "octop_home"
+    legacy_home = tmp_path / "legacy_user_home"
+    legacy_home.mkdir()
+    (legacy_home / WIZARD_FILE_NAME).write_text("legacy-secret-456\n", encoding="utf-8")
+
+    pw = boot_self_heal(primary_home, user_count=0, legacy_home=legacy_home)
+    assert pw == "legacy-secret-456"
+    assert (primary_home / WIZARD_FILE_NAME).read_text(
+        encoding="utf-8"
+    ).strip() == "legacy-secret-456"
