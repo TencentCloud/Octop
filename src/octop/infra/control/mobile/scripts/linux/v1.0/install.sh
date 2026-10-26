@@ -7,10 +7,10 @@
 # - Mount binderfs when present; use --cgroupns=host for nested runtimes.
 set -euo pipefail
 
-NAME="${OCTOP_MOBILE_CONTAINER:-octop-mobile-android}"
-ADB_HOST="${OCTOP_MOBILE_ADB_HOST:-127.0.0.1:5555}"
-IMAGE="${OCTOP_MOBILE_IMAGE:-redroid/redroid:13.0.0-latest}"
-BOOT_WAIT_SECS="${OCTOP_MOBILE_BOOT_WAIT_SECS:-45}"
+NAME="${AGENTBUDDY_MOBILE_CONTAINER:-agentbuddy-mobile-android}"
+ADB_HOST="${AGENTBUDDY_MOBILE_ADB_HOST:-127.0.0.1:5555}"
+IMAGE="${AGENTBUDDY_MOBILE_IMAGE:-redroid/redroid:13.0.0-latest}"
+BOOT_WAIT_SECS="${AGENTBUDDY_MOBILE_BOOT_WAIT_SECS:-45}"
 
 _connect_adb() {
   if ! command -v adb >/dev/null 2>&1; then

@@ -862,7 +862,7 @@
     "addFromLibrary": "+ New from Built-in Template",
     "newExpert": "New expert",
     "addCloudExpert": "Add cloud expert",
-    "addCloudExpertHint": "Open Cloud Collab to add experts from another Octop",
+    "addCloudExpertHint": "Open Cloud Collab to add experts from another agentbuddy",
     "emptyMyExperts": "No experts yet",
     "emptyMyExpertsHint": "Create a new expert, or pick a template from Built-in Experts or the Expert Market.",
     "emptyGuideTitle": "No experts yet",

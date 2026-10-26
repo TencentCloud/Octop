@@ -862,7 +862,7 @@
     "addFromLibrary": "+ 从内置专家模板新建",
     "newExpert": "新建专家",
     "addCloudExpert": "添加云端专家",
-    "addCloudExpertHint": "打开云端协同，添加对端 Octop 上的专家",
+    "addCloudExpertHint": "打开云端协同，添加对端政务伙伴上的专家",
     "emptyMyExperts": "你还没有专家",
     "emptyMyExpertsHint": "点击新建专家，或从内置专家、专家市场选择模板。",
     "emptyGuideTitle": "还没有专家",

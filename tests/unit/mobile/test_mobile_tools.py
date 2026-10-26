@@ -160,10 +160,10 @@ async def _invoke_screenshot(tool: object) -> dict:
 @pytest.mark.asyncio
 async def test_mobile_screenshot_lands_in_agent_workspace(tmp_path, monkeypatch) -> None:
     """Regression for #2334: the PNG must land in the agent's real workspace,
-    never in the default ``{OCTOP_HOME}/agents/<id>/`` host dir."""
+    never in the default ``{AGENTBUDDY_HOME}/agents/<id>/`` host dir."""
     from octop.infra.utils.paths import PathLayout
 
-    monkeypatch.setenv("OCTOP_HOME", str(tmp_path / "home"))
+    monkeypatch.setenv("AGENTBUDDY_HOME", str(tmp_path / "home"))
     workspace = _local_workspace(tmp_path)
     tool = await _screenshot_tool(lambda agent_id: workspace if agent_id == "agent1" else None)
 

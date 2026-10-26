@@ -11,8 +11,8 @@ fi
 INSTALL_ROOT="/opt/octop-desktop"
 CONF_DIR="/etc/octop-desktop"
 DISPLAY_NUM=":99"
-OCTOP_HOME="${OCTOP_HOME:-/root/.octop}"
-DESKTOP_STATE_DIR="${OCTOP_HOME}/desktop"
+AGENTBUDDY_HOME="${AGENTBUDDY_HOME:-${OCTOP_HOME:-$HOME/.agentbuddy}}"
+DESKTOP_STATE_DIR="{AGENTBUDDY_HOME}/desktop"
 DESKTOP_ENV="${DESKTOP_STATE_DIR}/desktop.env"
 
 detect_xvnc_bin() {
@@ -27,8 +27,8 @@ detect_xvnc_bin() {
 mkdir -p "$DESKTOP_STATE_DIR"
 cat > "$DESKTOP_ENV" << EOF
 export DISPLAY=${DISPLAY_NUM}
-export OCTOP_DESKTOP_DISPLAY=${DISPLAY_NUM}
-export OCTOP_DESKTOP_GEOMETRY=${GEOMETRY}
+export AGENTBUDDY_DESKTOP_DISPLAY=${DISPLAY_NUM}
+export AGENTBUDDY_DESKTOP_GEOMETRY=${GEOMETRY}
 EOF
 
 if command -v systemctl >/dev/null 2>&1 && [ -d /run/systemd/system ]; then

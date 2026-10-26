@@ -24,7 +24,7 @@ from octop.infra.control.mobile.docker_install import (
 SetupState = Literal["needs_device", "needs_install", "ready", "unsupported"]
 MobileBackend = Literal["physical", "redroid", "emulator", "none"]
 
-_CONTAINER_NAME = "octop-mobile-android"
+_CONTAINER_NAME = "agentbuddy-mobile-android"
 _CONTAINER_ADB_ENDPOINT = "127.0.0.1:5555"
 
 

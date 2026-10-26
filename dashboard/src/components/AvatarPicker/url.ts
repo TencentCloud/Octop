@@ -1,4 +1,4 @@
-/** True when ``url`` points at an uploaded Octop avatar API resource. */
+/** True when ``url`` points at an uploaded agentbuddy avatar API resource. */
 export function isUploadedAvatarUrl(url?: string | null): boolean {
   const text = (url || "").trim().split("?")[0];
   if (!text) return false;
