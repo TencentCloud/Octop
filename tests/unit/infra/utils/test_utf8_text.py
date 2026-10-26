@@ -16,6 +16,9 @@ from octop.infra.utils.utf8_text import (
 def test_looks_like_text_path() -> None:
     assert looks_like_text_path("SKILL.md")
     assert looks_like_text_path("references/guide.yaml")
+    assert looks_like_text_path(r"docs\README")
+    assert looks_like_text_path(r"docs\LICENSE")
+    assert looks_like_text_path(r"docs\README.md")
     assert not looks_like_text_path("assets/icon.png")
 
 
