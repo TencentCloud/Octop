@@ -22,6 +22,7 @@ import {
   deleteConversation,
 } from "../utils/deleteConversation";
 import { isImeComposing } from "../../../utils/ime";
+import { useImeSearchInput } from "../../../hooks/useImeSearchInput";
 import { ExpertIcon } from "../../Experts/components/iconForName";
 import { useHiddenSharedExperts } from "../hooks/useHiddenSharedExperts";
 import SessionChannelIcon from "./SessionChannelIcon";
@@ -569,7 +570,8 @@ export default function SessionList({
   const { t } = useTranslation();
   const navigate = useNavigate();
   const liveWorkingIds = useSessionWorkIds();
-  const [searchQuery, setSearchQuery] = useState("");
+  const { committed: committedSearch, inputProps: searchInputProps } =
+    useImeSearchInput("");
   const [showingHidden, setShowingHidden] = useState(false);
   const [navScope, setNavScope] = useState<ChatNavScope>(() =>
     initialChatNavScope(
@@ -611,7 +613,7 @@ export default function SessionList({
     if (activeAgentId) return null;
     return sortedAgents[0]?.agent_id ?? null;
   }, [activeAgentId, sortedAgents, viewingHidden]);
-  const searching = searchQuery.trim().length > 0;
+  const searching = committedSearch.trim().length > 0;
   const fetchAllRequestedRef = useRef(false);
   useEffect(() => {
     if (!searching) {
@@ -644,7 +646,7 @@ export default function SessionList({
     if (viewingHidden) {
       if (!searching) return agentsToRender;
       return agentsToRender.filter((agent) =>
-        matchesNavQuery(agent.name, searchQuery),
+        matchesNavQuery(agent.name, committedSearch),
       );
     }
     if (!searching) return agentsToRender;
@@ -652,10 +654,10 @@ export default function SessionList({
       expertVisibleInNavSearch(
         agent.name,
         sessionsFor(agent.agent_id).map((session) => session.name),
-        searchQuery,
+        committedSearch,
       ),
     );
-  }, [agentsToRender, searchQuery, searching, sessionsFor, viewingHidden]);
+  }, [agentsToRender, committedSearch, searching, sessionsFor, viewingHidden]);
 
   const deleteOther = useCallback(
     async (agentId: string, id: string, compact: boolean) => {
@@ -705,8 +707,7 @@ export default function SessionList({
           <input
             type="search"
             className={styles.sessionSearchInput}
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
+            {...searchInputProps}
             placeholder={t("chat.searchSessions", "搜索会话")}
             aria-label={t("chat.searchSessions", "搜索会话")}
           />
@@ -760,7 +761,7 @@ export default function SessionList({
               const isActive = agent.agent_id === activeAgentId;
               const hits = searching
                 ? sessionsFor(agent.agent_id).filter((session) =>
-                    matchesNavQuery(session.name, searchQuery),
+                    matchesNavQuery(session.name, committedSearch),
                   )
                 : [];
               const expanded = searching
@@ -773,7 +774,7 @@ export default function SessionList({
                     agent={agent}
                     sessions={isActive ? sessions : hits}
                     activeId={activeId}
-                    searchQuery={isActive ? searchQuery : ""}
+                    searchQuery={isActive ? committedSearch : ""}
                     hasMore={isActive ? hasMore : false}
                     loadingMore={isActive ? loadingMore : false}
                     onLoadMore={isActive ? onLoadMore : () => undefined}

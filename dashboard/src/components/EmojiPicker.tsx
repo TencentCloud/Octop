@@ -2,6 +2,7 @@ import { useMemo, useState } from "react";
 import { Input, Popover } from "antd";
 import { useTranslation } from "react-i18next";
 import { SUBAGENT_EMOJI_OPTIONS } from "../utils/subagentEmojis";
+import { useImeSearchInput } from "../hooks/useImeSearchInput";
 import styles from "./EmojiPicker.module.less";
 
 interface EmojiPickerProps {
@@ -19,7 +20,11 @@ export default function EmojiPicker({
 }: EmojiPickerProps) {
   const { t } = useTranslation();
   const [open, setOpen] = useState(false);
-  const [query, setQuery] = useState("");
+  const {
+    committed: query,
+    setValue: setQuery,
+    inputProps: queryInputProps,
+  } = useImeSearchInput("");
 
   const options = useMemo(() => {
     const q = query.trim();
@@ -35,8 +40,7 @@ export default function EmojiPicker({
       <Input
         allowClear
         size="small"
-        value={query}
-        onChange={(e) => setQuery(e.target.value)}
+        {...queryInputProps}
         placeholder={t("common.emojiSearchPlaceholder")}
         aria-label={t("common.emojiSearchPlaceholder")}
         className={styles.search}

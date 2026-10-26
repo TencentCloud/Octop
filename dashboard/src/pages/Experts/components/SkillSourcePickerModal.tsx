@@ -3,6 +3,7 @@ import { Button, Drawer, Empty, Input, List, Segmented, Spin } from "antd";
 import { useTranslation } from "react-i18next";
 
 import { request } from "../../../api/request";
+import { useImeSearchInput } from "../../../hooks/useImeSearchInput";
 import { useAgent } from "../../../context/AgentContext";
 import { ownedSoloExperts } from "../../../utils/sharedExpert";
 import { apiErrorMessage } from "../../../utils/apiError";
@@ -64,7 +65,11 @@ export default function SkillSourcePickerModal({
   const [selectedAgentId, setSelectedAgentId] = useState<string | null>(null);
   const [skills, setSkills] = useState<SkillSummary[]>([]);
   const [skillsLoading, setSkillsLoading] = useState(false);
-  const [query, setQuery] = useState("");
+  const {
+    committed,
+    setValue: setQuery,
+    inputProps: queryInputProps,
+  } = useImeSearchInput("");
   const [copyingSlug, setCopyingSlug] = useState<string | null>(null);
 
   const selectableAgents = useMemo(
@@ -82,7 +87,7 @@ export default function SkillSourcePickerModal({
       setSkills([]);
       setQuery("");
     }
-  }, [open]);
+  }, [open, setQuery]);
 
   useEffect(() => {
     if (!open || !selectedAgentId) {
@@ -109,7 +114,7 @@ export default function SkillSourcePickerModal({
   }, [open, selectedAgentId]);
 
   const filteredSkills = useMemo(() => {
-    const q = query.trim().toLowerCase();
+    const q = committed.trim().toLowerCase();
     return skills.filter((skill) => {
       const slug = skill.slug ?? skill.name;
       if (excludeSlugs.has(slug)) return false;
@@ -120,7 +125,7 @@ export default function SkillSourcePickerModal({
         (skill.description || "").toLowerCase().includes(q)
       );
     });
-  }, [excludeSlugs, query, skills]);
+  }, [excludeSlugs, committed, skills]);
 
   const handlePickHub = (skill: SkillHubSkill) => {
     if (excludeSlugs.has(skill.slug)) return;
@@ -214,8 +219,7 @@ export default function SkillSourcePickerModal({
             </Button>
             <Input
               allowClear
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
+              {...queryInputProps}
               placeholder={t("experts.searchAgentSkills")}
               style={{ maxWidth: 240 }}
             />

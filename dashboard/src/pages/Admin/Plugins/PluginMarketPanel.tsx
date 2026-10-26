@@ -10,6 +10,7 @@ import {
 } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { pluginsApi, type MarketPlugin } from "../../../api/modules/plugins";
+import { useImeSearchInput } from "../../../hooks/useImeSearchInput";
 import { CardSkeleton } from "../../../components/Skeleton";
 import { apiErrorMessage } from "../../../utils/apiError";
 import styles from "./index.module.less";
@@ -45,7 +46,7 @@ export function PluginMarketPanel() {
   const [refreshing, setRefreshing] = useState(false);
   const [installingId, setInstallingId] = useState<string | null>(null);
   const [activeGroup, setActiveGroup] = useState<string>(GROUP_ALL);
-  const [keyword, setKeyword] = useState("");
+  const { committed, inputProps: keywordInputProps } = useImeSearchInput("");
 
   const fetchMarket = useCallback(
     async (force = false) => {
@@ -109,14 +110,14 @@ export function PluginMarketPanel() {
 
   const filtered = useMemo(() => {
     const byGroup =
-      keyword.trim() || activeGroup === GROUP_ALL
+      committed.trim() || activeGroup === GROUP_ALL
         ? items
         : items.filter(
             (row) => (row.group || "").trim().toLowerCase() === activeGroup,
           );
-    if (!keyword.trim()) return byGroup;
-    return byGroup.filter((row) => matchesMarketQuery(row, keyword));
-  }, [activeGroup, items, keyword]);
+    if (!committed.trim()) return byGroup;
+    return byGroup.filter((row) => matchesMarketQuery(row, committed));
+  }, [activeGroup, items, committed]);
 
   useEffect(() => {
     if (
@@ -140,9 +141,8 @@ export function PluginMarketPanel() {
             className={styles.marketSearch}
             prefix={<Search size={14} />}
             allowClear
-            value={keyword}
+            {...keywordInputProps}
             placeholder={t("plugins.marketSearchPlaceholder")}
-            onChange={(e) => setKeyword(e.target.value)}
           />
           <Button
             icon={<RefreshCw size={14} />}
@@ -154,7 +154,7 @@ export function PluginMarketPanel() {
         </div>
       </div>
 
-      {!keyword.trim() && groupOptions.length > 1 ? (
+      {!committed.trim() && groupOptions.length > 1 ? (
         <div className={styles.groupTabsWrap}>
           <Segmented
             block
@@ -175,7 +175,7 @@ export function PluginMarketPanel() {
           description={
             items.length === 0
               ? t("plugins.marketEmpty")
-              : keyword.trim()
+              : committed.trim()
               ? t("plugins.marketSearchEmpty")
               : t("plugins.emptyGroup")
           }

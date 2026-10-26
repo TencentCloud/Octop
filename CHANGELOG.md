@@ -6,6 +6,11 @@
 
 ## [Unreleased]
 
+## [1.0.10] - 2026-10-26
+
+### 修复
+- **搜索框中文输入法（IME）兼容**:搜索类输入框在拼音组合输入期间不再把每个中间态（"z"、"zhong"…）当作搜索词触发请求/过滤——专家市场、技能市场（SkillHub）、插件市场、用户管理、专家列表、会话导航、聊天五个选择弹层（技能/专家/子智能体/知识库/连接器）、EmojiPicker、模型列表编辑、轨迹搜索共 14 处全部修复。实现:新增 `useImeSearchInput` hook,受控 value 始终跟随输入（不打断输入法）,搜索消费方读独立的 `committed` 值（组合期间冻结,候选确认时落地最终文本;antd Input 底层 rc-input 在 compositionEnd 时内部去重不补发 onChange,故必须在 onCompositionEnd 内读取）。`useFilteredList`(聊天 picker 共用)重建于该 hook 之上;`TrajectoryToolbar` 经可选 `searchInputProps` prop 从 owner 接收。
+
 ## [1.0.9] - 2026-10-23
 
 ### 新增

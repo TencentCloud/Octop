@@ -7,6 +7,7 @@ import { CircleCheck, Download, Link, RefreshCw, Zap } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { request } from "../../../../api/request";
 import { apiErrorMessage } from "../../../../utils/apiError";
+import { useImeSearchInput } from "../../../../hooks/useImeSearchInput";
 import { SkillHubDetailDrawer } from "./SkillHubDetailDrawer";
 import type { SkillHubSkill } from "./SkillHubDetailDrawer";
 import { loadRankingsCache, saveRankingsCache } from "./skillHubCache";
@@ -118,7 +119,8 @@ export default function SkillHubTab({
   );
   const [searching, setSearching] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
-  const [searchKeyword, setSearchKeyword] = useState("");
+  const { committed: committedKeyword, inputProps: searchKeywordInputProps } =
+    useImeSearchInput("");
   const [selectedSkill, setSelectedSkill] = useState<SkillHubSkill | null>(
     null,
   );
@@ -229,17 +231,17 @@ export default function SkillHubTab({
 
   useEffect(() => {
     if (debounceTimer.current) clearTimeout(debounceTimer.current);
-    if (!searchKeyword) {
+    if (!committedKeyword) {
       void fetchRankings();
       return;
     }
     debounceTimer.current = setTimeout(() => {
-      void fetchHubSkills(searchKeyword.trim());
+      void fetchHubSkills(committedKeyword.trim());
     }, 350);
     return () => {
       if (debounceTimer.current) clearTimeout(debounceTimer.current);
     };
-  }, [searchKeyword, fetchRankings, fetchHubSkills]);
+  }, [committedKeyword, fetchRankings, fetchHubSkills]);
 
   useEffect(() => {
     if (!installTarget) {
@@ -312,20 +314,20 @@ export default function SkillHubTab({
   );
 
   const displaySkills = useMemo(() => {
-    const base = searchKeyword ? hubSkills : rankings[activeRanking] ?? [];
+    const base = committedKeyword ? hubSkills : rankings[activeRanking] ?? [];
     return base.slice().sort((a, b) => {
       const ai = isInstalled(a.slug) ? 0 : 1;
       const bi = isInstalled(b.slug) ? 0 : 1;
       return ai - bi;
     });
-  }, [searchKeyword, hubSkills, rankings, activeRanking, isInstalled]);
+  }, [committedKeyword, hubSkills, rankings, activeRanking, isInstalled]);
 
   const handleCardClick = (skill: SkillHubSkill) => {
     setSelectedSkill(skill);
     setDrawerOpen(true);
   };
 
-  if (loading && !searchKeyword) {
+  if (loading && !committedKeyword) {
     return (
       <div
         style={{
@@ -371,8 +373,7 @@ export default function SkillHubTab({
         <Input
           className={styles.skillHubSearch}
           placeholder={t("skills.searchSkillHub")}
-          value={searchKeyword}
-          onChange={(e) => setSearchKeyword(e.target.value)}
+          {...searchKeywordInputProps}
           allowClear
           suffix={searching ? <Spin size="small" /> : undefined}
         />
@@ -397,7 +398,7 @@ export default function SkillHubTab({
         </Button>
       </div>
 
-      {!searchKeyword && (
+      {!committedKeyword && (
         <Segmented
           block
           size="large"
