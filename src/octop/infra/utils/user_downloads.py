@@ -63,14 +63,12 @@ def unique_download_path(filename: str, *, home: Path | None = None) -> Path:
     dest_dir.mkdir(parents=True, exist_ok=True)
     safe = sanitize_download_filename(filename)
     path = dest_dir / safe
-    if not path.exists():
-        return path
     stem, suffix = path.stem, path.suffix
-    for index in range(1, 1000):
-        candidate = dest_dir / f"{stem} ({index}){suffix}"
-        if not candidate.exists():
-            return candidate
-    return dest_dir / f"{stem}-{os.getpid()}{suffix}"
+    index = 1
+    while path.exists():
+        path = dest_dir / f"{stem} ({index}){suffix}"
+        index += 1
+    return path
 
 
 def save_user_download(
