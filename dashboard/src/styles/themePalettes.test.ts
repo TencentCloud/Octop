@@ -36,10 +36,10 @@ describe("theme palettes", () => {
     ]);
   });
 
-  it("keeps the historic Elegant Rose default brand tokens", () => {
-    expect(ANTD_BRAND_TOKENS.rose.light.colorPrimary).toBe("#E85D75");
-    expect(ANTD_BRAND_TOKENS.rose.light.colorPrimaryHover).toBe("#D14A62");
-    expect(ANTD_BRAND_TOKENS.rose.light.colorPrimaryActive).toBe("#B83A50");
+  it("keeps the Elegant Rose default brand tokens (A11Y-6 contrast-corrected)", () => {
+    expect(ANTD_BRAND_TOKENS.rose.light.colorPrimary).toBe("#B83A50");
+    expect(ANTD_BRAND_TOKENS.rose.light.colorPrimaryHover).toBe("#A63448");
+    expect(ANTD_BRAND_TOKENS.rose.light.colorPrimaryActive).toBe("#932E40");
     expect(ANTD_BRAND_TOKENS.rose.dark.colorPrimary).toBe("#F08B9A");
     expect(ANTD_BRAND_TOKENS.rose.dark.colorLink).toBe("#F08B9A");
   });
