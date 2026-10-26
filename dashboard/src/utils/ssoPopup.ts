@@ -13,7 +13,18 @@ export type SsoPopupMessage = {
 
 export function isSsoPopup(): boolean {
   try {
-    return Boolean(window.opener && !window.opener.closed);
+    const opener = window.opener;
+    if (!opener || opener.closed) return false;
+    // Only our own pages speak the octop-sso protocol. A cross-origin
+    // opener (e.g. a portal using window.open without noopener) blocks
+    // location.origin access — treat such tabs as normal logins so the
+    // completed session stays in this tab instead of being posted to an
+    // opener that can never receive it and then closed.
+    try {
+      return opener.location.origin === window.location.origin;
+    } catch {
+      return false;
+    }
   } catch {
     return false;
   }
