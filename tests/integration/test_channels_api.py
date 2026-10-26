@@ -1,8 +1,7 @@
 """tests/integration/test_channels_api.py — channels CRUD.
 
-Plan §12.5 mandates this file. Covers list/create/get/patch/delete cycle,
-404 on missing channel, cross-user isolation, and runtime reload trigger
-on mutations.
+Covers the list/create/get/patch/delete cycle, 404 responses for missing
+channels, cross-user isolation, and runtime reload triggers on mutations.
 """
 
 from __future__ import annotations
