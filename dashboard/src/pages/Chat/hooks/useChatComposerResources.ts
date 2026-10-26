@@ -136,17 +136,18 @@ export function useChatComposerResources(
     if (isNewSession) composerTouchedRef.current = false;
   }, [isNewSession]);
 
-  // No thread override: show the expert default (same as knowledge bases and
-  // connectors). Account preferred model only fills in when the expert is Auto.
-  // Sending still omits a selection that matches the expert default.
+  // No thread override: show the expert default. A local account preference
+  // fills Auto only for experts on this Octop. A remote Auto stays unset so
+  // the turn omits ``model`` and the peer resolves its own default.
   useEffect(() => {
     const local = activeThreadId
       ? conversationOverrides[activeThreadId]
       : undefined;
+    const autoFallback = remoteBridge ? null : preferredModel;
     setSelectedModel(
       local
         ? local.model
-        : stickyModel || expertDefaultModel || preferredModel || null,
+        : stickyModel || expertDefaultModel || autoFallback || null,
     );
   }, [
     resolvedAgentId,
@@ -154,6 +155,7 @@ export function useChatComposerResources(
     stickyModel,
     expertDefaultModel,
     preferredModel,
+    remoteBridge,
     conversationOverrides,
   ]);
 
