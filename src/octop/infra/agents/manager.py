@@ -2089,7 +2089,9 @@ class AgentManager:
 
         The DB config only shows AUTO, so read the built harness configs:
         rebuild when the baked ref points at the changed provider or differs
-        from what a build would resolve now.
+        from what a build would resolve now. An agent built while no model was
+        usable has no baked ref at all, so it is rebuilt as soon as a fallback
+        exists — otherwise it would keep running without a model until restart.
         """
         if self._harness_manager is None or not auto_ids:
             return set()
@@ -2102,6 +2104,8 @@ class AgentManager:
                 continue
             built = getattr(getattr(entry, "config", None), "default_model", None)
             if not isinstance(built, str) or not built:
+                if new_fallback is not None:
+                    stale.add(aid)
                 continue
             if built.startswith(prefix) or (new_fallback is not None and built != new_fallback):
                 stale.add(aid)
