@@ -39,14 +39,14 @@ function wailsInvoke(): ((message: string) => void) | undefined {
 let lastUrl = "";
 let lastAt = 0;
 
-function openExternal(url: string): boolean {
+export function openDesktopExternal(url: string): boolean {
   const invoke = wailsInvoke();
   if (!invoke || !isDesktopExternalURL(url)) return false;
   const now = Date.now();
   if (url === lastUrl && now - lastAt < 800) return true;
+  invoke("wails:event:emit:" + OPEN_URL_EVENT_PREFIX + encodeURIComponent(url));
   lastUrl = url;
   lastAt = now;
-  invoke("wails:event:emit:" + OPEN_URL_EVENT_PREFIX + encodeURIComponent(url));
   return true;
 }
 
@@ -70,7 +70,7 @@ function onActivate(event: Event): void {
   if (event instanceof MouseEvent && event.button !== 0) return;
   const link = linkFromEvent(event);
   if (!link) return;
-  if (!openExternal(link.href)) return;
+  if (!openDesktopExternal(link.href)) return;
   event.preventDefault();
 }
 
@@ -78,7 +78,11 @@ function patchWindowOpen(): () => void {
   const original = window.open.bind(window);
   window.open = ((url?: string | URL, target?: string, features?: string) => {
     const href = url == null ? "" : String(url);
-    if (href && isDesktopExternalWindowTarget(target) && openExternal(href)) {
+    if (
+      href &&
+      isDesktopExternalWindowTarget(target) &&
+      openDesktopExternal(href)
+    ) {
       return null;
     }
     return original(url, target, features);
