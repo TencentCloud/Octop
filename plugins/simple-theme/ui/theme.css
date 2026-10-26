@@ -1,0 +1,3931 @@
+/* =========================================================================
+   简单主题 · 控制台主题
+   ---------------------------------------------------------------------
+   目标：把控制台的信息排布改成 简洁、易读的单列布局的读法。
+   四条硬规则（违反任何一条都会立刻变回"后台管理系统"）：
+   1. 只有一列。正文、标题、输入框共用同一条 768px 中轴，头像列整列拆掉。
+   2. 只允许中性灰。品牌粉、Tailwind 冷灰、硬编码靛蓝全部并到同一套灰阶。
+   3. 分隔只用 1px 发丝线；浮起只有极淡投影，且只给真正浮起的层。
+   4. 次要信息（时间戳、用量、复制、更多）默认透明，悬停该行才出现。
+
+   所有规则挂在 html#octop-simple-theme-root 下，禁用插件即完全还原。
+   ========================================================================= */
+
+/* ------------------------------- 令牌 ------------------------------- */
+html#octop-simple-theme-root,
+html#octop-simple-theme-root[data-theme="light"] {
+  --simple-column: var(--simple-user-column, 768px);
+
+  --simple-hairline: #ececec;
+  --simple-hairline-strong: #dcdcdc;
+  --simple-hover: rgba(13, 13, 13, 0.05);
+  --simple-press: rgba(13, 13, 13, 0.09);
+
+  --fn-bg-primary: #ffffff;
+  --fn-bg-base: #ffffff;
+  --fn-bg-page: #ffffff;
+  --fn-bg-layout: #ffffff;
+  --fn-bg-container: #ffffff;
+  --fn-bg-elevated: #ffffff;
+  --fn-bg-secondary: #f4f4f4;
+  --fn-bg-tertiary: #ececec;
+  --fn-bg-quaternary: rgba(13, 13, 13, 0.03);
+  --fn-bg-subtle: #f7f7f8;
+  --fn-bg-secondary-hover: #ececec;
+  --fn-bg-secondary-active: #e6e6e6;
+  --fn-bg-hover: rgba(13, 13, 13, 0.055);
+  --fn-bg-active: rgba(13, 13, 13, 0.09);
+  --fn-bg-selected: rgba(13, 13, 13, 0.07);
+  --fn-bg-code: #f7f7f8;
+  --fn-bg-toolbar: #ffffff;
+  --fn-bg-toolbar-hover: #f4f4f4;
+  --fn-bg-input-label: #f7f7f8;
+  --fn-bg-glass: rgba(255, 255, 255, 0.88);
+  --fn-bg-sidebar: #f9f9f9;
+  --fn-surface: #ffffff;
+  --fn-surface-sunken: #f9f9f9;
+  --fn-fill-hover: rgba(13, 13, 13, 0.055);
+  --fn-fill-tertiary: #ececec;
+
+  --fn-text-primary: #0d0d0d;
+  --fn-text-secondary: #5d5d5d;
+  --fn-text-tertiary: #8f8f8f;
+  --fn-text-quaternary: #a9a9a9;
+  --fn-text-placeholder: #b4b4b4;
+  --fn-text-disabled: #cdcdcd;
+  --fn-text-inverse: #ffffff;
+  --fn-text-brand: #0d0d0d;
+  --fn-text-link: #0d0d0d;
+  --fn-text-danger: #c0392b;
+  --fn-logo-color: #0d0d0d;
+  --fn-logo-filter: none;
+
+  --fn-border-primary: #ececec;
+  --fn-border-secondary: #f0f0f0;
+  --fn-border-tertiary: #f4f4f4;
+  --fn-border-input: #dedede;
+  --fn-border-input-alt: #e6e6e6;
+  --fn-border-focus: #c9c9c9;
+  --fn-border: #ececec;
+  --fn-border-color: #ececec;
+  --fn-border-strong: #d4d4d4;
+  --fn-border-subtle: rgba(13, 13, 13, 0.07);
+
+  --fn-color-brand: #0d0d0d;
+  --fn-color-brand-hover: #262626;
+  --fn-color-brand-soft: #262626;
+  --fn-color-brand-bg: rgba(13, 13, 13, 0.05);
+  --fn-color-brand-border: rgba(13, 13, 13, 0.14);
+  --fn-color-on-brand: #ffffff;
+  --fn-color-brand-light: #f4f4f4;
+  --fn-color-brand-shadow: rgba(13, 13, 13, 0.1);
+  --fn-color-brand-glow: rgba(13, 13, 13, 0.06);
+  --fn-primary: #0d0d0d;
+  --fn-primary-bg: rgba(13, 13, 13, 0.05);
+  --fn-color-primary: #0d0d0d;
+  --fn-accent: #0d0d0d;
+
+  --fn-sidebar-width: 260px;
+  --fn-sidebar-bg: #f9f9f9;
+  --fn-sidebar-border: transparent;
+  --fn-sidebar-item-hover: rgba(13, 13, 13, 0.05);
+  --fn-sidebar-item-active-bg: rgba(13, 13, 13, 0.07);
+  --fn-sidebar-item-active: rgba(13, 13, 13, 0.06);
+  --fn-sidebar-item-active-text: #0d0d0d;
+  --fn-sidebar-group-text: #8f8f8f;
+  --fn-header-bg: rgba(255, 255, 255, 0.88);
+  --fn-header-blur: 20px;
+  --fn-chat-divider: transparent;
+
+  --fn-shadow-xs: 0 1px 1px rgba(13, 13, 13, 0.03);
+  --fn-shadow-sm: 0 1px 2px rgba(13, 13, 13, 0.05);
+  --fn-shadow-md: 0 2px 6px rgba(13, 13, 13, 0.06), 0 12px 32px rgba(13, 13, 13, 0.06);
+  --fn-shadow-lg: 0 4px 10px rgba(13, 13, 13, 0.07), 0 18px 48px rgba(13, 13, 13, 0.08);
+  --fn-shadow-xl: 0 8px 20px rgba(13, 13, 13, 0.08), 0 28px 64px rgba(13, 13, 13, 0.1);
+  --fn-shadow-brand: var(--fn-shadow-sm);
+  --fn-shadow-brand-lg: var(--fn-shadow-md);
+  --fn-card-border-normal: var(--simple-hairline);
+  --fn-card-shadow-normal: none;
+
+  --fn-radius-sm: 6px;
+  --fn-radius-md: 10px;
+  --fn-radius-lg: 14px;
+  --fn-radius-xl: 18px;
+  --fn-radius-full: 980px;
+  --fn-card-radius: 14px;
+
+  --fn-assistant-bubble-bg: transparent;
+  --fn-assistant-bubble-bg-gradient: none;
+  --fn-assistant-bubble-border: transparent;
+  --fn-assistant-glow-color: 13, 13, 13;
+
+  --simple-user-bubble: #f4f4f4;
+  --simple-code-bg: #f7f7f8;
+  --simple-code-fg: #0d0d0d;
+  --simple-quote-border: #dcdcdc;
+}
+
+html#octop-simple-theme-root[data-theme="dark"] {
+  --simple-hairline: #2a2a2a;
+  --simple-hairline-strong: #363636;
+  --simple-hover: rgba(255, 255, 255, 0.07);
+  --simple-press: rgba(255, 255, 255, 0.11);
+
+  --fn-bg-primary: #212121;
+  --fn-bg-base: #212121;
+  --fn-bg-page: #212121;
+  --fn-bg-layout: #212121;
+  --fn-bg-container: #212121;
+  --fn-bg-elevated: #2a2a2a;
+  --fn-bg-secondary: #2f2f2f;
+  --fn-bg-tertiary: #333333;
+  --fn-bg-quaternary: rgba(255, 255, 255, 0.04);
+  --fn-bg-subtle: #282828;
+  --fn-bg-secondary-hover: #343434;
+  --fn-bg-secondary-active: #3c3c3c;
+  --fn-bg-hover: rgba(255, 255, 255, 0.07);
+  --fn-bg-active: rgba(255, 255, 255, 0.11);
+  --fn-bg-selected: rgba(255, 255, 255, 0.08);
+  --fn-bg-code: #171717;
+  --fn-bg-toolbar: #212121;
+  --fn-bg-toolbar-hover: #2f2f2f;
+  --fn-bg-input-label: #2f2f2f;
+  --fn-bg-glass: rgba(33, 33, 33, 0.88);
+  --fn-bg-sidebar: #171717;
+  --fn-surface: #212121;
+  --fn-surface-sunken: #171717;
+  --fn-fill-hover: rgba(255, 255, 255, 0.07);
+  --fn-fill-tertiary: #2f2f2f;
+
+  --fn-text-primary: #ececec;
+  --fn-text-secondary: #b7b7b7;
+  --fn-text-tertiary: #969696;
+  --fn-text-quaternary: #6f6f6f;
+  --fn-text-placeholder: #8a8a8a;
+  --fn-text-disabled: #5d5d5d;
+  --fn-text-inverse: #0d0d0d;
+  --fn-text-brand: #ececec;
+  --fn-text-link: #ececec;
+  --fn-text-danger: #ff8f85;
+  --fn-logo-color: #ffffff;
+  --fn-logo-filter: brightness(0) invert(1);
+
+  --fn-border-primary: rgba(255, 255, 255, 0.1);
+  --fn-border-secondary: rgba(255, 255, 255, 0.07);
+  --fn-border-tertiary: rgba(255, 255, 255, 0.05);
+  --fn-border-input: rgba(255, 255, 255, 0.15);
+  --fn-border-input-alt: rgba(255, 255, 255, 0.1);
+  --fn-border-focus: rgba(255, 255, 255, 0.3);
+  --fn-border: rgba(255, 255, 255, 0.1);
+  --fn-border-color: rgba(255, 255, 255, 0.1);
+  --fn-border-strong: rgba(255, 255, 255, 0.22);
+  --fn-border-subtle: rgba(255, 255, 255, 0.06);
+
+  --fn-color-brand: #ececec;
+  --fn-color-brand-hover: #ffffff;
+  --fn-color-brand-soft: #ffffff;
+  --fn-color-brand-bg: rgba(255, 255, 255, 0.08);
+  --fn-color-brand-border: rgba(255, 255, 255, 0.18);
+  --fn-color-on-brand: #0d0d0d;
+  --fn-color-brand-light: #2f2f2f;
+  --fn-color-brand-shadow: rgba(0, 0, 0, 0.45);
+  --fn-color-brand-glow: rgba(255, 255, 255, 0.05);
+  --fn-primary: #ececec;
+  --fn-primary-bg: rgba(255, 255, 255, 0.1);
+  --fn-color-primary: #ececec;
+  --fn-accent: #ececec;
+
+  --fn-sidebar-width: 260px;
+  --fn-sidebar-bg: #171717;
+  --fn-sidebar-border: transparent;
+  --fn-sidebar-item-hover: rgba(255, 255, 255, 0.07);
+  --fn-sidebar-item-active-bg: rgba(255, 255, 255, 0.1);
+  --fn-sidebar-item-active: rgba(255, 255, 255, 0.08);
+  --fn-sidebar-item-active-text: #ffffff;
+  --fn-sidebar-group-text: #7a7a7a;
+  --fn-header-bg: rgba(33, 33, 33, 0.88);
+  --fn-chat-divider: transparent;
+
+  --fn-shadow-xs: 0 1px 1px rgba(0, 0, 0, 0.3);
+  --fn-shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.35);
+  --fn-shadow-md: 0 2px 6px rgba(0, 0, 0, 0.35), 0 12px 32px rgba(0, 0, 0, 0.4);
+  --fn-shadow-lg: 0 4px 10px rgba(0, 0, 0, 0.4), 0 18px 48px rgba(0, 0, 0, 0.45);
+  --fn-shadow-xl: 0 8px 20px rgba(0, 0, 0, 0.5), 0 28px 64px rgba(0, 0, 0, 0.55);
+  --fn-card-border-normal: var(--simple-hairline);
+  --fn-card-shadow-normal: none;
+
+  --simple-user-bubble: #303030;
+  --simple-code-bg: #0d0d0d;
+  --simple-code-fg: #f2f2f2;
+  --simple-quote-border: #3d3d3d;
+}
+
+/* ------------------------- 全局基底：字体与画布 ------------------------- */
+html#octop-simple-theme-root {
+  background: var(--fn-bg-primary);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+}
+html#octop-simple-theme-root body,
+html#octop-simple-theme-root .octop-app,
+html#octop-simple-theme-root button,
+html#octop-simple-theme-root input,
+html#octop-simple-theme-root textarea,
+html#octop-simple-theme-root select {
+  font-family: "Simple Theme Sans", -apple-system, BlinkMacSystemFont, "Segoe UI",
+    "PingFang SC", "Hiragino Sans GB", "Noto Sans CJK SC", "Noto Sans SC",
+    "Microsoft YaHei", ui-sans-serif, system-ui, sans-serif;
+  font-feature-settings: "cv02" 1, "cv03" 1, "cv04" 1, "ss01" 1;
+  letter-spacing: 0;
+}
+
+/* 画布：应用会在 html.octop-chat-open 时把 body 刷成 --fn-bg-elevated，
+   和布局底色差一档（#2a2a2a vs #212121），这里统一压回主底色。 */
+html#octop-simple-theme-root body,
+html#octop-simple-theme-root #root {
+  background: var(--fn-bg-primary) !important;
+  color: var(--fn-text-primary) !important;
+}
+
+/* 布局根字号：控制台写死 14，全站正文按 14 继承。抬到 16 后所有
+   "rem/em 之外的继承值" 才会跟着正文走。 */
+html#octop-simple-theme-root .octop-layout,
+html#octop-simple-theme-root .octop-layout-content {
+  font-size: 16px !important;
+  background: var(--fn-bg-primary) !important;
+}
+
+/* 滚动条：细、无轨道、只在悬停加深 */
+html#octop-simple-theme-root ::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+html#octop-simple-theme-root ::-webkit-scrollbar-track {
+  background: transparent;
+}
+html#octop-simple-theme-root ::-webkit-scrollbar-thumb {
+  background: var(--simple-hairline-strong);
+  border: 3px solid transparent;
+  border-radius: 980px;
+  background-clip: content-box;
+}
+html#octop-simple-theme-root ::-webkit-scrollbar-thumb:hover {
+  background: var(--fn-text-quaternary);
+  background-clip: content-box;
+}
+html#octop-simple-theme-root ::selection {
+  background: rgba(13, 13, 13, 0.14);
+}
+html#octop-simple-theme-root[data-theme="dark"] ::selection {
+  background: rgba(255, 255, 255, 0.18);
+}
+
+/* 焦点环：只在键盘操作时出现 */
+html#octop-simple-theme-root :focus-visible {
+  outline: 2px solid var(--fn-text-secondary);
+  outline-offset: 3px;
+}
+
+/* 过渡只保留颜色类，几何属性瞬时就位 */
+html#octop-simple-theme-root * {
+  transition-property: background-color, border-color, color, box-shadow, opacity !important;
+  transition-duration: 0.12s !important;
+  transition-timing-function: ease !important;
+}
+
+/* =========================================================================
+   1. 侧栏：一片连续的浅灰，无边框、无分段控件感
+   ========================================================================= */
+html#octop-simple-theme-root [class*="index-module__sidebar__"] {
+  background: var(--fn-bg-sidebar) !important;
+  border-right: none !important;
+  box-shadow: none !important;
+}
+html#octop-simple-theme-root [class*="index-module__sidebarWrapper"] {
+  background: var(--fn-bg-sidebar) !important;
+}
+html#octop-simple-theme-root [class*="module__sidebarResizeHandle"],
+html#octop-simple-theme-root [class*="RailEdgeControl-module__line"] {
+  background: transparent !important;
+}
+html#octop-simple-theme-root [class*="RailEdgeControl-module__btn"] {
+  width: 14px !important;
+  height: 40px !important;
+  min-width: 0 !important;
+  border: none !important;
+  border-radius: 8px !important;
+  background: transparent !important;
+  box-shadow: none !important;
+  color: var(--fn-text-tertiary) !important;
+  opacity: 0;
+}
+html#octop-simple-theme-root [class*="RailEdgeControl"]:hover [class*="RailEdgeControl-module__btn"] {
+  opacity: 1;
+  background: var(--simple-hover) !important;
+}
+html#octop-simple-theme-root [class*="RailEdgeControl-module__btn"] svg {
+  width: 12px !important;
+  height: 12px !important;
+}
+
+/* 侧栏内容留白 */
+html#octop-simple-theme-root [class*="module__sessionList__"][class] {
+  padding: 10px 8px 12px !important;
+}
+
+/* 搜索框：无边框的凹陷面，聚焦才显出轮廓 */
+html#octop-simple-theme-root [class*="module__sessionSearchWrap"] {
+  padding: 0 !important;
+}
+html#octop-simple-theme-root [class*="module__sessionSearchInput"] {
+  height: 34px !important;
+  padding-left: 30px !important;
+  font-size: 14px !important;
+  color: var(--fn-text-primary) !important;
+  background: var(--fn-sidebar-item-hover) !important;
+  border: 1px solid transparent !important;
+  border-radius: 10px !important;
+  box-shadow: none !important;
+}
+html#octop-simple-theme-root [class*="module__sessionSearchInput"]::placeholder {
+  color: var(--fn-text-quaternary) !important;
+}
+html#octop-simple-theme-root [class*="module__sessionSearchInput"]:hover {
+  background: var(--fn-bg-tertiary) !important;
+}
+html#octop-simple-theme-root [class*="module__sessionSearchInput"]:focus {
+  background: var(--fn-bg-primary) !important;
+  border-color: var(--simple-hairline-strong) !important;
+}
+html#octop-simple-theme-root [class*="module__sessionSearchIcon"],
+html#octop-simple-theme-root [class*="module__sessionSearchWrap"] svg {
+  color: var(--fn-text-tertiary) !important;
+  width: 15px !important;
+  height: 15px !important;
+}
+
+/* 分段标签（全部 / 专家 / 群组）→ 一行文字 */
+html#octop-simple-theme-root [class*="module__sessionScopeTabs"] {
+  background: transparent !important;
+  border: none !important;
+  box-shadow: none !important;
+  padding: 0 !important;
+  gap: 2px !important;
+  margin: 8px 0 4px !important;
+  height: auto !important;
+}
+html#octop-simple-theme-root [class*="module__sessionScopeTab__"] {
+  height: 28px !important;
+  min-height: 28px !important;
+  padding: 0 8px !important;
+  font-size: 13px !important;
+  font-weight: 400 !important;
+  color: var(--fn-text-tertiary) !important;
+  background: transparent !important;
+  border: none !important;
+  border-radius: 8px !important;
+  box-shadow: none !important;
+}
+html#octop-simple-theme-root [class*="module__sessionScopeTab__"]:hover {
+  background: var(--fn-sidebar-item-hover) !important;
+  color: var(--fn-text-primary) !important;
+}
+html#octop-simple-theme-root [class*="module__sessionScopeTabActive"] {
+  background: var(--fn-sidebar-item-active-bg) !important;
+  color: var(--fn-text-primary) !important;
+  font-weight: 500 !important;
+}
+
+/* 专家行 / 专家卡 */
+html#octop-simple-theme-root [class*="module__agentRow__"],
+html#octop-simple-theme-root [class*="module__agentCardActive"] {
+  border-radius: 10px !important;
+  background: transparent !important;
+  box-shadow: none !important;
+  padding: 6px 8px !important;
+}
+html#octop-simple-theme-root [class*="module__agentRow__"]:hover {
+  background: var(--fn-sidebar-item-hover) !important;
+}
+html#octop-simple-theme-root [class*="module__agentRowAvatar"],
+html#octop-simple-theme-root [class*="module__agentCardAvatar"] {
+  width: 24px !important;
+  height: 24px !important;
+  border-radius: 6px !important;
+  background: var(--fn-bg-tertiary) !important;
+  border: none !important;
+}
+html#octop-simple-theme-root [class*="module__agentRowName"],
+html#octop-simple-theme-root [class*="module__agentCardName"] {
+  font-size: 14px !important;
+  font-weight: 500 !important;
+  color: var(--fn-text-primary) !important;
+  min-width: 0 !important;
+  overflow: hidden !important;
+  text-overflow: ellipsis !important;
+  white-space: nowrap !important;
+}
+/* 头像里的 img 带内联 26/28px，会从 24px 的框里左右各溢出一两像素；
+   改成撑满容器，图标就回到框中线上。 */
+html#octop-simple-theme-root [class*="module__agentRowAvatar"] img,
+html#octop-simple-theme-root [class*="module__agentCardAvatar"] img {
+  width: 100% !important;
+  height: 100% !important;
+  max-width: 100% !important;
+  display: block !important;
+  object-fit: contain !important;
+  border-radius: inherit !important;
+}
+/* 专家名 + 进行中标记：名称和圈圈同一条基线排布，名称自己省略 */
+html#octop-simple-theme-root [class*="module__agentNameCluster"] {
+  display: flex !important;
+  align-items: center !important;
+  gap: 6px !important;
+  min-width: 0 !important;
+}
+html#octop-simple-theme-root .simple-agent-busy {
+  flex: none !important;
+  width: 11px !important;
+  height: 11px !important;
+  border-radius: 50% !important;
+  border: 1.5px solid var(--simple-hairline-strong) !important;
+  border-top-color: var(--fn-text-secondary) !important;
+  animation: simple-agent-busy 800ms linear infinite;
+}
+@keyframes simple-agent-busy {
+  to { transform: rotate(360deg); }
+}
+@media (prefers-reduced-motion: reduce) {
+  html#octop-simple-theme-root .simple-agent-busy { animation-duration: 2.4s !important; }
+}
+/* 圈圈要靠"腾出位置"而不是"挤掉名字"：专家行里那两个「新建对话 / 置顶」
+   按钮平时透明，但仍以 45px 占着文档流宽度；再加上圈圈自己的 6+11px，
+   14px 的专家名就被压成省略号，圈圈正好落在被切掉的字上，看起来像圈圈
+   遮住了名字。把这对悬浮按钮移出文档流（它们本来也只在 hover / focus
+   时可见），名字就能完整显示，圈圈落在名字右侧的留白里。
+   绝对定位挂在名字行上，卡片和列表两种形态共用一套。 */
+html#octop-simple-theme-root [class*="module__agentRowNameRow"],
+html#octop-simple-theme-root [class*="module__agentCardNameRow"] {
+  position: relative !important;
+}
+html#octop-simple-theme-root [class*="module__agentRowNameRow"] > [class*="module__expertNavActions"],
+html#octop-simple-theme-root [class*="module__agentCardNameRow"] > [class*="module__expertNavActions"] {
+  position: absolute !important;
+  top: 50% !important;
+  right: 0 !important;
+  margin: 0 !important;
+  transform: translateY(-50%) !important;
+  z-index: 3 !important;
+}
+/* 名字特别长时，悬浮按钮浮上来会盖住名字尾巴和圈圈。hover 时给名字区
+   让出 46px，名字自动收成省略号，圈圈始终留在按钮左边。
+   短名字本来就有余量，hover 前后不会跳动。 */
+@media (hover: hover) {
+  html#octop-simple-theme-root [class*="module__agentRowNameRow"]:hover [class*="module__agentNameCluster"],
+  html#octop-simple-theme-root [class*="module__agentCardNameRow"]:hover [class*="module__agentNameCluster"],
+  html#octop-simple-theme-root [class*="module__agentRowNameRow"]:focus-within [class*="module__agentNameCluster"],
+  html#octop-simple-theme-root [class*="module__agentCardNameRow"]:focus-within [class*="module__agentNameCluster"] {
+    padding-right: 46px !important;
+  }
+}
+/* 插件页的"卡片/列表"切换标签：图标原来是贴着左边缘的，补一点内距让它和文字成组 */
+html#octop-simple-theme-root [class*="module__viewModeLabel"] {
+  padding-inline: 4px !important;
+  gap: 5px !important;
+  align-items: center !important;
+}
+html#octop-simple-theme-root [class*="module__agentRowDesc"],
+html#octop-simple-theme-root [class*="module__agentCardDesc"] {
+  font-size: 12px !important;
+  line-height: 17px !important;
+  color: var(--fn-text-tertiary) !important;
+}
+html#octop-simple-theme-root [class*="module__agentNewChatBtn"],
+html#octop-simple-theme-root [class*="module__agentPinBtn"] {
+  width: 22px !important;
+  height: 22px !important;
+  min-width: 0 !important;
+  padding: 0 !important;
+  border: none !important;
+  border-radius: 6px !important;
+  background: transparent !important;
+  color: var(--fn-text-tertiary) !important;
+  opacity: 0;
+}
+html#octop-simple-theme-root [class*="module__agentRow"]:hover [class*="module__agentNewChatBtn"],
+html#octop-simple-theme-root [class*="module__agentCard"]:hover [class*="module__agentNewChatBtn"],
+html#octop-simple-theme-root [class*="module__agentRow"]:hover [class*="module__agentPinBtn"],
+html#octop-simple-theme-root [class*="module__agentCard"]:hover [class*="module__agentPinBtn"] {
+  opacity: 1;
+}
+
+/* 会话行：32px 高、圆角 8、悬停才浮出底色与"更多" */
+html#octop-simple-theme-root [class*="module__sessionRow__"] {
+  min-height: 32px !important;
+  padding: 0 8px !important;
+  border: none !important;
+  border-radius: 8px !important;
+  box-shadow: none !important;
+  font-size: 14px !important;
+  color: var(--fn-text-secondary) !important;
+  position: relative !important;
+  gap: 8px !important;
+}
+html#octop-simple-theme-root [class*="module__sessionRow__"]:hover {
+  background: var(--fn-sidebar-item-hover) !important;
+  color: var(--fn-text-primary) !important;
+}
+html#octop-simple-theme-root [class*="module__sessionRowActive"] {
+  background: var(--fn-sidebar-item-active-bg) !important;
+  color: var(--fn-text-primary) !important;
+  font-weight: 500 !important;
+}
+html#octop-simple-theme-root [class*="module__sessionRowTitle"] {
+  font-size: 15px !important;
+  line-height: 21px !important;
+  color: inherit !important;
+  overflow: hidden !important;
+  text-overflow: ellipsis !important;
+  white-space: nowrap !important;
+}
+html#octop-simple-theme-root [class*="module__sessionRowLead"] svg {
+  width: 13px !important;
+  height: 13px !important;
+  color: var(--fn-text-quaternary) !important;
+}
+html#octop-simple-theme-root [class*="module__sessionRowMore"] {
+  position: absolute !important;
+  right: 4px !important;
+  top: 50% !important;
+  transform: translateY(-50%) !important;
+  width: 22px !important;
+  height: 22px !important;
+  padding: 0 !important;
+  border: none !important;
+  border-radius: 6px !important;
+  background: transparent !important;
+  color: var(--fn-text-tertiary) !important;
+  opacity: 0;
+}
+html#octop-simple-theme-root [class*="module__sessionRow__"]:hover [class*="module__sessionRowMore"] {
+  opacity: 1;
+}
+html#octop-simple-theme-root [class*="module__sessionRowMore"]:hover {
+  background: var(--fn-sidebar-item-active-bg) !important;
+  color: var(--fn-text-primary) !important;
+}
+
+/* 导航分组标题 */
+html#octop-simple-theme-root [class*="Sidebar-module__navGroupHeader"] {
+  height: 24px !important;
+  min-height: 24px !important;
+  padding: 0 8px !important;
+  margin-top: 10px !important;
+}
+html#octop-simple-theme-root [class*="Sidebar-module__navGroupLabel"],
+html#octop-simple-theme-root [class*="navGroupLabel"] {
+  font-size: 12px !important;
+  font-weight: 500 !important;
+  letter-spacing: 0.01em !important;
+  color: var(--fn-text-quaternary) !important;
+  text-transform: none !important;
+}
+html#octop-simple-theme-root [class*="Sidebar-module__navItemMain"],
+html#octop-simple-theme-root [class*="module__navItemRow"] {
+  height: 32px !important;
+  min-height: 32px !important;
+  padding: 0 8px !important;
+  gap: 10px !important;
+  border: none !important;
+  border-radius: 8px !important;
+  box-shadow: none !important;
+  font-size: 15px !important;
+  color: var(--fn-text-secondary) !important;
+}
+html#octop-simple-theme-root [class*="Sidebar-module__navItemMain"]:hover,
+html#octop-simple-theme-root [class*="module__navItemRow"]:hover {
+  background: var(--fn-sidebar-item-hover) !important;
+  color: var(--fn-text-primary) !important;
+}
+html#octop-simple-theme-root [class*="Sidebar-module__navItemRow"] svg,
+html#octop-simple-theme-root [class*="Sidebar-module__navItemMain"] svg {
+  width: 16px !important;
+  height: 16px !important;
+  color: var(--fn-text-tertiary) !important;
+}
+
+/* 账号区与版本号 */
+html#octop-simple-theme-root button[class*="AvatarDropdown-module__trigger"] {
+  height: 44px !important;
+  min-height: 44px !important;
+  padding: 0 8px !important;
+  border: none !important;
+  border-radius: 10px !important;
+  font-size: 13px !important;
+}
+html#octop-simple-theme-root button[class*="AvatarDropdown-module__trigger"]:hover {
+  background: var(--fn-sidebar-item-hover) !important;
+}
+html#octop-simple-theme-root [class*="AvatarDropdown-module__accountAvatar"] {
+  width: 22px !important;
+  height: 22px !important;
+  border-radius: 50% !important;
+  background: var(--fn-bg-tertiary) !important;
+}
+html#octop-simple-theme-root [class*="AvatarDropdown-module__triggerName"] {
+  font-size: 13px !important;
+  color: var(--fn-text-primary) !important;
+}
+html#octop-simple-theme-root [class*="module__versionBadge__"] {
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  line-height: 16px !important;
+  white-space: nowrap !important;
+  flex-shrink: 0 !important;
+  font-size: 11px !important;
+  color: var(--fn-text-quaternary) !important;
+  background: transparent !important;
+  border: none !important;
+  padding: 0 !important;
+  height: auto !important;
+  min-height: 0 !important;
+}
+html#octop-simple-theme-root [class*="nav-badge"] {
+  font-size: 10px !important;
+  font-weight: 500 !important;
+  color: var(--fn-text-secondary) !important;
+  background: var(--fn-bg-tertiary) !important;
+  border-radius: 980px !important;
+  padding: 0 6px !important;
+}
+
+/* =========================================================================
+   2. 对话页骨架：单列中轴
+   ========================================================================= */
+html#octop-simple-theme-root [class*="module__chatPage"],
+html#octop-simple-theme-root [class*="module__chatMain"],
+html#octop-simple-theme-root [class*="module__chatContent"] {
+  background: var(--fn-bg-primary) !important;
+}
+html#octop-simple-theme-root [class*="module__messageListWrapper"] {
+  background: var(--fn-bg-primary) !important;
+}
+html#octop-simple-theme-root [class*="module__messageList__"][class] {
+  padding: 24px 0 12px !important;
+}
+html#octop-simple-theme-root [class*="module__messageListInner"] {
+  max-width: calc(var(--simple-column) + 40px) !important;
+  margin-inline: auto !important;
+  /* 消息区比输入区窄一个滚动条宽度（5px）。左右内边距故意不对称，让正文
+     左边缘和输入框、标题、免责声明落在同一条竖线上。 */
+  padding: 0 15px 0 25px !important;
+}
+
+/* 头像列整列拆掉：48px 1fr 48px 的三列网格收成一列，并把钉在 grid-column:2
+   的子元素解出来，否则正文会一直缩进 48px、宽度少 96px。 */
+html#octop-simple-theme-root [class*="module__turnInset"],
+html#octop-simple-theme-root [class*="module__assistantBubble"],
+html#octop-simple-theme-root [class*="module__userBubble"],
+html#octop-simple-theme-root [class*="module__processSummaryRow"] {
+  grid-template-columns: minmax(0, 1fr) !important;
+  gap: 0 !important;
+}
+html#octop-simple-theme-root [class*="module__turnInset"] > *,
+html#octop-simple-theme-root [class*="module__assistantBubble"] > *,
+html#octop-simple-theme-root [class*="module__userBubble"] > *,
+html#octop-simple-theme-root [class*="module__processSummaryRow"] > * {
+  grid-column: 1 / -1 !important;
+}
+html#octop-simple-theme-root [class*="module__avatarCol"] {
+  display: none !important;
+}
+html#octop-simple-theme-root [class*="module__msgSender"],
+html#octop-simple-theme-root [class*="module__msgSenderBtn"],
+html#octop-simple-theme-root [class*="module__msgUserAvatar"] {
+  display: none !important;
+}
+
+html#octop-simple-theme-root [class*="module__assistantTurn"] {
+  display: flex !important;
+  flex-direction: column !important;
+  gap: 4px !important;
+  margin-bottom: 26px !important;
+}
+html#octop-simple-theme-root [class*="module__assistantTurnAnswer"],
+html#octop-simple-theme-root [class*="module__assistantBubble"],
+html#octop-simple-theme-root [class*="module__bubbleContent"] {
+  width: 100% !important;
+  max-width: none !important;
+  padding: 0 !important;
+}
+
+/* 顶栏：48px、透明、标题回到 14px 次级灰 */
+html#octop-simple-theme-root [class*="module__chatTitleBar__"] {
+  height: 48px !important;
+  min-height: 48px !important;
+  flex: 0 0 48px !important;
+  padding: 0 20px !important;
+  background: transparent !important;
+  border-bottom: none !important;
+  box-shadow: none !important;
+}
+html#octop-simple-theme-root [class*="module__chatTitleLeft"] {
+  max-width: var(--simple-column) !important;
+  width: 100% !important;
+  margin-inline: auto !important;
+  padding: 0 !important;
+  gap: 6px !important;
+}
+html#octop-simple-theme-root [class*="module__chatTitleLeadingIcon"] {
+  display: none !important;
+}
+html#octop-simple-theme-root [class*="module__chatTitleText"] {
+  font-size: 16px !important;
+  font-weight: 500 !important;
+  line-height: 22px !important;
+  color: var(--fn-text-secondary) !important;
+  letter-spacing: 0 !important;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+html#octop-simple-theme-root [class*="module__chatTitleEditBtn"] {
+  width: 26px !important;
+  height: 26px !important;
+  min-width: 0 !important;
+  padding: 0 !important;
+  border: none !important;
+  border-radius: 8px !important;
+  background: transparent !important;
+  color: var(--fn-text-tertiary) !important;
+  opacity: 0;
+}
+html#octop-simple-theme-root [class*="module__chatTitleBar__"]:hover [class*="module__chatTitleEditBtn"],
+html#octop-simple-theme-root [class*="module__chatTitleEditBtn"]:focus-visible {
+  opacity: 1;
+}
+html#octop-simple-theme-root [class*="module__chatTitleEditBtn"]:hover {
+  background: var(--simple-hover) !important;
+  color: var(--fn-text-primary) !important;
+}
+
+/* =========================================================================
+   3. 消息：助手纯文字，用户一枚浅灰圆角块
+   ========================================================================= */
+html#octop-simple-theme-root [class*="module__messageBubble"] {
+  background: transparent !important;
+  border: none !important;
+  border-radius: 0 !important;
+  box-shadow: none !important;
+  padding: 0 !important;
+}
+html#octop-simple-theme-root [class*="module__assistantText"] {
+  width: 100% !important;
+  padding: 0 !important;
+  border: none !important;
+  border-radius: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
+  font-size: 16px !important;
+  line-height: 27px !important;
+  color: var(--fn-text-primary) !important;
+}
+
+/* 用户消息：靠右、最大 80% 宽、圆角 18 */
+html#octop-simple-theme-root [class*="module__userBubble"] {
+  justify-content: flex-end !important;
+  margin: 6px 0 26px !important;
+}
+/* 用户消息的 bubbleContent 默认是 flex 行：气泡在左、时间/复制/编辑那行在右。
+   改成纵向排列，气泡在上、操作行在下（右对齐贴着气泡右边缘）。 */
+html#octop-simple-theme-root [class*="module__userBubble"] [class*="module__bubbleContent"] {
+  display: flex !important;
+  flex-direction: column !important;
+  flex-wrap: nowrap !important;
+  justify-content: flex-end !important;
+  align-items: flex-end !important;
+  gap: 0 !important;
+}
+html#octop-simple-theme-root [class*="module__userBubble"] [class*="module__userMsgRow"] {
+  display: flex !important;
+  justify-content: flex-end !important;
+  max-width: 100% !important;
+}
+html#octop-simple-theme-root [class*="module__userText"],
+html#octop-simple-theme-root [class*="module__userMsgText"] {
+  display: inline-block !important;
+  max-width: min(620px, 80vw) !important;
+  padding: 10px 16px !important;
+  border: none !important;
+  border-radius: 18px !important;
+  background: var(--simple-user-bubble) !important;
+  color: var(--fn-text-primary) !important;
+  box-shadow: none !important;
+  font-size: 16px !important;
+  line-height: 26px !important;
+  white-space: pre-wrap;
+}
+
+/* 正文 Markdown */
+html#octop-simple-theme-root [class*="module__markdownBody"] {
+  font-size: 16px !important;
+  line-height: 27px !important;
+  color: inherit !important;
+  letter-spacing: -0.001em;
+}
+html#octop-simple-theme-root [class*="module__markdownBody"] > *:first-child {
+  margin-top: 0 !important;
+}
+html#octop-simple-theme-root [class*="module__markdownBody"] > *:last-child {
+  margin-bottom: 0 !important;
+}
+html#octop-simple-theme-root [class*="module__markdownBody"] p {
+  margin: 0 0 14px !important;
+}
+html#octop-simple-theme-root [class*="module__markdownBody"] h1,
+html#octop-simple-theme-root [class*="module__markdownBody"] h2,
+html#octop-simple-theme-root [class*="module__markdownBody"] h3,
+html#octop-simple-theme-root [class*="module__markdownBody"] h4 {
+  margin: 24px 0 10px !important;
+  font-weight: 600 !important;
+  line-height: 1.35 !important;
+  letter-spacing: -0.012em !important;
+  color: var(--fn-text-primary) !important;
+}
+html#octop-simple-theme-root [class*="module__markdownBody"] h1 {
+  font-size: 24px !important;
+}
+html#octop-simple-theme-root [class*="module__markdownBody"] h2 {
+  font-size: 20px !important;
+}
+html#octop-simple-theme-root [class*="module__markdownBody"] h3 {
+  font-size: 17px !important;
+}
+html#octop-simple-theme-root [class*="module__markdownBody"] h4 {
+  font-size: 16px !important;
+}
+html#octop-simple-theme-root [class*="module__markdownBody"] ul,
+html#octop-simple-theme-root [class*="module__markdownBody"] ol {
+  margin: 0 0 14px !important;
+  padding-left: 22px !important;
+}
+html#octop-simple-theme-root [class*="module__markdownBody"] li {
+  margin: 3px 0 !important;
+}
+html#octop-simple-theme-root [class*="module__markdownBody"] li::marker {
+  color: var(--fn-text-quaternary);
+}
+html#octop-simple-theme-root [class*="module__markdownBody"] strong {
+  font-weight: 600 !important;
+}
+html#octop-simple-theme-root [class*="module__markdownBody"] a {
+  color: inherit !important;
+  text-decoration: underline;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 2px;
+  text-decoration-color: var(--fn-text-quaternary);
+}
+html#octop-simple-theme-root [class*="module__markdownBody"] a:hover {
+  text-decoration-color: currentColor;
+}
+html#octop-simple-theme-root [class*="module__markdownBody"] blockquote {
+  margin: 14px 0 !important;
+  padding: 2px 0 2px 14px !important;
+  border-left: 2px solid var(--simple-quote-border) !important;
+  background: transparent !important;
+  border-radius: 0 !important;
+  color: var(--fn-text-secondary) !important;
+}
+html#octop-simple-theme-root [class*="module__markdownBody"] blockquote p {
+  margin: 0 0 8px !important;
+}
+html#octop-simple-theme-root [class*="module__markdownBody"] hr {
+  height: 0 !important;
+  margin: 24px 0 !important;
+  border: none !important;
+  border-top: 1px solid var(--simple-hairline) !important;
+}
+html#octop-simple-theme-root [class*="module__markdownBody"] :not(pre) > code,
+html#octop-simple-theme-root [class*="module__inlineCode"] {
+  padding: 1px 5px !important;
+  border: none !important;
+  border-radius: 5px !important;
+  background: var(--fn-bg-code) !important;
+  color: inherit !important;
+  font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace !important;
+  font-size: 14px !important;
+}
+html#octop-simple-theme-root [class*="module__markdownBody"] pre {
+  margin: 14px 0 !important;
+  padding: 0 !important;
+  border: none !important;
+  background: transparent !important;
+  font-size: 14px !important;
+  overflow: visible !important;
+}
+html#octop-simple-theme-root [class*="module__codeBlockWrapper"] {
+  margin: 14px 0 !important;
+  padding: 0 !important;
+  border: 1px solid var(--simple-hairline) !important;
+  border-radius: 12px !important;
+  background: var(--simple-code-bg) !important;
+  box-shadow: none !important;
+  overflow: hidden !important;
+}
+html#octop-simple-theme-root [class*="module__codeBlockHeader"] {
+  height: 34px !important;
+  min-height: 34px !important;
+  padding: 0 10px 0 14px !important;
+  border-bottom: 1px solid var(--simple-hairline) !important;
+  background: transparent !important;
+}
+html#octop-simple-theme-root [class*="module__codeBlockLang"] {
+  font-size: 12px !important;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace !important;
+  color: var(--fn-text-tertiary) !important;
+}
+html#octop-simple-theme-root [class*="module__codeCopyBtn"] {
+  width: 24px !important;
+  height: 24px !important;
+  min-width: 0 !important;
+  padding: 0 !important;
+  border: none !important;
+  border-radius: 6px !important;
+  background: transparent !important;
+  color: var(--fn-text-tertiary) !important;
+}
+html#octop-simple-theme-root [class*="module__codeCopyBtn"]:hover {
+  background: var(--simple-hover) !important;
+  color: var(--fn-text-primary) !important;
+}
+html#octop-simple-theme-root [class*="module__codeBlockWrapper"] pre,
+html#octop-simple-theme-root [class*="module__codeBlockWrapper"] code {
+  margin: 0 !important;
+  padding: 14px 16px !important;
+  background: transparent !important;
+  color: var(--simple-code-fg) !important;
+  line-height: 1.6 !important;
+}
+html#octop-simple-theme-root [class*="module__markdownBody"] table {
+  width: auto !important;
+  margin: 14px 0 !important;
+  border-collapse: collapse !important;
+  font-size: 14px !important;
+}
+html#octop-simple-theme-root [class*="module__markdownBody"] th,
+html#octop-simple-theme-root [class*="module__markdownBody"] td {
+  padding: 8px 14px !important;
+  border: none !important;
+  border-bottom: 1px solid var(--simple-hairline) !important;
+  text-align: left !important;
+}
+html#octop-simple-theme-root [class*="module__markdownBody"] th {
+  font-size: 13px !important;
+  font-weight: 600 !important;
+  color: var(--fn-text-secondary) !important;
+}
+html#octop-simple-theme-root [class*="module__markdownBody"] img {
+  max-width: 100% !important;
+  border-radius: 12px !important;
+}
+html#octop-simple-theme-root [class*="module__tableWrapper"] {
+  border: none !important;
+  border-radius: 0 !important;
+  background: transparent !important;
+}
+html#octop-simple-theme-root [class*="module__messageImages"] img,
+html#octop-simple-theme-root [class*="toolMediaImage"] {
+  border-radius: 12px !important;
+  border: 1px solid var(--simple-hairline) !important;
+}
+
+/* 元信息：默认看不见，悬停该条消息才浮出 */
+html#octop-simple-theme-root [class*="module__msgMetaRow"] {
+  margin-top: 6px !important;
+  padding: 0 !important;
+  height: 24px !important;
+  gap: 2px !important;
+  opacity: 0;
+}
+html#octop-simple-theme-root [class*="module__messageBubble"]:hover [class*="module__msgMetaRow"],
+html#octop-simple-theme-root [class*="module__assistantTurn"]:hover [class*="module__msgMetaRow"] {
+  opacity: 1;
+}
+/* 用户消息的时间/复制/编辑行：不再挂在气泡右侧，改为气泡下方一行、右对齐 */
+html#octop-simple-theme-root [class*="module__userBubble"] [class*="module__msgMetaRow"] {
+  width: auto !important;
+  max-width: 100% !important;
+  align-self: flex-end !important;
+  justify-content: flex-end !important;
+  margin: 2px 0 0 !important;
+  padding: 0 !important;
+  gap: 2px !important;
+}
+html#octop-simple-theme-root [class*="module__msgTime"],
+html#octop-simple-theme-root [class*="module__msgUsage"] {
+  font-size: 12px !important;
+  line-height: 16px !important;
+  color: var(--fn-text-quaternary) !important;
+}
+html#octop-simple-theme-root [class*="module__msgCopyBtn"],
+html#octop-simple-theme-root [class*="module__msgActionBtn"] {
+  width: 24px !important;
+  height: 24px !important;
+  min-width: 0 !important;
+  padding: 0 !important;
+  border: none !important;
+  border-radius: 6px !important;
+  background: transparent !important;
+  color: var(--fn-text-tertiary) !important;
+}
+html#octop-simple-theme-root [class*="module__msgCopyBtn"]:hover,
+html#octop-simple-theme-root [class*="module__msgActionBtn"]:hover {
+  background: var(--simple-hover) !important;
+  color: var(--fn-text-primary) !important;
+}
+html#octop-simple-theme-root [class*="module__msgCopyBtn"] svg,
+html#octop-simple-theme-root [class*="module__msgActionBtn"] svg {
+  width: 14px !important;
+  height: 14px !important;
+}
+
+/* 「收起这条回复 / 回到开头」两个图标按钮：挂在消息操作行里（从此处分叉右边），
+   和复制 / 朗读 / 重新生成同一套尺寸与配色。 */
+html#octop-simple-theme-root .simple-msg-btn {
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  width: 24px !important;
+  height: 24px !important;
+  min-width: 0 !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  border: none !important;
+  border-radius: 6px !important;
+  background: transparent !important;
+  box-shadow: none !important;
+  color: var(--fn-text-tertiary) !important;
+  cursor: pointer !important;
+  transition-property: background-color, color !important;
+  transition-duration: 0.15s !important;
+}
+html#octop-simple-theme-root .simple-msg-btn svg {
+  width: 14px !important;
+  height: 14px !important;
+  flex: none !important;
+}
+html#octop-simple-theme-root .simple-msg-btn:hover {
+  background: var(--simple-hover) !important;
+  color: var(--fn-text-primary) !important;
+}
+html#octop-simple-theme-root .simple-msg-btn:focus-visible {
+  outline: 2px solid var(--fn-text-tertiary) !important;
+  outline-offset: 1px !important;
+}
+
+/* 思维链（思考 + 工具调用）正文下面那个「收起思考与工具」 */
+html#octop-simple-theme-root .simple-process-collapse {
+  display: flex !important;
+  justify-content: flex-start !important;
+  align-items: center !important;
+  gap: 2px !important;
+  margin: 6px 0 2px !important;
+  padding: 0 !important;
+  height: 24px !important;
+}
+html#octop-simple-theme-root .simple-collapse-btn {
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  gap: 4px !important;
+  height: 22px !important;
+  margin: 0 !important;
+  padding: 0 6px !important;
+  border: none !important;
+  border-radius: 8px !important;
+  background: transparent !important;
+  box-shadow: none !important;
+  color: var(--fn-text-tertiary) !important;
+  font-size: 11.5px !important;
+  font-weight: 500 !important;
+  line-height: 1 !important;
+  cursor: pointer !important;
+  transition-property: background-color, color !important;
+  transition-duration: 0.15s !important;
+}
+html#octop-simple-theme-root .simple-collapse-btn svg {
+  width: 13px !important;
+  height: 13px !important;
+  flex: none !important;
+}
+html#octop-simple-theme-root .simple-collapse-btn:hover {
+  background: var(--simple-hover) !important;
+  color: var(--fn-text-primary) !important;
+}
+html#octop-simple-theme-root .simple-collapse-btn:focus-visible {
+  outline: 2px solid var(--fn-text-tertiary) !important;
+  outline-offset: 1px !important;
+}
+/* 点了之后立刻生效，不等 React 那一帧 */
+html#octop-simple-theme-root [class*="module__processSummaryRow"].simple-process-hiding {
+  max-height: 32px !important;
+  overflow: hidden !important;
+}
+
+/* 收起态：过程摘要只留那行标题，过程卡片（任务进度 / 预览）先收掉，
+   正文夹到 300px 并渐隐 —— 夹的是正文本身，操作行（含这两个按钮）要留在外面。 */
+html#octop-simple-theme-root .simple-turn-collapsed > [class*="module__processSummaryRow"] {
+  max-height: 32px !important;
+  overflow: hidden !important;
+}
+html#octop-simple-theme-root .simple-turn-collapsed > [class*="module__turnInset"] {
+  display: none !important;
+}
+html#octop-simple-theme-root .simple-turn-collapsed.simple-turn-has-meta [class*="module__assistantText"],
+html#octop-simple-theme-root .simple-turn-collapsed:not(.simple-turn-has-meta) [class*="module__assistantTurnAnswer"] {
+  max-height: 300px !important;
+  overflow: hidden !important;
+  -webkit-mask-image: linear-gradient(to bottom, #000 72%, transparent 100%) !important;
+  mask-image: linear-gradient(to bottom, #000 72%, transparent 100%) !important;
+}
+
+/* 思考 / 工具过程：压成一行 14px 灰字，像 "Thought for 6s" */
+html#octop-simple-theme-root [class*="module__processSummary__"] {
+  width: 100% !important;
+  max-width: none !important;
+  margin: 0 0 10px !important;
+  padding: 0 !important;
+  border: none !important;
+  border-radius: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
+}
+html#octop-simple-theme-root [class*="module__processSummaryToggle"] {
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: flex-start !important;
+  width: auto !important;
+  height: 26px !important;
+  min-height: 26px !important;
+  padding: 0 6px 0 0 !important;
+  margin: 0 !important;
+  border: none !important;
+  border-radius: 6px !important;
+  background: transparent !important;
+  color: var(--fn-text-tertiary) !important;
+  font-size: 16px !important;
+  line-height: 24px !important;
+  gap: 5px !important;
+}
+html#octop-simple-theme-root [class*="module__processSummaryToggle"]:hover {
+  color: var(--fn-text-primary) !important;
+}
+html#octop-simple-theme-root [class*="module__processSummaryText__"] {
+  width: auto !important; margin: 0 !important; padding: 0 !important;
+  line-height: 24px !important; flex: 0 1 auto !important;
+  font-size: 16px !important;
+  font-weight: 400 !important;
+  color: inherit !important;
+}
+html#octop-simple-theme-root [class*="module__processLiveLabel__"] {
+  display: inline-flex !important; align-items: center !important;
+  margin: 0 !important; line-height: 24px !important;
+  font-size: 16px !important;
+  color: inherit !important;
+}
+html#octop-simple-theme-root [class*="module__processSummaryToggle"] svg {
+  width: 13px !important;
+  height: 13px !important;
+  opacity: 0.8;
+}
+html#octop-simple-theme-root [class*="module__processSummaryBody"] {
+  margin: 2px 0 10px !important;
+  padding: 4px 0 0 12px !important;
+  border-top: none !important;
+  border-left: 1px solid var(--simple-hairline) !important;
+}
+html#octop-simple-theme-root [class*="module__processThinkingItem"] {
+  margin: 0 0 6px !important;
+  padding: 0 !important;
+  border: none !important;
+  background: transparent !important;
+}
+html#octop-simple-theme-root [class*="module__processThinkingItem"] [class*="module__markdownBody"] {
+  font-size: 14px !important;
+  line-height: 22px !important;
+  color: var(--fn-text-secondary) !important;
+}
+html#octop-simple-theme-root [class*="module__processThinkingItem"] [class*="module__markdownBody"] p {
+  margin: 0 0 6px !important;
+}
+html#octop-simple-theme-root [class*="module__inlineToolBlock"] {
+  margin: 2px 0 !important;
+  padding: 0 !important;
+  border: none !important;
+  background: transparent !important;
+  font-size: 13px !important;
+  color: var(--fn-text-tertiary) !important;
+}
+html#octop-simple-theme-root [class*="module__inlineToolIcon"] {
+  display: none !important;
+}
+html#octop-simple-theme-root [class*="module__inlineToolName"] {
+  font-size: 13px !important;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace !important;
+  color: var(--fn-text-tertiary) !important;
+}
+html#octop-simple-theme-root [class*="module__inlineToolSummary"],
+html#octop-simple-theme-root [class*="module__inlineToolStatus"] {
+  font-size: 12px !important;
+  color: var(--fn-text-quaternary) !important;
+}
+
+/* 待办面板：一层发丝线边框，不再套卡片 */
+html#octop-simple-theme-root [class*="module__todoProgressPanel"] {
+  margin: 10px 0 !important;
+  padding: 10px 14px !important;
+  border: 1px solid transparent !important;
+  border-radius: 12px !important;
+  background: transparent !important;
+  box-shadow: none !important;
+  font-size: 13px !important;
+}
+html#octop-simple-theme-root [class*="module__todoListBlock"] {
+  border: none !important;
+  border-radius: 0 !important;
+  background: transparent !important;
+  padding: 0 !important;
+}
+html#octop-simple-theme-root [class*="module__todoListTitle"],
+html#octop-simple-theme-root [class*="module__todoListSummary"] {
+  font-size: 12px !important;
+  font-weight: 500 !important;
+  color: var(--fn-text-tertiary) !important;
+}
+html#octop-simple-theme-root [class*="module__todoListItem"] {
+  margin: 3px 0 !important;
+  font-size: 13px !important;
+  color: var(--fn-text-secondary) !important;
+}
+html#octop-simple-theme-root [class*="module__todoListTextCompleted"] {
+  color: var(--fn-text-quaternary) !important;
+}
+
+/* 文件卡片 / 打开浏览器提示 */
+html#octop-simple-theme-root [class*="module__messageFileCard"] {
+  border: 1px solid var(--simple-hairline) !important;
+  border-radius: 10px !important;
+  background: transparent !important;
+  box-shadow: none !important;
+}
+html#octop-simple-theme-root [class*="module__messageFileName"] {
+  font-size: 13px !important;
+  color: var(--fn-text-secondary) !important;
+}
+html#octop-simple-theme-root [class*="module__openBrowserPrompt__"] {
+  display: inline-flex !important; align-items: center !important; gap: 8px !important;
+  height: 32px !important;
+  padding: 0 12px !important;
+  border: 0 !important;
+  border-radius: 12px !important;
+  background: var(--fn-bg-secondary) !important;
+  color: var(--fn-text-secondary) !important;
+  font-size: 13px !important;
+  box-shadow: none !important;
+}
+html#octop-simple-theme-root [class*="module__openBrowserPrompt__"]:hover {
+  background: var(--simple-hover) !important;
+}
+
+/* 回到底部 */
+html#octop-simple-theme-root [class*="module__scrollToBottomBtn__"] {
+  display: inline-flex !important; align-items: center !important; justify-content: center !important;
+  width: max-content !important; max-width: calc(100% - 32px) !important;
+  height: 36px !important;
+  min-width: 36px !important;
+  padding: 0 12px !important; gap: 6px !important; white-space: nowrap !important;
+  border: 0 !important;
+  border-radius: 12px !important;
+  background: var(--fn-bg-elevated) !important;
+  color: var(--fn-text-secondary) !important;
+  box-shadow: var(--fn-shadow-sm) !important;
+  font-size: 12px !important;
+}
+
+/* 右侧悬浮按钮列：去掉圆球外壳，只留图标 */
+html#octop-simple-theme-root [class*="module__chatFloatActions"] {
+  gap: 2px !important;
+  padding: 18px 8px !important;
+}
+html#octop-simple-theme-root [class*="module__chatFloatBtnWrap"] {
+  width: 30px !important;
+  height: 30px !important;
+}
+html#octop-simple-theme-root [class*="module__chatFloatBtn"],
+html#octop-simple-theme-root [class*="module__installBtnChatFloat"],
+html#octop-simple-theme-root [class*="module__agentProfileBtn"],
+html#octop-simple-theme-root [class*="module__terminalFloatBtn"],
+html#octop-simple-theme-root [class*="module__browserStatusBtn"] {
+  width: 30px !important;
+  height: 30px !important;
+  min-width: 0 !important;
+  padding: 0 !important;
+  border: none !important;
+  border-radius: 8px !important;
+  background: transparent !important;
+  color: var(--fn-text-tertiary) !important;
+  box-shadow: none !important;
+  opacity: 0.85;
+}
+html#octop-simple-theme-root [class*="module__chatFloatBtn"]:hover,
+html#octop-simple-theme-root [class*="module__installBtnChatFloat"]:hover,
+html#octop-simple-theme-root [class*="module__agentProfileBtn"]:hover,
+html#octop-simple-theme-root [class*="module__terminalFloatBtn"]:hover,
+html#octop-simple-theme-root [class*="module__browserStatusBtn"]:hover {
+  background: var(--simple-hover) !important;
+  color: var(--fn-text-primary) !important;
+  opacity: 1;
+}
+html#octop-simple-theme-root [class*="module__chatFloatBadge"] {
+  min-width: 16px !important;
+  height: 16px !important;
+  padding: 0 4px !important;
+  border-radius: 980px !important;
+  background: var(--fn-text-primary) !important;
+  color: var(--fn-bg-primary) !important;
+  font-size: 10px !important;
+  font-weight: 600 !important;
+  line-height: 16px !important;
+  box-shadow: 0 0 0 2px var(--fn-bg-primary) !important;
+}
+
+/* =========================================================================
+   4. 输入框（composer）
+   ========================================================================= */
+html#octop-simple-theme-root [class*="module__chatInput"] {
+  padding: 8px 20px 4px !important;
+  background: transparent !important;
+}
+html#octop-simple-theme-root [class*="module__inputWrapper"] {
+  width: 100% !important;
+  max-width: var(--simple-column) !important;
+  margin-inline: auto !important;
+  padding: 8px 16px !important;
+  border: 1px solid var(--simple-hairline-strong) !important;
+  border-radius: 16px !important;
+  background: var(--fn-bg-primary) !important;
+  box-shadow: var(--fn-shadow-sm) !important;
+  gap: 0 !important;
+  /* 组件本身是 column 弹性盒，默认 align-items 会把 inputRow / actionsRow
+     缩成内容宽度（textarea 只剩 184px）。必须拉回整行。 */
+  align-items: stretch !important;
+}
+html#octop-simple-theme-root [class*="module__inputWrapper__"]:focus-within {
+  border-color: transparent !important;
+  box-shadow: none !important;
+}
+html#octop-simple-theme-root[data-theme="dark"] [class*="module__inputWrapper__"] {
+  background: var(--fn-bg-secondary) !important;
+  border-color: transparent !important;
+  box-shadow: none !important;
+}
+html#octop-simple-theme-root[data-theme="dark"] [class*="module__inputWrapper__"]:focus-within {
+  border-color: transparent !important;
+}
+html#octop-simple-theme-root [class*="module__inputRow"] {
+  display: flex !important;
+  width: 100% !important;
+  align-items: flex-end !important;
+  min-height: 26px !important;
+  padding: 0 !important;
+  gap: 8px !important;
+}
+html#octop-simple-theme-root [class*="module__textarea"] {
+  height: auto !important;
+  min-height: 26px !important;
+  max-height: 216px !important;
+  padding: 5px 0 !important;
+  border: none !important;
+  border-radius: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
+  font-size: 16px !important;
+  line-height: 24px !important;
+  color: var(--fn-text-primary) !important;
+  resize: none !important;
+  field-sizing: content;
+}
+html#octop-simple-theme-root [class*="module__textarea"]::placeholder {
+  color: var(--fn-text-placeholder) !important;
+}
+
+/* 输入区只常显「+ / 麦克风 / 发送」，其余图标悬停或聚焦才淡入 */
+html#octop-simple-theme-root [class*="module__actionsRow"] {
+  width: 100% !important;
+  padding: 4px 0 0 !important;
+  margin: 0 !important;
+  border-top: none !important;
+  gap: 2px !important;
+  min-height: 0 !important;
+  align-items: center !important;
+}
+html#octop-simple-theme-root [class*="module__secondaryActions"],
+html#octop-simple-theme-root [class*="module__inputActions"] {
+  gap: 2px !important;
+  padding: 0 !important;
+  align-items: center !important;
+}
+html#octop-simple-theme-root [class*="module__secondaryBtn"],
+html#octop-simple-theme-root [class*="module__newChatBtn"] {
+  width: 30px !important;
+  height: 30px !important;
+  min-width: 0 !important;
+  min-height: 0 !important;
+  flex: 0 0 auto !important;
+  padding: 0 !important;
+  border: none !important;
+  border-radius: 980px !important;
+  background: transparent !important;
+  color: var(--fn-text-secondary) !important;
+  box-shadow: none !important;
+}
+html#octop-simple-theme-root [class*="module__secondaryBtn"]:hover,
+html#octop-simple-theme-root [class*="module__newChatBtn"]:hover {
+  background: var(--simple-hover) !important;
+  color: var(--fn-text-primary) !important;
+}
+html#octop-simple-theme-root [class*="module__secondaryBtn"] svg,
+html#octop-simple-theme-root [class*="module__newChatBtn"] svg {
+  width: 17px !important;
+  height: 17px !important;
+}
+html#octop-simple-theme-root [class*="module__secondaryActions"] [class*="module__secondaryBtn"]:nth-child(n + 2),
+html#octop-simple-theme-root [class*="module__newChatBtn"],
+html#octop-simple-theme-root [class*="module__contextRingBtn"] {
+  opacity: 0;
+}
+html#octop-simple-theme-root [class*="module__inputWrapper"]:hover [class*="module__secondaryBtn"],
+html#octop-simple-theme-root [class*="module__inputWrapper"]:hover [class*="module__newChatBtn"],
+html#octop-simple-theme-root [class*="module__inputWrapper"]:hover [class*="module__contextRingBtn"],
+html#octop-simple-theme-root [class*="module__inputWrapper"]:focus-within [class*="module__secondaryBtn"],
+html#octop-simple-theme-root [class*="module__inputWrapper"]:focus-within [class*="module__newChatBtn"],
+html#octop-simple-theme-root [class*="module__inputWrapper"]:focus-within [class*="module__contextRingBtn"] {
+  opacity: 1;
+}
+html#octop-simple-theme-root [class*="module__contextRingBtn"] {
+  width: 28px !important;
+  height: 28px !important;
+  min-width: 0 !important;
+}
+html#octop-simple-theme-root [class*="module__contextRingLabel"] {
+  font-size: 9px !important;
+  color: var(--fn-text-quaternary) !important;
+}
+html#octop-simple-theme-root [class*="module__sendBtn"] {
+  width: 32px !important;
+  height: 32px !important;
+  min-width: 0 !important;
+  min-height: 0 !important;
+  flex: 0 0 auto !important;
+  padding: 0 !important;
+  border: none !important;
+  border-radius: 980px !important;
+  background: var(--fn-color-brand) !important;
+  color: var(--fn-color-on-brand) !important;
+  box-shadow: none !important;
+}
+html#octop-simple-theme-root [class*="module__sendBtn"]:hover:not(:disabled) {
+  background: var(--fn-color-brand-hover) !important;
+  transform: none !important;
+}
+html#octop-simple-theme-root [class*="module__sendBtn"]:disabled {
+  background: var(--fn-bg-tertiary) !important;
+  color: var(--fn-text-quaternary) !important;
+  opacity: 1 !important;
+}
+html#octop-simple-theme-root [class*="module__sendBtn"] svg {
+  width: 17px !important;
+  height: 17px !important;
+}
+
+/* 上下文小标签 */
+html#octop-simple-theme-root [class*="module__imagePreviewBar"] {
+  gap: 6px !important;
+  padding: 0 0 6px !important;
+  margin: 0 !important;
+}
+html#octop-simple-theme-root [class*="module__contextChip__"] {
+  display: inline-flex !important; align-items: center !important; gap: 6px !important;
+  width: max-content !important; max-width: 100% !important; min-width: 0 !important;
+  height: 28px !important; min-height: 28px !important;
+  padding: 0 8px !important;
+  border: 0 !important; border-radius: 10px !important;
+  background: var(--fn-bg-primary) !important;
+  color: var(--fn-text-secondary) !important;
+  font-size: 12px !important; line-height: 18px !important;
+  box-sizing: border-box !important; overflow: hidden !important;
+}
+html#octop-simple-theme-root [class*="module__contextChipIcon__"] {
+  display: inline-flex !important; align-items: center !important; justify-content: center !important;
+  flex: 0 0 14px !important; width: 14px !important; height: 14px !important;
+  min-height: 0 !important; padding: 0 !important; background: transparent !important;
+}
+html#octop-simple-theme-root [class*="module__contextChipLabel__"] {
+  display: block !important; flex: 0 1 auto !important;
+  min-width: 0 !important; width: auto !important; height: auto !important;
+  min-height: 0 !important; padding: 0 !important; margin: 0 !important;
+  font-size: 12px !important; line-height: 18px !important; font-weight: 500 !important;
+  white-space: nowrap !important; overflow: hidden !important; text-overflow: ellipsis !important;
+  background: transparent !important; color: inherit !important;
+}
+html#octop-simple-theme-root [class*="module__contextChipRemove__"] {
+  display: inline-flex !important; align-items: center !important; justify-content: center !important;
+  flex: 0 0 18px !important; width: 18px !important; height: 18px !important;
+  min-height: 0 !important; min-width: 0 !important; padding: 0 !important; margin: 0 !important;
+  border: 0 !important; border-radius: 6px !important; background: transparent !important;
+  opacity: 0.6;
+}
+html#octop-simple-theme-root [class*="module__contextChip__"]:hover [class*="module__contextChipRemove__"] {
+  opacity: 1;
+}
+
+/* 输入区下方小字：与输入框之间留 4px，别把输入区顶得离底边太远 */
+html#octop-simple-theme-root [class*="module__runUsageBar"],
+html#octop-simple-theme-root [class*="module__aiDisclaimer"] {
+  max-width: var(--simple-column) !important;
+  margin: 4px auto 0 !important;
+  padding: 0 !important;
+  font-size: 12px !important;
+  line-height: 18px !important;
+  color: var(--fn-text-quaternary) !important;
+  text-align: center !important;
+}
+html#octop-simple-theme-root [class*="module__runUsageBar"] {
+  text-align: left !important;
+  opacity: 0.9;
+}
+
+/* =========================================================================
+   5. 空态 / 欢迎页：并到同一条中轴
+   ========================================================================= */
+html#octop-simple-theme-root [class*="module__welcome__"] {
+  padding-inline: 20px !important;
+}
+html#octop-simple-theme-root [class*="module__welcomeInner"] {
+  width: 100% !important;
+  max-width: var(--simple-column) !important;
+  padding: 0 !important;
+}
+html#octop-simple-theme-root [class*="module__welcomeHeading"] {
+  width: 100% !important;
+  align-items: flex-start !important;
+  text-align: left !important;
+  gap: 8px !important;
+  color: var(--fn-text-primary) !important;
+}
+html#octop-simple-theme-root [class*="module__welcomeTitle"] {
+  font-size: 30px !important;
+  font-weight: 500 !important;
+  line-height: 1.28 !important;
+  letter-spacing: -0.022em !important;
+  color: var(--fn-text-primary) !important;
+  text-align: left !important;
+}
+html#octop-simple-theme-root [class*="module__welcomeSubtitle"],
+html#octop-simple-theme-root [class*="module__welcomeAgentLine"] {
+  font-size: 15px !important;
+  line-height: 1.6 !important;
+  color: var(--fn-text-tertiary) !important;
+  justify-content: flex-start !important;
+  text-align: left !important;
+}
+html#octop-simple-theme-root [class*="module__welcomeMascot"] {
+  display: block !important;
+  width: 104px !important;
+  height: auto !important;
+  margin-bottom: -2px !important;
+  align-self: flex-start !important;
+  background: transparent !important;
+}
+/* 点一下换动作：保留原生 hover / active / focus 反馈，只补一点位移让它更像在探头 */
+html#octop-simple-theme-root [class*="module__welcomeMascot"]:hover {
+  transform: scale(1.04) translateY(-2px);
+}
+html#octop-simple-theme-root [class*="module__quickSection"] {
+  width: 100% !important;
+  max-width: var(--simple-column) !important;
+}
+html#octop-simple-theme-root [class*="module__quickCards"] {
+  display: grid !important;
+  grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)) !important;
+  gap: 8px !important;
+  width: 100% !important;
+  /* 3.9.9 — 最外两列原本正好压在中轴上，卡片描边与内容框边缘重合，
+     看上去是「贴死在边上」。给网格自身让出 8px（与列间距一致），卡片离开边缘。 */
+  box-sizing: border-box !important;
+  padding-inline: 8px !important;
+}
+html#octop-simple-theme-root [class*="module__quickCard__"] {
+  width: auto !important;
+  min-width: 0 !important;
+  padding: 12px 14px !important;
+  border: 1px solid transparent !important;
+  border-radius: 12px !important;
+  background: transparent !important;
+  box-shadow: none !important;
+  font-size: 14px !important;
+  line-height: 20px !important;
+  color: var(--fn-text-primary) !important;
+  text-align: left !important;
+}
+html#octop-simple-theme-root [class*="module__quickCard__"]:hover {
+  background: var(--simple-hover) !important;
+}
+html#octop-simple-theme-root [class*="module__quickCardIcon"] {
+  width: 28px !important;
+  height: 28px !important;
+  border-radius: 8px !important;
+  background: var(--fn-bg-secondary) !important;
+  color: var(--fn-text-secondary) !important;
+  padding: 0 !important;
+  display: grid !important;
+  place-items: center !important;
+}
+html#octop-simple-theme-root [class*="module__quickCardIcon"] svg {
+  width: 16px !important;
+  height: 16px !important;
+  min-width: 16px !important;
+  max-width: 100% !important;
+  flex: none !important;
+  display: block !important;
+}
+html#octop-simple-theme-root [class*="module__quickCardTitleRow"],
+html#octop-simple-theme-root [class*="module__quickCardTitle"],
+html#octop-simple-theme-root [class*="module__quickCardBody"] {
+  font-size: 14px !important;
+  line-height: 20px !important;
+  font-weight: 500 !important;
+  color: var(--fn-text-primary) !important;
+}
+html#octop-simple-theme-root [class*="module__quickCardDesc"] {
+  font-size: 13px !important;
+  line-height: 19px !important;
+  font-weight: 400 !important;
+  color: var(--fn-text-tertiary) !important;
+}
+
+/* =========================================================================
+   6. 设置 / 后台 / 列表页：扁平化，卡片只留发丝线与 14px 圆角
+   ========================================================================= */
+html#octop-simple-theme-root .page-container,
+html#octop-simple-theme-root .page-content {
+  background: var(--fn-bg-primary) !important;
+}
+html#octop-simple-theme-root [class*="PageShell-module__tabbedBody"] {
+  padding-right: 0 !important;
+  padding-top: 0 !important;
+}
+html#octop-simple-theme-root [class*="PageShell-module__agentBar"] {
+  margin-bottom: 10px !important;
+  padding: 8px 12px !important;
+  border: 1px solid var(--simple-hairline) !important;
+  border-radius: 10px !important;
+  background: transparent !important;
+  box-shadow: none !important;
+}
+
+/* 页面标题：18px/600 + 13px 说明，跟正文同一套灰阶 */
+html#octop-simple-theme-root .octop-typography h4,
+html#octop-simple-theme-root h4.octop-typography {
+  font-size: 18px !important;
+  font-weight: 600 !important;
+  line-height: 26px !important;
+  letter-spacing: -0.01em !important;
+  color: var(--fn-text-primary) !important;
+}
+html#octop-simple-theme-root .octop-typography-secondary,
+html#octop-simple-theme-root [class*="module__sectionDesc"],
+html#octop-simple-theme-root [class*="tabContent-module__sectionDesc"] {
+  font-size: 13px !important;
+  line-height: 20px !important;
+  color: var(--fn-text-tertiary) !important;
+}
+html#octop-simple-theme-root [class*="tabContent-module__sectionTitle"] {
+  font-size: 14px !important;
+  font-weight: 600 !important;
+  color: var(--fn-text-primary) !important;
+}
+html#octop-simple-theme-root [class*="tabContent-module__panelHeader__"] {
+  padding: 0 0 14px !important;
+  border-bottom: 1px solid var(--simple-hairline) !important;
+  margin-bottom: 16px !important;
+}
+/* 面板头图标：组件本身只有尺寸，图标按 flex-start 贴住 30px 方块的左边，
+   22px 的图标因此比框心左偏 4–5px；每个管理页的每个面板都有这一个，看着
+   就像"一堆图标不居中"。改成网格居中，图标永远落在方块正中。 */
+html#octop-simple-theme-root [class*="tabContent-module__panelHeaderIcon"] {
+  width: 30px !important;
+  height: 30px !important;
+  border-radius: 9px !important;
+  background: var(--fn-bg-secondary) !important;
+  color: var(--fn-text-secondary) !important;
+  display: grid !important;
+  place-items: center !important;
+  padding: 0 !important;
+  line-height: 0 !important;
+}
+html#octop-simple-theme-root [class*="tabContent-module__panelHeaderIcon"] > svg,
+html#octop-simple-theme-root [class*="tabContent-module__panelHeaderIcon"] > img {
+  display: block !important;
+  margin: 0 !important;
+  flex: none !important;
+}
+
+/* 页内标签页：下划线式，去底色 */
+html#octop-simple-theme-root [class*="module__tabBar"] {
+  gap: 18px !important;
+  margin-bottom: 16px !important;
+  padding-bottom: 0 !important;
+  border-bottom: 1px solid var(--simple-hairline) !important;
+}
+html#octop-simple-theme-root [class*="module__tab__"][class] {
+  padding: 0 0 9px !important;
+  border: none !important;
+  border-bottom: 1.5px solid transparent !important;
+  border-radius: 0 !important;
+  background: transparent !important;
+  font-size: 14px !important;
+  font-weight: 500 !important;
+  color: var(--fn-text-tertiary) !important;
+  margin-bottom: -1px !important;
+  box-shadow: none !important;
+}
+html#octop-simple-theme-root [class*="module__tab__"][class]:hover {
+  color: var(--fn-text-primary) !important;
+}
+html#octop-simple-theme-root [class*="module__tabIcon"] svg {
+  width: 15px !important;
+  height: 15px !important;
+}
+/* active 用双属性提权，压过后台默认的粉色下划线 */
+html#octop-simple-theme-root [class*="module__tab__"][class*="active"][class] {
+  color: var(--fn-text-primary) !important;
+  border-bottom-color: var(--fn-text-primary) !important;
+}
+
+/* antd 风格标签页 */
+html#octop-simple-theme-root .octop-tabs-nav {
+  margin-bottom: 14px !important;
+}
+html#octop-simple-theme-root .octop-tabs-nav::before {
+  border-bottom: 1px solid var(--simple-hairline) !important;
+}
+html#octop-simple-theme-root .octop-tabs-tab {
+  padding: 0 0 9px !important;
+  font-size: 14px !important;
+  color: var(--fn-text-tertiary) !important;
+}
+html#octop-simple-theme-root .octop-tabs-tab:hover {
+  color: var(--fn-text-primary) !important;
+}
+html#octop-simple-theme-root .octop-tabs-tab-active .octop-tabs-tab-btn {
+  color: var(--fn-text-primary) !important;
+  font-weight: 500 !important;
+}
+html#octop-simple-theme-root .octop-tabs-ink-bar {
+  background: var(--fn-text-primary) !important;
+  height: 1.5px !important;
+}
+
+/* 卡片：只有发丝线，没有阴影，hover 只加深描边 */
+html#octop-simple-theme-root .octop-card,
+html#octop-simple-theme-root [class*="module__card__"],
+html#octop-simple-theme-root [class*="module__poolGroup__"] {
+  border: 1px solid var(--simple-hairline) !important;
+  border-radius: 14px !important;
+  background: var(--fn-bg-primary) !important;
+  box-shadow: none !important;
+}
+html#octop-simple-theme-root .octop-card-hoverable:hover,
+html#octop-simple-theme-root [class*="module__card__"]:hover {
+  border-color: var(--simple-hairline-strong) !important;
+  box-shadow: none !important;
+}
+html#octop-simple-theme-root .octop-card-head {
+  min-height: 0 !important;
+  padding: 14px 16px 0 !important;
+  border-bottom: none !important;
+  font-size: 14px !important;
+  font-weight: 600 !important;
+}
+html#octop-simple-theme-root .octop-card-body {
+  padding: 14px 16px !important;
+  font-size: 14px !important;
+}
+html#octop-simple-theme-root [class*="module__cardBody"] {
+  padding: 0 !important;
+}
+html#octop-simple-theme-root [class*="module__card__"] {
+  padding: 14px 16px !important;
+}
+html#octop-simple-theme-root [class*="module__cardName"] {
+  font-size: 14px !important;
+  font-weight: 600 !important;
+  color: var(--fn-text-primary) !important;
+}
+html#octop-simple-theme-root [class*="module__cardDesc"] {
+  font-size: 13px !important;
+  line-height: 19px !important;
+  color: var(--fn-text-tertiary) !important;
+}
+html#octop-simple-theme-root [class*="module__cardIcon"] {
+  width: 32px !important;
+  height: 32px !important;
+  border-radius: 9px !important;
+  background: var(--fn-bg-secondary) !important;
+  border: none !important;
+  color: var(--fn-text-secondary) !important;
+}
+html#octop-simple-theme-root [class*="module__cardGrid"] {
+  gap: 10px !important;
+  padding: 4px 0 20px !important;
+}
+html#octop-simple-theme-root [class*="module__cardDisabled"] {
+  opacity: 0.6 !important;
+}
+
+/* 工具栏 / 搜索行 */
+html#octop-simple-theme-root [class*="module__toolbar__"][class],
+html#octop-simple-theme-root [class*="module__pageTop"],
+html#octop-simple-theme-root [class*="module__gridToolbar"] {
+  gap: 8px !important;
+  margin-bottom: 12px !important;
+}
+html#octop-simple-theme-root [class*="module__toolbarCount"],
+html#octop-simple-theme-root [class*="module__roleLegend"] {
+  font-size: 13px !important;
+  color: var(--fn-text-tertiary) !important;
+}
+
+/* 表格：无外框、表头 12px 灰字、行悬停浅底、发丝线分隔 */
+html#octop-simple-theme-root .octop-table-wrapper,
+html#octop-simple-theme-root [class*="module__userTable"] {
+  border: 1px solid var(--simple-hairline) !important;
+  border-radius: 12px !important;
+  background: var(--fn-bg-primary) !important;
+  overflow: hidden !important;
+}
+html#octop-simple-theme-root .octop-table,
+html#octop-simple-theme-root .octop-table > .octop-table-container,
+html#octop-simple-theme-root .octop-table-wrapper .octop-table {
+  font-size: 14px !important;
+  border-radius: 12px !important;
+  /* antd 把表格底色写死成 #fff，深色下必须显式覆盖 */
+  background: var(--fn-bg-primary) !important;
+  color: var(--fn-text-primary) !important;
+}
+html#octop-simple-theme-root .octop-table-wrapper .octop-table-thead > tr > th,
+html#octop-simple-theme-root .octop-table-wrapper .octop-table-tbody > tr > td {
+  background: transparent !important;
+}
+html#octop-simple-theme-root .octop-table-wrapper .octop-table-tbody > tr:hover > td {
+  background: var(--simple-hover) !important;
+}
+html#octop-simple-theme-root .octop-table-thead > tr > th {
+  padding: 10px 14px !important;
+  border-bottom: 1px solid var(--simple-hairline) !important;
+  background: transparent !important;
+  font-size: 12px !important;
+  font-weight: 500 !important;
+  letter-spacing: 0.01em !important;
+  color: var(--fn-text-tertiary) !important;
+}
+html#octop-simple-theme-root .octop-table-thead > tr > th::before {
+  display: none !important;
+}
+html#octop-simple-theme-root .octop-table-tbody > tr > td {
+  padding: 10px 14px !important;
+  border-bottom: 1px solid var(--fn-border-secondary) !important;
+  font-size: 14px !important;
+  color: var(--fn-text-primary) !important;
+  background: transparent !important;
+}
+html#octop-simple-theme-root .octop-table-tbody > tr:last-child > td {
+  border-bottom: none !important;
+}
+html#octop-simple-theme-root .octop-table-tbody > tr:hover > td,
+html#octop-simple-theme-root .octop-table-tbody > tr.octop-table-row-hover > td {
+  background: var(--simple-hover) !important;
+}
+html#octop-simple-theme-root .octop-table-cell-fix-left,
+html#octop-simple-theme-root .octop-table-cell-fix-right {
+  background: var(--fn-bg-primary) !important;
+}
+html#octop-simple-theme-root .octop-table-pagination {
+  margin: 12px 0 0 !important;
+}
+
+/* =========================================================================
+   7. 控件层：按钮、输入、选择、开关、分段、标签、弹层
+   ========================================================================= */
+html#octop-simple-theme-root .octop-btn {
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  gap: 8px !important;
+  line-height: 20px !important;
+  height: 34px !important;
+  padding: 0 14px !important;
+  border-radius: 980px !important;
+  font-size: 14px !important;
+  font-weight: 500 !important;
+  box-shadow: none !important;
+}
+html#octop-simple-theme-root .octop-btn-sm {
+  height: 28px !important;
+  padding: 0 10px !important;
+  font-size: 13px !important;
+}
+html#octop-simple-theme-root .octop-btn > .octop-btn-icon {
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  flex: 0 0 auto !important;
+  width: auto !important; height: auto !important;
+  padding: 0 !important; margin: 0 !important;
+  line-height: 0 !important;
+}
+html#octop-simple-theme-root .octop-btn > .octop-btn-icon > svg {
+  display: block !important; vertical-align: initial !important;
+}
+html#octop-simple-theme-root .octop-btn.octop-btn-icon-only {
+  width: 32px !important;
+  height: 32px !important;
+  padding: 0 !important;
+  border-radius: 980px !important;
+}
+html#octop-simple-theme-root .octop-btn-default,
+html#octop-simple-theme-root .octop-btn-variant-outlined {
+  border: 1px solid var(--simple-hairline-strong) !important;
+  background: transparent !important;
+  color: var(--fn-text-primary) !important;
+}
+html#octop-simple-theme-root .octop-btn-default:hover,
+html#octop-simple-theme-root .octop-btn-variant-outlined:hover {
+  border-color: var(--fn-text-quaternary) !important;
+  background: var(--simple-hover) !important;
+  color: var(--fn-text-primary) !important;
+}
+html#octop-simple-theme-root .octop-btn-primary,
+html#octop-simple-theme-root .octop-btn-variant-solid.octop-btn-color-primary {
+  border: 1px solid transparent !important;
+  background: var(--fn-text-primary) !important;
+  color: var(--fn-bg-primary) !important;
+}
+html#octop-simple-theme-root .octop-btn-primary:hover,
+html#octop-simple-theme-root .octop-btn-variant-solid.octop-btn-color-primary:hover {
+  background: var(--fn-text-secondary) !important;
+  color: var(--fn-bg-primary) !important;
+}
+html#octop-simple-theme-root .octop-btn-link,
+html#octop-simple-theme-root .octop-btn-variant-link {
+  height: auto !important;
+  padding: 0 !important;
+  border: none !important;
+  background: transparent !important;
+  color: var(--fn-text-secondary) !important;
+  font-size: 13px !important;
+  box-shadow: none !important;
+}
+html#octop-simple-theme-root .octop-btn-link:hover,
+html#octop-simple-theme-root .octop-btn-variant-link:hover {
+  color: var(--fn-text-primary) !important;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+html#octop-simple-theme-root .octop-btn-dangerous {
+  color: var(--fn-text-danger) !important;
+}
+
+/* 输入 / 选择 / 数字框：34px、10px 圆角、聚焦发丝描边 */
+html#octop-simple-theme-root .octop-input,
+html#octop-simple-theme-root .octop-input-affix-wrapper,
+html#octop-simple-theme-root .octop-select .octop-select-selector,
+html#octop-simple-theme-root .octop-ant-input,
+html#octop-simple-theme-root .octop-ant-input-affix-wrapper,
+html#octop-simple-theme-root .octop-ant-input-number,
+html#octop-simple-theme-root .octop-ant-select-selector {
+  min-height: 34px !important;
+  border: 1px solid var(--simple-hairline-strong) !important;
+  border-radius: 10px !important;
+  background: var(--fn-bg-primary) !important;
+  box-shadow: none !important;
+  font-size: 14px !important;
+  color: var(--fn-text-primary) !important;
+}
+html#octop-simple-theme-root .octop-input:hover,
+html#octop-simple-theme-root .octop-input-affix-wrapper:hover,
+html#octop-simple-theme-root .octop-select:hover .octop-select-selector,
+html#octop-simple-theme-root .octop-ant-input:hover,
+html#octop-simple-theme-root .octop-ant-input-affix-wrapper:hover,
+html#octop-simple-theme-root .octop-ant-select-selector:hover {
+  border-color: var(--fn-text-quaternary) !important;
+}
+html#octop-simple-theme-root .octop-input:focus,
+html#octop-simple-theme-root .octop-input-focused,
+html#octop-simple-theme-root .octop-input-affix-wrapper-focused,
+html#octop-simple-theme-root .octop-select-focused .octop-select-selector,
+html#octop-simple-theme-root .octop-ant-input:focus,
+html#octop-simple-theme-root .octop-ant-input-affix-wrapper-focused,
+html#octop-simple-theme-root .octop-ant-select-focused .octop-ant-select-selector {
+  border-color: var(--fn-text-primary) !important;
+  box-shadow: 0 0 0 3px var(--simple-hover) !important;
+}
+html#octop-simple-theme-root .octop-input::placeholder,
+html#octop-simple-theme-root .octop-ant-input::placeholder {
+  color: var(--fn-text-placeholder) !important;
+}
+html#octop-simple-theme-root .octop-select-selector {
+  padding-inline: 12px !important;
+}
+html#octop-simple-theme-root textarea.octop-input,
+html#octop-simple-theme-root textarea.octop-ant-input {
+  padding: 8px 12px !important;
+  border-radius: 10px !important;
+  line-height: 1.6 !important;
+}
+html#octop-simple-theme-root .octop-form-item {
+  margin-bottom: 18px !important;
+}
+html#octop-simple-theme-root .octop-form-item-label > label,
+html#octop-simple-theme-root .octop-ant-form-item-label > label {
+  font-size: 13px !important;
+  font-weight: 500 !important;
+  color: var(--fn-text-secondary) !important;
+}
+html#octop-simple-theme-root .octop-form-item-label {
+  padding-bottom: 8px !important;
+}
+html#octop-simple-theme-root .octop-form-item-extra {
+  margin-top: 10px !important;
+  padding: 0 !important;
+  font-size: 12px !important;
+  line-height: 18px !important;
+  color: var(--fn-text-tertiary) !important;
+}
+html#octop-simple-theme-root .octop-form-item-control-input + .octop-form-item-extra,
+html#octop-simple-theme-root .octop-form-item-control > .octop-form-item-extra {
+  margin-top: 10px !important;
+}
+
+/* 下拉菜单 / 气泡卡 / 提示：实心面 + 发丝线 + 一层薄影 */
+html#octop-simple-theme-root .octop-dropdown-menu,
+html#octop-simple-theme-root .octop-select-dropdown,
+html#octop-simple-theme-root .octop-ant-select-dropdown,
+html#octop-simple-theme-root .octop-popover-inner,
+html#octop-simple-theme-root .octop-ant-popover-inner {
+  padding: 5px !important;
+  border: 1px solid var(--simple-hairline) !important;
+  border-radius: 12px !important;
+  background: var(--fn-bg-elevated) !important;
+  box-shadow: var(--fn-shadow-md) !important;
+}
+html#octop-simple-theme-root .octop-dropdown-menu-item,
+html#octop-simple-theme-root .octop-select-item,
+html#octop-simple-theme-root .octop-ant-select-item {
+  min-height: 30px !important;
+  padding: 5px 10px !important;
+  border-radius: 8px !important;
+  font-size: 14px !important;
+  color: var(--fn-text-primary) !important;
+}
+html#octop-simple-theme-root .octop-dropdown-menu-item:hover,
+html#octop-simple-theme-root .octop-select-item-option-active,
+html#octop-simple-theme-root .octop-ant-select-item-option-active {
+  background: var(--simple-hover) !important;
+}
+html#octop-simple-theme-root .octop-select-item-option-selected,
+html#octop-simple-theme-root .octop-ant-select-item-option-selected {
+  font-weight: 500 !important;
+  background: var(--fn-bg-secondary) !important;
+  color: var(--fn-text-primary) !important;
+}
+html#octop-simple-theme-root .octop-tooltip-inner,
+html#octop-simple-theme-root .octop-ant-tooltip-inner {
+  padding: 5px 9px !important;
+  border-radius: 8px !important;
+  background: var(--fn-text-primary) !important;
+  color: var(--fn-bg-primary) !important;
+  font-size: 12px !important;
+  box-shadow: var(--fn-shadow-sm) !important;
+}
+
+/* 弹窗 / 抽屉 */
+html#octop-simple-theme-root .octop-modal-mask,
+html#octop-simple-theme-root .octop-drawer-mask {
+  background: rgba(13, 13, 13, 0.32) !important;
+  backdrop-filter: blur(2px);
+}
+html#octop-simple-theme-root .octop-modal .octop-modal-content,
+html#octop-simple-theme-root .octop-ant-modal-content {
+  padding: 0 !important;
+  border: 1px solid var(--simple-hairline) !important;
+  border-radius: 18px !important;
+  background: var(--fn-bg-elevated) !important;
+  box-shadow: var(--fn-shadow-xl) !important;
+  overflow: hidden !important;
+}
+html#octop-simple-theme-root .octop-modal-header,
+html#octop-simple-theme-root .octop-ant-modal-header {
+  margin: 0 !important;
+  padding: 18px 20px 10px !important;
+  border-bottom: none !important;
+  font-size: 16px !important;
+  font-weight: 600 !important;
+}
+html#octop-simple-theme-root .octop-modal-body,
+html#octop-simple-theme-root .octop-ant-modal-body {
+  padding: 0 20px 16px !important;
+  font-size: 14px !important;
+}
+html#octop-simple-theme-root .octop-modal-footer {
+  padding: 0 20px 18px !important;
+  border-top: none !important;
+}
+html#octop-simple-theme-root .octop-drawer-content,
+html#octop-simple-theme-root .octop-ant-drawer-content {
+  background: var(--fn-bg-elevated) !important;
+  border-left: 1px solid var(--simple-hairline) !important;
+}
+html#octop-simple-theme-root .octop-drawer-header {
+  padding: 16px 20px !important;
+  border-bottom: 1px solid var(--simple-hairline) !important;
+  font-size: 15px !important;
+  font-weight: 600 !important;
+}
+html#octop-simple-theme-root .octop-drawer-body {
+  padding: 18px 20px !important;
+  font-size: 14px !important;
+}
+html#octop-simple-theme-root .octop-drawer-footer {
+  padding: 12px 20px 16px !important;
+  border-top: 1px solid var(--simple-hairline) !important;
+}
+html#octop-simple-theme-root .octop-drawer-close {
+  color: var(--fn-text-tertiary) !important;
+}
+
+/* 开关 / 复选 / 分段 / 标签 */
+html#octop-simple-theme-root .octop-switch,
+html#octop-simple-theme-root .octop-ant-switch {
+  background: var(--fn-bg-tertiary) !important;
+  box-shadow: none !important;
+}
+html#octop-simple-theme-root .octop-switch-checked,
+html#octop-simple-theme-root .octop-ant-switch-checked {
+  background: var(--fn-text-primary) !important;
+}
+html#octop-simple-theme-root .octop-checkbox-inner,
+html#octop-simple-theme-root .octop-ant-checkbox-inner {
+  border-color: var(--simple-hairline-strong) !important;
+  border-radius: 5px !important;
+}
+html#octop-simple-theme-root .octop-checkbox-checked .octop-checkbox-inner,
+html#octop-simple-theme-root .octop-ant-checkbox-checked .octop-ant-checkbox-inner {
+  border-color: var(--fn-text-primary) !important;
+  background: var(--fn-text-primary) !important;
+}
+html#octop-simple-theme-root .octop-segmented,
+html#octop-simple-theme-root .octop-ant-segmented {
+  padding: 2px !important;
+  border-radius: 10px !important;
+  background: var(--fn-bg-secondary) !important;
+}
+html#octop-simple-theme-root .octop-segmented-item-label,
+html#octop-simple-theme-root .octop-ant-segmented-item-label {
+  font-size: 13px !important;
+  color: var(--fn-text-secondary) !important;
+  /* 图标与文字成组居中，别让图标顶在控件左边缘 */
+  padding-inline: 4px !important;
+  gap: 5px !important;
+}
+html#octop-simple-theme-root .octop-segmented-item-selected,
+html#octop-simple-theme-root .octop-ant-segmented-item-selected {
+  border-radius: 8px !important;
+  background: var(--fn-bg-primary) !important;
+  color: var(--fn-text-primary) !important;
+  box-shadow: var(--fn-shadow-sm) !important;
+}
+html#octop-simple-theme-root .octop-tag,
+html#octop-simple-theme-root .octop-ant-tag {
+  margin: 0 !important;
+  padding: 1px 8px !important;
+  border: 1px solid var(--simple-hairline) !important;
+  border-radius: 980px !important;
+  background: transparent !important;
+  font-size: 11px !important;
+  line-height: 17px !important;
+  color: var(--fn-text-tertiary) !important;
+}
+html#octop-simple-theme-root .octop-divider {
+  border-color: var(--simple-hairline) !important;
+  margin: 16px 0 !important;
+}
+
+/* 空态 / 加载 / 通知 */
+html#octop-simple-theme-root .octop-ant-empty-description {
+  font-size: 13px !important;
+  color: var(--fn-text-tertiary) !important;
+}
+html#octop-simple-theme-root .octop-spin-text,
+html#octop-simple-theme-root .octop-ant-spin-text {
+  font-size: 13px !important;
+  color: var(--fn-text-tertiary) !important;
+}
+html#octop-simple-theme-root .octop-notification-notice,
+html#octop-simple-theme-root .octop-ant-notification-notice {
+  padding: 14px 16px !important;
+  border: 1px solid var(--simple-hairline) !important;
+  border-radius: 12px !important;
+  background: var(--fn-bg-elevated) !important;
+  box-shadow: var(--fn-shadow-lg) !important;
+  font-size: 14px !important;
+}
+html#octop-simple-theme-root .octop-message-notice-content {
+  padding: 8px 14px !important;
+  border: 1px solid var(--simple-hairline) !important;
+  border-radius: 980px !important;
+  background: var(--fn-bg-elevated) !important;
+  box-shadow: var(--fn-shadow-md) !important;
+  font-size: 13px !important;
+}
+
+/* 头像底色：清掉写死的靛蓝 / 品红 */
+html#octop-simple-theme-root [class*="userCellAvatar"],
+html#octop-simple-theme-root [class*="toolMediaFallback"],
+html#octop-simple-theme-root [class*="expertAgentAvatar"] {
+  background: var(--fn-bg-tertiary) !important;
+  background-image: none !important;
+  color: var(--fn-text-secondary) !important;
+  border: none !important;
+  box-shadow: none !important;
+}
+
+/* 深色下主色是白色，一批按钮把文字写死成 #fff，会白底白字 */
+html#octop-simple-theme-root[data-theme="dark"] [class*="editSaveBtn"],
+html#octop-simple-theme-root[data-theme="dark"] [class*="drawerSaveBtn"],
+html#octop-simple-theme-root[data-theme="dark"] [class*="toolbarBtnPrimary"],
+html#octop-simple-theme-root[data-theme="dark"] [class*="catalogCardActionBtnPrimary"],
+html#octop-simple-theme-root[data-theme="dark"] [class*="btnPrimary"],
+html#octop-simple-theme-root[data-theme="dark"] .octop-btn-primary,
+html#octop-simple-theme-root[data-theme="dark"] .octop-switch-checked .octop-switch-handle {
+  color: var(--fn-color-on-brand) !important;
+}
+html#octop-simple-theme-root[data-theme="dark"] .octop-btn-primary svg {
+  color: var(--fn-color-on-brand) !important;
+}
+
+/* 减少动效 */
+@media (prefers-reduced-motion: reduce) {
+  html#octop-simple-theme-root * {
+    transition-duration: 0.01ms !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+  }
+}
+
+/* 窄屏：单列宽度交回视口，左右内边距对齐 */
+@media (max-width: 900px) {
+  /* 双属性压过基础令牌里的 html#id[data-theme="light"]（特异性更高） */
+  html#octop-simple-theme-root[data-theme],
+  html#octop-simple-theme-root[data-theme="light"],
+  html#octop-simple-theme-root[data-theme="dark"] {
+    --simple-column: 100%;
+  }
+  html#octop-simple-theme-root [class*="module__messageListInner"] {
+    max-width: 100% !important;
+    padding: 0 16px !important;
+  }
+  html#octop-simple-theme-root [class*="module__chatInput"],
+  html#octop-simple-theme-root [class*="module__chatTitleBar__"] {
+    padding-inline: 16px !important;
+  }
+  html#octop-simple-theme-root [class*="module__welcome__"] {
+    padding-inline: 16px !important;
+  }
+  html#octop-simple-theme-root [class*="module__inputWrapper"] {
+    border-radius: 16px !important;
+  }
+  html#octop-simple-theme-root [class*="module__welcomeTitle"] {
+    font-size: 26px !important;
+  }
+  html#octop-simple-theme-root [class*="module__welcomeMascot"] {
+    width: 88px !important;
+    margin-bottom: 0 !important;
+  }
+  /* 窄屏整条收起输入框上方的累计用量与模型，别挤占一行 */
+  html#octop-simple-theme-root #simple-chat-dock {
+    display: none !important;
+  }
+  html#octop-simple-theme-root [class*="module__chatFloatActions"] {
+    display: none !important;
+  }
+  /* 窄屏快捷卡两列，避免单卡被挤成一条 */
+  html#octop-simple-theme-root [class*="module__quickCards"] {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  }
+}
+
+/* =========================================================================
+   3.1 — Hierarchy polish: canvas → section → control, never boxes within boxes.
+   ========================================================================= */
+html#octop-simple-theme-root :focus:not(:focus-visible) { outline: none !important; }
+html#octop-simple-theme-root .page-content { --simple-section-gap: 32px; }
+/* One page rail, including the expert selector and both navigation levels. */
+html#octop-simple-theme-root .page-content [class*="PageShell-module__agentBar__"] {
+  border: 0 !important; border-radius: 0 !important; box-shadow: none !important;
+  background: transparent !important; padding: 0 !important; margin: 8px 0 24px !important;
+}
+html#octop-simple-theme-root [class*="AgentSelector-module__chip__"],
+html#octop-simple-theme-root [class*="AgentSelector-module__moreBtn__"] {
+  border: 0 !important; border-radius: 999px !important; box-shadow: none !important;
+  background: transparent !important; color: var(--fn-text-secondary) !important;
+  min-height: 36px !important; padding: 8px 12px !important; font-size: 14px !important;
+}
+html#octop-simple-theme-root [class*="AgentSelector-module__chipActive__"] {
+  background: var(--fn-bg-secondary) !important; color: var(--fn-text-primary) !important;
+}
+html#octop-simple-theme-root [class*="AgentSelector-module__chip__"]:hover {
+  background: var(--simple-hover) !important;
+}
+html#octop-simple-theme-root [class*="AgentSelector-module__group__"] {
+  border: 0 !important; background: transparent !important; box-shadow: none !important;
+  gap: 4px !important; align-items: center !important;
+}
+/* Sidebar scope tabs: wrapper and item are different elements. */
+html#octop-simple-theme-root [class*="module__sessionScopeTabs__"] {
+  display: flex !important; align-items: center !important; gap: 4px !important;
+  height: auto !important; padding: 0 !important; margin: 12px 0 !important;
+  background: transparent !important; border: 0 !important; box-shadow: none !important;
+}
+html#octop-simple-theme-root [class*="module__sessionScopeTab__"] {
+  flex: 1 1 0 !important; height: 32px !important; margin: 0 !important;
+  padding: 0 8px !important; border: 0 !important; border-radius: 999px !important;
+  display: inline-flex !important; align-items: center !important; justify-content: center !important;
+  background: transparent !important; box-shadow: none !important;
+}
+html#octop-simple-theme-root [class*="module__sessionScopeTabActive__"] {
+  background: var(--fn-sidebar-item-active-bg) !important; color: var(--fn-text-primary) !important;
+}
+/* Navigation uses weight and a single soft capsule, not enclosing rules. */
+html#octop-simple-theme-root .page-content [class*="module__tabBar__"],
+html#octop-simple-theme-root .page-content .octop-tabs-nav,
+html#octop-simple-theme-root .page-content .octop-tabs-nav::before {
+  border: 0 !important; box-shadow: none !important;
+}
+html#octop-simple-theme-root .page-content [class*="module__tabBar__"] {
+  gap: 8px !important; margin-bottom: 24px !important;
+}
+html#octop-simple-theme-root .page-content [class*="module__tab__"][class] {
+  padding: 8px 12px !important; margin: 0 !important; border: 0 !important;
+  border-radius: 999px !important; line-height: 20px !important;
+}
+html#octop-simple-theme-root .page-content [class*="module__tab__"][class*="active"][class] {
+  background: var(--fn-bg-secondary) !important;
+}
+html#octop-simple-theme-root .page-content .octop-tabs-tab {
+  padding: 8px 0 !important; margin-top: 0 !important;
+}
+html#octop-simple-theme-root .page-content .octop-tabs-ink-bar { display: none !important; }
+html#octop-simple-theme-root .page-content .octop-tabs-tab-active .octop-tabs-tab-btn {
+  font-weight: 600 !important; color: var(--fn-text-primary) !important;
+}
+/* Sections are typography and whitespace; only independent catalog tiles have surfaces. */
+html#octop-simple-theme-root .page-content .octop-card,
+html#octop-simple-theme-root .page-content [class*="module__poolGroup__"],
+html#octop-simple-theme-root .page-content [class*="tabContent-module__panelHeader__"] {
+  border: 0 !important; border-radius: 0 !important; background: transparent !important;
+  box-shadow: none !important;
+}
+html#octop-simple-theme-root .page-content .octop-card-head,
+html#octop-simple-theme-root .page-content .octop-card-body {
+  padding-inline: 0 !important; border: 0 !important;
+}
+html#octop-simple-theme-root .page-content .octop-card-head { padding-top: 0 !important; }
+html#octop-simple-theme-root .page-content .octop-card { margin-bottom: 24px !important; }
+html#octop-simple-theme-root .page-content [class*="module__card__"] {
+  border: 0 !important; background: var(--fn-bg-secondary) !important;
+  border-radius: 20px !important; padding: 20px !important;
+}
+html#octop-simple-theme-root .page-content [class*="Overview-module__summaryCard__"] {
+  border: 0 !important; border-radius: 0 !important; box-shadow: none !important;
+  background: transparent !important; padding: 16px 0 !important;
+}
+html#octop-simple-theme-root .page-content .octop-table-wrapper,
+html#octop-simple-theme-root .page-content [class*="module__userTable__"] {
+  border: 0 !important; border-radius: 0 !important;
+}
+/* Informational notices are quiet text, not a second framed panel. */
+html#octop-simple-theme-root .page-content .octop-alert-info {
+  border: 0 !important; border-radius: 0 !important; background: transparent !important;
+  box-shadow: none !important; padding: 12px 0 !important;
+}
+html#octop-simple-theme-root .page-content .octop-alert-info .octop-alert-message,
+html#octop-simple-theme-root .page-content .octop-alert-info .octop-alert-description {
+  color: var(--fn-text-secondary) !important; line-height: 1.6 !important;
+}
+/* Neutral secondary actions are ghost capsules. Destructive semantics are retained. */
+html#octop-simple-theme-root .octop-btn-default:not(.octop-btn-dangerous),
+html#octop-simple-theme-root .octop-btn-variant-outlined:not(.octop-btn-dangerous) {
+  border-color: transparent !important; border-radius: 999px !important;
+  background: transparent !important; box-shadow: none !important;
+}
+html#octop-simple-theme-root .octop-btn-default:not(:disabled):hover {
+  border-color: transparent !important; background: var(--simple-hover) !important;
+}
+/* One selected surface; remove the competing animated segmented thumb. */
+html#octop-simple-theme-root .octop-segmented { background: transparent !important; padding: 0 !important; }
+html#octop-simple-theme-root .octop-segmented-item { border-radius: 999px !important; }
+html#octop-simple-theme-root .octop-segmented-item-selected {
+  background: var(--fn-bg-secondary) !important; box-shadow: none !important;
+}
+html#octop-simple-theme-root .octop-segmented-thumb {
+  background: transparent !important; box-shadow: none !important;
+}
+/* Composer: a single continuous surface, no top rule or nested input frame. */
+html#octop-simple-theme-root [class*="module__chatInput__"] {
+  border: 0 !important; box-shadow: none !important; background: transparent !important;
+}
+html#octop-simple-theme-root [class*="module__inputWrapper__"] {
+  border: 0 !important; background: var(--fn-bg-secondary) !important;
+  box-shadow: none !important;
+}
+html#octop-simple-theme-root [class*="module__inputRow__"],
+html#octop-simple-theme-root [class*="module__actionsRow__"] {
+  border: 0 !important; background: transparent !important; box-shadow: none !important;
+}
+/* Editor surfaces remain recognisable, with no permanent outlined box. */
+html#octop-simple-theme-root .page-content textarea.octop-input {
+  border: 1px solid transparent !important; border-radius: 16px !important;
+  background: var(--fn-bg-secondary) !important; padding: 16px !important; box-shadow: none !important;
+}
+html#octop-simple-theme-root .page-content textarea.octop-input:focus-visible {
+  outline: 1px solid var(--fn-text-secondary) !important; outline-offset: 2px !important;
+}
+
+/* Remove the second 24px inset inside page shells: headings and content share a rail. */
+html#octop-simple-theme-root .page-content > .octop-desktop-drag > .octop-desktop-no-drag {
+  padding: 0 !important; background: transparent !important; border: 0 !important;
+}
+
+/* 3.2 — Apple Store card geometry. Only independent objects receive a surface. */
+html#octop-simple-theme-root {
+  --simple-store-card-radius: 18px;
+  --simple-store-card-bg: #fff;
+  /* 3.9.18 — 原来 2px/4px 的偏置投影像是把卡「贴」在页面上，和描边叠成两道线。
+     改成一层贴地的接触阴影 + 一层大扩散的环境光，卡片自己浮起来，边界只有一道发丝环。 */
+  --simple-store-card-shadow: 0 1px 2px rgba(13,13,13,.04), 0 10px 26px -18px rgba(13,13,13,.22);
+  --simple-store-card-shadow-hover: 0 2px 6px rgba(13,13,13,.06), 0 18px 38px -20px rgba(13,13,13,.30);
+}
+html#octop-simple-theme-root[data-theme="dark"] {
+  --simple-store-card-bg: #2a2a2a;
+  --simple-store-card-shadow: 0 1px 2px rgba(0,0,0,.28), 0 10px 26px -18px rgba(0,0,0,.5);
+  --simple-store-card-shadow-hover: 0 2px 6px rgba(0,0,0,.34), 0 18px 38px -20px rgba(0,0,0,.6);
+}
+html#octop-simple-theme-root .page-content :is([class*="module__card__"], [class*="module__skillCard__"], [class*="module__catalogCard__"], [class*="Overview-module__summaryCard__"]) {
+  border: 0 !important;
+  border-radius: var(--simple-store-card-radius) !important;
+  background: var(--simple-store-card-bg) !important;
+  box-shadow: var(--simple-store-card-shadow) !important;
+  padding: 24px !important;
+  min-width: 0 !important;
+  transition: box-shadow 300ms cubic-bezier(0,0,.5,1), transform 300ms cubic-bezier(0,0,.5,1) !important;
+}
+/* Catalog cards previously had a second inset and a rule around their footer. */
+html#octop-simple-theme-root .page-content :is([class*="module__card__"], [class*="module__skillCard__"], [class*="module__catalogCard__"]) [class*="module__cardFooter__"] {
+  border: 0 !important; padding: 16px 0 0 !important; margin: 0 !important;
+  background: transparent !important;
+}
+html#octop-simple-theme-root .page-content [class*="module__cardGrid__"],
+html#octop-simple-theme-root .page-content [class*="module__skillGrid__"] {
+  gap: 20px !important; padding-block: 8px 24px !important;
+}
+html#octop-simple-theme-root .page-content [class*="module__skillCard__"]:has(input:checked) {
+  box-shadow: 0 0 0 2px #0071e3, var(--simple-store-card-shadow) !important;
+}
+/* Align icon and label as one unit; do not apply navigation padding to descendants. */
+html#octop-simple-theme-root .page-content [class*="module__tabLabel__"] {
+  display: inline-flex !important; align-items: center !important; gap: 8px !important;
+  line-height: 20px !important;
+}
+html#octop-simple-theme-root .page-content [class*="module__tabIcon__"] {
+  display: inline-flex !important; align-items: center !important; justify-content: center !important;
+  width: 16px !important; height: 20px !important; flex: 0 0 16px !important;
+  padding: 0 !important; margin: 0 !important; background: transparent !important;
+}
+@media (hover: hover) and (prefers-reduced-motion: no-preference) {
+  html#octop-simple-theme-root .page-content :is([class*="module__card__"], [class*="module__skillCard__"], [class*="module__catalogCard__"]):hover {
+    transform: translateY(-2px) !important;
+    box-shadow: var(--simple-store-card-shadow-hover) !important;
+  }
+}
+/* Text entry has one neutral focus surface, never a blue nested rectangle. */
+html#octop-simple-theme-root [class*="module__textarea__"]:focus,
+html#octop-simple-theme-root [class*="module__textarea__"]:focus-visible {
+  outline: none !important; box-shadow: none !important;
+}
+html#octop-simple-theme-root [class*="module__inputWrapper__"]:has([class*="module__textarea__"]:focus-visible) {
+  box-shadow: none !important;
+}
+html#octop-simple-theme-root [class*="module__inputWrapper__"]:has([class*="module__textarea__"]:focus-visible)::after {
+  content: none !important;
+}
+/* Keyboard focus is indicated at the caret, without adding a rule to the composer. */
+html#octop-simple-theme-root :is(input.octop-input,textarea.octop-input,.octop-input-affix-wrapper,.octop-input-number):is(:focus,:focus-within) {
+  outline: none !important; border-color: var(--fn-text-tertiary) !important;
+  box-shadow: none !important;
+}
+html#octop-simple-theme-root .octop-select-focused .octop-select-selector {
+  outline: none !important; border-color: var(--fn-text-tertiary) !important; box-shadow: none !important;
+}
+/* 3.3 — Verified omissions: settings sections are not catalog objects. */
+html#octop-simple-theme-root [class*="Overview-module__overviewHero__"],
+html#octop-simple-theme-root [class*="MemorySettings-module__advancedSettings__"],
+html#octop-simple-theme-root [class*="MemorySettings-module__saveBar__"],
+html#octop-simple-theme-root .page-content [class*="module__tableCard__"] {
+  border: 0 !important; box-shadow: none !important; background: transparent !important; border-radius: 0 !important;
+}
+html#octop-simple-theme-root [class*="Overview-module__overviewHero__"] { padding: 0 0 24px !important; }
+html#octop-simple-theme-root [class*="Overview-module__pipelineStage__"] {
+  border: 0 !important; box-shadow: none !important; border-radius: 12px !important; background: var(--fn-bg-secondary) !important;
+}
+html#octop-simple-theme-root [class*="MemorySettings-module__saveBar__"] { padding: 24px 0 0 !important; }
+html#octop-simple-theme-root [class*="MemorySettings-module__advancedSettings__"] > .octop-collapse-item,
+html#octop-simple-theme-root [class*="MemorySettings-module__advancedSettings__"] .octop-collapse-content {
+  border: 0 !important; background: transparent !important;
+}
+html#octop-simple-theme-root [class*="MemorySettings-module__advancedSettings__"] .octop-collapse-header,
+html#octop-simple-theme-root [class*="MemorySettings-module__advancedSettings__"] .octop-collapse-content-box { padding-inline: 0 !important; }
+/* 3.9.12 — 3.3 把这张卡的内边距拉平为 0 的时候，卡片本身是没有轮廓的；
+   3.9.6 给它补上 1px 内环之后，toolbar 和 addBar 里的文字、按钮就正好压在环上
+   （变量区「0 变量」与「添加变量」的左缘和卡框重合，右侧同理）。环在，内边距必须回来，
+   数值对齐 emptyState 原生的 24px，窄屏回收成 16px。 */
+html#octop-simple-theme-root .page-content [class*="module__tableCard__"] > [class*="module__toolbar__"],
+html#octop-simple-theme-root .page-content [class*="module__tableCard__"] > [class*="module__addBar__"] {
+  border: 0 !important; padding-inline: 24px !important; background: transparent !important;
+}
+@media (max-width: 640px) {
+  html#octop-simple-theme-root .page-content [class*="module__tableCard__"] > [class*="module__toolbar__"],
+  html#octop-simple-theme-root .page-content [class*="module__tableCard__"] > [class*="module__addBar__"] {
+    padding-inline: 16px !important;
+  }
+}
+html#octop-simple-theme-root .page-content [class*="module__tableCard__"] [class*="module__addBtn__"] {
+  border: 0 !important; border-radius: 999px !important; background: var(--fn-bg-secondary) !important;
+}
+html#octop-simple-theme-root :is(.octop-input-affix-wrapper,.octop-ant-input-affix-wrapper) > :is(.octop-input,.octop-ant-input) {
+  border: 0 !important; background: transparent !important; box-shadow: none !important; border-radius: 0 !important;
+}
+html#octop-simple-theme-root .octop-ant-segmented { background: transparent !important; padding: 0 !important; }
+html#octop-simple-theme-root .octop-ant-segmented-item { border-radius: 999px !important; }
+html#octop-simple-theme-root .octop-ant-segmented-item-selected { background: var(--fn-bg-secondary) !important; box-shadow: none !important; }
+html#octop-simple-theme-root .octop-ant-segmented-thumb { background: transparent !important; box-shadow: none !important; }
+
+/* 3.4 — Exact component boundaries; icons never inherit button geometry. */
+html#octop-simple-theme-root [class*="AvatarDropdown-module__triggerName__"] {
+  display: flex !important; align-items: center !important;
+  height: auto !important; min-height: 0 !important; padding: 0 !important;
+  line-height: 20px !important; border: 0 !important; background: transparent !important;
+}
+html#octop-simple-theme-root [class*="AvatarDropdown-module__triggerChevron__"] {
+  width: 14px !important; height: 14px !important; padding: 0 !important;
+  flex: 0 0 14px !important; border: 0 !important; background: transparent !important;
+}
+html#octop-simple-theme-root [class*="module__openBrowserPrompt__"] > svg {
+  display: block !important; width: 16px !important; height: 16px !important;
+  flex: 0 0 16px !important; padding: 0 !important; margin: 0 !important;
+  border: 0 !important; border-radius: 0 !important; background: transparent !important;
+}
+html#octop-simple-theme-root [class*="module__scrollToBottomBtn__"] > svg { flex-shrink: 0 !important; }
+html#octop-simple-theme-root .page-content :is([class*="module__providerCard__"],[class*="module__poolGroup__"],[class*="Overview-module__overviewChartCard__"],[class*="Overview-module__pipelineCard__"]) {
+  border: 0 !important; border-radius: var(--simple-store-card-radius) !important;
+  background: var(--simple-store-card-bg) !important;
+  box-shadow: var(--simple-store-card-shadow) !important;
+  padding: 24px !important; min-width: 0 !important;
+}
+html#octop-simple-theme-root .page-content :is([class*="module__providerCard__"],[class*="Overview-module__overviewChartCard__"],[class*="Overview-module__pipelineCard__"]) > .octop-card-body {
+  padding: 0 !important; background: transparent !important;
+}
+/* 3.2.1 — Stable card rhythm and compound interaction states. */
+html#octop-simple-theme-root .page-content :is([class*="module__card__"], [class*="module__skillCard__"], [class*="module__catalogCard__"]) [class*="module__cardDesc__"] {
+  font-size: 14px !important; line-height: 22px !important;
+  min-height: 44px !important; max-height: 44px !important;
+  display: -webkit-box !important; -webkit-box-orient: vertical !important;
+  -webkit-line-clamp: 2 !important; overflow: hidden !important;
+  overflow-wrap: anywhere !important;
+}
+html#octop-simple-theme-root .page-content :is([class*="module__card__"], [class*="module__skillCard__"], [class*="module__catalogCard__"]) :is([class*="module__cardName__"], [class*="module__cardTitle__"]) {
+  min-width: 0 !important; overflow-wrap: anywhere !important;
+}
+@media (hover: hover) {
+  html#octop-simple-theme-root .page-content [class*="module__skillCard__"]:has(input:checked):hover {
+    box-shadow: 0 0 0 2px #0071e3, var(--simple-store-card-shadow-hover) !important;
+  }
+}
+/* Attached sheets are not floating cards: round only the exposed edge. */
+html#octop-simple-theme-root .octop-drawer-right .octop-drawer-content {
+  border-radius: 18px 0 0 18px !important;
+}
+html#octop-simple-theme-root .octop-drawer-left .octop-drawer-content {
+  border-radius: 0 18px 18px 0 !important;
+}
+html#octop-simple-theme-root .octop-drawer-bottom .octop-drawer-content {
+  border-radius: 18px 18px 0 0 !important;
+}
+html#octop-simple-theme-root .octop-drawer-header,
+html#octop-simple-theme-root .octop-drawer-footer {
+  border: 0 !important; padding: 24px !important;
+}
+html#octop-simple-theme-root .octop-drawer-body { padding: 0 24px 24px !important; }
+@media (max-width: 600px) {
+  html#octop-simple-theme-root .octop-drawer-right .octop-drawer-content,
+  html#octop-simple-theme-root .octop-drawer-left .octop-drawer-content { border-radius: 0 !important; }
+  html#octop-simple-theme-root .octop-drawer-header,
+  html#octop-simple-theme-root .octop-drawer-footer { padding: 20px !important; }
+  html#octop-simple-theme-root .octop-drawer-body { padding: 0 20px 20px !important; }
+}
+
+@media (max-width: 600px) {
+  html#octop-simple-theme-root .page-content :is([class*="module__card__"], [class*="module__skillCard__"], [class*="module__catalogCard__"], [class*="Overview-module__summaryCard__"]) { padding: 20px !important; }
+}
+
+
+/* 3.5 — Five confirmed standalone surfaces, not substring-matched internals. */
+html#octop-simple-theme-root [class*="module__chatTitleBar__"] {
+ display: none !important; height: 0 !important; min-height: 0 !important;
+ margin: 0 !important; padding: 0 !important; border: 0 !important;
+}
+html#octop-simple-theme-root :is([class*="module__backendCard__"],[class*="module__channelCard__"],[class*="module__hubCard__"],[class*="module__agentCard2__"],[class*="module__emptyStateSuggestionItem__"]) {
+ border: 0 !important; border-radius: var(--simple-store-card-radius) !important;
+ background: var(--simple-store-card-bg) !important; box-shadow: var(--simple-store-card-shadow) !important;
+ padding: 24px !important; min-width: 0 !important; box-sizing: border-box !important;
+ transition: box-shadow .3s cubic-bezier(0,0,.5,1), transform .3s cubic-bezier(0,0,.5,1) !important;
+}
+html#octop-simple-theme-root [class*="module__agentCard2Accent__"] { display: none !important; }
+html#octop-simple-theme-root [class*="module__agentCard2Header__"] { padding: 0 !important; margin-bottom: 16px !important; }
+html#octop-simple-theme-root [class*="module__agentCard2Desc__"] { margin: 0 !important; min-height: 44px !important; font-size: 14px !important; line-height: 22px !important; }
+html#octop-simple-theme-root [class*="module__agentCard2Footer__"] { padding: 20px 0 0 !important; margin-top: auto !important; border: 0 !important; }
+html#octop-simple-theme-root [class*="module__backendCardActions__"] { border: 0 !important; padding: 16px 0 0 !important; }
+html#octop-simple-theme-root [class*="module__channelCard__"] [class*="module__cardDescription__"],
+html#octop-simple-theme-root [class*="module__hubCardDesc__"] {
+ font-size: 14px !important; line-height: 22px !important; min-height: 44px !important; max-height: 44px !important;
+ color: var(--fn-text-secondary) !important; overflow: hidden !important; overflow-wrap: anywhere !important;
+ display: -webkit-box !important; -webkit-line-clamp: 2 !important; -webkit-box-orient: vertical !important;
+}
+html#octop-simple-theme-root [class*="module__hubCardName__"] { min-width: 0 !important; overflow-wrap: anywhere !important; }
+html#octop-simple-theme-root [class*="module__hubCardFooter__"] { padding-top: 12px !important; border: 0 !important; margin-top: auto !important; }
+html#octop-simple-theme-root [class*="module__emptyStateSuggestionItem__"] { height: auto !important; min-height: 96px !important; text-align: left !important; }
+html#octop-simple-theme-root [class*="module__emptyStateSuggestionText__"] { line-height: 22px !important; min-width: 0 !important; }
+@media (hover:hover) and (prefers-reduced-motion:no-preference) {
+ html#octop-simple-theme-root :is([class*="module__backendCard__"],[class*="module__channelCard__"],[class*="module__hubCard__"],[class*="module__agentCard2__"],[class*="module__emptyStateSuggestionItem__"]):hover {
+  box-shadow: var(--simple-store-card-shadow-hover) !important; transform: translateY(-2px) !important;
+ }
+}
+@media (max-width:600px) {
+ html#octop-simple-theme-root :is([class*="module__backendCard__"],[class*="module__channelCard__"],[class*="module__hubCard__"],[class*="module__agentCard2__"],[class*="module__emptyStateSuggestionItem__"]) { padding: 20px !important; }
+}
+
+
+/* ============================================================
+   3.6 — Card coverage completion + control rhythm.
+
+   Why this layer exists: 3.2/3.5 matched a hand-written allowlist of
+   module names. Every surface shipped after that list was written
+   (connector catalog, cron, teams, MCP, presets, memory, desktop ...)
+   kept the factory surface: a 2px hairline box, a 12px corner and no
+   elevation, which reads as a different product on the same page.
+
+   Rule: a card root owns a surface; anything inside it does not. Card
+   roots are the only module classes whose name ends in Card before the
+   hash suffix, so a single guarded attribute match covers unknown
+   future cards without touching their headers, chips or footers.
+   ============================================================ */
+
+html#octop-simple-theme-root :is(
+  [class*="module__typeCard__"],
+  [class*="module__customMcpServerCard__"],
+  [class*="module__cronCard__"],
+  [class*="module__agentCard__"],
+  [class*="module__expertTemplateCard__"],
+  [class*="module__teamCard__"],
+  [class*="module__roleCard__"],
+  [class*="module__userCard__"],
+  [class*="module__inviteCard__"],
+  [class*="module__presetCard__"],
+  [class*="module__wizardPresetCard__"],
+  [class*="module__wizardCard__"],
+  [class*="module__docCard__"],
+  [class*="module__backupCard__"],
+  [class*="module__configuredCard__"],
+  [class*="module__disabledCard__"],
+  [class*="module__reconnectCard__"],
+  [class*="module__conversationCard__"],
+  [class*="module__conversationTableCard__"],
+  [class*="module__attachmentPreviewCard__"],
+  [class*="module__messageFileCard__"],
+  [class*="module__marketQuickPromptCard__"],
+  [class*="module__memberPickCard__"],
+  [class*="module__settingCard__"],
+  [class*="module__settingsCard__"],
+  [class*="module__shortcutsCard__"],
+  [class*="module__versionCard__"],
+  [class*="module__configCard__"],
+  [class*="module__installCard__"],
+  [class*="module__entityCard__"],
+  [class*="module__candidatesCard__"],
+  [class*="module__resultCard__"],
+  [class*="module__chartCard__"],
+  [class*="module__compCard__"],
+  [class*="module__overviewTurnsCard__"]
+) {
+  border: 0 !important;
+  border-radius: var(--simple-store-card-radius) !important;
+  background: var(--simple-store-card-bg) !important;
+  box-shadow: var(--simple-store-card-shadow) !important;
+  padding: 24px !important;
+  min-width: 0 !important;
+  box-sizing: border-box !important;
+  transition: box-shadow .3s cubic-bezier(0,0,.5,1), transform .3s cubic-bezier(0,0,.5,1) !important;
+}
+
+/* Catch-all for card roots introduced by later builds. Card internals never
+   contain the Card__ suffix, so headers, chips and footers stay flat. The
+   chart widgets below are inner panels of an analytics card, not cards. */
+html#octop-simple-theme-root :is([class*="module__"][class*="Card__"]):not(
+  :is(
+    [class*="module__dimBarCard__"],
+    [class*="module__donutCard__"],
+    [class*="module__dimTableCard__"],
+    [class*="module__trendCard__"],
+    [class*="module__summaryTrendCard__"],
+    /* 3.9.9 — quickCard 也满足 module__ + Card__，被这条盖成 18px 圆角 + 纯白底，
+       自己的 12px 圆角和 --fn-bg-secondary 底色全被吃掉，只剩一道硬描边。
+       这里把它排除，让 12px 圆角与浅灰面生效。 */
+    [class*="module__quickCard__"]
+  )
+) {
+  border: 0 !important;
+  border-radius: var(--simple-store-card-radius) !important;
+  background: var(--simple-store-card-bg) !important;
+  box-shadow: var(--simple-store-card-shadow) !important;
+  min-width: 0 !important;
+  box-sizing: border-box !important;
+  transition: box-shadow .3s cubic-bezier(0,0,.5,1), transform .3s cubic-bezier(0,0,.5,1) !important;
+}
+
+@media (hover: hover) and (prefers-reduced-motion: no-preference) {
+  html#octop-simple-theme-root :is([class*="module__"][class*="Card__"]):not(
+    :is(
+      [class*="module__dimBarCard__"],
+      [class*="module__donutCard__"],
+      [class*="module__dimTableCard__"],
+      [class*="module__trendCard__"],
+      [class*="module__summaryTrendCard__"],
+      [class*="module__quickCard__"]
+    )
+  ):hover {
+    box-shadow: var(--simple-store-card-shadow-hover) !important;
+    transform: translateY(-2px) !important;
+  }
+}
+
+/* 3.6.1 — Connector catalog: one neutral grid, one card rhythm.
+   Factory values: 240px tracks, 12px column gap, 20px inset, 2px border,
+   0 gap between the icon/title row and the description, and a footer that
+   floats wherever the copy happens to end. */
+html#octop-simple-theme-root [class*="module__typeGrid__"] {
+  grid-template-columns: repeat(auto-fill, minmax(248px, 1fr)) !important;
+  column-gap: 20px !important;
+  row-gap: 20px !important;
+  padding-block: 8px 24px !important;
+}
+html#octop-simple-theme-root [class*="module__typeCard__"] {
+  padding: 24px !important;
+  gap: 0 !important;
+  min-height: 176px !important;
+}
+html#octop-simple-theme-root [class*="module__typeCardBody__"] {
+  flex: 1 1 auto !important;
+  display: flex !important;
+  flex-direction: column !important;
+  gap: 12px !important;
+  padding: 0 !important;
+}
+html#octop-simple-theme-root [class*="module__typeCardHeader__"] {
+  display: flex !important;
+  align-items: flex-start !important;
+  gap: 12px !important;
+  min-height: 0 !important;
+}
+html#octop-simple-theme-root [class*="module__typeCardIconLarge__"] {
+  flex: 0 0 44px !important;
+  width: 44px !important;
+  height: 44px !important;
+  border-radius: 10px !important;
+}
+html#octop-simple-theme-root [class*="module__typeCardTitleCol__"] {
+  display: flex !important;
+  flex-direction: column !important;
+  gap: 6px !important;
+  min-width: 0 !important;
+}
+html#octop-simple-theme-root [class*="module__typeCardTitle__"] {
+  display: block !important;
+  min-width: 0 !important;
+  font-size: 15px !important;
+  line-height: 20px !important;
+  font-weight: 600 !important;
+  overflow: hidden !important;
+  text-overflow: ellipsis !important;
+  white-space: nowrap !important;
+}
+html#octop-simple-theme-root [class*="module__categoryChip__"] {
+  align-self: flex-start !important;
+  margin: 0 !important;
+  padding: 0 8px !important;
+  border: 0 !important;
+  border-radius: 999px !important;
+  font-size: 11px !important;
+  line-height: 18px !important;
+}
+html#octop-simple-theme-root [class*="module__typeCardDesc__"] {
+  margin: 0 !important;
+  min-height: 38px !important;
+  max-height: 38px !important;
+  font-size: 13px !important;
+  line-height: 19px !important;
+  color: var(--fn-text-secondary) !important;
+  display: -webkit-box !important;
+  -webkit-box-orient: vertical !important;
+  -webkit-line-clamp: 2 !important;
+  overflow: hidden !important;
+  overflow-wrap: anywhere !important;
+}
+html#octop-simple-theme-root [class*="module__typeCardFooter__"] {
+  margin-top: auto !important;
+  padding: 16px 0 0 !important;
+  border: 0 !important;
+  min-height: 0 !important;
+}
+html#octop-simple-theme-root [class*="module__typeCardHint__"] {
+  display: inline-flex !important;
+  align-items: center !important;
+  min-height: 20px !important;
+  font-size: 13px !important;
+  font-weight: 500 !important;
+  line-height: 20px !important;
+}
+
+@media (max-width: 600px) {
+  html#octop-simple-theme-root :is(
+    [class*="module__typeCard__"],
+    [class*="module__customMcpServerCard__"],
+    [class*="module__cronCard__"],
+    [class*="module__agentCard__"],
+    [class*="module__expertTemplateCard__"],
+    [class*="module__teamCard__"],
+    [class*="module__roleCard__"],
+    [class*="module__userCard__"],
+    [class*="module__inviteCard__"],
+    [class*="module__presetCard__"],
+    [class*="module__wizardPresetCard__"],
+    [class*="module__wizardCard__"],
+    [class*="module__docCard__"],
+    [class*="module__backupCard__"],
+    [class*="module__configuredCard__"],
+    [class*="module__disabledCard__"],
+    [class*="module__reconnectCard__"],
+    [class*="module__conversationCard__"],
+    [class*="module__conversationTableCard__"],
+    [class*="module__settingCard__"],
+    [class*="module__settingsCard__"],
+    [class*="module__shortcutsCard__"],
+    [class*="module__versionCard__"],
+    [class*="module__configCard__"],
+    [class*="module__installCard__"],
+    [class*="module__entityCard__"],
+    [class*="module__candidatesCard__"],
+    [class*="module__resultCard__"]
+  ) {
+    padding: 20px !important;
+  }
+}
+
+
+/* ============================================================
+   3.7 — Sidebar: retire the tinted frame around the current agent.
+
+   The active agent card is the container that holds this agent session
+   list, so whatever it paints becomes a frame around the whole list.
+   The app writes that frame as an inline style with the agent accent:
+
+     background: rgba(accent, .03); border-color: rgba(accent, .094)
+
+   A token reset cannot reach an inline colour, so the fill went away but
+   the 1px accent border stayed behind: a pale violet line floating around
+   the session list, with nothing inside it. Same story for the 24px avatar,
+   which keeps an inline accent ring on top of its neutral chip.
+
+   Rule: the current agent is identified by position and type weight, not by
+   a drawn box. No accent tint, no frame, no ring.
+   ============================================================ */
+html#octop-simple-theme-root [class*="module__agentCardActive"] {
+  border-color: transparent !important;
+  background: transparent !important;
+  box-shadow: none !important;
+}
+html#octop-simple-theme-root [class*="module__agentCardActive"] [class*="module__agentCardAvatar"],
+html#octop-simple-theme-root [class*="module__agentCardActive"] :is([class*="Avatar"], [class*="avatar"]) {
+  box-shadow: none !important;
+  border-color: transparent !important;
+  background: var(--fn-bg-tertiary) !important;
+}
+/* The profile block keeps the same 8px rail as the expert rows above it. */
+html#octop-simple-theme-root [class*="module__agentCardActive"] [class*="module__agentCardProfile"] {
+  padding: 2px 2px 0 !important;
+  margin: 0 0 2px !important;
+}
+html#octop-simple-theme-root [class*="module__agentCardActive"] [class*="module__agentCardSessions"] {
+  padding: 2px 0 0 !important;
+  gap: 2px !important;
+}
+
+/* v3.7 Model family icons and trailing, non-overlapping remove action. */
+html#octop-simple-theme-root [class*="module__contextChipModel__"] {
+  flex-direction: row !important; flex-wrap: nowrap !important;
+}
+html#octop-simple-theme-root [class*="module__contextChipIcon__"][data-simple-model-brand] {
+  background-size: contain !important; background-repeat: no-repeat !important;
+  background-position: center !important;
+}
+html#octop-simple-theme-root [class*="module__contextChipIcon__"][data-simple-model-brand] > * { visibility: hidden !important; }
+/* 模型下拉里的同一套图标：IMG 走 object-fit，其余元素走背景图 */
+html#octop-simple-theme-root [class*="module__modelMenuIcon__"][data-simple-model-brand] {
+  background-size: contain !important; background-repeat: no-repeat !important;
+  background-position: center !important;
+}
+html#octop-simple-theme-root [class*="module__modelMenuIcon__"][data-simple-model-brand] > * { visibility: hidden !important; }
+html#octop-simple-theme-root [class*="module__contextChipModel__"] > [class*="module__contextChipRemove__"] {
+  position: static !important; inset: auto !important; transform: none !important;
+  order: 3 !important; flex: 0 0 20px !important; width: 20px !important; height: 20px !important;
+  opacity: 0 !important; pointer-events: none; transition: opacity 140ms ease;
+}
+html#octop-simple-theme-root [class*="module__contextChipModel__"]:hover > [class*="module__contextChipRemove__"],
+html#octop-simple-theme-root [class*="module__contextChipModel__"]:focus-within > [class*="module__contextChipRemove__"] {
+  opacity: 1 !important; pointer-events: auto;
+}
+html#octop-simple-theme-root [class*="module__contextChipRemove__"]:focus-visible { outline: 2px solid var(--fn-text-secondary) !important; outline-offset: 1px; }
+@media (hover: none), (pointer: coarse) {
+  html#octop-simple-theme-root [class*="module__contextChipModel__"] > [class*="module__contextChipRemove__"] { opacity: .65 !important; pointer-events: auto; }
+}
+@media (prefers-reduced-motion: reduce) {
+  html#octop-simple-theme-root [class*="module__contextChipModel__"] > [class*="module__contextChipRemove__"] { transition: none; }
+}
+
+/* v3.8: one hover surface and shared vertical centre for the chat nav row. */
+html#octop-simple-theme-root [class*="Sidebar-module__navItemRow__"] { display:flex !important; align-items:center !important; padding:0 !important; gap:0 !important; }
+html#octop-simple-theme-root [class*="Sidebar-module__navItemRow__"] > button { display:flex !important;align-items:center !important;justify-content:center; height:32px !important;min-height:32px !important;margin:0 !important;align-self:center !important;position:static !important;transform:none !important; }
+html#octop-simple-theme-root [class*="Sidebar-module__navItemRow__"] > [class*="navItemMain__"] {justify-content:flex-start !important;flex:1 !important;}
+html#octop-simple-theme-root [class*="Sidebar-module__navItemRow__"] > button,
+html#octop-simple-theme-root [class*="Sidebar-module__navItemRow__"] > button:hover { background:transparent !important;box-shadow:none !important; }
+html#octop-simple-theme-root [class*="Sidebar-module__navItemRow__"] svg {display:block !important;flex-shrink:0 !important;}
+/* Avatars and model logos have no container fill or ring. */
+html#octop-simple-theme-root :is([class*="agentCardAvatar__"],[class*="agentRowAvatar__"],[class*="modelMenuIcon__"],[class*="AvatarDropdown-module__avatar"]) {background:transparent !important;box-shadow:none !important;border:0 !important;}
+html#octop-simple-theme-root [class*="modelMenuIcon__"] {object-fit:contain !important;border-radius:0 !important;padding:0 !important;}
+/* Native data/actions remain mounted; floating proxy avoids React reconciliation bugs. */
+html#octop-simple-theme-root [class*="module__contextChipModel__"],
+html#octop-simple-theme-root [class*="module__runUsageBar__"] {display:none !important;}
+html#octop-simple-theme-root [class*="module__imagePreviewBar__"]:not(:has(> :not([class*="module__contextChipModel__"]))) {display:none !important;}
+html#octop-simple-theme-root #simple-chat-dock {position:fixed;z-index:90;display:flex;align-items:center;gap:8px;width:max-content;background:transparent !important;box-shadow:none;border:0;padding:0;pointer-events:none;color:var(--fn-text-secondary);font-size:12px;}
+html#octop-simple-theme-root #simple-chat-dock :is(button,.simple-stats) {pointer-events:auto;}
+html#octop-simple-theme-root #simple-chat-dock button {display:inline-flex;align-items:center;justify-content:center;gap:6px;height:28px;min-height:28px;padding:0 4px;border:0;box-shadow:none;background:transparent;color:inherit;border-radius:6px;cursor:pointer;font:inherit;}
+html#octop-simple-theme-root #simple-chat-dock button:focus-visible {outline:2px solid var(--fn-text-secondary);outline-offset:2px;}
+html#octop-simple-theme-root #simple-chat-dock button:hover {color:var(--fn-text-primary);}
+html#octop-simple-theme-root #simple-chat-dock .simple-current-model {display:flex;align-items:center;min-width:0;gap:2px;background:transparent;}
+html#octop-simple-theme-root #simple-chat-dock .simple-model-trigger {min-width:0;}
+html#octop-simple-theme-root #simple-chat-dock .simple-model-trigger span {overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+html#octop-simple-theme-root #simple-chat-dock img {width:16px;height:16px;object-fit:contain;background:transparent;border:0;flex:none;}
+html#octop-simple-theme-root #simple-chat-dock [hidden] {display:none !important;}
+html#octop-simple-theme-root #simple-chat-dock .simple-model-remove {opacity:0;transition:opacity 140ms;flex:none;width:24px;}
+html#octop-simple-theme-root #simple-chat-dock .simple-current-model:is(:hover,:focus-within) .simple-model-remove {opacity:1;}
+html#octop-simple-theme-root #simple-chat-dock .simple-stats {position:relative;flex:none;}
+html#octop-simple-theme-root #simple-chat-dock .simple-stats-detail {position:absolute;bottom:100%;left:0;width:320px;max-width:calc(100vw - 40px);padding:12px 16px;border-radius:12px;background:var(--fn-bg-primary);box-shadow:0 4px 24px #0002;color:var(--fn-text-secondary);line-height:1.7;opacity:0;visibility:hidden;pointer-events:none;transform:translateY(4px);transition:opacity 140ms,transform 140ms;}
+/* 用量浮层只认"点开"这一种状态：hover / 焦点不再自己把面板翻出来，
+   否则鼠标一离开或一失焦面板就消失，点了也关不干净。 */
+html#octop-simple-theme-root #simple-chat-dock.simple-stats-open .simple-stats-detail {opacity:1;visibility:visible;transform:none;pointer-events:auto;}
+html#octop-simple-theme-root #simple-chat-dock .simple-stats-trigger[aria-expanded="true"] {color:var(--fn-text-primary);}
+@media(hover:none) {html#octop-simple-theme-root #simple-chat-dock .simple-model-remove {opacity:.65;}}
+@media(prefers-reduced-motion:reduce) {html#octop-simple-theme-root #simple-chat-dock * {transition:none !important;}}
+
+html#octop-simple-theme-root [class*="module__agentCardActive"] :is([class*="Avatar"], [class*="avatar"]) {background:transparent !important;box-shadow:none !important;border:0 !important;}
+
+/* Conversation resize rails: visible only on hover/focus, outside content. */
+html#octop-simple-theme-root .simple-column-handle { position:fixed; width:6px; z-index:40; cursor:ew-resize; touch-action:none; border-radius:3px; background:transparent; transition:background 140ms; }
+html#octop-simple-theme-root .simple-column-handle:hover, html#octop-simple-theme-root .simple-column-handle:focus-visible, html#octop-simple-theme-root.simple-column-dragging .simple-column-handle { background:var(--simple-hairline-strong); }
+html#octop-simple-theme-root.simple-column-dragging, html#octop-simple-theme-root.simple-column-dragging * { cursor:ew-resize !important; user-select:none !important; }
+@media(max-width:767px) { html#octop-simple-theme-root .simple-column-handle { display:none; } }
+
+/* ============================================================
+   3.10 — Touch and small-screen hardening.
+
+   Measured before writing: at 390px the drawer (fixed, top 12 /
+   bottom 12) still resolved to height:100%, so it hung 12px past the
+   viewport and its session list could not scroll. The header carried no
+   notch inset, the composer none for the home indicator, the message
+   action row was reveal-on-hover only (invisible on touch), 14px inputs
+   triggered iOS focus zoom, and the agent bar / page tabs clipped their
+   own content.
+   ============================================================ */
+html#octop-simple-theme-root { -webkit-text-size-adjust: 100%; }
+
+@media (max-width: 767px) {
+  /* 外壳顶栏让开刘海 */
+  html#octop-simple-theme-root .octop-layout-header {
+    height: auto !important;
+    min-height: calc(56px + env(safe-area-inset-top, 0px)) !important;
+    padding-top: env(safe-area-inset-top, 0px) !important;
+  }
+  /* 抽屉：高度交回内容，不再越出视口底部；内层列表自己滚 */
+  html#octop-simple-theme-root [class*="index-module__sidebar__"] {
+    top: max(12px, env(safe-area-inset-top, 0px)) !important;
+    bottom: auto !important;
+    /* dvh 优先，老内核退回 vh */
+    height: calc(100vh - 24px - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px)) !important;
+    height: calc(100dvh - 24px - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px)) !important;
+    max-height: calc(100vh - 24px - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px)) !important;
+    max-height: calc(100dvh - 24px - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px)) !important;
+  }
+  html#octop-simple-theme-root [class*="module__sessionList__"][class] {
+    height: auto !important;
+    min-height: 0 !important;
+    flex: 1 1 auto !important;
+  }
+  html#octop-simple-theme-root [class*="module__sessionItems__"] {
+    flex: 1 1 auto !important;
+    min-height: 0 !important;
+    overflow-y: auto !important;
+    overscroll-behavior: contain !important;
+    padding-bottom: max(16px, env(safe-area-inset-bottom, 0px)) !important;
+  }
+  /* 输入区让开底部手势条 */
+  html#octop-simple-theme-root [class*="module__chatInput"] {
+    padding-bottom: calc(8px + env(safe-area-inset-bottom, 0px)) !important;
+  }
+  /* 聚焦不缩放：输入类控件不低于 16px */
+  html#octop-simple-theme-root textarea,
+  html#octop-simple-theme-root input:not([type="checkbox"]):not([type="radio"]):not([type="file"]),
+  html#octop-simple-theme-root select {
+    font-size: 16px !important;
+  }
+  /* 专家选择条与页内标签：可以横滑，别把字裁掉 */
+  html#octop-simple-theme-root [class*="AgentSelector-module__bar"] {
+    scroll-padding-inline: 16px;
+    -webkit-overflow-scrolling: touch;
+  }
+  html#octop-simple-theme-root .octop-segmented {
+    max-width: 100% !important;
+    overflow-x: auto !important;
+    scrollbar-width: none;
+    -webkit-overflow-scrolling: touch;
+  }
+  html#octop-simple-theme-root .octop-segmented::-webkit-scrollbar { display: none; }
+  html#octop-simple-theme-root .octop-segmented-item { flex: 0 0 auto !important; }
+  html#octop-simple-theme-root .octop-segmented-item-label { padding-inline: 11px !important; }
+  /* 正文里的宽内容自己滚，不顶破单列 */
+  html#octop-simple-theme-root [class*="markdownBody__"] :is(pre, table) {
+    max-width: 100% !important;
+    overflow-x: auto !important;
+    -webkit-overflow-scrolling: touch;
+  }
+  html#octop-simple-theme-root [class*="markdownBody__"] img {
+    max-width: 100% !important;
+    height: auto !important;
+  }
+  html#octop-simple-theme-root [class*="module__messageList__"][class] {
+    overscroll-behavior: contain;
+  }
+}
+
+/* 无悬停的设备：消息操作常驻，不再靠 hover 才能看见 */
+@media (hover: none), (pointer: coarse) {
+  html#octop-simple-theme-root [class*="module__msgMetaRow"] {
+    opacity: 1 !important;
+  }
+  html#octop-simple-theme-root [class*="module__msgCopyBtn"],
+  html#octop-simple-theme-root [class*="module__msgActionBtn"],
+  html#octop-simple-theme-root .simple-msg-btn {
+    width: 30px !important;
+    height: 30px !important;
+  }
+  /* 悬浮入口：可点面积放大到 32px，视觉仍保持 28px 间距 */
+  html#octop-simple-theme-root #simple-chat-dock button {
+    min-width: 32px;
+    min-height: 32px;
+  }
+  html#octop-simple-theme-root #simple-chat-dock .simple-model-remove { width: 30px; }
+  /* 触屏按压反馈（移动端默认已关掉高亮） */
+  html#octop-simple-theme-root #simple-chat-dock button:active,
+  html#octop-simple-theme-root [class*="module__msgCopyBtn"]:active {
+    background: var(--fn-sidebar-item-hover) !important;
+  }
+}
+
+/* ============================================================
+   3.11 — Attachment/file row.
+
+   The card layer above treats every *Card__ root as a store card:
+   24px padding, 18px corner, white surface. For an attachment row that
+   reads wrong — it is a file, not a product tile. Measured before the
+   change: 76px tall on a single 13px filename, pure white surface.
+   Now it is a 48px inline strip on a paper-blue tint, with the paperclip
+   in its own tinted tile so the file type reads before the name.
+   ============================================================ */
+html#octop-simple-theme-root {
+  --simple-file-bg: #eef2f8;
+  --simple-file-bg-hover: #e6ecf5;
+  --simple-file-accent: #2f6feb;
+  --simple-file-tile: #dbe5f4;
+}
+html#octop-simple-theme-root[data-theme="dark"] {
+  --simple-file-bg: #222932;
+  --simple-file-bg-hover: #2a323d;
+  --simple-file-accent: #79a6f5;
+  --simple-file-tile: #2b3747;
+}
+html#octop-simple-theme-root [class*="module__messageFileCard__"][class][class][class] {
+  display: inline-flex !important;
+  align-items: center !important;
+  gap: 8px !important;
+  box-sizing: border-box !important;
+  height: 48px !important;
+  min-height: 48px !important;
+  max-width: min(100%, 360px) !important;
+  padding: 8px 8px 8px 10px !important;
+  border: 1px solid transparent !important;
+  border-radius: 12px !important;
+  background: var(--simple-file-bg) !important;
+  box-shadow: none !important;
+  transform: none !important;
+}
+html#octop-simple-theme-root [class*="module__messageFileMeta__"] {
+  display: flex !important;
+  align-items: center !important;
+  gap: 10px !important;
+  min-width: 0 !important;
+  flex: 1 1 auto !important;
+}
+/* 图标单独成块，文件类型先于文件名被读到 */
+html#octop-simple-theme-root [class*="module__messageFileIcon__"] {
+  flex: none !important;
+  box-sizing: border-box !important;
+  width: 26px !important;
+  height: 26px !important;
+  padding: 5px !important;
+  border-radius: 8px !important;
+  background: var(--simple-file-tile) !important;
+  color: var(--simple-file-accent) !important;
+  stroke-width: 2 !important;
+}
+html#octop-simple-theme-root [class*="module__messageFileName__"] {
+  font-size: 13px !important;
+  line-height: 18px !important;
+  font-weight: 500 !important;
+  color: var(--fn-text-primary) !important;
+  min-width: 0 !important;
+  overflow: hidden !important;
+  text-overflow: ellipsis !important;
+  white-space: nowrap !important;
+  direction: ltr !important;
+  text-align: left !important;
+}
+html#octop-simple-theme-root [class*="module__messageFileActionBtn__"] {
+  flex: none !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  box-sizing: border-box !important;
+  width: 28px !important;
+  height: 28px !important;
+  min-width: 0 !important;
+  padding: 0 !important;
+  border: 0 !important;
+  border-radius: 8px !important;
+  background: transparent !important;
+  box-shadow: none !important;
+  color: var(--fn-text-secondary) !important;
+  cursor: pointer !important;
+}
+html#octop-simple-theme-root [class*="module__messageFileActionBtn__"]:is(:hover, :focus-visible) {
+  background: var(--simple-file-bg-hover) !important;
+  color: var(--simple-file-accent) !important;
+}
+html#octop-simple-theme-root [class*="module__messageFiles__"] {
+  gap: 8px !important;
+  align-items: flex-start !important;
+}
+@media (hover: none), (pointer: coarse) {
+  html#octop-simple-theme-root [class*="module__messageFileActionBtn__"] {
+    width: 32px !important;
+    height: 32px !important;
+  }
+}
+
+/* ============================================================
+   3.9.6 — Card boundaries that survive a white page.
+
+   Measured before writing: the store-card layer sets border:0 and a
+   white surface. On the light page (also #fff) the only separation
+   left was a 2px/8% shadow, so every card's left and right edge read
+   as missing — worst on the quick-prompt grid, the attachment row and
+   the settings cards. Dark mode had the same problem inverted
+   (#2a2a2a on #0d0d0d is the only cue).
+
+   Fix: a 1px inset ring drawn with box-shadow, so it never changes
+   layout width, never stacks with the radius, and cannot be dropped by
+   overflow clipping. Elevation stays on top of the ring.
+
+   3.9.9 — .16 在白底上实渲染成 216 灰，1px 硬线太抢眼。降到 .09
+   （≈233 灰）只作轮廓提示，靠底色和投影承担"这是一块面"。
+   ============================================================ */
+html#octop-simple-theme-root {
+  --simple-card-ring: rgba(13, 13, 13, .09);
+  --simple-card-ring-hover: rgba(13, 13, 13, .16);
+}
+html#octop-simple-theme-root[data-theme="dark"] {
+  --simple-card-ring: rgba(255, 255, 255, .13);
+  --simple-card-ring-hover: rgba(255, 255, 255, .2);
+}
+html#octop-simple-theme-root :is([class*="module__"][class*="Card__"]):not(
+  :is(
+    [class*="module__dimBarCard__"],
+    [class*="module__donutCard__"],
+    [class*="module__dimTableCard__"],
+    [class*="module__trendCard__"],
+    [class*="module__summaryTrendCard__"],
+    /* 3.9.9 — quickCard 自带浅灰底，再套一道环会变成双线，交给底色即可 */
+    [class*="module__quickCard__"]
+  )
+) {
+  box-shadow: inset 0 0 0 1px var(--simple-card-ring), var(--simple-store-card-shadow) !important;
+}
+@media (hover: hover) {
+  html#octop-simple-theme-root :is([class*="module__"][class*="Card__"]):not([class*="module__quickCard__"]):hover {
+    box-shadow: inset 0 0 0 1px var(--simple-card-ring-hover), var(--simple-store-card-shadow-hover) !important;
+  }
+}
+/* 选中态同样走 inset，避免被容器裁掉一半 */
+html#octop-simple-theme-root [class*="module__skillCard__"]:has(input:checked) {
+  box-shadow: inset 0 0 0 2px #0071e3, var(--simple-store-card-shadow) !important;
+}
+
+/* 快速提示卡：环之外再给一个独立底色，白页上也能看出是一块面 */
+html#octop-simple-theme-root [class*="module__quickCard__"] {
+  background: var(--fn-bg-secondary) !important;
+}
+html#octop-simple-theme-root [class*="module__quickCard__"]:hover {
+  background: var(--simple-hover) !important;
+}
+
+/* 进行中圈圈：原来的 11px 是内容盒，加上 1.5px 描边实渲染 14–16px，
+   与 15px 名称不成比例。改成 border-box 后永远是 11px。 */
+html#octop-simple-theme-root .simple-agent-busy {
+  box-sizing: border-box !important;
+  width: 11px !important;
+  height: 11px !important;
+  min-width: 11px !important;
+  max-width: 11px !important;
+  min-height: 11px !important;
+}
+
+/* "NEW" 角标在 15px 名称行里会被行框裁掉右侧 3px：给自己留出内距，
+   并禁止父级把它当作可压缩项。 */
+html#octop-simple-theme-root [class*="nav-badge"],
+html#octop-simple-theme-root [class*="badge-new"] {
+  flex: none !important;
+  padding-inline: 5px !important;
+  line-height: 16px !important;
+  overflow: visible !important;
+}
+
+/* 导航分组标题：折叠箭头原来被 space-between 推到 x188，离标题 168px，
+   读起来像两件无关的东西。收成一组，右侧留 8px 光差。 */
+html#octop-simple-theme-root [class*="Sidebar-module__navGroupHeader"] {
+  justify-content: flex-start !important;
+  gap: 6px !important;
+}
+html#octop-simple-theme-root [class*="Sidebar-module__navGroupHeader"] svg {
+  margin-left: auto !important;
+  margin-right: 0 !important;
+  width: 12px !important;
+  height: 12px !important;
+  color: var(--fn-text-quaternary) !important;
+}
+
+/* 会话行的"更多"悬浮钮原来用 absolute right:4px 顶在行尾，与 22px 的
+   行内留白不一致；改成行内 flex 尾项，和 lead 图标同一条基线。 */
+html#octop-simple-theme-root [class*="module__sessionRow__"] {
+  padding-right: 6px !important;
+}
+html#octop-simple-theme-root [class*="module__sessionRowMore"] {
+  position: static !important;
+  transform: none !important;
+  right: auto !important;
+  margin-left: auto !important;
+  flex: none !important;
+}
+
+/* 快速卡：图标与两行文字之间的固定 10px 呼吸，图标块自己不会被压扁 */
+html#octop-simple-theme-root [class*="module__quickCard__"] {
+  gap: 10px !important;
+  align-items: flex-start !important;
+}
+html#octop-simple-theme-root [class*="module__quickCardIcon"] {
+  flex: none !important;
+}
+
+/* ==============================================================
+   3.9.7 - 768-1099px: 左侧只留 44px 图标栏
+   ============================================================== */
+@media (min-width: 768px) and (max-width: 1099px) {
+  /* 3.9.12 — 这条规则原来只按「有 drag 直系子节点」认侧栏，但
+     .page-content 和 .chatMain 里也各有一个 octop-desktop-drag，于是 768-1099
+     之间整块主内容被夹成 44px 宽（实测 /admin/advanced、/chat 全白，只剩一条图标栏）。
+     改成同时要求容器里有 navGroup（只有侧栏满足），主内容区不再被误伤。 */
+  /* rail 本体：44px 图标列 */
+  html#octop-simple-theme-root div:has(> [class*="octop-desktop-drag"]):has([class*="navGroup"]) {
+    width: 44px !important;
+    min-width: 44px !important;
+    max-width: 44px !important;
+    flex: 0 0 44px !important;
+    padding-inline: 0 !important;
+  }
+  /* 顶栏：44 高居中，logo 与版本号藏掉 */
+  html#octop-simple-theme-root div:has(> [class*="octop-desktop-drag"]):has([class*="navGroup"]) > .octop-desktop-drag {
+    width: 44px !important;
+    height: 44px !important;
+    padding-inline: 0 !important;
+    justify-content: center !important;
+  }
+  html#octop-simple-theme-root div:has(> [class*="octop-desktop-drag"]):has([class*="navGroup"]) [class*="versionBadge"],
+  html#octop-simple-theme-root div:has(> [class*="octop-desktop-drag"]):has([class*="navGroup"]) > .octop-desktop-drag img {
+    display: none !important;
+  }
+  /* 抽屉列 0 宽，sidebar 跟着夹住，抽屉内容整段隐藏 */
+  html#octop-simple-theme-root div:has(> [class*="sidebarWrapper"]) {
+    width: 0 !important;
+  }
+  html#octop-simple-theme-root div:has(> [class*="sidebarWrapper"]) {
+    min-width: 0 !important;
+    flex: 0 0 0 !important;
+    overflow: visible !important;
+  }
+  html#octop-simple-theme-root [class*="sessionSearchWrap"],
+  html#octop-simple-theme-root [class*="sessionScopeTabs"],
+  html#octop-simple-theme-root [class*="sessionItems__"],
+  html#octop-simple-theme-root [class*="expertSection"] {
+    display: none !important;
+  }
+  html#octop-simple-theme-root [class*="newChatRow"],
+  html#octop-simple-theme-root [class*="sessionList__"] {
+    display: none !important;
+  }
+  /* 导航收成 44 见方、图标居中 */
+  html#octop-simple-theme-root [class*="navGroup"],
+  html#octop-simple-theme-root [class*="navGroupItems"],
+  html#octop-simple-theme-root [class*="navItemRow"],
+  html#octop-simple-theme-root [class*="navItemMain"] {
+    width: 44px !important;
+  }
+  html#octop-simple-theme-root [class*="navItem"] {
+    margin-inline: 0 !important;
+  }
+  html#octop-simple-theme-root [class*="navItemRow"],
+  html#octop-simple-theme-root [class*="navItemMain"] {
+    height: 32px !important;
+    padding: 0 !important;
+    flex: none !important;
+  }
+  html#octop-simple-theme-root [class*="navItemMain"] {
+    justify-content: center;
+  }
+  html#octop-simple-theme-root [class*="navItemMain"] > span:not(:has(svg)) {
+    display: none !important;
+    width: 0 !important;
+  }
+  html#octop-simple-theme-root [class*="navItemMain"] svg {
+    width: 18px !important;
+    height: 18px !important;
+    margin: 0 !important;
+  }
+  /* 分组标题在图标列里只是噪音 */
+  html#octop-simple-theme-root [class*="navGroupHeader"] {
+    height: 0 !important;
+    min-height: 0 !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    overflow: hidden !important;
+    border: 0 !important;
+  }
+  /* 底部账号区只留头像 */
+  html#octop-simple-theme-root div:has(> .octop-desktop-drag):has([class*="navGroup"]) button[class*="AvatarDropdown-module__trigger"] {
+    width: 36px !important;
+    padding: 0 !important;
+    margin-inline: auto !important;
+    justify-content: center !important;
+  }
+  html#octop-simple-theme-root div:has(> .octop-desktop-drag):has([class*="navGroup"]) button[class*="AvatarDropdown-module__trigger"] > :not([class*="accountAvatar"]) {
+    display: none !important;
+  }
+  /* 抽屉真被打开时让出 248 宽，并把列表放回来 */
+  html#octop-simple-theme-root div:has(> [class*="sidebarWrapper"]):has([class*="sidebarOpen"]) {
+    width: 248px !important;
+    min-width: 248px;
+  }
+  html#octop-simple-theme-root [class*="sidebarOpen"] [class*="sessionList__"] {
+    display: flex !important;
+  }
+  /* 3.8 的 flex:1 / flex-start 特异性更高，这里压回去 */
+  html#octop-simple-theme-root [class*="navItemRow"] > [class*="navItemMain"] {
+    flex: 0 0 44px !important;
+    justify-content: center !important;
+  }
+  /* rail 内层还有 12px 内边距，会把 44px 的行推到右边 */
+  html#octop-simple-theme-root div:has(> [class*="navGroup"]) {
+    padding-inline: 0 !important;
+  }
+  html#octop-simple-theme-root [class*="navItemRow"] > [class*="chatRailExpandBtn"] {
+    display: none !important;
+  }
+  html#octop-simple-theme-root div:has(> .octop-desktop-drag):has([class*="navGroup"]) > div {
+    padding-inline: 0 !important;
+  }
+  html#octop-simple-theme-root [class*="nav-badge"] {
+    display: none !important;
+  }
+  /* 头像外层 span 被 8px 内边距压成 16px，头像整体左溢 */
+  html#octop-simple-theme-root [class*="AvatarDropdown-module__trigger"] > span:has([class*="Avatar"]) {
+    width: 36px !important;
+    padding-inline: 0 !important;
+  }
+  /* 图标 span 固定 18px，配合按钮 44px 居中，图标中心正好 22 */
+  html#octop-simple-theme-root [class*="navItemMain"] > span:has(svg) {
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    width: 18px !important;
+    flex: 0 0 18px !important;
+    margin: 0 !important;
+  }
+  html#octop-simple-theme-root [class*="navItemMain"] {
+    gap: 0 !important;
+  }
+}
+
+
+/* =========================================================================
+   3.9.18 — 欢迎页快捷卡：一张安静的白卡
+   原来的「灰面 + 隐形图标块 + 无阴影」在纯白页上像一块贴纸，跟标题、输入框
+   都不是一个语气。这里给一套和设置页卡片同源的规格：白面、一道发丝环、
+   极浅的环境光；hover 只抬 1px、环和光各深一档，图标块随卡片一起亮一点。
+   ========================================================================= */
+html#octop-simple-theme-root [class*="module__quickSection"] {
+  margin-top: 26px !important;
+}
+html#octop-simple-theme-root [class*="module__quickCards"] {
+  grid-template-columns: repeat(auto-fit, minmax(212px, 1fr)) !important;
+  gap: 12px !important;
+  /* 卡片左沿与「快速提示」标题、正文同一条竖线，不再额外缩进 8px */
+  padding-inline: 0 !important;
+}
+html#octop-simple-theme-root [class*="module__quickCard__"] {
+  display: flex !important;
+  flex-direction: row !important;
+  align-items: flex-start !important;
+  flex-wrap: nowrap !important;
+  gap: 12px !important;
+  padding: 14px 16px !important;
+  border: 0 !important;
+  border-radius: 14px !important;
+  background: var(--simple-store-card-bg) !important;
+  box-shadow: inset 0 0 0 1px var(--simple-card-ring), var(--simple-store-card-shadow) !important;
+  color: var(--fn-text-primary) !important;
+  transition: transform .22s cubic-bezier(.2,.8,.3,1),
+              box-shadow .22s cubic-bezier(.2,.8,.3,1),
+              background-color .22s ease !important;
+}
+html#octop-simple-theme-root [class*="module__quickCard__"]:hover {
+  background: var(--simple-store-card-bg) !important;
+  box-shadow: inset 0 0 0 1px var(--simple-card-ring-hover), var(--simple-store-card-shadow-hover) !important;
+}
+html#octop-simple-theme-root [class*="module__quickCard__"]:active {
+  transform: translateY(0) !important;
+}
+@media (hover: hover) and (prefers-reduced-motion: no-preference) {
+  html#octop-simple-theme-root [class*="module__quickCard__"]:hover {
+    transform: translateY(-1px) !important;
+  }
+}
+html#octop-simple-theme-root [class*="module__quickCardIcon"] {
+  flex: 0 0 30px !important;
+  width: 30px !important;
+  height: 30px !important;
+  border-radius: 9px !important;
+  background: var(--fn-bg-secondary) !important;
+  color: var(--fn-text-secondary) !important;
+  display: grid !important;
+  place-items: center !important;
+  transition: background-color .22s ease !important;
+}
+html#octop-simple-theme-root [class*="module__quickCard__"]:hover [class*="module__quickCardIcon"] {
+  background: var(--fn-bg-secondary-hover) !important;
+}
+/* 深色下卡面 2a2a2a 与 2f2f2f 只差一点点，图标块会糊进卡里，单独抬一档亮度 */
+html#octop-simple-theme-root[data-theme="dark"] [class*="module__quickCardIcon"] {
+  background: rgba(255,255,255,.08) !important;
+}
+html#octop-simple-theme-root[data-theme="dark"] [class*="module__quickCard__"]:hover [class*="module__quickCardIcon"] {
+  background: rgba(255,255,255,.14) !important;
+}
+html#octop-simple-theme-root [class*="module__quickCardIcon"] svg {
+  width: 16px !important;
+  height: 16px !important;
+  min-width: 16px !important;
+  max-width: 16px !important;
+  flex: none !important;
+  display: block !important;
+}
+html#octop-simple-theme-root [class*="module__quickCardBody"] {
+  display: flex !important;
+  flex-direction: column !important;
+  gap: 2px !important;
+  min-width: 0 !important;
+  font-size: 13.5px !important;
+  line-height: 19px !important;
+  font-weight: 500 !important;
+  color: var(--fn-text-primary) !important;
+}
+html#octop-simple-theme-root [class*="module__quickCardTitleRow"],
+html#octop-simple-theme-root [class*="module__quickCardTitle"] {
+  font-size: 13.5px !important;
+  line-height: 19px !important;
+  font-weight: 600 !important;
+  letter-spacing: -.006em !important;
+  color: var(--fn-text-primary) !important;
+}
+html#octop-simple-theme-root [class*="module__quickCardDesc"] {
+  font-size: 12.5px !important;
+  line-height: 18px !important;
+  font-weight: 400 !important;
+  color: var(--fn-text-tertiary) !important;
+  overflow: hidden !important;
+  display: -webkit-box !important;
+  -webkit-line-clamp: 2 !important;
+  -webkit-box-orient: vertical !important;
+}
+/* 「换一批」按钮：给一个圆角 hover 面，别让它裸在卡片下面 */
+html#octop-simple-theme-root [class*="module__quickMoreButton"] {
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  width: 28px !important;
+  height: 28px !important;
+  margin-top: 10px !important;
+  padding: 0 !important;
+  border: 0 !important;
+  border-radius: 8px !important;
+  background: transparent !important;
+  color: var(--fn-text-tertiary) !important;
+  transition: background-color .18s ease, color .18s ease !important;
+}
+html#octop-simple-theme-root [class*="module__quickMoreButton"]:hover {
+  background: var(--fn-bg-secondary) !important;
+  color: var(--fn-text-primary) !important;
+}
+
+/* ===== 3.9.20 — 专家详情抽屉：技能/子智能体卡只保留一层描边 ===== */
+/* 应用里这些卡片是「fileItem 外框（1px + 圆角 10）里再放一个 entityCard」，
+   entityCard 本身没有边框/底色/圆角；主题的 Card__ 通配规则多给了一层 18px 圆角
+   + 1px 内描边 + 投影，于是同一处出现两道描边、且圆角不一致。这里把内层还给应用。 */
+html#octop-simple-theme-root [class*="module__entityCard"][class*="Card__"]:not(#\9),
+html#octop-simple-theme-root [class*="module__entityCard"][class*="Card__"]:not(#\9):hover {
+  border: 0 !important;
+  border-radius: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
+}
+/* 外框本身也别再叠主题的阴影，只留应用那道 1px 描边 */
+html#octop-simple-theme-root [class*="module__fileItem"]:has([class*="module__entityCard"]):not(#\9) {
+  box-shadow: none !important;
+  border-color: var(--simple-hairline) !important;
+  border-radius: 14px !important;
+}
+
+/* Tablet edge controls must not be covered by desktop column-resize handles. */
+@media (max-width: 1099px) {
+  html#octop-simple-theme-root .simple-column-handle { display: none !important; }
+}
+@media (min-width: 768px) and (max-width: 1099px) {
+  html#octop-simple-theme-root div:has(> [class*="module__sidebarWrapper__"]) {
+    position: relative !important; z-index: 5 !important;
+  }
+  html#octop-simple-theme-root [class*="RailEdgeControl-module__btn__"] {
+    pointer-events: auto !important; opacity: 1 !important;
+  }
+  html#octop-simple-theme-root [class*="module__sidebarOpen__"] :is(
+    [class*="module__expertSection"], [class*="module__sessionItems__"],
+    [class*="module__sessionScopeTabs"], [class*="module__sessionSearchWrap"]
+  ) { display: flex !important; }
+  html#octop-simple-theme-root [class*="module__sidebarOpen__"] [class*="module__expertSection"] {
+    flex-direction: column !important;
+  }
+}
+
+/* 1.0 — bounded catalog surfaces and persistent expert pin state.
+   Keep 3.9.20 entityCard/fileItem overrides above unchanged.
+   Gutters live INSIDE each grid: overflow:auto ancestors keep scrolling,
+   while the first/last card now has room for its ambient shadow. */
+html#octop-simple-theme-root .page-content :is(
+  [class*="module__channelsGrid__"],
+  [class*="module__cardGrid__"]
+) {
+  box-sizing: border-box !important;
+  min-width: 0 !important;
+  padding: 16px 16px 24px !important;
+  gap: 20px !important;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 260px), 1fr)) !important;
+}
+html#octop-simple-theme-root [class*="module__channelsBody__"] {
+  padding: 0 !important;
+  min-width: 0 !important;
+}
+html#octop-simple-theme-root .page-content :is(
+  [class*="module__channelCard__"],
+  article[class*="module__card__"],
+  [class*="module__agentCard2__"]
+):not(#simple-catalog-specificity) {
+  border: 0 !important;
+  border-radius: 20px !important;
+  background: var(--simple-store-card-bg) !important;
+  box-shadow: 0 3px 12px rgba(0,0,0,.075) !important;
+  padding: 24px !important;
+  min-width: 0 !important;
+  max-width: 100% !important;
+  box-sizing: border-box !important;
+  transform: none !important;
+}
+html#octop-simple-theme-root[data-theme="dark"] .page-content :is(
+  [class*="module__channelCard__"], article[class*="module__card__"], [class*="module__agentCard2__"]
+):not(#simple-catalog-specificity) {
+  box-shadow: 0 3px 12px rgba(0,0,0,.22) !important;
+}
+/* A quiet vertical hierarchy like the supplied Apple benefit cards. */
+html#octop-simple-theme-root [class*="module__channelCard__"] [class*="module__cardTop__"] {
+  display: grid !important;
+  grid-template-columns: minmax(0,1fr) auto !important;
+  gap: 16px 12px !important;
+  align-items: center !important;
+  margin-bottom: 12px !important;
+}
+html#octop-simple-theme-root [class*="module__channelCard__"] [class*="module__channelIcon__"] {
+  width: 32px !important; height: 32px !important; grid-column: 1 !important;
+}
+html#octop-simple-theme-root [class*="module__channelCard__"] [class*="module__cardTop__"] > div {
+  grid-column: 2 !important; grid-row: 1 !important;
+}
+html#octop-simple-theme-root [class*="module__channelCard__"] [class*="module__cardTitle__"] {
+  grid-column: 1 / -1 !important; grid-row: 2 !important;
+  font-size: 18px !important; font-weight: 600 !important; line-height: 26px !important;
+}
+html#octop-simple-theme-root [class*="module__channelCard__"] [class*="module__cardDescription__"] {
+  margin: 0 !important; line-height: 22px !important;
+  min-height: 66px !important; max-height: none !important;
+  display: block !important; overflow-wrap: anywhere !important;
+}
+html#octop-simple-theme-root [class*="module__channelCard__"] [class*="module__cardBottom__"] {
+  margin-top: 24px !important; padding: 0 !important; border: 0 !important;
+}
+html#octop-simple-theme-root article[class*="module__card__"]:has([class*="module__cardMetaRow__"]) {
+  opacity: 1 !important;
+}
+html#octop-simple-theme-root article[class*="module__card__"] :is([class*="module__cardMetaRow__"], [class*="module__cardFooter__"]) {
+  flex-wrap: wrap !important; gap: 8px !important;
+}
+html#octop-simple-theme-root article[class*="module__card__"] [class*="module__cardTitleCol__"] {
+  min-width: 0 !important;
+}
+/* Footer actions must wrap at narrow card widths, including tablet two-column grids. */
+html#octop-simple-theme-root [class*="module__agentCard2Footer__"] {
+  flex-wrap: wrap !important; gap: 8px !important;
+}
+html#octop-simple-theme-root [class*="module__agentCard2TitleBlock__"] { min-width: 0 !important; }
+/* Active state is semantic, not hover. Reserve the space at the same time. */
+html#octop-simple-theme-root [class*="module__agentPinBtnActive__"] {
+  opacity: 1 !important;
+  color: var(--fn-text-primary) !important;
+  visibility: visible !important;
+}
+html#octop-simple-theme-root :is([class*="module__agentRowNameRow__"], [class*="module__agentCardNameRow__"]):has([class*="module__agentPinBtnActive__"]) [class*="module__agentNameCluster"] {
+  padding-right: 46px !important;
+}
+html#octop-simple-theme-root :is([class*="module__agentRow__"], [class*="module__agentCard__"]):focus-within :is([class*="module__agentPinBtn__"], [class*="module__agentNewChatBtn__"]) {
+  opacity: 1 !important;
+}
+@media (hover: none), (pointer: coarse) {
+  html#octop-simple-theme-root :is([class*="module__agentPinBtn__"], [class*="module__agentNewChatBtn__"]) {
+    opacity: 1 !important; width: 44px !important; height: 44px !important;
+  }
+  html#octop-simple-theme-root :is([class*="module__agentRowNameRow__"], [class*="module__agentCardNameRow__"]) {
+    min-height: 44px !important;
+  }
+  html#octop-simple-theme-root :is([class*="module__agentRowNameRow__"], [class*="module__agentCardNameRow__"]) [class*="module__agentNameCluster"] {
+    padding-right: 92px !important;
+  }
+}
+@media (max-width: 767px) {
+  html#octop-simple-theme-root .page-content :is([class*="module__channelsGrid__"], [class*="module__cardGrid__"]) {
+    grid-template-columns: minmax(0,1fr) !important;
+    gap: 16px !important;
+  }
+  html#octop-simple-theme-root .page-content :is([class*="module__channelCard__"], article[class*="module__card__"], [class*="module__agentCard2__"]):not(#simple-catalog-specificity) {
+    padding: 20px !important;
+  }
+  html#octop-simple-theme-root [class*="module__agentCard2Footer__"] {
+    flex-wrap: wrap !important; gap: 8px !important;
+  }
+  html#octop-simple-theme-root [class*="module__agentCard2TitleBlock__"] { min-width: 0 !important; }
+  html#octop-simple-theme-root .octop-drawer-content-wrapper { max-width: 100% !important; }
+  html#octop-simple-theme-root .octop-drawer-body { min-width: 0 !important; overflow-wrap: anywhere !important; }
+}
+
+/* 1.0 — shared card surface, applied only to audited component roots.
+   No module__*Card__ catch-all: entityCard remains owned by fileItem (3.9.20). */
+html#octop-simple-theme-root {
+  --simple-card-radius: 20px;
+  --simple-card-surface: var(--simple-store-card-bg);
+  --simple-card-shadow: 0 3px 12px rgba(0,0,0,.075);
+  --simple-card-shadow-dark: 0 3px 12px rgba(0,0,0,.22);
+  --simple-card-padding: 24px;
+  --simple-card-grid-safe: 16px;
+  --simple-card-hairline: transparent;
+}
+html#octop-simple-theme-root[data-theme="dark"] { --simple-card-shadow: var(--simple-card-shadow-dark); }
+/* Audited card roots. Keep entityCard and chart inner widgets out. */
+html#octop-simple-theme-root :is(
+ [class*="module__skillCard__"], [class*="module__toolsPanel__card__"],
+ [class*="ToolsPanel-module__card__"], [class*="module__typeCard__"],
+ [class*="module__catalogCard__"], [class*="module__expertTemplateCard__"],
+ [class*="module__userCard__"], [class*="module__providerCard__"],
+ [class*="module__backendCard__"], [class*="catalogTypeCard-module__card__"],
+ [class*="module__settingCard__"], [class*="module__candidatesCard__"],
+ [class*="module__configCard__"], [class*="module__versionCard__"],
+ [class*="module__emptyStateSuggestionItem__"], [class*="module__card__"],
+ [class*="module__agentCard2__"]
+):not([class*="entityCard__"]):not([class*="quickCard__"]):not(#simple-card-exclusion) {
+  border: 0 !important; border-radius: var(--simple-card-radius) !important;
+  background: var(--simple-card-surface) !important;
+  box-shadow: var(--simple-card-shadow) !important;
+  box-sizing: border-box !important; min-width: 0 !important; max-width: 100% !important;
+}
+/* Cards whose contents are cards or charts retain their internal rhythm. */
+html#octop-simple-theme-root :is(
+ [class*="module__skillCard__"], [class*="ToolsPanel-module__card__"],
+ [class*="module__typeCard__"], [class*="module__catalogCard__"],
+ [class*="module__expertTemplateCard__"], [class*="module__userCard__"],
+ [class*="module__providerCard__"], [class*="module__backendCard__"],
+ [class*="module__settingCard__"], [class*="module__candidatesCard__"],
+ [class*="module__configCard__"], [class*="module__versionCard__"],
+ [class*="module__emptyStateSuggestionItem__"]
+):not([class*="entityCard__"]):not(#simple-card-exclusion) { padding: var(--simple-card-padding) !important; }
+/* Every audited grid gets an internal shadow gutter; the scroll owner stays intact. */
+html#octop-simple-theme-root :is(
+ [class*="module__skillsGrid__"], [class*="ToolsPanel-module__grid__"],
+ [class*="module__typeGrid__"], [class*="module__catalogGrid__"],
+ [class*="module__cardGrid__"], [class*="module__userCardGrid__"],
+ [class*="module__providerCards__"], [class*="module__providerGrid__"],
+ [class*="storage-module__cardGrid__"], [class*="module__summaryGrid__"],
+ [class*="module__trendGrid__"], [class*="module__dimChartRow__"],
+ [class*="module__versionGrid__"], [class*="module__grid__"]
+) { box-sizing:border-box !important; min-width:0 !important; padding:16px 16px 24px !important; gap:20px !important; }
+@media (max-width:767px) {
+ html#octop-simple-theme-root :is(
+  [class*="module__skillsGrid__"], [class*="ToolsPanel-module__grid__"], [class*="module__typeGrid__"],
+  [class*="module__catalogGrid__"], [class*="module__cardGrid__"], [class*="module__userCardGrid__"],
+  [class*="module__providerCards__"], [class*="module__providerGrid__"], [class*="storage-module__cardGrid__"],
+  [class*="module__summaryGrid__"], [class*="module__trendGrid__"], [class*="module__dimChartRow__"],
+  [class*="module__versionGrid__"], [class*="module__grid__"]
+ ) { grid-template-columns:minmax(0,1fr) !important; gap:16px !important; }
+ html#octop-simple-theme-root :is(
+  [class*="module__skillCard__"], [class*="ToolsPanel-module__card__"], [class*="module__typeCard__"],
+  [class*="module__catalogCard__"], [class*="module__expertTemplateCard__"], [class*="module__userCard__"],
+  [class*="module__providerCard__"], [class*="module__backendCard__"], [class*="module__settingCard__"],
+  [class*="module__candidatesCard__"], [class*="module__configCard__"], [class*="module__versionCard__"],
+  [class*="module__emptyStateSuggestionItem__"], [class*="module__card__"]
+ ):not([class*="entityCard__"]):not(#simple-card-exclusion) { padding:20px !important; }
+}
+/* Empty guides are standalone surfaces, not nested Card__ internals. */
+html#octop-simple-theme-root [class*="StreamSetupGuide-module__card__"] {
+ border:0 !important; border-radius:var(--simple-card-radius) !important;
+ background:var(--simple-card-surface) !important; box-shadow:var(--simple-card-shadow) !important;
+ padding:var(--simple-card-padding) !important; box-sizing:border-box !important; max-width:100% !important;
+}
+/* Explicitly preserve the 3.9.20 expert detail single outer frame. */
+html#octop-simple-theme-root [class*="entityCard__"] { border:0 !important; border-radius:0 !important; background:transparent !important; box-shadow:none !important; padding:24px !important; }
+html#octop-simple-theme-root [class*="fileItem__"]:has([class*="entityCard__"]) { border-radius:14px !important; box-shadow:none !important; }
+@media (max-width:767px) {
+ html#octop-simple-theme-root [class*="module__tableCard__"] { width:100% !important; max-width:100% !important; box-sizing:border-box !important; overflow:hidden !important; }
+}
+
+/* 1.0.1 — deletion only: neutral warning chrome, readable risk copy, black actions. */
+html#octop-simple-theme-root [data-simple-delete-dialog] {
+  --simple-delete-inset:24px;
+  max-width:calc(100vw - 32px) !important;
+  box-sizing:border-box !important;
+}
+html#octop-simple-theme-root [data-simple-delete-dialog] :is(.octop-modal-content,.octop-ant-modal-content) {
+  padding:var(--simple-delete-inset) !important;
+}
+/* confirm() already renders its title inside confirm-paragraph; avoid the duplicate header. */
+html#octop-simple-theme-root [data-simple-delete-dialog]:is(.octop-modal-confirm,.octop-ant-modal-confirm) > div > :is(.octop-modal-content,.octop-ant-modal-content) > :is(.octop-modal-header,.octop-ant-modal-header) { display:none !important; }
+html#octop-simple-theme-root [data-simple-delete-dialog] :is(.octop-modal-header,.octop-ant-modal-header) { padding:0 0 12px !important; }
+html#octop-simple-theme-root [data-simple-delete-dialog] :is(.octop-modal-body,.octop-ant-modal-body,.octop-modal-footer,.octop-ant-modal-footer) {
+  padding:0 !important; min-width:0 !important;
+}
+html#octop-simple-theme-root [data-simple-delete-dialog] :is(.octop-popover-inner,.octop-ant-popover-inner) {
+  padding:var(--simple-delete-inset) !important; border-radius:16px !important;
+  max-width:100% !important; box-sizing:border-box !important;
+}
+html#octop-simple-theme-root [data-simple-delete-dialog] :is(.octop-modal-confirm-body,.octop-popconfirm-message) {
+  display:flex !important; gap:12px !important; align-items:flex-start !important; min-width:0 !important;
+}
+html#octop-simple-theme-root [data-simple-delete-dialog] :is(.octop-modal-confirm-paragraph,.octop-popconfirm-message-text) {
+  flex:1 !important; min-width:0 !important; max-width:100% !important; margin:0 !important;
+}
+html#octop-simple-theme-root [data-simple-delete-dialog] :is(.octop-modal-confirm-title,.octop-popconfirm-title) {
+  display:block !important; font-size:16px !important; line-height:24px !important;
+  margin:0 !important; overflow-wrap:anywhere !important; white-space:normal !important;
+}
+html#octop-simple-theme-root [data-simple-delete-dialog] :is(.octop-modal-confirm-content,.octop-popconfirm-description) {
+  margin:10px 0 0 !important; line-height:1.65 !important;
+  overflow-wrap:anywhere !important; white-space:normal !important; max-width:100% !important;
+}
+/* Only the confirmation's decorative warning icon/background is neutralized.
+   Risk text, semantic alerts and field validation are deliberately untouched. */
+html#octop-simple-theme-root [data-simple-delete-dialog] :is(.octop-modal-confirm-body > .anticon,.octop-popconfirm-message-icon,.octop-popconfirm-message-icon > .anticon) {
+  color:var(--fn-text-secondary) !important; background:transparent !important;
+  position:static !important; flex:none !important; margin:2px 0 0 !important;
+}
+html#octop-simple-theme-root [data-simple-delete-dialog] :is(.octop-popconfirm-message,.octop-modal-confirm-body) { background:transparent !important; }
+html#octop-simple-theme-root [data-simple-delete-footer] {
+  display:flex !important; flex-wrap:wrap !important; justify-content:flex-end !important;
+  align-items:center !important; gap:12px !important; margin:24px 0 0 !important;
+}
+html#octop-simple-theme-root [data-simple-delete-footer] > button { margin:0 !important; }
+html#octop-simple-theme-root [data-simple-delete-action]:not(#simple-delete-specificity) {
+  background:#111 !important; color:#fff !important; border:1px solid #666 !important;
+  border-radius:10px !important; box-shadow:none !important;
+  display:inline-flex !important; align-items:center !important; justify-content:center !important;
+  padding:7px 14px !important; min-height:36px !important; line-height:20px !important;
+  white-space:normal !important; overflow-wrap:anywhere !important; text-decoration:none !important;
+}
+html#octop-simple-theme-root [data-simple-delete-action]:not(#simple-delete-specificity):has(svg):not(:has(span:not(.octop-btn-icon))) {
+  min-width:36px !important; padding:7px !important;
+}
+html#octop-simple-theme-root [data-simple-delete-action]:not(#simple-delete-specificity):not(:disabled):not([aria-disabled="true"]):not(.octop-btn-loading):hover {
+  background:#303030 !important; color:#fff !important; border-color:#999 !important;
+}
+html#octop-simple-theme-root [data-simple-delete-action]:not(#simple-delete-specificity):focus-visible {
+  outline:2px solid var(--fn-text-primary) !important; outline-offset:3px !important;
+}
+html#octop-simple-theme-root [data-simple-delete-action]:not(#simple-delete-specificity):is(:disabled,[aria-disabled="true"],.octop-btn-loading,[aria-busy="true"]) {
+  opacity:.45 !important; cursor:not-allowed !important;
+}
+@media (max-width:600px) {
+  html#octop-simple-theme-root [data-simple-delete-dialog] { --simple-delete-inset:20px; }
+  html#octop-simple-theme-root [data-simple-delete-footer] { gap:10px !important; }
+  html#octop-simple-theme-root [data-simple-delete-footer] > button { min-height:44px !important; height:auto !important; }
+}
+@media (hover:none),(pointer:coarse) {
+  html#octop-simple-theme-root [data-simple-delete-action]:not(#simple-delete-specificity) { min-width:44px !important; min-height:44px !important; height:auto !important; }
+}
+
+/* Portal placement is computed before theme padding settles; constrain only mobile delete popovers. */
+@media (max-width:600px) {
+ html#octop-simple-theme-root .octop-popconfirm[data-simple-delete-dialog] {
+   left:16px !important; right:auto !important; width:calc(100vw - 32px) !important;
+   max-width:calc(100vw - 32px) !important;
+ }
+}
+html#octop-simple-theme-root [data-simple-delete-dialog] :is(.octop-modal-confirm-title,.octop-popconfirm-title) { color:var(--fn-text-primary) !important; }
+html#octop-simple-theme-root [data-simple-delete-dialog] :is(.octop-modal-confirm-content,.octop-popconfirm-description) { color:var(--fn-text-secondary) !important; }

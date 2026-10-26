@@ -1,0 +1,13 @@
+{
+  "renderers": [
+    {
+      "id": "theme_card",
+      "tools": [
+        "simple_theme_info"
+      ]
+    }
+  ],
+  "name": "简单主题",
+  "name_zh": "简单主题",
+  "version": "1.0.2"
+}
