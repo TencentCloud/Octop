@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import time
 from typing import Any
-from urllib.parse import urlencode, urlparse
+from urllib.parse import parse_qsl, urlencode, urlparse, urlsplit, urlunsplit
 
 import httpx
 
@@ -133,7 +133,17 @@ def build_authorize_url(
         params["scope"] = scope
     if resource:
         params["resource"] = resource
-    return f"{metadata['authorization_endpoint']}?{urlencode(params)}"
+    # RFC 6749 §3.1: the authorization endpoint may itself carry query
+    # parameters (e.g. ?tenant=acme). Merge instead of appending a second
+    # "?", which used to corrupt the endpoint's own params into
+    # "tenant=acme?response_type=code" and drop response_type entirely.
+    # Our OAuth params win on key collisions.
+    endpoint = urlsplit(str(metadata["authorization_endpoint"]))
+    merged: dict[str, str] = dict(parse_qsl(endpoint.query, keep_blank_values=True))
+    merged.update(params)
+    return urlunsplit(
+        (endpoint.scheme, endpoint.netloc, endpoint.path, urlencode(merged), endpoint.fragment)
+    )
 
 
 def _http_error_detail(resp: Any) -> str:
