@@ -131,11 +131,11 @@ describe("SessionList nav scopes", () => {
     const user = userEvent.setup();
     const onAgentSelect = vi.fn();
     localStorage.setItem(
-      "octop:pinned-experts",
+      "agentbuddy:pinned-experts",
       JSON.stringify(["local-expert"]),
     );
     localStorage.setItem(
-      "octop:hidden-shared-experts",
+      "agentbuddy:hidden-shared-experts",
       JSON.stringify(["shared-expert"]),
     );
     const shared = {

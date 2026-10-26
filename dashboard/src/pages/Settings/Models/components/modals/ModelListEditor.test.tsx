@@ -63,7 +63,9 @@ describe("ModelListEditor", () => {
     await user.click(screen.getByRole("button", { name: "models.editModel" }));
     expect(await screen.findByDisplayValue("qwen")).toBeInTheDocument();
     expect(scrollIntoView).toHaveBeenCalled();
-    expect(screen.getByText("models.purposeChat")).toBeInTheDocument();
+    // Upstream 9bd587f3 replaced the per-model purpose toggle with the fixed
+    // api-mode selector; the label asserts the edit form rendered.
+    expect(screen.getByText("models.apiMode")).toBeInTheDocument();
     expect(screen.queryByText("models.reasoning")).not.toBeInTheDocument();
 
     await user.click(
