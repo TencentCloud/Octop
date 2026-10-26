@@ -28,6 +28,13 @@
 #
 # 或使用 Compose:
 #   docker compose -f docker/docker-compose.yml up -d
+#
+# 或使用 Compose 及国内加速:
+#   PIP_INDEX_URL=https://mirrors.cloud.tencent.com/pypi/simple \
+#   PIP_TRUSTED_HOST=mirrors.cloud.tencent.com \
+#   NPM_REGISTRY=https://mirrors.cloud.tencent.com/npm/ \
+#   APT_MIRROR=mirrors.cloud.tencent.com \
+#   docker compose -f docker/docker-compose.yml up -d
 # =============================================================================
 
 # ---------------------------------------------------------------------------
