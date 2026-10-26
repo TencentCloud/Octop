@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+import errno
+import os
+import shutil
 import tempfile
 from pathlib import Path
 
@@ -15,6 +18,31 @@ from octop.infra.db.factory import open_database
 from octop.infra.db.migrate import run_migrations
 from octop.infra.db.services import build_shared_services
 from octop.infra.utils.paths import PathLayout
+
+
+def _place_exported_archive(tmp_path: Path, dest: Path) -> None:
+    """Move the finished archive from the staging temp dir to ``dest``.
+
+    ``os.replace`` across filesystems raises EXDEV (e.g. exporting to an
+    external drive or a separately mounted volume). Fall back to staging the
+    copy on the destination filesystem and swapping it in atomically, so a
+    failed copy never replaces an existing backup with a partial file (#2321).
+    """
+    try:
+        os.replace(tmp_path, dest)
+        return
+    except OSError as exc:
+        if exc.errno != errno.EXDEV:
+            raise
+    fd, staged_name = tempfile.mkstemp(dir=dest.parent, prefix=f".{dest.name}.", suffix=".part")
+    staged = Path(staged_name)
+    os.close(fd)
+    try:
+        shutil.copyfile(tmp_path, staged)
+        os.replace(staged, dest)
+    except BaseException:
+        staged.unlink(missing_ok=True)
+        raise
 
 
 def _paths(home: Path | None = None) -> PathLayout:
@@ -79,7 +107,7 @@ def create(
             else:
                 dest = output
                 dest.parent.mkdir(parents=True, exist_ok=True)
-                tmp_path.replace(dest)
+                _place_exported_archive(tmp_path, dest)
                 size = dest.stat().st_size
     finally:
         db.close()
