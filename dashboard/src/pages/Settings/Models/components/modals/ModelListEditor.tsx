@@ -22,11 +22,7 @@ import {
 import { useTranslation } from "react-i18next";
 import { request } from "../../../../../api/request";
 import { useImeSearchInput } from "../../../../../hooks/useImeSearchInput";
-import {
-  userGroupsApi,
-  type ResourceVisibilityMode,
-  type UserGroup,
-} from "../../../../../api/modules/userGroups";
+import type { ResourceVisibilityMode } from "../../../../../api/modules/userGroups";
 import { ResourceVisibilityFields } from "../../../../../components/ResourceVisibilityFields";
 import type { ProviderRow, ProviderModel } from "../../useProviders";
 import { isEmbeddingModel } from "../../useProviders";
