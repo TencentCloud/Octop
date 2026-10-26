@@ -17,11 +17,30 @@ from octop.api.common.sso_cookie import (
     delete_sso_state_cookie,
     set_sso_state_cookie,
 )
-from octop.api.deps import current_user, get_server, require_permission
+from octop.api.deps import current_user, get_server
 from octop.api.routers.auth_oidc import exchange_login_code_response
 from octop.infra.auth.sso.service import SsoService
 from octop.infra.errors import ErrorCode, OctopError
 from octop.infra.users.identity import User
+from octop.infra.users.permissions import user_has_permission
+
+_SSO_KIND_PERMISSION = {
+    "feishu": "sso_feishu",
+    "wecom": "sso_wecom",
+    "dingtalk": "sso_dingtalk",
+    "oidc": "sso_oidc",
+}
+
+
+def _require_sso_kind(user: User, kind: str) -> None:
+    key = _SSO_KIND_PERMISSION.get(kind, "")
+    if not user_has_permission(user, key):
+        raise OctopError(
+            ErrorCode.FORBIDDEN,
+            "permission required",
+            details={"permission": key or kind},
+        )
+
 
 router = APIRouter()
 
@@ -185,10 +204,11 @@ async def oauth_unbind(
 async def get_oauth_provider(
     kind: SsoKind,
     request: Request,
-    _: Any = Depends(require_permission("sso")),
+    user: User = Depends(current_user),
     server: Any = Depends(get_server),
 ) -> dict[str, Any]:
     """Return admin-safe provider configuration; the client secret is omitted."""
+    _require_sso_kind(user, kind)
     if kind == "oidc":
         return _service(server).get_config_for_admin(public_base=_public_base(request))
     return _service(server).get_config_for_kind(kind, public_base=_public_base(request))
@@ -199,10 +219,11 @@ async def put_oauth_provider(
     kind: SsoKind,
     body: OauthProviderPutBody,
     request: Request,
-    _: Any = Depends(require_permission("sso")),
+    user: User = Depends(current_user),
     server: Any = Depends(get_server),
 ) -> dict[str, Any]:
     """Create or update provider settings; the client secret is write-only."""
+    _require_sso_kind(user, kind)
     dumped = body.model_dump(exclude_unset=True)
     try:
         result = _service(server).put_config_for_kind(
@@ -221,10 +242,11 @@ async def put_oauth_provider(
 @router.post("/oauth/providers/{kind}/test", summary="Test OAuth provider connection")
 async def test_oauth_provider(
     kind: SsoKind,
-    _: Any = Depends(require_permission("sso")),
+    user: User = Depends(current_user),
     server: Any = Depends(get_server),
 ) -> dict[str, bool | str]:
     """Verify provider credentials without changing configuration."""
+    _require_sso_kind(user, kind)
     try:
         return await asyncio.get_running_loop().run_in_executor(
             None, partial(_service(server).test_connection_for_kind, kind)

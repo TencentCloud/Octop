@@ -189,6 +189,24 @@ def require_permission(key: str) -> Callable[..., Awaitable[User]]:
     return _dep
 
 
+def require_any_permission(*keys: str) -> Callable[..., Awaitable[User]]:
+    """Dependency factory: require at least one of ``keys``."""
+    for key in keys:
+        if key not in PERMISSIONS:
+            raise RuntimeError(f"unknown permission key: {key}")
+
+    async def _dep(user: User = Depends(current_user)) -> User:
+        if not any(user_has_permission(user, key) for key in keys):
+            raise OctopError(
+                ErrorCode.FORBIDDEN,
+                "permission required",
+                details={"permission": keys[0] if keys else ""},
+            )
+        return user
+
+    return _dep
+
+
 def require_admin() -> Callable[..., Awaitable[User]]:
     """Dependency factory: require the admin role (no module key)."""
 

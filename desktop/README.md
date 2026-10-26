@@ -1,6 +1,6 @@
 # Octop desktop (Wails v3 + green portable)
 
-All desktop-client code lives here. This is **not** `src/octop/infra/desktop`
+All desktop-client code lives here. This is **not** `src/octop/infra/control/desktop`
 (remote desktop streaming).
 
 | Path | Role |

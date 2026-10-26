@@ -4,13 +4,16 @@ from __future__ import annotations
 
 from collections.abc import AsyncIterator
 from dataclasses import dataclass
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from octop.infra.db.repos.settings import SettingsRepo
 from octop.infra.db.repos.voice_providers import VoiceProviderRepo, VoiceProviderRow
 from octop.infra.errors import ErrorCode, OctopError
 from octop.infra.voice import adapters, realtime
 from octop.infra.voice.presets import is_builtin_preset
+
+if TYPE_CHECKING:
+    from octop.infra.crypto.sealed_repos import SealedVoiceProviderRepo
 
 
 @dataclass(frozen=True)
@@ -26,7 +29,10 @@ class VoiceManager:
     _DEFAULT = "browser"
 
     def __init__(
-        self, *, settings_repo: SettingsRepo, voice_provider_repo: VoiceProviderRepo
+        self,
+        *,
+        settings_repo: SettingsRepo,
+        voice_provider_repo: VoiceProviderRepo | SealedVoiceProviderRepo,
     ) -> None:
         self._settings = settings_repo
         self._repo = voice_provider_repo
