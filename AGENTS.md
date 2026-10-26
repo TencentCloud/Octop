@@ -376,6 +376,7 @@ Boundary rules are in [§5](#5-module-boundaries). Additionally:
 | Connectors & OAuth | `infra/connectors/catalog.json` (built-in metadata + i18n), `infra/connectors/`, `api/routers/connectors.py`; human list: `docs/connectors.md` |
 | OpenAPI tags and API intro | `api/openapi_meta.py` |
 | Human-readable API reference | `docs/api.md` |
+| Product docs search for agents | `.cursor/skills/octop-wiki` (`docs/**/*.md`) |
 | SharedServices / RepoBundle | `infra/db/services.py` |
 | Branching & release | [§10](#10-change-workflow) Branching & release; `CONTRIBUTING.md`; `.cursor/skills/publish` |
 
