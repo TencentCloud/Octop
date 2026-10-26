@@ -1,0 +1,21 @@
+# Normalize line endings so the working tree matches the index on every platform.
+#
+# Without this, behavior depends entirely on each developer's local
+# `core.autocrlf`. On Windows (`core.autocrlf=true`) the checkout rewrites every
+# tracked text file to CRLF, which causes two concrete problems:
+#
+#   1. `npm run format:check` (prettier 3, default `endOfLine: "lf"`) fails on
+#      every dashboard file, because prettier emits LF and compares against a
+#      CRLF file. `make lint-frontend` is therefore red on Windows while CI --
+#      which only runs the backend `make lint` -- stays green, so the breakage
+#      is invisible until someone works on a Windows checkout.
+#   2. All 43 tracked `*.sh` scripts get CRLF line endings, so their shebang and
+#      every line carry a trailing `\r`. bash then fails them with
+#      `command not found` / `bad interpreter` on Windows checkouts.
+#
+# `text=auto` leaves the genuinely binary files (png, ttf, webm, webp -- git
+# already reports them as `-text`) untouched.
+* text=auto eol=lf
+
+# Windows batch files are the exception: LF breaks `goto` and label matching.
+*.bat text eol=crlf
