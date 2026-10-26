@@ -6,6 +6,7 @@ import {
   findPendingAsk,
   hasPendingHitl,
   promoteAskUserToolMessage,
+  shouldFreezeProcessSpinner,
 } from "./pendingHitl";
 
 function msg(
@@ -203,5 +204,43 @@ describe("pendingHitl", () => {
     expect(reconstructed.hitlData?.status).toBe("pending");
     expect(findPendingAsk([reconstructed])).toBeNull();
     expect(hasPendingHitl([reconstructed])).toBe(false);
+  });
+
+  it("freezes the turn spinner only for HITL the server can actually resume", () => {
+    // AssistantTurnView used a bare `hitlData.status === "pending"` check here, so an
+    // ask card reconstructed from a tool chunk (no pending_id) froze the process
+    // spinner forever -- the agent already moved on and the user can keep chatting.
+    const reconstructed = promoteAskUserToolMessage(
+      msg({
+        id: "tool",
+        role: "assistant",
+        toolData: {
+          name: "ask_user_question",
+          arguments: JSON.stringify({
+            questions: [{ question: "Which DB?", options: [{ label: "PG" }] }],
+          }),
+        },
+      }),
+    );
+    expect(reconstructed.hitlData?.status).toBe("pending");
+    // The shared predicate already ignores unresumable asks...
+    expect(hasPendingHitl([reconstructed])).toBe(false);
+    // ...so the spinner must keep running for the very same message.
+    expect(shouldFreezeProcessSpinner([reconstructed])).toBe(false);
+
+    // A genuinely resumable approval still freezes it.
+    expect(
+      shouldFreezeProcessSpinner([
+        msg({
+          id: "approval",
+          role: "assistant",
+          hitlData: {
+            pending_id: "pend-1",
+            action_requests: [{ name: "write_file", args: {} }],
+            status: "pending",
+          },
+        }),
+      ]),
+    ).toBe(true);
   });
 });
