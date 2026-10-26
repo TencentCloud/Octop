@@ -97,7 +97,10 @@ export interface UseProvidersResult {
   providers: ProviderRow[];
   presets: ProviderPreset[];
   resolvedModels: ResolvedModel[];
-  activeModel: { provider_name: string; model: string };
+  /** Raw personal ``preferred_model`` preference (``prov/model`` or null). */
+  preferredModel: string | null;
+  /** Global active model used for Auto routing when no preference is set. */
+  globalActiveModel: { provider_name: string; model: string };
   modelReasoning: Record<
     string,
     { mode: "auto" | "enabled" | "disabled"; effort?: string | null }
@@ -112,7 +115,8 @@ export function useProviders(): UseProvidersResult {
   const [providers, setProviders] = useState<ProviderRow[]>([]);
   const [presets, setPresets] = useState<ProviderPreset[]>([]);
   const [resolvedModels, setResolvedModels] = useState<ResolvedModel[]>([]);
-  const [activeModel, setActiveModel] = useState({
+  const [preferredModel, setPreferredModel] = useState<string | null>(null);
+  const [globalActiveModel, setGlobalActiveModel] = useState({
     provider_name: "",
     model: "",
   });
@@ -171,14 +175,9 @@ export function useProviders(): UseProvidersResult {
       setProviders(normalized);
       setPresets(presetList);
       setResolvedModels(resolved);
-      const preferredParts = (preferences?.preferred_model || "").split("/");
-      setActiveModel(
-        preferredParts.length > 1
-          ? {
-              provider_name: preferredParts[0],
-              model: preferredParts.slice(1).join("/"),
-            }
-          : active && typeof active === "object"
+      setPreferredModel(preferences?.preferred_model ?? null);
+      setGlobalActiveModel(
+        active && typeof active === "object"
           ? {
               provider_name: active.provider_name ?? "",
               model: active.model ?? "",
@@ -205,7 +204,8 @@ export function useProviders(): UseProvidersResult {
     providers,
     presets,
     resolvedModels,
-    activeModel,
+    preferredModel,
+    globalActiveModel,
     modelReasoning,
     loading,
     error,

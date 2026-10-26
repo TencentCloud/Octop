@@ -104,7 +104,8 @@ export default function ModelsPage() {
     providers,
     presets,
     resolvedModels,
-    activeModel,
+    preferredModel,
+    globalActiveModel,
     modelReasoning,
     loading,
     error,
@@ -413,7 +414,8 @@ export default function ModelsPage() {
         <>
           <ActiveModelPool
             resolvedModels={resolvedModels}
-            activeModel={activeModel}
+            preferredModel={preferredModel}
+            globalActiveModel={globalActiveModel}
             modelReasoning={modelReasoning}
             providers={providers}
             onSaved={fetchAll}

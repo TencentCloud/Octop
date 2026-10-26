@@ -1,6 +1,8 @@
 /**
  * ActiveModelPool — shows all resolved (enabled + authorized) models
- * grouped by provider, with a star button to set the global preferred model.
+ * grouped by provider, with a star button to set/clear the personal
+ * preferred model. The star reflects the personal preference only; the
+ * global default model is marked with a separate badge.
  *
  * Mirrors finnie's ActiveModelPool component.
  */
@@ -24,7 +26,10 @@ interface ActiveModel {
 
 interface ActiveModelPoolProps {
   resolvedModels: ResolvedModel[];
-  activeModel: ActiveModel;
+  /** Raw personal ``preferred_model`` preference (``prov/model`` or null). */
+  preferredModel: string | null;
+  /** Global active model used for Auto routing when no preference is set. */
+  globalActiveModel: ActiveModel;
   providers: ProviderRow[];
   modelReasoning: Record<
     string,
@@ -42,7 +47,8 @@ interface GroupedModels {
 
 export function ActiveModelPool({
   resolvedModels,
-  activeModel,
+  preferredModel,
+  globalActiveModel,
   providers,
   modelReasoning,
   onSaved,
@@ -81,19 +87,22 @@ export function ActiveModelPool({
   }, [resolvedModels]);
 
   const handleSetPreferred = async (m: ResolvedModel) => {
-    const isAlready =
-      m.provider_name === activeModel.provider_name &&
-      m.model === activeModel.model;
-    if (isAlready) return;
-
     const key = `${m.provider_name}/${m.model}`;
+    const isClearing = preferredModel === key;
     setSetting(key);
     try {
-      await preferencesApi.patch({ preferred_model: key });
+      // Clicking the lit star again clears the personal preference so Auto
+      // routing (global default) applies again; it never touches the global
+      // default itself.
+      await preferencesApi.patch({
+        preferred_model: isClearing ? null : key,
+      });
       message.success(
-        t("models.preferredModelSet", {
-          model: modelOptionLabel(m),
-        }),
+        isClearing
+          ? t("models.preferredModelCleared")
+          : t("models.preferredModelSet", {
+              model: modelOptionLabel(m),
+            }),
       );
       await onSaved();
     } catch (err) {
@@ -307,9 +316,13 @@ export function ActiveModelPool({
             <div className={styles.poolGroupModels}>
               {group.models.map((m) => {
                 const key = `${m.provider_name}/${m.model}`;
-                const isPreferred =
-                  m.provider_name === activeModel.provider_name &&
-                  m.model === activeModel.model;
+                // The star marks the personal preference only; the global
+                // default model gets its own badge below.
+                const isPreferred = preferredModel === key;
+                const isGlobalDefault =
+                  !isPreferred &&
+                  m.provider_name === globalActiveModel.provider_name &&
+                  m.model === globalActiveModel.model;
                 const isLoading = setting === key;
                 const isTesting = testingKey === key;
                 const canTest = providerHasKey.get(m.provider_id) ?? false;
@@ -326,7 +339,7 @@ export function ActiveModelPool({
                     <Tooltip
                       title={
                         isPreferred
-                          ? t("models.currentPreferred")
+                          ? t("models.clearPreferred")
                           : t("models.setAsPreferred")
                       }
                     >
@@ -354,6 +367,17 @@ export function ActiveModelPool({
                       >
                         {modelOptionLabel(m)}
                       </span>
+                      {isGlobalDefault && (
+                        <Tooltip title={t("models.globalDefaultTooltip")}>
+                          <Tag
+                            color="blue"
+                            className={styles.poolGroupKind}
+                            style={{ marginInlineStart: 8, marginInlineEnd: 0 }}
+                          >
+                            {t("models.globalDefault")}
+                          </Tag>
+                        </Tooltip>
+                      )}
                     </div>
 
                     {capTags}
