@@ -1,16 +1,22 @@
-import { useMemo, useState } from "react";
+import { useMemo } from "react";
+import { useImeSearchInput } from "./useImeSearchInput";
 
 export function useFilteredList<T>(
   items: T[],
   filterFn: (item: T, query: string) => boolean,
 ) {
-  const [query, setQuery] = useState("");
+  const {
+    value: query,
+    committed,
+    setValue: setQuery,
+    inputProps,
+  } = useImeSearchInput();
 
   const filtered = useMemo(() => {
-    const q = query.trim().toLowerCase();
+    const q = committed.trim().toLowerCase();
     if (!q) return items;
     return items.filter((item) => filterFn(item, q));
-  }, [items, query, filterFn]);
+  }, [items, committed, filterFn]);
 
-  return { query, setQuery, filtered };
+  return { query, committed, setQuery, inputProps, filtered };
 }

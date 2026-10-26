@@ -21,6 +21,7 @@ import {
 } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { request } from "../../../../../api/request";
+import { useImeSearchInput } from "../../../../../hooks/useImeSearchInput";
 import type { ProviderRow, ProviderModel } from "../../useProviders";
 import { isEmbeddingModel } from "../../useProviders";
 import { isOnnxProviderRow } from "../../presetUtils";
@@ -93,7 +94,8 @@ export function ModelListEditor({
   })();
   const requireDownload = !!localDownload?.requireDownloadToEnable;
   const [adding, setAdding] = useState(false);
-  const [searchQuery, setSearchQuery] = useState("");
+  const { committed: searchQuery, inputProps: searchQueryInputProps } =
+    useImeSearchInput("");
   const [editingModelId, setEditingModelId] = useState<string | null>(null);
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [showReasoningProtocol, setShowReasoningProtocol] = useState(false);
@@ -412,8 +414,7 @@ export function ModelListEditor({
       {models.length > 0 && (
         <Input
           allowClear
-          value={searchQuery}
-          onChange={(e) => setSearchQuery(e.target.value)}
+          {...searchQueryInputProps}
           prefix={<Search size={14} />}
           placeholder={t("models.searchModelsPlaceholder")}
           style={{ marginTop: 12 }}

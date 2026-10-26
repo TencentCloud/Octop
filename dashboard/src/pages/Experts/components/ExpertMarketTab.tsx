@@ -18,6 +18,7 @@ import {
   type ExpertMarketQuickPrompt,
   type MarketExpert,
 } from "../../../api/modules/expertMarket";
+import { useImeSearchInput } from "../../../hooks/useImeSearchInput";
 import Markdown from "../../../components/Markdown/LazyMarkdown";
 import { apiErrorMessage } from "../../../utils/apiError";
 import { pickLocale } from "../../../utils/localizedText";
@@ -84,7 +85,7 @@ export default function ExpertMarketTab({
   const [items, setItems] = useState<MarketExpert[]>([]);
   const [scenes, setScenes] = useState<string[]>([]);
   const [activeScene, setActiveScene] = useState(SCENE_ALL);
-  const [keyword, setKeyword] = useState("");
+  const { committed, inputProps: keywordInputProps } = useImeSearchInput("");
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -93,7 +94,7 @@ export default function ExpertMarketTab({
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const fetchMarket = useCallback(
-    async (query = keyword, scene = activeScene, force = false) => {
+    async (query = committed, scene = activeScene, force = false) => {
       if (force) setRefreshing(true);
       else setLoading(true);
       try {
@@ -112,19 +113,19 @@ export default function ExpertMarketTab({
         setRefreshing(false);
       }
     },
-    [activeScene, keyword, t],
+    [activeScene, committed, t],
   );
 
   useEffect(() => {
     if (debounceRef.current) clearTimeout(debounceRef.current);
     debounceRef.current = setTimeout(() => {
-      const scene = keyword.trim() ? SCENE_ALL : activeScene;
-      void fetchMarket(keyword, scene);
+      const scene = committed.trim() ? SCENE_ALL : activeScene;
+      void fetchMarket(committed, scene);
     }, 300);
     return () => {
       if (debounceRef.current) clearTimeout(debounceRef.current);
     };
-  }, [keyword, activeScene, fetchMarket]);
+  }, [committed, activeScene, fetchMarket]);
 
   const openDetail = useCallback(
     async (expert: MarketExpert) => {
@@ -208,14 +209,13 @@ export default function ExpertMarketTab({
             className={styles.marketSearch}
             prefix={<Search size={14} />}
             allowClear
-            value={keyword}
+            {...keywordInputProps}
             placeholder={t("experts.marketSearchPlaceholder")}
-            onChange={(e) => setKeyword(e.target.value)}
           />
           <button
             className={styles.toolbarIconBtn}
             disabled={refreshing}
-            onClick={() => void fetchMarket(keyword, activeScene, true)}
+            onClick={() => void fetchMarket(committed, activeScene, true)}
             type="button"
           >
             <RefreshCw
@@ -226,7 +226,7 @@ export default function ExpertMarketTab({
         </div>
       </div>
 
-      {!keyword && sceneOptions.length > 1 && (
+      {!committed && sceneOptions.length > 1 && (
         <div className={styles.marketSceneTabsWrap}>
           <Segmented
             block
@@ -254,7 +254,7 @@ export default function ExpertMarketTab({
             <div className={styles.emptyActions}>
               <button
                 className={styles.emptyAction}
-                onClick={() => void fetchMarket(keyword, activeScene, true)}
+                onClick={() => void fetchMarket(committed, activeScene, true)}
                 type="button"
               >
                 {t("common.refresh")}

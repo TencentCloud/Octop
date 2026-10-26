@@ -39,7 +39,7 @@ export default function SearchablePickerPanel<T>({
   footerMuted = false,
   beforeFooter,
 }: SearchablePickerPanelProps<T>) {
-  const { query, setQuery, filtered } = useFilteredList(items, filterFn);
+  const { inputProps, filtered } = useFilteredList(items, filterFn);
   const panelClass =
     width === "compact"
       ? styles.panelCompact
@@ -54,8 +54,7 @@ export default function SearchablePickerPanel<T>({
           type="search"
           className={styles.searchInput}
           placeholder={searchPlaceholder}
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
+          {...inputProps}
         />
         <Search size={15} className={styles.searchIcon} aria-hidden />
       </div>

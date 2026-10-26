@@ -52,6 +52,7 @@ import {
   type SubagentCatalogItem,
 } from "../../../api/modules/subagents";
 import { request } from "../../../api/request";
+import { useImeSearchInput } from "../../../hooks/useImeSearchInput";
 import { workspaceApi } from "../../../api/modules/workspace";
 import { apiErrorMessage } from "../../../utils/apiError";
 import { isAgentChatReady } from "../../../utils/agentError";
@@ -133,7 +134,11 @@ export default function SubagentManager({
   const [loading, setLoading] = useState(false);
   const [loadingInstalled, setLoadingInstalled] = useState(false);
   const [activeTab, setActiveTab] = useState(initialTab);
-  const [search, setSearch] = useState("");
+  const {
+    committed: committedSearch,
+    setValue: setSearch,
+    inputProps: searchInputProps,
+  } = useImeSearchInput("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
   const [installingSlug, setInstallingSlug] = useState<string | null>(null);
   const [installedSlugs, setInstalledSlugs] = useState<Set<string>>(
@@ -161,9 +166,12 @@ export default function SubagentManager({
   }, [installedKey, initialInstalled]);
 
   useEffect(() => {
-    const timer = setTimeout(() => setDebouncedSearch(search.trim()), 250);
+    const timer = setTimeout(
+      () => setDebouncedSearch(committedSearch.trim()),
+      250,
+    );
     return () => clearTimeout(timer);
-  }, [search]);
+  }, [committedSearch]);
 
   const loadInstalled = useCallback(async () => {
     if (!agentReady) {
@@ -206,7 +214,7 @@ export default function SubagentManager({
     setDebouncedSearch("");
     void loadCatalog();
     void loadInstalled();
-  }, [agentId, initialTab, loadCatalog, loadInstalled]);
+  }, [agentId, initialTab, loadCatalog, loadInstalled, setSearch]);
 
   const itemName = useCallback(
     (item: SubagentCatalogItem) => pickLocale(item.name, lang),
@@ -621,8 +629,7 @@ export default function SubagentManager({
             allowClear
             prefix={<Search size={14} />}
             placeholder={t("subagents.searchPlaceholder")}
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
+            {...searchInputProps}
             className={styles.catalogSearch}
           />
           {activeTab === INSTALLED_TAB ? (
