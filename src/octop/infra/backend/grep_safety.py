@@ -212,7 +212,8 @@ def _safe_python_search(
     results: dict[str, list[tuple[int, str]]] = {}
     file_errors: list[str] = []
     try:
-        root = base_full if base_full.is_dir() else base_full.parent
+        is_directory = base_full.is_dir()
+        root = base_full if is_directory else base_full.parent
     except OSError:
         return {}, False, None
     if _resolved_is_virtual_fs(os.fspath(root)):
@@ -234,7 +235,12 @@ def _safe_python_search(
         return "One or more files could not be fully searched:\n" + "\n".join(file_errors)
 
     try:
-        for dirpath, dirnames, filenames in os.walk(os.fspath(root), followlinks=False):
+        entries: Iterator[tuple[str, list[str], list[str]]] = (
+            os.walk(os.fspath(root), followlinks=False)
+            if is_directory
+            else iter([(os.fspath(root), [], [base_full.name])])
+        )
+        for dirpath, dirnames, filenames in entries:
             if time.monotonic() > deadline:
                 _log_timeout()
                 return results, True, None
