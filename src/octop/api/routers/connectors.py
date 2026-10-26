@@ -69,6 +69,11 @@ from octop.infra.connectors.probe import (
 from octop.infra.connectors.service import ConnectorNameTakenError, ConnectorService
 from octop.infra.db.repos.connectors import ConnectorRepo
 from octop.infra.errors import ErrorCode, OctopError
+from octop.infra.users.groups import (
+    CONNECTOR_FEATURE_KEY,
+    RESOURCE_CONNECTOR,
+    GroupAccess,
+)
 from octop.infra.utils.locale import resolve_request_locale
 from octop.infra.utils.ulid import new_ulid
 
@@ -83,6 +88,11 @@ class CreateInstanceBody(BaseModel):
     description: str | None = Field(default=None, max_length=500)
     credentials: dict[str, Any] = Field(default_factory=dict)
     shared: bool = False
+    visibility: Literal["owner", "all", "groups"] | None = Field(
+        default=None,
+        description="Who may use this instance. When set, overrides ``shared``.",
+    )
+    group_ids: list[str] | None = None
     default_open: bool = Field(
         default=False,
         description=(
@@ -99,6 +109,11 @@ class PatchInstanceBody(BaseModel):
     description: str | None = Field(default=None, max_length=500)
     credentials: dict[str, Any] | None = None
     shared: bool | None = None
+    visibility: Literal["owner", "all", "groups"] | None = Field(
+        default=None,
+        description="Who may use this instance. When set, overrides ``shared``.",
+    )
+    group_ids: list[str] | None = None
     default_open: bool | None = Field(
         default=None,
         description=(
@@ -284,9 +299,10 @@ def _connector_service(server: Any) -> ConnectorService:
     )
 
 
-def _instance_to_dict(inst: Any) -> dict[str, Any]:
+def _instance_to_dict(inst: Any, *, access: GroupAccess | None = None) -> dict[str, Any]:
     config = ConnectorRepo.parse_config_json(inst) if hasattr(inst, "config_json") else {}
-    return {
+    shared = bool(inst.shared)
+    payload: dict[str, Any] = {
         "instance_id": inst.instance_id,
         "kind": inst.kind,
         "display_name": inst.display_name,
@@ -295,11 +311,57 @@ def _instance_to_dict(inst: Any) -> dict[str, Any]:
         "mcp_server_name": inst.mcp_server_name,
         "has_credentials": inst.has_credentials,
         "default_open": read_default_open(config),
-        "shared": bool(inst.shared),
+        "shared": shared,
         "owner_user_id": inst.user_id,
         "created_at": inst.created_at,
         "updated_at": inst.updated_at,
     }
+    if access is not None:
+        payload.update(access.visibility(RESOURCE_CONNECTOR, inst.instance_id, shared=shared))
+    return payload
+
+
+def _shared_and_visibility(
+    *,
+    visibility: str | None,
+    group_ids: list[str] | None,
+    shared: bool | None,
+    default_shared: bool = False,
+) -> tuple[bool, str, list[str] | None]:
+    """Map visibility/shared fields into ``(shared, visibility, group_ids)``."""
+    if visibility is not None:
+        if visibility == "owner":
+            return False, "owner", []
+        if visibility == "all":
+            return True, "all", []
+        return True, "groups", group_ids
+    flag = default_shared if shared is None else bool(shared)
+    return flag, ("all" if flag else "owner"), []
+
+
+def _apply_connector_visibility(
+    server: Any,
+    instance_id: str,
+    *,
+    visibility: str,
+    group_ids: list[str] | None,
+) -> None:
+    access = GroupAccess(server.services.repos)
+    # Drop the legacy feature-wide grant if present.
+    access.clear(RESOURCE_CONNECTOR, CONNECTOR_FEATURE_KEY)
+    access.set_visibility(RESOURCE_CONNECTOR, instance_id, visibility, group_ids)
+
+
+def _validate_connector_visibility(
+    server: Any,
+    *,
+    visibility: str | None,
+    group_ids: list[str] | None,
+) -> None:
+    """Raise before any ``shared`` write when visibility args are invalid."""
+    if visibility is None:
+        return
+    GroupAccess(server.services.repos).validate_visibility(visibility, group_ids)
 
 
 async def _prepare_credentials(
@@ -557,6 +619,7 @@ async def list_instances(
     server: Any = Depends(get_server),
 ) -> list[dict[str, Any]]:
     """List the current user's connected accounts (custom MCP expanded per server)."""
+    access = GroupAccess(server.services.repos)
     rows = _connector_service(server).list_instances_for_api(user.id)
     for item in rows:
         owner_id = int(item.get("owner_user_id") or user.id)
@@ -566,6 +629,15 @@ async def list_instances(
             owner.display_name or owner.username if owner is not None else None
         )
         item["can_manage"] = owner_id == user.id or user.role == "admin"
+        instance_id = str(item.get("instance_id") or "")
+        if instance_id and not instance_id.startswith("custom:"):
+            item.update(
+                access.visibility(
+                    RESOURCE_CONNECTOR,
+                    instance_id,
+                    shared=bool(item.get("shared")),
+                )
+            )
     return rows
 
 
@@ -688,7 +760,7 @@ async def get_instance(
         raise OctopError(ErrorCode.CONNECTOR_NOT_FOUND, f"instance {instance_id!r} not found")
     _assert_can_manage_connector(inst, user)
 
-    data = _instance_to_dict(inst)
+    data = _instance_to_dict(inst, access=GroupAccess(server.services.repos))
     config: dict[str, Any] = {}
     if inst.config_json:
         try:
@@ -757,13 +829,19 @@ async def create_instance(
         ) from exc
 
     instance_id = new_ulid()
+    shared, visibility, group_ids = _shared_and_visibility(
+        visibility=body.visibility,
+        group_ids=body.group_ids,
+        shared=body.shared,
+    )
+    _validate_connector_visibility(server, visibility=visibility, group_ids=group_ids)
     repo.create(
         instance_id=instance_id,
         user_id=user.id,
         kind=body.kind,
         display_name=display_name,
         mcp_server_name=mcp_server_name(body.kind, instance_id),
-        shared=body.shared,
+        shared=shared,
         config_json=build_instance_config_json(
             kind=body.kind,
             default_open=bool(body.default_open),
@@ -772,6 +850,7 @@ async def create_instance(
         ),
     )
     svc.encrypt_and_store(instance_id=instance_id, payload=cred_payload)
+    _apply_connector_visibility(server, instance_id, visibility=visibility, group_ids=group_ids)
     server.services.audit_repo.write(
         actor=user.username,
         action="connector.instance.create",
@@ -783,10 +862,10 @@ async def create_instance(
     _schedule_connector_reload(
         server,
         user.id,
-        all_users=body.shared,
+        all_users=shared,
         mail_instance_id=instance_id if body.kind == "agently-cli" else None,
     )
-    return _instance_to_dict(inst)
+    return _instance_to_dict(inst, access=GroupAccess(server.services.repos))
 
 
 @router.patch("/connector-instances/{instance_id}", summary="Update connector instance")
@@ -852,6 +931,7 @@ async def patch_instance(
         and body.description is None
         and body.credentials is None
         and body.shared is None
+        and body.visibility is None
     ):
         raise OctopError(
             ErrorCode.CONNECTOR_INVALID_CREDENTIALS,
@@ -867,8 +947,16 @@ async def patch_instance(
         ) or _custom_name_exists(svc, inst.user_id, display_name):
             _raise_name_taken(display_name)
         repo.update_metadata(instance_id, display_name=display_name)
-    if body.shared is not None:
-        repo.update_metadata(instance_id, shared=body.shared)
+    if body.visibility is not None or body.shared is not None:
+        shared, visibility, group_ids = _shared_and_visibility(
+            visibility=body.visibility,
+            group_ids=body.group_ids,
+            shared=body.shared,
+            default_shared=bool(inst.shared),
+        )
+        _validate_connector_visibility(server, visibility=visibility, group_ids=group_ids)
+        repo.update_metadata(instance_id, shared=shared)
+        _apply_connector_visibility(server, instance_id, visibility=visibility, group_ids=group_ids)
     if body.credentials is not None:
         svc = _connector_service(server)
         merged = _merge_credentials(svc.decrypt(instance_id), body.credentials, kind=inst.kind)
@@ -908,13 +996,18 @@ async def patch_instance(
         )
     inst = repo.get(instance_id)
     assert inst is not None
+    refreshed = repo.get(instance_id)
+    assert refreshed is not None
     _schedule_connector_reload(
         server,
-        inst.user_id,
-        all_users=inst.shared or body.shared is True or body.shared is False,
-        mail_instance_id=instance_id if inst.kind == "agently-cli" else None,
+        refreshed.user_id,
+        all_users=refreshed.shared
+        or body.shared is True
+        or body.shared is False
+        or body.visibility is not None,
+        mail_instance_id=instance_id if refreshed.kind == "agently-cli" else None,
     )
-    return _instance_to_dict(inst)
+    return _instance_to_dict(refreshed, access=GroupAccess(server.services.repos))
 
 
 @router.delete("/connector-instances/{instance_id}", status_code=204, summary="Delete connector")
@@ -981,6 +1074,7 @@ async def delete_instance(
             raise OctopError(ErrorCode.CONNECTOR_INVALID_CREDENTIALS, str(exc)) from exc
     elif inst.kind not in ("agently-cli", "dingtalk-cli"):
         repo.delete(instance_id)
+        GroupAccess(server.services.repos).clear(RESOURCE_CONNECTOR, instance_id)
     if cli_creds is not None:
         cleanup_creds_cli_dirs(inst.kind, cli_creds)
     _schedule_connector_reload(

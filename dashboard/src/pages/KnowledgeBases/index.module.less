@@ -165,6 +165,10 @@
   margin-bottom: 0;
 }
 
+.textAssistField {
+  margin-bottom: 4px !important;
+}
+
 .baseForm :global(.ant-form-item-label) {
   padding-bottom: 6px !important;
 }
@@ -259,6 +263,20 @@
   :global(.ant-switch) {
     flex-shrink: 0;
     margin-top: 2px;
+  }
+}
+
+.formOptionRowVisibility {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 10px;
+  padding: 12px 14px;
+  background: var(--fn-bg-primary);
+  border-top: 1px solid var(--fn-border-secondary);
+
+  .formOptionCopy {
+    flex: none;
   }
 }
 
@@ -536,11 +554,6 @@
 .listBadgeDefaultOpen {
   color: #1677ff;
   background: #e6f4ff;
-}
-
-.listBadgeShared {
-  color: #08979c;
-  background: #e6fffb;
 }
 
 .splitDivider {

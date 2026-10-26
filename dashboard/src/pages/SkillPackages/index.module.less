@@ -203,6 +203,10 @@
   margin-bottom: 0;
 }
 
+.textAssistField {
+  margin-bottom: 4px !important;
+}
+
 .packageForm :global(.ant-form-item-label) {
   padding-bottom: 6px !important;
 }
@@ -211,6 +215,66 @@
   height: auto;
   color: var(--fn-text-secondary);
   font-size: 13px;
+}
+
+.formOptions {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  margin: 4px 0 0;
+  border: 1px solid var(--fn-border-secondary);
+  border-radius: var(--fn-radius-md);
+  overflow: hidden;
+}
+
+.formOptionRow {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 14px;
+  background: var(--fn-bg-primary);
+
+  :global(.ant-switch) {
+    flex-shrink: 0;
+    margin-top: 2px;
+  }
+}
+
+.formOptionRowVisibility {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 10px;
+  padding: 12px 14px;
+  background: var(--fn-bg-primary);
+
+  .formOptionCopy {
+    flex: none;
+  }
+}
+
+.formOptionCopy {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+  flex: 1;
+}
+
+.formOptionHint {
+  color: var(--fn-text-tertiary);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.switchLabel {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--fn-text-primary);
+  font-size: 13px;
+  font-weight: 500;
 }
 
 .iconPicker {

@@ -295,10 +295,30 @@ class BridgeManager:
     # -- persistence helpers -------------------------------------------------
 
     def list_connections(self, owner_user_id: int) -> list[BridgeConnectionRow]:
+        """Owned connections only (management / limits)."""
         return self._repo.list_for_owner(owner_user_id)
+
+    def list_visible_connections(self, user_id: int) -> list[BridgeConnectionRow]:
+        """Owned plus shared links the user may use."""
+        return self._repo.list_visible(user_id)
+
+    def get(self, connection_id: str) -> BridgeConnectionRow | None:
+        return self._repo.get(connection_id)
 
     def get_owned(self, connection_id: str, owner_user_id: int) -> BridgeConnectionRow:
         row = self._repo.get_for_owner(connection_id, owner_user_id)
+        if row is None:
+            raise OctopError(ErrorCode.BRIDGE_NOT_FOUND, "bridge connection not found")
+        return row
+
+    def get_usable(self, connection_id: str, user_id: int) -> BridgeConnectionRow:
+        """Owner, or a user the link was shared with.
+
+        Management (connect, edit, delete) stays on ``get_owned``. Chat and
+        read tunnels use this so a shared recipient is not told the link is
+        missing.
+        """
+        row = self._repo.get_visible(connection_id, user_id)
         if row is None:
             raise OctopError(ErrorCode.BRIDGE_NOT_FOUND, "bridge connection not found")
         return row
@@ -382,6 +402,8 @@ class BridgeManager:
             "display_name": row.display_name,
             "notes": row.notes,
             "icon_name": row.icon_name,
+            "icon_url": str(getattr(row, "icon_url", "") or "").strip(),
+            "shared": bool(getattr(row, "shared", False)),
             "status": status,
             "last_error": row.last_error,
             "last_seen_at": row.last_seen_at,
@@ -496,6 +518,7 @@ class BridgeManager:
         display_name: str,
         notes: str | None = None,
         icon_name: str | None = None,
+        shared: bool = False,
         connect: bool = True,
     ) -> BridgeConnectionRow:
         """Create a bridge link.
@@ -550,6 +573,7 @@ class BridgeManager:
             display_name=name,
             notes=note,
             icon_name=icon,
+            shared=bool(shared),
             credential_blob=cred_blob,
             access_token_blob=token_blob,
             token_expires_at=expires_at,
@@ -583,6 +607,24 @@ class BridgeManager:
                 await asyncio.sleep(0.1)
         await self.disconnect(connection_id)
         self._repo.delete(connection_id)
+
+    def set_shared(
+        self, connection_id: str, *, owner_user_id: int, shared: bool
+    ) -> BridgeConnectionRow:
+        self.get_owned(connection_id, owner_user_id)
+        updated = self._repo.set_shared(connection_id, shared)
+        if updated is None:
+            raise OctopError(ErrorCode.BRIDGE_NOT_FOUND, "bridge connection not found")
+        return updated
+
+    def set_icon_url(
+        self, connection_id: str, *, owner_user_id: int, icon_url: str | None
+    ) -> BridgeConnectionRow:
+        self.get_owned(connection_id, owner_user_id)
+        updated = self._repo.set_icon_url(connection_id, icon_url)
+        if updated is None:
+            raise OctopError(ErrorCode.BRIDGE_NOT_FOUND, "bridge connection not found")
+        return updated
 
     async def connect(self, connection_id: str, *, owner_user_id: int) -> BridgeConnectionRow:
         row = self.get_owned(connection_id, owner_user_id)
@@ -1230,9 +1272,21 @@ class BridgeManager:
         headers: dict[str, str] | None = None,
         body: bytes | None = None,
     ) -> httpx.Response:
-        from octop.infra.bridge.tunnel_policy import is_tunnel_path_allowed
+        from octop.infra.bridge.tunnel_policy import (  # noqa: PLC0415
+            is_tunnel_path_allowed,
+            shared_viewer_may_tunnel,
+        )
 
-        self.get_owned(connection_id, owner_user_id)
+        row = self.get_usable(connection_id, owner_user_id)
+        # The peer runs this hop as the connection owner. A shared recipient
+        # may chat and read, not edit / start / reload / delete the expert.
+        if int(row.owner_user_id) != int(owner_user_id) and not shared_viewer_may_tunnel(
+            method, path
+        ):
+            raise OctopError(
+                ErrorCode.FORBIDDEN,
+                "shared cloud collab users cannot manage this expert",
+            )
         # Fail fast with a user-facing "unsupported on remote" code before the hop.
         if not is_tunnel_path_allowed(method, path):
             raise OctopError(
@@ -1266,6 +1320,13 @@ class BridgeManager:
             raise self._bridge_link_error(exc) from exc
         if str(result.get("type") or "") == "tunnel.error":
             code_raw = str(result.get("code") or "").strip()
+            logger.warning(
+                "bridge peer tunnel rejected connection=%s method=%s path=%s code=%s",
+                connection_id,
+                method,
+                path,
+                code_raw or "unknown",
+            )
             if code_raw == ErrorCode.BRIDGE_REMOTE_UNSUPPORTED.value:
                 raise OctopError(
                     ErrorCode.BRIDGE_REMOTE_UNSUPPORTED,
@@ -1351,12 +1412,16 @@ class BridgeManager:
             mapped["bridge"] = True
             mapped["bridge_inbound"] = _is_inbound(row)
             # scope=mine also includes experts shared by other users. Keep the
-            # peer account's ownership so those rows are not offered for delete.
-            # Peers that omit the field predate this flag; treat them as owned.
-            mapped["is_owner"] = bool(item["is_owner"]) if "is_owner" in item else True
+            # peer account's ownership so mutation controls are shown only for
+            # peer-owned rows. Older peers may omit this field; fail closed so
+            # the UI does not offer an action that the peer will reject.
+            mapped["is_owner"] = item.get("is_owner") is True
             mapped["is_shared"] = bool(item.get("is_shared"))
-            # Shadow experts are chat-ready while the bridge link is live.
-            mapped["state"] = "running"
+            # Keep the peer runtime state. A stopped expert must not look chat-ready
+            # just because the bridge link itself is up.
+            raw_state = item.get("state")
+            state = raw_state.strip() if isinstance(raw_state, str) else ""
+            mapped["state"] = state or "stopped"
             # Keep bundled /experts/avatars and CDN URLs; proxy uploaded avatars.
             mapped["icon_url"] = rewrite_remote_icon_url(
                 str(mapped.get("icon_url") or mapped.get("icon") or "").strip() or None,
@@ -2084,7 +2149,7 @@ class BridgeManager:
         """Send turn.start to peer and forward turn.chunk frames to ``on_frame``."""
         import uuid
 
-        self.get_owned(connection_id, owner_user_id)
+        self.get_usable(connection_id, owner_user_id)
         sess = await self._require_live_session(connection_id)
         request_id = uuid.uuid4().hex
         queue = await self.open_turn_waiter(request_id)
@@ -2161,7 +2226,7 @@ class BridgeManager:
         tid = (thread_id or "").strip()
         if not tid:
             return
-        self.get_owned(connection_id, owner_user_id)
+        self.get_usable(connection_id, owner_user_id)
         sess = await self._require_live_session(connection_id)
         request_id = uuid.uuid4().hex
         queue = await self.open_turn_waiter(request_id)
@@ -2224,7 +2289,7 @@ class BridgeManager:
         """One-shot peer control (cancel / steer_remove) with chunk forwarding."""
         import uuid
 
-        self.get_owned(connection_id, owner_user_id)
+        self.get_usable(connection_id, owner_user_id)
         sess = await self._require_live_session(connection_id)
         if FEATURE_TURN_CONTROL not in sess.peer_features:
             await on_frame(
@@ -2463,7 +2528,7 @@ class BridgeManager:
         """Relay dashboard browser WS traffic to the peer harness."""
         import uuid
 
-        self.get_owned(connection_id, owner_user_id)
+        self.get_usable(connection_id, owner_user_id)
         sess = await self._require_live_session(connection_id)
         request_id = uuid.uuid4().hex
         queue = await self.open_browser_waiter(request_id)
