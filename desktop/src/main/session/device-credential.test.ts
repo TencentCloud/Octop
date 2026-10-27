@@ -80,14 +80,89 @@ test("the stored file is owner-only and does not hold the plaintext", async () =
   await fs.rm(home, { recursive: true, force: true });
 });
 
-test("a host without a keychain stores the secret as-is", async () => {
+test("a host without a keychain keeps the secret in memory and writes nothing", async () => {
   const home = await tempHome();
   const store = new DeviceCredentialStore(home, missingCipher());
 
-  const { secret } = await store.getOrCreate();
-  const raw = await fs.readFile(join(home, DEVICE_CREDENTIAL_FILE), "utf8");
-  assert.equal((JSON.parse(raw) as { encrypted: boolean }).encrypted, false);
+  const { secret, created } = await store.getOrCreate();
+  assert.equal(created, true);
+  // Renewal still works for this launch…
   assert.equal(await store.read(), secret);
+  // …but nothing reusable ever reaches the disk.
+  await assert.rejects(fs.stat(join(home, DEVICE_CREDENTIAL_FILE)), /ENOENT/);
+
+  await fs.rm(home, { recursive: true, force: true });
+});
+
+test("the in-memory secret does not survive a restart", async () => {
+  const home = await tempHome();
+  await new DeviceCredentialStore(home, missingCipher()).getOrCreate();
+
+  const nextLaunch = new DeviceCredentialStore(home, missingCipher());
+  assert.equal(await nextLaunch.read(), null);
+  // A fresh launch mints a new secret rather than failing outright.
+  assert.equal((await nextLaunch.getOrCreate()).created, true);
+
+  await fs.rm(home, { recursive: true, force: true });
+});
+
+test("a v1 plaintext file is not a credential until migrate() adopts it", async () => {
+  const home = await tempHome();
+  const store = new DeviceCredentialStore(home, workingCipher());
+  await fs.writeFile(
+    join(home, DEVICE_CREDENTIAL_FILE),
+    JSON.stringify({ v: 1, encrypted: false, secret: "legacy-secret" }),
+    "utf8",
+  );
+
+  assert.equal(await store.read(), null);
+
+  await fs.rm(home, { recursive: true, force: true });
+});
+
+test("migrate re-encrypts a v1 plaintext file when a keychain is available", async () => {
+  const home = await tempHome();
+  const store = new DeviceCredentialStore(home, workingCipher());
+  await fs.writeFile(
+    join(home, DEVICE_CREDENTIAL_FILE),
+    JSON.stringify({ v: 1, encrypted: false, secret: "legacy-secret" }),
+    "utf8",
+  );
+
+  await store.migrate();
+
+  const raw = await fs.readFile(join(home, DEVICE_CREDENTIAL_FILE), "utf8");
+  assert.ok(!raw.includes("legacy-secret"), "the plaintext must not survive the upgrade");
+  assert.equal((JSON.parse(raw) as { encrypted: boolean }).encrypted, true);
+  assert.equal(await store.read(), "legacy-secret");
+
+  await fs.rm(home, { recursive: true, force: true });
+});
+
+test("migrate adopts and deletes a v1 plaintext file when there is no keychain", async () => {
+  const home = await tempHome();
+  const file = join(home, DEVICE_CREDENTIAL_FILE);
+  await fs.writeFile(file, JSON.stringify({ v: 1, encrypted: false, secret: "legacy-secret" }), "utf8");
+
+  const store = new DeviceCredentialStore(home, missingCipher());
+  await store.migrate();
+
+  await assert.rejects(fs.stat(file), /ENOENT/);
+  // The adopted secret keeps this launch signed in, then goes away with it.
+  assert.equal(await store.read(), "legacy-secret");
+  assert.equal(await new DeviceCredentialStore(home, missingCipher()).read(), null);
+
+  await fs.rm(home, { recursive: true, force: true });
+});
+
+test("migrate drops a credential file with no usable secret", async () => {
+  const home = await tempHome();
+  const file = join(home, DEVICE_CREDENTIAL_FILE);
+  await fs.writeFile(file, JSON.stringify({ v: 1, encrypted: false, secret: "" }), "utf8");
+
+  await new DeviceCredentialStore(home, missingCipher()).migrate();
+
+  await assert.rejects(fs.stat(file), /ENOENT/);
 
   await fs.rm(home, { recursive: true, force: true });
 });
@@ -135,6 +210,33 @@ test("clear forces a fresh secret on the next call", async () => {
   const again = await store.getOrCreate();
   assert.equal(again.created, true);
   assert.notEqual(again.secret, first.secret);
+
+  await fs.rm(home, { recursive: true, force: true });
+});
+
+test("a temporarily unusable keychain does not destroy the stored ciphertext", async () => {
+  const home = await tempHome();
+  const original = await new DeviceCredentialStore(home, workingCipher()).getOrCreate();
+
+  // Keychain locked or absent for this launch: renewal falls back to a new
+  // in-memory secret, but the file that the next launch could use stays put.
+  const locked = new DeviceCredentialStore(home, missingCipher());
+  const fallback = await locked.getOrCreate();
+  assert.notEqual(fallback.secret, original.secret);
+  await fs.stat(join(home, DEVICE_CREDENTIAL_FILE));
+
+  assert.equal(await new DeviceCredentialStore(home, workingCipher()).read(), original.secret);
+
+  await fs.rm(home, { recursive: true, force: true });
+});
+
+test("clear forgets an in-memory credential too", async () => {
+  const home = await tempHome();
+  const store = new DeviceCredentialStore(home, missingCipher());
+  await store.getOrCreate();
+
+  await store.clear();
+  assert.equal(await store.read(), null);
 
   await fs.rm(home, { recursive: true, force: true });
 });

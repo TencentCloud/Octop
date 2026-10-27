@@ -508,8 +508,16 @@ async function boot(): Promise<void> {
   // database it unlocks, and only the main process ever sees it.
   const cipher = safeStorageCipher();
   await warnIfKeychainUnavailable(cipher);
+  const credentialStore = new DeviceCredentialStore(octopHome, cipher);
+  try {
+    // v1 could leave a plaintext credential behind; this is the only place that
+    // adopts it — re-encrypting when a keychain exists, deleting it otherwise.
+    await credentialStore.migrate();
+  } catch (err) {
+    console.warn(`[desktop] device credential migration failed: ${String(err)}`);
+  }
   deviceSession = new DeviceSessionClient({
-    store: new DeviceCredentialStore(octopHome, cipher),
+    store: credentialStore,
     baseUrl: () => (apiAdmissionClosed || !backendPort ? null : `http://127.0.0.1:${backendPort}`),
     label: `${process.platform}-${process.arch}`,
   });
