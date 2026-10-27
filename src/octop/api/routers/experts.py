@@ -1,11 +1,11 @@
-"""Experts router — bundled scene templates + SkillHub expert market.
+"""Experts router — bundled scene templates + portal expert market.
 
 GET  /api/experts                  → bundled expert summaries
 GET  /api/experts/{id}             → template metadata + lazy ``file_contents``
 POST /api/agents/from-expert/{id}  → create agent from bundled expert
 
-GET  /api/experts/hub              → SkillHub market cards (``?q=&scene=``)
-GET  /api/experts/hub/{slug}       → SkillHub market detail + quick prompts
+GET  /api/experts/hub              → portal market cards (``?q=&scene=``)
+GET  /api/experts/hub/{slug}       → portal market detail + quick prompts
 POST /api/experts/hub/{slug}/install → create agent from market expert
 """
 
@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import logging
 from typing import Any, Literal
 
 from fastapi import APIRouter, Depends, Response
@@ -69,12 +70,18 @@ from octop.infra.agents.experts.published_creation import (
 from octop.infra.agents.experts.skillhub_market import (
     SkillHubMarketError,
     SkillHubMarketErrorKind,
-    browse_skillsets,
-    fetch_skillset,
 )
 from octop.infra.errors import ErrorCode, OctopError
 from octop.infra.history.trajectory.settings import apply_enable_trajectory
+from octop.infra.market import (
+    PortalMarketError,
+    get_market_expert,
+    list_market_experts,
+)
+from octop.infra.market.errors import local_network_error
 from octop.infra.utils.locale import resolve_user_locale
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
@@ -253,6 +260,77 @@ def _composer_apply(
     return patch, resolved, report
 
 
+def _localized_pair(value: Any) -> dict[str, str]:
+    if isinstance(value, str):
+        text = value.strip()
+        return {"zh": text, "en": text}
+    if isinstance(value, dict):
+        return {"zh": str(value.get("zh") or ""), "en": str(value.get("en") or "")}
+    return {"zh": "", "en": ""}
+
+
+def _portal_task_examples(value: Any) -> dict[str, list[str]] | None:
+    if not isinstance(value, dict):
+        return None
+    out: dict[str, list[str]] = {}
+    for key in ("zh", "en"):
+        raw = value.get(key)
+        if not isinstance(raw, list):
+            continue
+        texts = [item for item in raw if isinstance(item, str) and item]
+        if texts:
+            out[key] = texts
+    return out or None
+
+
+def _portal_prompts(value: Any) -> list[dict[str, Any]]:
+    if not isinstance(value, list):
+        return []
+    prompts: list[dict[str, Any]] = []
+    for item in value:
+        if not isinstance(item, dict):
+            continue
+        color = item.get("color")
+        icon_name = item.get("icon_name")
+        prompts.append(
+            {
+                "title": _localized_pair(item.get("title")),
+                "description": _localized_pair(item.get("description")),
+                "prompt": _localized_pair(item.get("prompt")),
+                "color": color if isinstance(color, str) and color else "#e8f4ff",
+                "icon_name": icon_name if isinstance(icon_name, str) else None,
+            }
+        )
+    return prompts
+
+
+def _portal_hub_item(item: dict[str, Any], *, include_content: bool) -> dict[str, Any]:
+    raw_slugs = item.get("skill_slugs")
+    slugs = (
+        [slug for slug in raw_slugs if isinstance(slug, str)] if isinstance(raw_slugs, list) else []
+    )
+    out: dict[str, Any] = {
+        "id": str(item.get("id") or item.get("slug") or ""),
+        "slug": str(item.get("slug") or ""),
+        "label": _localized_pair(item.get("label")),
+        "description": _localized_pair(item.get("description")),
+        "scene": str(item.get("scene") or ""),
+        "sub_scene": str(item.get("sub_scene") or ""),
+        "icon_url": item.get("icon_url") if isinstance(item.get("icon_url"), str) else None,
+        "icon_name": item.get("icon_name") if isinstance(item.get("icon_name"), str) else None,
+        "color": item.get("color") if isinstance(item.get("color"), str) else None,
+        "skill_slugs": slugs,
+        "skill_count": int(item.get("skill_count") or 0),
+        "source": str(item.get("source") or "portal"),
+        "task_examples": _portal_task_examples(item.get("task_examples")),
+    }
+    if include_content:
+        content = item.get("content")
+        out["content"] = _localized_pair(content) if content else None
+        out["quick_prompts"] = _portal_prompts(item.get("quick_prompts"))
+    return out
+
+
 def _quick_prompts_from_body(
     body: FromExpertBody | InstallPublishedExpertBody,
 ) -> list[dict[str, Any]] | None:
@@ -304,7 +382,7 @@ class ExpertHubItemResponse(BaseModel):
     color: str | None = None
     skill_slugs: list[str] = Field(default_factory=list)
     skill_count: int = 0
-    source: str = "skillhub"
+    source: str = "portal"
     content: LocalizedTextResponse | None = None
     quick_prompts: list[QuickPromptResponse] | None = None
     task_examples: dict[str, list[str]] | None = None
@@ -721,46 +799,64 @@ async def list_experts(
 @router.get(
     "/experts/hub",
     response_model=ExpertHubListResponse,
-    summary="List SkillHub expert market cards",
+    summary="List expert market cards",
 )
 async def list_expert_hub(
     q: str = "",
     scene: str = "",
     _: Any = Depends(current_user),
 ) -> dict[str, Any]:
-    """List SkillHub skillsets as market expert cards, optionally filtered by scene."""
+    """List experts published on the octop.cloud market."""
     try:
-        items, scenes = await asyncio.to_thread(browse_skillsets, q, scene=scene)
-    except SkillHubMarketError as exc:
-        raise _map_skillhub_error(exc) from exc
+        portal_items, portal_scenes = await asyncio.to_thread(list_market_experts, q, scene)
+    except PortalMarketError as exc:
+        logger.warning("remote expert market unavailable: %s", exc)
+        network_error = local_network_error(exc)
+        if network_error is not None:
+            raise network_error from exc
+        raise OctopError(
+            ErrorCode.EXPERT_MARKET_FAILED,
+            "expert market failed: upstream request failed",
+            details={"reason": "upstream request failed"},
+        ) from exc
     return {
-        "items": [item.api_dict(include_content=False) for item in items],
-        "scenes": scenes,
+        "items": [_portal_hub_item(item, include_content=False) for item in portal_items],
+        "scenes": portal_scenes,
     }
 
 
 @router.get(
     "/experts/hub/{slug}",
     response_model=ExpertHubItemResponse,
-    summary="Get SkillHub expert market detail",
+    summary="Get expert market detail",
 )
 async def get_expert_hub_item(
     slug: str,
     _: Any = Depends(current_user),
 ) -> dict[str, Any]:
-    """SkillHub market detail, including workflow prompt and default quick prompts."""
+    """Expert detail from the octop.cloud market."""
     try:
-        item = await asyncio.to_thread(fetch_skillset, slug)
-    except SkillHubMarketError as exc:
-        raise _map_skillhub_error(exc) from exc
-    return item.api_dict(include_content=True)
+        portal_item = await asyncio.to_thread(get_market_expert, slug)
+    except PortalMarketError as exc:
+        logger.warning("remote expert market unavailable: %s", exc)
+        network_error = local_network_error(exc)
+        if network_error is not None:
+            raise network_error from exc
+        raise OctopError(
+            ErrorCode.EXPERT_MARKET_FAILED,
+            "expert market failed: upstream request failed",
+            details={"reason": "upstream request failed"},
+        ) from exc
+    if portal_item is None:
+        raise OctopError(ErrorCode.NOT_FOUND, "expert not found")
+    return _portal_hub_item(portal_item, include_content=True)
 
 
 @router.post(
     "/experts/hub/{slug}/install",
     status_code=201,
     response_model=MarketCreateResponse,
-    summary="Create an agent from a SkillHub expert market card",
+    summary="Create an agent from an octop.cloud expert market card",
 )
 async def install_expert_hub_item(
     slug: str,
@@ -768,7 +864,7 @@ async def install_expert_hub_item(
     user: Any = Depends(current_user),
     server: Any = Depends(get_server),
 ) -> dict[str, Any]:
-    """Create an agent from a SkillHub skillset-backed expert template."""
+    """Create an agent from an octop.cloud market expert package."""
     assert server.app_runtime is not None
     assert_user_backend_root_dirs(
         user,
@@ -845,8 +941,8 @@ async def install_expert_hub_item(
         "icon_url": getattr(row, "icon_url", None),
         "color": result.color,
         "market": {
-            "source": "skillhub",
-            "kind": "skillset",
+            "source": getattr(result, "source", "portal"),
+            "kind": getattr(result, "kind", "skillset"),
             "slug": result.slug,
             "welcome_enrichment": result.welcome_enrichment,
         },

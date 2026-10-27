@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { CSSProperties } from "react";
-import { Button, Drawer, Input, Segmented, Spin, Tag } from "antd";
+import { Button, Drawer, Input, Result, Spin, Tag } from "antd";
 import { message } from "@/utils/antdMessage";
 
 import {
@@ -18,8 +18,11 @@ import {
   type ExpertMarketQuickPrompt,
   type MarketExpert,
 } from "../../../api/modules/expertMarket";
+import { OctopEmptyMascot } from "../../../components/EmptyState";
+import { FadeInImg } from "../../../components/FadeInImg";
 import Markdown from "../../../components/Markdown/LazyMarkdown";
 import { apiErrorMessage } from "../../../utils/apiError";
+import { isCatalogNetworkError } from "../../../utils/networkError";
 import { pickLocale } from "../../../utils/localizedText";
 import { pastelIconBackground } from "../../../utils/pastelIconBackground";
 import {
@@ -43,14 +46,6 @@ function descOf(expert: MarketExpert, lang: "zh" | "en"): string {
 
 function labelOf(expert: MarketExpert, lang: "zh" | "en"): string {
   return pickLocale(expert.label, lang) || expert.slug;
-}
-
-function marketErrorMessage(err: unknown, fallback: string): string {
-  const raw = err instanceof Error ? err.message : String(err || "");
-  if (raw.includes("404") || raw.includes("Not Found")) {
-    return fallback;
-  }
-  return raw || fallback;
 }
 
 function sceneLabel(scene: string, t: TFunction): string {
@@ -87,44 +82,54 @@ export default function ExpertMarketTab({
   const [keyword, setKeyword] = useState("");
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
-  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [loadFailed, setLoadFailed] = useState(false);
+  const [networkFailure, setNetworkFailure] = useState(false);
+  const itemsRef = useRef(items);
   const [selected, setSelected] = useState<MarketExpert | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  itemsRef.current = items;
 
   const fetchMarket = useCallback(
-    async (query = keyword, scene = activeScene, force = false) => {
+    async (query = keyword, force = false) => {
       if (force) setRefreshing(true);
       else setLoading(true);
       try {
-        const resp = await expertMarketApi.list(query, scene);
+        const resp = await expertMarketApi.list(query);
         setItems(resp?.items ?? []);
         if (Array.isArray(resp?.scenes) && resp.scenes.length > 0) {
           setScenes(resp.scenes);
         }
-        setErrorMessage(null);
+        setLoadFailed(false);
+        setNetworkFailure(false);
       } catch (err) {
-        const msg = marketErrorMessage(err, t("experts.marketBackendMissing"));
-        setErrorMessage(msg);
-        message.error(msg);
+        const network = isCatalogNetworkError(err, "NETWORK_ERROR");
+        setNetworkFailure(network);
+        setLoadFailed(true);
+        if (itemsRef.current.length > 0) {
+          message.error(
+            network
+              ? t("apiErrors.NETWORK_ERROR")
+              : t("experts.marketUnavailable"),
+          );
+        }
       } finally {
         setLoading(false);
         setRefreshing(false);
       }
     },
-    [activeScene, keyword, t],
+    [keyword, t],
   );
 
   useEffect(() => {
     if (debounceRef.current) clearTimeout(debounceRef.current);
     debounceRef.current = setTimeout(() => {
-      const scene = keyword.trim() ? SCENE_ALL : activeScene;
-      void fetchMarket(keyword, scene);
+      void fetchMarket(keyword);
     }, 300);
     return () => {
       if (debounceRef.current) clearTimeout(debounceRef.current);
     };
-  }, [keyword, activeScene, fetchMarket]);
+  }, [keyword, fetchMarket]);
 
   const openDetail = useCallback(
     async (expert: MarketExpert) => {
@@ -154,9 +159,15 @@ export default function ExpertMarketTab({
 
   const selectedTaskExamples = selected ? taskExampleTexts(selected, lang) : [];
 
+  const visibleItems = useMemo(() => {
+    if (keyword.trim() || !activeScene) return items;
+    const scene = activeScene.toLowerCase();
+    return items.filter((item) => (item.scene || "").toLowerCase() === scene);
+  }, [activeScene, items, keyword]);
+
   const totalText = useMemo(
-    () => t("experts.totalMarket", { count: items.length }),
-    [items.length, t],
+    () => t("experts.totalMarket", { count: visibleItems.length }),
+    [t, visibleItems.length],
   );
 
   const sceneOptions = useMemo(
@@ -191,80 +202,101 @@ export default function ExpertMarketTab({
 
   if (loading && items.length === 0) {
     return (
-      <div className={styles.loadingState}>
-        <Spin />
+      <div className={styles.marketContainer}>
+        <div className={styles.marketStage}>
+          <Spin />
+        </div>
       </div>
     );
   }
 
+  const catalogFailed = loadFailed && items.length === 0;
+
   return (
     <div className={styles.marketContainer}>
-      <div className={styles.gridToolbar}>
-        <span className={styles.gridCount}>{totalText}</span>
-        <div
-          className={`${styles.gridToolbarRight} ${styles.marketToolbarRight}`}
-        >
-          <Input
-            className={styles.marketSearch}
-            prefix={<Search size={14} />}
-            allowClear
-            value={keyword}
-            placeholder={t("experts.marketSearchPlaceholder")}
-            onChange={(e) => setKeyword(e.target.value)}
-          />
-          <button
-            className={styles.toolbarIconBtn}
-            disabled={refreshing}
-            onClick={() => void fetchMarket(keyword, activeScene, true)}
-            type="button"
+      {!catalogFailed && (
+        <div className={styles.gridToolbar}>
+          <span className={styles.gridCount}>{totalText}</span>
+          <div
+            className={`${styles.gridToolbarRight} ${styles.marketToolbarRight}`}
           >
-            <RefreshCw
-              size={14}
-              className={refreshing ? styles.spinning : undefined}
+            <Input
+              className={styles.marketSearch}
+              prefix={<Search size={14} />}
+              allowClear
+              value={keyword}
+              placeholder={t("experts.marketSearchPlaceholder")}
+              onChange={(e) => setKeyword(e.target.value)}
             />
-          </button>
-        </div>
-      </div>
-
-      {!keyword && sceneOptions.length > 1 && (
-        <div className={styles.marketSceneTabsWrap}>
-          <Segmented
-            block
-            size="large"
-            value={activeScene}
-            onChange={(v) => setActiveScene(String(v))}
-            options={sceneOptions}
-            className={styles.marketSceneTabs}
-          />
+            <button
+              className={styles.toolbarIconBtn}
+              disabled={refreshing}
+              onClick={() => void fetchMarket(keyword, true)}
+              type="button"
+            >
+              <RefreshCw
+                size={14}
+                className={refreshing ? styles.spinning : undefined}
+              />
+            </button>
+          </div>
         </div>
       )}
 
-      {items.length === 0 ? (
+      {!catalogFailed && !keyword && sceneOptions.length > 1 && (
+        <div className={styles.marketSceneTabsWrap}>
+          {sceneOptions.map((opt) => {
+            const active = activeScene === opt.value;
+            return (
+              <button
+                key={opt.value || SCENE_ALL}
+                type="button"
+                aria-pressed={active}
+                className={
+                  active
+                    ? `${styles.marketScenePill} ${styles.marketScenePillActive}`
+                    : styles.marketScenePill
+                }
+                onClick={() => setActiveScene(opt.value)}
+              >
+                {opt.label}
+              </button>
+            );
+          })}
+        </div>
+      )}
+
+      {catalogFailed ? (
+        <div className={styles.marketStage}>
+          <Result
+            className={styles.marketLoadResult}
+            icon={<OctopEmptyMascot size={120} />}
+            title={t("experts.marketLoadFailed")}
+            subTitle={
+              networkFailure
+                ? t("apiErrors.NETWORK_ERROR")
+                : t("experts.marketUnavailable")
+            }
+            extra={
+              <Button
+                type="primary"
+                loading={refreshing}
+                onClick={() => void fetchMarket(keyword, true)}
+              >
+                {t("common.retry")}
+              </Button>
+            }
+          />
+        </div>
+      ) : visibleItems.length === 0 ? (
         <div className={styles.emptyState}>
           <Layers size={48} style={{ color: "var(--fn-text-tertiary)" }} />
-          <div className={styles.emptyTitle}>
-            {errorMessage
-              ? t("experts.marketLoadFailed")
-              : t("experts.emptyMarket")}
-          </div>
-          <div className={styles.emptyHint}>
-            {errorMessage || t("experts.emptyMarketHint")}
-          </div>
-          {errorMessage && (
-            <div className={styles.emptyActions}>
-              <button
-                className={styles.emptyAction}
-                onClick={() => void fetchMarket(keyword, activeScene, true)}
-                type="button"
-              >
-                {t("common.refresh")}
-              </button>
-            </div>
-          )}
+          <div className={styles.emptyTitle}>{t("experts.emptyMarket")}</div>
+          <div className={styles.emptyHint}>{t("experts.emptyMarketHint")}</div>
         </div>
       ) : (
         <div className={styles.cardGrid}>
-          {items.map((expert) => {
+          {visibleItems.map((expert) => {
             const installed = installedExpertIds.has(expert.id);
             const label = labelOf(expert, lang);
             const desc = descOf(expert, lang);
@@ -289,9 +321,10 @@ export default function ExpertMarketTab({
                     }}
                   >
                     {expert.icon_url ? (
-                      <img
+                      <FadeInImg
                         src={expert.icon_url}
                         alt=""
+                        crossOrigin="anonymous"
                         className={styles.marketIconImg}
                       />
                     ) : (

@@ -100,11 +100,13 @@ export const pluginsApi = {
 
   installFromMarket(
     pluginId: string,
-    force = false,
+    version?: string,
   ): Promise<{ id: string; version: string; name: string; kind: string }> {
-    const qs = force ? "?force=true" : "";
+    const params = new URLSearchParams();
+    if (version) params.set("version", version);
+    const qs = params.toString();
     return request(
-      `/plugins/market/${encodeURIComponent(pluginId)}/install${qs}`,
+      `/plugins/market/${encodeURIComponent(pluginId)}/install${qs ? `?${qs}` : ""}`,
       {
         method: "POST",
       },
