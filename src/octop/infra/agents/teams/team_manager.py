@@ -2354,21 +2354,28 @@ def wire_host_dispatch(
         pair = take_prompt(agent_id, getattr(req, "thread_id", None))
         if not pair:
             return req
-        from langchain_core.messages import HumanMessage, SystemMessage
+        from langchain_core.messages import HumanMessage
+
+        from octop.infra.agents.middleware.team_dispatch import (
+            CONFIG_KEY as BRIEFING_KEY,
+        )
 
         question, dispatch = pair
-        messages: list[Any] = []
         if dispatch and dispatch != question:
-            messages.append(SystemMessage(content=dispatch))
+            # The briefing is the host's team-member instruction, so it belongs in
+            # the leading system prompt, not in the conversation: a SystemMessage
+            # here lands mid-thread on later dispatches and strict providers reject
+            # it. TeamDispatchBriefingMiddleware appends it at model-call time.
+            configurable = dict(getattr(req, "configurable", None) or {})
+            configurable[BRIEFING_KEY] = dispatch
+            req.configurable = configurable
         if question:
-            messages.append(
+            req.messages = [
                 HumanMessage(
                     content=question,
                     id=f"team-peer:{getattr(req, 'thread_id', None)}:{new_ulid()}:human",
                 )
-            )
-        if messages:
-            req.messages = messages
+            ]
         return req
 
     harness_team._enrich_request = enrich
