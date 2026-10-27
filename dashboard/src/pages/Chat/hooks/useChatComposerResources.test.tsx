@@ -78,7 +78,18 @@ vi.mock("../../../context/AgentContext", () => ({
 }));
 
 import { preferencesApi } from "../../../api/modules/preferences";
+import { providerApi } from "../../../api/modules/provider";
+import { octopThreadsApi } from "../../../api/modules/octopThreads";
+import type { ResolvedModel } from "../../../api/types";
 import { useChatComposerResources } from "./useChatComposerResources";
+
+const model = (name: string): ResolvedModel => ({
+  provider_id: 1,
+  provider_name: "prov",
+  provider_kind: "openai",
+  model: name,
+  name,
+});
 
 const baseAgents = [
   { agent_id: "expertA", knowledge_base_ids: ["k1"] },
@@ -86,9 +97,13 @@ const baseAgents = [
 ];
 
 beforeEach(() => {
+  vi.clearAllMocks();
   localStorage.clear();
   agentState.agents = baseAgents.map((item) => ({ ...item }));
   vi.mocked(preferencesApi.get).mockResolvedValue(null as never);
+  vi.mocked(providerApi.listResolvedModels).mockResolvedValue(
+    ["expert", "preferred", "sticky", "peer", "local"].map(model),
+  );
 });
 
 describe("useChatComposerResources — per-expert KB selection", () => {
@@ -315,5 +330,134 @@ describe("useChatComposerResources — peer expert defaults", () => {
       });
     });
     expect(result.current.selectedModel).toBeNull();
+  });
+});
+
+describe("useChatComposerResources — disabled model recovery (#2316)", () => {
+  it("clears a disabled saved model and persists Auto after reopening a thread", async () => {
+    vi.mocked(providerApi.listResolvedModels).mockResolvedValue([
+      model("expert"),
+    ]);
+    const { result } = renderHook(() =>
+      useChatComposerResources("expertA", "thread-existing", "prov/disabled"),
+    );
+    await waitFor(() => {
+      expect(result.current.modelsReady).toBe(true);
+      expect(result.current.selectedModel).toBeNull();
+    });
+    expect(octopThreadsApi.patch).toHaveBeenCalledWith(
+      "expertA",
+      "thread-existing",
+      { model_ref: null, reasoning_mode: "auto", reasoning_effort: null },
+    );
+  });
+
+  it("returns to Auto when the current model disappears on focus", async () => {
+    const { result } = renderHook(() =>
+      useChatComposerResources("expertA", "thread-existing", "prov/sticky"),
+    );
+    await waitFor(() => expect(result.current.modelsReady).toBe(true));
+    expect(result.current.selectedModel).toBe("prov/sticky");
+    vi.mocked(providerApi.listResolvedModels).mockResolvedValue([
+      model("expert"),
+    ]);
+    act(() => window.dispatchEvent(new Event("focus")));
+    await waitFor(() => expect(result.current.selectedModel).toBeNull());
+    expect(result.current.availableModels.map((item) => item.model)).toEqual([
+      "expert",
+    ]);
+  });
+
+  it("removes the selected model when every model is disabled", async () => {
+    const { result } = renderHook(() =>
+      useChatComposerResources("expertA", "thread-existing", "prov/sticky"),
+    );
+    await waitFor(() => expect(result.current.modelsReady).toBe(true));
+    vi.mocked(providerApi.listResolvedModels).mockResolvedValue([]);
+    act(() => window.dispatchEvent(new Event("focus")));
+    await waitFor(() => {
+      expect(result.current.availableModels).toEqual([]);
+      expect(result.current.modelsReady).toBe(true);
+      expect(result.current.selectedModel).toBeNull();
+    });
+  });
+
+  it("does not erase a saved choice when the model list cannot be loaded", async () => {
+    vi.mocked(providerApi.listResolvedModels).mockRejectedValue(
+      new Error("offline"),
+    );
+    const { result } = renderHook(() =>
+      useChatComposerResources("expertA", "thread-existing", "prov/sticky"),
+    );
+    await waitFor(() =>
+      expect(providerApi.listResolvedModels).toHaveBeenCalled(),
+    );
+    expect(result.current.modelsReady).toBe(false);
+    expect(result.current.selectedModel).toBe("prov/sticky");
+    expect(octopThreadsApi.patch).not.toHaveBeenCalled();
+  });
+
+  it("keeps the last successful catalog if a focus refresh fails", async () => {
+    const { result } = renderHook(() =>
+      useChatComposerResources("expertA", "thread-existing", "prov/sticky"),
+    );
+    await waitFor(() => expect(result.current.modelsReady).toBe(true));
+    vi.mocked(providerApi.listResolvedModels).mockRejectedValue(
+      new Error("offline"),
+    );
+    await act(async () => window.dispatchEvent(new Event("focus")));
+    expect(result.current.selectedModel).toBe("prov/sticky");
+    expect(result.current.modelsReady).toBe(true);
+    expect(octopThreadsApi.patch).not.toHaveBeenCalled();
+  });
+
+  it("ignores an older catalog response after the disabled model was removed", async () => {
+    let resolveOld!: (value: ResolvedModel[]) => void;
+    vi.mocked(providerApi.listResolvedModels).mockReturnValueOnce(
+      new Promise((resolve) => {
+        resolveOld = resolve;
+      }),
+    );
+    const { result } = renderHook(() =>
+      useChatComposerResources("expertA", "thread-existing", "prov/sticky"),
+    );
+    vi.mocked(providerApi.listResolvedModels).mockResolvedValue([
+      model("expert"),
+    ]);
+    act(() => window.dispatchEvent(new Event("focus")));
+    await waitFor(() => expect(result.current.modelsReady).toBe(true));
+    await act(async () => resolveOld([model("sticky")]));
+    expect(result.current.availableModels.map((item) => item.model)).toEqual([
+      "expert",
+    ]);
+    expect(result.current.selectedModel).toBeNull();
+  });
+
+  it("waits for the next expert's own model catalog before validating its default", async () => {
+    agentState.agents = [
+      { agent_id: "expertA", default_model: "prov/expert" },
+      { agent_id: "expertB", default_model: "prov/other" },
+    ];
+    vi.mocked(providerApi.listResolvedModels).mockResolvedValue([
+      model("expert"),
+    ]);
+    const { result, rerender } = renderHook(
+      ({ agentId }) => useChatComposerResources(agentId, "thread-existing"),
+      { initialProps: { agentId: "expertA" } },
+    );
+    await waitFor(() => expect(result.current.modelsReady).toBe(true));
+    let resolveModels!: (value: ResolvedModel[]) => void;
+    vi.mocked(providerApi.listResolvedModels).mockReturnValue(
+      new Promise((resolve) => {
+        resolveModels = resolve;
+      }),
+    );
+    rerender({ agentId: "expertB" });
+    expect(result.current.modelsReady).toBe(false);
+    expect(octopThreadsApi.patch).not.toHaveBeenCalled();
+    await act(async () => resolveModels([model("other")]));
+    await waitFor(() => expect(result.current.modelsReady).toBe(true));
+    expect(result.current.selectedModel).toBe("prov/other");
+    expect(octopThreadsApi.patch).not.toHaveBeenCalled();
   });
 });
