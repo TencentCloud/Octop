@@ -153,6 +153,7 @@ const env = {
   OCTOP_GREEN_PACKAGES: path.join(portableDir, "packages"),
   OCTOP_BIND_HOST: "127.0.0.1",
   OCTOP_PORT: String(assignedPort),
+  OCTOP_REQUIRE_SETUP_PASSWORD: "0",
 }
 
 // 不设置 PYTHONPATH，由 launch.py 处理运行时和 .pth。
@@ -168,6 +169,17 @@ delete env.PYTHONPATH
 开头的 `~` 按当前用户主目录展开，展开后的路径同时用于解压目录和子进程环境，使壳与 Python 的 `PathLayout.from_env()` 指向同一位置。壳不把这个值写回 `config.json`。
 
 `assignedPort` 是本次向操作系统申请到的端口。`OCTOP_BIND_HOST` 与 `OCTOP_PORT` 都不写回 `config.json`。
+
+`OCTOP_REQUIRE_SETUP_PASSWORD` 是产品决定，不是界面开关：关掉初始化向导的 CLI 密码，安装完直接进主界面。前端从 `/api/setup/status` 的 `wizard_password_required` 读到同一个事实，据此隐藏密码步骤和 Admin 步骤的密码框；Web 部署不改前端代码，只是这个值仍为 `true`。壳运行期间这个键归壳所有，`~/.octop/env` 和 `/api/envs` 都不能把登录墙改回来。
+
+令牌有效期保持服务端默认值，壳不去改它 —— 无密码的账户配一个长令牌只是把死局往后推，同时放大令牌泄漏的后果。真正解决"JWT 过期后登不进去"的是设备凭据：
+
+- 壳首次使用时生成 32 字节设备密钥，用 `safeStorage`（Keychain / DPAPI / libsecret）加密后写到 `<OCTOP_HOME>/desktop-device.json`，权限 `0600`；系统没有可用钥匙串时明文存储并打一条警告。
+- 渲染进程看不到这个密钥。第一次拿到认证成功的响应后，`dashboard/src/api/desktopSession.ts` 让壳把凭据绑定到当前登录用户（`POST /api/auth/device/register`，重复注册会替换旧令牌，重装或换机器即接管）。
+- 遇到 `401` 时 `request()` 通过壳续期一次（`POST /api/auth/device/token`）再重试。这个交换接口豁免 JWT，但要求壳标志位、对端是回环地址、SHA-256 摘要常量时间比对，并按来源做失败节流；服务端只存摘要（`secrets` 表 `desktop_device`）。
+- `POST /api/auth/device/revoke` 用于忘记凭据，壳暴露为 `session.revoke`，留给后续的"重置本机登录"入口。
+
+于是桌面端跨重启、跨 JWT 过期都不需要密码；使用期间的滑动续期照旧轮换令牌。唯一保留的死局是刻意保留的：凭据被删除、或用户行被移除时回到普通登录页，那属于服务端操作（`octop user passwd`），壳自己无力恢复。
 
 **登录 Shell 环境**：
 
@@ -438,8 +450,8 @@ Octop/
         global.d.ts
 ```
 
-> 实现状态：GitHub Release 目前只产出各平台 green zip，electron-builder
-> 打包尚未接入 CI。
+> 实现状态：`octop-desktop.yml` 已配置各平台 green zip + 原生 Electron 安装包；
+> 签名、公证以及六平台实际 CI 产物仍需在仓库发布前逐项验证。
 >
 > 更新链路现状：[§6.3](#63-安装顺序) 的「确认框 → 下载 → 校验 → Python 干净退出 →
 > 交给安装器」已在主进程实现（`main/update/{download,installer}.ts`），确认框只能由

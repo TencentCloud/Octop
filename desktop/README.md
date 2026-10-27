@@ -11,9 +11,8 @@ All desktop-client code lives here. This is **not** `src/octop/infra/control/des
 
 The Electron shell owns the whole desktop lifecycle: extract the green runtime,
 spawn Octop on a random loopback port, own tray/window chrome, refuse
-self-updates. CI keeps building the green zips that the shell bundles;
-`electron-builder` packaging is not wired into CI yet, so `pnpm package` is
-still a local step.
+self-updates. CI builds the green zips and bundles each one with the Electron
+shell and Dashboard in a matching native installer.
 
 Inside the Electron package everything sits directly under `src/`: `main/`,
 `preload/`, `renderer/`, `shared/`.
@@ -66,7 +65,7 @@ pnpm typecheck && pnpm test && pnpm build
 pnpm dev                        # build everything, then launch (repo source)
 pnpm dev:start                  # relaunch the existing out/ bundle (no build)
 pnpm dev:no-sandbox             # same, minus the Chromium sandbox + GPU process
-pnpm package                    # electron-builder release
+pnpm package                    # electron-builder (requires staged resources)
 ```
 
 All three launch scripts are `scripts/run-dev.sh` with different flags; `--`
@@ -101,6 +100,47 @@ packaged build.
 
 `dashboard/` is still npm-managed (`dashboard/package-lock.json`); the two
 package managers never share a `node_modules` tree.
+
+## Accounts (no sign-in wall)
+
+Desktop builds run without the account system. `buildSidecarEnv()` gives the
+sidecar `OCTOP_REQUIRE_SETUP_PASSWORD=0`, so the wizard skips its CLI password
+and the first admin gets a server-minted password nobody ever types
+(`POST /api/setup/initial-admin` accepts a body without `password`). The JWT
+lifetime is left at the server default: the session is renewed, not lengthened.
+
+The Dashboard is not desktop-specific: it reads `wizard_password_required`
+from `/api/setup/status` and hides the password step plus the Admin step's
+password fields. A web deployment keeps the default `true` and the same code
+renders them again. While the shell runs `OCTOP_REQUIRE_SETUP_PASSWORD` is
+shell-owned — the `~/.octop/env` file and `PUT /api/envs` cannot put the
+sign-in wall back.
+
+An unknown password would be a dead end the moment the JWT expired, so the
+shell holds a **device credential** instead:
+
+- `main/session/device-credential.ts` mints a 32-byte secret on first use and
+  stores it encrypted with `safeStorage` (Keychain / DPAPI / libsecret) at
+  `<OCTOP_HOME>/desktop-device.json`, mode `0600`. Without an OS keychain the
+  secret is stored as-is and the shell logs a warning.
+- The renderer never sees it. After the first authenticated response,
+  `dashboard/src/api/desktopSession.ts` asks the shell to bind the credential to
+  the signed-in user (`POST /api/auth/device/register`, which replaces any
+  previous token, so a reinstall or second machine takes over).
+- On a `401`, `request()` renews once through the shell
+  (`POST /api/auth/device/token`) and retries with the new JWT. The exchange is
+  JWT-exempt but requires the shell flag, a loopback peer, a matching SHA-256
+  digest (constant-time compare) and stays under a per-host failure throttle —
+  only the digest is stored server-side (`secrets` row `desktop_device`).
+- `POST /api/auth/device/revoke` forgets the credential; the shell exposes it as
+  `session.revoke` for a future "reset this device's login" action.
+
+So a desktop install keeps working across restarts and across JWT expiry without
+ever asking for a password. Sliding renewal still rotates the token during use.
+The one remaining dead end is deliberate: an admin who *deletes* the credential
+(or whose user row is removed) reaches the normal login page, and recovering
+from there is a server-side operation (`octop user passwd`), not something the
+shell can do on its own.
 
 ## Update flow (shell-owned)
 
@@ -151,6 +191,18 @@ make -f desktop/portable/Makefile green
 CI: `.github/workflows/octop-desktop.yml` builds native platform/arch variants
 (`darwin-arm64`, `darwin-amd64`, `linux-arm64`, `linux-amd64`, `windows-arm64`,
 `windows-amd64`) and attaches `Octop-portable-<plat>-<version>.zip` to the GitHub
-Release, then mirrors it to COS. Each job builds the Dashboard, bootstraps the
-portable CPython, packages the zip, and smoke-tests the bundle by importing every
-frozen requirement.
+Release, then mirrors it to COS. Each job bootstraps portable CPython, packages
+the zip, smoke-tests every frozen requirement, and bundles that exact zip plus
+the Dashboard into a native Electron installer. For macOS this produces DMG and
+ZIP, for Windows NSIS EXE, and for Linux AppImage, deb and rpm. Installer files
+are named `Octop-desktop-<plat>-<version>.<ext>`; the portable manifest records
+the original Python version and the bundled zip's SHA-256. Optional CI signing
+secrets (`CSC_LINK`, `CSC_KEY_PASSWORD`, `WIN_CSC_LINK`, `WIN_CSC_KEY_PASSWORD`,
+`APPLE_ID`, `APPLE_APP_SPECIFIC_PASSWORD`, `APPLE_TEAM_ID`) are required for a
+signed/notarized release; without them the installers are unsigned.
+
+A `v*` tag triggers building all six platform/architecture variants and attaches
+both portable and desktop assets to the same GitHub Release. For a trial build
+without publishing a release, dispatch `octop-desktop.yml` on the feature branch
+with `platforms=all` and `attach_release=false`; download the artifacts from
+that workflow run. Do not dispatch on an older tag without the Electron source.

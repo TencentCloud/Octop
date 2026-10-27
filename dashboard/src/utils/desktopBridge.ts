@@ -24,7 +24,26 @@ export interface DesktopPlatformInfo {
   isDesktop: true;
 }
 
+/**
+ * A JWT minted by the shell from its stored device credential. The credential
+ * itself never crosses the bridge.
+ */
+export interface DesktopIssuedSession {
+  access_token: string;
+  expires_in: number;
+}
+
+export interface DesktopSessionBridge {
+  /** Bind the credential to the signed-in user; false when the shell refused. */
+  register(accessToken: string): Promise<boolean>;
+  /** Mint a fresh JWT, or null when this install has no usable credential. */
+  renew(): Promise<DesktopIssuedSession | null>;
+  /** Forget this install's credential. */
+  revoke(accessToken: string): Promise<boolean>;
+}
+
 export interface OctopDesktopBridge {
+  session?: DesktopSessionBridge;
   getPlatformInfo(): Promise<DesktopPlatformInfo>;
   openDirectoryPicker(): Promise<string | null>;
   openFilePicker(): Promise<string | null>;
@@ -45,7 +64,9 @@ declare global {
 }
 
 export function isDesktopShell(): boolean {
-  return typeof window !== "undefined" && typeof window.octopDesktop !== "undefined";
+  return (
+    typeof window !== "undefined" && typeof window.octopDesktop !== "undefined"
+  );
 }
 
 export function getDesktopBridge(): OctopDesktopBridge | null {

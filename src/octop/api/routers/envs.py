@@ -10,7 +10,7 @@ from typing import Any
 from fastapi import APIRouter, Body, Depends
 
 from octop.api.deps import get_server, require_permission
-from octop.infra.desktop import SHELL_OWNED_ENV_KEYS
+from octop.infra.desktop import shell_owned_env_key
 from octop.infra.errors import ErrorCode, OctopError
 from octop.infra.utils.env_file import (
     apply_env_file_replace,
@@ -102,7 +102,7 @@ async def batch_save_envs(
             raise OctopError(ErrorCode.SLASH_BAD_ARGS, "env key cannot be empty")
         if not _KEY_RE.match(k):
             raise OctopError(ErrorCode.SLASH_BAD_ARGS, f"invalid env key: {k!r}")
-        if k in SHELL_OWNED_ENV_KEYS:
+        if shell_owned_env_key(k):
             raise OctopError(
                 ErrorCode.SLASH_BAD_ARGS, f"env key is shell-owned and read-only: {k!r}"
             )
@@ -129,7 +129,7 @@ async def delete_env(
     k = key.strip()
     if not _KEY_RE.match(k):
         raise OctopError(ErrorCode.SLASH_BAD_ARGS, f"invalid env key: {k!r}")
-    if k in SHELL_OWNED_ENV_KEYS:
+    if shell_owned_env_key(k):
         raise OctopError(ErrorCode.SLASH_BAD_ARGS, f"env key is shell-owned and read-only: {k!r}")
     path = env_file_path(server.paths.root)
     previous = load_env_file(path)

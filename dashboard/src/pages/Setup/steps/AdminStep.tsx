@@ -17,19 +17,32 @@ interface FormValues {
   username: string;
   display_name?: string;
   email?: string;
-  password: string;
-  confirm: string;
+  password?: string;
+  confirm?: string;
+}
+
+/** The initial admin; ``password`` is null when the build has no password gate. */
+export interface AdminCreds {
+  username: string;
+  password: string | null;
 }
 
 interface Props {
   /** When returning from a later step, admin was already created in this session. */
-  createdCreds?: { username: string; password: string } | null;
+  createdCreds?: AdminCreds | null;
+  /** Mirrors ``wizard_password_required``: desktop builds run without a password. */
+  passwordRequired: boolean;
   onBack?: () => void;
-  /** Called with the username + plaintext password held in memory only. */
-  onCreated: (creds: { username: string; password: string }) => void;
+  /** Called with the username + plaintext password (null without a password gate). */
+  onCreated: (creds: AdminCreds) => void;
 }
 
-export default function AdminStep({ createdCreds, onBack, onCreated }: Props) {
+export default function AdminStep({
+  createdCreds,
+  passwordRequired,
+  onBack,
+  onCreated,
+}: Props) {
   const { t, i18n } = useTranslation();
   const [form] = Form.useForm<FormValues>();
   const [submitting, setSubmitting] = useState(false);
@@ -57,6 +70,7 @@ export default function AdminStep({ createdCreds, onBack, onCreated }: Props) {
       setError(t("wizard.sessionExpired"));
       return;
     }
+    const password = passwordRequired ? values.password ?? "" : null;
     setSubmitting(true);
     try {
       const locale = i18n.language?.startsWith("zh") ? "zh" : "en";
@@ -65,7 +79,7 @@ export default function AdminStep({ createdCreds, onBack, onCreated }: Props) {
           username: values.username,
           display_name: values.display_name?.trim() || null,
           email: values.email?.trim() || null,
-          password: values.password,
+          password: password ?? undefined,
           locale,
         },
         wizardToken,
@@ -73,13 +87,17 @@ export default function AdminStep({ createdCreds, onBack, onCreated }: Props) {
       wizardSession.saveSetupJwt(created.access_token);
       // So mid-wizard locale / preferences API calls can authenticate.
       setAuthToken(created.access_token);
-      onCreated({ username: values.username, password: values.password });
+      onCreated({ username: values.username, password });
     } catch (e) {
       setError(apiErrorMessage(e, t("wizard.admin.submitFailed"), t));
     } finally {
       setSubmitting(false);
     }
   };
+
+  const intro = t(
+    passwordRequired ? "wizard.admin.intro" : "wizard.admin.introNoPassword",
+  );
 
   if (createdCreds) {
     return (
@@ -96,7 +114,7 @@ export default function AdminStep({ createdCreds, onBack, onCreated }: Props) {
             {t("wizard.stepAdmin")}
           </div>
           <Text type="secondary" style={{ fontSize: 13 }}>
-            {t("wizard.admin.intro")}
+            {intro}
           </Text>
         </div>
 
@@ -132,7 +150,7 @@ export default function AdminStep({ createdCreds, onBack, onCreated }: Props) {
           {t("wizard.stepAdmin")}
         </div>
         <Text type="secondary" style={{ fontSize: 13 }}>
-          {t("wizard.admin.intro")}
+          {intro}
         </Text>
       </div>
       <Form<FormValues>
@@ -140,6 +158,7 @@ export default function AdminStep({ createdCreds, onBack, onCreated }: Props) {
         layout="vertical"
         onFinish={onFinish}
         requiredMark={false}
+        initialValues={passwordRequired ? undefined : { username: "local" }}
       >
         <Form.Item
           label={t("wizard.admin.username")}
@@ -176,55 +195,65 @@ export default function AdminStep({ createdCreds, onBack, onCreated }: Props) {
           />
         </Form.Item>
 
-        <Form.Item
-          label={t("wizard.admin.password")}
-          name="password"
-          extra={t("wizard.admin.passwordHint")}
-          rules={[
-            { required: true, message: t("wizard.admin.password") as string },
-            {
-              validator(_, value: string) {
-                if (!value) return Promise.resolve();
-                const issue = passwordPolicyIssue(value);
-                if (issue) {
-                  return Promise.reject(
-                    new Error(passwordPolicyMessage(issue)),
-                  );
-                }
-                return Promise.resolve();
-              },
-            },
-          ]}
-        >
-          <Input.Password
-            prefix={<Lock size={16} />}
-            autoComplete="new-password"
-          />
-        </Form.Item>
+        {passwordRequired && (
+          <>
+            <Form.Item
+              label={t("wizard.admin.password")}
+              name="password"
+              extra={t("wizard.admin.passwordHint")}
+              rules={[
+                {
+                  required: true,
+                  message: t("wizard.admin.password") as string,
+                },
+                {
+                  validator(_, value: string) {
+                    if (!value) return Promise.resolve();
+                    const issue = passwordPolicyIssue(value);
+                    if (issue) {
+                      return Promise.reject(
+                        new Error(passwordPolicyMessage(issue)),
+                      );
+                    }
+                    return Promise.resolve();
+                  },
+                },
+              ]}
+            >
+              <Input.Password
+                prefix={<Lock size={16} />}
+                autoComplete="new-password"
+              />
+            </Form.Item>
 
-        <Form.Item
-          label={t("wizard.admin.confirm")}
-          name="confirm"
-          dependencies={["password"]}
-          rules={[
-            { required: true, message: t("wizard.admin.confirm") as string },
-            ({ getFieldValue }) => ({
-              validator(_, value) {
-                if (!value || getFieldValue("password") === value) {
-                  return Promise.resolve();
-                }
-                return Promise.reject(
-                  new Error(t("wizard.admin.passwordMismatch") as string),
-                );
-              },
-            }),
-          ]}
-        >
-          <Input.Password
-            prefix={<Lock size={16} />}
-            autoComplete="new-password"
-          />
-        </Form.Item>
+            <Form.Item
+              label={t("wizard.admin.confirm")}
+              name="confirm"
+              dependencies={["password"]}
+              rules={[
+                {
+                  required: true,
+                  message: t("wizard.admin.confirm") as string,
+                },
+                ({ getFieldValue }) => ({
+                  validator(_, value) {
+                    if (!value || getFieldValue("password") === value) {
+                      return Promise.resolve();
+                    }
+                    return Promise.reject(
+                      new Error(t("wizard.admin.passwordMismatch") as string),
+                    );
+                  },
+                }),
+              ]}
+            >
+              <Input.Password
+                prefix={<Lock size={16} />}
+                autoComplete="new-password"
+              />
+            </Form.Item>
+          </>
+        )}
 
         {error && (
           <Alert

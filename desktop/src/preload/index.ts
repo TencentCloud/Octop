@@ -2,6 +2,7 @@ import { contextBridge, ipcRenderer, type IpcRendererEvent } from "electron";
 import {
   IPC_CHANNELS,
   type ClientSettings,
+  type IssuedSession,
   type PlatformInfo,
   type UpdateCheckResult,
   type WindowControlAction,
@@ -47,6 +48,21 @@ const bridge = {
   },
   openUpdateConfirmation(): Promise<void> {
     return ipcRenderer.invoke(IPC_CHANNELS.openUpdateConfirmation);
+  },
+  /**
+   * Device session (§7 accounts). The renderer can ask for a JWT, but the
+   * credential behind it never crosses this bridge.
+   */
+  session: {
+    register(accessToken: string): Promise<boolean> {
+      return ipcRenderer.invoke(IPC_CHANNELS.sessionRegister, accessToken);
+    },
+    renew(): Promise<IssuedSession | null> {
+      return ipcRenderer.invoke(IPC_CHANNELS.sessionRenew);
+    },
+    revoke(accessToken: string): Promise<boolean> {
+      return ipcRenderer.invoke(IPC_CHANNELS.sessionRevoke, accessToken);
+    },
   },
 } as const;
 
