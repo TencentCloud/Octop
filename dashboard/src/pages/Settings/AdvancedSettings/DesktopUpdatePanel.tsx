@@ -1,7 +1,9 @@
 import { useCallback, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Switch } from "antd";
-import { RefreshCw, Sparkles } from "lucide-react";
+import { Modal, Switch } from "antd";
+import { KeyRound, RefreshCw, Sparkles } from "lucide-react";
+import { message } from "@/utils/antdMessage";
+import { getAuthToken } from "../../../api/request";
 import {
   getDesktopBridge,
   type DesktopClientSettings,
@@ -9,6 +11,8 @@ import {
 } from "../../../utils/desktopBridge";
 import { TabPanelHeader } from "./TabPanelHeader";
 import styles from "./UpdateConfig.module.less";
+
+const { confirm } = Modal;
 
 /**
  * Desktop-shell update panel. The shell detects/downloads/installs the whole
@@ -56,6 +60,29 @@ export default function DesktopUpdatePanel() {
     // fail in a way this panel should surface (the shell shows its own dialogs).
     void getDesktopBridge()?.openUpdateConfirmation().catch(() => {});
   }, []);
+
+  const handleResetLogin = useCallback(() => {
+    const session = getDesktopBridge()?.session;
+    if (!session) return;
+    confirm({
+      title: t("advancedSettings.update.deviceLoginConfirmTitle"),
+      content: t("advancedSettings.update.deviceLoginConfirmBody"),
+      okText: t("advancedSettings.update.deviceLoginButton"),
+      okButtonProps: { danger: true },
+      cancelText: t("common.cancel"),
+      onOk: async () => {
+        try {
+          // Only renewal stops: the JWT in hand keeps working until it expires,
+          // which is why the copy says "after this session ends".
+          const ok = await session.revoke(getAuthToken());
+          if (ok) message.success(t("advancedSettings.update.deviceLoginSuccess"));
+          else message.error(t("advancedSettings.update.deviceLoginFailed"));
+        } catch {
+          message.error(t("advancedSettings.update.deviceLoginFailed"));
+        }
+      },
+    });
+  }, [t]);
 
   const hasUpdate = result?.status === "update-available";
 
@@ -148,6 +175,34 @@ export default function DesktopUpdatePanel() {
             )}
           </div>
         </section>
+
+        {getDesktopBridge()?.session ? (
+          <section
+            className={styles.panel}
+            aria-label={t("advancedSettings.update.deviceLoginTitle")}
+          >
+            <div className={styles.panelTitleRow}>
+              <span className={styles.panelTitleIcon}>
+                <KeyRound size={16} />
+              </span>
+              <h3 className={styles.panelTitle}>
+                {t("advancedSettings.update.deviceLoginTitle")}
+              </h3>
+            </div>
+            <p className={styles.panelDesc}>{t("advancedSettings.update.deviceLoginHint")}</p>
+
+            <div className={styles.actions}>
+              <button
+                type="button"
+                className={styles.btnDanger}
+                onClick={handleResetLogin}
+              >
+                <KeyRound size={14} />
+                {t("advancedSettings.update.deviceLoginButton")}
+              </button>
+            </div>
+          </section>
+        ) : null}
       </div>
     </div>
   );
