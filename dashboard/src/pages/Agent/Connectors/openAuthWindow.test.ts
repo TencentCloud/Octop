@@ -7,22 +7,27 @@ import {
   tryOpenAuthPopup,
 } from "./openAuthWindow";
 
-type DesktopWindow = Window & {
-  _wails?: { invoke?: (message: string) => void };
-};
+type BridgeHost = Window & { octopDesktop?: unknown };
 
 const originalOpen = window.open;
 
+function stubDesktopBridge(): void {
+  Object.defineProperty(window, "octopDesktop", {
+    configurable: true,
+    value: { windowControls: vi.fn() },
+  });
+}
+
 afterEach(() => {
   window.open = originalOpen;
-  delete (window as DesktopWindow)._wails;
+  delete (window as BridgeHost).octopDesktop;
 });
 
 describe("tryOpenAuthPopup", () => {
   it("skips the placeholder window in the desktop shell", () => {
     const open = vi.fn();
     window.open = open as typeof window.open;
-    (window as DesktopWindow)._wails = { invoke: () => undefined };
+    stubDesktopBridge();
     expect(
       tryOpenAuthPopup("", "octop-oauth", "width=520,height=720"),
     ).toBeNull();
@@ -43,7 +48,7 @@ describe("navigateAuthWindow", () => {
   it("opens the system-browser tab on desktop even if a dummy popup exists", () => {
     const open = vi.fn(() => null);
     window.open = open as typeof window.open;
-    (window as DesktopWindow)._wails = { invoke: () => undefined };
+    stubDesktopBridge();
     const popup = {
       closed: false,
       location: { replace: vi.fn() },

@@ -1,7 +1,5 @@
 # Build
 build/
-!desktop/src/build/
-!desktop/src/build/**
 dist/
 
 # OS

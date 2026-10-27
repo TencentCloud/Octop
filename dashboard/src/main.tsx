@@ -74,6 +74,8 @@ void initI18n()
 // Register SW as early as possible so beforeinstallprompt can fire before the
 // user clicks the header install button (deferring to "load" caused a race).
 // DEV clears stale production workers, then registers the notification worker.
-if (typeof window !== "undefined") {
+// The desktop shell serves its own packaged Dashboard and must never register a
+// Service Worker that could cache a stale frontend independently of the shell.
+if (typeof window !== "undefined" && !window.octopDesktop) {
   void import("./sw-register").then(({ registerSW }) => registerSW());
 }

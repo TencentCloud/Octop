@@ -8,6 +8,8 @@ from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
 
+from octop.infra.desktop import SHELL_OWNED_ENV_KEYS
+
 _KEY_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 _PROTECTED_EXACT = frozenset(
     {
@@ -117,9 +119,16 @@ def save_env_file(path: Path, values: dict[str, str]) -> None:
 
 
 def apply_env_file(path: Path) -> dict[str, str]:
-    """Load ``path`` and merge into ``os.environ`` (does not unset missing keys)."""
+    """Load ``path`` and merge into ``os.environ`` (does not unset missing keys).
+
+    Shell-owned keys (``OCTOP_DESKTOP_SHELL``, ``OCTOP_PORT``, …) are never
+    applied: the shell sets them for the whole process and a persisted env file
+    must not be able to flip desktop identity or the loopback bind.
+    """
     values = load_env_file(path)
     for key, value in values.items():
+        if key in SHELL_OWNED_ENV_KEYS:
+            continue
         os.environ[key] = value
     return values
 
@@ -128,9 +137,11 @@ def apply_env_file_replace(path: Path, *, previous: Mapping[str, str]) -> dict[s
     """Apply the file to ``os.environ`` and drop keys that left the file."""
     values = load_env_file(path)
     for key in previous:
-        if key not in values:
+        if key not in values and key not in SHELL_OWNED_ENV_KEYS:
             os.environ.pop(key, None)
     for key, value in values.items():
+        if key in SHELL_OWNED_ENV_KEYS:
+            continue
         os.environ[key] = value
     return values
 

@@ -3,7 +3,7 @@ import { Download, Eye, Paperclip } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { downloadAuthFile } from "../../../components/AuthFileDownloadLink";
 import { saveBlobAsFile } from "../../../utils/saveBlobAsFile";
-import { isDesktopShell } from "../../../utils/desktopChrome";
+import { isDesktopShell } from "../../../utils/desktopBridge";
 import {
   isDataUrl,
   needsAuthBlobFetch,
