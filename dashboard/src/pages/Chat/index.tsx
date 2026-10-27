@@ -1837,7 +1837,13 @@ function ChatPageInner() {
               isStreaming={isStreaming}
               holdSend={membersStillTalking}
               isTeam={isTeamChat}
-              disabled={!agentChatReady || noAgents || memoryMaintBlocking}
+              disabled={
+                !agentChatReady ||
+                noAgents ||
+                memoryMaintBlocking ||
+                !modelsReady ||
+                availableModels.length === 0
+              }
               initialText={prefillInputRef.current}
               onComposerCleared={() => {
                 prefillInputRef.current = "";

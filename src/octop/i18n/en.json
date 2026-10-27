@@ -1110,5 +1110,18 @@
         }
       }
     }
+  },
+  "ragflow": {
+    "invalid_base_url": "RAGFlow service URL must not contain credentials, a query string, or a fragment.",
+    "invalid_dataset_ids": "RAGFlow dataset IDs must be a comma-separated string or a list of IDs containing only letters, digits, underscores, and hyphens.",
+    "api_key_required": "A valid RAGFlow API Key is required.",
+    "http_error": "RAGFlow request failed: HTTP {status}.",
+    "network_error": "Unable to reach RAGFlow. Check the service URL and network connection.",
+    "invalid_response": "RAGFlow returned an invalid API response.",
+    "api_error": "RAGFlow request failed: {reason}",
+    "query_required": "A search query is required.",
+    "datasets_required": "Choose dataset_ids from list_datasets or configure default dataset IDs before searching.",
+    "invalid_id": "A valid {field} is required.",
+    "unknown_tool": "Unknown RAGFlow tool: {name}"
   }
 }
