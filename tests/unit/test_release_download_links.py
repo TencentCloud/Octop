@@ -34,8 +34,10 @@ def test_render_download_section_matches_github_asset_names() -> None:
     assert f"{base}/Octop-desktop-darwin-amd64-0.9.31.dmg" in body
     assert f"{base}/Octop-portable-darwin-arm64-0.9.31.zip" in body
     assert f"{base}/Octop-portable-darwin-amd64-0.9.31.zip" in body
-    assert f"{base}/Octop-desktop-linux-amd64-0.9.31.tar.gz" in body
-    assert f"{base}/Octop-desktop-linux-arm64-0.9.31.tar.gz" in body
+    # Linux ships deb (default), AppImage and rpm — no more tar.gz.
+    for arch in ("amd64", "arm64"):
+        for ext in ("deb", "AppImage", "rpm"):
+            assert f"{base}/Octop-desktop-linux-{arch}-0.9.31.{ext}" in body
     assert f"{base}/Octop-portable-linux-amd64-0.9.31.zip" in body
     assert f"{base}/Octop-portable-linux-arm64-0.9.31.zip" in body
     assert f"{base}/Octop-fnos-docker-0.9.31.fpk" in body
@@ -46,3 +48,13 @@ def test_render_download_section_matches_github_asset_names() -> None:
     assert "Native ARM64 (no Docker)" in body
     assert "pip install" not in body
     assert "## Downloads" in body
+
+
+def test_download_links_follow_the_fork(monkeypatch) -> None:
+    # GitHub Actions sets GITHUB_REPOSITORY, so a fork's release notes must point
+    # at the fork, not at upstream.
+    monkeypatch.setenv("GITHUB_REPOSITORY", "liukewia/Octop")
+    mod = _load()
+    body = mod.render_download_section("1.0.3b1")
+    assert "https://github.com/liukewia/Octop/releases/download/v1.0.3b1/" in body
+    assert "https://github.com/TencentCloud/Octop/" not in body
