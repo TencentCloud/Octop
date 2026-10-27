@@ -93,6 +93,51 @@ async def test_initial_admin_rejects_weak_password(env: Any) -> None:
     assert r.json()["error"]["code"] == "PASSWORD_TOO_WEAK"
 
 
+async def test_initial_admin_requires_password_while_the_gate_is_on(env: Any) -> None:
+    c, _srv, home = env
+    pw = read_password(home)
+    tok = (await c.post("/api/setup/verify-password", json={"password": pw})).json()["wizard_token"]
+    r = await c.post(
+        "/api/setup/initial-admin",
+        json={"username": "admin"},
+        headers={"Authorization": f"Bearer {tok}"},
+    )
+    assert r.status_code == 400
+    assert r.json()["error"]["code"] == "SLASH_BAD_ARGS"
+
+
+async def test_initial_admin_without_password_when_the_gate_is_off(
+    tmp_octop_home: Path,
+) -> None:
+    """Desktop builds: the client sends no password; the minted JWT is the session."""
+    write_octop_config(tmp_octop_home, require_setup_password=False)
+
+    async with octop_client(tmp_octop_home) as (c, srv):
+        tok = (await c.post("/api/setup/begin")).json()["wizard_token"]
+        r = await c.post(
+            "/api/setup/initial-admin",
+            json={"username": "local"},
+            headers={"Authorization": f"Bearer {tok}"},
+        )
+        assert r.status_code == 201
+        body = r.json()
+        assert body["username"] == "local"
+        assert body["role"] == "admin"
+
+        # The row keeps a hashed credential nobody knows, so empty-password
+        # login cannot walk in; the issued token is the only way to /auth/me.
+        assert srv.user_manager.get("local") is not None
+        r = await c.post("/api/auth/login", json={"username": "local", "password": ""})
+        assert r.status_code != 200
+
+        r = await c.get(
+            "/api/auth/me",
+            headers={"Authorization": f"Bearer {body['access_token']}"},
+        )
+        assert r.status_code == 200
+        assert r.json()["username"] == "local"
+
+
 async def test_initial_admin_respects_locale_body(env: Any) -> None:
     c, srv, home = env
     pw = read_password(home)

@@ -16,6 +16,7 @@ import { publicUrl } from "../../utils/publicUrl";
 import DatabaseStep from "./steps/DatabaseStep";
 import PasswordStep from "./steps/PasswordStep";
 import AdminStep from "./steps/AdminStep";
+import type { AdminCreds } from "./steps/AdminStep";
 import ModelStep from "./steps/ModelStep";
 import FinishStep from "./steps/FinishStep";
 import type { ProviderDraft } from "./wizardClient";
@@ -41,10 +42,7 @@ export default function SetupPage() {
   const [statusRetryKey, setStatusRetryKey] = useState(0);
   const [passwordRequired, setPasswordRequired] = useState(true);
   const [current, setCurrentRaw] = useState<number>(STEP_PASSWORD);
-  const [adminCreds, setAdminCreds] = useState<{
-    username: string;
-    password: string;
-  } | null>(null);
+  const [adminCreds, setAdminCreds] = useState<AdminCreds | null>(null);
   const [providerDraft, setProviderDraft] = useState<ProviderDraft | null>(
     null,
   );
@@ -318,6 +316,7 @@ export default function SetupPage() {
           {current === STEP_ADMIN && (
             <AdminStep
               createdCreds={adminCreds}
+              passwordRequired={passwordRequired}
               onBack={handleBackFromAdmin}
               onCreated={(creds) => {
                 setAdminCreds(creds);
