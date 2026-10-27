@@ -1,4 +1,6 @@
-import { BrowserWindow } from "electron";
+import { app, BrowserWindow } from "electron";
+
+import { encodeShellError, SHELL_ERROR_PARAM, type ShellFailure } from "../../shared/shell-error";
 
 /**
  * Early Window (§4): shown immediately so the cold start never shows a blank
@@ -13,9 +15,22 @@ import { BrowserWindow } from "electron";
  */
 export const EARLY_WINDOW_BACKGROUND = "#ffffff";
 
-export function createEarlyWindow(
-  options: { splashFile: string },
-): BrowserWindow {
+export interface EarlyWindowOptions {
+  /** Splash page (``renderer/splash.html``). */
+  splashFile: string;
+  /** Failure Result page (``renderer/error.html``). */
+  errorFile: string;
+  /** Stamped onto the failure page so a report always names the running build. */
+  version: string;
+}
+
+export interface EarlyWindow {
+  /** Replace the splash with the failure Result — same window, no white flash. */
+  showError(failure: ShellFailure): void;
+  close(): void;
+}
+
+export function createEarlyWindow(options: EarlyWindowOptions): EarlyWindow {
   const win = new BrowserWindow({
     width: 1080,
     height: 720,
@@ -30,14 +45,22 @@ export function createEarlyWindow(
   });
   win.once("ready-to-show", () => win.show());
   void win.loadFile(options.splashFile);
-  return win;
-}
 
-/** Render a run-time error (e.g. manual downgrade) inside the same window. */
-export function showEarlyWindowError(win: BrowserWindow, message: string): void {
-  void win.loadURL(
-    `data:text/html;charset=utf-8,${encodeURIComponent(
-      `<html><body style="font-family:system-ui;padding:48px;color:#111;background:#fff"><h2>Octop 无法启动</h2><pre style="white-space:pre-wrap">${message}</pre></body></html>`,
-    )}`,
-  );
+  return {
+    /**
+     * The payload rides in the query string because the page is sandboxed: it has
+     * no preload, no IPC and no Node access, so this is the only channel the shell
+     * and its own page share.
+     */
+    showError(failure: ShellFailure): void {
+      const payload = encodeShellError({ ...failure, version: options.version });
+      // Dismissing the failure page ends the launch: on macOS the app would
+      // otherwise idle in the Dock with no window and nothing left to show.
+      win.once("closed", () => app.quit());
+      void win.loadFile(options.errorFile, { query: { [SHELL_ERROR_PARAM]: payload } });
+    },
+    close(): void {
+      if (!win.isDestroyed()) win.close();
+    },
+  };
 }

@@ -4,7 +4,8 @@
     "module": "ESNext",
     "moduleResolution": "Bundler",
     "lib": ["ES2022", "DOM"],
-    "types": ["node"],
+    "types": ["node", "vite/client"],
+    "jsx": "react-jsx",
     "strict": true,
     "noUncheckedIndexedAccess": true,
     "esModuleInterop": true,
@@ -19,6 +20,7 @@
     "preload/**/*.ts",
     "shared/**/*.ts",
     "renderer/**/*.ts",
+    "renderer/**/*.tsx",
     "electron.vite.config.ts",
     "electron-builder.config.ts"
   ]

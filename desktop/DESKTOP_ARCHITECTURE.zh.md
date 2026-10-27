@@ -443,12 +443,32 @@ Octop/
           client-settings.ts
       preload/
         index.ts
-      renderer/
+      renderer/                 # 壳页：独立轻量 React 应用（不依赖 Dashboard）
         splash.html
+        error.html
+        src/
+          mount.tsx
+          splash.tsx
+          error.tsx
+          base.css
+          splash.css
+          error.css
+          assets/octop-mark.svg
       shared/
         ipc-contract.ts
+        shell-error.ts
         global.d.ts
 ```
+
+壳页（`renderer/`）是独立的小 React 应用：只依赖 `react` / `react-dom`，不引入
+Dashboard 的 antd 或任何共享组件，因为它必须能在 Sidecar 和 Dashboard 都还不存在时
+就渲染出第一帧。JSX 交给 esbuild 的自动运行时（tsconfig 的 `"jsx": "react-jsx"`），
+没有引入 `@vitejs/plugin-react`——两个静态页面用不上 Fast Refresh。
+
+启动失败时，主进程把 `error.html` 装进同一个 Early Window，并把载荷以 base64url 编进
+query（页面是 `sandbox: true`、无 preload、无 IPC，这是两者唯一的通道）。载荷拆成两层：
+`message` 是给用户读的一句话，`detail` 是路径 / errno 这类技术尾巴，默认收在「技术详情」
+折叠区里——不会再出现把 `ENOENT: ...` 直接糊在标题下面的页面。
 
 > 实现状态：`octop-desktop.yml` 已配置各平台 green zip + 原生 Electron 安装包；
 > 签名、公证以及六平台实际 CI 产物仍需在仓库发布前逐项验证。
