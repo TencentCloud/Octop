@@ -1,7 +1,8 @@
 name: Octop Desktop Package
 
 # 正式发版：Auto Tag 在打 v* 后与 Release / Docker Publish 一并 dispatch。
-# 产物 upsert 到同一 GitHub Release，再上传到 COS octop/release/<version>/。
+# 每个原生 runner 打便携 zip + Electron 安装包，upsert 到同一 GitHub Release，
+# 再上传到 COS octop/release/<version>/。
 # 手工补包：workflow_dispatch + release_tag（不必跑在 v* ref 上）。
 # attach_from_run 只挂已有 artifact、不重打。
 
@@ -229,8 +230,123 @@ jobs:
           if-no-files-found: error
           retention-days: 14
 
+      - name: Stage Electron runtime and Dashboard
+        run: |
+          set -euo pipefail
+          plat="${{ matrix.plat }}"
+          zip="desktop/portable/release/Octop-portable-${plat}-${OCTOP_VERSION}.zip"
+          mkdir -p desktop/src/resources/portable desktop/src/resources/dashboard
+          cp "$zip" desktop/src/resources/portable/
+          cp -a src/octop/dashboard/. desktop/src/resources/dashboard/
+          if [[ "$plat" == windows-* ]]; then py=python; else py=python3; fi
+          "$py" - "$zip" "$OCTOP_VERSION" <<'PY'
+          import hashlib
+          import json
+          import pathlib
+          import sys
+          import zipfile
+
+          path = pathlib.Path(sys.argv[1])
+          if not zipfile.is_zipfile(path):
+              raise SystemExit(f"not a portable zip: {path}")
+          manifest = {"version": sys.argv[2], "sha256": hashlib.sha256(path.read_bytes()).hexdigest()}
+          dest = pathlib.Path("desktop/src/resources/portable/portable-version.json")
+          dest.write_text(json.dumps(manifest) + "\n", encoding="utf-8")
+          print(f"Bundled {path.name} with SHA-256 {manifest['sha256']}")
+          PY
+          test -f desktop/src/resources/dashboard/index.html
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: "24"
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 12.15.0
+          run_install: false
+
+      - name: Install and check Electron shell
+        working-directory: desktop/src
+        run: |
+          pnpm install --frozen-lockfile
+          pnpm run typecheck
+          pnpm run test
+
+      - name: Build native Electron installers
+        working-directory: desktop/src
+        env:
+          OCTOP_PLATFORM: ${{ matrix.plat }}
+          CSC_LINK: ${{ secrets.CSC_LINK }}
+          CSC_KEY_PASSWORD: ${{ secrets.CSC_KEY_PASSWORD }}
+          WIN_CSC_LINK: ${{ secrets.WIN_CSC_LINK }}
+          WIN_CSC_KEY_PASSWORD: ${{ secrets.WIN_CSC_KEY_PASSWORD }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          set -euo pipefail
+          pnpm run build
+          case "${{ matrix.plat }}" in
+            darwin-*) target=--mac ;;
+            windows-*) target=--win ;;
+            linux-*) target=--linux ;;
+            *) echo "Unsupported Electron target: ${{ matrix.plat }}" >&2; exit 1 ;;
+          esac
+          if [[ "${{ matrix.arch }}" == amd64 ]]; then arch=--x64; else arch=--arm64; fi
+          pnpm exec electron-builder --config electron-builder.config.ts "$target" "$arch" --publish never
+
+      # archive:false preserves each installer; different formats must be uploaded
+      # separately (one file per artifact), not wrapped in an extra Actions zip.
+      - uses: actions/upload-artifact@v7
+        if: startsWith(matrix.plat, 'darwin-')
+        with:
+          path: desktop/src/release/Octop-desktop-${{ matrix.plat }}-${{ env.OCTOP_VERSION }}.dmg
+          archive: false
+          if-no-files-found: error
+          retention-days: 14
+
+      - uses: actions/upload-artifact@v7
+        if: startsWith(matrix.plat, 'darwin-')
+        with:
+          path: desktop/src/release/Octop-desktop-${{ matrix.plat }}-${{ env.OCTOP_VERSION }}.zip
+          archive: false
+          if-no-files-found: error
+          retention-days: 14
+
+      - uses: actions/upload-artifact@v7
+        if: startsWith(matrix.plat, 'windows-')
+        with:
+          path: desktop/src/release/Octop-desktop-${{ matrix.plat }}-${{ env.OCTOP_VERSION }}.exe
+          archive: false
+          if-no-files-found: error
+          retention-days: 14
+
+      - uses: actions/upload-artifact@v7
+        if: startsWith(matrix.plat, 'linux-')
+        with:
+          path: desktop/src/release/Octop-desktop-${{ matrix.plat }}-${{ env.OCTOP_VERSION }}.AppImage
+          archive: false
+          if-no-files-found: error
+          retention-days: 14
+
+      - uses: actions/upload-artifact@v7
+        if: startsWith(matrix.plat, 'linux-')
+        with:
+          path: desktop/src/release/Octop-desktop-${{ matrix.plat }}-${{ env.OCTOP_VERSION }}.deb
+          archive: false
+          if-no-files-found: error
+          retention-days: 14
+
+      - uses: actions/upload-artifact@v7
+        if: startsWith(matrix.plat, 'linux-')
+        with:
+          path: desktop/src/release/Octop-desktop-${{ matrix.plat }}-${{ env.OCTOP_VERSION }}.rpm
+          archive: false
+          if-no-files-found: error
+          retention-days: 14
+
   release:
-    name: Attach zips to GitHub Release
+    name: Attach packages to GitHub Release
     needs: package
     outputs:
       tag: ${{ steps.rel.outputs.tag }}
@@ -270,8 +386,8 @@ jobs:
           echo "tag=${tag}" >> "$GITHUB_OUTPUT"
 
       # v8 required for archive:false artifacts. skip-decompress keeps the
-      # uploaded .zip / .tar.gz / .dmg / .exe intact — default unzip turns portable
-      # zips into directories, so files: release-assets/* would skip them.
+      # uploaded .zip / .dmg / .exe intact — default unzip turns portable zips
+      # into directories, so files: release-assets/* would skip them.
       - uses: actions/download-artifact@v8
         with:
           pattern: Octop-*
@@ -310,7 +426,7 @@ jobs:
     uses: ./.github/workflows/upload-release-cos.yml
     with:
       tag: ${{ needs.release.outputs.tag }}
-      patterns: "Octop-portable-*"
+      patterns: "Octop-portable-*,Octop-desktop-*"
     secrets:
       RELEASE_COS_SECRET_ID: ${{ secrets.RELEASE_COS_SECRET_ID }}
       RELEASE_COS_SECRET_KEY: ${{ secrets.RELEASE_COS_SECRET_KEY }}

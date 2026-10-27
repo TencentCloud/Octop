@@ -1,19 +1,33 @@
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 
-// electron-builder does not support ESM config directly; this file is written as
-// CJS-compatible TypeScript but consumed through the JS build output. It pins the
-// shell, the bundled Dashboard assets, and the portable runtime into ONE release.
+// The Python release version is authoritative. electron-builder needs SemVer in
+// package metadata, while bundled runtime names keep the original PEP 440 value
+// (e.g. 1.0.3b1 -> 1.0.3-beta.1 in the Electron metadata only).
 const pkg = JSON.parse(readFileSync(resolve(__dirname, "package.json"), "utf8")) as {
   version: string;
 };
+const productVersion = process.env.OCTOP_VERSION ?? pkg.version;
+const electronVersion = productVersion.replace(
+  /^(\d+\.\d+\.\d+)(a|b|rc)(\d+)$/,
+  (_match, base: string, stage: string, number: string) =>
+    `${base}-${{ a: "alpha", b: "beta", rc: "rc" }[stage as "a" | "b" | "rc"]}.${number}`,
+);
+if (!/^\d+\.\d+\.\d+(?:-(?:alpha|beta|rc)\.\d+)?$/.test(electronVersion)) {
+  throw new Error(`Unsupported Octop release version: ${productVersion}`);
+}
+const artifactName = process.env.OCTOP_PLATFORM
+  ? `Octop-desktop-${process.env.OCTOP_PLATFORM}-${productVersion}.\${ext}`
+  : "Octop-desktop-${os}-${arch}-${version}.${ext}";
 
 export default {
-  appId: "cloud.octop.desktop",
+  extraMetadata: { version: electronVersion },
+  artifactName,
+  appId: "com.tencent.octop",
   productName: "Octop",
-  // The portable runtime zip lives OUTSIDE asar so C-extensions/.so/DLLs load.
+  // extraResources places the portable zip outside asar; the runtime is extracted
+  // into OCTOP_HOME before native Python extensions are loaded.
   asar: true,
-  asarUnpack: ["resources/portable/**"],
   extraResources: [
     { from: "resources/portable", to: "portable" },
     { from: "resources/dashboard", to: "dashboard" },
@@ -30,7 +44,8 @@ export default {
   },
   win: {
     icon: "resources/icon.ico",
-    target: [{ target: "nsis", arch: ["x64", "arm64"] }],
+    // CI passes the native runner architecture, never cross-package both here.
+    target: ["nsis"],
     // Keep Authenticode signing via CSC_LINK / WIN_CSC_LINK in CI.
   },
   nsis: {
