@@ -45,6 +45,8 @@ import {
   type HitlSessionPolicy,
 } from "../utils/hitlSessionPolicy";
 
+const EMPTY_MODELS: ResolvedModel[] = [];
+
 export function useChatComposerResources(
   resolvedAgentId: string | null | undefined,
   activeThreadId?: string | null,
@@ -67,7 +69,9 @@ export function useChatComposerResources(
       ? expert.bridge_connection_id
       : null;
   const remoteBridge = Boolean(bridgeConnectionId);
-  const expertMcpServers = teamHost || remoteBridge ? [] : expert?.mcp_servers;
+  // Peer experts carry the same composer defaults as local ones (mapped onto
+  // the shadow row). Team hosts still have no connectors.
+  const expertMcpServers = teamHost ? [] : expert?.mcp_servers;
   const expertKnowledgeBaseIds = expert?.knowledge_base_ids;
   const expertDefaultModel = (expert?.default_model || "").trim() || null;
   const expertMcpKey = (expertMcpServers ?? []).join("\0");
@@ -89,8 +93,16 @@ export function useChatComposerResources(
       default_open?: boolean;
     }[]
   >([]);
-  const [availableModels, setAvailableModels] = useState<ResolvedModel[]>([]);
-  const [modelsReady, setModelsReady] = useState(false);
+  const [modelCatalog, setModelCatalog] = useState<{
+    agentId: string | null | undefined;
+    models: ResolvedModel[];
+  } | null>(null);
+  const modelsReady =
+    modelCatalog !== null && modelCatalog.agentId === resolvedAgentId;
+  const availableModels =
+    modelCatalog && modelCatalog.agentId === resolvedAgentId
+      ? modelCatalog.models
+      : EMPTY_MODELS;
   const [activeModelRef, setActiveModelRef] = useState<string | null>(null);
   const [selectedModel, setSelectedModel] = useState<string | null>(null);
   const [preferredModel, setPreferredModel] = useState<string | null>(null);
@@ -134,17 +146,18 @@ export function useChatComposerResources(
     if (isNewSession) composerTouchedRef.current = false;
   }, [isNewSession]);
 
-  // No thread override: show the expert default (same as knowledge bases and
-  // connectors). Account preferred model only fills in when the expert is Auto.
-  // Sending still omits a selection that matches the expert default.
+  // No thread override: show the expert default. A local account preference
+  // fills Auto only for experts on this Octop. A remote Auto stays unset so
+  // the turn omits ``model`` and the peer resolves its own default.
   useEffect(() => {
     const local = activeThreadId
       ? conversationOverrides[activeThreadId]
       : undefined;
+    const autoFallback = remoteBridge ? null : preferredModel;
     setSelectedModel(
       local
         ? local.model
-        : stickyModel || expertDefaultModel || preferredModel || null,
+        : stickyModel || expertDefaultModel || autoFallback || null,
     );
   }, [
     resolvedAgentId,
@@ -152,6 +165,7 @@ export function useChatComposerResources(
     stickyModel,
     expertDefaultModel,
     preferredModel,
+    remoteBridge,
     conversationOverrides,
   ]);
 
@@ -218,7 +232,12 @@ export function useChatComposerResources(
         .then((instances) => {
           if (cancelled) return;
           const options = (instances ?? [])
-            .filter((i) => i.status === "active" && i.has_credentials)
+            .filter(
+              (i) =>
+                i.status === "active" &&
+                i.has_credentials &&
+                i.usable !== false,
+            )
             .map((i) => ({
               mcp_server_name: i.mcp_server_name,
               label:
@@ -366,22 +385,19 @@ export function useChatComposerResources(
 
   useEffect(() => {
     let cancelled = false;
-    setModelsReady(false);
+    let latestRequest = 0;
+    setModelCatalog(null);
     const loadModels = () => {
+      const request = ++latestRequest;
       void providerApi
         .listResolvedModels(resolvedAgentId)
         .then((data) => {
-          if (!cancelled) {
-            setAvailableModels(data);
-            setModelsReady(true);
+          if (!cancelled && request === latestRequest) {
+            setModelCatalog({ agentId: resolvedAgentId, models: data });
           }
         })
-        .catch(() => {
-          if (!cancelled) {
-            setAvailableModels([]);
-            setModelsReady(true);
-          }
-        });
+        // An unavailable catalog is not proof that a saved model was disabled.
+        .catch(() => undefined);
     };
     loadModels();
     const onFocus = () => loadModels();
@@ -489,6 +505,37 @@ export function useChatComposerResources(
     },
     [activeThreadId, availableModels, modelReasoning, resolvedAgentId],
   );
+
+  // Clear a stale choice only after this expert's catalog loaded successfully.
+  // Persist Auto so reopening the thread cannot restore the disabled model.
+  useEffect(() => {
+    if (!modelsReady) return;
+    const local = activeThreadId
+      ? conversationOverrides[activeThreadId]
+      : undefined;
+    const autoFallback = remoteBridge ? null : preferredModel;
+    const model = local
+      ? local.model
+      : stickyModel || expertDefaultModel || autoFallback || null;
+    if (
+      model &&
+      !availableModels.some(
+        (item) => `${item.provider_name}/${item.model}` === model,
+      )
+    ) {
+      handleModelChange(null);
+    }
+  }, [
+    activeThreadId,
+    stickyModel,
+    expertDefaultModel,
+    preferredModel,
+    remoteBridge,
+    conversationOverrides,
+    availableModels,
+    modelsReady,
+    handleModelChange,
+  ]);
 
   const handleReasoningChange = useCallback(
     (mode: "auto" | "enabled" | "disabled", effort: string | null) => {

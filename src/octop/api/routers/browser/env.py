@@ -44,7 +44,7 @@ def _probe_env() -> dict[str, Any]:
         "error": None,
     }
 
-    from octop.infra.browser.setup import (  # noqa: PLC0415
+    from octop.infra.control.browser.setup import (  # noqa: PLC0415
         chrome_source_for_path,
         playwright_chromium_installed,
     )

@@ -8,6 +8,7 @@ import {
   Check,
   RotateCcw,
   Pencil,
+  Undo2,
   Volume2,
   Settings,
   GitFork,
@@ -29,6 +30,7 @@ import {
   isDataUrl,
   workspacePathFromAccessUrl,
 } from "../../../utils/toolMediaBlocks";
+import { isImeComposing } from "../../../utils/ime";
 import { formatMessageTime } from "../../../utils/formatMessageTime";
 import { copyText } from "../../../utils/copyText";
 import { useServerTimezone } from "../../../hooks/useServerTimezone";
@@ -70,7 +72,11 @@ import {
 } from "../../../plugins/toolRenderers";
 import { BuiltinOctopUiFallback } from "../../../plugins/toolRenderers/builtin/BuiltinOctopUiFallback";
 import { ToolUiErrorBoundary } from "../../../plugins/toolRenderers/ToolUiErrorBoundary";
-import { lookupPluginIdForTool } from "../../../plugins/toolRenderers/toolPluginIndex";
+import { remotePluginUiUnavailable } from "../../../plugins/toolRenderers/remotePluginUi";
+import {
+  lookupPluginIdForTool,
+  useToolPluginIndexVersion,
+} from "../../../plugins/toolRenderers/toolPluginIndex";
 import { useChatToolDock } from "../ChatToolDockContext";
 import { useToolUiDockButtonStyle } from "../hooks/useToolUiDockButtonStyle";
 import type { ParsedToolOutput } from "../../../plugins/toolRenderers/types";
@@ -84,6 +90,7 @@ interface MessageBubbleProps {
   /** Turn off streamed token usage then retry (invalid_request / MindIE). */
   onDisableStreamUsage?: () => Promise<boolean>;
   onEditUserMessage?: (messageId: string, newText: string) => void;
+  onWithdrawSteer?: (messageId: string) => void;
   onForkAssistantMessage?: (messageId: string) => void;
   forkDisabled?: boolean;
   forkDisabledHint?: string;
@@ -102,7 +109,13 @@ interface MessageBubbleProps {
 
 function formatTokenUsage(
   usage: ChatMessage["usage"],
-  labels: { input: string; output: string; total: string; cacheHit: string },
+  labels: {
+    input: string;
+    output: string;
+    total: string;
+    cacheHit: string;
+    decisionSaved: string;
+  },
 ): string[] {
   if (!usage) return [];
 
@@ -127,6 +140,9 @@ function formatTokenUsage(
   }
   if (typeof usage.total_tokens === "number") {
     parts.push(`${usage.total_tokens} ${labels.total}`);
+  }
+  if (typeof usage.decision_saved === "number" && usage.decision_saved > 0) {
+    parts.push(`${usage.decision_saved} ${labels.decisionSaved}`);
   }
   return parts;
 }
@@ -376,6 +392,7 @@ export function ToolDetailsInline({
   const toolDock = useChatToolDock();
   // Plugin UIs load async after mount — bump forces resolve() to re-run.
   const rendererVersion = useToolRendererVersion();
+  useToolPluginIndexVersion();
   const parsed = useMemo(
     () => parseOctopToolOutput(toolData.output),
     [toolData.output],
@@ -511,13 +528,21 @@ export function ToolDetailsInline({
 
   // Structured plugin envelope without a loaded custom renderer — still show a card.
   if (parsed.octopUi) {
+    const annotateMissingPlugin = remotePluginUiUnavailable({
+      agentId,
+      toolName: toolData.name,
+      hasOctopUi: true,
+    });
     return (
       <div
         ref={wrapRef}
         data-octop-tool-renderer=""
         className={styles.toolUiRendererWrap}
       >
-        <BuiltinOctopUiFallback {...props} />
+        <BuiltinOctopUiFallback
+          {...props}
+          annotateMissingPlugin={annotateMissingPlugin}
+        />
         {dockActions}
       </div>
     );
@@ -537,6 +562,7 @@ function MessageBubble({
   onRegenerate,
   onDisableStreamUsage,
   onEditUserMessage,
+  onWithdrawSteer,
   onForkAssistantMessage,
   forkDisabled,
   forkDisabledHint,
@@ -611,6 +637,7 @@ function MessageBubble({
         output: t("chatUsage.output"),
         total: t("chatUsage.total"),
         cacheHit: t("chatUsage.cacheHit"),
+        decisionSaved: t("chatUsage.decisionSaved"),
       }),
     [message.usage, t],
   );
@@ -676,10 +703,13 @@ function MessageBubble({
   const isStreaming = message.status === "streaming";
   const hasToolData = !!message.toolData;
   const isError = message.status === "error";
-  const errorBodyText = isError
-    ? formatChatStreamError(textContent, t)
+  const errorSource = isError
+    ? message.errorInfo?.message?.trim() || textContent
     : textContent;
-  const errorAction = isError ? chatStreamErrorAction(textContent) : null;
+  const errorBodyText = isError
+    ? formatChatStreamError(errorSource, t)
+    : textContent;
+  const errorAction = isError ? chatStreamErrorAction(errorSource) : null;
   const attachments = message.attachments || [];
   const imageAttachments = attachments.filter(
     (attachment) =>
@@ -719,11 +749,18 @@ function MessageBubble({
   const isLastInGroup = groupPosition === "last" || groupPosition === "only";
 
   // For skip-render checks: answer bubble only shows text and attachments.
-  if (!isUser && !textContent && !hasAttachments) {
+  // An error still renders its box when the body is only a title.
+  if (!isUser && !isError && !textContent && !hasAttachments) {
     return null;
   }
 
-  if (!isUser && !hasAttachments && textContent && !textContent.trim()) {
+  if (
+    !isUser &&
+    !isError &&
+    !hasAttachments &&
+    textContent &&
+    !textContent.trim()
+  ) {
     return null;
   }
 
@@ -796,6 +833,7 @@ function MessageBubble({
                     autoFocus
                     rows={4}
                     onKeyDown={(e) => {
+                      if (isImeComposing(e)) return;
                       if (e.key === "Enter" && !e.shiftKey) {
                         e.preventDefault();
                         handleEditSubmit();
@@ -988,7 +1026,9 @@ function MessageBubble({
             usageParts.length > 0 ||
             (isUser &&
               !isEditing &&
-              Boolean(message.content || onEditUserMessage))) && (
+              Boolean(
+                message.content || onEditUserMessage || message.steerPending,
+              ))) && (
             <div
               className={`${styles.msgMetaRow} ${
                 isUser ? styles.msgMetaRowRight : ""
@@ -996,10 +1036,23 @@ function MessageBubble({
             >
               {isUser &&
                 !isEditing &&
-                (message.content || onEditUserMessage) && (
+                (message.content ||
+                  onEditUserMessage ||
+                  message.steerPending) && (
                   <div className={styles.userMsgActions} role="group">
                     {message.content ? (
                       <CopyButton text={message.content} />
+                    ) : null}
+                    {onWithdrawSteer && message.steerPending ? (
+                      <button
+                        className={styles.msgActionBtn}
+                        onClick={() => onWithdrawSteer(message.id)}
+                        title={t("chat.steer.withdraw")}
+                        type="button"
+                        aria-label={t("chat.steer.withdraw")}
+                      >
+                        <Undo2 size={14} />
+                      </button>
                     ) : null}
                     {onEditUserMessage ? (
                       <button

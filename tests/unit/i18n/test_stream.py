@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import logging
 
+import pytest
+
 from octop.i18n.domains.stream import (
     INVALID_REQUEST,
     MODEL_CALL_FAILED,
@@ -61,6 +63,20 @@ def test_classify_auth() -> None:
     assert (
         classify_stream_error_message("Error code: 401 - Incorrect API key provided")
         == "octop:stream_errors.auth"
+    )
+
+
+@pytest.mark.parametrize("wrapped", [False, True])
+def test_typed_auth_error_gets_guidance_without_error_keywords(wrapped: bool) -> None:
+    from langchain_core.exceptions import ModelAuthenticationError
+
+    error: Exception = ModelAuthenticationError("opaque credential rejection")
+    if wrapped:
+        outer = RuntimeError("request rejected")
+        outer.__cause__ = error
+        error = outer
+    assert format_stream_error(error, "zh") == stream_error_message(
+        "octop:stream_errors.auth", "zh"
     )
 
 

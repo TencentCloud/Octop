@@ -366,6 +366,23 @@ describe("groupConsecutiveAssistantMessages", () => {
     expect(split.answerMessage?.content).toBe("我先查一下资料 结论如下");
   });
 
+  it("keeps a stream error out of the joined answer", () => {
+    const split = splitAssistantTurn([
+      msg("assistant", "m1", { content: "先看一下日志" }),
+      msg("assistant", "err", {
+        content:
+          "LLM call failed: LengthFinishReasonError('length limit was reached')",
+        status: "error",
+      }),
+    ]);
+    expect(split.answerMessage?.content).toBe("先看一下日志");
+    expect(split.answerMessage?.status).not.toBe("error");
+    expect(split.errorMessages).toHaveLength(1);
+    expect(split.errorMessages?.[0]?.content).toBe(
+      "LLM call failed: LengthFinishReasonError('length limit was reached')",
+    );
+  });
+
   it("keeps a 1:1 ReAct conclusion as the answer", () => {
     const split = splitAssistantTurn([
       msg("assistant", "host1", { content: "I will ask" }),

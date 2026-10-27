@@ -25,6 +25,7 @@ import MinimalRecordsHost from "./MinimalRecordsHost";
 import SidebarCollapsedIconNav from "./SidebarCollapsedIconNav";
 import SidebarMinimalPaneToggle from "./SidebarMinimalPaneToggle";
 import { preferencesApi } from "../api/modules/preferences";
+import { publicUrl } from "../utils/publicUrl";
 import {
   COLLAPSED_WIDTH,
   EXPANDED_WIDTH,
@@ -125,8 +126,9 @@ function NavItemButton({
   active,
   isMobile,
   onNavigate,
-  onExpandChatRail,
-  showChatRailExpand,
+  onToggleChatRail,
+  showChatRailToggle,
+  chatRailOpen,
   role,
   hasUpdate,
   t,
@@ -135,15 +137,20 @@ function NavItemButton({
   active: boolean;
   isMobile?: boolean;
   onNavigate: (path: string) => void;
-  onExpandChatRail?: () => void;
-  showChatRailExpand?: boolean;
+  onToggleChatRail?: () => void;
+  showChatRailToggle?: boolean;
+  /** History rail is currently visible (classic chat route, panel open). */
+  chatRailOpen?: boolean;
   role: string | null;
   hasUpdate: boolean;
   t: TFunction<"translation", undefined>;
 }) {
-  const showExpand = Boolean(
-    showChatRailExpand && item.key === "chat" && onExpandChatRail,
+  const showToggle = Boolean(
+    showChatRailToggle && item.key === "chat" && onToggleChatRail,
   );
+  const railLabel = chatRailOpen
+    ? t("chat.collapseHistorySidebar", "收起对话历史")
+    : t("chat.expandHistorySidebar", "展开对话历史");
 
   return (
     <div
@@ -173,7 +180,7 @@ function NavItemButton({
             : "var(--fn-text-secondary)",
           fontSize: typeSize(14, isMobile),
           fontWeight: active ? 500 : 400,
-          paddingRight: showExpand ? 4 : 12,
+          paddingRight: showToggle ? 4 : 12,
         }}
       >
         <span
@@ -211,8 +218,6 @@ function NavItemButton({
               style={{
                 fontSize: typeSize(9, isMobile),
                 fontWeight: 600,
-                color: "#fff",
-                backgroundColor: "#ff4d4f",
                 padding: "1px 4px",
                 borderRadius: "2px",
                 whiteSpace: "nowrap",
@@ -227,16 +232,17 @@ function NavItemButton({
           )}
         </span>
       </button>
-      {showExpand ? (
+      {showToggle ? (
         <button
           type="button"
           className={styles.chatRailExpandBtn}
           onClick={(e) => {
             e.stopPropagation();
-            onExpandChatRail?.();
+            onToggleChatRail?.();
           }}
-          aria-label={t("chat.expandHistorySidebar", "展开对话历史")}
-          title={t("chat.expandHistorySidebar", "展开对话历史")}
+          aria-expanded={Boolean(chatRailOpen)}
+          aria-label={railLabel}
+          title={railLabel}
         >
           <ArrowRightLeft size={14} strokeWidth={1.8} aria-hidden />
         </button>
@@ -249,8 +255,9 @@ function NavList({
   sections,
   selectedKey,
   onNavigate,
-  onExpandChatRail,
-  showChatRailExpand,
+  onToggleChatRail,
+  showChatRailToggle,
+  chatRailOpen,
   isMobile,
   isGroupCollapsed,
   toggleGroup,
@@ -261,8 +268,9 @@ function NavList({
   sections: NavSection[];
   selectedKey: string;
   onNavigate: (path: string) => void;
-  onExpandChatRail?: () => void;
-  showChatRailExpand?: boolean;
+  onToggleChatRail?: () => void;
+  showChatRailToggle?: boolean;
+  chatRailOpen?: boolean;
   isMobile?: boolean;
   isGroupCollapsed: (groupId: string) => boolean;
   toggleGroup: (groupId: string) => void;
@@ -318,8 +326,9 @@ function NavList({
                     active={selectedKey === item.key}
                     isMobile={isMobile}
                     onNavigate={onNavigate}
-                    onExpandChatRail={onExpandChatRail}
-                    showChatRailExpand={showChatRailExpand}
+                    onToggleChatRail={onToggleChatRail}
+                    showChatRailToggle={showChatRailToggle}
+                    chatRailOpen={chatRailOpen}
                     role={role}
                     hasUpdate={hasUpdate}
                     t={t}
@@ -360,8 +369,9 @@ function NavList({
                     active={selectedKey === item.key}
                     isMobile={isMobile}
                     onNavigate={onNavigate}
-                    onExpandChatRail={onExpandChatRail}
-                    showChatRailExpand={showChatRailExpand}
+                    onToggleChatRail={onToggleChatRail}
+                    showChatRailToggle={showChatRailToggle}
+                    chatRailOpen={chatRailOpen}
                     role={role}
                     hasUpdate={hasUpdate}
                     t={t}
@@ -425,12 +435,14 @@ export default function Sidebar({
     };
   }, [user]);
   const [chatSidebarOpen, setChatSidebarOpen] = useChatSidebarOpen();
-  const showChatRailExpand = !isMinimal && !chatSidebarOpen;
+  // Classic only: keep the control beside Chat whether the history rail is open or closed.
+  const showChatRailToggle = !isMinimal;
+  const chatRailOpen = showChatRailToggle && onChatPath && chatSidebarOpen;
 
   const isRailCollapsed = collapsed && !isMobile;
   const wordmarkSrc = isDark
-    ? "/logo_horizontal_white.png"
-    : "/logo_horizontal_dark.png";
+    ? publicUrl("logo_horizontal_white.png")
+    : publicUrl("logo_horizontal_dark.png");
 
   const selectMinimalPane = useCallback(
     (pane: MinimalNavPane, opts?: { expand?: boolean }) => {
@@ -469,21 +481,27 @@ export default function Sidebar({
     if (isMobile) onToggle();
   };
 
-  const handleExpandChatRail = useCallback(() => {
+  const handleToggleChatRail = useCallback(() => {
     if (isMinimal) {
       selectMinimalPane("records", { expand: true });
       return;
     }
+    if (onChatPath && chatSidebarOpen) {
+      setChatSidebarOpen(false);
+      return;
+    }
     window.dispatchEvent(new Event(EXPAND_CHAT_RAIL_EVENT));
     setChatSidebarOpen(true);
-    if (!window.location.pathname.startsWith("/chat")) {
+    if (!onChatPath) {
       navigate("/chat");
     }
     if (isMobile) onToggle();
   }, [
+    chatSidebarOpen,
     isMinimal,
     isMobile,
     navigate,
+    onChatPath,
     onToggle,
     selectMinimalPane,
     setChatSidebarOpen,
@@ -588,8 +606,9 @@ export default function Sidebar({
       sections={navSections}
       selectedKey={selectedKey}
       onNavigate={handleNavigate}
-      onExpandChatRail={handleExpandChatRail}
-      showChatRailExpand={showChatRailExpand}
+      onToggleChatRail={handleToggleChatRail}
+      showChatRailToggle={showChatRailToggle}
+      chatRailOpen={chatRailOpen}
       isMobile={isMobile}
       isGroupCollapsed={isGroupCollapsed}
       toggleGroup={toggleGroup}
@@ -627,8 +646,8 @@ export default function Sidebar({
               sections={navSections}
               selectedKey={selectedKey}
               onNavigate={handleNavigate}
-              onExpandChatRail={handleExpandChatRail}
-              showChatRailExpand={false}
+              onToggleChatRail={handleToggleChatRail}
+              showChatRailToggle={false}
               isMobile={isMobile}
               isGroupCollapsed={isGroupCollapsed}
               toggleGroup={toggleGroup}

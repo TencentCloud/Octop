@@ -234,7 +234,7 @@ async def validate_wizard_token(
 @router.get("/setup/status", summary="Setup wizard status")
 async def status(server: Any = Depends(get_server)) -> dict[str, Any]:
     """Whether initial admin creation is still required and wizard password file state."""
-    wizard_path = str(Path.home() / _wizard.WIZARD_FILE_NAME)
+    wizard_path = str(_wizard.resolve_password_path(server.paths.root, legacy_home=Path.home()))
     password_required = _setup_password_required(server)
     um = server.user_manager
     setup_required = um is None or um.count() == 0
@@ -245,7 +245,8 @@ async def status(server: Any = Depends(get_server)) -> dict[str, Any]:
         "setup_required": setup_required,
         "wizard_password_required": password_required,
         "wizard_password_exists": (
-            password_required and _wizard.read_password(Path.home()) is not None
+            password_required
+            and _wizard.read_password(server.paths.root, legacy_home=Path.home()) is not None
         ),
         "wizard_password_path": wizard_path if password_required else None,
         "database_driver": database_driver,
@@ -333,7 +334,7 @@ async def verify_password(
         server.wizard_tokens.record_attempt(client_ip)
     except RateLimited:
         raise OctopError(ErrorCode.SETUP_RATE_LIMITED, "too many attempts") from None
-    expected = _wizard.read_password(Path.home())
+    expected = _wizard.read_password(server.paths.root, legacy_home=Path.home())
     if expected is None or body.password != expected:
         raise OctopError(ErrorCode.SETUP_PASSWORD_WRONG, "wrong password")
     token, ttl = server.wizard_tokens.issue()
@@ -379,18 +380,6 @@ async def initial_admin(
         "access_token": access_token,
         "expires_in": ttl,
     }
-
-
-@router.post("/setup/resume-wizard", summary="Issue a fresh wizard token mid-setup")
-async def resume_wizard(server: Any = Depends(get_server)) -> dict[str, Any]:
-    """Issue a new wizard token after the admin exists but before finish."""
-    _enforce_wizard_token_phase(server)
-    require_database(server)
-    assert server.user_manager is not None
-    if server.user_manager.count() == 0:
-        raise OctopError(ErrorCode.SETUP_TOKEN_INVALID, "admin not created yet", status=400)
-    token, ttl = server.wizard_tokens.issue()
-    return {"wizard_token": token, "expires_in": ttl}
 
 
 @router.post("/setup/test-provider", summary="Test provider draft connectivity")

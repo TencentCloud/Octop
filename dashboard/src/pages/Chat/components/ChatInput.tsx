@@ -18,7 +18,7 @@ import {
 import { useKeepInVisualViewport } from "../../../hooks/useKeepInVisualViewport";
 import { useSlashCommands } from "../../../hooks/useSlashCommands";
 import SlashCommandMenu from "./SlashCommandMenu";
-import { agentChatApi } from "../../../api/modules/agentChat";
+import { textAssistApi } from "../../../api/modules/textAssist";
 import type { ChatAttachment } from "../hooks/useChat";
 import type { ResolvedModel } from "../../../api/types";
 import type { KnowledgeBase } from "../../../api/modules/knowledgeBases";
@@ -31,6 +31,7 @@ import ChatInputActionsRow from "./ChatInputActionsRow";
 import ChatQueuedMessages from "./ChatQueuedMessages";
 import { useVoiceInput } from "../../../hooks/useVoiceInput";
 import { useChatAttachments } from "../hooks/useChatAttachments";
+import { onSteerRestore } from "../hooks/chatStore";
 import { useSlashMentionInput } from "../hooks/useSlashMentionInput";
 import { stripThinkingTags } from "../utils/chatAttachments";
 import { isSlashCommandText } from "../utils/slashText";
@@ -75,6 +76,8 @@ interface ChatInputProps {
   queuedItems?: QueuedChatItem[];
   onRemoveQueued?: (id: string) => void;
   onReclaimQueued?: (id: string) => QueuedChatItem | null;
+  /** Commit a local queued draft as a mid-turn steer (chip-row ↑ Steer). */
+  onSteerQueued?: (id: string) => void;
   onCancel: () => void;
   onNewChat: () => void;
   onUserInput?: () => void;
@@ -135,6 +138,7 @@ interface ChatInputProps {
   defaultModel?: string | null;
   contextUsedTokens?: number | null;
   contextMaxTokens?: number;
+  decisionSaved?: number;
 }
 
 const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
@@ -145,6 +149,7 @@ const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
       queuedItems = [],
       onRemoveQueued,
       onReclaimQueued,
+      onSteerQueued,
       onCancel,
       onNewChat,
       onUserInput,
@@ -189,6 +194,7 @@ const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
       defaultModel,
       contextUsedTokens = null,
       contextMaxTokens = 128_000,
+      decisionSaved = 0,
     },
     ref,
   ) {
@@ -392,6 +398,61 @@ const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
       }
     }, [agentId, threadId, initialText, clearAttachments, restoreAttachments]);
 
+    useEffect(() => {
+      return onSteerRestore((event) => {
+        if (threadId && event.sessionId && event.sessionId !== threadId) {
+          return;
+        }
+        if (event.applyToComposer === false) {
+          if (event.reason === "already_drained") {
+            antMessage.info(t("chat.steer.alreadyDrained"));
+          } else {
+            antMessage.warning(
+              t("chat.steer.rejected", {
+                reason: t(`chat.steer.reasons.${event.reason}`, {
+                  defaultValue: event.reason,
+                }),
+              }),
+            );
+          }
+          return;
+        }
+        const reasonLabel =
+          event.reason === "withdrawn"
+            ? t("chat.steer.withdrawn")
+            : t("chat.steer.rejected", {
+                reason: t(`chat.steer.reasons.${event.reason}`, {
+                  defaultValue: event.reason,
+                }),
+              });
+        if (event.reason === "withdrawn") antMessage.success(reasonLabel);
+        else antMessage.warning(reasonLabel);
+        const apply = () => {
+          userHasEditedRef.current = true;
+          setText(event.text);
+          restoreAttachments(event.attachments ?? []);
+          setTimeout(() => {
+            const el = textareaRef.current;
+            if (el) {
+              el.focus();
+              el.setSelectionRange(el.value.length, el.value.length);
+            }
+          }, 50);
+        };
+        if (text.trim() || attachments.length > 0) {
+          modal.confirm({
+            title: t("chat.queue.reclaimOverwriteTitle"),
+            content: t("chat.queue.reclaimOverwrite"),
+            okText: t("common.confirm", "确认"),
+            cancelText: t("common.cancel", "取消"),
+            onOk: apply,
+          });
+          return;
+        }
+        apply();
+      });
+    }, [threadId, text, attachments, t, antMessage, modal, restoreAttachments]);
+
     // Persist draft while typing so leaving /chat and returning keeps content.
     useEffect(() => {
       if (!agentId) return;
@@ -420,6 +481,7 @@ const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
       mentionItems,
       filesLoading,
       filesError,
+      filesTruncated,
       runSlashCommand,
       matchSlashCommand,
       handleMentionSelect,
@@ -744,7 +806,14 @@ const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
         return;
       setPolishing(true);
       try {
-        const result = await agentChatApi.polish(agentId, draft, selectedModel);
+        const modelOverride = resolveTurnModelRef(selectedModel, defaultModel);
+        const result = await textAssistApi.assist({
+          kind: "chat.prompt",
+          text: draft,
+          agent_id: agentId,
+          // Omit model for automatic routing; pass only an explicit picker choice.
+          ...(modelOverride ? { default_model: modelOverride } : {}),
+        });
         const polished = stripThinkingTags(result.text?.trim() ?? "");
         if (!polished) {
           antMessage.error(t("chat.polish.emptyResult"));
@@ -774,6 +843,7 @@ const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
       holdSend,
       disabled,
       selectedModel,
+      defaultModel,
       t,
     ]);
 
@@ -794,18 +864,19 @@ const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
         onDragOver={handleDragOver}
         onDrop={handleDrop}
       >
-        {onRemoveQueued && onReclaimQueued && (
-          <ChatQueuedMessages
-            items={queuedItems}
-            onRemove={onRemoveQueued}
-            onReclaim={handleReclaimQueued}
-          />
-        )}
         <div className={styles.inputWrapper}>
           {showDrop && (
             <div className={styles.dropOverlay} data-testid="chat-drop-overlay">
               {t("upload.dropHint", "Drop files or a folder to upload")}
             </div>
+          )}
+          {onRemoveQueued && onReclaimQueued && (
+            <ChatQueuedMessages
+              items={queuedItems}
+              onRemove={onRemoveQueued}
+              onReclaim={handleReclaimQueued}
+              onSteer={onSteerQueued}
+            />
           )}
           <ChatInputPreviewBar
             attachments={attachments}
@@ -832,10 +903,14 @@ const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
               }}
               onKeyDown={handleKeyDown}
               onPaste={handlePaste}
-              placeholder={t(
-                "chatWelcome.inputPlaceholder",
-                "Message Octop...",
-              )}
+              placeholder={
+                isStreaming || holdSend
+                  ? t(
+                      "chat.steer.placeholder",
+                      "Keep typing to queue a mid-turn steer…",
+                    )
+                  : t("chatWelcome.inputPlaceholder", "Message Octop...")
+              }
               rows={1}
               disabled={disabled}
               enterKeyHint={isMobile ? "enter" : undefined}
@@ -882,6 +957,7 @@ const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
               subagents={availableSubagents}
               filesLoading={filesLoading}
               filesError={filesError}
+              filesTruncated={filesTruncated}
               activeIndex={mentionMenuIndex}
               onSelect={handleMentionSelect}
               onHover={setMentionMenuIndex}
@@ -941,6 +1017,7 @@ const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
             threadId={threadId}
             contextUsedTokens={contextUsedTokens}
             contextMaxTokens={contextMaxTokens}
+            decisionSaved={decisionSaved}
             availableModels={availableModels}
             selectedModel={selectedModel}
             onModelChange={onModelChange}

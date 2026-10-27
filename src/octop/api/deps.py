@@ -35,6 +35,8 @@ _JWT_EXEMPT_PREFIXES = (
     "/api/i18n/",
     "/api/connectors/oauth/callback",
     "/api/internal/mcp/",
+    # Short-lived download links: the unguessable token is the credential.
+    "/api/downloads/link/",
 )
 _JWT_EXEMPT_EXACT = (
     "/api/health",
@@ -180,6 +182,24 @@ def require_permission(key: str) -> Callable[..., Awaitable[User]]:
                 ErrorCode.FORBIDDEN,
                 "permission required",
                 details={"permission": key},
+            )
+        return user
+
+    return _dep
+
+
+def require_any_permission(*keys: str) -> Callable[..., Awaitable[User]]:
+    """Dependency factory: require at least one of ``keys``."""
+    for key in keys:
+        if key not in PERMISSIONS:
+            raise RuntimeError(f"unknown permission key: {key}")
+
+    async def _dep(user: User = Depends(current_user)) -> User:
+        if not any(user_has_permission(user, key) for key in keys):
+            raise OctopError(
+                ErrorCode.FORBIDDEN,
+                "permission required",
+                details={"permission": keys[0] if keys else ""},
             )
         return user
 

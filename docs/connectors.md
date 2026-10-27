@@ -57,8 +57,11 @@ are updating `catalog.json` in the same change.
 | `dida365` | TickTick | 滴答清单 | productivity | oauth2 | remote |
 | `feishu-cli` | Feishu CLI | 飞书 CLI | office | api_key | gateway |
 | `wecom-cli` | WeCom CLI | 企业微信 CLI | office | api_key | gateway |
+| `dingtalk-cli` | DingTalk CLI | 钉钉 CLI | office | custom_fields | gateway |
 | `agently-cli` | Agent Mail | Agent Mail | office | custom_fields | gateway |
 | `obsidian-cli` | Obsidian | Obsidian | knowledge | custom_fields | gateway |
+| `yuque-mcp` | Yuque (official MCP) | 语雀（官方 MCP） | knowledge | personal_token | stdio |
+| `ragflow` | ragflow | ragflow | knowledge | custom_fields | gateway |
 | `weknora` | WeKnora | WeKnora | knowledge | custom_fields | gateway |
 | `dify` | Dify | Dify | self_hosted | custom_fields | remote |
 
@@ -91,3 +94,4 @@ Optional: `quick_auth_url`, `login_url`, `guide_url`, `manual_url`, `auth_hint`,
 
 - [Agent Mail CLI](connectors-agently-mail.md)
 - [Qichacha / 企查查](connectors-qcc.md)
+- [RAGFlow](connectors-ragflow.md)

@@ -2,17 +2,33 @@
 
 from __future__ import annotations
 
+import json
 from typing import Any
 
-from octop.infra.agents.providers.model_flags import is_chat_eligible_model
+from octop.infra.agents.providers.model_flags import (
+    is_chat_eligible_model,
+    is_embedding_provider,
+)
 from octop.infra.agents.providers.reasoning import reasoning_capability
+
+
+def _provider_extra(provider: Any) -> dict[str, Any] | None:
+    raw = getattr(provider, "extra_json", None)
+    if not raw:
+        return None
+    try:
+        parsed = json.loads(raw) if isinstance(raw, str) else raw
+    except (TypeError, json.JSONDecodeError):
+        return None
+    return parsed if isinstance(parsed, dict) else None
 
 
 def list_resolved_models(providers: list[Any]) -> list[dict[str, Any]]:
     """Return chat-eligible enabled models for providers with credentials.
 
     Embedding-only models (``embedding: true`` / ``task: embedding`` / ONNX
-    local) are excluded so they never appear in chat pickers or auto-route.
+    local) and entire ``purpose=embedding`` providers are excluded so they
+    never appear in chat pickers or auto-route.
     """
     resolved: list[dict[str, Any]] = []
     for provider in providers:
@@ -20,7 +36,15 @@ def list_resolved_models(providers: list[Any]) -> list[dict[str, Any]]:
             continue
         provider_name = str(getattr(provider, "name", "") or "")
         provider_api_key = str(getattr(provider, "api_key", "") or "") or None
-        for m in provider.get_models():
+        models = provider.get_models()
+        if is_embedding_provider(
+            provider_name=provider_name,
+            provider_api_key=provider_api_key,
+            extra=_provider_extra(provider),
+            models=models,
+        ):
+            continue
+        for m in models:
             if not is_chat_eligible_model(
                 m, provider_name=provider_name, provider_api_key=provider_api_key
             ):

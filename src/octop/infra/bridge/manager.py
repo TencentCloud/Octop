@@ -19,6 +19,7 @@ from octop.infra.bridge.icons import rewrite_remote_icon_url
 from octop.infra.bridge.ids import (
     PROTOCOL_VERSION,
     format_bridge_agent_id,
+    restore_peer_path_ids,
     rewrite_peer_agent_ids,
     rewrite_peer_stream_frame,
 )
@@ -41,6 +42,7 @@ from octop.infra.bridge.transport import (
     BRIDGE_TUNNEL_MAX_BODY_BYTES,
     BRIDGE_WS_MAX_BYTES,
     FEATURE_BODY_CHUNKS,
+    FEATURE_TURN_CONTROL,
     BridgeSession,
     peer_feature_set,
 )
@@ -51,6 +53,44 @@ from octop.infra.errors import ErrorCode, OctopError
 from octop.infra.utils.ulid import new_short_id
 
 logger = logging.getLogger(__name__)
+
+
+def _handshake_http_status(exc: BaseException) -> int | None:
+    """HTTP status from a WebSocket client handshake rejection, if any."""
+    response = getattr(exc, "response", None)
+    status = getattr(response, "status_code", None)
+    return status if isinstance(status, int) else None
+
+
+def _close_code(exc: BaseException) -> int | None:
+    rcvd = getattr(exc, "rcvd", None)
+    code = getattr(rcvd, "code", None)
+    return code if isinstance(code, int) else None
+
+
+def _should_refresh_peer_token(exc: BaseException) -> bool:
+    """True when the peer refused the socket before hello — usually a bad token.
+
+    Uvicorn turns ``websocket.close()`` before ``accept()`` into HTTP 403 with
+    an empty body. That is not evidence the ``/api/bridge/ws`` route is missing.
+    """
+    if _handshake_http_status(exc) in {401, 403}:
+        return True
+    return _close_code(exc) == 4001
+
+
+def _annotate_bridge_dial_error(exc: BaseException) -> str:
+    detail = str(exc)
+    status = _handshake_http_status(exc)
+    if status == 404:
+        return f"{detail}; peer may not support Bridge yet (needs Octop with /api/bridge/ws)"
+    if status == 403:
+        return (
+            f"{detail}; the peer refused the WebSocket handshake. "
+            "That is a rejected token or a proxy, not a missing /api/bridge/ws route."
+        )
+    return detail
+
 
 # Auto-reconnect: backoff after unexpected disconnect; disable after this many failures.
 _AUTO_RECONNECT_MAX_FAILURES = 5
@@ -219,6 +259,7 @@ class BridgeManager:
         self._sessions: dict[str, BridgeSession] = {}
         self._client_tasks: dict[str, asyncio.Task[None]] = {}
         self._turn_waiters: dict[str, asyncio.Queue[dict[str, Any]]] = {}
+        self._listen_stops: dict[str, asyncio.Event] = {}
         self._browser_waiters: dict[str, asyncio.Queue[dict[str, Any]]] = {}
         self._browser_peer_clients: dict[str, asyncio.Queue[dict[str, Any] | None]] = {}
         self._asgi_app: Any | None = None
@@ -254,10 +295,30 @@ class BridgeManager:
     # -- persistence helpers -------------------------------------------------
 
     def list_connections(self, owner_user_id: int) -> list[BridgeConnectionRow]:
+        """Owned connections only (management / limits)."""
         return self._repo.list_for_owner(owner_user_id)
+
+    def list_visible_connections(self, user_id: int) -> list[BridgeConnectionRow]:
+        """Owned plus shared links the user may use."""
+        return self._repo.list_visible(user_id)
+
+    def get(self, connection_id: str) -> BridgeConnectionRow | None:
+        return self._repo.get(connection_id)
 
     def get_owned(self, connection_id: str, owner_user_id: int) -> BridgeConnectionRow:
         row = self._repo.get_for_owner(connection_id, owner_user_id)
+        if row is None:
+            raise OctopError(ErrorCode.BRIDGE_NOT_FOUND, "bridge connection not found")
+        return row
+
+    def get_usable(self, connection_id: str, user_id: int) -> BridgeConnectionRow:
+        """Owner, or a user the link was shared with.
+
+        Management (connect, edit, delete) stays on ``get_owned``. Chat and
+        read tunnels use this so a shared recipient is not told the link is
+        missing.
+        """
+        row = self._repo.get_visible(connection_id, user_id)
         if row is None:
             raise OctopError(ErrorCode.BRIDGE_NOT_FOUND, "bridge connection not found")
         return row
@@ -341,6 +402,8 @@ class BridgeManager:
             "display_name": row.display_name,
             "notes": row.notes,
             "icon_name": row.icon_name,
+            "icon_url": str(getattr(row, "icon_url", "") or "").strip(),
+            "shared": bool(getattr(row, "shared", False)),
             "status": status,
             "last_error": row.last_error,
             "last_seen_at": row.last_seen_at,
@@ -455,6 +518,7 @@ class BridgeManager:
         display_name: str,
         notes: str | None = None,
         icon_name: str | None = None,
+        shared: bool = False,
         connect: bool = True,
     ) -> BridgeConnectionRow:
         """Create a bridge link.
@@ -509,6 +573,7 @@ class BridgeManager:
             display_name=name,
             notes=note,
             icon_name=icon,
+            shared=bool(shared),
             credential_blob=cred_blob,
             access_token_blob=token_blob,
             token_expires_at=expires_at,
@@ -542,6 +607,24 @@ class BridgeManager:
                 await asyncio.sleep(0.1)
         await self.disconnect(connection_id)
         self._repo.delete(connection_id)
+
+    def set_shared(
+        self, connection_id: str, *, owner_user_id: int, shared: bool
+    ) -> BridgeConnectionRow:
+        self.get_owned(connection_id, owner_user_id)
+        updated = self._repo.set_shared(connection_id, shared)
+        if updated is None:
+            raise OctopError(ErrorCode.BRIDGE_NOT_FOUND, "bridge connection not found")
+        return updated
+
+    def set_icon_url(
+        self, connection_id: str, *, owner_user_id: int, icon_url: str | None
+    ) -> BridgeConnectionRow:
+        self.get_owned(connection_id, owner_user_id)
+        updated = self._repo.set_icon_url(connection_id, icon_url)
+        if updated is None:
+            raise OctopError(ErrorCode.BRIDGE_NOT_FOUND, "bridge connection not found")
+        return updated
 
     async def connect(self, connection_id: str, *, owner_user_id: int) -> BridgeConnectionRow:
         row = self.get_owned(connection_id, owner_user_id)
@@ -780,6 +863,7 @@ class BridgeManager:
 
     async def _outbound_supervisor(self, connection_id: str) -> None:
         """Keep an outbound Bridge WS alive while auto_reconnect is on."""
+        retried_auth = False
         while True:
             if connection_id in self._user_stopped:
                 return
@@ -787,21 +871,24 @@ class BridgeManager:
             if row is None:
                 return
             try:
-                token = await self._ensure_peer_token(row)
+                token = await self._ensure_peer_token(row, force_refresh=retried_auth)
                 self._repo.update_status(connection_id, status="connecting", last_error=None)
                 await self._run_outbound_client(connection_id, row.peer_base_url, token)
+                retried_auth = False
                 # Clean close (peer hung up) — reset failure streak.
                 self._reconnect_failures[connection_id] = 0
             except asyncio.CancelledError:
                 raise
             except Exception as exc:
-                detail = str(exc)
-                low = detail.lower()
-                if "403" in detail or "404" in detail or "rejected websocket" in low:
-                    detail = (
-                        f"{detail}; peer may not support Bridge yet "
-                        "(needs Octop with /api/bridge/ws)"
+                if not retried_auth and _should_refresh_peer_token(exc):
+                    retried_auth = True
+                    logger.info(
+                        "bridge handshake rejected connection=%s; refreshing peer token",
+                        connection_id,
                     )
+                    continue
+                retried_auth = False
+                detail = _annotate_bridge_dial_error(exc)
                 failures = self._reconnect_failures.get(connection_id, 0) + 1
                 self._reconnect_failures[connection_id] = failures
                 if self._repo.get(connection_id) is not None:
@@ -861,10 +948,12 @@ class BridgeManager:
             except asyncio.CancelledError:
                 raise
 
-    async def _ensure_peer_token(self, row: BridgeConnectionRow) -> str:
+    async def _ensure_peer_token(
+        self, row: BridgeConnectionRow, *, force_refresh: bool = False
+    ) -> str:
         from octop.infra.db.repos._base import now_ts
 
-        if row.access_token_blob:
+        if row.access_token_blob and not force_refresh:
             data = decrypt_payload(self._secrets, row.access_token_blob)
             token = str(data.get("access_token") or "").strip()
             exp = row.token_expires_at
@@ -895,12 +984,19 @@ class BridgeManager:
         url = peer_ws_url(peer_base_url, token=token)
         session: BridgeSession | None = None
         try:
+            # websockets 15 uses the system proxy by default. A proxy that
+            # allows HTTP login often answers the upgrade with an empty 403.
+            # Dial the peer URL directly. The bearer header survives proxies
+            # that strip the query string; peers that only read ``token``
+            # still see the query.
             async with websockets.connect(
                 url,
                 open_timeout=20,
                 max_size=BRIDGE_WS_MAX_BYTES,
                 ping_interval=20,
                 ping_timeout=20,
+                proxy=None,
+                additional_headers={"Authorization": f"Bearer {token}"},
             ) as ws:
                 owner = self._repo.get(connection_id)
                 local_user = self._users.get(owner.owner_user_id) if owner is not None else None
@@ -1021,7 +1117,13 @@ class BridgeManager:
         except OctopError:
             advertise_base = "http://127.0.0.1"
 
-        if is_self_peer_url(advertise_base, self._advertise_base_url):
+        # Default installs advertise http://127.0.0.1:<port>. That URL is shared
+        # by every instance on the same port, so it is not proof this socket
+        # looped back to us. Outbound dials already reject a loopback self URL.
+        # A non-loopback advertise URL (explicit bind address) still is.
+        if is_self_peer_url(advertise_base, self._advertise_base_url) and _advertise_host_label(
+            self._advertise_base_url
+        ):
             await websocket.close(code=4004, reason="self connect")
             return
 
@@ -1170,9 +1272,21 @@ class BridgeManager:
         headers: dict[str, str] | None = None,
         body: bytes | None = None,
     ) -> httpx.Response:
-        from octop.infra.bridge.tunnel_policy import is_tunnel_path_allowed
+        from octop.infra.bridge.tunnel_policy import (  # noqa: PLC0415
+            is_tunnel_path_allowed,
+            shared_viewer_may_tunnel,
+        )
 
-        self.get_owned(connection_id, owner_user_id)
+        row = self.get_usable(connection_id, owner_user_id)
+        # The peer runs this hop as the connection owner. A shared recipient
+        # may chat and read, not edit / start / reload / delete the expert.
+        if int(row.owner_user_id) != int(owner_user_id) and not shared_viewer_may_tunnel(
+            method, path
+        ):
+            raise OctopError(
+                ErrorCode.FORBIDDEN,
+                "shared cloud collab users cannot manage this expert",
+            )
         # Fail fast with a user-facing "unsupported on remote" code before the hop.
         if not is_tunnel_path_allowed(method, path):
             raise OctopError(
@@ -1206,6 +1320,13 @@ class BridgeManager:
             raise self._bridge_link_error(exc) from exc
         if str(result.get("type") or "") == "tunnel.error":
             code_raw = str(result.get("code") or "").strip()
+            logger.warning(
+                "bridge peer tunnel rejected connection=%s method=%s path=%s code=%s",
+                connection_id,
+                method,
+                path,
+                code_raw or "unknown",
+            )
             if code_raw == ErrorCode.BRIDGE_REMOTE_UNSUPPORTED.value:
                 raise OctopError(
                     ErrorCode.BRIDGE_REMOTE_UNSUPPORTED,
@@ -1291,12 +1412,16 @@ class BridgeManager:
             mapped["bridge"] = True
             mapped["bridge_inbound"] = _is_inbound(row)
             # scope=mine also includes experts shared by other users. Keep the
-            # peer account's ownership so those rows are not offered for delete.
-            # Peers that omit the field predate this flag; treat them as owned.
-            mapped["is_owner"] = bool(item["is_owner"]) if "is_owner" in item else True
+            # peer account's ownership so mutation controls are shown only for
+            # peer-owned rows. Older peers may omit this field; fail closed so
+            # the UI does not offer an action that the peer will reject.
+            mapped["is_owner"] = item.get("is_owner") is True
             mapped["is_shared"] = bool(item.get("is_shared"))
-            # Shadow experts are chat-ready while the bridge link is live.
-            mapped["state"] = "running"
+            # Keep the peer runtime state. A stopped expert must not look chat-ready
+            # just because the bridge link itself is up.
+            raw_state = item.get("state")
+            state = raw_state.strip() if isinstance(raw_state, str) else ""
+            mapped["state"] = state or "stopped"
             # Keep bundled /experts/avatars and CDN URLs; proxy uploaded avatars.
             mapped["icon_url"] = rewrite_remote_icon_url(
                 str(mapped.get("icon_url") or mapped.get("icon") or "").strip() or None,
@@ -1485,8 +1610,32 @@ class BridgeManager:
             if q is not None:
                 await q.put(payload)
             return
+        if msg_type == "turn.unlisten" and request_id:
+            self._stop_peer_listen(request_id)
+            return
+        if msg_type == "turn.listen":
+            await self._execute_peer_listen(connection_id, payload)
+            return
         if msg_type == "turn.start":
             await self._execute_peer_turn(connection_id, payload)
+            return
+        if msg_type == "turn.cancel":
+            await self._execute_peer_cancel(connection_id, payload)
+            return
+        if msg_type == "turn.steer_remove":
+            await self._execute_peer_steer_remove(connection_id, payload)
+            return
+        if request_id:
+            sess = self._sessions.get(connection_id)
+            if sess is not None and not sess.closed:
+                await sess.send_json(
+                    {
+                        "type": "turn.error",
+                        "request_id": request_id,
+                        "message": f"unknown turn type: {msg_type}",
+                    }
+                )
+                await sess.send_json({"type": "turn.end", "request_id": request_id})
 
     async def _execute_peer_turn(self, connection_id: str, payload: dict[str, Any]) -> None:
         """Peer asked us to run a turn on a local agent; stream chunks back."""
@@ -1565,6 +1714,10 @@ class BridgeManager:
                 payload=payload,
                 ws_connection_id=bridge_conn_id,
             )
+            if prepared.inbound is None:
+                # Mid-turn steer: frames already went to the live subscriber.
+                await sess.send_json({"type": "turn.end", "request_id": request_id})
+                return
             hub.subscribe(prepared.thread_id, bridge_conn_id)
             await sess.send_json(
                 {
@@ -1577,25 +1730,41 @@ class BridgeManager:
                 }
             )
             channel_manager.enqueue(WS_CHANNEL_ID, prepared.inbound)
-            while True:
-                if sess.closed:
-                    break
-                item = await chunk_queue.get()
-                if item is None:
-                    break
-                if sess.closed:
-                    break
-                stamped = stamp_thread_id(item, prepared.thread_id)
-                await sess.send_json(
-                    {
-                        "type": "turn.chunk",
-                        "request_id": request_id,
-                        "frame": stamped,
-                    }
-                )
-                if str(stamped.get("type") or "") in {"done", "error"}:
-                    break
-            await sess.send_json({"type": "turn.end", "request_id": request_id})
+            # Host ``turn.ended`` is not the end of a team room. Members flush
+            # only after the host goes idle. Keep this subscriber until the
+            # hub unlistens, same as a local dashboard socket.
+            stop = asyncio.Event()
+            self._listen_stops[request_id] = stop
+
+            async def _queue_stop() -> None:
+                await stop.wait()
+                await chunk_queue.put(None)
+
+            stop_task = asyncio.create_task(_queue_stop())
+            try:
+                while True:
+                    if sess.closed:
+                        break
+                    item = await chunk_queue.get()
+                    if item is None:
+                        break
+                    if sess.closed:
+                        break
+                    stamped = stamp_thread_id(item, prepared.thread_id)
+                    await sess.send_json(
+                        {
+                            "type": "turn.chunk",
+                            "request_id": request_id,
+                            "frame": stamped,
+                        }
+                    )
+                if not sess.closed:
+                    await sess.send_json({"type": "turn.end", "request_id": request_id})
+            finally:
+                stop_task.cancel()
+                with suppress(asyncio.CancelledError):
+                    await stop_task
+                self._listen_stops.pop(request_id, None)
         except PeerTurnRejected as exc:
             await sess.send_json(
                 {
@@ -1616,6 +1785,358 @@ class BridgeManager:
         finally:
             hub.unregister(bridge_conn_id)
 
+    def _stop_peer_listen(self, request_id: str) -> None:
+        stop = self._listen_stops.get(request_id)
+        if stop is not None and not stop.is_set():
+            stop.set()
+
+    async def _execute_peer_listen(self, connection_id: str, payload: dict[str, Any]) -> None:
+        """Subscribe to a peer room so team members / wrap-up keep flowing."""
+        from octop.infra.agents.teams.team_manager import (  # noqa: PLC0415
+            subscribe_with_member_catchup,
+        )
+        from octop.infra.gateway.ws.ws_hub import stamp_thread_id
+
+        request_id = str(payload.get("request_id") or "").strip()
+        agent_id = str(payload.get("agent_id") or "").strip()
+        thread_id = str(payload.get("thread_id") or "").strip()
+        sess = self._sessions.get(connection_id)
+        if sess is None or not request_id or not agent_id or not thread_id:
+            return
+        row = self._repo.get(connection_id)
+        if row is None:
+            return
+        if self._asgi_app is None:
+            await sess.send_json(
+                {
+                    "type": "turn.error",
+                    "request_id": request_id,
+                    "message": "bridge owner unavailable",
+                }
+            )
+            await sess.send_json({"type": "turn.end", "request_id": request_id})
+            return
+        server = self._asgi_app.state.octop_server
+        user = (
+            server.app_runtime.user_manager.get_by_id(row.owner_user_id)
+            if server.app_runtime is not None
+            else None
+        )
+        if user is None or server.app_runtime is None:
+            await sess.send_json(
+                {
+                    "type": "turn.error",
+                    "request_id": request_id,
+                    "message": "bridge owner unavailable",
+                }
+            )
+            await sess.send_json({"type": "turn.end", "request_id": request_id})
+            return
+        gateway = server.app_runtime.gateway
+        hub = gateway.ws_hub
+        thread_id = restore_peer_path_ids(
+            thread_id,
+            bridge_agent_id=format_bridge_agent_id(connection_id, agent_id),
+            remote_agent_id=agent_id,
+        )
+        found = gateway.thread_registry.get_thread(thread_id)
+        if found is None or found.agent_id != agent_id or found.user_id != user.id:
+            await sess.send_json(
+                {
+                    "type": "turn.error",
+                    "request_id": request_id,
+                    "message": f"thread {thread_id!r} not found",
+                }
+            )
+            await sess.send_json({"type": "turn.end", "request_id": request_id})
+            return
+
+        bridge_conn_id = f"bridge-listen-{request_id}"
+        chunk_queue: asyncio.Queue[dict[str, Any] | None] = asyncio.Queue()
+        stop = asyncio.Event()
+        self._listen_stops[request_id] = stop
+
+        async def send_frame(frame: dict[str, Any]) -> None:
+            await chunk_queue.put(frame)
+
+        hub.register(bridge_conn_id, send_frame, user_id=user.id)
+
+        async def _queue_stop() -> None:
+            await stop.wait()
+            await chunk_queue.put(None)
+
+        stop_task = asyncio.create_task(_queue_stop())
+        try:
+
+            async def _send_catchup(frame: dict[str, Any]) -> None:
+                await sess.send_json(
+                    {
+                        "type": "turn.chunk",
+                        "request_id": request_id,
+                        "frame": stamp_thread_id(frame, thread_id),
+                    }
+                )
+
+            def _subscribe(tid: str = thread_id, cid: str = bridge_conn_id) -> None:
+                hub.subscribe(tid, cid)
+
+            await subscribe_with_member_catchup(
+                gateway,
+                thread_id,
+                subscribe=_subscribe,
+                send=_send_catchup,
+            )
+            await sess.send_json(
+                {
+                    "type": "turn.chunk",
+                    "request_id": request_id,
+                    "frame": {
+                        "type": "turn_status",
+                        "thread_id": thread_id,
+                        "active": hub.is_turn_active(thread_id),
+                    },
+                }
+            )
+            while not sess.closed:
+                item = await chunk_queue.get()
+                if item is None:
+                    break
+                stamped = stamp_thread_id(item, thread_id)
+                await sess.send_json(
+                    {
+                        "type": "turn.chunk",
+                        "request_id": request_id,
+                        "frame": stamped,
+                    }
+                )
+            if not sess.closed:
+                await sess.send_json({"type": "turn.end", "request_id": request_id})
+        except Exception:
+            logger.exception("bridge peer listen failed")
+            if not sess.closed:
+                await sess.send_json(
+                    {
+                        "type": "turn.error",
+                        "request_id": request_id,
+                        "message": "bridge listen failed",
+                    }
+                )
+                await sess.send_json({"type": "turn.end", "request_id": request_id})
+        finally:
+            stop_task.cancel()
+            with suppress(asyncio.CancelledError):
+                await stop_task
+            self._listen_stops.pop(request_id, None)
+            hub.unregister(bridge_conn_id)
+
+    async def _peer_control_owner(
+        self,
+        connection_id: str,
+        payload: dict[str, Any],
+    ) -> tuple[str, str, Any, Any, Any] | None:
+        """Resolve ``(request_id, agent_id, sess, user, gateway)`` or fail the request."""
+        request_id = str(payload.get("request_id") or "").strip()
+        agent_id = str(payload.get("agent_id") or "").strip()
+        sess = self._sessions.get(connection_id)
+        if sess is None or not request_id or not agent_id:
+            return None
+        row = self._repo.get(connection_id)
+        if row is None:
+            return None
+
+        async def _fail(message: str) -> None:
+            if sess.closed:
+                return
+            await sess.send_json(
+                {
+                    "type": "turn.error",
+                    "request_id": request_id,
+                    "message": message,
+                }
+            )
+            await sess.send_json({"type": "turn.end", "request_id": request_id})
+
+        if self._asgi_app is None:
+            await _fail("bridge owner unavailable")
+            return None
+        server = self._asgi_app.state.octop_server
+        user = (
+            server.app_runtime.user_manager.get_by_id(row.owner_user_id)
+            if server.app_runtime is not None
+            else None
+        )
+        if user is None or server.app_runtime is None:
+            await _fail("bridge owner unavailable")
+            return None
+        gateway = server.app_runtime.gateway
+        return request_id, agent_id, sess, user, gateway
+
+    def _restore_peer_thread_id(
+        self,
+        connection_id: str,
+        agent_id: str,
+        thread_id: str,
+    ) -> str:
+        return restore_peer_path_ids(
+            thread_id,
+            bridge_agent_id=format_bridge_agent_id(connection_id, agent_id),
+            remote_agent_id=agent_id,
+        )
+
+    async def _execute_peer_cancel(self, connection_id: str, payload: dict[str, Any]) -> None:
+        """Stop the peer stream for a dashboard cancel, matching local WS."""
+        resolved = await self._peer_control_owner(connection_id, payload)
+        if resolved is None:
+            return
+        request_id, agent_id, sess, user, gateway = resolved
+        thread_id = self._restore_peer_thread_id(
+            connection_id,
+            agent_id,
+            str(payload.get("thread_id") or "").strip(),
+        )
+        if not thread_id:
+            await sess.send_json(
+                {
+                    "type": "turn.error",
+                    "request_id": request_id,
+                    "message": "cancel requires thread_id",
+                }
+            )
+            await sess.send_json({"type": "turn.end", "request_id": request_id})
+            return
+        found = gateway.thread_registry.get_thread(thread_id)
+        if found is None or found.agent_id != agent_id or found.user_id != user.id:
+            await sess.send_json(
+                {
+                    "type": "turn.error",
+                    "request_id": request_id,
+                    "message": f"thread {thread_id!r} not found",
+                }
+            )
+            await sess.send_json({"type": "turn.end", "request_id": request_id})
+            return
+        gateway.steer.mark_cancelling(thread_id)
+        discarded = gateway.steer.discard(thread_id, reason="turn_cancelled")
+        if discarded is not None:
+            await gateway.ws_hub.push_to_thread(
+                thread_id,
+                {
+                    "type": "steer.discarded",
+                    "seq": discarded.seq,
+                    "client_pending_ids": discarded.client_pending_ids,
+                    "pending_ids": discarded.pending_ids,
+                    "turn_id": discarded.turn_id,
+                    "reason": discarded.reason,
+                    "thread_id": thread_id,
+                },
+            )
+        server = self._asgi_app.state.octop_server if self._asgi_app is not None else None
+        if server is not None and server.app_runtime is not None:
+            server.app_runtime.agent_registry.cancel_stream(agent_id, thread_id)
+        if not sess.closed:
+            await sess.send_json({"type": "turn.end", "request_id": request_id})
+
+    async def _execute_peer_steer_remove(self, connection_id: str, payload: dict[str, Any]) -> None:
+        """Withdraw a queued steer on the peer, matching local ``steer_remove``."""
+        resolved = await self._peer_control_owner(connection_id, payload)
+        if resolved is None:
+            return
+        request_id, agent_id, sess, user, gateway = resolved
+        thread_id = self._restore_peer_thread_id(
+            connection_id,
+            agent_id,
+            str(payload.get("thread_id") or "").strip(),
+        )
+        turn_id = str(payload.get("turn_id") or "").strip()
+        client_pending_id = str(payload.get("client_pending_id") or "").strip()
+        pending_id = str(payload.get("pending_id") or "").strip()
+
+        async def send_ack(frame: dict[str, Any]) -> None:
+            if sess.closed:
+                return
+            await sess.send_json(
+                {
+                    "type": "turn.chunk",
+                    "request_id": request_id,
+                    "frame": frame,
+                }
+            )
+
+        if not thread_id or not turn_id:
+            await send_ack(
+                {
+                    "type": "steer.ack",
+                    "status": "rejected",
+                    "reason": "turn_id_required",
+                    "client_pending_id": client_pending_id or None,
+                    "thread_id": thread_id or None,
+                }
+            )
+            if not sess.closed:
+                await sess.send_json({"type": "turn.end", "request_id": request_id})
+            return
+        found = gateway.thread_registry.get_thread(thread_id)
+        if found is None or found.agent_id != agent_id or found.user_id != user.id:
+            await send_ack(
+                {
+                    "type": "steer.ack",
+                    "status": "rejected",
+                    "reason": "forbidden",
+                    "client_pending_id": client_pending_id or None,
+                    "thread_id": thread_id,
+                }
+            )
+            if not sess.closed:
+                await sess.send_json({"type": "turn.end", "request_id": request_id})
+            return
+        if not client_pending_id or not pending_id:
+            await send_ack(
+                {
+                    "type": "steer.ack",
+                    "status": "rejected",
+                    "reason": "client_pending_id_required",
+                    "client_pending_id": client_pending_id or None,
+                    "thread_id": thread_id,
+                }
+            )
+            if not sess.closed:
+                await sess.send_json({"type": "turn.end", "request_id": request_id})
+            return
+        result = gateway.steer.remove(
+            thread_id,
+            turn_id=turn_id,
+            client_pending_id=client_pending_id,
+            pending_id=pending_id,
+        )
+        await send_ack(
+            {
+                "type": "steer.ack",
+                "status": "removed",
+                "turn_id": result.turn_id,
+                "pending_id": result.pending_id,
+                "client_pending_id": result.client_pending_id,
+                "already_drained": result.already_drained or None,
+                "already_gone": result.already_gone or None,
+                "thread_id": thread_id,
+            }
+        )
+        if result.emit_removed and result.seq is not None:
+            await gateway.ws_hub.push_to_thread(
+                thread_id,
+                {
+                    "type": "steer.removed",
+                    "seq": result.seq,
+                    "client_pending_id": result.client_pending_id,
+                    "pending_id": result.pending_id,
+                    "turn_id": result.turn_id,
+                    "already_drained": result.already_drained or None,
+                    "already_gone": result.already_gone or None,
+                    "thread_id": thread_id,
+                },
+            )
+        if not sess.closed:
+            await sess.send_json({"type": "turn.end", "request_id": request_id})
+
     async def relay_user_turn(
         self,
         *,
@@ -1628,7 +2149,7 @@ class BridgeManager:
         """Send turn.start to peer and forward turn.chunk frames to ``on_frame``."""
         import uuid
 
-        self.get_owned(connection_id, owner_user_id)
+        self.get_usable(connection_id, owner_user_id)
         sess = await self._require_live_session(connection_id)
         request_id = uuid.uuid4().hex
         queue = await self.open_turn_waiter(request_id)
@@ -1641,8 +2162,88 @@ class BridgeManager:
                     **turn_payload,
                 }
             )
+            saw_turn_ended = False
             while True:
-                msg = await sess.next_queue_item(queue, timeout=600.0)
+                try:
+                    msg = await sess.next_queue_item(queue, timeout=600.0)
+                except TimeoutError:
+                    # After host ``turn.ended`` the peer may hold the room
+                    # subscriber with no frames for a long time (team idle).
+                    if saw_turn_ended:
+                        continue
+                    raise
+                msg_type = str(msg.get("type") or "")
+                if msg_type == "turn.chunk":
+                    frame = msg.get("frame")
+                    if isinstance(frame, dict):
+                        rewritten = rewrite_peer_stream_frame(
+                            connection_id,
+                            frame,
+                            remote_agent_id=remote_agent_id,
+                        )
+                        if str(rewritten.get("type") or "") == "turn.ended":
+                            saw_turn_ended = True
+                        await on_frame(rewritten)
+                elif msg_type == "turn.error":
+                    await on_frame(
+                        {
+                            "type": "error",
+                            "message": str(msg.get("message") or "bridge turn error"),
+                        }
+                    )
+                    await on_frame({"type": "done"})
+                    return
+                elif msg_type == "turn.end":
+                    # Older peers stop at harness ``done`` and never send
+                    # ``turn.ended``. The dashboard leaves Generating on until
+                    # that frame arrives.
+                    if not saw_turn_ended:
+                        await on_frame({"type": "turn.ended"})
+                    return
+        except asyncio.CancelledError:
+            if not sess.closed:
+                with suppress(Exception):
+                    await sess.send_json({"type": "turn.unlisten", "request_id": request_id})
+            raise
+        except (TimeoutError, ConnectionError) as exc:
+            await self._unregister_session(connection_id)
+            raise self._bridge_link_error(exc) from exc
+        finally:
+            self.close_turn_waiter(request_id)
+
+    async def relay_user_listen(
+        self,
+        *,
+        connection_id: str,
+        owner_user_id: int,
+        remote_agent_id: str,
+        thread_id: str,
+        on_frame: Any,
+    ) -> None:
+        """Keep a listen-only subscription on the peer room thread."""
+        import uuid
+
+        tid = (thread_id or "").strip()
+        if not tid:
+            return
+        self.get_usable(connection_id, owner_user_id)
+        sess = await self._require_live_session(connection_id)
+        request_id = uuid.uuid4().hex
+        queue = await self.open_turn_waiter(request_id)
+        try:
+            await sess.send_json(
+                {
+                    "type": "turn.listen",
+                    "request_id": request_id,
+                    "agent_id": remote_agent_id,
+                    "thread_id": tid,
+                }
+            )
+            while True:
+                try:
+                    msg = await sess.next_queue_item(queue, timeout=600.0)
+                except TimeoutError:
+                    continue
                 msg_type = str(msg.get("type") or "")
                 if msg_type == "turn.chunk":
                     frame = msg.get("frame")
@@ -1658,18 +2259,131 @@ class BridgeManager:
                     await on_frame(
                         {
                             "type": "error",
-                            "message": str(msg.get("message") or "bridge turn error"),
+                            "message": str(msg.get("message") or "bridge listen error"),
                         }
                     )
-                    await on_frame({"type": "done"})
                     return
                 elif msg_type == "turn.end":
+                    return
+        except asyncio.CancelledError:
+            if not sess.closed:
+                with suppress(Exception):
+                    await sess.send_json({"type": "turn.unlisten", "request_id": request_id})
+            raise
+        except (TimeoutError, ConnectionError) as exc:
+            await self._unregister_session(connection_id)
+            raise self._bridge_link_error(exc) from exc
+        finally:
+            self.close_turn_waiter(request_id)
+
+    async def _relay_turn_control(
+        self,
+        *,
+        connection_id: str,
+        owner_user_id: int,
+        remote_agent_id: str,
+        msg_type: str,
+        payload: dict[str, Any],
+        on_frame: Any,
+    ) -> None:
+        """One-shot peer control (cancel / steer_remove) with chunk forwarding."""
+        import uuid
+
+        self.get_usable(connection_id, owner_user_id)
+        sess = await self._require_live_session(connection_id)
+        if FEATURE_TURN_CONTROL not in sess.peer_features:
+            await on_frame(
+                {
+                    "type": "error",
+                    "message": f"peer does not support {msg_type}",
+                }
+            )
+            return
+        request_id = uuid.uuid4().hex
+        queue = await self.open_turn_waiter(request_id)
+        try:
+            await sess.send_json(
+                {
+                    "type": msg_type,
+                    "request_id": request_id,
+                    "agent_id": remote_agent_id,
+                    **payload,
+                }
+            )
+            while True:
+                msg = await sess.next_queue_item(queue, timeout=30.0)
+                msg_kind = str(msg.get("type") or "")
+                if msg_kind == "turn.chunk":
+                    frame = msg.get("frame")
+                    if isinstance(frame, dict):
+                        await on_frame(
+                            rewrite_peer_stream_frame(
+                                connection_id,
+                                frame,
+                                remote_agent_id=remote_agent_id,
+                            )
+                        )
+                elif msg_kind == "turn.error":
+                    await on_frame(
+                        {
+                            "type": "error",
+                            "message": str(msg.get("message") or "bridge control error"),
+                        }
+                    )
+                    return
+                elif msg_kind == "turn.end":
                     return
         except (TimeoutError, ConnectionError) as exc:
             await self._unregister_session(connection_id)
             raise self._bridge_link_error(exc) from exc
         finally:
             self.close_turn_waiter(request_id)
+
+    async def relay_turn_cancel(
+        self,
+        *,
+        connection_id: str,
+        owner_user_id: int,
+        remote_agent_id: str,
+        thread_id: str,
+        on_frame: Any,
+    ) -> None:
+        """Ask the peer to cancel the live stream for ``thread_id``."""
+        tid = (thread_id or "").strip()
+        if not tid:
+            await on_frame({"type": "error", "message": "cancel requires thread_id"})
+            return
+        await self._relay_turn_control(
+            connection_id=connection_id,
+            owner_user_id=owner_user_id,
+            remote_agent_id=remote_agent_id,
+            msg_type="turn.cancel",
+            payload={"thread_id": tid},
+            on_frame=on_frame,
+        )
+
+    async def relay_turn_steer_remove(
+        self,
+        *,
+        connection_id: str,
+        owner_user_id: int,
+        remote_agent_id: str,
+        payload: dict[str, Any],
+        on_frame: Any,
+    ) -> None:
+        """Ask the peer to withdraw a queued mid-turn steer."""
+        await self._relay_turn_control(
+            connection_id=connection_id,
+            owner_user_id=owner_user_id,
+            remote_agent_id=remote_agent_id,
+            msg_type="turn.steer_remove",
+            payload={
+                key: payload[key]
+                for key in ("thread_id", "turn_id", "client_pending_id", "pending_id")
+                if isinstance(payload.get(key), str) and str(payload[key]).strip()
+            },
+            on_frame=on_frame,
+        )
 
     # -- browser stream relay ------------------------------------------------
 
@@ -1814,7 +2528,7 @@ class BridgeManager:
         """Relay dashboard browser WS traffic to the peer harness."""
         import uuid
 
-        self.get_owned(connection_id, owner_user_id)
+        self.get_usable(connection_id, owner_user_id)
         sess = await self._require_live_session(connection_id)
         request_id = uuid.uuid4().hex
         queue = await self.open_browser_waiter(request_id)
