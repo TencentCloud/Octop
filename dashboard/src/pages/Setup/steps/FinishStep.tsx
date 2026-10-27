@@ -13,11 +13,12 @@ import {
   resolveSetupProbeToken,
 } from "../wizardClient";
 import type { ProviderDraft } from "../wizardClient";
+import type { AdminCreds } from "./AdminStep";
 
 const { Text } = Typography;
 
 interface Props {
-  adminCreds: { username: string; password: string };
+  adminCreds: AdminCreds;
   providerDraft: ProviderDraft | null;
 }
 
@@ -56,10 +57,23 @@ export default function FinishStep({ adminCreds, providerDraft }: Props) {
       }
 
       try {
-        const r = await authApi.login(adminCreds.username, adminCreds.password);
-        setAuthToken(r.access_token);
-        await applyUserLocale(r.user.locale);
-        void refreshServerLabels(r.user.locale);
+        if (adminCreds.password) {
+          const r = await authApi.login(
+            adminCreds.username,
+            adminCreds.password,
+          );
+          setAuthToken(r.access_token);
+          await applyUserLocale(r.user.locale);
+          void refreshServerLabels(r.user.locale);
+        } else {
+          // No password gate: the JWT minted at initial-admin is the session.
+          const token = wizardSession.loadSetupJwt();
+          if (!token) throw new Error(t("wizard.sessionExpired"));
+          setAuthToken(token);
+          const me = await authApi.me();
+          await applyUserLocale(me.locale);
+          void refreshServerLabels(me.locale);
+        }
       } catch (e) {
         if (!cancelled) {
           setErrors((s) => ({

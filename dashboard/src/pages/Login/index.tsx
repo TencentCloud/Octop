@@ -33,6 +33,11 @@ import googleIcon from "../../assets/providers/google.svg";
 import CaptchaField, { type CaptchaFieldHandle } from "./CaptchaField";
 import ForgotPasswordModal from "./ForgotPasswordModal";
 import { type PublicCaptchaConfig } from "./captchaAdapters";
+import { renewDesktopSession } from "../../api/desktopSession";
+
+// Per page load, not per mount: the point is to stop a renew/refuse cycle from
+// ping-ponging between /login and /chat.
+let desktopAutoLoginTried = false;
 
 function providerLabel(
   provider: OauthProviderStatus,
@@ -96,6 +101,24 @@ export default function LoginPage() {
   useEffect(() => {
     void applyGuestLocale();
   }, []);
+
+  // Desktop: landing here does not mean a signed-out user. The shell holds a
+  // device credential and the wizard minted a password no human ever types, so
+  // try a refresh before showing a form nobody can fill in. Runs once per page
+  // load, so a server that keeps refusing cannot bounce us in a loop.
+  useEffect(() => {
+    if (desktopAutoLoginTried) return;
+    desktopAutoLoginTried = true;
+    let cancelled = false;
+    void renewDesktopSession().then((issued) => {
+      if (cancelled || !issued?.access_token) return;
+      setAuthToken(issued.access_token, true);
+      navigate("/chat", { replace: true });
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [navigate]);
 
   useEffect(() => {
     let cancelled = false;

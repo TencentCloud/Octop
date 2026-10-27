@@ -7,11 +7,15 @@ import { pathToFileURL } from "node:url";
 import {
   IPC_CHANNELS,
   type ClientSettings,
+  type IssuedSession,
   type PlatformInfo,
   type UpdateCheckResult,
   type WindowControlAction,
 } from "../shared/ipc-contract";
 import { resolveAppVersion } from "./app-version";
+import { DeviceCredentialStore } from "./session/device-credential";
+import { DeviceSessionClient } from "./session/device-session";
+import { safeStorageCipher, warnIfKeychainUnavailable } from "./session/safe-storage-cipher";
 import { ClientSettingsStore, defaultClientSettingsPath } from "./storage/client-settings";
 import { readLoginShellEnv, resolveOctopHome } from "./supervisor/shell-env";
 import { reserveRandomPort } from "./supervisor/random-port";
@@ -44,6 +48,9 @@ interface PortableManifestFile {
 
 let supervisor: SidecarSupervisor | null = null;
 let settingsStore: ClientSettingsStore;
+// §7 accounts: renews the Dashboard session without a password. Registered by
+// the renderer once it holds a JWT; used whenever that JWT has expired.
+let deviceSession: DeviceSessionClient | null = null;
 // Resolved after `whenReady` — `app.getVersion()` must not run at module load.
 let appVersion = "";
 // §6.3 step 1: once an install is under way the proxy answers 503 so no new API
@@ -199,6 +206,11 @@ async function resolveSelectedRelease(): Promise<SelectedRelease | null> {
 
 function errorMessageOf(err: unknown): string {
   return err instanceof Error ? err.message : String(err);
+}
+
+/** A JWT the shell will forward: non-empty, bounded, nothing else assumed. */
+function isUsableAccessToken(value: unknown): value is string {
+  return typeof value === "string" && value.length > 0 && value.length <= 4096;
 }
 
 async function showShellMessage(
@@ -371,6 +383,20 @@ function registerIpcHandlers(): void {
     app.quit();
   });
 
+  ipcMain.handle(IPC_CHANNELS.sessionRegister, (_event, accessToken: unknown): Promise<boolean> => {
+    if (!isUsableAccessToken(accessToken)) return Promise.resolve(false);
+    return deviceSession?.register(accessToken) ?? Promise.resolve(false);
+  });
+
+  ipcMain.handle(IPC_CHANNELS.sessionRenew, (): Promise<IssuedSession | null> => {
+    return deviceSession?.renew() ?? Promise.resolve(null);
+  });
+
+  ipcMain.handle(IPC_CHANNELS.sessionRevoke, (_event, accessToken: unknown): Promise<boolean> => {
+    if (!isUsableAccessToken(accessToken)) return Promise.resolve(false);
+    return deviceSession?.revoke(accessToken) ?? Promise.resolve(false);
+  });
+
   ipcMain.on(IPC_CHANNELS.windowControl, (event, action: WindowControlAction) => {
     const win = BrowserWindow.fromWebContents(event.sender);
     if (!win) return;
@@ -471,6 +497,16 @@ async function boot(): Promise<void> {
     octopHome,
     portableDir,
   };
+
+  // §7 accounts: the device credential lives in the data root, next to the
+  // database it unlocks, and only the main process ever sees it.
+  const cipher = safeStorageCipher();
+  warnIfKeychainUnavailable(cipher);
+  deviceSession = new DeviceSessionClient({
+    store: new DeviceCredentialStore(octopHome, cipher),
+    baseUrl: () => (apiAdmissionClosed || !backendPort ? null : `http://127.0.0.1:${backendPort}`),
+    label: `${process.platform}-${process.arch}`,
+  });
 
   registerProtocol(dashboardRoot());
   registerIpcHandlers();

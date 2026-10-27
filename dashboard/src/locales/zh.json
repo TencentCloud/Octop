@@ -5478,7 +5478,8 @@
       "submitFailed": "无法创建管理员。",
       "continue": "继续",
       "alreadyCreated": "管理员「{{username}}」已创建。",
-      "intro": "创建第一个管理员账户。"
+      "intro": "创建第一个管理员账户。",
+      "introNoPassword": "为这台设备上的账户命名，无需设置密码。"
     },
     "model": {
       "intro": "配置一个模型提供商，助手就可以回应你了。你也可以跳过本步，稍后在「模型」页配置。",

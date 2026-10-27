@@ -5478,7 +5478,8 @@
       "submitFailed": "Could not create administrator.",
       "continue": "Continue",
       "alreadyCreated": "Administrator \"{{username}}\" has been created.",
-      "intro": "Create the first administrator account."
+      "intro": "Create the first administrator account.",
+      "introNoPassword": "Name the account on this device. No password is needed."
     },
     "model": {
       "intro": "Configure one model provider so the assistant can reply. You can skip this step and configure it later.",

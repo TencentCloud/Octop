@@ -164,6 +164,7 @@ def build_app(server: OctopServer) -> FastAPI:
         agent_tools,
         agents,
         auth,
+        auth_device,
         auth_ldap,
         auth_oauth,
         auth_oidc,
@@ -228,6 +229,7 @@ def build_app(server: OctopServer) -> FastAPI:
         [
             _RouterMount(setup.router, "/api", ["setup"]),
             _RouterMount(auth.router, "/api/auth", ["auth"]),
+            _RouterMount(auth_device.router, "/api/auth", ["auth"]),
             _RouterMount(auth_oidc.router, "/api/auth", ["auth"]),
             _RouterMount(auth_oauth.router, "/api/auth", ["auth"]),
             _RouterMount(auth_ldap.router, "/api/auth", ["auth"]),

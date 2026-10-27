@@ -27,6 +27,12 @@ export interface UpdateCheckResult {
   error: string | null;
 }
 
+/** A JWT minted by the shell from the stored device credential. */
+export interface IssuedSession {
+  access_token: string;
+  expires_in: number;
+}
+
 export const IPC_CHANNELS = {
   getPlatformInfo: "octop:get-platform-info",
   openDirectoryPicker: "octop:open-directory-picker",
@@ -37,6 +43,9 @@ export const IPC_CHANNELS = {
   clientSettingsSet: "octop:client-settings:set",
   checkForUpdates: "octop:check-for-updates",
   openUpdateConfirmation: "octop:open-update-confirmation",
+  sessionRegister: "octop:session:register",
+  sessionRenew: "octop:session:renew",
+  sessionRevoke: "octop:session:revoke",
 } as const;
 
 export type WindowControlAction = "minimize" | "maximize" | "close";
