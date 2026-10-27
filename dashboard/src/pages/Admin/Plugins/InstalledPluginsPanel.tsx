@@ -413,7 +413,9 @@ export function InstalledPluginsPanel() {
 
       {showCardView ? (
         loading ? (
-          <CardSkeleton count={3} />
+          <div className={styles.loadingSkeleton}>
+            <CardSkeleton count={3} />
+          </div>
         ) : plugins.length === 0 ? (
           <Empty
             image={Empty.PRESENTED_IMAGE_SIMPLE}

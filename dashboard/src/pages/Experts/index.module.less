@@ -987,28 +987,66 @@
 
 .marketContainer {
   min-width: 0;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+}
+
+.marketStage {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  min-height: 240px;
 }
 
 .marketSceneTabsWrap {
-  width: 100%;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
   margin-top: 16px;
   margin-bottom: 16px;
-  overflow-x: auto;
-  -webkit-overflow-scrolling: touch;
-  padding-bottom: 2px;
 }
 
-.marketSceneTabs {
-  width: 100%;
-  min-width: max-content;
+.marketScenePill {
+  appearance: none;
+  margin: 0;
+  border: 1px solid transparent;
+  background: var(--fn-fill-tertiary);
+  color: var(--fn-text-secondary);
+  border-radius: var(--fn-radius-full);
+  padding: 5px 12px;
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 20px;
+  cursor: pointer;
+  white-space: nowrap;
+  transition:
+    background 0.15s,
+    color 0.15s,
+    border-color 0.15s;
 
-  :global(.ant-segmented-item) {
-    min-width: 4.75em;
+  &:hover {
+    background: var(--fn-bg-secondary-hover);
+    color: var(--fn-text-primary);
   }
 
-  :global(.ant-segmented-item-label) {
-    font-weight: 500;
-    white-space: nowrap;
+  &:focus-visible {
+    outline: 2px solid var(--fn-border-focus);
+    outline-offset: 2px;
+  }
+}
+
+.marketScenePillActive {
+  background: var(--fn-primary-bg);
+  color: var(--fn-color-brand);
+  border-color: color-mix(in srgb, var(--fn-color-brand) 24%, transparent);
+
+  &:hover {
+    background: var(--fn-bg-active);
+    color: var(--fn-color-brand);
   }
 }
 
@@ -1042,9 +1080,9 @@
 
 .marketIconImg {
   display: block;
-  width: 22px;
-  height: 22px;
-  object-fit: contain;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
 }
 
 .marketCardFooter {
@@ -1490,6 +1528,27 @@
   align-items: center;
   gap: 10px;
   margin-top: 8px;
+}
+
+.marketLoadResult {
+  padding: 16px;
+
+  :global(.ant-result-icon) {
+    display: flex;
+    justify-content: center;
+    margin-bottom: 0;
+  }
+
+  :global(.ant-result-title) {
+    font-size: 16px;
+    line-height: 1.4;
+  }
+
+  :global(.ant-result-subtitle) {
+    max-width: 360px;
+    margin-inline: auto;
+    color: var(--fn-text-tertiary);
+  }
 }
 
 /* ── Drawer shared styles ──────────────────────────────────────── */

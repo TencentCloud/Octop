@@ -1,6 +1,60 @@
 .panel {
   width: 100%;
   min-width: 0;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+}
+
+.marketStage {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  min-height: 240px;
+}
+
+/* antd Card's dark token (#161822) tints these placeholders blue. */
+:global(html[data-theme="dark"]) .loadingSkeleton {
+  :global(.octop-card) {
+    background: var(--fn-bg-primary) !important;
+    border-color: var(--fn-card-border-normal) !important;
+  }
+
+  :global(.octop-skeleton-title),
+  :global(.octop-skeleton-paragraph > li),
+  :global(.octop-skeleton-avatar) {
+    /* Image only. The `background` shorthand would pin background-position and stop antd's shimmer. */
+    background-image: linear-gradient(
+      90deg,
+      var(--fn-bg-tertiary) 25%,
+      color-mix(in srgb, var(--fn-bg-tertiary) 78%, #fff) 37%,
+      var(--fn-bg-tertiary) 63%
+    ) !important;
+    background-size: 400% 100% !important;
+  }
+}
+
+.marketLoadResult {
+  padding: 16px;
+
+  :global(.ant-result-icon) {
+    display: flex;
+    justify-content: center;
+    margin-bottom: 0;
+  }
+
+  :global(.ant-result-title) {
+    font-size: 16px;
+    line-height: 1.4;
+  }
+
+  :global(.ant-result-subtitle) {
+    max-width: 360px;
+    margin-inline: auto;
+    color: var(--fn-text-tertiary);
+  }
 }
 
 .emptyWithAction {
@@ -74,23 +128,50 @@
 }
 
 .groupTabsWrap {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
   margin-bottom: 14px;
-  overflow-x: auto;
-  -webkit-overflow-scrolling: touch;
-  padding-bottom: 2px;
 }
 
-.groupTabs {
-  width: 100%;
-  min-width: max-content;
+.groupPill {
+  appearance: none;
+  margin: 0;
+  border: 1px solid transparent;
+  background: var(--fn-fill-tertiary);
+  color: var(--fn-text-secondary);
+  border-radius: var(--fn-radius-full);
+  padding: 5px 12px;
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 20px;
+  cursor: pointer;
+  white-space: nowrap;
+  transition:
+    background 0.15s,
+    color 0.15s,
+    border-color 0.15s;
 
-  :global(.ant-segmented-item) {
-    min-width: 4.5em;
+  &:hover {
+    background: var(--fn-bg-secondary-hover);
+    color: var(--fn-text-primary);
   }
 
-  :global(.ant-segmented-item-label) {
-    font-weight: 500;
-    white-space: nowrap;
+  &:focus-visible {
+    outline: 2px solid var(--fn-border-focus);
+    outline-offset: 2px;
+  }
+}
+
+.groupPillActive {
+  background: var(--fn-primary-bg);
+  color: var(--fn-color-brand);
+  border-color: color-mix(in srgb, var(--fn-color-brand) 24%, transparent);
+
+  &:hover {
+    background: var(--fn-bg-active);
+    color: var(--fn-color-brand);
   }
 }
 

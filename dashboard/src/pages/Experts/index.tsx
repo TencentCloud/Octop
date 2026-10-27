@@ -3,11 +3,11 @@
  *
  * Tab A: user's experts, shown as a card grid with start/stop/edit/delete.
  * Tab B: built-in expert templates, shown as a card grid with create-from-template drawer.
- * Tab C: SkillHub expert market, shown as remote skillset cards.
+ * Tab C: octop.cloud expert market, shown as remote expert cards.
  *
  * API (all via request() which already prefixes /api):
  *   GET  /experts                         → ExpertSummary[]
- *   GET  /experts/hub                     → SkillHub market cards (+ scenes)
+ *   GET  /experts/hub                     → octop.cloud market cards (+ scenes)
  *   GET  /experts/hub/{slug}              → market detail + quick prompts
  *   POST /experts/hub/{slug}/install      → create agent from market
  *   GET  /agents                          → via AgentContext
@@ -893,23 +893,33 @@ export default function ExpertsPage() {
         )}
         {!searchNeedle && libraryScenes.length > 0 && (
           <div className={styles.marketSceneTabsWrap}>
-            <Segmented
-              block
-              size="large"
-              value={libraryScene}
-              onChange={(value) => setLibraryScene(String(value))}
-              options={[
-                {
-                  value: LIBRARY_SCENE_ALL,
-                  label: t("experts.sceneAll"),
-                },
-                ...libraryScenes.map((scene) => ({
-                  value: scene,
-                  label: t(`experts.scenes.${scene}`, { defaultValue: scene }),
-                })),
-              ]}
-              className={styles.marketSceneTabs}
-            />
+            {[
+              {
+                value: LIBRARY_SCENE_ALL,
+                label: t("experts.sceneAll"),
+              },
+              ...libraryScenes.map((scene) => ({
+                value: scene,
+                label: t(`experts.scenes.${scene}`, { defaultValue: scene }),
+              })),
+            ].map((opt) => {
+              const active = libraryScene === opt.value;
+              return (
+                <button
+                  key={opt.value || LIBRARY_SCENE_ALL}
+                  type="button"
+                  aria-pressed={active}
+                  className={
+                    active
+                      ? `${styles.marketScenePill} ${styles.marketScenePillActive}`
+                      : styles.marketScenePill
+                  }
+                  onClick={() => setLibraryScene(opt.value)}
+                >
+                  {opt.label}
+                </button>
+              );
+            })}
           </div>
         )}
         {visibleLibraryExperts.length === 0 ? (

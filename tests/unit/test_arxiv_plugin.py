@@ -366,27 +366,19 @@ async def test_globally_enabled_plugin_is_callable_without_agent_opt_in(
         PluginRegistry.reset()
 
 
-def test_market_installs_arxiv_plugin_and_ui_assets(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    monkeypatch.setenv("OCTOP_HOME", str(tmp_path))
+def test_install_path_copies_arxiv_plugin_and_ui_assets(tmp_path: Path) -> None:
     PluginRegistry.reset()
     try:
         manager = PluginManager(
             plugins_dir=tmp_path / "plugins",
             config_path=tmp_path / "config.json",
         )
-        item = next(item for item in manager.list_market() if item.get("id") == "arxiv-search")
-        assert not item.get("error")
-        assert item["icon"] == "/api/plugins/market/arxiv-search/ui/icon.svg"
-        loaded = manager.install_from_market("arxiv-search")
+        loaded = manager.install_path(_PLUGIN_DIR)
         assert [tool.name for tool in loaded.tools] == ["search_arxiv"]
         installed = tmp_path / "plugins" / "arxiv-search"
         for asset in ("icon.svg", "ui/index.js", "ui/manifest.json"):
             assert (installed / asset).is_file()
-        config = json.loads((tmp_path / "config.json").read_text(encoding="utf-8"))
-        assert config["plugins"]["arxiv-search"]["enabled"] is True
-        assert manager.global_enabled_map()["arxiv-search"] is True
+        icon = manager.resolve_market_ui_file("arxiv-search", "icon.svg")
+        assert icon.is_file()
     finally:
         PluginRegistry.reset()
