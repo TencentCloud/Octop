@@ -28,6 +28,21 @@ def test_sanitize_download_filename_strips_paths() -> None:
     assert sanitize_download_filename("report.pdf") == "report.pdf"
 
 
+def test_sanitize_download_filename_bounds_utf8_and_preserves_extension() -> None:
+    filename = sanitize_download_filename("😀" * 130 + ".txt")
+
+    assert filename.endswith(".txt")
+    assert len(filename.encode("utf-8")) <= 200
+    assert filename == "😀" * 49 + ".txt"
+
+
+def test_sanitize_download_filename_bounds_long_ascii_name() -> None:
+    filename = sanitize_download_filename("a" * 300 + ".json")
+
+    assert filename.endswith(".json")
+    assert len(filename.encode("utf-8")) == 200
+
+
 def test_unique_download_path_avoids_collision(tmp_path: Path) -> None:
     downloads = tmp_path / "Downloads"
     downloads.mkdir()
@@ -43,6 +58,14 @@ def test_save_user_download_writes_bytes(tmp_path: Path) -> None:
     path = save_user_download("hello.txt", b"hi", home=tmp_path)
     assert path.read_bytes() == b"hi"
     assert path.parent == downloads
+
+
+def test_save_user_download_accepts_long_unicode_filename(tmp_path: Path) -> None:
+    path = save_user_download("😀" * 130 + ".txt", b"hello", home=tmp_path)
+
+    assert path.read_bytes() == b"hello"
+    assert path.suffix == ".txt"
+    assert len(path.name.encode("utf-8")) <= 200
 
 
 def test_local_dashboard_request_requires_loopback_host_and_peer() -> None:

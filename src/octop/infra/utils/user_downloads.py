@@ -12,6 +12,21 @@ from typing import Any
 
 _UNSAFE_NAME = re.compile(r"[\\/:\0<>\"|?*]")
 _LOOPBACK_HOSTS = frozenset({"localhost", "127.0.0.1", "::1"})
+_MAX_FILENAME_BYTES = 200
+_NORMAL_EXTENSION = re.compile(r"\.[A-Za-z0-9]{1,16}$")
+
+
+def _truncate_utf8(value: str, limit: int) -> str:
+    """Truncate at a code-point boundary to at most *limit* UTF-8 bytes."""
+    used = 0
+    chars: list[str] = []
+    for char in value:
+        size = len(char.encode("utf-8"))
+        if used + size > limit:
+            break
+        chars.append(char)
+        used += size
+    return "".join(chars)
 
 
 def is_loopback_address(address: str) -> bool:
@@ -49,7 +64,13 @@ def sanitize_download_filename(raw: str | None) -> str:
     name = name.lstrip(".")
     if name in {"", ".", ".."}:
         return "download"
-    return name[:200]
+    suffix = Path(name).suffix
+    if not _NORMAL_EXTENSION.fullmatch(suffix):
+        suffix = ""
+    stem = name[: -len(suffix)] if suffix else name
+    stem_budget = _MAX_FILENAME_BYTES - len(suffix.encode("utf-8"))
+    truncated = _truncate_utf8(stem, stem_budget)
+    return f"{truncated or 'download'}{suffix}"
 
 
 def downloads_dir(*, home: Path | None = None) -> Path:
