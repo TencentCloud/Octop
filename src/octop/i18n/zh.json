@@ -1110,5 +1110,18 @@
         }
       }
     }
+  },
+  "ragflow": {
+    "invalid_base_url": "RAGFlow 服务地址不能包含用户名、密码、查询参数或片段。",
+    "invalid_dataset_ids": "RAGFlow 知识库 ID 须为逗号分隔的字符串或 ID 列表，且只能包含字母、数字、下划线和连字符。",
+    "api_key_required": "请填写有效的 RAGFlow API Key。",
+    "http_error": "RAGFlow 请求失败：HTTP {status}。",
+    "network_error": "无法连接 RAGFlow，请检查服务地址和网络连接。",
+    "invalid_response": "RAGFlow 返回了无效的接口响应。",
+    "api_error": "RAGFlow 请求失败：{reason}",
+    "query_required": "请提供检索问题。",
+    "datasets_required": "请先通过 list_datasets 选择 dataset_ids，或配置默认知识库 ID，再进行检索。",
+    "invalid_id": "请提供有效的 {field}。",
+    "unknown_tool": "未知的 RAGFlow 工具：{name}"
   }
 }
