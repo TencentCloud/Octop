@@ -23,6 +23,8 @@ import {
   storeUpdateStatus,
 } from "../../../utils/updateStatusCache";
 import { TabPanelHeader } from "./TabPanelHeader";
+import DesktopUpdatePanel from "./DesktopUpdatePanel";
+import { isDesktopShell } from "../../../utils/desktopBridge";
 import styles from "./UpdateConfig.module.less";
 
 /** Shell snippets shown in the manual upgrade guide (commands are locale-agnostic). */
@@ -148,6 +150,13 @@ function UpgradeGuide() {
 }
 
 export default function UpdateConfig() {
+  // The desktop shell owns detection/download/install; show the shell panel and
+  // never mount the Python self-update flow.
+  if (isDesktopShell()) return <DesktopUpdatePanel />;
+  return <ServerUpdateConfig />;
+}
+
+function ServerUpdateConfig() {
   const { t } = useTranslation();
   const { modal } = App.useApp();
   const [status, setStatus] = useState<UpdateStatus | null>(null);

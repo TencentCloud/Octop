@@ -34,7 +34,7 @@ describe("ChatTitleBar", () => {
     expect(heading.parentElement).toContainElement(more);
   });
 
-  it("marks the title bar as a Wails drag region", () => {
+  it("marks the title bar as a window drag region", () => {
     const { container } = render(
       <ChatTitleBar
         session={session}

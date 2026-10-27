@@ -1,0 +1,34 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Octop</title>
+    <style>
+      :root { color-scheme: light; }
+      html, body { height: 100%; margin: 0; }
+      body {
+        display: grid;
+        place-items: center;
+        font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+        background: #ffffff;
+        color: #111827;
+      }
+      .loader { text-align: center; }
+      .spinner {
+        width: 40px; height: 40px; margin: 0 auto 16px;
+        border: 3px solid rgba(17,24,39,0.15);
+        border-top-color: #111827;
+        border-radius: 50%;
+        animation: spin 0.9s linear infinite;
+      }
+      @keyframes spin { to { transform: rotate(360deg); } }
+    </style>
+  </head>
+  <body>
+    <div class="loader">
+      <div class="spinner"></div>
+      <div>正在启动 Octop…</div>
+    </div>
+  </body>
+</html>

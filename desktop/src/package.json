@@ -1,0 +1,43 @@
+{
+  "name": "octop-desktop-electron",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Octop desktop shell (Electron) — owns the Python sidecar, not the business logic.",
+  "main": "./out/main/index.js",
+  "packageManager": "pnpm@12.15.0",
+  "devEngines": {
+    "packageManager": {
+      "name": "pnpm",
+      "version": "12.15.0",
+      "onFail": "error"
+    }
+  },
+  "engines": {
+    "node": ">=22.6",
+    "pnpm": ">=12 <13"
+  },
+  "scripts": {
+    "dev": "bash scripts/run-dev.sh",
+    "dev:start": "bash scripts/run-dev.sh --no-build",
+    "dev:no-sandbox": "bash scripts/run-dev.sh --no-sandbox",
+    "dev:runtime": "bash scripts/make-dev-runtime.sh",
+    "typecheck": "tsc --noEmit",
+    "build": "electron-vite build",
+    "test": "node --experimental-strip-types --import ./scripts/register-extensionless-ts.mjs --test \"{main,preload,shared,renderer}/**/*.test.ts\"",
+    "package": "pnpm run build && electron-builder",
+    "package:dir": "pnpm run build && electron-builder --dir"
+  },
+  "dependencies": {
+    "adm-zip": "^0.6.1",
+    "electron-updater": "^6.3.9"
+  },
+  "devDependencies": {
+    "@types/adm-zip": "^0.5.8",
+    "@types/node": "^22.10.2",
+    "electron": "^33.2.1",
+    "electron-builder": "^25.1.8",
+    "electron-vite": "^3.0.0",
+    "typescript": "~5.8.3",
+    "vite": "^6.3.5"
+  }
+}

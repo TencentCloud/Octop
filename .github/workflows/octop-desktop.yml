@@ -65,7 +65,9 @@ jobs:
 
       - uses: actions/setup-node@v5
         with:
-          node-version: "24"
+          # Dashboard stays on Node 20 (same as docker/Dockerfile + release.yml).
+          # Node 24 is a desktop/electron-only pin and nothing here builds it.
+          node-version: "20"
           cache: npm
           cache-dependency-path: dashboard/package-lock.json
 
@@ -217,94 +219,12 @@ jobs:
             verify_no_homebrew_dylibs "${staging}/packages" "${{ matrix.plat }}"
           fi
 
-      - uses: actions/setup-go@v6
-        with:
-          go-version: "1.25.x"
-          cache-dependency-path: desktop/src/go.sum
-
-      - name: Install Linux desktop build dependencies
-        if: runner.os == 'Linux'
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y libgtk-4-dev libwebkitgtk-6.0-dev
-
-      - name: Install Wails v3 CLI
-        run: go install github.com/wailsapp/wails/v3/cmd/wails3@v3.0.0-beta.13
-
-      - name: Install NSIS
-        if: runner.os == 'Windows'
-        shell: pwsh
-        run: |
-          $nsisDir = "${env:ProgramFiles(x86)}\NSIS"
-          $makensis = Join-Path $nsisDir "makensis.exe"
-          function Test-Makensis { Test-Path -LiteralPath $makensis }
-
-          if (-not (Test-Makensis)) {
-            $installed = $false
-            for ($i = 1; $i -le 5; $i++) {
-              Write-Host "choco install nsis (attempt $i/5)"
-              try {
-                choco install nsis --yes --no-progress --execution-timeout=600
-              } catch {
-                Write-Warning "choco attempt $i failed: $_"
-              }
-              if (Test-Makensis) { $installed = $true; break }
-              Start-Sleep -Seconds ([Math]::Min(60, 10 * $i))
-            }
-
-            if (-not $installed) {
-              Write-Host "Chocolatey unavailable; downloading NSIS setup from SourceForge"
-              $setup = Join-Path $env:RUNNER_TEMP "nsis-setup.exe"
-              $urls = @(
-                "https://downloads.sourceforge.net/project/nsis/NSIS%203/3.11/nsis-3.11-setup.exe",
-                "https://sourceforge.net/projects/nsis/files/NSIS%203/3.11/nsis-3.11-setup.exe/download"
-              )
-              $downloaded = $false
-              foreach ($url in $urls) {
-                try {
-                  Invoke-WebRequest -Uri $url -OutFile $setup -UseBasicParsing -TimeoutSec 180
-                  if ((Test-Path -LiteralPath $setup) -and ((Get-Item $setup).Length -gt 1MB)) {
-                    $downloaded = $true
-                    break
-                  }
-                } catch {
-                  Write-Warning "NSIS download failed from $url : $_"
-                }
-              }
-              if (-not $downloaded) {
-                throw "NSIS install failed (Chocolatey and direct download)"
-              }
-              Start-Process -FilePath $setup -ArgumentList "/S" -Wait
-            }
-          }
-
-          if (-not (Test-Makensis)) {
-            throw "makensis.exe missing after NSIS install"
-          }
-          Add-Content -Path $env:GITHUB_PATH -Value $nsisDir
-
-      - name: Package desktop app with bundled portable runtime
-        working-directory: desktop/src
-        run: >-
-          wails3 task package
-          ARCH=${{ matrix.arch }}
-          VERSION=${{ env.OCTOP_VERSION }}
-          PORTABLE_ZIP=../portable/release/Octop-portable-${{ matrix.plat }}-${{ env.OCTOP_VERSION }}.zip
-
       # archive: false — upload the prebuilt zip as-is. Default archive=true would
       # wrap it again, so Actions UI / "Download artifact" becomes zip-in-zip.
       # With archive:false, artifact name is the filename (name: is ignored).
       - uses: actions/upload-artifact@v7
         with:
           path: desktop/portable/release/Octop-portable-${{ matrix.plat }}-${{ env.OCTOP_VERSION }}.zip
-          archive: false
-          if-no-files-found: error
-          retention-days: 14
-
-      - name: Upload bundled desktop package
-        uses: actions/upload-artifact@v7
-        with:
-          path: desktop/src/bin/Octop-desktop-${{ matrix.plat }}-${{ env.OCTOP_VERSION }}.*
           archive: false
           if-no-files-found: error
           retention-days: 14
@@ -390,7 +310,7 @@ jobs:
     uses: ./.github/workflows/upload-release-cos.yml
     with:
       tag: ${{ needs.release.outputs.tag }}
-      patterns: "Octop-desktop-*,Octop-portable-*"
+      patterns: "Octop-portable-*"
     secrets:
       RELEASE_COS_SECRET_ID: ${{ secrets.RELEASE_COS_SECRET_ID }}
       RELEASE_COS_SECRET_KEY: ${{ secrets.RELEASE_COS_SECRET_KEY }}

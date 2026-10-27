@@ -1,16 +1,54 @@
-type DesktopWindow = Window & {
-  _wails?: { invoke?: (message: string) => void };
-};
+import { getDesktopBridge } from "./desktopBridge";
 
 export type DesktopChromeStyle = "mac" | "windows";
 export type DesktopWindowAction = "minimise" | "toggle-maximise" | "close";
 
+/** Which window edge carries the minimise / maximise / close buttons. */
+export type WindowControlsSide = "start" | "end";
+
+/**
+ * Height of the shell's own chrome row. The buttons are 32px tall, so anything
+ * that wants to start *below* them (macOS sidebar) reserves this band.
+ */
+export const DESKTOP_CHROME_HEIGHT = 32;
+
+/**
+ * Horizontal space the buttons occupy, by platform convention:
+ * - macOS: three 12px traffic lights on the LEFT + gaps + padding.
+ * - Windows: three 46px caption buttons on the RIGHT.
+ */
 export const WINDOW_CONTROLS_INSET: Record<DesktopChromeStyle, number> = {
-  // 3×12px lights + 2×8px gaps + 8px/12px padding, plus a little slack.
   mac: 80,
-  // 3 × 46px caption buttons.
   windows: 138,
 };
+
+/**
+ * macOS keeps its traffic lights at the leading edge, Windows its caption
+ * buttons at the trailing edge. Everything below derives from this one rule.
+ */
+export function windowControlsSide(
+  style: DesktopChromeStyle,
+): WindowControlsSide {
+  return style === "mac" ? "start" : "end";
+}
+
+/** Inset reserved on ONE edge; the opposite edge is always 0 for that platform. */
+export function windowControlsInset(
+  style: DesktopChromeStyle | null,
+  side: WindowControlsSide,
+): number {
+  if (!style || windowControlsSide(style) !== side) return 0;
+  return WINDOW_CONTROLS_INSET[style];
+}
+
+/**
+ * Vertical band to reserve at the top of a full-height column (the sidebar on
+ * macOS, where the traffic lights float above it). Windows caption buttons sit
+ * over the content column instead, so they need no band.
+ */
+export function chromeTopBandPx(style: DesktopChromeStyle | null): number {
+  return style === "mac" ? DESKTOP_CHROME_HEIGHT : 0;
+}
 
 /** Right-edge overlay chrome (dock toolbar, etc.) to keep clear of caption buttons. */
 export const CHROME_END_PAD_ATTR = "data-octop-chrome-end-pad";
@@ -23,11 +61,17 @@ export const WINDOW_CONTROLS_SPACER_ATTR = "data-octop-window-controls-spacer";
  */
 export const DOCK_WINDOW_CONTROLS_PAD_PX = 18;
 
-const INSET_VAR = "--window-controls-inset-end";
+const INSET_START_VAR = "--window-controls-inset-start";
+const INSET_END_VAR = "--window-controls-inset-end";
 
 /** Inline padding so CSS-module `padding` shorthands cannot clobber the inset. */
 export function chromeEndPadValue(minPx = 12): string {
-  return `max(${minPx}px, var(${INSET_VAR}, 0px))`;
+  return `max(${minPx}px, var(${INSET_END_VAR}, 0px))`;
+}
+
+/** Start-edge counterpart of {@link chromeEndPadValue} (macOS traffic lights). */
+export function chromeStartPadValue(minPx = 12): string {
+  return `max(${minPx}px, var(${INSET_START_VAR}, 0px))`;
 }
 
 /** Pixel width of a flex spacer that clears overlay caption buttons. */
@@ -37,22 +81,26 @@ export function windowControlsEndSpacerPx(
   existingEndPadPx = 0,
 ): number {
   if (!chrome || !panelTouchesWindowEnd) return 0;
-  return Math.max(0, WINDOW_CONTROLS_INSET[chrome] - existingEndPadPx);
+  return Math.max(0, windowControlsInset(chrome, "end") - existingEndPadPx);
 }
 
-/** Marks shell chrome that Wails should treat as a window-drag region. */
+/** Start-edge counterpart, for panels that touch the macOS traffic lights. */
+export function windowControlsStartSpacerPx(
+  chrome: DesktopChromeStyle | null,
+  panelTouchesWindowStart: boolean,
+  existingStartPadPx = 0,
+): number {
+  if (!chrome || !panelTouchesWindowStart) return 0;
+  return Math.max(0, windowControlsInset(chrome, "start") - existingStartPadPx);
+}
+
+/**
+ * Marks shell chrome the frameless Electron window treats as a drag region.
+ * `layout.css` maps these classes to `-webkit-app-region: drag` / `no-drag`
+ * once `data-octop-desktop-chrome` is on `<html>`.
+ */
 export const DESKTOP_DRAG_REGION_CLASS = "octop-desktop-drag";
 export const DESKTOP_NO_DRAG_CLASS = "octop-desktop-no-drag";
-export const DESKTOP_TITLEBAR_DRAG_HEIGHT = 32;
-
-const NO_DRAG_SELECTOR =
-  'button, a, input, textarea, select, [role="button"], [role="menuitem"], [data-octop-no-drag], .octop-desktop-no-drag';
-
-export function isDesktopShell(
-  win: Pick<DesktopWindow, "_wails"> = window as DesktopWindow,
-): boolean {
-  return typeof win._wails?.invoke === "function";
-}
 
 export function resolveDesktopChromeStyle(
   userAgent = navigator.userAgent,
@@ -62,7 +110,12 @@ export function resolveDesktopChromeStyle(
 }
 
 export function titleRowEndPadding(outerPadPx: number): string {
-  return `max(0px, calc(var(${INSET_VAR}, 0px) - ${outerPadPx}px))`;
+  return `max(0px, calc(var(${INSET_END_VAR}, 0px) - ${outerPadPx}px))`;
+}
+
+/** Start-edge counterpart of {@link titleRowEndPadding}. */
+export function titleRowStartPadding(outerPadPx: number): string {
+  return `max(0px, calc(var(${INSET_START_VAR}, 0px) - ${outerPadPx}px))`;
 }
 
 export function applyDesktopChrome(
@@ -71,102 +124,39 @@ export function applyDesktopChrome(
 ): void {
   if (!style) {
     delete root.dataset.octopDesktopChrome;
-    root.style.removeProperty(INSET_VAR);
+    root.style.removeProperty(INSET_START_VAR);
+    root.style.removeProperty(INSET_END_VAR);
     return;
   }
   root.dataset.octopDesktopChrome = style;
-  root.style.setProperty(INSET_VAR, `${WINDOW_CONTROLS_INSET[style]}px`);
+  // Only one edge carries buttons per platform; the other stays at 0 so every
+  // consumer can use both variables unconditionally.
+  root.style.setProperty(
+    INSET_START_VAR,
+    `${windowControlsInset(style, "start")}px`,
+  );
+  root.style.setProperty(
+    INSET_END_VAR,
+    `${windowControlsInset(style, "end")}px`,
+  );
 }
 
-export function emitDesktopWindowAction(
-  action: DesktopWindowAction,
-  win: Pick<DesktopWindow, "_wails"> = window as DesktopWindow,
-): boolean {
-  const invoke = win._wails?.invoke;
-  if (typeof invoke !== "function") return false;
-  invoke(`wails:event:emit:desktop:${action}`);
-  return true;
-}
-
-function dragEventElement(target: EventTarget | null): Element | null {
-  if (target instanceof Element) return target;
-  if (target instanceof Node) return target.parentElement;
-  return null;
-}
-
-/** True when a primary click should start a frameless window-drag gesture. */
-export function shouldArmDesktopDrag(
-  event: Pick<MouseEvent, "button" | "clientY" | "target">,
-): boolean {
-  if (event.button !== 0) return false;
-  const el = dragEventElement(event.target);
-  if (!el) return false;
-  if (el.closest(NO_DRAG_SELECTOR)) return false;
-  const value = window
-    .getComputedStyle(el)
-    .getPropertyValue("--wails-draggable")
-    .trim();
-  if (value === "no-drag") return false;
-  if (value === "drag") return true;
-  return event.clientY <= DESKTOP_TITLEBAR_DRAG_HEIGHT;
-}
+const WINDOW_CONTROL_ACTION: Record<
+  DesktopWindowAction,
+  "minimize" | "maximize" | "close"
+> = {
+  minimise: "minimize",
+  "toggle-maximise": "maximize",
+  close: "close",
+};
 
 /**
- * Wails only injects `_wails.invoke` into the remote dashboard origin.
- * The official `--wails-draggable` listeners live in `/wails/runtime.js`,
- * which this page never loads, so we start `wails:drag` ourselves.
+ * Ask the shell to minimise / maximise / close the window. Returns false in the
+ * browser (server mode), where there is no window to drive.
  */
-export function installDesktopWindowDrag(
-  win: DesktopWindow = window as DesktopWindow,
-): boolean {
-  const invoke = win._wails?.invoke;
-  if (typeof invoke !== "function") return false;
-  const root = document.documentElement;
-  if (root.dataset.octopDragReady === "1") return false;
-  root.dataset.octopDragReady = "1";
-
-  let armed = false;
-  let startX = 0;
-  let startY = 0;
-  win.addEventListener(
-    "mousedown",
-    (event) => {
-      if (!shouldArmDesktopDrag(event)) return;
-      armed = true;
-      startX = event.screenX;
-      startY = event.screenY;
-    },
-    true,
-  );
-  win.addEventListener(
-    "mousemove",
-    (event) => {
-      if (!armed) return;
-      if (
-        Math.abs(event.screenX - startX) < 3 &&
-        Math.abs(event.screenY - startY) < 3
-      ) {
-        return;
-      }
-      armed = false;
-      invoke("wails:drag");
-    },
-    true,
-  );
-  win.addEventListener(
-    "mouseup",
-    () => {
-      armed = false;
-    },
-    true,
-  );
-  win.addEventListener(
-    "dblclick",
-    (event) => {
-      if (!shouldArmDesktopDrag(event)) return;
-      invoke("wails:drag:doubleclick");
-    },
-    true,
-  );
+export function emitDesktopWindowAction(action: DesktopWindowAction): boolean {
+  const bridge = getDesktopBridge();
+  if (!bridge) return false;
+  bridge.windowControls(WINDOW_CONTROL_ACTION[action]);
   return true;
 }

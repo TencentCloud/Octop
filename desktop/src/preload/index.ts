@@ -1,0 +1,55 @@
+import { contextBridge, ipcRenderer, type IpcRendererEvent } from "electron";
+import {
+  IPC_CHANNELS,
+  type ClientSettings,
+  type PlatformInfo,
+  type UpdateCheckResult,
+  type WindowControlAction,
+} from "../shared/ipc-contract";
+
+/**
+ * Minimal, typed bridge exposed to the sandboxed renderer as ``window.octopDesktop``.
+ * No raw ipcRenderer, no file system, no shell execution, no arbitrary URLs.
+ */
+
+function subscribe<T>(channel: string, cb: (payload: T) => void): () => void {
+  const listener = (_event: IpcRendererEvent, payload: T) => cb(payload);
+  ipcRenderer.on(channel, listener);
+  return () => ipcRenderer.removeListener(channel, listener);
+}
+
+const bridge = {
+  getPlatformInfo(): Promise<PlatformInfo> {
+    return ipcRenderer.invoke(IPC_CHANNELS.getPlatformInfo);
+  },
+  openDirectoryPicker(): Promise<string | null> {
+    return ipcRenderer.invoke(IPC_CHANNELS.openDirectoryPicker);
+  },
+  openFilePicker(): Promise<string | null> {
+    return ipcRenderer.invoke(IPC_CHANNELS.openFilePicker);
+  },
+  onBackendReady(callback: (ready: { ok: boolean }) => void): () => void {
+    return subscribe(IPC_CHANNELS.onBackendReady, callback);
+  },
+  windowControls(action: WindowControlAction): void {
+    ipcRenderer.send(IPC_CHANNELS.windowControl, action);
+  },
+  clientSettings: {
+    get(): Promise<ClientSettings> {
+      return ipcRenderer.invoke(IPC_CHANNELS.clientSettingsGet);
+    },
+    set(patch: Partial<ClientSettings>): Promise<ClientSettings> {
+      return ipcRenderer.invoke(IPC_CHANNELS.clientSettingsSet, patch);
+    },
+  },
+  checkForUpdates(): Promise<UpdateCheckResult> {
+    return ipcRenderer.invoke(IPC_CHANNELS.checkForUpdates);
+  },
+  openUpdateConfirmation(): Promise<void> {
+    return ipcRenderer.invoke(IPC_CHANNELS.openUpdateConfirmation);
+  },
+} as const;
+
+export type OctopDesktopBridge = typeof bridge;
+
+contextBridge.exposeInMainWorld("octopDesktop", bridge);

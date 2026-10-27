@@ -20,6 +20,10 @@ body {
 }
 
 html {
+  /* Window buttons live on exactly one edge: macOS at the start (traffic
+     lights), Windows at the end (caption buttons). Both default to 0 so
+     browser mode and the unused edge need no special casing. */
+  --window-controls-inset-start: 0px;
   --window-controls-inset-end: 0px;
   --safe-area-top: env(safe-area-inset-top, 0px);
   --safe-area-right: env(safe-area-inset-right, 0px);
@@ -27,9 +31,10 @@ html {
   --safe-area-left: env(safe-area-inset-left, 0px);
 }
 
-/* Wails v3 frameless drag: the element under the cursor must set this. */
+/* Electron frameless drag: the element under the cursor must opt in. */
 html[data-octop-desktop-chrome] .octop-desktop-drag {
-  --wails-draggable: drag;
+  -webkit-app-region: drag;
+  app-region: drag;
   user-select: none;
 }
 
@@ -41,7 +46,8 @@ html[data-octop-desktop-chrome] .octop-desktop-drag textarea,
 html[data-octop-desktop-chrome] .octop-desktop-drag select,
 html[data-octop-desktop-chrome] .octop-desktop-drag [role="button"],
 html[data-octop-desktop-chrome] [data-octop-no-drag] {
-  --wails-draggable: no-drag;
+  -webkit-app-region: no-drag;
+  app-region: no-drag;
 }
 
 /* Right-edge overlays sit under the frameless caption buttons unless inset. */

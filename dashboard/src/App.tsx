@@ -28,7 +28,6 @@ import { LayoutModeProvider } from "./context/LayoutModeContext";
 import { VoiceOutputProvider } from "./context/VoiceOutputContext";
 import { useIsMobile } from "./hooks/useIsMobile";
 import { useUnauthorizedRedirect } from "./hooks/useUnauthorizedRedirect";
-import { installDesktopExternalLinks } from "./utils/desktopExternalLinks";
 import { brandTokensFor } from "./styles/themePalettes";
 import "./styles/theme-vars.css";
 import "./styles/layout.css";
@@ -56,8 +55,6 @@ function ThemedApp() {
   dayjs.locale(isZh ? "zh-cn" : "en");
 
   useUnauthorizedRedirect();
-
-  useEffect(() => installDesktopExternalLinks(), []);
 
   // Set document title based on current language
   useEffect(() => {

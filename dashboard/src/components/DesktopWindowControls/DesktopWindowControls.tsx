@@ -8,6 +8,13 @@ interface DesktopWindowControlsProps {
   chrome: DesktopChromeStyle;
 }
 
+/**
+ * Shell-drawn window buttons, positioned by platform convention:
+ * - macOS: traffic lights at the TOP-LEFT (close · minimise · zoom).
+ * - Windows: caption buttons at the TOP-RIGHT (minimise · maximise · close).
+ *
+ * The group is `no-drag`; everything around it belongs to the drag strip.
+ */
 export default function DesktopWindowControls({
   chrome,
 }: DesktopWindowControlsProps) {
@@ -15,27 +22,28 @@ export default function DesktopWindowControls({
   const minimise = t("desktopChrome.minimize", "Minimize");
   const maximise = t("desktopChrome.maximize", "Maximize");
   const close = t("desktopChrome.close", "Close");
+  const groupLabel = t("desktopChrome.group", "Window controls");
 
   if (chrome === "mac") {
     return (
       <div
         className={styles.mac}
         data-octop-no-drag="true"
-        aria-label={t("desktopChrome.group", "Window controls")}
+        aria-label={groupLabel}
       >
         <button
           type="button"
-          className={`${styles.light} ${styles.zoom}`}
-          aria-label={maximise}
-          onClick={() => emitDesktopWindowAction("toggle-maximise")}
+          className={`${styles.light} ${styles.closeLight}`}
+          aria-label={close}
+          onClick={() => emitDesktopWindowAction("close")}
         >
           <span className={styles.glyph} aria-hidden>
-            +
+            ×
           </span>
         </button>
         <button
           type="button"
-          className={`${styles.light} ${styles.min}`}
+          className={`${styles.light} ${styles.minLight}`}
           aria-label={minimise}
           onClick={() => emitDesktopWindowAction("minimise")}
         >
@@ -45,12 +53,12 @@ export default function DesktopWindowControls({
         </button>
         <button
           type="button"
-          className={`${styles.light} ${styles.close}`}
-          aria-label={close}
-          onClick={() => emitDesktopWindowAction("close")}
+          className={`${styles.light} ${styles.zoomLight}`}
+          aria-label={maximise}
+          onClick={() => emitDesktopWindowAction("toggle-maximise")}
         >
           <span className={styles.glyph} aria-hidden>
-            ×
+            +
           </span>
         </button>
       </div>
@@ -61,7 +69,7 @@ export default function DesktopWindowControls({
     <div
       className={styles.windows}
       data-octop-no-drag="true"
-      aria-label={t("desktopChrome.group", "Window controls")}
+      aria-label={groupLabel}
     >
       <button
         type="button"

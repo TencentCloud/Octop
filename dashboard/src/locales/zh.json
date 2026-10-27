@@ -3883,6 +3883,7 @@
       "restartTimeout": "重启超时，请手动执行：octop service restart",
       "restartFailed": "重启请求失败，请检查服务状态后重试",
       "releaseNotes": "更新说明",
+    "shellManaged": "桌面客户端的更新由壳统一检测、下载并安装：壳、前端界面与内置 Python 运行时随同一版本一起发布。",
       "updateModalTitle": "发现新版本",
       "guideTitle": "按安装方式更新",
       "guideIntro": "若不能使用左侧一键升级，请按你的安装方式选择下方命令。升级后请重启服务；配置与数据默认保留在 ~/.octop（或 OCTOP_HOME）。",
