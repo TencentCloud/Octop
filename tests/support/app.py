@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import shutil
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager, nullcontext
 from pathlib import Path
@@ -15,6 +16,20 @@ from octop.config import DatabaseConfig, load_config
 from octop.infra.db.rebind import persist_database_config
 from octop.infra.server import OctopServer
 from tests.support.harness import patch_harness
+
+
+def seed_cached_general_assistant(home: Path) -> None:
+    """Put a tiny general-assistant package in the market cache.
+
+    Setup and new-user bootstrap read this catalog entry instead of calling
+    the remote market. The Octop guide is still appended to AGENTS.md by code.
+    """
+    dest = home / "expert_market" / "general-assistant"
+    if (dest / "manifest.json").is_file():
+        return
+    src = Path(__file__).resolve().parent / "fixtures" / "general-assistant"
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copytree(src, dest)
 
 
 def write_octop_config(home: Path, **overrides: object) -> None:
@@ -50,6 +65,7 @@ async def octop_client(
     """
     ctx = patch_harness(fake_agent) if patch_llm else nullcontext(fake_agent)
     with ctx:
+        seed_cached_general_assistant(home)
         srv = OctopServer(home=home)
         await srv.start()
         if bind_database and not srv.database_bound:

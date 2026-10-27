@@ -7,7 +7,7 @@
 
 ## 1. 问题
 
-内置插件 bilibili-anime 的工具 `bilibili_search_anime`（`src/octop/infra/agents/plugins/bundled/bilibili-anime/main.py:138-196`）：
+插件 bilibili-anime 的工具 `bilibili_search_anime`：
 
 1. 搜索番剧后，对最多 8 个季（`max_seasons` 默认 5、封顶 8，`main.py:168`）逐一调用 `_fetch_episodes()` 拉取**全量剧集**（`main.py:169-174`，每季剧集数无上限）；
 2. 把 `{octop_ui, data, text}` 整体序列化为一个 JSON 字符串作为 tool result 返回（`main.py:186-196`）。
@@ -50,7 +50,7 @@
 | F17 | team host 白名单仅 5 个内置工具，插件工具在 host 被 deny；team member 是独立 agent，工具+中间件齐全 | `infra/agents/teams/service.py:32-50`、`manager.py:3233-3235` |
 | F18 | 备份导出按原始行拷贝 `thread_messages`，artifact 随 message_json 存活 | `infra/backup/chats.py:81-110` |
 | F19 | `thread_fork.py:223-228` 把 messages（含 artifact）灌进新 checkpoint —— 但由 F3，artifact 永不进模型请求；fork 仅复制 checkpoint 存储，**不构成上下文回灌** | `infra/agents/thread_fork.py:223-228` + F3 |
-| F20 | 当前 26 个 octop_ui 插件的 `data` 中均不含 `file://`/workspace 媒体路径（grep 零命中） | `src/octop/infra/agents/plugins/bundled/` |
+| F20 | 当前 26 个 octop_ui 插件的 `data` 中均不含 `file://`/workspace 媒体路径（grep 零命中） | 插件源码 |
 
 ## 4. 方案
 

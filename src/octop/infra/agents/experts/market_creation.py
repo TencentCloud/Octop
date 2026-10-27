@@ -198,6 +198,10 @@ async def create_agent_from_skillhub_skillset(
     )
 
     workspace = registry.workspace_for_agent(row.agent_id)
+    if workspace is not None:
+        from octop.infra.agents.experts.supplements import append_supplements  # noqa: PLC0415
+
+        await append_supplements(workspace)
     if workspace is not None and portrait_url:
         try:
             await materialize_remote_icon_url(

@@ -170,12 +170,12 @@ export function PluginMarketPanel() {
               onChange={(e) => setKeyword(e.target.value)}
             />
             <Button
+              aria-label={t("plugins.marketRefresh")}
+              title={t("plugins.marketRefresh")}
               icon={<RefreshCw size={14} />}
               loading={refreshing}
               onClick={() => void fetchMarket(true)}
-            >
-              {t("plugins.marketRefresh")}
-            </Button>
+            />
           </div>
         </div>
       )}
