@@ -22,6 +22,7 @@ import type { PublishedExpert } from "../../../api/modules/publishedExperts";
 import { PublishedExpertCard } from "./PublishedExpertCard";
 import { OctopEmptyMascot } from "../../../components/EmptyState";
 import { FadeInImg } from "../../../components/FadeInImg";
+import { CardSkeleton } from "../../../components/Skeleton";
 import Markdown from "../../../components/Markdown/LazyMarkdown";
 import { apiErrorMessage } from "../../../utils/apiError";
 import { isCatalogNetworkError } from "../../../utils/networkError";
@@ -96,29 +97,38 @@ export default function ExpertMarketTab({
   const [refreshing, setRefreshing] = useState(false);
   const [loadFailed, setLoadFailed] = useState(false);
   const [networkFailure, setNetworkFailure] = useState(false);
-  const itemsRef = useRef(items);
+  const [listQuery, setListQuery] = useState<string | null>(null);
+  const listQueryRef = useRef<string | null>(null);
+  const reqGen = useRef(0);
   const [selected, setSelected] = useState<MarketExpert | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
-  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  itemsRef.current = items;
 
   const fetchMarket = useCallback(
-    async (query = keyword, force = false) => {
+    async (query: string, gen: number, force = false) => {
+      if (gen !== reqGen.current) return;
+      const trimmed = query.trim();
       if (force) setRefreshing(true);
-      else setLoading(true);
+      else if (listQueryRef.current === null) setLoading(true);
       try {
-        const resp = await expertMarketApi.list(query);
+        const resp = await expertMarketApi.list(trimmed);
+        if (gen !== reqGen.current) return;
         setItems(resp?.items ?? []);
         if (Array.isArray(resp?.scenes) && resp.scenes.length > 0) {
           setScenes(resp.scenes);
         }
+        listQueryRef.current = trimmed;
+        setListQuery(trimmed);
         setLoadFailed(false);
         setNetworkFailure(false);
       } catch (err) {
+        if (gen !== reqGen.current) return;
         const network = isCatalogNetworkError(err, "NETWORK_ERROR");
         setNetworkFailure(network);
-        setLoadFailed(true);
-        if (itemsRef.current.length > 0) {
+        if (listQueryRef.current === null) {
+          setLoadFailed(true);
+        } else {
+          listQueryRef.current = trimmed;
+          setListQuery(trimmed);
           message.error(
             network
               ? t("apiErrors.NETWORK_ERROR")
@@ -126,22 +136,28 @@ export default function ExpertMarketTab({
           );
         }
       } finally {
-        setLoading(false);
-        setRefreshing(false);
+        if (gen === reqGen.current) {
+          setLoading(false);
+          setRefreshing(false);
+        }
       }
     },
-    [keyword, t],
+    [t],
   );
 
   useEffect(() => {
-    if (debounceRef.current) clearTimeout(debounceRef.current);
-    debounceRef.current = setTimeout(() => {
-      void fetchMarket(keyword);
+    const gen = ++reqGen.current;
+    const query = keyword;
+    const timer = setTimeout(() => {
+      void fetchMarket(query, gen);
     }, 300);
-    return () => {
-      if (debounceRef.current) clearTimeout(debounceRef.current);
-    };
+    return () => clearTimeout(timer);
   }, [keyword, fetchMarket]);
+
+  const reloadMarket = useCallback(() => {
+    const gen = ++reqGen.current;
+    void fetchMarket(keyword, gen, true);
+  }, [fetchMarket, keyword]);
 
   const openDetail = useCallback(
     async (expert: MarketExpert) => {
@@ -172,20 +188,11 @@ export default function ExpertMarketTab({
   const selectedTaskExamples = selected ? taskExampleTexts(selected, lang) : [];
 
   const visibleItems = useMemo(() => {
-    if (keyword.trim() || !activeScene) return items;
+    const queryText = keyword.trim();
+    if ((queryText && listQuery === queryText) || !activeScene) return items;
     const scene = activeScene.toLowerCase();
     return items.filter((item) => (item.scene || "").toLowerCase() === scene);
-  }, [activeScene, items, keyword]);
-
-  const visiblePublished = useMemo(() => {
-    const query = keyword.trim().toLowerCase();
-    if (!query) return publishedExperts;
-    return publishedExperts.filter((expert) =>
-      [expert.name, expert.description, expert.creator_username].some((part) =>
-        (part ?? "").toLowerCase().includes(query),
-      ),
-    );
-  }, [keyword, publishedExperts]);
+  }, [activeScene, items, keyword, listQuery]);
 
   const totalText = useMemo(
     () => t("experts.totalMarket", { count: visibleItems.length }),
@@ -222,36 +229,50 @@ export default function ExpertMarketTab({
     };
   }, [lang, selected]);
 
-  const catalogFailed = loadFailed && items.length === 0;
-  const marketLoading = loading && items.length === 0;
+  const queryText = keyword.trim();
+  const catalogReady = listQuery !== null;
+  const catalogFailed = loadFailed && !catalogReady;
+  const initialLoading = loading && !catalogReady;
+  const marketAwaiting = catalogReady && listQuery !== queryText;
+  const visiblePublished = useMemo(() => {
+    const query = queryText.toLowerCase();
+    if (!query) return publishedExperts;
+    return publishedExperts.filter((expert) =>
+      [expert.name, expert.description, expert.creator_username].some((part) =>
+        (part ?? "").toLowerCase().includes(query),
+      ),
+    );
+  }, [publishedExperts, queryText]);
   const publishedSection =
-    visiblePublished.length > 0 ? (
+    publishedExperts.length > 0 ? (
       <div className={styles.marketBlock}>
         <div className={styles.marketBlockTitle}>
           {t("experts.published.listTitle", {
             count: visiblePublished.length,
           })}
         </div>
-        <p className={styles.marketBlockHint}>
-          {t("experts.published.listHint")}
-        </p>
-        <div className={styles.cardGrid}>
-          {visiblePublished.map((expert) => (
-            <PublishedExpertCard
-              key={expert.id}
-              expert={expert}
-              canManage={canManagePublished(expert)}
-              onInstall={onInstallPublished}
-              onChanged={onPublishedChanged}
-            />
-          ))}
-        </div>
+        {queryText ? null : (
+          <p className={styles.marketBlockHint}>
+            {t("experts.published.listHint")}
+          </p>
+        )}
+        {visiblePublished.length > 0 ? (
+          <div className={styles.cardGrid}>
+            {visiblePublished.map((expert) => (
+              <PublishedExpertCard
+                key={expert.id}
+                expert={expert}
+                canManage={canManagePublished(expert)}
+                onInstall={onInstallPublished}
+                onChanged={onPublishedChanged}
+              />
+            ))}
+          </div>
+        ) : (
+          <p className={styles.marketBlockHint}>{t("experts.searchEmpty")}</p>
+        )}
       </div>
-    ) : !publishedLoading &&
-      !marketLoading &&
-      !catalogFailed &&
-      !keyword.trim() &&
-      publishedExperts.length === 0 ? (
+    ) : !publishedLoading && !initialLoading && !catalogFailed ? (
       <div className={styles.marketBlock}>
         <div className={styles.marketBlockTitle}>
           {t("experts.published.listTitle", { count: 0 })}
@@ -262,11 +283,14 @@ export default function ExpertMarketTab({
       </div>
     ) : null;
 
-  const showPublished =
-    catalogFailed || !activeScene || Boolean(keyword.trim());
+  const showPublished = catalogFailed || !activeScene || Boolean(queryText);
 
   const scenePills =
-    !catalogFailed && !marketLoading && !keyword && sceneOptions.length > 1 ? (
+    !catalogFailed &&
+    catalogReady &&
+    !marketAwaiting &&
+    !queryText &&
+    sceneOptions.length > 1 ? (
       <div className={styles.marketSceneTabsWrap}>
         {sceneOptions.map((opt) => {
           const active = activeScene === opt.value;
@@ -291,7 +315,7 @@ export default function ExpertMarketTab({
 
   return (
     <div className={styles.marketContainer}>
-      {!catalogFailed && !marketLoading && (
+      {!catalogFailed && catalogReady && (
         <div className={styles.gridToolbar}>
           <div
             className={`${styles.gridToolbarRight} ${styles.marketToolbarRight}`}
@@ -309,7 +333,7 @@ export default function ExpertMarketTab({
               disabled={refreshing}
               onClick={() => {
                 onPublishedChanged();
-                void fetchMarket(keyword, true);
+                reloadMarket();
               }}
               type="button"
             >
@@ -324,7 +348,7 @@ export default function ExpertMarketTab({
 
       {showPublished ? publishedSection : null}
 
-      {!catalogFailed && !marketLoading && (
+      {!catalogFailed && catalogReady && (
         <div
           className={
             showPublished && publishedSection
@@ -338,7 +362,7 @@ export default function ExpertMarketTab({
 
       {scenePills}
 
-      {marketLoading ? (
+      {initialLoading ? (
         <div className={styles.marketStage}>
           <Spin />
         </div>
@@ -359,12 +383,24 @@ export default function ExpertMarketTab({
                 loading={refreshing}
                 onClick={() => {
                   onPublishedChanged();
-                  void fetchMarket(keyword, true);
+                  reloadMarket();
                 }}
               >
                 {t("common.retry")}
               </Button>
             }
+          />
+        </div>
+      ) : marketAwaiting ? (
+        <div className={styles.loadingSkeleton}>
+          <CardSkeleton
+            count={6}
+            containerStyle={{
+              gridTemplateColumns: "repeat(auto-fill, minmax(320px, 1fr))",
+              rowGap: 16,
+              columnGap: 12,
+              padding: "20px 0 24px",
+            }}
           />
         </div>
       ) : visibleItems.length === 0 ? (

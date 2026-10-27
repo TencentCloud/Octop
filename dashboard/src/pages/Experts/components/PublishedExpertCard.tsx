@@ -1,7 +1,7 @@
 import { memo, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { App, Dropdown } from "antd";
-import { MoreHorizontal } from "lucide-react";
+import { App, Button, Dropdown } from "antd";
+import { Download, MoreHorizontal } from "lucide-react";
 import { ExpertIcon } from "./iconForName";
 import {
   publishedExpertsApi,
@@ -57,7 +57,7 @@ export const PublishedExpertCard = memo(function PublishedExpertCard({
       onClick={() => onInstall(expert)}
       style={{ "--expert-accent": accent } as React.CSSProperties}
     >
-      <div className={styles.expertTemplateHeader}>
+      <div className={styles.marketCardHeader}>
         <div
           className={styles.agentCardIcon}
           style={{ color: accent, background: `${accent}18` }}
@@ -65,13 +65,16 @@ export const PublishedExpertCard = memo(function PublishedExpertCard({
           <ExpertIcon
             iconUrl={expert.icon_url}
             iconName={expert.icon_name}
-            size={expert.icon_url ? 28 : 20}
+            size={expert.icon_url ? 36 : 20}
+            className={expert.icon_url ? styles.marketIconImg : undefined}
           />
         </div>
         <div className={styles.agentCardTitleBlock}>
-          <div className={styles.agentCardName}>{expert.name}</div>
-          <div className={styles.expertInstalledLabel}>
-            {t("experts.published.badge")}
+          <div className={styles.marketCardTitleRow}>
+            <div className={styles.agentCardName}>{expert.name}</div>
+            <div className={styles.expertInstalledLabel}>
+              {t("experts.published.badge")}
+            </div>
           </div>
         </div>
         {canManage && (
@@ -106,15 +109,25 @@ export const PublishedExpertCard = memo(function PublishedExpertCard({
       <div className={styles.agentCardDesc}>
         {expert.description || "\u00a0"}
       </div>
-      <div className={styles.expertCardFooter}>
-        <div className={styles.expertCardHint}>
-          {t("experts.published.install")}
+      <div className={styles.marketCardFooter}>
+        <div className={styles.marketCardFooterStart}>
+          {expert.creator_username && (
+            <span className={styles.marketMeta}>
+              {t("experts.published.by", { name: expert.creator_username })}
+            </span>
+          )}
         </div>
-        {expert.creator_username && (
-          <div className={styles.expertInstalledLabel}>
-            {t("experts.published.by", { name: expert.creator_username })}
-          </div>
-        )}
+        <Button
+          size="small"
+          type="primary"
+          icon={<Download size={14} />}
+          onClick={(event) => {
+            event.stopPropagation();
+            onInstall(expert);
+          }}
+        >
+          {t("experts.published.install")}
+        </Button>
       </div>
     </div>
   );
