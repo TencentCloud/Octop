@@ -495,10 +495,13 @@ async def test_install_team_host_enrich_uses_host_assignment(manager: AgentManag
     manager._install_team_host_dispatch()
     req = SimpleNamespace(thread_id="t~child", messages="我最近总失眠")
     out = await team._enrich_request("child", req)
-    assert isinstance(out.messages[0], SystemMessage)
-    assert isinstance(out.messages[1], HumanMessage)
-    assert out.messages[1].content == "请给出可执行的睡眠建议，聚焦作息而不是诊断"
-    assert "团队派工" in out.messages[0].content
+    assert not any(isinstance(m, SystemMessage) for m in out.messages)
+    assert len(out.messages) == 1
+    assert isinstance(out.messages[0], HumanMessage)
+    assert out.messages[0].content == "请给出可执行的睡眠建议，聚焦作息而不是诊断"
+    # Briefing rides in configurable so the middleware can put it on the system
+    # prompt; nothing lands in the conversation.
+    assert "团队派工" in out.configurable["octop_team_dispatch_briefing"]
 
 
 @pytest.mark.asyncio
