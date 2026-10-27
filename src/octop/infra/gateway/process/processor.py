@@ -52,6 +52,7 @@ from octop.infra.gateway.media.tool_media import (
     enrich_tool_result_for_dashboard,
     enrich_tool_result_with_backend,
     iter_dashboard_attachment_frames,
+    note_live_tool_call,
 )
 from octop.infra.gateway.process.agent_resolve import (
     harness_workspace_for_agent,
@@ -1383,9 +1384,10 @@ class GlobalProcessor:
         failure_saved = False
         harness_workspace = harness_workspace_for_agent(self._agent_manager, agent_id)
         usage_tracker = UsageTracker()
-        # Align with IM stream_project: only push after a live tool_call this
-        # turn, then dedupe Overwrite replays and identical path/URL frames.
+        # Align with IM stream_project: only push tool_call ids opened this
+        # turn, then dedupe intra-turn replays and identical path/URL frames.
         saw_tool_call = False
+        live_tool_call_ids: set[str] = set()
         emitted_media_ids: set[str] = set()
         emitted_attachment_keys: set[str] = set()
         emitted_tool_error_ids: set[str] = set()
@@ -1434,6 +1436,7 @@ class GlobalProcessor:
                         }
                 if chunk.get("type") == "tool_call_chunk":
                     saw_tool_call = True
+                    note_live_tool_call(chunk, live_tool_call_ids)
                 if chunk.get("type") == "tool_result":
                     log_failed_tool_results(
                         chunk,
@@ -1452,7 +1455,7 @@ class GlobalProcessor:
                             chunk,
                             agent_id=agent_id,
                             workspace=harness_workspace,
-                            saw_tool_call=saw_tool_call,
+                            live_tool_call_ids=live_tool_call_ids,
                             emitted_media_ids=emitted_media_ids,
                             emitted_attachment_keys=emitted_attachment_keys,
                         ):

@@ -98,15 +98,64 @@ def tool_message_name(message: Any, *, chunk_name: str | None = None) -> str | N
     return None
 
 
+def _tool_call_id(message: Any) -> str | None:
+    if isinstance(message, dict):
+        raw = message.get("tool_call_id")
+    else:
+        raw = getattr(message, "tool_call_id", None)
+    if not isinstance(raw, str):
+        return None
+    text = raw.strip()
+    return text or None
+
+
+def note_live_tool_call(chunk: dict[str, Any], live_ids: set[str]) -> None:
+    """Record a tool-call id opened by this turn's ``tool_call_chunk``."""
+    raw = chunk.get("id")
+    if not isinstance(raw, str) or not raw.strip():
+        raw = chunk.get("tool_call_id")
+    if isinstance(raw, str) and raw.strip():
+        live_ids.add(raw.strip())
+
+
+def select_turn_tool_results(
+    chunk: dict[str, Any],
+    live_ids: set[str],
+    emitted_ids: set[str],
+) -> dict[str, Any] | None:
+    """Keep tool messages invoked this turn and not yet pushed.
+
+    Media offload and ``PatchToolCallsMiddleware`` can hand back the whole
+    thread after a live tool call. Historical ``tool_call_id`` values were
+    never opened by this turn's ``tool_call_chunk``, so they are not deliveries.
+    ``emitted_ids`` then drops a second copy of the same call inside the turn.
+    """
+    if not live_ids:
+        return None
+    messages = chunk.get("messages")
+    if not isinstance(messages, list):
+        return None
+    live_messages: list[Any] = []
+    for msg in messages:
+        call_id = _tool_call_id(msg)
+        if call_id is not None and call_id in live_ids:
+            live_messages.append(msg)
+    if not live_messages:
+        return None
+    selected = (
+        chunk if len(live_messages) == len(messages) else {**chunk, "messages": live_messages}
+    )
+    return dedup_tool_result_messages(selected, emitted_ids)
+
+
 def dedup_tool_result_messages(
     chunk: dict[str, Any],
     emitted_ids: set[str],
 ) -> dict[str, Any] | None:
     """Keep only ``tool_result`` messages not yet emitted in this stream.
 
-    When ``PatchToolCallsMiddleware`` returns ``Overwrite(full_history)`` the
-    chunk can contain every prior ToolMessage. Skip ones whose ``tool_call_id``
-    was already pushed so old files/images are not re-sent.
+    Intra-turn only. A full-history update still looks new on the first pass;
+    :func:`select_turn_tool_results` drops ids that were not called this turn.
 
     Returns the (possibly trimmed) chunk, or ``None`` when all messages are
     duplicates.
@@ -117,9 +166,7 @@ def dedup_tool_result_messages(
 
     new_messages: list[Any] = []
     for msg in messages:
-        msg_id = getattr(msg, "tool_call_id", None) or (
-            msg.get("tool_call_id") if isinstance(msg, dict) else None
-        )
+        msg_id = _tool_call_id(msg)
         if msg_id and msg_id in emitted_ids:
             continue
         new_messages.append(msg)
@@ -669,22 +716,19 @@ async def iter_dashboard_attachment_frames(
     *,
     agent_id: str,
     workspace: BackendWorkspace,
-    saw_tool_call: bool,
+    live_tool_call_ids: set[str],
     emitted_media_ids: set[str],
     emitted_attachment_keys: set[str],
 ) -> AsyncIterator[dict[str, Any]]:
     """Yield pushable dashboard attachments for this turn.
 
     Gates (in order):
-    1. At least one ``tool_call_chunk`` this stream (skip historical Overwrite
-       dumps at turn start — same as IM ``saw_tool_call``).
-    2. ``tool_call_id`` not already emitted (Overwrite replay dedup).
+    1. ``tool_call_id`` was opened by a ``tool_call_chunk`` this turn.
+    2. That id was not already emitted (intra-turn replay).
     3. Allowlisted delivery tools inside :func:`attachment_frames_from_tool_result`.
     4. Path / URL / payload key not already pushed (same file, new call id).
     """
-    if not saw_tool_call:
-        return
-    chunk_for_media = dedup_tool_result_messages(chunk, emitted_media_ids)
+    chunk_for_media = select_turn_tool_results(chunk, live_tool_call_ids, emitted_media_ids)
     if chunk_for_media is None:
         return
     async for frame in attachment_frames_from_tool_result(
@@ -860,8 +904,21 @@ async def block_to_content_part(
         data_field = base64.b64encode(file_bytes).decode("ascii")
         if not mime:
             mime = mimetypes.guess_type(filename or raw_url)[0] or "application/octet-stream"
-    elif raw_url:
+    elif raw_url.startswith(("http://", "https://")):
         url_field = raw_url
+    elif raw_url:
+        # History keeps workspace-relative paths (``generated/images/…``).
+        # Handing those to the channel makes aiohttp raise and IM fallback
+        # text leaks the path. Read the bytes here, or drop the block.
+        rel = _workspace_media_key(raw_url)
+        if rel is None:
+            return None
+        file_bytes = await workspace.adownload_bytes(rel)
+        if not file_bytes:
+            return None
+        data_field = base64.b64encode(file_bytes).decode("ascii")
+        if not mime:
+            mime = mimetypes.guess_type(filename or rel)[0] or "application/octet-stream"
     else:
         return None
 
@@ -925,6 +982,25 @@ async def media_events_from_tool_result(
             yield MessageEvent(type=MessageEventType.MESSAGE, content=[part])
 
 
+def _workspace_media_key(raw: str) -> str | None:
+    """Workspace-relative key for a schemeless media path.
+
+    ``generated/images/a.jpg`` and ``/generated/images/a.jpg`` both map to
+    ``generated/images/a.jpg``. URLs, host-absolute paths, and ``..`` are rejected.
+    """
+    text = raw.strip()
+    if not text or "://" in text or text.startswith("//") or text.startswith("\\\\"):
+        return None
+    if len(text) >= 2 and text[1] == ":":
+        return None
+    parts = [
+        part for part in text.replace("\\", "/").lstrip("/").split("/") if part not in ("", ".")
+    ]
+    if not parts or any(part == ".." for part in parts):
+        return None
+    return "/".join(parts)
+
+
 __all__ = [
     "MEDIA_PUSH_TOOL_BASES",
     "attachment_frame_dedup_key",
@@ -938,7 +1014,9 @@ __all__ = [
     "iter_dashboard_attachment_frames",
     "iter_media_blocks",
     "media_events_from_tool_result",
+    "note_live_tool_call",
     "read_media_block_bytes",
+    "select_turn_tool_results",
     "tool_message_name",
     "tool_name_base",
 ]
