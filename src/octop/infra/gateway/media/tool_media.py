@@ -101,6 +101,8 @@ def tool_message_name(message: Any, *, chunk_name: str | None = None) -> str | N
 def dedup_tool_result_messages(
     chunk: dict[str, Any],
     emitted_ids: set[str],
+    *,
+    allowed_ids: set[str] | None = None,
 ) -> dict[str, Any] | None:
     """Keep only ``tool_result`` messages not yet emitted in this stream.
 
@@ -108,8 +110,10 @@ def dedup_tool_result_messages(
     chunk can contain every prior ToolMessage. Skip ones whose ``tool_call_id``
     was already pushed so old files/images are not re-sent.
 
-    Returns the (possibly trimmed) chunk, or ``None`` when all messages are
-    duplicates.
+    ``allowed_ids`` limits results to calls observed in the current turn.
+
+    Returns the (possibly trimmed) chunk, or ``None`` when no eligible messages
+    remain.
     """
     messages = chunk.get("messages")
     if not isinstance(messages, list):
@@ -120,6 +124,8 @@ def dedup_tool_result_messages(
         msg_id = getattr(msg, "tool_call_id", None) or (
             msg.get("tool_call_id") if isinstance(msg, dict) else None
         )
+        if allowed_ids is not None and msg_id not in allowed_ids:
+            continue
         if msg_id and msg_id in emitted_ids:
             continue
         new_messages.append(msg)
