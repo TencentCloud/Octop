@@ -24,15 +24,8 @@ def _catalog_ids() -> set[str]:
     return found
 
 
-def test_bundled_plugin_dirs_have_manifest_and_ui() -> None:
-    root = default_bundled_plugins_root()
-    found = _catalog_ids()
-    assert found, "expected at least one catalog plugin"
-    for name in found:
-        child = root / name
-        assert (child / "main.py").is_file(), child
-        assert (child / "ui" / "index.js").is_file(), child
-        assert (child / "ui" / "manifest.json").is_file(), child
+def test_in_tree_plugin_catalog_is_empty() -> None:
+    assert _catalog_ids() == set()
 
 
 def test_seed_does_not_auto_install_real_catalog(tmp_path: Path) -> None:
@@ -47,15 +40,11 @@ def test_seed_does_not_auto_install_real_catalog(tmp_path: Path) -> None:
     assert list(plugins_dir.iterdir()) == [] if plugins_dir.exists() else True
 
 
-def test_install_path_copies_bundled_plugin(tmp_path: Path) -> None:
+def test_install_path_copies_fixture_plugin(tmp_path: Path) -> None:
     plugins_dir = tmp_path / "plugins"
     config_path = tmp_path / "config.json"
     mgr = PluginManager(plugins_dir=plugins_dir, config_path=config_path)
-    sample = next(
-        path
-        for path in default_bundled_plugins_root().iterdir()
-        if (path / "plugin.yaml").is_file()
-    )
+    sample = Path(__file__).resolve().parents[1] / "fixtures" / "plugins" / "echo-tool"
     loaded = mgr.install_path(sample)
     assert loaded.manifest.id == sample.name
     assert (plugins_dir / sample.name / "plugin.yaml").is_file()
@@ -109,17 +98,3 @@ def test_install_from_market_does_not_copy_bundled_plugin(
         mgr.install_from_market("fortune")
     assert raised.value.code is ErrorCode.NOT_FOUND
     assert not (plugins_dir / "fortune").exists()
-
-
-def test_offline_bundled_plugins_load() -> None:
-    from octop_harness.plugins import PluginRegistry, load_plugin_dir
-
-    PluginRegistry.reset()
-    root = default_bundled_plugins_root()
-    try:
-        for name in ("fortune", "pomodoro", "mini-games", "qrcode", "tetris"):
-            loaded = load_plugin_dir(root / name, install_deps=False)
-            assert loaded.manifest.id == name
-            assert loaded.tools
-    finally:
-        PluginRegistry.reset()

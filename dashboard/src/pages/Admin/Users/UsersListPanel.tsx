@@ -160,18 +160,6 @@ interface ExpertTemplateOption {
   icon_name?: string | null;
 }
 
-function expertTemplateChoices(
-  templates: ExpertTemplateOption[],
-): ExpertTemplateOption[] {
-  if (templates.some((item) => item.id === DEFAULT_EXPERT_TEMPLATE_ID)) {
-    return templates;
-  }
-  return [
-    { id: DEFAULT_EXPERT_TEMPLATE_ID, label: DEFAULT_EXPERT_TEMPLATE_ID },
-    ...templates,
-  ];
-}
-
 function ExpertTemplatePicker({
   value,
   onChange,
@@ -1914,27 +1902,36 @@ export default function UsersListPanel() {
     if (!createOpen) return;
     let cancelled = false;
     const lang = i18n.language.startsWith("zh") ? "zh" : "en";
-    void request<
-      Array<{
-        id: string;
+    void request<{
+      items: Array<{
+        slug: string;
         label: { zh: string; en: string };
         description?: { zh?: string; en?: string };
         icon_url?: string | null;
         icon_name?: string | null;
-      }>
-    >("/experts")
-      .then((rows) => {
+      }>;
+    }>("/experts/hub")
+      .then((body) => {
         if (cancelled) return;
+        const rows = Array.isArray(body.items) ? body.items : [];
         setExpertTemplates(
           rows.map((row) => ({
-            id: row.id,
-            label: row.label?.[lang] || row.label?.en || row.id,
+            id: row.slug,
+            label: row.label?.[lang] || row.label?.en || row.slug,
             description:
               row.description?.[lang] || row.description?.en || undefined,
             icon_url: row.icon_url,
             icon_name: row.icon_name,
           })),
         );
+        const ids = new Set(rows.map((row) => row.slug));
+        const current = form.getFieldValue("expert_template_id");
+        if (typeof current !== "string" || !ids.has(current)) {
+          const next = ids.has(DEFAULT_EXPERT_TEMPLATE_ID)
+            ? DEFAULT_EXPERT_TEMPLATE_ID
+            : rows[0]?.slug;
+          form.setFieldValue("expert_template_id", next);
+        }
       })
       .catch(() => {
         if (!cancelled) setExpertTemplates([]);
@@ -1942,7 +1939,7 @@ export default function UsersListPanel() {
     return () => {
       cancelled = true;
     };
-  }, [createOpen, i18n.language]);
+  }, [createOpen, form, i18n.language]);
 
   const onCreate = async (values: CreateValues) => {
     setSubmitting(true);
@@ -2778,16 +2775,18 @@ export default function UsersListPanel() {
                   <Form.Item
                     label={t("adminUsers.expertTemplate")}
                     name="expert_template_id"
-                    rules={[
-                      {
-                        required: true,
-                        message: t("adminUsers.expertTemplateRequired"),
-                      },
-                    ]}
+                    rules={
+                      expertTemplates.length > 0
+                        ? [
+                            {
+                              required: true,
+                              message: t("adminUsers.expertTemplateRequired"),
+                            },
+                          ]
+                        : []
+                    }
                   >
-                    <ExpertTemplatePicker
-                      options={expertTemplateChoices(expertTemplates)}
-                    />
+                    <ExpertTemplatePicker options={expertTemplates} />
                   </Form.Item>
                 ) : null
               }

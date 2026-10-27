@@ -200,7 +200,7 @@ components:
 同一源站同时提供目录和文件时，目录可以是这样：
 
 ```text
-/srv/octop-market/
+/srv/market/
 ├── api/market/plugins          # 内容类型 application/json
 ├── api/market/experts
 └── octop/market/
@@ -238,7 +238,7 @@ components:
 server {
     listen 9000;
     server_name market.internal;
-    root /srv/octop-market;
+    root /srv/market;
     location /api/market/ {
         default_type application/json;
     }

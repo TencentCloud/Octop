@@ -2,7 +2,7 @@
 
 专家就是一个目录，打成 ZIP 安装。Octop 把它放到 `~/.octop/expert_market/<id>/`，建 Agent 时再把里面的文件拷进工作区。
 
-内置专家在 `src/octop/infra/agents/experts/library/<id>/`，照着那个目录结构打就行。
+安装包里只留空白模板 `default`。其他模板从专家市场安装。照着下面的目录结构打 ZIP 就行。
 
 ## 压缩包里怎么放
 

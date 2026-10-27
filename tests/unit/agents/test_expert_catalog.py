@@ -247,25 +247,6 @@ def test_bundled_default_expert_only_has_agents_md() -> None:
     assert names == {"AGENTS.md"}
 
 
-def test_bundled_office_automation_discovers_skills() -> None:
-    from octop.infra.agents.experts.catalog import ExpertCatalog, default_library_root
-
-    catalog = ExpertCatalog(default_library_root())
-    catalog.refresh()
-    expert = catalog.get("office-automation")
-    assert expert is not None
-    assert expert.prompt_files
-    assert len(expert.files) > 50
-    names = {item["name"] for item in catalog.read_file_contents("office-automation")}
-    assert "skills/docx/SKILL.md" in names
-    docx_skill = next(
-        item["content"]
-        for item in catalog.read_file_contents("office-automation")
-        if item["name"] == "skills/docx/SKILL.md"
-    )
-    assert "DOCX" in docx_skill
-
-
 def test_expert_quick_prompts_from_manifest(tmp_path: Path) -> None:
     from octop.infra.agents.experts.catalog import ExpertCatalog
 

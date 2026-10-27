@@ -212,7 +212,7 @@ async def test_install_keeps_source_quick_prompts_when_publish_body_omits_them(
     owner_auth = await create_user(client, admin_auth, username="quickcard_owner")
     peer_auth = await create_user(client, admin_auth, username="quickcard_peer")
     created = await client.post(
-        "/api/agents/from-expert/ai-coding-coach",
+        "/api/agents/from-expert/default",
         headers=owner_auth,
         json={"name": "quickcard-source"},
     )
@@ -266,7 +266,7 @@ async def test_install_keeps_source_task_examples_when_publish_body_omits_them(
     owner_auth = await create_user(client, admin_auth, username="taskex_owner")
     peer_auth = await create_user(client, admin_auth, username="taskex_peer")
     created = await client.post(
-        "/api/agents/from-expert/ai-coding-coach",
+        "/api/agents/from-expert/default",
         headers=owner_auth,
         json={"name": "taskex-source"},
     )
