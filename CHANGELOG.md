@@ -22,6 +22,7 @@
 - 技能市场源站可用 `SKILL_MARKET_ORIGIN` 配置，默认仍是 `https://api.skillhub.cn`。设了该变量后，搜索、榜单和安装只请求这个源站。自建接口见 `docs/skill-market.md`
 
 ### 变更
+- 技能市场的搜索和安装不再在 HTTP 失败时改调本机 `skillhub` 命令行
 - 插件市场不再在目录不可用时改显示随安装包自带的插件，也不再读取 `OCTOP_MARKET_SOURCE`。内置插件和专家模板仍留在安装包里
 
 ## [1.0.3b2] - 2026-11-01

@@ -32,7 +32,7 @@ Octop 进程  GET {SKILL_MARKET_ORIGIN}/api/v1/download?slug=…
 
 空关键字会被换成 `a`。`limit` 会被夹到 1–100。榜单没有单独的 `all` 路径：Octop 自己并发请求上面六个路径，再拼成 `{ "rankings": { "hot": …, … } }`。
 
-`SKILL_MARKET_ORIGIN` **已设置**时，这些请求失败就直接报错，不会再改去公网的 `skillhub` 命令行。未设置时，HTTP 失败仍可能退回那条命令行，而命令行访问的是公网注册表。
+这些请求失败时直接报错。Octop 不会再调用本机的 `skillhub` 命令行。
 
 ## 让 Octop 指向自建市场
 
@@ -228,7 +228,7 @@ server {
 | 现象 | 原因 |
 |---|---|
 | 技能市场仍是公网内容 | `SKILL_MARKET_ORIGIN` 没进 `octop run` 的环境，或改完没有重启。在 Octop 机器上 `curl` 搜索地址，确认 10 秒内返回带 `results` 的 JSON。 |
-| 设了变量后市场直接报错 | 源站协议或主机名无效，或榜单 / 搜索没有在时限内返回合法 JSON。此时不会再退回公网命令行。 |
+| 市场直接报错 | 源站协议或主机名无效，或榜单 / 搜索没有在时限内返回合法 JSON。 |
 | 卡片在，安装失败 | `GET /api/v1/download?slug=` 不是 ZIP，包内没有 `SKILL.md`，或超过体积限制。404 表示这个 slug 没有包。 |
 | 图标空白 | `iconUrl` 仍指向公网，或浏览器打不开该地址。 |
 | 专家市场没跟着变 | 专家技能集目录不读 `SKILL_MARKET_ORIGIN`。它用 `SKILLHUB_HOST`。 |

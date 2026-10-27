@@ -19,11 +19,6 @@ MAX_ZIP_COMPRESSION_RATIO = 100.0
 HTTP_READ_CHUNK = 64 * 1024
 
 
-def skill_market_origin_configured() -> bool:
-    """True when ``SKILL_MARKET_ORIGIN`` is set to a non-empty value."""
-    return bool(os.environ.get("SKILL_MARKET_ORIGIN", "").strip())
-
-
 def skill_market_origin(override: str | None = None) -> str:
     """Skill market origin: scheme, host, and optional port.
 
@@ -55,5 +50,4 @@ __all__ = [
     "MAX_ZIP_ENTRIES",
     "MAX_ZIP_UNCOMPRESSED_BYTES",
     "skill_market_origin",
-    "skill_market_origin_configured",
 ]
