@@ -177,7 +177,7 @@ CATALOG: tuple[SlashCommandSpec, ...] = (
     ),
     SlashCommandSpec(
         name="approve",
-        usage="/approve [pending_id]",
+        usage="/approve [pending_id|session|all]",
         icon="CheckCircle",
         tone="green",
         category="session",

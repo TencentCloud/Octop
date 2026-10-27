@@ -176,6 +176,64 @@ async def test_coordinator_slash_approve_resumes() -> None:
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("argument", "allowed_tools"),
+    [
+        ("session", {"execute"}),
+        ("all", {"execute", "write_file"}),
+    ],
+)
+async def test_coordinator_slash_approve_sets_session_policy(
+    argument: str,
+    allowed_tools: set[str],
+) -> None:
+    store = HitlPendingStore()
+    coordinator = HitlChannelCoordinator(store=store)
+    store.register(
+        thread_id="thr1",
+        agent_id="agent1",
+        user_id=1,
+        session_key="sk1",
+        channel_type="feishu",
+        action_requests=[{"name": "execute", "args": {}}],
+        review_configs=None,
+    )
+
+    async def _resume(*_args: object, **_kwargs: object):
+        yield {"type": "token", "content": "done", "node": "agent"}
+
+    agent_manager = MagicMock()
+    agent_manager.resume_hitl = _resume
+    ctx = MagicMock(
+        session_key="sk1",
+        agent_id="agent1",
+        user_id=1,
+        channel_type="feishu",
+        thread_registry=MagicMock(),
+    )
+
+    from octop_harness.slash import SlashCommand
+
+    events = [
+        event
+        async for event in coordinator.iter_slash_resolution(
+            SlashCommand(name="approve", args=argument),
+            ctx,
+            agent_manager=agent_manager,
+            locale="en",
+        )
+    ]
+
+    assert events
+    policy = coordinator.session_policies.get("thr1")
+    for tool_name in allowed_tools:
+        assert policy.allows(tool_name)
+    assert not policy.allows("ask_user_question")
+    if argument == "session":
+        assert not policy.allows("write_file")
+
+
+@pytest.mark.asyncio
 async def test_coordinator_slash_approve_wakes_team_member_without_host_resume() -> None:
     store = HitlPendingStore()
     coordinator = HitlChannelCoordinator(store=store)

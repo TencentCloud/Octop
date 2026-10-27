@@ -41,6 +41,12 @@ def test_hitl_approval_commands_can_be_hidden():
     assert "help" in hidden
 
 
+def test_approve_catalog_documents_session_scopes():
+    approve = spec_for("approve")
+    assert approve is not None
+    assert approve.usage == "/approve [pending_id|session|all]"
+
+
 def test_channel_origin_maps_im_platforms():
     assert channel_origin("dashboard") == "ui"
     assert channel_origin("cli") == "cli"

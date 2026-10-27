@@ -264,7 +264,7 @@
       },
       "approve": {
         "label": "Approve tools",
-        "description": "Approve a paused tool execution (IM channels)"
+        "description": "Approve once, matching tools for this session, or all session tools (IM channels)"
       },
       "reject": {
         "label": "Reject tools",

@@ -11,7 +11,7 @@ from octop_gateway.models import MessageEvent
 from octop_harness.slash import SlashCommand
 
 from octop.i18n.domains.slash import tr
-from octop.infra.agents.security.hitl_session import HitlSessionPolicyStore
+from octop.infra.agents.security.hitl_session import HitlSessionPolicy, HitlSessionPolicyStore
 from octop.infra.gateway.hitl.format import (
     extract_questions,
     format_ask_card,
@@ -495,7 +495,9 @@ class HitlChannelCoordinator:
 
         approve = cmd.name == "approve"
         arg = cmd.args.strip()
-        record = self._resolve_slash_record(ctx, approve=approve, arg=arg, lang=lang)
+        approval_scope = arg.lower() if approve and arg.lower() in {"session", "all"} else None
+        record_arg = "" if approval_scope is not None else arg
+        record = self._resolve_slash_record(ctx, approve=approve, arg=record_arg, lang=lang)
         if isinstance(record, MessageEvent):
             yield record
             return
@@ -503,6 +505,16 @@ class HitlChannelCoordinator:
         reject_message = None if approve else (arg or None)
         thread_id = record.thread_id if record is not None else await ensure_thread_id(ctx)
         action_requests = record.action_requests if record is not None else []
+        if approval_scope == "session" and record is not None:
+            tool_names = (
+                str(action["name"])
+                for action in action_requests
+                if isinstance(action, dict) and isinstance(action.get("name"), str)
+            )
+            current = self.session_policies.get(thread_id)
+            self.session_policies.set(thread_id, current.with_tools(tool_names))
+        elif approval_scope == "all" and record is not None:
+            self.session_policies.set(thread_id, HitlSessionPolicy(mode="allow_all"))
         decisions = self.build_decisions(
             action_requests,
             approve=approve,
