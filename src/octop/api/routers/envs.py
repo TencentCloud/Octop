@@ -103,7 +103,9 @@ async def batch_save_envs(
         if not _KEY_RE.match(k):
             raise OctopError(ErrorCode.SLASH_BAD_ARGS, f"invalid env key: {k!r}")
         if k in SHELL_OWNED_ENV_KEYS:
-            raise OctopError(ErrorCode.SLASH_BAD_ARGS, f"env key is shell-owned and read-only: {k!r}")
+            raise OctopError(
+                ErrorCode.SLASH_BAD_ARGS, f"env key is shell-owned and read-only: {k!r}"
+            )
         cleaned[k] = str(value)
     path = env_file_path(server.paths.root)
     previous = load_env_file(path)
