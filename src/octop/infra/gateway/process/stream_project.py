@@ -214,6 +214,27 @@ async def _project_chunks(
             tool_state.current_node = node
 
 
+def _with_session_auto_approve(
+    source: AsyncIterator[dict[str, Any]],
+    *,
+    agent_manager: AgentManager,
+    agent_id: str,
+    thread_id: str,
+    hitl_coordinator: HitlChannelCoordinator | None,
+) -> AsyncIterator[dict[str, Any]]:
+    """Skip a follow-up card when this chat already allows the tool."""
+    if hitl_coordinator is None or not thread_id:
+        return source
+    from octop.infra.gateway.hitl.coordinator import iter_with_session_auto_approve
+
+    return iter_with_session_auto_approve(
+        source,
+        thread_id=thread_id,
+        policies=hitl_coordinator.session_policies,
+        resume=lambda decisions: agent_manager.resume_hitl(agent_id, thread_id, decisions),
+    )
+
+
 async def project_stream(
     agent_manager: AgentManager,
     agent_id: str,
@@ -228,8 +249,15 @@ async def project_stream(
     hitl_ctx: HitlStreamContext | None = None,
 ) -> AsyncIterator[MessageEvent]:
     del media_backend  # IM tool media uses agent.backend directly
+    thread_id = hitl_ctx.thread_id if hitl_ctx is not None else ""
     async for ev in _project_chunks(
-        agent_manager.stream(agent_id, request),
+        _with_session_auto_approve(
+            agent_manager.stream(agent_id, request),
+            agent_manager=agent_manager,
+            agent_id=agent_id,
+            thread_id=thread_id,
+            hitl_coordinator=hitl_coordinator,
+        ),
         agent_manager=agent_manager,
         agent_id=agent_id,
         locale=locale,
@@ -256,7 +284,13 @@ async def project_resume_stream(
     hitl_ctx: HitlStreamContext | None = None,
 ) -> AsyncIterator[MessageEvent]:
     async for ev in _project_chunks(
-        agent_manager.resume_hitl(agent_id, thread_id, decisions),
+        _with_session_auto_approve(
+            agent_manager.resume_hitl(agent_id, thread_id, decisions),
+            agent_manager=agent_manager,
+            agent_id=agent_id,
+            thread_id=thread_id,
+            hitl_coordinator=hitl_coordinator,
+        ),
         agent_manager=agent_manager,
         agent_id=agent_id,
         locale=locale,

@@ -12,33 +12,114 @@ function lastUserIndex(messages: ChatMessage[]): number {
 }
 
 /** Local turn still on screen: from the latest user message through the end. */
-function inFlightTail(current: ChatMessage[]): ChatMessage[] {
+export function inFlightTail(current: ChatMessage[]): ChatMessage[] {
   const idx = lastUserIndex(current);
   if (idx < 0) return current;
   return current.slice(idx);
 }
 
+function assistantRichness(messages: ChatMessage[]): number {
+  let score = 0;
+  for (const message of messages) {
+    if (message.role !== "assistant" || message.toolData) continue;
+    score += (message.content || "").length;
+    for (const block of message.contentBlocks ?? []) {
+      if (block.type === "text") score += (block.content || "").length;
+    }
+    if (message.status === "streaming") score += 1;
+  }
+  return score;
+}
+
+function toolRichness(messages: ChatMessage[]): number {
+  let score = 0;
+  for (const message of messages) {
+    if (message.role !== "tool" && !message.toolData) continue;
+    score += 1;
+    score += (message.content || "").length;
+    score += (message.toolData?.output || "").length;
+    score += (message.toolData?.arguments || "").length;
+  }
+  return score;
+}
+
+/** Assistant text decides. Tool bulk is only a tie-break so a long tool result cannot hide a newer reply. */
+function localTailRicher(local: ChatMessage[], server: ChatMessage[]): boolean {
+  const localAssistant = assistantRichness(local);
+  const serverAssistant = assistantRichness(server);
+  if (localAssistant !== serverAssistant)
+    return localAssistant > serverAssistant;
+  return toolRichness(local) > toolRichness(server);
+}
+
 /**
- * True when `base` already ends with this local turn (server persisted it
- * under different ids). A later send of the same text is kept.
+ * Same user text, and the local copy is not a later resend of that text.
+ * Returns the user indexes, or null when the tails are different turns.
  */
-function sameTurnAlreadyLoaded(
+function sameUserTurn(
   base: ChatMessage[],
   tail: ChatMessage[],
-): boolean {
+): { baseUserIdx: number; tailUserIdx: number } | null {
   const tailUserIdx = lastUserIndex(tail);
-  if (tailUserIdx < 0) return false;
-  const tailUser = tail[tailUserIdx];
-  const tailText = textOf(tailUser);
-  if (!tailText) return false;
+  if (tailUserIdx < 0) return null;
+  const tailText = textOf(tail[tailUserIdx]);
+  if (!tailText) return null;
   const baseUserIdx = lastUserIndex(base);
-  if (baseUserIdx < 0) return false;
-  const baseUser = base[baseUserIdx];
-  if (textOf(baseUser) !== tailText) return false;
-  const baseTs = baseUser.timestamp || 0;
-  const tailTs = tailUser.timestamp || 0;
-  if (baseTs > 0 && tailTs > baseTs + 1000) return false;
-  return true;
+  if (baseUserIdx < 0) return null;
+  if (textOf(base[baseUserIdx]) !== tailText) return null;
+  const baseTs = base[baseUserIdx].timestamp || 0;
+  const tailTs = tail[tailUserIdx].timestamp || 0;
+  if (baseTs > 0 && tailTs > baseTs + 1000) return null;
+  return { baseUserIdx, tailUserIdx };
+}
+
+/**
+ * Keep a local reply when the server copy of the same turn is shorter.
+ * A finished server turn with at least as much text wins, so ids stay stable.
+ */
+function applyRicherTail(
+  base: ChatMessage[],
+  localTail: ChatMessage[],
+): ChatMessage[] {
+  if (localTail.length === 0) return base;
+  const match = sameUserTurn(base, localTail);
+  if (!match) return [...base, ...localTail];
+  const baseAfter = base.slice(match.baseUserIdx + 1);
+  const tailAfter = localTail.slice(match.tailUserIdx + 1);
+  if (localTailRicher(tailAfter, baseAfter)) {
+    return [...base.slice(0, match.baseUserIdx + 1), ...tailAfter];
+  }
+  return base;
+}
+
+/**
+ * Fold a cached in-flight tail into messages already on screen.
+ * A tail from a different turn is ignored so a stale cache cannot be appended.
+ */
+export function preferLocalTranscript(
+  memory: ChatMessage[],
+  cached: ChatMessage[] | null | undefined,
+): ChatMessage[] {
+  if (!cached || cached.length === 0) return memory;
+  if (memory.length === 0) return cached;
+  const tail = inFlightTail(cached);
+  const match = sameUserTurn(memory, tail);
+  if (!match) return memory;
+  const baseAfter = memory.slice(match.baseUserIdx + 1);
+  const tailAfter = tail.slice(match.tailUserIdx + 1);
+  if (localTailRicher(tailAfter, baseAfter)) {
+    return [...memory.slice(0, match.baseUserIdx + 1), ...tailAfter];
+  }
+  return memory;
+}
+
+/** True when `loaded` already contains everything the cache was holding. */
+export function serverCaughtUp(
+  loaded: ChatMessage[],
+  cached: ChatMessage[],
+): boolean {
+  if (cached.length === 0) return true;
+  return applyRicherTail(loaded, inFlightTail(cached)) === loaded;
 }
 
 /**
@@ -48,6 +129,10 @@ function sameTurnAlreadyLoaded(
  * The response then replaces the list and the bubble vanishes, while the
  * WebSocket turn keeps running. Messages after the last shared id are that
  * local turn and stay on screen until the server page already includes them.
+ *
+ * An in-flight reply is not in the database until the turn finishes, so a
+ * history page can contain the user message (or a shorter checkpoint) while
+ * the browser still holds the longer stream. The longer assistant tail wins.
  */
 export function mergeHistoryWithLocalTail(
   loaded: ChatMessage[],
@@ -62,9 +147,7 @@ export function mergeHistoryWithLocalTail(
   );
 
   if (firstOverlap < 0) {
-    const tail = inFlightTail(current);
-    if (sameTurnAlreadyLoaded(loaded, tail)) return loaded;
-    return [...loaded, ...tail];
+    return applyRicherTail(loaded, inFlightTail(current));
   }
 
   let lastOverlap = firstOverlap;
@@ -84,6 +167,9 @@ export function mergeHistoryWithLocalTail(
   const loadedOverlap = loaded.findIndex((message) => message.id === overlapId);
   const serverAfter = loadedOverlap >= 0 ? loaded.slice(loadedOverlap + 1) : [];
   if (serverAfter.length === 0) return [...base, ...localTail];
-  if (sameTurnAlreadyLoaded(serverAfter, localTail)) return base;
-  return [...base, ...localTail];
+  if (localTailRicher(localTail, serverAfter)) {
+    const head = base.slice(0, base.length - serverAfter.length);
+    return [...head, ...localTail];
+  }
+  return base;
 }

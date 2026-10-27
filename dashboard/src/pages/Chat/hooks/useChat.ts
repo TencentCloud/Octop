@@ -30,7 +30,15 @@ import {
   parseToolExecutionFeedback,
 } from "../../../utils/toolMediaBlocks";
 import { injectPendingHitlMessage } from "../../../utils/injectPendingHitlMessage";
-import { mergeHistoryWithLocalTail } from "../utils/mergeHistoryTail";
+import {
+  mergeHistoryWithLocalTail,
+  preferLocalTranscript,
+  serverCaughtUp,
+} from "../utils/mergeHistoryTail";
+import {
+  clearInflightTail,
+  readInflightTail,
+} from "../utils/inflightTranscriptCache";
 import { promoteAskUserToolMessage } from "../utils/pendingHitl";
 import { rewritePeerSpeakerId } from "../../../utils/remoteExpert";
 import {
@@ -448,6 +456,12 @@ function convertCallEntries(entries: CallEntry[]): ChatMessage[] {
           : undefined,
       toolData: tool?.data,
       usage: normalizeTokenUsage(entry.usage ?? undefined) ?? undefined,
+      durationMs:
+        typeof entry.duration_ms === "number" &&
+        Number.isFinite(entry.duration_ms) &&
+        entry.duration_ms >= 0
+          ? Math.round(entry.duration_ms)
+          : undefined,
       metadata: normalizeMessageMetadata(entry.metadata ?? undefined),
       errorInfo:
         tool?.kind === "result" && (toolFeedback?.isError || toolErrorCode)
@@ -675,6 +689,7 @@ export function convertHistoryMessages(
     content: unknown;
     id?: string;
     usage?: unknown;
+    duration_ms?: number;
     timestamp?: number;
     composer_context?: unknown;
     inbound_attachments?: unknown;
@@ -701,6 +716,10 @@ export function convertHistoryMessages(
       role: message.role,
       content: toHistoryContentBlocks(message.content),
       usage: normalizeTokenUsage(message.usage ?? undefined),
+      duration_ms:
+        typeof message.duration_ms === "number"
+          ? message.duration_ms
+          : undefined,
       timestamp:
         typeof message.timestamp === "number" ? message.timestamp : undefined,
       metadata: Object.keys(meta).length > 0 ? meta : undefined,
@@ -803,6 +822,29 @@ async function loadThreadHistory(
         ? history.history_retry_after_ms
         : 1500,
   };
+}
+
+function messagesWithInflightCache(
+  sessionId: string,
+  messages: ChatMessage[],
+): ChatMessage[] {
+  return preferLocalTranscript(messages, readInflightTail(sessionId));
+}
+
+function dropInflightCacheIfCaughtUp(
+  sessionId: string,
+  loaded: ChatMessage[],
+): void {
+  const cached = readInflightTail(sessionId);
+  if (!cached || cached.length === 0) return;
+  const snap = chatStore.getSnapshot(sessionId);
+  if (
+    snap.isStreaming ||
+    snap.messages.some((message) => message.status === "streaming")
+  ) {
+    return;
+  }
+  if (serverCaughtUp(loaded, cached)) clearInflightTail(sessionId);
 }
 
 // ── The hook ──────────────────────────────────────────────────────────────
@@ -957,14 +999,19 @@ export function useChat(
       // and nothing would refetch them before a page reload.
       const liveTurn =
         snap.isStreaming || (isTeamRoom && chatStore.hasLiveSocket(key));
+      const cachedTail = readInflightTail(key);
       if (
         (snap.messages.length > 0 || liveTurn) &&
         !chatStore.isHistoryStale(key)
       ) {
-        // Always listen after hydrate so late team / inbox replies land here,
-        // not only when a turn is already marked active.
+        if (cachedTail && snap.messages.length > 0) {
+          chatStore.restoreInflightTail(key, cachedTail);
+        }
+        // Always listen after hydrate so late team / inbox replies land here.
+        // An empty live view still fetches history so the cached tail can be
+        // spliced onto the persisted prefix instead of replacing it.
         attachAfterHistory(key, targetThreadId);
-        return;
+        if (snap.messages.length > 0) return;
       }
 
       // Never cancelStream here — load/hydrate must not stop a live server turn.
@@ -992,16 +1039,18 @@ export function useChat(
         if (loadGenRef.current !== gen) return;
         // Re-read after the await. A send during this fetch appends a local
         // turn the server page does not have yet; replacing the list drops
-        // that bubble while the websocket turn keeps running.
+        // that bubble while the websocket turn keeps running. A browser cache
+        // covers the same gap when this tab discarded the in-memory tail.
         const current = chatStore.getSnapshot(key);
+        const local = messagesWithInflightCache(key, current.messages);
         const loadedIds = new Set(loaded.messages.map((message) => message.id));
-        const firstOverlap = current.messages.findIndex((message) =>
+        const firstOverlap = local.findIndex((message) =>
           loadedIds.has(message.id),
         );
         const keptOlder = firstOverlap > 0;
         chatStore.setHistoryPage(
           key,
-          mergeHistoryWithLocalTail(loaded.messages, current.messages),
+          mergeHistoryWithLocalTail(loaded.messages, local),
           {
             hasMore: keptOlder ? current.historyHasMore : loaded.hasMore,
             nextOffset: keptOlder
@@ -1012,6 +1061,7 @@ export function useChat(
               : loaded.nextCursor,
           },
         );
+        dropInflightCacheIfCaughtUp(key, loaded.messages);
         setHistoryError(false);
         attachAfterHistory(key, targetThreadId);
       } catch {
@@ -1123,20 +1173,20 @@ export function useChat(
         // in flight. `snap` is from before the await and must not be the
         // message source — a send during the fetch lives only on the store.
         const current = chatStore.getSnapshot(key);
+        const local = messagesWithInflightCache(key, current.messages);
         const latestIds = new Set(latest.map((m) => m.id));
-        const firstOverlap = current.messages.findIndex((m) =>
-          latestIds.has(m.id),
-        );
+        const firstOverlap = local.findIndex((m) => latestIds.has(m.id));
         const keptOlder = firstOverlap > 0;
         chatStore.setHistoryPage(
           key,
-          mergeHistoryWithLocalTail(latest, current.messages),
+          mergeHistoryWithLocalTail(latest, local),
           {
             hasMore: keptOlder ? current.historyHasMore : hasMore,
             nextOffset: keptOlder ? current.historyNextOffset : nextOffset,
             nextCursor: keptOlder ? current.historyNextCursor : nextCursor,
           },
         );
+        dropInflightCacheIfCaughtUp(key, latest);
         setHistoryError(false);
       } catch {
         if (loadGenRef.current === gen) {

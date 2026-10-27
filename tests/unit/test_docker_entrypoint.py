@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import platform
 import re
 import shutil
 import subprocess
@@ -407,6 +408,56 @@ def test_entrypoint_init_failure_leaves_no_marker_and_retries_next_boot(tmp_path
     second, calls = _run_entrypoint(tmp_path)
     assert second.returncode == 0, second.stderr
     assert any(call.startswith("init ") for call in calls), calls
+
+
+@bash_only
+def test_entrypoint_warns_when_desktop_shm_is_default(tmp_path: Path) -> None:
+    conf = tmp_path / "octop-desktop"
+    conf.mkdir()
+    bindir = tmp_path / "bin"
+    bindir.mkdir()
+    df = bindir / "df"
+    df.write_text("#!/bin/sh\necho size\necho 67108864\n", encoding="utf-8", newline="\n")
+    df.chmod(0o755)
+    script = _source_helpers() + f'\noctop_warn_small_shm "{conf}"\n'
+    result = _bash(script, env={"PATH": str(bindir) + os.pathsep + os.environ.get("PATH", "")})
+    assert result.returncode == 0, result.stderr
+    assert "--shm-size=1g" in result.stderr
+    assert "64MB" in result.stderr
+
+
+@bash_only
+def test_entrypoint_stays_quiet_when_shm_is_enough(tmp_path: Path) -> None:
+    conf = tmp_path / "octop-desktop"
+    conf.mkdir()
+    bindir = tmp_path / "bin"
+    bindir.mkdir()
+    df = bindir / "df"
+    df.write_text("#!/bin/sh\necho size\necho 1073741824\n", encoding="utf-8", newline="\n")
+    df.chmod(0o755)
+    missing = tmp_path / "missing"
+    script = (
+        _source_helpers() + f'\noctop_warn_small_shm "{conf}"\noctop_warn_small_shm "{missing}"\n'
+    )
+    result = _bash(script, env={"PATH": str(bindir) + os.pathsep + os.environ.get("PATH", "")})
+    assert result.returncode == 0, result.stderr
+    assert "shm" not in result.stderr
+
+
+@bash_only
+def test_entrypoint_arm_prepare_skips_non_arm() -> None:
+    script = (
+        _source_helpers()
+        + "\nunset OPENBLAS_CORETYPE\n"
+        + 'octop_prepare_arm_runtime\nprintf "%s" "${OPENBLAS_CORETYPE:-}"\n'
+    )
+    result = _bash(script)
+    if platform.machine().lower() in {"aarch64", "arm64"}:
+        assert result.returncode == 0, result.stderr
+        assert result.stdout == "ARMV8"
+        return
+    assert result.returncode == 0, result.stderr
+    assert result.stdout == ""
 
 
 def test_init_skip_message_couples_entrypoint_and_init_command() -> None:
