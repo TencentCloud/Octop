@@ -9,7 +9,7 @@ from octop.infra.market import clear_market_cache
 
 @pytest.fixture(autouse=True)
 def _empty_portal(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("OCTOP_PORTAL_URL", "")
+    monkeypatch.setenv("OCTOP_PORTAL_ORIGIN", "")
     clear_market_cache()
 
 

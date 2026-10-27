@@ -29,20 +29,20 @@ _LOCAL_NETWORK_ERRNOS = frozenset(
 
 
 def portal_base() -> str:
-    """Site origin. An empty ``OCTOP_PORTAL_URL`` disables the remote catalog."""
-    if "OCTOP_PORTAL_URL" in os.environ:
-        return os.environ.get("OCTOP_PORTAL_URL", "").strip().rstrip("/")
+    """Site origin. An empty ``OCTOP_PORTAL_ORIGIN`` disables the remote catalog."""
+    if "OCTOP_PORTAL_ORIGIN" in os.environ:
+        return os.environ.get("OCTOP_PORTAL_ORIGIN", "").strip().rstrip("/")
     return DEFAULT_PORTAL_BASE
 
 
 def remote_base() -> str:
     """Object origin for plugin and expert packages.
 
-    ``OCTOP_MARKET_REMOTE_URL`` overrides the public origin. A bare host is
+    ``OCTOP_MARKET_REMOTE_ORIGIN`` overrides the public origin. A bare host is
     treated as ``https://``. An empty or unusable value keeps the default.
     Only the origin is kept, so a pasted path does not change object keys.
     """
-    raw = os.environ.get("OCTOP_MARKET_REMOTE_URL", "").strip()
+    raw = os.environ.get("OCTOP_MARKET_REMOTE_ORIGIN", "").strip()
     if not raw:
         return DEFAULT_REMOTE_BASE
     if "://" not in raw:

@@ -36,7 +36,7 @@ def _zip_bytes(files: dict[str, str]) -> bytes:
 
 @pytest.fixture(autouse=True)
 def _isolated_catalog(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("OCTOP_PORTAL_URL", "")
+    monkeypatch.setenv("OCTOP_PORTAL_ORIGIN", "")
     clear_market_cache()
 
 
@@ -45,7 +45,7 @@ def _portal_body(items: list[dict[str, Any]]) -> bytes:
 
 
 def test_portal_catalog_lists_plugins_and_experts(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("OCTOP_PORTAL_URL", "https://octop.cloud")
+    monkeypatch.setenv("OCTOP_PORTAL_ORIGIN", "https://octop.cloud")
     plugin = {
         "id": "weather",
         "version": "0.1.0",
@@ -98,7 +98,7 @@ def test_portal_catalog_lists_plugins_and_experts(monkeypatch: pytest.MonkeyPatc
 
 
 def test_portal_failure_does_not_fetch_object_index(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("OCTOP_PORTAL_URL", "https://octop.cloud")
+    monkeypatch.setenv("OCTOP_PORTAL_ORIGIN", "https://octop.cloud")
     calls: list[str] = []
 
     def fake_fetch(url: str, *, limit: int) -> bytes:
@@ -116,7 +116,7 @@ def test_install_portal_expert_extracts_library(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setenv("OCTOP_PORTAL_URL", "https://octop.cloud")
+    monkeypatch.setenv("OCTOP_PORTAL_ORIGIN", "https://octop.cloud")
     package = _zip_bytes(
         {"manifest.json": json.dumps({"id": "ops-engineer", "label": {"zh": "运维", "en": "Ops"}})}
     )
@@ -153,8 +153,8 @@ def test_install_portal_expert_extracts_library(
     assert manifest["id"] == "ops-engineer"
 
 
-def test_market_remote_url_overrides_object_origin(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("OCTOP_MARKET_REMOTE_URL", "files.example.com/ignored")
+def test_market_remote_origin_overrides_object_origin(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("OCTOP_MARKET_REMOTE_ORIGIN", "files.example.com/ignored")
     assert market_http.remote_base() == "https://files.example.com"
     archive = "https://files.example.com/octop/market/plugins/weather/0.1.0/weather-0.1.0.zip"
     assert market_http.is_market_archive_url(archive)
@@ -162,8 +162,8 @@ def test_market_remote_url_overrides_object_origin(monkeypatch: pytest.MonkeyPat
     assert not market_http.is_market_archive_url(public)
 
 
-def test_market_remote_url_keeps_explicit_port(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("OCTOP_MARKET_REMOTE_URL", "http://127.0.0.1:9000/")
+def test_market_remote_origin_keeps_explicit_port(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("OCTOP_MARKET_REMOTE_ORIGIN", "http://127.0.0.1:9000/")
     assert market_http.remote_base() == "http://127.0.0.1:9000"
     assert market_http.is_market_archive_url(
         "http://127.0.0.1:9000/octop/market/experts/ops/1.0.0/ops-1.0.0.zip"
