@@ -103,6 +103,7 @@ CREATE TABLE cron_jobs (
   session_key     TEXT NOT NULL,
   model           TEXT,
   fresh_thread    INTEGER NOT NULL DEFAULT 0,
+  auto_approve    INTEGER NOT NULL DEFAULT 0,
   task_type       TEXT NOT NULL DEFAULT 'agent' CHECK (task_type IN ('text', 'agent')),
   enabled         INTEGER NOT NULL DEFAULT 1,
   last_run_at     INTEGER,

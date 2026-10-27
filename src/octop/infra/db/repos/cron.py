@@ -73,6 +73,7 @@ class CronJobRow:
     session_key: str
     model: str | None
     fresh_thread: int
+    auto_approve: int
     enabled: int
     task_type: str
     mcp_servers: list[str]
@@ -95,6 +96,7 @@ class CronJobRow:
             session_key=r["session_key"],
             model=r["model"],
             fresh_thread=r["fresh_thread"],
+            auto_approve=r["auto_approve"],
             enabled=r["enabled"],
             task_type=normalize_cron_task_type(str(r["task_type"])),
             mcp_servers=_decode_mcp_servers(r["mcp_servers"]),
@@ -114,6 +116,7 @@ class CronJobRow:
             "session_key": self.session_key,
             "model": self.model,
             "fresh_thread": bool(self.fresh_thread),
+            "auto_approve": bool(self.auto_approve),
             "enabled": bool(self.enabled),
             "task_type": self.task_type,
             "mcp_servers": list(self.mcp_servers),
@@ -140,6 +143,7 @@ class CronJobRepo:
         prompt: str,
         session_key: str,
         fresh_thread: bool = False,
+        auto_approve: bool = False,
         model: str | None = None,
         task_type: CronTaskType = DEFAULT_CRON_TASK_TYPE,
         mcp_servers: list[str] | None = None,
@@ -150,9 +154,9 @@ class CronJobRepo:
         with self._db.transaction() as conn:
             conn.execute(
                 "INSERT INTO cron_jobs(cron_id, name, agent_id, user_id, schedule_spec, prompt, "
-                "session_key, model, fresh_thread, task_type, mcp_servers, enabled, "
+                "session_key, model, fresh_thread, auto_approve, task_type, mcp_servers, enabled, "
                 "created_at, updated_at) "
-                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                 (
                     cron_id,
                     (name or "").strip() or default_cron_name(prompt, cron_id),
@@ -163,6 +167,7 @@ class CronJobRepo:
                     session_key,
                     model,
                     bool_int(fresh_thread),
+                    bool_int(auto_approve),
                     task_type,
                     _encode_mcp_servers(mcp_servers),
                     bool_int(enabled),
@@ -241,6 +246,7 @@ class CronJobRepo:
         prompt: str | None = None,
         session_key: str | None = None,
         fresh_thread: bool | None = None,
+        auto_approve: bool | None = None,
         enabled: bool | None = None,
         task_type: CronTaskType | None = None,
         model: str | None | object = UNSET,
@@ -258,6 +264,9 @@ class CronJobRepo:
         if fresh_thread is not None:
             fields.append("fresh_thread = ?")
             params.append(bool_int(fresh_thread))
+        if auto_approve is not None:
+            fields.append("auto_approve = ?")
+            params.append(bool_int(auto_approve))
         if model is not UNSET:
             fields.append("model = ?")
             params.append(model)

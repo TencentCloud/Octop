@@ -9,7 +9,9 @@ from typing import TYPE_CHECKING, Any
 from langchain_core.messages import AIMessage, HumanMessage
 
 from octop.i18n import tr
+from octop.infra.agents.security.hitl_session import HitlSessionPolicy, HitlSessionPolicyStore
 from octop.infra.cron.task_type import CronTaskType, normalize_cron_task_type
+from octop.infra.gateway.hitl.coordinator import iter_with_session_auto_approve
 from octop.infra.gateway.process import build_harness_request
 from octop.infra.gateway.process.message_keys import COMPOSER_CTX_KEY, build_composer_context
 from octop.infra.gateway.process.usage_record import UsageTracker, record_turn_usage
@@ -45,6 +47,7 @@ class CronDeliveryCommand:
     task_type: CronTaskType
     model: str | None
     mcp_servers: tuple[str, ...]
+    auto_approve: bool = False
 
 
 class CronDeliveryService:
@@ -147,7 +150,21 @@ class CronDeliveryService:
             from octop.infra.connectors.gateway.adapters.agently_cli import write_scope
 
             with write_scope(allowed=False):
-                async for chunk in self._agent_manager.stream(command.agent_id, request):
+                source = self._agent_manager.stream(command.agent_id, request)
+                if command.auto_approve:
+                    policies = HitlSessionPolicyStore()
+                    policies.set(session.thread_id, HitlSessionPolicy(mode="allow_all"))
+                    source = iter_with_session_auto_approve(
+                        source,
+                        thread_id=session.thread_id,
+                        policies=policies,
+                        resume=lambda decisions: self._agent_manager.resume_hitl(
+                            command.agent_id,
+                            session.thread_id,
+                            decisions,
+                        ),
+                    )
+                async for chunk in source:
                     tracker.observe(chunk)
                     usage.observe(chunk)
                     kind = chunk.get("type")
@@ -348,6 +365,7 @@ def command_from_row(row: Any) -> CronDeliveryCommand:
         session_key=str(row.session_key),
         prompt=str(row.prompt),
         fresh_thread=bool(row.fresh_thread),
+        auto_approve=bool(row.auto_approve),
         task_type=normalize_cron_task_type(str(row.task_type)),
         model=str(row.model) if row.model else None,
         mcp_servers=tuple(str(name) for name in row.mcp_servers),

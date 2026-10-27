@@ -39,6 +39,7 @@ export interface CronJobFormValues {
   task_type: "text" | "agent";
   model?: string;
   fresh_thread: boolean;
+  auto_approve: boolean;
   session_key?: string | null;
   mcp_servers?: string[];
 }
@@ -84,6 +85,7 @@ function fromOctop(row: OctopCronRow, timezone: string): CronJob {
     meta: {
       orca_agent_id: row.agent_id,
       octop_fresh_thread: row.fresh_thread,
+      octop_auto_approve: row.auto_approve,
       octop_session_key: row.session_key,
       octop_model: row.model,
       octop_task_type: row.task_type,
@@ -131,6 +133,7 @@ export function jobToFormValues(
         (typeof meta.octop_model === "string" ? meta.octop_model : undefined),
     ),
     fresh_thread: Boolean(meta.octop_fresh_thread),
+    auto_approve: Boolean(meta.octop_auto_approve),
     session_key:
       typeof meta.octop_session_key === "string"
         ? meta.octop_session_key
@@ -182,6 +185,7 @@ function toOctopCreateBody(values: CronJobFormValues) {
     task_type: values.task_type,
     session_key: values.fresh_thread ? null : values.session_key || null,
     fresh_thread: Boolean(values.fresh_thread),
+    auto_approve: Boolean(values.auto_approve),
     enabled: Boolean(values.enabled),
     model: defaultModelFromForm(values.model),
     mcp_servers: values.mcp_servers ?? [],

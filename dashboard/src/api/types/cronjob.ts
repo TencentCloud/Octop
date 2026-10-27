@@ -73,6 +73,7 @@ export interface OctopCronRow {
   prompt: string;
   session_key: string;
   fresh_thread: boolean;
+  auto_approve: boolean;
   enabled: boolean;
   task_type: "text" | "agent";
   model: string | null;
@@ -89,6 +90,7 @@ export interface OctopCronCreateBody {
   prompt: string;
   session_key?: string | null;
   fresh_thread?: boolean;
+  auto_approve?: boolean;
   enabled?: boolean;
   model?: string | null;
   task_type?: "text" | "agent";
@@ -102,6 +104,7 @@ export interface OctopCronPatchBody {
   prompt?: string;
   session_key?: string | null;
   fresh_thread?: boolean;
+  auto_approve?: boolean;
   enabled?: boolean;
   model?: string | null;
   task_type?: "text" | "agent";

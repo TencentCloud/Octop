@@ -2440,6 +2440,8 @@
       "connectorsPlaceholder": "Select connectors (multi)",
       "freshThread": "Fresh thread each run",
       "freshThreadTooltip": "When enabled, the session context is reset before each run (like starting a new chat).",
+      "autoApprove": "Auto-approve tool requests",
+      "autoApproveTooltip": "Automatically approve approvable tools during each scheduled run. User questions still pause the run.",
       "sectionRouting": "Routing",
       "sectionRoutingDesc": "Pick the session where this job runs and delivers results. Leave empty for your Dashboard default session.",
       "sessionKey": "Target session",
