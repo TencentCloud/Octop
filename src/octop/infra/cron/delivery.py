@@ -9,6 +9,7 @@ from typing import TYPE_CHECKING, Any
 from langchain_core.messages import AIMessage, HumanMessage
 
 from octop.i18n import tr
+from octop.infra.cron.stream_filter import withhold_pretool_stream_chunks
 from octop.infra.cron.task_type import CronTaskType, normalize_cron_task_type
 from octop.infra.gateway.process import build_harness_request
 from octop.infra.gateway.process.message_keys import COMPOSER_CTX_KEY, build_composer_context
@@ -147,7 +148,13 @@ class CronDeliveryService:
             from octop.infra.connectors.gateway.adapters.agently_cli import write_scope
 
             with write_scope(allowed=False):
-                async for chunk in self._agent_manager.stream(command.agent_id, request):
+                # Pre-tool narration must not reach IM users (#2384); the
+                # filter drops text that leads into regular tool calls and
+                # keeps ask_agent dispatch lines plus the final answer.
+                stream = withhold_pretool_stream_chunks(
+                    self._agent_manager.stream(command.agent_id, request)
+                )
+                async for chunk in stream:
                     tracker.observe(chunk)
                     usage.observe(chunk)
                     kind = chunk.get("type")
