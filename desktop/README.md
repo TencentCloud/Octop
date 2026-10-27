@@ -124,8 +124,16 @@ shell holds a **device credential** instead:
 
 - `main/session/device-credential.ts` mints a 32-byte secret on first use and
   stores it encrypted with `safeStorage` (Keychain / DPAPI / libsecret) at
-  `<OCTOP_HOME>/desktop-device.json`, mode `0600`. Without an OS keychain the
-  secret is stored as-is and the shell logs a warning.
+  `<OCTOP_HOME>/desktop-device.json`, mode `0600`. A host with **no usable
+  keychain** (headless Linux, WSL, CI) keeps the secret in memory for that launch
+  and writes nothing: a plaintext file leaks through every backup or sync of the
+  home directory, and a key stored beside its own ciphertext would be decoration.
+  The trade-off is one sign-in per launch there — the server upserts a single
+  `desktop_device` row, so re-registering replaces it instead of piling up
+  devices.
+- A v1 file written while the plaintext fallback still existed is re-encrypted on
+  the next start when a keychain is available, and deleted otherwise (its secret
+  is still adopted for that one launch).
 - The renderer never sees it. After the first authenticated response,
   `dashboard/src/api/desktopSession.ts` asks the shell to bind the credential to
   the signed-in user (`POST /api/auth/device/register`, which replaces any

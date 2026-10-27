@@ -3,7 +3,8 @@
 Desktop builds run without an account system: the initial admin gets a
 server-minted password nobody types, so ``POST /api/auth/login`` is not a path a
 desktop user can take. Instead the shell keeps a per-install device token in the
-OS keychain and trades it for a normal JWT when the previous one expired.
+OS keychain — or, on a host without one, only in memory for the current launch —
+and trades it for a normal JWT when the previous one expired.
 
 Three properties keep this from being a back door:
 
@@ -13,7 +14,8 @@ Three properties keep this from being a back door:
   already-authenticated request.
 
 The token itself never reaches the renderer: the shell generates it, stores it
-encrypted, and talks to these endpoints from the main process.
+encrypted (or holds it in memory when the host has no keychain), and talks to
+these endpoints from the main process.
 """
 
 from __future__ import annotations

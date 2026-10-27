@@ -174,7 +174,9 @@ delete env.PYTHONPATH
 
 令牌有效期保持服务端默认值，壳不去改它 —— 无密码的账户配一个长令牌只是把死局往后推，同时放大令牌泄漏的后果。真正解决"JWT 过期后登不进去"的是设备凭据：
 
-- 壳首次使用时生成 32 字节设备密钥，用 `safeStorage`（Keychain / DPAPI / libsecret）加密后写到 `<OCTOP_HOME>/desktop-device.json`，权限 `0600`；系统没有可用钥匙串时明文存储并打一条警告。
+- 壳首次使用时生成 32 字节设备密钥，用 `safeStorage`（Keychain / DPAPI / libsecret）加密后写到 `<OCTOP_HOME>/desktop-device.json`，权限 `0600`。
+- **没有可用钥匙串的机器（headless Linux、WSL、CI）不落盘**：密钥只留在内存里，随进程结束消失。明文落盘会跟着家目录的每一次备份/同步走，而在这种机器上"密钥就放在密文旁边"只是障眼法；代价是这类机器每次启动要重新登录一次。服务端 `desktop_device` 只有一行且是覆盖写，所以反复注册不会堆设备。
+- v1 遗留的明文文件会在启动时收敛：有钥匙串就重新加密，没有就删掉（当次启动仍沿用它的密钥）。`read()` 不把明文当凭据，只有 `migrate()` 有权收编它。
 - 渲染进程看不到这个密钥。第一次拿到认证成功的响应后，`dashboard/src/api/desktopSession.ts` 让壳把凭据绑定到当前登录用户（`POST /api/auth/device/register`，重复注册会替换旧令牌，重装或换机器即接管）。
 - 遇到 `401` 时 `request()` 通过壳续期一次（`POST /api/auth/device/token`）再重试。这个交换接口豁免 JWT，但要求壳标志位、对端是回环地址、SHA-256 摘要常量时间比对，并按来源做失败节流；服务端只存摘要（`secrets` 表 `desktop_device`）。
 - `POST /api/auth/device/revoke` 用于忘记凭据，壳暴露为 `session.revoke`，留给后续的"重置本机登录"入口。

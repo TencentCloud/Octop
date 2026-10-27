@@ -16,9 +16,9 @@ import type { CredentialCipher } from "./device-credential";
  * `isAsyncEncryptionAvailable()` still reports true in that state, so trusting it
  * alone would store "encrypted" data that anyone can read.
  *
- * When no keychain is available the credential is stored in the clear and the
- * shell logs a warning: on a headless Linux box there is nothing better to fall
- * back to, and refusing to work at all would reintroduce the sign-in wall.
+ * When no keychain is available the caller must not persist anything at all;
+ * `available()` returning false is the only signal it needs, and
+ * `DeviceCredentialStore` answers it by keeping the secret in memory.
  */
 export function safeStorageCipher(): CredentialCipher {
   return {
@@ -57,6 +57,6 @@ export async function warnIfKeychainUnavailable(
 ): Promise<void> {
   if (await cipher.available()) return;
   console.warn(
-    "[desktop] OS keychain unavailable — the device credential is stored unencrypted in the data root",
+    "[desktop] no usable OS keychain — the device credential stays in memory and this install will need to sign in again after a restart",
   );
 }
