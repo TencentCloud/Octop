@@ -34,9 +34,13 @@
   "devDependencies": {
     "@types/adm-zip": "^0.5.8",
     "@types/node": "^24.10.1",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
     "electron": "^45.0.0",
     "electron-builder": "^26.18.0",
     "electron-vite": "^3.1.0",
+    "react": "^19.3.1",
+    "react-dom": "^19.3.1",
     "typescript": "~5.8.3",
     "vite": "^6.3.5"
   }

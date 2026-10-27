@@ -1,0 +1,147 @@
+/*
+ * Fatal-error page: the antd "Result" composition (status glyph → headline →
+ * explanation → actions), rebuilt on plain CSS because the shell must not depend
+ * on the Dashboard's antd bundle.
+ */
+.result {
+  height: 100%;
+  display: flex;
+  /* `margin: auto` on the body instead of `justify-content: center`: if the
+     window is squeezed the top of the page stays scrollable. */
+  padding: 40px 24px;
+  overflow-y: auto;
+}
+
+.result__body {
+  margin: auto;
+  width: 100%;
+  max-width: 560px;
+  text-align: center;
+}
+
+.result__glyph {
+  display: block;
+  margin: 0 auto 20px;
+}
+
+.result__title {
+  margin: 0;
+  font-size: 24px;
+  font-weight: 500;
+  line-height: 1.4;
+  letter-spacing: 0.01em;
+  text-wrap: balance;
+}
+
+.result__message {
+  margin: 12px 0 0;
+  font-size: 14px;
+  line-height: 1.7;
+  color: var(--text-secondary);
+  text-wrap: pretty;
+  overflow-wrap: anywhere;
+}
+
+.result__details {
+  margin-top: 24px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface-sunken);
+  text-align: left;
+}
+
+.result__summary {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 10px 14px;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-tertiary);
+  cursor: pointer;
+  user-select: none;
+  list-style: none;
+}
+
+/* Chromium draws its own triangle; the chevron below replaces it. */
+.result__summary::-webkit-details-marker {
+  display: none;
+}
+
+.result__summary:focus-visible {
+  outline: 2px solid var(--brand);
+  outline-offset: -2px;
+  border-radius: 10px;
+}
+
+.result__caret {
+  flex: none;
+  transition: transform 120ms ease;
+}
+
+.result__details[open] .result__caret {
+  transform: rotate(90deg);
+}
+
+.result__detail {
+  margin: 0;
+  padding: 0 14px 14px;
+  max-height: 180px;
+  overflow: auto;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  line-height: 1.65;
+  color: var(--text-secondary);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.result__actions {
+  margin-top: 28px;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 12px;
+}
+
+.result__button {
+  height: 36px;
+  padding: 0 18px;
+  font: inherit;
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--text);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  cursor: pointer;
+  transition: background-color 120ms ease, border-color 120ms ease;
+}
+
+.result__button:hover {
+  background: var(--surface-sunken);
+  border-color: rgba(0, 0, 0, 0.18);
+}
+
+.result__button:focus-visible {
+  outline: 2px solid var(--brand);
+  outline-offset: 2px;
+}
+
+.result__button--primary {
+  color: #ffffff;
+  background: var(--brand);
+  border-color: var(--brand);
+}
+
+.result__button--primary:hover {
+  background: var(--brand-strong);
+  border-color: var(--brand-strong);
+}
+
+.result__meta {
+  margin: 32px 0 0;
+  font-size: 12px;
+  color: var(--text-tertiary);
+  user-select: none;
+}
