@@ -63,7 +63,7 @@ class SkillHubMarketTimeout(SkillHubMarketError):
 
 
 def skill_market_failure_status(exc: BaseException) -> int:
-    """HTTP status for a skill-market failure when CLI fallback is disabled."""
+    """HTTP status for a failed skill-market request."""
     if isinstance(exc, SkillHubSkillNotFound):
         return 404
     if isinstance(exc, SkillHubMarketTimeout):

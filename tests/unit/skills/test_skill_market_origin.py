@@ -4,22 +4,17 @@ from __future__ import annotations
 
 import pytest
 
-from octop.infra.skills.skillhub_common import (
-    skill_market_origin,
-    skill_market_origin_configured,
-)
+from octop.infra.skills.skillhub_common import skill_market_origin
 from octop.infra.skills.skillhub_market import SkillHubMarketError, _resolve_host
 
 
 def test_unset_origin_is_the_public_host(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.delenv("SKILL_MARKET_ORIGIN", raising=False)
-    assert skill_market_origin_configured() is False
     assert skill_market_origin() == "https://api.skillhub.cn"
 
 
 def test_origin_keeps_scheme_host_and_port(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("SKILL_MARKET_ORIGIN", "http://market.internal:9000/ignored?q=1")
-    assert skill_market_origin_configured() is True
     assert skill_market_origin() == "http://market.internal:9000"
     assert _resolve_host(None) == "http://market.internal:9000"
 

@@ -33,13 +33,8 @@ from __future__ import annotations
 import asyncio
 import base64
 import contextlib
-import logging
-import os
-import shutil
-import tempfile
 from collections.abc import Sequence
 from dataclasses import dataclass
-from pathlib import Path
 from typing import Any, cast
 
 from fastapi import APIRouter, Depends, Request
@@ -62,7 +57,6 @@ from octop.infra.skills.skill_package_store import SkillPackageStore, normalize_
 from octop.infra.skills.skill_packages import (
     SkillPackageError,
     SkillPackageTooLarge,
-    read_cli_skill_install,
     resolve_skill_package,
     validate_skill_slug,
 )
@@ -76,12 +70,6 @@ from octop.infra.skills.skill_transfer import (
 )
 from octop.infra.utils.frontmatter import parse_frontmatter
 from octop.infra.utils.locale import Locale, resolve_request_locale
-
-logger = logging.getLogger(__name__)
-
-_SKILLHUB_INSTALL_URL = (
-    "https://skillhub-1388575217.cos.ap-guangzhou.myqcloud.com/install/install.sh"
-)
 
 router = APIRouter()
 
@@ -229,198 +217,6 @@ async def _guard_package_only_skill_write(
                 ErrorCode.FORBIDDEN,
                 f"skill {slug!r} is supplied by a mounted package",
             )
-
-
-def _resolve_skillhub_bin() -> str | None:
-    """Return the skillhub binary path from PATH or common install locations."""
-    skillhub_bin = shutil.which("skillhub")
-    if skillhub_bin:
-        return skillhub_bin
-    home = os.path.expanduser("~")
-    for candidate in [
-        os.path.join(home, ".local", "bin", "skillhub"),
-        os.path.join(home, ".skillhub", "bin", "skillhub"),
-        "/usr/local/bin/skillhub",
-    ]:
-        if os.path.isfile(candidate) and os.access(candidate, os.X_OK):
-            return candidate
-    return None
-
-
-async def _close_subprocess(proc: asyncio.subprocess.Process) -> None:
-    """Kill and drain ``proc`` while the event loop is still alive.
-
-    Leaving a live ``asyncio`` subprocess after ``wait_for`` times out (or after
-    the caller abandons it) keeps pipe transports open; when the loop later
-    closes, ``BaseSubprocessTransport.__del__`` raises
-    ``RuntimeError: Event loop is closed`` as an unraisable warning.
-    """
-    if proc.returncode is not None:
-        return
-    try:
-        proc.kill()
-    except ProcessLookupError:
-        return
-    try:
-        await proc.communicate()
-    except Exception:
-        with contextlib.suppress(Exception):
-            await proc.wait()
-
-
-async def _install_skillhub_cli() -> str:
-    """Download and run the official install script; return the binary path."""
-    from fastapi import HTTPException  # noqa: PLC0415
-
-    logger.info("skillhub CLI not found, attempting auto-install...")
-    curl_proc: asyncio.subprocess.Process | None = None
-    bash_proc: asyncio.subprocess.Process | None = None
-    try:
-        curl_proc = await asyncio.create_subprocess_exec(
-            "curl",
-            "-fsSL",
-            _SKILLHUB_INSTALL_URL,
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE,
-        )
-        script_stdout, curl_stderr = await asyncio.wait_for(curl_proc.communicate(), timeout=30)
-        if curl_proc.returncode != 0:
-            raise RuntimeError(
-                curl_stderr.decode("utf-8", errors="replace").strip() or "curl failed"
-            )
-        bash_proc = await asyncio.create_subprocess_exec(
-            "bash",
-            "-s",
-            "--",
-            "--no-skills",
-            stdin=asyncio.subprocess.PIPE,
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE,
-            env={**os.environ, "HOME": os.path.expanduser("~")},
-        )
-        _, bash_stderr = await asyncio.wait_for(
-            bash_proc.communicate(input=script_stdout), timeout=60
-        )
-        if bash_proc.returncode != 0:
-            raise RuntimeError(
-                bash_stderr.decode("utf-8", errors="replace").strip() or "install script failed"
-            )
-    except TimeoutError:
-        raise HTTPException(status_code=504, detail="skillhub auto-install timed out") from None
-    except HTTPException:
-        raise
-    except Exception as exc:
-        raise HTTPException(
-            status_code=502, detail=f"Failed to auto-install skillhub CLI: {exc}"
-        ) from exc
-    finally:
-        if curl_proc is not None:
-            await _close_subprocess(curl_proc)
-        if bash_proc is not None:
-            await _close_subprocess(bash_proc)
-
-    skillhub_bin = _resolve_skillhub_bin()
-    if not skillhub_bin:
-        raise HTTPException(
-            status_code=502,
-            detail=(
-                "skillhub CLI not found after install. "
-                f"Install manually: curl -fsSL {_SKILLHUB_INSTALL_URL} | sh"
-            ),
-        )
-    return skillhub_bin
-
-
-async def _ensure_skillhub_cli() -> str:
-    """Return path to the ``skillhub`` binary, auto-installing it if needed."""
-    skillhub_bin = _resolve_skillhub_bin()
-    if skillhub_bin is None:
-        skillhub_bin = await _install_skillhub_cli()
-    return skillhub_bin
-
-
-async def _run_skillhub_cmd(
-    skillhub_bin: str,
-    args: list[str],
-    *,
-    timeout: float,
-) -> tuple[int, str, str]:
-    """Run skillhub CLI and return ``(returncode, stdout, stderr)``."""
-    proc = await asyncio.create_subprocess_exec(
-        skillhub_bin,
-        *args,
-        stdout=asyncio.subprocess.PIPE,
-        stderr=asyncio.subprocess.PIPE,
-    )
-    try:
-        stdout_b, stderr_b = await asyncio.wait_for(proc.communicate(), timeout=timeout)
-    except (TimeoutError, asyncio.CancelledError):
-        await _close_subprocess(proc)
-        raise
-    return (
-        proc.returncode or 0,
-        stdout_b.decode("utf-8", errors="replace"),
-        stderr_b.decode("utf-8", errors="replace"),
-    )
-
-
-async def _upgrade_skillhub_cli(skillhub_bin: str) -> bool:
-    """Best-effort ``skillhub self-upgrade`` before install."""
-    try:
-        rc, _stdout, stderr = await _run_skillhub_cmd(
-            skillhub_bin,
-            ["self-upgrade"],
-            timeout=120,
-        )
-        if rc != 0:
-            logger.warning("skillhub self-upgrade failed (rc=%s): %s", rc, stderr.strip())
-            return False
-        return True
-    except Exception:
-        logger.warning("skillhub self-upgrade failed", exc_info=True)
-        return False
-
-
-def _map_skillhub_install_error(err_msg: str, skill_name: str) -> Any | None:
-    """Map skillhub stderr to an HTTPException when the failure is user-actionable."""
-    from fastapi import HTTPException  # noqa: PLC0415
-
-    from octop.i18n import error_message  # noqa: PLC0415
-    from octop.infra.utils.ssl_errors import looks_like_ssl_error  # noqa: PLC0415
-
-    lower = err_msg.lower()
-    if looks_like_ssl_error(err_msg):
-        return HTTPException(
-            status_code=502,
-            detail=error_message("SKILLHUB_SSL_FAILED", "en"),
-        )
-    if "http 404" in lower or ("download failed" in lower and "404" in lower):
-        return HTTPException(
-            status_code=404,
-            detail=f"Skill '{skill_name}' not found in SkillHub",
-        )
-    if "not found" in lower or "no such" in lower:
-        return HTTPException(
-            status_code=404,
-            detail=f"Skill '{skill_name}' not found in SkillHub",
-        )
-    return None
-
-
-def _skillhub_cli_failure_detail(action: str, stderr: str, *, locale: str = "en") -> str:
-    """Build a 502 detail for a failed skillhub CLI invocation."""
-    from octop.i18n import error_message  # noqa: PLC0415
-    from octop.infra.utils.ssl_errors import looks_like_ssl_error  # noqa: PLC0415
-
-    err = stderr.strip() or "unknown error"
-    if looks_like_ssl_error(err):
-        return error_message("SKILLHUB_SSL_FAILED", locale)
-    return f"skillhub {action} failed: {err}"
-
-
-def _skillhub_stderr_suggests_upgrade(err_msg: str) -> bool:
-    lower = err_msg.lower()
-    return "self-upgrade" in lower or "新版本" in err_msg
 
 
 async def _enabled_skill_names(
@@ -1257,139 +1053,14 @@ class HubInstallBody(BaseModel):
     summary: LocalizedSkillCopy | None = None
 
 
-async def _download_skillhub_package_via_cli(
-    skill_name: str,
-) -> list[tuple[str, bytes]]:
-    """Compatibility fallback for registries unsupported by the public HTTP path."""
-    from fastapi import HTTPException  # noqa: PLC0415
-
-    skillhub_bin = await _ensure_skillhub_cli()
-    await _upgrade_skillhub_cli(skillhub_bin)
-
-    with tempfile.TemporaryDirectory() as tmpdir:
-        install_args = ["--dir", tmpdir, "install", skill_name]
-        try:
-            rc, _stdout, stderr = await _run_skillhub_cmd(
-                skillhub_bin,
-                install_args,
-                timeout=120,
-            )
-        except TimeoutError:
-            raise HTTPException(
-                status_code=504, detail=f"skillhub install timed out for '{skill_name}'"
-            ) from None
-        except Exception as exc:
-            raise HTTPException(
-                status_code=502, detail=f"Failed to run skillhub CLI: {exc}"
-            ) from exc
-
-        if (
-            rc != 0
-            and _skillhub_stderr_suggests_upgrade(stderr)
-            and await _upgrade_skillhub_cli(skillhub_bin)
-        ):
-            try:
-                rc, _stdout, stderr = await _run_skillhub_cmd(
-                    skillhub_bin,
-                    install_args,
-                    timeout=120,
-                )
-            except TimeoutError:
-                raise HTTPException(
-                    status_code=504,
-                    detail=f"skillhub install timed out for '{skill_name}'",
-                ) from None
-            except Exception as exc:
-                raise HTTPException(
-                    status_code=502, detail=f"Failed to run skillhub CLI: {exc}"
-                ) from exc
-
-        if rc != 0:
-            err_msg = stderr.strip()
-            mapped = _map_skillhub_install_error(err_msg, skill_name)
-            if mapped is not None:
-                raise mapped
-            raise HTTPException(
-                status_code=502,
-                detail=_skillhub_cli_failure_detail("install", err_msg, locale="en"),
-            )
-
-        return read_cli_skill_install(Path(tmpdir))
-
-
-def _parse_skillhub_search_output(text: str) -> list[dict[str, Any]]:
-    """Parse the plain-text output of ``skillhub search`` into a list of dicts.
-
-    The CLI emits one block per skill:
-        You can use "skillhub install [skill]" to install.
-          <slug>  <Display Name>
-            - <description line 1>
-        <description line 2 (optional bilingual)>
-            - version: <ver>
-
-    We identify skill blocks by the leading two-space indent on the slug line,
-    then collect description lines until the version line.
-    """
-    import re  # noqa: PLC0415
-
-    results: list[dict[str, Any]] = []
-    lines = text.splitlines()
-
-    # Each skill entry starts with a line like "  slug  Name" (2-space indent,
-    # slug contains no spaces, followed by at least one space, then the display name).
-    slug_re = re.compile(r"^  (\S+)\s{2,}(.+)$")
-
-    i = 0
-    while i < len(lines):
-        m = slug_re.match(lines[i])
-        if m:
-            slug = m.group(1).strip()
-            name = m.group(2).strip()
-            desc_parts: list[str] = []
-            version = ""
-            i += 1
-            while i < len(lines):
-                line = lines[i]
-                # Version line ends the block
-                ver_m = re.match(r"^\s+-\s+version:\s*(.+)$", line)
-                if ver_m:
-                    version = ver_m.group(1).strip()
-                    i += 1
-                    break
-                # Desc line (may start with "    - " or be a raw continuation)
-                stripped = line.strip()
-                if stripped and not stripped.startswith("You can use"):
-                    # Remove leading "- " prefix if present
-                    cleaned = re.sub(r"^-\s+", "", stripped)
-                    if cleaned:
-                        desc_parts.append(cleaned)
-                i += 1
-            results.append(
-                {
-                    "slug": slug,
-                    "name": name,
-                    "description": " ".join(desc_parts),
-                    "version": version,
-                }
-            )
-        else:
-            i += 1
-
-    return results
-
-
 _RANKING_TYPES = {"all", "hot", "featured", "newest", "recommended", "trending", "paid"}
 
 
-async def _hub_search(request: Request, *, q: str, limit: int) -> list[dict[str, Any]]:
+async def _hub_search(*, q: str, limit: int) -> list[dict[str, Any]]:
     from fastapi import HTTPException  # noqa: PLC0415
 
-    locale = resolve_request_locale(request)
     query = q.strip() or "a"
     effective_limit = max(1, min(limit, 100))
-    from octop.infra.skills.skillhub_common import (  # noqa: PLC0415
-        skill_market_origin_configured,
-    )
     from octop.infra.skills.skillhub_market import (  # noqa: PLC0415
         SkillHubMarketError,
         search_skillhub,
@@ -1399,32 +1070,10 @@ async def _hub_search(request: Request, *, q: str, limit: int) -> list[dict[str,
     try:
         return await search_skillhub(query, limit=effective_limit)
     except SkillHubMarketError as exc:
-        if skill_market_origin_configured():
-            raise HTTPException(
-                status_code=skill_market_failure_status(exc),
-                detail=str(exc),
-            ) from exc
-        logger.warning("SkillHub HTTP search failed; using CLI fallback: %s", exc)
-
-    skillhub_bin = await _ensure_skillhub_cli()
-    try:
-        rc, stdout, stderr = await _run_skillhub_cmd(
-            skillhub_bin,
-            ["search", "--search-limit", str(effective_limit), query],
-            timeout=30,
-        )
-    except TimeoutError:
-        raise HTTPException(status_code=504, detail="skillhub search timed out") from None
-    except Exception as exc:
-        raise HTTPException(status_code=502, detail=f"Failed to run skillhub CLI: {exc}") from exc
-
-    if rc != 0:
         raise HTTPException(
-            status_code=502,
-            detail=_skillhub_cli_failure_detail("search", stderr, locale=locale),
-        )
-
-    return _parse_skillhub_search_output(stdout)
+            status_code=skill_market_failure_status(exc),
+            detail=str(exc),
+        ) from exc
 
 
 async def _hub_rankings(ranking_type: str) -> dict[str, Any]:
@@ -1447,13 +1096,12 @@ async def _hub_rankings(ranking_type: str) -> dict[str, Any]:
 
 @router.get("/skills/hub/search", summary="Search SkillHub without an agent")
 async def hub_search_skills_global(
-    request: Request,
     q: str = "",
     limit: int = 50,
     _user: Any = Depends(current_user),
 ) -> list[dict[str, Any]]:
     """Browse SkillHub while composing a new expert (no agent exists yet)."""
-    return await _hub_search(request, q=q, limit=limit)
+    return await _hub_search(q=q, limit=limit)
 
 
 @router.get("/skills/hub/rankings", summary="SkillHub rankings without an agent")
@@ -1468,20 +1116,19 @@ async def hub_rankings_global(
 @router.get("/agents/{agent_id}/skills/hub/search")
 async def hub_search_skills(
     agent_id: str,
-    request: Request,
     q: str = "",
     limit: int = 50,
     as_user: int | None = None,
     user: Any = Depends(current_user),
     server: Any = Depends(get_server),
 ) -> list[dict[str, Any]]:
-    """Search Tencent SkillHub over HTTP, with CLI compatibility fallback.
+    """Search the skill market over HTTP.
 
     The agent_id param is accepted for auth/routing symmetry with
     the install endpoint but is not used for the search itself.
     """
     require_agent_owner_row(agent_id, user=user, as_user=as_user, server=server)
-    return await _hub_search(request, q=q, limit=limit)
+    return await _hub_search(q=q, limit=limit)
 
 
 @router.get("/agents/{agent_id}/skills/hub/rankings")
@@ -1515,8 +1162,7 @@ async def hub_install_skill(
 ) -> dict[str, Any]:
     """Install a SkillHub skill into the specified agent's workspace.
 
-    Public skills are downloaded and validated directly over HTTP. The CLI is
-    a fallback only when ``SKILL_MARKET_ORIGIN`` is unset.
+    The package is downloaded and validated over HTTP.
     """
     from fastapi import HTTPException  # noqa: PLC0415
 
@@ -1524,9 +1170,6 @@ async def hub_install_skill(
         SkillAlreadyExistsError,
         install_skill_from_skillhub,
         valid_skillhub_icon_url,
-    )
-    from octop.infra.skills.skillhub_common import (  # noqa: PLC0415
-        skill_market_origin_configured,
     )
     from octop.infra.skills.skillhub_market import (  # noqa: PLC0415
         SkillHubMarketError,
@@ -1579,23 +1222,10 @@ async def hub_install_skill(
     except SkillHubPackageError as exc:
         raise HTTPException(status_code=502, detail=str(exc)) from exc
     except SkillHubMarketError as exc:
-        if skill_market_origin_configured():
-            raise HTTPException(
-                status_code=skill_market_failure_status(exc),
-                detail=str(exc),
-            ) from exc
-        logger.warning(
-            "SkillHub HTTP install failed for %s; using CLI fallback: %s",
-            skill_name,
-            exc,
-        )
-        transport = "cli"
-        try:
-            files = await _download_skillhub_package_via_cli(skill_name)
-        except (SkillHubPackageTooLarge, SkillPackageTooLarge) as package_exc:
-            raise HTTPException(status_code=413, detail=str(package_exc)) from package_exc
-        except (SkillHubPackageError, SkillPackageError) as package_exc:
-            raise HTTPException(status_code=502, detail=str(package_exc)) from package_exc
+        raise HTTPException(
+            status_code=skill_market_failure_status(exc),
+            detail=str(exc),
+        ) from exc
 
     await _guard_package_only_skill_write(ctx.workspace, ctx.config, server, skill_name, user)
     try:
