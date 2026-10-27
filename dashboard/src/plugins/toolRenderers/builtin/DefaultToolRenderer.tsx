@@ -203,6 +203,7 @@ export function DefaultToolRenderer({
                 url={file.url}
                 filename={file.filename}
                 agentId={agentId}
+                inlineHtml
               />
             ))}
           </div>

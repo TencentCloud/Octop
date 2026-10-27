@@ -1300,6 +1300,8 @@
     "path_outside_root": "The file path is outside this expert's storage root, so it cannot be read or written. Use a path under the storage root, or widen the storage root in expert settings (on Windows, set an explicit drive path such as D:/octop-data)."
   },
   "chat": {
+    "collapseArtifact": "Collapse preview",
+    "expandArtifact": "Expand preview",
     "sharedExpert": {
       "banner": "Shared expert · provided by {{name}}"
     },
@@ -1952,6 +1954,8 @@
     }
   },
   "workspace": {
+    "excelFormulaUncalculated": "Some formulas have no cached result. The formula is shown without recalculation.",
+    "excelRowNumber": "Row number",
     "refreshHint": "Refreshes root only; subfolders load on expand",
     "refreshFailed": "Refresh failed",
     "uploaded": "Uploaded {{name}}",

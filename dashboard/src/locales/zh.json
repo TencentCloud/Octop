@@ -1300,6 +1300,8 @@
     "path_outside_root": "文件路径超出当前专家的存储根目录，无法读写。请改用存储根目录内的路径，或在专家设置中扩大存储根目录（Windows 上请显式指定盘符路径，例如 D:/octop-data）。"
   },
   "chat": {
+    "collapseArtifact": "收起预览",
+    "expandArtifact": "展开预览",
     "sharedExpert": {
       "banner": "共享专家 · 由 {{name}} 提供"
     },
@@ -1952,6 +1954,8 @@
     }
   },
   "workspace": {
+    "excelFormulaUncalculated": "部分公式没有缓存结果，当前显示公式文本，未重新计算。",
+    "excelRowNumber": "行号",
     "refreshHint": "只刷新根目录；子目录在展开时按需加载",
     "refreshFailed": "刷新失败",
     "uploaded": "已上传 {{name}}",

@@ -1,6 +1,7 @@
 import type { RefObject } from "react";
 import { useEffect, useRef, useState } from "react";
 import Markdown from "../../../../components/Markdown/LazyMarkdown";
+import HtmlArtifactPreview from "../../../../components/HtmlArtifactPreview";
 import styles from "../index.module.less";
 
 /**
@@ -115,17 +116,7 @@ export default function FilePreview({
     case "markdown":
       return <MarkdownPreview content={content} />;
     case "html":
-      // Render in a sandboxed iframe with an opaque origin (no
-      // ``allow-same-origin``) so the previewed markup cannot reach our
-      // cookies, JWT, or parent DOM. Scripts run in that isolated origin only.
-      return (
-        <iframe
-          title="HTML preview"
-          className={styles.htmlFrame}
-          srcDoc={content}
-          sandbox="allow-scripts allow-popups allow-forms"
-        />
-      );
+      return <HtmlArtifactPreview content={content} title="HTML preview" />;
     default:
       return null;
   }
