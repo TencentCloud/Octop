@@ -434,6 +434,9 @@ Octop 支持两个方向的 ACP 集成：
 **Q：局域网访问不了插件市场和专家市场？**
 - 这两处默认请求公网的 `octop.cloud`。在内网自建兼容目录的步骤见 [内网自建市场](private-market.md)。
 
+**Q：局域网访问不了技能市场？**
+- 技能页默认请求 `https://api.skillhub.cn`。在内网按同一接口自建，并设置 `SKILL_MARKET_ORIGIN`，见 [技能市场](skill-market.md)。
+
 **Q：数据存放在哪里？**
 - 全部在 `~/.octop/`：
 

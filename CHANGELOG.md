@@ -19,6 +19,7 @@
 - Docker 构建在安装依赖的同一层删除编译器，避免编译工具留在最终镜像里
 - 插件市场和专家市场的对象源站可用 `OCTOP_MARKET_REMOTE_URL` 配置，默认仍是 `https://download.octop.cloud`。门户目录地址继续用 `OCTOP_PORTAL_URL`，默认 `https://octop.cloud`。内网按同一接口自建市场的说明见 `docs/private-market.md`
 - 插件市场和专家市场的对象源站可用 `OCTOP_MARKET_REMOTE_ORIGIN` 配置，默认仍是 `https://download.octop.cloud`。门户目录地址继续用 `OCTOP_PORTAL_ORIGIN`，默认 `https://octop.cloud`。内网按同一接口自建市场的说明见 `docs/private-market.md`
+- 技能市场源站可用 `SKILL_MARKET_ORIGIN` 配置，默认仍是 `https://api.skillhub.cn`。设了该变量后，搜索、榜单和安装只请求这个源站。自建接口见 `docs/skill-market.md`
 
 ### 变更
 - 插件市场不再在目录不可用时改显示随安装包自带的插件，也不再读取 `OCTOP_MARKET_SOURCE`。内置插件和专家模板仍留在安装包里

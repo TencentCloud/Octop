@@ -1062,11 +1062,15 @@ async def hub_install_package_skill(
         SkillPackageTooLarge,
         validate_skill_slug,
     )
+    from octop.infra.skills.skillhub_common import (  # noqa: PLC0415
+        skill_market_origin_configured,
+    )
     from octop.infra.skills.skillhub_market import (  # noqa: PLC0415
         SkillHubMarketError,
         SkillHubPackageError,
         SkillHubPackageTooLarge,
         download_skillhub_package,
+        skill_market_failure_status,
     )
 
     locale = resolve_request_locale(request)
@@ -1111,7 +1115,12 @@ async def hub_install_package_skill(
         raise HTTPException(status_code=413, detail=str(exc)) from exc
     except SkillHubPackageError as exc:
         raise HTTPException(status_code=502, detail=str(exc)) from exc
-    except SkillHubMarketError:
+    except SkillHubMarketError as exc:
+        if skill_market_origin_configured():
+            raise HTTPException(
+                status_code=skill_market_failure_status(exc),
+                detail=str(exc),
+            ) from exc
         transport = "cli"
         from octop.api.routers.skills import (  # noqa: PLC0415
             _download_skillhub_package_via_cli,

@@ -2,7 +2,7 @@
 
 访问不了 `octop.cloud` 和 `download.octop.cloud` 时，可以在局域网里按本文的 HTTP 接口自建市场。Octop 只认这两份目录和目录里给出的安装包地址，不需要部署完整的 octop.cloud。
 
-技能市场（控制台「技能」里的 SkillHub）是另一套上游，默认 `https://api.skillhub.cn`，用 `SKILLHUB_HOST` 指定。那套协议不在本文范围内。
+技能市场（控制台「技能」里的 SkillHub）是另一套上游，默认 `https://api.skillhub.cn`，用 `SKILL_MARKET_ORIGIN` 指定。协议见 [技能市场](skill-market.md)。
 
 ## Octop 怎么访问市场
 

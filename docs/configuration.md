@@ -206,6 +206,7 @@ Each variable, when set, takes precedence over the matching key in
 | `OCTOP_SERVICE_SCOPE` | `user` \| `system` | auto | systemd `--user` vs system unit (Linux only) |
 | `OCTOP_PORTAL_ORIGIN` | origin | `https://octop.cloud` | Plugin and expert catalog origin. No path. Empty disables the remote catalog. See [private market](private-market.md) |
 | `OCTOP_MARKET_REMOTE_ORIGIN` | origin | `https://download.octop.cloud` | Origin allowed for market archive `download_url` values. No path. See [private market](private-market.md) |
+| `SKILL_MARKET_ORIGIN` | origin | `https://api.skillhub.cn` | SkillHub skill search, rankings, and zip download. No path. Empty keeps the default. See [skill market](skill-market.md) |
 
 Invalid integer values are logged and ignored — the on-disk default
 remains in effect. `database_env_configured()` returns `True` when any
