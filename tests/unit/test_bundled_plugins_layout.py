@@ -65,7 +65,7 @@ def test_list_market_does_not_fall_back_to_bundled_plugins(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setenv("OCTOP_PORTAL_URL", "")
+    monkeypatch.setenv("OCTOP_PORTAL_ORIGIN", "")
     clear_market_cache()
     mgr = PluginManager(plugins_dir=tmp_path / "plugins", config_path=tmp_path / "config.json")
     with pytest.raises(OctopError) as raised:
@@ -77,7 +77,7 @@ def test_list_market_network_failure_is_not_a_market_outage(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setenv("OCTOP_PORTAL_URL", "https://octop.cloud")
+    monkeypatch.setenv("OCTOP_PORTAL_ORIGIN", "https://octop.cloud")
     clear_market_cache()
 
     def fake_fetch(url: str, *, limit: int) -> bytes:
@@ -95,7 +95,7 @@ def test_install_from_market_does_not_copy_bundled_plugin(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setenv("OCTOP_PORTAL_URL", "https://octop.cloud")
+    monkeypatch.setenv("OCTOP_PORTAL_ORIGIN", "https://octop.cloud")
     clear_market_cache()
 
     def fake_fetch(url: str, *, limit: int) -> bytes:

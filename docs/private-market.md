@@ -10,8 +10,8 @@
 控制台打开插件市场 / 专家市场
         │
         ▼
-Octop 进程  GET {OCTOP_PORTAL_URL}/api/market/plugins
-            GET {OCTOP_PORTAL_URL}/api/market/experts
+Octop 进程  GET {OCTOP_PORTAL_ORIGIN}/api/market/plugins
+            GET {OCTOP_PORTAL_ORIGIN}/api/market/experts
         │
         │  成功后把 data.items 整表缓存 30 秒
         ▼
@@ -19,7 +19,7 @@ Octop 进程  GET {OCTOP_PORTAL_URL}/api/market/plugins
         │
         ▼
 Octop 进程  GET 该条目的 download_url
-            （必须落在 OCTOP_MARKET_REMOTE_URL 上，且路径以 /octop/market/ 开头）
+            （必须落在 OCTOP_MARKET_REMOTE_ORIGIN 上，且路径以 /octop/market/ 开头）
 ```
 
 两条目录都是一次取全量。Octop 不传查询参数，专家的搜索和场景筛选都在本地做。所以 `content`、`quick_prompts` 也要放在列表条目里：详情页读的是同一份缓存，不会再去请求 `/{id}`。
@@ -35,18 +35,18 @@ Octop 进程  GET 该条目的 download_url
 在 **跑 `octop run` 的那台机器** 上设置环境变量，然后重启进程。可以写进 `~/.octop/env`（服务启动时会载入），也可以写进 systemd 的 `Environment=`。
 
 ```bash
-OCTOP_PORTAL_URL=http://market.internal:9000
-OCTOP_MARKET_REMOTE_URL=http://market.internal:9000
+OCTOP_PORTAL_ORIGIN=http://market.internal:9000
+OCTOP_MARKET_REMOTE_ORIGIN=http://market.internal:9000
 ```
 
 | 变量 | 含义 |
 |---|---|
-| `OCTOP_PORTAL_URL` | 目录源站，只写协议、主机和端口，**不要带路径**。未设置时默认 `https://octop.cloud`。设成空字符串则关闭远程目录。 |
-| `OCTOP_MARKET_REMOTE_URL` | 安装包源站，同样只保留源站。未设置或无法解析时默认 `https://download.octop.cloud`。 |
+| `OCTOP_PORTAL_ORIGIN` | 目录源站，只写协议、主机和端口，**不要带路径**。未设置时默认 `https://octop.cloud`。设成空字符串则关闭远程目录。 |
+| `OCTOP_MARKET_REMOTE_ORIGIN` | 安装包源站，同样只保留源站。未设置或无法解析时默认 `https://download.octop.cloud`。 |
 
 目录和安装包可以放同一台机器，所以上面两个变量可以相同。`download_url` 必须同时满足：
 
-- 协议、主机与 `OCTOP_MARKET_REMOTE_URL` 一致
+- 协议、主机与 `OCTOP_MARKET_REMOTE_ORIGIN` 一致
 - 环境变量里写了端口时，`download_url` 的端口也要相同；没写端口就用该协议的默认端口，URL 里也不要另加端口
 - 路径以 `/octop/market/` 开头
 
@@ -251,8 +251,8 @@ server {
 
 | 现象 | 原因 |
 |---|---|
-| 插件市场或专家市场显示暂时不可用 | 目录请求失败、超时，或 `OCTOP_PORTAL_URL` 为空。在 Octop 机器上 `curl` 两个列表地址，确认 8 秒内返回 `"success": true`。 |
-| 卡片在，安装报没有安装包 | `download_url` 的协议、主机、端口和 `OCTOP_MARKET_REMOTE_URL` 不一致，或路径不是 `/octop/market/` 开头。 |
+| 插件市场或专家市场显示暂时不可用 | 目录请求失败、超时，或 `OCTOP_PORTAL_ORIGIN` 为空。在 Octop 机器上 `curl` 两个列表地址，确认 8 秒内返回 `"success": true`。 |
+| 卡片在，安装报没有安装包 | `download_url` 的协议、主机、端口和 `OCTOP_MARKET_REMOTE_ORIGIN` 不一致，或路径不是 `/octop/market/` 开头。 |
 | 安装后版本对不上 | 目录 `version` 与 `plugin.yaml` 的 `version` 不一致；或专家 `slug` 与 `manifest.json` 的 `id` 不一致。 |
 | 改了 JSON 页面不变 | 进程内缓存约 30 秒。等待或重启 Octop。 |
 | 图标空白 | 图标地址仍指向公网。改成 emoji、`icon_name`，或浏览器和 Octop 都能打开的内网地址。 |
