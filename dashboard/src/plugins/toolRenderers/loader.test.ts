@@ -35,7 +35,7 @@ beforeEach(() => {
     "URL",
     Object.assign(class extends URL {}, {
       createObjectURL: vi.fn(
-        () => new URL("./__fixtures__/lifecycle.ts", import.meta.url).pathname,
+        () => new URL("./lifecycle.fixture.ts", import.meta.url).pathname,
       ),
       revokeObjectURL: vi.fn(),
     }),
