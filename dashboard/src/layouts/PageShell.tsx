@@ -40,6 +40,8 @@ interface PageShellProps {
   agentScoped?: boolean;
   /** Include team hosts in the agent picker (memory / channels). */
   showTeams?: boolean;
+  /** Hide disabled agents from the agent picker. */
+  runningAgentsOnly?: boolean;
   /** When true, the content area does not scroll; children fill remaining height. */
   fill?: boolean;
   children: React.ReactNode;
@@ -97,6 +99,7 @@ function PageShell({
   pathTabs,
   agentScoped,
   showTeams,
+  runningAgentsOnly,
   fill,
   children,
 }: PageShellProps) {
@@ -181,7 +184,10 @@ function PageShell({
 
       {agentScoped && (
         <div className={styles.agentBar}>
-          <AgentSelector showTeams={showTeams} />
+          <AgentSelector
+            showTeams={showTeams}
+            runningOnly={runningAgentsOnly}
+          />
         </div>
       )}
 
@@ -263,3 +269,4 @@ PageShell.Tabbed = PageShellTabbed;
 export default PageShell;
 export { styles as pageShellStyles };
 export type { PageShellProps };
+

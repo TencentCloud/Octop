@@ -1,5 +1,5 @@
 import { describe, expect, it, vi, beforeEach } from "vitest";
-import { render, screen, within } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import type { OctopAgent } from "../context/AgentContext";
 
 const state = {
@@ -132,4 +132,20 @@ describe("AgentSelector groups", () => {
       screen.getByText("当前是团队「调研团」，此页请选择专家"),
     ).toBeInTheDocument();
   });
+
+  it("hides disabled agents when the page requires a running agent", async () => {
+    state.agents = [
+      writer,
+      fakeAgent({ agent_id: "stopped", name: "已停用专家", state: "stopped" }),
+    ];
+    state.activeAgentId = "stopped";
+
+    render(<AgentSelector runningOnly />);
+
+    const chips = within(screen.getByTestId("agent-selector-chips"));
+    expect(chips.getByText("写手")).toBeInTheDocument();
+    expect(chips.queryByText("已停用专家")).not.toBeInTheDocument();
+    await waitFor(() => expect(setActiveAgent).toHaveBeenCalledWith("writer"));
+  });
 });
+
