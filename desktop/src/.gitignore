@@ -6,3 +6,9 @@ dist/
 pnpm-debug.log*
 .dev-runtime/
 resources/dashboard
+
+# Build inputs, not sources: CI copies the built Dashboard and the matching
+# portable zip (plus its portable-version.json) here before packaging. See
+# .github/workflows/octop-desktop.yml and desktop/portable/Makefile — a runtime
+# is megabytes of CPython and site-packages, never committed.
+resources/portable/
