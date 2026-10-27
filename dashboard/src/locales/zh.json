@@ -962,7 +962,7 @@
     "emptyMarketHint": "可以换个关键词，或稍后再试。",
     "noMarketDescription": "该市场专家暂未提供简介。",
     "marketSkillCount": "{{count}} 个技能",
-    "createFromMarket": "从市场创建",
+    "createFromMarket": "创建",
     "createAgainFromMarket": "再创建一个",
     "marketCreateSuccess": "已从专家市场创建：{{name}}",
     "marketCreateSuccessEnriching": "已创建 {{name}}。欢迎卡片正在后台优化，稍后进入对话即可看到更新。",

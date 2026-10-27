@@ -962,7 +962,7 @@
     "emptyMarketHint": "Try another keyword or check again later.",
     "noMarketDescription": "This market expert has no description yet.",
     "marketSkillCount": "{{count}} skill(s)",
-    "createFromMarket": "Create from Market",
+    "createFromMarket": "Create",
     "createAgainFromMarket": "Create another",
     "marketCreateSuccess": "Created from Expert Market: {{name}}",
     "marketCreateSuccessEnriching": "Created {{name}}. Welcome cards are being refined in the background and will update when you open the chat.",

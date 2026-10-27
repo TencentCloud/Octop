@@ -1001,6 +1001,26 @@
   min-height: 240px;
 }
 
+/* antd Card's dark token tints these placeholders blue. */
+:global(html[data-theme="dark"]) .loadingSkeleton {
+  :global(.octop-card) {
+    background: var(--fn-bg-primary) !important;
+    border-color: var(--fn-card-border-normal) !important;
+  }
+
+  :global(.octop-skeleton-title),
+  :global(.octop-skeleton-paragraph > li),
+  :global(.octop-skeleton-avatar) {
+    background-image: linear-gradient(
+      90deg,
+      var(--fn-bg-tertiary) 25%,
+      color-mix(in srgb, var(--fn-bg-tertiary) 78%, #fff) 37%,
+      var(--fn-bg-tertiary) 63%
+    ) !important;
+    background-size: 400% 100% !important;
+  }
+}
+
 .marketSceneTabsWrap {
   display: flex;
   flex-wrap: wrap;
@@ -1086,8 +1106,24 @@
   min-width: 0;
 }
 
+.marketCardTitleRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+
+  .agentCardName {
+    flex: 0 1 auto;
+    min-width: 0;
+  }
+
+  .expertInstalledLabel {
+    margin-left: 0;
+  }
+}
+
 .marketSearch {
-  width: 280px;
+  width: 200px;
   min-width: 0;
 
   @media (max-width: 640px) {
