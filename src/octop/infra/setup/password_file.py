@@ -2,13 +2,57 @@
 
 from __future__ import annotations
 
+import logging
 import os
 import secrets
+import subprocess
 from pathlib import Path
+
+logger = logging.getLogger(__name__)
 
 WIZARD_FILE_NAME = "octop-login.txt"
 _TOKEN_BYTES = 16
 _PASSWORD_LABEL_PREFIX = "Password:"
+
+# Module-level so tests can flip it without faking ``os.name``.
+_IS_WINDOWS = os.name == "nt"
+
+
+def _restrict_permissions(target: Path) -> None:
+    """Restrict the password file to its owner.
+
+    POSIX: plain ``0o600``. Windows: ``os.chmod`` cannot express a DACL — it
+    only toggles the read-only attribute from the owner-write bit — so the
+    plaintext wizard password stayed readable by every local account that
+    can reach the directory. Reset inherited ACEs and grant access to the
+    current user plus LOCAL SYSTEM only (#2370). Failures are logged, never
+    raised: password creation must not break first boot.
+    """
+    if not _IS_WINDOWS:
+        os.chmod(target, 0o600)
+        return
+    user = os.environ.get("USERNAME", "").strip()
+    domain = os.environ.get("USERDOMAIN", "").strip()
+    principal = f"{domain}\\{user}" if domain and user else user
+    grants = ["*S-1-5-18:F"]  # LOCAL SYSTEM, locale-independent SID form
+    if principal:
+        grants.insert(0, f"{principal}:F")
+    try:
+        proc = subprocess.run(
+            ["icacls", str(target), "/inheritance:r", "/grant:r", *grants],
+            capture_output=True,
+            check=False,
+            timeout=10,
+        )
+        if proc.returncode != 0:
+            detail = (proc.stderr or b"").decode("utf-8", "replace").strip()[:200]
+            logger.warning(
+                "could not restrict wizard password file ACL (icacls rc=%s): %s",
+                proc.returncode,
+                detail,
+            )
+    except OSError as exc:
+        logger.warning("could not restrict wizard password file ACL: %s", exc)
 
 
 def _password_path(home: Path) -> Path:
@@ -52,7 +96,7 @@ def ensure_password(home: Path, legacy_home: Path | None = None) -> str | None:
                     os.write(fd, (legacy_pw + "\n").encode("utf-8"))
                 finally:
                     os.close(fd)
-                os.chmod(target, 0o600)
+                _restrict_permissions(target)
                 return legacy_pw
             except FileExistsError:
                 return None
@@ -69,7 +113,7 @@ def ensure_password(home: Path, legacy_home: Path | None = None) -> str | None:
         os.write(fd, (pw + "\n").encode("utf-8"))
     finally:
         os.close(fd)
-    os.chmod(target, 0o600)
+    _restrict_permissions(target)
     return pw
 
 

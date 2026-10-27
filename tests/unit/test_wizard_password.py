@@ -139,3 +139,107 @@ def test_boot_self_heal_migrates_legacy_secret(tmp_path: Path) -> None:
     assert (primary_home / WIZARD_FILE_NAME).read_text(
         encoding="utf-8"
     ).strip() == "legacy-secret-456"
+
+
+# --- Windows ACL restriction (#2370) ---------------------------------------
+
+
+class _FakeIcacls:
+    def __init__(self, returncode: int = 0) -> None:
+        self.calls: list[list[str]] = []
+        self._returncode = returncode
+
+    def __call__(self, cmd: list[str], **_kwargs: object) -> object:
+        self.calls.append(cmd)
+
+        class _Proc:
+            returncode = self._returncode
+            stderr = b"refused"
+
+        return _Proc()
+
+
+def test_windows_restriction_runs_icacls_with_owner_and_system(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from octop.infra.setup import password_file as pf
+
+    target = tmp_path / WIZARD_FILE_NAME
+    target.write_text("pw\n", encoding="utf-8")
+    fake = _FakeIcacls()
+    monkeypatch.setattr(pf, "_IS_WINDOWS", True)
+    monkeypatch.setattr(pf.subprocess, "run", fake)
+    monkeypatch.setenv("USERNAME", "octopTester")
+    monkeypatch.delenv("USERDOMAIN", raising=False)
+
+    pf._restrict_permissions(target)
+
+    assert len(fake.calls) == 1
+    cmd = fake.calls[0]
+    assert cmd[0] == "icacls"
+    assert str(target) in cmd
+    assert "/inheritance:r" in cmd
+    assert "octopTester:F" in cmd
+    assert "*S-1-5-18:F" in cmd  # LOCAL SYSTEM
+
+
+def test_windows_restriction_qualifies_domain_user(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from octop.infra.setup import password_file as pf
+
+    target = tmp_path / WIZARD_FILE_NAME
+    target.write_text("pw\n", encoding="utf-8")
+    fake = _FakeIcacls()
+    monkeypatch.setattr(pf, "_IS_WINDOWS", True)
+    monkeypatch.setattr(pf.subprocess, "run", fake)
+    monkeypatch.setenv("USERNAME", "octopTester")
+    monkeypatch.setenv("USERDOMAIN", "CORP")
+
+    pf._restrict_permissions(target)
+
+    assert "CORP\\octopTester:F" in fake.calls[0]
+
+
+def test_windows_icacls_failure_does_not_raise(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """ACL hardening must never break password creation."""
+    from octop.infra.setup import password_file as pf
+
+    target = tmp_path / WIZARD_FILE_NAME
+    target.write_text("pw\n", encoding="utf-8")
+    monkeypatch.setattr(pf, "_IS_WINDOWS", True)
+    monkeypatch.setattr(pf.subprocess, "run", _FakeIcacls(returncode=1))
+
+    pf._restrict_permissions(target)  # no raise
+
+
+def test_windows_ensure_password_routes_through_icacls(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from octop.infra.setup import password_file as pf
+
+    fake = _FakeIcacls()
+    monkeypatch.setattr(pf, "_IS_WINDOWS", True)
+    monkeypatch.setattr(pf.subprocess, "run", fake)
+    monkeypatch.setenv("USERNAME", "octopTester")
+    monkeypatch.delenv("USERDOMAIN", raising=False)
+
+    pw = pf.ensure_password(tmp_path)
+
+    assert pw is not None
+    assert len(fake.calls) == 1
+    assert str(_file(tmp_path)) in fake.calls[0]
+
+
+def test_posix_restriction_keeps_0600(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    import octop.infra.setup.password_file as pf
+
+    monkeypatch.setattr(pf, "_IS_WINDOWS", False)
+    target = tmp_path / WIZARD_FILE_NAME
+    target.write_text("pw\n", encoding="utf-8")
+    pf._restrict_permissions(target)
+    if os.name == "posix":
+        mode = stat.S_IMODE(os.stat(target).st_mode)
+        assert mode == 0o600
