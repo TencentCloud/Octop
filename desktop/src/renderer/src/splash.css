@@ -1,0 +1,89 @@
+/*
+ * Splash: the first frame of the app, on screen until the sidecar reports
+ * healthy. Mirrors the Dashboard's own boot screen (ring + mark) so the swap
+ * from shell to Dashboard reads as one continuous startup.
+ */
+.splash {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 22px;
+  user-select: none;
+}
+
+.splash__mark {
+  position: relative;
+  width: 88px;
+  height: 88px;
+  flex: none;
+  animation: splash-in 320ms ease-out both;
+}
+
+.splash__ring {
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  /* Track has to stay visible on white, or the 3px arc looks like a stray line. */
+  border: 3px solid rgba(232, 93, 117, 0.16);
+  border-top-color: var(--brand);
+  animation: splash-spin 0.85s linear infinite;
+}
+
+.splash__logo {
+  position: absolute;
+  inset: 14px;
+  width: 60px;
+  height: 60px;
+  display: block;
+  border-radius: 14px;
+  animation: splash-breathe 1.6s ease-in-out infinite;
+}
+
+.splash__text {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 500;
+  letter-spacing: 0.04em;
+  color: var(--text-secondary);
+  animation: splash-in 420ms 60ms ease-out both;
+}
+
+@keyframes splash-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes splash-breathe {
+  0%,
+  100% {
+    transform: scale(1);
+    opacity: 1;
+  }
+  50% {
+    transform: scale(0.94);
+    opacity: 0.88;
+  }
+}
+
+@keyframes splash-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .splash__ring,
+  .splash__logo,
+  .splash__mark,
+  .splash__text {
+    animation: none;
+  }
+}

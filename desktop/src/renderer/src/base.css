@@ -1,0 +1,51 @@
+/*
+ * Shared baseline for the shell's own pages (splash + fatal error).
+ *
+ * Light-only on purpose: the Early Window is created with a white
+ * `backgroundColor` and shows its first frame before any user preference is
+ * known, so a dark variant here would produce a white-to-dark flash inside a
+ * still-white window. The Dashboard applies the user's theme once it loads.
+ */
+:root {
+  color-scheme: light;
+
+  /* Same rose the Dashboard uses for --fn-color-brand (theme-vars.css). */
+  --brand: #e85d75;
+  --brand-strong: #d94b64;
+  --brand-surface: #fdf1f3;
+  --brand-border: #f3cdd4;
+
+  --text: rgba(0, 0, 0, 0.88);
+  --text-secondary: rgba(0, 0, 0, 0.62);
+  --text-tertiary: rgba(0, 0, 0, 0.45);
+  --border: rgba(0, 0, 0, 0.09);
+  --surface: #ffffff;
+  --surface-sunken: #fafafa;
+
+  --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC",
+    "Noto Sans SC", "Microsoft YaHei", sans-serif;
+  --font-mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas,
+    "Liberation Mono", monospace;
+
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  background: var(--surface);
+  color: var(--text);
+  /* A frameless window has no chrome to grab, so nothing here is a drag handle. */
+  cursor: default;
+  overflow: hidden;
+}

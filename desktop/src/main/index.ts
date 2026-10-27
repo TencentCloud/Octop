@@ -34,12 +34,13 @@ import {
 } from "./update/update-coordinator";
 import { downloadToFile } from "./update/download";
 import { installUpdate, type InstallOutcome, type InstallerKind } from "./update/installer";
-import { createEarlyWindow, showEarlyWindowError } from "./windows/early-window";
+import { createEarlyWindow } from "./windows/early-window";
 import { createMainWindow } from "./windows/main-window";
 
 const UPDATE_ENDPOINT = "https://octop.cloud/api/downloads";
 const PRELOAD_PATH = join(__dirname, "../preload/index.js");
 const SPLASH_PATH = join(__dirname, "../renderer/splash.html");
+const ERROR_PATH = join(__dirname, "../renderer/error.html");
 
 interface PortableManifestFile {
   version: string;
@@ -442,6 +443,8 @@ async function boot(): Promise<void> {
 
   const early = createEarlyWindow({
     splashFile: SPLASH_PATH,
+    errorFile: ERROR_PATH,
+    version: appVersion,
   });
 
   // Resolve OCTOP_HOME, reading the login shell on macOS/Linux (GUI apps don't
@@ -463,10 +466,10 @@ async function boot(): Promise<void> {
       const decision = classifyRuntime(bundled, local, compareVersions);
 
       if (decision.action === "stop") {
-        showEarlyWindowError(
-          early,
-          `检测到本机运行时版本为 ${decision.localVersion}，当前安装的是 ${bundled.version}。这是手动覆盖安装的旧版，已停止启动，并保留了现有运行时。`,
-        );
+        early.showError({
+          message: `检测到本机运行时版本为 ${decision.localVersion}，当前安装的是 ${bundled.version}。这是手动覆盖安装的旧版，已停止启动，并保留了现有运行时。`,
+          detail: `运行时目录: ${portableDir}`,
+        });
         return;
       }
 
@@ -474,17 +477,20 @@ async function boot(): Promise<void> {
         const zip = portableZipPath();
         const digest = await sha256File(zip);
         if (digest !== bundled.sha256) {
-          showEarlyWindowError(early, `便携运行时校验失败（SHA-256 不匹配），已停止启动。`);
+          early.showError({
+            message: "随包运行时校验失败（SHA-256 不匹配），为避免执行被篡改的文件，已停止启动。",
+            detail: `文件: ${zip}\n期望: ${bundled.sha256}\n实际: ${digest}`,
+          });
           return;
         }
         extractPortableZip(zip, portableDir);
         await writeLocalVersion(octopHome, bundled.version);
       }
     } catch (err) {
-      showEarlyWindowError(
-        early,
-        err instanceof Error ? err.message : String(err),
-      );
+      early.showError({
+        message: "准备便携运行时（解压或校验）时出错，已停止启动。",
+        detail: err instanceof Error ? err.message : String(err),
+      });
       return;
     }
   }
@@ -513,10 +519,12 @@ async function boot(): Promise<void> {
 
   const ready = await startBackend();
   if (!ready) {
-    showEarlyWindowError(
-      early,
-      "Python 后端未能就绪（健康检查超时或进程提前退出）。请查看日志后重试。",
-    );
+    early.showError({
+      message: "Python 后端未能就绪（健康检查超时或进程提前退出）。请查看日志后重试。",
+      detail: backend
+        ? `启动器: ${backend.launchScript}\n端口: 127.0.0.1:${backendPort}`
+        : undefined,
+    });
     return;
   }
 
