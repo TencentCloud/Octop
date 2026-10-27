@@ -19,10 +19,14 @@ export const DEVICE_CREDENTIAL_FILE = "desktop-device.json";
 export const DEVICE_CREDENTIAL_MODE = 0o600;
 
 export interface CredentialCipher {
-  /** False on hosts without a usable keychain (headless Linux, some CI). */
-  available(): boolean;
-  encrypt(plain: string): string;
-  decrypt(payload: string): string;
+  /**
+   * False on hosts without a usable keychain (headless Linux, some CI) — and on
+   * Linux specifically, false when safeStorage would silently fall back to its
+   * hardcoded passphrase.
+   */
+  available(): Promise<boolean>;
+  encrypt(plain: string): Promise<string>;
+  decrypt(payload: string): Promise<string>;
 }
 
 interface StoredCredential {
@@ -65,8 +69,8 @@ export class DeviceCredentialStore {
       const parsed = JSON.parse(raw) as Partial<StoredCredential>;
       if (typeof parsed.secret !== "string" || parsed.secret.length === 0) return null;
       if (!parsed.encrypted) return parsed.secret;
-      if (!this.cipher.available()) return null;
-      const plain = this.cipher.decrypt(parsed.secret);
+      if (!(await this.cipher.available())) return null;
+      const plain = await this.cipher.decrypt(parsed.secret);
       return plain.length > 0 ? plain : null;
     } catch {
       // Corrupt or written by another OS account: treat as absent, regenerate.
@@ -84,11 +88,11 @@ export class DeviceCredentialStore {
   }
 
   async write(secret: string): Promise<void> {
-    const encrypted = this.cipher.available();
+    const encrypted = await this.cipher.available();
     const payload: StoredCredential = {
       v: 1,
       encrypted,
-      secret: encrypted ? this.cipher.encrypt(secret) : secret,
+      secret: encrypted ? await this.cipher.encrypt(secret) : secret,
     };
     await fs.mkdir(this.home, { recursive: true });
     await fs.writeFile(this.path, `${JSON.stringify(payload, null, 2)}\n`, {

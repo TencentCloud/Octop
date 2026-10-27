@@ -33,10 +33,10 @@
   },
   "devDependencies": {
     "@types/adm-zip": "^0.5.8",
-    "@types/node": "^22.10.2",
-    "electron": "^33.2.1",
-    "electron-builder": "^25.1.8",
-    "electron-vite": "^3.0.0",
+    "@types/node": "^24.10.1",
+    "electron": "^45.0.0",
+    "electron-builder": "^26.18.0",
+    "electron-vite": "^3.1.0",
     "typescript": "~5.8.3",
     "vite": "^6.3.5"
   }
