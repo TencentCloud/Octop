@@ -46,6 +46,8 @@ export interface ProviderPresetModel {
   max_tokens?: number | null;
   input?: string[];
   reasoning?: boolean | null;
+  /** Reasoning profile the backend attaches to preset models (presets.py). */
+  reasoning_config?: ResolvedModel["reasoning_config"];
   description?: string | null;
   embedding?: boolean;
   task?: string;

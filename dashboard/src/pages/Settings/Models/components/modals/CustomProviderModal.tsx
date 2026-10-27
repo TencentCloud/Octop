@@ -37,6 +37,33 @@ const EMBEDDING_KINDS = [
   { value: "openai", labelKey: "kindOpenaiCompat" as const },
 ];
 
+/**
+ * Serialise the editor's model drafts for ``POST /providers``.
+ *
+ * Forward the whole record that ``ModelListEditor`` produced: rebuilding a
+ * hand-picked whitelist here silently dropped ``reasoning_config`` (along with
+ * ``api_mode`` / ``api_fallback`` / ``visibility`` / ``group_ids``), so the
+ * reasoning settings configured in the editor never reached the server and the
+ * editor fell back to blanks the next time it was opened.
+ */
+export function toProviderModelPayload(
+  models: ProviderModel[],
+  embeddingLane: boolean,
+): Record<string, unknown>[] {
+  return models.map((m) => {
+    const entry: Record<string, unknown> = {
+      ...m,
+      input: m.input?.length ? m.input : ["text"],
+      thinking: m.thinking ?? null,
+    };
+    if (embeddingLane || isEmbeddingModel(m)) {
+      entry.embedding = true;
+      entry.task = "embedding";
+    }
+    return entry;
+  });
+}
+
 export function CustomProviderModal({
   open,
   onClose,
@@ -197,23 +224,7 @@ export function CustomProviderModal({
       const values = await form.validateFields();
       setSaving(true);
 
-      const modelEntries = models.map((m) => {
-        const entry: Record<string, unknown> = {
-          id: m.id,
-          name: m.name,
-          enabled: m.enabled,
-          input: m.input?.length ? m.input : ["text"],
-          thinking: null,
-        };
-        if (m.max_tokens != null) entry.max_tokens = m.max_tokens;
-        if (m.context_window != null) entry.context_window = m.context_window;
-        if (m.reasoning) entry.reasoning = true;
-        if (embeddingLane || isEmbeddingModel(m)) {
-          entry.embedding = true;
-          entry.task = "embedding";
-        }
-        return entry;
-      });
+      const modelEntries = toProviderModelPayload(models, embeddingLane);
 
       await request<ProviderRow>(apiPrefix, {
         method: "POST",

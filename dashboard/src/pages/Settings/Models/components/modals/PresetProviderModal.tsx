@@ -102,6 +102,10 @@ export function PresetProviderModal({
         if (meta.reasoning) entry.reasoning = true;
         if (ctx) entry.context_window = ctx;
         if (meta.max_tokens) entry.max_tokens = meta.max_tokens;
+        // Presets ship a reasoning profile; keep it, otherwise creating a
+        // provider from a preset silently drops the model's effort/adapter
+        // settings and the editor reopens with blank reasoning fields.
+        if (m.reasoning_config) entry.reasoning_config = m.reasoning_config;
         if (embeddingLane || m.embedding || m.task === "embedding") {
           entry.embedding = true;
           entry.task = "embedding";
