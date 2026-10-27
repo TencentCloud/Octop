@@ -34,9 +34,10 @@ async function makeFixture(options: {
 } = {}) {
   const home = await fs.mkdtemp(join(tmpdir(), "octop-session-"));
   const store = new DeviceCredentialStore(home, {
-    available: () => true,
-    encrypt: (plain) => `enc:${Buffer.from(plain, "utf8").toString("base64")}`,
-    decrypt: (payload) => Buffer.from(payload.slice(4), "base64").toString("utf8"),
+    available: async () => true,
+    encrypt: async (plain) => `enc:${Buffer.from(plain, "utf8").toString("base64")}`,
+    decrypt: async (payload) =>
+      Buffer.from(payload.slice(4), "base64").toString("utf8"),
   });
   if (options.seed) await store.write(options.seed);
 
@@ -69,14 +70,22 @@ async function makeFixture(options: {
   };
 }
 
+/** Indexed access with a real assertion (the tsconfig forbids blind lookups). */
+function callAt(calls: Call[], index: number): Call {
+  const call = calls[index];
+  assert.ok(call, `expected call #${index}`);
+  return call;
+}
+
 test("register binds the credential to the current user", async () => {
   const fx = await makeFixture({ respond: () => jsonResponse(200, { ok: true }) });
 
   assert.equal(await fx.client.register("jwt-1"), true);
   assert.equal(fx.calls.length, 1);
-  assert.equal(fx.calls[0].url, "http://127.0.0.1:51234/api/auth/device/register");
-  assert.equal(fx.calls[0].authorization, "Bearer jwt-1");
-  const body = fx.calls[0].body as { device_token: string; label: string };
+  const first = callAt(fx.calls, 0);
+  assert.equal(first.url, "http://127.0.0.1:51234/api/auth/device/register");
+  assert.equal(first.authorization, "Bearer jwt-1");
+  const body = first.body as { device_token: string; label: string };
   assert.equal(body.label, "darwin-arm64");
   // The token that goes over the wire is the stored secret, not a new one.
   assert.equal(body.device_token, await fx.store.read());
@@ -122,9 +131,10 @@ test("renew exchanges the credential for a JWT", async () => {
     access_token: "fresh-jwt",
     expires_in: 86400,
   });
-  assert.equal(fx.calls[0].url, "http://127.0.0.1:51234/api/auth/device/token");
-  assert.equal(fx.calls[0].authorization, undefined, "the token endpoint is unauthenticated");
-  assert.deepEqual(fx.calls[0].body, { device_token: "stored-secret" });
+  const call = callAt(fx.calls, 0);
+  assert.equal(call.url, "http://127.0.0.1:51234/api/auth/device/token");
+  assert.equal(call.authorization, undefined, "the token endpoint is unauthenticated");
+  assert.deepEqual(call.body, { device_token: "stored-secret" });
 
   await fx.cleanup();
 });
@@ -195,7 +205,8 @@ test("revoke forgets the credential only after the server confirms", async () =>
   });
   assert.equal(await ok.client.revoke("jwt-1"), true);
   assert.equal(await ok.store.read(), null);
-  assert.equal(ok.calls[0].url, "http://127.0.0.1:51234/api/auth/device/revoke");
-  assert.equal(ok.calls[0].authorization, "Bearer jwt-1");
+  const call = callAt(ok.calls, 0);
+  assert.equal(call.url, "http://127.0.0.1:51234/api/auth/device/revoke");
+  assert.equal(call.authorization, "Bearer jwt-1");
   await ok.cleanup();
 });

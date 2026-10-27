@@ -45,7 +45,10 @@ for registry/auth, and the `package.json` `"pnpm"` field is ignored:
 `nodeLinker: hoisted` is required because electron-builder and electron-vite
 inspect a flat `node_modules` tree. `allowBuilds` is required because pnpm blocks
 postinstall by default and pnpm 12 fails the install (`ERR_PNPM_IGNORED_BUILDS`)
-when electron's binary download is blocked.
+when a blocked package needs one. `electron` is not on that list: since
+Electron 45 the package has no postinstall, and `node_modules/electron/dist/` is
+populated on first use — `pnpm dev` triggers it through `require("electron")`,
+CI can do it explicitly with `npx install-electron`.
 
 Node is pinned to **24** by `src/mise.toml`, overriding the repo-root pin of
 20. That override is scoped to this directory and nowhere else: the Dashboard,
@@ -54,8 +57,8 @@ Node is pinned to **24** by `src/mise.toml`, overriding the repo-root pin of
 is `pnpm test`, which uses `node --test --experimental-strip-types` and needs
 Node ≥22.6 (on Node 20 the runner dies with `bad option`), plus Node 20's April
 2026 EOL. This only affects build/test tooling: the shipped app runs on
-Electron's bundled Node (Electron 33.x → Node 20.18.3), so raising the app's
-runtime Node means upgrading Electron, not this pin.
+Electron's bundled Node (Electron **45.0.0** → Node 24.22.0, Chromium 156), so
+raising the app's runtime Node means upgrading Electron, not this pin.
 
 ```bash
 cd desktop/src
