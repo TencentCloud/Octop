@@ -1387,14 +1387,23 @@ async def _hub_search(request: Request, *, q: str, limit: int) -> list[dict[str,
     locale = resolve_request_locale(request)
     query = q.strip() or "a"
     effective_limit = max(1, min(limit, 100))
+    from octop.infra.skills.skillhub_common import (  # noqa: PLC0415
+        skill_market_origin_configured,
+    )
     from octop.infra.skills.skillhub_market import (  # noqa: PLC0415
         SkillHubMarketError,
         search_skillhub,
+        skill_market_failure_status,
     )
 
     try:
         return await search_skillhub(query, limit=effective_limit)
     except SkillHubMarketError as exc:
+        if skill_market_origin_configured():
+            raise HTTPException(
+                status_code=skill_market_failure_status(exc),
+                detail=str(exc),
+            ) from exc
         logger.warning("SkillHub HTTP search failed; using CLI fallback: %s", exc)
 
     skillhub_bin = await _ensure_skillhub_cli()
@@ -1488,9 +1497,9 @@ async def hub_rankings(
     Returns the same payload shape previously produced by
     ``skillhub skill rankings`` (typically ``section``, ``skills``, ``total``).
     ``type`` selects a section (all / hot / recommended / trending / newest /
-    featured / paid). The host is resolved from the server-side ``SKILLHUB_HOST``
-    env var, else https://api.skillhub.cn. The agent_id is accepted for
-    auth/routing symmetry with search/install; rankings are global.
+    featured / paid). The host is ``SKILL_MARKET_ORIGIN``, else
+    https://api.skillhub.cn. The agent_id is accepted for auth/routing
+    symmetry with search/install; rankings are global.
     """
     require_agent_owner_row(agent_id, user=user, as_user=as_user, server=server)
     return await _hub_rankings(type)
@@ -1507,7 +1516,7 @@ async def hub_install_skill(
     """Install a SkillHub skill into the specified agent's workspace.
 
     Public skills are downloaded and validated directly over HTTP. The CLI is
-    retained as a compatibility fallback for unsupported registry flows.
+    a fallback only when ``SKILL_MARKET_ORIGIN`` is unset.
     """
     from fastapi import HTTPException  # noqa: PLC0415
 
@@ -1516,11 +1525,15 @@ async def hub_install_skill(
         install_skill_from_skillhub,
         valid_skillhub_icon_url,
     )
+    from octop.infra.skills.skillhub_common import (  # noqa: PLC0415
+        skill_market_origin_configured,
+    )
     from octop.infra.skills.skillhub_market import (  # noqa: PLC0415
         SkillHubMarketError,
         SkillHubPackageError,
         SkillHubPackageTooLarge,
         download_skillhub_package,
+        skill_market_failure_status,
     )
 
     try:
@@ -1566,6 +1579,11 @@ async def hub_install_skill(
     except SkillHubPackageError as exc:
         raise HTTPException(status_code=502, detail=str(exc)) from exc
     except SkillHubMarketError as exc:
+        if skill_market_origin_configured():
+            raise HTTPException(
+                status_code=skill_market_failure_status(exc),
+                detail=str(exc),
+            ) from exc
         logger.warning(
             "SkillHub HTTP install failed for %s; using CLI fallback: %s",
             skill_name,
