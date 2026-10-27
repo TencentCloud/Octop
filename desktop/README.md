@@ -1,13 +1,131 @@
-# Octop desktop (Wails v3 + green portable)
+# Octop desktop (green portable + Electron shell)
 
 All desktop-client code lives here. This is **not** `src/octop/infra/control/desktop`
 (remote desktop streaming).
 
 | Path | Role |
 |------|------|
-| [`portable/`](portable/) | Green zip packaging (was `scripts/green/`) |
-| [`src/`](src/) | Wails v3 shell: load bundled zip, spawn Octop, tray/settings |
-| [`package-release.sh`](package-release.sh) | Native end-to-end portable + Wails release build |
+| [`src/`](src/) | Electron shell — owns the Python sidecar, not the business logic |
+| [`portable/`](portable/) | Green zip packaging |
+| [`DESKTOP_ARCHITECTURE.zh.md`](DESKTOP_ARCHITECTURE.zh.md) | Target architecture for the Electron shell |
+
+The Electron shell owns the whole desktop lifecycle: extract the green runtime,
+spawn Octop on a random loopback port, own tray/window chrome, refuse
+self-updates. CI keeps building the green zips that the shell bundles;
+`electron-builder` packaging is not wired into CI yet, so `pnpm package` is
+still a local step.
+
+Inside the Electron package everything sits directly under `src/`: `main/`,
+`preload/`, `renderer/`, `shared/`.
+
+## Electron shell (pnpm + Node 24)
+
+`desktop/src` is an independent Node package managed by **pnpm 12.15.0**
+(the version `corepack use pnpm` resolves under Node 24). The version is declared
+in three places that must stay equal:
+
+| Where | Read by |
+|-------|---------|
+| `src/package.json` → `packageManager` | corepack, and pnpm's own version check |
+| `src/package.json` → `devEngines.packageManager` | pnpm 12 / npm native check (`onFail: error`) |
+| `mise.toml` → `[tools] pnpm` | `mise install` / `mise exec`, so PATH has the same binary |
+
+Measured behaviour: running an older pnpm in this directory silently re-execs
+12.15.0 (`Done in 4ms using pnpm v12.15.0`), while corepack-invoked mismatches
+fail with `ERR_PNPM_BAD_PM_VERSION`. Either way `pnpm-lock.yaml` cannot be
+rewritten by a different major.
+
+Config is split by pnpm's own rules — since pnpm 11, `.npmrc` is read **only**
+for registry/auth, and the `package.json` `"pnpm"` field is ignored:
+
+| File | Holds |
+|------|-------|
+| `src/pnpm-workspace.yaml` | `nodeLinker: hoisted`, `allowBuilds` (electron, esbuild, app-builder-bin, …) |
+| `src/.npmrc` | `registry` only |
+
+`nodeLinker: hoisted` is required because electron-builder and electron-vite
+inspect a flat `node_modules` tree. `allowBuilds` is required because pnpm blocks
+postinstall by default and pnpm 12 fails the install (`ERR_PNPM_IGNORED_BUILDS`)
+when electron's binary download is blocked.
+
+Node is pinned to **24** by `src/mise.toml`, overriding the repo-root pin of
+20. That override is scoped to this directory and nowhere else: the Dashboard,
+`docker/Dockerfile` (`node:20-slim`), `release.yml`, `fnos-build-fpk.yml`,
+`octop-desktop.yml` and the server all stay on Node 20. The reason for the split
+is `pnpm test`, which uses `node --test --experimental-strip-types` and needs
+Node ≥22.6 (on Node 20 the runner dies with `bad option`), plus Node 20's April
+2026 EOL. This only affects build/test tooling: the shipped app runs on
+Electron's bundled Node (Electron 33.x → Node 20.18.3), so raising the app's
+runtime Node means upgrading Electron, not this pin.
+
+```bash
+cd desktop/src
+mise install                    # node 24 + pnpm 12.15.0
+pnpm install --frozen-lockfile
+pnpm typecheck && pnpm test && pnpm build
+pnpm dev                        # build everything, then launch (repo source)
+pnpm dev:start                  # relaunch the existing out/ bundle (no build)
+pnpm dev:no-sandbox             # same, minus the Chromium sandbox + GPU process
+pnpm package                    # electron-builder release
+```
+
+All three launch scripts are `scripts/run-dev.sh` with different flags; `--`
+forwards the rest of the line to the Electron binary:
+
+```bash
+pnpm dev:start -- --lang=en-US --remote-debugging-port=9222
+```
+
+`Ctrl+C` stops the shell **and** its Python sidecar. Chromium puts the browser
+process in its own session, so the terminal's signal does not always reach it,
+and Python runs detached (§3.1) — a signal that only kills the wrapper would
+strand the backend holding the database. So the wrapper traps the signal,
+forwards it to Electron, and Electron stops Python before exiting; a second
+`Ctrl+C` skips the 5s grace window.
+
+### Why the launch flags
+
+`run-dev.sh` always drops `ELECTRON_RUN_AS_NODE` for the launch (and only for
+the launch). When that variable is set to anything — some shells and CI images
+export it globally — the Electron binary runs as a plain `node`, so
+`require("electron")` returns a path string instead of the API and the first
+line of `main/index.ts` dies with
+`Cannot read properties of undefined (reading 'registerSchemesAsPrivileged')`.
+
+`--no-sandbox` is **not** the default, because it removes Chromium's renderer
+isolation. Reach for `pnpm dev:no-sandbox` only where the setuid helper cannot
+initialise (`sandbox initialization failed: Operation not permitted`) or the GPU
+process dies (`GPU process exited unexpectedly`): containers, CI, headless
+hosts, locked-down sandboxes. It is a dev-host switch and must never reach a
+packaged build.
+
+`dashboard/` is still npm-managed (`dashboard/package-lock.json`); the two
+package managers never share a `node_modules` tree.
+
+## Update flow (shell-owned)
+
+`openUpdateConfirmation()` is the only update entry point the renderer has, and
+it takes **no arguments** — the Dashboard can ask for the dialog, but it cannot
+name a package URL or pre-authorize an install.
+
+1. `main/update/update-coordinator.ts` selects the release from the manifest
+   (stable/beta preference, never a downgrade, `https` + `download.octop.cloud`
+   only).
+2. `main/update/download.ts` streams the installer into `$TMPDIR/octop-update`
+   and reports progress to the taskbar/Dock.
+3. API admission closes (the `octop://app/api/*` proxy answers `503`), then
+   `SidecarSupervisor.stop()` waits for Python to exit **by itself with code 0**.
+   A forced kill or non-zero exit cancels the install instead of replacing files
+   under a live backend.
+4. `main/update/installer.ts` hands the file to the OS installer — `dmg`/`pkg`
+   through `shell.openPath`, `exe`/`msi` spawned detached on Windows, AppImage
+   `chmod +x` first — and the shell quits so the installer can replace it.
+5. If the installer never opens, the sidecar is restarted and the window
+   reloads, so a failed hand-off does not leave a dead backend.
+
+Not covered yet: the §3.4 "running tasks" confirmation before quit (the backend
+has no task-query endpoint) and manifest-level digests — release assets carry no
+checksum, so only the pinned-download-host rule is enforced.
 
 ## Data directory
 
@@ -17,6 +135,11 @@ Same as the Octop CLI/server default:
 - Green runtime extract → `~/.octop/portable/`
 - Shell prefs → `~/.octop/desktop-settings.json`
 
+The shell points `OCTOP_GREEN_PACKAGES` at the extracted `packages/` directory, so
+`octop update` upgrades it through Octop's existing `--target` logic. Newer
+extracted runtimes are never downgraded; PostgreSQL stays externally managed and
+is not copied by the shell.
+
 ## Build green zip
 
 From repo root:
@@ -25,89 +148,9 @@ From repo root:
 make -f desktop/portable/Makefile green
 ```
 
-CI: `.github/workflows/octop-desktop.yml` builds native platform/arch variants.
-`v*` tags and `workflow_dispatch` (platforms=`all`) run all six; pull requests
-that touch `desktop/` build `darwin-*` and `windows-*` (amd64 + arm64). Each job
-first creates the green zip and then packages the matching Wails application.
-
-## Build a complete desktop release
-
-Run the end-to-end script on the matching native host. It builds the Dashboard,
-creates and verifies the portable runtime, embeds it into Wails, and produces
-the final native package:
-
-```bash
-desktop/package-release.sh
-# Reuse an existing desktop/portable/release/Octop-portable-<plat>-<version>.zip:
-desktop/package-release.sh darwin-arm64 --reuse-portable
-```
-
-Wails requires native packaging, so all six variants are produced by the CI
-matrix on macOS, Linux, and Windows runners rather than cross-compiled locally.
-Windows packaging also needs [NSIS](https://nsis.sourceforge.io/) (`makensis`)
-so the `.exe` is an installer rather than a portable single-file binary.
-
-## Build the Wails shell
-
-Run these from **`desktop/src`** (that directory contains `Taskfile.yml` and
-`build/config.yml`). Requires **Go 1.25+**, [Wails v3](https://v3.wails.io/)
-`v3.0.0-beta.13`.
-
-```bash
-go install github.com/wailsapp/wails/v3/cmd/wails3@v3.0.0-beta.13
-cd desktop/src
-go mod tidy
-wails3 build            # development binary under desktop/src/bin/
-wails3 task package ARCH=arm64 VERSION=<version> \
-  PORTABLE_ZIP=../portable/release/Octop-portable-darwin-arm64-<version>.zip
-```
-
-Dev against an already-running Octop (skips the bundled green zip):
-
-```bash
-cd desktop/src
-OCTOP_DESKTOP_URL=http://127.0.0.1:8088 wails3 dev
-```
-
-Without `OCTOP_DESKTOP_URL`, first launch uses `~/.octop/portable/` if valid,
-otherwise extracts the matching zip shipped with the desktop package (embedded
-in the Windows and Linux binaries, under `Contents/Resources` on macOS). The
-Wails shell never downloads Octop. For local runtime debugging, set
-`OCTOP_DESKTOP_PORTABLE_ZIP=/absolute/path/Octop-portable-<plat>-<version>.zip`.
-On later launches, a newer bundled portable version replaces the extracted
-runtime after creating a consistent SQLite backup under `~/.octop/backups/`.
-The upgraded Octop process then applies the normal database migrations during
-startup. Newer extracted runtimes are never downgraded; PostgreSQL remains
-externally managed and is not copied by the desktop shell.
-
-GitHub Release names follow `Octop-<kind>-<os>-<arch>-<version>.<ext>`:
-
-- Desktop GUI: `Octop-desktop-<plat>-<version>.dmg` (macOS; open and drag
-  `Octop.app` into Applications), `.exe` (Windows NSIS installer — copies
-  into `Program Files\Octop` and creates Start Menu + desktop shortcuts),
-  `.tar.gz` (Linux)
-- Green runtime zip: `Octop-portable-<plat>-<version>.zip`
-- PyPI wheels stay `octop-<version>-py3-none-any.whl` (PEP 427)
-
-The Linux tar.gz contains only the GUI binary; it has no separate portable zip or
-server terminal process. Runtime upgrades remain owned by Octop:
-the shell sets `OCTOP_GREEN_PACKAGES`, so `octop update` upgrades the extracted
-`packages/` directory through Octop's existing `--target` logic.
-
-Linux also needs GTK4 + WebKitGTK 6 to link. macOS 12+.
-
-## Icons
-
-| File | Used for | Rule |
-|------|----------|------|
-| `src/build/appicon.png` | Windows `.ico`, Linux | Full-bleed 512x512 artwork |
-| `src/build/appicon-macos.png` | macOS `.icns` | 1024x1024 canvas, artwork 824x824 centred |
-| `src/assets/tray-icon.png` | Tray + app icon on Windows/Linux | Full-bleed |
-| `src/assets/tray-icon-template.png` | macOS menu bar | 88px canvas, 64px black-on-transparent glyph |
-
-macOS sizes both surfaces to a fixed box, so the padding has to live in the
-artwork: the Dock follows Apple's 824/1024 icon grid, and Wails scales the menu
-bar image to the full `NSStatusBar` thickness (22pt) where the glyph should be
-~16pt. Full-bleed sources on either surface render a size bigger than every
-other app. On macOS the Dock icon comes from the bundle's `icons.icns` only —
-see `applyAppIcon` in `src/icons_darwin.go`.
+CI: `.github/workflows/octop-desktop.yml` builds native platform/arch variants
+(`darwin-arm64`, `darwin-amd64`, `linux-arm64`, `linux-amd64`, `windows-arm64`,
+`windows-amd64`) and attaches `Octop-portable-<plat>-<version>.zip` to the GitHub
+Release, then mirrors it to COS. Each job builds the Dashboard, bootstraps the
+portable CPython, packages the zip, and smoke-tests the bundle by importing every
+frozen requirement.

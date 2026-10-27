@@ -1,8 +1,14 @@
+/*
+ * Window buttons are drawn by the web layer because the Electron window is
+ * frameless. Each platform keeps its conventional edge:
+ *   macOS   → traffic lights, top-LEFT
+ *   Windows → caption buttons, top-RIGHT
+ */
+
 .mac,
 .windows {
   position: fixed;
   top: 0;
-  right: 0;
   z-index: 10000;
   display: flex;
   align-items: center;
@@ -10,11 +16,20 @@
   flex-shrink: 0;
   user-select: none;
   -webkit-app-region: no-drag;
+  app-region: no-drag;
 }
 
+/* macOS: close · minimise · zoom, leading edge. */
 .mac {
+  left: 0;
   gap: 8px;
-  padding: 0 12px 0 8px;
+  /* Traffic lights sit 12px from the edge in native apps. */
+  padding: 0 8px 0 12px;
+}
+
+/* Windows: minimise · maximise · close, trailing edge. */
+.windows {
+  right: 0;
 }
 
 .light {
@@ -53,26 +68,22 @@
   opacity: 0.85;
 }
 
-.zoom {
+.zoomLight {
   background: #28c840;
   border-color: #12a12a;
   color: #003a08;
 }
 
-.min {
+.minLight {
   background: #febc2e;
   border-color: #d89e19;
   color: #5c3b00;
 }
 
-.close {
+.closeLight {
   background: #ff5f57;
   border-color: #e0443e;
   color: #4d0000;
-}
-
-.windows {
-  height: 32px;
 }
 
 .winBtn {

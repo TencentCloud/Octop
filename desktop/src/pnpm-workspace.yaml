@@ -1,0 +1,22 @@
+# pnpm 11+ reads non-auth settings ONLY from this file — .npmrc is limited to
+# registry/auth, and the package.json "pnpm" field is no longer read.
+# https://pnpm.io/settings
+
+# electron-builder and electron-vite both inspect a flat node_modules tree, so
+# hoist every package to the root like npm would (pnpm's default is "isolated",
+# which hides transitive deps and breaks electron-builder's dependency scan).
+nodeLinker: hoisted
+
+# Dependencies allowed to run postinstall. pnpm blocks lifecycle scripts by
+# default and pnpm 12 fails the install outright
+# (ERR_PNPM_IGNORED_BUILDS) when a blocked package needs one:
+#   electron           — downloads the platform binary into dist/
+#   esbuild            — installs the platform-native binary
+#   app-builder-bin / electron-builder / electron-winstaller
+#                      — electron-builder's toolchain
+allowBuilds:
+  electron: true
+  esbuild: true
+  app-builder-bin: true
+  electron-builder: true
+  electron-winstaller: true
