@@ -860,8 +860,22 @@ async def block_to_content_part(
         data_field = base64.b64encode(file_bytes).decode("ascii")
         if not mime:
             mime = mimetypes.guess_type(filename or raw_url)[0] or "application/octet-stream"
-    elif raw_url:
+    elif raw_url.startswith(("http://", "https://", "data:")):
         url_field = raw_url
+    elif raw_url:
+        # Generation tools report workspace-relative paths (e.g.
+        # ``generated/images/<id>.png``). Handing those to channels as a
+        # "url" made WeChat's loader fail with InvalidUrlClientError and fall
+        # back to "[Image: <path>]" text; resolve them through the agent
+        # workspace instead, and drop the block when the file is missing so
+        # no internal path reaches the user (#2351).
+        file_bytes = await read_file_url_bytes(workspace, raw_url, filename=filename, mime=mime)
+        if file_bytes is None:
+            logger.warning("tool_result media block: not found in workspace: %s", raw_url)
+            return None
+        data_field = base64.b64encode(file_bytes).decode("ascii")
+        if not mime:
+            mime = mimetypes.guess_type(filename or raw_url)[0] or "application/octet-stream"
     else:
         return None
 

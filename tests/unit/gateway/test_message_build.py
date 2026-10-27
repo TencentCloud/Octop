@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import base64
+import json
 from pathlib import Path
 
 import pytest
@@ -118,3 +119,108 @@ async def test_block_to_content_part_base64_image():
     assert isinstance(part, ImageContent)
     assert part.data == "aGVsbG8="
     assert part.mime_type == "image/png"
+
+
+@pytest.mark.asyncio
+async def test_block_to_content_part_resolves_workspace_relative_path(tmp_path):
+    """#2351: generation envelopes carry workspace-relative paths, not URLs."""
+    from tests.support.fakes import FakeHarnessAgent
+
+    from octop.infra.gateway.media.tool_media import block_to_content_part
+
+    img = tmp_path / "generated" / "images" / "pic.png"
+    img.parent.mkdir(parents=True)
+    img.write_bytes(b"\x89PNG-fake")
+
+    agent = FakeHarnessAgent(workspace_dir=tmp_path)
+    part = await block_to_content_part(
+        {
+            "type": "image",
+            "path": "generated/images/pic.png",
+            "filename": "pic.png",
+            "source": {"type": "url", "url": "generated/images/pic.png"},
+        },
+        workspace=agent.workspace,
+    )
+    assert isinstance(part, ImageContent)
+    assert not part.url  # never handed to channels as a URL
+    assert part.data == base64.b64encode(b"\x89PNG-fake").decode("ascii")
+    assert part.mime_type == "image/png"
+
+
+@pytest.mark.asyncio
+async def test_block_to_content_part_missing_workspace_file_dropped(tmp_path):
+    """A missing generation file must not leak its internal path to users."""
+    from tests.support.fakes import FakeHarnessAgent
+
+    from octop.infra.gateway.media.tool_media import block_to_content_part
+
+    agent = FakeHarnessAgent(workspace_dir=tmp_path)
+    part = await block_to_content_part(
+        {
+            "type": "image",
+            "path": "generated/images/missing.png",
+            "filename": "missing.png",
+            "source": {"type": "url", "url": "generated/images/missing.png"},
+        },
+        workspace=agent.workspace,
+    )
+    assert part is None
+
+
+@pytest.mark.asyncio
+async def test_block_to_content_part_http_url_still_passthrough():
+    from tests.support.fakes import FakeHarnessAgent
+
+    from octop.infra.gateway.media.tool_media import block_to_content_part
+
+    part = await block_to_content_part(
+        {
+            "type": "image",
+            "source": {"type": "url", "url": "https://cdn.example.com/a.png"},
+        },
+        workspace=FakeHarnessAgent().workspace,
+    )
+    assert isinstance(part, ImageContent)
+    assert part.url == "https://cdn.example.com/a.png"
+
+
+@pytest.mark.asyncio
+async def test_media_events_from_generation_envelope(tmp_path):
+    """End-to-end: a generate_image envelope yields a data-backed image event."""
+    from tests.support.fakes import FakeHarnessAgent
+
+    from octop.infra.gateway.media.tool_media import media_events_from_tool_result
+
+    img = tmp_path / "generated" / "images" / "out.png"
+    img.parent.mkdir(parents=True)
+    img.write_bytes(b"\x89PNG-fake2")
+
+    agent = FakeHarnessAgent(workspace_dir=tmp_path)
+    chunk = {
+        "type": "tool_result",
+        "name": "generate_image",
+        "messages": [
+            {
+                "tool_call_id": "c1",
+                "content": json.dumps(
+                    {
+                        "type": "image_gen_tool_result",
+                        "images": [
+                            {
+                                "path": "generated/images/out.png",
+                                "mediaType": "image/png",
+                                "localPath": str(img),
+                            }
+                        ],
+                    }
+                ),
+            }
+        ],
+    }
+    events = [e async for e in media_events_from_tool_result(chunk, workspace=agent.workspace)]
+    assert len(events) == 1
+    part = events[0].content[0]
+    assert isinstance(part, ImageContent)
+    assert not part.url
+    assert part.data == base64.b64encode(b"\x89PNG-fake2").decode("ascii")
