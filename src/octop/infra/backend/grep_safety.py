@@ -212,7 +212,12 @@ def _safe_python_search(
     results: dict[str, list[tuple[int, str]]] = {}
     file_errors: list[str] = []
     try:
-        root = base_full if base_full.is_dir() else base_full.parent
+        if base_full.is_dir():
+            root = base_full
+            single_file: Path | None = None
+        else:
+            root = base_full.parent
+            single_file = base_full
     except OSError:
         return {}, False, None
     if _resolved_is_virtual_fs(os.fspath(root)):
@@ -233,8 +238,17 @@ def _safe_python_search(
             return None
         return "One or more files could not be fully searched:\n" + "\n".join(file_errors)
 
+    def _walk_targets() -> Iterator[tuple[str, list[str], list[str]]]:
+        # A file target searches only that file; a directory target keeps
+        # the recursive walk. Swapping a file for its parent directory made
+        # single-file searches return sibling and nested matches (#2352).
+        if single_file is not None:
+            yield os.fspath(root), [], [single_file.name]
+            return
+        yield from os.walk(os.fspath(root), followlinks=False)
+
     try:
-        for dirpath, dirnames, filenames in os.walk(os.fspath(root), followlinks=False):
+        for dirpath, dirnames, filenames in _walk_targets():
             if time.monotonic() > deadline:
                 _log_timeout()
                 return results, True, None

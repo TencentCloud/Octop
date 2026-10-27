@@ -197,3 +197,71 @@ class _RecordingSubprocess:
     @property
     def PIPE(self) -> str:
         return "pipe"
+
+
+# --- single-file search scope (#2352) -------------------------------------
+
+
+def _make_workspace(tmp_path: Path) -> Path:
+    """target.txt (hay), sibling.txt + nested/other.txt (needle)."""
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    (workspace / "target.txt").write_text("hay\n", encoding="utf-8")
+    (workspace / "sibling.txt").write_text("needle\n", encoding="utf-8")
+    (workspace / "nested").mkdir()
+    (workspace / "nested" / "other.txt").write_text("needle\n", encoding="utf-8")
+    return workspace
+
+
+def test_single_file_target_does_not_search_siblings(tmp_path: Path) -> None:
+    install_safe_grep_fallback()
+    workspace = _make_workspace(tmp_path)
+    backend = FilesystemBackend(root_dir=tmp_path, virtual_mode=False)
+    results, truncated, error = backend._python_search("needle", workspace / "target.txt", None)
+    assert truncated is False
+    assert error is None
+    assert results == {}
+
+
+def test_single_file_target_returns_only_its_own_matches(tmp_path: Path) -> None:
+    install_safe_grep_fallback()
+    workspace = _make_workspace(tmp_path)
+    (workspace / "target.txt").write_text("hay\nneedle\n", encoding="utf-8")
+    backend = FilesystemBackend(root_dir=tmp_path, virtual_mode=False)
+    results, truncated, error = backend._python_search("needle", workspace / "target.txt", None)
+    assert truncated is False
+    assert error is None
+    assert list(results) == [str(workspace / "target.txt")]
+    assert [text for _, text in results[str(workspace / "target.txt")]] == ["needle"]
+
+
+def test_directory_target_still_searches_recursively(tmp_path: Path) -> None:
+    install_safe_grep_fallback()
+    workspace = _make_workspace(tmp_path)
+    backend = FilesystemBackend(root_dir=tmp_path, virtual_mode=False)
+    results, truncated, error = backend._python_search("needle", workspace, None)
+    assert truncated is False
+    assert error is None
+    assert len(results) == 2
+
+
+def test_nonexistent_file_target_returns_nothing(tmp_path: Path) -> None:
+    install_safe_grep_fallback()
+    workspace = _make_workspace(tmp_path)
+    backend = FilesystemBackend(root_dir=tmp_path, virtual_mode=False)
+    results, truncated, error = backend._python_search("needle", workspace / "missing.txt", None)
+    assert truncated is False
+    assert error is None
+    assert results == {}
+
+
+def test_public_grep_single_file_scope_virtual_mode(tmp_path: Path) -> None:
+    """End-to-end via backend.grep with ripgrep unavailable (#2352 repro)."""
+    from unittest.mock import patch
+
+    install_safe_grep_fallback()
+    workspace = _make_workspace(tmp_path)
+    backend = FilesystemBackend(root_dir=workspace, virtual_mode=True)
+    with patch.object(FilesystemBackend, "_ripgrep_search", return_value=(None, False)):
+        result = backend.grep("needle", path="/target.txt")
+    assert result.matches == []
