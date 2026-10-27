@@ -501,7 +501,7 @@ async function boot(): Promise<void> {
   // §7 accounts: the device credential lives in the data root, next to the
   // database it unlocks, and only the main process ever sees it.
   const cipher = safeStorageCipher();
-  warnIfKeychainUnavailable(cipher);
+  await warnIfKeychainUnavailable(cipher);
   deviceSession = new DeviceSessionClient({
     store: new DeviceCredentialStore(octopHome, cipher),
     baseUrl: () => (apiAdmissionClosed || !backendPort ? null : `http://127.0.0.1:${backendPort}`),

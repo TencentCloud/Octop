@@ -22,9 +22,9 @@ function workingCipher(): CredentialCipher {
   // Reversible stand-in for safeStorage: the point is that the on-disk value is
   // not the plaintext, not that the transform is cryptography.
   return {
-    available: () => true,
-    encrypt: (plain) => `enc:${Buffer.from(plain, "utf8").toString("base64")}`,
-    decrypt: (payload) => {
+    available: async () => true,
+    encrypt: async (plain) => `enc:${Buffer.from(plain, "utf8").toString("base64")}`,
+    decrypt: async (payload) => {
       if (!payload.startsWith("enc:")) throw new Error("bad ciphertext");
       return Buffer.from(payload.slice(4), "base64").toString("utf8");
     },
@@ -33,11 +33,11 @@ function workingCipher(): CredentialCipher {
 
 function missingCipher(): CredentialCipher {
   return {
-    available: () => false,
-    encrypt: () => {
+    available: async () => false,
+    encrypt: async () => {
       throw new Error("encryption unavailable");
     },
-    decrypt: () => {
+    decrypt: async () => {
       throw new Error("encryption unavailable");
     },
   };

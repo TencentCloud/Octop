@@ -10,12 +10,13 @@ nodeLinker: hoisted
 # Dependencies allowed to run postinstall. pnpm blocks lifecycle scripts by
 # default and pnpm 12 fails the install outright
 # (ERR_PNPM_IGNORED_BUILDS) when a blocked package needs one:
-#   electron           — downloads the platform binary into dist/
 #   esbuild            — installs the platform-native binary
 #   app-builder-bin / electron-builder / electron-winstaller
 #                      — electron-builder's toolchain
+# electron itself is absent on purpose: since Electron 45 the package ships no
+# postinstall at all, and the platform binary is fetched on first use (or
+# explicitly with `npx install-electron`).
 allowBuilds:
-  electron: true
   esbuild: true
   app-builder-bin: true
   electron-builder: true
