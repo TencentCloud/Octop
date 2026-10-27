@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import i18n from "../i18n";
 import { probeHealth } from "../api/probeHealth";
 import { updateApi } from "../api/modules/update";
+import { apiErrorMessage } from "../utils/apiError";
 
 import { message } from "@/utils/antdMessage";
 
@@ -169,7 +170,12 @@ export function useServiceRestart() {
       if (!shouldPollAfterRestartError(err)) {
         restartInFlightRef.current = false;
         setRestartPhase("idle");
-        message.error(i18n.t("advancedSettings.update.restartFailed"));
+        // The backend explains *why* it refused (e.g. missing sudo privileges
+        // for a system-scope unit) — show that instead of a generic failure so
+        // the operator does not have to dig through logs.
+        message.error(
+          apiErrorMessage(err, i18n.t("advancedSettings.update.restartFailed")),
+        );
         return;
       }
     }

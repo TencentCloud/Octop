@@ -113,6 +113,7 @@
     "BACKUP_IN_PROGRESS": "已有备份或恢复任务正在进行，请稍后再试。",
     "FORBIDDEN": "没有权限。",
     "UPDATE_TARGET_NOT_NEWER": "目标版本 {{target}} 必须高于已安装版本 {{current}}，不支持重装同版本或降级。",
+    "RESTART_PRIVILEGE_REQUIRED": "无法重启服务：Octop 以非 root 用户（{{run_as_user}}）运行，而服务是系统级单元，需要管理员权限。请在终端执行 sudo systemctl restart octop，或为 {{run_as_user}} 配置 systemctl 免密后重试。",
     "NOT_FOUND": "未找到。",
     "USER_DISABLED": "账号已禁用。",
     "LOGIN_LOCKED": "登录失败次数过多，请 {{minutes}} 分钟后再试。",
