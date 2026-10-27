@@ -264,7 +264,7 @@
       },
       "approve": {
         "label": "批准工具",
-        "description": "批准已暂停的工具执行（IM 通道）"
+        "description": "单次批准，或在本会话中自动批准相同工具/全部工具（IM 通道）"
       },
       "reject": {
         "label": "拒绝工具",
