@@ -24,8 +24,8 @@
     "typecheck": "tsc --noEmit",
     "build": "electron-vite build",
     "test": "node --experimental-strip-types --import ./scripts/register-extensionless-ts.mjs --test \"{main,preload,shared,renderer}/**/*.test.ts\"",
-    "package": "pnpm run build && electron-builder",
-    "package:dir": "pnpm run build && electron-builder --dir"
+    "package": "pnpm run build && electron-builder --config electron-builder.config.ts",
+    "package:dir": "pnpm run build && electron-builder --config electron-builder.config.ts --dir"
   },
   "dependencies": {
     "adm-zip": "^0.6.1",
