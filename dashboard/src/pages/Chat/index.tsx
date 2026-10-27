@@ -132,6 +132,7 @@ function ChatPageInner() {
   usePluginToolUis({
     agentId: routeAgentId ?? null,
     threadId: threadId ?? null,
+    enabled: false,
   });
   const isMobile = useIsMobile();
   const user = useCurrentUser();

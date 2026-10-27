@@ -74,6 +74,14 @@ interactive L2 updates; streaming still replaces `output` via SSE (L1).
 Ship a self-contained ESM; React is provided as `window.__OCTOP_REACT__` /
 `__OCTOP_JSX__`.
 
+The signed-in Dashboard loads enabled plugin UIs on all pages. `setup(host)`
+may return a cleanup function. The host calls it on disable, uninstall, reload,
+or sign-out. Remove styles, listeners and timers, and cancel pending requests
+in that function. Use `host.request(path, options)` for JSON and
+`host.requestBlob(path, options)` for binary resources. Paths are relative to
+`/api`, for example `/plugins/example/ui/font.woff2`; the host handles the
+deployment prefix and authentication.
+
 ## Install locally
 
 ```bash

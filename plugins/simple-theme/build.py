@@ -21,8 +21,6 @@ CSS = UI / "theme.css"
 ICONS = UI / "model-icons.js"
 TEMPLATE = UI / "index.template.js"
 OUT = UI / "index.js"
-PLUGIN_MANIFEST = HERE / "plugin.yaml"
-UI_PLUGIN_MANIFEST = UI / "plugin.yaml"
 PLACEHOLDER = "__THEME_CSS__"
 ICON_PLACEHOLDER = "/* __MODEL_ICONS__"
 
@@ -43,7 +41,6 @@ def main() -> int:
         raise SystemExit(f"{TEMPLATE.name} 缺少图标占位行 {ICON_PLACEHOLDER} ... */")
     out = template.replace(marker, icons)
     OUT.write_text(out.replace(PLACEHOLDER, css), encoding="utf-8")
-    UI_PLUGIN_MANIFEST.write_text(PLUGIN_MANIFEST.read_text(encoding="utf-8"), encoding="utf-8")
     print(
         f"built {OUT.relative_to(HERE)}  ({len(css)} bytes css, "
         f"{len(icons)} bytes icons, {OUT.stat().st_size} bytes total)"

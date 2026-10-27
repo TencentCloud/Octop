@@ -6,6 +6,9 @@ import { unregisterPluginRenderers } from "./registry";
 import type { PluginUiModule } from "./types";
 
 const loadedPlugins = new Set<string>();
+const cleanups = new Map<string, () => void>();
+const pending = new Map<string, Promise<void>>();
+let generation = 0;
 const blobUrls: string[] = [];
 
 async function fetchAuthedText(path: string): Promise<string> {
@@ -27,7 +30,8 @@ async function fetchAuthedText(path: string): Promise<string> {
 async function importPluginEsm(
   pluginId: string,
   entryRel: string,
-): Promise<PluginUiModule> {
+  currentGeneration: number,
+): Promise<PluginUiModule | undefined> {
   // plugin.yaml entry is usually ``ui/dist/index.js``; API paths are under ``…/ui/``.
   const normalized = entryRel.replace(/^\/+/, "");
   const underUi = normalized.startsWith("ui/")
@@ -35,6 +39,7 @@ async function importPluginEsm(
     : normalized;
   const apiPath = `/plugins/${encodeURIComponent(pluginId)}/ui/${underUi}`;
   const source = await fetchAuthedText(apiPath);
+  if (generation !== currentGeneration) return;
   const blob = new Blob([source], { type: "text/javascript" });
   const blobUrl = URL.createObjectURL(blob);
   blobUrls.push(blobUrl);
@@ -45,7 +50,8 @@ function runSetup(mod: PluginUiModule, pluginId: string): void {
   const host = createPluginUiHost(pluginId);
   const setup = mod.setup ?? mod.default?.setup;
   if (typeof setup === "function") {
-    setup(host);
+    const cleanup = setup(host);
+    if (typeof cleanup === "function") cleanups.set(pluginId, cleanup);
   }
 }
 
@@ -53,16 +59,35 @@ function runSetup(mod: PluginUiModule, pluginId: string): void {
 export async function loadInstalledPluginUis(
   plugins: InstalledPlugin[],
 ): Promise<void> {
+  const requestedGeneration = generation;
   for (const plugin of plugins) {
-    if (plugin.error || !plugin.ui?.entry) continue;
+    if (generation !== requestedGeneration) return;
+    const entry = plugin.ui?.entry;
+    if (plugin.error || plugin.enabled === false || !entry) continue;
     if (loadedPlugins.has(plugin.id)) continue;
-    try {
-      const mod = await importPluginEsm(plugin.id, plugin.ui.entry);
-      unregisterPluginRenderers(plugin.id);
-      runSetup(mod, plugin.id);
-      loadedPlugins.add(plugin.id);
-    } catch (err) {
-      console.warn(`[plugin-ui] failed to load ${plugin.id}:`, err);
+    let loading = pending.get(plugin.id);
+    if (!loading) {
+      const currentGeneration = generation;
+      loading = (async () => {
+        try {
+          const mod = await importPluginEsm(
+            plugin.id,
+            entry,
+            currentGeneration,
+          );
+          if (!mod || generation !== currentGeneration) return;
+          unregisterPluginRenderers(plugin.id);
+          runSetup(mod, plugin.id);
+          loadedPlugins.add(plugin.id);
+        } catch (err) {
+          console.warn(`[plugin-ui] failed to load ${plugin.id}:`, err);
+        }
+      })();
+      pending.set(plugin.id, loading);
+    }
+    await loading;
+    if (pending.get(plugin.id) === loading) {
+      pending.delete(plugin.id);
     }
   }
 }
@@ -80,6 +105,16 @@ export async function reloadPluginToolUis(
 
 /** Drop cached load state (e.g. after uninstall); blob URLs are revoked. */
 export function resetPluginUiLoader(): void {
+  generation += 1;
+  pending.clear();
+  for (const [id, cleanup] of cleanups) {
+    try {
+      cleanup();
+    } catch (err) {
+      console.warn(`[plugin-ui] failed to clean up ${id}:`, err);
+    }
+  }
+  cleanups.clear();
   for (const id of loadedPlugins) {
     unregisterPluginRenderers(id);
   }

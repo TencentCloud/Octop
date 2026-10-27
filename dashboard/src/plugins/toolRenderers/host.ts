@@ -1,4 +1,4 @@
-import { request } from "../../api/request";
+import { request, requestBlob } from "../../api/request";
 import * as chatStore from "../../pages/Chat/hooks/chatStore";
 import i18n from "../../i18n";
 import {
@@ -69,6 +69,7 @@ function createHost(defaultPluginId: string): OctopPluginUIHost {
     request<T = unknown>(path: string, init?: RequestInit) {
       return request<T>(path, init);
     },
+    requestBlob,
     openSidePanel(opts) {
       dockHandlers.openSidePanel?.(opts);
     },

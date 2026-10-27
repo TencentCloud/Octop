@@ -1,17 +1,32 @@
-// 简单主题 —— 运行时：注入 CSS、注册字体、注册状态卡片。
-//
-// 设计要点：
-// 1. 插件 UI 在 Dashboard 启动时被 import，模块顶层直接执行 applyTheme()，
-//    因此"启用插件 + 刷新"即生效，不需要用户点任何按钮。
-// 2. 全部样式挂在 <html id="octop-simple-theme-root"> 下，禁用插件后刷新完全还原。
-// 3. CSS 内联在下面（插件的静态资源要走鉴权接口，外链样式表拿不到 Token；
-//    内联还能避免 SW 缓存命中旧版本）。
-
+// 简单主题：宿主调用 setup 后生效，返回的清理函数负责禁用、卸载及退出登录。
+export function setup(host) {
+const lifecycle = new AbortController();
+let disposed = false;
+const frames = new Set();
+function scheduleFrame(callback) {
+  const id = requestAnimationFrame(() => {
+    frames.delete(id);
+    if (!disposed) callback();
+  });
+  frames.add(id);
+  return id;
+}
+let themeFont = null;
+const previousRootId = document.documentElement.id;
+const themeColors = [...document.querySelectorAll('meta[name="theme-color"]')].map(meta => ({
+  meta, content: meta.getAttribute('content'), media: meta.getAttribute('media'),
+}));
+function listen(target, type, listener, options = {}) {
+  target.addEventListener(type, listener, {
+    ...(typeof options === 'boolean' ? { capture: options } : options),
+    signal: lifecycle.signal,
+  });
+}
 const STYLE_ID = "octop-simple-theme-style";
 const ROOT_ID = "octop-simple-theme-root";
 const PLUGIN_ID = "simple-theme";
 const VERSION = "1.0.2";
-const FONT_URL = "/api/plugins/simple-theme/ui/fonts/InterVariable.woff2";
+const FONT_PATH = "/plugins/simple-theme/ui/fonts/InterVariable.woff2";
 const FONT_FAMILY = "Simple Theme Sans";
 const STORAGE_KEY = "octop.simple-theme.preference";
 const MIGRATION_KEY = "octop.simple-theme.legacy-migration-v1";
@@ -30,22 +45,6 @@ try {
   }
 } catch (err) { /* localStorage 受限时不阻止主题启动 */ }
 
-// Dashboard 的 JWT 有两种存放位置（见 dashboard/src/api/request.ts）：
-// 勾选「记住我」→ localStorage；未勾选 → sessionStorage（关掉标签页即失效）。
-// 读取顺序必须与宿主 getAuthToken() 一致：先 localStorage，再 sessionStorage。
-// 存储被禁用（Safari 无痕、沙箱 iframe）时任一读取都可能抛错，故各自 try/catch。
-function simpleAuthToken() {
-  try {
-    const local = window.localStorage.getItem("auth_token");
-    if (local) return local;
-  } catch (err) { /* localStorage 不可用 → 继续看 sessionStorage */ }
-  try {
-    const session = window.sessionStorage.getItem("auth_token");
-    if (session) return session;
-  } catch (err) { /* 两种存储都不可用 → 视为未登录 */ }
-  return "";
-}
-
 const CSS = `__THEME_CSS__`;
 
 /* ------------------------------- 注入 ------------------------------- */
@@ -61,7 +60,7 @@ function currentMode() {
 }
 
 function applyTheme() {
-  if (window.__octopSimpleThemeOff) return false;
+  if (disposed) return false;
   try {
     const root = document.documentElement;
     root.id = ROOT_ID;
@@ -80,7 +79,7 @@ function applyTheme() {
       meta.setAttribute("content", currentMode() === "dark" ? "#212121" : "#ffffff");
       meta.removeAttribute("media");
     }
-    queueMicrotask(() => initColumnResize());
+    queueMicrotask(() => { if (!disposed) initColumnResize(); });
     return true;
   } catch (err) {
     console.warn("[simple-theme] 应用主题失败:", err);
@@ -110,32 +109,6 @@ function removeTheme() {
     delete icon.dataset.simpleModelBrand;
   }
 }
-
-// 模块加载即生效
-applyTheme();
-
-// 但 Dashboard 的聊天页不检查 enabled，禁用后照样 import 插件 UI。
-// 这里问一次 /api/plugins，确认自己没被禁掉，否则立刻撤回样式。
-async function verifyEnabled() {
-  try {
-    const token = simpleAuthToken();
-    const res = await fetch("/api/plugins", {
-      headers: token ? { Authorization: `Bearer ${token}` } : {},
-    });
-    if (!res.ok) return;
-    const list = await res.json();
-    const self = (list || []).find((p) => p && p.id === PLUGIN_ID);
-    if (self && self.enabled === false) {
-      window.__octopSimpleThemeOff = true;
-      removeTheme();
-    }
-  } catch (err) {
-    /* 拿不到列表就保持现状 */
-  }
-}
-
-// Also verify top-level imports: some dashboard loaders skip setup for disabled plugins.
-verifyEnabled();
 
 window.__octopSimpleTheme = {
   version: VERSION,
@@ -253,7 +226,7 @@ function syncFloatingControls() {
     dock.querySelector('.simple-model-remove').onclick = () => document.querySelector('[class*="module__contextChipModel__"] button')?.click();
     dock.querySelector('.simple-model-trigger').onclick = () => {
       const plus=document.querySelector('[data-testid="composer-plus"]'); if(!plus)return; plus.click();
-      requestAnimationFrame(() => {
+      scheduleFrame(() => {
         const label=dock.querySelector('.simple-model-trigger span').textContent;
         const candidate=[...document.querySelectorAll('button')].find(b=>!dock.contains(b)&&b.textContent.trim().endsWith(label)&&b.closest('[class*="Menu"],[class*="menu"],[class*="Popover"],[class*="popover"]'));
         if(candidate)candidate.click();
@@ -289,13 +262,13 @@ function setStatsOpen(open) {
 }
 if (!window.__simpleStatsOutsideBound) {
   window.__simpleStatsOutsideBound = true;
-  document.addEventListener('pointerdown', (event) => {
+  listen(document, 'pointerdown', (event) => {
     const dock = document.getElementById('simple-chat-dock');
     if (!dock || !dock.classList.contains('simple-stats-open')) return;
     if (dock.contains(event.target)) return;
     setStatsOpen(false);
   }, true);
-  document.addEventListener('keydown', (event) => {
+  listen(document, 'keydown', (event) => {
     if (event.key !== 'Escape') return;
     const dock = document.getElementById('simple-chat-dock');
     if (!dock || !dock.classList.contains('simple-stats-open')) return;
@@ -304,8 +277,8 @@ if (!window.__simpleStatsOutsideBound) {
   });
 }
 if(window.__simpleDockResize)window.removeEventListener('resize',window.__simpleDockResize);
-window.__simpleDockResize=syncFloatingControls;window.addEventListener('resize',syncFloatingControls);
-window.addEventListener('scroll',syncFloatingControls,{passive:true});
+window.__simpleDockResize=syncFloatingControls;listen(window, 'resize',syncFloatingControls);
+listen(window, 'scroll',syncFloatingControls,{passive:true});
 
 function refreshModelIcons() {
   if (!document.getElementById(STYLE_ID)) return;
@@ -377,17 +350,11 @@ function agentRowAgentId(row) {
   return name ? agentIdByName.get(name) || null : null;
 }
 
-function simpleAuthHeaders() {
-  const token = simpleAuthToken();
-  return token ? { Authorization: `Bearer ${token}` } : {};
-}
-
 async function refreshAgentDirectory() {
   if (agentIdByName && Date.now() - agentIdByNameAt < 300000) return agentIdByName;
   try {
-    const res = await fetch('/api/agents', { headers: simpleAuthHeaders() });
-    if (!res.ok) return agentIdByName;
-    const list = await res.json();
+    const list = await host.request('/agents', { signal: lifecycle.signal });
+    if (disposed) return agentIdByName;
     const map = new Map();
     for (const agent of list || []) {
       const name = String(agent?.name || '').replace(/\s+/g, ' ').trim();
@@ -410,16 +377,14 @@ async function pollAgentBusy() {
     if (id) ids.add(id);
   }
   if (!ids.size) return;
-  const headers = simpleAuthHeaders();
   let changed = false;
   await Promise.all([...ids].map(async (id) => {
     try {
       // history-migration/status 里的 agent_busy 是服务端 active-invocation 计数：
       // 切到别的专家、甚至刷新页面它都不会清零（threads 里的 turn_active 会
       // 跟着浏览器连接断开而掉，正是"切走就不转了"的原因）。
-      const res = await fetch(`/api/agents/${encodeURIComponent(id)}/history-migration/status`, { headers });
-      if (!res.ok) return;
-      const body = await res.json();
+      const body = await host.request(`/agents/${encodeURIComponent(id)}/history-migration/status`, { signal: lifecycle.signal });
+      if (disposed) return;
       const busy = body?.agent_busy === true;
       if (agentBusyState.get(id) !== busy) {
         agentBusyState.set(id, busy);
@@ -538,7 +503,7 @@ function setTurnCollapsed(turn, collapsed) {
   paintTurnCollapse(turn);
   if (collapsed) {
     // 收起后整条只剩几百 px，把消息顶部带进视野，别让视口停在空白处
-    requestAnimationFrame(() => { try { turn.scrollIntoView({ block: 'start' }); } catch (err) {} });
+    scheduleFrame(() => { try { turn.scrollIntoView({ block: 'start' }); } catch (err) {} });
   }
 }
 
@@ -671,7 +636,7 @@ window.__simpleAgentBusyTimer = setInterval(syncAgentBusy, 900);
 /* 服务端状态另开一条慢速轮询：切专家后仍然能知道对方还在跑 */
 if (window.__simpleAgentBusyPoll) clearInterval(window.__simpleAgentBusyPoll);
 window.__simpleAgentBusyPoll = setInterval(maybePollAgentBusy, 8000);
-document.addEventListener('visibilitychange', () => {
+listen(document, 'visibilitychange', () => {
   if (!document.hidden) {
     agentBusyPolledAt = 0;
     maybePollAgentBusy();
@@ -682,7 +647,7 @@ let modelIconsQueued = false;
 const modelIconObserver = new MutationObserver(() => {
   if (modelIconsQueued) return;
   modelIconsQueued = true;
-  requestAnimationFrame(() => { modelIconsQueued = false; refreshModelIcons(); syncAgentBusy(); syncFloatingControls(); syncTurnCollapse(); syncProcessCollapse(); window.__simpleColumnResize?.sync(); });
+  scheduleFrame(() => { if (disposed) return; modelIconsQueued = false; refreshModelIcons(); syncAgentBusy(); syncFloatingControls(); syncTurnCollapse(); syncProcessCollapse(); window.__simpleColumnResize?.sync(); });
 });
 modelIconObserver.observe(document.body, {subtree:true, childList:true, characterData:true, attributes:true, attributeFilter:['src']});
 window.__simpleThemeModelIconObserver = modelIconObserver;
@@ -732,7 +697,7 @@ function initColumnResize() {
   const maxWidth=()=>Math.max(480,Math.floor((document.querySelector('[class*="module__chatInput__"]')?.getBoundingClientRect().width||innerWidth)-56));
   const setWidth=n=>{state.width=Math.max(480,Math.min(maxWidth(),n));apply();sync();};
   const destroy=()=>{finish();state.observer?.disconnect();window.removeEventListener('resize',sync);window.removeEventListener('blur',finish);document.querySelectorAll('.simple-column-handle').forEach(e=>e.remove());root.style.removeProperty('--simple-user-column');delete window.__simpleColumnResize;};
-  window.__simpleColumnResize={sync,destroy};window.addEventListener('resize',sync);window.addEventListener('blur',finish);apply();sync();
+  window.__simpleColumnResize={sync,destroy};listen(window, 'resize',sync);listen(window, 'blur',finish);apply();sync();
 }
 
 initColumnResize();
@@ -777,7 +742,7 @@ function initDeletePresentation() {
   const observer = new MutationObserver(() => {
     if (scheduled) return;
     scheduled = true;
-    requestAnimationFrame(() => { scheduled = false; refresh(); });
+    scheduleFrame(() => { if (disposed) return; scheduled = false; refresh(); });
   });
   observer.observe(document.body, {childList:true,subtree:true,characterData:true,attributes:true,attributeFilter:['class','aria-label','title','disabled','aria-disabled','aria-busy']});
   window.__simpleDeleteObserver = observer;
@@ -791,18 +756,17 @@ initDeletePresentation();
 async function loadFont() {
   if (window.__octopSimpleThemeFont) return;
   try {
-    const token = simpleAuthToken();
-    const res = await fetch(FONT_URL, {
-      headers: token ? { Authorization: `Bearer ${token}` } : {},
-    });
-    if (!res.ok) throw new Error("HTTP " + res.status);
-    const buf = await res.arrayBuffer();
+    const blob = await host.requestBlob(FONT_PATH, { signal: lifecycle.signal });
+    const buf = await blob.arrayBuffer();
+    if (disposed) return;
     const face = new FontFace(FONT_FAMILY, buf, { weight: "100 900", display: "swap" });
     await face.load();
+    if (disposed) return;
     document.fonts.add(face);
+    themeFont = face;
     window.__octopSimpleThemeFont = true;
   } catch (err) {
-    console.warn("[simple-theme] 字体加载失败，回退系统字体:", err);
+    if (!disposed) console.warn("[simple-theme] 字体加载失败，回退系统字体:", err);
   }
 }
 
@@ -983,7 +947,7 @@ function openDiag() {
 
 if (!window.__simpleDiagBound) {
   window.__simpleDiagBound = true;
-  document.addEventListener(
+  listen(document,
     "keydown",
     (event) => {
       if ((event.ctrlKey || event.metaKey) && event.altKey && (event.key === "d" || event.key === "D")) {
@@ -996,14 +960,15 @@ if (!window.__simpleDiagBound) {
 }
 window.simpleThemeDiag = openDiag;
 
-export function setup(host) {
+function registerTheme() {
   applyTheme();
-  verifyEnabled();
   // SPA 路由切换后 <html> 上的 id 不受影响，但 meta 主题色可能被 App 重写，
   // 用 MutationObserver 盯住 data-theme，切浅/深色时同步一次。
   try {
     if (window.__octopSimpleThemeObserver) window.__octopSimpleThemeObserver.disconnect();
     const observer = new MutationObserver(() => {
+      // 宿主先更新模式和地址栏颜色；卸载时应还原当前模式的颜色。
+      for (const color of themeColors) color.content = color.meta.getAttribute('content');
       applyTheme();
       // 图标是按配色烤好两版再挑的，深浅切换后要换一份（浮动条上的那份也要换）。
       try { refreshModelIcons(); syncFloatingControls(); } catch (err) { /* 忽略 */ }
@@ -1028,4 +993,29 @@ export function setup(host) {
       component: ThemeCard,
     });
   }
+}
+
+registerTheme();
+return () => {
+  if (disposed) return;
+  disposed = true;
+  lifecycle.abort();
+  for (const id of frames) cancelAnimationFrame(id);
+  frames.clear();
+  window.__octopSimpleThemeObserver?.disconnect();
+  window.__simpleThemeModelIconObserver?.disconnect();
+  removeTheme();
+  document.documentElement.id = previousRootId;
+  for (const { meta, content, media } of themeColors) {
+    if (content === null) meta.removeAttribute('content'); else meta.setAttribute('content', content);
+    if (media === null) meta.removeAttribute('media'); else meta.setAttribute('media', media);
+  }
+  if (themeFont) document.fonts.delete(themeFont);
+  document.getElementById('simple-diag')?.remove();
+  for (const key of [
+    '__octopSimpleTheme', '__octopSimpleThemeObserver', '__octopSimpleThemeFont',
+    '__simpleThemeModelIconObserver', '__simpleThemeModelBrand', '__simpleDeleteObserver',
+    '__simpleStatsOutsideBound', '__simpleDiagBound', '__simpleDockResize', 'simpleThemeDiag',
+  ]) delete window[key];
+};
 }

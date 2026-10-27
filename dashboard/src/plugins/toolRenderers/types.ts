@@ -68,6 +68,8 @@ export interface OctopPluginUIHost {
   patchResult(callId: string, nextData: unknown): void;
   /** Authenticated Octop API request (path starts with ``/`` under ``/api``). */
   request<T = unknown>(path: string, init?: RequestInit): Promise<T>;
+  /** Authenticated binary resource, with the same API base as ``request``. */
+  requestBlob(path: string, init?: RequestInit): Promise<Blob>;
   /** Open this tool call's UI in the chat side dock (one tab per callId). */
   openSidePanel(opts: OpenSidePanelOptions): void;
   /** Close the side dock tab for this tool call, if open. */
@@ -76,8 +78,8 @@ export interface OctopPluginUIHost {
 
 /** Shape expected from ``ui/dist/index.js``. */
 export interface PluginUiModule {
-  setup?: (host: OctopPluginUIHost) => void;
-  default?: { setup?: (host: OctopPluginUIHost) => void };
+  setup?: (host: OctopPluginUIHost) => void | (() => void);
+  default?: { setup?: (host: OctopPluginUIHost) => void | (() => void) };
 }
 
 export interface PluginUiManifest {
