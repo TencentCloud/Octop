@@ -14,6 +14,7 @@ from octop.infra.utils.env_file import (
     parse_env_text,
     save_env_file,
     search_env_changed,
+    validate_env_text,
 )
 
 
@@ -129,3 +130,19 @@ def test_quoted_value_with_inner_quote_does_not_swallow_following_lines() -> Non
     text = 'MALFORMED="abc"def\nNEXT=1\n'
 
     assert parse_env_text(text) == {"MALFORMED": '"abc"def', "NEXT": "1"}
+
+
+def test_validate_env_text_reports_unclosed_quote_duplicate_and_unquoted_space() -> None:
+    issues = validate_env_text('TOKEN="missing\nTOKEN=second\nLABEL=hello world\n')
+
+    assert [(issue.line, issue.code) for issue in issues] == [
+        (1, "unclosed-quote"),
+        (2, "duplicate-key"),
+        (3, "noncanonical-value"),
+    ]
+
+
+def test_validate_env_text_accepts_formatter_output() -> None:
+    text = format_env_file({"TOKEN": 'say "hello"', "LABEL": "hello world"})
+
+    assert validate_env_text(text) == []

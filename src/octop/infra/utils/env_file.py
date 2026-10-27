@@ -5,6 +5,7 @@ from __future__ import annotations
 import os
 import re
 from collections.abc import Mapping
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
@@ -32,6 +33,73 @@ SEARCH_ENV_KEYS = frozenset(
         "TENCENTCLOUD_WSA_APIKEY",
     }
 )
+
+
+@dataclass(frozen=True)
+class EnvValidationIssue:
+    line: int
+    code: str
+    message: str
+
+
+def validate_env_text(text: str) -> list[EnvValidationIssue]:
+    """Return non-fatal diagnostics for hand-edited dotenv content."""
+    issues: list[EnvValidationIssue] = []
+    seen: dict[str, int] = {}
+    for line_number, raw_line in enumerate(text.splitlines(), start=1):
+        line = raw_line.strip()
+        if not line or line.startswith("#"):
+            continue
+        if line.startswith("export "):
+            line = line[7:].strip()
+        if "=" not in line:
+            continue
+        key, _, raw_value = line.partition("=")
+        key = key.strip()
+        if not _KEY_RE.match(key):
+            continue
+        if key in seen:
+            issues.append(
+                EnvValidationIssue(
+                    line_number,
+                    "duplicate-key",
+                    f"duplicate key {key!r}; first defined on line {seen[key]}",
+                )
+            )
+        else:
+            seen[key] = line_number
+
+        value = raw_value.strip()
+        if value[:1] in {'"', "'"}:
+            quote = value[0]
+            escaped = False
+            closed = False
+            for char in value[1:]:
+                if quote == '"' and char == "\\" and not escaped:
+                    escaped = True
+                    continue
+                if char == quote and not escaped:
+                    closed = True
+                    break
+                escaped = False
+            if not closed:
+                issues.append(
+                    EnvValidationIssue(
+                        line_number,
+                        "unclosed-quote",
+                        f"value opened with {quote} but never closed",
+                    )
+                )
+            continue
+        if value and re.search(r"[\s#\"'\\]", value):
+            issues.append(
+                EnvValidationIssue(
+                    line_number,
+                    "noncanonical-value",
+                    "value contains whitespace or special characters but is not quoted",
+                )
+            )
+    return issues
 
 
 def env_file_path(root: Path) -> Path:
