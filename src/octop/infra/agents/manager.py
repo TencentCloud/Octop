@@ -502,6 +502,12 @@ class AgentManager:
             workspace_for=self.workspace_for_agent,
         )
         self._harness_manager: HarnessAgentManager | None = None
+        # default_model ref baked into each built harness config, by agent id.
+        # Lets the provider hot-reload impact set catch AUTO-default agents
+        # whose fallback was resolved at build time (#2388); entries are
+        # rewritten on every rebuild and simply die with the process, matching
+        # the lifetime of the harness configs they describe.
+        self._baked_default_model_refs: dict[str, str] = {}
         self.memory_slim = MemorySlimCoordinator(self)
         self._lock = asyncio.Lock()
         # Serialize start/reload per agent so parallel provider reloads cannot
@@ -2062,6 +2068,16 @@ class AgentManager:
             for ref in self.find_agents_using_provider(provider_name):
                 aid = ref.get("agent_id")
                 if isinstance(aid, str) and aid in enabled_ids:
+                    impact.add(aid)
+            # AUTO-default agents get the fallback (active model or first
+            # usable) baked into their harness config at build time, and that
+            # value is not recomputed per turn — background paths such as the
+            # memory-aux LLM keep calling it. Catch agents whose baked ref
+            # points at the changed provider even when it is not the active
+            # model today (#2388).
+            prefix = f"{provider_name}/"
+            for aid, baked in self._baked_default_model_refs.items():
+                if baked.startswith(prefix) and aid in enabled_ids:
                     impact.add(aid)
 
         return sorted(impact)
@@ -4180,19 +4196,22 @@ class AgentManager:
         if "decision" in _HARNESS_AGENT_CONFIG_FIELDS:
             harness_fields["decision"] = self._decision.harness_config()
 
+        # Memory aux LLM (extraction / promotion) needs a concrete ref; fall
+        # back to the same resolution AUTO chat routing uses (active model
+        # first, else first usable) — so promotion works whenever chat does.
+        # Per-turn AUTO routing is unaffected: the gateway resolves models via
+        # ``resolve_explicit_default_model`` directly.
+        baked_default_model = (
+            self._providers.resolve_explicit_default_model(row, cfg)
+            or self._resolve_configured_fallback_model_ref()
+        )
+        self._baked_default_model_refs[row.agent_id] = baked_default_model or ""
+
         harness_cfg = HarnessAgentConfig(
             name=_memory_namespace(row.agent_id),
             workspace_dir=harness_workspace,
             system_files_path=system_files_path_from_config(cfg),
-            # Memory aux LLM (extraction / promotion) needs a concrete ref; fall
-            # back to the same resolution AUTO chat routing uses (active model
-            # first, else first usable) — so promotion works whenever chat does.
-            # Per-turn AUTO routing is unaffected: the gateway resolves models via
-            # ``resolve_explicit_default_model`` directly.
-            default_model=(
-                self._providers.resolve_explicit_default_model(row, cfg)
-                or self._resolve_configured_fallback_model_ref()
-            ),
+            default_model=baked_default_model,
             system_prompt=system_prompt,
             memory=memory,
             backend=harness_backend,  # spec, or live OpenSandbox instance

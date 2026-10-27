@@ -157,3 +157,55 @@ async def test_on_provider_changed_selective_skips_unrelated(
     reload_mock.assert_awaited_once()
     called_ids = set(reload_mock.await_args.args[0])
     assert called_ids == {"ref-one"}
+
+
+def test_impact_ids_include_auto_agent_with_baked_fallback_ref(
+    tmp_path: Path,
+) -> None:
+    """#2388: disabling a non-active provider must still rebuild AUTO agents
+    whose harness config baked that provider as the build-time fallback."""
+    services = _make_services(tmp_path)
+    # Active model is other-llm now, but auto-one baked test-openai earlier
+    # (e.g. it was the first usable model when no active model was set).
+    services.repos.settings_repo.set_active_model("other-llm", "m1")
+    services.repos.agent_repo.create(agent_id="auto-one", user_id=None, name="Auto")
+    services.repos.agent_repo.set_state("auto-one", "running")
+    services.repos.agent_repo.create(agent_id="auto-two", user_id=None, name="AutoTwo")
+    services.repos.agent_repo.set_state("auto-two", "running")
+
+    registry = _registry(services)
+    registry._baked_default_model_refs["auto-one"] = "test-openai/gpt-4o-mini"
+    registry._baked_default_model_refs["auto-two"] = "other-llm/m1"
+
+    ids = registry._provider_reload_impact_ids(provider_name="test-openai")
+    assert "auto-one" in ids
+    assert "auto-two" not in ids
+
+
+@pytest.mark.asyncio
+async def test_on_provider_changed_rebuilds_agent_with_stale_baked_ref(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """End-to-end variant of #2388: the memory-aux LLM keeps calling a
+    disabled provider until the agent is rebuilt."""
+    services = _make_services(tmp_path)
+    services.repos.settings_repo.set_active_model("other-llm", "m1")
+    services.repos.agent_repo.create(agent_id="ref-one", user_id=None, name="Ref")
+    services.repos.agent_repo.set_state("ref-one", "running")
+    services.repos.agent_repo.update_config(
+        "ref-one",
+        config_json=json.dumps({"providers": ["test-openai"]}),
+    )
+    services.repos.agent_repo.create(agent_id="auto-one", user_id=None, name="Auto")
+    services.repos.agent_repo.set_state("auto-one", "running")
+
+    registry = _registry(services)
+    registry._baked_default_model_refs["auto-one"] = "test-openai/gpt-4o-mini"
+    reload_mock = AsyncMock()
+    monkeypatch.setattr(registry, "_reload_agents", reload_mock)
+
+    await registry.on_provider_changed(provider_name="test-openai")
+
+    reload_mock.assert_awaited_once()
+    called_ids = set(reload_mock.await_args.args[0])
+    assert called_ids == {"ref-one", "auto-one"}
