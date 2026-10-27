@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import base64
 import contextlib
+import hashlib
 import json
 import logging
 import mimetypes
@@ -911,13 +912,28 @@ async def block_to_content_part(
     return None
 
 
+def media_content_dedup_key(part: ContentPart) -> str | None:
+    """Stable key for the same delivered bytes or remote media URL."""
+    data = getattr(part, "data", None)
+    if isinstance(data, str) and data:
+        return f"data:{hashlib.sha256(data.encode()).hexdigest()}"
+    url = getattr(part, "url", None)
+    if isinstance(url, str) and url.strip():
+        return f"url:{url.strip()}"
+    local_path = getattr(part, "local_path", None)
+    if isinstance(local_path, str) and local_path.strip():
+        return f"path:{local_path.strip()}"
+    return None
+
+
 async def media_events_from_tool_result(
     chunk: dict[str, Any],
     *,
     workspace: BackendWorkspace,
     locale: str | Locale = DEFAULT_LOCALE,
+    emitted_media_keys: set[str] | None = None,
 ) -> AsyncIterator[MessageEvent]:
-    """Yield IM media events from allowlisted delivery-tool results only."""
+    """Yield IM media events from allowlisted delivery tools, one per content."""
     messages = chunk.get("messages") or []
     if not isinstance(messages, list):
         return
@@ -941,6 +957,11 @@ async def media_events_from_tool_result(
                 )
                 yield MessageEvent.error_event(tr("channel.media_delivery_failed", locale))
                 return
+            key = media_content_dedup_key(part)
+            if emitted_media_keys is not None and key is not None:
+                if key in emitted_media_keys:
+                    continue
+                emitted_media_keys.add(key)
             yield MessageEvent(type=MessageEventType.MESSAGE, content=[part])
 
 
@@ -956,6 +977,7 @@ __all__ = [
     "is_media_push_tool",
     "iter_dashboard_attachment_frames",
     "iter_media_blocks",
+    "media_content_dedup_key",
     "media_events_from_tool_result",
     "read_media_block_bytes",
     "tool_message_name",
