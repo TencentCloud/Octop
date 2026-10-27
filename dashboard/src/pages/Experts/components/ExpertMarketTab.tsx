@@ -18,6 +18,8 @@ import {
   type ExpertMarketQuickPrompt,
   type MarketExpert,
 } from "../../../api/modules/expertMarket";
+import type { PublishedExpert } from "../../../api/modules/publishedExperts";
+import { PublishedExpertCard } from "./PublishedExpertCard";
 import { OctopEmptyMascot } from "../../../components/EmptyState";
 import { FadeInImg } from "../../../components/FadeInImg";
 import Markdown from "../../../components/Markdown/LazyMarkdown";
@@ -36,6 +38,11 @@ interface ExpertMarketTabProps {
   lang: "zh" | "en";
   installedExpertIds: Set<string>;
   onRequestCreate: (expert: MarketExpert) => void;
+  publishedExperts: PublishedExpert[];
+  publishedLoading: boolean;
+  canManagePublished: (expert: PublishedExpert) => boolean;
+  onInstallPublished: (expert: PublishedExpert) => void;
+  onPublishedChanged: () => void;
 }
 
 const SCENE_ALL = "";
@@ -74,6 +81,11 @@ export default function ExpertMarketTab({
   lang,
   installedExpertIds,
   onRequestCreate,
+  publishedExperts,
+  publishedLoading,
+  canManagePublished,
+  onInstallPublished,
+  onPublishedChanged,
 }: ExpertMarketTabProps) {
   const { t } = useTranslation();
   const [items, setItems] = useState<MarketExpert[]>([]);
@@ -165,6 +177,16 @@ export default function ExpertMarketTab({
     return items.filter((item) => (item.scene || "").toLowerCase() === scene);
   }, [activeScene, items, keyword]);
 
+  const visiblePublished = useMemo(() => {
+    const query = keyword.trim().toLowerCase();
+    if (!query) return publishedExperts;
+    return publishedExperts.filter((expert) =>
+      [expert.name, expert.description, expert.creator_username].some((part) =>
+        (part ?? "").toLowerCase().includes(query),
+      ),
+    );
+  }, [keyword, publishedExperts]);
+
   const totalText = useMemo(
     () => t("experts.totalMarket", { count: visibleItems.length }),
     [t, visibleItems.length],
@@ -200,23 +222,77 @@ export default function ExpertMarketTab({
     };
   }, [lang, selected]);
 
-  if (loading && items.length === 0) {
-    return (
-      <div className={styles.marketContainer}>
-        <div className={styles.marketStage}>
-          <Spin />
+  const catalogFailed = loadFailed && items.length === 0;
+  const marketLoading = loading && items.length === 0;
+  const publishedSection =
+    visiblePublished.length > 0 ? (
+      <div className={styles.marketBlock}>
+        <div className={styles.marketBlockTitle}>
+          {t("experts.published.listTitle", {
+            count: visiblePublished.length,
+          })}
+        </div>
+        <p className={styles.marketBlockHint}>
+          {t("experts.published.listHint")}
+        </p>
+        <div className={styles.cardGrid}>
+          {visiblePublished.map((expert) => (
+            <PublishedExpertCard
+              key={expert.id}
+              expert={expert}
+              canManage={canManagePublished(expert)}
+              onInstall={onInstallPublished}
+              onChanged={onPublishedChanged}
+            />
+          ))}
         </div>
       </div>
-    );
-  }
+    ) : !publishedLoading &&
+      !marketLoading &&
+      !catalogFailed &&
+      !keyword.trim() &&
+      publishedExperts.length === 0 ? (
+      <div className={styles.marketBlock}>
+        <div className={styles.marketBlockTitle}>
+          {t("experts.published.listTitle", { count: 0 })}
+        </div>
+        <p className={styles.marketBlockHint}>
+          {t("experts.published.emptyHint")}
+        </p>
+      </div>
+    ) : null;
 
-  const catalogFailed = loadFailed && items.length === 0;
+  const showPublished =
+    catalogFailed || !activeScene || Boolean(keyword.trim());
+
+  const scenePills =
+    !catalogFailed && !marketLoading && !keyword && sceneOptions.length > 1 ? (
+      <div className={styles.marketSceneTabsWrap}>
+        {sceneOptions.map((opt) => {
+          const active = activeScene === opt.value;
+          return (
+            <button
+              key={opt.value || SCENE_ALL}
+              type="button"
+              aria-pressed={active}
+              className={
+                active
+                  ? `${styles.marketScenePill} ${styles.marketScenePillActive}`
+                  : styles.marketScenePill
+              }
+              onClick={() => setActiveScene(opt.value)}
+            >
+              {opt.label}
+            </button>
+          );
+        })}
+      </div>
+    ) : null;
 
   return (
     <div className={styles.marketContainer}>
-      {!catalogFailed && (
+      {!catalogFailed && !marketLoading && (
         <div className={styles.gridToolbar}>
-          <span className={styles.gridCount}>{totalText}</span>
           <div
             className={`${styles.gridToolbarRight} ${styles.marketToolbarRight}`}
           >
@@ -231,7 +307,10 @@ export default function ExpertMarketTab({
             <button
               className={styles.toolbarIconBtn}
               disabled={refreshing}
-              onClick={() => void fetchMarket(keyword, true)}
+              onClick={() => {
+                onPublishedChanged();
+                void fetchMarket(keyword, true);
+              }}
               type="button"
             >
               <RefreshCw
@@ -243,30 +322,27 @@ export default function ExpertMarketTab({
         </div>
       )}
 
-      {!catalogFailed && !keyword && sceneOptions.length > 1 && (
-        <div className={styles.marketSceneTabsWrap}>
-          {sceneOptions.map((opt) => {
-            const active = activeScene === opt.value;
-            return (
-              <button
-                key={opt.value || SCENE_ALL}
-                type="button"
-                aria-pressed={active}
-                className={
-                  active
-                    ? `${styles.marketScenePill} ${styles.marketScenePillActive}`
-                    : styles.marketScenePill
-                }
-                onClick={() => setActiveScene(opt.value)}
-              >
-                {opt.label}
-              </button>
-            );
-          })}
+      {showPublished ? publishedSection : null}
+
+      {!catalogFailed && !marketLoading && (
+        <div
+          className={
+            showPublished && publishedSection
+              ? `${styles.marketBlockTitle} ${styles.marketCatalogTitle}`
+              : styles.marketBlockTitle
+          }
+        >
+          {totalText}
         </div>
       )}
 
-      {catalogFailed ? (
+      {scenePills}
+
+      {marketLoading ? (
+        <div className={styles.marketStage}>
+          <Spin />
+        </div>
+      ) : catalogFailed ? (
         <div className={styles.marketStage}>
           <Result
             className={styles.marketLoadResult}
@@ -281,7 +357,10 @@ export default function ExpertMarketTab({
               <Button
                 type="primary"
                 loading={refreshing}
-                onClick={() => void fetchMarket(keyword, true)}
+                onClick={() => {
+                  onPublishedChanged();
+                  void fetchMarket(keyword, true);
+                }}
               >
                 {t("common.retry")}
               </Button>
