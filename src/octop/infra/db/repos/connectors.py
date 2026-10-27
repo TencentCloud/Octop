@@ -30,6 +30,9 @@ class ConnectorRow:
     @classmethod
     def from_row(cls, r: DbRow) -> ConnectorRow:
         blob = r["credential_blob"]
+        # Older custom-MCP writers stored the encrypted token as SQLite TEXT.
+        if isinstance(blob, str):
+            blob = blob.encode("utf-8")
         return cls(
             id=r["id"],
             instance_id=r["instance_id"],
@@ -230,9 +233,12 @@ class ConnectorRepo:
         self,
         *,
         instance_id: str,
-        blob: bytes,
+        blob: bytes | bytearray | memoryview,
         expires_at: int | None = None,
     ) -> None:
+        if not isinstance(blob, (bytes, bytearray, memoryview)):
+            raise TypeError("credential blob must be bytes-like")
+        blob = bytes(blob)
         ts = now_ts()
         with self._db.transaction() as conn:
             conn.execute(

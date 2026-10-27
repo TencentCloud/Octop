@@ -1279,6 +1279,24 @@ def _ensure_trajectory_events_postgresql(db: DatabasePool) -> None:
         )
 
 
+def _repair_legacy_connector_credentials(db: DatabasePool) -> None:
+    """Restore encrypted tokens written as TEXT by old SQLite custom-MCP code."""
+    if db.dialect != "sqlite" or not _table_exists(db, "connectors"):
+        return
+    with db.transaction() as conn:
+        rows = conn.execute(
+            "SELECT instance_id, credential_blob FROM connectors "
+            "WHERE typeof(credential_blob) = 'text'"
+        ).fetchall()
+        for row in rows:
+            # SQL CAST uses the database encoding, which may be UTF-16. Tokens
+            # must retain their original UTF-8 bytes regardless of that setting.
+            conn.execute(
+                "UPDATE connectors SET credential_blob = ? WHERE instance_id = ?",
+                (row["credential_blob"].encode("utf-8"), row["instance_id"]),
+            )
+
+
 def _ensure_connectors_v13_schema(db: DatabasePool) -> None:
     """Ensure connectors supports multiple named instances and sharing."""
     if not _table_exists(db, "connectors"):
@@ -2244,3 +2262,4 @@ def run_migrations(db: DatabasePool) -> None:
     _grant_personalization_tab_permissions(db)
     _grant_bridge_permission(db)
     _expand_page_tab_permissions(db)
+    _repair_legacy_connector_credentials(db)
