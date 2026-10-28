@@ -1,6 +1,7 @@
 import { app, BrowserWindow } from "electron";
 
 import { encodeShellError, SHELL_ERROR_PARAM, type ShellFailure } from "../../shared/shell-error";
+import { windowChrome } from "./chrome";
 
 /**
  * Early Window (§4): shown immediately so the cold start never shows a blank
@@ -35,7 +36,10 @@ export function createEarlyWindow(options: EarlyWindowOptions): EarlyWindow {
     width: 1080,
     height: 720,
     show: false,
-    frame: false,
+    // Same native chrome as the Dashboard window, so the swap from splash to
+    // Dashboard does not move the traffic lights / caption buttons. The splash
+    // is white regardless of the app theme, so the glyphs are the light ones.
+    ...windowChrome("light"),
     backgroundColor: EARLY_WINDOW_BACKGROUND,
     webPreferences: {
       sandbox: true,

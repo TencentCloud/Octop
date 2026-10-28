@@ -337,7 +337,8 @@ Preload 仅暴露最小类型化桥梁 `window.octopDesktop`：
 - `getPlatformInfo()`：获取脱敏的平台与架构信息。
 - `openDirectoryPicker()` / `openFilePicker()`：调用主进程原生选择器。
 - `onBackendReady(callback)`：接收后端服务就绪事件。
-- `windowControls`：最小化、最大化与关闭窗口。
+- `setWindowChrome(theme)`：把页面主题（含「跟随系统」偏好）同步给 `nativeTheme`，让系统原生窗口按钮配色一致。没有最小化 / 最大化 / 关闭接口——窗口按钮完全原生，页面不参与。
+- `onWindowFullscreenChange(callback)`：进入 / 退出全屏时通知页面（macOS 全屏会隐藏交通灯，页面据此收回为它们预留的条带）。
 - `clientSettings`：供 Web 设置页读写新增的客户端项（开机启动、关闭行为、主题背景、是否只跟随稳定版）。不能写 `config.json`，也不能指定更新检测地址或安装包地址。
 - `openUpdateConfirmation()`：只能打开主进程的更新确认。渲染进程不能指定包地址，也不能授权安装。
 - `wsEndpoint()`：返回 WebSocket 中继的地址（§5.2）。同步返回，因为 URL 拼装发生在渲染路径里没法 await；没有中继时返回 `null`，页面就回退到"从自身 origin 推导"。
@@ -427,7 +428,7 @@ Preload 仅暴露最小类型化桥梁 `window.octopDesktop`：
 |---|---|
 | **macOS** | 使用沉浸式标题栏；同步系统深浅色；正确处理 Dock 重开、应用签名、公证与运行时 quarantine。 |
 | **Windows** | 使用隐藏标题栏与 `titleBarOverlay` 保留 Snap Layouts；NSIS 向导安装，可选安装目录和盘符；确保更新和卸载时不遗留 Python 进程。 |
-| **Linux** | x64 与 arm64 都同时发布 AppImage、deb 和 rpm，默认安装包是 deb。兼容 Wayland / X11；为文件选择器和托盘能力提供环境检测与回退。 |
+| **Linux** | 保留系统原生窗口边框（不自绘标题栏）；x64 与 arm64 都同时发布 AppImage、deb 和 rpm，默认安装包是 deb。兼容 Wayland / X11；为文件选择器和托盘能力提供环境检测与回退。 |
 
 ### 7.1 Windows 安装位置与盘符
 
@@ -528,13 +529,19 @@ query（页面是 `sandbox: true`、无 preload、无 IPC，这是两者唯一�
 > 尚未实现：[§3.4](#34-任务感知退出与全进程树清理) 第 1 步的「退出前任务检查确认框」
 > （后端还没有对应的任务查询接口），以及真机安装包端到端验证。
 >
-> 窗口控制按钮现状：窗口是 `frame: false`，按钮由 Dashboard 自绘
-> （`components/DesktopWindowControls`）——macOS 在左上角画三个交通灯，
-> Windows / Linux 在右上角画三个 46px 标题栏按钮，位置符合各自平台常规。
-> 网页侧通过 `--window-controls-inset-start` / `--window-controls-inset-end`
-> 做单边留白：macOS 侧边栏顶部预留 32px 可拖动条带给交通灯，Windows 的标题行、
-> 抽屉、dock 工具栏在右侧让位。因为没用原生 `titleBarOverlay`，
-> [§7](#7-跨平台原生体验设计) 里 Windows 的 Snap Layouts 悬停区暂不可用。
+> 窗口装饰现状：窗口按钮全部交给系统，壳与 Dashboard 都不再自绘（对齐 opencode
+> desktop 的做法）。`main/windows/chrome.ts` 按平台给出一份 `windowChrome()`：
+> macOS 用 `titleBarStyle: "hidden"` 保留原生交通灯，并用 `trafficLightPosition`
+> 把它们钉在 32px 铬条里；Windows 用 `frame: false` + `titleBarOverlay`（底色
+> 全透明 `#00000000`，只让 `symbolColor` 跟随主题）让系统把三个标题栏按钮画在页面
+> 之上；Linux 不传任何 frame 参数，直接用系统边框。
+>
+> 因此 Dashboard 只负责「让位」：`--window-controls-inset-start` /
+> `--window-controls-inset-end` 单边留白（macOS 侧边栏顶部预留 32px 可拖动条带给
+> 交通灯，Windows 的标题行、抽屉、dock 工具栏在右侧让位），拖动仍然是纯 CSS
+> `app-region`。IPC 里没有任何 minimize / maximize / close 通道；只有
+> `setWindowChrome({ mode, scheme })` 用于把 Dashboard 的主题（含「跟随系统」）
+> 同步给 `nativeTheme`，让系统按钮在深色主题下保持可见。
 
 ---
 

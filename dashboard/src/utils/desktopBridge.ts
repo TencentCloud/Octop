@@ -25,6 +25,16 @@ export interface DesktopPlatformInfo {
 }
 
 /**
+ * Theme for the *native* window controls the shell keeps (macOS traffic lights,
+ * Windows caption buttons). `scheme` is the user's preference, so "system" keeps
+ * following the OS instead of pinning today's answer.
+ */
+export interface DesktopWindowChromeTheme {
+  mode: "light" | "dark";
+  scheme?: "system" | "light" | "dark";
+}
+
+/**
  * A JWT minted by the shell from its stored device credential. The credential
  * itself never crosses the bridge.
  */
@@ -53,7 +63,16 @@ export interface OctopDesktopBridge {
   openDirectoryPicker(): Promise<string | null>;
   openFilePicker(): Promise<string | null>;
   onBackendReady(callback: (ready: { ok: boolean }) => void): () => void;
-  windowControls(action: "minimize" | "maximize" | "close"): void;
+  /**
+   * Tell the shell what the page looks like so its native window controls match.
+   * There is deliberately no minimise / maximise / close here: those stay native.
+   */
+  setWindowChrome(theme: DesktopWindowChromeTheme): void;
+  /**
+   * macOS hides the traffic lights in full screen; the page then stops
+   * reserving room for them. Fires only on change.
+   */
+  onWindowFullscreenChange?(callback: (fullscreen: boolean) => void): () => void;
   clientSettings: {
     get(): Promise<DesktopClientSettings>;
     set(patch: Partial<DesktopClientSettings>): Promise<DesktopClientSettings>;

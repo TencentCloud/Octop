@@ -81,8 +81,9 @@ function ErrorPage() {
     return () => window.clearTimeout(timer);
   }, [copyState]);
 
-  // The window is frameless and has no controls of its own; Esc is the expected
-  // way out of a page whose only content is a fatal error.
+  // The window may have no visible controls (Linux keeps the system frame, the
+  // other platforms only the native buttons); Esc is the expected way out of a
+  // page whose only content is a fatal error.
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape") window.close();
@@ -106,6 +107,9 @@ function ErrorPage() {
 
   return (
     <main className="result">
+      {/* Fixed grab strip: the window hides its titlebar, so the page has to
+          provide the drag handle itself. */}
+      <div className="shell-drag-strip" aria-hidden="true" />
       <div className="result__body" role="alert">
         <ResultGlyph />
         <h1 className="result__title">{title}</h1>

@@ -44,12 +44,21 @@ export interface WsRelayEndpoint {
   token: string;
 }
 
+/** Theme for the *native* window controls (traffic lights / caption buttons). */
+export interface WindowChromeTheme {
+  /** Resolved mode the page is showing. */
+  mode: "light" | "dark";
+  /** The user's preference; kept so "system" keeps following the OS. */
+  scheme?: "system" | "light" | "dark";
+}
+
 export const IPC_CHANNELS = {
   getPlatformInfo: "octop:get-platform-info",
   openDirectoryPicker: "octop:open-directory-picker",
   openFilePicker: "octop:open-file-picker",
   onBackendReady: "octop:backend-ready",
-  windowControl: "octop:window-control",
+  windowChromeTheme: "octop:window-chrome-theme",
+  windowChromeFullscreen: "octop:window-chrome-fullscreen",
   clientSettingsGet: "octop:client-settings:get",
   clientSettingsSet: "octop:client-settings:set",
   wsEndpoint: "octop:ws-endpoint",
@@ -59,5 +68,3 @@ export const IPC_CHANNELS = {
   sessionRenew: "octop:session:renew",
   sessionRevoke: "octop:session:revoke",
 } as const;
-
-export type WindowControlAction = "minimize" | "maximize" | "close";

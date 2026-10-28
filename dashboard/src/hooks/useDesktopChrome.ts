@@ -16,9 +16,10 @@ import { isDesktopShell } from "../utils/desktopBridge";
 const DesktopChromeContext = createContext<DesktopChromeStyle | null>(null);
 
 /**
- * Activate frameless window chrome when the Electron preload bridge is present.
- * The preload runs before the first paint, so a single check on mount is enough;
- * window dragging is pure CSS (`-webkit-app-region`), no JS listeners needed.
+ * Activate desktop window chrome when the Electron preload bridge is present.
+ * The shell keeps the native buttons (macOS traffic lights, Windows caption
+ * buttons), so this only publishes how much space they need; dragging stays
+ * pure CSS (`app-region`), no JS listeners needed.
  */
 export function useDesktopChrome(): DesktopChromeStyle | null {
   const [style, setStyle] = useState<DesktopChromeStyle | null>(null);

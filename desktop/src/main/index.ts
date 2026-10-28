@@ -10,7 +10,6 @@ import {
   type IssuedSession,
   type PlatformInfo,
   type UpdateCheckResult,
-  type WindowControlAction,
 } from "../shared/ipc-contract";
 import { resolveAppVersion } from "./app-version";
 import { DeviceCredentialStore } from "./session/device-credential";
@@ -37,6 +36,12 @@ import { downloadToFile } from "./update/download";
 import { installUpdate, type InstallOutcome, type InstallerKind } from "./update/installer";
 import { createEarlyWindow } from "./windows/early-window";
 import { createMainWindow } from "./windows/main-window";
+import {
+  applyNativeTheme,
+  applyWindowChromeTheme,
+  parseWindowChromeTheme,
+  resolveWindowChromeTheme,
+} from "./windows/chrome";
 
 const UPDATE_ENDPOINT = "https://octop.cloud/api/downloads";
 // The renderer origin (main-window.ts loads ``octop://app/``). The WebSocket
@@ -412,12 +417,13 @@ function registerIpcHandlers(): void {
     return deviceSession?.revoke(accessToken) ?? Promise.resolve(false);
   });
 
-  ipcMain.on(IPC_CHANNELS.windowControl, (event, action: WindowControlAction) => {
+  // The page reports its theme so the native controls follow it; window buttons
+  // themselves are native and never cross this bridge.
+  ipcMain.on(IPC_CHANNELS.windowChromeTheme, (event, theme: unknown) => {
+    const parsed = parseWindowChromeTheme(theme);
+    if (!parsed) return;
     const win = BrowserWindow.fromWebContents(event.sender);
-    if (!win) return;
-    if (action === "minimize") win.minimize();
-    else if (action === "maximize") win.isMaximized() ? win.unmaximize() : win.maximize();
-    else if (action === "close") win.close();
+    if (win) applyWindowChromeTheme(win, parsed);
   });
 }
 
@@ -454,6 +460,10 @@ async function boot(): Promise<void> {
 
   settingsStore = new ClientSettingsStore(defaultClientSettingsPath(app.getPath("userData")));
   const settings = settingsStore.load();
+  // Native chrome follows the persisted theme from the very first frame; the
+  // renderer reports the real (resolved) theme once the page has painted.
+  const chromeTheme = resolveWindowChromeTheme(settings.themeBackground);
+  applyNativeTheme(chromeTheme);
 
   const early = createEarlyWindow({
     splashFile: SPLASH_PATH,
@@ -567,7 +577,8 @@ async function boot(): Promise<void> {
   // Swap the Early Window for the real Dashboard (in-place mount, no white flash).
   const mainWindow = createMainWindow({
     preload: PRELOAD_PATH,
-    backgroundColor: settings.themeBackground === "dark" ? "#111827" : "#ffffff",
+    theme: chromeTheme,
+    backgroundColor: chromeTheme.mode === "dark" ? "#111827" : "#ffffff",
     onNavigate: (url) => {
       if (isExternalLink(url)) void shell.openExternal(url);
     },
