@@ -1,9 +1,8 @@
 import { Layout } from "antd";
 import { lazy, Suspense, useEffect, useState, useCallback } from "react";
-import { Routes, Route, useLocation } from "react-router-dom";
+import { Routes, Route, useLocation, useNavigate } from "react-router-dom";
 import Sidebar from "../Sidebar";
 import Header from "../Header";
-import RailEdgeControl from "../../components/RailEdgeControl";
 import PageLoading from "../../components/PageLoading";
 import { ServiceRestartProvider } from "../../context/ServiceRestartContext";
 import { BackupOperationProvider } from "../../context/BackupOperationContext";
@@ -27,6 +26,7 @@ import { useLayoutMode } from "../../context/LayoutModeContext";
 import { useDashboardPushToast } from "../../hooks/useDashboardPushToast";
 import { useDesktopChromeStyle } from "../../hooks/useDesktopChrome";
 import { useWindowFullscreen } from "../../hooks/useWindowFullscreen";
+import { useRailShortcuts } from "../../hooks/useRailShortcuts";
 import {
   chromeTopBandPx,
   windowControlsInset,
@@ -61,6 +61,7 @@ function ChatWithKey() {
 
 export default function MainLayout() {
   const location = useLocation();
+  const navigate = useNavigate();
   const currentPath = location.pathname;
   const selectedKey = resolveSelectedKey(currentPath);
   const isMobile = useIsMobile();
@@ -104,33 +105,51 @@ export default function MainLayout() {
     }
   }, []);
 
-  /** Mobile header / overlay: simple nav toggle. */
+  /**
+   * Nav rail toggle — the brand-row button and ⌘B.
+   *
+   * One control, one effect: it moves the nav rail and nothing else. It used to
+   * also pop the history rail open when expanding on a chat route, which made
+   * one keystroke change two panels; with the history rail's own button and
+   * ⇧⌘B in place, that surprise is no longer load-bearing.
+   */
   const toggleCollapsed = useCallback(() => {
     persistNavCollapsed(!collapsed);
   }, [collapsed, persistNavCollapsed]);
 
   /**
-   * Desktop nav rail edge:
-   * - expand: open nav; if classic chat history is also closed, open both
-   * - collapse: collapse nav only
+   * History rail toggle, shared by the nav row button, the rail's own edge
+   * pill and ⇧⌘B.
+   *
+   * Opening from anywhere else lands on /chat first: the rail only exists on
+   * that route (classic layout), so toggling it from /tasks would otherwise
+   * flip a boolean nobody can see.
    */
-  const handleNavRailToggle = useCallback(() => {
-    if (collapsed) {
-      persistNavCollapsed(false);
-      if (!isMinimalLayout && isChatPath(currentPath) && !chatSidebarOpen) {
-        setChatSidebarOpen(true);
+  const handleHistoryRailToggle = useCallback(() => {
+    if (isMinimalLayout) return; // Minimal has one rail; history lives inside it.
+    if (isChatPath(currentPath)) {
+      if (chatSidebarOpen) {
+        setChatSidebarOpen(false);
+        return;
       }
+      // MainLayout's listener also re-opens the nav when it was collapsed.
+      window.dispatchEvent(new Event(EXPAND_CHAT_RAIL_EVENT));
       return;
     }
-    persistNavCollapsed(true);
+    window.dispatchEvent(new Event(EXPAND_CHAT_RAIL_EVENT));
+    navigate("/chat");
   }, [
-    collapsed,
     chatSidebarOpen,
     currentPath,
     isMinimalLayout,
-    persistNavCollapsed,
+    navigate,
     setChatSidebarOpen,
   ]);
+
+  useRailShortcuts({
+    onToggleNav: toggleCollapsed,
+    onToggleHistory: handleHistoryRailToggle,
+  });
 
   // When switching to mobile, always collapse; restore saved preference on desktop
   useEffect(() => {
@@ -140,6 +159,26 @@ export default function MainLayout() {
       setCollapsed(getSavedCollapsed());
     }
   }, [isMobile]);
+
+  // Escape closes whichever mobile rail is covering the page. Desktop rails
+  // stay put: there they are part of the layout, not an overlay.
+  useEffect(() => {
+    if (!isMobile) return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== "Escape" || event.defaultPrevented) return;
+      // Dialogs (and the composer's popovers) close first, on their own.
+      if (document.querySelector('[role="dialog"], [role="alertdialog"]')) {
+        return;
+      }
+      if (chatSidebarOpen && isChatPath(currentPath)) {
+        setChatSidebarOpen(false);
+        return;
+      }
+      if (!collapsed) setCollapsed(true);
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [chatSidebarOpen, collapsed, currentPath, isMobile, setChatSidebarOpen]);
 
   // On mobile, collapse sidebar when navigating to a new page
   useEffect(() => {
@@ -265,24 +304,15 @@ export default function MainLayout() {
                 minHeight: 0,
               }}
             >
+              {/* The rail's own header carries the collapse control (it used to
+                  be a hover-only pill on this seam, which nobody could find and
+                  which collided with the history rail's pill next door). */}
               <Sidebar
                 selectedKey={selectedKey}
                 collapsed={collapsed}
                 onToggle={toggleCollapsed}
                 isMobile={isMobile}
               />
-              {!isMobile && (
-                <RailEdgeControl
-                  expanded={!collapsed}
-                  onToggle={handleNavRailToggle}
-                  side="end"
-                  placement={
-                    isChatRoute && !isMinimalLayout && !chatSidebarOpen
-                      ? "before"
-                      : "center"
-                  }
-                />
-              )}
             </div>
 
             {isChatRoute && !isMinimalLayout && (

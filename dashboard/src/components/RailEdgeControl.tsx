@@ -14,6 +14,11 @@ interface RailEdgeControlProps {
   side?: "end" | "start";
   /** Optional aria / tooltip label override. */
   label?: string;
+  /**
+   * Optional tooltip text when it should differ from the accessible name —
+   * e.g. the same action plus its keyboard accelerator.
+   */
+  hint?: string;
   className?: string;
   /**
    * When false, keep the hover hit-target / button but do not paint a divider
@@ -41,6 +46,7 @@ export default function RailEdgeControl({
   onToggle,
   side = "end",
   label,
+  hint,
   className,
   showLine = true,
   placement = "center",
@@ -76,7 +82,7 @@ export default function RailEdgeControl({
         )}
         onClick={onToggle}
         aria-label={ariaLabel}
-        title={ariaLabel}
+        title={hint ?? ariaLabel}
       >
         {expanded ? (
           <ChevronLeft size={14} strokeWidth={2} aria-hidden />
