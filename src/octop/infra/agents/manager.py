@@ -1580,9 +1580,7 @@ class AgentManager:
         except KeyError:
             raise self._unavailable_error(agent_id) from None
 
-    async def ensure_loaded(
-        self, agent_id: str, *, timeout: float | None = None
-    ) -> HarnessAgent:
+    async def ensure_loaded(self, agent_id: str, *, timeout: float | None = None) -> HarnessAgent:
         """Load a stopped agent on demand; no-op when already running.
 
         Safe under concurrency: ``_start_agent`` takes the per-agent lifecycle
