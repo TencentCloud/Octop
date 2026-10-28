@@ -650,33 +650,6 @@ export default function Sidebar({
         hasUpdate={hasUpdate}
         t={t}
       />
-      {/* Collapsed rail: the Chat row's toggle is gone with the labels, so the
-          history rail keeps a visible control here instead of surviving only as
-          a hover sliver on the seam. Like the row button, it reaches the rail
-          from any page — opening it from elsewhere lands on /chat. */}
-      {showChatRailToggle ? (
-        <Tooltip
-          title={historyRailHint}
-          placement="right"
-          mouseEnterDelay={0.2}
-        >
-          <button
-            type="button"
-            className={styles.collapsedRailToggle}
-            data-active={chatRailOpen ? "true" : undefined}
-            onClick={handleToggleChatRail}
-            aria-label={historyRailLabel}
-            aria-expanded={chatRailOpen}
-            aria-keyshortcuts={railShortcutAria("toggle-history")}
-          >
-            {chatRailOpen ? (
-              <PanelLeftClose size={17} strokeWidth={1.8} aria-hidden />
-            ) : (
-              <PanelLeftOpen size={17} strokeWidth={1.8} aria-hidden />
-            )}
-          </button>
-        </Tooltip>
-      ) : null}
     </div>
   ) : (
     <NavList
@@ -766,6 +739,41 @@ export default function Sidebar({
   );
 
   const navScrollBody = isMinimal ? minimalNavBody : classicNavBody;
+
+  /**
+   * Collapsed rail: the Chat row's toggle leaves with the row's label, so the
+   * history rail keeps a control of its own. It is docked *below* the scrolling
+   * nav rather than appended to it — the nav list is longer than the rail in any
+   * normal window, and a toggle parked after the last item is a toggle nobody
+   * finds. Like the row button it works from any page; opening it from elsewhere
+   * lands on /chat.
+   */
+  const collapsedRailDock =
+    isRailCollapsed && showChatRailToggle ? (
+      <div className={styles.collapsedRailDock}>
+        <Tooltip
+          title={historyRailHint}
+          placement="right"
+          mouseEnterDelay={0.2}
+        >
+          <button
+            type="button"
+            className={styles.collapsedRailToggle}
+            data-active={chatRailOpen ? "true" : undefined}
+            onClick={handleToggleChatRail}
+            aria-label={historyRailLabel}
+            aria-expanded={chatRailOpen}
+            aria-keyshortcuts={railShortcutAria("toggle-history")}
+          >
+            {chatRailOpen ? (
+              <PanelLeftClose size={17} strokeWidth={1.8} aria-hidden />
+            ) : (
+              <PanelLeftOpen size={17} strokeWidth={1.8} aria-hidden />
+            )}
+          </button>
+        </Tooltip>
+      </div>
+    ) : null;
 
   // Mobile: fixed overlay drawer
   if (isMobile) {
@@ -948,6 +956,7 @@ export default function Sidebar({
         {navScrollBody}
       </div>
 
+      {collapsedRailDock}
       {userFooter}
       {customizer}
     </div>
