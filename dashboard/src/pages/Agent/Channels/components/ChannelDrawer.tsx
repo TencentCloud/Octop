@@ -183,12 +183,6 @@ function FormItemForField({
       </Form.Item>
     );
   }
-  const Input1 =
-    field.type === "password"
-      ? Input.Password
-      : field.type === "textarea" || field.type === "json"
-      ? Input.TextArea
-      : Input;
   const rules: Rule[] = field.required
     ? [
         {
@@ -197,6 +191,28 @@ function FormItemForField({
         },
       ]
     : [];
+  if (field.type === "number") {
+    return (
+      <Form.Item
+        name={field.name}
+        label={label}
+        rules={rules}
+        extra={field.helpKey ? t(field.helpKey) : undefined}
+      >
+        <InputNumber
+          disabled={disabled}
+          placeholder={field.placeholder}
+          style={{ width: "100%" }}
+        />
+      </Form.Item>
+    );
+  }
+  const Input1 =
+    field.type === "password"
+      ? Input.Password
+      : field.type === "textarea" || field.type === "json"
+      ? Input.TextArea
+      : Input;
   if (field.type === "json") {
     rules.push({
       validator: async (_: unknown, value: unknown) => {
