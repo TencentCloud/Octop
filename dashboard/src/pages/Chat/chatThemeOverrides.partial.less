@@ -32,7 +32,8 @@
 }
 
 .chatRailEdgeClosed {
-  /* Align with MainLayout nav RailEdgeControl (edgeEnd: right -8px / width 16px). */
+  /* Collapsed rail is 0-wide, so this edge sits on the nav rail's own border
+     (`border-right` on the sidebar). Straddle it, centred. */
   left: -8px !important;
   right: auto !important;
   width: 16px;

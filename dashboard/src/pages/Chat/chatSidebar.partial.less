@@ -45,6 +45,14 @@
   will-change: width, min-width;
 }
 
+/* Collapse/expand is a layout change, not decoration — keep it instant for
+   people who asked the OS for less motion. */
+@media (prefers-reduced-motion: reduce) {
+  .sidebar {
+    transition: none;
+  }
+}
+
 .sidebar:not(.sidebarOpen) {
   @media (min-width: 768px) {
     width: 0;

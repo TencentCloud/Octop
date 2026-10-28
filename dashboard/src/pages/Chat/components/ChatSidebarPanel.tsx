@@ -7,6 +7,7 @@ import MinimalAgentSessionNav from "./MinimalAgentSessionNav";
 import type { Session } from "../hooks/useSessions";
 import type { OctopAgent } from "../../../context/AgentContext";
 import RailEdgeControl from "../../../components/RailEdgeControl";
+import { isMacPlatform, railShortcutLabel } from "../../../utils/railShortcuts";
 import styles from "../index.module.less";
 
 /** Dispatched when the chat history rail expand control is clicked. */
@@ -79,6 +80,15 @@ export default function ChatSidebarPanel({
   navEmbedded = false,
 }: ChatSidebarPanelProps) {
   const { t } = useTranslation();
+
+  const historyLabel = sidebarOpen
+    ? t("chat.collapseHistorySidebar")
+    : t("chat.expandHistorySidebar");
+  /** Tooltip carries the accelerator; the accessible name stays the action. */
+  const historyHint = `${historyLabel} (${railShortcutLabel(
+    "toggle-history",
+    isMacPlatform(),
+  )})`;
 
   const handleRailToggle = useCallback(() => {
     if (sidebarOpen) {
@@ -186,7 +196,12 @@ export default function ChatSidebarPanel({
           side={sidebarOpen ? "end" : "start"}
           /* Collapsed: share the nav rail divider — avoid a second gapped line. */
           showLine={sidebarOpen}
-          placement={sidebarOpen ? "center" : "after"}
+          /* One pill on this seam, always straddling it. It used to shift to
+             `after` when collapsed, which put it 3px away from the nav rail's
+             own pill and made the pair unreadable. */
+          placement="center"
+          label={historyLabel}
+          hint={historyHint}
           className={
             sidebarOpen ? styles.chatRailEdgeOpen : styles.chatRailEdgeClosed
           }

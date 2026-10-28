@@ -2,10 +2,11 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import type { TFunction } from "i18next";
+import { Tooltip } from "antd";
 import AvatarDropdown from "../components/AvatarDropdown";
 import AppVersionBadge from "../components/AppVersionBadge";
 import CurrentVersionBadge from "../components/CurrentVersionBadge";
-import { ArrowRightLeft, ChevronDown, X } from "lucide-react";
+import { ChevronDown, PanelLeftClose, PanelLeftOpen, X } from "lucide-react";
 import cx from "classnames";
 import { useTheme } from "../context/ThemeContext";
 import { useLayoutMode } from "../context/LayoutModeContext";
@@ -40,6 +41,11 @@ import SidebarNavCustomizer from "./SidebarNavCustomizer";
 import styles from "./Sidebar.module.less";
 import { typeSize } from "../utils/mobileTypeScale";
 import { DESKTOP_DRAG_REGION_CLASS } from "../utils/desktopChrome";
+import {
+  isMacPlatform,
+  railShortcutAria,
+  railShortcutLabel,
+} from "../utils/railShortcuts";
 
 const NAV_GROUPS_STORAGE_KEY = "octop:sidebar-nav-groups";
 const LEGACY_COLLAPSED_GROUP_IDS: Record<string, string> = {
@@ -122,6 +128,24 @@ interface SidebarProps {
   isMobile?: boolean;
 }
 
+/**
+ * One source of truth for the history-rail control's wording, shared by the
+ * button on the Chat row and the one in the collapsed icon rail. The readable
+ * name stays the plain action; the accelerator goes in the tooltip.
+ */
+function historyRailLabels(
+  t: TFunction<"translation", undefined>,
+  open: boolean,
+) {
+  const label = open
+    ? t("chat.collapseHistorySidebar", "收起对话历史")
+    : t("chat.expandHistorySidebar", "展开对话历史");
+  return {
+    label,
+    hint: `${label} (${railShortcutLabel("toggle-history", isMacPlatform())})`,
+  };
+}
+
 function NavItemButton({
   item,
   active,
@@ -149,9 +173,10 @@ function NavItemButton({
   const showToggle = Boolean(
     showChatRailToggle && item.key === "chat" && onToggleChatRail,
   );
-  const railLabel = chatRailOpen
-    ? t("chat.collapseHistorySidebar", "收起对话历史")
-    : t("chat.expandHistorySidebar", "展开对话历史");
+  const { label: railLabel, hint: railHint } = historyRailLabels(
+    t,
+    Boolean(chatRailOpen),
+  );
 
   return (
     <div
@@ -243,9 +268,14 @@ function NavItemButton({
           }}
           aria-expanded={Boolean(chatRailOpen)}
           aria-label={railLabel}
-          title={railLabel}
+          aria-keyshortcuts={railShortcutAria("toggle-history")}
+          title={railHint}
         >
-          <ArrowRightLeft size={14} strokeWidth={1.8} aria-hidden />
+          {chatRailOpen ? (
+            <PanelLeftClose size={15} strokeWidth={1.8} aria-hidden />
+          ) : (
+            <PanelLeftOpen size={15} strokeWidth={1.8} aria-hidden />
+          )}
         </button>
       ) : null}
     </div>
@@ -445,6 +475,22 @@ export default function Sidebar({
   const wordmarkSrc = isDark
     ? publicUrl("logo_horizontal_white.png")
     : publicUrl("logo_horizontal_dark.png");
+  /**
+   * Label/hint for the rail's own collapse button. The accelerator lives in the
+   * tooltip (and in aria-keyshortcuts), not in the accessible name.
+   */
+  const navToggleLabel = t(
+    collapsed ? "layout.expandNav" : "layout.collapseNav",
+    collapsed ? "展开导航栏" : "收起导航栏",
+  );
+  const navToggleHint = `${navToggleLabel} (${railShortcutLabel(
+    "toggle-nav",
+    isMacPlatform(),
+  )})`;
+  const { label: historyRailLabel, hint: historyRailHint } = historyRailLabels(
+    t,
+    chatRailOpen,
+  );
 
   const selectMinimalPane = useCallback(
     (pane: MinimalNavPane, opts?: { expand?: boolean }) => {
@@ -525,10 +571,12 @@ export default function Sidebar({
         }}
       />
       {!isRailCollapsed && !isMobile && (
-        <>
+        /* Shrinkable so the collapse button keeps its hit target: the badges
+           are nice-to-have, the button is the way out of the rail. */
+        <div className={styles.brandMeta}>
           <CurrentVersionBadge isMobile={isMobile} />
           <AppVersionBadge isMobile={isMobile} />
-        </>
+        </div>
       )}
     </>
   );
@@ -602,6 +650,32 @@ export default function Sidebar({
         hasUpdate={hasUpdate}
         t={t}
       />
+      {/* Collapsed rail: the Chat row's toggle is gone with the labels, so the
+          history rail keeps a visible control here instead of surviving only as
+          a hover sliver on the seam. */}
+      {showChatRailToggle && onChatPath ? (
+        <Tooltip
+          title={historyRailHint}
+          placement="right"
+          mouseEnterDelay={0.2}
+        >
+          <button
+            type="button"
+            className={styles.collapsedRailToggle}
+            data-active={chatRailOpen ? "true" : undefined}
+            onClick={handleToggleChatRail}
+            aria-label={historyRailLabel}
+            aria-expanded={chatRailOpen}
+            aria-keyshortcuts={railShortcutAria("toggle-history")}
+          >
+            {chatRailOpen ? (
+              <PanelLeftClose size={17} strokeWidth={1.8} aria-hidden />
+            ) : (
+              <PanelLeftOpen size={17} strokeWidth={1.8} aria-hidden />
+            )}
+          </button>
+        </Tooltip>
+      ) : null}
     </div>
   ) : (
     <NavList
@@ -696,6 +770,7 @@ export default function Sidebar({
   if (isMobile) {
     return (
       <div
+        className={styles.mobileDrawer}
         style={{
           position: "fixed",
           top: 0,
@@ -787,14 +862,14 @@ export default function Sidebar({
   }
 
   // Desktop: custom sidebar with icon-only collapsed mode.
-  // Right border is drawn by MainLayout's RailEdgeControl.
   return (
     <div
+      className={styles.navRail}
       style={{
         width: isRailCollapsed ? COLLAPSED_WIDTH : EXPANDED_WIDTH,
         minWidth: isRailCollapsed ? COLLAPSED_WIDTH : EXPANDED_WIDTH,
         background: "var(--fn-sidebar-bg)",
-        borderRight: "none",
+        borderRight: "1px solid var(--fn-sidebar-border)",
         transition:
           "width 0.25s cubic-bezier(0.4, 0, 0.2, 1), min-width 0.25s cubic-bezier(0.4, 0, 0.2, 1)",
         overflow: "hidden",
@@ -814,12 +889,50 @@ export default function Sidebar({
           alignItems: "center",
           gap: 6,
           minWidth: 0,
-          padding: isRailCollapsed ? "12px 0" : "14px 14px 10px",
+          padding: isRailCollapsed ? "12px 0" : "14px 8px 10px 14px",
           justifyContent: isRailCollapsed ? "center" : "flex-start",
           flexShrink: 0,
         }}
       >
-        {brandInner}
+        {isRailCollapsed ? (
+          /**
+           * Collapsed rail: the mark doubles as the expand button. Hovering it
+           * swaps the logo for the panel glyph — the hit target never moves, so
+           * expanding is a click, not a hunt for a 16px seam.
+           */
+          <button
+            type="button"
+            className={styles.brandSwap}
+            onClick={onToggle}
+            aria-label={navToggleLabel}
+            aria-expanded={false}
+            aria-keyshortcuts={railShortcutAria("toggle-nav")}
+            title={navToggleHint}
+          >
+            {brandInner}
+            <PanelLeftOpen
+              size={17}
+              strokeWidth={1.8}
+              className={styles.brandSwapIcon}
+              aria-hidden
+            />
+          </button>
+        ) : (
+          <>
+            {brandInner}
+            <button
+              type="button"
+              className={styles.brandToggle}
+              onClick={onToggle}
+              aria-label={navToggleLabel}
+              aria-expanded
+              aria-keyshortcuts={railShortcutAria("toggle-nav")}
+              title={navToggleHint}
+            >
+              <PanelLeftClose size={16} strokeWidth={1.8} aria-hidden />
+            </button>
+          </>
+        )}
       </div>
       <div
         style={{

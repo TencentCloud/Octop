@@ -244,3 +244,146 @@
     display: none !important;
   }
 }
+
+/* ---------- Rail header ---------- */
+/* Width is set inline (it animates), so the reduced-motion opt-out has to
+   outrank inline styles — hence `!important` inside the media query. */
+.navRail {
+  @media (prefers-reduced-motion: reduce) {
+    transition: none !important;
+  }
+}
+
+/* Version badges give way before the collapse button does. */
+.brandMeta {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+  overflow: hidden;
+  flex-shrink: 1;
+}
+
+/* Expanded rail: always visible, quiet until hovered. */
+.brandToggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  margin-inline-start: auto;
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  border: none;
+  border-radius: var(--fn-radius-md);
+  background: transparent;
+  color: var(--fn-text-tertiary);
+  cursor: pointer;
+  opacity: 0.7;
+  transition:
+    opacity var(--fn-transition-fast),
+    background var(--fn-transition-fast),
+    color var(--fn-transition-fast);
+
+  &:hover {
+    opacity: 1;
+    background: color-mix(in srgb, var(--fn-text-primary) 8%, transparent);
+    color: var(--fn-text-primary);
+  }
+
+  &:focus-visible {
+    opacity: 1;
+    outline: 2px solid var(--fn-color-brand);
+    outline-offset: 1px;
+  }
+}
+
+/* Collapsed rail: the mark itself is the expand button; hovering swaps the
+   logo for the panel glyph instead of moving the hit target. */
+.brandSwap {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  border: none;
+  border-radius: var(--fn-radius-md);
+  background: transparent;
+  color: var(--fn-text-secondary);
+  cursor: pointer;
+
+  img {
+    transition: opacity 0.15s ease;
+  }
+
+  &:hover {
+    background: color-mix(in srgb, var(--fn-text-primary) 8%, transparent);
+
+    img {
+      opacity: 0;
+    }
+  }
+
+  &:hover .brandSwapIcon,
+  &:focus-visible .brandSwapIcon {
+    opacity: 1;
+  }
+
+  &:focus-visible {
+    outline: 2px solid var(--fn-color-brand);
+    outline-offset: 1px;
+  }
+}
+
+.brandSwapIcon {
+  position: absolute;
+  inset: 0;
+  margin: auto;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.15s ease;
+}
+
+/* Mobile drawer slides in from the left; same opt-out as the rail. */
+.mobileDrawer {
+  @media (prefers-reduced-motion: reduce) {
+    transition: none !important;
+  }
+}
+
+/* Collapsed rail: the one control that has no label row to live on. */
+.collapsedRailToggle {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  margin: 4px auto 0;
+  padding: 0;
+  border: none;
+  border-radius: var(--fn-radius-md);
+  background: transparent;
+  color: var(--fn-text-tertiary);
+  cursor: pointer;
+  transition:
+    background var(--fn-transition-fast),
+    color var(--fn-transition-fast);
+
+  &:hover {
+    background: var(--fn-sidebar-item-hover);
+    color: var(--fn-text-primary);
+  }
+
+  /* Rail is open: read as a pressed toggle, not a plain icon. */
+  &[data-active="true"] {
+    background: var(--fn-sidebar-item-active-bg);
+    color: var(--fn-sidebar-item-active-text);
+  }
+
+  &:focus-visible {
+    outline: 2px solid var(--fn-color-brand);
+    outline-offset: 1px;
+  }
+}

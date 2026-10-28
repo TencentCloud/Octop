@@ -4,7 +4,9 @@
   },
   "layout": {
     "collapsePanel": "Collapse panel",
-    "expandPanel": "Expand panel"
+    "expandPanel": "Expand panel",
+    "collapseNav": "Collapse navigation rail",
+    "expandNav": "Expand navigation rail"
   },
   "sharedResource": {
     "shared": "Shared",

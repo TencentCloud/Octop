@@ -4,7 +4,9 @@
   },
   "layout": {
     "collapsePanel": "收起面板",
-    "expandPanel": "展开面板"
+    "expandPanel": "展开面板",
+    "collapseNav": "收起导航栏",
+    "expandNav": "展开导航栏"
   },
   "sharedResource": {
     "shared": "已共享",
