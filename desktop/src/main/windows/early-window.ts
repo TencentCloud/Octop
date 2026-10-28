@@ -2,6 +2,7 @@ import { app, BrowserWindow } from "electron";
 
 import { encodeShellError, SHELL_ERROR_PARAM, type ShellFailure } from "../../shared/shell-error";
 import { windowChrome } from "./chrome";
+import { MIN_WINDOW_SIZE } from "./size";
 
 /**
  * Early Window (§4): shown immediately so the cold start never shows a blank
@@ -35,6 +36,10 @@ export function createEarlyWindow(options: EarlyWindowOptions): EarlyWindow {
   const win = new BrowserWindow({
     width: 1080,
     height: 720,
+    // Same floor as the Dashboard window: the splash swaps for it in place, so
+    // a size the Dashboard would refuse has to be refused here too.
+    minWidth: MIN_WINDOW_SIZE.width,
+    minHeight: MIN_WINDOW_SIZE.height,
     show: false,
     // Same native chrome as the Dashboard window, so the swap from splash to
     // Dashboard does not move the traffic lights / caption buttons. The splash
