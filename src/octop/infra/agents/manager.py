@@ -842,6 +842,33 @@ class AgentManager:
                     spec.user_id,
                     _stored_id_list(knowledge_ids_json),
                 )
+            color_final = spec.color or profile.get("color")
+            icon_name_final = spec.icon_name or profile.get("icon_name")
+            icon_url_final = spec.icon_url or profile.get("icon_url")
+            welcome_final = (
+                spec.welcome_message
+                if spec.welcome_message is not None
+                else profile.get("welcome_message")
+            )
+            # Fill template-provided profile fields when caller omitted them
+            # (issue #2467: CLI agent create leaves icon_url=None / color=None,
+            # making the agent invisible to team dispatch).
+            if spec.template_name and (icon_url_final is None or color_final is None):
+                try:
+                    _tmpl = (
+                        self._expert_catalog.get(spec.template_name)
+                        if self._expert_catalog is not None
+                        else None
+                    )
+                    if _tmpl is not None:
+                        icon_url_final = icon_url_final or getattr(_tmpl, "icon_url", None)
+                        icon_name_final = icon_name_final or getattr(_tmpl, "icon_name", None)
+                        color_final = color_final or getattr(_tmpl, "color", None)
+                        if welcome_final is None:
+                            welcome_final = getattr(_tmpl, "welcome_message", None)
+                except Exception:
+                    pass
+
             self._repos.agent_repo.create(
                 agent_id=agent_id,
                 user_id=spec.user_id,
@@ -853,16 +880,12 @@ class AgentManager:
                 config_json=json.dumps(config) if config else None,
                 icon=spec.icon,
                 template_name=spec.template_name or profile.get("template_name"),
-                color=spec.color or profile.get("color"),
-                icon_name=spec.icon_name or profile.get("icon_name"),
-                icon_url=spec.icon_url or profile.get("icon_url"),
+                color=color_final,
+                icon_name=icon_name_final,
+                icon_url=icon_url_final,
                 skill_package_ids=package_ids_json,
                 published_expert_id=spec.published_expert_id or profile.get("published_expert_id"),
-                welcome_message=(
-                    spec.welcome_message
-                    if spec.welcome_message is not None
-                    else profile.get("welcome_message")
-                ),
+                welcome_message=welcome_final,
                 knowledge_base_ids=knowledge_ids_json,
                 mcp_servers=mcp_servers_json,
                 kind=spec.kind if spec.kind in {"expert", "team"} else "expert",
