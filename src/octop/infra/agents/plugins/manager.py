@@ -384,8 +384,13 @@ class PluginManager:
 
     def seed_bundled(self) -> list[str]:
         """Upgrade already-installed bundled plugins when catalog versions are newer."""
-        from octop.infra.agents.plugins.bundled import default_bundled_plugins_root
-        from octop.infra.agents.plugins.seed import seed_bundled_plugins
+        try:
+            from octop.infra.agents.plugins.bundled import default_bundled_plugins_root
+            from octop.infra.agents.plugins.seed import seed_bundled_plugins
+        except ModuleNotFoundError:
+            # bundled lives inside the wheel; `--force` init may have cleared
+            # site-packages before seed_bundled is called.
+            return []
 
         return seed_bundled_plugins(
             bundled_root=default_bundled_plugins_root(),
@@ -393,11 +398,13 @@ class PluginManager:
             config_path=self._config_path,
         )
 
-    def market_root(self) -> Path:
+    def market_root(self) -> Path | None:
         """In-tree marketplace catalog root (future: remote index)."""
-        from octop.infra.agents.plugins.bundled import default_bundled_plugins_root
-
-        return default_bundled_plugins_root()
+        try:
+            from octop.infra.agents.plugins.bundled import default_bundled_plugins_root
+            return default_bundled_plugins_root()
+        except ModuleNotFoundError:
+            return None
 
     def market_plugin_dir(self, plugin_id: str) -> Path | None:
         """Return a catalog plugin directory when it exists under the market root."""
