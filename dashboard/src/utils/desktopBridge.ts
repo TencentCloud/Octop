@@ -1,0 +1,98 @@
+/**
+ * Typed access to the Electron shell bridge injected by the desktop preload as
+ * ``window.octopDesktop``. In a browser (server mode) this is absent, so the
+ * Dashboard falls back to its existing Python self-update flow.
+ */
+
+export interface DesktopClientSettings {
+  launchAtLogin: boolean;
+  closeBehavior: "quit" | "tray";
+  themeBackground: "system" | "light" | "dark";
+  stableOnly: boolean;
+}
+
+export interface DesktopUpdateCheckResult {
+  status: "update-available" | "up-to-date" | "error";
+  currentVersion: string;
+  latestVersion: string | null;
+  error: string | null;
+}
+
+export interface DesktopPlatformInfo {
+  platform: "darwin" | "win32" | "linux";
+  arch: string;
+  isDesktop: true;
+}
+
+/**
+ * Theme for the *native* window controls the shell keeps (macOS traffic lights,
+ * Windows caption buttons). `scheme` is the user's preference, so "system" keeps
+ * following the OS instead of pinning today's answer.
+ */
+export interface DesktopWindowChromeTheme {
+  mode: "light" | "dark";
+  scheme?: "system" | "light" | "dark";
+}
+
+/**
+ * A JWT minted by the shell from its stored device credential. The credential
+ * itself never crosses the bridge.
+ */
+export interface DesktopIssuedSession {
+  access_token: string;
+  expires_in: number;
+}
+
+export interface DesktopSessionBridge {
+  /** Bind the credential to the signed-in user; false when the shell refused. */
+  register(accessToken: string): Promise<boolean>;
+  /** Mint a fresh JWT, or null when this install has no usable credential. */
+  renew(): Promise<DesktopIssuedSession | null>;
+  /** Forget this install's credential. */
+  revoke(accessToken: string): Promise<boolean>;
+}
+
+export interface OctopDesktopBridge {
+  session?: DesktopSessionBridge;
+  /**
+   * Where to dial WebSockets (§5.2). Absent on an older shell, and null when the
+   * relay could not bind — both mean "derive the address from the page origin".
+   */
+  wsEndpoint?(): { baseUrl: string; token: string } | null;
+  getPlatformInfo(): Promise<DesktopPlatformInfo>;
+  openDirectoryPicker(): Promise<string | null>;
+  openFilePicker(): Promise<string | null>;
+  onBackendReady(callback: (ready: { ok: boolean }) => void): () => void;
+  /**
+   * Tell the shell what the page looks like so its native window controls match.
+   * There is deliberately no minimise / maximise / close here: those stay native.
+   */
+  setWindowChrome(theme: DesktopWindowChromeTheme): void;
+  /**
+   * macOS hides the traffic lights in full screen; the page then stops
+   * reserving room for them. Fires only on change.
+   */
+  onWindowFullscreenChange?(callback: (fullscreen: boolean) => void): () => void;
+  clientSettings: {
+    get(): Promise<DesktopClientSettings>;
+    set(patch: Partial<DesktopClientSettings>): Promise<DesktopClientSettings>;
+  };
+  checkForUpdates(): Promise<DesktopUpdateCheckResult>;
+  openUpdateConfirmation(): Promise<void>;
+}
+
+declare global {
+  interface Window {
+    octopDesktop?: OctopDesktopBridge;
+  }
+}
+
+export function isDesktopShell(): boolean {
+  return (
+    typeof window !== "undefined" && typeof window.octopDesktop !== "undefined"
+  );
+}
+
+export function getDesktopBridge(): OctopDesktopBridge | null {
+  return isDesktopShell() ? window.octopDesktop! : null;
+}

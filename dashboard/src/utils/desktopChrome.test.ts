@@ -1,38 +1,51 @@
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
+
 import {
   applyDesktopChrome,
   CHROME_END_PAD_ATTR,
   chromeEndPadValue,
-  emitDesktopWindowAction,
-  installDesktopWindowDrag,
-  isDesktopShell,
+  chromeStartPadValue,
+  chromeTopBandPx,
+  DESKTOP_CHROME_HEIGHT,
+  DESKTOP_DRAG_REGION_CLASS,
+  DOCK_WINDOW_CONTROLS_PAD_PX,
   resolveDesktopChromeStyle,
-  shouldArmDesktopDrag,
   titleRowEndPadding,
+  titleRowStartPadding,
   WINDOW_CONTROLS_INSET,
   WINDOW_CONTROLS_SPACER_ATTR,
   windowControlsEndSpacerPx,
-  DESKTOP_DRAG_REGION_CLASS,
-  DOCK_WINDOW_CONTROLS_PAD_PX,
+  windowControlsInset,
+  windowControlsSide,
+  windowControlsStartSpacerPx,
 } from "./desktopChrome";
+import { isDesktopShell } from "./desktopBridge";
+
+type BridgeHost = Window & { octopDesktop?: unknown };
+
+function stubBridge(): void {
+  Object.defineProperty(window, "octopDesktop", {
+    configurable: true,
+    value: {},
+  });
+}
 
 describe("desktopChrome", () => {
   afterEach(() => {
     applyDesktopChrome(null);
-    delete document.documentElement.dataset.octopDragReady;
+    delete (window as BridgeHost).octopDesktop;
     vi.unstubAllGlobals();
   });
 
-  it("is inactive when the Wails bridge is missing", () => {
-    expect(isDesktopShell({} as Window)).toBe(false);
+  it("is inactive without the Electron preload bridge", () => {
+    expect(isDesktopShell()).toBe(false);
   });
 
-  it("is active when Wails invoke is present", () => {
-    expect(
-      isDesktopShell({ _wails: { invoke: () => undefined } } as Window),
-    ).toBe(true);
+  it("is active once the preload bridge is exposed", () => {
+    stubBridge();
+    expect(isDesktopShell()).toBe(true);
   });
 
   it("uses traffic-light chrome on macOS user agents", () => {
@@ -43,52 +56,88 @@ describe("desktopChrome", () => {
     ).toBe("mac");
   });
 
-  it("uses caption-button chrome on Windows and Linux", () => {
+  it("uses caption-button chrome on Windows", () => {
     expect(
       resolveDesktopChromeStyle(
         "Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/120.0.0.0",
       ),
     ).toBe("windows");
+  });
+
+  it("reserves nothing on Linux, which keeps its native window frame", () => {
     expect(
       resolveDesktopChromeStyle(
         "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36",
       ),
-    ).toBe("windows");
+    ).toBeNull();
   });
 
-  it("reserves a trailing inset for the title row and right-edge overlays", () => {
+  it("puts the window buttons on the conventional edge per platform", () => {
+    // macOS traffic lights → leading (left) edge.
+    expect(windowControlsSide("mac")).toBe("start");
+    // Windows caption buttons → trailing (right) edge.
+    expect(windowControlsSide("windows")).toBe("end");
+
+    expect(windowControlsInset("mac", "start")).toBe(WINDOW_CONTROLS_INSET.mac);
+    expect(windowControlsInset("mac", "end")).toBe(0);
+    expect(windowControlsInset("windows", "end")).toBe(
+      WINDOW_CONTROLS_INSET.windows,
+    );
+    expect(windowControlsInset("windows", "start")).toBe(0);
+    expect(windowControlsInset(null, "end")).toBe(0);
+  });
+
+  it("reserves the inset only on the edge that carries buttons", () => {
     expect(WINDOW_CONTROLS_INSET.mac).toBeGreaterThan(0);
     expect(WINDOW_CONTROLS_INSET.windows).toBeGreaterThan(
       WINDOW_CONTROLS_INSET.mac,
     );
     expect(titleRowEndPadding(32)).toContain("--window-controls-inset-end");
     expect(titleRowEndPadding(32)).toContain("32px");
+    expect(titleRowStartPadding(32)).toContain("--window-controls-inset-start");
     expect(CHROME_END_PAD_ATTR).toBe("data-octop-chrome-end-pad");
     expect(WINDOW_CONTROLS_SPACER_ATTR).toBe(
       "data-octop-window-controls-spacer",
     );
     expect(chromeEndPadValue(12)).toContain("--window-controls-inset-end");
     expect(chromeEndPadValue(12)).toContain("12px");
-    expect(windowControlsEndSpacerPx("mac", true)).toBe(
-      WINDOW_CONTROLS_INSET.mac,
-    );
+    expect(chromeStartPadValue(12)).toContain("--window-controls-inset-start");
+    expect(chromeStartPadValue(12)).toContain("12px");
+
+    // Windows keeps the trailing caption buttons clear.
     expect(windowControlsEndSpacerPx("windows", true)).toBe(
       WINDOW_CONTROLS_INSET.windows,
     );
-    expect(windowControlsEndSpacerPx("mac", true, 12)).toBe(
-      WINDOW_CONTROLS_INSET.mac - 12,
-    );
-    expect(
-      windowControlsEndSpacerPx("mac", true, DOCK_WINDOW_CONTROLS_PAD_PX),
-    ).toBe(WINDOW_CONTROLS_INSET.mac - DOCK_WINDOW_CONTROLS_PAD_PX);
     expect(windowControlsEndSpacerPx("windows", true, 12)).toBe(
       WINDOW_CONTROLS_INSET.windows - 12,
     );
+    // macOS buttons moved to the left, so nothing is reserved on the right.
+    expect(windowControlsEndSpacerPx("mac", true)).toBe(0);
     expect(windowControlsEndSpacerPx("mac", false)).toBe(0);
     expect(windowControlsEndSpacerPx(null, true)).toBe(0);
+
+    expect(windowControlsStartSpacerPx("mac", true)).toBe(
+      WINDOW_CONTROLS_INSET.mac,
+    );
+    expect(
+      windowControlsStartSpacerPx("mac", true, DOCK_WINDOW_CONTROLS_PAD_PX),
+    ).toBe(WINDOW_CONTROLS_INSET.mac - DOCK_WINDOW_CONTROLS_PAD_PX);
+    expect(windowControlsStartSpacerPx("windows", true)).toBe(0);
+    expect(windowControlsStartSpacerPx("mac", false)).toBe(0);
+    expect(windowControlsStartSpacerPx(null, true)).toBe(0);
   });
 
-  it("pads right-edge overlays away from frameless window controls", () => {
+  it("reserves a top band for the macOS traffic lights only", () => {
+    expect(chromeTopBandPx("mac")).toBe(DESKTOP_CHROME_HEIGHT);
+    expect(chromeTopBandPx("windows")).toBe(0);
+    expect(chromeTopBandPx(null)).toBe(0);
+    // Full screen hides the traffic lights, so nothing is reserved there either.
+    expect(chromeTopBandPx("mac", true)).toBe(0);
+    // A band smaller than the buttons would let them cover the brand row.
+    expect(DESKTOP_CHROME_HEIGHT).toBeGreaterThanOrEqual(32);
+  });
+
+  it("pads right-edge overlays away from the native caption buttons", () => {
     const css = readFileSync(
       resolve(__dirname, "../styles/layout.css"),
       "utf8",
@@ -99,103 +148,55 @@ describe("desktopChrome", () => {
     expect(css).toMatch(/padding-inline-end:\s*max\(/);
   });
 
-  it("exports a stable class for Wails title-bar dragging", () => {
+  it("drags shell windows through the app-region CSS property", () => {
+    const css = readFileSync(
+      resolve(__dirname, "../styles/layout.css"),
+      "utf8",
+    );
+    expect(css).toContain(".octop-desktop-drag");
+    expect(css).toContain("-webkit-app-region: drag");
+    expect(css).toContain("-webkit-app-region: no-drag");
+    expect(css).not.toContain("wails");
     expect(DESKTOP_DRAG_REGION_CLASS).toBe("octop-desktop-drag");
   });
 
-  it("writes the inset token on <html> and can clear it", () => {
+  it("writes both inset tokens on <html> and can clear them", () => {
     applyDesktopChrome("mac");
     expect(document.documentElement.dataset.octopDesktopChrome).toBe("mac");
     expect(
       document.documentElement.style.getPropertyValue(
-        "--window-controls-inset-end",
+        "--window-controls-inset-start",
       ),
     ).toBe(`${WINDOW_CONTROLS_INSET.mac}px`);
+    expect(
+      document.documentElement.style.getPropertyValue(
+        "--window-controls-inset-end",
+      ),
+    ).toBe("0px");
+
+    applyDesktopChrome("windows");
+    expect(
+      document.documentElement.style.getPropertyValue(
+        "--window-controls-inset-start",
+      ),
+    ).toBe("0px");
+    expect(
+      document.documentElement.style.getPropertyValue(
+        "--window-controls-inset-end",
+      ),
+    ).toBe(`${WINDOW_CONTROLS_INSET.windows}px`);
 
     applyDesktopChrome(null);
     expect(document.documentElement.dataset.octopDesktopChrome).toBeUndefined();
+    expect(
+      document.documentElement.style.getPropertyValue(
+        "--window-controls-inset-start",
+      ),
+    ).toBe("");
     expect(
       document.documentElement.style.getPropertyValue(
         "--window-controls-inset-end",
       ),
     ).toBe("");
   });
-
-  it("emits Wails window actions through the existing event bridge", () => {
-    const invoke = vi.fn();
-    const emitted = emitDesktopWindowAction("minimise", {
-      _wails: { invoke },
-    } as Window);
-    expect(emitted).toBe(true);
-    expect(invoke).toHaveBeenCalledWith("wails:event:emit:desktop:minimise");
-  });
-
-  it("arms drag on --wails-draggable regions and the top chrome strip", () => {
-    const region = document.createElement("div");
-    region.style.setProperty("--wails-draggable", "drag");
-    document.body.appendChild(region);
-    const button = document.createElement("button");
-    region.appendChild(button);
-    const chrome = document.createElement("div");
-    document.body.appendChild(chrome);
-
-    expect(shouldArmDesktopDrag(mouseOn(region, 80))).toBe(true);
-    expect(shouldArmDesktopDrag(mouseOn(button, 10))).toBe(false);
-    expect(shouldArmDesktopDrag(mouseOn(chrome, 10))).toBe(true);
-    expect(shouldArmDesktopDrag(mouseOn(chrome, 80))).toBe(false);
-
-    region.remove();
-    chrome.remove();
-  });
-
-  it("starts a Wails window drag after a move on an armed title-bar target", () => {
-    const invoke = vi.fn();
-    Object.defineProperty(window, "_wails", {
-      configurable: true,
-      value: { invoke },
-    });
-    expect(installDesktopWindowDrag()).toBe(true);
-    expect(installDesktopWindowDrag()).toBe(false);
-
-    const region = document.createElement("div");
-    region.style.setProperty("--wails-draggable", "drag");
-    document.body.appendChild(region);
-    region.dispatchEvent(
-      new MouseEvent("mousedown", {
-        button: 0,
-        clientY: 80,
-        screenX: 40,
-        screenY: 40,
-        bubbles: true,
-      }),
-    );
-    window.dispatchEvent(
-      new MouseEvent("mousemove", {
-        button: 0,
-        screenX: 52,
-        screenY: 48,
-        bubbles: true,
-      }),
-    );
-    expect(invoke).toHaveBeenCalledWith("wails:drag");
-
-    region.dispatchEvent(
-      new MouseEvent("dblclick", {
-        button: 0,
-        clientY: 80,
-        bubbles: true,
-      }),
-    );
-    expect(invoke).toHaveBeenCalledWith("wails:drag:doubleclick");
-    region.remove();
-    delete document.documentElement.dataset.octopDragReady;
-    delete (window as Window & { _wails?: unknown })._wails;
-  });
 });
-
-function mouseOn(
-  target: Element,
-  clientY: number,
-): Pick<MouseEvent, "button" | "clientY" | "target"> {
-  return { button: 0, clientY, target };
-}

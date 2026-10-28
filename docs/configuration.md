@@ -259,6 +259,20 @@ step; password verification works without a pool. The modern flow uses
 plus `database_bound` / `database_driver`. `setup_lockdown` middleware
 blocks non-setup routes until the wizard completes.
 
+With `OCTOP_REQUIRE_SETUP_PASSWORD=false` there is no CLI password; the
+dashboard learns this from `wizard_password_required` and skips both that
+step and the password fields of the admin step. `POST /api/setup/initial-admin`
+then accepts a body without `password` and mints an unguessable one, so the
+row keeps a real hash while the JWT returned by the same call is the actual
+credential. The desktop shell pins that variable for the sidecar it owns, and
+neither `~/.octop/env` nor `PUT /api/envs` can override it while it runs.
+
+Because nobody knows that password, the shell also holds a device credential
+(encrypted per-install secret at `<OCTOP_HOME>/desktop-device.json`) and
+exchanges it for a fresh JWT at `POST /api/auth/device/token` when the session
+expires, so `OCTOP_ACCESS_TOKEN_TTL` stays at its default `86400` instead of
+being stretched. See `desktop/README.md` → *Accounts (no sign-in wall)*.
+
 For unattended installs, use `octop init --yes` with
 `OCTOP_ADMIN_USERNAME` / `OCTOP_ADMIN_PASSWORD` (and
 `OCTOP_REQUIRE_SETUP_PASSWORD=false` if the env-var path is used). This

@@ -8,42 +8,27 @@ import {
 } from "react";
 import {
   applyDesktopChrome,
-  installDesktopWindowDrag,
-  isDesktopShell,
   resolveDesktopChromeStyle,
   type DesktopChromeStyle,
 } from "../utils/desktopChrome";
+import { isDesktopShell } from "../utils/desktopBridge";
 
 const DesktopChromeContext = createContext<DesktopChromeStyle | null>(null);
 
-/** Activate frameless window chrome after the Wails bridge appears. */
+/**
+ * Activate desktop window chrome when the Electron preload bridge is present.
+ * The shell keeps the native buttons (macOS traffic lights, Windows caption
+ * buttons), so this only publishes how much space they need; dragging stays
+ * pure CSS (`app-region`), no JS listeners needed.
+ */
 export function useDesktopChrome(): DesktopChromeStyle | null {
   const [style, setStyle] = useState<DesktopChromeStyle | null>(null);
 
   useEffect(() => {
-    let cancelled = false;
-    const tryApply = () => {
-      if (cancelled || !isDesktopShell()) return false;
-      const next = resolveDesktopChromeStyle();
-      applyDesktopChrome(next);
-      installDesktopWindowDrag();
-      setStyle(next);
-      return true;
-    };
-    if (tryApply()) {
-      return () => {
-        cancelled = true;
-      };
-    }
-    const timer = window.setInterval(() => {
-      if (tryApply()) window.clearInterval(timer);
-    }, 250);
-    const stop = window.setTimeout(() => window.clearInterval(timer), 12_000);
-    return () => {
-      cancelled = true;
-      window.clearInterval(timer);
-      window.clearTimeout(stop);
-    };
+    if (!isDesktopShell()) return;
+    const next = resolveDesktopChromeStyle();
+    applyDesktopChrome(next);
+    setStyle(next);
   }, []);
 
   return style;

@@ -2,15 +2,17 @@ import { render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 import PwaInstallPrompt from "./index";
 
+type BridgeHost = Window & { octopDesktop?: unknown };
+
 describe("PwaInstallPrompt in desktop shell", () => {
   afterEach(() => {
-    delete (window as Window & { _wails?: unknown })._wails;
+    delete (window as BridgeHost).octopDesktop;
   });
 
-  it("hides the install button when the Wails bridge is present", () => {
-    Object.defineProperty(window, "_wails", {
+  it("hides the install button when the preload bridge is present", () => {
+    Object.defineProperty(window, "octopDesktop", {
       configurable: true,
-      value: { invoke: () => undefined },
+      value: {},
     });
     render(<PwaInstallPrompt appearance="chatFloat" />);
     expect(screen.queryByLabelText("安装应用")).toBeNull();

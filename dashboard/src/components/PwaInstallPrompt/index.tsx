@@ -9,7 +9,7 @@ import {
   triggerInstall,
   waitForInstallPrompt,
 } from "../../pwa-prompt";
-import { isDesktopShell } from "../../utils/desktopChrome";
+import { isDesktopShell } from "../../utils/desktopBridge";
 import styles from "./index.module.less";
 
 const DISMISSED_KEY = "pwa:install-dismissed";

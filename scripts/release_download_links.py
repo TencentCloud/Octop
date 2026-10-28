@@ -10,9 +10,11 @@ filename table. Do not scrape the assets list.
 from __future__ import annotations
 
 import argparse
+import os
 import sys
 
-GITHUB_REPO = "TencentCloud/Octop"
+# GitHub Actions sets this for forks too; local invocation keeps the upstream default.
+GITHUB_REPO = os.environ.get("GITHUB_REPOSITORY", "TencentCloud/Octop")
 DOWNLOAD_BASE = f"https://github.com/{GITHUB_REPO}/releases/download"
 
 
@@ -51,8 +53,16 @@ def render_download_section(raw_version: str) -> str:
     mac_intel = md_link("Intel", tag, desktop_name("darwin", "amd64", version, "dmg"))
     mac_arm_zip = md_link("Apple Silicon", tag, portable_name("darwin", "arm64", version))
     mac_intel_zip = md_link("Intel", tag, portable_name("darwin", "amd64", version))
-    linux64 = md_link("64-bit", tag, desktop_name("linux", "amd64", version, "tar.gz"))
-    linux_arm = md_link("ARM64", tag, desktop_name("linux", "arm64", version, "tar.gz"))
+    linux64 = md_link("64-bit", tag, desktop_name("linux", "amd64", version, "deb"))
+    linux_arm = md_link("ARM64", tag, desktop_name("linux", "arm64", version, "deb"))
+    linux_appimage = [
+        md_link(arch, tag, desktop_name("linux", arch, version, "AppImage"))
+        for arch in ("amd64", "arm64")
+    ]
+    linux_rpm = [
+        md_link(arch, tag, desktop_name("linux", arch, version, "rpm"))
+        for arch in ("amd64", "arm64")
+    ]
     linux64_zip = md_link("64-bit", tag, portable_name("linux", "amd64", version))
     linux_arm_zip = md_link("ARM64", tag, portable_name("linux", "arm64", version))
     fnos_docker = md_link(
@@ -85,8 +95,12 @@ def render_download_section(raw_version: str) -> str:
             "",
             "### Linux",
             "",
-            "#### Desktop installer (Recommended)",
+            "#### Desktop installer (deb; recommended)",
             f"- {linux64} | {linux_arm}",
+            "",
+            "#### AppImage / rpm",
+            f"- AppImage: {' | '.join(linux_appimage)}",
+            f"- rpm: {' | '.join(linux_rpm)}",
             "",
             "#### Portable",
             f"- {linux64_zip} | {linux_arm_zip}",

@@ -1,4 +1,5 @@
 import { getApiUrl } from "./config";
+import { registerDeviceSession, renewDesktopSession } from "./desktopSession";
 import i18n from "../i18n";
 import { markNavigatingAway } from "../utils/reloadOnStaleChunk";
 
@@ -379,6 +380,37 @@ async function throwIfUnauthorized(
   throw new Error(message);
 }
 
+/**
+ * Retry a 401 once with a JWT minted by the desktop shell.
+ *
+ * A desktop user has no password to type, so an expired session used to be a
+ * dead end. The shell holds a device credential and can issue a new token; on
+ * the web this returns null immediately and the caller falls through to the
+ * ordinary login redirect.
+ */
+async function retryWithDesktopSession(
+  path: string,
+  url: string,
+  options: RequestInit,
+  response: Response,
+): Promise<Response | null> {
+  if (response.status !== 401) return null;
+  // A rejected login is a credential problem, not an expired session.
+  if (path.startsWith("/auth/login") || path.startsWith("/auth/device/")) {
+    return null;
+  }
+  // Business 401s (peer login, setup guards) would only be retried in vain.
+  const code = await errorCodeOf(response);
+  if (code && !SESSION_UNAUTHORIZED_CODES.has(code)) return null;
+  const issued = await renewDesktopSession();
+  if (!issued?.access_token) return null;
+  setAuthToken(issued.access_token, !isSessionOnlyAuth());
+  return fetch(url, {
+    ...options,
+    headers: buildHeaders(path, options.headers),
+  });
+}
+
 export async function request<T = unknown>(
   path: string,
   options: RequestInit = {},
@@ -389,10 +421,13 @@ export async function request<T = unknown>(
 
   const headers = buildHeaders(path, options.headers);
 
-  const response = await fetch(url, {
+  let response = await fetch(url, {
     ...options,
     headers,
   });
+
+  const retried = await retryWithDesktopSession(path, url, options, response);
+  if (retried) response = retried;
 
   if (await check503ForSetupRequired(path, response)) {
     throw new SetupRequiredError();
@@ -400,6 +435,9 @@ export async function request<T = unknown>(
 
   await throwIfUnauthorized(path, response);
   applyRenewedAccessToken(response);
+  // Desktop: bind the shell's device credential the first chance we get, so the
+  // next cold start can renew instead of landing on /login.
+  if (response.ok) void registerDeviceSession(getAuthToken());
 
   if (!response.ok) {
     if (response.status === 403 && isAgentScopedPath(path)) {

@@ -18,12 +18,6 @@
     "shared": "Shared",
     "empty": "Nothing matches the current filters"
   },
-  "desktopChrome": {
-    "group": "Window controls",
-    "minimize": "Minimize",
-    "maximize": "Maximize",
-    "close": "Close"
-  },
   "avatarPicker": {
     "presets": {
       "skill": {
@@ -3849,6 +3843,13 @@
       "panelDesc": "Check for a new release and install it when supported. Restart the service after a successful upgrade.",
       "stableOnlyLabel": "Stable releases only",
       "stableOnlyHint": "Automatic checks do not remind you about alpha, beta, rc, or dev builds. You can still check and upgrade to a pre-release manually.",
+      "deviceLoginTitle": "This device's sign-in",
+      "deviceLoginHint": "The desktop app renews its session with a device credential, so an expired token never sends you back to the login page. Resetting keeps the current session working but requires signing in again on this computer once the token expires.",
+      "deviceLoginButton": "Reset device sign-in",
+      "deviceLoginConfirmTitle": "Reset this device's sign-in?",
+      "deviceLoginConfirmBody": "This computer can no longer renew silently and will return to the login page when the token expires. If the credential leaked, also revoke the device on the server.",
+      "deviceLoginSuccess": "Device sign-in reset",
+      "deviceLoginFailed": "Reset failed, please try again later",
       "prereleaseBadge": "Pre-release",
       "prereleaseHint": "v{{version}} is a pre-release test build.",
       "prereleaseConfirmTitle": "Upgrade to a pre-release?",
@@ -3889,6 +3890,7 @@
       "restartTimeout": "Restart timed out. Run manually: octop service restart",
       "restartFailed": "Restart request failed. Check the service and try again.",
       "releaseNotes": "Release Notes",
+    "shellManaged": "The desktop client is updated by its shell, which detects, downloads and installs the shell, frontend and bundled Python runtime as one release.",
       "updateModalTitle": "New Version Available",
       "guideTitle": "Update by install method",
       "guideIntro": "If the one-click upgrade on the left is unavailable, pick the commands for your install method. Restart after upgrading; data stays in ~/.octop (or OCTOP_HOME).",
@@ -5493,7 +5495,8 @@
       "submitFailed": "Could not create administrator.",
       "continue": "Continue",
       "alreadyCreated": "Administrator \"{{username}}\" has been created.",
-      "intro": "Create the first administrator account."
+      "intro": "Create the first administrator account.",
+      "introNoPassword": "Name the account on this device. No password is needed."
     },
     "model": {
       "intro": "Configure one model provider so the assistant can reply. You can skip this step and configure it later.",

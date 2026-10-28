@@ -1,11 +1,15 @@
-import { isDesktopShell } from "../../../utils/desktopChrome";
+import { isDesktopShell } from "../../../utils/desktopBridge";
 
 /** System browser on desktop; a new tab in the web dashboard. */
 export function openExternalBrowserUrl(url: string): void {
   window.open(url, "_blank", "noopener,noreferrer");
 }
 
-/** Named popups do not appear in the Wails WebView. */
+/**
+ * The Electron shell routes ``_blank`` targets to the OS browser, so the auth
+ * flow runs there and the app keeps polling for completion — a placeholder
+ * popup would only be opened and immediately handed off.
+ */
 export function tryOpenAuthPopup(
   url: string,
   name: string,

@@ -1,11 +1,14 @@
-bin/
-.task/
-*.syso
-bundled/portable.zip
-build/windows/*.syso
-build/darwin/icons.icns
-build/windows/icon.ico
-build/windows/info.generated.json
-build/windows/wails.exe.generated.manifest
-build/windows/nsis/MicrosoftEdgeWebview2Setup.exe
-build/linux/icon.png
+node_modules/
+out/
+release/
+dist/
+*.log
+pnpm-debug.log*
+.dev-runtime/
+resources/dashboard
+
+# Build inputs, not sources: CI copies the built Dashboard and the matching
+# portable zip (plus its portable-version.json) here before packaging. See
+# .github/workflows/octop-desktop.yml and desktop/portable/Makefile — a runtime
+# is megabytes of CPython and site-packages, never committed.
+resources/portable/

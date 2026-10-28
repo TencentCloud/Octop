@@ -23,11 +23,11 @@ import type { PanelMode } from "./index";
 import { useDesktopChromeStyle } from "../../hooks/useDesktopChrome";
 import {
   DOCK_WINDOW_CONTROLS_PAD_PX,
-  isDesktopShell,
   resolveDesktopChromeStyle,
   WINDOW_CONTROLS_SPACER_ATTR,
   windowControlsEndSpacerPx,
 } from "../../utils/desktopChrome";
+import { isDesktopShell } from "../../utils/desktopBridge";
 import styles from "./ChatBrowserPanel.module.less";
 
 interface ChatDockPanelShellProps {

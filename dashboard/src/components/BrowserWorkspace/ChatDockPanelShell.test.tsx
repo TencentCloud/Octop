@@ -3,9 +3,9 @@ import { describe, expect, it, vi } from "vitest";
 import { DesktopChromeProvider } from "../../hooks/useDesktopChrome";
 import {
   DOCK_WINDOW_CONTROLS_PAD_PX,
-  WINDOW_CONTROLS_INSET,
   WINDOW_CONTROLS_SPACER_ATTR,
   resolveDesktopChromeStyle,
+  windowControlsInset,
 } from "../../utils/desktopChrome";
 import ChatDockPanelShell from "./ChatDockPanelShell";
 
@@ -27,7 +27,9 @@ function renderShell(
 }
 
 function expectedDockSpacer(chrome: "mac" | "windows"): string {
-  return `${WINDOW_CONTROLS_INSET[chrome] - DOCK_WINDOW_CONTROLS_PAD_PX}px`;
+  return `${
+    windowControlsInset(chrome, "end") - DOCK_WINDOW_CONTROLS_PAD_PX
+  }px`;
 }
 
 function spacerWidth(container: HTMLElement): string | undefined {
@@ -38,9 +40,20 @@ function spacerWidth(container: HTMLElement): string | undefined {
 }
 
 describe("ChatDockPanelShell chrome inset", () => {
-  it("inserts a pixel spacer so right-dock and popup toolbars clear window controls", () => {
-    const { container, rerender } = renderShell("right", "mac");
-    expect(spacerWidth(container)).toBe(expectedDockSpacer("mac"));
+  it("reserves caption-button space on Windows only", () => {
+    // Windows caption buttons sit over the dock's toolbar, so the toolbar gets
+    // a spacer; macOS traffic lights are on the opposite edge.
+    const { container, rerender } = renderShell("right", "windows");
+    expect(spacerWidth(container)).toBe(expectedDockSpacer("windows"));
+
+    rerender(
+      <DesktopChromeProvider value="mac">
+        <ChatDockPanelShell {...baseProps} mode="right" />
+      </DesktopChromeProvider>,
+    );
+    expect(
+      container.querySelector(`[${WINDOW_CONTROLS_SPACER_ATTR}]`),
+    ).toBeNull();
 
     rerender(
       <DesktopChromeProvider value="windows">
@@ -50,7 +63,7 @@ describe("ChatDockPanelShell chrome inset", () => {
     expect(spacerWidth(container)).toBe(expectedDockSpacer("windows"));
 
     rerender(
-      <DesktopChromeProvider value="mac">
+      <DesktopChromeProvider value="windows">
         <ChatDockPanelShell {...baseProps} mode="bottom" />
       </DesktopChromeProvider>,
     );
@@ -84,20 +97,26 @@ describe("ChatDockPanelShell chrome inset", () => {
     expect(onClose).not.toHaveBeenCalled();
   });
 
-  it("still inserts the spacer from the Wails bridge when chrome context is missing", () => {
-    Object.defineProperty(window, "_wails", {
+  it("still inserts the spacer from the preload bridge when chrome context is missing", () => {
+    // Without a provider the panel falls back to the platform UA; pin it to
+    // Windows so the expectation does not depend on the jsdom default.
+    vi.spyOn(navigator, "userAgent", "get").mockReturnValue(
+      "Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/120.0.0.0",
+    );
+    Object.defineProperty(window, "octopDesktop", {
       configurable: true,
-      value: { invoke: () => undefined },
+      value: {},
     });
     const { container } = render(
       <ChatDockPanelShell {...baseProps} mode="right" />,
     );
     expect(spacerWidth(container)).toBe(
       `${
-        WINDOW_CONTROLS_INSET[resolveDesktopChromeStyle()] -
+        windowControlsInset(resolveDesktopChromeStyle(), "end") -
         DOCK_WINDOW_CONTROLS_PAD_PX
       }px`,
     );
-    delete (window as Window & { _wails?: unknown })._wails;
+    delete (window as Window & { octopDesktop?: unknown }).octopDesktop;
+    vi.restoreAllMocks();
   });
 });

@@ -12,6 +12,7 @@ import {
   isChunkLoadError,
   tryReloadOnStaleChunk,
 } from "./utils/reloadOnStaleChunk";
+import { bootNativeWindowChrome } from "./utils/nativeWindowChrome";
 
 if (typeof window !== "undefined") {
   // Recover from post-deploy stale hashed chunks (white screen → soft reload).
@@ -56,6 +57,10 @@ if (typeof window !== "undefined") {
     }
     console.error("[UnhandledRejection]", reason);
   });
+
+  // Native window buttons are drawn by the OS, so paint them in the stored
+  // theme before React mounts (an effect would be one frame too late).
+  bootNativeWindowChrome();
 }
 
 void initI18n()
@@ -74,6 +79,8 @@ void initI18n()
 // Register SW as early as possible so beforeinstallprompt can fire before the
 // user clicks the header install button (deferring to "load" caused a race).
 // In DEV this only clears stale workers — it never registers (see sw-register).
-if (typeof window !== "undefined") {
+// The desktop shell serves its own packaged Dashboard and must never register a
+// Service Worker that could cache a stale frontend independently of the shell.
+if (typeof window !== "undefined" && !window.octopDesktop) {
   void import("./sw-register").then(({ registerSW }) => registerSW());
 }

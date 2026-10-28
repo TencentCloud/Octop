@@ -5,11 +5,11 @@ import enUS from "antd/locale/en_US";
 import dayjs from "dayjs";
 import "dayjs/locale/zh-cn";
 import { useEffect } from "react";
-import DesktopWindowControls from "./components/DesktopWindowControls";
 import {
   DesktopChromeProvider,
   useDesktopChrome,
 } from "./hooks/useDesktopChrome";
+import { useNativeWindowChrome } from "./hooks/useNativeWindowChrome";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
 import { routerBasename } from "./utils/publicUrl";
 import { useTranslation } from "react-i18next";
@@ -28,7 +28,6 @@ import { LayoutModeProvider } from "./context/LayoutModeContext";
 import { VoiceOutputProvider } from "./context/VoiceOutputContext";
 import { useIsMobile } from "./hooks/useIsMobile";
 import { useUnauthorizedRedirect } from "./hooks/useUnauthorizedRedirect";
-import { installDesktopExternalLinks } from "./utils/desktopExternalLinks";
 import { brandTokensFor } from "./styles/themePalettes";
 import "./styles/theme-vars.css";
 import "./styles/layout.css";
@@ -47,6 +46,9 @@ function ThemedApp() {
   const { t, i18n } = useTranslation();
   const isMobile = useIsMobile();
   const desktopChrome = useDesktopChrome();
+  // Native window buttons (traffic lights / caption buttons) follow the app
+  // theme; the page never draws them.
+  useNativeWindowChrome();
   const brandTokens = brandTokensFor(palette, isDark, customColor);
   // Make antd built-ins (Popconfirm OK/Cancel, Modal default footer, Empty,
   // Pagination, DatePicker, Table… ) follow the current UI language.
@@ -56,8 +58,6 @@ function ThemedApp() {
   dayjs.locale(isZh ? "zh-cn" : "en");
 
   useUnauthorizedRedirect();
-
-  useEffect(() => installDesktopExternalLinks(), []);
 
   // Set document title based on current language
   useEffect(() => {
@@ -129,9 +129,6 @@ function ThemedApp() {
     >
       <AntdAppProvider>
         <DesktopChromeProvider value={desktopChrome}>
-          {desktopChrome ? (
-            <DesktopWindowControls chrome={desktopChrome} />
-          ) : null}
           <Routes>
             <Route path="/login" element={<LoginPage />} />
             <Route path="/login/oidc/complete" element={<OidcComplete />} />

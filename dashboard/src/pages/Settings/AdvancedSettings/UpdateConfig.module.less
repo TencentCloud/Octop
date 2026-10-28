@@ -274,6 +274,30 @@
   }
 }
 
+.btnDanger {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 14px;
+  border: 1px solid var(--fn-color-danger-border, #fca5a5);
+  border-radius: 8px;
+  background: transparent;
+  color: var(--fn-color-danger, #ef4444);
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background-color var(--fn-transition-fast);
+
+  &:hover:not(:disabled) {
+    background: var(--fn-color-error-bg, #fef2f2);
+  }
+
+  &:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+}
+
 /* ── Progress bar ── */
 
 .progressSection {

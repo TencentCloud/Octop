@@ -1,0 +1,24 @@
+# Per-package toolchain pin for the Electron shell.
+#
+# Node 24 here, while the repo root pins Node 20 for the Python dashboard /
+# Docker / release builds. The split is deliberate:
+#
+# - `pnpm test` runs `node --test --experimental-strip-types "{main,preload,shared,renderer}/**/*.test.ts"`.
+#   Type stripping landed in Node 22.6; on Node 20 the runner dies with
+#   `bad option: --experimental-strip-types`, so the repo-wide Node 20 pin
+#   silently breaks this package's tests.
+# - Node 20 went EOL in April 2026; Node 24 is the current Active LTS and is
+#   already what `.github/workflows/octop-desktop.yml` uses for the dashboard.
+# - This pin only affects build/test tooling (electron-vite, electron-builder,
+#   tsc). The shipped app runs on the Node that Electron bundles: Electron
+#   33.x ships Node 20.18.3, so raising this pin does NOT change app runtime
+#   behaviour. Raising the *runtime* Node means upgrading Electron itself.
+#
+# pnpm 12.15.0 — this package only. MUST equal `packageManager` /
+# `devEngines.packageManager` in package.json: those fields are what corepack
+# and pnpm read, this pin is what `mise install` puts on PATH.
+# pnpm 11+ reads non-auth settings only from pnpm-workspace.yaml, so
+# `nodeLinker` / `allowBuilds` live there.
+[tools]
+node = "24"
+pnpm = "12.15.0"

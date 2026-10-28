@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import logging
+import secrets
 from pathlib import Path
 from typing import Any
 
@@ -30,7 +31,16 @@ class VerifyBody(BaseModel):
 
 class SetupBody(BaseModel):
     username: str = Field(min_length=1, max_length=64)
-    password: str = Field(min_length=1, max_length=200)
+    password: str | None = Field(
+        default=None,
+        max_length=200,
+        description=(
+            "Required while the wizard password gate is on. Optional when "
+            "``require_setup_password`` is off: the server then mints an "
+            "unguessable one, so the admin row keeps a hashed credential "
+            "without a password the client has to hold."
+        ),
+    )
     display_name: str | None = None
     email: str | None = Field(default=None, max_length=254)
     locale: str | None = Field(
@@ -100,6 +110,20 @@ class DatabaseSetupBody(BaseModel):
 def _setup_password_required(server: Any) -> bool:
     cfg = server.services.config if server.services else getattr(server, "config", None)
     return bool(cfg and cfg.require_setup_password)
+
+
+def _resolve_admin_password(server: Any, provided: str | None) -> str:
+    """Return the password to hash for the initial admin.
+
+    With the wizard password gate on, the client must supply one. With the gate
+    off (desktop builds), a missing password becomes a random one: the row still
+    carries a real hash, but the JWT issued below is the only way in.
+    """
+    if provided:
+        return provided
+    if _setup_password_required(server):
+        raise OctopError(ErrorCode.SLASH_BAD_ARGS, "password is required")
+    return secrets.token_urlsafe(32)
 
 
 def _enforce_wizard_open(server: Any) -> None:
@@ -360,7 +384,7 @@ async def initial_admin(
     admin_role = UserRoleRepo(server.services.db).get(ADMIN_USER_ROLE_ID)
     user = await server.user_manager.create(
         username=body.username,
-        password=body.password,
+        password=_resolve_admin_password(server, body.password),
         role=Role.ADMIN,
         display_name=body.display_name,
         email=body.email,
