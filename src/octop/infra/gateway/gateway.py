@@ -13,7 +13,7 @@ from typing import TYPE_CHECKING, Any
 from octop_gateway.channel import ChannelCredentialsError
 from octop_gateway.channels import ChannelKind
 from octop_gateway.manager import ChannelManager
-from octop_gateway.models import ChannelSubject
+from octop_gateway.models import ChannelSubject, InboundMessage
 
 from octop.i18n import channel_probe_incomplete, channel_runtime_reason, tr
 from octop.infra.db.repos.channels import ChannelRow
@@ -436,7 +436,25 @@ class Gateway:
         session = self.require_session(agent_id, session_key)
         manager = self._require_channel_manager()
         channel_id = self._channel_id_for_session(session)
-        await manager.run_in_session(channel_id, session_key, operation)
+        channel = manager.get_channel(channel_id)
+        if channel is None:
+            raise ValueError(f"Channel not found: {channel_id}")
+        # The worker locks on the channel's debounce key, which need not be
+        # Octop's agent:channel:subject:chat_type session key (IM uses subject;
+        # dashboard uses thread). Resolve it through the same channel policy.
+        message = InboundMessage(
+            channel_id=channel_id,
+            channel_type=session.channel_type,
+            tenant_id=agent_id,
+            channel_subject=session.to_channel_subject(),
+            content=[],
+            metadata={
+                **(session.channel_metadata or {}),
+                "session_key": session_key,
+                "thread_id": session.thread_id,
+            },
+        )
+        await manager.run_in_session(channel_id, channel.get_debounce_key(message), operation)
 
     async def push_text_from_session(
         self,
