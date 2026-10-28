@@ -13,6 +13,7 @@ COMMANDS: dict[str, tuple[str, str, str]] = {
         "System service lifecycle (start/stop/restart/status).",
     ),
     "config": (".commands.config", "config_group", "CLI defaults (pinned user/agent)."),
+    "env": (".commands.env", "env", "Validate the persisted environment file."),
     "user": (".commands.user", "user", "User management commands (admin only)."),
     "agent": (".commands.agent", "agent", "Agent lifecycle commands."),
     "chats": (".commands.chats", "chats", "Chat REPL and session management."),
