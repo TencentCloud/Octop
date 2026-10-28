@@ -652,8 +652,9 @@ export default function Sidebar({
       />
       {/* Collapsed rail: the Chat row's toggle is gone with the labels, so the
           history rail keeps a visible control here instead of surviving only as
-          a hover sliver on the seam. */}
-      {showChatRailToggle && onChatPath ? (
+          a hover sliver on the seam. Like the row button, it reaches the rail
+          from any page — opening it from elsewhere lands on /chat. */}
+      {showChatRailToggle ? (
         <Tooltip
           title={historyRailHint}
           placement="right"
