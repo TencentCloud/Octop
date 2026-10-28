@@ -2,11 +2,48 @@
 
 from __future__ import annotations
 
+import re
+
 from collections.abc import Sequence
 from dataclasses import dataclass
 
 from octop.infra.db.pool import DatabasePool
 from octop.infra.db.repos._base import DbRow, now_ts
+
+_SURROGATE_RE = re.compile(r"[\ud800-\udfff]")
+
+def _scrub_text(text: object) -> str:
+    """Force a value into valid UTF-8 before it hits SQLite.
+
+    SQLite cannot store lone surrogates or truncated multibyte sequences as
+    TEXT, but Python will happily hand them over if the model emits them (a
+    cut-off emoji in ``reasoning_content`` is enough). The bytes then land in
+    the row nonetheless, and every later ``SELECT`` raises
+    ``sqlite3.OperationalError: Could not decode to UTF-8 column`` -- which
+    used to make the whole thread's history API return 500 forever. Scrub on
+    the way in; tolerate on the way out (see ``_as_text``).
+    """
+    if isinstance(text, (bytes, bytearray, memoryview)):
+        return bytes(text).decode("utf-8", "replace")
+    if not isinstance(text, str):
+        text = str(text)
+    try:
+        text.encode("utf-8")
+    except UnicodeEncodeError:
+        text = _SURROGATE_RE.sub("\ufffd", text)
+        try:
+            text.encode("utf-8")
+        except UnicodeEncodeError:
+            text = text.encode("utf-8", "replace").decode("utf-8")
+    return text
+
+
+def _as_text(value: object) -> str:
+    """Decode a ``message_json`` cell that was read back with CAST(... AS BLOB)."""
+    if isinstance(value, (bytes, bytearray, memoryview)):
+        return bytes(value).decode("utf-8", "replace")
+    return str(value)
+
 
 
 @dataclass(frozen=True)
@@ -31,7 +68,7 @@ class ThreadMessageRow:
             seq=int(row["seq"]),
             message_id=str(row["message_id"]) if row["message_id"] else None,
             role=str(row["role"]),
-            message_json=str(row["message_json"]),
+            message_json=_as_text(row["message_json"]),
             created_at=int(row["created_at"]),
         )
 
@@ -71,7 +108,7 @@ class ThreadMessageRepo:
         """Read an immutable legacy interval without triggering projection backfill."""
         with self._db.connect() as conn:
             rows = conn.execute(
-                "SELECT seq,message_id,role,message_json,created_at FROM thread_messages "
+                "SELECT seq,message_id,role,CAST(message_json AS BLOB) AS message_json,created_at FROM thread_messages "
                 "WHERE thread_id=? AND seq>? AND seq<=? ORDER BY seq",
                 (thread_id, start, end),
             ).fetchall()
@@ -82,7 +119,7 @@ class ThreadMessageRepo:
     ) -> list[ThreadMessageRow]:
         with self._db.connect() as conn:
             rows = conn.execute(
-                "SELECT seq,message_id,role,message_json,created_at FROM thread_messages "
+                "SELECT seq,message_id,role,CAST(message_json AS BLOB) AS message_json,created_at FROM thread_messages "
                 "WHERE thread_id=? AND seq>? AND seq<=? ORDER BY seq DESC LIMIT ?",
                 (thread_id, start, end, limit),
             ).fetchall()
@@ -120,7 +157,7 @@ class ThreadMessageRepo:
                         seq,
                         message.message_id,
                         message.role,
-                        message.message_json,
+                        _scrub_text(message.message_json),
                         message.created_at,
                     ),
                 )
@@ -218,7 +255,7 @@ class ThreadMessageRepo:
     ) -> tuple[list[ThreadMessageRow], bool]:
         with self._db.connect() as conn:
             rows = conn.execute(
-                "SELECT seq, message_id, role, message_json, created_at "
+                "SELECT seq, message_id, role, CAST(message_json AS BLOB) AS message_json, created_at "
                 "FROM thread_messages WHERE thread_id = ? "
                 "ORDER BY seq DESC LIMIT ? OFFSET ?",
                 (thread_id, limit + 1, max(0, offset)),
@@ -272,7 +309,7 @@ class ThreadMessageRepo:
                         seq,
                         message.message_id,
                         message.role,
-                        message.message_json,
+                        _scrub_text(message.message_json),
                         message.created_at,
                     ),
                 )
@@ -309,7 +346,7 @@ class ThreadMessageRepo:
                             index + 1,
                             message.message_id,
                             message.role,
-                            message.message_json,
+                            _scrub_text(message.message_json),
                             message.created_at,
                         ),
                     )
