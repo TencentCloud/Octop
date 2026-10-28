@@ -203,8 +203,15 @@ class CronManager:
             existing = self._repos.cron_repo.get(cron_id)
             if existing is None:
                 raise OctopError(ErrorCode.NOT_FOUND, f"cron job {cron_id!r} not found")
-            trigger_changed = trigger is not None and trigger != existing.trigger
+            existing_trigger = str(existing.trigger or "").strip()
+            new_trigger = str(trigger or "").strip() if trigger is not None else None
+            trigger_changed = (
+                trigger is not None
+                and new_trigger is not None
+                and new_trigger != existing_trigger
+            )
             enabled_changed = enabled_bool is not None and enabled_bool != bool(existing.enabled)
+            schedule_changed = trigger_changed or enabled_changed
             # Validate a new trigger, or a mailbox, before persisting. Echoing the
             # current trigger on a rename must not re-check authorization.
             if trigger_changed or (enabled_bool is True and not existing.enabled):
@@ -258,14 +265,33 @@ class CronManager:
     ) -> bool:
         """Whether this update must drop and recreate the pending run.
 
-        Name, prompt, model, and session edits keep an interval's deadline.
-        A trigger or enabled change rebuilds it. An enabled job that is missing
-        from the scheduler (or its mail watch) is attached again.
+        Metadata-only edits (name, prompt, model, session_key, task_type,
+        mcp_servers, fresh_thread) **always preserve** an interval or cron
+        trigger's `next_run_time` — only the in-memory prompt/message
+        changes. APScheduler stores the pending deadline; remove+re-add
+        would reset it to `now() + interval` (issue #2292).
+
+        A rebuild is required when:
+        - `enabled` flipped (on ↔ off) — must (un)attach the scheduler job.
+        - `trigger` changed (or first-time enabled) — APScheduler's
+          `modify_job` does not support changing trigger types; remove +
+          re-add is the only path.
+        - An enabled job fell off the scheduler and must be re-attached.
+
+        Disabling a disabled job, or editing only metadata, must never rebuild.
         """
+        schedule_changed = trigger_changed or enabled_changed
+
+        # Job became disabled — drop it from the scheduler.
         if not row.enabled:
             return bool(existing.enabled)
-        if trigger_changed or enabled_changed:
+
+        # Job is enabled and something schedule-relevant changed — rebuild.
+        if schedule_changed:
             return True
+
+        # Job is enabled, schedule is unchanged. Only rebuild if somehow
+        # the scheduler lost track of it (e.g. scheduler restart mid-flight).
         return not self._schedule_is_attached(row)
 
     def _schedule_is_attached(self, row: Any) -> bool:
