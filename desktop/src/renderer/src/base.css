@@ -48,20 +48,36 @@ body {
   /* The titlebar is hidden, so nothing here is draggable by default. */
   cursor: default;
   overflow: hidden;
+  /*
+   * …except that the whole page is, deliberately.
+   *
+   * These two pages are the only things on screen while the app is coming up or
+   * after it failed, and both are chrome-less: the OS shows its traffic lights /
+   * caption buttons and nothing else. A fixed 32px grab strip was not enough —
+   * it is invisible, and the first thing a user tries on a boot or failure
+   * screen is dragging the page itself, typically a little below the top edge,
+   * where the strip is not. So the surface is the handle and the few
+   * interactive things below opt out.
+   */
+  -webkit-app-region: drag;
+  app-region: drag;
 }
 
 /*
- * Grab strip for the shell's own pages. The window hides its titlebar and keeps
- * only the native traffic lights / caption buttons, so without this the first
- * thing the user sees could not be moved out of the way.
+ * `no-drag` is not cosmetic: while the pointer is over a drag region the OS
+ * consumes the mouse-down to move the window, so a button or a disclosure
+ * inside one never fires. `pre` is in the list so the failure detail stays
+ * selectable.
  */
-.shell-drag-strip {
-  position: fixed;
-  inset-block-start: 0;
-  inset-inline: 0;
-  height: 32px;
-  z-index: 1;
-  -webkit-app-region: drag;
-  app-region: drag;
-  user-select: none;
+button,
+summary,
+a,
+input,
+textarea,
+select,
+pre,
+[role="button"],
+[contenteditable] {
+  -webkit-app-region: no-drag;
+  app-region: no-drag;
 }
