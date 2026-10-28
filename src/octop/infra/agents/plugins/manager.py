@@ -383,12 +383,32 @@ class PluginManager:
         return _read_global_plugins(self._config_path)
 
     def seed_bundled(self) -> list[str]:
-        """Upgrade already-installed bundled plugins when catalog versions are newer."""
-        from octop.infra.agents.plugins.bundled import default_bundled_plugins_root
-        from octop.infra.agents.plugins.seed import seed_bundled_plugins
+        """Upgrade already-installed bundled plugins when catalog versions are newer.
+
+        Gracefully no-op when the bundled catalog is absent (e.g. pip wheel
+        builds that ship without the plugins/ directory — issue #2458).
+        """
+        try:
+            from octop.infra.agents.plugins.bundled import default_bundled_plugins_root
+            from octop.infra.agents.plugins.seed import seed_bundled_plugins
+        except ImportError:
+            logger.warning(
+                "bundled plugin catalog not found; skipping seed (pip wheel build?)"
+            )
+            return []
+
+        try:
+            bundled_root = default_bundled_plugins_root()
+        except OSError as exc:
+            logger.warning("bundled plugin root missing: %s", exc)
+            return []
+
+        if not bundled_root.is_dir():
+            logger.warning("bundled plugin catalog directory absent at %s", bundled_root)
+            return []
 
         return seed_bundled_plugins(
-            bundled_root=default_bundled_plugins_root(),
+            bundled_root=bundled_root,
             plugins_dir=self._plugins_dir,
             config_path=self._config_path,
         )

@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import shutil
 
+import logging
+
 import click
 
 
@@ -82,7 +84,11 @@ def init(
             shutil.rmtree(home)
 
     paths.ensure_root()
-    PluginManager(plugins_dir=paths.plugins_dir, config_path=paths.config).seed_bundled()
+    try:
+        PluginManager(plugins_dir=paths.plugins_dir, config_path=paths.config).seed_bundled()
+    except (ImportError, OSError) as exc:
+        # bundled plugin catalog may be absent in pip wheel builds (issue #2458)
+        logging.getLogger(__name__).warning("Skipping bundled plugins: %s", exc)
     apply_env_file(env_file_path(paths.root))
     config = load_config(paths.config)
     db = open_database(config, paths)
