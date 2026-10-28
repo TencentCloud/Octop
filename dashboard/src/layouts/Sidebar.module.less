@@ -353,14 +353,23 @@
   }
 }
 
-/* Collapsed rail: the one control that has no label row to live on. */
+/* Collapsed rail: docks the one control that has no label row to live on.
+   It sits outside the nav scroller so a long nav list can never push it away. */
+.collapsedRailDock {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  padding: 4px 0;
+}
+
 .collapsedRailToggle {
   display: flex;
   align-items: center;
   justify-content: center;
   width: 40px;
   height: 40px;
-  margin: 4px auto 0;
+  margin: 0;
   padding: 0;
   border: none;
   border-radius: var(--fn-radius-md);
