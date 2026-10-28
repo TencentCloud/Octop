@@ -25,7 +25,7 @@ def _load_main() -> object:
 def test_manifest_declares_theme_plugin_and_ui() -> None:
     manifest = PluginManifest.load(_PLUGIN_DIR / "plugin.yaml")
     assert manifest.id == "simple-theme"
-    assert manifest.version == "1.0.2"
+    assert manifest.version == "1.0.3"
     assert manifest.kind == "tool"
     assert manifest.name == "简单主题"
     assert (_PLUGIN_DIR / "ui" / "index.js").is_file()
@@ -46,7 +46,7 @@ def test_status_tool_returns_theme_card_payload() -> None:
     module = _load_main()
     payload = json.loads(asyncio.run(module.simple_theme_info()))  # type: ignore[attr-defined]
     assert payload["octop_ui"] == {"renderer": "theme_card", "version": 1}
-    assert payload["data"]["version"] == "1.0.2"
+    assert payload["data"]["version"] == "1.0.3"
     assert payload["text"]
 
 
@@ -60,6 +60,20 @@ def test_plugin_does_not_patch_dashboard_fallback() -> None:
         assert app_module._dashboard_fallback is original
     finally:
         PluginRegistry.reset()
+
+
+def test_built_bundle_renders_model_as_read_only_status() -> None:
+    """The native composer menu stays the only model switch; the dock is a status."""
+    bundle = (_PLUGIN_DIR / "ui" / "index.js").read_text(encoding="utf-8")
+    assert 'role="status" aria-live="polite"' in bundle
+    assert "simple-model-trigger" not in bundle
+    assert "simple-model-remove" not in bundle
+    assert "自动选择" in bundle
+    assert "composer-plus" not in bundle
+    css = (_PLUGIN_DIR / "ui" / "theme.css").read_text(encoding="utf-8")
+    assert ".simple-model-name {min-width:0" in css
+    assert "max-width:100%" in css
+    assert "max-width:calc(100vw - 24px)" in css
 
 
 def test_built_bundle_contains_current_css() -> None:

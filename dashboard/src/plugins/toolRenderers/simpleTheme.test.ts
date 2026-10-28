@@ -89,6 +89,33 @@ describe("simple theme UI lifecycle", () => {
     expect(document.getElementById("octop-simple-theme-style")).not.toBeNull();
   });
 
+  it("shows the current model as read-only status, keeping the native menu constructor", async () => {
+    document.body.innerHTML =
+      '<div class="module__chatInput__x"><div class="module__inputWrapper__x"></div></div>' +
+      '<div class="module__contextChipModel__x"><span class="module__contextChipLabel__x">GPT-5 / OpenAI</span><button class="module__contextChipRemove__x">x</button></div>';
+    const api = host();
+    cleanup = setup(api as unknown as OctopPluginUIHost);
+    window.dispatchEvent(new Event("resize"));
+    const dock = document.getElementById("simple-chat-dock");
+    expect(dock).not.toBeNull();
+    const holder = dock?.querySelector(".simple-current-model");
+    expect(dock?.querySelector("button.simple-model-trigger")).toBeNull();
+    expect(dock?.querySelector(".simple-model-remove")).toBeNull();
+    expect(holder?.getAttribute("role")).toBe("status");
+    expect(holder?.getAttribute("title")).toBe("GPT-5 / OpenAI");
+    expect(dock?.querySelector(".simple-model-name")?.textContent).toBe(
+      "GPT-5 / OpenAI",
+    );
+    expect(dock?.querySelector("img")?.getAttribute("src")).toContain(
+      "data:image/svg+xml",
+    );
+    expect(
+      document.querySelector(".module__contextChipRemove__x"),
+    ).not.toBeNull();
+    cleanup();
+    expect(document.getElementById("simple-chat-dock")).toBeNull();
+  });
+
   it("does not add a font after being disabled during its request", async () => {
     let resolve!: (blob: Blob) => void;
     const api = host();

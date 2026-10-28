@@ -58,6 +58,7 @@ describe("plugin UI lifecycle", () => {
     expect(setup).toHaveBeenCalledTimes(1);
     expect(fetch).toHaveBeenCalledWith("/octop/api/plugins/theme/ui/index.js", {
       headers: { Authorization: "Bearer session-token" },
+      signal: expect.any(AbortSignal),
     });
     await reloadPluginToolUis([{ ...plugin, enabled: false }]);
     expect(cleanup).toHaveBeenCalledTimes(1);
@@ -67,6 +68,38 @@ describe("plugin UI lifecycle", () => {
     await reloadPluginToolUis([]);
     expect(cleanup).toHaveBeenCalledTimes(2);
     expect(isPluginUiLoaded(plugin.id)).toBe(false);
+  });
+
+  it("cleans up an async setup that resolves after the layout unmounts", async () => {
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    vi.mocked(fetch).mockResolvedValueOnce({
+      ok: true,
+      text: async () =>
+        'export async function setup() { window.dispatchEvent(new Event("plugin-test:setup")); await window.__gate; return () => window.dispatchEvent(new Event("plugin-test:cleanup")); }',
+    } as Response);
+    (window as Window & { __gate?: Promise<void> }).__gate = gate;
+    const loading = loadInstalledPluginUis([plugin]);
+    await vi.waitFor(() => expect(setup).toHaveBeenCalledTimes(1));
+    resetPluginUiLoader();
+    release();
+    await loading;
+    expect(cleanup).toHaveBeenCalledTimes(1);
+    expect(isPluginUiLoaded(plugin.id)).toBe(false);
+  });
+
+  it("unmounts once, cleans up once, then sets up once after signing in again", async () => {
+    await loadInstalledPluginUis([plugin]);
+    resetPluginUiLoader();
+    expect(cleanup).toHaveBeenCalledTimes(1);
+    expect(setup).toHaveBeenCalledTimes(1);
+    await loadInstalledPluginUis([plugin]);
+    expect(setup).toHaveBeenCalledTimes(2);
+    expect(cleanup).toHaveBeenCalledTimes(1);
+    resetPluginUiLoader();
+    expect(cleanup).toHaveBeenCalledTimes(2);
   });
 
   it("does not activate an old load after the loader has been reset", async () => {

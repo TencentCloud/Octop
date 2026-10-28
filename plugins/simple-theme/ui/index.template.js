@@ -217,31 +217,28 @@ function syncFloatingControls() {
   if (!document.getElementById(STYLE_ID) || !input) { dock?.remove(); return; }
   if (!dock) {
     dock = document.createElement('div'); dock.id = 'simple-chat-dock';
-    dock.innerHTML = '<div class="simple-stats"><button type="button" class="simple-stats-trigger" aria-label="会话用量统计"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><path d="M5 20V10m7 10V4m7 16v-7"/></svg></button><div class="simple-stats-detail" role="tooltip"></div></div><div class="simple-current-model"><button type="button" class="simple-model-trigger" aria-label="切换模型"><img alt=""><span></span></button><button type="button" class="simple-model-remove" aria-label="移除选中模型">×</button></div>';
+    dock.innerHTML = '<div class="simple-stats"><button type="button" class="simple-stats-trigger" aria-label="会话用量统计"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><path d="M5 20V10m7 10V4m7 16v-7"/></svg></button><div class="simple-stats-detail" role="tooltip"></div></div><div class="simple-current-model" role="status" aria-live="polite"><img alt="" aria-hidden="true"><span class="simple-model-name"></span></div>';
     document.body.appendChild(dock);
     dock.querySelector('.simple-stats-trigger').addEventListener('click', (event) => {
       event.stopPropagation();
       setStatsOpen(!dock.classList.contains('simple-stats-open'));
     });
-    dock.querySelector('.simple-model-remove').onclick = () => document.querySelector('[class*="module__contextChipModel__"] button')?.click();
-    dock.querySelector('.simple-model-trigger').onclick = () => {
-      const plus=document.querySelector('[data-testid="composer-plus"]'); if(!plus)return; plus.click();
-      scheduleFrame(() => {
-        const label=dock.querySelector('.simple-model-trigger span').textContent;
-        const candidate=[...document.querySelectorAll('button')].find(b=>!dock.contains(b)&&b.textContent.trim().endsWith(label)&&b.closest('[class*="Menu"],[class*="menu"],[class*="Popover"],[class*="popover"]'));
-        if(candidate)candidate.click();
-      });
-    };
   }
   const usage=document.querySelector('[class*="module__runUsageBar__"]');
   const detail=dock.querySelector('.simple-stats-detail'); const text=usage?.textContent.trim() || '当前会话暂无用量统计';
   if(detail.textContent!==text)detail.textContent=text;
   const chip=document.querySelector('[class*="module__contextChipModel__"]');
-  const name=chip?.querySelector('[class*="module__contextChipLabel__"]')?.textContent.trim() || '自动';
-  const label=dock.querySelector('.simple-model-trigger span'); if(label.textContent!==name)label.textContent=name;
-  const img=dock.querySelector('.simple-model-trigger img'); const src=modelIcon(modelBrand(name));
+  // 只读状态展示：切换入口仍是宿主原生 + 菜单，这里不复制按钮语义。
+  const name=chip?.querySelector('[class*="module__contextChipLabel__"]')?.textContent.trim() || '自动选择';
+  // 窄屏只显示模型名末段，全名仍挂在 title / aria-label，不必靠截断猜测。
+  const short=innerWidth<=430?name.split('/').pop().trim()||name:name;
+  const label=dock.querySelector('.simple-model-name'); if(label.textContent!==short)label.textContent=short;
+  const holder=dock.querySelector('.simple-current-model');
+  if(holder.getAttribute('aria-label')!==name)holder.setAttribute('aria-label',name);
+  if(holder.getAttribute('title')!==name)holder.setAttribute('title',name);
+  const img=dock.querySelector('.simple-current-model img'); const src=modelIcon(modelBrand(name));
   if(src&&img.getAttribute('src')!==src)img.src=src;
-  img.hidden=!src; dock.querySelector('.simple-model-remove').hidden=!chip;
+  img.hidden=!src;
   const r=input.getBoundingClientRect();
   const content=input.querySelector('[class*="module__inputWrapper__"]')?.getBoundingClientRect() || r;
   // 贴着输入框的可见上沿放（8px），不再按 chatInput 的 padding 盒算，

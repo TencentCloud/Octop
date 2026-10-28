@@ -26,10 +26,7 @@ import RequirePermission from "../../components/RequirePermission";
 import { routeNeedsPermission } from "../../utils/permissions";
 import { useLayoutMode } from "../../context/LayoutModeContext";
 import { useDashboardPushToast } from "../../hooks/useDashboardPushToast";
-import {
-  usePluginToolUis,
-  resetPluginUiLoader,
-} from "../../plugins/toolRenderers";
+import { usePluginUiLifecycle } from "../../plugins/toolRenderers";
 
 const Chat = lazy(() => import("../../pages/Chat"));
 const WorkbenchPage = lazy(() => import("../../pages/Control/Workbench"));
@@ -58,8 +55,7 @@ function ChatWithKey() {
 }
 
 export default function MainLayout() {
-  usePluginToolUis();
-  useEffect(() => resetPluginUiLoader, []);
+  usePluginUiLifecycle();
   const location = useLocation();
   const currentPath = location.pathname;
   const selectedKey = resolveSelectedKey(currentPath);

@@ -2372,8 +2372,8 @@ html#octop-simple-theme-root[data-theme="dark"] .octop-btn-primary svg {
     width: 88px !important;
     margin-bottom: 0 !important;
   }
-  /* 窄屏整条收起输入框上方的累计用量与模型，别挤占一行 */
-  html#octop-simple-theme-root #simple-chat-dock {
+  /* 窄屏只收起用量详情，模型保留为紧凑只读状态，名称取末段短名 */
+  html#octop-simple-theme-root #simple-chat-dock .simple-stats {
     display: none !important;
   }
   html#octop-simple-theme-root [class*="module__chatFloatActions"] {
@@ -3055,25 +3055,22 @@ html#octop-simple-theme-root [class*="modelMenuIcon__"] {object-fit:contain !imp
 html#octop-simple-theme-root [class*="module__contextChipModel__"],
 html#octop-simple-theme-root [class*="module__runUsageBar__"] {display:none !important;}
 html#octop-simple-theme-root [class*="module__imagePreviewBar__"]:not(:has(> :not([class*="module__contextChipModel__"]))) {display:none !important;}
-html#octop-simple-theme-root #simple-chat-dock {position:fixed;z-index:90;display:flex;align-items:center;gap:8px;width:max-content;background:transparent !important;box-shadow:none;border:0;padding:0;pointer-events:none;color:var(--fn-text-secondary);font-size:12px;}
+html#octop-simple-theme-root #simple-chat-dock {position:fixed;z-index:90;display:flex;align-items:center;gap:8px;width:max-content;max-width:calc(100vw - 24px);background:transparent !important;box-shadow:none;border:0;padding:0;pointer-events:none;color:var(--fn-text-secondary);font-size:12px;}
 html#octop-simple-theme-root #simple-chat-dock :is(button,.simple-stats) {pointer-events:auto;}
 html#octop-simple-theme-root #simple-chat-dock button {display:inline-flex;align-items:center;justify-content:center;gap:6px;height:28px;min-height:28px;padding:0 4px;border:0;box-shadow:none;background:transparent;color:inherit;border-radius:6px;cursor:pointer;font:inherit;}
 html#octop-simple-theme-root #simple-chat-dock button:focus-visible {outline:2px solid var(--fn-text-secondary);outline-offset:2px;}
 html#octop-simple-theme-root #simple-chat-dock button:hover {color:var(--fn-text-primary);}
-html#octop-simple-theme-root #simple-chat-dock .simple-current-model {display:flex;align-items:center;min-width:0;gap:2px;background:transparent;}
-html#octop-simple-theme-root #simple-chat-dock .simple-model-trigger {min-width:0;}
-html#octop-simple-theme-root #simple-chat-dock .simple-model-trigger span {overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+/* 当前模型是只读状态；切换仍走原生 + 菜单，避免两套交互抢焦点。 */
+html#octop-simple-theme-root #simple-chat-dock .simple-current-model {display:flex;align-items:center;min-width:0;max-width:100%;gap:6px;background:transparent;color:var(--fn-text-secondary);}
+html#octop-simple-theme-root #simple-chat-dock .simple-model-name {min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
 html#octop-simple-theme-root #simple-chat-dock img {width:16px;height:16px;object-fit:contain;background:transparent;border:0;flex:none;}
 html#octop-simple-theme-root #simple-chat-dock [hidden] {display:none !important;}
-html#octop-simple-theme-root #simple-chat-dock .simple-model-remove {opacity:0;transition:opacity 140ms;flex:none;width:24px;}
-html#octop-simple-theme-root #simple-chat-dock .simple-current-model:is(:hover,:focus-within) .simple-model-remove {opacity:1;}
 html#octop-simple-theme-root #simple-chat-dock .simple-stats {position:relative;flex:none;}
 html#octop-simple-theme-root #simple-chat-dock .simple-stats-detail {position:absolute;bottom:100%;left:0;width:320px;max-width:calc(100vw - 40px);padding:12px 16px;border-radius:12px;background:var(--fn-bg-primary);box-shadow:0 4px 24px #0002;color:var(--fn-text-secondary);line-height:1.7;opacity:0;visibility:hidden;pointer-events:none;transform:translateY(4px);transition:opacity 140ms,transform 140ms;}
 /* 用量浮层只认"点开"这一种状态：hover / 焦点不再自己把面板翻出来，
    否则鼠标一离开或一失焦面板就消失，点了也关不干净。 */
 html#octop-simple-theme-root #simple-chat-dock.simple-stats-open .simple-stats-detail {opacity:1;visibility:visible;transform:none;pointer-events:auto;}
 html#octop-simple-theme-root #simple-chat-dock .simple-stats-trigger[aria-expanded="true"] {color:var(--fn-text-primary);}
-@media(hover:none) {html#octop-simple-theme-root #simple-chat-dock .simple-model-remove {opacity:.65;}}
 @media(prefers-reduced-motion:reduce) {html#octop-simple-theme-root #simple-chat-dock * {transition:none !important;}}
 
 html#octop-simple-theme-root [class*="module__agentCardActive"] :is([class*="Avatar"], [class*="avatar"]) {background:transparent !important;box-shadow:none !important;border:0 !important;}
@@ -3181,8 +3178,8 @@ html#octop-simple-theme-root { -webkit-text-size-adjust: 100%; }
     min-width: 32px;
     min-height: 32px;
   }
-  html#octop-simple-theme-root #simple-chat-dock .simple-model-remove { width: 30px; }
   /* 触屏按压反馈（移动端默认已关掉高亮） */
+  html#octop-simple-theme-root #simple-chat-dock { font-size: 11px; }
   html#octop-simple-theme-root #simple-chat-dock button:active,
   html#octop-simple-theme-root [class*="module__msgCopyBtn"]:active {
     background: var(--fn-sidebar-item-hover) !important;
@@ -4150,31 +4147,28 @@ function syncFloatingControls() {
   if (!document.getElementById(STYLE_ID) || !input) { dock?.remove(); return; }
   if (!dock) {
     dock = document.createElement('div'); dock.id = 'simple-chat-dock';
-    dock.innerHTML = '<div class="simple-stats"><button type="button" class="simple-stats-trigger" aria-label="会话用量统计"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><path d="M5 20V10m7 10V4m7 16v-7"/></svg></button><div class="simple-stats-detail" role="tooltip"></div></div><div class="simple-current-model"><button type="button" class="simple-model-trigger" aria-label="切换模型"><img alt=""><span></span></button><button type="button" class="simple-model-remove" aria-label="移除选中模型">×</button></div>';
+    dock.innerHTML = '<div class="simple-stats"><button type="button" class="simple-stats-trigger" aria-label="会话用量统计"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><path d="M5 20V10m7 10V4m7 16v-7"/></svg></button><div class="simple-stats-detail" role="tooltip"></div></div><div class="simple-current-model" role="status" aria-live="polite"><img alt="" aria-hidden="true"><span class="simple-model-name"></span></div>';
     document.body.appendChild(dock);
     dock.querySelector('.simple-stats-trigger').addEventListener('click', (event) => {
       event.stopPropagation();
       setStatsOpen(!dock.classList.contains('simple-stats-open'));
     });
-    dock.querySelector('.simple-model-remove').onclick = () => document.querySelector('[class*="module__contextChipModel__"] button')?.click();
-    dock.querySelector('.simple-model-trigger').onclick = () => {
-      const plus=document.querySelector('[data-testid="composer-plus"]'); if(!plus)return; plus.click();
-      scheduleFrame(() => {
-        const label=dock.querySelector('.simple-model-trigger span').textContent;
-        const candidate=[...document.querySelectorAll('button')].find(b=>!dock.contains(b)&&b.textContent.trim().endsWith(label)&&b.closest('[class*="Menu"],[class*="menu"],[class*="Popover"],[class*="popover"]'));
-        if(candidate)candidate.click();
-      });
-    };
   }
   const usage=document.querySelector('[class*="module__runUsageBar__"]');
   const detail=dock.querySelector('.simple-stats-detail'); const text=usage?.textContent.trim() || '当前会话暂无用量统计';
   if(detail.textContent!==text)detail.textContent=text;
   const chip=document.querySelector('[class*="module__contextChipModel__"]');
-  const name=chip?.querySelector('[class*="module__contextChipLabel__"]')?.textContent.trim() || '自动';
-  const label=dock.querySelector('.simple-model-trigger span'); if(label.textContent!==name)label.textContent=name;
-  const img=dock.querySelector('.simple-model-trigger img'); const src=modelIcon(modelBrand(name));
+  // 只读状态展示：切换入口仍是宿主原生 + 菜单，这里不复制按钮语义。
+  const name=chip?.querySelector('[class*="module__contextChipLabel__"]')?.textContent.trim() || '自动选择';
+  // 窄屏只显示模型名末段，全名仍挂在 title / aria-label，不必靠截断猜测。
+  const short=innerWidth<=430?name.split('/').pop().trim()||name:name;
+  const label=dock.querySelector('.simple-model-name'); if(label.textContent!==short)label.textContent=short;
+  const holder=dock.querySelector('.simple-current-model');
+  if(holder.getAttribute('aria-label')!==name)holder.setAttribute('aria-label',name);
+  if(holder.getAttribute('title')!==name)holder.setAttribute('title',name);
+  const img=dock.querySelector('.simple-current-model img'); const src=modelIcon(modelBrand(name));
   if(src&&img.getAttribute('src')!==src)img.src=src;
-  img.hidden=!src; dock.querySelector('.simple-model-remove').hidden=!chip;
+  img.hidden=!src;
   const r=input.getBoundingClientRect();
   const content=input.querySelector('[class*="module__inputWrapper__"]')?.getBoundingClientRect() || r;
   // 贴着输入框的可见上沿放（8px），不再按 chatInput 的 padding 盒算，

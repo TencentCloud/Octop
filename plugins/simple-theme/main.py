@@ -8,7 +8,7 @@ from typing import Any
 
 from octop_harness.plugins import PluginContext
 
-VERSION = "1.0.2"
+VERSION = "1.0.3"
 
 _TEXT = (
     "简单主题已安装：对话、输入框、侧栏和设置页使用一致的简洁排版，"

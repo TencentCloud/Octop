@@ -3,6 +3,7 @@ import { pluginsApi } from "../../api/modules/plugins";
 import {
   ensureBuiltinToolRenderers,
   loadInstalledPluginUis,
+  resetPluginUiLoader,
   setPluginUiToolContext,
 } from "../toolRenderers";
 import { updateToolPluginIndex } from "../toolRenderers/toolPluginIndex";
@@ -49,4 +50,14 @@ export function usePluginToolUis(
       cancelled = true;
     };
   }, [enabled]);
+}
+
+/**
+ * Layout-level plugin lifetime: load once per signed-in layout mount and clean
+ * up exactly once on unmount. Sign-out is an SPA navigation, so this unmount is
+ * the only teardown hook; cleanup must not depend on a page reload.
+ */
+export function usePluginUiLifecycle(): void {
+  usePluginToolUis();
+  useEffect(() => resetPluginUiLoader, []);
 }
