@@ -537,9 +537,12 @@ query（页面是 `sandbox: true`、无 preload、无 IPC，这是两者唯一�
 > 之上；Linux 不传任何 frame 参数，直接用系统边框。
 >
 > 因此 Dashboard 只负责「让位」：`--window-controls-inset-start` /
-> `--window-controls-inset-end` 单边留白（macOS 侧边栏顶部预留 32px 可拖动条带给
-> 交通灯，Windows 的标题行、抽屉、dock 工具栏在右侧让位），拖动仍然是纯 CSS
-> `app-region`。IPC 里没有任何 minimize / maximize / close 通道；只有
+> `--window-controls-inset-end` 单边留白（Windows 的标题行、抽屉、dock 工具栏在
+> 右侧让位），拖动仍然是纯 CSS `app-region`。窗口顶部由 `MainLayout` 统一渲染一条
+> 32px 的壳标题行（`chromeTopBandPx()`），横跨侧边栏与页面：它是整窗唯一的拖动把
+> 手，也是两个平台原生按钮所在的那条带子——macOS 的交通灯、Windows 的标题栏按钮都
+> 落在里面，页面内容因此从 y=32 开始，不会被按钮压住。全屏时系统按钮隐藏，这条带子
+> 随之消失、像素还给页面。IPC 里没有任何 minimize / maximize / close 通道；只有
 > `setWindowChrome({ mode, scheme })` 用于把 Dashboard 的主题（含「跟随系统」）
 > 同步给 `nativeTheme`，让系统按钮在深色主题下保持可见。
 

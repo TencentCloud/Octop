@@ -42,16 +42,21 @@ export function windowControlsInset(
 }
 
 /**
- * Vertical band to reserve at the top of a full-height column (the sidebar on
- * macOS, where the traffic lights float above it). Windows caption buttons sit
- * over the content column instead, so they need no band — and full screen hides
- * the macOS buttons, so the band goes with them.
+ * Height of the shell's own top row, which the layout reserves before any
+ * sidebar or page content starts. Both platforms put their native buttons in
+ * that row — macOS traffic lights at the start, Windows caption buttons at the
+ * end — so the row is the window's drag handle *and* the space that keeps page
+ * chrome from sliding underneath the buttons.
+ *
+ * Full screen hides the buttons, so the row goes with them and the page gets
+ * the pixels back. `null` means there is no shell chrome at all (browser, or
+ * Linux, whose system frame already provides a title bar).
  */
 export function chromeTopBandPx(
   style: DesktopChromeStyle | null,
   fullscreen = false,
 ): number {
-  return style === "mac" && !fullscreen ? DESKTOP_CHROME_HEIGHT : 0;
+  return style && !fullscreen ? DESKTOP_CHROME_HEIGHT : 0;
 }
 
 /** Right-edge overlay chrome (dock toolbar, etc.) to keep clear of caption buttons. */
