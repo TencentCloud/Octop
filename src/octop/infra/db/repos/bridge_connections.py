@@ -36,6 +36,10 @@ class BridgeConnectionRow:
     def from_row(cls, r: DbRow) -> BridgeConnectionRow:
         cred = r["credential_blob"]
         token = r["access_token_blob"]
+        if isinstance(cred, str):
+            cred = cred.encode("utf-8")
+        if isinstance(token, str):
+            token = token.encode("utf-8")
         keys = set(r.keys()) if hasattr(r, "keys") else set()
         raw_notes = r["notes"]
         raw_icon = r["icon_name"] if "icon_name" in keys else None
