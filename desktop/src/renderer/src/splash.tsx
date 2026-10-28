@@ -13,27 +13,27 @@ import "./splash.css";
  * name, one line saying what is being waited on, an indeterminate bar that keeps
  * moving, and the build number at the bottom for support. The wordmark already
  * says Octop, so the status line does not repeat it.
+ *
+ * The page is also the window's only drag handle (``base.css`` puts the whole
+ * surface in the drag region); nothing here is clickable, so nothing opts out.
  */
 function Splash() {
   const version = new URLSearchParams(window.location.search).get("version");
 
   return (
-    <>
-      <div className="shell-drag-strip" aria-hidden="true" />
-      <main className="splash" role="status" aria-live="polite">
-        <div className="splash__stack">
-          <div className="splash__mark" aria-hidden="true">
-            <img className="splash__logo" src={markUrl} alt="" width={64} height={64} />
-          </div>
-          <h1 className="splash__wordmark">Octop</h1>
-          <p className="splash__text">正在准备本地服务…</p>
-          <div className="splash__bar" aria-hidden="true">
-            <span className="splash__bar-thumb" />
-          </div>
+    <main className="splash" role="status" aria-live="polite">
+      <div className="splash__stack">
+        <div className="splash__mark" aria-hidden="true">
+          <img className="splash__logo" src={markUrl} alt="" width={64} height={64} />
         </div>
-        {version ? <p className="splash__version">v{version}</p> : null}
-      </main>
-    </>
+        <h1 className="splash__wordmark">Octop</h1>
+        <p className="splash__text">正在准备本地服务…</p>
+        <div className="splash__bar" aria-hidden="true">
+          <span className="splash__bar-thumb" />
+        </div>
+      </div>
+      {version ? <p className="splash__version">v{version}</p> : null}
+    </main>
   );
 }
 

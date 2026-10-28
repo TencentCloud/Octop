@@ -97,9 +97,6 @@ function ErrorPage() {
 
   return (
     <main className="result">
-      {/* Fixed grab strip: the window hides its titlebar, so the page has to
-          provide the drag handle itself. */}
-      <div className="shell-drag-strip" aria-hidden="true" />
       <div className="result__body" role="alert">
         <FailureMark />
         <h1 className="result__title">{title}</h1>
