@@ -218,6 +218,8 @@ Python 后端可能衍生工作进程或正在执行 Agent 任务，因此关机
 
 #### 当前实现边界：任务检查尚未落地
 
+> 具体接口契约、插桩点与壳侧决策矩阵见 [`QUIT_TASK_CHECK.zh.md`](./QUIT_TASK_CHECK.zh.md)。
+
 清理链路本身已经完成：`before-quit` 与 `SIGINT` / `SIGTERM` / `SIGHUP` 走同一条路径
 （先关 WebSocket 中继 → 请求 Python 停机并等待宽限期 → `app.exit`），信号路径第二次触发
 立即退出。文档第 1 条里的**任务检查与原生确认框还没做**，原因是后端目前没有「在跑任务」
