@@ -127,13 +127,16 @@ describe("desktopChrome", () => {
     expect(windowControlsStartSpacerPx(null, true)).toBe(0);
   });
 
-  it("reserves a top band for the macOS traffic lights only", () => {
+  it("reserves one top row for the shell's native buttons on both platforms", () => {
     expect(chromeTopBandPx("mac")).toBe(DESKTOP_CHROME_HEIGHT);
-    expect(chromeTopBandPx("windows")).toBe(0);
+    // Windows keeps its caption buttons inside the same 32px overlay band, so
+    // the page's title row has to start below them too.
+    expect(chromeTopBandPx("windows")).toBe(DESKTOP_CHROME_HEIGHT);
     expect(chromeTopBandPx(null)).toBe(0);
-    // Full screen hides the traffic lights, so nothing is reserved there either.
+    // Full screen hides the buttons, so the row goes and the page reclaims it.
     expect(chromeTopBandPx("mac", true)).toBe(0);
-    // A band smaller than the buttons would let them cover the brand row.
+    expect(chromeTopBandPx("windows", true)).toBe(0);
+    // A band smaller than the buttons would let them cover the title row.
     expect(DESKTOP_CHROME_HEIGHT).toBeGreaterThanOrEqual(32);
   });
 
