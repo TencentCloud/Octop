@@ -615,7 +615,13 @@ class AgentManager:
     def teams(self) -> Any:
         return self._teams
 
-    async def boot(self) -> None:
+    async def boot(self, *, agent_ids: frozenset[str] | None = None) -> None:
+        """Start harness runtime and agents.
+
+        When ``agent_ids`` is set (e.g. ``octop acp --agent …``), only those
+        agents are started — including rows whose ``last_state`` is ``stopped``.
+        Full ``octop run`` keeps the default: start every non-stopped agent.
+        """
         self._tool_guard_rules.ensure_seeded()
         providers = self._providers.build_harness_configs()
         self._harness_manager = HarnessAgentManager(
@@ -647,7 +653,10 @@ class AgentManager:
 
         rows = self._repos.agent_repo.list_all(include_disabled=False)
         for row in rows:
-            if row.last_state == "stopped":
+            if agent_ids is not None:
+                if row.agent_id not in agent_ids:
+                    continue
+            elif row.last_state == "stopped":
                 continue
             try:
                 await asyncio.wait_for(
