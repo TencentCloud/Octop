@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { join } from "node:path";
+import { join, resolve, sep } from "node:path";
 import { test } from "node:test";
 
 import { resolveOctopHome, expandHome } from "./shell-env";
@@ -7,10 +7,19 @@ import { resolveStaticPath, isExternalLink } from "../protocol/static-handler";
 import { isApiPath, toBackendUrl, sanitizeForwardHeaders } from "../protocol/stream-proxy";
 
 /**
- * These constants are POSIX-shaped inputs, but the functions under test build
- * paths with `node:path`, so the *expected* values have to go through `join` as
- * well or the suite only passes on the machine it was written on.
+ * The fixtures are POSIX-shaped on purpose (a home directory, a URL path), but
+ * the functions under test would build paths with `node:path`, so every expected
+ * value has to go through `join`/`resolve` too — otherwise the suite only passes
+ * on the machine it was written on.
  */
+
+/**
+ * `resolveStaticPath` receives its root from `app.getAppPath()`, which is always
+ * host-shaped. Feeding it a POSIX root on Windows is not a case that can happen:
+ * `path.resolve("/root/dashboard", "assets/app.js")` lands on the current drive
+ * root and the confinement check then — correctly — refuses it.
+ */
+const DASHBOARD_ROOT = resolve(sep, "root", "dashboard");
 
 test("resolveOctopHome prefers inherited non-empty value", () => {
   assert.equal(
@@ -32,14 +41,13 @@ test("expandHome expands leading tilde", () => {
 
 test("resolveStaticPath confines to root", () => {
   assert.equal(
-    resolveStaticPath("/root/dashboard", "/assets/app.js"),
-    join("/root/dashboard", "assets/app.js"),
+    resolveStaticPath(DASHBOARD_ROOT, "/assets/app.js"),
+    join(DASHBOARD_ROOT, "assets", "app.js"),
   );
-  assert.equal(
-    resolveStaticPath("/root/dashboard", "/"),
-    join("/root/dashboard", "index.html"),
-  );
-  assert.equal(resolveStaticPath("/root/dashboard", "/../../etc/passwd"), null);
+  assert.equal(resolveStaticPath(DASHBOARD_ROOT, "/"), join(DASHBOARD_ROOT, "index.html"));
+  assert.equal(resolveStaticPath(DASHBOARD_ROOT, "/sub/"), join(DASHBOARD_ROOT, "sub", "index.html"));
+  assert.equal(resolveStaticPath(DASHBOARD_ROOT, "/../../etc/passwd"), null);
+  assert.equal(resolveStaticPath(DASHBOARD_ROOT, "/sub/../../etc/passwd"), null);
 });
 
 test("isExternalLink only allows real http(s) links", () => {
