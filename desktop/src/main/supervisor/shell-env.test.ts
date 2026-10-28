@@ -1,9 +1,16 @@
 import assert from "node:assert/strict";
+import { join } from "node:path";
 import { test } from "node:test";
 
 import { resolveOctopHome, expandHome } from "./shell-env";
 import { resolveStaticPath, isExternalLink } from "../protocol/static-handler";
 import { isApiPath, toBackendUrl, sanitizeForwardHeaders } from "../protocol/stream-proxy";
+
+/**
+ * These constants are POSIX-shaped inputs, but the functions under test build
+ * paths with `node:path`, so the *expected* values have to go through `join` as
+ * well or the suite only passes on the machine it was written on.
+ */
 
 test("resolveOctopHome prefers inherited non-empty value", () => {
   assert.equal(
@@ -14,18 +21,24 @@ test("resolveOctopHome prefers inherited non-empty value", () => {
 
 test("resolveOctopHome falls back to login shell then ~/.octop", () => {
   assert.equal(resolveOctopHome({}, { OCTOP_HOME: "/from/shell" }, "/home/u"), "/from/shell");
-  assert.equal(resolveOctopHome({}, {}, "/home/u"), "/home/u/.octop");
+  assert.equal(resolveOctopHome({}, {}, "/home/u"), join("/home/u", ".octop"));
 });
 
 test("expandHome expands leading tilde", () => {
-  assert.equal(expandHome("~/octop", "/home/u"), "/home/u/octop");
+  assert.equal(expandHome("~/octop", "/home/u"), join("/home/u", "octop"));
   assert.equal(expandHome("~", "/home/u"), "/home/u");
   assert.equal(expandHome("/abs/path", "/home/u"), "/abs/path");
 });
 
 test("resolveStaticPath confines to root", () => {
-  assert.equal(resolveStaticPath("/root/dashboard", "/assets/app.js"), "/root/dashboard/assets/app.js");
-  assert.equal(resolveStaticPath("/root/dashboard", "/"), "/root/dashboard/index.html");
+  assert.equal(
+    resolveStaticPath("/root/dashboard", "/assets/app.js"),
+    join("/root/dashboard", "assets/app.js"),
+  );
+  assert.equal(
+    resolveStaticPath("/root/dashboard", "/"),
+    join("/root/dashboard", "index.html"),
+  );
   assert.equal(resolveStaticPath("/root/dashboard", "/../../etc/passwd"), null);
 });
 

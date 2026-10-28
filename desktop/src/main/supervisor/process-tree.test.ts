@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { join } from "node:path";
 import { test } from "node:test";
 
 import { buildSidecarEnv } from "./process-tree";
@@ -28,7 +29,8 @@ test("buildSidecarEnv keeps the identity and loopback pins", () => {
   const built = env();
   assert.equal(built.OCTOP_DESKTOP_SHELL, "1");
   assert.equal(built.OCTOP_HOME, "/tmp/home");
-  assert.equal(built.OCTOP_GREEN_PACKAGES, "/tmp/portable/packages");
+  // Built with node:path, so the separator follows the host.
+  assert.equal(built.OCTOP_GREEN_PACKAGES, join("/tmp/portable", "packages"));
   assert.equal(built.OCTOP_BIND_HOST, "127.0.0.1");
   assert.equal(built.OCTOP_PORT, "51234");
   assert.equal(built.PYTHONNOUSERSITE, "1");

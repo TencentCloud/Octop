@@ -5,6 +5,14 @@ name: Octop Desktop Package
 # 再上传到 COS octop/release/<version>/。
 # 手工补包：workflow_dispatch + release_tag（不必跑在 v* ref 上）。
 # attach_from_run 只挂已有 artifact、不重打。
+#
+# 镜像固定到 ubuntu-24.04 而不是 ubuntu-latest：`latest` 已经公告要迁到
+# 26.04，发版机器的底层镜像不该由 GitHub 的时间表决定。
+#
+# action 一律挑 `runs.using: node24` 的主版本（setup-uv@v7、
+# pnpm/action-setup@v6、action-gh-release@v3）。跑在 node20 上的版本会在
+# 每次运行里刷 "Node.js 20 is deprecated" 而不报错，属于会一直烂在那里的
+# 警告——升级时以 action.yml 里的 `runs.using` 为准，别看版本号大小猜。
 
 on:
   push:
@@ -36,6 +44,11 @@ on:
         required: false
         default: ""
         type: string
+      sign:
+        description: "Sign installers with the CSC_* / APPLE_* secrets. Turn off to produce unsigned artifacts for validation."
+        required: false
+        default: true
+        type: boolean
 
 permissions:
   contents: read
@@ -60,7 +73,7 @@ jobs:
   frontend:
     name: Build dashboard
     if: github.event_name != 'workflow_dispatch' || github.event.inputs.attach_from_run == ''
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v5
 
@@ -87,7 +100,7 @@ jobs:
   select-platforms:
     name: Select platforms
     if: github.event_name != 'workflow_dispatch' || github.event.inputs.attach_from_run == ''
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     outputs:
       matrix: ${{ steps.set.outputs.matrix }}
     steps:
@@ -102,7 +115,7 @@ jobs:
           import os
 
           all_plats = [
-              {"plat": "linux-amd64", "arch": "amd64", "os": "ubuntu-latest"},
+              {"plat": "linux-amd64", "arch": "amd64", "os": "ubuntu-24.04"},
               {"plat": "linux-arm64", "arch": "arm64", "os": "ubuntu-24.04-arm"},
               {"plat": "darwin-arm64", "arch": "arm64", "os": "macos-14"},
               {"plat": "darwin-amd64", "arch": "amd64", "os": "macos-15-intel"},
@@ -138,6 +151,11 @@ jobs:
     # on windows-11-arm does not mis-classify the job as windows-amd64 cross-build.
     env:
       GREEN_HOST_PLAT: ${{ matrix.plat }}
+      # Unsigned packaging is a deliberate mode, not an accident: without a
+      # certificate electron-builder used to abort *mid* mac pipeline (after
+      # "empty password will be used for code signing") with a confusing
+      # ".../desktop/src not a file". Tags and PRs always sign.
+      OCTOP_SKIP_SIGN: ${{ (github.event_name == 'workflow_dispatch' && inputs.sign == false) && '1' || '' }}
     strategy:
       fail-fast: false
       matrix: ${{ fromJSON(needs.select-platforms.outputs.matrix) }}
@@ -159,7 +177,7 @@ jobs:
           name: dashboard-dist
           path: src/octop/dashboard
 
-      - uses: astral-sh/setup-uv@v6
+      - uses: astral-sh/setup-uv@v7
         with:
           enable-cache: true
           python-version: "3.12"
@@ -260,7 +278,9 @@ jobs:
         with:
           node-version: "24"
 
-      - uses: pnpm/action-setup@v4
+      # v6 起改用 node24 运行时；`run_install` 仍存在，留着 false 是为了让
+      # 下一步那个显式的 `pnpm install --frozen-lockfile` 是唯一一次安装。
+      - uses: pnpm/action-setup@v6
         with:
           version: 12.15.0
           run_install: false
@@ -276,10 +296,12 @@ jobs:
         working-directory: desktop/src
         env:
           OCTOP_PLATFORM: ${{ matrix.plat }}
-          CSC_LINK: ${{ secrets.CSC_LINK }}
-          CSC_KEY_PASSWORD: ${{ secrets.CSC_KEY_PASSWORD }}
-          WIN_CSC_LINK: ${{ secrets.WIN_CSC_LINK }}
-          WIN_CSC_KEY_PASSWORD: ${{ secrets.WIN_CSC_KEY_PASSWORD }}
+          # Blanked too, or CSC_LINK overrides `mac.identity: null` and signing is
+          # attempted anyway.
+          CSC_LINK: ${{ env.OCTOP_SKIP_SIGN == '1' && '' || secrets.CSC_LINK }}
+          CSC_KEY_PASSWORD: ${{ env.OCTOP_SKIP_SIGN == '1' && '' || secrets.CSC_KEY_PASSWORD }}
+          WIN_CSC_LINK: ${{ env.OCTOP_SKIP_SIGN == '1' && '' || secrets.WIN_CSC_LINK }}
+          WIN_CSC_KEY_PASSWORD: ${{ env.OCTOP_SKIP_SIGN == '1' && '' || secrets.WIN_CSC_KEY_PASSWORD }}
           APPLE_ID: ${{ secrets.APPLE_ID }}
           APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
@@ -366,7 +388,7 @@ jobs:
           (github.event_name == 'workflow_dispatch' &&
            github.event.inputs.attach_release == 'true')))
       )
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     permissions:
       contents: write
       actions: read
@@ -409,7 +431,7 @@ jobs:
           fi
 
       - name: Upload to GitHub Release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           tag_name: ${{ steps.rel.outputs.tag }}
           files: release-assets/*
