@@ -24,6 +24,23 @@ WorkspaceImportMode = Literal["merge", "replace"]
 
 _SKIP_DIR_NAMES = frozenset({".git", "__pycache__", ".venv", "node_modules"})
 
+# SQLite writes ``*-wal`` / ``*-shm`` / ``*-journal`` as private temporary
+# files tied to the local connection. Bundling them into a workspace archive
+# serves nothing (SQLite recreates them on open) and restoring them on a
+# different machine can corrupt the database or crash with OSError: [Errno
+# 22] Invalid argument (issue #2303). infra/backup/chats.py already filters
+# the chat DB sidecars in its _CHAT_FILE_NAMES set; mirror that behaviour
+# here for every file the workspace archive touches.
+_SQLITE_SIDECAR_SUFFIXES = frozenset({
+    ".sqlite-shm", ".sqlite-wal", ".sqlite-journal", ".sqlite-wal2",
+    ".db-shm", ".db-wal", ".db-journal", ".db-wal2",
+})
+
+
+def _is_sqlite_sidecar(name: str) -> bool:
+    lower = name.lower()
+    return any(lower.endswith(sfx) for sfx in _SQLITE_SIDECAR_SUFFIXES)
+
 # ``aglob("**/*")`` skips dotfiles/dirs; these patterns recover hidden entries on
 # backends that only expose glob (no ``als``).
 _HIDDEN_GLOB_PATTERNS = (".**/**", "**/.*")
@@ -71,6 +88,8 @@ def _list_local_file_paths(workspace_dir: Path) -> list[str]:
     for dirpath, dirnames, filenames in os.walk(root, followlinks=False):
         dirnames[:] = [name for name in dirnames if name not in _SKIP_DIR_NAMES]
         for name in filenames:
+            if _is_sqlite_sidecar(name):
+                continue
             full = Path(dirpath) / name
             if not full.is_file():
                 continue
@@ -105,6 +124,8 @@ async def _list_via_als(workspace: BackendWorkspace) -> list[str] | None:
             name = PurePosixPath(rel).name
             if name in _SKIP_DIR_NAMES:
                 continue
+            if _is_sqlite_sidecar(name):
+                continue
             if is_dir:
                 queue.append(rel)
             else:
@@ -127,6 +148,8 @@ async def _list_via_aglob(workspace: BackendWorkspace) -> list[str]:
             if not normalized:
                 continue
             if any(part in _SKIP_DIR_NAMES for part in PurePosixPath(normalized).parts):
+                continue
+            if _is_sqlite_sidecar(PurePosixPath(normalized).name):
                 continue
             paths.add(normalized)
     return sorted(paths)
@@ -169,6 +192,11 @@ def _iter_zip_entries(data: bytes) -> list[tuple[str, bytes]]:
                 continue
             safe = _safe_zip_name(info.filename)
             if safe is None:
+                continue
+            # Drop SQLite sidecar files (wal / shm / journal) that older
+            # archives may still carry; they are connection-private and must
+            # never be restored on a different machine (issue #2303).
+            if _is_sqlite_sidecar(PurePosixPath(safe).name):
                 continue
             out.append((safe, zf.read(info)))
     return out
