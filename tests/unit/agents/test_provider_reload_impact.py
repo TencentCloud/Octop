@@ -6,6 +6,7 @@ import asyncio
 import json
 import time
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
 import pytest
@@ -79,6 +80,10 @@ def test_impact_ids_include_refs_failed_and_auto_for_active_provider(
     services.repos.agent_repo.set_state("failed-one", "failed")
 
     registry = _registry(services)
+    registry._harness_manager.create_agent(
+        SimpleNamespace(default_model="test-openai/gpt-4o-mini"),
+        agent_id="auto-one",
+    )
     ids = registry._provider_reload_impact_ids(provider_name="test-openai")
     assert set(ids) == {"ref-one", "auto-one", "failed-one"}
     assert "pinned-other" not in ids
@@ -103,6 +108,85 @@ def test_impact_ids_active_model_changed_only_auto_and_needing(
     registry = _registry(services)
     ids = registry._provider_reload_impact_ids(active_model_changed=True)
     assert set(ids) == {"auto-one", "created-one"}
+
+
+def test_impact_ids_rebuild_only_auto_agents_with_stale_baked_ref(
+    tmp_path: Path,
+) -> None:
+    """AUTO agents bake a resolved fallback ref into their harness config at
+    build time (active model first, else first usable), where the DB config
+    scan cannot see it — when that ref points at the changed provider or no
+    longer matches what a build would resolve now, the agent must be rebuilt
+    (#2388). AUTO agents whose baked ref is still current are left alone so
+    unrelated provider edits stay cheap."""
+    services = _make_services(tmp_path)
+    services.repos.settings_repo.set_active_model("other-llm", "m1")
+
+    services.repos.agent_repo.create(agent_id="auto-stale", user_id=None, name="Stale")
+    services.repos.agent_repo.set_state("auto-stale", "running")
+
+    services.repos.agent_repo.create(agent_id="auto-fresh", user_id=None, name="Fresh")
+    services.repos.agent_repo.set_state("auto-fresh", "running")
+
+    services.repos.agent_repo.create(agent_id="pinned", user_id=None, name="Pinned")
+    services.repos.agent_repo.set_state("pinned", "running")
+    services.repos.agent_repo.update_config("pinned", default_model="other-llm/m1")
+
+    registry = _registry(services)
+    registry._harness_manager.create_agent(
+        SimpleNamespace(default_model="test-openai/gpt-4o-mini"),
+        agent_id="auto-stale",
+    )
+    registry._harness_manager.create_agent(
+        SimpleNamespace(default_model="other-llm/m1"),
+        agent_id="auto-fresh",
+    )
+
+    ids = registry._provider_reload_impact_ids(provider_name="test-openai")
+    assert "auto-stale" in ids
+    assert "auto-fresh" not in ids
+    assert "pinned" not in ids
+
+
+def test_impact_ids_rebuild_auto_agents_built_without_any_model(
+    tmp_path: Path,
+) -> None:
+    """An AUTO agent built while no model was usable bakes no ref at all
+    (``default_model=None``). It must be rebuilt once a fallback exists, or it
+    keeps running without a model until the process restarts."""
+    services = _make_services(tmp_path)
+    services.repos.settings_repo.set_active_model("other-llm", "m1")
+
+    services.repos.agent_repo.create(agent_id="auto-nomodel", user_id=None, name="NoModel")
+    services.repos.agent_repo.set_state("auto-nomodel", "running")
+
+    registry = _registry(services)
+    registry._harness_manager.create_agent(
+        SimpleNamespace(default_model=None),
+        agent_id="auto-nomodel",
+    )
+
+    ids = registry._provider_reload_impact_ids(provider_name="test-openai")
+    assert "auto-nomodel" in ids
+
+
+def test_impact_ids_leave_auto_agents_without_model_when_no_fallback(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Without any usable fallback there is nothing to rebuild towards."""
+    services = _make_services(tmp_path)
+    services.repos.agent_repo.create(agent_id="auto-nomodel", user_id=None, name="NoModel")
+    services.repos.agent_repo.set_state("auto-nomodel", "running")
+
+    registry = _registry(services)
+    registry._harness_manager.create_agent(
+        SimpleNamespace(default_model=None),
+        agent_id="auto-nomodel",
+    )
+    monkeypatch.setattr(registry, "_resolve_configured_fallback_model_ref", lambda: None)
+
+    ids = registry._provider_reload_impact_ids(provider_name="test-openai")
+    assert "auto-nomodel" not in ids
 
 
 @pytest.mark.asyncio
