@@ -11,6 +11,7 @@ from fastapi import APIRouter, Depends, Header, Request
 from pydantic import BaseModel, Field
 
 from octop.api.deps import get_server, require_database, resolve_user_from_token, sign_token
+from octop.infra.agents.providers.creation import create_provider
 from octop.infra.agents.providers.presets import load_provider_presets
 from octop.infra.agents.providers.probe import make_probe_provider_row, probe_provider_row
 from octop.infra.errors import ErrorCode, OctopError
@@ -199,7 +200,8 @@ async def _apply_provider_draft(server: Any, draft: ProviderDraftBody) -> None:
         models[0]["enabled"] = True
     if not models:
         raise OctopError(ErrorCode.INTERNAL_ERROR, "at least one model is required", status=400)
-    server.services.provider_repo.create(
+    create_provider(
+        server.services.provider_repo,
         name=draft.name,
         kind=draft.type,
         base_url=base_url,

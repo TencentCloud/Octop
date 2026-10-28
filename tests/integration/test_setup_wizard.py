@@ -366,6 +366,45 @@ async def test_finish_saves_provider_with_admin_jwt(env: Any) -> None:
     assert last_state == "running"
 
 
+async def test_finish_duplicate_provider_name_returns_conflict(env: Any) -> None:
+    c, srv, home = env
+    pw = read_password(home)
+    tok = (await c.post("/api/setup/verify-password", json={"password": pw})).json()[
+        "wizard_token"
+    ]
+    admin = (
+        await c.post(
+            "/api/setup/initial-admin",
+            json={"username": "admin", "password": "TestPass12"},
+            headers={"Authorization": f"Bearer {tok}"},
+        )
+    ).json()
+    srv.wizard_tokens.clear()
+    auth = {"Authorization": f"Bearer {admin['access_token']}"}
+    existing = await c.post(
+        "/api/admin/providers",
+        json={"name": "HAI", "kind": "openai", "api_key": "sk-existing"},
+        headers=auth,
+    )
+    assert existing.status_code == 201
+
+    duplicate = await c.post(
+        "/api/setup/finish",
+        json={
+            "provider_draft": {
+                "name": "HAI",
+                "type": "openai",
+                "api_key": "sk-test",
+                "base_url": "https://api.example.com/v1",
+                "models": [{"id": "gpt-4o-mini", "name": "GPT-4o mini", "enabled": True}],
+            }
+        },
+        headers=auth,
+    )
+    assert duplicate.status_code == 409
+    assert duplicate.json()["error"]["code"] == "PROVIDER_NAME_TAKEN"
+
+
 # ─── 410 guard ─────────────────────────────────────────────────────
 
 

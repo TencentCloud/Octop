@@ -25,6 +25,7 @@ from octop.infra.agents.providers.codex_oauth import (
     poll_device_token,
     request_device_code,
 )
+from octop.infra.agents.providers.creation import create_provider
 from octop.infra.agents.providers.model_flags import is_local_runtime_provider
 from octop.infra.agents.providers.presets import load_provider_presets
 from octop.infra.agents.providers.probe import (
@@ -372,6 +373,10 @@ async def admin_create_provider(
 ) -> dict[str, Any]:
     import json as _json
 
+    provider_repo = server.services.provider_repo
+    if provider_repo.get_by_name(body.name) is not None:
+        raise OctopError.localized(ErrorCode.PROVIDER_NAME_TAKEN)
+
     models = (
         _sync_model_visibility(server, body.name, body.models) if body.models is not None else None
     )
@@ -380,7 +385,8 @@ async def admin_create_provider(
     models_json = _json.dumps(models) if models is not None else None
     extra_json = merge_stream_usage_extra(body.extra_json, body.stream_usage)
     extra_json = merge_provider_purpose_extra(extra_json, body.purpose)
-    pid = server.services.provider_repo.create(
+    pid = create_provider(
+        provider_repo,
         name=body.name,
         kind=body.kind,
         base_url=body.base_url,
