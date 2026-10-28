@@ -892,7 +892,7 @@ export default function Sidebar({
       {/* The shell's title row lives in MainLayout, above this sidebar, so the
           brand starts directly under it instead of reserving its own band. */}
       <div
-        className={cx(styles.sidebarBrand, DESKTOP_DRAG_REGION_CLASS)}
+        className={DESKTOP_DRAG_REGION_CLASS}
         style={{
           display: "flex",
           alignItems: "center",
