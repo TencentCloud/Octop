@@ -574,7 +574,7 @@ Example client configuration:
   "mcpServers": {
     "octop-agents": {
       "type": "streamable_http",
-      "url": "http://127.0.0.1:8090/api/mcp/agents",
+      "url": "http://127.0.0.1:8088/api/mcp/agents",
       "headers": {
         "Authorization": "Bearer <octop-access-token>"
       }
