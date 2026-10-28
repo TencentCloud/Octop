@@ -1374,6 +1374,31 @@
   line-height: 1.55;
 }
 
+/* Footer under a truncated thinking block: how much is shown, and the toggle. */
+.processThinkingTruncation {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 6px;
+  padding-top: 6px;
+  border-top: 1px dashed var(--fn-border-secondary);
+  font-size: 12px;
+  color: var(--fn-text-tertiary);
+}
+
+.processThinkingTruncationBtn {
+  padding: 0;
+  border: none;
+  background: none;
+  color: var(--fn-color-primary, #2563eb);
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.processThinkingTruncationBtn:hover {
+  text-decoration: underline;
+}
+
 .processToolItem {
   min-width: 0;
 }

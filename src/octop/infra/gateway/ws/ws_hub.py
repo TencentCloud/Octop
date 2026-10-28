@@ -5,6 +5,8 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import os
+import time
 from collections.abc import Awaitable, Callable
 from typing import Any
 
@@ -38,7 +40,14 @@ class WebSocketHub:
         self._conn_thread: dict[str, str] = {}
         self._user_conns: dict[int, set[str]] = {}
         self._conn_user: dict[str, int] = {}
-        self._active_turns: set[str] = set()
+        self._active_turns: dict[str, float] = {}
+        # A turn whose task dies without running its ``finally`` leaves the
+        # active flag set forever: the composer stays disabled, the dashboard
+        # shows 生成中 and the context ring never updates. Age the flag by the
+        # last frame we pushed for it and drop it once it goes stale.
+        self._active_turn_stale_s: float = float(
+            os.environ.get("OCTOP_TURN_ACTIVE_STALE_S", "1800") or 1800
+        )
 
     def register(
         self,
@@ -103,13 +112,29 @@ class WebSocketHub:
     def mark_turn_active(self, thread_id: str) -> None:
         tid = thread_id.strip()
         if tid:
-            self._active_turns.add(tid)
+            self._active_turns[tid] = time.monotonic()
 
     def mark_turn_idle(self, thread_id: str) -> None:
-        self._active_turns.discard(thread_id.strip())
+        self._active_turns.pop(thread_id.strip(), None)
 
     def is_turn_active(self, thread_id: str) -> bool:
-        return thread_id.strip() in self._active_turns
+        """True while a turn is really running.
+
+        A turn that died without clearing its flag (the WS handler task was
+        dropped, so its ``finally`` never ran) used to keep this True forever,
+        which left the composer disabled and the dashboard stuck on 生成中.
+        The flag ages with the last frame pushed for the thread, so a thread
+        that has gone quiet is reported idle again.
+        """
+        tid = thread_id.strip()
+        started = self._active_turns.get(tid)
+        if started is None:
+            return False
+        if time.monotonic() - started > self._active_turn_stale_s:
+            self._active_turns.pop(tid, None)
+            logger.warning("ws hub: clearing stale active turn thread=%s", tid)
+            return False
+        return True
 
     def has_subscribers(self, thread_id: str) -> bool:
         """True when at least one Dashboard socket is bound to *thread_id*."""
@@ -128,6 +153,9 @@ class WebSocketHub:
 
     async def push_to_thread(self, thread_id: str, frame: dict[str, Any]) -> None:
         tid = thread_id.strip()
+        # Any frame for this thread proves the turn is alive; refresh the age.
+        if tid in self._active_turns:
+            self._active_turns[tid] = time.monotonic()
         conns = self._thread_subscribers.get(tid)
         if not conns:
             logger.debug("ws hub: no subscriber for thread %s", thread_id)

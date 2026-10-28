@@ -2,8 +2,12 @@
 
 from __future__ import annotations
 
+import asyncio
 import base64
 import logging
+import os
+import time
+from collections.abc import Callable
 from typing import Any
 
 from octop_gateway.channel import BaseChannel, MessageProcessor
@@ -34,6 +38,92 @@ from octop.infra.utils.locale import resolve_locale
 logger = logging.getLogger(__name__)
 
 WS_CHANNEL_ID = "octop-dashboard"
+
+# A turn that stops producing chunks for this long is almost certainly stuck.
+# The stack dump is diagnostic only — the turn is never cancelled from here.
+TURN_STALL_DUMP_S = float(os.environ.get("OCTOP_TURN_STALL_DUMP_S", "600") or 600)
+# Past this point the turn is treated as dead and its active flag is cleared.
+TURN_STALL_ABANDON_S = float(
+    os.environ.get("OCTOP_TURN_STALL_ABANDON_S", "1800") or 1800
+)
+
+
+def _dump_turn_stacks(thread_id: str, idle_s: float) -> None:
+    """Log the asyncio stacks of a turn that stopped producing chunks.
+
+    A hung turn leaves no trace today: no CPU, no network, no log line, and the
+    dashboard keeps showing 生成中 forever. ``faulthandler`` only covers OS
+    threads, so the awaiting coroutines are read from ``asyncio.all_tasks()``.
+    """
+    lines = [
+        f"turn stalled {idle_s:.0f}s with no chunk (thread={thread_id}); asyncio stacks:"
+    ]
+    for task in asyncio.all_tasks():
+        stack = task.get_stack(limit=8)
+        if not stack:
+            continue
+        coro = task.get_coro()
+        name = getattr(coro, "__qualname__", None) or repr(coro)
+        lines.append(f"  task {task.get_name()} coro={name}")
+        for frame in stack:
+            lines.append(
+                f"    {frame.f_code.co_filename}:{frame.f_lineno} in {frame.f_code.co_name}"
+            )
+    logger.error("\n".join(lines))
+
+
+async def _watch_turn_stall(
+    state: dict[str, Any],
+    thread_id: str,
+    hub: WebSocketHub,
+    cancel: Callable[[], None] | None = None,
+) -> None:
+    """Watch one turn: dump stacks on a stall, then end a turn that is dead.
+
+    A cancelled WS handler can drop the turn task without running its
+    ``finally``, so ``mark_turn_idle`` never fires and ``turn_active`` stays
+    true. Clients then show 生成中 forever and the context ring stops updating,
+    because nothing completes. Clearing the flag here is self-healing and
+    idempotent; a live turn keeps refreshing ``last_chunk_at``.
+
+    Past the abandon threshold the stream is cancelled too, so a wedged turn
+    cannot hold the thread open indefinitely.
+    """
+    interval = max(5.0, min(60.0, TURN_STALL_DUMP_S / 4))
+    while True:
+        await asyncio.sleep(interval)
+        idle = time.monotonic() - float(state.get("last_chunk_at") or 0.0)
+        if idle < TURN_STALL_DUMP_S:
+            state["dumped"] = False
+            continue
+        if not state.get("dumped"):
+            state["dumped"] = True
+            try:
+                _dump_turn_stacks(thread_id, idle)
+            except Exception:  # noqa: BLE001 - diagnostics must never break a turn
+                logger.exception("turn stall stack dump failed thread=%s", thread_id)
+            continue
+        if idle < TURN_STALL_ABANDON_S:
+            continue
+        logger.error(
+            "turn abandoned after %.0fs with no chunk (thread=%s); cancelling stream",
+            idle,
+            thread_id,
+        )
+        if cancel is not None:
+            try:
+                cancel()
+            except Exception:  # noqa: BLE001 - cancellation is best effort
+                logger.exception("turn abandon cancel failed thread=%s", thread_id)
+        hub.mark_turn_idle(thread_id)
+        try:
+            await hub.push_to_thread(
+                thread_id,
+                {"type": "turn_status", "thread_id": thread_id, "active": False},
+            )
+        except Exception:  # noqa: BLE001 - delivery failure must not raise here
+            logger.exception("turn_status idle broadcast failed thread=%s", thread_id)
+        return
 
 
 class WebSocketChannel(BaseChannel):
@@ -165,6 +255,15 @@ class WebSocketChannel(BaseChannel):
         self._hub.mark_turn_active(thread_id)
         failed = False
         stream = None
+        stall_state: dict[str, Any] = {"last_chunk_at": time.monotonic(), "dumped": False}
+        cancel_stream = getattr(processor, "cancel_agent_stream", None)
+        abandon_cancel: Callable[[], None] | None = None
+        if callable(cancel_stream):
+            tenant_id = str(message.tenant_id or "")
+            abandon_cancel = lambda: cancel_stream(tenant_id, thread_id)  # noqa: E731
+        stall_task = asyncio.create_task(
+            _watch_turn_stall(stall_state, thread_id, self._hub, abandon_cancel)
+        )
         try:
             await self._hub.push_to_thread(
                 thread_id,
@@ -182,6 +281,7 @@ class WebSocketChannel(BaseChannel):
                 preempted = False
                 stream = processor.iter_turn_chunks(current)
                 async for chunk in stream:
+                    stall_state["last_chunk_at"] = time.monotonic()
                     chunk_type = str(chunk.get("type") or "") if isinstance(chunk, dict) else ""
                     if preempted and chunk_type not in ("done", "error"):
                         # Cancel already landed at the tool boundary. Later
@@ -224,12 +324,19 @@ class WebSocketChannel(BaseChannel):
                     if chunk_type == "hitl_required":
                         # Graph is interrupted; the WS turn ends but resume flows
                         # through the HITL SSE route — never continue into it.
+                        logger.info("hitl_required reached ws channel thread=%s", thread_id)
                         self._steer.set_phase(thread_id, "hitl_paused")
                         continue
                     if chunk_type == "tool_result":
                         saw_tool_result = True
                         self._steer.set_phase(thread_id, "awaiting_tools")
                 if failed or self._steer.is_hitl_paused(thread_id):
+                    logger.info(
+                        "turn loop ends thread=%s failed=%s hitl_paused=%s",
+                        thread_id,
+                        failed,
+                        self._steer.is_hitl_paused(thread_id),
+                    )
                     break
                 await close_event_stream(stream)
                 stream = None
@@ -306,6 +413,7 @@ class WebSocketChannel(BaseChannel):
             except Exception:
                 logger.exception("websocket failed to deliver error frame thread=%s", thread_id)
         finally:
+            stall_task.cancel()
             discarded = self._steer.end_turn(thread_id, failed=failed)
             self._hub.mark_turn_idle(thread_id)
             if stream is not None:

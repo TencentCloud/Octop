@@ -179,6 +179,15 @@ export interface SessionStreamState {
   streamBlockType: "thinking" | "text" | "";
   /** Map from harness tool-call id (or ``idx-<n>`` fallback) → assistant bubble id. */
   toolCallIdIndex: Record<string, string>;
+  /**
+   * Text of the assistant bubbles already on screen, used to drop a replayed
+   * stream. After an interrupt the harness re-streams the conversation and the
+   * client used to append every copy as a new bubble, filling the window with
+   * the same history over and over. Cached for the duration of one turn.
+   */
+  replayHaystack?: string;
+  /** Message count the cached haystack was built from. */
+  replayAt?: number;
   historyHasMore: boolean;
   historyNextOffset: number;
   historyNextCursor?: string | null;

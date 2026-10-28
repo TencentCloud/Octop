@@ -10,6 +10,62 @@ import { ToolDetailsInline } from "./MessageBubble";
 import { useCollapseThinking } from "../hooks/useCollapseThinking";
 import styles from "../index.module.less";
 
+/**
+ * Thinking blocks go through Markdown, so a huge reasoning dump costs a full
+ * markdown parse plus a very large DOM. One thread produced 372 KB blocks
+ * (rendered ~1.5 MB of thinking in a single turn) and the window became
+ * unreadable. Render a bounded preview and let the reader pull the rest in
+ * explicitly — the panel's open/closed state stays a separate preference.
+ */
+export const THINKING_PREVIEW_CHARS = 4000;
+
+/** Cut on a line boundary so a fenced code block is not sliced mid-token. */
+function clampThinking(text: string, limit: number): string {
+  if (text.length <= limit) return text;
+  const cut = text.lastIndexOf("\n", limit);
+  return cut > limit * 0.6 ? text.slice(0, cut) : text.slice(0, limit);
+}
+
+function ThinkingBody({
+  content,
+  isStreaming,
+}: {
+  content: string;
+  isStreaming: boolean;
+}) {
+  const { t } = useTranslation();
+  const [showAll, setShowAll] = useState(false);
+  const truncated = content.length > THINKING_PREVIEW_CHARS;
+  const shown =
+    truncated && !showAll ? clampThinking(content, THINKING_PREVIEW_CHARS) : content;
+  return (
+    <>
+      <Markdown content={shown} isStreaming={isStreaming} />
+      {truncated ? (
+        <div className={styles.processThinkingTruncation}>
+          <span>
+            {t("chat.thinkingTruncated", {
+              shown: shown.length.toLocaleString(),
+              total: content.length.toLocaleString(),
+              defaultValue: "已显示前 {{shown}} 字，共 {{total}} 字",
+            })}
+          </span>
+          <button
+            type="button"
+            className={styles.processThinkingTruncationBtn}
+            aria-expanded={showAll}
+            onClick={() => setShowAll((value) => !value)}
+          >
+            {showAll
+              ? t("chat.thinkingCollapse", { defaultValue: "收起" })
+              : t("chat.thinkingShowAll", { defaultValue: "展开全部" })}
+          </button>
+        </div>
+      ) : null}
+    </>
+  );
+}
+
 function decisionTitle(notice: DecisionNotice, t: TFunction): string {
   return notice.model.trim()
     ? t("chat.decisionBadgeNamed", {
@@ -303,7 +359,7 @@ function AssistantProcessSummary({
                 key={`${step.item.messageId}-thinking-${idx}`}
                 className={styles.processThinkingItem}
               >
-                <Markdown
+                <ThinkingBody
                   content={step.item.content}
                   isStreaming={!!step.item.isStreaming && isStreaming}
                 />
