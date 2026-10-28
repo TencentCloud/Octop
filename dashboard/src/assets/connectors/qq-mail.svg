@@ -1,9 +1,0 @@
-<svg viewBox="0 0 48 48" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="QQ邮箱">
-  <rect width="48" height="48" rx="10" fill="#12B7F5"/>
-  <ellipse cx="24" cy="27" rx="14" ry="12" fill="#000"/>
-  <ellipse cx="24" cy="25" rx="12" ry="10.5" fill="#fff"/>
-  <ellipse cx="19" cy="23" rx="2.2" ry="2.8" fill="#000"/>
-  <ellipse cx="29" cy="23" rx="2.2" ry="2.8" fill="#000"/>
-  <ellipse cx="24" cy="29" rx="5" ry="3" fill="#FAAD08"/>
-  <path fill="#12B7F5" d="M10 14h28l-4 8H14l-4-8z"/>
-</svg>

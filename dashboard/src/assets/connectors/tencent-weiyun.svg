@@ -1,6 +1,0 @@
-<svg viewBox="0 0 48 48" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="腾讯微云">
-  <rect width="48" height="48" rx="10" fill="#00A4FF"/>
-  <path fill="#fff" d="M34 28c-1.8 3.2-5.4 5.5-9.5 5.5-6.1 0-11-4.6-11-10.3S18.4 13 24.5 13c4 0 7.5 2.1 9.4 5.2"/>
-  <path fill="none" stroke="#fff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" d="M30 15l5 4-5 4"/>
-  <ellipse cx="24" cy="30" rx="12" ry="4" fill="#0090E0" opacity=".35"/>
-</svg>

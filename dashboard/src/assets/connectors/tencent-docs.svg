@@ -1,6 +1,0 @@
-<svg viewBox="0 0 48 48" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="腾讯文档">
-  <rect width="48" height="48" rx="10" fill="#1E6FFF"/>
-  <path fill="#fff" d="M14 13h12a2 2 0 0 1 2 2v18a2 2 0 0 1-2 2H14V13z"/>
-  <path fill="#B8D4FF" d="M26 13h10a2 2 0 0 1 2 2v18a2 2 0 0 1-2 2H26V13z"/>
-  <path stroke="#1E6FFF" stroke-width="2" stroke-linecap="round" d="M18 20h8M18 24h10M18 28h7"/>
-</svg>

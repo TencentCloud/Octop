@@ -816,6 +816,30 @@ class AgentManager:
                 )
             profile = extract_profile_from_config(config)
             config = strip_profile_config(config)
+
+            # Back-fill persona-derived defaults for CLI-created agents.
+            # extract_profile_from_config only lifts keys that were explicitly
+            # set in config; CLI create does not set icon_url/color and the
+            # resulting NULL rows break team-dispatch agent_list (issue #2467).
+            if spec.persona_mbti:
+                try:
+                    from octop.infra.agents.persona.mbti_profiles import get_profile
+
+                    mbti = get_profile(spec.persona_mbti)
+                    if mbti is not None:
+                        if not (spec.icon_url or profile.get("icon_url")):
+                            profile["icon_url"] = f"/experts/avatars/scene-{mbti.code.lower()}.svg"
+                        if not (spec.color or profile.get("color")) and mbti.color:
+                            profile["color"] = mbti.color
+                except Exception:
+                    logger.debug("failed to derive default icon/color from persona for %s", agent_id)
+            # Guarantee non-NULL icon_url / color rows for every agent so
+            # team-dispatch agent_list never drops members (issue #2467).
+            if not (spec.icon_url or profile.get("icon_url")):
+                profile["icon_url"] = ""
+            if not (spec.color or profile.get("color")):
+                profile["color"] = ""
+
             package_ids_json = (
                 dump_id_list(spec.skill_package_ids)
                 if spec.skill_package_ids is not None

@@ -1,7 +1,0 @@
-<svg viewBox="0 0 48 48" xmlns="http://www.w3.org/2000/svg" role="img">
-  <circle cx="24" cy="24" r="22" fill="#fff" stroke="#e8e8e8" stroke-width="1"/>
-  <path d="M24 6a18 18 0 1 1 0 36 18 18 0 0 1 0-36z" fill="#f5a623"/>
-  <path d="M24 6a18 18 0 0 1 0 36V6z" fill="#e02020"/>
-  <path d="M24 6a18 18 0 0 0 0 18h18A18 18 0 0 0 24 6z" fill="#1485ee"/>
-  <path d="M24 24a18 18 0 0 0 0 18 18 18 0 0 0 0-18z" fill="#07c160"/>
-</svg>

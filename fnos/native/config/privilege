@@ -1,7 +1,0 @@
-{
-    "defaults": {
-        "run-as": "root"
-    },
-    "username": "octop-native",
-    "groupname": "octop-native"
-}

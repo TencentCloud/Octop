@@ -1,6 +1,0 @@
-id: echo-tool
-version: 1.0.0
-name: Echo Tool
-description: Echoes a message for plugin tests
-kind: tool
-entry: main.py

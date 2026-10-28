@@ -1,3 +1,0 @@
-{
-  "renderers": [{ "id": "hot_topics_list", "tools": ["get_hot_topics"] }]
-}
