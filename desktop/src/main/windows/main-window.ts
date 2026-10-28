@@ -2,6 +2,7 @@ import { BrowserWindow } from "electron";
 
 import { IPC_CHANNELS } from "../../shared/ipc-contract";
 import { windowChrome, type WindowChromeTheme } from "./chrome";
+import { DEFAULT_WINDOW_SIZE, MIN_WINDOW_SIZE } from "./size";
 
 /**
  * The real Dashboard window loads ``octop://app/`` — the custom privileged
@@ -17,8 +18,12 @@ export function createMainWindow(options: {
   onNavigate: (url: string) => void;
 }): BrowserWindow {
   const win = new BrowserWindow({
-    width: 1280,
-    height: 800,
+    width: DEFAULT_WINDOW_SIZE.width,
+    height: DEFAULT_WINDOW_SIZE.height,
+    // The Dashboard stops being usable below its desktop breakpoint, so the
+    // window refuses to shrink past it instead of letting the user do it.
+    minWidth: MIN_WINDOW_SIZE.width,
+    minHeight: MIN_WINDOW_SIZE.height,
     show: false,
     // The chrome is native (macOS traffic lights / Windows caption buttons), so
     // the Dashboard only reserves space for it and drags via `app-region`.
