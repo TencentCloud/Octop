@@ -39,7 +39,7 @@ def _harden_password_file(target: Path) -> None:
 
 
 def _restrict_windows_dacl(target: Path) -> bool:
-    """Replace the inherited NTFS DACL on ``target`` with a protected one
+    """Replace the inherited NTFS DACL on target with a protected one
     (SYSTEM, Administrators, owner). True when the DACL was set."""
     # sys.platform (not os.name) is what both the runtime and mypy use to
     # prune platform-specific branches; typeshed only exposes ctypes.WinDLL
@@ -50,26 +50,12 @@ def _restrict_windows_dacl(target: Path) -> bool:
     from ctypes import wintypes
 
     advapi32 = ctypes.WinDLL("advapi32", use_last_error=True)
+    kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
     SE_FILE_OBJECT = 1
-    OWNER_SECURITY_INFORMATION = 0x1
     DACL_SECURITY_INFORMATION = 0x4
     PROTECTED_DACL_SECURITY_INFORMATION = 0x80000000
     SDDL_REVISION_1 = 1
 
-    advapi32.GetNamedSecurityInfoW.argtypes = [
-        wintypes.LPCWSTR,
-        ctypes.c_int,
-        ctypes.c_ulong,
-        ctypes.POINTER(ctypes.c_void_p),
-        ctypes.POINTER(ctypes.c_void_p),
-        ctypes.POINTER(ctypes.c_void_p),
-        ctypes.POINTER(ctypes.c_void_p),
-        ctypes.POINTER(ctypes.c_void_p),
-    ]
-    advapi32.ConvertSidToStringSidW.argtypes = [
-        ctypes.c_void_p,
-        ctypes.POINTER(wintypes.LPWSTR),
-    ]
     advapi32.ConvertStringSecurityDescriptorToSecurityDescriptorW.argtypes = [
         wintypes.LPCWSTR,
         wintypes.DWORD,
@@ -91,48 +77,18 @@ def _restrict_windows_dacl(target: Path) -> bool:
         ctypes.c_void_p,
         ctypes.c_void_p,
     ]
-    kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
     kernel32.LocalFree.restype = wintypes.HLOCAL
     kernel32.LocalFree.argtypes = [wintypes.HLOCAL]
 
-    def _free(handle: ctypes.c_void_p | wintypes.LPWSTR) -> None:
+    def _free(handle: ctypes.c_void_p) -> None:
         if handle:
             kernel32.LocalFree(ctypes.cast(handle, wintypes.HLOCAL))
 
-    owner_sid = ctypes.c_void_p()
-    sd = ctypes.c_void_p()
-    path = str(target)
-    if (
-        advapi32.GetNamedSecurityInfoW(
-            path,
-            SE_FILE_OBJECT,
-            OWNER_SECURITY_INFORMATION,
-            ctypes.byref(owner_sid),
-            None,
-            None,
-            None,
-            ctypes.byref(sd),
-        )
-        != 0
-    ):
-        return False
-    _free(sd)
-    sid_string = wintypes.LPWSTR()
-    if (
-        advapi32.ConvertSidToStringSidW(
-            owner_sid,
-            ctypes.byref(sid_string),
-        )
-        == 0
-        or not sid_string.value
-    ):
-        return False
-    owner = sid_string.value
-    _free(sid_string)
-
     # Protected DACL: no inherited ACEs, full control for SYSTEM,
-    # Administrators and the file's owner only.
-    sddl = f"D:P(A;OICI;FA;;;SY)(A;OICI;FA;;;BA)(A;OICI;FA;;;{owner})"
+    # Administrators and the file's owner only. OW (S-1-3-4, Owner
+    # Rights) is resolved by the kernel to whoever owns the file, so the
+    # grant survives ownership changes and no owner-SID lookup is needed.
+    sddl = "D:P(A;OICI;FA;;;SY)(A;OICI;FA;;;BA)(A;OICI;FA;;;OW)"
     dacl_sd = ctypes.c_void_p()
     dacl_len = wintypes.ULONG()
     if (
@@ -165,7 +121,7 @@ def _restrict_windows_dacl(target: Path) -> bool:
 
     ok: bool = (
         advapi32.SetNamedSecurityInfoW(
-            path,
+            str(target),
             SE_FILE_OBJECT,
             DACL_SECURITY_INFORMATION | PROTECTED_DACL_SECURITY_INFORMATION,
             None,
