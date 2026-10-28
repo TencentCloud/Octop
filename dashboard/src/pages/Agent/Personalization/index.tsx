@@ -120,6 +120,7 @@ export default function PersonalizationPage() {
       subtitle={t("personalization.description")}
       agentScoped
       showTeams={showTeams}
+      runningAgentsOnly
       fill={!isMobile}
       pathTabs={pathTabs}
     >
@@ -265,3 +266,4 @@ export default function PersonalizationPage() {
     </PageShell>
   );
 }
+
