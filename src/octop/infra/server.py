@@ -394,7 +394,12 @@ class OctopServer:
     def database_bound(self) -> bool:
         return self.services is not None and self.app_runtime is not None
 
-    async def start(self) -> None:
+    async def start(self, *, boot_agent_ids: frozenset[str] | None = None) -> None:
+        """Boot control plane + agents.
+
+        ``boot_agent_ids`` limits which agents are started (used by ``octop acp``
+        so IDE clients are not blocked while every local agent boots).
+        """
         if self._started:
             return
         self.paths.ensure_root()
@@ -416,20 +421,25 @@ class OctopServer:
         config = ensure_mobile_capabilities_probed(self.paths.config)
         self.config = config
 
+        # ``boot_agent_ids`` (octop acp) → lean: skip library-wide catalog scans and
+        # plugin dep installs; existing agent workspaces do not need a full refresh.
+        lean = boot_agent_ids is not None
+
         self.expert_catalog = ExpertCatalog(
             default_library_root(),
             extra_roots=[self.paths.expert_market_dir],
         )
-        self.expert_catalog.refresh()
         self.subagent_catalog = SubagentCatalog(default_package_root())
-        self.subagent_catalog.refresh()
+        if not lean:
+            self.expert_catalog.refresh()
+            self.subagent_catalog.refresh()
 
         self.plugin_manager = PluginManager(
             plugins_dir=self.paths.plugins_dir,
             config_path=self.paths.config,
         )
         self.plugin_manager.seed_bundled()
-        self.plugin_manager.load_installed(install_deps=True)
+        self.plugin_manager.load_installed(install_deps=not lean)
         self._apply_plugin_channels()
 
         import time  # noqa: PLC0415
@@ -449,7 +459,7 @@ class OctopServer:
 
         boot_from_services(self.services.settings_repo, self.services.secret_repo)
         self._ensure_jwt_secret()
-        await self._boot_runtime(config)
+        await self._boot_runtime(config, boot_agent_ids=boot_agent_ids)
         self._started = True
         assert self.user_manager is not None
         self._emit_wizard_password(user_count=self.user_manager.count())
@@ -482,7 +492,12 @@ class OctopServer:
             config.database.driver,
         )
 
-    async def _boot_runtime(self, config: OctopConfig) -> None:
+    async def _boot_runtime(
+        self,
+        config: OctopConfig,
+        *,
+        boot_agent_ids: frozenset[str] | None = None,
+    ) -> None:
         assert self.services is not None
         assert self.expert_catalog is not None
         assert self.plugin_manager is not None
@@ -534,13 +549,17 @@ class OctopServer:
             TrajectoryLiveBus(),
         )
 
+        # ``octop acp`` passes boot_agent_ids → lean boot: no IM bots / cron / bridge
+        # so Zed's "Loading…" is not blocked on Telegram (etc.) network init.
+        lean = boot_agent_ids is not None
+
         gateway = Gateway(
             agent_manager=registry,
             repos=self.services.repos,
             trajectory_service=trajectory_service,
             history_archive=history_archive,
         )
-        await gateway.boot()
+        await gateway.boot(register_im_channels=not lean)
 
         from octop import __version__  # noqa: PLC0415
 
@@ -565,15 +584,16 @@ class OctopServer:
             repos=self.services.repos,
             timezone=config.default_timezone,
         )
-        await cron_mgr.boot()
+        if not lean:
+            await cron_mgr.boot()
 
-        from octop.infra.setup.tls.renewal import install_auto_renewal_job
+            from octop.infra.setup.tls.renewal import install_auto_renewal_job
 
-        install_auto_renewal_job(cron_mgr, paths=self.paths)
+            install_auto_renewal_job(cron_mgr, paths=self.paths)
 
-        from octop.infra.backup.auto import install_auto_backup_job
+            from octop.infra.backup.auto import install_auto_backup_job
 
-        install_auto_backup_job(cron_mgr, server=self)
+            install_auto_backup_job(cron_mgr, server=self)
 
         registry.set_cron_manager(cron_mgr)
         registry.set_team_processor(gateway.processor.teams)
@@ -600,13 +620,15 @@ class OctopServer:
         )
         registry.set_proactive_scheduler(proactive_scheduler)
 
-        await registry.boot()
+        await registry.boot(agent_ids=boot_agent_ids)
         registry.schedule_idle_reclaim_sweep()
-        await gateway.refresh_media_backends()
+        if not lean:
+            await gateway.refresh_media_backends()
 
         user_mgr = UserManager(self.services)
         await user_mgr.boot()
-        await proactive_scheduler.start_all()
+        if not lean:
+            await proactive_scheduler.start_all()
 
         from octop.infra.auth.tokens import sign_token
         from octop.infra.bridge.manager import BridgeManager, public_base_url_from_config
@@ -647,28 +669,29 @@ class OctopServer:
             history_archive=history_archive,
             bridge_manager=bridge_mgr,
         )
-        from octop.infra.knowledge.gate import (  # noqa: PLC0415
-            warn_if_local_embedding_deps_missing,
-        )
-        from octop.infra.knowledge.jobs import resume_pending_index_jobs  # noqa: PLC0415
-        from octop.infra.knowledge.ocr import warn_if_local_ocr_deps_missing  # noqa: PLC0415
+        if not lean:
+            from octop.infra.knowledge.gate import (  # noqa: PLC0415
+                warn_if_local_embedding_deps_missing,
+            )
+            from octop.infra.knowledge.jobs import resume_pending_index_jobs  # noqa: PLC0415
+            from octop.infra.knowledge.ocr import warn_if_local_ocr_deps_missing  # noqa: PLC0415
 
-        warn_if_local_embedding_deps_missing(
-            self.services.settings_repo.get,
-            self.services.provider_repo,
-        )
-        warn_if_local_ocr_deps_missing(
-            self.services.settings_repo.get,
-            self.services.provider_repo,
-        )
-        resume_pending_index_jobs(self.services)
+            warn_if_local_embedding_deps_missing(
+                self.services.settings_repo.get,
+                self.services.provider_repo,
+            )
+            warn_if_local_ocr_deps_missing(
+                self.services.settings_repo.get,
+                self.services.provider_repo,
+            )
+            resume_pending_index_jobs(self.services)
 
-        # Resume Bridge links that opted into auto-reconnect (best-effort).
-        async def _resume_bridges() -> None:
-            with suppress(Exception):
-                await bridge_mgr.resume_auto_connections()
+            # Resume Bridge links that opted into auto-reconnect (best-effort).
+            async def _resume_bridges() -> None:
+                with suppress(Exception):
+                    await bridge_mgr.resume_auto_connections()
 
-        asyncio.create_task(_resume_bridges(), name="bridge-auto-resume")
+            asyncio.create_task(_resume_bridges(), name="bridge-auto-resume")
 
     async def refresh_plugin_channels(self) -> None:
         """Reconcile only changed kinds and report registration failures to callers."""

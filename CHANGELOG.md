@@ -12,7 +12,12 @@
 - 配置通道时，钉钉与微信之间切换不再因草稿类型串写而反复请求；取消、切换类型或配置方式后，旧二维码请求与轮询结果不再覆盖当前界面（#2314）
 
 ### 新增
+- `octop acp` 在一次 stdio 进程中通过 ACP session `configOptions`（`id=expert`）列出全部本地专家，客户端可用 `session/set_config_option` 切换；`--agent` 仅可选默认值（否则 CLI default / 第一个专家）
+- 入站 ACP 支持 `session/load`（回放 harness 历史）、`session/resume`、`session/list`、`session/close`；协议基线可用 acp-tck 对 harness mock agent 验证（需配套 `octop-harness` 入站 ACP 能力）
 - ragflow 连接器支持配置服务地址、API Key 与默认知识库 ID，专家可列出知识库、检索片段和分页读取文档，凭证沿用加密存储（#2308）
+
+### 变更
+- `octop acp` 先应答 ACP `initialize`（结束 IDE「Loading…」），再在后台精简启动默认专家（跳过 IM/cron/全量专家目录扫描）；其余专家在切换时按需启动；首次对话仍会等到当前专家就绪
 
 ## [1.0.3b1] - 2026-10-25
 

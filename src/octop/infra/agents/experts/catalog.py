@@ -16,13 +16,15 @@ import json
 import logging
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, cast
+from typing import TYPE_CHECKING, Any, cast
 
-from octop_harness.backends.workspace import BackendWorkspace
-
-from octop.infra.agents.manager import AgentCreateSpec
 from octop.infra.agents.workspace.dir import DEFAULT_SYSTEM_FILES_PATH
 from octop.infra.errors import ErrorCode, OctopError
+
+if TYPE_CHECKING:
+    from octop_harness.backends.workspace import BackendWorkspace
+
+    from octop.infra.agents.manager import AgentCreateSpec
 
 logger = logging.getLogger(__name__)
 
@@ -923,6 +925,8 @@ def build_create_spec_from_expert(
     mcp_servers: list[str] | None = None,
 ) -> AgentCreateSpec:
     """Build :class:`AgentCreateSpec` for ``AgentManager.create`` from a catalog entry."""
+    from octop.infra.agents.manager import AgentCreateSpec  # noqa: PLC0415
+
     resolved_name = resolve_expert_agent_name(expert, expert_id, locale=locale, override=name)
     if description:
         resolved_description = description
