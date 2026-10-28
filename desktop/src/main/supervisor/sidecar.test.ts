@@ -10,7 +10,17 @@ import { SidecarSupervisor } from "./sidecar";
 /**
  * §6.3 refuses an install unless Python exited BY ITSELF with code 0, so `stop`
  * has to distinguish "honoured SIGTERM" from "had to be SIGKILLed".
+ *
+ * That distinction only exists on POSIX: Windows has no SIGTERM to honour, and
+ * `process-tree.ts` reaps the tree with `taskkill /T /F` instead, where "did the
+ * child handle the signal" is not a question that can be asked. The three tests
+ * below therefore carry `posixOnly` rather than pretending the platforms agree —
+ * the Windows teardown path is covered by hand, not here.
  */
+const posixOnly =
+  process.platform === "win32"
+    ? { skip: "POSIX signal semantics; Windows reaps via taskkill /T /F" }
+    : {};
 
 async function waitForFile(path: string, timeoutMs = 3_000): Promise<void> {
   const deadline = Date.now() + timeoutMs;
@@ -50,14 +60,14 @@ async function withSupervisor(
   }
 }
 
-test("stop() reports a clean exit when the child exits 0 on SIGTERM", async () => {
+test("stop() reports a clean exit when the child exits 0 on SIGTERM", posixOnly, async () => {
   await withSupervisor("process.exit(0);", async (supervisor) => {
     const exit = await supervisor.stop(5_000);
     assert.deepEqual(exit, { clean: true, exitCode: 0 });
   });
 });
 
-test("stop() reports unclean when the child ignores SIGTERM", async () => {
+test("stop() reports unclean when the child ignores SIGTERM", posixOnly, async () => {
   await withSupervisor("/* keep running */", async (supervisor) => {
     const exit = await supervisor.stop(300);
     assert.equal(exit.clean, false);
@@ -65,7 +75,7 @@ test("stop() reports unclean when the child ignores SIGTERM", async () => {
   });
 });
 
-test("stop() reports unclean when the child exits non-zero", async () => {
+test("stop() reports unclean when the child exits non-zero", posixOnly, async () => {
   await withSupervisor("process.exit(3);", async (supervisor) => {
     const exit = await supervisor.stop(5_000);
     assert.deepEqual(exit, { clean: false, exitCode: 3 });
