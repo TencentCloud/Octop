@@ -2,7 +2,10 @@
 
 from __future__ import annotations
 
+import os
 import shutil
+import time
+from pathlib import Path
 
 import click
 
@@ -63,6 +66,7 @@ def init(
     # Sidecar files (octop-login.txt, NAS share metadata) must not block first
     # bootstrap. Only an existing control-plane DB counts as an install.
     has_db = (home / "octop.db").is_file()
+    bak_path: Path | None = None
     if home.exists() and any(home.iterdir()):
         if has_db and not force:
             click.echo(
@@ -79,54 +83,85 @@ def init(
                 ):
                     click.echo("aborted", err=True)
                     raise SystemExit(1)
-            shutil.rmtree(home)
+            # Rename to a timestamped backup instead of deleting outright.
+            # This keeps the running venv on disk long enough for new imports
+            # (PluginManager.seed_bundled etc.) to succeed, and lets us restore
+            # if bootstrapping fails — so the user never loses state to a
+            # mid-init crash (issue #2458).
+            bak_path = home.parent / f".octop.bak.{int(time.time())}"
+            # Nuke any leftover .bak from a previous failed attempt.
+            if bak_path.exists():
+                shutil.rmtree(bak_path)
+            home.rename(bak_path)
+            click.echo(f"  existing install backed up to {bak_path}", err=True)
 
-    paths.ensure_root()
-    PluginManager(plugins_dir=paths.plugins_dir, config_path=paths.config).seed_bundled()
-    apply_env_file(env_file_path(paths.root))
-    config = load_config(paths.config)
-    db = open_database(config, paths)
     try:
-        run_migrations(db)
+        paths.ensure_root()
+        PluginManager(plugins_dir=paths.plugins_dir, config_path=paths.config).seed_bundled()
+        apply_env_file(env_file_path(paths.root))
+        config = load_config(paths.config)
+        db = open_database(config, paths)
+        try:
+            run_migrations(db)
 
-        username = admin_username
-        password = admin_password
-        display_name = admin_display_name
+            username = admin_username
+            password = admin_password
+            display_name = admin_display_name
 
-        if not non_interactive:
-            from octop.cli.support import prompts as _prompts
+            if not non_interactive:
+                from octop.cli.support import prompts as _prompts
+
+                if not username:
+                    username = _prompts.text("Admin username:")
+                if not password:
+                    password = _prompts.password("Admin password:")
+                if display_name is None:
+                    display_name = _prompts.text("Display name (optional):", default="") or None
 
             if not username:
-                username = _prompts.text("Admin username:")
-            if not password:
-                password = _prompts.password("Admin password:")
-            if display_name is None:
-                display_name = _prompts.text("Display name (optional):", default="") or None
+                click.echo("error: admin username is required", err=True)
+                raise SystemExit(1)
+            try:
+                validate_password_policy(password or "")
+            except OctopError as exc:
+                click.echo(f"error: {exc.message}", err=True)
+                raise SystemExit(1) from None
 
-        if not username:
-            click.echo("error: admin username is required", err=True)
-            raise SystemExit(1)
-        try:
-            validate_password_policy(password or "")
-        except OctopError as exc:
-            click.echo(f"error: {exc.message}", err=True)
-            raise SystemExit(1) from None
-
-        user_repo = UserRepo(db)
-        if user_repo.get_by_username(username) is not None:
-            # 幂等引导（issue #1866）：外部数据库（PostgreSQL）不会在 ~/.octop
-            # 生成 octop.db，容器重启后 entrypoint 会重跑 init；此时跳过创建，
-            # 避免管理员 INSERT 撞 UNIQUE(username) 直接崩溃。
-            click.echo(f"  admin user '{username}' already exists, skipping.")
-        else:
-            user_repo.create(
-                username=username,
-                password_hash=hash_password(password or ""),
-                role="admin",
-                display_name=display_name,
-            )
-    finally:
-        db.close()
+            user_repo = UserRepo(db)
+            if user_repo.get_by_username(username) is not None:
+                # 幂等引导（issue #1866）：外部数据库（PostgreSQL）不会在 ~/.octop
+                # 生成 octop.db，容器重启后 entrypoint 会重跑 init；此时跳过创建，
+                # 避免管理员 INSERT 撞 UNIQUE(username) 直接崩溃。
+                click.echo(f"  admin user '{username}' already exists, skipping.")
+            else:
+                user_repo.create(
+                    username=username,
+                    password_hash=hash_password(password or ""),
+                    role="admin",
+                    display_name=display_name,
+                )
+        finally:
+            db.close()
+    except Exception:
+        # Bootstrapping crashed — restore the backup so the user does not wake
+        # up to an empty ~/.octop after a --force wipe.
+        if bak_path is not None and bak_path.exists() and not home.exists():
+            try:
+                bak_path.rename(home)
+                click.echo(
+                    f"  init failed — restored data back to {home}",
+                    err=True,
+                )
+            except OSError:
+                click.echo(
+                    f"  init failed — backup still at {bak_path} (rename back failed)",
+                    err=True,
+                )
+        raise
+    else:
+        # All good — discard the backup.
+        if bak_path is not None and bak_path.exists():
+            shutil.rmtree(bak_path)
 
     click.echo(f"\u2705 Octop bootstrapped at {home}")
     click.echo(f"   admin user: {username}")
