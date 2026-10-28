@@ -30,6 +30,16 @@ class ConnectorRow:
     @classmethod
     def from_row(cls, r: DbRow) -> ConnectorRow:
         blob = r["credential_blob"]
+        # SQLite returns bytes for BLOB and str for TEXT — old versions stored
+        # credential_blob as TEXT (a string-encoded form), which current code
+        # fails on: `bytes(str)` raises TypeError: string argument without an
+        # encoding. Detect the type and handle both.
+        if isinstance(blob, str):
+            credential: bytes | None = blob.encode("utf-8")
+        elif blob is not None:
+            credential = bytes(blob)
+        else:
+            credential = None
         return cls(
             id=r["id"],
             instance_id=r["instance_id"],
@@ -39,7 +49,7 @@ class ConnectorRow:
             status=r["status"],
             shared=bool(r["shared"]),
             mcp_server_name=r["mcp_server_name"],
-            credential_blob=bytes(blob) if blob is not None else None,
+            credential_blob=credential,
             credential_expires_at=r["credential_expires_at"],
             credential_rotated_at=r["credential_rotated_at"],
             config_json=r["config_json"],
