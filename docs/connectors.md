@@ -11,6 +11,14 @@ Octop ships a catalog of OAuth / MCP connectors. Dashboard copy (`name`,
 
 You can also add **custom MCP** servers in the dashboard; they are not listed here.
 
+Older custom-MCP saves could leave encrypted credential tokens as SQLite TEXT.
+The reader accepts those tokens without changing their encrypted bytes, and
+startup reconciles the stored values to BLOB in one transaction. Existing BLOB
+and NULL values, connector metadata and the schema version remain unchanged.
+This restores storage compatibility; it cannot repair an invalid token or a
+missing encryption key. Back up the database before upgrading, and restart the
+server after installing the updated code.
+
 # 内置连接器
 
 [English](#built-in-connectors) · **中文**
@@ -22,6 +30,11 @@ Octop 内置一组 OAuth / MCP 连接器。控制台展示的名称、描述、�
 `catalog.py` 只负责加载和校验，不再手写 `_CATALOG`。
 
 控制台还可以添加**自定义 MCP**，不在下表中。完整目录见下方表格。
+
+旧版自定义 MCP 保存逻辑可能把加密凭据写为 SQLite TEXT。读取端兼容这些记录，
+启动时在同一事务内将其归一为 BLOB，保留密文字节、既有 BLOB/NULL、连接器元数据
+和数据库版本。此修复只恢复存储格式兼容性，不能修复无效密文或丢失的加密密钥。
+升级前备份数据库，安装新代码后重启服务。
 
 ## Catalog / 目录
 
