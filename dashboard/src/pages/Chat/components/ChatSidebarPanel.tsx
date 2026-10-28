@@ -20,6 +20,8 @@ interface ChatSidebarPanelProps {
   isSidebarResizing?: boolean;
   sidebarElRef?: RefObject<HTMLDivElement>;
   agents: OctopAgent[];
+  /** Owned experts that cannot chat yet — see ``SessionList.unreadyExperts``. */
+  unreadyExperts?: number;
   sessions: Session[];
   activeThreadId: string | null;
   resolvedAgentId: string | null | undefined;
@@ -58,6 +60,7 @@ export default function ChatSidebarPanel({
   isSidebarResizing = false,
   sidebarElRef,
   agents,
+  unreadyExperts,
   sessions,
   activeThreadId,
   resolvedAgentId,
@@ -119,6 +122,7 @@ export default function ChatSidebarPanel({
   ) : (
     <SessionList
       agents={agents}
+      unreadyExperts={unreadyExperts}
       sessions={sessions}
       activeId={activeThreadId}
       activeAgentId={resolvedAgentId ?? null}

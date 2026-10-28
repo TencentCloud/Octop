@@ -249,6 +249,13 @@ function ChatPageInner() {
     [agents, resolvedAgentId],
   );
 
+  /**
+   * Experts the user owns that are not chat-ready. The history rail only lists
+   * agents that can chat, so it needs this to tell "you have no experts" apart
+   * from "none of yours are running" before offering the create-expert nudge.
+   */
+  const unreadyExperts = Math.max(0, agents.length - sidebarAgents.length);
+
   const {
     status: memoryMaint,
     visible: memoryMaintVisible,
@@ -1322,6 +1329,7 @@ function ChatPageInner() {
       isSidebarResizing={isSidebarResizing}
       sidebarElRef={sidebarElRef}
       agents={sidebarAgents}
+      unreadyExperts={unreadyExperts}
       sessions={sessions}
       activeThreadId={activeThreadId}
       resolvedAgentId={resolvedAgentId}
