@@ -9,6 +9,9 @@
 ### 新增
 - ragflow 连接器支持配置服务地址、API Key 与默认知识库 ID，专家可列出知识库、检索片段和分页读取文档，凭证沿用加密存储（#2308）
 
+### 变更
+- 调用已停止的专家时按需懒加载启动（`stream` / `call` / HITL resume / Agent MCP）；`last_state=failed` 不会自动重试。手动 `stop` 后的专家会在下次被调用时复活
+
 ### 修复
 - Agent MCP 调用已停止的专家时，不再把 harness `KeyError` 误报成「模型调用失败」；入口预检返回 `AGENT_NOT_RUNNING` / `AGENT_DISABLED`，并透出 `error.code` 便于外部客户端分支处理
 - 反向代理通过独立转发端口传递公网地址时，钉钉等登录方式的回调地址会保留非默认端口，避免域名访问时丢失端口导致登录失败。

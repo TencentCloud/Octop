@@ -63,6 +63,7 @@ class AgentMcpGatewayService:
         thread_id: str | None = None,
     ) -> dict[str, Any]:
         row = self._require_expert(expert_id, user)
+        await self._agent_manager.ensure_loaded(row.agent_id)
         text = self._validate_message(message)
         thread, session_key = await self._resolve_thread(
             expert_id=row.agent_id,
@@ -98,6 +99,7 @@ class AgentMcpGatewayService:
         decisions: list[dict[str, Any]],
     ) -> dict[str, Any]:
         row = self._require_expert(expert_id, user)
+        await self._agent_manager.ensure_loaded(row.agent_id)
         thread = self._require_mcp_thread(
             thread_id,
             expert_id=row.agent_id,
@@ -223,25 +225,7 @@ class AgentMcpGatewayService:
             raise OctopError(ErrorCode.FORBIDDEN, "expert is not accessible")
         if not row.enabled:
             raise OctopError(ErrorCode.AGENT_DISABLED, "expert is disabled")
-        self._require_runtime(expert_id)
         return row
-
-    def _require_runtime(self, expert_id: str) -> None:
-        """Fail fast when the expert is not loaded into the harness runtime.
-
-        ``get_agent`` is authoritative: it maps a missing handle to
-        ``AGENT_FAILED`` / ``AGENT_NOT_RUNNING`` using ``last_state``.
-        """
-        try:
-            self._agent_manager.get_agent(expert_id)
-        except OctopError as exc:
-            row = self._agent_manager.get_row(expert_id)
-            state = (getattr(row, "last_state", None) or "unknown").strip().lower()
-            raise OctopError(
-                exc.code,
-                "expert is not running: start it in the Octop console and retry",
-                details={"expert_id": expert_id, "last_state": state},
-            ) from exc
 
     def _can_access(self, row: Any, user: User) -> bool:
         from octop.infra.users.groups import expert_visible_to  # noqa: PLC0415
