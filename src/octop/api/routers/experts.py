@@ -36,6 +36,7 @@ from octop.infra.agents.experts.catalog import (
     preview_file_paths,
     preview_paths_from_expert_dir,
     read_text_file_contents,
+    skill_count_in_expert_dir,
 )
 from octop.infra.agents.experts.composer_files import (
     ComposerApplyReport,
@@ -553,6 +554,7 @@ def _published_summary_dict(row: Any, server: Any) -> dict[str, Any]:
             fallback_icon_url=_published_manifest_icon_url(snapshot_dir),
         ),
         "color": row.color or None,
+        "skill_count": skill_count_in_expert_dir(snapshot_dir),
         "created_at": row.created_at,
         "updated_at": row.updated_at,
     }

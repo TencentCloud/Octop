@@ -148,6 +148,18 @@ class Expert:
     quick_prompts: tuple[ExpertQuickPrompt, ...] = ()
 
 
+def skill_count_in_expert_dir(expert_dir: Path) -> int:
+    """Count workspace skills stored as ``skills/<slug>/SKILL.md``."""
+    skills_dir = expert_dir / "skills"
+    if not skills_dir.is_dir():
+        return 0
+    return sum(
+        1
+        for child in skills_dir.iterdir()
+        if child.is_dir() and (child / "SKILL.md").is_file()
+    )
+
+
 def discover_seed_paths(expert_dir: Path) -> list[str]:
     """Return sorted workspace-relative paths for every file under *expert_dir*."""
     if not expert_dir.is_dir():

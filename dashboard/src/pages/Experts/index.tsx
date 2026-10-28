@@ -120,13 +120,6 @@ export default function ExpertsPage() {
     navigate("/bridge?create=1");
   }, [navigate]);
 
-  const canManagePublished = useCallback(
-    (expert: PublishedExpert) =>
-      currentUser?.role === "admin" ||
-      String(currentUser?.id) === expert.created_by,
-    [currentUser],
-  );
-
   // ── Tab state ──────────────────────────────────────────────────
   const [searchParams] = useSearchParams();
   const [activeTab, setActiveTab] = useState<TabKey>(() => {
@@ -736,7 +729,6 @@ export default function ExpertsPage() {
         installedExpertIds={agentExpertIds}
         publishedExperts={publishedExperts}
         publishedLoading={publishedExpertLoading}
-        canManagePublished={canManagePublished}
         onInstallPublished={(expert) =>
           setCreateSource({ kind: "published", expert })
         }
@@ -750,7 +742,6 @@ export default function ExpertsPage() {
     ),
     [
       agentExpertIds,
-      canManagePublished,
       lang,
       publishedExpertLoading,
       publishedExperts,
@@ -764,6 +755,7 @@ export default function ExpertsPage() {
       subtitle={t("pageShell.experts.subtitle")}
     >
       <Tabs
+        className={styles.shellTabs}
         activeKey={activeTab}
         onChange={(k) => setActiveTab(k as TabKey)}
         items={[

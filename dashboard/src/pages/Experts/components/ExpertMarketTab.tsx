@@ -41,12 +41,12 @@ interface ExpertMarketTabProps {
   onRequestCreate: (expert: MarketExpert) => void;
   publishedExperts: PublishedExpert[];
   publishedLoading: boolean;
-  canManagePublished: (expert: PublishedExpert) => boolean;
   onInstallPublished: (expert: PublishedExpert) => void;
   onPublishedChanged: () => void;
 }
 
 const SCENE_ALL = "";
+const SCENE_PUBLISHED = "published";
 
 function descOf(expert: MarketExpert, lang: "zh" | "en"): string {
   return pickLocale(expert.description, lang) || "";
@@ -84,7 +84,6 @@ export default function ExpertMarketTab({
   onRequestCreate,
   publishedExperts,
   publishedLoading,
-  canManagePublished,
   onInstallPublished,
   onPublishedChanged,
 }: ExpertMarketTabProps) {
@@ -194,14 +193,10 @@ export default function ExpertMarketTab({
     return items.filter((item) => (item.scene || "").toLowerCase() === scene);
   }, [activeScene, items, keyword, listQuery]);
 
-  const totalText = useMemo(
-    () => t("experts.totalMarket", { count: visibleItems.length }),
-    [t, visibleItems.length],
-  );
-
   const sceneOptions = useMemo(
     () => [
       { value: SCENE_ALL, label: sceneLabel(SCENE_ALL, t) },
+      { value: SCENE_PUBLISHED, label: t("experts.published.scene") },
       ...scenes.map((scene) => ({
         value: scene,
         label: sceneLabel(scene, t),
@@ -243,47 +238,32 @@ export default function ExpertMarketTab({
       ),
     );
   }, [publishedExperts, queryText]);
-  const publishedSection =
-    publishedExperts.length > 0 ? (
-      <div className={styles.marketBlock}>
-        <div className={styles.marketBlockTitle}>
-          {t("experts.published.listTitle", {
-            count: visiblePublished.length,
-          })}
-        </div>
-        {queryText ? null : (
-          <p className={styles.marketBlockHint}>
-            {t("experts.published.listHint")}
-          </p>
-        )}
-        {visiblePublished.length > 0 ? (
-          <div className={styles.cardGrid}>
-            {visiblePublished.map((expert) => (
-              <PublishedExpertCard
-                key={expert.id}
-                expert={expert}
-                canManage={canManagePublished(expert)}
-                onInstall={onInstallPublished}
-                onChanged={onPublishedChanged}
-              />
-            ))}
-          </div>
-        ) : (
-          <p className={styles.marketBlockHint}>{t("experts.searchEmpty")}</p>
-        )}
-      </div>
-    ) : !publishedLoading && !initialLoading && !catalogFailed ? (
-      <div className={styles.marketBlock}>
-        <div className={styles.marketBlockTitle}>
-          {t("experts.published.listTitle", { count: 0 })}
-        </div>
-        <p className={styles.marketBlockHint}>
-          {t("experts.published.emptyHint")}
-        </p>
+  const publishedOnly = activeScene === SCENE_PUBLISHED && !queryText;
+  const totalCount = publishedOnly
+    ? publishedExperts.length
+    : queryText && !marketAwaiting
+      ? visiblePublished.length + visibleItems.length
+      : queryText
+        ? visiblePublished.length
+        : visibleItems.length;
+  const publishedCards =
+    visiblePublished.length > 0 ? (
+      <div
+        className={
+          queryText && !publishedOnly
+            ? `${styles.cardGrid} ${styles.marketSearchPublishedGrid}`
+            : styles.cardGrid
+        }
+      >
+        {visiblePublished.map((expert) => (
+          <PublishedExpertCard
+            key={expert.id}
+            expert={expert}
+            onInstall={onInstallPublished}
+          />
+        ))}
       </div>
     ) : null;
-
-  const showPublished = catalogFailed || !activeScene || Boolean(queryText);
 
   const scenePills =
     !catalogFailed &&
@@ -317,6 +297,9 @@ export default function ExpertMarketTab({
     <div className={styles.marketContainer}>
       {!catalogFailed && catalogReady && (
         <div className={styles.gridToolbar}>
+          <div className={styles.marketBlockTitle}>
+            {t("experts.totalMarket", { count: totalCount })}
+          </div>
           <div
             className={`${styles.gridToolbarRight} ${styles.marketToolbarRight}`}
           >
@@ -346,28 +329,34 @@ export default function ExpertMarketTab({
         </div>
       )}
 
-      {showPublished ? publishedSection : null}
-
-      {!catalogFailed && catalogReady && (
-        <div
-          className={
-            showPublished && publishedSection
-              ? `${styles.marketBlockTitle} ${styles.marketCatalogTitle}`
-              : styles.marketBlockTitle
-          }
-        >
-          {totalText}
-        </div>
-      )}
-
       {scenePills}
 
       {initialLoading ? (
         <div className={styles.marketStage}>
           <Spin />
         </div>
+      ) : publishedOnly ? (
+        publishedCards ?? (
+          <div className={styles.emptyState}>
+            <div className={styles.emptyHint}>
+              {publishedLoading ? null : t("experts.published.emptyHint")}
+            </div>
+          </div>
+        )
       ) : catalogFailed ? (
-        <div className={styles.marketStage}>
+        <>
+          {publishedExperts.length > 0 ? (
+            <div className={styles.cardGrid}>
+              {publishedExperts.map((expert) => (
+                <PublishedExpertCard
+                  key={expert.id}
+                  expert={expert}
+                  onInstall={onInstallPublished}
+                />
+              ))}
+            </div>
+          ) : null}
+          <div className={styles.marketStage}>
           <Result
             className={styles.marketLoadResult}
             icon={<OctopEmptyMascot size={120} />}
@@ -387,11 +376,15 @@ export default function ExpertMarketTab({
                 }}
               >
                 {t("common.retry")}
-              </Button>
-            }
-          />
-        </div>
-      ) : marketAwaiting ? (
+            </Button>
+          }
+        />
+          </div>
+        </>
+      ) : (
+        <>
+          {queryText ? publishedCards : null}
+          {marketAwaiting ? (
         <div className={styles.loadingSkeleton}>
           <CardSkeleton
             count={6}
@@ -487,6 +480,8 @@ export default function ExpertMarketTab({
             );
           })}
         </div>
+          )}
+        </>
       )}
 
       <Drawer
