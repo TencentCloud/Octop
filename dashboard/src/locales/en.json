@@ -1347,7 +1347,9 @@
   },
   "agent_errors": {
     "no_models_configured": "No models are configured. Go to Admin → Model Management to add a provider, then enable this expert again.",
+    "no_models_configured_short": "No model configured",
     "model_ref_unavailable": "The default model is unavailable or disabled. Check Admin → Model Management or update this expert's default model, then try again.",
+    "model_ref_unavailable_short": "Default model unavailable",
     "start_timeout": "This expert took too long to start (storage backend I/O). Try again, or switch it to a local workspace backend."
   },
   "stream_errors": {
