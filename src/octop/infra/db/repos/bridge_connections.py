@@ -2,11 +2,40 @@
 
 from __future__ import annotations
 
+import base64
+import logging
 from dataclasses import dataclass
 
 from octop.infra.db.pool import DatabasePool
 from octop.infra.db.repos._base import DbRow, bool_int, map_rows, now_ts
 from octop.infra.users.groups import RESOURCE_BRIDGE, group_visibility_sql
+
+logger = logging.getLogger(__name__)
+
+
+def _safe_blob(raw: object) -> bytes | None:
+    """Convert a DB column to ``bytes``, tolerating legacy TEXT blobs.
+
+    Same helper as :mod:`octop.infra.db.repos.connectors` — old versions stored
+    blobs as TEXT; ``bytes(str)`` raises ``TypeError``. Accepts bytes / str /
+    memoryview, tries base64 on strings, falls back to UTF-8, returns None
+    on unknown types so one dirty row does not abort the whole bridge list.
+    """
+    if raw is None:
+        return None
+    if isinstance(raw, (bytes, bytearray, memoryview)):
+        return bytes(raw)
+    if isinstance(raw, str):
+        text = raw.strip()
+        if not text:
+            return None
+        try:
+            return base64.b64decode(text, validate=True)
+        except (ValueError, base64.binascii.Error):
+            pass
+        return text.encode("utf-8")
+    logger.warning("unexpected blob type %s, returning None", type(raw).__name__)
+    return None
 
 
 @dataclass(frozen=True)
@@ -57,8 +86,8 @@ class BridgeConnectionRow:
                 else None
             ),
             icon_url=str(raw_icon_url or "").strip(),
-            credential_blob=bytes(cred) if cred is not None else None,
-            access_token_blob=bytes(token) if token is not None else None,
+            credential_blob=_safe_blob(cred),
+            access_token_blob=_safe_blob(token),
             token_expires_at=r["token_expires_at"],
             status=str(r["status"] or "disconnected"),
             last_error=r["last_error"],

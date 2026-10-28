@@ -2,12 +2,46 @@
 
 from __future__ import annotations
 
-import json
+import base64
+import logging
 from dataclasses import dataclass
 
 from octop.infra.db.pool import DatabasePool
 from octop.infra.db.repos._base import DbRow, bool_int, map_rows, now_ts
 from octop.infra.users.groups import RESOURCE_CONNECTOR, group_visibility_sql
+
+logger = logging.getLogger(__name__)
+
+
+def _safe_blob(raw: object) -> bytes | None:
+    """Convert a DB column to ``bytes``, tolerating legacy TEXT blobs.
+
+    Old Octop versions stored ``credential_blob`` as TEXT (the Python default
+    for SQLite without an explicit BLOB column affinity). Current code does
+    ``bytes(raw)`` which raises ``TypeError: string argument without an
+    encoding`` when *raw* is a str instead of bytes — and one bad row then
+    aborts the **entire** connector list (issue #2450).
+
+    This helper accepts bytes / memoryview / str / None. Strings are tried as
+    base64 first (the common legacy encoding), then UTF-8 as a safe fallback.
+    Anything unparseable returns None instead of raising, so one dirty row
+    does not take down every agent.
+    """
+    if raw is None:
+        return None
+    if isinstance(raw, (bytes, bytearray, memoryview)):
+        return bytes(raw)
+    if isinstance(raw, str):
+        text = raw.strip()
+        if not text:
+            return None
+        try:
+            return base64.b64decode(text, validate=True)
+        except (ValueError, base64.binascii.Error):
+            pass
+        return text.encode("utf-8")
+    logger.warning("unexpected credential_blob type %s, returning None", type(raw).__name__)
+    return None
 
 
 @dataclass(frozen=True)
@@ -29,7 +63,6 @@ class ConnectorRow:
 
     @classmethod
     def from_row(cls, r: DbRow) -> ConnectorRow:
-        blob = r["credential_blob"]
         return cls(
             id=r["id"],
             instance_id=r["instance_id"],
@@ -39,7 +72,7 @@ class ConnectorRow:
             status=r["status"],
             shared=bool(r["shared"]),
             mcp_server_name=r["mcp_server_name"],
-            credential_blob=bytes(blob) if blob is not None else None,
+            credential_blob=_safe_blob(r["credential_blob"]),
             credential_expires_at=r["credential_expires_at"],
             credential_rotated_at=r["credential_rotated_at"],
             config_json=r["config_json"],
