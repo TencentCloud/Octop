@@ -1,5 +1,20 @@
 export const SSO_MESSAGE_TYPE = "octop-sso";
 
+/** Return an application-relative destination, never an external URL. */
+export function safeRedirect(path: string | null | undefined): string {
+  if (
+    !path ||
+    !path.startsWith("/") ||
+    path.startsWith("//") ||
+    path.includes("\\") ||
+    path.includes("://") ||
+    path.startsWith("http:")
+  ) {
+    return "/chat";
+  }
+  return path;
+}
+
 export type SsoPopupMessage = {
   type: typeof SSO_MESSAGE_TYPE;
   ok: boolean;

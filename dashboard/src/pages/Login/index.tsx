@@ -25,6 +25,7 @@ import {
   isSsoPopupMessage,
   notifySsoOpener,
   openSsoPopup,
+  safeRedirect,
 } from "../../utils/ssoPopup";
 import feishuIcon from "../../assets/channels/feishu.svg";
 import dingtalkIcon from "../../assets/channels/dingtalk.svg";
@@ -174,7 +175,7 @@ export default function LoginPage() {
       if (event.data.access_token) {
         setAuthToken(event.data.access_token, event.data.remember ?? true);
       }
-      window.location.replace(event.data.redirect || "/chat");
+      window.location.replace(publicUrl(safeRedirect(event.data.redirect)));
     };
     window.addEventListener("message", onMessage);
     return () => window.removeEventListener("message", onMessage);
