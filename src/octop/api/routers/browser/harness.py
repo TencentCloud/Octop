@@ -116,6 +116,11 @@ async def resolve_harness_session(
     if not create:
         return None
 
+    from octop.infra.control.browser.bundled import browser_enabled  # noqa: PLC0415
+
+    if not browser_enabled():
+        raise OctopError(ErrorCode.BROWSER_NOT_ENABLED, "The browser is installed but not enabled.")
+
     profile = hint
     harness_settings = None
     if server is not None and agent_id:
