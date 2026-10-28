@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import logging
 from collections.abc import AsyncIterator, Callable
 from dataclasses import dataclass
@@ -131,6 +132,11 @@ async def iter_with_session_auto_approve(
             async for chunk in source:
                 if isinstance(chunk, dict) and chunk.get("type") == "hitl_required":
                     allowed = approve_decisions_if_allowed(policies, thread_id, chunk)
+                    _log.info(
+                        "hitl pause received thread=%s auto_approve=%s",
+                        thread_id,
+                        "yes" if allowed is not None else "no",
+                    )
                     if allowed is not None:
                         held = chunk
                         decisions = [dict(item) for item in allowed]
@@ -173,6 +179,77 @@ def pending_hitl_payload(
     )
     if record is None:
         return None
+    return {
+        "pending_id": record.pending_id,
+        "action_requests": record.action_requests,
+        "review_configs": record.review_configs,
+    }
+
+
+async def recover_pending_hitl(
+    store: HitlPendingStore,
+    *,
+    harness_agent: Any,
+    thread_id: str,
+    agent_id: str,
+    user_id: int,
+    session_key: str = "",
+    channel_type: str = "dashboard",
+    timeout: float = 2.0,
+) -> dict[str, Any] | None:
+    """Re-register a pending HITL pause that the in-memory store lost.
+
+    ``HitlPendingStore`` is process-local, so a restart drops every pending card
+    while the graph itself stays interrupted. The thread then holds an
+    unanswered question that nobody can see or answer — it looks permanently
+    stuck. The checkpoint still knows about the pause, so rebuild the record
+    from the graph's interrupts.
+
+    Never raises and never blocks for long: history loading must not depend on
+    a checkpoint read.
+    """
+    if harness_agent is None or not thread_id:
+        return None
+    graph = getattr(harness_agent, "graph", None)
+    if graph is None:
+        return None
+    try:
+        snapshot = await asyncio.wait_for(
+            graph.aget_state({"configurable": {"thread_id": thread_id}}),
+            timeout=timeout,
+        )
+    except Exception:  # noqa: BLE001 - a recovery miss must not break history
+        return None
+    interrupts: list[Any] = []
+    for task in getattr(snapshot, "tasks", None) or []:
+        interrupts.extend(getattr(task, "interrupts", None) or [])
+    if not interrupts:
+        return None
+    from octop.infra.gateway.hitl.stream_compat import (  # noqa: PLC0415
+        hitl_events_from_interrupts,
+    )
+
+    chunks = hitl_events_from_interrupts(interrupts)
+    if not chunks:
+        return None
+    request = chunks[0].get("request") or {}
+    action_requests = request.get("action_requests") or []
+    if not action_requests:
+        return None
+    try:
+        record = store.register(
+            thread_id=thread_id,
+            agent_id=agent_id,
+            user_id=user_id,
+            session_key=session_key,
+            channel_type=channel_type,
+            action_requests=list(action_requests),
+            review_configs=request.get("review_configs"),
+        )
+    except Exception:  # noqa: BLE001 - registration must not break history
+        _log.exception("hitl recovery failed thread=%s", thread_id)
+        return None
+    _log.info("hitl pending recovered from graph thread=%s", thread_id)
     return {
         "pending_id": record.pending_id,
         "action_requests": record.action_requests,

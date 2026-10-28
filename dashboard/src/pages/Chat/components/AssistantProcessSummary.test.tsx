@@ -6,7 +6,9 @@ import {
   COLLAPSE_THINKING_SOLO_KEY,
   COLLAPSE_THINKING_TEAM_KEY,
 } from "../hooks/useCollapseThinking";
-import AssistantProcessSummary from "./AssistantProcessSummary";
+import AssistantProcessSummary, {
+  THINKING_PREVIEW_CHARS,
+} from "./AssistantProcessSummary";
 import ChatTitleBar from "./ChatTitleBar";
 
 vi.mock("../../../components/Markdown/LazyMarkdown", () => ({
@@ -236,5 +238,46 @@ describe("thinking display preference", () => {
     expect(
       await screen.findByRole("switch", { name: "chat.collapseThinking" }),
     ).not.toBeChecked();
+  });
+});
+
+describe("long thinking blocks", () => {
+  beforeEach(() => localStorage.clear());
+
+  // Comfortably past the preview cap; a real reasoning dump can be 300 KB.
+  const longThinking = "思考内容".repeat(2000);
+
+  it("renders a bounded preview instead of the whole block", () => {
+    const { container } = render(
+      <AssistantProcessSummary split={thinkingSplit(longThinking)} isStreaming />,
+    );
+
+    expect(
+      screen.getByRole("button", { name: "展开全部" }),
+    ).toBeInTheDocument();
+    // The window must not carry the full dump: preview plus the footer line.
+    expect((container.textContent ?? "").length).toBeLessThanOrEqual(
+      THINKING_PREVIEW_CHARS + 200,
+    );
+  });
+
+  it("shows the full block once the reader asks for it", () => {
+    const { container } = render(
+      <AssistantProcessSummary split={thinkingSplit(longThinking)} isStreaming />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "展开全部" }));
+
+    expect(screen.getByRole("button", { name: "收起" })).toBeInTheDocument();
+    expect(container.textContent ?? "").toContain(longThinking);
+  });
+
+  it("leaves short blocks untouched", () => {
+    render(<AssistantProcessSummary split={thinkingSplit("短思考")} isStreaming />);
+
+    expect(
+      screen.queryByRole("button", { name: "展开全部" }),
+    ).not.toBeInTheDocument();
+    expect(screen.getByText("短思考")).toBeInTheDocument();
   });
 });

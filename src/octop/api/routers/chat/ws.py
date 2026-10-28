@@ -99,7 +99,18 @@ async def dashboard_chat_ws(
 
             msg_type = str(payload.get("type") or "user_turn")
             if msg_type == "ping":
-                await send_frame({"type": "pong"})
+                # Report the server's real turn state so a client stuck on a
+                # stale "active" flag can recover without a reload.
+                ping_thread = str(payload.get("thread_id") or "").strip()
+                await send_frame(
+                    {
+                        "type": "pong",
+                        "thread_id": ping_thread,
+                        "active": hub.is_turn_active(ping_thread)
+                        if ping_thread
+                        else False,
+                    }
+                )
                 continue
 
             if msg_type == "subscribe":
@@ -431,7 +442,18 @@ async def _bridge_chat_ws(
                 continue
             msg_type = str(payload.get("type") or "user_turn")
             if msg_type == "ping":
-                await send_frame({"type": "pong"})
+                # Report the server's real turn state so a client stuck on a
+                # stale "active" flag can recover without a reload.
+                ping_thread = str(payload.get("thread_id") or "").strip()
+                await send_frame(
+                    {
+                        "type": "pong",
+                        "thread_id": ping_thread,
+                        "active": hub.is_turn_active(ping_thread)
+                        if ping_thread
+                        else False,
+                    }
+                )
                 continue
             if msg_type == "subscribe":
                 thread_id = str(payload.get("thread_id") or "").strip()

@@ -193,8 +193,13 @@ export default function ContextWindowRing({
     used_tokens: ringUsed,
     segments: [] as ContextUsageBreakdown["segments"],
   };
-  const displayUsed = display.used_tokens > 0 ? display.used_tokens : ringUsed;
-  const displayMax = display.max_tokens > 0 ? display.max_tokens : ringMax;
+  // Ring and popover must agree. `ringUsed` already prefers the live provider
+  // count (the last model call's input_tokens) and only falls back to the
+  // persisted breakdown. The breakdown endpoint recounts every stored message,
+  // so after compaction/offload it reports more than the model actually
+  // received — that mismatch made the popover read 100% while the ring read 41%.
+  const displayUsed = ringUsed > 0 ? ringUsed : display.used_tokens;
+  const displayMax = ringMax > 0 ? ringMax : display.max_tokens;
   const displayPct = contextUsedPercent(displayUsed, displayMax);
   const segments =
     display.segments.length > 0
@@ -272,7 +277,12 @@ export default function ContextWindowRing({
                   {t(`chat.contextWindow.segments.${segment.key}`)}
                 </span>
                 <span className={styles.contextUsageLegendValue}>
-                  ~{formatTokenK(segment.tokens)}
+                  ~
+                  {formatTokenK(
+                    segmentTotal > 0
+                      ? (displayUsed * segment.tokens) / segmentTotal
+                      : segment.tokens,
+                  )}
                 </span>
               </li>
             ))}

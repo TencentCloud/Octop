@@ -599,7 +599,11 @@ function startSocketPing(live: LiveSocket): void {
   live.pingTimer = setInterval(() => {
     if (live.ws.readyState !== WebSocket.OPEN) return;
     try {
-      live.ws.send(JSON.stringify({ type: "ping" }));
+      // The thread id lets the server answer with its real turn state, so a
+      // client stuck on a stale "active" flag can recover without a reload.
+      live.ws.send(
+        JSON.stringify({ type: "ping", thread_id: live.threadId ?? "" }),
+      );
     } catch {
       // ignore
     }
@@ -696,6 +700,60 @@ function armStreamWatchdog(sessionId: string): void {
       emitStreamEvent({ kind: "streamEnd", sessionId });
     }, STREAM_STALE_WITHOUT_SOCKET_MS),
   );
+}
+
+/**
+ * Reconcile a sticky `isStreaming` with the server's `turn_active`.
+ *
+ * A turn that dies without a terminal frame (cancel, crash, dropped socket)
+ * leaves the footer stuck on 生成中 forever: the sticky-seal watchdog above
+ * only fires once the socket is *closed*, and an idle-but-open socket never
+ * delivers another frame — so it re-arms on every check. The tool card stays
+ * on 执行中 for the same reason, and the context ring freezes at the last
+ * completed measurement.
+ *
+ * `GET …/history` already reports the server's truth (`turn_active`). Use it:
+ * whenever history is (re)loaded and the server says no turn is running, seal
+ * the local stream instead of waiting for a frame that will never arrive.
+ */
+/**
+ * Seal a stream the server no longer considers live.
+ *
+ * The server's turn state is authoritative: a turn that died without clearing
+ * its active flag used to leave the composer disabled, the footer on 生成中 and
+ * the context ring frozen — with no way to send the next message.
+ */
+function sealStream(state: SessionStreamState, sessionId: string): void {
+  clearStreamingFlags(state);
+  state.streamMsg = "";
+  state.streamId = "";
+  state.streamBlockType = "";
+  sealInFlightAssistantMessages(state);
+  finalizeHostTurn(state, sessionId);
+  clearStreamActivity(sessionId);
+  notify(state);
+  emitStreamEvent({ kind: "streamEnd", sessionId });
+}
+
+export function reconcileTurnActive(
+  sessionId: string,
+  turnActive: boolean,
+): void {
+  if (turnActive) return;
+  const state = sessionStates.get(sessionId);
+  if (!state || !state.isStreaming) return;
+  // send → subscribe race: a turn that just started can still read as
+  // inactive for a moment. Keep it while the socket is live and recent.
+  if (isLiveSocketOpen(sessionId)) {
+    const lastActivityAt = streamActivityAt.get(sessionId) ?? null;
+    if (
+      lastActivityAt !== null &&
+      Date.now() - lastActivityAt < STREAM_STALE_WITHOUT_SOCKET_MS
+    ) {
+      return;
+    }
+  }
+  sealStream(state, sessionId);
 }
 
 // ── Public API ────────────────────────────────────────────────────────────
@@ -1665,6 +1723,37 @@ function appendToTextBubble(
 
 /** Append a token fragment to the last streaming assistant text bubble,
  *  starting a new bubble if the last message is something else. */
+/**
+ * True when *content* is text the window already shows.
+ *
+ * After an interrupt (HITL pause, cancel, a dead turn) the harness re-streams
+ * the conversation out of the checkpoint, and the client appended every copy as
+ * a new bubble — the window filled with the same history again and again
+ * (one thread grew to ~2 MB of rendered text). The re-streamed text is
+ * verbatim what is already on screen, so match it against the assistant text
+ * we have and drop it.
+ */
+function isReplayedHistory(state: SessionStreamState, content: string): boolean {
+  // Short fragments are ordinary token deltas; only whole-message replays are
+  // long enough to be recognised.
+  if (content.length < 24) return false;
+  const count = state.messages.length;
+  if (state.replayHaystack === undefined || state.replayAt !== count) {
+    const text = state.messages
+      .filter((m) => m.role === "assistant")
+      .map((m) => {
+        if (m.content) return m.content;
+        return (m.contentBlocks ?? [])
+          .map((b) => ("content" in b ? b.content : ""))
+          .join("");
+      })
+      .join("\n");
+    state.replayHaystack = text;
+    state.replayAt = count;
+  }
+  return state.replayHaystack.includes(content);
+}
+
 function appendStreamingToken(
   state: SessionStreamState,
   content: string,
@@ -1674,6 +1763,9 @@ function appendStreamingToken(
   keepLive = false,
 ): void {
   if (!content) return;
+  // A team snapshot is a full member turn meant to replace the bubble, not a
+  // replay to be dropped.
+  if (!snapshot && isReplayedHistory(state, content)) return;
   const speaker = speakerAgentId?.trim() || undefined;
   const hostId = sessionHostAgentId(state);
   if (wrapup) {
@@ -2689,7 +2781,15 @@ export async function attachThread(
           return;
         }
 
-        if (data.type === "pong") return;
+        if (data.type === "pong") {
+          // The server tells us whether a turn is really running. Trust it:
+          // a stale "active" flag on the server left the composer disabled
+          // and the ring frozen, so the next message could not even be sent.
+          if (data.active === false && state.isStreaming) {
+            sealStream(state, sessionId);
+          }
+          return;
+        }
         if (applySteerProtocolFrame(state, data, sessionId)) {
           notify(state);
           if (

@@ -27,7 +27,10 @@ from octop.infra.agents.threads.context_breakdown import SEGMENT_KEYS, compute_c
 from octop.infra.agents.threads.fork import fork_dashboard_thread
 from octop.infra.agents.workspace.dir import agent_facing_workspace_dir_from_config
 from octop.infra.errors import ErrorCode, OctopError
-from octop.infra.gateway.hitl.coordinator import pending_hitl_payload
+from octop.infra.gateway.hitl.coordinator import (
+    pending_hitl_payload,
+    recover_pending_hitl,
+)
 from octop.infra.gateway.threads import ThreadRegistry, thread_row_has_messages
 from octop.infra.history.service import HistoryArchive
 from octop.infra.history.trajectory.service import TrajectoryService
@@ -83,6 +86,22 @@ def _agent_facing_workspace_dir(server: Any, agent_id: str) -> Path:
         if facing:
             return Path(facing)
     return resolve_agent_workspace_dir(server, agent_id)
+
+
+def _harness_agent(server: Any, agent_id: str) -> Any:
+    """The live harness agent, or None when it is not loaded.
+
+    Used to read the graph's checkpoint for a HITL pause the in-memory store
+    lost. Never raises — history loading must not depend on it.
+    """
+    registry = getattr(getattr(server, "app_runtime", None), "agent_registry", None)
+    manager = getattr(registry, "harness_manager", None)
+    if manager is None:
+        return None
+    try:
+        return manager.get_agent(agent_id).agent
+    except Exception:  # noqa: BLE001 - agent may not be loaded yet
+        return None
 
 
 def _require_thread(
@@ -381,12 +400,25 @@ async def get_thread_history(
                 user=user,
             )
     effective_uid = as_user if as_user is not None else user.id
+    hitl_store = server.app_runtime.gateway.processor.hitl_coordinator.store
     hitl_pending = pending_hitl_payload(
-        server.app_runtime.gateway.processor.hitl_coordinator.store,
+        hitl_store,
         thread_id=thread_id,
         agent_id=agent_id,
         user_id=effective_uid,
     )
+    if hitl_pending is None:
+        # The pending record lives in process memory, so a restart drops the
+        # card while the graph stays interrupted — the thread keeps an
+        # unanswered question nobody can see. Rebuild it from the checkpoint.
+        hitl_pending = await recover_pending_hitl(
+            hitl_store,
+            harness_agent=_harness_agent(server, agent_id),
+            thread_id=thread_id,
+            agent_id=agent_id,
+            user_id=effective_uid,
+            session_key=f"hitl-recovered:{thread_id}",
+        )
     workspace_dir = _agent_facing_workspace_dir(server, agent_id)
     return {
         "thread_id": thread_id,
