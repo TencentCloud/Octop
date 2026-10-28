@@ -44,6 +44,11 @@ export interface DesktopSessionBridge {
 
 export interface OctopDesktopBridge {
   session?: DesktopSessionBridge;
+  /**
+   * Where to dial WebSockets (§5.2). Absent on an older shell, and null when the
+   * relay could not bind — both mean "derive the address from the page origin".
+   */
+  wsEndpoint?(): { baseUrl: string; token: string } | null;
   getPlatformInfo(): Promise<DesktopPlatformInfo>;
   openDirectoryPicker(): Promise<string | null>;
   openFilePicker(): Promise<string | null>;

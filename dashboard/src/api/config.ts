@@ -1,3 +1,4 @@
+import { resolveWsUrl } from "../utils/desktopWsUrl";
 import { routerBasename } from "../utils/publicUrl";
 
 declare const BASE_URL: string;
@@ -35,7 +36,7 @@ export function getWsUrl(path: string): string {
     return httpUrl.replace("https://", "wss://");
   }
 
-  // Relative URL — derive from current page location
-  const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
-  return `${protocol}//${window.location.host}${httpUrl}`;
+  // Relative URL — derive from the page origin, or from the shell's relay when
+  // the page is served by the desktop shell (§5.2).
+  return resolveWsUrl(httpUrl);
 }

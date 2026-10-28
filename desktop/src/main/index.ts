@@ -26,6 +26,7 @@ import { buildSidecarEnv } from "./supervisor/process-tree";
 import { SidecarSupervisor } from "./supervisor/sidecar";
 import { contentTypeFor, isExternalLink, resolveStaticPath } from "./protocol/static-handler";
 import { isApiPath, sanitizeForwardHeaders, toBackendUrl } from "./protocol/stream-proxy";
+import { WsRelay } from "./protocol/ws-relay";
 import {
   platformAssetKey,
   selectRelease,
@@ -38,6 +39,10 @@ import { createEarlyWindow } from "./windows/early-window";
 import { createMainWindow } from "./windows/main-window";
 
 const UPDATE_ENDPOINT = "https://octop.cloud/api/downloads";
+// The renderer origin (main-window.ts loads ``octop://app/``). The WebSocket
+// relay accepts upgrades only from it, so another local page cannot borrow the
+// relay's port even if it guesses the path (§5.2).
+const WINDOW_ORIGIN = "octop://app";
 const PRELOAD_PATH = join(__dirname, "../preload/index.js");
 const SPLASH_PATH = join(__dirname, "../renderer/splash.html");
 const ERROR_PATH = join(__dirname, "../renderer/error.html");
@@ -61,6 +66,8 @@ let updateInFlight = false;
 // Current loopback port of the sidecar. Read per request (not captured), so a
 // restart after a failed install can hand the proxy a new port.
 let backendPort = 0;
+// §5.2: WebSockets cannot ride the custom scheme, so the page dials this relay.
+let wsRelay: WsRelay | null = null;
 // Everything needed to (re)spawn the sidecar for this launch.
 let backend: {
   interpreter: string;
@@ -335,6 +342,13 @@ function registerIpcHandlers(): void {
     settingsStore.save(patch),
   );
 
+  // Synchronous on purpose: the renderer builds WebSocket URLs inside render
+  // paths and cannot await (§5.2). Answers null (never the sidecar port) while
+  // no relay is listening.
+  ipcMain.on(IPC_CHANNELS.wsEndpoint, (event) => {
+    event.returnValue = wsRelay?.endpoint ?? null;
+  });
+
   ipcMain.handle(IPC_CHANNELS.checkForUpdates, async (): Promise<UpdateCheckResult> => {
     try {
       const selected = await resolveSelectedRelease();
@@ -525,6 +539,20 @@ async function boot(): Promise<void> {
   registerProtocol(dashboardRoot());
   registerIpcHandlers();
 
+  // §5.2: the page learns only this relay's ephemeral port, never the sidecar's.
+  // A bind failure must not abort the launch — the Dashboard then finds no
+  // endpoint and falls back to its page-origin URLs, i.e. no live streams.
+  wsRelay = new WsRelay({
+    backendPort: () => (apiAdmissionClosed || !backendPort ? 0 : backendPort),
+    allowedOrigin: WINDOW_ORIGIN,
+  });
+  try {
+    await wsRelay.start();
+  } catch (err) {
+    console.warn(`[desktop] websocket relay unavailable: ${errorMessageOf(err)}`);
+    wsRelay = null;
+  }
+
   const ready = await startBackend();
   if (!ready) {
     early.showError({
@@ -566,12 +594,22 @@ app.on("second-instance", () => {
 let quitting = false;
 
 app.on("before-quit", (event) => {
-  if (quitting || !supervisor) return;
+  if (quitting) return;
+  const sidecar = supervisor;
+  const relay = wsRelay;
+  if (!sidecar && !relay) return;
   // §3.4: the sidecar runs in its own process group, so quitting without
   // waiting would orphan Python. Give it the grace window, then really quit.
   event.preventDefault();
   quitting = true;
-  void supervisor.stop().finally(() => app.quit());
+  // Close the relay first: nothing may attach to a sidecar that is shutting
+  // down, and its listening socket would keep the process alive otherwise.
+  void (async () => {
+    await relay?.stop();
+    await sidecar?.stop();
+  })()
+    .catch((err) => console.error("octop-desktop quit failed", err))
+    .finally(() => app.quit());
 });
 
 app.on("window-all-closed", () => {
@@ -599,6 +637,7 @@ async function shutdownFromSignal(signal: NodeJS.Signals): Promise<void> {
   // exit below is deliberate and must not be deferred again.
   quitting = true;
   try {
+    await wsRelay?.stop();
     await supervisor?.stop();
   } catch (err) {
     console.error("octop-desktop shutdown failed", err);
