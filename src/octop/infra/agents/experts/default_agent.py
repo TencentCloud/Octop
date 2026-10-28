@@ -7,6 +7,7 @@ admin user creation. The template defaults to ``general-assistant``.
 from __future__ import annotations
 
 import logging
+import os
 from typing import Any
 
 from octop.infra.agents.experts.catalog import ExpertCatalog, build_create_spec_from_expert
@@ -17,6 +18,7 @@ from octop.infra.users.resource_policy import (
 )
 from octop.infra.utils.host_dirs import host_fs_tree_root
 from octop.infra.utils.locale import normalize_locale
+from octop.infra.utils.paths import PathLayout
 
 logger = logging.getLogger(__name__)
 
@@ -25,12 +27,16 @@ SETUP_DEFAULT_AGENT_ID = "main"
 
 
 def default_home_local_backend(*, root_dir: str | None = None) -> dict[str, Any]:
-    """Same local backend as the dashboard create-from-expert default.
+    """Local backend for the default expert created during setup or invite.
 
-    Defaults to host filesystem root; pass *root_dir* when a user
+    Defaults to the configured Octop home when ``OCTOP_HOME`` is set, or
+    the host filesystem root otherwise. Pass *root_dir* when a user
     ``workspace_root_dir`` policy applies.
     """
-    resolved = (root_dir or "").strip() or host_fs_tree_root()
+    configured_home = os.environ.get("OCTOP_HOME", "").strip()
+    resolved = (root_dir or "").strip()
+    if not resolved:
+        resolved = str(PathLayout.from_env().root) if configured_home else host_fs_tree_root()
     return {
         "type": "local_shell",
         "root_dir": resolved,

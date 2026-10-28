@@ -87,11 +87,23 @@ async def test_bootstrap_main_uses_fs_root_backend(catalog: ExpertCatalog) -> No
     assert spec.config["backend"]["root_dir"] == host_fs_tree_root()
 
 
-async def test_bootstrap_respects_policy_root_dir(catalog: ExpertCatalog, tmp_path: Path) -> None:
+def test_default_backend_uses_configured_octop_home(monkeypatch, tmp_path: Path) -> None:
+    octop_home = tmp_path / "octop-home"
+    monkeypatch.setenv("OCTOP_HOME", str(octop_home))
+
+    backend = default_home_local_backend()
+
+    assert backend["root_dir"] == str(octop_home)
+
+
+async def test_bootstrap_respects_policy_root_dir(
+    catalog: ExpertCatalog, monkeypatch, tmp_path: Path
+) -> None:
     registry = MagicMock()
     registry.get_row.return_value = None
     registry.list_agents.return_value = []
     registry.create = AsyncMock(return_value=object())
+    monkeypatch.setenv("OCTOP_HOME", str(tmp_path / "octop-home"))
     jail = (tmp_path / "jail").resolve().as_posix()
 
     await bootstrap_default_agent(
