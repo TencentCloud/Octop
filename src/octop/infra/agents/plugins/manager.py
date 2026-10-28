@@ -69,7 +69,7 @@ def normalize_plugin_download_url(url: str) -> str:
     """Rewrite GitHub ``/blob/`` (and ``/raw/``) page URLs to raw content URLs.
 
     ``https://github.com/org/repo/blob/main/plugin.zip`` returns HTML, not the
-    archive — that is the common cause of ``BadZipFile`` during install.
+    archive - that is the common cause of ``BadZipFile`` during install.
     """
     cleaned = url.strip()
     match = _GITHUB_BLOB_RE.match(cleaned)
@@ -226,7 +226,7 @@ def _read_plugin_yaml(plugin_dir: Path) -> dict[str, Any]:
 def parse_plugin_ui_meta(plugin_dir: Path) -> dict[str, str] | None:
     """Return ``{entry, manifest}`` relative paths when ``plugin.yaml`` declares ``ui``.
 
-    Missing entry file → ``None`` (treat as backend-only). Harness ignores the
+    Missing entry file ? ``None`` (treat as backend-only). Harness ignores the
     ``ui`` key; Octop surfaces it for Dashboard dynamic loading.
     """
     try:
@@ -384,7 +384,7 @@ class PluginManager:
 
     def seed_bundled(self) -> list[str]:
         """Upgrade already-installed bundled plugins when catalog versions are newer."""
-        from octop.infra.agents.plugins.bundled import default_bundled_plugins_root
+        try:`n            from octop.infra.agents.plugins.bundled import default_bundled_plugins_root`n        except ModuleNotFoundError:`n            default_bundled_plugins_root = None
         from octop.infra.agents.plugins.seed import seed_bundled_plugins
 
         return seed_bundled_plugins(
@@ -395,7 +395,7 @@ class PluginManager:
 
     def market_root(self) -> Path:
         """In-tree marketplace catalog root (future: remote index)."""
-        from octop.infra.agents.plugins.bundled import default_bundled_plugins_root
+        try:`n            from octop.infra.agents.plugins.bundled import default_bundled_plugins_root`n        except ModuleNotFoundError:`n            default_bundled_plugins_root = None
 
         return default_bundled_plugins_root()
 
@@ -528,7 +528,7 @@ class PluginManager:
         """Load any on-disk plugins that are not yet in the process registry.
 
         Used after CLI ``octop plugin install`` while ``octop run`` is already
-        up — unlike ``load_installed``, this does not clear already-loaded
+        up - unlike ``load_installed``, this does not clear already-loaded
         plugins.
         """
         enabled = self.global_enabled_map()
@@ -822,7 +822,7 @@ class PluginManager:
                     raise
                 raise OctopError(
                     ErrorCode.PLUGIN_INVALID_ARCHIVE,
-                    f"{exc.message} (GitHub /blob/ pages return HTML — use a raw .zip URL)",
+                    f"{exc.message} (GitHub /blob/ pages return HTML - use a raw .zip URL)",
                     details=exc.details,
                 ) from exc
 
