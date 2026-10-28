@@ -49,6 +49,7 @@ const UPDATE_ENDPOINT = "https://octop.cloud/api/downloads";
 // relay's port even if it guesses the path (§5.2).
 const WINDOW_ORIGIN = "octop://app";
 const PRELOAD_PATH = join(__dirname, "../preload/index.js");
+const EARLY_PRELOAD_PATH = join(__dirname, "../preload/early.js");
 const SPLASH_PATH = join(__dirname, "../renderer/splash.html");
 const ERROR_PATH = join(__dirname, "../renderer/error.html");
 
@@ -469,6 +470,7 @@ async function boot(): Promise<void> {
     splashFile: SPLASH_PATH,
     errorFile: ERROR_PATH,
     version: appVersion,
+    preload: EARLY_PRELOAD_PATH,
   });
 
   // Resolve OCTOP_HOME, reading the login shell on macOS/Linux (GUI apps don't
