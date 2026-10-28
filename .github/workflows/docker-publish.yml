@@ -4,9 +4,11 @@ name: Docker Publish
 # 文档与对外引用统一使用：ghcr.io/tencentcloud/octop
 # （Hub 仍用 DOCKERHUB_* secrets 同步推送。）
 #
-# 架构：ubuntu-latest 打 linux/amd64，ubuntu-24.04-arm 打 linux/arm64，
+# 架构：ubuntu-latest 打 linux/amd64，ubuntu-24.04-arm 打 linux/arm64。
+# 每个架构先在本机启动镜像并跑 live 启动测试，通过后才推送该架构 tag，
 # 再合并为 :{version} / :latest 多架构清单。飞牛 Docker 版 FPK 共用一份，
-# NAS 按本机架构拉取对应镜像层。
+# NAS 按本机架构拉取对应镜像层。某一架构启动失败（例如 ARM 上 Illegal
+# instruction / 退出码 132）只丢掉该架构，不挡住另一架构和后续 FPK。
 #
 # 触发路径：
 #   1. 人工推送 v* tag → on.push.tags
@@ -129,17 +131,51 @@ jobs:
           tags: |
             type=raw,value=${{ needs.prepare.outputs.version }}-${{ matrix.arch }}
 
-      - name: Build and push
+      # load 与 registry 导出不能同时开。先载入本机做启动测试，通过后再 docker push。
+      # docker 导出不支持 provenance，这里关掉，避免 --load 失败。
+      - name: Build and load
         uses: docker/build-push-action@v6
         with:
           context: .
           file: ./docker/Dockerfile
-          push: true
+          push: false
+          load: true
+          provenance: false
+          sbom: false
           platforms: ${{ matrix.platform }}
-          tags: ${{ steps.meta.outputs.tags }}
+          tags: |
+            octop:ci
+            ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha,scope=docker-${{ matrix.arch }}
           cache-to: type=gha,mode=max,scope=docker-${{ matrix.arch }}
+
+      - uses: astral-sh/setup-uv@v4
+        with:
+          python-version: "3.12"
+
+      - name: Boot-test image before publish
+        env:
+          OCTOP_TEST_IMAGE: octop:ci
+        run: |
+          set -euo pipefail
+          uv venv /tmp/octop-docker-test
+          uv pip install --python /tmp/octop-docker-test/bin/python pytest pytest-asyncio
+          /tmp/octop-docker-test/bin/pytest \
+            tests/integration/test_docker_image_boot.py::test_docker_image_runs_on_this_cpu_and_stays_disabled \
+            -q --tb=short
+
+      - name: Push image
+        env:
+          TAGS: ${{ steps.meta.outputs.tags }}
+        run: |
+          set -euo pipefail
+          while IFS= read -r tag; do
+            [ -n "$tag" ] || continue
+            case "$tag" in
+              */*) docker push "$tag" ;;
+            esac
+          done <<< "$TAGS"
 
   merge:
     name: Multi-arch manifest
