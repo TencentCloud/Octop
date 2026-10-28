@@ -1,6 +1,7 @@
 {
   "app": {
-    "pageTitle": "Octop - 懂你、帮你、陪你成长的智能伙伴"
+    "pageTitle": "Octop - 懂你、帮你、陪你成长的智能伙伴",
+    "appName": "Octop"
   },
   "layout": {
     "collapsePanel": "收起面板",
@@ -97,6 +98,7 @@
     },
     "copyErrorForOctop": "复制错误信息",
     "installLogEmpty": "（暂无安装日志）",
+    "skipToContent": "跳到主要内容",
     "tokenCountPresets": "快速填写",
     "tokenCountPreview": "约 {{label}} tokens（{{exact}}）",
     "back": "返回",
@@ -311,6 +313,7 @@
     "records": "任务",
     "paneSettings": "设置",
     "paneRecords": "任务",
+    "mainNavigation": "主导航",
     "customize": "自定义导航",
     "customizeTitle": "自定义导航",
     "ungrouped": "未分组",
@@ -1203,7 +1206,12 @@
     "mbtiBtn": "MBTI",
     "channelsBtn": "通道",
     "memoryBtn": "记忆",
-    "openChat": "对话"
+    "openChat": "对话",
+    "fileLoadFailed": "加载 {{filename}} 失败",
+    "unsavedChangesTitle": "未保存的更改",
+    "unsavedChangesBody": "此文件有未保存的编辑，关闭后将丢失。",
+    "unsavedChangesKeepEditing": "继续编辑",
+    "unsavedChangesDiscard": "放弃更改"
   },
   "subagents": {
     "catalogTitle": "子智能体管理",
@@ -1380,6 +1388,7 @@
     "continuing": "继续生成中",
     "generating": "生成中",
     "generatingWithElapsed": "生成中 · {{seconds}}s",
+    "messageLog": "对话消息",
     "membersResponding": "成员回答中",
     "memberResponding": "{{name}} 正在回答",
     "membersRespondingNamed": "{{names}} 正在回答",
@@ -1841,7 +1850,8 @@
     "historyRetry": "重试",
     "creatingSession": "正在创建会话，请稍候",
     "resizePopup": "调整窗口大小",
-    "unreadMessages": "未读消息"
+    "unreadMessages": "未读消息",
+    "inputLabel": "消息输入框"
   },
   "tools": {
     "unknown": "未知工具",
@@ -2322,7 +2332,8 @@
     "table": {
       "actions": "操作",
       "enabled": "启用"
-    }
+    },
+    "zipDropZoneLabel": "选择或拖入技能 ZIP 文件"
   },
   "cronJobs": {
     "title": "定时任务",
@@ -7142,6 +7153,8 @@
     "addToHomeScreen": "添加到主屏幕",
     "close": "关闭",
     "installAsAppDesc": "将 Octop 安装为 App，随时一键打开。",
+    "iosTitle": "添加到主屏幕",
+    "iosDesc": "将 Octop 安装为 App，随时一键打开。",
     "iosStep1Prefix": "点击底部工具栏的",
     "iosStep1Suffix": "分享按钮",
     "iosStep2": "向下滚动，点击「添加到主屏幕」",
@@ -7156,7 +7169,13 @@
     "menuActionApply": "应用",
     "menuActionInstall": "安装",
     "installApp": "安装应用",
-    "install": "安装"
+    "install": "安装",
+    "browserEdge": "应用",
+    "browserInstall": "安装",
+    "desktopDesc": "浏览器尚未准备好一键安装。请按以下方式操作，或刷新页面后再点 Header 中的安装按钮。",
+    "desktopStep2Prefix": "或打开浏览器菜单，选择「",
+    "desktopStep2Suffix": " Octop」/ Install Octop",
+    "desktopTitle": "安装为桌面应用"
   },
   "browser": {
     "recordReplay": {

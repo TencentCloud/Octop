@@ -1,6 +1,8 @@
-import type { MouseEvent, ReactNode } from "react";
+import { useCallback, useRef } from "react";
+import type { KeyboardEvent, MouseEvent, ReactNode } from "react";
 import { Tooltip } from "antd";
 import { Plus, X } from "lucide-react";
+import { useTranslation } from "react-i18next";
 import styles from "./index.module.less";
 
 export type ChromeTabItem = {
@@ -40,15 +42,44 @@ export function ChromeTabBar({
   trailing,
   className,
 }: ChromeTabBarProps) {
+  const { t } = useTranslation();
+  const tabRefs = useRef<Map<string, HTMLButtonElement>>(new Map());
+
+  const onTabKeyDown = useCallback(
+    (event: KeyboardEvent<HTMLButtonElement>) => {
+      const idx = tabs.findIndex((tab) => tab.key === activeKey);
+      let next = -1;
+      if (event.key === "ArrowRight") next = (idx + 1) % tabs.length;
+      else if (event.key === "ArrowLeft")
+        next = (idx - 1 + tabs.length) % tabs.length;
+      else if (event.key === "Home") next = 0;
+      else if (event.key === "End") next = tabs.length - 1;
+      else return;
+      event.preventDefault();
+      const target = tabs[next];
+      if (!target) return;
+      onChange(target.key);
+      tabRefs.current.get(target.key)?.focus();
+    },
+    [tabs, activeKey, onChange],
+  );
+
   return (
     <div className={[styles.tabBar, className].filter(Boolean).join(" ")}>
       <div className={styles.tabsScroll} role="tablist">
         {tabs.map((tab) => {
           const selected = tab.key === activeKey;
           const node = (
-            <div
+            <button
+              type="button"
               role="tab"
               aria-selected={selected}
+              tabIndex={selected ? 0 : -1}
+              ref={(el) => {
+                if (el) tabRefs.current.set(tab.key, el);
+                else tabRefs.current.delete(tab.key);
+              }}
+              onKeyDown={onTabKeyDown}
               className={`${styles.tab}${
                 selected ? ` ${styles.tabActive}` : ""
               }`}
@@ -61,6 +92,7 @@ export function ChromeTabBar({
                   className={styles.tabClose}
                   role="button"
                   tabIndex={0}
+                  aria-label={t("common.close")}
                   onClick={(e) => {
                     e.stopPropagation();
                     onClose(tab.key, e);
@@ -76,7 +108,7 @@ export function ChromeTabBar({
                   <X size={10} />
                 </span>
               ) : null}
-            </div>
+            </button>
           );
 
           if (tab.tooltip != null && tab.tooltip !== "") {
