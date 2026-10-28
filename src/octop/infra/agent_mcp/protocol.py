@@ -156,11 +156,28 @@ async def handle_agent_mcp_request(
                 {"error": f"unknown tool: {name}"},
                 is_error=True,
             )
-    except (OctopError, ValueError) as exc:
-        return _tool_result(request_id, {"error": str(exc)}, is_error=True)
+    except OctopError as exc:
+        return _tool_result(
+            request_id,
+            {
+                "status": "failed",
+                "error": {"message": str(exc), "code": exc.code.value},
+            },
+            is_error=True,
+        )
+    except ValueError as exc:
+        return _tool_result(
+            request_id,
+            {"status": "failed", "error": {"message": str(exc)}},
+            is_error=True,
+        )
     except Exception:
         logger.exception("agent MCP tool %s failed", name)
-        return _tool_result(request_id, {"error": "internal error"}, is_error=True)
+        return _tool_result(
+            request_id,
+            {"status": "failed", "error": {"message": "internal error"}},
+            is_error=True,
+        )
 
     return _tool_result(request_id, result, is_error=result.get("status") == "failed")
 

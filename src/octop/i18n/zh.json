@@ -417,7 +417,8 @@
     "AGENT_NOT_FOUND": "未找到 Agent。",
     "EXPERT_TEMPLATE_NOT_FOUND": "未找到专家模板。",
     "DEFAULT_EXPERT_FAILED": "无法创建默认专家。",
-    "AGENT_NOT_RUNNING": "此专家未启用。",
+    "AGENT_NOT_RUNNING": "该专家未运行，请先在 Octop 控制台启动后重试。",
+    "AGENT_DISABLED": "该专家已被禁用，请先在 Octop 控制台启用。",
     "CHECKPOINT_DELETE_FAILED": "对话数据没有删除，会话已保留，请重试。",
     "THREAD_TURN_ACTIVE": "回复进行中，请先停止再删除。",
     "AGENT_FAILED": "Agent 启动失败。",
@@ -764,6 +765,7 @@
     "invalid_request": "模型接口拒绝了本次请求参数。华为 MindIE 等严格的 OpenAI 兼容服务通常不接受 stream_options 等扩展字段。自定义供应商现已默认关闭流式用量；若仍失败，请确认该模型是否支持工具调用。完整错误已写入服务端日志。",
     "model_call_failed": "模型调用多次重试后仍失败。请稍后重试；若持续失败，请检查模型配置或更换模型。",
     "model_call_failed_detail": "模型调用失败：{detail}",
+    "agent_not_loaded": "专家 {detail} 当前未加载到运行时（可能已停止）。请在 Octop 控制台启动该专家后重试。",
     "model_retry_prompt": "模型接口调用失败，不要假装任务已经完成。\n\n原因：{guidance}\n\n请用用户的语言说明情况并给出下一步建议。不要用同样的请求再试一次。\n\n技术细节：{detail}",
     "path_outside_root": "文件路径超出当前专家的存储根目录，无法读写。请改用存储根目录内的路径，或在专家设置中扩大存储根目录（Windows 上请显式指定盘符路径，例如 D:/octop-data）。"
   },
