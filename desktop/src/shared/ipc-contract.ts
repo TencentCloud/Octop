@@ -33,6 +33,17 @@ export interface IssuedSession {
   expires_in: number;
 }
 
+/**
+ * Loopback WebSocket relay (§5.2). A custom scheme cannot carry a handshake,
+ * so the page dials this instead of ``octop://app/api/…``.
+ */
+export interface WsRelayEndpoint {
+  /** ``ws://127.0.0.1:<port>/<token>`` — append ``/api/…`` to it. */
+  baseUrl: string;
+  /** Random per-launch path segment; the relay refuses every other path. */
+  token: string;
+}
+
 export const IPC_CHANNELS = {
   getPlatformInfo: "octop:get-platform-info",
   openDirectoryPicker: "octop:open-directory-picker",
@@ -41,6 +52,7 @@ export const IPC_CHANNELS = {
   windowControl: "octop:window-control",
   clientSettingsGet: "octop:client-settings:get",
   clientSettingsSet: "octop:client-settings:set",
+  wsEndpoint: "octop:ws-endpoint",
   checkForUpdates: "octop:check-for-updates",
   openUpdateConfirmation: "octop:open-update-confirmation",
   sessionRegister: "octop:session:register",

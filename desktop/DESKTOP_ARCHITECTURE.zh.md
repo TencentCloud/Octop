@@ -272,7 +272,29 @@ Electron main 入口：执行轻量初始化并获取单实例锁
 | `octop://app/api/*` | 主进程透明反向代理至 `http://127.0.0.1:<assigned-port>/api/*` | 校验来源和窗口身份，过滤伪造的 Host、Origin、Cookie 与连接级标头 |
 | 外部 `http://` / `https://` 链接 | 拦截导航并调用 `shell.openExternal` | 防止外部页面进入应用受信上下文 |
 
-流式响应需要保留背压与取消语义；SSE 不应先完整缓冲到主进程内存。WebSocket 若无法通过自定义协议直接承载，应建立只允许主窗口使用的受控改写规则，并由主进程注入认证信息。
+流式响应需要保留背压与取消语义；SSE 不应先完整缓冲到主进程内存。
+
+#### WebSocket：为什么必须走中继
+
+自定义协议承载不了 WebSocket 握手：Chromium 的 upgrade 不会进入 `protocol.handle`，
+而 `webRequest.onBeforeRequest` 虽然能看见 `webSocket` 类型的请求，却会丢弃
+`redirectURL`（已实测：请求被记录，上游从未收到握手）。因此 `octop://app` 页面不能
+像 fetch 一样"照原样"用 `ws://octop/app/...`。
+
+方案是主进程起一个只监听 `127.0.0.1` 的中继（`protocol/ws-relay.ts`），页面从
+`wsEndpoint()` 拿到它的临时端口与本次启动才生成的路径段，然后拨
+`ws://127.0.0.1:<中继端口>/<随机路径段>/api/<path>?<query>`：
+
+- **凭据隔离**：页面只见到中继，永远不知道 Sidecar 端口；中继每次连接都重新读端口，
+  更新重启 Sidecar 后页面无需换地址。
+- **路径即授权**：路径段不对一律 403，且用常量时间比较；`Origin` 必须等于
+  `octop://app`，本机别的页面即使猜到路径也接不进来。
+- **不新增信任**：JWT 仍由页面自己放进 query（和浏览器模式一致），中继不注入、不存储
+  任何凭据；请求行按 `/api/...` 重写后原样转发握手头，101 之后只做双向 pipe，
+  保留背压与取消语义。
+- **失败可见**：Sidecar 没起来是 503，连不上是 504，后端拒绝（401/404）原样透传，
+  绝不会把一次失败伪装成已建立的隧道。
+- 路径段放在路径里而不是 query 里，是为了让调用方还能照常拼自己的 query。
 
 ### 5.3 严格沙箱与类型化 Preload 桥接
 
@@ -296,6 +318,7 @@ Preload 仅暴露最小类型化桥梁 `window.octopDesktop`：
 - `windowControls`：最小化、最大化与关闭窗口。
 - `clientSettings`：供 Web 设置页读写新增的客户端项（开机启动、关闭行为、主题背景、是否只跟随稳定版）。不能写 `config.json`，也不能指定更新检测地址或安装包地址。
 - `openUpdateConfirmation()`：只能打开主进程的更新确认。渲染进程不能指定包地址，也不能授权安装。
+- `wsEndpoint()`：返回 WebSocket 中继的地址（§5.2）。同步返回，因为 URL 拼装发生在渲染路径里没法 await；没有中继时返回 `null`，页面就回退到"从自身 origin 推导"。
 
 不暴露原始 `ipcRenderer`、任意文件系统访问、任意命令执行或可指定目标 URL 的代理接口。所有 IPC handler 都校验 sender frame、origin 和参数 schema。
 
@@ -438,6 +461,7 @@ Octop/
         protocol/
           stream-proxy.ts
           static-handler.ts
+          ws-relay.ts
         windows/
           main-window.ts
           early-window.ts

@@ -6,6 +6,7 @@ import {
   type PlatformInfo,
   type UpdateCheckResult,
   type WindowControlAction,
+  type WsRelayEndpoint,
 } from "../shared/ipc-contract";
 
 /**
@@ -18,6 +19,13 @@ function subscribe<T>(channel: string, cb: (payload: T) => void): () => void {
   ipcRenderer.on(channel, listener);
   return () => ipcRenderer.removeListener(channel, listener);
 }
+
+/**
+ * Read once and memoise: the relay binds before the window loads, so the value
+ * cannot change during a launch, and URL builders call this from render paths
+ * where awaiting is not an option.
+ */
+let wsEndpointCache: WsRelayEndpoint | null | undefined;
 
 const bridge = {
   getPlatformInfo(): Promise<PlatformInfo> {
@@ -42,6 +50,16 @@ const bridge = {
     set(patch: Partial<ClientSettings>): Promise<ClientSettings> {
       return ipcRenderer.invoke(IPC_CHANNELS.clientSettingsSet, patch);
     },
+  },
+  /**
+   * Where to dial WebSockets (§5.2). ``null`` when the shell has no relay, in
+   * which case the Dashboard keeps deriving the address from the page origin.
+   */
+  wsEndpoint(): WsRelayEndpoint | null {
+    if (wsEndpointCache === undefined) {
+      wsEndpointCache = (ipcRenderer.sendSync(IPC_CHANNELS.wsEndpoint) as WsRelayEndpoint | null) ?? null;
+    }
+    return wsEndpointCache;
   },
   checkForUpdates(): Promise<UpdateCheckResult> {
     return ipcRenderer.invoke(IPC_CHANNELS.checkForUpdates);
