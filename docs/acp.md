@@ -69,25 +69,40 @@ After changing global runners, Octop reloads your agents automatically. Changing
 
 ## CLI: inbound — expose Octop as an ACP server
 
-Let external clients (e.g. Zed) use an Octop agent as their coding agent:
+Let external clients (e.g. Zed, WorkBuddy, OpenCode) use Octop as their coding agent:
 
 ```bash
-octop acp --agent main
+octop acp
 ```
 
 | Option | Description |
 |--------|-------------|
-| `--agent ID` | Agent to expose (default: CLI `default_agent` or first agent) |
+| `--agent ID_OR_NAME` | Optional default expert: agent id **or** exact display name (else CLI `default_agent` / first local agent) |
 | `--debug` | Log to stderr |
 
-This starts a **standalone** `OctopServer` (reads `~/.octop`), boots the agent, and speaks ACP on stdin/stdout. It does **not** require `octop run` to be running; it is a separate process.
+This starts a **standalone** `OctopServer` (reads `~/.octop`) and speaks ACP on stdin/stdout. It does **not** require `octop run` to be running; it is a separate process.
 
-Pin the default agent for convenience:
+### Choosing an expert (multi-agent)
+
+One `octop acp` process advertises **every enabled local agent** as an ACP session config option. Only the default expert is started at process boot (keeps IDE “Loading…” short); switching to another expert starts that agent on demand.
+
+| Field | Value |
+|-------|--------|
+| `id` | `expert` |
+| `category` | `_expert` (custom ACP category) |
+| `type` | `select` |
+| `currentValue` | `--agent` / CLI default / first local agent |
+| `options[].value` | Octop `agent_id` |
+
+Clients that support `session/set_config_option` can switch experts without restarting. Clients that ignore config options keep using `currentValue` (spec-compliant default).
+
+Pin the default agent for convenience (optional — omit `--agent` to use the first local agent):
 
 ```bash
-octop user login --username you
-# set default_agent in ~/.octop/cli_state.json, or:
-octop --agent main acp
+octop agent use main   # writes CLI default_agent
+octop acp
+# or one-shot:
+octop acp --agent main
 ```
 
 ### Zed example
@@ -99,7 +114,7 @@ octop --agent main acp
   "agent_servers": {
     "Octop": {
       "command": "octop",
-      "args": ["acp", "--agent", "main"],
+      "args": ["acp"],
       "env": {}
     }
   }
@@ -113,14 +128,14 @@ From a dev checkout:
   "agent_servers": {
     "Octop": {
       "command": "uv",
-      "args": ["run", "octop", "acp", "--agent", "main"],
+      "args": ["run", "octop", "acp"],
       "env": {}
     }
   }
 }
 ```
 
-Create an agent thread in Zed and prompt as usual. Sessions map to `thread_id`; the agent workspace remains under `~/.octop/agents/<agent_id>/`.
+Create an agent thread in the client and prompt as usual. ACP `sessionId` maps to an Octop thread (`acp:{sessionId}:{agent_id}` when multiple experts are advertised). The agent workspace remains under `~/.octop/agents/<agent_id>/`.
 
 ---
 
@@ -168,6 +183,53 @@ Runner shape:
 - **Outbound:** install external CLIs (`opencode`, `codebuddy`, …) on the machine running `octop run`.
 - **Inbound:** agent must start successfully (provider + model configured).
 
+## Spec / capability honesty
+
+Inbound ACP is stdio JSON-RPC (ACP v1). Octop advertises session lifecycle capabilities it implements:
+
+| Capability | Advertised? | Notes |
+|------------|-------------|-------|
+| `session/close` | Yes | Cancels in-flight prompt, drops active session |
+| `session/load` (`loadSession`) | Yes | Rebinds session; replays harness checkpoint history via `session/update` |
+| `session/resume` | Yes | Rebinds without replay (Zed reopen after ACP process restart) |
+| `session/list` | Yes | Process-local active sessions (not durable across ACP process exit) |
+| `session/delete` / `fork` | No | Not implemented yet |
+| Expert `configOptions` | Yes | When experts are passed into the ACP server |
+
+Cloud / remote ACP (HTTP/WS) is out of scope; use Agent MCP (`/api/mcp/agents`) for remote callers.
+
+Protocol checks: run [acp-tck](https://github.com/agentclientprotocol/acp-tck) against the harness mock agent `octop-harness/tests/fixtures/acp_stdio_agent.py` (no LLM). Full `octop acp` still needs a running local agent and is for IDE smoke tests (Zed, WorkBuddy, …).
+
+Example (from an `acp-tck` checkout; report should say `VERDICT: CONFORMANT` for mandatory/capability tiers):
+
+```bash
+uv run acp-tck --agent-cwd /tmp/acp-tck-wd --timeout 15 \
+  --report-json /tmp/octop-acp-tck.json \
+  -- /path/to/octop-harness/.venv/bin/python \
+     /path/to/octop-harness/tests/fixtures/acp_stdio_agent.py
+```
+
+### Zed smoke test (`octop acp`)
+
+1. Ensure at least one agent exists locally. `octop acp` lists all enabled agents and boots only the default (others start when you pick them in the IDE).
+2. Add to `~/.config/zed/settings.json`:
+
+```json
+{
+  "agent_servers": {
+    "Octop": {
+      "command": "uv",
+      "args": ["run", "--project", "/Users/huangcheng/Projects/Octop", "octop", "acp"],
+      "env": {}
+    }
+  }
+}
+```
+
+3. In Zed, open an agent thread with **Octop** and send a short prompt.
+
+If you use an installed `octop` wheel instead of a checkout, set `"command": "octop"` and `"args": ["acp"]`.
+
 ---
 
 ## Troubleshooting
@@ -177,7 +239,10 @@ Runner shape:
 | Runner missing on some agents | Upgrade to user-global runners; open `/acp` once or `GET /api/acp` to trigger migration |
 | `acp_runner` lists runner but start fails with “Unknown runner” | Restart `octop run` after adding a custom runner (ACP service cache is process-wide) |
 | External runner returns no text | Check CLI auth/quota (e.g. `codebuddy auth status`) |
-| `octop acp` fails immediately | Agent not running or invalid `--agent`; create/start agent in dashboard first |
+| Zed thread stuck on “Loading…” | First open waits until ACP `initialize` returns. `octop acp` answers `initialize` while the selected expert boots in the background (lean: no IM/cron/catalog scan). Close the thread and open a new one if an older process is still attached. |
+| `octop acp` fails immediately | Invalid `--agent` (id/name), or that agent cannot start (provider/model). Check Zed agent stderr / `octop acp --debug` |
+| Expert switch returns `-32602` | Unknown agent id, or that agent failed to start on demand (check `octop acp --debug`) |
+| Expert dropdown shows only one agent | Restart the ACP connection / open a new thread after upgrading; older builds advertised only the booted default |
 | Command not found | Use absolute path in runner `command` if `PATH` for the server process differs from your shell |
 | Kimi Code fails to start | Install [kimi-code](https://github.com/MoonshotAI/kimi-code) and run `kimi` login on the host |
 | Cursor CLI fails to start | Install Cursor CLI; run `agent login` or set `CURSOR_API_KEY` |
