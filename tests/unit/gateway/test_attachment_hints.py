@@ -399,6 +399,7 @@ async def test_weixin_pdf_history_is_downloadable_attachment() -> None:
     manager = MagicMock()
     manager.get_row.return_value = None
     manager.get_thread_model.return_value = None
+    manager.providers.resolve_explicit_default_model.return_value = None
     manager.resolve_fallback_model_ref.return_value = None
     manager.default_mcp_servers.return_value = None
     manager.merge_turn_mcp_servers.return_value = None
@@ -407,7 +408,9 @@ async def test_weixin_pdf_history_is_downloadable_attachment() -> None:
     registry.get_thread.return_value = None
     registry.get_or_create_by_key = AsyncMock(return_value="thread-1")
     agent_repo = MagicMock()
-    agent_repo.get.return_value = None
+    agent_repo.get.return_value = MagicMock(
+        user_id=1, default_model=None, kind="expert", config_json="{}"
+    )
     user_repo = MagicMock()
     user_repo.get.return_value = None
     processor = GlobalProcessor(

@@ -32,7 +32,7 @@ from octop.infra.agents.teams.team_manager import (
 from octop.infra.agents.teams.team_manager import (
     stamp_team_host_chunk as _maybe_stamp_team_host,
 )
-from octop.infra.errors import OctopError
+from octop.infra.errors import ErrorCode, OctopError
 from octop.infra.gateway.cli.events import message_event_to_cli_chunks
 from octop.infra.gateway.hitl.coordinator import (
     HitlAnswerOutcome,
@@ -856,6 +856,11 @@ class GlobalProcessor:
             channel_type=channel_type,
             metadata=msg.metadata,
         )
+        if agent_row is None:
+            error = OctopError.localized(ErrorCode.AGENT_NOT_FOUND, locale)
+            yield MessageEvent.error_event(f"[{error.code.value}] {error.message}")
+            yield MessageEvent.completed()
+            return
         if cmd is not None and cmd.name in HITL_APPROVAL_COMMANDS:
             async for ev in self._relay_im_approval(
                 msg,
