@@ -65,6 +65,7 @@ from octop.infra.backend.docker_spec import (
     inject_docker_global_environment,
 )
 from octop.infra.backend.resolver import (
+    collect_named_storage_backend_refs,
     default_agent_backend_spec,
     resolve_agent_backend_spec,
     windows_neutralize_host_root,
@@ -804,7 +805,24 @@ class AgentManager:
 
             # Create-time: user-assigned workspace_dir wins; otherwise default+encode.
             # After insert, resolve_workspace_dir reads the DB value as source of truth.
-            seed_workspace_dir_on_create(config, paths=self._paths, agent_id=agent_id)
+            layout_config = config
+            raw_workspace = config.get("workspace_dir")
+            if not (
+                isinstance(raw_workspace, str) and raw_workspace.strip()
+            ) and collect_named_storage_backend_refs(config.get("backend")):
+                layout_config = {
+                    **config,
+                    "backend": resolve_agent_backend_spec(
+                        config["backend"], repo=self._repos.storage_backend_repo
+                    ),
+                }
+            workspace_dir = seed_workspace_dir_on_create(
+                layout_config, paths=self._paths, agent_id=agent_id
+            )
+            if layout_config is not config:
+                # Keep the named reference live, but persist its physical workspace
+                # so host I/O can resolve it without expanding the backend again.
+                config["workspace_dir"] = str(workspace_dir)
             # ``system_files_path`` is an internal layout control and must not
             # be user-configurable. New agents always use the default prefix.
             config.pop("system_files_path", None)
@@ -4155,7 +4173,7 @@ class AgentManager:
             paths=self._paths,
             row=row,
             workspace_dir=workspace_dir,
-            cfg=cfg,
+            cfg={**cfg, "backend": backend},
         )
         # OpenSandbox.create is not idempotent — reuse the instance already
         # wrapped by ``ws`` so start does not spawn a second remote sandbox.
