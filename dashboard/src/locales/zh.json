@@ -7389,7 +7389,8 @@
     "MFA_LOCKED": "二次验证尝试次数过多，请稍后再试。",
     "MFA_REAUTH_REQUIRED": "请重新输入密码以继续。",
     "MFA_LAST_FACTOR": "无法移除最后一个二次验证方式。",
-    "WEBAUTHN_CONFIG_INVALID": "还不能使用通行密钥。请管理员在「应用设置 → 通行密钥」填写本站域名和完整网址。如果已经填过，请改用登记的那个网址打开。用 localhost 打开则不用填。"
+    "WEBAUTHN_CONFIG_INVALID": "还不能使用通行密钥。请管理员在「应用设置 → 通行密钥」填写本站域名和完整网址。如果已经填过，请改用登记的那个网址打开。用 localhost 打开则不用填。",
+    "details": "技术详情"
   },
   "adminProviders": {
     "title": "供应商",
