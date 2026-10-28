@@ -12,6 +12,7 @@ import {
   isChunkLoadError,
   tryReloadOnStaleChunk,
 } from "./utils/reloadOnStaleChunk";
+import { bootNativeWindowChrome } from "./utils/nativeWindowChrome";
 
 if (typeof window !== "undefined") {
   // Recover from post-deploy stale hashed chunks (white screen → soft reload).
@@ -56,6 +57,10 @@ if (typeof window !== "undefined") {
     }
     console.error("[UnhandledRejection]", reason);
   });
+
+  // Native window buttons are drawn by the OS, so paint them in the stored
+  // theme before React mounts (an effect would be one frame too late).
+  bootNativeWindowChrome();
 }
 
 void initI18n()

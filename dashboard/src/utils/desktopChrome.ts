@@ -1,21 +1,21 @@
-import { getDesktopBridge } from "./desktopBridge";
-
 export type DesktopChromeStyle = "mac" | "windows";
-export type DesktopWindowAction = "minimise" | "toggle-maximise" | "close";
 
 /** Which window edge carries the minimise / maximise / close buttons. */
 export type WindowControlsSide = "start" | "end";
 
 /**
- * Height of the shell's own chrome row. The buttons are 32px tall, so anything
- * that wants to start *below* them (macOS sidebar) reserves this band.
+ * Height of the shell's own chrome row. The native buttons are ~12px tall, so
+ * anything that wants to start *below* them (macOS sidebar) reserves this band.
  */
 export const DESKTOP_CHROME_HEIGHT = 32;
 
 /**
- * Horizontal space the buttons occupy, by platform convention:
- * - macOS: three 12px traffic lights on the LEFT + gaps + padding.
- * - Windows: three 46px caption buttons on the RIGHT.
+ * Horizontal space the *native* buttons occupy, by platform convention:
+ * - macOS: three traffic lights on the LEFT, pinned at x=14 by the shell.
+ * - Windows: three 46px caption buttons on the RIGHT (titleBarOverlay).
+ *
+ * The buttons are drawn by the OS above the page, so the page must keep this
+ * strip empty — it cannot draw under them.
  */
 export const WINDOW_CONTROLS_INSET: Record<DesktopChromeStyle, number> = {
   mac: 80,
@@ -44,10 +44,14 @@ export function windowControlsInset(
 /**
  * Vertical band to reserve at the top of a full-height column (the sidebar on
  * macOS, where the traffic lights float above it). Windows caption buttons sit
- * over the content column instead, so they need no band.
+ * over the content column instead, so they need no band — and full screen hides
+ * the macOS buttons, so the band goes with them.
  */
-export function chromeTopBandPx(style: DesktopChromeStyle | null): number {
-  return style === "mac" ? DESKTOP_CHROME_HEIGHT : 0;
+export function chromeTopBandPx(
+  style: DesktopChromeStyle | null,
+  fullscreen = false,
+): number {
+  return style === "mac" && !fullscreen ? DESKTOP_CHROME_HEIGHT : 0;
 }
 
 /** Right-edge overlay chrome (dock toolbar, etc.) to keep clear of caption buttons. */
@@ -95,17 +99,26 @@ export function windowControlsStartSpacerPx(
 }
 
 /**
- * Marks shell chrome the frameless Electron window treats as a drag region.
+ * Marks shell chrome the shell window treats as a drag region.
  * `layout.css` maps these classes to `-webkit-app-region: drag` / `no-drag`
  * once `data-octop-desktop-chrome` is on `<html>`.
  */
 export const DESKTOP_DRAG_REGION_CLASS = "octop-desktop-drag";
 export const DESKTOP_NO_DRAG_CLASS = "octop-desktop-no-drag";
 
+/**
+ * Which chrome — if any — the page has to make room for.
+ *
+ * macOS keeps its native traffic lights and Windows its native caption buttons,
+ * so both need reserved space. Linux is deliberately absent: the shell leaves
+ * the system frame on there, which already carries the buttons, so the page
+ * renders edge to edge.
+ */
 export function resolveDesktopChromeStyle(
   userAgent = navigator.userAgent,
-): DesktopChromeStyle {
+): DesktopChromeStyle | null {
   if (/Mac|iPhone|iPad/.test(userAgent)) return "mac";
+  if (/Linux|X11/.test(userAgent)) return null;
   return "windows";
 }
 
@@ -118,6 +131,12 @@ export function titleRowStartPadding(outerPadPx: number): string {
   return `max(0px, calc(var(${INSET_START_VAR}, 0px) - ${outerPadPx}px))`;
 }
 
+/**
+ * Publish the platform's chrome contract on `<html>`: one attribute for the CSS
+ * hooks (drag regions) and the two inset tokens every consumer reads.
+ * `null` means "no chrome to reserve" — the browser, or Linux with its native
+ * window frame.
+ */
 export function applyDesktopChrome(
   style: DesktopChromeStyle | null,
   root: HTMLElement = document.documentElement,
@@ -139,24 +158,4 @@ export function applyDesktopChrome(
     INSET_END_VAR,
     `${windowControlsInset(style, "end")}px`,
   );
-}
-
-const WINDOW_CONTROL_ACTION: Record<
-  DesktopWindowAction,
-  "minimize" | "maximize" | "close"
-> = {
-  minimise: "minimize",
-  "toggle-maximise": "maximize",
-  close: "close",
-};
-
-/**
- * Ask the shell to minimise / maximise / close the window. Returns false in the
- * browser (server mode), where there is no window to drive.
- */
-export function emitDesktopWindowAction(action: DesktopWindowAction): boolean {
-  const bridge = getDesktopBridge();
-  if (!bridge) return false;
-  bridge.windowControls(WINDOW_CONTROL_ACTION[action]);
-  return true;
 }

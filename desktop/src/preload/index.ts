@@ -5,7 +5,7 @@ import {
   type IssuedSession,
   type PlatformInfo,
   type UpdateCheckResult,
-  type WindowControlAction,
+  type WindowChromeTheme,
   type WsRelayEndpoint,
 } from "../shared/ipc-contract";
 
@@ -40,8 +40,20 @@ const bridge = {
   onBackendReady(callback: (ready: { ok: boolean }) => void): () => void {
     return subscribe(IPC_CHANNELS.onBackendReady, callback);
   },
-  windowControls(action: WindowControlAction): void {
-    ipcRenderer.send(IPC_CHANNELS.windowControl, action);
+  /**
+   * Report the page theme so the *native* window controls (traffic lights,
+   * caption buttons) match it. Window buttons themselves are never driven from
+   * here: minimise / maximise / close stay native.
+   */
+  setWindowChrome(theme: WindowChromeTheme): void {
+    ipcRenderer.send(IPC_CHANNELS.windowChromeTheme, theme);
+  },
+  /**
+   * Full screen hides the macOS traffic lights, so the page stops reserving
+   * room for them. Fires only on change; the app never starts full screen.
+   */
+  onWindowFullscreenChange(callback: (fullscreen: boolean) => void): () => void {
+    return subscribe(IPC_CHANNELS.windowChromeFullscreen, callback);
   },
   clientSettings: {
     get(): Promise<ClientSettings> {

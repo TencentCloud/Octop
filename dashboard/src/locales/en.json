@@ -18,12 +18,6 @@
     "shared": "Shared",
     "empty": "Nothing matches the current filters"
   },
-  "desktopChrome": {
-    "group": "Window controls",
-    "minimize": "Minimize",
-    "maximize": "Maximize",
-    "close": "Close"
-  },
   "avatarPicker": {
     "presets": {
       "skill": {
