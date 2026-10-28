@@ -12,6 +12,9 @@
 - 知识库预览可以在原文和已入库切片之间切换。文件名悬停后可重命名，扩展名保持不变
 - Docker 与飞牛增加精简版。默认 `:<version>` / `:latest` 仍是含桌面、OCR 和本地向量的完整镜像；精简版标签是 `:<version>-lite` 和 `:lite`
 
+### 变更
+- 调用已停止的专家时按需懒加载启动（`stream` / `call` / HITL resume / Agent MCP）；`last_state=failed` 不会自动重试。手动 `stop` 后的专家会在下次被调用时复活
+
 ### 修复
 - Agent MCP 调用已停止的专家时，不再把 harness `KeyError` 误报成「模型调用失败」；入口预检返回 `AGENT_NOT_RUNNING` / `AGENT_DISABLED`，并透出 `error.code` 便于外部客户端分支处理
 - Dashboard 里 `ask_user_question` 未答完时，新建同专家会话再发消息不再被当成旧测验的答案；同会话内明文作答仍然有效
