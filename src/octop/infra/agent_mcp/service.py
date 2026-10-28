@@ -41,12 +41,14 @@ class AgentMcpGatewayService:
         for row in self._agent_manager.list_rows():
             if row.kind != "expert" or not self._can_access(row, user):
                 continue
+            state = (row.last_state or "unknown").strip() or "unknown"
             experts.append(
                 {
                     "expert_id": row.agent_id,
                     "name": row.name,
                     "description": row.description or "",
-                    "state": row.last_state or "unknown",
+                    "state": state,
+                    "available": state.lower() == "running",
                     "default_model": row.default_model,
                     "template_name": row.template_name,
                     "shared": bool(row.is_shared),
