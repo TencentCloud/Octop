@@ -13,6 +13,7 @@
 - Docker 与飞牛增加精简版。默认 `:<version>` / `:latest` 仍是含桌面、OCR 和本地向量的完整镜像；精简版标签是 `:<version>-lite` 和 `:lite`
 
 ### 修复
+- Agent MCP 调用已停止的专家时，不再把 harness `KeyError` 误报成「模型调用失败」；入口预检返回 `AGENT_NOT_RUNNING` / `AGENT_DISABLED`，并透出 `error.code` 便于外部客户端分支处理
 - Dashboard 里 `ask_user_question` 未答完时，新建同专家会话再发消息不再被当成旧测验的答案；同会话内明文作答仍然有效
 - PostgreSQL 控制面下，知识库检索读 pgvector，不再查到空的本地 `index.sqlite`
 - Docker 镜像在无头构建时不再导入 pynput。飞牛 Docker 包缺失时，已打好的本地包仍会挂到 Release
