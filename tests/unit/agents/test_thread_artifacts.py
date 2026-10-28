@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import Any
 from unittest.mock import MagicMock, patch
 
+import pytest
 from langchain_core.messages import ToolMessage
 from langgraph.types import Command
 
@@ -175,6 +176,115 @@ def test_extract_screenshot_from_tool_result_text(tmp_path: Path) -> None:
         workspace_dir=ws,
     )
     assert paths == [abs_path]
+
+
+def test_extract_desktop_screenshot_prefers_saved_path(tmp_path: Path) -> None:
+    ws = _ws(tmp_path)
+    assert extract_artifact_paths(
+        tool_name="desktop_screenshot",
+        args={"path": "screen.png"},
+        result='{"path": "outbound/screenshots/screen.png"}',
+        workspace_dir=ws,
+    ) == [(ws / "outbound/screenshots/screen.png").as_posix()]
+
+
+@pytest.mark.parametrize("name", ["desktop_screenshot", "ns/desktop_screenshot"])
+@pytest.mark.parametrize(
+    "args", [{"path": "screen.png"}, {"path": "outbound/screenshots/screen.png"}, {"path": ""}, {}]
+)
+@pytest.mark.parametrize(
+    "result",
+    [
+        {"path": "outbound/screenshots/screen.png"},
+        [{"path": "outbound/screenshots/screen.png"}],
+        " Screenshot saved to outbound/screenshots/screen.png",
+        '[{"path": "outbound/screenshots/screen.png"}]',
+    ],
+)
+def test_extract_desktop_result_forms(
+    tmp_path: Path, name: str, args: dict[str, str], result: Any
+) -> None:
+    ws = _ws(tmp_path)
+    assert extract_artifact_paths(tool_name=name, args=args, result=result, workspace_dir=ws) == [
+        (ws / "outbound/screenshots/screen.png").as_posix()
+    ]
+
+
+def test_extract_desktop_result_dedupes_file_url(tmp_path: Path) -> None:
+    ws = _ws(tmp_path)
+    path = ws / "outbound/screenshots/screen.png"
+    assert extract_artifact_paths(
+        tool_name="desktop_screenshot",
+        args={"path": "screen.png"},
+        result={"path": "outbound/screenshots/screen.png", "source": {"url": path.as_uri()}},
+        workspace_dir=ws,
+    ) == [path.as_posix()]
+
+
+@pytest.mark.parametrize(
+    "result", [None, "", {}, {"path": "notes"}, {"path": "_builtin_skills/a.png"}]
+)
+@pytest.mark.parametrize("args", [{"path": "screen.png"}, {}])
+def test_extract_desktop_falls_back_to_args(
+    tmp_path: Path, result: Any, args: dict[str, str]
+) -> None:
+    ws = _ws(tmp_path)
+    assert extract_artifact_paths(
+        tool_name="desktop_screenshot", args=args, result=result, workspace_dir=ws
+    ) == ([(ws / "screen.png").as_posix()] if args else [])
+
+
+@pytest.mark.parametrize(
+    "name", ["write_file", "edit_file", "send_file", "send_file_to_user", "mobile_screenshot"]
+)
+def test_extract_other_tools_keep_args_priority(tmp_path: Path, name: str) -> None:
+    ws = _ws(tmp_path)
+    assert extract_artifact_paths(
+        tool_name=name,
+        args={"path": "requested.png"},
+        result={"path": "outbound/screenshots/screen.png"},
+        workspace_dir=ws,
+    ) == [(ws / "requested.png").as_posix()]
+
+
+@pytest.mark.parametrize("asynchronous", [False, True])
+@pytest.mark.parametrize("outcome", ["success", "error", "command", "no-thread"])
+async def test_middleware_desktop_saved_path(
+    tmp_path: Path, asynchronous: bool, outcome: str
+) -> None:
+    ws = _ws(tmp_path)
+    store = _FakeThreads()
+    mw = ThreadArtifactsMiddleware(thread_repo=store, workspace_dir=ws, agent_id="member-a")
+    request = _request("desktop_screenshot", {"path": "screen.png"})
+    result = (
+        Command()
+        if outcome == "command"
+        else ToolMessage(
+            content='{"path": "outbound/screenshots/screen.png"}',
+            tool_call_id="tc1",
+            status="error" if outcome == "error" else "success",
+        )
+    )
+
+    async def handler(_req: Any) -> Any:
+        return result
+
+    with patch(
+        "octop.infra.agents.middleware.thread_artifacts.current_thread_id",
+        return_value="" if outcome == "no-thread" else "room~member-a",
+    ):
+        out = (
+            await mw.awrap_tool_call(request, handler)
+            if asynchronous
+            else mw.wrap_tool_call(request, lambda _req: result)
+        )
+    assert out is result
+    path = (ws / "outbound/screenshots/screen.png").as_posix()
+    assert store.calls == (
+        [("room~member-a", [path], "member-a"), ("room", [path], "member-a")]
+        if outcome == "success"
+        else []
+    )
 
 
 def test_middleware_rewrites_plan_write_onto_workspace() -> None:
