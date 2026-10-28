@@ -153,6 +153,22 @@ The one remaining dead end is deliberate: an admin who *deletes* the credential
 from there is a server-side operation (`octop user passwd`), not something the
 shell can do on its own.
 
+## WebSocket relay (shell-owned)
+
+`octop://app` cannot carry a WebSocket handshake: the upgrade never reaches
+`protocol.handle`, and `webRequest.onBeforeRequest` drops `redirectURL` for a
+`webSocket` request. So the shell runs a relay on `127.0.0.1`
+(`main/protocol/ws-relay.ts`) and the page dials
+`ws://127.0.0.1:<ephemeral>/<per-launch path segment>/api/<path>?<query>`,
+learning both from `window.octopDesktop.wsEndpoint()` — never the sidecar port,
+which the relay re-reads per connection. Requests without the exact path segment,
+or with any `Origin` other than `octop://app`, are refused with `403`; a sidecar
+that is down gives `503` and an unreachable one `504`, while a backend refusal
+(401/404) is passed through instead of being turned into a tunnel. The JWT still
+travels in the query, exactly as it does in a browser — the relay injects
+nothing. Outside the shell there is no bridge, so `resolveWsUrl()` falls back to
+the page origin and every hook works in both modes.
+
 ## Update flow (shell-owned)
 
 `openUpdateConfirmation()` is the only update entry point the renderer has, and
