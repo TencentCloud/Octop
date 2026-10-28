@@ -1042,10 +1042,11 @@
 }
 
 .marketBlockTitle {
+  flex-shrink: 0;
   font-size: 14px;
-  font-weight: 600;
   line-height: 22px;
   color: var(--fn-text-primary);
+  font-variant-numeric: tabular-nums;
 }
 
 .marketBlockHint {
@@ -1055,8 +1056,8 @@
   color: var(--fn-text-tertiary);
 }
 
-.marketCatalogTitle {
-  margin-top: 20px;
+.marketSearchPublishedGrid {
+  padding-bottom: 0;
 }
 
 .marketScenePill {
@@ -1115,10 +1116,6 @@
   .agentCardName {
     flex: 0 1 auto;
     min-width: 0;
-  }
-
-  .expertInstalledLabel {
-    margin-left: 0;
   }
 }
 

@@ -43,6 +43,7 @@ async def test_publish_list_install_and_unpublish_preserves_installed_fork(
     expert = published.json()
     expert_id = expert["id"]
     assert expert["creator_username"] == "publish_owner"
+    assert isinstance(expert["skill_count"], int)
 
     listed = await client.get("/api/experts/published", headers=peer_auth)
     assert listed.status_code == 200, listed.text

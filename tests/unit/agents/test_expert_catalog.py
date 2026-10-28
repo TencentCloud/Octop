@@ -22,6 +22,22 @@ def _write_manifest(expert_dir: Path, *, extra: dict | None = None) -> None:
     )
 
 
+def test_skill_count_in_expert_dir_counts_skill_md(tmp_path: Path) -> None:
+    from octop.infra.agents.experts.catalog import skill_count_in_expert_dir
+
+    expert_dir = tmp_path / "expert"
+    (expert_dir / "skills" / "one").mkdir(parents=True)
+    (expert_dir / "skills" / "one" / "SKILL.md").write_text("# One", encoding="utf-8")
+    (expert_dir / "skills" / "notes.md").write_text("not a skill", encoding="utf-8")
+    (expert_dir / ".octop" / "skills" / "builtin").mkdir(parents=True)
+    (expert_dir / ".octop" / "skills" / "builtin" / "SKILL.md").write_text(
+        "# Builtin", encoding="utf-8"
+    )
+
+    assert skill_count_in_expert_dir(expert_dir) == 1
+    assert skill_count_in_expert_dir(tmp_path / "missing") == 0
+
+
 def test_expert_discovers_seed_paths(tmp_path: Path) -> None:
     from octop.infra.agents.experts.catalog import ExpertCatalog
 
