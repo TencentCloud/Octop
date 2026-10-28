@@ -23,6 +23,10 @@ from octop.infra.utils.ssrf_guard import (
 )
 
 
+class OAuthRefreshRejected(ValueError):
+    """The authorization server rejected the refresh grant or client registration."""
+
+
 def mcp_oauth_kinds() -> frozenset[str]:
     return mcp_oauth_remote_kinds()
 
@@ -223,6 +227,16 @@ async def refresh_access_token(
     try:
         r.raise_for_status()
     except httpx.HTTPStatusError as exc:
+        try:
+            error = r.json().get("error")
+        except (ValueError, AttributeError):
+            error = None
+        if r.status_code in (400, 401) and error in (
+            "invalid_grant",
+            "invalid_client",
+            "unauthorized_client",
+        ):
+            raise OAuthRefreshRejected("OAuth refresh grant rejected") from exc
         raise ValueError(f"token refresh failed ({_http_error_detail(r)})") from exc
     body = r.json()
     if not isinstance(body, dict) or not body.get("access_token"):
