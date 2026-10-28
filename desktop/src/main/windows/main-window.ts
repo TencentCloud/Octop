@@ -1,5 +1,8 @@
 import { BrowserWindow } from "electron";
 
+import { IPC_CHANNELS } from "../../shared/ipc-contract";
+import { windowChrome, type WindowChromeTheme } from "./chrome";
+
 /**
  * The real Dashboard window loads ``octop://app/`` — the custom privileged
  * protocol — with the strictest sandbox flags (§5.3). Static assets are served
@@ -9,15 +12,17 @@ import { BrowserWindow } from "electron";
 export function createMainWindow(options: {
   preload: string;
   backgroundColor: string;
+  /** Native-control theme; the page's own theme is reported over IPC later. */
+  theme: WindowChromeTheme;
   onNavigate: (url: string) => void;
 }): BrowserWindow {
   const win = new BrowserWindow({
     width: 1280,
     height: 800,
     show: false,
-    // The Dashboard draws the whole chrome (traffic lights / caption buttons)
-    // and drags via `-webkit-app-region`, so the native frame is off.
-    frame: false,
+    // The chrome is native (macOS traffic lights / Windows caption buttons), so
+    // the Dashboard only reserves space for it and drags via `app-region`.
+    ...windowChrome(options.theme.mode),
     backgroundColor: options.backgroundColor,
     webPreferences: {
       preload: options.preload,
@@ -39,6 +44,15 @@ export function createMainWindow(options: {
       options.onNavigate(url);
     }
   });
+
+  // macOS hides the traffic lights in full screen, so the page has to stop
+  // reserving room for them. Nothing else changes: the buttons stay native.
+  const sendFullscreen = (fullscreen: boolean) => {
+    if (win.isDestroyed() || win.webContents.isDestroyed()) return;
+    win.webContents.send(IPC_CHANNELS.windowChromeFullscreen, fullscreen);
+  };
+  win.on("enter-full-screen", () => sendFullscreen(true));
+  win.on("leave-full-screen", () => sendFullscreen(false));
 
   win.once("ready-to-show", () => win.show());
   void win.loadURL("octop://app/");

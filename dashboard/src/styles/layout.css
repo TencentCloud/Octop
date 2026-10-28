@@ -31,7 +31,8 @@ html {
   --safe-area-left: env(safe-area-inset-left, 0px);
 }
 
-/* Electron frameless drag: the element under the cursor must opt in. */
+/* Window dragging: the shell hides its titlebar but keeps the native buttons,
+   so the element under the cursor has to opt in to be a drag handle. */
 html[data-octop-desktop-chrome] .octop-desktop-drag {
   -webkit-app-region: drag;
   app-region: drag;
@@ -50,7 +51,7 @@ html[data-octop-desktop-chrome] [data-octop-no-drag] {
   app-region: no-drag;
 }
 
-/* Right-edge overlays sit under the frameless caption buttons unless inset. */
+/* Right-edge overlays sit under the native caption buttons unless inset. */
 html[data-octop-desktop-chrome] [data-octop-chrome-end-pad] {
   padding-inline-end: max(
     12px,

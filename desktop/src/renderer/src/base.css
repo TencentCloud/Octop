@@ -45,7 +45,23 @@ body {
   margin: 0;
   background: var(--surface);
   color: var(--text);
-  /* A frameless window has no chrome to grab, so nothing here is a drag handle. */
+  /* The titlebar is hidden, so nothing here is draggable by default. */
   cursor: default;
   overflow: hidden;
+}
+
+/*
+ * Grab strip for the shell's own pages. The window hides its titlebar and keeps
+ * only the native traffic lights / caption buttons, so without this the first
+ * thing the user sees could not be moved out of the way.
+ */
+.shell-drag-strip {
+  position: fixed;
+  inset-block-start: 0;
+  inset-inline: 0;
+  height: 32px;
+  z-index: 1;
+  -webkit-app-region: drag;
+  app-region: drag;
+  user-select: none;
 }

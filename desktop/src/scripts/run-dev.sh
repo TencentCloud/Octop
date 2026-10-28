@@ -51,9 +51,21 @@ if ((BUILD)); then
 
   bash "$SCRIPT_DIR/make-dev-runtime.sh" >/dev/null
 
-  # Build the Dashboard into the Python static dir if it isn't there yet.
+  # Build the Dashboard into the Python static dir when it is absent *or stale*.
+  # The shell serves that directory (OCTOP_DASHBOARD_DIR), so a bundle left over
+  # from an earlier checkout silently hides Dashboard changes — the old window
+  # chrome kept showing up next to the native one exactly that way.
   # The Dashboard is still npm-managed (its own package-lock.json).
-  if [[ ! -f "$DASHBOARD_DIR/index.html" ]]; then
+  dashboard_stale() {
+    local built="$DASHBOARD_DIR/index.html"
+    [[ -f "$built" ]] || return 0
+    [[ -n "$(find "$REPO_ROOT/dashboard/src" \
+      "$REPO_ROOT/dashboard/index.html" \
+      "$REPO_ROOT/dashboard/vite.config.ts" \
+      -newer "$built" -print -quit 2>/dev/null)" ]]
+  }
+
+  if dashboard_stale; then
     echo "[dev] building dashboard…"
     ( cd "$REPO_ROOT/dashboard" && npm run build )
   fi

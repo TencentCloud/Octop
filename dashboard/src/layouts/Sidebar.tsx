@@ -43,6 +43,7 @@ import {
   chromeTopBandPx,
 } from "../utils/desktopChrome";
 import { useDesktopChromeStyle } from "../hooks/useDesktopChrome";
+import { useWindowFullscreen } from "../hooks/useWindowFullscreen";
 
 const NAV_GROUPS_STORAGE_KEY = "octop:sidebar-nav-groups";
 const LEGACY_COLLAPSED_GROUP_IDS: Record<string, string> = {
@@ -448,11 +449,13 @@ export default function Sidebar({
     ? publicUrl("logo_horizontal_white.png")
     : publicUrl("logo_horizontal_dark.png");
   const desktopChrome = useDesktopChromeStyle();
+  const windowFullscreen = useWindowFullscreen();
   /**
    * macOS traffic lights float above the sidebar, so it reserves a draggable
-   * band at the top instead of letting the brand row sit under them.
+   * band at the top instead of letting the brand row sit under them. Full
+   * screen hides the lights, so the band goes too.
    */
-  const chromeBand = chromeTopBandPx(desktopChrome);
+  const chromeBand = chromeTopBandPx(desktopChrome, windowFullscreen);
 
   const selectMinimalPane = useCallback(
     (pane: MinimalNavPane, opts?: { expand?: boolean }) => {

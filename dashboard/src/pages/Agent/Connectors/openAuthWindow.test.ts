@@ -14,7 +14,7 @@ const originalOpen = window.open;
 function stubDesktopBridge(): void {
   Object.defineProperty(window, "octopDesktop", {
     configurable: true,
-    value: { windowControls: vi.fn() },
+    value: { setWindowChrome: vi.fn() },
   });
 }
 

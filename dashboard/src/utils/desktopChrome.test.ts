@@ -11,7 +11,6 @@ import {
   DESKTOP_CHROME_HEIGHT,
   DESKTOP_DRAG_REGION_CLASS,
   DOCK_WINDOW_CONTROLS_PAD_PX,
-  emitDesktopWindowAction,
   resolveDesktopChromeStyle,
   titleRowEndPadding,
   titleRowStartPadding,
@@ -26,13 +25,11 @@ import { isDesktopShell } from "./desktopBridge";
 
 type BridgeHost = Window & { octopDesktop?: unknown };
 
-function stubBridge(): { windowControls: ReturnType<typeof vi.fn> } {
-  const windowControls = vi.fn();
+function stubBridge(): void {
   Object.defineProperty(window, "octopDesktop", {
     configurable: true,
-    value: { windowControls },
+    value: {},
   });
-  return { windowControls };
 }
 
 describe("desktopChrome", () => {
@@ -59,17 +56,20 @@ describe("desktopChrome", () => {
     ).toBe("mac");
   });
 
-  it("uses caption-button chrome on Windows and Linux", () => {
+  it("uses caption-button chrome on Windows", () => {
     expect(
       resolveDesktopChromeStyle(
         "Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/120.0.0.0",
       ),
     ).toBe("windows");
+  });
+
+  it("reserves nothing on Linux, which keeps its native window frame", () => {
     expect(
       resolveDesktopChromeStyle(
         "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36",
       ),
-    ).toBe("windows");
+    ).toBeNull();
   });
 
   it("puts the window buttons on the conventional edge per platform", () => {
@@ -131,11 +131,13 @@ describe("desktopChrome", () => {
     expect(chromeTopBandPx("mac")).toBe(DESKTOP_CHROME_HEIGHT);
     expect(chromeTopBandPx("windows")).toBe(0);
     expect(chromeTopBandPx(null)).toBe(0);
+    // Full screen hides the traffic lights, so nothing is reserved there either.
+    expect(chromeTopBandPx("mac", true)).toBe(0);
     // A band smaller than the buttons would let them cover the brand row.
     expect(DESKTOP_CHROME_HEIGHT).toBeGreaterThanOrEqual(32);
   });
 
-  it("pads right-edge overlays away from frameless window controls", () => {
+  it("pads right-edge overlays away from the native caption buttons", () => {
     const css = readFileSync(
       resolve(__dirname, "../styles/layout.css"),
       "utf8",
@@ -146,7 +148,7 @@ describe("desktopChrome", () => {
     expect(css).toMatch(/padding-inline-end:\s*max\(/);
   });
 
-  it("drags frameless windows through the app-region CSS property", () => {
+  it("drags shell windows through the app-region CSS property", () => {
     const css = readFileSync(
       resolve(__dirname, "../styles/layout.css"),
       "utf8",
@@ -196,23 +198,5 @@ describe("desktopChrome", () => {
         "--window-controls-inset-end",
       ),
     ).toBe("");
-  });
-
-  it("maps window actions onto the preload bridge", () => {
-    const { windowControls } = stubBridge();
-
-    expect(emitDesktopWindowAction("minimise")).toBe(true);
-    expect(emitDesktopWindowAction("toggle-maximise")).toBe(true);
-    expect(emitDesktopWindowAction("close")).toBe(true);
-
-    expect(windowControls.mock.calls).toEqual([
-      ["minimize"],
-      ["maximize"],
-      ["close"],
-    ]);
-  });
-
-  it("reports no-op window actions in the browser", () => {
-    expect(emitDesktopWindowAction("close")).toBe(false);
   });
 });

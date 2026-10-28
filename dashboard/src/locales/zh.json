@@ -18,12 +18,6 @@
     "shared": "共享",
     "empty": "没有符合当前筛选的结果"
   },
-  "desktopChrome": {
-    "group": "窗口控制",
-    "minimize": "最小化",
-    "maximize": "最大化",
-    "close": "关闭"
-  },
   "avatarPicker": {
     "presets": {
       "skill": {

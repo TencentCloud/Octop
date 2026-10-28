@@ -10,13 +10,16 @@ import "./splash.css";
  */
 function Splash() {
   return (
-    <main className="splash" role="status" aria-live="polite">
-      <div className="splash__mark" aria-hidden="true">
-        <span className="splash__ring" />
-        <img className="splash__logo" src={markUrl} alt="" width={60} height={60} />
-      </div>
-      <p className="splash__text">正在启动 Octop…</p>
-    </main>
+    <>
+      <div className="shell-drag-strip" aria-hidden="true" />
+      <main className="splash" role="status" aria-live="polite">
+        <div className="splash__mark" aria-hidden="true">
+          <span className="splash__ring" />
+          <img className="splash__logo" src={markUrl} alt="" width={60} height={60} />
+        </div>
+        <p className="splash__text">正在启动 Octop…</p>
+      </main>
+    </>
   );
 }
 
