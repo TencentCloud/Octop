@@ -192,9 +192,9 @@ function PageShell({
         className={DESKTOP_NO_DRAG_CLASS}
         style={{
           flex: 1,
-          background: "var(--fn-bg-container, var(--fn-bg-elevated))",
+          background: "transparent",
           borderRadius: 8,
-          padding: contentPad,
+          padding: 0,
           paddingBottom: pinBody
             ? contentPad
             : `calc(${contentPad}px + ${safeBottom})`,

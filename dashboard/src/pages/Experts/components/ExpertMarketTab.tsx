@@ -324,6 +324,7 @@ export default function ExpertMarketTab({
                   <Button
                     size="small"
                     type="primary"
+                    className={styles.marketCreateBtn}
                     icon={<Download size={14} />}
                     onClick={(e) => {
                       e.stopPropagation();

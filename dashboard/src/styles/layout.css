@@ -16,7 +16,7 @@ body {
   overscroll-behavior: none;
   /* Override index.html boot gray (#f7f8fa) so iOS PWA letterboxing
      below 100dvh is not a stray gray strip. */
-  background: var(--fn-bg-layout, #f5f6f8);
+  background: var(--fn-bg-layout, #ffffff);
 }
 
 html {
@@ -309,6 +309,10 @@ html[data-theme="dark"] .octop-ant-checkbox-inner {
 }
 
 /* Tabs */
+html .octop-tabs .octop-tabs-tab.octop-tabs-tab-active .octop-tabs-tab-btn {
+  font-weight: 600;
+}
+
 html[data-theme="dark"] .ant-tabs-tab,
 html[data-theme="dark"] .octop-ant-tabs-tab {
   color: var(--fn-text-secondary) !important;

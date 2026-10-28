@@ -13,7 +13,7 @@ html[data-theme="light"] {
   --fn-bg-secondary: #f7f8fa;
   --fn-bg-tertiary: #f0f1f3;
   --fn-bg-elevated: #ffffff;
-  --fn-bg-layout: #f5f6f8;
+  --fn-bg-layout: #ffffff;
   --fn-bg-container: #ffffff;
   --fn-bg-hover: rgba(232, 93, 117, 0.04);
   --fn-bg-active: rgba(232, 93, 117, 0.08);
@@ -27,9 +27,9 @@ html[data-theme="light"] {
   --fn-bg-warning-light: #fffbeb;
   --fn-bg-info-light: #eff6ff;
   --fn-bg-glass: rgba(255, 255, 255, 0.8);
-  --fn-bg-sidebar: #ffffff;
+  --fn-bg-sidebar: #f9f9f9;
   --fn-bg-base: #ffffff;
-  --fn-bg-page: #f5f6f8;
+  --fn-bg-page: #ffffff;
   --fn-bg-quaternary: rgba(0, 0, 0, 0.03);
   --fn-bg-subtle: #f3f4f6;
   --fn-bg-secondary-hover: #f0f1f3;
@@ -156,12 +156,23 @@ html[data-theme="light"] {
 
   /* ---- Sidebar ---- */
   --fn-sidebar-width: 240px;
-  --fn-sidebar-bg: #ffffff;
+  --fn-sidebar-bg: #f9f9f9;
+  --fn-btn-solid-bg: #000000;
+  --fn-btn-solid-bg-hover: rgba(0, 0, 0, 0.8);
+  --fn-btn-solid-text: #ffffff;
+  --fn-btn-outline-bg: #ffffff;
+  --fn-btn-outline-bg-hover: #f9f9f9;
+  --fn-btn-outline-text: rgba(0, 0, 0, 0.7);
+  --fn-btn-outline-border: rgba(0, 0, 0, 0.08);
+  --fn-card-border-subtle: rgba(0, 0, 0, 0.08);
+  --fn-card-hover-bg: #f9f9f9;
+  --fn-card-desc-text: rgba(0, 0, 0, 0.5);
+  --fn-sidebar-item-text: rgba(0, 0, 0, 0.65);
   --fn-sidebar-border: #ebebeb;
   --fn-sidebar-item-hover: #f5f5f5;
-  --fn-sidebar-item-active-bg: #fde8ec;
+  --fn-sidebar-item-active-bg: #efefef;
   --fn-sidebar-item-active: rgba(232, 93, 117, 0.08);
-  --fn-sidebar-item-active-text: #e85d75;
+  --fn-sidebar-item-active-text: rgba(0, 0, 0, 0.9);
   --fn-sidebar-group-text: #b0b5be;
 
   /* ---- Header ---- */
@@ -338,6 +349,17 @@ html[data-theme="dark"] {
   /* ---- Sidebar ---- */
   --fn-sidebar-width: 240px;
   --fn-sidebar-bg: #141414;
+  --fn-btn-solid-bg: #ffffff;
+  --fn-btn-solid-bg-hover: rgba(255, 255, 255, 0.85);
+  --fn-btn-solid-text: #000000;
+  --fn-btn-outline-bg: transparent;
+  --fn-btn-outline-bg-hover: rgba(255, 255, 255, 0.06);
+  --fn-btn-outline-text: rgba(255, 255, 255, 0.7);
+  --fn-btn-outline-border: rgba(255, 255, 255, 0.12);
+  --fn-card-border-subtle: rgba(255, 255, 255, 0.08);
+  --fn-card-hover-bg: rgba(255, 255, 255, 0.04);
+  --fn-card-desc-text: rgba(255, 255, 255, 0.5);
+  --fn-sidebar-item-text: rgba(255, 255, 255, 0.65);
   --fn-sidebar-border: rgba(255, 255, 255, 0.06);
   --fn-sidebar-item-hover: rgba(255, 255, 255, 0.05);
   --fn-sidebar-item-active-bg: rgba(232, 93, 117, 0.14);

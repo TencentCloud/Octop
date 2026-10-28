@@ -26,17 +26,13 @@ import { message } from "@/utils/antdMessage";
 import {
   Cloudy,
   CopyPlus,
-  GraduationCap,
   LayoutGrid,
   List,
   Plus,
   RefreshCw,
   Search,
-  Store,
-  Users,
 } from "lucide-react";
 import PageShell from "../../layouts/PageShell";
-import TabLabel from "../../components/TabLabel";
 import StreamSetupGuide from "../../components/StreamSetupGuide/StreamSetupGuide";
 import { useIsMobile } from "../../hooks/useIsMobile";
 import { request } from "../../api/request";
@@ -974,28 +970,22 @@ export default function ExpertsPage() {
         items={[
           {
             key: "my",
-            label: (
-              <TabLabel icon={GraduationCap}>{t("experts.myExperts")}</TabLabel>
-            ),
+            label: t("experts.myExperts"),
             children: myExpertsContent,
           },
           {
             key: "teams",
-            label: <TabLabel icon={Users}>{t("experts.myTeams")}</TabLabel>,
+            label: t("experts.myTeams"),
             children: teamsContent,
           },
           {
             key: "library",
-            label: (
-              <TabLabel icon={CopyPlus}>{t("experts.expertLibrary")}</TabLabel>
-            ),
+            label: t("experts.expertLibrary"),
             children: libraryContent,
           },
           {
             key: "market",
-            label: (
-              <TabLabel icon={Store}>{t("experts.expertMarket")}</TabLabel>
-            ),
+            label: t("experts.expertMarket"),
             children: marketContent,
           },
         ]}

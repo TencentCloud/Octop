@@ -122,6 +122,7 @@ export default function AgentNotReadyScreen({
           ) : isModelError ? (
             <Button
               type="primary"
+              style={{ height: 36 }}
               icon={<Settings size={14} />}
               onClick={() => navigate("/admin/models")}
             >
