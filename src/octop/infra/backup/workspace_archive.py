@@ -155,7 +155,9 @@ def _clear_local_workspace(workspace_dir: Path) -> None:
     for child in workspace_dir.iterdir():
         if child.name in _SKIP_DIR_NAMES or child.name.startswith("."):
             continue
-        if child.is_dir():
+        # A symlink to a folder is removed as a link: rmtree refuses symlinks, and
+        # failing here would leave the workspace half-cleared and nothing imported.
+        if child.is_dir() and not child.is_symlink():
             shutil.rmtree(child)
         else:
             child.unlink()
