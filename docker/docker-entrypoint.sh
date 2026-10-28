@@ -155,9 +155,49 @@ octop_run_init() {
         >"$init_log" 2>&1
 }
 
+# Docker 默认 /dev/shm 为 64MB。桌面已打进镜像时，太小的话用户一点启用，Xvnc 就会失败。
+# 只提示，不阻止 Octop 本身启动。conf_dir 默认 /etc/octop-desktop，测试可传入临时目录。
+octop_warn_small_shm() {
+    local conf_dir="${1:-/etc/octop-desktop}"
+    local bytes
+    [ -d "$conf_dir" ] || return 0
+    bytes="$(df -B1 --output=size /dev/shm 2>/dev/null | awk 'NR==2 {print $1}')"
+    [ -n "${bytes:-}" ] || return 0
+    if [ "$bytes" -lt 536870912 ]; then
+        echo "[entrypoint] /dev/shm 只有 $((bytes / 1024 / 1024))MB。启用远程桌面需要约 1GB，请使用 docker run --shm-size=1g，或在 compose 中设置 shm_size: 1gb。" >&2
+    fi
+}
+
+# 部分 ARM 虚拟机（飞牛在 Parallels 上）会把 CPU 特性报高，OpenBLAS / onnxruntime 随后 SIGILL。
+# 基线 OpenBLAS 对真 ARM 只是少用一点新指令。探测失败只写日志，服务继续启动。
+octop_prepare_arm_runtime() {
+    local py log code
+    case "$(uname -m)" in
+        aarch64|arm64) ;;
+        *) return 0 ;;
+    esac
+    if [ -z "${OPENBLAS_CORETYPE:-}" ]; then
+        export OPENBLAS_CORETYPE=ARMV8
+    fi
+    py="/app/.venv/bin/python"
+    [ -x "$py" ] || return 0
+    log="$(mktemp)"
+    set +e
+    "$py" -c "import cv2, onnxruntime" >"$log" 2>&1
+    code=$?
+    set -e
+    if [ "$code" -eq 132 ] || grep -qi 'illegal instruction' "$log"; then
+        echo "[entrypoint] cv2/onnxruntime 在这台 CPU 上出现非法指令（退出码 ${code}）。知识库 OCR 和本地向量不可用。ARM 虚拟机上常见（issues #2190、#2301）。Octop 仍会启动。" >&2
+    fi
+    rm -f "$log"
+}
+
 octop_entrypoint_main() {
     local default_password="${OCTOP_DEFAULT_PASSWORD:-}"
     local init_log reason
+
+    octop_prepare_arm_runtime
+    octop_warn_small_shm
 
     if [ ! -f "$DB_FILE" ] && [ ! -f "$INIT_MARKER" ]; then
         echo "[entrypoint] 首次启动，正在初始化 Octop..."

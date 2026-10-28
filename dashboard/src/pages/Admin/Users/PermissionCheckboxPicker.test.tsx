@@ -9,8 +9,10 @@ vi.mock("react-pdf", () => ({
   pdfjs: { GlobalWorkerOptions: {} },
 }));
 
+import { Form } from "antd";
 import { preferencesApi } from "../../../api/modules/preferences";
 import {
+  CollapsiblePermissionsField,
   PermissionCheckboxPicker,
   type PermissionCatalogItem,
 } from "./UsersListPanel";
@@ -86,5 +88,43 @@ describe("PermissionCheckboxPicker", () => {
       expect(onChange).toHaveBeenCalledWith(["terminal", "browser"]);
     });
     expect(screen.queryByRole("button", { name: "Terminal" })).toBeNull();
+  });
+});
+
+describe("CollapsiblePermissionsField", () => {
+  beforeEach(() => {
+    vi.mocked(preferencesApi.get).mockResolvedValue({
+      sidebar_nav: null,
+    } as never);
+  });
+
+  it("stays collapsed until opened and still submits inherited permissions", async () => {
+    const user = userEvent.setup();
+    const onFinish = vi.fn();
+    render(
+      <Form initialValues={{ permissions: ["channels"] }} onFinish={onFinish}>
+        <CollapsiblePermissionsField catalog={CATALOG} />
+        <button type="submit">save</button>
+      </Form>,
+    );
+
+    const toggle = screen.getByRole("button", {
+      name: "adminUsers.colPermissions",
+    });
+    expect(toggle).toHaveAttribute("aria-expanded", "false");
+    expect(screen.queryByRole("button", { name: "Channels" })).toBeNull();
+
+    await user.click(screen.getByRole("button", { name: "save" }));
+    await waitFor(() => {
+      expect(onFinish).toHaveBeenCalledWith(
+        expect.objectContaining({ permissions: ["channels"] }),
+      );
+    });
+
+    await user.click(toggle);
+    expect(toggle).toHaveAttribute("aria-expanded", "true");
+    expect(
+      await screen.findByRole("button", { name: "Channels" }),
+    ).toBeTruthy();
   });
 });

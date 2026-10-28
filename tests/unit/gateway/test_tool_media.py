@@ -564,6 +564,46 @@ async def test_plain_text_media_invent_only_for_delivery_tools() -> None:
         assert frames[0]["kind"] == "image"
 
 
+def test_select_turn_tool_results_drops_history_after_a_live_call() -> None:
+    from octop.infra.gateway.media.tool_media import select_turn_tool_results
+
+    emitted: set[str] = set()
+    history = {
+        "type": "tool_result",
+        "messages": [
+            {"tool_call_id": "old-a", "name": "send_file_to_user", "content": "a"},
+            {"tool_call_id": "old-b", "name": "generate_image", "content": "b"},
+            {"tool_call_id": "live-d", "name": "send_file_to_user", "content": "d"},
+        ],
+    }
+    assert select_turn_tool_results(history, set(), emitted) is None
+    assert emitted == set()
+
+    kept = select_turn_tool_results(history, {"live-d"}, emitted)
+    assert kept is not None
+    assert [m["tool_call_id"] for m in kept["messages"]] == ["live-d"]
+
+    assert select_turn_tool_results(history, {"live-d"}, emitted) is None
+
+
+def test_select_turn_tool_results_reads_tool_message_objects() -> None:
+    from langchain_core.messages import ToolMessage
+
+    from octop.infra.gateway.media.tool_media import select_turn_tool_results
+
+    emitted: set[str] = set()
+    history = {
+        "type": "tool_result",
+        "messages": [
+            ToolMessage(content="old", name="send_file_to_user", tool_call_id="old-a"),
+            ToolMessage(content="new", name="send_file_to_user", tool_call_id="live-d"),
+        ],
+    }
+    kept = select_turn_tool_results(history, {"live-d"}, emitted)
+    assert kept is not None
+    assert [m.tool_call_id for m in kept["messages"]] == ["live-d"]
+
+
 def test_dedup_tool_result_messages_skips_replayed_ids() -> None:
     from octop.infra.gateway.media.tool_media import dedup_tool_result_messages
 
@@ -597,7 +637,7 @@ def test_dedup_tool_result_messages_skips_replayed_ids() -> None:
 
 @pytest.mark.asyncio
 async def test_iter_dashboard_attachment_frames_requires_live_tool_call() -> None:
-    """Historical Overwrite dumps before any tool_call_chunk must not push."""
+    """Historical tool results are pushed only when this turn opened their id."""
     from octop.infra.gateway.media.tool_media import iter_dashboard_attachment_frames
 
     with tempfile.TemporaryDirectory() as ws:
@@ -630,12 +670,26 @@ async def test_iter_dashboard_attachment_frames_requires_live_tool_call() -> Non
                 chunk,
                 agent_id="agent-1",
                 workspace=workspace,
-                saw_tool_call=False,
+                live_tool_call_ids=set(),
                 emitted_media_ids=emitted_ids,
                 emitted_attachment_keys=emitted_keys,
             )
         ]
         assert frames == []
+        assert emitted_ids == set()
+
+        frames_other_call = [
+            f
+            async for f in iter_dashboard_attachment_frames(
+                chunk,
+                agent_id="agent-1",
+                workspace=workspace,
+                live_tool_call_ids={"live-other"},
+                emitted_media_ids=emitted_ids,
+                emitted_attachment_keys=emitted_keys,
+            )
+        ]
+        assert frames_other_call == []
         assert emitted_ids == set()
 
         frames_live = [
@@ -644,7 +698,7 @@ async def test_iter_dashboard_attachment_frames_requires_live_tool_call() -> Non
                 chunk,
                 agent_id="agent-1",
                 workspace=workspace,
-                saw_tool_call=True,
+                live_tool_call_ids={"old-1"},
                 emitted_media_ids=emitted_ids,
                 emitted_attachment_keys=emitted_keys,
             )
@@ -678,7 +732,7 @@ async def test_iter_dashboard_attachment_frames_requires_live_tool_call() -> Non
                 replay,
                 agent_id="agent-1",
                 workspace=workspace,
-                saw_tool_call=True,
+                live_tool_call_ids={"old-1", "new-2"},
                 emitted_media_ids=emitted_ids,
                 emitted_attachment_keys=emitted_keys,
             )
@@ -696,3 +750,194 @@ def test_attachment_frame_dedup_key_prefers_path() -> None:
         == "path:outbound/a.png"
     )
     assert attachment_frame_dedup_key({"preview_url": "/api/x"}) == "url:/api/x"
+
+
+@pytest.mark.asyncio
+async def test_block_to_content_part_reads_workspace_relative_image() -> None:
+    import base64
+
+    from octop_gateway.models import ImageContent
+
+    from octop.infra.gateway.media.tool_media import block_to_content_part
+
+    with tempfile.TemporaryDirectory() as ws:
+        workspace = _workspace(ws)
+        payload = b"jpeg-bytes"
+        await workspace.aupload_bytes("generated/images/a.jpg", payload)
+        part = await block_to_content_part(
+            {
+                "type": "image",
+                "filename": "a.jpg",
+                "source": {
+                    "type": "url",
+                    "url": "generated/images/a.jpg",
+                    "media_type": "image/jpeg",
+                },
+            },
+            workspace=workspace,
+        )
+        assert isinstance(part, ImageContent)
+        assert part.url == ""
+        assert part.data == base64.b64encode(payload).decode("ascii")
+        assert part.mime_type == "image/jpeg"
+
+        leading = await block_to_content_part(
+            {
+                "type": "image",
+                "source": {"type": "url", "url": "/generated/images/a.jpg"},
+            },
+            workspace=workspace,
+        )
+        assert isinstance(leading, ImageContent)
+        assert leading.data == base64.b64encode(payload).decode("ascii")
+        assert leading.url == ""
+
+
+@pytest.mark.asyncio
+async def test_block_to_content_part_drops_unsafe_paths_and_keeps_http() -> None:
+    from octop_gateway.models import ImageContent
+
+    from octop.infra.gateway.media.tool_media import block_to_content_part
+
+    with tempfile.TemporaryDirectory() as ws:
+        workspace = _workspace(ws)
+        missing = await block_to_content_part(
+            {
+                "type": "image",
+                "source": {"type": "url", "url": "generated/images/missing.jpg"},
+            },
+            workspace=workspace,
+        )
+        assert missing is None
+        escaped = await block_to_content_part(
+            {"type": "image", "source": {"type": "url", "url": "../../etc/passwd"}},
+            workspace=workspace,
+        )
+        assert escaped is None
+        remote = await block_to_content_part(
+            {
+                "type": "image",
+                "source": {
+                    "type": "url",
+                    "url": "https://example.com/a.jpg",
+                    "media_type": "image/jpeg",
+                },
+            },
+            workspace=workspace,
+        )
+        assert isinstance(remote, ImageContent)
+        assert remote.url == "https://example.com/a.jpg"
+        assert not remote.data
+
+
+def _image_block(filename: str) -> list[dict[str, object]]:
+    return [
+        {
+            "type": "image",
+            "filename": filename,
+            "source": {
+                "type": "url",
+                "url": f"generated/images/{filename}",
+                "media_type": "image/jpeg",
+            },
+        }
+    ]
+
+
+@pytest.mark.asyncio
+async def test_project_stream_sends_only_this_turn_relative_image() -> None:
+    """Full-history tool results must not replay prior images onto IM."""
+    import base64
+    from types import SimpleNamespace
+
+    from langchain_core.messages import ToolMessage
+    from octop_gateway.models import ImageContent, MessageEventType
+
+    from octop.infra.gateway.process.stream_project import project_stream
+
+    with tempfile.TemporaryDirectory() as ws:
+        workspace = _default_virtual_workspace(ws)
+        old_bytes = b"old-image"
+        new_bytes = b"new-image"
+        await workspace.aupload_bytes("generated/images/old.jpg", old_bytes)
+        await workspace.aupload_bytes("generated/images/new.jpg", new_bytes)
+        old = ToolMessage(
+            content=_image_block("old.jpg"),
+            name="send_file_to_user",
+            tool_call_id="old-a",
+        )
+        live = ToolMessage(
+            content=_image_block("new.jpg"),
+            name="send_file_to_user",
+            tool_call_id="live-d",
+        )
+
+        async def _stream(*_args: object, **_kwargs: object):
+            yield {"type": "tool_result", "messages": [old]}
+            yield {
+                "type": "tool_call_chunk",
+                "id": "live-d",
+                "name": "send_file_to_user",
+                "args": "{}",
+                "index": 0,
+            }
+            yield {"type": "tool_result", "messages": [old, live]}
+
+        manager = SimpleNamespace(
+            stream=_stream,
+            get_agent=lambda _agent_id: SimpleNamespace(workspace=workspace),
+        )
+        events = [event async for event in project_stream(manager, "agent-1", {})]
+        images = [
+            part
+            for event in events
+            if event.type == MessageEventType.MESSAGE
+            for part in event.content
+            if isinstance(part, ImageContent)
+        ]
+        assert len(images) == 1
+        assert images[0].url == ""
+        assert images[0].data == base64.b64encode(new_bytes).decode("ascii")
+
+
+@pytest.mark.asyncio
+async def test_project_stream_drops_media_when_tool_call_has_no_id() -> None:
+    from types import SimpleNamespace
+
+    from langchain_core.messages import ToolMessage
+    from octop_gateway.models import ImageContent, MessageEventType
+
+    from octop.infra.gateway.process.stream_project import project_stream
+
+    with tempfile.TemporaryDirectory() as ws:
+        workspace = _workspace(ws)
+        await workspace.aupload_bytes("generated/images/new.jpg", b"new-image")
+        live = ToolMessage(
+            content=_image_block("new.jpg"),
+            name="send_file_to_user",
+            tool_call_id="live-d",
+        )
+
+        async def _stream(*_args: object, **_kwargs: object):
+            yield {
+                "type": "tool_call_chunk",
+                "id": "",
+                "name": "send_file_to_user",
+                "args": "{}",
+                "index": 0,
+            }
+            yield {"type": "tool_result", "messages": [live]}
+
+        manager = SimpleNamespace(
+            stream=_stream,
+            get_agent=lambda _agent_id: SimpleNamespace(workspace=workspace),
+        )
+        events = [event async for event in project_stream(manager, "agent-1", {})]
+        images = [
+            part
+            for event in events
+            if event.type == MessageEventType.MESSAGE
+            for part in event.content
+            if isinstance(part, ImageContent)
+        ]
+        assert images == []
