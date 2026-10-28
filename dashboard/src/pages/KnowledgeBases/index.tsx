@@ -282,6 +282,8 @@ export default function KnowledgeBasesPage() {
   const isMobile = useIsMobile();
   const timeZone = useServerTimezone();
   const user = useCurrentUser();
+  const canCreateBase =
+    userCan(user, "knowledge_bases") && userCan(user, "knowledge_bases:create");
   const canConfigureKb = userCan(user, "knowledge_settings");
   const { viewMode, setViewMode, showCardView } = useCardTableView(
     loadDocsViewMode(),
@@ -1045,6 +1047,7 @@ export default function KnowledgeBasesPage() {
   };
 
   const openCreate = () => {
+    if (!canCreateBase) return;
     if (atBaseLimit) {
       message.warning(
         t("knowledgeBases.baseLimitReached", {
@@ -1085,6 +1088,7 @@ export default function KnowledgeBasesPage() {
   };
 
   const saveBase = async () => {
+    if (!editingBaseId && !canCreateBase) return;
     const values = await baseForm.validateFields();
     if (baseVisibility === "groups" && baseGroupIds.length === 0) {
       message.error(t("resourceVisibility.needGroup"));
@@ -2073,12 +2077,16 @@ export default function KnowledgeBasesPage() {
                 detail: t("knowledgeBases.emptyGuideStepShareDetail"),
               },
             ]}
-            primaryAction={{
-              label: t("knowledgeBases.create"),
-              onClick: openCreate,
-              icon: <Plus size={14} />,
-              disabled: atBaseLimit,
-            }}
+            primaryAction={
+              canCreateBase
+                ? {
+                    label: t("knowledgeBases.create"),
+                    onClick: openCreate,
+                    icon: <Plus size={14} />,
+                    disabled: atBaseLimit,
+                  }
+                : undefined
+            }
           />
         </div>
       ) : (
@@ -2100,14 +2108,16 @@ export default function KnowledgeBasesPage() {
                 </span>
               </div>
               <div className={styles.listActions}>
-                <Button
-                  type="primary"
-                  icon={<Plus size={15} />}
-                  disabled={!usable || atBaseLimit}
-                  onClick={openCreate}
-                >
-                  {t("knowledgeBases.create")}
-                </Button>
+                {canCreateBase && (
+                  <Button
+                    type="primary"
+                    icon={<Plus size={15} />}
+                    disabled={!usable || atBaseLimit}
+                    onClick={openCreate}
+                  >
+                    {t("knowledgeBases.create")}
+                  </Button>
+                )}
                 <Tooltip title={t("common.refresh")}>
                   <Button
                     icon={<RefreshCw size={15} />}
@@ -3230,7 +3240,7 @@ export default function KnowledgeBasesPage() {
           editingBaseId ? "knowledgeBases.edit" : "knowledgeBases.create",
         )}
         placement="right"
-        open={baseDrawerOpen}
+        open={baseDrawerOpen && (Boolean(editingBaseId) || canCreateBase)}
         onClose={() => setBaseDrawerOpen(false)}
         width={isMobile ? "100%" : 480}
         destroyOnHidden

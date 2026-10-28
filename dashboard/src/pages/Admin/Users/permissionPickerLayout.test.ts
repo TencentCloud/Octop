@@ -19,6 +19,7 @@ const CATALOG = [
   "connector_custom",
   "skill_packages",
   "knowledge_bases",
+  "knowledge_bases:create",
   "bridge",
   "terminal",
   "browser",
@@ -138,7 +139,11 @@ describe("buildPermissionPickerGroups", () => {
             kind: "page",
             id: "knowledge-bases",
             title: "nav.knowledgeBases",
-            keys: ["knowledge_bases", "knowledge_settings"],
+            keys: [
+              "knowledge_bases",
+              "knowledge_bases:create",
+              "knowledge_settings",
+            ],
           },
           {
             kind: "chips",
