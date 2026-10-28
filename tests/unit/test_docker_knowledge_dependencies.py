@@ -34,3 +34,9 @@ def test_fnos_source_dockerfile_installs_knowledge_extras() -> None:
     dockerfile = (repo / "fnos" / "docker" / "Dockerfile").read_text(encoding="utf-8")
     assert ".[desktop,local-embedding,knowledge-ocr]" in dockerfile
     assert "import cv2, fastembed, huggingface_hub, rapidocr, onnxruntime, pymupdf" in dockerfile
+
+
+def test_docker_images_install_calc() -> None:
+    repo = Path(__file__).resolve().parents[2]
+    for name in ("docker/Dockerfile", "fnos/docker/Dockerfile"):
+        assert "libreoffice-calc-nogui" in (repo / name).read_text(encoding="utf-8")

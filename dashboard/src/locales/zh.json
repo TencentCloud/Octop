@@ -211,6 +211,7 @@
     "KNOWLEDGE_FEATURE_DISABLED": "管理员尚未启用知识库功能。",
     "KNOWLEDGE_PREREQUISITES_RESTART_REQUIRED": "知识库的向量模型或依赖已安装，但当前进程还加载不到，需要重启服务后生效。",
     "KNOWLEDGE_PREREQUISITES_FAILED": "知识库的向量模型或依赖尚未就绪。",
+    "KNOWLEDGE_SPREADSHEET_NOT_READY": "表格预览尚未就绪，请等待解析完成或重新解析该文件。",
     "KNOWLEDGE_NOT_FOUND": "未找到知识库或文档。",
     "KNOWLEDGE_FORBIDDEN": "您没有此知识库的访问权限。",
     "KNOWLEDGE_DOC_LIMIT": "每个知识库最多可包含 100 个文档。",

@@ -93,6 +93,7 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
         build-essential \
         libffi-dev \
         libgl1 \
+        libreoffice-calc-nogui \
         libglib2.0-0 \
         curl \
         git \

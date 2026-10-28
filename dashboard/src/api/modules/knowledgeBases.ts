@@ -320,7 +320,7 @@ export const knowledgeBasesApi = {
       `/knowledge-bases/${id}/documents/${documentId}/preview`,
     ),
 
-  /** Authenticated original-file bytes (download or preview). */
+  /** Original upload for downloads; recalculated spreadsheet copy for previews. */
   fetchDocumentFile: (
     id: string,
     documentId: string,

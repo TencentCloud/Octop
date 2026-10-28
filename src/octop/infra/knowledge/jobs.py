@@ -7,12 +7,14 @@ from typing import Any
 
 from octop.infra.knowledge.chunk import chunk_text
 from octop.infra.knowledge.embed import embed_knowledge_texts
-from octop.infra.knowledge.files import document_path
+from octop.infra.knowledge.files import document_path, recalculated_document_path
 from octop.infra.knowledge.gate import assert_knowledge_usable
 from octop.infra.knowledge.index import KnowledgeIndex
 from octop.infra.knowledge.ocr import optional_ocr_extractor
 from octop.infra.knowledge.params import get_advanced_settings
 from octop.infra.knowledge.parse import parse_document
+from octop.infra.knowledge.spreadsheets import prepare_spreadsheet
+from octop.infra.utils.locale import resolve_user_locale
 
 # Parsing/OCR also consumes memory; only one document should be in flight.
 INDEX_CONCURRENCY = 1
@@ -43,20 +45,31 @@ def process_document(services: Any, kb_id: str, doc_id: str) -> None:
     if document.is_dir:
         return
     repo.update_document(doc_id, status="processing", error_message="")
+    derived = recalculated_document_path(kb_id, doc_id)
     try:
-        path = document_path(kb_id, doc_id, document.filename)
+        path = prepare_spreadsheet(
+            document_path(kb_id, doc_id, document.filename),
+            derived,
+            locale=resolve_user_locale(
+                user_repo=getattr(services, "user_repo", None), user_id=base.owner_user_id
+            ),
+        )
         text = parse_document(path, ocr=optional_ocr_extractor(services))
         knobs = get_advanced_settings(services.settings_repo.get)
         chunks = chunk_text(text, size=knobs["chunk_size"], overlap=knobs["chunk_overlap"])
         if not (text or "").strip() or not chunks:
             raise ValueError("knowledge document has no extractable text")
         embeddings = embed_knowledge_texts(services, chunks)
+        if repo.get_document(doc_id) is None:
+            derived.unlink(missing_ok=True)
+            return
         KnowledgeIndex(kb_id).replace_doc_chunks(doc_id, chunks, embeddings)
         dimension = len(embeddings[0]) if embeddings else 0
         repo.update_document(doc_id, status="ready", error_message="", chunk_count=len(chunks))
         if dimension and base.embedding_dim != dimension:
             repo.update_base(kb_id, embedding_dim=dimension)
     except Exception as exc:
+        derived.unlink(missing_ok=True)
         repo.update_document(doc_id, status="failed", error_message=str(exc), chunk_count=0)
         raise
 
