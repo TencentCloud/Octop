@@ -346,7 +346,7 @@ async def fetch_openai_compatible_models(
             "error": "response is not OpenAI-compatible (expected {data: [{id, …}]})",
         }
 
-    models: list[dict[str, str]] = []
+    models: list[dict[str, Any]] = []
     seen: set[str] = set()
     for item in data:
         if not isinstance(item, dict):
@@ -358,6 +358,43 @@ async def fetch_openai_compatible_models(
         if mid in seen:
             continue
         seen.add(mid)
-        models.append({"id": mid, "name": mid})
+        models.append(_openai_model_entry(mid, item))
     models.sort(key=lambda m: m["id"])
     return {"ok": True, "models": models}
+
+
+def _positive_int(value: Any) -> int | None:
+    """Return ``value`` when it is a positive int (bools are rejected)."""
+    if isinstance(value, bool) or not isinstance(value, int):
+        return None
+    return value if value > 0 else None
+
+
+def _openai_model_entry(mid: str, item: dict[str, Any]) -> dict[str, Any]:
+    """Build a model entry, extending it with KVMem metadata when present."""
+    entry: dict[str, Any] = {"id": mid, "name": mid}
+    kvmem = item.get("kvmem")
+    if not isinstance(kvmem, dict):
+        return entry
+    try:
+        context_length = _positive_int(item.get("context_length"))
+        if context_length is not None:
+            entry["context_window"] = context_length
+        max_output_tokens = _positive_int(item.get("max_output_tokens"))
+        if max_output_tokens is not None:
+            entry["max_tokens"] = max_output_tokens
+        input_modalities = item.get("input")
+        if isinstance(input_modalities, list) and all(
+            isinstance(m, str) for m in input_modalities
+        ):
+            entry["input"] = list(input_modalities)
+        api_mode = item.get("api_mode")
+        if isinstance(api_mode, str) and api_mode.strip():
+            entry["api_mode"] = api_mode
+        reasoning = kvmem.get("reasoning")
+        if isinstance(reasoning, dict):
+            entry["reasoning"] = True
+            entry["reasoning_config"] = reasoning
+    except Exception:  # noqa: BLE001 - metadata must never break model listing
+        logger.debug("failed to map kvmem metadata for model %s", mid, exc_info=True)
+    return entry

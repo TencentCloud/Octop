@@ -173,6 +173,33 @@ class TeamManager:
         uid = _octop_user_id(call.user_id)
         group = self._is_group_dispatch(call)
         extra = self._member_runtime(call)
+        # Inherit host agent's MCP tools + craft permission mode so the
+        # sub-agent sees the same tool surface as its caller. Ask/Plan mode
+        # already blocks ``call_agent`` / ``ask_agent`` through the harness
+        # allowlist, so a reachable host is always in craft mode here.
+        host_row = self._agent_manager.get_row(call.from_agent_id)
+        if host_row is not None:
+            host_mcp = getattr(host_row, "mcp_servers", None)
+            if host_mcp:
+                # AgentRow.mcp_servers may be a JSON string or list
+                if isinstance(host_mcp, str):
+                    try:
+                        import json as _json
+
+                        parsed = _json.loads(host_mcp)
+                        if isinstance(parsed, list):
+                            host_mcp = [str(x) for x in parsed]
+                    except Exception:  # noqa: BLE001 — non-fatal
+                        host_mcp = None
+                if isinstance(host_mcp, list) and host_mcp:
+                    if extra is None:
+                        extra = {}
+                    extra["mcp_servers"] = list(host_mcp)
+        # conversation_mode=craft is always safe here: ask/plan callers
+        # cannot invoke sub-agents (the harness allowlist strips call_agent).
+        if extra is None:
+            extra = {}
+        extra["conversation_mode"] = "craft"
         question = ""
         dispatch_message = None
         if group:

@@ -122,3 +122,33 @@ def test_stamp_ask_clears_skills_and_mcp() -> None:
     assert cfg["conversation_mode"] == "ask"
     assert cfg["conversation_mode_extra_read_tools"] == list(HOST_READ_TOOLS)
     assert cfg["skills"] == []
+
+
+def test_stamp_craft_clears_stale_plan_configurable() -> None:
+    """Plan→craft switch must not leave empty mcp_servers / skills in configurable."""
+    request: dict[str, object] = {
+        # Top-level values already restored by the caller
+        "skills": ["docker"],
+        "mcp_servers": ["github", "baidu"],
+        # But configurable is polluted by a prior plan-mode stamping
+        "configurable": {
+            "conversation_mode": "plan",
+            "conversation_mode_extra_read_tools": list(HOST_READ_TOOLS),
+            "skills": [],
+            "mcp_servers": [],
+            "mcp_use_default": True,
+            "session_key": "sk-keep-me",
+        },
+    }
+    stamp_conversation_mode(request, "craft")
+    assert request["conversation_mode"] == "craft"
+    cfg = request["configurable"]
+    assert isinstance(cfg, dict)
+    assert cfg["conversation_mode"] == "craft"
+    # ask/plan exclusive keys must be gone
+    assert "conversation_mode_extra_read_tools" not in cfg
+    assert "mcp_servers" not in cfg
+    assert "skills" not in cfg
+    assert "mcp_use_default" not in cfg
+    # unrelated keys are preserved
+    assert cfg.get("session_key") == "sk-keep-me"

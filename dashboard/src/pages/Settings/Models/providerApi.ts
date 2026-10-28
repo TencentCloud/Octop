@@ -1,4 +1,5 @@
 import { request } from "../../../api/request";
+import type { ReasoningCapability } from "../../../api/types";
 
 export interface TestProviderDraftParams {
   name: string;
@@ -50,6 +51,12 @@ export interface FetchProviderModelsParams {
 export interface FetchedProviderModel {
   id: string;
   name: string;
+  context_window?: number;
+  max_tokens?: number;
+  input?: string[];
+  reasoning?: boolean;
+  reasoning_config?: ReasoningCapability | null;
+  api_mode?: string;
 }
 
 export interface FetchProviderModelsResult {

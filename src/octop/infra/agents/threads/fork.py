@@ -8,6 +8,7 @@ forked thread without prefilling the previous user question.
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 from typing import Any
 
@@ -135,24 +136,118 @@ def find_assistant_fork_index(
     raise OctopError(ErrorCode.NOT_FOUND, "assistant message not found in thread")
 
 
-async def load_checkpoint_messages(harness: Any, thread_id: str) -> list[Any]:
-    """Return the full checkpoint transcript (oldest first)."""
+async def load_checkpoint_messages(
+    harness: Any,
+    thread_id: str,
+    *,
+    thread_message_repo: Any | None = None,
+) -> list[Any]:
+    """Return the full checkpoint transcript (oldest first).
+
+    Fallback chain when checkpoint storage is empty/missing (e.g. PostgreSQL
+    control plane switch or incomplete backup restore):
+      1. graph.aget_state → state.values["messages"]
+      2. harness.aget_history (LangGraph history API)
+      3. thread_message_repo.range_rows → thread_messages table row
+    """
+    from langchain_core.messages import messages_from_dict  # noqa: PLC0415
+
+    # -- (1) checkpoint via aget_state --
     graph = getattr(harness, "graph", None)
     if graph is not None and hasattr(graph, "aget_state"):
         try:
             state = await graph.aget_state({"configurable": {"thread_id": thread_id}})
             raw = list((state.values or {}).get("messages") or []) if state is not None else []
             if raw:
+                logger.info(
+                    "fork: loaded %d messages via graph.aget_state for thread=%s",
+                    len(raw),
+                    thread_id,
+                )
                 return raw
+            logger.warning(
+                "fork: graph.aget_state returned empty messages for thread=%s (state.values keys: %s)",
+                thread_id,
+                list((state.values or {}).keys()) if state is not None else "None",
+            )
         except Exception:
             logger.warning(
                 "fork: graph.aget_state failed for thread=%s",
                 thread_id,
                 exc_info=True,
             )
+
+    # -- (2) LangGraph history API --
     aget_history = getattr(harness, "aget_history", None)
     if aget_history is not None:
-        return list(await aget_history(thread_id, limit=_FORK_HISTORY_LIMIT))
+        try:
+            msgs = list(await aget_history(thread_id, limit=_FORK_HISTORY_LIMIT))
+            if msgs:
+                logger.info(
+                    "fork: loaded %d messages via harness.aget_history for thread=%s",
+                    len(msgs),
+                    thread_id,
+                )
+                return msgs
+            logger.warning("fork: harness.aget_history returned empty for thread=%s", thread_id)
+        except Exception:
+            logger.warning(
+                "fork: harness.aget_history failed for thread=%s",
+                thread_id,
+                exc_info=True,
+            )
+
+    # -- (3) thread_messages business table (backup recovery fallback) --
+    if thread_message_repo is not None:
+        try:
+            head = thread_message_repo.head(thread_id)
+            if head > 0:
+                limit_head = min(head, _FORK_HISTORY_LIMIT)
+                rows = thread_message_repo.range_rows(thread_id, 0, limit_head)
+                converted: list[Any] = []
+                for row in rows:
+                    try:
+                        msg_json = json.loads(row.message_json) if row.message_json else {}
+                        restored = messages_from_dict([msg_json])
+                        if restored:
+                            converted.append(restored[0])
+                    except Exception:
+                        logger.debug(
+                            "fork: failed to deserialize message seq=%d role=%s for thread=%s",
+                            row.seq,
+                            row.role,
+                            thread_id,
+                        )
+                if converted:
+                    logger.info(
+                        "fork: loaded %d messages via thread_messages table for thread=%s "
+                        "(checkpoint storage was empty/missing)",
+                        len(converted),
+                        thread_id,
+                    )
+                    return converted
+                logger.warning(
+                    "fork: thread_messages table had %d rows but 0 converted messages for thread=%s",
+                    len(rows),
+                    thread_id,
+                )
+            else:
+                logger.warning(
+                    "fork: thread_messages table has no rows for thread=%s (head=0)",
+                    thread_id,
+                )
+        except Exception:
+            logger.warning(
+                "fork: thread_message_repo fallback failed for thread=%s",
+                thread_id,
+                exc_info=True,
+            )
+
+    logger.warning(
+        "fork: all message-loading paths exhausted for thread=%s — "
+        "checkpoint empty, history empty, thread_messages unavailable",
+        thread_id,
+    )
     return []
 
 
@@ -211,7 +306,7 @@ async def fork_dashboard_thread(
 
         messages = messages_from_dict(await archive.all_messages(source.thread_id, read_legacy))
     else:
-        messages = await load_checkpoint_messages(harness, source.thread_id)
+        messages = await load_checkpoint_messages(harness, source.thread_id, thread_message_repo=thread_message_repo)
     idx = find_assistant_fork_index(
         messages,
         message_id=message_id,
