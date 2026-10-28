@@ -44,8 +44,12 @@ def test_file_mode_is_0600(tmp_path: Path) -> None:
     assert mode == 0o600
 
 
-def _saved_sddl(path: Path) -> str:
-    """The file's SDDL via ``icacls /save`` — locale-independent."""
+def _saved_dacl(path: Path) -> str:
+    """The file's DACL in SDDL form via ``icacls /save`` — locale-independent.
+
+    Only the DACL is returned (the part after ``D:``), so the assertions below
+    do not depend on how an individual runner renders the owner section.
+    """
     import subprocess
 
     out = path.parent / "acl-save.txt"
@@ -57,10 +61,11 @@ def _saved_sddl(path: Path) -> str:
     raw = out.read_bytes()
     for encoding in ("utf-16", "mbcs"):
         try:
-            return raw.decode(encoding)
+            sddl = raw.decode(encoding)
         except (UnicodeDecodeError, LookupError):
             continue
-    return raw.decode("utf-8", errors="replace")
+        return sddl.split("D:", 1)[1]
+    return raw.decode("utf-8", errors="replace").split("D:", 1)[1]
 
 
 def test_windows_dacl_restricted_to_owner_system_admins(tmp_path: Path) -> None:
@@ -73,23 +78,26 @@ def test_windows_dacl_restricted_to_owner_system_admins(tmp_path: Path) -> None:
         pytest.skip("Windows NTFS DACL")
 
     ensure_password(tmp_path)
-    sddl = _saved_sddl(_file(tmp_path))
-    ace_part = sddl.split("D:", 1)[1]
+    dacl = _saved_dacl(_file(tmp_path))
 
     # Protected: no inherited ACEs flow in from the parent directory.
-    assert "D:P" in sddl and ";ID;" not in ace_part
-    # Only SYSTEM, Administrators and the owner SID; no Everyone/Users.
-    assert ";FA;;;SY)" in ace_part
-    assert ";FA;;;BA)" in ace_part
-    assert "S-1-5-21-" in ace_part
-    assert ";FA;;;WD)" not in ace_part
-    assert ";FA;;;BU)" not in ace_part
+    assert dacl.startswith("P")
+    assert ";ID;" not in dacl
+    # Exactly three full-control grantees: SYSTEM, Administrators, owner.
+    assert dacl.count(";FA;;;") == 3
+    assert ";FA;;;SY)" in dacl
+    assert ";FA;;;BA)" in dacl
+    # S-1-3-4 (Owner Rights) resolves to whoever owns the file, so the grant
+    # holds even when the owner is a group such as Administrators.
+    assert ";FA;;;OW)" in dacl
+    for trustee in ("WD", "BU", "AU"):  # Everyone / Users / Authenticated Users
+        assert f";FA;;;{trustee})" not in dacl
 
 
-def test_windows_chmod_alone_leaves_inherited_dacl(tmp_path: Path) -> None:
+def test_windows_chmod_alone_leaves_dacl_unprotected(tmp_path: Path) -> None:
     """Red control for the DACL test: ``os.open(0o600)`` + ``os.chmod`` do
-    not protect a file on Windows — the inherited ACEs stay, which is the
-    bug the fix addresses."""
+    not protect a file on Windows — the DACL keeps inheriting from the parent
+    directory, which is the bug the fix addresses."""
     if os.name != "nt":
         pytest.skip("Windows NTFS DACL")
 
@@ -102,9 +110,8 @@ def test_windows_chmod_alone_leaves_inherited_dacl(tmp_path: Path) -> None:
     os.close(fd)
     os.chmod(_file(tmp_path), 0o600)
 
-    sddl = _saved_sddl(_file(tmp_path))
-    ace_part = sddl.split("D:", 1)[1]
-    assert ";ID;" in ace_part  # inherited ACEs — not protected
+    dacl = _saved_dacl(_file(tmp_path))
+    assert not dacl.startswith("P")  # still inheriting: chmod never protects
 
 
 def test_read_password_returns_stored_value(tmp_path: Path) -> None:
