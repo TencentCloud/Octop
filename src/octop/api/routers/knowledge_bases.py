@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+import asyncio
 import logging
 from contextlib import suppress
 from dataclasses import asdict
+from functools import partial
 from typing import Any, Literal
 
 from fastapi import APIRouter, Depends, File, Form, Query, Request, UploadFile, status
@@ -941,8 +943,15 @@ async def preview_document(
     user: User = Depends(current_user),
 ) -> dict[str, Any]:
     try:
-        return _knowledge_service(server).preview_document(
-            kb_id, doc_id, actor_user_id=user.id, is_admin=_is_admin(user)
+        return await asyncio.get_running_loop().run_in_executor(
+            None,
+            partial(
+                _knowledge_service(server).preview_document,
+                kb_id,
+                doc_id,
+                actor_user_id=user.id,
+                is_admin=_is_admin(user),
+            ),
         )
     except Exception as exc:
         raise _map_knowledge_error(
@@ -952,7 +961,8 @@ async def preview_document(
 
 @router.get(
     "/{kb_id}/documents/{doc_id}/file",
-    summary="Download or inline-open the original uploaded document",
+    summary="Download the original or preview the parsed document",
+    description="Downloads return the original upload; spreadsheet previews use the recalculated copy when available.",
     response_class=FileResponse,
 )
 async def download_document_file(
@@ -968,8 +978,16 @@ async def download_document_file(
     user: User = Depends(current_user),
 ) -> FileResponse:
     try:
-        path, filename, content_type = _knowledge_service(server).resolve_document_file(
-            kb_id, doc_id, actor_user_id=user.id, is_admin=_is_admin(user)
+        path, filename, content_type = await asyncio.get_running_loop().run_in_executor(
+            None,
+            partial(
+                _knowledge_service(server).resolve_document_file,
+                kb_id,
+                doc_id,
+                actor_user_id=user.id,
+                is_admin=_is_admin(user),
+                for_preview=disposition == "inline",
+            ),
         )
     except Exception as exc:
         raise _map_knowledge_error(

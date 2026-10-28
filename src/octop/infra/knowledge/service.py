@@ -14,6 +14,7 @@ from octop.infra.knowledge.files import (
     delete_document_file,
     delete_knowledge_base_files,
     document_path,
+    recalculated_document_path,
     write_document,
 )
 from octop.infra.knowledge.gate import assert_knowledge_usable
@@ -25,6 +26,7 @@ from octop.infra.knowledge.ocr import (
 )
 from octop.infra.knowledge.parse import parse_document
 from octop.infra.knowledge.relpath import normalize_kb_path, path_basename, path_parent
+from octop.infra.knowledge.spreadsheets import spreadsheet_preview_path
 
 MAX_DOCS_PER_KB = 100
 MAX_BASES_PER_OWNER = 20
@@ -193,6 +195,9 @@ class KnowledgeService:
         if document.is_dir:
             raise LookupError("knowledge document not found")
         path = document_path(kb_id, doc_id, document.filename)
+        path = spreadsheet_preview_path(
+            path, recalculated_document_path(kb_id, doc_id), document.status
+        )
         text = parse_document(path, ocr=optional_ocr_extractor(self._services))
         if len(text) > _MAX_PREVIEW_CHARS:
             text = text[:_MAX_PREVIEW_CHARS]
@@ -203,9 +208,15 @@ class KnowledgeService:
         }
 
     def resolve_document_file(
-        self, kb_id: str, doc_id: str, *, actor_user_id: int, is_admin: bool = False
+        self,
+        kb_id: str,
+        doc_id: str,
+        *,
+        actor_user_id: int,
+        is_admin: bool = False,
+        for_preview: bool = False,
     ) -> tuple[Path, str, str]:
-        """Return ``(path, filename, content_type)`` for the on-disk original.
+        """Return ``(path, filename, content_type)`` for the original or the recalculated preview copy.
 
         Raises ``LookupError`` when the document row is missing and
         ``FileNotFoundError`` when the original bytes are gone from disk.
@@ -219,6 +230,16 @@ class KnowledgeService:
         path = document_path(kb_id, doc_id, document.filename)
         if not path.is_file():
             raise FileNotFoundError("knowledge document original file not found")
+        if for_preview:
+            preview = spreadsheet_preview_path(
+                path, recalculated_document_path(kb_id, doc_id), document.status
+            )
+            if preview != path:
+                return (
+                    preview,
+                    Path(document.filename).with_suffix(".xlsx").name,
+                    _EXT_TO_CONTENT_TYPE[".xlsx"],
+                )
         return path, document.filename, document.content_type
 
     def document_has_original(self, document: KnowledgeDocumentRow) -> bool:

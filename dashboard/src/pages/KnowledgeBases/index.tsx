@@ -1689,6 +1689,9 @@ export default function KnowledgeBasesPage() {
   // used to recreate fetchBlob and re-run DocumentPreviewCore's load effect,
   // aborting slow Office parsers (docx/pptx/xlsx) while fast PDF survived.
   const selectedId = selected?.id;
+  const previewReady = documents.some(
+    (document) => document.id === previewDocId && document.status === "ready",
+  );
   const fetchPreviewBlob = useCallback(
     async (
       onProgress?: (loaded: number, total: number) => void,
@@ -2978,7 +2981,7 @@ export default function KnowledgeBasesPage() {
             data-preview-fullscreen-root=""
           >
             <DocumentPreviewCore
-              key={previewDocId}
+              key={`${previewDocId}:${previewKind === "excel" && previewReady}`}
               kind={previewKind}
               filename={previewFilename}
               fetchBlob={fetchPreviewBlob}

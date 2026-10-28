@@ -279,20 +279,20 @@ async def test_preview_document_returns_extracted_text(
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("disposition", ["inline", "attachment"])
 async def test_download_document_file_returns_original_bytes(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, disposition: str
 ) -> None:
     from octop.api.routers import knowledge_bases
 
     path = tmp_path / "doc.pdf"
     path.write_bytes(b"%PDF-1.4 test")
-    service = SimpleNamespace(
-        resolve_document_file=lambda *_args, **_kwargs: (
-            path,
-            "报告.pdf",
-            "application/pdf",
-        )
-    )
+
+    def resolve(*_args, **kwargs):
+        assert kwargs["for_preview"] == (disposition == "inline")
+        return path, "报告.pdf", "application/pdf"
+
+    service = SimpleNamespace(resolve_document_file=resolve)
     server = SimpleNamespace(services=_services())
     user = SimpleNamespace(id=1, is_admin=False)
     monkeypatch.setattr(knowledge_bases, "_knowledge_service", lambda _server: service)
@@ -301,14 +301,14 @@ async def test_download_document_file_returns_original_bytes(
         "kb-1",
         "doc-1",
         request=_request(),
-        disposition="inline",
+        disposition=disposition,
         server=server,
         user=user,
     )
 
     assert response.path == path
     assert response.media_type == "application/pdf"
-    assert "inline" in response.headers["Content-Disposition"]
+    assert disposition in response.headers["Content-Disposition"]
     assert "filename*" in response.headers["Content-Disposition"]
 
 
