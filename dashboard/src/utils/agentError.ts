@@ -57,6 +57,33 @@ export function formatAgentError(
   return error;
 }
 
+/**
+ * Card copy for the same errors. An expert card is ~360px wide and its error
+ * row is a single ellipsised line, so the full sentence (which ends in "然后
+ * 重新启用此专家") is cut exactly where it stops being useful. Model-config
+ * errors carry their own "去配置模型" action on the card, so the row only has to
+ * name the problem; the tooltip still holds the whole sentence.
+ */
+export function shortAgentError(
+  error: string | null | undefined,
+  t: TFunction,
+): string {
+  if (!error) return "";
+  if (
+    error === "octop:agent_errors.model_ref_unavailable" ||
+    isRawModelRefError(error)
+  ) {
+    return t("agent_errors.model_ref_unavailable_short");
+  }
+  if (
+    error === "octop:agent_errors.no_models_configured" ||
+    isRawNoModelsError(error)
+  ) {
+    return t("agent_errors.no_models_configured_short");
+  }
+  return formatAgentError(error, t);
+}
+
 /** Expert harness runtime is loaded (`running`); not storage-backend config.
  *  A cloud-collab shadow is ready only when the link is up and the peer
  *  expert itself is running.

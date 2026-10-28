@@ -1333,7 +1333,9 @@
   },
   "agent_errors": {
     "no_models_configured": "未配置可用模型，请前往「管理 → 模型」配置模型，然后重新启用此专家。",
+    "no_models_configured_short": "未配置可用模型",
     "model_ref_unavailable": "默认模型不可用或已禁用，请检查「管理 → 模型」或修改此专家的默认模型后重试。",
+    "model_ref_unavailable_short": "默认模型不可用",
     "start_timeout": "专家启动超时（存储后端读写过慢）。请重试，或改用本地工作区后端。"
   },
   "stream_errors": {
