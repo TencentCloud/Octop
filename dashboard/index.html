@@ -103,72 +103,104 @@
         flex-direction: column;
         align-items: center;
         justify-content: center;
-        gap: 20px;
         padding: max(24px, env(safe-area-inset-top, 0px))
           max(24px, env(safe-area-inset-right, 0px))
           max(24px, env(safe-area-inset-bottom, 0px))
           max(24px, env(safe-area-inset-left, 0px));
         margin: 0;
-        background: #f7f8fa;
+        /* Same composition as the shell's own splash: a soft brand wash gives
+           the empty page a shape instead of a spinner floating in a void. */
+        background: radial-gradient(
+            720px 380px at 50% -8%,
+            rgba(232, 93, 117, 0.11),
+            transparent 68%
+          ),
+          #f7f8fa;
         font-family: -apple-system, BlinkMacSystemFont, "Segoe UI",
           "Noto Sans SC", sans-serif;
         color: #8b8fa3;
+        user-select: none;
+        -webkit-user-select: none;
       }
       html[data-theme="dark"],
       html[data-theme="dark"] body {
         background: #12141c;
       }
       html[data-theme="dark"] #octop-boot {
-        background: #12141c;
+        background: radial-gradient(
+            720px 380px at 50% -8%,
+            rgba(240, 139, 154, 0.1),
+            transparent 68%
+          ),
+          #12141c;
         color: rgba(255, 255, 255, 0.55);
       }
-      #octop-boot-mark {
-        position: relative;
-        width: 88px;
-        height: 88px;
-        flex: none;
+      .octop-boot-stack {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        animation: octop-boot-in 420ms ease-out both;
       }
-      #octop-boot-ring {
-        box-sizing: border-box;
-        position: absolute;
-        inset: 0;
-        border-radius: 50%;
-        border: 3px solid rgba(232, 93, 117, 0.18);
-        border-top-color: #e85d75;
-        animation: octop-boot-spin 0.85s linear infinite;
-      }
-      html[data-theme="dark"] #octop-boot-ring {
-        border-color: rgba(240, 139, 154, 0.22);
-        border-top-color: #f08b9a;
-      }
-      .octop-boot-logo {
-        position: absolute;
-        inset: 14px;
-        width: 60px;
-        height: 60px;
-        border-radius: 14px;
-        object-fit: contain;
+      /* One mark for both themes: the tile carries its own background, so it
+         does not need a white twin the way the old vertical lockup did. */
+      .octop-boot-mark {
         display: block;
-        animation: octop-boot-breathe 1.6s ease-in-out infinite;
+        width: 64px;
+        height: 64px;
+        border-radius: 16px;
+        box-shadow:
+          0 1px 2px rgba(24, 8, 12, 0.06),
+          0 12px 28px -12px rgba(232, 93, 117, 0.45);
+        animation: octop-boot-breathe 2.4s ease-in-out infinite;
       }
-      .octop-boot-logo--dark {
-        display: none;
+      .octop-boot-wordmark {
+        margin: 18px 0 0;
+        font-size: 21px;
+        font-weight: 600;
+        line-height: 1.2;
+        letter-spacing: -0.01em;
+        color: #1a1c28;
       }
-      html[data-theme="dark"] .octop-boot-logo--light {
-        display: none;
-      }
-      html[data-theme="dark"] .octop-boot-logo--dark {
-        display: block;
+      html[data-theme="dark"] .octop-boot-wordmark {
+        color: rgba(255, 255, 255, 0.92);
       }
       #octop-boot-text {
-        font-size: 14px;
+        margin: 10px 0 0;
+        font-size: 13.5px;
         font-weight: 500;
-        letter-spacing: 0.04em;
-        user-select: none;
+        letter-spacing: 0.02em;
       }
-      @keyframes octop-boot-spin {
+      /* Indeterminate on purpose: there is no percentage to report, and a fake
+         one would have to lie about the wait. */
+      .octop-boot-bar {
+        position: relative;
+        width: 200px;
+        height: 3px;
+        margin-top: 22px;
+        border-radius: 999px;
+        background: rgba(232, 93, 117, 0.14);
+        overflow: hidden;
+      }
+      html[data-theme="dark"] .octop-boot-bar {
+        background: rgba(240, 139, 154, 0.16);
+      }
+      .octop-boot-bar > span {
+        position: absolute;
+        inset-block: 0;
+        width: 40%;
+        border-radius: inherit;
+        background: linear-gradient(90deg, rgba(232, 93, 117, 0.35), #e85d75);
+        animation: octop-boot-sweep 1.5s cubic-bezier(0.45, 0, 0.55, 1) infinite;
+      }
+      html[data-theme="dark"] .octop-boot-bar > span {
+        background: linear-gradient(90deg, rgba(240, 139, 154, 0.35), #f08b9a);
+      }
+      @keyframes octop-boot-sweep {
+        from {
+          transform: translateX(-110%);
+        }
         to {
-          transform: rotate(360deg);
+          transform: translateX(340%);
         }
       }
       @keyframes octop-boot-breathe {
@@ -178,14 +210,29 @@
           opacity: 1;
         }
         50% {
-          transform: scale(0.94);
-          opacity: 0.88;
+          transform: scale(0.96);
+          opacity: 0.9;
+        }
+      }
+      @keyframes octop-boot-in {
+        from {
+          opacity: 0;
+          transform: translateY(6px);
+        }
+        to {
+          opacity: 1;
+          transform: none;
         }
       }
       @media (prefers-reduced-motion: reduce) {
-        #octop-boot-ring,
-        .octop-boot-logo {
+        .octop-boot-stack,
+        .octop-boot-mark {
           animation: none;
+        }
+        .octop-boot-bar > span {
+          animation: none;
+          width: 60%;
+          transform: translateX(34%);
         }
       }
     </style>
@@ -275,24 +322,18 @@
   <body>
     <div id="root">
       <div id="octop-boot" role="status" aria-live="polite">
-        <div id="octop-boot-mark" aria-hidden="true">
-          <div id="octop-boot-ring"></div>
+        <div class="octop-boot-stack">
           <img
-            class="octop-boot-logo octop-boot-logo--light"
-            src="%BASE_URL%logo_vertical_dark.svg"
+            class="octop-boot-mark"
+            src="%BASE_URL%favico.svg"
             alt=""
-            width="60"
-            height="60"
+            width="64"
+            height="64"
           />
-          <img
-            class="octop-boot-logo octop-boot-logo--dark"
-            src="%BASE_URL%logo_vertical_white.svg"
-            alt=""
-            width="60"
-            height="60"
-          />
+          <h1 class="octop-boot-wordmark">Octop</h1>
+          <p id="octop-boot-text">Loading the interface…</p>
+          <div class="octop-boot-bar" aria-hidden="true"><span></span></div>
         </div>
-        <div id="octop-boot-text">Loading…</div>
       </div>
     </div>
     <script>
@@ -305,7 +346,7 @@
             navigator.userLanguage ||
             ""
           ).toLowerCase();
-          if (lang.indexOf("zh") === 0) el.textContent = "加载中…";
+          if (lang.indexOf("zh") === 0) el.textContent = "正在加载界面…";
         } catch (e) {}
       })();
     </script>

@@ -50,11 +50,17 @@ describe("index.html boot theme", () => {
     );
   });
 
-  it("uses the white vertical mark in dark mode", () => {
-    expect(INDEX_HTML).toContain('src="%BASE_URL%logo_vertical_white.svg"');
-    expect(INDEX_HTML).toContain(
-      'html[data-theme="dark"] .octop-boot-logo--dark',
-    );
+  it("paints one mark for both themes instead of swapping assets", () => {
+    // The tile carries its own background, so the old "vertical lockup, white
+    // twin in dark mode" pair is gone — and with it a second asset to keep in
+    // sync with the shell's splash.
+    expect(INDEX_HTML).toContain('src="%BASE_URL%favico.svg"');
+    expect(INDEX_HTML).not.toContain("logo_vertical_white.svg");
+  });
+
+  it("shows an indeterminate bar, not a spinner that hides the wait", () => {
+    expect(INDEX_HTML).toContain('class="octop-boot-bar"');
+    expect(INDEX_HTML).toContain("@keyframes octop-boot-sweep");
   });
 
   it("keeps a stored light preference over OS dark", () => {
