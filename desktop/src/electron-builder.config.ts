@@ -20,6 +20,12 @@ const artifactName = process.env.OCTOP_PLATFORM
   ? `Octop-desktop-${process.env.OCTOP_PLATFORM}-${productVersion}.\${ext}`
   : "Octop-desktop-${os}-${arch}-${version}.${ext}";
 
+// Without a certificate electron-builder does not skip signing cleanly on macOS:
+// it takes the "empty password will be used for code signing" path and then dies
+// deeper in the pipeline with a misleading ".../desktop/src not a file". CI sets
+// this for the unsigned validation mode; a real release never does.
+const skipSigning = process.env.OCTOP_SKIP_SIGN === "1";
+
 export default {
   extraMetadata: { version: electronVersion },
   artifactName,
@@ -38,7 +44,9 @@ export default {
     target: ["dmg", "zip"],
     category: "public.app-category.productivity",
     icon: "resources/icon.icns",
-    hardenedRuntime: true,
+    // hardenedRuntime without an entitlement to match is rejected by codesign,
+    // so it is only meaningful once there is an identity.
+    ...(skipSigning ? { identity: null, hardenedRuntime: false } : { hardenedRuntime: true }),
     gatekeeperAssess: false,
     // Signing/notarization are wired through CSC_LINK / APPLE_* env in CI, not here.
   },

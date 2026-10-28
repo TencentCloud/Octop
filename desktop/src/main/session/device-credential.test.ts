@@ -69,7 +69,11 @@ test("the stored file is owner-only and does not hold the plaintext", async () =
 
   const file = join(home, DEVICE_CREDENTIAL_FILE);
   const stat = await fs.stat(file);
-  assert.equal(stat.mode & 0o777, DEVICE_CREDENTIAL_MODE);
+  // Windows has no POSIX permission bits — Node reports 0o666 for every file, so
+  // there is nothing to assert and nothing the product can enforce that way.
+  if (process.platform !== "win32") {
+    assert.equal(stat.mode & 0o777, DEVICE_CREDENTIAL_MODE);
+  }
 
   const raw = await fs.readFile(file, "utf8");
   assert.ok(!raw.includes(secret), "secret must be encrypted at rest");
