@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import time
 from collections.abc import Awaitable, Callable
 from typing import Any
 
@@ -38,7 +39,11 @@ class WebSocketHub:
         self._conn_thread: dict[str, str] = {}
         self._user_conns: dict[int, set[str]] = {}
         self._conn_user: dict[str, int] = {}
-        self._active_turns: set[str] = set()
+        # thread_id -> time.monotonic() stamp of last pushed frame.
+        # A turn whose caller task is dropped (client disconnect, process crash)
+        # never reaches mark_turn_idle; evict_stale_turns prunes these orphans
+        # so clients are not stuck seeing turn_active=true forever (issue #2456).
+        self._active_turns: dict[str, float] = {}
 
     def register(
         self,
@@ -103,13 +108,49 @@ class WebSocketHub:
     def mark_turn_active(self, thread_id: str) -> None:
         tid = thread_id.strip()
         if tid:
-            self._active_turns.add(tid)
+            self._active_turns[tid] = time.monotonic()
 
     def mark_turn_idle(self, thread_id: str) -> None:
-        self._active_turns.discard(thread_id.strip())
+        self._active_turns.pop(thread_id.strip(), None)
+
+    def bump_turn_activity(self, thread_id: str) -> None:
+        """Refresh the idle timer for *thread_id* if it is tracked as active."""
+        tid = thread_id.strip()
+        if tid and tid in self._active_turns:
+            self._active_turns[tid] = time.monotonic()
+
+    def evict_stale_turns(self, max_quiet_seconds: float = 30.0) -> int:
+        """Prune active-turn entries that have had no frames pushed for *max_quiet_seconds*.
+
+        A drop-frame (disconnect, process crash, task cancellation) leaves the
+        ``finally`` block in ``WebSocketChannel.handle_inbound`` unreachable,
+        so ``mark_turn_idle`` never runs. Repeated calls to this method (lazily
+        from :meth:`is_turn_active`) heal the flag leak so that clients no
+        longer see ``turn_active=true`` on a fully-idle thread (issue #2456).
+        """
+        if not self._active_turns:
+            return 0
+        now = time.monotonic()
+        stale = [
+            tid
+            for tid, last_push in self._active_turns.items()
+            if now - last_push > max_quiet_seconds
+        ]
+        for tid in stale:
+            self._active_turns.pop(tid, None)
+        if stale:
+            logger.info(
+                "ws hub: evicted %d stale active-turn entries (quiet >%.1fs): %s",
+                len(stale),
+                max_quiet_seconds,
+                stale,
+            )
+        return len(stale)
 
     def is_turn_active(self, thread_id: str) -> bool:
-        return thread_id.strip() in self._active_turns
+        self.evict_stale_turns()
+        tid = thread_id.strip()
+        return tid in self._active_turns
 
     def has_subscribers(self, thread_id: str) -> bool:
         """True when at least one Dashboard socket is bound to *thread_id*."""
@@ -128,6 +169,12 @@ class WebSocketHub:
 
     async def push_to_thread(self, thread_id: str, frame: dict[str, Any]) -> None:
         tid = thread_id.strip()
+        # Every frame delivered to the thread counts as activity; this keeps
+        # live turns' TTL fresh so evict_stale_turns does not kill them while
+        # the harness still emits chunks. Orphans (no subscriber → early
+        # return here, or harness stalled) stop getting bumped and will be
+        # pruned on the next is_turn_active() check.
+        self.bump_turn_activity(tid)
         conns = self._thread_subscribers.get(tid)
         if not conns:
             logger.debug("ws hub: no subscriber for thread %s", thread_id)
