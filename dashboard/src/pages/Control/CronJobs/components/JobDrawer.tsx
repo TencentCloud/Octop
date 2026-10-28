@@ -94,6 +94,7 @@ export function JobDrawer({
   const remote = isBridgeAgentId(activeAgentId);
   const scheduleMode = Form.useWatch("_scheduleMode", form);
   const freshThread = Form.useWatch("fresh_thread", form);
+  const taskType = Form.useWatch("task_type", form);
 
   const [models, setModels] = useState<ModelPickerOption[]>([]);
   const [modelsLoading, setModelsLoading] = useState(false);
@@ -556,6 +557,15 @@ export function JobDrawer({
               }
             }}
           />
+        </Form.Item>
+
+        <Form.Item
+          name="auto_approve"
+          label={t("cronJobs.form.autoApprove")}
+          valuePropName="checked"
+          tooltip={t("cronJobs.form.autoApproveTooltip")}
+        >
+          <Switch disabled={taskType === "text"} />
         </Form.Item>
 
         {!freshThread && (

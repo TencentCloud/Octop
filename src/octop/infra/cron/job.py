@@ -27,6 +27,7 @@ class CronJob:
         agent_id: str,
         prompt: str,
         fresh_thread: bool,
+        auto_approve: bool,
         session_key: str,
         model: str | None,
         task_type: str,
@@ -41,6 +42,7 @@ class CronJob:
         self._agent_id = agent_id
         self._prompt = prompt
         self._fresh_thread = fresh_thread
+        self._auto_approve = auto_approve
         self._session_key = session_key
         self._model = model
         self._task_type = normalize_cron_task_type(task_type)
@@ -65,6 +67,7 @@ class CronJob:
             agent_id=row.agent_id,
             prompt=row.prompt,
             fresh_thread=bool(row.fresh_thread),
+            auto_approve=bool(row.auto_approve),
             session_key=row.session_key,
             model=row.model,
             task_type=row.task_type,
@@ -91,6 +94,7 @@ class CronJob:
                     session_key=self._session_key,
                     prompt=self._prompt,
                     fresh_thread=self._fresh_thread,
+                    auto_approve=self._auto_approve,
                     task_type=self._task_type,
                     model=self._model,
                     mcp_servers=tuple(self._mcp_servers),

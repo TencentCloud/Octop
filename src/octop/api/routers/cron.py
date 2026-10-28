@@ -30,6 +30,7 @@ class CronCreateBody(BaseModel):
     prompt: str
     session_key: str | None = None
     fresh_thread: bool = False
+    auto_approve: bool = False
     enabled: bool = True
     model: str | None = None
     task_type: str = "text"
@@ -45,6 +46,7 @@ class CronPatchBody(BaseModel):
     prompt: str | None = None
     session_key: str | None = None
     fresh_thread: bool | None = None
+    auto_approve: bool | None = None
     enabled: bool | None = None
     model: str | None = None
     task_type: str | None = None
@@ -149,6 +151,7 @@ async def create_cron(
         prompt=prompt,
         session_key=body.session_key,
         fresh_thread=body.fresh_thread,
+        auto_approve=body.auto_approve,
         enabled=body.enabled,
         model=(body.model or "").strip() or None,
         task_type=normalize_cron_task_type(body.task_type),
@@ -213,6 +216,7 @@ async def patch_cron(
         prompt=prompt,
         session_key=body.session_key,
         fresh_thread=body.fresh_thread,
+        auto_approve=body.auto_approve,
         enabled=int(body.enabled) if body.enabled is not None else None,
         task_type=normalize_cron_task_type(body.task_type) if body.task_type is not None else None,
         **({"model": (body.model or "").strip() or None} if "model" in patch_fields else {}),

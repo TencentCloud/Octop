@@ -2445,6 +2445,8 @@
       "connectorsPlaceholder": "选择连接器（可多选）",
       "freshThread": "每次执行新会话",
       "freshThreadTooltip": "开启后每次触发都会重置会话上下文，相当于在新对话中执行。",
+      "autoApprove": "自动批准工具请求",
+      "autoApproveTooltip": "每次定时执行时自动批准可批准的工具；需要用户回答的问题仍会暂停任务。",
       "sectionRouting": "执行路由",
       "sectionRoutingDesc": "选择任务结果发送到的会话。留空则使用当前用户的 Dashboard 默认会话。",
       "sessionKey": "目标会话",

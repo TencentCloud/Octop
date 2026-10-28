@@ -31,6 +31,7 @@ async def test_create_lists_get_patch_delete_cycle(env: Any) -> None:
         json={
             "trigger": "interval:60",
             "prompt": "ping the server",
+            "auto_approve": True,
         },
     )
     assert r.status_code == 201, r.text
@@ -39,6 +40,7 @@ async def test_create_lists_get_patch_delete_cycle(env: Any) -> None:
     assert body["trigger"] == "interval:60"
     assert body["prompt"] == "ping the server"
     assert body["fresh_thread"] is False
+    assert body["auto_approve"] is True
     assert body["enabled"] is True
     assert body["last_status"] is None
 
@@ -57,12 +59,13 @@ async def test_create_lists_get_patch_delete_cycle(env: Any) -> None:
     r = await c.patch(
         f"/api/agents/{aid}/cron/{cid}",
         headers=alice_auth,
-        json={"prompt": "ping-v2", "enabled": False},
+        json={"prompt": "ping-v2", "enabled": False, "auto_approve": False},
     )
     assert r.status_code == 200
     body = r.json()
     assert body["prompt"] == "ping-v2"
     assert body["enabled"] is False
+    assert body["auto_approve"] is False
 
     # DELETE → 204
     r = await c.delete(f"/api/agents/{aid}/cron/{cid}", headers=alice_auth)

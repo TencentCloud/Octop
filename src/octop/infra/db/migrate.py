@@ -186,6 +186,7 @@ def _ensure_cron_jobs_schema(db: DatabasePool) -> None:
         "mcp_servers",
         "TEXT NOT NULL DEFAULT '[]'",
     )
+    _ensure_column(db, "cron_jobs", "auto_approve", "INTEGER NOT NULL DEFAULT 0")
 
 
 def _collapse_legacy_agent_welcome_columns(db: DatabasePool) -> None:

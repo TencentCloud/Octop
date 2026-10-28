@@ -228,6 +228,79 @@ async def test_agent_hitl_does_not_push() -> None:
 
 
 @pytest.mark.asyncio
+async def test_agent_auto_approve_resumes_approvable_tool() -> None:
+    session = _session(channel_type=ThreadRegistry.CHANNEL_DASHBOARD)
+    decisions_seen: list[list[dict[str, Any]]] = []
+
+    async def _stream(_aid: str, _request: dict):
+        yield {
+            "type": "hitl_required",
+            "request": {"action_requests": [{"name": "shell", "args": {}}]},
+        }
+
+    async def _resume(_aid: str, _thread_id: str, decisions):
+        decisions_seen.append(decisions)
+        yield {"type": "token", "content": "done"}
+
+    agent_manager = MagicMock()
+    agent_manager.merge_turn_mcp_servers = MagicMock(return_value=None)
+    agent_manager.prepare_chat_mcp = AsyncMock(return_value=[])
+    agent_manager.stream = _stream
+    agent_manager.resume_hitl = _resume
+    agent_manager.get_row = MagicMock(return_value=None)
+
+    gateway = MagicMock()
+    gateway.run_in_session = _run_locked
+    gateway.require_session = MagicMock(return_value=session)
+    gateway.push_session_text = AsyncMock()
+
+    service = CronDeliveryService(
+        gateway=gateway,
+        agent_manager=agent_manager,
+        repos=MagicMock(),
+    )
+    await service.deliver(_command(task_type="agent", prompt="run", auto_approve=True))
+
+    assert decisions_seen == [[{"type": "approve"}]]
+    gateway.push_session_text.assert_awaited_once()
+    assert gateway.push_session_text.await_args.args[1] == "done"
+
+
+@pytest.mark.asyncio
+async def test_agent_auto_approve_still_pauses_for_user_question() -> None:
+    session = _session(channel_type=ThreadRegistry.CHANNEL_DASHBOARD)
+
+    async def _stream(_aid: str, _request: dict):
+        yield {
+            "type": "hitl_required",
+            "request": {"action_requests": [{"name": "ask_user_question", "args": {}}]},
+        }
+
+    agent_manager = MagicMock()
+    agent_manager.merge_turn_mcp_servers = MagicMock(return_value=None)
+    agent_manager.prepare_chat_mcp = AsyncMock(return_value=[])
+    agent_manager.stream = _stream
+    agent_manager.resume_hitl = MagicMock()
+    agent_manager.get_row = MagicMock(return_value=None)
+
+    gateway = MagicMock()
+    gateway.run_in_session = _run_locked
+    gateway.require_session = MagicMock(return_value=session)
+    gateway.push_session_text = AsyncMock()
+
+    service = CronDeliveryService(
+        gateway=gateway,
+        agent_manager=agent_manager,
+        repos=MagicMock(),
+    )
+    with pytest.raises(RuntimeError, match="interaction"):
+        await service.deliver(_command(task_type="agent", prompt="run", auto_approve=True))
+
+    agent_manager.resume_hitl.assert_not_called()
+    gateway.push_session_text.assert_not_awaited()
+
+
+@pytest.mark.asyncio
 async def test_agent_empty_reply_does_not_push() -> None:
     session = _session(channel_type="feishu")
 

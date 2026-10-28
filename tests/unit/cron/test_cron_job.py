@@ -62,6 +62,7 @@ def _job(
     session_key: str,
     delivery_service: MagicMock,
     fresh_thread: bool = False,
+    auto_approve: bool = False,
     task_type: str = "agent",
     mcp_servers: list[str] | None = None,
 ) -> CronJob:
@@ -71,6 +72,7 @@ def _job(
         agent_id="a1",
         prompt="hi",
         fresh_thread=fresh_thread,
+        auto_approve=auto_approve,
         session_key=session_key,
         model=None,
         task_type=task_type,
@@ -117,6 +119,7 @@ async def test_run_passes_delivery_command(setup) -> None:
         mcp_servers=["github__1"],
         task_type="text",
         fresh_thread=True,
+        auto_approve=True,
     )
     await job.run()
 
@@ -128,6 +131,7 @@ async def test_run_passes_delivery_command(setup) -> None:
     assert command.session_key == session_key
     assert command.prompt == "hi"
     assert command.fresh_thread is True
+    assert command.auto_approve is True
     assert command.task_type == "text"
     assert command.mcp_servers == ("github__1",)
 

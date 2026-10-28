@@ -55,6 +55,7 @@ class CronCreateSpec:
     name: str | None = None
     session_key: str | None = None
     fresh_thread: bool = False
+    auto_approve: bool = False
     model: str | None = None
     task_type: str = "agent"
     mcp_servers: list[str] = field(default_factory=list)
@@ -145,6 +146,7 @@ class CronManager:
                 prompt=spec.prompt,
                 session_key=session_key,
                 fresh_thread=spec.fresh_thread,
+                auto_approve=spec.auto_approve,
                 model=(spec.model or "").strip() or None,
                 task_type=normalize_cron_task_type(spec.task_type),
                 mcp_servers=list(spec.mcp_servers or []),
@@ -193,6 +195,7 @@ class CronManager:
         prompt: str | None = None,
         session_key: str | None = None,
         fresh_thread: bool | None = None,
+        auto_approve: bool | None = None,
         enabled: int | None = None,
         task_type: str | None = None,
         model: str | None | object = UNSET,
@@ -218,6 +221,7 @@ class CronManager:
                 "prompt": prompt,
                 "session_key": session_key,
                 "fresh_thread": fresh_thread,
+                "auto_approve": auto_approve,
                 "enabled": enabled_bool,
             }
             if task_type is not None:
