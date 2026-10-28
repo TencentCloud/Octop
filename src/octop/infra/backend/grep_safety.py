@@ -212,6 +212,7 @@ def _safe_python_search(
     results: dict[str, list[tuple[int, str]]] = {}
     file_errors: list[str] = []
     try:
+        is_single_file = base_full.is_file()
         root = base_full if base_full.is_dir() else base_full.parent
     except OSError:
         return {}, False, None
@@ -244,6 +245,8 @@ def _safe_python_search(
                     _log_timeout()
                     return results, True, None
                 fp = Path(dirpath) / name
+                if is_single_file and fp != base_full:
+                    continue
                 size = _regular_file_size(fp)
                 if size is None or size > max_file_bytes:
                     continue
