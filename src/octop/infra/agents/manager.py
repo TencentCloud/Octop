@@ -3339,13 +3339,41 @@ class AgentManager:
             logger.exception("Deferred bootstrap failed for agent %s", row.agent_id)
 
     async def _start_agent(
-        self, row: AgentRow, *, init_workspace: bool = True
+        self,
+        row: AgentRow,
+        *,
+        init_workspace: bool = True,
+        team_host_id: str | None = None,
     ) -> HarnessAgent | None:
         assert self._harness_manager is not None, "_start_agent called before boot()"
         if self._harness_manager.shared_factory is None:
             self._repos.agent_repo.set_state(row.agent_id, "failed", error=NO_MODELS_CONFIGURED)
             return None
         async with self._lifecycle_lock_for(row.agent_id):
+            if team_host_id is not None:
+                from octop.infra.agents.teams import is_team_agent
+
+                # A stop, deletion, or sharing change may have completed while
+                # this roster load waited for the member's lifecycle lock.
+                fresh = self._repos.agent_repo.get(row.agent_id)
+                host = self._repos.agent_repo.get(team_host_id)
+                if (
+                    fresh is None
+                    or host is None
+                    or not is_team_agent(host)
+                    or is_team_agent(fresh)
+                    or not fresh.enabled
+                    or fresh.last_state == "stopped"
+                    or fresh.agent_id not in self._teams.member_ids(team_host_id)
+                ):
+                    return None
+                if (
+                    (fresh.user_id is None or fresh.user_id != host.user_id)
+                    and not fresh.is_shared
+                    and not self._user_is_admin(host.user_id)
+                ):
+                    return None
+                row = fresh
             existing = self._octop_harness_or_none(row.agent_id)
             if existing is not None:
                 # Idempotent: a concurrent reload/boot may have already registered.
@@ -3360,6 +3388,7 @@ class AgentManager:
             try:
                 from octop.infra.agents.teams import is_team_agent  # noqa: PLC0415
 
+                await self._start_missing_team_members(row)
                 cfg, metadata, tags, user_display = self._agent_runtime_bundle(row)
                 # Team hosts already have AGENTS/SOUL/MEMORY from seed_team_template.
                 # Never let harness copy builtin skills just to strip them later.
@@ -3391,6 +3420,22 @@ class AgentManager:
                     error=format_agent_start_error(exc),
                 )
                 return None
+
+    async def _start_missing_team_members(self, row: AgentRow) -> None:
+        """Register roster experts persisted after this server's boot snapshot."""
+        from octop.infra.agents.teams import is_team_agent
+
+        if not is_team_agent(row):
+            return
+        for member_id in self._teams.member_ids(row.agent_id):
+            member = self._repos.agent_repo.get(member_id)
+            if (
+                member is None
+                or is_team_agent(member)
+                or self._octop_harness_or_none(member_id) is not None
+            ):
+                continue
+            await self._start_agent(member, team_host_id=row.agent_id)
 
     async def _post_start_agent(
         self,
@@ -3675,6 +3720,7 @@ class AgentManager:
             if self._harness_manager.shared_factory is None:
                 return
             try:
+                await self._start_missing_team_members(row)
                 cfg, metadata, tags, user_display = self._agent_runtime_bundle(row)
                 entry = await self._harness_manager.arebuild_agent(
                     agent_id,

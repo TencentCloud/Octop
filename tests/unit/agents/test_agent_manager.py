@@ -2076,6 +2076,222 @@ async def test_create_seeds_bootstrap_files(manager: AgentManager) -> None:
 
 
 @pytest.mark.asyncio
+async def test_team_loads_members_created_by_another_runtime(manager: AgentManager) -> None:
+    """The Dashboard must discover experts persisted by a short-lived CLI runtime."""
+    from octop.infra.agents.manager import AgentCreateSpec
+
+    _seed_test_provider(manager)
+    user_id = manager._repos.user_repo.create(username="alice", password_hash="x", role="user")
+    await manager.boot()
+    cli_manager = AgentManager(repos=manager._repos, paths=manager.paths)
+    member_ids: list[str] = []
+    try:
+        await cli_manager.boot()
+        try:
+            for name, profile in (
+                ("plain", {}),
+                ("portrait", {"color": "#123456", "icon_name": "bot"}),
+            ):
+                member = await cli_manager.create(
+                    AgentCreateSpec(name=name, user_id=user_id, config=dict(_MEMORY_OFF), **profile)
+                )
+                member_ids.append(member.agent_id)
+        finally:
+            await cli_manager.shutdown()
+        plain = manager.get_row(member_ids[0])
+        assert plain.color is None and plain.icon_name is None and plain.icon_url is None
+        assert manager._harness_manager is not None
+        assert manager._harness_manager.list_agents() == []
+        host = await manager.create(
+            AgentCreateSpec(
+                name="team",
+                user_id=user_id,
+                kind="team",
+                member_ids=member_ids,
+                config=dict(_MEMORY_OFF),
+            )
+        )
+        peers = manager._harness_manager.team.list_peers(user_id, exclude_agent_id=host.agent_id)
+        assert {entry.agent_id for entry in peers} == set(member_ids)
+        for member_id in member_ids:
+            entry = manager._harness_manager.team._resolve_peer_entry(
+                host.agent_id, member_id, user_id
+            )
+            assert entry.agent is manager.get_agent(member_id)
+        assert manager.get_row(member_ids[0]).color is None
+    finally:
+        await manager.shutdown()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("role", ["user", "admin"])
+async def test_team_reload_loads_only_usable_missing_members(
+    manager: AgentManager, role: str
+) -> None:
+    from octop.infra.agents.manager import AgentCreateSpec
+
+    _seed_test_provider(manager)
+    user_id = manager._repos.user_repo.create(username="alice", password_hash="x", role=role)
+    other_id = manager._repos.user_repo.create(username="bob", password_hash="x", role="user")
+    await manager.boot()
+    try:
+        kept = await manager.create(
+            AgentCreateSpec(name="kept", user_id=user_id, config=dict(_MEMORY_OFF))
+        )
+        existing = manager.get_agent(kept.agent_id)
+        host = await manager.create(
+            AgentCreateSpec(
+                name="team",
+                user_id=user_id,
+                kind="team",
+                member_ids=[kept.agent_id],
+                config=dict(_MEMORY_OFF),
+            )
+        )
+        for member_id, owner, kind in (
+            ("OWNED", user_id, "expert"),
+            ("SHARED", other_id, "expert"),
+            ("PRIVATE", other_id, "expert"),
+            ("STOPPED", user_id, "expert"),
+            ("DISABLED", user_id, "expert"),
+            ("NESTED", user_id, "team"),
+        ):
+            manager._repos.agent_repo.create(
+                agent_id=member_id,
+                user_id=owner,
+                name=member_id,
+                kind=kind,
+                config_json=json.dumps(_MEMORY_OFF),
+            )
+        manager._repos.agent_repo.set_shared("SHARED", True)
+        manager._repos.agent_repo.set_state("STOPPED", "stopped")
+        manager._repos.agent_repo.set_enabled("DISABLED", False)
+        manager.teams.replace_members(
+            host.agent_id,
+            [
+                kept.agent_id,
+                "OWNED",
+                "SHARED",
+                "PRIVATE",
+                "STOPPED",
+                "DISABLED",
+                "NESTED",
+                "MISSING",
+                host.agent_id,
+            ],
+        )
+        await manager.reload(host.agent_id)
+        assert manager._harness_manager is not None
+        expected = {kept.agent_id, "OWNED", "SHARED"}
+        if role == "admin":
+            expected.add("PRIVATE")
+        peers = manager._harness_manager.team.list_peers(user_id, exclude_agent_id=host.agent_id)
+        assert {entry.agent_id for entry in peers} == expected
+        assert manager.get_agent(kept.agent_id) is existing
+        assert {entry.agent_id for entry in manager._harness_manager.list_agents()} == expected | {
+            host.agent_id
+        }
+        assert manager.get_row("STOPPED").last_state == "stopped"
+        assert manager.get_row("DISABLED").enabled == 0
+    finally:
+        await manager.shutdown()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("shared", [False, True])
+async def test_team_with_no_owner_only_loads_shared_members(
+    manager: AgentManager, shared: bool
+) -> None:
+    from octop.infra.agents.manager import AgentCreateSpec
+
+    _seed_test_provider(manager)
+    await manager.boot()
+    try:
+        manager._repos.agent_repo.create(
+            agent_id="NOOWNER", user_id=None, name="no owner", config_json=json.dumps(_MEMORY_OFF)
+        )
+        manager._repos.agent_repo.set_shared("NOOWNER", shared)
+        host = await manager.create(
+            AgentCreateSpec(
+                name="team", kind="team", member_ids=["NOOWNER"], config=dict(_MEMORY_OFF)
+            )
+        )
+        assert (manager._octop_harness_or_none("NOOWNER") is not None) is shared
+        assert manager._harness_manager is not None
+        peers = manager._harness_manager.team.list_peers(
+            "anonymous", exclude_agent_id=host.agent_id
+        )
+        assert {entry.agent_id for entry in peers} == ({"NOOWNER"} if shared else set())
+    finally:
+        await manager.shutdown()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("change", ["stopped", "disabled", "deleted", "unshared", "removed"])
+async def test_team_member_load_rechecks_state_after_lifecycle_wait(
+    manager: AgentManager, monkeypatch: pytest.MonkeyPatch, change: str
+) -> None:
+    from octop.infra.agents.manager import AgentCreateSpec
+
+    _seed_test_provider(manager)
+    user_id = manager._repos.user_repo.create(username="alice", password_hash="x", role="user")
+    other_id = manager._repos.user_repo.create(username="bob", password_hash="x", role="user")
+    await manager.boot()
+    task: asyncio.Task[None] | None = None
+    try:
+        host = await manager.create(
+            AgentCreateSpec(name="team", user_id=user_id, kind="team", config=dict(_MEMORY_OFF))
+        )
+        manager._repos.agent_repo.create(
+            agent_id="LATE",
+            user_id=other_id if change == "unshared" else user_id,
+            name="late",
+            config_json=json.dumps(_MEMORY_OFF),
+        )
+        manager._repos.agent_repo.set_shared("LATE", change == "unshared")
+        manager.teams.replace_members(host.agent_id, ["LATE"])
+        member_lock = manager._lifecycle_lock_for("LATE")
+        waiting = asyncio.Event()
+        original_lock_for = manager._lifecycle_lock_for
+
+        def lock_for(agent_id: str) -> asyncio.Lock:
+            if agent_id == "LATE":
+                waiting.set()
+            return original_lock_for(agent_id)
+
+        monkeypatch.setattr(manager, "_lifecycle_lock_for", lock_for)
+        async with member_lock:
+            task = asyncio.create_task(manager.reload(host.agent_id))
+            await asyncio.wait_for(waiting.wait(), timeout=5)
+            # Commit an external lifecycle/roster change while the loader waits.
+            if change == "stopped":
+                manager._repos.agent_repo.set_state("LATE", "stopped")
+            elif change == "disabled":
+                manager._repos.agent_repo.set_enabled("LATE", False)
+            elif change == "deleted":
+                manager._repos.agent_repo.delete("LATE")
+            elif change == "unshared":
+                manager._repos.agent_repo.set_shared("LATE", False)
+            else:
+                manager.teams.replace_members(host.agent_id, [])
+        await task
+        assert manager._octop_harness_or_none("LATE") is None
+        row = manager.get_row("LATE")
+        if change == "stopped":
+            assert row.last_state == "stopped"
+        elif change == "deleted":
+            assert row is None
+        elif change == "disabled":
+            assert row.enabled == 0
+    finally:
+        if task is not None and not task.done():
+            task.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await task
+        await manager.shutdown()
+
+
+@pytest.mark.asyncio
 async def test_start_team_host_does_not_copy_builtin_skills(manager: AgentManager) -> None:
     """Team hosts skip harness init_workspace so skills are never copied."""
     from octop_harness import HarnessAgent, HarnessAgentManager
