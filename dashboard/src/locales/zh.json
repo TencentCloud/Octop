@@ -1587,6 +1587,7 @@
     "disableStreamUsageFailed": "无法自动关闭，请到模型设置里关掉「聊天里显示实时 Token」。",
     "noAgentsTitle": "还没有专家",
     "noAgentsHint": "从专家列表选择模板，快速创建你的第一个 AI 专家。",
+    "noChattableAgentsHint": "你的专家暂时都不能对话，请先启用，或完成它的模型配置。",
     "createExpert": "去创建专家",
     "pickAgent": "请先选择一个专家",
     "bootstrapKickoff": "你好，我们开始吧",

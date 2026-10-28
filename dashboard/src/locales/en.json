@@ -1587,6 +1587,7 @@
     "disableStreamUsageFailed": "Could not turn this off automatically. In model settings, disable “Show live token count in chat”.",
     "noAgentsTitle": "No experts yet",
     "noAgentsHint": "Pick a template from the Expert List to create your first AI expert.",
+    "noChattableAgentsHint": "None of your experts can chat right now — enable one, or finish its model setup.",
     "createExpert": "Create an expert",
     "pickAgent": "Select an Agent first",
     "bootstrapKickoff": "Hi — let's get started",
