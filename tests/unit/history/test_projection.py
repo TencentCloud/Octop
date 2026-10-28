@@ -20,6 +20,16 @@ from octop.infra.history.projection import (
 )
 
 
+def test_note_turn_duration_stamps_the_assistant_reply() -> None:
+    tracker = TurnHistoryTracker.from_request({"messages": []})
+    tracker.observe({"type": "token", "content": "你好"})
+    tracker.note_turn_duration(3200)
+    items = tracker.inputs
+    assert items
+    wire = json.loads(items[-1].message_json)
+    assert wire["data"]["additional_kwargs"]["turn_duration_ms"] == 3200
+
+
 def test_message_input_preserves_existing_checkpoint_ts() -> None:
     item = message_input(
         HumanMessage(

@@ -3,12 +3,18 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { octopThreadsApi } from "../../../api/modules/octopThreads";
 import * as chatStore from "./chatStore";
 import { useChat } from "./useChat";
+import {
+  clearInflightTail,
+  flushInflightTail,
+  readInflightTail,
+} from "../utils/inflightTranscriptCache";
 
 const thread = "versioned-history-test";
 
 afterEach(() => {
   vi.restoreAllMocks();
   chatStore.removeSession(thread);
+  clearInflightTail(thread);
 });
 
 describe("history failures", () => {
@@ -156,5 +162,70 @@ describe("history failures", () => {
     expect(
       chatStore.getSnapshot(thread).messages.map((message) => message.content),
     ).toEqual(["之前的回复", "继续做"]);
+  });
+
+  it("restores a cached in-flight reply that history has not stored yet", async () => {
+    flushInflightTail(thread, [
+      {
+        id: "local-user",
+        role: "user",
+        content: "继续做",
+        timestamp: 5_000,
+      },
+      {
+        id: "local-a",
+        role: "assistant",
+        content: "已经写到这里了",
+        status: "streaming",
+        timestamp: 5_100,
+      },
+    ]);
+    vi.spyOn(octopThreadsApi, "history").mockResolvedValue({
+      thread_id: thread,
+      messages: [
+        { id: "old", role: "assistant", content: "之前的回复" },
+        { id: "local-user", role: "user", content: "继续做", timestamp: 5_000 },
+      ],
+      has_more: false,
+    });
+    const { result } = renderHook(() => useChat(thread, "agent"));
+    await act(async () => {
+      await result.current.loadHistory(thread);
+    });
+    expect(
+      chatStore.getSnapshot(thread).messages.map((message) => message.content),
+    ).toEqual(["之前的回复", "继续做", "已经写到这里了"]);
+  });
+
+  it("refreshes a completed turn without replaying a longer local or cached bubble", async () => {
+    const local = [
+      { id: "u", role: "user" as const, content: "继续", timestamp: 20_000 },
+      {
+        id: "local-a",
+        role: "assistant" as const,
+        content: "旧的本地内容比最终回复长",
+        status: "done" as const,
+        timestamp: 20_100,
+      },
+    ];
+    chatStore.setHistoryPage(thread, local, { hasMore: false, nextOffset: 0 });
+    flushInflightTail(thread, local);
+    vi.spyOn(octopThreadsApi, "history").mockResolvedValue({
+      thread_id: thread,
+      messages: [
+        { id: "u", role: "user", content: "继续", timestamp: 5_000 },
+        { id: "srv-a", role: "assistant", content: "完成", timestamp: 5_100 },
+      ],
+      has_more: false,
+    });
+    const { result } = renderHook(() => useChat(thread, "agent"));
+    await act(async () => {
+      await result.current.refreshHistory();
+    });
+    expect(
+      chatStore.getSnapshot(thread).messages.map((message) => message.id),
+    ).toEqual(["u", "srv-a"]);
+    expect(chatStore.getSnapshot(thread).messages[0].timestamp).toBe(5_000);
+    expect(readInflightTail(thread)).toBeNull();
   });
 });

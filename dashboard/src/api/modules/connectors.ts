@@ -114,6 +114,8 @@ export interface ConnectorProbeResult {
   tool_count?: number;
   tools?: { name: string; description: string }[];
   error?: string;
+  error_code?: string;
+  details?: Record<string, unknown>;
   error_type?: string;
   status_code?: number;
   oauth?: {
