@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import markUrl from "./assets/octop-mark.svg";
 import { decodeShellError } from "../../shared/shell-error";
 import { mount } from "./mount";
 import "./base.css";
@@ -14,32 +15,17 @@ type CopyState = "idle" | "copied" | "failed";
  * (runtime version guard, checksum mismatch, sidecar never becoming healthy).
  * It never renders a stack trace as the headline: `message` is the sentence the
  * user gets, `detail` is the technical tail, hidden behind a disclosure.
+ *
+ * The page leads with the product mark rather than a generic ✕: the user did not
+ * hit a website error, the app they just launched could not come up, and the
+ * first thing worth offering is another attempt.
  */
-function ResultGlyph() {
+function FailureMark() {
   return (
-    <svg
-      className="result__glyph"
-      viewBox="0 0 76 76"
-      width={76}
-      height={76}
-      fill="none"
-      aria-hidden="true"
-    >
-      <circle
-        cx="38"
-        cy="38"
-        r="36.5"
-        fill="var(--brand-surface)"
-        stroke="var(--brand-border)"
-        strokeWidth={1.5}
-      />
-      <path
-        d="M27 27 49 49M49 27 27 49"
-        stroke="var(--brand)"
-        strokeWidth={3.25}
-        strokeLinecap="round"
-      />
-    </svg>
+    <div className="result__mark" aria-hidden="true">
+      <img className="result__mark-img" src={markUrl} alt="" width={52} height={52} />
+      <span className="result__badge">!</span>
+    </div>
   );
 }
 
@@ -74,6 +60,8 @@ function ErrorPage() {
     [],
   );
   const [copyState, setCopyState] = useState<CopyState>("idle");
+  /** Absent when the page is opened outside the shell (no preload bridge). */
+  const canRetry = typeof window.octopShell?.restart === "function";
 
   useEffect(() => {
     if (copyState === "idle") return;
@@ -105,56 +93,76 @@ function ErrorPage() {
     void writeClipboard(text).then((ok) => setCopyState(ok ? "copied" : "failed"));
   };
 
+  const handleRetry = () => window.octopShell?.restart();
+
   return (
     <main className="result">
       {/* Fixed grab strip: the window hides its titlebar, so the page has to
           provide the drag handle itself. */}
       <div className="shell-drag-strip" aria-hidden="true" />
       <div className="result__body" role="alert">
-        <ResultGlyph />
+        <FailureMark />
         <h1 className="result__title">{title}</h1>
         <p className="result__message">{message}</p>
 
-        {detail ? (
-          <details className="result__details">
-            <summary className="result__summary">
-              <svg viewBox="0 0 12 12" width={12} height={12} className="result__caret" aria-hidden="true">
-                <path
-                  d="M4.5 2.5 8 6l-3.5 3.5"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth={1.6}
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                />
-              </svg>
-              技术详情
-            </summary>
-            <pre className="result__detail">{detail}</pre>
-          </details>
-        ) : null}
-
         <div className="result__actions">
-          <button
-            type="button"
-            className="result__button result__button--primary"
-            onClick={() => window.close()}
-            autoFocus
-          >
-            退出应用
-          </button>
+          {canRetry ? (
+            <button
+              type="button"
+              className="result__button result__button--primary"
+              onClick={handleRetry}
+              autoFocus
+            >
+              重试启动
+            </button>
+          ) : null}
           <button
             type="button"
             className="result__button"
+            onClick={() => window.close()}
+            autoFocus={!canRetry}
+          >
+            退出应用
+          </button>
+        </div>
+
+        <div className="result__aside">
+          {detail ? (
+            <details className="result__details">
+              <summary className="result__summary">
+                <svg
+                  viewBox="0 0 12 12"
+                  width={12}
+                  height={12}
+                  className="result__caret"
+                  aria-hidden="true"
+                >
+                  <path
+                    d="M4.5 2.5 8 6l-3.5 3.5"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth={1.6}
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  />
+                </svg>
+                技术详情
+              </summary>
+              <pre className="result__detail">{detail}</pre>
+            </details>
+          ) : null}
+          <button
+            type="button"
+            className="result__link"
             onClick={handleCopy}
             aria-live="polite"
           >
             {copyLabel}
           </button>
         </div>
-
-        {version ? <p className="result__meta">Octop 桌面端 v{version}</p> : null}
       </div>
+
+      {version ? <p className="result__meta">Octop 桌面端 v{version}</p> : null}
     </main>
   );
 }

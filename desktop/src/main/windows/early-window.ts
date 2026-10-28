@@ -1,5 +1,6 @@
-import { app, BrowserWindow } from "electron";
+import { app, BrowserWindow, ipcMain } from "electron";
 
+import { EARLY_IPC } from "../../shared/early-ipc";
 import { encodeShellError, SHELL_ERROR_PARAM, type ShellFailure } from "../../shared/shell-error";
 import { windowChrome } from "./chrome";
 import { MIN_WINDOW_SIZE } from "./size";
@@ -24,6 +25,8 @@ export interface EarlyWindowOptions {
   errorFile: string;
   /** Stamped onto the failure page so a report always names the running build. */
   version: string;
+  /** ``preload/early.js`` — the one-method bridge these pages are allowed. */
+  preload?: string;
 }
 
 export interface EarlyWindow {
@@ -33,6 +36,8 @@ export interface EarlyWindow {
 }
 
 export function createEarlyWindow(options: EarlyWindowOptions): EarlyWindow {
+  registerRelaunchHandler();
+
   const win = new BrowserWindow({
     width: 1080,
     height: 720,
@@ -50,16 +55,19 @@ export function createEarlyWindow(options: EarlyWindowOptions): EarlyWindow {
       sandbox: true,
       contextIsolation: true,
       nodeIntegration: false,
+      ...(options.preload ? { preload: options.preload } : {}),
     },
   });
   win.once("ready-to-show", () => win.show());
-  void win.loadFile(options.splashFile);
+  // The splash names the build it is starting; the failure page gets the same
+  // value in its payload so the two can never disagree.
+  void win.loadFile(options.splashFile, { query: { version: options.version } });
 
   return {
     /**
-     * The payload rides in the query string because the page is sandboxed: it has
-     * no preload, no IPC and no Node access, so this is the only channel the shell
-     * and its own page share.
+     * The payload rides in the query string because the page is sandboxed: it
+     * gets the one-method preload bridge and nothing else, so a URL is the only
+     * channel the shell and its own page share for structured data.
      */
     showError(failure: ShellFailure): void {
       const payload = encodeShellError({ ...failure, version: options.version });
@@ -72,4 +80,22 @@ export function createEarlyWindow(options: EarlyWindowOptions): EarlyWindow {
       if (!win.isDestroyed()) win.close();
     },
   };
+}
+
+let relaunchHandlerRegistered = false;
+
+/**
+ * "重试" on the failure page. Most boot failures are transient (a busy port, a
+ * sidecar that lost a race), and the alternative — quit, find the icon, open it
+ * again — is exactly the friction a failure page should remove. ``relaunch``
+ * queues a fresh process before this one exits, so the new instance starts from
+ * a clean slate rather than re-entering a half-finished boot.
+ */
+function registerRelaunchHandler(): void {
+  if (relaunchHandlerRegistered) return;
+  relaunchHandlerRegistered = true;
+  ipcMain.on(EARLY_IPC.restart, () => {
+    app.relaunch();
+    app.exit(0);
+  });
 }

@@ -18,7 +18,12 @@ export default defineConfig({
     plugins: [externalizeDepsPlugin()],
     build: {
       rollupOptions: {
-        input: { index: resolve(__dirname, "preload/index.ts") },
+        input: {
+          index: resolve(__dirname, "preload/index.ts"),
+          // Separate, much smaller bridge for the shell's own pages (splash +
+          // fatal error). They must not be handed the Dashboard's API.
+          early: resolve(__dirname, "preload/early.ts"),
+        },
       },
     },
   },

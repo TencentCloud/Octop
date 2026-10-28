@@ -7,17 +7,31 @@ import "./splash.css";
  * Splash of the Early Window (§4). It owns no state: the main process swaps the
  * whole window for the Dashboard once ``/api/health`` is green, or replaces this
  * page with the failure Result.
+ *
+ * The sidecar can take ten seconds or more on a cold start, so the page has to
+ * read as "working", not as "stuck on a blank screen": the mark, the product
+ * name, one line saying what is being waited on, an indeterminate bar that keeps
+ * moving, and the build number at the bottom for support. The wordmark already
+ * says Octop, so the status line does not repeat it.
  */
 function Splash() {
+  const version = new URLSearchParams(window.location.search).get("version");
+
   return (
     <>
       <div className="shell-drag-strip" aria-hidden="true" />
       <main className="splash" role="status" aria-live="polite">
-        <div className="splash__mark" aria-hidden="true">
-          <span className="splash__ring" />
-          <img className="splash__logo" src={markUrl} alt="" width={60} height={60} />
+        <div className="splash__stack">
+          <div className="splash__mark" aria-hidden="true">
+            <img className="splash__logo" src={markUrl} alt="" width={64} height={64} />
+          </div>
+          <h1 className="splash__wordmark">Octop</h1>
+          <p className="splash__text">正在准备本地服务…</p>
+          <div className="splash__bar" aria-hidden="true">
+            <span className="splash__bar-thumb" />
+          </div>
         </div>
-        <p className="splash__text">正在启动 Octop…</p>
+        {version ? <p className="splash__version">v{version}</p> : null}
       </main>
     </>
   );
