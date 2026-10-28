@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import time
 from typing import Any
-from urllib.parse import urlencode, urlparse
+from urllib.parse import parse_qsl, urlencode, urlparse, urlunparse
 
 import httpx
 
@@ -133,7 +133,14 @@ def build_authorize_url(
         params["scope"] = scope
     if resource:
         params["resource"] = resource
-    return f"{metadata['authorization_endpoint']}?{urlencode(params)}"
+    # Merge with any query params already present on the authorization endpoint
+    # (e.g. "?tenant=acme") per RFC 6749 §3.1, which explicitly allows the
+    # authorization_endpoint URI to have existing query components.
+    parsed = urlparse(metadata["authorization_endpoint"])
+    existing = dict(parse_qsl(parsed.query, keep_blank_values=True))
+    merged = {**existing, **params}
+    new_query = urlencode(merged)
+    return urlunparse((parsed.scheme, parsed.netloc, parsed.path, parsed.params, new_query, parsed.fragment))
 
 
 def _http_error_detail(resp: Any) -> str:
