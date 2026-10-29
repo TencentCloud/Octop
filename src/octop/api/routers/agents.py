@@ -273,7 +273,10 @@ async def list_agents(
         exclude_user_id=user.id,
         viewer_user_id=None if user.is_admin else user.id,
     )
-    rows = list({row.agent_id: row for row in [*shared, *owned]}.values())
+    rows = [
+        row for row in {r.agent_id: r for r in [*shared, *owned]}.values()
+        if int(getattr(row, "enabled", 1) or 1)
+    ]
     shared_owner_username_by_id: dict[int, str] = {}
     for row in shared:
         if row.user_id is None or row.user_id in shared_owner_username_by_id:
