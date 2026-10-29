@@ -4,7 +4,7 @@
  * page in a browser, which has no Octop session.
  */
 const IN_APP_BROWSER_UA =
-  /MicroMessenger|wxwork|\bQQ\/|DingTalk|Lark\/|Feishu|Weibo|AlipayClient/i;
+  /MicroMessenger|wxwork|\bQQ\/|DingTalk|Lark\/|Feishu|Weibo|AlipayClient|Discord|Telegram|\bLine\//i;
 
 export function isInAppBrowser(userAgent = navigator.userAgent): boolean {
   return IN_APP_BROWSER_UA.test(userAgent);
