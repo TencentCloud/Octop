@@ -35,7 +35,7 @@ def _atomic_write_bytes(path: Path, data: bytes, *, mode: int | None = None) -> 
     path.parent.mkdir(parents=True, exist_ok=True)
     tmp = path.with_name(f"{path.name}.tmp")
     tmp.write_bytes(data)
-    if mode is not None:
+    if mode is not None and os.name == "posix":
         os.chmod(tmp, mode)
     os.replace(tmp, path)
 

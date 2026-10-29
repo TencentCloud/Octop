@@ -41,7 +41,8 @@ def _load_or_create_account_key(path: Path) -> JWKRSA:
         encryption_algorithm=serialization.NoEncryption(),
     )
     path.write_bytes(pem)
-    os.chmod(path, 0o600)
+    if os.name == "posix":
+        os.chmod(path, 0o600)
     return JWKRSA(key=key)
 
 
