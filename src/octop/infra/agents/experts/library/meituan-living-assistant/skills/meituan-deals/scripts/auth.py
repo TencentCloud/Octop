@@ -11,10 +11,8 @@ huisheng-coupon-tool 认证模块
 
 import argparse
 import contextlib
-import hashlib
 import json
-import random
-import time
+import secrets
 from pathlib import Path
 
 # ── 常量 ──────────────────────────────────────────────────────────────
@@ -52,16 +50,12 @@ AUTH_FILE = _resolve_auth_file()
 # ── 设备ID生成 ────────────────────────────────────────────────────────
 
 
-def generate_device_token(seed: str) -> str:
+def generate_device_token(_seed: str) -> str:
     """
-    生成设备唯一标识（device_token）。
-    算法：MD5（seed + 毫秒时间戳 + 0~1000随机整数）
-    device_token 与设备绑定，一旦生成后永不覆盖。
+    Generate a cryptographically secure device identifier. The token
+    is bound to the device and never regenerated once persisted.
     """
-    ts_ms = int(time.time() * 1000)
-    rand_int = random.randint(0, 1000)
-    raw = f"{seed}{ts_ms}{rand_int}"
-    return hashlib.md5(raw.encode("utf-8")).hexdigest()
+    return secrets.token_hex(16)
 
 
 # ── 存储操作 ──────────────────────────────────────────────────────────
@@ -81,8 +75,9 @@ def save_auth(data: dict):
     AUTH_FILE.parent.mkdir(parents=True, exist_ok=True)
     with open(AUTH_FILE, "w", encoding="utf-8") as f:
         json.dump(data, f, ensure_ascii=False, indent=2)
-    with contextlib.suppress(OSError):
-        os.chmod(AUTH_FILE, stat.S_IRUSR | stat.S_IWUSR)
+    if os.name == "posix":
+        with contextlib.suppress(OSError):
+            os.chmod(AUTH_FILE, stat.S_IRUSR | stat.S_IWUSR)
 
 
 def get_token_data() -> dict:
