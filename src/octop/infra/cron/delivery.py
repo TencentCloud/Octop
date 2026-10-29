@@ -2,7 +2,10 @@
 
 from __future__ import annotations
 
+import hashlib
 import logging
+import time
+from collections import OrderedDict
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
@@ -29,6 +32,17 @@ if TYPE_CHECKING:
     from octop.infra.gateway.gateway import Gateway
 
 logger = logging.getLogger(__name__)
+
+# ---------------------------------------------------------------------------
+# Idempotency window for cron delivery
+# ---------------------------------------------------------------------------
+# Guard against the same cron prompt being delivered more than once within the
+# window to the same session — observed in issue #2401 where inbox/feishu
+# dispatcher replayed an APScheduler-fired prompt 3-4 times concurrently.
+# Window chosen larger than the longest anticipated cron run so late replayed
+# copies are still caught; entries are pruned LRU after MAX_IDEMPOTENCY_ENTRIES.
+IDEMPOTENCY_WINDOW_SECONDS = 600  # 10 minutes
+MAX_IDEMPOTENCY_ENTRIES = 256
 
 
 @dataclass(frozen=True)
@@ -60,13 +74,66 @@ class CronDeliveryService:
         self._gateway = gateway
         self._agent_manager = agent_manager
         self._repos = repos
+        # (cron_id, session_key, prompt_hash) -> first delivery wall-clock.
+        # A plain OrderedDict is enough: every entry ages out naturally past
+        # IDEMPOTENCY_WINDOW_SECONDS and we also cap the total count.
+        self._recent_deliveries: OrderedDict[str, float] = OrderedDict()
 
     def replace_repos(self, repos: RepoBundle) -> None:
         """Retarget projection and locale lookups after a control-plane swap."""
         self._repos = repos
 
+    @staticmethod
+    def _idempotency_key(command: CronDeliveryCommand) -> str:
+        """Stable key covering the bytes-identical replay scenario from #2401."""
+        prompt_hash = hashlib.sha256(command.prompt.encode("utf-8")).hexdigest()[:16]
+        return f"{command.cron_id}|{command.session_key}|{prompt_hash}"
+
+    def _check_and_record_delivery(self, command: CronDeliveryCommand) -> bool:
+        """Return True when this (cron_id, session, prompt) is a fresh delivery.
+
+        Returns False for replayed copies inside the idempotency window — the
+        caller is expected to bail out silently. The first call records the
+        entry and prunes any stale siblings.
+        """
+        self._prune_stale()
+        key = self._idempotency_key(command)
+        now = time.monotonic()
+        if key in self._recent_deliveries:
+            return False
+        self._recent_deliveries[key] = now
+        # Move to end so OrderedDict preserves insertion order as recency.
+        self._recent_deliveries.move_to_end(key)
+        if len(self._recent_deliveries) > MAX_IDEMPOTENCY_ENTRIES:
+            self._recent_deliveries.popitem(last=False)
+        return True
+
+    def _prune_stale(self) -> None:
+        """Drop entries older than IDEMPOTENCY_WINDOW_SECONDS."""
+        if not self._recent_deliveries:
+            return
+        now = time.monotonic()
+        # OrderedDict allows safe mutation during iteration (Py 3.7+).
+        for key, ts in list(self._recent_deliveries.items()):
+            if now - ts > IDEMPOTENCY_WINDOW_SECONDS:
+                self._recent_deliveries.pop(key, None)
+            else:
+                # Keys are in insertion order; once we hit a fresh one the rest
+                # are also fresh because deliveries are recorded monotonically.
+                break
+
     async def deliver(self, command: CronDeliveryCommand) -> None:
         """Run one delivery under the target channel session lock."""
+        if not self._check_and_record_delivery(command):
+            logger.warning(
+                "cron delivery skipped as duplicate within %ds window "
+                "cron_id=%s agent_id=%s session=%s",
+                IDEMPOTENCY_WINDOW_SECONDS,
+                command.cron_id,
+                command.agent_id,
+                command.session_key,
+            )
+            return
 
         async def _locked() -> None:
             if command.fresh_thread:
