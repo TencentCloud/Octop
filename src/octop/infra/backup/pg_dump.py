@@ -35,6 +35,7 @@ def dump_postgres(
         cmd,
         capture_output=True,
         text=True,
+        encoding="utf-8",
         check=False,
     )
     if proc.returncode != 0:
@@ -58,6 +59,7 @@ def restore_postgres(conninfo: str, dump_file: Path) -> None:
         ],
         capture_output=True,
         text=True,
+        encoding="utf-8",
         check=False,
     )
     # pg_restore may return 1 with warnings; treat only >=2 as hard fail.

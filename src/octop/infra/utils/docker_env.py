@@ -97,6 +97,7 @@ def _run_install(argv: list[str]) -> bool:
             check=False,
             capture_output=True,
             text=True,
+            encoding="utf-8",
             timeout=_INSTALL_TIMEOUT_SEC,
         )
     except subprocess.TimeoutExpired:
