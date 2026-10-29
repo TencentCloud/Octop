@@ -109,6 +109,7 @@ def _format_context(
     ranked: Sequence[tuple[Any, Hit, Any]], *, char_budget: int, locale: str
 ) -> str:
     sections: list[str] = []
+    included_hits: list[tuple[Any, Hit, Any]] = []
     remaining = char_budget
     for base, hit, document in ranked:
         citation = tr(
@@ -125,8 +126,12 @@ def _format_context(
             continue
         section = f"{citation}{text}"
         sections.append(section)
+        included_hits.append((base, hit, document))
         remaining -= len(section)
     if not sections:
         return ""
     body = tr("knowledge.retrieval.preamble", locale) + "\n\n" + "\n\n".join(sections)
-    return append_citations_marker(body, citations_from_ranked(ranked))
+    # Citations must match documents actually included in the body. ranked
+    # items that were dropped by the char_budget truncation must not appear
+    # in the marker (GitHub issue #1490).
+    return append_citations_marker(body, citations_from_ranked(included_hits))

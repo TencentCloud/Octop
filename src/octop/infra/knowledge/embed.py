@@ -64,7 +64,20 @@ def _embed_remote_batched(
         data = response.json().get("data")
         if not isinstance(data, list):
             raise RuntimeError("knowledge embedding response has no data")
-        out.extend(list(item["embedding"]) for item in data)
+        # OpenAI-compatible embedding APIs may return results in any order
+        # while supplying an ``index`` field per result. Sort by that field
+        # before extracting vectors so chunk N stays aligned with embedding
+        # N (GitHub issue #1453). A missing index is treated as the item's
+        # position in the response for providers that do not include it.
+        def _item_index(item: Any, fallback: int) -> int:
+            if isinstance(item, dict):
+                raw = item.get("index")
+                if isinstance(raw, int):
+                    return raw
+            return fallback
+
+        indexed = sorted(enumerate(data), key=lambda pair: _item_index(pair[1], pair[0]))
+        out.extend(list(item["embedding"]) for _, item in indexed)
     if len(out) != len(texts):
         raise RuntimeError("knowledge embedding count mismatch")
     return out
