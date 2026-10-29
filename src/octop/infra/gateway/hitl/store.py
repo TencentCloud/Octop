@@ -17,13 +17,31 @@ def _same_pause_slot(
     existing: HitlPendingRecord,
     *,
     session_key: str,
+    thread_id: str,
     resume_agent_id: str | None,
+    resume_thread_id: str | None = None,
 ) -> bool:
+    """Match two pauses that belong to the same interrupt slot.
+
+    Two pauses are in the same slot when they share a session, an agent,
+    and **a thread**.  Without the thread check, Chat A's pending record
+    on ``thr-a`` gets expired as soon as Chat B registers a pause on
+    ``thr-b`` — both share the user/agent/session_key — even though the
+    two chats are independent (see issue #1897).
+    """
     if existing.session_key != session_key or existing.status != "pending":
         return False
+    if existing.thread_id != thread_id:
+        return False
     if resume_agent_id:
-        return existing.resume_agent_id == resume_agent_id
-    return not existing.resume_agent_id
+        if existing.resume_agent_id != resume_agent_id:
+            return False
+        if resume_thread_id and existing.resume_thread_id != resume_thread_id:
+            return False
+    else:
+        if existing.resume_agent_id:
+            return False
+    return True
 
 
 def _actions_equivalent(
@@ -83,7 +101,9 @@ class HitlPendingStore:
             if not _same_pause_slot(
                 existing,
                 session_key=session_key,
+                thread_id=thread_id,
                 resume_agent_id=resume_agent_id,
+                resume_thread_id=(thread_id if resume_agent_id else None),
             ):
                 continue
             if _actions_equivalent(existing.action_requests, action_requests):
@@ -92,7 +112,9 @@ class HitlPendingStore:
             if not _same_pause_slot(
                 existing,
                 session_key=session_key,
+                thread_id=thread_id,
                 resume_agent_id=resume_agent_id,
+                resume_thread_id=(thread_id if resume_agent_id else None),
             ):
                 continue
             existing.status = "expired"
@@ -320,3 +342,4 @@ class HitlPendingStore:
                 stale_ids.append(pending_id)
         for pending_id in stale_ids:
             del self._records[pending_id]
+
