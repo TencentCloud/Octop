@@ -44,6 +44,11 @@ from octop.infra.gateway.media.inbound_store import display_name_from_stored
 logger = logging.getLogger(__name__)
 
 _MEDIA_BLOCK_TYPES = frozenset({"image", "video", "audio", "file"})
+# When raw_url looks like a workspace-relative or host-absolute path rather
+# than an external HTTP URL, we should read it as a local file instead of
+# passing it to the IM channel as a URL (#2351 — generated/images/foo.png
+# was sent to Weixin which rejected it with InvalidUrlClientError).
+_EXTERNAL_URL_SCHEMES = ("http://", "https://", "data:", "//")
 # Only these tools may push media to the user (dashboard attachments / IM).
 # write_file / read_file / browser dumps often look like media and would re-push
 # prior outbound files if every tool_result were treated as a delivery.
@@ -816,14 +821,25 @@ async def read_media_block_bytes(
         except (ValueError, TypeError):
             return None
 
-    if not raw_url.startswith("file://"):
-        return None
+    if raw_url.startswith("file://") or (
+        raw_url and not raw_url.startswith(_EXTERNAL_URL_SCHEMES)
+    ):
+        # file:// or workspace-relative path (e.g. generated/images/foo.png) —
+        # both resolve through the workspace backend.
+        if raw_url and not raw_url.startswith("file://") and not raw_url.startswith("/"):
+            file_url = f"file://{raw_url}"
+        else:
+            file_url = raw_url if raw_url.startswith("file://") else f"file://{raw_url}"
+        data = await read_file_url_bytes(workspace, file_url, filename=filename, mime=mime)
+        if data is None:
+            # Fallback: try reading the raw workspace-relative path directly
+            data = await read_file_url_bytes(workspace, raw_url, filename=filename, mime=mime)
+        if data is None:
+            return None
+        guessed = mime or mimetypes.guess_type(filename or raw_url)[0] or "application/octet-stream"
+        return data, guessed
 
-    data = await read_file_url_bytes(workspace, raw_url, filename=filename, mime=mime)
-    if data is None:
-        return None
-    guessed = mime or mimetypes.guess_type(filename or raw_url)[0] or "application/octet-stream"
-    return data, guessed
+    return None
 
 
 async def block_to_content_part(
@@ -853,8 +869,18 @@ async def block_to_content_part(
         if not payload:
             return None
         data_field = payload
-    elif raw_url.startswith("file://"):
-        file_bytes = await read_file_url_bytes(workspace, raw_url, filename=filename, mime=mime)
+    elif raw_url.startswith("file://") or (
+        raw_url and not raw_url.startswith(_EXTERNAL_URL_SCHEMES)
+    ):
+        # file:// or workspace-relative path → read file bytes, don't send to
+        # the IM channel as a URL (e.g. generated/images/foo.png is not an URL).
+        if raw_url and not raw_url.startswith("file://") and not raw_url.startswith("/"):
+            file_url = f"file://{raw_url}"
+        else:
+            file_url = raw_url if raw_url.startswith("file://") else f"file://{raw_url}"
+        file_bytes = await read_file_url_bytes(workspace, file_url, filename=filename, mime=mime)
+        if file_bytes is None:
+            file_bytes = await read_file_url_bytes(workspace, raw_url, filename=filename, mime=mime)
         if file_bytes is None:
             return None
         data_field = base64.b64encode(file_bytes).decode("ascii")
