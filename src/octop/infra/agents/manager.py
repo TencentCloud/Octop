@@ -4087,7 +4087,19 @@ class AgentManager:
 
         system_prompt = row.system_prompt
         memory: tuple[str, ...] | None = None
-        if not team_host and not bootstrap_marker_exists(ws):
+        # Bootstrap is only relevant for an agent that has no persona yet —
+        # the onboarding conversation needs to invent a system prompt from
+        # the user's intent. If the agent already carries a non-empty
+        # system_prompt (team members, preconfigured templates, hand-written
+        # personas), always use it regardless of bootstrap status. Upstream
+        # providers require a system message first; leaving it None for a
+        # ready-to-run agent surfaces as "System message must be at the
+        # beginning."
+        if (
+            not team_host
+            and not bootstrap_marker_exists(ws)
+            and not (system_prompt and system_prompt.strip())
+        ):
             system_prompt = None
             memory = ()
 
