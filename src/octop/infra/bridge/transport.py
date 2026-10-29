@@ -74,12 +74,12 @@ def bridge_json_default(obj: Any) -> Any:
         try:
             return obj.model_dump()
         except Exception:
-            pass
+            logger.debug("bridge_json_default: model_dump failed for %s", type(obj).__name__, exc_info=True)
     if hasattr(obj, "dict"):
         try:
             return obj.dict()
         except Exception:
-            pass
+            logger.debug("bridge_json_default: dict() failed for %s", type(obj).__name__, exc_info=True)
     return repr(obj)
 
 

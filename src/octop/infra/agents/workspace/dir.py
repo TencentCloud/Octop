@@ -105,8 +105,13 @@ def neutralize_unwritable_local_root(cfg: dict[str, Any]) -> dict[str, Any]:
     try:
         Path(root).expanduser().resolve().mkdir(parents=True, exist_ok=True)
         return cfg
-    except OSError:
-        pass
+    except OSError as exc:
+        import logging
+        logging.getLogger(__name__).warning(
+            "neutralize_unwritable_local_root: cannot create root_dir %r (%s), falling back to host root",
+            root,
+            exc,
+        )
     out = dict(cfg)
     backend = out.get("backend")
     if not isinstance(backend, dict):

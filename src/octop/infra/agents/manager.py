@@ -2803,8 +2803,8 @@ class AgentManager:
             try:
                 if Path(root_dir).resolve() == Path(workspace_dir).resolve():
                     return False
-            except OSError:
-                pass
+            except OSError as exc:
+                logger.debug("agent workspace_dir resolve check failed: %s", exc)
         return True
 
     async def persist_skill_package_ids(self, agent_id: str, package_ids: list[str]) -> None:
