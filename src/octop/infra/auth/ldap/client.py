@@ -341,7 +341,7 @@ class LdapClient:
     @staticmethod
     def _safe_unbind(conn: Connection) -> None:
         # Releasing a broken socket must never mask the original failure.
-        with contextlib.suppress(Exception):
+        with contextlib.suppress(LDAPException):
             conn.unbind()
 
     @staticmethod
