@@ -118,7 +118,7 @@ class MemorySlimControl:
             await asyncio.gather(*self._clients, return_exceptions=True)
         path = self.root / ENDPOINT
         try:
-            if json.loads(path.read_text()).get("token") == self.token:
+            if json.loads(path.read_text(encoding="utf-8")).get("token") == self.token:
                 path.unlink()
         except (OSError, ValueError):
             pass
@@ -163,7 +163,7 @@ def list_memory_slim_agents(root: Path, *, locale: str = "en") -> list[dict[str,
 
 
 def _request_control(root: Path, request: dict[str, Any]) -> Iterator[dict[str, Any]]:
-    endpoint = json.loads((root / ENDPOINT).read_text())
+    endpoint = json.loads((root / ENDPOINT).read_text(encoding="utf-8"))
     with socket.create_connection(("127.0.0.1", int(endpoint["port"])), timeout=5) as sock:
         sock.sendall((json.dumps({"token": endpoint["token"], **request}) + "\n").encode())
         sock.settimeout(None)

@@ -475,7 +475,7 @@ async def terminal_context(
 
             p = _pathlib.Path("/etc/os-release")
             if p.exists():
-                for line in p.read_text().splitlines():
+                for line in p.read_text(encoding="utf-8").splitlines():
                     if line.startswith("PRETTY_NAME="):
                         distro = line.split("=", 1)[1].strip().strip('"')
                         break

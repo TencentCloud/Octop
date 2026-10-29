@@ -177,7 +177,7 @@ async def get_tool_guard_rules_raw(
     server: Any = Depends(get_server),
 ) -> ToolGuardRulesRawResponse:
     store = _rules_store(server)
-    return ToolGuardRulesRawResponse(path=store.display_path(), content=store.read_text())
+    return ToolGuardRulesRawResponse(path=store.display_path(), content=store.read_text(encoding="utf-8"))
 
 
 @router.put("/tool-guard/rules/raw", summary="Save command guard rules YAML")
