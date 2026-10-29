@@ -40,6 +40,7 @@ def linux_binder_available() -> bool:
             ["lsmod"],
             capture_output=True,
             text=True,
+            encoding="utf-8",
             timeout=3,
             check=False,
         )

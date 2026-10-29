@@ -49,6 +49,7 @@ def _container_running(name: str = _CONTAINER_NAME) -> bool:
             ["docker", "inspect", "-f", "{{.State.Running}}", name],
             capture_output=True,
             text=True,
+            encoding="utf-8",
             timeout=5,
             check=False,
         )

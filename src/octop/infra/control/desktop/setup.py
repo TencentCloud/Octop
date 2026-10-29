@@ -206,6 +206,7 @@ def _listeners_on_port(port: int) -> list[str] | None:
                 ["ss", "-ltn", f"sport = :{port}"],
                 capture_output=True,
                 text=True,
+                encoding="utf-8",
                 timeout=3,
                 check=False,
             )
@@ -226,6 +227,7 @@ def _listeners_on_port(port: int) -> list[str] | None:
                 ["netstat", "-ltn"],
                 capture_output=True,
                 text=True,
+                encoding="utf-8",
                 timeout=3,
                 check=False,
             )
@@ -313,7 +315,7 @@ def apply_geometry(geometry: str) -> None:
             cmd = ["sudo", "-n", "/bin/bash", str(resize_script), geometry]
         else:
             raise PermissionError("root or passwordless sudo required to change desktop geometry")
-        proc = subprocess.run(cmd, capture_output=True, text=True, timeout=120, check=False)
+        proc = subprocess.run(cmd, capture_output=True, text=True, encoding="utf-8", timeout=120, check=False)
         if proc.returncode != 0:
             detail = (proc.stdout or proc.stderr or "").strip()
             raise RuntimeError(detail or f"resize failed with exit {proc.returncode}")
@@ -328,7 +330,7 @@ def apply_geometry(geometry: str) -> None:
         if geteuid() == 0
         else ["sudo", "-n", "/bin/bash", str(start_script)]
     )
-    proc = subprocess.run(cmd, capture_output=True, text=True, timeout=120, check=False)
+    proc = subprocess.run(cmd, capture_output=True, text=True, encoding="utf-8", timeout=120, check=False)
     if proc.returncode != 0:
         detail = (proc.stdout or proc.stderr or "").strip()
         raise RuntimeError(detail or "failed to restart desktop after geometry change")

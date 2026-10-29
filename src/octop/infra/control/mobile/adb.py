@@ -51,6 +51,7 @@ def list_devices(*, adb: str | None = None) -> list[str]:
             [exe, "devices"],
             capture_output=True,
             text=True,
+            encoding="utf-8",
             timeout=5,
             check=False,
         )
@@ -85,6 +86,7 @@ def adb_connect(
             [exe, "connect", hostport],
             capture_output=True,
             text=True,
+            encoding="utf-8",
             timeout=10,
             check=False,
         )
@@ -118,6 +120,7 @@ def primary_display_id(device: str, *, adb: str | None = None) -> str | None:
             [exe, "-s", device, "shell", "dumpsys", "SurfaceFlinger", "--display-id"],
             capture_output=True,
             text=True,
+            encoding="utf-8",
             timeout=5,
             check=False,
         )
@@ -136,6 +139,7 @@ def wm_size(device: str, *, adb: str | None = None) -> tuple[int, int] | None:
             [exe, "-s", device, "shell", "wm", "size"],
             capture_output=True,
             text=True,
+            encoding="utf-8",
             timeout=5,
             check=False,
         )
@@ -454,6 +458,7 @@ def _adb_client_command(
             [exe, "-s", device, *args],
             capture_output=True,
             text=True,
+            encoding="utf-8",
             timeout=15,
             check=False,
         )
@@ -548,6 +553,7 @@ def shell(device: str, command: str, *, adb: str | None = None) -> tuple[int, st
             [exe, "-s", device, "shell", command],
             capture_output=True,
             text=True,
+            encoding="utf-8",
             timeout=15,
             check=False,
         )
