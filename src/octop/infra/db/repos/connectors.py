@@ -30,6 +30,16 @@ class ConnectorRow:
     @classmethod
     def from_row(cls, r: DbRow) -> ConnectorRow:
         blob = r["credential_blob"]
+        if blob is None:
+            credential_blob = None
+        elif isinstance(blob, (bytes, bytearray)):
+            credential_blob = bytes(blob)
+        elif isinstance(blob, str):
+            # Legacy versions wrote credential_blob as TEXT.
+            # Encode back so downstream decrypt_credentials works.
+            credential_blob = blob.encode("utf-8")
+        else:
+            credential_blob = bytes(blob)
         return cls(
             id=r["id"],
             instance_id=r["instance_id"],
@@ -39,7 +49,7 @@ class ConnectorRow:
             status=r["status"],
             shared=bool(r["shared"]),
             mcp_server_name=r["mcp_server_name"],
-            credential_blob=bytes(blob) if blob is not None else None,
+            credential_blob=credential_blob,
             credential_expires_at=r["credential_expires_at"],
             credential_rotated_at=r["credential_rotated_at"],
             config_json=r["config_json"],
