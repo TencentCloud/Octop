@@ -64,7 +64,25 @@ def _embed_remote_batched(
         data = response.json().get("data")
         if not isinstance(data, list):
             raise RuntimeError("knowledge embedding response has no data")
-        out.extend(list(item["embedding"]) for item in data)
+        # OpenAI-compatible embedding APIs may return objects in an order
+        # different from the input order, with an ``index`` field on each
+        # result.  Respect it so vectors never misalign with the input text
+        # chunk (see issue #1453).
+        indexed: list[tuple[int, list[float]]] = []
+        for item in data:
+            if not isinstance(item, dict):
+                continue
+            idx_raw = item.get("index")
+            try:
+                idx = int(idx_raw) if idx_raw is not None else len(indexed)
+            except (TypeError, ValueError):
+                idx = len(indexed)
+            embedding = item.get("embedding")
+            if isinstance(embedding, list):
+                indexed.append((idx, [float(v) for v in embedding]))
+        indexed.sort(key=lambda t: t[0])
+        out.extend(vec for _, vec in indexed)
     if len(out) != len(texts):
         raise RuntimeError("knowledge embedding count mismatch")
     return out
+
