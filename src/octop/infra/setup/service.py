@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import contextlib
 import logging
 import os
 import platform
@@ -335,7 +336,7 @@ def _systemd_enable_linger(runtime: ServiceRuntime) -> None:
     user = runtime.run_as_user
     cmd = [*_sudo_as_user_prefix(user), "loginctl", "enable-linger", user]
     # NOCA:DangerousSubprocessUseAudit(argv list with shell=False; loginctl service helper)
-    proc = subprocess.run(cmd, capture_output=True, text=True, check=False)
+    proc = subprocess.run(cmd, capture_output=True, text=True, encoding="utf-8", check=False)
     if proc.returncode != 0:
         logger.info(
             "could not enable linger automatically; run: loginctl enable-linger %s",
@@ -498,7 +499,7 @@ def _needs_sudo(path: Path) -> bool:
 def _run_cmd(cmd: list[str], *, use_sudo: bool) -> subprocess.CompletedProcess[str]:
     full = ["sudo", *cmd] if use_sudo and geteuid() != 0 else cmd
     # NOCA:DangerousSubprocessUseAudit(argv list with shell=False; systemctl/launchctl service management)
-    return subprocess.run(full, capture_output=True, text=True, check=False)
+    return subprocess.run(full, capture_output=True, text=True, encoding="utf-8", check=False)
 
 
 def _cmd_ok(proc: subprocess.CompletedProcess[str], fallback: str) -> None:
@@ -584,7 +585,8 @@ def _write_managed_file(destination: Path, content: str, *, run_as_user: str) ->
                     use_sudo=True,
                 )
         finally:
-            os.unlink(tmp_path)
+            with contextlib.suppress(OSError):
+                os.unlink(tmp_path)
         return
 
     destination.parent.mkdir(parents=True, exist_ok=True)
