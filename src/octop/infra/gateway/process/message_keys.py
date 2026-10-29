@@ -108,10 +108,19 @@ def resolve_user_id_for_message(
     return 0
 
 
-def subject_id_from_message(msg: InboundMessage) -> str:
-    if msg.channel_subject and msg.channel_subject.subject_id:
-        return msg.channel_subject.subject_id
-    return "0"
+# Metadata keys that carry the platform's group/conversation id. Every IM
+# adapter that surfaces a group context should populate one of these so
+# :func:subject_id_from_message keys group chats by *room* rather than
+# by *sender*. Order matches adapter frequency across the codebase.
+_GROUP_SUBJECT_FIELDS = (
+    "conversation_id",
+    "chat_id",
+    "chatid",
+    "group_id",
+    "group_openid",
+    "channel_id_native",
+    "guild_id",
+)
 
 
 def chat_type_from_message(msg: InboundMessage) -> str:
@@ -122,6 +131,21 @@ def chat_type_from_message(msg: InboundMessage) -> str:
     if meta.get("chat_type") == "group" or meta.get("is_group"):
         return ThreadRegistry.CHAT_TYPE_GROUP
     return ThreadRegistry.CHAT_TYPE_DM
+
+
+def subject_id_from_message(msg: InboundMessage) -> str:
+    meta = msg.metadata or {}
+    # Group chats key by the room/conversation, not by the sender — otherwise
+    # two people in the same group get two independent sessions and the bot
+    # cannot see prior context from the other side.
+    if chat_type_from_message(msg) == ThreadRegistry.CHAT_TYPE_GROUP:
+        for field in _GROUP_SUBJECT_FIELDS:
+            val = meta.get(field)
+            if val not in (None, ""):
+                return str(val)
+    if msg.channel_subject and msg.channel_subject.subject_id:
+        return msg.channel_subject.subject_id
+    return "0"
 
 
 def session_key_from_message(msg: InboundMessage, *, agent_id: str) -> str:
