@@ -1104,6 +1104,64 @@ async def test_create_rolls_back_when_initializer_fails(tmp_path: Path) -> None:
 
 
 @pytest.mark.asyncio
+async def test_create_rolls_back_when_template_seed_fails(tmp_path: Path) -> None:
+    """A failed expert-template seed must not leave a half-created agent behind.
+
+    Mirrors ``test_create_rolls_back_when_initializer_fails`` for the
+    ``elif spec.template_name`` branch. Seeding resolves the agent's backend
+    before it touches the workspace, so an unresolvable ``named`` backend
+    raises out of ``create()`` after ``agent_repo.create`` already committed.
+    Without a rollback the row survives with no state, its name stays taken
+    (``_assert_agent_name_available``), and the workspace directory leaks.
+    """
+    from octop.infra.agents.experts.catalog import (  # noqa: PLC0415
+        Expert,
+        ExpertCatalog,
+        ExpertSummary,
+    )
+
+    services = _make_services(tmp_path)
+    expert_dir = tmp_path / "experts-lib" / "boom"
+    expert_dir.mkdir(parents=True)
+    (expert_dir / "SOUL.md").write_text("# Soul", encoding="utf-8")
+
+    fake_catalog = MagicMock(spec=ExpertCatalog)
+    fake_catalog.get = MagicMock(
+        return_value=Expert(
+            summary=ExpertSummary(
+                id="boom",
+                label_zh="测试",
+                label_en="Boom",
+                description_zh="",
+                description_en="",
+            ),
+            files=["SOUL.md"],
+            prompt_files=["SOUL.md"],
+        )
+    )
+    fake_catalog.expert_dir = MagicMock(return_value=expert_dir)
+
+    user_id = services.repos.user_repo.create(username="alice", password_hash="h", role="admin")
+    registry = _attach_registry(services, fake_hm=_make_fake_hm(), expert_catalog=fake_catalog)
+
+    with pytest.raises(ValueError, match="storage backend"):
+        await registry.create(
+            AgentCreateSpec(
+                name="rollback-template",
+                user_id=user_id,
+                template_name="boom",
+                config={"backend": {"type": "named", "name": "missing"}},
+            )
+        )
+
+    assert [row.name for row in registry.list_rows()] == []
+    # The name must be reusable, otherwise the user is locked out of a retry.
+    assert services.repos.agent_repo.list_by_user(user_id) == []
+    # The provisioned workspace directory must not outlive the rolled-back row.
+    assert not services.paths.agents_dir.exists() or list(services.paths.agents_dir.iterdir()) == []
+
+
+@pytest.mark.asyncio
 async def test_create_with_template_writes_files(tmp_path: Path) -> None:
     """create() with template_name uploads expert files to the agent backend."""
     from octop.infra.agents.experts.catalog import (  # noqa: PLC0415
