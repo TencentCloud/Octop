@@ -61,9 +61,24 @@ def parse_env_text(text: str) -> dict[str, str]:
         # an *unterminated* quote continues onto the next line; a value that already contains a
         # closing quote (or no quote at all) is left alone, so a malformed entry cannot swallow
         # the rest of the file.
+        #
+        # Guardrail: if a subsequent line is itself a fresh ``KEY=VALUE`` entry (a valid key
+        # name, an ``=`` separator, and not an obvious comment), stop consuming. An
+        # unterminated quote never had a closing one -- we prefer to keep the new entry
+        # intact and leave the broken value as-is (truncated) rather than silently delete
+        # every variable that follows (issue #2269).
         if value[:1] in {'"', "'"} and value[0] not in value[1:]:
             quote = value[0]
             while index < len(lines) and quote not in value[1:]:
+                candidate = lines[index].strip()
+                if (
+                    "=" in candidate
+                    and not candidate.startswith("#")
+                    and not candidate.startswith("export ")
+                ):
+                    key_candidate = candidate.partition("=")[0].strip()
+                    if key_candidate and _KEY_RE.match(key_candidate):
+                        break  # new KEY=VALUE: stop, leave this line for outer loop
                 value = f"{value}\n{lines[index]}"
                 index += 1
             value = value.strip()
