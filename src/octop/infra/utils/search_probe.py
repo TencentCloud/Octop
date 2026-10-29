@@ -7,6 +7,7 @@ request body and are never written to ``os.environ``.
 from __future__ import annotations
 
 import asyncio
+import os
 import time
 from collections.abc import Mapping
 from typing import Any, Literal
@@ -139,11 +140,15 @@ async def _google(client: httpx.AsyncClient, api_key: str, cse_id: str) -> dict[
 
 
 async def _kimi(client: httpx.AsyncClient, api_key: str) -> dict[str, Any]:
+    # Model name is overridable via env so operators can follow Moonshot's
+    # model-lineage changes without a code rollout.  ``moonshot-v1-128k``
+    # was the default until the platform retired it for new accounts.
+    model_name = os.getenv("MOONSHOT_SEARCH_MODEL", "kimi-k2")
     response = await client.post(
         "https://api.moonshot.cn/v1/chat/completions",
         headers={"Authorization": f"Bearer {api_key}"},
         json={
-            "model": "moonshot-v1-128k",
+            "model": model_name,
             "messages": [{"role": "user", "content": _TEST_QUERY}],
             "tools": [{"type": "web_search"}],
             "temperature": 0.3,
@@ -283,3 +288,4 @@ def _http_failure(response: httpx.Response) -> dict[str, Any] | None:
     else:
         error_type = "network_error" if response.status_code >= 500 else "unknown"
     return {"success": False, "error": error, "error_type": error_type}
+
