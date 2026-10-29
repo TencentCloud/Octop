@@ -132,6 +132,30 @@ def test_init_force_resets(fake_home: Path) -> None:
     assert repo.get_by_username("bob") is not None
 
 
+def test_init_force_keeps_the_installed_program(fake_home: Path) -> None:
+    """Issue #2458: install.sh puts the venv and bin/ inside ~/.octop; --force must not delete them."""
+    if os.name == "nt":
+        pytest.skip("Windows may lock SQLite during init force reset")
+    home = fake_home / ".octop"
+    runner = CliRunner()
+    base = ["init", "--admin-username", "alice", "--admin-password", "TestPass12", "--yes"]
+    r1 = runner.invoke(cli, base)
+    assert r1.exit_code == 0, r1.output or str(r1.exception)
+    (home / "venv" / "bin").mkdir(parents=True)
+    (home / "venv" / "bin" / "octop").write_text("program", encoding="utf-8")
+    (home / "bin").mkdir()
+    (home / "bin" / "octop").write_text("wrapper", encoding="utf-8")
+    (home / "stale.txt").write_text("old state", encoding="utf-8")
+
+    r2 = runner.invoke(cli, [*base, "--force"])
+
+    assert r2.exit_code == 0, r2.output or str(r2.exception)
+    assert (home / "venv" / "bin" / "octop").read_text(encoding="utf-8") == "program"
+    assert (home / "bin" / "octop").read_text(encoding="utf-8") == "wrapper"
+    assert not (home / "stale.txt").exists()
+    assert (home / "octop.db").is_file()
+
+
 def test_init_rerun_skips_existing_admin_without_local_db(
     fake_home: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
