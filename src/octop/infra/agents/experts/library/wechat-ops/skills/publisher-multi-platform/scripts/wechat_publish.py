@@ -169,7 +169,8 @@ def get_wechat_access_token() -> str:
     }
     with open(TOKEN_CACHE_FILE, "w") as f:
         json.dump(token_data, f)
-    os.chmod(TOKEN_CACHE_FILE, 0o600)
+    if os.name == "posix":
+        os.chmod(TOKEN_CACHE_FILE, 0o600)
 
     return data["access_token"]
 

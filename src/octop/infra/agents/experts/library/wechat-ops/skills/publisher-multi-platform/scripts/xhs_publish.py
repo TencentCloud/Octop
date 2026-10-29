@@ -81,7 +81,8 @@ def save_cookies(cookies: list, path: str = COOKIE_FILE):
     """Save browser cookies to file."""
     with open(path, "w", encoding="utf-8") as f:
         json.dump(cookies, f, ensure_ascii=False, indent=2)
-    os.chmod(path, 0o600)
+    if os.name == "posix":
+        os.chmod(path, 0o600)
     print(f"  💾 Cookies saved to: {path}")
 
 

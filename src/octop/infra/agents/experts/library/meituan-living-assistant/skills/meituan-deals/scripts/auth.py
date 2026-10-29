@@ -81,8 +81,9 @@ def save_auth(data: dict):
     AUTH_FILE.parent.mkdir(parents=True, exist_ok=True)
     with open(AUTH_FILE, "w", encoding="utf-8") as f:
         json.dump(data, f, ensure_ascii=False, indent=2)
-    with contextlib.suppress(OSError):
-        os.chmod(AUTH_FILE, stat.S_IRUSR | stat.S_IWUSR)
+    if os.name == "posix":
+        with contextlib.suppress(OSError):
+            os.chmod(AUTH_FILE, stat.S_IRUSR | stat.S_IWUSR)
 
 
 def get_token_data() -> dict:
