@@ -169,6 +169,10 @@ def _parse_tls_section(raw: object) -> TlsConfig:
     if not isinstance(domains_raw, list):
         msg = "config.tls.domains must be a list"
         raise ValueError(msg)
+    try:
+        http_port = int(raw.get("http_port", 80))
+    except (TypeError, ValueError) as exc:
+        raise ValueError("config.tls.http_port must be an integer") from exc
     return TlsConfig(
         enabled=bool(raw.get("enabled", False)),
         mode=str(raw.get("mode", "")),
@@ -178,7 +182,7 @@ def _parse_tls_section(raw: object) -> TlsConfig:
         issued_at=str(raw.get("issued_at", "")),
         expires_at=str(raw.get("expires_at", "")),
         acme_staging=bool(raw.get("acme_staging", False)),
-        http_port=int(raw.get("http_port", 80)),
+        http_port=http_port,
     )
 
 
@@ -341,7 +345,10 @@ def parse_database_config(merged: dict[str, Any]) -> DatabaseConfig:
     host = str(merged.get("host", "")).strip()
     database = str(merged.get("database", "")).strip()
     user = str(merged.get("user", "")).strip()
-    port = int(merged.get("port", 5432))
+    try:
+        port = int(merged.get("port", 5432))
+    except (TypeError, ValueError) as exc:
+        raise ValueError("database.port must be an integer") from exc
     if not host:
         raise ValueError("database.host is required for postgresql")
     if not database:
@@ -596,13 +603,20 @@ def load_config(path: Path) -> OctopConfig:
             include_chats=_coerce_bool("OCTOP_BACKUP_INCLUDE_CHATS", v, backup.include_chats),
         )
 
+    def _config_int(key: str, default: int) -> int:
+        raw = merged.get(key, default)
+        try:
+            return int(raw)
+        except (TypeError, ValueError) as exc:
+            raise ValueError(f"config.{key} must be an integer") from exc
+
     return OctopConfig(
         bind_host=merged["bind_host"],
-        port=int(merged["port"]),
+        port=_config_int("port", 8080),
         log_level=merged["log_level"],
-        access_token_ttl_seconds=int(merged["access_token_ttl_seconds"]),
-        login_max_attempts=int(merged.get("login_max_attempts", 5)),
-        login_lockout_seconds=int(merged.get("login_lockout_seconds", 900)),
+        access_token_ttl_seconds=_config_int("access_token_ttl_seconds", 3600),
+        login_max_attempts=_config_int("login_max_attempts", 5),
+        login_lockout_seconds=_config_int("login_lockout_seconds", 900),
         cors_origins=list(merged.get("cors_origins") or []),
         default_timezone=str(merged.get("default_timezone") or "Asia/Shanghai"),
         enable_dashboard=bool(merged["enable_dashboard"]),
@@ -620,14 +634,9 @@ def load_config(path: Path) -> OctopConfig:
         tls=_parse_tls_section(raw.get("tls")),
         backup=backup,
         capabilities=capabilities,
-        max_upload_mb=int(merged.get("max_upload_mb", DEFAULT_MAX_UPLOAD_MB)),
+        max_upload_mb=_config_int("max_upload_mb", DEFAULT_MAX_UPLOAD_MB),
         browser_idle_timeout_minutes=max(
             0,
-            int(
-                merged.get(
-                    "browser_idle_timeout_minutes",
-                    DEFAULT_BROWSER_IDLE_TIMEOUT_MINUTES,
-                )
-            ),
+            _config_int("browser_idle_timeout_minutes", DEFAULT_BROWSER_IDLE_TIMEOUT_MINUTES),
         ),
     )
