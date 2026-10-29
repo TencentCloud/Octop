@@ -93,6 +93,7 @@ def ensure_pip_bootstrapped() -> bool:
             [sys.executable, "-m", "ensurepip", "--default-pip"],
             capture_output=True,
             text=True,
+            encoding="utf-8",
             check=False,
             timeout=120,
             shell=False,
