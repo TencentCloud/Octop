@@ -57,7 +57,7 @@ def get_temp_cred(access_token, site):
         "AccessToken": access_token,
         "Site": site,
     }
-    http_response = requests.post(api_endpoint, json=body, verify=True)
+    http_response = requests.post(api_endpoint, json=body, verify=True, timeout=30)
     resp = http_response.json()
 
     if "Error" in resp:
@@ -97,7 +97,7 @@ def save_credential(token, new_cred, profile):
             "site": token["site"],
         },
     }
-    with open(cred_path, "w") as cred_file:
+    with open(cred_path, "w", encoding="utf-8") as cred_file:
         json.dump(cred, cred_file, indent=4)
 
 
@@ -110,14 +110,14 @@ def generate_state():
 def save_state(state):
     """保存 state 到文件"""
     os.makedirs(os.path.dirname(_STATE_FILE), exist_ok=True)
-    with open(_STATE_FILE, "w") as f:
+    with open(_STATE_FILE, "w", encoding="utf-8") as f:
         json.dump({"state": state, "timestamp": time.time()}, f)
 
 
 def load_state():
     """从文件加载 state"""
     try:
-        with open(_STATE_FILE) as f:
+        with open(_STATE_FILE, encoding="utf-8") as f:
             data = json.load(f)
             # 检查是否过期（10分钟）
             if time.time() - data.get("timestamp", 0) > 600:
@@ -269,7 +269,7 @@ def do_status(args):
         return 1
 
     try:
-        with open(cred_path) as f:
+        with open(cred_path, encoding="utf-8") as f:
             cred = json.load(f)
 
         cred_type = cred.get("type", "unknown")

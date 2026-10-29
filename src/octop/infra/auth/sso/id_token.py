@@ -20,7 +20,7 @@ def _signing_key(id_token: str, *, jwks_uri: str, httpx: httpx_module.Client) ->
     if not isinstance(key_id, str):
         raise jwt.InvalidTokenError("ID token is missing a key ID")
 
-    response = httpx.get(jwks_uri)
+    response = httpx.get(jwks_uri, timeout=10)
     response.raise_for_status()
     jwks = response.json()
     keys = jwks.get("keys") if isinstance(jwks, dict) else None
