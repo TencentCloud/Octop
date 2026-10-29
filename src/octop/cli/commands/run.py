@@ -35,6 +35,7 @@ def _maybe_generate_self_signed(
     key = ssl_dir / "self_signed.key"
     if not cert.exists() or not key.exists():
         import datetime
+        from datetime import timezone as _tz
         import ipaddress
 
         from cryptography import x509
@@ -50,8 +51,8 @@ def _maybe_generate_self_signed(
             .issuer_name(issuer)
             .public_key(priv.public_key())
             .serial_number(x509.random_serial_number())
-            .not_valid_before(datetime.datetime.utcnow())
-            .not_valid_after(datetime.datetime.utcnow() + datetime.timedelta(days=365))
+            .not_valid_before(datetime.datetime.now(_tz.utc))
+            .not_valid_after(datetime.datetime.now(_tz.utc) + datetime.timedelta(days=365))
             .add_extension(
                 x509.SubjectAlternativeName([x509.IPAddress(ipaddress.ip_address("127.0.0.1"))]),
                 critical=False,
