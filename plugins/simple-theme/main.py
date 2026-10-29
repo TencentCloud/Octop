@@ -15,6 +15,7 @@ _TEXT = (
     "浅色/深色跟随控制台外观。要临时关掉，到「插件」面板禁用 简单主题即可还原。"
 )
 
+
 def _payload(data: dict[str, Any], text: str) -> str:
     return json.dumps(
         {"octop_ui": {"renderer": "theme_card", "version": 1}, "data": data, "text": text},

@@ -25,7 +25,7 @@ function listen(target, type, listener, options = {}) {
 const STYLE_ID = "octop-simple-theme-style";
 const ROOT_ID = "octop-simple-theme-root";
 const PLUGIN_ID = "simple-theme";
-const VERSION = "1.0.2";
+const VERSION = "1.0.3";
 const FONT_PATH = "/plugins/simple-theme/ui/fonts/InterVariable.woff2";
 const FONT_FAMILY = "Simple Theme Sans";
 const STORAGE_KEY = "octop.simple-theme.preference";
@@ -79,7 +79,14 @@ function applyTheme() {
       meta.setAttribute("content", currentMode() === "dark" ? "#212121" : "#ffffff");
       meta.removeAttribute("media");
     }
-    queueMicrotask(() => { if (!disposed) initColumnResize(); });
+    queueMicrotask(() => {
+      if (disposed) return;
+      initColumnResize();
+      // 样式刚注入时输入框可能已经在（懒加载路由先挂载），这里补一次；
+      // 否则浮动条要等下一次无关的 DOM 变更才出现。
+      syncFloatingControls();
+      settleFloatingControls();
+    });
     return true;
   } catch (err) {
     console.warn("[simple-theme] 应用主题失败:", err);
@@ -246,6 +253,13 @@ function syncFloatingControls() {
   const left=Math.max(12,content.left),bottom=Math.max(12,innerHeight-content.top+8),maxWidth=Math.max(100,content.width);
   const style=`left:${left}px;bottom:${bottom}px;max-width:${maxWidth}px`;
   if(dock.getAttribute('style')!==style)dock.setAttribute('style',style);
+}
+
+/* 首帧时懒加载的对话路由可能还没渲染出输入框。DOM 变更观察器只在确实有
+   变更时才会兜底，所以这里自己重试几帧，让浮动条不依赖无关的页面动作。 */
+function settleFloatingControls(tries=30){
+  if(disposed||tries<=0||document.getElementById('simple-chat-dock')||!document.getElementById(STYLE_ID))return;
+  scheduleFrame(()=>{if(disposed)return;syncFloatingControls();if(!document.getElementById('simple-chat-dock'))settleFloatingControls(tries-1);});
 }
 
 /* 用量浮层：点击开关、点面板内部不关、点别处 / Esc 关闭。
@@ -652,6 +666,7 @@ window.__simpleThemeModelBrand = modelBrand;
 refreshModelIcons();
 syncAgentBusy();
 syncFloatingControls();
+settleFloatingControls();
 syncTurnCollapse();
 syncProcessCollapse();
 

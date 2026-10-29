@@ -3445,10 +3445,13 @@ html#octop-simple-theme-root [class*="module__quickCardIcon"] {
   html#octop-simple-theme-root div:has(> .octop-desktop-drag):has([class*="navGroup"]) button[class*="AvatarDropdown-module__trigger"] > :not([class*="accountAvatar"]) {
     display: none !important;
   }
-  /* 抽屉真被打开时让出 248 宽，并把列表放回来 */
+  /* 抽屉真被打开时让出 248 宽，并把列表放回来。
+     只写 width 不够：上面那条 flex:0 0 0 的 flex-basis 会赢过 width，
+     外层停在 0 宽，248px 的列表就悬空盖住输入框左侧的「+」。 */
   html#octop-simple-theme-root div:has(> [class*="sidebarWrapper"]):has([class*="sidebarOpen"]) {
     width: 248px !important;
-    min-width: 248px;
+    min-width: 248px !important;
+    flex: 0 0 248px !important;
   }
   html#octop-simple-theme-root [class*="sidebarOpen"] [class*="sessionList__"] {
     display: flex !important;
