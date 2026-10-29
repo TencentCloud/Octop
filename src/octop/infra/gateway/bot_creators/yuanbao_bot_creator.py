@@ -249,12 +249,12 @@ class YuanbaoBotCreator:
         """
         _log_info("poll", f"Waiting for user scan (expires in {self.expires_in}s)...")
 
-        deadline = time.time() + self.expires_in
+        deadline = time.monotonic() + self.expires_in
         attempt = 0
         total_attempts = self.expires_in // POLL_INTERVAL
         last_status = -1
 
-        while time.time() < deadline:
+        while time.monotonic() < deadline:
             attempt += 1
 
             resp = _http_post(
