@@ -111,8 +111,9 @@ def save_codex_token(paths: PathLayout, cred: CodexOAuthCredentials) -> None:
     path = oauth_token_file(paths)
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(cred, indent=2), encoding="utf-8")
-    with contextlib.suppress(OSError):
-        os.chmod(path, 0o600)
+    if os.name == "posix":
+        with contextlib.suppress(OSError):
+            os.chmod(path, 0o600)
 
 
 def load_codex_token(paths: PathLayout) -> CodexOAuthCredentials | None:
@@ -135,8 +136,7 @@ def load_codex_token(paths: PathLayout) -> CodexOAuthCredentials | None:
 
 def delete_codex_token(paths: PathLayout) -> None:
     path = oauth_token_file(paths)
-    if path.exists():
-        path.unlink()
+    path.unlink(missing_ok=True)
 
 
 def is_token_valid(cred: CodexOAuthCredentials) -> bool:
