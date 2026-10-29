@@ -25,7 +25,13 @@ else:
 # Sliding renew: when remaining life is below this fraction of configured TTL,
 # middleware issues a fresh access token via ACCESS_TOKEN_RESPONSE_HEADER.
 ACCESS_TOKEN_RESPONSE_HEADER = "X-Octop-Access-Token"
-_SLIDING_RENEW_REMAINING_FRACTION = 1 / 3
+# Renew the access token when *less than* this fraction of TTL remains.
+# 1/3 (8h left on a 24h token) was too late: an office worker logging in at
+# 09:00 and shutting down at 18:00 never hit the 16h-since-issue mark, so on
+# day 2 the token had already expired (issue #2496). 2/3 means we renew once
+# the token is older than ~8h (remaining < 16h), guaranteeing a fresh token
+# by end-of-workday that stays valid through the next morning.
+_SLIDING_RENEW_REMAINING_FRACTION = 2 / 3
 
 
 # Paths that bypass JWT middleware (setup wizard, health, login).
