@@ -1,4 +1,4 @@
-"""AgentManager — process-wide singleton managing all HarnessAgent instances."""
+﻿"""AgentManager — process-wide singleton managing all HarnessAgent instances."""
 
 from __future__ import annotations
 
@@ -842,6 +842,37 @@ class AgentManager:
                     spec.user_id,
                     _stored_id_list(knowledge_ids_json),
                 )
+            # Fill in a default icon_url + colour when neither the spec nor
+            # the template profile provides them.  Agents created via bare
+            # ``octop agent create`` (no ``--template``) previously persisted
+            # ``None`` for both columns; team-dispatcher tooling (agent_list
+            # / ask_agent) treats ``icon_url`` / ``color`` as "must be set"
+            # presence sentinels, so those agents silently vanished from
+            # the dispatcher's member view.  See issue #2467.
+            effective_color = spec.color or profile.get("color")
+            effective_icon_url = spec.icon_url or profile.get("icon_url")
+            effective_icon_name = spec.icon_name or profile.get("icon_name")
+
+            _DEFAULT_AGENT_COLORS: tuple[str, ...] = (
+                "#6366F1",  # indigo
+                "#E85D75",  # rose
+                "#0EA5E9",  # sky
+                "#F59E0B",  # amber
+                "#10B981",  # emerald
+                "#8B5CF6",  # violet
+                "#EF4444",  # red
+                "#14B8A6",  # teal
+            )
+            if not effective_icon_url and not effective_icon_name:
+                effective_icon_url = "/experts/avatars/scene-default.svg"
+            if not effective_color:
+                # Deterministic palette pick based on agent_id so the same
+                # agent always keeps the same colour across restarts.
+                _idx = 0
+                for _ch in agent_id:
+                    _idx = (_idx * 31 + ord(_ch)) % len(_DEFAULT_AGENT_COLORS)
+                effective_color = _DEFAULT_AGENT_COLORS[_idx]
+
             self._repos.agent_repo.create(
                 agent_id=agent_id,
                 user_id=spec.user_id,
@@ -853,9 +884,9 @@ class AgentManager:
                 config_json=json.dumps(config) if config else None,
                 icon=spec.icon,
                 template_name=spec.template_name or profile.get("template_name"),
-                color=spec.color or profile.get("color"),
-                icon_name=spec.icon_name or profile.get("icon_name"),
-                icon_url=spec.icon_url or profile.get("icon_url"),
+                color=effective_color,
+                icon_name=effective_icon_name,
+                icon_url=effective_icon_url,
                 skill_package_ids=package_ids_json,
                 published_expert_id=spec.published_expert_id or profile.get("published_expert_id"),
                 welcome_message=(
@@ -4352,3 +4383,4 @@ class AgentManager:
         if "system_prompt" in _HARNESS_AGENT_CONFIG_FIELDS:
             updates["system_prompt"] = host_system_prompt(row, self._repos.user_repo)
         return replace(cfg, **updates) if updates else cfg
+
