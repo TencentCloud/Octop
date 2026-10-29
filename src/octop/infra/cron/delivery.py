@@ -153,7 +153,15 @@ class CronDeliveryService:
                     kind = chunk.get("type")
                     if kind == "tool_call_chunk":
                         saw_tool_call = True
-                    elif kind == "tool_result":
+                        # Drop preamble text before a regular tool call — it is
+                        # the agent's internal narration (e.g. "I'll start by
+                        # gathering the current time…") and cron IM delivery should
+                        # only surface the final answer. Preserve text before
+                        # ``ask_agent`` so team hosts still show their dispatch
+                        # line on invoke-mode channels (issue #2384).
+                        tool_name = str(chunk.get("name") or chunk.get("tool_name") or "")
+                        if tool_name != "ask_agent":
+                            parts.clear()
                         log_failed_tool_results(
                             chunk,
                             agent_id=command.agent_id,
