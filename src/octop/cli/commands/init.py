@@ -82,7 +82,16 @@ def init(
             shutil.rmtree(home)
 
     paths.ensure_root()
-    PluginManager(plugins_dir=paths.plugins_dir, config_path=paths.config).seed_bundled()
+    # Seed bundled plugins — guarded so a missing ``bundled`` subpackage (e.g.
+    # in pip-installed builds where it is not shipped) does not abort init
+    # *after* ``shutil.rmtree`` has already wiped the target directory.
+    try:
+        PluginManager(plugins_dir=paths.plugins_dir, config_path=paths.config).seed_bundled()
+    except ModuleNotFoundError as exc:
+        click.echo(
+            f"warning: bundled plugins unavailable ({exc}); skipping seed",
+            err=True,
+        )
     apply_env_file(env_file_path(paths.root))
     config = load_config(paths.config)
     db = open_database(config, paths)
