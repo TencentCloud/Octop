@@ -91,8 +91,17 @@ describe("simple theme UI lifecycle", () => {
 
   it("shows the current model as read-only status, keeping the native menu constructor", async () => {
     document.body.innerHTML =
-      '<div class="module__chatInput__x"><div class="module__inputWrapper__x"></div></div>' +
-      '<div class="module__contextChipModel__x"><span class="module__contextChipLabel__x">GPT-5 / OpenAI</span><button class="module__contextChipRemove__x">x</button></div>';
+      '<div class="module__chatInput__x">' +
+      '<div class="module__imagePreviewBar__x">' +
+      '<div class="module__contextChipModel__x"><span class="module__contextChipLabel__x">GPT-5 / OpenAI</span><button class="module__contextChipRemove__x">x</button></div>' +
+      "</div>" +
+      '<div class="module__inputWrapper__x"></div>' +
+      "</div>" +
+      // A historical turn keeps a chip for the model that turn used; it must
+      // never win over the chip that describes the current input.
+      '<div class="module__assistantTurn__y">' +
+      '<div class="module__contextChipModel__stale"><span class="module__contextChipLabel__stale">gpt-6.1-sol</span></div>' +
+      "</div>";
     const api = host();
     cleanup = setup(api as unknown as OctopPluginUIHost);
     window.dispatchEvent(new Event("resize"));
