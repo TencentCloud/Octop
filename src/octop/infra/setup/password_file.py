@@ -1,14 +1,70 @@
-"""Setup wizard password file at ``<home>/octop-login.txt``."""
+"""Setup wizard password file at octop-login.txt."""
 
 from __future__ import annotations
 
+import logging
 import os
 import secrets
+import subprocess
+import sys
 from pathlib import Path
 
 WIZARD_FILE_NAME = "octop-login.txt"
 _TOKEN_BYTES = 16
 _PASSWORD_LABEL_PREFIX = "Password:"
+logger = logging.getLogger(__name__)
+
+
+def _restrict_file_perms(path: Path) -> None:
+    """Best-effort: make *path* readable only by the current user.
+
+    POSIX: os.chmod(0o600) — the standard, correct approach.
+
+    Windows: Python's os.chmod does not set NTFS DACLs, so the file stays
+    readable by every local user who can traverse the directory. We shell out
+    to icacls with full control for the current user and SYSTEM, while
+    explicitly denying inherited ACLs from the parent (inheritance:r).
+    icacls ships with every supported Windows version since Vista, so it is a
+    zero-dependency path. Errors are logged but do not raise — the file still
+    exists with its previous permissions.
+    """
+    if sys.platform == "win32":
+        try:
+            whoami = subprocess.run(
+                ["whoami"],
+                capture_output=True,
+                text=True,
+                check=True,
+            ).stdout.strip()
+            subprocess.run(
+                [
+                    "icacls",
+                    str(path),
+                    "/inheritance:r",
+                    "/grant:r",
+                    f"{whoami}:F",
+                    "/grant:r",
+                    "SYSTEM:F",
+                ],
+                capture_output=True,
+                text=True,
+                check=True,
+            )
+        except Exception:
+            logger.warning(
+                "failed to set DACL on wizard password file %s",
+                path,
+                exc_info=True,
+            )
+        return
+    try:
+        os.chmod(path, 0o600)
+    except OSError:
+        logger.warning(
+            "failed to chmod 0o600 on wizard password file %s",
+            path,
+            exc_info=True,
+        )
 
 
 def _password_path(home: Path) -> Path:
@@ -27,10 +83,10 @@ def resolve_password_path(home: Path, legacy_home: Path | None = None) -> Path:
 
 
 def ensure_password(home: Path, legacy_home: Path | None = None) -> str | None:
-    """Generate the file if missing; return password or ``None`` if present.
+    """Generate the file if missing; return password or None if present.
 
-    If ``<home>/octop-login.txt`` is missing but a legacy password exists at
-    ``<legacy_home>/octop-login.txt`` (defaulting to the OS home), reuse that
+    If home/octop-login.txt is missing but a legacy password exists at
+    legacy_home/octop-login.txt (defaulting to the OS home), reuse that
     legacy password and write it to the primary path so both locations stay
     consistent and no conflicting secret is generated.
     """
@@ -52,7 +108,7 @@ def ensure_password(home: Path, legacy_home: Path | None = None) -> str | None:
                     os.write(fd, (legacy_pw + "\n").encode("utf-8"))
                 finally:
                     os.close(fd)
-                os.chmod(target, 0o600)
+                _restrict_file_perms(target)
                 return legacy_pw
             except FileExistsError:
                 return None
@@ -69,25 +125,12 @@ def ensure_password(home: Path, legacy_home: Path | None = None) -> str | None:
         os.write(fd, (pw + "\n").encode("utf-8"))
     finally:
         os.close(fd)
-    os.chmod(target, 0o600)
+    _restrict_file_perms(target)
     return pw
 
 
 def read_password(home: Path, legacy_home: Path | None = None) -> str | None:
-    """Return the wizard password, or ``None`` if the file is absent/empty.
-
-    Checks ``<home>/octop-login.txt`` first. If absent, falls back to
-    ``<legacy_home>/octop-login.txt`` (defaulting to the OS home).
-
-    Supports two layouts:
-      * Plain — the password is the file's first non-empty line, as written
-        by :func:`ensure_password`.
-      * Labeled — a ``Password: <value>`` line, used by deployment scripts
-        (e.g. the Lighthouse image builder) that rewrite the plain file into
-        a human-readable "URL / Password" card after first boot. Checked
-        first so a labeled file always wins; falls back to the plain layout
-        so existing callers/tests are unaffected.
-    """
+    """Return the wizard password, or None if the file is absent/empty."""
     target = resolve_password_path(home, legacy_home=legacy_home)
     if not target.exists():
         return None
@@ -95,7 +138,7 @@ def read_password(home: Path, legacy_home: Path | None = None) -> str | None:
     for line in lines:
         stripped = line.strip()
         if stripped.startswith(_PASSWORD_LABEL_PREFIX):
-            value = stripped[len(_PASSWORD_LABEL_PREFIX) :].strip()
+            value = stripped[len(_PASSWORD_LABEL_PREFIX):].strip()
             if value:
                 return value
     for line in lines:
@@ -108,9 +151,9 @@ def read_password(home: Path, legacy_home: Path | None = None) -> str | None:
 def boot_self_heal(home: Path, user_count: int, legacy_home: Path | None = None) -> str | None:
     """Reconcile the wizard password file at server boot.
 
-    When setup is still open (``user_count == 0``), ensure a password file exists
+    When setup is still open (user_count == 0), ensure a password file exists
     and return the password so the CLI can print it — including when the file
-    already exists (e.g. the DB was wiped but ``octop-login.txt`` was not).
+    already exists (e.g. the DB was wiped but octop-login.txt was not).
 
     The file is intentionally kept forever as a permanent record and is never
     deleted, even after setup completes.
