@@ -3,8 +3,13 @@
 from __future__ import annotations
 
 import shutil
+from pathlib import Path
 
 import click
+
+# Created by scripts/install.sh and install.ps1 inside ~/.octop. They hold the
+# program itself, so a reset must keep them (issue #2458).
+_INSTALL_DIRS = frozenset({"venv", "bin"})
 
 
 @click.command("init")
@@ -30,7 +35,7 @@ import click
     "--force",
     is_flag=True,
     default=False,
-    help="Wipe existing ~/.octop contents before bootstrapping.",
+    help="Wipe existing ~/.octop data before bootstrapping (keeps the installed venv/ and bin/).",
 )
 @click.option(
     "--yes",
@@ -75,11 +80,13 @@ def init(
                 from octop.cli.support import prompts as _prompts
 
                 if not _prompts.confirm(
-                    f"Wipe {home}? This deletes ALL Octop state.", default=False
+                    f"Wipe {home}? This deletes ALL Octop state "
+                    "(the installed venv/ and bin/ are kept).",
+                    default=False,
                 ):
                     click.echo("aborted", err=True)
                     raise SystemExit(1)
-            shutil.rmtree(home)
+            _wipe_state(home)
 
     paths.ensure_root()
     PluginManager(plugins_dir=paths.plugins_dir, config_path=paths.config).seed_bundled()
@@ -131,3 +138,14 @@ def init(
     click.echo(f"\u2705 Octop bootstrapped at {home}")
     click.echo(f"   admin user: {username}")
     click.echo("   next: `octop run` (optional: `octop agent use <id>` to pin default agent)")
+
+
+def _wipe_state(home: Path) -> None:
+    """Delete everything in ``home`` except the install the CLI is running from."""
+    for entry in home.iterdir():
+        if entry.name in _INSTALL_DIRS:
+            continue
+        if entry.is_dir() and not entry.is_symlink():
+            shutil.rmtree(entry)
+        else:
+            entry.unlink()
