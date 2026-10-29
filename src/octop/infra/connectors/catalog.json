@@ -23,17 +23,31 @@
         "zh": "打开 MCP 授权页登录，复制页面上的 Token 并粘贴到下方"
       },
       "allowed_tools": [
-        "create_smartcanvas_by_mdx",
-        "smartcanvas.read",
-        "smartcanvas.edit",
-        "smartcanvas.find",
-        "manage.create_file",
-        "scrape_url",
-        "manage.export_file",
-        "manage.search_file",
-        "manage.set_privilege",
-        "manage.folder_list"
-      ]
+      "create_smartcanvas_by_mdx",
+      "smartcanvas.read",
+      "smartcanvas.edit",
+      "smartcanvas.find",
+      "manage.create_file",
+      "manage.export_file",
+      "manage.search_file",
+      "manage.set_privilege",
+      "manage.folder_list",
+      "scrape_url",
+      "query_space_node",
+      "search_space_file",
+      "create_space_node",
+      "get_content",
+      "batch_update_sheet_range",
+      "create_smartcanvas_element",
+      "create_word_by_markdown",
+      "create_excel_by_markdown",
+      "create_slide_by_markdown",
+      "create_smartcanvas_by_markdown",
+      "create_mind_by_markdown",
+      "create_flowchart_by_mermaid",
+      "sheet.get_sheet_info",
+      "smartsheet.list_tables"
+    ]
     },
     {
       "kind": "tencent-ima",
@@ -164,19 +178,31 @@
         "zh": "打开微云 Skill 配置页登录，复制 MCP Token 并粘贴到下方"
       },
       "allowed_tools": [
-        "weiyun.list",
-        "weiyun.list_by_category",
-        "weiyun.download",
-        "weiyun.delete",
-        "weiyun.upload",
-        "weiyun.gen_share_link",
-        "weiyun.rename_file",
-        "weiyun.rename_dir",
-        "weiyun.create_dir",
-        "weiyun.move_dir",
-        "weiyun.move_file",
-        "check_skill_update"
-      ]
+      "create_smartcanvas_by_mdx",
+      "smartcanvas.read",
+      "smartcanvas.edit",
+      "smartcanvas.find",
+      "manage.create_file",
+      "manage.export_file",
+      "manage.search_file",
+      "manage.set_privilege",
+      "manage.folder_list",
+      "scrape_url",
+      "query_space_node",
+      "search_space_file",
+      "create_space_node",
+      "get_content",
+      "batch_update_sheet_range",
+      "create_smartcanvas_element",
+      "create_word_by_markdown",
+      "create_excel_by_markdown",
+      "create_slide_by_markdown",
+      "create_smartcanvas_by_markdown",
+      "create_mind_by_markdown",
+      "create_flowchart_by_mermaid",
+      "sheet.get_sheet_info",
+      "smartsheet.list_tables"
+    ]
     },
     {
       "kind": "qq-mail",
@@ -763,3 +789,4 @@
     }
   ]
 }
+
