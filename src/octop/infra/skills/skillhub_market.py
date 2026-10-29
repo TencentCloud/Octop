@@ -81,6 +81,9 @@ def _resolve_host(host: str | None) -> str:
     return resolved
 
 
+_HTTP_MAX_ATTEMPTS = 3
+
+
 def _http_request(
     url: str,
     *,
@@ -95,49 +98,69 @@ def _http_request(
             "User-Agent": "octop-skillhub-market/1.0",
         },
     )
-    try:
-        with urllib.request.urlopen(request, timeout=timeout) as response:
-            headers = getattr(response, "headers", None)
-            content_length = headers.get("Content-Length") if headers is not None else None
-            if content_length:
-                try:
-                    declared_size = int(content_length)
-                except ValueError:
-                    declared_size = 0
-                if declared_size > max_bytes:
-                    raise SkillHubPackageTooLarge(
-                        f"SkillHub response exceeds {max_bytes // (1024 * 1024)} MB"
-                    )
 
-            chunks: list[bytes] = []
-            total = 0
-            while True:
-                chunk = response.read(_HTTP_READ_CHUNK)
-                if not chunk:
-                    break
-                total += len(chunk)
-                if total > max_bytes:
-                    raise SkillHubPackageTooLarge(
-                        f"SkillHub response exceeds {max_bytes // (1024 * 1024)} MB"
-                    )
-                chunks.append(chunk)
-            return b"".join(chunks)
-    except SkillHubPackageError:
-        raise
-    except urllib.error.HTTPError as exc:
-        if exc.code == 404:
-            raise SkillHubSkillNotFound(
-                f"SkillHub skill package not found: HTTP {exc.code}"
-            ) from exc
-        raise SkillHubMarketError(f"SkillHub request failed: HTTP {exc.code}") from exc
-    except urllib.error.URLError as exc:
-        if isinstance(exc.reason, TimeoutError):
-            raise SkillHubMarketTimeout("SkillHub request timed out") from exc
-        raise SkillHubMarketError(f"SkillHub request failed: {exc.reason}") from exc
-    except TimeoutError as exc:
-        raise SkillHubMarketTimeout("SkillHub request timed out") from exc
-    except (http.client.HTTPException, OSError) as exc:
-        raise SkillHubMarketError(f"SkillHub request failed: {exc}") from exc
+    last_exc: Exception | None = None
+    for attempt in range(_HTTP_MAX_ATTEMPTS):
+        try:
+            with urllib.request.urlopen(request, timeout=timeout) as response:
+                headers = getattr(response, "headers", None)
+                content_length = headers.get("Content-Length") if headers is not None else None
+                if content_length:
+                    try:
+                        declared_size = int(content_length)
+                    except ValueError:
+                        declared_size = 0
+                    if declared_size > max_bytes:
+                        raise SkillHubPackageTooLarge(
+                            f"SkillHub response exceeds {max_bytes // (1024 * 1024)} MB"
+                        )
+
+                chunks: list[bytes] = []
+                total = 0
+                while True:
+                    chunk = response.read(_HTTP_READ_CHUNK)
+                    if not chunk:
+                        break
+                    total += len(chunk)
+                    if total > max_bytes:
+                        raise SkillHubPackageTooLarge(
+                            f"SkillHub response exceeds {max_bytes // (1024 * 1024)} MB"
+                        )
+                    chunks.append(chunk)
+                return b"".join(chunks)
+        except SkillHubPackageError:
+            raise
+        except urllib.error.HTTPError as exc:
+            # HTTP-level errors are deterministic; do not retry.
+            if exc.code == 404:
+                raise SkillHubSkillNotFound(
+                    f"SkillHub skill package not found: HTTP {exc.code}"
+                ) from exc
+            raise SkillHubMarketError(f"SkillHub request failed: HTTP {exc.code}") from exc
+        except (urllib.error.URLError, TimeoutError, http.client.HTTPException, OSError) as exc:
+            # Network-layer failures (bad CDN IP, TLS reset, timeout) are often
+            # transient. Retry so that a fresh DNS resolution can pick a
+            # different IPv4 from the skillhub-*.cos.accelerate.myqcloud.com
+            # pool (see GitHub issue #1819).
+            last_exc = exc
+            if attempt < _HTTP_MAX_ATTEMPTS - 1:
+                logger.warning(
+                    "SkillHub HTTP attempt %d/%d failed (%s); retrying with fresh DNS...",
+                    attempt + 1,
+                    _HTTP_MAX_ATTEMPTS,
+                    exc,
+                )
+                continue
+
+    # All retries exhausted -- re-raise in the canonical shape.
+    assert last_exc is not None
+    if isinstance(last_exc, urllib.error.URLError) and isinstance(last_exc.reason, TimeoutError):
+        raise SkillHubMarketTimeout("SkillHub request timed out") from last_exc
+    if isinstance(last_exc, TimeoutError):
+        raise SkillHubMarketTimeout("SkillHub request timed out") from last_exc
+    if isinstance(last_exc, urllib.error.URLError):
+        raise SkillHubMarketError(f"SkillHub request failed: {last_exc.reason}") from last_exc
+    raise SkillHubMarketError(f"SkillHub request failed: {last_exc}") from last_exc
 
 
 def _fetch_search_json(
