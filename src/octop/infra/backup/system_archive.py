@@ -1,4 +1,4 @@
-"""Full-system backup and restore (database + local agent workspaces + config)."""
+﻿"""Full-system backup and restore (database + local agent workspaces + config)."""
 
 from __future__ import annotations
 
@@ -87,6 +87,30 @@ def _timestamp() -> str:
 def suggested_backup_filename() -> str:
     """Canonical basename for a newly created manual backup archive."""
     return f"octop-backup-{_timestamp()}.tar.gz"
+
+
+def _atomic_move(src: Path, dest: Path) -> None:
+    """Move *src* to *dest* atomically on one device; fall back to copy+unlink
+    across filesystems (EXDEV, errno 18).
+
+    The existing *dest* (if any) remains intact if the cross-device copy fails
+    midway — we write to ``dest.partial`` first, then rename into place.
+    """
+    dest = Path(dest)
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        os.replace(src, dest)
+    except OSError as exc:
+        if exc.errno != 18:
+            raise
+        tmp_dest = dest.with_name(dest.name + ".partial")
+        try:
+            shutil.copy2(src, tmp_dest)
+            os.replace(tmp_dest, dest)
+            src.unlink()
+        except Exception:
+            tmp_dest.unlink(missing_ok=True)
+            raise
 
 
 def _should_skip_path(
@@ -341,7 +365,7 @@ def create_system_backup(
                         skip_chats=False,
                     )
 
-        partial.replace(dest)
+        _atomic_move(partial, dest)
     except Exception:
         partial.unlink(missing_ok=True)
         raise
@@ -655,3 +679,4 @@ def restore_system_backup(
         result["owner_user_id"] = int(effective_owner) if effective_owner is not None else None
         result["ownership_remap"] = ownership_remap
     return result
+

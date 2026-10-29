@@ -1,11 +1,37 @@
-"""`octop backup` — export and restore Octop data."""
+﻿"""`octop backup` — export and restore Octop data."""
 
 from __future__ import annotations
 
+import os
+import shutil
 import tempfile
 from pathlib import Path
 
 import click
+
+
+def _atomic_move(src: Path, dest: Path) -> None:
+    """Move *src* to *dest* atomically on one device; fall back to copy+unlink
+    across filesystems (EXDEV, errno 18).
+
+    The existing *dest* (if any) remains intact if the cross-device copy fails
+    midway — we write to ``dest.partial`` first, then rename into place.
+    """
+    dest = Path(dest)
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        os.replace(src, dest)
+    except OSError as exc:
+        if exc.errno != 18:
+            raise
+        tmp_dest = dest.with_name(dest.name + ".partial")
+        try:
+            shutil.copy2(src, tmp_dest)
+            os.replace(tmp_dest, dest)
+            src.unlink()
+        except Exception:
+            tmp_dest.unlink(missing_ok=True)
+            raise
 
 from octop.config import load_config
 from octop.infra.backup.auto import create_and_store_auto_backup
@@ -78,8 +104,7 @@ def create(
                 size = entry.size
             else:
                 dest = output
-                dest.parent.mkdir(parents=True, exist_ok=True)
-                tmp_path.replace(dest)
+                _atomic_move(tmp_path, dest)
                 size = dest.stat().st_size
     finally:
         db.close()
@@ -186,3 +211,4 @@ def restore(
     )
     db.close()
     click.echo(f"restored: {result}")
+
