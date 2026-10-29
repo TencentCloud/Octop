@@ -85,7 +85,7 @@ def delete_profile_avatar(directory: Path, key: str) -> None:
         return
     for path in directory.glob(f"{stem}.*"):
         if path.is_file():
-            path.unlink()
+            path.unlink(missing_ok=True)
 
 
 def avatar_response(directory: Path, key: str) -> Response:
