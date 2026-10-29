@@ -104,6 +104,9 @@ def _workspace_io_path(path: str, *, from_workspace: bool = False) -> str:
             raise OctopError(ErrorCode.NOT_FOUND, f"cannot resolve {path!r}")
         return resolved
     if from_workspace:
+        m = re.search(r"(?:^|/)\.octop/agents/[^/]+/(.+)$", raw.replace("\\", "/"), re.IGNORECASE)
+        if m:
+            return workspace_api_path(m.group(1))
         return workspace_api_path(raw)
     if raw.startswith("/") or (len(raw) >= 2 and raw[1] == ":") or raw.startswith("\\\\"):
         return raw
@@ -364,6 +367,13 @@ async def download_file(
         file_blob = await ws.adownload_bytes(io_path)
     except PermissionError as exc:
         raise OctopError(ErrorCode.NOT_FOUND, f"cannot download {path!r}") from exc
+    if file_blob is None:
+        m = re.search(r"(?:^|/)\.octop/agents/[^/]+/(.+)$", io_path.replace("\\", "/"), re.IGNORECASE)
+        if m:
+            try:
+                file_blob = await ws.adownload_bytes(workspace_api_path(m.group(1)))
+            except PermissionError:
+                file_blob = None
     if file_blob is None:
         raise OctopError(ErrorCode.NOT_FOUND, f"cannot download {path!r}") from None
 

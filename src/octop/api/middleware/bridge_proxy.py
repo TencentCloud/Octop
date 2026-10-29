@@ -25,13 +25,25 @@ logger = logging.getLogger(__name__)
 
 _INSTALL_ATTR = "_octop_bridge_proxy_installed"
 
-# /api/agents/bridge:{cid}:{aid} or percent-encoded bridge%3A…
+# /api/agents/bridge:{cid}:{aid} or percent-encoded bridge%3A… (including double-encoded %253A)
 _BRIDGE_AGENT_PATH = re.compile(
-    r"^/api/agents/(bridge(?::|%3[Aa])[^/]+)(/.*)?$",
+    r"^/api/agents/(bridge(?::|%(?:25)*3[Aa])[^/]+)(/.*)?$",
 )
 _BRIDGE_PLUGIN_AGENT_PATH = re.compile(
-    r"^/api/plugins/agents/(bridge(?::|%3[Aa])[^/]+)(/.*)?$",
+    r"^/api/plugins/agents/(bridge(?::|%(?:25)*3[Aa])[^/]+)(/.*)?$",
 )
+
+
+def _unquote_fully(value: str) -> str:
+    cur = value
+    for _ in range(3):
+        if "%" not in cur:
+            break
+        nxt = unquote(cur)
+        if nxt == cur:
+            break
+        cur = nxt
+    return cur
 
 
 @dataclass(frozen=True)
@@ -102,7 +114,7 @@ def resolve_tunnel_target(
 
     match = _BRIDGE_AGENT_PATH.match(raw)
     if match is not None:
-        token = unquote(match.group(1))
+        token = _unquote_fully(match.group(1))
         ref = parse_bridge_agent_id(token)
         if ref is not None:
             rest = _restore_shadow_in_rest(
@@ -119,7 +131,7 @@ def resolve_tunnel_target(
 
     match = _BRIDGE_PLUGIN_AGENT_PATH.match(raw)
     if match is not None:
-        token = unquote(match.group(1))
+        token = _unquote_fully(match.group(1))
         ref = parse_bridge_agent_id(token)
         if ref is not None:
             rest = _restore_shadow_in_rest(
@@ -133,7 +145,7 @@ def resolve_tunnel_target(
                 remote_path=f"/api/plugins/agents/{ref.remote_agent_id}{rest}",
             )
 
-    header = unquote((agent_header or "").strip())
+    header = _unquote_fully((agent_header or "").strip())
     ref = parse_bridge_agent_id(header)
     if ref is None or not _is_header_tunneled_path(raw):
         return None
