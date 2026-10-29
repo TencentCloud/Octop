@@ -25,7 +25,7 @@ def _load_main() -> object:
 def test_manifest_declares_theme_plugin_and_ui() -> None:
     manifest = PluginManifest.load(_PLUGIN_DIR / "plugin.yaml")
     assert manifest.id == "simple-theme"
-    assert manifest.version == "1.0.3"
+    assert manifest.version == "1.0.4"
     assert manifest.kind == "tool"
     assert manifest.name == "简单主题"
     assert (_PLUGIN_DIR / "ui" / "index.js").is_file()
@@ -46,7 +46,7 @@ def test_status_tool_returns_theme_card_payload() -> None:
     module = _load_main()
     payload = json.loads(asyncio.run(module.simple_theme_info()))  # type: ignore[attr-defined]
     assert payload["octop_ui"] == {"renderer": "theme_card", "version": 1}
-    assert payload["data"]["version"] == "1.0.3"
+    assert payload["data"]["version"] == "1.0.4"
     assert payload["text"]
 
 

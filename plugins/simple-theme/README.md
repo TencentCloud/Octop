@@ -29,6 +29,11 @@ python3 build.py
 
 构建将 `ui/theme.css` 与 `ui/model-icons.js` 内联至 `ui/index.js`。图标生成脚本位于 `tools/`；构建后的图标展示不需要额外联网。
 
+## 版本 1.0.4
+
+- 版本号统一（清单 / `VERSION` / 模板常量 / `main.py` / 构建产物），与前次修复内容对应。
+- 宿主兼容性：需要带插件 UI 生命周期（`setup()` 返回 cleanup、`resetPluginUiLoader` 中止在途加载）与 `host.requestBlob()` 的宿主。旧宿主仍可安装、样式仍会生效，但登出/禁用/热重载后的清理与字体嵌入不完整，详见下方「兼容性」。
+
 ## 版本 1.0.3
 
 - 输入框上方的当前模型改为只读状态展示：彩色图标加名称，切换仍由原生「+」菜单完成；自动模式显示「自动选择」，不再冒充具体模型。
@@ -55,6 +60,26 @@ python3 build.py
 删除样式在有限的按钮标签、无障碍名称及确认标题上设置展示属性，不移动 React 节点，不更改事件处理，也不会自动确认删除。未识别的自定义控件保留应用原样。
 
 输入框上方的模型条只读：图标和名称随当前会话模型更新，宿主原生「+」菜单仍是唯一开关，已选模型仍由宿主自带标签移除。自动模式只显示「自动选择」。窄屏用末段短名，悬停/读屏可取得全名。
+
+## 升级宿主（1.0.4 起）
+
+本版本依赖两项宿主能力，缺一即降级：
+
+1. **插件 UI 生命周期**：`setup(host)` 的返回值被当作 cleanup 登记，`resetPluginUiLoader()` 会中止在途 fetch、二次校验 generation，并把晚到的异步 cleanup 立刻执行。旧宿主调用 `setup()` 后丢弃返回值，登出/禁用/热重载后样式、监听器、轮询会残留（401 轮询继续跑）。
+2. **`host.requestBlob()`**：插件静态资源要带 `Authorization` 头取回，`FontFace` 才能注册 Inter。旧宿主没有这个方法，字体加载抛错并被捕获，回退系统字体，其余功能正常。
+
+检查当前宿主是否具备：
+
+```sh
+grep -c requestBlob <dashboard>/assets/index.*.js          # >0 才算有
+grep -o 'reloadPluginToolUis\|resetPluginUiLoader' <dashboard>/assets/ensureBuiltins.*.js
+```
+
+判定：
+
+- 有 `requestBlob` 且 `setup()` 返回值被登记 → 全功能。
+- 只有 `setup()` 返回值登记、无 `requestBlob` → 仅字体回退，其余正常。
+- 两者都没有 → **能装、能看，但生命周期是旧语义**：不要宣称已完全生效，需升级宿主前端后重新登录。
 
 ## 上游与许可
 

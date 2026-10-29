@@ -25,7 +25,7 @@ function listen(target, type, listener, options = {}) {
 const STYLE_ID = "octop-simple-theme-style";
 const ROOT_ID = "octop-simple-theme-root";
 const PLUGIN_ID = "simple-theme";
-const VERSION = "1.0.3";
+const VERSION = "1.0.4";
 const FONT_PATH = "/plugins/simple-theme/ui/fonts/InterVariable.woff2";
 const FONT_FAMILY = "Simple Theme Sans";
 const STORAGE_KEY = "octop.simple-theme.preference";
@@ -4167,7 +4167,10 @@ function syncFloatingControls() {
   const usage=document.querySelector('[class*="module__runUsageBar__"]');
   const detail=dock.querySelector('.simple-stats-detail'); const text=usage?.textContent.trim() || '当前会话暂无用量统计';
   if(detail.textContent!==text)detail.textContent=text;
-  const chip=document.querySelector('[class*="module__contextChipModel__"]');
+  // 历史消息里也带同名 contextChipModel 标签，必须限定在输入框内取，
+  // 否则条上跟的是最后一条消息的模型，而不是当前会话要用的模型。
+  const chip=input.querySelector('[class*="module__contextChipModel__"]')
+    || document.querySelector('[class*="module__imagePreviewBar__"] > [class*="module__contextChipModel__"]');
   // 只读状态展示：切换入口仍是宿主原生 + 菜单，这里不复制按钮语义。
   const name=chip?.querySelector('[class*="module__contextChipLabel__"]')?.textContent.trim() || '自动选择';
   // 窄屏只显示模型名末段，全名仍挂在 title / aria-label，不必靠截断猜测。
