@@ -156,9 +156,9 @@ def _clear_local_workspace(workspace_dir: Path) -> None:
         if child.name in _SKIP_DIR_NAMES or child.name.startswith("."):
             continue
         if child.is_dir():
-            shutil.rmtree(child)
+            shutil.rmtree(child, ignore_errors=True)
         else:
-            child.unlink()
+            child.unlink(missing_ok=True)
 
 
 def _iter_zip_entries(data: bytes) -> list[tuple[str, bytes]]:
