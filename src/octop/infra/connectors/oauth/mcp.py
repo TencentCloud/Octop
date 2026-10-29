@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import time
 from typing import Any
-from urllib.parse import urlencode, urlparse
+from urllib.parse import parse_qsl, urlencode, urlparse, urlsplit, urlunsplit
 
 import httpx
 
@@ -133,7 +133,17 @@ def build_authorize_url(
         params["scope"] = scope
     if resource:
         params["resource"] = resource
-    return f"{metadata['authorization_endpoint']}?{urlencode(params)}"
+    endpoint = str(metadata["authorization_endpoint"])
+    # RFC 6749 section 3.1 allows authorization_endpoint to carry a pre-existing
+    # query string (e.g. "https://auth.example.com/authorize?tenant=acme").
+    # Unconditionally appending "?" would produce malformed URLs like
+    # "authorize?tenant=acme?response_type=code".  Merge by splitting the URL,
+    # parsing any existing query, combining, and re-serializing.
+    parts = urlsplit(endpoint)
+    existing_pairs = parse_qsl(parts.query, keep_blank_values=True)
+    combined = existing_pairs + list(params.items())
+    new_query = urlencode(combined)
+    return urlunsplit((parts.scheme, parts.netloc, parts.path, new_query, parts.fragment))
 
 
 def _http_error_detail(resp: Any) -> str:
