@@ -887,6 +887,14 @@
     "totalLibrary": "{{count}} built-in expert(s)",
     "totalMarket": "{{count}} market expert(s)",
     "addFromLibrary": "+ New from Built-in Template",
+    "visibility": {
+      "trigger": "Visibility",
+      "hint": "When hidden, non-admin users no longer see the tab. Admins always see it.",
+      "hideBuiltin": "Hide built-in experts",
+      "hideMarket": "Hide expert market",
+      "saved": "Visibility updated",
+      "saveFailed": "Failed to update visibility"
+    },
     "newExpert": "New expert",
     "addCloudExpert": "Add cloud expert",
     "addCloudExpertHint": "Open Cloud Collab to add experts from another Octop",
