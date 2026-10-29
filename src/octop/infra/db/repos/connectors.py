@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 from dataclasses import dataclass
+from datetime import datetime
 
 from octop.infra.db.pool import DatabasePool
 from octop.infra.db.repos._base import DbRow, bool_int, map_rows, now_ts
@@ -30,6 +31,35 @@ class ConnectorRow:
     @classmethod
     def from_row(cls, r: DbRow) -> ConnectorRow:
         blob = r["credential_blob"]
+        # SQLite dynamic typing allows older/writer bugs to store the
+        # encrypted blob as TEXT instead of BLOB. ``bytes(str)`` raises
+        # ``TypeError: string argument without an encoding`` and would crash
+        # the entire row list (GitHub issue #2450). Accept str as UTF-8 and
+        # also tolerate a missing blob.
+        if blob is None:
+            parsed_blob = None
+        elif isinstance(blob, bytes):
+            parsed_blob = blob
+        elif isinstance(blob, str):
+            parsed_blob = blob.encode("utf-8")
+        else:
+            parsed_blob = bytes(blob)
+        updated_at = r["updated_at"]
+        # Historical rows may have stored updated_at as an ISO-8601 string
+        # instead of an integer unix ts -- tolerate both.
+        if isinstance(updated_at, str):
+            parsed_updated_at = int(
+                datetime.fromisoformat(updated_at.replace("Z", "+00:00")).timestamp()
+            )
+        else:
+            parsed_updated_at = updated_at
+        created_at = r["created_at"]
+        if isinstance(created_at, str):
+            parsed_created_at = int(
+                datetime.fromisoformat(created_at.replace("Z", "+00:00")).timestamp()
+            )
+        else:
+            parsed_created_at = created_at
         return cls(
             id=r["id"],
             instance_id=r["instance_id"],
@@ -39,12 +69,12 @@ class ConnectorRow:
             status=r["status"],
             shared=bool(r["shared"]),
             mcp_server_name=r["mcp_server_name"],
-            credential_blob=bytes(blob) if blob is not None else None,
+            credential_blob=parsed_blob,
             credential_expires_at=r["credential_expires_at"],
             credential_rotated_at=r["credential_rotated_at"],
             config_json=r["config_json"],
-            created_at=r["created_at"],
-            updated_at=r["updated_at"],
+            created_at=parsed_created_at,
+            updated_at=parsed_updated_at,
         )
 
     @property
