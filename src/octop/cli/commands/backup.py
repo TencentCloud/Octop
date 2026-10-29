@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import shutil
 import tempfile
 from pathlib import Path
 
@@ -79,7 +80,12 @@ def create(
             else:
                 dest = output
                 dest.parent.mkdir(parents=True, exist_ok=True)
-                tmp_path.replace(dest)
+                # Use shutil.move instead of Path.replace so the archive can be
+                # placed across filesystems (e.g. external drives, container
+                # mounts). Path.replace raises OSError(EXDEV, "Cross-device link")
+                # when src and dest live on different devices; shutil.move
+                # falls back to copy-then-delete on EXDEV.
+                shutil.move(str(tmp_path), str(dest))
                 size = dest.stat().st_size
     finally:
         db.close()
