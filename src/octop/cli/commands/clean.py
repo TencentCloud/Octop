@@ -38,7 +38,7 @@ def clean(wipe_all: bool, yes: bool, dry_run: bool) -> None:
         if not t.exists():
             continue
         if t.is_dir():
-            shutil.rmtree(t)
+            shutil.rmtree(t, ignore_errors=True)
         else:
-            t.unlink()
+            t.unlink(missing_ok=True)
     click.echo("done")

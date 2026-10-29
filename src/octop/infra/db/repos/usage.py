@@ -90,7 +90,10 @@ def resolve_usage_window(
 
     day_match = _DAY_WINDOW_RE.fullmatch(window)
     if day_match is not None:
-        day = datetime.strptime(day_match.group(1), "%Y-%m-%d").date()
+        try:
+            day = datetime.strptime(day_match.group(1), "%Y-%m-%d").date()
+        except ValueError:
+            raise ValueError(f"invalid usage window: {window!r}") from None
         start_dt = datetime(day.year, day.month, day.day, tzinfo=tz)
         end_dt = start_dt + timedelta(days=1)
         return int(start_dt.timestamp()), int(end_dt.timestamp())
@@ -108,8 +111,11 @@ def resolve_usage_window(
 
     range_match = _RANGE_WINDOW_RE.fullmatch(window)
     if range_match is not None:
-        start_day = datetime.strptime(range_match.group(1), "%Y-%m-%d").date()
-        end_day = datetime.strptime(range_match.group(2), "%Y-%m-%d").date()
+        try:
+            start_day = datetime.strptime(range_match.group(1), "%Y-%m-%d").date()
+            end_day = datetime.strptime(range_match.group(2), "%Y-%m-%d").date()
+        except ValueError:
+            raise ValueError(f"invalid usage window: {window!r}") from None
         if end_day < start_day:
             raise ValueError(f"invalid usage window: {window!r}")
         start_dt = datetime(start_day.year, start_day.month, start_day.day, tzinfo=tz)
