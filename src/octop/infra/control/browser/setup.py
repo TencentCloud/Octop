@@ -73,8 +73,9 @@ def ensure_chrome_runtime_env() -> Path:
     """
     path = _runtime_dir_for_uid()
     path.mkdir(parents=True, exist_ok=True)
-    with contextlib.suppress(OSError):
-        os.chmod(path, 0o700)
+    if os.name == "posix":
+        with contextlib.suppress(OSError):
+            os.chmod(path, 0o700)
     os.environ["XDG_RUNTIME_DIR"] = str(path)
     return path
 
