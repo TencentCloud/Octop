@@ -1,4 +1,4 @@
-"""Install, load, and expose plugins under ``~/.octop/plugins/``."""
+﻿"""Install, load, and expose plugins under ``~/.octop/plugins/``."""
 
 from __future__ import annotations
 
@@ -383,9 +383,22 @@ class PluginManager:
         return _read_global_plugins(self._config_path)
 
     def seed_bundled(self) -> list[str]:
-        """Upgrade already-installed bundled plugins when catalog versions are newer."""
-        from octop.infra.agents.plugins.bundled import default_bundled_plugins_root
-        from octop.infra.agents.plugins.seed import seed_bundled_plugins
+        """Upgrade already-installed bundled plugins when catalog versions are newer.
+
+        Gracefully no-ops when the ``plugins.bundled`` catalog is missing —
+        some Octop wheels (issue #2458) ship without the bundled plugins tree
+        so the import raises ``ModuleNotFoundError``.  ``octop init --force``
+        used to crash on this; it now logs a warning and proceeds.
+        """
+        try:
+            from octop.infra.agents.plugins.bundled import default_bundled_plugins_root
+            from octop.infra.agents.plugins.seed import seed_bundled_plugins
+        except ImportError as exc:
+            logger.warning(
+                "bundled plugins catalog not available (%s); skipping seed_bundled",
+                exc,
+            )
+            return []
 
         return seed_bundled_plugins(
             bundled_root=default_bundled_plugins_root(),
@@ -393,9 +406,22 @@ class PluginManager:
             config_path=self._config_path,
         )
 
-    def market_root(self) -> Path:
-        """In-tree marketplace catalog root (future: remote index)."""
-        from octop.infra.agents.plugins.bundled import default_bundled_plugins_root
+    def market_root(self) -> Path | None:
+        """In-tree marketplace catalog root (future: remote index).
+
+        Returns ``None`` when the bundled catalog is missing from the install
+        (``plugins.bundled`` ModuleNotFoundError).  All callers already tolerate
+        ``market_root()`` being unavailable — they check ``root.is_dir()``
+        before iterating.
+        """
+        try:
+            from octop.infra.agents.plugins.bundled import default_bundled_plugins_root
+        except ImportError as exc:
+            logger.warning(
+                "bundled plugins catalog not available (%s); marketplace is empty",
+                exc,
+            )
+            return None
 
         return default_bundled_plugins_root()
 
@@ -404,7 +430,10 @@ class PluginManager:
         cleaned = plugin_id.strip()
         if not cleaned or ".." in cleaned or "/" in cleaned or "\\" in cleaned:
             return None
-        dest = self.market_root() / cleaned
+        root = self.market_root()
+        if root is None:
+            return None
+        dest = root / cleaned
         if dest.is_dir() and (dest / "plugin.yaml").is_file():
             return dest
         return None
@@ -413,7 +442,7 @@ class PluginManager:
         """List marketplace catalog entries (in-tree today; remote API later)."""
         root = self.market_root()
         out: list[dict[str, Any]] = []
-        if not root.is_dir():
+        if root is None or not root.is_dir():
             return out
         for plugin_dir in discover_plugin_dirs(root):
             try:
@@ -883,3 +912,4 @@ class PluginManager:
                     pairs.append((f"{dest}/{rel}", path.read_bytes()))
         if pairs:
             workspace.upload_many(pairs)
+
