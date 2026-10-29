@@ -32,7 +32,16 @@
         "manage.export_file",
         "manage.search_file",
         "manage.set_privilege",
-        "manage.folder_list"
+        "manage.folder_list",
+        "sheets.create_by_mdx",
+        "sheets.read",
+        "sheets.edit",
+        "sheets.find",
+        "sheets.append",
+        "sheets.clear",
+        "sheets.add_pivot_table",
+        "sheets.add_filter",
+        "sheets.add_sort"
       ]
     },
     {
