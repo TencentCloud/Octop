@@ -1,8 +1,10 @@
 """Inject platform execute defaults into harness backend specs.
 
-Global admin env (``~/.octop/env``) and workspace ``.env`` are merged at
-**execute** time inside harness (``inherit_env`` / ``environment_file`` /
-``BackendWorkspace`` reader) — not snapshotted here.
+Global admin env (``~/.octop/env``) is folded into local_shell/bwrap specs
+here (filtered to non-protected keys) and referenced via
+``environment_file`` on docker — both apply at **execute** time inside
+harness. Workspace ``.env`` is read by harness directly via the
+``BackendWorkspace`` dotenv reader wired at agent build.
 
 ``OCTOP_AUTH_DIR`` / ``OCTOP_SKILLS_DIR`` use agent-facing paths when the
 backend is scoped (bwrap / virtual rootfs), so skill scripts resolve the same
@@ -11,6 +13,7 @@ locations inside the jail. Host paths are still mkdir'd for Octop host ops.
 
 from __future__ import annotations
 
+import logging
 from pathlib import Path
 from typing import Any
 
@@ -25,7 +28,10 @@ from octop.infra.agents.workspace.dir import (
     uses_scoped_workspace_default,
 )
 from octop.infra.db.repos.agents import AgentRow
+from octop.infra.utils.env_file import _is_protected_env_key, env_file_path, load_env_file
 from octop.infra.utils.paths import PathLayout
+
+logger = logging.getLogger(__name__)
 
 _EXECUTE_BACKEND_KINDS = frozenset({"local_shell", "docker"})
 
@@ -90,6 +96,18 @@ def agent_execute_env_defaults(
     }
 
 
+def _load_admin_env_filtered(paths: PathLayout) -> dict[str, str]:
+    """Load ``~/.octop/env`` and drop keys harness marks protected."""
+    raw = load_env_file(env_file_path(paths.root))
+    if not raw:
+        return {}
+    return {
+        str(k): str(v)
+        for k, v in raw.items()
+        if not _is_protected_env_key(str(k))
+    }
+
+
 def inject_agent_execute_env(
     backend: Any,
     *,
@@ -122,6 +140,13 @@ def inject_agent_execute_env(
         return backend
 
     extra: dict[str, str] = {str(k): str(v) for k, v in dict(backend.get("env") or {}).items()}
+    # Admin env (~/.octop/env) is user-authored API keys / search credentials.
+    # It must reach local_shell subprocesses so tools (web-search, etc.) see
+    # the same credentials the Octop host process does — it was previously
+    # only wired through to docker backends via ``environment_file``.
+    admin_env = _load_admin_env_filtered(paths)
+    if admin_env:
+        extra.update(admin_env)
     extra.update(
         agent_execute_env_defaults(
             paths=paths,
