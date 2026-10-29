@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import sqlite3
 from types import SimpleNamespace
 from typing import Any, Literal, cast
 
@@ -372,6 +373,13 @@ async def admin_create_provider(
 ) -> dict[str, Any]:
     import json as _json
 
+    # Fast-path duplicate-name check so the Dashboard gets a friendly 409
+    # instead of an opaque 500 from the UNIQUE constraint.
+    if server.services.provider_repo.get_by_name(body.name) is not None:
+        raise OctopError(
+            ErrorCode.PROVIDER_NAME_TAKEN,
+            f"provider name {body.name!r} is already in use",
+        )
     models = (
         _sync_model_visibility(server, body.name, body.models) if body.models is not None else None
     )
@@ -380,15 +388,24 @@ async def admin_create_provider(
     models_json = _json.dumps(models) if models is not None else None
     extra_json = merge_stream_usage_extra(body.extra_json, body.stream_usage)
     extra_json = merge_provider_purpose_extra(extra_json, body.purpose)
-    pid = server.services.provider_repo.create(
-        name=body.name,
-        kind=body.kind,
-        base_url=body.base_url,
-        api_key=body.api_key,
-        extra_json=extra_json,
-        models_json=models_json,
-        note=body.note,
-    )
+    try:
+        pid = server.services.provider_repo.create(
+            name=body.name,
+            kind=body.kind,
+            base_url=body.base_url,
+            api_key=body.api_key,
+            extra_json=extra_json,
+            models_json=models_json,
+            note=body.note,
+        )
+    except sqlite3.IntegrityError as exc:
+        # Race: two concurrent creations slipped past the pre-check above.
+        if "UNIQUE" in str(exc).upper() and "providers.name" in str(exc).lower():
+            raise OctopError(
+                ErrorCode.PROVIDER_NAME_TAKEN,
+                f"provider name {body.name!r} is already in use",
+            ) from None
+        raise
     if server.app_runtime:
         await server.app_runtime.agent_registry.on_provider_changed(provider_name=body.name)
     return _annotate_provider_models(server, _row_to_dict(server.services.provider_repo.get(pid)))
