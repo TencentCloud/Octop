@@ -62,6 +62,8 @@ ui:
 ```
 
 Dashboard 通过 `GET /api/plugins/{id}/ui/…` 加载 `index.js`，调用 `setup(host)` 注册渲染器。
+
+已登录的控制台统一加载已启用插件的 UI，页面布局挂载就是生命周期边界。`setup(host)` **必须**返回清理函数（是契约，不是可选项）：移除自己创建的 DOM、样式、监听器和定时器，中止未完成请求并删除全局变量。禁用、卸载、重载或布局卸载（退出登录是不刷新页面的 SPA 跳转）时宿主只调用一次清理，下一次挂载再调用一次 setup。务必实现清理，避免退出后仍有轮询持续 401。JSON 请求使用 `host.request(path, options)`；二进制资源使用 `host.requestBlob(path, options)`。路径从 `/api` 下开始填写，例如 `/plugins/example/ui/font.woff2`，由宿主处理部署前缀与鉴权。
 `host.patchResult(callId, data)` 可在不重跑 LLM 的情况下刷新气泡（L2）；流式仍走 SSE 整段替换 `output`（L1）。
 
 插件 ESM 为自包含文件；React 由 Dashboard 注入 `window.__OCTOP_REACT__` / `__OCTOP_JSX__`。

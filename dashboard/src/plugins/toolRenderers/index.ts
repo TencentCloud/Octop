@@ -26,7 +26,7 @@ export {
   getToolRendererVersion,
 } from "./registry";
 export { ensureBuiltinToolRenderers } from "./ensureBuiltins";
-export { usePluginToolUis } from "./usePluginToolUis";
+export { usePluginToolUis, usePluginUiLifecycle } from "./usePluginToolUis";
 export { useToolRendererVersion } from "./useToolRendererVersion";
 export type {
   OctopPluginUIHost,

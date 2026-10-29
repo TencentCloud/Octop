@@ -74,6 +74,18 @@ interactive L2 updates; streaming still replaces `output` via SSE (L1).
 Ship a self-contained ESM; React is provided as `window.__OCTOP_REACT__` /
 `__OCTOP_JSX__`.
 
+The signed-in Dashboard loads enabled plugin UIs on all pages, and the layout
+mount is the lifecycle boundary. `setup(host)` **must** return a cleanup function
+(required, not optional): remove any DOM/styles/listeners/timers it created,
+abort in-flight work and delete globals. The host calls cleanup exactly once on
+disable, uninstall, reload or layout unmount (sign-out is an SPA navigation, so
+the layout unmounts without a page reload), then calls setup once on the next
+mount. Always implement cleanup so nothing keeps polling and returning 401 on
+`/login`. Use `host.request(path, options)` for JSON and
+`host.requestBlob(path, options)` for binary resources. Paths are relative to
+`/api`, for example `/plugins/example/ui/font.woff2`; the host handles the
+deployment prefix and authentication.
+
 ## Install locally
 
 ```bash
