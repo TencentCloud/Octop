@@ -1,4 +1,4 @@
-"""CronManager — process-wide singleton that owns all user-defined scheduled CronJob instances."""
+﻿"""CronManager — process-wide singleton that owns all user-defined scheduled CronJob instances."""
 
 from __future__ import annotations
 
@@ -12,6 +12,7 @@ from zoneinfo import ZoneInfo
 from apscheduler.events import EVENT_JOB_MISSED, JobEvent
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.date import DateTrigger
+from apscheduler.triggers.interval import IntervalTrigger
 
 from octop.i18n import tr
 from octop.infra.connectors.crypto import decrypt_credentials
@@ -383,7 +384,24 @@ class CronManager:
                 logger.info("CronJob %s one-shot already ran; disabling", row.cron_id)
                 return
             grace = ONE_SHOT_MISFIRE_GRACE_SECONDS
-        if self._scheduler.get_job(row.cron_id):
+
+        # Preserve the existing interval job's next fire time so a metadata-
+        # only edit (name, prompt, model, ...) or scheduler re-registration does
+        # not restart the countdown from "now". A rebuilt cron/date trigger is
+        # fine — it has a deterministic wall-clock spec.
+        existing_job = self._scheduler.get_job(row.cron_id)
+        if existing_job is not None and isinstance(trigger, IntervalTrigger):
+            preserved_next = getattr(existing_job, "next_run_time", None)
+            if preserved_next is not None:
+                now_tz = preserved_next.tzinfo or ZoneInfo(self._timezone)
+                if preserved_next > dt.datetime.now(now_tz):
+                    interval_seconds = trigger.interval.total_seconds()
+                    trigger = IntervalTrigger(
+                        seconds=int(interval_seconds),
+                        start_date=preserved_next - dt.timedelta(seconds=interval_seconds),
+                    )
+
+        if existing_job is not None:
             self._scheduler.remove_job(row.cron_id)
         self._scheduler.add_job(
             self._run_user_job,
@@ -541,3 +559,4 @@ class CronManager:
     def has_system_job(self, job_id: str) -> bool:
         """True when a system job id is currently registered with the scheduler."""
         return self._scheduler.get_job(job_id) is not None
+
