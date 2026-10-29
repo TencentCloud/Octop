@@ -140,33 +140,63 @@ class CronDeliveryService:
         tracker = TurnHistoryTracker.from_request(request)
         usage = UsageTracker()
         parts: list[str] = []
-        interaction_required = False
         saw_tool_call = False
         emitted_tool_error_ids: set[str] = set()
         try:
             from octop.infra.connectors.gateway.adapters.agently_cli import write_scope
 
             with write_scope(allowed=False):
-                async for chunk in self._agent_manager.stream(command.agent_id, request):
-                    tracker.observe(chunk)
-                    usage.observe(chunk)
-                    kind = chunk.get("type")
-                    if kind == "tool_call_chunk":
-                        saw_tool_call = True
-                    elif kind == "tool_result":
-                        log_failed_tool_results(
-                            chunk,
-                            agent_id=command.agent_id,
-                            thread_id=session.thread_id,
-                            seen=emitted_tool_error_ids,
-                            live=saw_tool_call,
+                source: Any = self._agent_manager.stream(command.agent_id, request)
+                for _ in range(8):  # auto-approve up to 8 consecutive HITL rounds
+                    held_hitl: dict[str, Any] | None = None
+                    async for chunk in source:
+                        tracker.observe(chunk)
+                        usage.observe(chunk)
+                        kind = chunk.get("type")
+                        if kind == "tool_call_chunk":
+                            saw_tool_call = True
+                            # Drop preamble text before a regular tool call — it's
+                            # just the agent's internal narration (e.g. "I'll start by
+                            # gathering the current time…") and cron IM delivery
+                            # should only surface the final answer. Preserve text
+                            # before ``ask_agent`` so team hosts still show their
+                            # dispatch line on the invoke-mode channel (#2384).
+                            tool_name = str(chunk.get("name") or chunk.get("tool_name") or "")
+                            if tool_name != "ask_agent":
+                                parts.clear()
+                        elif kind == "tool_result":
+                            log_failed_tool_results(
+                                chunk,
+                                agent_id=command.agent_id,
+                                thread_id=session.thread_id,
+                                seen=emitted_tool_error_ids,
+                                live=saw_tool_call,
+                            )
+                        if kind in ("token", "delta"):
+                            parts.append(str(chunk.get("content") or chunk.get("text") or ""))
+                        elif kind == "hitl_required":
+                            held_hitl = chunk
+                    if held_hitl is None:
+                        break
+                    # Cron runs unattended: auto-approve every pending action.
+                    decisions = self._cron_auto_approve_decisions(held_hitl)
+                    if not decisions:
+                        raise RuntimeError(
+                            "cron agent run requires user interaction (no approvable actions)"
                         )
-                    if kind in ("token", "delta"):
-                        parts.append(str(chunk.get("content") or chunk.get("text") or ""))
-                    elif kind == "hitl_required":
-                        interaction_required = True
-            if interaction_required:
-                raise RuntimeError("cron agent run requires user interaction")
+                    logger.info(
+                        "cron auto-approving %d HITL action(s) for agent=%s thread=%s",
+                        len(decisions),
+                        command.agent_id,
+                        session.thread_id,
+                    )
+                    source = self._agent_manager.resume_hitl(
+                        command.agent_id, session.thread_id, decisions
+                    )
+                else:
+                    raise RuntimeError(
+                        "cron agent run exceeded auto-approve HITL rounds"
+                    )
             outbound = strip_thinking("".join(parts)).strip()
             if not outbound:
                 raise RuntimeError("cron agent run produced no visible response")
@@ -190,6 +220,59 @@ class CronDeliveryService:
             title_source=command.prompt,
         )
         await self._notify_best_effort(session, command.agent_id, outbound)
+
+    @staticmethod
+    def _cron_auto_approve_decisions(
+        hitl_chunk: dict[str, Any],
+    ) -> list[dict[str, str]]:
+        """Build ``{"type": "approve"}`` for every action in a ``hitl_required``.
+
+        Cron runs unattended, so we skip the interactive approval card and
+        auto-approve each pending action. This mirrors how
+        :func:`octop.infra.gateway.hitl.coordinator.approve_decisions_if_allowed`
+        works in the live gateway, but without requiring a session policy
+        bypass — cron is the bypass.
+
+        We only emit ``approve`` decisions here. If an action's review
+        configuration does not accept ``approve`` (e.g. it requires a
+        ``respond`` or ``edit``), that action stays unapproved and cron
+        will raise below, surfacing the specific action that cannot run
+        unattended instead of silently skipping it.
+        """
+        request = hitl_chunk.get("request")
+        if not isinstance(request, dict):
+            return []
+        actions = request.get("action_requests")
+        if not isinstance(actions, list):
+            return []
+        configs = request.get("review_configs")
+        config_by_action: dict[str, dict[str, Any]] = {}
+        if isinstance(configs, list):
+            for cfg in configs:
+                if isinstance(cfg, dict):
+                    key = str(cfg.get("action_name") or "")
+                    if key:
+                        config_by_action[key] = cfg
+        decisions: list[dict[str, str]] = []
+        for action in actions:
+            if not isinstance(action, dict):
+                continue
+            name = str(action.get("name") or action.get("action_name") or "")
+            if not name:
+                continue
+            cfg = config_by_action.get(name)
+            if cfg is not None:
+                allowed = cfg.get("allowed_decisions")
+                if isinstance(allowed, list) and allowed:
+                    if "approve" not in {str(a) for a in allowed}:
+                        logger.warning(
+                            "cron: action %s does not accept approve (allowed=%s); skipping auto-approve",
+                            name,
+                            allowed,
+                        )
+                        continue
+            decisions.append({"type": "approve"})
+        return decisions
 
     async def _build_agent_request(
         self,
