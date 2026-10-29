@@ -386,5 +386,5 @@ async def delete_daily_memory(
         raise OctopError(ErrorCode.FORBIDDEN, "path escapes workspace") from exc
     if not target.exists():
         raise OctopError(ErrorCode.NOT_FOUND, f"daily memory {filename!r} not found")
-    target.unlink()
+    target.unlink(missing_ok=True)
     return Response(status_code=204)
