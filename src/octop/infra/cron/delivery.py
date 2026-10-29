@@ -152,7 +152,13 @@ class CronDeliveryService:
                     usage.observe(chunk)
                     kind = chunk.get("type")
                     if kind == "tool_call_chunk":
+                        # Reset accumulated parts so that any pre-tool-call
+                        # planning text ("I'll start by gathering...") does not
+                        # leak into the final IM reply.  The tokens that follow
+                        # tool results form the answer the user actually wants.
                         saw_tool_call = True
+                        if parts:
+                            parts.clear()
                     elif kind == "tool_result":
                         log_failed_tool_results(
                             chunk,
