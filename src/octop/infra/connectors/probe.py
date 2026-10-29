@@ -246,9 +246,16 @@ async def _probe_mcp_sse(
                 ClientSession(read, write) as session,
             ):
                 await session.initialize()
-                listed = await session.list_tools()
+                all_tools: list[Any] = []
+                cursor: str | None = None
+                while True:
+                    listed = await session.list_tools(cursor=cursor)
+                    all_tools.extend(listed.tools)
+                    cursor = getattr(listed, "nextCursor", None)
+                    if not cursor:
+                        break
                 tools = normalize_tools(
-                    [{"name": t.name, "description": t.description or ""} for t in listed.tools]
+                    [{"name": t.name, "description": t.description or ""} for t in all_tools]
                 )
                 return {"ok": True, "tool_count": len(tools), "tools": tools}
         except httpx.HTTPStatusError as exc:
@@ -354,9 +361,16 @@ async def probe_streamable_http_mcp(
                 ClientSession(read, write) as session,
             ):
                 await session.initialize()
-                listed = await session.list_tools()
+                all_tools: list[Any] = []
+                cursor: str | None = None
+                while True:
+                    listed = await session.list_tools(cursor=cursor)
+                    all_tools.extend(listed.tools)
+                    cursor = getattr(listed, "nextCursor", None)
+                    if not cursor:
+                        break
                 tools = normalize_tools(
-                    [{"name": t.name, "description": t.description or ""} for t in listed.tools]
+                    [{"name": t.name, "description": t.description or ""} for t in all_tools]
                 )
                 return {"ok": True, "tool_count": len(tools), "tools": tools}
         except httpx.HTTPStatusError as exc:
@@ -494,25 +508,39 @@ async def probe_connector(
 
     probed_tools: list[dict[str, str]] = []
     try:
-        r2 = await safe_request(
-            "POST",
-            url,
-            json={
-                "jsonrpc": "2.0",
-                "id": 2,
-                "method": "tools/list",
-                "params": {},
-            },
-            headers=headers,
-            timeout=20.0,
-        )
-        list_err = http_error_message(r2)
-        if list_err and entry.kind not in _REMOTE_STATIC_TOOL_KINDS:
-            return {"ok": False, "error": list_err, "status_code": r2.status_code}
-        if r2.status_code < 400:
-            body = r2.json()
-            if isinstance(body, dict):
-                probed_tools = normalize_tools((body.get("result") or {}).get("tools"))
+        cursor: str | None = None
+        while True:
+            params: dict[str, Any] = {}
+            if cursor is not None:
+                params["cursor"] = cursor
+            r2 = await safe_request(
+                "POST",
+                url,
+                json={
+                    "jsonrpc": "2.0",
+                    "id": 2,
+                    "method": "tools/list",
+                    "params": params,
+                },
+                headers=headers,
+                timeout=20.0,
+            )
+            list_err = http_error_message(r2)
+            if list_err and entry.kind not in _REMOTE_STATIC_TOOL_KINDS:
+                return {"ok": False, "error": list_err, "status_code": r2.status_code}
+            if r2.status_code < 400:
+                body = r2.json()
+                if isinstance(body, dict):
+                    result = body.get("result") or {}
+                    probed_tools.extend(normalize_tools(result.get("tools")))
+                    next_cursor = result.get("nextCursor")
+                    if not next_cursor:
+                        break
+                    cursor = str(next_cursor)
+                else:
+                    break
+            else:
+                break
     except Exception:
         logger.debug("connector tools/list probe skipped for %s", entry.kind)
 
@@ -590,9 +618,16 @@ async def _probe_stdio_mcp(connection: dict[str, Any]) -> dict[str, Any]:
                 ClientSession(read, write) as session,
             ):
                 await session.initialize()
-                listed = await session.list_tools()
+                all_tools: list[Any] = []
+                cursor: str | None = None
+                while True:
+                    listed = await session.list_tools(cursor=cursor)
+                    all_tools.extend(listed.tools)
+                    cursor = getattr(listed, "nextCursor", None)
+                    if not cursor:
+                        break
                 tools = normalize_tools(
-                    [{"name": t.name, "description": t.description or ""} for t in listed.tools]
+                    [{"name": t.name, "description": t.description or ""} for t in all_tools]
                 )
                 return {"ok": True, "tool_count": len(tools), "tools": tools}
     except TimeoutError:
@@ -600,3 +635,4 @@ async def _probe_stdio_mcp(connection: dict[str, Any]) -> dict[str, Any]:
     except Exception as exc:
         logger.exception("stdio MCP probe failed")
         return {"ok": False, "error": format_probe_exception(exc)}
+
