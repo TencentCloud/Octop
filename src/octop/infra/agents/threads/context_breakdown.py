@@ -51,9 +51,9 @@ def _empty_breakdown(*, max_tokens: int) -> ContextBreakdownResult:
 
 def _usage_to_breakdown(usage: Any, *, fallback_max_tokens: int) -> ContextBreakdownResult:
     raw_segments = getattr(usage, "segments", None) or {}
-    segments = {key: int(raw_segments.get(key, 0) or 0) for key in SEGMENT_KEYS}
-    used = int(getattr(usage, "used_tokens", 0) or 0)
-    cap = int(getattr(usage, "max_tokens", fallback_max_tokens) or fallback_max_tokens or 128_000)
+    segments = {key: _token_int(raw_segments.get(key, 0)) for key in SEGMENT_KEYS}
+    used = _token_int(getattr(usage, "used_tokens", 0))
+    cap = _token_int(getattr(usage, "max_tokens", fallback_max_tokens)) or fallback_max_tokens or 128_000
     saved = _token_int(getattr(usage, "decision_saved", 0))
     return ContextBreakdownResult(
         max_tokens=cap,
@@ -75,10 +75,10 @@ def _from_stream_input_tokens(input_tokens: int, *, max_tokens: int) -> ContextB
 def _usage_has_segments(usage: Any) -> bool:
     if usage is None:
         return False
-    used = int(getattr(usage, "used_tokens", 0) or 0)
-    inp = int(getattr(usage, "input_tokens", 0) or 0)
+    used = _token_int(getattr(usage, "used_tokens", 0))
+    inp = _token_int(getattr(usage, "input_tokens", 0))
     raw = getattr(usage, "segments", None) or {}
-    return used > 0 or inp > 0 or any(int(raw.get(k, 0) or 0) > 0 for k in SEGMENT_KEYS)
+    return used > 0 or inp > 0 or any(_token_int(raw.get(k, 0)) > 0 for k in SEGMENT_KEYS)
 
 
 def _token_int(value: Any) -> int:
