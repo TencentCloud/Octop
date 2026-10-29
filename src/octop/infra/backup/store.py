@@ -216,7 +216,7 @@ def read_backup_file(paths: PathLayout, filename: str) -> bytes:
 
 def delete_backup_file(paths: PathLayout, filename: str) -> None:
     path = resolve_backup_path(paths, filename)
-    path.unlink()
+    path.unlink(missing_ok=True)
 
 
 def is_auto_backup_filename(name: str) -> bool:
