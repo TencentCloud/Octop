@@ -550,7 +550,7 @@ def _restore(workspace: Path, trash_name: str) -> dict[str, str]:
     if destination.exists():
         raise SkillManagerError(f"cannot restore because skill is installed: {slug}")
     if metadata_path.exists():
-        metadata_path.unlink()
+        metadata_path.unlink(missing_ok=True)
     os.replace(source, destination)
     return {"restored": slug, "path": str(destination)}
 
