@@ -1059,6 +1059,26 @@ def test_build_harness_config_keeps_memory_after_bootstrap(
     assert cfg.memory is None
 
 
+def test_build_harness_config_language_follows_owner_locale(manager: AgentManager) -> None:
+    from dataclasses import replace
+
+    user_id = manager._repos.user_repo.create(
+        username="en-owner", password_hash="x", role="user", locale="en"
+    )
+    agent_id = "AGT_LOCALE"
+    ws = manager._paths.ensure_agent_workspace(agent_id)
+    (ws / ".bootstrapped").write_text("", encoding="utf-8")
+    row = replace(
+        _row(agent_id=agent_id),
+        user_id=user_id,
+        config_json=json.dumps({"backend": _fs_backend(ws)}),
+    )
+    assert manager._build_harness_config(row).language == "en"
+
+    missing = replace(row, user_id=None)
+    assert manager._build_harness_config(missing).language == "zh"
+
+
 def test_build_harness_config_keeps_system_prompt_after_bootstrap(
     manager: AgentManager,
 ) -> None:
