@@ -664,6 +664,16 @@ class GlobalProcessor:
             return
 
         agent_row = self._agent_repo.get(agent_id)
+        if agent_row is None:
+            logger.warning(
+                "processor: agent %s not found (deleted?) for channel message", agent_id
+            )
+            yield MessageEvent.error_event(
+                "The expert associated with this channel no longer exists. "
+                "Please reconnect the channel or configure a new expert."
+            )
+            yield MessageEvent.completed()
+            return
         user_id = resolve_user_id_for_message(
             msg,
             agent_owner_id=agent_row.user_id if agent_row is not None else None,
@@ -977,6 +987,17 @@ class GlobalProcessor:
             return
 
         agent_row = self._agent_repo.get(agent_id)
+        if agent_row is None:
+            logger.warning(
+                "processor: agent %s not found (deleted?) for chunk turn", agent_id
+            )
+            yield {
+                "type": "error",
+                "message": "The expert associated with this channel no longer exists. "
+                "Please reconnect the channel or configure a new expert.",
+            }
+            yield {"type": "done"}
+            return
         team_host = is_team_agent(agent_row)
         traj_on = self._agent_trajectory_enabled(agent_id, agent_row)
         user_id = resolve_user_id_for_message(
