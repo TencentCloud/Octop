@@ -324,6 +324,13 @@ def validate_create_credentials(
             out["oauth_client_secret"] = str(credentials["oauth_client_secret"])
         if credentials.get("openid"):
             out["openid"] = str(credentials["openid"])
+        # ``default_as`` (typically "user" vs "bot") is a connector-level
+        # identity preference.  It is orthogonal to OAuth and must survive
+        # the rebuild here, otherwise a PATCH that only sets ``default_as``
+        # silently drops it (see issue #1615).
+        default_as = str(credentials.get("default_as") or "").strip().lower()
+        if default_as in ("user", "bot"):
+            out["default_as"] = default_as
         if is_inprocess_gateway(entry) or uses_internal_http_mcp(entry):
             out["internal_token"] = new_internal_token()
         return out
@@ -338,6 +345,9 @@ def validate_create_credentials(
                 out["expires_at"] = int(credentials["expires_at"])
             if credentials.get("openid"):
                 out["openid"] = str(credentials["openid"])
+            default_as = str(credentials.get("default_as") or "").strip().lower()
+            if default_as in ("user", "bot"):
+                out["default_as"] = default_as
             if entry.mcp_mode == "gateway":
                 out["internal_token"] = new_internal_token()
             return out
@@ -365,6 +375,16 @@ def validate_create_credentials(
                 "cli_config_key": str(credentials.get("cli_config_key") or "").strip()
                 or new_ulid(),
             }
+            # Device-flow user auth merges an ``access_token`` / ``refresh_token``
+            # blob onto the base App credentials.  Those tokens are what the CLI
+            # adapter uses for ``--as user`` operations, so they must survive the
+            # rebuild here (see issue #1615).
+            if credentials.get("access_token"):
+                out["access_token"] = str(credentials["access_token"])
+            if credentials.get("refresh_token"):
+                out["refresh_token"] = str(credentials["refresh_token"])
+            if credentials.get("expires_at"):
+                out["expires_at"] = int(credentials["expires_at"])
             default_as = str(credentials.get("default_as") or "bot").strip().lower()
             if default_as == "user":
                 out["default_as"] = "user"
@@ -734,3 +754,4 @@ def inject_missing_gateway_tools(
         agent_id,
         ima_names,
     )
+
