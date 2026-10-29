@@ -94,7 +94,7 @@ def _setup_libreoffice_macro() -> bool:
     macro_dir = Path(MACRO_DIR)
     macro_file = macro_dir / "Module1.xba"
 
-    if macro_file.exists() and "AcceptAllTrackedChanges" in macro_file.read_text():
+    if macro_file.exists() and "AcceptAllTrackedChanges" in macro_file.read_text(encoding="utf-8"):
         return True
 
     if not macro_dir.exists():

@@ -52,7 +52,7 @@ def setup_libreoffice_macro():
     macro_dir = os.path.expanduser(_get_macro_dir())
     macro_file = os.path.join(macro_dir, MACRO_FILENAME)
 
-    if os.path.exists(macro_file) and "RecalculateAndSave" in Path(macro_file).read_text():
+    if os.path.exists(macro_file) and "RecalculateAndSave" in Path(macro_file).read_text(encoding="utf-8"):
         return True
 
     if not os.path.exists(macro_dir):
