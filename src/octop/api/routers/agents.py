@@ -473,6 +473,31 @@ async def patch_agent(
             group_ids=body.group_ids,
             shared=body.is_shared,
         )
+    # After changing harness-effective fields (default_model, config, name,
+    # persona, tools, MCPs, skills, 鈥?, await the reload so the caller sees
+    # the new runtime state. Without this, PATCH returns 200 immediately
+    # while the harness agent still carries the old config; subsequent
+    # probes (team member invocation, new chat turn) hit stale state.
+    # Manager.update already schedules a background reload 鈥?we await the
+    # public reload() entry point here to coalesce and wait it out.
+    changed_harness = bool(
+        updates
+        or body.config is not None
+        or body.skill_package_ids is not None
+        or body.knowledge_base_ids is not None
+        or body.mcp_servers is not None
+        or body.welcome_message is not None
+    )
+    if changed_harness:
+        try:
+            await server.app_runtime.agent_registry.reload(agent_id)
+        except Exception:
+            # Don't fail the PATCH response if reload races with a running
+            # turn 鈥?the DB write already succeeded and reload will retry.
+            import logging as _logging
+            _logging.getLogger(__name__).exception(
+                "POST /agents/%s reload after PATCH failed (DB write OK)", agent_id
+            )
     return _row_dict(
         row,
         viewer_user_id=user.id,
