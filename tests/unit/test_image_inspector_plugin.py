@@ -102,8 +102,9 @@ def _workspace_image(
     *,
     fmt: str = "PNG",
     suffix: str = ".png",
+    relative: Path = Path("workspaces/main/generated/image.png"),
 ) -> Path:
-    path = tmp_path / "workspaces" / "main" / "generated" / f"image{suffix}"
+    path = tmp_path / relative.with_suffix(suffix)
     path.parent.mkdir(parents=True)
     Image.new("RGB", (2, 3), (255, 0, 0)).save(path, format=fmt)
     return path
@@ -263,3 +264,58 @@ async def test_inspect_image_rejects_oversized_file(
     assert isinstance(result, str)
     assert "too large" in result
     assert access.chat_model.calls == []
+
+
+async def test_inspect_image_uses_octop_data_dir(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.delenv("OCTOP_HOME", raising=False)
+    monkeypatch.setenv("OCTOP_DATA_DIR", str(tmp_path / "data"))
+    image_path = _workspace_image(
+        tmp_path / "data" / ".octop",
+        relative=Path("workspaces/main/generated/image.png"),
+    )
+
+    tool, access, _ = _image_tool()
+    result = await tool.ainvoke({"path": "/.octop/workspaces/main/generated/image.png"})
+
+    assert result == "Visual review result"
+    assert len(access.chat_model.calls) == 1
+    assert image_path.is_file()
+
+
+async def test_inspect_image_resolves_docker_materialize_path(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("OCTOP_HOME", str(tmp_path))
+    materialized = _workspace_image(
+        tmp_path,
+        relative=Path("agents/main/.harness-materialize/analysis/page.png"),
+    )
+
+    tool, access, _ = _image_tool()
+    result = await tool.ainvoke({"path": "/root/.octop/workspaces/main/analysis/page.png"})
+
+    assert result == "Visual review result"
+    assert len(access.chat_model.calls) == 1
+    assert materialized.is_file()
+
+
+async def test_inspect_image_resolves_unique_relative_agent_path(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("OCTOP_HOME", str(tmp_path))
+    image_path = _workspace_image(
+        tmp_path,
+        relative=Path("agents/main/analysis/page.png"),
+    )
+
+    tool, access, _ = _image_tool()
+    result = await tool.ainvoke({"path": "analysis/page.png"})
+
+    assert result == "Visual review result"
+    assert len(access.chat_model.calls) == 1
+    assert image_path.is_file()
