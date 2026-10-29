@@ -264,7 +264,7 @@ async def _close_subprocess(proc: asyncio.subprocess.Process) -> None:
     try:
         await proc.communicate()
     except Exception:
-        with contextlib.suppress(Exception):
+        with contextlib.suppress((ProcessLookupError, OSError)):
             await proc.wait()
 
 
