@@ -211,7 +211,15 @@ async def synthesize_tencent(
 ) -> AsyncIterator[bytes]:
     secret_id, secret_key = parse_tencent_credentials(row)
     extra = row.get_extra()
-    voice_type = int(voice_id or extra.get("voice_type") or 101001)
+    voice_raw = voice_id or extra.get("voice_type") or 101001
+    try:
+        voice_type = int(voice_raw)
+    except (TypeError, ValueError):
+        import logging
+        logging.getLogger(__name__).warning(
+            "tencent voice_type %r is not int; using default 101001", voice_raw
+        )
+        voice_type = 101001
     payload: dict[str, Any] = {
         "Text": text,
         "SessionId": str(uuid.uuid4()),
