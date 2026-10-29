@@ -149,8 +149,12 @@ async def adb_shell_ws(
                         data.encode("utf-8", errors="replace"),
                     )
             elif t == "resize":
-                c = int(msg.get("cols") or cols)
-                r = int(msg.get("rows") or rows)
+                try:
+                    c = int(msg.get("cols") or cols)
+                    r = int(msg.get("rows") or rows)
+                except (TypeError, ValueError) as exc:
+                    logger.debug("shell_ws resize bad cols/rows: %s", exc)
+                    continue
                 await loop.run_in_executor(None, _set_winsize, master_fd, c, r)
     except WebSocketDisconnect:
         pass
