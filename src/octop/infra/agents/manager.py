@@ -10,7 +10,7 @@ import shutil
 import threading
 import time
 from collections.abc import AsyncIterator, Awaitable, Callable, Sequence
-from contextlib import asynccontextmanager, suppress
+from contextlib import AsyncExitStack, asynccontextmanager, suppress
 from dataclasses import dataclass, field, fields, replace
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, cast
@@ -1104,54 +1104,62 @@ class AgentManager:
         of ``agents``. They are deleted before the agent row. If that purge
         fails, the row stays so the delete can be retried.
         """
-        row = self._repos.agent_repo.get(agent_id)
-        if row is None:
-            raise OctopError(ErrorCode.AGENT_NOT_FOUND, f"agent {agent_id!r} not found")
-        self._teams.assert_can_delete_agent(agent_id)
-        from octop.infra.agents.memory.thread_cleanup import (  # noqa: PLC0415
-            agent_config_from_row,
-            delete_agent_memory_and_checkpoints,
-        )
-        from octop.infra.agents.teams import is_team_agent
+        # Preserve global -> per-agent lock order and creation/roster coordination.
+        # Keep the lifecycle lock through storage cleanup after releasing _lock.
+        async with AsyncExitStack() as lifecycle:
+            async with self._lock:
+                await lifecycle.enter_async_context(self._lifecycle_lock_for(agent_id))
+                row = self._repos.agent_repo.get(agent_id)
+                if row is None:
+                    raise OctopError(ErrorCode.AGENT_NOT_FOUND, f"agent {agent_id!r} not found")
+                self._teams.assert_can_delete_agent(agent_id)
+                from octop.infra.agents.memory.thread_cleanup import (  # noqa: PLC0415
+                    agent_config_from_row,
+                    delete_agent_memory_and_checkpoints,
+                )
+                from octop.infra.agents.teams import is_team_agent
 
-        affected_teams: list[str] = []
-        thread_ids = self._repos.thread_repo.list_ids_for_agent(agent_id)
-        workspace_dir = self.resolve_workspace_dir(agent_id, persist_if_missing=False)
-        async with self._lock:
-            if not is_team_agent(row):
-                try:
-                    affected_teams = self._teams.drop_member(agent_id)
-                except Exception:
-                    logger.exception("failed to drop deleted expert %s from team rosters", agent_id)
-            await asyncio.to_thread(self._quiesce_octop_memory, agent_id)
-            await self._harness_manager.aremove_agent(agent_id)  # type: ignore[union-attr]
-        self._bootstrap_known.pop(agent_id, None)
-        self._plugin_tool_labels.pop(agent_id, None)
-        cfg = agent_config_from_row(row)
-        await asyncio.to_thread(
-            delete_agent_memory_and_checkpoints,
-            agent_id=agent_id,
-            thread_ids=thread_ids,
-            cfg=cfg,
-            octop_config=self._config,
-            workspace_dir=workspace_dir,
-            paths=self._paths,
-        )
-        try:
-            from octop.infra.agents.workspace.dir import remove_agent_host_dirs  # noqa: PLC0415
-
+                affected_teams: list[str] = []
+                thread_ids = self._repos.thread_repo.list_ids_for_agent(agent_id)
+                workspace_dir = self.resolve_workspace_dir(agent_id, persist_if_missing=False)
+                if not is_team_agent(row):
+                    try:
+                        affected_teams = self._teams.drop_member(agent_id)
+                    except Exception:
+                        logger.exception(
+                            "failed to drop deleted expert %s from team rosters", agent_id
+                        )
+                await asyncio.to_thread(self._quiesce_octop_memory, agent_id)
+                await self._harness_manager.aremove_agent(agent_id)  # type: ignore[union-attr]
+            self._bootstrap_known.pop(agent_id, None)
+            self._plugin_tool_labels.pop(agent_id, None)
+            cfg = agent_config_from_row(row)
             await asyncio.to_thread(
-                remove_agent_host_dirs, cfg, paths=self._paths, agent_id=agent_id
+                delete_agent_memory_and_checkpoints,
+                agent_id=agent_id,
+                thread_ids=thread_ids,
+                cfg=cfg,
+                octop_config=self._config,
+                workspace_dir=workspace_dir,
+                paths=self._paths,
             )
-        except OSError:
-            logger.exception("rmtree failed for %s; agent removed from DB anyway", workspace_dir)
-        self._repos.agent_repo.delete(agent_id)
-        from octop.infra.users.groups import RESOURCE_EXPERT, GroupAccess  # noqa: PLC0415
+            try:
+                from octop.infra.agents.workspace.dir import remove_agent_host_dirs  # noqa: PLC0415
 
-        GroupAccess(self._repos).clear(RESOURCE_EXPERT, agent_id)
-        if self._proactive_scheduler is not None:
-            self._proactive_scheduler.cancel(agent_id)
-        self._repos.audit_repo.write(actor=ACTOR_SYSTEM, action="agent.delete", target=agent_id)
+                await asyncio.to_thread(
+                    remove_agent_host_dirs, cfg, paths=self._paths, agent_id=agent_id
+                )
+            except OSError:
+                logger.exception(
+                    "rmtree failed for %s; agent removed from DB anyway", workspace_dir
+                )
+            self._repos.agent_repo.delete(agent_id)
+            from octop.infra.users.groups import RESOURCE_EXPERT, GroupAccess  # noqa: PLC0415
+
+            GroupAccess(self._repos).clear(RESOURCE_EXPERT, agent_id)
+            if self._proactive_scheduler is not None:
+                self._proactive_scheduler.cancel(agent_id)
+            self._repos.audit_repo.write(actor=ACTOR_SYSTEM, action="agent.delete", target=agent_id)
         for team_id in affected_teams:
             try:
                 await self.reload(team_id)
@@ -3342,10 +3350,16 @@ class AgentManager:
         self, row: AgentRow, *, init_workspace: bool = True
     ) -> HarnessAgent | None:
         assert self._harness_manager is not None, "_start_agent called before boot()"
-        if self._harness_manager.shared_factory is None:
-            self._repos.agent_repo.set_state(row.agent_id, "failed", error=NO_MODELS_CONFIGURED)
-            return None
         async with self._lifecycle_lock_for(row.agent_id):
+            # The row passed by boot/start may have been deleted or updated while
+            # this loader waited for another lifecycle operation.
+            fresh = self._repos.agent_repo.get(row.agent_id)
+            if fresh is None:
+                raise OctopError(ErrorCode.AGENT_NOT_FOUND, f"agent {row.agent_id!r} not found")
+            row = fresh
+            if self._harness_manager.shared_factory is None:
+                self._repos.agent_repo.set_state(row.agent_id, "failed", error=NO_MODELS_CONFIGURED)
+                return None
             existing = self._octop_harness_or_none(row.agent_id)
             if existing is not None:
                 # Idempotent: a concurrent reload/boot may have already registered.
