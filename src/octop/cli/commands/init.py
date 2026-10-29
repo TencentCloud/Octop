@@ -3,8 +3,54 @@
 from __future__ import annotations
 
 import shutil
+from pathlib import Path
 
 import click
+
+
+# Data artifacts under ~/.octop that are safe to delete on --force.
+# Installation artifacts (venv/, .venv/, pyvenv.cfg) MUST NOT be listed here,
+# because ``pip install --user-script octop`` installs a launcher inside a
+# venv rooted at ~/.octop/venv and rmtree would take the interpreter down,
+# causing any subsequent dynamic import (e.g. PluginManager.seed_bundled) to
+# raise ModuleNotFoundError before the freshly-built DB can be used.
+_WIPABLE_ENTRIES: tuple[str, ...] = (
+    "octop.db",
+    "octop.db-shm",
+    "octop.db-wal",
+    "octop-login.txt",
+    "config.json",
+    ".env",
+    "logs",
+    "agents",
+    "users",
+    "expert_market",
+    "published_experts",
+    "skill-packages",
+    "knowledge",
+    "backups",
+    "avatars",
+    "ssl",
+    "security",
+    "connector-cli",
+    "plugins",
+)
+
+
+def _wipe_octop_state(home: Path) -> None:
+    """Delete Octop control-plane data under *home*, preserving install artifacts."""
+    for name in _WIPABLE_ENTRIES:
+        target = home / name
+        if not target.exists():
+            continue
+        if target.is_dir():
+            shutil.rmtree(target, ignore_errors=True)
+        else:
+            try:
+                target.unlink()
+            except OSError:
+                # A locked SQLite file or a symlink cycle — best effort.
+                pass
 
 
 @click.command("init")
@@ -79,7 +125,7 @@ def init(
                 ):
                     click.echo("aborted", err=True)
                     raise SystemExit(1)
-            shutil.rmtree(home)
+            _wipe_octop_state(home)
 
     paths.ensure_root()
     PluginManager(plugins_dir=paths.plugins_dir, config_path=paths.config).seed_bundled()
