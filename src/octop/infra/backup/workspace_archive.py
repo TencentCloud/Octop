@@ -23,6 +23,11 @@ if TYPE_CHECKING:
 WorkspaceImportMode = Literal["merge", "replace"]
 
 _SKIP_DIR_NAMES = frozenset({".git", "__pycache__", ".venv", "node_modules"})
+# SQLite sidecar files owned by an open connection; never pack them into an
+# archive (export) nor write them back from an imported zip (replace/merge).
+# They are reconstructed on next open and copying stale shm/wal over a live
+# DB risks corruption. Matches chats._CHAT_FILE_NAMES suffix convention.
+_SKIP_FILE_SUFFIXES = (".sqlite-shm", ".sqlite-wal", ".sqlite-journal")
 
 # ``aglob("**/*")`` skips dotfiles/dirs; these patterns recover hidden entries on
 # backends that only expose glob (no ``als``).
@@ -71,6 +76,8 @@ def _list_local_file_paths(workspace_dir: Path) -> list[str]:
     for dirpath, dirnames, filenames in os.walk(root, followlinks=False):
         dirnames[:] = [name for name in dirnames if name not in _SKIP_DIR_NAMES]
         for name in filenames:
+            if name.endswith(_SKIP_FILE_SUFFIXES):
+                continue
             full = Path(dirpath) / name
             if not full.is_file():
                 continue
@@ -103,7 +110,7 @@ async def _list_via_als(workspace: BackendWorkspace) -> list[str] | None:
             if rel is None:
                 continue
             name = PurePosixPath(rel).name
-            if name in _SKIP_DIR_NAMES:
+            if name in _SKIP_DIR_NAMES or name.endswith(_SKIP_FILE_SUFFIXES):
                 continue
             if is_dir:
                 queue.append(rel)
@@ -127,6 +134,8 @@ async def _list_via_aglob(workspace: BackendWorkspace) -> list[str]:
             if not normalized:
                 continue
             if any(part in _SKIP_DIR_NAMES for part in PurePosixPath(normalized).parts):
+                continue
+            if normalized.endswith(_SKIP_FILE_SUFFIXES):
                 continue
             paths.add(normalized)
     return sorted(paths)
@@ -253,7 +262,12 @@ async def import_workspace_zip(
     # ``DELETE`` / ``move`` refuse this prefix, so writing it from an archive would
     # leave entries the user cannot remove; the files Octop owns are re-seeded on
     # every agent start anyway.
-    pairs = [(rel, blob) for rel, blob in entries if not is_octop_builtin_skills_path(rel)]
+    pairs = [
+        (rel, blob)
+        for rel, blob in entries
+        if not is_octop_builtin_skills_path(rel)
+        and not rel.endswith(_SKIP_FILE_SUFFIXES)
+    ]
     skipped = len(entries) - len(pairs)
     if skipped:
         warnings.append(
