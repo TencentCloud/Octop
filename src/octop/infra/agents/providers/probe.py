@@ -53,7 +53,7 @@ def build_probe_chat_model(
     base_url = row.base_url or "https://api.openai.com/v1"
     headers = ensure_opencode_session_header(row.name, provider_headers(row), base_url=base_url)
     models = row.get_models() if hasattr(row, "get_models") else []
-    mid = model_id or (models[0]["id"] if models else "gpt-4o-mini")
+    mid = model_id or _probe_model_id(row, None)
     entry = next((m for m in models if m.get("id") == mid), None)
     model_data = dict(entry) if isinstance(entry, dict) else {}
     model_data["id"] = mid
@@ -116,12 +116,20 @@ def make_probe_provider_row(
 
 
 def _probe_model_id(row: Any, model_id: str | None) -> str:
+    """Prefer an explicitly requested model, then the first **enabled** model,
+    then the first entry as a last-resort fallback.
+
+    ``models[0]`` used to be returned directly, which broke provider test
+    probes whenever a disabled model happened to sit at the top of the list
+    (see issue #2312).
+    """
     models = row.get_models() if hasattr(row, "get_models") else []
     if model_id:
         return model_id
-    if models:
-        return str(models[0].get("id") or "gpt-4o-mini")
-    return "gpt-4o-mini"
+    entries = [m for m in models if isinstance(m, dict) and str(m.get("id") or "").strip()]
+    enabled = [m for m in entries if m.get("enabled") is not False]
+    chosen = enabled[0] if enabled else (entries[0] if entries else None)
+    return str(chosen.get("id") or "gpt-4o-mini") if chosen else "gpt-4o-mini"
 
 
 def _onnx_probe_model_id(row: Any, model_id: str | None) -> str:
@@ -361,3 +369,4 @@ async def fetch_openai_compatible_models(
         models.append({"id": mid, "name": mid})
     models.sort(key=lambda m: m["id"])
     return {"ok": True, "models": models}
+
