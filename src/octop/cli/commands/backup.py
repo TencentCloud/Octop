@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import shutil
 import tempfile
 from pathlib import Path
 
@@ -79,7 +80,9 @@ def create(
             else:
                 dest = output
                 dest.parent.mkdir(parents=True, exist_ok=True)
-                tmp_path.replace(dest)
+                # shutil.move falls back to copy2 + unlink on EXDEV / cross-device,
+                # unlike Path.replace which uses os.rename and fails there (#2321).
+                shutil.move(str(tmp_path), str(dest))
                 size = dest.stat().st_size
     finally:
         db.close()
