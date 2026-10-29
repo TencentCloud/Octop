@@ -7,11 +7,17 @@ request body and are never written to ``os.environ``.
 from __future__ import annotations
 
 import asyncio
+import os
 import time
 from collections.abc import Mapping
 from typing import Any, Literal
 
 import httpx
+
+# Moonshot has rotated away from the legacy ``moonshot-v1-*`` family that
+# new API keys no longer have permission for. Default to the kimi-k2 series
+# and let operators override via ``MOONSHOT_SEARCH_MODEL``.
+_KIMI_SEARCH_MODEL = os.getenv("MOONSHOT_SEARCH_MODEL", "kimi-k2-0905")
 
 ErrorType = Literal[
     "auth_error",
@@ -143,7 +149,7 @@ async def _kimi(client: httpx.AsyncClient, api_key: str) -> dict[str, Any]:
         "https://api.moonshot.cn/v1/chat/completions",
         headers={"Authorization": f"Bearer {api_key}"},
         json={
-            "model": "moonshot-v1-128k",
+            "model": _KIMI_SEARCH_MODEL,
             "messages": [{"role": "user", "content": _TEST_QUERY}],
             "tools": [{"type": "web_search"}],
             "temperature": 0.3,
