@@ -19,7 +19,7 @@ import re
 import secrets
 import tempfile
 from collections.abc import Callable, Iterator
-from contextlib import contextmanager
+from contextlib import contextmanager, suppress
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
@@ -287,7 +287,7 @@ def _atomic_write(path: Path, text: str) -> None:
             os.fsync(handle.fileno())
         os.replace(temporary_name, path)
     finally:
-        if os.path.exists(temporary_name):
+        with suppress(FileNotFoundError):
             os.unlink(temporary_name)
 
 
