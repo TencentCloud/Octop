@@ -324,6 +324,10 @@ def validate_create_credentials(
             out["oauth_client_secret"] = str(credentials["oauth_client_secret"])
         if credentials.get("openid"):
             out["openid"] = str(credentials["openid"])
+        if credentials.get("default_as"):
+            default_as = str(credentials["default_as"]).strip().lower()
+            if default_as == "user":
+                out["default_as"] = "user"
         if is_inprocess_gateway(entry) or uses_internal_http_mcp(entry):
             out["internal_token"] = new_internal_token()
         return out
@@ -338,6 +342,10 @@ def validate_create_credentials(
                 out["expires_at"] = int(credentials["expires_at"])
             if credentials.get("openid"):
                 out["openid"] = str(credentials["openid"])
+            if credentials.get("default_as"):
+                default_as = str(credentials["default_as"]).strip().lower()
+                if default_as == "user":
+                    out["default_as"] = "user"
             if entry.mcp_mode == "gateway":
                 out["internal_token"] = new_internal_token()
             return out
