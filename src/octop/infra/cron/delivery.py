@@ -45,6 +45,13 @@ class CronDeliveryCommand:
     task_type: CronTaskType
     model: str | None
     mcp_servers: tuple[str, ...]
+    # When True the delivery run proceeds even if the agent emits a
+    # ``hitl_required`` chunk (tool waiting for human approval).  The HITL
+    # request is logged and suppressed rather than raising, so scheduled
+    # jobs don't die on the first ``ask_user_question`` tool call.  Default
+    # matches previous behaviour (raise) for safety; cron scheduler code
+    # flips this on for agent-type tasks.  See issue #2416.
+    allow_hitl: bool = False
 
 
 class CronDeliveryService:
@@ -143,6 +150,7 @@ class CronDeliveryService:
         interaction_required = False
         saw_tool_call = False
         emitted_tool_error_ids: set[str] = set()
+        hitl_requests: list[dict[str, Any]] = []
         try:
             from octop.infra.connectors.gateway.adapters.agently_cli import write_scope
 
@@ -165,8 +173,22 @@ class CronDeliveryService:
                         parts.append(str(chunk.get("content") or chunk.get("text") or ""))
                     elif kind == "hitl_required":
                         interaction_required = True
+                        # Capture the request so we can surface it even when
+                        # we choose to suppress the hard raise below.
+                        req = chunk.get("request") if isinstance(chunk, dict) else None
+                        if isinstance(req, dict):
+                            hitl_requests.append(req)
             if interaction_required:
-                raise RuntimeError("cron agent run requires user interaction")
+                if command.allow_hitl:
+                    logger.warning(
+                        "cron agent run emitted hitl_required but allow_hitl=True; suppressing "
+                        "cron_id=%s agent_id=%s hitl_requests=%d",
+                        command.cron_id,
+                        command.agent_id,
+                        len(hitl_requests),
+                    )
+                else:
+                    raise RuntimeError("cron agent run requires user interaction")
             outbound = strip_thinking("".join(parts)).strip()
             if not outbound:
                 raise RuntimeError("cron agent run produced no visible response")
@@ -351,6 +373,10 @@ def command_from_row(row: Any) -> CronDeliveryCommand:
         task_type=normalize_cron_task_type(str(row.task_type)),
         model=str(row.model) if row.model else None,
         mcp_servers=tuple(str(name) for name in row.mcp_servers),
+        # Scheduled runs are fire-and-forget automation; they must not
+        # die on a ``hitl_required``.  Manual ``run_now`` can still opt
+        # back into strict behaviour by not setting this flag.
+        allow_hitl=True,
     )
 
 
