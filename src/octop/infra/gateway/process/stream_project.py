@@ -1,4 +1,4 @@
-"""Project harness stream chunks into octop-gateway MessageEvent objects."""
+﻿"""Project harness stream chunks into octop-gateway MessageEvent objects."""
 
 from __future__ import annotations
 
@@ -28,6 +28,36 @@ if TYPE_CHECKING:
     from octop.infra.gateway.hitl.coordinator import HitlChannelCoordinator, HitlStreamContext
 
 install_harness_hitl_compat()
+
+# Per-thread dedup state keyed by thread id. A single Octop thread can see
+# multiple harness streams — PatchToolCallsMiddleware / SummarizationMiddleware /
+# MediaOffloadMiddleware all replay RemoveMessage(REMOVE_ALL_MESSAGES) plus the
+# full message history, which triggers a brand new _project_chunks() call that
+# otherwise starts with empty emitted_media_ids / emitted_tool_error_ids sets
+# and re-pushes files / error cards that were already delivered earlier in the
+# same thread. Keeping these sets keyed by thread id dedups across streams.
+_THREAD_EMITTED_MEDIA: dict[str, set[str]] = {}
+_THREAD_EMITTED_ERRORS: dict[str, set[str]] = {}
+
+
+def _thread_media_set(thread_id: str | None) -> set[str]:
+    if not thread_id:
+        return set()
+    return _THREAD_EMITTED_MEDIA.setdefault(thread_id, set())
+
+
+def _thread_error_set(thread_id: str | None) -> set[str]:
+    if not thread_id:
+        return set()
+    return _THREAD_EMITTED_ERRORS.setdefault(thread_id, set())
+
+
+def release_thread_dedup(thread_id: str | None) -> None:
+    """Drop the dedup state for *thread_id* (call when a thread is closed)."""
+    if not thread_id:
+        return
+    _THREAD_EMITTED_MEDIA.pop(thread_id, None)
+    _THREAD_EMITTED_ERRORS.pop(thread_id, None)
 
 
 @dataclass
@@ -95,6 +125,18 @@ async def _project_chunks(
     loc = normalize_locale(str(locale))
     tool_state = _ToolProjectionState()
     harness_workspace = harness_workspace_for_agent(agent_manager, agent_id)
+
+    # Dedup media and tool-error cards across all streams in the same thread.
+    # Without this, RemoveMessage(REMOVE_ALL_MESSAGES) replay in
+    # PatchToolCallsMiddleware starts a fresh _project_chunks with empty sets
+    # and re-pushes files / error cards the user already saw.
+    tid = hitl_ctx.thread_id if hitl_ctx is not None else None
+    thread_media = _thread_media_set(tid)
+    thread_errors = _thread_error_set(tid)
+    if thread_media is not None:
+        tool_state.emitted_media_ids = thread_media
+    if thread_errors is not None:
+        tool_state.emitted_tool_error_ids = thread_errors
 
     def _tool_label(raw: str) -> str:
         return tool_display_name(raw, loc)
@@ -307,3 +349,4 @@ async def project_resume_stream(
         hitl_ctx=hitl_ctx,
     ):
         yield ev
+
