@@ -320,7 +320,7 @@ def _purge_expired_confirmations(folder: Path) -> None:
         try:
             data = json.loads(path.read_text(encoding="utf-8"))
             if float(data.get("expires") or 0) < now:
-                path.unlink()
+                path.unlink(missing_ok=True)
         except (OSError, TypeError, ValueError):
             continue
 
@@ -374,7 +374,7 @@ def _write(
             or approval["expires"] < time.time()
         ):
             raise ValueError
-        path.unlink()  # Atomic claim: replay/concurrent confirmation cannot write twice.
+        path.unlink(missing_ok=True)  # Atomic claim: replay/concurrent confirmation cannot write twice.
     except (OSError, ValueError, KeyError):
         raise ValueError(tr("connector.agently.invalid_arguments")) from None
     payload = _run(creds, command, cwd=root)
