@@ -13,7 +13,19 @@ export type SsoPopupMessage = {
 
 export function isSsoPopup(): boolean {
   try {
-    return Boolean(window.opener && !window.opener.closed);
+    if (!window.opener || window.opener.closed) return false;
+    // Only treat as SSO popup if opener is same-origin (trusted Octop page).
+    // Cross-origin openers (e.g. enterprise portal links without rel="noopener")
+    // cannot speak our octop-sso protocol — don't close the tab on their
+    // behalf, otherwise the user's login succeeds server-side but the popup
+    // closes before the complete page can save the session (#2347).
+    try {
+      return window.opener.location.origin === window.location.origin;
+    } catch {
+      // Cross-origin — browsers throw when reading opener.location.origin;
+      // this is not an Octop-launched popup.
+      return false;
+    }
   } catch {
     return false;
   }
