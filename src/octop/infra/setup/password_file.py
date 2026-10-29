@@ -52,7 +52,8 @@ def ensure_password(home: Path, legacy_home: Path | None = None) -> str | None:
                     os.write(fd, (legacy_pw + "\n").encode("utf-8"))
                 finally:
                     os.close(fd)
-                os.chmod(target, 0o600)
+                if os.name == "posix":
+                    os.chmod(target, 0o600)
                 return legacy_pw
             except FileExistsError:
                 return None
@@ -69,7 +70,8 @@ def ensure_password(home: Path, legacy_home: Path | None = None) -> str | None:
         os.write(fd, (pw + "\n").encode("utf-8"))
     finally:
         os.close(fd)
-    os.chmod(target, 0o600)
+    if os.name == "posix":
+        os.chmod(target, 0o600)
     return pw
 
 

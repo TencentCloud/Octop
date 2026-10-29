@@ -34,7 +34,12 @@ def _default_file_mode() -> int:
     instead of leaving ``mkstemp``'s 0600, which would make a root-created
     config.json unreadable to the service user after
     ``octop service start --scope system``.
+
+    On non-POSIX hosts (Windows) there is no umask concept; return a sensible
+    default that callers may use for POSIX-only chmod calls.
     """
+    if os.name != "posix":
+        return 0o644
     mask = os.umask(0o022)
     os.umask(mask)
     return 0o666 & ~mask
