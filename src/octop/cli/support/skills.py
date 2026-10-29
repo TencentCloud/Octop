@@ -3,12 +3,22 @@
 from __future__ import annotations
 
 import asyncio
+import concurrent.futures
 import json
 from typing import Any
 
 from octop.cli.repl.embedded_session import embedded_runtime
 from octop.infra.agents.manager import skills_disabled_set
 from octop.infra.errors import ErrorCode, OctopError
+
+
+def _run_sync(coro: Any) -> Any:
+    try:
+        asyncio.get_running_loop()
+    except RuntimeError:
+        return asyncio.run(coro)
+    with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
+        return pool.submit(asyncio.run, coro).result()
 
 
 async def list_skills_async(agent_id: str) -> list[dict[str, Any]]:
@@ -19,7 +29,7 @@ async def list_skills_async(agent_id: str) -> list[dict[str, Any]]:
 
 
 def list_skills_offline(agent_id: str) -> list[dict[str, Any]]:
-    return asyncio.run(list_skills_async(agent_id))
+    return _run_sync(list_skills_async(agent_id))
 
 
 def set_skill_enabled(agent_id: str, name: str, *, enabled: bool) -> None:

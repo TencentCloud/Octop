@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import concurrent.futures
 import logging
 import sys
 from contextlib import suppress
@@ -161,6 +162,15 @@ async def run_foreground(
             await srv.stop()
 
 
+def _run_sync(coro: Any) -> Any:
+    try:
+        asyncio.get_running_loop()
+    except RuntimeError:
+        return asyncio.run(coro)
+    with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
+        return pool.submit(asyncio.run, coro).result()
+
+
 def run_foreground_blocking(**kwargs: Any) -> None:
     """Sync entry for Click commands and tests."""
-    asyncio.run(run_foreground(**kwargs))
+    _run_sync(run_foreground(**kwargs))
