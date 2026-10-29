@@ -58,14 +58,32 @@ def parse_env_text(text: str) -> dict[str, str]:
         value = value.strip()
         # ``format_env_file`` quotes any value containing whitespace and leaves embedded line
         # breaks raw, so a multi-line value has to be read back across lines. Only a value with
-        # an *unterminated* quote continues onto the next line; a value that already contains a
-        # closing quote (or no quote at all) is left alone, so a malformed entry cannot swallow
-        # the rest of the file.
+        # an *unterminated* quote continues onto the next line. A value that already contains a
+        # closing quote (or no quote at all) is left alone, and an unterminated quote stops
+        # swallowing as soon as it encounters a fresh ``KEY=VALUE`` line so the rest of the
+        # file is preserved.
         if value[:1] in {'"', "'"} and value[0] not in value[1:]:
             quote = value[0]
+            swallowed = False
             while index < len(lines) and quote not in value[1:]:
-                value = f"{value}\n{lines[index]}"
+                next_line = lines[index].strip()
+                # Peek: if the next line is itself a valid KEY=VALUE entry,
+                # stop swallowing and drop this malformed line. A single
+                # missing close-quote must not make the operator's other env
+                # variables disappear (GitHub issue #2269).
+                if (
+                    next_line
+                    and not next_line.startswith("#")
+                    and "=" in next_line
+                ):
+                    candidate_key, _, _ = next_line.partition("=")
+                    if candidate_key.strip() and _KEY_RE.match(candidate_key.strip()):
+                        swallowed = True
+                        break
+                value = f"{value}\n{next_line}"
                 index += 1
+            if swallowed:
+                continue  # skip this malformed entry; do not write to out
             value = value.strip()
         if len(value) >= 2 and value[0] == value[-1] and value[0] in {'"', "'"}:
             quote = value[0]
