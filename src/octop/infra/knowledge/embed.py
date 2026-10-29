@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, cast
 
 import httpx
 
@@ -64,7 +64,35 @@ def _embed_remote_batched(
         data = response.json().get("data")
         if not isinstance(data, list):
             raise RuntimeError("knowledge embedding response has no data")
-        out.extend(list(item["embedding"]) for item in data)
+        # OpenAI-compatible embedding APIs may return items in any order
+        # with an `index` field (0-based, relative to this batch). Sort
+        # by that index so vectors align with the input texts regardless of
+        # how the server shuffled them. Drop items that are out of range
+        # for the current batch rather than silently misaligning.
+        ordered: list[list[float] | None] = [None] * len(batch)
+        for item in data:
+            if not isinstance(item, dict):
+                continue
+            idx = item.get("index")
+            try:
+                pos = int(idx)
+            except (TypeError, ValueError):
+                continue
+            if 0 <= pos < len(batch):
+                ordered[pos] = list(item["embedding"])
+            else:
+                logger.warning(
+                    "embedding item index %s out of batch range (batch size %d); ignoring",
+                    idx,
+                    len(batch),
+                )
+        missing = [i for i, v in enumerate(ordered) if v is None]
+        if missing:
+            raise RuntimeError(
+                f"knowledge embedding missing vectors for local indices {missing} "
+                f"(batch start={start}, size={len(batch)})"
+            )
+        out.extend(cast(list[list[float]], ordered))
     if len(out) != len(texts):
         raise RuntimeError("knowledge embedding count mismatch")
     return out
