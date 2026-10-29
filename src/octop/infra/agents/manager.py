@@ -2047,10 +2047,18 @@ class AgentManager:
 
         enabled_ids = {row.agent_id for row in rows}
         impact: set[str] = set()
-        include_auto = active_model_changed
-        if provider_name and not include_auto:
-            active_name, _ = self._repos.settings_repo.get_active_model()
-            include_auto = active_name == provider_name
+        # An AUTO-default agent's harness config bakes a resolved fallback model
+        # ref at build time 鈥?active model first, otherwise the first usable
+        # provider model (see :meth:_resolve_configured_fallback_model_ref).
+        # Any provider-level change can shift that fallback, so rebuild AUTO
+        # agents to keep their baked ref current. Without this, disabling a
+        # non-active provider that was the previous "first usable" leaves
+        # AUTO agents with an invalid baked default_model; per-turn chat
+        # routing re-resolves correctly but memory-aux LLM (which uses the
+        # baked ref) keeps calling the removed provider indefinitely 鈥?the
+        # `Unknown provider '<name>' in model ref '<name>/<model>'` error
+        # repeats on every session end until an admin edits each agent.
+        include_auto = active_model_changed or bool(provider_name)
 
         for row in rows:
             if row.last_state in _AGENT_STATES_NEEDING_MODEL_RELOAD or (
@@ -2104,12 +2112,28 @@ class AgentManager:
         )
         if self._harness_manager.shared_factory is None:
             return
-        await self._reload_agents(
-            self._provider_reload_impact_ids(
-                provider_name=provider_name,
-                active_model_changed=active_model_changed,
-            )
+        impact_ids = self._provider_reload_impact_ids(
+            provider_name=provider_name,
+            active_model_changed=active_model_changed,
         )
+        # Before reload, clear explicit default_model refs that no longer resolve.
+        # This keeps the DB row in sync with the harness config the reload will
+        # bake 鈥?so the dashboard does not show a stale model for agents whose
+        # pinned ref is now invalid (provider disabled, model deleted, etc.).
+        for agent_id in impact_ids:
+            row = self._repos.agent_repo.get(agent_id)
+            if row is None:
+                continue
+            cfg = self.get_config(agent_id)
+            explicit = self._providers.resolve_explicit_default_model(row, cfg)
+            if explicit is not None and not self._providers.is_model_ref_usable(explicit):
+                self._repos.agent_repo.update_config(agent_id, default_model=None)
+                logger.info(
+                    "agent %s: cleared stale default_model %r (provider/model removed)",
+                    agent_id,
+                    explicit,
+                )
+        await self._reload_agents(impact_ids)
 
     # ------------------------------------------------------------------
     # Connectors & MCP — OAuth refresh and pre-chat tool loading
