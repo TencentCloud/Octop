@@ -63,7 +63,17 @@ def parse_env_text(text: str) -> dict[str, str]:
         # the rest of the file.
         if value[:1] in {'"', "'"} and value[0] not in value[1:]:
             quote = value[0]
+            # Guard against a missing closing quote swallowing every subsequent
+            # KEY=VALUE line. If the next line looks like a fresh assignment,
+            # stop continuation and let the main loop parse it normally — a
+            # malformed single entry must not silently drop the rest of the
+            # file (the docstring on `format_env_file` already promises this).
             while index < len(lines) and quote not in value[1:]:
+                peek = lines[index].lstrip()
+                if peek and "=" in peek:
+                    head = peek.split("=", 1)[0].strip()
+                    if head and _KEY_RE.match(head):
+                        break  # stop — this line is a legitimate new KEY=VALUE
                 value = f"{value}\n{lines[index]}"
                 index += 1
             value = value.strip()
