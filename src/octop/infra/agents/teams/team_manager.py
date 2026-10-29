@@ -223,6 +223,35 @@ class TeamManager:
                     question or str(call.message or ""),
                     turn_id=getattr(call, "job_id", None),
                 )
+        # Inject callee's default MCP servers. Normal chat / IM / cron paths
+        # call `agent_registry.prepare_chat_mcp` before dispatching, which
+        # loads the tools onto the callee's HarnessAgent and returns server
+        # names. The ask_agent one-shot path above skips this entirely, so the
+        # callee still has its default MCP tools 鈥?but the harness hides them
+        # because `MCPToolMiddleware` defaults to zero servers when none are
+        # passed via `ChatRequest.configurable['mcp_servers']`.
+        mcp_server_names: list[str] | None = None
+        try {
+            mcp_defaults = self._agent_manager.default_mcp_servers(call.to_agent_id)
+            if mcp_defaults:
+                uid = _octop_user_id(call.user_id)
+                failed = await self._agent_manager.prepare_chat_mcp(
+                    call.to_agent_id,
+                    mcp_defaults,
+                    connector_user_id=uid if uid is not None else None,
+                )
+                # Keep servers that still have tools loaded after prepare; drop
+                # the ones prepare failed on so harness does not re-try a broken
+                # loader for every tool call in this peer session.
+                mcp_server_names = [n for n in mcp_defaults if n not in (failed or [])]
+        except Exception:
+            logger.exception(
+                "prepare_peer_session: failed to load default MCP servers for agent %s",
+                call.to_agent_id,
+            )
+        if mcp_server_names:
+            extra = dict(extra) if extra else {}
+            extra["mcp_servers"] = mcp_server_names
         return _make_peer_session(
             thread_id=thread_id,
             session_key=session_key,
