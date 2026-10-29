@@ -24,8 +24,14 @@ else:
 
 # Sliding renew: when remaining life is below this fraction of configured TTL,
 # middleware issues a fresh access token via ACCESS_TOKEN_RESPONSE_HEADER.
+# WIDENED from 1/3 -> 1/2 so that an 86400s (24h) token renews once the client
+# has < 12h left instead of < 8h. Combined with the minimum-age guard below,
+# any actively-used token older than TTL/4 is also renewed, ensuring a user
+# who logs in at 09:00 and stops at 18:00 gets a fresh token on their next
+# request and is not forced to re-login the following morning.
 ACCESS_TOKEN_RESPONSE_HEADER = "X-Octop-Access-Token"
-_SLIDING_RENEW_REMAINING_FRACTION = 1 / 3
+_SLIDING_RENEW_REMAINING_FRACTION = 1 / 2
+_SLIDING_RENEW_MIN_AGE_FRACTION = 1 / 4
 
 
 # Paths that bypass JWT middleware (setup wizard, health, login).
@@ -120,15 +126,22 @@ def resolve_user_from_token(server: OctopServer, token: str) -> User:
 def maybe_sliding_renew_token(server: OctopServer, token: str, user: User) -> str | None:
     """Return a fresh access token when ``token`` is past the sliding renew threshold.
 
-    Threshold is one-third of ``access_token_ttl_seconds`` remaining. Active clients
-    that pick up ``ACCESS_TOKEN_RESPONSE_HEADER`` stay signed in without re-login.
+    Renewal triggers when EITHER the remaining life is below half of
+    ``access_token_ttl_seconds`` OR the token is older than one quarter of the
+    TTL (minimum-age guard). Together these guarantee that any actively-used
+    session is silently extended before the 24h hard expiry, so a user who
+    logs in at 09:00 and stops at 18:00 gets a fresh token on their next
+    request and is not forced to re-login the following morning.
     """
     assert server.services is not None
     payload = _decode(server, token)
     ttl = int(server.services.config.access_token_ttl_seconds)
-    remaining = int(payload["exp"]) - int(time.time())
-    threshold = max(1, int(ttl * _SLIDING_RENEW_REMAINING_FRACTION))
-    if remaining >= threshold:
+    now = int(time.time())
+    remaining = int(payload["exp"]) - now
+    age = now - int(payload.get("iat", now - remaining))
+    remaining_threshold = max(1, int(ttl * _SLIDING_RENEW_REMAINING_FRACTION))
+    age_threshold = max(1, int(ttl * _SLIDING_RENEW_MIN_AGE_FRACTION))
+    if remaining >= remaining_threshold and age < age_threshold:
         return None
     secret = server.services.secret_repo.get("jwt")
     if secret is None:
