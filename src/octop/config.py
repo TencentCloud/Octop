@@ -169,6 +169,10 @@ def _parse_tls_section(raw: object) -> TlsConfig:
     if not isinstance(domains_raw, list):
         msg = "config.tls.domains must be a list"
         raise ValueError(msg)
+    try:
+        http_port = int(raw.get("http_port", 80))
+    except (TypeError, ValueError) as exc:
+        raise ValueError("config.tls.http_port must be an integer") from exc
     return TlsConfig(
         enabled=bool(raw.get("enabled", False)),
         mode=str(raw.get("mode", "")),
@@ -178,7 +182,7 @@ def _parse_tls_section(raw: object) -> TlsConfig:
         issued_at=str(raw.get("issued_at", "")),
         expires_at=str(raw.get("expires_at", "")),
         acme_staging=bool(raw.get("acme_staging", False)),
-        http_port=int(raw.get("http_port", 80)),
+        http_port=http_port,
     )
 
 
@@ -341,7 +345,10 @@ def parse_database_config(merged: dict[str, Any]) -> DatabaseConfig:
     host = str(merged.get("host", "")).strip()
     database = str(merged.get("database", "")).strip()
     user = str(merged.get("user", "")).strip()
-    port = int(merged.get("port", 5432))
+    try:
+        port = int(merged.get("port", 5432))
+    except (TypeError, ValueError) as exc:
+        raise ValueError("database.port must be an integer") from exc
     if not host:
         raise ValueError("database.host is required for postgresql")
     if not database:
