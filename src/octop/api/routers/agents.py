@@ -1,4 +1,4 @@
-"""Agents router."""
+﻿"""Agents router."""
 
 from __future__ import annotations
 
@@ -444,8 +444,39 @@ async def patch_agent(
         updates["config_json"] = json.dumps(body.config)
     if body.welcome_message is not None:
         updates["welcome_message"] = body.welcome_message
+    # Fields whose change requires a harness runtime rebuild (new model, new
+    # system persona, new model defaults).  When the agent is already running
+    # and one of these changes arrives, we synchronously await reload here so
+    # the caller's subsequent team probe sees the new model — no async window
+    # where DB says "new model" but the live harness agent still talks old.
+    # See issue harness #19 (team mode model switch).
+    _RELOAD_REQUIRED_FIELDS = frozenset(
+        {"default_model", "config_json", "persona_mbti", "system_prompt"}
+    )
+    _runtime_updates = {
+        k: v for k, v in updates.items() if k in _RELOAD_REQUIRED_FIELDS
+    }
     if updates:
         row = await server.app_runtime.agent_registry.update(agent_id, **updates)
+    if _runtime_updates and row is not None:
+        try:
+            await server.app_runtime.agent_registry.reload(agent_id)
+        except Exception:
+            # Background reload already queued via _schedule_reload inside
+            # update(); the synchronous await here is best-effort.  If it
+            # fails we still return the row — the caller can POST /reload.
+            import logging
+
+            logging.getLogger(__name__).exception(
+                "synchronous reload after agent update failed for %s",
+                agent_id,
+            )
+            # Drop the queued background job so we don't double-reload
+            # the same agent immediately after.
+            try:
+                server.app_runtime.agent_registry._reload_dirty.discard(agent_id)
+            except AttributeError:
+                pass
     if body.skill_package_ids is not None:
         await server.app_runtime.agent_registry.persist_skill_package_ids(
             agent_id, body.skill_package_ids
@@ -622,3 +653,4 @@ async def agent_status(
         ],
         "memory_maintenance": _memory_maintenance_status(server, agent_id),
     }
+
