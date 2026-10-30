@@ -67,7 +67,7 @@ def run_feishu_bot_creator(
                 break
             time.sleep(2)
     finally:
-        with contextlib.suppress(Exception):
+        with contextlib.suppress(OSError):
             stop_feishu_creator(proc)
 
     raise click.ClickException("timed out waiting for Feishu credentials")
