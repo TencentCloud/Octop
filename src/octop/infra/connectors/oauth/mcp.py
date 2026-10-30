@@ -133,7 +133,11 @@ def build_authorize_url(
         params["scope"] = scope
     if resource:
         params["resource"] = resource
-    return f"{metadata['authorization_endpoint']}?{urlencode(params)}"
+    endpoint = urlparse(str(metadata["authorization_endpoint"]))
+    query = urlencode(params)
+    if endpoint.query:
+        query = f"{endpoint.query}&{query}"
+    return endpoint._replace(query=query).geturl()
 
 
 def _http_error_detail(resp: Any) -> str:
