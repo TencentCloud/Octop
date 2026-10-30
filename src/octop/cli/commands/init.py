@@ -63,7 +63,13 @@ def init(
     # Sidecar files (octop-login.txt, NAS share metadata) must not block first
     # bootstrap. Only an existing control-plane DB counts as an install.
     has_db = (home / "octop.db").is_file()
-    if home.exists() and any(home.iterdir()):
+    home_has_children = False
+    if home.exists():
+        try:
+            home_has_children = any(home.iterdir())
+        except OSError:
+            home_has_children = False
+    if home_has_children:
         if has_db and not force:
             click.echo(
                 f"error: {home} already exists and is not empty. Use --force to reset.",

@@ -172,7 +172,11 @@ def read_cli_skill_install(install_root: Path) -> list[tuple[str, bytes]]:
         return read_skill_directory(install_root)
 
     candidates: list[Path] = []
-    for entry in install_root.iterdir():
+    try:
+        install_entries = list(install_root.iterdir())
+    except OSError:
+        install_entries = []
+    for entry in install_entries:
         try:
             entry_mode = entry.lstat().st_mode
         except FileNotFoundError:
