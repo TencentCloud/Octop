@@ -297,7 +297,12 @@ def _download(creds: dict[str, Any], args: dict[str, Any], root: Path) -> dict[s
         if not isinstance(data, dict):
             raise ValueError(tr("connector.agently.invalid_output"))
         # Use actual files, never trust an upstream saved_to path to read host files.
-        files = list(folder.iterdir())
+        if not folder.is_dir():
+            raise ValueError(tr("connector.agently.invalid_attachment"))
+        try:
+            files = list(folder.iterdir())
+        except OSError:
+            raise ValueError(tr("connector.agently.invalid_attachment"))
         if len(files) != 1:
             raise ValueError(tr("connector.agently.invalid_attachment"))
         file = _attachment_file(root, files[0].relative_to(root).as_posix())
