@@ -129,3 +129,34 @@ def test_quoted_value_with_inner_quote_does_not_swallow_following_lines() -> Non
     text = 'MALFORMED="abc"def\nNEXT=1\n'
 
     assert parse_env_text(text) == {"MALFORMED": '"abc"def', "NEXT": "1"}
+
+
+def test_unterminated_quote_does_not_swallow_following_entries() -> None:
+    """An entry whose quote never closes must not consume the rest of the file.
+
+    Regression test for #2269: the continuation loop stopped only at the quote
+    character, so a single mistyped entry silently dropped every KEY=VALUE
+    written after it in ``~/.octop/env``.
+    """
+    text = 'FOO="bar\nBAZ=qux\nQUX=ok\n'
+
+    assert parse_env_text(text) == {"FOO": '"bar', "BAZ": "qux", "QUX": "ok"}
+
+
+def test_unterminated_quote_keeps_non_entry_lines_in_value() -> None:
+    """Blank and comment lines are not entries, so they stay inside the
+    malformed value; the first real entry after it is recovered."""
+    text = 'FOO="bar\n\n# note\nBAZ=qux\n'
+
+    assert parse_env_text(text) == {"FOO": '"bar\n\n# note', "BAZ": "qux"}
+
+
+def test_multiline_value_with_entry_like_line_still_parses() -> None:
+    """A line that looks like KEY=VALUE inside a *closed* multi-line value is
+    content, not a new entry — the closing quote wins whenever it exists."""
+    text = 'PEM="-----BEGIN-----\nMIIBabc=\n-----END-----"\nNEXT=1\n'
+
+    assert parse_env_text(text) == {
+        "PEM": "-----BEGIN-----\nMIIBabc=\n-----END-----",
+        "NEXT": "1",
+    }
