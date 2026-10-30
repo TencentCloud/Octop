@@ -163,7 +163,13 @@ def list_memory_slim_agents(root: Path, *, locale: str = "en") -> list[dict[str,
 
 
 def _request_control(root: Path, request: dict[str, Any]) -> Iterator[dict[str, Any]]:
-    endpoint = json.loads((root / ENDPOINT).read_text())
+    endpoint_path = root / ENDPOINT
+    try:
+        endpoint = json.loads(endpoint_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError, ValueError, TypeError) as exc:
+        raise RuntimeError(
+            f"cannot read slim-control endpoint file {endpoint_path}: {exc}"
+        ) from exc
     with socket.create_connection(("127.0.0.1", int(endpoint["port"])), timeout=5) as sock:
         sock.sendall((json.dumps({"token": endpoint["token"], **request}) + "\n").encode())
         sock.settimeout(None)
