@@ -73,8 +73,9 @@ def ensure_chrome_runtime_env() -> Path:
     """
     path = _runtime_dir_for_uid()
     path.mkdir(parents=True, exist_ok=True)
-    with contextlib.suppress(OSError):
-        os.chmod(path, 0o700)
+    if os.name == "posix":
+        with contextlib.suppress(OSError):
+            os.chmod(path, 0o700)
     os.environ["XDG_RUNTIME_DIR"] = str(path)
     return path
 
@@ -143,7 +144,7 @@ def clear_profile_locks(profile_dir: Path) -> list[str]:
         lock_path = profile_dir / lock_name
         try:
             if lock_path.exists() or lock_path.is_symlink():
-                lock_path.unlink()
+                lock_path.unlink(missing_ok=True)
                 cleared.append(lock_name)
         except FileNotFoundError:
             pass
@@ -163,11 +164,11 @@ def _probe_dir_writable(directory: Path) -> bool:
         directory.mkdir(parents=True, exist_ok=True)
         probe = directory / f".octop-write-{os.getpid()}"
         probe.write_text("ok", encoding="utf-8")
-        probe.unlink()
+        probe.unlink(missing_ok=True)
         if _is_linux():
             link = directory / f".octop-link-{os.getpid()}"
             link.symlink_to("probe-target")
-            link.unlink()
+            link.unlink(missing_ok=True)
         return True
     except OSError:
         return False
@@ -246,7 +247,7 @@ def ensure_profile_writable(profile_dir: Path) -> Path:
             profile_dir.rename(stale)
         except OSError:
             with contextlib.suppress(OSError):
-                shutil.rmtree(profile_dir)
+                shutil.rmtree(profile_dir, ignore_errors=True)
     profile_dir.mkdir(parents=True, exist_ok=True)
     if not _probe_dir_writable(profile_dir):
         return _relocate_profiles_root(profile_dir)
