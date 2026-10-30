@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import errno
 from pathlib import Path
 
 import pytest
@@ -37,6 +38,28 @@ def test_save_and_load(tmp_path: Path, monkeypatch) -> None:
     import os
 
     assert os.environ["API_KEY"] == "secret"
+
+
+def test_save_env_file_preserves_previous_content_when_write_fails(
+    tmp_path: Path, monkeypatch
+) -> None:
+    """A mid-save write failure (disk full) must not destroy the saved keys: the
+    previous file survives byte-identical and no temp residue is left. Before
+    the atomic write this failed because ``write_text`` truncated the file the
+    moment it opened it."""
+    path = tmp_path / "env"
+    save_env_file(path, {"API_KEY": "secret"})
+    previous = path.read_bytes()
+
+    def enospc(fd: int, data: bytes) -> int:
+        raise OSError(errno.ENOSPC, "No space left on device")
+
+    monkeypatch.setattr("octop.infra.utils.env_file.os.write", enospc)
+    with pytest.raises(OSError, match="No space"):
+        save_env_file(path, {"API_KEY": "secret", "EXTRA": "1"})
+
+    assert path.read_bytes() == previous
+    assert [p.name for p in tmp_path.iterdir()] == ["env"]
 
 
 def test_apply_env_file_replace_unsets_removed_keys(tmp_path: Path, monkeypatch) -> None:
