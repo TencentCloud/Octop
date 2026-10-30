@@ -157,15 +157,16 @@ async def test_prepare_chat_mcp_injects_custom_from_cache() -> None:
     aload = AsyncMock(return_value=[tool])
 
     agent = MagicMock()
+    agent._mcp_tools = []
     agent._mcp_tool_name_set = frozenset()
+    agent._mcp_scope_owner = {}
     agent.config.mcp_server_configs = {"deepwiki": {}}
-    agent.append_mcp_tools = MagicMock(
-        side_effect=lambda tools: setattr(
-            agent,
-            "_mcp_tool_name_set",
-            frozenset(getattr(t, "name", "") for t in tools) | frozenset(agent._mcp_tool_name_set),
-        )
-    )
+
+    def _replace(tools: list[Any]) -> None:
+        agent._mcp_tools = list(tools)
+        agent._mcp_tool_name_set = frozenset(str(getattr(t, "name", "")) for t in agent._mcp_tools)
+
+    agent.replace_mcp_tools = MagicMock(side_effect=_replace)
 
     row = MagicMock()
     mgr.get_agent = MagicMock(return_value=agent)
@@ -188,11 +189,86 @@ async def test_prepare_chat_mcp_injects_custom_from_cache() -> None:
     assert failed == []
     assert failed2 == []
     assert aload.await_count == 1
-    assert agent.append_mcp_tools.call_count == 1
+    assert agent.replace_mcp_tools.call_count == 1
     mgr.reload_connectors.assert_not_awaited()
     assert agent.config.mcp_server_configs["deepwiki"]["transport"] == "streamable_http"
-    injected = agent.append_mcp_tools.call_args.args[0]
+    injected = agent.replace_mcp_tools.call_args.args[0]
     assert isinstance(injected[0], StructuredTool)
+
+
+@pytest.mark.asyncio
+async def test_prepare_chat_mcp_swaps_shared_agent_tools_between_users() -> None:
+    """Custom MCP tools carry the loading user's resolved ``${octop.*}`` headers.
+
+    On a shared agent, a second user's turn must NOT reuse the first user's
+    tool set (cross-account leak); the manager has to load per-user and swap
+    the server's tool group even though same-named tools are already attached.
+    """
+    from octop.infra.agents.manager import AgentManager
+
+    mgr = object.__new__(AgentManager)
+    mgr._mcp_tool_cache = {}
+    mgr._mcp_tool_cache_locks = {}
+    mgr._mcp_tool_cache_guard = asyncio.Lock()
+    mgr._paths = MagicMock(root=MagicMock())
+
+    def _tool(tag: str) -> MagicMock:
+        t = MagicMock()
+        t.name = "erp_query"
+        t.description = "q"
+        t.args_schema = None
+        t.metadata = None
+        t.ainvoke = AsyncMock(return_value=tag)
+        return t
+
+    aload = AsyncMock(side_effect=[[_tool("A")], [_tool("B")]])
+
+    def _configs_for(uid: int) -> dict:
+        tenant = "alice" if uid == 7 else "bob"
+        return {
+            "erp": {
+                "transport": "streamable_http",
+                "url": "https://x/mcp",
+                "headers": {"X-Jianyun-Tenant": tenant},
+            }
+        }
+
+    agent = MagicMock()
+    agent._mcp_tools = []
+    agent._mcp_tool_name_set = frozenset()
+    agent._mcp_scope_owner = {}
+    agent.config.mcp_server_configs = {}
+
+    def _replace(tools: list[Any]) -> None:
+        agent._mcp_tools = list(tools)
+        agent._mcp_tool_name_set = frozenset(str(getattr(t, "name", "")) for t in agent._mcp_tools)
+
+    agent.replace_mcp_tools = MagicMock(side_effect=_replace)
+
+    mgr.get_agent = MagicMock(return_value=agent)
+    mgr.get_row = MagicMock(return_value=MagicMock())
+    mgr._connector_uid_for = MagicMock(
+        side_effect=lambda row, *, connector_user_id=None: connector_user_id
+    )
+    mgr._connector_svc = MagicMock()
+    mgr._connector_svc.custom_harness_configs.side_effect = _configs_for
+    mgr.reload_connectors = AsyncMock()
+
+    with patch("octop_harness.mcp.aload_mcp_tools", aload):
+        assert await mgr.prepare_chat_mcp("A1", ["erp"], connector_user_id=7) == []
+        first_tool = agent.replace_mcp_tools.call_args.args[0][0]
+        # user 8 speaks on the SAME shared agent: same tool name, must still swap
+        assert await mgr.prepare_chat_mcp("A1", ["erp"], connector_user_id=8) == []
+        second_tool = agent.replace_mcp_tools.call_args.args[0][0]
+        assert second_tool is not first_tool
+        assert await first_tool.ainvoke({}) == "A"
+        assert await second_tool.ainvoke({}) == "B"
+        # user 7 returns: owner differs again -> swap back from cache, no new load
+        assert await mgr.prepare_chat_mcp("A1", ["erp"], connector_user_id=7) == []
+
+    assert aload.await_count == 2
+    assert agent.replace_mcp_tools.call_count == 3
+    assert agent._mcp_scope_owner["erp"] == 7
 
 
 @pytest.mark.asyncio
