@@ -110,7 +110,7 @@ async def resolve_harness_session(
             " and relaunching" if create else "",
         )
         _registry.pop(hint, None)
-        with contextlib.suppress(Exception):
+        with contextlib.suppress((OSError, RuntimeError)):
             await cached.close()
 
     if not create:
