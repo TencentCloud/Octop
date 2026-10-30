@@ -208,6 +208,7 @@ export function InstalledPluginsPanel() {
       message.success(
         enabled ? t("plugins.enabledSuccess") : t("plugins.disabledSuccess"),
       );
+      notifyPluginsChanged();
       await fetchPlugins();
     } catch (err) {
       message.error(apiErrorMessage(err, t("plugins.enableFailed"), t));
