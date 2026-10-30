@@ -200,7 +200,7 @@ class _WorkspaceSkillInstallTarget:
 
     async def write_files(self, slug: str, files: list[tuple[str, bytes]]) -> None:
         skill_root = f"skills/{slug}"
-        with contextlib.suppress(Exception):
+        with contextlib.suppress((OSError, RuntimeError)):
             await self._workspace.adelete(skill_root)
         dirs = [path for path, _content in files if path.endswith("/")]
         payload = [(path, content) for path, content in files if not path.endswith("/")]
