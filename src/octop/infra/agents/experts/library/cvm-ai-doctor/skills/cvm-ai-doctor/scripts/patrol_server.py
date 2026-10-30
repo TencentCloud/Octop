@@ -40,7 +40,7 @@ class PatrolHandler(SimpleHTTPRequestHandler):
     def _read_jsonl(self):
         records = []
         if PATROL_FILE.exists():
-            with open(PATROL_FILE) as f:
+            with open(PATROL_FILE, encoding="utf-8") as f:
                 for line in f:
                     line = line.strip()
                     if line:
