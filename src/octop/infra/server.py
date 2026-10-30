@@ -127,7 +127,11 @@ def _migrate_legacy_rotated_logs(log_dir: Path) -> None:
     """Rename ``octop.log.YYYY-MM-DD`` to ``octop.YYYY-MM-DD.log``."""
     if not log_dir.is_dir():
         return
-    for entry in list(log_dir.iterdir()):
+    try:
+        entries = list(log_dir.iterdir())
+    except OSError:
+        return
+    for entry in entries:
         match = _LEGACY_ROTATED_LOG.fullmatch(entry.name)
         if match is None or not entry.is_file():
             continue
@@ -143,7 +147,11 @@ def _migrate_legacy_rotated_logs(log_dir: Path) -> None:
 def _iter_rotated_logs(log_dir: Path) -> Iterator[Path]:
     if not log_dir.is_dir():
         return
-    for entry in log_dir.iterdir():
+    try:
+        entries = list(log_dir.iterdir())
+    except OSError:
+        return
+    for entry in entries:
         if entry.is_file() and _ROTATED_LOG_NAME.fullmatch(entry.name):
             yield entry
 
