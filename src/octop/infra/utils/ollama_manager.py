@@ -353,6 +353,7 @@ def stop_ollama_service() -> bool:
                 check=False,
                 stdout=subprocess.DEVNULL,
                 stderr=subprocess.DEVNULL,
+                timeout=5,
             )
             # wait briefly
             for _ in range(20):
