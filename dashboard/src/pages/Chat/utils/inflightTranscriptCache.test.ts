@@ -22,6 +22,17 @@ afterEach(() => {
 });
 
 describe("inflight transcript cache", () => {
+  it("preserves the resumed-turn boundary across a storage reload", () => {
+    flushInflightTail(thread, [
+      { ...msg("old", "assistant", "old answer"), status: "done" },
+      { ...msg("resumed", "assistant", "new answer"), startsNewTurn: true },
+    ]);
+    // readInflightTail decodes sessionStorage on every call.
+    expect(
+      readInflightTail(thread)?.find((message) => message.id === "resumed")
+        ?.startsNewTurn,
+    ).toBe(true);
+  });
   it("round-trips the current turn and drops earlier history", () => {
     flushInflightTail(thread, [
       msg("old", "assistant", "更早"),

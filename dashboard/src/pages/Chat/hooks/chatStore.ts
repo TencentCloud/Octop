@@ -1434,7 +1434,10 @@ function handleHarnessChunk(
   state: SessionStreamState,
   chunk: HarnessChunk,
   sessionId?: string,
+  historyMessageIds?: ReadonlySet<string>,
 ): void {
+  const previousLength = state.messages.length;
+  const previousTail = state.messages.at(-1);
   const speaker = chunkSpeakerId(chunk, sessionHostAgentId(state, sessionId));
   if (sessionId && (state.isStreaming || speaker)) {
     touchStreamActivity(sessionId);
@@ -1453,13 +1456,19 @@ function handleHarnessChunk(
         snapshot,
         Boolean(chunk.team_wrapup),
         liveCatchup,
+        historyMessageIds,
       );
       if (snapshot && !liveCatchup) clearSpeakerLive(state, speaker);
       break;
     }
     case "reasoning":
       markSpeakerLive(state, speaker);
-      appendStreamingReasoning(state, chunk.content, speaker);
+      appendStreamingReasoning(
+        state,
+        chunk.content,
+        speaker,
+        historyMessageIds,
+      );
       break;
     case "usage":
       applyUsageChunk(state, chunk);
@@ -1550,12 +1559,16 @@ function handleHarnessChunk(
         previewUrl || (b64 ? `data:${mime};base64,${b64}` : "");
       if (!displayUrl) break;
       const kindRaw = typeof chunk.kind === "string" ? chunk.kind : "file";
-      const toolIdx = findLastToolMessageIndex(state, speaker);
-      const textIdx = findSpeakerTextToContinue(
+      let toolIdx = findLastToolMessageIndex(state, speaker);
+      let textIdx = findSpeakerTextToContinue(
         state.messages,
         speaker,
         sessionHostAgentId(state, sessionId),
       );
+      if (toolIdx >= 0 && historyMessageIds?.has(state.messages[toolIdx].id))
+        toolIdx = -1;
+      if (textIdx >= 0 && historyMessageIds?.has(state.messages[textIdx].id))
+        textIdx = -1;
       const targetIdx = toolIdx >= 0 ? toolIdx : textIdx;
       const attachment = {
         url: displayUrl,
@@ -1602,8 +1615,18 @@ function handleHarnessChunk(
         speaker ||
           (state.isTeamRoom ? sessionHostAgentId(state, sessionId) : undefined),
         Boolean(chunk.team_wrapup),
+        historyMessageIds,
       );
       break;
+  }
+  if (
+    previousTail &&
+    historyMessageIds?.has(previousTail.id) &&
+    state.messages.length > previousLength
+  ) {
+    state.messages = state.messages.map((message, index) =>
+      index === previousLength ? { ...message, startsNewTurn: true } : message,
+    );
   }
   if (chunkPaintsImmediately(chunk.type)) notify(state);
   else notifyStreamingPaint(state);
@@ -1615,6 +1638,7 @@ function applyDecisionNotice(
   data: unknown,
   speakerAgentId?: string,
   wrapup = false,
+  historyMessageIds?: ReadonlySet<string>,
 ): void {
   const notice = parseDecisionNotice(data);
   if (!notice) return;
@@ -1624,6 +1648,7 @@ function applyDecisionNotice(
   for (let index = state.messages.length - 1; index >= 0; index -= 1) {
     const message = state.messages[index];
     if (message.role === "user") break;
+    if (historyMessageIds?.has(message.id)) continue;
     if (message.role !== "assistant" || message.toolData || message.hitlData) {
       continue;
     }
@@ -1642,7 +1667,9 @@ function applyDecisionNotice(
     return;
   }
   if (wrapup) {
-    const wrapIdx = findWrapupTextToContinue(state.messages, speaker, hostId);
+    let wrapIdx = findWrapupTextToContinue(state.messages, speaker, hostId);
+    if (wrapIdx >= 0 && historyMessageIds?.has(state.messages[wrapIdx].id))
+      wrapIdx = -1;
     if (wrapIdx >= 0) {
       const target = state.messages[wrapIdx];
       state.messages = [
@@ -1668,12 +1695,13 @@ function applyDecisionNotice(
     ];
     return;
   }
-  const idx = findSpeakerTextToContinue(
+  let idx = findSpeakerTextToContinue(
     state.messages,
     speaker,
     hostId,
     continueTokenOpts(state),
   );
+  if (idx >= 0 && historyMessageIds?.has(state.messages[idx].id)) idx = -1;
   if (idx >= 0) {
     const target = state.messages[idx];
     state.messages = [
@@ -1804,12 +1832,16 @@ function appendStreamingToken(
   snapshot = false,
   wrapup = false,
   keepLive = false,
+  historyMessageIds?: ReadonlySet<string>,
 ): void {
   if (!content) return;
   const speaker = speakerAgentId?.trim() || undefined;
   const hostId = sessionHostAgentId(state);
   if (wrapup) {
-    const wrapIdx = findWrapupTextToContinue(state.messages, speaker, hostId);
+    let wrapIdx = findWrapupTextToContinue(state.messages, speaker, hostId);
+    if (wrapIdx >= 0 && historyMessageIds?.has(state.messages[wrapIdx].id)) {
+      wrapIdx = -1;
+    }
     if (wrapIdx >= 0) {
       appendToTextBubble(
         state,
@@ -1835,7 +1867,7 @@ function appendStreamingToken(
     ];
     return;
   }
-  const idx = findSpeakerTextToContinue(
+  let idx = findSpeakerTextToContinue(
     state.messages,
     speaker,
     hostId,
@@ -1843,6 +1875,7 @@ function appendStreamingToken(
       ? { teamRoom: Boolean(state.isTeamRoom) }
       : continueTokenOpts(state),
   );
+  if (idx >= 0 && historyMessageIds?.has(state.messages[idx].id)) idx = -1;
   const target = idx >= 0 ? state.messages[idx] : null;
   if (snapshot && target) {
     const prev = target.content || "";
@@ -1992,15 +2025,19 @@ function appendStreamingReasoning(
   state: SessionStreamState,
   content: string,
   speakerAgentId?: string,
+  historyMessageIds?: ReadonlySet<string>,
 ): void {
   if (!content) return;
   const speaker = speakerAgentId?.trim() || undefined;
-  const lastIdx = findSpeakerTextToContinue(
+  let lastIdx = findSpeakerTextToContinue(
     state.messages,
     speaker,
     sessionHostAgentId(state),
     continueTokenOpts(state),
   );
+  if (lastIdx >= 0 && historyMessageIds?.has(state.messages[lastIdx].id)) {
+    lastIdx = -1;
+  }
   const last = lastIdx >= 0 ? state.messages[lastIdx] : null;
   if (last && last.role === "assistant" && !last.toolData) {
     const blocks = last.contentBlocks ? [...last.contentBlocks] : [];
@@ -2752,6 +2789,10 @@ export async function attachThread(
   state.abortController = controller;
 
   let finished = false;
+  // A cold subscribe may load only completed turns: the active user message
+  // is not necessarily durable yet. Keep incoming chunks off that history.
+  // Local streaming tails and HITL continuations already own their bubbles.
+  let historyMessageIds: ReadonlySet<string> | undefined;
   const finish = (mode: "all" | "host" = "all") => {
     if (finished) return;
     finished = true;
@@ -2816,6 +2857,14 @@ export async function attachThread(
         if (data.type === "turn_status") {
           if (turnStatusAction(Boolean(data.active)) === "expect_stream") {
             if (!state.isStreaming) {
+              if (
+                !hasStreamingMessages(state) &&
+                !hasPendingHitl(state.messages)
+              ) {
+                historyMessageIds = new Set(
+                  state.messages.map((message) => message.id),
+                );
+              }
               state.runUsage = null;
               usageSamplesByState.delete(state);
               beginStream(state, sessionId);
@@ -2872,7 +2921,12 @@ export async function attachThread(
           return;
         }
 
-        handleHarnessChunk(state, data as unknown as HarnessChunk, sessionId);
+        handleHarnessChunk(
+          state,
+          data as unknown as HarnessChunk,
+          sessionId,
+          historyMessageIds,
+        );
         if (
           isHostTurnTerminal(
             data,
