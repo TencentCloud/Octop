@@ -905,6 +905,7 @@ function ChatPageInner() {
     handleSelectSession,
     navigateToAgent,
     handleDeleteSession,
+    handleBatchDeleteSessions,
   } = useChatSessionActions({
     resolvedAgentId,
     activeThreadId,
@@ -1338,6 +1339,7 @@ function ChatPageInner() {
         handleNewChatWithAgent(agentId);
       }}
       onDeleteSession={handleDeleteSession}
+      onBatchDeleteSessions={handleBatchDeleteSessions}
       onRenameSession={renameSession}
       onPinSession={pinSession}
       onForkSession={handleForkSession}
