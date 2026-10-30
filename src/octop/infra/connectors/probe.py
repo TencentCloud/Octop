@@ -548,6 +548,7 @@ async def probe_custom_mcp_server(spec: dict[str, Any]) -> dict[str, Any]:
             "ok": False,
             "error": exc.message,
             "error_code": exc.code.value,
+            "details": exc.details,
             "error_type": "validation",
         }
     except ValueError as exc:
