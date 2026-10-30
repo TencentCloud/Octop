@@ -158,7 +158,7 @@ def gzip_rotated_log(path: Path) -> None:
     try:
         with path.open("rb") as src, gzip.open(gz_path, "wb", compresslevel=6) as dst:
             shutil.copyfileobj(src, dst)
-        path.unlink()
+        path.unlink(missing_ok=True)
     except OSError:
         with suppress(OSError):
             if gz_path.exists():
