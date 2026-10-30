@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -84,6 +85,28 @@ async def resolve_thread_id(
         channel_type=ThreadRegistry.CHANNEL_DASHBOARD,
     )
     return tid, sk
+
+
+# Optimistic dashboard bubble ids (`Date.now()` plus a short base36 suffix).
+_CLIENT_MESSAGE_ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$")
+
+
+def client_message_id_from_turn(turn: ChatTurnBody) -> str | None:
+    """Id of the user bubble this turn should be stored as.
+
+    The dashboard sends the id it already drew. Anything else is ignored so a
+    channel turn keeps a server-assigned id.
+    """
+    for message in reversed(turn.messages):
+        if not isinstance(message, dict):
+            continue
+        if str(message.get("role") or "user").lower() != "user":
+            continue
+        raw = message.get("id")
+        if isinstance(raw, str) and _CLIENT_MESSAGE_ID_RE.fullmatch(raw.strip()):
+            return raw.strip()
+        return None
+    return None
 
 
 def _turn_plain_text(turn: ChatTurnBody) -> str:
@@ -345,6 +368,9 @@ def build_dashboard_inbound(
         metadata[COMPOSER_CTX_KEY] = prepared.composer_context
     if prepared.inbound_attachments:
         metadata[INBOUND_ATTACHMENTS_KEY] = prepared.inbound_attachments
+    client_message_id = client_message_id_from_turn(turn)
+    if client_message_id:
+        metadata["client_message_id"] = client_message_id
     merge_turn_target_agents(turn, metadata)
 
     return InboundMessage(

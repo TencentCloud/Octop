@@ -56,13 +56,17 @@
       "card_title": "⚠️ Tool approval required",
       "card_intro": "The agent wants to run the following tool(s):",
       "action_line": "{index}. **{name}**",
-      "card_footer": "Reply with `/approve` to allow, or `/reject [reason]` to deny.",
+      "card_footer": "Reply \"approve\" to allow once, \"allow this tool\" to allow that tool for this chat, \"allow all\" to allow later approvals in this chat, \"reject\" to deny, or \"ask again\" to require approval every time. `/approve` and `/reject` also work.",
       "card_pending_id": "Approval ID: `{pending_id}` (valid for 30 minutes)",
       "none_pending": "No pending tool approval for this conversation.",
       "invalid_pending_id": "No pending approval with ID `{pending_id}`. Use `/pending` to list or `/approve` without an ID for the latest.",
       "not_owner": "Only the user who started this turn can approve or reject.",
       "expired": "This approval request has expired. Send a new message to retry.",
       "approved_ack": "Approved. Continuing…",
+      "approved_tool_ack": "Approved. This tool will not ask again in this chat.",
+      "approved_all_ack": "Approved. Later tool approvals in this chat will be allowed automatically. Questions still ask.",
+      "reset_ack": "Approval is required again for every tool.",
+      "reset_pending_ack": "Approval is required again for every tool. This one still needs approve or reject.",
       "rejected_ack": "Rejected. Continuing…",
       "followup_pending": "Another tool is waiting for your approval.",
       "resume_failed": "Failed to resume after approval: {error}",
@@ -439,7 +443,7 @@
     "CONNECTOR_INVALID_CREDENTIALS": "Invalid connector credentials.",
     "CONNECTOR_OAUTH_HTTPS_REQUIRED": "Octop is currently being accessed over public HTTP, but MCP OAuth callbacks require HTTPS. Use HTTPS, or access Octop locally through localhost or 127.0.0.1.",
     "CONNECTOR_MCP_URL_INVALID": "Invalid MCP server URL: {reason}",
-    "CONNECTOR_MCP_HTTPS_REQUIRED": "Public MCP server URLs must use HTTPS. Local and LAN addresses may use HTTP.",
+    "CONNECTOR_MCP_HTTPS_REQUIRED": "\"{host}\" is treated as a public address and must use HTTPS. HTTP is only allowed for loopback, private IPs, and hostnames such as localhost, .local, .internal, or *.docker.internal.",
     "CONNECTOR_KIND_UNSUPPORTED": "Unsupported connector type.",
     "CONNECTOR_NOT_BOUND": "Connector is not bound to this agent.",
     "CONNECTOR_ALREADY_BOUND": "Connector is already bound.",
@@ -490,6 +494,7 @@
     "SKILLHUB_SSL_FAILED": "SkillHub request failed: Python SSL error detected — on macOS try `brew reinstall openssl@3`, or check your system CA certificates.",
     "DESKTOP_SESSION_LIMIT": "Too many concurrent remote desktop streams (max {limit}). Close other connections and try again.",
     "DESKTOP_CAPTURE_FAILED": "Screen capture failed repeatedly. On Linux servers restart the virtual desktop; on macOS grant Screen Recording and Accessibility, then reconnect.",
+    "BROWSER_NOT_ENABLED": "The browser is installed but not enabled. Confirm it on the Remote Browser page.",
     "PLUGIN_INVALID_ARCHIVE": "The download is not a valid plugin ZIP. Use a direct .zip download URL (on GitHub use raw.githubusercontent.com or the “Download” / “raw” link, not the /blob/ page).",
     "PLUGIN_INSTALL_FAILED": "Failed to download or install the plugin: {reason}",
     "PLUGIN_ALREADY_EXISTS": "Plugin {id} is already installed.",
@@ -1009,6 +1014,10 @@
         "prompt": {
           "system": "You are a prompt editor, not an assistant that answers questions.\nThe user message is a DRAFT PROMPT they will later send to another AI. Your only job is to rewrite that draft so another AI can understand it more clearly — improve clarity, specificity, structure, and actionable detail.\nHard rules:\n- Do NOT answer the draft, solve the task, or provide the requested content.\n- Do NOT add explanations, greetings, or meta commentary.\n- Preserve the user's original intent and language (e.g. keep Chinese if the draft is Chinese).\n- Output ONLY the rewritten prompt text — no preamble, labels, quotes, thinking blocks, or XML tags.",
           "user": "Rewrite the following draft prompt. Do not answer it.\n\n---\n{text}\n---"
+        },
+        "thread_title": {
+          "system": "You write a short conversation title for a chat thread.\nHard rules:\n- Output ONLY the title text. No quotes, labels, markdown, or commentary.\n- Use the same language as the user's message.\n- Summarize the intent in a few words. Do not answer the message.\n- Stay within 20 Chinese characters or 8 English words, and never exceed 40 characters.",
+          "user": "Write a conversation title for this first message.\n\n---\n{text}\n---"
         }
       },
       "expert": {

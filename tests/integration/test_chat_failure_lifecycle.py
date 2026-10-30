@@ -62,11 +62,15 @@ async def test_failed_turn_survives_reload_releases_running_state_and_has_no_err
                     {"type": "user_turn", "text": "这是隔离的模拟故障测试", "thread_id": thread_id}
                 )
                 frames = await ws.drain_turn()
-                frames.append(await ws.receive_json(timeout=1))
+                # Title generation runs independently from the turn producer.
+                # It can publish a thread_title after the error but before the
+                # cleanup path publishes its terminal frame.
+                while not any(frame.get("type") == "turn.ended" for frame in frames):
+                    frames.append(await ws.receive_json(timeout=1))
             assert any(frame.get("type") == "error" for frame in frames)
             error = next(frame["message"] for frame in frames if frame.get("type") == "error")
-            assert frames[-1]["type"] == "turn.ended"
-            assert frames[-1]["failed"] is True
+            ended = next(frame for frame in frames if frame.get("type") == "turn.ended")
+            assert ended["failed"] is True
             assert producer_closed.is_set()
             assert not server.app_runtime.gateway.ws_hub.is_turn_active(thread_id)
             state = await fault.graph.aget_state({"configurable": {"thread_id": thread_id}})
