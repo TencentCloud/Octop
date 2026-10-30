@@ -489,7 +489,11 @@ async def uninstall_browser_stream(*, locale: str = "en") -> AsyncIterator[str]:
     profiles_root = _profiles_root()
     if profiles_root.is_dir():
         yield _sse({"log": "Stopping Octop-managed browser processes…"})
-        for child in sorted(profiles_root.iterdir()):
+        try:
+            profile_children = sorted(profiles_root.iterdir())
+        except OSError:
+            profile_children = []
+        for child in profile_children:
             if child.is_dir() and not child.name.startswith("."):
                 await asyncio.to_thread(pkill_chrome_profile, child)
                 await asyncio.to_thread(clear_profile_locks, child)

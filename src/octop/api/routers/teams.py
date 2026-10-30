@@ -103,7 +103,11 @@ async def team_template_files(
 ) -> list[dict[str, str]]:
     files: list[dict[str, str]] = []
     if TEMPLATE_DIR.is_dir():
-        for path in sorted(TEMPLATE_DIR.iterdir()):
+        try:
+            template_files = sorted(TEMPLATE_DIR.iterdir())
+        except OSError:
+            template_files = []
+        for path in template_files:
             if path.is_file() and path.suffix.lower() == ".md" and not path.name.startswith("."):
                 files.append(
                     {
