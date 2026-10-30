@@ -6,10 +6,14 @@ from typing import Any, cast
 
 
 def _ask(kind: str, **kwargs: Any) -> Any:
-    """Indirection point for tests; dispatches to the matching questionary call."""
+    """Indirection point for tests; dispatches to the matching questionary call.
+
+    ``unsafe_ask`` lets Ctrl-C reach ``_guard``. Plain ``ask`` swallows it and
+    returns ``None``, which callers would read as an empty answer.
+    """
     import questionary
 
-    return getattr(questionary, kind)(**kwargs).ask()
+    return getattr(questionary, kind)(**kwargs).unsafe_ask()
 
 
 def _guard[T](callable_: Callable[[], T]) -> T:

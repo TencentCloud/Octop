@@ -43,3 +43,21 @@ def test_cancel_via_keyboard_interrupt(monkeypatch: pytest.MonkeyPatch) -> None:
         _prompts.text("name:")
     # Cancelled prompt → graceful exit 130 (Ctrl-C convention)
     assert exc.value.code == 130
+
+
+def test_ctrl_c_in_a_real_prompt_cancels(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Ctrl-C must cancel, not come back as an empty answer (#2611)."""
+    import questionary
+
+    class _Question:
+        def ask(self) -> None:
+            # questionary's ask() prints "Cancelled by user" and returns None
+            return None
+
+        def unsafe_ask(self) -> str:
+            raise KeyboardInterrupt
+
+    monkeypatch.setattr(questionary, "text", lambda **kw: _Question())
+    with pytest.raises(SystemExit) as exc:
+        _prompts.text("Display name (optional):")
+    assert exc.value.code == 130
