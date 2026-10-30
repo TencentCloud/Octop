@@ -116,10 +116,10 @@ def _model_retry_on_failure(
     thread_id = current_hitl_thread_id() or ""
     model = current_turn_model()
     if not model and manager is not None and agent_id and thread_id:
-        with suppress(Exception):
+        with suppress(OSError):
             model = manager.get_thread_model(agent_id, thread_id) or ""
     if not model and manager is not None and agent_id:
-        with suppress(Exception):
+        with suppress(OSError):
             row = manager.get_row(agent_id)
             if row is not None:
                 model = (row.default_model or "").strip()
@@ -1226,7 +1226,7 @@ class AgentManager:
             return
         shutdown = getattr(mw, "shutdown", None)
         if callable(shutdown):
-            with suppress(Exception):
+            with suppress((OSError, RuntimeError)):
                 shutdown()
         self._wait_memory_maintenance_idle(mw)
 
@@ -2803,8 +2803,8 @@ class AgentManager:
             try:
                 if Path(root_dir).resolve() == Path(workspace_dir).resolve():
                     return False
-            except OSError:
-                pass
+            except OSError as exc:
+                logger.debug("agent workspace_dir resolve check failed: %s", exc)
         return True
 
     async def persist_skill_package_ids(self, agent_id: str, package_ids: list[str]) -> None:
