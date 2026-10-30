@@ -475,7 +475,7 @@ async def terminal_context(
 
             p = _pathlib.Path("/etc/os-release")
             if p.exists():
-                for line in p.read_text().splitlines():
+                for line in p.read_text(encoding="utf-8").splitlines():
                     if line.startswith("PRETTY_NAME="):
                         distro = line.split("=", 1)[1].strip().strip('"')
                         break
@@ -534,10 +534,10 @@ async def terminal_ws(
         candidates: list[Any] = []
         agent_repo = getattr(server.services, "agent_repo", None)
         if agent_repo is not None:
-            with contextlib.suppress(Exception):
+            with contextlib.suppress(OSError):
                 candidates = list(agent_repo.list_all(include_disabled=True))
         if not candidates:
-            with contextlib.suppress(Exception):
+            with contextlib.suppress(OSError):
                 candidates = list(registry.list_rows())
         for row in candidates:
             row_id = str(getattr(row, "agent_id", "") or "")
