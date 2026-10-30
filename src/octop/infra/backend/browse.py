@@ -74,7 +74,7 @@ def _close_backend(backend: Any) -> None:
     """Best-effort close for backends that own external resources (e.g. Docker)."""
     close = getattr(backend, "close", None)
     if callable(close):
-        with contextlib.suppress(Exception):
+        with contextlib.suppress((OSError, RuntimeError)):
             close()
 
 
