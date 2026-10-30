@@ -97,7 +97,7 @@ def _ensure_shim() -> Path:
         check=True,
         capture_output=True,
     )
-    src.unlink()
+    src.unlink(missing_ok=True)
     return _SHIM_SO
 
 
