@@ -259,7 +259,7 @@ def record_turn_usage(
 ) -> None:
     """Append one cache-aware turn row without allowing bad data to break chat."""
     normalized = normalize_usage(usage)
-    with contextlib.suppress(Exception):
+    with contextlib.suppress(OSError):
         usage_repo.record(
             agent_id=agent_id,
             user_id=user_id,
