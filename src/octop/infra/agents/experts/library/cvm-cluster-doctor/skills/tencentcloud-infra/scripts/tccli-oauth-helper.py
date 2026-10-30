@@ -23,8 +23,7 @@ import base64
 import contextlib
 import json
 import os
-import random
-import string
+import secrets
 import sys
 import time
 from urllib.parse import urlencode
@@ -57,7 +56,7 @@ def get_temp_cred(access_token, site):
         "AccessToken": access_token,
         "Site": site,
     }
-    http_response = requests.post(api_endpoint, json=body, verify=True)
+    http_response = requests.post(api_endpoint, json=body, verify=True, timeout=30)
     resp = http_response.json()
 
     if "Error" in resp:
@@ -72,8 +71,16 @@ def get_temp_cred(access_token, site):
 
 
 def cred_path_of_profile(profile):
-    """凭证文件路径"""
-    return os.path.join(os.path.expanduser("~"), ".tccli", profile + ".credential")
+    """凭证文件路径 (path-traversal safe)"""
+    # Reject path separators and .. so a malicious profile like
+    # "../../../tmp/evil" cannot escape ~/.tccli/.
+    if "/" in profile or "\\" in profile or ".." in profile.split(os.sep):
+        raise ValueError(f"invalid profile name: {profile!r}")
+    base = os.path.realpath(os.path.join(os.path.expanduser("~"), ".tccli"))
+    target = os.path.realpath(os.path.join(base, profile + ".credential"))
+    if not target.startswith(base + os.sep):
+        raise ValueError(f"profile escapes tccli dir: {profile!r}")
+    return target
 
 
 def save_credential(token, new_cred, profile):
@@ -97,27 +104,26 @@ def save_credential(token, new_cred, profile):
             "site": token["site"],
         },
     }
-    with open(cred_path, "w") as cred_file:
+    with open(cred_path, "w", encoding="utf-8") as cred_file:
         json.dump(cred, cred_file, indent=4)
 
 
 def generate_state():
-    """生成随机 state"""
-    characters = string.ascii_letters + string.digits
-    return "".join(random.choice(characters) for _ in range(10))
+    """Generate a cryptographically secure OAuth state token."""
+    return secrets.token_urlsafe(12)
 
 
 def save_state(state):
     """保存 state 到文件"""
     os.makedirs(os.path.dirname(_STATE_FILE), exist_ok=True)
-    with open(_STATE_FILE, "w") as f:
+    with open(_STATE_FILE, "w", encoding="utf-8") as f:
         json.dump({"state": state, "timestamp": time.time()}, f)
 
 
 def load_state():
     """从文件加载 state"""
     try:
-        with open(_STATE_FILE) as f:
+        with open(_STATE_FILE, encoding="utf-8") as f:
             data = json.load(f)
             # 检查是否过期（10分钟）
             if time.time() - data.get("timestamp", 0) > 600:
@@ -269,7 +275,7 @@ def do_status(args):
         return 1
 
     try:
-        with open(cred_path) as f:
+        with open(cred_path, encoding="utf-8") as f:
             cred = json.load(f)
 
         cred_type = cred.get("type", "unknown")
