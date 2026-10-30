@@ -70,6 +70,11 @@ async def test_enabling_without_model_maps_prerequisite_error(
 ) -> None:
     from octop.api.routers import knowledge_bases
 
+    async def ready(**_kwargs: object) -> str:
+        return "ready"
+
+    monkeypatch.setattr(knowledge_bases, "ensure_local_embedding_deps_async", ready)
+
     server = SimpleNamespace(services=_services())
 
     def fail(*_args: object, **_kwargs: object) -> None:
