@@ -119,7 +119,7 @@ class WebSocketHub:
         if tid and tid in self._active_turns:
             self._active_turns[tid] = time.monotonic()
 
-    def evict_stale_turns(self, max_quiet_seconds: float = 30.0) -> int:
+    def evict_stale_turns(self, max_quiet_seconds: float = 900.0) -> int:
         """Prune active-turn entries that have had no frames pushed for *max_quiet_seconds*.
 
         A drop-frame (disconnect, process crash, task cancellation) leaves the
@@ -127,6 +127,15 @@ class WebSocketHub:
         so ``mark_turn_idle`` never runs. Repeated calls to this method (lazily
         from :meth:`is_turn_active`) heal the flag leak so that clients no
         longer see ``turn_active=true`` on a fully-idle thread (issue #2456).
+
+        The default is deliberately loose (15 min): ``ws_channel`` pushes frames
+        only when the processor emits a chunk, and the ``awaiting_tools`` phase
+        is completely silent — a single slow shell/MCP call can exceed a short
+        TTL. ``is_turn_active()`` feeds the ``turn_status`` frame sent on
+        reconnect (``chat/ws.py``), so evicting a live turn would actively
+        report "idle" while it is still running. 15 min still heals a genuine
+        leak, without racing normal tool latency. Tighten this only after a
+        heartbeat frame exists.
         """
         if not self._active_turns:
             return 0
