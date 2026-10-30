@@ -187,7 +187,13 @@ def delaycompress_rotated_logs(
     plains = [entry for entry in _iter_rotated_logs(log_dir) if not entry.name.endswith(".gz")]
     if not plains:
         return
-    keep_path = max(plains, key=lambda p: p.stat().st_mtime) if keep is None else keep
+    if keep is None:
+        try:
+            keep_path = max(plains, key=lambda p: p.stat().st_mtime)
+        except OSError:
+            return
+    else:
+        keep_path = keep
     keep_resolved = keep_path.resolve()
     for entry in plains:
         if entry.resolve() == keep_resolved:
@@ -265,7 +271,11 @@ def _purge_stale_logs(log_dir: Path, retention_days: int) -> None:
         return
     cutoff = time.time() - retention_days * 86400
     for entry in _iter_rotated_logs(log_dir):
-        if entry.stat().st_mtime < cutoff:
+        try:
+            entry_mtime = entry.stat().st_mtime
+        except OSError:
+            continue
+        if entry_mtime < cutoff:
             with suppress(OSError):
                 entry.unlink()
 
