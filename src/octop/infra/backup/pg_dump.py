@@ -25,18 +25,27 @@ def dump_postgres(
     dest: Path,
     *,
     exclude_table_data: Sequence[str] = (),
+    timeout: int = 900,
 ) -> None:
     pg_dump = _require_tool("pg_dump")
     dest.parent.mkdir(parents=True, exist_ok=True)
     cmd = [pg_dump, "-Fc", "-f", str(dest), "--dbname", conninfo]
     for table in exclude_table_data:
         cmd.extend(["--exclude-table-data", table])
-    proc = subprocess.run(
-        cmd,
-        capture_output=True,
-        text=True,
-        check=False,
-    )
+    try:
+        proc = subprocess.run(
+            cmd,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            check=False,
+            timeout=timeout,
+        )
+    except subprocess.TimeoutExpired as exc:
+        raise OctopError(
+            ErrorCode.INTERNAL_ERROR,
+            f"pg_dump exceeded {timeout}s timeout",
+        ) from exc
     if proc.returncode != 0:
         raise OctopError(
             ErrorCode.INTERNAL_ERROR,
@@ -44,22 +53,35 @@ def dump_postgres(
         )
 
 
-def restore_postgres(conninfo: str, dump_file: Path) -> None:
+def restore_postgres(
+    conninfo: str,
+    dump_file: Path,
+    *,
+    timeout: int = 900,
+) -> None:
     pg_restore = _require_tool("pg_restore")
-    proc = subprocess.run(
-        [
-            pg_restore,
-            "--clean",
-            "--if-exists",
-            "--no-owner",
-            "--dbname",
-            conninfo,
-            str(dump_file),
-        ],
-        capture_output=True,
-        text=True,
-        check=False,
-    )
+    try:
+        proc = subprocess.run(
+            [
+                pg_restore,
+                "--clean",
+                "--if-exists",
+                "--no-owner",
+                "--dbname",
+                conninfo,
+                str(dump_file),
+            ],
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            check=False,
+            timeout=timeout,
+        )
+    except subprocess.TimeoutExpired as exc:
+        raise OctopError(
+            ErrorCode.INTERNAL_ERROR,
+            f"pg_restore exceeded {timeout}s timeout",
+        ) from exc
     # pg_restore may return 1 with warnings; treat only >=2 as hard fail.
     if proc.returncode >= 2:
         raise OctopError(
