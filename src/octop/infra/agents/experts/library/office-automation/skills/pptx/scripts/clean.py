@@ -59,13 +59,12 @@ def remove_orphaned_slides(unpacked_dir: Path) -> list[str]:
     for slide_file in slides_dir.glob("slide*.xml"):
         if slide_file.name not in referenced_slides:
             rel_path = slide_file.relative_to(unpacked_dir)
-            slide_file.unlink()
+            slide_file.unlink(missing_ok=True)
             removed.append(str(rel_path))
 
             rels_file = slides_rels_dir / f"{slide_file.name}.rels"
-            if rels_file.exists():
-                rels_file.unlink()
-                removed.append(str(rels_file.relative_to(unpacked_dir)))
+            rels_file.unlink(missing_ok=True)
+            removed.append(str(rels_file.relative_to(unpacked_dir)))
 
     if removed and pres_rels_path.exists():
         rels_dom = defusedxml.minidom.parse(str(pres_rels_path))
@@ -95,8 +94,9 @@ def remove_trash_directory(unpacked_dir: Path) -> list[str]:
             if file_path.is_file():
                 rel_path = file_path.relative_to(unpacked_dir)
                 removed.append(str(rel_path))
-                file_path.unlink()
-        trash_dir.rmdir()
+                file_path.unlink(missing_ok=True)
+        with contextlib.suppress(OSError):
+            trash_dir.rmdir()
 
     return removed
 
@@ -139,7 +139,7 @@ def remove_orphaned_rels_files(unpacked_dir: Path) -> list[str]:
                 continue
 
             if not resource_file.exists() or resource_rel_path not in slide_referenced:
-                rels_file.unlink()
+                rels_file.unlink(missing_ok=True)
                 rel_path = rels_file.relative_to(unpacked_dir)
                 removed.append(str(rel_path))
 
@@ -176,7 +176,7 @@ def remove_orphaned_files(unpacked_dir: Path, referenced: set) -> list[str]:
                 continue
             rel_path = file_path.relative_to(unpacked_dir)
             if rel_path not in referenced:
-                file_path.unlink()
+                file_path.unlink(missing_ok=True)
                 removed.append(str(rel_path))
 
     theme_dir = unpacked_dir / "ppt" / "theme"
@@ -184,12 +184,11 @@ def remove_orphaned_files(unpacked_dir: Path, referenced: set) -> list[str]:
         for file_path in theme_dir.glob("theme*.xml"):
             rel_path = file_path.relative_to(unpacked_dir)
             if rel_path not in referenced:
-                file_path.unlink()
+                file_path.unlink(missing_ok=True)
                 removed.append(str(rel_path))
                 theme_rels = theme_dir / "_rels" / f"{file_path.name}.rels"
-                if theme_rels.exists():
-                    theme_rels.unlink()
-                    removed.append(str(theme_rels.relative_to(unpacked_dir)))
+                theme_rels.unlink(missing_ok=True)
+                removed.append(str(theme_rels.relative_to(unpacked_dir)))
 
     notes_dir = unpacked_dir / "ppt" / "notesSlides"
     if notes_dir.exists():
@@ -198,7 +197,7 @@ def remove_orphaned_files(unpacked_dir: Path, referenced: set) -> list[str]:
                 continue
             rel_path = file_path.relative_to(unpacked_dir)
             if rel_path not in referenced:
-                file_path.unlink()
+                file_path.unlink(missing_ok=True)
                 removed.append(str(rel_path))
 
         notes_rels_dir = notes_dir / "_rels"
@@ -206,7 +205,7 @@ def remove_orphaned_files(unpacked_dir: Path, referenced: set) -> list[str]:
             for file_path in notes_rels_dir.glob("*.rels"):
                 notes_file = notes_dir / file_path.name.replace(".rels", "")
                 if not notes_file.exists():
-                    file_path.unlink()
+                    file_path.unlink(missing_ok=True)
                     removed.append(str(file_path.relative_to(unpacked_dir)))
 
     return removed
