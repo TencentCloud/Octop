@@ -25,6 +25,78 @@ import ChannelsPanel from "./ChannelsPanel";
 
 const api = vi.mocked(request, true);
 
+describe("loaded inbound plugin switches", () => {
+  const setting = {
+    plugin_id: "example-admission",
+    name: "example_enrichment",
+    default: true,
+    label: { zh: "Enrichment", en: "Enrichment" },
+    help: { zh: "Help", en: "Help" },
+  };
+
+  async function openGroup(settings: () => unknown[], saved: boolean) {
+    const row = { id: "plugin-policy", kind: "qq", name: "qq", enabled: true };
+    api.mockImplementation(async (url, init) => {
+      if (url.endsWith("/plugin-settings")) return settings();
+      if (init?.method === "PATCH") return row;
+      if (url.endsWith("/plugin-policy"))
+        return {
+          ...row,
+          config: {
+            app_id: "offline-app",
+            secret: "offline-secret",
+            group_context: {
+              enabled: true,
+              visibility: "all",
+              example_enrichment: saved,
+            },
+          },
+        };
+      return [row];
+    });
+    render(<ChannelsPanel agentId="ag1" />);
+    await userEvent.click((await screen.findAllByText("channels.label_qq"))[0]);
+  }
+
+  it("saves a declared switch without dropping the QQ policy", async () => {
+    await openGroup(() => [setting], true);
+    await userEvent.click(await screen.findByLabelText("Enrichment"));
+    await userEvent.click(screen.getByRole("button", { name: "common.save" }));
+    await waitFor(() => {
+      const patch = api.mock.calls.find(([, init]) => init?.method === "PATCH");
+      expect(
+        JSON.parse(String(patch![1]!.body)).config.group_context,
+      ).toMatchObject({
+        enabled: true,
+        visibility: "all",
+        example_enrichment: false,
+      });
+    });
+  });
+
+  it("follows load/unload events and preserves hidden saved values", async () => {
+    let loaded = false;
+    await openGroup(() => (loaded ? [setting] : []), false);
+    expect(screen.queryByLabelText("Enrichment")).not.toBeInTheDocument();
+    loaded = true;
+    window.dispatchEvent(new Event("octop-plugins-changed"));
+    expect(await screen.findByLabelText("Enrichment")).not.toBeChecked();
+    loaded = false;
+    window.dispatchEvent(new Event("focus"));
+    await waitFor(() =>
+      expect(screen.queryByLabelText("Enrichment")).not.toBeInTheDocument(),
+    );
+    await userEvent.click(screen.getByRole("button", { name: "common.save" }));
+    await waitFor(() => {
+      const patch = api.mock.calls.find(([, init]) => init?.method === "PATCH");
+      expect(
+        JSON.parse(String(patch![1]!.body)).config.group_context
+          .example_enrichment,
+      ).toBe(false);
+    });
+  });
+});
+
 beforeEach(() => {
   vi.clearAllMocks();
   sessionStorage.clear();

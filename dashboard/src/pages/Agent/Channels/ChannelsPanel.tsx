@@ -29,7 +29,11 @@ import {
 } from "./components";
 import { request } from "../../../api/request";
 import type { ChannelRow } from "./useChannels";
-import type { ChannelFormValues } from "./components/ChannelDrawer";
+import type {
+  ChannelFormValues,
+  PluginChannelSetting,
+} from "./components/ChannelDrawer";
+import { PLUGINS_CHANGED_EVENT } from "../../Admin/Plugins/pluginsEvents";
 import styles from "./index.module.less";
 
 function configFromFormValues(
@@ -129,6 +133,49 @@ export default function ChannelsPanel({ agentId }: ChannelsPanelProps) {
   const [form] = Form.useForm<ChannelFormValues>();
 
   const [catalogVersion, setCatalogVersion] = useState(0);
+
+  const [pluginChannelSettings, setPluginChannelSettings] = useState<
+    PluginChannelSetting[]
+  >([]);
+
+  useEffect(() => {
+    if (!drawerOpen) return;
+    let active = true;
+    let generation = 0;
+    const refresh = async () => {
+      const current = ++generation;
+      try {
+        const settings = await request<PluginChannelSetting[]>(
+          "/channels/plugin-settings",
+          { method: "GET" },
+        );
+        if (active && current === generation) {
+          setPluginChannelSettings(
+            Array.isArray(settings)
+              ? settings.filter(
+                  (field) =>
+                    field &&
+                    typeof field.name === "string" &&
+                    field.label &&
+                    field.help,
+                )
+              : [],
+          );
+        }
+      } catch {
+        if (active && current === generation) setPluginChannelSettings([]);
+      }
+    };
+    void refresh();
+    window.addEventListener(PLUGINS_CHANGED_EVENT, refresh);
+    window.addEventListener("focus", refresh);
+    return () => {
+      active = false;
+      window.removeEventListener(PLUGINS_CHANGED_EVENT, refresh);
+      window.removeEventListener("focus", refresh);
+      setPluginChannelSettings([]);
+    };
+  }, [drawerOpen]);
 
   const refreshPluginKinds = useCallback(async () => {
     try {
@@ -523,6 +570,7 @@ export default function ChannelsPanel({ agentId }: ChannelsPanelProps) {
               (editing?.kind as ChannelKey | undefined))
         }
         agentId={agentId}
+        pluginChannelSettings={pluginChannelSettings}
       />
     </div>
   );
