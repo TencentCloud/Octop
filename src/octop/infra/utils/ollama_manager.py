@@ -183,7 +183,11 @@ def list_models_from_dir(path: str | None) -> list[OllamaModelInfo]:
     if not manifests.is_dir():
         return []
     found: dict[str, OllamaModelInfo] = {}
-    for manifest in manifests.rglob("*"):
+    try:
+        manifest_entries = list(manifests.rglob("*"))
+    except OSError:
+        manifest_entries = []
+    for manifest in manifest_entries:
         if not manifest.is_file():
             continue
         try:

@@ -386,7 +386,11 @@ def list_playwright_chromium_dirs() -> list[Path]:
     for cache in _playwright_cache_roots():
         if not cache.is_dir():
             continue
-        found.extend(sorted(p for p in cache.glob("chromium-*") if p.is_dir()))
+        try:
+            chromium_dirs = sorted(p for p in cache.glob("chromium-*") if p.is_dir())
+        except OSError:
+            chromium_dirs = []
+        found.extend(chromium_dirs)
     return found
 
 

@@ -113,7 +113,11 @@ def _add_dir(
 ) -> None:
     if not src.is_dir():
         return
-    for path in sorted(src.rglob("*")):
+    try:
+        archive_entries = sorted(src.rglob("*"))
+    except OSError:
+        archive_entries = []
+    for path in archive_entries:
         if not path.is_file():
             continue
         rel = path.relative_to(src)
@@ -390,7 +394,11 @@ def _iter_extracted_files(root: Path, prefix: str) -> list[tuple[str, Path]]:
     if not base.is_dir():
         return []
     out: list[tuple[str, Path]] = []
-    for path in sorted(base.rglob("*")):
+    try:
+        extracted_entries = sorted(base.rglob("*"))
+    except OSError:
+        extracted_entries = []
+    for path in extracted_entries:
         if not path.is_file():
             continue
         rel = path.relative_to(root).as_posix()
