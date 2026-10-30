@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import concurrent.futures
 from collections.abc import Awaitable, Callable
 from contextlib import suppress
 from pathlib import Path
@@ -11,6 +12,23 @@ from typing import Any, cast
 from octop.cli.repl.embedded_session import embedded_runtime
 from octop.infra.agents.providers.probe import probe_provider_row
 from octop.infra.errors import ErrorCode, OctopError
+
+
+def _run_sync(coro: Awaitable[Any]) -> Any:
+    """Run an async coroutine from a sync context and return its result.
+
+    If there is no running event loop, calls ``asyncio.run`` directly.
+    If there *is* a running loop (e.g. we are already inside async code
+    that reached this wrapper), spawn a single-thread ``ThreadPoolExecutor``
+    and call ``asyncio.run`` from that thread — this mirrors the pattern
+    used in :func:`octop_harness.mcp.load_mcp_tools`.
+    """
+    try:
+        asyncio.get_running_loop()
+    except RuntimeError:
+        return asyncio.run(coro)
+    with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
+        return pool.submit(asyncio.run, coro).result()
 
 
 async def cron_run_now_async(agent_id: str, cron_id: str) -> None:
@@ -24,7 +42,7 @@ async def cron_run_now_async(agent_id: str, cron_id: str) -> None:
 
 
 def cron_run_now(agent_id: str, cron_id: str) -> None:
-    asyncio.run(cron_run_now_async(agent_id, cron_id))
+    _run_sync(cron_run_now_async(agent_id, cron_id))
 
 
 async def agent_action_async(agent_id: str, action: str) -> None:
@@ -42,7 +60,7 @@ async def agent_action_async(agent_id: str, action: str) -> None:
 
 
 def agent_action(agent_id: str, action: str) -> None:
-    asyncio.run(agent_action_async(agent_id, action))
+    _run_sync(agent_action_async(agent_id, action))
 
 
 async def fetch_thread_history_async(agent_id: str, thread_id: str, *, limit: int = 50) -> Any:
@@ -66,7 +84,7 @@ async def fetch_thread_history_async(agent_id: str, thread_id: str, *, limit: in
 
 
 def fetch_thread_history(agent_id: str, thread_id: str, *, limit: int = 50) -> Any:
-    return asyncio.run(fetch_thread_history_async(agent_id, thread_id, limit=limit))
+    return _run_sync(fetch_thread_history_async(agent_id, thread_id, limit=limit))
 
 
 async def probe_provider_async(provider_id: int, *, model_id: str | None = None) -> dict[str, Any]:
@@ -80,7 +98,7 @@ async def probe_provider_async(provider_id: int, *, model_id: str | None = None)
 
 
 def probe_provider(provider_id: int, *, model_id: str | None = None) -> dict[str, Any]:
-    return asyncio.run(probe_provider_async(provider_id, model_id=model_id))
+    return _run_sync(probe_provider_async(provider_id, model_id=model_id))
 
 
 async def test_channel_async(
@@ -99,7 +117,7 @@ async def test_channel_async(
 
 
 def test_channel(agent_id: str, channel_id: str, *, locale: str = "zh") -> dict[str, Any]:
-    return asyncio.run(test_channel_async(agent_id, channel_id, locale=locale))
+    return _run_sync(test_channel_async(agent_id, channel_id, locale=locale))
 
 
 # ── Bridge (lightweight manager; no full OctopServer) ────────────────────────
@@ -133,7 +151,7 @@ async def _bridge_async(fn: Callable[[Any], Awaitable[Any]], *, home: Path | Non
 
 async def _close_cli_session(mgr: Any, connection_id: str) -> None:
     """CLI cannot keep a Bridge WS after the process exits."""
-    with suppress(Exception):
+    with suppress((OSError, RuntimeError)):
         await mgr.disconnect(connection_id)
 
 
@@ -169,7 +187,7 @@ def probe_bridge_peer(
             password=password,
         )
 
-    return cast(dict[str, Any], asyncio.run(_bridge_async(_run, home=home)))
+    return cast(dict[str, Any], _run_sync(_bridge_async(_run, home=home)))
 
 
 def probe_bridge_connection(
@@ -191,7 +209,7 @@ def probe_bridge_connection(
             password=password,
         )
 
-    return cast(dict[str, Any], asyncio.run(_bridge_async(_run, home=home)))
+    return cast(dict[str, Any], _run_sync(_bridge_async(_run, home=home)))
 
 
 def create_bridge_connection(
@@ -222,7 +240,7 @@ def create_bridge_connection(
             row = mgr.get_owned(row.connection_id, owner_user_id)
         return mgr.connection_public(row)
 
-    return cast(dict[str, Any], asyncio.run(_bridge_async(_run, home=home)))
+    return cast(dict[str, Any], _run_sync(_bridge_async(_run, home=home)))
 
 
 def patch_bridge_connection(
@@ -279,7 +297,7 @@ def patch_bridge_connection(
             row = mgr.get_owned(connection_id, owner_user_id)
         return mgr.connection_public(row)
 
-    return cast(dict[str, Any], asyncio.run(_bridge_async(_run, home=home)))
+    return cast(dict[str, Any], _run_sync(_bridge_async(_run, home=home)))
 
 
 def delete_bridge_connection(
@@ -288,7 +306,7 @@ def delete_bridge_connection(
     async def _run(mgr: Any) -> None:
         await mgr.delete_connection(connection_id, owner_user_id=owner_user_id)
 
-    asyncio.run(_bridge_async(_run, home=home))
+    _run_sync(_bridge_async(_run, home=home))
 
 
 def connect_bridge_connection(
@@ -299,7 +317,7 @@ def connect_bridge_connection(
         await _close_cli_session(mgr, connection_id)
         return mgr.connection_public(mgr.get_owned(connection_id, owner_user_id))
 
-    return cast(dict[str, Any], asyncio.run(_bridge_async(_run, home=home)))
+    return cast(dict[str, Any], _run_sync(_bridge_async(_run, home=home)))
 
 
 def disconnect_bridge_connection(
@@ -310,7 +328,7 @@ def disconnect_bridge_connection(
         await mgr.disconnect(connection_id)
         return mgr.connection_public(mgr.get_owned(connection_id, owner_user_id))
 
-    return cast(dict[str, Any], asyncio.run(_bridge_async(_run, home=home)))
+    return cast(dict[str, Any], _run_sync(_bridge_async(_run, home=home)))
 
 
 def list_bridge_remote_agents(
@@ -323,4 +341,4 @@ def list_bridge_remote_agents(
         finally:
             await _close_cli_session(mgr, connection_id)
 
-    return cast(list[dict[str, Any]], asyncio.run(_bridge_async(_run, home=home)))
+    return cast(list[dict[str, Any]], _run_sync(_bridge_async(_run, home=home)))
