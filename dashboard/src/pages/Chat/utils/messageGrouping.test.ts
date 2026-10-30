@@ -24,6 +24,22 @@ function msg(
   };
 }
 
+describe("resumed turn grouping", () => {
+  for (const role of ["assistant", "tool"] as const) {
+    it(`starts a separate group at a resumed ${role} without splitting later tool steps`, () => {
+      const groups = groupConsecutiveAssistantMessages([
+        msg("assistant", "old-answer"),
+        msg(role, "resumed", { startsNewTurn: true }),
+        msg("tool", "tool-step"),
+        msg("assistant", "continued", { status: "streaming" }),
+      ]);
+      expect(
+        groups.map((group) => group.messages.map((message) => message.id)),
+      ).toEqual([["old-answer"], ["resumed", "tool-step", "continued"]]);
+    });
+  }
+});
+
 describe("sameStreamingSpeaker", () => {
   it("keeps unlabeled host tokens together and splits a member", () => {
     expect(sameStreamingSpeaker(undefined, undefined)).toBe(true);

@@ -36,6 +36,7 @@ function slimMessage(message: ChatMessage): ChatMessage {
         : undefined,
     speakerAgentId: message.speakerAgentId,
     teamWrapup: message.teamWrapup,
+    startsNewTurn: message.startsNewTurn,
     errorInfo: message.errorInfo,
     toolData: message.toolData
       ? {
@@ -101,6 +102,7 @@ function parseTail(raw: string): ChatMessage[] | null {
             ? row.speakerAgentId
             : undefined,
         teamWrapup: row.teamWrapup === true ? true : undefined,
+        startsNewTurn: row.startsNewTurn === true ? true : undefined,
         toolData:
           row.toolData && typeof row.toolData === "object"
             ? row.toolData

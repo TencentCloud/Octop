@@ -161,6 +161,10 @@ export function groupConsecutiveAssistantMessages(
   let currentGroup: ChatMessage[] = [];
 
   for (const msg of messages) {
+    if (msg.startsNewTurn && currentGroup.length > 0) {
+      groups.push({ isGroup: true, messages: currentGroup });
+      currentGroup = [];
+    }
     if (isAssistantTurnRole(msg.role)) {
       if (
         currentGroup.length > 0 &&
