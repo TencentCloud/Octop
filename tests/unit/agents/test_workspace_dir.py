@@ -2,11 +2,13 @@
 
 from __future__ import annotations
 
+import os
 from pathlib import Path
 
 import pytest
 
 from octop.infra.agents.workspace.dir import (
+    _is_host_root_sentinel,
     agent_facing_workspace_dir_from_config,
     agent_facing_workspace_root,
     default_agent_workspace_dir,
@@ -87,9 +89,42 @@ def test_host_rooted_default_uses_octop_home(tmp_path: Path) -> None:
     assert host == (tmp_path / ".octop" / "agents" / "A1").resolve()
 
 
-@pytest.mark.parametrize("root_dir", ["C:/", "C:\\", "D:", "d:/"])
-def test_windows_drive_root_is_host_sentinel(tmp_path: Path, root_dir: str) -> None:
-    """Drive roots must use OCTOP_HOME agents/, not {drive}/.octop/workspaces/."""
+@pytest.mark.skipif(os.name != "nt", reason="Windows drive-root semantics")
+@pytest.mark.parametrize("sep", ["/", "\\"])
+def test_windows_home_drive_root_is_host_sentinel(tmp_path: Path, sep: str) -> None:
+    """A drive root on the OCTOP_HOME drive keeps OCTOP_HOME agents/ workspaces."""
+    home_drive_root = f"{tmp_path.drive}{sep}"
+    paths = PathLayout(tmp_path / ".octop")
+    cfg = {
+        "backend": {
+            "type": "local_shell",
+            "root_dir": home_drive_root,
+            "virtual_mode": True,
+        },
+    }
+    host = seed_workspace_dir_on_create(cfg, paths=paths, agent_id="WIN1")
+    assert cfg["workspace_dir"] == str(host)
+    assert host == (tmp_path / ".octop" / "agents" / "WIN1").resolve()
+    assert ".octop/workspaces" not in cfg["workspace_dir"].replace("\\", "/")
+
+
+@pytest.mark.skipif(os.name != "nt", reason="Windows drive-root semantics")
+def test_windows_foreign_drive_root_is_scoped_jail(tmp_path: Path) -> None:
+    """Drive root on another drive is a scoped jail (issue #2386).
+
+    Defaulting such a workspace to OCTOP_HOME would place it outside the
+    backend root, so every workspace path (skills, memory) fails the
+    virtual-mode containment check and chat breaks. The workspace must land
+    under the chosen drive root instead.
+    """
+    foreign_roots = [
+        f"{chr(letter)}:/"
+        for letter in range(ord("A"), ord("Z") + 1)
+        if f"{chr(letter)}:" != tmp_path.drive and Path(f"{chr(letter)}:/").is_dir()
+    ]
+    if not foreign_roots:
+        pytest.skip("machine exposes a single drive")
+    root_dir = foreign_roots[0]
     paths = PathLayout(tmp_path / ".octop")
     cfg = {
         "backend": {
@@ -98,10 +133,35 @@ def test_windows_drive_root_is_host_sentinel(tmp_path: Path, root_dir: str) -> N
             "virtual_mode": True,
         },
     }
-    host = seed_workspace_dir_on_create(cfg, paths=paths, agent_id="WIN1")
-    assert cfg["workspace_dir"] == str(host)
-    assert host == (tmp_path / ".octop" / "agents" / "WIN1").resolve()
-    assert ".octop/workspaces" not in cfg["workspace_dir"].replace("\\", "/")
+    host = seed_workspace_dir_on_create(cfg, paths=paths, agent_id="WIN2")
+    assert cfg["workspace_dir"] == "/.octop/workspaces/WIN2"
+    assert host == (Path(root_dir) / ".octop" / "workspaces" / "WIN2").resolve()
+    assert resolve_workspace_host_path(cfg["workspace_dir"], cfg) == host
+
+
+def test_host_root_sentinel_drive_semantics(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Only a home-drive root is the host tree; foreign drive roots are jails."""
+    import octop.infra.utils.host_dirs as host_dirs
+
+    monkeypatch.setattr(os, "name", "nt", raising=False)
+    monkeypatch.setattr(host_dirs, "host_fs_tree_root", lambda: "C:/")
+    assert _is_host_root_sentinel("C:/") is True
+    assert _is_host_root_sentinel("c:\\") is True
+    assert _is_host_root_sentinel("/") is True
+    assert _is_host_root_sentinel(None) is True
+    assert _is_host_root_sentinel("E:/") is False
+    assert _is_host_root_sentinel("e:") is False
+    assert _is_host_root_sentinel("D:/data") is False
+
+
+def test_host_root_sentinel_posix_drive_letter_keeps_legacy_answer(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import octop.infra.utils.host_dirs as host_dirs
+
+    monkeypatch.setattr(os, "name", "posix", raising=False)
+    monkeypatch.setattr(host_dirs, "host_fs_tree_root", lambda: "/")
+    assert _is_host_root_sentinel("D:/") is True
 
 
 def test_harness_workspace_keeps_absolute_persisted_value(tmp_path: Path) -> None:

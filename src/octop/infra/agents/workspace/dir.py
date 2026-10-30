@@ -48,17 +48,32 @@ def _running_on_windows() -> bool:
 def _is_host_root_sentinel(root: str | Path | None) -> bool:
     """True when *root* means the whole host filesystem (not a jail).
 
-    POSIX uses ``/``. Windows uses a drive root such as ``C:/`` (what
-    :func:`host_fs_tree_root` returns). Treating drive roots as scoped jails
+    POSIX uses ``/``. Windows uses the home drive root such as ``C:/`` (what
+    :func:`host_fs_tree_root` returns). Treating that root as a scoped jail
     would put default workspaces under ``{drive}/.octop/workspaces/…`` instead
     of ``{OCTOP_HOME}/agents/<id>/``.
+
+    A drive root pinned to a *different* drive than OCTOP_HOME is a scoped
+    jail, not the host tree: defaulting its workspace to ``{OCTOP_HOME}``
+    would place the workspace outside the backend root, so every workspace
+    path fails the virtual-mode containment check (issue #2386).
     """
     if root is None:
         return True
     text = str(root).strip()
     if text in ("/", "\\", ""):
         return True
-    return bool(_WINDOWS_DRIVE_ROOT_RE.match(text))
+    if not _WINDOWS_DRIVE_ROOT_RE.match(text):
+        return False
+    if not _running_on_windows():
+        # Drive-letter text on POSIX is just an ordinary relative-ish name;
+        # keep the legacy sentinel answer for non-Windows hosts.
+        return True
+    from octop.infra.utils.host_dirs import host_fs_tree_root  # noqa: PLC0415
+
+    home_drive = host_fs_tree_root()[:1].casefold()
+    root_drive = str(Path(text).drive)[:1].casefold()
+    return root_drive == home_drive
 
 
 def _is_windows_style_host_path(raw: str) -> bool:
