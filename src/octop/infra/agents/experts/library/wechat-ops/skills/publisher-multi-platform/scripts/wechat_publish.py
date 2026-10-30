@@ -109,7 +109,7 @@ def get_env(name: str, required: bool = False) -> str | None:
 
 def load_token_cache() -> dict:
     """Read the token cache file; raise when it is unreadable or malformed."""
-    with open(TOKEN_CACHE_FILE) as f:
+    with open(TOKEN_CACHE_FILE, encoding="utf-8") as f:
         cache = json.load(f)
     if not isinstance(cache, dict):
         raise ValueError("token cache is not a JSON object")
@@ -167,9 +167,10 @@ def get_wechat_access_token() -> str:
         "access_token": data["access_token"],
         "expires_at": time.time() + data.get("expires_in", 7200),
     }
-    with open(TOKEN_CACHE_FILE, "w") as f:
-        json.dump(token_data, f)
-    os.chmod(TOKEN_CACHE_FILE, 0o600)
+    with open(TOKEN_CACHE_FILE, "w", encoding="utf-8") as f:
+        json.dump(token_data, f, ensure_ascii=False)
+    if os.name == "posix":
+        os.chmod(TOKEN_CACHE_FILE, 0o600)
 
     return data["access_token"]
 
