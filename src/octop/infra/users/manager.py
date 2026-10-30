@@ -872,7 +872,7 @@ class UserManager:
             if not path.exists():
                 continue
             try:
-                shutil.rmtree(path)
+                shutil.rmtree(path, ignore_errors=True)
             except OSError as exc:
                 logger.exception("rmtree failed for %s", path)
                 raise OctopError(
