@@ -333,12 +333,30 @@ def test_docs_search_requires_user_auth_without_shell_hint(
         "octop.infra.connectors.gateway.feishu_creds.ensure_feishu_cli_config",
         lambda *a, **k: None,
     )
-    called = False
+    calls: list[list[str]] = []
 
-    def _fake_run(*_a: Any, **_k: Any) -> str:
-        nonlocal called
-        called = True
-        raise AssertionError("should not invoke CLI before user auth")
+    def _fake_run(
+        argv: list[str],
+        *,
+        env: dict[str, str] | None = None,
+        timeout_s: float = 30.0,
+        cwd: str | None = None,
+        stdin_text: str | None = None,
+    ) -> str:
+        del env, timeout_s, cwd, stdin_text
+        calls.append(list(argv))
+        if argv[1:3] == ["auth", "check"]:
+            raise ValueError("missing required scope(s): search:docs:read")
+        if argv[1:3] == ["auth", "status"]:
+            return json.dumps(
+                {
+                    "identities": {
+                        "bot": {"available": True},
+                        "user": {"available": False, "tokenStatus": "missing"},
+                    }
+                }
+            )
+        raise AssertionError(f"docs search should not run: {argv}")
 
     monkeypatch.setattr(
         "octop.infra.connectors.gateway.adapters.feishu_cli.run_cli",
@@ -352,10 +370,12 @@ def test_docs_search_requires_user_auth_without_shell_hint(
         )
     msg = str(ei.value)
     assert "lark-cli" not in msg
-    assert called is False
+    assert not any(c[1:3] == ["docs", "+search"] for c in calls)
 
 
-def test_docs_search_uses_as_user(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+def test_docs_search_uses_live_user_grant_without_stored_default_as(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
     captured: dict[str, Any] = {}
     monkeypatch.setenv("OCTOP_HOME", str(tmp_path))
     monkeypatch.setattr(
@@ -395,7 +415,6 @@ def test_docs_search_uses_as_user(monkeypatch: pytest.MonkeyPatch, tmp_path: Pat
             "app_id": "a1",
             "app_secret": "s1",
             "instance_id": "i1",
-            "default_as": "user",
         },
         "doc",
         {"method": "+search", "args": {"query": "计划"}},
@@ -432,13 +451,22 @@ def test_docs_search_missing_scope_message(monkeypatch: pytest.MonkeyPatch, tmp_
         del timeout_s, cwd, stdin_text, env
         if argv[1:3] == ["auth", "check"]:
             raise ValueError("missing required scope(s): search:docs:read")
+        if argv[1:3] == ["auth", "status"]:
+            return json.dumps(
+                {
+                    "identities": {
+                        "bot": {"available": True},
+                        "user": {"available": True, "tokenStatus": "valid"},
+                    }
+                }
+            )
         raise AssertionError(argv)
 
     monkeypatch.setattr(
         "octop.infra.connectors.gateway.adapters.feishu_cli.run_cli",
         _fake_run,
     )
-    with pytest.raises(ValueError, match="登录授权") as ei:
+    with pytest.raises(ValueError, match="尚未授予") as ei:
         feishu_cli.call_tool(
             {
                 "app_id": "a1",
