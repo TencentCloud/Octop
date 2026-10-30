@@ -723,7 +723,11 @@ async def _iter_session_jsonl_sources(
     local_workspace = resolve_agent_workspace_dir(server, agent_id)
     sessions_dir = Path(local_workspace) / "sessions"
     if sessions_dir.is_dir():
-        for path in sorted(sessions_dir.glob("*.jsonl"), reverse=True):
+        try:
+            session_files = sorted(sessions_dir.glob("*.jsonl"), reverse=True)
+        except OSError:
+            session_files = []
+        for path in session_files:
             try:
                 sources.append((path.name, path.read_text(encoding="utf-8")))
             except OSError:

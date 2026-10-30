@@ -83,7 +83,11 @@ def delete_profile_avatar(directory: Path, key: str) -> None:
     stem = _stem(key)
     if not directory.is_dir():
         return
-    for path in directory.glob(f"{stem}.*"):
+    try:
+        avatar_matches = list(directory.glob(f"{stem}.*"))
+    except OSError:
+        avatar_matches = []
+    for path in avatar_matches:
         if path.is_file():
             path.unlink()
 

@@ -536,7 +536,11 @@ def stash_console_scripts(python_exe: str) -> list[tuple[Path, Path]]:
     script_dir = Path(python_exe).parent
     _purge_stale_stashes(script_dir)
     moved: list[tuple[Path, Path]] = []
-    for script in sorted(script_dir.glob(f"{_PACKAGE_NAME}*.exe")):
+    try:
+        exe_scripts = sorted(script_dir.glob(f"{_PACKAGE_NAME}*.exe"))
+    except OSError:
+        exe_scripts = []
+    for script in exe_scripts:
         stash = script.with_name(script.name + _STASH_SUFFIX)
         try:
             script.replace(stash)
@@ -565,7 +569,11 @@ def discard_console_script_stashes(moved: list[tuple[Path, Path]]) -> None:
 
 
 def _purge_stale_stashes(script_dir: Path) -> None:
-    for stale in script_dir.glob(f"*{_STASH_SUFFIX}"):
+    try:
+        stale_files = list(script_dir.glob(f"*{_STASH_SUFFIX}"))
+    except OSError:
+        stale_files = []
+    for stale in stale_files:
         _unlink_quietly(stale)
 
 
