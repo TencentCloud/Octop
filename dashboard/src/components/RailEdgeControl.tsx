@@ -1,3 +1,4 @@
+import type React from "react";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import styles from "./RailEdgeControl.module.less";
@@ -24,6 +25,12 @@ interface RailEdgeControlProps {
    * ``before`` / ``after`` sit on either side when two rails share one line.
    */
   placement?: "center" | "before" | "after";
+  /**
+   * When set, dragging the edge (anywhere but the button) resizes the panel.
+   * The edge sits on top of the panel's own resize strip, so it has to pass
+   * the drag on itself.
+   */
+  onResizeStart?: (e: React.PointerEvent) => void;
 }
 
 /**
@@ -38,6 +45,7 @@ export default function RailEdgeControl({
   className,
   showLine = true,
   placement = "center",
+  onResizeStart,
 }: RailEdgeControlProps) {
   const { t } = useTranslation();
   const ariaLabel =
@@ -52,10 +60,19 @@ export default function RailEdgeControl({
         styles.edge,
         side === "start" ? styles.edgeStart : styles.edgeEnd,
         expanded ? null : styles.edgeCollapsed,
+        onResizeStart ? styles.edgeResizable : null,
         className,
       ]
         .filter(Boolean)
         .join(" ")}
+      onPointerDown={
+        onResizeStart
+          ? (e) => {
+              if ((e.target as HTMLElement).closest("button")) return;
+              onResizeStart(e);
+            }
+          : undefined
+      }
     >
       {showLine ? <div className={styles.line} aria-hidden /> : null}
       <button
