@@ -264,7 +264,7 @@ async def _close_subprocess(proc: asyncio.subprocess.Process) -> None:
     try:
         await proc.communicate()
     except Exception:
-        with contextlib.suppress(Exception):
+        with contextlib.suppress((ProcessLookupError, OSError)):
             await proc.wait()
 
 
@@ -907,7 +907,7 @@ async def create_skill(
         meta, _ = parse_frontmatter(existing)
         if not meta.get("removed") and not body.overwrite:
             raise OctopError(ErrorCode.SKILL_ALREADY_EXISTS, f"skill {name!r} already exists")
-    with contextlib.suppress(Exception):
+    with contextlib.suppress(OSError):
         await ctx.workspace.adelete(f"skills/{name}")
     await _write_skill_files(ctx.workspace, f"skills/{name}", package.files)
     # Reinstall after disable/delete must clear skills_disabled (ZIP create
@@ -969,7 +969,7 @@ async def update_skill(
     # truthiness check mirrors ``_files_from_skill_body`` so an empty ``files``
     # list falls back to the content path on both sides.
     if body.files:
-        with contextlib.suppress(Exception):
+        with contextlib.suppress(OSError):
             await ctx.workspace.adelete(f"skills/{slug}")
     await _write_skill_files(ctx.workspace, f"skills/{slug}", package.files)
     skill_md = next(
@@ -1007,7 +1007,7 @@ class _AgentWorkspaceInstallTarget:
 
     async def write_files(self, slug: str, files: list[tuple[str, bytes]]) -> None:
         skill_root = f"skills/{slug}"
-        with contextlib.suppress(Exception):
+        with contextlib.suppress(OSError):
             await self._workspace.adelete(skill_root)
         await _write_skill_files(self._workspace, skill_root, files)
 
