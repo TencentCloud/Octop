@@ -282,12 +282,12 @@ def _manifest(text: str) -> dict[str, Any]:
 def _materialize_file(source: Path, target: Path) -> Path:
     if zipfile.is_zipfile(source):
         unpacked = target / "unpacked"
-        unpacked.mkdir()
+        unpacked.mkdir(parents=True, exist_ok=True)
         _extract_zip(source, unpacked)
         return unpacked
     if tarfile.is_tarfile(source):
         unpacked = target / "unpacked"
-        unpacked.mkdir()
+        unpacked.mkdir(parents=True, exist_ok=True)
         _extract_tar(source, unpacked)
         return unpacked
     try:
@@ -298,7 +298,7 @@ def _materialize_file(source: Path, target: Path) -> Path:
         ) from exc
     _manifest(text)
     single = target / "single"
-    single.mkdir()
+    single.mkdir(parents=True, exist_ok=True)
     shutil.copy2(source, single / "SKILL.md")
     return single
 
@@ -321,7 +321,7 @@ def _materialize(source: str, target: Path) -> Path:
     if skillhub_source is not None:
         slug, namespace = skillhub_source
         installed = target / "skillhub"
-        installed.mkdir()
+        installed.mkdir(parents=True, exist_ok=True)
         command = _command("skillhub", "--skip-self-upgrade", "install", slug)
         if namespace:
             command.extend(["--namespace", namespace])
@@ -550,7 +550,7 @@ def _restore(workspace: Path, trash_name: str) -> dict[str, str]:
     if destination.exists():
         raise SkillManagerError(f"cannot restore because skill is installed: {slug}")
     if metadata_path.exists():
-        metadata_path.unlink()
+        metadata_path.unlink(missing_ok=True)
     os.replace(source, destination)
     return {"restored": slug, "path": str(destination)}
 
