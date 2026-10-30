@@ -53,8 +53,12 @@ def inspect_sqlite_storage(backend: Any, *, shared: bool) -> dict[str, Any]:
             wal_size = wal.stat().st_size
         except FileNotFoundError:
             wal_size = 0
+        try:
+            file_size = path.stat().st_size
+        except OSError:
+            file_size = 0
         report: dict[str, Any] = {
-            "file_size": path.stat().st_size,
+            "file_size": file_size,
             "wal_size": wal_size,
             "page_size": page_size,
             "total_pages": pages,

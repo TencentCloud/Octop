@@ -573,7 +573,10 @@ def _store_file_bytes(path: Path) -> int:
     total = 0
     for candidate in (path, Path(str(path) + "-wal"), Path(str(path) + "-shm")):
         if candidate.is_file():
-            total += candidate.stat().st_size
+            try:
+                total += candidate.stat().st_size
+            except OSError:
+                pass
     return total
 
 
