@@ -112,7 +112,14 @@ class SkillPackageStore:
             return []
 
         summaries: list[dict[str, Any]] = []
-        for skill_dir in sorted(skills_dir.iterdir()):
+        try:
+            skill_dirs = sorted(skills_dir.iterdir())
+        except OSError as exc:
+            logger.warning(
+                "could not list skill package directory %s: %s", skills_dir, exc
+            )
+            return summaries
+        for skill_dir in skill_dirs:
             if not skill_dir.is_dir() or skill_dir.is_symlink():
                 continue
             manifest = skill_dir / "SKILL.md"

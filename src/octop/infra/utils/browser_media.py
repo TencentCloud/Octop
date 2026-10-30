@@ -56,10 +56,14 @@ def legacy_harness_profiles_dir() -> Path:
 def _profile_dir_is_empty(directory: Path) -> bool:
     if not directory.is_dir():
         return True
-    for child in directory.iterdir():
-        if child.name.startswith("."):
-            continue
-        return False
+    try:
+        for child in directory.iterdir():
+            if child.name.startswith("."):
+                continue
+            return False
+    except OSError as exc:
+        logger.debug("could not list %s: %s", directory, exc)
+        return True
     return True
 
 
