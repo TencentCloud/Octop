@@ -183,7 +183,7 @@ def _probe_docker(row: BackendRow) -> dict[str, Any]:
         content = file_data.get("content") if isinstance(file_data, dict) else None
         if content != _PROBE_CONTENT:
             return {"ok": False, "message": "read content mismatch"}
-        with contextlib.suppress(Exception):
+        with contextlib.suppress((OSError, RuntimeError)):
             execute = getattr(backend, "execute", None)
             if callable(execute):
                 execute(f"rm -f -- {test_path}")
@@ -203,12 +203,12 @@ def _probe_docker(row: BackendRow) -> dict[str, Any]:
         if backend is not None:
             destroy = getattr(backend, "destroy", None)
             if callable(destroy):
-                with contextlib.suppress(Exception):
+                with contextlib.suppress((OSError, RuntimeError)):
                     destroy()
             else:
                 close = getattr(backend, "close", None)
                 if callable(close):
-                    with contextlib.suppress(Exception):
+                    with contextlib.suppress((OSError, RuntimeError)):
                         close()
         shutil.rmtree(workspace, ignore_errors=True)
 
