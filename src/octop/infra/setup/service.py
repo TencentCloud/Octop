@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import contextlib
 import logging
 import os
 import platform
@@ -118,7 +119,7 @@ def _auto_service_scope() -> ServiceScope:
 
 
 def resolve_service_scope(*, default: ServiceScope | None = None) -> ServiceScope:
-    """Decide between ``user`` and ``system`` scope.
+    """Decide between ``user`` and ``system``.
 
     Resolution order:
 
@@ -335,7 +336,17 @@ def _systemd_enable_linger(runtime: ServiceRuntime) -> None:
     user = runtime.run_as_user
     cmd = [*_sudo_as_user_prefix(user), "loginctl", "enable-linger", user]
     # NOCA:DangerousSubprocessUseAudit(argv list with shell=False; loginctl service helper)
-    proc = subprocess.run(cmd, capture_output=True, text=True, check=False)
+    try:
+        proc = subprocess.run(
+            cmd,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            check=False,
+            timeout=10,
+        )
+    except subprocess.TimeoutExpired:
+        proc = subprocess.CompletedProcess(cmd, -1, stdout="", stderr="timed out")
     if proc.returncode != 0:
         logger.info(
             "could not enable linger automatically; run: loginctl enable-linger %s",
@@ -498,7 +509,18 @@ def _needs_sudo(path: Path) -> bool:
 def _run_cmd(cmd: list[str], *, use_sudo: bool) -> subprocess.CompletedProcess[str]:
     full = ["sudo", *cmd] if use_sudo and geteuid() != 0 else cmd
     # NOCA:DangerousSubprocessUseAudit(argv list with shell=False; systemctl/launchctl service management)
-    return subprocess.run(full, capture_output=True, text=True, check=False)
+    try:
+        return subprocess.run(
+            full,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            check=False,
+            timeout=30,
+        )
+    except subprocess.TimeoutExpired:
+        logger.warning("command timed out after 30s: %s", " ".join(full))
+        return subprocess.CompletedProcess(full, -1, stdout="", stderr="timed out after 30s")
 
 
 def _cmd_ok(proc: subprocess.CompletedProcess[str], fallback: str) -> None:
@@ -584,7 +606,8 @@ def _write_managed_file(destination: Path, content: str, *, run_as_user: str) ->
                     use_sudo=True,
                 )
         finally:
-            os.unlink(tmp_path)
+            with contextlib.suppress(OSError):
+                os.unlink(tmp_path)
         return
 
     destination.parent.mkdir(parents=True, exist_ok=True)
