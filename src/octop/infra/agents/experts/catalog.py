@@ -96,7 +96,11 @@ def discover_bundled_avatar_ids(avatars_dir: Path | None = None) -> frozenset[st
     root = avatars_dir if avatars_dir is not None else bundled_avatars_dir()
     if root is None or not root.is_dir():
         return _FALLBACK_BUNDLED_AVATAR_IDS
-    ids = {path.stem for path in root.glob("*.svg") if path.is_file()}
+    try:
+        avatar_files = list(root.glob("*.svg"))
+    except OSError:
+        avatar_files = []
+    ids = {path.stem for path in avatar_files if path.is_file()}
     return frozenset(ids) if ids else _FALLBACK_BUNDLED_AVATAR_IDS
 
 
@@ -153,7 +157,11 @@ def discover_seed_paths(expert_dir: Path) -> list[str]:
     if not expert_dir.is_dir():
         return []
     paths: list[str] = []
-    for fpath in sorted(expert_dir.rglob("*")):
+    try:
+        seed_files = sorted(expert_dir.rglob("*"))
+    except OSError:
+        seed_files = []
+    for fpath in seed_files:
         if not fpath.is_file():
             continue
         rel = fpath.relative_to(expert_dir)
