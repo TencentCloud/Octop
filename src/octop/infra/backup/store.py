@@ -37,7 +37,10 @@ def resolve_backup_created_at(name: str, path: Path, *, mtime: float) -> str:
             pass
         else:
             return parsed.isoformat()
-    birth = getattr(path.stat(), "st_birthtime", None)
+    try:
+        birth = getattr(path.stat(), "st_birthtime", None)
+    except OSError:
+        birth = None
     if isinstance(birth, int | float) and birth > 0:
         return _iso_utc_from_timestamp(float(birth))
     return _iso_utc_from_timestamp(mtime)
@@ -86,7 +89,11 @@ def list_backup_files(paths: PathLayout) -> list[BackupFileInfo]:
     if not root.is_dir():
         return []
     out: list[BackupFileInfo] = []
-    for path in sorted(root.iterdir(), key=lambda p: p.stat().st_mtime, reverse=True):
+    try:
+        entries = sorted(root.iterdir(), key=lambda p: p.stat().st_mtime, reverse=True)
+    except OSError:
+        return []
+    for path in entries:
         if not path.is_file():
             continue
         if not any(path.name.endswith(suffix) for suffix in _BACKUP_SUFFIXES):
@@ -100,7 +107,10 @@ def backup_file_info(path: Path) -> BackupFileInfo:
     path = Path(path)
     if not path.is_file():
         raise OctopError(ErrorCode.NOT_FOUND, f"backup not found: {path.name}")
-    stat = path.stat()
+    try:
+        stat = path.stat()
+    except OSError as exc:
+        raise OctopError(ErrorCode.NOT_FOUND, f"backup unreadable: {path.name}") from exc
     modified = _iso_utc_from_timestamp(stat.st_mtime)
     created = resolve_backup_created_at(path.name, path, mtime=stat.st_mtime)
     contents = peek_backup_contents(path)
