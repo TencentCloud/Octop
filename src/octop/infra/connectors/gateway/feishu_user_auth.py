@@ -78,19 +78,27 @@ def complete_user_device_login(
     if not code:
         raise ValueError("device_code is required")
     binary, env = _prepare(config_dir, app_id=app_id, app_secret=app_secret, default_as="bot")
-    run_cli(
-        [binary, "auth", "login", "--device-code", code, "--json"],
-        env=env,
-        timeout_s=120.0,
-    )
+    status = _try_read_auth_status(binary=binary, env=env)
+    if not _user_identity_usable(status):
+        try:
+            run_cli(
+                [binary, "auth", "login", "--device-code", code, "--json"],
+                env=env,
+                timeout_s=120.0,
+            )
+        except ValueError:
+            # The browser grant can succeed even when lark-cli reports a
+            # nonzero exit or the device code was already consumed. Judge the
+            # result by the live user identity instead of the device exchange.
+            status = _try_read_auth_status(binary=binary, env=env)
+            if not _user_identity_usable(status):
+                raise
+        else:
+            status = None
     run_cli([binary, "config", "default-as", "user"], env=env, timeout_s=30.0)
-    status = read_auth_status(binary=binary, env=env)
-    user = (
-        status.get("identities", {}).get("user")
-        if isinstance(status.get("identities"), dict)
-        else None
-    )
-    user_available = isinstance(user, dict) and bool(user.get("available"))
+    if status is None:
+        status = read_auth_status(binary=binary, env=env)
+    user_available = _user_identity_usable(status)
     identity = str(status.get("identity") or status.get("defaultAs") or "").strip()
     if not user_available:
         raise ValueError("用户授权未完成或 token 无效。请重新点击「登录授权」并打开链接完成授权。")
@@ -119,6 +127,22 @@ def complete_user_device_login(
 def read_auth_status(*, binary: str, env: dict[str, str]) -> dict[str, Any]:
     raw = run_cli([binary, "auth", "status", "--json"], env=env, timeout_s=60.0)
     return _parse_json_object(raw)
+
+
+def _try_read_auth_status(*, binary: str, env: dict[str, str]) -> dict[str, Any] | None:
+    try:
+        return read_auth_status(binary=binary, env=env)
+    except ValueError:
+        return None
+
+
+def _user_identity_usable(status: dict[str, Any] | None) -> bool:
+    identities = status.get("identities") if isinstance(status, dict) else None
+    user = identities.get("user") if isinstance(identities, dict) else None
+    if not isinstance(user, dict) or not user.get("available"):
+        return False
+    token_status = str(user.get("tokenStatus") or "").strip().lower()
+    return token_status not in {"expired", "invalid", "missing", "revoked"}
 
 
 def live_user_auth_preview(creds: dict[str, Any]) -> dict[str, Any]:

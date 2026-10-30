@@ -67,6 +67,7 @@ def test_complete_user_login_sets_default_as_user(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     calls: list[list[str]] = []
+    logged_in = False
 
     def _fake_run(
         argv: list[str],
@@ -76,15 +77,27 @@ def test_complete_user_login_sets_default_as_user(
         cwd: str | None = None,
         stdin_text: str | None = None,
     ) -> str:
+        nonlocal logged_in
         del timeout_s, cwd, stdin_text, env
         calls.append(list(argv))
         if argv[1:3] == ["config", "init"]:
             return "{}"
         if argv[1:3] == ["auth", "login"] and "--device-code" in argv:
+            logged_in = True
             return json.dumps({"ok": True})
-        if argv[1:4] == ["config", "default-as", "user"]:
-            return "Default identity set to: user"
+        if argv[1:3] == ["config", "default-as"]:
+            return "ok"
         if argv[1:3] == ["auth", "status"]:
+            if not logged_in:
+                return json.dumps(
+                    {
+                        "identity": "bot",
+                        "identities": {
+                            "bot": {"available": True},
+                            "user": {"available": False, "tokenStatus": "missing"},
+                        },
+                    }
+                )
             return json.dumps(
                 {
                     "identity": "user",
@@ -116,6 +129,152 @@ def test_complete_user_login_sets_default_as_user(
     assert out["user_available"] is True
     assert out["search_docs_scope"] is True
     assert any(c[1:4] == ["config", "default-as", "user"] for c in calls)
+
+
+def test_complete_user_login_skips_consumed_device_code_with_live_grant(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    calls: list[list[str]] = []
+
+    def _fake_run(
+        argv: list[str],
+        *,
+        env: dict[str, str] | None = None,
+        timeout_s: float = 30.0,
+        cwd: str | None = None,
+        stdin_text: str | None = None,
+    ) -> str:
+        del timeout_s, cwd, stdin_text, env
+        calls.append(list(argv))
+        if argv[1:3] == ["config", "init"]:
+            return "{}"
+        if argv[1:3] == ["auth", "status"]:
+            return json.dumps(
+                {
+                    "identity": "user",
+                    "identities": {
+                        "bot": {"available": True},
+                        "user": {"available": True, "tokenStatus": "valid"},
+                    },
+                }
+            )
+        if argv[1:3] == ["auth", "check"]:
+            return json.dumps({"ok": True})
+        if argv[1:3] == ["config", "default-as"]:
+            return "ok"
+        raise AssertionError(argv)
+
+    monkeypatch.setattr(feishu_user_auth, "run_cli", _fake_run)
+    monkeypatch.setattr(feishu_creds, "run_cli", _fake_run)
+    monkeypatch.setattr(feishu_creds, "resolve_binary", lambda _n: fake_bin_path("lark-cli"))
+
+    out = feishu_user_auth.complete_user_device_login(
+        config_dir=tmp_path,
+        app_id="cli_x",
+        app_secret="sec",
+        device_code="ALREADY_CONSUMED",
+    )
+    assert out["ok"] is True
+    assert out["search_docs_scope"] is True
+    assert not any(c[1:3] == ["auth", "login"] for c in calls)
+
+
+def test_complete_user_login_recovers_after_device_exchange_error(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    status_calls = 0
+
+    def _fake_run(
+        argv: list[str],
+        *,
+        env: dict[str, str] | None = None,
+        timeout_s: float = 30.0,
+        cwd: str | None = None,
+        stdin_text: str | None = None,
+    ) -> str:
+        nonlocal status_calls
+        del timeout_s, cwd, stdin_text, env
+        if argv[1:3] == ["config", "init"]:
+            return "{}"
+        if argv[1:3] == ["auth", "status"]:
+            status_calls += 1
+            available = status_calls > 1
+            return json.dumps(
+                {
+                    "identity": "user" if available else "bot",
+                    "identities": {
+                        "bot": {"available": True},
+                        "user": {
+                            "available": available,
+                            "tokenStatus": "valid" if available else "missing",
+                        },
+                    },
+                }
+            )
+        if argv[1:3] == ["auth", "login"] and "--device-code" in argv:
+            raise ValueError("[lark-cli] device-flow: token response received")
+        if argv[1:3] == ["auth", "check"]:
+            return json.dumps({"ok": True})
+        if argv[1:3] == ["config", "default-as"]:
+            return "ok"
+        raise AssertionError(argv)
+
+    monkeypatch.setattr(feishu_user_auth, "run_cli", _fake_run)
+    monkeypatch.setattr(feishu_creds, "run_cli", _fake_run)
+    monkeypatch.setattr(feishu_creds, "resolve_binary", lambda _n: fake_bin_path("lark-cli"))
+
+    out = feishu_user_auth.complete_user_device_login(
+        config_dir=tmp_path,
+        app_id="cli_x",
+        app_secret="sec",
+        device_code="DEVCODE",
+    )
+    assert out["ok"] is True
+    assert out["user_available"] is True
+    assert status_calls == 2
+
+
+def test_complete_user_login_preserves_error_without_user_grant(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    def _fake_run(
+        argv: list[str],
+        *,
+        env: dict[str, str] | None = None,
+        timeout_s: float = 30.0,
+        cwd: str | None = None,
+        stdin_text: str | None = None,
+    ) -> str:
+        del timeout_s, cwd, stdin_text, env
+        if argv[1:3] == ["config", "init"]:
+            return "{}"
+        if argv[1:3] == ["config", "default-as"]:
+            return "ok"
+        if argv[1:3] == ["auth", "status"]:
+            return json.dumps(
+                {
+                    "identity": "bot",
+                    "identities": {
+                        "bot": {"available": True},
+                        "user": {"available": False, "tokenStatus": "missing"},
+                    },
+                }
+            )
+        if argv[1:3] == ["auth", "login"] and "--device-code" in argv:
+            raise ValueError("authorization failed: The device_code is invalid")
+        raise AssertionError(argv)
+
+    monkeypatch.setattr(feishu_user_auth, "run_cli", _fake_run)
+    monkeypatch.setattr(feishu_creds, "run_cli", _fake_run)
+    monkeypatch.setattr(feishu_creds, "resolve_binary", lambda _n: fake_bin_path("lark-cli"))
+
+    with pytest.raises(ValueError, match="device_code is invalid"):
+        feishu_user_auth.complete_user_device_login(
+            config_dir=tmp_path,
+            app_id="cli_x",
+            app_secret="sec",
+            device_code="DEVCODE",
+        )
 
 
 def test_ensure_feishu_respects_default_as_user(

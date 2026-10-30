@@ -331,6 +331,42 @@ async def test_get_instance_detail(env):
     assert detail["credentials_preview"]["password_configured"] is True
 
 
+async def test_get_feishu_instance_reports_live_user_grant(env, monkeypatch: pytest.MonkeyPatch):
+    c, _, auth, _ = env
+
+    def _live_preview(_creds: dict) -> dict:
+        return {
+            "user_auth_valid": True,
+            "user_auth_needs_reauth": False,
+            "user_token_status": "valid",
+            "search_docs_scope": True,
+        }
+
+    monkeypatch.setattr(
+        "octop.api.routers.connectors.live_user_auth_preview",
+        _live_preview,
+    )
+    created = await c.post(
+        "/api/connector-instances",
+        headers=auth,
+        json={
+            "kind": "feishu-cli",
+            "display_name": "飞书 CLI",
+            "credentials": {"app_id": "cli_test", "app_secret": "secret"},
+        },
+    )
+    assert created.status_code == 201, created.text
+    instance_id = created.json()["instance_id"]
+
+    detail = await c.get(f"/api/connector-instances/{instance_id}", headers=auth)
+    assert detail.status_code == 200, detail.text
+    preview = detail.json()["credentials_preview"]
+    assert preview["default_as"] == "bot"
+    assert preview["user_auth_configured"] is True
+    assert preview["user_auth_valid"] is True
+    assert preview["search_docs_scope"] is True
+
+
 async def test_create_and_edit_instance_description(env):
     c, _, auth, _ = env
     created = await c.post(

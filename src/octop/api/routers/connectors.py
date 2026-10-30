@@ -774,9 +774,14 @@ async def get_instance(
         svc = _connector_service(server)
         creds = svc.decrypt(instance_id)
         data["credentials_preview"] = _credentials_preview(inst.kind, creds)
-        if inst.kind == "feishu-cli" and data["credentials_preview"].get("user_auth_configured"):
+        if inst.kind == "feishu-cli":
             live = await asyncio.to_thread(live_user_auth_preview, creds)
             data["credentials_preview"].update(live)
+            if live.get("user_auth_valid") is True:
+                # Older instances may have a valid CLI grant without the
+                # persisted default_as flag. Report the live state so the
+                # drawer does not ask an authorized user to authorize again.
+                data["credentials_preview"]["user_auth_configured"] = True
     else:
         data["credentials_preview"] = {}
     return data

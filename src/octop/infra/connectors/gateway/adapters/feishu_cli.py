@@ -134,16 +134,16 @@ def call_tool(creds: dict[str, Any], name: str, args: dict[str, Any]) -> str:
         if not tokens:
             raise ValueError("method is required")
         identity = _resolve_identity(domain, tokens[0], creds)
-        if (domain, tokens[0]) in _USER_ONLY_SHORTCUTS and str(
-            creds.get("default_as") or ""
-        ).strip().lower() != "user":
-            # Octop has not recorded a completed user OAuth yet.
-            raise ValueError(_USER_AUTH_REQUIRED_MSG)
-        env = _prepare_env(creds, prefer_identity=identity)
-        if (domain, tokens[0]) in _USER_ONLY_SHORTCUTS and not _has_user_scope(
-            binary, env, "search:docs:read"
-        ):
-            raise ValueError(_MISSING_SEARCH_SCOPE_MSG)
+        user_only = (domain, tokens[0]) in _USER_ONLY_SHORTCUTS
+        if user_only:
+            # Stored metadata may predate a successful device login. The live
+            # user token and scope are authoritative for user-only commands.
+            env = _prepare_env(creds, prefer_identity="user")
+            scope_error = _user_scope_error(binary, env, "search:docs:read")
+            if scope_error:
+                raise ValueError(scope_error)
+        else:
+            env = _prepare_env(creds, prefer_identity=identity)
         raw_args = args.get("args")
         payload: dict[str, Any] = raw_args if isinstance(raw_args, dict) else {}
         argv = _build_argv(binary, domain, method, payload, identity=identity)
@@ -152,12 +152,30 @@ def call_tool(creds: dict[str, Any], name: str, args: dict[str, Any]) -> str:
         raise ValueError(_humanize_cli_error(str(exc))) from exc
 
 
-def _has_user_scope(binary: str, env: dict[str, str], scope: str) -> bool:
+def _user_scope_error(binary: str, env: dict[str, str], scope: str) -> str | None:
     try:
         run_cli([binary, "auth", "check", "--scope", scope], env=env, timeout_s=30.0)
-        return True
+        return None
     except ValueError:
+        if _user_identity_usable(binary, env):
+            return _MISSING_SEARCH_SCOPE_MSG
+        return _USER_AUTH_REQUIRED_MSG
+
+
+def _user_identity_usable(binary: str, env: dict[str, str]) -> bool:
+    try:
+        raw = run_cli([binary, "auth", "status", "--json"], env=env, timeout_s=30.0)
+        payload = json.loads(raw) if raw.lstrip().startswith("{") else {}
+        if not payload and "{" in raw:
+            payload = json.loads(raw[raw.find("{") :])
+    except (ValueError, json.JSONDecodeError):
         return False
+    identities = payload.get("identities") if isinstance(payload, dict) else None
+    user = identities.get("user") if isinstance(identities, dict) else None
+    if not isinstance(user, dict) or not user.get("available"):
+        return False
+    token_status = str(user.get("tokenStatus") or "").strip().lower()
+    return token_status not in {"expired", "invalid", "missing", "revoked"}
 
 
 def _resolve_identity(domain: str, shortcut: str, creds: dict[str, Any]) -> str | None:
