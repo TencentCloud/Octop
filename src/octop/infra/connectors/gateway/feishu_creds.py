@@ -64,11 +64,14 @@ def ensure_feishu_cli_config(
     fingerprint = credential_fingerprint(app_id, app_secret)
     marker = config_dir / _FINGERPRINT_NAME
     config_path = config_dir / "config.json"
-    if (
-        marker.is_file()
-        and config_path.is_file()
-        and marker.read_text(encoding="utf-8").strip() == fingerprint
-    ):
+    try:
+        fingerprint_match = (
+            marker.is_file()
+            and marker.read_text(encoding="utf-8").strip() == fingerprint
+        )
+    except OSError:
+        fingerprint_match = False
+    if fingerprint_match and config_path.is_file():
         _ensure_default_as(binary, env, identity)
         return
 

@@ -211,7 +211,11 @@ def resolve_backup_path(paths: PathLayout, filename: str) -> Path:
 
 
 def read_backup_file(paths: PathLayout, filename: str) -> bytes:
-    return resolve_backup_path(paths, filename).read_bytes()
+    path = resolve_backup_path(paths, filename)
+    try:
+        return path.read_bytes()
+    except OSError as exc:
+        raise OctopError(ErrorCode.NOT_FOUND, f"backup unreadable: {filename}") from exc
 
 
 def delete_backup_file(paths: PathLayout, filename: str) -> None:

@@ -36,12 +36,14 @@ def materialize_wecom_bot_config(config_dir: Path, *, bot_id: str, bot_secret: s
     marker = config_dir / _FINGERPRINT_NAME
     mcp_path = config_dir / "mcp_config.enc"
     bot_path = config_dir / "bot.enc"
-    if (
-        marker.is_file()
-        and bot_path.is_file()
-        and mcp_path.is_file()
-        and marker.read_text(encoding="utf-8").strip() == fingerprint
-    ):
+    try:
+        fingerprint_match = (
+            marker.is_file()
+            and marker.read_text(encoding="utf-8").strip() == fingerprint
+        )
+    except OSError:
+        fingerprint_match = False
+    if fingerprint_match and bot_path.is_file() and mcp_path.is_file():
         return
 
     key = _load_or_create_key(config_dir)
@@ -61,7 +63,10 @@ def materialize_wecom_bot_config(config_dir: Path, *, bot_id: str, bot_secret: s
 def _load_or_create_key(config_dir: Path) -> bytes:
     key_path = config_dir / ".encryption_key"
     if key_path.is_file():
-        raw = key_path.read_text(encoding="utf-8").strip()
+        try:
+            raw = key_path.read_text(encoding="utf-8").strip()
+        except OSError:
+            raw = ""
         try:
             key = base64.b64decode(raw)
         except Exception:
