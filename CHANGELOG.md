@@ -110,6 +110,9 @@
 ### 变更
 - 升级 octop-harness 1.0.3 与 octop-gateway 1.0.2
 
+### 新增
+- 模型设置页支持讯飞星辰 MaaS Astron Token Plan 的图标、中英文名称与文档链接；Spark-X2.5 / Spark-X2-Flash 可开关思考
+
 ## [1.0.2b7] - 2026-10-12
 
 ### 新增
