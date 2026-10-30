@@ -55,7 +55,11 @@ _CHANNEL_FINGERPRINTS: dict[str, str] = {}
 
 def _channel_fingerprint(directory: Path) -> str:
     digest = hashlib.sha256()
-    for path in sorted(directory.rglob("*")):
+    try:
+        channel_entries = sorted(directory.rglob("*"))
+    except OSError:
+        channel_entries = []
+    for path in channel_entries:
         if not path.is_file() or any(
             part in {"__pycache__", ".git"} for part in path.relative_to(directory).parts
         ):
@@ -876,7 +880,11 @@ class PluginManager:
                 dest = f"skills/{skill_dir.name}"
                 if workspace.exists(f"{dest}/SKILL.md"):
                     continue
-                for path in skill_dir.rglob("*"):
+                try:
+                    skill_entries = list(skill_dir.rglob("*"))
+                except OSError:
+                    skill_entries = []
+                for path in skill_entries:
                     if not path.is_file():
                         continue
                     rel = path.relative_to(skill_dir).as_posix()
