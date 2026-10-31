@@ -2,8 +2,11 @@
 
 from __future__ import annotations
 
+import contextlib
 import os
 import re
+import stat
+import tempfile
 from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
@@ -110,8 +113,29 @@ def format_env_file(values: dict[str, str]) -> str:
 
 
 def save_env_file(path: Path, values: dict[str, str]) -> None:
+    """Write the dotenv file atomically.
+
+    ``~/.octop/env`` holds the only copy of the user's API keys, so a crash or a
+    full disk halfway through ``write_text`` silently dropped every credential:
+    the file is truncated before the new text lands. Write a sibling temp file
+    and swap it in so readers see either the old file or the complete new one.
+    """
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(format_env_file(values), encoding="utf-8")
+    payload = format_env_file(values).encode("utf-8")
+    existing_mode = (
+        stat.S_IMODE(path.stat().st_mode) if os.name == "posix" and path.exists() else None
+    )
+    fd, tmp_name = tempfile.mkstemp(dir=path.parent, prefix=f".{path.name}.", suffix=".tmp")
+    try:
+        with os.fdopen(fd, "wb") as handle:
+            handle.write(payload)
+        if existing_mode is not None:
+            os.chmod(tmp_name, existing_mode)
+        os.replace(tmp_name, path)
+    except BaseException:  # also covers KeyboardInterrupt / SystemExit
+        with contextlib.suppress(OSError):
+            os.unlink(tmp_name)
+        raise
 
 
 def apply_env_file(path: Path) -> dict[str, str]:

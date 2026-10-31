@@ -128,3 +128,28 @@ def test_quoted_value_with_inner_quote_does_not_swallow_following_lines() -> Non
     text = 'MALFORMED="abc"def\nNEXT=1\n'
 
     assert parse_env_text(text) == {"MALFORMED": '"abc"def', "NEXT": "1"}
+
+def test_save_env_file_keeps_previous_secrets_when_swap_fails(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A failed atomic swap must leave the previous env file intact.
+
+    ``~/.octop/env`` is the only copy of the user's API keys, and ``write_text``
+    truncated it in place before writing, so any crash or full disk halfway
+    through a save dropped every credential. The file is now written to a
+    sibling temp file and swapped in, so the swap failing leaves the old file.
+    """
+    import os
+
+    path = tmp_path / "env"
+    save_env_file(path, {"OLD_KEY": "old-secret"})
+
+    def _fail(*_args: object, **_kwargs: object) -> None:
+        raise OSError("simulated swap failure")
+
+    monkeypatch.setattr(os, "replace", _fail)
+    with pytest.raises(OSError, match="simulated swap failure"):
+        save_env_file(path, {"NEW_KEY": "new-secret"})
+
+    assert load_env_file(path) == {"OLD_KEY": "old-secret"}
+    assert not list(tmp_path.glob(".env*.tmp"))
