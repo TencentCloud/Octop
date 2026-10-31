@@ -1,5 +1,21 @@
 """Bounded, namespace-scoped PostgreSQL cleanup; never vacuum shared tables.
 
+    }
+        "physical_space_reclaimed": False,
+        "backup_bytes": backup.stat().st_size if total else 0,
+def _pg_backup_size(backup: Path, total: int) -> int:
+    """Return backup file size, or 0 on OSError or when total is falsy."""
+    if not total:
+        return 0
+    try:
+        return backup.stat().st_size
+    except OSError:
+        return 0
+        "physical_space_reclaimed": False,
+    }
+
+"""Bounded, namespace-scoped PostgreSQL cleanup; never vacuum shared tables.
+
 The host supplies the live backend's namespace, pauses only its expert, and
 keeps a durable JSONL copy of the exact locked rows before deleting them.
 Checkpoints, raw evidence, active memories and decision journals are untouched.
@@ -215,6 +231,6 @@ def maintain_postgres_storage(
         "total_deleted": sum(deleted.values()),
         "limit_per_table": LIMIT_PER_TABLE,
         "backup_path": str(backup) if total else None,
-        "backup_bytes": backup.stat().st_size if total else 0,
+        "backup_bytes": _pg_backup_size(backup, total),
         "physical_space_reclaimed": False,
     }

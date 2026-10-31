@@ -58,7 +58,11 @@ def profile_avatar_url(directory: Path, key: str, api_path: str) -> str | None:
     path = _existing(directory, _stem(key))
     if path is None:
         return None
-    return f"{api_path}?v={int(path.stat().st_mtime)}"
+    try:
+        mtime = int(path.stat().st_mtime)
+    except OSError:
+        mtime = 0
+    return f"{api_path}?v={mtime}"
 
 
 def write_profile_avatar(directory: Path, key: str, data: bytes) -> None:
