@@ -33,7 +33,7 @@ admin can clear the lockout with `POST /api/users/{id}/unlock-login`.
 `/api/auth/login`, `/api/auth/captcha`, `/api/auth/oidc/status`, `/api/auth/oidc/start`,
 `/api/auth/oidc/callback`, `/api/auth/oidc/exchange`, `/api/auth/oauth/status`,
 `/api/auth/oauth/start`, `/api/auth/oauth/callback`, `/api/auth/oauth/exchange`,
-`/api/auth/ldap/status`,
+`/api/auth/external/exchange`, `/api/auth/ldap/status`,
 `/api/connectors/oauth/callback`, and `/api/internal/mcp/*`. All other routes are JWT-gated by
 `api/middleware/jwt_auth.py`; the setup lockdown middleware
 (`api/middleware/setup_lockdown.py`) additionally blocks non-setup
@@ -90,9 +90,10 @@ does not set these headers itself.
 | `POST`   | `/auth/oauth/start` | public | body `{kind, redirect_after?}` → authorization URL |
 | `GET`    | `/auth/oauth/callback` | public | App OAuth callback (`code` or DingTalk `authCode`); same completion page as OIDC |
 | `POST`   | `/auth/oauth/exchange` | public | Same one-time code exchange as `/auth/oidc/exchange` |
+| `POST`   | `/auth/external/exchange` | public | Trusted server-to-server sign-on: body `{app_id, username, timestamp, nonce, signature, display_name?, email?}` — HMAC-SHA256 of `app_id\nusername\ntimestamp\nnonce` with the configured shared secret → `{login_code, expires_in}` (60s one-time code, not a JWT). The caller redirects the user's browser to `/login/external#code=<login_code>&redirect=<internal path>`; the page exchanges the code at `POST /auth/oidc/exchange` (same JWT response as `/auth/login`). Unknown users are auto-provisioned with the default role; anonymous failures are throttled like password login and always return `AUTH_FAILED` (no reason leakage). The shared secret is stored encrypted server-side, held by the Octop admin and the external operator; rotate it by updating the external provider secret (old signatures fail immediately). The browser never sees the JWT in the URL — only the 60s code in the hash, exchanged same-origin |
 | `POST`   | `/auth/oauth/bind/start` | user | body `{kind, redirect_after?}` → bind the identity to the current user |
 | `POST`   | `/auth/oauth/unbind` | user | Unlink one SSO identity by `kind` (requires a local password when it is the last login method) |
-| `GET`    | `/auth/oauth/providers/{kind}` | admin | Provider config; `kind` is `oidc`, `feishu`, `dingtalk`, or `wecom` |
+| `GET`    | `/auth/oauth/providers/{kind}` | admin | Provider config; `kind` is `oidc`, `feishu`, `dingtalk`, `wecom`, or `external` (`external` has no browser redirect flow — it only backs the server-to-server `/auth/external/exchange`) |
 | `PUT`    | `/auth/oauth/providers/{kind}` | admin | Upsert provider config; `client_secret` is write-only; WeCom uses `extra.agent_id` |
 | `POST`   | `/auth/oauth/providers/{kind}/test` | admin | Test provider credentials |
 | `GET`    | `/auth/ldap/status` | public | `{enabled, display_name}` for the login page hint |

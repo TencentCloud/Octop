@@ -35,6 +35,12 @@ interface SsoAppProviderShellProps {
   standalone?: boolean;
   /** Checklist progress 0–5 (same model as OIDC aside). */
   guideStep?: number;
+  /** 设置清单数据源，默认内置 OAUTH_GUIDE_STEPS。 */
+  guideSteps?: readonly string[];
+  /** 为 true 时不渲染登录按钮预览卡（服务器间免登无登录按钮）。 */
+  hideLoginPreview?: boolean;
+  /** 为 true 时不渲染 redirect URI 卡（服务器间免登无回调地址）。 */
+  hideRedirectSection?: boolean;
   enabled?: boolean;
   previewName?: string;
   children: ReactNode;
@@ -60,6 +66,9 @@ export default function SsoAppProviderShell({
   defaultOpen = false,
   standalone = false,
   guideStep = 0,
+  guideSteps = OAUTH_GUIDE_STEPS,
+  hideLoginPreview = false,
+  hideRedirectSection = false,
   enabled = false,
   previewName = "",
   children,
@@ -73,7 +82,7 @@ export default function SsoAppProviderShell({
         <div className={styles.ssoGuide}>
           <div className={styles.ssoAsideTitle}>{t("adminSso.guideTitle")}</div>
           <ol className={styles.ssoGuideList}>
-            {OAUTH_GUIDE_STEPS.map((key, index) => {
+            {guideSteps.map((key, index) => {
               const done = guideStep > index;
               const current = guideStep === index;
               return (
@@ -97,89 +106,95 @@ export default function SsoAppProviderShell({
           </ol>
         </div>
 
-        <div className={styles.ssoAsideCard}>
-          <div className={styles.ssoAsideTitle}>
-            {t("adminSso.loginPreview")}
+        {!hideLoginPreview && (
+          <div className={styles.ssoAsideCard}>
+            <div className={styles.ssoAsideTitle}>
+              {t("adminSso.loginPreview")}
+            </div>
+            <div
+              className={[
+                styles.ssoPreviewBtn,
+                enabled ? "" : styles.ssoPreviewBtnMuted,
+              ]
+                .filter(Boolean)
+                .join(" ")}
+            >
+              {t("login.oidcWith", { name: previewLabel })}
+            </div>
+            {!enabled && (
+              <p className={styles.ssoPreviewHint}>
+                {t("adminSso.loginPreviewDisabled")}
+              </p>
+            )}
           </div>
-          <div
-            className={[
-              styles.ssoPreviewBtn,
-              enabled ? "" : styles.ssoPreviewBtnMuted,
-            ]
-              .filter(Boolean)
-              .join(" ")}
-          >
-            {t("login.oidcWith", { name: previewLabel })}
-          </div>
-          {!enabled && (
-            <p className={styles.ssoPreviewHint}>
-              {t("adminSso.loginPreviewDisabled")}
-            </p>
-          )}
-        </div>
+        )}
 
-        <section className={styles.ssoRedirectCard}>
-          <div className={styles.ssoRedirectHeader}>
-            <h4 className={styles.ssoSectionTitle}>
-              {t("adminSso.redirectUri")}
-            </h4>
-            <p className={styles.ssoSectionHint}>{redirectHint}</p>
-          </div>
-          {callbackDomain ? (
-            <>
-              <p className={styles.ssoSectionHint}>
-                {callbackDomainHint || t("adminSso.callbackDomainHint")}
-              </p>
-              <Space.Compact className={styles.ssoRedirectRow}>
-                <Tooltip title={callbackDomain}>
-                  <Input
-                    readOnly
-                    value={callbackDomain}
-                    className={styles.ssoRedirectInput}
-                  />
-                </Tooltip>
-                <Button
-                  type="primary"
-                  icon={copiedDomain ? <Check size={15} /> : <Copy size={15} />}
-                  onClick={onCopyDomain}
-                  aria-label={t("adminSso.copyCallbackDomain")}
-                >
-                  {copiedDomain ? t("adminSso.copied") : t("adminSso.copy")}
-                </Button>
-              </Space.Compact>
-              <p className={styles.ssoSectionHint}>
-                {t("adminSso.callbackFullUriHint")}
-              </p>
-            </>
-          ) : null}
-          <Space.Compact className={styles.ssoRedirectRow}>
-            <Tooltip title={redirectUri || undefined}>
-              <Input
-                readOnly
-                value={redirectUri}
-                className={styles.ssoRedirectInput}
-                placeholder={t("adminSso.redirectUriEmpty")}
-              />
-            </Tooltip>
-            <Button
-              type="primary"
-              icon={copied ? <Check size={15} /> : <Copy size={15} />}
-              onClick={onCopyRedirect}
-              disabled={!redirectUri}
-              aria-label={t("adminSso.copyRedirectUri")}
-            >
-              {copied ? t("adminSso.copied") : t("adminSso.copy")}
-            </Button>
-          </Space.Compact>
-          {redirectDocs ? (
-            <Typography.Paragraph
-              type="secondary"
-              className={styles.ssoRedirectDocs}
-            >
-              {redirectDocs}
-            </Typography.Paragraph>
-          ) : null}
-        </section>
+        {!hideRedirectSection && (
+          <section className={styles.ssoRedirectCard}>
+            <div className={styles.ssoRedirectHeader}>
+              <h4 className={styles.ssoSectionTitle}>
+                {t("adminSso.redirectUri")}
+              </h4>
+              <p className={styles.ssoSectionHint}>{redirectHint}</p>
+            </div>
+            {callbackDomain ? (
+              <>
+                <p className={styles.ssoSectionHint}>
+                  {callbackDomainHint || t("adminSso.callbackDomainHint")}
+                </p>
+                <Space.Compact className={styles.ssoRedirectRow}>
+                  <Tooltip title={callbackDomain}>
+                    <Input
+                      readOnly
+                      value={callbackDomain}
+                      className={styles.ssoRedirectInput}
+                    />
+                  </Tooltip>
+                  <Button
+                    type="primary"
+                    icon={
+                      copiedDomain ? <Check size={15} /> : <Copy size={15} />
+                    }
+                    onClick={onCopyDomain}
+                    aria-label={t("adminSso.copyCallbackDomain")}
+                  >
+                    {copiedDomain ? t("adminSso.copied") : t("adminSso.copy")}
+                  </Button>
+                </Space.Compact>
+                <p className={styles.ssoSectionHint}>
+                  {t("adminSso.callbackFullUriHint")}
+                </p>
+              </>
+            ) : null}
+            <Space.Compact className={styles.ssoRedirectRow}>
+              <Tooltip title={redirectUri || undefined}>
+                <Input
+                  readOnly
+                  value={redirectUri}
+                  className={styles.ssoRedirectInput}
+                  placeholder={t("adminSso.redirectUriEmpty")}
+                />
+              </Tooltip>
+              <Button
+                type="primary"
+                icon={copied ? <Check size={15} /> : <Copy size={15} />}
+                onClick={onCopyRedirect}
+                disabled={!redirectUri}
+                aria-label={t("adminSso.copyRedirectUri")}
+              >
+                {copied ? t("adminSso.copied") : t("adminSso.copy")}
+              </Button>
+            </Space.Compact>
+            {redirectDocs ? (
+              <Typography.Paragraph
+                type="secondary"
+                className={styles.ssoRedirectDocs}
+              >
+                {redirectDocs}
+              </Typography.Paragraph>
+            ) : null}
+          </section>
+        )}
 
         {asideExtra}
       </aside>

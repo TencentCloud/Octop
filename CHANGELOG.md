@@ -7,6 +7,7 @@
 ## [Unreleased]
 
 ### 新增
+- 外部业务系统可用共享密钥 HMAC 免登：管理 → 用户配置 App ID 与共享密钥后，`POST /api/auth/external/exchange` 换取 60 秒一次性登录码并自动开户；浏览器经 `/login/external#code=...` 同源换票，地址栏不出现 JWT（#2702）
 - ragflow 连接器支持配置服务地址、API Key 与默认知识库 ID，专家可列出知识库、检索片段和分页读取文档，凭证沿用加密存储（#2308）
 
 ### 修复

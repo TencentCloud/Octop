@@ -34,6 +34,7 @@ def test_exempt_paths() -> None:
     assert is_jwt_exempt_path("/api/auth/oauth/start")
     assert is_jwt_exempt_path("/api/auth/oauth/callback")
     assert is_jwt_exempt_path("/api/auth/oauth/exchange")
+    assert is_jwt_exempt_path("/api/auth/external/exchange")
     assert is_jwt_exempt_path("/api/auth/invite/validate")
     assert is_jwt_exempt_path("/api/auth/invite/redeem")
     assert is_jwt_exempt_path("/api/docs")
