@@ -80,10 +80,16 @@ async def update_status(
     error: str | None = None,
     result: dict[str, Any] | None = None,
 ) -> None:
-    """Update the status of a task. No-op if task_id doesn't exist."""
+    """Update the status of a task. No-op if task_id doesn't exist or was cancelled.
+
+    Cancellation is terminal. ``OllamaModelManager.pull_model`` blocks in a
+    worker thread and cannot be interrupted, so the pull keeps running after
+    the user cancels; its eventual COMPLETED/FAILED must not overwrite
+    ``cancelled`` and resurrect a download the user stopped.
+    """
     async with _lock:
         task = _tasks.get(task_id)
-        if task is None:
+        if task is None or task.status is DownloadTaskStatus.CANCELLED:
             return
         task.status = status
         task.updated_at = time.time()
