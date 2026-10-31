@@ -223,9 +223,8 @@
 }
 
 /* ---------- Rail header ---------- */
-/* Owns the seam handle: the rail clips its own width animation, so the handle
-   must be a sibling of it, not a child. Above the history rail (z-index 2) so
-   the half of the capsule that straddles the divider is never painted over. */
+/* Keeps the rail above the history rail so the header controls are never
+   painted over by the neighbouring column. */
 .navRailHost {
   position: relative;
   display: flex;
@@ -243,9 +242,11 @@
   }
 }
 
-/* The window-controls band: space for traffic lights, and — before the seam
-   handle — the nav's own toggle. Height only, no control. */
+/* The window-controls band. Height only — it exists so nothing is drawn under
+   the native traffic lights. The rail's fold control is the seam handle on its
+   trailing edge, not a corner of this row. */
 .navChrome {
+  position: relative;
   flex: 0 0 var(--octop-shell-top-band, 58px);
   height: var(--octop-shell-top-band, 58px);
   box-sizing: border-box;

@@ -19,7 +19,16 @@ import { CHAT_HISTORY_RAIL_ID, isChatPath } from "../chatHistoryRail";
 import { useIsMobile } from "../../hooks/useIsMobile";
 import { useKeyboardOffset } from "../../hooks/useKeyboardOffset";
 import { useChatSidebarOpen } from "../../pages/Chat/hooks/useChatSidebarState";
-import { EXPAND_CHAT_RAIL_EVENT } from "../../pages/Chat/components/ChatSidebarPanel";
+import { EXPAND_CHAT_RAIL_EVENT } from "../../pages/Chat/chatRailEvents";
+import RailSeamHandle, {
+  SEAM_HANDLE_STEP,
+} from "../../components/RailSeamHandle";
+import {
+  isMacPlatform,
+  railShortcutAria,
+  railShortcutLabel,
+} from "../../utils/railShortcuts";
+import { useTranslation } from "react-i18next";
 import RequirePermission from "../../components/RequirePermission";
 import { routeNeedsPermission } from "../../utils/permissions";
 import { useLayoutMode } from "../../context/LayoutModeContext";
@@ -62,6 +71,7 @@ function ChatWithKey() {
 export default function MainLayout() {
   const location = useLocation();
   const navigate = useNavigate();
+  const { t } = useTranslation();
   const currentPath = location.pathname;
   const selectedKey = resolveSelectedKey(currentPath);
   const isMobile = useIsMobile();
@@ -150,6 +160,22 @@ export default function MainLayout() {
     onToggleNav: toggleCollapsed,
     onToggleHistory: handleHistoryRailToggle,
   });
+
+  /**
+   * Second seam: the conversation list folds from the line it shares with the
+   * conversation. Its name is the action (the accelerator lives in the
+   * tooltip), so AT hears "收起对话历史" and not "toggle".
+   */
+  const historyRailLabel = t(
+    chatSidebarOpen
+      ? "chat.collapseHistorySidebar"
+      : "chat.expandHistorySidebar",
+    chatSidebarOpen ? "收起对话历史" : "展开对话历史",
+  );
+  const historyRailHint = `${historyRailLabel} (${railShortcutLabel(
+    "toggle-history",
+    isMacPlatform(),
+  )})`;
 
   // When switching to mobile, always collapse; restore saved preference on desktop
   useEffect(() => {
@@ -342,7 +368,22 @@ export default function MainLayout() {
                   height: "100%",
                   position: "relative",
                 }}
-              />
+              >
+                {/* The rail's fold hangs off this container's trailing edge, so
+                    it lands on the seam and follows the rail as it folds to
+                    zero width — then it sits beside the nav's own handle. */}
+                {!isMobile && (
+                  <RailSeamHandle
+                    open={chatSidebarOpen}
+                    onToggle={handleHistoryRailToggle}
+                    label={historyRailLabel}
+                    hint={historyRailHint}
+                    shortcut={railShortcutAria("toggle-history")}
+                    offsetY={SEAM_HANDLE_STEP}
+                    persistent={!chatSidebarOpen}
+                  />
+                )}
+              </div>
             )}
 
             {/* Right column: mobile header (if any) + page content */}
