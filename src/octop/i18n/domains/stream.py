@@ -24,10 +24,12 @@ RECURSION_LIMIT = f"{_PREFIX}stream_errors.recursion_limit"
 TIMEOUT_NETWORK = f"{_PREFIX}stream_errors.timeout_network"
 PROVIDER_UNAVAILABLE = f"{_PREFIX}stream_errors.provider_unavailable"
 MODEL_CALL_FAILED = f"{_PREFIX}stream_errors.model_call_failed"
+AGENT_NOT_LOADED = f"{_PREFIX}stream_errors.agent_not_loaded"
 PATH_OUTSIDE_ROOT = f"{_PREFIX}stream_errors.path_outside_root"
 INVALID_REQUEST = f"{_PREFIX}stream_errors.invalid_request"
 
 __all__ = [
+    "AGENT_NOT_LOADED",
     "AUTH",
     "CONTEXT_LENGTH",
     "INSUFFICIENT_BALANCE",
@@ -40,6 +42,7 @@ __all__ = [
     "RECURSION_LIMIT",
     "STREAM_STALL",
     "TIMEOUT_NETWORK",
+    "agent_not_loaded_id",
     "classify_stream_error_message",
     "exception_display_message",
     "format_stream_error",
@@ -205,6 +208,30 @@ def classify_stream_error_message(message: str) -> str | None:
     return None
 
 
+def agent_not_loaded_id(exc: BaseException | str) -> str | None:
+    """Return an agent id when *exc* is a harness missing-registry ``KeyError``.
+
+    Harness ``Manager.stream`` / ``call`` raise bare ``KeyError(agent_id)`` when
+    the agent is not loaded. Those must not fall through to the model-call
+    failure template (which previously rendered as ``模型调用失败：'FMC7EM'``).
+    """
+    current = exc if isinstance(exc, BaseException) else None
+    seen: set[int] = set()
+    while current is not None and id(current) not in seen:
+        seen.add(id(current))
+        if isinstance(current, KeyError) and current.args:
+            token = current.args[0]
+            if isinstance(token, str):
+                candidate = token.strip()
+                # Public agent ids are short opaque tokens (ULID / legacy short id).
+                if candidate and " " not in candidate and len(candidate) <= 64:
+                    return candidate
+        current = current.__cause__ or (
+            None if current.__suppress_context__ else current.__context__
+        )
+    return None
+
+
 def exception_display_message(exc: BaseException | str) -> str:
     """Return ``str(exc)``, or the exception type name when the message is empty.
 
@@ -257,6 +284,9 @@ def format_stream_error(exc: BaseException | str, locale: str | Locale = "en") -
         current = current.__cause__ or (
             None if current.__suppress_context__ else current.__context__
         )
+    agent_id = agent_not_loaded_id(exc)
+    if agent_id is not None:
+        return _format_template("stream_errors.agent_not_loaded", locale, detail=agent_id)
     message = exception_display_message(exc)
     inner = unwrap_model_retry_message(message)
     classified = classify_stream_error_message(inner)

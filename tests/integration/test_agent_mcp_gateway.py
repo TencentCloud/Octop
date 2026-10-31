@@ -149,7 +149,10 @@ async def test_agent_mcp_calls_expert_and_continues_only_its_own_thread(
     )
     result = rejected.json()["result"]
     assert result["isError"] is True
-    assert "only MCP-created threads" in result["structuredContent"]["error"]
+    error = result["structuredContent"]["error"]
+    assert isinstance(error, dict)
+    assert "only MCP-created threads" in error["message"]
+    assert error.get("code") == "FORBIDDEN"
 
 
 @pytest.mark.asyncio
@@ -239,7 +242,9 @@ async def test_agent_mcp_hitl_lifecycle_and_followup_approval(
     )
     rejected_result = rejected.json()["result"]
     assert rejected_result["isError"] is True
-    assert "is not allowed" in rejected_result["structuredContent"]["error"]
+    rejected_error = rejected_result["structuredContent"]["error"]
+    assert isinstance(rejected_error, dict)
+    assert "is not allowed" in rejected_error["message"]
     assert resume_calls == []
 
     resumed = await client.post(

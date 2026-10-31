@@ -417,7 +417,8 @@
     "AGENT_NOT_FOUND": "Agent not found.",
     "EXPERT_TEMPLATE_NOT_FOUND": "Expert template not found.",
     "DEFAULT_EXPERT_FAILED": "Could not create the default expert.",
-    "AGENT_NOT_RUNNING": "This expert is not enabled.",
+    "AGENT_NOT_RUNNING": "The expert is not running. Start it in the Octop console and retry.",
+    "AGENT_DISABLED": "The expert is disabled. Enable it in the Octop console first.",
     "CHECKPOINT_DELETE_FAILED": "Conversation data was not deleted. The thread is still here; try again.",
     "THREAD_TURN_ACTIVE": "A reply is still in progress. Stop it, then delete this conversation.",
     "AGENT_FAILED": "Agent failed to start.",
@@ -764,6 +765,7 @@
     "invalid_request": "The model rejected this request as invalid. Strict OpenAI-compatible endpoints (for example Huawei MindIE) often reject extra fields such as stream_options. Custom providers now omit streamed usage by default; if it still fails, check whether the model supports tool calling. The full error is in the server log.",
     "model_call_failed": "The model call failed after several retries. Wait a moment and retry. If it keeps failing, check the model settings or switch models.",
     "model_call_failed_detail": "The model call failed: {detail}",
+    "agent_not_loaded": "Expert {detail} is not loaded in the runtime (it may be stopped). Start it in the Octop console and retry.",
     "model_retry_prompt": "The model API request failed. Do not pretend the task succeeded.\n\nWhat happened: {guidance}\n\nExplain this to the user in their language and suggest the next step. Do not retry the same failing request unchanged.\n\nTechnical detail: {detail}",
     "path_outside_root": "The file path is outside this expert's storage root, so it cannot be read or written. Use a path under the storage root, or widen the storage root in expert settings (on Windows, set an explicit drive path such as D:/octop-data)."
   },
