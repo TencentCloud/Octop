@@ -266,3 +266,41 @@ async def test_import_skips_octop_builtin_skills(tmp_path: Path) -> None:
     assert not (ws / ".octop" / "_builtin_skills").exists()
     assert result["imported"] == 1
     assert any("_builtin_skills" in warning for warning in result["warnings"])
+
+@pytest.mark.asyncio
+async def test_replace_import_unlinks_directory_link_instead_of_failing(tmp_path: Path) -> None:
+    """A linked directory inside the workspace must not abort a replace import.
+
+    ``Path.is_dir()`` follows symlinks and junctions, but ``shutil.rmtree``
+    refuses them ("Cannot call rmtree on a symbolic link"). The clear loop
+    therefore raised on the first link, leaving the workspace half-wiped and
+    the import failed. Only the link entry lives in the workspace; the target
+    may be outside it and has to survive.
+    """
+    ws = tmp_path / "ws"
+    ws.mkdir()
+    (ws / "old.txt").write_text("old", encoding="utf-8")
+
+    target = tmp_path / "shared"
+    target.mkdir()
+    (target / "keep.txt").write_text("keep", encoding="utf-8")
+    link = ws / "shared"
+    try:
+        link.symlink_to(target, target_is_directory=True)
+    except (OSError, NotImplementedError):
+        pytest.skip("directory links are unavailable on this platform")
+
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w") as zf:
+        zf.writestr("new.txt", "new")
+    data = buf.getvalue()
+
+    backend = LocalShellBackend(root_dir=str(ws), virtual_mode=False)
+    workspace = BackendWorkspace(backend, ws)
+    result = await import_workspace_zip(workspace, data, mode="replace", local_workspace_dir=ws)
+
+    assert result["imported"] == 1
+    assert not link.is_symlink()
+    assert (target / "keep.txt").read_bytes() == b"keep"
+    assert not (ws / "old.txt").exists()
+    assert (ws / "new.txt").read_bytes() == b"new"
