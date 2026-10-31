@@ -67,3 +67,34 @@ async def test_unknown_tool_is_a_tool_error(user: User) -> None:
     )
     assert response["result"]["isError"] is True
     assert response["result"]["structuredContent"] == {"error": "unknown tool: unknown"}
+
+
+@pytest.mark.asyncio
+async def test_octop_error_surfaces_error_code(user: User) -> None:
+    from octop.infra.errors import ErrorCode, OctopError
+
+    service = MagicMock()
+    service.call_expert = AsyncMock(
+        side_effect=OctopError(
+            ErrorCode.AGENT_NOT_RUNNING,
+            "expert is not running: start it in the Octop console and retry",
+        )
+    )
+    response = await handle_agent_mcp_request(
+        service=service,
+        user=user,
+        body={
+            "jsonrpc": "2.0",
+            "id": 11,
+            "method": "tools/call",
+            "params": {
+                "name": "call_octop_expert",
+                "arguments": {"expert_id": "FMC7EM", "message": "hi"},
+            },
+        },
+    )
+    payload = response["result"]["structuredContent"]
+    assert response["result"]["isError"] is True
+    assert payload["status"] == "failed"
+    assert payload["error"]["code"] == "AGENT_NOT_RUNNING"
+    assert "start it in the Octop console" in payload["error"]["message"]

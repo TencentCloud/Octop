@@ -32,7 +32,7 @@ from octop.infra.agents.teams.team_manager import (
 from octop.infra.agents.teams.team_manager import (
     stamp_team_host_chunk as _maybe_stamp_team_host,
 )
-from octop.infra.errors import OctopError
+from octop.infra.errors import ErrorCode, OctopError
 from octop.infra.gateway.cli.events import message_event_to_cli_chunks
 from octop.infra.gateway.hitl.coordinator import (
     HitlAnswerOutcome,
@@ -112,6 +112,10 @@ def _elapsed_ms(started: float) -> int:
 def _stream_error(exc: Exception, locale: str) -> tuple[str, str | None]:
     if isinstance(exc, OctopError):
         return exc.localized_message(locale), exc.code.value
+    from octop.i18n.domains.stream import agent_not_loaded_id  # noqa: PLC0415
+
+    if agent_not_loaded_id(exc) is not None:
+        return format_stream_error(exc, locale), ErrorCode.AGENT_NOT_RUNNING.value
     return format_stream_error(exc, locale), None
 
 

@@ -270,3 +270,14 @@ def test_format_stream_error_empty_exception_still_localized() -> None:
     assert text
     assert "模型调用失败" in text
     assert "TimeoutError" in text
+
+
+def test_format_stream_error_keyerror_agent_id_is_not_model_failure() -> None:
+    from octop.i18n.domains.stream import agent_not_loaded_id
+
+    exc = KeyError("FMC7EM")
+    assert agent_not_loaded_id(exc) == "FMC7EM"
+    text = format_stream_error(exc, "zh")
+    assert "模型调用失败" not in text
+    assert "FMC7EM" in text
+    assert "未加载" in text or "启动" in text
