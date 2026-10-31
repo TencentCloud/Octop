@@ -392,6 +392,60 @@
   margin: 0 12px 10px 0;
 }
 
+/*
+ * Search field + the rail's own collapse control on one row. The margins live
+ * on the row so the search can shrink (``flex: 1``) instead of pushing the
+ * button past the rail's edge when the rail is narrow.
+ */
+.sessionHeaderRow {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  flex-shrink: 0;
+  margin: 0 12px 10px 0;
+
+  .sessionSearchWrap {
+    flex: 1;
+    min-width: 0;
+    margin: 0;
+  }
+}
+
+/*
+ * Each rail's collapse control sits in its own header, top-right — the same
+ * place the app nav's own toggle sits in the brand row. Ghosted at rest (no
+ * fill, tertiary ink) so it does not compete with the search field, filled on
+ * hover, 28px hit target like every other rail control.
+ */
+.railHeaderToggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--fn-text-tertiary);
+  cursor: pointer;
+  transition:
+    background var(--fn-transition-fast),
+    color var(--fn-transition-fast);
+
+  &:hover {
+    background: var(--fn-sidebar-item-hover);
+    color: var(--fn-text-primary);
+  }
+
+  &:focus-visible {
+    outline: 2px solid var(--fn-color-brand);
+    outline-offset: 1px;
+  }
+}
+
 .sessionScopeTabs {
   display: flex;
   flex-shrink: 0;

@@ -83,6 +83,25 @@ describe("nav rail collapse control", () => {
 });
 
 /**
+ * The history rail used to hang a second `PanelLeftClose` inside the Chat row —
+ * 55px under this button and with the identical glyph, so neither of them said
+ * which panel it folded. That rail now folds from its own header, and this pins
+ * the nav against growing the duplicate back.
+ */
+describe("nav rail keeps to its own control", () => {
+  beforeEach(() => {
+    localStorage.removeItem(LAYOUT_MODE_KEY);
+  });
+
+  it("offers no history-rail toggle while expanded", () => {
+    renderSidebar({ collapsed: false });
+    expect(
+      screen.queryByRole("button", { name: /展开对话历史|收起对话历史/ }),
+    ).not.toBeInTheDocument();
+  });
+});
+
+/**
  * With the rail collapsed the Chat row's toggle collapses with it, so the
  * history rail needs a control of its own in the icon rail — otherwise the only
  * ways back are a 16px hover sliver and a keyboard shortcut.

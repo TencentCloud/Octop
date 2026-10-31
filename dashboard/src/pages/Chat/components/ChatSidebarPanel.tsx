@@ -1,13 +1,18 @@
 import { useCallback } from "react";
 import { useTranslation } from "react-i18next";
 import type { RefObject } from "react";
+import { PanelLeftClose, PanelLeftOpen } from "lucide-react";
 import cx from "classnames";
 import SessionList from "./SessionList";
 import MinimalAgentSessionNav from "./MinimalAgentSessionNav";
 import type { Session } from "../hooks/useSessions";
 import type { OctopAgent } from "../../../context/AgentContext";
 import RailEdgeControl from "../../../components/RailEdgeControl";
-import { isMacPlatform, railShortcutLabel } from "../../../utils/railShortcuts";
+import {
+  isMacPlatform,
+  railShortcutAria,
+  railShortcutLabel,
+} from "../../../utils/railShortcuts";
 import styles from "../index.module.less";
 
 /** Dispatched when the chat history rail expand control is clicked. */
@@ -85,8 +90,8 @@ export default function ChatSidebarPanel({
   const { t } = useTranslation();
 
   const historyLabel = sidebarOpen
-    ? t("chat.collapseHistorySidebar")
-    : t("chat.expandHistorySidebar");
+    ? t("chat.collapseHistorySidebar", "收起对话历史")
+    : t("chat.expandHistorySidebar", "展开对话历史");
   /** Tooltip carries the accelerator; the accessible name stays the action. */
   const historyHint = `${historyLabel} (${railShortcutLabel(
     "toggle-history",
@@ -102,6 +107,31 @@ export default function ChatSidebarPanel({
     window.dispatchEvent(new Event(EXPAND_CHAT_RAIL_EVENT));
     onSidebarOpenChange(true);
   }, [sidebarOpen, onSidebarOpenChange]);
+
+  /**
+   * The rail collapses from its own header, next to the search field, the way
+   * every comparable app does it. It used to hang inside the nav's "对话" item,
+   * one row under the nav's own collapse button and with the same glyph — two
+   * identical panel icons stacked, and neither said which panel it closed.
+   */
+  const railToggle =
+    !isMobile && !navEmbedded ? (
+      <button
+        type="button"
+        className={styles.railHeaderToggle}
+        onClick={handleRailToggle}
+        aria-label={historyLabel}
+        aria-expanded={sidebarOpen}
+        aria-keyshortcuts={railShortcutAria("toggle-history")}
+        title={historyHint}
+      >
+        {sidebarOpen ? (
+          <PanelLeftClose size={16} strokeWidth={1.8} aria-hidden />
+        ) : (
+          <PanelLeftOpen size={16} strokeWidth={1.8} aria-hidden />
+        )}
+      </button>
+    ) : null;
 
   const sessionList = navEmbedded ? (
     <MinimalAgentSessionNav
@@ -123,6 +153,7 @@ export default function ChatSidebarPanel({
     <SessionList
       agents={agents}
       unreadyExperts={unreadyExperts}
+      railToggle={railToggle}
       sessions={sessions}
       activeId={activeThreadId}
       activeAgentId={resolvedAgentId ?? null}
@@ -196,6 +227,7 @@ export default function ChatSidebarPanel({
       {!isMobile && (
         <RailEdgeControl
           expanded={sidebarOpen}
+          persistent={!sidebarOpen}
           onToggle={handleRailToggle}
           side={sidebarOpen ? "end" : "start"}
           /* Collapsed: share the nav rail divider — avoid a second gapped line. */
