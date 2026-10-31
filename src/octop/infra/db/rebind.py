@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import json
 import logging
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
@@ -11,7 +10,8 @@ from octop.config import DatabaseConfig, OctopConfig, load_config, parse_databas
 from octop.infra.db.factory import open_database
 from octop.infra.db.migrate import run_migrations
 from octop.infra.db.services import build_shared_services
-from octop.infra.errors import ErrorCode, OctopError
+from octop.infra.errors import ErrorCode, OctopError, corrupt_config_error
+from octop.infra.utils.json_file import JsonFileCorruptError, read_json_object, write_json_atomic
 from octop.infra.utils.paths import PathLayout
 
 if TYPE_CHECKING:
@@ -20,20 +20,13 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
-def _atomic_write_json(path: Path, data: dict[str, Any]) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    tmp = path.with_suffix(path.suffix + ".tmp")
-    tmp.write_text(json.dumps(data, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
-    tmp.replace(path)
-
-
 def persist_database_config(config_path: Path, db_config: DatabaseConfig) -> OctopConfig:
     """Merge ``database`` into ``config.json`` and return the reloaded config."""
-    if config_path.exists():
-        raw = json.loads(config_path.read_text(encoding="utf-8"))
-        if not isinstance(raw, dict):
-            raise OctopError(ErrorCode.INTERNAL_ERROR, "config.json must be a JSON object")
-    else:
+    try:
+        raw = read_json_object(config_path)
+    except JsonFileCorruptError as exc:
+        raise corrupt_config_error(exc.path, exc.detail) from exc
+    if raw is None:
         raw = {}
 
     section: dict[str, Any] = {"driver": db_config.driver}
@@ -60,7 +53,7 @@ def persist_database_config(config_path: Path, db_config: DatabaseConfig) -> Oct
                 section["password"] = db_config.password
 
     raw["database"] = section
-    _atomic_write_json(config_path, raw)
+    write_json_atomic(config_path, raw)
     return load_config(config_path)
 
 
