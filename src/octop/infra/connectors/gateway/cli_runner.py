@@ -40,6 +40,11 @@ def run_cli(
             input=stdin_text,
             capture_output=True,
             text=True,
+            # The connector CLIs are Node programs that always speak UTF-8;
+            # inheriting the ANSI locale (cp936 on Chinese Windows) mojibakes
+            # CJK output and raises on emoji.
+            encoding="utf-8",
+            errors="replace",
             env=dict(env) if env is not None else None,
             timeout=timeout_s,
             cwd=cwd,
