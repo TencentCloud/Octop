@@ -1282,3 +1282,67 @@ def test_refuse_cross_engine_restore(layout: PathLayout, tmp_path: Path) -> None
         )
     assert excinfo.value.code == ErrorCode.BACKUP_DRIVER_MISMATCH
     pool.close()
+
+def test_restore_replaces_symlinked_plugins_dir(layout: PathLayout, tmp_path: Path) -> None:
+    """A symlinked plugins dir must not abort restore after the DB is swapped.
+
+    ``Path.is_dir()`` follows links while ``shutil.rmtree`` refuses them, so the
+    restore raised ``OSError`` on such a directory -- after the database had
+    already been replaced -- leaving the instance half restored.
+    """
+    pool = SqlitePool(layout.db)
+    run_migrations(pool)
+    with pool.connect() as conn:
+        conn.execute(
+            "INSERT INTO users(username, password_hash, role, created_at) VALUES (?, ?, ?, ?)",
+            ("alice", "hash", "admin", 1),
+        )
+
+    kept = layout.plugins_dir / "weather" / "plugin.yaml"
+    kept.parent.mkdir(parents=True, exist_ok=True)
+    kept.write_text("id: weather\n", encoding="utf-8")
+
+    class Row:
+        agent_id = "agent01"
+        name = "Test"
+
+    archive = tmp_path / "plugins-symlink.tar.gz"
+    create_system_backup(
+        paths=layout,
+        agent_rows=[Row()],
+        pool=pool,
+        db_config=DatabaseConfig(),
+        dest=archive,
+        include_workspaces=False,
+        include_skill_packages=False,
+        include_plugins=True,
+        include_knowledge=False,
+    )
+    pool.close()
+
+    restore_layout = PathLayout(layout.root.parent / "restored-plugins-symlink")
+    restore_pool = SqlitePool(restore_layout.db)
+    run_migrations(restore_pool)
+    restore_layout.root.mkdir(parents=True, exist_ok=True)
+
+    external = tmp_path / "external-plugins"
+    (external / "stale").mkdir(parents=True)
+    (external / "stale" / "plugin.yaml").write_text("id: stale\n", encoding="utf-8")
+    try:
+        restore_layout.plugins_dir.symlink_to(external, target_is_directory=True)
+    except (OSError, NotImplementedError):
+        restore_pool.close()
+        pytest.skip("directory symlinks are unavailable on this platform")
+
+    restore_system_backup(
+        archive,
+        paths=restore_layout,
+        pool=restore_pool,
+        db_config=DatabaseConfig(),
+        restore_config=False,
+    )
+    restore_pool.close()
+
+    assert (restore_layout.plugins_dir / "weather" / "plugin.yaml").is_file()
+    assert not restore_layout.plugins_dir.is_symlink()
+    assert (external / "stale" / "plugin.yaml").is_file()
