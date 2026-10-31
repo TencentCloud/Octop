@@ -154,9 +154,7 @@ def skill_count_in_expert_dir(expert_dir: Path) -> int:
     if not skills_dir.is_dir():
         return 0
     return sum(
-        1
-        for child in skills_dir.iterdir()
-        if child.is_dir() and (child / "SKILL.md").is_file()
+        1 for child in skills_dir.iterdir() if child.is_dir() and (child / "SKILL.md").is_file()
     )
 
 
