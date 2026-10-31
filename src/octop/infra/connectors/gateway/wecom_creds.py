@@ -7,8 +7,10 @@ import hashlib
 import json
 import os
 import platform
+import tempfile
 import time
 import uuid
+from contextlib import suppress
 from pathlib import Path
 from typing import Any
 from urllib.error import HTTPError, URLError
@@ -22,6 +24,45 @@ _MCP_CONFIG_URL = "https://qyapi.weixin.qq.com/cgi-bin/aibot/cli/get_mcp_config"
 _FINGERPRINT_NAME = ".octop_wecom_fingerprint"
 _BIND_SOURCE_INTERACTIVE = 1
 _USER_AGENT = f"WeComCLI/0.1.9 distribution/octop {platform.system().lower()}/{platform.machine()}"
+
+
+def _write_file_atomic(path: Path, data: bytes, *, mode: int = 0o600) -> None:
+    """Replace ``path`` via temp file + ``os.replace``, applying ``mode`` first.
+
+    ``write_text`` / ``write_bytes`` truncate before writing, and the following
+    ``chmod(0o600)`` only runs afterwards — a crash in between leaves a torn file
+    that is also readable by every local user. The temp file gets its final mode
+    before it becomes visible, so readers only ever see a complete file.
+    """
+    fd, tmp_name = tempfile.mkstemp(dir=path.parent, prefix=f".{path.name}.", suffix=".tmp")
+    try:
+        with os.fdopen(fd, "wb") as handle:
+            handle.write(data)
+        if os.name == "posix":
+            os.chmod(tmp_name, mode)
+        os.replace(tmp_name, path)
+    except BaseException:  # also covers KeyboardInterrupt / SystemExit
+        with suppress(OSError):
+            os.unlink(tmp_name)
+        raise
+
+
+def _existing_key(config_dir: Path) -> bytes | None:
+    """Return the usable AES key in ``.encryption_key``, or ``None``.
+
+    The key is the only copy of the material that decrypts ``bot.enc`` and
+    ``mcp_config.enc``; it cannot be derived from the bot id/secret. A truncated
+    or unreadable file therefore has to be treated as "no key" and re-created,
+    never trusted just because the file exists.
+    """
+    key_path = config_dir / ".encryption_key"
+    if not key_path.is_file():
+        return None
+    try:
+        key = base64.b64decode(key_path.read_text(encoding="utf-8").strip())
+    except (OSError, ValueError):
+        return None
+    return key if len(key) == 32 else None
 
 
 def materialize_wecom_bot_config(config_dir: Path, *, bot_id: str, bot_secret: str) -> None:
@@ -40,9 +81,16 @@ def materialize_wecom_bot_config(config_dir: Path, *, bot_id: str, bot_secret: s
         marker.is_file()
         and bot_path.is_file()
         and mcp_path.is_file()
+        and _existing_key(config_dir) is not None
         and marker.read_text(encoding="utf-8").strip() == fingerprint
     ):
         return
+
+    # Drop the marker before rewriting anything: if this pass fails halfway
+    # (for example _fetch_mcp_config raises after the key was rotated), a marker
+    # left in place would claim a cache that no longer decrypts, and every later
+    # call would take the early return above and never repair it.
+    marker.unlink(missing_ok=True)
 
     key = _load_or_create_key(config_dir)
     bot = {
@@ -54,23 +102,16 @@ def materialize_wecom_bot_config(config_dir: Path, *, bot_id: str, bot_secret: s
 
     items = _fetch_mcp_config(bot_id=bot_id, bot_secret=bot_secret)
     _encrypt_json_to(mcp_path, items, key)
-    marker.write_text(fingerprint + "\n", encoding="utf-8")
-    marker.chmod(0o600)
+    _write_file_atomic(marker, (fingerprint + "\n").encode("utf-8"))
 
 
 def _load_or_create_key(config_dir: Path) -> bytes:
     key_path = config_dir / ".encryption_key"
-    if key_path.is_file():
-        raw = key_path.read_text(encoding="utf-8").strip()
-        try:
-            key = base64.b64decode(raw)
-        except Exception:
-            key = b""
-        if len(key) == 32:
-            return key
+    existing = _existing_key(config_dir)
+    if existing is not None:
+        return existing
     key = os.urandom(32)
-    key_path.write_text(base64.b64encode(key).decode("ascii") + "\n", encoding="utf-8")
-    key_path.chmod(0o600)
+    _write_file_atomic(key_path, base64.b64encode(key).decode("ascii").encode("ascii") + b"\n")
     return key
 
 
@@ -78,8 +119,7 @@ def _encrypt_json_to(path: Path, payload: Any, key: bytes) -> None:
     plaintext = json.dumps(payload, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
     nonce = os.urandom(12)
     ciphertext = AESGCM(key).encrypt(nonce, plaintext, None)
-    path.write_bytes(nonce + ciphertext)
-    path.chmod(0o600)
+    _write_file_atomic(path, nonce + ciphertext)
 
 
 def read_mcp_items_count(config_dir: Path) -> int:
