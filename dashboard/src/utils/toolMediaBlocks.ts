@@ -2,6 +2,7 @@
  * Resolve tool-result media URLs for dashboard display.
  */
 
+import { rewritePeerSpeakerId } from "./remoteExpert";
 import {
   isHostAbsolutePath,
   stripVirtualWorkspaceRoot,
@@ -274,7 +275,9 @@ export function asImageBlob(blob: Blob, filename?: string): Blob {
 }
 
 function resolveMediaAgentId(chatAgentId: string, rawPath: string): string {
-  return agentIdFromWorkspacePath(rawPath) || chatAgentId;
+  const fromPath = agentIdFromWorkspacePath(rawPath);
+  if (!fromPath) return chatAgentId;
+  return rewritePeerSpeakerId(chatAgentId, fromPath) || fromPath;
 }
 
 /** Rewrite mistaken ``workspace/download?path=/abs/…`` or cross-agent ``media/preview`` links. */
@@ -298,7 +301,7 @@ export function canonicalizeMediaApiUrl(
       const pathParam = parsed.searchParams.get("path") || "";
       const rel = extractWorkspaceRel(pathParam);
       if (rel) {
-        const mediaAgent = agentIdFromWorkspacePath(pathParam) || urlAgent;
+        const mediaAgent = resolveMediaAgentId(chatAgentId || urlAgent, pathParam);
         return workspaceDownloadUrl(mediaAgent, rel);
       }
       // Rebuild so workspaceDownloadUrl can normalize other shapes.
@@ -308,8 +311,7 @@ export function canonicalizeMediaApiUrl(
     const source = parsed.searchParams.get("source") || "";
     if (!source) return url;
     const rel = extractWorkspaceRel(source);
-    const mediaAgent =
-      agentIdFromWorkspacePath(source) || chatAgentId || urlAgent;
+    const mediaAgent = resolveMediaAgentId(chatAgentId || urlAgent, source);
     const mimeType = parsed.searchParams.get("mime_type") || undefined;
     if (rel) {
       return workspaceDownloadUrl(mediaAgent, rel);
@@ -340,7 +342,7 @@ export function normalizeStoredMediaUrl(
     if (!pathParam) return url;
     const rel = extractWorkspaceRel(pathParam);
     if (rel) {
-      const mediaAgent = agentIdFromWorkspacePath(pathParam) || agentId;
+      const mediaAgent = resolveMediaAgentId(agentId, pathParam);
       return workspaceDownloadUrl(mediaAgent, rel);
     }
   } catch {
