@@ -1,8 +1,18 @@
+/*
+ * The seam handle both left columns fold from.
+ *
+ * It is a capsule centred on the divider rather than a glyph parked in a
+ * header: the control sits on the line that actually moves, so "which panel
+ * does this close" is answered by pointing at it. Quiet at rest (so two rails
+ * side by side do not read as a strip of buttons), crisp under the pointer,
+ * and always painted when its panel is collapsed — that state has no other
+ * way back.
+ */
 .edge {
   position: absolute;
   top: 0;
   bottom: 0;
-  width: 16px;
+  width: 22px;
   z-index: 30;
   display: flex;
   align-items: center;
@@ -14,20 +24,25 @@
       background: var(--fn-color-brand);
       opacity: 0.55;
     }
+
+    .btn {
+      opacity: 1;
+      color: var(--fn-text-secondary);
+    }
   }
 }
 
 .edgeEnd {
-  right: -8px;
+  right: -11px;
 }
 
 .edgeStart {
-  left: -8px;
+  left: -11px;
 }
 
+/* Collapsed panel: nothing to hover through, so keep a narrower seam. */
 .edgeCollapsed {
-  /* Keep a hit target when the panel is gone */
-  width: 12px;
+  width: 16px;
 }
 
 .edgePassThrough {
@@ -46,12 +61,15 @@
   background: var(--fn-chat-divider, var(--fn-border-primary));
   opacity: 1;
   transition:
-    background 0.15s ease,
-    opacity 0.15s ease;
+    background 0.18s ease,
+    opacity 0.18s ease;
   pointer-events: none;
 }
 
 .btn {
+  /* Vertical offset from the seam's midpoint — see `.btnTop` / `.btnBottom`. */
+  --seam-shift: 0px;
+
   position: absolute;
   top: 50%;
   left: 50%;
@@ -59,58 +77,75 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 18px;
-  height: 44px;
+  width: 22px;
+  height: 52px;
   padding: 0;
   border: 1px solid var(--fn-border-secondary);
-  border-radius: 8px;
+  border-radius: 999px;
   background: var(--fn-bg-elevated, var(--fn-bg-secondary));
-  color: var(--fn-text-secondary);
-  box-shadow: 0 1px 4px
-    color-mix(in srgb, var(--fn-text-primary) 8%, transparent);
+  color: var(--fn-text-tertiary);
+  box-shadow:
+    0 1px 2px color-mix(in srgb, var(--fn-text-primary) 6%, transparent),
+    0 6px 16px color-mix(in srgb, var(--fn-text-primary) 10%, transparent);
   cursor: pointer;
-  transform: translate(-50%, -50%);
-  opacity: 0;
-  pointer-events: none;
+  opacity: 0.6;
+  transform: translate(-50%, calc(-50% + var(--seam-shift)));
   transition:
-    opacity 0.15s ease,
-    color 0.15s ease,
-    border-color 0.15s ease,
-    background 0.15s ease,
-    box-shadow 0.15s ease;
+    opacity 0.18s ease,
+    color 0.18s ease,
+    border-color 0.18s ease,
+    background 0.18s ease,
+    box-shadow 0.18s ease,
+    transform 0.18s ease;
 
   &:hover {
     border-color: var(--fn-border-primary);
     background: var(--fn-bg-secondary);
     color: var(--fn-text-primary);
-    box-shadow: 0 2px 8px
-      color-mix(in srgb, var(--fn-text-primary) 12%, transparent);
+    opacity: 1;
+    box-shadow:
+      0 2px 4px color-mix(in srgb, var(--fn-text-primary) 8%, transparent),
+      0 10px 24px color-mix(in srgb, var(--fn-text-primary) 14%, transparent);
+    transform: translate(-50%, calc(-50% + var(--seam-shift))) scale(1.06);
+  }
+
+  &:active {
+    transform: translate(-50%, calc(-50% + var(--seam-shift))) scale(0.96);
   }
 
   &:focus-visible {
+    opacity: 1;
     outline: 2px solid var(--fn-color-brand);
-    outline-offset: 1px;
+    outline-offset: 2px;
   }
 }
 
-.edge:hover .btn,
-.btn:focus-visible {
-  opacity: 1;
-  pointer-events: auto;
+/* Two handles on one seam: stack them instead of overlapping. 40px each way
+   leaves a 28px gap — far enough apart to read as two controls. */
+.btnTop {
+  --seam-shift: -40px;
 }
 
-/* Two pills on one shared divider: keep a gap so they do not overlap. */
-.btnBefore {
-  transform: translate(calc(-100% - 3px), -50%);
+.btnBottom {
+  --seam-shift: 40px;
 }
 
-.btnAfter {
-  transform: translate(3px, -50%);
-}
-
-/* Collapsed panel: the pill is the only way back, so it stays painted.
-   Two classes so it wins over `.btn`'s rest state whatever order Less emits. */
+/* Collapsed panel: the capsule is the only way back, so it stays painted. */
 .btn.btnPersistent {
   opacity: 1;
-  pointer-events: auto;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .btn {
+    transition:
+      opacity 0.18s ease,
+      color 0.18s ease,
+      border-color 0.18s ease,
+      background 0.18s ease;
+  }
+
+  .btn:hover,
+  .btn:active {
+    transform: translate(-50%, calc(-50% + var(--seam-shift)));
+  }
 }

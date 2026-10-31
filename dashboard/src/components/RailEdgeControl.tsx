@@ -19,6 +19,8 @@ interface RailEdgeControlProps {
    * e.g. the same action plus its keyboard accelerator.
    */
   hint?: string;
+  /** Keyboard accelerator, published to AT only. */
+  shortcut?: string;
   className?: string;
   /**
    * When false, keep the hover hit-target / button but do not paint a divider
@@ -26,10 +28,11 @@ interface RailEdgeControlProps {
    */
   showLine?: boolean;
   /**
-   * ``center`` straddles the divider (folder-tree toggle).
-   * ``before`` / ``after`` sit on either side when two rails share one line.
+   * Two handles can land on the same seam (the history rail, when collapsed,
+   * sits on the nav rail's own divider). Overlapping there is unreadable, so
+   * they stack: one above the centre, one below.
    */
-  placement?: "center" | "before" | "after";
+  stack?: "none" | "top" | "bottom";
   /**
    * Let pointer events fall through the rail so a resize handle underneath
    * stays usable. The collapse button itself still receives clicks.
@@ -44,8 +47,12 @@ interface RailEdgeControlProps {
 }
 
 /**
- * Collapse/expand control anchored to a vertical rail line.
- * Matches the knowledge-base folder tree edge button.
+ * Collapse/expand handle anchored to a vertical rail seam.
+ *
+ * Both left columns fold from one of these: a capsule straddling the divider,
+ * centred on it, quiet at rest and crisp under the pointer. It replaced the
+ * pair of `PanelLeft*` glyphs that used to sit in each rail's own header —
+ * same action, one shape, and the handle is attached to the line that moves.
  */
 export default function RailEdgeControl({
   expanded,
@@ -53,9 +60,10 @@ export default function RailEdgeControl({
   side = "end",
   label,
   hint,
+  shortcut,
   className,
   showLine = true,
-  placement = "center",
+  stack = "none",
   passThrough = false,
   persistent = false,
 }: RailEdgeControlProps) {
@@ -71,7 +79,7 @@ export default function RailEdgeControl({
       className={cx(
         styles.edge,
         side === "start" ? styles.edgeStart : styles.edgeEnd,
-        !expanded && styles.edgeCollapsed,
+        expanded ? styles.edgeExpanded : styles.edgeCollapsed,
         passThrough && styles.edgePassThrough,
         className,
       )}
@@ -81,18 +89,20 @@ export default function RailEdgeControl({
         type="button"
         className={cx(
           styles.btn,
-          placement === "before" && styles.btnBefore,
-          placement === "after" && styles.btnAfter,
+          stack === "top" && styles.btnTop,
+          stack === "bottom" && styles.btnBottom,
           persistent && styles.btnPersistent,
         )}
         onClick={onToggle}
         aria-label={ariaLabel}
+        aria-expanded={expanded}
+        aria-keyshortcuts={shortcut}
         title={hint ?? ariaLabel}
       >
         {expanded ? (
-          <ChevronLeft size={14} strokeWidth={2} aria-hidden />
+          <ChevronLeft size={15} strokeWidth={2} aria-hidden />
         ) : (
-          <ChevronRight size={14} strokeWidth={2} aria-hidden />
+          <ChevronRight size={15} strokeWidth={2} aria-hidden />
         )}
       </button>
     </div>

@@ -1,7 +1,6 @@
 import { useCallback } from "react";
 import { useTranslation } from "react-i18next";
 import type { RefObject } from "react";
-import { PanelLeftClose, PanelLeftOpen } from "lucide-react";
 import cx from "classnames";
 import SessionList from "./SessionList";
 import MinimalAgentSessionNav from "./MinimalAgentSessionNav";
@@ -108,31 +107,6 @@ export default function ChatSidebarPanel({
     onSidebarOpenChange(true);
   }, [sidebarOpen, onSidebarOpenChange]);
 
-  /**
-   * The rail collapses from its own header, next to the search field, the way
-   * every comparable app does it. It used to hang inside the nav's "对话" item,
-   * one row under the nav's own collapse button and with the same glyph — two
-   * identical panel icons stacked, and neither said which panel it closed.
-   */
-  const railToggle =
-    !isMobile && !navEmbedded ? (
-      <button
-        type="button"
-        className={styles.railHeaderToggle}
-        onClick={handleRailToggle}
-        aria-label={historyLabel}
-        aria-expanded={sidebarOpen}
-        aria-keyshortcuts={railShortcutAria("toggle-history")}
-        title={historyHint}
-      >
-        {sidebarOpen ? (
-          <PanelLeftClose size={16} strokeWidth={1.8} aria-hidden />
-        ) : (
-          <PanelLeftOpen size={16} strokeWidth={1.8} aria-hidden />
-        )}
-      </button>
-    ) : null;
-
   const sessionList = navEmbedded ? (
     <MinimalAgentSessionNav
       agents={agents}
@@ -153,7 +127,6 @@ export default function ChatSidebarPanel({
     <SessionList
       agents={agents}
       unreadyExperts={unreadyExperts}
-      railToggle={railToggle}
       sessions={sessions}
       activeId={activeThreadId}
       activeAgentId={resolvedAgentId ?? null}
@@ -224,6 +197,12 @@ export default function ChatSidebarPanel({
         )}
       </div>
 
+      {/**
+       * The rail folds from the seam on its right — the same handle the nav
+       * rail uses, so both left columns answer to one shape. Collapsed, this
+       * lands on the nav's divider where the nav keeps its own: the pair
+       * stacks (nav above, history below) instead of overlapping.
+       */}
       {!isMobile && (
         <RailEdgeControl
           expanded={sidebarOpen}
@@ -232,16 +211,11 @@ export default function ChatSidebarPanel({
           side={sidebarOpen ? "end" : "start"}
           /* Collapsed: share the nav rail divider — avoid a second gapped line. */
           showLine={sidebarOpen}
-          /* One pill on this seam, always straddling it. It used to shift to
-             `after` when collapsed, which put it 3px away from the nav rail's
-             own pill and made the pair unreadable. */
-          placement="center"
+          stack={sidebarOpen ? "none" : "bottom"}
           passThrough={sidebarOpen}
           label={historyLabel}
           hint={historyHint}
-          className={
-            sidebarOpen ? styles.chatRailEdgeOpen : styles.chatRailEdgeClosed
-          }
+          shortcut={railShortcutAria("toggle-history")}
         />
       )}
     </div>

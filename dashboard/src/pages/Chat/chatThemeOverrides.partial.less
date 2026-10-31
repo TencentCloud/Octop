@@ -27,25 +27,6 @@
   }
 }
 
-.chatRailEdgeOpen {
-  right: -8px;
-}
-
-/* The open rail is click-through so the resize handle stays reachable.
-   Reveal the collapse button from the sidebar hover instead. */
-.sidebarWrapper:hover .chatRailEdgeOpen button {
-  opacity: 1;
-  pointer-events: auto;
-}
-
-.chatRailEdgeClosed {
-  /* Collapsed rail is 0-wide, so this edge sits on the nav rail's own border
-     (`border-right` on the sidebar). Straddle it, centred. */
-  left: -8px !important;
-  right: auto !important;
-  width: 16px;
-}
-
 .sidebarWrapper {
   z-index: 2;
   padding: 0 16px;
@@ -107,6 +88,21 @@
   flex: 1;
   min-height: 0;
   box-sizing: border-box;
+}
+
+/* Only the full-height history rail owns a window-top search row. Embedded
+   minimal navigation and mobile overlays keep their existing spacing. */
+@media (min-width: 768px) {
+  .sidebar > .sessionList {
+    padding-top: 0;
+
+    > .sessionHeaderRow {
+      box-sizing: border-box;
+      height: var(--fn-chat-chrome-height, 58px);
+      margin: 0 0 0 -12px;
+      padding: 0 12px;
+    }
+  }
 }
 
 /* Minimal layout: SessionList hosted inside the app nav records pane. */
@@ -392,16 +388,10 @@
   margin: 0 12px 10px 0;
 }
 
-/*
- * Search field + the rail's own collapse control on one row. The margins live
- * on the row so the search can shrink (``flex: 1``) instead of pushing the
- * button past the rail's edge when the rail is narrow.
- */
+/* The search field owns the header row now that the rail folds from its seam. */
 .sessionHeaderRow {
   display: flex;
   align-items: center;
-  justify-content: flex-end;
-  gap: 8px;
   flex-shrink: 0;
   margin: 0 12px 10px 0;
 
@@ -409,40 +399,6 @@
     flex: 1;
     min-width: 0;
     margin: 0;
-  }
-}
-
-/*
- * Each rail's collapse control sits in its own header, top-right — the same
- * place the app nav's own toggle sits in the brand row. Ghosted at rest (no
- * fill, tertiary ink) so it does not compete with the search field, filled on
- * hover, 28px hit target like every other rail control.
- */
-.railHeaderToggle {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  flex-shrink: 0;
-  width: 28px;
-  height: 28px;
-  padding: 0;
-  border: none;
-  border-radius: 8px;
-  background: transparent;
-  color: var(--fn-text-tertiary);
-  cursor: pointer;
-  transition:
-    background var(--fn-transition-fast),
-    color var(--fn-transition-fast);
-
-  &:hover {
-    background: var(--fn-sidebar-item-hover);
-    color: var(--fn-text-primary);
-  }
-
-  &:focus-visible {
-    outline: 2px solid var(--fn-color-brand);
-    outline-offset: 1px;
   }
 }
 
