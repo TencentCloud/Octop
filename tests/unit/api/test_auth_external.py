@@ -1,7 +1,8 @@
 """受信外部系统免登接口（/api/auth/external/exchange）单元测试。
 
-覆盖：未配置/未启用/缺少密钥 400、签名/app_id/时间窗/nonce 重放 401、
-正确签名（含大写 hex）200 自动开户并写审计、同一用户重复登录复用账号、
+覆盖：未配置/未启用/缺少密钥 401（不泄露原因）、签名/app_id/时间窗/nonce 重放 401、
+正确签名换一次性登录码再经 /api/auth/oidc/exchange 开户并写审计、登录码不可重放、
+未来时间戳窗口结束后 nonce 仍不可重放、控制字符 422、同一用户重复登录复用账号、
 禁用用户 403、匿名失败节流 429，以及 oauth/start 与 oauth/status 的 external 回归。
 """
 
@@ -11,7 +12,7 @@ import hashlib
 import hmac
 import secrets
 import time
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Iterator
 from pathlib import Path
 
 import httpx
@@ -25,6 +26,7 @@ from octop.infra.server import OctopServer
 APP_ID = "crm-system"
 SECRET = "shared-hmac-secret-001"
 EXCHANGE_URL = "/api/auth/external/exchange"
+OIDC_EXCHANGE_URL = "/api/auth/oidc/exchange"
 
 
 def _sign(app_id: str, username: str, timestamp: int, nonce: str) -> str:
@@ -35,7 +37,7 @@ def _sign(app_id: str, username: str, timestamp: int, nonce: str) -> str:
 
 def _payload(username: str, **overrides: object) -> dict[str, object]:
     """构造合法换票请求体；overrides 可覆盖任意字段以构造异常场景。"""
-    timestamp = int(overrides.pop("timestamp", int(time.time())))
+    timestamp = int(overrides.pop("timestamp", int(time.time())))  # type: ignore[arg-type]
     nonce = str(overrides.pop("nonce", secrets.token_urlsafe(16)))
     app_id = str(overrides.pop("app_id", APP_ID))
     body: dict[str, object] = {
@@ -75,27 +77,58 @@ def _configure_external(srv: OctopServer, *, enabled: bool = True) -> None:
     )
 
 
+async def _exchange_code(c: httpx.AsyncClient, login_code: str) -> httpx.Response:
+    """用一次性登录码换 JWT（与交接页调用的既有接口相同）。"""
+    return await c.post(OIDC_EXCHANGE_URL, json={"code": login_code})
+
+
+def _assert_login_code(data: dict[str, object]) -> str:
+    """成功体只有一次性码和 60 秒有效期，不得直接下发 JWT。"""
+    assert "access_token" not in data
+    assert data["expires_in"] == 60
+    login_code = data["login_code"]
+    assert isinstance(login_code, str) and login_code
+    return login_code
+
+
+@pytest.fixture
+def frozen_clock(monkeypatch: pytest.MonkeyPatch) -> Iterator[dict[str, int]]:
+    """同时钉住 time.time 与 sso 仓储的 now_ts（delete_expired 用后者）。"""
+    clock = {"now": 1_700_000_000}
+
+    def _now() -> float:
+        return float(clock["now"])
+
+    monkeypatch.setattr(time, "time", _now)
+    monkeypatch.setattr("octop.infra.db.repos.sso.now_ts", lambda: int(clock["now"]))
+    yield clock
+
+
 async def test_exchange_rejects_when_provider_not_configured(client) -> None:
-    """未配置 external provider 时返回 400 OIDC_BAD_REQUEST。"""
-    c, _srv, home = client
+    """未配置 external provider 时对外统一 401 AUTH_FAILED，不泄露配置状态。"""
+    c, srv, home = client
     await bootstrap_admin(c, home)
     r = await c.post(EXCHANGE_URL, json=_payload("member01"))
-    assert r.status_code == 400
-    assert r.json()["error"]["code"] == "OIDC_BAD_REQUEST"
+    assert r.status_code == 401
+    body = r.json()["error"]
+    assert body["code"] == "AUTH_FAILED"
+    assert "disabled" not in body["message"].lower()
+    audits = srv.services.audit_repo.query(action="auth.external_failed")
+    assert [(a.actor, a.payload) for a in audits] == [("member01", "disabled")]
 
 
 async def test_exchange_rejects_when_provider_disabled(client) -> None:
-    """已配置但 enabled=False 时返回 400 OIDC_BAD_REQUEST。"""
+    """已配置但 enabled=False 时对外统一 401 AUTH_FAILED。"""
     c, srv, home = client
     await bootstrap_admin(c, home)
     _configure_external(srv, enabled=False)
     r = await c.post(EXCHANGE_URL, json=_payload("member01"))
-    assert r.status_code == 400
-    assert r.json()["error"]["code"] == "OIDC_BAD_REQUEST"
+    assert r.status_code == 401
+    assert r.json()["error"]["code"] == "AUTH_FAILED"
 
 
 async def test_exchange_success_creates_user_and_writes_audit(client) -> None:
-    """正确签名返回与 /api/auth/login 一致的响应，自动开户并写 auth.external_login 审计。"""
+    """正确签名返回一次性登录码；换码后开户并写 auth.external_login 审计。"""
     c, srv, home = client
     await bootstrap_admin(c, home)
     _configure_external(srv)
@@ -104,10 +137,12 @@ async def test_exchange_success_creates_user_and_writes_audit(client) -> None:
         json=_payload("member01", display_name="成员一号", email="member01@example.com"),
     )
     assert r.status_code == 200
-    data = r.json()
+    login_code = _assert_login_code(r.json())
+    exchanged = await _exchange_code(c, login_code)
+    assert exchanged.status_code == 200
+    data = exchanged.json()
     assert data["access_token"]
     assert data["token_type"] == "Bearer"
-    assert data["expires_in"] > 0
     assert data["user"]["username"] == "member01"
     # 自动开户使用默认角色
     assert data["user"]["role"] == "user"
@@ -116,28 +151,38 @@ async def test_exchange_success_creates_user_and_writes_audit(client) -> None:
     assert row.id == data["user"]["id"]
     audits = srv.services.audit_repo.query(action="auth.external_login")
     assert [(a.actor, a.target) for a in audits] == [("member01", "member01")]
+    # 同一登录码不可再次换票
+    replay = await _exchange_code(c, login_code)
+    assert replay.status_code >= 400
+    assert replay.status_code < 500
 
 
 async def test_exchange_rejects_bad_signature_and_writes_failure_audit(client) -> None:
-    """签名错误返回 401 AUTH_FAILED，并写 auth.external_failed 审计。"""
+    """签名错误返回 401 AUTH_FAILED，审计只记稳定原因码，响应不带具体原因。"""
     c, srv, home = client
     await bootstrap_admin(c, home)
     _configure_external(srv)
     r = await c.post(EXCHANGE_URL, json=_payload("member02", signature="0" * 64))
     assert r.status_code == 401
-    assert r.json()["error"]["code"] == "AUTH_FAILED"
+    body = r.json()["error"]
+    assert body["code"] == "AUTH_FAILED"
+    assert "signature" not in body["message"].lower()
     audits = srv.services.audit_repo.query(action="auth.external_failed")
-    assert [(a.actor, a.target) for a in audits] == [("member02", "member02")]
+    assert [(a.actor, a.target, a.payload) for a in audits] == [
+        ("member02", "member02", "bad_signature")
+    ]
 
 
 async def test_exchange_rejects_wrong_app_id(client) -> None:
-    """app_id 与配置不一致返回 401。"""
+    """app_id 与配置不一致返回 401，审计原因为 bad_app_id。"""
     c, srv, home = client
     await bootstrap_admin(c, home)
     _configure_external(srv)
     r = await c.post(EXCHANGE_URL, json=_payload("member03", app_id="other-app"))
     assert r.status_code == 401
     assert r.json()["error"]["code"] == "AUTH_FAILED"
+    audits = srv.services.audit_repo.query(action="auth.external_failed")
+    assert audits[0].payload == "bad_app_id"
 
 
 async def test_exchange_rejects_stale_timestamp(client) -> None:
@@ -148,6 +193,8 @@ async def test_exchange_rejects_stale_timestamp(client) -> None:
     r = await c.post(EXCHANGE_URL, json=_payload("member04", timestamp=int(time.time()) - 1000))
     assert r.status_code == 401
     assert r.json()["error"]["code"] == "AUTH_FAILED"
+    audits = srv.services.audit_repo.query(action="auth.external_failed")
+    assert audits[0].payload == "stale_timestamp"
 
 
 async def test_exchange_rejects_nonce_replay(client) -> None:
@@ -163,8 +210,54 @@ async def test_exchange_rejects_nonce_replay(client) -> None:
     assert replay.json()["error"]["code"] == "AUTH_FAILED"
 
 
+async def test_exchange_rejects_replay_after_future_timestamp_window(
+    client, frozen_clock: dict[str, int]
+) -> None:
+    """未来时间戳在窗口最后一秒（abs(t-timestamp)==300）仍不可重放。
+
+    nonce 占位行必须活过时间窗：``delete_expired`` 用 ``expires_at <= now``。
+    若过期被改成 ``max(now, timestamp)+300``，本用例会在窗口尚未结束时删行并放行重放。
+    """
+    c, srv, home = client
+    await bootstrap_admin(c, home)
+    _configure_external(srv)
+    # 起点 1_700_000_000；请求时间戳落在未来偏差上沿 start+300
+    timestamp = frozen_clock["now"] + 300
+    body = _payload("member-future", timestamp=timestamp, nonce="nonce-future-01")
+    first = await c.post(EXCHANGE_URL, json=body)
+    assert first.status_code == 200
+    _assert_login_code(first.json())
+    with srv.services.db.connect() as conn:
+        row = conn.execute(
+            "SELECT expires_at FROM sso_login_states WHERE state = ?",
+            ("nonce-future-01",),
+        ).fetchone()
+    assert row is not None
+    assert int(row["expires_at"]) == timestamp + 301
+    # 推进到 timestamp+300（相对起点 +600）：仍在 ±300 窗口内，占位行不得被清掉
+    frozen_clock["now"] = timestamp + 300
+    replay = await c.post(EXCHANGE_URL, json=body)
+    assert replay.status_code == 401
+    assert replay.json()["error"]["code"] == "AUTH_FAILED"
+    assert "nonce" not in replay.json()["error"]["message"].lower()
+
+
+async def test_exchange_rejects_newline_in_signed_fields(client) -> None:
+    """用户名或 nonce 含换行时由请求体 pattern 拒绝（422），且不开户。"""
+    c, srv, home = client
+    await bootstrap_admin(c, home)
+    _configure_external(srv)
+    username = "member\nadmin"
+    bad_user = await c.post(EXCHANGE_URL, json=_payload(username))
+    assert bad_user.status_code == 422
+    bad_nonce = await c.post(EXCHANGE_URL, json=_payload("member-nl", nonce="nonce\nreplay"))
+    assert bad_nonce.status_code == 422
+    assert srv.services.user_repo.get_by_username(username) is None
+    assert srv.services.user_repo.get_by_username("member-nl") is None
+
+
 async def test_exchange_reuses_existing_user_for_same_username(client) -> None:
-    """同一 username 换不同 nonce 两次登录均 200，且复用同一账号（user.id 相同）。"""
+    """同一 username 换不同 nonce 两次登录均 200，且换码后复用同一账号。"""
     c, srv, home = client
     await bootstrap_admin(c, home)
     _configure_external(srv)
@@ -172,14 +265,19 @@ async def test_exchange_reuses_existing_user_for_same_username(client) -> None:
     second = await c.post(EXCHANGE_URL, json=_payload("member06"))
     assert first.status_code == 200
     assert second.status_code == 200
-    assert first.json()["user"]["id"] == second.json()["user"]["id"]
+    first_user = (await _exchange_code(c, _assert_login_code(first.json()))).json()["user"]
+    second_user = (await _exchange_code(c, _assert_login_code(second.json()))).json()["user"]
+    assert first_user["id"] == second_user["id"]
     # 复用登录不重复开户
     creates = srv.services.audit_repo.query(action="user.sso_create")
     assert [(a.actor, a.target) for a in creates] == [("member06", "member06")]
 
 
 async def test_exchange_rejects_when_secret_missing(client) -> None:
-    """已配置 client_id 但未设置共享密钥时按配置不完整处理，返回 400 OIDC_BAD_REQUEST。"""
+    """已配置 client_id 但未设置共享密钥时对外统一 401。
+
+    密钥缺失被 ``is_configured`` 视为未启用（ValueError: disabled），不进入验签。
+    """
     c, srv, home = client
     await bootstrap_admin(c, home)
     # 直接写一行无密钥的 external 配置（绕过 put_config 的密钥加密路径）
@@ -194,12 +292,14 @@ async def test_exchange_rejects_when_secret_missing(client) -> None:
         dashboard_origin=None,
     )
     r = await c.post(EXCHANGE_URL, json=_payload("member07"))
-    assert r.status_code == 400
-    assert r.json()["error"]["code"] == "OIDC_BAD_REQUEST"
+    assert r.status_code == 401
+    assert r.json()["error"]["code"] == "AUTH_FAILED"
+    audits = srv.services.audit_repo.query(action="auth.external_failed")
+    assert audits[0].payload == "disabled"
 
 
 async def test_exchange_accepts_uppercase_hex_signature(client) -> None:
-    """签名以大写 hex 提交时服务端归一化后验签通过，返回 200。"""
+    """签名以大写 hex 提交时服务端归一化后验签通过，换码得到对应用户。"""
     c, srv, home = client
     await bootstrap_admin(c, home)
     _configure_external(srv)
@@ -207,7 +307,9 @@ async def test_exchange_accepts_uppercase_hex_signature(client) -> None:
     body["signature"] = str(body["signature"]).upper()
     r = await c.post(EXCHANGE_URL, json=body)
     assert r.status_code == 200
-    assert r.json()["user"]["username"] == "member08"
+    exchanged = await _exchange_code(c, _assert_login_code(r.json()))
+    assert exchanged.status_code == 200
+    assert exchanged.json()["user"]["username"] == "member08"
 
 
 async def test_exchange_rejects_disabled_user(client) -> None:
@@ -217,6 +319,9 @@ async def test_exchange_rejects_disabled_user(client) -> None:
     _configure_external(srv)
     first = await c.post(EXCHANGE_URL, json=_payload("member09"))
     assert first.status_code == 200
+    opened = await _exchange_code(c, _assert_login_code(first.json()))
+    assert opened.status_code == 200
+    assert opened.json()["user"]["username"] == "member09"
     assert srv.user_manager is not None
     await srv.user_manager.disable("member09")
     # 禁用后重试须使用新 nonce（旧 nonce 已消耗）

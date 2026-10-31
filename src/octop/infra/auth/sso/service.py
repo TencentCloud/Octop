@@ -34,6 +34,8 @@ from octop.infra.users.manager import UserManager
 
 _LOGIN_STATE_TTL_SECONDS = 600
 _LOGIN_CODE_TTL_SECONDS = 60
+# 浏览器一次性登录码有效期（秒）；路由响应用同一常量，避免与签发 TTL 漂移
+LOGIN_CODE_TTL_SECONDS = _LOGIN_CODE_TTL_SECONDS
 _HTTP_TIMEOUT = httpx.Timeout(10.0, connect=5.0)
 
 logger = logging.getLogger(__name__)
@@ -363,6 +365,35 @@ class SsoService:
         )
         return user
 
+    def issue_browser_login_code(self, *, provider_id: int, user_id: int) -> str:
+        """签发一次性浏览器登录码，供同源交接页换 JWT。
+
+        必须新建一行登录态，不能挂到 nonce 占位行上：``attach_login_code`` 会覆盖
+        ``expires_at``，若复用 nonce 行会把防重放窗口缩短回登录码 TTL。
+        """
+        state = secrets.token_urlsafe(32)
+        # 登录码 TTL 与占位行过期对齐；attach 会再写一次 expires_at
+        expires_at = int(time.time()) + _LOGIN_CODE_TTL_SECONDS
+        self._services.sso_repo.create_login_state(
+            state=state,
+            provider_id=provider_id,
+            nonce="",
+            code_verifier="",
+            redirect_after="",
+            expires_at=expires_at,
+        )
+        login_code = secrets.token_urlsafe(32)
+        stored = self._services.sso_repo.attach_login_code(
+            state,
+            login_code=login_code,
+            user_id=user_id,
+            expires_at=expires_at,
+        )
+        # 更新 0 行时关闭失败：不能把未落库的码交给调用方
+        if not stored:
+            raise RuntimeError("browser login code was not stored")
+        return login_code
+
     async def external_login(
         self,
         *,
@@ -373,12 +404,14 @@ class SsoService:
         signature: str,
         display_name: str | None = None,
         email: str | None = None,
-    ) -> User:
-        """受信外部系统免登：校验 HMAC 签名与时间窗，nonce 一次性防重放，必要时自动开户。
+    ) -> str:
+        """受信外部系统免登：校验 HMAC 后签发一次性浏览器登录码（不是 JWT）。
+
+        浏览器用该码调用 ``POST /api/auth/oidc/exchange`` 换取会话。
         nonce 一经验证通过即被消耗；开户等后续步骤失败时，重试必须更换新的 nonce。
 
         异常约定：未配置 / 未启用 / 配置不完整 → ``ValueError``；
-        身份、签名、时间窗、重放校验失败 → ``PermissionError``。
+        身份、签名、时间窗、重放、控制字符校验失败 → ``PermissionError``。
         """
         # 1. external provider 必须已配置并启用
         provider = self._services.sso_repo.get_by_kind("external")
@@ -388,11 +421,15 @@ class SsoService:
             or not self._adapter("external").is_configured(provider)
         ):
             raise ValueError("external SSO is disabled")
+        # 签名明文以换行分隔；控制字符会改写字段边界，在拼明文之前拒绝
+        if _has_control_char(app_id) or _has_control_char(username) or _has_control_char(nonce):
+            raise PermissionError("control characters")
         # 2. app_id 与配置中的 client_id 常量时间比对
         if not secrets.compare_digest(provider.client_id, app_id):
             raise PermissionError("invalid app_id")
         # 3. 时间戳必须在 ±300 秒窗口内，防止旧请求被截获后重用
-        if abs(int(time.time()) - timestamp) > 300:
+        now = int(time.time())
+        if abs(now - timestamp) > 300:
             raise PermissionError("timestamp out of window")
         # 4. HMAC-SHA256 验签：明文为 ``app_id\nusername\ntimestamp\nnonce``
         # is_configured 已保证密钥存在；显式检查替代 assert，确保 -O 模式下同样收窄
@@ -405,12 +442,14 @@ class SsoService:
         ).hexdigest()
         if not secrets.compare_digest(expected, signature.lower()):
             raise PermissionError("invalid signature")
-        # 5. nonce 一次性防重放：先清理过期占位行，再原子插入（唯一约束兜底）
+        # 5. nonce 一次性防重放：先清理过期占位行，再原子插入（唯一约束兜底）。
+        # +301：占位行必须活过时间窗；delete_expired 用 expires_at <= now，
+        # 未来时间戳（时钟偏差）若只存 now+300，窗口尚未结束行就被删，请求可重放。
         self._services.sso_repo.delete_expired()
         claimed = self._services.sso_repo.claim_once(
             state=nonce,
             provider_id=provider.id,
-            expires_at=int(time.time()) + 300,
+            expires_at=max(now, timestamp) + 301,
         )
         if not claimed:
             raise PermissionError("nonce replay")
@@ -427,7 +466,8 @@ class SsoService:
         self._services.audit_repo.write(
             actor=user.username, action="auth.external_login", target=user.username
         )
-        return user
+        # 8. 另起一行签发浏览器登录码，避免覆盖 nonce 行的防重放过期时间
+        return self.issue_browser_login_code(provider_id=provider.id, user_id=user.id)
 
     def _adapter(self, kind: str) -> IdentityProvider:
         adapter = self._adapters.get(kind)
@@ -573,3 +613,8 @@ class SsoService:
         return RedirectResult(
             f"{frontend_base.rstrip('/')}/login?{urlencode({'oidc_error': oidc_error})}"
         )
+
+
+def _has_control_char(value: str) -> bool:
+    """签名字段是否含 ASCII 控制字符或 DEL（会破坏换行分隔的 HMAC 明文）。"""
+    return any(ord(char) < 32 or ord(char) == 127 for char in value)

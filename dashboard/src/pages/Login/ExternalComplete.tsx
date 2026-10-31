@@ -1,18 +1,23 @@
 import { useEffect, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { getRememberLoginPreference, setAuthToken } from "../../api";
+import { authApi } from "../../api/modules/auth";
+import { refreshServerLabels } from "../../i18n";
+import { applyUserLocale } from "../../utils/locale";
 import { safeRedirect } from "./OidcComplete";
 
 /**
  * 读取外部免登交接参数。
  *
- * 安全约定：token 只从 hash 读取——hash 不会随请求发送到服务器，也不会进入访问日志；
- * query 仅作为旧链接的兼容回退（与 OidcComplete 的既有约定一致）。
+ * 安全约定：一次性登录码只从 hash 的 `code` 读取——hash 不会随请求发送到服务器，
+ * 也不会进入访问日志。query 中的 `code` 一律忽略（不接受把凭证放进查询串）。
+ * `redirect` 可先读 hash，再回退 query，最终仍由 `safeRedirect` 限制为站内路径。
+ * URL 中不得出现 JWT（`access_token`）。
  */
 export function readExternalCompleteParams(
   hash: string,
   search: string,
-): { accessToken: string | null; redirect: string | null } {
+): { code: string | null; redirect: string | null } {
   const fromHash = new URLSearchParams(
     hash.startsWith("#") ? hash.slice(1) : hash,
   );
@@ -20,8 +25,7 @@ export function readExternalCompleteParams(
     search.startsWith("?") ? search.slice(1) : search,
   );
   return {
-    // 参数名沿用后端换票响应的 snake_case 字段名
-    accessToken: fromHash.get("access_token") || fromQuery.get("access_token"),
+    code: fromHash.get("code"),
     redirect: fromHash.get("redirect") || fromQuery.get("redirect"),
   };
 }
@@ -29,9 +33,9 @@ export function readExternalCompleteParams(
 /**
  * 外部系统免登交接页（不可见）。
  *
- * 把业务系统通过服务端换票得到的 access_token 写入本机登录态，然后跳转到目标路由。
- * 这是唯一能在 Octop 同源下写登录态的环节，因此不渲染任何 DOM：无论正常路径还是
- * 跳转前的加载态都返回 null。
+ * 业务系统只拿到短时一次性登录码，并跳转到本页 hash。本页用该码向
+ * `POST /api/auth/oidc/exchange` 换取会话后写入登录态。JWT 不出现在 URL。
+ * 这是唯一能在 Octop 同源下写登录态的环节，因此不渲染任何 DOM。
  */
 export default function ExternalComplete() {
   const navigate = useNavigate();
@@ -42,29 +46,37 @@ export default function ExternalComplete() {
     if (did.current) return;
     did.current = true;
 
-    const { accessToken, redirect } = readExternalCompleteParams(
+    const { code, redirect } = readExternalCompleteParams(
       window.location.hash,
       window.location.search,
     );
 
-    // 读取后立即清除地址栏的 hash/query：避免 token 通过浏览器历史、截图或
-    // 复制链接泄露（清空后即使回退也拿不到 token）。
+    // 读取后立即清除地址栏的 hash/query：避免一次性码通过浏览器历史、截图或
+    // 复制链接泄露（清空后即使回退也拿不到码）。
     if (window.location.hash || window.location.search) {
       window.history.replaceState(null, "", window.location.pathname);
     }
 
-    if (!accessToken) {
-      // 缺少 token 视为无效交接，回到登录页
+    if (!code) {
+      // 缺少一次性码视为无效交接，回到登录页
       navigate("/login", { replace: true });
       return;
     }
 
-    // 沿用登录页“记住登录”偏好，决定写入 localStorage 还是 sessionStorage
-    setAuthToken(accessToken, getRememberLoginPreference());
-
-    // 此处拿不到 user 对象，故不做 applyUserLocale / refreshServerLabels。
-    // redirect 只允许站内路径，默认值由 safeRedirect 负责兜底（/chat）。
-    navigate(safeRedirect(redirect), { replace: true });
+    const dest = safeRedirect(redirect);
+    void authApi
+      .exchangeOidcCode(code)
+      .then(async (res) => {
+        // 沿用登录页“记住登录”偏好，决定写入 localStorage 还是 sessionStorage
+        setAuthToken(res.access_token, getRememberLoginPreference());
+        await applyUserLocale(res.user.locale);
+        void refreshServerLabels(res.user.locale);
+        navigate(dest, { replace: true });
+      })
+      .catch(() => {
+        // 页面不可见：换码失败静默回到登录页，与缺少码的行为一致
+        navigate("/login", { replace: true });
+      });
   }, [navigate]);
 
   // 页面不可见：不渲染 Spin、文案或任何 DOM
