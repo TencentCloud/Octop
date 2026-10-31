@@ -21,6 +21,7 @@ from octop.api.routers.ollama_download_store import (
     cancel_task,
     clear_completed,
     create_task,
+    get_task,
     get_tasks,
     update_status,
 )
@@ -187,6 +188,11 @@ async def _run_pull_in_background(
     loop: asyncio.AbstractEventLoop,
 ) -> None:
     """Execute the Ollama pull in a thread and update task status."""
+    current = await get_task(task_id)
+    if current is None or current.status is DownloadTaskStatus.CANCELLED:
+        # Cancelled before the blocking pull started: do not download a model
+        # the user already dismissed.
+        return
     from octop.infra.utils.ollama_manager import OllamaModelInfo, OllamaModelManager
 
     await update_status(task_id, DownloadTaskStatus.DOWNLOADING)
