@@ -26,7 +26,7 @@
     "dev:runtime": "bash scripts/make-dev-runtime.sh",
     "typecheck": "tsc --noEmit",
     "build": "electron-vite build",
-    "test": "node --experimental-strip-types --import ./scripts/register-extensionless-ts.mjs --test \"{main,preload,shared,renderer}/**/*.test.ts\"",
+    "test": "node --experimental-strip-types --import ./scripts/register-extensionless-ts.mjs --test \"{main,preload,shared,renderer}/**/*.test.ts\" \"scripts/*.test.mjs\"",
     "package": "pnpm run build && electron-builder --config electron-builder.config.ts",
     "package:dir": "pnpm run build && electron-builder --config electron-builder.config.ts --dir"
   },
