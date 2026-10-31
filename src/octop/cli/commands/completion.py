@@ -48,7 +48,10 @@ def install(shell: str | None, rc_file: str | None) -> None:
     rc_path.parent.mkdir(parents=True, exist_ok=True)
     snippet = _EVAL_TEMPLATE[sh]
 
-    existing = rc_path.read_text() if rc_path.exists() else ""
+    # rc files come from many shells; the default locale encoding (cp936 on a
+    # Chinese Windows, for example) cannot decode a UTF-8 rc file that holds CJK
+    # text, so read as UTF-8 and tolerate foreign bytes instead of crashing.
+    existing = rc_path.read_text(encoding="utf-8", errors="replace") if rc_path.exists() else ""
     if "_OCTOP_COMPLETE" in existing:
         click.echo(f"already installed in {rc_path}")
         return
