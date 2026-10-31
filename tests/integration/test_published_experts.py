@@ -43,6 +43,7 @@ async def test_publish_list_install_and_unpublish_preserves_installed_fork(
     expert = published.json()
     expert_id = expert["id"]
     assert expert["creator_username"] == "publish_owner"
+    assert isinstance(expert["skill_count"], int)
 
     listed = await client.get("/api/experts/published", headers=peer_auth)
     assert listed.status_code == 200, listed.text
@@ -212,7 +213,7 @@ async def test_install_keeps_source_quick_prompts_when_publish_body_omits_them(
     owner_auth = await create_user(client, admin_auth, username="quickcard_owner")
     peer_auth = await create_user(client, admin_auth, username="quickcard_peer")
     created = await client.post(
-        "/api/agents/from-expert/ai-coding-coach",
+        "/api/agents/from-expert/default",
         headers=owner_auth,
         json={"name": "quickcard-source"},
     )
@@ -266,7 +267,7 @@ async def test_install_keeps_source_task_examples_when_publish_body_omits_them(
     owner_auth = await create_user(client, admin_auth, username="taskex_owner")
     peer_auth = await create_user(client, admin_auth, username="taskex_peer")
     created = await client.post(
-        "/api/agents/from-expert/ai-coding-coach",
+        "/api/agents/from-expert/default",
         headers=owner_auth,
         json={"name": "taskex-source"},
     )

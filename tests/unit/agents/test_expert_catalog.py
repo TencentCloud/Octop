@@ -22,6 +22,22 @@ def _write_manifest(expert_dir: Path, *, extra: dict | None = None) -> None:
     )
 
 
+def test_skill_count_in_expert_dir_counts_skill_md(tmp_path: Path) -> None:
+    from octop.infra.agents.experts.catalog import skill_count_in_expert_dir
+
+    expert_dir = tmp_path / "expert"
+    (expert_dir / "skills" / "one").mkdir(parents=True)
+    (expert_dir / "skills" / "one" / "SKILL.md").write_text("# One", encoding="utf-8")
+    (expert_dir / "skills" / "notes.md").write_text("not a skill", encoding="utf-8")
+    (expert_dir / ".octop" / "skills" / "builtin").mkdir(parents=True)
+    (expert_dir / ".octop" / "skills" / "builtin" / "SKILL.md").write_text(
+        "# Builtin", encoding="utf-8"
+    )
+
+    assert skill_count_in_expert_dir(expert_dir) == 1
+    assert skill_count_in_expert_dir(tmp_path / "missing") == 0
+
+
 def test_expert_discovers_seed_paths(tmp_path: Path) -> None:
     from octop.infra.agents.experts.catalog import ExpertCatalog
 
@@ -245,25 +261,6 @@ def test_bundled_default_expert_only_has_agents_md() -> None:
     assert expert.files == ["AGENTS.md"]
     names = {item["name"] for item in catalog.read_file_contents("default")}
     assert names == {"AGENTS.md"}
-
-
-def test_bundled_office_automation_discovers_skills() -> None:
-    from octop.infra.agents.experts.catalog import ExpertCatalog, default_library_root
-
-    catalog = ExpertCatalog(default_library_root())
-    catalog.refresh()
-    expert = catalog.get("office-automation")
-    assert expert is not None
-    assert expert.prompt_files
-    assert len(expert.files) > 50
-    names = {item["name"] for item in catalog.read_file_contents("office-automation")}
-    assert "skills/docx/SKILL.md" in names
-    docx_skill = next(
-        item["content"]
-        for item in catalog.read_file_contents("office-automation")
-        if item["name"] == "skills/docx/SKILL.md"
-    )
-    assert "DOCX" in docx_skill
 
 
 def test_expert_quick_prompts_from_manifest(tmp_path: Path) -> None:

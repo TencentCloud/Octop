@@ -153,22 +153,23 @@ def _authorize_setup_mid_wizard(authorization: str | None, server: Any) -> str |
 
 
 async def _bootstrap_default_agent(server: Any, *, user_id: int, locale: str = "zh") -> None:
-    """Create the first default agent for a fresh install (pinned id ``main``)."""
-    from octop.infra.agents.experts.default_agent import (
+    """Create the first default agent for a fresh install (pinned id ``main``).
+
+    The template is ``general-assistant`` from the expert market. A market miss
+    leaves setup finished without that agent.
+    """
+    from octop.infra.agents.experts.default_agent import (  # noqa: PLC0415
         SETUP_DEFAULT_AGENT_ID,
-        bootstrap_default_agent,
-        user_policy_workspace_root,
+        bootstrap_first_expert,
     )
 
     if server.app_runtime is None:
         raise OctopError(ErrorCode.INTERNAL_ERROR, "app_runtime not ready")
-    await bootstrap_default_agent(
-        server.app_runtime.agent_registry,
-        server.expert_catalog,
+    await bootstrap_first_expert(
+        server,
         user_id=user_id,
         locale=locale,
         agent_id=SETUP_DEFAULT_AGENT_ID,
-        root_dir=user_policy_workspace_root(server, user_id),
     )
 
 

@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
-import { Button, Empty, Input, Segmented, Tag } from "antd";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Button, Empty, Input, Result, Tag } from "antd";
 import { message } from "@/utils/antdMessage";
 import {
   ArrowUpCircle,
@@ -10,8 +10,10 @@ import {
 } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { pluginsApi, type MarketPlugin } from "../../../api/modules/plugins";
+import { OctopEmptyMascot } from "../../../components/EmptyState";
 import { CardSkeleton } from "../../../components/Skeleton";
 import { apiErrorMessage } from "../../../utils/apiError";
+import { isCatalogNetworkError } from "../../../utils/networkError";
 import styles from "./index.module.less";
 import { PluginIconView } from "./PluginIconView";
 import { PluginCardMeta } from "./PluginCardMeta";
@@ -37,15 +39,18 @@ function matchesMarketQuery(row: MarketPlugin, query: string): boolean {
   return haystack.includes(q);
 }
 
-/** Marketplace catalog — install copies in-tree packages to ~/.octop/plugins. */
 export function PluginMarketPanel() {
   const { t } = useTranslation();
   const [items, setItems] = useState<MarketPlugin[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [loadFailed, setLoadFailed] = useState(false);
+  const [networkFailure, setNetworkFailure] = useState(false);
+  const itemsRef = useRef(items);
   const [installingId, setInstallingId] = useState<string | null>(null);
   const [activeGroup, setActiveGroup] = useState<string>(GROUP_ALL);
   const [keyword, setKeyword] = useState("");
+  itemsRef.current = items;
 
   const fetchMarket = useCallback(
     async (force = false) => {
@@ -54,8 +59,19 @@ export function PluginMarketPanel() {
       try {
         const rows = await pluginsApi.listMarket();
         setItems(rows);
+        setLoadFailed(false);
+        setNetworkFailure(false);
       } catch (err) {
-        message.error(apiErrorMessage(err, t("plugins.marketLoadError"), t));
+        const network = isCatalogNetworkError(err, "NETWORK_ERROR");
+        setNetworkFailure(network);
+        setLoadFailed(true);
+        if (itemsRef.current.length > 0) {
+          message.error(
+            network
+              ? t("apiErrors.NETWORK_ERROR")
+              : t("plugins.marketUnavailable"),
+          );
+        }
       } finally {
         setLoading(false);
         setRefreshing(false);
@@ -68,12 +84,14 @@ export function PluginMarketPanel() {
     void fetchMarket();
   }, [fetchMarket]);
 
-  const handleInstall = async (row: MarketPlugin, force: boolean) => {
+  const handleInstall = async (row: MarketPlugin) => {
     setInstallingId(row.id);
     try {
-      await pluginsApi.installFromMarket(row.id, force);
+      await pluginsApi.installFromMarket(row.id, row.version);
       message.success(
-        force ? t("plugins.marketUpdateSuccess") : t("plugins.installSuccess"),
+        row.update_available
+          ? t("plugins.marketUpdateSuccess")
+          : t("plugins.installSuccess"),
       );
       notifyPluginsChanged();
       await fetchMarket(true);
@@ -127,48 +145,98 @@ export function PluginMarketPanel() {
     }
   }, [activeGroup, groupOptions]);
 
+  const catalogFailed = loadFailed && items.length === 0;
+
   return (
     <div className={styles.panel}>
-      <div className={styles.toolbar}>
-        <div className={styles.toolbarLeft}>
-          <span className={styles.toolbarCount}>
-            {t("plugins.totalMarket", { count: filtered.length })}
-          </span>
-        </div>
-        <div className={`${styles.toolbarRight} ${styles.marketToolbarRight}`}>
-          <Input
-            className={styles.marketSearch}
-            prefix={<Search size={14} />}
-            allowClear
-            value={keyword}
-            placeholder={t("plugins.marketSearchPlaceholder")}
-            onChange={(e) => setKeyword(e.target.value)}
-          />
-          <Button
-            icon={<RefreshCw size={14} />}
-            loading={refreshing}
-            onClick={() => void fetchMarket(true)}
+      {!catalogFailed && (
+        <div className={styles.toolbar}>
+          <div className={styles.toolbarLeft}>
+            {loading ? null : (
+              <span className={styles.toolbarCount}>
+                {t("plugins.totalMarket", { count: filtered.length })}
+              </span>
+            )}
+          </div>
+          <div
+            className={`${styles.toolbarRight} ${styles.marketToolbarRight}`}
           >
-            {t("plugins.marketRefresh")}
-          </Button>
+            <Input
+              className={styles.marketSearch}
+              prefix={<Search size={14} />}
+              allowClear
+              value={keyword}
+              placeholder={t("plugins.marketSearchPlaceholder")}
+              onChange={(e) => setKeyword(e.target.value)}
+            />
+            <Button
+              aria-label={t("plugins.marketRefresh")}
+              title={t("plugins.marketRefresh")}
+              icon={<RefreshCw size={14} />}
+              loading={refreshing}
+              onClick={() => void fetchMarket(true)}
+            />
+          </div>
         </div>
-      </div>
+      )}
 
-      {!keyword.trim() && groupOptions.length > 1 ? (
+      {!catalogFailed && !keyword.trim() && groupOptions.length > 1 ? (
         <div className={styles.groupTabsWrap}>
-          <Segmented
-            block
-            size="large"
-            value={activeGroup}
-            onChange={(v) => setActiveGroup(String(v))}
-            options={groupOptions}
-            className={styles.groupTabs}
-          />
+          {groupOptions.map((opt) => {
+            const active = activeGroup === opt.value;
+            return (
+              <button
+                key={opt.value}
+                type="button"
+                aria-pressed={active}
+                className={
+                  active
+                    ? `${styles.groupPill} ${styles.groupPillActive}`
+                    : styles.groupPill
+                }
+                onClick={() => setActiveGroup(opt.value)}
+              >
+                {opt.label}
+              </button>
+            );
+          })}
         </div>
       ) : null}
 
       {loading ? (
-        <CardSkeleton count={6} />
+        <div className={styles.loadingSkeleton}>
+          <CardSkeleton
+            count={6}
+            containerStyle={{
+              gridTemplateColumns: "repeat(auto-fill, minmax(320px, 1fr))",
+              rowGap: 16,
+              columnGap: 12,
+              padding: "4px 0 24px",
+            }}
+          />
+        </div>
+      ) : catalogFailed ? (
+        <div className={styles.marketStage}>
+          <Result
+            className={styles.marketLoadResult}
+            icon={<OctopEmptyMascot size={120} />}
+            title={t("plugins.marketLoadError")}
+            subTitle={
+              networkFailure
+                ? t("apiErrors.NETWORK_ERROR")
+                : t("plugins.marketUnavailable")
+            }
+            extra={
+              <Button
+                type="primary"
+                loading={refreshing}
+                onClick={() => void fetchMarket(true)}
+              >
+                {t("common.retry")}
+              </Button>
+            }
+          />
+        </div>
       ) : filtered.length === 0 ? (
         <Empty
           image={Empty.PRESENTED_IMAGE_SIMPLE}
@@ -198,6 +266,8 @@ export function PluginMarketPanel() {
                       icon={row.icon}
                       size={32}
                       className={styles.cardIcon}
+                      crossOrigin="anonymous"
+                      fadeIn
                     />
                     <div className={styles.cardTitleCol}>
                       <h3 className={styles.cardName}>{row.name || row.id}</h3>
@@ -232,7 +302,7 @@ export function PluginMarketPanel() {
                       size="small"
                       icon={<ArrowUpCircle size={14} />}
                       loading={installingId === row.id}
-                      onClick={() => void handleInstall(row, true)}
+                      onClick={() => void handleInstall(row)}
                     >
                       {t("plugins.marketUpdate")}
                     </Button>
@@ -246,7 +316,7 @@ export function PluginMarketPanel() {
                       size="small"
                       icon={<Download size={14} />}
                       loading={installingId === row.id}
-                      onClick={() => void handleInstall(row, false)}
+                      onClick={() => void handleInstall(row)}
                     >
                       {t("plugins.marketInstall")}
                     </Button>

@@ -1,5 +1,6 @@
 import { Package, Wrench } from "lucide-react";
 import type { CSSProperties } from "react";
+import { FadeInImg } from "../../../components/FadeInImg";
 import { useAuthImageSrc } from "../../../hooks/useAuthImageSrc";
 import { needsAuthBlobFetch } from "../../../utils/toolMediaBlocks";
 
@@ -18,6 +19,9 @@ export interface PluginIconViewProps {
   className?: string;
   style?: CSSProperties;
   fallback?: "package" | "wrench";
+  crossOrigin?: "anonymous" | "use-credentials";
+  /** Fade the bitmap in after it finishes loading. */
+  fadeIn?: boolean;
 }
 
 function PluginIconImage({
@@ -26,12 +30,16 @@ function PluginIconImage({
   className,
   style,
   shell,
+  crossOrigin,
+  fadeIn = false,
 }: {
   url: string;
   size: number;
   className?: string;
   style?: CSSProperties;
   shell: CSSProperties;
+  crossOrigin?: "anonymous" | "use-credentials";
+  fadeIn?: boolean;
 }) {
   const authNeeded = needsAuthBlobFetch(url);
   const { src, loadState } = useAuthImageSrc(url);
@@ -48,12 +56,23 @@ function PluginIconImage({
       }}
     >
       {ready ? (
-        <img
-          src={displaySrc}
-          alt=""
-          referrerPolicy="no-referrer"
-          style={{ width: "100%", height: "100%", objectFit: "cover" }}
-        />
+        fadeIn ? (
+          <FadeInImg
+            src={displaySrc}
+            alt=""
+            crossOrigin={crossOrigin}
+            referrerPolicy="no-referrer"
+            style={{ width: "100%", height: "100%", objectFit: "cover" }}
+          />
+        ) : (
+          <img
+            src={displaySrc}
+            alt=""
+            crossOrigin={crossOrigin}
+            referrerPolicy="no-referrer"
+            style={{ width: "100%", height: "100%", objectFit: "cover" }}
+          />
+        )
       ) : (
         <Package size={Math.round(size * 0.42)} />
       )}
@@ -68,6 +87,8 @@ export function PluginIconView({
   className,
   style,
   fallback = "package",
+  crossOrigin,
+  fadeIn = false,
 }: PluginIconViewProps) {
   const trimmed = (icon || "").trim();
   const radius = Math.max(10, Math.round(size * 0.28));
@@ -92,6 +113,8 @@ export function PluginIconView({
         className={className}
         style={style}
         shell={shell}
+        crossOrigin={crossOrigin}
+        fadeIn={fadeIn}
       />
     );
   }

@@ -477,7 +477,7 @@ OpenAI 兼容 API、DashScope（千问）、Ollama 等预设 — 在控制台或
 
 控制面也可改用 PostgreSQL（`config.json` → `database`，或 `OCTOP_DATABASE_*` / 首次设置向导）。控制面为 PostgreSQL 时，Agent 记忆**默认复用同一 DSN**（per-agent schema）；若需继续用文件记忆，在 agent 配置里设 `"memory": { "backend": { "type": "sqlite" } }`。详见 [docs/configuration.md](docs/configuration.md) 与 [docs/adr/002-database-backends.md](docs/adr/002-database-backends.md)。
 
-环境变量与 `config.json` 详见 [docs/configuration.md](docs/configuration.md)。
+环境变量与 `config.json` 详见 [docs/configuration.md](docs/configuration.md)。访问不了公网时，可按 [docs/private-market.md](docs/private-market.md) 在内网自建插件市场和专家市场，按 [docs/skill-market.md](docs/skill-market.md) 自建技能市场（`SKILL_MARKET_ORIGIN`）。
 
 ## 🏗️ 架构
 

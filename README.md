@@ -480,7 +480,7 @@ Interactive API docs: **http://127.0.0.1:8088/api/docs** (disabled by default �
 
 The control plane can also use PostgreSQL — set `database` in `config.json`, or `OCTOP_DATABASE_*` / the first-run wizard. With PostgreSQL, agent memory reuses the same DSN by default (per-agent schema); to keep file-based memory, set `"memory": { "backend": { "type": "sqlite" } }` in the agent config. See [docs/configuration.md](docs/configuration.md) and [docs/adr/002-database-backends.md](docs/adr/002-database-backends.md).
 
-See [docs/configuration.md](docs/configuration.md) for env vars and `config.json`.
+See [docs/configuration.md](docs/configuration.md) for env vars and `config.json`. Hosts that cannot reach the public catalog can run a private plugin and expert market; the HTTP contract is in [docs/private-market.md](docs/private-market.md). A private SkillHub-compatible skill market is [docs/skill-market.md](docs/skill-market.md) (`SKILL_MARKET_ORIGIN`).
 
 ## 🏗️ Architecture
 

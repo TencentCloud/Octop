@@ -57,14 +57,15 @@ def _expert_text_contents(catalog: ExpertCatalog, expert_id: str) -> dict[str, s
 def expert_library() -> ExpertCatalog:
     catalog = ExpertCatalog(default_library_root())
     catalog.refresh()
-    assert catalog.list_summaries(), "expert library is empty"
+    assert catalog.get("default") is not None
     return catalog
 
 
 @pytest.fixture(scope="session")
 def skill_expert_ids(expert_library: ExpertCatalog) -> list[str]:
     ids = _skill_expert_ids(expert_library)
-    assert ids, "expected at least one expert with skills/ in manifest"
+    if not ids:
+        pytest.skip("product expert templates live in the market, not the install tree")
     return ids
 
 
@@ -119,10 +120,6 @@ async def test_skill_experts_copy_md_and_skill_files(
     skill_expert_ids: list[str],
 ) -> None:
     """Each bundled skill expert copies every manifest file (md + skill tree)."""
-    assert "stock-assistant" in skill_expert_ids
-    assert "news-trend" in skill_expert_ids
-    assert "wechat-ops" in skill_expert_ids
-
     for expert_id in skill_expert_ids:
         expert = expert_library.get(expert_id)
         assert expert is not None
@@ -171,7 +168,8 @@ async def test_wechat_ops_copies_skill_scripts(
 ) -> None:
     """Non-markdown skill assets (scripts, yaml) land in workspace."""
     expert = expert_library.get("wechat-ops")
-    assert expert is not None
+    if expert is None:
+        pytest.skip("wechat-ops ships from the expert market, not the install tree")
 
     row = await live_agent_manager.create(
         AgentCreateSpec(
@@ -203,7 +201,8 @@ async def test_stock_assistant_skill_references_copied(
     expert_library: ExpertCatalog,
 ) -> None:
     expert = expert_library.get("stock-assistant")
-    assert expert is not None
+    if expert is None:
+        pytest.skip("stock-assistant ships from the expert market, not the install tree")
 
     row = await live_agent_manager.create(
         AgentCreateSpec(
@@ -236,9 +235,9 @@ async def test_expert_agent_can_reply_after_template_copy(
 ) -> None:
     row = await live_agent_manager.create(
         AgentCreateSpec(
-            name="live-news",
+            name="live-default",
             default_model=live_openai_config.default_model,
-            template_name="news-trend",
+            template_name="default",
             system_prompt="Reply with exactly one word: ok",
         ),
     )

@@ -1067,6 +1067,7 @@ async def hub_install_package_skill(
         SkillHubPackageError,
         SkillHubPackageTooLarge,
         download_skillhub_package,
+        skill_market_failure_status,
     )
 
     locale = resolve_request_locale(request)
@@ -1111,18 +1112,11 @@ async def hub_install_package_skill(
         raise HTTPException(status_code=413, detail=str(exc)) from exc
     except SkillHubPackageError as exc:
         raise HTTPException(status_code=502, detail=str(exc)) from exc
-    except SkillHubMarketError:
-        transport = "cli"
-        from octop.api.routers.skills import (  # noqa: PLC0415
-            _download_skillhub_package_via_cli,
-        )
-
-        try:
-            files = await _download_skillhub_package_via_cli(skill_name)
-        except (SkillHubPackageTooLarge, SkillPackageTooLarge) as package_exc:
-            raise HTTPException(status_code=413, detail=str(package_exc)) from package_exc
-        except (SkillHubPackageError, SkillPackageError) as package_exc:
-            raise HTTPException(status_code=502, detail=str(package_exc)) from package_exc
+    except SkillHubMarketError as exc:
+        raise HTTPException(
+            status_code=skill_market_failure_status(exc),
+            detail=str(exc),
+        ) from exc
 
     try:
         await install_skill_from_skillhub(

@@ -2,12 +2,12 @@
  * Experts page — redesigned as Agents Management Centre.
  *
  * Tab A: user's experts, shown as a card grid with start/stop/edit/delete.
- * Tab B: built-in expert templates, shown as a card grid with create-from-template drawer.
- * Tab C: SkillHub expert market, shown as remote skillset cards.
+ * Tab B: octop.cloud expert market, plus templates published by users on this instance.
  *
  * API (all via request() which already prefixes /api):
- *   GET  /experts                         → ExpertSummary[]
- *   GET  /experts/hub                     → SkillHub market cards (+ scenes)
+ *   GET  /experts/default                 → blank expert seed
+ *   GET  /experts/published               → templates published on this instance
+ *   GET  /experts/hub                     → octop.cloud market cards (+ scenes)
  *   GET  /experts/hub/{slug}              → market detail + quick prompts
  *   POST /experts/hub/{slug}/install      → create agent from market
  *   GET  /agents                          → via AgentContext
@@ -20,12 +20,11 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useNavigate, useSearchParams } from "react-router-dom";
-import { Input, Spin, Tabs, Segmented, Tooltip } from "antd";
+import { Input, Tabs, Segmented, Tooltip } from "antd";
 import { message } from "@/utils/antdMessage";
 
 import {
   Cloudy,
-  CopyPlus,
   GraduationCap,
   LayoutGrid,
   List,
@@ -49,7 +48,6 @@ import { useCurrentUser } from "../../hooks/useCurrentUser";
 import { useCardTableView } from "../../hooks/useCardTableView";
 import type { OctopAgent } from "../../context/AgentContext";
 import { AgentCard } from "./components/AgentCard";
-import { ExpertCard } from "./components/ExpertCard";
 import type { ExpertSummary } from "./components/ExpertCard";
 import EditAgentDrawer from "./components/EditAgentDrawer";
 import CreateFromExpertDrawer, {
@@ -58,11 +56,9 @@ import CreateFromExpertDrawer, {
 import TeamDrawer from "./components/TeamDrawer";
 import type { TeamRecord } from "../../api/modules/teams";
 import { TeamCard } from "./components/TeamCard";
-import { PublishedExpertCard } from "./components/PublishedExpertCard";
 import AgentExpertsTable from "./components/AgentExpertsTable";
 import ExpertMarketTab from "./components/ExpertMarketTab";
 import { OctopEmptyMascot } from "../../components/EmptyState";
-import { pickLocale } from "../../utils/localizedText";
 import { isOwnedExpert, ownedExperts } from "../../utils/sharedExpert";
 import {
   matchesExpertLocation,
@@ -73,7 +69,7 @@ import { apiErrorMessage } from "../../utils/apiError";
 import { navAllowed } from "../../utils/permissions";
 import styles from "./index.module.less";
 
-type TabKey = "my" | "teams" | "library" | "market";
+type TabKey = "my" | "teams" | "market";
 type ViewMode = "card" | "table";
 const VIEW_STORAGE_KEY = "octop:experts-view";
 
@@ -82,32 +78,9 @@ function loadViewMode(): ViewMode {
   return stored === "table" ? "table" : "card";
 }
 
-async function fetchExpertLibrary(): Promise<ExpertSummary[]> {
-  return request<ExpertSummary[]>("/experts");
-}
-
 async function fetchPublishedExperts(): Promise<PublishedExpert[]> {
   return publishedExpertsApi.list();
 }
-
-const LIBRARY_SCENE_ORDER = [
-  "ecommerce",
-  "finance",
-  "content-creation",
-  "lifestyle",
-  "marketing",
-  "mysticism",
-  "academic",
-  "legal",
-  "tech",
-  "education",
-  "healthcare",
-  "hr",
-  "media",
-  "design",
-] as const;
-
-const LIBRARY_SCENE_ALL = "";
 
 function textMatchesQuery(
   query: string,
@@ -147,23 +120,12 @@ export default function ExpertsPage() {
     navigate("/bridge?create=1");
   }, [navigate]);
 
-  const canManagePublished = useCallback(
-    (expert: PublishedExpert) =>
-      currentUser?.role === "admin" ||
-      String(currentUser?.id) === expert.created_by,
-    [currentUser],
-  );
-
   // ── Tab state ──────────────────────────────────────────────────
   const [searchParams] = useSearchParams();
   const [activeTab, setActiveTab] = useState<TabKey>(() => {
     const tab = searchParams.get("tab");
-    if (
-      tab === "my" ||
-      tab === "teams" ||
-      tab === "library" ||
-      tab === "market"
-    ) {
+    if (tab === "library") return "market";
+    if (tab === "my" || tab === "teams" || tab === "market") {
       return tab;
     }
     return "my";
@@ -180,13 +142,11 @@ export default function ExpertsPage() {
   const handleRefresh = useCallback(async () => {
     setRefreshing(true);
     try {
-      const [agentList, expertList, publishedList] = await Promise.all([
+      const [agentList, publishedList] = await Promise.all([
         request<OctopAgent[]>("/agents"),
-        fetchExpertLibrary(),
         fetchPublishedExperts(),
       ]);
       setLocalAgents(agentList);
-      setExperts(expertList);
       setPublishedExperts(publishedList);
       await refreshAgents({ silent: true, force: true });
     } catch (err: unknown) {
@@ -204,10 +164,6 @@ export default function ExpertsPage() {
     localStorage.setItem(VIEW_STORAGE_KEY, mode);
   };
 
-  // ── Built-in expert library ────────────────────────────────────
-  const [experts, setExperts] = useState<ExpertSummary[]>([]);
-  const [expertLoading, setExpertLoading] = useState(false);
-  const [libraryScene, setLibraryScene] = useState(LIBRARY_SCENE_ALL);
   const [publishedExperts, setPublishedExperts] = useState<PublishedExpert[]>(
     [],
   );
@@ -235,12 +191,10 @@ export default function ExpertsPage() {
 
   useEffect(() => {
     let cancelled = false;
-    setExpertLoading(true);
     setPublishedExpertLoading(true);
-    Promise.all([fetchExpertLibrary(), fetchPublishedExperts()])
-      .then(([expertData, publishedData]) => {
+    fetchPublishedExperts()
+      .then((publishedData) => {
         if (!cancelled) {
-          setExperts(expertData);
           setPublishedExperts(publishedData);
         }
       })
@@ -252,7 +206,6 @@ export default function ExpertsPage() {
       })
       .finally(() => {
         if (!cancelled) {
-          setExpertLoading(false);
           setPublishedExpertLoading(false);
         }
       });
@@ -418,8 +371,8 @@ export default function ExpertsPage() {
     }
   }, [t]);
 
-  const openExpertLibrary = useCallback(() => {
-    setActiveTab("library");
+  const openExpertMarket = useCallback(() => {
+    setActiveTab("market");
   }, []);
 
   // ── "Installed" badge lookup (template_name column; legacy config.expert_id) ──
@@ -500,9 +453,9 @@ export default function ExpertsPage() {
               disabled: defaultCreating,
             }}
             secondaryAction={{
-              label: t("experts.goToLibrary"),
-              onClick: openExpertLibrary,
-              icon: <CopyPlus size={14} />,
+              label: t("experts.goToMarket"),
+              onClick: openExpertMarket,
+              icon: <Store size={14} />,
               type: "default",
             }}
             extraAction={
@@ -579,8 +532,8 @@ export default function ExpertsPage() {
               <Plus size={14} />
               {t("experts.newExpert")}
             </button>
-            <button className={styles.toolbarBtn} onClick={openExpertLibrary}>
-              {t("experts.addFromLibrary")}
+            <button className={styles.toolbarBtn} onClick={openExpertMarket}>
+              {t("experts.addFromMarket")}
             </button>
           </div>
         </div>
@@ -650,7 +603,7 @@ export default function ExpertsPage() {
     newAgentId,
     openCloudCollab,
     openDefaultCreate,
-    openExpertLibrary,
+    openExpertMarket,
     publishedByAgentId,
     refreshButton,
     refreshPublishedExperts,
@@ -769,198 +722,31 @@ export default function ExpertsPage() {
     visibleTeamAgents,
   ]);
 
-  const visiblePublishedExperts = useMemo(
-    () =>
-      publishedExperts.filter((expert) =>
-        textMatchesQuery(
-          searchNeedle,
-          expert.name,
-          expert.description,
-          expert.creator_username,
-        ),
-      ),
-    [publishedExperts, searchNeedle],
-  );
-  const libraryScenes = useMemo(() => {
-    const present = new Set(
-      experts.map((expert) => (expert.scene || "").trim()).filter(Boolean),
-    );
-    return LIBRARY_SCENE_ORDER.filter((scene) => present.has(scene));
-  }, [experts]);
-  const visibleLibraryExperts = useMemo(
-    () =>
-      experts.filter((expert) => {
-        const scene = (expert.scene || "").trim();
-        if (!searchNeedle && libraryScene && scene !== libraryScene) {
-          return false;
-        }
-        return textMatchesQuery(
-          searchNeedle,
-          expert.id,
-          pickLocale(expert.label, lang),
-          expert.label.zh,
-          expert.label.en,
-          pickLocale(expert.description, lang),
-          expert.description?.zh,
-          expert.description?.en,
-          scene ? t(`experts.scenes.${scene}`, { defaultValue: scene }) : "",
-        );
-      }),
-    [experts, lang, libraryScene, searchNeedle, t],
-  );
-
-  const libraryContent = useMemo(() => {
-    if (expertLoading || publishedExpertLoading) {
-      return (
-        <div className={styles.loadingState}>
-          <Spin />
-        </div>
-      );
-    }
-    if (experts.length === 0 && publishedExperts.length === 0) {
-      return (
-        <div className={styles.emptyState}>
-          <OctopEmptyMascot />
-          <div className={styles.emptyTitle}>{t("experts.emptyLibrary")}</div>
-          <div className={styles.emptyHint}>
-            {t("experts.emptyLibraryHint")}
-          </div>
-          <div className={styles.emptyActions}>{refreshButton}</div>
-        </div>
-      );
-    }
-    return (
-      <>
-        {publishedExperts.length > 0 && (
-          <>
-            <div className={styles.gridToolbar}>
-              <span className={styles.gridCount}>
-                {t("experts.published.listTitle", {
-                  count: visiblePublishedExperts.length,
-                })}
-              </span>
-              <div className={styles.gridToolbarRight}>{toolbarSearch}</div>
-            </div>
-            <p
-              style={{
-                color: "var(--fn-text-tertiary)",
-                fontSize: 13,
-                margin: "0 0 12px",
-              }}
-            >
-              {t("experts.published.listHint")}
-            </p>
-            {visiblePublishedExperts.length === 0 ? (
-              <div className={styles.searchEmpty}>
-                {t("experts.searchEmpty")}
-              </div>
-            ) : (
-              <div className={styles.cardGrid}>
-                {visiblePublishedExperts.map((expert) => (
-                  <PublishedExpertCard
-                    key={expert.id}
-                    expert={expert}
-                    canManage={canManagePublished(expert)}
-                    onInstall={(item) =>
-                      setCreateSource({ kind: "published", expert: item })
-                    }
-                    onChanged={refreshPublishedExperts}
-                  />
-                ))}
-              </div>
-            )}
-          </>
-        )}
-        <div className={styles.gridToolbar}>
-          <span className={styles.gridCount}>
-            {t("experts.totalLibrary", { count: visibleLibraryExperts.length })}
-          </span>
-          <div className={styles.gridToolbarRight}>
-            {publishedExperts.length === 0 ? toolbarSearch : null}
-            {refreshButton}
-          </div>
-        </div>
-        {publishedExperts.length === 0 && (
-          <p
-            style={{
-              color: "var(--fn-text-tertiary)",
-              fontSize: 13,
-              margin: "0 0 12px",
-            }}
-          >
-            {t("experts.published.emptyHint")}
-          </p>
-        )}
-        {!searchNeedle && libraryScenes.length > 0 && (
-          <div className={styles.marketSceneTabsWrap}>
-            <Segmented
-              block
-              size="large"
-              value={libraryScene}
-              onChange={(value) => setLibraryScene(String(value))}
-              options={[
-                {
-                  value: LIBRARY_SCENE_ALL,
-                  label: t("experts.sceneAll"),
-                },
-                ...libraryScenes.map((scene) => ({
-                  value: scene,
-                  label: t(`experts.scenes.${scene}`, { defaultValue: scene }),
-                })),
-              ]}
-              className={styles.marketSceneTabs}
-            />
-          </div>
-        )}
-        {visibleLibraryExperts.length === 0 ? (
-          <div className={styles.searchEmpty}>{t("experts.searchEmpty")}</div>
-        ) : (
-          <div className={styles.cardGrid}>
-            {visibleLibraryExperts.map((expert) => (
-              <ExpertCard
-                key={expert.id}
-                expert={expert}
-                lang={lang}
-                isInstalled={agentExpertIds.has(expert.id)}
-                onCreate={(item) =>
-                  setCreateSource({ kind: "builtin", expert: item })
-                }
-              />
-            ))}
-          </div>
-        )}
-      </>
-    );
-  }, [
-    agentExpertIds,
-    canManagePublished,
-    expertLoading,
-    experts,
-    lang,
-    libraryScene,
-    libraryScenes,
-    publishedExpertLoading,
-    publishedExperts,
-    refreshButton,
-    refreshPublishedExperts,
-    searchNeedle,
-    t,
-    toolbarSearch,
-    visibleLibraryExperts,
-    visiblePublishedExperts,
-  ]);
-
   const marketContent = useMemo(
     () => (
       <ExpertMarketTab
         lang={lang}
         installedExpertIds={agentExpertIds}
+        publishedExperts={publishedExperts}
+        publishedLoading={publishedExpertLoading}
+        onInstallPublished={(expert) =>
+          setCreateSource({ kind: "published", expert })
+        }
+        onPublishedChanged={() => {
+          void refreshPublishedExperts();
+        }}
         onRequestCreate={(expert) =>
           setCreateSource({ kind: "market", expert })
         }
       />
     ),
-    [agentExpertIds, lang],
+    [
+      agentExpertIds,
+      lang,
+      publishedExpertLoading,
+      publishedExperts,
+      refreshPublishedExperts,
+    ],
   );
 
   return (
@@ -969,6 +755,7 @@ export default function ExpertsPage() {
       subtitle={t("pageShell.experts.subtitle")}
     >
       <Tabs
+        className={styles.shellTabs}
         activeKey={activeTab}
         onChange={(k) => setActiveTab(k as TabKey)}
         items={[
@@ -983,13 +770,6 @@ export default function ExpertsPage() {
             key: "teams",
             label: <TabLabel icon={Users}>{t("experts.myTeams")}</TabLabel>,
             children: teamsContent,
-          },
-          {
-            key: "library",
-            label: (
-              <TabLabel icon={CopyPlus}>{t("experts.expertLibrary")}</TabLabel>
-            ),
-            children: libraryContent,
           },
           {
             key: "market",

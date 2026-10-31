@@ -294,25 +294,17 @@ async def list_users(
     return [_row_to_dict(r, policy_map.get(r.id), server) for r in rows]
 
 
-def _expert_template_id(body: UserCreateBody, server: Any) -> str | None:
-    """Catalog id to bootstrap, or ``None`` when the caller opted out."""
+def _expert_template_id(body: UserCreateBody) -> str | None:
+    """Market template id to bootstrap, or ``None`` when the caller opted out.
+
+    The id is not checked against the local catalog. Creation pulls it from
+    the expert market and still succeeds when that pull fails.
+    """
     if not body.create_default_expert:
         return None
     from octop.infra.agents.experts.default_agent import DEFAULT_EXPERT_ID
 
-    template_id = (body.expert_template_id or "").strip() or DEFAULT_EXPERT_ID
-    catalog = getattr(server, "expert_catalog", None)
-    if catalog is None or catalog.get(template_id) is None:
-        raise OctopError(ErrorCode.EXPERT_TEMPLATE_NOT_FOUND, "expert template not found")
-    return template_id
-
-
-async def _discard_new_user(server: Any, username: str) -> None:
-    registry = getattr(getattr(server, "app_runtime", None), "agent_registry", None)
-    try:
-        await server.user_manager.remove(username, agent_manager=registry)
-    except Exception:
-        logger.exception("failed to roll back user %s after expert bootstrap error", username)
+    return (body.expert_template_id or "").strip() or DEFAULT_EXPERT_ID
 
 
 @router.post("", status_code=201)
@@ -322,7 +314,7 @@ async def create_user(
     actor: Any = Depends(require_permission("users")),
     server: Any = Depends(get_server),
 ) -> dict[str, Any]:
-    template_id = _expert_template_id(body, server)
+    template_id = _expert_template_id(body)
     role_id, template_name, template_perms, template_policies = _resolve_role_template(
         server, body.role
     )
@@ -357,30 +349,16 @@ async def create_user(
     )
     await server.user_manager.set_resource_policy(user.username, **policy_kwargs)
     if template_id is not None:
-        from octop.infra.agents.experts.default_agent import (
-            bootstrap_default_agent,
-            user_policy_workspace_root,
+        from octop.infra.agents.experts.default_agent import (  # noqa: PLC0415
+            try_bootstrap_default_agent,
         )
 
-        registry = getattr(getattr(server, "app_runtime", None), "agent_registry", None)
-        if registry is None:
-            await _discard_new_user(server, user.username)
-            raise OctopError(ErrorCode.DEFAULT_EXPERT_FAILED, "could not create default expert")
-        try:
-            created_agent = await bootstrap_default_agent(
-                registry,
-                server.expert_catalog,
-                user_id=user.id,
-                locale=resolve_request_locale(request),
-                root_dir=user_policy_workspace_root(server, user.id),
-                expert_id=template_id,
-            )
-        except Exception:
-            await _discard_new_user(server, user.username)
-            raise
-        if created_agent is None:
-            await _discard_new_user(server, user.username)
-            raise OctopError(ErrorCode.DEFAULT_EXPERT_FAILED, "could not create default expert")
+        await try_bootstrap_default_agent(
+            server,
+            user_id=user.id,
+            locale=resolve_request_locale(request),
+            expert_id=template_id,
+        )
     row = server.user_manager.get_row(user.id)
     assert row is not None
     return _row_to_dict(row, server.services.user_policy_repo.list_for_user(row.id), server)
