@@ -5,13 +5,17 @@ from __future__ import annotations
 import json
 import os
 import stat
+import threading
+import time
 from pathlib import Path
+from typing import Any
 
 import pytest
 
 from octop.infra.utils.json_file import (
     JsonFileCorruptError,
     read_json_object,
+    update_json_object,
     write_json_atomic,
 )
 
@@ -105,3 +109,80 @@ def test_write_new_file_uses_umask_default_not_mkstemp_0600(tmp_path: Path) -> N
     path = tmp_path / "fresh.json"
     write_json_atomic(path, {"a": 1})
     assert stat.S_IMODE(path.stat().st_mode) == 0o666 & ~mask
+
+
+def test_update_json_object_creates_absent_file(tmp_path: Path) -> None:
+    path = tmp_path / "config.json"
+
+    def mutate(data: dict[str, Any]) -> None:
+        data["plugins"] = {"echo-tool": {"enabled": True}}
+
+    result = update_json_object(path, mutate)
+    assert result == {"plugins": {"echo-tool": {"enabled": True}}}
+    assert json.loads(path.read_text(encoding="utf-8")) == result
+
+
+def test_update_json_object_never_mutates_a_corrupt_file(tmp_path: Path) -> None:
+    path = tmp_path / "config.json"
+    original = '{"database": {"password": "s3cret"},}'
+    path.write_text(original, encoding="utf-8")
+    touched: list[bool] = []
+
+    def mutate(data: dict[str, Any]) -> None:
+        touched.append(True)
+
+    with pytest.raises(JsonFileCorruptError):
+        update_json_object(path, mutate)
+    assert touched == []
+    assert path.read_text(encoding="utf-8") == original
+
+
+def test_update_json_object_serializes_concurrent_merges(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Two writers merging different keys must not drop either one.
+
+    The delay after the read pins the interleaving: both threads finish reading
+    the same snapshot before either writes — exactly what an unsynchronized
+    read-modify-write does whenever a marketplace install and a dashboard
+    toggle land together.
+    """
+    path = tmp_path / "config.json"
+    path.write_text(json.dumps({"database": {"driver": "postgresql"}}), encoding="utf-8")
+    real_read = read_json_object
+
+    def slow_read(target: Path) -> dict[str, Any] | None:
+        data = real_read(target)
+        time.sleep(0.02)
+        return data
+
+    monkeypatch.setattr("octop.infra.utils.json_file.read_json_object", slow_read)
+    start = threading.Barrier(2)
+    errors: list[BaseException] = []
+
+    def worker(plugin_id: str, enabled: bool) -> None:
+        try:
+            start.wait(timeout=5)
+
+            def mutate(data: dict[str, Any]) -> None:
+                plugins = data.setdefault("plugins", {})
+                plugins[plugin_id] = {"enabled": enabled}
+
+            update_json_object(path, mutate)
+        except BaseException as exc:  # pragma: no cover - failure path
+            errors.append(exc)
+
+    threads = [
+        threading.Thread(target=worker, args=("alpha", True), daemon=True),
+        threading.Thread(target=worker, args=("beta", False), daemon=True),
+    ]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join(timeout=5)
+        assert not thread.is_alive()
+
+    assert errors == []
+    data = json.loads(path.read_text(encoding="utf-8"))
+    assert data["database"] == {"driver": "postgresql"}
+    assert data["plugins"] == {"alpha": {"enabled": True}, "beta": {"enabled": False}}
