@@ -5,8 +5,14 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+import pytest
+
 from octop.config import TlsConfig, load_config
-from octop.infra.setup.tls.store import install_letsencrypt_cert, resolve_tls_paths
+from octop.infra.setup.tls.store import (
+    _merge_config_file,
+    install_letsencrypt_cert,
+    resolve_tls_paths,
+)
 from octop.infra.utils.paths import PathLayout
 
 
@@ -43,3 +49,30 @@ def test_resolve_tls_paths_when_disabled():
     cert, key = resolve_tls_paths(Path("/tmp"), TlsConfig(enabled=False))
     assert cert is None
     assert key is None
+
+
+def test_merge_config_file_keeps_previous_config_when_swap_fails(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A crash while merging the TLS section must not truncate config.json.
+
+    ``config.json`` holds the database settings (including credentials) and is
+    written in place, so an interrupted write left a truncated file that every
+    later start refused as "not valid JSON". It is now swapped in via
+    ``write_json_atomic``, so a failing swap keeps the previous file.
+    """
+    import os
+
+    config_path = tmp_path / "config.json"
+    previous = json.dumps({"database": {"driver": "sqlite", "sqlite_path": "octop.db"}}, indent=2)
+    previous += "\n"
+    config_path.write_text(previous, encoding="utf-8")
+
+    def _fail(*_args: object, **_kwargs: object) -> None:
+        raise OSError("simulated swap failure")
+
+    monkeypatch.setattr(os, "replace", _fail)
+    with pytest.raises(OSError, match="simulated swap failure"):
+        _merge_config_file(config_path, {"port": 443})
+
+    assert config_path.read_text(encoding="utf-8") == previous
