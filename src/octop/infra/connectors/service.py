@@ -539,7 +539,7 @@ class ConnectorService:
         if not self._repo.connector_feature_allows(user_id):
             return []
         names: list[str] = []
-        for inst in self._repo.list_by_user(user_id):
+        for inst in self._repo.list_visible(user_id):
             if is_custom_mcp_kind(inst.kind):
                 continue
             if inst.status != "active" or not inst.has_credentials:
@@ -551,6 +551,17 @@ class ConnectorService:
                 continue
             if spec.get("default_open") is True:
                 names.append(name)
+        for parent in self._repo.list_by_kind(CUSTOM_MCP_KIND):
+            if parent.user_id == user_id or not parent.has_credentials:
+                continue
+            for name, spec in extract_servers(self.decrypt(parent.instance_id)).items():
+                if (
+                    isinstance(spec, dict)
+                    and spec.get("shared") is True
+                    and server_enabled(spec)
+                    and spec.get("default_open") is True
+                ):
+                    names.append(shared_mcp_server_name(parent.instance_id, name))
         return names
 
     def merge_turn_mcp_servers(
