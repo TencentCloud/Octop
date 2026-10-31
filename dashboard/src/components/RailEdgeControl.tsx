@@ -30,6 +30,12 @@ interface RailEdgeControlProps {
    * ``before`` / ``after`` sit on either side when two rails share one line.
    */
   placement?: "center" | "before" | "after";
+  /**
+   * Paint the button at rest instead of only on hover. Use it when the panel is
+   * collapsed: the header that normally carries the control is gone, so a
+   * hover-only pill would be the panel's only way back and nobody would find it.
+   */
+  persistent?: boolean;
 }
 
 /**
@@ -45,6 +51,7 @@ export default function RailEdgeControl({
   className,
   showLine = true,
   placement = "center",
+  persistent = false,
 }: RailEdgeControlProps) {
   const { t } = useTranslation();
   const ariaLabel =
@@ -67,11 +74,9 @@ export default function RailEdgeControl({
         type="button"
         className={cx(
           styles.btn,
-          placement === "before"
-            ? styles.btnBefore
-            : placement === "after"
-            ? styles.btnAfter
-            : "",
+          placement === "before" && styles.btnBefore,
+          placement === "after" && styles.btnAfter,
+          persistent && styles.btnPersistent,
         )}
         onClick={onToggle}
         aria-label={ariaLabel}

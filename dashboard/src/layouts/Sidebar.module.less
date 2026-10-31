@@ -83,29 +83,6 @@
   transition: color var(--fn-transition-fast);
 }
 
-.chatRailExpandBtn {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  flex-shrink: 0;
-  width: 28px;
-  height: 28px;
-  margin: 6px 6px 6px 0;
-  border: none;
-  border-radius: var(--fn-radius-md);
-  background: transparent;
-  color: var(--fn-text-tertiary);
-  cursor: pointer;
-  transition:
-    background var(--fn-transition-fast),
-    color var(--fn-transition-fast);
-
-  &:hover {
-    background: color-mix(in srgb, var(--fn-text-primary) 8%, transparent);
-    color: var(--fn-text-primary);
-  }
-}
-
 .navUpdateBadge {
   font-size: 9px;
   font-weight: 600;
@@ -271,8 +248,10 @@
   justify-content: center;
   flex-shrink: 0;
   margin-inline-start: auto;
-  width: 26px;
-  height: 26px;
+  /* Same 28px target as the history rail's own toggle — the two sit at the
+     top-right of their own rail and should read as one family. */
+  width: 28px;
+  height: 28px;
   padding: 0;
   border: none;
   border-radius: var(--fn-radius-md);

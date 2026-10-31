@@ -151,9 +151,6 @@ function NavItemButton({
   active,
   isMobile,
   onNavigate,
-  onToggleChatRail,
-  showChatRailToggle,
-  chatRailOpen,
   role,
   hasUpdate,
   t,
@@ -162,22 +159,10 @@ function NavItemButton({
   active: boolean;
   isMobile?: boolean;
   onNavigate: (path: string) => void;
-  onToggleChatRail?: () => void;
-  showChatRailToggle?: boolean;
-  /** History rail is currently visible (classic chat route, panel open). */
-  chatRailOpen?: boolean;
   role: string | null;
   hasUpdate: boolean;
   t: TFunction<"translation", undefined>;
 }) {
-  const showToggle = Boolean(
-    showChatRailToggle && item.key === "chat" && onToggleChatRail,
-  );
-  const { label: railLabel, hint: railHint } = historyRailLabels(
-    t,
-    Boolean(chatRailOpen),
-  );
-
   return (
     <div
       className={styles.navItemRow}
@@ -206,7 +191,7 @@ function NavItemButton({
             : "var(--fn-text-secondary)",
           fontSize: typeSize(14, isMobile),
           fontWeight: active ? 500 : 400,
-          paddingRight: showToggle ? 4 : 12,
+          paddingRight: 12,
         }}
       >
         <span
@@ -258,26 +243,6 @@ function NavItemButton({
           )}
         </span>
       </button>
-      {showToggle ? (
-        <button
-          type="button"
-          className={styles.chatRailExpandBtn}
-          onClick={(e) => {
-            e.stopPropagation();
-            onToggleChatRail?.();
-          }}
-          aria-expanded={Boolean(chatRailOpen)}
-          aria-label={railLabel}
-          aria-keyshortcuts={railShortcutAria("toggle-history")}
-          title={railHint}
-        >
-          {chatRailOpen ? (
-            <PanelLeftClose size={15} strokeWidth={1.8} aria-hidden />
-          ) : (
-            <PanelLeftOpen size={15} strokeWidth={1.8} aria-hidden />
-          )}
-        </button>
-      ) : null}
     </div>
   );
 }
@@ -286,9 +251,6 @@ function NavList({
   sections,
   selectedKey,
   onNavigate,
-  onToggleChatRail,
-  showChatRailToggle,
-  chatRailOpen,
   isMobile,
   isGroupCollapsed,
   toggleGroup,
@@ -299,9 +261,6 @@ function NavList({
   sections: NavSection[];
   selectedKey: string;
   onNavigate: (path: string) => void;
-  onToggleChatRail?: () => void;
-  showChatRailToggle?: boolean;
-  chatRailOpen?: boolean;
   isMobile?: boolean;
   isGroupCollapsed: (groupId: string) => boolean;
   toggleGroup: (groupId: string) => void;
@@ -357,9 +316,6 @@ function NavList({
                     active={selectedKey === item.key}
                     isMobile={isMobile}
                     onNavigate={onNavigate}
-                    onToggleChatRail={onToggleChatRail}
-                    showChatRailToggle={showChatRailToggle}
-                    chatRailOpen={chatRailOpen}
                     role={role}
                     hasUpdate={hasUpdate}
                     t={t}
@@ -401,9 +357,6 @@ function NavList({
                     active={selectedKey === item.key}
                     isMobile={isMobile}
                     onNavigate={onNavigate}
-                    onToggleChatRail={onToggleChatRail}
-                    showChatRailToggle={showChatRailToggle}
-                    chatRailOpen={chatRailOpen}
                     role={role}
                     hasUpdate={hasUpdate}
                     t={t}
@@ -656,9 +609,6 @@ export default function Sidebar({
       sections={navSections}
       selectedKey={selectedKey}
       onNavigate={handleNavigate}
-      onToggleChatRail={handleToggleChatRail}
-      showChatRailToggle={showChatRailToggle}
-      chatRailOpen={chatRailOpen}
       isMobile={isMobile}
       isGroupCollapsed={isGroupCollapsed}
       toggleGroup={toggleGroup}
@@ -696,8 +646,6 @@ export default function Sidebar({
               sections={navSections}
               selectedKey={selectedKey}
               onNavigate={handleNavigate}
-              onToggleChatRail={handleToggleChatRail}
-              showChatRailToggle={false}
               isMobile={isMobile}
               isGroupCollapsed={isGroupCollapsed}
               toggleGroup={toggleGroup}
