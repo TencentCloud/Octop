@@ -324,14 +324,23 @@ function stringIdList(value: unknown): string[] | undefined {
   return ids;
 }
 
-/** Peer public config the local composer reads (mode). Other keys stay on the peer. */
+/**
+ * Peer public config the local UI reads. Composer mode and the storage
+ * backend stay; everything else remains on the peer.
+ */
 function bridgeShadowConfig(value: unknown): Record<string, unknown> {
   if (!value || typeof value !== "object" || Array.isArray(value)) return {};
-  const mode = (value as Record<string, unknown>).conversation_mode;
+  const src = value as Record<string, unknown>;
+  const out: Record<string, unknown> = {};
+  const mode = src.conversation_mode;
   if (mode === "ask" || mode === "plan" || mode === "craft") {
-    return { conversation_mode: mode };
+    out.conversation_mode = mode;
   }
-  return {};
+  const backend = src.backend;
+  if (backend && typeof backend === "object" && !Array.isArray(backend)) {
+    out.backend = backend;
+  }
+  return out;
 }
 
 export function mapBridgeAgent(

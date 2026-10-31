@@ -361,3 +361,26 @@ def test_list_from_seq_returns_inclusive_tail(tmp_path: Path) -> None:
     assert len(page) == 2
     replay = service.list_from_seq("T1", from_seq=page[1].seq, limit=10)
     assert [event.seq for event in replay] == [page[1].seq]
+
+
+def test_record_model_system_prompt_stores_full_text_once_per_turn(tmp_path: Path) -> None:
+    service, _bus = _service(tmp_path)
+    service.observe_chunk("A1", "T1", {"type": "user", "content": "hi"})
+    prompt = "You are Octop.\n\n<agent_memory>\n/ws/AGENTS.md\n\n# 效率专家\n</agent_memory>\n"
+    assert service.record_model_system_prompt("A1", "T1", prompt) is True
+    assert service.record_model_system_prompt("A1", "T1", prompt + "again") is True
+    listed = service.list_events("T1", before_seq=None, limit=20, kinds=["context"])
+    prompts = [event for event in listed if event.payload.get("source") == "model_system"]
+    assert len(prompts) == 1
+    assert prompts[0].summary == "System prompt"
+    assert prompts[0].payload["content"] == prompt
+    assert prompts[0].payload["content_chars"] == len(prompt)
+    detail = service.get_event(prompts[0].event_id)
+    assert detail is not None
+    assert "<agent_memory>" in str(detail.payload["content"])
+
+    service.observe_chunk("A1", "T1", {"type": "user", "content": "next"})
+    assert service.record_model_system_prompt("A1", "T1", "second turn prompt") is True
+    listed = service.list_events("T1", before_seq=None, limit=20, kinds=["context"])
+    prompts = [event for event in listed if event.payload.get("source") == "model_system"]
+    assert [event.payload["content"] for event in prompts] == [prompt, "second turn prompt"]

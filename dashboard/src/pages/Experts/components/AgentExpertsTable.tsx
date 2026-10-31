@@ -36,6 +36,7 @@ import type { OctopAgent } from "../../../context/AgentContext";
 import { useAgent } from "../../../context/AgentContext";
 import { useIsMobile } from "../../../hooks/useIsMobile";
 import MbtiPersonaTag from "../../../components/MbtiPersonaTag";
+import BackendFlag from "./BackendFlag";
 import MbtiCatalogDrawer from "./MbtiCatalogDrawer";
 import { ExpertIcon } from "./iconForName";
 import {
@@ -411,6 +412,13 @@ export default function AgentExpertsTable({
       width: 140,
       ellipsis: true,
       render: (model: string | null | undefined) => model || "—",
+    },
+    {
+      title: t("experts.table.backend", "后端"),
+      key: "backend",
+      width: 88,
+      align: "center",
+      render: (_value, row) => <BackendFlag config={row.config} />,
     },
     {
       title: t("experts.table.persona", "人格"),

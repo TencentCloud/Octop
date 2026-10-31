@@ -129,11 +129,19 @@ def read_file_block_reason(path: str, *, media_type: str = "") -> str | None:
 
 
 def _workspace_path(path: str) -> str:
+    """Return ``inbound/<name>`` for attachment paths.
+
+    ``inbound/file.pptx`` and ``/.octop/workspaces/<id>/inbound/file.pptx``
+    must compare equal. Search and split the same string: checking a
+    slash-prefixed copy and then splitting the unprefixed path raises
+    ``IndexError`` when the path already starts with ``inbound/``.
+    """
     normalized = path.replace("\\", "/").lstrip("/")
     marker = "/inbound/"
-    if marker in f"/{normalized}":
-        return "inbound/" + normalized.rsplit(marker, 1)[1]
-    return normalized
+    haystack = f"/{normalized}"
+    if marker not in haystack:
+        return normalized
+    return "inbound/" + haystack.rsplit(marker, 1)[1]
 
 
 def _attachment_media_type(request: ToolCallRequest, path: str) -> str:

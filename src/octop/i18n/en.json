@@ -642,6 +642,7 @@
     "agent_list": "List experts",
     "ask_agent": "Ask expert",
     "call_agent": "Call expert",
+    "call_deferred_tool": "Call on demand",
     "acp_runner": "ACP external agent",
     "browser_use": "Use browser",
     "browser_control": "Browser control",

@@ -71,6 +71,10 @@ bash docker/docker_build.sh
 
 Compose 可在 `docker/.env` 中配置上述变量。注意：`.env` 只参与 Compose 插值，变量必须出现在 `docker-compose.yml` 的 `environment:` 中才会进入容器。也可把相同键写入挂载数据目录下的 `~/.octop/env`。
 
+### Node.js
+
+运行镜像带 Node.js 20（`node` / `npm` / `npx`），与构建前端时使用的版本相同，供依赖 Node 的技能和专家 shell 使用。工具链从构建阶段的 `node:20-slim` 复用。已有部署需要重新构建或升级镜像后才会带上 Node.js；仅重启旧镜像无效。`npm install -g` 装进容器可写层，重建容器后需要重装。
+
 ### 知识库依赖
 
 镜像除 `browser` 外，还包含 `local-embedding` 和 `knowledge-ocr` 可选依赖。

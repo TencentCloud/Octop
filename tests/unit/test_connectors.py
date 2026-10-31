@@ -1493,3 +1493,100 @@ def test_validate_mcp_servers_for_user(db: SqlitePool):
     assert repo.validate_mcp_servers_for_user(uid, [mcp_name]) == [mcp_name]
     with pytest.raises(ValueError):
         repo.validate_mcp_servers_for_user(uid, ["other"])
+
+
+def _insert_user(db: SqlitePool, username: str) -> int:
+    with db.transaction() as conn:
+        conn.execute(
+            "INSERT INTO users(username, password_hash, role, created_at) VALUES (?, ?, ?, 0)",
+            (username, "h", "user"),
+        )
+        row = conn.execute("SELECT id FROM users WHERE username = ?", (username,)).fetchone()
+    return int(row["id"])
+
+
+def test_list_visible_reads_text_credential_beside_blob(db: SqlitePool) -> None:
+    repo = ConnectorRepo(db)
+    uid = _insert_user(db, "cred-reader")
+    token = "gAAAAAABq4JDGu-demo-text-token"
+    blob_id = new_ulid()
+    text_id = new_ulid()
+    repo.create(
+        instance_id=blob_id,
+        user_id=uid,
+        kind="tencent-docs",
+        display_name="blob",
+        mcp_server_name=mcp_server_name("tencent-docs", blob_id),
+    )
+    repo.create(
+        instance_id=text_id,
+        user_id=uid,
+        kind="tencent-docs",
+        display_name="text",
+        mcp_server_name=mcp_server_name("tencent-docs", text_id),
+    )
+    repo.upsert_credentials(instance_id=blob_id, blob=b"healthy-blob")
+    with db.transaction() as conn:
+        conn.execute(
+            "UPDATE connectors SET credential_blob = ? WHERE instance_id = ?",
+            (token, text_id),
+        )
+        kind = conn.execute(
+            "SELECT typeof(credential_blob) FROM connectors WHERE instance_id = ?",
+            (text_id,),
+        ).fetchone()[0]
+    assert kind == "text"
+
+    rows = {row.instance_id: row for row in repo.list_visible(uid)}
+    assert rows[blob_id].credential_blob == b"healthy-blob"
+    assert rows[text_id].credential_blob == token.encode("utf-8")
+
+
+def test_migration_rewrites_text_credential_blob(db: SqlitePool) -> None:
+    repo = ConnectorRepo(db)
+    uid = _insert_user(db, "cred-repair")
+    token = "gAAAAAABq4JDGu-demo-text-token"
+    blob_id = new_ulid()
+    text_id = new_ulid()
+    repo.create(
+        instance_id=blob_id,
+        user_id=uid,
+        kind="tencent-docs",
+        display_name="blob",
+        mcp_server_name=mcp_server_name("tencent-docs", blob_id),
+    )
+    repo.create(
+        instance_id=text_id,
+        user_id=uid,
+        kind="tencent-docs",
+        display_name="text",
+        mcp_server_name=mcp_server_name("tencent-docs", text_id),
+    )
+    repo.upsert_credentials(instance_id=blob_id, blob=b"healthy-blob")
+    with db.transaction() as conn:
+        conn.execute(
+            "UPDATE connectors SET credential_blob = ? WHERE instance_id = ?",
+            (token, text_id),
+        )
+
+    run_migrations(db)
+    run_migrations(db)
+
+    with db.connect() as conn:
+        text_row = conn.execute(
+            "SELECT typeof(credential_blob) AS kind, credential_blob "
+            "FROM connectors WHERE instance_id = ?",
+            (text_id,),
+        ).fetchone()
+        blob_row = conn.execute(
+            "SELECT typeof(credential_blob) AS kind, credential_blob "
+            "FROM connectors WHERE instance_id = ?",
+            (blob_id,),
+        ).fetchone()
+    assert text_row["kind"] == "blob"
+    assert text_row["credential_blob"] == token.encode("utf-8")
+    assert blob_row["kind"] == "blob"
+    assert blob_row["credential_blob"] == b"healthy-blob"
+    repaired = repo.get(text_id)
+    assert repaired is not None
+    assert repaired.credential_blob == token.encode("utf-8")

@@ -194,6 +194,7 @@ class GlobalProcessor:
         self._trajectory_service = trajectory_service
         self._history_archive = history_archive
         self._title_inflight: set[str] = set()
+        self._pending_system_prompt: set[str] = set()
         self.teams = TeamManager(
             agent_manager=agent_manager,
             thread_registry=thread_registry,
@@ -298,6 +299,11 @@ class GlobalProcessor:
         service = self._trajectory_service
         if service is None:
             return
+        # Capture before this chunk is stored. A user chunk advances the turn,
+        # and a context row finalizes any open assistant message — doing this
+        # after the chunk would pin the previous prompt on the new turn and
+        # split the reply that is still streaming.
+        self._sync_memory_prompt_trajectory(agent_id, thread_id)
         try:
             service.observe_chunk(agent_id, thread_id, chunk)
         except Exception:
@@ -353,12 +359,12 @@ class GlobalProcessor:
 
             include_system = phase == "system" and not bool(service.has_kind(thread_id, "system"))
             system_prompt = self._trajectory_system_prompt(agent_id) if phase == "system" else None
-            workspace_files: list[str] = []
             skills: list[str] | None = None
             skills_filter_present = False
             mcp_names: list[str] | None = None
+            workspace_files: list[tuple[str, str]] = []
+            captures_model_system = False
             if phase == "context":
-                workspace_files = await self._trajectory_workspace_files(agent_id)
                 skills_filter_present = "skills" in request or "skills" in meta
                 turn_skills: list[str] | None = None
                 if "skills" in request and isinstance(request.get("skills"), list):
@@ -373,6 +379,11 @@ class GlobalProcessor:
                         skills_filter_present=skills_filter_present,
                     )
                 mcp_names = _mcp_server_names(request.get("mcp_servers"))
+                captures_model_system = self._captures_model_system_prompt(agent_id)
+                if not captures_model_system:
+                    workspace_files = [
+                        (name, "") for name in await self._trajectory_workspace_files(agent_id)
+                    ]
             for chunk in build_turn_start_chunks(
                 include_system=include_system,
                 system_prompt=system_prompt,
@@ -387,6 +398,9 @@ class GlobalProcessor:
                     chunk=chunk,
                     enabled=True,
                 )
+            if phase == "context" and captures_model_system:
+                self._clear_captured_system_prompt(agent_id, thread_id)
+                self._pending_system_prompt.add(thread_id)
         except Exception:
             logger.exception(
                 "trajectory turn-start context failed agent=%s thread=%s",
@@ -440,8 +454,16 @@ class GlobalProcessor:
             rows.append(item)
         return rows
 
+    def _captures_model_system_prompt(self, agent_id: str) -> bool:
+        """True when this harness build records the system message it sent."""
+        try:
+            agent = self._agent_manager.get_agent(agent_id)
+        except Exception:
+            return False
+        return callable(getattr(agent, "model_system_prompt", None))
+
     async def _trajectory_workspace_files(self, agent_id: str) -> list[str]:
-        """Return existing harness memory paths without duplicating their contents."""
+        """Existing memory paths, for harness builds that do not capture the prompt."""
         from octop.infra.history.trajectory.turn_context import memory_file_order  # noqa: PLC0415
 
         workspace = harness_workspace_for_agent(self._agent_manager, agent_id)
@@ -463,6 +485,56 @@ class GlobalProcessor:
                 continue
             out.append(name)
         return out
+
+    def _clear_captured_system_prompt(self, agent_id: str, thread_id: str) -> None:
+        """Drop the previous turn's captured system message before this turn runs."""
+        try:
+            agent = self._agent_manager.get_agent(agent_id)
+        except Exception:
+            logger.debug(
+                "trajectory system prompt clear skipped agent=%s",
+                agent_id,
+                exc_info=True,
+            )
+            return
+        clear = getattr(agent, "clear_model_system_prompt", None)
+        if callable(clear):
+            clear(thread_id)
+
+    def _sync_memory_prompt_trajectory(self, agent_id: str, thread_id: str) -> None:
+        """Store the system message from this turn's model request."""
+        if thread_id not in self._pending_system_prompt:
+            return
+        service = self._trajectory_service
+        if service is None:
+            return
+        try:
+            agent = self._agent_manager.get_agent(agent_id)
+        except Exception:
+            logger.debug(
+                "trajectory system prompt agent unavailable agent=%s",
+                agent_id,
+                exc_info=True,
+            )
+            return
+        reader = getattr(agent, "model_system_prompt", None)
+        if not callable(reader):
+            return
+        text = reader(thread_id)
+        if not isinstance(text, str) or not text.strip():
+            return
+        try:
+            recorded = service.record_model_system_prompt(agent_id, thread_id, text)
+        except Exception:
+            logger.exception(
+                "trajectory system prompt sync failed agent=%s thread=%s",
+                agent_id,
+                thread_id,
+            )
+            return
+        if recorded:
+            self._pending_system_prompt.discard(thread_id)
+            self._clear_captured_system_prompt(agent_id, thread_id)
 
     # -- TeamProcessor (delegates to TeamManager) ------------------------------
 
@@ -1357,14 +1429,6 @@ class GlobalProcessor:
             meta=meta,
         )
         history_tracker = await self._begin_history(agent_id, thread_id, request)
-        await self._observe_turn_start_context(
-            agent_id=agent_id,
-            thread_id=thread_id,
-            request=request,
-            meta=meta,
-            phase="system",
-            trajectory_enabled=traj_on,
-        )
         self._observe_trajectory(
             agent_id=agent_id,
             thread_id=thread_id,
