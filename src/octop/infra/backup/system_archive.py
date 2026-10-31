@@ -399,8 +399,16 @@ def _iter_extracted_files(root: Path, prefix: str) -> list[tuple[str, Path]]:
 
 
 def _replace_tree_from_archive(extracted: Path, dest: Path, arc_name: str) -> int:
-    """Replace *dest* with files packed under *arc_name* in the extracted archive."""
-    if dest.exists():
+    """Replace *dest* with files packed under *arc_name* in the extracted archive.
+
+    A symlinked or junctioned *dest* (a common way to keep plugins or knowledge
+    on another disk) is replaced by a real directory. ``shutil.rmtree`` refuses
+    links, and a dangling one even breaks ``mkdir``, so the whole restore aborted
+    after the database had already been swapped. The link target is not touched.
+    """
+    if dest.is_symlink() or dest.is_junction():
+        dest.unlink()
+    elif dest.exists():
         shutil.rmtree(dest)
     dest.mkdir(parents=True, exist_ok=True)
     count = 0
