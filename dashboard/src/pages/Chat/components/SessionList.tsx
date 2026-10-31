@@ -1,12 +1,4 @@
-import {
-  memo,
-  useCallback,
-  useMemo,
-  useState,
-  useRef,
-  useEffect,
-  type ReactNode,
-} from "react";
+import { memo, useCallback, useMemo, useState, useRef, useEffect } from "react";
 import { useTranslation } from "react-i18next";
 import { useNavigate } from "react-router-dom";
 import { Dropdown } from "antd";
@@ -541,12 +533,6 @@ interface SessionListProps {
   onFork: (id: string, agentId?: string | null) => void;
   activeForkDisabled?: boolean;
   activeForkDisabledHint?: string;
-  /**
-   * Panel-level control pinned to the right of the search row — today the
-   * "collapse this rail" button. It lives here rather than in the app nav so
-   * each rail's own header carries the control for that rail.
-   */
-  railToggle?: ReactNode;
 }
 
 export default function SessionList({
@@ -568,7 +554,6 @@ export default function SessionList({
   onFork,
   activeForkDisabled,
   activeForkDisabledHint,
-  railToggle,
 }: SessionListProps) {
   const { t } = useTranslation();
   const navigate = useNavigate();
@@ -775,26 +760,23 @@ export default function SessionList({
 
   return (
     <div className={styles.sessionList}>
-      {agents.length > 0 || railToggle ? (
+      {agents.length > 0 ? (
         <div className={styles.sessionHeaderRow}>
-          {agents.length > 0 ? (
-            <div className={styles.sessionSearchWrap}>
-              <Search
-                size={14}
-                className={styles.sessionSearchIcon}
-                strokeWidth={2}
-              />
-              <input
-                type="search"
-                className={styles.sessionSearchInput}
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder={t("chat.searchSessions", "搜索会话")}
-                aria-label={t("chat.searchSessions", "搜索会话")}
-              />
-            </div>
-          ) : null}
-          {railToggle}
+          <div className={styles.sessionSearchWrap} data-octop-no-drag>
+            <Search
+              size={14}
+              className={styles.sessionSearchIcon}
+              strokeWidth={2}
+            />
+            <input
+              type="search"
+              className={styles.sessionSearchInput}
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              placeholder={t("chat.searchSessions", "搜索会话")}
+              aria-label={t("chat.searchSessions", "搜索会话")}
+            />
+          </div>
         </div>
       ) : null}
 

@@ -1,20 +1,17 @@
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import type { ComponentProps, ReactNode } from "react";
+import type { ComponentProps } from "react";
 import { describe, expect, it, vi } from "vitest";
 import ChatSidebarPanel, { EXPAND_CHAT_RAIL_EVENT } from "./ChatSidebarPanel";
+import edgeStyles from "../../../components/RailEdgeControl.module.less";
 
 /**
- * The history rail folds from its own header (`SessionList`'s `railToggle`
- * slot), not from a second panel glyph stacked in the nav. Rendering the panel
- * here keeps the click contract — close, or open-and-broadcast — pinned to the
- * place it actually lives.
+ * The history rail folds from the seam on its right — the same capsule the nav
+ * rail uses on its own seam, so both left columns answer to one shape. This
+ * keeps the click contract (close, or open-and-broadcast) and the stacking rule
+ * pinned to the place it actually lives.
  */
-vi.mock("./SessionList", () => ({
-  default: ({ railToggle }: { railToggle?: ReactNode }) => (
-    <div>{railToggle}</div>
-  ),
-}));
+vi.mock("./SessionList", () => ({ default: () => null }));
 vi.mock("./MinimalAgentSessionNav", () => ({ default: () => null }));
 
 const noop = () => undefined;
@@ -51,27 +48,21 @@ function renderPanel(
   return { onSidebarOpenChange };
 }
 
-/**
- * The seam pill (`RailEdgeControl`) shares the accessible name — both close the
- * same rail. Only the header control publishes `aria-expanded`, so that is what
- * tells them apart here.
- */
-function headerToggle() {
-  const matches = screen
-    .getAllByRole("button", { name: /展开对话历史|收起对话历史/ })
-    .filter((el) => el.hasAttribute("aria-expanded"));
+/** The seam handle is the rail's only control — no header glyph anymore. */
+function seamHandle(name: RegExp) {
+  const matches = screen.getAllByRole("button", { name });
   expect(matches).toHaveLength(1);
   return matches[0];
 }
 
-describe("history rail header toggle", () => {
+describe("history rail seam handle", () => {
   it("collapses the rail without leaving the page", async () => {
     const user = userEvent.setup();
     const broadcast = vi.fn();
     window.addEventListener(EXPAND_CHAT_RAIL_EVENT, broadcast);
     const { onSidebarOpenChange } = renderPanel({ sidebarOpen: true });
 
-    const button = headerToggle();
+    const button = seamHandle(/展开对话历史|收起对话历史/);
     expect(button).toHaveAccessibleName("收起对话历史");
     expect(button).toHaveAttribute("aria-expanded", "true");
     expect(button).toHaveAttribute("aria-keyshortcuts", "Meta+Shift+B");
@@ -90,15 +81,31 @@ describe("history rail header toggle", () => {
     window.addEventListener(EXPAND_CHAT_RAIL_EVENT, broadcast);
     const { onSidebarOpenChange } = renderPanel({ sidebarOpen: false });
 
-    const button = headerToggle();
+    const button = seamHandle(/展开对话历史|收起对话历史/);
     expect(button).toHaveAccessibleName("展开对话历史");
     expect(button).toHaveAttribute("aria-expanded", "false");
 
     await user.click(button);
+    // Two rails collapsed: this one click brings back both.
     expect(broadcast).toHaveBeenCalledTimes(1);
     expect(onSidebarOpenChange).toHaveBeenCalledWith(true);
 
     window.removeEventListener(EXPAND_CHAT_RAIL_EVENT, broadcast);
+  });
+
+  it("stays painted and stacks below the nav handle while collapsed", () => {
+    renderPanel({ sidebarOpen: false });
+    const button = seamHandle(/展开对话历史/);
+    expect(button).toHaveClass(edgeStyles.btnPersistent);
+    // Collapsed, this seam is the nav's divider — the nav handle takes the top slot.
+    expect(button).toHaveClass(edgeStyles.btnBottom);
+  });
+
+  it("centres on its own seam while expanded", () => {
+    renderPanel({ sidebarOpen: true });
+    const button = seamHandle(/收起对话历史/);
+    expect(button).not.toHaveClass(edgeStyles.btnPersistent);
+    expect(button).not.toHaveClass(edgeStyles.btnBottom);
   });
 
   it("is absent where there is no rail of its own to fold", () => {

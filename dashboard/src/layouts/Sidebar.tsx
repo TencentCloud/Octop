@@ -2,12 +2,12 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import type { TFunction } from "i18next";
-import { Tooltip } from "antd";
 import AvatarDropdown from "../components/AvatarDropdown";
 import AppVersionBadge from "../components/AppVersionBadge";
 import CurrentVersionBadge from "../components/CurrentVersionBadge";
-import { ChevronDown, PanelLeftClose, PanelLeftOpen, X } from "lucide-react";
+import { ChevronDown, X } from "lucide-react";
 import cx from "classnames";
+import RailEdgeControl from "../components/RailEdgeControl";
 import { useTheme } from "../context/ThemeContext";
 import { useLayoutMode } from "../context/LayoutModeContext";
 import { useUserRole } from "../hooks/useUserRole";
@@ -40,7 +40,6 @@ import { sectionsFromLayout, type SidebarNavLayout } from "./sidebarNavLayout";
 import SidebarNavCustomizer from "./SidebarNavCustomizer";
 import styles from "./Sidebar.module.less";
 import { typeSize } from "../utils/mobileTypeScale";
-import { DESKTOP_DRAG_REGION_CLASS } from "../utils/desktopChrome";
 import {
   isMacPlatform,
   railShortcutAria,
@@ -126,24 +125,6 @@ interface SidebarProps {
   collapsed: boolean;
   onToggle: () => void;
   isMobile?: boolean;
-}
-
-/**
- * One source of truth for the history-rail control's wording, shared by the
- * button on the Chat row and the one in the collapsed icon rail. The readable
- * name stays the plain action; the accelerator goes in the tooltip.
- */
-function historyRailLabels(
-  t: TFunction<"translation", undefined>,
-  open: boolean,
-) {
-  const label = open
-    ? t("chat.collapseHistorySidebar", "收起对话历史")
-    : t("chat.expandHistorySidebar", "展开对话历史");
-  return {
-    label,
-    hint: `${label} (${railShortcutLabel("toggle-history", isMacPlatform())})`,
-  };
 }
 
 function NavItemButton({
@@ -419,17 +400,20 @@ export default function Sidebar({
       cancelled = true;
     };
   }, [user]);
-  const [chatSidebarOpen, setChatSidebarOpen] = useChatSidebarOpen();
-  // Classic only: keep the control beside Chat whether the history rail is open or closed.
-  const showChatRailToggle = !isMinimal;
-  const chatRailOpen = showChatRailToggle && onChatPath && chatSidebarOpen;
+  const [chatSidebarOpen] = useChatSidebarOpen();
+  /**
+   * The history rail is the only thing mounted to the nav's right, and when it
+   * is closed its own seam handle lands on the nav's divider. That shared line
+   * gets two handles stacked (nav above, history below) so they never overlap.
+   */
+  const seamShared = !isMinimal && onChatPath && !chatSidebarOpen;
 
   const isRailCollapsed = collapsed && !isMobile;
   const wordmarkSrc = isDark
     ? publicUrl("logo_horizontal_white.png")
     : publicUrl("logo_horizontal_dark.png");
   /**
-   * Label/hint for the rail's own collapse button. The accelerator lives in the
+   * Label/hint for the rail's own seam handle. The accelerator lives in the
    * tooltip (and in aria-keyshortcuts), not in the accessible name.
    */
   const navToggleLabel = t(
@@ -440,10 +424,6 @@ export default function Sidebar({
     "toggle-nav",
     isMacPlatform(),
   )})`;
-  const { label: historyRailLabel, hint: historyRailHint } = historyRailLabels(
-    t,
-    chatRailOpen,
-  );
 
   const selectMinimalPane = useCallback(
     (pane: MinimalNavPane, opts?: { expand?: boolean }) => {
@@ -482,32 +462,6 @@ export default function Sidebar({
     if (isMobile) onToggle();
   };
 
-  const handleToggleChatRail = useCallback(() => {
-    if (isMinimal) {
-      selectMinimalPane("records", { expand: true });
-      return;
-    }
-    if (onChatPath && chatSidebarOpen) {
-      setChatSidebarOpen(false);
-      return;
-    }
-    window.dispatchEvent(new Event(EXPAND_CHAT_RAIL_EVENT));
-    setChatSidebarOpen(true);
-    if (!onChatPath) {
-      navigate("/chat");
-    }
-    if (isMobile) onToggle();
-  }, [
-    chatSidebarOpen,
-    isMinimal,
-    isMobile,
-    navigate,
-    onChatPath,
-    onToggle,
-    selectMinimalPane,
-    setChatSidebarOpen,
-  ]);
-
   const brandInner = (
     <>
       <img
@@ -524,8 +478,7 @@ export default function Sidebar({
         }}
       />
       {!isRailCollapsed && !isMobile && (
-        /* Shrinkable so the collapse button keeps its hit target: the badges
-           are nice-to-have, the button is the way out of the rail. */
+        /* Let the version badges shrink without squeezing the wordmark. */
         <div className={styles.brandMeta}>
           <CurrentVersionBadge isMobile={isMobile} />
           <AppVersionBadge isMobile={isMobile} />
@@ -689,39 +642,26 @@ export default function Sidebar({
   const navScrollBody = isMinimal ? minimalNavBody : classicNavBody;
 
   /**
-   * Collapsed rail: the Chat row's toggle leaves with the row's label, so the
-   * history rail keeps a control of its own. It is docked *below* the scrolling
-   * nav rather than appended to it — the nav list is longer than the rail in any
-   * normal window, and a toggle parked after the last item is a toggle nobody
-   * finds. Like the row button it works from any page; opening it from elsewhere
-   * lands on /chat.
+   * The nav folds from the seam on its right — the same handle the history rail
+   * uses on its own seam. One shape for both left columns, and it sits on the
+   * line that moves instead of in a corner nobody associates with a panel.
+   *
+   * Collapsed, the handle stays painted: it is the only way back. When the
+   * history rail is closed its handle lands on this same line, so the pair
+   * stacks (nav above, history below) rather than overlapping.
    */
-  const collapsedRailDock =
-    isRailCollapsed && showChatRailToggle ? (
-      <div className={styles.collapsedRailDock}>
-        <Tooltip
-          title={historyRailHint}
-          placement="right"
-          mouseEnterDelay={0.2}
-        >
-          <button
-            type="button"
-            className={styles.collapsedRailToggle}
-            data-active={chatRailOpen ? "true" : undefined}
-            onClick={handleToggleChatRail}
-            aria-label={historyRailLabel}
-            aria-expanded={chatRailOpen}
-            aria-keyshortcuts={railShortcutAria("toggle-history")}
-          >
-            {chatRailOpen ? (
-              <PanelLeftClose size={17} strokeWidth={1.8} aria-hidden />
-            ) : (
-              <PanelLeftOpen size={17} strokeWidth={1.8} aria-hidden />
-            )}
-          </button>
-        </Tooltip>
-      </div>
-    ) : null;
+  const navSeamHandle = (
+    <RailEdgeControl
+      expanded={!isRailCollapsed}
+      persistent={isRailCollapsed}
+      onToggle={onToggle}
+      side="end"
+      stack={seamShared ? "top" : "none"}
+      label={navToggleLabel}
+      hint={navToggleHint}
+      shortcut={railShortcutAria("toggle-nav")}
+    />
+  );
 
   // Mobile: fixed overlay drawer
   if (isMobile) {
@@ -820,97 +760,64 @@ export default function Sidebar({
 
   // Desktop: custom sidebar with icon-only collapsed mode.
   return (
-    <div
-      className={styles.navRail}
-      style={{
-        width: isRailCollapsed ? COLLAPSED_WIDTH : EXPANDED_WIDTH,
-        minWidth: isRailCollapsed ? COLLAPSED_WIDTH : EXPANDED_WIDTH,
-        background: "var(--fn-sidebar-bg)",
-        borderRight: "1px solid var(--fn-sidebar-border)",
-        /* Paint from the window's top edge, keep the content below the shell's
-           title band. Insetting the box instead would put the seam's top end
-           32px down, floating in nothing. */
-        paddingTop: "var(--octop-shell-top-band, 0px)",
-        transition:
-          "width 0.25s cubic-bezier(0.4, 0, 0.2, 1), min-width 0.25s cubic-bezier(0.4, 0, 0.2, 1)",
-        overflow: "hidden",
-        display: "flex",
-        flexDirection: "column",
-        flexShrink: 0,
-        alignSelf: "stretch",
-        minHeight: 0,
-      }}
-    >
-      {/* The shell's title band floats over this rail (MainLayout), so the
-          brand starts below it rather than reserving a row of its own. */}
+    /* The host owns the seam: the rail itself clips its own width animation, so
+       the handle has to live outside it to straddle the divider. */
+    <div className={styles.navRailHost}>
       <div
-        className={DESKTOP_DRAG_REGION_CLASS}
+        className={styles.navRail}
         style={{
-          display: "flex",
-          alignItems: "center",
-          gap: 6,
-          minWidth: 0,
-          padding: isRailCollapsed ? "12px 0" : "14px 8px 10px 14px",
-          justifyContent: isRailCollapsed ? "center" : "flex-start",
-          flexShrink: 0,
-        }}
-      >
-        {isRailCollapsed ? (
-          /**
-           * Collapsed rail: the mark doubles as the expand button. Hovering it
-           * swaps the logo for the panel glyph — the hit target never moves, so
-           * expanding is a click, not a hunt for a 16px seam.
-           */
-          <button
-            type="button"
-            className={styles.brandSwap}
-            onClick={onToggle}
-            aria-label={navToggleLabel}
-            aria-expanded={false}
-            aria-keyshortcuts={railShortcutAria("toggle-nav")}
-            title={navToggleHint}
-          >
-            {brandInner}
-            <PanelLeftOpen
-              size={17}
-              strokeWidth={1.8}
-              className={styles.brandSwapIcon}
-              aria-hidden
-            />
-          </button>
-        ) : (
-          <>
-            {brandInner}
-            <button
-              type="button"
-              className={styles.brandToggle}
-              onClick={onToggle}
-              aria-label={navToggleLabel}
-              aria-expanded
-              aria-keyshortcuts={railShortcutAria("toggle-nav")}
-              title={navToggleHint}
-            >
-              <PanelLeftClose size={16} strokeWidth={1.8} aria-hidden />
-            </button>
-          </>
-        )}
-      </div>
-      <div
-        style={{
-          flex: 1,
-          minHeight: 0,
-          overflowY: isMinimal && minimalPane === "records" ? "hidden" : "auto",
-          overflowX: "hidden",
+          width: isRailCollapsed ? COLLAPSED_WIDTH : EXPANDED_WIDTH,
+          // Clear of the traffic lights, minus the handle that now hangs off the seam.
+          minWidth: `max(${
+            isRailCollapsed ? COLLAPSED_WIDTH : EXPANDED_WIDTH
+          }px, calc(var(--window-controls-inset-start, 0px) + 40px))`,
+          background: "var(--fn-sidebar-bg)",
+          borderRight: "1px solid var(--fn-sidebar-border)",
+          transition:
+            "width 0.25s cubic-bezier(0.4, 0, 0.2, 1), min-width 0.25s cubic-bezier(0.4, 0, 0.2, 1)",
+          overflow: "hidden",
           display: "flex",
           flexDirection: "column",
+          flexShrink: 0,
+          alignSelf: "stretch",
+          minHeight: 0,
         }}
       >
-        {navScrollBody}
+        {/* The window-controls band: reserved height, no control of its own now
+            that the rail folds from its seam. */}
+        <div className={styles.navChrome} aria-hidden />
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: 6,
+            minWidth: 0,
+            padding: isRailCollapsed ? "12px 0" : "14px 8px 10px 14px",
+            justifyContent: isRailCollapsed ? "center" : "flex-start",
+            flexShrink: 0,
+          }}
+        >
+          {brandInner}
+        </div>
+        <div
+          style={{
+            flex: 1,
+            minHeight: 0,
+            overflowY:
+              isMinimal && minimalPane === "records" ? "hidden" : "auto",
+            overflowX: "hidden",
+            display: "flex",
+            flexDirection: "column",
+          }}
+        >
+          {navScrollBody}
+        </div>
+
+        {userFooter}
+        {customizer}
       </div>
 
-      {collapsedRailDock}
-      {userFooter}
-      {customizer}
+      {navSeamHandle}
     </div>
   );
 }
