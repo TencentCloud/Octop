@@ -32,7 +32,10 @@ describe("readExternalCompleteParams", () => {
 
   it("returns redirect verbatim and leaves validation to safeRedirect", () => {
     expect(
-      readExternalCompleteParams("#code=t&redirect=%2F%2Fidentity.example.com", ""),
+      readExternalCompleteParams(
+        "#code=t&redirect=%2F%2Fidentity.example.com",
+        "",
+      ),
     ).toEqual({ code: "t", redirect: "//identity.example.com" });
   });
 
