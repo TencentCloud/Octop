@@ -151,7 +151,6 @@
         box-shadow:
           0 1px 2px rgba(24, 8, 12, 0.06),
           0 12px 28px -12px rgba(232, 93, 117, 0.45);
-        animation: octop-boot-breathe 2.4s ease-in-out infinite;
       }
       .octop-boot-wordmark {
         margin: 18px 0 0;
@@ -203,17 +202,6 @@
           transform: translateX(340%);
         }
       }
-      @keyframes octop-boot-breathe {
-        0%,
-        100% {
-          transform: scale(1);
-          opacity: 1;
-        }
-        50% {
-          transform: scale(0.96);
-          opacity: 0.9;
-        }
-      }
       @keyframes octop-boot-in {
         from {
           opacity: 0;
@@ -225,8 +213,7 @@
         }
       }
       @media (prefers-reduced-motion: reduce) {
-        .octop-boot-stack,
-        .octop-boot-mark {
+        .octop-boot-stack {
           animation: none;
         }
         .octop-boot-bar > span {

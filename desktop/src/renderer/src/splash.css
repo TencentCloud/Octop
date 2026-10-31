@@ -38,7 +38,6 @@
   width: 64px;
   height: 64px;
   flex: none;
-  animation: splash-breathe 2.4s ease-in-out infinite;
 }
 
 .splash__logo {
@@ -109,18 +108,6 @@
   }
 }
 
-@keyframes splash-breathe {
-  0%,
-  100% {
-    transform: scale(1);
-    opacity: 1;
-  }
-  50% {
-    transform: scale(0.96);
-    opacity: 0.9;
-  }
-}
-
 @keyframes splash-in {
   from {
     opacity: 0;
@@ -134,7 +121,6 @@
 
 @media (prefers-reduced-motion: reduce) {
   .splash__stack,
-  .splash__mark,
   .splash__bar-thumb {
     animation: none;
   }
