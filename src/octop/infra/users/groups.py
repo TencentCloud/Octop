@@ -10,6 +10,8 @@ from collections.abc import Callable, Sequence
 from typing import Any, TypeVar
 
 from octop.infra.errors import ErrorCode, OctopError
+from octop.infra.users.identity import User
+from octop.infra.users.permissions import user_has_permission
 
 RESOURCE_SKILL_PACKAGE = "skill_package"
 RESOURCE_KNOWLEDGE_BASE = "knowledge_base"
@@ -190,6 +192,8 @@ class GroupAccess:
         self,
         visibility: str,
         group_ids: Sequence[str] | None,
+        *,
+        actor: User,
     ) -> list[str]:
         """Validate visibility args before any ``shared`` write.
 
@@ -215,6 +219,23 @@ class GroupAccess:
                 "choose at least one user group",
                 status=400,
             )
+        can_manage_all_groups = user_has_permission(actor, "user_groups")
+        if not can_manage_all_groups:
+            member_group_ids = self._members.group_ids_for_user(actor.id)
+            # Check membership first so group ids cannot be probed through errors.
+            for group_id in cleaned:
+                if group_id not in member_group_ids:
+                    raise OctopError(
+                        ErrorCode.RESOURCE_NOT_ALLOWED,
+                        "resource is not allowed for this user",
+                    )
+                group = self._groups.get(group_id)
+                if group is None or not group.enabled:
+                    raise OctopError(
+                        ErrorCode.RESOURCE_NOT_ALLOWED,
+                        "resource is not allowed for this user",
+                    )
+            return cleaned
         missing = [group_id for group_id in cleaned if self._groups.get(group_id) is None]
         if missing:
             raise OctopError(ErrorCode.NOT_FOUND, "user group not found")
@@ -226,10 +247,12 @@ class GroupAccess:
         resource_key: str,
         visibility: str,
         group_ids: Sequence[str] | None,
+        *,
+        actor: User,
     ) -> None:
         if resource_type not in RESOURCE_TYPES:
             raise OctopError(ErrorCode.FORBIDDEN, "unknown resource type", status=400)
-        cleaned = self.validate_visibility(visibility, group_ids)
+        cleaned = self.validate_visibility(visibility, group_ids, actor=actor)
         if visibility in {VISIBILITY_ALL, VISIBILITY_OWNER}:
             self._grants.delete_resource(resource_type, resource_key)
             return

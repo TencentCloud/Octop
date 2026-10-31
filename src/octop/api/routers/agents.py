@@ -348,7 +348,9 @@ async def create_agent(
         mcp_servers=mcp_servers,
     )
     if body.visibility is not None:
-        GroupAccess(server.services.repos).validate_visibility(body.visibility, body.group_ids)
+        GroupAccess(server.services.repos).validate_visibility(
+            body.visibility, body.group_ids, actor=user
+        )
     row = await server.app_runtime.agent_registry.create(spec)
     if body.visibility is not None:
         row = await apply_agent_audience(
@@ -357,6 +359,7 @@ async def create_agent(
             visibility=body.visibility,
             group_ids=body.group_ids,
             shared=body.is_shared,
+            actor=user,
         )
     return _row_dict(
         row,
@@ -419,6 +422,10 @@ async def patch_agent(
     if row is None:
         raise OctopError(ErrorCode.AGENT_NOT_FOUND, f"agent {agent_id!r} not found")
     _assert_agent_owner(row, user)
+    if body.visibility is not None:
+        GroupAccess(server.services.repos).validate_visibility(
+            body.visibility, body.group_ids, actor=user
+        )
     if body.config is not None and isinstance(body.config, dict):
         assert_user_backend_root_dirs(
             user,
@@ -472,6 +479,7 @@ async def patch_agent(
             visibility=body.visibility,
             group_ids=body.group_ids,
             shared=body.is_shared,
+            actor=user,
         )
     return _row_dict(
         row,

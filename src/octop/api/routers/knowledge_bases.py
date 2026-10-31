@@ -585,7 +585,7 @@ async def create_base(
         _require_usable(server, request)
         access = _group_access(server)
         if body.visibility is not None and access is not None:
-            access.validate_visibility(body.visibility, body.group_ids)
+            access.validate_visibility(body.visibility, body.group_ids, actor=user)
         base = _knowledge_service(server).create_base(
             owner_user_id=user.id,
             name=body.name.strip(),
@@ -608,6 +608,7 @@ async def create_base(
                 base.id,
                 body.visibility,
                 body.group_ids,
+                actor=user,
             )
         return _base_payload(server, base)
     except Exception as exc:
@@ -662,7 +663,7 @@ async def update_base(
     try:
         access = _group_access(server)
         if body.visibility is not None and access is not None:
-            access.validate_visibility(body.visibility, body.group_ids)
+            access.validate_visibility(body.visibility, body.group_ids, actor=user)
         shared = body.shared
         if body.visibility == "owner":
             shared = False
@@ -686,6 +687,7 @@ async def update_base(
                 kb_id,
                 body.visibility,
                 body.group_ids,
+                actor=user,
             )
         return _base_payload(server, updated)
     except Exception as exc:

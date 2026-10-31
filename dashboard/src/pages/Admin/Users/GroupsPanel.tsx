@@ -553,7 +553,7 @@ export default function GroupsPanel() {
                       <h3>{row.name}</h3>
                       <span className={styles.roleIdMeta}>
                         {t("adminUsers.groupMemberCount", {
-                          count: row.member_count,
+                          count: row.member_count ?? 0,
                         })}
                         <span className={styles.userCardMetaSep}>·</span>
                         {formatServerDateTime(row.created_at, timeZone)}
@@ -679,7 +679,7 @@ export default function GroupsPanel() {
                   />
                   <span className={styles.userCellMuted}>
                     {t("adminUsers.groupMemberCount", {
-                      count: row.member_count,
+                      count: row.member_count ?? 0,
                     })}
                   </span>
                 </Space>

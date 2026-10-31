@@ -12,6 +12,12 @@ from octop.api.routers.providers import (
     _provider_patch_updates,
     admin_patch_provider,
 )
+from octop.infra.users.identity import User
+
+
+@pytest.fixture
+def admin_user() -> User:
+    return User(id=1, username="admin", role="admin", display_name=None)
 
 
 def test_revoke_api_key_is_an_explicit_clear() -> None:
@@ -56,7 +62,7 @@ def test_patch_note_and_api_key_requires_rehydrate() -> None:
 
 
 @pytest.mark.asyncio
-async def test_admin_patch_note_only_skips_on_provider_changed() -> None:
+async def test_admin_patch_note_only_skips_on_provider_changed(admin_user: User) -> None:
     on_changed = AsyncMock()
     row = MagicMock()
     row.id = 1
@@ -67,14 +73,14 @@ async def test_admin_patch_note_only_skips_on_provider_changed() -> None:
     server.app_runtime.agent_registry.on_provider_changed = on_changed
 
     body = ProviderPatchBody.model_validate({"note": "only note"})
-    await admin_patch_provider(provider_id=1, body=body, _=None, server=server)
+    await admin_patch_provider(provider_id=1, body=body, user=admin_user, server=server)
 
     server.services.provider_repo.update.assert_called_once_with(1, note="only note")
     on_changed.assert_not_awaited()
 
 
 @pytest.mark.asyncio
-async def test_admin_patch_api_key_calls_on_provider_changed() -> None:
+async def test_admin_patch_api_key_calls_on_provider_changed(admin_user: User) -> None:
     on_changed = AsyncMock()
     row = MagicMock()
     row.id = 1
@@ -85,14 +91,14 @@ async def test_admin_patch_api_key_calls_on_provider_changed() -> None:
     server.app_runtime.agent_registry.on_provider_changed = on_changed
 
     body = ProviderPatchBody.model_validate({"api_key": "sk-new"})
-    await admin_patch_provider(provider_id=1, body=body, _=None, server=server)
+    await admin_patch_provider(provider_id=1, body=body, user=admin_user, server=server)
 
     server.services.provider_repo.update.assert_called_once_with(1, api_key="sk-new")
     on_changed.assert_awaited_once_with(provider_name="test-openai")
 
 
 @pytest.mark.asyncio
-async def test_admin_patch_null_api_key_clears_stored_key() -> None:
+async def test_admin_patch_null_api_key_clears_stored_key(admin_user: User) -> None:
     on_changed = AsyncMock()
     row = MagicMock()
     row.id = 1
@@ -103,14 +109,14 @@ async def test_admin_patch_null_api_key_clears_stored_key() -> None:
     server.app_runtime.agent_registry.on_provider_changed = on_changed
 
     body = ProviderPatchBody.model_validate({"api_key": None})
-    await admin_patch_provider(provider_id=1, body=body, _=None, server=server)
+    await admin_patch_provider(provider_id=1, body=body, user=admin_user, server=server)
 
     server.services.provider_repo.update.assert_called_once_with(1, api_key=None)
     on_changed.assert_awaited_once_with(provider_name="DeepSeek")
 
 
 @pytest.mark.asyncio
-async def test_admin_patch_models_clears_stale_agent_default_and_active() -> None:
+async def test_admin_patch_models_clears_stale_agent_default_and_active(admin_user: User) -> None:
     on_changed = AsyncMock()
     row = MagicMock()
     row.id = 1
@@ -124,7 +130,7 @@ async def test_admin_patch_models_clears_stale_agent_default_and_active() -> Non
         {"models": [{"id": "keep", "name": "keep", "enabled": True}]}
     )
     with patch("octop.api.routers.providers.clear_stale_pins_for_provider") as clear_pins:
-        await admin_patch_provider(provider_id=1, body=body, _=None, server=server)
+        await admin_patch_provider(provider_id=1, body=body, user=admin_user, server=server)
 
     clear_pins.assert_called_once_with(
         agent_repo=server.services.agent_repo,

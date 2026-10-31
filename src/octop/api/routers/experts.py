@@ -668,7 +668,9 @@ async def install_published_expert(
     if body.visibility is not None:
         from octop.infra.users.groups import GroupAccess  # noqa: PLC0415
 
-        GroupAccess(server.services.repos).validate_visibility(body.visibility, body.group_ids)
+        GroupAccess(server.services.repos).validate_visibility(
+            body.visibility, body.group_ids, actor=user
+        )
     result = await install_published_expert_agent(
         services=server.services,
         registry=server.app_runtime.agent_registry,
@@ -702,6 +704,7 @@ async def install_published_expert(
             visibility=body.visibility,
             group_ids=body.group_ids,
             shared=None,
+            actor=user,
         )
     result.update(report.as_api_fields())
     return result
@@ -792,7 +795,9 @@ async def install_expert_hub_item(
     if body.visibility is not None:
         from octop.infra.users.groups import GroupAccess  # noqa: PLC0415
 
-        GroupAccess(server.services.repos).validate_visibility(body.visibility, body.group_ids)
+        GroupAccess(server.services.repos).validate_visibility(
+            body.visibility, body.group_ids, actor=user
+        )
     try:
         result = await create_skillhub_market_agent(
             server=server,
@@ -830,6 +835,7 @@ async def install_expert_hub_item(
             visibility=body.visibility,
             group_ids=body.group_ids,
             shared=None,
+            actor=user,
         )
         row = server.app_runtime.agent_registry.get_row(row.agent_id) or row
     return {
@@ -934,7 +940,9 @@ async def create_agent_from_expert(
     if body.visibility is not None:
         from octop.infra.users.groups import GroupAccess  # noqa: PLC0415
 
-        GroupAccess(server.services.repos).validate_visibility(body.visibility, body.group_ids)
+        GroupAccess(server.services.repos).validate_visibility(
+            body.visibility, body.group_ids, actor=user
+        )
     row = await server.app_runtime.agent_registry.create(
         spec,
         defer_bootstrap=True,
@@ -952,6 +960,7 @@ async def create_agent_from_expert(
             visibility=body.visibility,
             group_ids=body.group_ids,
             shared=None,
+            actor=user,
         )
     return {
         "id": row.id,

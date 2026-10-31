@@ -35,6 +35,9 @@ _CATALOG_KEYS = (
     "connectors",
     "providers",
     "storage_backends",
+    "plugins",
+    "bridge",
+    "experts",
 )
 
 # Same shape as expert / agent ids (short Crockford ids also match).
@@ -116,7 +119,9 @@ def _unique_kind(exc: BaseException) -> str | None:
 
 
 async def catalog_reader(user: User = Depends(current_user)) -> User:
-    if user.is_admin or any(user_has_permission(user, key) for key in _CATALOG_KEYS):
+    if user_has_permission(user, "user_groups") or any(
+        user_has_permission(user, key) for key in _CATALOG_KEYS
+    ):
         return user
     raise OctopError(ErrorCode.FORBIDDEN, "user group catalog requires a management permission")
 
@@ -133,21 +138,23 @@ def _public(
     server: Any,
     row: Any,
     *,
-    member_count: int,
+    member_count: int | None = None,
     member_ids: list[int] | None = None,
 ) -> dict[str, Any]:
-    return {
+    payload: dict[str, Any] = {
         "user_group_id": row.user_group_id,
         "name": row.name,
         "description": row.description,
         "enabled": bool(row.enabled),
         "avatar_icon": row.avatar_icon,
         "avatar_url": _avatar_url(server, row.user_group_id),
-        "member_count": member_count,
-        "member_ids": member_ids or [],
         "created_at": row.created_at,
         "updated_at": row.updated_at,
     }
+    if member_count is not None:
+        payload["member_count"] = member_count
+        payload["member_ids"] = member_ids or []
+    return payload
 
 
 def _require_group(server: Any, user_group_id: str) -> Any:
@@ -160,8 +167,15 @@ def _require_group(server: Any, user_group_id: str) -> Any:
 @router.get("", summary="List user groups")
 async def list_user_groups(
     server: Any = Depends(get_server),
-    _: User = Depends(catalog_reader),
+    user: User = Depends(catalog_reader),
 ) -> list[dict[str, Any]]:
+    if not user_has_permission(user, "user_groups"):
+        member_group_ids = server.services.repos.user_group_member_repo.group_ids_for_user(user.id)
+        return [
+            _public(server, row)
+            for row in server.services.repos.user_group_repo.list_all()
+            if row.enabled and row.user_group_id in member_group_ids
+        ]
     members = server.services.repos.user_group_member_repo.user_ids_by_group()
     access = group_access_by_group(server.services.repos)
     payloads = []

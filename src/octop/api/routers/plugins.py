@@ -318,7 +318,7 @@ async def patch_plugin(
     plugin_id: str,
     body: PluginPatchBody,
     server: OctopServer = Depends(get_server),
-    _user: Any = Depends(require_permission("plugins")),
+    user: Any = Depends(require_permission("plugins")),
 ) -> dict[str, Any]:
     """Enable/disable a plugin and/or set who may use it on agents.
 
@@ -327,6 +327,10 @@ async def patch_plugin(
     """
     if body.enabled is None and body.visibility is None:
         raise OctopError(ErrorCode.FORBIDDEN, "provide enabled and/or visibility", status=400)
+    if body.visibility is not None:
+        _plugin_group_access(server).validate_visibility(
+            body.visibility, body.group_ids, actor=user
+        )
     mgr = _plugin_manager(server)
     item: dict[str, Any] | None = None
     if body.enabled is not None:
@@ -342,6 +346,7 @@ async def patch_plugin(
             plugin_id,
             body.visibility,
             body.group_ids,
+            actor=user,
         )
     if item is None:
         for row in mgr.list_installed():
