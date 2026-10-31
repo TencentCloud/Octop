@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { execFile, spawn } from "node:child_process";
 import { EventEmitter } from "node:events";
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
@@ -386,6 +386,28 @@ for (const [option, code, output] of [["--help", 0, /Usage:/], ["--not-a-valid-o
     assert.doesNotMatch(run.stderr, /stopping development processes|cannot inspect processes/);
   });
 }
+
+test("run-dev.sh 无参数时仍进入监督器", async (t) => {
+  // macOS /bin/bash 3.2 treats `"${arr[@]}"` of an *empty* array as unbound
+  // under `set -u`, so a bare `pnpm dev` died on the re-exec line before
+  // anything started. Linux shells expand it silently, hence the guard here.
+  const bin = await mkdtemp(join(tmpdir(), "dev shell path-"));
+  t.after(() => rm(bin, { recursive: true, force: true }));
+  // A trimmed PATH keeps this from reaching a real build: pnpm is absent, so
+  // the supervised shell exits right after argument parsing.
+  await Promise.all([
+    symlink(process.execPath, join(bin, "node")),
+    symlink("/bin/bash", join(bin, "bash")),
+    symlink("/usr/bin/dirname", join(bin, "dirname")),
+    // Startup inspection must pass even on hosts that deny the real `ps`.
+    writeFile(join(bin, "ps"), "#!/bin/sh\nexit 0\n", { mode: 0o755 }),
+  ]);
+  const run = await spawnCase(t, () => ({ command: "bash", args: [shellPath], env: { PATH: bin } }));
+  await exited(run, 1);
+  assert.doesNotMatch(run.stderr, /unbound variable|parameter not set/, "空参数数组必须安全展开");
+  assert.match(run.stderr, /stopping development processes/, "无参数时也必须交给监督器");
+  assert.match(run.stderr, /pnpm not found/);
+});
 
 test("trackTree 跟踪乱序多层后代、进程组孤儿并保留已观察 detached 孤儿", () => {
   const row = (pid, ppid, pgid, started = `start-${pid}`, state = "S") => ({ pid, ppid, pgid, started, state });

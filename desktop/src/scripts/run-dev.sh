@@ -49,8 +49,14 @@ done
 # Hand the build and the launched app to the supervisor, which owns shutdown.
 # This runs after option parsing so `--help` / bad flags never need a process
 # table. The re-exec keeps the public shell PID as the signal recipient.
+# bash 3.2 (macOS /bin/bash) treats `"${empty[@]}"` as unbound under `set -u`,
+# so a plain `pnpm dev` would die here before anything started. Expand the array
+# only when it actually has elements.
 if ((!SUPERVISED)); then
-  exec node "$SCRIPT_DIR/dev-process.mjs" bash "$SCRIPT_DIR/run-dev.sh" --supervised "${ORIGINAL_ARGS[@]}"
+  if [[ ${#ORIGINAL_ARGS[@]} -gt 0 ]]; then
+    exec node "$SCRIPT_DIR/dev-process.mjs" bash "$SCRIPT_DIR/run-dev.sh" --supervised "${ORIGINAL_ARGS[@]}"
+  fi
+  exec node "$SCRIPT_DIR/dev-process.mjs" bash "$SCRIPT_DIR/run-dev.sh" --supervised
 fi
 
 if ((BUILD)); then
