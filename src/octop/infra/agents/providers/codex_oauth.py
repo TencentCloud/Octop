@@ -111,8 +111,9 @@ def save_codex_token(paths: PathLayout, cred: CodexOAuthCredentials) -> None:
     path = oauth_token_file(paths)
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(cred, indent=2), encoding="utf-8")
-    with contextlib.suppress(OSError):
-        os.chmod(path, 0o600)
+    if os.name == "posix":
+        with contextlib.suppress(OSError):
+            os.chmod(path, 0o600)
 
 
 def load_codex_token(paths: PathLayout) -> CodexOAuthCredentials | None:
@@ -135,8 +136,7 @@ def load_codex_token(paths: PathLayout) -> CodexOAuthCredentials | None:
 
 def delete_codex_token(paths: PathLayout) -> None:
     path = oauth_token_file(paths)
-    if path.exists():
-        path.unlink()
+    path.unlink(missing_ok=True)
 
 
 def is_token_valid(cred: CodexOAuthCredentials) -> bool:
@@ -162,14 +162,30 @@ def refresh_codex_token(paths: PathLayout, cred: CodexOAuthCredentials) -> Codex
     except urllib.error.HTTPError as exc:
         body_text = exc.read().decode(errors="replace")
         raise CodexOAuthRefreshError(
-            f"Codex token refresh failed (HTTP {exc.code}): {body_text}"
+            f"Codex token refresh failed (HTTP {exc.code}): {body_text}",
+            reason="upstream_http_error",
         ) from exc
-    new_access = data["access_token"]
+    except (urllib.error.URLError, TimeoutError, OSError) as exc:
+        # get_valid_access_token only catches CodexOAuthRefreshError: letting a
+        # raw URLError escape turns a transient outage into a 500 on whichever
+        # request happened to trigger the refresh.
+        raise CodexOAuthRefreshError(
+            "Codex token refresh failed: network error", reason="network_error"
+        ) from exc
+    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise CodexOAuthRefreshError(
+            "Codex token refresh failed: invalid response", reason="invalid_response"
+        ) from exc
+    access_token = data.get("access_token") if isinstance(data, dict) else None
+    if not isinstance(access_token, str) or not access_token:
+        raise CodexOAuthRefreshError(
+            "Codex token refresh failed: invalid response", reason="invalid_response"
+        )
     new_cred = CodexOAuthCredentials(
-        access=new_access,
+        access=access_token,
         refresh=data.get("refresh_token", cred["refresh"]),
-        expires=extract_token_expiry_ms(new_access, int(data.get("expires_in", 3600))),
-        account_id=extract_account_id(new_access) or cred.get("account_id", ""),
+        expires=extract_token_expiry_ms(access_token, int(data.get("expires_in", 3600))),
+        account_id=extract_account_id(access_token) or cred.get("account_id", ""),
     )
     save_codex_token(paths, new_cred)
     return new_cred
