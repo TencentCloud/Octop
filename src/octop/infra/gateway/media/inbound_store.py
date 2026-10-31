@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import mimetypes
 import re
 import time
@@ -411,6 +412,12 @@ def build_timestamped_inbound_name(filename: str, *, now: int | None = None) -> 
     return f"{ts}_{display}"
 
 
+# ``aexists`` + ``aupload_bytes`` is a check-then-act pair; without mutual
+# exclusion two same-name uploads in the same second both pick the same path
+# and the later write silently overwrites the earlier attachment.
+_INBOUND_WRITE_LOCK = asyncio.Lock()
+
+
 async def _unique_inbound_path(workspace: BackendWorkspace, stored_name: str) -> str:
     """Pick ``inbound/{name}``, or ``inbound/{stem}-{n}{suffix}`` on collision."""
     candidate = f"{INBOUND_DIR}/{stored_name}"
@@ -441,8 +448,9 @@ async def write_inbound(
     if not Path(display_name).suffix:
         display_name = f"{display_name}{inbound_extension(display_name, normalized_type)}"
     stored_name = build_timestamped_inbound_name(display_name)
-    path = await _unique_inbound_path(workspace, stored_name)
-    await workspace.aupload_bytes(path, data)
+    async with _INBOUND_WRITE_LOCK:
+        path = await _unique_inbound_path(workspace, stored_name)
+        await workspace.aupload_bytes(path, data)
     return InboundFile(
         path=path,
         filename=display_name,
