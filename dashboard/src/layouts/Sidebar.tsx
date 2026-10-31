@@ -7,7 +7,6 @@ import AppVersionBadge from "../components/AppVersionBadge";
 import CurrentVersionBadge from "../components/CurrentVersionBadge";
 import { ChevronDown, X } from "lucide-react";
 import cx from "classnames";
-import RailEdgeControl from "../components/RailEdgeControl";
 import { useTheme } from "../context/ThemeContext";
 import { useLayoutMode } from "../context/LayoutModeContext";
 import { useUserRole } from "../hooks/useUserRole";
@@ -15,8 +14,8 @@ import { useCurrentUser, useSetCurrentUser } from "../hooks/useCurrentUser";
 import { useUpdateStatus } from "../hooks/useUpdateStatus";
 import { prefetchRoute } from "../routes/prefetch";
 import { useServerCapabilities } from "../hooks/useServerCapabilities";
-import { useChatSidebarOpen } from "../pages/Chat/hooks/useChatSidebarState";
-import { EXPAND_CHAT_RAIL_EVENT } from "../pages/Chat/components/ChatSidebarPanel";
+import { EXPAND_CHAT_RAIL_EVENT } from "../pages/Chat/chatRailEvents";
+import RailSeamHandle, { SEAM_HANDLE_STEP } from "../components/RailSeamHandle";
 import {
   CHAT_HISTORY_RAIL_ID,
   OPEN_NAV_RECORDS_EVENT,
@@ -400,20 +399,12 @@ export default function Sidebar({
       cancelled = true;
     };
   }, [user]);
-  const [chatSidebarOpen] = useChatSidebarOpen();
-  /**
-   * The history rail is the only thing mounted to the nav's right, and when it
-   * is closed its own seam handle lands on the nav's divider. That shared line
-   * gets two handles stacked (nav above, history below) so they never overlap.
-   */
-  const seamShared = !isMinimal && onChatPath && !chatSidebarOpen;
-
   const isRailCollapsed = collapsed && !isMobile;
   const wordmarkSrc = isDark
     ? publicUrl("logo_horizontal_white.png")
     : publicUrl("logo_horizontal_dark.png");
   /**
-   * Label/hint for the rail's own seam handle. The accelerator lives in the
+   * Label/hint for the rail's own fold control. The accelerator lives in the
    * tooltip (and in aria-keyshortcuts), not in the accessible name.
    */
   const navToggleLabel = t(
@@ -642,24 +633,25 @@ export default function Sidebar({
   const navScrollBody = isMinimal ? minimalNavBody : classicNavBody;
 
   /**
-   * The nav folds from the seam on its right — the same handle the history rail
-   * uses on its own seam. One shape for both left columns, and it sits on the
-   * line that moves instead of in a corner nobody associates with a panel.
+   * The nav folds from the seam on its right — the same handle shape the
+   * history rail uses on its own seam. It sits on the line that moves, so
+   * folding the rail drags it to the new edge and flips the arrow; nothing
+   * about it belongs to the panel's content.
    *
-   * Collapsed, the handle stays painted: it is the only way back. When the
-   * history rail is closed its handle lands on this same line, so the pair
-   * stacks (nav above, history below) rather than overlapping.
+   * Collapsed it stays painted: it is the column's only way back. When the
+   * history rail is closed its handle lands on this same seam, so the two are
+   * offset in opposite directions (see `SEAM_HANDLE_STEP`) rather than stacked
+   * by a second rule.
    */
   const navSeamHandle = (
-    <RailEdgeControl
-      expanded={!isRailCollapsed}
-      persistent={isRailCollapsed}
+    <RailSeamHandle
+      open={!isRailCollapsed}
       onToggle={onToggle}
-      side="end"
-      stack={seamShared ? "top" : "none"}
       label={navToggleLabel}
       hint={navToggleHint}
       shortcut={railShortcutAria("toggle-nav")}
+      offsetY={-SEAM_HANDLE_STEP}
+      persistent={isRailCollapsed}
     />
   );
 
@@ -760,14 +752,14 @@ export default function Sidebar({
 
   // Desktop: custom sidebar with icon-only collapsed mode.
   return (
-    /* The host owns the seam: the rail itself clips its own width animation, so
-       the handle has to live outside it to straddle the divider. */
+    /* The host owns the seam: the rail clips its own width animation, so the
+       handle has to live outside it to straddle the divider. */
     <div className={styles.navRailHost}>
       <div
         className={styles.navRail}
         style={{
           width: isRailCollapsed ? COLLAPSED_WIDTH : EXPANDED_WIDTH,
-          // Clear of the traffic lights, minus the handle that now hangs off the seam.
+          // Clear of the traffic lights on the band's leading edge.
           minWidth: `max(${
             isRailCollapsed ? COLLAPSED_WIDTH : EXPANDED_WIDTH
           }px, calc(var(--window-controls-inset-start, 0px) + 40px))`,
@@ -783,8 +775,8 @@ export default function Sidebar({
           minHeight: 0,
         }}
       >
-        {/* The window-controls band: reserved height, no control of its own now
-            that the rail folds from its seam. */}
+        {/* The window-controls band: reserved height, no control of its own —
+            the rail folds from its seam, not from a corner of this row. */}
         <div className={styles.navChrome} aria-hidden />
         <div
           style={{

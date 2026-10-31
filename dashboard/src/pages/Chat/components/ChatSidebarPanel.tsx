@@ -1,4 +1,3 @@
-import { useCallback } from "react";
 import { useTranslation } from "react-i18next";
 import type { RefObject } from "react";
 import cx from "classnames";
@@ -6,16 +5,7 @@ import SessionList from "./SessionList";
 import MinimalAgentSessionNav from "./MinimalAgentSessionNav";
 import type { Session } from "../hooks/useSessions";
 import type { OctopAgent } from "../../../context/AgentContext";
-import RailEdgeControl from "../../../components/RailEdgeControl";
-import {
-  isMacPlatform,
-  railShortcutAria,
-  railShortcutLabel,
-} from "../../../utils/railShortcuts";
 import styles from "../index.module.less";
-
-/** Dispatched when the chat history rail expand control is clicked. */
-export const EXPAND_CHAT_RAIL_EVENT = "octop:expand-chat-rail";
 
 interface ChatSidebarPanelProps {
   isMobile: boolean;
@@ -88,25 +78,6 @@ export default function ChatSidebarPanel({
 }: ChatSidebarPanelProps) {
   const { t } = useTranslation();
 
-  const historyLabel = sidebarOpen
-    ? t("chat.collapseHistorySidebar", "收起对话历史")
-    : t("chat.expandHistorySidebar", "展开对话历史");
-  /** Tooltip carries the accelerator; the accessible name stays the action. */
-  const historyHint = `${historyLabel} (${railShortcutLabel(
-    "toggle-history",
-    isMacPlatform(),
-  )})`;
-
-  const handleRailToggle = useCallback(() => {
-    if (sidebarOpen) {
-      onSidebarOpenChange(false);
-      return;
-    }
-    // MainLayout may also expand the nav when both rails were collapsed.
-    window.dispatchEvent(new Event(EXPAND_CHAT_RAIL_EVENT));
-    onSidebarOpenChange(true);
-  }, [sidebarOpen, onSidebarOpenChange]);
-
   const sessionList = navEmbedded ? (
     <MinimalAgentSessionNav
       agents={agents}
@@ -159,7 +130,6 @@ export default function ChatSidebarPanel({
       className={cx(
         styles.sidebarWrapper,
         layoutRail && styles.sidebarWrapperLayoutRail,
-        !isMobile && !sidebarOpen && styles.sidebarWrapperCollapsed,
       )}
     >
       {isMobile && sidebarOpen && (
@@ -196,27 +166,6 @@ export default function ChatSidebarPanel({
           />
         )}
       </div>
-
-      {/**
-       * The rail folds from the seam on its right — the same handle the nav
-       * rail uses, so both left columns answer to one shape. Collapsed, this
-       * lands on the nav's divider where the nav keeps its own: the pair
-       * stacks (nav above, history below) instead of overlapping.
-       */}
-      {!isMobile && (
-        <RailEdgeControl
-          expanded={sidebarOpen}
-          persistent={!sidebarOpen}
-          onToggle={handleRailToggle}
-          side={sidebarOpen ? "end" : "start"}
-          /* Collapsed: share the nav rail divider — avoid a second gapped line. */
-          showLine={sidebarOpen}
-          stack={sidebarOpen ? "none" : "bottom"}
-          label={historyLabel}
-          hint={historyHint}
-          shortcut={railShortcutAria("toggle-history")}
-        />
-      )}
     </div>
   );
 }

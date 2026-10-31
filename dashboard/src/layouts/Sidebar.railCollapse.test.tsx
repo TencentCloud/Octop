@@ -1,14 +1,13 @@
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
-import { act, render, screen } from "@testing-library/react";
+import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { LayoutModeProvider } from "../context/LayoutModeContext";
-import { useChatSidebarOpen } from "../pages/Chat/hooks/useChatSidebarState";
-import edgeStyles from "../components/RailEdgeControl.module.less";
 import { LAYOUT_MODE_KEY } from "./layoutModeStorage";
 import Sidebar from "./Sidebar";
+import seamStyles from "../components/RailSeamHandle.module.less";
 import styles from "./Sidebar.module.less";
 
 vi.mock("../components/AvatarDropdown", () => ({
@@ -46,32 +45,18 @@ function renderSidebar(opts: {
   );
 }
 
-/** The history rail's open flag is a module-level store shared with the page. */
-function setHistoryRailOpen(open: boolean) {
-  let setter: ((value: boolean) => void) | null = null;
-  function Probe() {
-    const [, setOpen] = useChatSidebarOpen();
-    setter = setOpen as (value: boolean) => void;
-    return null;
-  }
-  const { unmount } = render(<Probe />);
-  act(() => setter?.(open));
-  unmount();
-}
-
 /**
- * Both left columns fold from one shape: a capsule on their seam. The nav used
- * to fold from a `PanelLeftClose` glyph in its top row — a control in a corner
- * that belongs to the window, not to the panel. These pin the seam contract:
- * where the handle lives, what it says, and what it does.
+ * The nav folds from a handle straddling the seam on its right — not from a
+ * corner of its own header. These pin the handle to the line that moves and
+ * pin the arrow to the state, since a fold control pointing the wrong way is
+ * worse than no fold control.
  */
 describe("nav rail seam handle", () => {
   beforeEach(() => {
     localStorage.removeItem(LAYOUT_MODE_KEY);
-    setHistoryRailOpen(true);
   });
 
-  it("collapses from a handle straddling its own seam", async () => {
+  it("hangs off the rail's trailing seam, pointing at the edge it folds to", async () => {
     const user = userEvent.setup();
     const onToggle = vi.fn();
     const { container } = renderSidebar({ collapsed: false, onToggle });
@@ -82,34 +67,32 @@ describe("nav rail seam handle", () => {
     // The accelerator is advertised, not baked into the name.
     expect(button.getAttribute("title")).toMatch(/收起导航栏 \(.+B\)/);
 
-    // Sits on the seam: outside the rail (which clips its width), inside the host.
+    // Outside the rail (which clips its own width animation), inside its host,
+    // so the capsule straddles the divider instead of being cut off by it.
+    const rail = container.querySelector<HTMLElement>(`.${styles.navRail}`)!;
     const host = container.querySelector<HTMLElement>(
       `.${styles.navRailHost}`,
     )!;
+    const anchor = container.querySelector<HTMLElement>(
+      `.${seamStyles.anchor}`,
+    )!;
+    expect(rail).not.toContainElement(button);
     expect(host).toContainElement(button);
-    expect(container.querySelector(`.${styles.navRail}`)).not.toContainElement(
-      button,
-    );
+    expect(anchor).toContainElement(button);
+
+    // Expanded, it sits above the centre line so the history rail's own handle
+    // (below it) can share this seam when that rail is closed.
+    expect(anchor.style.getPropertyValue("--seam-offset")).toBe("-34px");
+    expect(anchor).not.toHaveClass(seamStyles.persistent);
 
     await user.click(button);
     expect(onToggle).toHaveBeenCalledTimes(1);
   });
 
-  it("keeps the window-controls band as spacing, with no control in it", () => {
-    const { container } = renderSidebar({ collapsed: false });
-    const band = container.querySelector<HTMLElement>(`.${styles.navChrome}`)!;
-    expect(band).toBeInTheDocument();
-    expect(band).toBeEmptyDOMElement();
-
-    const css = readFileSync(resolve(__dirname, "Sidebar.module.less"), "utf8");
-    const chrome = css.match(/\.navChrome\s*\{([^}]+)\}/)?.[1];
-    expect(chrome).toContain("var(--octop-shell-top-band, 58px)");
-  });
-
-  it("stays painted while collapsed — it is the only way back", async () => {
+  it("stays painted once folded, and points the other way", async () => {
     const user = userEvent.setup();
     const onToggle = vi.fn();
-    renderSidebar({ collapsed: true, onToggle });
+    const { container } = renderSidebar({ collapsed: true, onToggle });
 
     expect(
       screen.queryByRole("button", { name: "收起导航栏" }),
@@ -118,12 +101,32 @@ describe("nav rail seam handle", () => {
     const button = screen.getByRole("button", { name: "展开导航栏" });
     expect(button).toHaveAttribute("aria-expanded", "false");
     expect(button).toHaveAttribute("aria-keyshortcuts", "Meta+B");
-    expect(button).toHaveClass(edgeStyles.btnPersistent);
-    // Alone on its seam when the history rail is open: no second handle, no shift.
-    expect(button).not.toHaveClass(edgeStyles.btnTop);
+    // Nothing else in a 56px icon column advertises the way back.
+    expect(
+      container.querySelector<HTMLElement>(`.${seamStyles.anchor}`),
+    ).toHaveClass(seamStyles.persistent);
 
     await user.click(button);
     expect(onToggle).toHaveBeenCalledTimes(1);
+  });
+
+  it("anchors to the seam in CSS instead of a fixed x", () => {
+    const css = readFileSync(
+      resolve(__dirname, "../components/RailSeamHandle.module.less"),
+      "utf8",
+    );
+    const anchor = css.match(/\.anchor\s*\{([^}]+)\}/)?.[1];
+    // `left: 100%` is what makes the handle follow the column's edge when the
+    // column folds; a pixel offset would strand it mid-air.
+    expect(anchor).toContain("left: 100%");
+    expect(anchor).toContain("calc(50% + var(--seam-offset, 0px))");
+    expect(anchor).toContain("translate(-50%, -50%)");
+    expect(anchor).toContain("z-index: 40");
+
+    // Quiet at rest, crisp under the pointer — the hover trigger itself.
+    const btn = css.match(/\n\.btn\s*\{([^}]+)\}/)?.[1];
+    expect(btn).toContain("opacity: 0");
+    expect(css).toContain("&:hover {\n    opacity: 1;");
   });
 
   it("renders one handle in minimal layout too", () => {
@@ -134,43 +137,17 @@ describe("nav rail seam handle", () => {
     );
   });
 
-  it("stacks above the history handle when both share one seam", () => {
-    // History rail closed: its handle lands on the nav's divider.
-    setHistoryRailOpen(false);
-    renderSidebar({ collapsed: false });
-    expect(screen.getByRole("button", { name: "收起导航栏" })).toHaveClass(
-      edgeStyles.btnTop,
-    );
-  });
-
-  it("centres on its seam while the history rail owns its own", () => {
-    setHistoryRailOpen(true);
-    renderSidebar({ collapsed: false });
-    expect(screen.getByRole("button", { name: "收起导航栏" })).not.toHaveClass(
-      edgeStyles.btnTop,
-    );
-  });
-
   it("leaves room for the traffic lights without a second control", () => {
     const { container } = renderSidebar({ collapsed: true });
     const rail = container.querySelector<HTMLElement>(`.${styles.navRail}`)!;
     expect(rail.style.minWidth).toContain(
       "var(--window-controls-inset-start, 0px) + 40px",
     );
-    expect(rail).not.toContainElement(
-      screen.getByRole("button", { name: "展开导航栏" }),
-    );
   });
 
   it("keeps the mobile close control in its drawer header", async () => {
     const onToggle = vi.fn();
-    const { container } = renderSidebar({
-      collapsed: false,
-      isMobile: true,
-      onToggle,
-    });
-    // No seam to hang a handle on inside the drawer.
-    expect(container.querySelector(`.${styles.navRailHost}`)).toBeNull();
+    renderSidebar({ collapsed: false, isMobile: true, onToggle });
     expect(
       screen.queryByRole("button", { name: /收起导航栏|展开导航栏/ }),
     ).not.toBeInTheDocument();
@@ -183,8 +160,8 @@ describe("nav rail seam handle", () => {
 });
 
 /**
- * The nav never folds the history rail. That rail has a handle of its own, and
- * the nav growing a second one here is what made the corner unreadable before.
+ * The nav never folds the history rail. That rail has its own handle on its own
+ * seam; the nav growing a second one is what made the corner unreadable.
  */
 describe("nav rail keeps to its own panel", () => {
   beforeEach(() => {
@@ -192,12 +169,9 @@ describe("nav rail keeps to its own panel", () => {
   });
 
   it("offers no history-rail toggle", () => {
-    const { container } = renderSidebar({ collapsed: false });
+    renderSidebar({ collapsed: false });
     expect(
       screen.queryByRole("button", { name: /展开对话历史|收起对话历史/ }),
     ).not.toBeInTheDocument();
-    expect(
-      container.querySelector(`.${styles.navRailHost}`),
-    ).toBeInTheDocument();
   });
 });
