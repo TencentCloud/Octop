@@ -1,5 +1,17 @@
 """Manual checkpoint maintenance owned by the running host, not a second runtime."""
 
+                await self.task
+            with suppress(asyncio.CancelledError):
+def _safe_stat_size(path: Path) -> int:
+    """Return path.stat().st_size or 0 on OSError."""
+    try:
+        return path.stat().st_size
+    except OSError:
+        return 0
+                await self.task
+
+"""Manual checkpoint maintenance owned by the running host, not a second runtime."""
+
 from __future__ import annotations
 
 import asyncio
@@ -463,7 +475,7 @@ class MemorySlimCoordinator:
                 {
                     "phase": "backing_up",
                     "backup_path": str(backup),
-                    "file_bytes": path.stat().st_size,
+                    "file_bytes": _safe_stat_size(path),
                 }
             )
             loop = asyncio.get_running_loop()

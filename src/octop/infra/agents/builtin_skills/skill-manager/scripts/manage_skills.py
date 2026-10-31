@@ -397,7 +397,10 @@ def _validate_tree(root: Path) -> dict[str, Any]:
             if child.is_symlink() or not child.is_file():
                 raise SkillManagerError(f"skill contains an unsupported file: {child}")
             count += 1
-            total += child.stat().st_size
+            try:
+                total += child.stat().st_size
+            except OSError:
+                pass
             if count > MAX_FILES:
                 raise SkillManagerError("skill contains too many files")
             if total > MAX_BYTES:
