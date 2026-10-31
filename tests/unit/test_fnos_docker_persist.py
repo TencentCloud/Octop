@@ -57,6 +57,8 @@ def test_build_fpk_writes_store_version_not_pep440() -> None:
         ("1.0.2", "1.0.300"),
         ("1.0.3b1", "1.0.301"),
         ("1.0.3", "1.0.400"),
+        ("1.2.08", "1.2.900"),
+        ("1.2.010", "1.2.1100"),
     ],
 )
 def test_fnos_store_version_sorts_above_stripped_betas(pep440: str, store: str) -> None:
