@@ -204,6 +204,24 @@ describe("mapBridgeAgent", () => {
     expect(mapped.state).toBe("stopped");
   });
 
+  it("keeps the peer storage backend and drops other config", () => {
+    const mapped = mapBridgeAgent(
+      {
+        agent_id: "bridge:cid:01AGENT",
+        config: {
+          conversation_mode: "craft",
+          sandbox: "drop-me",
+          backend: { type: "named", name: "peer-docker" },
+        },
+      },
+      conn,
+    );
+    expect(mapped.config).toEqual({
+      conversation_mode: "craft",
+      backend: { type: "named", name: "peer-docker" },
+    });
+  });
+
   it("keeps a peer expert's running or stopped state", () => {
     expect(
       mapBridgeAgent({ agent_id: "bridge:cid:up", state: " running " }, conn)

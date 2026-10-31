@@ -1,6 +1,7 @@
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import type { ChatMessage } from "../hooks/useChat";
+import { COLLAPSE_THINKING_TEAM_KEY } from "../hooks/useCollapseThinking";
 import AssistantTurnView from "./AssistantTurnView";
 
 vi.mock("react-i18next", () => ({
@@ -113,5 +114,50 @@ describe("AssistantTurnView approval", () => {
     ).toBeTruthy();
     expect(screen.getByText(/决策模型/)).toBeInTheDocument();
     expect(screen.queryByText(/结果充分/)).not.toBeInTheDocument();
+  });
+
+  it("does not flash a lone decision row before tools arrive", () => {
+    localStorage.setItem(COLLAPSE_THINKING_TEAM_KEY, "true");
+    const decision = {
+      model: "laya",
+      empty: true,
+      parts: [],
+    };
+    const { rerender } = render(
+      <AssistantTurnView
+        isTurnInProgress
+        messages={[
+          message({
+            id: "pending",
+            status: "streaming",
+            decision,
+          }),
+        ]}
+      />,
+    );
+    expect(screen.queryByText(/决策模型/)).not.toBeInTheDocument();
+    expect(screen.queryByRole("button")).not.toBeInTheDocument();
+
+    rerender(
+      <AssistantTurnView
+        isTurnInProgress
+        messages={[
+          message({
+            id: "pending",
+            status: "done",
+            decision,
+          }),
+          message({
+            id: "tool",
+            status: "streaming",
+            toolData: { name: "execute", arguments: "{}" },
+          }),
+        ]}
+      />,
+    );
+    const summary = screen.getByRole("button", { name: /正在调用工具/ });
+    expect(screen.queryByText(/决策模型/)).not.toBeInTheDocument();
+    fireEvent.click(summary);
+    expect(screen.getByText(/决策模型/)).toBeInTheDocument();
   });
 });

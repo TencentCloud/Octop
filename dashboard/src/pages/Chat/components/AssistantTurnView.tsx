@@ -60,8 +60,9 @@ interface AssistantTurnViewProps {
 
 function hasProcessContent(
   split: ReturnType<typeof splitAssistantTurn>,
+  deferLoneDecision = false,
 ): boolean {
-  return turnHasVisibleProcess(split);
+  return turnHasVisibleProcess(split, { deferLoneDecision });
 }
 
 function TurnErrorBubbles({
@@ -224,16 +225,25 @@ export default function AssistantTurnView({
       (m) => m.status === "streaming" && isWriteTodosToolName(m.toolData?.name),
     );
 
+  // A decision stamp often lands before the first tool. Showing it on its
+  // own, then folding it in, flashes a one-line row. Hold that row until the
+  // reply has tools or the turn settles.
+  const deferLoneDecision = turnStreaming && !hasPendingHitl;
   const firstProcessSegmentIdx = compactProcess
     ? -1
-    : segmentProcess.findIndex(({ split }) => hasProcessContent(split));
+    : segmentProcess.findIndex(({ split }) =>
+        hasProcessContent(split, deferLoneDecision),
+      );
   const firstSummaryIdx = compactProcess
     ? -1
-    : segmentProcess.findIndex(({ split }) => turnHasProcessSummary(split));
+    : segmentProcess.findIndex(({ split }) =>
+        turnHasProcessSummary(split, { deferLoneDecision }),
+      );
   const showTrailingProcess =
-    !compactProcess && hasProcessContent(trailingSplit);
+    !compactProcess && hasProcessContent(trailingSplit, deferLoneDecision);
   const trailingHasSummary =
-    !compactProcess && turnHasProcessSummary(trailingSplit);
+    !compactProcess &&
+    turnHasProcessSummary(trailingSplit, { deferLoneDecision });
   const anyProcessShown = firstProcessSegmentIdx >= 0 || showTrailingProcess;
 
   const todoPanel =
@@ -399,7 +409,8 @@ export default function AssistantTurnView({
     <div className={styles.assistantTurn}>
       {todoAtTop ? <div className={styles.turnInset}>{todoAtTop}</div> : null}
       {segmentProcess.map(({ split, hitl }, idx) => {
-        const showProcess = !compactProcess && hasProcessContent(split);
+        const showProcess =
+          !compactProcess && hasProcessContent(split, deferLoneDecision);
         // Freeze process spinner while a pending approval card is open.
         const processStreaming =
           turnStreaming &&

@@ -124,6 +124,41 @@ describe("toLedgerRow", () => {
     expect(row.toolResult).not.toContain('"type": "text"');
   });
 
+  it("uses payload label as the context row title", () => {
+    const row = toLedgerRow(
+      event({
+        event_id: "c1",
+        kind: "context",
+        summary: "- apple-notes - apple-reminders",
+        payload: {
+          source: "skills",
+          label: "Available skills",
+          content: "- apple-notes\n- apple-reminders",
+        },
+      }),
+    );
+    expect(row.title).toBe("Available skills");
+    expect(row.content).toBe("Available skills");
+  });
+
+  it("uses payload label as the system prompt row title", () => {
+    const row = toLedgerRow(
+      event({
+        event_id: "s1",
+        kind: "context",
+        summary: "You are Octop. Be helpful and use the workspace…",
+        payload: {
+          source: "model_system",
+          label: "System prompt",
+          tokens: null,
+          content_chars: 3052,
+        },
+      }),
+    );
+    expect(row.title).toBe("System prompt");
+    expect(row.content).toBe("System prompt");
+  });
+
   it("omits requestSeq when the event has none", () => {
     const row = toLedgerRow(event({ event_id: "u1", kind: "user" }));
     expect(row.requestSeq).toBeUndefined();

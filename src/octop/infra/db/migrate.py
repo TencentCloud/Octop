@@ -1677,6 +1677,23 @@ def _ensure_bridge_connections_schema(db: DatabasePool) -> None:
         )
 
 
+def _repair_connector_text_credentials(db: DatabasePool) -> None:
+    """Cast TEXT ``connectors.credential_blob`` values back to BLOB.
+
+    Idempotent. PostgreSQL ``BYTEA`` cannot store the historical TEXT row, and
+    databases already at the current schema version must still be repaired, so
+    this stays out of the numbered migrations.
+    """
+    if db.dialect != "sqlite" or not _table_exists(db, "connectors"):
+        return
+    with db.transaction() as conn:
+        conn.execute(
+            "UPDATE connectors "
+            "SET credential_blob = CAST(credential_blob AS BLOB) "
+            "WHERE typeof(credential_blob) = 'text'"
+        )
+
+
 def _repair_legacy_schema(db: DatabasePool) -> None:
     """Idempotent compatibility repairs for local databases from old builds."""
     if _table_exists(db, "users"):
@@ -2244,3 +2261,4 @@ def run_migrations(db: DatabasePool) -> None:
     _grant_personalization_tab_permissions(db)
     _grant_bridge_permission(db)
     _expand_page_tab_permissions(db)
+    _repair_connector_text_credentials(db)

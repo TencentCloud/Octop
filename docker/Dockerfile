@@ -34,6 +34,7 @@
 #
 # 镜像内含虚拟桌面和系统 Chromium，但不会启动。用户在控制台确认后才启用。
 # 桌面安装已经带上 Chromium，不再另下 Playwright 浏览器。
+# 运行时带 Node.js 20（node / npm / npx），供依赖 Node 的技能使用。
 # Laya 不打进镜像：CPU 版 PyTorch 加多语言检查点大约要 4 GB 磁盘、约 2 GB 内存。
 # =============================================================================
 
@@ -105,6 +106,14 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
         git \
         ripgrep \
     && rm -rf /var/lib/apt/lists/*
+
+# 技能和专家 shell 会调用 node / npm / npx。从前端构建阶段复用 Node 20。
+# Docker 拷贝会展开软链接，因此 npm / npx 在这里按原路径重建。
+COPY --from=frontend-builder /usr/local/bin/node /usr/local/bin/node
+COPY --from=frontend-builder /usr/local/lib/node_modules /usr/local/lib/node_modules
+RUN ln -sf ../lib/node_modules/npm/bin/npm-cli.js /usr/local/bin/npm \
+    && ln -sf ../lib/node_modules/npm/bin/npx-cli.js /usr/local/bin/npx \
+    && node --version && npm --version && npx --version
 
 COPY --from=ghcr.io/astral-sh/uv:0.7 /uv /uvx /bin/
 

@@ -212,10 +212,12 @@ function RawPane({
   agentId,
   threadId,
   eventId,
+  contentSource,
 }: {
   agentId: string;
   threadId: string;
   eventId: string;
+  contentSource?: string | null;
 }) {
   const { t } = useTranslation();
   const [text, setText] = useState("");
@@ -242,7 +244,7 @@ function RawPane({
     return () => {
       cancelled = true;
     };
-  }, [agentId, eventId, threadId]);
+  }, [agentId, contentSource, eventId, threadId]);
 
   return (
     <pre className={styles.raw} data-testid="trajectory-raw">
@@ -299,7 +301,8 @@ function PreviewPane({
   event: TrajectoryEvent;
 }) {
   const { t } = useTranslation();
-  const plain = event.kind === "tool";
+  const plain =
+    event.kind === "tool" || event.payload.source === "model_system";
   const initial = plain
     ? coerceToolResultText(event.payload.result) ||
       coerceToolResultText(event.payload.output) ||
@@ -340,6 +343,7 @@ function PreviewPane({
     agentId,
     event.event_id,
     event.kind,
+    event.payload.content_source,
     event.payload.result,
     event.payload.output,
     event.summary,
@@ -383,7 +387,10 @@ export default function TrajectoryInspector({
   }
 
   const kindLabel = kindLabelFor(event.kind);
+  const headerLabel =
+    typeof event.payload.label === "string" ? event.payload.label.trim() : "";
   const locationParts = [
+    headerLabel || null,
     event.request_seq != null ? `Request #${event.request_seq}` : null,
     `Step ${event.seq}`,
   ].filter(Boolean);
@@ -448,6 +455,11 @@ export default function TrajectoryInspector({
                 agentId={agentId}
                 threadId={threadId}
                 eventId={event.event_id}
+                contentSource={
+                  typeof event.payload.content_source === "string"
+                    ? event.payload.content_source
+                    : null
+                }
               />
             ),
           },

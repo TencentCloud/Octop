@@ -15,6 +15,9 @@
 # 数据卷里的设置和索引却还在。
 # 另外用 bake-desktop.sh 装入虚拟桌面和系统 Chromium，但不启动。
 # 桌面组件已包含浏览器，不再另下 Playwright Chromium。
+# 运行时带 Node.js 20（node / npm / npx），供依赖 Node 的技能使用。
+# 飞牛 Docker 版安装包不构建本文件，而是拉取由 docker/Dockerfile 打出的镜像；
+# 两份 Dockerfile 的 Node 运行时保持一致。
 # Laya 不打进镜像：CPU 版 PyTorch 加多语言检查点大约要 4 GB 磁盘。
 #
 # 国内加速（可选 build-arg）：
@@ -80,6 +83,14 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
         git \
         ripgrep \
     && rm -rf /var/lib/apt/lists/*
+
+# 技能和专家 shell 会调用 node / npm / npx。从前端构建阶段复用 Node 20。
+# Docker 拷贝会展开软链接，因此 npm / npx 在这里按原路径重建。
+COPY --from=frontend-builder /usr/local/bin/node /usr/local/bin/node
+COPY --from=frontend-builder /usr/local/lib/node_modules /usr/local/lib/node_modules
+RUN ln -sf ../lib/node_modules/npm/bin/npm-cli.js /usr/local/bin/npm \
+    && ln -sf ../lib/node_modules/npm/bin/npx-cli.js /usr/local/bin/npx \
+    && node --version && npm --version && npx --version
 
 COPY --from=ghcr.io/astral-sh/uv:0.7 /uv /uvx /bin/
 
