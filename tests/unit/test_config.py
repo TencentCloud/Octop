@@ -430,3 +430,24 @@ def test_non_object_config_raises(tmp_path: Path):
     with pytest.raises(ValueError, match="JSON object"):
         load_config(cfg_path)
     assert cfg_path.read_text(encoding="utf-8") == "[1, 2]"
+
+def test_fresh_config_write_is_atomic(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """An interrupted first-run write must not leave a config.json behind.
+
+    ``load_config`` used to write the defaults in place, so a crash or a full
+    disk halfway through left a truncated file and every later start failed
+    with "not valid JSON" even though the file only held defaults.
+    """
+    import os
+
+    cfg_path = tmp_path / "config.json"
+
+    def _fail(*_args: object, **_kwargs: object) -> None:
+        raise OSError("simulated replace failure")
+
+    monkeypatch.setattr(os, "replace", _fail)
+    with pytest.raises(OSError, match="simulated replace failure"):
+        load_config(cfg_path)
+
+    assert not cfg_path.exists()
+    assert not list(tmp_path.glob(".config.json.*.tmp"))

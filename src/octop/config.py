@@ -2,9 +2,12 @@
 
 from __future__ import annotations
 
+import contextlib
 import json
 import logging
 import os
+import stat
+import tempfile
 from dataclasses import asdict, dataclass, field, replace
 from pathlib import Path
 from typing import Any
@@ -416,6 +419,31 @@ def env_bind_overrides() -> tuple[str | None, int | None]:
     return host, port
 
 
+def _write_defaults(path: Path, defaults: dict[str, Any]) -> None:
+    """Write the first-run ``config.json`` atomically (temp file + ``os.replace``).
+
+    ``octop.config`` must stay free of ``infra`` imports (AGENTS.md §5), so this
+    mirrors ``infra/utils/json_file.write_json_atomic`` rather than reusing it.
+    A crash halfway through a plain ``write_text`` truncated the file, and every
+    later start refused it as "not valid JSON" although it only held defaults.
+    """
+    mask = os.umask(0o022)
+    os.umask(mask)
+    fd, tmp_name = tempfile.mkstemp(dir=path.parent, prefix=f".{path.name}.", suffix=".tmp")
+    try:
+        with os.fdopen(fd, "wb") as handle:
+            handle.write(json.dumps(defaults, indent=2).encode("utf-8"))
+        if os.name == "posix":
+            # ``mkstemp`` leaves 0600; a root-created config must stay readable
+            # by the service user, so apply the mode a plain write would get.
+            os.chmod(tmp_name, 0o666 & ~mask)
+        os.replace(tmp_name, path)
+    except BaseException:  # also covers KeyboardInterrupt / SystemExit
+        with contextlib.suppress(OSError):
+            os.unlink(tmp_name)
+        raise
+
+
 def load_config(path: Path) -> OctopConfig:
     """Load ``config.json``; write defaults if absent. Apply env overrides.
 
@@ -442,7 +470,7 @@ def load_config(path: Path) -> OctopConfig:
         database_in_file = "database" in raw
     else:
         path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(json.dumps(file_defaults, indent=2), encoding="utf-8")
+        _write_defaults(path, file_defaults)
         raw = {}
         database_in_file = False
 
