@@ -827,6 +827,10 @@ export default function Sidebar({
         minWidth: isRailCollapsed ? COLLAPSED_WIDTH : EXPANDED_WIDTH,
         background: "var(--fn-sidebar-bg)",
         borderRight: "1px solid var(--fn-sidebar-border)",
+        /* Paint from the window's top edge, keep the content below the shell's
+           title band. Insetting the box instead would put the seam's top end
+           32px down, floating in nothing. */
+        paddingTop: "var(--octop-shell-top-band, 0px)",
         transition:
           "width 0.25s cubic-bezier(0.4, 0, 0.2, 1), min-width 0.25s cubic-bezier(0.4, 0, 0.2, 1)",
         overflow: "hidden",
@@ -837,8 +841,8 @@ export default function Sidebar({
         minHeight: 0,
       }}
     >
-      {/* The shell's title row lives in MainLayout, above this sidebar, so the
-          brand starts directly under it instead of reserving its own band. */}
+      {/* The shell's title band floats over this rail (MainLayout), so the
+          brand starts below it rather than reserving a row of its own. */}
       <div
         className={DESKTOP_DRAG_REGION_CLASS}
         style={{

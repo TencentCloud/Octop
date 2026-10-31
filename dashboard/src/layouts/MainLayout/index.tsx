@@ -235,40 +235,56 @@ export default function MainLayout() {
   return (
     <ServiceRestartProvider>
       <BackupOperationProvider>
-        {/* Shell column: the window's own title row on top, the workbench row
-            beneath it. */}
+        {/* Shell column: the window's title band floats over the workbench row,
+            so every column paints its own surface to the top edge. */}
         <div
-          style={{
-            height: "100%",
-            boxSizing: "border-box",
-            /* iOS PWA landscape sides. Top is owned by Header (#664/#746),
-               bottom is handled per-surface. */
-            paddingLeft: "env(safe-area-inset-left, 0px)",
-            paddingRight: "env(safe-area-inset-right, 0px)",
-            display: "flex",
-            flexDirection: "column",
-            background: isChatRoute
-              ? "var(--fn-bg-elevated, #fff)"
-              : "var(--fn-bg-primary)",
-            transition: "background var(--fn-transition)",
-            overflow: "hidden",
-          }}
+          style={
+            {
+              height: "100%",
+              boxSizing: "border-box",
+              /* iOS PWA landscape sides. Top is owned by Header (#664/#746),
+                 bottom is handled per-surface. */
+              paddingLeft: "env(safe-area-inset-left, 0px)",
+              paddingRight: "env(safe-area-inset-right, 0px)",
+              display: "flex",
+              flexDirection: "column",
+              background: isChatRoute
+                ? "var(--fn-bg-elevated, #fff)"
+                : "var(--fn-bg-primary)",
+              transition: "background var(--fn-transition)",
+              overflow: "hidden",
+              position: "relative",
+              /* The title row's height, for columns that paint their own
+                 surface behind it (see the band below). */
+              "--octop-shell-top-band": `${shellTopBand}px`,
+            } as React.CSSProperties
+          }
         >
-          {/* One continuous drag handle across the window, reserving the band
-              the native buttons live in (macOS traffic lights at the start,
-              Windows caption buttons at the end). Rendering it here — instead
-              of letting each column reserve its own slice — is what makes the
-              top row unbroken from the sidebar to the page. */}
+          {/* The window's drag handle, reserving the band the native buttons
+              live in (macOS traffic lights at the start, Windows caption
+              buttons at the end).
+
+              It floats over the columns instead of taking a row above them:
+              the rails then paint their surface and their seams from the
+              window's top edge, the way every comparable app draws them,
+              instead of starting with a blunt 1px tick 32px down. Nothing is
+              lost by covering that strip — it is empty in every column, and
+              the columns inset their own content by the same amount
+              (--octop-shell-top-band) so the band stays clear of real chrome
+              while remaining the one unbroken drag handle across the window. */}
           {shellTopBand > 0 && (
             <div
               aria-hidden
               className={DESKTOP_DRAG_REGION_CLASS}
               style={{
-                height: shellTopBand,
-                flexShrink: 0,
+                position: "absolute",
+                top: 0,
+                left: 0,
                 /* Keep the drag region out from under the Windows caption
                    buttons, which are drawn over this same band. */
-                marginInlineEnd: windowControlsInset(desktopChrome, "end"),
+                right: windowControlsInset(desktopChrome, "end"),
+                height: shellTopBand,
+                zIndex: 40,
               }}
             />
           )}
@@ -338,6 +354,8 @@ export default function MainLayout() {
                 display: "flex",
                 flexDirection: "column",
                 overflow: "hidden",
+                /* Start below the band that floats overhead (see above). */
+                paddingTop: shellTopBand,
               }}
             >
               {isMobile &&
