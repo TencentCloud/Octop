@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import urllib.error
 import urllib.request
+from pathlib import Path
 from unittest import mock
 from urllib.parse import urlparse
 
@@ -12,12 +13,19 @@ import pytest
 
 from octop.infra.agents.providers.codex_apply import CODEX_MODELS, CODEX_PROVIDER_NAME
 from octop.infra.agents.providers.codex_oauth import (
+    CodexOAuthCredentials,
     CodexOAuthDeviceCodeError,
+    CodexOAuthRefreshError,
     build_codex_headers,
     exchange_device_code,
+    get_valid_access_token,
+    load_codex_token,
     poll_device_token,
+    refresh_codex_token,
     request_device_code,
+    save_codex_token,
 )
+from octop.infra.utils.paths import PathLayout
 
 
 class _Resp:
@@ -130,3 +138,56 @@ def test_build_codex_headers_includes_account_id() -> None:
 def test_codex_provider_constants() -> None:
     assert CODEX_PROVIDER_NAME == "openai-codex"
     assert any(m["id"] == "gpt-5.4" for m in CODEX_MODELS)
+
+
+def _expired_cred() -> CodexOAuthCredentials:
+    return CodexOAuthCredentials(
+        access="old-access", refresh="old-refresh", expires=1, account_id="acct-1"
+    )
+
+
+def _raising_urlopen(exc: Exception) -> object:
+    def fake_urlopen(req: urllib.request.Request, timeout: float = 30) -> _Resp:
+        raise exc
+
+    return fake_urlopen
+
+
+def test_refresh_normalizes_network_failure(tmp_path: Path) -> None:
+    with (
+        mock.patch(
+            "urllib.request.urlopen",
+            _raising_urlopen(urllib.error.URLError("connection refused")),
+        ),
+        pytest.raises(CodexOAuthRefreshError) as raised,
+    ):
+        refresh_codex_token(PathLayout(tmp_path), _expired_cred())
+
+    assert raised.value.reason == "network_error"
+
+
+def test_refresh_rejects_body_without_access_token(tmp_path: Path) -> None:
+    def fake_urlopen(req: urllib.request.Request, timeout: float = 30) -> _Resp:
+        return _Resp(b'{"expires_in": 3600}')
+
+    with (
+        mock.patch("urllib.request.urlopen", fake_urlopen),
+        pytest.raises(CodexOAuthRefreshError) as raised,
+    ):
+        refresh_codex_token(PathLayout(tmp_path), _expired_cred())
+
+    assert raised.value.reason == "invalid_response"
+
+
+def test_get_valid_access_token_returns_none_when_refresh_network_fails(
+    tmp_path: Path,
+) -> None:
+    layout = PathLayout(tmp_path)
+    save_codex_token(layout, _expired_cred())
+
+    with mock.patch(
+        "urllib.request.urlopen", _raising_urlopen(urllib.error.URLError("dns failure"))
+    ):
+        assert get_valid_access_token(layout) is None
+
+    assert load_codex_token(layout) == _expired_cred()
