@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import re
 import tempfile
 
@@ -73,6 +74,26 @@ async def test_write_inbound_collision_adds_suffix() -> None:
         path = await _unique_inbound_path(workspace, twin_name)
         assert path.endswith("-2.txt")
         assert path.startswith("inbound/")
+
+
+@pytest.mark.asyncio
+async def test_concurrent_same_name_uploads_keep_both_files(monkeypatch) -> None:
+    with tempfile.TemporaryDirectory() as ws_dir:
+        workspace = _workspace(ws_dir)
+        monkeypatch.setattr(
+            "octop.infra.gateway.media.inbound_store.time.time", lambda: 1783510288
+        )
+        first, second = await asyncio.gather(
+            write_inbound(
+                workspace, b"first", filename="note.txt", media_type="text/plain"
+            ),
+            write_inbound(
+                workspace, b"second", filename="note.txt", media_type="text/plain"
+            ),
+        )
+        assert first.path != second.path
+        assert await read_inbound_bytes(workspace, first.path) == b"first"
+        assert await read_inbound_bytes(workspace, second.path) == b"second"
 
 
 @pytest.mark.asyncio
