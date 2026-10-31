@@ -33,7 +33,7 @@ import { LayaLocalInstall } from "./LayaLocalInstall";
 const { Paragraph, Text } = Typography;
 
 const OPENROUTER_DECISIONS = "https://openrouter.ai/api/alpha/decisions";
-const JEV_MODEL = "typesafe/jev-1.13";
+const JEV_MODEL = "typesafe/jev-1.14";
 const MICROSOFT_MODEL = "microsoft/microsoft-decision-1";
 const LAYA_ENDPOINT = "http://127.0.0.1:8000/v1/systemone";
 const LAYA_AUTO = "auto";
@@ -42,7 +42,7 @@ type PresetId = "jev" | "microsoft" | "laya" | "custom";
 
 const PRESETS: PresetId[] = ["jev", "microsoft", "laya", "custom"];
 
-const JEV_MODELS = [JEV_MODEL, "~typesafe/jev-latest"];
+const JEV_MODELS = [JEV_MODEL, "typesafe/jev-1.13", "~typesafe/jev-latest"];
 const MICROSOFT_MODELS = [MICROSOFT_MODEL];
 
 function inferPreset(settings: DecisionSettings): PresetId {
