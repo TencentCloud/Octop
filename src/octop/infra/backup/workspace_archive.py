@@ -155,7 +155,14 @@ def _clear_local_workspace(workspace_dir: Path) -> None:
     for child in workspace_dir.iterdir():
         if child.name in _SKIP_DIR_NAMES or child.name.startswith("."):
             continue
-        if child.is_dir():
+        if child.is_symlink() or child.is_junction():
+            # ``shutil.rmtree`` refuses links ("Cannot call rmtree on a symbolic
+            # link") while ``is_dir`` follows them, so a symlinked or junctioned
+            # directory raised here -- after part of the workspace was already
+            # deleted. The link entry is the workspace's own; its target may live
+            # outside and must stay intact, so drop the link itself.
+            child.unlink()
+        elif child.is_dir():
             shutil.rmtree(child)
         else:
             child.unlink()
