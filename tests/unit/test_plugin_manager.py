@@ -5,6 +5,8 @@ from __future__ import annotations
 import io
 import json
 import sys
+import threading
+import time
 import zipfile
 from pathlib import Path
 from typing import Any
@@ -14,12 +16,14 @@ from octop_harness.plugins import PluginRegistry
 
 from octop.infra.agents.plugins.manager import (
     PluginManager,
+    _write_global_plugin_enabled,
     normalize_plugin_download_url,
     parse_plugin_group,
     parse_plugin_icon,
     parse_plugin_ui_meta,
 )
 from octop.infra.errors import ErrorCode, OctopError
+from octop.infra.utils import json_file
 
 _FIXTURE = Path(__file__).resolve().parents[1] / "fixtures" / "plugins" / "echo-tool"
 
@@ -497,3 +501,51 @@ def test_channel_reload_preserves_class_until_source_changes(tmp_path: Path) -> 
     source.write_text(source.read_text() + "\n# updated implementation\n")
     third = manager.load_installed(install_deps=False)[0].channels[0].channel_cls
     assert third is not first
+
+
+def test_concurrent_enable_writes_keep_every_key(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A marketplace install on a worker thread must not drop a dashboard toggle.
+
+    ``install_from_market`` runs in ``run_in_executor`` while ``set_enabled``
+    runs on the event loop. Without serialized read-modify-write the second
+    writer replaces the whole snapshot and the first writer's key disappears.
+    """
+    config_path = tmp_path / "config.json"
+    config_path.write_text(
+        json.dumps({"database": {"driver": "postgresql"}}),
+        encoding="utf-8",
+    )
+    real_read = json_file.read_json_object
+
+    def slow_read(target: Path) -> dict[str, Any] | None:
+        data = real_read(target)
+        time.sleep(0.02)
+        return data
+
+    monkeypatch.setattr("octop.infra.utils.json_file.read_json_object", slow_read)
+    start = threading.Barrier(2)
+    errors: list[BaseException] = []
+
+    def worker(plugin_id: str, enabled: bool) -> None:
+        try:
+            start.wait(timeout=5)
+            _write_global_plugin_enabled(config_path, plugin_id, enabled)
+        except BaseException as exc:  # pragma: no cover - failure path
+            errors.append(exc)
+
+    threads = [
+        threading.Thread(target=worker, args=("alpha", True), daemon=True),
+        threading.Thread(target=worker, args=("beta", False), daemon=True),
+    ]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join(timeout=5)
+        assert not thread.is_alive()
+
+    assert errors == []
+    data = json.loads(config_path.read_text(encoding="utf-8"))
+    assert data["database"] == {"driver": "postgresql"}
+    assert data["plugins"] == {"alpha": {"enabled": True}, "beta": {"enabled": False}}

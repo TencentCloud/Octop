@@ -27,11 +27,7 @@ from octop_harness.plugins import (
 
 from octop.infra.agents.plugins.legacy_imports import ensure_legacy_harness_agent_alias
 from octop.infra.errors import ErrorCode, OctopError, corrupt_config_error
-from octop.infra.utils.json_file import (
-    JsonFileCorruptError,
-    read_json_object,
-    write_json_atomic,
-)
+from octop.infra.utils.json_file import JsonFileCorruptError, update_json_object
 
 logger = logging.getLogger(__name__)
 
@@ -112,24 +108,26 @@ def _write_global_plugin_enabled(config_path: Path, plugin_id: str, enabled: boo
 
     A corrupt config.json raises instead of being treated as empty: merging into
     ``{}`` and writing back destroys every other setting, including the
-    ``database`` section (issue #730).
+    ``database`` section (issue #730). The read-modify-write runs under
+    ``update_json_object``, so a marketplace install on a ``run_in_executor``
+    worker cannot overwrite a toggle that read the same snapshot.
     """
+
+    def mutate(data: dict[str, Any]) -> None:
+        plugins = data.get("plugins")
+        if not isinstance(plugins, dict):
+            plugins = {}
+            data["plugins"] = plugins
+        entry = plugins.get(plugin_id)
+        if not isinstance(entry, dict):
+            entry = {}
+        entry["enabled"] = bool(enabled)
+        plugins[plugin_id] = entry
+
     try:
-        data = read_json_object(config_path)
+        update_json_object(config_path, mutate)
     except JsonFileCorruptError as exc:
         raise corrupt_config_error(exc.path, exc.detail) from exc
-    if data is None:
-        data = {}
-    plugins = data.get("plugins")
-    if not isinstance(plugins, dict):
-        plugins = {}
-        data["plugins"] = plugins
-    entry = plugins.get(plugin_id)
-    if not isinstance(entry, dict):
-        entry = {}
-    entry["enabled"] = bool(enabled)
-    plugins[plugin_id] = entry
-    write_json_atomic(config_path, data)
 
 
 def _assert_http_url(url: str) -> None:

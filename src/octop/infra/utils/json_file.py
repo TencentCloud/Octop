@@ -11,6 +11,11 @@ wiped the ``database`` section and flipped a running PostgreSQL instance back to
 a greenfield SQLite one, with no warning in the log. A torn write from a crash or
 a full disk creates the same precondition without any user error, so writes here
 are atomic too.
+
+:func:`update_json_object` exists because atomicity alone is not enough: two
+writers merging different keys into the same ``config.json`` (a plugin toggle on
+the event loop, a marketplace install on a ``run_in_executor`` worker) each read
+the old snapshot, and the later write drops the other one's key.
 """
 
 from __future__ import annotations
@@ -20,10 +25,17 @@ import json
 import os
 import stat
 import tempfile
+import threading
+from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
-__all__ = ["JsonFileCorruptError", "read_json_object", "write_json_atomic"]
+__all__ = [
+    "JsonFileCorruptError",
+    "read_json_object",
+    "update_json_object",
+    "write_json_atomic",
+]
 
 
 def _default_file_mode() -> int:
@@ -107,3 +119,34 @@ def write_json_atomic(path: Path, data: dict[str, Any]) -> None:
         with contextlib.suppress(OSError):
             os.unlink(tmp_name)
         raise
+
+
+_UPDATE_LOCK = threading.Lock()
+
+
+def update_json_object(path: Path, mutate: Callable[[dict[str, Any]], None]) -> dict[str, Any]:
+    """Read ``path``, apply ``mutate`` in place, and write the result back atomically.
+
+    The read and the write happen under one process-wide lock. Without it two
+    writers that each merge one key read the same snapshot and the later write
+    silently drops the other one's key — a plugin toggle lost to a marketplace
+    install, or a backup setting lost to a dashboard toggle.
+    :func:`write_json_atomic` alone cannot prevent that: it makes each write
+    indivisible, not the read-write pair.
+
+    ``mutate`` receives the parsed object (``{}`` when the file is absent), edits
+    it in place, and its return value is ignored. A corrupt file raises
+    :class:`JsonFileCorruptError` before ``mutate`` runs, so the existing contents
+    are never replaced by a partial ``{}``.
+
+    The lock is process-wide only: a CLI ``octop plugin install`` running beside
+    ``octop run`` can still race with it. Guarding that needs an OS file lock and
+    is out of scope here.
+    """
+    with _UPDATE_LOCK:
+        data = read_json_object(path)
+        if data is None:
+            data = {}
+        mutate(data)
+        write_json_atomic(path, data)
+        return data
