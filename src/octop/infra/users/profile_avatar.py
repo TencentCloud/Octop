@@ -2,7 +2,10 @@
 
 from __future__ import annotations
 
+import contextlib
+import os
 import re
+import tempfile
 from pathlib import Path
 
 from fastapi import Response
@@ -65,11 +68,28 @@ def write_profile_avatar(directory: Path, key: str, data: bytes) -> None:
     media_type = sniff_avatar_media_type(data)
     stem = _stem(key)
     directory.mkdir(parents=True, exist_ok=True)
-    delete_profile_avatar(directory, stem)
     destination = directory / f"{stem}.{_EXT_BY_MEDIA[media_type]}"
-    temporary = destination.with_suffix(destination.suffix + ".tmp")
-    temporary.write_bytes(data)
-    temporary.replace(destination)
+    # Stage the new portrait beside the current one and swap it in: deleting
+    # first means a failed write leaves the user with no avatar at all. The
+    # staging name is unique because a fixed ``<stem>.<ext>.tmp`` is shared by
+    # concurrent uploads, and ``delete_profile_avatar``'s glob would remove
+    # another request's staging file mid-write.
+    fd, temp_name = tempfile.mkstemp(dir=directory, prefix=f".{stem}.", suffix=".tmp")
+    temporary = Path(temp_name)
+    try:
+        with os.fdopen(fd, "wb") as handle:
+            handle.write(data)
+        temporary.replace(destination)
+    except BaseException:
+        with contextlib.suppress(OSError):
+            temporary.unlink()
+        raise
+    # ``_existing`` returns the first extension in ``_MEDIA_BY_EXT`` order, so
+    # copies saved under another extension must go only after the swap.
+    for path in directory.glob(f"{stem}.*"):
+        if path.is_file() and path != destination:
+            with contextlib.suppress(OSError):
+                path.unlink()
 
 
 def read_profile_avatar(directory: Path, key: str) -> tuple[bytes, str] | None:
