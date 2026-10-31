@@ -22,7 +22,8 @@ from octop.infra.backup.store import (
 from octop.infra.backup.system_archive import create_system_backup
 from octop.infra.cron.trigger import build_trigger
 from octop.infra.db.repos.audit import ACTOR_SYSTEM
-from octop.infra.errors import ErrorCode, OctopError
+from octop.infra.errors import ErrorCode, OctopError, corrupt_config_error
+from octop.infra.utils.json_file import JsonFileCorruptError, read_json_object, write_json_atomic
 
 if TYPE_CHECKING:
     from octop.config import DatabaseConfig
@@ -88,20 +89,13 @@ def to_auto_backup_filename(suggested: str) -> str:
     raise OctopError(ErrorCode.SLASH_BAD_ARGS, f"unexpected backup filename: {name!r}")
 
 
-def _atomic_write_json(path: Path, data: dict[str, Any]) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    tmp = path.with_suffix(path.suffix + ".tmp")
-    tmp.write_text(json.dumps(data, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
-    tmp.replace(path)
-
-
 def persist_backup_config(config_path: Path, backup: BackupConfig) -> OctopConfig:
     """Merge ``backup`` into ``config.json`` and return the reloaded config."""
-    if config_path.exists():
-        raw = json.loads(config_path.read_text(encoding="utf-8"))
-        if not isinstance(raw, dict):
-            raise OctopError(ErrorCode.INTERNAL_ERROR, "config.json must be a JSON object")
-    else:
+    try:
+        raw = read_json_object(config_path)
+    except JsonFileCorruptError as exc:
+        raise corrupt_config_error(exc.path, exc.detail) from exc
+    if raw is None:
         raw = {}
 
     raw["backup"] = {
@@ -115,7 +109,7 @@ def persist_backup_config(config_path: Path, backup: BackupConfig) -> OctopConfi
         "include_knowledge": backup.include_knowledge,
         "include_chats": backup.include_chats,
     }
-    _atomic_write_json(config_path, raw)
+    write_json_atomic(config_path, raw)
     return load_config(config_path)
 
 

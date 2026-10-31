@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+import json
+import os
+import stat
 from pathlib import Path
 from unittest.mock import MagicMock
 
@@ -15,7 +18,7 @@ from octop.infra.backup.auto import (
     persist_backup_config,
     to_auto_backup_filename,
 )
-from octop.infra.errors import OctopError
+from octop.infra.errors import ErrorCode, OctopError
 
 
 def test_to_auto_backup_filename() -> None:
@@ -137,3 +140,48 @@ def test_apply_auto_backup_schedule_registers_when_enabled(tmp_path: Path) -> No
     kwargs = cron.schedule_system_job.call_args
     assert kwargs.args[0] == AUTO_BACKUP_JOB_ID
     assert kwargs.kwargs["trigger"] == "cron:0 4 * * *"
+
+
+def test_persist_backup_config_rejects_corrupt_config(tmp_path: Path) -> None:
+    """A hand-edit slip is a typed 400, and the file is never rewritten."""
+    cfg_path = tmp_path / "config.json"
+    previous = '{"database": {"password": "s3cret"},}'
+    cfg_path.write_text(previous, encoding="utf-8")
+
+    with pytest.raises(OctopError) as excinfo:
+        persist_backup_config(cfg_path, BackupConfig())
+
+    assert excinfo.value.code is ErrorCode.CONFIG_FILE_CORRUPT
+    assert "s3cret" not in str(excinfo.value)
+    assert cfg_path.read_text(encoding="utf-8") == previous
+
+
+def test_persist_backup_config_keeps_previous_config_when_swap_fails(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A failed swap keeps the old file and leaves no ``.tmp`` litter."""
+    cfg_path = tmp_path / "config.json"
+    previous = json.dumps({"database": {"driver": "postgresql"}}, indent=2) + "\n"
+    cfg_path.write_text(previous, encoding="utf-8")
+
+    def _fail(*_args: object, **_kwargs: object) -> None:
+        raise OSError("simulated swap failure")
+
+    monkeypatch.setattr("octop.infra.utils.json_file.os.replace", _fail)
+    with pytest.raises(OSError, match="simulated swap failure"):
+        persist_backup_config(cfg_path, BackupConfig())
+
+    assert cfg_path.read_text(encoding="utf-8") == previous
+    assert [p.name for p in tmp_path.iterdir()] == ["config.json"]
+
+
+@pytest.mark.skipif(os.name != "posix", reason="POSIX file modes only")
+def test_persist_backup_config_preserves_existing_file_mode(tmp_path: Path) -> None:
+    """config.json holds database credentials; a write must not widen its mode."""
+    cfg_path = tmp_path / "config.json"
+    cfg_path.write_text("{}", encoding="utf-8")
+    os.chmod(cfg_path, 0o600)
+
+    persist_backup_config(cfg_path, BackupConfig())
+
+    assert stat.S_IMODE(cfg_path.stat().st_mode) == 0o600
