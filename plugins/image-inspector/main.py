@@ -152,8 +152,10 @@ def _resolve_image_path(raw: str) -> Path | str:
             resolved = candidate.resolve(strict=True)
         except (FileNotFoundError, NotADirectoryError):
             continue
-        except OSError as exc:
-            return _error(f"cannot resolve image path: {exc}")
+        except OSError:
+            # A sandbox-facing path may be inaccessible on the host. Try the
+            # allowed data-root/materialized candidates before reporting failure.
+            continue
         if resolved in seen:
             continue
         seen.add(resolved)
