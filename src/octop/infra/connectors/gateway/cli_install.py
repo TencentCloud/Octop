@@ -293,8 +293,12 @@ def _place_obsidian_binary(source: str, dest: str) -> None:
         _prepend_path(os.path.dirname(source))
         return
     os.makedirs(os.path.dirname(dest), exist_ok=True)
-    if os.path.lexists(dest):
+    try:
         os.remove(dest)
+    except FileNotFoundError:
+        # Another process may clean up ``dest`` between the check and the
+        # removal; deletion already happened, so treat it as done.
+        pass
     # macOS registration is a symlink into the app bundle. Linux copies, because a
     # symlink into an AppImage or other temporary install directory does not survive.
     if sys.platform == "darwin":

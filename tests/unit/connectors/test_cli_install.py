@@ -332,3 +332,22 @@ def test_ensure_cli_path_injects_user_bin(monkeypatch: pytest.MonkeyPatch, tmp_p
     # 幂等：重复调用不重复追加
     cli_install.ensure_cli_path()
     assert cli_install.os.environ["PATH"].count(bin_dir) == 1
+
+
+def test_place_obsidian_binary_tolerates_concurrent_removal(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Any
+) -> None:
+    source = tmp_path / "obsidian-cli"
+    source.write_text("obsidian", encoding="utf-8")
+    dest = tmp_path / "bin" / "obsidian"
+    dest.parent.mkdir(parents=True)
+    dest.write_text("stale", encoding="utf-8")
+
+    def _remove_missing(_path: str) -> None:
+        # Simulate another process deleting ``dest`` between the existence
+        # check and the removal.
+        raise FileNotFoundError(_path)
+
+    monkeypatch.setattr(cli_install.os, "remove", _remove_missing)
+    cli_install._place_obsidian_binary(str(source), str(dest))
+    assert dest.is_file()
