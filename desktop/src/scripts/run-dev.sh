@@ -21,12 +21,15 @@ DASHBOARD_DIR="$REPO_ROOT/src/octop/dashboard"
 
 BUILD=1
 SANDBOX=1
+SUPERVISED=0
 EXTRA_ARGS=()
+ORIGINAL_ARGS=("$@")
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --no-build) BUILD=0; shift ;;
     --no-sandbox) SANDBOX=0; shift ;;
+    --supervised) SUPERVISED=1; shift ;;
     -h | --help)
       sed -n '2,13p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
       exit 0
@@ -42,6 +45,13 @@ while [[ $# -gt 0 ]]; do
       ;;
   esac
 done
+
+# Hand the build and the launched app to the supervisor, which owns shutdown.
+# This runs after option parsing so `--help` / bad flags never need a process
+# table. The re-exec keeps the public shell PID as the signal recipient.
+if ((!SUPERVISED)); then
+  exec node "$SCRIPT_DIR/dev-process.mjs" bash "$SCRIPT_DIR/run-dev.sh" --supervised "${ORIGINAL_ARGS[@]}"
+fi
 
 if ((BUILD)); then
   if ! command -v pnpm >/dev/null 2>&1; then
@@ -120,33 +130,9 @@ fi
 
 echo "[dev] launching (port from OS, loopback only)…"
 
-# Own the shutdown. Chromium puts the browser process in its own session, so
-# Ctrl+C in this terminal can reach the script while missing Electron — and a
-# signal that only kills the shell leaves the detached Python sidecar (§3.1)
-# running with the app's database open. Forward the signal explicitly, with a
-# hard bound so a hung app can never wedge the terminal again.
-electron_pid=""
-shutdown() {
-  local code="${1:-0}"
-  if [[ -n "$electron_pid" ]] && kill -0 "$electron_pid" 2>/dev/null; then
-    echo "[dev] stopping the shell (and its Python sidecar)…" >&2
-    # Electron handles SIGTERM by stopping Python first: allow its 5s grace
-    # window, then stop being polite.
-    ( sleep 8 && kill -KILL "$electron_pid" 2>/dev/null ) &
-    local watchdog=$!
-    kill -TERM "$electron_pid" 2>/dev/null || true
-    wait "$electron_pid" 2>/dev/null || true
-    kill "$watchdog" 2>/dev/null || true
-  fi
-  exit "$code"
-}
-trap 'shutdown 0' INT TERM HUP
-
-env OCTOP_PORTABLE_DIR="$DEV_RUNTIME" \
+# Replace the build shell so the supervisor owns the actual Electron PID.
+# No background shell/watchdog: the supervisor waits for the entire observed
+# tree, including Python's detached group, on signals and unexpected exits.
+exec env OCTOP_PORTABLE_DIR="$DEV_RUNTIME" \
   OCTOP_DASHBOARD_DIR="$DASHBOARD_DIR" \
-  "${launch[@]}" &
-electron_pid=$!
-
-status=0
-wait "$electron_pid" || status=$?
-exit "$status"
+  "${launch[@]}"

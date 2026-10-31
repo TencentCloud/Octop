@@ -78,12 +78,31 @@ forwards the rest of the line to the Electron binary:
 pnpm dev:start -- --lang=en-US --remote-debugging-port=9222
 ```
 
-`Ctrl+C` stops the shell **and** its Python sidecar. Chromium puts the browser
-process in its own session, so the terminal's signal does not always reach it,
-and Python runs detached (§3.1) — a signal that only kills the wrapper would
-strand the backend holding the database. So the wrapper traps the signal,
-forwards it to Electron, and Electron stops Python before exiting; a second
-`Ctrl+C` skips the 5s grace window.
+`Ctrl+C`, `SIGTERM`, and `SIGHUP` stop the shell **and** its Python sidecar.
+`run-dev.sh` delegates lifecycle management to `scripts/dev-process.mjs` before
+building, then replaces the build shell with Electron. The managed command runs
+in its own process group, so terminal signals reach the supervisor only. It
+sends Electron one `SIGTERM` to allow its normal sidecar shutdown, tracks the
+process tree (including Python's detached group), and cleans up observed
+survivors even if Electron crashes or exits normally.
+
+After 8 seconds the supervisor sends `SIGKILL` to remaining processes and waits
+up to 2 more seconds to confirm cleanup; a second signal skips the grace window.
+Explicit terminal stops return 0, while build/app failures retain their non-zero
+exit status. Unconfirmed cleanup returns 1 instead of claiming success. There is
+no background shell watchdog left behind.
+
+This runner supports macOS/Linux and requires a readable `ps`; when the host
+blocks it the script refuses to start rather than launching something it cannot
+clean up. A single failed sample during a run is skipped, not treated as a
+reason to stop the app.
+
+Descendants are sampled while the app is alive, so a detached process that is
+orphaned between two snapshots can evade tracking; `SIGKILL` of the supervisor
+itself cannot run any cleanup. Detached children of a build that died before the
+first snapshot are still adopted by process group, unless their number was
+already reused. None of this changes the packaged app's lifecycle or the
+separate root `make dev` command.
 
 ### Why the launch flags
 
