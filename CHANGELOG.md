@@ -21,6 +21,9 @@
 - 插件市场和专家市场的对象源站可用 `OCTOP_MARKET_REMOTE_ORIGIN` 配置，默认仍是 `https://download.octop.cloud`。门户目录地址继续用 `OCTOP_PORTAL_ORIGIN`，默认 `https://octop.cloud`。内网按同一接口自建市场的说明见 `docs/private-market.md`
 - 技能市场源站可用 `SKILL_MARKET_ORIGIN` 配置，默认仍是 `https://api.skillhub.cn`。设了该变量后，搜索、榜单和安装只请求这个源站。自建接口见 `docs/skill-market.md`
 
+### 修复
+- 新建专家时，Octop 助手说明会安装为工作区技能 `skills/octop-assistant/`
+
 ### 变更
 - 插件市场和专家市场的安装包地址不再要求以 `/octop/market/` 开头。`download_url` 仍须落在 `OCTOP_MARKET_REMOTE_ORIGIN` 上，路径和查询参数由自建市场自己决定
 - 技能集目录改用 `SKILLSET_ORIGIN`，默认仍是 `https://api.skillhub.cn`。技能包页「从技能市场导入」按这个源站读取技能集详情和技能集压缩包；集内每个技能的压缩包仍走 `SKILL_MARKET_ORIGIN`。说明见 `docs/skill-market.md`

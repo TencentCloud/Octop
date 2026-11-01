@@ -87,12 +87,12 @@ async def bootstrap_default_agent(
         config_extra={"backend": default_home_local_backend(root_dir=root_dir)},
     )
     row = await registry.create(spec, defer_bootstrap=True)
-    await _append_supplements(registry, row)
+    await _install_supplements(registry, row)
     return row
 
 
-async def _append_supplements(registry: Any, row: Any) -> None:
-    from octop.infra.agents.experts.supplements import append_supplements  # noqa: PLC0415
+async def _install_supplements(registry: Any, row: Any) -> None:
+    from octop.infra.agents.experts.supplements import install_supplements  # noqa: PLC0415
 
     agent_id = getattr(row, "agent_id", None)
     getter = getattr(registry, "workspace_for_agent", None)
@@ -101,11 +101,11 @@ async def _append_supplements(registry: Any, row: Any) -> None:
     try:
         workspace = getter(agent_id)
     except Exception:
-        logger.warning("skip supplements append: workspace unavailable for %s", agent_id)
+        logger.warning("skip supplement skills: workspace unavailable for %s", agent_id)
         return
     if workspace is None:
         return
-    await append_supplements(workspace)
+    await install_supplements(workspace)
 
 
 async def materialize_market_expert(server: Any, template_id: str) -> bool:

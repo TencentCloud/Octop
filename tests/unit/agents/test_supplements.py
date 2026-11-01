@@ -1,4 +1,4 @@
-"""Packaged supplements are appended onto an expert AGENTS.md."""
+"""Packaged supplements are installed as workspace skills."""
 
 from __future__ import annotations
 
@@ -6,10 +6,10 @@ from pathlib import Path
 
 import pytest
 
-from octop.infra.agents.experts.supplements import append_supplements
+from octop.infra.agents.experts.supplements import install_supplements
 
 
-async def test_append_supplements_adds_each_file_once(
+async def test_install_supplements_copies_each_skill_once(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     alpha = tmp_path / "alpha" / "SKILL.md"
@@ -25,25 +25,20 @@ async def test_append_supplements_adds_each_file_once(
 
     class _Workspace:
         def __init__(self) -> None:
-            self.files = {
-                "AGENTS.md": "# Expert\n\n<!-- octop:supplement:alpha -->\n\nalpha body\n"
-            }
-            self.writes = 0
+            self.files = {"skills/alpha/SKILL.md": b"kept\n"}
+            self.uploads = 0
 
-        async def aread_text(self, path: str) -> str | None:
-            return self.files.get(path)
+        async def aexists(self, path: str) -> bool:
+            return path in self.files
 
-        async def awrite_text(self, path: str, content: str, *, force: bool = True) -> None:
-            self.writes += 1
-            self.files[path] = content
+        async def aupload_many(self, pairs: list[tuple[str, bytes]]) -> None:
+            self.uploads += 1
+            for path, data in pairs:
+                self.files[path] = data
 
     workspace = _Workspace()
-    await append_supplements(workspace)
-    text = workspace.files["AGENTS.md"]
-    assert text.startswith("# Expert\n")
-    assert text.count("<!-- octop:supplement:alpha -->") == 1
-    assert "<!-- octop:supplement:beta -->" in text
-    assert "beta body" in text
-    await append_supplements(workspace)
-    assert workspace.writes == 1
-    assert workspace.files["AGENTS.md"] == text
+    await install_supplements(workspace)
+    assert workspace.files["skills/alpha/SKILL.md"] == b"kept\n"
+    assert workspace.files["skills/beta/SKILL.md"] == b"beta body\n"
+    await install_supplements(workspace)
+    assert workspace.uploads == 1

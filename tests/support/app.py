@@ -22,7 +22,7 @@ def seed_cached_general_assistant(home: Path) -> None:
     """Put a tiny general-assistant package in the market cache.
 
     Setup and new-user bootstrap read this catalog entry instead of calling
-    the remote market. The Octop guide is still appended to AGENTS.md by code.
+    the remote market. The Octop guide is still installed as a workspace skill.
     """
     dest = home / "expert_market" / "general-assistant"
     if (dest / "manifest.json").is_file():

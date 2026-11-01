@@ -1,11 +1,9 @@
-"""Append packaged supplements onto an expert workspace ``AGENTS.md``."""
+"""Install packaged supplements as workspace skills."""
 
 from __future__ import annotations
 
 from pathlib import Path
 from typing import Any
-
-_AGENTS_PATH = "AGENTS.md"
 
 
 def supplements_dir() -> Path:
@@ -25,35 +23,31 @@ def supplement_paths() -> list[Path]:
     return skills
 
 
-def _marker(path: Path) -> str:
-    return f"<!-- octop:supplement:{path.parent.name} -->"
+def _skill_files(skill_md: Path) -> list[tuple[str, bytes]]:
+    root = skill_md.parent
+    slug = root.name
+    pairs: list[tuple[str, bytes]] = []
+    for path in sorted(root.rglob("*")):
+        if not path.is_file():
+            continue
+        rel = path.relative_to(root)
+        if any(part.startswith((".", "__")) for part in rel.parts):
+            continue
+        pairs.append((f"skills/{slug}/{rel.as_posix()}", path.read_bytes()))
+    return pairs
 
 
-def _block(path: Path) -> str:
-    body = path.read_text(encoding="utf-8")
-    if not body.endswith("\n"):
-        body += "\n"
-    return f"{_marker(path)}\n\n{body}"
+async def install_supplements(workspace: Any) -> None:
+    """Copy each packaged skill into ``skills/<slug>/`` once.
 
-
-def _merge(current: str, paths: list[Path]) -> str | None:
-    missing = [path for path in paths if _marker(path) not in current]
-    if not missing:
-        return None
-    addition = "\n\n".join(_block(path).rstrip() for path in missing) + "\n"
-    base = current.rstrip()
-    if not base:
-        return addition
-    return f"{base}\n\n{addition}"
-
-
-async def append_supplements(workspace: Any) -> None:
-    """Append every packaged supplement once. Present markers are left unchanged."""
-    paths = supplement_paths()
-    if not paths:
-        return
-    current = await workspace.aread_text(_AGENTS_PATH)
-    merged = _merge(current or "", paths)
-    if merged is None:
-        return
-    await workspace.awrite_text(_AGENTS_PATH, merged, force=True)
+    BackendWorkspace remaps that path under ``.octop/skills/`` for new agents.
+    An existing ``SKILL.md`` is left unchanged.
+    """
+    pairs: list[tuple[str, bytes]] = []
+    for skill in supplement_paths():
+        dest = f"skills/{skill.parent.name}/SKILL.md"
+        if await workspace.aexists(dest):
+            continue
+        pairs.extend(_skill_files(skill))
+    if pairs:
+        await workspace.aupload_many(pairs)
