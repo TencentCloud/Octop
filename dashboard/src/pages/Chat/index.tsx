@@ -1486,20 +1486,25 @@ function ChatPageInner() {
               </div>
             )}
 
-            {!isMobile && activeSession && activeSessionTitle && (
-              <ChatTitleBar
-                session={activeSession}
-                title={activeSessionTitle}
-                onRename={renameSession}
-                onPin={pinSession}
-                onFork={handleForkSession}
-                onDelete={handleDeleteSession}
-                forkDisabled={sessionForkDisabled}
-                forkDisabledHint={sessionForkDisabledHint}
-                isTeam={isTeamChat}
-                agent={activeAgent}
-              />
-            )}
+            {!isMobile &&
+              (activeSession && activeSessionTitle ? (
+                <ChatTitleBar
+                  session={activeSession}
+                  title={activeSessionTitle}
+                  onRename={renameSession}
+                  onPin={pinSession}
+                  onFork={handleForkSession}
+                  onDelete={handleDeleteSession}
+                  forkDisabled={sessionForkDisabled}
+                  forkDisabledHint={sessionForkDisabledHint}
+                  isTeam={isTeamChat}
+                  agent={activeAgent}
+                />
+              ) : (
+                /* Empty chat: same row, same bounds — the composer must not
+                   jump up before the first message exists. */
+                <div className={styles.chatTitleBarEmpty} />
+              ))}
 
             {memoryMaintVisible && memoryMaint && (
               <MemoryMaintenanceBanner

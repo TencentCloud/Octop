@@ -2,7 +2,7 @@ import type { TFunction } from "i18next";
 import { Tooltip } from "antd";
 import cx from "classnames";
 import { prefetchRoute } from "../routes/prefetch";
-import { COLLAPSED_WIDTH, type NavItem } from "./sidebarNav";
+import type { NavItem } from "./sidebarNav";
 import styles from "./Sidebar.module.less";
 
 export default function SidebarCollapsedIconNav({
@@ -48,7 +48,11 @@ export default function SidebarCollapsedIconNav({
                 display: "flex",
                 alignItems: "center",
                 justifyContent: "center",
-                width: COLLAPSED_WIDTH,
+                // Native window controls can widen the collapsed rail on macOS.
+                // Match its actual width so icons align with the logo and footer.
+                width: "100%",
+                boxSizing: "border-box",
+                padding: 0,
                 height: 40,
                 border: "none",
                 background: active

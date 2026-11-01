@@ -170,7 +170,7 @@ html[data-theme="light"] {
   --fn-header-blur: 0px;
 
   /* Chat conversation title + dock (browser/file) chrome — keep in sync */
-  --fn-chat-chrome-height: 57px;
+  --fn-chat-chrome-height: 58px;
   /* Shared divider for title-bar horizontals and panel verticals */
   --fn-chat-divider: var(--fn-border-primary);
   --fn-chat-chrome-divider-inset: 8px;
@@ -349,7 +349,7 @@ html[data-theme="dark"] {
   --fn-header-height: 56px;
   --fn-header-bg: #0e0e0e;
   --fn-header-blur: 0px;
-  --fn-chat-chrome-height: 57px;
+  --fn-chat-chrome-height: 58px;
   --fn-chat-divider: var(--fn-border-primary);
   --fn-chat-chrome-divider-inset: 8px;
   --fn-chat-dock-divider-inset-left: 4px;

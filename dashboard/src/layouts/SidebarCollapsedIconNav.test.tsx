@@ -57,6 +57,41 @@ describe("collapsed icon nav", () => {
     );
   });
 
+  it.each([56, 120])(
+    "centers every icon and its active background across a %ipx rail",
+    (railWidth) => {
+      const { container } = render(
+        <div style={{ width: railWidth }}>
+          <SidebarCollapsedIconNav
+            items={items}
+            selectedKey="chat"
+            onNavigate={vi.fn()}
+            role="user"
+            hasUpdate={false}
+            t={t}
+          />
+        </div>,
+      );
+      const rail = container.firstElementChild;
+      expect(rail).toHaveStyle({ width: `${railWidth}px` });
+      for (const name of ["对话", "专家"]) {
+        const button = screen.getByRole("button", { name });
+        expect(button.parentElement).toBe(rail);
+        expect(button).toHaveStyle({
+          width: "100%",
+          boxSizing: "border-box",
+          padding: "0px",
+          display: "flex",
+          justifyContent: "center",
+          alignItems: "center",
+        });
+      }
+      expect(
+        screen.getByRole("button", { name: "对话" }).style.background,
+      ).toBe("var(--fn-sidebar-item-active-bg)");
+    },
+  );
+
   it("navigates from an icon", async () => {
     const user = userEvent.setup();
     const onNavigate = renderNav("chat");

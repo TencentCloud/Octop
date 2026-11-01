@@ -37,7 +37,7 @@ import { useDesktopChromeStyle } from "../../hooks/useDesktopChrome";
 import { useWindowFullscreen } from "../../hooks/useWindowFullscreen";
 import { useRailShortcuts } from "../../hooks/useRailShortcuts";
 import {
-  chromeTopBandPx,
+  DESKTOP_CHROME_HEIGHT,
   windowControlsInset,
   DESKTOP_DRAG_REGION_CLASS,
 } from "../../utils/desktopChrome";
@@ -86,15 +86,9 @@ export default function MainLayout() {
   const onWorkbench = isWorkbenchPath(currentPath);
   const desktopChrome = useDesktopChromeStyle();
   const windowFullscreen = useWindowFullscreen();
-  /**
-   * The shell's title row, owned by the layout rather than by any one column:
-   * 32px of draggable space that also keeps the native buttons from covering
-   * page chrome. Zero in the browser, on Linux (system frame), and in full
-   * screen (no buttons to make room for).
-   */
-  const shellTopBand = isMobile
-    ? 0
-    : chromeTopBandPx(desktopChrome, windowFullscreen);
+  // Web and desktop share one top row, not a native spacer + a page header.
+  // Fullscreen keeps that layout but disables window dragging.
+  const shellTopBand = isMobile ? 0 : DESKTOP_CHROME_HEIGHT;
 
   const [collapsed, setCollapsed] = useState(() => getSavedCollapsed());
   const [chatSidebarOpen, setChatSidebarOpen] = useChatSidebarOpen();
@@ -116,7 +110,7 @@ export default function MainLayout() {
   }, []);
 
   /**
-   * Nav rail toggle — the brand-row button and ⌘B.
+   * Nav rail toggle — the top-row button and ⌘B.
    *
    * One control, one effect: it moves the nav rail and nothing else. It used to
    * also pop the history rail open when expanding on a chat route, which made
@@ -264,6 +258,7 @@ export default function MainLayout() {
         {/* Shell column: the window's title band floats over the workbench row,
             so every column paints its own surface to the top edge. */}
         <div
+          className="octop-window-shell"
           style={
             {
               height: "100%",
@@ -286,31 +281,21 @@ export default function MainLayout() {
             } as React.CSSProperties
           }
         >
-          {/* The window's drag handle, reserving the band the native buttons
-              live in (macOS traffic lights at the start, Windows caption
-              buttons at the end).
-
-              It floats over the columns instead of taking a row above them:
-              the rails then paint their surface and their seams from the
-              window's top edge, the way every comparable app draws them,
-              instead of starting with a blunt 1px tick 32px down. Nothing is
-              lost by covering that strip — it is empty in every column, and
-              the columns inset their own content by the same amount
-              (--octop-shell-top-band) so the band stays clear of real chrome
-              while remaining the one unbroken drag handle across the window. */}
-          {shellTopBand > 0 && (
+          {/* A single bounded drag region across all columns, including empty
+              chats and docks. It never intercepts DOM pointer events; actual
+              controls opt out via the no-drag rules in layout.css. */}
+          {shellTopBand > 0 && desktopChrome && !windowFullscreen && (
             <div
               aria-hidden
-              className={DESKTOP_DRAG_REGION_CLASS}
+              className={`${DESKTOP_DRAG_REGION_CLASS} octop-shell-drag-band`}
               style={{
                 position: "absolute",
                 top: 0,
-                left: 0,
-                /* Keep the drag region out from under the Windows caption
-                   buttons, which are drawn over this same band. */
+                left: windowControlsInset(desktopChrome, "start"),
+                /* Native controls are never part of the drag hit region. */
                 right: windowControlsInset(desktopChrome, "end"),
                 height: shellTopBand,
-                zIndex: 40,
+                pointerEvents: "none",
               }}
             />
           )}
@@ -395,8 +380,6 @@ export default function MainLayout() {
                 display: "flex",
                 flexDirection: "column",
                 overflow: "hidden",
-                /* Start below the band that floats overhead (see above). */
-                paddingTop: shellTopBand,
               }}
             >
               {isMobile &&
