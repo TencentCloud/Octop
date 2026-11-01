@@ -49,7 +49,7 @@ def install_portal_expert(slug: str, cache_root: Path) -> PortalExpertInstall | 
     url = item.get("download_url")
     if not isinstance(url, str) or not market_http.is_market_archive_url(url):
         raise PortalMarketError("expert package url is missing")
-    payload = market_http.fetch_bytes(url.split("?", 1)[0], limit=market_http.MAX_ARCHIVE_BYTES)
+    payload = market_http.fetch_bytes(url, limit=market_http.MAX_ARCHIVE_BYTES)
     expert_id = _install_zip(payload, cache_root, slug)
     icon = item.get("icon_url")
     return PortalExpertInstall(

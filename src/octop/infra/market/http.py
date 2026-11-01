@@ -15,7 +15,6 @@ from octop.infra.market.errors import PortalMarketError
 
 DEFAULT_REMOTE_BASE = "https://download.octop.cloud"
 DEFAULT_PORTAL_BASE = "https://octop.cloud"
-MARKET_ROOT = "octop/market"
 
 FETCH_TIMEOUT_SECONDS = 8.0
 MAX_INDEX_BYTES = 1024 * 1024
@@ -57,14 +56,14 @@ def remote_base() -> str:
 
 
 def is_market_archive_url(url: str) -> bool:
-    """Archives are only downloaded from the configured remote origin."""
+    """Archives are only downloaded from the configured remote origin.
+
+    The path and query are the catalog's. A private market can serve the zip
+    from any URL on that origin.
+    """
     parsed = urlparse(url.strip())
     allowed = urlparse(remote_base())
-    if (
-        parsed.scheme != allowed.scheme
-        or parsed.hostname != allowed.hostname
-        or not parsed.path.startswith(f"/{MARKET_ROOT}/")
-    ):
+    if parsed.scheme != allowed.scheme or parsed.hostname != allowed.hostname:
         return False
     return allowed.port is None or parsed.port == allowed.port
 

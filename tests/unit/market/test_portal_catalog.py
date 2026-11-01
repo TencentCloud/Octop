@@ -153,6 +153,31 @@ def test_install_portal_expert_extracts_library(
     assert manifest["id"] == "ops-engineer"
 
 
+def test_install_portal_expert_keeps_custom_archive_url(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("OCTOP_PORTAL_ORIGIN", "http://market.internal:9000")
+    monkeypatch.setenv("OCTOP_MARKET_REMOTE_ORIGIN", "http://market.internal:9000")
+    archive_url = "http://market.internal:9000/api/packages/ops.zip?token=1"
+    package = _zip_bytes({"manifest.json": json.dumps({"id": "ops-engineer"})})
+    seen: list[str] = []
+
+    def fake_fetch(url: str, *, limit: int) -> bytes:
+        del limit
+        seen.append(url)
+        if url == archive_url:
+            return package
+        if url.endswith("/api/market/experts"):
+            return _portal_body([{"slug": "ops-engineer", "download_url": archive_url}])
+        raise PortalMarketError("not found", status=404)
+
+    monkeypatch.setattr(market_http, "fetch_bytes", fake_fetch)
+    installed = install_portal_expert("ops-engineer", tmp_path)
+    assert installed is not None
+    assert archive_url in seen
+
+
 def test_market_remote_origin_overrides_object_origin(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("OCTOP_MARKET_REMOTE_ORIGIN", "files.example.com/ignored")
     assert market_http.remote_base() == "https://files.example.com"
@@ -168,9 +193,11 @@ def test_market_remote_origin_keeps_explicit_port(monkeypatch: pytest.MonkeyPatc
     assert market_http.is_market_archive_url(
         "http://127.0.0.1:9000/octop/market/experts/ops/1.0.0/ops-1.0.0.zip"
     )
+    assert market_http.is_market_archive_url("http://127.0.0.1:9000/api/packages/ops.zip?token=1")
     assert not market_http.is_market_archive_url(
         "http://127.0.0.1/octop/market/experts/ops/1.0.0/ops-1.0.0.zip"
     )
+    assert not market_http.is_market_archive_url("http://files.example/api/packages/ops.zip")
 
 
 def test_dns_failure_is_a_local_network_error(monkeypatch: pytest.MonkeyPatch) -> None:
