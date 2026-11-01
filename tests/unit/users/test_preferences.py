@@ -52,6 +52,17 @@ def test_validate_rejects_over_limit() -> None:
     assert ei.value.code is ErrorCode.SLASH_BAD_ARGS
 
 
+def test_validate_accepts_uppercase_scheme() -> None:
+    out = validate_remote_browser_bookmarks(
+        [
+            {"url": "HTTPS://example.com/path", "title": "Upper"},
+            {"url": "Http://second.test", "title": ""},
+        ]
+    )
+    assert [b.url for b in out] == ["HTTPS://example.com/path", "Http://second.test"]
+    assert out[0].title == "Upper"
+
+
 def test_get_remote_browser_bookmarks_from_json_roundtrip() -> None:
     raw = merge_preferences_json(
         "{}",

@@ -93,7 +93,7 @@ def validate_remote_browser_bookmarks(items: list[Any]) -> list[RemoteBrowserBoo
         if not isinstance(item, dict):
             continue
         url = normalize_nav_url(str(item.get("url") or ""))
-        if not url.startswith(("http://", "https://")):
+        if not url.lower().startswith(("http://", "https://")):
             continue
         if url in seen:
             continue
