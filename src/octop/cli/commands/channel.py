@@ -290,7 +290,11 @@ def bind_wecom(agent_id: str | None, channel_id: str | None, as_user: str | None
     """Scan WeCom QR code and save bot credentials."""
     import asyncio
 
-    from octop.cli.support.offline_ops import create_channel_offline, patch_channel_offline
+    from octop.cli.support.offline_ops import (
+        create_channel_offline,
+        get_channel_offline,
+        patch_channel_offline,
+    )
     from octop.cli.support.qr import render_qrcode_terminal
     from octop.infra.gateway.channels import qr_bind
 
@@ -327,6 +331,8 @@ def bind_wecom(agent_id: str | None, channel_id: str | None, as_user: str | None
     cfg = {"bot_id": bot_id, "secret": secret, "enabled": True}
     try:
         if channel_id:
+            existing = get_channel_offline(aid, channel_id)
+            cfg = {**existing.get("config", {}), **cfg}
             row = patch_channel_offline(aid, channel_id, config=cfg, enabled=True)
         else:
             row = create_channel_offline(
@@ -349,7 +355,11 @@ def bind_weixin(agent_id: str | None, channel_id: str | None, as_user: str | Non
     """Scan WeChat QR code and save account credentials."""
     import asyncio
 
-    from octop.cli.support.offline_ops import create_channel_offline, patch_channel_offline
+    from octop.cli.support.offline_ops import (
+        create_channel_offline,
+        get_channel_offline,
+        patch_channel_offline,
+    )
     from octop.cli.support.qr import render_qrcode_terminal
     from octop.infra.gateway.channels import qr_bind
 
@@ -393,6 +403,8 @@ def bind_weixin(agent_id: str | None, channel_id: str | None, as_user: str | Non
     cfg = {"accounts": [account], "enabled": True}
     try:
         if channel_id:
+            existing = get_channel_offline(aid, channel_id)
+            cfg = {**existing.get("config", {}), **cfg}
             row = patch_channel_offline(aid, channel_id, config=cfg, enabled=True)
         else:
             row = create_channel_offline(
