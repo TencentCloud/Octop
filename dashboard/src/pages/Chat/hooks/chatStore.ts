@@ -678,6 +678,7 @@ function clearStreamingFlags(
   // host turn unlocks the composer; process panels key off liveSpeakers.
   state.isStreaming = false;
   state.thinkingStartedAt = null;
+  state.recoveringTurnAfterHydration = false;
   if (opts?.keepSteer) return;
   state.activeTurnId = null;
   state.pendingSteers = [];
@@ -853,7 +854,7 @@ export function setMessages(sessionId: string, messages: ChatMessage[]) {
 export function setHistoryPage(
   sessionId: string,
   messages: ChatMessage[],
-  opts: { hasMore: boolean; nextOffset: number; nextCursor?: string | null },
+  opts: { hasMore: boolean; nextOffset: number; nextCursor?: string | null; turnActive?: boolean },
 ) {
   const state = getOrCreate(sessionId);
   state.messages = messages;
@@ -865,6 +866,12 @@ export function setHistoryPage(
   state.historyLoadingMore = false;
   state.historyHydrated = true;
   state.historyStale = false;
+  // A turn is still running server-side even though the fresh history page
+  // cannot contain it (projections are committed at turn end). The next
+  // token chunks belong to that new turn: opening a new bubble — not
+  // re-opening the last `done` historical assistant — keeps the completed
+  // reply intact (TencentCloud/Octop#2616).
+  state.recoveringTurnAfterHydration = Boolean(opts.turnActive);
   notify(state);
 }
 
@@ -1907,6 +1914,28 @@ function appendStreamingToken(
     );
   // Members already on the wall — later host text is a new turn (wrap-up).
   if (target && interrupted) {
+    sealPriorStreamingAssistants(state, speaker);
+    state.streamId = generateId();
+    state.messages = [
+      ...state.messages,
+      {
+        id: state.streamId,
+        role: "assistant",
+        content,
+        status: "streaming",
+        timestamp: Date.now(),
+        speakerAgentId: speaker,
+      },
+    ];
+    return;
+  }
+  if (target && target.status === "done" && state.recoveringTurnAfterHydration) {
+    // The history page was hydrated while a turn was still running
+    // server-side (`turn_active`); the persisted wall ends with the previous
+    // turn's completed assistant. This token belongs to the running turn —
+    // open a new bubble instead of appending into / re-opening that `done`
+    // reply (TencentCloud/Octop#2616).
+    state.recoveringTurnAfterHydration = false;
     sealPriorStreamingAssistants(state, speaker);
     state.streamId = generateId();
     state.messages = [
