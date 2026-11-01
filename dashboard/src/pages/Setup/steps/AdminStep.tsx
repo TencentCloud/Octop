@@ -32,6 +32,8 @@ interface Props {
   createdCreds?: AdminCreds | null;
   /** Mirrors ``wizard_password_required``: desktop builds run without a password. */
   passwordRequired: boolean;
+  /** Desktop "create local account" guide: the username stays ``local``. */
+  lockUsername?: boolean;
   onBack?: () => void;
   /** Called with the username + plaintext password (null without a password gate). */
   onCreated: (creds: AdminCreds) => void;
@@ -40,6 +42,7 @@ interface Props {
 export default function AdminStep({
   createdCreds,
   passwordRequired,
+  lockUsername = false,
   onBack,
   onCreated,
 }: Props) {
@@ -171,7 +174,11 @@ export default function AdminStep({
             },
           ]}
         >
-          <Input prefix={<User size={16} />} autoFocus />
+          <Input
+            prefix={<User size={16} />}
+            autoFocus
+            disabled={lockUsername}
+          />
         </Form.Item>
 
         <Form.Item label={t("wizard.admin.displayName")} name="display_name">

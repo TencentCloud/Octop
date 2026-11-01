@@ -33,6 +33,8 @@ import type {
 export interface AuthStatus {
   /** True when no admin exists yet — UI must redirect to /setup. */
   setup_required: boolean;
+  /** Desktop shell only: a user named ``local`` already exists. */
+  local_account: boolean;
   /** Legacy alias of ``!setup_required`` kept for compat. */
   setup_done: boolean;
   /** Octop always requires auth; kept true so legacy components don't unguard. */
@@ -270,6 +272,7 @@ export interface SetupBody {
 
 interface RawSetupStatus {
   setup_required: boolean;
+  local_account?: boolean;
   wizard_password_required?: boolean;
   wizard_password_exists?: boolean;
   wizard_password_path?: string;
@@ -338,6 +341,7 @@ export const authApi = {
         const raw = await request<RawSetupStatus>("/setup/status");
         const value: AuthStatus = {
           setup_required: raw.setup_required,
+          local_account: raw.local_account ?? false,
           setup_done: !raw.setup_required,
           enabled: true,
           has_password: true,

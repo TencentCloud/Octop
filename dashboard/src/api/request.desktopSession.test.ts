@@ -28,6 +28,14 @@ function okResponse(body: unknown): Response {
   });
 }
 
+function tokenFor(uname: string): string {
+  const payload = btoa(JSON.stringify({ sub: "1", uname }))
+    .replace(/\+/g, "-")
+    .replace(/\//g, "_")
+    .replace(/=+$/, "");
+  return `h.${payload}.s`;
+}
+
 interface Bridge {
   register: ReturnType<typeof vi.fn>;
   renew: ReturnType<typeof vi.fn>;
@@ -70,9 +78,10 @@ describe("desktop device session", () => {
     mod = await import("./request");
   });
 
-  it("renews an expired session and retries once", async () => {
-    const session = installBridge("renewed-token");
-    mod.setAuthToken("stale-token");
+  it("renews an expired local session and retries once", async () => {
+    const renewed = tokenFor("local");
+    const session = installBridge(renewed);
+    mod.setAuthToken(tokenFor("local"));
     fetchMock
       .mockResolvedValueOnce(tokenExpiredResponse())
       .mockResolvedValueOnce(okResponse({ items: [] }));
@@ -81,18 +90,29 @@ describe("desktop device session", () => {
 
     expect(session.renew).toHaveBeenCalledOnce();
     expect(fetchMock).toHaveBeenCalledTimes(2);
-    expect(mod.getAuthToken()).toBe("renewed-token");
+    expect(mod.getAuthToken()).toBe(renewed);
     expect(replace).not.toHaveBeenCalled();
     // The retry must carry the new token, not the stale one.
     const retryInit = fetchMock.mock.calls[1][1] as RequestInit;
     expect((retryInit.headers as Record<string, string>).Authorization).toBe(
-      "Bearer renewed-token",
+      `Bearer ${renewed}`,
     );
   });
 
-  it("registers the device credential on the first authenticated success", async () => {
+  it("does not renew a password account into the desktop session", async () => {
+    const session = installBridge(tokenFor("local"));
+    mod.setAuthToken(tokenFor("admin"));
+    fetchMock.mockResolvedValue(tokenExpiredResponse());
+
+    await expect(mod.request("/agents")).rejects.toThrow();
+    expect(session.renew).not.toHaveBeenCalled();
+    expect(replace).toHaveBeenCalledWith("/login");
+  });
+
+  it("registers the device credential for the local account only", async () => {
     const session = installBridge("unused");
-    mod.setAuthToken("live-token");
+    const localToken = tokenFor("local");
+    mod.setAuthToken(localToken);
     // A Response body can only be read once, so give each call a fresh one.
     fetchMock.mockImplementation(() =>
       Promise.resolve(okResponse({ ok: true })),
@@ -102,7 +122,12 @@ describe("desktop device session", () => {
     await mod.request("/agent-groups");
 
     expect(session.register).toHaveBeenCalledOnce();
-    expect(session.register).toHaveBeenCalledWith("live-token");
+    expect(session.register).toHaveBeenCalledWith(localToken);
+
+    session.register.mockClear();
+    mod.setAuthToken(tokenFor("admin"));
+    await mod.request("/settings");
+    expect(session.register).not.toHaveBeenCalled();
   });
 
   it("falls through to the login path when there is no bridge", async () => {

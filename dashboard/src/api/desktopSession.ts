@@ -22,21 +22,57 @@ function bridge(): DesktopSessionBridge | undefined {
   return getDesktopBridge()?.session;
 }
 
+/** Desktop wizard default. Only this username skips the login screen. */
+export const LOCAL_DESKTOP_USERNAME = "local";
+
+const LOCAL_SIGNOUT_KEY = "octop:desktop-local-signed-out";
+
 /**
- * Subject claim of a JWT, used to notice a different user signing in. Returns
- * null when the token is not a decodable JWT.
+ * Claim of a JWT. Returns null when the token is not a decodable JWT or the
+ * claim is absent.
  */
-function subjectOf(token: string): string | null {
+function claimOf(token: string, key: "sub" | "uname"): string | null {
   const parts = token.split(".");
   if (parts.length < 2) return null;
   try {
     const payload = parts[1].replace(/-/g, "+").replace(/_/g, "/");
     const padded = payload + "=".repeat((4 - (payload.length % 4)) % 4);
-    const claims = JSON.parse(atob(padded)) as { sub?: unknown };
-    return typeof claims.sub === "string" ? claims.sub : null;
+    const claims = JSON.parse(atob(padded)) as {
+      sub?: unknown;
+      uname?: unknown;
+    };
+    const value = claims[key];
+    return typeof value === "string" ? value : null;
   } catch {
     return null;
   }
+}
+
+/** Subject claim, used to notice a different user signing in. */
+function subjectOf(token: string): string | null {
+  return claimOf(token, "sub");
+}
+
+/** True when this JWT belongs to the desktop local account. */
+export function isLocalDesktopUser(accessToken: string): boolean {
+  return claimOf(accessToken, "uname") === LOCAL_DESKTOP_USERNAME;
+}
+
+/**
+ * Logout of `local` sets this for the current window so the login page stays
+ * up and another account can sign in. A new app launch clears it.
+ */
+export function holdDesktopLocalAutoLogin(): void {
+  sessionStorage.setItem(LOCAL_SIGNOUT_KEY, "1");
+}
+
+/** The local-account button signs back in, so the logout hold no longer applies. */
+export function releaseDesktopLocalAutoLogin(): void {
+  sessionStorage.removeItem(LOCAL_SIGNOUT_KEY);
+}
+
+export function desktopLocalAutoLoginHeld(): boolean {
+  return sessionStorage.getItem(LOCAL_SIGNOUT_KEY) === "1";
 }
 
 // The credential is bound to a user, not to a token, so registering once per
@@ -54,7 +90,7 @@ export async function registerDeviceSession(
   accessToken: string,
 ): Promise<void> {
   const session = bridge();
-  if (!session || !accessToken) return;
+  if (!session || !accessToken || !isLocalDesktopUser(accessToken)) return;
   const subject = subjectOf(accessToken) ?? accessToken;
   if (registeredSubject === subject) return;
   try {

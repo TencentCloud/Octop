@@ -1,5 +1,9 @@
 import { getApiUrl } from "./config";
-import { registerDeviceSession, renewDesktopSession } from "./desktopSession";
+import {
+  isLocalDesktopUser,
+  registerDeviceSession,
+  renewDesktopSession,
+} from "./desktopSession";
 import i18n from "../i18n";
 import { markNavigatingAway } from "../utils/reloadOnStaleChunk";
 
@@ -402,8 +406,14 @@ async function retryWithDesktopSession(
   // Business 401s (peer login, setup guards) would only be retried in vain.
   const code = await errorCodeOf(response);
   if (code && !SESSION_UNAUTHORIZED_CODES.has(code)) return null;
+  const current = getAuthToken();
+  // A password account's expired token must land on the login page. Only the
+  // desktop local user is renewed in place.
+  if (current && !isLocalDesktopUser(current)) return null;
   const issued = await renewDesktopSession();
-  if (!issued?.access_token) return null;
+  if (!issued?.access_token || !isLocalDesktopUser(issued.access_token)) {
+    return null;
+  }
   setAuthToken(issued.access_token, !isSessionOnlyAuth());
   return fetch(url, {
     ...options,

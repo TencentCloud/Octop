@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { Segmented, Steps, Typography } from "antd";
 import { Lock, UserCog, Cpu, CheckCircle, Wand2, Database } from "lucide-react";
 import { useTranslation } from "react-i18next";
@@ -13,6 +13,7 @@ import BootOfflinePanel from "../../components/BootOfflinePanel";
 import { useTheme } from "../../context/ThemeContext";
 import { isNetworkFetchError } from "../../utils/networkError";
 import { publicUrl } from "../../utils/publicUrl";
+import { isDesktopShell } from "../../utils/desktopBridge";
 import DatabaseStep from "./steps/DatabaseStep";
 import PasswordStep from "./steps/PasswordStep";
 import AdminStep from "./steps/AdminStep";
@@ -37,6 +38,9 @@ export default function SetupPage() {
   const { t, i18n } = useTranslation();
   const { isDark } = useTheme();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const localAccount =
+    searchParams.get("localAccount") === "1" && isDesktopShell();
   const [checking, setChecking] = useState(true);
   const [offline, setOffline] = useState(false);
   const [statusRetryKey, setStatusRetryKey] = useState(0);
@@ -75,13 +79,16 @@ export default function SetupPage() {
       .getAuthStatus()
       .then(async (status) => {
         if (cancelled) return;
-        if (!status.setup_required) {
+        if (!status.setup_required && !localAccount) {
           wizardSession.clearAll();
           navigate("/login", { replace: true });
           return;
         }
 
-        setPasswordRequired(status.wizard_password_required);
+        const passwordGate = localAccount
+          ? false
+          : status.wizard_password_required;
+        setPasswordRequired(passwordGate);
 
         const savedStep = wizardSession.loadStep();
         const draft = wizardSession.loadDraft();
@@ -105,10 +112,7 @@ export default function SetupPage() {
                 } else {
                   goToStep(savedStep);
                 }
-              } else if (
-                savedStep === STEP_PASSWORD &&
-                status.wizard_password_required
-              ) {
+              } else if (savedStep === STEP_PASSWORD && passwordGate) {
                 goToStep(STEP_PASSWORD);
               } else {
                 goToStep(status.database_bound ? STEP_ADMIN : STEP_DATABASE);
@@ -129,7 +133,7 @@ export default function SetupPage() {
         }
 
         // No valid wizard token yet.
-        if (status.wizard_password_required) {
+        if (passwordGate) {
           goToStep(STEP_PASSWORD);
         } else {
           try {
@@ -150,7 +154,7 @@ export default function SetupPage() {
     return () => {
       cancelled = true;
     };
-  }, [navigate, goToStep, ensureWizardToken, statusRetryKey]);
+  }, [navigate, goToStep, ensureWizardToken, statusRetryKey, localAccount]);
 
   const handlePasswordVerified = () => {
     goToStep(STEP_DATABASE);
@@ -317,6 +321,7 @@ export default function SetupPage() {
             <AdminStep
               createdCreds={adminCreds}
               passwordRequired={passwordRequired}
+              lockUsername={localAccount}
               onBack={handleBackFromAdmin}
               onCreated={(creds) => {
                 setAdminCreds(creds);
