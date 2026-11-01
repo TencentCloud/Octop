@@ -18,15 +18,13 @@ import type { BrowserWindow, BrowserWindowConstructorOptions } from "electron";
  */
 
 /**
- * Height of the Dashboard's own chrome row (`DESKTOP_CHROME_HEIGHT` in
- * `dashboard/src/utils/desktopChrome.ts`). Both the traffic lights and the
- * Windows caption buttons have to line up with it.
+ * 与 Dashboard 的 DESKTOP_CHROME_HEIGHT 及早期页顶部拖动区域保持一致；
+ * Windows 原生标题栏按钮覆盖此高度。
  */
-export const CHROME_ROW_HEIGHT = 32;
+export const CHROME_ROW_HEIGHT = 58;
 
 /**
- * Native traffic lights: 14px in from the leading edge (the Dashboard reserves
- * 80px there) and vertically centred in the 32px row.
+ * macOS 交通灯距左侧 14px，以原生按钮约 12px 的高度在拖动顶栏中垂直居中。
  */
 export const TRAFFIC_LIGHT_POSITION = {
   x: 14,

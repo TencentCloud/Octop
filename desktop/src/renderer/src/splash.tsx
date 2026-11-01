@@ -14,8 +14,7 @@ import "./splash.css";
  * moving, and the build number at the bottom for support. The wordmark already
  * says Octop, so the status line does not repeat it.
  *
- * The page is also the window's only drag handle (``base.css`` puts the whole
- * surface in the drag region); nothing here is clickable, so nothing opts out.
+ * 顶部 58px 的拖动热区由 base.css 提供，正文区域不参与窗口拖动。
  */
 function Splash() {
   const version = new URLSearchParams(window.location.search).get("version");

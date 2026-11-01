@@ -45,20 +45,20 @@ body {
   margin: 0;
   background: var(--surface);
   color: var(--text);
-  /* The titlebar is hidden, so nothing here is draggable by default. */
   cursor: default;
   overflow: hidden;
-  /*
-   * …except that the whole page is, deliberately.
-   *
-   * These two pages are the only things on screen while the app is coming up or
-   * after it failed, and both are chrome-less: the OS shows its traffic lights /
-   * caption buttons and nothing else. A fixed 32px grab strip was not enough —
-   * it is invisible, and the first thing a user tries on a boot or failure
-   * screen is dragging the page itself, typically a little below the top edge,
-   * where the strip is not. So the surface is the handle and the few
-   * interactive things below opt out.
-   */
+}
+
+/* 与 CHROME_ROW_HEIGHT 一致：仅顶部 58px 可拖动，正文仍可选择和滚动。 */
+body::before {
+  content: "";
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 58px;
+  pointer-events: none;
+  user-select: none;
   -webkit-app-region: drag;
   app-region: drag;
 }

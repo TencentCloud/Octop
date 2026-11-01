@@ -129,15 +129,13 @@ describe("desktopChrome", () => {
 
   it("reserves one top row for the shell's native buttons on both platforms", () => {
     expect(chromeTopBandPx("mac")).toBe(DESKTOP_CHROME_HEIGHT);
-    // Windows keeps its caption buttons inside the same 32px overlay band, so
-    // the page's title row has to start below them too.
+    // Windows caption buttons share the 58px row with search and page titles.
     expect(chromeTopBandPx("windows")).toBe(DESKTOP_CHROME_HEIGHT);
     expect(chromeTopBandPx(null)).toBe(0);
-    // Full screen hides the buttons, so the row goes and the page reclaims it.
+    // Fullscreen removes native controls, not the shared Web/desktop layout.
     expect(chromeTopBandPx("mac", true)).toBe(0);
     expect(chromeTopBandPx("windows", true)).toBe(0);
-    // A band smaller than the buttons would let them cover the title row.
-    expect(DESKTOP_CHROME_HEIGHT).toBeGreaterThanOrEqual(32);
+    expect(DESKTOP_CHROME_HEIGHT).toBe(58);
   });
 
   it("pads right-edge overlays away from the native caption buttons", () => {
@@ -161,6 +159,60 @@ describe("desktopChrome", () => {
     expect(css).toContain("-webkit-app-region: no-drag");
     expect(css).not.toContain("wails");
     expect(DESKTOP_DRAG_REGION_CLASS).toBe("octop-desktop-drag");
+  });
+
+  it("keeps controls and portalled overlays out of the drag band", () => {
+    const css = readFileSync(
+      resolve(__dirname, "../styles/layout.css"),
+      "utf8",
+    );
+    for (const selector of [
+      "button",
+      "a",
+      "input",
+      "textarea",
+      "select",
+      "label",
+      '[role="button"]',
+      '[role="tab"]',
+      '[role="separator"]',
+      '[role="combobox"]',
+      '[role="menu"]',
+      '[role="dialog"]',
+      '[role="alertdialog"]',
+      "[tabindex]",
+      '[contenteditable]:not([contenteditable="false"])',
+      "[data-octop-no-drag]",
+    ]) {
+      expect(css).toContain(`html[data-octop-desktop-chrome] ${selector}`);
+    }
+  });
+
+  it("shares the top row height across Web, native chrome and chat themes", () => {
+    const theme = readFileSync(
+      resolve(__dirname, "../styles/theme-vars.css"),
+      "utf8",
+    );
+    const native = readFileSync(
+      resolve(__dirname, "../../../desktop/src/main/windows/chrome.ts"),
+      "utf8",
+    );
+    expect(native).toContain(`CHROME_ROW_HEIGHT = ${DESKTOP_CHROME_HEIGHT}`);
+    const heights = [...theme.matchAll(/--fn-chat-chrome-height:\s*(\d+)px/g)];
+    expect(heights.length).toBeGreaterThan(0);
+    for (const [, height] of heights)
+      expect(Number(height)).toBe(DESKTOP_CHROME_HEIGHT);
+  });
+
+  it("does not turn navigation or page bodies into extra drag regions", () => {
+    for (const file of [
+      "../layouts/Sidebar.tsx",
+      "../layouts/PageShell.tsx",
+      "../pages/Chat/components/ChatTitleBar.tsx",
+    ]) {
+      const source = readFileSync(resolve(__dirname, file), "utf8");
+      expect(source).not.toContain("DESKTOP_DRAG_REGION_CLASS");
+    }
   });
 
   it("writes both inset tokens on <html> and can clear them", () => {
