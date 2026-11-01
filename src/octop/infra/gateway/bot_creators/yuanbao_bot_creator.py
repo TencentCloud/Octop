@@ -42,10 +42,12 @@ elif hasattr(sys.stdout, "buffer"):
 # ============================================================
 # Business imports
 # ============================================================
+import contextlib
 import json
 import os
 import socket
 import ssl
+import tempfile
 import time
 import urllib.error
 import urllib.request
@@ -79,8 +81,33 @@ _SSL_CTX = ssl.create_default_context()
 # State file helpers
 # ============================================================
 def _save_state(data: dict[str, Any]) -> None:
-    with open(STATE_FILE, "w") as f:
-        json.dump(data, f, ensure_ascii=False)
+    """Persist the flow state without leaking or truncating anything else.
+
+    `STATE_FILE` lives in a shared `/tmp` and holds the created bot's
+    `app_key` / `app_secret`. Writing it with plain `open(..., "w")`
+    had three problems: the file got the process umask (0644 on a default
+    host), so any local user could read the credentials; `open` follows a
+    symlink already present at that predictable path, so a local user could
+    make the process truncate an arbitrary file it can write; and the
+    truncate-then-write sequence left a half-written JSON file behind when
+    the process died mid-save, which `cleanup`/resume then cannot parse.
+
+    `mkstemp` (mode 0600) + `os.replace` fixes all three: the file is
+    private as soon as it exists, the final path is replaced rather than
+    opened, and readers only ever see a complete state file.
+    """
+    payload = json.dumps(data, ensure_ascii=False)
+    fd, tmp_name = tempfile.mkstemp(
+        dir=STATE_DIR, prefix=".yuanbao-bot-creator-state-", suffix=".tmp"
+    )
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            f.write(payload)
+        os.replace(tmp_name, STATE_FILE)
+    except BaseException:
+        with contextlib.suppress(OSError):
+            os.unlink(tmp_name)
+        raise
 
 
 # ============================================================

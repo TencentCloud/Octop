@@ -26,6 +26,7 @@ import json
 import os
 import ssl
 import sys
+import tempfile
 import time
 import urllib.request
 import uuid
@@ -76,8 +77,30 @@ def _state_file() -> str:
 
 
 def _save_state(data: dict[str, Any]) -> None:
-    with open(_state_file(), "w") as f:
-        json.dump(data, f, ensure_ascii=False)
+    """Persist the flow state without leaking or truncating anything else.
+
+    The state file lives in a shared `/tmp` and holds the created app's
+    `app_secret`. A plain `open(..., "w")` gave it the process umask
+    (world-readable on a default host), followed a symlink already planted
+    at the predictable path (letting a local user truncate an arbitrary
+    file the process can write), and left a half-written JSON file when the
+    process died mid-save. `mkstemp` (0600) + `os.replace` avoids all
+    three: private from creation, never follows the destination, and readers
+    only see a complete file.
+    """
+    state_file = _state_file()
+    payload = json.dumps(data, ensure_ascii=False)
+    fd, tmp_name = tempfile.mkstemp(
+        dir=STATE_DIR, prefix=f".{_pcfg('state_file_prefix')}-state-", suffix=".tmp"
+    )
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            f.write(payload)
+        os.replace(tmp_name, state_file)
+    except BaseException:
+        with contextlib.suppress(OSError):
+            os.unlink(tmp_name)
+        raise
 
 
 def _emit(action: str, level: str, step: str, message: str, **extra: Any) -> None:

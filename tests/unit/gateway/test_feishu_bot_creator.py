@@ -3,6 +3,9 @@
 from __future__ import annotations
 
 import json
+import os
+import stat
+from pathlib import Path
 from typing import Any
 
 import pytest
@@ -128,3 +131,60 @@ def test_parse_version() -> None:
     assert creator._parse_version("1.5.5") >= creator.MIN_LARK_OAPI
     assert creator._parse_version("1.5.4") < creator.MIN_LARK_OAPI
     assert creator._parse_version("1.7.0") >= creator.MIN_LARK_OAPI
+
+
+def _staging_files(directory: Path) -> list[str]:
+    return sorted(p.name for p in directory.iterdir() if p.name.endswith(".tmp"))
+
+
+@pytest.fixture()
+def state_path(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> Path:
+    path = tmp_path / "octop-feishu-bot-creator-state.json"
+    monkeypatch.setattr(creator, "STATE_DIR", str(tmp_path))
+    return path
+
+
+def test_save_state_writes_the_created_app(state_path: Path) -> None:
+    creator._save_state({"phase": "done", "app_id": "cli_1", "app_secret": "secret_1"})
+    assert json.loads(state_path.read_text(encoding="utf-8")) == {
+        "phase": "done",
+        "app_id": "cli_1",
+        "app_secret": "secret_1",
+    }
+    assert _staging_files(state_path.parent) == []
+
+
+def test_failed_save_keeps_the_previous_state(state_path: Path) -> None:
+    creator._save_state({"phase": "create", "qr_url": "https://accounts.feishu.cn/qr"})
+    before = state_path.read_text(encoding="utf-8")
+
+    with pytest.raises(TypeError):
+        creator._save_state({"phase": "done", "result": object()})
+
+    assert state_path.read_text(encoding="utf-8") == before
+    assert json.loads(before)["qr_url"] == "https://accounts.feishu.cn/qr"
+    assert _staging_files(state_path.parent) == []
+
+
+def test_save_state_does_not_follow_a_planted_symlink(state_path: Path, tmp_path: Path) -> None:
+    victim = tmp_path / "victim.txt"
+    victim.write_text("important data", encoding="utf-8")
+    try:
+        os.symlink(victim, state_path)
+    except (OSError, NotImplementedError) as exc:  # pragma: no cover - platform dependent
+        pytest.skip(f"symlink not available: {exc}")
+
+    creator._save_state({"phase": "done", "app_id": "cli_1"})
+
+    assert victim.read_text(encoding="utf-8") == "important data"
+    assert not state_path.is_symlink()
+    assert json.loads(state_path.read_text(encoding="utf-8")) == {
+        "phase": "done",
+        "app_id": "cli_1",
+    }
+
+
+@pytest.mark.skipif(os.name != "posix", reason="POSIX file modes only")
+def test_state_file_is_not_world_readable(state_path: Path) -> None:
+    creator._save_state({"phase": "done", "app_id": "cli_1", "app_secret": "secret_1"})
+    assert stat.S_IMODE(state_path.stat().st_mode) == 0o600
