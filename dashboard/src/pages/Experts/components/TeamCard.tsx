@@ -32,7 +32,9 @@ import {
   isAgentChatReady,
   isAgentModelConfigError,
 } from "../../../utils/agentError";
+import { apiErrorMessage } from "../../../utils/apiError";
 import { TEAM_ICON_NAME, teamPortraitUrl } from "../../../utils/teamAgent";
+import { SharedAvatarMark } from "../../../components/SharedResourceBadge";
 import RemoteExpertHint from "../../Chat/components/RemoteExpertHint";
 import {
   expertDeleteConfirm,
@@ -178,11 +180,15 @@ export const TeamCard = memo(function TeamCard({
           onStateChange(agent.agent_id, "stopping");
           message.success(t("experts.agentStopped", { name: agent.name }));
         }
-      } catch {
+      } catch (error) {
         message.error(
-          checked
-            ? t("experts.agentStartFailed")
-            : t("experts.agentStopFailed"),
+          apiErrorMessage(
+            error,
+            checked
+              ? t("experts.agentStartFailed")
+              : t("experts.agentStopFailed"),
+            t,
+          ),
         );
       } finally {
         setActionLoading(false);
@@ -226,13 +232,19 @@ export const TeamCard = memo(function TeamCard({
     <>
       <div className={`${styles.agentCard2} ${styles.teamCard}`}>
         <div className={styles.agentCard2Header}>
-          <div className={`${styles.agentCard2Icon} ${styles.teamCardIcon}`}>
-            <ExpertIcon
-              iconUrl={teamPortraitUrl(agent.icon_url)}
-              iconName={TEAM_ICON_NAME}
-              size={40}
-            />
-          </div>
+          <SharedAvatarMark
+            shared={agent.is_shared}
+            owned={isOwner}
+            ownerName={agent.owner_username}
+          >
+            <div className={`${styles.agentCard2Icon} ${styles.teamCardIcon}`}>
+              <ExpertIcon
+                iconUrl={teamPortraitUrl(agent.icon_url)}
+                iconName={TEAM_ICON_NAME}
+                size={40}
+              />
+            </div>
+          </SharedAvatarMark>
 
           <div className={styles.agentCard2TitleBlock}>
             <div className={styles.agentCard2NameRow}>
@@ -254,15 +266,17 @@ export const TeamCard = memo(function TeamCard({
             </div>
           </div>
 
-          <div className={styles.agentCard2HeaderActions}>
-            <Switch
-              size="small"
-              checked={switchChecked}
-              loading={isTransient || actionLoading}
-              onChange={(checked) => void handleToggle(checked)}
-              className={styles.agentCard2Switch}
-            />
-          </div>
+          {isOwner && (
+            <div className={styles.agentCard2HeaderActions}>
+              <Switch
+                size="small"
+                checked={switchChecked}
+                loading={isTransient || actionLoading}
+                onChange={(checked) => void handleToggle(checked)}
+                className={styles.agentCard2Switch}
+              />
+            </div>
+          )}
         </div>
 
         {agent.description?.trim() ? (
@@ -349,17 +363,19 @@ export const TeamCard = memo(function TeamCard({
             </button>
           </Tooltip>
 
-          <Tooltip title={t("experts.reloadAgent")} mouseEnterDelay={0.5}>
-            <button
-              type="button"
-              className={styles.agentCard2EditBtn}
-              disabled={isTransient || actionLoading}
-              onClick={() => void handleReload()}
-              aria-label={t("experts.reloadAgent")}
-            >
-              <RefreshCw size={13} />
-            </button>
-          </Tooltip>
+          {isOwner && (
+            <Tooltip title={t("experts.reloadAgent")} mouseEnterDelay={0.5}>
+              <button
+                type="button"
+                className={styles.agentCard2EditBtn}
+                disabled={isTransient || actionLoading}
+                onClick={() => void handleReload()}
+                aria-label={t("experts.reloadAgent")}
+              >
+                <RefreshCw size={13} />
+              </button>
+            </Tooltip>
+          )}
 
           <Tooltip title={t("common.edit", "Edit")} mouseEnterDelay={0.5}>
             <button
@@ -437,9 +453,10 @@ export const TeamCard = memo(function TeamCard({
               {t("experts.openChat", "对话")}
               <ChevronRight size={13} />
             </button>
-          ) : localState === "failed" ||
-            localState === "stopped" ||
-            localState === "created" ? (
+          ) : isOwner &&
+            (localState === "failed" ||
+              localState === "stopped" ||
+              localState === "created") ? (
             <button
               type="button"
               className={`${styles.agentCard2ChatBtn} ${styles.teamCardChatBtn}`}

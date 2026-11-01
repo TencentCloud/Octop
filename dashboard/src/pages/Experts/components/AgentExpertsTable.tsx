@@ -36,6 +36,7 @@ import type { OctopAgent } from "../../../context/AgentContext";
 import { useAgent } from "../../../context/AgentContext";
 import { useIsMobile } from "../../../hooks/useIsMobile";
 import MbtiPersonaTag from "../../../components/MbtiPersonaTag";
+import BackendFlag from "./BackendFlag";
 import MbtiCatalogDrawer from "./MbtiCatalogDrawer";
 import { ExpertIcon } from "./iconForName";
 import {
@@ -44,6 +45,7 @@ import {
   formatAgentError,
   isAgentModelConfigError,
 } from "../../../utils/agentError";
+import { apiErrorMessage } from "../../../utils/apiError";
 import styles from "../index.module.less";
 import RemoteExpertHint from "../../Chat/components/RemoteExpertHint";
 import { expertDeleteConfirm } from "../../../utils/remoteExpert";
@@ -216,11 +218,15 @@ export default function AgentExpertsTable({
           onStateChange(agent.agent_id, "stopping");
           message.success(t("experts.agentStopped", { name: agent.name }));
         }
-      } catch {
+      } catch (error) {
         message.error(
-          checked
-            ? t("experts.agentStartFailed")
-            : t("experts.agentStopFailed"),
+          apiErrorMessage(
+            error,
+            checked
+              ? t("experts.agentStartFailed")
+              : t("experts.agentStopFailed"),
+            t,
+          ),
         );
       } finally {
         setActionLoadingId(null);
@@ -406,6 +412,13 @@ export default function AgentExpertsTable({
       width: 140,
       ellipsis: true,
       render: (model: string | null | undefined) => model || "—",
+    },
+    {
+      title: t("experts.table.backend", "后端"),
+      key: "backend",
+      width: 88,
+      align: "center",
+      render: (_value, row) => <BackendFlag config={row.config} />,
     },
     {
       title: t("experts.table.persona", "人格"),

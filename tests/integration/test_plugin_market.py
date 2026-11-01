@@ -101,13 +101,12 @@ async def test_market_update_available_flag(env: Any) -> None:
     assert row["installed_version"] == "0.0.1"
 
 
-async def test_market_install_requires_admin(env_admin_alice: Any) -> None:
+async def test_market_requires_plugin_market_permission(env_admin_alice: Any) -> None:
     client, _srv, _admin_auth, alice_auth = env_admin_alice
-    catalog = (await client.get("/api/plugins/market", headers=alice_auth)).json()
-    assert catalog
-    plugin_id = next(item["id"] for item in catalog if not item.get("error"))
-    r = await client.post(
-        f"/api/plugins/market/{plugin_id}/install",
+    listed = await client.get("/api/plugins/market", headers=alice_auth)
+    assert listed.status_code == 403, listed.text
+    installed = await client.post(
+        "/api/plugins/market/any-plugin/install",
         headers=alice_auth,
     )
-    assert r.status_code == 403, r.text
+    assert installed.status_code == 403, installed.text

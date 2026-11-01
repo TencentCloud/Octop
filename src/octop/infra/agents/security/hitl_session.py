@@ -189,10 +189,12 @@ class HitlSessionPolicyStore:
     def __init__(self, threads_repo: ThreadRepo | None = None) -> None:
         self._repo = threads_repo
         self._cache: dict[str, HitlSessionPolicy] = {}
+        self._rev: dict[str, int] = {}
 
     def replace_repo(self, threads_repo: ThreadRepo | None) -> None:
         self._repo = threads_repo
         self._cache.clear()
+        self._rev.clear()
 
     def get(self, thread_id: str) -> HitlSessionPolicy:
         tid = (thread_id or "").strip()
@@ -211,10 +213,37 @@ class HitlSessionPolicyStore:
         if not tid:
             return resolved
         self._cache[tid] = resolved
+        self._rev[tid] = self._rev.get(tid, 0) + 1
         repo = self._repo
         if repo is not None:
             repo.update_composer(tid, hitl_policy=resolved.to_json())
         return resolved
+
+    def revision(self, thread_id: str) -> int:
+        return self._rev.get((thread_id or "").strip(), 0)
+
+    def compare_set(
+        self,
+        thread_id: str,
+        policy: HitlSessionPolicy | object,
+        expected_revision: int,
+    ) -> bool:
+        """Write *policy* only when no later ``set`` has moved *thread_id*."""
+        tid = (thread_id or "").strip()
+        if not tid or self.revision(tid) != expected_revision:
+            return False
+        self.set(tid, policy)
+        return True
+
+    def reset_bypass(self, thread_id: str) -> None:
+        """Restore ask-every-time for one conversation and its loaded member threads."""
+        tid = (thread_id or "").strip()
+        if not tid:
+            return
+        self.set(tid, {"mode": "ask"})
+        prefix = f"{tid}~"
+        for key in [key for key in self._cache if key.startswith(prefix)]:
+            self.set(key, {"mode": "ask"})
 
     def allows(self, thread_id: str, tool_name: str) -> bool:
         return self.get(thread_id).allows(tool_name)

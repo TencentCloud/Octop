@@ -107,6 +107,32 @@ async def test_bootstrap_respects_policy_root_dir(catalog: ExpertCatalog, tmp_pa
     assert spec.config["backend"]["root_dir"] == jail
 
 
+async def test_bootstrap_uses_selected_template(catalog: ExpertCatalog) -> None:
+    other = next(item.id for item in catalog.list_summaries() if item.id != DEFAULT_EXPERT_ID)
+    registry = MagicMock()
+    registry.get_row.return_value = None
+    registry.list_agents.return_value = []
+    registry.create = AsyncMock(return_value=object())
+    await bootstrap_default_agent(
+        registry,
+        catalog,
+        user_id=4,
+        locale="zh",
+        expert_id=other,
+    )
+    spec = registry.create.await_args.args[0]
+    assert spec.template_name == other
+
+
+async def test_bootstrap_rejects_unknown_template(catalog: ExpertCatalog) -> None:
+    registry = MagicMock()
+    registry.get_row.return_value = None
+    registry.list_agents.return_value = []
+    with pytest.raises(OctopError) as exc:
+        await bootstrap_default_agent(registry, catalog, user_id=4, expert_id="missing-template")
+    assert exc.value.code.value == "EXPERT_TEMPLATE_NOT_FOUND"
+
+
 async def test_bootstrap_requires_catalog() -> None:
     registry = MagicMock()
     registry.get_row.return_value = None

@@ -710,8 +710,6 @@ function ChatPageInner() {
   const { handleSend } = useChatSend({
     resolvedAgentId,
     activeThreadId,
-    sessions,
-    messagesLength: messages.length,
     selectedModel,
     selectedConnectors,
     selectedKnowledgeBaseIds,
@@ -722,7 +720,6 @@ function ChatPageInner() {
     defaultModel: activeAgent?.default_model ?? null,
     sendMessage,
     createSession,
-    renameSession,
     onAutoRecordingStarted: useCallback((recordingId: string) => {
       setBrowserRecording(true);
       setBrowserRecordingId(recordingId);
@@ -1837,7 +1834,13 @@ function ChatPageInner() {
               isStreaming={isStreaming}
               holdSend={membersStillTalking}
               isTeam={isTeamChat}
-              disabled={!agentChatReady || noAgents || memoryMaintBlocking}
+              disabled={
+                !agentChatReady ||
+                noAgents ||
+                memoryMaintBlocking ||
+                !modelsReady ||
+                availableModels.length === 0
+              }
               initialText={prefillInputRef.current}
               onComposerCleared={() => {
                 prefillInputRef.current = "";

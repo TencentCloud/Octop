@@ -1,12 +1,14 @@
 services:
   octop:
-    image: ghcr.io/tencentcloud/octop:1.0.2
+    image: ghcr.io/tencentcloud/octop:1.0.3b1
     container_name: octop
     restart: unless-stopped
     ulimits:
       nofile:
         soft: 65535
         hard: 65535
+    # Xvnc needs more than Docker's default 64MB /dev/shm after the user enables the desktop.
+    shm_size: "1gb"
     pull_policy: missing
     ports:
       - "8088:8088"

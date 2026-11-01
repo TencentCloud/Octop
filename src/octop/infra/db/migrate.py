@@ -1816,6 +1816,23 @@ def _ensure_bridge_connections_schema(db: DatabasePool) -> None:
         )
 
 
+def _repair_connector_text_credentials(db: DatabasePool) -> None:
+    """Cast TEXT ``connectors.credential_blob`` values back to BLOB.
+
+    Idempotent. PostgreSQL ``BYTEA`` cannot store the historical TEXT row, and
+    databases already at the current schema version must still be repaired, so
+    this stays out of the numbered migrations.
+    """
+    if db.dialect != "sqlite" or not _table_exists(db, "connectors"):
+        return
+    with db.transaction() as conn:
+        conn.execute(
+            "UPDATE connectors "
+            "SET credential_blob = CAST(credential_blob AS BLOB) "
+            "WHERE typeof(credential_blob) = 'text'"
+        )
+
+
 def _repair_legacy_schema(db: DatabasePool) -> None:
     """Idempotent compatibility repairs for local databases from old builds."""
     if _table_exists(db, "users"):
@@ -2259,6 +2276,76 @@ def _grant_bridge_permission(db: DatabasePool) -> None:
     _grant_permission_keys_once(db, _BRIDGE_PERMISSIONS, _BRIDGE_PERMISSIONS_FLAG)
 
 
+_PAGE_TAB_EXPANSIONS_FLAG = "expanded_page_tab_permissions_v1"
+
+
+def _expand_page_tab_permissions(db: DatabasePool) -> None:
+    """Copy collapsed page tabs onto grants that already had the parent key.
+
+    Runs once. Removing a tab afterwards stays removed.
+    """
+    if not _table_exists(db, "settings"):
+        return
+    with db.connect() as conn:
+        existing = conn.execute(
+            "SELECT value FROM settings WHERE key = ?",
+            (_PAGE_TAB_EXPANSIONS_FLAG,),
+        ).fetchone()
+    if existing is not None:
+        return
+
+    from octop.infra.users.permissions import PAGE_TAB_EXPANSIONS
+
+    def expand(table: str, id_col: str, skip_where: str) -> None:
+        if not _table_exists(db, table):
+            return
+        with db.connect() as conn:
+            rows = conn.execute(
+                f"SELECT {id_col}, permissions FROM {table} WHERE {skip_where}"
+            ).fetchall()
+        updates: list[tuple[str, object]] = []
+        for row in rows:
+            current = _parse_perm_list(row[1])
+            if current is None:
+                continue
+            merged = list(current)
+            changed = False
+            for parent, children, retire in PAGE_TAB_EXPANSIONS:
+                if parent not in merged:
+                    continue
+                for child in children:
+                    if child not in merged:
+                        merged.append(child)
+                        changed = True
+                if retire:
+                    merged = [key for key in merged if key != parent]
+                    changed = True
+            if changed:
+                updates.append((json.dumps(merged, ensure_ascii=False), row[0]))
+        if not updates:
+            return
+        with db.transaction() as conn:
+            for payload, pk in updates:
+                conn.execute(
+                    f"UPDATE {table} SET permissions = ? WHERE {id_col} = ?",
+                    (payload, pk),
+                )
+
+    expand("users", "id", "role <> 'admin'")
+    expand("user_role", "id", "user_role_id <> 'admin'")
+    with db.transaction() as conn:
+        if db.dialect == "postgresql":
+            conn.execute(
+                "INSERT INTO settings(key, value) VALUES (?, ?) ON CONFLICT (key) DO NOTHING",
+                (_PAGE_TAB_EXPANSIONS_FLAG, "1"),
+            )
+        else:
+            conn.execute(
+                "INSERT OR IGNORE INTO settings(key, value) VALUES (?, ?)",
+                (_PAGE_TAB_EXPANSIONS_FLAG, "1"),
+            )
+
+
 def run_migrations(db: DatabasePool) -> None:
     if db.dialect == "sqlite":
         _repair_legacy_schema(db)
@@ -2323,3 +2410,5 @@ def run_migrations(db: DatabasePool) -> None:
     _grant_default_nav_permissions(db)
     _grant_personalization_tab_permissions(db)
     _grant_bridge_permission(db)
+    _expand_page_tab_permissions(db)
+    _repair_connector_text_credentials(db)

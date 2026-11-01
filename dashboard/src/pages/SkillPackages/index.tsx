@@ -85,7 +85,10 @@ import { saveBlobAsFile } from "../../utils/saveBlobAsFile";
 import { createDetailRequestGate } from "../../utils/detailRequestGate";
 import { PackageIcon } from "./PackageIcon";
 import { ResourceVisibilityFields } from "../../components/ResourceVisibilityFields";
-import { SharedResourceBadge } from "../../components/SharedResourceBadge";
+import {
+  SharedAvatarMark,
+  SharedResourceBadge,
+} from "../../components/SharedResourceBadge";
 import type { ResourceVisibilityMode } from "../../api/modules/userGroups";
 import { PackageSkillCard } from "./PackageSkillCard";
 import PackageSkillsTable from "./PackageSkillsTable";
@@ -728,22 +731,28 @@ export default function SkillPackagesPage() {
                         }`}
                       >
                         <div className={styles.listName}>
-                          <span className={styles.listIcon}>
-                            <PackageIcon
-                              iconUrl={item.icon_url}
-                              iconName={item.icon_name}
-                              size={24}
-                              imageClassName={styles.listIconImage}
-                            />
-                          </span>
+                          <SharedAvatarMark
+                            shared={item.shared}
+                            owned={isPackageOwner(item, user)}
+                            ownerName={formatPackageCreator(item)}
+                          >
+                            <span className={styles.listIcon}>
+                              <PackageIcon
+                                iconUrl={item.icon_url}
+                                iconName={item.icon_name}
+                                size={24}
+                                imageClassName={styles.listIconImage}
+                              />
+                            </span>
+                          </SharedAvatarMark>
                           <Tooltip title={item.name} placement="topLeft">
                             <span className={styles.listNameText}>
                               {item.name}
                             </span>
                           </Tooltip>
                           <SharedResourceBadge
-                            shared={item.shared}
-                            owned={isPackageOwner(item, user)}
+                            shared={item.shared && isPackageOwner(item, user)}
+                            owned
                             ownerName={formatPackageCreator(item)}
                           />
                           <div

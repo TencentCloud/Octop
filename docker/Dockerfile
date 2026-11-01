@@ -7,7 +7,10 @@
 #
 # 用法（在仓库根目录执行，构建上下文为根目录）:
 #   docker build -f docker/Dockerfile -t octop:latest .
-#   docker run -d -p 8088:8088 -v octop-data:/data/.octop -e HOME=/data octop:latest
+#   docker run -d -p 8088:8088 --shm-size=1g -v octop-data:/data/.octop -e HOME=/data octop:latest
+#
+# --shm-size=1g 是启用远程桌面所必需的。Docker 默认 /dev/shm 只有 64MB，Xvnc 会起不来。
+# compose 文件里已经写了 shm_size: 1gb。
 #
 # 国内加速（可选，需 BuildKit，docker/docker_build.sh 默认已开启）:
 #   PIP_INDEX_URL=https://mirrors.cloud.tencent.com/pypi/simple \
@@ -28,6 +31,11 @@
 #
 # 或使用 Compose:
 #   docker compose -f docker/docker-compose.yml up -d
+#
+# 镜像内含虚拟桌面和系统 Chromium，但不会启动。用户在控制台确认后才启用。
+# 桌面安装已经带上 Chromium，不再另下 Playwright 浏览器。
+# 运行时带 Node.js 20（node / npm / npx），供依赖 Node 的技能使用。
+# Laya 不打进镜像：CPU 版 PyTorch 加多语言检查点大约要 4 GB 磁盘、约 2 GB 内存。
 # =============================================================================
 
 # ---------------------------------------------------------------------------
@@ -99,6 +107,14 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
         ripgrep \
     && rm -rf /var/lib/apt/lists/*
 
+# 技能和专家 shell 会调用 node / npm / npx。从前端构建阶段复用 Node 20。
+# Docker 拷贝会展开软链接，因此 npm / npx 在这里按原路径重建。
+COPY --from=frontend-builder /usr/local/bin/node /usr/local/bin/node
+COPY --from=frontend-builder /usr/local/lib/node_modules /usr/local/lib/node_modules
+RUN ln -sf ../lib/node_modules/npm/bin/npm-cli.js /usr/local/bin/npm \
+    && ln -sf ../lib/node_modules/npm/bin/npx-cli.js /usr/local/bin/npx \
+    && node --version && npm --version && npx --version
+
 COPY --from=ghcr.io/astral-sh/uv:0.7 /uv /uvx /bin/
 
 WORKDIR /app
@@ -111,7 +127,7 @@ RUN --mount=type=cache,target=/root/.cache/uv \
         if [ -n "$PIP_TRUSTED_HOST" ]; then export UV_INSECURE_HOST="$PIP_TRUSTED_HOST"; fi; \
     fi \
     && uv sync --frozen --no-install-project --no-dev \
-        --extra browser --extra local-embedding --extra knowledge-ocr
+        --extra browser --extra desktop --extra local-embedding --extra knowledge-ocr
 
 ENV PATH="/app/.venv/bin:$PATH" \
     PLAYWRIGHT_BROWSERS_PATH=/root/.cache/ms-playwright
@@ -121,7 +137,8 @@ COPY --from=frontend-builder /build/src/octop/dashboard/ ./src/octop/dashboard/
 
 COPY .env.example ./
 COPY docker/docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
-RUN chmod +x /usr/local/bin/docker-entrypoint.sh
+COPY docker/bake-desktop.sh /usr/local/bin/bake-desktop.sh
+RUN chmod +x /usr/local/bin/docker-entrypoint.sh /usr/local/bin/bake-desktop.sh
 
 RUN --mount=type=cache,target=/root/.cache/uv \
     if [ -n "$PIP_INDEX_URL" ]; then \
@@ -129,11 +146,14 @@ RUN --mount=type=cache,target=/root/.cache/uv \
         if [ -n "$PIP_TRUSTED_HOST" ]; then export UV_INSECURE_HOST="$PIP_TRUSTED_HOST"; fi; \
     fi \
     && uv sync --frozen --no-dev \
-        --extra browser --extra local-embedding --extra knowledge-ocr \
-    && .venv/bin/python -c "import cv2, fastembed, huggingface_hub, rapidocr, onnxruntime, pymupdf" \
+        --extra browser --extra desktop --extra local-embedding --extra knowledge-ocr \
+    && .venv/bin/python -c "import cv2, fastembed, huggingface_hub, mss, pynput, rapidocr, onnxruntime, pymupdf" \
     && apt-get update && apt-get install -y --no-install-recommends fonts-noto-cjk \
     && apt-get purge -y --auto-remove build-essential \
     && rm -rf /var/lib/apt/lists/* /tmp/*
+
+# Packages only. Xvnc stays stopped until the user enables the desktop.
+RUN bash /usr/local/bin/bake-desktop.sh
 
 RUN mkdir -p /data/.octop
 

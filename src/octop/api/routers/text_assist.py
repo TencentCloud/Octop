@@ -19,7 +19,7 @@ class TextAssistBody(BaseModel):
     kind: AssistKind = Field(description="Assist scenario; selects the backend prompt.")
     text: str = Field(
         default="",
-        description="Draft to polish. Required for chat.prompt; optional for form kinds.",
+        description="Draft to polish. Required for chat.prompt and chat.thread_title; optional for form kinds.",
     )
     context: dict[str, Any] = Field(
         default_factory=dict,

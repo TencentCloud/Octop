@@ -157,7 +157,7 @@ async def oidc_exchange(
 @router.get("/oidc/config", summary="Get OIDC provider configuration")
 async def oidc_config(
     request: Request,
-    _: Any = Depends(require_permission("sso")),
+    _: Any = Depends(require_permission("sso_oidc")),
     server: Any = Depends(get_server),
 ) -> dict[str, Any]:
     """Return the admin-safe OIDC provider configuration, excluding its client secret."""
@@ -168,7 +168,7 @@ async def oidc_config(
 async def put_oidc_config(
     body: OidcConfigBody,
     request: Request,
-    _: Any = Depends(require_permission("sso")),
+    _: Any = Depends(require_permission("sso_oidc")),
     server: Any = Depends(get_server),
 ) -> dict[str, Any]:
     """Create or update OIDC provider settings; the client secret is write-only."""
@@ -180,7 +180,7 @@ async def put_oidc_config(
 
 @router.post("/oidc/config/test", summary="Test OIDC discovery")
 async def test_oidc_config(
-    _: Any = Depends(require_permission("sso")), server: Any = Depends(get_server)
+    _: Any = Depends(require_permission("sso_oidc")), server: Any = Depends(get_server)
 ) -> dict[str, bool | str]:
     """Fetch OIDC discovery metadata and JWKS without changing configuration."""
     try:

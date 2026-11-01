@@ -43,7 +43,7 @@ import {
   AlertCircle,
 } from "lucide-react";
 import { useTranslation } from "react-i18next";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 
 import {
   avatarPickerStyles,
@@ -55,7 +55,10 @@ import {
 import { OctopEmptyMascot } from "../../../components/EmptyState";
 import { ResourceVisibilityFields } from "../../../components/ResourceVisibilityFields";
 import { ResourceAudienceFilter } from "../../../components/ResourceAudienceFilter";
-import { SharedResourceBadge } from "../../../components/SharedResourceBadge";
+import {
+  SharedAvatarMark,
+  SharedResourceBadge,
+} from "../../../components/SharedResourceBadge";
 import {
   matchesResourceAudience,
   type ResourceAudience,
@@ -178,11 +181,11 @@ function connectionStatusText(
   return t(`advancedSettings.bridge.status.${row.status}`);
 }
 
-const PEER_PRIVACY_STORAGE_KEY = "octop:bridge:hide-peer-info";
+type PeerSecret = "address" | "account" | "ip";
 
 interface BridgePrivacy {
   hidePeerInfo: boolean;
-  isRevealed: (connectionId: string) => boolean;
+  isRevealed: (connectionId: string, field: PeerSecret) => boolean;
 }
 
 /** The edit drawer is the data surface, so it always shows unmasked values. */
@@ -191,138 +194,175 @@ const PLAIN_PRIVACY: BridgePrivacy = {
   isRevealed: () => false,
 };
 
-function loadHidePeerInfo(): boolean {
-  try {
-    const stored = localStorage.getItem(PEER_PRIVACY_STORAGE_KEY);
-    // Masking is on by default: the cards are the usual screen-share surface.
-    return stored === null ? true : stored === "1";
-  } catch {
-    return true;
-  }
+function revealKey(connectionId: string, field: PeerSecret): string {
+  return `${connectionId}:${field}`;
 }
 
 /**
- * Master switch + per-card reveal for peer address/account masking.
+ * Per-field reveal for peer address, account, and source IP.
  * Reveals are session-only, so a reload always comes back masked.
  */
 function useBridgePeerPrivacy() {
-  const [hidePeerInfo, setHidePeerInfo] = useState(loadHidePeerInfo);
   const [revealedIds, setRevealedIds] = useState<ReadonlySet<string>>(
     () => new Set(),
   );
 
-  const setHidePeerInfoPersisted = useCallback((next: boolean) => {
-    setHidePeerInfo(next);
-    // Flipping the master switch re-masks every card.
-    setRevealedIds(new Set());
-    try {
-      localStorage.setItem(PEER_PRIVACY_STORAGE_KEY, next ? "1" : "0");
-    } catch {
-      /* ignore: masking still applies for this session */
-    }
-  }, []);
-
-  const toggleReveal = useCallback((connectionId: string) => {
-    setRevealedIds((prev) => {
-      const next = new Set(prev);
-      if (next.has(connectionId)) next.delete(connectionId);
-      else next.add(connectionId);
-      return next;
-    });
-  }, []);
+  const toggleReveal = useCallback(
+    (connectionId: string, field: PeerSecret) => {
+      const key = revealKey(connectionId, field);
+      setRevealedIds((prev) => {
+        const next = new Set(prev);
+        if (next.has(key)) next.delete(key);
+        else next.add(key);
+        return next;
+      });
+    },
+    [],
+  );
 
   const isRevealed = useCallback(
-    (connectionId: string) => revealedIds.has(connectionId),
+    (connectionId: string, field: PeerSecret) =>
+      revealedIds.has(revealKey(connectionId, field)),
     [revealedIds],
   );
 
-  return {
-    hidePeerInfo,
-    setHidePeerInfo: setHidePeerInfoPersisted,
-    toggleReveal,
-    isRevealed,
-  };
+  return { toggleReveal, isRevealed };
 }
 
-/** True when this row's peer identity must stay masked. */
-function shouldMaskPeer(privacy: BridgePrivacy, connectionId: string): boolean {
-  return privacy.hidePeerInfo && !privacy.isRevealed(connectionId);
+/** True when this field must stay masked. */
+function shouldMaskPeer(
+  privacy: BridgePrivacy,
+  connectionId: string,
+  field: PeerSecret,
+): boolean {
+  return privacy.hidePeerInfo && !privacy.isRevealed(connectionId, field);
 }
 
 function PeerRevealButton({
-  connectionId,
   masked,
+  fieldLabel,
   onToggle,
 }: {
-  connectionId: string;
   masked: boolean;
-  onToggle: (connectionId: string) => void;
+  fieldLabel: string;
+  onToggle: () => void;
 }) {
   const { t } = useTranslation();
-  const label = t(
+  const action = t(
     masked
       ? "advancedSettings.bridge.revealPeerInfo"
       : "advancedSettings.bridge.hidePeerInfoAgain",
   );
+  const label = `${action} ${fieldLabel}`;
   return (
-    <Tooltip title={label}>
+    <Tooltip title={action}>
       <Button
+        className={styles.peerRevealBtn}
         size="small"
         type="text"
         aria-label={label}
         aria-pressed={!masked}
         icon={masked ? <Eye size={14} /> : <EyeOff size={14} />}
-        onClick={() => onToggle(connectionId)}
+        onClick={onToggle}
       />
     </Tooltip>
+  );
+}
+
+function PeerSecretValue({
+  connectionId,
+  field,
+  fieldLabel,
+  plain,
+  maskedText,
+  title,
+  privacy,
+  onToggle,
+}: {
+  connectionId: string;
+  field: PeerSecret;
+  fieldLabel: string;
+  plain: string;
+  maskedText: string;
+  title?: string;
+  privacy: BridgePrivacy;
+  onToggle: (connectionId: string, field: PeerSecret) => void;
+}) {
+  const hidden = shouldMaskPeer(privacy, connectionId, field);
+  const text = plain ? (hidden ? maskedText : plain) : "—";
+  return (
+    <span className={styles.peerSecret}>
+      <span className={styles.peerSecretText} title={title}>
+        {text}
+      </span>
+      {privacy.hidePeerInfo && plain ? (
+        <PeerRevealButton
+          masked={hidden}
+          fieldLabel={fieldLabel}
+          onToggle={() => onToggle(connectionId, field)}
+        />
+      ) : null}
+    </span>
   );
 }
 
 function InboundPeerFacts({
   row,
   privacy,
+  onToggleReveal,
 }: {
   row: BridgeConnection;
   privacy: BridgePrivacy;
+  onToggleReveal: (connectionId: string, field: PeerSecret) => void;
 }) {
   const { t } = useTranslation();
   const address = inboundPeerAddress(row);
   const sourceIp = inboundSourceIp(row);
-  const masked = shouldMaskPeer(privacy, row.connection_id);
+  const addressLabel = t("advancedSettings.bridge.peerUrl");
+  const accountLabel = t("advancedSettings.bridge.peerAccount");
   return (
     <>
       <div className={styles.infoRow}>
-        <span className={styles.infoLabel}>
-          {t("advancedSettings.bridge.peerUrl")}:
-        </span>
-        <span className={styles.infoValue} title={address || undefined}>
-          {address
-            ? masked
-              ? maskPeerAddress(peerHostLabel(address))
-              : peerHostLabel(address)
-            : "—"}
-        </span>
+        <span className={styles.infoLabel}>{addressLabel}:</span>
+        <PeerSecretValue
+          connectionId={row.connection_id}
+          field="address"
+          fieldLabel={addressLabel}
+          plain={address ? peerHostLabel(address) : ""}
+          maskedText={address ? maskPeerAddress(peerHostLabel(address)) : ""}
+          title={address || undefined}
+          privacy={privacy}
+          onToggle={onToggleReveal}
+        />
       </div>
       {sourceIp ? (
         <div className={styles.infoRow}>
           <span className={styles.infoLabel}>
             {t("advancedSettings.bridge.peerIp")}:
           </span>
-          <span className={styles.infoValue}>
-            {masked ? maskPeerAddress(sourceIp) : sourceIp}
-          </span>
+          <PeerSecretValue
+            connectionId={row.connection_id}
+            field="ip"
+            fieldLabel={t("advancedSettings.bridge.peerIp")}
+            plain={sourceIp}
+            maskedText={maskPeerAddress(sourceIp)}
+            privacy={privacy}
+            onToggle={onToggleReveal}
+          />
         </div>
       ) : null}
       <div className={styles.infoRow}>
-        <span className={styles.infoLabel}>
-          {t("advancedSettings.bridge.peerAccount")}:
-        </span>
-        <span
-          className={styles.infoValue}
+        <span className={styles.infoLabel}>{accountLabel}:</span>
+        <PeerSecretValue
+          connectionId={row.connection_id}
+          field="account"
+          fieldLabel={accountLabel}
+          plain={row.peer_username}
+          maskedText={maskPeerAccount(row.peer_username)}
           title={t("advancedSettings.bridge.peerAccountHint")}
-        >
-          {masked ? maskPeerAccount(row.peer_username) : row.peer_username}
-        </span>
+          privacy={privacy}
+          onToggle={onToggleReveal}
+        />
       </div>
     </>
   );
@@ -566,7 +606,7 @@ interface ConnectionActions {
     enabled: boolean,
   ) => Promise<void>;
   onOpenAgent: (agentId: string) => void;
-  onToggleReveal: (connectionId: string) => void;
+  onToggleReveal: (connectionId: string, field: PeerSecret) => void;
 }
 
 function BridgeDisconnectButton({
@@ -749,7 +789,8 @@ function BridgeConnectionCard({
 }) {
   const { t } = useTranslation();
   const connected = row.status === "connected";
-  const masked = shouldMaskPeer(privacy, row.connection_id);
+  const addressLabel = t("advancedSettings.bridge.peerUrl");
+  const accountLabel = t("advancedSettings.bridge.peerAccount");
   return (
     <section
       className={styles.backendCard}
@@ -757,13 +798,19 @@ function BridgeConnectionCard({
     >
       <div className={styles.backendCardHeader}>
         <div className={styles.backendCardTitle}>
-          <div className={styles.backendCardIcon}>
-            <BridgeConnectionAvatar
-              iconUrl={row.icon_url}
-              iconName={row.icon_name}
-              size={18}
-            />
-          </div>
+          <SharedAvatarMark
+            shared={row.shared}
+            owned={isOwnedConnection(row)}
+            ownerName={bridgeOwnerLabel(row)}
+          >
+            <div className={styles.backendCardIcon}>
+              <BridgeConnectionAvatar
+                iconUrl={row.icon_url}
+                iconName={row.icon_name}
+                size={18}
+              />
+            </div>
+          </SharedAvatarMark>
           <div className={styles.backendCardName}>
             <span className={styles.backendCardNameText}>
               {row.display_name}
@@ -774,8 +821,8 @@ function BridgeConnectionCard({
               </Tag>
             ) : null}
             <SharedResourceBadge
-              shared={row.shared}
-              owned={isOwnedConnection(row)}
+              shared={Boolean(row.shared) && isOwnedConnection(row)}
+              owned
               ownerName={bridgeOwnerLabel(row)}
             />
           </div>
@@ -794,30 +841,37 @@ function BridgeConnectionCard({
 
       <div className={styles.backendCardInfo}>
         {isInboundConnection(row) ? (
-          <>
-            <InboundPeerFacts row={row} privacy={privacy} />
-          </>
+          <InboundPeerFacts
+            row={row}
+            privacy={privacy}
+            onToggleReveal={actions.onToggleReveal}
+          />
         ) : (
           <>
             <div className={styles.infoRow}>
-              <span className={styles.infoLabel}>
-                {t("advancedSettings.bridge.peerUrl")}:
-              </span>
-              <span className={styles.infoValue} title={row.peer_base_url}>
-                {masked
-                  ? maskPeerAddress(peerHostLabel(row.peer_base_url))
-                  : peerHostLabel(row.peer_base_url)}
-              </span>
+              <span className={styles.infoLabel}>{addressLabel}:</span>
+              <PeerSecretValue
+                connectionId={row.connection_id}
+                field="address"
+                fieldLabel={addressLabel}
+                plain={peerHostLabel(row.peer_base_url)}
+                maskedText={maskPeerAddress(peerHostLabel(row.peer_base_url))}
+                title={row.peer_base_url}
+                privacy={privacy}
+                onToggle={actions.onToggleReveal}
+              />
             </div>
             <div className={styles.infoRow}>
-              <span className={styles.infoLabel}>
-                {t("advancedSettings.bridge.peerAccount")}:
-              </span>
-              <span className={styles.infoValue}>
-                {masked
-                  ? maskPeerAccount(row.peer_username)
-                  : row.peer_username}
-              </span>
+              <span className={styles.infoLabel}>{accountLabel}:</span>
+              <PeerSecretValue
+                connectionId={row.connection_id}
+                field="account"
+                fieldLabel={accountLabel}
+                plain={row.peer_username}
+                maskedText={maskPeerAccount(row.peer_username)}
+                privacy={privacy}
+                onToggle={actions.onToggleReveal}
+              />
             </div>
           </>
         )}
@@ -845,13 +899,6 @@ function BridgeConnectionCard({
           ) : null}
         </div>
         <div className={styles.backendActionsRight}>
-          {privacy.hidePeerInfo ? (
-            <PeerRevealButton
-              connectionId={row.connection_id}
-              masked={masked}
-              onToggle={actions.onToggleReveal}
-            />
-          ) : null}
           {isOwnedConnection(row) ? (
             <>
               <Tooltip title={t("common.edit")}>
@@ -897,14 +944,14 @@ export default function BridgeSettingsPanel({
 }) {
   const { t } = useTranslation();
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
   const isMobile = useIsMobile();
   const { refresh: refreshAgents } = useAgent();
   const { viewMode, setViewMode, showCardView } = useCardTableView("card");
-  const { hidePeerInfo, setHidePeerInfo, toggleReveal, isRevealed } =
-    useBridgePeerPrivacy();
+  const { toggleReveal, isRevealed } = useBridgePeerPrivacy();
   const privacy = useMemo<BridgePrivacy>(
-    () => ({ hidePeerInfo, isRevealed }),
-    [hidePeerInfo, isRevealed],
+    () => ({ hidePeerInfo: true, isRevealed }),
+    [isRevealed],
   );
   const [audience, setAudience] = useState<ResourceAudience>("all");
   const [loading, setLoading] = useState(true);
@@ -942,6 +989,25 @@ export default function BridgeSettingsPanel({
   const [editVisibility, setEditVisibility] =
     useState<ResourceVisibilityMode>("owner");
   const [editGroupIds, setEditGroupIds] = useState<string[]>([]);
+
+  const createFromQuery = searchParams.get("create") === "1";
+  const consumedCreateQuery = useRef(false);
+  useEffect(() => {
+    if (!createFromQuery || loading || consumedCreateQuery.current) return;
+    consumedCreateQuery.current = true;
+    if (rows.length >= MAX_BRIDGE_CONNECTIONS) {
+      message.warning(
+        t("advancedSettings.bridge.addDisabled", {
+          limit: MAX_BRIDGE_CONNECTIONS,
+        }),
+      );
+    } else {
+      setCreateOpen(true);
+    }
+    const next = new URLSearchParams(searchParams);
+    next.delete("create");
+    setSearchParams(next, { replace: true });
+  }, [createFromQuery, loading, rows.length, searchParams, setSearchParams, t]);
 
   const closeCreateDrawer = () => {
     setCreateOpen(false);
@@ -1317,8 +1383,8 @@ export default function BridgeSettingsPanel({
       onOpenAgent: (agentId) => {
         navigate(`/chat/${encodeURIComponent(agentId)}`);
       },
-      onToggleReveal: (connectionId) => {
-        toggleReveal(connectionId);
+      onToggleReveal: (connectionId, field) => {
+        toggleReveal(connectionId, field);
       },
     }),
     [
@@ -1381,22 +1447,41 @@ export default function BridgeSettingsPanel({
           const address = isInboundConnection(row)
             ? inboundPeerAddress(row)
             : url;
-          if (!address) return "—";
-          return shouldMaskPeer(privacy, row.connection_id)
-            ? maskPeerAddress(address)
-            : address;
+          const label = t("advancedSettings.bridge.peerUrl");
+          return (
+            <PeerSecretValue
+              connectionId={row.connection_id}
+              field="address"
+              fieldLabel={label}
+              plain={address}
+              maskedText={address ? maskPeerAddress(address) : ""}
+              title={address || undefined}
+              privacy={privacy}
+              onToggle={actions.onToggleReveal}
+            />
+          );
         },
       },
       {
         title: t("advancedSettings.bridge.peerAccount"),
         dataIndex: "peer_username",
         key: "peer_username",
-        width: 120,
+        width: 160,
         ellipsis: true,
-        render: (name: string, row) =>
-          shouldMaskPeer(privacy, row.connection_id)
-            ? maskPeerAccount(name)
-            : name,
+        render: (name: string, row) => {
+          const label = t("advancedSettings.bridge.peerAccount");
+          return (
+            <PeerSecretValue
+              connectionId={row.connection_id}
+              field="account"
+              fieldLabel={label}
+              plain={name}
+              maskedText={name ? maskPeerAccount(name) : ""}
+              privacy={privacy}
+              onToggle={actions.onToggleReveal}
+            />
+          );
+        },
       },
       {
         title: t("advancedSettings.bridge.colStatus"),
@@ -1440,44 +1525,32 @@ export default function BridgeSettingsPanel({
         width: 240,
         render: (_: unknown, row) => {
           const canManage = isOwnedConnection(row);
-          const canReveal = privacy.hidePeerInfo;
-          if (!canManage && !canReveal) return "—";
+          if (!canManage) return "—";
           return (
             <div className={styles.tableActions}>
-              {canReveal ? (
-                <PeerRevealButton
-                  connectionId={row.connection_id}
-                  masked={shouldMaskPeer(privacy, row.connection_id)}
-                  onToggle={actions.onToggleReveal}
-                />
-              ) : null}
-              {canManage ? (
-                <>
-                  <Button
-                    size="small"
-                    type="link"
-                    icon={<Pencil size={14} />}
-                    onClick={() => actions.onEdit(row)}
-                  >
-                    {t("common.edit")}
-                  </Button>
-                  <BridgeDisconnectButton
-                    row={row}
-                    connected={row.status === "connected"}
-                    link
-                    busy={actions.busyId === row.connection_id}
-                    onDisconnect={actions.onDisconnect}
-                    onConnect={actions.onConnect}
-                  />
-                  <BridgeDeleteButton
-                    row={row}
-                    connected={row.status === "connected"}
-                    link
-                    busy={actions.busyId === row.connection_id}
-                    onDelete={actions.onDelete}
-                  />
-                </>
-              ) : null}
+              <Button
+                size="small"
+                type="link"
+                icon={<Pencil size={14} />}
+                onClick={() => actions.onEdit(row)}
+              >
+                {t("common.edit")}
+              </Button>
+              <BridgeDisconnectButton
+                row={row}
+                connected={row.status === "connected"}
+                link
+                busy={actions.busyId === row.connection_id}
+                onDisconnect={actions.onDisconnect}
+                onConnect={actions.onConnect}
+              />
+              <BridgeDeleteButton
+                row={row}
+                connected={row.status === "connected"}
+                link
+                busy={actions.busyId === row.connection_id}
+                onDelete={actions.onDelete}
+              />
             </div>
           );
         },
@@ -1535,18 +1608,6 @@ export default function BridgeSettingsPanel({
   const atConnectionLimit = rows.length >= MAX_BRIDGE_CONNECTIONS;
   const headerActions = (
     <>
-      <Tooltip title={t("advancedSettings.bridge.peerPrivacyHint")}>
-        <span className={styles.privacyToggle}>
-          {hidePeerInfo ? <EyeOff size={14} /> : <Eye size={14} />}
-          <Switch
-            size="small"
-            checked={hidePeerInfo}
-            aria-label={t("advancedSettings.bridge.peerPrivacy")}
-            onChange={setHidePeerInfo}
-          />
-          <span>{t("advancedSettings.bridge.peerPrivacy")}</span>
-        </span>
-      </Tooltip>
       {rows.length > 0 ? viewToggle : null}
       <Button icon={<RefreshCw size={14} />} onClick={() => void reload()}>
         {t("common.refresh")}
@@ -2115,7 +2176,11 @@ export default function BridgeSettingsPanel({
               <div className={styles.createSectionTitle}>
                 {t("advancedSettings.bridge.sectionRemote")}
               </div>
-              <InboundPeerFacts row={editTarget} privacy={PLAIN_PRIVACY} />
+              <InboundPeerFacts
+                row={editTarget}
+                privacy={PLAIN_PRIVACY}
+                onToggleReveal={() => {}}
+              />
             </div>
           ) : null}
 

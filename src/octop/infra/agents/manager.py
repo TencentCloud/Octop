@@ -83,7 +83,7 @@ from octop.infra.skills.workspace_catalog import (
     list_workspace_skill_summaries,
     repair_workspace_skill_manifests,
 )
-from octop.infra.utils.locale import Locale
+from octop.infra.utils.locale import Locale, resolve_user_locale
 from octop.infra.utils.turn_failure import turn_model_scope
 from octop.infra.utils.ulid import new_short_id
 
@@ -3945,10 +3945,19 @@ class AgentManager:
         if not team_host and self._config.capabilities.mobile.enabled:
             from octop.infra.control.mobile.tools import build_mobile_tools  # noqa: PLC0415
 
+            def _mobile_workspace_for(agent_id: str) -> Any:
+                # Prefer the running agent's workspace — authoritative for
+                # docker / ephemeral remote sandboxes; ws is the start-time
+                # fallback for the agent being configured here.
+                if self._harness_manager is not None:
+                    with suppress(Exception):
+                        return self._harness_manager.get_agent(agent_id).agent.workspace
+                return ws if agent_id == row.agent_id else None
+
             mobile_tools = build_mobile_tools(
                 self._config,
                 user_repo=self._repos.user_repo,
-                paths=self.paths,
+                workspace_for=_mobile_workspace_for,
             )
 
         from octop_harness.plugins import PluginRegistry, build_plugin_tools  # noqa: PLC0415
@@ -4012,6 +4021,10 @@ class AgentManager:
 
         from octop.infra.agents.middleware.binary_read_guard import BinaryReadGuardMiddleware
         from octop.infra.agents.middleware.browser_profile import BrowserProfileMiddleware
+        from octop.infra.agents.middleware.mcp_output_schema import (
+            McpOutputSchemaMiddleware,
+            harness_handles_mcp_tool_errors,
+        )
         from octop.infra.agents.middleware.octop_ui_offload import OctopUiOffloadMiddleware
         from octop.infra.agents.middleware.reasoning import ReasoningRequestMiddleware
         from octop.infra.agents.middleware.thread_artifacts import ThreadArtifactsMiddleware
@@ -4038,6 +4051,7 @@ class AgentManager:
             KnowledgeSearchHintMiddleware(),
             BrowserProfileMiddleware(),
             BinaryReadGuardMiddleware(),
+            *(() if harness_handles_mcp_tool_errors() else (McpOutputSchemaMiddleware(),)),
             WorkspaceImageMaterializeMiddleware(workspace=ws),
             ThreadArtifactsMiddleware(
                 thread_repo=self._repos.thread_repo,
@@ -4170,6 +4184,12 @@ class AgentManager:
             name=_memory_namespace(row.agent_id),
             workspace_dir=harness_workspace,
             system_files_path=system_files_path_from_config(cfg),
+            # Owner's stored locale only. Per-message language would change
+            # the cached system prefix on every switch.
+            language=resolve_user_locale(
+                user_repo=self._repos.user_repo,
+                user_id=row.user_id or 0,
+            ),
             # Memory aux LLM (extraction / promotion) needs a concrete ref; fall
             # back to the same resolution AUTO chat routing uses (active model
             # first, else first usable) — so promotion works whenever chat does.

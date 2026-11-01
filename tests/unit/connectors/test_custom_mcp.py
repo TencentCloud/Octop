@@ -133,6 +133,12 @@ def test_rejects_public_http_and_allows_lan():
             {"transport": "streamable_http", "url": "http://example.com/mcp"},
         )
     assert http_exc.value.code is ErrorCode.CONNECTOR_MCP_HTTPS_REQUIRED
+    assert http_exc.value.details["host"] == "example.com"
+    assert "example.com" in http_exc.value.message
+    zh = http_exc.value.localized_message("zh")
+    assert "example.com" in zh
+    assert "{host}" not in zh
+    assert "HTTPS" in zh
 
     for url in (
         "http://10.0.0.1/mcp",

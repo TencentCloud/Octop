@@ -28,6 +28,7 @@ import { request } from "../../../api/request";
 import type { OctopAgent } from "../../../context/AgentContext";
 import { useAgent } from "../../../context/AgentContext";
 import MbtiPersonaTag from "../../../components/MbtiPersonaTag";
+import BackendFlag from "./BackendFlag";
 import { ExpertIcon } from "./iconForName";
 import {
   formatAgentError,
@@ -35,10 +36,14 @@ import {
   isAgentChatReady,
   isAgentModelConfigError,
 } from "../../../utils/agentError";
+import { apiErrorMessage } from "../../../utils/apiError";
 import styles from "../index.module.less";
 import RemoteExpertHint from "../../Chat/components/RemoteExpertHint";
 import { expertDeleteConfirm } from "../../../utils/remoteExpert";
-import { SharedResourceBadge } from "../../../components/SharedResourceBadge";
+import {
+  SharedAvatarMark,
+  SharedResourceBadge,
+} from "../../../components/SharedResourceBadge";
 import { isSharedExpertViewer } from "../../../utils/sharedExpert";
 import type { PublishedExpert } from "../../../api/modules/publishedExperts";
 import PublishTemplateButton from "./PublishTemplateButton";
@@ -215,11 +220,15 @@ export const AgentCard = memo(function AgentCard({
           onStateChange(agent.agent_id, "stopping");
           message.success(t("experts.agentStopped", { name: agent.name }));
         }
-      } catch {
+      } catch (error) {
         message.error(
-          checked
-            ? t("experts.agentStartFailed")
-            : t("experts.agentStopFailed"),
+          apiErrorMessage(
+            error,
+            checked
+              ? t("experts.agentStartFailed")
+              : t("experts.agentStopFailed"),
+            t,
+          ),
         );
       } finally {
         setActionLoading(false);
@@ -300,23 +309,29 @@ export const AgentCard = memo(function AgentCard({
 
         {/* Header */}
         <div className={styles.agentCard2Header}>
-          <div
-            className={styles.agentCard2Icon}
-            style={{ color: accent, background: `${accent}1a` }}
+          <SharedAvatarMark
+            shared={agent.is_shared}
+            owned={!sharedViewer}
+            ownerName={agent.owner_username}
           >
-            <ExpertIcon
-              iconUrl={iconUrl ?? agent.icon_url}
-              iconName={iconName ?? agent.icon_name}
-              size={iconUrl ?? agent.icon_url ? 42 : 22}
-            />
-          </div>
+            <div
+              className={styles.agentCard2Icon}
+              style={{ color: accent, background: `${accent}1a` }}
+            >
+              <ExpertIcon
+                iconUrl={iconUrl ?? agent.icon_url}
+                iconName={iconName ?? agent.icon_name}
+                size={iconUrl ?? agent.icon_url ? 42 : 22}
+              />
+            </div>
+          </SharedAvatarMark>
 
           <div className={styles.agentCard2TitleBlock}>
             <div className={styles.agentCard2NameRow}>
               <div className={styles.agentCard2Name}>{agent.name}</div>
               <SharedResourceBadge
-                shared={agent.is_shared}
-                owned={!sharedViewer}
+                shared={Boolean(agent.is_shared) && !sharedViewer}
+                owned
                 ownerName={agent.owner_username}
               />
               <RemoteExpertHint agent={agent} />
@@ -352,6 +367,7 @@ export const AgentCard = memo(function AgentCard({
               {memorySlimming && (
                 <Tag color="processing">{t("experts.memorySlimming")}</Tag>
               )}
+              <BackendFlag config={agent.config} />
               <MbtiPersonaTag
                 value={agent.persona_mbti}
                 onClick={isOwner ? () => setMbtiCatalogOpen(true) : undefined}

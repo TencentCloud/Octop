@@ -898,6 +898,17 @@ def test_build_harness_config_includes_search_knowledge_without_cron(
     assert any(isinstance(item, KnowledgeSearchHintMiddleware) for item in (cfg.middleware or []))
 
 
+def test_build_harness_config_softens_mcp_output_schema_errors(manager: AgentManager) -> None:
+    from octop.infra.agents.middleware.mcp_output_schema import (
+        McpOutputSchemaMiddleware,
+        harness_handles_mcp_tool_errors,
+    )
+
+    cfg = manager._build_harness_config(_row(agent_id="AGT001"))
+    mounted = any(isinstance(item, McpOutputSchemaMiddleware) for item in (cfg.middleware or []))
+    assert mounted is not harness_handles_mcp_tool_errors()
+
+
 def test_build_harness_config_defaults_local_shell_backend(manager: AgentManager) -> None:
     cfg = manager._build_harness_config(_row(agent_id="AGT001"))
     assert cfg.backend == _expected_default_backend(manager, "AGT001")
@@ -1046,6 +1057,26 @@ def test_build_harness_config_keeps_memory_after_bootstrap(
     )
     cfg = manager._build_harness_config(row)
     assert cfg.memory is None
+
+
+def test_build_harness_config_language_follows_owner_locale(manager: AgentManager) -> None:
+    from dataclasses import replace
+
+    user_id = manager._repos.user_repo.create(
+        username="en-owner", password_hash="x", role="user", locale="en"
+    )
+    agent_id = "AGT_LOCALE"
+    ws = manager._paths.ensure_agent_workspace(agent_id)
+    (ws / ".bootstrapped").write_text("", encoding="utf-8")
+    row = replace(
+        _row(agent_id=agent_id),
+        user_id=user_id,
+        config_json=json.dumps({"backend": _fs_backend(ws)}),
+    )
+    assert manager._build_harness_config(row).language == "en"
+
+    missing = replace(row, user_id=None)
+    assert manager._build_harness_config(missing).language == "zh"
 
 
 def test_build_harness_config_keeps_system_prompt_after_bootstrap(
