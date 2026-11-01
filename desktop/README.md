@@ -7,8 +7,8 @@ All desktop-client code lives here. This is **not** `src/octop/infra/control/des
 |------|------|
 | [`src/`](src/) | Electron shell — owns the Python sidecar, not the business logic |
 | [`portable/`](portable/) | Green zip packaging |
-| [`DESKTOP_ARCHITECTURE.zh.md`](DESKTOP_ARCHITECTURE.zh.md) | Target architecture for the Electron shell |
-| [`LOCAL_ACCOUNT_CLAIM.zh.md`](LOCAL_ACCOUNT_CLAIM.zh.md) | Claim an existing local account when `OCTOP_HOME` already has users (not implemented) |
+| [`docs/DESKTOP_ARCHITECTURE.zh.md`](docs/DESKTOP_ARCHITECTURE.zh.md) | Target architecture for the Electron shell |
+| [`docs/LOCAL_ACCOUNT_CLAIM.zh.md`](docs/LOCAL_ACCOUNT_CLAIM.zh.md) | Claim an existing local account when `OCTOP_HOME` already has users (not implemented) |
 
 The Electron shell owns the whole desktop lifecycle: extract the green runtime,
 spawn Octop on a random loopback port, own tray/window chrome, refuse
@@ -176,7 +176,7 @@ shell can do on its own.
 A different gap is also unsolved: an `OCTOP_HOME` that already has users (an
 older desktop install, or a local `octop run`) never registered a device
 credential, so the new shell lands on the login page. The claim flow for that
-case is specified in [`LOCAL_ACCOUNT_CLAIM.zh.md`](LOCAL_ACCOUNT_CLAIM.zh.md)
+case is specified in [`docs/LOCAL_ACCOUNT_CLAIM.zh.md`](docs/LOCAL_ACCOUNT_CLAIM.zh.md)
 and is not implemented yet.
 
 ## WebSocket relay (shell-owned)
