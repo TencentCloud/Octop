@@ -15,6 +15,10 @@ described in [Chat (WebSocket)](#chat-websocket).
 | `Authorization` | `Bearer <access_token>` from `POST /api/auth/login` |
 
 Tokens expire after `OCTOP_ACCESS_TOKEN_TTL` seconds (default 24 h).
+An authenticated request renews the token once less than two-thirds of that
+lifetime remains, so active use extends the session from the last renewal.
+Changing the password invalidates outstanding tokens; the change-password
+response returns a replacement in `X-Octop-Access-Token`.
 Rotating the JWT secret (`octop admin rotate-jwt-secret`) invalidates
 every outstanding token immediately. Login attempts are rate-limited
 (`OCTOP_LOGIN_MAX_ATTEMPTS` / `OCTOP_LOGIN_LOCKOUT_SECONDS`); the
@@ -102,7 +106,7 @@ does not set these headers itself.
 | `POST`   | `/auth/logout` | user | `204` |
 | `GET`    | `/auth/me` | user | `{id, username, role, display_name, locale, ...}` |
 | `PATCH`  | `/auth/me` | user | body `{display_name?, locale?, ...}` |
-| `POST`   | `/auth/change-password` | user | body `{old_password, new_password}` → `204`. Accounts without a local password (directory/SSO-provisioned) get `PASSWORD_NOT_SET` |
+| `POST`   | `/auth/change-password` | user | body `{old_password, new_password}` → `204`, with a replacement access token in `X-Octop-Access-Token`. Outstanding tokens stop working. Accounts without a local password (directory/SSO-provisioned) get `PASSWORD_NOT_SET` |
 | `GET`    | `/health` | public | `{status: "ok", version}` |
 
 ## Users (admin)

@@ -56,6 +56,25 @@ import styles from "../index.module.less";
 /** Default preview size per expert in minimal nav (matches session page size). */
 export const MINIMAL_AGENT_SESSION_PREVIEW = 10;
 
+function storedPreviewLimit(
+  limits: Record<string, number>,
+  agentId: string,
+): number {
+  return limits[agentId] ?? MINIMAL_AGENT_SESSION_PREVIEW;
+}
+
+/** One extra row tells us whether another page exists, same as the classic list. */
+async function fetchAgentPreview(
+  agentId: string,
+  limit: number,
+): Promise<{ sessions: Session[]; hasMore: boolean }> {
+  const rows = await octopThreadsApi.list(agentId, limit + 1);
+  return {
+    sessions: sortSessions(rows.slice(0, limit).map(toSession)),
+    hasMore: rows.length > limit,
+  };
+}
+
 const FOLDER_COLLAPSED_KEY = "octop:minimal-agent-folders-collapsed";
 
 function loadCollapsedFolders(): Set<string> {
@@ -300,6 +319,17 @@ export default function MinimalAgentSessionNav({
   const { t } = useTranslation();
   const navigate = useNavigate();
   const [byAgent, setByAgent] = useState<Record<string, Session[]>>({});
+  const [hasMoreByAgent, setHasMoreByAgent] = useState<Record<string, boolean>>(
+    {},
+  );
+  const [loadingMoreByAgent, setLoadingMoreByAgent] = useState<
+    Record<string, boolean>
+  >({});
+  const limitsRef = useRef<Record<string, number>>({});
+  const requestedLimitsRef = useRef<Record<string, number>>({});
+  const requestIdsRef = useRef<Record<string, number>>({});
+  const loadingMoreRef = useRef<Set<string>>(new Set());
+  const rosterRef = useRef("");
   const liveWorkingIds = useSessionWorkIds();
   const [loading, setLoading] = useState(false);
   const [collapsedFolders, setCollapsedFolders] = useState<Set<string>>(() =>
@@ -431,74 +461,116 @@ export default function MinimalAgentSessionNav({
     [onAgentSelect],
   );
 
-  const refreshAgentPreview = useCallback(async (agentId: string) => {
-    if (!agentId) return;
-    try {
-      const rows = await octopThreadsApi.list(
-        agentId,
-        MINIMAL_AGENT_SESSION_PREVIEW,
-      );
-      const list = sortSessions(rows.map(toSession)).slice(
-        0,
-        MINIMAL_AGENT_SESSION_PREVIEW,
-      );
-      setByAgent((prev) => ({ ...prev, [agentId]: list }));
-    } catch {
-      /* ignore */
-    }
-  }, []);
+  const applyPreview = useCallback(
+    (
+      agentId: string,
+      page: { sessions: Session[]; hasMore: boolean },
+      limit: number,
+    ) => {
+      limitsRef.current[agentId] = limit;
+      setByAgent((prev) => ({ ...prev, [agentId]: page.sessions }));
+      setHasMoreByAgent((prev) => ({ ...prev, [agentId]: page.hasMore }));
+    },
+    [],
+  );
+
+  const refreshAgentPreview = useCallback(
+    async (agentId: string, limit?: number) => {
+      if (!agentId) return;
+      const pageSize =
+        limit ??
+        requestedLimitsRef.current[agentId] ??
+        storedPreviewLimit(limitsRef.current, agentId);
+      const requestId = (requestIdsRef.current[agentId] ?? 0) + 1;
+      requestIdsRef.current[agentId] = requestId;
+      try {
+        const page = await fetchAgentPreview(agentId, pageSize);
+        if (requestIdsRef.current[agentId] !== requestId) return;
+        if (!rosterRef.current.split(",").includes(agentId)) return;
+        applyPreview(agentId, page, pageSize);
+      } catch {
+        /* keep the previous page; the expand button stays clickable */
+      }
+    },
+    [applyPreview],
+  );
+
+  const loadMore = useCallback(
+    async (agentId: string) => {
+      if (loadingMoreRef.current.has(agentId)) return;
+      loadingMoreRef.current.add(agentId);
+      const limit =
+        storedPreviewLimit(limitsRef.current, agentId) +
+        MINIMAL_AGENT_SESSION_PREVIEW;
+      requestedLimitsRef.current[agentId] = limit;
+      setLoadingMoreByAgent((prev) => ({ ...prev, [agentId]: true }));
+      try {
+        await refreshAgentPreview(agentId, limit);
+      } finally {
+        delete requestedLimitsRef.current[agentId];
+        loadingMoreRef.current.delete(agentId);
+        setLoadingMoreByAgent((prev) => ({ ...prev, [agentId]: false }));
+      }
+    },
+    [refreshAgentPreview],
+  );
 
   // Fetch preview threads for every expert (independent of classic session store).
+  // Keep each expert's already-expanded page size across roster refreshes.
   useEffect(() => {
+    rosterRef.current = agentKey;
     if (!agentKey) {
       setByAgent({});
+      setHasMoreByAgent({});
+      setLoading(false);
       return;
     }
+    const ids = new Set(agentKey.split(",").filter(Boolean));
+    setByAgent((prev) => {
+      if (Object.keys(prev).every((id) => ids.has(id))) return prev;
+      const next: Record<string, Session[]> = {};
+      for (const id of ids) {
+        if (prev[id]) next[id] = prev[id];
+      }
+      return next;
+    });
+    setHasMoreByAgent((prev) => {
+      if (Object.keys(prev).every((id) => ids.has(id))) return prev;
+      const next: Record<string, boolean> = {};
+      for (const id of ids) {
+        if (id in prev) next[id] = prev[id];
+      }
+      return next;
+    });
     let cancelled = false;
     setLoading(true);
     void (async () => {
-      const entries = await Promise.all(
-        agentKey.split(",").map(async (id) => {
-          if (!id) return [id, [] as Session[]] as const;
-          try {
-            const rows = await octopThreadsApi.list(
-              id,
-              MINIMAL_AGENT_SESSION_PREVIEW,
-            );
-            return [
-              id,
-              sortSessions(rows.map(toSession)).slice(
-                0,
-                MINIMAL_AGENT_SESSION_PREVIEW,
-              ),
-            ] as const;
-          } catch {
-            return [id, [] as Session[]] as const;
-          }
-        }),
-      );
-      if (!cancelled) {
-        setByAgent(Object.fromEntries(entries));
-        setLoading(false);
-      }
+      await Promise.all([...ids].map((id) => refreshAgentPreview(id)));
+      if (!cancelled) setLoading(false);
     })();
     return () => {
       cancelled = true;
     };
-  }, [agentKey]);
+  }, [agentKey, refreshAgentPreview]);
 
-  // Keep the active agent's preview aligned with live chat session store.
-  // Skip empty lists — standalone host passes [] and must not wipe fetched previews
-  // when the user selects a session (activeAgentId updates).
+  // Keep the active expert aligned with the live session store.
+  // Skip empty lists — a host that passes [] must not wipe fetched previews
+  // when the user selects a session. Merge instead of replacing so an
+  // expanded page is not clipped back to the live first page.
   useEffect(() => {
     if (!activeAgentId || activeSessions.length === 0) return;
-    setByAgent((prev) => ({
-      ...prev,
-      [activeAgentId]: sortSessions(activeSessions).slice(
-        0,
-        MINIMAL_AGENT_SESSION_PREVIEW,
-      ),
-    }));
+    const agentId = activeAgentId;
+    setByAgent((prev) => {
+      const limit = storedPreviewLimit(limitsRef.current, agentId);
+      const merged = new Map(
+        (prev[agentId] ?? []).map((session) => [session.id, session]),
+      );
+      for (const session of activeSessions) merged.set(session.id, session);
+      return {
+        ...prev,
+        [agentId]: sortSessions([...merged.values()]).slice(0, limit),
+      };
+    });
   }, [activeAgentId, activeSessions]);
 
   useEffect(() => {
@@ -525,7 +597,7 @@ export default function MinimalAgentSessionNav({
         ...prev,
         [agentId]: sortSessions(updater(prev[agentId] ?? [])).slice(
           0,
-          MINIMAL_AGENT_SESSION_PREVIEW,
+          storedPreviewLimit(limitsRef.current, agentId),
         ),
       }));
       catalog.patch(agentId, updater);
@@ -765,36 +837,52 @@ export default function MinimalAgentSessionNav({
                     {t("chat.noSessionsYet", "直接发消息即可开始对话")}
                   </div>
                 ) : (
-                  list.map((session) => (
-                    <PreviewSessionRow
-                      key={session.id}
-                      session={session}
-                      isActive={session.id === activeId}
-                      workStatus={resolveSessionWorkStatus(
-                        session,
-                        liveWorkingIds,
-                      )}
-                      onSelect={(id) => onSelect(id, agent.agent_id)}
-                      onDelete={(id, compact) =>
-                        handleDelete(agent.agent_id, id, compact)
-                      }
-                      onRename={(id, name) =>
-                        handleRename(agent.agent_id, id, name)
-                      }
-                      onPin={(id, pinned) =>
-                        handlePin(agent.agent_id, id, pinned)
-                      }
-                      onFork={(id) => onFork(id, agent.agent_id)}
-                      forkDisabled={
-                        session.id === activeId ? activeForkDisabled : undefined
-                      }
-                      forkDisabledHint={
-                        session.id === activeId
-                          ? activeForkDisabledHint
-                          : undefined
-                      }
-                    />
-                  ))
+                  <>
+                    {list.map((session) => (
+                      <PreviewSessionRow
+                        key={session.id}
+                        session={session}
+                        isActive={session.id === activeId}
+                        workStatus={resolveSessionWorkStatus(
+                          session,
+                          liveWorkingIds,
+                        )}
+                        onSelect={(id) => onSelect(id, agent.agent_id)}
+                        onDelete={(id, compact) =>
+                          handleDelete(agent.agent_id, id, compact)
+                        }
+                        onRename={(id, name) =>
+                          handleRename(agent.agent_id, id, name)
+                        }
+                        onPin={(id, pinned) =>
+                          handlePin(agent.agent_id, id, pinned)
+                        }
+                        onFork={(id) => onFork(id, agent.agent_id)}
+                        forkDisabled={
+                          session.id === activeId
+                            ? activeForkDisabled
+                            : undefined
+                        }
+                        forkDisabledHint={
+                          session.id === activeId
+                            ? activeForkDisabledHint
+                            : undefined
+                        }
+                      />
+                    ))}
+                    {!searching && hasMoreByAgent[agent.agent_id] ? (
+                      <button
+                        type="button"
+                        className={styles.sessionLoadMore}
+                        onClick={() => void loadMore(agent.agent_id)}
+                        disabled={loadingMoreByAgent[agent.agent_id]}
+                      >
+                        {loadingMoreByAgent[agent.agent_id]
+                          ? t("common.loading")
+                          : t("chat.expandMore", "展开更多")}
+                      </button>
+                    ) : null}
+                  </>
                 )}
               </div>
             ) : null}

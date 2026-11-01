@@ -97,6 +97,7 @@ class MfaService:
             purpose=PURPOSE_ACCESS,
             ttl_seconds=ttl,
             mfa_version=self._mfa_version(user.id),
+            password_version=self._password_version(user.id),
         )
         return token, ttl
 
@@ -491,6 +492,10 @@ class MfaService:
     def _mfa_version(self, user_id: int) -> int:
         row = self._s.user_repo.get(user_id)
         return int(row.mfa_version) if row is not None else 0
+
+    def _password_version(self, user_id: int) -> int:
+        row = self._s.user_repo.get(user_id)
+        return int(row.password_version) if row is not None else 0
 
     def _raise_if_mfa_locked(self, user_id: int) -> None:
         retry = self._s.user_repo.mfa_retry_after(user_id)

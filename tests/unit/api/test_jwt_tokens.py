@@ -19,6 +19,7 @@ def test_sign_and_decode_roundtrip():
     assert payload["role"] == "user"
     assert payload["purpose"] == "access"
     assert payload["mfa_version"] == 0
+    assert payload["password_version"] == 0
 
 
 def test_decode_rejects_wrong_signature():

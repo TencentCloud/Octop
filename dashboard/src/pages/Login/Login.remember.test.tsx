@@ -34,7 +34,7 @@ describe("Login remember-me checkbox", () => {
     );
 
     const checkbox = screen.getByRole("checkbox", {
-      name: /login\.remember|记住登录状态|Remember me/,
+      name: /login\.remember|在这台设备上保持登录|Stay signed in on this device/,
     });
     expect(checkbox).toBeChecked();
     expect(

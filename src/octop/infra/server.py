@@ -626,6 +626,7 @@ class OctopServer:
             ttl = services.config.access_token_ttl_seconds
             row = services.user_repo.get(int(user.id))
             mfa_version = int(row.mfa_version) if row is not None else 0
+            password_version = int(row.password_version) if row is not None else 0
             return sign_token(
                 secret,
                 sub=int(user.id),
@@ -634,6 +635,7 @@ class OctopServer:
                 purpose=PURPOSE_ACCESS,
                 ttl_seconds=ttl,
                 mfa_version=mfa_version,
+                password_version=password_version,
             )
 
         advertise = public_base_url_from_config(config.bind_host, config.port)

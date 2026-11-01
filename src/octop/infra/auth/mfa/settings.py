@@ -130,6 +130,42 @@ def _loopback_rp(origin: str) -> tuple[str, list[str]] | None:
     return host, [origin]
 
 
+def passkey_block_reason(settings_repo: SettingsRepo, origin: str) -> str | None:
+    """Why passkeys cannot be used from ``origin``.
+
+    ``None`` means this address can register a passkey. Other values:
+
+    - ``unconfigured``: no relying-party settings, and the host is not localhost
+    - ``origin``: settings exist, but this exact URL is not on the allow-list
+    - ``ip``: the host is an IP address, which browsers reject
+    """
+    origin = (origin or "").strip()
+    if not origin:
+        return None
+    try:
+        parsed = urlparse(origin)
+    except ValueError:
+        return "unconfigured"
+    host = (parsed.hostname or "").lower()
+    if parsed.scheme not in ("http", "https") or not host:
+        return "unconfigured"
+    if _is_ip_literal(host):
+        return "ip"
+    try:
+        _rp_id, origins = load_webauthn_config(settings_repo)
+    except OctopError as exc:
+        if exc.code == ErrorCode.WEBAUTHN_INVALID_DOMAIN:
+            return "ip"
+        if exc.code != ErrorCode.WEBAUTHN_CONFIG_INVALID:
+            raise
+        if host in _LOOPBACK_RP_HOSTS:
+            return None
+        return "unconfigured"
+    if origin not in origins:
+        return "origin"
+    return None
+
+
 def assert_origin_allowed(settings_repo: SettingsRepo, origin: str) -> tuple[str, list[str]]:
     try:
         rp_id, origins = load_webauthn_config(settings_repo)

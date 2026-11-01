@@ -373,6 +373,7 @@ async def initial_admin(
     ttl = server.services.config.access_token_ttl_seconds
     row = server.services.user_repo.get(user.id)
     mfa_version = int(row.mfa_version) if row is not None else 0
+    password_version = int(row.password_version) if row is not None else 0
     access_token = sign_token(
         secret,
         sub=user.id,
@@ -381,6 +382,7 @@ async def initial_admin(
         purpose=PURPOSE_ACCESS,
         ttl_seconds=ttl,
         mfa_version=mfa_version,
+        password_version=password_version,
     )
     return {
         "id": user.id,

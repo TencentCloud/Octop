@@ -542,7 +542,7 @@
     "MFA_LOCKED": "Too many MFA attempts. Try again later.",
     "MFA_REAUTH_REQUIRED": "Re-enter your password to continue.",
     "MFA_LAST_FACTOR": "Cannot remove the last MFA factor.",
-    "WEBAUTHN_CONFIG_INVALID": "Passkeys are not configured on this server.",
+    "WEBAUTHN_CONFIG_INVALID": "Passkeys are not available on this address yet. An administrator needs to enter this site’s domain and full URL under App settings → Passkeys. If that is already saved, open the exact URL that was registered. localhost does not need this setup.",
     "WEBAUTHN_INVALID_DOMAIN": "Passkeys need a hostname. Open Octop via http://localhost (not an IP address such as 127.0.0.1)."
   },
   "desktop": {

@@ -8,7 +8,12 @@ from typing import TYPE_CHECKING, Any, cast
 
 from fastapi import Depends, Header, Query, Request
 
-from octop.infra.auth.tokens import PURPOSE_ACCESS, token_mfa_version, token_purpose
+from octop.infra.auth.tokens import (
+    PURPOSE_ACCESS,
+    token_mfa_version,
+    token_password_version,
+    token_purpose,
+)
 from octop.infra.auth.tokens import InvalidToken as InvalidToken
 from octop.infra.auth.tokens import TokenExpired as TokenExpired
 from octop.infra.auth.tokens import decode_token as decode_token
@@ -25,8 +30,10 @@ else:
 
 # Sliding renew: when remaining life is below this fraction of configured TTL,
 # middleware issues a fresh access token via ACCESS_TOKEN_RESPONSE_HEADER.
+# 2/3 means a 24h token renews after about 8h of use, so a workday's last
+# request still covers the next morning. A full day idle still expires.
 ACCESS_TOKEN_RESPONSE_HEADER = "X-Octop-Access-Token"
-_SLIDING_RENEW_REMAINING_FRACTION = 1 / 3
+_SLIDING_RENEW_REMAINING_FRACTION = 2 / 3
 
 
 # Paths that bypass JWT middleware (setup wizard, health, login).
@@ -135,9 +142,13 @@ def resolve_user_from_token(server: OctopServer, token: str) -> User:
         raise OctopError(ErrorCode.AUTH_FAILED, "invalid token")
     try:
         claim_version = token_mfa_version(payload)
+        claim_password_version = token_password_version(payload)
     except InvalidToken as exc:
         raise OctopError(ErrorCode.AUTH_FAILED, "invalid token") from exc
     if claim_version != current_version:
+        raise OctopError(ErrorCode.AUTH_FAILED, "invalid token")
+    current_password_version = int(row.password_version) if row is not None else 0
+    if claim_password_version != current_password_version:
         raise OctopError(ErrorCode.AUTH_FAILED, "invalid token")
     return user
 
@@ -145,7 +156,7 @@ def resolve_user_from_token(server: OctopServer, token: str) -> User:
 def maybe_sliding_renew_token(server: OctopServer, token: str, user: User) -> str | None:
     """Return a fresh access token when ``token`` is past the sliding renew threshold.
 
-    Threshold is one-third of ``access_token_ttl_seconds`` remaining. Active clients
+    Threshold is two-thirds of ``access_token_ttl_seconds`` remaining. Active clients
     that pick up ``ACCESS_TOKEN_RESPONSE_HEADER`` stay signed in without re-login.
     """
     assert server.services is not None
@@ -170,6 +181,7 @@ def maybe_sliding_renew_token(server: OctopServer, token: str, user: User) -> st
         raise OctopError(ErrorCode.INTERNAL_ERROR, "jwt secret missing")
     row = server.services.user_repo.get(user.id)
     mfa_version = int(row.mfa_version) if row is not None else 0
+    password_version = int(row.password_version) if row is not None else 0
     return sign_token(
         secret,
         sub=user.id,
@@ -178,6 +190,7 @@ def maybe_sliding_renew_token(server: OctopServer, token: str, user: User) -> st
         purpose=PURPOSE_ACCESS,
         ttl_seconds=ttl,
         mfa_version=mfa_version,
+        password_version=password_version,
     )
 
 

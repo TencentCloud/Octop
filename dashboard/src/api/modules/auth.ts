@@ -128,6 +128,13 @@ export interface MfaStatus {
   is_last_factor: boolean;
   /** False for SSO-only accounts (no local/LDAP password to prove). */
   can_enroll: boolean;
+  /**
+   * Why passkeys cannot be added from this page.
+   * ``unconfigured`` — admin has not saved a domain and URL.
+   * ``origin`` — this exact URL is not on that allow-list.
+   * ``ip`` — the host is an IP address.
+   */
+  passkey_block?: "unconfigured" | "origin" | "ip" | null;
   has_password: boolean;
   sso_linked: boolean;
 }
@@ -215,6 +222,12 @@ function normalizeMfaStatus(raw: Record<string, unknown>): MfaStatus {
     can_enroll: raw.can_enroll !== false,
     has_password: Boolean(raw.has_password),
     sso_linked: Boolean(raw.sso_linked),
+    passkey_block:
+      raw.passkey_block === "unconfigured" ||
+      raw.passkey_block === "origin" ||
+      raw.passkey_block === "ip"
+        ? raw.passkey_block
+        : null,
   };
 }
 

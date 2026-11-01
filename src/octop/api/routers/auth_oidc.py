@@ -71,6 +71,7 @@ async def exchange_login_code_response(code: str, server: Any) -> dict[str, Any]
     ttl = server.services.config.access_token_ttl_seconds
     row = server.services.user_repo.get(user.id)
     mfa_version = int(row.mfa_version) if row is not None else 0
+    password_version = int(row.password_version) if row is not None else 0
     return {
         "access_token": sign_token(
             secret,
@@ -80,6 +81,7 @@ async def exchange_login_code_response(code: str, server: Any) -> dict[str, Any]
             purpose=PURPOSE_ACCESS,
             ttl_seconds=ttl,
             mfa_version=mfa_version,
+            password_version=password_version,
         ),
         "token_type": "Bearer",
         "expires_in": ttl,

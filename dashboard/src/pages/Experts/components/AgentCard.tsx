@@ -44,7 +44,11 @@ import {
   SharedAvatarMark,
   SharedResourceBadge,
 } from "../../../components/SharedResourceBadge";
-import { isSharedExpertViewer } from "../../../utils/sharedExpert";
+import {
+  canReadAgentRuntimeStatus,
+  isSharedExpertViewer,
+} from "../../../utils/sharedExpert";
+import { useCurrentUser } from "../../../hooks/useCurrentUser";
 import type { PublishedExpert } from "../../../api/modules/publishedExperts";
 import PublishTemplateButton from "./PublishTemplateButton";
 import AgentMoreActions from "./AgentMoreActions";
@@ -95,7 +99,9 @@ export const AgentCard = memo(function AgentCard({
 }: AgentCardProps) {
   const { t } = useTranslation();
   const navigate = useNavigate();
+  const user = useCurrentUser();
   const { setActiveAgent, refresh: refreshAgents } = useAgent();
+  const statusReadable = canReadAgentRuntimeStatus(agent, user);
 
   const [localState, setLocalState] = useState(agent.state);
   const [localError, setLocalError] = useState(agent.last_error);
@@ -120,9 +126,9 @@ export const AgentCard = memo(function AgentCard({
     setLocalError(agent.last_error);
   }, [agent.state, agent.last_error]);
 
-  // Poll during transient states (local agents only — bridge shadows have no runtime status).
+  // Poll during transient states. Bridge shadows and shared viewers have no readable status.
   useEffect(() => {
-    if (agent.bridge || !TRANSIENT.has(localState)) {
+    if (agent.bridge || !statusReadable || !TRANSIENT.has(localState)) {
       if (pollRef.current) clearInterval(pollRef.current);
       pollRef.current = null;
       return;
@@ -152,13 +158,14 @@ export const AgentCard = memo(function AgentCard({
     localState,
     agent.agent_id,
     agent.bridge,
+    statusReadable,
     onStateChange,
     onPollSettled,
     refreshAgents,
   ]);
 
   useEffect(() => {
-    if (agent.bridge || localState !== "running") {
+    if (agent.bridge || !statusReadable || localState !== "running") {
       setMemorySlimming(false);
       if (maintPollRef.current) {
         clearInterval(maintPollRef.current);
@@ -200,7 +207,7 @@ export const AgentCard = memo(function AgentCard({
         maintPollRef.current = null;
       }
     };
-  }, [localState, agent.agent_id, agent.bridge]);
+  }, [localState, agent.agent_id, agent.bridge, statusReadable]);
 
   const isTransient = TRANSIENT.has(localState);
   const switchChecked = localState === "running" || localState === "starting";

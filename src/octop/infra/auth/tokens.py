@@ -36,6 +36,7 @@ def sign_token(
     purpose: TokenPurpose,
     ttl_seconds: int = 86400,
     mfa_version: int = 0,
+    password_version: int = 0,
     amr: str | None = None,
     jti: str | None = None,
 ) -> str:
@@ -53,6 +54,7 @@ def sign_token(
     }
     if purpose == PURPOSE_ACCESS:
         payload["mfa_version"] = int(mfa_version)
+        payload["password_version"] = int(password_version)
     elif purpose == PURPOSE_MFA:
         payload["mfa_version"] = int(mfa_version)
         if amr is None:
@@ -88,10 +90,19 @@ def token_purpose(payload: dict[str, Any]) -> TokenPurpose | None:
 
 def token_mfa_version(payload: dict[str, Any]) -> int:
     """Absent ``mfa_version`` claim ≡ 0 (pre-MFA tokens)."""
-    raw = payload.get("mfa_version")
+    return _optional_int_claim(payload, "mfa_version")
+
+
+def token_password_version(payload: dict[str, Any]) -> int:
+    """Absent ``password_version`` claim ≡ 0 (tokens issued before the claim existed)."""
+    return _optional_int_claim(payload, "password_version")
+
+
+def _optional_int_claim(payload: dict[str, Any], key: str) -> int:
+    raw = payload.get(key)
     if raw is None:
         return 0
     try:
         return int(raw)
     except (TypeError, ValueError) as exc:
-        raise InvalidToken("invalid mfa_version") from exc
+        raise InvalidToken(f"invalid {key}") from exc

@@ -64,6 +64,7 @@ class UserRow:
     mfa_version: int = 0
     mfa_failed_count: int = 0
     mfa_locked_until: int = 0
+    password_version: int = 0
     permissions: builtins.list[str] = field(default_factory=list)
     role_name: str | None = None
     avatar_icon: str | None = None
@@ -90,6 +91,7 @@ class UserRow:
             mfa_version=int(r["mfa_version"] or 0) if "mfa_version" in keys else 0,
             mfa_failed_count=int(r["mfa_failed_count"] or 0) if "mfa_failed_count" in keys else 0,
             mfa_locked_until=int(r["mfa_locked_until"] or 0) if "mfa_locked_until" in keys else 0,
+            password_version=int(r["password_version"] or 0) if "password_version" in keys else 0,
             email=r["email"] if "email" in keys else None,
             sso_provider_id=r["sso_provider_id"] if "sso_provider_id" in keys else None,
             sso_subject=r["sso_subject"] if "sso_subject" in keys else None,
@@ -290,9 +292,11 @@ class UserRepo:
             conn.execute("UPDATE users SET role = ? WHERE id = ?", (role, user_id))
 
     def set_password_hash(self, user_id: int, password_hash: str) -> None:
+        """Store a new password hash and invalidate outstanding access tokens."""
         with self._db.transaction() as conn:
             conn.execute(
-                "UPDATE users SET password_hash = ? WHERE id = ?",
+                "UPDATE users SET password_hash = ?, password_version = password_version + 1 "
+                "WHERE id = ?",
                 (password_hash, user_id),
             )
 

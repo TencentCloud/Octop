@@ -120,7 +120,7 @@ async def test_near_expiry_token_gets_sliding_renew(client) -> None:
     assert user is not None
     secret = srv.services.secret_repo.get("jwt")
     assert secret is not None
-    # Remaining life (~60s) is far below default TTL/3 (~8h) → renew.
+    # Remaining life (~60s) is below two-thirds of the default TTL → renew.
     short = sign_token(
         secret,
         sub=user.id,
@@ -168,6 +168,26 @@ async def test_maybe_sliding_renew_helper_threshold(client) -> None:
     renewed = maybe_sliding_renew_token(srv, short, user)
     assert renewed is not None
     assert renewed != short
+    # Halfway through the TTL is inside the renew window (remaining < 2/3).
+    # Four-fifths remaining is still outside it.
+    halfway = sign_token(
+        secret,
+        sub=user.id,
+        uname=user.username,
+        role=user.role,
+        purpose=PURPOSE_ACCESS,
+        ttl_seconds=ttl // 2,
+    )
+    assert maybe_sliding_renew_token(srv, halfway, user) is not None
+    mostly_fresh = sign_token(
+        secret,
+        sub=user.id,
+        uname=user.username,
+        role=user.role,
+        purpose=PURPOSE_ACCESS,
+        ttl_seconds=(ttl * 4) // 5,
+    )
+    assert maybe_sliding_renew_token(srv, mostly_fresh, user) is None
 
 
 async def test_middleware_localizes_auth_errors_by_accept_language(client) -> None:

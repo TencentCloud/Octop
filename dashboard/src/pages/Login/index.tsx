@@ -805,7 +805,10 @@ export default function LoginPage() {
               onChange={(e) => setRemember(e.target.checked)}
               style={{
                 margin: 0,
+                flex: "1 1 auto",
+                minWidth: 0,
                 fontSize: 13,
+                lineHeight: 1.5,
                 color: "var(--fn-text-tertiary)",
               }}
             >

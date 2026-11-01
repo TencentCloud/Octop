@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from typing import Any, Literal
+from urllib.parse import urlparse
 
 from fastapi import APIRouter, Depends, Header, Request
 from pydantic import BaseModel, Field
@@ -12,6 +13,7 @@ from octop.api.deps import current_user, get_server
 from octop.api.routers.auth import _user_json, me_payload
 from octop.infra.auth.mfa import MfaService
 from octop.infra.auth.mfa import reauth as reauth_mod
+from octop.infra.auth.mfa.settings import passkey_block_reason
 from octop.infra.errors import ErrorCode, OctopError
 
 router = APIRouter()
@@ -21,8 +23,25 @@ def _mfa(server: Any) -> MfaService:
     return MfaService(server.services)
 
 
+def _page_origin(request: Request) -> str:
+    """Browser page origin for passkey checks.
+
+    Same-origin GET often omits ``Origin``; ``Referer`` still carries the page URL.
+    """
+    origin = (request.headers.get("origin") or "").strip()
+    if origin:
+        return origin
+    referer = (request.headers.get("referer") or "").strip()
+    if not referer:
+        return ""
+    parsed = urlparse(referer)
+    if parsed.scheme and parsed.netloc:
+        return f"{parsed.scheme}://{parsed.netloc}"
+    return ""
+
+
 def _origin(request: Request) -> str:
-    origin = request.headers.get("origin") or ""
+    origin = _page_origin(request)
     if not origin:
         raise OctopError(ErrorCode.WEBAUTHN_CONFIG_INVALID, "Origin header required")
     return origin
@@ -157,10 +176,16 @@ async def passkey_login_verify(
 
 @router.get("/mfa/status", summary="Current user's MFA enrollment status")
 async def mfa_status(
+    request: Request,
     user: Any = Depends(current_user),
     server: Any = Depends(get_server),
 ) -> dict[str, Any]:
-    return _mfa(server).status(user.id)
+    body = _mfa(server).status(user.id)
+    body["passkey_block"] = passkey_block_reason(
+        server.services.settings_repo,
+        _page_origin(request),
+    )
+    return body
 
 
 @router.post("/mfa/totp/begin", summary="Begin TOTP enrollment")

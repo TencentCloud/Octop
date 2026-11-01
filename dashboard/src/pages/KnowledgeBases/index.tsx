@@ -91,7 +91,10 @@ import DocumentPreviewLoading from "../../components/DocumentPreviewLoading";
 import Markdown from "../../components/Markdown";
 import StreamSetupGuide from "../../components/StreamSetupGuide/StreamSetupGuide";
 import { CopyableResourceId } from "../../components/CopyableResourceId";
-import { ResourceVisibilityFields } from "../../components/ResourceVisibilityFields";
+import {
+  ResourceVisibilityFields,
+  ResourceVisibilityGate,
+} from "../../components/ResourceVisibilityFields";
 import { TextAssistBar } from "../../components/TextAssistBar";
 import type { ResourceVisibilityMode } from "../../api/modules/userGroups";
 import { useCardTableView } from "../../hooks/useCardTableView";
@@ -3411,22 +3414,24 @@ export default function KnowledgeBasesPage() {
                 onChange={setDefaultOpenChecked}
               />
             </div>
-            <div className={styles.formOptionRowVisibility}>
-              <div className={styles.formOptionCopy}>
-                <span className={styles.switchLabel}>
-                  {t("resourceVisibility.label")}
-                </span>
+            <ResourceVisibilityGate allowOwner visibility={baseVisibility}>
+              <div className={styles.formOptionRowVisibility}>
+                <div className={styles.formOptionCopy}>
+                  <span className={styles.switchLabel}>
+                    {t("resourceVisibility.label")}
+                  </span>
+                </div>
+                <ResourceVisibilityFields
+                  allowOwner
+                  visibility={baseVisibility}
+                  groupIds={baseGroupIds}
+                  onChange={(next) => {
+                    setBaseVisibility(next.visibility);
+                    setBaseGroupIds(next.groupIds);
+                  }}
+                />
               </div>
-              <ResourceVisibilityFields
-                allowOwner
-                visibility={baseVisibility}
-                groupIds={baseGroupIds}
-                onChange={(next) => {
-                  setBaseVisibility(next.visibility);
-                  setBaseGroupIds(next.groupIds);
-                }}
-              />
-            </div>
+            </ResourceVisibilityGate>
           </div>
         </Form>
       </Drawer>

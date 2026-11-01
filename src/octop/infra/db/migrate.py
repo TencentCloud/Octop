@@ -1608,12 +1608,13 @@ def _ensure_user_group_profile_schema(db: DatabasePool) -> None:
 
 
 def _ensure_user_mfa_schema(db: DatabasePool) -> None:
-    """MFA tables + users.mfa_* columns (v25). Idempotent for SQLite."""
+    """MFA tables + users.mfa_* / password_version columns (v25). Idempotent."""
     if not _table_exists(db, "users"):
         return
     _ensure_column(db, "users", "mfa_version", "INTEGER NOT NULL DEFAULT 0")
     _ensure_column(db, "users", "mfa_failed_count", "INTEGER NOT NULL DEFAULT 0")
     _ensure_column(db, "users", "mfa_locked_until", "INTEGER NOT NULL DEFAULT 0")
+    _ensure_column(db, "users", "password_version", "INTEGER NOT NULL DEFAULT 0")
     if db.dialect == "postgresql":
         with db.connect() as conn, conn.transaction():
             conn.execute(

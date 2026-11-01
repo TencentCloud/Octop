@@ -1,17 +1,8 @@
-import { useCallback, useEffect, useState } from "react";
-import {
-  Alert,
-  Button,
-  Drawer,
-  Form,
-  Input,
-  Modal,
-  Space,
-  Spin,
-  Tag,
-} from "antd";
+import { useCallback, useEffect, useState, type ReactNode } from "react";
+import { Alert, Button, Drawer, Form, Input, Modal, Space, Spin } from "antd";
 import { Fingerprint, KeyRound, ShieldCheck } from "lucide-react";
 import { QRCodeSVG } from "qrcode.react";
+import { Link } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { message } from "@/utils/antdMessage";
 import {
@@ -27,6 +18,7 @@ import {
 } from "../utils/formatMessageTime";
 import { useServerTimezone } from "../hooks/useServerTimezone";
 import { useIsMobile } from "../hooks/useIsMobile";
+import { userCan } from "../utils/permissions";
 import {
   isWebAuthnAvailable,
   isWebAuthnIpHost,
@@ -34,6 +26,43 @@ import {
   webauthnErrorMessage,
 } from "../utils/webauthn";
 import styles from "./AccountSecurityDrawer.module.less";
+
+/** Official Microsoft Authenticator page, with iPhone and Android downloads. */
+const AUTHENTICATOR_APP_URL =
+  "https://www.microsoft.com/security/mobile-authenticator-app";
+
+function AuthenticatorDownload({ label }: { label: string }) {
+  return (
+    <p className={styles.downloadLine}>
+      {label}
+      <a href={AUTHENTICATOR_APP_URL} target="_blank" rel="noopener noreferrer">
+        {AUTHENTICATOR_APP_URL}
+      </a>
+    </p>
+  );
+}
+
+function UsageTips({
+  label,
+  items,
+  extra,
+}: {
+  label: string;
+  items: string[];
+  extra?: ReactNode;
+}) {
+  return (
+    <div className={styles.tips}>
+      <p className={styles.tipLabel}>{label}</p>
+      <ul className={styles.tipList}>
+        {items.map((item) => (
+          <li key={item}>{item}</li>
+        ))}
+      </ul>
+      {extra}
+    </div>
+  );
+}
 
 type ReauthAction =
   | { kind: "totp_begin" }
@@ -78,6 +107,9 @@ export default function AccountSecurityDrawer({
   const [recoveryCodes, setRecoveryCodes] = useState<string[] | null>(null);
   const passkeyIpHost = isWebAuthnIpHost();
   const passkeyOk = isWebAuthnAvailable() && !passkeyIpHost;
+  const canConfigurePasskeys = userCan(profile, "captcha");
+  const passkeyBlock = status?.passkey_block ?? null;
+  const passkeyReady = passkeyOk && passkeyBlock == null;
 
   const loadStatus = useCallback(async () => {
     setLoading(true);
@@ -275,65 +307,84 @@ export default function AccountSecurityDrawer({
 
           <div className={styles.stack}>
             <section className={styles.card}>
-              <div className={styles.cardRow}>
-                <div className={styles.cardMain}>
+              <div className={styles.cardTop}>
+                <div className={styles.cardLead}>
                   <span
                     className={`${styles.iconWrap} ${
                       status?.totp_verified ? styles.iconWrapOn : ""
                     }`}
                     aria-hidden
                   >
-                    <ShieldCheck size={18} strokeWidth={1.9} />
+                    <ShieldCheck size={18} strokeWidth={1.75} />
                   </span>
-                  <div className={styles.cardMeta}>
-                    <div className={styles.cardTitleRow}>
-                      <h3 className={styles.cardTitle}>
-                        {t("account.securityTotp")}
-                      </h3>
-                      <Tag
-                        className={styles.statusTag}
-                        color={status?.totp_verified ? "success" : "default"}
-                      >
-                        {status?.totp_verified
-                          ? t("account.securityTotpEnabled")
-                          : t("account.securityTotpDisabled")}
-                      </Tag>
-                    </div>
+                  <div className={styles.cardIdentity}>
+                    <h3 className={styles.cardTitle}>
+                      {t("account.securityTotp")}
+                    </h3>
+                    <span
+                      className={`${styles.statusPill} ${
+                        status?.totp_verified ? styles.statusPillOn : ""
+                      }`}
+                    >
+                      {status?.totp_verified
+                        ? t("account.securityTotpEnabled")
+                        : t("account.securityTotpDisabled")}
+                    </span>
+                  </div>
+                </div>
+                {!totpUri ? (
+                  <div className={styles.cardSide}>
                     <p className={styles.cardDesc}>
                       {t("account.securityTotpDesc")}
                     </p>
+                    <UsageTips
+                      label={t("account.securityHowTo")}
+                      items={[
+                        t("account.securityTotpTip1"),
+                        t("account.securityTotpTip2"),
+                      ]}
+                      extra={
+                        <AuthenticatorDownload
+                          label={t("account.securityTotpDownload")}
+                        />
+                      }
+                    />
+                    {canEnroll ? (
+                      <div className={styles.cardActions}>
+                        {!status?.totp_verified ? (
+                          <Button
+                            type="primary"
+                            disabled={busy}
+                            onClick={() =>
+                              requestReauth({ kind: "totp_begin" })
+                            }
+                          >
+                            {t("account.securityTotpEnroll")}
+                          </Button>
+                        ) : (
+                          <Button
+                            danger
+                            disabled={busy}
+                            onClick={() =>
+                              requestRemoveFactor({ kind: "totp_disable" })
+                            }
+                          >
+                            {t("account.securityTotpDisable")}
+                          </Button>
+                        )}
+                      </div>
+                    ) : null}
                   </div>
-                </div>
-                <div className={styles.cardSide}>
-                  {!totpUri && canEnroll ? (
-                    !status?.totp_verified ? (
-                      <Button
-                        type="primary"
-                        disabled={busy}
-                        onClick={() => requestReauth({ kind: "totp_begin" })}
-                      >
-                        {t("account.securityTotpEnroll")}
-                      </Button>
-                    ) : (
-                      <Button
-                        danger
-                        disabled={busy}
-                        onClick={() =>
-                          requestRemoveFactor({ kind: "totp_disable" })
-                        }
-                      >
-                        {t("account.securityTotpDisable")}
-                      </Button>
-                    )
-                  ) : null}
-                </div>
+                ) : null}
               </div>
-
               {totpUri ? (
                 <div className={styles.enrollBox}>
                   <p className={styles.cardDesc}>
                     {t("account.securityTotpScan")}
                   </p>
+                  <AuthenticatorDownload
+                    label={t("account.securityTotpDownload")}
+                  />
                   <div className={styles.qrWrap}>
                     <QRCodeSVG value={totpUri} size={168} />
                   </div>
@@ -343,17 +394,8 @@ export default function AccountSecurityDrawer({
                     placeholder={t("account.securityTotpCode")}
                     maxLength={8}
                     autoComplete="one-time-code"
-                    size="large"
                   />
-                  <Space wrap>
-                    <Button
-                      type="primary"
-                      loading={busy}
-                      disabled={!totpCode.trim()}
-                      onClick={() => void confirmTotp()}
-                    >
-                      {t("account.securityTotpConfirm")}
-                    </Button>
+                  <div className={styles.cardActions}>
                     <Button
                       onClick={() => {
                         setTotpUri(null);
@@ -363,146 +405,200 @@ export default function AccountSecurityDrawer({
                     >
                       {t("common.cancel")}
                     </Button>
-                  </Space>
+                    <Button
+                      type="primary"
+                      loading={busy}
+                      disabled={!totpCode.trim()}
+                      onClick={() => void confirmTotp()}
+                    >
+                      {t("account.securityTotpConfirm")}
+                    </Button>
+                  </div>
                 </div>
               ) : null}
             </section>
 
             <section className={styles.card}>
-              <div className={styles.cardRow}>
-                <div className={styles.cardMain}>
+              <div className={styles.cardTop}>
+                <div className={styles.cardLead}>
                   <span
                     className={`${styles.iconWrap} ${
                       passkeyCount > 0 ? styles.iconWrapOn : ""
                     }`}
                     aria-hidden
                   >
-                    <Fingerprint size={18} strokeWidth={1.9} />
+                    <Fingerprint size={18} strokeWidth={1.75} />
                   </span>
-                  <div className={styles.cardMeta}>
-                    <div className={styles.cardTitleRow}>
-                      <h3 className={styles.cardTitle}>
-                        {t("account.securityPasskeys")}
-                      </h3>
-                      {passkeyCount > 0 ? (
-                        <Tag className={styles.statusTag} color="success">
-                          {t("account.securityPasskeyCount", {
-                            count: passkeyCount,
-                          })}
-                        </Tag>
-                      ) : null}
-                    </div>
+                  <div className={styles.cardIdentity}>
+                    <h3 className={styles.cardTitle}>
+                      {t("account.securityPasskeys")}
+                    </h3>
+                    {passkeyCount > 0 ? (
+                      <span
+                        className={`${styles.statusPill} ${styles.statusPillOn}`}
+                      >
+                        {t("account.securityPasskeyCount", {
+                          count: passkeyCount,
+                        })}
+                      </span>
+                    ) : null}
                   </div>
                 </div>
                 <div className={styles.cardSide}>
-                  {canEnroll && passkeyOk ? (
-                    <Button
-                      type="primary"
-                      disabled={busy}
-                      onClick={() =>
-                        requestReauth({ kind: "passkey_add", name: "" })
-                      }
-                    >
-                      {t("account.securityPasskeyAdd")}
-                    </Button>
+                  <p className={styles.cardDesc}>
+                    {t("account.securityPasskeyDesc")}
+                  </p>
+                  {passkeyReady ? (
+                    <UsageTips
+                      label={t("account.securityHowTo")}
+                      items={[
+                        t("account.securityPasskeyTip1"),
+                        t("account.securityPasskeyTip2"),
+                      ]}
+                    />
+                  ) : null}
+                  {canEnroll && passkeyReady ? (
+                    <div className={styles.cardActions}>
+                      <Button
+                        type="primary"
+                        disabled={busy}
+                        onClick={() =>
+                          requestReauth({ kind: "passkey_add", name: "" })
+                        }
+                      >
+                        {t("account.securityPasskeyAdd")}
+                      </Button>
+                    </div>
                   ) : null}
                 </div>
               </div>
-              <p className={styles.cardDescFull}>
-                {passkeyCount === 0
-                  ? t("account.securityPasskeyEmpty")
-                  : t("account.securityPasskeyDesc")}
-              </p>
-
-              {!passkeyOk ? (
-                <Alert
-                  type="info"
-                  showIcon
-                  message={
-                    passkeyIpHost
-                      ? t("account.securityPasskeyIpHost", {
-                          host: window.location.hostname,
-                          port: window.location.port || "80",
-                        })
-                      : t("account.securityPasskeyHttps")
-                  }
-                />
-              ) : null}
-
-              {passkeyCount > 0 ? (
-                <ul className={styles.passkeyList}>
-                  {(status?.passkeys ?? []).map((item) => (
-                    <li key={item.credential_id} className={styles.passkeyRow}>
-                      <div className={styles.passkeyMeta}>
-                        <span className={styles.passkeyName}>
-                          {item.name.trim() ||
-                            t("account.securityPasskeyDefaultName")}
-                        </span>
-                        <span className={styles.passkeySub}>
-                          {formatPasskeyTime(item.last_used_at)}
-                        </span>
-                      </div>
-                      {canEnroll ? (
-                        <Button
-                          type="link"
-                          danger
-                          size="small"
-                          disabled={busy}
-                          onClick={() =>
-                            requestRemoveFactor({
-                              kind: "passkey_remove",
-                              credentialId: item.credential_id,
-                            })
-                          }
+              {!passkeyReady || passkeyCount > 0 ? (
+                <div className={styles.cardExtra}>
+                  {!passkeyReady ? (
+                    <Alert
+                      type="info"
+                      showIcon
+                      message={
+                        passkeyIpHost || passkeyBlock === "ip" ? (
+                          t("account.securityPasskeyIpHost", {
+                            host: window.location.hostname,
+                            port: window.location.port || "80",
+                          })
+                        ) : !isWebAuthnAvailable() ? (
+                          t("account.securityPasskeyHttps")
+                        ) : (
+                          <>
+                            {t(
+                              passkeyBlock === "origin"
+                                ? "account.securityPasskeyOrigin"
+                                : canConfigurePasskeys
+                                ? "account.securityPasskeyUnconfiguredAdmin"
+                                : "account.securityPasskeyUnconfigured",
+                            )}
+                            {canConfigurePasskeys ? (
+                              <>
+                                {" "}
+                                <Link
+                                  className={styles.inlineLink}
+                                  to="/admin/advanced?tab=webauthn"
+                                >
+                                  {t("account.securityPasskeyOpenSettings")}
+                                </Link>
+                              </>
+                            ) : null}
+                          </>
+                        )
+                      }
+                    />
+                  ) : null}
+                  {passkeyCount > 0 ? (
+                    <ul className={styles.passkeyList}>
+                      {(status?.passkeys ?? []).map((item) => (
+                        <li
+                          key={item.credential_id}
+                          className={styles.passkeyRow}
                         >
-                          {t("account.securityPasskeyRemove")}
-                        </Button>
-                      ) : null}
-                    </li>
-                  ))}
-                </ul>
+                          <div className={styles.passkeyMeta}>
+                            <span className={styles.passkeyName}>
+                              {item.name.trim() ||
+                                t("account.securityPasskeyDefaultName")}
+                            </span>
+                            <span className={styles.passkeySub}>
+                              {formatPasskeyTime(item.last_used_at)}
+                            </span>
+                          </div>
+                          {canEnroll ? (
+                            <Button
+                              type="text"
+                              danger
+                              size="small"
+                              disabled={busy}
+                              onClick={() =>
+                                requestRemoveFactor({
+                                  kind: "passkey_remove",
+                                  credentialId: item.credential_id,
+                                })
+                              }
+                            >
+                              {t("account.securityPasskeyRemove")}
+                            </Button>
+                          ) : null}
+                        </li>
+                      ))}
+                    </ul>
+                  ) : null}
+                </div>
               ) : null}
             </section>
 
             <section className={styles.card}>
-              <div className={styles.cardRow}>
-                <div className={styles.cardMain}>
+              <div className={styles.cardTop}>
+                <div className={styles.cardLead}>
                   <span
                     className={`${styles.iconWrap} ${
                       hasFactor ? styles.iconWrapOn : ""
                     }`}
                     aria-hidden
                   >
-                    <KeyRound size={18} strokeWidth={1.9} />
+                    <KeyRound size={18} strokeWidth={1.75} />
                   </span>
-                  <div className={styles.cardMeta}>
-                    <div className={styles.cardTitleRow}>
-                      <h3 className={styles.cardTitle}>
-                        {t("account.securityRecovery")}
-                      </h3>
-                      {hasFactor ? (
-                        <Tag className={styles.statusTag} color="default">
-                          {t("account.securityRecoveryCount", {
-                            count: status?.recovery_remaining ?? 0,
-                          })}
-                        </Tag>
-                      ) : null}
-                    </div>
-                    <p className={styles.cardDesc}>
-                      {hasFactor
-                        ? t("account.securityRecoveryDesc")
-                        : t("account.securityRecoveryNeedFactor")}
-                    </p>
+                  <div className={styles.cardIdentity}>
+                    <h3 className={styles.cardTitle}>
+                      {t("account.securityRecovery")}
+                    </h3>
+                    {hasFactor ? (
+                      <span className={styles.statusPill}>
+                        {t("account.securityRecoveryCount", {
+                          count: status?.recovery_remaining ?? 0,
+                        })}
+                      </span>
+                    ) : null}
                   </div>
                 </div>
                 <div className={styles.cardSide}>
+                  <p className={styles.cardDesc}>
+                    {hasFactor
+                      ? t("account.securityRecoveryDesc")
+                      : t("account.securityRecoveryNeedFactor")}
+                  </p>
+                  <UsageTips
+                    label={t("account.securityHowTo")}
+                    items={[
+                      t("account.securityRecoveryTip1"),
+                      t("account.securityRecoveryTip2"),
+                    ]}
+                  />
                   {canEnroll && hasFactor ? (
-                    <Button
-                      disabled={busy}
-                      onClick={() => requestReauth({ kind: "recovery_regen" })}
-                    >
-                      {t("account.securityRecoveryRegenerate")}
-                    </Button>
+                    <div className={styles.cardActions}>
+                      <Button
+                        disabled={busy}
+                        onClick={() =>
+                          requestReauth({ kind: "recovery_regen" })
+                        }
+                      >
+                        {t("account.securityRecoveryRegenerate")}
+                      </Button>
+                    </div>
                   ) : null}
                 </div>
               </div>
@@ -520,7 +616,7 @@ export default function AccountSecurityDrawer({
         open={open}
         onClose={onClose}
         placement="right"
-        width={isMobile ? "100%" : 440}
+        width={isMobile ? "100%" : 520}
         destroyOnHidden
         className={styles.drawer}
       >
@@ -614,14 +710,16 @@ export default function AccountSecurityDrawer({
         }
       >
         <Alert
+          className={styles.recoveryWarn}
           type="warning"
           showIcon
-          style={{ marginBottom: 12 }}
           message={t("account.securityRecoveryShowOnce")}
         />
-        <pre className={styles.recoveryPre}>
-          {(recoveryCodes ?? []).join("\n")}
-        </pre>
+        <ul className={styles.recoveryList}>
+          {(recoveryCodes ?? []).map((code, index) => (
+            <li key={`${index}-${code}`}>{code}</li>
+          ))}
+        </ul>
       </Modal>
     </>
   );

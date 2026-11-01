@@ -92,6 +92,28 @@ async def test_mfa_version_mismatch_rejects_access(srv) -> None:
 
 
 @pytest.mark.asyncio
+async def test_password_version_mismatch_rejects_access(srv) -> None:
+    server, _client = srv
+    assert server.user_manager is not None and server.services is not None
+    user = server.user_manager.get("admin")
+    assert user is not None
+    secret = server.services.secret_repo.get("jwt")
+    assert secret is not None
+    token = sign_token(
+        secret,
+        sub=user.id,
+        uname=user.username,
+        role=user.role,
+        purpose=PURPOSE_ACCESS,
+        password_version=0,
+    )
+    server.services.user_repo.set_password_hash(user.id, "rotated-hash")
+    with pytest.raises(OctopError) as ei:
+        resolve_user_from_token(server, token)
+    assert ei.value.code is ErrorCode.AUTH_FAILED
+
+
+@pytest.mark.asyncio
 async def test_query_access_token_rejects_mfa_purpose(srv) -> None:
     server, client = srv
     assert server.user_manager is not None and server.services is not None

@@ -24,10 +24,10 @@ Most endpoints require a JWT bearer token:
    accepts LDAP credentials and provisions the account on first login.
 3. Send `Authorization: Bearer <access_token>` on subsequent requests.
 
-Access tokens use sliding renewal: when less than one-third of
+Access tokens use sliding renewal: when less than two-thirds of
 `access_token_ttl_seconds` remains, authenticated responses may include a fresh
 token in the `X-Octop-Access-Token` header. Clients should replace the stored
-token when present.
+token when present. Changing the password invalidates previously issued tokens.
 
 Public endpoints (no token): `/api/docs`, `/api/openapi.json`, `/api/health`,
 `/api/setup/*`, `/api/auth/login`, `/api/auth/captcha`, `/api/auth/oidc/status`, `/api/auth/oidc/start`,

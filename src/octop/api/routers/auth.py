@@ -10,7 +10,7 @@ from fastapi import APIRouter, Depends, File, Request, Response, UploadFile
 from pydantic import BaseModel, Field
 
 from octop.api.common.client_ip import resolve_client_ip
-from octop.api.deps import current_user, get_server
+from octop.api.deps import ACCESS_TOKEN_RESPONSE_HEADER, current_user, get_server
 from octop.infra.auth.captcha import current_env, ensure_captcha, load_effective, public_config
 from octop.infra.auth.mfa import MfaService
 from octop.infra.errors import ErrorCode, OctopError
@@ -233,9 +233,16 @@ async def change_password(
     user: Any = Depends(current_user),
     server: Any = Depends(get_server),
 ) -> Response:
-    """Verify the old password and set a new one for the current user."""
+    """Verify the old password and set a new one for the current user.
+
+    Previously issued access tokens stop working. This response carries a
+    replacement in ``X-Octop-Access-Token`` so the current client stays signed in.
+    """
     await server.user_manager.change_password(user.username, body.old_password, body.new_password)
-    return Response(status_code=204)
+    token, _ttl = MfaService(server.services).mint_access_token(user)
+    response = Response(status_code=204)
+    response.headers[ACCESS_TOKEN_RESPONSE_HEADER] = token
+    return response
 
 
 class UpdateMeBody(BaseModel):
