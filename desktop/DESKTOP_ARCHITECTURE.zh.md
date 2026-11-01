@@ -181,7 +181,9 @@ delete env.PYTHONPATH
 - 遇到 `401` 时 `request()` 通过壳续期一次（`POST /api/auth/device/token`）再重试。这个交换接口豁免 JWT，但要求壳标志位、对端是回环地址、SHA-256 摘要常量时间比对，并按来源做失败节流；服务端只存摘要（`secrets` 表 `desktop_device`）。
 - `POST /api/auth/device/revoke` 用于忘记凭据，壳暴露为 `session.revoke`，留给后续的"重置本机登录"入口。
 
-于是桌面端跨重启、跨 JWT 过期都不需要密码；使用期间的滑动续期照旧轮换令牌。唯一保留的死局是刻意保留的：凭据被删除、或用户行被移除时回到普通登录页，那属于服务端操作（`octop user passwd`），壳自己无力恢复。
+于是桌面端跨重启、跨 JWT 过期都不需要密码；使用期间的滑动续期照旧轮换令牌。凭据被删除、或用户行被移除时回到普通登录页，那属于服务端操作（`octop user passwd`），壳自己无力恢复。
+
+已有 `OCTOP_HOME` 数据（旧桌面或本机服务端）也会落到登录页，因为设备凭据从未注册。认领方案见 [`LOCAL_ACCOUNT_CLAIM.zh.md`](LOCAL_ACCOUNT_CLAIM.zh.md)，尚未实现。
 
 **登录 Shell 环境**：
 
