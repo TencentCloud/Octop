@@ -23,7 +23,7 @@ function Splash() {
     <main className="splash" role="status" aria-live="polite">
       <div className="splash__stack">
         <div className="splash__mark" aria-hidden="true">
-          <img className="splash__logo" src={markUrl} alt="" width={64} height={64} />
+          <img className="splash__logo" src={markUrl} alt="" width={352} height={255} />
         </div>
         <h1 className="splash__wordmark">Octop</h1>
         <p className="splash__text">正在准备本地服务…</p>

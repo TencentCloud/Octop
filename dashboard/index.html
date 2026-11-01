@@ -179,16 +179,11 @@
         align-items: center;
         animation: octop-boot-in 420ms ease-out both;
       }
-      /* One mark for both themes: the tile carries its own background, so it
-         does not need a white twin the way the old vertical lockup did. */
+      /* Cropped red mark, same asset in both themes. No tile, so no radius. */
       .octop-boot-mark {
         display: block;
-        width: 64px;
         height: 64px;
-        border-radius: 16px;
-        box-shadow:
-          0 1px 2px rgba(24, 8, 12, 0.06),
-          0 12px 28px -12px rgba(232, 93, 117, 0.45);
+        width: auto;
       }
       .octop-boot-wordmark {
         margin: 18px 0 0;
@@ -350,10 +345,10 @@
         <div class="octop-boot-stack">
           <img
             class="octop-boot-mark"
-            src="%BASE_URL%favico.svg"
+            src="%BASE_URL%logo_mark.svg"
             alt=""
-            width="64"
-            height="64"
+            width="352"
+            height="255"
           />
           <h1 class="octop-boot-wordmark">Octop</h1>
           <p id="octop-boot-text">Loading the interface…</p>

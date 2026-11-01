@@ -52,11 +52,9 @@ describe("index.html boot theme", () => {
     );
   });
 
-  it("paints one mark for both themes instead of swapping assets", () => {
-    // The tile carries its own background, so the old "vertical lockup, white
-    // twin in dark mode" pair is gone — and with it a second asset to keep in
-    // sync with the shell's splash.
-    expect(INDEX_HTML).toContain('src="%BASE_URL%favico.svg"');
+  it("paints the cropped red mark, not the framed favicon", () => {
+    expect(INDEX_HTML).toContain('src="%BASE_URL%logo_mark.svg"');
+    expect(INDEX_HTML).not.toContain('src="%BASE_URL%favico.svg"');
     expect(INDEX_HTML).not.toContain("logo_vertical_white.svg");
   });
 

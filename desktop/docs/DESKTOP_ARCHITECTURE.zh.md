@@ -494,7 +494,8 @@ Octop/
           client-settings.ts
       preload/
         index.ts
-      renderer/                 # 壳页：独立轻量 React 应用（不依赖 Dashboard）
+      renderer/                 # 壳页：独立 Vite + React 应用（不依赖 Dashboard）
+        vite.config.ts
         splash.html
         error.html
         src/
@@ -511,10 +512,10 @@ Octop/
         global.d.ts
 ```
 
-壳页（`renderer/`）是独立的小 React 应用：只依赖 `react` / `react-dom`，不引入
+壳页（`renderer/`）是独立的 Vite + React 应用：配置在 `renderer/vite.config.ts`，
+用 `@vitejs/plugin-react` 编译 JSX。它只依赖 `react` / `react-dom`，不引入
 Dashboard 的 antd 或任何共享组件，因为它必须能在 Sidecar 和 Dashboard 都还不存在时
-就渲染出第一帧。JSX 交给 esbuild 的自动运行时（tsconfig 的 `"jsx": "react-jsx"`），
-没有引入 `@vitejs/plugin-react`——两个静态页面用不上 Fast Refresh。
+就渲染出第一帧。electron-vite 构建时直接使用这份配置。
 
 启动失败时，主进程把 `error.html` 装进同一个 Early Window，并把载荷以 base64url 编进
 query（页面是 `sandbox: true`、无 preload、无 IPC，这是两者唯一的通道）。载荷拆成两层：

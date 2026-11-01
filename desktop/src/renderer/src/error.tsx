@@ -23,7 +23,7 @@ type CopyState = "idle" | "copied" | "failed";
 function FailureMark() {
   return (
     <div className="result__mark" aria-hidden="true">
-      <img className="result__mark-img" src={markUrl} alt="" width={52} height={52} />
+      <img className="result__mark-img" src={markUrl} alt="" width={352} height={255} />
       <span className="result__badge">!</span>
     </div>
   );
