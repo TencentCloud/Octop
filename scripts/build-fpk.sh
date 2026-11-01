@@ -27,9 +27,9 @@
 #     curl 对 RST / 超时等瞬时错误重试。成功后落到 .verify/fnpack 供本机与
 #     Actions cache 复用。
 #   - 本地若已存在 .verify/fnpack(.exe) 则直接复用，不再联网下载。
-#   - 版本号来自仓库根 pyproject.toml。镜像标签与包名仍用该 PEP 440 字符串。
-#     写入 manifest 的是商店可比版本（1.0.2b8 → 1.0.208），见
-#     scripts/fnos/store_version.sh。manifest 为 key=value 无空格格式。
+#   - 版本号只读仓库根 pyproject.toml。源 manifest / compose 是占位 0.0.0，
+#     发版不要改。镜像标签与包名仍用 PEP 440。写入 manifest 的是商店可比版本
+#     （1.0.2b8 → 1.0.208），见 fnos/README.md「版本号映射」。
 # =============================================================================
 set -euo pipefail
 

@@ -81,6 +81,31 @@ fnos/
     └── wizard/             # 安装/配置/卸载/升级向导
 ```
 
+## 版本号映射
+
+飞牛应用中心比较 `manifest` 的 `version` 时只保留开头的 `x.y.z`。[社区文档](https://github.com/ckcoding/fnnas-docs/blob/main/docs/core-concepts/manifest.md)里的示例包括 `1.0.0` 和 `2.1.3-beta`，但 `1.0.2b6` 与 `1.0.2b7` 都会被看成 `1.0.2`，商店判定已安装相同或更高版本，无法升级。第四段构建号也不参与这次比较。
+
+Octop 发版号是 PEP 440，beta 写成 `X.Y.ZbN`。`scripts/fnos/store_version.sh` 在打包时把 beta 编进 patch，只写进 FPK 的 `manifest`。beta 序号 N 为 1–99：
+
+| Octop（`pyproject.toml`） | 应用中心版本 |
+|---------------------------|----------------|
+| `X.Y.ZbN` | `X.Y.(Z×100+N)` |
+| `X.Y.Z` | `X.Y.(Z×100+100)` |
+
+| Octop | 应用中心版本 |
+|-------|----------------|
+| `1.0.2b8` | `1.0.208` |
+| `1.0.2b10` | `1.0.210` |
+| `1.0.2` | `1.0.300` |
+| `1.0.3b1` | `1.0.301` |
+| `1.0.3` | `1.0.400` |
+
+上面几行的大小关系与 PEP 440 一致：`1.0.2b8` < `1.0.2b10` < `1.0.2` < `1.0.3b1` < `1.0.3`。已安装的旧 beta 在商店侧只剩 `1.0.2`，因此能升到 `1.0.208`。
+
+打进包里的镜像标签和 `.fpk` 文件名仍用 PEP 440，来自 `pyproject.toml`。仓库里两个 `manifest` 的 `version` 和 `fnos/docker/app/docker/docker-compose.yaml` 的 `image` 都是占位 `0.0.0`，发版不改。`scripts/build-fpk.sh` 打包时写入商店版本和真实镜像标签。
+
+打包只接受 `X.Y.Z` 和 `X.Y.ZbN`。`1.0.2a1`、`1.0.2rc1`、`1.0.2b0`、`1.0.2b100`，以及带 `.dev` 的版本会失败。
+
 ## 工作机制
 
 1. **发版链路**：`v*` tag → `release.yml`（PyPI + GitHub Release）与 `docker-publish.yml`（GHCR / Hub）并行；Release 成功后自动 `workflow_dispatch` 本工作流（`temporary=false`）。
