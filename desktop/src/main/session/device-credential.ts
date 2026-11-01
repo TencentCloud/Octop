@@ -2,6 +2,8 @@ import { randomBytes } from "node:crypto";
 import { promises as fs } from "node:fs";
 import { join } from "node:path";
 
+import { desktopLog } from "../log/desktop-log";
+
 /**
  * Per-install device credential (§7 accounts).
  *
@@ -122,13 +124,13 @@ export class DeviceCredentialStore {
 
     if (await this.cipher.available()) {
       await this.write(secret);
-      console.info("[desktop] re-encrypted the plaintext device credential");
+      desktopLog().info("[desktop] re-encrypted the plaintext device credential");
       return;
     }
 
     await this.clear();
     this.inMemory = secret;
-    console.warn(
+    desktopLog().warn(
       "[desktop] deleted the plaintext device credential — no OS keychain here, so this install is remembered for this launch only",
     );
   }
@@ -182,7 +184,7 @@ export class DeviceCredentialStore {
       // Unparseable: a v1 plaintext write that was cut short, never a credential.
     }
     await fs.rm(this.path, { force: true }).catch((err: unknown) => {
-      console.warn(`[desktop] could not clear the stored device credential: ${String(err)}`);
+      desktopLog().warn(`[desktop] could not clear the stored device credential: ${String(err)}`);
     });
   }
 

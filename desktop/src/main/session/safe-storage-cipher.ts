@@ -1,5 +1,6 @@
 import { safeStorage } from "electron";
 
+import { desktopLog } from "../log/desktop-log";
 import type { CredentialCipher } from "./device-credential";
 
 /**
@@ -56,7 +57,7 @@ export async function warnIfKeychainUnavailable(
   cipher: CredentialCipher,
 ): Promise<void> {
   if (await cipher.available()) return;
-  console.warn(
+  desktopLog().warn(
     "[desktop] no usable OS keychain — the device credential stays in memory and this install will need to sign in again after a restart",
   );
 }

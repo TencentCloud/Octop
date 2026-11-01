@@ -93,6 +93,39 @@ test("stop() is a no-op when the sidecar was never started", async () => {
   assert.deepEqual(await supervisor.stop(50), { clean: true, exitCode: null });
 });
 
+test("outputTail keeps the end of the child's stderr", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "octop-sidecar-"));
+  const marker = join(dir, "ready");
+  const script = [
+    "const fs = require('node:fs');",
+    "process.stderr.write('x'.repeat(80000) + 'END');",
+    "fs.writeFileSync(process.argv[1], 'ready');",
+    "setInterval(() => {}, 1000);",
+  ].join("");
+  const supervisor = new SidecarSupervisor({
+    executable: process.execPath,
+    args: ["-e", script, marker],
+    env: process.env,
+    cwd: dir,
+    port: 1,
+  });
+  try {
+    supervisor.start();
+    await waitForFile(marker);
+    const deadline = Date.now() + 3_000;
+    while (!supervisor.outputTail().endsWith("END") && Date.now() < deadline) {
+      await new Promise((resolvePromise) => setTimeout(resolvePromise, 20));
+    }
+    const tail = supervisor.outputTail();
+    assert.equal(tail.endsWith("END"), true);
+    assert.ok(tail.length <= 64 * 1024);
+    assert.ok(tail.length > "END".length);
+  } finally {
+    await supervisor.stop(1_000);
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
 test("stop() is a no-op after the child already exited", async () => {
   const dir = await mkdtemp(join(tmpdir(), "octop-sidecar-"));
   const marker = join(dir, "ready");

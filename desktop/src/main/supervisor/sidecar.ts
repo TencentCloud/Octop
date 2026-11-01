@@ -15,7 +15,18 @@ export interface SidecarConfig {
   env: NodeJS.ProcessEnv;
   cwd: string;
   port: number;
+  /** Fired once, after the child has exited. ``output`` is the retained tail. */
+  onExit?: (notice: SidecarExitNotice) => void;
 }
+
+export interface SidecarExitNotice {
+  code: number | null;
+  signal: NodeJS.Signals | null;
+  output: string;
+}
+
+/** Recent sidecar stdout/stderr kept for a startup failure. Not a second octop.log. */
+const OUTPUT_TAIL_MAX = 64 * 1024;
 
 export interface SidecarExit {
   /** ``true`` only when the process exited by itself with code 0 (§6.3). */
@@ -26,6 +37,7 @@ export interface SidecarExit {
 export class SidecarSupervisor {
   private child: ChildProcess | null = null;
   private port: number;
+  private tail = "";
   private readonly config: SidecarConfig;
 
   // Plain field assignment (no TS parameter property) keeps this module loadable
@@ -44,8 +56,22 @@ export class SidecarSupervisor {
     };
     if (process.platform !== "win32") options.detached = true;
     this.child = spawn(executable, args, options);
-    this.child.stdout?.on("data", () => undefined);
-    this.child.stderr?.on("data", () => undefined);
+    this.child.stdout?.on("data", (chunk: unknown) => this.note(chunk));
+    this.child.stderr?.on("data", (chunk: unknown) => this.note(chunk));
+    this.child.on("exit", (code, signal) => {
+      this.config.onExit?.({ code, signal, output: this.tail });
+    });
+  }
+
+  /** Stdout/stderr retained from this process, capped at 64 KiB. */
+  outputTail(): string {
+    return this.tail;
+  }
+
+  private note(chunk: unknown): void {
+    const text = typeof chunk === "string" ? chunk : Buffer.isBuffer(chunk) ? chunk.toString("utf8") : "";
+    if (!text) return;
+    this.tail = (this.tail + text).slice(-OUTPUT_TAIL_MAX);
   }
 
   /** Poll only THIS process's port until ``/api/health`` matches the contract. */

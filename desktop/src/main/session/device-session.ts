@@ -1,4 +1,5 @@
 import type { IssuedSession } from "../../shared/ipc-contract";
+import { desktopLog } from "../log/desktop-log";
 import type { DeviceCredentialStore } from "./device-credential";
 
 /**
@@ -53,7 +54,7 @@ export class DeviceSessionClient {
       accessToken,
     );
     if (res.status !== 200) {
-      console.warn(`[desktop] device registration returned ${res.status}`);
+      desktopLog().warn(`[desktop] device registration returned ${res.status}`);
       return false;
     }
     return true;
@@ -65,7 +66,7 @@ export class DeviceSessionClient {
     if (!secret) return null;
     const res = await this.post("/api/auth/device/token", { device_token: secret });
     if (res.status !== 200) {
-      console.warn(`[desktop] device session renewal returned ${res.status}`);
+      desktopLog().warn(`[desktop] device session renewal returned ${res.status}`);
       return null;
     }
     const body = res.data as Partial<IssuedSession> | null;
@@ -109,7 +110,7 @@ export class DeviceSessionClient {
       // falls back to the login screen. Log the message only — a stack trace on
       // every boot attempt would drown the desktop log.
       const detail = err instanceof Error ? err.message : String(err);
-      console.warn(`[desktop] ${path} failed: ${detail}`);
+      desktopLog().warn(`[desktop] ${path} failed: ${detail}`);
       return { status: 0, data: null };
     }
   }
