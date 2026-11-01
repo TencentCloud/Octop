@@ -111,12 +111,17 @@ def extract_artifact_paths(
 ) -> list[str]:
     """Return workspace paths from a write/edit/send/screenshot tool.
 
-    Prefer structured path keys on tool *args*. Scan the tool result text only
-    when args did not yield a path (screenshots, send_file without a path key).
+    Prefer desktop screenshot results, which report the actual saved path.
+    Otherwise prefer structured path keys on tool *args*, scanning the result
+    only when args did not yield a path.
     """
     if not is_artifact_tool_name(tool_name):
         return []
     ws = workspace_dir.expanduser() if workspace_dir is not None else None
+    if tool_name_base(tool_name).lower() == "desktop_screenshot":
+        from_result = _dedupe_paths(_paths_from_content(result), ws)
+        if from_result:
+            return from_result
     from_args = _dedupe_paths(_paths_from_args(args), ws)
     if from_args:
         return from_args
