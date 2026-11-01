@@ -1,16 +1,7 @@
-/**
- * Framework-agnostic rich document renderer (PDF / Word / Excel / PPTX).
- *
- * Excel path: SheetJS parses the workbook → native HTML table (+ Ant Design
- * ``Tabs``). Embedded ``xl/media`` images are listed in a gallery below the
- * sheet — they are not mapped into rows (zip order ≠ sheet anchors).
- *
- * Native ``<table>`` (not Ant Design ``Table``) keeps header/body column
- * widths in one layout tree — avoids the classic antd scroll/ellipsis drift.
- */
+/** Shared rich document entry point (PDF / Word / Excel / PPTX). */
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Button, Image, Tabs } from "antd";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { Button } from "antd";
 import { ArrowDownToLine } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { isNotFoundApiError } from "../utils/apiError";
@@ -18,6 +9,7 @@ import type { DocKind } from "../utils/docKind";
 import styles from "./DocumentPreviewCore.module.less";
 import DocumentPreviewLoading from "./DocumentPreviewLoading";
 import PdfDocumentPreview, { PdfViewerSkeleton } from "./PdfDocumentPreview";
+import ExcelDocumentPreview from "./ExcelDocumentPreview";
 
 export interface DocumentPreviewCoreProps {
   kind: DocKind;
@@ -40,101 +32,6 @@ function isAbortError(err: unknown): boolean {
     (err instanceof DOMException && err.name === "AbortError") ||
     (err instanceof Error && err.name === "AbortError")
   );
-}
-
-interface ExcelSheetData {
-  name: string;
-  /** First row is header; remaining rows are body cells as strings. */
-  matrix: string[][];
-}
-
-interface ExcelMediaItem {
-  name: string;
-  /** ``data:image/...;base64,...`` */
-  dataUrl: string;
-}
-
-interface ExcelColumn {
-  key: string;
-  title: string;
-  width: number;
-  isImageCol: boolean;
-  /** Absorb leftover table width so blank columns stay narrow. */
-  flexible: boolean;
-}
-
-interface ExcelTableModel {
-  columns: ExcelColumn[];
-  /** Body rows only; each ``cells`` array is padded to ``columns.length``. */
-  rows: { key: string; rowIndex: number; cells: string[] }[];
-  scrollX: number;
-}
-
-const EXCEL_MAX_COLS = 40;
-const EXCEL_MAX_ROWS = 500;
-
-function cellLooksLikeImageRef(value: string): boolean {
-  const v = value.trim();
-  if (!v) return false;
-  if (/DISPIMG/i.test(v)) return true;
-  if (/\.(png|jpe?g|gif|webp|bmp)$/i.test(v)) return true;
-  if (/^image\./i.test(v)) return true;
-  return false;
-}
-
-function columnLooksLikeImage(title: string): boolean {
-  return /截图|设计稿|图片|image|screenshot|photo|附图|缩略图|draft/i.test(
-    title,
-  );
-}
-
-/** Drop leading/trailing columns that have no header and no cell values. */
-function trimEmptyMatrixColumns(matrix: string[][]): string[][] {
-  if (matrix.length === 0) return matrix;
-  const colCount = Math.max(0, ...matrix.map((row) => row.length));
-  if (colCount === 0) return matrix;
-
-  const colHasContent = Array.from({ length: colCount }, (_, index) =>
-    matrix.some((row) => (row[index] ?? "").trim().length > 0),
-  );
-  let start = 0;
-  while (start < colCount && !colHasContent[start]) start += 1;
-  let end = colCount - 1;
-  while (end >= start && !colHasContent[end]) end -= 1;
-  if (start === 0 && end === colCount - 1) return matrix;
-  if (start > end) return matrix.map(() => [] as string[]);
-  return matrix.map((row) => row.slice(start, end + 1));
-}
-
-function mimeForMediaName(name: string): string {
-  const ext = name.split(".").pop()?.toLowerCase() ?? "";
-  if (ext === "png") return "image/png";
-  if (ext === "jpg" || ext === "jpeg") return "image/jpeg";
-  if (ext === "gif") return "image/gif";
-  if (ext === "webp") return "image/webp";
-  if (ext === "bmp") return "image/bmp";
-  return "application/octet-stream";
-}
-
-async function extractXlsxMediaDataUrls(
-  buf: ArrayBuffer,
-): Promise<ExcelMediaItem[]> {
-  const JSZip = (await import("jszip")).default;
-  const zip = await JSZip.loadAsync(buf);
-  const paths = Object.keys(zip.files)
-    .filter((path) => path.startsWith("xl/media/") && !zip.files[path]?.dir)
-    .sort();
-  const items: ExcelMediaItem[] = [];
-  for (const path of paths) {
-    const entry = zip.files[path];
-    if (!entry) continue;
-    const name = path.split("/").pop() || path;
-    const mime = mimeForMediaName(name);
-    if (!mime.startsWith("image/")) continue;
-    const base64 = await entry.async("base64");
-    items.push({ name, dataUrl: `data:${mime};base64,${base64}` });
-  }
-  return items;
 }
 
 /** Absolute lengths beyond this (≈ 27″) are treated as corrupt DOCX metrics. */
@@ -223,125 +120,7 @@ function sanitizeDocxPreviewLayout(root: HTMLElement): void {
   }
 }
 
-/**
- * Read a sheet cell-by-cell over ``!ref`` so every row has the same column
- * count (SheetJS ``sheet_to_json`` can drop leading empties / jagged rows).
- */
-function sheetToMatrix(
-  xlsx: typeof import("xlsx"),
-  sheet: import("xlsx").WorkSheet,
-): string[][] {
-  const ref = sheet["!ref"];
-  if (!ref) return [];
-  const range = xlsx.utils.decode_range(ref);
-  const endRow = Math.min(range.e.r, range.s.r + EXCEL_MAX_ROWS);
-  const endCol = Math.min(range.e.c, range.s.c + EXCEL_MAX_COLS - 1);
-  const matrix: string[][] = [];
-  for (let row = range.s.r; row <= endRow; row += 1) {
-    const cells: string[] = [];
-    for (let col = range.s.c; col <= endCol; col += 1) {
-      const addr = xlsx.utils.encode_cell({ r: row, c: col });
-      const cell = sheet[addr];
-      cells.push(cell == null ? "" : String(xlsx.utils.format_cell(cell)));
-    }
-    matrix.push(cells);
-  }
-  return matrix;
-}
-
-function buildExcelTable(
-  sheet: ExcelSheetData,
-  emptyColumnTitle: (n: number) => string,
-): ExcelTableModel {
-  const matrix = trimEmptyMatrixColumns(sheet.matrix);
-  const header = matrix[0] ?? [];
-  const body = matrix.slice(1);
-  const colCount = Math.max(
-    header.length,
-    ...matrix.map((row) => row.length),
-    1,
-  );
-
-  // Image-like columns still render DISPIMG / media refs as "—", but we never
-  // inject zip ``xl/media`` by row index (order ≠ sheet anchors).
-  let imageCol = -1;
-  for (let index = 0; index < colCount; index += 1) {
-    if (columnLooksLikeImage((header[index] || "").trim())) {
-      imageCol = index;
-      break;
-    }
-  }
-  if (imageCol < 0) {
-    for (let index = 0; index < colCount; index += 1) {
-      if (body.some((row) => cellLooksLikeImageRef(row[index] ?? ""))) {
-        imageCol = index;
-        break;
-      }
-    }
-  }
-
-  const columns: ExcelColumn[] = Array.from(
-    { length: colCount },
-    (_, index) => {
-      const title = (header[index] || "").trim() || emptyColumnTitle(index + 1);
-      const isImageCol = index === imageCol || columnLooksLikeImage(title);
-      const hasBody = body.some((row) => (row[index] ?? "").trim().length > 0);
-      let width: number;
-      if (isImageCol) {
-        width = 168;
-      } else if (!hasBody) {
-        // Header-only / blank columns should stay narrow so text cols can breathe.
-        width = Math.min(120, Math.max(72, title.length * 14));
-      } else {
-        const sampleLen = Math.max(
-          title.length,
-          ...body.slice(0, 40).map((row) => (row[index] ?? "").trim().length),
-        );
-        width = Math.min(360, Math.max(160, sampleLen * 12));
-      }
-      return {
-        key: `c${index}`,
-        title,
-        width,
-        isImageCol,
-        flexible: false,
-      };
-    },
-  );
-
-  // Last non-image column with content absorbs leftover width when table is 100%.
-  for (let index = columns.length - 1; index >= 0; index -= 1) {
-    const col = columns[index];
-    if (col && !col.isImageCol) {
-      col.flexible = true;
-      break;
-    }
-  }
-
-  const rows = body.map((row, rowIndex) => ({
-    key: String(rowIndex),
-    rowIndex,
-    cells: Array.from({ length: colCount }, (_, index) => row[index] ?? ""),
-  }));
-
-  const scrollX = columns.reduce((sum, col) => sum + col.width, 0);
-  return { columns, rows, scrollX };
-}
-
-function ExcelCellContent({
-  text,
-  isImageCol,
-}: {
-  text: string;
-  isImageCol: boolean;
-}) {
-  if (cellLooksLikeImageRef(text) || (isImageCol && !text.trim())) {
-    return <span className={styles.xlsxImageCell}>—</span>;
-  }
-  return text;
-}
-
-export default function DocumentPreviewCore({
+function OfficeDocumentPreview({
   kind,
   filename,
   fetchBlob,
@@ -359,10 +138,6 @@ export default function DocumentPreviewCore({
   const [error, setError] = useState<"missing" | "error" | null>(null);
   const [empty, setEmpty] = useState(false);
   const [reloadNonce, setReloadNonce] = useState(0);
-  const [excelSheets, setExcelSheets] = useState<ExcelSheetData[]>([]);
-  const [excelTab, setExcelTab] = useState("0");
-  const [excelTruncated, setExcelTruncated] = useState(false);
-  const [excelMedia, setExcelMedia] = useState<ExcelMediaItem[]>([]);
   const containerRef = useRef<HTMLDivElement | null>(null);
   const objectUrlRef = useRef<string | undefined>(undefined);
   const pptxViewerRef = useRef<{ destroy: () => void } | null>(null);
@@ -376,18 +151,6 @@ export default function DocumentPreviewCore({
     setReloadNonce((n) => n + 1);
   }, []);
 
-  const activeSheet = useMemo(() => {
-    const index = Number(excelTab);
-    return excelSheets[Number.isFinite(index) ? index : 0] ?? null;
-  }, [excelSheets, excelTab]);
-
-  const activeTable = useMemo(() => {
-    if (!activeSheet) return null;
-    return buildExcelTable(activeSheet, (n) =>
-      t("workspace.excelColumnFallback", "Column {{n}}", { n }),
-    );
-  }, [activeSheet, t]);
-
   useEffect(() => {
     let cancelled = false;
     setLoading(true);
@@ -396,10 +159,6 @@ export default function DocumentPreviewCore({
     setError(null);
     setEmpty(false);
     setSrc("");
-    setExcelSheets([]);
-    setExcelTab("0");
-    setExcelTruncated(false);
-    setExcelMedia([]);
     pptxViewerRef.current?.destroy();
     pptxViewerRef.current = null;
     if (containerRef.current) containerRef.current.innerHTML = "";
@@ -453,46 +212,6 @@ export default function DocumentPreviewCore({
               sanitizeDocxPreviewLayout(containerRef.current);
             }
           }
-        } else if (kind === "excel") {
-          const xlsx = await import("xlsx");
-          const wb = xlsx.read(buf, { type: "array", cellDates: true });
-          let truncated = false;
-          const sheets: ExcelSheetData[] = wb.SheetNames.map((name) => {
-            const sheet = wb.Sheets[name];
-            if (!sheet) return { name, matrix: [] as string[][] };
-            const ref = sheet["!ref"];
-            if (ref) {
-              const range = xlsx.utils.decode_range(ref);
-              if (
-                range.e.r - range.s.r > EXCEL_MAX_ROWS ||
-                range.e.c - range.s.c + 1 > EXCEL_MAX_COLS
-              ) {
-                truncated = true;
-              }
-            }
-            return { name, matrix: sheetToMatrix(xlsx, sheet) };
-          });
-          let media: ExcelMediaItem[] = [];
-          try {
-            media = await extractXlsxMediaDataUrls(buf);
-          } catch {
-            media = [];
-          }
-          if (!cancelled) {
-            const hasCells = sheets.some((sheet) =>
-              sheet.matrix.some((row) =>
-                row.some((cell) => String(cell).trim().length > 0),
-              ),
-            );
-            if (!hasCells && media.length === 0) {
-              setEmpty(true);
-            } else {
-              setExcelSheets(sheets);
-              setExcelTab("0");
-              setExcelTruncated(truncated);
-              setExcelMedia(media);
-            }
-          }
         } else if (kind === "pptx") {
           const { PptxViewer, RECOMMENDED_ZIP_LIMITS } = await import(
             "@aiden0z/pptx-renderer"
@@ -539,7 +258,7 @@ export default function DocumentPreviewCore({
       pptxViewerRef.current?.destroy();
       pptxViewerRef.current = null;
     };
-  }, [kind, fetchBlob, reloadNonce, onBlobProgress]);
+  }, [kind, filename, fetchBlob, reloadNonce, onBlobProgress]);
 
   if (empty) {
     return (
@@ -616,132 +335,6 @@ export default function DocumentPreviewCore({
     );
   }
 
-  if (kind === "excel") {
-    return (
-      <div className={styles.documentPreview}>
-        <div className={styles.xlsxWrap}>
-          {excelSheets.length > 1 ? (
-            <Tabs
-              size="small"
-              activeKey={excelTab}
-              onChange={setExcelTab}
-              items={excelSheets.map((sheet, index) => ({
-                key: String(index),
-                label: sheet.name,
-              }))}
-            />
-          ) : null}
-          {excelTruncated ? (
-            <div className={styles.xlsxHintRow}>
-              <p className={styles.xlsxHint}>
-                {t(
-                  "workspace.excelPreviewTruncated",
-                  "Preview shows the first {{rows}} rows and {{cols}} columns — download for the full sheet",
-                  { rows: EXCEL_MAX_ROWS, cols: EXCEL_MAX_COLS },
-                )}
-              </p>
-              {onDownload ? (
-                <Button
-                  size="small"
-                  type="link"
-                  icon={<ArrowDownToLine size={14} />}
-                  onClick={handleDownload}
-                >
-                  {t("workspace.excelDownloadFull", "Download full file")}
-                </Button>
-              ) : null}
-            </div>
-          ) : null}
-          {activeTable ? (
-            <div className={styles.xlsxTableHost}>
-              <table
-                className={styles.xlsxTable}
-                style={{ minWidth: activeTable.scrollX }}
-              >
-                <colgroup>
-                  {activeTable.columns.map((col) => (
-                    <col
-                      key={col.key}
-                      style={
-                        col.flexible
-                          ? { minWidth: col.width }
-                          : { width: col.width }
-                      }
-                    />
-                  ))}
-                </colgroup>
-                <thead>
-                  <tr>
-                    {activeTable.columns.map((col) => (
-                      <th key={col.key} title={col.title}>
-                        {col.title}
-                      </th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {activeTable.rows.map((row) => (
-                    <tr key={row.key}>
-                      {activeTable.columns.map((col, colIndex) => {
-                        const text = row.cells[colIndex] ?? "";
-                        return (
-                          <td
-                            key={col.key}
-                            className={
-                              col.isImageCol
-                                ? styles.xlsxImageTd
-                                : styles.xlsxTextTd
-                            }
-                            title={col.isImageCol ? undefined : text}
-                          >
-                            <ExcelCellContent
-                              text={text}
-                              isImageCol={col.isImageCol}
-                            />
-                          </td>
-                        );
-                      })}
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          ) : null}
-          {excelMedia.length > 0 ? (
-            <div className={styles.xlsxMediaGallery}>
-              <p className={styles.xlsxHint}>
-                {t("workspace.excelEmbeddedImages", "Embedded images")}
-              </p>
-              <Image.PreviewGroup>
-                <div className={styles.xlsxMediaRow}>
-                  {excelMedia.map((item) => (
-                    <Image
-                      key={item.name}
-                      src={item.dataUrl}
-                      alt={item.name}
-                      className={styles.xlsxCellThumb}
-                    />
-                  ))}
-                </div>
-              </Image.PreviewGroup>
-            </div>
-          ) : null}
-        </div>
-        <div
-          className={`${styles.documentLoading}${
-            loading ? "" : ` ${styles.documentLoadingHidden}`
-          }`}
-          aria-hidden={!loading}
-        >
-          <DocumentPreviewLoading
-            phase={loadPhase}
-            percent={loadPhase === "file" ? downloadPercent : null}
-          />
-        </div>
-      </div>
-    );
-  }
-
   return (
     <div className={styles.documentPreview}>
       <div
@@ -760,5 +353,13 @@ export default function DocumentPreviewCore({
         />
       </div>
     </div>
+  );
+}
+
+export default function DocumentPreviewCore(props: DocumentPreviewCoreProps) {
+  return props.kind === "excel" ? (
+    <ExcelDocumentPreview {...props} />
+  ) : (
+    <OfficeDocumentPreview {...props} />
   );
 }

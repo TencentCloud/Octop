@@ -1,5 +1,11 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { clampAbsurdDocxCssLengths } from "./DocumentPreviewCore";
+
+// These pure layout checks do not need PDF.js browser canvas APIs.
+vi.mock("./PdfDocumentPreview", () => ({
+  default: () => null,
+  PdfViewerSkeleton: () => null,
+}));
 
 describe("clampAbsurdDocxCssLengths", () => {
   it("zeros out overflow-scale min-height / line-height from corrupt DOCX spacing", () => {

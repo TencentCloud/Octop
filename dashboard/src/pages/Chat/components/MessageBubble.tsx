@@ -316,9 +316,11 @@ function ImageGallery({
 function FileAttachmentList({
   files,
   agentId,
+  inlineHtml = false,
 }: {
   files: ChatAttachment[];
   agentId?: string | null;
+  inlineHtml?: boolean;
 }) {
   if (!files || files.length === 0) return null;
 
@@ -331,6 +333,7 @@ function FileAttachmentList({
           filename={file.filename}
           agentId={agentId}
           workspacePath={file.workspacePath}
+          inlineHtml={inlineHtml}
         />
       ))}
     </div>
@@ -1021,6 +1024,7 @@ function MessageBubble({
                   <FileAttachmentList
                     files={fileAttachments}
                     agentId={agentId}
+                    inlineHtml
                   />
                 )}
                 {textContent && (
