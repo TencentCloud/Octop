@@ -22,8 +22,6 @@ import {
   Github,
   RefreshCw,
   KeyRound,
-  Lock,
-  LockOpen,
   ShieldCheck,
   SlidersHorizontal,
 } from "lucide-react";
@@ -35,10 +33,6 @@ import { clearAuthToken } from "../api/request";
 import { applyGuestLocale, applyUserLocale } from "../utils/locale";
 import { apiErrorMessage } from "../utils/apiError";
 import { isSsoPopupMessage, openSsoPopup } from "../utils/ssoPopup";
-import {
-  MIN_PASSWORD_LENGTH,
-  passwordPolicyIssue,
-} from "../utils/passwordPolicy";
 import { useUserRole } from "../hooks/useUserRole";
 import { useIsMobile } from "../hooks/useIsMobile";
 import ThemeSwitcher from "./ThemeSwitcher";
@@ -60,11 +54,6 @@ import styles from "./AvatarDropdown.module.less";
 const GITHUB_URL = "https://github.com/TencentCloud/Octop";
 const HELP_FEEDBACK_URL = "https://octop.cloud";
 const APP_OAUTH_KINDS = new Set(["feishu", "dingtalk", "wecom"]);
-
-const PASSWORD_FIELD_ICON_PROPS = {
-  size: 14 as const,
-  style: { color: "var(--fn-text-tertiary)" },
-};
 
 function oauthProviderIcon(kind: string): ReactNode {
   const src =
@@ -89,7 +78,7 @@ interface AvatarDropdownProps {
   placement?: "default" | "sidebar";
   /** When placement is sidebar and true, show avatar only (collapsed rail). */
   compact?: boolean;
-  /** Called before opening settings / password panels (e.g. close mobile nav drawer). */
+  /** Called before opening settings or account security (e.g. close mobile nav drawer). */
   onBeforeOpenSettings?: () => void;
   /** Opens the sidebar layout editor. Omitted when that editor is unavailable. */
   onCustomizeNav?: () => void;
@@ -110,20 +99,13 @@ export default function AvatarDropdown({
   const { layoutMode, setLayoutMode } = useLayoutMode();
   const [menuOpen, setMenuOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
-  const [passwordOpen, setPasswordOpen] = useState(false);
   const [securityOpen, setSecurityOpen] = useState(false);
   const [saving, setSaving] = useState(false);
   const [ssoProviders, setSsoProviders] = useState<
     { kind: string; display_name: string; enabled: boolean }[]
   >([]);
   const [ssoBindingKind, setSsoBindingKind] = useState<string | null>(null);
-  const [changingPw, setChangingPw] = useState(false);
   const [profileForm] = Form.useForm<{ display_name: string }>();
-  const [pwForm] = Form.useForm<{
-    old_password: string;
-    new_password: string;
-    confirm: string;
-  }>();
 
   const handleLogout = useCallback(async () => {
     setMenuOpen(false);
@@ -145,41 +127,6 @@ export default function AvatarDropdown({
       message.error(e instanceof Error ? e.message : String(e));
     } finally {
       setSaving(false);
-    }
-  };
-
-  const handleChangePw = async (values: {
-    old_password: string;
-    new_password: string;
-    confirm: string;
-  }) => {
-    setChangingPw(true);
-    try {
-      await authApi.changePassword(values.old_password, values.new_password);
-      message.success(t("account.passwordChanged"));
-      pwForm.resetFields();
-      setPasswordOpen(false);
-    } catch (e) {
-      message.error(apiErrorMessage(e, t("account.passwordChangeFailed"), t));
-    } finally {
-      setChangingPw(false);
-    }
-  };
-
-  const passwordPolicyMessage = (
-    issue: ReturnType<typeof passwordPolicyIssue>,
-  ) => {
-    switch (issue) {
-      case "same_as_old":
-        return t("account.passwordSameAsOld");
-      case "too_short":
-        return t("account.passwordTooShort", { min: MIN_PASSWORD_LENGTH });
-      case "need_letter_and_digit":
-        return t("account.passwordNeedLetterAndDigit");
-      case "too_common":
-        return t("account.passwordTooCommon");
-      default:
-        return t("account.passwordTooWeak");
     }
   };
 
@@ -280,13 +227,6 @@ export default function AvatarDropdown({
     deferOpen(() => setSettingsOpen(true));
   };
 
-  const openPassword = () => {
-    setMenuOpen(false);
-    onBeforeOpenSettings?.();
-    pwForm.resetFields();
-    deferOpen(() => setPasswordOpen(true));
-  };
-
   const openSecurity = () => {
     setMenuOpen(false);
     onBeforeOpenSettings?.();
@@ -300,7 +240,6 @@ export default function AvatarDropdown({
   };
 
   const closeSettings = () => setSettingsOpen(false);
-  const closePassword = () => setPasswordOpen(false);
 
   useEffect(() => {
     if (!settingsOpen) return;
@@ -414,11 +353,6 @@ export default function AvatarDropdown({
       <button type="button" className={styles.menuItem} onClick={openSettings}>
         <Settings size={16} strokeWidth={1.8} />
         <span>{t("account.settings")}</span>
-      </button>
-
-      <button type="button" className={styles.menuItem} onClick={openPassword}>
-        <KeyRound size={16} strokeWidth={1.8} />
-        <span>{t("account.changePassword")}</span>
       </button>
 
       <button type="button" className={styles.menuItem} onClick={openSecurity}>
@@ -728,98 +662,6 @@ export default function AvatarDropdown({
     </div>
   );
 
-  const passwordBody = (
-    <div className={styles.settingsBody}>
-      <section className={styles.settingsSection}>
-        <div className={styles.settingsSectionHead}>
-          <p className={styles.settingsSectionDesc}>
-            {t("account.changePasswordHint")}
-          </p>
-        </div>
-        <Form
-          form={pwForm}
-          onFinish={handleChangePw}
-          layout="vertical"
-          requiredMark={false}
-          className={styles.settingsForm}
-        >
-          <Form.Item
-            name="old_password"
-            label={t("account.currentPassword")}
-            rules={[
-              {
-                required: true,
-                message: t("account.currentPasswordRequired"),
-              },
-            ]}
-          >
-            <Input.Password
-              autoComplete="current-password"
-              prefix={<Lock {...PASSWORD_FIELD_ICON_PROPS} />}
-            />
-          </Form.Item>
-          <Form.Item
-            name="new_password"
-            label={t("account.newPassword")}
-            dependencies={["old_password"]}
-            rules={[
-              {
-                required: true,
-                message: t("account.newPasswordRequired"),
-              },
-              ({ getFieldValue }) => ({
-                validator(_, value: string) {
-                  if (!value) return Promise.resolve();
-                  const issue = passwordPolicyIssue(
-                    value,
-                    getFieldValue("old_password") as string | undefined,
-                  );
-                  if (issue) {
-                    return Promise.reject(
-                      new Error(passwordPolicyMessage(issue)),
-                    );
-                  }
-                  return Promise.resolve();
-                },
-              }),
-            ]}
-          >
-            <Input.Password
-              autoComplete="new-password"
-              prefix={<Lock {...PASSWORD_FIELD_ICON_PROPS} />}
-            />
-          </Form.Item>
-          <Form.Item
-            name="confirm"
-            label={t("account.confirmPassword")}
-            dependencies={["new_password"]}
-            rules={[
-              {
-                required: true,
-                message: t("account.confirmPasswordRequired"),
-              },
-              ({ getFieldValue }) => ({
-                validator(_, value: string) {
-                  if (!value || getFieldValue("new_password") === value) {
-                    return Promise.resolve();
-                  }
-                  return Promise.reject(
-                    new Error(t("account.passwordMismatch")),
-                  );
-                },
-              }),
-            ]}
-          >
-            <Input.Password
-              autoComplete="new-password"
-              prefix={<LockOpen {...PASSWORD_FIELD_ICON_PROPS} />}
-            />
-          </Form.Item>
-        </Form>
-      </section>
-    </div>
-  );
-
   return (
     <>
       <Popover
@@ -858,30 +700,6 @@ export default function AvatarDropdown({
         }
       >
         {settingsBody}
-      </Drawer>
-
-      <Drawer
-        title={t("account.changePassword")}
-        open={passwordOpen}
-        onClose={closePassword}
-        placement="right"
-        width={isMobile ? "100%" : 420}
-        destroyOnHidden
-        className={styles.settingsDrawer}
-        footer={
-          <div className={styles.settingsDrawerFooter}>
-            <Button onClick={closePassword}>{t("common.cancel")}</Button>
-            <Button
-              type="primary"
-              loading={changingPw}
-              onClick={() => pwForm.submit()}
-            >
-              {t("account.changePassword")}
-            </Button>
-          </div>
-        }
-      >
-        {passwordBody}
       </Drawer>
 
       <AccountSecurityDrawer

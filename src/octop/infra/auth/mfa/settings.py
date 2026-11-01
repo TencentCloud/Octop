@@ -74,6 +74,16 @@ def load_webauthn_config(settings_repo: SettingsRepo) -> tuple[str, list[str]]:
     return rp_id, origins
 
 
+def passwordless_login_enabled(settings_repo: SettingsRepo) -> bool:
+    """Whether the login page may offer passwordless passkey sign-in.
+
+    Missing or non-boolean values stay off. Admins turn this on under
+    App settings → Passkeys.
+    """
+    blob = _read_blob(settings_repo) or {}
+    return blob.get("passwordless_login") is True
+
+
 def load_view(settings_repo: SettingsRepo) -> dict[str, Any]:
     blob = _read_blob(settings_repo) or {}
     rp_id = str(blob.get("rp_id") or "").strip()
@@ -83,7 +93,11 @@ def load_view(settings_repo: SettingsRepo) -> dict[str, Any]:
         origins = [str(o).strip() for o in origins_raw if str(o).strip()]
     elif isinstance(origins_raw, str) and origins_raw.strip():
         origins = [p.strip() for p in origins_raw.split(",") if p.strip()]
-    return {"rp_id": rp_id or None, "origins": origins}
+    return {
+        "rp_id": rp_id or None,
+        "origins": origins,
+        "passwordless_login": blob.get("passwordless_login") is True,
+    }
 
 
 def save_settings(settings_repo: SettingsRepo, body: dict[str, Any]) -> dict[str, Any]:
@@ -101,6 +115,8 @@ def save_settings(settings_repo: SettingsRepo, body: dict[str, Any]) -> dict[str
             blob["origins"] = [p.strip() for p in raw.split(",") if p.strip()]
         elif raw is None:
             blob["origins"] = []
+    if "passwordless_login" in body:
+        blob["passwordless_login"] = body["passwordless_login"] is True
     settings_repo.set(SETTINGS_KEY, json.dumps(blob, ensure_ascii=False))
     return load_view(settings_repo)
 

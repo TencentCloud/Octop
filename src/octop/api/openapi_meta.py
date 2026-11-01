@@ -33,7 +33,7 @@ Public endpoints (no token): `/api/docs`, `/api/openapi.json`, `/api/health`,
 `/api/setup/*`, `/api/auth/login`, `/api/auth/captcha`, `/api/auth/oidc/status`, `/api/auth/oidc/start`,
 `/api/auth/oidc/callback`, `/api/auth/oidc/exchange`, `/api/auth/oauth/status`,
 `/api/auth/oauth/start`, `/api/auth/oauth/callback`, `/api/auth/oauth/exchange`,
-`/api/auth/ldap/status`,
+`/api/auth/ldap/status`, `/api/auth/passkey/status`,
 `/api/auth/invite/validate`,
 `/api/auth/invite/redeem`, `/api/connectors/oauth/callback`,
 and `/api/internal/mcp/*`.

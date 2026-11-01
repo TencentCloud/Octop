@@ -87,6 +87,11 @@ export interface LoginResponse {
 /** Second-factor methods offered after password when MFA is enrolled. */
 export type MfaMethod = "totp" | "webauthn" | "recovery";
 
+/** Public flag for the login-page passkey button. Default off. */
+export interface PasskeyLoginStatus {
+  passwordless_login: boolean;
+}
+
 /** Password OK but MFA still required — no access_token. */
 export interface MfaChallengeResponse {
   mfa_required: true;
@@ -470,6 +475,10 @@ export const authApi = {
       method: "POST",
       body: JSON.stringify({ mfa_token: mfaToken }),
     }),
+
+  /** Whether the login page should offer passwordless passkey sign-in. */
+  getPasskeyLoginStatus: () =>
+    request<PasskeyLoginStatus>("/auth/passkey/status"),
 
   /** Passwordless passkey — begin ceremony (Conditional UI / modal). */
   passkeyLoginOptions: () =>

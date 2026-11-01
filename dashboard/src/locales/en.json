@@ -254,7 +254,8 @@
     "MFA_REAUTH_REQUIRED": "Re-enter your password to continue.",
     "MFA_LAST_FACTOR": "Cannot remove the last MFA factor.",
     "WEBAUTHN_CONFIG_INVALID": "Passkeys are not available on this address yet. An administrator needs to enter this site’s domain and full URL under App settings → Passkeys. If that is already saved, open the exact URL that was registered. localhost does not need this setup.",
-    "WEBAUTHN_INVALID_DOMAIN": "Passkeys need a hostname. Open Octop via http://localhost (not an IP address such as 127.0.0.1)."
+    "WEBAUTHN_INVALID_DOMAIN": "Passkeys need a hostname. Open Octop via http://localhost (not an IP address such as 127.0.0.1).",
+    "WEBAUTHN_LOGIN_DISABLED": "Passkey sign-in on the login page is turned off. An administrator can enable it under App settings → Passkeys."
   },
   "nav": {
     "chat": "Conversation",
@@ -3945,6 +3946,11 @@
       "origins": "Allowed origins",
       "originsHint": "One origin per line (scheme + host + optional port), e.g. https://octop.example.com",
       "originsPlaceholder": "https://octop.example.com",
+      "siteTitle": "Addresses that may use passkeys",
+      "currentOrigin": "Address open in this browser",
+      "originListed": "This address is already listed",
+      "passwordlessLogin": "Show “Sign in with a passkey” on the login page",
+      "passwordlessLoginHint": "Off by default. When on, the login page offers passkey sign-in, including browser autofill. Passkeys already added can still be used as a second factor after the password.",
       "useCurrentOrigin": "Use current site",
       "save": "Save",
       "saved": "Passkey settings saved",
@@ -5853,7 +5859,7 @@
     "subtitle": "An intelligent partner that understands you, helps you, and grows with you",
     "username": "Username or email",
     "password": "Password",
-    "remember": "Stay signed in on this device. Sign in again after a long time away.",
+    "remember": "Remember me",
     "submit": "Sign in",
     "forgotPassword": "Forgot password?",
     "forgotPasswordTitle": "Reset password",

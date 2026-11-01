@@ -254,7 +254,8 @@
     "MFA_REAUTH_REQUIRED": "请重新输入密码以继续。",
     "MFA_LAST_FACTOR": "无法移除最后一个二次验证方式。",
     "WEBAUTHN_CONFIG_INVALID": "还不能使用通行密钥。请管理员在「应用设置 → 通行密钥」填写本站域名和完整网址。如果已经填过，请改用登记的那个网址打开。用 localhost 打开则不用填。",
-    "WEBAUTHN_INVALID_DOMAIN": "通行密钥需要有效域名。请通过 http://localhost 打开（不要用 127.0.0.1 等 IP 地址）。"
+    "WEBAUTHN_INVALID_DOMAIN": "通行密钥需要有效域名。请通过 http://localhost 打开（不要用 127.0.0.1 等 IP 地址）。",
+    "WEBAUTHN_LOGIN_DISABLED": "登录页的通行密钥登录已关闭。管理员可在「应用设置 → 通行密钥」中开启。"
   },
   "nav": {
     "chat": "对话",
@@ -3945,6 +3946,11 @@
       "origins": "允许的 Origin",
       "originsHint": "每行一个 Origin（协议 + 主机 + 可选端口），例如 https://octop.example.com",
       "originsPlaceholder": "https://octop.example.com",
+      "siteTitle": "允许使用的网址",
+      "currentOrigin": "你现在打开的地址",
+      "originListed": "已包含当前地址",
+      "passwordlessLogin": "登录页显示「使用通行密钥登录」",
+      "passwordlessLoginHint": "默认关闭。开启后，登录页会显示通行密钥登录，并允许浏览器在用户名处自动填充。关闭后，已添加的通行密钥仍可用于密码登录后的二次验证。",
       "useCurrentOrigin": "填入当前站点",
       "save": "保存",
       "saved": "通行密钥设置已保存",
@@ -5853,7 +5859,7 @@
     "subtitle": "懂你、帮你、陪你成长的智能伙伴",
     "username": "用户名或邮箱",
     "password": "密码",
-    "remember": "在这台设备上保持登录，长时间不用会重新登录",
+    "remember": "记住登录状态",
     "submit": "登录",
     "forgotPassword": "忘记密码？",
     "forgotPasswordTitle": "重置密码",

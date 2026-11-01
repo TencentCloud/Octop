@@ -13,7 +13,7 @@ from octop.api.deps import current_user, get_server
 from octop.api.routers.auth import _user_json, me_payload
 from octop.infra.auth.mfa import MfaService
 from octop.infra.auth.mfa import reauth as reauth_mod
-from octop.infra.auth.mfa.settings import passkey_block_reason
+from octop.infra.auth.mfa.settings import passkey_block_reason, passwordless_login_enabled
 from octop.infra.errors import ErrorCode, OctopError
 
 router = APIRouter()
@@ -75,6 +75,12 @@ class MfaPasskeyOptionsBody(BaseModel):
 
 class PasskeyLoginVerifyBody(BaseModel):
     credential: dict[str, Any]
+
+
+class PasskeyLoginStatusResponse(BaseModel):
+    passwordless_login: bool = Field(
+        description="Whether the login page offers passwordless passkey sign-in. Default off.",
+    )
 
 
 class TotpConfirmBody(BaseModel):
@@ -146,6 +152,20 @@ async def mfa_passkey_options(
     return _mfa(server).mfa_passkey_options(
         mfa_token=body.mfa_token,
         origin=_origin(request),
+    )
+
+
+@router.get(
+    "/passkey/status",
+    summary="Passwordless passkey login availability",
+    response_model=PasskeyLoginStatusResponse,
+)
+async def passkey_login_status(
+    server: Any = Depends(get_server),
+) -> PasskeyLoginStatusResponse:
+    """Public flag for the login page. Off until an admin enables it."""
+    return PasskeyLoginStatusResponse(
+        passwordless_login=passwordless_login_enabled(server.services.settings_repo)
     )
 
 

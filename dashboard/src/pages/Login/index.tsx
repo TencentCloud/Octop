@@ -138,6 +138,7 @@ export default function LoginPage() {
   const [mfaCode, setMfaCode] = useState("");
   const [passkeyAvailable] = useState(() => isWebAuthnAvailable());
   const [passkeyIpHost] = useState(() => isWebAuthnIpHost());
+  const [passwordlessLogin, setPasswordlessLogin] = useState(false);
   const [conditionalOk, setConditionalOk] = useState(false);
   const conditionalAbortRef = useRef<AbortController | null>(null);
 
@@ -179,6 +180,14 @@ export default function LoginPage() {
           .getLdapStatus()
           .then((next) => {
             if (!cancelled) setLdap(next);
+          })
+          .catch(() => {});
+        authApi
+          .getPasskeyLoginStatus()
+          .then((next) => {
+            if (!cancelled) {
+              setPasswordlessLogin(next.passwordless_login === true);
+            }
           })
           .catch(() => {});
         authApi
@@ -258,7 +267,13 @@ export default function LoginPage() {
 
   // Conditional UI: passkeys appear in the username autofill when available.
   useEffect(() => {
-    if (mfaChallenge || !passkeyAvailable || passkeyIpHost || !conditionalOk) {
+    if (
+      mfaChallenge ||
+      !passwordlessLogin ||
+      !passkeyAvailable ||
+      passkeyIpHost ||
+      !conditionalOk
+    ) {
       return;
     }
     let cancelled = false;
@@ -304,6 +319,7 @@ export default function LoginPage() {
     mfaChallenge,
     passkeyAvailable,
     passkeyIpHost,
+    passwordlessLogin,
     t,
   ]);
 
@@ -681,7 +697,7 @@ export default function LoginPage() {
           size="large"
           value={username}
           onChange={(e) => setUsername(e.target.value)}
-          autoComplete="username webauthn"
+          autoComplete={passwordlessLogin ? "username webauthn" : "username"}
           name="username"
           autoFocus
           style={{ borderRadius: 10 }}
@@ -741,47 +757,49 @@ export default function LoginPage() {
           {t("login.submit")}
         </Button>
 
-        {passkeyAvailable && !passkeyIpHost ? (
-          conditionalOk ? (
-            <Button
-              type="link"
-              block
-              icon={<Fingerprint size={16} />}
-              loading={loading}
-              onClick={() => void handlePasskeyLogin()}
-              style={{ height: 36, fontWeight: 500 }}
-            >
-              {t("login.passkeySignIn")}
-            </Button>
+        {passwordlessLogin ? (
+          passkeyAvailable && !passkeyIpHost ? (
+            conditionalOk ? (
+              <Button
+                type="link"
+                block
+                icon={<Fingerprint size={16} />}
+                loading={loading}
+                onClick={() => void handlePasskeyLogin()}
+                style={{ height: 36, fontWeight: 500 }}
+              >
+                {t("login.passkeySignIn")}
+              </Button>
+            ) : (
+              <Button
+                size="large"
+                block
+                icon={<Fingerprint size={18} />}
+                loading={loading}
+                onClick={() => void handlePasskeyLogin()}
+                style={{ borderRadius: 10, height: 44, fontWeight: 500 }}
+              >
+                {t("login.passkeySignIn")}
+              </Button>
+            )
           ) : (
-            <Button
-              size="large"
-              block
-              icon={<Fingerprint size={18} />}
-              loading={loading}
-              onClick={() => void handlePasskeyLogin()}
-              style={{ borderRadius: 10, height: 44, fontWeight: 500 }}
+            <p
+              style={{
+                margin: 0,
+                marginTop: -8,
+                width: "100%",
+                fontSize: 12,
+                lineHeight: 1.5,
+                color: "var(--fn-text-tertiary)",
+                textAlign: "center",
+              }}
             >
-              {t("login.passkeySignIn")}
-            </Button>
+              {passkeyIpHost
+                ? t("apiErrors.WEBAUTHN_INVALID_DOMAIN")
+                : t("login.passkeyHttpsRequired")}
+            </p>
           )
-        ) : (
-          <p
-            style={{
-              margin: 0,
-              marginTop: -8,
-              width: "100%",
-              fontSize: 12,
-              lineHeight: 1.5,
-              color: "var(--fn-text-tertiary)",
-              textAlign: "center",
-            }}
-          >
-            {passkeyIpHost
-              ? t("apiErrors.WEBAUTHN_INVALID_DOMAIN")
-              : t("login.passkeyHttpsRequired")}
-          </p>
-        )}
+        ) : null}
 
         <div
           style={{
