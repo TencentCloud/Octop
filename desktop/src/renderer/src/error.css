@@ -20,7 +20,7 @@
       rgba(232, 93, 117, 0.09),
       transparent 68%
     ),
-    var(--surface);
+    var(--page);
 }
 
 .result__body {
@@ -59,7 +59,7 @@
   border-radius: 50%;
   /* The ring is the page background, so the badge reads as an overlay on the
      mark instead of a second circle glued to it. */
-  border: 2px solid var(--surface);
+  border: 2px solid var(--page);
   background: var(--brand);
   color: #ffffff;
   font-size: 11px;
@@ -115,7 +115,7 @@
 
 .result__button:hover {
   background: var(--surface-sunken);
-  border-color: rgba(0, 0, 0, 0.18);
+  border-color: var(--border-strong);
 }
 
 .result__button:focus-visible {
@@ -247,6 +247,16 @@
     opacity: 1;
     transform: none;
   }
+}
+
+html[data-theme="dark"] .result {
+  background:
+    radial-gradient(
+      720px 380px at 50% -8%,
+      rgba(240, 139, 154, 0.1),
+      transparent 68%
+    ),
+    var(--page);
 }
 
 @media (prefers-reduced-motion: reduce) {

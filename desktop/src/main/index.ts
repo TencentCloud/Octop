@@ -42,6 +42,7 @@ import {
   applyWindowChromeTheme,
   parseWindowChromeTheme,
   resolveWindowChromeTheme,
+  windowBackground,
 } from "./windows/chrome";
 
 const UPDATE_ENDPOINT = "https://octop.cloud/api/downloads";
@@ -420,12 +421,17 @@ function registerIpcHandlers(): void {
   });
 
   // The page reports its theme so the native controls follow it; window buttons
-  // themselves are native and never cross this bridge.
+  // themselves are native and never cross this bridge. The preference is also
+  // the device setting the next Early Window paints from — the splash cannot
+  // read the Dashboard's localStorage.
   ipcMain.on(IPC_CHANNELS.windowChromeTheme, (event, theme: unknown) => {
     const parsed = parseWindowChromeTheme(theme);
     if (!parsed) return;
     const win = BrowserWindow.fromWebContents(event.sender);
     if (win) applyWindowChromeTheme(win, parsed);
+    if (parsed.scheme && settingsStore.load().themeBackground !== parsed.scheme) {
+      settingsStore.save({ themeBackground: parsed.scheme });
+    }
   });
 }
 
@@ -492,16 +498,20 @@ async function boot(): Promise<void> {
 
   settingsStore = new ClientSettingsStore(defaultClientSettingsPath(app.getPath("userData")));
   const settings = settingsStore.load();
-  // Native chrome follows the persisted theme from the very first frame; the
-  // renderer reports the real (resolved) theme once the page has painted.
+  // Apply the source before resolving, so a stored "system" reads the OS
+  // preference rather than whatever an earlier explicit source left behind.
+  applyNativeTheme({
+    mode: settings.themeBackground === "dark" ? "dark" : "light",
+    scheme: settings.themeBackground,
+  });
   const chromeTheme = resolveWindowChromeTheme(settings.themeBackground);
-  applyNativeTheme(chromeTheme);
 
   const early = createEarlyWindow({
     splashFile: SPLASH_PATH,
     errorFile: ERROR_PATH,
     version: appVersion,
     preload: EARLY_PRELOAD_PATH,
+    theme: chromeTheme,
   });
 
   // Resolve OCTOP_HOME, reading the login shell on macOS/Linux (GUI apps don't
@@ -615,11 +625,12 @@ async function boot(): Promise<void> {
     return;
   }
 
-  // Swap the Early Window for the real Dashboard (in-place mount, no white flash).
+  // Swap the Early Window for the real Dashboard. Same background colour, so the
+  // handoff does not flash.
   const mainWindow = createMainWindow({
     preload: PRELOAD_PATH,
     theme: chromeTheme,
-    backgroundColor: chromeTheme.mode === "dark" ? "#111827" : "#ffffff",
+    backgroundColor: windowBackground(chromeTheme.mode),
     onNavigate: (url) => {
       if (isExternalLink(url)) void shell.openExternal(url);
     },

@@ -2,7 +2,7 @@ import { app, BrowserWindow, ipcMain } from "electron";
 
 import { EARLY_IPC } from "../../shared/early-ipc";
 import { encodeShellError, SHELL_ERROR_PARAM, type ShellFailure } from "../../shared/shell-error";
-import { windowChrome } from "./chrome";
+import { windowBackground, windowChrome, type WindowChromeTheme } from "./chrome";
 import { MIN_WINDOW_SIZE } from "./size";
 
 /**
@@ -11,13 +11,6 @@ import { MIN_WINDOW_SIZE } from "./size";
  * only after ``/api/health`` reports the sidecar is ready.
  */
 
-/**
- * The splash is always white, independent of the app theme: it is the first
- * frame the user sees, before the dashboard CSS has loaded, so it must not
- * depend on a setting that has not been applied to the page yet.
- */
-export const EARLY_WINDOW_BACKGROUND = "#ffffff";
-
 export interface EarlyWindowOptions {
   /** Splash page (``renderer/splash.html``). */
   splashFile: string;
@@ -25,18 +18,25 @@ export interface EarlyWindowOptions {
   errorFile: string;
   /** Stamped onto the failure page so a report always names the running build. */
   version: string;
+  /**
+   * Device light/dark preference, already resolved. The splash cannot read the
+   * Dashboard's localStorage (different origin), so the colour has to arrive
+   * with the page URL.
+   */
+  theme: WindowChromeTheme;
   /** ``preload/early.js`` — the one-method bridge these pages are allowed. */
   preload?: string;
 }
 
 export interface EarlyWindow {
-  /** Replace the splash with the failure Result — same window, no white flash. */
+  /** Replace the splash with the failure Result — same window, no blank frame. */
   showError(failure: ShellFailure): void;
   close(): void;
 }
 
 export function createEarlyWindow(options: EarlyWindowOptions): EarlyWindow {
   registerRelaunchHandler();
+  const mode = options.theme.mode;
 
   const win = new BrowserWindow({
     width: 1080,
@@ -47,10 +47,10 @@ export function createEarlyWindow(options: EarlyWindowOptions): EarlyWindow {
     minHeight: MIN_WINDOW_SIZE.height,
     show: false,
     // Same native chrome as the Dashboard window, so the swap from splash to
-    // Dashboard does not move the traffic lights / caption buttons. The splash
-    // is white regardless of the app theme, so the glyphs are the light ones.
-    ...windowChrome("light"),
-    backgroundColor: EARLY_WINDOW_BACKGROUND,
+    // Dashboard does not move the traffic lights / caption buttons. Glyph colour
+    // follows the resolved device theme, same as the page background.
+    ...windowChrome(mode),
+    backgroundColor: windowBackground(mode),
     webPreferences: {
       sandbox: true,
       contextIsolation: true,
@@ -60,8 +60,11 @@ export function createEarlyWindow(options: EarlyWindowOptions): EarlyWindow {
   });
   win.once("ready-to-show", () => win.show());
   // The splash names the build it is starting; the failure page gets the same
-  // value in its payload so the two can never disagree.
-  void win.loadFile(options.splashFile, { query: { version: options.version } });
+  // value in its payload so the two can never disagree. `theme` is the resolved
+  // mode — the page is static and does not track a later OS change.
+  void win.loadFile(options.splashFile, {
+    query: { version: options.version, theme: mode },
+  });
 
   return {
     /**
@@ -74,7 +77,9 @@ export function createEarlyWindow(options: EarlyWindowOptions): EarlyWindow {
       // Dismissing the failure page ends the launch: on macOS the app would
       // otherwise idle in the Dock with no window and nothing left to show.
       win.once("closed", () => app.quit());
-      void win.loadFile(options.errorFile, { query: { [SHELL_ERROR_PARAM]: payload } });
+      void win.loadFile(options.errorFile, {
+        query: { [SHELL_ERROR_PARAM]: payload, theme: mode },
+      });
     },
     close(): void {
       if (!win.isDestroyed()) win.close();

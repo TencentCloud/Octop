@@ -35,6 +35,12 @@
       the splash CSS keys off html[data-theme], not prefers-color-scheme,
       so a stored "light" preference wins over an OS dark setting.
       Storage shape matches appearanceStorage.ts (THEME_STORAGE_KEY = "theme").
+
+      The desktop shell loads this page with ?octopTheme=system|light|dark
+      (DASHBOARD_THEME_QUERY in desktop/src/main/windows/chrome.ts). That
+      device preference wins over localStorage and is written back, then the
+      query is removed so a later reload keeps the stored value. Browser
+      loads have no query and keep using localStorage alone.
     -->
     <script id="octop-boot-theme">
       (function () {
@@ -47,22 +53,54 @@
             return false;
           }
         }
-        try {
+        function isPref(value) {
+          return value === "light" || value === "dark" || value === "system";
+        }
+        function readStoredPref() {
           var raw = localStorage.getItem(KEY);
-          var pref = "system";
-          if (raw === "light" || raw === "dark" || raw === "system") {
-            pref = raw;
-          } else if (raw) {
-            var parsed = JSON.parse(raw);
-            if (
-              parsed &&
-              (parsed.preference === "light" ||
-                parsed.preference === "dark" ||
-                parsed.preference === "system")
-            ) {
-              pref = parsed.preference;
+          if (isPref(raw)) return raw;
+          if (!raw) return "system";
+          var parsed = JSON.parse(raw);
+          if (parsed && isPref(parsed.preference)) return parsed.preference;
+          return "system";
+        }
+        function shellPref() {
+          var query = new URLSearchParams(window.location.search).get(
+            "octopTheme",
+          );
+          return isPref(query) ? query : null;
+        }
+        // Keep palette / customColor; only the light/dark preference moves.
+        function rememberShellPref(pref) {
+          var next = { preference: pref };
+          try {
+            var raw = localStorage.getItem(KEY);
+            if (raw && raw.charAt(0) === "{") {
+              var parsed = JSON.parse(raw);
+              if (parsed && typeof parsed.palette === "string") {
+                next.palette = parsed.palette;
+              }
+              if (parsed && typeof parsed.customColor === "string") {
+                next.customColor = parsed.customColor;
+              }
             }
-          }
+          } catch (e) {}
+          localStorage.setItem(KEY, JSON.stringify(next));
+          try {
+            var url = new URL(window.location.href);
+            url.searchParams.delete("octopTheme");
+            history.replaceState(
+              null,
+              "",
+              url.pathname + url.search + url.hash,
+            );
+          } catch (e2) {}
+        }
+        try {
+          var fromShell = shellPref();
+          var pref = fromShell || "system";
+          if (fromShell) rememberShellPref(fromShell);
+          else pref = readStoredPref();
           if (pref === "dark" || (pref === "system" && systemDark())) {
             mode = "dark";
           }
@@ -87,7 +125,7 @@
       body {
         height: 100%;
         margin: 0;
-        background: #f7f8fa;
+        background: #f5f6f8;
       }
       #root {
         min-height: 100%;
@@ -115,16 +153,16 @@
             rgba(232, 93, 117, 0.11),
             transparent 68%
           ),
-          #f7f8fa;
+          #f5f6f8;
         font-family: -apple-system, BlinkMacSystemFont, "Segoe UI",
           "Noto Sans SC", sans-serif;
-        color: #8b8fa3;
+        color: #4b5563;
         user-select: none;
         -webkit-user-select: none;
       }
       html[data-theme="dark"],
       html[data-theme="dark"] body {
-        background: #12141c;
+        background: #0e0e0e;
       }
       html[data-theme="dark"] #octop-boot {
         background: radial-gradient(
@@ -132,8 +170,8 @@
             rgba(240, 139, 154, 0.1),
             transparent 68%
           ),
-          #12141c;
-        color: rgba(255, 255, 255, 0.55);
+          #0e0e0e;
+        color: rgba(255, 255, 255, 0.6);
       }
       .octop-boot-stack {
         display: flex;
@@ -158,10 +196,10 @@
         font-weight: 600;
         line-height: 1.2;
         letter-spacing: -0.01em;
-        color: #1a1c28;
+        color: #111827;
       }
       html[data-theme="dark"] .octop-boot-wordmark {
-        color: rgba(255, 255, 255, 0.92);
+        color: rgba(255, 255, 255, 0.9);
       }
       #octop-boot-text {
         margin: 10px 0 0;

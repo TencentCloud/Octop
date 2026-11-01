@@ -14,8 +14,8 @@ body {
   -moz-osx-font-smoothing: grayscale;
   -webkit-tap-highlight-color: transparent;
   overscroll-behavior: none;
-  /* Override index.html boot gray (#f7f8fa) so iOS PWA letterboxing
-     below 100dvh is not a stray gray strip. */
+  /* Override the boot ground (#f5f6f8) so iOS PWA letterboxing
+     below 100dvh follows the theme instead of staying that gray. */
   background: var(--fn-bg-layout, #f5f6f8);
 }
 

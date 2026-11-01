@@ -8,7 +8,10 @@ export interface ClientSettings {
   launchAtLogin: boolean;
   /** Close-window behaviour: quit vs. keep in tray. */
   closeBehavior: "quit" | "tray";
-  /** Early-window theme background ("system" | "light" | "dark"). */
+  /**
+   * Device light/dark preference shared with the Dashboard (`system` follows
+   * the OS). The Early Window paints from this; the page reports changes back.
+   */
   themeBackground: "system" | "light" | "dark";
   /** Whether the shell update check should follow the stable channel only. */
   stableOnly: boolean;
