@@ -1114,6 +1114,7 @@ export function useChat(
             nextCursor: keptOlder
               ? current.historyNextCursor
               : loaded.nextCursor,
+            turnActive: loaded.turnActive,
           },
         );
         dropInflightCacheIfCaughtUp(key, loaded.messages);

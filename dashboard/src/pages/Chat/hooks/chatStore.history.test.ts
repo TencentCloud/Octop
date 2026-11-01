@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it } from "vitest";
 import {
   getSnapshot,
+  ingestHarnessChunk,
   invalidateHistory,
   isHistoryStale,
   prependHistoryMessages,
@@ -91,5 +92,99 @@ describe("invalidateHistory", () => {
   it("ignores sessions that never loaded history", () => {
     invalidateHistory(SESSION);
     expect(isHistoryStale(SESSION)).toBe(false);
+  });
+});
+
+describe("setHistoryPage with a still-running server turn (issue #2616)", () => {
+  const REFRESH_SESSION = "test-refresh-turn-recovery";
+
+  afterEach(() => {
+    removeSession(REFRESH_SESSION);
+  });
+
+  function doneAssistant(id: string, content: string): ChatMessage {
+    return {
+      id,
+      role: "assistant",
+      content,
+      status: "done",
+      timestamp: Date.now(),
+    };
+  }
+
+  it("reopening: live token opens a new bubble instead of appending into the last done assistant", () => {
+    const userTurn: ChatMessage = {
+      id: "u1",
+      role: "user",
+      content: "last question",
+      timestamp: Date.now(),
+    };
+    setHistoryPage(
+      REFRESH_SESSION,
+      [userTurn, doneAssistant("a1", "previous answer")],
+      { hasMore: false, nextOffset: 0, turnActive: true },
+    );
+
+    ingestHarnessChunk(REFRESH_SESSION, {
+      type: "token",
+      content: "new turn streaming content",
+    } as never);
+
+    const { messages } = getSnapshot(REFRESH_SESSION);
+    expect(messages).toHaveLength(3);
+    const historical = messages.find((m) => m.id === "a1");
+    expect(historical?.content).toBe("previous answer");
+    expect(historical?.status).toBe("done");
+    const fresh = messages[messages.length - 1];
+    expect(fresh.content).toBe("new turn streaming content");
+    expect(fresh.status).toBe("streaming");
+  });
+
+  it("without the flag the token still continues the wall (existing behavior is unchanged for normal loads)", () => {
+    const userTurn: ChatMessage = {
+      id: "u1",
+      role: "user",
+      content: "last question",
+      timestamp: Date.now(),
+    };
+    setHistoryPage(
+      REFRESH_SESSION,
+      [userTurn, { ...doneAssistant("a1", "previous answer"), status: "streaming" }],
+      { hasMore: false, nextOffset: 0 },
+    );
+
+    ingestHarnessChunk(REFRESH_SESSION, {
+      type: "token",
+      content: " continues",
+    } as never);
+
+    const { messages } = getSnapshot(REFRESH_SESSION);
+    expect(messages).toHaveLength(2);
+    expect(messages[1].content).toBe("previous answer continues");
+  });
+
+  it("clears recovery once the turn ends", () => {
+    setHistoryPage(REFRESH_SESSION, [doneAssistant("a1", "previous answer")], {
+      hasMore: false,
+      nextOffset: 0,
+      turnActive: true,
+    });
+
+    ingestHarnessChunk(REFRESH_SESSION, {
+      type: "token",
+      content: "fresh turn",
+    } as never);
+    ingestHarnessChunk(REFRESH_SESSION, {
+      type: "turn.ended",
+    } as never);
+    ingestHarnessChunk(REFRESH_SESSION, {
+      type: "token",
+      content: "second turn",
+    } as never);
+
+    const { messages } = getSnapshot(REFRESH_SESSION);
+    // The second bubble becomes the continue target after the turn ended.
+    expect(messages).toHaveLength(2);
+    expect(messages[messages.length - 1].content).toBe("fresh turnsecond turn");
   });
 });
