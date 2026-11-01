@@ -1,6 +1,6 @@
 # 已有本地数据时认领账户：实现方案
 
-> 对应 `DESKTOP_ARCHITECTURE.zh.md` §3.2 与 `README.md` Accounts 中尚未覆盖的情况。
+> 对应 `DESKTOP_ARCHITECTURE.zh.md` §3.2 与 `../README.md` Accounts 中尚未覆盖的情况。
 > 设备凭据续期已经完成。本文只解决：**本机 `OCTOP_HOME` 里已经有用户，但从未注册过设备凭据，安装新版桌面后落到登录页。**
 > 本文是实现规格，代码尚未落地。
 
