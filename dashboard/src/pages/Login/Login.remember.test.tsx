@@ -11,6 +11,8 @@ vi.mock("../../api/modules/auth", () => ({
     getAuthStatus: () => Promise.resolve({ setup_required: false }),
     getOauthStatus: () => Promise.resolve({ providers: [] }),
     getCaptcha: () => Promise.resolve({ provider: "none" }),
+    getLdapStatus: () => Promise.resolve({ enabled: false, display_name: "" }),
+    getPasskeyLoginStatus: () => Promise.resolve({ passwordless_login: false }),
   },
 }));
 
@@ -34,7 +36,7 @@ describe("Login remember-me checkbox", () => {
     );
 
     const checkbox = screen.getByRole("checkbox", {
-      name: /login\.remember|在这台设备上保持登录|Stay signed in on this device/,
+      name: /login\.remember|记住登录状态|Remember me/,
     });
     expect(checkbox).toBeChecked();
     expect(

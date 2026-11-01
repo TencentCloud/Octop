@@ -29,6 +29,7 @@ def test_exempt_paths() -> None:
     assert is_jwt_exempt_path("/api/auth/captcha")
     assert is_jwt_exempt_path("/api/auth/mfa/verify")
     assert is_jwt_exempt_path("/api/auth/mfa/passkey/options")
+    assert is_jwt_exempt_path("/api/auth/passkey/status")
     assert is_jwt_exempt_path("/api/auth/passkey/login/options")
     assert is_jwt_exempt_path("/api/auth/passkey/login/verify")
     assert not is_jwt_exempt_path("/api/auth/mfa/status")

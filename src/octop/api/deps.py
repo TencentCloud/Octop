@@ -52,6 +52,7 @@ _JWT_EXEMPT_EXACT = (
     "/api/auth/captcha",
     "/api/auth/mfa/verify",
     "/api/auth/mfa/passkey/options",
+    "/api/auth/passkey/status",
     "/api/auth/passkey/login/options",
     "/api/auth/passkey/login/verify",
     "/api/auth/oidc/status",

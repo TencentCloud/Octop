@@ -9,6 +9,7 @@ from octop.infra.auth.mfa import reauth as reauth_mod
 from octop.infra.auth.mfa import recovery as recovery_mod
 from octop.infra.auth.mfa import totp as totp_mod
 from octop.infra.auth.mfa import webauthn as webauthn_mod
+from octop.infra.auth.mfa.settings import passwordless_login_enabled
 from octop.infra.auth.tokens import (
     MFA_TOKEN_TTL_SECONDS,
     PURPOSE_ACCESS,
@@ -271,8 +272,16 @@ class MfaService:
 
     # --- passwordless -----------------------------------------------------
 
+    def _require_passwordless_login(self) -> None:
+        if not passwordless_login_enabled(self._s.settings_repo):
+            raise OctopError(
+                ErrorCode.WEBAUTHN_LOGIN_DISABLED,
+                "passwordless passkey login is disabled",
+            )
+
     def passkey_login_options(self, *, origin: str) -> dict[str, Any]:
         """Discoverable-credential options for Conditional UI / passwordless."""
+        self._require_passwordless_login()
         return webauthn_mod.passwordless_options(
             settings_repo=self._s.settings_repo,
             challenge_repo=self._s.auth_challenge_repo,
@@ -288,6 +297,7 @@ class MfaService:
     ) -> dict[str, Any]:
         from octop.infra.db.repos.auth_challenges import KIND_WEBAUTHN_LOGIN
 
+        self._require_passwordless_login()
         user_id, _cred = webauthn_mod.verify_assertion(
             settings_repo=self._s.settings_repo,
             challenge_repo=self._s.auth_challenge_repo,

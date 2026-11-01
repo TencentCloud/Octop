@@ -49,11 +49,13 @@ export interface CaptchaSettingsPut {
 export interface WebauthnSettings {
   rp_id: string | null;
   origins: string[];
+  passwordless_login: boolean;
 }
 
 export interface WebauthnSettingsPut {
   rp_id?: string | null;
   origins?: string[];
+  passwordless_login?: boolean;
 }
 
 export const octopSettingsApi = {

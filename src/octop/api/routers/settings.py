@@ -289,11 +289,16 @@ async def put_captcha_settings(
 class WebauthnSettingsResponse(BaseModel):
     rp_id: str | None = None
     origins: list[str] = Field(default_factory=list)
+    passwordless_login: bool = Field(
+        default=False,
+        description="When true, the login page offers passwordless passkey sign-in. Default off.",
+    )
 
 
 class WebauthnSettingsPut(BaseModel):
     rp_id: str | None = None
     origins: list[str] | None = None
+    passwordless_login: bool | None = None
 
 
 @router.get(
