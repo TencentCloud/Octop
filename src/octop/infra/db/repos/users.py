@@ -61,6 +61,9 @@ class UserRow:
     preferences_json: str = "{}"
     login_failed_count: int = 0
     login_locked_until: int = 0
+    mfa_version: int = 0
+    mfa_failed_count: int = 0
+    mfa_locked_until: int = 0
     permissions: builtins.list[str] = field(default_factory=list)
     role_name: str | None = None
     avatar_icon: str | None = None
@@ -84,6 +87,9 @@ class UserRow:
             preferences_json=str(r["preferences_json"] or "{}"),
             login_failed_count=int(r["login_failed_count"] or 0),
             login_locked_until=int(r["login_locked_until"] or 0),
+            mfa_version=int(r["mfa_version"] or 0) if "mfa_version" in keys else 0,
+            mfa_failed_count=int(r["mfa_failed_count"] or 0) if "mfa_failed_count" in keys else 0,
+            mfa_locked_until=int(r["mfa_locked_until"] or 0) if "mfa_locked_until" in keys else 0,
             email=r["email"] if "email" in keys else None,
             sso_provider_id=r["sso_provider_id"] if "sso_provider_id" in keys else None,
             sso_subject=r["sso_subject"] if "sso_subject" in keys else None,
@@ -354,6 +360,77 @@ class UserRepo:
                 "UPDATE users SET login_failed_count = 0, login_locked_until = 0 WHERE id = ?",
                 (user_id,),
             )
+
+    def bump_mfa_version(self, user_id: int) -> int:
+        """Increment ``mfa_version`` and clear MFA throttle. Returns the new version."""
+        with self._db.transaction() as conn:
+            conn.execute(
+                "UPDATE users SET mfa_version = mfa_version + 1, "
+                "mfa_failed_count = 0, mfa_locked_until = 0 WHERE id = ?",
+                (user_id,),
+            )
+            row = conn.execute(
+                "SELECT mfa_version FROM users WHERE id = ?",
+                (user_id,),
+            ).fetchone()
+        if row is None:
+            raise RuntimeError(f"user {user_id} missing after mfa_version bump")
+        return int(row["mfa_version"] or 0)
+
+    def clear_mfa_throttle(self, user_id: int) -> None:
+        with self._db.transaction() as conn:
+            conn.execute(
+                "UPDATE users SET mfa_failed_count = 0, mfa_locked_until = 0 WHERE id = ?",
+                (user_id,),
+            )
+
+    def record_mfa_failure(
+        self,
+        user_id: int,
+        *,
+        max_attempts: int = 5,
+        lockout_seconds: int = 900,
+        now: int | None = None,
+    ) -> int:
+        """Increment MFA failure count; lock when threshold reached.
+
+        Does **not** touch ``login_locked_until``. Returns retry_after seconds if locked.
+        """
+        ts = now if now is not None else now_ts()
+        with self._db.transaction() as conn:
+            row = conn.execute(
+                "SELECT mfa_failed_count, mfa_locked_until FROM users WHERE id = ?",
+                (user_id,),
+            ).fetchone()
+            if row is None:
+                return 0
+            locked_until = int(row["mfa_locked_until"] or 0)
+            if locked_until > ts:
+                return locked_until - ts
+            failed = int(row["mfa_failed_count"] or 0) + 1
+            new_locked_until = 0
+            retry_after = 0
+            if failed >= max_attempts:
+                new_locked_until = ts + lockout_seconds
+                retry_after = lockout_seconds
+                failed = 0
+            conn.execute(
+                "UPDATE users SET mfa_failed_count = ?, mfa_locked_until = ? WHERE id = ?",
+                (failed, new_locked_until, user_id),
+            )
+        return retry_after
+
+    def mfa_retry_after(self, user_id: int, *, now: int | None = None) -> int:
+        ts = now if now is not None else now_ts()
+        with self._db.connect() as conn:
+            row = conn.execute(
+                "SELECT mfa_locked_until FROM users WHERE id = ?",
+                (user_id,),
+            ).fetchone()
+        if row is None:
+            return 0
+        locked_until = int(row["mfa_locked_until"] or 0)
+        return max(0, locked_until - ts)
 
     def record_failed_login(
         self,

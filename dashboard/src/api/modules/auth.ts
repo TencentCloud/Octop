@@ -1,9 +1,17 @@
 import {
   clearSetupRequired,
+  isSessionOnlyAuth,
   markSetupRequired,
   request,
   requestUpload,
+  setAuthToken,
 } from "../request";
+import type {
+  AuthenticationCredentialJSON,
+  PublicKeyCreationOptionsJSON,
+  PublicKeyRequestOptionsJSON,
+  RegistrationCredentialJSON,
+} from "../../utils/webauthn";
 
 /**
  * Auth + setup module — adapted to octop's multi-user backend.
@@ -76,6 +84,140 @@ export interface LoginResponse {
   token: string;
 }
 
+/** Second-factor methods offered after password when MFA is enrolled. */
+export type MfaMethod = "totp" | "webauthn" | "recovery";
+
+/** Password OK but MFA still required — no access_token. */
+export interface MfaChallengeResponse {
+  mfa_required: true;
+  mfa_token: string;
+  methods: MfaMethod[];
+  user_hint?: string | null;
+  locale?: string | null;
+}
+
+export type LoginResult = LoginResponse | MfaChallengeResponse;
+
+export function isMfaChallenge(
+  result: LoginResult,
+): result is MfaChallengeResponse {
+  return (result as MfaChallengeResponse).mfa_required === true;
+}
+
+/** Reauth grant for factor enrollment / disable / regenerate. */
+export interface MfaReauthResponse {
+  reauth_token: string;
+  expires_in?: number;
+}
+
+export interface MfaPasskeyInfo {
+  credential_id: string;
+  name: string;
+  created_at?: number | string | null;
+  last_used_at?: number | string | null;
+}
+
+/**
+ * Enrolled factors for the account-security UI.
+ * Field names follow the SPEC; tolerate alternate backend aliases in getters.
+ */
+export interface MfaStatus {
+  totp_verified: boolean;
+  passkeys: MfaPasskeyInfo[];
+  recovery_remaining: number;
+  is_last_factor: boolean;
+  /** False for SSO-only accounts (no local/LDAP password to prove). */
+  can_enroll: boolean;
+  has_password: boolean;
+  sso_linked: boolean;
+}
+
+export interface MfaTotpBeginResponse {
+  otpauth_uri: string;
+  /** Optional server-rendered QR; prefer client QR from otpauth_uri. */
+  qr_png_base64?: string | null;
+  secret?: string | null;
+}
+
+/** Mutating MFA responses may mint a fresh access token (mfa_version bump). */
+export interface MfaMutationResponse {
+  access_token?: string;
+  recovery_codes?: string[];
+  user?: OctopUser;
+}
+
+const REAUTH_HEADER = "X-Octop-Reauth";
+
+/** Replace the stored session JWT when a mutating MFA call returns one. */
+export function adoptAccessToken(accessToken: string | undefined | null): void {
+  if (!accessToken) return;
+  setAuthToken(accessToken, !isSessionOnlyAuth());
+}
+
+function adoptFromMutation<T extends MfaMutationResponse>(body: T): T {
+  adoptAccessToken(body.access_token);
+  return body;
+}
+
+function reauthHeaders(reauthToken: string): HeadersInit {
+  return { [REAUTH_HEADER]: reauthToken };
+}
+
+function normalizeMfaStatus(raw: Record<string, unknown>): MfaStatus {
+  const passkeysRaw = Array.isArray(raw.passkeys) ? raw.passkeys : [];
+  const passkeys: MfaPasskeyInfo[] = [];
+  for (const item of passkeysRaw) {
+    if (!item || typeof item !== "object") continue;
+    const row = item as Record<string, unknown>;
+    const credentialId =
+      typeof row.credential_id === "string"
+        ? row.credential_id
+        : typeof row.id === "string"
+        ? row.id
+        : "";
+    if (!credentialId) continue;
+    passkeys.push({
+      credential_id: credentialId,
+      // Empty name is fine — UI shows a localized default (never raw credential id).
+      name: typeof row.name === "string" ? row.name.trim() : "",
+      created_at:
+        typeof row.created_at === "number" || typeof row.created_at === "string"
+          ? row.created_at
+          : null,
+      last_used_at:
+        typeof row.last_used_at === "number" ||
+        typeof row.last_used_at === "string"
+          ? row.last_used_at
+          : null,
+    });
+  }
+
+  // Backend shape: { totp: { enabled, pending }, recovery_codes_remaining, … }
+  const totpObj =
+    raw.totp && typeof raw.totp === "object"
+      ? (raw.totp as Record<string, unknown>)
+      : null;
+  const totpVerified = Boolean(
+    totpObj?.enabled ?? raw.totp_verified ?? raw.totp_enabled ?? raw.has_totp,
+  );
+  const recoveryRemaining = Number(
+    raw.recovery_codes_remaining ?? raw.recovery_remaining ?? 0,
+  );
+  return {
+    totp_verified: totpVerified,
+    passkeys,
+    recovery_remaining: Number.isFinite(recoveryRemaining)
+      ? recoveryRemaining
+      : 0,
+    is_last_factor: Boolean(raw.is_last_factor),
+    // Enrollment eligibility comes from /auth/me (has_password / SSO); status
+    // itself does not currently expose these flags.
+    can_enroll: raw.can_enroll !== false,
+    has_password: Boolean(raw.has_password),
+    sso_linked: Boolean(raw.sso_linked),
+  };
+}
+
 export interface PublicCaptcha {
   provider: string;
   site_key?: string;
@@ -118,10 +260,37 @@ interface RawSetupStatus {
 }
 
 interface RawLoginResponse {
-  access_token: string;
-  token_type: string;
-  expires_in: number;
-  user: OctopUser;
+  access_token?: string;
+  token_type?: string;
+  expires_in?: number;
+  user?: OctopUser;
+  mfa_required?: boolean;
+  mfa_token?: string;
+  methods?: MfaMethod[];
+  user_hint?: string | null;
+  locale?: string | null;
+}
+
+function toLoginResult(raw: RawLoginResponse): LoginResult {
+  if (raw.mfa_required === true && raw.mfa_token) {
+    return {
+      mfa_required: true,
+      mfa_token: raw.mfa_token,
+      methods: Array.isArray(raw.methods) ? raw.methods : [],
+      user_hint: raw.user_hint ?? null,
+      locale: raw.locale ?? null,
+    };
+  }
+  if (!raw.access_token || !raw.user) {
+    throw new Error("Invalid login response");
+  }
+  return {
+    access_token: raw.access_token,
+    token_type: raw.token_type ?? "bearer",
+    expires_in: raw.expires_in ?? 0,
+    user: raw.user,
+    token: raw.access_token,
+  };
 }
 
 /** Coalesce AuthGuard / Login / Setup probing the same endpoint in parallel. */
@@ -187,12 +356,12 @@ export const authApi = {
   /** Public captcha widget config for the login form. */
   getCaptcha: () => request<PublicCaptcha>("/auth/captcha"),
 
-  /** Login — octop uses username + password. */
+  /** Login — octop uses username + password. May return ``mfa_required``. */
   login: async (
     username: string,
     password: string,
     captchaToken?: string,
-  ): Promise<LoginResponse> => {
+  ): Promise<LoginResult> => {
     const raw = await request<RawLoginResponse>("/auth/login", {
       method: "POST",
       body: JSON.stringify(
@@ -201,7 +370,7 @@ export const authApi = {
           : { username, password },
       ),
     });
-    return { ...raw, token: raw.access_token };
+    return toLoginResult(raw);
   },
 
   /** Return whether the configured OIDC provider can accept logins. */
@@ -247,8 +416,155 @@ export const authApi = {
       method: "POST",
       body: JSON.stringify({ code }),
     });
-    return { ...raw, token: raw.access_token };
+    const result = toLoginResult(raw);
+    if (isMfaChallenge(result)) {
+      // SSO paths do not use Octop MFA; treat as protocol error if seen.
+      throw new Error("Unexpected MFA challenge on SSO exchange");
+    }
+    return result;
   },
+
+  // --- MFA / passkeys (SPEC contract; backend may land in parallel) --------
+
+  /** Prove password (or LDAP bind) before factor enrollment / disable. */
+  mfaReauth: (password: string) =>
+    request<MfaReauthResponse>("/auth/mfa/reauth", {
+      method: "POST",
+      body: JSON.stringify({ password }),
+    }),
+
+  /** Complete MFA after password login (TOTP / recovery / passkey assertion). */
+  mfaVerify: async (body: {
+    mfa_token: string;
+    method: MfaMethod;
+    code?: string;
+    credential?: AuthenticationCredentialJSON;
+  }): Promise<LoginResponse> => {
+    const raw = await request<RawLoginResponse>("/auth/mfa/verify", {
+      method: "POST",
+      body: JSON.stringify(body),
+    });
+    const result = toLoginResult(raw);
+    if (isMfaChallenge(result)) {
+      throw new Error("Unexpected MFA challenge on verify");
+    }
+    return result;
+  },
+
+  /** Assertion options for passkey-as-2FA (requires mfa_token). */
+  mfaPasskeyOptions: (mfaToken: string) =>
+    request<PublicKeyRequestOptionsJSON>("/auth/mfa/passkey/options", {
+      method: "POST",
+      body: JSON.stringify({ mfa_token: mfaToken }),
+    }),
+
+  /** Passwordless passkey — begin ceremony (Conditional UI / modal). */
+  passkeyLoginOptions: () =>
+    request<PublicKeyRequestOptionsJSON>("/auth/passkey/login/options", {
+      method: "POST",
+      body: JSON.stringify({}),
+    }),
+
+  /** Passwordless passkey — finish; issues access token (satisfies MFA). */
+  passkeyLoginVerify: async (
+    credential: AuthenticationCredentialJSON,
+  ): Promise<LoginResponse> => {
+    const raw = await request<RawLoginResponse>("/auth/passkey/login/verify", {
+      method: "POST",
+      body: JSON.stringify({ credential }),
+    });
+    const result = toLoginResult(raw);
+    if (isMfaChallenge(result)) {
+      throw new Error("Unexpected MFA challenge on passkey login");
+    }
+    return result;
+  },
+
+  /** Current MFA enrollment status (never secrets). */
+  mfaStatus: async (): Promise<MfaStatus> => {
+    const raw = await request<Record<string, unknown>>("/auth/mfa/status");
+    return normalizeMfaStatus(raw);
+  },
+
+  mfaTotpBegin: (reauthToken: string) =>
+    request<MfaTotpBeginResponse>("/auth/mfa/totp/begin", {
+      method: "POST",
+      body: JSON.stringify({}),
+      headers: reauthHeaders(reauthToken),
+    }),
+
+  mfaTotpConfirm: async (reauthToken: string, code: string) => {
+    const body = await request<MfaMutationResponse>("/auth/mfa/totp/confirm", {
+      method: "POST",
+      body: JSON.stringify({ code }),
+      headers: reauthHeaders(reauthToken),
+    });
+    return adoptFromMutation(body);
+  },
+
+  mfaTotpDisable: async (reauthToken: string) => {
+    const body = await request<MfaMutationResponse>("/auth/mfa/totp", {
+      method: "DELETE",
+      headers: reauthHeaders(reauthToken),
+    });
+    return adoptFromMutation(body);
+  },
+
+  mfaPasskeyRegisterOptions: (reauthToken: string) =>
+    request<PublicKeyCreationOptionsJSON>(
+      "/auth/mfa/passkey/register/options",
+      {
+        method: "POST",
+        body: JSON.stringify({}),
+        headers: reauthHeaders(reauthToken),
+      },
+    ),
+
+  mfaPasskeyRegisterVerify: async (
+    reauthToken: string,
+    credential: RegistrationCredentialJSON,
+    name?: string,
+  ) => {
+    const body = await request<MfaMutationResponse>(
+      "/auth/mfa/passkey/register/verify",
+      {
+        method: "POST",
+        body: JSON.stringify({ credential, name }),
+        headers: reauthHeaders(reauthToken),
+      },
+    );
+    return adoptFromMutation(body);
+  },
+
+  mfaPasskeyRemove: async (reauthToken: string, credentialId: string) => {
+    const body = await request<MfaMutationResponse>(
+      `/auth/mfa/passkey/${encodeURIComponent(credentialId)}`,
+      {
+        method: "DELETE",
+        headers: reauthHeaders(reauthToken),
+      },
+    );
+    return adoptFromMutation(body);
+  },
+
+  mfaRecoveryRegenerate: async (reauthToken: string) => {
+    const body = await request<MfaMutationResponse>(
+      "/auth/mfa/recovery/regenerate",
+      {
+        method: "POST",
+        body: JSON.stringify({}),
+        headers: reauthHeaders(reauthToken),
+      },
+    );
+    return adoptFromMutation(body);
+  },
+
+  /**
+   * Admin: clear target user's MFA factors.
+   * Backend returns 204 (no body); target ``mfa_version`` bump invalidates their sessions.
+   */
+  adminResetMfa: (userId: number) =>
+    request<void>(`/users/${userId}/mfa`, { method: "DELETE" }),
 
   /** Server-side logout (best-effort; client clears token regardless). */
   logout: () =>

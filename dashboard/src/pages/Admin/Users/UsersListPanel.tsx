@@ -67,6 +67,7 @@ import {
 } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { request } from "../../../api/request";
+import { authApi } from "../../../api/modules/auth";
 import {
   userRolesApi,
   snapshotRoleLabel,
@@ -74,7 +75,6 @@ import {
   userRoleLabel,
   type UserRole,
 } from "../../../api/modules/userRoles";
-import { authApi } from "../../../api/modules/auth";
 import { preferencesApi } from "../../../api/modules/preferences";
 import type { SidebarNavLayout } from "../../../layouts/sidebarNavLayout";
 import { buildPermissionPickerGroups } from "./permissionPickerLayout";
@@ -126,6 +126,8 @@ interface UserRow {
   workspace_root_dir?: string | null;
   token_quota?: number | null;
   max_agents?: number | null;
+  /** Present when the users list includes MFA status from the backend. */
+  mfa_active?: boolean;
 }
 
 export interface PermissionCatalogItem {
@@ -544,6 +546,7 @@ interface UserCardGridProps {
   onEdit: (row: UserRow) => void;
   onShowAgents: (row: UserRow) => void;
   onResetPassword: (row: UserRow) => void;
+  onResetMfa: (row: UserRow) => Promise<void>;
   onDelete: (row: UserRow) => Promise<void>;
   onUnlockLogin: (row: UserRow) => Promise<void>;
   nowSec: number;
@@ -1250,6 +1253,7 @@ function UserCardGrid({
   onEdit,
   onShowAgents,
   onResetPassword,
+  onResetMfa,
   onDelete,
   onUnlockLogin,
   nowSec,
@@ -1345,6 +1349,9 @@ function UserCardGrid({
                 {row.has_password ? (
                   <span>{t("adminUsers.passwordBadge")}</span>
                 ) : null}
+                {row.mfa_active ? (
+                  <span>{t("adminUsers.mfaBadge")}</span>
+                ) : null}
               </div>
               {isLocked ? (
                 <div className={styles.userCardLockAlert}>
@@ -1411,6 +1418,23 @@ function UserCardGrid({
                   <KeyRound size={15} />
                 </button>
               </Tooltip>
+
+              <Popconfirm
+                title={t("adminUsers.mfaResetConfirm", {
+                  username: row.username,
+                })}
+                onConfirm={() => void onResetMfa(row)}
+              >
+                <Tooltip title={t("adminUsers.mfaReset")} mouseEnterDelay={0.5}>
+                  <button
+                    type="button"
+                    className={styles.userCardIconBtn}
+                    aria-label={t("adminUsers.mfaReset")}
+                  >
+                    <ShieldCheck size={15} />
+                  </button>
+                </Tooltip>
+              </Popconfirm>
 
               <Popconfirm
                 title={t("adminUsers.deleteConfirm", {
@@ -2141,6 +2165,16 @@ export default function UsersListPanel() {
     }
   };
 
+  const onResetMfa = async (row: UserRow) => {
+    try {
+      await authApi.adminResetMfa(row.id);
+      message.success(t("adminUsers.mfaResetSuccess"));
+      void refreshUsers();
+    } catch (err) {
+      message.error(apiErrorMessage(err, t("adminUsers.mfaResetFailed"), t));
+    }
+  };
+
   const onUnlockLogin = async (row: UserRow) => {
     try {
       await request(`/users/${row.id}/unlock-login`, { method: "POST" });
@@ -2310,6 +2344,7 @@ export default function UsersListPanel() {
             setResetTarget(row);
             resetForm.resetFields();
           }}
+          onResetMfa={onResetMfa}
           onDelete={onDelete}
           onUnlockLogin={onUnlockLogin}
           nowSec={nowSec}
@@ -2387,6 +2422,7 @@ export default function UsersListPanel() {
                 const parts = [
                   row.sso_linked ? t("adminUsers.ssoBadge") : null,
                   row.has_password ? t("adminUsers.passwordBadge") : null,
+                  row.mfa_active ? t("adminUsers.mfaBadge") : null,
                 ].filter(Boolean);
                 return (
                   <span className={styles.userCellMuted}>
@@ -2493,6 +2529,22 @@ export default function UsersListPanel() {
                       <KeyRound size={14} />
                     </button>
                   </Tooltip>
+                  <Popconfirm
+                    title={t("adminUsers.mfaResetConfirm", {
+                      username: row.username,
+                    })}
+                    onConfirm={() => void onResetMfa(row)}
+                  >
+                    <Tooltip title={t("adminUsers.mfaReset")}>
+                      <button
+                        type="button"
+                        className={styles.userCardIconBtn}
+                        aria-label={t("adminUsers.mfaReset")}
+                      >
+                        <ShieldCheck size={14} />
+                      </button>
+                    </Tooltip>
+                  </Popconfirm>
                   <Popconfirm
                     title={t("adminUsers.deleteConfirm", {
                       username: row.username,

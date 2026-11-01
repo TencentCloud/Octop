@@ -1,9 +1,15 @@
-import { useState, useEffect, useRef, type ReactNode } from "react";
+import {
+  useState,
+  useEffect,
+  useRef,
+  useCallback,
+  type ReactNode,
+} from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { Input, Button, Checkbox } from "antd";
 import { message } from "@/utils/antdMessage";
 
-import { KeyRound, Lock, User } from "lucide-react";
+import { Fingerprint, KeyRound, Lock, User } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import {
   clearAuthToken,
@@ -12,7 +18,10 @@ import {
 } from "../../api";
 import {
   authApi,
+  isMfaChallenge,
   type LdapStatus,
+  type MfaChallengeResponse,
+  type MfaMethod,
   type OauthProviderStatus,
 } from "../../api/modules/auth";
 import { apiErrorMessage } from "../../utils/apiError";
@@ -26,6 +35,15 @@ import {
   notifySsoOpener,
   openSsoPopup,
 } from "../../utils/ssoPopup";
+import {
+  isConditionalMediationAvailable,
+  isWebAuthnAbortError,
+  isWebAuthnAvailable,
+  isWebAuthnIpHost,
+  webauthnErrorMessage,
+  webauthnGet,
+  webauthnGetConditional,
+} from "../../utils/webauthn";
 import feishuIcon from "../../assets/channels/feishu.svg";
 import dingtalkIcon from "../../assets/channels/dingtalk.svg";
 import wecomIcon from "../../assets/channels/wecom.svg";
@@ -33,6 +51,8 @@ import googleIcon from "../../assets/providers/google.svg";
 import CaptchaField, { type CaptchaFieldHandle } from "./CaptchaField";
 import ForgotPasswordModal from "./ForgotPasswordModal";
 import { type PublicCaptchaConfig } from "./captchaAdapters";
+
+type MfaStepMode = "totp" | "recovery" | "passkey";
 
 function providerLabel(
   provider: OauthProviderStatus,
@@ -73,6 +93,23 @@ function providerIcon(provider: OauthProviderStatus): ReactNode {
   return <KeyRound size={18} />;
 }
 
+function defaultMfaMode(methods: MfaMethod[]): MfaStepMode {
+  // Prefer the factor the user actually enrolled; recovery is a fallback only.
+  if (methods.includes("totp")) return "totp";
+  if (methods.includes("webauthn")) return "passkey";
+  if (methods.includes("recovery")) return "recovery";
+  return "totp";
+}
+
+function mfaHintKey(methods: MfaMethod[], mode: MfaStepMode): string {
+  if (mode === "passkey") return "login.mfaHintPasskey";
+  if (mode === "recovery") return "login.mfaHintRecovery";
+  if (methods.includes("webauthn") || methods.includes("recovery")) {
+    return "login.mfaHint";
+  }
+  return "login.mfaHintTotp";
+}
+
 export default function LoginPage() {
   const { t } = useTranslation();
   const { isDark } = useTheme();
@@ -93,8 +130,29 @@ export default function LoginPage() {
   });
   const captchaRef = useRef<CaptchaFieldHandle>(null);
 
+  // MFA challenge — mfa_token stays in React state only (never localStorage).
+  const [mfaChallenge, setMfaChallenge] = useState<MfaChallengeResponse | null>(
+    null,
+  );
+  const [mfaMode, setMfaMode] = useState<MfaStepMode>("totp");
+  const [mfaCode, setMfaCode] = useState("");
+  const [passkeyAvailable] = useState(() => isWebAuthnAvailable());
+  const [passkeyIpHost] = useState(() => isWebAuthnIpHost());
+  const [conditionalOk, setConditionalOk] = useState(false);
+  const conditionalAbortRef = useRef<AbortController | null>(null);
+
   useEffect(() => {
     void applyGuestLocale();
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    void isConditionalMediationAvailable().then((ok) => {
+      if (!cancelled) setConditionalOk(ok);
+    });
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   useEffect(() => {
@@ -185,6 +243,77 @@ export default function LoginPage() {
     setCaptchaResetKey((k) => k + 1);
   };
 
+  const finishLogin = useCallback(
+    async (accessToken: string, locale: string | null | undefined) => {
+      conditionalAbortRef.current?.abort();
+      setAuthToken(accessToken, remember);
+      setMfaChallenge(null);
+      setMfaCode("");
+      const applied = await applyUserLocale(locale);
+      void refreshServerLabels(applied);
+      navigate("/chat", { replace: true });
+    },
+    [navigate, remember],
+  );
+
+  // Conditional UI: passkeys appear in the username autofill when available.
+  useEffect(() => {
+    if (mfaChallenge || !passkeyAvailable || passkeyIpHost || !conditionalOk) {
+      return;
+    }
+    let cancelled = false;
+    const ac = new AbortController();
+    conditionalAbortRef.current = ac;
+    void (async () => {
+      try {
+        const options = await authApi.passkeyLoginOptions();
+        if (cancelled || ac.signal.aborted) return;
+        const credential = await webauthnGetConditional(options, ac.signal);
+        if (cancelled || ac.signal.aborted) return;
+        setLoading(true);
+        const res = await authApi.passkeyLoginVerify(credential);
+        await finishLogin(res.access_token, res.user.locale);
+      } catch (err) {
+        if (cancelled || ac.signal.aborted || isWebAuthnAbortError(err)) {
+          return;
+        }
+        // User dismissed autofill / no matching passkey — stay silent.
+        const name =
+          err && typeof err === "object" && "name" in err
+            ? String((err as { name?: string }).name || "")
+            : "";
+        if (name === "NotAllowedError") return;
+        message.error(
+          webauthnErrorMessage(err, t) ??
+            apiErrorMessage(err, t("login.passkeyFailed"), t),
+        );
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+      ac.abort();
+      if (conditionalAbortRef.current === ac) {
+        conditionalAbortRef.current = null;
+      }
+    };
+  }, [
+    conditionalOk,
+    finishLogin,
+    mfaChallenge,
+    passkeyAvailable,
+    passkeyIpHost,
+    t,
+  ]);
+
+  const clearMfaStep = () => {
+    setMfaChallenge(null);
+    setMfaCode("");
+    setPassword("");
+    resetCaptcha();
+  };
+
   const onSso = async (kind: string) => {
     setSsoLoadingKind(kind);
     setRememberLoginPreference(remember);
@@ -224,10 +353,14 @@ export default function LoginPage() {
     try {
       const token = await captchaRef.current?.getToken();
       const res = await authApi.login(username, password, token);
-      setAuthToken(res.access_token, remember);
-      await applyUserLocale(res.user.locale);
-      void refreshServerLabels(res.user.locale);
-      navigate("/chat", { replace: true });
+      if (isMfaChallenge(res)) {
+        setMfaChallenge(res);
+        setMfaMode(defaultMfaMode(res.methods));
+        setMfaCode("");
+        setPassword("");
+        return;
+      }
+      await finishLogin(res.access_token, res.user.locale);
     } catch (err) {
       message.error(apiErrorMessage(err, t("login.failed"), t));
       resetCaptcha();
@@ -236,8 +369,279 @@ export default function LoginPage() {
     }
   };
 
+  const handleMfaVerify = async () => {
+    if (!mfaChallenge || !mfaCode.trim()) return;
+    setLoading(true);
+    try {
+      const method: MfaMethod = mfaMode === "recovery" ? "recovery" : "totp";
+      const res = await authApi.mfaVerify({
+        mfa_token: mfaChallenge.mfa_token,
+        method,
+        code: mfaCode.trim(),
+      });
+      await finishLogin(res.access_token, res.user.locale);
+    } catch (err) {
+      message.error(apiErrorMessage(err, t("login.mfaFailed"), t));
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleMfaPasskey = async () => {
+    if (!mfaChallenge) return;
+    if (!passkeyAvailable) {
+      message.warning(t("login.mfaPasskeyUnavailable"));
+      return;
+    }
+    if (passkeyIpHost) {
+      message.warning(t("apiErrors.WEBAUTHN_INVALID_DOMAIN"));
+      return;
+    }
+    setLoading(true);
+    try {
+      const options = await authApi.mfaPasskeyOptions(mfaChallenge.mfa_token);
+      const credential = await webauthnGet(options);
+      const res = await authApi.mfaVerify({
+        mfa_token: mfaChallenge.mfa_token,
+        method: "webauthn",
+        credential,
+      });
+      await finishLogin(res.access_token, res.user.locale);
+    } catch (err) {
+      message.error(
+        webauthnErrorMessage(err, t) ??
+          apiErrorMessage(err, t("login.mfaFailed"), t),
+      );
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handlePasskeyLogin = async () => {
+    if (!passkeyAvailable) {
+      message.warning(t("login.passkeyHttpsRequired"));
+      return;
+    }
+    if (passkeyIpHost) {
+      message.warning(t("apiErrors.WEBAUTHN_INVALID_DOMAIN"));
+      return;
+    }
+    // Modal ceremony — abort Conditional UI so only one get() runs.
+    conditionalAbortRef.current?.abort();
+    setLoading(true);
+    try {
+      const options = await authApi.passkeyLoginOptions();
+      const credential = await webauthnGet(options);
+      const res = await authApi.passkeyLoginVerify(credential);
+      await finishLogin(res.access_token, res.user.locale);
+    } catch (err) {
+      if (isWebAuthnAbortError(err)) return;
+      message.error(
+        webauthnErrorMessage(err, t) ??
+          apiErrorMessage(err, t("login.passkeyFailed"), t),
+      );
+    } finally {
+      setLoading(false);
+    }
+  };
+
   if (isSsoPopup() && searchParams.get("oidc_error")) {
     return null;
+  }
+
+  const cardStyle = {
+    width: "100%",
+    maxWidth: 360,
+    padding: "48px 32px 40px",
+    background: "var(--fn-bg-elevated)",
+    borderRadius: 16,
+    boxShadow: "0 8px 32px rgba(0,0,0,0.08)",
+    border: "1px solid var(--fn-border-primary)",
+    display: "flex",
+    flexDirection: "column" as const,
+    alignItems: "center",
+    gap: 20,
+    margin: "0 16px",
+  };
+
+  const logo = (
+    <img
+      src={
+        isDark
+          ? publicUrl("logo_horizontal_white.png")
+          : publicUrl("logo_horizontal_dark.png")
+      }
+      alt="Octop"
+      style={{
+        height: 48,
+        width: "auto",
+        maxWidth: 260,
+        objectFit: "contain",
+        display: "block",
+      }}
+    />
+  );
+
+  if (mfaChallenge) {
+    const methods = mfaChallenge.methods;
+    const showTotp = methods.includes("totp");
+    const showRecovery = methods.includes("recovery");
+    const showPasskey = methods.includes("webauthn");
+    const showCodeField =
+      (mfaMode === "totp" && showTotp) ||
+      (mfaMode === "recovery" && showRecovery);
+    const codeLabel =
+      mfaMode === "recovery" ? t("login.mfaRecovery") : t("login.mfaTotp");
+    const codePlaceholder =
+      mfaMode === "recovery"
+        ? t("login.mfaRecoveryPlaceholder")
+        : t("login.mfaTotpPlaceholder");
+
+    return (
+      <div
+        style={{
+          minHeight: "100dvh",
+          boxSizing: "border-box",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          padding:
+            "max(24px, env(safe-area-inset-top, 0px)) max(16px, env(safe-area-inset-right, 0px)) max(24px, env(safe-area-inset-bottom, 0px)) max(16px, env(safe-area-inset-left, 0px))",
+          background: "var(--fn-bg-layout)",
+          transition: "background var(--fn-transition)",
+        }}
+      >
+        <div style={cardStyle}>
+          {logo}
+          <h2
+            style={{
+              fontSize: 20,
+              fontWeight: 600,
+              color: "var(--fn-text-primary)",
+              margin: 0,
+              textAlign: "center",
+            }}
+          >
+            {t("login.mfaTitle")}
+          </h2>
+          {mfaChallenge.user_hint ? (
+            <p
+              style={{
+                margin: 0,
+                fontSize: 13,
+                color: "var(--fn-text-tertiary)",
+                textAlign: "center",
+              }}
+            >
+              {mfaChallenge.user_hint}
+            </p>
+          ) : null}
+          <p
+            style={{
+              margin: 0,
+              fontSize: 13,
+              lineHeight: 1.5,
+              color: "var(--fn-text-tertiary)",
+              textAlign: "center",
+            }}
+          >
+            {t(mfaHintKey(methods, mfaMode))}
+          </p>
+
+          {showCodeField ? (
+            <>
+              <Input
+                prefix={
+                  <Lock
+                    size={16}
+                    style={{ color: "var(--fn-text-quaternary)" }}
+                  />
+                }
+                placeholder={codePlaceholder}
+                aria-label={codeLabel}
+                size="large"
+                value={mfaCode}
+                onChange={(e) => setMfaCode(e.target.value)}
+                onPressEnter={() => void handleMfaVerify()}
+                autoFocus
+                autoComplete="one-time-code"
+                style={{ borderRadius: 10 }}
+              />
+              <Button
+                type="primary"
+                size="large"
+                block
+                loading={loading}
+                onClick={() => void handleMfaVerify()}
+                disabled={!mfaCode.trim()}
+                style={{ borderRadius: 10, height: 44, fontWeight: 500 }}
+              >
+                {t("login.mfaVerify")}
+              </Button>
+            </>
+          ) : null}
+
+          {mfaMode === "passkey" && showPasskey ? (
+            <Button
+              type="primary"
+              size="large"
+              block
+              icon={<Fingerprint size={18} />}
+              loading={loading}
+              onClick={() => void handleMfaPasskey()}
+              style={{ borderRadius: 10, height: 44, fontWeight: 500 }}
+            >
+              {t("login.mfaUsePasskey")}
+            </Button>
+          ) : null}
+
+          <div
+            style={{
+              width: "100%",
+              display: "flex",
+              flexDirection: "column",
+              gap: 8,
+            }}
+          >
+            {showTotp && mfaMode !== "totp" ? (
+              <Button type="link" onClick={() => setMfaMode("totp")}>
+                {t("login.mfaUseTotp")}
+              </Button>
+            ) : null}
+            {showRecovery && mfaMode !== "recovery" ? (
+              <Button type="link" onClick={() => setMfaMode("recovery")}>
+                {t("login.mfaUseRecovery")}
+              </Button>
+            ) : null}
+            {showPasskey && mfaMode !== "passkey" ? (
+              <Button
+                type="link"
+                icon={<Fingerprint size={16} />}
+                onClick={() => setMfaMode("passkey")}
+              >
+                {t("login.mfaUsePasskey")}
+              </Button>
+            ) : null}
+            {showPasskey && !passkeyAvailable ? (
+              <p
+                style={{
+                  margin: 0,
+                  fontSize: 12,
+                  lineHeight: 1.5,
+                  color: "var(--fn-text-tertiary)",
+                  textAlign: "center",
+                }}
+              >
+                {t("login.mfaPasskeyUnavailable")}
+              </p>
+            ) : null}
+            <Button type="link" onClick={clearMfaStep}>
+              {t("login.mfaBack")}
+            </Button>
+          </div>
+        </div>
+      </div>
+    );
   }
 
   return (
@@ -254,37 +658,8 @@ export default function LoginPage() {
         transition: "background var(--fn-transition)",
       }}
     >
-      <div
-        style={{
-          width: "100%",
-          maxWidth: 360,
-          padding: "48px 32px 40px",
-          background: "var(--fn-bg-elevated)",
-          borderRadius: 16,
-          boxShadow: "0 8px 32px rgba(0,0,0,0.08)",
-          border: "1px solid var(--fn-border-primary)",
-          display: "flex",
-          flexDirection: "column",
-          alignItems: "center",
-          gap: 20,
-          margin: "0 16px",
-        }}
-      >
-        <img
-          src={
-            isDark
-              ? publicUrl("logo_horizontal_white.png")
-              : publicUrl("logo_horizontal_dark.png")
-          }
-          alt="Octop"
-          style={{
-            height: 48,
-            width: "auto",
-            maxWidth: 260,
-            objectFit: "contain",
-            display: "block",
-          }}
-        />
+      <div style={cardStyle}>
+        {logo}
 
         <h2
           style={{
@@ -306,6 +681,8 @@ export default function LoginPage() {
           size="large"
           value={username}
           onChange={(e) => setUsername(e.target.value)}
+          autoComplete="username webauthn"
+          name="username"
           autoFocus
           style={{ borderRadius: 10 }}
         />
@@ -319,6 +696,8 @@ export default function LoginPage() {
           value={password}
           onChange={(e) => setPassword(e.target.value)}
           onPressEnter={handleLogin}
+          autoComplete="current-password"
+          name="password"
           style={{ borderRadius: 10 }}
         />
 
@@ -361,6 +740,48 @@ export default function LoginPage() {
         >
           {t("login.submit")}
         </Button>
+
+        {passkeyAvailable && !passkeyIpHost ? (
+          conditionalOk ? (
+            <Button
+              type="link"
+              block
+              icon={<Fingerprint size={16} />}
+              loading={loading}
+              onClick={() => void handlePasskeyLogin()}
+              style={{ height: 36, fontWeight: 500 }}
+            >
+              {t("login.passkeySignIn")}
+            </Button>
+          ) : (
+            <Button
+              size="large"
+              block
+              icon={<Fingerprint size={18} />}
+              loading={loading}
+              onClick={() => void handlePasskeyLogin()}
+              style={{ borderRadius: 10, height: 44, fontWeight: 500 }}
+            >
+              {t("login.passkeySignIn")}
+            </Button>
+          )
+        ) : (
+          <p
+            style={{
+              margin: 0,
+              marginTop: -8,
+              width: "100%",
+              fontSize: 12,
+              lineHeight: 1.5,
+              color: "var(--fn-text-tertiary)",
+              textAlign: "center",
+            }}
+          >
+            {passkeyIpHost
+              ? t("apiErrors.WEBAUTHN_INVALID_DOMAIN")
+              : t("login.passkeyHttpsRequired")}
+          </p>
+        )}
 
         <div
           style={{

@@ -28,6 +28,7 @@ import { request } from "../../../api/request";
 import type { OctopAgent } from "../../../context/AgentContext";
 import { useAgent } from "../../../context/AgentContext";
 import MbtiPersonaTag from "../../../components/MbtiPersonaTag";
+import BackendFlag from "./BackendFlag";
 import { ExpertIcon } from "./iconForName";
 import {
   formatAgentError,
@@ -366,6 +367,7 @@ export const AgentCard = memo(function AgentCard({
               {memorySlimming && (
                 <Tag color="processing">{t("experts.memorySlimming")}</Tag>
               )}
+              <BackendFlag config={agent.config} />
               <MbtiPersonaTag
                 value={agent.persona_mbti}
                 onClick={isOwner ? () => setMbtiCatalogOpen(true) : undefined}

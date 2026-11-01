@@ -167,9 +167,21 @@ async def redeem_invite(
     from octop.infra.agents.experts.default_agent import try_bootstrap_default_agent
 
     await try_bootstrap_default_agent(server, user_id=user.id, locale=user.locale)
+    from octop.infra.auth.tokens import PURPOSE_ACCESS
+
     secret = server.services.secret_repo.get("jwt")
     ttl = server.services.config.access_token_ttl_seconds
-    token = sign_token(secret, sub=user.id, uname=user.username, role=user.role, ttl_seconds=ttl)
+    row = server.services.user_repo.get(user.id)
+    mfa_version = int(row.mfa_version) if row is not None else 0
+    token = sign_token(
+        secret,
+        sub=user.id,
+        uname=user.username,
+        role=user.role,
+        purpose=PURPOSE_ACCESS,
+        ttl_seconds=ttl,
+        mfa_version=mfa_version,
+    )
     return {
         "access_token": token,
         "token_type": "Bearer",

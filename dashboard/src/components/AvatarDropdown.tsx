@@ -24,6 +24,7 @@ import {
   KeyRound,
   Lock,
   LockOpen,
+  ShieldCheck,
   SlidersHorizontal,
 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
@@ -53,6 +54,7 @@ import {
   ProfileAvatar,
   ProfileAvatarPicker,
 } from "../pages/Admin/Users/ProfileAvatar";
+import AccountSecurityDrawer from "./AccountSecurityDrawer";
 import styles from "./AvatarDropdown.module.less";
 
 const GITHUB_URL = "https://github.com/TencentCloud/Octop";
@@ -109,6 +111,7 @@ export default function AvatarDropdown({
   const [menuOpen, setMenuOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [passwordOpen, setPasswordOpen] = useState(false);
+  const [securityOpen, setSecurityOpen] = useState(false);
   const [saving, setSaving] = useState(false);
   const [ssoProviders, setSsoProviders] = useState<
     { kind: string; display_name: string; enabled: boolean }[]
@@ -284,6 +287,12 @@ export default function AvatarDropdown({
     deferOpen(() => setPasswordOpen(true));
   };
 
+  const openSecurity = () => {
+    setMenuOpen(false);
+    onBeforeOpenSettings?.();
+    deferOpen(() => setSecurityOpen(true));
+  };
+
   const openCustomizeNav = () => {
     setMenuOpen(false);
     onBeforeOpenSettings?.();
@@ -410,6 +419,11 @@ export default function AvatarDropdown({
       <button type="button" className={styles.menuItem} onClick={openPassword}>
         <KeyRound size={16} strokeWidth={1.8} />
         <span>{t("account.changePassword")}</span>
+      </button>
+
+      <button type="button" className={styles.menuItem} onClick={openSecurity}>
+        <ShieldCheck size={16} strokeWidth={1.8} />
+        <span>{t("account.security")}</span>
       </button>
 
       {userCan(user, "update") && (
@@ -869,6 +883,11 @@ export default function AvatarDropdown({
       >
         {passwordBody}
       </Drawer>
+
+      <AccountSecurityDrawer
+        open={securityOpen}
+        onClose={() => setSecurityOpen(false)}
+      />
     </>
   );
 }

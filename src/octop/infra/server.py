@@ -608,7 +608,11 @@ class OctopServer:
         await user_mgr.boot()
         await proactive_scheduler.start_all()
 
-        from octop.infra.auth.tokens import sign_token
+        from octop.infra.auth.mfa import MfaService
+
+        MfaService(self.services).prune()
+
+        from octop.infra.auth.tokens import PURPOSE_ACCESS, sign_token
         from octop.infra.bridge.manager import BridgeManager, public_base_url_from_config
 
         services = self.services
@@ -620,12 +624,16 @@ class OctopServer:
             if secret is None:
                 raise RuntimeError("jwt secret missing")
             ttl = services.config.access_token_ttl_seconds
+            row = services.user_repo.get(int(user.id))
+            mfa_version = int(row.mfa_version) if row is not None else 0
             return sign_token(
                 secret,
                 sub=int(user.id),
                 uname=str(user.username),
                 role=str(user.role),
+                purpose=PURPOSE_ACCESS,
                 ttl_seconds=ttl,
+                mfa_version=mfa_version,
             )
 
         advertise = public_base_url_from_config(config.bind_host, config.port)

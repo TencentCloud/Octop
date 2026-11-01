@@ -47,6 +47,20 @@ import {
 
 const EMPTY_MODELS: ResolvedModel[] = [];
 
+type ChatConnectorOption = {
+  mcp_server_name: string;
+  label: string;
+  kind: string;
+  default_open?: boolean;
+};
+
+function sameIds(left: string[], right: string[]): boolean {
+  return (
+    left.length === right.length &&
+    left.every((id, index) => id === right[index])
+  );
+}
+
 export function useChatComposerResources(
   resolvedAgentId: string | null | undefined,
   activeThreadId?: string | null,
@@ -58,7 +72,7 @@ export function useChatComposerResources(
 ) {
   const user = useCurrentUser();
   const currentUserId = user?.id ?? null;
-  const { agents } = useAgent();
+  const { agents, loading: agentsLoading } = useAgent();
   const expert = agents.find((item) => item.agent_id === resolvedAgentId);
   const expertDefaultMode = parseConversationMode(
     expert?.config?.conversation_mode,
@@ -85,14 +99,17 @@ export function useChatComposerResources(
   const [chatKnowledgeBases, setChatKnowledgeBases] = useState<
     KnowledgeBase[] | undefined
   >(undefined);
-  const [chatConnectors, setChatConnectors] = useState<
-    {
-      mcp_server_name: string;
-      label: string;
-      kind: string;
-      default_open?: boolean;
-    }[]
-  >([]);
+  const [chatConnectors, setChatConnectors] = useState<ChatConnectorOption[]>(
+    [],
+  );
+  const knowledgeCatalogRef = useRef<{
+    agentId: string | null;
+    bases: KnowledgeBase[];
+  } | null>(null);
+  const connectorCatalogRef = useRef<{
+    agentId: string | null;
+    options: ChatConnectorOption[];
+  } | null>(null);
   const [modelCatalog, setModelCatalog] = useState<{
     agentId: string | null | undefined;
     models: ResolvedModel[];
@@ -135,11 +152,14 @@ export function useChatComposerResources(
 
   useEffect(() => {
     composerTouchedRef.current = false;
+    knowledgeCatalogRef.current = null;
+    connectorCatalogRef.current = null;
     // Selections are remembered per expert (localStorage below); never carry
-    // the previous expert's in-memory selection across the switch. Connectors
-    // get the same reset so their per-agent saved prefs resolve cleanly.
+    // the previous expert's catalog or in-memory selection across the switch.
     setSelectedKnowledgeBaseIds([]);
     setSelectedConnectors([]);
+    setChatKnowledgeBases(undefined);
+    setChatConnectors([]);
   }, [resolvedAgentId]);
 
   useEffect(() => {
@@ -220,12 +240,48 @@ export function useChatComposerResources(
   }, [isNewSession, stickyHitlPolicy, activeThreadId]);
 
   useEffect(() => {
+    if (agentsLoading) return;
     if (teamHost) {
+      connectorCatalogRef.current = null;
       setSelectedConnectors([]);
       setChatConnectors([]);
       return;
     }
     let cancelled = false;
+    const agentKey = resolvedAgentId ?? null;
+    const applyConnectorOptions = (options: ChatConnectorOption[]) => {
+      connectorCatalogRef.current = { agentId: agentKey, options };
+      setChatConnectors((current) => (current === options ? current : options));
+      const allowed = new Set(options.map((o) => o.mcp_server_name));
+      const defaults = withDefaultOpenKnowledgeBases(
+        options.filter((o) => o.default_open).map((o) => o.mcp_server_name),
+        expertMcpServers ?? [],
+      );
+      setSelectedConnectors((prev) => {
+        const next = resolveInitialConnectors({
+          prev,
+          saved: resolvedAgentId ? loadSavedConnectors(resolvedAgentId) : [],
+          hasSaved: resolvedAgentId
+            ? hasSavedConnectors(resolvedAgentId)
+            : false,
+          defaults,
+          allowed,
+          // Untouched selection is not a user choice. A refresh resolves
+          // once before the expert row exists; that partial result must
+          // not block expert / default-open picks when they arrive.
+          ignorePrev: !composerTouchedRef.current,
+          ignoreSaved: isNewSession,
+          preferPrev: composerTouchedRef.current,
+        });
+        return sameIds(prev, next) ? prev : next;
+      });
+    };
+    // Keep the chips that are already on screen. A new chat or a later
+    // expert default updates the selection in place while the list refreshes.
+    const cachedConnectors = connectorCatalogRef.current;
+    if (cachedConnectors && cachedConnectors.agentId === agentKey) {
+      applyConnectorOptions(cachedConnectors.options);
+    }
     const loadConnectors = () => {
       void connectorsApi
         .listInstances(remoteBridge ? resolvedAgentId : undefined)
@@ -255,28 +311,7 @@ export function useChatComposerResources(
                 ? i.default_open === true
                 : i.default_open === true && i.owner_user_id === currentUserId,
             }));
-          setChatConnectors(options);
-          const allowed = new Set(options.map((o) => o.mcp_server_name));
-          const defaults = withDefaultOpenKnowledgeBases(
-            options.filter((o) => o.default_open).map((o) => o.mcp_server_name),
-            expertMcpServers ?? [],
-          );
-          setSelectedConnectors((prev) =>
-            resolveInitialConnectors({
-              prev,
-              saved: resolvedAgentId
-                ? loadSavedConnectors(resolvedAgentId)
-                : [],
-              hasSaved: resolvedAgentId
-                ? hasSavedConnectors(resolvedAgentId)
-                : false,
-              defaults,
-              allowed,
-              ignorePrev: isNewSession && !composerTouchedRef.current,
-              ignoreSaved: isNewSession,
-              preferPrev: composerTouchedRef.current,
-            }),
-          );
+          applyConnectorOptions(options);
         });
     };
     loadConnectors();
@@ -295,20 +330,75 @@ export function useChatComposerResources(
     expertMcpKey,
     teamHost,
     remoteBridge,
+    agentsLoading,
   ]);
 
   useEffect(() => {
+    if (agentsLoading) return;
     if (teamHost) {
+      knowledgeCatalogRef.current = null;
       setSelectedKnowledgeBaseIds([]);
       setChatKnowledgeBases(undefined);
       return;
     }
     let cancelled = false;
     const pendingId = peekPendingAttachKnowledgeBaseId();
-    if (isNewSession && !composerTouchedRef.current) {
-      setSelectedKnowledgeBaseIds(pendingId ? [pendingId] : []);
+    const agentKey = resolvedAgentId ?? null;
+    const applyKnowledgeBases = (
+      bases: KnowledgeBase[],
+      consumePending: boolean,
+    ) => {
+      knowledgeCatalogRef.current = { agentId: agentKey, bases };
+      setChatKnowledgeBases((current) => (current === bases ? current : bases));
+      const ownedDefaults = bases
+        .filter(
+          (base) =>
+            base.default_open &&
+            currentUserId != null &&
+            base.owner_user_id === currentUserId,
+        )
+        .map((base) => base.id);
+      const allowed = new Set(bases.map((base) => base.id));
+      // Peer owner_user_id rarely matches local user id — for remote
+      // experts, treat default_open flags on the peer list as usable.
+      const bridgeDefaults = remoteBridge
+        ? bases.filter((base) => base.default_open).map((base) => base.id)
+        : ownedDefaults;
+      const defaults = withDefaultOpenKnowledgeBases(
+        bridgeDefaults,
+        (expertKnowledgeBaseIds ?? []).filter((id) => allowed.has(id)),
+      );
+      setSelectedKnowledgeBaseIds((previous) => {
+        const base = resolveInitialConnectors({
+          // resolver is selection-generic (string ids)
+          prev: previous,
+          saved: resolvedAgentId
+            ? loadSavedKnowledgeBaseIds(resolvedAgentId)
+            : [],
+          hasSaved: resolvedAgentId
+            ? hasSavedKnowledgeBaseIds(resolvedAgentId)
+            : false,
+          defaults,
+          allowed,
+          ignorePrev: !composerTouchedRef.current,
+          ignoreSaved: isNewSession,
+          preferPrev: composerTouchedRef.current,
+        });
+        const next =
+          pendingId && allowed.has(pendingId) && !base.includes(pendingId)
+            ? [...base, pendingId]
+            : base;
+        return sameIds(previous, next) ? previous : next;
+      });
+      if (consumePending && pendingId) consumePendingAttachKnowledgeBaseId();
+    };
+    // Same expert: recompute chips from the list already on screen so a new
+    // chat or a refreshed default does not blank the picker while the
+    // request is in flight.
+    const cachedKnowledge = knowledgeCatalogRef.current;
+    if (cachedKnowledge && cachedKnowledge.agentId === agentKey) {
+      applyKnowledgeBases(cachedKnowledge.bases, false);
     }
-    setChatKnowledgeBases(undefined);
 
     const loadCapability = (): Promise<KnowledgeCapability> =>
       knowledgeBasesApi.getCapability(resolvedAgentId);
@@ -320,56 +410,21 @@ export function useChatComposerResources(
         if (cancelled) return;
         if (!capability.usable) {
           if (pendingId) consumePendingAttachKnowledgeBaseId();
+          knowledgeCatalogRef.current = null;
+          setChatKnowledgeBases(undefined);
+          setSelectedKnowledgeBaseIds([]);
           return;
         }
         return loadBases().then((bases) => {
           if (cancelled) return;
-          setChatKnowledgeBases(bases);
-          const ownedDefaults = bases
-            .filter(
-              (base) =>
-                base.default_open &&
-                currentUserId != null &&
-                base.owner_user_id === currentUserId,
-            )
-            .map((base) => base.id);
-          const allowed = new Set(bases.map((base) => base.id));
-          // Peer owner_user_id rarely matches local user id — for remote
-          // experts, treat default_open flags on the peer list as usable.
-          const bridgeDefaults = remoteBridge
-            ? bases.filter((base) => base.default_open).map((base) => base.id)
-            : ownedDefaults;
-          const defaults = withDefaultOpenKnowledgeBases(
-            bridgeDefaults,
-            (expertKnowledgeBaseIds ?? []).filter((id) => allowed.has(id)),
-          );
-          setSelectedKnowledgeBaseIds((previous) => {
-            const base = resolveInitialConnectors({
-              // resolver is selection-generic (string ids)
-              prev: previous,
-              saved: resolvedAgentId
-                ? loadSavedKnowledgeBaseIds(resolvedAgentId)
-                : [],
-              hasSaved: resolvedAgentId
-                ? hasSavedKnowledgeBaseIds(resolvedAgentId)
-                : false,
-              defaults,
-              allowed,
-              ignorePrev: isNewSession && !composerTouchedRef.current,
-              ignoreSaved: isNewSession,
-              preferPrev: composerTouchedRef.current,
-            });
-            return pendingId &&
-              allowed.has(pendingId) &&
-              !base.includes(pendingId)
-              ? [...base, pendingId]
-              : base;
-          });
-          if (pendingId) consumePendingAttachKnowledgeBaseId();
+          applyKnowledgeBases(bases, true);
         });
       })
       .catch(() => {
-        if (!cancelled) setChatKnowledgeBases(undefined);
+        if (cancelled) return;
+        if (knowledgeCatalogRef.current?.agentId !== agentKey) {
+          setChatKnowledgeBases(undefined);
+        }
       });
     return () => {
       cancelled = true;
@@ -381,6 +436,7 @@ export function useChatComposerResources(
     expertKbKey,
     teamHost,
     remoteBridge,
+    agentsLoading,
   ]);
 
   useEffect(() => {

@@ -15,6 +15,8 @@ from octop.api.deps import current_user, get_server, require_permission
 from octop.config import OctopConfig
 from octop.infra.agents.security import tool_execution_may_pause
 from octop.infra.auth.captcha import current_env, load_view, save_settings
+from octop.infra.auth.mfa.settings import load_view as load_webauthn_view
+from octop.infra.auth.mfa.settings import save_settings as save_webauthn_settings
 from octop.infra.errors import ErrorCode, OctopError
 from octop.infra.users.identity import User
 from octop.infra.utils.download_links import DownloadLinkStore
@@ -282,3 +284,50 @@ async def put_captcha_settings(
         payload=f"source={view['source']}",
     )
     return CaptchaSettingsResponse.model_validate(view)
+
+
+class WebauthnSettingsResponse(BaseModel):
+    rp_id: str | None = None
+    origins: list[str] = Field(default_factory=list)
+
+
+class WebauthnSettingsPut(BaseModel):
+    rp_id: str | None = None
+    origins: list[str] | None = None
+
+
+@router.get(
+    "/settings/webauthn",
+    summary="WebAuthn / passkey RP settings",
+    response_model=WebauthnSettingsResponse,
+)
+async def get_webauthn_settings(
+    _admin: User = Depends(require_permission("captcha")),
+    server: Any = Depends(get_server),
+) -> WebauthnSettingsResponse:
+    """Return configured RP ID and allowed origins. Never derived from Host headers."""
+    return WebauthnSettingsResponse.model_validate(
+        load_webauthn_view(server.services.settings_repo)
+    )
+
+
+@router.put(
+    "/settings/webauthn",
+    summary="Update WebAuthn / passkey RP settings",
+    response_model=WebauthnSettingsResponse,
+)
+async def put_webauthn_settings(
+    body: WebauthnSettingsPut,
+    admin: User = Depends(require_permission("captcha")),
+    server: Any = Depends(get_server),
+) -> WebauthnSettingsResponse:
+    view = save_webauthn_settings(
+        server.services.settings_repo,
+        body.model_dump(exclude_unset=True),
+    )
+    server.services.audit_repo.write(
+        actor=admin.username,
+        action="webauthn.settings.update",
+        target=str(view.get("rp_id") or ""),
+    )
+    return WebauthnSettingsResponse.model_validate(view)

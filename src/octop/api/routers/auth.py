@@ -4,14 +4,15 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from typing import Any
+from typing import Any, Literal
 
 from fastapi import APIRouter, Depends, File, Request, Response, UploadFile
 from pydantic import BaseModel, Field
 
 from octop.api.common.client_ip import resolve_client_ip
-from octop.api.deps import current_user, get_server, sign_token
+from octop.api.deps import current_user, get_server
 from octop.infra.auth.captcha import current_env, ensure_captcha, load_effective, public_config
+from octop.infra.auth.mfa import MfaService
 from octop.infra.errors import ErrorCode, OctopError
 from octop.infra.users.email import normalize_email
 from octop.infra.users.permissions import effective_permissions
@@ -189,16 +190,20 @@ async def login(
     )
     client_ip = _client_ip(request)
     await ensure_captcha(effective, body.captcha_token, client_ip)
+    amr: Literal["password", "ldap"] = "password"
     user = await server.user_manager.authenticate(body.username, body.password)
     if user is None:
         local_row = _local_row(server, body.username)
         if _directory_may_own(local_row):
             user = await _authenticate_ldap(server, body.username, body.password, client_ip)
+            if user is not None:
+                amr = "ldap"
     if user is None:
         raise OctopError(ErrorCode.AUTH_FAILED, "invalid credentials")
-    secret = server.services.secret_repo.get("jwt")
-    ttl = server.services.config.access_token_ttl_seconds
-    token = sign_token(secret, sub=user.id, uname=user.username, role=user.role, ttl_seconds=ttl)
+    mfa = MfaService(server.services)
+    if mfa.has_verified_factor(user.id):
+        return mfa.issue_mfa_challenge(user, amr=amr)
+    token, ttl = mfa.mint_access_token(user)
     return {
         "access_token": token,
         "token_type": "Bearer",

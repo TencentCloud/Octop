@@ -17,6 +17,7 @@ from octop.api.deps import (
     maybe_sliding_renew_token,
     sign_token,
 )
+from octop.infra.auth.tokens import PURPOSE_ACCESS
 from octop.infra.server import OctopServer
 
 
@@ -26,6 +27,11 @@ def test_exempt_paths() -> None:
     assert is_jwt_exempt_path("/api/setup/status")
     assert is_jwt_exempt_path("/api/auth/login")
     assert is_jwt_exempt_path("/api/auth/captcha")
+    assert is_jwt_exempt_path("/api/auth/mfa/verify")
+    assert is_jwt_exempt_path("/api/auth/mfa/passkey/options")
+    assert is_jwt_exempt_path("/api/auth/passkey/login/options")
+    assert is_jwt_exempt_path("/api/auth/passkey/login/verify")
+    assert not is_jwt_exempt_path("/api/auth/mfa/status")
     assert is_jwt_exempt_path("/api/auth/oidc/status")
     assert is_jwt_exempt_path("/api/auth/oidc/start")
     assert is_jwt_exempt_path("/api/auth/oidc/callback")
@@ -120,6 +126,7 @@ async def test_near_expiry_token_gets_sliding_renew(client) -> None:
         sub=user.id,
         uname=user.username,
         role=user.role,
+        purpose=PURPOSE_ACCESS,
         ttl_seconds=60,
     )
     r = await c.get("/api/auth/me", headers=bearer(short))
@@ -141,9 +148,23 @@ async def test_maybe_sliding_renew_helper_threshold(client) -> None:
     secret = srv.services.secret_repo.get("jwt")
     assert secret is not None
     ttl = srv.services.config.access_token_ttl_seconds
-    fresh = sign_token(secret, sub=user.id, uname=user.username, role=user.role, ttl_seconds=ttl)
+    fresh = sign_token(
+        secret,
+        sub=user.id,
+        uname=user.username,
+        role=user.role,
+        purpose=PURPOSE_ACCESS,
+        ttl_seconds=ttl,
+    )
     assert maybe_sliding_renew_token(srv, fresh, user) is None
-    short = sign_token(secret, sub=user.id, uname=user.username, role=user.role, ttl_seconds=60)
+    short = sign_token(
+        secret,
+        sub=user.id,
+        uname=user.username,
+        role=user.role,
+        purpose=PURPOSE_ACCESS,
+        ttl_seconds=60,
+    )
     renewed = maybe_sliding_renew_token(srv, short, user)
     assert renewed is not None
     assert renewed != short
@@ -183,7 +204,12 @@ async def test_middleware_localizes_auth_errors_by_accept_language(client) -> No
     secret = srv.services.secret_repo.get("jwt")
     assert secret is not None
     expired = sign_token(
-        secret, sub=user.id, uname=user.username, role=user.role, ttl_seconds=-3600
+        secret,
+        sub=user.id,
+        uname=user.username,
+        role=user.role,
+        purpose=PURPOSE_ACCESS,
+        ttl_seconds=-3600,
     )
     r = await c.get(
         "/api/agents",
