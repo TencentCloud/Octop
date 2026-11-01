@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import sys
 from pathlib import Path
 
 import pytest
@@ -39,6 +40,38 @@ def test_clean_all_requires_confirmation(fake_home: Path) -> None:
     runner = CliRunner()
     r = runner.invoke(cli, ["clean", "--all", "--yes"])
     assert r.exit_code == 0
+    assert not db.exists()
+
+
+def test_clean_all_refuses_when_runtime_lives_in_root(
+    fake_home: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The guard never deletes the interpreter the running CLI depends on."""
+    root = fake_home / ".octop"
+    db = root / "octop.db"
+    db.parent.mkdir(parents=True)
+    db.write_text("DB-CONTENT")
+    fake_sys_prefix = root / "venv"
+    fake_sys_prefix.mkdir(parents=True)
+    monkeypatch.setattr(sys, "prefix", str(fake_sys_prefix))
+    monkeypatch.setattr(sys, "exec_prefix", str(fake_sys_prefix))
+
+    runner = CliRunner()
+    r = runner.invoke(cli, ["clean", "--all", "--yes"])
+    assert r.exit_code == 1, r.output
+    assert "refusing to wipe" in r.output
+    assert db.exists()  # nothing deleted
+
+
+def test_clean_all_still_wipes_when_runtime_outside_root(fake_home: Path) -> None:
+    db = fake_home / ".octop" / "octop.db"
+    db.parent.mkdir(parents=True)
+    db.write_text("DB-CONTENT")
+
+    runner = CliRunner()
+    r = runner.invoke(cli, ["clean", "--all", "--yes"])
+    assert r.exit_code == 0, r.output
     assert not db.exists()
 
 

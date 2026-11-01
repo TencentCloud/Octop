@@ -34,6 +34,10 @@ def clean(wipe_all: bool, yes: bool, dry_run: bool) -> None:
         click.confirm("This deletes ALL Octop data (DB, configs, logs). Continue?", abort=True)
     elif not yes:
         click.confirm("Remove CLI state?", abort=True)
+    if wipe_all:
+        from octop.cli.commands.wipe_guard import ensure_root_not_runtime
+
+        ensure_root_not_runtime(PathLayout.from_env().root)
     for t in targets:
         if not t.exists():
             continue

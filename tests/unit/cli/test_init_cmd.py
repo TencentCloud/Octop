@@ -132,6 +132,43 @@ def test_init_force_resets(fake_home: Path) -> None:
     assert repo.get_by_username("bob") is not None
 
 
+def test_init_force_refuses_when_runtime_lives_in_root(
+    fake_home: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """`init --force` must not delete the venv the CLI is running from (#2611).
+
+    Official ``install.sh`` places the runtime venv at ``~/.octop/venv``;
+    wiping ``~/.octop`` used to disable every later ``octop`` command.
+    """
+    import sys
+
+    root = fake_home / ".octop"
+    root.mkdir(parents=True)
+    (root / "octop.db").write_text("DB", encoding="utf-8")
+    venv = root / "venv"
+    venv.mkdir()
+    monkeypatch.setattr(sys, "prefix", str(venv))
+    monkeypatch.setattr(sys, "exec_prefix", str(venv))
+
+    runner = CliRunner()
+    r = runner.invoke(
+        cli,
+        [
+            "init",
+            "--force",
+            "--admin-username",
+            "bob",
+            "--admin-password",
+            "TestPass34",
+            "--yes",
+        ],
+    )
+    assert r.exit_code == 1, r.output
+    assert "refusing to wipe" in r.output
+    # Nothing wiped: the DB and the marker file survive.
+    assert (root / "octop.db").exists()
+
+
 def test_init_rerun_skips_existing_admin_without_local_db(
     fake_home: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

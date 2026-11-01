@@ -79,6 +79,9 @@ def init(
                 ):
                     click.echo("aborted", err=True)
                     raise SystemExit(1)
+            from octop.cli.commands.wipe_guard import ensure_root_not_runtime
+
+            ensure_root_not_runtime(home)
             shutil.rmtree(home)
 
     paths.ensure_root()

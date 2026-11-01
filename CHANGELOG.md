@@ -26,6 +26,7 @@
 - 停用的会话模型回到 Auto。钉钉和微信切换时，草稿与二维码不再串台，登录回调会保留转发端口
 - 更早回合生成的文件不会再次发出。对话轨迹记下模型实际收到的系统提示
 - PostgreSQL 控制面下，`ProactiveCareService` 写推送去重记录不再报 `'Connection' object has no attribute 'executemany'`：`_PgConnectionProxy` 补上 SQLite 风格的 `executemany`（经 psycopg 游标执行并转换 `?` 占位符），`care_push_records` 恢复为空 → 正常写入，30 天去重生效
+- `octop init --force` 与 `octop clean --all` 拒绝删除正在运行的 venv：运行时位于 `~/.octop` 内时给出明确报错与替代方案，CLI 不再把自己删到无法执行（#2611）
 
 ### 变更
 - 通行密钥登录默认关闭，要在应用设置里打开。修改密码放在「账户安全」里
