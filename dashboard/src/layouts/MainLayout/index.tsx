@@ -30,18 +30,13 @@ import {
   railShortcutLabel,
 } from "../../utils/railShortcuts";
 import { useTranslation } from "react-i18next";
+import DesktopWindowDragBand from "../../components/DesktopWindowDragBand";
 import RequirePermission from "../../components/RequirePermission";
 import { routeNeedsPermission } from "../../utils/permissions";
 import { useLayoutMode } from "../../context/LayoutModeContext";
 import { useDashboardPushToast } from "../../hooks/useDashboardPushToast";
-import { useDesktopChromeStyle } from "../../hooks/useDesktopChrome";
-import { useWindowFullscreen } from "../../hooks/useWindowFullscreen";
 import { useRailShortcuts } from "../../hooks/useRailShortcuts";
-import {
-  DESKTOP_CHROME_HEIGHT,
-  windowControlsInset,
-  DESKTOP_DRAG_REGION_CLASS,
-} from "../../utils/desktopChrome";
+import { DESKTOP_CHROME_HEIGHT } from "../../utils/desktopChrome";
 
 const Chat = lazy(() => import("../../pages/Chat"));
 const WorkbenchPage = lazy(() => import("../../pages/Control/Workbench"));
@@ -85,8 +80,6 @@ export default function MainLayout() {
     [...FULLSCREEN_PATHS].some((p) => currentPath.startsWith(p + "/")) ||
     (isMobile && MOBILE_FULLSCREEN_PATHS.has(currentPath));
   const onWorkbench = isWorkbenchPath(currentPath);
-  const desktopChrome = useDesktopChromeStyle();
-  const windowFullscreen = useWindowFullscreen();
   // Web and desktop share one top row, not a native spacer + a page header.
   // Fullscreen keeps that layout but disables window dragging.
   const shellTopBand = isMobile ? 0 : DESKTOP_CHROME_HEIGHT;
@@ -285,21 +278,7 @@ export default function MainLayout() {
           {/* A single bounded drag region across all columns, including empty
               chats and docks. It never intercepts DOM pointer events; actual
               controls opt out via the no-drag rules in layout.css. */}
-          {shellTopBand > 0 && desktopChrome && !windowFullscreen && (
-            <div
-              aria-hidden
-              className={`${DESKTOP_DRAG_REGION_CLASS} octop-shell-drag-band`}
-              style={{
-                position: "absolute",
-                top: 0,
-                left: windowControlsInset(desktopChrome, "start"),
-                /* Native controls are never part of the drag hit region. */
-                right: windowControlsInset(desktopChrome, "end"),
-                height: shellTopBand,
-                pointerEvents: "none",
-              }}
-            />
-          )}
+          {shellTopBand > 0 && <DesktopWindowDragBand position="absolute" />}
 
           <div
             style={{
