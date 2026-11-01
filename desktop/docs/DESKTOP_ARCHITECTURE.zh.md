@@ -254,7 +254,7 @@ Electron main 入口：执行轻量初始化并获取单实例锁
        │
        ▼
 立即创建并展示 BrowserWindow（Early Window）：
-  - 固定白色背景与深色文字，不跟随主题（此时页面还没拿到主题设置）
+  - 背景与文字跟随 desktop-settings.json 的 themeBackground（system / light / dark）
   - 加载轻量加载骨架屏
        │
        ├─────────────────────────────────┐

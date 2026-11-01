@@ -59,6 +59,29 @@ export function resolveWindowChromeTheme(
 }
 
 /**
+ * Window colour before the page paints. Same as the Dashboard page ground
+ * (`--fn-bg-layout` in theme-vars.css) so the shell and the app do not shift.
+ */
+const WINDOW_BACKGROUND = {
+  light: "#f5f6f8",
+  dark: "#0e0e0e",
+} as const;
+
+export function windowBackground(mode: WindowChromeTheme["mode"]): string {
+  return WINDOW_BACKGROUND[mode];
+}
+
+/**
+ * Query key read by the Dashboard boot script (`dashboard/index.html`).
+ * The value is the preference (`system` | `light` | `dark`), not the resolved mode.
+ */
+export const DASHBOARD_THEME_QUERY = "octopTheme";
+
+export function dashboardEntryUrl(scheme: "system" | "light" | "dark"): string {
+  return `octop://app/?${DASHBOARD_THEME_QUERY}=${scheme}`;
+}
+
+/**
  * Caption-button overlay. `color` stays transparent on purpose: the page paints
  * its own background underneath, so a themed bar would leave a visible seam.
  */

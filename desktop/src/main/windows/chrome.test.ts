@@ -76,3 +76,10 @@ test("Windows 切换主题后仍保留 58px 原生标题栏", () => {
 test("Linux 仍使用系统窗口边框", () => {
   onPlatform("linux", () => assert.deepEqual(chrome.windowChrome("light"), {}));
 });
+
+test("窗口底色与仪表盘启动地址跟设备主题走", () => {
+  assert.equal(chrome.windowBackground("light"), "#f5f6f8");
+  assert.equal(chrome.windowBackground("dark"), "#0e0e0e");
+  assert.equal(chrome.dashboardEntryUrl("system"), "octop://app/?octopTheme=system");
+  assert.equal(chrome.dashboardEntryUrl("dark"), "octop://app/?octopTheme=dark");
+});

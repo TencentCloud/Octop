@@ -1,7 +1,7 @@
 import { BrowserWindow } from "electron";
 
 import { IPC_CHANNELS } from "../../shared/ipc-contract";
-import { windowChrome, type WindowChromeTheme } from "./chrome";
+import { dashboardEntryUrl, windowChrome, type WindowChromeTheme } from "./chrome";
 import { DEFAULT_WINDOW_SIZE, MIN_WINDOW_SIZE } from "./size";
 
 /**
@@ -60,6 +60,9 @@ export function createMainWindow(options: {
   win.on("leave-full-screen", () => sendFullscreen(false));
 
   win.once("ready-to-show", () => win.show());
-  void win.loadURL("octop://app/");
+  // The boot script reads this once, writes it into localStorage, then strips
+  // the query. Passing the preference (not the resolved mode) keeps "system"
+  // tracking the OS after the page is up.
+  void win.loadURL(dashboardEntryUrl(options.theme.scheme ?? options.theme.mode));
   return win;
 }

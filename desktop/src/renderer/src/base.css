@@ -1,26 +1,28 @@
 /*
  * Shared baseline for the shell's own pages (splash + fatal error).
  *
- * Light-only on purpose: the Early Window is created with a white
- * `backgroundColor` and shows its first frame before any user preference is
- * known, so a dark variant here would produce a white-to-dark flash inside a
- * still-white window. The Dashboard applies the user's theme once it loads.
+ * Light is the default. `html[data-theme="dark"]` is set from the `theme`
+ * query before styles apply, matching the window `backgroundColor`, so a dark
+ * device preference does not flash white.
  */
 :root {
   color-scheme: light;
 
-  /* Same rose the Dashboard uses for --fn-color-brand (theme-vars.css). */
+  /* Copied from dashboard theme-vars.css (rose, light). */
   --brand: #e85d75;
-  --brand-strong: #d94b64;
+  --brand-strong: #d14a62;
   --brand-surface: #fdf1f3;
   --brand-border: #f3cdd4;
 
-  --text: rgba(0, 0, 0, 0.88);
-  --text-secondary: rgba(0, 0, 0, 0.62);
-  --text-tertiary: rgba(0, 0, 0, 0.45);
-  --border: rgba(0, 0, 0, 0.09);
+  --text: #111827;
+  --text-secondary: #4b5563;
+  --text-tertiary: #9ca3af;
+  --border: #e5e7eb;
+  --border-strong: #d1d5db;
+  /* --fn-bg-layout. Cards and buttons use --surface (--fn-bg-elevated). */
+  --page: #f5f6f8;
   --surface: #ffffff;
-  --surface-sunken: #fafafa;
+  --surface-sunken: #f7f8fa;
 
   --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC",
     "Noto Sans SC", "Microsoft YaHei", sans-serif;
@@ -29,6 +31,22 @@
 
   font-family: var(--font-sans);
   -webkit-font-smoothing: antialiased;
+}
+
+/* Dark values from the same theme-vars.css block, including the lightened rose. */
+html[data-theme="dark"] {
+  color-scheme: dark;
+
+  --brand: #f08b9a;
+  --brand-strong: #e85d75;
+  --text: rgba(255, 255, 255, 0.9);
+  --text-secondary: rgba(255, 255, 255, 0.6);
+  --text-tertiary: rgba(255, 255, 255, 0.35);
+  --border: rgba(255, 255, 255, 0.08);
+  --border-strong: rgba(255, 255, 255, 0.16);
+  --page: #0e0e0e;
+  --surface: #1e1e1e;
+  --surface-sunken: #1a1a1a;
 }
 
 * {
@@ -43,7 +61,7 @@ body,
 
 body {
   margin: 0;
-  background: var(--surface);
+  background: var(--page);
   color: var(--text);
   cursor: default;
   overflow: hidden;

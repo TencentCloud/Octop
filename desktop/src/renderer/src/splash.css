@@ -23,7 +23,7 @@
       rgba(232, 93, 117, 0.11),
       transparent 68%
     ),
-    var(--surface);
+    var(--page);
   user-select: none;
 }
 
@@ -117,6 +117,24 @@
     opacity: 1;
     transform: none;
   }
+}
+
+html[data-theme="dark"] .splash {
+  background:
+    radial-gradient(
+      720px 380px at 50% -8%,
+      rgba(240, 139, 154, 0.1),
+      transparent 68%
+    ),
+    var(--page);
+}
+
+html[data-theme="dark"] .splash__bar {
+  background: rgba(240, 139, 154, 0.16);
+}
+
+html[data-theme="dark"] .splash__bar-thumb {
+  background: linear-gradient(90deg, rgba(240, 139, 154, 0.35), #f08b9a);
 }
 
 @media (prefers-reduced-motion: reduce) {

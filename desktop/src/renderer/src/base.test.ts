@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { test } from "node:test";
 
@@ -50,6 +51,35 @@ test("按钮、表单、详情和可编辑内容保持 no-drag", () => {
     assert.ok(rule, `${selector} 必须允许正常交互`);
     assert.equal(rule.declarations["-webkit-app-region"], "no-drag");
   }
+});
+
+test("深色主题覆盖底色，浅色仍是默认", () => {
+  const root = rules.find(({ selectors }) => selectors.includes(":root"));
+  assert.ok(root);
+  assert.equal(root.declarations["color-scheme"], "light");
+  assert.equal(root.declarations["--page"], "#f5f6f8");
+  assert.equal(root.declarations["--surface"], "#ffffff");
+  assert.equal(root.declarations["--text"], "#111827");
+  const dark = rules.find(({ selectors }) => selectors.includes('html[data-theme="dark"]'));
+  assert.ok(dark);
+  assert.equal(dark.declarations["color-scheme"], "dark");
+  assert.equal(dark.declarations["--page"], "#0e0e0e");
+  assert.equal(dark.declarations["--surface"], "#1e1e1e");
+  assert.equal(dark.declarations["--text"], "rgba(255, 255, 255, 0.9)");
+  assert.equal(dark.declarations["--brand"], "#f08b9a");
+});
+
+test("启动页和错误页共用同一段主题脚本，且 CSP 哈希对得上", () => {
+  const script = /<script id="octop-shell-theme">([\s\S]*?)<\/script>/;
+  const splash = readFileSync(new URL("../splash.html", import.meta.url), "utf8");
+  const error = readFileSync(new URL("../error.html", import.meta.url), "utf8");
+  const splashBody = splash.match(script)?.[1];
+  const errorBody = error.match(script)?.[1];
+  assert.ok(splashBody);
+  assert.equal(splashBody, errorBody);
+  const hash = createHash("sha256").update(splashBody).digest("base64");
+  assert.ok(splash.includes(`'sha256-${hash}'`));
+  assert.ok(error.includes(`'sha256-${hash}'`));
 });
 
 test("正文和错误详情不被整页禁选规则影响", () => {
