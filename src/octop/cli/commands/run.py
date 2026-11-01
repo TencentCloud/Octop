@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+import os
+from pathlib import Path
+
 import click
 
 from octop.cli.support.errors import fail_octop
@@ -22,6 +25,17 @@ def _run_uvicorn(**kwargs: object) -> None:
     run_foreground_blocking(**kwargs)
 
 
+def _write_tls_file(path: Path, data: bytes, *, private: bool) -> None:
+    """Write a TLS file atomically; a private key is created with mode 0o600."""
+    tmp = path.with_name(f"{path.name}.tmp")
+    tmp.write_bytes(data)
+    if private:
+        # 0o600 keeps the key owner-only on POSIX; Windows only honors the
+        # read-only bit, so this is a no-op there.
+        os.chmod(tmp, 0o600)
+    os.replace(tmp, path)
+
+
 def _maybe_generate_self_signed(
     ssl: bool, certfile: str | None, keyfile: str | None
 ) -> tuple[str | None, str | None]:
@@ -29,6 +43,13 @@ def _maybe_generate_self_signed(
         return certfile, keyfile
     if certfile and keyfile:
         return certfile, keyfile
+    if certfile or keyfile:
+        # Silently replacing an explicitly passed certificate with a fresh
+        # self-signed one hides the mistake until the browser rejects it.
+        raise click.UsageError(
+            "--ssl-certfile and --ssl-keyfile must be given together "
+            "(omit both to use a self-signed certificate)"
+        )
     paths = PathLayout.from_env()
     ssl_dir = paths.ensure_ssl_dir()
     cert = ssl_dir / "self_signed.crt"
@@ -58,14 +79,20 @@ def _maybe_generate_self_signed(
             )
             .sign(priv, hashes.SHA256())
         )
-        key.write_bytes(
+        _write_tls_file(
+            key,
             priv.private_bytes(
                 encoding=serialization.Encoding.PEM,
                 format=serialization.PrivateFormat.TraditionalOpenSSL,
                 encryption_algorithm=serialization.NoEncryption(),
-            )
+            ),
+            private=True,
         )
-        cert.write_bytes(cert_obj.public_bytes(serialization.Encoding.PEM))
+        _write_tls_file(cert, cert_obj.public_bytes(serialization.Encoding.PEM), private=False)
+    else:
+        # Keys written before this fix inherited the process umask (usually
+        # 0o644); tighten them on every start so an upgrade heals them.
+        os.chmod(key, 0o600)
     return str(cert), str(key)
 
 
