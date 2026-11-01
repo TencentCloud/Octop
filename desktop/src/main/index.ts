@@ -12,6 +12,7 @@ import {
   type UpdateCheckResult,
 } from "../shared/ipc-contract";
 import { resolveAppVersion } from "./app-version";
+import { desktopLog, installDesktopLog } from "./log/desktop-log";
 import { DeviceCredentialStore } from "./session/device-credential";
 import { DeviceSessionClient } from "./session/device-session";
 import { safeStorageCipher, warnIfKeychainUnavailable } from "./session/safe-storage-cipher";
@@ -428,6 +429,13 @@ function registerIpcHandlers(): void {
   });
 }
 
+/** Append the desktop log path so a packaged failure says where to look. */
+function errorDetail(detail?: string): string | undefined {
+  const path = desktopLog().path;
+  const text = [detail, path ? `日志: ${path}` : ""].filter((line) => line).join("\n");
+  return text || undefined;
+}
+
 /** Spawn the Python sidecar on a fresh loopback port and wait for health. */
 async function startBackend(): Promise<boolean> {
   if (!backend) return false;
@@ -439,15 +447,38 @@ async function startBackend(): Promise<boolean> {
     bindHost: "127.0.0.1",
   });
   backendPort = port;
-  supervisor = new SidecarSupervisor({
+  const sidecar = new SidecarSupervisor({
     executable: backend.interpreter,
     args: [backend.launchScript, "run"],
     env,
     cwd: backend.cwd,
     port,
+    onExit: ({ code, signal, output }) => {
+      const summary = `sidecar exited code=${code ?? "null"} signal=${signal ?? "null"}`;
+      // A clean exit, or a stop this shell already asked for, is not a crash.
+      if (quitting || (code === 0 && signal === null)) {
+        desktopLog().info(summary);
+        return;
+      }
+      desktopLog().error(summary);
+      const tail = output.trim();
+      if (tail) desktopLog().error(tail);
+    },
   });
-  supervisor.start();
-  return supervisor.waitUntilReady();
+  supervisor = sidecar;
+  desktopLog().info(`starting sidecar on 127.0.0.1:${port}`);
+  sidecar.start();
+  const ready = await sidecar.waitUntilReady();
+  if (!ready) {
+    desktopLog().error(`sidecar was not ready on 127.0.0.1:${port}`);
+    // The exit handler already kept the tail when the process died. A timeout
+    // leaves it running, so that tail still has to be written from here.
+    if (sidecar.isRunning()) {
+      const tail = sidecar.outputTail().trim();
+      if (tail) desktopLog().error(tail);
+    }
+  }
+  return ready;
 }
 
 async function boot(): Promise<void> {
@@ -478,6 +509,8 @@ async function boot(): Promise<void> {
   const loginShellEnv =
     process.platform === "win32" ? {} : await readLoginShellEnv(process.env.SHELL);
   const octopHome = resolveOctopHome(process.env, loginShellEnv);
+  installDesktopLog(octopHome);
+  desktopLog().info(`desktop ${appVersion} home=${octopHome}`);
 
   // Local dev escape hatch: point at an already-extracted runtime (e.g. the one
   // `pnpm dev:runtime` writes to .dev-runtime) and skip bundling/extraction.
@@ -491,10 +524,13 @@ async function boot(): Promise<void> {
       const local = await readLocalRuntime(octopHome);
       const decision = classifyRuntime(bundled, local, compareVersions);
 
+      desktopLog().info(
+        `runtime ${decision.action} (${decision.reason}) bundled=${bundled.version} local=${local.version ?? "none"}`,
+      );
       if (decision.action === "stop") {
         early.showError({
           message: `检测到本机运行时版本为 ${decision.localVersion}，当前安装的是 ${bundled.version}。这是手动覆盖安装的旧版，已停止启动，并保留了现有运行时。`,
-          detail: `运行时目录: ${portableDir}`,
+          detail: errorDetail(`运行时目录: ${portableDir}`),
         });
         return;
       }
@@ -503,9 +539,10 @@ async function boot(): Promise<void> {
         const zip = portableZipPath();
         const digest = await sha256File(zip);
         if (digest !== bundled.sha256) {
+          desktopLog().error(`portable zip sha256 mismatch file=${zip}`);
           early.showError({
             message: "随包运行时校验失败（SHA-256 不匹配），为避免执行被篡改的文件，已停止启动。",
-            detail: `文件: ${zip}\n期望: ${bundled.sha256}\n实际: ${digest}`,
+            detail: errorDetail(`文件: ${zip}\n期望: ${bundled.sha256}\n实际: ${digest}`),
           });
           return;
         }
@@ -513,9 +550,11 @@ async function boot(): Promise<void> {
         await writeLocalVersion(octopHome, bundled.version);
       }
     } catch (err) {
+      const detail = err instanceof Error ? err.message : String(err);
+      desktopLog().error(`portable runtime preparation failed: ${detail}`);
       early.showError({
         message: "准备便携运行时（解压或校验）时出错，已停止启动。",
-        detail: err instanceof Error ? err.message : String(err),
+        detail: errorDetail(detail),
       });
       return;
     }
@@ -540,7 +579,7 @@ async function boot(): Promise<void> {
     // adopts it — re-encrypting when a keychain exists, deleting it otherwise.
     await credentialStore.migrate();
   } catch (err) {
-    console.warn(`[desktop] device credential migration failed: ${String(err)}`);
+    desktopLog().warn(`[desktop] device credential migration failed: ${String(err)}`);
   }
   deviceSession = new DeviceSessionClient({
     store: credentialStore,
@@ -561,7 +600,7 @@ async function boot(): Promise<void> {
   try {
     await wsRelay.start();
   } catch (err) {
-    console.warn(`[desktop] websocket relay unavailable: ${errorMessageOf(err)}`);
+    desktopLog().warn(`[desktop] websocket relay unavailable: ${errorMessageOf(err)}`);
     wsRelay = null;
   }
 
@@ -569,9 +608,9 @@ async function boot(): Promise<void> {
   if (!ready) {
     early.showError({
       message: "Python 后端未能就绪（健康检查超时或进程提前退出）。请查看日志后重试。",
-      detail: backend
-        ? `启动器: ${backend.launchScript}\n端口: 127.0.0.1:${backendPort}`
-        : undefined,
+        detail: errorDetail(
+          backend ? `启动器: ${backend.launchScript}\n端口: 127.0.0.1:${backendPort}` : undefined,
+        ),
     });
     return;
   }
@@ -592,7 +631,7 @@ async function boot(): Promise<void> {
 }
 
 app.whenReady().then(boot).catch((err) => {
-  console.error("octop-desktop boot failed", err);
+  desktopLog().error(`octop-desktop boot failed: ${err instanceof Error ? (err.stack ?? err.message) : String(err)}`);
   app.quit();
 });
 
@@ -621,7 +660,11 @@ app.on("before-quit", (event) => {
     await relay?.stop();
     await sidecar?.stop();
   })()
-    .catch((err) => console.error("octop-desktop quit failed", err))
+    .catch((err) =>
+      desktopLog().error(
+        `octop-desktop quit failed: ${err instanceof Error ? (err.stack ?? err.message) : String(err)}`,
+      ),
+    )
     .finally(() => app.quit());
 });
 
@@ -645,7 +688,7 @@ async function shutdownFromSignal(signal: NodeJS.Signals): Promise<void> {
     app.exit(0);
     return;
   }
-  console.warn(`[desktop] ${signal} received — stopping the Python sidecar…`);
+  desktopLog().warn(`[desktop] ${signal} received — stopping the Python sidecar…`);
   // Keep `before-quit` from preventDefault-ing into a second stop attempt; the
   // exit below is deliberate and must not be deferred again.
   quitting = true;
@@ -653,7 +696,9 @@ async function shutdownFromSignal(signal: NodeJS.Signals): Promise<void> {
     await wsRelay?.stop();
     await supervisor?.stop();
   } catch (err) {
-    console.error("octop-desktop shutdown failed", err);
+    desktopLog().error(
+      `octop-desktop shutdown failed: ${err instanceof Error ? (err.stack ?? err.message) : String(err)}`,
+    );
   } finally {
     // `app.exit` skips `before-quit`/`will-quit`, so nothing can keep the
     // process alive after Python is gone.
