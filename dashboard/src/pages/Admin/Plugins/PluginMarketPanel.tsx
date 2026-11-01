@@ -11,6 +11,7 @@ import {
 import { useTranslation } from "react-i18next";
 import { pluginsApi, type MarketPlugin } from "../../../api/modules/plugins";
 import { OctopEmptyMascot } from "../../../components/EmptyState";
+import PillScroller from "../../../components/PillScroller";
 import { CardSkeleton } from "../../../components/Skeleton";
 import { apiErrorMessage } from "../../../utils/apiError";
 import { isCatalogNetworkError } from "../../../utils/networkError";
@@ -181,26 +182,14 @@ export function PluginMarketPanel() {
       )}
 
       {!catalogFailed && !keyword.trim() && groupOptions.length > 1 ? (
-        <div className={styles.groupTabsWrap}>
-          {groupOptions.map((opt) => {
-            const active = activeGroup === opt.value;
-            return (
-              <button
-                key={opt.value}
-                type="button"
-                aria-pressed={active}
-                className={
-                  active
-                    ? `${styles.groupPill} ${styles.groupPillActive}`
-                    : styles.groupPill
-                }
-                onClick={() => setActiveGroup(opt.value)}
-              >
-                {opt.label}
-              </button>
-            );
-          })}
-        </div>
+        <PillScroller
+          className={styles.marketGroupScroller}
+          options={groupOptions}
+          active={activeGroup}
+          onSelect={setActiveGroup}
+          prevLabel={t("experts.marketScenePrev")}
+          nextLabel={t("experts.marketSceneNext")}
+        />
       ) : null}
 
       {loading ? (

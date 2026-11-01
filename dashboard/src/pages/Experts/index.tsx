@@ -70,6 +70,13 @@ import { navAllowed } from "../../utils/permissions";
 import styles from "./index.module.less";
 
 type TabKey = "my" | "teams" | "market";
+
+function tabFromQuery(raw: string | null): TabKey | null {
+  if (raw === "library" || raw === "market") return "market";
+  if (raw === "my" || raw === "teams") return raw;
+  return null;
+}
+
 type ViewMode = "card" | "table";
 const VIEW_STORAGE_KEY = "octop:experts-view";
 
@@ -121,15 +128,20 @@ export default function ExpertsPage() {
   }, [navigate]);
 
   // ── Tab state ──────────────────────────────────────────────────
-  const [searchParams] = useSearchParams();
-  const [activeTab, setActiveTab] = useState<TabKey>(() => {
-    const tab = searchParams.get("tab");
-    if (tab === "library") return "market";
-    if (tab === "my" || tab === "teams" || tab === "market") {
-      return tab;
-    }
-    return "my";
-  });
+  // Deep links may arrive as ?tab=. Apply once, then drop the param so the
+  // address bar stays /experts while the user switches tabs.
+  const [searchParams, setSearchParams] = useSearchParams();
+  const [activeTab, setActiveTab] = useState<TabKey>(
+    () => tabFromQuery(searchParams.get("tab")) ?? "my",
+  );
+  useEffect(() => {
+    if (!searchParams.has("tab")) return;
+    const nextTab = tabFromQuery(searchParams.get("tab"));
+    if (nextTab) setActiveTab(nextTab);
+    const next = new URLSearchParams(searchParams);
+    next.delete("tab");
+    setSearchParams(next, { replace: true });
+  }, [searchParams, setSearchParams]);
   const { viewMode, setViewMode, showCardView } = useCardTableView(
     loadViewMode(),
   );

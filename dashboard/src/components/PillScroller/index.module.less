@@ -1,0 +1,130 @@
+.scroller {
+  position: relative;
+  min-width: 0;
+  margin-top: 12px;
+  margin-bottom: 16px;
+}
+
+.track {
+  display: flex;
+  flex-wrap: nowrap;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  overflow-x: auto;
+  overflow-y: hidden;
+  overscroll-behavior-x: contain;
+  scrollbar-width: none;
+  cursor: grab;
+  user-select: none;
+  -webkit-overflow-scrolling: touch;
+
+  &:active {
+    cursor: grabbing;
+  }
+
+  &::-webkit-scrollbar {
+    display: none;
+  }
+}
+
+.arrow {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  width: 48px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  color: var(--fn-text-secondary);
+  cursor: pointer;
+
+  &:hover {
+    color: var(--fn-text-primary);
+
+    .arrowIcon {
+      background: var(--fn-bg-secondary-hover);
+      border-color: var(--fn-text-tertiary);
+    }
+  }
+}
+
+.arrowIcon {
+  position: relative;
+  z-index: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border: 1px solid var(--fn-border-primary);
+  border-radius: 999px;
+  background: var(--fn-bg-container, var(--fn-bg-elevated));
+  transition:
+    background 0.15s ease,
+    border-color 0.15s ease;
+}
+
+.arrowPrev {
+  left: 0;
+  justify-content: flex-start;
+  background: linear-gradient(
+    to right,
+    var(--fn-bg-container, var(--fn-bg-elevated)) 36%,
+    transparent
+  );
+}
+
+.arrowNext {
+  right: 0;
+  justify-content: flex-end;
+  background: linear-gradient(
+    to left,
+    var(--fn-bg-container, var(--fn-bg-elevated)) 36%,
+    transparent
+  );
+}
+
+.pill {
+  appearance: none;
+  flex-shrink: 0;
+  margin: 0;
+  border: 1px solid transparent;
+  background: var(--fn-fill-tertiary);
+  color: var(--fn-text-secondary);
+  border-radius: var(--fn-radius-full);
+  padding: 5px 12px;
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 20px;
+  cursor: pointer;
+  white-space: nowrap;
+  transition:
+    background 0.15s,
+    color 0.15s,
+    border-color 0.15s;
+
+  &:hover {
+    background: var(--fn-bg-secondary-hover);
+    color: var(--fn-text-primary);
+  }
+
+  &:focus-visible {
+    outline: 2px solid var(--fn-border-focus);
+    outline-offset: 2px;
+  }
+}
+
+.pillActive {
+  background: var(--fn-color-brand);
+  color: #fff;
+  border-color: transparent;
+
+  &:hover {
+    background: var(--fn-color-brand-hover);
+    color: #fff;
+  }
+}
