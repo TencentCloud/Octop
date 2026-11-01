@@ -15,9 +15,16 @@ ALLOWED_PLATFORMS = frozenset({"feishu", "lark"})
 
 
 def bot_creator_script(name: str) -> Path:
-    script = (Path(__file__).resolve().parent / name).resolve()
-    expected_parent = script.parent.resolve()
-    if not str(script).startswith(str(expected_parent)):
+    """Resolve ``name`` inside this package's directory, rejecting escapes.
+
+    The guard has to compare against the directory of *this module*: deriving
+    the expected parent from the resolved candidate itself made the previous
+    ``startswith`` check always true, so ``../`` names still resolved to
+    whatever file they pointed at.
+    """
+    directory = Path(__file__).resolve().parent
+    script = (directory / name).resolve()
+    if not script.is_relative_to(directory):
         raise RuntimeError("invalid bot creator script path")
     if not script.is_file():
         raise FileNotFoundError(f"{name} not found")
