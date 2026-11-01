@@ -104,24 +104,20 @@ def config_skills(agent_id: str | None) -> None:
         return
 
     labels = []
-    names: list[str] = []
+    label_to_name: dict[str, str] = {}
     defaults: list[str] = []
     for s in sorted(all_skills, key=lambda x: str(x.get("name") or x.get("slug") or "")):
         n = str(s.get("slug") or s.get("name") or "")
-        names.append(n)
         mark = "✓" if s.get("enabled", True) else "✗"
-        labels.append(f"{n} [{mark}] ({_skill_source(s)})")
+        label = f"{n} [{mark}] ({_skill_source(s)})"
+        labels.append(label)
+        label_to_name[label] = n
         if s.get("enabled", True):
-            defaults.append(n)
+            defaults.append(label)
 
     click.echo("\n=== Skills ===")
     selected = _prompts.checkbox("Select skills to enable:", choices=labels, defaults=defaults)
-    selected_set = set()
-    for label in selected:
-        for n in names:
-            if label.startswith(n + " "):
-                selected_set.add(n)
-                break
+    selected_set = {label_to_name[label] for label in selected if label in label_to_name}
 
     for s in all_skills:
         n = str(s.get("slug") or s.get("name") or "")
