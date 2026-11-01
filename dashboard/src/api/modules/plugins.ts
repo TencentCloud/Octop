@@ -106,7 +106,9 @@ export const pluginsApi = {
     if (version) params.set("version", version);
     const qs = params.toString();
     return request(
-      `/plugins/market/${encodeURIComponent(pluginId)}/install${qs ? `?${qs}` : ""}`,
+      `/plugins/market/${encodeURIComponent(pluginId)}/install${
+        qs ? `?${qs}` : ""
+      }`,
       {
         method: "POST",
       },

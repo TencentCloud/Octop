@@ -5,12 +5,7 @@ import styles from "./FadeInImg.module.less";
 type FadeInImgProps = ImgHTMLAttributes<HTMLImageElement>;
 
 /** Image that stays transparent until decode finishes, then fades in. */
-export function FadeInImg({
-  className,
-  src,
-  onLoad,
-  ...rest
-}: FadeInImgProps) {
+export function FadeInImg({ className, src, onLoad, ...rest }: FadeInImgProps) {
   const [shownSrc, setShownSrc] = useState<string | undefined>(undefined);
   const shown = shownSrc != null && shownSrc === src;
 
