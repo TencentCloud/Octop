@@ -160,6 +160,7 @@ def test_install_service_systemd_user_uses_systemctl_user(
 
     monkeypatch.setattr(service_mod, "is_service_installed", lambda *_a, **_k: False)
     monkeypatch.setattr(service_mod, "ensure_nofile_dropin", lambda _rt: False)
+    monkeypatch.setattr(service_mod, "ensure_resource_dropin", lambda _rt: False)
     monkeypatch.setattr(service_mod, "_write_unit", lambda _rt: None)
     monkeypatch.setattr(service_mod, "_systemd_run", _fake_systemd_run)
     monkeypatch.setattr(service_mod, "_systemd_enable_linger", lambda _rt: None)
@@ -189,6 +190,7 @@ def test_install_service_does_not_rewrite_custom_unit_without_force(
 
     monkeypatch.setattr(service_mod, "is_service_installed", lambda *_a, **_k: True)
     monkeypatch.setattr(service_mod, "ensure_nofile_dropin", lambda _rt: False)
+    monkeypatch.setattr(service_mod, "ensure_resource_dropin", lambda _rt: False)
     monkeypatch.setattr(service_mod, "_write_unit", lambda rt: writes.append(rt))
     monkeypatch.setattr(service_mod, "_systemd_run", _fake_systemd_run)
 
@@ -216,6 +218,7 @@ def test_install_service_writes_nofile_dropin_without_touching_unit(
 
     monkeypatch.setattr(service_mod, "is_service_installed", lambda *_a, **_k: True)
     monkeypatch.setattr(service_mod, "ensure_nofile_dropin", lambda _rt: True)
+    monkeypatch.setattr(service_mod, "ensure_resource_dropin", lambda _rt: False)
     monkeypatch.setattr(service_mod, "_write_unit", lambda rt: writes.append(rt))
     monkeypatch.setattr(service_mod, "_systemd_run", _fake_systemd_run)
     monkeypatch.setattr(service_mod, "_systemd_enable_linger", lambda _rt: None)
@@ -237,6 +240,77 @@ def test_ensure_nofile_dropin_is_idempotent(
     assert dropin.read_text(encoding="utf-8") == service_mod.render_nofile_dropin(65535)
     assert "LimitNOFILE=65535" in dropin.read_text(encoding="utf-8")
     assert service_mod.ensure_nofile_dropin(runtime) is False
+
+
+@pytest.mark.parametrize("scope", ["user", "system"])
+def test_install_service_adds_resource_limits_to_existing_unit(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, scope: str
+) -> None:
+    from types import SimpleNamespace
+
+    runtime = replace(_runtime(tmp_path), scope=scope)
+    unit = tmp_path / "octop.service"
+    custom_unit = "[Service]\nExecStart=custom-launcher\nUser=custom-user\n"
+    unit.write_text(custom_unit)
+    dropins = tmp_path / "octop.service.d"
+    dropins.mkdir()
+    override = dropins / "90-local.conf"
+    override.write_text("[Service]\nMemoryMax=4G\n")
+    calls: list[tuple[str, ...]] = []
+
+    def systemd_run(_runtime, *args):
+        calls.append(args)
+        return SimpleNamespace(returncode=0, stdout="", stderr="")
+
+    monkeypatch.setattr(service_mod, "unit_path", lambda *_a, **_kw: unit)
+    monkeypatch.setattr(service_mod, "ensure_nofile_dropin", lambda _rt: False)
+    monkeypatch.setattr(service_mod, "_systemd_run", systemd_run)
+    assert install_service(runtime) is True
+    guard = (dropins / service_mod.RESOURCE_DROPIN_NAME).read_text()
+    assert "[Unit]\nStartLimitIntervalSec=600\nStartLimitBurst=3" in guard
+    for setting in ("MemoryHigh=60%", "MemoryMax=75%", "MemorySwapMax=512M", "RestartSec=30"):
+        assert setting in guard
+    assert "OOMPolicy=kill" in guard
+    assert unit.read_text() == custom_unit
+    assert override.read_text() == "[Service]\nMemoryMax=4G\n"
+    assert calls == [("daemon-reload",)]
+    assert install_service(runtime) is False
+    assert calls == [("daemon-reload",)]
+
+
+def test_resource_dropin_failure_does_not_block_restart(monkeypatch, tmp_path) -> None:
+    from types import SimpleNamespace
+
+    runtime = _runtime(tmp_path)
+    unit = tmp_path / "octop.service"
+    unit.write_text("[Service]\nExecStart=custom-launcher\n")
+    calls = []
+
+    def fail_write(*_a, **_kw):
+        raise PermissionError("read-only service directory")
+
+    monkeypatch.setattr(service_mod, "unit_path", lambda *_a, **_kw: unit)
+    monkeypatch.setattr(service_mod, "ensure_nofile_dropin", lambda _rt: False)
+    monkeypatch.setattr(service_mod, "_write_managed_file", fail_write)
+    monkeypatch.setattr(service_mod, "_wait_for_startup", lambda: None)
+    monkeypatch.setattr(
+        service_mod,
+        "_systemd_run",
+        lambda _rt, *args: (
+            calls.append(args) or SimpleNamespace(returncode=0, stdout="", stderr="")
+        ),
+    )
+    restart_service(runtime)
+    assert ("restart", "octop") in calls
+    assert "custom-launcher" in unit.read_text()
+
+
+def test_resource_dropin_skips_launchd(monkeypatch, tmp_path) -> None:
+    def unexpected_write(*_a, **_kw):
+        raise AssertionError("must not write systemd limits for launchd")
+
+    monkeypatch.setattr(service_mod, "_write_managed_file", unexpected_write)
+    assert service_mod.ensure_resource_dropin(replace(_runtime(tmp_path), mode="launchd")) is False
 
 
 def test_start_service_restarts_systemd_when_apply_unit(

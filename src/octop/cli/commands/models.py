@@ -68,7 +68,14 @@ def active_model(provider_name: str | None, model_id: str | None) -> None:
         click.echo(_json.dumps(body, indent=2))
         return
     body = get_active_model_offline()
-    click.echo(f"{body.get('provider_name', '?')} / {body.get('model', '?')}")
+    provider, model = body.get("provider_name") or "", body.get("model") or ""
+    if not provider or not model:
+        from octop.cli.support.db import resolve_cli_locale
+        from octop.i18n import tr
+
+        click.echo(tr("agents.cli.active_model_unset", resolve_cli_locale()))
+        return
+    click.echo(f"{provider} / {model}")
 
 
 @models.command("config")

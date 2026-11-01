@@ -83,6 +83,7 @@ def test_overlay_stdio_mcp_configs_applies_to_stdio_only() -> None:
 
 def test_search_env_changed_detects_tavily() -> None:
     assert search_env_changed({}, {"TAVILY_API_KEY": "x"}) is True
+    assert search_env_changed({}, {"DEEPSEEK_API_KEY": "x"}) is True
     assert search_env_changed({"FOO": "1"}, {"FOO": "2"}) is False
 
 

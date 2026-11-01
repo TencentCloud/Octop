@@ -3,6 +3,8 @@ import { message } from "@/utils/antdMessage";
 import { requestUpload } from "../api/request";
 import i18n from "../i18n";
 import { isDesktopShell } from "./desktopChrome";
+import { shareDownloadLink } from "./downloadLink";
+import { isInAppBrowser } from "./inAppBrowser";
 
 function clickDownloadAnchor(blob: Blob, filename: string): void {
   const objUrl = URL.createObjectURL(blob);
@@ -20,6 +22,8 @@ function clickDownloadAnchor(blob: Blob, filename: string): void {
  *
  * Wails WebView ignores ``<a download>``. On the desktop shell we POST the
  * bytes to Octop (loopback-only) so they land in the host Downloads folder.
+ * In-app browsers (WeChat, …) refuse ``blob:`` downloads, so they get a
+ * short-lived link to open in the system browser instead.
  */
 export async function saveBlobAsFile(
   blob: Blob,
@@ -31,6 +35,10 @@ export async function saveBlobAsFile(
     body.append("file", blob, name);
     await requestUpload("/downloads/local", body);
     message.success(i18n.t("common.savedToDownloads", "已保存到下载文件夹"));
+    return;
+  }
+  if (isInAppBrowser()) {
+    await shareDownloadLink(blob, name);
     return;
   }
   clickDownloadAnchor(blob, name);

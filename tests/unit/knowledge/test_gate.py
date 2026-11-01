@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import logging
+
 import pytest
 
 from octop.infra.knowledge import gate
@@ -117,3 +119,50 @@ def test_remote_capability_requires_enabled_embedding_provider(
     assert capability["provider_id"] == "7"
     assert capability["prerequisites_ok"] is True
     assert capability["checks"]["provider_ready"] is True
+
+
+def test_warns_when_enabled_local_embedding_deps_are_missing(
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    monkeypatch.setattr(gate, "local_embedding_deps_available", lambda: False)
+    monkeypatch.setattr(gate, "is_model_downloaded", lambda _model: True)
+    monkeypatch.setattr(gate, "embedding_prerequisites_ok_for_model", lambda _model: False)
+    values = {
+        "knowledge_bases_enabled": "true",
+        "knowledge_embedding_backend": "onnx",
+        "knowledge_embedding_model": "BAAI/bge-small-zh-v1.5",
+    }
+
+    with caplog.at_level(logging.WARNING):
+        gate.warn_if_local_embedding_deps_missing(values.get)
+
+    assert "local-embedding" in caplog.text
+
+
+def test_skips_embedding_dep_warning_when_runtime_is_present_or_unused(
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    monkeypatch.setattr(gate, "local_embedding_deps_available", lambda: True)
+    monkeypatch.setattr(gate, "is_model_downloaded", lambda _model: True)
+    monkeypatch.setattr(gate, "embedding_prerequisites_ok_for_model", lambda _model: True)
+    enabled = {
+        "knowledge_bases_enabled": "true",
+        "knowledge_embedding_backend": "onnx",
+        "knowledge_embedding_model": "BAAI/bge-small-zh-v1.5",
+    }
+    disabled = {"knowledge_bases_enabled": "false", "knowledge_embedding_backend": "onnx"}
+    remote = {
+        "knowledge_bases_enabled": "true",
+        "knowledge_embedding_backend": "remote",
+        "knowledge_embedding_model": "embed-1",
+    }
+
+    with caplog.at_level(logging.WARNING):
+        gate.warn_if_local_embedding_deps_missing(enabled.get)
+        gate.warn_if_local_embedding_deps_missing(disabled.get)
+        monkeypatch.setattr(gate, "local_embedding_deps_available", lambda: False)
+        gate.warn_if_local_embedding_deps_missing(remote.get)
+
+    assert caplog.records == []

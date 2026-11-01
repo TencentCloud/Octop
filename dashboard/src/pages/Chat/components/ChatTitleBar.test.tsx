@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import ChatTitleBar from "./ChatTitleBar";
 import type { Session } from "../hooks/useSessions";
@@ -63,5 +63,71 @@ describe("ChatTitleBar", () => {
     );
 
     expect(screen.getByLabelText("chat.teamBadge")).toBeInTheDocument();
+  });
+
+  it("shows the cloud flag next to a remote conversation title", () => {
+    render(
+      <ChatTitleBar
+        session={session}
+        title="Weekly recap"
+        onRename={noop}
+        onPin={noop}
+        onFork={noop}
+        onDelete={noop}
+        isTeam
+        agent={{
+          bridge: true,
+          bridge_connection_name: "云端实验室",
+          bridge_connection_icon: "cloudy",
+        }}
+      />,
+    );
+
+    const flag = screen.getByLabelText(/Peer expert|对端专家|remoteExpert/);
+    expect(flag.querySelector("svg")).not.toBeNull();
+    expect(screen.getByText("云端实验室")).toBeInTheDocument();
+  });
+
+  it("keeps icon and fallback text when the connection name is empty", () => {
+    render(
+      <ChatTitleBar
+        session={session}
+        title="Weekly recap"
+        onRename={noop}
+        onPin={noop}
+        onFork={noop}
+        onDelete={noop}
+        agent={{ bridge: true }}
+      />,
+    );
+
+    const flag = screen.getByLabelText(/Peer expert|对端专家|remoteExpert/);
+    expect(flag.querySelector("svg")).not.toBeNull();
+    expect(flag).toHaveTextContent(/对端|Peer|remoteExpert\.flag/);
+  });
+
+  it("waits for the IME to finish before committing a rename", () => {
+    const onRename = vi.fn();
+    render(
+      <ChatTitleBar
+        session={session}
+        title="Weekly recap"
+        onRename={onRename}
+        onPin={noop}
+        onFork={noop}
+        onDelete={noop}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "common.edit" }));
+    const input = screen.getByDisplayValue("Weekly recap");
+    fireEvent.change(input, { target: { value: "周报 zhou" } });
+
+    fireEvent.keyDown(input, { key: "Enter", isComposing: true });
+    fireEvent.keyDown(input, { key: "Enter", keyCode: 229 });
+    expect(onRename).not.toHaveBeenCalled();
+
+    fireEvent.keyDown(input, { key: "Enter", keyCode: 13 });
+    expect(onRename).toHaveBeenCalledWith("s1", "周报 zhou");
   });
 });

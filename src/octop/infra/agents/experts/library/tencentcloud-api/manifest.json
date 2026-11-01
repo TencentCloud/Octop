@@ -1,11 +1,12 @@
 {
   "id": "tencentcloud-api",
+  "scene": "tech",
   "label": {
-    "zh": "腾讯云API专家",
+    "zh": "腾讯云 API 专家",
     "en": "Tencent Cloud API Expert"
   },
   "description": {
-    "zh": "腾讯云API专家 — 通过自然语言管理腾讯云 200+ 产品资源，智能检索 API 文档并构造 tccli 命令执行，内置安全管控（高危操作确认、费用提醒）与异常诊断（错误码解读、凭证引导）机制。",
+    "zh": "腾讯云 API 专家 — 通过自然语言管理腾讯云 200+ 产品资源，智能检索 API 文档并构造 tccli 命令执行，内置安全管控（高危操作确认、费用提醒）与异常诊断（错误码解读、凭证引导）机制。",
     "en": "Tencent Cloud API expert — manage 200+ Tencent Cloud products via natural language: smart API doc retrieval, tccli command construction, safety guardrails (confirmation for risky ops, cost alerts) and error-code diagnostics."
   },
   "welcome_message": {

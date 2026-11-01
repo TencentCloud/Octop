@@ -28,6 +28,11 @@ export type StreamErrorAction = {
 const MODEL_RETRY_FAILURE_MARK = "[model_call_failed]";
 const RETRY_WRAPPER_RE = /^model call failed after \d+ attempts?\s+with\s+/i;
 const TECHNICAL_DETAIL_RE = /technical detail:\s*([\s\S]+)$/i;
+const COMPLETION_USAGE_RE = /\s*-?\s*CompletionUsage\([\s\S]*\)\s*$/;
+const NESTED_CALL_RE =
+  /^(?:llm call failed:\s*)?(?:chat model '[^']*' failed for tier='[^']*':\s*)+/i;
+const EXCEPTION_WRAPPER_RE =
+  /^[A-Za-z_][\w.]*(?:Error|Exception)\((['"])([\s\S]*)\1\)\s*$/;
 
 const STREAM_ERROR_ACTIONS: Partial<Record<StreamErrorKey, StreamErrorAction>> =
   {
@@ -63,6 +68,19 @@ function normalizeMessage(message: string): string {
       break;
     }
   }
+  return msg;
+}
+
+/** Drop provider dumps so the box shows the sentence, not CompletionUsage. */
+function stripErrorNoise(message: string): string {
+  let msg = message.trim().replace(COMPLETION_USAGE_RE, "").trim();
+  msg = msg.replace(NESTED_CALL_RE, "").trim();
+  const wrapped = msg.match(EXCEPTION_WRAPPER_RE);
+  if (wrapped?.[2]) msg = wrapped[2].trim();
+  msg = msg
+    .replace(COMPLETION_USAGE_RE, "")
+    .replace(/\s+-\s*$/, "")
+    .trim();
   return msg;
 }
 
@@ -155,6 +173,8 @@ export function classifyChatStreamError(
     lower.includes("maximum context length") ||
     lower.includes("prompt is too long") ||
     lower.includes("input tokens exceed") ||
+    lower.includes("length limit was reached") ||
+    compact.includes("lengthfinishreason") ||
     compact.includes("openaicontextoverflowerror")
   ) {
     return "stream_errors.context_length";
@@ -230,13 +250,15 @@ export function formatChatStreamError(
     return t(key, { defaultValue: message });
   }
   if (detail && detail !== normalizeMessage(message)) {
+    const visible = stripErrorNoise(detail) || detail;
     return t("stream_errors.model_call_failed_detail", {
-      detail,
-      defaultValue: detail,
+      detail: visible,
+      defaultValue: visible,
     });
   }
   if (key) return t(key, { defaultValue: message });
-  return message;
+  const cleaned = stripErrorNoise(normalizeMessage(message));
+  return cleaned || message;
 }
 
 /** Optional settings deep-link for known stream failures. */

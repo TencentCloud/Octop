@@ -23,6 +23,8 @@ const SEGMENT_COLORS: Record<ContextUsageSegmentKey, string> = {
   conversation: "#22d3ee",
 };
 
+const DECISION_SAVED_COLOR = "#fb923c";
+
 function formatTokenK(n: number): string {
   if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
   if (n >= 1_000) return `${Math.round(n / 1_000)}k`;
@@ -38,6 +40,8 @@ interface ContextWindowRingProps {
   threadId?: string | null;
   selectedConnectors?: string[];
   isMobile?: boolean;
+  /** Session total omitted by the decision filter. Same figure as 本会话累计. */
+  decisionSaved?: number;
 }
 
 export default function ContextWindowRing({
@@ -48,6 +52,7 @@ export default function ContextWindowRing({
   threadId,
   selectedConnectors = [],
   isMobile = false,
+  decisionSaved = 0,
 }: ContextWindowRingProps) {
   const { t } = useTranslation();
   const [open, setOpen] = useState(false);
@@ -82,8 +87,16 @@ export default function ContextWindowRing({
     async (opts?: { silent?: boolean; force?: boolean }) => {
       if (!agentId || !threadId || isPendingThread(threadId)) return;
       const cached = cacheRef.current;
+      const hint = hintUsedRef.current;
+      // A new model call moves the live total. The 30s cache would otherwise
+      // keep the previous request's decision savings on screen.
+      const hintMoved =
+        hint > 0 &&
+        (cached?.data.used_tokens ?? 0) > 0 &&
+        Math.abs(hint - (cached?.data.used_tokens ?? 0)) >= 64;
       if (
         !opts?.force &&
+        !hintMoved &&
         cached &&
         cached.key === cacheKey &&
         Date.now() - cached.at < BREAKDOWN_CACHE_TTL_MS
@@ -99,7 +112,6 @@ export default function ContextWindowRing({
           cached?.key === cacheKey &&
           (cached.data.segments?.length ?? 0) > 0 &&
           cached.data.used_tokens > 0;
-        const hint = hintUsedRef.current;
         const data = await octopThreadsApi.contextUsage(agentId, threadId, {
           maxTokens: max,
           inputTokens: !haveSegments && hint > 0 ? hint : undefined,
@@ -193,6 +205,10 @@ export default function ContextWindowRing({
         ] as ContextUsageBreakdown["segments"])
       : display.segments;
   const segmentTotal = segments.reduce((sum, item) => sum + item.tokens, 0);
+  // The legend row matches 本会话累计. The snapshot field is only the latest
+  // model call, which is much smaller once a turn has called the model again.
+  const savedTokens =
+    decisionSaved > 0 ? decisionSaved : breakdown?.decision_saved ?? 0;
 
   const popoverContent = (
     <div className={styles.contextUsagePanel}>
@@ -267,6 +283,20 @@ export default function ContextWindowRing({
                 </span>
               </li>
             )}
+            {savedTokens > 0 ? (
+              <li className={styles.contextUsageLegendItem}>
+                <span
+                  className={styles.contextUsageLegendSwatch}
+                  style={{ background: DECISION_SAVED_COLOR }}
+                />
+                <span className={styles.contextUsageLegendLabel}>
+                  {t("chat.contextWindow.decisionSaved")}
+                </span>
+                <span className={styles.contextUsageLegendValue}>
+                  ~{formatTokenK(savedTokens)}
+                </span>
+              </li>
+            ) : null}
           </ul>
         </>
       )}

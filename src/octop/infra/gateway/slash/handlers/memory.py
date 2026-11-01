@@ -43,7 +43,18 @@ def _status_line(state: dict[str, Any], locale: str) -> str:
             threads=sweep.get("threads", 0),
             directories=sweep.get("directories", 0),
         )
-    if phase == "done" and report:
+    if phase == "done" and report and report.get("backend") == "postgres":
+        line += "\n" + full_tr(
+            "memory_slim.postgres_result",
+            locale,
+            candidates=report["candidates_deleted"],
+            journal=report["journal_deleted"],
+        )
+    elif phase == "done" and report and report.get("operation") == "restore":
+        line += "\n" + full_tr(
+            "memory_slim.restore_result", locale, backup=Path(report["backup_path"]).name
+        )
+    elif phase == "done" and report:
         line += "\n" + full_tr(
             "memory_slim.result",
             locale,

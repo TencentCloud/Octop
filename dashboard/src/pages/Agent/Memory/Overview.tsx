@@ -29,6 +29,7 @@ import { useTranslation } from "react-i18next";
 import type { TFunction } from "i18next";
 
 import MigrateMemory from "./MigrateMemory";
+import LastExtractionStatus from "./LastExtractionStatus";
 import {
   memoryDashboardApi,
   type ExtractConfig,
@@ -431,12 +432,6 @@ function PipelineCard({
   const raw = counts.raw_events ?? 0;
   const pending = counts.candidates_pending ?? 0;
   const atoms = counts.atoms ?? 0;
-  const lastExtract = counts.last_extract_run?.timestamp;
-  const lastExtractLabel = lastExtract
-    ? t("memory.pipeline.lastExtract", "上次整理 {{time}}", {
-        time: lastExtract.slice(0, 16).replace("T", " "),
-      })
-    : null;
   const hint =
     raw === 0
       ? t(
@@ -461,11 +456,9 @@ function PipelineCard({
           <Workflow size={16} />
           {t("memory.pipeline.title", "记忆处理进度")}
         </span>
-        <small>
-          {hint}
-          {lastExtractLabel ? ` · ${lastExtractLabel}` : ""}
-        </small>
+        <small>{hint}</small>
       </div>
+      <LastExtractionStatus run={counts.last_extract_run} />
       <div className={styles.pipelineRow}>
         <PipelineStage
           label={t("memory.pipeline.stageRaw", "对话记忆")}

@@ -5,7 +5,7 @@ from __future__ import annotations
 import ipaddress
 import socket
 from typing import Any
-from urllib.parse import urljoin, urlparse
+from urllib.parse import quote, urljoin, urlparse
 
 import httpx
 
@@ -107,7 +107,7 @@ def peer_ws_url(base_url: str, *, token: str) -> str:
     parsed = urlparse(base)
     scheme = "wss" if parsed.scheme == "https" else "ws"
     root = f"{scheme}://{parsed.netloc}{parsed.path.rstrip('/')}"
-    return f"{root}/api/bridge/ws?token={token}"
+    return f"{root}/api/bridge/ws?token={quote(token, safe='')}"
 
 
 async def login_peer(

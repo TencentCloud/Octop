@@ -282,10 +282,13 @@ Commands:
 ```
 
 `create --trigger` accepts cron expressions (`"0 9 * * *"`) and the
-`interval:N` / `date:ISO8601` aliases. `--task-type text` pushes the
-prompt verbatim; `--task-type agent` (default) runs the LLM and
-pushes the reply. `--prompt` is required, must be non-empty and ≤
-2000 characters.
+`interval:N` / `date:ISO8601` aliases. A `date:` job runs once and
+then disables itself, whether the run succeeds or fails. If the
+server is down for more than 24 hours past that time and the job
+never ran, it is marked `missed` and disabled. The row stays in the
+list. `--task-type text` pushes the prompt verbatim; `--task-type
+agent` (default) runs the LLM and pushes the reply. `--prompt` is
+required, must be non-empty and ≤ 2000 characters.
 
 ## `octop provider`
 

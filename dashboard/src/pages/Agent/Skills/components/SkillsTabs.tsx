@@ -22,7 +22,7 @@ import SkillHubTab from "./SkillHubTab";
 import { useSkills } from "../useSkills";
 import styles from "../index.module.less";
 import { useCurrentUser } from "../../../../hooks/useCurrentUser";
-import { userCanAny, PERM } from "../../../../utils/permissions";
+import { userCan, userCanAny, PERM } from "../../../../utils/permissions";
 
 type SkillsTab = "custom" | "builtin" | "skillhub" | "packages";
 
@@ -43,19 +43,24 @@ export default function SkillsTabs({ agentId }: SkillsTabsProps) {
   const currentUser = useCurrentUser();
   // Hide the skill-packages tab for users without the `skill_packages` permission.
   const canSkillPackages = userCanAny(currentUser, PERM.skillPackages);
+  const canCustom = userCan(currentUser, "skills");
+  const canBuiltin = userCan(currentUser, "skill_builtin");
+  const canMarket = userCan(currentUser, "skill_market");
   const remoteAgent = Boolean(agentId?.startsWith("bridge:"));
   const [activeTab, setActiveTab] = useState<SkillsTab>("custom");
   const tabs = useMemo(
     () =>
-      SKILL_TABS.filter(
-        (tab) => tab.key !== "packages" || (canSkillPackages && !remoteAgent),
-      ),
-    [canSkillPackages, remoteAgent],
+      SKILL_TABS.filter((tab) => {
+        if (tab.key === "custom") return canCustom;
+        if (tab.key === "builtin") return canBuiltin;
+        if (tab.key === "skillhub") return canMarket;
+        return canSkillPackages && !remoteAgent;
+      }),
+    [canBuiltin, canCustom, canMarket, canSkillPackages, remoteAgent],
   );
-  const resolvedTab =
-    activeTab === "packages" && (!canSkillPackages || remoteAgent)
-      ? "custom"
-      : activeTab;
+  const resolvedTab = tabs.some((tab) => tab.key === activeTab)
+    ? activeTab
+    : tabs[0]?.key ?? "custom";
   const onInstalledTab =
     resolvedTab === "custom" ||
     resolvedTab === "builtin" ||

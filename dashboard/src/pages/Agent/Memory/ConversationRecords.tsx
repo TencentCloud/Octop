@@ -309,7 +309,7 @@ export default function ConversationRecords({
             compact,
             t,
           );
-          if (!deleted) return;
+          if (deleted !== true) return deleted;
           if (selectedThread?.thread_id === thread.thread_id) {
             closeDrawer();
           }

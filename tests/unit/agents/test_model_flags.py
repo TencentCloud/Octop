@@ -18,6 +18,21 @@ def test_embedding_flag_and_task() -> None:
     assert not is_embedding_model({"id": "a", "enabled": True})
 
 
+def test_is_embedding_provider_explicit_and_legacy() -> None:
+    from octop.infra.agents.providers.model_flags import is_embedding_provider
+
+    assert is_embedding_provider(extra={"purpose": "embedding"})
+    assert is_embedding_provider(provider_api_key="onnx")
+    assert is_embedding_provider(models=[{"id": "text-embedding-3-small", "embedding": True}])
+    assert not is_embedding_provider(
+        models=[
+            {"id": "gpt-4o", "enabled": True},
+            {"id": "text-embedding-3-small", "embedding": True},
+        ]
+    )
+    assert not is_embedding_provider(extra={"purpose": "chat"}, models=[])
+
+
 def test_onnx_provider_identity_marks_models_embedding() -> None:
     assert is_embedding_model(
         {"id": "BAAI/bge-small-zh-v1.5", "enabled": True},
@@ -165,3 +180,39 @@ def test_list_resolved_models_skips_embedding() -> None:
     assert resolved[0]["max_input_tokens"] == 120_000
     assert resolved[0]["max_output_tokens"] == 16_384
     assert resolved[0]["max_tokens"] == 16_384
+
+
+def test_list_resolved_models_skips_purpose_embedding_provider() -> None:
+    """Entire purpose=embedding providers stay out of the chat pool."""
+    providers = [
+        SimpleNamespace(
+            id=3,
+            name="OpenAI Embeddings",
+            kind="openai",
+            enabled=True,
+            api_key="sk-emb",
+            base_url="https://api.openai.com/v1",
+            extra_json='{"purpose": "embedding"}',
+            get_models=lambda: [
+                {
+                    "id": "text-embedding-3-small",
+                    "name": "text-embedding-3-small",
+                    "enabled": True,
+                },
+            ],
+        ),
+        SimpleNamespace(
+            id=4,
+            name="Chat",
+            kind="openai",
+            enabled=True,
+            api_key="sk-chat",
+            base_url="https://api.openai.com/v1",
+            extra_json='{"purpose": "chat"}',
+            get_models=lambda: [
+                {"id": "gpt-4o-mini", "name": "mini", "enabled": True},
+            ],
+        ),
+    ]
+    resolved = list_resolved_models(providers)
+    assert [r["model"] for r in resolved] == ["gpt-4o-mini"]

@@ -2,10 +2,15 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { message } from "@/utils/antdMessage";
 import { requestUpload } from "../api/request";
+import { shareDownloadLink } from "./downloadLink";
 import { saveBlobAsFile } from "./saveBlobAsFile";
 
 vi.mock("../api/request", () => ({
   requestUpload: vi.fn(),
+}));
+
+vi.mock("./downloadLink", () => ({
+  shareDownloadLink: vi.fn(),
 }));
 
 vi.mock("@/utils/antdMessage", () => ({
@@ -20,6 +25,8 @@ afterEach(() => {
   delete (window as DesktopWindow)._wails;
   vi.mocked(requestUpload).mockReset();
   vi.mocked(message.success).mockReset();
+  vi.mocked(shareDownloadLink).mockReset();
+  vi.restoreAllMocks();
 });
 
 describe("saveBlobAsFile", () => {
@@ -56,5 +63,17 @@ describe("saveBlobAsFile", () => {
     expect(requestUpload).not.toHaveBeenCalled();
     expect(click).toHaveBeenCalled();
     createElement.mockRestore();
+  });
+
+  it("hands in-app browsers a download link instead of a blob", async () => {
+    vi.spyOn(navigator, "userAgent", "get").mockReturnValue(
+      "Mozilla/5.0 (iPhone; CPU iPhone OS 17_5 like Mac OS X) MicroMessenger/8.0.50",
+    );
+    const click = vi.spyOn(HTMLAnchorElement.prototype, "click");
+    const blob = new Blob(["x"]);
+
+    await saveBlobAsFile(blob, "report.docx");
+    expect(shareDownloadLink).toHaveBeenCalledWith(blob, "report.docx");
+    expect(click).not.toHaveBeenCalled();
   });
 });

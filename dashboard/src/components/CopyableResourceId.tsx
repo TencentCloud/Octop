@@ -14,6 +14,8 @@ type CopyableResourceIdProps = {
   className?: string;
   /** Match surrounding meta text (e.g. creator line). */
   inline?: boolean;
+  /** Inline: show only the value, without the `label:` prefix. */
+  valueOnly?: boolean;
 };
 
 export function CopyableResourceId({
@@ -22,6 +24,7 @@ export function CopyableResourceId({
   copyTitle,
   className,
   inline = false,
+  valueOnly = false,
 }: CopyableResourceIdProps) {
   const { t } = useTranslation();
 
@@ -41,7 +44,7 @@ export function CopyableResourceId({
         onClick={() => void copy()}
       >
         <span className={inline ? styles.inlineText : styles.label}>
-          {inline ? `${label}: ${value}` : label}
+          {inline ? (valueOnly ? value : `${label}: ${value}`) : label}
         </span>
         {!inline ? <span className={styles.value}>{value}</span> : null}
         <Copy

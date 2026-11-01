@@ -14,7 +14,6 @@ import { envsApi } from "../../../api/modules/env";
 import api from "../../../api";
 import { customProviderLogo, getProviderLogo } from "../../../assets/providers";
 import { apiErrorMessage } from "../../../utils/apiError";
-import { TabPanelHeader } from "../AdvancedSettings/TabPanelHeader";
 import styles from "./index.module.less";
 
 const { Text } = Typography;
@@ -46,6 +45,14 @@ const SEARCH_PROVIDERS: SearchProvider[] = [
     configured: false,
   },
   {
+    id: "deepseek",
+    name: "DeepSeek Search",
+    descriptionKey: "setupWizard.search.providers.deepseek.desc",
+    docs_url: "https://api-docs.deepseek.com/guides/search/",
+    required_keys: ["DEEPSEEK_API_KEY"],
+    configured: false,
+  },
+  {
     id: "google",
     name: "Google Search",
     descriptionKey: "setupWizard.search.providers.google.desc",
@@ -59,6 +66,14 @@ const SEARCH_PROVIDERS: SearchProvider[] = [
     descriptionKey: "setupWizard.search.providers.kimi.desc",
     docs_url: "https://platform.moonshot.cn/",
     required_keys: ["MOONSHOT_API_KEY"],
+    configured: false,
+  },
+  {
+    id: "yuanbao",
+    name: "元宝搜索",
+    descriptionKey: "setupWizard.search.providers.yuanbao.desc",
+    docs_url: "https://cloud.tencent.com/document/product/1806/130615",
+    required_keys: ["TENCENTCLOUD_WSA_APIKEY"],
     configured: false,
   },
 ];
@@ -329,11 +344,7 @@ export default function SearchConfigPage() {
 
   return (
     <>
-      <TabPanelHeader
-        icon={<Search size={22} />}
-        title={t("models.searchModelsTab")}
-        description={t("advancedSettings.search.desc")}
-      />
+      <p className={styles.intro}>{t("advancedSettings.search.desc")}</p>
 
       <div
         className={`${styles.status} ${activeSource ? styles.statusOk : ""}`}

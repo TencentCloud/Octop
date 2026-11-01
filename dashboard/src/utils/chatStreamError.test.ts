@@ -94,6 +94,18 @@ describe("classifyChatStreamError", () => {
     });
   });
 
+  it("classifies a length-limit dump without showing CompletionUsage", () => {
+    const msg =
+      "LLM call failed: chat model 'x' failed for tier='default': " +
+      "LengthFinishReasonError('Could not parse response content as the " +
+      "length limit was reached - CompletionUsage(prompt_tokens=1, completion_tokens=2)')";
+    expect(classifyChatStreamError(msg)).toBe("stream_errors.context_length");
+    expect(formatChatStreamError(msg, t)).toBe(
+      "translated:stream_errors.context_length",
+    );
+    expect(formatChatStreamError(msg, t)).not.toContain("CompletionUsage");
+  });
+
   it("leaves unknown messages alone", () => {
     expect(classifyChatStreamError("hello world")).toBeNull();
     expect(formatChatStreamError("hello world", t)).toBe("hello world");

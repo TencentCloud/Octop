@@ -244,3 +244,41 @@ async def test_slim_explains_impact_and_requires_confirmation(ctx, suffix):
     ctx.agent_manager.memory_slim.preview_chat.assert_called_once_with(
         "mine", 1, all_agents=bool(suffix), locale="zh"
     )
+
+
+@pytest.mark.parametrize("phase", ["inspecting", "cleaning", "done"])
+@pytest.mark.parametrize("locale", ["zh", "en"])
+def test_page_postgres_status_uses_namespace_cleanup_report(phase, locale):
+    from octop.infra.gateway.slash.handlers.memory import _status_line
+
+    state = {
+        "agent_id": "main",
+        "phase": phase,
+        "report": {"backend": "postgres", "candidates_deleted": 2, "journal_deleted": 3},
+    }
+    text = _status_line(state, locale)
+    assert "[main]" in text
+    assert "memory_slim." not in text
+    if phase == "done":
+        assert "2" in text and "3" in text
+        assert "MB" not in text
+
+
+@pytest.mark.parametrize("locale", ["zh", "en"])
+def test_restore_status_does_not_expect_maintenance_file_statistics(locale):
+    from octop.infra.gateway.slash.handlers.memory import _status_line
+
+    text = _status_line(
+        {
+            "agent_id": "main",
+            "phase": "done",
+            "report": {
+                "operation": "restore",
+                "backend": "sqlite",
+                "backup_path": "memory.before-restore.bak",
+            },
+        },
+        locale,
+    )
+    assert "memory.before-restore.bak" in text
+    assert "memory_slim." not in text

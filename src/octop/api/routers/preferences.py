@@ -176,6 +176,17 @@ async def patch_preferences(
                     ErrorCode.SLASH_BAD_ARGS,
                     "preferred_model must reference an enabled model",
                 )
+            if (
+                preferred is not None
+                and not server.app_runtime.agent_registry.model_ref_allowed_for_user(
+                    user.id,
+                    preferred,
+                )
+            ):
+                raise OctopError(
+                    ErrorCode.RESOURCE_NOT_ALLOWED,
+                    "resource is not visible to this user",
+                )
         reasoning = None
         if body.model_reasoning is not None:
             reasoning = {

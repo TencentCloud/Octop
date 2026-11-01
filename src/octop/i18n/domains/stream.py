@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import re
 
+from langchain_core.exceptions import ModelAuthenticationError, ModelPermissionDeniedError
+
 from octop.i18n.loader import lookup, tr
 from octop.infra.utils.locale import Locale
 
@@ -244,6 +246,17 @@ def format_stream_error(exc: BaseException | str, locale: str | Locale = "en") -
     Tool / path failures (e.g. ``send_file_to_user`` missing file) pass through so
     the UI does not mislabel them as a model-call outage.
     """
+    current = exc if isinstance(exc, BaseException) else None
+    seen: set[int] = set()
+    while current is not None and id(current) not in seen:
+        seen.add(id(current))
+        if isinstance(current, (ModelAuthenticationError, ModelPermissionDeniedError)) or getattr(
+            current, "status_code", None
+        ) in (401, 403):
+            return tr(AUTH.removeprefix(_PREFIX), locale)
+        current = current.__cause__ or (
+            None if current.__suppress_context__ else current.__context__
+        )
     message = exception_display_message(exc)
     inner = unwrap_model_retry_message(message)
     classified = classify_stream_error_message(inner)
@@ -259,8 +272,8 @@ def format_stream_error(exc: BaseException | str, locale: str | Locale = "en") -
 def model_retry_failure_prompt(exc: Exception, locale: str | Locale = "en") -> str:
     """Return a model-visible recovery prompt after retries are exhausted.
 
-    Used as ``ModelRetryMiddleware.on_failure`` so the agent continues with a
-    specific cause instead of raising a generic retry-exhausted exception.
+    Retained for explicit legacy recovery-prompt callers. Active agents use
+    ``on_failure="error"`` and display failures outside model messages.
     """
     detail = unwrap_model_retry_message(exception_display_message(exc))
     classified = classify_stream_error_message(detail)

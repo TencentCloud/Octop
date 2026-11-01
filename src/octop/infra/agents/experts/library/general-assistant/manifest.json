@@ -2,7 +2,7 @@
   "id": "general-assistant",
   "label": {
     "zh": "小通 · 通用助手",
-    "en": "Main · General Assistant"
+    "en": "Xiao Tong · General Assistant"
   },
   "description": {
     "zh": "友好的通用助手，无特定技能，适合作为起点或日常对话。",
@@ -113,102 +113,6 @@
       },
       "color": "#fff1f2",
       "icon_name": "sparkles"
-    },
-    {
-      "title": {
-        "zh": "起草与编辑",
-        "en": "Draft & edit"
-      },
-      "description": {
-        "zh": "描述写作需求，或粘贴内容让我润色",
-        "en": "Describe a writing task or paste text to improve"
-      },
-      "prompt": {
-        "zh": "请帮我撰写或改进以下内容：\n\n",
-        "en": "Please help me write or improve the following:\n\n"
-      },
-      "color": "#fdf4e7",
-      "icon_name": "pen-tool"
-    },
-    {
-      "title": {
-        "zh": "深度研究",
-        "en": "Deep research"
-      },
-      "description": {
-        "zh": "提出问题，我来给出全面深入的解答",
-        "en": "Ask a question and get a thorough answer"
-      },
-      "prompt": {
-        "zh": "请对以下主题进行深入研究，给出全面的概述：\n\n",
-        "en": "Please research the following topic in depth and give a comprehensive overview:\n\n"
-      },
-      "color": "#e8fdf5",
-      "icon_name": "book-open"
-    },
-    {
-      "title": {
-        "zh": "随便问问",
-        "en": "Ask anything"
-      },
-      "description": {
-        "zh": "有任何问题都可以直接问我",
-        "en": "Ask me anything"
-      },
-      "prompt": {
-        "zh": "我有一个问题想请教你：",
-        "en": "I have a question for you:"
-      },
-      "color": "#eef2ff",
-      "icon_name": "message-square"
-    },
-    {
-      "title": {
-        "zh": "分析数据",
-        "en": "Analyze data"
-      },
-      "description": {
-        "zh": "粘贴表格或数据，帮你解读规律和趋势",
-        "en": "Paste data and I'll find patterns and trends"
-      },
-      "prompt": {
-        "zh": "请帮我分析以下数据，找出关键规律、趋势或异常，并给出结论：\n\n",
-        "en": "Please analyze the following data, identify patterns, trends, or anomalies, and summarize conclusions:\n\n"
-      },
-      "color": "#e0f7f4",
-      "icon_name": "trending-up"
-    },
-    {
-      "title": {
-        "zh": "制作 PPT 大纲",
-        "en": "PPT outline"
-      },
-      "description": {
-        "zh": "告诉我主题，帮你规划演示文稿结构",
-        "en": "Give me a topic and I'll outline a presentation"
-      },
-      "prompt": {
-        "zh": "请帮我制作一份 PPT 演示文稿的大纲，主题是：",
-        "en": "Please create a presentation outline. The topic is:"
-      },
-      "color": "#fff7ed",
-      "icon_name": "presentation"
-    },
-    {
-      "title": {
-        "zh": "优化简历",
-        "en": "Polish a résumé"
-      },
-      "description": {
-        "zh": "粘贴简历内容，帮你润色和强化亮点",
-        "en": "Paste your résumé and I'll strengthen the highlights"
-      },
-      "prompt": {
-        "zh": "请帮我优化以下简历内容，使其更专业、更有吸引力，并突出核心优势：\n\n",
-        "en": "Please improve the following résumé to be more professional and highlight key strengths:\n\n"
-      },
-      "color": "#fdf2f8",
-      "icon_name": "user"
     }
   ],
   "task_examples": {

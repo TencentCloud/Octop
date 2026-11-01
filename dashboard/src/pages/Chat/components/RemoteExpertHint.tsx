@@ -35,7 +35,7 @@ export default function RemoteExpertHint({
   const tip = name
     ? t("chat.remoteExpert.banner", { name })
     : t("chat.remoteExpert.flag");
-  const label = compact ? null : name || null;
+  const label = compact ? null : name || t("chat.remoteExpert.flag");
   return (
     <Tooltip title={tip} mouseEnterDelay={0.35}>
       <span

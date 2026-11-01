@@ -1,5 +1,6 @@
 {
   "id": "news-trend",
+  "scene": "media",
   "label": {
     "zh": "热点记者",
     "en": "Hot News Reporter"

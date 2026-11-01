@@ -37,6 +37,23 @@ def _echo_json(payload: Any) -> None:
     click.echo(_json.dumps(payload, indent=2, ensure_ascii=False))
 
 
+def _peer_column(row: dict[str, Any]) -> str:
+    """Show the observed client address for inbound rows whose advertise URL is loopback."""
+    url = str(row.get("peer_base_url") or "")
+    host = str(row.get("peer_client_host") or "").strip()
+    if not row.get("inbound") or not host:
+        return url
+    low = url.lower()
+    loopback = (
+        "127.0.0.1" in low or "localhost" in low or "[::1]" in low or low.startswith("http://::1")
+    )
+    if loopback or not url:
+        return host
+    if host not in url:
+        return f"{url} ({host})"
+    return url
+
+
 def _echo_connection_table(rows: list[dict[str, Any]]) -> None:
     from rich.console import Console
     from rich.table import Table
@@ -48,7 +65,7 @@ def _echo_connection_table(rows: list[dict[str, Any]]) -> None:
         table.add_row(
             row.get("connection_id", ""),
             row.get("display_name", "") or "",
-            row.get("peer_base_url", "") or "",
+            _peer_column(row),
             row.get("peer_username", "") or "",
             row.get("status", "") or "",
             str(bool(row.get("auto_reconnect"))),

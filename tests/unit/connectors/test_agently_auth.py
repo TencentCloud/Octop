@@ -1,4 +1,4 @@
-"""Device login lifecycle against a local subprocess, without a real mailbox."""
+"""Device login lifecycle against a local subprocess, without a real mailbox or DingTalk."""
 
 from __future__ import annotations
 
@@ -45,7 +45,7 @@ print(json.dumps({'ok': True, 'data': {
         encoding="utf-8",
     )
 
-    def prepare(creds):
+    def prepare(_spec, creds):
         directory = tmp_path / creds["cli_config_key"]
         directory.mkdir(exist_ok=True)
         return sys.executable, {**os.environ, "AGENTLY_CLI_CONFIG_DIR": str(directory)}
@@ -67,7 +67,7 @@ async def test_login_isolated_idempotent_and_revoked(cli: Path) -> None:
     assert (cli / "first" / "calls").read_text().splitlines().count("login") == 1
     assert (await agently_auth.authorize(second, "status"))["status"] == "idle"
     (cli / "first" / "authorized").touch()
-    task = agently_auth._sessions[agently_auth._key(first)].task
+    task = agently_auth._sessions[agently_auth._key("agently-cli", first)].task
     assert task is not None
     await asyncio.wait_for(task, 5)
     result = await agently_auth.authorize(first, "status")
@@ -87,7 +87,7 @@ async def test_login_timeout_and_logout_reap_process(cli: Path, monkeypatch) -> 
     creds = {"cli_config_key": "timeout"}
     monkeypatch.setattr(agently_auth, "_LOGIN_TIMEOUT", 0.15)
     await agently_auth.authorize(creds, "start")
-    session = agently_auth._sessions[agently_auth._key(creds)]
+    session = agently_auth._sessions[agently_auth._key("agently-cli", creds)]
     assert session.task is not None
     await asyncio.wait_for(session.task, 5)
     result = await agently_auth.authorize(creds, "status")
@@ -96,10 +96,10 @@ async def test_login_timeout_and_logout_reap_process(cli: Path, monkeypatch) -> 
     assert "login_expired" in (result["error"] or "") or "expired" in (result["error"] or "")
     monkeypatch.setattr(agently_auth, "_LOGIN_TIMEOUT", 10)
     assert (await agently_auth.authorize(creds, "start"))["status"] == "pending"
-    session = agently_auth._sessions[agently_auth._key(creds)]
+    session = agently_auth._sessions[agently_auth._key("agently-cli", creds)]
     assert (await agently_auth.authorize(creds, "logout"))["status"] == "idle"
     assert session.task is not None and session.task.done()
-    assert agently_auth._key(creds) not in agently_auth._sessions
+    assert agently_auth._key("agently-cli", creds) not in agently_auth._sessions
 
 
 async def test_login_error_and_refresh_never_expose_cli_output(cli: Path) -> None:
@@ -114,7 +114,7 @@ async def test_login_error_and_refresh_never_expose_cli_output(cli: Path) -> Non
 
 
 async def test_disconnect_allows_removing_instance_when_cli_missing(cli: Path, monkeypatch) -> None:
-    def missing(_creds):
+    def missing(_spec, _creds):
         raise FileNotFoundError
 
     monkeypatch.setattr(agently_auth, "_prepare", missing)
@@ -130,9 +130,61 @@ def test_only_trusted_verification_urls_are_returned() -> None:
         "https://agent.qq.com/device?access_token=SECRET",
         "https://user:secret@agent.qq.com/device",
     ):
-        agently_auth._read_verification_url(url, session)
+        agently_auth._read_verification_url(url, session, ("agent.qq.com",))
         assert session.verification_url is None
     agently_auth._read_verification_url(
-        '{"browser_url":"https://auth.agent.qq.com/device?user_code=OK"}', session
+        '{"browser_url":"https://auth.agent.qq.com/device?user_code=OK"}',
+        session,
+        ("agent.qq.com",),
     )
     assert session.verification_url == "https://auth.agent.qq.com/device?user_code=OK"
+
+
+async def test_dingtalk_device_login_status_and_logout(cli: Path) -> None:
+    # Mirrors dws: device login prints a login.dingtalk.com link; status is JSON.
+    (cli / "auth").write_text(
+        """import json, os, pathlib, sys, time
+root = pathlib.Path(os.environ['AGENTLY_CLI_CONFIG_DIR'])
+command = sys.argv[1]
+if command == 'login':
+    assert sys.argv[2:] == ['--device', '--no-browser']
+    print('  授权链接（已填入授权码）：', flush=True)
+    print('https://login.dingtalk.com/oauth2/device?userCode=DT-CODE', flush=True)
+    while not (root / 'authorized').exists():
+        time.sleep(0.01)
+elif command == 'status':
+    assert sys.argv[2:] == ['--format', 'json']
+    print(json.dumps({'success': True, 'authenticated': (root / 'authorized').exists()}))
+elif command == 'logout':
+    (root / 'authorized').unlink(missing_ok=True)
+    print('[OK]')
+""",
+        encoding="utf-8",
+    )
+    creds = {"cli_config_key": "dt"}
+    started = await agently_auth.authorize(creds, "start", kind="dingtalk-cli")
+    assert started["status"] == "pending"
+    assert started["verification_url"] == (
+        "https://login.dingtalk.com/oauth2/device?userCode=DT-CODE"
+    )
+    assert started["user_code"] == "DT-CODE"
+    (cli / "dt" / "authorized").touch()
+    task = agently_auth._sessions[agently_auth._key("dingtalk-cli", creds)].task
+    assert task is not None
+    await asyncio.wait_for(task, 5)
+    assert (await agently_auth.authorize(creds, "status", kind="dingtalk-cli"))[
+        "status"
+    ] == "authorized"
+    # dws has no refresh command; refresh only re-reads status.
+    assert (await agently_auth.authorize(creds, "refresh", kind="dingtalk-cli"))[
+        "status"
+    ] == "authorized"
+    assert (await agently_auth.authorize(creds, "logout", kind="dingtalk-cli"))["status"] == "idle"
+
+
+def test_dingtalk_rejects_untrusted_verification_urls() -> None:
+    session = agently_auth._Login()
+    hosts = agently_auth._SPECS["dingtalk-cli"].hosts
+    agently_auth._read_verification_url("https://login.dingtalk.com.evil.example/x", session, hosts)
+    agently_auth._read_verification_url("https://auth.agent.qq.com/device", session, hosts)
+    assert session.verification_url is None

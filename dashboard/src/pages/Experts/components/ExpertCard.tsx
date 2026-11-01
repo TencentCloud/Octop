@@ -16,6 +16,7 @@ export interface ExpertSummary {
   icon_name?: string | null;
   icon_url?: string | null;
   color?: string | null;
+  scene?: string | null;
   files?: string[];
   task_examples?: { zh?: string[]; en?: string[] } | null;
 }
@@ -36,6 +37,10 @@ export const ExpertCard = memo(function ExpertCard({
   const { t } = useTranslation();
   const label = pickLocale(expert.label, lang) || expert.id;
   const desc = pickLocale(expert.description, lang);
+  const scene = (expert.scene || "").trim();
+  const sceneName = scene
+    ? t(`experts.scenes.${scene}`, { defaultValue: scene })
+    : "";
   const accent = expert.color || "var(--fn-color-brand)";
   const portraitUrl = resolveExpertAvatarUrl(expert.icon_url);
   const hasPortrait = Boolean(portraitUrl);
@@ -73,6 +78,9 @@ export const ExpertCard = memo(function ExpertCard({
         </div>
         <div className={styles.agentCardTitleBlock}>
           <div className={styles.agentCardName}>{label}</div>
+          {sceneName ? (
+            <span className={styles.expertSceneBadge}>{sceneName}</span>
+          ) : null}
         </div>
       </div>
 
