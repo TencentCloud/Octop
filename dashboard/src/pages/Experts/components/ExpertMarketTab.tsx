@@ -5,6 +5,8 @@ import { message } from "@/utils/antdMessage";
 
 import {
   CheckCircle,
+  ChevronLeft,
+  ChevronRight,
   Download,
   Layers,
   RefreshCw,
@@ -13,6 +15,7 @@ import {
 } from "lucide-react";
 import type { TFunction } from "i18next";
 import { useTranslation } from "react-i18next";
+import { AnimatePresence, motion } from "motion/react";
 import {
   expertMarketApi,
   type ExpertMarketQuickPrompt,
@@ -46,7 +49,8 @@ interface ExpertMarketTabProps {
 }
 
 const SCENE_ALL = "";
-const SCENE_PUBLISHED = "published";
+const SOURCE_REMOTE = "remote";
+const SOURCE_PUBLISHED = "published";
 
 function descOf(expert: MarketExpert, lang: "zh" | "en"): string {
   return pickLocale(expert.description, lang) || "";
@@ -78,6 +82,185 @@ function taskExampleTexts(expert: MarketExpert, lang: "zh" | "en"): string[] {
   return (picked ?? []).map((item) => item.trim()).filter(Boolean);
 }
 
+function SceneScrollArrow({
+  show,
+  side,
+  label,
+  onClick,
+}: {
+  show: boolean;
+  side: "prev" | "next";
+  label: string;
+  onClick: () => void;
+}) {
+  return (
+    <AnimatePresence initial={false}>
+      {show ? (
+        <motion.button
+          key={side}
+          type="button"
+          className={`${styles.marketSceneArrow} ${
+            side === "prev"
+              ? styles.marketSceneArrowPrev
+              : styles.marketSceneArrowNext
+          }`}
+          aria-label={label}
+          initial={false}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
+          transition={{ duration: 0.2 }}
+          onPointerDown={(event) => event.stopPropagation()}
+          onClick={onClick}
+        >
+          <span className={styles.marketSceneArrowIcon}>
+            {side === "prev" ? (
+              <ChevronLeft size={14} />
+            ) : (
+              <ChevronRight size={14} />
+            )}
+          </span>
+        </motion.button>
+      ) : null}
+    </AnimatePresence>
+  );
+}
+
+function MarketSceneTabs({
+  options,
+  active,
+  onSelect,
+  prevLabel,
+  nextLabel,
+}: {
+  options: Array<{ value: string; label: string }>;
+  active: string;
+  onSelect: (value: string) => void;
+  prevLabel: string;
+  nextLabel: string;
+}) {
+  const scrollerRef = useRef<HTMLDivElement>(null);
+  const dragRef = useRef({
+    pointerId: -1,
+    startX: 0,
+    startScroll: 0,
+    moved: false,
+  });
+  const [edges, setEdges] = useState({ left: false, right: false });
+
+  const updateEdges = useCallback(() => {
+    const el = scrollerRef.current;
+    if (!el) return;
+    const max = el.scrollWidth - el.clientWidth;
+    const left = el.scrollLeft > 2;
+    const right = max - el.scrollLeft > 2;
+    setEdges((prev) =>
+      prev.left === left && prev.right === right ? prev : { left, right },
+    );
+  }, []);
+
+  useEffect(() => {
+    const el = scrollerRef.current;
+    if (!el) return;
+    updateEdges();
+    el.addEventListener("scroll", updateEdges, { passive: true });
+    const observer = new ResizeObserver(updateEdges);
+    observer.observe(el);
+    return () => {
+      el.removeEventListener("scroll", updateEdges);
+      observer.disconnect();
+    };
+  }, [options, updateEdges]);
+
+  const scrollByDir = (dir: -1 | 1) => {
+    const el = scrollerRef.current;
+    if (!el) return;
+    el.scrollBy({
+      left: dir * Math.max(160, Math.round(el.clientWidth * 0.7)),
+      behavior: "smooth",
+    });
+  };
+
+  return (
+    <div className={styles.marketSceneScroller}>
+      <SceneScrollArrow
+        show={edges.left}
+        side="prev"
+        label={prevLabel}
+        onClick={() => scrollByDir(-1)}
+      />
+      <div
+        ref={scrollerRef}
+        className={styles.marketSceneTabsWrap}
+        onPointerDown={(event) => {
+          if (event.button !== 0) return;
+          const el = scrollerRef.current;
+          if (!el || el.scrollWidth <= el.clientWidth + 1) return;
+          // Capture only after the pointer actually drags. Capturing on
+          // pointerdown retargets the click away from the pill.
+          dragRef.current = {
+            pointerId: event.pointerId,
+            startX: event.clientX,
+            startScroll: el.scrollLeft,
+            moved: false,
+          };
+        }}
+        onPointerMove={(event) => {
+          const drag = dragRef.current;
+          if (drag.pointerId !== event.pointerId) return;
+          const el = scrollerRef.current;
+          if (!el) return;
+          const dx = event.clientX - drag.startX;
+          if (!drag.moved) {
+            if (Math.abs(dx) <= 6) return;
+            drag.moved = true;
+            el.setPointerCapture(event.pointerId);
+          }
+          el.scrollLeft = drag.startScroll - dx;
+        }}
+        onPointerUp={(event) => {
+          if (dragRef.current.pointerId !== event.pointerId) return;
+          dragRef.current.pointerId = -1;
+        }}
+        onPointerCancel={() => {
+          dragRef.current.pointerId = -1;
+          dragRef.current.moved = false;
+        }}
+        onClickCapture={(event) => {
+          if (!dragRef.current.moved) return;
+          dragRef.current.moved = false;
+          event.preventDefault();
+          event.stopPropagation();
+        }}
+      >
+        {options.map((opt) => {
+          const selected = active === opt.value;
+          return (
+            <button
+              key={opt.value || SCENE_ALL}
+              type="button"
+              aria-pressed={selected}
+              className={
+                selected
+                  ? `${styles.marketScenePill} ${styles.marketScenePillActive}`
+                  : styles.marketScenePill
+              }
+              onClick={() => onSelect(opt.value)}
+            >
+              {opt.label}
+            </button>
+          );
+        })}
+      </div>
+      <SceneScrollArrow
+        show={edges.right}
+        side="next"
+        label={nextLabel}
+        onClick={() => scrollByDir(1)}
+      />
+    </div>
+  );
+}
+
 export default function ExpertMarketTab({
   lang,
   installedExpertIds,
@@ -91,6 +274,9 @@ export default function ExpertMarketTab({
   const [items, setItems] = useState<MarketExpert[]>([]);
   const [scenes, setScenes] = useState<string[]>([]);
   const [activeScene, setActiveScene] = useState(SCENE_ALL);
+  const [source, setSource] = useState<
+    typeof SOURCE_REMOTE | typeof SOURCE_PUBLISHED
+  >(SOURCE_REMOTE);
   const [keyword, setKeyword] = useState("");
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -196,7 +382,6 @@ export default function ExpertMarketTab({
   const sceneOptions = useMemo(
     () => [
       { value: SCENE_ALL, label: sceneLabel(SCENE_ALL, t) },
-      { value: SCENE_PUBLISHED, label: t("experts.published.scene") },
       ...scenes.map((scene) => ({
         value: scene,
         label: sceneLabel(scene, t),
@@ -238,23 +423,10 @@ export default function ExpertMarketTab({
       ),
     );
   }, [publishedExperts, queryText]);
-  const publishedOnly = activeScene === SCENE_PUBLISHED && !queryText;
-  const totalCount = publishedOnly
-    ? publishedExperts.length
-    : queryText && !marketAwaiting
-      ? visiblePublished.length + visibleItems.length
-      : queryText
-        ? visiblePublished.length
-        : visibleItems.length;
+  const publishedOnly = source === SOURCE_PUBLISHED;
   const publishedCards =
     visiblePublished.length > 0 ? (
-      <div
-        className={
-          queryText && !publishedOnly
-            ? `${styles.cardGrid} ${styles.marketSearchPublishedGrid}`
-            : styles.cardGrid
-        }
-      >
+      <div className={styles.cardGrid}>
         {visiblePublished.map((expert) => (
           <PublishedExpertCard
             key={expert.id}
@@ -264,41 +436,45 @@ export default function ExpertMarketTab({
         ))}
       </div>
     ) : null;
-
-  const scenePills =
+  const showSceneTabs =
+    source === SOURCE_REMOTE &&
     !catalogFailed &&
     catalogReady &&
     !marketAwaiting &&
     !queryText &&
-    sceneOptions.length > 1 ? (
-      <div className={styles.marketSceneTabsWrap}>
-        {sceneOptions.map((opt) => {
-          const active = activeScene === opt.value;
-          return (
-            <button
-              key={opt.value || SCENE_ALL}
-              type="button"
-              aria-pressed={active}
-              className={
-                active
-                  ? `${styles.marketScenePill} ${styles.marketScenePillActive}`
-                  : styles.marketScenePill
-              }
-              onClick={() => setActiveScene(opt.value)}
-            >
-              {opt.label}
-            </button>
-          );
-        })}
-      </div>
-    ) : null;
+    sceneOptions.length > 1;
 
   return (
     <div className={styles.marketContainer}>
-      {!catalogFailed && catalogReady && (
-        <div className={styles.gridToolbar}>
-          <div className={styles.marketBlockTitle}>
-            {t("experts.totalMarket", { count: totalCount })}
+      {!initialLoading && (
+        <div className={`${styles.gridToolbar} ${styles.marketSourceRow}`}>
+          <div className={styles.marketSourceTabs} role="tablist">
+            <button
+              type="button"
+              role="tab"
+              aria-selected={source === SOURCE_PUBLISHED}
+              className={
+                source === SOURCE_PUBLISHED
+                  ? `${styles.marketSourceTab} ${styles.marketSourceTabActive}`
+                  : styles.marketSourceTab
+              }
+              onClick={() => setSource(SOURCE_PUBLISHED)}
+            >
+              {t("experts.published.scene")}
+            </button>
+            <button
+              type="button"
+              role="tab"
+              aria-selected={source === SOURCE_REMOTE}
+              className={
+                source === SOURCE_REMOTE
+                  ? `${styles.marketSourceTab} ${styles.marketSourceTabActive}`
+                  : styles.marketSourceTab
+              }
+              onClick={() => setSource(SOURCE_REMOTE)}
+            >
+              {t("experts.marketSourceRemote")}
+            </button>
           </div>
           <div
             className={`${styles.gridToolbarRight} ${styles.marketToolbarRight}`}
@@ -329,7 +505,15 @@ export default function ExpertMarketTab({
         </div>
       )}
 
-      {scenePills}
+      {showSceneTabs ? (
+        <MarketSceneTabs
+          options={sceneOptions}
+          active={activeScene}
+          onSelect={setActiveScene}
+          prevLabel={t("experts.marketScenePrev")}
+          nextLabel={t("experts.marketSceneNext")}
+        />
+      ) : null}
 
       {initialLoading ? (
         <div className={styles.marketStage}>
@@ -339,147 +523,145 @@ export default function ExpertMarketTab({
         publishedCards ?? (
           <div className={styles.emptyState}>
             <div className={styles.emptyHint}>
-              {publishedLoading ? null : t("experts.published.emptyHint")}
+              {publishedLoading
+                ? null
+                : queryText
+                ? t("experts.filterEmpty")
+                : t("experts.published.emptyHint")}
             </div>
           </div>
         )
       ) : catalogFailed ? (
         <>
-          {publishedExperts.length > 0 ? (
-            <div className={styles.cardGrid}>
-              {publishedExperts.map((expert) => (
-                <PublishedExpertCard
-                  key={expert.id}
-                  expert={expert}
-                  onInstall={onInstallPublished}
-                />
-              ))}
-            </div>
-          ) : null}
           <div className={styles.marketStage}>
-          <Result
-            className={styles.marketLoadResult}
-            icon={<OctopEmptyMascot size={120} />}
-            title={t("experts.marketLoadFailed")}
-            subTitle={
-              networkFailure
-                ? t("apiErrors.NETWORK_ERROR")
-                : t("experts.marketUnavailable")
-            }
-            extra={
-              <Button
-                type="primary"
-                loading={refreshing}
-                onClick={() => {
-                  onPublishedChanged();
-                  reloadMarket();
-                }}
-              >
-                {t("common.retry")}
-            </Button>
-          }
-        />
+            <Result
+              className={styles.marketLoadResult}
+              icon={<OctopEmptyMascot size={120} />}
+              title={t("experts.marketLoadFailed")}
+              subTitle={
+                networkFailure
+                  ? t("apiErrors.NETWORK_ERROR")
+                  : t("experts.marketUnavailable")
+              }
+              extra={
+                <Button
+                  type="primary"
+                  loading={refreshing}
+                  onClick={() => {
+                    onPublishedChanged();
+                    reloadMarket();
+                  }}
+                >
+                  {t("common.retry")}
+                </Button>
+              }
+            />
           </div>
         </>
       ) : (
         <>
-          {queryText ? publishedCards : null}
           {marketAwaiting ? (
-        <div className={styles.loadingSkeleton}>
-          <CardSkeleton
-            count={6}
-            containerStyle={{
-              gridTemplateColumns: "repeat(auto-fill, minmax(320px, 1fr))",
-              rowGap: 16,
-              columnGap: 12,
-              padding: "20px 0 24px",
-            }}
-          />
-        </div>
-      ) : visibleItems.length === 0 ? (
-        <div className={styles.emptyState}>
-          <Layers size={48} style={{ color: "var(--fn-text-tertiary)" }} />
-          <div className={styles.emptyTitle}>{t("experts.emptyMarket")}</div>
-          <div className={styles.emptyHint}>{t("experts.emptyMarketHint")}</div>
-        </div>
-      ) : (
-        <div className={styles.cardGrid}>
-          {visibleItems.map((expert) => {
-            const installed = installedExpertIds.has(expert.id);
-            const label = labelOf(expert, lang);
-            const desc = descOf(expert, lang);
-            const accent = expert.color || "#6366f1";
-            return (
-              <div
-                key={expert.id}
-                className={styles.expertTemplateCard}
-                onClick={() => void openDetail(expert)}
-                style={
-                  {
-                    "--expert-accent": accent,
-                  } as CSSProperties
-                }
-              >
-                <div className={styles.marketCardHeader}>
-                  <div
-                    className={styles.agentCardIcon}
-                    style={{
-                      color: accent,
-                      background: `${accent}18`,
-                    }}
-                  >
-                    {expert.icon_url ? (
-                      <FadeInImg
-                        src={expert.icon_url}
-                        alt=""
-                        crossOrigin="anonymous"
-                        className={styles.marketIconImg}
-                      />
-                    ) : (
-                      iconForName(expert.icon_name || "zap", 20)
-                    )}
-                  </div>
-                  <div className={styles.agentCardTitleBlock}>
-                    <div className={styles.agentCardName}>{label}</div>
-                  </div>
-                </div>
-                <div className={styles.agentCardDesc}>
-                  {desc || t("experts.noMarketDescription")}
-                </div>
-                <div className={styles.marketCardFooter}>
-                  <div className={styles.marketCardFooterStart}>
-                    <span className={styles.marketMeta}>
-                      <Zap size={13} />
-                      {t("experts.marketSkillCount", {
-                        count:
-                          expert.skill_count ?? expert.skill_slugs?.length ?? 0,
-                      })}
-                    </span>
-                    {installed && (
-                      <div className={styles.expertInstalledLabel}>
-                        <CheckCircle size={12} />
-                        {t("experts.installedBadge")}
-                      </div>
-                    )}
-                  </div>
-                  <Button
-                    size="small"
-                    type="primary"
-                    icon={<Download size={14} />}
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      openCreate(expert);
-                    }}
-                  >
-                    {installed
-                      ? t("experts.createAgainFromMarket")
-                      : t("experts.createFromMarket")}
-                  </Button>
-                </div>
+            <div className={styles.loadingSkeleton}>
+              <CardSkeleton
+                count={6}
+                containerStyle={{
+                  gridTemplateColumns: "repeat(auto-fill, minmax(320px, 1fr))",
+                  rowGap: 16,
+                  columnGap: 12,
+                  padding: "20px 0 24px",
+                }}
+              />
+            </div>
+          ) : visibleItems.length === 0 ? (
+            <div className={styles.emptyState}>
+              <Layers size={48} style={{ color: "var(--fn-text-tertiary)" }} />
+              <div className={styles.emptyTitle}>
+                {t("experts.emptyMarket")}
               </div>
-            );
-          })}
-        </div>
+              <div className={styles.emptyHint}>
+                {t("experts.emptyMarketHint")}
+              </div>
+            </div>
+          ) : (
+            <div className={styles.cardGrid}>
+              {visibleItems.map((expert) => {
+                const installed = installedExpertIds.has(expert.id);
+                const label = labelOf(expert, lang);
+                const desc = descOf(expert, lang);
+                const accent = expert.color || "#6366f1";
+                return (
+                  <div
+                    key={expert.id}
+                    className={styles.expertTemplateCard}
+                    onClick={() => void openDetail(expert)}
+                    style={
+                      {
+                        "--expert-accent": accent,
+                      } as CSSProperties
+                    }
+                  >
+                    <div className={styles.marketCardHeader}>
+                      <div
+                        className={styles.agentCardIcon}
+                        style={{
+                          color: accent,
+                          background: `${accent}18`,
+                        }}
+                      >
+                        {expert.icon_url ? (
+                          <FadeInImg
+                            src={expert.icon_url}
+                            alt=""
+                            crossOrigin="anonymous"
+                            className={styles.marketIconImg}
+                          />
+                        ) : (
+                          iconForName(expert.icon_name || "zap", 20)
+                        )}
+                      </div>
+                      <div className={styles.agentCardTitleBlock}>
+                        <div className={styles.agentCardName}>{label}</div>
+                      </div>
+                    </div>
+                    <div className={styles.agentCardDesc}>
+                      {desc || t("experts.noMarketDescription")}
+                    </div>
+                    <div className={styles.marketCardFooter}>
+                      <div className={styles.marketCardFooterStart}>
+                        <span className={styles.marketMeta}>
+                          <Zap size={13} />
+                          {t("experts.marketSkillCount", {
+                            count:
+                              expert.skill_count ??
+                              expert.skill_slugs?.length ??
+                              0,
+                          })}
+                        </span>
+                        {installed && (
+                          <div className={styles.expertInstalledLabel}>
+                            <CheckCircle size={12} />
+                            {t("experts.installedBadge")}
+                          </div>
+                        )}
+                      </div>
+                      <Button
+                        size="small"
+                        type="primary"
+                        icon={<Download size={14} />}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          openCreate(expert);
+                        }}
+                      >
+                        {installed
+                          ? t("experts.createAgainFromMarket")
+                          : t("experts.createFromMarket")}
+                      </Button>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
           )}
         </>
       )}

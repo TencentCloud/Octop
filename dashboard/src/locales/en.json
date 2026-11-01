@@ -961,6 +961,9 @@
     "marketLoadFailed": "Failed to load the expert market",
     "marketUnavailable": "The expert market is temporarily unavailable. Please try again later.",
     "marketSearchPlaceholder": "Search expert market",
+    "marketSourceRemote": "From remote market",
+    "marketScenePrev": "Scroll left",
+    "marketSceneNext": "Scroll right",
     "sceneAll": "All",
     "scenes": {
       "academic": "Academic",

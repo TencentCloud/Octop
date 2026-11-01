@@ -961,6 +961,9 @@
     "marketLoadFailed": "加载专家市场失败",
     "marketUnavailable": "专家市场暂时不可用，请稍后重试。",
     "marketSearchPlaceholder": "搜索专家市场",
+    "marketSourceRemote": "来自远程市场",
+    "marketScenePrev": "向左滚动",
+    "marketSceneNext": "向右滚动",
     "sceneAll": "全部",
     "scenes": {
       "academic": "学术",
