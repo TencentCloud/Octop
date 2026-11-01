@@ -271,19 +271,6 @@ export default function ExpertMarketTab({
             <button
               type="button"
               role="tab"
-              aria-selected={source === SOURCE_PUBLISHED}
-              className={
-                source === SOURCE_PUBLISHED
-                  ? `${styles.marketSourceTab} ${styles.marketSourceTabActive}`
-                  : styles.marketSourceTab
-              }
-              onClick={() => setSource(SOURCE_PUBLISHED)}
-            >
-              {t("experts.published.scene")}
-            </button>
-            <button
-              type="button"
-              role="tab"
               aria-selected={source === SOURCE_REMOTE}
               className={
                 source === SOURCE_REMOTE
@@ -293,6 +280,19 @@ export default function ExpertMarketTab({
               onClick={() => setSource(SOURCE_REMOTE)}
             >
               {t("experts.marketSourceRemote")}
+            </button>
+            <button
+              type="button"
+              role="tab"
+              aria-selected={source === SOURCE_PUBLISHED}
+              className={
+                source === SOURCE_PUBLISHED
+                  ? `${styles.marketSourceTab} ${styles.marketSourceTabActive}`
+                  : styles.marketSourceTab
+              }
+              onClick={() => setSource(SOURCE_PUBLISHED)}
+            >
+              {t("experts.published.scene")}
             </button>
           </div>
           <div

@@ -66,7 +66,7 @@ export const PublishedExpertCard = memo(function PublishedExpertCard({
             onInstall(expert);
           }}
         >
-          {t("experts.published.install")}
+          {t("experts.createFromMarket")}
         </Button>
       </div>
     </div>
