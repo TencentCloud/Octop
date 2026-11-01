@@ -345,11 +345,12 @@ def _apply_connector_visibility(
     *,
     visibility: str,
     group_ids: list[str] | None,
+    actor: Any,
 ) -> None:
     access = GroupAccess(server.services.repos)
     # Drop the legacy feature-wide grant if present.
     access.clear(RESOURCE_CONNECTOR, CONNECTOR_FEATURE_KEY)
-    access.set_visibility(RESOURCE_CONNECTOR, instance_id, visibility, group_ids)
+    access.set_visibility(RESOURCE_CONNECTOR, instance_id, visibility, group_ids, actor=actor)
 
 
 def _validate_connector_visibility(
@@ -357,11 +358,12 @@ def _validate_connector_visibility(
     *,
     visibility: str | None,
     group_ids: list[str] | None,
+    actor: Any,
 ) -> None:
     """Raise before any ``shared`` write when visibility args are invalid."""
     if visibility is None:
         return
-    GroupAccess(server.services.repos).validate_visibility(visibility, group_ids)
+    GroupAccess(server.services.repos).validate_visibility(visibility, group_ids, actor=actor)
 
 
 async def _prepare_credentials(
@@ -834,7 +836,7 @@ async def create_instance(
         group_ids=body.group_ids,
         shared=body.shared,
     )
-    _validate_connector_visibility(server, visibility=visibility, group_ids=group_ids)
+    _validate_connector_visibility(server, visibility=visibility, group_ids=group_ids, actor=user)
     repo.create(
         instance_id=instance_id,
         user_id=user.id,
@@ -850,7 +852,9 @@ async def create_instance(
         ),
     )
     svc.encrypt_and_store(instance_id=instance_id, payload=cred_payload)
-    _apply_connector_visibility(server, instance_id, visibility=visibility, group_ids=group_ids)
+    _apply_connector_visibility(
+        server, instance_id, visibility=visibility, group_ids=group_ids, actor=user
+    )
     server.services.audit_repo.write(
         actor=user.username,
         action="connector.instance.create",
@@ -924,6 +928,17 @@ async def patch_instance(
             ErrorCode.CONNECTOR_KIND_UNSUPPORTED,
             "use PATCH /connectors/custom-mcp/servers/{name} for custom MCP servers",
         )
+    visibility_update = body.visibility is not None or body.shared is not None
+    if visibility_update:
+        shared, visibility, group_ids = _shared_and_visibility(
+            visibility=body.visibility,
+            group_ids=body.group_ids,
+            shared=body.shared,
+            default_shared=bool(inst.shared),
+        )
+        _validate_connector_visibility(
+            server, visibility=visibility, group_ids=group_ids, actor=user
+        )
     if (
         body.status is None
         and body.default_open is None
@@ -947,16 +962,11 @@ async def patch_instance(
         ) or _custom_name_exists(svc, inst.user_id, display_name):
             _raise_name_taken(display_name)
         repo.update_metadata(instance_id, display_name=display_name)
-    if body.visibility is not None or body.shared is not None:
-        shared, visibility, group_ids = _shared_and_visibility(
-            visibility=body.visibility,
-            group_ids=body.group_ids,
-            shared=body.shared,
-            default_shared=bool(inst.shared),
-        )
-        _validate_connector_visibility(server, visibility=visibility, group_ids=group_ids)
+    if visibility_update:
         repo.update_metadata(instance_id, shared=shared)
-        _apply_connector_visibility(server, instance_id, visibility=visibility, group_ids=group_ids)
+        _apply_connector_visibility(
+            server, instance_id, visibility=visibility, group_ids=group_ids, actor=user
+        )
     if body.credentials is not None:
         svc = _connector_service(server)
         merged = _merge_credentials(svc.decrypt(instance_id), body.credentials, kind=inst.kind)

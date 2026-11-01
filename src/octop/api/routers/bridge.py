@@ -106,11 +106,12 @@ def _apply_bridge_visibility(
     *,
     visibility: str,
     group_ids: list[str] | None,
+    actor: Any,
 ) -> None:
     access = _group_access(server)
     if access is None:
         return
-    access.set_visibility(RESOURCE_BRIDGE, connection_id, visibility, group_ids)
+    access.set_visibility(RESOURCE_BRIDGE, connection_id, visibility, group_ids, actor=actor)
 
 
 def _validate_bridge_visibility(
@@ -118,6 +119,7 @@ def _validate_bridge_visibility(
     *,
     visibility: str | None,
     group_ids: list[str] | None,
+    actor: Any,
 ) -> None:
     """Raise before any ``shared`` write when visibility args are invalid."""
     if visibility is None:
@@ -125,7 +127,7 @@ def _validate_bridge_visibility(
     access = _group_access(server)
     if access is None:
         return
-    access.validate_visibility(visibility, group_ids)
+    access.validate_visibility(visibility, group_ids, actor=actor)
 
 
 class BridgeCreateBody(BaseModel):
@@ -241,7 +243,9 @@ async def create_connection(
     server: Any = Depends(get_server),
 ) -> dict[str, Any]:
     mgr = _bridge(server)
-    _validate_bridge_visibility(server, visibility=body.visibility, group_ids=body.group_ids)
+    _validate_bridge_visibility(
+        server, visibility=body.visibility, group_ids=body.group_ids, actor=user
+    )
     shared = (
         False
         if body.visibility == "owner"
@@ -266,6 +270,7 @@ async def create_connection(
             row.connection_id,
             visibility=body.visibility,
             group_ids=body.group_ids,
+            actor=user,
         )
         refreshed = mgr.get(row.connection_id)
         if refreshed is not None:
@@ -374,6 +379,9 @@ async def patch_connection(
     server: Any = Depends(get_server),
 ) -> dict[str, Any]:
     mgr = _bridge(server)
+    _validate_bridge_visibility(
+        server, visibility=body.visibility, group_ids=body.group_ids, actor=user
+    )
     fields_set = body.model_fields_set
     row = None
     meta_keys = {
@@ -402,7 +410,6 @@ async def patch_connection(
         row = await mgr.set_auto_reconnect(
             connection_id, owner_user_id=user.id, enabled=bool(body.auto_reconnect)
         )
-    _validate_bridge_visibility(server, visibility=body.visibility, group_ids=body.group_ids)
     shared = body.shared
     if body.visibility == "owner":
         shared = False
@@ -416,6 +423,7 @@ async def patch_connection(
             connection_id,
             visibility=body.visibility,
             group_ids=body.group_ids,
+            actor=user,
         )
         refreshed = mgr.get(connection_id)
         if refreshed is not None:

@@ -108,13 +108,16 @@ def _apply_storage_visibility(
     *,
     visibility: str | None,
     group_ids: list[str] | None,
+    actor: Any,
 ) -> None:
     if visibility is None:
         return
     access = GroupAccess(server.services.repos)
     # Drop the legacy feature-wide grant if present.
     access.clear(RESOURCE_STORAGE_BACKEND, STORAGE_FEATURE_KEY)
-    access.set_visibility(RESOURCE_STORAGE_BACKEND, backend_name, visibility, group_ids)
+    access.set_visibility(
+        RESOURCE_STORAGE_BACKEND, backend_name, visibility, group_ids, actor=actor
+    )
 
 
 @admin_router.get("")
@@ -131,11 +134,15 @@ async def list_storage_backends(
 @admin_router.post("", status_code=201)
 async def create_storage_backend(
     body: StorageBackendCreateBody,
-    _: Any = Depends(require_permission("storage_backends")),
+    user: Any = Depends(require_permission("storage_backends")),
     server: Any = Depends(get_server),
 ) -> dict[str, Any]:
     if server.services.storage_backend_repo.get_by_name(body.name) is not None:
         raise OctopError(ErrorCode.STORAGE_BACKEND_NAME_TAKEN, f"name {body.name!r} already exists")
+    if body.visibility is not None:
+        GroupAccess(server.services.repos).validate_visibility(
+            body.visibility, body.group_ids, actor=user
+        )
     _ensure_opensandbox_sdk((body.kind or "").lower())
     bid = server.services.storage_backend_repo.create(
         name=body.name,
@@ -153,6 +160,7 @@ async def create_storage_backend(
         body.name,
         visibility=body.visibility or "all",
         group_ids=body.group_ids,
+        actor=user,
     )
     access = GroupAccess(server.services.repos)
     return _row_to_dict(server.services.storage_backend_repo.get(bid), access=access)
@@ -162,12 +170,16 @@ async def create_storage_backend(
 async def patch_storage_backend(
     backend_id: int,
     body: StorageBackendPatchBody,
-    _: Any = Depends(require_permission("storage_backends")),
+    user: Any = Depends(require_permission("storage_backends")),
     server: Any = Depends(get_server),
 ) -> dict[str, Any]:
     row = server.services.storage_backend_repo.get(backend_id)
     if row is None:
         raise OctopError(ErrorCode.NOT_FOUND, "storage backend not found")
+    if body.visibility is not None:
+        GroupAccess(server.services.repos).validate_visibility(
+            body.visibility, body.group_ids, actor=user
+        )
     next_kind = (body.kind or row.kind or "").lower()
     if body.enabled is True:
         _ensure_opensandbox_sdk(next_kind)
@@ -220,11 +232,8 @@ async def patch_storage_backend(
         vis = access.visibility(RESOURCE_STORAGE_BACKEND, old_name, shared=None)
         access.clear(RESOURCE_STORAGE_BACKEND, old_name)
         if vis["visibility"] == "groups":
-            access.set_visibility(
-                RESOURCE_STORAGE_BACKEND,
-                new_name,
-                "groups",
-                vis["group_ids"],
+            server.services.repos.resource_group_grant_repo.replace(
+                RESOURCE_STORAGE_BACKEND, new_name, vis["group_ids"]
             )
     if body.visibility is not None:
         _apply_storage_visibility(
@@ -232,6 +241,7 @@ async def patch_storage_backend(
             final_name,
             visibility=body.visibility,
             group_ids=body.group_ids,
+            actor=user,
         )
     from octop.infra.backend.browse import release_browse_session
 

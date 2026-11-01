@@ -119,6 +119,7 @@ def _sync_model_visibility(
     server: Any,
     provider_name: str,
     models: list[dict[str, Any]],
+    actor: Any,
 ) -> list[dict[str, Any]]:
     access = GroupAccess(server.services.repos)
     existing = server.services.provider_repo.get_by_name(provider_name)
@@ -142,12 +143,25 @@ def _sync_model_visibility(
                 model_resource_key(provider_name, model_id),
                 str(visibility),
                 group_ids if isinstance(group_ids, list) else [],
+                actor=actor,
             )
         cleaned.append(item)
     for model_id in previous - kept:
         if model_id:
             access.clear(RESOURCE_MODEL, model_resource_key(provider_name, model_id))
     return cleaned
+
+
+def _validate_model_visibilities(server: Any, models: list[dict[str, Any]], actor: Any) -> None:
+    access = GroupAccess(server.services.repos)
+    for model in models:
+        if not isinstance(model, dict) or model.get("visibility") is None:
+            continue
+        access.validate_visibility(
+            str(model["visibility"]),
+            model.get("group_ids") if isinstance(model.get("group_ids"), list) else [],
+            actor=actor,
+        )
 
 
 def _blank_to_none(value: str | None) -> str | None:
@@ -367,13 +381,17 @@ async def admin_list_providers(
 @admin_router.post("", status_code=201)
 async def admin_create_provider(
     body: ProviderCreateBody,
-    _: Any = Depends(require_permission("providers")),
+    user: Any = Depends(require_permission("providers")),
     server: Any = Depends(get_server),
 ) -> dict[str, Any]:
     import json as _json
 
+    if body.models is not None:
+        _validate_model_visibilities(server, body.models, user)
     models = (
-        _sync_model_visibility(server, body.name, body.models) if body.models is not None else None
+        _sync_model_visibility(server, body.name, body.models, actor=user)
+        if body.models is not None
+        else None
     )
     if body.purpose == "embedding":
         models = stamp_embedding_models(models)
@@ -398,14 +416,15 @@ async def admin_create_provider(
 async def admin_patch_provider(
     provider_id: int,
     body: ProviderPatchBody,
-    _: Any = Depends(require_permission("providers")),
+    user: Any = Depends(require_permission("providers")),
     server: Any = Depends(get_server),
 ) -> dict[str, Any]:
     row = server.services.provider_repo.get(provider_id)
     if row is None:
         raise OctopError(ErrorCode.NOT_FOUND, "provider not found")
     if body.models is not None:
-        body.models = _sync_model_visibility(server, row.name, body.models)
+        _validate_model_visibilities(server, body.models, user)
+        body.models = _sync_model_visibility(server, row.name, body.models, actor=user)
     server.services.provider_repo.update(
         provider_id,
         **_provider_patch_updates(body, current_extra_json=row.extra_json),

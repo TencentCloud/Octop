@@ -446,7 +446,7 @@ async def create_skill_package(
     store = _store(server)
     name = _required(body.name, "name")
     if body.visibility is not None:
-        _package_access(server).validate_visibility(body.visibility, body.group_ids)
+        _package_access(server).validate_visibility(body.visibility, body.group_ids, actor=user)
     try:
         shared = bool(body.shared)
         if body.visibility == "owner":
@@ -473,6 +473,7 @@ async def create_skill_package(
             row.id,
             body.visibility,
             body.group_ids,
+            actor=user,
         )
     return {
         **_package_payload_with_creator(server, store, row),
@@ -558,7 +559,7 @@ async def update_skill_package(
         _icon_url(body.icon_url, package_id=package_id) if body.icon_url is not None else None
     )
     if body.visibility is not None:
-        _package_access(server).validate_visibility(body.visibility, body.group_ids)
+        _package_access(server).validate_visibility(body.visibility, body.group_ids, actor=user)
     shared_value = None if body.shared is None else int(body.shared)
     if body.visibility == "owner":
         shared_value = 0
@@ -589,6 +590,7 @@ async def update_skill_package(
             package_id,
             body.visibility,
             body.group_ids,
+            actor=user,
         )
     updated = _package_or_404(store, package_id, locale=locale)
     return {

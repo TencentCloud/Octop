@@ -88,6 +88,7 @@ async def apply_agent_audience(
     visibility: str | None,
     group_ids: list[str] | None,
     shared: bool | None,
+    actor: Any,
 ) -> Any:
     """Persist who may use an expert. ``visibility`` overrides ``shared``.
 
@@ -99,13 +100,13 @@ async def apply_agent_audience(
     access = GroupAccess(server.services.repos)
     registry = server.app_runtime.agent_registry
     if visibility is not None:
-        access.validate_visibility(visibility, group_ids)
+        access.validate_visibility(visibility, group_ids, actor=actor)
         row = await registry.set_shared(agent_id, visibility != "owner")
-        access.set_visibility(RESOURCE_EXPERT, agent_id, visibility, group_ids)
+        access.set_visibility(RESOURCE_EXPERT, agent_id, visibility, group_ids, actor=actor)
         return row
     flag = bool(shared)
     row = await registry.set_shared(agent_id, flag)
-    access.set_visibility(RESOURCE_EXPERT, agent_id, "all" if flag else "owner", [])
+    access.set_visibility(RESOURCE_EXPERT, agent_id, "all" if flag else "owner", [], actor=actor)
     return row
 
 

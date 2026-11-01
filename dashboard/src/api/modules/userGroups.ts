@@ -26,7 +26,7 @@ export interface UserGroup {
   enabled: boolean;
   avatar_icon?: string | null;
   avatar_url?: string | null;
-  member_count: number;
+  member_count?: number;
   member_ids?: number[];
   access?: GroupAccessSummary;
   created_at: number;
