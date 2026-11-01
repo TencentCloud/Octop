@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from octop.infra.skills.skillhub_common import skill_market_origin
+from octop.infra.skills.skillhub_common import skill_market_origin, skillset_origin
 from octop.infra.skills.skillhub_market import SkillHubMarketError, _resolve_host
 
 
@@ -27,6 +27,22 @@ def test_bare_host_defaults_to_https(monkeypatch: pytest.MonkeyPatch) -> None:
 def test_explicit_host_argument_wins_over_env(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("SKILL_MARKET_ORIGIN", "http://from-env.example")
     assert skill_market_origin("http://from-arg.example/path") == "http://from-arg.example"
+
+
+def test_skillset_origin_is_independent(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("SKILLSET_ORIGIN", raising=False)
+    monkeypatch.delenv("SKILL_MARKET_ORIGIN", raising=False)
+    assert skillset_origin() == "https://api.skillhub.cn"
+    monkeypatch.setenv("SKILL_MARKET_ORIGIN", "http://skills.example")
+    monkeypatch.setenv("SKILLSET_ORIGIN", "http://sets.example:9000/ignored")
+    assert skill_market_origin() == "http://skills.example"
+    assert skillset_origin() == "http://sets.example:9000"
+
+
+def test_invalid_skillset_origin_is_rejected(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("SKILLSET_ORIGIN", "ftp://sets.example")
+    with pytest.raises(ValueError, match="ftp://sets.example"):
+        skillset_origin()
 
 
 def test_invalid_origin_is_rejected(monkeypatch: pytest.MonkeyPatch) -> None:

@@ -2,7 +2,7 @@
 
 控制台「技能」里的 SkillHub 技能市场默认请求 `https://api.skillhub.cn`。访问不了公网时，可以在局域网里按本文的 HTTP 接口自建一个兼容源站。Octop 只认下面三个读接口，不需要部署完整的 SkillHub。
 
-插件市场和专家市场是另一套目录，见 [内网自建市场](private-market.md)。专家技能集（`/api/v1/skillsets`）也不走这里，仍用 `SKILLHUB_HOST`（未设置时同样是 `https://api.skillhub.cn`）。从技能集里拉取单个技能压缩包时，走的是本文的下载接口，因此也会落到 `SKILL_MARKET_ORIGIN`。
+插件市场和专家市场是另一套目录，见 [内网自建市场](private-market.md)。技能包页「从技能市场导入」读取的技能集是另一份目录，用 `SKILLSET_ORIGIN`（未设置时同样是 `https://api.skillhub.cn`）。集内每个技能的压缩包仍走本文的下载接口，因此落到 `SKILL_MARKET_ORIGIN`。
 
 ## Octop 怎么访问
 
@@ -223,6 +223,45 @@ server {
 
 然后在 Octop 上设好 `SKILL_MARKET_ORIGIN` 并重启。打开控制台的技能市场，榜单和搜索应出现自建条目；安装时 Octop 只会向这个源站要压缩包。
 
+## 技能集
+
+技能包页的「从技能市场导入」不读上面的榜单。它先列出专家市场里的卡片，用户点导入后，Octop 按卡片的 `slug` 向技能集源站要这一份技能集，再按里面的技能 slug 回到 `SKILL_MARKET_ORIGIN` 下载每个技能。
+
+```
+用户在技能包页导入
+        │
+        ▼
+Octop 进程  GET {SKILLSET_ORIGIN}/api/v1/skillsets/{slug}
+        │
+        │  详情里没有 skillSlugs 时再要压缩包
+        ▼
+Octop 进程  GET {SKILLSET_ORIGIN}/api/v1/skillsets/{slug}/download
+        │
+        ▼
+Octop 进程  GET {SKILL_MARKET_ORIGIN}/api/v1/download?slug=…   （集内每个技能）
+```
+
+在跑 `octop run` 的机器上设置后重启。写法和 `SKILL_MARKET_ORIGIN` 相同：只留协议、主机和端口；裸主机按 `https://` 补协议；路径和查询会被丢掉。未设置或空字符串时用 `https://api.skillhub.cn`。协议不是 `http`/`https`，或没有主机名，则这次导入失败，不会改回公网。
+
+```bash
+SKILLSET_ORIGIN=http://market.internal:9000
+```
+
+详情是 JSON 对象。导入会读这些字段：
+
+| 字段 | 用途 |
+|---|---|
+| `slug` | 技能集标识，须与路径里的 slug 一致 |
+| `displayName` 或 `name` | 新建技能包的名称 |
+| `summary` 或 `description` | 技能包说明 |
+| `iconUrl` | 技能包图标。须是 Octop 能访问的 `http(s)` 地址 |
+| `scene` | 没有图标时用来选一个内置图标名 |
+| `skillSlugs` | 要下载的技能 slug 列表 |
+
+带上 `skillSlugs` 时，Octop 不再请求 `/download`。没带时，`/download` 必须返回 ZIP，里面有 `manifest.json`，并用 `skillSlugs` 或 `skillSets[].skillSlugs` 列出技能。压缩包里还要有一份工作流说明：优先 `skillsets/{slug}.md`，否则任意 `skillsets/*.md`，再否则 `identify.md`。详情和压缩包的超时都是 **30 秒**，单次响应不超过 **32 MiB**。请求头带 `Accept: application/json`（下载为 `application/zip,*/*`）和 `User-Agent: octop-expert-skillhub/1.0`。
+
+控制台导入不会拉取 `GET /api/v1/skillsets` 全量列表。
+
 ## 对照检查
 
 | 现象 | 原因 |
@@ -231,4 +270,4 @@ server {
 | 市场直接报错 | 源站协议或主机名无效，或榜单 / 搜索没有在时限内返回合法 JSON。 |
 | 卡片在，安装失败 | `GET /api/v1/download?slug=` 不是 ZIP，包内没有 `SKILL.md`，或超过体积限制。404 表示这个 slug 没有包。 |
 | 图标空白 | `iconUrl` 仍指向公网，或浏览器打不开该地址。 |
-| 专家市场没跟着变 | 专家技能集目录不读 `SKILL_MARKET_ORIGIN`。它用 `SKILLHUB_HOST`。 |
+| 技能包导入仍去公网要技能集 | `SKILLSET_ORIGIN` 没进 `octop run` 的环境，或改完没有重启。导入读的是 `{SKILLSET_ORIGIN}/api/v1/skillsets/{slug}`，不是 `SKILL_MARKET_ORIGIN`。 |

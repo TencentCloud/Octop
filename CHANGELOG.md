@@ -23,6 +23,7 @@
 
 ### 变更
 - 插件市场和专家市场的安装包地址不再要求以 `/octop/market/` 开头。`download_url` 仍须落在 `OCTOP_MARKET_REMOTE_ORIGIN` 上，路径和查询参数由自建市场自己决定
+- 技能集目录改用 `SKILLSET_ORIGIN`，默认仍是 `https://api.skillhub.cn`。技能包页「从技能市场导入」按这个源站读取技能集详情和技能集压缩包；集内每个技能的压缩包仍走 `SKILL_MARKET_ORIGIN`。说明见 `docs/skill-market.md`
 - 专家页把「内置专家模板」并入「专家市场」。市场里不再列出安装包自带的内置专家，仍保留本实例用户发布的模板
 - 技能市场的搜索和安装不再在 HTTP 失败时改调本机 `skillhub` 命令行
 - 插件市场不再在目录不可用时改显示随安装包自带的插件，也不再读取 `OCTOP_MARKET_SOURCE`

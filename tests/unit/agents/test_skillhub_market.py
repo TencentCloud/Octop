@@ -371,11 +371,12 @@ def test_fetch_skillset_uses_detail_endpoint(monkeypatch) -> None:
 
     monkeypatch.setattr(skillhub_market, "_http_json_get", fake_json_get)
 
+    monkeypatch.setenv("SKILLSET_ORIGIN", "http://sets.example:9000")
     item = skillhub_market.fetch_skillset("tech-code-review")
 
     assert item.slug == "tech-code-review"
     assert item.scene == "tech"
-    assert "/api/v1/skillsets/tech-code-review" in calls[0]
+    assert calls == ["http://sets.example:9000/api/v1/skillsets/tech-code-review"]
 
 
 def test_fetch_skillsets_uses_skillhub_pagination(monkeypatch) -> None:
