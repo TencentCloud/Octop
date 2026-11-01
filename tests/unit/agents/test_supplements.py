@@ -16,8 +16,8 @@ async def test_install_supplements_copies_each_skill_once(
     beta = tmp_path / "beta" / "SKILL.md"
     alpha.parent.mkdir()
     beta.parent.mkdir()
-    alpha.write_text("alpha body\n", encoding="utf-8")
-    beta.write_text("beta body\n", encoding="utf-8")
+    alpha.write_text("alpha body\n", encoding="utf-8", newline="\n")
+    beta.write_text("beta body\n", encoding="utf-8", newline="\n")
     monkeypatch.setattr(
         "octop.infra.agents.experts.supplements.supplement_paths",
         lambda: [alpha, beta],
