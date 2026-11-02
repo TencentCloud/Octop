@@ -69,7 +69,7 @@
 .cardTop {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 12px;
 }
 
 .cardLead {
@@ -93,9 +93,8 @@
   display: flex;
   flex-direction: column;
   align-items: stretch;
-  gap: 6px;
+  gap: 12px;
   min-width: 0;
-  padding-left: 48px;
 }
 
 .iconWrap {
@@ -283,7 +282,6 @@
   flex-direction: column;
   align-items: stretch;
   gap: 12px;
-  margin-left: 48px;
   padding: 12px;
   border-radius: 10px;
   background: var(--fn-bg-secondary, #f7f8fa);
@@ -344,12 +342,6 @@
 }
 
 @media (max-width: 640px) {
-  .cardSide,
-  .enrollBox {
-    margin-left: 0;
-    padding-left: 0;
-  }
-
   .recoveryList {
     grid-template-columns: 1fr;
   }
