@@ -24,17 +24,12 @@ import type { BrowserWindow, BrowserWindowConstructorOptions } from "electron";
 export const CHROME_ROW_HEIGHT = 58;
 
 /**
- * 收起导航栏宽 70px（`WINDOW_CONTROLS_INSET.mac`），中线在 35px。
- * 三个交通灯的视觉中心大约在 `x` 右侧 30px，所以放在 5px，
- * 灯组落在栏的中线上，左右留白相同。上边距与左边距相同。
+ * 交通灯距窗口左缘和上缘的距离相同。
+ * 顶栏高 58px，按钮约 12px，垂直居中放在 (58-12)/2 = 23，左边距取同一个值。
  */
-const TRAFFIC_LIGHT_CENTER_OFFSET = 30;
-const COLLAPSED_RAIL_CENTER = 35;
-const TRAFFIC_LIGHT_INSET = COLLAPSED_RAIL_CENTER - TRAFFIC_LIGHT_CENTER_OFFSET;
-
 export const TRAFFIC_LIGHT_POSITION = {
-  x: TRAFFIC_LIGHT_INSET,
-  y: TRAFFIC_LIGHT_INSET,
+  x: 23,
+  y: 23,
 } as const;
 
 /** Theme the renderer reports; ``scheme`` keeps "follow the system" live. */
@@ -83,8 +78,19 @@ export function windowBackground(mode: WindowChromeTheme["mode"]): string {
  */
 export const DASHBOARD_THEME_QUERY = "octopTheme";
 
-export function dashboardEntryUrl(scheme: "system" | "light" | "dark"): string {
-  return `octop://app/?${DASHBOARD_THEME_QUERY}=${scheme}`;
+/** Packaged pages live on the privileged scheme. Local dev uses the Vite origin. */
+export const PACKAGED_APP_ORIGIN = "octop://app";
+
+export function dashboardEntryUrl(
+  scheme: "system" | "light" | "dark",
+  appOrigin: string = PACKAGED_APP_ORIGIN,
+): string {
+  return `${appOrigin}/?${DASHBOARD_THEME_QUERY}=${scheme}`;
+}
+
+/** In-app navigations, including a Vite full reload on the dev origin. */
+export function isAppNavigation(url: string, appOrigin: string): boolean {
+  return url === appOrigin || url.startsWith(`${appOrigin}/`) || url.startsWith(`${appOrigin}?`);
 }
 
 /**

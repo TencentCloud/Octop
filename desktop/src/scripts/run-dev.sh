@@ -2,7 +2,7 @@
 # Launch the Electron shell locally against repo source (no green zip needed).
 #
 # Usage:
-#   bash scripts/run-dev.sh               build everything, then launch
+#   bash scripts/run-dev.sh               build the shell, then launch with Dashboard hot reload
 #   bash scripts/run-dev.sh --no-build    launch the existing out/ bundle as-is
 #   bash scripts/run-dev.sh --no-sandbox  drop the Chromium sandbox and the GPU
 #                                         process (containers, CI, no-display
@@ -67,24 +67,9 @@ if ((BUILD)); then
 
   bash "$SCRIPT_DIR/make-dev-runtime.sh" >/dev/null
 
-  # Build the Dashboard into the Python static dir when it is absent *or stale*.
-  # The shell serves that directory (OCTOP_DASHBOARD_DIR), so a bundle left over
-  # from an earlier checkout silently hides Dashboard changes — the old window
-  # chrome kept showing up next to the native one exactly that way.
-  # The Dashboard is still npm-managed (its own package-lock.json).
-  dashboard_stale() {
-    local built="$DASHBOARD_DIR/index.html"
-    [[ -f "$built" ]] || return 0
-    [[ -n "$(find "$REPO_ROOT/dashboard/src" \
-      "$REPO_ROOT/dashboard/index.html" \
-      "$REPO_ROOT/dashboard/vite.config.ts" \
-      -newer "$built" -print -quit 2>/dev/null)" ]]
-  }
-
-  if dashboard_stale; then
-    echo "[dev] building dashboard…"
-    ( cd "$REPO_ROOT/dashboard" && npm run build )
-  fi
+  # The window loads the Vite dev server (see OCTOP_DASHBOARD_DEV below), so a
+  # production Dashboard build is not part of this launch. The static bundle
+  # under src/octop/dashboard stays for packaged and server deploys.
 
   # Build the Electron main/preload/renderer bundles.
   echo "[dev] building electron shell…"
@@ -98,10 +83,6 @@ else
   fi
   if [[ ! -x "$DEV_RUNTIME/runtime/bin/python3" ]]; then
     echo "[dev] $DEV_RUNTIME missing — run 'pnpm dev:runtime' first (or drop --no-build)" >&2
-    exit 1
-  fi
-  if [[ ! -f "$DASHBOARD_DIR/index.html" ]]; then
-    echo "[dev] $DASHBOARD_DIR/index.html missing — run 'npm run build' in dashboard/ first" >&2
     exit 1
   fi
   # The shell reports this file's version as the product version (update
@@ -134,11 +115,16 @@ if [[ ${#EXTRA_ARGS[@]} -gt 0 ]]; then
   launch+=("${EXTRA_ARGS[@]}")
 fi
 
-echo "[dev] launching (port from OS, loopback only)…"
+echo "[dev] launching (port from OS, loopback only; dashboard via Vite)…"
 
 # Replace the build shell so the supervisor owns the actual Electron PID.
 # No background shell/watchdog: the supervisor waits for the entire observed
 # tree, including Python's detached group, on signals and unexpected exits.
+# OCTOP_DASHBOARD_DEV makes the shell load Vite instead of the static build,
+# so dashboard source hot-reloads. The port must match the relay's allowed origin.
 exec env OCTOP_PORTABLE_DIR="$DEV_RUNTIME" \
   OCTOP_DASHBOARD_DIR="$DASHBOARD_DIR" \
+  OCTOP_DASHBOARD_DEV=1 \
+  OCTOP_DASHBOARD_SOURCE="$REPO_ROOT/dashboard" \
+  OCTOP_DASHBOARD_DEV_PORT="${OCTOP_DASHBOARD_DEV_PORT:-5173}" \
   "${launch[@]}"

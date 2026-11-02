@@ -1,7 +1,6 @@
 import { fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import ChatSidebarPanel from "./ChatSidebarPanel";
-import { RailSeamProvider } from "../../../layouts/railSeamContext";
 
 vi.mock("./SessionList", () => ({
   default: () => <div data-testid="session-list" />,
@@ -48,15 +47,13 @@ describe("ChatSidebarPanel edge", () => {
     ).toBeInTheDocument();
   });
 
-  it("导航展开且列表收起时，不再单独画展开对话的小按钮", () => {
+  it("列表收起时右侧竖线不提供展开，展开在对话行按钮上", () => {
     render(
-      <RailSeamProvider split>
-        <ChatSidebarPanel
-          {...baseProps}
-          sidebarOpen={false}
-          onSidebarResizeStart={() => undefined}
-        />
-      </RailSeamProvider>,
+      <ChatSidebarPanel
+        {...baseProps}
+        sidebarOpen={false}
+        onSidebarResizeStart={() => undefined}
+      />,
     );
 
     expect(

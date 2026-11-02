@@ -6,7 +6,6 @@ import MinimalAgentSessionNav from "./MinimalAgentSessionNav";
 import type { Session } from "../hooks/useSessions";
 import type { OctopAgent } from "../../../context/AgentContext";
 import RailEdgeControl from "../../../components/RailEdgeControl";
-import { useSplitHistorySeam } from "../../../layouts/railSeamContext";
 import { EXPAND_CHAT_RAIL_EVENT } from "../chatRailEvents";
 import {
   isMacPlatform,
@@ -85,7 +84,6 @@ export default function ChatSidebarPanel({
   navEmbedded = false,
 }: ChatSidebarPanelProps) {
   const { t } = useTranslation();
-  const splitHistorySeam = useSplitHistorySeam();
 
   const handleRailToggle = useCallback(() => {
     if (sidebarOpen) {
@@ -184,21 +182,18 @@ export default function ChatSidebarPanel({
         {sessionList}
       </div>
 
-      {!isMobile && (sidebarOpen || !splitHistorySeam) && (
+      {!isMobile && sidebarOpen && (
         <RailEdgeControl
-          expanded={sidebarOpen}
+          expanded
           onToggle={handleRailToggle}
-          side={sidebarOpen ? "end" : "start"}
-          /* Collapsed: share the nav rail divider — avoid a second line. */
-          showLine={sidebarOpen}
-          placement={sidebarOpen ? "center" : "after"}
-          className={
-            sidebarOpen ? styles.chatRailEdgeOpen : styles.chatRailEdgeClosed
-          }
+          side="end"
+          showLine
+          placement="center"
+          className={styles.chatRailEdgeOpen}
           label={historyLabel}
           hint={historyHint}
           shortcut={railShortcutAria("toggle-history")}
-          onResizeStart={sidebarOpen ? onSidebarResizeStart : undefined}
+          onResizeStart={onSidebarResizeStart}
           resizeLabel={t("chat.resizeSidebar", "调整侧栏宽度")}
           resizing={isSidebarResizing}
         />

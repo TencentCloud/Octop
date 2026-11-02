@@ -1,13 +1,13 @@
 import { BrowserWindow } from "electron";
 
 import { IPC_CHANNELS } from "../../shared/ipc-contract";
-import { dashboardEntryUrl, windowChrome, type WindowChromeTheme } from "./chrome";
+import { isAppNavigation, windowChrome, type WindowChromeTheme } from "./chrome";
 import { DEFAULT_WINDOW_SIZE, MIN_WINDOW_SIZE } from "./size";
 
 /**
- * The real Dashboard window loads ``octop://app/`` — the custom privileged
- * protocol — with the strictest sandbox flags (§5.3). Static assets are served
- * from the bundled Dashboard build, API calls are proxied by the main process.
+ * The real Dashboard window. Packaged builds load ``octop://app/`` (static
+ * files, API proxied in the main process). Local dev loads the Vite server so
+ * the page hot-reloads. Sandbox flags stay the same either way (§5.3).
  */
 
 export function createMainWindow(options: {
@@ -15,6 +15,10 @@ export function createMainWindow(options: {
   backgroundColor: string;
   /** Native-control theme; the page's own theme is reported over IPC later. */
   theme: WindowChromeTheme;
+  /** Full URL of the Dashboard document, including the theme query. */
+  entryUrl: string;
+  /** Origin that may navigate in-app. Anything else opens in the OS browser. */
+  appOrigin: string;
   onNavigate: (url: string) => void;
 }): BrowserWindow {
   const win = new BrowserWindow({
@@ -44,7 +48,7 @@ export function createMainWindow(options: {
     return { action: "deny" };
   });
   win.webContents.on("will-navigate", (event, url) => {
-    if (!url.startsWith("octop://app")) {
+    if (!isAppNavigation(url, options.appOrigin)) {
       event.preventDefault();
       options.onNavigate(url);
     }
@@ -63,6 +67,6 @@ export function createMainWindow(options: {
   // The boot script reads this once, writes it into localStorage, then strips
   // the query. Passing the preference (not the resolved mode) keeps "system"
   // tracking the OS after the page is up.
-  void win.loadURL(dashboardEntryUrl(options.theme.scheme ?? options.theme.mode));
+  void win.loadURL(options.entryUrl);
   return win;
 }

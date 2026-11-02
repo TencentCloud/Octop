@@ -67,6 +67,31 @@
   transition: background var(--fn-transition-fast);
 }
 
+.chatRailExpandBtn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 28px;
+  height: 28px;
+  margin: 6px 6px 6px 0;
+  padding: 0;
+  border: none;
+  border-radius: var(--fn-radius-md);
+  appearance: none;
+  background: none;
+  color: var(--fn-text-tertiary);
+  cursor: pointer;
+  transition:
+    background var(--fn-transition-fast),
+    color var(--fn-transition-fast);
+
+  &:hover {
+    color: var(--fn-text-primary);
+    background: color-mix(in srgb, var(--fn-text-primary) 8%, transparent);
+  }
+}
+
 .navItemMain {
   display: flex;
   align-items: center;

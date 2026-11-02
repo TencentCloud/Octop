@@ -29,14 +29,13 @@ function onPlatform(platform: NodeJS.Platform, run: () => void): void {
   }
 }
 
-test("macOS 交通灯与收起导航栏同轴，左边距等于上边距", () => {
+test("macOS 交通灯距左缘和上缘的距离相同", () => {
   assert.equal(chrome.CHROME_ROW_HEIGHT, 58);
-  assert.deepEqual(chrome.TRAFFIC_LIGHT_POSITION, { x: 5, y: 5 });
-  assert.equal(chrome.TRAFFIC_LIGHT_POSITION.x, chrome.TRAFFIC_LIGHT_POSITION.y);
+  assert.deepEqual(chrome.TRAFFIC_LIGHT_POSITION, { x: 23, y: 23 });
   onPlatform("darwin", () => {
     assert.deepEqual(chrome.windowChrome("light"), {
       titleBarStyle: "hidden",
-      trafficLightPosition: { x: 5, y: 5 },
+      trafficLightPosition: { x: 23, y: 23 },
     });
   });
 });
@@ -82,4 +81,16 @@ test("窗口底色与仪表盘启动地址跟设备主题走", () => {
   assert.equal(chrome.windowBackground("dark"), "#0e0e0e");
   assert.equal(chrome.dashboardEntryUrl("system"), "octop://app/?octopTheme=system");
   assert.equal(chrome.dashboardEntryUrl("dark"), "octop://app/?octopTheme=dark");
+  assert.equal(
+    chrome.dashboardEntryUrl("system", "http://127.0.0.1:5173"),
+    "http://127.0.0.1:5173/?octopTheme=system",
+  );
+  assert.equal(chrome.isAppNavigation("octop://app/chat", "octop://app"), true);
+  assert.equal(chrome.isAppNavigation("octop://apple", "octop://app"), false);
+  assert.equal(
+    chrome.isAppNavigation("http://127.0.0.1:5173/?octopTheme=system", "http://127.0.0.1:5173"),
+    true,
+  );
+  assert.equal(chrome.isAppNavigation("http://127.0.0.1:51730/", "http://127.0.0.1:5173"), false);
+  assert.equal(chrome.isAppNavigation("https://example.com", "http://127.0.0.1:5173"), false);
 });

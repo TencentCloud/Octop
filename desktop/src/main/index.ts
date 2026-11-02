@@ -35,20 +35,27 @@ import {
 } from "./update/update-coordinator";
 import { downloadToFile } from "./update/download";
 import { installUpdate, type InstallOutcome, type InstallerKind } from "./update/installer";
+import {
+  dashboardDevOrigin,
+  readDashboardDev,
+  startDashboardDevServer,
+  stopDashboardDevServer,
+} from "./dev/dashboard-dev-server";
 import { createEarlyWindow } from "./windows/early-window";
 import { createMainWindow } from "./windows/main-window";
 import {
   applyNativeTheme,
   applyWindowChromeTheme,
+  dashboardEntryUrl,
+  PACKAGED_APP_ORIGIN,
   parseWindowChromeTheme,
   resolveWindowChromeTheme,
   windowBackground,
 } from "./windows/chrome";
 
 const UPDATE_ENDPOINT = "https://octop.cloud/api/downloads";
-// The renderer origin (main-window.ts loads ``octop://app/``). The WebSocket
-// relay accepts upgrades only from it, so another local page cannot borrow the
-// relay's port even if it guesses the path (§5.2).
+// Packaged renderer origin. Local dev replaces this with the Vite origin before
+// the relay starts, and the relay accepts upgrades only from that origin (§5.2).
 const WINDOW_ORIGIN = "octop://app";
 const PRELOAD_PATH = join(__dirname, "../preload/index.js");
 const EARLY_PRELOAD_PATH = join(__dirname, "../preload/early.js");
@@ -603,9 +610,11 @@ async function boot(): Promise<void> {
   // §5.2: the page learns only this relay's ephemeral port, never the sidecar's.
   // A bind failure must not abort the launch — the Dashboard then finds no
   // endpoint and falls back to its page-origin URLs, i.e. no live streams.
+  const dashboardDev = app.isPackaged ? null : readDashboardDev(process.env);
+  const windowOrigin = dashboardDev ? dashboardDevOrigin(dashboardDev.port) : WINDOW_ORIGIN;
   wsRelay = new WsRelay({
     backendPort: () => (apiAdmissionClosed || !backendPort ? 0 : backendPort),
-    allowedOrigin: WINDOW_ORIGIN,
+    allowedOrigin: windowOrigin,
   });
   try {
     await wsRelay.start();
@@ -625,12 +634,34 @@ async function boot(): Promise<void> {
     return;
   }
 
+  if (dashboardDev) {
+    try {
+      desktopLog().info(`[dev] dashboard hot reload at ${windowOrigin}`);
+      await startDashboardDevServer({
+        sourceDir: dashboardDev.sourceDir,
+        port: dashboardDev.port,
+        apiPort: backendPort,
+      });
+    } catch (err) {
+      const detail = err instanceof Error ? err.message : String(err);
+      desktopLog().error(`dashboard dev server failed: ${detail}`);
+      early.showError({
+        message: "仪表盘开发服务器没有起来，页面无法热更新。",
+        detail: errorDetail(detail),
+      });
+      return;
+    }
+  }
+
   // Swap the Early Window for the real Dashboard. Same background colour, so the
   // handoff does not flash.
+  const appOrigin = dashboardDev ? windowOrigin : PACKAGED_APP_ORIGIN;
   const mainWindow = createMainWindow({
     preload: PRELOAD_PATH,
     theme: chromeTheme,
     backgroundColor: windowBackground(chromeTheme.mode),
+    entryUrl: dashboardEntryUrl(chromeTheme.scheme ?? chromeTheme.mode, appOrigin),
+    appOrigin,
     onNavigate: (url) => {
       if (isExternalLink(url)) void shell.openExternal(url);
     },
@@ -668,6 +699,7 @@ app.on("before-quit", (event) => {
   // Close the relay first: nothing may attach to a sidecar that is shutting
   // down, and its listening socket would keep the process alive otherwise.
   void (async () => {
+    stopDashboardDevServer();
     await relay?.stop();
     await sidecar?.stop();
   })()
@@ -704,6 +736,7 @@ async function shutdownFromSignal(signal: NodeJS.Signals): Promise<void> {
   // exit below is deliberate and must not be deferred again.
   quitting = true;
   try {
+    stopDashboardDevServer();
     await wsRelay?.stop();
     await supervisor?.stop();
   } catch (err) {

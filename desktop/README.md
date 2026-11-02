@@ -66,8 +66,8 @@ cd desktop/src
 mise install                    # node 24 + pnpm 12.15.0
 pnpm install --frozen-lockfile
 pnpm typecheck && pnpm test && pnpm build
-pnpm dev                        # build everything, then launch (repo source)
-pnpm dev:start                  # relaunch the existing out/ bundle (no build)
+pnpm dev                        # build the shell, then launch with Dashboard hot reload
+pnpm dev:start                  # relaunch without rebuilding the shell (Dashboard still hot-reloads)
 pnpm dev:no-sandbox             # same, minus the Chromium sandbox + GPU process
 pnpm package                    # electron-builder (requires staged resources)
 ```
