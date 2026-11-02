@@ -152,12 +152,23 @@ def _knowledge_service(server: OctopServer) -> KnowledgeService:
     return KnowledgeService(server.services)
 
 
-def _row_payload(row: Any, *, has_original: bool | None = None) -> dict[str, Any]:
+def _row_payload(
+    row: Any,
+    *,
+    has_original: bool | None = None,
+    server: OctopServer | None = None,
+) -> dict[str, Any]:
     payload = asdict(row)
     payload["document_id"] = row.id
     if has_original is None:
         if getattr(row, "is_dir", False):
             has_original = False
+        elif server is not None:
+            checker = getattr(_knowledge_service(server), "document_has_original", None)
+            if callable(checker):
+                has_original = checker(row)
+            else:
+                has_original = document_path(row.kb_id, row.id, row.filename).is_file()
         else:
             has_original = document_path(row.kb_id, row.id, row.filename).is_file()
     payload["has_original"] = bool(has_original)
@@ -823,7 +834,7 @@ async def list_documents(
 ) -> list[dict[str, Any]]:
     try:
         return [
-            _row_payload(document)
+            _row_payload(document, server=server)
             for document in _knowledge_service(server).list_documents(
                 kb_id, actor_user_id=user.id, is_admin=_is_admin(user), prefix=prefix
             )
@@ -850,7 +861,7 @@ async def create_folder(
         folder = _knowledge_service(server).create_folder(
             kb_id, actor_user_id=user.id, path=body.path, is_admin=_is_admin(user)
         )
-        return _row_payload(folder)
+        return _row_payload(folder, server=server)
     except Exception as exc:
         raise _map_knowledge_error(
             exc, locale=resolve_request_locale(request), server=server
@@ -883,7 +894,7 @@ async def create_text_document(
         )
         assert server.services is not None
         enqueue_index_document(server.services, kb_id, document.id)
-        return _row_payload(document)
+        return _row_payload(document, server=server)
     except Exception as exc:
         raise _map_knowledge_error(exc, locale=locale, server=server) from exc
 
@@ -924,9 +935,30 @@ async def upload_document(
         )
         assert server.services is not None
         enqueue_index_document(server.services, kb_id, document.id)
-        return _row_payload(document)
+        return _row_payload(document, server=server)
     except Exception as exc:
         raise _map_knowledge_error(exc, locale=locale, server=server) from exc
+
+
+@router.get(
+    "/{kb_id}/documents/{doc_id}/chunks",
+    summary="List indexed slices for one document",
+)
+async def list_document_chunks(
+    kb_id: str,
+    doc_id: str,
+    request: Request,
+    server: OctopServer = Depends(get_server),
+    user: User = Depends(current_user),
+) -> dict[str, Any]:
+    try:
+        return _knowledge_service(server).list_document_chunks(
+            kb_id, doc_id, actor_user_id=user.id, is_admin=_is_admin(user)
+        )
+    except Exception as exc:
+        raise _map_knowledge_error(
+            exc, locale=resolve_request_locale(request), server=server
+        ) from exc
 
 
 @router.get(
@@ -1027,7 +1059,7 @@ async def update_text_document(
         )
         assert server.services is not None
         enqueue_index_document(server.services, kb_id, doc_id)
-        return _row_payload(document)
+        return _row_payload(document, server=server)
     except Exception as exc:
         raise _map_knowledge_error(exc, locale=locale, server=server) from exc
 
@@ -1052,7 +1084,7 @@ async def rename_document(
             new_name=body.new_name.strip(),
             is_admin=_is_admin(user),
         )
-        return _row_payload(document)
+        return _row_payload(document, server=server)
     except Exception as exc:
         raise _map_knowledge_error(
             exc, locale=resolve_request_locale(request), server=server
@@ -1099,7 +1131,7 @@ async def reindex_document(
         )
         assert server.services is not None
         enqueue_index_document(server.services, kb_id, doc_id)
-        return _row_payload(document)
+        return _row_payload(document, server=server)
     except Exception as exc:
         raise _map_knowledge_error(
             exc, locale=resolve_request_locale(request), server=server

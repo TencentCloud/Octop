@@ -199,10 +199,7 @@ async def _guard_package_only_skill_write(
         if not metadata.get("removed"):
             origin = str(metadata.get("origin") or "").strip()
             if metadata.get("locked") and origin and server.services is not None:
-                store = SkillPackageStore(
-                    repo=server.services.skill_package_repo,
-                    root=server.paths.skill_packages_dir,
-                )
+                store = _skill_package_store(server)
                 origin_row = store.repo.get(origin)
                 # Unknown origin stays locked for regular users (fail-safe)
                 # but admins keep an escape hatch for orphaned copies.
@@ -219,10 +216,7 @@ async def _guard_package_only_skill_write(
             return
 
     assert server.services is not None
-    store = SkillPackageStore(
-        repo=server.services.skill_package_repo,
-        root=server.paths.skill_packages_dir,
-    )
+    store = _skill_package_store(server)
     for package_id in skill_package_ids_list(config):
         if any(skill["slug"] == slug for skill in store.list_skill_summaries(package_id)):
             raise OctopError(
@@ -511,10 +505,7 @@ async def list_skill_package_mounts(
     assert server.app_runtime is not None
     package_ids = skill_package_ids_list(server.app_runtime.agent_registry.get_config(agent_id))
     assert server.services is not None
-    store = SkillPackageStore(
-        repo=server.services.skill_package_repo,
-        root=server.paths.skill_packages_dir,
-    )
+    store = _skill_package_store(server)
     locale = resolve_request_locale(request)
     packages: list[dict[str, Any]] = []
     for package_id in package_ids:
@@ -580,9 +571,12 @@ def _assert_skill_package_group(server: Any, user: Any, row: Any, locale: str) -
 def _skill_package_store(server: Any) -> SkillPackageStore:
     if server.services is None:
         raise OctopError(ErrorCode.INTERNAL_ERROR, "skill package store not initialized")
+    config = getattr(server.services, "config", None)
+    database = getattr(config, "database", None) if config is not None else None
     return SkillPackageStore(
         repo=server.services.skill_package_repo,
         root=server.paths.skill_packages_dir,
+        database=database,
     )
 
 

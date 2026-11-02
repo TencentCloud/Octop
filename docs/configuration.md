@@ -215,6 +215,16 @@ they are listed under `environment:` in `docker/docker-compose.yml`
 (Compose uses `.env` for interpolation only; unset keys do not enter the
 container). Writing the same keys to the mounted `~/.octop/env` also works.
 
+When `database.driver` is `postgresql`, skill-package sources and knowledge-base
+originals are stored in that same database (`public.skill_package_files` and
+`public.knowledge_files`), and knowledge vectors use pgvector
+(`public.knowledge_chunks`). Names sit next to `skill_packages` and
+`knowledge_bases`. SQLite keeps the local `skill-packages/` and
+`knowledge/` directories. The `vector` extension is not created by Octop
+migrations; enable it with `docker/postgres/init-vector.sql` or
+`CREATE EXTENSION vector` before indexing knowledge. There is no sqlite→PostgreSQL
+content migration in this release — pick the driver at install time.
+
 ### Agent memory vs control plane
 
 Control-plane `database` and agent memory are separate layers. Defaults:

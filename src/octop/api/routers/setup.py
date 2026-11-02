@@ -78,6 +78,10 @@ class DatabaseSetupBody(BaseModel):
     user: str | None = None
     password: str | None = None
     url: str | None = None
+    adopt_existing: bool = Field(
+        default=False,
+        description="PostgreSQL only: bind a database that already has users and keep those accounts.",
+    )
 
     def as_payload(self) -> dict[str, Any]:
         out: dict[str, Any] = {"driver": self.driver.strip().lower()}
@@ -268,8 +272,8 @@ async def test_database(
         db_cfg = database_config_from_payload(body.as_payload())
     except ValueError as exc:
         raise OctopError(ErrorCode.SLASH_BAD_ARGS, str(exc)) from exc
-    probe_database(db_cfg, server.paths)
-    return {"ok": True, "driver": db_cfg.driver}
+    user_count = probe_database(db_cfg, server.paths)
+    return {"ok": True, "driver": db_cfg.driver, "user_count": user_count}
 
 
 @router.post("/setup/database", summary="Persist control-plane database and bind")
@@ -280,7 +284,9 @@ async def apply_database(
     """Write ``config.json`` database section, open the pool, migrate, and boot runtime.
 
     First-run path binds once (no prior pool). If already bound with zero users
-    (e.g. changing engine mid-wizard), swaps via rebind.
+    (e.g. changing engine mid-wizard), swaps via rebind. PostgreSQL may adopt a
+    database that already has users when ``adopt_existing`` is set; SQLite still
+    requires an empty file.
     """
     _enforce_wizard_open(server)
     from octop.infra.db.probe import probe_database
@@ -296,16 +302,20 @@ async def apply_database(
     except ValueError as exc:
         raise OctopError(ErrorCode.SLASH_BAD_ARGS, str(exc)) from exc
     probe_database(db_cfg, server.paths)
-    assert_control_plane_database_empty(db_cfg, server.paths)
+    adopt = bool(body.adopt_existing) and db_cfg.is_postgresql
+    if not adopt:
+        assert_control_plane_database_empty(db_cfg, server.paths)
     persist_database_config(server.paths.config, db_cfg)
     if server.database_bound:
-        rebind_control_plane(server)
+        rebind_control_plane(server, adopt_existing=adopt)
     else:
         await server.bind_control_plane()
     assert server.services is not None
+    assert server.user_manager is not None
     return {
         "ok": True,
         "driver": server.services.config.database.driver,
+        "adopted": server.user_manager.count() != 0,
     }
 
 
