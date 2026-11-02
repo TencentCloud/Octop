@@ -165,7 +165,7 @@ jobs:
           uv pip install --python /tmp/octop-docker-test/bin/python pytest pytest-asyncio
           /tmp/octop-docker-test/bin/pytest \
             tests/integration/test_docker_image_boot.py::test_docker_image_runs_on_this_cpu_and_stays_disabled \
-            -q --tb=short
+            -q --tb=short --noconftest
 
       - name: Push image
         env:
