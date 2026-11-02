@@ -13,7 +13,9 @@
 #   - knowledge-ocr    （rapidocr / onnxruntime / pymupdf）
 # 这些依赖必须在镜像层。装进容器可写层的包会在重建后丢失，
 # 数据卷里的设置和索引却还在。
-# Playwright Chromium 不再预装，浏览器自动化可在控制台按需安装。
+# 另外用 bake-desktop.sh 装入虚拟桌面和系统 Chromium，但不启动。
+# 桌面组件已包含浏览器，不再另下 Playwright Chromium。
+# Laya 不打进镜像：CPU 版 PyTorch 加多语言检查点大约要 4 GB 磁盘。
 #
 # 国内加速（可选 build-arg）：
 #   PIP_INDEX_URL / PIP_TRUSTED_HOST / NPM_REGISTRY / APT_MIRROR
@@ -89,10 +91,11 @@ COPY src/ ./src/
 COPY --from=frontend-builder /build/src/octop/dashboard/ ./src/octop/dashboard/
 
 COPY docker/docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
-RUN chmod +x /usr/local/bin/docker-entrypoint.sh
+COPY docker/bake-desktop.sh /usr/local/bin/bake-desktop.sh
+RUN chmod +x /usr/local/bin/docker-entrypoint.sh /usr/local/bin/bake-desktop.sh
 
-# 安装项目与附加组件（Playwright Chromium 不预装，控制台可按需下载）。
-# local-embedding / knowledge-ocr 与 desktop 一起装进镜像层，避免运行时
+# 安装项目与附加组件。虚拟桌面和系统 Chromium 由后面的 bake-desktop.sh 装入，
+# 不会启动。local-embedding / knowledge-ocr 与 desktop 一起装进镜像层，避免运行时
 # 装进 overlay 后在容器重建时丢失。
 # UV_INDEX_URL 首选阿里云镜像加速；UV_DEFAULT_INDEX 保留 PyPI 作为兜底，
 # 避免新发布的包（如 octop-harness 0.9.16）尚未同步到镜像时构建失败。
@@ -102,10 +105,13 @@ RUN --mount=type=cache,target=/root/.cache/uv \
        UV_INDEX_URL=https://mirrors.aliyun.com/pypi/simple \
        UV_INSECURE_HOST=mirrors.aliyun.com \
        uv pip install --python /app/.venv ".[desktop,local-embedding,knowledge-ocr]" \
-    && /app/.venv/bin/python -c "import cv2, fastembed, huggingface_hub, rapidocr, onnxruntime, pymupdf" \
+    && /app/.venv/bin/python -c "import cv2, fastembed, huggingface_hub, mss, pynput, rapidocr, onnxruntime, pymupdf" \
     && apt-get update && apt-get install -y --no-install-recommends fonts-noto-cjk \
     && apt-get purge -y --auto-remove build-essential \
     && rm -rf /var/lib/apt/lists/* /tmp/*
+
+# Packages only. Xvnc stays stopped until the user enables the desktop.
+RUN bash /usr/local/bin/bake-desktop.sh
 
 ENV PATH="/app/.venv/bin:$PATH" \
     PLAYWRIGHT_BROWSERS_PATH=/root/.cache/ms-playwright

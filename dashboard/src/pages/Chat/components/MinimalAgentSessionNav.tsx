@@ -726,7 +726,7 @@ export default function MinimalAgentSessionNav({
                     className={styles.minimalAgentName}
                   />
                   <ExpertPinMark pinned={isPinned(agent.agent_id)} />
-                  <TeamChatBadge agent={agent} />
+                  <TeamChatBadge agent={agent} compact />
                   <RemoteExpertHint agent={agent} compact />
                 </span>
                 <AgentUnreadBadge count={agent.unread_count ?? 0} />

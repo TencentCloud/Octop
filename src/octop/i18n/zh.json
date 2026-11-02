@@ -56,13 +56,17 @@
       "card_title": "⚠️ 需要工具审批",
       "card_intro": "智能体请求执行以下工具：",
       "action_line": "{index}. **{name}**",
-      "card_footer": "回复 `/approve` 批准，或 `/reject 原因` 拒绝。",
+      "card_footer": "可直接回复「批准」「同意」或「允许」只放行这一次；「放通这个工具」放通该工具；「本对话都允许」或「都不用问了」放通后续审批；「拒绝」则拒绝；「恢复每次审批」改回每次都问。也可使用 `/approve` 或 `/reject`。",
       "card_pending_id": "审批 ID：`{pending_id}`（30 分钟内有效）",
       "none_pending": "当前会话没有待审批的工具操作。",
       "invalid_pending_id": "未找到审批 ID `{pending_id}`。可用 `/pending` 查看列表，或不带 ID 使用 `/approve` 批准最新一项。",
       "not_owner": "仅发起本轮对话的用户可以批准或拒绝。",
       "expired": "审批请求已过期，请重新发送消息后再试。",
       "approved_ack": "已批准，继续执行…",
+      "approved_tool_ack": "已批准。本对话中这个工具不再询问。",
+      "approved_all_ack": "已批准。本对话后续工具审批将自动通过，提问仍会询问。",
+      "reset_ack": "已恢复为每次审批。",
+      "reset_pending_ack": "已恢复为每次审批。当前这条仍需要你批准或拒绝。",
       "rejected_ack": "已拒绝，继续处理…",
       "followup_pending": "仍有工具等待您的审批。",
       "resume_failed": "审批后恢复执行失败：{error}",
@@ -439,7 +443,7 @@
     "CONNECTOR_INVALID_CREDENTIALS": "连接器凭证无效。",
     "CONNECTOR_OAUTH_HTTPS_REQUIRED": "当前通过公网 HTTP 访问 Octop，MCP OAuth 授权回调地址需要 HTTPS。请改用 HTTPS，或通过 localhost、127.0.0.1 在本机访问 Octop。",
     "CONNECTOR_MCP_URL_INVALID": "MCP 服务地址无效：{reason}",
-    "CONNECTOR_MCP_HTTPS_REQUIRED": "公网 MCP 服务地址必须使用 HTTPS。本机与局域网地址可以使用 HTTP。",
+    "CONNECTOR_MCP_HTTPS_REQUIRED": "「{host}」会被当作公网地址，必须使用 HTTPS。HTTP 仅适用于本机、私网 IP，以及 localhost、.local、.internal、*.docker.internal 这类主机名。",
     "CONNECTOR_KIND_UNSUPPORTED": "不支持的连接器类型。",
     "CONNECTOR_NOT_BOUND": "连接器未绑定到此 Agent。",
     "CONNECTOR_ALREADY_BOUND": "连接器已绑定。",
@@ -490,6 +494,7 @@
     "SKILLHUB_SSL_FAILED": "SkillHub 请求失败：检测到 Python SSL 错误。macOS 可尝试 `brew reinstall openssl@3`，或检查系统 CA 证书。",
     "DESKTOP_SESSION_LIMIT": "远程桌面并发连接已达上限（最多 {limit} 路），请关闭其他连接后重试。",
     "DESKTOP_CAPTURE_FAILED": "连续抓屏失败。Linux 服务器请重启虚拟桌面；macOS 请在系统设置中授予屏幕录制与辅助功能权限后重连。",
+    "BROWSER_NOT_ENABLED": "浏览器已安装，但尚未启用。请在远程浏览器页面确认启用。",
     "PLUGIN_INVALID_ARCHIVE": "下载内容不是有效的插件 ZIP。请使用直接的 .zip 下载地址（GitHub 请用 raw.githubusercontent.com 或 “Download/raw” 链接，不要用 /blob/ 页面地址）。",
     "PLUGIN_INSTALL_FAILED": "下载或安装插件失败：{reason}",
     "PLUGIN_ALREADY_EXISTS": "插件 {id} 已安装。",
@@ -1009,6 +1014,10 @@
         "prompt": {
           "system": "你是提示词编辑器，不是回答问题的助手。\n用户消息是一份稍后会发给另一个 AI 的「草稿提示词」。你的唯一任务是改写这份草稿，让另一个 AI 更容易理解——提升清晰度、具体性、结构和可执行细节。\n硬性规则：\n- 不要回答草稿、不要解题、不要提供草稿所要求的内容。\n- 不要添加解释、问候或元评论。\n- 保留用户原意和语言（例如草稿是中文则保持中文）。\n- 只输出改写后的提示词正文——不要前言、标签、引号、思考块或 XML 标签。",
           "user": "请改写以下草稿提示词。不要回答它。\n\n---\n{text}\n---"
+        },
+        "thread_title": {
+          "system": "你为聊天会话撰写简短标题。\n硬性规则：\n- 只输出标题正文。不要引号、标签、markdown 或解释。\n- 使用与用户消息相同的语言。\n- 用几个词概括意图，不要回答这条消息。\n- 中文不超过 20 个字，英文不超过 8 个词，总长度不超过 40 个字符。",
+          "user": "请为下面这条首次消息写一个会话标题。\n\n---\n{text}\n---"
         }
       },
       "expert": {

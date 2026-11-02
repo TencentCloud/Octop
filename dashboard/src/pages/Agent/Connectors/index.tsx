@@ -35,7 +35,7 @@ import {
   userCanAny,
   PERM,
 } from "../../../utils/permissions";
-import { apiErrorMessage } from "../../../utils/apiError";
+import { apiErrorMessage, probeErrorMessage } from "../../../utils/apiError";
 import { copyText } from "../../../utils/copyText";
 import {
   clearFormDraft,
@@ -1149,7 +1149,9 @@ function ConnectorConfigDrawer({
         }
       } else {
         setProbeResult(null);
-        message.error(r.error ?? t("connectors.probeFailed", "探测失败"));
+        message.error(
+          probeErrorMessage(r, t("connectors.probeFailed", "探测失败"), t),
+        );
       }
     } catch (e) {
       console.error(e);

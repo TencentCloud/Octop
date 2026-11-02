@@ -966,6 +966,7 @@
   align-items: stretch;
   width: 100%;
   max-width: 100%;
+  min-width: 0;
   box-sizing: border-box;
   padding: 8px 12px;
   border-radius: 10px;
@@ -1365,6 +1366,8 @@
 }
 
 .processThinkingItem {
+  min-width: 0;
+  max-width: 100%;
   padding: 8px 10px;
   border-radius: 8px;
   border-left: 2px solid var(--fn-border-secondary);
@@ -1372,6 +1375,9 @@
   color: var(--fn-text-secondary);
   font-size: 13px;
   line-height: 1.55;
+  word-break: break-word;
+  word-wrap: break-word;
+  overflow-wrap: break-word;
 }
 
 .processToolItem {

@@ -50,6 +50,24 @@ async def test_non_browser_tool_is_unchanged(monkeypatch) -> None:
 
 
 @pytest.mark.asyncio
+async def test_browser_profile_blocks_until_bundled_browser_is_enabled(monkeypatch) -> None:
+    monkeypatch.setattr(browser_profile, "browser_enabled", lambda: False)
+    monkeypatch.setattr(
+        browser_profile,
+        "get_config",
+        lambda: {"configurable": {"user": "42"}},
+    )
+    handler = AsyncMock(return_value=object())
+    request = _request("browser_use", {"action": "navigate", "profile": "default"})
+
+    result = await browser_profile.BrowserProfileMiddleware().awrap_tool_call(request, handler)
+
+    handler.assert_not_awaited()
+    assert getattr(result, "status", None) == "error"
+    assert "not enabled" in str(result.content)
+
+
+@pytest.mark.asyncio
 async def test_browser_profile_blocks_when_user_missing(monkeypatch) -> None:
     monkeypatch.setattr(browser_profile, "get_config", lambda: {"configurable": {}})
     handler = AsyncMock(return_value=object())
