@@ -1,5 +1,6 @@
 {
   "id": "wechat-ops",
+  "scene": "content-creation",
   "label": {
     "zh": "发文官 · 内容推送",
     "en": "Publisher · Content Push"

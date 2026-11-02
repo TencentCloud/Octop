@@ -204,7 +204,7 @@ async def test_relay_user_turn_closes_generating_when_peer_stops_at_done() -> No
         user_repo=MagicMock(),
         advertise_base_url="http://local.test",
     )
-    mgr.get_owned = MagicMock(return_value=row)  # type: ignore[method-assign]
+    mgr.get_usable = MagicMock(return_value=row)  # type: ignore[method-assign]
     sess = BridgeSession(connection_id="cid1", send_text=AsyncMock())
     mgr._sessions["cid1"] = sess
 
@@ -275,7 +275,7 @@ async def test_relay_user_turn_unlistens_when_cancelled() -> None:
         user_repo=MagicMock(),
         advertise_base_url="http://local.test",
     )
-    mgr.get_owned = MagicMock(return_value=row)  # type: ignore[method-assign]
+    mgr.get_usable = MagicMock(return_value=row)  # type: ignore[method-assign]
     sess = BridgeSession(connection_id="cid1", send_text=AsyncMock())
     mgr._sessions["cid1"] = sess
     started = asyncio.Event()
@@ -355,7 +355,7 @@ async def test_relay_user_listen_forwards_member_frames_until_unlisten() -> None
         user_repo=MagicMock(),
         advertise_base_url="http://local.test",
     )
-    mgr.get_owned = MagicMock(return_value=row)  # type: ignore[method-assign]
+    mgr.get_usable = MagicMock(return_value=row)  # type: ignore[method-assign]
     sess = BridgeSession(connection_id="cid1", send_text=AsyncMock())
     mgr._sessions["cid1"] = sess
     started = asyncio.Event()
@@ -447,7 +447,7 @@ async def test_relay_user_turn_fails_fast_when_session_closes() -> None:
         user_repo=MagicMock(),
         advertise_base_url="http://local.test",
     )
-    mgr.get_owned = MagicMock(return_value=row)  # type: ignore[method-assign]
+    mgr.get_usable = MagicMock(return_value=row)  # type: ignore[method-assign]
     sess = BridgeSession(connection_id="cid1", send_text=AsyncMock())
     mgr._sessions["cid1"] = sess
 
@@ -503,7 +503,7 @@ async def test_relay_turn_cancel_sends_control_and_forwards_end() -> None:
         user_repo=MagicMock(),
         advertise_base_url="http://local.test",
     )
-    mgr.get_owned = MagicMock(return_value=_bridge_row())  # type: ignore[method-assign]
+    mgr.get_usable = MagicMock(return_value=_bridge_row())  # type: ignore[method-assign]
     sess = BridgeSession(
         connection_id="cid1",
         send_text=AsyncMock(),
@@ -546,7 +546,7 @@ async def test_relay_turn_steer_remove_forwards_ack() -> None:
         user_repo=MagicMock(),
         advertise_base_url="http://local.test",
     )
-    mgr.get_owned = MagicMock(return_value=_bridge_row())  # type: ignore[method-assign]
+    mgr.get_usable = MagicMock(return_value=_bridge_row())  # type: ignore[method-assign]
     sess = BridgeSession(
         connection_id="cid1",
         send_text=AsyncMock(),
@@ -605,7 +605,7 @@ async def test_relay_turn_cancel_fails_fast_without_peer_feature() -> None:
         user_repo=MagicMock(),
         advertise_base_url="http://local.test",
     )
-    mgr.get_owned = MagicMock(return_value=_bridge_row())  # type: ignore[method-assign]
+    mgr.get_usable = MagicMock(return_value=_bridge_row())  # type: ignore[method-assign]
     sess = BridgeSession(connection_id="cid1", send_text=AsyncMock())
     mgr._sessions["cid1"] = sess
     sent: list[dict[str, Any]] = []

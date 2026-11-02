@@ -78,6 +78,7 @@ import { useLayoutMode } from "../../context/LayoutModeContext";
 import { useBrowserSessionState } from "../../hooks/useBrowserSessionState";
 import { prefetchVoiceConfig } from "../../hooks/useVoiceConfig";
 import {
+  canReadAgentRuntimeStatus,
   chatSkillCatalogAgentId,
   isSharedExpertViewer,
 } from "../../utils/sharedExpert";
@@ -252,7 +253,12 @@ function ChatPageInner() {
     visible: memoryMaintVisible,
     blocking: memoryMaintBlocking,
     connectionLost: memoryMaintConnectionLost,
-  } = useMemoryMaintenance(resolvedAgentId, agentChatReady && !noAgents);
+  } = useMemoryMaintenance(
+    resolvedAgentId,
+    agentChatReady &&
+      !noAgents &&
+      canReadAgentRuntimeStatus(activeAgent ?? {}, user),
+  );
   const historyMigration = useHistoryMigration(
     resolvedAgentId,
     agentChatReady && !noAgents && !sharedExpertViewer,
@@ -710,8 +716,6 @@ function ChatPageInner() {
   const { handleSend } = useChatSend({
     resolvedAgentId,
     activeThreadId,
-    sessions,
-    messagesLength: messages.length,
     selectedModel,
     selectedConnectors,
     selectedKnowledgeBaseIds,
@@ -722,7 +726,6 @@ function ChatPageInner() {
     defaultModel: activeAgent?.default_model ?? null,
     sendMessage,
     createSession,
-    renameSession,
     onAutoRecordingStarted: useCallback((recordingId: string) => {
       setBrowserRecording(true);
       setBrowserRecordingId(recordingId);
@@ -1837,7 +1840,13 @@ function ChatPageInner() {
               isStreaming={isStreaming}
               holdSend={membersStillTalking}
               isTeam={isTeamChat}
-              disabled={!agentChatReady || noAgents || memoryMaintBlocking}
+              disabled={
+                !agentChatReady ||
+                noAgents ||
+                memoryMaintBlocking ||
+                !modelsReady ||
+                availableModels.length === 0
+              }
               initialText={prefillInputRef.current}
               onComposerCleared={() => {
                 prefillInputRef.current = "";

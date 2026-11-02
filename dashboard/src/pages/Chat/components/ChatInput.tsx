@@ -481,6 +481,7 @@ const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
       mentionItems,
       filesLoading,
       filesError,
+      filesTruncated,
       runSlashCommand,
       matchSlashCommand,
       handleMentionSelect,
@@ -956,6 +957,7 @@ const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
               subagents={availableSubagents}
               filesLoading={filesLoading}
               filesError={filesError}
+              filesTruncated={filesTruncated}
               activeIndex={mentionMenuIndex}
               onSelect={handleMentionSelect}
               onHover={setMentionMenuIndex}

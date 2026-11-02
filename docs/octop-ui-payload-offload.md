@@ -45,7 +45,7 @@
 | F12 | `PluginContext` 无 workspace/agent 上下文；插件工具是纯函数 | `harness_agent/plugins/context.py:17-115`、`tools.py:78-90` |
 | F13 | 插件 UI 的 host 自带鉴权 `request()` | `dashboard/src/plugins/toolRenderers/host.ts:69-71` |
 | F14 | workspace 下载路由要求 agent running 且强制 attachment disposition —— 故弃用「workspace 文件 + 下载 URL」方案 | `api/common/workspace.py:37-68`、`api/routers/workspace.py:328-364` |
-| F15 | 移动端无 octop_ui 消费（`mobile/tools.py:29` 是 Android UI dump 路径）；CLI repl 不读 content | `infra/mobile/tools.py`、`cli/repl/render.py:194` |
+| F15 | 移动端无 octop_ui 消费（`mobile/tools.py:29` 是 Android UI dump 路径）；CLI repl 不读 content | `infra/control/mobile/tools.py`、`cli/repl/render.py:194` |
 | F16 | 插件 UI 用 `{...d, ...next}` 全量回传 patch（纯前端内存） | `bilibili-anime/ui/index.js:42-45`；`parseToolOutput.ts:66-88` |
 | F17 | team host 白名单仅 5 个内置工具，插件工具在 host 被 deny；team member 是独立 agent，工具+中间件齐全 | `infra/agents/teams/service.py:32-50`、`manager.py:3233-3235` |
 | F18 | 备份导出按原始行拷贝 `thread_messages`，artifact 随 message_json 存活 | `infra/backup/chats.py:81-110` |

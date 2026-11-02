@@ -59,6 +59,8 @@ export interface InstallPublishedExpertBody {
     summary?: { zh?: string; en?: string };
   }[];
   copy_skills?: { agent_id: string; slug: string }[];
+  visibility?: "owner" | "all" | "groups";
+  group_ids?: string[];
   quick_prompts?: {
     title: { zh?: string; en?: string };
     description: { zh?: string; en?: string };

@@ -1,5 +1,6 @@
 {
   "id": "engineering",
+  "scene": "tech",
   "label": {
     "zh": "工程专家",
     "en": "Engineering Expert"
@@ -45,7 +46,7 @@
         "zh": "帮我评审这段改动，重点关注安全、性能与边界情况",
         "en": "Review this change with a focus on security, performance, and edge cases"
       },
-      "color": "#dbeafe",
+      "color": "#e8f4ff",
       "icon_name": "cpu"
     },
     {
@@ -61,8 +62,8 @@
         "zh": "支付服务出现大量 503，按事故响应流程帮我处理",
         "en": "The payments service is throwing 503s — run the incident workflow"
       },
-      "color": "#fee2e2",
-      "icon_name": "cpu"
+      "color": "#fdf4e7",
+      "icon_name": "activity"
     },
     {
       "title": {
@@ -70,15 +71,63 @@
         "en": "Architecture decision"
       },
       "description": {
-        "zh": "带权衡分析的 ADR",
-        "en": "An ADR with trade-off analysis"
+        "zh": "带权衡分析的架构决策记录",
+        "en": "An architecture decision record with trade-offs"
       },
       "prompt": {
         "zh": "服务间要不要引入消息队列？帮我写一份架构决策记录",
         "en": "Should we add a message queue between services? Draft an ADR"
       },
-      "color": "#dbeafe",
-      "icon_name": "cpu"
+      "color": "#dcfce7",
+      "icon_name": "network"
+    },
+    {
+      "title": {
+        "zh": "调试排障",
+        "en": "Debug a failure"
+      },
+      "description": {
+        "zh": "先复现、再隔离、最后定位原因",
+        "en": "Reproduce, isolate, then find the cause"
+      },
+      "prompt": {
+        "zh": "这个功能在预发正常、生产报错。请按调试流程帮我复现、隔离并定位原因，不要一上来就改代码。",
+        "en": "This works in staging but fails in production. Debug it: reproduce, isolate, then find the cause before changing code."
+      },
+      "color": "#fef3c7",
+      "icon_name": "terminal"
+    },
+    {
+      "title": {
+        "zh": "上线检查",
+        "en": "Pre-deploy check"
+      },
+      "description": {
+        "zh": "核对迁移、开关、审批和回滚",
+        "en": "Check migrations, flags, approvals, and rollback"
+      },
+      "prompt": {
+        "zh": "这次发布包含数据库迁移。请按上线检查清单核对 CI、审批、特性开关和回滚触发条件。",
+        "en": "This release includes a database migration. Run the deploy checklist: CI, approvals, feature flags, and rollback triggers."
+      },
+      "color": "#eef2ff",
+      "icon_name": "rocket"
+    },
+    {
+      "title": {
+        "zh": "编写文档",
+        "en": "Write technical docs"
+      },
+      "description": {
+        "zh": "README、接口说明或运维手册",
+        "en": "A README, API note, or operational runbook"
+      },
+      "prompt": {
+        "zh": "请为这个服务写一份技术文档，读者是新加入的工程师：怎么在本地跑起来、关键接口是什么、出故障先看哪里。",
+        "en": "Write technical docs for this service for a new engineer: how to run it locally, the key APIs, and where to look when it fails."
+      },
+      "color": "#f3e8ff",
+      "icon_name": "file-text"
     }
   ],
   "source": {

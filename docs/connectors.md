@@ -62,6 +62,7 @@ are updating `catalog.json` in the same change.
 | `agently-cli` | Agent Mail | Agent Mail | office | custom_fields | gateway |
 | `obsidian-cli` | Obsidian | Obsidian | knowledge | custom_fields | gateway |
 | `yuque-mcp` | Yuque (official MCP) | 语雀（官方 MCP） | knowledge | personal_token | stdio |
+| `ragflow` | ragflow | ragflow | knowledge | custom_fields | gateway |
 | `weknora` | WeKnora | WeKnora | knowledge | custom_fields | gateway |
 | `dify` | Dify | Dify | self_hosted | custom_fields | remote |
 
@@ -105,3 +106,4 @@ Optional: `quick_auth_url`, `login_url`, `guide_url`, `manual_url`, `auth_hint`,
 - [OpenDesign](connectors-open-design.md)
 - [Agent Mail CLI](connectors-agently-mail.md)
 - [Qichacha / 企查查](connectors-qcc.md)
+- [RAGFlow](connectors-ragflow.md)

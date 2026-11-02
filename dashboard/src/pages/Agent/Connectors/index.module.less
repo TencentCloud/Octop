@@ -237,11 +237,6 @@
 
 /* ── Instance Card (my connections) ────────────────────────────── */
 
-.instanceCardTag {
-  flex-shrink: 0;
-  margin-inline-end: 0;
-}
-
 .instanceCardHeaderActions {
   display: flex;
   align-items: center;
@@ -734,6 +729,22 @@
   gap: 12px;
   margin-bottom: 12px;
   flex-shrink: 0;
+  flex-wrap: wrap;
+}
+
+.listToolbarStart {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  min-width: 0;
+}
+
+.filterEmpty {
+  padding: 28px 12px 12px;
+  text-align: center;
+  font-size: 13px;
+  color: var(--fn-text-tertiary);
 }
 
 .listToolbarMeta {
@@ -972,6 +983,14 @@
   flex: 1;
 }
 
+.customMcpServerNameRow {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  max-width: 100%;
+}
+
 .customMcpServerName {
   font-size: 15px;
   font-weight: 600;
@@ -980,7 +999,7 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  max-width: 100%;
+  min-width: 0;
 }
 
 .customMcpTransportBadge {

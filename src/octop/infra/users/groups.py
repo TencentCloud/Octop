@@ -20,6 +20,7 @@ RESOURCE_STORAGE_BACKEND = "storage_backend"
 STORAGE_FEATURE_KEY = "feature"  # legacy feature-wide key; prefer backend name
 RESOURCE_PLUGIN = "plugin"
 RESOURCE_BRIDGE = "bridge"
+RESOURCE_EXPERT = "expert"
 
 RESOURCE_TYPES = frozenset(
     {
@@ -30,6 +31,7 @@ RESOURCE_TYPES = frozenset(
         RESOURCE_STORAGE_BACKEND,
         RESOURCE_PLUGIN,
         RESOURCE_BRIDGE,
+        RESOURCE_EXPERT,
     }
 )
 
@@ -237,6 +239,30 @@ class GroupAccess:
         self._grants.delete_resource(resource_type, resource_key)
 
 
+def expert_visible_to(
+    repos: Any,
+    row: Any,
+    *,
+    user_id: int,
+    is_admin: bool,
+) -> bool:
+    """Owner and admin always pass. Others need ``is_shared`` plus the group layer."""
+    if is_admin:
+        return True
+    owner_id = getattr(row, "user_id", None)
+    if owner_id is not None and int(owner_id) == int(user_id):
+        return True
+    if int(getattr(row, "is_shared", 0) or 0) != 1:
+        return False
+    return GroupAccess(repos).allows(
+        user_id=user_id,
+        is_admin=False,
+        resource_type=RESOURCE_EXPERT,
+        resource_key=str(getattr(row, "agent_id", "")),
+        is_owner=False,
+    )
+
+
 def empty_group_access() -> dict[str, Any]:
     return {
         "connectors": [],
@@ -246,6 +272,7 @@ def empty_group_access() -> dict[str, Any]:
         "skill_packages": [],
         "knowledge_bases": [],
         "bridges": [],
+        "experts": [],
     }
 
 
@@ -351,6 +378,14 @@ def group_access_by_group(repos: Any) -> dict[str, dict[str, Any]]:
     storage_grants = keys(RESOURCE_STORAGE_BACKEND)
     plugin_grants = keys(RESOURCE_PLUGIN)
     bridge_grants = keys(RESOURCE_BRIDGE)
+    expert_grants = keys(RESOURCE_EXPERT)
+    agent_rows = list(repos.agent_repo.list_all())
+    shared_experts = {
+        row.agent_id: row.name for row in agent_rows if int(getattr(row, "is_shared", 0) or 0) == 1
+    }
+    private_experts = {
+        row.agent_id: row.name for row in agent_rows if int(getattr(row, "is_shared", 0) or 0) != 1
+    }
     bridge_rows = list(repos.bridge_connection_repo.list_all())
     shared_bridges = {row.connection_id: row.display_name for row in bridge_rows if row.shared}
     private_bridges = {row.connection_id: row.display_name for row in bridge_rows if not row.shared}
@@ -428,6 +463,14 @@ def group_access_by_group(repos: Any) -> dict[str, dict[str, Any]]:
             private_audience="owner",
             known={row.connection_id for row in bridge_rows},
             grants=bridge_grants,
+            group_id=group_id,
+        )
+        summary["experts"] = _resource_items(
+            catalog=shared_experts,
+            private=private_experts,
+            private_audience="owner",
+            known={row.agent_id for row in agent_rows},
+            grants=expert_grants,
             group_id=group_id,
         )
         out[group_id] = summary

@@ -24,13 +24,21 @@ import PageShell from "../../../layouts/PageShell";
 import TabBar, { type TabBarItem } from "../../../components/TabLabel/TabBar";
 import StreamSetupGuide from "../../../components/StreamSetupGuide/StreamSetupGuide";
 import { OctopEmptyMascot } from "../../../components/EmptyState/OctopEmptyMascot";
-import { ResourceVisibilityFields } from "../../../components/ResourceVisibilityFields";
+import {
+  ResourceVisibilityFields,
+  ResourceVisibilityGate,
+} from "../../../components/ResourceVisibilityFields";
 import { TextAssistBar } from "../../../components/TextAssistBar";
 import type { ResourceVisibilityMode } from "../../../api/modules/userGroups";
 import { useCurrentUser } from "../../../hooks/useCurrentUser";
 import { useIsMobile } from "../../../hooks/useIsMobile";
-import { userCan } from "../../../utils/permissions";
-import { apiErrorMessage } from "../../../utils/apiError";
+import {
+  CONNECTOR_TAB_PERMISSIONS,
+  userCan,
+  userCanAny,
+  PERM,
+} from "../../../utils/permissions";
+import { apiErrorMessage, probeErrorMessage } from "../../../utils/apiError";
 import { copyText } from "../../../utils/copyText";
 import {
   clearFormDraft,
@@ -71,6 +79,11 @@ import {
   tryOpenAuthPopup,
 } from "./openAuthWindow";
 import { useConnectorInstances } from "./useConnectors";
+import { ResourceAudienceFilter } from "../../../components/ResourceAudienceFilter";
+import {
+  matchesResourceAudience,
+  type ResourceAudience,
+} from "../../../utils/resourceAudience";
 import styles from "./index.module.less";
 import { OpenDesignConnection } from "./OpenDesignConnection";
 
@@ -377,7 +390,7 @@ function ConnectorConfigDrawer({
   const { t } = useTranslation();
   const isMobile = useIsMobile();
   const user = useCurrentUser();
-  const canInstallCli = userCan(user, "connectors");
+  const canInstallCli = userCanAny(user, PERM.connectors);
   const [form] = Form.useForm();
   const [saving, setSaving] = useState(false);
   const [probing, setProbing] = useState(false);
@@ -1157,7 +1170,9 @@ function ConnectorConfigDrawer({
         }
       } else {
         setProbeResult(null);
-        message.error(r.error ?? t("connectors.probeFailed", "探测失败"));
+        message.error(
+          probeErrorMessage(r, t("connectors.probeFailed", "探测失败"), t),
+        );
       }
     } catch (e) {
       console.error(e);
@@ -2290,27 +2305,29 @@ function ConnectorConfigDrawer({
                 <Switch size="small" />
               </Form.Item>
             </div>
-            <div className={styles.formOptionRowVisibility}>
-              <div className={styles.formOptionCopy}>
-                <span className={styles.switchLabel}>
-                  {t("resourceVisibility.label")}
-                </span>
-                <span className={styles.formOptionHint}>
-                  {t("connectors.visibilityHint")}
-                </span>
+            <ResourceVisibilityGate allowOwner visibility={connectorVisibility}>
+              <div className={styles.formOptionRowVisibility}>
+                <div className={styles.formOptionCopy}>
+                  <span className={styles.switchLabel}>
+                    {t("resourceVisibility.label")}
+                  </span>
+                  <span className={styles.formOptionHint}>
+                    {t("connectors.visibilityHint")}
+                  </span>
+                </div>
+                <ResourceVisibilityFields
+                  allowOwner
+                  visibility={connectorVisibility}
+                  groupIds={connectorGroupIds}
+                  onChange={(next) => {
+                    setConnectorVisibility(next.visibility);
+                    setConnectorGroupIds(
+                      next.visibility === "groups" ? next.groupIds : [],
+                    );
+                  }}
+                />
               </div>
-              <ResourceVisibilityFields
-                allowOwner
-                visibility={connectorVisibility}
-                groupIds={connectorGroupIds}
-                onChange={(next) => {
-                  setConnectorVisibility(next.visibility);
-                  setConnectorGroupIds(
-                    next.visibility === "groups" ? next.groupIds : [],
-                  );
-                }}
-              />
-            </div>
+            </ResourceVisibilityGate>
           </div>
           {defaultOpen ? (
             <Alert
@@ -2395,6 +2412,30 @@ export default function ConnectorsPage() {
     string | null
   >(null);
   const { catalog, instances, loading, refresh } = useConnectorInstances();
+  const user = useCurrentUser();
+  const visibleConnectorTabs = useMemo(
+    () =>
+      CONNECTOR_TABS.filter((tab) =>
+        userCan(user, CONNECTOR_TAB_PERMISSIONS[tab.key]),
+      ),
+    [user],
+  );
+  const resolvedConnectorTab = visibleConnectorTabs.some(
+    (tab) => tab.key === activeTab,
+  )
+    ? activeTab
+    : visibleConnectorTabs[0]?.key ?? "enabled";
+  const [audience, setAudience] = useState<ResourceAudience>("all");
+  const visibleInstances = useMemo(
+    () =>
+      instances.filter((instance) =>
+        matchesResourceAudience(audience, {
+          owned: user != null && instance.owner_user_id === user.id,
+          shared: instance.shared,
+        }),
+      ),
+    [audience, instances, user],
+  );
 
   const configuredCount = useMemo(() => {
     return instances.filter((instance) => instance.has_credentials).length;
@@ -2467,8 +2508,8 @@ export default function ConnectorsPage() {
       subtitle={t("pageShell.connectors.subtitle")}
       tabBar={
         <TabBar
-          tabs={CONNECTOR_TABS}
-          activeKey={activeTab}
+          tabs={visibleConnectorTabs}
+          activeKey={resolvedConnectorTab}
           onChange={(key) => {
             if (key === "custom") setCustomFocusServerName(null);
             setActiveTab(key);
@@ -2476,9 +2517,9 @@ export default function ConnectorsPage() {
         />
       }
     >
-      {activeTab === "custom" ? (
+      {resolvedConnectorTab === "custom" ? (
         <CustomMcpTab focusServerName={customFocusServerName} />
-      ) : activeTab === "enabled" ? (
+      ) : resolvedConnectorTab === "enabled" ? (
         loading ? (
           <div className={styles.loadingState}>
             <Spin />
@@ -2527,12 +2568,20 @@ export default function ConnectorsPage() {
             ) : (
               <>
                 <div className={styles.listToolbar}>
-                  <span className={styles.listToolbarMeta}>
-                    {t("connectors.enabledSummary", {
-                      count: instances.length,
-                      defaultValue: "已启用 {{count}} 个连接器实例",
-                    })}
-                  </span>
+                  <div className={styles.listToolbarStart}>
+                    <span className={styles.listToolbarMeta}>
+                      {t("connectors.enabledSummary", {
+                        count: visibleInstances.length,
+                        defaultValue: "已启用 {{count}} 个连接器实例",
+                      })}
+                    </span>
+                    <ResourceAudienceFilter
+                      value={audience}
+                      onChange={(value) =>
+                        setAudience(value as ResourceAudience)
+                      }
+                    />
+                  </div>
                   <Button
                     icon={<RefreshCw size={14} />}
                     loading={loading}
@@ -2541,29 +2590,35 @@ export default function ConnectorsPage() {
                     {t("common.refresh")}
                   </Button>
                 </div>
-                <div className={styles.typeGrid}>
-                  {instances.map((instance) => (
-                    <ConnectorInstanceCard
-                      key={instance.instance_id}
-                      instance={instance}
-                      catalogEntry={catalog.find(
-                        (entry) => entry.kind === instance.kind,
-                      )}
-                      onEdit={(item) => {
-                        if (item.kind === "custom-mcp") {
-                          setCustomFocusServerName(item.mcp_server_name);
-                          setActiveTab("custom");
-                          return;
-                        }
-                        const entry = catalog.find(
-                          (row) => row.kind === item.kind,
-                        );
-                        if (entry) handleConfigure(entry, item);
-                      }}
-                      onChanged={handleSaved}
-                    />
-                  ))}
-                </div>
+                {visibleInstances.length === 0 ? (
+                  <div className={styles.filterEmpty}>
+                    {t("resourceAudience.empty")}
+                  </div>
+                ) : (
+                  <div className={styles.typeGrid}>
+                    {visibleInstances.map((instance) => (
+                      <ConnectorInstanceCard
+                        key={instance.instance_id}
+                        instance={instance}
+                        catalogEntry={catalog.find(
+                          (entry) => entry.kind === instance.kind,
+                        )}
+                        onEdit={(item) => {
+                          if (item.kind === "custom-mcp") {
+                            setCustomFocusServerName(item.mcp_server_name);
+                            setActiveTab("custom");
+                            return;
+                          }
+                          const entry = catalog.find(
+                            (row) => row.kind === item.kind,
+                          );
+                          if (entry) handleConfigure(entry, item);
+                        }}
+                        onChanged={handleSaved}
+                      />
+                    ))}
+                  </div>
+                )}
               </>
             )}
           </>

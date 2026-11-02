@@ -23,12 +23,12 @@ from octop.infra.agents.experts.catalog import ExpertCatalog, default_library_ro
 from octop.infra.agents.manager import AgentManager
 from octop.infra.agents.plugins.manager import PluginManager
 from octop.infra.agents.subagents.catalog import SubagentCatalog, default_package_root
+from octop.infra.control.mobile.config_probe import ensure_mobile_capabilities_probed
 from octop.infra.cron.manager import CronManager
 from octop.infra.db.factory import open_database, should_defer_control_plane_db
 from octop.infra.db.migrate import run_migrations
 from octop.infra.db.services import SharedServices, build_shared_services
 from octop.infra.gateway.gateway import Gateway
-from octop.infra.mobile.config_probe import ensure_mobile_capabilities_probed
 from octop.infra.proactive.scheduler import ProactiveCareScheduler
 from octop.infra.proactive.service import ProactiveCareService
 from octop.infra.setup import password_file as _wizard_pw
@@ -608,7 +608,11 @@ class OctopServer:
         await user_mgr.boot()
         await proactive_scheduler.start_all()
 
-        from octop.infra.auth.tokens import sign_token
+        from octop.infra.auth.mfa import MfaService
+
+        MfaService(self.services).prune()
+
+        from octop.infra.auth.tokens import PURPOSE_ACCESS, sign_token
         from octop.infra.bridge.manager import BridgeManager, public_base_url_from_config
 
         services = self.services
@@ -620,12 +624,18 @@ class OctopServer:
             if secret is None:
                 raise RuntimeError("jwt secret missing")
             ttl = services.config.access_token_ttl_seconds
+            row = services.user_repo.get(int(user.id))
+            mfa_version = int(row.mfa_version) if row is not None else 0
+            password_version = int(row.password_version) if row is not None else 0
             return sign_token(
                 secret,
                 sub=int(user.id),
                 uname=str(user.username),
                 role=str(user.role),
+                purpose=PURPOSE_ACCESS,
                 ttl_seconds=ttl,
+                mfa_version=mfa_version,
+                password_version=password_version,
             )
 
         advertise = public_base_url_from_config(config.bind_host, config.port)

@@ -14,6 +14,7 @@ import obsidianCli from "./obsidian-cli.svg";
 import openalex from "./openalex.svg";
 import openDesign from "./open-design.svg";
 import qcc from "./qcc.png";
+import ragflow from "./ragflow.svg";
 import qqMail from "./qq-mail.png";
 import qqMusic from "./qq-music.png";
 import tencentDocs from "./tencent-docs.png";
@@ -52,6 +53,7 @@ export const CONNECTOR_LOGOS: Record<string, string> = {
   openalex,
   "open-design": openDesign,
   qcc,
+  ragflow,
   dida365: dida365,
   dify,
   "tencent-news": tencentNews,

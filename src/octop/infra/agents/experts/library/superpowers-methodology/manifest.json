@@ -1,5 +1,6 @@
 {
   "id": "superpowers-methodology",
+  "scene": "education",
   "label": {
     "zh": "AI 工程方法论教练",
     "en": "AI Engineering Methodology Coach"
@@ -20,35 +21,19 @@
   "quick_prompts": [
     {
       "title": {
-        "zh": "先写失败测试",
-        "en": "Write a failing test first"
+        "zh": "先界定问题",
+        "en": "Define the problem"
       },
       "description": {
-        "zh": "用 TDD 方式开始一个功能",
-        "en": "Start a feature test-first (TDD)"
+        "zh": "先说清要解决什么、怎样算完成",
+        "en": "State the problem and what done looks like"
       },
       "prompt": {
-        "zh": "请按测试驱动开发（TDD）的方式帮我把这个功能落地：先写会失败的测试，再写最小实现让它通过，最后重构。",
-        "en": "Help me build this feature test-first: write a failing test, then minimal implementation, then refactor."
+        "zh": "先不要写代码。请帮我把这个问题界定清楚：要解决什么、成功长什么样、边界和约束是什么。不确定的地方列出来问我。",
+        "en": "Don't write code yet. Define the problem: what to solve, what success looks like, and the constraints. List what you still need to ask."
       },
-      "color": "#ede9fe",
-      "icon_name": "flask-conical"
-    },
-    {
-      "title": {
-        "zh": "系统化调试",
-        "en": "Systematic debugging"
-      },
-      "description": {
-        "zh": "遇到 bug 先诊断再修",
-        "en": "Diagnose before fixing a bug"
-      },
-      "prompt": {
-        "zh": "这个功能出 bug 了。请按系统化调试：先建立可观察的失败复现，提出假设，用最小实验逐一排除，定位根因后再修，不要盲目改代码。",
-        "en": "Debug systematically: reproduce, hypothesize, isolate, then fix — no blind edits."
-      },
-      "color": "#fef3c7",
-      "icon_name": "bug"
+      "color": "#e8f4ff",
+      "icon_name": "message-square"
     },
     {
       "title": {
@@ -56,15 +41,79 @@
         "en": "Write an implementation plan"
       },
       "description": {
-        "zh": "多步骤任务先写计划",
+        "zh": "多步骤任务先写计划再动手",
         "en": "Write a plan before a multi-step task"
       },
       "prompt": {
         "zh": "这是一个多步骤任务，请先写一份实现计划（目标、步骤、每步验收点、风险），确认后再动手。",
         "en": "Write an implementation plan with checkpoints before coding."
       },
-      "color": "#dbeafe",
-      "icon_name": "list"
+      "color": "#dcfce7",
+      "icon_name": "list-todo"
+    },
+    {
+      "title": {
+        "zh": "先写失败测试",
+        "en": "Write a failing test"
+      },
+      "description": {
+        "zh": "用测试驱动的方式开始一个功能",
+        "en": "Start a feature with a failing test"
+      },
+      "prompt": {
+        "zh": "请按测试驱动开发（TDD）的方式帮我把这个功能落地：先写会失败的测试，再写最小实现让它通过，最后重构。",
+        "en": "Help me build this feature test-first: write a failing test, then minimal implementation, then refactor."
+      },
+      "color": "#fef3c7",
+      "icon_name": "activity"
+    },
+    {
+      "title": {
+        "zh": "系统化调试",
+        "en": "Debug systematically"
+      },
+      "description": {
+        "zh": "先复现和排除假设，再改代码",
+        "en": "Reproduce and test hypotheses before editing"
+      },
+      "prompt": {
+        "zh": "这个功能出 bug 了。请按系统化调试：先建立可观察的失败复现，提出假设，用最小实验逐一排除，定位根因后再修，不要盲目改代码。",
+        "en": "Debug systematically: reproduce, hypothesize, isolate, then fix — no blind edits."
+      },
+      "color": "#f3e8ff",
+      "icon_name": "terminal"
+    },
+    {
+      "title": {
+        "zh": "做代码审查",
+        "en": "Request a review"
+      },
+      "description": {
+        "zh": "合并前按清单自查，并逐条回应意见",
+        "en": "Self-check before merge and answer each comment"
+      },
+      "prompt": {
+        "zh": "请按代码审查清单看这份改动：正确性、边界、错误处理、可维护性、测试覆盖。先列问题，再给出要改的地方。",
+        "en": "Review this change for correctness, edge cases, error handling, maintainability, and test coverage. List the issues, then the changes to make."
+      },
+      "color": "#eef2ff",
+      "icon_name": "shield-check"
+    },
+    {
+      "title": {
+        "zh": "完成前验证",
+        "en": "Verify before done"
+      },
+      "description": {
+        "zh": "没有测试或命令证据就不算完成",
+        "en": "Don't call it done without test or command evidence"
+      },
+      "prompt": {
+        "zh": "请在声称完成之前做验证：测试是否通过、关键命令是否真的跑过。把证据贴出来；没有证据就不要说已经完成。",
+        "en": "Before calling this done, verify it: did the tests pass, and did the key commands actually run? Show the evidence."
+      },
+      "color": "#fdf4e7",
+      "icon_name": "rocket"
     }
   ],
   "task_examples": {

@@ -1,5 +1,6 @@
 {
   "id": "design",
+  "scene": "design",
   "label": {
     "zh": "设计专家",
     "en": "Design Expert"
@@ -50,8 +51,8 @@
     },
     {
       "title": {
-        "zh": "UX 文案",
-        "en": "UX copy"
+        "zh": "界面文案",
+        "en": "Write UX copy"
       },
       "description": {
         "zh": "错误提示、空状态与引导流程",
@@ -61,8 +62,8 @@
         "zh": "为支付流程的错误提示写一组 UX 文案，给出语气建议和备选方案",
         "en": "Write UX copy for payment-flow error messages, with tone guidance and alternatives"
       },
-      "color": "#f3e8ff",
-      "icon_name": "palette"
+      "color": "#e8f4ff",
+      "icon_name": "pen-tool"
     },
     {
       "title": {
@@ -77,8 +78,56 @@
         "zh": "把这份设计整理成开发交接文档：尺寸、tokens、状态、交互与边界情况",
         "en": "Turn this design into a developer handoff spec: measurements, tokens, states, and edge cases"
       },
-      "color": "#f3e8ff",
-      "icon_name": "palette"
+      "color": "#dcfce7",
+      "icon_name": "file-text"
+    },
+    {
+      "title": {
+        "zh": "无障碍审查",
+        "en": "Accessibility review"
+      },
+      "description": {
+        "zh": "对照 WCAG 检查对比度、键盘和读屏",
+        "en": "Check contrast, keyboard use, and screen readers"
+      },
+      "prompt": {
+        "zh": "请按 WCAG 2.1 AA 审查这个页面的无障碍：对比度、键盘操作、触控目标和读屏体验，并给出修复步骤。",
+        "en": "Audit this page for WCAG 2.1 AA: contrast, keyboard use, touch targets, and screen-reader behavior, with a fix for each issue."
+      },
+      "color": "#fef3c7",
+      "icon_name": "shield-check"
+    },
+    {
+      "title": {
+        "zh": "设计系统",
+        "en": "Design system audit"
+      },
+      "description": {
+        "zh": "检查命名、token 和组件是否一致",
+        "en": "Check naming, tokens, and component consistency"
+      },
+      "prompt": {
+        "zh": "请审查这套设计系统：命名是否一致、有没有写死的色值，并补一份组件变体、状态和无障碍说明。",
+        "en": "Audit this design system for naming drift and hardcoded values, then document component variants, states, and accessibility notes."
+      },
+      "color": "#eef2ff",
+      "icon_name": "fingerprint"
+    },
+    {
+      "title": {
+        "zh": "用户研究",
+        "en": "User research"
+      },
+      "description": {
+        "zh": "访谈提纲、可用性测试或结果综合",
+        "en": "An interview guide, usability test, or synthesis"
+      },
+      "prompt": {
+        "zh": "请帮我设计一次用户研究：目标用户、要回答的问题、访谈提纲，以及结果怎么归纳成可执行建议。",
+        "en": "Plan a user-research study: who to talk to, which questions to answer, an interview guide, and how to turn results into next steps."
+      },
+      "color": "#fdf4e7",
+      "icon_name": "users"
     }
   ],
   "source": {

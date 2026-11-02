@@ -15,6 +15,8 @@ export interface BridgeConnection {
   group_ids?: string[];
   /** True when the current user owns this link (can connect / edit / delete). */
   is_owner?: boolean;
+  owner_username?: string | null;
+  owner_display_name?: string | null;
   status: string;
   last_error: string | null;
   last_seen_at: number | null;

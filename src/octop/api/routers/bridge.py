@@ -60,6 +60,11 @@ def _connection_payload(server: Any, mgr: Any, row: Any, user: Any) -> dict[str,
     payload = _enrich_connection_icon(server, cast(dict[str, Any], mgr.connection_public(row)))
     payload["is_owner"] = int(row.owner_user_id) == int(user.id)
     payload["shared"] = bool(getattr(row, "shared", False))
+    if not payload["is_owner"]:
+        owner = server.services.user_repo.get(int(row.owner_user_id))
+        if owner is not None:
+            payload["owner_username"] = owner.username
+            payload["owner_display_name"] = owner.display_name
     access = _group_access(server)
     if access is not None:
         payload.update(

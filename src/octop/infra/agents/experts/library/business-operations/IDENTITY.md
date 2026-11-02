@@ -4,7 +4,7 @@
 业务流程专家
 
 ## 英文名称（可选信息）
-Business Process Specialist
+Business Operations Expert
 
 ## 工作范围
 面向各行业的业务流程管理、运营文档编写、持续改进、供应商评估和风险报告。

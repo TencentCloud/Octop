@@ -187,6 +187,19 @@ class BridgeConnectionRepo:
             ).fetchall()
         return map_rows(rows, BridgeConnectionRow)
 
+    def get_visible(self, connection_id: str, user_id: int) -> BridgeConnectionRow | None:
+        """One connection the user owns or may use because it was shared."""
+        with self._db.connect() as conn:
+            clause = group_visibility_sql(RESOURCE_BRIDGE, "b.connection_id")
+            row = conn.execute(
+                "SELECT b.* FROM bridge_connections b "
+                "WHERE b.connection_id = ? "
+                "AND (b.owner_user_id = ? OR b.shared = 1) "
+                f"AND (b.owner_user_id = ? OR {clause}) ",
+                (connection_id, user_id, user_id, user_id),
+            ).fetchone()
+        return BridgeConnectionRow.from_row(row) if row else None
+
     def set_shared(self, connection_id: str, shared: bool) -> BridgeConnectionRow | None:
         ts = now_ts()
         with self._db.transaction() as conn:

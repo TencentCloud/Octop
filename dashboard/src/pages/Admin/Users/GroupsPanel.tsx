@@ -80,6 +80,7 @@ function accessTags(access: GroupAccessSummary | undefined): GroupAccessItem[] {
     ...groupGrantedItems(access.skill_packages),
     ...groupGrantedItems(access.knowledge_bases),
     ...groupGrantedItems(access.bridges ?? []),
+    ...groupGrantedItems(access.experts ?? []),
   ];
 }
 
@@ -150,6 +151,11 @@ function AccessSummary({ access }: { access?: GroupAccessSummary }) {
       label: t("adminUsers.groupAccessBridges"),
       value: summarizeLabels(access?.bridges ?? []),
     },
+    {
+      key: "experts",
+      label: t("adminUsers.groupAccessExperts"),
+      value: summarizeLabels(access?.experts ?? []),
+    },
   ].filter((row) => row.value);
 
   if (rows.length === 0) {
@@ -213,6 +219,11 @@ function AccessDetail({ access }: { access?: GroupAccessSummary }) {
       key: "bridges",
       title: t("adminUsers.groupAccessBridges"),
       items: groupGrantedItems(access?.bridges ?? []),
+    },
+    {
+      key: "experts",
+      title: t("adminUsers.groupAccessExperts"),
+      items: groupGrantedItems(access?.experts ?? []),
     },
   ].filter((section) => section.items.length > 0);
 

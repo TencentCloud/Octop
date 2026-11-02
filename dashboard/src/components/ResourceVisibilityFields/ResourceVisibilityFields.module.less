@@ -2,9 +2,27 @@
   display: flex;
   flex-direction: column;
   align-items: stretch;
+  align-self: flex-start;
   gap: 8px;
   width: 100%;
   min-width: 0;
+  /* Keep the radio row put when the group select mounts. */
+  overflow-anchor: none;
+}
+
+/* Form.Item centers a short control in its min-height. Selecting groups
+   then snaps that row upward. Pin the radios to the top and let the
+   select grow downward at the same width. */
+.formItem {
+  :global(.ant-form-item-control-input),
+  :global(.octop-form-item-control-input) {
+    align-items: flex-start;
+  }
+
+  :global(.ant-form-item-control-input-content),
+  :global(.octop-form-item-control-input-content) {
+    width: 100%;
+  }
 }
 
 .radio {

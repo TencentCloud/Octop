@@ -1,5 +1,6 @@
 {
   "id": "cvm-ai-doctor",
+  "scene": "tech",
   "label": {
     "zh": "系统医生",
     "en": "System Doctor"

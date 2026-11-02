@@ -84,7 +84,14 @@ import { showConfirmModal } from "../../utils/confirmModal";
 import { saveBlobAsFile } from "../../utils/saveBlobAsFile";
 import { createDetailRequestGate } from "../../utils/detailRequestGate";
 import { PackageIcon } from "./PackageIcon";
-import { ResourceVisibilityFields } from "../../components/ResourceVisibilityFields";
+import {
+  ResourceVisibilityFields,
+  ResourceVisibilityGate,
+} from "../../components/ResourceVisibilityFields";
+import {
+  SharedAvatarMark,
+  SharedResourceBadge,
+} from "../../components/SharedResourceBadge";
 import type { ResourceVisibilityMode } from "../../api/modules/userGroups";
 import { PackageSkillCard } from "./PackageSkillCard";
 import PackageSkillsTable from "./PackageSkillsTable";
@@ -120,6 +127,13 @@ function canMutatePackage(
   return Boolean(
     user && (user.role === "admin" || item.created_by === String(user.id)),
   );
+}
+
+function isPackageOwner(
+  item: Pick<SkillPackage, "created_by">,
+  user: OctopUser | null,
+): boolean {
+  return Boolean(user && item.created_by === String(user.id));
 }
 
 function formatPackageCreator(
@@ -720,24 +734,30 @@ export default function SkillPackagesPage() {
                         }`}
                       >
                         <div className={styles.listName}>
-                          <span className={styles.listIcon}>
-                            <PackageIcon
-                              iconUrl={item.icon_url}
-                              iconName={item.icon_name}
-                              size={24}
-                              imageClassName={styles.listIconImage}
-                            />
-                          </span>
+                          <SharedAvatarMark
+                            shared={item.shared}
+                            owned={isPackageOwner(item, user)}
+                            ownerName={formatPackageCreator(item)}
+                          >
+                            <span className={styles.listIcon}>
+                              <PackageIcon
+                                iconUrl={item.icon_url}
+                                iconName={item.icon_name}
+                                size={24}
+                                imageClassName={styles.listIconImage}
+                              />
+                            </span>
+                          </SharedAvatarMark>
                           <Tooltip title={item.name} placement="topLeft">
                             <span className={styles.listNameText}>
                               {item.name}
                             </span>
                           </Tooltip>
-                          {item.shared ? (
-                            <span className={styles.sharedBadge}>
-                              {t("skillPackages.sharedBadge")}
-                            </span>
-                          ) : null}
+                          <SharedResourceBadge
+                            shared={item.shared && isPackageOwner(item, user)}
+                            owned
+                            ownerName={formatPackageCreator(item)}
+                          />
                           <div
                             className={styles.listId}
                             onClick={(event) => event.stopPropagation()}
@@ -1202,29 +1222,31 @@ export default function SkillPackagesPage() {
           >
             <Switch />
           </Form.Item>
-          <div className={styles.formOptions}>
-            <div className={styles.formOptionRowVisibility}>
-              <div className={styles.formOptionCopy}>
-                <span className={styles.switchLabel}>
-                  {t("resourceVisibility.label")}
-                </span>
-                <span className={styles.formOptionHint}>
-                  {t("skillPackages.visibilityHint")}
-                </span>
+          <ResourceVisibilityGate allowOwner visibility={packageVisibility}>
+            <div className={styles.formOptions}>
+              <div className={styles.formOptionRowVisibility}>
+                <div className={styles.formOptionCopy}>
+                  <span className={styles.switchLabel}>
+                    {t("resourceVisibility.label")}
+                  </span>
+                  <span className={styles.formOptionHint}>
+                    {t("skillPackages.visibilityHint")}
+                  </span>
+                </div>
+                <ResourceVisibilityFields
+                  allowOwner
+                  visibility={packageVisibility}
+                  groupIds={packageGroupIds}
+                  onChange={(next) => {
+                    setPackageVisibility(next.visibility);
+                    setPackageGroupIds(
+                      next.visibility === "groups" ? next.groupIds : [],
+                    );
+                  }}
+                />
               </div>
-              <ResourceVisibilityFields
-                allowOwner
-                visibility={packageVisibility}
-                groupIds={packageGroupIds}
-                onChange={(next) => {
-                  setPackageVisibility(next.visibility);
-                  setPackageGroupIds(
-                    next.visibility === "groups" ? next.groupIds : [],
-                  );
-                }}
-              />
             </div>
-          </div>
+          </ResourceVisibilityGate>
         </Form>
       </Drawer>
 

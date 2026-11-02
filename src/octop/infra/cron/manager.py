@@ -203,8 +203,15 @@ class CronManager:
             existing = self._repos.cron_repo.get(cron_id)
             if existing is None:
                 raise OctopError(ErrorCode.NOT_FOUND, f"cron job {cron_id!r} not found")
-            if trigger is not None or enabled_bool is True:
-                self._mail_source(trigger or existing.trigger, existing.user_id)
+            trigger_changed = trigger is not None and trigger != existing.trigger
+            enabled_changed = enabled_bool is not None and enabled_bool != bool(existing.enabled)
+            # Validate a new trigger, or a mailbox, before persisting. Echoing the
+            # current trigger on a rename must not re-check authorization.
+            if trigger_changed or (enabled_bool is True and not existing.enabled):
+                self._mail_source(
+                    trigger if trigger is not None else existing.trigger,
+                    existing.user_id,
+                )
             repo_kwargs: dict[str, Any] = {
                 "trigger": trigger,
                 "name": name,
@@ -226,14 +233,45 @@ class CronManager:
             row = self._repos.cron_repo.get(cron_id)
             if row is None:
                 raise OctopError(ErrorCode.NOT_FOUND, f"cron job {cron_id!r} not found")
-            await self._unschedule(cron_id)
-            if row.enabled:
-                self._schedule(row)
-                row = self._repos.cron_repo.get(cron_id)
-                if row is None:
-                    raise OctopError(ErrorCode.NOT_FOUND, f"cron job {cron_id!r} not found")
+            if self._schedule_needs_rebuild(
+                existing,
+                row,
+                trigger_changed=trigger_changed,
+                enabled_changed=enabled_changed,
+            ):
+                await self._unschedule(cron_id)
+                if row.enabled:
+                    self._schedule(row)
+                    row = self._repos.cron_repo.get(cron_id)
+                    if row is None:
+                        raise OctopError(ErrorCode.NOT_FOUND, f"cron job {cron_id!r} not found")
             logger.info("CronJob %s updated", cron_id)
             return row
+
+    def _schedule_needs_rebuild(
+        self,
+        existing: Any,
+        row: Any,
+        *,
+        trigger_changed: bool,
+        enabled_changed: bool,
+    ) -> bool:
+        """Whether this update must drop and recreate the pending run.
+
+        Name, prompt, model, and session edits keep an interval's deadline.
+        A trigger or enabled change rebuilds it. An enabled job that is missing
+        from the scheduler (or its mail watch) is attached again.
+        """
+        if not row.enabled:
+            return bool(existing.enabled)
+        if trigger_changed or enabled_changed:
+            return True
+        return not self._schedule_is_attached(row)
+
+    def _schedule_is_attached(self, row: Any) -> bool:
+        if str(row.trigger).startswith("agently:"):
+            return self._mail_watch.has_job(row.cron_id)
+        return self._scheduler.get_job(row.cron_id) is not None
 
     async def delete(self, cron_id: str) -> None:
         async with self._lock:

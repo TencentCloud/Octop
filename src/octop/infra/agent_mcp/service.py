@@ -225,9 +225,15 @@ class AgentMcpGatewayService:
             raise OctopError(ErrorCode.AGENT_NOT_RUNNING, "expert is disabled")
         return row
 
-    @staticmethod
-    def _can_access(row: Any, user: User) -> bool:
-        return bool(user.is_admin or row.user_id == user.id or row.is_shared)
+    def _can_access(self, row: Any, user: User) -> bool:
+        from octop.infra.users.groups import expert_visible_to  # noqa: PLC0415
+
+        return expert_visible_to(
+            self._agent_manager._repos,
+            row,
+            user_id=user.id,
+            is_admin=bool(user.is_admin),
+        )
 
     @staticmethod
     def _validate_message(message: str) -> str:

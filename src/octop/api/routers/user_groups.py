@@ -1,6 +1,6 @@
 """User groups.
 
-Membership changes require the users permission. Listing group names is also
+Membership changes require the user_groups permission. Listing group names is also
 open to people who can edit a resource that has a visibility picker.
 """
 
@@ -62,6 +62,11 @@ class UserGroupPatchBody(BaseModel):
 
 class ReplaceMembersBody(BaseModel):
     user_ids: list[int] = Field(default_factory=list)
+
+
+class SharingAudienceResponse(BaseModel):
+    user_count: int = Field(description="Enabled accounts that can sign in.")
+    group_count: int = Field(description="User groups, including disabled ones.")
 
 
 def _clean_name(raw: str) -> str:
@@ -157,6 +162,21 @@ def _require_group(server: Any, user_group_id: str) -> Any:
     return row
 
 
+@router.get("/audience", summary="Counts for the who-can-use picker")
+async def sharing_audience(
+    server: Any = Depends(get_server),
+    _: User = Depends(current_user),
+) -> SharingAudienceResponse:
+    """Enabled-account and user-group counts.
+
+    Any signed-in user may call this. The dashboard hides the picker when
+    there is a single account, and hides the user-group choice when none exist.
+    """
+    users = server.user_manager.list_all(include_disabled=False)
+    groups = server.services.repos.user_group_repo.list_all()
+    return SharingAudienceResponse(user_count=len(users), group_count=len(groups))
+
+
 @router.get("", summary="List user groups")
 async def list_user_groups(
     server: Any = Depends(get_server),
@@ -181,7 +201,7 @@ async def list_user_groups(
 async def create_user_group(
     body: UserGroupBody,
     server: Any = Depends(get_server),
-    _: User = Depends(require_permission("users")),
+    _: User = Depends(require_permission("user_groups")),
 ) -> dict[str, Any]:
     group_id = _clean_user_group_id(body.user_group_id)
     if group_id and server.services.repos.user_group_repo.get(group_id) is not None:
@@ -211,7 +231,7 @@ async def update_user_group(
     user_group_id: str,
     body: UserGroupPatchBody,
     server: Any = Depends(get_server),
-    _: User = Depends(require_permission("users")),
+    _: User = Depends(require_permission("user_groups")),
 ) -> dict[str, Any]:
     _require_group(server, user_group_id)
     fields = body.model_fields_set
@@ -242,7 +262,7 @@ async def update_user_group(
 async def delete_user_group(
     user_group_id: str,
     server: Any = Depends(get_server),
-    _: User = Depends(require_permission("users")),
+    _: User = Depends(require_permission("user_groups")),
 ) -> None:
     if not server.services.repos.user_group_repo.delete(user_group_id):
         raise OctopError(ErrorCode.NOT_FOUND, "user group not found")
@@ -253,7 +273,7 @@ async def delete_user_group(
 async def list_members(
     user_group_id: str,
     server: Any = Depends(get_server),
-    _: User = Depends(require_permission("users")),
+    _: User = Depends(require_permission("user_groups")),
 ) -> dict[str, list[int]]:
     _require_group(server, user_group_id)
     return {
@@ -266,7 +286,7 @@ async def replace_members(
     user_group_id: str,
     body: ReplaceMembersBody,
     server: Any = Depends(get_server),
-    _: User = Depends(require_permission("users")),
+    _: User = Depends(require_permission("user_groups")),
 ) -> dict[str, list[int]]:
     _require_group(server, user_group_id)
     user_ids: list[int] = []
@@ -287,7 +307,7 @@ async def upload_group_avatar(
     user_group_id: str,
     file: UploadFile = File(...),  # noqa: B008
     server: Any = Depends(get_server),
-    _: User = Depends(require_permission("users")),
+    _: User = Depends(require_permission("user_groups")),
 ) -> dict[str, str | None]:
     _require_group(server, user_group_id)
     write_profile_avatar(
@@ -316,7 +336,7 @@ async def get_group_avatar(
 async def delete_group_avatar(
     user_group_id: str,
     server: Any = Depends(get_server),
-    _: User = Depends(require_permission("users")),
+    _: User = Depends(require_permission("user_groups")),
 ) -> None:
     _require_group(server, user_group_id)
     delete_profile_avatar(server.services.paths.group_avatars_dir, user_group_id)
