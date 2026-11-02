@@ -963,6 +963,8 @@ export default function ExpertsPage() {
     <PageShell.FillTabs
       title={t("pageShell.experts.title")}
       subtitle={t("pageShell.experts.subtitle")}
+      /* Tab bar's own 12px top padding + this 12px gap = the 24px spec gap. */
+      titleGap={12}
     >
       <Tabs
         activeKey={activeTab}

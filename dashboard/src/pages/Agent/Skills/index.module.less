@@ -65,19 +65,51 @@
 }
 
 // Reusable tabbed surface — fills its container (page body or drawer body).
+// Uses antd Tabs pinned nav + scrolling pane, same layout as the Experts page.
 .skillsTabs {
   display: flex;
   flex-direction: column;
   flex: 1;
   min-height: 0;
+
+  :global(.octop-tabs),
+  :global(.ant-tabs) {
+    flex: 1;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+  }
+
+  :global(.octop-tabs-nav),
+  :global(.ant-tabs-nav) {
+    flex-shrink: 0;
+    margin-bottom: 12px;
+  }
+
+  :global(.octop-tabs-content-holder),
+  :global(.ant-tabs-content-holder) {
+    flex: 1;
+    min-height: 0;
+    overflow: auto;
+    /* Keep card tops / hover translateY inside the scrollport. */
+    padding-right: 12px;
+  }
+
+  :global(.octop-tabs-content),
+  :global(.ant-tabs-content) {
+    height: 100% !important;
+  }
+
+  @media (max-width: 767px) {
+    :global(.octop-tabs-content-holder),
+    :global(.ant-tabs-content-holder) {
+      padding-right: 0;
+    }
+  }
 }
 
 .skillsTabsContent {
-  flex: 1;
-  min-height: 0;
-  overflow: auto;
   padding-top: 6px;
-  padding-right: 12px;
 
   @media (max-width: 767px) {
     padding-right: 0;
@@ -275,15 +307,16 @@
   padding: 6px 14px;
   font-size: 13px;
   font-weight: 500;
-  border: 1px solid var(--fn-color-brand);
+  /* Neutral outline, same tokens as the Experts page toolbar buttons. */
+  border: 1px solid var(--fn-btn-outline-border);
   background: transparent;
-  color: var(--fn-color-brand);
+  color: var(--fn-btn-outline-text);
   border-radius: var(--fn-radius-md);
   cursor: pointer;
   transition: background 0.15s;
 
   &:hover {
-    background: var(--fn-color-brand-light, #e6f4ff);
+    background: var(--fn-btn-outline-bg-hover);
   }
 
   &:disabled {

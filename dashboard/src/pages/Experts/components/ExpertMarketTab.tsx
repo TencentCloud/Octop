@@ -285,7 +285,10 @@ export default function ExpertMarketTab({
                     className={styles.agentCardIcon}
                     style={{
                       color: accent,
-                      background: `${accent}18`,
+                      background: "transparent",
+                      width: 32,
+                      height: 32,
+                      borderRadius: 6,
                     }}
                   >
                     {expert.icon_url ? (
@@ -325,7 +328,6 @@ export default function ExpertMarketTab({
                     size="small"
                     type="primary"
                     className={styles.marketCreateBtn}
-                    icon={<Download size={14} />}
                     onClick={(e) => {
                       e.stopPropagation();
                       openCreate(expert);

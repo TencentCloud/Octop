@@ -2465,6 +2465,7 @@ export default function ConnectorsPage() {
       subtitle={t("pageShell.connectors.subtitle")}
       tabBar={
         <TabBar
+          plain
           tabs={visibleConnectorTabs}
           activeKey={resolvedConnectorTab}
           onChange={(key) => {

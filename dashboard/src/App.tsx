@@ -124,9 +124,10 @@ function ThemedApp() {
             primaryShadow: "none",
           },
           Tabs: {
-            itemSelectedColor: "#ffffff",
-            itemHoverColor: "#ffffff",
-            itemActiveColor: "#ffffff",
+            itemColor: "rgba(255, 255, 255, 0.7)",
+            itemSelectedColor: "rgba(255, 255, 255, 0.9)",
+            itemHoverColor: "rgba(255, 255, 255, 0.9)",
+            itemActiveColor: "rgba(255, 255, 255, 0.9)",
             inkBarColor: "#ffffff",
           },
         }
@@ -138,6 +139,7 @@ function ThemedApp() {
             primaryShadow: "none",
           },
           Tabs: {
+            itemColor: "rgba(0, 0, 0, 0.7)",
             itemSelectedColor: "rgba(0, 0, 0, 0.9)",
             itemHoverColor: "rgba(0, 0, 0, 0.9)",
             itemActiveColor: "rgba(0, 0, 0, 0.9)",

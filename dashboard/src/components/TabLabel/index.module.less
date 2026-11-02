@@ -27,14 +27,70 @@
   }
 }
 
+/**
+ * Plain text tab bar — mirrors the antd Tabs styling used on the Experts page
+ * (secondary text, rgba(0,0,0,0.9) selected, black ink bar via
+ * --fn-text-primary which flips to white in dark mode).
+ */
+.tabBarPlain {
+  display: flex;
+  flex-shrink: 0;
+  margin-bottom: 12px;
+  border-bottom: 1px solid var(--fn-border-secondary);
+  /* Do not clip on desktop: the active tab's 2px underline intentionally
+     overflows the container by 1px to sit over the separator line. */
+  overflow: visible;
+
+  @media (max-width: 767px) {
+    overflow-x: auto;
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+
+    &::-webkit-scrollbar {
+      display: none;
+    }
+  }
+}
+
+.tabPlain {
+  padding: 12px 0;
+  margin-right: 32px;
+  margin-bottom: -1px;
+  border: none;
+  border-bottom: 2px solid transparent;
+  background: transparent;
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 400;
+  color: var(--fn-tab-text);
+  white-space: nowrap;
+  transition: color 0.2s;
+
+  &:hover {
+    color: var(--fn-tab-text-active);
+  }
+
+  &.active {
+    color: var(--fn-tab-text-active);
+    border-bottom-color: var(--fn-tab-ink);
+    font-weight: 600;
+  }
+
+  &:focus-visible {
+    outline: 2px solid var(--fn-color-brand);
+    outline-offset: -2px;
+    border-radius: 4px;
+  }
+}
+
 .tab {
   padding: 8px 16px;
   border: none;
   background: transparent;
   cursor: pointer;
   font-size: 14px;
-  font-weight: 500;
-  color: var(--fn-text-tertiary);
+  font-weight: 400;
+  color: var(--fn-tab-text);
   border-bottom: 2px solid transparent;
   transition: all var(--fn-transition-fast);
   margin-bottom: -1px;
@@ -43,12 +99,13 @@
   align-items: center;
 
   &:hover {
-    color: var(--fn-text-primary);
+    color: var(--fn-tab-text-active);
   }
 
   &.active {
-    color: var(--fn-color-brand);
+    color: var(--fn-tab-text-active);
     border-bottom-color: var(--fn-color-brand);
+    font-weight: 600;
   }
 
   &:focus-visible {

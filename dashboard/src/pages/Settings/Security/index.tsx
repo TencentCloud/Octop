@@ -417,7 +417,12 @@ export default function SecuritySettingsPage() {
       title={t("pageShell.security.title")}
       subtitle={t("pageShell.security.subtitle")}
       tabBar={
-        <TabBar tabs={allowedTabs} activeKey={activeTab} onChange={selectTab} />
+        <TabBar
+          plain
+          tabs={allowedTabs}
+          activeKey={activeTab}
+          onChange={selectTab}
+        />
       }
     >
       {activeTab === "audit" ? (

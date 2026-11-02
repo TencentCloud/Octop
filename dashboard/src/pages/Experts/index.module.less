@@ -1102,8 +1102,8 @@
 
 .marketIconImg {
   display: block;
-  width: 22px;
-  height: 22px;
+  width: 32px;
+  height: 32px;
   object-fit: contain;
 }
 
@@ -1111,13 +1111,23 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 10px;
-  margin-top: auto;
+  gap: 16px;
+  /* 通栏贴卡片左右/底部边缘（卡片内边距为 20px） */
+  margin: auto -20px -20px;
+  padding: 0 20px;
+  min-height: 48px;
   min-width: 0;
+  background: var(--fn-bg-quaternary);
+  border-top: 1px solid var(--fn-border-subtle);
+  border-radius: 0 0 calc(var(--fn-radius-lg) - 1px)
+    calc(var(--fn-radius-lg) - 1px);
 
   @media (max-width: 640px) {
     align-items: stretch;
     flex-direction: column;
+    padding: 10px 20px;
+    gap: 10px;
+    min-height: 0;
   }
 }
 
@@ -2043,15 +2053,20 @@
 
 .marketCreateBtn {
   &.marketCreateBtn:global(.octop-btn-primary) {
+    flex-shrink: 0;
     color: var(--fn-btn-outline-text);
-    background: var(--fn-btn-outline-bg);
-    border: 1px solid var(--fn-btn-outline-border);
+    font-size: 12px;
+    background: var(--fn-bg-elevated);
+    border: 1px solid var(--fn-border-subtle);
+    border-radius: var(--fn-radius-md);
     box-shadow: none;
+    height: 32px;
+    padding: 0 16px;
 
     &:not(:disabled):not(:global(.octop-btn-disabled)):hover {
       color: var(--fn-btn-outline-text);
-      background: var(--fn-btn-outline-bg-hover);
-      border-color: var(--fn-btn-outline-border);
+      background: var(--fn-bg-elevated);
+      border-color: var(--fn-border-primary);
     }
   }
 }

@@ -44,6 +44,11 @@ html[data-theme="light"] {
   --fn-text-secondary: #4b5563;
   --fn-text-tertiary: #9ca3af;
   --fn-text-quaternary: #d1d5db;
+  /* Tab labels: idle / selected (spec: #000 70% / #000 90%) */
+  --fn-tab-text: rgba(0, 0, 0, 0.7);
+  --fn-tab-text-active: rgba(0, 0, 0, 0.9);
+  /* Tab ink bar / active underline (matches antd inkBarColor) */
+  --fn-tab-ink: #000000;
   --fn-text-placeholder: #c0c5ce;
   --fn-text-disabled: #d1d5db;
   --fn-text-inverse: #ffffff;
@@ -239,6 +244,10 @@ html[data-theme="dark"] {
   --fn-text-secondary: rgba(255, 255, 255, 0.6);
   --fn-text-tertiary: rgba(255, 255, 255, 0.35);
   --fn-text-quaternary: rgba(255, 255, 255, 0.2);
+  /* Tab labels: idle / selected (dark counterparts of the light spec) */
+  --fn-tab-text: rgba(255, 255, 255, 0.7);
+  --fn-tab-text-active: rgba(255, 255, 255, 0.9);
+  --fn-tab-ink: #ffffff;
   --fn-text-placeholder: rgba(255, 255, 255, 0.16);
   --fn-text-disabled: rgba(255, 255, 255, 0.16);
   --fn-text-inverse: #0e0e0e;
