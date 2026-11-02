@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import json
 import os
+import platform
 import shutil
 import subprocess
 import time
@@ -16,6 +17,8 @@ from collections.abc import Iterator
 from typing import Any
 
 import pytest
+
+from tests.unit.test_docker_image_arch import native_import_failed, normalized_cpu_arch
 
 IMAGE = os.environ.get("OCTOP_TEST_IMAGE", "octop:test")
 READY_TIMEOUT_S = 180
@@ -122,6 +125,7 @@ def docker_boot() -> Iterator[Any]:
             "OCTOP_PORT=8088",
             "-e",
             "OCTOP_LOG_LEVEL=warning",
+            "--shm-size=1g",
             "-v",
             f"{volume}:/data/.octop",
         ]
@@ -137,11 +141,22 @@ def docker_boot() -> Iterator[Any]:
             if status == 200:
                 return {"name": name, "volume": volume}
             last_error = f"health={status} {payload}"
-            inspect = _run(["docker", "inspect", "-f", "{{.State.Status}}", name])
-            if inspect.stdout.strip() not in {"running", "created"}:
+            inspect = _run(
+                ["docker", "inspect", "-f", "{{.State.Status}} {{.State.ExitCode}}", name]
+            )
+            state_text = inspect.stdout.strip()
+            state, _, exit_code = state_text.partition(" ")
+            if state not in {"running", "created"}:
                 logs = _run(["docker", "logs", name], timeout=20)
+                hint = ""
+                if exit_code == "132" or "Illegal instruction" in (logs.stdout + logs.stderr):
+                    hint = (
+                        " ExitCode 132 is SIGILL. On ARM (including FnOS in a VM) "
+                        "this usually means a native wheel uses instructions this CPU "
+                        "does not support. See issues #2190 and #2301."
+                    )
                 raise AssertionError(
-                    f"container stopped: {inspect.stdout} {logs.stdout}\n{logs.stderr}"
+                    f"container stopped: {state_text} {logs.stdout}\n{logs.stderr}{hint}"
                 )
             time.sleep(2)
         logs = _run(["docker", "logs", name], timeout=20)
@@ -154,6 +169,35 @@ def docker_boot() -> Iterator[Any]:
     finally:
         _run(["docker", "rm", "-f", name], timeout=60)
         _run(["docker", "volume", "rm", "-f", volume], timeout=60)
+
+
+def _xvnc_running(name: str) -> bool:
+    result = _run(
+        [
+            "docker",
+            "exec",
+            name,
+            "/app/.venv/bin/python",
+            "-c",
+            (
+                "import os\n"
+                "me = str(os.getpid())\n"
+                "found = False\n"
+                "for pid in os.listdir('/proc'):\n"
+                "    if not pid.isdigit() or pid == me:\n"
+                "        continue\n"
+                "    try:\n"
+                "        cmd = open(f'/proc/{pid}/cmdline','rb').read()\n"
+                "    except OSError:\n"
+                "        continue\n"
+                "    argv0 = os.path.basename(cmd.split(b'\\0', 1)[0])\n"
+                "    if argv0 in {b'Xvnc', b'Xtigervnc'}:\n"
+                "        found = True\n"
+                "print('yes' if found else 'no')\n"
+            ),
+        ]
+    )
+    return result.returncode == 0 and result.stdout.strip() == "yes"
 
 
 def _exec_text(name: str, path: str) -> str:
@@ -231,3 +275,131 @@ def test_docker_unset_password_starts_setup_wizard(docker_boot: Any) -> None:
     )
     assert login_status == 503, login
     assert login.get("setup_required") is True
+
+
+@pytest.mark.live
+@pytest.mark.slow
+@docker_live
+def test_docker_image_runs_on_this_cpu_and_stays_disabled(docker_boot: Any) -> None:
+    """Boot the image on this machine and check it is the matching CPU build.
+
+    Run on the machine that fails, for example an ARM FnOS host::
+
+        OCTOP_TEST_IMAGE=ghcr.io/tencentcloud/octop:1.0.2 \\
+            uv run pytest tests/integration/test_docker_image_boot.py -m live -q
+
+    Exit 132 / ``Illegal instruction`` is the failure in issues #2190 and #2301.
+    A baked desktop must be installed and stopped, then this test starts Xvnc.
+    """
+    boot = docker_boot(None)
+    name = boot["name"]
+    guest = _run(["docker", "exec", name, "uname", "-m"])
+    assert guest.returncode == 0, guest.stderr
+    host = platform.machine()
+    assert normalized_cpu_arch(guest.stdout) == normalized_cpu_arch(host), (
+        f"container CPU {guest.stdout.strip()} does not match host {host}. "
+        "On ARM this usually means the published tag has no arm64 image "
+        "and Docker started the amd64 one."
+    )
+
+    probe = _run(
+        [
+            "docker",
+            "exec",
+            name,
+            "/app/.venv/bin/python",
+            "-c",
+            "import cv2, onnxruntime",
+        ],
+        timeout=60,
+    )
+    combined = f"{probe.stdout}\n{probe.stderr}"
+    if native_import_failed(probe.returncode, combined):
+        raise AssertionError(
+            "importing cv2/onnxruntime raised SIGILL (exit 132). "
+            "The arm64 wheels in this image use instructions this CPU or VM "
+            "does not support (issues #2190 and #2301).\n"
+            f"{combined}"
+        )
+    assert probe.returncode == 0, combined
+
+    marker = _run(["docker", "exec", name, "cat", "/etc/octop/bundled-components.json"])
+    if marker.returncode != 0:
+        pytest.skip("image has no bundled-components marker; rebuild to check desktop bake")
+    payload = json.loads(marker.stdout)
+    assert payload.get("desktop") is True
+    assert payload.get("laya") is False
+    if payload.get("browser") is True:
+        chrome = _run(
+            [
+                "docker",
+                "exec",
+                name,
+                "sh",
+                "-c",
+                "test -x /usr/bin/chromium || test -x /usr/bin/chromium-browser",
+            ]
+        )
+        assert chrome.returncode == 0, "bundled browser marker set but Chromium missing"
+    else:
+        firefox = _run(
+            [
+                "docker",
+                "exec",
+                name,
+                "sh",
+                "-c",
+                "test -x /usr/bin/firefox-esr || test -x /usr/bin/firefox",
+            ]
+        )
+        assert firefox.returncode == 0, "desktop baked without Chromium or Firefox"
+        assert payload.get("browser") is False
+
+    desktop_py = _run(
+        [
+            "docker",
+            "exec",
+            name,
+            "/app/.venv/bin/python",
+            "-c",
+            "import mss, pynput",
+        ],
+        timeout=60,
+    )
+    assert desktop_py.returncode == 0, desktop_py.stderr
+    xvnc = _run(["docker", "exec", name, "sh", "-c", "command -v Xvnc || command -v Xtigervnc"])
+    assert xvnc.returncode == 0, xvnc.stderr
+    assert not _xvnc_running(name)
+    enabled = _run(["docker", "exec", name, "test", "-f", "/data/.octop/browser.enabled"])
+    assert enabled.returncode != 0
+
+    shm = _run(["docker", "exec", name, "df", "-B1", "--output=size", "/dev/shm"])
+    assert shm.returncode == 0, shm.stderr
+    assert int(shm.stdout.strip().splitlines()[-1].strip()) >= 512 * 1024 * 1024, shm.stdout
+    started = _run(
+        [
+            "docker",
+            "exec",
+            "-e",
+            "HOME=/data",
+            "-e",
+            "OCTOP_HOME=/data/.octop",
+            name,
+            "bash",
+            "/app/src/octop/infra/control/desktop/scripts/linux/v1.0/start.sh",
+        ],
+        timeout=30,
+    )
+    desktop_log = _run(
+        [
+            "docker",
+            "exec",
+            name,
+            "sh",
+            "-c",
+            "cat /data/.octop/desktop/*.log 2>/dev/null || true",
+        ]
+    )
+    assert started.returncode == 0, f"{started.stdout}\n{started.stderr}\n{desktop_log.stdout}"
+    time.sleep(1)
+    assert _xvnc_running(name), desktop_log.stdout or started.stderr

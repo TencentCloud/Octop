@@ -84,7 +84,10 @@ import { showConfirmModal } from "../../utils/confirmModal";
 import { saveBlobAsFile } from "../../utils/saveBlobAsFile";
 import { createDetailRequestGate } from "../../utils/detailRequestGate";
 import { PackageIcon } from "./PackageIcon";
-import { ResourceVisibilityFields } from "../../components/ResourceVisibilityFields";
+import {
+  ResourceVisibilityFields,
+  ResourceVisibilityGate,
+} from "../../components/ResourceVisibilityFields";
 import {
   SharedAvatarMark,
   SharedResourceBadge,
@@ -1219,29 +1222,31 @@ export default function SkillPackagesPage() {
           >
             <Switch />
           </Form.Item>
-          <div className={styles.formOptions}>
-            <div className={styles.formOptionRowVisibility}>
-              <div className={styles.formOptionCopy}>
-                <span className={styles.switchLabel}>
-                  {t("resourceVisibility.label")}
-                </span>
-                <span className={styles.formOptionHint}>
-                  {t("skillPackages.visibilityHint")}
-                </span>
+          <ResourceVisibilityGate allowOwner visibility={packageVisibility}>
+            <div className={styles.formOptions}>
+              <div className={styles.formOptionRowVisibility}>
+                <div className={styles.formOptionCopy}>
+                  <span className={styles.switchLabel}>
+                    {t("resourceVisibility.label")}
+                  </span>
+                  <span className={styles.formOptionHint}>
+                    {t("skillPackages.visibilityHint")}
+                  </span>
+                </div>
+                <ResourceVisibilityFields
+                  allowOwner
+                  visibility={packageVisibility}
+                  groupIds={packageGroupIds}
+                  onChange={(next) => {
+                    setPackageVisibility(next.visibility);
+                    setPackageGroupIds(
+                      next.visibility === "groups" ? next.groupIds : [],
+                    );
+                  }}
+                />
               </div>
-              <ResourceVisibilityFields
-                allowOwner
-                visibility={packageVisibility}
-                groupIds={packageGroupIds}
-                onChange={(next) => {
-                  setPackageVisibility(next.visibility);
-                  setPackageGroupIds(
-                    next.visibility === "groups" ? next.groupIds : [],
-                  );
-                }}
-              />
             </div>
-          </div>
+          </ResourceVisibilityGate>
         </Form>
       </Drawer>
 

@@ -227,6 +227,81 @@
   margin-top: 5px;
 }
 
+.backendFlag {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 6px;
+  flex-shrink: 0;
+  line-height: 0;
+  background: var(--fn-bg-tertiary);
+  color: var(--fn-text-tertiary);
+}
+
+.backendFlag_shell {
+  color: #722ed1;
+  background: rgba(114, 46, 209, 0.1);
+}
+
+.backendFlag_filesystem {
+  color: #389e0d;
+  background: rgba(82, 196, 26, 0.12);
+}
+
+.backendFlag_database {
+  color: #0958d9;
+  background: rgba(22, 119, 255, 0.1);
+}
+
+.backendFlag_storage {
+  color: #d46b08;
+  background: rgba(250, 140, 22, 0.12);
+}
+
+.backendFlag_sandbox {
+  color: #08979c;
+  background: rgba(19, 194, 194, 0.12);
+}
+
+.backendFlag_composite {
+  color: #1d39c4;
+  background: rgba(47, 84, 235, 0.1);
+}
+
+:global(html[data-theme="dark"]) {
+  .backendFlag_shell {
+    color: #b37feb;
+    background: rgba(114, 46, 209, 0.22);
+  }
+
+  .backendFlag_filesystem {
+    color: #95de64;
+    background: rgba(82, 196, 26, 0.18);
+  }
+
+  .backendFlag_database {
+    color: #69b1ff;
+    background: rgba(22, 119, 255, 0.2);
+  }
+
+  .backendFlag_storage {
+    color: #ffc069;
+    background: rgba(250, 140, 22, 0.18);
+  }
+
+  .backendFlag_sandbox {
+    color: #5cdbd3;
+    background: rgba(19, 194, 194, 0.18);
+  }
+
+  .backendFlag_composite {
+    color: #85a5ff;
+    background: rgba(47, 84, 235, 0.22);
+  }
+}
+
 .agentCard2State {
   display: inline-flex;
   align-items: center;
