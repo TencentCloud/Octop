@@ -160,16 +160,7 @@ RUN --mount=type=cache,target=/root/.cache/uv \
         export UV_INDEX_URL="$PIP_INDEX_URL"; \
         if [ -n "$PIP_TRUSTED_HOST" ]; then export UV_INSECURE_HOST="$PIP_TRUSTED_HOST"; fi; \
     fi \
-    && if [ "$OCTOP_IMAGE_VARIANT" = "lite" ]; then \
-         uv sync --frozen --no-dev --extra browser \
-         && .venv/bin/python -c "import octop"; \
-       else \
-         uv sync --frozen --no-dev \
-           --extra browser --extra desktop --extra local-embedding --extra knowledge-ocr \
-         && .venv/bin/python -c "import cv2, fastembed, huggingface_hub, mss, rapidocr, onnxruntime, pymupdf; import importlib.util; assert importlib.util.find_spec('pynput')" \
-         && apt-get update && apt-get install -y --no-install-recommends fonts-noto-cjk; \
-       fi \
-    && apt-get purge -y --auto-remove build-essential \
+    && if [ "$OCTOP_IMAGE_VARIANT" = "lite" ]; then          uv sync --frozen --no-dev --extra browser          && .venv/bin/python -c "import octop";        else          uv sync --frozen --no-dev            --extra browser --extra desktop --extra local-embedding --extra knowledge-ocr          && PYNPUT_BACKEND=dummy .venv/bin/python -c "import cv2, fastembed, huggingface_hub, mss, pynput, rapidocr, onnxruntime, pymupdf"          && apt-get update && apt-get install -y --no-install-recommends fonts-noto-cjk;        fi     && apt-get purge -y --auto-remove build-essential \
     && rm -rf /var/lib/apt/lists/* /tmp/*
 
 # full 只装桌面包，不启动 Xvnc。lite 写明未捆绑桌面和浏览器。
