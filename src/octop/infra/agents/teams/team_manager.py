@@ -162,7 +162,7 @@ class TeamManager:
 
     # -- ask_agent session (member page) -------------------------------------
 
-    async def _member_turn_mcp(self, agent_id: str, uid: int | None) -> int | None:
+    async def _member_turn_mcp(self, agent_id: str, uid: int | None) -> list[str] | None:
         """Resolve and preload the member expert's connectors for one peer turn.
 
         Peer requests are built by the harness without MCP fields, so
@@ -225,9 +225,12 @@ class TeamManager:
         group = self._is_group_dispatch(call)
         extra = self._member_runtime(call)
         servers = await self._member_turn_mcp(call.to_agent_id, uid)
-        if extra is None:
-            extra = {} if servers else None
-        if servers:
+        if not servers:
+            if extra is None:
+                extra = None
+        else:
+            if extra is None:
+                extra = {}
             extra["mcp_servers"] = list(servers)
         question = ""
         dispatch_message = None
