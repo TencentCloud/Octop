@@ -490,7 +490,7 @@ octop_assert_native_arch && exit 10
 export OCTOP_FPK_HOST_ARCH=arm64
 octop_assert_native_arch || exit 11
 printf '%s\n' amd64 > "{marker}"
-export OCTOP_FPK_HOST_ARCH=x86_64
+export OCTOP_FPK_HOST_ARCH=amd64
 octop_assert_native_arch || exit 13
 unset OCTOP_FPK_ARCH_FILE
 octop_assert_native_arch || exit 12
