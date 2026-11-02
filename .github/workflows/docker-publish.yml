@@ -100,7 +100,9 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
         with:
-          ref: ${{ needs.prepare.outputs.tag }}
+          # workflow_dispatch 用当前分支的源码打 inputs.tag 指定的版本。
+          # 这样可以给 v1.0.3b2 补镜像，而不移动已经发出的 tag。
+          ref: ${{ github.event_name == 'workflow_dispatch' && github.sha || needs.prepare.outputs.tag }}
           fetch-depth: 0
 
       - name: Set up Docker Buildx

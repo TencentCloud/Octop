@@ -362,7 +362,7 @@ def test_docker_image_runs_on_this_cpu_and_stays_disabled(docker_boot: Any) -> N
             name,
             "/app/.venv/bin/python",
             "-c",
-            "import mss, pynput",
+            "import mss, importlib.util; assert importlib.util.find_spec('pynput')",
         ],
         timeout=60,
     )

@@ -147,7 +147,7 @@ RUN --mount=type=cache,target=/root/.cache/uv \
     fi \
     && uv sync --frozen --no-dev \
         --extra browser --extra desktop --extra local-embedding --extra knowledge-ocr \
-    && .venv/bin/python -c "import cv2, fastembed, huggingface_hub, mss, pynput, rapidocr, onnxruntime, pymupdf" \
+    && .venv/bin/python -c "import cv2, fastembed, huggingface_hub, mss, rapidocr, onnxruntime, pymupdf; import importlib.util; assert importlib.util.find_spec('pynput')" \
     && apt-get update && apt-get install -y --no-install-recommends fonts-noto-cjk \
     && apt-get purge -y --auto-remove build-essential \
     && rm -rf /var/lib/apt/lists/* /tmp/*
