@@ -1,5 +1,5 @@
 import type { RefObject } from "react";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import Markdown from "../../../../components/Markdown/LazyMarkdown";
 import styles from "../index.module.less";
 
@@ -104,6 +104,44 @@ function MarkdownPreview({ content }: { content: string }) {
   );
 }
 
+/** Keep fragment navigation inside srcdoc without changing relative resource URLs. */
+function htmlPreviewDocument(content: string): string {
+  const doc = new DOMParser().parseFromString(content, "text/html");
+  const script = doc.createElement("script");
+  script.textContent = `
+    document.addEventListener('click', event => {
+      if (!(event.target instanceof Element)) return;
+      const link = event.target.closest('a[href]');
+      const href = link?.getAttribute('href');
+      if (!href?.startsWith('#')) return;
+      event.preventDefault();
+      let fragment = href.slice(1);
+      try { fragment = decodeURIComponent(fragment); } catch { /* Keep literal malformed escapes. */ }
+      if (!fragment) { window.scrollTo(0, 0); return; }
+      const target = document.getElementById(fragment) ||
+        Array.from(document.querySelectorAll('a[name]')).find(anchor => anchor.getAttribute('name') === fragment);
+      target?.scrollIntoView();
+    }, true);
+  `;
+  doc.head.prepend(script);
+  const doctype = doc.doctype
+    ? new XMLSerializer().serializeToString(doc.doctype)
+    : "";
+  return doctype + doc.documentElement.outerHTML;
+}
+
+function HtmlPreview({ content }: { content: string }) {
+  const srcDoc = useMemo(() => htmlPreviewDocument(content), [content]);
+  return (
+    <iframe
+      title="HTML preview"
+      className={styles.htmlFrame}
+      srcDoc={srcDoc}
+      sandbox="allow-scripts allow-popups allow-forms"
+    />
+  );
+}
+
 export default function FilePreview({
   kind,
   content,
@@ -115,17 +153,7 @@ export default function FilePreview({
     case "markdown":
       return <MarkdownPreview content={content} />;
     case "html":
-      // Render in a sandboxed iframe with an opaque origin (no
-      // ``allow-same-origin``) so the previewed markup cannot reach our
-      // cookies, JWT, or parent DOM. Scripts run in that isolated origin only.
-      return (
-        <iframe
-          title="HTML preview"
-          className={styles.htmlFrame}
-          srcDoc={content}
-          sandbox="allow-scripts allow-popups allow-forms"
-        />
-      );
+      return <HtmlPreview content={content} />;
     default:
       return null;
   }
