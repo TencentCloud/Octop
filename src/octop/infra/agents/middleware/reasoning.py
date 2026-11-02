@@ -45,9 +45,7 @@ def _roundtrip_supported(request: ModelRequest[Any]) -> bool:
     configurable = get_config().get("configurable") or {}
     if isinstance(configurable, dict) and isinstance(configurable.get(ROUNDTRIP_KEY), bool):
         return configurable[ROUNDTRIP_KEY]
-    if isinstance(configurable, dict) and CONFIG_KEY in configurable:
-        return False
-    return True
+    return not (isinstance(configurable, dict) and CONFIG_KEY in configurable)
 
 
 def _scrub_replayed_reasoning(request: ModelRequest[Any]) -> ModelRequest[Any]:
@@ -56,9 +54,8 @@ def _scrub_replayed_reasoning(request: ModelRequest[Any]) -> ModelRequest[Any]:
     dropped = False
     scrubbed: list[Any] = []
     for message in request.messages:
-        if (
-            isinstance(message, AIMessage)
-            and str((message.additional_kwargs or {}).get("reasoning_content") or "")
+        if isinstance(message, AIMessage) and str(
+            (message.additional_kwargs or {}).get("reasoning_content") or ""
         ):
             kwargs = dict(message.additional_kwargs or {})
             kwargs.pop("reasoning_content", None)
