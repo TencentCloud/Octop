@@ -349,8 +349,8 @@ function ActiveAgentCard({
                 className={styles.agentCardName}
               />
               <ExpertPinMark pinned={pinned} />
-              <TeamChatBadge agent={agent} />
-              <RemoteExpertHint agent={agent} />
+              <TeamChatBadge agent={agent} compact />
+              <RemoteExpertHint agent={agent} compact />
             </div>
             <AgentUnreadBadge count={agent.unread_count ?? 0} />
             {onTogglePin ? (
@@ -480,8 +480,8 @@ function InactiveAgentRow({
               className={styles.agentRowName}
             />
             <ExpertPinMark pinned={pinned} />
-            <TeamChatBadge agent={agent} />
-            <RemoteExpertHint agent={agent} />
+            <TeamChatBadge agent={agent} compact />
+            <RemoteExpertHint agent={agent} compact />
           </div>
           <AgentUnreadBadge count={agent.unread_count ?? 0} />
           {onNewChat && onTogglePin ? (

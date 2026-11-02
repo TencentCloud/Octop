@@ -373,12 +373,15 @@ async def mark_agent_read(
     user: Any = Depends(current_user),
     server: Any = Depends(get_server),
 ) -> None:
-    """Clear unread counts for all of the user's sessions under this agent."""
+    """Clear this user's unread counts on an agent they can open.
+
+    Shared viewers clear only their own sessions. Other users' badges stay.
+    """
     assert server.app_runtime is not None
     row = server.app_runtime.agent_registry.get_row(agent_id)
     if row is None:
         raise OctopError(ErrorCode.AGENT_NOT_FOUND, f"agent {agent_id!r} not found")
-    _assert_agent_owner(row, user)
+    assert_agent_access_row(row, user, repos=server.services.repos)
     server.services.session_repo.clear_unread_for_agent(agent_id, user.id)
 
 

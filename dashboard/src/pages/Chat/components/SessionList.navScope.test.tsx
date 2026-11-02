@@ -30,11 +30,14 @@ function agent(
 
 const agents = [
   agent({ agent_id: "local-expert", name: "本地专家" }),
-  agent({
-    agent_id: "bridge:c1:expert",
-    name: "云端专家",
-    bridge: true,
-  }),
+  {
+    ...agent({
+      agent_id: "bridge:c1:expert",
+      name: "云端专家",
+      bridge: true,
+    }),
+    bridge_connection_name: "对端实验室",
+  },
   agent({ agent_id: "local-team", name: "本地团队", kind: "team" }),
   agent({
     agent_id: "bridge:c1:team",
@@ -95,6 +98,10 @@ describe("MinimalAgentSessionNav nav scopes", () => {
 
     expect(screen.getByText("本地专家")).toBeInTheDocument();
     expect(screen.getByText("云端专家")).toBeInTheDocument();
+    expect(screen.queryByText("对端实验室")).not.toBeInTheDocument();
+    expect(
+      screen.getByLabelText("chat.remoteExpert.banner"),
+    ).toBeInTheDocument();
     expect(screen.queryByText("本地团队")).not.toBeInTheDocument();
 
     await user.click(screen.getByRole("tab", { name: "云端" }));
@@ -189,6 +196,10 @@ describe("SessionList nav scopes", () => {
     );
     expect(screen.getByText("本地专家")).toBeInTheDocument();
     expect(screen.getByText("云端专家")).toBeInTheDocument();
+    expect(screen.queryByText("对端实验室")).not.toBeInTheDocument();
+    expect(
+      screen.getByLabelText("chat.remoteExpert.banner"),
+    ).toBeInTheDocument();
     expect(screen.queryByText("本地团队")).not.toBeInTheDocument();
     expect(screen.queryByText("云端团队")).not.toBeInTheDocument();
 

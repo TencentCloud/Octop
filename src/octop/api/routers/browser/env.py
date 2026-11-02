@@ -41,9 +41,11 @@ def _probe_env() -> dict[str, Any]:
         "playwright_chromium": False,
         "chrome_path": None,
         "chrome_source": None,  # "system" | "playwright" | None
+        "needs_enable": False,
         "error": None,
     }
 
+    from octop.infra.control.browser.bundled import browser_enabled  # noqa: PLC0415
     from octop.infra.control.browser.setup import (  # noqa: PLC0415
         chrome_source_for_path,
         playwright_chromium_installed,
@@ -58,9 +60,15 @@ def _probe_env() -> dict[str, Any]:
         out["harness_browser"] = True
         chrome = find_chrome()
         if chrome:
-            out["browsers_ok"] = True
             out["chrome_path"] = chrome
             out["chrome_source"] = chrome_source_for_path(chrome)
+            if browser_enabled():
+                out["browsers_ok"] = True
+            else:
+                out["needs_enable"] = True
+                out["error"] = (
+                    "Chromium is installed but not enabled. Confirm it on the Remote Browser page."
+                )
         else:
             out["error"] = (
                 "Chrome/Chromium not found. Install Google Chrome, or run "
@@ -138,12 +146,17 @@ async def install(_: Any = Depends(require_permission("browser"))) -> StreamingR
         try:
             from octop_browser.cdp.launcher import find_chrome  # noqa: PLC0415
 
+            from octop.infra.control.browser.bundled import (  # noqa: PLC0415
+                confirm_browser_enabled,
+            )
+
             chrome = find_chrome()
             if chrome:
                 yield ("data: " + json.dumps({"log": f"Found browser: {chrome}"}) + "\n\n")
                 yield ("data: " + json.dumps({"log": "Verifying installation ..."}) + "\n\n")
                 ok, msg = _verify_browser_binary(chrome)
                 if ok:
+                    confirm_browser_enabled()
                     yield "data: " + json.dumps({"log": msg}) + "\n\n"
                     yield ("data: " + json.dumps({"done": True, "success": True}) + "\n\n")
                     return
@@ -163,6 +176,8 @@ async def install(_: Any = Depends(require_permission("browser"))) -> StreamingR
             from octop_browser import install_chromium_stream  # noqa: PLC0415
 
             async for event in install_chromium_stream():
+                if isinstance(event, dict) and event.get("done") and event.get("success"):
+                    confirm_browser_enabled()
                 yield f"data: {json.dumps(event)}\n\n"
         except Exception as exc:  # pragma: no cover
             yield f"data: {json.dumps({'done': True, 'success': False, 'error': str(exc)})}\n\n"
