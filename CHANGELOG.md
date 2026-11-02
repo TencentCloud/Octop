@@ -6,6 +6,8 @@
 
 ## [Unreleased]
 
+## [Unreleased]
+
 ### 新增
 - PostgreSQL 控制面下，技能包源和知识库原文进同一套库（`skill_package_files`、`knowledge_files`），知识库向量在 `knowledge_chunks`。表都在 `public`，前缀与 `skill_packages`、`knowledge_bases` 一致。SQLite 仍用本地目录。安装时选定驱动，不含 sqlite→PostgreSQL 迁移
 - 安装向导连接已有用户的 PostgreSQL 时，确认后保留这些账户并去登录。SQLite 仍要空库
@@ -29,6 +31,7 @@
 
 ### 变更
 - 聊天侧栏可以隐藏任意专家，不再限于别人共享来的。正在对话的隐藏专家留在「已隐藏专家」里，不再被提到列表上方
+- Groq 等不暴露推理适配器的 OpenAI 兼容模型，下一轮不再被历史里回放的 `reasoning_content` 打回 400（"property 'reasoning_content' is unsupported"）：请求构建按模型推理能力下发回放门控，助手消息进入模型前剔除该字段，DeepSeek 等推理模型的思考链回放不受影响（#2498）
 
 ## [1.0.3b2] - 2026-11-01
 
