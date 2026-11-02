@@ -103,48 +103,62 @@ beforeEach(() => {
 
 afterEach(cleanup);
 
-/**
- * Second seam: the conversation list folds from the line it shares with the
- * main column. The handle hangs off the rail's own mount point, not out of
- * either column's header — collapsing the list therefore leaves it where the
- * new edge is, with the arrow flipped.
- */
-describe("对话列表与主对话框之间的接缝手柄", () => {
-  it("列表展开时挂在容器接缝上，点一下收起", async () => {
-    const user = userEvent.setup();
+describe("左侧导航接缝", () => {
+  it("列表展开时只在导航右侧放收起导航的竖线按钮", () => {
     render(<MainLayout />);
 
-    const button = screen.getByRole("button", { name: "收起对话历史" });
+    const button = screen.getByRole("button", { name: "收起导航栏" });
     expect(button).toHaveAttribute("aria-expanded", "true");
-    expect(button).toHaveAttribute("aria-keyshortcuts", "Meta+Shift+B");
-    expect(button.getAttribute("title")).toMatch(/收起对话历史 \(.+B\)/);
-    // `left: 100%` of this box is the seam; that is why the handle follows it.
-    expect(document.getElementById("octop-chat-history-rail")).toContainElement(
-      button,
-    );
-
-    await user.click(button);
-    expect(state.setChatSidebarOpen).toHaveBeenCalledWith(false);
+    expect(button).toHaveAttribute("aria-keyshortcuts", "Meta+B");
+    expect(
+      screen.queryByTestId("history-split-handle"),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "展开对话历史" }),
+    ).not.toBeInTheDocument();
   });
 
-  it("列表收起后仍在那条接缝上，点一下把两层栏一起唤回", async () => {
+  it("列表收起且导航展开时，接缝是左右分体的大按钮", async () => {
     state.chatSidebarOpen = false;
     const user = userEvent.setup();
     render(<MainLayout />);
 
-    const button = screen.getByRole("button", { name: "展开对话历史" });
-    expect(button).toHaveAttribute("aria-expanded", "false");
+    const collapseNav = screen.getByRole("button", { name: "收起导航栏" });
+    const expandHistory = screen.getByRole("button", { name: "展开对话历史" });
+    expect(screen.getByTestId("history-split-handle")).toContainElement(
+      collapseNav,
+    );
+    expect(screen.getByTestId("history-split-handle")).toContainElement(
+      expandHistory,
+    );
+    expect(collapseNav.querySelector("svg")?.getAttribute("class")).toContain(
+      "chevron-left",
+    );
+    expect(expandHistory.querySelector("svg")?.getAttribute("class")).toContain(
+      "chevron-right",
+    );
 
-    await user.click(button);
-    // The broadcast is what re-opens a collapsed nav along with the list.
+    await user.click(expandHistory);
     expect(state.setChatSidebarOpen).toHaveBeenCalledWith(true);
+
+    await user.click(collapseNav);
+    expect(
+      screen.getByRole("button", { name: "展开导航栏" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByTestId("history-split-handle"),
+    ).not.toBeInTheDocument();
   });
 
-  it("不在对话路由上时不挂第二边界", () => {
+  it("不在对话路由上时不提供展开对话历史", () => {
     state.pathname = "/tasks";
+    state.chatSidebarOpen = false;
     render(<MainLayout />);
     expect(
       screen.queryByRole("button", { name: /展开对话历史|收起对话历史/ }),
     ).toBeNull();
+    expect(
+      screen.getByRole("button", { name: "收起导航栏" }),
+    ).toBeInTheDocument();
   });
 });

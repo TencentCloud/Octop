@@ -7,15 +7,29 @@ export type WindowControlsSide = "start" | "end";
 export const DESKTOP_CHROME_HEIGHT = 58;
 
 /**
+ * Padding on each side of the macOS traffic-light group inside the collapsed
+ * nav. The shell pins the lights at this same x (`TRAFFIC_LIGHT_POSITION`).
+ */
+export const MAC_TRAFFIC_LIGHT_INSET = 5;
+
+/**
+ * Visual width of the three macOS traffic lights, from the red button's left
+ * edge to the green button's right edge.
+ */
+export const MAC_TRAFFIC_LIGHT_SPAN = 60;
+
+/**
  * Horizontal space the *native* buttons occupy, by platform convention:
- * - macOS: three traffic lights on the LEFT, pinned at x=14 by the shell.
+ * - macOS: three traffic lights on the LEFT, centered in the collapsed nav.
+ *   The column is the group width plus the same inset on both sides, so the
+ *   lights and the icons share the rail's center line.
  * - Windows: three 46px caption buttons on the RIGHT (titleBarOverlay).
  *
  * The buttons are drawn by the OS above the page, so the page must keep this
  * strip empty — it cannot draw under them.
  */
 export const WINDOW_CONTROLS_INSET: Record<DesktopChromeStyle, number> = {
-  mac: 80,
+  mac: MAC_TRAFFIC_LIGHT_INSET * 2 + MAC_TRAFFIC_LIGHT_SPAN,
   windows: 138,
 };
 

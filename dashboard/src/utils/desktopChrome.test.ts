@@ -14,6 +14,8 @@ import {
   resolveDesktopChromeStyle,
   titleRowEndPadding,
   titleRowStartPadding,
+  MAC_TRAFFIC_LIGHT_INSET,
+  MAC_TRAFFIC_LIGHT_SPAN,
   WINDOW_CONTROLS_INSET,
   WINDOW_CONTROLS_SPACER_ATTR,
   windowControlsEndSpacerPx,
@@ -198,6 +200,12 @@ describe("desktopChrome", () => {
       "utf8",
     );
     expect(native).toContain(`CHROME_ROW_HEIGHT = ${DESKTOP_CHROME_HEIGHT}`);
+    expect(native).toContain("const COLLAPSED_RAIL_CENTER = 35");
+    expect(native).toContain("const TRAFFIC_LIGHT_CENTER_OFFSET = 30");
+    expect(MAC_TRAFFIC_LIGHT_INSET).toBe(35 - 30);
+    expect(WINDOW_CONTROLS_INSET.mac).toBe(
+      MAC_TRAFFIC_LIGHT_INSET * 2 + MAC_TRAFFIC_LIGHT_SPAN,
+    );
     const heights = [...theme.matchAll(/--fn-chat-chrome-height:\s*(\d+)px/g)];
     expect(heights.length).toBeGreaterThan(0);
     for (const [, height] of heights)

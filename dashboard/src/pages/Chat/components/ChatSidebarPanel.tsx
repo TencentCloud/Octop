@@ -1,10 +1,18 @@
+import { useCallback, type RefObject } from "react";
 import { useTranslation } from "react-i18next";
-import type { RefObject } from "react";
 import cx from "classnames";
 import SessionList from "./SessionList";
 import MinimalAgentSessionNav from "./MinimalAgentSessionNav";
 import type { Session } from "../hooks/useSessions";
 import type { OctopAgent } from "../../../context/AgentContext";
+import RailEdgeControl from "../../../components/RailEdgeControl";
+import { useSplitHistorySeam } from "../../../layouts/railSeamContext";
+import { EXPAND_CHAT_RAIL_EVENT } from "../chatRailEvents";
+import {
+  isMacPlatform,
+  railShortcutAria,
+  railShortcutLabel,
+} from "../../../utils/railShortcuts";
 import styles from "../index.module.less";
 
 interface ChatSidebarPanelProps {
@@ -77,6 +85,26 @@ export default function ChatSidebarPanel({
   navEmbedded = false,
 }: ChatSidebarPanelProps) {
   const { t } = useTranslation();
+  const splitHistorySeam = useSplitHistorySeam();
+
+  const handleRailToggle = useCallback(() => {
+    if (sidebarOpen) {
+      onSidebarOpenChange(false);
+      return;
+    }
+    // MainLayout may also expand the nav when both rails were collapsed.
+    window.dispatchEvent(new Event(EXPAND_CHAT_RAIL_EVENT));
+    onSidebarOpenChange(true);
+  }, [onSidebarOpenChange, sidebarOpen]);
+
+  const historyLabel = t(
+    sidebarOpen ? "chat.collapseHistorySidebar" : "chat.expandHistorySidebar",
+    sidebarOpen ? "收起对话历史" : "展开对话历史",
+  );
+  const historyHint = `${historyLabel} (${railShortcutLabel(
+    "toggle-history",
+    isMacPlatform(),
+  )})`;
 
   const sessionList = navEmbedded ? (
     <MinimalAgentSessionNav
@@ -130,6 +158,7 @@ export default function ChatSidebarPanel({
       className={cx(
         styles.sidebarWrapper,
         layoutRail && styles.sidebarWrapperLayoutRail,
+        !isMobile && !sidebarOpen && styles.sidebarWrapperCollapsed,
       )}
     >
       {isMobile && sidebarOpen && (
@@ -153,19 +182,27 @@ export default function ChatSidebarPanel({
         }
       >
         {sessionList}
-        {!isMobile && sidebarOpen && (
-          <div
-            className={cx(
-              styles.sidebarResizeHandle,
-              isSidebarResizing && styles.sidebarResizeHandleActive,
-            )}
-            onPointerDown={onSidebarResizeStart}
-            role="separator"
-            aria-orientation="vertical"
-            aria-label={t("chat.resizeSidebar", "调整侧栏宽度")}
-          />
-        )}
       </div>
+
+      {!isMobile && (sidebarOpen || !splitHistorySeam) && (
+        <RailEdgeControl
+          expanded={sidebarOpen}
+          onToggle={handleRailToggle}
+          side={sidebarOpen ? "end" : "start"}
+          /* Collapsed: share the nav rail divider — avoid a second line. */
+          showLine={sidebarOpen}
+          placement={sidebarOpen ? "center" : "after"}
+          className={
+            sidebarOpen ? styles.chatRailEdgeOpen : styles.chatRailEdgeClosed
+          }
+          label={historyLabel}
+          hint={historyHint}
+          shortcut={railShortcutAria("toggle-history")}
+          onResizeStart={sidebarOpen ? onSidebarResizeStart : undefined}
+          resizeLabel={t("chat.resizeSidebar", "调整侧栏宽度")}
+          resizing={isSidebarResizing}
+        />
+      )}
     </div>
   );
 }

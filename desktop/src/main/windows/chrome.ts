@@ -24,11 +24,17 @@ import type { BrowserWindow, BrowserWindowConstructorOptions } from "electron";
 export const CHROME_ROW_HEIGHT = 58;
 
 /**
- * macOS 交通灯距左侧 14px，以原生按钮约 12px 的高度在拖动顶栏中垂直居中。
+ * 收起导航栏宽 70px（`WINDOW_CONTROLS_INSET.mac`），中线在 35px。
+ * 三个交通灯的视觉中心大约在 `x` 右侧 30px，所以放在 5px，
+ * 灯组落在栏的中线上，左右留白相同。上边距与左边距相同。
  */
+const TRAFFIC_LIGHT_CENTER_OFFSET = 30;
+const COLLAPSED_RAIL_CENTER = 35;
+const TRAFFIC_LIGHT_INSET = COLLAPSED_RAIL_CENTER - TRAFFIC_LIGHT_CENTER_OFFSET;
+
 export const TRAFFIC_LIGHT_POSITION = {
-  x: 14,
-  y: Math.round((CHROME_ROW_HEIGHT - 12) / 2),
+  x: TRAFFIC_LIGHT_INSET,
+  y: TRAFFIC_LIGHT_INSET,
 } as const;
 
 /** Theme the renderer reports; ``scheme`` keeps "follow the system" live. */

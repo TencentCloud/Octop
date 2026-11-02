@@ -1,0 +1,48 @@
+/* Hangs off the nav's trailing line, mostly into the column on its right. */
+.split {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  z-index: 1;
+  display: flex;
+  width: 44px;
+  height: 26px;
+  padding: 0;
+  border: 1px solid var(--fn-border-secondary);
+  border-radius: 8px;
+  background: var(--fn-bg-elevated, var(--fn-bg-secondary));
+  box-shadow: 0 1px 4px
+    color-mix(in srgb, var(--fn-text-primary) 8%, transparent);
+  overflow: hidden;
+  transform: translate(-8px, -50%);
+  -webkit-app-region: no-drag;
+  app-region: no-drag;
+}
+
+.half {
+  flex: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  margin: 0;
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: var(--fn-text-secondary);
+  cursor: pointer;
+
+  & + & {
+    border-left: 1px solid var(--fn-border-secondary);
+  }
+
+  &:hover {
+    background: var(--fn-bg-hover, var(--fn-bg-secondary));
+    color: var(--fn-text-primary);
+  }
+
+  &:focus-visible {
+    outline: 2px solid var(--fn-color-brand);
+    outline-offset: -2px;
+    z-index: 1;
+  }
+}
