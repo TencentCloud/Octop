@@ -4307,7 +4307,7 @@
     "securityPasskeyRemoved": "Passkey removed.",
     "securityRecoveryRegenSuccess": "New recovery codes generated.",
     "securityUnavailable": "Account security is not available yet (server MFA routes missing).",
-    "securityTotpDesc": "TOTP is just a phone authenticator. It shows a new 6-digit code about every 30 seconds. Enter that code with your password.",
+    "securityTotpDesc": "After your password, enter the 6-digit code your authenticator refreshes every 30 seconds.",
     "securityTotpTip1": "Install Microsoft Authenticator, Google Authenticator, or a similar app, then scan the QR code during setup. You do not need to copy a long secret by hand.",
     "securityTotpTip2": "Each password sign-in then asks for the current 6-digit code. Save the recovery codes below before you change phones.",
     "securityTotpDownload": "Authenticator app download (Microsoft Authenticator, for iPhone and Android):",
