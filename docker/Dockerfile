@@ -32,8 +32,9 @@
 # 或使用 Compose:
 #   docker compose -f docker/docker-compose.yml up -d
 #
-# 镜像内含虚拟桌面和系统 Chromium，但不会启动。用户在控制台确认后才启用。
-# 桌面安装已经带上 Chromium，不再另下 Playwright 浏览器。
+# 默认 OCTOP_IMAGE_VARIANT=full：虚拟桌面、系统浏览器、本地向量和 OCR 都在镜像里，
+# 桌面不会启动，用户在控制台确认后才启用。桌面安装已经带上 Chromium，不再另下
+# Playwright 浏览器。lite 去掉这些重依赖，镜像更小，发布标签是 :<version>-lite。
 # 运行时带 Node.js 20（node / npm / npx），供依赖 Node 的技能使用。
 # Laya 不打进镜像：CPU 版 PyTorch 加多语言检查点大约要 4 GB 磁盘、约 2 GB 内存。
 # =============================================================================
@@ -98,7 +99,6 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
             "$APT_MIRROR" "$APT_MIRROR" > /etc/apt/sources.list.d/debian.sources; \
     fi \
     && apt-get update && apt-get install -y --no-install-recommends \
-        build-essential \
         libffi-dev \
         libgl1 \
         libglib2.0-0 \
@@ -119,15 +119,28 @@ COPY --from=ghcr.io/astral-sh/uv:0.7 /uv /uvx /bin/
 
 WORKDIR /app
 
-# 先安装锁定依赖，仅改源码时可复用此层缓存
+# 先安装锁定依赖，仅改源码时可复用此层缓存。
+# full：桌面、本地向量、OCR。lite：只留运行所需的 browser extra。
+ARG OCTOP_IMAGE_VARIANT=full
 COPY pyproject.toml uv.lock README.md LICENSE ./
 RUN --mount=type=cache,target=/root/.cache/uv \
     if [ -n "$PIP_INDEX_URL" ]; then \
         export UV_INDEX_URL="$PIP_INDEX_URL"; \
         if [ -n "$PIP_TRUSTED_HOST" ]; then export UV_INSECURE_HOST="$PIP_TRUSTED_HOST"; fi; \
     fi \
-    && uv sync --frozen --no-install-project --no-dev \
-        --extra browser --extra desktop --extra local-embedding --extra knowledge-ocr
+    && case "$OCTOP_IMAGE_VARIANT" in \
+         full|lite) ;; \
+         *) echo "OCTOP_IMAGE_VARIANT must be full or lite" >&2; exit 1 ;; \
+       esac \
+    && apt-get update && apt-get install -y --no-install-recommends build-essential \
+    && if [ "$OCTOP_IMAGE_VARIANT" = "lite" ]; then \
+         uv sync --frozen --no-install-project --no-dev --extra browser; \
+       else \
+         uv sync --frozen --no-install-project --no-dev \
+           --extra browser --extra desktop --extra local-embedding --extra knowledge-ocr; \
+       fi \
+    && apt-get purge -y --auto-remove build-essential \
+    && rm -rf /var/lib/apt/lists/*
 
 ENV PATH="/app/.venv/bin:$PATH" \
     PLAYWRIGHT_BROWSERS_PATH=/root/.cache/ms-playwright
@@ -140,20 +153,34 @@ COPY docker/docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
 COPY docker/bake-desktop.sh /usr/local/bin/bake-desktop.sh
 RUN chmod +x /usr/local/bin/docker-entrypoint.sh /usr/local/bin/bake-desktop.sh
 
+# pynput 在 import 时会连接 X。full 的无头构建只确认包已安装，不加载后端。
+ARG OCTOP_IMAGE_VARIANT=full
 RUN --mount=type=cache,target=/root/.cache/uv \
     if [ -n "$PIP_INDEX_URL" ]; then \
         export UV_INDEX_URL="$PIP_INDEX_URL"; \
         if [ -n "$PIP_TRUSTED_HOST" ]; then export UV_INSECURE_HOST="$PIP_TRUSTED_HOST"; fi; \
     fi \
-    && uv sync --frozen --no-dev \
-        --extra browser --extra desktop --extra local-embedding --extra knowledge-ocr \
-    && .venv/bin/python -c "import cv2, fastembed, huggingface_hub, mss, pynput, rapidocr, onnxruntime, pymupdf" \
-    && apt-get update && apt-get install -y --no-install-recommends fonts-noto-cjk \
+    && if [ "$OCTOP_IMAGE_VARIANT" = "lite" ]; then \
+         uv sync --frozen --no-dev --extra browser \
+         && .venv/bin/python -c "import octop"; \
+       else \
+         uv sync --frozen --no-dev \
+           --extra browser --extra desktop --extra local-embedding --extra knowledge-ocr \
+         && .venv/bin/python -c "import cv2, fastembed, huggingface_hub, mss, rapidocr, onnxruntime, pymupdf; import importlib.util; assert importlib.util.find_spec('pynput')" \
+         && apt-get update && apt-get install -y --no-install-recommends fonts-noto-cjk; \
+       fi \
     && apt-get purge -y --auto-remove build-essential \
     && rm -rf /var/lib/apt/lists/* /tmp/*
 
-# Packages only. Xvnc stays stopped until the user enables the desktop.
-RUN bash /usr/local/bin/bake-desktop.sh
+# full 只装桌面包，不启动 Xvnc。lite 写明未捆绑桌面和浏览器。
+ARG OCTOP_IMAGE_VARIANT=full
+RUN if [ "$OCTOP_IMAGE_VARIANT" = "lite" ]; then \
+      mkdir -p /etc/octop \
+      && printf '%s\n' '{"desktop": false, "browser": false, "laya": false}' \
+        > /etc/octop/bundled-components.json; \
+    else \
+      bash /usr/local/bin/bake-desktop.sh; \
+    fi
 
 RUN mkdir -p /data/.octop
 

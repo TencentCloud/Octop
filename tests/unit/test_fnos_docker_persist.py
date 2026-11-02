@@ -40,6 +40,21 @@ def test_fnos_manifest_version_matches_pyproject(manifest: Path) -> None:
     assert f"version={_pyproject_version()}\n" in text
 
 
+def test_build_fpk_lite_pins_the_lite_image_tag() -> None:
+    text = (REPO / "scripts" / "build-fpk.sh").read_text(encoding="utf-8")
+    assert 'OUTNAME="${PREFIX}-docker-lite-${VER}${ITER_SUFFIX}.fpk"' in text
+    assert 'image_tag="${FPK_IMAGE_TAG:-${VER}-lite}"' in text
+
+
+def test_publish_workflows_keep_full_when_lite_is_incomplete() -> None:
+    docker = (REPO / ".github/workflows/docker-publish.yml").read_text(encoding="utf-8")
+    fnos = (REPO / ".github/workflows/fnos-build-fpk.yml").read_text(encoding="utf-8")
+    assert "until both amd64 and arm64 exist" in docker
+    assert 'echo "lite=false"' in fnos
+    assert "Skipping the lite FnOS package" in fnos
+    assert "--sync-notes" in fnos
+
+
 def test_build_fpk_writes_store_version_not_pep440() -> None:
     text = (REPO / "scripts" / "build-fpk.sh").read_text(encoding="utf-8")
     assert "fnos_store_version" in text

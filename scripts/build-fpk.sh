@@ -6,9 +6,10 @@
 # config / wizard / app 等结构，确保产物与飞牛 fnOS 安装校验完全一致）。
 #
 # 用法（在仓库根目录执行):
-#   bash scripts/build-fpk.sh docker      # 构建 Docker 版  -> dist/Octop-fnos-docker-<ver>.fpk
+#   bash scripts/build-fpk.sh docker      # 完整 Docker 版 -> dist/Octop-fnos-docker-<ver>.fpk
+#   bash scripts/build-fpk.sh docker-lite # 精简 Docker 版 -> dist/Octop-fnos-docker-lite-<ver>.fpk
 #   bash scripts/build-fpk.sh native      # 构建本地版(非Docker) -> dist/Octop-fnos-native-<ver>.fpk
-#   bash scripts/build-fpk.sh             # 两个都构建
+#   bash scripts/build-fpk.sh             # 完整 Docker、精简 Docker、本地版都构建
 #
 # 环境变量：
 #   FPK_NAME_PREFIX  输出文件名前缀，默认 "octop"
@@ -108,9 +109,13 @@ mkdir -p "$OUT"
 build_one() {
   local KIND="$1" PKG OUTNAME
   case "$KIND" in
-    docker)
+    docker|docker-lite)
       PKG="$ROOT/fnos/docker"
-      OUTNAME="${PREFIX}-docker-${VER}${ITER_SUFFIX}.fpk"
+      if [ "$KIND" = "docker-lite" ]; then
+        OUTNAME="${PREFIX}-docker-lite-${VER}${ITER_SUFFIX}.fpk"
+      else
+        OUTNAME="${PREFIX}-docker-${VER}${ITER_SUFFIX}.fpk"
+      fi
       ;;
     native)
       PKG="$ROOT/fnos/native"
@@ -168,9 +173,15 @@ build_one() {
     echo "[build-fpk] native cmd/fpk-arch=$packed_arch"
   fi
 
-  # Docker 版 compose 钉与本包相同的镜像标签；测试包可用 FPK_IMAGE_TAG=latest 覆盖。
-  if [ "$KIND" = "docker" ]; then
-    local compose="$BUILD/app/docker/docker-compose.yaml" image_tag="${FPK_IMAGE_TAG:-$VER}"
+  # Docker 版 compose 钉镜像标签。完整版 :<version>，精简版 :<version>-lite。
+  # 测试包可用 FPK_IMAGE_TAG 覆盖。
+  if [ "$KIND" = "docker" ] || [ "$KIND" = "docker-lite" ]; then
+    local compose="$BUILD/app/docker/docker-compose.yaml" image_tag
+    if [ "$KIND" = "docker-lite" ]; then
+      image_tag="${FPK_IMAGE_TAG:-${VER}-lite}"
+    else
+      image_tag="${FPK_IMAGE_TAG:-$VER}"
+    fi
     if [ -f "$compose" ]; then
       sed -i.bak -E "s#ghcr.io/tencentcloud/octop:[^[:space:]]+#ghcr.io/tencentcloud/octop:${image_tag}#" "$compose"
       rm -f "${compose}.bak"
@@ -199,6 +210,7 @@ build_one() {
 
 if [ $# -eq 0 ]; then
   build_one docker
+  build_one docker-lite
   build_one native
 else
   for k in "$@"; do build_one "$k"; done
