@@ -1,7 +1,10 @@
 import { cleanup, render } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { DesktopChromeProvider } from "../hooks/useDesktopChrome";
-import type { DesktopChromeStyle } from "../utils/desktopChrome";
+import {
+  WINDOW_CONTROLS_INSET,
+  type DesktopChromeStyle,
+} from "../utils/desktopChrome";
 import DesktopWindowDragBand from "./DesktopWindowDragBand";
 
 const state = vi.hoisted(() => ({ fullscreen: false }));
@@ -30,7 +33,12 @@ describe("窗口顶部拖拽条", () => {
   });
 
   it.each([
-    { name: "macOS", chrome: "mac" as const, left: "80px", right: "0px" },
+    {
+      name: "macOS",
+      chrome: "mac" as const,
+      left: `${WINDOW_CONTROLS_INSET.mac}px`,
+      right: "0px",
+    },
     {
       name: "Windows",
       chrome: "windows" as const,

@@ -15,7 +15,6 @@ import { useUpdateStatus } from "../hooks/useUpdateStatus";
 import { prefetchRoute } from "../routes/prefetch";
 import { useServerCapabilities } from "../hooks/useServerCapabilities";
 import { EXPAND_CHAT_RAIL_EVENT } from "../pages/Chat/chatRailEvents";
-import RailSeamHandle, { SEAM_HANDLE_STEP } from "../components/RailSeamHandle";
 import {
   CHAT_HISTORY_RAIL_ID,
   OPEN_NAV_RECORDS_EVENT,
@@ -39,11 +38,6 @@ import { sectionsFromLayout, type SidebarNavLayout } from "./sidebarNavLayout";
 import SidebarNavCustomizer from "./SidebarNavCustomizer";
 import styles from "./Sidebar.module.less";
 import { typeSize } from "../utils/mobileTypeScale";
-import {
-  isMacPlatform,
-  railShortcutAria,
-  railShortcutLabel,
-} from "../utils/railShortcuts";
 
 const NAV_GROUPS_STORAGE_KEY = "octop:sidebar-nav-groups";
 const LEGACY_COLLAPSED_GROUP_IDS: Record<string, string> = {
@@ -170,7 +164,7 @@ function NavItemButton({
             ? "var(--fn-sidebar-item-active-text)"
             : "var(--fn-text-secondary)",
           fontSize: typeSize(14, isMobile),
-          fontWeight: active ? 500 : 400,
+          fontWeight: 400,
           paddingRight: 12,
         }}
       >
@@ -403,18 +397,6 @@ export default function Sidebar({
   const wordmarkSrc = isDark
     ? publicUrl("logo_horizontal_white.png")
     : publicUrl("logo_horizontal_dark.png");
-  /**
-   * Label/hint for the rail's own fold control. The accelerator lives in the
-   * tooltip (and in aria-keyshortcuts), not in the accessible name.
-   */
-  const navToggleLabel = t(
-    collapsed ? "layout.expandNav" : "layout.collapseNav",
-    collapsed ? "展开导航栏" : "收起导航栏",
-  );
-  const navToggleHint = `${navToggleLabel} (${railShortcutLabel(
-    "toggle-nav",
-    isMacPlatform(),
-  )})`;
 
   const selectMinimalPane = useCallback(
     (pane: MinimalNavPane, opts?: { expand?: boolean }) => {
@@ -632,29 +614,6 @@ export default function Sidebar({
 
   const navScrollBody = isMinimal ? minimalNavBody : classicNavBody;
 
-  /**
-   * The nav folds from the seam on its right — the same handle shape the
-   * history rail uses on its own seam. It sits on the line that moves, so
-   * folding the rail drags it to the new edge and flips the arrow; nothing
-   * about it belongs to the panel's content.
-   *
-   * Collapsed it stays painted: it is the column's only way back. When the
-   * history rail is closed its handle lands on this same seam, so the two are
-   * offset in opposite directions (see `SEAM_HANDLE_STEP`) rather than stacked
-   * by a second rule.
-   */
-  const navSeamHandle = (
-    <RailSeamHandle
-      open={!isRailCollapsed}
-      onToggle={onToggle}
-      label={navToggleLabel}
-      hint={navToggleHint}
-      shortcut={railShortcutAria("toggle-nav")}
-      offsetY={-SEAM_HANDLE_STEP}
-      persistent={isRailCollapsed}
-    />
-  );
-
   // Mobile: fixed overlay drawer
   if (isMobile) {
     return (
@@ -751,20 +710,21 @@ export default function Sidebar({
   }
 
   // Desktop: custom sidebar with icon-only collapsed mode.
+  // The trailing divider is MainLayout's RailEdgeControl, not a border here.
   return (
-    /* The host owns the seam: the rail clips its own width animation, so the
-       handle has to live outside it to straddle the divider. */
     <div className={styles.navRailHost}>
       <div
         className={styles.navRail}
         style={{
           width: isRailCollapsed ? COLLAPSED_WIDTH : EXPANDED_WIDTH,
-          // Clear of the traffic lights on the band's leading edge.
+          // On macOS the collapsed rail is the traffic-light column.
+          // Icons, logo and footer center on it; the shell centers the
+          // lights on the same line.
           minWidth: `max(${
             isRailCollapsed ? COLLAPSED_WIDTH : EXPANDED_WIDTH
-          }px, calc(var(--window-controls-inset-start, 0px) + 40px))`,
+          }px, var(--window-controls-inset-start, 0px))`,
           background: "var(--fn-sidebar-bg)",
-          borderRight: "1px solid var(--fn-sidebar-border)",
+          borderRight: "none",
           transition:
             "width 0.25s cubic-bezier(0.4, 0, 0.2, 1), min-width 0.25s cubic-bezier(0.4, 0, 0.2, 1)",
           overflow: "hidden",
@@ -775,8 +735,8 @@ export default function Sidebar({
           minHeight: 0,
         }}
       >
-        {/* The window-controls band: reserved height, no control of its own —
-            the rail folds from its seam, not from a corner of this row. */}
+        {/* The window-controls band: reserved height, no control of its own.
+            The rail folds from RailEdgeControl on the seam beside this column. */}
         <div className={styles.navChrome} aria-hidden />
         <div
           style={{
@@ -792,6 +752,7 @@ export default function Sidebar({
           {brandInner}
         </div>
         <div
+          className={isRailCollapsed ? styles.navScrollCollapsed : undefined}
           style={{
             flex: 1,
             minHeight: 0,
@@ -808,8 +769,6 @@ export default function Sidebar({
         {userFooter}
         {customizer}
       </div>
-
-      {navSeamHandle}
     </div>
   );
 }

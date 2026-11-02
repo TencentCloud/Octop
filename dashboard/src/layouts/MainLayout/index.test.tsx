@@ -1,7 +1,10 @@
 import type { ReactNode } from "react";
 import { cleanup, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { DesktopChromeStyle } from "../../utils/desktopChrome";
+import {
+  WINDOW_CONTROLS_INSET,
+  type DesktopChromeStyle,
+} from "../../utils/desktopChrome";
 
 const state = vi.hoisted(() => ({
   pathname: "/tasks",
@@ -121,7 +124,12 @@ const platforms = [
 ] as const;
 
 const desktopPlatforms = [
-  { name: "macOS", chrome: "mac", left: "80px", right: "0px" },
+  {
+    name: "macOS",
+    chrome: "mac",
+    left: `${WINDOW_CONTROLS_INSET.mac}px`,
+    right: "0px",
+  },
   { name: "Windows", chrome: "windows", left: "0px", right: "138px" },
 ] as const;
 

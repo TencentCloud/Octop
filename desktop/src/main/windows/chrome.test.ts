@@ -29,14 +29,14 @@ function onPlatform(platform: NodeJS.Platform, run: () => void): void {
   }
 }
 
-test("原生顶栏高度为 58px，macOS 交通灯在拖动顶栏中垂直居中", () => {
+test("macOS 交通灯与收起导航栏同轴，左边距等于上边距", () => {
   assert.equal(chrome.CHROME_ROW_HEIGHT, 58);
-  assert.deepEqual(chrome.TRAFFIC_LIGHT_POSITION, { x: 14, y: 23 });
-  assert.equal(chrome.TRAFFIC_LIGHT_POSITION.y + 6, chrome.CHROME_ROW_HEIGHT / 2);
+  assert.deepEqual(chrome.TRAFFIC_LIGHT_POSITION, { x: 5, y: 5 });
+  assert.equal(chrome.TRAFFIC_LIGHT_POSITION.x, chrome.TRAFFIC_LIGHT_POSITION.y);
   onPlatform("darwin", () => {
     assert.deepEqual(chrome.windowChrome("light"), {
       titleBarStyle: "hidden",
-      trafficLightPosition: { x: 14, y: 23 },
+      trafficLightPosition: { x: 5, y: 5 },
     });
   });
 });

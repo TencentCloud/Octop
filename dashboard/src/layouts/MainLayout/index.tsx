@@ -20,9 +20,9 @@ import { useIsMobile } from "../../hooks/useIsMobile";
 import { useKeyboardOffset } from "../../hooks/useKeyboardOffset";
 import { useChatSidebarOpen } from "../../pages/Chat/hooks/useChatSidebarState";
 import { EXPAND_CHAT_RAIL_EVENT } from "../../pages/Chat/chatRailEvents";
-import RailSeamHandle, {
-  SEAM_HANDLE_STEP,
-} from "../../components/RailSeamHandle";
+import RailEdgeControl from "../../components/RailEdgeControl";
+import SplitSeamHandle from "../../components/SplitSeamHandle";
+import { RailSeamProvider } from "../railSeamContext";
 import {
   isMacPlatform,
   railShortcutAria,
@@ -102,17 +102,32 @@ export default function MainLayout() {
     }
   }, []);
 
-  /**
-   * Nav rail toggle — the top-row button and ⌘B.
-   *
-   * One control, one effect: it moves the nav rail and nothing else. It used to
-   * also pop the history rail open when expanding on a chat route, which made
-   * one keystroke change two panels; with the history rail's own button and
-   * ⇧⌘B in place, that surprise is no longer load-bearing.
-   */
+  /** Mobile header / overlay: simple nav toggle. */
   const toggleCollapsed = useCallback(() => {
     persistNavCollapsed(!collapsed);
   }, [collapsed, persistNavCollapsed]);
+
+  /**
+   * Desktop nav edge, matching upstream: expanding the nav while the classic
+   * history rail is closed opens both; collapsing the nav leaves history alone.
+   */
+  const handleNavRailToggle = useCallback(() => {
+    if (collapsed) {
+      persistNavCollapsed(false);
+      if (!isMinimalLayout && isChatPath(currentPath) && !chatSidebarOpen) {
+        setChatSidebarOpen(true);
+      }
+      return;
+    }
+    persistNavCollapsed(true);
+  }, [
+    collapsed,
+    chatSidebarOpen,
+    currentPath,
+    isMinimalLayout,
+    persistNavCollapsed,
+    setChatSidebarOpen,
+  ]);
 
   /**
    * History rail toggle, shared by the nav row button, the rail's own edge
@@ -144,25 +159,28 @@ export default function MainLayout() {
   ]);
 
   useRailShortcuts({
-    onToggleNav: toggleCollapsed,
+    onToggleNav: isMobile ? toggleCollapsed : handleNavRailToggle,
     onToggleHistory: handleHistoryRailToggle,
   });
 
-  /**
-   * Second seam: the conversation list folds from the line it shares with the
-   * conversation. Its name is the action (the accelerator lives in the
-   * tooltip), so AT hears "收起对话历史" and not "toggle".
-   */
-  const historyRailLabel = t(
-    chatSidebarOpen
-      ? "chat.collapseHistorySidebar"
-      : "chat.expandHistorySidebar",
-    chatSidebarOpen ? "收起对话历史" : "展开对话历史",
+  const navEdgeLabel = t(
+    collapsed ? "layout.expandNav" : "layout.collapseNav",
+    collapsed ? "展开导航栏" : "收起导航栏",
   );
-  const historyRailHint = `${historyRailLabel} (${railShortcutLabel(
-    "toggle-history",
+  const navEdgeHint = `${navEdgeLabel} (${railShortcutLabel(
+    "toggle-nav",
     isMacPlatform(),
   )})`;
+  /**
+   * History folded, nav still open: one split button on the nav's right edge
+   * replaces the pair of pills that would otherwise share that line.
+   */
+  const splitHistorySeam =
+    !isMobile &&
+    !isMinimalLayout &&
+    isChatPath(currentPath) &&
+    !collapsed &&
+    !chatSidebarOpen;
 
   // When switching to mobile, always collapse; restore saved preference on desktop
   useEffect(() => {
@@ -279,179 +297,184 @@ export default function MainLayout() {
               controls opt out via the no-drag rules in layout.css. */}
           {shellTopBand > 0 && <DesktopWindowDragBand position="absolute" />}
 
-          <div
-            style={{
-              flex: 1,
-              minHeight: 0,
-              display: "flex",
-              flexDirection: "row",
-              overflow: "hidden",
-            }}
-          >
-            {/* Mobile overlay backdrop */}
-            {isMobile && !collapsed && (
-              <div
-                onClick={toggleCollapsed}
-                style={{
-                  position: "fixed",
-                  inset: 0,
-                  background: "rgba(0, 0, 0, 0.40)",
-                  zIndex: 99,
-                }}
-              />
-            )}
-
-            <div
-              style={{
-                position: "relative",
-                flexShrink: 0,
-                alignSelf: "stretch",
-                display: "flex",
-                minHeight: 0,
-              }}
-            >
-              {/* The rail's own header carries the collapse control (it used to
-                  be a hover-only pill on this seam, which nobody could find and
-                  which collided with the history rail's pill next door). */}
-              <Sidebar
-                selectedKey={selectedKey}
-                collapsed={collapsed}
-                onToggle={toggleCollapsed}
-                isMobile={isMobile}
-              />
-            </div>
-
-            {isChatRoute && !isMinimalLayout && (
-              <div
-                id={CHAT_HISTORY_RAIL_ID}
-                style={{
-                  flexShrink: 0,
-                  display: "flex",
-                  alignSelf: "stretch",
-                  minHeight: 0,
-                  height: "100%",
-                  position: "relative",
-                }}
-              >
-                {/* The rail's fold hangs off this container's trailing edge, so
-                    it lands on the seam and follows the rail as it folds to
-                    zero width — then it sits beside the nav's own handle. */}
-                {!isMobile && (
-                  <RailSeamHandle
-                    open={chatSidebarOpen}
-                    onToggle={handleHistoryRailToggle}
-                    label={historyRailLabel}
-                    hint={historyRailHint}
-                    shortcut={railShortcutAria("toggle-history")}
-                    offsetY={SEAM_HANDLE_STEP}
-                    persistent={!chatSidebarOpen}
-                  />
-                )}
-              </div>
-            )}
-
-            {/* Right column: mobile header (if any) + page content */}
+          <RailSeamProvider split={splitHistorySeam}>
             <div
               style={{
                 flex: 1,
-                minWidth: 0,
                 minHeight: 0,
                 display: "flex",
-                flexDirection: "column",
+                flexDirection: "row",
                 overflow: "hidden",
               }}
             >
-              {isMobile &&
-                !(
-                  SELF_HEADER_PATHS.has(currentPath) ||
-                  [...SELF_HEADER_PATHS].some((p) =>
-                    currentPath.startsWith(p + "/"),
-                  )
-                ) && (
-                  <Header
-                    selectedKey={selectedKey}
-                    collapsed={collapsed}
-                    onToggle={toggleCollapsed}
-                    isMobile={isMobile}
-                  />
-                )}
+              {/* Mobile overlay backdrop */}
+              {isMobile && !collapsed && (
+                <div
+                  onClick={toggleCollapsed}
+                  style={{
+                    position: "fixed",
+                    inset: 0,
+                    background: "rgba(0, 0, 0, 0.40)",
+                    zIndex: 99,
+                  }}
+                />
+              )}
 
-              <Layout
+              <div
                 style={{
-                  background: "transparent",
-                  flex: 1,
+                  position: "relative",
+                  flexShrink: 0,
+                  alignSelf: "stretch",
                   display: "flex",
-                  flexDirection: "column",
-                  overflow: "hidden",
-                  minWidth: 0,
                   minHeight: 0,
                 }}
               >
-                <Content
-                  className="page-container"
+                <Sidebar
+                  selectedKey={selectedKey}
+                  collapsed={collapsed}
+                  onToggle={toggleCollapsed}
+                  isMobile={isMobile}
+                />
+                {!isMobile &&
+                  (splitHistorySeam ? (
+                    <SplitSeamHandle
+                      onCollapseNav={handleNavRailToggle}
+                      onExpandHistory={handleHistoryRailToggle}
+                    />
+                  ) : (
+                    <RailEdgeControl
+                      expanded={!collapsed}
+                      onToggle={handleNavRailToggle}
+                      side="end"
+                      placement={
+                        isChatRoute && !isMinimalLayout && !chatSidebarOpen
+                          ? "before"
+                          : "center"
+                      }
+                      label={navEdgeLabel}
+                      hint={navEdgeHint}
+                      shortcut={railShortcutAria("toggle-nav")}
+                    />
+                  ))}
+              </div>
+
+              {isChatRoute && !isMinimalLayout && (
+                <div
+                  id={CHAT_HISTORY_RAIL_ID}
                   style={{
-                    background: isChatRoute
-                      ? "var(--fn-bg-elevated, #fff)"
-                      : "var(--fn-bg-layout)",
-                    transition: "background var(--fn-transition)",
+                    flexShrink: 0,
+                    display: "flex",
+                    alignSelf: "stretch",
+                    minHeight: 0,
+                    height: "100%",
+                    position: "relative",
+                  }}
+                />
+              )}
+
+              {/* Right column: mobile header (if any) + page content */}
+              <div
+                style={{
+                  flex: 1,
+                  minWidth: 0,
+                  minHeight: 0,
+                  display: "flex",
+                  flexDirection: "column",
+                  overflow: "hidden",
+                }}
+              >
+                {isMobile &&
+                  !(
+                    SELF_HEADER_PATHS.has(currentPath) ||
+                    [...SELF_HEADER_PATHS].some((p) =>
+                      currentPath.startsWith(p + "/"),
+                    )
+                  ) && (
+                    <Header
+                      selectedKey={selectedKey}
+                      collapsed={collapsed}
+                      onToggle={toggleCollapsed}
+                      isMobile={isMobile}
+                    />
+                  )}
+
+                <Layout
+                  style={{
+                    background: "transparent",
                     flex: 1,
-                    overflow: "hidden",
                     display: "flex",
                     flexDirection: "column",
+                    overflow: "hidden",
+                    minWidth: 0,
                     minHeight: 0,
                   }}
                 >
-                  <PwaAutoPrompt />
-
-                  {workbenchMounted && (
-                    <div
-                      style={{
-                        flex: 1,
-                        minHeight: 0,
-                        overflow: "hidden",
-                        display: onWorkbench ? "flex" : "none",
-                        flexDirection: "column",
-                      }}
-                    >
-                      <RequirePermission>
-                        <Suspense fallback={<PageLoading />}>
-                          <WorkbenchPage isVisible={onWorkbench} />
-                        </Suspense>
-                      </RequirePermission>
-                    </div>
-                  )}
-
-                  {/* Keep Routes mounted when visiting Workbench so leaving/re-entering
-                  does not remount every lazy page (lag + lost UI state). */}
-                  <div
+                  <Content
+                    className="page-container"
                     style={{
+                      background: isChatRoute
+                        ? "var(--fn-bg-elevated, #fff)"
+                        : "var(--fn-bg-layout)",
+                      transition: "background var(--fn-transition)",
                       flex: 1,
-                      minHeight: 0,
                       overflow: "hidden",
-                      display: onWorkbench ? "none" : "flex",
+                      display: "flex",
                       flexDirection: "column",
+                      minHeight: 0,
                     }}
                   >
-                    {isFullscreen ? (
+                    <PwaAutoPrompt />
+
+                    {workbenchMounted && (
                       <div
                         style={{
                           flex: 1,
                           minHeight: 0,
                           overflow: "hidden",
-                          display: "flex",
+                          display: onWorkbench ? "flex" : "none",
                           flexDirection: "column",
                         }}
                       >
-                        {routes}
+                        <RequirePermission>
+                          <Suspense fallback={<PageLoading />}>
+                            <WorkbenchPage isVisible={onWorkbench} />
+                          </Suspense>
+                        </RequirePermission>
                       </div>
-                    ) : (
-                      <div className="page-content">{routes}</div>
                     )}
-                  </div>
-                </Content>
-              </Layout>
+
+                    {/* Keep Routes mounted when visiting Workbench so leaving/re-entering
+                  does not remount every lazy page (lag + lost UI state). */}
+                    <div
+                      style={{
+                        flex: 1,
+                        minHeight: 0,
+                        overflow: "hidden",
+                        display: onWorkbench ? "none" : "flex",
+                        flexDirection: "column",
+                      }}
+                    >
+                      {isFullscreen ? (
+                        <div
+                          style={{
+                            flex: 1,
+                            minHeight: 0,
+                            overflow: "hidden",
+                            display: "flex",
+                            flexDirection: "column",
+                          }}
+                        >
+                          {routes}
+                        </div>
+                      ) : (
+                        <div className="page-content">{routes}</div>
+                      )}
+                    </div>
+                  </Content>
+                </Layout>
+              </div>
             </div>
-          </div>
+          </RailSeamProvider>
         </div>
       </BackupOperationProvider>
     </ServiceRestartProvider>

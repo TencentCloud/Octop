@@ -242,9 +242,19 @@
   }
 }
 
+/* The collapsed icon list is only as wide as the traffic lights. A 5px
+   scrollbar would steal that width, so it stays hidden while still scrolling. */
+.navScrollCollapsed {
+  scrollbar-width: none;
+
+  &::-webkit-scrollbar {
+    width: 0;
+    height: 0;
+  }
+}
+
 /* The window-controls band. Height only — it exists so nothing is drawn under
-   the native traffic lights. The rail's fold control is the seam handle on its
-   trailing edge, not a corner of this row. */
+   the native traffic lights. The rail folds from the edge control beside it. */
 .navChrome {
   position: relative;
   flex: 0 0 var(--octop-shell-top-band, 58px);
