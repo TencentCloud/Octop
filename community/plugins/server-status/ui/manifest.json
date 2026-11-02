@@ -1,0 +1,3 @@
+{
+  "renderers": [{ "id": "server_status", "tools": ["get_server_status"] }]
+}

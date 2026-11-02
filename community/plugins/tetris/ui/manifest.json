@@ -1,0 +1,3 @@
+{
+  "renderers": [{ "id": "tetris_game", "tools": ["start_tetris"] }]
+}

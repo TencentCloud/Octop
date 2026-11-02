@@ -1,0 +1,174 @@
+schema_version: 1
+purpose: >-
+  为中国医学专业学会、协会及其专科分会提供确定的检索路由。
+  本表用于减少全网搜索猜测，不会把整个网站的所有内容自动升级为最终证据。
+verified_at: 2026-08-25
+
+evidence_contract:
+  final_content_types:
+    - 正式指南或共识原文
+    - 正式规范、临床路径、质控标准或团体标准原文
+    - 正式更正、撤回、替代或版本说明
+  discovery_only_content_types:
+    - 新闻或发布报道
+    - 会议、培训或活动信息
+    - 科普、解读、访谈或转载
+    - 征求意见稿、立项公告或注册信息
+  rule: >-
+    域名命中只证明可进入该机构的检索路由；最终引用仍须核对文档类型、
+    完整标题、制定或发布机构、年份或版本、DOI或文号、正文完整性和现行状态。
+
+chinese_medical_association:
+  name: 中华医学会
+  official_directory_url: https://www.cma.org.cn/col/col183/index.html
+  canonical_domains:
+    - cma.org.cn
+    - "*.cma.org.cn"
+    - medjournals.cn
+    - "*.medjournals.cn"
+    - rs.yiigle.com
+  route_policy: >-
+    先按专科分会名称或别名匹配；已登记专属子域时先限定该子域检索，
+    否则先在中华医学会官方目录确认分会身份，再限定 cma.org.cn 与正式期刊平台检索。
+  known_branch_sites:
+    - branch: 呼吸病学分会
+      aliases: [呼吸科, 呼吸与危重症医学科, CTS]
+      canonical_url: https://ctschina.cma.org.cn/
+      domain: ctschina.cma.org.cn
+    - branch: 糖尿病学分会
+      aliases: [糖尿病, 内分泌科, CDS]
+      canonical_url: https://diab.cma.org.cn/cn/index.aspx
+      domain: diab.cma.org.cn
+    - branch: 心血管病学分会
+      aliases: [心血管内科, 心内科, CSC]
+      canonical_url: https://csc.cma.org.cn/index.html
+      domain: csc.cma.org.cn
+  branch_catalog:
+    - 医史学分会
+    - 内科学分会
+    - 外科学分会
+    - 妇产科学分会
+    - 儿科学分会
+    - 皮肤性病学分会
+    - 眼科学分会
+    - 耳鼻咽喉-头颈外科学分会
+    - 结核病学分会
+    - 放射学分会
+    - 公共卫生分会
+    - 神经病学分会
+    - 精神医学分会
+    - 病理学分会
+    - 物理医学与康复学分会
+    - 科学普及分会
+    - 肿瘤学分会
+    - 心血管病学分会
+    - 微生物学与免疫学分会
+    - 麻醉学分会
+    - 检验医学分会
+    - 骨科学分会
+    - 核医学分会
+    - 放射医学与防护学分会
+    - 呼吸病学分会
+    - 消化病学分会
+    - 血液学分会
+    - 内分泌学分会
+    - 肾脏病学分会
+    - 感染病学分会
+    - 老年医学分会
+    - 泌尿外科学分会
+    - 医学教育分会
+    - 计划生育学分会
+    - 风湿病学分会
+    - 整形外科学分会
+    - 医学病毒学分会
+    - 胸心血管外科学分会
+    - 神经外科学分会
+    - 烧伤外科学分会
+    - 超声医学分会
+    - 放射肿瘤治疗学分会
+    - 医学遗传学分会
+    - 小儿外科学分会
+    - 急诊医学分会
+    - 航空航天医学分会
+    - 地方病学分会
+    - 高原医学分会
+    - 医学科学研究管理学分会
+    - 围产医学分会
+    - 器官移植学分会
+    - 航海医学分会
+    - 医学伦理学分会
+    - 显微外科学分会
+    - 创伤学分会
+    - 教育技术分会
+    - 行为医学分会
+    - 医学美学与美容学分会
+    - 消化内镜学分会
+    - 糖尿病学分会
+    - 激光医学分会
+    - 高压氧医学分会
+    - 疼痛学分会
+    - 肝病学分会
+    - 临床流行病学和循证医学分会
+    - 医学信息学分会
+    - 心身医学分会
+    - 影像技术分会
+    - 医学工程学分会
+    - 医学细胞生物学分会
+    - 全科医学分会
+    - 热带病与寄生虫学分会
+    - 手外科学分会
+    - 心电生理和起搏分会
+    - 男科学分会
+    - 变态反应学分会
+    - 骨质疏松和骨矿盐疾病分会
+    - 生殖医学分会
+    - 重症医学分会
+    - 肠外肠内营养学分会
+    - 妇科肿瘤学分会
+    - 运动医疗分会
+    - 健康管理学分会
+    - 灾难医学分会
+    - 数字医学分会
+    - 临床药学分会
+    - 临床输血学分会
+    - 组织修复与再生分会
+    - 细菌感染与耐药防治分会
+    - 罕见病分会
+    - 医学鉴定分会
+
+independent_professional_societies:
+  - id: chinese-pharmaceutical-association
+    name: 中国药学会
+    aliases: [药学, 临床药学, 医院药学, 合理用药]
+    official_url: https://www.cpa.org.cn/
+    canonical_domains: [cpa.org.cn, "*.cpa.org.cn"]
+    authority_scope: 中国药学会正式发布的团体标准、指南、规范及其更正公告
+    evidence_status: conditional_final
+    acceptance_evidence:
+      - T/CPHARMA 002-2019《药物流行病学研究方法学指南》
+      - T/CPHARMA 004-2020《医疗机构胰岛素安全使用管理规范》
+      - T/CPHARMA 008-2025《突发事件应急保障药品目录编制规范》
+  - id: chinese-stroke-association
+    name: 中国卒中学会
+    aliases: [卒中, 脑卒中, 脑血管病, 神经内科]
+    official_url: https://www.csa-stroke.com/
+    canonical_domains: [csa-stroke.com, "*.csa-stroke.com"]
+    authority_scope: 学会及其分会发布的指南、共识身份与发布信息
+    evidence_status: official_discovery_pending_fulltext_acceptance
+    caution: 发布新闻或目录页只能定位原文；取得完整正式正文并核验身份后才可作最终依据。
+  - id: chinese-association-of-rehabilitation-medicine
+    name: 中国康复医学会
+    aliases: [康复医学, 康复科, 物理医学与康复]
+    official_url: https://www.carm.org.cn/
+    canonical_domains: [carm.org.cn, "*.carm.org.cn"]
+    authority_scope: 学会及其专业委员会发布的标准、指南、共识身份与发布信息
+    evidence_status: official_discovery_pending_fulltext_acceptance
+    caution: 科普、竞赛、会议和转载页面不得作为正式指南或共识原文。
+  - id: chinese-nursing-association
+    name: 中华护理学会
+    aliases: [护理, 护理管理, 基层护理]
+    official_url: https://www.cna-cn.com/
+    canonical_domains: [cna-cn.com, "*.cna-cn.com", zhhlxh.org.cn, "*.zhhlxh.org.cn"]
+    authority_scope: 学会正式发布的护理团体标准、指南或规范身份信息
+    evidence_status: official_discovery_pending_fulltext_acceptance
+    caution: 会员、直播、培训和新闻页面只作发现线索。

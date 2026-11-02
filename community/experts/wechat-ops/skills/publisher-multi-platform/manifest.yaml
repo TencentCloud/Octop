@@ -1,0 +1,11 @@
+name: wechat-publisher-personal
+displayName: 一文多发助手（微信公众号 + 小红书）
+description: 使用自建服务器作为 IP 白名单代理发布微信公众号，同时通过浏览器自动化发布小红书，一篇 Markdown 覆盖多个平台
+category: self-media
+tags: [一文多发, 微信公众号, 小红书, 个人发布, wenyan-cli, Markdown, 浏览器自动化, 自建服务器]
+version: "2.0.0"
+author: openclaw
+minClawVersion: "2026.3.0"
+files:
+  identity: IDENTITY.md
+  soul: SOUL.md

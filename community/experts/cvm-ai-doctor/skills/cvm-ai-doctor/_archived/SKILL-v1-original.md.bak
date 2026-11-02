@@ -1,0 +1,1136 @@
+---
+name: standalone-checks
+description: System diagnostics with intelligent Quick/Deep mode. Diagnose performance issues (slow, lag, high CPU, memory problems, disk issues) on ANY system - servers (local/remote), personal computers (Mac/Windows/Linux), VMs, containers. Works standalone or via remote-executor adapter.
+metadata: {"openclaw": {"requires": {"bins": ["bash", "ps"]}, "os": ["linux", "darwin", "windows"]}}
+---
+
+# Standalone Checks Skill
+
+**Purpose**: Diagnose system performance issues with intelligent Quick (10s triage) → Deep (20-60s analysis) workflow.
+
+**Supported Systems**: Servers (local/remote), personal computers (Mac/Windows/Linux), VMs, containers.
+
+**Execution Modes**: 
+- Standalone (direct execution on current machine)
+- Remote (via remote-executor adapter for remote systems)
+
+---
+
+## 📚 Documentation Architecture
+
+This skill uses a **three-tier decision architecture**:
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│  Tier 1: SKILL.md (Core Decision Engine)                   │
+│  ➜ 14 high-frequency scenarios (80% coverage)              │
+│  ➜ Always read this first                                  │
+└─────────────────────────────────────────────────────────────┘
+                          ↓ If no match
+┌─────────────────────────────────────────────────────────────┐
+│  Tier 2: 00-scenario-index.md (Extended Knowledge Base)    │
+│  ➜ 60+ scenarios including low-frequency cases             │
+│  ➜ 126 Commands mappings                                   │
+│  ➜ Read when Tier 1 doesn't match                          │
+└─────────────────────────────────────────────────────────────┘
+                          ↓ Execute
+┌─────────────────────────────────────────────────────────────┐
+│  Tier 3: References & Commands                             │
+│  ➜ 5 diagnostic references (*.md in references/)           │
+│  ➜ 126 action commands (commands/*/*.md)                   │
+│  ➜ Execute based on Tier 1 or Tier 2 decision              │
+└─────────────────────────────────────────────────────────────┘
+```
+
+---
+
+## 🚀 Quick/Deep Modular Architecture
+
+References are split into **Quick** (triage) and **Deep** (detailed analysis) modules for efficient loading.
+
+### How It Works
+
+```yaml
+Step 1: Read Quick module first
+  → Fast checks (10s)
+  → Returns status: OK/WARNING/CRITICAL
+  
+Step 2: Based on Quick results, conditionally read specific Deep modules
+  → Only load what's needed
+  → Deep analysis (20-60s per module)
+```
+
+### Module Structure
+
+Each diagnostic domain has:
+- **1 Quick file**: Fast triage (10s scan)
+- **1-5 Deep files**: Component-specific analysis (20-60s each)
+
+Example: `resource-saturation-*`:
+```
+resource-saturation-quick.md         (Always read first for triage)
+resource-saturation-deep-cpu.md      (Read only if CPU issue detected)
+resource-saturation-deep-memory.md   (Read only if Memory issue detected)
+resource-saturation-deep-disk.md     (Read only if Disk issue detected)
+resource-saturation-deep-network.md  (Read only if Network issue detected)
+```
+
+---
+
+### Reference Files Location
+
+All references are in `references/` directory:
+
+```yaml
+Quick Decision Support:
+  00-quick-reference.md:
+    purpose: Fast lookup for common scenarios
+    usage: Optional speed optimization for AI
+    content: Top 10 scenarios + Quick/Deep decision rules
+    
+Extended Scenarios:
+  00-scenario-index.md:
+    purpose: Complete scenario library (60+ scenarios)
+    usage: Fallback when built-in scenarios don't match
+    content: 20 categories + Commands/References mappings
+    
+Diagnostic Modules (Modular Quick/Deep Architecture):
+  Resource Saturation:
+    - resource-saturation-quick.md: 10s scan (CPU/Mem/Disk/Net)
+    - resource-saturation-deep-cpu.md: CPU root cause analysis
+    - resource-saturation-deep-memory.md: Memory root cause analysis
+    - resource-saturation-deep-disk.md: Disk I/O root cause analysis
+    - resource-saturation-deep-network.md: Network root cause analysis
+    
+  System Logs:
+    - system-logs-quick.md: 10s error count (kernel/OOM/FS/auth/service)
+    - system-logs-deep-kernel.md: Kernel error analysis
+    - system-logs-deep-oom.md: OOM event analysis
+    - system-logs-deep-fs.md: File system error analysis
+    - system-logs-deep-auth.md: Auth failure analysis
+    - system-logs-deep-service.md: Service failure analysis
+    
+  Disk SMART:
+    - disk-smart-quick.md: 10s health check (PASSED/FAILED)
+    - disk-smart-deep.md: SMART attributes + failure prediction
+    
+  Hardware Health:
+    - hardware-health-quick.md: 10s check (CPU temp/Memory/RAID/Battery)
+    - hardware-health-deep.md: Detailed hardware component analysis
+    
+  Time Sync:
+    - time-sync.md: NTP synchronization check (Quick/Deep in same file)
+  
+Cross-Platform Support:
+  _cross_platform_adapters.sh: 
+    purpose: Unified command interface for Linux/macOS/Windows
+    provides: get_cpu_cores, get_memory_usage, get_disk_usage, etc.
+    usage: Source this file for cross-platform compatibility
+    os_support:
+      linux: Full support (primary platform)
+      macos: Full support (via adapters)
+      windows: Basic support (Git Bash/PowerShell hybrid)
+```
+
+### Decision Flow
+
+```yaml
+User Query → Step 1: Match Built-in Scenarios (SKILL.md)
+              ├─ Match Found → Execute Reference
+              └─ No Match → Step 2: Query 00-scenario-index.md
+                             ├─ Match Found → Execute Command/Reference
+                             └─ No Match → Fallback (Basic health check)
+```
+
+---
+
+## 🎯 When to Use This Skill
+
+### ✅ Use When
+
+**User describes ANY system performance issues**:
+- Performance: "慢"、"卡"、"lag"、"slow"、"sluggish"、"响应慢"
+- CPU: "CPU 高"、"CPU 100%"、"风扇狂转"、"high CPU"
+- Memory: "内存不足"、"memory"、"OOM"、"swap"
+- Disk: "磁盘满"、"disk full"、"磁盘慢"、"I/O slow"
+- General: "检查系统"、"健康检查"、"health check"、"系统诊断"
+
+**Device types** (all supported):
+- 🖥️ Servers: local server, remote server, cloud server (CVM), bare metal
+- 💻 Personal computers: laptop, desktop, workstation, Mac, PC
+- 🐳 Containers: Docker container, Kubernetes pod, LXC
+- 📦 Virtual machines: VM, virtual machine, VPS, EC2, compute instance
+- 🐧 All OS: Linux (Ubuntu/CentOS/Debian), macOS, Windows
+
+**Execution contexts**:
+- Direct execution: When user is on the problematic machine
+- Remote execution: Combine with `remote-executor` skill for remote systems
+  - Example: "Check CPU on 10.0.1.5" → Use remote-executor + standalone-checks
+
+**Keywords that trigger this skill**:
+```yaml
+performance: [慢, 卡, lag, slow, sluggish, 响应慢, 延迟, latency]
+cpu: [CPU, cpu, cpu高, cpu 100%, 风扇, fan, processor]
+memory: [内存, memory, OOM, swap, 内存不足, RAM]
+disk: [磁盘, disk, I/O, io, 存储, storage, drive]
+health: [检查, 健康, health, check, status, 状态, diagnose, diagnostic]
+errors: [错误, error, 异常, exception, 崩溃, crash, panic]
+device_type: [server, computer, machine, laptop, desktop, VM, container, pod]
+os_type: [Linux, Ubuntu, CentOS, macOS, Mac, Windows, PC]
+```
+
+### ❌ Do NOT Use When
+
+- User wants **specific configuration changes** → Direct command execution or specialized skills
+- Pure **software installation** queries → Package manager skills
+- **Application-specific** issues (e.g., "MySQL won't start") → Use application-specific diagnostic skills first, fall back to this skill if suspected system resource issue
+- User asks about **Windows servers** → Not yet supported
+
+---
+
+## 🔍 Scene Matching Algorithm
+
+### Step 1: Extract User Keywords
+
+**AI should**:
+1. Parse user's question for keywords
+2. Identify primary intent (troubleshoot vs. check)
+3. Determine specific component (if mentioned)
+
+**Example**:
+```
+User: "服务器很慢"
+Keywords: [慢]
+Intent: troubleshoot
+Component: none (general)
+```
+
+### Step 2: Match to Scenario
+
+**Quick Reference to Scenarios**:
+
+```yaml
+系统慢/卡 (System Slow):
+  keywords: [慢, 卡, lag, slow, sluggish]
+  reference: resource-saturation.md
+  mode: quick
+  reason: "Need triage to find which component is bottleneck"
+
+CPU 问题 (CPU Issues):
+  keywords: [CPU, cpu高, cpu 100%]
+  reference: resource-saturation.md
+  mode: deep
+  focus: cpu
+  reason: "User explicitly mentioned CPU, skip Quick"
+
+内存问题 (Memory Issues):
+  keywords: [内存, memory, OOM, swap]
+  reference: resource-saturation.md
+  mode: deep
+  focus: memory
+  reason: "User explicitly mentioned memory, skip Quick"
+
+磁盘问题 (Disk Issues):
+  keywords: [磁盘满, disk full, 磁盘慢]
+  reference: resource-saturation.md (if slow) OR large-files.md (if full)
+  mode: quick (if slow) OR direct (if full)
+  reason: "Disk full needs space check, disk slow needs I/O analysis"
+
+健康检查 (Health Check):
+  keywords: [检查, 健康, health, check]
+  reference: resource-saturation.md
+  mode: quick
+  reason: "Health check only needs Quick scan"
+
+崩溃/错误 (Crash/Errors):
+  keywords: [崩溃, crash, 错误, error, 异常, OOM, killed, 日志]
+  reference: system-logs.md
+  mode: quick
+  reason: "Check error count first, then Deep if many errors"
+
+OOM 问题 (OOM Killer):
+  keywords: [OOM, Out of Memory, killed process, 内存杀手]
+  reference: system-logs.md
+  mode: deep
+  focus: oom
+  reason: "OOM explicitly mentioned, skip Quick"
+
+认证失败 (Auth Failures):
+  keywords: [认证, authentication, SSH, 登录失败, brute force]
+  reference: system-logs.md
+  mode: deep
+  focus: auth
+  reason: "Auth issues need immediate analysis"
+
+磁盘健康 (Disk Health):
+  keywords: [磁盘健康, disk health, SMART, 坏道, bad sector]
+  reference: disk-smart.md
+  mode: quick
+  reason: "Check overall health first"
+
+磁盘故障 (Disk Failure):
+  keywords: [磁盘故障, disk failure, 磁盘坏了, FAILED]
+  reference: disk-smart.md
+  mode: deep
+  reason: "Explicit failure mentioned, detailed SMART analysis needed"
+
+硬件问题 (Hardware Issues):
+  keywords: [硬件, hardware, 温度, temperature, hot, 过热, 风扇]
+  reference: hardware-other.md + disk-smart.md
+  mode: quick
+  reason: "Quick hardware health scan across all components"
+
+CPU 过热 (CPU Overheating):
+  keywords: [CPU温度, CPU过热, CPU hot, 风扇很响, throttling]
+  reference: hardware-other.md
+  mode: deep
+  focus: cpu
+  reason: "Temperature issue needs immediate diagnosis"
+
+RAID 问题 (RAID Issues):
+  keywords: [RAID, 磁盘阵列, degraded, RAID故障]
+  reference: hardware-other.md
+  mode: deep
+  focus: raid
+  reason: "RAID issues are critical, need detailed status"
+
+内存错误 (Memory Errors):
+  keywords: [ECC, memory error, 内存错误, uncorrectable]
+  reference: hardware-other.md
+  mode: deep
+  focus: memory
+  reason: "Memory errors indicate hardware failure"
+
+时间问题 (Time Issues):
+  keywords: [时间, time, NTP, ntp, 时钟, 时间不对, Kerberos]
+  reference: time-sync.md
+  mode: quick
+  reason: "Quick NTP sync check"
+
+时间偏移 (Time Drift):
+  keywords: [时间偏移, time drift, clock offset, Kerberos失败]
+  reference: time-sync.md
+  mode: deep
+  reason: "Time drift needs offset measurement and troubleshooting"
+```
+
+### Step 2.5: Handle Unmatched Scenarios
+
+**If no scenario matches** the user's keywords:
+
+```yaml
+Fallback Strategy:
+  Step 1: Read Extended Scenario Index
+    action: read_file("references/00-scenario-index.md")
+    purpose: Search for low-frequency or specialized scenarios
+    search_for: Keywords from user's query
+    
+  Step 2: Look for Related Scenarios
+    examples:
+      - "Docker container slow" → Search "Docker" in index
+      - "Python environment broken" → Search "Python" in index
+      - "Bluetooth not working" → Search "Bluetooth" in index
+    
+  Step 3: Execute Recommended Actions
+    if match_found in 00-scenario-index.md:
+      # Option A: Commands reference found
+      - Read: commands/<category>/<command>.md
+      - Execute: Follow the command's instructions
+      
+      # Option B: Reference found
+      - Read: references/<reference>.md
+      - Execute: Follow Quick/Deep workflow
+    
+    else:
+      # No match in extended index
+      - Inform user: "This scenario is not covered in diagnostic library"
+      - Offer: "I can run basic health checks or you can describe the problem in more detail"
+      - Execute: Basic health check (resource-saturation.md Quick mode)
+
+Validation:
+  - If 00-scenario-index.md matches → High confidence, execute directly
+  - If partial match → Ask user to confirm before executing
+  - If no match → Always run basic health check as fallback
+```
+
+**Example Execution**:
+
+```text
+User Query: "Docker container keeps crashing"
+
+Step 1: Check built-in scenarios (Step 2)
+  Result: No exact match for "Docker"
+
+Step 2: Read 00-scenario-index.md
+  Search: "Docker" keyword
+  Match Found: Category "Container Issues" → Scenario "Docker Container Crashes"
+
+Step 3: Execute recommended action
+  Reference: system-logs.md --mode deep --focus crash
+  Command: commands/debugging/diagnose-crash.md
+  
+Step 4: Report findings
+  "Found crash logs indicating OOM in container..."
+```
+
+---
+
+### Step 3: Select Reference File
+
+**Based on matched scenario**:
+
+```yaml
+Available References:
+  resource-saturation.md:
+    purpose: CPU/Memory/Disk/Network saturation analysis
+    quick_duration: 10s
+    deep_duration: 20-60s
+    scenarios: [系统慢, CPU问题, 内存问题, 磁盘慢, 网络慢]
+    
+  system-logs.md:
+    purpose: Kernel errors, OOM events, auth failures, service failures
+    quick_duration: 10s
+    deep_duration: 20-40s (per category)
+    scenarios: [崩溃, 错误, 异常, 启动问题, OOM, 认证失败]
+    
+  disk-smart.md:
+    purpose: Disk hardware health via SMART attributes
+    quick_duration: 10s
+    deep_duration: 20-30s (per disk)
+    scenarios: [磁盘故障, 磁盘健康, 坏道, 磁盘过热]
+    
+  hardware-other.md:
+    purpose: CPU temperature, memory ECC, RAID, battery/power
+    quick_duration: 10s
+    deep_duration: 20-40s (per component)
+    scenarios: [硬件问题, 温度高, CPU过热, RAID故障, 内存错误]
+    
+  time-sync.md:
+    purpose: NTP/chrony synchronization and clock offset
+    quick_duration: 5s
+    deep_duration: 10-15s
+    scenarios: [时间错误, NTP问题, 时钟漂移, Kerberos失败]
+```
+
+**AI Execution**:
+```text
+1. Matched scenario: "系统慢"
+2. Selected reference: "resource-saturation.md"
+3. Read file: read_file("references/resource-saturation.md")
+4. Proceed to Step 4 (Quick/Deep Decision)
+```
+
+---
+
+## 🔄 Quick/Deep Decision Rules
+
+### Rule 1: Determine User Intent
+
+**AI should classify**:
+
+```yaml
+Intent: troubleshoot
+  indicators: [慢, 卡, 问题, 故障, 排查, slow, issue, problem]
+  strategy: Quick → Deep (if abnormal)
+  reason: "User needs root cause, must dig深入 if issues found"
+
+Intent: check
+  indicators: [检查, 查看, 状态, 健康, check, status, health]
+  strategy: Quick only (unless CRITICAL)
+  reason: "User just wants overview, avoid over-analysis"
+
+Intent: deep_analysis
+  indicators: [详细, 深度, 具体, 分析, detailed, deep, analyze, 为什么]
+  strategy: Skip Quick, direct Deep
+  reason: "User explicitly wants detailed analysis"
+```
+
+**Example**:
+```
+User: "服务器很慢" → Intent: troubleshoot
+User: "检查系统" → Intent: check
+User: "详细分析 CPU" → Intent: deep_analysis
+```
+
+---
+
+### Rule 2: Quick Mode Execution & Result-Based Decision
+
+**AI Workflow**:
+
+```
+1. Execute Quick Mode
+   - Navigate to "⚡ Quick Mode" section in Reference
+   - Run 4 check commands sequentially
+   - Parse output and compare to thresholds
+   - Generate Quick Mode JSON output
+
+2. Classify Results
+   findings = {
+     cpu: OK | WARNING | CRITICAL,
+     memory: OK | WARNING | CRITICAL,
+     disk: OK | WARNING | CRITICAL,
+     network: OK | WARNING | CRITICAL
+   }
+
+3. Decision Logic:
+   
+   if ANY component == CRITICAL:
+     action: Auto-run Deep for CRITICAL component(s)
+     reason: "Critical issues require immediate deep analysis"
+     no_prompt: true
+   
+   elif ANY component == WARNING:
+     if user_intent == "troubleshoot":
+       action: Auto-run Deep for WARNING component(s)
+       reason: "Troubleshooting requires root cause identification"
+       no_prompt: true
+     elif user_intent == "check":
+       action: Ask user if they want Deep
+       prompt: "发现 <component> 异常，是否需要深入分析？"
+   
+   else:  # All OK
+     action: Report OK, end
+     reason: "No issues detected, no need for Deep"
+```
+
+**Example Execution**:
+
+```
+User: "服务器慢"
+Intent: troubleshoot
+
+Step 1: Quick Mode
+  CPU: OK (queue 6 / 8 cores)
+  Memory: WARNING (Swap 512MB)
+  Disk: OK (I/O wait 3%)
+  Network: OK (0 drops)
+
+Step 2: Decision
+  Memory = WARNING
+  Intent = troubleshoot
+  → Auto-run Deep Memory (no prompt needed)
+
+Step 3: Deep Memory
+  Navigate to "🔬 Deep Mode - Memory Analysis"
+  Execute all 3 steps
+  Apply root cause inference
+  
+Result: MySQL memory leak detected
+```
+
+---
+
+### Rule 3: Deep Mode Focus Strategy
+
+**When multiple components need Deep**:
+
+```yaml
+Priority Order:
+  1. cpu (affects everything)
+  2. memory (can cause CPU/disk issues)
+  3. disk (can cause CPU wait)
+  4. network (least likely to cascade)
+
+Strategy:
+
+Single WARNING:
+  action: Deep for that component only
+  example: "bash resource-saturation.md Deep Mode → Memory section"
+
+2-3 WARNINGs:
+  action: Deep for each, in priority order
+  example:
+    1. Deep CPU first
+    2. Evaluate if CPU fix resolves others
+    3. If not, Deep Memory next
+
+4+ WARNINGs or multiple CRITICALs:
+  action: Full Deep (all components)
+  reason: "System-wide issue, need comprehensive analysis"
+```
+
+---
+
+### Rule 4: Time Budget Control
+
+**AI should respect user's implied time constraints**:
+
+```yaml
+User says "快速检查":
+  time_budget: 30 seconds
+  strategy: Quick only (skip Deep even if WARNING)
+
+User says "检查一下":
+  time_budget: 60 seconds
+  strategy: Quick + selective Deep (only CRITICAL or single WARNING)
+
+User says "详细排查" / "找出问题":
+  time_budget: 180 seconds
+  strategy: Quick + comprehensive Deep (all WARNINGs)
+
+Default (no time hint):
+  time_budget: 60 seconds
+  strategy: Quick + priority Deep (CRITICAL + first WARNING)
+```
+
+---
+
+## 📚 Reference Usage Guide
+
+### How to Read a Reference File
+
+**AI Step-by-Step**:
+
+```
+1. Use read_file() tool
+   file_path: "references/<reference>.md"
+   
+2. Parse file structure
+   - YAML frontmatter: name, description, category
+   - "🎯 AI Usage Guide" section: Workflow overview
+   - "⚡ Quick Mode" section: Quick checks (if available)
+   - "🔬 Deep Mode" section: Deep analysis
+
+3. Navigate to target section
+   if mode == "quick":
+     find: "## ⚡ Quick Mode"
+     read: All "### Check N" subsections
+   elif mode == "deep":
+     find: "## 🔬 Deep Mode"
+     if focus specified:
+       find: "### Deep Mode: <focus> Analysis"
+     else:
+       read: All deep subsections
+
+4. Extract commands
+   - Look for code blocks: ```bash ... ```
+   - Commands are ready to execute as-is
+   - Variables may need shell expansion
+
+5. Extract thresholds
+   - Look for: ```yaml ... ``` blocks
+   - Parse OK/WARNING/CRITICAL conditions
+   - Use for result classification
+
+6. Execute checks
+   for each command:
+     tool: execute_command(command)
+     parse: output
+     compare: against thresholds
+     classify: OK | WARNING | CRITICAL
+
+7. If Deep Mode: Apply root cause inference
+   - Find: "#### Root Cause Inference Template"
+   - Match: conditions to actual results
+   - Select: matching scenario
+   - Extract: root_cause + fixes
+```
+
+---
+
+### Complete Execution Example
+
+**Scenario**: User says "服务器很慢"
+
+```
+========================================
+AI Workflow Trace
+========================================
+
+[Step 1: Scene Matching]
+  User input: "服务器很慢"
+  Extracted keywords: [慢]
+  Matched scenario: "系统慢/卡"
+  User intent: troubleshoot
+  Selected reference: resource-saturation.md
+  Initial mode: quick
+
+[Step 2: Read Reference]
+  Action: read_file("references/resource-saturation.md")
+  Target section: "⚡ Quick Mode (10 seconds)"
+  Found: 4 checks (CPU, Memory, Disk, Network)
+
+[Step 3: Execute Quick Mode]
+  
+  Check 1: CPU Queue
+    Command: CPU_CORES=$(nproc); RUN_QUEUE=$(vmstat 1 2 | tail -1 | awk '{print $1}'); echo "CPU Cores: $CPU_CORES"; echo "Run Queue: $RUN_QUEUE"
+    Output: "CPU Cores: 8\nRun Queue: 6"
+    Threshold: OK (6 <= 8)
+    Result: cpu = OK ✅
+    
+  Check 2: Memory Swap
+    Command: SWAP_USED=$(free -m | awk '/Swap:/ {print $3}'); echo "Swap Used: ${SWAP_USED}MB"
+    Output: "Swap Used: 512MB"
+    Threshold: WARNING (100 <= 512 < 1000)
+    Result: memory = WARNING ⚠️
+    
+  Check 3: Disk I/O Wait
+    Command: IO_WAIT=$(iostat -x 1 2 | tail -n +4 | awk ...); echo "I/O Wait: ${IO_WAIT}%"
+    Output: "I/O Wait: 3.2%"
+    Threshold: OK (3.2 < 10)
+    Result: disk = OK ✅
+    
+  Check 4: Network Drops
+    Command: RX_DROPS=$(ip -s link | ...); echo "RX Drops: $RX_DROPS"
+    Output: "RX Drops: 0"
+    Threshold: OK (0 < 100)
+    Result: network = OK ✅
+
+[Step 4: Quick Mode Summary]
+  {
+    "mode": "quick",
+    "duration": "10s",
+    "findings": {
+      "cpu": "OK",
+      "memory": "WARNING",
+      "disk": "OK",
+      "network": "OK"
+    },
+    "deep_recommended": ["memory"]
+  }
+
+[Step 5: Apply Decision Rules]
+  Memory = WARNING
+  User intent = troubleshoot
+  Rule: "WARNING + troubleshoot → Auto Deep"
+  Decision: Run Deep Memory (no user prompt)
+
+[Step 6: Read Reference Deep Section]
+  Action: read_file("references/resource-saturation.md")
+  Navigate to: "### Deep Mode: Memory Analysis"
+  Found: 3 check steps + root cause inference template
+
+[Step 7: Execute Deep Mode - Memory]
+  
+  Step 1: Top Memory Consumers
+    Command: ps aux --sort=-%mem | head -20 | awk ...
+    Output:
+      PID    USER   CPU%  MEM%  RSS(MB)  COMMAND
+      12345  mysql  15%   82%   8397.6   /usr/sbin/mysqld
+      ...
+    Analysis: MySQL consuming 8.4GB (82% memory)
+    
+  Step 2: Memory Leak Detection
+    Command: for i in 1 2 3; do ps -o rss -p 12345 | tail -1; sleep 5; done
+    Output:
+      8192000  # Sample 1: 8192MB
+      8202000  # Sample 2: 8202MB (+ 10MB)
+      8212000  # Sample 3: 8212MB (+ 10MB)
+    Analysis: RSS growing ~100MB/15s → Memory leak suspected
+    
+  Step 3: Swap Activity
+    Command: vmstat 1 5 | awk 'NR>2 {print $7, $8}'
+    Output:
+      120 45   # Sample 1
+      135 52   # Sample 2
+      ...
+    Analysis: Swap In > 100 KB/s → Active thrashing
+
+[Step 8: Apply Root Cause Inference]
+  Template: "Scenario 1: Memory Leak"
+  Conditions:
+    ✅ Single process MEM% > 30% (MySQL 82%)
+    ✅ RSS growing > 100MB/15s (confirmed)
+    ✅ Swap activity increasing (swap in > 100)
+  Match: YES
+  Root Cause: "Memory leak in MySQL"
+  Fixes:
+    immediate: sudo systemctl restart mysql
+    long_term: [Fix leak, optimize buffer pool, upgrade version]
+
+[Step 9: Generate Final Report]
+  {
+    "scenario": "系统慢",
+    "quick_duration": "10s",
+    "deep_duration": "25s",
+    "total_duration": "35s",
+    "root_cause": {
+      "component": "memory",
+      "issue": "MySQL memory leak",
+      "evidence": [
+        "MySQL consuming 8.4GB (82%)",
+        "RSS growing 100MB/15s",
+        "Swap activity > 100 KB/s"
+      ]
+    },
+    "recommendations": {
+      "immediate": [
+        "sudo systemctl restart mysql"
+      ],
+      "long_term": [
+        "Investigate memory leak in MySQL",
+        "Optimize innodb_buffer_pool_size",
+        "Consider upgrade to MySQL 8.0.35+"
+      ]
+    }
+  }
+
+[Step 10: Present to User]
+  AI generates human-friendly report:
+  
+  🔍 诊断结果 (35 秒)
+  
+  问题根因:
+    MySQL 内存泄漏导致系统变慢
+  
+  证据:
+    • MySQL 占用 8.4GB 内存 (82%)
+    • 内存持续增长 (100MB/15秒)
+    • 系统频繁 Swap (性能下降)
+  
+  立即修复:
+    sudo systemctl restart mysql
+  
+  长期优化:
+    1. 检查慢查询日志识别泄漏点
+    2. 调整 innodb_buffer_pool_size (当前可能过大)
+    3. 考虑升级到 MySQL 8.0.35+ (修复已知泄漏)
+
+========================================
+Execution Summary
+========================================
+Total Time: 35 seconds
+  - Quick Mode: 10s
+  - Deep Mode: 20s
+  - Report generation: 5s
+  
+Performance vs. Full Scan:
+  Time saved: 63% (35s vs 90s)
+  
+Accuracy: Root cause correctly identified ✅
+```
+
+---
+
+## 🚨 Error Handling
+
+### Common Issues
+
+#### 1. Reference File Not Found
+
+```yaml
+symptom: read_file() returns "File not found"
+cause: Reference path incorrect or file missing
+action:
+  1. Verify path: "references/<name>.md"
+  2. List available: list_dir("references/")
+  3. Fallback to basic checks (ps, top, free)
+  4. Inform user: "Advanced diagnostics unavailable, using basic checks"
+```
+
+#### 2. Command Execution Failed
+
+```yaml
+symptom: execute_command() returns error or empty
+cause: Command not available (iostat, sensors, etc.)
+action:
+  1. Check error message for missing package
+  2. Try alternative command (e.g., vmstat instead of iostat)
+  3. Skip that check and continue with others
+  4. Note in report: "Tool X unavailable, skipped check Y"
+```
+
+#### 3. Output Parsing Failed
+
+```yaml
+symptom: Cannot extract values from command output
+cause: Output format different from expected
+action:
+  1. Show raw output to user
+  2. Ask user to interpret or install required packages
+  3. Provide manual commands for user to run
+```
+
+#### 4. Threshold Classification Ambiguous
+
+```yaml
+symptom: Value on boundary (e.g., exactly 100)
+cause: Threshold definition uses >= or >
+action:
+  1. Default to conservative (treat as WARNING, not OK)
+  2. Mention in report: "Value near threshold, recommend monitoring"
+```
+
+---
+
+## 💡 Best Practices
+
+### For AI Agents
+
+1. **Always Quick first** (except when user explicitly requests Deep)
+   - Reason: Avoids wasting time on healthy components
+   - Exception: User says "详细分析 CPU" → Skip Quick
+
+2. **Don't overwhelm user** with too much data
+   - Quick: Simple status per component
+   - Deep: Focused root cause + fixes
+   - Avoid: Dumping raw command output
+
+3. **Be proactive** about Deep when troubleshooting
+   - If intent = troubleshoot + WARNING → Auto Deep
+   - Don't wait for user permission
+   - Explain: "检测到内存异常，正在深入分析..."
+
+4. **Combine related checks** when appropriate
+   - If disk slow → Run resource-saturation + disk-smart
+   - If crash → Run system-logs + hardware checks
+
+5. **Time awareness**
+   - Mention duration: "Quick 扫描完成 (10 秒)"
+   - If Deep takes > 30s, inform: "深度分析中，预计 30 秒..."
+
+6. **Use JSON internally**, human-friendly externally
+   - Internal: Structured JSON for decisions
+   - User-facing: Clear Chinese/English explanations
+
+---
+
+## 🔗 Reference Quick Matrix
+
+**AI can use this for instant reference selection**:
+
+| User Problem | Quick Ref | Mode | Focus | Duration |
+|--------------|-----------|------|-------|----------|
+| 系统慢 | resource-saturation | quick | all | 10s |
+| CPU 高 | resource-saturation | deep | cpu | 20s |
+| 内存不足 | resource-saturation | deep | memory | 25s |
+| 磁盘慢 | resource-saturation | deep | disk | 30s |
+| 磁盘满 | (direct: df, du) | - | - | 5s |
+| 网络慢 | resource-saturation | deep | network | 20s |
+| 崩溃 | system-logs | quick → deep | crash | 5-35s |
+| 错误日志 | system-logs | quick | errors | 5s |
+| 硬件问题 | hardware-other | quick | all | 8s |
+| 磁盘故障 | disk-smart | quick → deep | - | 5-20s |
+| 时间错误 | time-sync | quick | - | 3s |
+| 健康检查 | resource-saturation | quick | all | 10s |
+
+---
+
+## 📝 Maintenance Notes
+
+### Adding New References
+
+When adding a new Reference file:
+
+1. **Update Scene Matching Algorithm** (Section "🔍 Scene Matching Algorithm")
+   - Add keywords to Step 2 scenario mapping
+   - Add entry to Step 3 Available References list
+
+2. **Update Reference Quick Matrix** (Section "🔗 Reference Quick Matrix")
+   - Add new row with problem → reference mapping
+
+3. **Ensure Reference follows format**:
+   - YAML frontmatter
+   - "🎯 AI Usage Guide" section
+   - "⚡ Quick Mode" section (if applicable)
+   - "🔬 Deep Mode" section (if applicable)
+   - Root cause inference templates
+
+4. **Test with AI**:
+   - Verify scene matching works
+   - Verify Quick/Deep execution
+   - Verify output parsing
+
+---
+
+## 🎯 Success Metrics
+
+**How to measure this skill's effectiveness**:
+
+```yaml
+Response Time:
+  target: < 60 seconds for 80% of issues
+  measurement: Quick (10s) + Deep (20-60s) + Report (5-10s)
+
+Accuracy:
+  target: > 90% correct root cause identification
+  measurement: User confirmation of fixes working
+
+User Satisfaction:
+  target: User doesn't need to run multiple diagnostics
+  measurement: Single skill invocation solves the problem
+```
+
+---
+
+**Last Updated**: 2026-03-24
+**Version**: 2.2 (Modular Quick/Deep architecture)
+**Maintainer**: AI-first diagnostics team
+
+**Changelog**:
+- v2.2: **Modular Quick/Deep architecture** - Split references into Quick (triage) + Deep (analysis) modules
+  - Conditional loading: Only read Deep modules when Quick identifies issues
+  - 19 modular files (4 Quick, 15 Deep) replacing 4 monolithic files
+- v2.1: Added cross-platform adapters (Linux/macOS/Windows), expanded device coverage (servers/PCs/VMs/containers)
+- v2.0: Quick/Deep architecture with 3-tier decision system
+- v1.0: Initial release (Linux-only)
+
+---
+
+## 🌟 Three-Tier Architecture Examples
+
+### Example 1: Built-in Scenario (Tier 1 Match)
+
+```yaml
+User Query: "服务器很慢"
+
+Tier 1: SKILL.md
+  ├─ Extract keywords: [慢]
+  ├─ Match scenario: "系统慢/卡" ✅
+  ├─ Select reference: resource-saturation.md
+  └─ Mode: quick → (auto) deep if abnormal
+
+Execution:
+  1. Quick scan (10s): Memory WARNING detected
+  2. Auto Deep (25s): MySQL memory leak identified
+  3. Report: Root cause + fixes
+
+Result: ✅ Problem solved in 35 seconds
+Tier 2/3: Not needed
+```
+
+---
+
+### Example 2: Extended Scenario (Tier 2 Match)
+
+```yaml
+User Query: "Docker container keeps restarting"
+
+Tier 1: SKILL.md
+  ├─ Extract keywords: [Docker, restarting]
+  ├─ Match scenario: None ❌
+  └─ Fallback to Tier 2
+
+Tier 2: 00-scenario-index.md
+  ├─ Read: references/00-scenario-index.md
+  ├─ Search: "Docker" keyword
+  ├─ Match found: Category "Container Issues" ✅
+  └─ Recommended actions:
+      • Reference: system-logs.md --mode deep --focus crash
+      • Command: commands/debugging/diagnose-crash.md
+
+Execution:
+  1. Read system-logs.md
+  2. Deep crash analysis (20s)
+  3. Found: OOM kills in docker logs
+  4. Recommend: Increase container memory limit
+
+Result: ✅ Problem solved in 25 seconds
+```
+
+---
+
+### Example 3: No Match - Fallback (Tier 3)
+
+```yaml
+User Query: "How to optimize PostgreSQL performance?"
+
+Tier 1: SKILL.md
+  ├─ Extract keywords: [optimize, PostgreSQL, performance]
+  ├─ Match scenario: None ❌
+  └─ Fallback to Tier 2
+
+Tier 2: 00-scenario-index.md
+  ├─ Read: references/00-scenario-index.md
+  ├─ Search: "PostgreSQL" keyword
+  ├─ Match found: Partial ⚠️
+  └─ Recommended: Database performance tuning (not in diagnostics scope)
+
+Tier 3: Fallback Strategy
+  ├─ Inform: "Database optimization is not covered in diagnostics library"
+  ├─ Offer: "I can run basic health checks to identify bottlenecks"
+  └─ Execute: resource-saturation.md quick mode
+      Result: CPU OK, Memory WARNING (PostgreSQL using 6GB)
+      Suggestion: "PostgreSQL may need query optimization or indexing"
+
+Result: ⚠️ Limited help, but basic diagnostics provided
+```
+
+---
+
+### Example 4: Quick Reference Optimization (Optional)
+
+```yaml
+User Query: "快速检查系统状态"
+
+Tier 0 (Optional): 00-quick-reference.md
+  ├─ Use case: AI wants < 3 second decision
+  ├─ Read: references/00-quick-reference.md (187 lines vs 800+ in SKILL.md)
+  ├─ Match: Scenario #7 (健康检查) ✅
+  ├─ Quick decision: Run 3 Quick scans
+  └─ Commands:
+      • bash references/resource-saturation.md --mode quick
+      • bash references/system-logs.md --mode quick
+      • bash references/disk-smart.md --mode quick
+
+Execution:
+  1. Parallel Quick scans (10s total)
+  2. All OK ✅
+  3. Report: "系统健康，无异常"
+
+Result: ✅ Fast decision + fast execution
+```
+
+---
+
+## 📊 Decision Flow Summary
+
+```
+User Query
+    │
+    ▼
+┌─────────────────────────────────────────┐
+│ Tier 0 (Optional): 00-quick-reference.md │
+│ Use: Fast lookup for common scenarios   │
+│ Coverage: Top 10 (80%)                  │
+│ Decision time: < 3 seconds              │
+└─────────────────────────────────────────┘
+    │ If not used OR no match
+    ▼
+┌─────────────────────────────────────────┐
+│ Tier 1: SKILL.md (Always use)           │
+│ Coverage: 14 built-in scenarios (80%)   │
+│ Decision: Scenario → Reference → Mode   │
+└─────────────────────────────────────────┘
+    │ If no match
+    ▼
+┌─────────────────────────────────────────┐
+│ Tier 2: 00-scenario-index.md            │
+│ Coverage: 60+ scenarios (95%)           │
+│ Decision: Search keyword → Command/Ref  │
+└─────────────────────────────────────────┘
+    │ If no match
+    ▼
+┌─────────────────────────────────────────┐
+│ Tier 3: Fallback Strategy               │
+│ Action: Basic health check              │
+│ Inform: Scenario not covered            │
+└─────────────────────────────────────────┘
+```
+
+---
+
+## 🎓 AI Learning Path
+
+**For AI agents using this skill**:
+
+### Phase 1: Master Tier 1 (Week 1)
+- Memorize 14 built-in scenarios
+- Practice Quick → Deep workflow
+- Understand root cause inference templates
+
+### Phase 2: Utilize Tier 2 (Week 2)
+- Learn to query 00-scenario-index.md effectively
+- Understand Commands vs References distinction
+- Practice fallback strategies
+
+### Phase 3: Optimization (Week 3)
+- Use 00-quick-reference.md for speed
+- Batch similar checks (health scan)
+- Combine related diagnostics (disk slow = resource + SMART)
+
+### Phase 4: Expert (Week 4+)
+- Predict scenarios before matching
+- Proactive Deep (no user prompt for WARNING + troubleshoot)
+- Multi-component root cause correlation

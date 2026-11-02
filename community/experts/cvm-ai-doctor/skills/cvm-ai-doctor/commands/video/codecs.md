@@ -1,0 +1,1 @@
+Please see what codecs I have installed on my computer for streaming media and whether there are any additional packages I may wish to install. 

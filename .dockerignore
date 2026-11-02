@@ -40,6 +40,9 @@ node_modules
 .env.*
 !.env.example
 
+# Community catalog is not part of the runtime image.
+community
+
 # Misc
 .DS_Store
 *.log

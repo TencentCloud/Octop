@@ -1,0 +1,3 @@
+{
+  "renderers": [{ "id": "weather_card", "tools": ["get_weather"] }]
+}

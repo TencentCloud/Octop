@@ -1,0 +1,11 @@
+id: travel-inspire
+version: 0.1.0
+name: 旅行灵感
+description: 按心情推荐目的地与最佳季节
+icon: icon.svg
+group: lifestyle
+kind: tool
+entry: main.py
+ui:
+  entry: ui/index.js
+  manifest: ui/manifest.json

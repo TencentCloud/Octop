@@ -1,0 +1,3 @@
+{
+  "renderers": [{ "id": "what_to_eat_card", "tools": ["what_to_eat"] }]
+}

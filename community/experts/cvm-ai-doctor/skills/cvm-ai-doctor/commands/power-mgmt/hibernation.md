@@ -1,0 +1,1 @@
+Please ensure that the computer is set up for hibernation events. 

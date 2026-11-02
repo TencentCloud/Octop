@@ -1,0 +1,11 @@
+id: daily-english
+version: 0.1.0
+name: 每日英语
+description: 每日一词：音标、释义与例句
+icon: icon.svg
+group: tools
+kind: tool
+entry: main.py
+ui:
+  entry: ui/index.js
+  manifest: ui/manifest.json

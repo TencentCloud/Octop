@@ -1,0 +1,6 @@
+{
+  "renderers": [
+    { "id": "meme_maker_card", "tools": ["make_meme"] },
+    { "id": "meme_templates_list", "tools": ["list_meme_templates"] }
+  ]
+}

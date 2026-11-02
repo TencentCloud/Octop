@@ -1,0 +1,11 @@
+id: mini-games
+version: 0.2.2
+name: 小游戏
+description: 井字棋与猜数字，在聊天中展示棋盘与提示
+icon: icon.svg
+group: games
+kind: tool
+entry: main.py
+ui:
+  entry: ui/index.js
+  manifest: ui/manifest.json

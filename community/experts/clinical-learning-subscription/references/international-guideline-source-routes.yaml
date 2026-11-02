@@ -1,0 +1,96 @@
+schema_version: 1
+purpose: >-
+  为国际官方指南提供 A 级定向检索路由。A 级只表示机构及正式指南的证据资格，
+  不代表该域名上的新闻、科普、会议材料、研究论文或旧版文件均可作为最终依据。
+verified_at: 2026-08-25
+
+selection_policy:
+  domestic_default: 面向中国大陆基层医生时先使用国内现行正式文件。
+  international_use: 用户明确指定国际指南，或国内现行文件未覆盖目标主题时使用。
+  default_pool: [who, nice, esc, ada, kdigo]
+  default_pool_rule: >-
+    普通国际补充只从默认池选择一个与主题最匹配的网站定向访问；首站确实不覆盖问题时
+    最多再增加一个，不得把五站作为常规并行池。
+  specialty_direct_pool: [acg, aga, asge, esge, easl, aasld, ecco, gold, gina]
+  specialty_direct_rule: >-
+    用户明确点名或问题明确属于 GINA、GOLD、ACG、AGA、ASGE、ESGE、EASL、
+    AASLD、ECCO 等特定指南体系时，直接访问对应官方来源，不先遍历默认池，
+    也不得因此把该站加入后续问题的常规并行池。
+  request_budget: 正常只访问 1 个国际网站；必要时最多 2 个，顺序执行，不并行。
+  stop_rule: >-
+    取得一份最新、文档身份确定、正文可核验且足以覆盖问题的权威指南后立即停止，
+    不再为“更完整”继续检索其他国际机构。
+  conflict_rule: 不得用国际建议静默覆盖国内现行规范；存在差异时并列说明适用地区、版本与制定机构。
+  final_document_rule: 必须核对正式指南或指导文件类型、完整标题、年份或版本、制定机构、现行状态和原文完整性。
+
+sources:
+  - id: who
+    name: 世界卫生组织
+    aliases: [WHO, 公共卫生, 传染病, 非传染性疾病, 药品政策]
+    official_url: https://www.who.int/publications/i
+    canonical_domains: [who.int, "*.who.int"]
+  - id: nice
+    name: 英国国家卫生与临床优化研究所
+    aliases: [NICE, 英国指南, 临床指南]
+    official_url: https://www.nice.org.uk/guidance
+    canonical_domains: [nice.org.uk, "*.nice.org.uk"]
+  - id: acg
+    name: 美国胃肠病学院
+    aliases: [ACG, 消化, 胃肠]
+    official_url: https://gi.org/guidelines/
+    canonical_domains: [gi.org, "*.gi.org"]
+  - id: aga
+    name: 美国胃肠病学会
+    aliases: [AGA, 消化, 胃肠]
+    official_url: https://gastro.org/clinical-guidance/guidelines/
+    canonical_domains: [gastro.org, "*.gastro.org"]
+  - id: asge
+    name: 美国胃肠内镜学会
+    aliases: [ASGE, 消化内镜, 内镜]
+    official_url: https://www.asge.org/home/resources/publications/guidelines
+    canonical_domains: [asge.org, "*.asge.org"]
+  - id: esge
+    name: 欧洲胃肠内镜学会
+    aliases: [ESGE, 消化内镜, 内镜]
+    official_url: https://www.esge.com/publications/guidelines/
+    canonical_domains: [esge.com, "*.esge.com"]
+  - id: easl
+    name: 欧洲肝脏研究学会
+    aliases: [EASL, 肝病, 肝脏]
+    official_url: https://easl.eu/publications/clinical-practice-guidelines/
+    canonical_domains: [easl.eu, "*.easl.eu"]
+  - id: aasld
+    name: 美国肝病研究学会
+    aliases: [AASLD, 肝病, 肝脏]
+    official_url: https://www.aasld.org/practice-guidelines
+    canonical_domains: [aasld.org, "*.aasld.org"]
+  - id: ecco
+    name: 欧洲克罗恩病和结肠炎组织
+    aliases: [ECCO, 炎症性肠病, IBD, 克罗恩病, 溃疡性结肠炎]
+    official_url: https://www.ecco-ibd.eu/publications/ecco-guidelines-science.html
+    canonical_domains: [ecco-ibd.eu, "*.ecco-ibd.eu"]
+  - id: esc
+    name: 欧洲心脏病学会
+    aliases: [ESC, 心血管, 心脏病]
+    official_url: https://www.escardio.org/Guidelines
+    canonical_domains: [escardio.org, "*.escardio.org"]
+  - id: ada
+    name: 美国糖尿病学会
+    aliases: [ADA, 糖尿病, Standards of Care]
+    official_url: https://professional.diabetes.org/standards-of-care
+    canonical_domains: [diabetes.org, "*.diabetes.org", diabetesjournals.org, "*.diabetesjournals.org"]
+  - id: kdigo
+    name: 改善全球肾脏病预后组织
+    aliases: [KDIGO, 肾脏病, 慢性肾病, CKD]
+    official_url: https://kdigo.org/guidelines/
+    canonical_domains: [kdigo.org, "*.kdigo.org"]
+  - id: gold
+    name: 慢性阻塞性肺疾病全球倡议
+    aliases: [GOLD, 慢阻肺, COPD]
+    official_url: https://goldcopd.org/gold-reports/
+    canonical_domains: [goldcopd.org, "*.goldcopd.org"]
+  - id: gina
+    name: 全球哮喘防治倡议
+    aliases: [GINA, 哮喘]
+    official_url: https://ginasthma.org/reports/
+    canonical_domains: [ginasthma.org, "*.ginasthma.org"]

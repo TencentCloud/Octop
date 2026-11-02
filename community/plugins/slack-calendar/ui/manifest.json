@@ -1,0 +1,5 @@
+{
+  "renderers": [
+    { "id": "slack_calendar_card", "tools": ["slack_calendar"] }
+  ]
+}

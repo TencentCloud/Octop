@@ -1,0 +1,8 @@
+{
+  "renderers": [
+    {
+      "id": "market_quotes_card",
+      "tools": ["get_forex", "get_crypto", "get_cn_stock"]
+    }
+  ]
+}

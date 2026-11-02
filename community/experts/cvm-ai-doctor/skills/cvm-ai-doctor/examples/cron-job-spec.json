@@ -1,0 +1,34 @@
+{
+  "name": "CVM Quick Check - Every 5 Minutes",
+  "enabled": true,
+  "schedule": {
+    "cron": "*/5 * * * *",
+    "timezone": "Asia/Shanghai"
+  },
+  "task_type": "agent",
+  "request": {
+    "input": [
+      {
+        "role": "user",
+        "type": "message",
+        "content": [
+          {
+            "type": "text",
+            "text": "使用 CVM AI Doctor 技能执行快速巡检。如果所有指标正常,只返回'系统正常 ✅';如果发现警告或严重问题,返回详细诊断结果和修复建议。重点检查: CPU/内存/磁盘/网络状态。"
+          }
+        ]
+      }
+    ],
+    "user_id": "main",
+    "session_id": "main"
+  },
+  "dispatch": {
+    "channel": "dashboard",
+    "target": {
+      "user_id": "main",
+      "session_id": "main"
+    },
+    "mode": "final"
+  },
+  "runtime": {}
+}

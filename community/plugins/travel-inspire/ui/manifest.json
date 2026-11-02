@@ -1,0 +1,3 @@
+{
+  "renderers": [{ "id": "travel_inspire_card", "tools": ["travel_inspire"] }]
+}

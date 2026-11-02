@@ -1,0 +1,55 @@
+schema_version: 1
+purpose: >-
+  高频主题的已核验正式原文定位入口。本表只减少搜索猜测，
+  不代替每次对 canonical_url 的原文抓取与标题/DOI 核对。
+scope: clinical-learning-subscription-only
+
+entries:
+  - id: china-primary-diabetes-2025
+    aliases:
+      - 2型糖尿病筛查与随访
+      - 基层糖尿病防治管理
+      - 国家基层糖尿病指南
+    title: 国家基层糖尿病防治管理指南（2025）
+    publisher: 基本公共卫生服务项目基层糖尿病防治管理办公室、中华医学会糖尿病学分会
+    publication: 中华内科杂志 2025 年第 64 卷第 12 期，1169-1186
+    doi: 10.3760/cma.j.cn112138-20250924-00572
+    canonical_url: https://rs.yiigle.com/cmaid/1608618
+    official_index_url: https://cs.medjournals.cn/cn/zhnkzz/toc/69512
+    version_relation: 原文明确说明在 2018 年版和 2022 年版基础上更新。
+    status: current_candidate_requires_live_fetch
+    verified_at: 2026-08-20
+    recheck_after: 2026-09-20
+
+  - id: china-hypertension-prevention-2024-revision
+    aliases:
+      - 中国成人高血压
+      - 高血压最新指南
+      - 中国高血压防治指南
+    title: 中国高血压防治指南（2024年修订版）
+    publisher: 中国高血压防治指南修订委员会等
+    publication: 中华高血压杂志（中英文）2024 年第 32 卷第 7 期，603-700
+    doi: 10.16439/j.issn.1673-7245.2024.07.002
+    canonical_url: https://cjournal.hep.com.cn/1673-7245/CN/10.16439/j.issn.1673-7245.2024.07.002
+    version_relation: >-
+      原文明确说明本版是在 2018 年版基础上修订完成；因此它是《中国高血压防治指南》
+      系列的最新修订版。2024 年同期的《中国高血压临床实践指南》是不同发布团体制定的并行文件，
+      未取得两者互相废止或替代的正式声明。
+    status: current_candidate_requires_live_fetch
+    verified_at: 2026-08-20
+    recheck_after: 2026-09-20
+
+  - id: china-adult-hypertension-practice-2024
+    aliases:
+      - 中国高血压临床实践指南
+    title: 中国高血压临床实践指南
+    publisher: 中华医学会心血管病学分会等
+    publication: 中华心血管病杂志 2024 年第 52 卷第 9 期，985-1032
+    doi: 10.3760/cma.j.cn112148-20240709-00377
+    canonical_url: https://rs.yiigle.com/CN115399202004/1514630.htm
+    version_relation: >-
+      这是 2024 年发布的临床实践指南；未取得发布机构的明示废止/替代声明前，
+      不宣称它已正式废止或替代《中国高血压防治指南（2018 年修订版）》。
+    status: current_candidate_requires_live_fetch
+    verified_at: 2026-08-20
+    recheck_after: 2026-09-20

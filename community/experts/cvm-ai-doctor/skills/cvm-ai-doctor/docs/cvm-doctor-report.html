@@ -1,0 +1,851 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>CVM Doctor - AI 智能系统诊断 Skill 汇报</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@300;400;500;700;900&display=swap');
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    font-family: 'Noto Sans SC', -apple-system, BlinkMacSystemFont, sans-serif;
+    background: #0a0e27;
+    color: #e0e6f0;
+    overflow: hidden;
+  }
+
+  .slide-container {
+    width: 100vw; height: 100vh;
+    position: relative;
+  }
+
+  .slide {
+    width: 100vw; height: 100vh;
+    position: absolute; top: 0; left: 0;
+    display: none;
+    flex-direction: column;
+    padding: 50px 70px;
+    overflow: hidden;
+  }
+  .slide.active { display: flex; }
+
+  /* ====== Slide 1: Cover ====== */
+  .slide-cover {
+    justify-content: center; align-items: center; text-align: center;
+    background: radial-gradient(ellipse at 30% 50%, rgba(59,130,246,0.15) 0%, transparent 60%),
+                radial-gradient(ellipse at 70% 50%, rgba(168,85,247,0.12) 0%, transparent 60%),
+                #0a0e27;
+  }
+  .slide-cover .logo {
+    font-size: 68px; font-weight: 900; letter-spacing: -2px;
+    background: linear-gradient(135deg, #60a5fa, #a78bfa, #f472b6);
+    -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+    margin-bottom: 14px;
+  }
+  .slide-cover .subtitle {
+    font-size: 26px; font-weight: 300; color: #94a3b8; margin-bottom: 36px;
+  }
+  .slide-cover .tagline {
+    font-size: 17px; color: #64748b; max-width: 680px; line-height: 1.8;
+  }
+  .slide-cover .tagline strong { color: #a78bfa; font-weight: 500; }
+  .slide-cover .meta {
+    position: absolute; bottom: 44px; left: 70px;
+    font-size: 13px; color: #475569;
+  }
+  .slide-cover .version-badge {
+    display: inline-block; background: rgba(168,85,247,0.2); color: #c4b5fd;
+    padding: 6px 18px; border-radius: 20px; font-size: 14px; margin-top: 20px;
+    border: 1px solid rgba(168,85,247,0.3);
+  }
+
+  /* ====== Common Slide Styles ====== */
+  .slide-header {
+    margin-bottom: 32px; flex-shrink: 0;
+  }
+  .slide-header h1 {
+    font-size: 32px; font-weight: 700; margin-bottom: 6px;
+    background: linear-gradient(135deg, #60a5fa, #a78bfa);
+    -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+  }
+  .slide-header p {
+    font-size: 15px; color: #64748b; font-weight: 300;
+  }
+  .slide-header .accent-line {
+    width: 50px; height: 3px; border-radius: 2px;
+    background: linear-gradient(90deg, #60a5fa, #a78bfa);
+    margin-top: 12px;
+  }
+
+  .content-area {
+    flex: 1; overflow-y: auto; padding-right: 16px;
+  }
+  .content-area::-webkit-scrollbar { width: 4px; }
+  .content-area::-webkit-scrollbar-track { background: transparent; }
+  .content-area::-webkit-scrollbar-thumb { background: #334155; border-radius: 2px; }
+
+  /* Cards */
+  .card {
+    background: rgba(30,41,59,0.6); border: 1px solid rgba(71,85,105,0.4);
+    border-radius: 14px; padding: 22px; margin-bottom: 16px;
+    backdrop-filter: blur(10px);
+    transition: transform 0.2s, border-color 0.2s;
+  }
+  .card:hover { border-color: rgba(96,165,250,0.4); transform: translateY(-1px); }
+  .card h3 {
+    font-size: 16px; font-weight: 600; color: #e2e8f0; margin-bottom: 10px;
+    display: flex; align-items: center; gap: 8px;
+  }
+  .card h3 .icon { font-size: 20px; }
+  .card p, .card li { font-size: 13px; color: #94a3b8; line-height: 1.7; }
+  .card ul { padding-left: 18px; }
+  .card li { margin-bottom: 3px; }
+
+  .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  .grid-3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 16px; }
+
+  /* Tags / Badges */
+  .tag {
+    display: inline-block; padding: 3px 10px; border-radius: 6px;
+    font-size: 12px; font-weight: 500; margin: 2px 4px 2px 0;
+  }
+  .tag-blue { background: rgba(59,130,246,0.15); color: #93c5fd; border: 1px solid rgba(59,130,246,0.3); }
+  .tag-purple { background: rgba(168,85,247,0.15); color: #c4b5fd; border: 1px solid rgba(168,85,247,0.3); }
+  .tag-green { background: rgba(34,197,94,0.15); color: #86efac; border: 1px solid rgba(34,197,94,0.3); }
+  .tag-orange { background: rgba(249,115,22,0.15); color: #fdba74; border: 1px solid rgba(249,115,22,0.3); }
+  .tag-red { background: rgba(239,68,68,0.15); color: #fca5a5; border: 1px solid rgba(239,68,68,0.3); }
+  .tag-cyan { background: rgba(6,182,212,0.15); color: #67e8f9; border: 1px solid rgba(6,182,212,0.3); }
+
+  /* Stat boxes */
+  .stat-box {
+    text-align: center; padding: 20px 14px;
+    background: rgba(30,41,59,0.4); border-radius: 12px;
+    border: 1px solid rgba(71,85,105,0.3);
+  }
+  .stat-box .number {
+    font-size: 38px; font-weight: 900;
+    background: linear-gradient(135deg, #60a5fa, #a78bfa);
+    -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+    line-height: 1.2;
+  }
+  .stat-box .label { font-size: 12px; color: #64748b; margin-top: 6px; }
+
+  /* Flow diagram */
+  .flow {
+    display: flex; align-items: center; justify-content: center;
+    gap: 6px; flex-wrap: wrap; margin: 16px 0;
+  }
+  .flow-step {
+    padding: 10px 18px; border-radius: 10px; font-size: 13px; font-weight: 500;
+    text-align: center; min-width: 90px;
+  }
+  .flow-arrow { color: #475569; font-size: 18px; font-weight: 300; }
+  .flow-input { background: rgba(96,165,250,0.15); color: #93c5fd; border: 1px solid rgba(96,165,250,0.3); }
+  .flow-process { background: rgba(168,85,247,0.15); color: #c4b5fd; border: 1px solid rgba(168,85,247,0.3); }
+  .flow-decision { background: rgba(249,115,22,0.15); color: #fdba74; border: 1px solid rgba(249,115,22,0.3); border-radius: 4px; }
+  .flow-output { background: rgba(34,197,94,0.15); color: #86efac; border: 1px solid rgba(34,197,94,0.3); }
+  .flow-repair { background: rgba(251,191,36,0.15); color: #fde68a; border: 1px solid rgba(251,191,36,0.3); }
+
+  /* Table */
+  .data-table {
+    width: 100%; border-collapse: separate; border-spacing: 0;
+    font-size: 12px; margin: 10px 0;
+  }
+  .data-table th {
+    background: rgba(59,130,246,0.12); color: #93c5fd;
+    padding: 8px 12px; text-align: left; font-weight: 600;
+    border-bottom: 1px solid rgba(59,130,246,0.2);
+  }
+  .data-table th:first-child { border-radius: 8px 0 0 0; }
+  .data-table th:last-child { border-radius: 0 8px 0 0; }
+  .data-table td {
+    padding: 7px 12px; border-bottom: 1px solid rgba(71,85,105,0.2);
+    color: #94a3b8;
+  }
+  .data-table tr:hover td { background: rgba(30,41,59,0.4); }
+
+  /* Code block */
+  .code-block {
+    background: rgba(15,23,42,0.8); border: 1px solid rgba(71,85,105,0.3);
+    border-radius: 10px; padding: 14px 18px; margin: 10px 0;
+    font-family: 'JetBrains Mono', 'Fira Code', monospace; font-size: 12px;
+    color: #94a3b8; line-height: 1.6; overflow-x: auto;
+  }
+  .code-block .kw { color: #c084fc; }
+  .code-block .str { color: #86efac; }
+  .code-block .cmt { color: #475569; }
+
+  /* Highlight box */
+  .highlight-box {
+    background: linear-gradient(135deg, rgba(59,130,246,0.1), rgba(168,85,247,0.1));
+    border: 1px solid rgba(96,165,250,0.25); border-radius: 12px;
+    padding: 18px 22px; margin: 14px 0;
+  }
+  .highlight-box h4 { color: #a78bfa; font-size: 14px; margin-bottom: 6px; }
+  .highlight-box p { font-size: 13px; color: #cbd5e1; line-height: 1.7; }
+
+  /* Metric bar */
+  .metric-bar-wrap { margin: 5px 0; }
+  .metric-bar-wrap .metric-label { display: flex; justify-content: space-between; font-size: 12px; color: #94a3b8; margin-bottom: 3px; }
+  .metric-bar {
+    height: 7px; border-radius: 4px; background: rgba(71,85,105,0.3); overflow: hidden;
+  }
+  .metric-bar .fill { height: 100%; border-radius: 4px; transition: width 1s ease; }
+
+  /* Navigation */
+  .nav-bar {
+    position: fixed; bottom: 0; left: 0; right: 0; height: 52px;
+    background: rgba(15,23,42,0.9); backdrop-filter: blur(12px);
+    border-top: 1px solid rgba(71,85,105,0.3);
+    display: flex; align-items: center; justify-content: center; gap: 14px;
+    z-index: 100; padding: 0 40px;
+  }
+  .nav-btn {
+    padding: 7px 22px; border-radius: 8px; border: 1px solid rgba(71,85,105,0.4);
+    background: rgba(30,41,59,0.6); color: #94a3b8; font-size: 13px;
+    cursor: pointer; transition: all 0.2s; font-family: inherit;
+  }
+  .nav-btn:hover { background: rgba(59,130,246,0.2); color: #e2e8f0; border-color: rgba(96,165,250,0.4); }
+  .nav-btn:disabled { opacity: 0.3; cursor: not-allowed; }
+  .nav-dots { display: flex; gap: 6px; }
+  .nav-dot {
+    width: 8px; height: 8px; border-radius: 50%;
+    background: rgba(71,85,105,0.5); cursor: pointer; transition: all 0.2s;
+  }
+  .nav-dot.active { background: #60a5fa; transform: scale(1.3); }
+  .nav-page { font-size: 12px; color: #64748b; min-width: 70px; text-align: center; }
+
+  /* Special: Walkthrough */
+  .walkthrough {
+    display: flex; gap: 12px; align-items: flex-start; margin: 12px 0;
+  }
+  .wt-step {
+    flex: 1; background: rgba(30,41,59,0.5); border-radius: 10px;
+    padding: 14px; border: 1px solid rgba(71,85,105,0.3);
+    position: relative;
+  }
+  .wt-step .wt-num {
+    position: absolute; top: -10px; left: 14px;
+    background: linear-gradient(135deg, #60a5fa, #a78bfa);
+    color: white; font-size: 11px; font-weight: 700;
+    padding: 2px 10px; border-radius: 10px;
+  }
+  .wt-step h4 { font-size: 13px; color: #e2e8f0; margin-bottom: 6px; margin-top: 4px; }
+  .wt-step p { font-size: 11px; color: #94a3b8; line-height: 1.6; }
+
+  /* Expansion box */
+  .expand-box {
+    background: rgba(34,197,94,0.08); border: 1px solid rgba(34,197,94,0.3);
+    border-radius: 12px; padding: 18px 22px; margin: 14px 0;
+  }
+  .expand-box h4 { color: #86efac; font-size: 14px; margin-bottom: 6px; }
+
+  /* Big flow for slide 4 */
+  .big-flow {
+    display: flex; flex-direction: column; align-items: center; gap: 8px;
+    margin: 10px 0;
+  }
+  .big-flow .bf-row {
+    display: flex; align-items: center; gap: 10px;
+  }
+  .big-flow .bf-arrow {
+    color: #475569; font-size: 22px;
+  }
+  /* ====== Swimlane Diagram ====== */
+  .swimlane-wrap {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr;
+    gap: 0;
+    border-radius: 14px;
+    overflow: hidden;
+    border: 1px solid rgba(71,85,105,0.35);
+  }
+  .swimlane {
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+  }
+  .swimlane + .swimlane {
+    border-left: 1px solid rgba(71,85,105,0.25);
+  }
+  .swimlane-header {
+    padding: 14px 16px;
+    text-align: center;
+    font-size: 14px;
+    font-weight: 700;
+    letter-spacing: 0.5px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+  }
+  .swimlane-header .lane-icon {
+    font-size: 20px;
+  }
+  /* Lane colors */
+  .lane-user .swimlane-header { background: rgba(168,85,247,0.25); color: #ede9fe; }
+  .lane-ai .swimlane-header { background: rgba(6,182,212,0.22); color: #cffafe; }
+  .lane-skill .swimlane-header { background: rgba(245,158,11,0.22); color: #fef3c7; }
+
+  .lane-user .swimlane-header { border-bottom: 2px solid rgba(168,85,247,0.5); }
+  .lane-ai .swimlane-header { border-bottom: 2px solid rgba(6,182,212,0.5); }
+  .lane-skill .swimlane-header { border-bottom: 2px solid rgba(245,158,11,0.5); }
+
+  .swimlane-body {
+    flex: 1;
+    padding: 14px 10px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0;
+    position: relative;
+    min-height: 300px;
+  }
+  .lane-user .swimlane-body { background: rgba(168,85,247,0.04); }
+  .lane-ai .swimlane-body { background: rgba(6,182,212,0.04); }
+  .lane-skill .swimlane-body { background: rgba(245,158,11,0.04); }
+
+  /* Dashed timeline line running down each lane */
+  .swimlane-body::before {
+    content: '';
+    position: absolute;
+    top: 0; bottom: 0;
+    left: 50%;
+    width: 0;
+    border-left: 2px dashed rgba(71,85,105,0.2);
+    z-index: 0;
+  }
+
+  /* Node in swimlane */
+  .lane-node {
+    position: relative;
+    z-index: 1;
+    padding: 10px 14px;
+    border-radius: 8px;
+    font-size: 13px;
+    font-weight: 600;
+    text-align: center;
+    min-width: 90px;
+    max-width: 160px;
+    margin: 2px 0;
+    transition: transform 0.2s;
+  }
+  .lane-node:hover { transform: scale(1.04); }
+
+  .lane-user .lane-node {
+    background: rgba(168,85,247,0.2); color: #e9d5ff;
+    border: 1px solid rgba(168,85,247,0.4);
+    box-shadow: 0 2px 10px rgba(168,85,247,0.1);
+  }
+  .lane-ai .lane-node {
+    background: rgba(6,182,212,0.2); color: #cffafe;
+    border: 1px solid rgba(6,182,212,0.4);
+    box-shadow: 0 2px 10px rgba(6,182,212,0.1);
+  }
+  .lane-skill .lane-node {
+    background: rgba(245,158,11,0.2); color: #fef3c7;
+    border: 1px solid rgba(245,158,11,0.4);
+    box-shadow: 0 2px 10px rgba(245,158,11,0.1);
+  }
+
+  /* Spacer between nodes (no visible arrow inside lane) */
+  .lane-spacer {
+    height: 8px;
+    position: relative;
+    z-index: 1;
+  }
+
+  /* Step number badge on nodes */
+  .lane-node .step-num {
+    position: absolute;
+    top: -8px; right: -8px;
+    background: rgba(30,41,59,0.9);
+    color: #94a3b8;
+    font-size: 10px;
+    font-weight: 700;
+    width: 18px; height: 18px;
+    border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    border: 1px solid rgba(71,85,105,0.4);
+  }
+
+  /* Annotation text below nodes */
+  .lane-anno {
+    font-size: 10px;
+    color: #64748b;
+    text-align: center;
+    max-width: 160px;
+    line-height: 1.4;
+    margin: -2px 0 4px 0;
+    position: relative;
+    z-index: 1;
+  }
+  .lane-anno .file-ref {
+    display: inline-block;
+    background: rgba(30,41,59,0.6);
+    border: 1px solid rgba(71,85,105,0.3);
+    border-radius: 3px;
+    padding: 0 5px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 9px;
+    color: #94a3b8;
+    margin-top: 1px;
+  }
+
+  /* End node */
+  .lane-node.end-node {
+    border-radius: 20px;
+    font-weight: 700;
+  }
+  .end-success {
+    background: rgba(34,197,94,0.25) !important;
+    color: #86efac !important;
+    border-color: rgba(34,197,94,0.5) !important;
+    box-shadow: 0 0 16px rgba(34,197,94,0.15) !important;
+  }
+</style>
+</head>
+<body>
+
+<div class="slide-container">
+
+  <!-- ==================== SLIDE 1: Cover ==================== -->
+  <div class="slide slide-cover active" id="slide-1">
+    <div class="logo">CVM Doctor</div>
+    <div class="subtitle">AI 智能诊断 + 自动修复 Skill</div>
+    <div class="tagline">
+      一套<strong>结构化的 Markdown 知识文件</strong>，赋予 AI Agent <strong>专业级的系统诊断与修复能力</strong>。
+      <br>用户只需说"服务器很慢"，AI 就能自动分诊、定位根因、给出修复方案并安全执行。
+    </div>
+    <div class="version-badge">v3.1 | 60+ 场景 | 126 命令 | 三平台覆盖</div>
+    <div class="meta">2026-03-25 &nbsp;|&nbsp; AI Diagnostics Team</div>
+  </div>
+
+  <!-- ==================== SLIDE 2: One Minute Summary ==================== -->
+  <div class="slide" id="slide-2">
+    <div class="slide-header">
+      <h1>一分钟了解 CVM Doctor</h1>
+      <p>What it does, why it matters</p>
+      <div class="accent-line"></div>
+    </div>
+    <div class="content-area">
+
+      <div class="highlight-box" style="margin-bottom:20px;">
+        <h4>一句话</h4>
+        <p>CVM Doctor 是一个 <strong>Skill（技能包）</strong> —— 不是传统的监控程序或脚本。
+        它用结构化的 Markdown 文件教 AI Agent <strong>像资深运维一样思考和操作</strong>，
+        覆盖从"发现症状"到"定位根因"再到"安全修复"的<strong>全链路</strong>。</p>
+      </div>
+
+      <div class="grid-3" style="margin-bottom:20px;">
+        <div class="stat-box"><div class="number">60+</div><div class="label">诊断场景覆盖</div></div>
+        <div class="stat-box"><div class="number">126</div><div class="label">操作命令（含修复）</div></div>
+        <div class="stat-box"><div class="number">99%</div><div class="label">常见问题覆盖率</div></div>
+      </div>
+
+      <div class="grid-2">
+        <div class="card">
+          <h3><span class="icon">&#x2753;</span> 解决什么问题</h3>
+          <ul>
+            <li>用户说"服务器慢" → AI 不知道从何入手</li>
+            <li>AI 运维知识碎片化，容易跑偏或遗漏</li>
+            <li>简单问题也跑全套命令，浪费时间</li>
+            <li>跨平台命令差异大（Linux/macOS/Windows）</li>
+            <li>AI 直接执行危险命令，缺少安全机制</li>
+          </ul>
+        </div>
+        <div class="card">
+          <h3><span class="icon">&#x2705;</span> 怎么解决的</h3>
+          <ul>
+            <li><strong>诊断 + 修复</strong>：不只是发现问题，还能安全修复</li>
+            <li><strong>Quick → Deep</strong>：10秒分诊 + 按需深度分析</li>
+            <li><strong>模块化加载</strong>：只加载需要的知识，省 67-89% Token</li>
+            <li><strong>22 个适配器</strong>：一套 Skill 三平台通用</li>
+            <li><strong>安全门控</strong>：修复操作必须用户确认</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ==================== SLIDE 3: Full Workflow Flowchart ==================== -->
+  <div class="slide" id="slide-3">
+    <div class="slide-header">
+      <h1>完整工作流：从症状到修复</h1>
+      <p>User → AI → Skill → Diagnosis → Fix — The Complete Flow</p>
+      <div class="accent-line"></div>
+    </div>
+    <div class="content-area">
+
+      <!-- Swimlane Diagram -->
+      <div class="swimlane-wrap" style="margin-bottom:16px;position:relative;">
+        <!-- Column 1: User -->
+        <div class="swimlane lane-user">
+          <div class="swimlane-header"><span class="lane-icon">&#x1F464;</span> 用户</div>
+          <div class="swimlane-body" style="min-height:460px;">
+            <div class="lane-node" style="margin-top:8px;">用户输入<span class="step-num">1</span></div>
+            <div class="lane-anno">"服务器很慢"</div>
+            <div style="height:200px;"></div>
+            <div class="lane-node">确认修复方案<span class="step-num">7</span></div>
+            <div class="lane-anno">安全门控：必须用户同意后执行</div>
+          </div>
+        </div>
+        <!-- Column 2: AI Agent -->
+        <div class="swimlane lane-ai">
+          <div class="swimlane-header"><span class="lane-icon">&#x1F9E0;</span> AI Agent</div>
+          <div class="swimlane-body" style="min-height:460px;">
+            <div style="height:8px;"></div>
+            <div class="lane-spacer"></div>
+            <div class="lane-node">识别意图<span class="step-num">2</span></div>
+            <div class="lane-anno">提取关键词，判断为系统诊断需求</div>
+            <div style="height:18px;"></div>
+            <div class="lane-node">执行 Quick 分诊<span class="step-num">4</span></div>
+            <div class="lane-anno">运行 4 项快检，解析命令输出</div>
+            <div style="height:18px;"></div>
+            <div class="lane-node">生成诊断报告<span class="step-num">6</span></div>
+            <div class="lane-anno">综合推理根因 + 证据链 + 修复建议</div>
+            <div style="height:28px;"></div>
+            <div class="lane-spacer"></div>
+            <div style="height:40px;"></div>
+            <div class="lane-node">执行修复<span class="step-num">8</span></div>
+            <div class="lane-anno">用户确认后安全执行，验证结果</div>
+          </div>
+        </div>
+        <!-- Column 3: Skill -->
+        <div class="swimlane lane-skill">
+          <div class="swimlane-header"><span class="lane-icon">&#x1F4DA;</span> Skill 知识</div>
+          <div class="swimlane-body" style="min-height:460px;">
+            <div style="height:8px;"></div>
+            <div class="lane-spacer"></div>
+            <div style="height:10px;"></div>
+            <div class="lane-node">加载诊断协议<span class="step-num">3</span></div>
+            <div class="lane-anno">三层场景匹配（Tier 1→2→3），选择诊断路径<div class="file-ref">SKILL.md</div></div>
+            <div style="height:18px;"></div>
+            <div class="lane-node">Deep 根因分析<span class="step-num">5</span></div>
+            <div class="lane-anno">级联推理路径：内存→Swap→I/O<div class="file-ref">deep-combined.md</div></div>
+            <div style="height:10px;"></div>
+            <div class="lane-node">加载修复命令<span class="step-num">6b</span></div>
+            <div class="lane-anno">安全操作步骤 + 风险等级标注<div class="file-ref">commands/*.md</div></div>
+          </div>
+        </div>
+
+      </div>
+
+      <div class="grid-2" style="margin-top:8px;">
+        <div class="card" style="border-color:rgba(6,182,212,0.35);">
+          <h3><span class="icon">&#x1F9E0;</span> AI Agent 自主做的事</h3>
+          <p style="margin-bottom:4px;"><strong>推理 + 执行 + 沟通</strong></p>
+          <ul>
+            <li><strong>意图理解</strong>：从用户模糊描述中提取关键信息</li>
+            <li><strong>命令执行</strong>：在终端运行命令，实时解析输出</li>
+            <li><strong>综合推理</strong>：多指标联动，推断根因和因果关系</li>
+            <li><strong>自然语言沟通</strong>：向用户解释结果、征求修复确认</li>
+          </ul>
+        </div>
+        <div class="card" style="border-color:rgba(245,158,11,0.35);">
+          <h3><span class="icon">&#x1F4DA;</span> Skill 提供的知识</h3>
+          <p style="margin-bottom:4px;"><strong>结构化知识 + 决策树 + 安全规范</strong></p>
+          <ul>
+            <li><strong>场景路由</strong>：60+ 场景匹配规则和优先级（Tier 1→2→3）</li>
+            <li><strong>命令模板</strong>：126 个命令的三平台对照表</li>
+            <li><strong>阈值标准</strong>：每个指标的专业判定值</li>
+            <li><strong>安全门控</strong>：要求用户确认、风险等级、禁止操作清单</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ==================== SLIDE 4: Live Example ==================== -->
+  <div class="slide" id="slide-4">
+    <div class="slide-header">
+      <h1>实战演示：用户说"服务器很慢"</h1>
+      <p>A concrete walkthrough of the full diagnostic + fix flow</p>
+      <div class="accent-line"></div>
+    </div>
+    <div class="content-area">
+
+      <!-- Step-by-step walkthrough -->
+      <div class="walkthrough">
+        <div class="wt-step" style="border-color:rgba(96,165,250,0.4);">
+          <div class="wt-num">Step 1</div>
+          <h4 style="color:#93c5fd;">场景匹配</h4>
+          <p style="font-size:11px;color:#94a3b8;">用户："服务器很慢"<br><br>
+          大模型加载 <strong>SKILL.md</strong>，匹配关键词"慢" → 命中 <strong>Tier 1 核心场景</strong><br><br>
+          <span class="tag tag-blue">系统慢/卡</span><br>
+          推荐路径：Quick 全扫 → Deep 异常组件<br>
+          <strong>耗时：&lt;3 秒</strong></p>
+        </div>
+        <div class="wt-step" style="border-color:rgba(34,197,94,0.4);">
+          <div class="wt-num" style="background:linear-gradient(135deg,#22c55e,#16a34a);">Step 2</div>
+          <h4 style="color:#86efac;">Quick 分诊</h4>
+          <p style="font-size:11px;color:#94a3b8;">AI 加载 <strong>resource-saturation-quick.md</strong><br><br>
+          运行 4 项快检：<br>
+          <span style="color:#86efac;">&#x2705; CPU</span> queue 6/8 cores — <strong>OK</strong><br>
+          <span style="color:#fbbf24;">&#x26A0;&#xFE0F; Memory</span> Swap 768MB — <strong>WARNING</strong><br>
+          <span style="color:#fbbf24;">&#x26A0;&#xFE0F; Disk</span> I/O wait 28% — <strong>WARNING</strong><br>
+          <span style="color:#86efac;">&#x2705; Network</span> 0 drops — <strong>OK</strong><br><br>
+          <strong>耗时：~10 秒</strong></p>
+        </div>
+        <div class="wt-step" style="border-color:rgba(168,85,247,0.4);">
+          <div class="wt-num" style="background:linear-gradient(135deg,#a78bfa,#7c3aed);">Step 3</div>
+          <h4 style="color:#c4b5fd;">Deep 关联分析</h4>
+          <p style="font-size:11px;color:#94a3b8;">2 个异常组件 → 触发 <strong>Combined Deep</strong><br><br>
+          AI 加载 <strong>deep-combined.md</strong><br>
+          命中 <strong>Branch 1: 内存级联</strong><br><br>
+          <span style="color:#c4b5fd;">根因推导：</span><br>
+          内存 92% → Swap 激增<br>
+          → 磁盘 I/O 抖动<br>
+          → CPU 等 I/O（表象）<br><br>
+          <strong>根因：内存不足</strong><br>
+          <span style="color:#fca5a5;font-size:10px;">&#x274C; 不要加 CPU，没用！</span></p>
+        </div>
+        <div class="wt-step" style="border-color:rgba(251,191,36,0.4);">
+          <div class="wt-num" style="background:linear-gradient(135deg,#fbbf24,#f59e0b);">Step 4</div>
+          <h4 style="color:#fde68a;">修复执行</h4>
+          <p style="font-size:11px;color:#94a3b8;">AI 向用户展示诊断报告和修复方案：<br><br>
+          <span style="color:#fde68a;">修复建议：</span><br>
+          1. 重启内存泄漏进程 (PID 3842)<br>
+          2. 调整 swappiness=10<br>
+          3. 清理大文件释放空间<br><br>
+          <span style="color:#fca5a5;">&#x1F6E1;&#xFE0F; 用户确认后执行</span><br>
+          <strong>验证：Swap 降至 50MB ✅</strong></p>
+        </div>
+      </div>
+
+      <div class="highlight-box" style="margin-top:16px;">
+        <h4>关键亮点</h4>
+        <p><strong>不是看到 CPU 等 I/O 就去修 CPU</strong> —— Combined Deep 能识别出"内存不足 → Swap 抖动 → I/O 升高"的级联关系，
+        找到真正的根因（内存），避免浪费资源在错误的修复方向上。
+        整个过程 <strong>全自动化</strong>：AI 按 Skill 定义的路径执行，用户只需确认最后的修复操作。</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- ==================== SLIDE 5: Architecture - Why Layered & Modular ==================== -->
+  <div class="slide" id="slide-5">
+    <div class="slide-header">
+      <h1>核心设计：分层 + 模块化</h1>
+      <p>Why this architecture, and what it buys us</p>
+      <div class="accent-line"></div>
+    </div>
+    <div class="content-area">
+
+      <div class="grid-2" style="margin-bottom:16px;">
+        <div class="card" style="border-color:rgba(239,68,68,0.4);">
+          <h3><span class="icon">&#x274C;</span> 没有 Skill 的 AI</h3>
+          <div class="check-item" style="font-size:12px;"><span style="color:#fca5a5;font-weight:700;">&#x2717;</span> 不知道该查什么、先查什么</div>
+          <div class="check-item" style="font-size:12px;"><span style="color:#fca5a5;font-weight:700;">&#x2717;</span> 一股脑跑 30 个命令，浪费 5 分钟</div>
+          <div class="check-item" style="font-size:12px;"><span style="color:#fca5a5;font-weight:700;">&#x2717;</span> 看到 Swap 高就建议加内存，可能根因是进程泄漏</div>
+          <div class="check-item" style="font-size:12px;"><span style="color:#fca5a5;font-weight:700;">&#x2717;</span> 直接执行 kill -9，没有确认机制</div>
+          <div class="check-item" style="font-size:12px;"><span style="color:#fca5a5;font-weight:700;">&#x2717;</span> 每次对话都要重新学一遍运维知识</div>
+        </div>
+        <div class="card" style="border-color:rgba(34,197,94,0.4);">
+          <h3><span class="icon">&#x2705;</span> 有 Skill 的 AI</h3>
+          <div class="check-item" style="font-size:12px;"><span style="color:#86efac;font-weight:700;">&#x2713;</span> <strong>10 秒 Quick 分诊</strong>：先定位问题在哪</div>
+          <div class="check-item" style="font-size:12px;"><span style="color:#86efac;font-weight:700;">&#x2713;</span> <strong>按需 Deep</strong>：只深入分析异常组件</div>
+          <div class="check-item" style="font-size:12px;"><span style="color:#86efac;font-weight:700;">&#x2713;</span> <strong>级联推理</strong>：识别内存→Swap→I/O 的因果链</div>
+          <div class="check-item" style="font-size:12px;"><span style="color:#86efac;font-weight:700;">&#x2713;</span> <strong>安全门控</strong>：修复前展示方案，等用户确认</div>
+          <div class="check-item" style="font-size:12px;"><span style="color:#86efac;font-weight:700;">&#x2713;</span> <strong>知识固化</strong>：Markdown 文件即知识，一次编写永久可用</div>
+        </div>
+      </div>
+
+      <!-- Two key design decisions -->
+      <div class="grid-2">
+        <div class="card">
+          <h3><span class="icon">&#x1F3AF;</span> 设计一：分层决策（3 层）</h3>
+          <p style="margin-bottom:8px;font-size:12px;color:#cbd5e1;"><strong>解决"AI 上下文有限"的问题</strong></p>
+          <table class="data-table">
+            <tr><th>层级</th><th>加载时机</th><th>内容</th><th>覆盖率</th></tr>
+            <tr><td><span class="tag tag-blue">Tier 1</span></td><td>始终在上下文</td><td>10 个高频场景</td><td>80%</td></tr>
+            <tr><td><span class="tag tag-purple">Tier 2</span></td><td>Tier 1 未匹配时加载</td><td>60+ 扩展场景</td><td>95%</td></tr>
+            <tr><td><span class="tag tag-cyan">Tier 3</span></td><td>最后回退</td><td>20 大类完整路由</td><td>99%</td></tr>
+          </table>
+          <p style="margin-top:8px;font-size:11px;color:#64748b;">
+            <strong>好处</strong>：80% 的问题只需要 300 行 SKILL.md 就能匹配，不浪费上下文。</p>
+        </div>
+        <div class="card">
+          <h3><span class="icon">&#x1F4E6;</span> 设计二：模块化拆分</h3>
+          <p style="margin-bottom:8px;font-size:12px;color:#cbd5e1;"><strong>解决"加载了用不到的知识"的问题</strong></p>
+          <div style="display:flex;gap:10px;margin:8px 0;">
+            <div style="flex:1;background:rgba(239,68,68,0.08);border:1px solid rgba(239,68,68,0.3);border-radius:8px;padding:10px;text-align:center;">
+              <div style="font-size:11px;color:#fca5a5;font-weight:600;">Before：单体文件</div>
+              <div style="font-size:22px;font-weight:900;color:#fca5a5;">6,000 词</div>
+              <div style="font-size:10px;color:#64748b;">全部加载</div>
+            </div>
+            <div style="display:flex;align-items:center;color:#475569;font-size:18px;">&#x27A1;</div>
+            <div style="flex:1;background:rgba(34,197,94,0.08);border:1px solid rgba(34,197,94,0.3);border-radius:8px;padding:10px;text-align:center;">
+              <div style="font-size:11px;color:#86efac;font-weight:600;">After：按需加载</div>
+              <div style="font-size:22px;font-weight:900;color:#86efac;">600 词</div>
+              <div style="font-size:10px;color:#64748b;">只加载需要的模块</div>
+            </div>
+          </div>
+          <p style="margin-top:6px;font-size:11px;color:#64748b;">
+            <strong>省 67-89% Token</strong>：健康检查只需 Quick 模块；只有 CPU 异常时才加载 CPU Deep。</p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ==================== SLIDE 6: Expandability - Remote ==================== -->
+  <div class="slide" id="slide-6">
+    <div class="slide-header">
+      <h1>可扩展性：不止本地诊断</h1>
+      <p>From Local Diagnostics to Remote Operations</p>
+      <div class="accent-line"></div>
+    </div>
+    <div class="content-area">
+
+      <div class="highlight-box" style="margin-bottom:20px;">
+        <h4>核心思路：Skill 是"知识"，命令是"动作"，可以任意组合</h4>
+        <p>CVM Doctor 的每个命令文件都包含 <strong>Linux/macOS/Windows 三平台对照表</strong>。
+        这意味着命令本身就是<strong>可远程传输的</strong> —— 只需要把命令发到目标机器上执行，
+        再把结果拿回来让 AI 分析。scp、ssh、远程执行工具都可以作为传输通道。</p>
+      </div>
+
+      <div class="card" style="margin-bottom:16px;">
+        <h3><span class="icon">&#x1F310;</span> 远程诊断架构</h3>
+        <div class="flow" style="margin:12px 0;">
+          <div class="flow-step flow-input" style="min-width:110px;">&#x1F4AC; 用户<br>"帮我看看<br>10.0.0.5"</div>
+          <div class="flow-arrow">&#x27A1;</div>
+          <div class="flow-step flow-process" style="min-width:120px;">&#x1F9E0; 大模型<br>加载 Skill<br>生成诊断命令</div>
+          <div class="flow-arrow">&#x27A1;</div>
+          <div class="flow-step" style="min-width:130px;background:rgba(251,191,36,0.15);color:#fde68a;border:1px solid rgba(251,191,36,0.3);border-radius:10px;">&#x1F517; 传输层<br>ssh / scp /<br>API 调用</div>
+          <div class="flow-arrow">&#x27A1;</div>
+          <div class="flow-step flow-process" style="min-width:110px;">&#x1F5A5;&#xFE0F; 远程机器<br>执行命令</div>
+          <div class="flow-arrow">&#x27A1;</div>
+          <div class="flow-step flow-output" style="min-width:120px;">&#x1F4CA; 结果回传<br>AI 分析<br>输出报告</div>
+        </div>
+        <p style="font-size:12px;color:#64748b;">Skill 本身不需要改动 —— 只需要换一个"命令传输通道"，知识完全复用。</p>
+      </div>
+
+      <div class="grid-2" style="margin-bottom:16px;">
+        <div class="card">
+          <h3><span class="icon">&#x1F504;</span> 原生支持远程的场景</h3>
+          <ul>
+            <li><strong>批量巡检</strong>：用 ssh 循环对 100 台机器做 Quick 扫描</li>
+            <li><strong>远程修复</strong>：诊断后生成修复命令，scp + ssh 执行</li>
+            <li><strong>故障排查</strong>：用户给 IP，AI 生成诊断脚本，远程跑</li>
+            <li><strong>合规审计</strong>：定期跑安全检查命令，汇总报告</li>
+          </ul>
+        </div>
+        <div class="card">
+          <h3><span class="icon">&#x1F680;</span> 未来可扩展方向</h3>
+          <ul>
+            <li><strong>K8s Pod 内诊断</strong>：kubectl exec 进入容器执行命令</li>
+            <li><strong>API 网关集成</strong>：Skill 知识嵌入运维平台，提供诊断 API</li>
+            <li><strong>自动化巡检</strong>：配合 cron 定期 Quick 扫描 + 异常告警</li>
+            <li><strong>知识共享</strong>：不同团队复用同一套诊断知识</li>
+          </ul>
+        </div>
+      </div>
+
+      <div class="expand-box">
+        <h4>&#x1F4A1; 关键洞察</h4>
+        <p style="font-size:13px;">传统方案写死了"本地执行"。CVM Doctor 的设计中，<strong>知识和执行是解耦的</strong>。
+        Skill 提供的是"查什么、怎么判、怎么修"的知识，而"在哪执行"只是一个传输问题。
+        这意味着 <strong>同一套知识可以服务本地机器、远程机器、容器、甚至未来不知道什么形态的计算节点</strong>。</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- ==================== SLIDE 7: Summary ==================== -->
+  <div class="slide" id="slide-7">
+    <div class="slide-header">
+      <h1>总结</h1>
+      <p>What we built and where it's going</p>
+      <div class="accent-line"></div>
+    </div>
+    <div class="content-area">
+
+      <div class="highlight-box" style="margin-bottom:20px;">
+        <h4>CVM Doctor 的本质</h4>
+        <p>一套<strong>让 AI Agent 具备专业系统诊断与修复能力</strong>的知识工程方案。
+        用结构化 Markdown 文件定义"何时查、查什么、怎么判、怎么修"，
+        在<strong>不写一行业务代码</strong>的前提下，实现了比传统监控脚本更智能、更灵活的诊断体验。</p>
+      </div>
+
+      <div class="grid-2" style="margin-bottom:20px;">
+        <div class="card">
+          <h3><span class="icon">&#x2705;</span> 已做到的</h3>
+          <div class="check-item" style="font-size:13px;"><span style="color:#86efac;font-weight:700;">&#x2713;</span> <strong>60+</strong> 场景、<strong>99%</strong> 覆盖率</div>
+          <div class="check-item" style="font-size:13px;"><span style="color:#86efac;font-weight:700;">&#x2713;</span> <strong>诊断 + 修复</strong>全链路（含安全门控）</div>
+          <div class="check-item" style="font-size:13px;"><span style="color:#86efac;font-weight:700;">&#x2713;</span> <strong>Quick 10s → Deep 20-60s</strong> 渐进诊断</div>
+          <div class="check-item" style="font-size:13px;"><span style="color:#86efac;font-weight:700;">&#x2713;</span> <strong>5 大级联分析</strong>分支（内存→磁盘→CPU）</div>
+          <div class="check-item" style="font-size:13px;"><span style="color:#86efac;font-weight:700;">&#x2713;</span> <strong>67-89%</strong> Token 效率提升</div>
+          <div class="check-item" style="font-size:13px;"><span style="color:#86efac;font-weight:700;">&#x2713;</span> <strong>Linux / macOS / Windows</strong> 三平台</div>
+          <div class="check-item" style="font-size:13px;"><span style="color:#86efac;font-weight:700;">&#x2713;</span> <strong>知识可传输</strong>：远程诊断天然支持</div>
+        </div>
+        <div class="card">
+          <h3><span class="icon">&#x1F680;</span> 接下来可以做</h3>
+          <div class="check-item" style="font-size:13px;"><span style="color:#fde68a;font-weight:700;">&#x25B6;</span> <strong>远程执行集成</strong>：配合 remote-executor skill</div>
+          <div class="check-item" style="font-size:13px;"><span style="color:#fde68a;font-weight:700;">&#x25B6;</span> <strong>GPU 监控</strong>：nvidia-smi Quick/Deep 模块</div>
+          <div class="check-item" style="font-size:13px;"><span style="color:#fde68a;font-weight:700;">&#x25B6;</span> <strong>容器专属</strong>：Docker/K8s 资源限制/OOM</div>
+          <div class="check-item" style="font-size:13px;"><span style="color:#fde68a;font-weight:700;">&#x25B6;</span> <strong>数据库诊断</strong>：慢查询/连接池/锁竞争</div>
+          <div class="check-item" style="font-size:13px;"><span style="color:#fde68a;font-weight:700;">&#x25B6;</span> <strong>自动化巡检</strong>：定期 Quick + 异常告警</div>
+          <div class="check-item" style="font-size:13px;"><span style="color:#fde68a;font-weight:700;">&#x25B6;</span> <strong>知识模板化</strong>：抽象出通用的 Skill 开发方法论</div>
+        </div>
+      </div>
+
+      <div style="text-align:center;padding: 24px 0;">
+        <div style="font-size:32px;font-weight:900;
+          background:linear-gradient(135deg,#60a5fa,#a78bfa,#f472b6);
+          -webkit-background-clip:text;-webkit-text-fill-color:transparent;margin-bottom:10px;">
+          CVM Doctor
+        </div>
+        <p style="color:#64748b;font-size:15px;">知识驱动的 AI 诊断 — 让每次"服务器慢"都有专业答案</p>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<!-- Navigation Bar -->
+<div class="nav-bar">
+  <button class="nav-btn" onclick="prevSlide()">&#x25C0; 上一页</button>
+  <div class="nav-dots" id="navDots"></div>
+  <div class="nav-page" id="navPage">1 / 7</div>
+  <button class="nav-btn" onclick="nextSlide()">下一页 &#x25B6;</button>
+</div>
+
+<script>
+  const slides = document.querySelectorAll('.slide');
+  const totalSlides = slides.length;
+  let currentSlide = 1;
+
+  function showSlide(n) {
+    slides.forEach(s => s.classList.remove('active'));
+    document.getElementById('slide-' + n).classList.add('active');
+    currentSlide = n;
+    updateNav();
+  }
+
+  function updateNav() {
+    document.getElementById('navPage').textContent = currentSlide + ' / ' + totalSlides;
+    const dots = document.querySelectorAll('.nav-dot');
+    dots.forEach((d, i) => d.classList.toggle('active', i + 1 === currentSlide));
+    document.querySelector('.nav-btn:first-child').disabled = currentSlide === 1;
+    document.querySelector('.nav-btn:last-child').disabled = currentSlide === totalSlides;
+  }
+
+  function nextSlide() { if (currentSlide < totalSlides) showSlide(currentSlide + 1); }
+  function prevSlide() { if (currentSlide > 1) showSlide(currentSlide - 1); }
+
+  const dotsContainer = document.getElementById('navDots');
+  for (let i = 1; i <= totalSlides; i++) {
+    const dot = document.createElement('div');
+    dot.className = 'nav-dot' + (i === 1 ? ' active' : '');
+    dot.onclick = () => showSlide(i);
+    dotsContainer.appendChild(dot);
+  }
+
+  document.addEventListener('keydown', e => {
+    if (e.key === 'ArrowRight' || e.key === ' ') { e.preventDefault(); nextSlide(); }
+    if (e.key === 'ArrowLeft') { e.preventDefault(); prevSlide(); }
+  });
+</script>
+
+</body>
+</html>
