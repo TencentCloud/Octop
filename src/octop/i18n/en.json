@@ -537,7 +537,14 @@
     "LOCAL_DOWNLOAD_UNAVAILABLE": "Saving to the host Downloads folder is only available when Octop is opened on this computer.",
     "SKILL_PACKAGE_COPY_DENIED": "The creator of this skill package has disabled copying its skills.",
     "SKILL_PACKAGE_DOWNLOAD_DENIED": "Downloading this skill package is disabled.",
-    "SKILL_PACKAGE_LOCKED": "This skill was copied from a locked skill package and cannot be edited in the workspace."
+    "SKILL_PACKAGE_LOCKED": "This skill was copied from a locked skill package and cannot be edited in the workspace.",
+    "MFA_INVALID": "Authentication challenge failed. Try again.",
+    "MFA_LOCKED": "Too many MFA attempts. Try again later.",
+    "MFA_REAUTH_REQUIRED": "Re-enter your password to continue.",
+    "MFA_LAST_FACTOR": "Cannot remove the last MFA factor.",
+    "WEBAUTHN_CONFIG_INVALID": "Passkeys are not available on this address yet. An administrator needs to enter this site’s domain and full URL under App settings → Passkeys. If that is already saved, open the exact URL that was registered. localhost does not need this setup.",
+    "WEBAUTHN_INVALID_DOMAIN": "Passkeys need a hostname. Open Octop via http://localhost (not an IP address such as 127.0.0.1).",
+    "WEBAUTHN_LOGIN_DISABLED": "Passkey sign-in on the login page is turned off. An administrator can enable it under App settings → Passkeys."
   },
   "desktop": {
     "install_log_deps": "Installing Python dependencies…",
@@ -642,6 +649,7 @@
     "agent_list": "List experts",
     "ask_agent": "Ask expert",
     "call_agent": "Call expert",
+    "call_deferred_tool": "Call on demand",
     "acp_runner": "ACP external agent",
     "browser_use": "Use browser",
     "browser_control": "Browser control",

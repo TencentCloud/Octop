@@ -53,7 +53,10 @@ import {
   ResourceAvatarPicker,
 } from "../../../components/AvatarPicker";
 import { OctopEmptyMascot } from "../../../components/EmptyState";
-import { ResourceVisibilityFields } from "../../../components/ResourceVisibilityFields";
+import {
+  ResourceVisibilityFields,
+  ResourceVisibilityGate,
+} from "../../../components/ResourceVisibilityFields";
 import { ResourceAudienceFilter } from "../../../components/ResourceAudienceFilter";
 import {
   SharedAvatarMark,
@@ -1946,26 +1949,28 @@ export default function BridgeSettingsPanel({
             </Form.Item>
           </div>
 
-          <div className={styles.formOptions}>
-            <div className={styles.formOptionRowVisibility}>
-              <div className={styles.formOptionCopy}>
-                <span className={styles.switchLabel}>
-                  {t("resourceVisibility.label")}
-                </span>
+          <ResourceVisibilityGate allowOwner visibility={createVisibility}>
+            <div className={styles.formOptions}>
+              <div className={styles.formOptionRowVisibility}>
+                <div className={styles.formOptionCopy}>
+                  <span className={styles.switchLabel}>
+                    {t("resourceVisibility.label")}
+                  </span>
+                </div>
+                <ResourceVisibilityFields
+                  allowOwner
+                  visibility={createVisibility}
+                  groupIds={createGroupIds}
+                  onChange={(next) => {
+                    setCreateVisibility(next.visibility);
+                    setCreateGroupIds(
+                      next.visibility === "groups" ? next.groupIds : [],
+                    );
+                  }}
+                />
               </div>
-              <ResourceVisibilityFields
-                allowOwner
-                visibility={createVisibility}
-                groupIds={createGroupIds}
-                onChange={(next) => {
-                  setCreateVisibility(next.visibility);
-                  setCreateGroupIds(
-                    next.visibility === "groups" ? next.groupIds : [],
-                  );
-                }}
-              />
             </div>
-          </div>
+          </ResourceVisibilityGate>
         </Form>
 
         {probeResult ? (
@@ -2240,26 +2245,28 @@ export default function BridgeSettingsPanel({
             </div>
           ) : null}
 
-          <div className={styles.formOptions}>
-            <div className={styles.formOptionRowVisibility}>
-              <div className={styles.formOptionCopy}>
-                <span className={styles.switchLabel}>
-                  {t("resourceVisibility.label")}
-                </span>
+          <ResourceVisibilityGate allowOwner visibility={editVisibility}>
+            <div className={styles.formOptions}>
+              <div className={styles.formOptionRowVisibility}>
+                <div className={styles.formOptionCopy}>
+                  <span className={styles.switchLabel}>
+                    {t("resourceVisibility.label")}
+                  </span>
+                </div>
+                <ResourceVisibilityFields
+                  allowOwner
+                  visibility={editVisibility}
+                  groupIds={editGroupIds}
+                  onChange={(next) => {
+                    setEditVisibility(next.visibility);
+                    setEditGroupIds(
+                      next.visibility === "groups" ? next.groupIds : [],
+                    );
+                  }}
+                />
               </div>
-              <ResourceVisibilityFields
-                allowOwner
-                visibility={editVisibility}
-                groupIds={editGroupIds}
-                onChange={(next) => {
-                  setEditVisibility(next.visibility);
-                  setEditGroupIds(
-                    next.visibility === "groups" ? next.groupIds : [],
-                  );
-                }}
-              />
             </div>
-          </div>
+          </ResourceVisibilityGate>
         </Form>
 
         {editProbeResult ? (

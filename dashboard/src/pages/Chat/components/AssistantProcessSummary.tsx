@@ -259,6 +259,9 @@ function AssistantProcessSummary({
   }, [isStreaming, collapseThinking]);
 
   if (toolCount === 0 && thinkingCount === 0) {
+    // While the reply is still coming in, a lone decision would paint its own
+    // line and then jump into the tool fold. Wait until the turn settles.
+    if (isStreaming) return null;
     return decisionOnly?.kind === "decision" ? (
       <DecisionToolRow notice={decisionOnly.notice} />
     ) : null;
