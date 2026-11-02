@@ -44,6 +44,8 @@ docker run -d \
   octop:latest
 ```
 
+Published tags: `ghcr.io/tencentcloud/octop:<version>` and `:latest` are the full image (desktop, OCR, local embedding). `:<version>-lite` and `:lite` omit those extras. Build locally with `--build-arg OCTOP_IMAGE_VARIANT=lite`.
+
 ### Faster downloads (China mirrors)
 
 Pass mirror env vars when building:

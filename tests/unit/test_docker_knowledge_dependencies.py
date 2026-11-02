@@ -15,7 +15,7 @@ def test_docker_syncs_retain_knowledge_extras() -> None:
     assert len(syncs) == 2
     for command in syncs:
         extras = {
-            command[index + 1]
+            command[index + 1].rstrip(";")
             for index, argument in enumerate(command[:-1])
             if argument == "--extra"
         }

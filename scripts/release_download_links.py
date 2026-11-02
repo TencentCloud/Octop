@@ -56,7 +56,12 @@ def render_download_section(raw_version: str) -> str:
     linux64_zip = md_link("64-bit", tag, portable_name("linux", "amd64", version))
     linux_arm_zip = md_link("ARM64", tag, portable_name("linux", "arm64", version))
     fnos_docker = md_link(
-        "Docker (recommended; x86 and ARM)", tag, f"Octop-fnos-docker-{version}.fpk"
+        "Docker full (desktop, OCR, local models; x86 and ARM)",
+        tag,
+        f"Octop-fnos-docker-{version}.fpk",
+    )
+    fnos_docker_lite = md_link(
+        "Docker lite (x86 and ARM)", tag, f"Octop-fnos-docker-lite-{version}.fpk"
     )
     fnos_native = md_link("Native x86_64", tag, f"Octop-fnos-native-{version}.fpk")
     fnos_native_arm = md_link(
@@ -91,8 +96,13 @@ def render_download_section(raw_version: str) -> str:
             "#### Portable",
             f"- {linux64_zip} | {linux_arm_zip}",
             "",
+            "### Docker image",
+            "",
+            f"- Full: `ghcr.io/tencentcloud/octop:{version}` (`:latest`)",
+            f"- Lite: `ghcr.io/tencentcloud/octop:{version}-lite` (`:lite`)",
+            "",
             "### fnOS NAS",
-            f"- {fnos_docker} | {fnos_native} | {fnos_native_arm}",
+            f"- {fnos_docker_lite} | {fnos_docker} | {fnos_native} | {fnos_native_arm}",
             "",
         ]
     )
