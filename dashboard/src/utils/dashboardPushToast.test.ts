@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   parseDashboardPushFrame,
+  parseThreadUpdatedFrame,
   truncatePushText,
 } from "./dashboardPushToast";
 
@@ -35,6 +36,38 @@ describe("parseDashboardPushFrame", () => {
       }),
     ).toBeNull();
     expect(parseDashboardPushFrame(null)).toBeNull();
+  });
+});
+
+describe("parseThreadUpdatedFrame", () => {
+  it("accepts a thread.updated frame without text", () => {
+    expect(
+      parseThreadUpdatedFrame({
+        type: "thread.updated",
+        agent_id: "a1",
+        thread_id: "thr_im",
+        text: "",
+      }),
+    ).toEqual({
+      type: "thread.updated",
+      agent_id: "a1",
+      thread_id: "thr_im",
+    });
+  });
+
+  it("rejects a dashboard_push frame and incomplete payloads", () => {
+    expect(
+      parseThreadUpdatedFrame({
+        type: "dashboard_push",
+        agent_id: "a1",
+        thread_id: "thr_1",
+        text: "hi",
+      }),
+    ).toBeNull();
+    expect(
+      parseThreadUpdatedFrame({ type: "thread.updated", agent_id: "a1" }),
+    ).toBeNull();
+    expect(parseThreadUpdatedFrame(null)).toBeNull();
   });
 });
 

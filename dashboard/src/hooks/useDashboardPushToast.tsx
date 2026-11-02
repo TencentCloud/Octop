@@ -13,6 +13,7 @@ import {
 } from "../pages/Chat/hooks/chatStore";
 import {
   parseDashboardPushFrame,
+  parseThreadUpdatedFrame,
   truncatePushText,
 } from "../utils/dashboardPushToast";
 import styles from "./useDashboardPushToast.module.less";
@@ -115,6 +116,20 @@ export function useDashboardPushToast(): void {
           typeof raw === "object" &&
           (raw as { type?: string }).type === "pong"
         ) {
+          return;
+        }
+        const refreshed = parseThreadUpdatedFrame(raw);
+        if (refreshed) {
+          // An IM turn wrote to this thread without touching the chat socket.
+          // Refresh silently: the user is reading the conversation elsewhere,
+          // so a toast would only repeat what the reopened thread shows.
+          void refreshRef.current({ silent: true });
+          invalidateHistory(refreshed.thread_id);
+          emitSessionEvent({
+            kind: "sessionsChanged",
+            sessionId: refreshed.thread_id,
+            agentId: refreshed.agent_id,
+          });
           return;
         }
         const parsed = parseDashboardPushFrame(raw);

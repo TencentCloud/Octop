@@ -312,6 +312,35 @@ async def test_push_text_from_session_dashboard_notifies_user(gateway: Gateway) 
 
 
 @pytest.mark.asyncio
+async def test_notify_thread_updated_sends_textless_frame(gateway: Gateway) -> None:
+    frames: list[dict[str, object]] = []
+
+    async def capture(frame: dict[str, object]) -> None:
+        frames.append(frame)
+
+    gateway.ws_hub.register("n1", capture, user_id=1)
+
+    await gateway.notify_thread_updated("a1", "thr_im", 1)
+
+    assert frames == [{"type": "thread.updated", "agent_id": "a1", "thread_id": "thr_im"}]
+
+
+@pytest.mark.asyncio
+async def test_notify_thread_updated_ignores_unknown_user_and_thread(gateway: Gateway) -> None:
+    frames: list[dict[str, object]] = []
+
+    async def capture(frame: dict[str, object]) -> None:
+        frames.append(frame)
+
+    gateway.ws_hub.register("n1", capture, user_id=1)
+
+    await gateway.notify_thread_updated("a1", "thr_im", None)
+    await gateway.notify_thread_updated("a1", "   ", 1)
+
+    assert frames == []
+
+
+@pytest.mark.asyncio
 async def test_push_text_from_session_does_not_project_history(gateway: Gateway) -> None:
     sk = _insert_dashboard_session(gateway, thread_id="thr_text")
     await gateway.push_text_from_session("a1", sk, "记得喝水")

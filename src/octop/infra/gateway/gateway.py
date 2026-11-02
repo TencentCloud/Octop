@@ -527,6 +527,27 @@ class Gateway:
             },
         )
 
+    async def notify_thread_updated(
+        self,
+        agent_id: str,
+        thread_id: str,
+        user_id: int | None,
+    ) -> None:
+        """Tell the owner's dashboard that *thread_id* changed elsewhere.
+
+        IM turns write history on the gateway side and never emit chat-socket
+        frames, so an open dashboard view keeps replaying the previous turn
+        until the user refreshes. This frame carries no text, so clients can
+        refetch the thread without raising a toast notification.
+        """
+        tid = thread_id.strip()
+        if user_id is None or not tid:
+            return
+        await self._ws_hub.push_to_user(
+            user_id,
+            {"type": "thread.updated", "agent_id": agent_id, "thread_id": tid},
+        )
+
     def _require_channel_manager(self) -> ChannelManager:
         if self._channel_manager is None:
             raise RuntimeError("gateway not booted")

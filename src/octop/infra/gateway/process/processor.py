@@ -1159,6 +1159,9 @@ class GlobalProcessor:
             )
             await self._persist_incomplete_turn(thread_id, history_tracker, title_source=msg.text)
             failure_saved = True
+            await self._notify_dashboard_thread_updated(
+                agent_id=agent_id, thread_id=thread_id, user_id=user_id
+            )
             yield MessageEvent.error_event(message)
         else:
             if stream_ok and not hitl_paused:
@@ -1171,6 +1174,9 @@ class GlobalProcessor:
                     usage=usage_tracker.usage,
                 )
                 await self._record_turn_history(thread_id, history_tracker)
+                await self._notify_dashboard_thread_updated(
+                    agent_id=agent_id, thread_id=thread_id, user_id=user_id
+                )
                 hint = self._plan_ready_hint(thread_id, locale)
                 if hint:
                     yield MessageEvent(
@@ -2013,6 +2019,27 @@ class GlobalProcessor:
         # An in-flight AI title must not be overwritten by the raw question.
         if title_source and thread_id not in self._title_inflight:
             self._thread_registry.set_title_if_null(thread_id, title_source)
+
+    async def _notify_dashboard_thread_updated(
+        self,
+        *,
+        agent_id: str,
+        thread_id: str,
+        user_id: int | None,
+    ) -> None:
+        """Nudge an open Dashboard view after an IM turn wrote history.
+
+        IM channels use this ``__call__`` projection instead of the Dashboard
+        WebSocket channel, so nothing else tells the browser that the thread
+        gained a turn. Never let a notification failure abort the turn.
+        """
+        notify = getattr(self._gateway, "notify_thread_updated", None)
+        if notify is None:
+            return
+        try:
+            await notify(agent_id=agent_id, thread_id=thread_id, user_id=user_id)
+        except Exception:
+            logger.exception("dashboard thread update notify failed thread=%s", thread_id)
 
     def _plain_title(self, thread_id: str) -> str | None:
         """Stored title, or ``None`` when the thread is still untitled.
