@@ -41,9 +41,147 @@ def _error(message: str) -> str:
     return f"Error: {message}"
 
 
-def _workspace_root() -> Path:
-    home = Path(os.environ.get("OCTOP_HOME") or (Path.home() / ".octop")).expanduser()
-    return (home / "workspaces").resolve()
+def _resolved(path: Path) -> Path:
+    try:
+        return path.expanduser().resolve()
+    except OSError:
+        return path.expanduser()
+
+
+def _data_roots() -> list[Path]:
+    candidates: list[Path] = []
+    home = os.environ.get("OCTOP_HOME", "").strip()
+    data_dir = os.environ.get("OCTOP_DATA_DIR", "").strip()
+    if home:
+        candidates.append(Path(home))
+    if data_dir:
+        candidates.append(Path(data_dir))
+        if Path(data_dir).name != ".octop":
+            candidates.append(Path(data_dir) / ".octop")
+    candidates.append(Path.home() / ".octop")
+
+    roots: list[Path] = []
+    seen: set[Path] = set()
+    for candidate in candidates:
+        resolved = _resolved(candidate)
+        if resolved in seen:
+            continue
+        seen.add(resolved)
+        roots.append(resolved)
+    return roots
+
+
+def _allowed_roots() -> list[Path]:
+    roots: list[Path] = []
+    for data_root in _data_roots():
+        for name in ("agents", "workspaces"):
+            roots.append((data_root / name).resolve())
+    return roots
+
+
+def _path_hint(raw: str) -> tuple[str, str, Path] | None:
+    parts = [part for part in raw.replace("\\", "/").split("/") if part]
+    for index, part in enumerate(parts):
+        if part in {"agents", "workspaces"} and index + 2 < len(parts):
+            return part, parts[index + 1], Path(*parts[index + 2 :])
+    return None
+
+
+def _path_is_allowed(path: Path) -> bool:
+    for root in _allowed_roots():
+        try:
+            path.relative_to(root)
+            return True
+        except ValueError:
+            continue
+    return False
+
+
+def _candidate_paths(raw: str) -> list[Path]:
+    candidate = Path(raw).expanduser()
+    candidates = [candidate]
+    normalized = raw.replace("\\", "/")
+    hint = _path_hint(raw)
+
+    for root in _data_roots():
+        if normalized.startswith("/.octop/"):
+            candidates.append(root / normalized.lstrip("/"))
+        elif not candidate.is_absolute():
+            candidates.append(root / candidate)
+
+        if hint is None:
+            continue
+        namespace, agent_id, relative = hint
+        for resolved_namespace in dict.fromkeys((namespace, "agents", "workspaces")):
+            workspace = root / resolved_namespace / agent_id
+            candidates.append(workspace / relative)
+            candidates.append(workspace / ".harness-materialize" / relative)
+    return candidates
+
+
+def _unique_workspace_match(relative: Path) -> list[Path]:
+    matches: list[Path] = []
+    seen: set[Path] = set()
+    for root in _allowed_roots():
+        if not root.is_dir():
+            continue
+        try:
+            workspaces = root.iterdir()
+        except OSError:
+            continue
+        for workspace in workspaces:
+            if not workspace.is_dir():
+                continue
+            for base in (workspace, workspace / ".harness-materialize"):
+                candidate = base / relative
+                try:
+                    resolved = candidate.resolve(strict=True)
+                except (FileNotFoundError, NotADirectoryError, OSError):
+                    continue
+                if resolved.is_file() and resolved not in seen:
+                    seen.add(resolved)
+                    matches.append(resolved)
+    return matches
+
+
+def _resolve_image_path(raw: str) -> Path | str:
+    direct = Path(raw).expanduser()
+    seen: set[Path] = set()
+    for candidate in _candidate_paths(raw):
+        try:
+            resolved = candidate.resolve(strict=True)
+        except (FileNotFoundError, NotADirectoryError):
+            continue
+        except OSError as exc:
+            return _error(f"cannot resolve image path: {exc}")
+        if resolved in seen:
+            continue
+        seen.add(resolved)
+        if _path_is_allowed(resolved):
+            return resolved
+
+    if not direct.is_absolute() and _path_hint(raw) is None:
+        matches = _unique_workspace_match(direct)
+        if len(matches) == 1:
+            return matches[0]
+        if len(matches) > 1:
+            return _error(f"relative image path is ambiguous across agent workspaces: {raw}")
+
+    if direct.is_absolute():
+        direct_resolved: Path | None
+        try:
+            direct_resolved = direct.resolve(strict=True)
+        except (FileNotFoundError, NotADirectoryError):
+            direct_resolved = None
+        except OSError as exc:
+            return _error(f"cannot resolve image path: {exc}")
+        if direct_resolved is not None:
+            return _error("path is outside the Octop agents/workspaces directories")
+
+    return _error(
+        f"image file not found: {raw}. If it was created in a sandbox backend, "
+        "materialize it first with send_file_to_user or pass the .harness-materialize path."
+    )
 
 
 def _load_image(path: str) -> _LoadedImage | str:
@@ -51,22 +189,9 @@ def _load_image(path: str) -> _LoadedImage | str:
     if not raw:
         return _error("path is required")
 
-    candidate = Path(raw).expanduser()
-    if not candidate.is_absolute():
-        candidate = Path.cwd() / candidate
-
-    try:
-        resolved = candidate.resolve(strict=True)
-    except FileNotFoundError:
-        return _error(f"image file not found: {raw}")
-    except OSError as exc:
-        return _error(f"cannot resolve image path: {exc}")
-
-    allowed_root = _workspace_root()
-    try:
-        resolved.relative_to(allowed_root)
-    except ValueError:
-        return _error(f"path is outside the Octop workspaces directory: {resolved}")
+    resolved = _resolve_image_path(raw)
+    if isinstance(resolved, str):
+        return resolved
 
     if not resolved.is_file():
         return _error(f"not a regular image file: {resolved}")
