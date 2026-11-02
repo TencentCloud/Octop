@@ -305,6 +305,7 @@ def build_harness_request(
     auto_route: bool = False,
     message_kwargs: dict[str, Any] | None = None,
     reasoning_overrides: dict[str, Any] | None = None,
+    reasoning_gate: bool | None = None,
     message_id: str | None = None,
 ) -> dict[str, Any]:
     if messages is not None:
@@ -364,6 +365,8 @@ def build_harness_request(
         configurable["session_key"] = session_key
     if reasoning_overrides:
         configurable["octop_reasoning_overrides"] = reasoning_overrides
+    if reasoning_gate is not None:
+        configurable["octop_reasoning_roundtrip"] = reasoning_gate
     if configurable:
         req["configurable"] = configurable
     if model:
