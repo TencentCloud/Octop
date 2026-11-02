@@ -4316,7 +4316,7 @@
     "securityPasskeyRemoved": "已移除通行密钥。",
     "securityRecoveryRegenSuccess": "已生成新的恢复码。",
     "securityUnavailable": "账户安全暂不可用（服务器 MFA 接口尚未就绪）。",
-    "securityTotpDesc": "TOTP 就是手机上的验证器。它大约每 30 秒换一个 6 位数字，用密码登录时再填一次。",
+    "securityTotpDesc": "密码登录时再填一次验证器每 30 秒更新的 6 位数字。",
     "securityTotpTip1": "在手机安装 Microsoft Authenticator、Google Authenticator 或同类应用，设置时扫描二维码即可，不用手抄一长串密钥。",
     "securityTotpTip2": "之后每次用密码登录，都要再填应用里当前的 6 位数字。换手机前先备好下面的恢复码。",
     "securityTotpDownload": "验证器应用下载（Microsoft Authenticator，iPhone 和 Android 都能装）：",
