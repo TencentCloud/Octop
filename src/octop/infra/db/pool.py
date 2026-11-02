@@ -113,13 +113,21 @@ def _compat_row_factory(cursor: Any) -> Any:
 
 
 class _PgConnectionProxy:
-    """Expose sqlite-like ``execute`` / ``executescript`` on a psycopg connection."""
+    """Expose sqlite-like ``execute`` / ``executemany`` / ``executescript`` on a psycopg connection."""
 
     def __init__(self, conn: Any) -> None:
         self._conn = conn
 
     def execute(self, sql: str, params: Any = None) -> Any:
         return self._conn.execute(qmark_to_pyformat(sql), params)
+
+    def executemany(self, sql: str, seq_of_params: Any) -> None:
+        # psycopg put executemany on the cursor, not the connection; without
+        # this shim the attribute lookup falls through ``__getattr__`` and
+        # raises AttributeError on SQLite-shaped batch inserts (e.g.
+        # care_push records on a PostgreSQL control plane).
+        with self._conn.cursor() as cur:
+            cur.executemany(qmark_to_pyformat(sql), seq_of_params)
 
     def executescript(self, sql: str) -> None:
         # Used only if something still calls it; prefer migrate splitter.
