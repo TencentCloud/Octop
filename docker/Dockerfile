@@ -99,7 +99,6 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
             "$APT_MIRROR" "$APT_MIRROR" > /etc/apt/sources.list.d/debian.sources; \
     fi \
     && apt-get update && apt-get install -y --no-install-recommends \
-        build-essential \
         libffi-dev \
         libgl1 \
         libglib2.0-0 \
@@ -129,12 +128,19 @@ RUN --mount=type=cache,target=/root/.cache/uv \
         export UV_INDEX_URL="$PIP_INDEX_URL"; \
         if [ -n "$PIP_TRUSTED_HOST" ]; then export UV_INSECURE_HOST="$PIP_TRUSTED_HOST"; fi; \
     fi \
+    && case "$OCTOP_IMAGE_VARIANT" in \
+         full|lite) ;; \
+         *) echo "OCTOP_IMAGE_VARIANT must be full or lite" >&2; exit 1 ;; \
+       esac \
+    && apt-get update && apt-get install -y --no-install-recommends build-essential \
     && if [ "$OCTOP_IMAGE_VARIANT" = "lite" ]; then \
          uv sync --frozen --no-install-project --no-dev --extra browser; \
        else \
          uv sync --frozen --no-install-project --no-dev \
            --extra browser --extra desktop --extra local-embedding --extra knowledge-ocr; \
-       fi
+       fi \
+    && apt-get purge -y --auto-remove build-essential \
+    && rm -rf /var/lib/apt/lists/*
 
 ENV PATH="/app/.venv/bin:$PATH" \
     PLAYWRIGHT_BROWSERS_PATH=/root/.cache/ms-playwright

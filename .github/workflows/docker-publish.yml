@@ -168,6 +168,11 @@ jobs:
         with:
           python-version: "3.12"
 
+      - name: Report image size
+        run: |
+          docker image inspect "octop:ci-${{ matrix.variant }}" \
+            --format '::notice::${{ matrix.variant }} ${{ matrix.arch }} {{.Size}} bytes'
+
       - name: Boot-test image before publish
         env:
           OCTOP_TEST_IMAGE: octop:ci-${{ matrix.variant }}
@@ -247,8 +252,13 @@ jobs:
                 echo "::warning::skip ${reg}:${tag_a} (no platform images)"
                 continue
               fi
-              if [ "$required" = "yes" ] && [ "${#sources[@]}" -lt 2 ]; then
-                echo "::warning:::${tag_a} is not multi-arch. Docker FPK on the missing CPU will not run."
+              if [ "${#sources[@]}" -lt 2 ]; then
+                echo "::warning:::${tag_a} is not multi-arch. A package on the missing CPU will not run."
+                # 精简版对外是一份 x86/ARM 通用标签。缺任一架构就不要发，避免装上后拉取失败。
+                if [ "$required" != "yes" ]; then
+                  echo "::warning::skip ${reg}:${tag_a} until both amd64 and arm64 exist"
+                  continue
+                fi
               fi
               docker buildx imagetools create \
                 -t "${reg}:${tag_a}" \

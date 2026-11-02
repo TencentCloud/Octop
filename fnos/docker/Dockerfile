@@ -75,7 +75,6 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
             "$APT_MIRROR" "$APT_MIRROR" > /etc/apt/sources.list.d/debian.sources; \
     fi \
     && apt-get update && apt-get install -y --no-install-recommends \
-        build-essential \
         libffi-dev \
         libgl1 \
         libglib2.0-0 \
@@ -115,6 +114,11 @@ RUN --mount=type=cache,target=/root/.cache/uv \
     && UV_DEFAULT_INDEX=https://pypi.org/simple \
        UV_INDEX_URL=https://mirrors.aliyun.com/pypi/simple \
        UV_INSECURE_HOST=mirrors.aliyun.com \
+    && case "$OCTOP_IMAGE_VARIANT" in \
+         full|lite) ;; \
+         *) echo "OCTOP_IMAGE_VARIANT must be full or lite" >&2; exit 1 ;; \
+       esac \
+    && apt-get update && apt-get install -y --no-install-recommends build-essential \
     && if [ "$OCTOP_IMAGE_VARIANT" = "lite" ]; then \
          uv pip install --python /app/.venv ".[browser]" \
          && /app/.venv/bin/python -c "import octop"; \
