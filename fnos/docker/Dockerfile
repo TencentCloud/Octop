@@ -110,13 +110,15 @@ RUN chmod +x /usr/local/bin/docker-entrypoint.sh /usr/local/bin/bake-desktop.sh
 # 装进 overlay 后在容器重建时丢失。
 # UV_INDEX_URL 首选阿里云镜像加速；UV_DEFAULT_INDEX 保留 PyPI 作为兜底，
 # 避免新发布的包（如 octop-harness 0.9.16）尚未同步到镜像时构建失败。
+# pynput 在 import 时就会选后端，Linux 后端要求 $DISPLAY；这里只需要验证 desktop 附加组件
+# 确实装上了，因此对这条命令单独使用 dummy 后端，构建机不必有 X server。
 RUN --mount=type=cache,target=/root/.cache/uv \
     uv venv /app/.venv \
     && UV_DEFAULT_INDEX=https://pypi.org/simple \
        UV_INDEX_URL=https://mirrors.aliyun.com/pypi/simple \
        UV_INSECURE_HOST=mirrors.aliyun.com \
        uv pip install --python /app/.venv ".[desktop,local-embedding,knowledge-ocr]" \
-    && /app/.venv/bin/python -c "import cv2, fastembed, huggingface_hub, mss, pynput, rapidocr, onnxruntime, pymupdf" \
+    && PYNPUT_BACKEND=dummy /app/.venv/bin/python -c "import cv2, fastembed, huggingface_hub, mss, pynput, rapidocr, onnxruntime, pymupdf" \
     && apt-get update && apt-get install -y --no-install-recommends fonts-noto-cjk \
     && apt-get purge -y --auto-remove build-essential \
     && rm -rf /var/lib/apt/lists/* /tmp/*
