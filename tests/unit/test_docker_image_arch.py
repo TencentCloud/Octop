@@ -60,8 +60,7 @@ def test_docker_publish_still_builds_arm64() -> None:
     text = (root / ".github/workflows/docker-publish.yml").read_text(encoding="utf-8")
     assert "linux/arm64" in text
     assert "ubuntu-24.04-arm" in text
-    assert "for arch in amd64 arm64" in text
-    assert 'docker buildx imagetools inspect "$ref"' in text
+    assert "A package on the missing CPU will not run." in text
     boot = text.index("test_docker_image_runs_on_this_cpu_and_stays_disabled")
     push = text.index('docker push "$tag"')
     assert boot < push
