@@ -24,6 +24,7 @@ from octop.api.deps import (
     maybe_sliding_renew_token,
 )
 from octop.infra.errors import OctopError
+from octop.infra.utils.locale import resolve_request_locale
 
 _INSTALL_ATTR = "_octop_jwt_auth_installed"
 logger = logging.getLogger(__name__)
@@ -59,7 +60,8 @@ def install(app: Any, server: Any) -> None:
                     exc.message,
                     exc_info=exc,
                 )
-            return JSONResponse(status_code=exc.status, content=exc.to_envelope())
+            locale = resolve_request_locale(request)
+            return JSONResponse(status_code=exc.status, content=exc.to_envelope(locale=locale))
 
         response = await call_next(request)
         if raw is not None:

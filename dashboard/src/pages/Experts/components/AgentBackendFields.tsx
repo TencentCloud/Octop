@@ -6,6 +6,7 @@ import { useTranslation } from "react-i18next";
 import {
   BUILTIN_BACKENDS,
   DEFAULT_BACKEND,
+  LEGACY_STATE_BACKEND,
   fetchFilesystemDefaults,
   type BackendOption,
   type FilesystemDefaults,
@@ -52,6 +53,9 @@ export default function AgentBackendFields({
   const form = Form.useFormInstance();
   const [fsDefaults, setFsDefaults] = useState<FilesystemDefaults | null>(null);
   const watchedRootDir = Form.useWatch("root_dir", form) as string | undefined;
+  const watchedCompositeDefault = Form.useWatch("composite_default", form) as
+    | string
+    | undefined;
 
   useEffect(() => {
     if (skipHostFilesystem) {
@@ -86,6 +90,22 @@ export default function AgentBackendFields({
         : [fsDefaults?.tree_root ?? HOST_FS_ROOT],
     [fsDefaults],
   );
+  const legacyStateOption = useMemo(
+    () => ({
+      value: LEGACY_STATE_BACKEND,
+      label: builtinLabel(LEGACY_STATE_BACKEND, t),
+    }),
+    [t],
+  );
+  const withLegacyState = (
+    options: { value: string; label: string }[],
+    selected: string | undefined,
+  ) =>
+    selected === LEGACY_STATE_BACKEND &&
+    !options.some((option) => option.value === LEGACY_STATE_BACKEND)
+      ? [...options, legacyStateOption]
+      : options;
+
   const routeBackendOptions = useMemo(() => {
     const builtins = BUILTIN_BACKENDS.map((mode) => ({
       value: mode,
@@ -109,6 +129,9 @@ export default function AgentBackendFields({
             value: mode,
             label: builtinLabel(mode, t),
           })),
+          ...(backendChoice === LEGACY_STATE_BACKEND
+            ? [legacyStateOption]
+            : []),
           {
             value: "composite",
             label: t("experts.backendModes.composite"),
@@ -129,7 +152,7 @@ export default function AgentBackendFields({
           ]
         : []),
     ],
-    [backends, t],
+    [backendChoice, backends, legacyStateOption, t],
   );
 
   const desc = builtinDesc(backendChoice, t);
@@ -236,7 +259,13 @@ export default function AgentBackendFields({
             label={t("experts.backendModes.compositeDefault")}
             initialValue={DEFAULT_BACKEND}
           >
-            <Select disabled={disabled} options={routeBackendOptions} />
+            <Select
+              disabled={disabled}
+              options={withLegacyState(
+                routeBackendOptions,
+                watchedCompositeDefault,
+              )}
+            />
           </Form.Item>
 
           <div style={{ marginBottom: 16 }}>
@@ -275,7 +304,10 @@ export default function AgentBackendFields({
                 <Select
                   disabled={disabled}
                   placeholder={t("experts.backendModes.routeBackend")}
-                  options={routeBackendOptions}
+                  options={withLegacyState(
+                    routeBackendOptions,
+                    mapping.backend,
+                  )}
                   value={mapping.backend || undefined}
                   onChange={(v: string) => onUpdatePathMapping(i, "backend", v)}
                   style={{ flex: 1 }}

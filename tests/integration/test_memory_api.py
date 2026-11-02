@@ -427,6 +427,71 @@ async def test_extract_config_aux_model_roundtrip(env_with_main_agent) -> None:
 
 
 @pytest.mark.asyncio
+async def test_extract_config_aux_call_options_roundtrip(env_with_main_agent) -> None:
+    client, _srv, auth, aid = env_with_main_agent
+
+    # Defaults are unset (None → harness defaults apply).
+    r = await client.get(f"/api/agents/{aid}/memory/extract-config", headers=auth)
+    assert r.status_code == 200, r.text
+    assert r.json()["extract_light_timeout_s"] is None
+    assert r.json()["extract_heavy_timeout_s"] is None
+    assert r.json()["extract_max_tokens"] is None
+    assert r.json()["extract_extra_body"] is None
+
+    # Set all four; a too-short timeout is clamped up to the 30s floor.
+    body = {
+        "extract_light_timeout_s": 5,
+        "extract_heavy_timeout_s": 600,
+        "extract_max_tokens": 1024,
+        "extract_extra_body": {"chat_template_kwargs": {"enable_thinking": False}},
+    }
+    r2 = await client.put(
+        f"/api/agents/{aid}/memory/extract-config",
+        headers=auth,
+        json=body,
+    )
+    assert r2.status_code == 200, r2.text
+    assert r2.json()["extract_light_timeout_s"] == 30.0
+    assert r2.json()["extract_heavy_timeout_s"] == 600.0
+    assert r2.json()["extract_max_tokens"] == 1024
+    assert r2.json()["extract_extra_body"] == {"chat_template_kwargs": {"enable_thinking": False}}
+
+    # Persisted across a GET.
+    r3 = await client.get(f"/api/agents/{aid}/memory/extract-config", headers=auth)
+    assert r3.json()["extract_light_timeout_s"] == 30.0
+    assert r3.json()["extract_max_tokens"] == 1024
+
+    # Zeros / empty object reset each option back to automatic.
+    r4 = await client.put(
+        f"/api/agents/{aid}/memory/extract-config",
+        headers=auth,
+        json={
+            "extract_light_timeout_s": 0,
+            "extract_heavy_timeout_s": 0,
+            "extract_max_tokens": 0,
+            "extract_extra_body": {},
+        },
+    )
+    assert r4.status_code == 200, r4.text
+    assert r4.json()["extract_light_timeout_s"] is None
+    assert r4.json()["extract_heavy_timeout_s"] is None
+    assert r4.json()["extract_max_tokens"] is None
+    assert r4.json()["extract_extra_body"] is None
+
+
+@pytest.mark.asyncio
+async def test_extract_config_rejects_non_object_extra_body(env_with_main_agent) -> None:
+    client, _srv, auth, aid = env_with_main_agent
+    # Pydantic rejects a non-object payload before the handler runs (422).
+    r = await client.put(
+        f"/api/agents/{aid}/memory/extract-config",
+        headers=auth,
+        json={"extract_extra_body": ["not", "an", "object"]},
+    )
+    assert r.status_code == 422, r.text
+
+
+@pytest.mark.asyncio
 async def test_extract_config_rejects_unusable_aux_model(env_with_main_agent) -> None:
     client, _srv, auth, aid = env_with_main_agent
     r = await client.put(
@@ -468,3 +533,47 @@ async def test_unauthenticated(env_with_main_agent) -> None:
     # No auth headers → must be rejected by the auth middleware.
     r = await client.get(f"/api/agents/{aid}/memory/stats/counts")
     assert r.status_code in (401, 403)
+
+
+@pytest.mark.asyncio
+async def test_extract_config_thinking_and_retry_policy(env_with_main_agent) -> None:
+    client, _srv, auth, aid = env_with_main_agent
+    url = f"/api/agents/{aid}/memory/extract-config"
+    policy = {"extract_thinking": "off", "extract_max_retries": 0, "extract_retry_backoff_s": 0.5}
+    response = await client.put(url, headers=auth, json=policy)
+    assert response.status_code == 200, response.text
+    saved = (await client.get(url, headers=auth)).json()
+    assert all(saved[key] == value for key, value in policy.items())
+    # Unrelated edits preserve the independently configured policy.
+    saved = (await client.put(url, headers=auth, json={"extract_idle_seconds": 600})).json()
+    assert all(saved[key] == value for key, value in policy.items())
+    for invalid in (
+        {"extract_thinking": "maybe"},
+        {"extract_max_retries": -1},
+        {"extract_max_retries": 11},
+        {"extract_max_retries": True},
+        {"extract_retry_backoff_s": -1},
+        {"extract_retry_backoff_s": 61},
+        {"extract_retry_backoff_s": True},
+    ):
+        response = await client.put(url, headers=auth, json=invalid)
+        assert response.status_code == 422, response.text
+
+
+@pytest.mark.asyncio
+async def test_extract_config_limits_match_harness_validation(env_with_main_agent) -> None:
+    client, _srv, auth, aid = env_with_main_agent
+    response = await client.put(
+        f"/api/agents/{aid}/memory/extract-config",
+        headers=auth,
+        json={
+            "extract_max_tokens": 1,
+            "extract_light_timeout_s": 999999,
+            "extract_heavy_timeout_s": 1,
+        },
+    )
+    assert response.status_code == 200, response.text
+    data = response.json()
+    assert data["extract_max_tokens"] == 128
+    assert data["extract_light_timeout_s"] == 3600
+    assert data["extract_heavy_timeout_s"] == 30

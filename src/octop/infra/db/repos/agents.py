@@ -3,9 +3,38 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import datetime
 
 from octop.infra.db.pool import DatabasePool
 from octop.infra.db.repos._base import UNSET, DbRow, bool_int, map_rows, now_ts, optional_updates
+from octop.infra.users.groups import RESOURCE_EXPERT, group_visibility_sql
+
+
+def _unix_ts(value: object) -> int:
+    """Coerce a DB timestamp to unix seconds.
+
+    ``agents.created_at`` / ``updated_at`` are INTEGER, but SQLite will store
+    a text datetime if one was written. Listing must not crash on that.
+    """
+    if value is None:
+        return 0
+    if isinstance(value, bool):
+        return int(value)
+    if isinstance(value, int):
+        return value
+    if isinstance(value, float):
+        return int(value)
+    text = str(value).strip()
+    if not text:
+        return 0
+    try:
+        return int(text)
+    except ValueError:
+        pass
+    try:
+        return int(datetime.fromisoformat(text.replace("Z", "+00:00")).timestamp())
+    except ValueError:
+        return 0
 
 
 def _opt_str(r: DbRow, key: str) -> str | None:
@@ -74,8 +103,8 @@ class AgentRow:
             config_json=r["config_json"],
             last_state=r["last_state"],
             last_error=r["last_error"],
-            created_at=r["created_at"],
-            updated_at=r["updated_at"],
+            created_at=_unix_ts(r["created_at"]),
+            updated_at=_unix_ts(r["updated_at"]),
             icon=r["icon"],
             template_name=r["template_name"],
             is_shared=is_shared,
@@ -209,13 +238,22 @@ class AgentRepo:
                 (bool_int(shared), now_ts(), agent_id),
             )
 
-    def list_shared(self, *, exclude_user_id: int | None = None) -> list[AgentRow]:
-        sql = "SELECT * FROM agents WHERE is_shared = 1 AND enabled = 1"
+    def list_shared(
+        self,
+        *,
+        exclude_user_id: int | None = None,
+        viewer_user_id: int | None = None,
+    ) -> list[AgentRow]:
+        """Enabled shared agents. ``viewer_user_id`` applies the group layer."""
+        sql = "SELECT a.* FROM agents a WHERE a.is_shared = 1 AND a.enabled = 1"
         params: list[object] = []
         if exclude_user_id is not None:
-            sql += " AND user_id != ?"
+            sql += " AND a.user_id != ?"
             params.append(exclude_user_id)
-        sql += " ORDER BY created_at ASC, id ASC"
+        if viewer_user_id is not None:
+            sql += f" AND {group_visibility_sql(RESOURCE_EXPERT, 'a.agent_id')}"
+            params.append(viewer_user_id)
+        sql += " ORDER BY a.created_at ASC, a.id ASC"
         with self._db.connect() as conn:
             rows = conn.execute(sql, params).fetchall()
         return map_rows(rows, AgentRow)
@@ -279,4 +317,6 @@ class AgentRepo:
 
     def delete(self, agent_id: str) -> None:
         with self._db.transaction() as conn:
+            # No foreign key. Thread and usage rows cascade from ``agents``.
+            conn.execute("DELETE FROM care_push_records WHERE agent_id = ?", (agent_id,))
             conn.execute("DELETE FROM agents WHERE agent_id = ?", (agent_id,))

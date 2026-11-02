@@ -1,6 +1,7 @@
 import { useEffect, useSyncExternalStore, useState } from "react";
 import { createPortal } from "react-dom";
 import { Tooltip } from "antd";
+import { useTranslation } from "react-i18next";
 import { Download, MonitorDown, Share, X } from "lucide-react";
 import {
   subscribePwaPrompt,
@@ -33,12 +34,13 @@ function isStandalone(): boolean {
 // ─── iOS guide sheet ──────────────────────────────────────────────────────────
 
 export function IosGuide({ onClose }: { onClose: () => void }) {
+  const { t } = useTranslation();
   return createPortal(
     <div
       className={styles.iosOverlay}
       role="dialog"
       aria-modal="true"
-      aria-label="添加到主屏幕"
+      aria-label={t("pwa.addToHomeScreen", "添加到主屏幕")}
       onClick={(e) => {
         if (e.target === e.currentTarget) onClose();
       }}
@@ -47,27 +49,32 @@ export function IosGuide({ onClose }: { onClose: () => void }) {
         <button
           className={styles.guideClose}
           onClick={onClose}
-          aria-label="关闭"
+          aria-label={t("pwa.close", "关闭")}
         >
           <X size={18} />
         </button>
-        <div className={styles.guideTitle}>添加到主屏幕</div>
-        <p className={styles.guideDesc}>将 Octop 安装为 App，随时一键打开。</p>
+        <div className={styles.guideTitle}>
+          {t("pwa.addToHomeScreen", "添加到主屏幕")}
+        </div>
+        <p className={styles.guideDesc}>
+          {t("pwa.installAsAppDesc", "将 Octop 安装为 App，随时一键打开。")}
+        </p>
         <ol className={styles.guideList}>
           <li>
             <span className={styles.guideStep}>1</span>
             <span>
-              点击底部工具栏的{" "}
-              <Share size={14} className={styles.guideInlineIcon} /> 分享按钮
+              {t("pwa.iosStep1Prefix", "点击底部工具栏的")}{" "}
+              <Share size={14} className={styles.guideInlineIcon} />{" "}
+              {t("pwa.iosStep1Suffix", "分享按钮")}
             </span>
           </li>
           <li>
             <span className={styles.guideStep}>2</span>
-            <span>向下滚动，点击「添加到主屏幕」</span>
+            <span>{t("pwa.iosStep2", "向下滚动，点击「添加到主屏幕」")}</span>
           </li>
           <li>
             <span className={styles.guideStep}>3</span>
-            <span>点击右上角「添加」完成安装</span>
+            <span>{t("pwa.iosStep3", "点击右上角「添加」完成安装")}</span>
           </li>
         </ol>
         <div className={styles.iosArrow}>↓</div>
@@ -80,13 +87,14 @@ export function IosGuide({ onClose }: { onClose: () => void }) {
 // ─── Desktop / Android guide (when beforeinstallprompt is not yet available) ──
 
 export function DesktopInstallGuide({ onClose }: { onClose: () => void }) {
+  const { t } = useTranslation();
   const isEdge = /edg/i.test(navigator.userAgent);
   return createPortal(
     <div
       className={styles.desktopOverlay}
       role="dialog"
       aria-modal="true"
-      aria-label="安装为桌面应用"
+      aria-label={t("pwa.installDesktopApp", "安装为桌面应用")}
       onClick={(e) => {
         if (e.target === e.currentTarget) onClose();
       }}
@@ -95,38 +103,50 @@ export function DesktopInstallGuide({ onClose }: { onClose: () => void }) {
         <button
           className={styles.guideClose}
           onClick={onClose}
-          aria-label="关闭"
+          aria-label={t("pwa.close", "关闭")}
         >
           <X size={18} />
         </button>
-        <div className={styles.guideTitle}>安装为桌面应用</div>
+        <div className={styles.guideTitle}>
+          {t("pwa.installDesktopApp", "安装为桌面应用")}
+        </div>
         <p className={styles.guideDesc}>
-          浏览器尚未准备好一键安装。请按以下方式操作，或刷新页面后再点 Header
-          中的安装按钮。
+          {t(
+            "pwa.desktopGuideDesc",
+            "浏览器尚未准备好一键安装。请按以下方式操作，或刷新页面后再点 Header 中的安装按钮。",
+          )}
         </p>
         <ol className={styles.guideList}>
           <li>
             <span className={styles.guideStep}>1</span>
             <span>
-              查看地址栏右侧的{" "}
+              {t("pwa.desktopStep1Prefix", "查看地址栏右侧的")}{" "}
               <MonitorDown size={14} className={styles.guideInlineIcon} />{" "}
-              安装图标并点击
+              {t("pwa.desktopStep1Suffix", "安装图标并点击")}
             </span>
           </li>
           <li>
             <span className={styles.guideStep}>2</span>
             <span>
-              或打开浏览器菜单，选择「{isEdge ? "应用" : "安装"} Octop」/
-              Install Octop
+              {t("pwa.desktopStep2", {
+                action: isEdge
+                  ? t("pwa.menuActionApply", "应用")
+                  : t("pwa.menuActionInstall", "安装"),
+              })}
             </span>
           </li>
           <li>
             <span className={styles.guideStep}>3</span>
-            <span>确认安装后，可从桌面或程序坞一键打开</span>
+            <span>
+              {t("pwa.desktopStep3", "确认安装后，可从桌面或程序坞一键打开")}
+            </span>
           </li>
         </ol>
         <p className={styles.guideHint}>
-          通过局域网 IP 访问时需使用 HTTPS，否则浏览器不会提供安装选项。
+          {t(
+            "pwa.desktopHint",
+            "通过局域网 IP 访问时需使用 HTTPS，否则浏览器不会提供安装选项。",
+          )}
         </p>
       </div>
     </div>,
@@ -154,6 +174,7 @@ export default function PwaInstallPrompt({
   compact,
   appearance = "default",
 }: PwaInstallPromptProps) {
+  const { t } = useTranslation();
   const installState = useSyncExternalStore(
     subscribePwaPrompt,
     getPwaInstallSnapshot,
@@ -209,10 +230,8 @@ export default function PwaInstallPrompt({
   };
 
   const tooltipTitle = ios
-    ? "添加到主屏幕"
-    : installState.prompt
-    ? "安装为桌面应用"
-    : "安装为桌面应用";
+    ? t("pwa.addToHomeScreen", "添加到主屏幕")
+    : t("pwa.installDesktopApp", "安装为桌面应用");
 
   const btnClass = chatFloat
     ? styles.installBtnChatFloat
@@ -224,14 +243,16 @@ export default function PwaInstallPrompt({
       className={btnClass}
       onClick={() => void handleAndroidInstall()}
       disabled={installing}
-      aria-label="安装应用"
+      aria-label={t("pwa.installApp", "安装应用")}
     >
       <Download
         size={chatFloat ? 20 : compact ? 15 : 16}
         strokeWidth={chatFloat ? 2.1 : 1.8}
         className={styles.installIcon}
       />
-      {!compact && !chatFloat && <span className={styles.label}>安装</span>}
+      {!compact && !chatFloat && (
+        <span className={styles.label}>{t("pwa.install", "安装")}</span>
+      )}
     </button>
   );
 

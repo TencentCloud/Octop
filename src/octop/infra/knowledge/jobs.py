@@ -14,7 +14,8 @@ from octop.infra.knowledge.ocr import optional_ocr_extractor
 from octop.infra.knowledge.params import get_advanced_settings
 from octop.infra.knowledge.parse import parse_document
 
-INDEX_CONCURRENCY = 2
+# Parsing/OCR also consumes memory; only one document should be in flight.
+INDEX_CONCURRENCY = 1
 _index_semaphore: asyncio.Semaphore | None = None
 
 

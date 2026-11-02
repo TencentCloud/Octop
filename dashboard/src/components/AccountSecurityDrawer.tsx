@@ -1,0 +1,869 @@
+import { useCallback, useEffect, useState, type ReactNode } from "react";
+import { Alert, Button, Drawer, Form, Input, Modal, Space, Spin } from "antd";
+import {
+  Fingerprint,
+  KeyRound,
+  Lock,
+  LockOpen,
+  ShieldCheck,
+} from "lucide-react";
+import { QRCodeSVG } from "qrcode.react";
+import { Link } from "react-router-dom";
+import { useTranslation } from "react-i18next";
+import { message } from "@/utils/antdMessage";
+import {
+  authApi,
+  type MfaPasskeyInfo,
+  type MfaStatus,
+  type OctopUser,
+} from "../api/modules/auth";
+import { apiErrorMessage, isNotFoundApiError } from "../utils/apiError";
+import {
+  formatServerDateTime,
+  formatServerIsoDateTime,
+} from "../utils/formatMessageTime";
+import { useServerTimezone } from "../hooks/useServerTimezone";
+import { useIsMobile } from "../hooks/useIsMobile";
+import { userCan } from "../utils/permissions";
+import {
+  MIN_PASSWORD_LENGTH,
+  passwordPolicyIssue,
+} from "../utils/passwordPolicy";
+import {
+  isWebAuthnAvailable,
+  isWebAuthnIpHost,
+  webauthnCreate,
+  webauthnErrorMessage,
+} from "../utils/webauthn";
+import styles from "./AccountSecurityDrawer.module.less";
+
+/** Official Microsoft Authenticator page, with iPhone and Android downloads. */
+const AUTHENTICATOR_APP_URL =
+  "https://www.microsoft.com/security/mobile-authenticator-app";
+
+function AuthenticatorDownload({ label }: { label: string }) {
+  return (
+    <p className={styles.downloadLine}>
+      {label}
+      <a href={AUTHENTICATOR_APP_URL} target="_blank" rel="noopener noreferrer">
+        {AUTHENTICATOR_APP_URL}
+      </a>
+    </p>
+  );
+}
+
+function UsageTips({
+  label,
+  items,
+  extra,
+}: {
+  label: string;
+  items: string[];
+  extra?: ReactNode;
+}) {
+  return (
+    <div className={styles.tips}>
+      <p className={styles.tipLabel}>{label}</p>
+      <ul className={styles.tipList}>
+        {items.map((item) => (
+          <li key={item}>{item}</li>
+        ))}
+      </ul>
+      {extra}
+    </div>
+  );
+}
+
+const PASSWORD_FIELD_ICON_PROPS = {
+  size: 14 as const,
+  style: { color: "var(--fn-text-tertiary)" },
+};
+
+function ChangePasswordCard() {
+  const { t } = useTranslation();
+  const [changing, setChanging] = useState(false);
+  const [form] = Form.useForm<{
+    old_password: string;
+    new_password: string;
+    confirm: string;
+  }>();
+
+  const policyMessage = (issue: ReturnType<typeof passwordPolicyIssue>) => {
+    switch (issue) {
+      case "same_as_old":
+        return t("account.passwordSameAsOld");
+      case "too_short":
+        return t("account.passwordTooShort", { min: MIN_PASSWORD_LENGTH });
+      case "need_letter_and_digit":
+        return t("account.passwordNeedLetterAndDigit");
+      case "too_common":
+        return t("account.passwordTooCommon");
+      default:
+        return t("account.passwordTooWeak");
+    }
+  };
+
+  const onFinish = async (values: {
+    old_password: string;
+    new_password: string;
+  }) => {
+    setChanging(true);
+    try {
+      await authApi.changePassword(values.old_password, values.new_password);
+      message.success(t("account.passwordChanged"));
+      form.resetFields();
+    } catch (err) {
+      message.error(apiErrorMessage(err, t("account.passwordChangeFailed"), t));
+    } finally {
+      setChanging(false);
+    }
+  };
+
+  return (
+    <section className={styles.card}>
+      <div className={styles.cardLead}>
+        <span className={styles.iconWrap} aria-hidden>
+          <Lock size={18} strokeWidth={1.75} />
+        </span>
+        <h3 className={styles.cardTitle}>{t("account.changePassword")}</h3>
+      </div>
+      <p className={styles.cardDesc}>{t("account.changePasswordHint")}</p>
+      <Form
+        form={form}
+        onFinish={onFinish}
+        layout="vertical"
+        requiredMark={false}
+        className={styles.passwordForm}
+      >
+        <Form.Item
+          name="old_password"
+          label={t("account.currentPassword")}
+          rules={[
+            { required: true, message: t("account.currentPasswordRequired") },
+          ]}
+        >
+          <Input.Password
+            autoComplete="current-password"
+            prefix={<Lock {...PASSWORD_FIELD_ICON_PROPS} />}
+          />
+        </Form.Item>
+        <Form.Item
+          name="new_password"
+          label={t("account.newPassword")}
+          dependencies={["old_password"]}
+          rules={[
+            { required: true, message: t("account.newPasswordRequired") },
+            ({ getFieldValue }) => ({
+              validator(_, value: string) {
+                if (!value) return Promise.resolve();
+                const issue = passwordPolicyIssue(
+                  value,
+                  getFieldValue("old_password") as string | undefined,
+                );
+                if (issue) {
+                  return Promise.reject(new Error(policyMessage(issue)));
+                }
+                return Promise.resolve();
+              },
+            }),
+          ]}
+        >
+          <Input.Password
+            autoComplete="new-password"
+            prefix={<Lock {...PASSWORD_FIELD_ICON_PROPS} />}
+          />
+        </Form.Item>
+        <Form.Item
+          name="confirm"
+          label={t("account.confirmPassword")}
+          dependencies={["new_password"]}
+          rules={[
+            { required: true, message: t("account.confirmPasswordRequired") },
+            ({ getFieldValue }) => ({
+              validator(_, value: string) {
+                if (!value || getFieldValue("new_password") === value) {
+                  return Promise.resolve();
+                }
+                return Promise.reject(new Error(t("account.passwordMismatch")));
+              },
+            }),
+          ]}
+        >
+          <Input.Password
+            autoComplete="new-password"
+            prefix={<LockOpen {...PASSWORD_FIELD_ICON_PROPS} />}
+          />
+        </Form.Item>
+        <div className={styles.cardActions}>
+          <Button type="primary" htmlType="submit" loading={changing}>
+            {t("account.changePassword")}
+          </Button>
+        </div>
+      </Form>
+    </section>
+  );
+}
+
+type ReauthAction =
+  | { kind: "totp_begin" }
+  | { kind: "totp_disable" }
+  | { kind: "passkey_add"; name: string }
+  | { kind: "passkey_remove"; credentialId: string }
+  | { kind: "recovery_regen" };
+
+interface AccountSecurityDrawerProps {
+  open: boolean;
+  onClose: () => void;
+}
+
+/**
+ * Account MFA / passkey management. Uses SPEC routes under ``/api/auth/mfa/*``.
+ * If routes are missing (404), show a clear unavailable message.
+ */
+export default function AccountSecurityDrawer({
+  open,
+  onClose,
+}: AccountSecurityDrawerProps) {
+  const { t } = useTranslation();
+  const isMobile = useIsMobile();
+  const timeZone = useServerTimezone();
+  const [loading, setLoading] = useState(false);
+  const [status, setStatus] = useState<MfaStatus | null>(null);
+  const [profile, setProfile] = useState<OctopUser | null>(null);
+  const [unavailable, setUnavailable] = useState(false);
+  const [busy, setBusy] = useState(false);
+
+  const [reauthOpen, setReauthOpen] = useState(false);
+  const [reauthAction, setReauthAction] = useState<ReauthAction | null>(null);
+  const [reauthForm] = Form.useForm<{
+    password: string;
+    passkeyName?: string;
+  }>();
+
+  const [totpUri, setTotpUri] = useState<string | null>(null);
+  const [totpReauth, setTotpReauth] = useState<string | null>(null);
+  const [totpCode, setTotpCode] = useState("");
+
+  const [recoveryCodes, setRecoveryCodes] = useState<string[] | null>(null);
+  const passkeyIpHost = isWebAuthnIpHost();
+  const passkeyOk = isWebAuthnAvailable() && !passkeyIpHost;
+  const canConfigurePasskeys = userCan(profile, "captcha");
+  const passkeyBlock = status?.passkey_block ?? null;
+  const passkeyReady = passkeyOk && passkeyBlock == null;
+
+  const loadStatus = useCallback(async () => {
+    setLoading(true);
+    setUnavailable(false);
+    const mePromise = authApi.me().catch(() => null);
+    try {
+      setStatus(await authApi.mfaStatus());
+    } catch (err) {
+      if (isNotFoundApiError(err)) {
+        setUnavailable(true);
+        setStatus(null);
+      } else {
+        message.error(apiErrorMessage(err, t("account.securityLoadFailed"), t));
+      }
+    } finally {
+      const me = await mePromise;
+      if (me) setProfile(me);
+      setLoading(false);
+    }
+  }, [t]);
+
+  useEffect(() => {
+    if (!open) return;
+    void loadStatus();
+    setTotpUri(null);
+    setTotpReauth(null);
+    setTotpCode("");
+    setRecoveryCodes(null);
+  }, [open, loadStatus]);
+
+  const requestReauth = (action: ReauthAction) => {
+    setReauthAction(action);
+    reauthForm.resetFields();
+    setReauthOpen(true);
+  };
+
+  /** Removing the last factor turns off MFA — confirm before password reauth. */
+  const requestRemoveFactor = (action: ReauthAction) => {
+    if (!status?.is_last_factor) {
+      requestReauth(action);
+      return;
+    }
+    Modal.confirm({
+      title: t("account.securityDisableMfaTitle"),
+      content: t("account.securityDisableMfaHint"),
+      okText: t("common.confirm"),
+      okButtonProps: { danger: true },
+      cancelText: t("common.cancel"),
+      onOk: () => {
+        requestReauth(action);
+      },
+    });
+  };
+
+  const runWithReauth = async (password: string, action: ReauthAction) => {
+    setBusy(true);
+    try {
+      const { reauth_token } = await authApi.mfaReauth(password);
+      setReauthOpen(false);
+
+      switch (action.kind) {
+        case "totp_begin": {
+          const begin = await authApi.mfaTotpBegin(reauth_token);
+          setTotpUri(begin.otpauth_uri);
+          setTotpReauth(reauth_token);
+          setTotpCode("");
+          break;
+        }
+        case "totp_disable": {
+          await authApi.mfaTotpDisable(reauth_token);
+          message.success(t("account.securityDisableSuccess"));
+          setTotpUri(null);
+          setTotpReauth(null);
+          await loadStatus();
+          break;
+        }
+        case "passkey_add": {
+          const options = await authApi.mfaPasskeyRegisterOptions(reauth_token);
+          const credential = await webauthnCreate(options);
+          const label = action.name.trim();
+          await authApi.mfaPasskeyRegisterVerify(
+            reauth_token,
+            credential,
+            label || undefined,
+          );
+          message.success(t("account.securityPasskeyAdded"));
+          await loadStatus();
+          break;
+        }
+        case "passkey_remove": {
+          await authApi.mfaPasskeyRemove(reauth_token, action.credentialId);
+          message.success(t("account.securityPasskeyRemoved"));
+          await loadStatus();
+          break;
+        }
+        case "recovery_regen": {
+          const result = await authApi.mfaRecoveryRegenerate(reauth_token);
+          setRecoveryCodes(result.recovery_codes ?? []);
+          message.success(t("account.securityRecoveryRegenSuccess"));
+          await loadStatus();
+          break;
+        }
+      }
+    } catch (err) {
+      message.error(
+        webauthnErrorMessage(err, t) ??
+          apiErrorMessage(err, t("account.securityReauthFailed"), t),
+      );
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const confirmTotp = async () => {
+    if (!totpReauth || !totpCode.trim()) return;
+    setBusy(true);
+    try {
+      const result = await authApi.mfaTotpConfirm(totpReauth, totpCode.trim());
+      setTotpUri(null);
+      setTotpReauth(null);
+      setTotpCode("");
+      if (result.recovery_codes?.length) {
+        setRecoveryCodes(result.recovery_codes);
+      }
+      message.success(t("account.securityEnrollSuccess"));
+      await loadStatus();
+    } catch (err) {
+      message.error(apiErrorMessage(err, t("login.mfaFailed"), t));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const formatPasskeyTime = (raw: MfaPasskeyInfo["last_used_at"]) => {
+    if (raw == null || raw === "") {
+      return t("account.securityPasskeyNeverUsed");
+    }
+    let formatted = "";
+    if (typeof raw === "string" && Number.isNaN(Number(raw))) {
+      formatted = formatServerIsoDateTime(raw, timeZone);
+    } else {
+      const n = typeof raw === "number" ? raw : Number(raw);
+      if (Number.isFinite(n) && n > 0) {
+        const epochSec = n > 1e12 ? Math.floor(n / 1000) : n;
+        formatted = formatServerDateTime(epochSec, timeZone);
+      }
+    }
+    if (!formatted || formatted === "—") {
+      return t("account.securityPasskeyNeverUsed");
+    }
+    return t("account.securityPasskeyLastUsed", { time: formatted });
+  };
+
+  const hasPassword = profile?.has_password !== false;
+  const ssoLinked = Boolean(
+    profile?.sso_linked || (profile?.sso_identities?.length ?? 0) > 0,
+  );
+  const ssoOnly = profile != null && !hasPassword && ssoLinked;
+  const canEnroll = !unavailable && !ssoOnly;
+  const hasFactor =
+    Boolean(status?.totp_verified) || (status?.passkeys.length ?? 0) > 0;
+  const passkeyCount = status?.passkeys?.length ?? 0;
+
+  const body = (
+    <div className={styles.body}>
+      {loading ? (
+        <div className={styles.loading}>
+          <Spin />
+        </div>
+      ) : (
+        <>
+          {hasPassword ? <ChangePasswordCard /> : null}
+          {unavailable ? (
+            <Alert
+              type="info"
+              showIcon
+              message={t("account.securityUnavailable")}
+            />
+          ) : (
+            <>
+              <div className={styles.introBlock}>
+                <p className={styles.intro}>{t("account.securityHint")}</p>
+                <p className={styles.note}>{t("account.securityCliNote")}</p>
+              </div>
+              {(ssoLinked || ssoOnly) && (
+                <Alert
+                  type="warning"
+                  showIcon
+                  message={
+                    ssoOnly
+                      ? t("account.securitySsoOnly")
+                      : t("account.securitySsoBypass")
+                  }
+                />
+              )}
+
+              <div className={styles.stack}>
+                <section className={styles.card}>
+                  <div className={styles.cardTop}>
+                    <div className={styles.cardLead}>
+                      <span
+                        className={`${styles.iconWrap} ${
+                          status?.totp_verified ? styles.iconWrapOn : ""
+                        }`}
+                        aria-hidden
+                      >
+                        <ShieldCheck size={18} strokeWidth={1.75} />
+                      </span>
+                      <div className={styles.cardIdentity}>
+                        <h3 className={styles.cardTitle}>
+                          {t("account.securityTotp")}
+                        </h3>
+                        <span
+                          className={`${styles.statusPill} ${
+                            status?.totp_verified ? styles.statusPillOn : ""
+                          }`}
+                        >
+                          {status?.totp_verified
+                            ? t("account.securityTotpEnabled")
+                            : t("account.securityTotpDisabled")}
+                        </span>
+                      </div>
+                    </div>
+                    {!totpUri ? (
+                      <div className={styles.cardSide}>
+                        <p className={styles.cardDesc}>
+                          {t("account.securityTotpDesc")}
+                        </p>
+                        <UsageTips
+                          label={t("account.securityHowTo")}
+                          items={[
+                            t("account.securityTotpTip1"),
+                            t("account.securityTotpTip2"),
+                          ]}
+                          extra={
+                            <AuthenticatorDownload
+                              label={t("account.securityTotpDownload")}
+                            />
+                          }
+                        />
+                        {canEnroll ? (
+                          <div className={styles.cardActions}>
+                            {!status?.totp_verified ? (
+                              <Button
+                                type="primary"
+                                disabled={busy}
+                                onClick={() =>
+                                  requestReauth({ kind: "totp_begin" })
+                                }
+                              >
+                                {t("account.securityTotpEnroll")}
+                              </Button>
+                            ) : (
+                              <Button
+                                danger
+                                disabled={busy}
+                                onClick={() =>
+                                  requestRemoveFactor({ kind: "totp_disable" })
+                                }
+                              >
+                                {t("account.securityTotpDisable")}
+                              </Button>
+                            )}
+                          </div>
+                        ) : null}
+                      </div>
+                    ) : null}
+                  </div>
+                  {totpUri ? (
+                    <div className={styles.enrollBox}>
+                      <p className={styles.cardDesc}>
+                        {t("account.securityTotpScan")}
+                      </p>
+                      <AuthenticatorDownload
+                        label={t("account.securityTotpDownload")}
+                      />
+                      <div className={styles.qrWrap}>
+                        <QRCodeSVG value={totpUri} size={168} />
+                      </div>
+                      <Input
+                        value={totpCode}
+                        onChange={(e) => setTotpCode(e.target.value)}
+                        placeholder={t("account.securityTotpCode")}
+                        maxLength={8}
+                        autoComplete="one-time-code"
+                      />
+                      <div className={styles.cardActions}>
+                        <Button
+                          onClick={() => {
+                            setTotpUri(null);
+                            setTotpReauth(null);
+                            setTotpCode("");
+                          }}
+                        >
+                          {t("common.cancel")}
+                        </Button>
+                        <Button
+                          type="primary"
+                          loading={busy}
+                          disabled={!totpCode.trim()}
+                          onClick={() => void confirmTotp()}
+                        >
+                          {t("account.securityTotpConfirm")}
+                        </Button>
+                      </div>
+                    </div>
+                  ) : null}
+                </section>
+
+                <section className={styles.card}>
+                  <div className={styles.cardTop}>
+                    <div className={styles.cardLead}>
+                      <span
+                        className={`${styles.iconWrap} ${
+                          passkeyCount > 0 ? styles.iconWrapOn : ""
+                        }`}
+                        aria-hidden
+                      >
+                        <Fingerprint size={18} strokeWidth={1.75} />
+                      </span>
+                      <div className={styles.cardIdentity}>
+                        <h3 className={styles.cardTitle}>
+                          {t("account.securityPasskeys")}
+                        </h3>
+                        {passkeyCount > 0 ? (
+                          <span
+                            className={`${styles.statusPill} ${styles.statusPillOn}`}
+                          >
+                            {t("account.securityPasskeyCount", {
+                              count: passkeyCount,
+                            })}
+                          </span>
+                        ) : null}
+                      </div>
+                    </div>
+                    <div className={styles.cardSide}>
+                      <p className={styles.cardDesc}>
+                        {t("account.securityPasskeyDesc")}
+                      </p>
+                      {passkeyReady ? (
+                        <UsageTips
+                          label={t("account.securityHowTo")}
+                          items={[
+                            t("account.securityPasskeyTip1"),
+                            t("account.securityPasskeyTip2"),
+                          ]}
+                        />
+                      ) : null}
+                      {canEnroll && passkeyReady ? (
+                        <div className={styles.cardActions}>
+                          <Button
+                            type="primary"
+                            disabled={busy}
+                            onClick={() =>
+                              requestReauth({ kind: "passkey_add", name: "" })
+                            }
+                          >
+                            {t("account.securityPasskeyAdd")}
+                          </Button>
+                        </div>
+                      ) : null}
+                    </div>
+                  </div>
+                  {!passkeyReady || passkeyCount > 0 ? (
+                    <div className={styles.cardExtra}>
+                      {!passkeyReady ? (
+                        <Alert
+                          type="info"
+                          showIcon
+                          message={
+                            passkeyIpHost || passkeyBlock === "ip" ? (
+                              t("account.securityPasskeyIpHost", {
+                                host: window.location.hostname,
+                                port: window.location.port || "80",
+                              })
+                            ) : !isWebAuthnAvailable() ? (
+                              t("account.securityPasskeyHttps")
+                            ) : (
+                              <>
+                                {t(
+                                  passkeyBlock === "origin"
+                                    ? "account.securityPasskeyOrigin"
+                                    : canConfigurePasskeys
+                                    ? "account.securityPasskeyUnconfiguredAdmin"
+                                    : "account.securityPasskeyUnconfigured",
+                                )}
+                                {canConfigurePasskeys ? (
+                                  <>
+                                    {" "}
+                                    <Link
+                                      className={styles.inlineLink}
+                                      to="/admin/advanced?tab=webauthn"
+                                    >
+                                      {t("account.securityPasskeyOpenSettings")}
+                                    </Link>
+                                  </>
+                                ) : null}
+                              </>
+                            )
+                          }
+                        />
+                      ) : null}
+                      {passkeyCount > 0 ? (
+                        <ul className={styles.passkeyList}>
+                          {(status?.passkeys ?? []).map((item) => (
+                            <li
+                              key={item.credential_id}
+                              className={styles.passkeyRow}
+                            >
+                              <div className={styles.passkeyMeta}>
+                                <span className={styles.passkeyName}>
+                                  {item.name.trim() ||
+                                    t("account.securityPasskeyDefaultName")}
+                                </span>
+                                <span className={styles.passkeySub}>
+                                  {formatPasskeyTime(item.last_used_at)}
+                                </span>
+                              </div>
+                              {canEnroll ? (
+                                <Button
+                                  type="text"
+                                  danger
+                                  size="small"
+                                  disabled={busy}
+                                  onClick={() =>
+                                    requestRemoveFactor({
+                                      kind: "passkey_remove",
+                                      credentialId: item.credential_id,
+                                    })
+                                  }
+                                >
+                                  {t("account.securityPasskeyRemove")}
+                                </Button>
+                              ) : null}
+                            </li>
+                          ))}
+                        </ul>
+                      ) : null}
+                    </div>
+                  ) : null}
+                </section>
+
+                <section className={styles.card}>
+                  <div className={styles.cardTop}>
+                    <div className={styles.cardLead}>
+                      <span
+                        className={`${styles.iconWrap} ${
+                          hasFactor ? styles.iconWrapOn : ""
+                        }`}
+                        aria-hidden
+                      >
+                        <KeyRound size={18} strokeWidth={1.75} />
+                      </span>
+                      <div className={styles.cardIdentity}>
+                        <h3 className={styles.cardTitle}>
+                          {t("account.securityRecovery")}
+                        </h3>
+                        {hasFactor ? (
+                          <span className={styles.statusPill}>
+                            {t("account.securityRecoveryCount", {
+                              count: status?.recovery_remaining ?? 0,
+                            })}
+                          </span>
+                        ) : null}
+                      </div>
+                    </div>
+                    <div className={styles.cardSide}>
+                      <p className={styles.cardDesc}>
+                        {hasFactor
+                          ? t("account.securityRecoveryDesc")
+                          : t("account.securityRecoveryNeedFactor")}
+                      </p>
+                      <UsageTips
+                        label={t("account.securityHowTo")}
+                        items={[
+                          t("account.securityRecoveryTip1"),
+                          t("account.securityRecoveryTip2"),
+                        ]}
+                      />
+                      {canEnroll && hasFactor ? (
+                        <div className={styles.cardActions}>
+                          <Button
+                            disabled={busy}
+                            onClick={() =>
+                              requestReauth({ kind: "recovery_regen" })
+                            }
+                          >
+                            {t("account.securityRecoveryRegenerate")}
+                          </Button>
+                        </div>
+                      ) : null}
+                    </div>
+                  </div>
+                </section>
+              </div>
+            </>
+          )}
+        </>
+      )}
+    </div>
+  );
+
+  return (
+    <>
+      <Drawer
+        title={t("account.security")}
+        open={open}
+        onClose={onClose}
+        placement="right"
+        width={isMobile ? "100%" : 520}
+        destroyOnHidden
+        className={styles.drawer}
+      >
+        {body}
+      </Drawer>
+
+      <Modal
+        title={t("account.securityReauthTitle")}
+        open={reauthOpen}
+        onCancel={() => setReauthOpen(false)}
+        confirmLoading={busy}
+        okText={t("account.securityReauthSubmit")}
+        onOk={() => reauthForm.submit()}
+        destroyOnHidden
+      >
+        <p className={styles.reauthHint}>{t("account.securityReauthHint")}</p>
+        <Form
+          form={reauthForm}
+          layout="vertical"
+          onFinish={(values) => {
+            if (!reauthAction) return;
+            const action =
+              reauthAction.kind === "passkey_add"
+                ? {
+                    ...reauthAction,
+                    name: (values.passkeyName ?? "").trim(),
+                  }
+                : reauthAction;
+            void runWithReauth(values.password, action);
+          }}
+        >
+          {reauthAction?.kind === "passkey_add" ? (
+            <Form.Item
+              name="passkeyName"
+              label={t("account.securityPasskeyName")}
+              extra={t("account.securityPasskeyNameHint")}
+            >
+              <Input
+                placeholder={t("account.securityPasskeyNamePlaceholder")}
+                maxLength={64}
+                autoFocus
+              />
+            </Form.Item>
+          ) : null}
+          <Form.Item
+            name="password"
+            label={t("account.currentPassword")}
+            rules={[
+              {
+                required: true,
+                message: t("account.currentPasswordRequired"),
+              },
+            ]}
+          >
+            <Input.Password
+              autoComplete="current-password"
+              autoFocus={reauthAction?.kind !== "passkey_add"}
+            />
+          </Form.Item>
+        </Form>
+      </Modal>
+
+      <Modal
+        title={t("account.securityRecovery")}
+        open={recoveryCodes != null}
+        closable={false}
+        maskClosable={false}
+        footer={
+          <Space>
+            <Button
+              onClick={() => {
+                const codes = recoveryCodes ?? [];
+                if (codes.length === 0) return;
+                const blob = new Blob([codes.join("\n") + "\n"], {
+                  type: "text/plain;charset=utf-8",
+                });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement("a");
+                a.href = url;
+                a.download = "octop-recovery-codes.txt";
+                a.click();
+                URL.revokeObjectURL(url);
+              }}
+            >
+              {t("account.securityRecoveryDownload")}
+            </Button>
+            <Button type="primary" onClick={() => setRecoveryCodes(null)}>
+              {t("account.securityRecoverySaved")}
+            </Button>
+          </Space>
+        }
+      >
+        <Alert
+          className={styles.recoveryWarn}
+          type="warning"
+          showIcon
+          message={t("account.securityRecoveryShowOnce")}
+        />
+        <ul className={styles.recoveryList}>
+          {(recoveryCodes ?? []).map((code, index) => (
+            <li key={`${index}-${code}`}>{code}</li>
+          ))}
+        </ul>
+      </Modal>
+    </>
+  );
+}

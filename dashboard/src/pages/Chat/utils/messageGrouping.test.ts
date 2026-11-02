@@ -303,6 +303,37 @@ describe("groupConsecutiveAssistantMessages", () => {
     expect(findSpeakerTextToContinue(messages, undefined, "C9EBEC")).toBe(0);
   });
 
+  it("continues the answer that was already on screen, not the approval card", () => {
+    const messages = [
+      msg("assistant", "text", {
+        content: "磁盘还剩 8G",
+        speakerAgentId: "doctor",
+      }),
+      msg("assistant", "card", {
+        speakerAgentId: "doctor",
+        hitlData: {
+          action_requests: [{ name: "execute", args: {} }],
+          status: "approved",
+        },
+      }),
+    ];
+    expect(
+      findSpeakerTextToContinue(messages, "doctor", "host", {
+        teamRoom: true,
+      }),
+    ).toBe(0);
+    const plain = [
+      msg("assistant", "text", { content: "磁盘还剩 8G" }),
+      msg("assistant", "card", {
+        hitlData: {
+          action_requests: [{ name: "execute", args: {} }],
+          status: "approved",
+        },
+      }),
+    ];
+    expect(findSpeakerTextToContinue(plain, undefined, "host")).toBe(0);
+  });
+
   it("merges split member texts into one answer bubble", () => {
     const split = splitAssistantTurn([
       msg("assistant", "m1", {
@@ -333,6 +364,23 @@ describe("groupConsecutiveAssistantMessages", () => {
       }),
     ]);
     expect(split.answerMessage?.content).toBe("我先查一下资料 结论如下");
+  });
+
+  it("keeps a stream error out of the joined answer", () => {
+    const split = splitAssistantTurn([
+      msg("assistant", "m1", { content: "先看一下日志" }),
+      msg("assistant", "err", {
+        content:
+          "LLM call failed: LengthFinishReasonError('length limit was reached')",
+        status: "error",
+      }),
+    ]);
+    expect(split.answerMessage?.content).toBe("先看一下日志");
+    expect(split.answerMessage?.status).not.toBe("error");
+    expect(split.errorMessages).toHaveLength(1);
+    expect(split.errorMessages?.[0]?.content).toBe(
+      "LLM call failed: LengthFinishReasonError('length limit was reached')",
+    );
   });
 
   it("keeps a 1:1 ReAct conclusion as the answer", () => {

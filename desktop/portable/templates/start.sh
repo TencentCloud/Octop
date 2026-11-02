@@ -8,9 +8,10 @@ set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 export OCTOP_HOME="${OCTOP_HOME:-${ROOT}/data}"
+export OCTOP_GREEN_PACKAGES="${ROOT}/packages"
 
-HOST="127.0.0.1"
-PORT="8088"
+HOST=""
+PORT=""
 EXTRA=()
 
 while [[ $# -gt 0 ]]; do
@@ -38,11 +39,15 @@ Usage: ./start.sh [--home DIR] [--host HOST] [--port PORT] [octop run args...]
 
 Defaults:
   OCTOP_HOME / --home   ${ROOT}/data
-  --host                127.0.0.1
-  --port                8088
+  bind_host / port      config.json (127.0.0.1:8088 when unset)
+
+--host and --port override config.json and are saved back to it.
+Pass them only when you want to change the saved listen address.
 
 Environment:
   OCTOP_HOME            User data directory (overridden by --home)
+  OCTOP_BIND_HOST       Listen address for this process (not saved)
+  OCTOP_PORT            Listen port for this process (not saved)
 EOF
       exit 0
       ;;
@@ -71,9 +76,24 @@ export PYTHONNOUSERSITE=1
 unset PYTHONPATH || true
 
 echo "[octop] home=${OCTOP_HOME}"
-echo "[octop] http://${HOST}:${PORT}"
-if [[ ${#EXTRA[@]} -gt 0 ]]; then
-  exec "$PY" "${ROOT}/launch.py" run --host "$HOST" --port "$PORT" "${EXTRA[@]}"
+args=(run)
+if [[ -n "$HOST" ]]; then
+  args+=(--host "$HOST")
+fi
+if [[ -n "$PORT" ]]; then
+  args+=(--port "$PORT")
+fi
+if [[ -n "$HOST" && -n "$PORT" ]]; then
+  echo "[octop] http://${HOST}:${PORT}"
+elif [[ -n "$HOST" ]]; then
+  echo "[octop] host=${HOST} (port from config.json)"
+elif [[ -n "$PORT" ]]; then
+  echo "[octop] port=${PORT} (host from config.json)"
 else
-  exec "$PY" "${ROOT}/launch.py" run --host "$HOST" --port "$PORT"
+  echo "[octop] bind from config.json"
+fi
+if [[ ${#EXTRA[@]} -gt 0 ]]; then
+  exec "$PY" "${ROOT}/launch.py" "${args[@]}" "${EXTRA[@]}"
+else
+  exec "$PY" "${ROOT}/launch.py" "${args[@]}"
 fi

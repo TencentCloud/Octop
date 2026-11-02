@@ -2,6 +2,8 @@ import { useCallback, useState } from "react";
 import { Download, Eye, Paperclip } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { downloadAuthFile } from "../../../components/AuthFileDownloadLink";
+import { saveBlobAsFile } from "../../../utils/saveBlobAsFile";
+import { isDesktopShell } from "../../../utils/desktopChrome";
 import {
   isDataUrl,
   needsAuthBlobFetch,
@@ -49,6 +51,20 @@ export function MessageFileCard({
 
   const handleDownload = useCallback(async () => {
     if (!needsAuth) {
+      if (isDesktopShell()) {
+        setLoading(true);
+        try {
+          const res = await fetch(url);
+          if (!res.ok) throw new Error("download failed");
+          const blob = await res.blob();
+          await saveBlobAsFile(blob, filename || "download");
+        } catch {
+          antMessage.error(t("chat.downloadFailed", "下载失败，请重试"));
+        } finally {
+          setLoading(false);
+        }
+        return;
+      }
       const a = document.createElement("a");
       a.href = url;
       a.download = filename || "download";

@@ -81,6 +81,7 @@ async def test_update_endpoint_reauths_and_reconnects(
     after = _row(peer_base_url="https://other.example", peer_username="bob")
     mgr.get_owned = MagicMock(return_value=row)  # type: ignore[method-assign]
     mgr._repo.find_by_display_name = MagicMock(return_value=None)
+    mgr._repo.list_for_owner = MagicMock(return_value=[])
     mgr._repo.update_settings = MagicMock(return_value=after)
     mgr._repo.get = MagicMock(return_value=after)
     mgr.disconnect = AsyncMock()  # type: ignore[method-assign]
@@ -114,6 +115,37 @@ async def test_update_endpoint_reauths_and_reconnects(
     assert login.await_args.kwargs["password"] == "old-secret"
     mgr.disconnect.assert_awaited_once_with("cid1")
     mgr.connect.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_update_endpoint_rejects_duplicate_peer(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    mgr = _mgr()
+    row = _row()
+    other = _row(
+        connection_id="cid2",
+        display_name="另一台",
+        peer_base_url="https://other.example",
+        peer_username="bob",
+    )
+    mgr.get_owned = MagicMock(return_value=row)  # type: ignore[method-assign]
+    mgr._repo.find_by_display_name = MagicMock(return_value=None)
+    mgr._repo.list_for_owner = MagicMock(return_value=[row, other])
+    monkeypatch.setattr(
+        "octop.infra.bridge.manager.normalize_peer_base_url",
+        lambda raw: raw.strip().rstrip("/"),
+    )
+    with pytest.raises(OctopError) as ei:
+        await mgr.update_connection_meta(
+            "cid1",
+            owner_user_id=1,
+            peer_base_url="https://other.example/",
+            peer_username="Bob",
+            password="secret",
+        )
+    assert ei.value.code == ErrorCode.BRIDGE_PEER_ALREADY_LINKED
+    mgr._repo.update_settings.assert_not_called()
 
 
 def test_connection_public_marks_inbound() -> None:
@@ -224,38 +256,43 @@ async def test_finalize_inbound_deleted_drops_row() -> None:
     mgr._repo.update_status.assert_not_called()
 
 
-def test_inbound_default_display_name_skips_url_and_id() -> None:
+def test_inbound_default_display_name_uses_ip_and_keeps_local_edits() -> None:
     from octop.infra.bridge.manager import inbound_default_display_name
 
     assert (
         inbound_default_display_name(
             connection_id="cid1",
-            preferred_name="https://192.168.1.8:8787",
+            client_host="203.0.113.8",
+            advertise_base_url="http://127.0.0.1:8088",
+            peer_username="alice",
+        )
+        == "203.0.113.8"
+    )
+    assert (
+        inbound_default_display_name(
+            connection_id="cid1",
+            client_host="127.0.0.1",
+            advertise_base_url="https://office.example",
+            peer_username="alice",
+        )
+        == "office.example"
+    )
+    assert (
+        inbound_default_display_name(
+            connection_id="cid1",
+            client_host="",
+            advertise_base_url="http://127.0.0.1:8088",
             peer_username="alice",
         )
         == "alice"
     )
+    # A later hello from the initiator must not replace a name chosen here.
     assert (
         inbound_default_display_name(
             connection_id="cid1",
-            preferred_name="10.0.0.1",
-            peer_username="bob",
-        )
-        == "bob"
-    )
-    assert (
-        inbound_default_display_name(
-            connection_id="cid1",
-            preferred_name="笔记本",
+            client_host="203.0.113.9",
+            advertise_base_url="https://other.example",
             peer_username="alice",
-            existing_name="https://peer.example",
-        )
-        == "笔记本"
-    )
-    assert (
-        inbound_default_display_name(
-            connection_id="cid1",
-            preferred_name="new",
             existing_name="我改过的名",
         )
         == "我改过的名"

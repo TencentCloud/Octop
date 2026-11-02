@@ -76,6 +76,7 @@ class ThreadArtifactsMiddleware(AgentMiddleware[Any, Any]):
         request: ToolCallRequest,
         handler: Callable[[ToolCallRequest], ToolMessage | Command[Any]],
     ) -> ToolMessage | Command[Any]:
+        request = self._rewrite_plan_path(request)
         result = handler(request)
         self._record(request, result)
         return result
@@ -85,9 +86,30 @@ class ThreadArtifactsMiddleware(AgentMiddleware[Any, Any]):
         request: ToolCallRequest,
         handler: Callable[[ToolCallRequest], Awaitable[ToolMessage | Command[Any]]],
     ) -> ToolMessage | Command[Any]:
+        request = self._rewrite_plan_path(request)
         result = await handler(request)
         self._record(request, result)
         return result
+
+    def _rewrite_plan_path(self, request: ToolCallRequest) -> ToolCallRequest:
+        from octop.infra.agents.conversation_mode import workspace_plan_path
+
+        tool_call = request.tool_call
+        name = str(tool_call.get("name") or "").rsplit("/", 1)[-1]
+        if name not in {"write_file", "edit_file"}:
+            return request
+        raw_args = tool_call.get("args")
+        if not isinstance(raw_args, dict):
+            return request
+        path = raw_args.get("file_path") or raw_args.get("path")
+        if not isinstance(path, str) or not path.strip():
+            return request
+        rewritten = workspace_plan_path(path.strip(), self._workspace_dir)
+        if rewritten == path:
+            return request
+        key = "file_path" if "file_path" in raw_args else "path"
+        tool_call["args"] = {**raw_args, key: rewritten}
+        return request
 
     def _record(
         self,

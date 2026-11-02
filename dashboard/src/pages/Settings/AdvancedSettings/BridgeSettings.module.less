@@ -4,6 +4,10 @@
   padding: 48px 0;
 }
 
+.emptyGuide {
+  padding: 24px 0 8px;
+}
+
 .pageToolbar {
   display: flex;
   align-items: center;
@@ -12,6 +16,16 @@
   gap: 8px;
   margin-bottom: 16px;
   min-height: 32px;
+  min-width: 0;
+  max-width: 100%;
+}
+
+.pageToolbarStart {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px;
+  min-width: 0;
 }
 
 .pageToolbarActions {
@@ -20,6 +34,8 @@
   flex-wrap: wrap;
   gap: 8px;
   margin-left: auto;
+  min-width: 0;
+  max-width: 100%;
 }
 
 /* ── Toolbar (storage-style) ───────────────────────────────────── */
@@ -29,6 +45,15 @@
   align-items: center;
   justify-content: space-between;
   padding: 4px 0 0;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.filterEmpty {
+  padding: 28px 12px 12px;
+  text-align: center;
+  font-size: 13px;
+  color: var(--fn-text-tertiary);
 }
 
 .gridCount {
@@ -49,10 +74,16 @@
   grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
   row-gap: 16px;
   column-gap: 12px;
+  align-items: start;
   padding: 16px 0 24px;
+  width: 100%;
+  min-width: 0;
 
+  /* `1fr` is minmax(auto, 1fr): a long peer URL or the action row keeps
+     the track wider than the viewport, and PageShell clips overflow-x
+     on mobile so the card's right edge (status + buttons) disappears. */
   @media (max-width: 767px) {
-    grid-template-columns: 1fr;
+    grid-template-columns: minmax(0, 1fr);
     gap: 12px;
   }
 }
@@ -65,7 +96,9 @@
   display: flex;
   flex-direction: column;
   gap: 10px;
-  height: 100%;
+  min-width: 0;
+  max-width: 100%;
+  box-sizing: border-box;
   color: var(--fn-text-primary, #111827);
   transition: border-color 0.2s;
 
@@ -78,6 +111,7 @@
   display: flex;
   align-items: center;
   gap: 10px;
+  min-width: 0;
 }
 
 .backendCardIcon {
@@ -85,8 +119,11 @@
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
-  color: var(--fn-text-secondary);
-  background: none;
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  color: var(--fn-color-brand);
+  background: color-mix(in srgb, var(--fn-color-brand) 10%, transparent);
 }
 
 .backendCardTitle {
@@ -99,7 +136,7 @@
 
 .backendCardName {
   display: flex;
-  align-items: baseline;
+  align-items: center;
   gap: 8px;
   min-width: 0;
   font-size: 18px;
@@ -122,14 +159,16 @@
   display: flex;
   flex-direction: column;
   gap: 0;
-  flex: 1;
-  min-height: 0;
+  flex: 0 0 auto;
+  min-width: 0;
 }
 
 .infoRow {
   display: flex;
-  align-items: baseline;
+  align-items: center;
   gap: 4px;
+  min-width: 0;
+  max-width: 100%;
 }
 
 .infoLabel {
@@ -139,30 +178,51 @@
   font-size: 11px;
 }
 
-.infoValue {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+.peerSecret {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  min-width: 0;
+  max-width: 100%;
   flex: 1;
 }
 
-.backendCardNote {
-  font-size: 11px;
-  color: var(--fn-text-tertiary);
-  margin-top: 2px;
+.peerSecretText {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  min-width: 0;
+}
+
+.peerRevealBtn {
+  flex-shrink: 0;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  color: var(--fn-text-tertiary);
+}
+
+.backendCardNote {
+  margin: 0;
+  color: var(--fn-text-secondary, #6b7280);
+  font-size: 12px;
+  line-height: 1.45;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
 }
 
 .backendCardActions {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  flex-wrap: wrap;
   border-top: 1px solid var(--fn-border-secondary, #e5e7eb);
   padding-top: 10px;
-  margin-top: auto;
   gap: 8px;
+  min-width: 0;
+  max-width: 100%;
 }
 
 .backendActionsLeft {
@@ -174,8 +234,11 @@
 
 .backendActionsRight {
   display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
   gap: 2px;
-  flex-shrink: 0;
+  margin-left: auto;
+  max-width: 100%;
 }
 
 .autoReconnectInline {
@@ -206,24 +269,38 @@
   font-weight: 500;
   flex-shrink: 0;
   white-space: nowrap;
+  padding: 2px 7px;
+  border-radius: 10px;
+  border: 1px solid var(--fn-border-secondary, #e5e7eb);
+  background: var(--fn-bg-secondary, #f7f8fa);
 }
 
 .statusBadgeOk {
-  color: #52c41a;
+  color: #389e0d;
+  background: color-mix(in srgb, #52c41a 14%, var(--fn-bg-elevated, #fff));
+  border-color: color-mix(
+    in srgb,
+    #52c41a 35%,
+    var(--fn-border-secondary, #e5e7eb)
+  );
 }
 
 .statusBadgeWarn {
   color: #8c8c8c;
-  padding: 2px 7px;
-  border-radius: 10px;
-  background: var(--fn-bg-secondary, #f7f8fa);
-  border: 1px solid var(--fn-border-secondary, #e5e7eb);
 }
 
 .meta {
   margin: 8px 0 0;
   color: var(--fn-text-secondary, #6b7280);
   font-size: 13px;
+  word-break: break-word;
+}
+
+.explain {
+  margin: 12px 0 0;
+  color: var(--fn-text-tertiary, #9ca3af);
+  font-size: 11px;
+  line-height: 1.45;
   word-break: break-word;
 }
 
@@ -266,6 +343,13 @@
   flex-direction: column;
   min-width: 0;
   gap: 2px;
+}
+
+.tableNameTitle {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
 
   strong {
     overflow: hidden;
@@ -298,6 +382,42 @@
   display: flex;
   flex-direction: column;
   gap: 8px;
+}
+
+.agentList {
+  list-style: none;
+  margin: 2px 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.agentList > li + li {
+  border-top: 1px solid var(--fn-border-secondary, #e5e7eb);
+}
+
+.agentRowBtn {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  width: 100%;
+  margin: 0;
+  padding: 8px 4px;
+  text-align: left;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--fn-text-primary, #111827);
+  cursor: pointer;
+  font: inherit;
+}
+
+.agentRowBtn:hover {
+  background: color-mix(
+    in srgb,
+    var(--catalog-accent, var(--fn-color-brand, #e85d75)) 6%,
+    transparent
+  );
 }
 
 .probeItem,
@@ -410,10 +530,13 @@
 }
 
 .drawerHint {
-  margin: 0 0 16px;
-  color: var(--fn-text-secondary, #6b7280);
+  margin: 0 0 12px;
+  padding: 10px 12px;
+  border-radius: var(--fn-radius-md);
+  background: var(--fn-surface-sunken);
+  color: var(--fn-text-tertiary);
   font-size: 13px;
-  line-height: 1.55;
+  line-height: 1.5;
 }
 
 .createDrawer {
@@ -447,6 +570,10 @@
   :global(.ant-input-prefix) {
     margin-inline-end: 8px;
   }
+}
+
+.textAssistField {
+  margin-bottom: 4px !important;
 }
 
 .createSection {
@@ -508,4 +635,39 @@
   align-items: center;
   flex-wrap: wrap;
   gap: 8px;
+}
+
+.formOptions {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  margin-top: 8px;
+  border: 1px solid var(--fn-border-secondary);
+  border-radius: var(--fn-radius-md, 8px);
+  overflow: hidden;
+}
+
+.formOptionRowVisibility {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 10px;
+  padding: 12px 14px;
+  background: var(--fn-bg-primary);
+}
+
+.formOptionCopy {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+  flex: 1;
+}
+
+.switchLabel {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-weight: 500;
+  color: var(--fn-text-primary);
 }

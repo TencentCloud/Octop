@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  canReadAgentRuntimeStatus,
   chatSkillCatalogAgentId,
   isOwnedExpert,
   isSharedExpertViewer,
@@ -7,6 +8,21 @@ import {
   ownedSoloExperts,
   ownedTeamAgents,
 } from "../../../utils/sharedExpert";
+
+describe("canReadAgentRuntimeStatus", () => {
+  const shared = { is_shared: true, is_owner: false };
+
+  it("allows the owner and an admin, and skips a shared viewer", () => {
+    expect(canReadAgentRuntimeStatus(shared, { role: "user" })).toBe(false);
+    expect(canReadAgentRuntimeStatus(shared, { role: "admin" })).toBe(true);
+    expect(
+      canReadAgentRuntimeStatus(
+        { is_shared: true, is_owner: true },
+        { role: "user" },
+      ),
+    ).toBe(true);
+  });
+});
 
 describe("isSharedExpertViewer", () => {
   it("identifies a shared expert viewed by someone other than its owner", () => {

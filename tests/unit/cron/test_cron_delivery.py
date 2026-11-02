@@ -352,6 +352,9 @@ async def test_dashboard_text_projects_into_real_sqlite(tmp_path: Path) -> None:
     gateway = MagicMock()
     gateway.run_in_session = _run_locked
     gateway.require_session = MagicMock(return_value=session)
+    gateway.thread_registry = ThreadRegistry(
+        session_repo=SessionRepo(db), thread_repo=ThreadRepo(db)
+    )
     gateway.push_session_text = AsyncMock()
     gateway.notify_dashboard_push = AsyncMock()
 
@@ -368,6 +371,9 @@ async def test_dashboard_text_projects_into_real_sqlite(tmp_path: Path) -> None:
     assert page[1].message_id == ai.id
     assert "j1" in page[0].message_json
     assert "记得喝水" in page[1].message_json
+    titled = ThreadRepo(db).get("thr_hist")
+    assert titled is not None
+    assert titled.title == "喝水提醒"
     gateway.push_session_text.assert_awaited_once()
     db.close()
 
@@ -390,6 +396,9 @@ async def test_agent_failure_projects_the_prompt(tmp_path: Path) -> None:
     gateway = MagicMock()
     gateway.run_in_session = _run_locked
     gateway.require_session = MagicMock(return_value=session)
+    gateway.thread_registry = ThreadRegistry(
+        session_repo=SessionRepo(db), thread_repo=ThreadRepo(db)
+    )
     gateway.push_session_text = AsyncMock()
     gateway.notify_dashboard_push = AsyncMock()
 
@@ -408,4 +417,7 @@ async def test_agent_failure_projects_the_prompt(tmp_path: Path) -> None:
     assert [row.role for row in page] == ["human", "ai"]
     assert "记得喝水" in page[0].message_json
     assert "先查一下" in page[1].message_json
+    titled = ThreadRepo(db).get("thr_fail")
+    assert titled is not None
+    assert titled.title == "喝水提醒"
     db.close()

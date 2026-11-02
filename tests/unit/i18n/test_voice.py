@@ -4,7 +4,11 @@ from __future__ import annotations
 
 import httpx
 
-from octop.i18n.domains.voice import format_voice_probe_error, tencent_api_language
+from octop.i18n.domains.voice import (
+    format_voice_probe_error,
+    realtime_error_message,
+    tencent_api_language,
+)
 
 
 def test_tencent_secret_id_is_localized() -> None:
@@ -32,3 +36,19 @@ def test_tencent_api_language_header() -> None:
     assert tencent_api_language("zh") == "zh-CN"
     assert tencent_api_language("en") == "en-US"
     assert tencent_api_language(None) is None
+
+
+def test_realtime_error_codes_are_localized() -> None:
+    assert realtime_error_message(4003, "zh") == "当前腾讯云账号尚未开通实时语音识别服务。"
+    assert realtime_error_message(4004, "en") == (
+        "The Tencent Cloud realtime speech recognition resource pack is exhausted."
+    )
+    # 5001 / 5002 是同一个偶发故障文案
+    assert realtime_error_message(5002, "zh") == "腾讯云服务暂时不可用，请重试。"
+
+
+def test_unknown_realtime_code_falls_back() -> None:
+    assert realtime_error_message(4999, "zh") == "实时语音识别失败，请稍后重试。"
+    assert realtime_error_message(None, "en") == (
+        "Realtime speech recognition failed. Retry in a moment."
+    )

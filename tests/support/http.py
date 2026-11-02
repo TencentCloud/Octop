@@ -95,6 +95,9 @@ class ASGIWebSocketSession:
             {"type": "websocket.receive", "text": json.dumps(payload, ensure_ascii=False)},
         )
 
+    async def send_bytes(self, payload: bytes) -> None:
+        await self._to_app.put({"type": "websocket.receive", "bytes": payload})
+
     async def receive_json(self, *, timeout: float = _WS_RECEIVE_TIMEOUT_S) -> dict[str, Any]:
         event = await self._next_event(timeout)
         if event["type"] == "websocket.close":

@@ -11,6 +11,20 @@
 
 import { request } from "../request";
 
+export interface StrongMemoryFile {
+  content: string;
+  exists: boolean;
+}
+
+export interface ManualMemoryReview {
+  status: string;
+  conflicts: number;
+  duplicates: number;
+  checked: number;
+  remaining: number;
+  candidate_ids: string[];
+}
+
 // ---------------------------------------------------------------------------
 // Wire types
 // ---------------------------------------------------------------------------
@@ -101,6 +115,31 @@ export interface ExtractConfig {
    * (follow the chat model); send "" to reset back to AUTO.
    */
   aux_model?: string | null;
+  /**
+   * Read timeout (seconds) for light memory calls (extraction). null/absent =
+   * harness default (120s); send 0 to reset back to the default.
+   */
+  extract_light_timeout_s?: number | null;
+  /**
+   * Read timeout (seconds) for heavy memory calls (promotion / page regen).
+   * null/absent = harness default (300s); send 0 to reset.
+   */
+  extract_heavy_timeout_s?: number | null;
+  /**
+   * Output budget for candidate/episode extraction. null/absent = 2048;
+   * send 0 to reset. Positive values are clamped to 128..65536.
+   */
+  extract_max_tokens?: number | null;
+  /**
+   * Vendor-specific request extras for OpenAI-compatible endpoints (thinking
+   * controls). null/absent = unset; send {} to reset.
+   */
+  extract_extra_body?: Record<string, unknown> | null;
+  /** Read-only capability list from the installed memory runtime. */
+  supported_call_options?: string[];
+  extract_thinking?: "auto" | "off" | "on";
+  extract_max_retries?: number;
+  extract_retry_backoff_s?: number;
 }
 
 export interface EntityItem {
@@ -380,7 +419,174 @@ const post = <T>(path: string, body?: unknown) =>
     body: JSON.stringify(body ?? {}),
   });
 
+export interface SqliteCountCheck {
+  table: string;
+  rows: number | null;
+  status: "ok" | "missing" | "timed_out";
+  elapsed_ms: number;
+}
+
+export interface MemoryStorageInspection {
+  backend: string;
+  scope: "agent" | "shared_database";
+  maintenance_supported: boolean;
+  blocked_reason:
+    | "postgres"
+    | "shared_sqlite"
+    | "shared_namespace"
+    | "incompatible"
+    | null;
+  checked_at: number;
+  elapsed_ms?: number | null;
+  file_check_ms?: number | null;
+  checkpoints_available?: boolean | null;
+  memory_counts?: SqliteCountCheck[];
+  checkpoint_counts?: SqliteCountCheck[];
+  namespace?: string | null;
+  namespace_tables?: { table: string; rows: number; row_bytes: number }[];
+  cleanup_preview?: {
+    candidates: number;
+    journal: number;
+    total: number;
+    limit_per_table: number;
+    candidate_days: number;
+    journal_days: number;
+  } | null;
+  file_size: number | null;
+  wal_size: number | null;
+  reclaimable_bytes: number | null;
+  auto_vacuum_enabled: boolean | null;
+  tables: {
+    table: string;
+    exists: boolean;
+    live_tuples: number | null;
+    dead_tuples: number | null;
+  }[];
+}
+
+export interface PostgresStorageReport {
+  backend: "postgres";
+  operation: "namespace_cleanup";
+  namespace: string;
+  candidates_deleted: number;
+  journal_deleted: number;
+  total_deleted: number;
+  limit_per_table: number;
+  backup_path: string | null;
+  backup_bytes: number;
+  physical_space_reclaimed: false;
+}
+
+export interface MemoryStorageJob {
+  job_id: string;
+  backend?: string | null;
+  operation?: string | null;
+  restored_backup_id?: string | null;
+  scope: "agent";
+  phase: string;
+  started_at: number;
+  updated_at: number;
+  backup_path?: string | null;
+  scanned?: number | null;
+  total?: number | null;
+  error?: string | null;
+  report?:
+    | PostgresStorageReport
+    | {
+        backend: "sqlite";
+        operation: "restore";
+        restored_backup_id: string;
+        backup_path: string;
+        backup_bytes: number;
+        elapsed_ms: number;
+      }
+    | {
+        backend?: "sqlite";
+        before: { file_bytes: number; wal_bytes: number };
+        after: { file_bytes: number; wal_bytes: number };
+        backup_path: string;
+        backup_bytes: number;
+        stats: { scanned: number; rewritten: number };
+        inspection_before?: MemoryStorageInspection;
+        inspection_after?: MemoryStorageInspection;
+      }
+    | null;
+}
+
+export interface MemoryStorageStatus {
+  busy: boolean;
+  job: MemoryStorageJob | null;
+}
+
+export interface SqliteBackup {
+  backup_id: string;
+  created_at: number;
+  size_bytes: number;
+  kind: "before_restore" | "before_maintenance";
+}
+
 export const memoryDashboardApi = {
+  checkStorage: (aid: string) =>
+    request<MemoryStorageInspection>(`/agents/${aid}/memory/storage/check`),
+  storageBackups: (aid: string) =>
+    request<SqliteBackup[]>(`/agents/${aid}/memory/storage/backups`),
+  deleteStorageBackup: (aid: string, backupId: string) =>
+    request<void>(`/agents/${aid}/memory/storage/backups`, {
+      method: "DELETE",
+      body: JSON.stringify({ confirmed: true, backup_id: backupId }),
+    }),
+  restoreStorage: (aid: string, backupId: string) =>
+    request<MemoryStorageStatus>(`/agents/${aid}/memory/storage/restore`, {
+      method: "POST",
+      body: JSON.stringify({ confirmed: true, backup_id: backupId }),
+    }),
+  storageMaintenanceStatus: (aid: string) =>
+    request<MemoryStorageStatus>(`/agents/${aid}/memory/storage/maintenance`),
+  startStorageMaintenance: (aid: string) =>
+    request<MemoryStorageStatus>(`/agents/${aid}/memory/storage/maintenance`, {
+      method: "POST",
+      body: JSON.stringify({ confirmed: true }),
+    }),
+
+  getStrongMemory: (agentId: string) =>
+    request<StrongMemoryFile>(
+      `/agents/${encodeURIComponent(agentId)}/memory/strong`,
+    ),
+
+  putStrongMemory: (agentId: string, content: string) =>
+    request<StrongMemoryFile>(
+      `/agents/${encodeURIComponent(agentId)}/memory/strong`,
+      {
+        method: "PUT",
+        body: JSON.stringify({ content }),
+      },
+    ),
+
+  getUserProfile: (agentId: string) =>
+    request<StrongMemoryFile>(
+      `/agents/${encodeURIComponent(agentId)}/memory/user`,
+    ),
+
+  putUserProfile: (agentId: string, content: string) =>
+    request<StrongMemoryFile>(
+      `/agents/${encodeURIComponent(agentId)}/memory/user`,
+      {
+        method: "PUT",
+        body: JSON.stringify({ content }),
+      },
+    ),
+
+  getManualMemoryReview: (agentId: string) =>
+    request<ManualMemoryReview>(
+      `/agents/${encodeURIComponent(agentId)}/memory/manual-review`,
+    ),
+
+  reviewManualMemory: (agentId: string) =>
+    post<ManualMemoryReview>(
+      `/agents/${encodeURIComponent(agentId)}/memory/manual-review`,
+      {},
+    ),
+
   // listings
   listAtoms: (aid: string, body?: ListAtomsBody) =>
     post<ListAtomsResponse>(`${base(aid)}/atoms/list`, body),

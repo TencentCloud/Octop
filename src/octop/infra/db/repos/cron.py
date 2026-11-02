@@ -220,6 +220,18 @@ class CronJobRepo:
                 (ts, status, error, now_ts(), cron_id),
             )
 
+    def mark_missed(self, cron_id: str) -> None:
+        """Disable a one-shot that never ran and record ``last_status='missed'``.
+
+        ``last_run_at`` stays empty: the job did not execute.
+        """
+        with self._db.transaction() as conn:
+            conn.execute(
+                "UPDATE cron_jobs SET enabled = 0, last_status = ?, last_error = NULL, "
+                "updated_at = ? WHERE cron_id = ?",
+                ("missed", now_ts(), cron_id),
+            )
+
     def update(
         self,
         cron_id: str,

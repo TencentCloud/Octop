@@ -28,7 +28,7 @@ from pydantic import BaseModel, Field
 
 from octop.api.common.agent import require_agent_owner_row
 from octop.api.common.workspace import require_running_workspace
-from octop.api.deps import current_user, get_server
+from octop.api.deps import current_user, get_server, require_permission
 from octop.infra.agents.subagents.catalog import SubagentDefinition
 from octop.infra.errors import ErrorCode, OctopError
 from octop.infra.utils.locale import (
@@ -173,7 +173,7 @@ async def install_subagent(
     body: InstallSubagentBody,
     request: Request,
     as_user: int | None = None,
-    user: Any = Depends(current_user),
+    user: Any = Depends(require_permission("subagents")),
     server: Any = Depends(get_server),
 ) -> dict[str, Any]:
     """Copy a bundled subagent definition into the agent workspace ``agents/`` directory.

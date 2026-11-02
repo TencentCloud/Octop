@@ -52,4 +52,21 @@ describe("useHitlEnabled", () => {
     await waitFor(() => expect(hitl).toHaveBeenCalled());
     expect(hook.result.current).toBe(false);
   });
+
+  it("reloads peer HITL settings when the remote agent changes", async () => {
+    hitl.mockImplementation(async (agentId?: string | null) => ({
+      enabled: agentId === "bridge:cid:host",
+      tool_guard_require_approval: false,
+      show_approval_ui: agentId === "bridge:cid:host",
+    }));
+    const hook = renderHook(
+      ({ agentId }: { agentId?: string | null }) => useHitlEnabled(agentId),
+      { initialProps: { agentId: "local-host" } },
+    );
+    await waitFor(() => expect(hitl).toHaveBeenCalledWith("local-host"));
+    expect(hook.result.current).toBe(false);
+    hook.rerender({ agentId: "bridge:cid:host" });
+    await waitFor(() => expect(hook.result.current).toBe(true));
+    expect(hitl).toHaveBeenCalledWith("bridge:cid:host");
+  });
 });

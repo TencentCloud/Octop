@@ -43,6 +43,34 @@ async def test_admin_test_draft_requires_model_id(env: Any) -> None:
     assert r.json()["ok"] is False
 
 
+async def test_admin_test_draft_forwards_api_mode_and_fallback(env: Any) -> None:
+    client, _srv, auth = env
+    with patch(
+        "octop.api.routers.providers.probe_provider_row",
+        new=AsyncMock(return_value={"ok": True, "latency_ms": 1}),
+    ) as probe:
+        response = await client.post(
+            "/api/admin/providers/test-draft",
+            headers=auth,
+            json={
+                "name": "draft",
+                "kind": "openai",
+                "api_key": "sk-test",
+                "base_url": "https://api.example.com/v1",
+                "model_id": "gpt-X",
+                "api_mode": "responses",
+                "api_fallback": "chat_completions",
+            },
+        )
+
+    assert response.status_code == 200, response.text
+    row = probe.await_args.args[0]
+    assert row.get_models()[0]["api_mode"] == "responses"
+    assert row.get_models()[0]["api_fallback"] == "chat_completions"
+    assert probe.await_args.kwargs["api_mode"] == "responses"
+    assert probe.await_args.kwargs["api_fallback"] == "chat_completions"
+
+
 async def test_admin_codex_oauth_start(env: Any) -> None:
     client, _srv, auth = env
     fake_info = {

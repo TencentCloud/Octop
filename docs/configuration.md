@@ -53,6 +53,41 @@ The root can be overridden with `OCTOP_HOME` (absolute path). Most
 sub-paths are exposed as properties on `PathLayout` in
 `octop.infra.utils.paths`.
 
+## Local knowledge indexing and systemd resource limits
+
+Local ONNX embeddings process one chunk at a time with two inference threads.
+Indexing, retrieval, and model probes share one cached model per process and
+serialize inference. Switching the model or `OCTOP_HOME`, or deleting the cached
+model, releases the resident session. Knowledge indexing processes one document
+at a time; large imports continue in the background.
+
+On Linux, `octop service start` and `octop service restart` install/update
+`octop.service.d/15-resource-limits.conf` alongside the existing service unit.
+The main unit, custom `ExecStart`, service user, and other drop-ins are preserved.
+Defaults are `MemoryHigh=60%` and `MemoryMax=75%` of physical RAM,
+`MemorySwapMax=512M`, `OOMPolicy=kill`, a 30-second restart delay, and at most three
+starts within ten minutes. These limits cover the whole service and its children;
+they are a host safeguard, not a guarantee that every model fits. Memory controls
+require the corresponding systemd/cgroup support (user services need cgroup v2
+with the memory controller available).
+
+To set a machine-specific budget, use `systemctl --user edit octop.service`
+(or `sudo systemctl edit octop.service` for a system service). For example:
+
+```ini
+[Service]
+MemoryHigh=5G
+MemoryMax=6G
+MemorySwapMax=512M
+```
+
+The resulting `override.conf` sorts after the managed defaults and survives
+future service updates. Restart the service to apply it. If repeated failures
+hit the start limit, correct the cause before running
+`systemctl --user reset-failed octop.service` and starting the service again
+(omit `--user` for a system service). Foreground, Docker, and macOS launchd
+deployments retain their own process/container resource policies.
+
 ## `config.json`
 
 Generated with defaults on first run; merged with environment overrides
@@ -136,9 +171,9 @@ Each variable, when set, takes precedence over the matching key in
 | `OCTOP_BIND_HOST` | string | `127.0.0.1` | Listen address (use `0.0.0.0` for LAN access) |
 | `OCTOP_PORT` | int | `8088` | Listen port (`0`–`65535`; `0` asks the OS for a free port) |
 | `OCTOP_LOG_LEVEL` | string | `info` | One of `debug` `info` `warning` `error` |
-| `OCTOP_LOG_RETENTION_DAYS` | int | `14` | Keep rotated `octop.log.YYYY-MM-DD` files for this many days |
+| `OCTOP_LOG_RETENTION_DAYS` | int | `14` | Keep rotated `octop.YYYY-MM-DD.log` files for this many days |
 | `OCTOP_LOG_MAX_BYTES` | int | `104857600` (100 MiB) | Roll the active log when it exceeds this size (in addition to daily rotation) |
-| `OCTOP_LOG_COMPRESS` | bool | `true` | logrotate-style `compress` + `delaycompress`: gzip prior rotated plains on the next cycle (`octop.log.YYYY-MM-DD.gz`); the newest rotated file stays uncompressed until then |
+| `OCTOP_LOG_COMPRESS` | bool | `true` | logrotate-style `compress` + `delaycompress`: gzip prior rotated plains on the next cycle (`octop.YYYY-MM-DD.log.gz`); the newest rotated file stays uncompressed until then |
 | `OCTOP_ACCESS_TOKEN_TTL` | int (seconds) | `86400` | JWT access-token lifetime |
 | `OCTOP_LOGIN_MAX_ATTEMPTS` | int | `5` | Failed-login attempts before lockout |
 | `OCTOP_LOGIN_LOCKOUT_SECONDS` | int | `900` | Lockout duration after `OCTOP_LOGIN_MAX_ATTEMPTS` failures |

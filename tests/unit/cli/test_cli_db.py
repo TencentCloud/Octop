@@ -80,3 +80,60 @@ def test_agent_list_offline_flag(fake_home: Path) -> None:
     result = runner.invoke(cli, ["agent", "list", "--user", "alice"])
     assert result.exit_code == 0, result.output
     assert "ag1" in result.output
+
+
+@pytest.fixture
+def english_cli(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr("octop.cli.support.db.resolve_cli_locale", lambda: "en")
+    monkeypatch.setenv("COLUMNS", "200")
+
+
+@pytest.mark.usefixtures("english_cli")
+def test_agent_list_shows_which_agents_run_on_the_global_model(fake_home: Path) -> None:
+    _bootstrap(fake_home)
+    paths = PathLayout(fake_home / ".octop")
+    db = SqlitePool(paths.db)
+    AgentRepo(db).create(agent_id="ag1", user_id=1, name="Bot")
+    AgentRepo(db).create(agent_id="ag2", user_id=1, name="Coder", default_model="acme/big")
+    db.close()
+    runner = CliRunner()
+    assert (
+        runner.invoke(cli, ["models", "active", "--provider", "acme", "--model", "small"]).exit_code
+        == 0
+    )
+
+    result = runner.invoke(cli, ["agent", "list", "--user", "alice"])
+    assert result.exit_code == 0, result.output
+    rows = {line.split("│")[1].strip(): line for line in result.output.splitlines() if "│" in line}
+    assert "(global: acme/small)" in rows["ag1"]
+    assert "acme/big" in rows["ag2"]
+    assert "global" not in rows["ag2"]
+
+
+@pytest.mark.usefixtures("english_cli")
+def test_agent_list_says_when_no_model_is_set_anywhere(fake_home: Path) -> None:
+    _bootstrap(fake_home)
+    paths = PathLayout(fake_home / ".octop")
+    db = SqlitePool(paths.db)
+    AgentRepo(db).create(agent_id="ag1", user_id=1, name="Bot")
+    db.close()
+
+    result = CliRunner().invoke(cli, ["agent", "list", "--user", "alice"])
+    assert result.exit_code == 0, result.output
+    assert "(not set)" in result.output
+
+
+@pytest.mark.usefixtures("english_cli")
+def test_models_active_explains_an_unset_default(fake_home: Path) -> None:
+    _bootstrap(fake_home)
+    runner = CliRunner()
+
+    unset = runner.invoke(cli, ["models", "active"])
+    assert unset.exit_code == 0, unset.output
+    assert unset.output.strip() != "/"
+    assert "No global default model is set" in unset.output
+    assert "octop models active --provider" in unset.output
+
+    runner.invoke(cli, ["models", "active", "--provider", "acme", "--model", "small"])
+    shown = runner.invoke(cli, ["models", "active"])
+    assert shown.output.strip() == "acme / small"

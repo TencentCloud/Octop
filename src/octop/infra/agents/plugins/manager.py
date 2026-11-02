@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 import logging
 import re
@@ -34,12 +35,34 @@ from octop.infra.utils.json_file import (
 
 logger = logging.getLogger(__name__)
 
+_MAX_PLUGIN_ARCHIVE_BYTES = 100 * 1024 * 1024
+_MAX_PLUGIN_ZIP_ENTRIES = 2_000
+_MAX_PLUGIN_UNCOMPRESSED_BYTES = 64 * 1024 * 1024
+_MAX_PLUGIN_MEMBER_BYTES = 64 * 1024 * 1024
+_MAX_PLUGIN_COMPRESSION_RATIO = 100.0
+_DOWNLOAD_CHUNK = 64 * 1024
+
 _GITHUB_BLOB_RE = re.compile(
     r"^https?://(?:www\.)?github\.com/"
     r"(?P<owner>[^/]+)/(?P<repo>[^/]+)/(?:blob|raw)/"
     r"(?P<ref>[^/]+)/(?P<path>.+)$",
     re.IGNORECASE,
 )
+
+
+_CHANNEL_FINGERPRINTS: dict[str, str] = {}
+
+
+def _channel_fingerprint(directory: Path) -> str:
+    digest = hashlib.sha256()
+    for path in sorted(directory.rglob("*")):
+        if not path.is_file() or any(
+            part in {"__pycache__", ".git"} for part in path.relative_to(directory).parts
+        ):
+            continue
+        digest.update(str(path.relative_to(directory)).encode())
+        digest.update(path.read_bytes())
+    return digest.hexdigest()
 
 
 def normalize_plugin_download_url(url: str) -> str:
@@ -119,12 +142,80 @@ def _assert_http_url(url: str) -> None:
 
 
 def _assert_zip_magic(archive: Path) -> None:
-    head = archive.read_bytes()[:4]
+    with archive.open("rb") as source:
+        head = source.read(4)
     if len(head) < 2 or head[:2] != b"PK":
         raise OctopError(
             ErrorCode.PLUGIN_INVALID_ARCHIVE,
             "file is not a valid ZIP archive",
         )
+
+
+def _archive_error(message: str) -> OctopError:
+    return OctopError(ErrorCode.PLUGIN_INVALID_ARCHIVE, message)
+
+
+def _validate_plugin_zip(zf: zipfile.ZipFile) -> list[zipfile.ZipInfo]:
+    infos = zf.infolist()
+    if len(infos) > _MAX_PLUGIN_ZIP_ENTRIES:
+        raise _archive_error("plugin ZIP contains too many entries")
+
+    total_uncompressed = 0
+    for member in infos:
+        if member.file_size < 0 or member.file_size > _MAX_PLUGIN_MEMBER_BYTES:
+            raise _archive_error(f"plugin ZIP member is too large: {member.filename}")
+        total_uncompressed += member.file_size
+        if total_uncompressed > _MAX_PLUGIN_UNCOMPRESSED_BYTES:
+            raise _archive_error("plugin ZIP expands beyond 64 MiB")
+        compressed = member.compress_size or 0
+        if (
+            compressed > 0
+            and member.file_size > 1024 * 1024
+            and member.file_size / compressed > _MAX_PLUGIN_COMPRESSION_RATIO
+        ):
+            raise _archive_error(f"plugin ZIP compression ratio is too high: {member.filename}")
+    return infos
+
+
+def _download_plugin_archive(url: str, archive: Path) -> None:
+    try:
+        with urllib.request.urlopen(url, timeout=30) as response:  # noqa: S310
+            content_length = response.headers.get("Content-Length")
+            if content_length is not None:
+                try:
+                    if int(content_length) > _MAX_PLUGIN_ARCHIVE_BYTES:
+                        raise _archive_error("plugin ZIP download exceeds the configured limit")
+                except ValueError:
+                    pass
+            total = 0
+            with archive.open("wb") as target:
+                while True:
+                    chunk = response.read(_DOWNLOAD_CHUNK)
+                    if not chunk:
+                        break
+                    total += len(chunk)
+                    if total > _MAX_PLUGIN_ARCHIVE_BYTES:
+                        raise _archive_error("plugin ZIP download exceeds the configured limit")
+                    target.write(chunk)
+    except OctopError:
+        raise
+    except urllib.error.HTTPError as exc:
+        raise OctopError(
+            ErrorCode.PLUGIN_INSTALL_FAILED,
+            f"download failed with HTTP {exc.code}",
+            details={"reason": f"HTTP {exc.code}"},
+        ) from exc
+    except urllib.error.URLError as exc:
+        reason = getattr(exc, "reason", None) or str(exc)
+        raise OctopError(
+            ErrorCode.PLUGIN_INSTALL_FAILED,
+            f"download failed: {reason}",
+            details={"reason": str(reason)},
+        ) from exc
+    except OSError as exc:
+        raise OctopError(
+            ErrorCode.PLUGIN_INSTALL_FAILED, f"download failed: {exc}", details={"reason": str(exc)}
+        ) from exc
 
 
 def _read_plugin_yaml(plugin_dir: Path) -> dict[str, Any]:
@@ -394,6 +485,7 @@ class PluginManager:
 
     def load_installed(self, *, install_deps: bool = True) -> list[LoadedPlugin]:
         enabled = self.global_enabled_map()
+        previous = {plugin.manifest.id: plugin for plugin in PluginRegistry().all_loaded()}
         PluginRegistry().clear()
         loaded: list[LoadedPlugin] = []
         for plugin_dir in discover_plugin_dirs(self._plugins_dir):
@@ -405,7 +497,21 @@ class PluginManager:
             if enabled.get(manifest.id, True) is False:
                 continue
             try:
-                loaded.append(_load_plugin_dir(plugin_dir, install_deps=install_deps))
+                fingerprint = (
+                    _channel_fingerprint(plugin_dir) if str(manifest.kind) == "channel" else ""
+                )
+                old = previous.get(manifest.id)
+                if (
+                    str(manifest.kind) == "channel"
+                    and old is not None
+                    and _CHANNEL_FINGERPRINTS.get(manifest.id) == fingerprint
+                ):
+                    PluginRegistry().register(old)
+                    loaded.append(old)
+                else:
+                    loaded.append(_load_plugin_dir(plugin_dir, install_deps=install_deps))
+                if str(manifest.kind) == "channel":
+                    _CHANNEL_FINGERPRINTS[manifest.id] = fingerprint
             except Exception as exc:
                 logger.error(
                     "failed to load plugin from %s: %s",
@@ -452,6 +558,12 @@ class PluginManager:
                     exc_info=True,
                 )
         return newly
+
+    @staticmethod
+    def _channel_registration_error(plugin_id: str) -> str | None:
+        from octop.infra.gateway.plugin_channels import registration_errors
+
+        return registration_errors().get(plugin_id)
 
     def list_installed(self) -> list[dict[str, Any]]:
         out: list[dict[str, Any]] = []
@@ -501,6 +613,7 @@ class PluginManager:
                     "requires": parse_plugin_requires(plugin_dir),
                     "path": str(plugin_dir),
                     "loaded": loaded is not None,
+                    "registration_error": self._channel_registration_error(manifest.id),
                     "enabled": enabled_map.get(manifest.id, True),
                     "ui": ui_meta,
                     "tools": tools_meta,
@@ -643,19 +756,40 @@ class PluginManager:
         or in a single top-level folder) with a ``plugin.yaml`` manifest.
         """
         _assert_zip_magic(archive)
+        try:
+            if archive.stat().st_size > _MAX_PLUGIN_ARCHIVE_BYTES:
+                raise _archive_error("plugin ZIP exceeds 100 MiB")
+        except OSError as exc:
+            raise _archive_error(f"cannot inspect plugin ZIP: {exc}") from exc
         with tempfile.TemporaryDirectory() as tmp:
             extract_to = Path(tmp) / "extract"
             extract_to.mkdir()
             try:
                 with zipfile.ZipFile(archive) as zf:
-                    for member in zf.namelist():
-                        target = (extract_to / member).resolve()
-                        if not str(target).startswith(str(extract_to.resolve())):
-                            raise OctopError(
-                                ErrorCode.PLUGIN_INVALID_ARCHIVE,
-                                "zip path traversal detected",
-                            )
-                    zf.extractall(extract_to)
+                    infos = _validate_plugin_zip(zf)
+                    extract_root = extract_to.resolve()
+                    for member in infos:
+                        target = (extract_to / member.filename).resolve()
+                        try:
+                            target.relative_to(extract_root)
+                        except ValueError as exc:
+                            raise _archive_error("zip path traversal detected") from exc
+                    total_written = 0
+                    for member in infos:
+                        target = (extract_to / member.filename).resolve()
+                        if member.is_dir():
+                            target.mkdir(parents=True, exist_ok=True)
+                            continue
+                        target.parent.mkdir(parents=True, exist_ok=True)
+                        with zf.open(member) as source, target.open("wb") as destination:
+                            while True:
+                                chunk = source.read(1024 * 1024)
+                                if not chunk:
+                                    break
+                                total_written += len(chunk)
+                                if total_written > _MAX_PLUGIN_UNCOMPRESSED_BYTES:
+                                    raise _archive_error("plugin ZIP expands beyond 64 MiB")
+                                destination.write(chunk)
             except OctopError:
                 raise
             except zipfile.BadZipFile as exc:
@@ -680,27 +814,7 @@ class PluginManager:
         _assert_http_url(resolved)
         with tempfile.TemporaryDirectory() as tmp:
             archive = Path(tmp) / "plugin.zip"
-            try:
-                urllib.request.urlretrieve(resolved, archive)  # noqa: S310
-            except urllib.error.HTTPError as exc:
-                raise OctopError(
-                    ErrorCode.PLUGIN_INSTALL_FAILED,
-                    f"download failed with HTTP {exc.code}",
-                    details={"reason": f"HTTP {exc.code}"},
-                ) from exc
-            except urllib.error.URLError as exc:
-                reason = getattr(exc, "reason", None) or str(exc)
-                raise OctopError(
-                    ErrorCode.PLUGIN_INSTALL_FAILED,
-                    f"download failed: {reason}",
-                    details={"reason": str(reason)},
-                ) from exc
-            except OSError as exc:
-                raise OctopError(
-                    ErrorCode.PLUGIN_INSTALL_FAILED,
-                    f"download failed: {exc}",
-                    details={"reason": str(exc)},
-                ) from exc
+            _download_plugin_archive(resolved, archive)
             try:
                 return self.install_archive(archive, force=force)
             except OctopError as exc:

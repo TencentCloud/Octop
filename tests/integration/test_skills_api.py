@@ -7,6 +7,8 @@ Requires a running harness agent; skills are read/written via
 from __future__ import annotations
 
 import base64
+import io
+import zipfile
 from typing import Any
 
 import pytest
@@ -827,6 +829,54 @@ async def test_reinstall_overwrite_clears_skills_disabled(env: Any) -> None:
     assert row["enabled"] is True
 
 
+async def test_export_workspace_skill_zip(env: Any) -> None:
+    c, _srv, auth, aid = env
+    skill_md = "---\nname: pack-demo\ndescription: export me\n---\n\n# Pack\n"
+    created = await c.post(
+        f"/api/agents/{aid}/skills",
+        headers=auth,
+        json={
+            "name": "pack-demo",
+            "files": [
+                {"path": "SKILL.md", "content_base64": _b64(skill_md)},
+                {"path": "refs/note.md", "content_base64": _b64("keep me")},
+            ],
+        },
+    )
+    assert created.status_code == 201, created.text
+
+    exported = await c.get(f"/api/agents/{aid}/skills/pack-demo/export", headers=auth)
+    assert exported.status_code == 200, exported.text
+    assert exported.headers["content-type"].startswith("application/zip")
+    disposition = exported.headers["content-disposition"]
+    assert "pack-demo.zip" in disposition
+
+    with zipfile.ZipFile(io.BytesIO(exported.content)) as archive:
+        assert archive.read("pack-demo/SKILL.md").decode("utf-8") == skill_md
+        assert archive.read("pack-demo/refs/note.md") == b"keep me"
+
+    missing = await c.get(f"/api/agents/{aid}/skills/missing-skill/export", headers=auth)
+    assert missing.status_code == 404
+
+    other = "---\nname: other-demo\n---\n\n# Other\n"
+    created_other = await c.post(
+        f"/api/agents/{aid}/skills",
+        headers=auth,
+        json={"name": "other-demo", "content": other},
+    )
+    assert created_other.status_code == 201, created_other.text
+    batch = await c.post(
+        f"/api/agents/{aid}/skills/export",
+        headers=auth,
+        json={"slugs": ["pack-demo", "other-demo"]},
+    )
+    assert batch.status_code == 200, batch.text
+    assert "skills.zip" in batch.headers["content-disposition"]
+    with zipfile.ZipFile(io.BytesIO(batch.content)) as archive:
+        assert archive.read("pack-demo/SKILL.md").decode("utf-8") == skill_md
+        assert archive.read("other-demo/SKILL.md").decode("utf-8") == other
+
+
 async def test_copy_workspace_skill_between_agents(env: Any) -> None:
     c, srv, auth, dest_id = env
     source = await c.post(
@@ -922,7 +972,10 @@ async def test_copy_package_skills_to_workspace_is_an_independent_snapshot(env: 
     )
     assert replaced.status_code == 200, replaced.text
     assert await agent.workspace.aread_text("skills/package-demo/SKILL.md") == changed
-    assert await agent.workspace.aread_text("skills/package-demo/references/guide.txt") is None
+    # Content-only package edits keep siblings; overwrite copy mirrors the package.
+    assert (
+        await agent.workspace.aread_text("skills/package-demo/references/guide.txt") == "guide-v1"
+    )
     config = srv.app_runtime.agent_registry.get_config(aid)
     assert "package-demo" not in set(config.get("skills_disabled") or [])
     assert "Package Demo" not in set(config.get("skills_disabled") or [])

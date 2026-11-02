@@ -9,8 +9,33 @@ import pytest
 from octop.api.routers.providers import (
     ProviderPatchBody,
     _patch_requires_provider_rehydrate,
+    _provider_patch_updates,
     admin_patch_provider,
 )
+
+
+def test_revoke_api_key_is_an_explicit_clear() -> None:
+    body = ProviderPatchBody.model_validate({"api_key": None})
+    assert _provider_patch_updates(body, current_extra_json=None) == {"api_key": None}
+
+
+def test_blank_api_key_clears_without_touching_other_fields() -> None:
+    body = ProviderPatchBody.model_validate({"api_key": "   "})
+    assert _provider_patch_updates(body, current_extra_json=None) == {"api_key": None}
+
+
+def test_note_only_patch_does_not_include_api_key() -> None:
+    body = ProviderPatchBody.model_validate({"note": "ops memo"})
+    assert _provider_patch_updates(body, current_extra_json='{"headers": {}}') == {
+        "note": "ops memo"
+    }
+
+
+def test_stream_usage_patch_rewrites_extra_without_clearing_api_key() -> None:
+    body = ProviderPatchBody.model_validate({"stream_usage": False})
+    assert _provider_patch_updates(body, current_extra_json='{"headers": {"X-A": "1"}}') == {
+        "extra_json": '{"headers": {"X-A": "1"}, "stream_usage": false}'
+    }
 
 
 def test_patch_note_only_does_not_require_rehydrate() -> None:
@@ -44,7 +69,7 @@ async def test_admin_patch_note_only_skips_on_provider_changed() -> None:
     body = ProviderPatchBody.model_validate({"note": "only note"})
     await admin_patch_provider(provider_id=1, body=body, _=None, server=server)
 
-    server.services.provider_repo.update.assert_called_once()
+    server.services.provider_repo.update.assert_called_once_with(1, note="only note")
     on_changed.assert_not_awaited()
 
 
@@ -62,7 +87,26 @@ async def test_admin_patch_api_key_calls_on_provider_changed() -> None:
     body = ProviderPatchBody.model_validate({"api_key": "sk-new"})
     await admin_patch_provider(provider_id=1, body=body, _=None, server=server)
 
+    server.services.provider_repo.update.assert_called_once_with(1, api_key="sk-new")
     on_changed.assert_awaited_once_with(provider_name="test-openai")
+
+
+@pytest.mark.asyncio
+async def test_admin_patch_null_api_key_clears_stored_key() -> None:
+    on_changed = AsyncMock()
+    row = MagicMock()
+    row.id = 1
+    row.name = "DeepSeek"
+    server = MagicMock()
+    server.services.provider_repo.get.side_effect = [row, row]
+    server.services.provider_repo.update = MagicMock()
+    server.app_runtime.agent_registry.on_provider_changed = on_changed
+
+    body = ProviderPatchBody.model_validate({"api_key": None})
+    await admin_patch_provider(provider_id=1, body=body, _=None, server=server)
+
+    server.services.provider_repo.update.assert_called_once_with(1, api_key=None)
+    on_changed.assert_awaited_once_with(provider_name="DeepSeek")
 
 
 @pytest.mark.asyncio

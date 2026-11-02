@@ -36,6 +36,7 @@ import type { OctopAgent } from "../../../context/AgentContext";
 import { useAgent } from "../../../context/AgentContext";
 import { useIsMobile } from "../../../hooks/useIsMobile";
 import MbtiPersonaTag from "../../../components/MbtiPersonaTag";
+import BackendFlag from "./BackendFlag";
 import MbtiCatalogDrawer from "./MbtiCatalogDrawer";
 import { ExpertIcon } from "./iconForName";
 import {
@@ -44,9 +45,16 @@ import {
   formatAgentError,
   isAgentModelConfigError,
 } from "../../../utils/agentError";
+import { apiErrorMessage } from "../../../utils/apiError";
 import styles from "../index.module.less";
 import RemoteExpertHint from "../../Chat/components/RemoteExpertHint";
-import { isSharedExpertViewer } from "../../../utils/sharedExpert";
+import { expertDeleteConfirm } from "../../../utils/remoteExpert";
+import { SharedResourceBadge } from "../../../components/SharedResourceBadge";
+import {
+  canReadAgentRuntimeStatus,
+  isSharedExpertViewer,
+} from "../../../utils/sharedExpert";
+import { useCurrentUser } from "../../../hooks/useCurrentUser";
 import type { PublishedExpert } from "../../../api/modules/publishedExperts";
 import PublishTemplateButton from "./PublishTemplateButton";
 import AgentMoreActions from "./AgentMoreActions";
@@ -82,6 +90,7 @@ export default function AgentExpertsTable({
   const { t } = useTranslation();
   const navigate = useNavigate();
   const isMobile = useIsMobile();
+  const user = useCurrentUser();
   const { setActiveAgent, refresh: refreshAgents } = useAgent();
   const [localStates, setLocalStates] = useState<Record<string, string>>({});
   const [actionLoadingId, setActionLoadingId] = useState<string | null>(null);
@@ -170,7 +179,7 @@ export default function AgentExpertsTable({
 
   useEffect(() => {
     const transientIds = agents
-      .filter((a) => !a.bridge)
+      .filter((a) => !a.bridge && canReadAgentRuntimeStatus(a, user))
       .map((a) => a.agent_id)
       .filter((id) => TRANSIENT.has(localStates[id] ?? ""));
     if (transientIds.length === 0) {
@@ -197,7 +206,7 @@ export default function AgentExpertsTable({
       if (pollRef.current) clearInterval(pollRef.current);
       pollRef.current = null;
     };
-  }, [agents, localStates, onStateChange, refreshAgents]);
+  }, [agents, localStates, onStateChange, refreshAgents, user]);
 
   const handleToggle = useCallback(
     async (agent: OctopAgent, checked: boolean) => {
@@ -214,11 +223,15 @@ export default function AgentExpertsTable({
           onStateChange(agent.agent_id, "stopping");
           message.success(t("experts.agentStopped", { name: agent.name }));
         }
-      } catch {
+      } catch (error) {
         message.error(
-          checked
-            ? t("experts.agentStartFailed")
-            : t("experts.agentStopFailed"),
+          apiErrorMessage(
+            error,
+            checked
+              ? t("experts.agentStartFailed")
+              : t("experts.agentStopFailed"),
+            t,
+          ),
         );
       } finally {
         setActionLoadingId(null);
@@ -310,15 +323,11 @@ export default function AgentExpertsTable({
             />
           </span>
           <span className={styles.tableNameText}>{name}</span>
-          {row.is_shared && (
-            <Tag color="blue">
-              {isSharedExpertViewer(row)
-                ? t("experts.share.fromOwner", {
-                    name: row.owner_username,
-                  })
-                : t("experts.share.badge")}
-            </Tag>
-          )}
+          <SharedResourceBadge
+            shared={row.is_shared}
+            owned={!isSharedExpertViewer(row)}
+            ownerName={row.owner_username}
+          />
           <RemoteExpertHint agent={row} />
         </div>
       ),
@@ -410,6 +419,13 @@ export default function AgentExpertsTable({
       render: (model: string | null | undefined) => model || "—",
     },
     {
+      title: t("experts.table.backend", "后端"),
+      key: "backend",
+      width: 88,
+      align: "center",
+      render: (_value, row) => <BackendFlag config={row.config} />,
+    },
+    {
       title: t("experts.table.persona", "人格"),
       dataIndex: "persona_mbti",
       width: 120,
@@ -434,6 +450,7 @@ export default function AgentExpertsTable({
         const isTransient = TRANSIENT.has(state);
         const chatReady = isAgentChatReady(state);
         const isOwner = row.is_owner !== false;
+        const deleteConfirm = expertDeleteConfirm(row, t);
         return (
           <div className={styles.tableActions}>
             {isOwner && (
@@ -478,8 +495,8 @@ export default function AgentExpertsTable({
                   </button>
                 </Tooltip>
                 <Popconfirm
-                  title={t("experts.confirmDelete", { name: row.name })}
-                  description={t("experts.confirmDeleteHint")}
+                  title={deleteConfirm.title}
+                  description={deleteConfirm.description}
                   onConfirm={() => void handleDelete(row)}
                   okText={t("common.delete", "Delete")}
                   cancelText={t("common.cancel")}

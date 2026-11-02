@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import base64
+import io
+import zipfile
 from typing import Any
 
 import pytest
@@ -25,11 +27,21 @@ async def test_create_and_list_skill_package(env: Any) -> None:
     created = await client.post(
         "/api/skill-packages",
         headers=auth,
-        json={"name": "Office", "description": ""},
+        json={
+            "name": "Office",
+            "description": "",
+            "copy_policy": "lock",
+            "allow_download": False,
+            "shared": False,
+        },
     )
 
     assert created.status_code == 200, created.text
-    package_id = created.json()["id"]
+    body = created.json()
+    package_id = body["id"]
+    assert body["copy_policy"] == "lock"
+    assert body["allow_download"] is False
+    assert body["shared"] is False
 
     listed = await client.get("/api/skill-packages", headers=auth)
 
@@ -114,6 +126,116 @@ async def test_package_skill_content_lifecycle(env: Any) -> None:
     assert (await client.get(f"/api/skill-packages/{package_id}/skills", headers=auth)).json() == []
 
 
+async def test_export_skill_package_zip(env: Any) -> None:
+    client, _server, auth = env
+    package_id = (
+        await client.post(
+            "/api/skill-packages",
+            headers=auth,
+            json={"name": "Office", "description": ""},
+        )
+    ).json()["id"]
+    for name, content in (
+        ("pdf-reader", SAMPLE_SKILL),
+        ("notes", "---\nname: notes\n---\n\n# Notes\n"),
+    ):
+        created = await client.post(
+            f"/api/skill-packages/{package_id}/skills",
+            headers=auth,
+            json={"name": name, "content": content},
+        )
+        assert created.status_code == 200, created.text
+
+    exported = await client.get(f"/api/skill-packages/{package_id}/export", headers=auth)
+    assert exported.status_code == 200, exported.text
+    assert exported.headers["content-type"].startswith("application/zip")
+    assert "Office.zip" in exported.headers["content-disposition"]
+    with zipfile.ZipFile(io.BytesIO(exported.content)) as archive:
+        assert archive.read("pdf-reader/SKILL.md").decode("utf-8") == SAMPLE_SKILL
+        assert "notes/SKILL.md" in archive.namelist()
+
+    empty_id = (
+        await client.post(
+            "/api/skill-packages",
+            headers=auth,
+            json={"name": "Empty", "description": ""},
+        )
+    ).json()["id"]
+    empty = await client.get(f"/api/skill-packages/{empty_id}/export", headers=auth)
+    assert empty.status_code == 400
+
+
+async def test_skill_package_download_can_be_disabled(env_boundary: Any) -> None:
+    client, _server, _admin_auth, alice_auth, bob_auth, _ctx = env_boundary
+    package_id = (
+        await client.post(
+            "/api/skill-packages",
+            headers=alice_auth,
+            json={"name": "Alice download", "shared": True},
+        )
+    ).json()["id"]
+    created = await client.post(
+        f"/api/skill-packages/{package_id}/skills",
+        headers=alice_auth,
+        json={"name": "pdf-reader", "content": SAMPLE_SKILL},
+    )
+    assert created.status_code == 200, created.text
+
+    open_download = await client.get(f"/api/skill-packages/{package_id}/export", headers=bob_auth)
+    assert open_download.status_code == 200, open_download.text
+
+    closed = await client.patch(
+        f"/api/skill-packages/{package_id}",
+        headers=alice_auth,
+        json={"allow_download": False},
+    )
+    assert closed.status_code == 200, closed.text
+    assert closed.json()["allow_download"] is False
+
+    denied = await client.get(f"/api/skill-packages/{package_id}/export", headers=bob_auth)
+    assert denied.status_code == 403, denied.text
+    assert denied.json()["error"]["code"] == "SKILL_PACKAGE_DOWNLOAD_DENIED"
+
+    owner = await client.get(f"/api/skill-packages/{package_id}/export", headers=alice_auth)
+    assert owner.status_code == 200, owner.text
+
+
+async def test_private_skill_package_hidden_from_other_users(env_boundary: Any) -> None:
+    client, _server, admin_auth, alice_auth, bob_auth, _ctx = env_boundary
+    private = await client.post(
+        "/api/skill-packages",
+        headers=alice_auth,
+        json={"name": "Alice private"},
+    )
+    assert private.status_code == 200, private.text
+    assert private.json()["shared"] is False
+    package_id = private.json()["id"]
+
+    bob_list = await client.get("/api/skill-packages", headers=bob_auth)
+    assert bob_list.status_code == 200, bob_list.text
+    assert all(row["id"] != package_id for row in bob_list.json())
+
+    bob_get = await client.get(f"/api/skill-packages/{package_id}", headers=bob_auth)
+    assert bob_get.status_code == 404, bob_get.text
+    assert bob_get.json()["error"]["code"] == "SKILL_PACKAGE_NOT_FOUND"
+
+    shared = await client.patch(
+        f"/api/skill-packages/{package_id}",
+        headers=alice_auth,
+        json={"shared": True},
+    )
+    assert shared.status_code == 200, shared.text
+    assert shared.json()["shared"] is True
+
+    bob_after = await client.get(f"/api/skill-packages/{package_id}", headers=bob_auth)
+    assert bob_after.status_code == 200, bob_after.text
+    assert bob_after.json()["can_write"] is False
+
+    admin_list = await client.get("/api/skill-packages", headers=admin_auth)
+    assert admin_list.status_code == 200, admin_list.text
+    assert any(row["id"] == package_id for row in admin_list.json())
+
+
 async def test_other_user_cannot_mutate_skill_package(env_boundary: Any) -> None:
     client, _server, _admin_auth, alice_auth, bob_auth, _ctx = env_boundary
     package_id = (
@@ -140,7 +262,7 @@ async def test_other_user_cannot_mutate_package_skills(env_boundary: Any) -> Non
         await client.post(
             "/api/skill-packages",
             headers=alice_auth,
-            json={"name": "Alice's skill contents"},
+            json={"name": "Alice's skill contents", "shared": True},
         )
     ).json()["id"]
     created = await client.post(
@@ -457,6 +579,88 @@ async def test_create_package_skill_files_conflict_without_overwrite(env: Any) -
     )
     assert conflict.status_code == 409, conflict.text
     assert conflict.json()["error"]["code"] == "SKILL_ALREADY_EXISTS"
+
+
+async def test_package_skill_tree_file_and_content_only_update(env: Any) -> None:
+    client, server, auth = env
+    package_id = (
+        await client.post(
+            "/api/skill-packages",
+            headers=auth,
+            json={"name": "Tree Bundle"},
+        )
+    ).json()["id"]
+    created = await client.post(
+        f"/api/skill-packages/{package_id}/skills",
+        headers=auth,
+        json={
+            "name": "demo",
+            "files": [
+                {"path": "SKILL.md", "content_base64": _b64(SAMPLE_SKILL)},
+                {"path": "notes.txt", "content_base64": _b64("hello")},
+                {"path": "references/guide.md", "content_base64": _b64("# Guide")},
+            ],
+        },
+    )
+    assert created.status_code == 200, created.text
+
+    tree = await client.get(
+        f"/api/skill-packages/{package_id}/skills/demo/tree",
+        headers=auth,
+    )
+    assert tree.status_code == 200, tree.text
+    assert {row["path"] for row in tree.json()} == {
+        "skills/demo/SKILL.md",
+        "skills/demo/notes.txt",
+        "skills/demo/references",
+    }
+
+    nested = await client.get(
+        f"/api/skill-packages/{package_id}/skills/demo/tree",
+        headers=auth,
+        params={"path": "references"},
+    )
+    assert nested.status_code == 200, nested.text
+    assert nested.json() == [
+        {"path": "skills/demo/references/guide.md", "is_dir": False, "size": 7},
+    ]
+
+    text = await client.get(
+        f"/api/skill-packages/{package_id}/skills/demo/file",
+        headers=auth,
+        params={"path": "notes.txt"},
+    )
+    assert text.status_code == 200, text.text
+    assert text.json()["content"] == "hello"
+
+    download = await client.get(
+        f"/api/skill-packages/{package_id}/skills/demo/download",
+        headers=auth,
+        params={"path": "references/guide.md"},
+    )
+    assert download.status_code == 200, download.text
+    assert download.content == b"# Guide"
+
+    updated_md = "---\nname: demo\ndescription: kept siblings\n---\n\n# Updated\n"
+    updated = await client.put(
+        f"/api/skill-packages/{package_id}/skills/demo",
+        headers=auth,
+        json={"content": updated_md},
+    )
+    assert updated.status_code == 200, updated.text
+
+    from octop.infra.skills.skill_package_store import SkillPackageStore
+
+    skill_dir = (
+        SkillPackageStore(
+            repo=server.services.skill_package_repo,
+            root=server.paths.skill_packages_dir,
+        ).package_skills_dir(package_id)
+        / "demo"
+    )
+    assert (skill_dir / "SKILL.md").read_text(encoding="utf-8") == updated_md
+    assert (skill_dir / "notes.txt").read_text(encoding="utf-8") == "hello"
+    assert (skill_dir / "references" / "guide.md").read_text(encoding="utf-8") == "# Guide"
 
 
 async def test_create_package_skill_files_overwrite_replaces_stale_siblings(env: Any) -> None:

@@ -1,16 +1,17 @@
 {
   "id": "multi-agent-orchestrator",
+  "scene": "tech",
   "label": {
-    "zh": "多专家协作编排",
-    "en": "Multi-Agent Orchestrator"
+    "zh": "协作编排专家",
+    "en": "Orchestration Expert"
   },
   "description": {
     "zh": "源自 agency-orchestrator 的 DAG 协作理念：把一句话需求拆成有依赖关系的步骤，匹配最合适的子智能体角色，按 depends_on 串联执行并接力输出。让 OCTOP 从单 agent 升级为多专家协作。",
     "en": "From agency-orchestrator: turn one sentence into a dependency-ordered DAG, match each step to the best sub-agent role, and chain outputs via depends_on."
   },
   "welcome_message": {
-    "zh": "我是协作编排师，给我一个目标，我把它拆给合适的专家去跑",
-    "en": "I'm the orchestrator — give me a goal and I'll decompose it across the right experts"
+    "zh": "我是协作编排专家，给我一个目标，我把它拆给合适的专家去跑",
+    "en": "I'm the orchestration expert — give me a goal and I'll decompose it across the right experts"
   },
   "icon_name": "git-branch",
   "color": "#0EA5E9",
@@ -21,19 +22,19 @@
   "quick_prompts": [
     {
       "title": {
-        "zh": "拆解一个目标",
+        "zh": "拆解协作目标",
         "en": "Decompose a goal"
       },
       "description": {
-        "zh": "把复杂目标编成 DAG 并派发",
-        "en": "Turn a complex goal into a DAG and dispatch"
+        "zh": "把复杂目标编成有依赖的步骤",
+        "en": "Turn a complex goal into ordered steps"
       },
       "prompt": {
         "zh": "请帮我把这个目标拆成有依赖关系的步骤，为每一步匹配最合适的子智能体角色（引用其 slug），写出 depends_on 与 output 接力，形成可执行的协作计划。",
         "en": "Decompose this goal into a dependency DAG, assign each step a sub-agent role, and chain outputs."
       },
-      "color": "#e0f2fe",
-      "icon_name": "workflow"
+      "color": "#e8f4ff",
+      "icon_name": "network"
     },
     {
       "title": {
@@ -41,15 +42,79 @@
         "en": "Form an expert team"
       },
       "description": {
-        "zh": "为项目锁定一组固定阵容",
-        "en": "Lock a fixed roster for a project"
+        "zh": "为持续项目锁定一组固定阵容",
+        "en": "Lock a fixed roster for an ongoing project"
       },
       "prompt": {
-        "zh": "这是一个持续项目，请为我锁定一组固定的子智能体阵容（如 架构师+后端+前端+测试+运维），说明各自职责与协作顺序，便于反复复用。",
-        "en": "Lock a reusable sub-agent roster for this ongoing project."
+        "zh": "这是一个持续项目，请为我锁定一组固定的子智能体阵容（如架构师、后端、前端、测试、运维），说明各自职责与协作顺序，便于反复复用。",
+        "en": "Lock a reusable sub-agent roster for this ongoing project, with a role and order for each member."
+      },
+      "color": "#dcfce7",
+      "icon_name": "users"
+    },
+    {
+      "title": {
+        "zh": "编写依赖关系",
+        "en": "Write dependencies"
+      },
+      "description": {
+        "zh": "标出哪些步骤可并行、哪些必须等待",
+        "en": "Mark which steps can run in parallel"
+      },
+      "prompt": {
+        "zh": "请给这份协作计划补上 depends_on：没有依赖的步骤标成可并行，有依赖的等上游完成再派发。计划如下：\n\n",
+        "en": "Add depends_on to this collaboration plan: steps with no dependency can run in parallel; the rest wait for upstream output.\n\n"
       },
       "color": "#fef3c7",
-      "icon_name": "users"
+      "icon_name": "list-todo"
+    },
+    {
+      "title": {
+        "zh": "接力上游产出",
+        "en": "Chain upstream output"
+      },
+      "description": {
+        "zh": "让下一步直接用上一步的结果",
+        "en": "Feed each step the previous output"
+      },
+      "prompt": {
+        "zh": "请把这些步骤改成接力写法：每步命名 output，下一步用 {{上一步output}} 引用，避免重复生成。步骤如下：\n\n",
+        "en": "Rewrite these steps so each one names an output and the next step references it, instead of regenerating the same work.\n\n"
+      },
+      "color": "#f3e8ff",
+      "icon_name": "refresh-cw"
+    },
+    {
+      "title": {
+        "zh": "派发并回收",
+        "en": "Dispatch and collect"
+      },
+      "description": {
+        "zh": "按依赖派给子智能体并汇总",
+        "en": "Assign steps, then collect the results"
+      },
+      "prompt": {
+        "zh": "请按这份 DAG 派发：无依赖的步骤并行交给对应子智能体，有依赖的等上游完成再派，最后汇总成一份交付。",
+        "en": "Dispatch this DAG: run independent steps in parallel, wait on dependencies, then collect everything into one deliverable."
+      },
+      "color": "#eef2ff",
+      "icon_name": "rocket"
+    },
+    {
+      "title": {
+        "zh": "确认再执行",
+        "en": "Confirm before acting"
+      },
+      "description": {
+        "zh": "对外或不可逆步骤先给用户确认",
+        "en": "Ask before irreversible or external steps"
+      },
+      "prompt": {
+        "zh": "这份计划里有对外或不可逆步骤。请先标出哪些必须等我确认，再给出确认后的执行顺序。计划如下：\n\n",
+        "en": "This plan has external or irreversible steps. Mark which ones need my confirmation, then give the execution order after I approve.\n\n"
+      },
+      "color": "#fdf4e7",
+      "icon_name": "shield-check"
     }
   ],
   "task_examples": {

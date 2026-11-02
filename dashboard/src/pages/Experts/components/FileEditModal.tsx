@@ -5,6 +5,7 @@ import { Button, Drawer, Spin } from "antd";
 import { message } from "@/utils/antdMessage";
 
 import { request } from "../../../api/request";
+import { useTheme } from "../../../context/ThemeContext";
 import { withFromWorkspace } from "../../../utils/fromWorkspace";
 
 const MonacoEditor = lazy(() => import("@monaco-editor/react"));
@@ -36,6 +37,7 @@ export default function FileEditModal({
   onLocalSave,
 }: FileEditModalProps) {
   const { t } = useTranslation();
+  const { isDark } = useTheme();
   const [value, setValue] = useState<string>("");
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -180,6 +182,7 @@ export default function FileEditModal({
             <MonacoEditor
               height="100%"
               language="markdown"
+              theme={isDark ? "vs-dark" : "light"}
               value={value}
               onChange={(v) => setValue(v ?? "")}
               options={{

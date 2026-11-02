@@ -1,7 +1,7 @@
-"""Bootstrap a first default agent (general-assistant) for a user.
+"""Bootstrap a first expert for a user.
 
-Used by the setup wizard (pinned ``agent_id=main``) and by invite redeem
-(auto-allocated agent id) so every new account starts with the same expert.
+Used by the setup wizard (pinned ``agent_id=main``), invite redeem, and
+admin user creation. The template defaults to ``general-assistant``.
 """
 
 from __future__ import annotations
@@ -53,27 +53,30 @@ async def bootstrap_default_agent(
     locale: str = "zh",
     agent_id: str | None = None,
     root_dir: str | None = None,
+    expert_id: str | None = None,
 ) -> Any | None:
-    """Create ``general-assistant`` for *user_id* when they have no agents yet.
+    """Create one expert for *user_id* when they have no agents yet.
 
+    *expert_id* selects the catalog template (default ``general-assistant``).
     Returns the created agent row, or ``None`` when skipped (user already has
     agents, or ``main`` already exists when *agent_id* is ``main``).
     """
+    template_id = (expert_id or "").strip() or DEFAULT_EXPERT_ID
     if agent_id == SETUP_DEFAULT_AGENT_ID and registry.get_row(SETUP_DEFAULT_AGENT_ID) is not None:
         return None
     if registry.list_agents(user_id):
         return None
     if catalog is None:
-        raise OctopError(ErrorCode.INTERNAL_ERROR, "expert catalog not available")
-    expert = catalog.get(DEFAULT_EXPERT_ID)
+        raise OctopError(ErrorCode.DEFAULT_EXPERT_FAILED, "could not create default expert")
+    expert = catalog.get(template_id)
     if expert is None:
         raise OctopError(
-            ErrorCode.INTERNAL_ERROR,
-            f"{DEFAULT_EXPERT_ID} expert template missing",
+            ErrorCode.EXPERT_TEMPLATE_NOT_FOUND,
+            "expert template not found",
         )
     loc = normalize_locale(locale)
     spec = build_create_spec_from_expert(
-        expert_id=DEFAULT_EXPERT_ID,
+        expert_id=template_id,
         expert=expert,
         user_id=user_id,
         agent_id=agent_id,
@@ -89,6 +92,7 @@ async def try_bootstrap_default_agent(
     user_id: int,
     locale: str = "zh",
     agent_id: str | None = None,
+    expert_id: str | None = None,
 ) -> None:
     """Best-effort wrapper used by HTTP adapters (setup / invite)."""
     if server.app_runtime is None:
@@ -102,6 +106,7 @@ async def try_bootstrap_default_agent(
             locale=locale,
             agent_id=agent_id,
             root_dir=user_policy_workspace_root(server, user_id),
+            expert_id=expert_id,
         )
     except Exception as exc:  # pragma: no cover - logged; user creation should still succeed
         logger.warning("could not auto-create default agent for user %s: %s", user_id, exc)

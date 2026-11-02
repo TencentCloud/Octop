@@ -10,6 +10,8 @@ import {
 import { formatToolArguments } from "../../../utils/formatToolArguments";
 import {
   useToolDisplayNames,
+  deferredCallTargetName,
+  resolveDeferredToolLabel,
   resolveToolLabel,
 } from "../../../pages/Chat/hooks/toolDisplayNames";
 import {
@@ -135,7 +137,11 @@ export function DefaultToolRenderer({
     : running
     ? t("common.running", "Running")
     : t("common.pending", "Pending");
-  const ToolIcon = builtinToolIcon(toolName);
+  const deferredLabel = resolveDeferredToolLabel(toolName, args, displayName);
+  const deferredTarget = deferredCallTargetName(args);
+  const ToolIcon = builtinToolIcon(
+    deferredLabel && deferredTarget ? deferredTarget : toolName,
+  );
 
   return (
     <div className={styles.inlineToolBlock}>
@@ -155,18 +161,19 @@ export function DefaultToolRenderer({
           <ToolIcon size={14} strokeWidth={2.2} aria-hidden />
         </span>
         <code className={styles.inlineToolName}>
-          {resolveToolLabel(toolName, displayNameProp, displayName)}
+          {deferredLabel ??
+            resolveToolLabel(toolName, displayNameProp, displayName)}
         </code>
         {running ? (
-          <span className={styles.inlineToolStatusLive} aria-live="polite">
+          <span className={styles.inlineToolLiveDots} aria-hidden>
             <span className={styles.thinkingDot} />
             <span className={styles.thinkingDot} />
             <span className={styles.thinkingDot} />
-            <span>{statusLabel}</span>
           </span>
-        ) : (
-          <span className={styles.inlineToolStatus}>{statusLabel}</span>
-        )}
+        ) : null}
+        <span className={styles.inlineToolStatus} aria-live="polite">
+          {statusLabel}
+        </span>
         <ChevronRight
           size={14}
           className={`${styles.inlineToolChevron} ${

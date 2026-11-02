@@ -1,8 +1,9 @@
 name: Octop Desktop Package
 
 # 正式发版：Auto Tag 在打 v* 后与 Release / Docker Publish 一并 dispatch。
-# 产物 upsert 到同一 GitHub Release。手工补包：workflow_dispatch + release_tag
-# （不必跑在 v* ref 上）。attach_from_run 只挂已有 artifact、不重打。
+# 产物 upsert 到同一 GitHub Release，再上传到 COS octop/release/<version>/。
+# 手工补包：workflow_dispatch + release_tag（不必跑在 v* ref 上）。
+# attach_from_run 只挂已有 artifact、不重打。
 
 on:
   push:
@@ -311,6 +312,8 @@ jobs:
   release:
     name: Attach zips to GitHub Release
     needs: package
+    outputs:
+      tag: ${{ steps.rel.outputs.tag }}
     # always(): still run when package was skipped (attach_from_run rebuild skip).
     if: >-
       always() &&
@@ -377,3 +380,20 @@ jobs:
           fail_on_unmatched_files: true
           # Upsert: works whether Release workflow already created the release.
           generate_release_notes: false
+
+  upload-cos:
+    name: Upload desktop packages to COS
+    needs: release
+    # attach_from_run skips the package jobs. A plain success check then skips
+    # this reusable workflow even after the release job itself succeeded.
+    if: ${{ always() && needs.release.result == 'success' }}
+    uses: ./.github/workflows/upload-release-cos.yml
+    with:
+      tag: ${{ needs.release.outputs.tag }}
+      patterns: "Octop-desktop-*,Octop-portable-*"
+    secrets:
+      RELEASE_COS_SECRET_ID: ${{ secrets.RELEASE_COS_SECRET_ID }}
+      RELEASE_COS_SECRET_KEY: ${{ secrets.RELEASE_COS_SECRET_KEY }}
+      RELEASE_COS_BUCKET: ${{ secrets.RELEASE_COS_BUCKET }}
+      RELEASE_COS_REGION: ${{ secrets.RELEASE_COS_REGION }}
+      RELEASE_COS_ENDPOINT: ${{ secrets.RELEASE_COS_ENDPOINT }}

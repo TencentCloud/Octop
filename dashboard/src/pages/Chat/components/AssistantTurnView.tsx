@@ -43,6 +43,7 @@ interface AssistantTurnViewProps {
    */
   liveSpeakers?: ReadonlyArray<string>;
   onRegenerate?: (messageId: string) => void;
+  onDisableStreamUsage?: () => Promise<boolean>;
   onEditUserMessage?: (messageId: string, newText: string) => void;
   onForkAssistantMessage?: (messageId: string) => void;
   forkDisabled?: boolean;
@@ -59,8 +60,62 @@ interface AssistantTurnViewProps {
 
 function hasProcessContent(
   split: ReturnType<typeof splitAssistantTurn>,
+  deferLoneDecision = false,
 ): boolean {
-  return turnHasVisibleProcess(split);
+  return turnHasVisibleProcess(split, { deferLoneDecision });
+}
+
+function TurnErrorBubbles({
+  messages,
+  agentId,
+  showAvatar,
+  onRegenerate,
+  onDisableStreamUsage,
+  onEditUserMessage,
+  onForkAssistantMessage,
+  forkDisabled,
+  forkDisabledHint,
+  onRunShellCommand,
+  shellCommandDisabled,
+  shellCommandDisabledTitle,
+}: {
+  messages: ChatMessage[] | undefined;
+  agentId?: string | null;
+  showAvatar: boolean;
+  onRegenerate?: (messageId: string) => void;
+  onDisableStreamUsage?: () => Promise<boolean>;
+  onEditUserMessage?: (messageId: string, newText: string) => void;
+  onForkAssistantMessage?: (messageId: string) => void;
+  forkDisabled?: boolean;
+  forkDisabledHint?: string;
+  onRunShellCommand?: (code: string) => void;
+  shellCommandDisabled?: boolean;
+  shellCommandDisabledTitle?: string;
+}) {
+  if (!messages?.length) return null;
+  return (
+    <>
+      {messages.map((message, index) => (
+        <div key={message.id} className={styles.assistantTurnAnswer}>
+          <MessageBubble
+            message={message}
+            agentId={agentId}
+            showAvatar={showAvatar && index === 0}
+            groupPosition="only"
+            onRegenerate={onRegenerate}
+            onDisableStreamUsage={onDisableStreamUsage}
+            onEditUserMessage={onEditUserMessage}
+            onForkAssistantMessage={onForkAssistantMessage}
+            forkDisabled={forkDisabled}
+            forkDisabledHint={forkDisabledHint}
+            onRunShellCommand={onRunShellCommand}
+            shellCommandDisabled={shellCommandDisabled}
+            shellCommandDisabledTitle={shellCommandDisabledTitle}
+          />
+        </div>
+      ))}
+    </>
+  );
 }
 
 /** True when any message in this turn belongs to a still-live speaker. */
@@ -82,6 +137,7 @@ export default function AssistantTurnView({
   isTurnInProgress = false,
   liveSpeakers = [],
   onRegenerate,
+  onDisableStreamUsage,
   onEditUserMessage,
   onForkAssistantMessage,
   forkDisabled,
@@ -169,16 +225,25 @@ export default function AssistantTurnView({
       (m) => m.status === "streaming" && isWriteTodosToolName(m.toolData?.name),
     );
 
+  // A decision stamp often lands before the first tool. Showing it on its
+  // own, then folding it in, flashes a one-line row. Hold that row until the
+  // reply has tools or the turn settles.
+  const deferLoneDecision = turnStreaming && !hasPendingHitl;
   const firstProcessSegmentIdx = compactProcess
     ? -1
-    : segmentProcess.findIndex(({ split }) => hasProcessContent(split));
+    : segmentProcess.findIndex(({ split }) =>
+        hasProcessContent(split, deferLoneDecision),
+      );
   const firstSummaryIdx = compactProcess
     ? -1
-    : segmentProcess.findIndex(({ split }) => turnHasProcessSummary(split));
+    : segmentProcess.findIndex(({ split }) =>
+        turnHasProcessSummary(split, { deferLoneDecision }),
+      );
   const showTrailingProcess =
-    !compactProcess && hasProcessContent(trailingSplit);
+    !compactProcess && hasProcessContent(trailingSplit, deferLoneDecision);
   const trailingHasSummary =
-    !compactProcess && turnHasProcessSummary(trailingSplit);
+    !compactProcess &&
+    turnHasProcessSummary(trailingSplit, { deferLoneDecision });
   const anyProcessShown = firstProcessSegmentIdx >= 0 || showTrailingProcess;
 
   const todoPanel =
@@ -192,44 +257,26 @@ export default function AssistantTurnView({
   const todoAtTop = todoPanel && !anyProcessShown ? todoPanel : null;
 
   const isWrapupTurn = messages.some((item) => item.teamWrapup);
+  const hasVisibleTurn =
+    Boolean(todoAtTop) ||
+    anyProcessShown ||
+    segmentProcess.some(
+      ({ split }) =>
+        split.answerMessage || (split.errorMessages?.length ?? 0) > 0,
+    ) ||
+    hitlLayout.segments.length > 0 ||
+    Boolean(trailingSplit.answerMessage) ||
+    (trailingSplit.errorMessages?.length ?? 0) > 0 ||
+    hasToolMedia ||
+    knowledgeCitations.length > 0 ||
+    showOpenBrowser ||
+    showEditFile;
+  // A decision-only placeholder has no row yet. Rendering an empty turn
+  // would shift the layout before the avatar and the first status settle.
+  if (!hasVisibleTurn) return null;
 
-  return (
-    <div className={styles.assistantTurn}>
-      {todoAtTop ? <div className={styles.turnInset}>{todoAtTop}</div> : null}
-      {segmentProcess.map(({ split, hitl }, idx) => {
-        const showProcess = !compactProcess && hasProcessContent(split);
-        // Freeze process spinner while a pending approval card is open.
-        const processStreaming =
-          turnStreaming &&
-          !hasPendingHitl &&
-          idx === segmentProcess.length - 1 &&
-          hitlLayout.trailingMessages.length === 0;
-        return (
-          <div key={hitl.id} className={styles.hitlSegment}>
-            {showProcess ? (
-              <>
-                <TurnProcessBlocks
-                  split={split}
-                  isStreaming={processStreaming}
-                  onAcpPermissionSelect={onAcpPermissionSelect}
-                  hideToolMedia={hasToolMedia}
-                  agentId={speakerAgentId}
-                  showAvatar={idx === firstSummaryIdx}
-                />
-                {todoPanel && idx === firstProcessSegmentIdx ? (
-                  <div className={styles.turnInset}>{todoPanel}</div>
-                ) : null}
-              </>
-            ) : null}
-            <MessageBubble
-              message={hitl}
-              agentId={agentId}
-              onHitlDecision={onHitlDecision}
-              groupPosition="only"
-            />
-          </div>
-        );
-      })}
+  const trailingBody = (
+    <>
       {showTrailingProcess ? (
         <>
           <TurnProcessBlocks
@@ -256,21 +303,13 @@ export default function AssistantTurnView({
         </div>
       )}
       {trailingSplit.answerMessage ? (
-        <div
-          className={`${styles.assistantTurnAnswer}${
-            isWrapupTurn ? ` ${styles.teamWrapupTurn}` : ""
-          }`}
-        >
-          {isWrapupTurn ? (
-            <span className={styles.teamWrapupBadge}>
-              {t("chat.teamWrapupBadge", { defaultValue: "主持人总结" })}
-            </span>
-          ) : null}
+        <div className={styles.assistantTurnAnswer}>
           <MessageBubble
             message={toAnswerOnlyMessage(trailingSplit.answerMessage)}
             agentId={agentId}
             showAvatar={firstSummaryIdx < 0 && !trailingHasSummary}
             onRegenerate={onRegenerate}
+            onDisableStreamUsage={onDisableStreamUsage}
             onEditUserMessage={onEditUserMessage}
             onForkAssistantMessage={onForkAssistantMessage}
             forkDisabled={forkDisabled}
@@ -282,6 +321,24 @@ export default function AssistantTurnView({
           />
         </div>
       ) : null}
+      <TurnErrorBubbles
+        messages={trailingSplit.errorMessages}
+        agentId={agentId}
+        showAvatar={
+          firstSummaryIdx < 0 &&
+          !trailingHasSummary &&
+          !trailingSplit.answerMessage
+        }
+        onRegenerate={onRegenerate}
+        onDisableStreamUsage={onDisableStreamUsage}
+        onEditUserMessage={onEditUserMessage}
+        onForkAssistantMessage={onForkAssistantMessage}
+        forkDisabled={forkDisabled}
+        forkDisabledHint={forkDisabledHint}
+        onRunShellCommand={onRunShellCommand}
+        shellCommandDisabled={shellCommandDisabled}
+        shellCommandDisabledTitle={shellCommandDisabledTitle}
+      />
       {knowledgeCitations.length > 0 ? (
         <div className={styles.turnInset}>
           <KnowledgeCitationsStrip citations={knowledgeCitations} />
@@ -344,6 +401,90 @@ export default function AssistantTurnView({
             />
           </button>
         </div>
+      )}
+    </>
+  );
+
+  return (
+    <div className={styles.assistantTurn}>
+      {todoAtTop ? <div className={styles.turnInset}>{todoAtTop}</div> : null}
+      {segmentProcess.map(({ split, hitl }, idx) => {
+        const showProcess =
+          !compactProcess && hasProcessContent(split, deferLoneDecision);
+        // Freeze process spinner while a pending approval card is open.
+        const processStreaming =
+          turnStreaming &&
+          !hasPendingHitl &&
+          idx === segmentProcess.length - 1 &&
+          hitlLayout.trailingMessages.length === 0;
+        return (
+          <div key={hitl.id} className={styles.hitlSegment}>
+            {showProcess ? (
+              <>
+                <TurnProcessBlocks
+                  split={split}
+                  isStreaming={processStreaming}
+                  onAcpPermissionSelect={onAcpPermissionSelect}
+                  hideToolMedia={hasToolMedia}
+                  agentId={speakerAgentId}
+                  showAvatar={idx === firstSummaryIdx}
+                />
+                {todoPanel && idx === firstProcessSegmentIdx ? (
+                  <div className={styles.turnInset}>{todoPanel}</div>
+                ) : null}
+              </>
+            ) : null}
+            {split.answerMessage ? (
+              <div className={styles.assistantTurnAnswer}>
+                <MessageBubble
+                  message={toAnswerOnlyMessage(split.answerMessage)}
+                  agentId={agentId}
+                  showAvatar={!showProcess}
+                  groupPosition="only"
+                  onRegenerate={onRegenerate}
+                  onDisableStreamUsage={onDisableStreamUsage}
+                  onEditUserMessage={onEditUserMessage}
+                  onForkAssistantMessage={onForkAssistantMessage}
+                  forkDisabled={forkDisabled}
+                  forkDisabledHint={forkDisabledHint}
+                  onRunShellCommand={onRunShellCommand}
+                  shellCommandDisabled={shellCommandDisabled}
+                  shellCommandDisabledTitle={shellCommandDisabledTitle}
+                />
+              </div>
+            ) : null}
+            <TurnErrorBubbles
+              messages={split.errorMessages}
+              agentId={agentId}
+              showAvatar={!showProcess && !split.answerMessage}
+              onRegenerate={onRegenerate}
+              onDisableStreamUsage={onDisableStreamUsage}
+              onEditUserMessage={onEditUserMessage}
+              onForkAssistantMessage={onForkAssistantMessage}
+              forkDisabled={forkDisabled}
+              forkDisabledHint={forkDisabledHint}
+              onRunShellCommand={onRunShellCommand}
+              shellCommandDisabled={shellCommandDisabled}
+              shellCommandDisabledTitle={shellCommandDisabledTitle}
+            />
+            <MessageBubble
+              message={hitl}
+              agentId={agentId}
+              onHitlDecision={onHitlDecision}
+              groupPosition="only"
+            />
+          </div>
+        );
+      })}
+      {isWrapupTurn ? (
+        <div className={styles.teamWrapupTurn}>
+          <span className={styles.teamWrapupBadge}>
+            {t("chat.teamWrapupBadge", { defaultValue: "主持人总结" })}
+          </span>
+          {trailingBody}
+        </div>
+      ) : (
+        trailingBody
       )}
     </div>
   );

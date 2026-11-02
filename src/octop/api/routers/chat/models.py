@@ -70,6 +70,18 @@ class ChatTurnBody(BaseModel):
         description="Deprecated — locale is read from the user profile. Ignored when set.",
     )
     text: str | None = Field(default=None, description="Plain-text user message (WS shorthand).")
+    delivery: Literal["auto", "steer", "follow_up"] | None = Field(
+        default=None,
+        description="Send routing: auto (steer while busy), steer, or follow_up (idle-only).",
+    )
+    client_pending_id: str | None = Field(
+        default=None,
+        description="Client UUID for mid-turn steer correlation (required while busy).",
+    )
+    expected_turn_id: str | None = Field(
+        default=None,
+        description="Active turn_id from turn.started / turn.resumed (required while busy).",
+    )
 
     @classmethod
     def from_ws_payload(cls, payload: dict[str, Any]) -> ChatTurnBody:
@@ -114,6 +126,17 @@ class ChatTurnBody(BaseModel):
                 else None
             ),
             text=text or None,
+            delivery=payload.get("delivery")
+            if payload.get("delivery") in ("auto", "steer", "follow_up")
+            else None,
+            client_pending_id=str(payload["client_pending_id"]).strip()
+            if isinstance(payload.get("client_pending_id"), str)
+            and str(payload["client_pending_id"]).strip()
+            else None,
+            expected_turn_id=str(payload["expected_turn_id"]).strip()
+            if isinstance(payload.get("expected_turn_id"), str)
+            and str(payload["expected_turn_id"]).strip()
+            else None,
         )
 
 
@@ -135,6 +158,9 @@ class UserTurnWsFrame(BaseModel):
     skills: list[str] | None = None
     messages: list[dict[str, Any]] | None = None
     target_agent_ids: list[str] | None = None
+    delivery: Literal["auto", "steer", "follow_up"] | None = None
+    client_pending_id: str | None = None
+    expected_turn_id: str | None = None
 
     def to_turn_body(self) -> ChatTurnBody:
         return ChatTurnBody.from_ws_payload(self.model_dump(exclude_none=True))
@@ -190,6 +216,10 @@ class HitlResumeBody(BaseModel):
     hitl_policy: HitlSessionPolicyBody | None = Field(
         default=None,
         description="Optional thread-scoped tool-approval bypass applied before resume.",
+    )
+    pending_id: str | None = Field(
+        default=None,
+        description="Approval card to resume. Required when several cards are open.",
     )
 
     @field_validator("decisions")

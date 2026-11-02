@@ -1,5 +1,6 @@
 {
   "id": "meituan-living-assistant",
+  "scene": "lifestyle",
   "label": {
     "zh": "美团生活助手",
     "en": "Meituan Living Assistant"

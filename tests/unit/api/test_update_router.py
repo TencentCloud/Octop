@@ -7,6 +7,7 @@ import time
 from typing import Any
 
 import pytest
+from fastapi import Request
 
 from octop.api.routers import update as update_router
 from octop.api.routers import update_store
@@ -265,7 +266,7 @@ async def test_upgrade_worker_records_mirror_errors(monkeypatch: pytest.MonkeyPa
     monkeypatch.setattr(
         update_router,
         "run_upgrade",
-        lambda verbose=False, allow_prerelease=False, version=None: UpgradeResult(
+        lambda verbose=False, allow_prerelease=False, version=None, locale="zh": UpgradeResult(
             success=False,
             error="upgrade failed on all mirrors",
             mirror_errors=["mirror-a: timeout", "pypi.org: denied"],
@@ -288,7 +289,7 @@ async def test_upgrade_worker_success_includes_mirror_errors(
     monkeypatch.setattr(
         update_router,
         "run_upgrade",
-        lambda verbose=False, allow_prerelease=False, version=None: UpgradeResult(
+        lambda verbose=False, allow_prerelease=False, version=None, locale="zh": UpgradeResult(
             success=True,
             installed_version="1.2.3",
             mirror_errors=["mirror-a: skipped"],
@@ -314,8 +315,9 @@ async def test_upgrade_worker_records_unexpected_error(
         verbose: bool = False,
         allow_prerelease: bool = False,
         version: str | None = None,
+        locale: str = "zh",
     ) -> UpgradeResult:
-        del verbose, allow_prerelease, version
+        del verbose, allow_prerelease, version, locale
         raise RuntimeError("installer crashed")
 
     monkeypatch.setattr(update_router, "run_upgrade", fail_upgrade)
@@ -355,7 +357,7 @@ async def test_upgrade_worker_advances_percent_while_installing(
     monkeypatch.setattr(
         update_router,
         "run_upgrade",
-        lambda verbose=False, allow_prerelease=False, version=None: (
+        lambda verbose=False, allow_prerelease=False, version=None, locale="zh": (
             time.sleep(0.05) or UpgradeResult(success=True, installed_version="1.2.3")
         ),
     )
@@ -506,6 +508,7 @@ async def test_trigger_upgrade_pins_stable_when_prerelease_exists(
     info = self_update.PyPIInfo(version="0.9.34b1", latest_stable="0.9.33", source="pypi.org")
     monkeypatch.setattr(update_router, "fetch_pypi_info", lambda: info)
     monkeypatch.setattr(update_router, "get_editable_path", lambda: None)
+    monkeypatch.setattr(update_router, "get_local_version", lambda: "0.9.32")
 
     captured: dict[str, object] = {}
 
@@ -514,23 +517,27 @@ async def test_trigger_upgrade_pins_stable_when_prerelease_exists(
         *,
         allow_prerelease: bool = False,
         version: str | None = None,
+        locale: str = "zh",
     ) -> None:
         captured["task_id"] = task_id
         captured["allow_prerelease"] = allow_prerelease
         captured["version"] = version
+        captured["locale"] = locale
 
     monkeypatch.setattr(update_router, "_upgrade_worker", fake_worker)
 
     body = update_router.UpgradeBody(version="0.9.33")
     result = await update_router.trigger_upgrade(
+        request=Request({"type": "http", "headers": [(b"accept-language", b"en")]}),
         body=body,
         server=_settings_server(True),
-        _=None,
+        _=type("User", (), {"locale": "zh"})(),
     )
     await asyncio.sleep(0)
     assert result["status"] == "started"
     assert captured["version"] == "0.9.33"
     assert captured["allow_prerelease"] is False
+    assert captured["locale"] == "zh"
 
 
 @pytest.mark.asyncio
@@ -540,6 +547,7 @@ async def test_trigger_upgrade_defaults_to_channel_latest(
     info = self_update.PyPIInfo(version="0.9.34b1", latest_stable="0.9.33", source="pypi.org")
     monkeypatch.setattr(update_router, "fetch_pypi_info", lambda: info)
     monkeypatch.setattr(update_router, "get_editable_path", lambda: None)
+    monkeypatch.setattr(update_router, "get_local_version", lambda: "0.9.32")
 
     captured: dict[str, object] = {}
 
@@ -548,13 +556,16 @@ async def test_trigger_upgrade_defaults_to_channel_latest(
         *,
         allow_prerelease: bool = False,
         version: str | None = None,
+        locale: str = "zh",
     ) -> None:
         captured["allow_prerelease"] = allow_prerelease
         captured["version"] = version
+        captured["locale"] = locale
 
     monkeypatch.setattr(update_router, "_upgrade_worker", fake_worker)
 
     result = await update_router.trigger_upgrade(
+        request=Request({"type": "http", "headers": [(b"accept-language", b"en")]}),
         body=update_router.UpgradeBody(),
         server=_settings_server(True),
         _=None,
@@ -563,6 +574,33 @@ async def test_trigger_upgrade_defaults_to_channel_latest(
     assert result["status"] == "started"
     assert captured["version"] == "0.9.33"
     assert captured["allow_prerelease"] is False
+    assert captured["locale"] == "en"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("requested", ["1.0.2b4", "1.0.2b3", "1.0.2-beta.4"])
+async def test_trigger_upgrade_rejects_non_newer_target_without_starting_task(
+    monkeypatch: pytest.MonkeyPatch, requested: str
+) -> None:
+    monkeypatch.setattr(update_router, "get_editable_path", lambda: None)
+    monkeypatch.setattr(update_router, "fetch_pypi_info", lambda: None)
+    monkeypatch.setattr(update_router, "get_local_version", lambda: "1.0.2b4")
+
+    async def unexpected_task() -> None:
+        pytest.fail("rejected target must not create an upgrade task")
+
+    monkeypatch.setattr(update_router, "create_task", unexpected_task)
+    with pytest.raises(OctopError) as exc_info:
+        await update_router.trigger_upgrade(
+            request=Request({"type": "http", "headers": []}),
+            body=update_router.UpgradeBody(version=requested),
+            server=_settings_server(True),
+            _=None,
+        )
+    error = exc_info.value
+    assert error.code == ErrorCode.UPDATE_TARGET_NOT_NEWER
+    assert error.status == 400
+    assert error.details == {"target": requested, "current": "1.0.2b4"}
 
 
 @pytest.mark.asyncio
@@ -572,7 +610,7 @@ async def test_upgrade_worker_falls_back_to_pinned_version(
     monkeypatch.setattr(
         update_router,
         "run_upgrade",
-        lambda verbose=False, allow_prerelease=False, version=None: UpgradeResult(
+        lambda verbose=False, allow_prerelease=False, version=None, locale="zh": UpgradeResult(
             success=True,
             installed_version=None,
         ),

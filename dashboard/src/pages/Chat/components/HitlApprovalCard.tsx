@@ -16,6 +16,9 @@ export interface HitlApprovalCardProps {
   status: "pending" | "approved" | "rejected";
   resolution?: HitlRequestResolution;
   onDecision?: HitlDecisionHandler;
+  pendingId?: string;
+  /** Team member who asked for this approval. */
+  speakerName?: string;
 }
 
 function uniqueToolNames(actions: HitlActionRequest[]): string[] {
@@ -33,10 +36,20 @@ export default function HitlApprovalCard({
   status,
   resolution,
   onDecision,
+  pendingId,
+  speakerName,
 }: HitlApprovalCardProps) {
   const { t } = useTranslation();
   const toolLabelOf = useToolDisplayNames();
   const interactive = status === "pending" && Boolean(onDecision);
+  const emit = (
+    decisions: Array<{ type: string; message?: string }>,
+    policy?: Parameters<NonNullable<HitlDecisionHandler>>[1],
+  ) => {
+    if (pendingId) onDecision?.(decisions, policy, pendingId);
+    else if (policy) onDecision?.(decisions, policy);
+    else onDecision?.(decisions);
+  };
   const toolNames = uniqueToolNames(actions);
   const allowToolsLabel =
     toolNames.length > 1
@@ -64,6 +77,14 @@ export default function HitlApprovalCard({
           {t("chat.hitl.title", "Confirm this action")}
         </div>
       </div>
+      {speakerName ? (
+        <p className={styles.member}>
+          {t("chat.hitl.memberRequest", {
+            name: speakerName,
+            defaultValue: "{{name}} is asking to run this",
+          })}
+        </p>
+      ) : null}
       {actions.map((action, idx) => {
         const view = summarizeHitlAction(
           action.name,
@@ -98,9 +119,7 @@ export default function HitlApprovalCard({
           <button
             type="button"
             className={`${styles.actionButton} ${styles.primaryAction}`}
-            onClick={() =>
-              onDecision?.(actions.map(() => ({ type: "approve" })))
-            }
+            onClick={() => emit(actions.map(() => ({ type: "approve" })))}
           >
             {t("chat.hitl.approve", "Approve")}
           </button>
@@ -116,15 +135,20 @@ export default function HitlApprovalCard({
               ],
               onClick: ({ key }) => {
                 if (key === "allow_all") {
-                  onDecision?.(
+                  emit(
                     actions.map(() => ({ type: "approve" })),
-                    { mode: "allow_all" },
+                    {
+                      mode: "allow_all",
+                    },
                   );
                   return;
                 }
-                onDecision?.(
+                emit(
                   actions.map(() => ({ type: "approve" })),
-                  { mode: "allow_tools", tools: toolNames },
+                  {
+                    mode: "allow_tools",
+                    tools: toolNames,
+                  },
                 );
               },
             }}
@@ -141,7 +165,7 @@ export default function HitlApprovalCard({
             type="button"
             className={`${styles.actionButton} ${styles.dangerAction}`}
             onClick={() =>
-              onDecision?.(
+              emit(
                 actions.map(() => ({
                   type: "reject",
                   message: t("chat.hitl.rejected", "Rejected by user"),

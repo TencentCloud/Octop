@@ -14,10 +14,12 @@ export function AgentlyAuth({
   instanceId,
   installed,
   onChanged,
+  kind = "agently-cli",
 }: {
   instanceId: string;
   installed: boolean;
   onChanged: () => void;
+  kind?: "agently-cli" | "dingtalk-cli";
 }) {
   const { t } = useTranslation();
   const [auth, setAuth] = useState<AgentlyAuthStatus | null>(null);
@@ -83,21 +85,31 @@ export function AgentlyAuth({
     }
   };
 
+  const dingtalk = kind === "dingtalk-cli";
+  const failedLabel = dingtalk
+    ? t("connectors.dingtalkAuthFailed", "钉钉授权失败，请重试")
+    : t("connectors.agentlyAuthFailed", "邮箱授权失败，请重试");
   const statusLabels = {
-    idle: t("connectors.agentlyIdle", "尚未授权此邮箱实例"),
+    idle: dingtalk
+      ? t("connectors.dingtalkIdle", "尚未授权此钉钉实例")
+      : t("connectors.agentlyIdle", "尚未授权此邮箱实例"),
     pending: t(
       "connectors.agentlyPending",
       "请打开授权页完成登录，授权结果会自动更新。",
     ),
-    authorized: t("connectors.agentlyAuthorized", "邮箱已授权"),
+    authorized: dingtalk
+      ? t("connectors.dingtalkAuthorized", "钉钉已授权")
+      : t("connectors.agentlyAuthorized", "邮箱已授权"),
     expired: t("connectors.agentlyExpired", "授权已过期，请重新登录授权"),
-    error: t("connectors.agentlyAuthFailed", "邮箱授权失败，请重试"),
+    error: failedLabel,
   };
 
   return (
     <div className={`${styles.feishuUserAuthBox} ${styles.agentlyAuthBox}`}>
       <div className={styles.feishuUserAuthTitle}>
-        {t("connectors.agentlyAuthTitle", "Agent Mail 邮箱授权")}
+        {dingtalk
+          ? t("connectors.dingtalkAuthTitle", "钉钉账号授权")
+          : t("connectors.agentlyAuthTitle", "Agent Mail 邮箱授权")}
       </div>
       <div
         className={
@@ -114,15 +126,7 @@ export function AgentlyAuth({
         <Alert
           type="error"
           showIcon
-          message={
-            error
-              ? apiErrorMessage(
-                  error,
-                  t("connectors.agentlyAuthFailed", "邮箱授权失败，请重试"),
-                  t,
-                )
-              : auth?.error
-          }
+          message={error ? apiErrorMessage(error, failedLabel, t) : auth?.error}
         />
       )}
       {auth?.status === "pending" && auth.user_code && (
@@ -155,11 +159,13 @@ export function AgentlyAuth({
         >
           {t("connectors.agentlyCheckStatus", "检查状态")}
         </Button>
-        {(auth?.status === "authorized" || auth?.status === "expired") && (
-          <Button disabled={busy} onClick={() => void run("refresh")}>
-            {t("connectors.agentlyRefresh", "刷新授权")}
-          </Button>
-        )}
+        {/* dws has no refresh command: checking status refreshes the grant. */}
+        {!dingtalk &&
+          (auth?.status === "authorized" || auth?.status === "expired") && (
+            <Button disabled={busy} onClick={() => void run("refresh")}>
+              {t("connectors.agentlyRefresh", "刷新授权")}
+            </Button>
+          )}
         {auth && auth.status !== "idle" && (
           <Button danger disabled={busy} onClick={() => void run("logout")}>
             {auth.status === "pending"

@@ -26,7 +26,7 @@ async def env(patched_app_client):
 
 async def test_verify_password_returns_token_on_match(env: Any) -> None:
     c, _srv, home = env
-    pw = read_password(Path.home())
+    pw = read_password(home)
     assert pw is not None
     r = await c.post("/api/setup/verify-password", json={"password": pw})
     assert r.status_code == 200
@@ -66,7 +66,7 @@ async def test_initial_admin_requires_wizard_token(env: Any) -> None:
 
 async def test_initial_admin_succeeds_with_token(env: Any) -> None:
     c, _srv, home = env
-    pw = read_password(Path.home())
+    pw = read_password(home)
     tok = (await c.post("/api/setup/verify-password", json={"password": pw})).json()["wizard_token"]
     r = await c.post(
         "/api/setup/initial-admin",
@@ -77,12 +77,12 @@ async def test_initial_admin_succeeds_with_token(env: Any) -> None:
     body = r.json()
     assert isinstance(body["access_token"], str)
     # The wizard password file is kept permanently, even after setup completes.
-    assert (Path.home() / WIZARD_FILE_NAME).exists()
+    assert (home / WIZARD_FILE_NAME).exists()
 
 
 async def test_initial_admin_rejects_weak_password(env: Any) -> None:
-    c, _srv, _home = env
-    pw = read_password(Path.home())
+    c, _srv, home = env
+    pw = read_password(home)
     tok = (await c.post("/api/setup/verify-password", json={"password": pw})).json()["wizard_token"]
     r = await c.post(
         "/api/setup/initial-admin",
@@ -94,8 +94,8 @@ async def test_initial_admin_rejects_weak_password(env: Any) -> None:
 
 
 async def test_initial_admin_respects_locale_body(env: Any) -> None:
-    c, srv, _home = env
-    pw = read_password(Path.home())
+    c, srv, home = env
+    pw = read_password(home)
     tok = (await c.post("/api/setup/verify-password", json={"password": pw})).json()["wizard_token"]
     r = await c.post(
         "/api/setup/initial-admin",
@@ -119,7 +119,7 @@ async def test_status_reports_wizard_password_exists(env: Any) -> None:
     assert body["setup_required"] is True
     assert body["wizard_password_required"] is True
     assert body["wizard_password_exists"] is True
-    assert body["wizard_password_path"] == str(Path.home() / WIZARD_FILE_NAME)
+    assert body["wizard_password_path"] == str(home / WIZARD_FILE_NAME)
 
 
 async def test_begin_issues_token_when_password_not_required(tmp_octop_home: Path) -> None:
@@ -146,7 +146,7 @@ async def test_validate_token_rejects_missing_header(env: Any) -> None:
 
 async def test_validate_token_accepts_fresh_token(env: Any) -> None:
     c, _srv, home = env
-    pw = read_password(Path.home())
+    pw = read_password(home)
     tok = (await c.post("/api/setup/verify-password", json={"password": pw})).json()["wizard_token"]
     r = await c.get(
         "/api/setup/validate-token",
@@ -177,7 +177,7 @@ async def test_finish_requires_wizard_token(env: Any) -> None:
 
 async def test_finish_returns_ok_with_valid_token(env: Any) -> None:
     c, _srv, home = env
-    pw = read_password(Path.home())
+    pw = read_password(home)
     tok = (await c.post("/api/setup/verify-password", json={"password": pw})).json()["wizard_token"]
     r = await c.post(
         "/api/setup/finish",
@@ -190,7 +190,7 @@ async def test_finish_returns_ok_with_valid_token(env: Any) -> None:
 
 async def test_finish_works_after_admin_created(env: Any) -> None:
     c, _srv, home = env
-    pw = read_password(Path.home())
+    pw = read_password(home)
     tok = (await c.post("/api/setup/verify-password", json={"password": pw})).json()["wizard_token"]
     await c.post(
         "/api/setup/initial-admin",
@@ -208,7 +208,7 @@ async def test_finish_works_after_admin_created(env: Any) -> None:
 
 async def test_validate_token_still_valid_after_admin_created(env: Any) -> None:
     c, _srv, home = env
-    pw = read_password(Path.home())
+    pw = read_password(home)
     tok = (await c.post("/api/setup/verify-password", json={"password": pw})).json()["wizard_token"]
     await c.post(
         "/api/setup/initial-admin",
@@ -239,7 +239,7 @@ async def test_test_provider_requires_wizard_token(env: Any) -> None:
 
 async def test_test_provider_returns_error_for_bad_key(env: Any) -> None:
     c, _srv, home = env
-    pw = read_password(Path.home())
+    pw = read_password(home)
     tok = (await c.post("/api/setup/verify-password", json={"password": pw})).json()["wizard_token"]
     r = await c.post(
         "/api/setup/test-provider",
@@ -255,25 +255,35 @@ async def test_test_provider_returns_error_for_bad_key(env: Any) -> None:
     assert r.json()["ok"] is False
 
 
-async def test_resume_wizard_after_admin_created(env: Any) -> None:
+def _assert_resume_wizard_absent(response: Any) -> None:
+    """A removed POST is 404, or 405 when the GET-only SPA catch-all is mounted."""
+    assert response.status_code in (404, 405)
+    assert "wizard_token" not in response.text
+
+
+async def test_resume_wizard_does_not_issue_token(env: Any) -> None:
     c, _srv, home = env
-    pw = read_password(Path.home())
+    _assert_resume_wizard_absent(await c.post("/api/setup/resume-wizard"))
+
+    pw = read_password(home)
     tok = (await c.post("/api/setup/verify-password", json={"password": pw})).json()["wizard_token"]
     await c.post(
         "/api/setup/initial-admin",
         json={"username": "admin", "password": "TestPass12"},
         headers={"Authorization": f"Bearer {tok}"},
     )
-    r = await c.post("/api/setup/resume-wizard")
-    assert r.status_code == 200
-    body = r.json()
-    assert isinstance(body["wizard_token"], str)
-    assert body["expires_in"] > 0
+    _assert_resume_wizard_absent(await c.post("/api/setup/resume-wizard"))
+    still = await c.get(
+        "/api/setup/validate-token",
+        headers={"Authorization": f"Bearer {tok}"},
+    )
+    assert still.status_code == 200
+    assert still.json()["valid"] is True
 
 
 async def test_test_provider_accepts_admin_jwt_after_admin_created(env: Any) -> None:
     c, srv, home = env
-    pw = read_password(Path.home())
+    pw = read_password(home)
     tok = (await c.post("/api/setup/verify-password", json={"password": pw})).json()["wizard_token"]
     admin = (
         await c.post(
@@ -300,7 +310,7 @@ async def test_test_provider_accepts_admin_jwt_after_admin_created(env: Any) -> 
 
 async def test_finish_saves_provider_with_admin_jwt(env: Any) -> None:
     c, srv, home = env
-    pw = read_password(Path.home())
+    pw = read_password(home)
     tok = (await c.post("/api/setup/verify-password", json={"password": pw})).json()["wizard_token"]
     admin = (
         await c.post(
@@ -361,7 +371,7 @@ async def test_finish_saves_provider_with_admin_jwt(env: Any) -> None:
 
 async def test_setup_410_after_admin_exists(env: Any) -> None:
     c, _srv, home = env
-    pw = read_password(Path.home())
+    pw = read_password(home)
     tok = (await c.post("/api/setup/verify-password", json={"password": pw})).json()["wizard_token"]
     await c.post(
         "/api/setup/initial-admin",
@@ -369,11 +379,11 @@ async def test_setup_410_after_admin_exists(env: Any) -> None:
         headers={"Authorization": f"Bearer {tok}"},
     )
     # Plant a stale file to verify the 410 guard does not touch it.
-    (Path.home() / WIZARD_FILE_NAME).write_text("stale\n", encoding="utf-8")
+    (home / WIZARD_FILE_NAME).write_text("stale\n", encoding="utf-8")
     r = await c.post("/api/setup/verify-password", json={"password": "stale"})
     assert r.status_code == 410
     # The wizard password file is never deleted by the app, even on the 410 path.
-    assert (Path.home() / WIZARD_FILE_NAME).exists()
+    assert (home / WIZARD_FILE_NAME).exists()
 
 
 # ─── lockdown middleware ───────────────────────────────────────────
@@ -401,7 +411,7 @@ async def test_lockdown_allows_health_path(env: Any) -> None:
 
 async def test_lockdown_lifts_after_admin_created(env: Any) -> None:
     c, _srv, home = env
-    pw = read_password(Path.home())
+    pw = read_password(home)
     tok = (await c.post("/api/setup/verify-password", json={"password": pw})).json()["wizard_token"]
     await c.post(
         "/api/setup/initial-admin",
@@ -415,7 +425,7 @@ async def test_lockdown_lifts_after_admin_created(env: Any) -> None:
 
 async def test_finish_rejects_invalid_token_after_admin_exists(env: Any) -> None:
     c, _srv, home = env
-    pw = read_password(Path.home())
+    pw = read_password(home)
     tok = (await c.post("/api/setup/verify-password", json={"password": pw})).json()["wizard_token"]
     await c.post(
         "/api/setup/initial-admin",
@@ -428,3 +438,11 @@ async def test_finish_rejects_invalid_token_after_admin_exists(env: Any) -> None
         headers={"Authorization": "Bearer faketoken"},
     )
     assert r.status_code == 401
+
+
+async def test_wizard_password_relocated_to_octop_home(env: Any) -> None:
+    _c, srv, home = env
+    assert srv.paths.root == home
+    assert (home / WIZARD_FILE_NAME).is_file()
+    assert not (Path.home() / WIZARD_FILE_NAME).exists()
+    assert read_password(home) is not None

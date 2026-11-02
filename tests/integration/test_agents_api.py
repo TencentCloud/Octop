@@ -27,6 +27,27 @@ async def test_create_and_list(env):
     assert any(a["id"] == agent_id for a in r.json())
 
 
+async def test_list_survives_text_datetime_updated_at(env):
+    c, srv, auth = env
+    created = await c.post(
+        "/api/agents",
+        headers=auth,
+        json={"name": "dirty-ts"},
+    )
+    assert created.status_code == 201, created.text
+    agent_id = created.json()["agent_id"]
+    local = f"/api/agents/{agent_id}/avatar"
+    with srv.services.db.transaction() as conn:
+        conn.execute(
+            "UPDATE agents SET updated_at = ?, icon_url = ? WHERE agent_id = ?",
+            ("2026-10-08 17:56:48", local, agent_id),
+        )
+    listed = await c.get("/api/agents", headers=auth)
+    assert listed.status_code == 200, listed.text
+    row = next(a for a in listed.json() if a["agent_id"] == agent_id)
+    assert row["icon_url"].startswith(f"{local}?v=")
+
+
 async def test_agent_runtime_fields_are_first_class_api_fields(env):
     c, _, auth = env
     r = await c.post(

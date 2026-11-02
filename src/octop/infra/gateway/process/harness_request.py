@@ -6,9 +6,13 @@ from collections.abc import Sequence
 from typing import Any
 
 from octop_gateway.media import MediaBackend
-from octop_gateway.models import ContentPart, ImageContent, InboundMessage, TextContent
+from octop_gateway.models import ContentPart, FileContent, ImageContent, InboundMessage, TextContent
 
-from octop.i18n.domains.attachment import attachment_empty_image, attachment_empty_message
+from octop.i18n.domains.attachment import (
+    attachment_empty_image,
+    attachment_empty_message,
+    attachment_extracted_body,
+)
 from octop.infra.gateway.media.attachment_hints import (
     VISION_MAX_COUNT,
     content_blocks_need_vision,
@@ -17,6 +21,11 @@ from octop.infra.gateway.media.attachment_hints import (
 )
 from octop.infra.gateway.media.ingress import AgentBackedMediaBackend
 from octop.infra.gateway.process.message_keys import images_from_message
+from octop.infra.utils.anydoc_convert import (
+    extract_markdown,
+    prefers_anydoc,
+    truncate_for_chat,
+)
 from octop.infra.utils.locale import Locale, normalize_locale
 
 
@@ -24,6 +33,34 @@ def _workspace_from_media_backend(media_backend: MediaBackend | None) -> Any:
     if isinstance(media_backend, AgentBackedMediaBackend):
         return media_backend._workspace
     return None
+
+
+async def _extracted_document_texts(
+    msg: InboundMessage,
+    *,
+    media_backend: MediaBackend | None,
+    locale: str | Locale,
+) -> list[str]:
+    """Inline Markdown for OLE office attachments (``.wps`` / ``.doc``) via anydoc."""
+    if media_backend is None or not hasattr(media_backend, "read"):
+        return []
+    blocks: list[str] = []
+    for part in msg.content:
+        if not isinstance(part, FileContent) or not part.local_path:
+            continue
+        filename = part.filename or part.local_path.rsplit("/", 1)[-1]
+        media_type = part.mime_type or ""
+        if not prefers_anydoc(filename=filename, media_type=media_type):
+            continue
+        try:
+            data = await media_backend.read(part.local_path)
+        except Exception:
+            continue
+        markdown = truncate_for_chat(extract_markdown(data, filename=filename))
+        if not markdown:
+            continue
+        blocks.append(attachment_extracted_body(filename=filename, body=markdown, locale=locale))
+    return blocks
 
 
 def _group_turn_text(
@@ -151,7 +188,8 @@ async def build_content_from_message(
             continue
         image_blocks.append(block)
 
-    current_text = "\n\n".join(part for part in [msg.text or "", *file_hints] if part)
+    extracted = await _extracted_document_texts(msg, media_backend=media_backend, locale=locale)
+    current_text = "\n\n".join(part for part in [msg.text or "", *file_hints, *extracted] if part)
     combined_text = _group_turn_text(msg, current_text, workspace=workspace, locale=locale)
 
     if not image_blocks:
@@ -264,8 +302,10 @@ def build_harness_request(
     content: str | list[dict[str, Any]] | None = None,
     messages: list[Any] | None = None,
     model: str | None = None,
+    auto_route: bool = False,
     message_kwargs: dict[str, Any] | None = None,
     reasoning_overrides: dict[str, Any] | None = None,
+    message_id: str | None = None,
 ) -> dict[str, Any]:
     if messages is not None:
         req: dict[str, Any] = {
@@ -277,6 +317,8 @@ def build_harness_request(
         if agent_id is not None:
             req["agent_id"] = agent_id
         configurable: dict[str, Any] = {}
+        if auto_route:
+            configurable["octop_auto_route"] = True
         if session_key is not None:
             configurable["session_key"] = session_key
         if reasoning_overrides:
@@ -288,19 +330,20 @@ def build_harness_request(
         return req
 
     payload = content if content is not None else build_content(text=text, images=images)
-
-    if isinstance(payload, list):
+    stored_id = (message_id or "").strip() or None
+    kwargs = dict(message_kwargs or {})
+    if isinstance(payload, list) or kwargs or stored_id:
         from langchain_core.messages import HumanMessage  # noqa: PLC0415
 
-        kwargs = dict(message_kwargs or {})
-        msg_list: list[Any] = [HumanMessage(content=payload, additional_kwargs=kwargs)]  # type: ignore[arg-type]
+        msg_list: list[Any] = [
+            HumanMessage(
+                content=payload,  # type: ignore[arg-type]
+                additional_kwargs=kwargs,
+                **({"id": stored_id} if stored_id else {}),
+            )
+        ]
     else:
-        if message_kwargs:
-            from langchain_core.messages import HumanMessage  # noqa: PLC0415
-
-            msg_list = [HumanMessage(content=payload, additional_kwargs=dict(message_kwargs))]
-        else:
-            msg_list = [{"role": "user", "content": payload}]
+        msg_list = [{"role": "user", "content": payload}]
 
     req = {
         "messages": msg_list,
@@ -311,6 +354,8 @@ def build_harness_request(
     if agent_id is not None:
         req["agent_id"] = agent_id
     configurable = {}
+    if auto_route:
+        configurable["octop_auto_route"] = True
     if session_key is not None:
         configurable["session_key"] = session_key
     if reasoning_overrides:

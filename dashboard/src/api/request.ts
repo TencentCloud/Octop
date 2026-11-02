@@ -302,6 +302,9 @@ function buildAuthHeaders(path: string): Record<string, string> {
 
 let _redirectingToLogin = false;
 
+/** 401 codes that mean this Octop session is no longer valid. */
+const SESSION_UNAUTHORIZED_CODES = new Set(["AUTH_FAILED", "TOKEN_EXPIRED"]);
+
 /**
  * Send the user to the login screen exactly once, no matter how many parallel
  * requests report an expired session.
@@ -330,11 +333,32 @@ function handleUnauthorized(): void {
  * Handle 401 responses: clear token, redirect to login, and throw.
  * Shared by request(), requestBlob(), and requestUpload().
  */
+async function errorCodeOf(response: Response): Promise<string | undefined> {
+  try {
+    const body = (await response.clone().json()) as {
+      error?: { code?: string };
+    };
+    const code = body?.error?.code;
+    return typeof code === "string" && code.trim() ? code : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 async function throwIfUnauthorized(
   path: string,
   response: Response,
 ): Promise<void> {
   if (response.status !== 401 || path.startsWith("/auth/")) {
+    return;
+  }
+  const code = await errorCodeOf(response);
+  // Business 401s (peer login, etc.) are not a dead local session.
+  if (
+    code &&
+    !SESSION_UNAUTHORIZED_CODES.has(code) &&
+    !path.startsWith("/setup/")
+  ) {
     return;
   }
   clearAuthToken();

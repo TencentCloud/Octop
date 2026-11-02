@@ -36,6 +36,8 @@ import {
 import { useTranslation } from "react-i18next";
 import { useSearchParams } from "react-router-dom";
 import { pluginsApi, type InstalledPlugin } from "../../../api/modules/plugins";
+import type { ResourceVisibilityMode } from "../../../api/modules/userGroups";
+import { ResourceVisibilityCollapse } from "../../../components/ResourceVisibilityFields";
 import { ResizableTable } from "../../../components/ResizableTable";
 import { CardSkeleton } from "../../../components/Skeleton";
 import { useCardTableView } from "../../../hooks/useCardTableView";
@@ -612,6 +614,45 @@ export function InstalledPluginsPanel() {
                 }
               />
             </div>
+
+            <ResourceVisibilityCollapse
+              allowOwner={false}
+              visibility={detail.visibility === "groups" ? "groups" : "all"}
+              groupIds={detail.group_ids ?? []}
+              hint={t("resourceVisibility.groupAccessHint")}
+              defaultOpen={detail.visibility === "groups"}
+              onChange={(next) => {
+                const nextVisibility: ResourceVisibilityMode =
+                  next.visibility === "groups" ? "groups" : "all";
+                if (nextVisibility === "groups" && next.groupIds.length === 0) {
+                  setDetail({
+                    ...detail,
+                    visibility: "groups",
+                    group_ids: [],
+                  });
+                  return;
+                }
+                void pluginsApi
+                  .setVisibility(detail.id, {
+                    visibility: nextVisibility,
+                    group_ids: nextVisibility === "groups" ? next.groupIds : [],
+                  })
+                  .then((updated) => {
+                    setDetail(updated);
+                    setPlugins((prev) =>
+                      prev.map((row) =>
+                        row.id === updated.id ? updated : row,
+                      ),
+                    );
+                    message.success(t("plugins.visibilitySaved"));
+                  })
+                  .catch((err: unknown) => {
+                    message.error(
+                      apiErrorMessage(err, t("plugins.visibilityFailed"), t),
+                    );
+                  });
+              }}
+            />
 
             <section className={styles.drawerSection}>
               <h4 className={styles.drawerSectionTitle}>

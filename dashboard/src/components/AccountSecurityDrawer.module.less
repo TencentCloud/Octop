@@ -1,0 +1,356 @@
+.drawer {
+  :global(.ant-drawer-header) {
+    padding: 16px 22px;
+    border-bottom: 1px solid var(--fn-border-subtle, rgba(0, 0, 0, 0.06));
+  }
+
+  :global(.ant-drawer-title) {
+    font-size: 16px;
+    font-weight: 600;
+    letter-spacing: -0.011em;
+    color: var(--fn-text-primary);
+  }
+
+  :global(.ant-drawer-body) {
+    padding: 16px 18px 28px;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior: contain;
+    background: var(--fn-bg-secondary, #f7f8fa);
+  }
+}
+
+.body {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.introBlock {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 2px 4px 0;
+}
+
+.intro {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--fn-text-secondary);
+  text-wrap: pretty;
+}
+
+.note {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--fn-text-tertiary);
+  text-wrap: pretty;
+}
+
+.stack {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.card {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 14px 16px;
+  border: 1px solid var(--fn-border-subtle, rgba(0, 0, 0, 0.08));
+  border-radius: var(--fn-radius-lg, 12px);
+  background: var(--fn-bg-elevated, #fff);
+  box-shadow: var(--fn-shadow-xs);
+}
+
+.cardTop {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.cardLead {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+}
+
+.cardIdentity {
+  display: flex;
+  flex: 1;
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  min-width: 0;
+}
+
+.cardSide {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 6px;
+  min-width: 0;
+  padding-left: 48px;
+}
+
+.iconWrap {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  flex-shrink: 0;
+  border-radius: 10px;
+  background: var(--fn-bg-tertiary, #f0f1f3);
+  color: var(--fn-text-secondary);
+}
+
+.iconWrapOn {
+  background: var(--fn-bg-success-light, #ecfdf5);
+  color: var(--fn-color-success, #10b981);
+}
+
+.cardTitle {
+  margin: 0;
+  min-width: 0;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--fn-text-primary);
+  line-height: 1.35;
+  text-wrap: balance;
+}
+
+.cardDesc {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.45;
+  color: var(--fn-text-secondary);
+  text-wrap: pretty;
+}
+
+.tips {
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: var(--fn-bg-secondary, #f7f8fa);
+}
+
+.tipLabel {
+  margin: 0 0 4px;
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.4;
+  color: var(--fn-text-primary);
+}
+
+.tipList {
+  margin: 0;
+  padding-left: 1.15em;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+
+  li {
+    font-size: 12px;
+    line-height: 1.45;
+    color: var(--fn-text-secondary);
+    text-wrap: pretty;
+  }
+}
+
+.inlineLink {
+  color: var(--fn-text-link, var(--fn-accent));
+  white-space: nowrap;
+}
+
+.downloadLine {
+  margin: 6px 0 0;
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--fn-text-secondary);
+  word-break: break-all;
+
+  a {
+    display: block;
+    margin-top: 2px;
+    color: var(--fn-text-link, var(--fn-accent));
+    text-decoration: underline;
+    text-underline-offset: 2px;
+  }
+}
+
+.passwordForm {
+  :global(.octop-form-item),
+  :global(.ant-form-item) {
+    margin-bottom: 12px;
+  }
+}
+
+.cardActions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  max-width: 100%;
+
+  :global(.ant-btn) {
+    max-width: 100%;
+    height: auto;
+    min-height: 32px;
+    white-space: normal;
+    line-height: 1.3;
+  }
+}
+
+.statusPill {
+  display: inline-flex;
+  align-items: center;
+  height: 22px;
+  max-width: 100%;
+  padding: 0 8px;
+  border-radius: var(--fn-radius-full, 999px);
+  background: var(--fn-bg-tertiary, #f0f1f3);
+  color: var(--fn-text-secondary);
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.statusPillOn {
+  background: var(--fn-bg-success-light, #ecfdf5);
+  color: var(--fn-color-success, #059669);
+}
+
+.cardExtra {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-width: 0;
+  padding-top: 12px;
+  border-top: 1px solid var(--fn-border-subtle, rgba(0, 0, 0, 0.06));
+}
+
+.passkeyList {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.passkeyRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 8px 8px 12px;
+  border-radius: 10px;
+  background: var(--fn-bg-secondary, #f7f8fa);
+}
+
+.passkeyMeta {
+  min-width: 0;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.passkeyName {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--fn-text-primary);
+  line-height: 1.35;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.passkeySub {
+  font-size: 12px;
+  color: var(--fn-text-tertiary);
+  line-height: 1.4;
+}
+
+.enrollBox {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 12px;
+  margin-left: 48px;
+  padding: 12px;
+  border-radius: 10px;
+  background: var(--fn-bg-secondary, #f7f8fa);
+
+  :global(.ant-input) {
+    width: 100%;
+  }
+}
+
+.qrWrap {
+  align-self: center;
+  padding: 10px;
+  border-radius: 12px;
+  background: #fff;
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.06);
+}
+
+.loading {
+  display: flex;
+  justify-content: center;
+  padding: 48px 0;
+}
+
+.reauthHint {
+  margin: 0 0 14px;
+  font-size: 13px;
+  line-height: 1.55;
+  color: var(--fn-text-secondary);
+}
+
+.recoveryWarn {
+  margin-bottom: 12px;
+}
+
+.recoveryList {
+  list-style: none;
+  margin: 0;
+  padding: 6px;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px;
+  border-radius: 12px;
+  background: var(--fn-bg-tertiary, rgba(0, 0, 0, 0.04));
+
+  li {
+    margin: 0;
+    padding: 8px 10px;
+    border-radius: 8px;
+    background: var(--fn-bg-elevated, #fff);
+    color: var(--fn-text-primary);
+    font-family: var(--fn-font-mono, ui-monospace, monospace);
+    font-size: 13px;
+    line-height: 1.4;
+    letter-spacing: 0.01em;
+    text-align: center;
+    word-break: break-all;
+  }
+}
+
+@media (max-width: 640px) {
+  .cardSide,
+  .enrollBox {
+    margin-left: 0;
+    padding-left: 0;
+  }
+
+  .recoveryList {
+    grid-template-columns: 1fr;
+  }
+}

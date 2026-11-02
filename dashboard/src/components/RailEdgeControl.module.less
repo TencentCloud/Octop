@@ -10,11 +10,6 @@
   pointer-events: auto;
 
   &:hover {
-    .btn {
-      opacity: 1;
-      transform: translateY(-50%) scale(1);
-    }
-
     .line {
       background: var(--fn-color-brand);
       opacity: 0.55;
@@ -53,50 +48,56 @@
 .btn {
   position: absolute;
   top: 50%;
+  left: 50%;
   z-index: 1;
-  display: flex;
+  display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 14px;
-  height: 36px;
-  border: none;
-  border-radius: 0;
-  background: transparent;
-  color: var(--fn-text-tertiary);
-  box-shadow: none;
+  width: 18px;
+  height: 44px;
+  padding: 0;
+  border: 1px solid var(--fn-border-secondary);
+  border-radius: 8px;
+  background: var(--fn-bg-elevated, var(--fn-bg-secondary));
+  color: var(--fn-text-secondary);
+  box-shadow: 0 1px 4px
+    color-mix(in srgb, var(--fn-text-primary) 8%, transparent);
   cursor: pointer;
+  transform: translate(-50%, -50%);
   opacity: 0;
-  transform: translateY(-50%) scale(0.96);
+  pointer-events: none;
   transition:
     opacity 0.15s ease,
-    transform 0.15s ease,
-    color 0.15s ease;
-  padding: 0;
+    color 0.15s ease,
+    border-color 0.15s ease,
+    background 0.15s ease,
+    box-shadow 0.15s ease;
 
   &:hover {
+    border-color: var(--fn-border-primary);
+    background: var(--fn-bg-secondary);
     color: var(--fn-text-primary);
+    box-shadow: 0 2px 8px
+      color-mix(in srgb, var(--fn-text-primary) 12%, transparent);
   }
 
   &:focus-visible {
     outline: 2px solid var(--fn-color-brand);
     outline-offset: 1px;
-    opacity: 1;
   }
 }
 
-.chevron {
-  display: block;
-  flex-shrink: 0;
+.edge:hover .btn,
+.btn:focus-visible {
+  opacity: 1;
+  pointer-events: auto;
 }
 
-/* Expanded: collapse button sits to the left of the vertical line */
-.edgeExpanded .btn {
-  right: calc(50% + 1px);
-  left: auto;
+/* Two pills on one shared divider: keep a gap so they do not overlap. */
+.btnBefore {
+  transform: translate(calc(-100% - 3px), -50%);
 }
 
-/* Collapsed: expand button sits to the right of the vertical line */
-.edgeCollapsed .btn {
-  left: calc(50% + 1px);
-  right: auto;
+.btnAfter {
+  transform: translate(3px, -50%);
 }

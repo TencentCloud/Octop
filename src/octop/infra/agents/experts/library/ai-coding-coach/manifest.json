@@ -1,5 +1,6 @@
 {
   "id": "ai-coding-coach",
+  "scene": "education",
   "label": {
     "zh": "AI 编程实战导师",
     "en": "AI Coding Coach"
@@ -20,51 +21,99 @@
   "quick_prompts": [
     {
       "title": {
-        "zh": "上下文管理技巧",
-        "en": "Context management"
+        "zh": "上下文管理",
+        "en": "Manage context"
       },
       "description": {
-        "zh": "让 AI 在长任务里不丢失关键信息",
-        "en": "Keep AI focused across long tasks"
+        "zh": "让 AI 在长任务里不丢掉关键信息",
+        "en": "Keep the important context across a long task"
       },
       "prompt": {
         "zh": "我在长任务里总感觉 AI 越聊越乱、遗漏上下文。请给我一套上下文管理的具体技巧（CLAUDE.md、子代理、文件引用、压缩策略等）。",
         "en": "Give me concrete context-management techniques for long AI coding sessions."
       },
-      "color": "#dbeafe",
-      "icon_name": "layers"
+      "color": "#e8f4ff",
+      "icon_name": "book-open"
     },
     {
       "title": {
-        "zh": "任务分解与提示词",
-        "en": "Decompose & prompt"
+        "zh": "拆解任务",
+        "en": "Decompose a task"
       },
       "description": {
-        "zh": "把大需求拆成 AI 好执行的小步",
-        "en": "Break a big ask into AI-friendly steps"
+        "zh": "把大需求拆成可验收的小步和提示词",
+        "en": "Break a large ask into testable steps and prompts"
       },
       "prompt": {
         "zh": "请教我如何把一个大功能需求分解成 AI 容易执行的小步骤，并写出高质量的任务提示词（目标清晰、约束明确、验收可测）。",
         "en": "Teach me to decompose a big feature into AI-friendly steps with high-quality prompts."
       },
-      "color": "#e8f4ff",
-      "icon_name": "split"
+      "color": "#dcfce7",
+      "icon_name": "list-todo"
     },
     {
       "title": {
-        "zh": "工具选型建议",
-        "en": "Tool selection"
+        "zh": "选择工具",
+        "en": "Choose a tool"
       },
       "description": {
-        "zh": "我该用哪款 AI 编程工具",
-        "en": "Which AI coding tool fits"
+        "zh": "按场景对比该用哪款 AI 编程工具",
+        "en": "Compare AI coding tools for this situation"
       },
       "prompt": {
         "zh": "我想选一款 AI 编程工具，请基于我的场景（团队/个人、语言、是否要 agent 自主执行）对比 Claude Code / Cursor / Codex / Copilot / Aider 等的取舍。",
         "en": "Compare Claude Code / Cursor / Codex / Copilot / Aider for my scenario."
       },
       "color": "#fef3c7",
-      "icon_name": "git-compare"
+      "icon_name": "cpu"
+    },
+    {
+      "title": {
+        "zh": "调试策略",
+        "en": "Debug with AI"
+      },
+      "description": {
+        "zh": "先复现和定位，再让 AI 改代码",
+        "en": "Reproduce and locate the bug before editing"
+      },
+      "prompt": {
+        "zh": "AI 改了好几轮这个 bug 还在。请教我一套调试策略：怎样让它先复现、看错误和日志，而不是反复用同一条提示词重试。",
+        "en": "The bug is still there after several AI edits. Teach me a debugging strategy: reproduce it and read the error before retrying the same prompt."
+      },
+      "color": "#f3e8ff",
+      "icon_name": "terminal"
+    },
+    {
+      "title": {
+        "zh": "测试方法",
+        "en": "Testing approach"
+      },
+      "description": {
+        "zh": "用测试定义完成，并让 AI 自己跑",
+        "en": "Define done with tests and have the AI run them"
+      },
+      "prompt": {
+        "zh": "请教我怎么用测试约束 AI 编程：先写什么测试、怎样防止它只补实现不跑测试，以及回归该怎么留。",
+        "en": "Teach me how to constrain AI coding with tests: what to write first, how to make it run the tests, and what regression to keep."
+      },
+      "color": "#eef2ff",
+      "icon_name": "activity"
+    },
+    {
+      "title": {
+        "zh": "审查代码",
+        "en": "Review AI code"
+      },
+      "description": {
+        "zh": "让 AI 当审查者，也反向检查它的改动",
+        "en": "Use AI as a reviewer and check its own diff"
+      },
+      "prompt": {
+        "zh": "请用代码审查的方式看这段 AI 生成的改动：正确性、可维护性、边界和安全。先列问题，再给修改建议。",
+        "en": "Review this AI-generated change for correctness, maintainability, edge cases, and security. List the issues, then suggest fixes."
+      },
+      "color": "#fdf4e7",
+      "icon_name": "shield-check"
     }
   ],
   "task_examples": {

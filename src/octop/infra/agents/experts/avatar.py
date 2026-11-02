@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 from contextlib import suppress
+from datetime import datetime
 from pathlib import Path, PurePosixPath
 from typing import Any, Protocol
 
@@ -48,11 +49,37 @@ def published_expert_avatar_api_path(expert_id: str) -> str:
     return f"/api/experts/published/{expert_id}/avatar"
 
 
+def _icon_cache_version(updated_at: int | str | None) -> int:
+    """Coerce ``updated_at`` to a unix epoch for cache-busting.
+
+    SQLite INTEGER columns can still hold a text datetime (portable restores,
+    ``datetime('now')`` writes). Never raise — a bad stamp must not 500 the
+    agent list.
+    """
+    if updated_at is None:
+        return 0
+    if isinstance(updated_at, bool):
+        return 0
+    if isinstance(updated_at, int):
+        return updated_at
+    text = str(updated_at).strip()
+    if not text:
+        return 0
+    try:
+        return int(text)
+    except ValueError:
+        pass
+    try:
+        return int(datetime.fromisoformat(text.replace("Z", "+00:00")).timestamp())
+    except ValueError:
+        return 0
+
+
 def display_agent_icon_url(
     *,
     agent_id: str,
     stored: str | None,
-    updated_at: int | None = None,
+    updated_at: int | str | None = None,
 ) -> str | None:
     """Return the public ``icon_url``, cache-busting local workspace avatars."""
     text = str(stored or "").strip()
@@ -61,7 +88,7 @@ def display_agent_icon_url(
     local = agent_avatar_api_path(agent_id)
     if text.split("?", 1)[0] != local:
         return text
-    version = int(updated_at or 0)
+    version = _icon_cache_version(updated_at)
     if version <= 0:
         return local
     return f"{local}?v={version}"

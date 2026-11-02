@@ -1,0 +1,39 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" role="img" aria-label="team-pair">
+  <defs>
+    <linearGradient id="bg-team-pair" x1="20" y1="8" x2="110" y2="120" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#FCE7F3"/>
+      <stop offset="1" stop-color="#FBCFE8"/>
+    </linearGradient>
+  </defs>
+  <rect width="128" height="128" rx="32" fill="url(#bg-team-pair)"/>
+
+  <path d="M6 118 Q10 96 30 90 Q48 86 58 94 L56 118 Z" fill="#DB2777"/>
+  <path d="M18 58 Q16 36 38 30 Q60 36 58 58 Q52 42 38 40 Q24 42 18 58Z" fill="#831843"/>
+  <rect x="32" y="80" width="12" height="12" rx="5" fill="#F5D0B0"/>
+  <ellipse cx="38" cy="64" rx="18" ry="20" fill="#F5D0B0"/>
+  <ellipse cx="22" cy="66" rx="3.2" ry="4.4" fill="#F5D0B0"/>
+  <path d="M24 50 Q38 58 52 50 Q48 44 38 42 Q28 44 24 50Z" fill="#831843"/>
+  <ellipse cx="31" cy="62" rx="2.3" ry="2.8" fill="#831843"/>
+  <ellipse cx="45" cy="62" rx="2.3" ry="2.8" fill="#831843"/>
+  <circle cx="32" cy="61" r="0.8" fill="#fff"/>
+  <circle cx="46" cy="61" r="0.8" fill="#fff"/>
+  <path d="M31 73 Q38 79 45 73" fill="none" stroke="#B45309" stroke-width="1.8" stroke-linecap="round"/>
+  <circle cx="26" cy="72" r="2.8" fill="#F9A8D4" opacity="0.35"/>
+
+  <path d="M70 94 Q80 86 98 90 Q116 96 122 118 H72 Z" fill="#A855F7"/>
+  <path d="M72 58 Q70 36 92 30 Q114 36 112 58 Q106 42 92 40 Q78 42 72 58Z" fill="#4C1D95"/>
+  <rect x="84" y="80" width="12" height="12" rx="5" fill="#E8C4A0"/>
+  <ellipse cx="90" cy="64" rx="18" ry="20" fill="#E8C4A0"/>
+  <ellipse cx="106" cy="66" rx="3.2" ry="4.4" fill="#E8C4A0"/>
+  <path d="M78 50 Q92 58 106 50 Q102 44 92 42 Q82 44 78 50Z" fill="#4C1D95"/>
+  <ellipse cx="83" cy="62" rx="2.3" ry="2.8" fill="#4C1D95"/>
+  <ellipse cx="97" cy="62" rx="2.3" ry="2.8" fill="#4C1D95"/>
+  <circle cx="84" cy="61" r="0.8" fill="#fff"/>
+  <circle cx="98" cy="61" r="0.8" fill="#fff"/>
+  <path d="M83 73 Q90 79 97 73" fill="none" stroke="#B45309" stroke-width="1.8" stroke-linecap="round"/>
+  <circle cx="102" cy="72" r="2.8" fill="#F9A8D4" opacity="0.35"/>
+
+  <circle cx="64" cy="92" r="4.5" fill="#FDE68A"/>
+  <path d="M64 85 L65.2 90.2 L71 90.2 L66.4 93.4 L68.2 98.5 L64 95.4 L59.8 98.5 L61.6 93.4 L57 90.2 L62.8 90.2 Z" fill="#F59E0B"/>
+
+</svg>
