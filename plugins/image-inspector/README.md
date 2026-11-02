@@ -29,7 +29,9 @@ agent in Tool management.
 
 The tool is manual. It does not run automatically after generation and does not
 modify the image. Each call sends the image as a data URL to a dedicated model
-request, so it consumes model tokens in addition to the outer agent turn.
+request, so it consumes model tokens in addition to the outer agent turn. That
+request is isolated from the parent conversation stream; its review is returned
+only as the tool result and is not sent to the user as a separate message.
 
 ## Security
 

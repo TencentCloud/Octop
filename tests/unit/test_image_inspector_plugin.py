@@ -7,6 +7,10 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+from langchain_core.callbacks import BaseCallbackHandler
+from langchain_core.language_models.fake_chat_models import FakeMessagesListChatModel
+from langchain_core.messages import AIMessage
+from langchain_core.runnables.config import var_child_runnable_config
 from langchain_core.tools import StructuredTool
 from octop_harness.plugins import PluginRegistry, build_plugin_tools, load_plugin_dir
 from PIL import Image
@@ -37,6 +41,12 @@ def test_plugin_loads_and_registers_inspect_image() -> None:
 class _FakeModelAccess:
     def __init__(self, response: str) -> None:
         self.response = response
+        self.chat_model = _FakeChatModel(response)
+
+
+class _FakeChatModel:
+    def __init__(self, response: str) -> None:
+        self.response = response
         self.calls: list[tuple[list[Any], dict[str, Any]]] = []
 
     async def ainvoke(self, messages: list[Any], **kwargs: Any) -> str:
@@ -58,6 +68,19 @@ class _FakeModelFactory:
     ) -> _FakeModelAccess:
         self.specs.append((spec, kwargs))
         return self.access
+
+
+class _ChatModelStartCounter(BaseCallbackHandler):
+    def __init__(self) -> None:
+        self.starts = 0
+
+    def on_chat_model_start(
+        self,
+        serialized: dict[str, Any],
+        messages: list[list[Any]],
+        **kwargs: Any,
+    ) -> None:
+        self.starts += 1
 
 
 def _image_tool(
@@ -99,8 +122,8 @@ async def test_inspect_image_calls_multimodal_model_and_returns_text(
     assert result == "Layout is clean; no clipping detected."
     assert factory.specs[0][0] == "auto"
     assert "messages" in factory.specs[0][1]
-    assert len(access.calls) == 1
-    messages = access.calls[0][0]
+    assert len(access.chat_model.calls) == 1
+    messages = access.chat_model.calls[0][0]
     human_content = messages[1].content
     assert isinstance(human_content, list)
     image_blocks = [block for block in human_content if block["type"] == "image_url"]
@@ -108,6 +131,31 @@ async def test_inspect_image_calls_multimodal_model_and_returns_text(
     assert image_blocks[0]["image_url"]["url"].startswith("data:image/png;base64,")
     text_blocks = [block for block in human_content if block["type"] == "text"]
     assert "check clipping and alignment" in text_blocks[0]["text"]
+
+
+async def test_inspect_image_isolates_visual_review_from_parent_stream(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("OCTOP_HOME", str(tmp_path))
+    image_path = _workspace_image(tmp_path)
+    loaded = load_plugin_dir(_PLUGIN_DIR, install_deps=False)
+    access = _FakeModelAccess("Visual review result")
+    access.chat_model = FakeMessagesListChatModel(
+        responses=[AIMessage(content="Visual review result")]
+    )
+    assert loaded.context is not None
+    loaded.context.bind_model_factory(_FakeModelFactory(access))
+    tool = build_plugin_tools(global_plugins={"image-inspector": True})[0]
+    parent_handler = _ChatModelStartCounter()
+    token = var_child_runnable_config.set({"callbacks": [parent_handler]})
+    try:
+        result = await tool.ainvoke({"path": str(image_path)})
+    finally:
+        var_child_runnable_config.reset(token)
+
+    assert result == "Visual review result"
+    assert parent_handler.starts == 0
 
 
 @pytest.mark.parametrize(
@@ -131,7 +179,7 @@ async def test_inspect_image_supports_common_raster_formats(
     result = await tool.ainvoke({"path": str(image_path)})
 
     assert result == "Visual review result"
-    human_content = access.calls[0][0][1].content
+    human_content = access.chat_model.calls[0][0][1].content
     image_block = next(block for block in human_content if block["type"] == "image_url")
     assert image_block["image_url"]["url"].startswith(f"data:{expected_media_type};base64,")
 
@@ -149,7 +197,7 @@ async def test_inspect_image_rejects_outside_workspace(
 
     assert isinstance(result, str)
     assert result.startswith("Error: path is outside")
-    assert access.calls == []
+    assert access.chat_model.calls == []
 
 
 async def test_inspect_image_rejects_missing_file(
@@ -164,7 +212,7 @@ async def test_inspect_image_rejects_missing_file(
 
     assert isinstance(result, str)
     assert "image file not found" in result
-    assert access.calls == []
+    assert access.chat_model.calls == []
 
 
 async def test_inspect_image_rejects_directory(
@@ -180,7 +228,7 @@ async def test_inspect_image_rejects_directory(
 
     assert isinstance(result, str)
     assert "not a regular image file" in result
-    assert access.calls == []
+    assert access.chat_model.calls == []
 
 
 async def test_inspect_image_rejects_unsupported_content(
@@ -197,7 +245,7 @@ async def test_inspect_image_rejects_unsupported_content(
 
     assert isinstance(result, str)
     assert "unsupported image format" in result
-    assert access.calls == []
+    assert access.chat_model.calls == []
 
 
 async def test_inspect_image_rejects_oversized_file(
@@ -214,4 +262,4 @@ async def test_inspect_image_rejects_oversized_file(
 
     assert isinstance(result, str)
     assert "too large" in result
-    assert access.calls == []
+    assert access.chat_model.calls == []
