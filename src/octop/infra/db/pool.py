@@ -48,11 +48,12 @@ class SqlitePool:
         self._conn.execute("PRAGMA foreign_keys = ON")
         self._conn.execute("PRAGMA journal_mode = WAL")
         # WAL + FULL fsyncs every autocommit statement. On Windows that is
-        # FlushFileBuffers and dominates pytest (and the app). NORMAL is the
-        # SQLite-recommended WAL setting: an OS crash can drop the last
-        # transaction, an application crash cannot corrupt the file.
-        # Callers that need power-loss durability opt back into FULL.
-        self._conn.execute("PRAGMA synchronous = NORMAL")
+        # FlushFileBuffers and dominates pytest (and the app), so only Windows
+        # drops to NORMAL (SQLite's recommended WAL setting): an OS crash can
+        # drop the last transaction, an application crash cannot corrupt the
+        # file. Other platforms keep the default FULL.
+        if os.name == "nt":
+            self._conn.execute("PRAGMA synchronous = NORMAL")
         self._lock = threading.RLock()
         if first_create and os.name == "posix":
             os.chmod(self.path, 0o600)
