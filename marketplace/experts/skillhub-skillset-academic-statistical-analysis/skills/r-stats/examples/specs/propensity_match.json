@@ -1,0 +1,13 @@
+{
+  "dataset_path": "examples/data/observational_treatment.csv",
+  "analysis_type": "propensity_match",
+  "treatment_var": "treated",
+  "formula": "treated ~ age + female + comorbidity",
+  "outcome_var": "outcome",
+  "match_method": "nearest",
+  "caliper": 0.2,
+  "hypothesis": "Treatment reduces outcome after adjusting for confounders via propensity score matching",
+  "alpha": 0.05,
+  "seed": 42,
+  "output_dir": "output/propensity_match"
+}

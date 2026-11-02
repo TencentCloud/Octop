@@ -1,0 +1,12 @@
+{
+  "dataset_path": "examples/data/mediation_sim.csv",
+  "analysis_type": "mediation_analysis",
+  "treatment_var": "treatment",
+  "mediator_var": "mediator",
+  "outcome_var": "outcome",
+  "sims": 1000,
+  "hypothesis": "Treatment effect on outcome is mediated through the mediator variable",
+  "alpha": 0.05,
+  "seed": 42,
+  "output_dir": "output/mediation"
+}

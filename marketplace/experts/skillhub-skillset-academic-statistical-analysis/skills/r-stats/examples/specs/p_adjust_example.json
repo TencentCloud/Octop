@@ -1,0 +1,10 @@
+{
+  "dataset_path": "examples/data/airquality_missing.csv",
+  "analysis_type": "p_adjust",
+  "p_values": [0.001, 0.013, 0.029, 0.032, 0.048, 0.061, 0.12, 0.43],
+  "labels": ["Gene_A", "Gene_B", "Gene_C", "Gene_D", "Gene_E", "Gene_F", "Gene_G", "Gene_H"],
+  "p_adjust_method": "BH",
+  "alpha": 0.05,
+  "seed": 42,
+  "output_dir": "output/p_adjust_example"
+}

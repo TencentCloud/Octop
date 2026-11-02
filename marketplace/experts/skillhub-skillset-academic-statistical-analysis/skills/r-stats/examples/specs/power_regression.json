@@ -1,0 +1,1 @@
+{"dataset_path":"examples/data/mtcars.csv","analysis_type":"power_analysis","power_type":"power_regression","effect_size":0.15,"n":100,"n_predictors":3,"alpha":0.05,"hypothesis":"Power for medium effect (f²=0.15) regression with 3 predictors","seed":42,"output_dir":"output/power_regression"}

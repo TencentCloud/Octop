@@ -1,0 +1,1 @@
+{"dataset_path":"examples/data/mtcars.csv","analysis_type":"adaptive_design","n_stages":3,"boundary_type":"OF","alpha":0.025,"power":0.8,"effect_size":0.3,"seed":42,"output_dir":"output/adaptive_design"}

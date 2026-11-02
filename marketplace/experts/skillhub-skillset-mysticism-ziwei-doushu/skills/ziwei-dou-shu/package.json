@@ -1,0 +1,22 @@
+{
+  "name": "ziwei-dou-shu",
+  "version": "1.0.0",
+  "description": "北派紫微斗数排盘与解盘技能",
+  "main": "scripts/calculate.js",
+  "scripts": {
+    "calculate": "node scripts/calculate.js",
+    "interpret": "node scripts/interpret.js",
+    "format": "node scripts/format.js"
+  },
+  "dependencies": {
+    "iztro": "^2.3.0"
+  },
+  "keywords": [
+    "ziwei",
+    "astrology",
+    "chinese",
+    "fortune-telling"
+  ],
+  "author": "Neo",
+  "license": "MIT"
+}

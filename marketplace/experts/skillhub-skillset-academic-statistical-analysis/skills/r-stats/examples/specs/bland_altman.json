@@ -1,0 +1,1 @@
+{"dataset_path":"examples/data/bland_altman_data.csv","analysis_type":"bland_altman","method1_var":"method1","method2_var":"method2","hypothesis":"Two measurement methods agree","alpha":0.05,"seed":42,"output_dir":"output/bland_altman"}

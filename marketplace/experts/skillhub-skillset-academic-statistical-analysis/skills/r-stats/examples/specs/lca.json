@@ -1,0 +1,1 @@
+{"dataset_path":"examples/data/lca_indicators.csv","analysis_type":"lca","indicator_vars":["y1","y2","y3","y4","y5"],"max_classes":4,"seed":42,"output_dir":"output/lca"}

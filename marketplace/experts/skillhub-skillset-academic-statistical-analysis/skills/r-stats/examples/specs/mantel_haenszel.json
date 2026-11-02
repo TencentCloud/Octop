@@ -1,0 +1,11 @@
+{
+  "dataset_path": "examples/data/case_control.csv",
+  "analysis_type": "mantel_haenszel",
+  "exposure": "exposure",
+  "outcome": "outcome",
+  "strata": "age_group",
+  "hypothesis": "Association between exposure and outcome after adjusting for age group",
+  "alpha": 0.05,
+  "seed": 42,
+  "output_dir": "output/mantel_haenszel"
+}

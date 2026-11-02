@@ -1,0 +1,1 @@
+{"dataset_path":"examples/data/zero_inflated_counts.csv","analysis_type":"zero_inflated","formula":"count ~ x1 + x2","outcome":"count","zi_family":"poisson","alpha":0.05,"seed":42,"output_dir":"output/zero_inflated"}

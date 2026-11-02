@@ -1,0 +1,11 @@
+{
+  "dataset_path": "examples/data/iv_sim.csv",
+  "analysis_type": "iv_regression",
+  "formula": "outcome ~ endogenous | instrument",
+  "endogenous": "endogenous",
+  "instruments": ["instrument"],
+  "hypothesis": "Instrument identifies the causal effect of the endogenous variable on outcome",
+  "alpha": 0.05,
+  "seed": 42,
+  "output_dir": "output/iv_regression"
+}

@@ -1,0 +1,5 @@
+akshare>=1.10.0
+pandas>=1.5.0
+numpy>=1.23.0
+weasyprint>=60.0
+matplotlib>=3.7.0

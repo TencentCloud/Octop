@@ -1,0 +1,13 @@
+{
+  "dataset_path": "examples/data/case_control.csv",
+  "analysis_type": "odds_ratio",
+  "exposure": "exposure",
+  "outcome": "outcome",
+  "exposure_level": "Exposed",
+  "outcome_level": "Case",
+  "study_design": "case-control",
+  "hypothesis": "Exposure is associated with increased odds of being a case",
+  "alpha": 0.05,
+  "seed": 42,
+  "output_dir": "output/odds_ratio"
+}

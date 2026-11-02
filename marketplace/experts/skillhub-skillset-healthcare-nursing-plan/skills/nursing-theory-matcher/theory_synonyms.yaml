@@ -1,0 +1,329 @@
+version: 1.0.0
+skill_id: nursing-theory-matcher
+language: zh-CN
+
+synonyms:
+  orem_scdnt:
+    zh: [Orem自理缺陷理论, SCDNT, 自理, 自理缺陷]
+    en: [Orem's Self-Care Deficit Nursing Theory, SCDNT]
+    triggers: [自理, 自理缺陷, 护理支持系统]
+  roy_adaptation_model:
+    zh: [Roy适应模式, RAM, 适应, 调整]
+    en: [Roy Adaptation Model, RAM]
+    triggers: [适应, 调整, 角色功能]
+  neuman_systems_model:
+    zh: [Neuman系统模式, NSM, 压力源, 系统]
+    en: [Neuman Systems Model, NSM]
+    triggers: [压力源, 系统, 预防]
+  king_goal_attainment:
+    zh: [King目标达成理论, TGA, 目标达成, 共同决策]
+    en: [King's Theory of Goal Attainment, TGA]
+    triggers: [目标达成, 共同决策, 互动]
+  peplau_interpersonal:
+    zh: [Peplau人际关系理论, IRT, 治疗性关系, 沟通]
+    en: [Peplau's Interpersonal Relations Theory, IRT]
+    triggers: [治疗性关系, 沟通, 互动]
+  watson_human_caring:
+    zh: [Watson人文关怀理论, THC, 关怀, 人文照护]
+    en: [Watson's Theory of Human Caring, THC]
+    triggers: [关怀, 人文照护, 照护体验]
+  leininger_transcultural:
+    zh: [Leininger跨文化护理理论, TNT, 跨文化, 文化照护]
+    en: [Leininger's Transcultural Nursing Theory, TNT]
+    triggers: [跨文化, 文化照护, 文化适配]
+  henderson_need_theory:
+    zh: [Henderson基本需要理论, Need Theory, 基本需要, 功能独立]
+    en: [Henderson's Need Theory, Need Theory]
+    triggers: [基本需要, 功能独立, 基础护理]
+  johnson_behavioral_system:
+    zh: [Johnson行为系统模式, BSM, 行为系统, 亚系统]
+    en: [Johnson's Behavioral System Model, BSM]
+    triggers: [行为系统, 亚系统, 平衡]
+  levine_conservation:
+    zh: [Levine保存理论, Conservation, 保存, 恢复]
+    en: [Levine's Conservation Model, Conservation]
+    triggers: [保存, 恢复, 能量]
+  rogers_unitary_human_beings:
+    zh: [Rogers整体人类科学, SUHB, 整体性, 能量场]
+    en: [Science of Unitary Human Beings, SUHB]
+    triggers: [整体性, 能量场, 模式]
+  parse_human_becoming:
+    zh: [Parse人类生成理论, HBT, 意义, 存在体验]
+    en: [Parse's Human Becoming Theory, HBT]
+    triggers: [意义, 存在体验, 共同创造]
+  newman_health_expanding_consciousness:
+    zh: [Newman健康扩展意识理论, HEC, 扩展意识, 生命历程]
+    en: [Health as Expanding Consciousness, HEC]
+    triggers: [扩展意识, 生命历程, 模式识别]
+  orlando_nursing_process:
+    zh: [Orlando护理过程理论, NPT-Orlando, 护理过程, 即时反应]
+    en: [Orlando's Nursing Process Theory, NPT-Orlando]
+    triggers: [护理过程, 即时反应, 需求识别]
+  travelbee_human_to_human:
+    zh: [Travelbee人对人关系模型, HHRM, 共情, 苦难]
+    en: [Travelbee's Human-to-Human Relationship Model, HHRM]
+    triggers: [共情, 苦难, 意义]
+  kolcaba_comfort:
+    zh: [Kolcaba舒适理论, Comfort, 舒适, 安宁]
+    en: [Kolcaba's Comfort Theory, Comfort]
+    triggers: [舒适, 安宁, 舒适护理]
+  swanson_caring:
+    zh: [Swanson关怀理论, Caring, 关怀, 支持]
+    en: [Swanson's Theory of Caring, Caring]
+    triggers: [关怀, 支持, 产科]
+  mercer_maternal_role:
+    zh: [Mercer母亲角色获得理论, MRA/BAM, 母亲角色, 产后适应]
+    en: [Mercer's Maternal Role Attainment / Becoming a Mother, MRA/BAM]
+    triggers: [母亲角色, 产后适应, 妇幼]
+  benner_novice_expert:
+    zh: [Benner从新手到专家, N2E, 新手到专家, 临床能力]
+    en: [Benner's Novice to Expert Model, N2E]
+    triggers: [新手到专家, 临床能力, 护理教育]
+  roper_logan_tierney:
+    zh: [Roper-Logan-Tierney生活活动模式, RLT, 生活活动, ADL]
+    en: [Roper-Logan-Tierney Model of Living, RLT]
+    triggers: [生活活动, ADL, 功能独立]
+  ssmf_chc:
+    zh: [复杂健康状况个体症状自我管理框架, SSMF-CHC, 症状自我管理, 复杂健康状况]
+    en: [Symptom Self-Management Framework for Individuals with Complex Health Conditions, SSMF-CHC]
+    triggers: [症状自我管理, 复杂健康状况, 症状负担]
+  symptom_management_theory:
+    zh: [症状管理理论, SMT, 症状体验, 症状管理]
+    en: [Symptom Management Theory, SMT]
+    triggers: [症状体验, 症状管理, 症状干预]
+  theory_of_unpleasant_symptoms:
+    zh: [不愉快症状理论, TOUS, 症状群, 多症状]
+    en: [Theory of Unpleasant Symptoms, TOUS]
+    triggers: [症状群, 多症状, 功能表现]
+  theory_of_symptom_self_management:
+    zh: [症状自我管理理论, TSSM, 症状自我管理, 自我效能]
+    en: [Theory of Symptom Self-Management, TSSM]
+    triggers: [症状自我管理, 自我效能, 功能表现]
+  self_care_chronic_illness:
+    zh: [慢性病自我照护中层理论, SC-CI, 自我照护, 慢病]
+    en: [Middle-Range Theory of Self-Care of Chronic Illness, SC-CI]
+    triggers: [自我照护, 慢病, 自我监测]
+  ifsmt:
+    zh: [个体与家庭自我管理理论, IFSMT, 个体与家庭自我管理, 过程]
+    en: [Individual and Family Self-Management Theory, IFSMT]
+    triggers: [个体与家庭自我管理, 过程, 结局]
+  self_family_management:
+    zh: [自我与家庭管理框架/慢性病自我与家庭管理中层理论, SFMF, 家庭支持, 共同管理]
+    en: [Self- and Family Management Framework / Middle Range Theory of Self- and Family Management of Chronic Illness, SFMF]
+    triggers: [家庭支持, 共同管理, 居家照护]
+  chronic_care_model:
+    zh: [慢性病照护模型, CCM, 慢性病照护, 自我管理支持]
+    en: [Chronic Care Model, CCM]
+    triggers: [慢性病照护, 自我管理支持, 临床信息系统]
+  iccc_framework:
+    zh: [慢性病创新照护框架, ICCC, 创新照护, 卫生系统]
+    en: [Innovative Care for Chronic Conditions Framework, ICCC]
+    triggers: [创新照护, 卫生系统, 政策环境]
+  self_care_matrix:
+    zh: [自我照护矩阵, SCM, 自我照护, 行为分类]
+    en: [Self-Care Matrix, SCM]
+    triggers: [自我照护, 行为分类, 环境支持]
+  nih_symptom_science_model:
+    zh: [NIH症状科学模型, NIH-SSM, 症状表型, 生物标志物]
+    en: [NIH Symptom Science Model, NIH-SSM]
+    triggers: [症状表型, 生物标志物, 精准护理]
+  symptom_science_model_2:
+    zh: [症状科学模型2.0, SSM 2.0, 社会决定因素, 患者体验]
+    en: [Symptom Science Model 2.0, SSM 2.0]
+    triggers: [社会决定因素, 患者体验, 群体健康]
+  caregiving_science_framework:
+    zh: [照护科学框架, Caregiving, 照护者, 照护负担]
+    en: [Caregiving Science Framework, Caregiving]
+    triggers: [照护者, 照护负担, 支持资源]
+  meleis_transitions:
+    zh: [Meleis转变理论, Transitions Theory, 转衔, 角色转变]
+    en: [Meleis' Transitions Theory, Transitions Theory]
+    triggers: [转衔, 角色转变, 过渡期]
+  mishel_uncertainty:
+    zh: [Mishel疾病不确定性理论, UIT, 不确定感, 预后]
+    en: [Mishel's Uncertainty in Illness Theory, UIT]
+    triggers: [不确定感, 预后, 决策困境]
+  illness_trajectory_framework:
+    zh: [疾病轨迹框架, ITF, 疾病轨迹, 阶段性变化]
+    en: [Illness Trajectory Framework, ITF]
+    triggers: [疾病轨迹, 阶段性变化, 长期历程]
+  stress_coping_theory:
+    zh: [压力与应对理论, Stress-Coping, 压力, 应对]
+    en: [Stress and Coping Theory, Stress-Coping]
+    triggers: [压力, 应对, 适应]
+  resilience_framework:
+    zh: [韧性框架, Resilience, 韧性, 逆境适应]
+    en: [Resilience Framework, Resilience]
+    triggers: [韧性, 逆境适应, 恢复]
+  social_support_theory:
+    zh: [社会支持理论, Social Support, 社会支持, 支持网络]
+    en: [Social Support Theory, Social Support]
+    triggers: [社会支持, 支持网络, 家庭支持]
+  protection_motivation_theory:
+    zh: [保护动机理论, PMT, 风险感知, 保护行为]
+    en: [Protection Motivation Theory, PMT]
+    triggers: [风险感知, 保护行为, 依从性]
+  self_efficacy:
+    zh: [自我效能理论, SET/SCT, 自我效能, 执行能力]
+    en: [Self-Efficacy Theory / Social Cognitive Theory, SET/SCT]
+    triggers: [自我效能, 执行能力, 行为维持]
+  health_belief_model:
+    zh: [健康信念模型, HBM, 易感性, 严重性]
+    en: [Health Belief Model, HBM]
+    triggers: [易感性, 严重性, 收益与障碍]
+  theory_of_planned_behavior:
+    zh: [计划行为理论, TPB, 行为意向, 主观规范]
+    en: [Theory of Planned Behavior, TPB]
+    triggers: [行为意向, 主观规范, 知觉行为控制]
+  theory_of_reasoned_action:
+    zh: [理性行为理论, TRA, 态度, 主观规范]
+    en: [Theory of Reasoned Action, TRA]
+    triggers: [态度, 主观规范, 行为意向]
+  transtheoretical_model:
+    zh: [跨理论模型/行为改变阶段模型, TTM, 行为改变阶段, 准备度]
+    en: [Transtheoretical Model, TTM]
+    triggers: [行为改变阶段, 准备度, 维持]
+  pender_hpm:
+    zh: [Pender健康促进模型, HPM, 健康促进, 生活方式]
+    en: [Pender's Health Promotion Model, HPM]
+    triggers: [健康促进, 生活方式, 社区护理]
+  socioecological_model:
+    zh: [社会生态模型, SEM, 多层级, 环境]
+    en: [Socioecological Model, SEM]
+    triggers: [多层级, 环境, 政策]
+  self_determination_theory:
+    zh: [自我决定理论, SDT, 自主性, 胜任感]
+    en: [Self-Determination Theory, SDT]
+    triggers: [自主性, 胜任感, 关系性]
+  common_sense_model:
+    zh: [疾病表征共同感模型, CSM/SRM, 疾病表征, 自我调节]
+    en: [Common-Sense Model of Self-Regulation, CSM/SRM]
+    triggers: [疾病表征, 自我调节, 情绪表征]
+  andersen_health_service_use:
+    zh: [Andersen卫生服务利用模型, ABM, 卫生服务利用, 可及性]
+    en: [Andersen Behavioral Model of Health Services Use, ABM]
+    triggers: [卫生服务利用, 可及性, 需求因素]
+  precaution_adoption_process:
+    zh: [预防采纳过程模型, PAPM, 风险预防, 决策过程]
+    en: [Precaution Adoption Process Model, PAPM]
+    triggers: [风险预防, 决策过程, 筛查]
+  information_motivation_behavioral_skills:
+    zh: [信息-动机-行为技能模型, IMB, 信息, 动机]
+    en: [Information-Motivation-Behavioral Skills Model, IMB]
+    triggers: [信息, 动机, 行为技能]
+  com_b:
+    zh: [COM-B行为系统模型, COM-B, 能力, 机会]
+    en: [Capability-Opportunity-Motivation-Behavior Model, COM-B]
+    triggers: [能力, 机会, 动机]
+  tdf:
+    zh: [理论域框架, TDF, 理论域, 实施障碍]
+    en: [Theoretical Domains Framework, TDF]
+    triggers: [理论域, 实施障碍, 行为改变]
+  behavior_change_wheel:
+    zh: [行为改变轮, BCW, 干预功能, 政策支持]
+    en: [Behavior Change Wheel, BCW]
+    triggers: [干预功能, 政策支持, 行为目标]
+  cfir:
+    zh: [实施研究综合框架, CFIR, 外部环境, 内部环境]
+    en: [Consolidated Framework for Implementation Research, CFIR]
+    triggers: [外部环境, 内部环境, 实施过程]
+  re_aim:
+    zh: [RE-AIM框架, RE-AIM, 覆盖率, 效果]
+    en: [RE-AIM Framework, RE-AIM]
+    triggers: [覆盖率, 效果, 维持性]
+  parihs:
+    zh: [PARIHS框架, PARIHS, 证据, 背景]
+    en: [Promoting Action on Research Implementation in Health Services, PARIHS]
+    triggers: [证据, 背景, 促进]
+  iparihs:
+    zh: [i-PARIHS框架, i-PARIHS, 创新, 受体]
+    en: [Integrated PARIHS, i-PARIHS]
+    triggers: [创新, 受体, 情境]
+  knowledge_to_action:
+    zh: [知识到行动框架, KTA, 知识到行动, 证据转化]
+    en: [Knowledge-to-Action Framework, KTA]
+    triggers: [知识到行动, 证据转化, 行动循环]
+  normalization_process_theory:
+    zh: [常态化过程理论, NPT, 常态化, 融入日常工作]
+    en: [Normalization Process Theory, NPT]
+    triggers: [常态化, 融入日常工作, 集体行动]
+  diffusion_of_innovations:
+    zh: [创新扩散理论, DOI, 创新采纳, 扩散]
+    en: [Diffusion of Innovations, DOI]
+    triggers: [创新采纳, 扩散, 兼容性]
+  mrc_complex_interventions:
+    zh: [MRC复杂干预框架, MRC, 复杂干预, 开发]
+    en: [MRC Framework for Complex Interventions, MRC]
+    triggers: [复杂干预, 开发, 评价]
+  donabedian_model:
+    zh: [Donabedian结构-过程-结果模型, SPO, 结构, 过程]
+    en: [Donabedian Structure-Process-Outcome Model, SPO]
+    triggers: [结构, 过程, 结果]
+  wilson_cleary_model:
+    zh: [Wilson-Cleary健康相关生活质量模型, WCM, 症状状态, 功能状态]
+    en: [Wilson and Cleary Model of Health-Related Quality of Life, WCM]
+    triggers: [症状状态, 功能状态, 生活质量]
+  person_centered_care_framework:
+    zh: [以患者为中心照护框架, PCC, 患者中心, 偏好]
+    en: [Person-Centered Care Framework, PCC]
+    triggers: [患者中心, 偏好, 服务体验]
+  family_centered_care_framework:
+    zh: [家庭中心照护框架, FCC, 家庭中心, 家属参与]
+    en: [Family-Centered Care Framework, FCC]
+    triggers: [家庭中心, 家属参与, 信息共享]
+  shared_decision_making_model:
+    zh: [共同决策模型, SDM, 共同决策, 偏好敏感]
+    en: [Shared Decision-Making Model, SDM]
+    triggers: [共同决策, 偏好敏感, 参与度]
+  grounded_theory:
+    zh: [扎根理论, GT, 过程, 理论生成]
+    en: [Grounded Theory, GT]
+    triggers: [过程, 理论生成, 互动]
+  phenomenology:
+    zh: [现象学, Phenomenology, 生活经验, 本质]
+    en: [Phenomenology, Phenomenology]
+    triggers: [生活经验, 本质, 体验]
+  hermeneutic_phenomenology:
+    zh: [解释现象学, HP, 意义解释, 体验文本]
+    en: [Hermeneutic Phenomenology, HP]
+    triggers: [意义解释, 体验文本, 诠释]
+  ethnography:
+    zh: [民族志, Ethnography, 文化, 群体实践]
+    en: [Ethnography, Ethnography]
+    triggers: [文化, 群体实践, 观察]
+  narrative_inquiry:
+    zh: [叙事研究, Narrative, 疾病故事, 叙事]
+    en: [Narrative Inquiry, Narrative]
+    triggers: [疾病故事, 叙事, 身份建构]
+  case_study_method:
+    zh: [个案研究, Case Study, 复杂个案, 多源资料]
+    en: [Case Study, Case Study]
+    triggers: [复杂个案, 多源资料, 案例边界]
+  content_analysis:
+    zh: [内容分析, CA, 分类, 内容]
+    en: [Content Analysis, CA]
+    triggers: [分类, 内容, 显性/潜性]
+  thematic_analysis:
+    zh: [主题分析, TA, 主题, 归纳]
+    en: [Thematic Analysis, TA]
+    triggers: [主题, 归纳, 编码]
+  transactional_model_stress:
+    zh: [交易性压力模型, TMSC, 评估, 应对]
+    en: [Transactional Model of Stress and Coping, TMSC]
+    triggers: [评估, 应对, 适应]
+  care_transitions_intervention:
+    zh: [照护转衔干预模型, CTI, 转衔照护, 过渡支持]
+    en: [Care Transitions Intervention Framework, CTI]
+    triggers: [转衔照护, 过渡支持, 连续照护]
+  patient_activation_measure_framework:
+    zh: [患者激活框架, PAM, 患者激活, 参与度]
+    en: [Patient Activation Framework, PAM]
+    triggers: [患者激活, 参与度, 自我管理准备度]
+  chronic_illness_trajectory_framework:
+    zh: [慢病轨迹框架, CITF, 轨迹, 慢病]
+    en: [Chronic Illness Trajectory Framework, CITF]
+    triggers: [轨迹, 慢病, 阶段任务]
+  quality_health_outcomes_model:
+    zh: [质量健康结局模型, QHOM, 系统, 干预]
+    en: [Quality Health Outcomes Model, QHOM]
+    triggers: [系统, 干预, 结局]

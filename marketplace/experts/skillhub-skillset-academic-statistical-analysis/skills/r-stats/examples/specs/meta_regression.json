@@ -1,0 +1,1 @@
+{"dataset_path":"examples/data/meta_bcg.csv","analysis_type":"meta_regression","yi_var":"yi","vi_var":"vi","moderators":["ablat","year"],"method":"REML","hypothesis":"Latitude and year moderate the BCG vaccine effect","alpha":0.05,"seed":42,"output_dir":"output/meta_regression"}

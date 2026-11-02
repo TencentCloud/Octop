@@ -1,0 +1,13 @@
+{
+  "dataset_path": "examples/data/competing_risks_sim.csv",
+  "analysis_type": "competing_risks",
+  "time_var": "time",
+  "event_var": "event",
+  "group_var": "treatment",
+  "predictors": ["age", "sex", "treatment"],
+  "event_of_interest": 1,
+  "hypothesis": "Treatment affects the cumulative incidence of the primary event in the presence of competing risks",
+  "alpha": 0.05,
+  "seed": 42,
+  "output_dir": "output/competing_risks"
+}

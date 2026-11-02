@@ -1,0 +1,12 @@
+{
+  "dataset_path": "examples/data/iris.csv",
+  "analysis_type": "kruskal",
+  "outcome": "Sepal.Length",
+  "group_var": "Species",
+  "hypothesis": "Sepal length differs across iris species",
+  "p_adjust_method": "holm",
+  "missing_strategy": "complete_case",
+  "alpha": 0.05,
+  "seed": 42,
+  "output_dir": "output/kruskal_iris"
+}

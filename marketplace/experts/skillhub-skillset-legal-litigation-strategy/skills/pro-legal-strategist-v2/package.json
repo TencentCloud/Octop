@@ -1,0 +1,10 @@
+{
+  "name": "法律",
+  "version": "2.0.0",
+  "description": "顶级诉讼律师与案件分析专家，执行七步分析法与证据矩阵建模。",
+  "author": "Nathan Huang 律师",
+  "license": "MIT",
+  "keywords": ["法律", "诉讼", "案件分析", "证据矩阵", "IRAC"],
+  "category": "legal",
+  "language": "zh"
+}

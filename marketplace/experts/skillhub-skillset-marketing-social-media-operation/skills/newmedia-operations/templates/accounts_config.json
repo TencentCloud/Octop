@@ -1,0 +1,60 @@
+{
+  "client": {
+    "brand_name": "品牌名称",
+    "industry": "所属行业",
+    "core_goal": "涨粉/引流/转化/品牌曝光",
+    "target_audience": "目标用户群体描述"
+  },
+  "own_accounts": [
+    {
+      "name": "大号",
+      "platform": "douyin",
+      "account_id": "",
+      "browser": "360浏览器",
+      "content_type": "品牌端内容（宣传/招商）",
+      "post_time": "19:00-21:00",
+      "frequency": "1天1条"
+    },
+    {
+      "name": "小号1",
+      "platform": "xiaohongshu",
+      "account_id": "",
+      "browser": "QQ浏览器",
+      "content_type": "种草内容",
+      "post_time": "12:00",
+      "frequency": "1天1条"
+    },
+    {
+      "name": "小号2",
+      "platform": "douyin",
+      "account_id": "",
+      "browser": "谷歌浏览器",
+      "content_type": "科普知识+评论互动",
+      "post_time": "10:00",
+      "frequency": "1天1条",
+      "special_task": "在大号和小号1评论区互动引导转化"
+    }
+  ],
+  "competitor_accounts": [
+    {
+      "name": "竞品账号1",
+      "platform": "douyin",
+      "account_id": "",
+      "type": "直接竞品",
+      "notes": ""
+    },
+    {
+      "name": "标杆账号1",
+      "platform": "xiaohongshu",
+      "account_id": "",
+      "type": "高参考账号",
+      "notes": ""
+    }
+  ],
+  "keywords": {
+    "main": ["主关键词1", "主关键词2"],
+    "core": ["核心关键词1", "核心关键词2"],
+    "product": ["产品关键词1", "产品关键词2"],
+    "pain_points": ["痛点关键词1", "痛点关键词2"]
+  }
+}

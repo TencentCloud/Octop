@@ -1,0 +1,157 @@
+{
+  "id": "skillhub-skillset-media-video-editing",
+  "label": {
+    "zh": "视频剪辑专家",
+    "en": "Media Video Editing Expert"
+  },
+  "description": {
+    "zh": "从AI对话式视频剪切合并与FFmpeg自动精彩片段提取字幕生成、自然语言驱动FFmpeg命令生成（剪辑/裁剪/转换/压缩）与多功能视频编辑（剪切/合并/格式转换/提取音频/添加字幕），到自动生成视频脚本字幕标题与Remotion+React程序化视频创作的完整视频剪辑工作流。覆盖素材处理、智能剪辑、格式转换、程序化创作全链路。",
+    "en": "Expert workflow for Media Video Editing Expert."
+  },
+  "welcome_message": {
+    "zh": "提供专业、可落地的专家工作流支持",
+    "en": "Practical expert workflow support for your goals"
+  },
+  "icon_name": "video",
+  "icon_url": "https://cloudcache.tencent-cloud.com/qcloud/tea/app/skillhub/assets/source/ai-buddy-decouple/expert-profiles/media-video-editing.v20260625.avif",
+  "color": "#db2777",
+  "prompt_files": [
+    "SOUL.md"
+  ],
+  "quick_prompts": [
+    {
+      "title": {
+        "zh": "AI 对话式视频剪辑",
+        "en": "Workflow step 1"
+      },
+      "description": {
+        "zh": "生成AI 对话式初剪视频",
+        "en": "Share context for a ready result"
+      },
+      "prompt": {
+        "zh": "请作为「视频剪辑专家」，帮我完成「AI 对话式视频剪辑」。\n我的情况/目标/材料是：\n",
+        "en": "As the Media Video Editing Expert, help me with: Workflow step 1.\nMy context, goals, or materials are:\n"
+      },
+      "color": "#e8f4ff",
+      "icon_name": "video"
+    },
+    {
+      "title": {
+        "zh": "自动精彩片段提取",
+        "en": "Workflow step 2"
+      },
+      "description": {
+        "zh": "生成精彩片段和字幕烧录视频",
+        "en": "Share context for a ready result"
+      },
+      "prompt": {
+        "zh": "请作为「视频剪辑专家」，帮我完成「自动精彩片段提取」。\n我的情况/目标/材料是：\n",
+        "en": "As the Media Video Editing Expert, help me with: Workflow step 2.\nMy context, goals, or materials are:\n"
+      },
+      "color": "#fef3c7",
+      "icon_name": "video"
+    },
+    {
+      "title": {
+        "zh": "自然语言驱动 FFmpeg",
+        "en": "Workflow step 3"
+      },
+      "description": {
+        "zh": "生成FFmpeg 处理后的专业级视频",
+        "en": "Share context for a ready result"
+      },
+      "prompt": {
+        "zh": "请作为「视频剪辑专家」，帮我完成「自然语言驱动 FFmpeg」。\n我的情况/目标/材料是：\n",
+        "en": "As the Media Video Editing Expert, help me with: Workflow step 3.\nMy context, goals, or materials are:\n"
+      },
+      "color": "#dcfce7",
+      "icon_name": "terminal"
+    },
+    {
+      "title": {
+        "zh": "多功能视频编辑",
+        "en": "Workflow step 4"
+      },
+      "description": {
+        "zh": "生成精编视频成品",
+        "en": "Share context for a ready result"
+      },
+      "prompt": {
+        "zh": "请作为「视频剪辑专家」，帮我完成「多功能视频编辑」。\n我的情况/目标/材料是：\n",
+        "en": "As the Media Video Editing Expert, help me with: Workflow step 4.\nMy context, goals, or materials are:\n"
+      },
+      "color": "#f1f5f9",
+      "icon_name": "video"
+    },
+    {
+      "title": {
+        "zh": "脚本字幕标题自动生成",
+        "en": "Workflow step 5"
+      },
+      "description": {
+        "zh": "生成视频脚本、字幕和标题文案",
+        "en": "Share context for a ready result"
+      },
+      "prompt": {
+        "zh": "请作为「视频剪辑专家」，帮我完成「脚本字幕标题自动生成」。\n我的情况/目标/材料是：\n",
+        "en": "As the Media Video Editing Expert, help me with: Workflow step 5.\nMy context, goals, or materials are:\n"
+      },
+      "color": "#fff1f2",
+      "icon_name": "terminal"
+    },
+    {
+      "title": {
+        "zh": "程序化视频创作",
+        "en": "Workflow step 6"
+      },
+      "description": {
+        "zh": "使用 Remotion + React 进行程序化视频…",
+        "en": "Share context for a ready result"
+      },
+      "prompt": {
+        "zh": "请作为「视频剪辑专家」，帮我完成「程序化视频创作」。\n我的情况/目标/材料是：\n",
+        "en": "As the Media Video Editing Expert, help me with: Workflow step 6.\nMy context, goals, or materials are:\n"
+      },
+      "color": "#eef2ff",
+      "icon_name": "terminal"
+    }
+  ],
+  "task_examples": {
+    "zh": [
+      "每天「09:00」帮我完成「AI 对话式视频剪辑」并把结果发给我，任务创建后立即启用",
+      "每个工作日「18:00」帮我完成「自动精彩片段提取」并把结果发给我",
+      "每周一「10:00」帮我完成「自然语言驱动 FFmpeg」并把结果发给我",
+      "每周五「17:00」帮我完成「多功能视频编辑」并把结果发给我",
+      "每天「08:00」帮我完成「脚本字幕标题自动生成」并把结果发给我",
+      "每月 1 日「09:30」帮我完成「程序化视频创作」并把结果发给我"
+    ],
+    "en": [
+      "Every day at 09:00, help me complete “Workflow step 1” and send the result — enable immediately",
+      "Every weekday at 18:00, help me complete “Workflow step 2” and send the result",
+      "Every Monday at 10:00, help me complete “Workflow step 3” and send the result",
+      "Every Friday at 17:00, help me complete “Workflow step 4” and send the result",
+      "Every day at 08:00, help me complete “Workflow step 5” and send the result",
+      "On the 1st of each month at 09:30, help me complete “Workflow step 6” and send the result"
+    ]
+  },
+  "source": {
+    "type": "skillhub",
+    "kind": "skillset",
+    "slug": "media-video-editing",
+    "scene": "media",
+    "sub_scene": "video-editing"
+  },
+  "skillhub": {
+    "slug": "media-video-editing",
+    "scene": "media",
+    "sub_scene": "video-editing",
+    "skill_slugs": [
+      "ai-video-clipper",
+      "video-clip-assistant",
+      "ffmpeg-video-editor",
+      "video-editor",
+      "ai-agentic-video-editor",
+      "remotion-video-toolkit"
+    ]
+  }
+}

@@ -1,0 +1,1141 @@
+{
+  "skill_id": "nursing-theory-matcher",
+  "version": "4.0.0",
+  "language": "zh-CN",
+  "entries": {
+    "orem_scdnt": {
+      "recommended_databases": [
+        "PubMed",
+        "CINAHL",
+        "Web of Science",
+        "Scopus",
+        "PsycINFO",
+        "Google Scholar"
+      ],
+      "seed_queries": {
+        "zh": "Orem自理缺陷理论 护理 综述",
+        "en": "\"Orem's Self-Care Deficit Nursing Theory\" nursing review"
+      }
+    },
+    "roy_adaptation_model": {
+      "recommended_databases": [
+        "PubMed",
+        "CINAHL",
+        "Web of Science",
+        "Scopus",
+        "PsycINFO",
+        "Google Scholar"
+      ],
+      "seed_queries": {
+        "zh": "Roy适应模式 护理 综述",
+        "en": "\"Roy Adaptation Model\" nursing review"
+      }
+    },
+    "neuman_systems_model": {
+      "recommended_databases": [
+        "PubMed",
+        "CINAHL",
+        "Web of Science",
+        "Scopus",
+        "PsycINFO",
+        "Google Scholar"
+      ],
+      "seed_queries": {
+        "zh": "Neuman系统模式 护理 综述",
+        "en": "\"Neuman Systems Model\" nursing review"
+      }
+    },
+    "king_goal_attainment": {
+      "recommended_databases": [
+        "PubMed",
+        "CINAHL",
+        "Web of Science",
+        "Scopus",
+        "PsycINFO",
+        "Google Scholar"
+      ],
+      "seed_queries": {
+        "zh": "King目标达成理论 护理 综述",
+        "en": "\"King's Theory of Goal Attainment\" nursing review"
+      }
+    },
+    "peplau_interpersonal": {
+      "recommended_databases": [
+        "PubMed",
+        "CINAHL",
+        "Web of Science",
+        "Scopus",
+        "PsycINFO",
+        "Google Scholar"
+      ],
+      "seed_queries": {
+        "zh": "Peplau人际关系理论 护理 综述",
+        "en": "\"Peplau's Interpersonal Relations Theory\" nursing review"
+      }
+    },
+    "watson_human_caring": {
+      "recommended_databases": [
+        "PubMed",
+        "CINAHL",
+        "Web of Science",
+        "Scopus",
+        "PsycINFO",
+        "Google Scholar"
+      ],
+      "seed_queries": {
+        "zh": "Watson人文关怀理论 护理 综述",
+        "en": "\"Watson's Theory of Human Caring\" nursing review"
+      }
+    },
+    "leininger_transcultural": {
+      "recommended_databases": [
+        "PubMed",
+        "CINAHL",
+        "Web of Science",
+        "Scopus",
+        "PsycINFO",
+        "Google Scholar"
+      ],
+      "seed_queries": {
+        "zh": "Leininger跨文化护理理论 护理 综述",
+        "en": "\"Leininger's Transcultural Nursing Theory\" nursing review"
+      }
+    },
+    "henderson_need_theory": {
+      "recommended_databases": [
+        "PubMed",
+        "CINAHL",
+        "Web of Science",
+        "Scopus",
+        "PsycINFO",
+        "Google Scholar"
+      ],
+      "seed_queries": {
+        "zh": "Henderson基本需要理论 护理 综述",
+        "en": "\"Henderson's Need Theory\" nursing review"
+      }
+    },
+    "johnson_behavioral_system": {
+      "recommended_databases": [
+        "PubMed",
+        "CINAHL",
+        "Web of Science",
+        "Scopus",
+        "PsycINFO",
+        "Google Scholar"
+      ],
+      "seed_queries": {
+        "zh": "Johnson行为系统模式 护理 综述",
+        "en": "\"Johnson's Behavioral System Model\" nursing review"
+      }
+    },
+    "levine_conservation": {
+      "recommended_databases": [
+        "PubMed",
+        "CINAHL",
+        "Web of Science",
+        "Scopus",
+        "PsycINFO",
+        "Google Scholar"
+      ],
+      "seed_queries": {
+        "zh": "Levine保存理论 护理 综述",
+        "en": "\"Levine's Conservation Model\" nursing review"
+      }
+    },
+    "rogers_unitary_human_beings": {
+      "recommended_databases": [
+        "PubMed",
+        "CINAHL",
+        "Web of Science",
+        "Scopus",
+        "PsycINFO",
+        "Google Scholar"
+      ],
+      "seed_queries": {
+        "zh": "Rogers整体人类科学 护理 综述",
+        "en": "\"Science of Unitary Human Beings\" nursing review"
+      }
+    },
+    "parse_human_becoming": {
+      "recommended_databases": [
+        "PubMed",
+        "CINAHL",
+        "Web of Science",
+        "Scopus",
+        "PsycINFO",
+        "Google Scholar"
+      ],
+      "seed_queries": {
+        "zh": "Parse人类生成理论 护理 综述",
+        "en": "\"Parse's Human Becoming Theory\" nursing review"
+      }
+    },
+    "newman_health_expanding_consciousness": {
+      "recommended_databases": [
+        "PubMed",
+        "CINAHL",
+        "Web of Science",
+        "Scopus",
+        "PsycINFO",
+        "Google Scholar"
+      ],
+      "seed_queries": {
+        "zh": "Newman健康扩展意识理论 护理 综述",
+        "en": "\"Health as Expanding Consciousness\" nursing review"
+      }
+    },
+    "orlando_nursing_process": {
+      "recommended_databases": [
+        "PubMed",
+        "CINAHL",
+        "Web of Science",
+        "Scopus",
+        "PsycINFO",
+        "Google Scholar"
+      ],
+      "seed_queries": {
+        "zh": "Orlando护理过程理论 护理 综述",
+        "en": "\"Orlando's Nursing Process Theory\" nursing review"
+      }
+    },
+    "travelbee_human_to_human": {
+      "recommended_databases": [
+        "PubMed",
+        "CINAHL",
+        "Web of Science",
+        "Scopus",
+        "PsycINFO",
+        "Google Scholar"
+      ],
+      "seed_queries": {
+        "zh": "Travelbee人对人关系模型 护理 综述",
+        "en": "\"Travelbee's Human-to-Human Relationship Model\" nursing review"
+      }
+    },
+    "kolcaba_comfort": {
+      "recommended_databases": [
+        "PubMed",
+        "CINAHL",
+        "Web of Science",
+        "Scopus",
+        "PsycINFO",
+        "Google Scholar"
+      ],
+      "seed_queries": {
+        "zh": "Kolcaba舒适理论 护理 综述",
+        "en": "\"Kolcaba's Comfort Theory\" nursing review"
+      }
+    },
+    "swanson_caring": {
+      "recommended_databases": [
+        "PubMed",
+        "CINAHL",
+        "Web of Science",
+        "Scopus",
+        "PsycINFO",
+        "Google Scholar"
+      ],
+      "seed_queries": {
+        "zh": "Swanson关怀理论 护理 综述",
+        "en": "\"Swanson's Theory of Caring\" nursing review"
+      }
+    },
+    "mercer_maternal_role": {
+      "recommended_databases": [
+        "PubMed",
+        "CINAHL",
+        "Web of Science",
+        "Scopus",
+        "PsycINFO",
+        "Google Scholar"
+      ],
+      "seed_queries": {
+        "zh": "Mercer母亲角色获得理论 护理 综述",
+        "en": "\"Mercer's Maternal Role Attainment / Becoming a Mother\" nursing review"
+      }
+    },
+    "benner_novice_expert": {
+      "recommended_databases": [
+        "PubMed",
+        "CINAHL",
+        "Web of Science",
+        "Scopus",
+        "PsycINFO",
+        "Google Scholar"
+      ],
+      "seed_queries": {
+        "zh": "Benner从新手到专家 护理 综述",
+        "en": "\"Benner's Novice to Expert Model\" nursing review"
+      }
+    },
+    "roper_logan_tierney": {
+      "recommended_databases": [
+        "PubMed",
+        "CINAHL",
+        "Web of Science",
+        "Scopus",
+        "PsycINFO",
+        "Google Scholar"
+      ],
+      "seed_queries": {
+        "zh": "Roper-Logan-Tierney生活活动模式 护理 综述",
+        "en": "\"Roper-Logan-Tierney Model of Living\" nursing review"
+      }
+    },
+    "ssmf_chc": {
+      "recommended_databases": [
+        "PubMed",
+        "CINAHL",
+        "Web of Science",
+        "Scopus",
+        "PsycINFO",
+        "Google Scholar"
+      ],
+      "seed_queries": {
+        "zh": "复杂健康状况个体症状自我管理框架 护理 综述",
+        "en": "\"Symptom Self-Management Framework for Individuals with Complex Health Conditions\" nursing review"
+      }
+    },
+    "symptom_management_theory": {
+      "recommended_databases": [
+        "PubMed",
+        "CINAHL",
+        "Web of Science",
+        "Scopus",
+        "PsycINFO",
+        "Google Scholar"
+      ],
+      "seed_queries": {
+        "zh": "症状管理理论 护理 综述",
+        "en": "\"Symptom Management Theory\" nursing review"
+      }
+    },
+    "theory_of_unpleasant_symptoms": {
+      "recommended_databases": [
+        "PubMed",
+        "CINAHL",
+        "Web of Science",
+        "Scopus",
+        "PsycINFO",
+        "Google Scholar"
+      ],
+      "seed_queries": {
+        "zh": "不愉快症状理论 护理 综述",
+        "en": "\"Theory of Unpleasant Symptoms\" nursing review"
+      }
+    },
+    "theory_of_symptom_self_management": {
+      "recommended_databases": [
+        "PubMed",
+        "CINAHL",
+        "Web of Science",
+        "Scopus",
+        "PsycINFO",
+        "Google Scholar"
+      ],
+      "seed_queries": {
+        "zh": "症状自我管理理论 护理 综述",
+        "en": "\"Theory of Symptom Self-Management\" nursing review"
+      }
+    },
+    "self_care_chronic_illness": {
+      "recommended_databases": [
+        "PubMed",
+        "CINAHL",
+        "Web of Science",
+        "Scopus",
+        "PsycINFO",
+        "Google Scholar"
+      ],
+      "seed_queries": {
+        "zh": "慢性病自我照护中层理论 护理 综述",
+        "en": "\"Middle-Range Theory of Self-Care of Chronic Illness\" nursing review"
+      }
+    },
+    "ifsmt": {
+      "recommended_databases": [
+        "PubMed",
+        "CINAHL",
+        "Web of Science",
+        "Scopus",
+        "PsycINFO",
+        "Google Scholar"
+      ],
+      "seed_queries": {
+        "zh": "个体与家庭自我管理理论 护理 综述",
+        "en": "\"Individual and Family Self-Management Theory\" nursing review"
+      }
+    },
+    "self_family_management": {
+      "recommended_databases": [
+        "PubMed",
+        "CINAHL",
+        "Web of Science",
+        "Scopus",
+        "PsycINFO",
+        "Google Scholar"
+      ],
+      "seed_queries": {
+        "zh": "自我与家庭管理框架/慢性病自我与家庭管理中层理论 护理 综述",
+        "en": "\"Self- and Family Management Framework / Middle Range Theory of Self- and Family Management of Chronic Illness\" nursing review"
+      }
+    },
+    "chronic_care_model": {
+      "recommended_databases": [
+        "PubMed",
+        "CINAHL",
+        "Web of Science",
+        "Scopus",
+        "PsycINFO",
+        "Google Scholar"
+      ],
+      "seed_queries": {
+        "zh": "慢性病照护模型 护理 综述",
+        "en": "\"Chronic Care Model\" nursing review"
+      }
+    },
+    "iccc_framework": {
+      "recommended_databases": [
+        "PubMed",
+        "CINAHL",
+        "Web of Science",
+        "Scopus",
+        "PsycINFO",
+        "Google Scholar"
+      ],
+      "seed_queries": {
+        "zh": "慢性病创新照护框架 护理 综述",
+        "en": "\"Innovative Care for Chronic Conditions Framework\" nursing review"
+      }
+    },
+    "self_care_matrix": {
+      "recommended_databases": [
+        "PubMed",
+        "CINAHL",
+        "Web of Science",
+        "Scopus",
+        "PsycINFO",
+        "Google Scholar"
+      ],
+      "seed_queries": {
+        "zh": "自我照护矩阵 护理 综述",
+        "en": "\"Self-Care Matrix\" nursing review"
+      }
+    },
+    "nih_symptom_science_model": {
+      "recommended_databases": [
+        "PubMed",
+        "CINAHL",
+        "Web of Science",
+        "Scopus",
+        "PsycINFO",
+        "Google Scholar"
+      ],
+      "seed_queries": {
+        "zh": "NIH症状科学模型 护理 综述",
+        "en": "\"NIH Symptom Science Model\" nursing review"
+      }
+    },
+    "symptom_science_model_2": {
+      "recommended_databases": [
+        "PubMed",
+        "CINAHL",
+        "Web of Science",
+        "Scopus",
+        "PsycINFO",
+        "Google Scholar"
+      ],
+      "seed_queries": {
+        "zh": "症状科学模型2.0 护理 综述",
+        "en": "\"Symptom Science Model 2.0\" nursing review"
+      }
+    },
+    "caregiving_science_framework": {
+      "recommended_databases": [
+        "PubMed",
+        "CINAHL",
+        "Web of Science",
+        "Scopus",
+        "PsycINFO",
+        "Google Scholar"
+      ],
+      "seed_queries": {
+        "zh": "照护科学框架 护理 综述",
+        "en": "\"Caregiving Science Framework\" nursing review"
+      }
+    },
+    "meleis_transitions": {
+      "recommended_databases": [
+        "PubMed",
+        "CINAHL",
+        "Web of Science",
+        "Scopus",
+        "PsycINFO",
+        "Google Scholar"
+      ],
+      "seed_queries": {
+        "zh": "Meleis转变理论 护理 综述",
+        "en": "\"Meleis' Transitions Theory\" nursing review"
+      }
+    },
+    "mishel_uncertainty": {
+      "recommended_databases": [
+        "PubMed",
+        "CINAHL",
+        "Web of Science",
+        "Scopus",
+        "PsycINFO",
+        "Google Scholar"
+      ],
+      "seed_queries": {
+        "zh": "Mishel疾病不确定性理论 护理 综述",
+        "en": "\"Mishel's Uncertainty in Illness Theory\" nursing review"
+      }
+    },
+    "illness_trajectory_framework": {
+      "recommended_databases": [
+        "PubMed",
+        "CINAHL",
+        "Web of Science",
+        "Scopus",
+        "PsycINFO",
+        "Google Scholar"
+      ],
+      "seed_queries": {
+        "zh": "疾病轨迹框架 护理 综述",
+        "en": "\"Illness Trajectory Framework\" nursing review"
+      }
+    },
+    "stress_coping_theory": {
+      "recommended_databases": [
+        "PubMed",
+        "CINAHL",
+        "Web of Science",
+        "Scopus",
+        "PsycINFO",
+        "Google Scholar"
+      ],
+      "seed_queries": {
+        "zh": "压力与应对理论 护理 综述",
+        "en": "\"Stress and Coping Theory\" nursing review"
+      }
+    },
+    "resilience_framework": {
+      "recommended_databases": [
+        "PubMed",
+        "CINAHL",
+        "Web of Science",
+        "Scopus",
+        "PsycINFO",
+        "Google Scholar"
+      ],
+      "seed_queries": {
+        "zh": "韧性框架 护理 综述",
+        "en": "\"Resilience Framework\" nursing review"
+      }
+    },
+    "social_support_theory": {
+      "recommended_databases": [
+        "PubMed",
+        "CINAHL",
+        "Web of Science",
+        "Scopus",
+        "PsycINFO",
+        "Google Scholar"
+      ],
+      "seed_queries": {
+        "zh": "社会支持理论 护理 综述",
+        "en": "\"Social Support Theory\" nursing review"
+      }
+    },
+    "protection_motivation_theory": {
+      "recommended_databases": [
+        "PubMed",
+        "CINAHL",
+        "Web of Science",
+        "Scopus",
+        "PsycINFO",
+        "Google Scholar"
+      ],
+      "seed_queries": {
+        "zh": "保护动机理论 护理 综述",
+        "en": "\"Protection Motivation Theory\" nursing review"
+      }
+    },
+    "self_efficacy": {
+      "recommended_databases": [
+        "PubMed",
+        "CINAHL",
+        "Web of Science",
+        "Scopus",
+        "PsycINFO",
+        "Google Scholar"
+      ],
+      "seed_queries": {
+        "zh": "自我效能理论 护理 综述",
+        "en": "\"Self-Efficacy Theory / Social Cognitive Theory\" nursing review"
+      }
+    },
+    "health_belief_model": {
+      "recommended_databases": [
+        "PubMed",
+        "CINAHL",
+        "Web of Science",
+        "Scopus",
+        "PsycINFO",
+        "Google Scholar"
+      ],
+      "seed_queries": {
+        "zh": "健康信念模型 护理 综述",
+        "en": "\"Health Belief Model\" nursing review"
+      }
+    },
+    "theory_of_planned_behavior": {
+      "recommended_databases": [
+        "PubMed",
+        "CINAHL",
+        "Web of Science",
+        "Scopus",
+        "PsycINFO",
+        "Google Scholar"
+      ],
+      "seed_queries": {
+        "zh": "计划行为理论 护理 综述",
+        "en": "\"Theory of Planned Behavior\" nursing review"
+      }
+    },
+    "theory_of_reasoned_action": {
+      "recommended_databases": [
+        "PubMed",
+        "CINAHL",
+        "Web of Science",
+        "Scopus",
+        "PsycINFO",
+        "Google Scholar"
+      ],
+      "seed_queries": {
+        "zh": "理性行为理论 护理 综述",
+        "en": "\"Theory of Reasoned Action\" nursing review"
+      }
+    },
+    "transtheoretical_model": {
+      "recommended_databases": [
+        "PubMed",
+        "CINAHL",
+        "Web of Science",
+        "Scopus",
+        "PsycINFO",
+        "Google Scholar"
+      ],
+      "seed_queries": {
+        "zh": "跨理论模型/行为改变阶段模型 护理 综述",
+        "en": "\"Transtheoretical Model\" nursing review"
+      }
+    },
+    "pender_hpm": {
+      "recommended_databases": [
+        "PubMed",
+        "CINAHL",
+        "Web of Science",
+        "Scopus",
+        "PsycINFO",
+        "Google Scholar"
+      ],
+      "seed_queries": {
+        "zh": "Pender健康促进模型 护理 综述",
+        "en": "\"Pender's Health Promotion Model\" nursing review"
+      }
+    },
+    "socioecological_model": {
+      "recommended_databases": [
+        "PubMed",
+        "CINAHL",
+        "Web of Science",
+        "Scopus",
+        "PsycINFO",
+        "Google Scholar"
+      ],
+      "seed_queries": {
+        "zh": "社会生态模型 护理 综述",
+        "en": "\"Socioecological Model\" nursing review"
+      }
+    },
+    "self_determination_theory": {
+      "recommended_databases": [
+        "PubMed",
+        "CINAHL",
+        "Web of Science",
+        "Scopus",
+        "PsycINFO",
+        "Google Scholar"
+      ],
+      "seed_queries": {
+        "zh": "自我决定理论 护理 综述",
+        "en": "\"Self-Determination Theory\" nursing review"
+      }
+    },
+    "common_sense_model": {
+      "recommended_databases": [
+        "PubMed",
+        "CINAHL",
+        "Web of Science",
+        "Scopus",
+        "PsycINFO",
+        "Google Scholar"
+      ],
+      "seed_queries": {
+        "zh": "疾病表征共同感模型 护理 综述",
+        "en": "\"Common-Sense Model of Self-Regulation\" nursing review"
+      }
+    },
+    "andersen_health_service_use": {
+      "recommended_databases": [
+        "PubMed",
+        "CINAHL",
+        "Web of Science",
+        "Scopus",
+        "PsycINFO",
+        "Google Scholar"
+      ],
+      "seed_queries": {
+        "zh": "Andersen卫生服务利用模型 护理 综述",
+        "en": "\"Andersen Behavioral Model of Health Services Use\" nursing review"
+      }
+    },
+    "precaution_adoption_process": {
+      "recommended_databases": [
+        "PubMed",
+        "CINAHL",
+        "Web of Science",
+        "Scopus",
+        "PsycINFO",
+        "Google Scholar"
+      ],
+      "seed_queries": {
+        "zh": "预防采纳过程模型 护理 综述",
+        "en": "\"Precaution Adoption Process Model\" nursing review"
+      }
+    },
+    "information_motivation_behavioral_skills": {
+      "recommended_databases": [
+        "PubMed",
+        "CINAHL",
+        "Web of Science",
+        "Scopus",
+        "PsycINFO",
+        "Google Scholar"
+      ],
+      "seed_queries": {
+        "zh": "信息-动机-行为技能模型 护理 综述",
+        "en": "\"Information-Motivation-Behavioral Skills Model\" nursing review"
+      }
+    },
+    "com_b": {
+      "recommended_databases": [
+        "PubMed",
+        "CINAHL",
+        "Web of Science",
+        "Scopus",
+        "PsycINFO",
+        "Google Scholar"
+      ],
+      "seed_queries": {
+        "zh": "COM-B行为系统模型 护理 综述",
+        "en": "\"Capability-Opportunity-Motivation-Behavior Model\" nursing review"
+      }
+    },
+    "tdf": {
+      "recommended_databases": [
+        "PubMed",
+        "CINAHL",
+        "Web of Science",
+        "Scopus",
+        "PsycINFO",
+        "Google Scholar"
+      ],
+      "seed_queries": {
+        "zh": "理论域框架 护理 综述",
+        "en": "\"Theoretical Domains Framework\" nursing review"
+      }
+    },
+    "behavior_change_wheel": {
+      "recommended_databases": [
+        "PubMed",
+        "CINAHL",
+        "Web of Science",
+        "Scopus",
+        "PsycINFO",
+        "Google Scholar"
+      ],
+      "seed_queries": {
+        "zh": "行为改变轮 护理 综述",
+        "en": "\"Behavior Change Wheel\" nursing review"
+      }
+    },
+    "cfir": {
+      "recommended_databases": [
+        "PubMed",
+        "CINAHL",
+        "Web of Science",
+        "Scopus",
+        "PsycINFO",
+        "Google Scholar"
+      ],
+      "seed_queries": {
+        "zh": "实施研究综合框架 护理 综述",
+        "en": "\"Consolidated Framework for Implementation Research\" nursing review"
+      }
+    },
+    "re_aim": {
+      "recommended_databases": [
+        "PubMed",
+        "CINAHL",
+        "Web of Science",
+        "Scopus",
+        "PsycINFO",
+        "Google Scholar"
+      ],
+      "seed_queries": {
+        "zh": "RE-AIM框架 护理 综述",
+        "en": "\"RE-AIM Framework\" nursing review"
+      }
+    },
+    "parihs": {
+      "recommended_databases": [
+        "PubMed",
+        "CINAHL",
+        "Web of Science",
+        "Scopus",
+        "PsycINFO",
+        "Google Scholar"
+      ],
+      "seed_queries": {
+        "zh": "PARIHS框架 护理 综述",
+        "en": "\"Promoting Action on Research Implementation in Health Services\" nursing review"
+      }
+    },
+    "iparihs": {
+      "recommended_databases": [
+        "PubMed",
+        "CINAHL",
+        "Web of Science",
+        "Scopus",
+        "PsycINFO",
+        "Google Scholar"
+      ],
+      "seed_queries": {
+        "zh": "i-PARIHS框架 护理 综述",
+        "en": "\"Integrated PARIHS\" nursing review"
+      }
+    },
+    "knowledge_to_action": {
+      "recommended_databases": [
+        "PubMed",
+        "CINAHL",
+        "Web of Science",
+        "Scopus",
+        "PsycINFO",
+        "Google Scholar"
+      ],
+      "seed_queries": {
+        "zh": "知识到行动框架 护理 综述",
+        "en": "\"Knowledge-to-Action Framework\" nursing review"
+      }
+    },
+    "normalization_process_theory": {
+      "recommended_databases": [
+        "PubMed",
+        "CINAHL",
+        "Web of Science",
+        "Scopus",
+        "PsycINFO",
+        "Google Scholar"
+      ],
+      "seed_queries": {
+        "zh": "常态化过程理论 护理 综述",
+        "en": "\"Normalization Process Theory\" nursing review"
+      }
+    },
+    "diffusion_of_innovations": {
+      "recommended_databases": [
+        "PubMed",
+        "CINAHL",
+        "Web of Science",
+        "Scopus",
+        "PsycINFO",
+        "Google Scholar"
+      ],
+      "seed_queries": {
+        "zh": "创新扩散理论 护理 综述",
+        "en": "\"Diffusion of Innovations\" nursing review"
+      }
+    },
+    "mrc_complex_interventions": {
+      "recommended_databases": [
+        "PubMed",
+        "CINAHL",
+        "Web of Science",
+        "Scopus",
+        "PsycINFO",
+        "Google Scholar"
+      ],
+      "seed_queries": {
+        "zh": "MRC复杂干预框架 护理 综述",
+        "en": "\"MRC Framework for Complex Interventions\" nursing review"
+      }
+    },
+    "donabedian_model": {
+      "recommended_databases": [
+        "PubMed",
+        "CINAHL",
+        "Web of Science",
+        "Scopus",
+        "PsycINFO",
+        "Google Scholar"
+      ],
+      "seed_queries": {
+        "zh": "Donabedian结构-过程-结果模型 护理 综述",
+        "en": "\"Donabedian Structure-Process-Outcome Model\" nursing review"
+      }
+    },
+    "wilson_cleary_model": {
+      "recommended_databases": [
+        "PubMed",
+        "CINAHL",
+        "Web of Science",
+        "Scopus",
+        "PsycINFO",
+        "Google Scholar"
+      ],
+      "seed_queries": {
+        "zh": "Wilson-Cleary健康相关生活质量模型 护理 综述",
+        "en": "\"Wilson and Cleary Model of Health-Related Quality of Life\" nursing review"
+      }
+    },
+    "person_centered_care_framework": {
+      "recommended_databases": [
+        "PubMed",
+        "CINAHL",
+        "Web of Science",
+        "Scopus",
+        "PsycINFO",
+        "Google Scholar"
+      ],
+      "seed_queries": {
+        "zh": "以患者为中心照护框架 护理 综述",
+        "en": "\"Person-Centered Care Framework\" nursing review"
+      }
+    },
+    "family_centered_care_framework": {
+      "recommended_databases": [
+        "PubMed",
+        "CINAHL",
+        "Web of Science",
+        "Scopus",
+        "PsycINFO",
+        "Google Scholar"
+      ],
+      "seed_queries": {
+        "zh": "家庭中心照护框架 护理 综述",
+        "en": "\"Family-Centered Care Framework\" nursing review"
+      }
+    },
+    "shared_decision_making_model": {
+      "recommended_databases": [
+        "PubMed",
+        "CINAHL",
+        "Web of Science",
+        "Scopus",
+        "PsycINFO",
+        "Google Scholar"
+      ],
+      "seed_queries": {
+        "zh": "共同决策模型 护理 综述",
+        "en": "\"Shared Decision-Making Model\" nursing review"
+      }
+    },
+    "grounded_theory": {
+      "recommended_databases": [
+        "PubMed",
+        "CINAHL",
+        "Web of Science",
+        "Scopus",
+        "PsycINFO",
+        "Google Scholar"
+      ],
+      "seed_queries": {
+        "zh": "扎根理论 护理 综述",
+        "en": "\"Grounded Theory\" nursing review"
+      }
+    },
+    "phenomenology": {
+      "recommended_databases": [
+        "PubMed",
+        "CINAHL",
+        "Web of Science",
+        "Scopus",
+        "PsycINFO",
+        "Google Scholar"
+      ],
+      "seed_queries": {
+        "zh": "现象学 护理 综述",
+        "en": "\"Phenomenology\" nursing review"
+      }
+    },
+    "hermeneutic_phenomenology": {
+      "recommended_databases": [
+        "PubMed",
+        "CINAHL",
+        "Web of Science",
+        "Scopus",
+        "PsycINFO",
+        "Google Scholar"
+      ],
+      "seed_queries": {
+        "zh": "解释现象学 护理 综述",
+        "en": "\"Hermeneutic Phenomenology\" nursing review"
+      }
+    },
+    "ethnography": {
+      "recommended_databases": [
+        "PubMed",
+        "CINAHL",
+        "Web of Science",
+        "Scopus",
+        "PsycINFO",
+        "Google Scholar"
+      ],
+      "seed_queries": {
+        "zh": "民族志 护理 综述",
+        "en": "\"Ethnography\" nursing review"
+      }
+    },
+    "narrative_inquiry": {
+      "recommended_databases": [
+        "PubMed",
+        "CINAHL",
+        "Web of Science",
+        "Scopus",
+        "PsycINFO",
+        "Google Scholar"
+      ],
+      "seed_queries": {
+        "zh": "叙事研究 护理 综述",
+        "en": "\"Narrative Inquiry\" nursing review"
+      }
+    },
+    "case_study_method": {
+      "recommended_databases": [
+        "PubMed",
+        "CINAHL",
+        "Web of Science",
+        "Scopus",
+        "PsycINFO",
+        "Google Scholar"
+      ],
+      "seed_queries": {
+        "zh": "个案研究 护理 综述",
+        "en": "\"Case Study\" nursing review"
+      }
+    },
+    "content_analysis": {
+      "recommended_databases": [
+        "PubMed",
+        "CINAHL",
+        "Web of Science",
+        "Scopus",
+        "PsycINFO",
+        "Google Scholar"
+      ],
+      "seed_queries": {
+        "zh": "内容分析 护理 综述",
+        "en": "\"Content Analysis\" nursing review"
+      }
+    },
+    "thematic_analysis": {
+      "recommended_databases": [
+        "PubMed",
+        "CINAHL",
+        "Web of Science",
+        "Scopus",
+        "PsycINFO",
+        "Google Scholar"
+      ],
+      "seed_queries": {
+        "zh": "主题分析 护理 综述",
+        "en": "\"Thematic Analysis\" nursing review"
+      }
+    },
+    "transactional_model_stress": {
+      "recommended_databases": [
+        "PubMed",
+        "CINAHL",
+        "Web of Science",
+        "Scopus",
+        "PsycINFO",
+        "Google Scholar"
+      ],
+      "seed_queries": {
+        "zh": "交易性压力模型 护理 综述",
+        "en": "\"Transactional Model of Stress and Coping\" nursing review"
+      }
+    },
+    "care_transitions_intervention": {
+      "recommended_databases": [
+        "PubMed",
+        "CINAHL",
+        "Web of Science",
+        "Scopus",
+        "PsycINFO",
+        "Google Scholar"
+      ],
+      "seed_queries": {
+        "zh": "照护转衔干预模型 护理 综述",
+        "en": "\"Care Transitions Intervention Framework\" nursing review"
+      }
+    },
+    "patient_activation_measure_framework": {
+      "recommended_databases": [
+        "PubMed",
+        "CINAHL",
+        "Web of Science",
+        "Scopus",
+        "PsycINFO",
+        "Google Scholar"
+      ],
+      "seed_queries": {
+        "zh": "患者激活框架 护理 综述",
+        "en": "\"Patient Activation Framework\" nursing review"
+      }
+    },
+    "chronic_illness_trajectory_framework": {
+      "recommended_databases": [
+        "PubMed",
+        "CINAHL",
+        "Web of Science",
+        "Scopus",
+        "PsycINFO",
+        "Google Scholar"
+      ],
+      "seed_queries": {
+        "zh": "慢病轨迹框架 护理 综述",
+        "en": "\"Chronic Illness Trajectory Framework\" nursing review"
+      }
+    },
+    "quality_health_outcomes_model": {
+      "recommended_databases": [
+        "PubMed",
+        "CINAHL",
+        "Web of Science",
+        "Scopus",
+        "PsycINFO",
+        "Google Scholar"
+      ],
+      "seed_queries": {
+        "zh": "质量健康结局模型 护理 综述",
+        "en": "\"Quality Health Outcomes Model\" nursing review"
+      }
+    }
+  }
+}

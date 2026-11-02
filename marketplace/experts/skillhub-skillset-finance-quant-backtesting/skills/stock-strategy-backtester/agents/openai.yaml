@@ -1,0 +1,4 @@
+interface:
+  display_name: "Stock Backtest Analyst"
+  short_description: "Backtest stock strategies for win rate and returns"
+  default_prompt: "Use $stock-strategy-backtester to backtest one or more stock strategies from OHLCV data and compare return, drawdown, and win rate."

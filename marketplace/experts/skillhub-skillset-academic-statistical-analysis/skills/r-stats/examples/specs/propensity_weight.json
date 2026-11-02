@@ -1,0 +1,12 @@
+{
+  "dataset_path": "examples/data/observational_treatment.csv",
+  "analysis_type": "propensity_weight",
+  "treatment_var": "treated",
+  "formula": "treated ~ age + female + comorbidity",
+  "outcome_var": "outcome",
+  "estimand": "ATE",
+  "hypothesis": "Treatment reduces outcome (ATE estimated via IPTW)",
+  "alpha": 0.05,
+  "seed": 42,
+  "output_dir": "output/propensity_weight"
+}

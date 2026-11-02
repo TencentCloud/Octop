@@ -1,0 +1,13 @@
+{
+  "dataset_path": "examples/data/mtcars.csv",
+  "analysis_type": "linear_regression",
+  "outcome": "mpg",
+  "predictors": ["wt", "hp"],
+  "formula": "mpg ~ wt + hp",
+  "group_var": null,
+  "hypothesis": "Vehicle weight and horsepower are associated with fuel efficiency",
+  "missing_strategy": "complete_case",
+  "alpha": 0.05,
+  "seed": 42,
+  "output_dir": "output/regression_mtcars"
+}

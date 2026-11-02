@@ -1,0 +1,123 @@
+# LegalDoc AI Configuration Template
+# Copy to ~/.legaldoc/config.yaml and customize
+
+# Default settings
+default_jurisdiction: "federal"
+output_format: "markdown"
+
+# Document processing
+processing:
+  ocr_enabled: true
+  ocr_language: "eng"
+  max_file_size_mb: 50
+  supported_formats:
+    - pdf
+    - docx
+    - doc
+    - txt
+    - rtf
+
+# Clause extraction settings
+clause_extraction:
+  min_confidence: 0.5
+  include_suggestions: true
+  default_types:
+    - indemnification
+    - limitation_of_liability
+    - termination
+    - confidentiality
+    - ip_assignment
+
+# Document summarization
+summarization:
+  default_type: "executive"
+  default_length: "medium"
+  include_risk_assessment: true
+  include_key_dates: true
+
+# Legal research
+research:
+  default_provider: "courtlistener"  # free tier
+  cache_results: true
+  cache_ttl_hours: 24
+  providers:
+    courtlistener:
+      enabled: true
+      api_key: "${COURTLISTENER_API_KEY}"
+    westlaw:
+      enabled: false
+      api_key: "${WESTLAW_API_KEY}"
+    lexis:
+      enabled: false
+      api_key: "${LEXIS_API_KEY}"
+
+# Deadline tracking
+deadlines:
+  database_path: "~/.legaldoc/deadlines.db"
+  default_alert_days: [7, 3, 1]
+  business_days_only: true
+  
+  # Alert configuration
+  alerts:
+    enabled: true
+    channels:
+      email:
+        enabled: true
+        recipients:
+          - "attorney@lawfirm.com"
+          - "paralegal@lawfirm.com"
+      slack:
+        enabled: false
+        webhook_url: "${SLACK_WEBHOOK_URL}"
+        channel: "#legal-deadlines"
+      sms:
+        enabled: false
+        provider: "twilio"
+        recipients:
+          - "+1234567890"
+    
+    # When to send alerts
+    schedule:
+      daily_summary: "08:00"
+      critical_immediate: true
+      weekend_alerts: false
+
+# Practice management integration
+integrations:
+  clio:
+    enabled: false
+    api_key: "${CLIO_API_KEY}"
+    sync_matters: true
+    sync_deadlines: true
+  mycase:
+    enabled: false
+    api_key: "${MYCASE_API_KEY}"
+  practicepanther:
+    enabled: false
+    api_key: "${PRACTICEPANTHER_API_KEY}"
+
+# Document storage integration
+storage:
+  provider: "local"  # local, google_drive, dropbox, sharepoint, netdocs
+  local:
+    base_path: "~/.legaldoc/documents"
+  google_drive:
+    enabled: false
+    folder_id: ""
+  dropbox:
+    enabled: false
+    access_token: "${DROPBOX_ACCESS_TOKEN}"
+
+# Logging and audit
+logging:
+  level: "INFO"
+  file: "~/.legaldoc/logs/legaldoc.log"
+  audit_trail: true
+  retention_days: 90
+
+# Privacy and security
+security:
+  encrypt_at_rest: false
+  delete_after_processing: false
+  anonymize_logs: true
+  allowed_ip_ranges: []

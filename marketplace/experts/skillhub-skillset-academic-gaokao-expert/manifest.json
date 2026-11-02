@@ -1,0 +1,157 @@
+{
+  "id": "skillhub-skillset-academic-gaokao-expert",
+  "label": {
+    "zh": "高考专家",
+    "en": "Academic Gaokao Expert"
+  },
+  "description": {
+    "zh": "面向高考出分后的家庭决策场景，覆盖分数线与一分一段查询、位次判断、冲稳保志愿方案、院校与专业选择、专业背后的行业研究和企业调研，以及后续实习、校招、简历与面试准备。通过腾讯文档沉淀可协作的志愿表、调研报告和行动计划，并用简历与面试三方评估结果生成后续求职准备方案。",
+    "en": "Expert workflow for Academic Gaokao Expert."
+  },
+  "welcome_message": {
+    "zh": "提供专业、可落地的专家工作流支持",
+    "en": "Practical expert workflow support for your goals"
+  },
+  "icon_name": "book-open",
+  "icon_url": "https://cloudcache.tencent-cloud.com/qcloud/tea/app/skillhub/assets/source/ai-buddy-decouple/expert-profiles/academic-gaokao-expert.v20260625.avif",
+  "color": "#4f46e5",
+  "prompt_files": [
+    "SOUL.md"
+  ],
+  "quick_prompts": [
+    {
+      "title": {
+        "zh": "建立腾讯文档志愿工作台",
+        "en": "Workflow step 1"
+      },
+      "description": {
+        "zh": "生成高考志愿工作台和考生基础信息表",
+        "en": "Share context for a ready result"
+      },
+      "prompt": {
+        "zh": "请作为「高考专家」，帮我完成「建立腾讯文档志愿工作台」。\n我的情况/目标/材料是：\n",
+        "en": "As the Academic Gaokao Expert, help me with: Workflow step 1.\nMy context, goals, or materials are:\n"
+      },
+      "color": "#e8f4ff",
+      "icon_name": "trending-up"
+    },
+    {
+      "title": {
+        "zh": "查询地区分数线与批次基准",
+        "en": "Workflow step 2"
+      },
+      "description": {
+        "zh": "生成地区分数线基准表和批次风险说明",
+        "en": "Share context for a ready result"
+      },
+      "prompt": {
+        "zh": "请作为「高考专家」，帮我完成「查询地区分数线与批次基准」。\n我的情况/目标/材料是：\n",
+        "en": "As the Academic Gaokao Expert, help me with: Workflow step 2.\nMy context, goals, or materials are:\n"
+      },
+      "color": "#fef3c7",
+      "icon_name": "wrench"
+    },
+    {
+      "title": {
+        "zh": "查询一分一段与位次区间",
+        "en": "Workflow step 3"
+      },
+      "description": {
+        "zh": "生成一分一段位次表和冲稳保边界",
+        "en": "Share context for a ready result"
+      },
+      "prompt": {
+        "zh": "请作为「高考专家」，帮我完成「查询一分一段与位次区间」。\n我的情况/目标/材料是：\n",
+        "en": "As the Academic Gaokao Expert, help me with: Workflow step 3.\nMy context, goals, or materials are:\n"
+      },
+      "color": "#dcfce7",
+      "icon_name": "presentation"
+    },
+    {
+      "title": {
+        "zh": "生成选校选专业方案",
+        "en": "Workflow step 4"
+      },
+      "description": {
+        "zh": "生成冲稳保志愿方案和院校专业候选清单",
+        "en": "Share context for a ready result"
+      },
+      "prompt": {
+        "zh": "请作为「高考专家」，帮我完成「生成选校选专业方案」。\n我的情况/目标/材料是：\n",
+        "en": "As the Academic Gaokao Expert, help me with: Workflow step 4.\nMy context, goals, or materials are:\n"
+      },
+      "color": "#f1f5f9",
+      "icon_name": "activity"
+    },
+    {
+      "title": {
+        "zh": "做专业背后的行研与企业调研",
+        "en": "Workflow step 5"
+      },
+      "description": {
+        "zh": "生成专业-行业-企业调研报告和专业选择建议",
+        "en": "Share context for a ready result"
+      },
+      "prompt": {
+        "zh": "请作为「高考专家」，帮我完成「做专业背后的行研与企业调研」。\n我的情况/目标/材料是：\n",
+        "en": "As the Academic Gaokao Expert, help me with: Workflow step 5.\nMy context, goals, or materials are:\n"
+      },
+      "color": "#fff1f2",
+      "icon_name": "activity"
+    },
+    {
+      "title": {
+        "zh": "衔接简历与面试准备",
+        "en": "Workflow step 6"
+      },
+      "description": {
+        "zh": "生成实习规划、简历三方评估和面试预备材料",
+        "en": "Share context for a ready result"
+      },
+      "prompt": {
+        "zh": "请作为「高考专家」，帮我完成「衔接简历与面试准备」。\n我的情况/目标/材料是：\n",
+        "en": "As the Academic Gaokao Expert, help me with: Workflow step 6.\nMy context, goals, or materials are:\n"
+      },
+      "color": "#eef2ff",
+      "icon_name": "wrench"
+    }
+  ],
+  "task_examples": {
+    "zh": [
+      "每天「09:00」帮我完成「建立腾讯文档志愿工作台」并把结果发给我，任务创建后立即启用",
+      "每个工作日「18:00」帮我完成「查询地区分数线与批次基准」并把结果发给我",
+      "每周一「10:00」帮我完成「查询一分一段与位次区间」并把结果发给我",
+      "每周五「17:00」帮我完成「生成选校选专业方案」并把结果发给我",
+      "每天「08:00」帮我完成「做专业背后的行研与企业调研」并把结果发给我",
+      "每月 1 日「09:30」帮我完成「衔接简历与面试准备」并把结果发给我"
+    ],
+    "en": [
+      "Every day at 09:00, help me complete “Workflow step 1” and send the result — enable immediately",
+      "Every weekday at 18:00, help me complete “Workflow step 2” and send the result",
+      "Every Monday at 10:00, help me complete “Workflow step 3” and send the result",
+      "Every Friday at 17:00, help me complete “Workflow step 4” and send the result",
+      "Every day at 08:00, help me complete “Workflow step 5” and send the result",
+      "On the 1st of each month at 09:30, help me complete “Workflow step 6” and send the result"
+    ]
+  },
+  "source": {
+    "type": "skillhub",
+    "kind": "skillset",
+    "slug": "academic-gaokao-expert",
+    "scene": "academic",
+    "sub_scene": "gaokao-expert"
+  },
+  "skillhub": {
+    "slug": "academic-gaokao-expert",
+    "scene": "academic",
+    "sub_scene": "gaokao-expert",
+    "skill_slugs": [
+      "tencent-docs",
+      "tencent-yuanbao-gaokao-regional-passing-scores",
+      "tencent-yuanbao-gaokao-score-to-rank-lookup",
+      "gaokao-tool",
+      "business-writing",
+      "resume-interview-3party-optimizer"
+    ]
+  }
+}

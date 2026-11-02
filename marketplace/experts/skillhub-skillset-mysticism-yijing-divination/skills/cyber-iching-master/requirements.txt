@@ -1,0 +1,15 @@
+# Cyber I Ching Master Dependencies
+# 赛博易经大师 · 依赖清单
+
+# 核心依赖 - 纯 Python 标准库，无需额外安装
+# - dataclasses (Python 3.7+)
+# - enum (Python 3.4+)
+# - datetime (Python 标准库)
+# - json (Python 标准库)
+# - random (Python 标准库)
+# - os (Python 标准库)
+# - typing (Python 3.5+)
+
+# 可选依赖
+# pillow>=9.0.0  # 如果需要生成卦象图片
+# matplotlib>=3.5.0  # 如果需要可视化图表

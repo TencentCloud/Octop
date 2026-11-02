@@ -1,0 +1,157 @@
+{
+  "id": "skillhub-skillset-finance-financial-report-analysis",
+  "label": {
+    "zh": "财报分析专家",
+    "en": "Finance Financial Report Analysis Expert"
+  },
+  "description": {
+    "zh": "从A股/美股财务数据获取到三表深度解读、财务造假识别再到专业分析报告自动生成的完整财报分析工作流。支持利润表、资产负债表、现金流量表的全面解析，覆盖盈利能力、资产质量、现金流健康度等核心维度。",
+    "en": "Expert workflow for Finance Financial Report Analysis Expert."
+  },
+  "welcome_message": {
+    "zh": "提供专业、可落地的专家工作流支持",
+    "en": "Practical expert workflow support for your goals"
+  },
+  "icon_name": "candlestick-chart",
+  "icon_url": "https://cloudcache.tencent-cloud.com/qcloud/tea/app/skillhub/assets/source/ai-buddy-decouple/expert-profiles/finance-financial-report-analysis.v20260625.avif",
+  "color": "#059669",
+  "prompt_files": [
+    "SOUL.md"
+  ],
+  "quick_prompts": [
+    {
+      "title": {
+        "zh": "获取A股/中国市场财务数据",
+        "en": "Workflow step 1"
+      },
+      "description": {
+        "zh": "获取目标公司的三大财务报表（资产负债表、利润表、现金流…",
+        "en": "Share context for a ready result"
+      },
+      "prompt": {
+        "zh": "请作为「财报分析专家」，帮我完成「获取A股/中国市场财务数据」。\n我的情况/目标/材料是：\n",
+        "en": "As the Finance Financial Report Analysis Expert, help me with: Workflow step 1.\nMy context, goals, or materials are:\n"
+      },
+      "color": "#e8f4ff",
+      "icon_name": "trending-up"
+    },
+    {
+      "title": {
+        "zh": "补充美股/全球市场数据",
+        "en": "Workflow step 2"
+      },
+      "description": {
+        "zh": "获取美股实时股价、公司新闻和市场数据",
+        "en": "Share context for a ready result"
+      },
+      "prompt": {
+        "zh": "请作为「财报分析专家」，帮我完成「补充美股/全球市场数据」。\n我的情况/目标/材料是：\n",
+        "en": "As the Finance Financial Report Analysis Expert, help me with: Workflow step 2.\nMy context, goals, or materials are:\n"
+      },
+      "color": "#fef3c7",
+      "icon_name": "activity"
+    },
+    {
+      "title": {
+        "zh": "三表深度解读",
+        "en": "Workflow step 3"
+      },
+      "description": {
+        "zh": "逐表解读利润表（营收增速、毛利率、净利率趋势）",
+        "en": "Share context for a ready result"
+      },
+      "prompt": {
+        "zh": "请作为「财报分析专家」，帮我完成「三表深度解读」。\n我的情况/目标/材料是：\n",
+        "en": "As the Finance Financial Report Analysis Expert, help me with: Workflow step 3.\nMy context, goals, or materials are:\n"
+      },
+      "color": "#dcfce7",
+      "icon_name": "activity"
+    },
+    {
+      "title": {
+        "zh": "财务造假风险识别",
+        "en": "Workflow step 4"
+      },
+      "description": {
+        "zh": "生成风险识别报告",
+        "en": "Share context for a ready result"
+      },
+      "prompt": {
+        "zh": "请作为「财报分析专家」，帮我完成「财务造假风险识别」。\n我的情况/目标/材料是：\n",
+        "en": "As the Finance Financial Report Analysis Expert, help me with: Workflow step 4.\nMy context, goals, or materials are:\n"
+      },
+      "color": "#f1f5f9",
+      "icon_name": "activity"
+    },
+    {
+      "title": {
+        "zh": "交互式分析报告",
+        "en": "Workflow step 5"
+      },
+      "description": {
+        "zh": "分析上传的财务数据（Excel/PDF格式）",
+        "en": "Share context for a ready result"
+      },
+      "prompt": {
+        "zh": "请作为「财报分析专家」，帮我完成「交互式分析报告」。\n我的情况/目标/材料是：\n",
+        "en": "As the Finance Financial Report Analysis Expert, help me with: Workflow step 5.\nMy context, goals, or materials are:\n"
+      },
+      "color": "#fff1f2",
+      "icon_name": "activity"
+    },
+    {
+      "title": {
+        "zh": "三表报告自动生成",
+        "en": "Workflow step 6"
+      },
+      "description": {
+        "zh": "自动生成标准化的资产负债表、利润表、现金流量表分析报告",
+        "en": "Share context for a ready result"
+      },
+      "prompt": {
+        "zh": "请作为「财报分析专家」，帮我完成「三表报告自动生成」。\n我的情况/目标/材料是：\n",
+        "en": "As the Finance Financial Report Analysis Expert, help me with: Workflow step 6.\nMy context, goals, or materials are:\n"
+      },
+      "color": "#eef2ff",
+      "icon_name": "activity"
+    }
+  ],
+  "task_examples": {
+    "zh": [
+      "每天「09:00」帮我完成「获取A股/中国市场财务数据」并把结果发给我，任务创建后立即启用",
+      "每个工作日「18:00」帮我完成「补充美股/全球市场数据」并把结果发给我",
+      "每周一「10:00」帮我完成「三表深度解读」并把结果发给我",
+      "每周五「17:00」帮我完成「财务造假风险识别」并把结果发给我",
+      "每天「08:00」帮我完成「交互式分析报告」并把结果发给我",
+      "每月 1 日「09:30」帮我完成「三表报告自动生成」并把结果发给我"
+    ],
+    "en": [
+      "Every day at 09:00, help me complete “Workflow step 1” and send the result — enable immediately",
+      "Every weekday at 18:00, help me complete “Workflow step 2” and send the result",
+      "Every Monday at 10:00, help me complete “Workflow step 3” and send the result",
+      "Every Friday at 17:00, help me complete “Workflow step 4” and send the result",
+      "Every day at 08:00, help me complete “Workflow step 5” and send the result",
+      "On the 1st of each month at 09:30, help me complete “Workflow step 6” and send the result"
+    ]
+  },
+  "source": {
+    "type": "skillhub",
+    "kind": "skillset",
+    "slug": "finance-financial-report-analysis",
+    "scene": "finance",
+    "sub_scene": "financial-report-analysis"
+  },
+  "skillhub": {
+    "slug": "finance-financial-report-analysis",
+    "scene": "finance",
+    "sub_scene": "financial-report-analysis",
+    "skill_slugs": [
+      "tushare-data",
+      "marketpulse",
+      "earnings-reader",
+      "financial-fraud-index",
+      "finance-report-analyzer",
+      "financial-report-analysis"
+    ]
+  }
+}

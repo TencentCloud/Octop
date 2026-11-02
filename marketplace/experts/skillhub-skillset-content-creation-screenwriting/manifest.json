@@ -1,0 +1,157 @@
+{
+  "id": "skillhub-skillset-content-creation-screenwriting",
+  "label": {
+    "zh": "剧本创作专家",
+    "en": "Content Creation Screenwriting Expert"
+  },
+  "description": {
+    "zh": "覆盖剧本创作从「短剧主驱动 + 专业流水线」到「电影编剧经典方法论 + 广播剧/有声剧专项」再到「多代理工程化 + 去 AI 味多轮审查」的完整工具集，全部免 API Key",
+    "en": "Expert workflow for Content Creation Screenwriting Expert."
+  },
+  "welcome_message": {
+    "zh": "提供专业、可落地的专家工作流支持",
+    "en": "Practical expert workflow support for your goals"
+  },
+  "icon_name": "pen-tool",
+  "icon_url": "https://cloudcache.tencent-cloud.com/qcloud/tea/app/skillhub/assets/source/ai-buddy-decouple/expert-profiles/content-creation-screenwriting.v20260702.avif",
+  "color": "#c026d3",
+  "prompt_files": [
+    "SOUL.md"
+  ],
+  "quick_prompts": [
+    {
+      "title": {
+        "zh": "项目立项与剧本类型确认",
+        "en": "Workflow step 1"
+      },
+      "description": {
+        "zh": "生成Logline + 核心冲突 + 人设草案 + 题…",
+        "en": "Share context for a ready result"
+      },
+      "prompt": {
+        "zh": "请作为「剧本创作专家」，帮我完成「项目立项与剧本类型确认」。\n我的情况/目标/材料是：\n",
+        "en": "As the Content Creation Screenwriting Expert, help me with: Workflow step 1.\nMy context, goals, or materials are:\n"
+      },
+      "color": "#e8f4ff",
+      "icon_name": "presentation"
+    },
+    {
+      "title": {
+        "zh": "短剧专业流水线（处理层 / 短…",
+        "en": "Workflow step 2"
+      },
+      "description": {
+        "zh": "生成分集目录 + 各集完整剧本（行业格式）",
+        "en": "Share context for a ready result"
+      },
+      "prompt": {
+        "zh": "请作为「剧本创作专家」，帮我完成「短剧专业流水线（处理层 / 短剧类项目）」。\n我的情况/目标/材料是：\n",
+        "en": "As the Content Creation Screenwriting Expert, help me with: Workflow step 2.\nMy context, goals, or materials are:\n"
+      },
+      "color": "#fef3c7",
+      "icon_name": "list-todo"
+    },
+    {
+      "title": {
+        "zh": "电影/长剧经典编剧方法论（处理…",
+        "en": "Workflow step 3"
+      },
+      "description": {
+        "zh": "生成电影/长剧节拍表 + 场次大纲 + 关键场次剧本",
+        "en": "Share context for a ready result"
+      },
+      "prompt": {
+        "zh": "请作为「剧本创作专家」，帮我完成「电影/长剧经典编剧方法论（处理层 / 电影类项…」。\n我的情况/目标/材料是：\n",
+        "en": "As the Content Creation Screenwriting Expert, help me with: Workflow step 3.\nMy context, goals, or materials are:\n"
+      },
+      "color": "#dcfce7",
+      "icon_name": "server"
+    },
+    {
+      "title": {
+        "zh": "广播剧/有声剧脚本声场化（处理…",
+        "en": "Workflow step 4"
+      },
+      "description": {
+        "zh": "生成广播剧脚本（含音效与环境音标注）",
+        "en": "Share context for a ready result"
+      },
+      "prompt": {
+        "zh": "请作为「剧本创作专家」，帮我完成「广播剧/有声剧脚本声场化（处理层 / 广播剧类…」。\n我的情况/目标/材料是：\n",
+        "en": "As the Content Creation Screenwriting Expert, help me with: Workflow step 4.\nMy context, goals, or materials are:\n"
+      },
+      "color": "#f1f5f9",
+      "icon_name": "terminal"
+    },
+    {
+      "title": {
+        "zh": "多代理工程化流水线（处理层 /…",
+        "en": "Workflow step 5"
+      },
+      "description": {
+        "zh": "生成工程化项目档案（人物小传 + 逐集概要 + 修订日…",
+        "en": "Share context for a ready result"
+      },
+      "prompt": {
+        "zh": "请作为「剧本创作专家」，帮我完成「多代理工程化流水线（处理层 / 系列/长项目）」。\n我的情况/目标/材料是：\n",
+        "en": "As the Content Creation Screenwriting Expert, help me with: Workflow step 5.\nMy context, goals, or materials are:\n"
+      },
+      "color": "#fff1f2",
+      "icon_name": "activity"
+    },
+    {
+      "title": {
+        "zh": "3 轮 AI 审查与去 AI 味",
+        "en": "Workflow step 6"
+      },
+      "description": {
+        "zh": "生成最终剧本终稿（去 AI 味 + 爆款元素 + 通过…",
+        "en": "Share context for a ready result"
+      },
+      "prompt": {
+        "zh": "请作为「剧本创作专家」，帮我完成「3 轮 AI 审查与去 AI 味」。\n我的情况/目标/材料是：\n",
+        "en": "As the Content Creation Screenwriting Expert, help me with: Workflow step 6.\nMy context, goals, or materials are:\n"
+      },
+      "color": "#eef2ff",
+      "icon_name": "activity"
+    }
+  ],
+  "task_examples": {
+    "zh": [
+      "每天「09:00」帮我完成「项目立项与剧本类型确认」并把结果发给我，任务创建后立即启用",
+      "每个工作日「18:00」帮我完成「短剧专业流水线（处理层 / 短…」并把结果发给我",
+      "每周一「10:00」帮我完成「电影/长剧经典编剧方法论（处理…」并把结果发给我",
+      "每周五「17:00」帮我完成「广播剧/有声剧脚本声场化（处理…」并把结果发给我",
+      "每天「08:00」帮我完成「多代理工程化流水线（处理层 /…」并把结果发给我",
+      "每月 1 日「09:30」帮我完成「3 轮 AI 审查与去 AI 味」并把结果发给我"
+    ],
+    "en": [
+      "Every day at 09:00, help me complete “Workflow step 1” and send the result — enable immediately",
+      "Every weekday at 18:00, help me complete “Workflow step 2” and send the result",
+      "Every Monday at 10:00, help me complete “Workflow step 3” and send the result",
+      "Every Friday at 17:00, help me complete “Workflow step 4” and send the result",
+      "Every day at 08:00, help me complete “Workflow step 5” and send the result",
+      "On the 1st of each month at 09:30, help me complete “Workflow step 6” and send the result"
+    ]
+  },
+  "source": {
+    "type": "skillhub",
+    "kind": "skillset",
+    "slug": "content-creation-screenwriting",
+    "scene": "content-creation",
+    "sub_scene": "screenwriting"
+  },
+  "skillhub": {
+    "slug": "content-creation-screenwriting",
+    "scene": "content-creation",
+    "sub_scene": "screenwriting",
+    "skill_slugs": [
+      "short-drama-writer",
+      "short-drama-pro",
+      "wahoo",
+      "text-echo-chamber",
+      "walrus03",
+      "drama-script"
+    ]
+  }
+}

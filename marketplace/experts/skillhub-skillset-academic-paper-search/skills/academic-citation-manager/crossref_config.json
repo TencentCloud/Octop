@@ -1,0 +1,112 @@
+{
+  "api_base": "https://api.crossref.org",
+  "api_version": "v1",
+  "endpoints": {
+    "works": "/works",
+    "works_with_doi": "/works/{doi}",
+    "journals": "/journals",
+    "types": "/types",
+    "fields": "/fields",
+    "funders": "/funders",
+    "members": "/members",
+    "prefixes": "/prefixes",
+    "deposits": "/deposits"
+  },
+  "request_config": {
+    "user_agent": "AcademicCitationManager/1.0.0 (mailto:youstudyeveryday@example.com)",
+    "timeout": 15,
+    "max_retries": 3,
+    "retry_backoff": 1.5,
+    "default_rows": 20,
+    "select": "doi,title,author,type,published-print,container-title,volume,issue,page,publisher,ISSN,ISBN"
+  },
+  "rate_limiting": {
+    "enabled": true,
+    "requests_per_second": 10,
+    "requests_per_minute": 600,
+    "backoff_strategy": "exponential",
+    "max_retries": 3,
+    "initial_backoff": 1.0,
+    "max_backoff": 60.0
+  },
+  "filters": {
+    "default": {
+      "has_full_text": true,
+      "state": "active"
+    },
+    "journal_articles": {
+      "type": "journal-article"
+    },
+    "books": {
+      "type": "monograph"
+    },
+    "conferences": {
+      "type": "proceedings"
+    },
+    "datasets": {
+      "type": "dataset"
+    },
+    "reports": {
+      "type": "report"
+    },
+    "standards": {
+      "type": "standard"
+    },
+    "components": {
+      "type": "component"
+    }
+  },
+  "sort_options": {
+    "published": "published",
+    "published-print": "published-print",
+    "is-referenced-by-count": "is-referenced-by-count",
+    "score": "score"
+  },
+  "cache": {
+    "enabled": true,
+    "type": "memory",
+    "ttl_seconds": 86400,
+    "max_size": 1000,
+    "clear_on_start": false
+  },
+  "metadata_fields": {
+    "author": {
+      "fields": ["given", "family", "sequence", "ORCID", "affiliation"],
+      "prefix": "author"
+    },
+    "title": {
+      "fields": ["title", "short-container-title", "subtitle", "original-title"],
+      "prefix": "title"
+    },
+    "publication": {
+      "fields": ["type", "published", "published-print", "published-online", "deposited", "indexed"],
+      "prefix": ""
+    },
+    "container": {
+      "fields": ["container-title", "short-container-title", "ISSN", "ISBN", "publisher", "member"],
+      "prefix": ""
+    },
+    "details": {
+      "fields": ["volume", "issue", "page", "article-number", "publisher-location", "license"],
+      "prefix": ""
+    },
+    "identifiers": {
+      "fields": ["DOI", "URL", "PMID", "PMCID", "arXiv"],
+      "prefix": ""
+    }
+  },
+  "response_parsing": {
+    "handle_empty_author": "Unknown",
+    "handle_missing_title": "Untitled",
+    "handle_multiple_titles": "use_first",
+    "normalize_author_names": true,
+    "extract_year_from_date": true
+  },
+  "error_handling": {
+    "retry_on_timeout": true,
+    "retry_on_5xx": true,
+    "log_errors": true,
+    "error_log_file": "crossref_errors.log",
+    "max_error_log_size": 1048576
+  }
+}

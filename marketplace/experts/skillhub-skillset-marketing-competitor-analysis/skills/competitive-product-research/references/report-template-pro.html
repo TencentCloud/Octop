@@ -1,0 +1,498 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>Competitive Research · __research_target__</title>
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --blue:#3b82f6;--blue-d:#2563eb;--blue-dd:#1d4ed8;--blue-l:#dbeafe;--blue-ul:#eff6ff;
+  --orange:#f97316;--orange-d:#ea580c;--orange-l:#ffedd5;--orange-ul:#fff7ed;
+  --green:#16a34a;--green-l:#dcfce7;--red:#dc2626;--red-l:#fee2e2;
+  --amber:#d97706;--amber-l:#fef3c7;
+  --s50:#f8fafc;--s100:#f1f5f9;--s200:#e2e8f0;--s300:#cbd5e1;--s400:#94a3b8;--s500:#64748b;--s600:#475569;--s700:#334155;--s800:#1e293b;--s900:#0f172a;
+  --card:#fff;--r:12px;--r2:16px;--r3:20px;
+  --sh-s:0 1px 2px rgba(0,0,0,.04);
+  --sh:0 1px 3px rgba(50,50,93,.08),0 1px 2px rgba(0,0,0,.04);
+  --sh-m:0 4px 12px rgba(50,50,93,.10),0 2px 4px rgba(0,0,0,.04);
+  --sh-l:0 12px 28px rgba(50,50,93,.12),0 4px 10px rgba(0,0,0,.06);
+}
+html{font-size:14px}
+body{
+  font-family:'Inter',-apple-system,'PingFang SC','Noto Sans SC','Microsoft YaHei',system-ui,sans-serif;
+  color:var(--s800);line-height:1.6;-webkit-font-smoothing:antialiased;
+  background:#f0f4f8;min-height:100vh;padding:24px 16px;
+}
+.wrap{max-width:1160px;margin:0 auto}
+
+/* ===== HERO (light blue theme) ===== */
+.hero{
+  position:relative;overflow:hidden;border-radius:var(--r3);
+  background:linear-gradient(135deg,#7eb8d8 0%,#a3d0e8 25%,#bddcee 50%,#d0e8f5 75%,#e3f1fa 100%);
+  color:#1a3a52;padding:0;margin-bottom:20px;
+  box-shadow:0 20px 60px -15px rgba(126,184,216,.35),0 8px 20px -8px rgba(0,0,0,.08);
+}
+.hero-glow{position:absolute;inset:0;pointer-events:none}
+.hero-glow::before{content:"";position:absolute;width:600px;height:600px;right:-180px;top:-280px;background:radial-gradient(circle,rgba(255,255,255,.35) 0%,rgba(255,255,255,.10) 40%,transparent 65%)}
+.hero-glow::after{content:"";position:absolute;width:500px;height:500px;left:-120px;bottom:-260px;background:radial-gradient(circle,rgba(100,180,220,.25) 0%,rgba(100,180,220,.08) 40%,transparent 60%)}
+.hero-grid{position:relative;z-index:1;display:grid;grid-template-columns:1fr 240px;gap:0;min-height:180px}
+.hero-left{padding:28px 32px}
+.hero-kicker{font-size:10px;letter-spacing:2.5px;text-transform:uppercase;opacity:.55;margin-bottom:8px;font-weight:500}
+.hero-title{font-size:28px;font-weight:700;letter-spacing:-.5px;line-height:1.3;color:#1a3a52}
+.hero-desc{opacity:.75;margin-top:10px;font-size:13px;line-height:1.6;max-width:520px}
+.hero-pills{display:flex;gap:8px;flex-wrap:wrap;margin-top:16px}
+.hp{background:rgba(255,255,255,.45);backdrop-filter:blur(6px);border:1px solid rgba(26,58,82,.12);border-radius:999px;padding:3px 12px;font-size:11px;font-weight:500;color:#1a3a52}
+.hp.adopt{background:rgba(22,163,74,.20);border-color:rgba(22,163,74,.35);color:#15803d}
+.hp.monitor{background:rgba(217,119,6,.20);border-color:rgba(217,119,6,.35);color:#b45309}
+.hp.avoid{background:rgba(220,38,38,.20);border-color:rgba(220,38,38,.35);color:#dc2626}
+.hero-right{display:flex;flex-direction:column;align-items:center;justify-content:center;border-left:1px solid rgba(26,58,82,.12);padding:24px}
+.hero-ts{font-size:10px;opacity:.50;margin-bottom:4px}
+.hero-big{font-size:40px;font-weight:800;letter-spacing:-2px;line-height:1.2;color:#1a3a52;text-align:center}
+.hero-big-sub{font-size:11px;opacity:.55;margin-top:6px;letter-spacing:.3px;text-align:center;max-width:160px}
+
+/* ===== KPI STRIP (一体式仪表板) ===== */
+.kpi-strip{
+  display:flex;background:var(--card);border:1px solid var(--s200);
+  border-radius:var(--r2);box-shadow:var(--sh-m);overflow:hidden;margin-bottom:16px;
+}
+.kpi{
+  flex:1;padding:20px 16px 16px;text-align:center;border-right:1px solid var(--s100);
+  position:relative;transition:background .15s;
+}
+.kpi:last-child{border-right:none}
+.kpi:hover{background:var(--s50)}
+/* top accent bar */
+.kpi::before{content:"";position:absolute;top:0;left:0;right:0;height:3px}
+.kpi.k-blue::before{background:linear-gradient(90deg,var(--blue),var(--blue-d))}
+.kpi.k-orange::before{background:linear-gradient(90deg,var(--orange),var(--orange-d))}
+.kpi.k-green::before{background:linear-gradient(90deg,var(--green),#15803d)}
+.kpi.k-violet::before{background:linear-gradient(90deg,#7c3aed,#6d28d9)}
+.kpi-icon{font-size:18px;margin-bottom:6px;line-height:1;opacity:.75}
+.kpi-v{font-size:26px;font-weight:800;letter-spacing:-1.5px;line-height:1}
+.kpi.k-blue .kpi-v{color:var(--blue-d)}
+.kpi.k-orange .kpi-v{color:var(--orange-d)}
+.kpi.k-green .kpi-v{color:var(--green)}
+.kpi.k-violet .kpi-v{color:#6d28d9}
+.kpi-k{font-size:9.5px;color:var(--s400);margin-top:5px;font-weight:600;text-transform:uppercase;letter-spacing:.9px}
+
+/* ===== CALLOUTS ===== */
+.cos{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:16px}
+.co{border-radius:var(--r);padding:14px 16px;display:flex;gap:10px;align-items:flex-start;box-shadow:var(--sh-s)}
+.co.insight{background:linear-gradient(135deg,#eff6ff,var(--blue-l));border:1px solid rgba(59,130,246,.15)}
+.co.action{background:linear-gradient(135deg,#f0fdf4,var(--green-l));border:1px solid rgba(22,163,74,.15)}
+.co.risk{background:linear-gradient(135deg,#fff5f5,var(--red-l));border:1px solid rgba(220,38,38,.15)}
+.co.warn{background:linear-gradient(135deg,#fffbeb,var(--amber-l));border:1px solid rgba(217,119,6,.15)}
+.co-icon{font-size:20px;flex:none;line-height:1}
+.co-title{font-size:12px;font-weight:600;color:var(--s700);margin-bottom:3px}
+.co-body{font-size:13px;color:var(--s600);line-height:1.5}
+
+/* ===== CARD ===== */
+.card{background:var(--card);border:1px solid var(--s200);border-radius:var(--r2);padding:20px 24px;box-shadow:var(--sh);margin-bottom:16px}
+.card-h{font-size:15px;font-weight:600;color:var(--s800);margin-bottom:12px;display:flex;align-items:center;gap:8px}
+.card-sub{font-size:11px;color:var(--s400);margin:-6px 0 12px;line-height:1.4}
+
+/* ===== GRID ===== */
+.g2{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px}
+.g3{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin-bottom:16px}
+
+/* ===== TABLE ===== */
+table{width:100%;border-collapse:separate;border-spacing:0;font-size:13px}
+th,td{padding:8px 12px;text-align:left}
+th{font-size:10px;font-weight:600;color:var(--s400);text-transform:uppercase;letter-spacing:.8px;border-bottom:2px solid var(--s100);background:var(--s50)}
+td{border-bottom:1px solid var(--s100)}
+tr:last-child td{border-bottom:none}
+.pill{display:inline-block;padding:2px 10px;border-radius:999px;font-size:10px;font-weight:600;letter-spacing:.3px}
+.pill.g{color:var(--green);background:var(--green-l)}
+.pill.w{color:var(--amber);background:var(--amber-l)}
+.pill.r{color:var(--red);background:var(--red-l)}
+.pill.b{color:var(--blue);background:var(--blue-l)}
+.pill.n{color:var(--s500);background:var(--s100)}
+.pill-link{text-decoration:none;transition:filter .15s,box-shadow .15s}
+.pill-link:hover{filter:brightness(.96);box-shadow:0 0 0 2px rgba(59,130,246,.12)}
+
+/* ===== FINDING ===== */
+.finding{padding:12px 14px;border-left:3px solid var(--blue);background:var(--blue-ul);border-radius:0 var(--r) var(--r) 0;margin:8px 0;font-size:13px}
+.finding.warn{border-left-color:var(--amber);background:var(--amber-l)}
+.finding.risk{border-left-color:var(--red);background:var(--red-l)}
+.finding .dim{color:var(--blue);font-weight:600;font-size:10px;text-transform:uppercase;letter-spacing:.08em;margin-bottom:3px}
+.finding.warn .dim{color:var(--amber)}
+.finding.risk .dim{color:var(--red)}
+
+/* ===== COVERAGE ===== */
+.cov-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(130px,1fr));gap:8px;margin-top:8px}
+.cov-item{border:1px solid var(--s200);border-radius:var(--r);padding:10px;background:var(--card);text-align:center;font-size:12px;display:block;text-decoration:none;color:inherit;transition:box-shadow .15s,border-color .15s}
+a.cov-item:hover{border-color:var(--blue);box-shadow:var(--sh-m);cursor:pointer}
+.cov-item .label{color:var(--s500);font-size:11px}
+.cov-item .status{font-size:18px;margin-top:4px}
+.cov-item.covered .status{color:var(--green)}
+.cov-item.missing .status{color:var(--red)}
+.cov-item.partial .status{color:var(--amber)}
+
+/* ===== BENCHMARK TABLE ===== */
+.bench{overflow-x:auto;margin-top:10px}
+.bench table{table-layout:fixed;min-width:860px}
+
+/* ===== SWOT ===== */
+.swot{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:10px}
+.swot-cell{border-radius:var(--r);padding:14px;font-size:12.5px;line-height:1.6}
+.swot-cell.s{background:linear-gradient(145deg,#f0fdf4,var(--green-l));border:1px solid rgba(22,163,74,.15)}
+.swot-cell.w{background:linear-gradient(145deg,#fff5f5,var(--red-l));border:1px solid rgba(220,38,38,.15)}
+.swot-cell.o{background:linear-gradient(145deg,#eff6ff,var(--blue-l));border:1px solid rgba(59,130,246,.15)}
+.swot-cell.t{background:linear-gradient(145deg,#fffbeb,var(--amber-l));border:1px solid rgba(217,119,6,.15)}
+.swot-label{font-size:10px;font-weight:700;letter-spacing:.8px;text-transform:uppercase;margin-bottom:6px}
+.swot-cell.s .swot-label{color:var(--green)}
+.swot-cell.w .swot-label{color:var(--red)}
+.swot-cell.o .swot-label{color:var(--blue)}
+.swot-cell.t .swot-label{color:var(--amber)}
+
+/* ===== PATTERN ===== */
+.pattern{border:1px solid var(--s200);border-radius:var(--r);padding:14px 16px;margin-top:10px;background:var(--s50)}
+.pattern .name{font-weight:700;font-size:14px;color:var(--s800);margin-bottom:8px}
+
+/* ===== EVIDENCE ===== */
+.ev-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:10px;margin-top:8px}
+.ev-card{border:1px solid var(--s200);border-radius:var(--r);padding:12px;background:var(--s50);font-size:12px}
+.ev-id{font-weight:700;color:var(--blue);margin-bottom:4px}
+.ev-desc{color:var(--s500);line-height:1.5}
+.ev-link{display:inline-block;margin-top:6px;color:var(--blue);font-size:11px;text-decoration:none;border:1px solid var(--blue-l);border-radius:999px;padding:2px 10px}
+.ev-link:hover{border-color:var(--blue)}
+
+/* ===== DISCLAIMER ===== */
+.disc{background:var(--s50);border:1px solid var(--s200);border-radius:var(--r);padding:16px 20px;margin-bottom:16px;font-size:11px;color:var(--s400);line-height:1.7}
+.disc strong{color:var(--s500)}
+.disc ul{padding-left:18px;margin:4px 0}
+.disc li{margin:3px 0}
+
+/* ===== FOOTER ===== */
+.ft{text-align:center;font-size:10px;color:var(--s300);padding:16px 0;letter-spacing:.5px}
+
+/* ===== RESPONSIVE ===== */
+@media(max-width:960px){
+  .hero-grid{grid-template-columns:1fr}
+  .hero-right{border-left:none;border-top:1px solid rgba(26,58,82,.12)}
+  .g2,.g3{grid-template-columns:1fr 1fr}
+  .swot{grid-template-columns:1fr}
+  .cos{grid-template-columns:1fr}
+}
+@media(max-width:640px){
+  body{padding:12px 8px}
+  .kpi-strip{flex-wrap:wrap}
+  .kpi{flex:1 1 50%;border-bottom:1px solid var(--s100)}
+  .kpi:nth-child(odd){border-right:1px solid var(--s100)}
+  .kpi:last-child,.kpi:nth-last-child(2):nth-child(odd){border-bottom:none}
+}
+</style>
+</head>
+
+<!--
+  Competitive Product Research Report Template
+  =============================================
+  Placeholder format:  __placeholder_name__
+
+  Verdict style classes (hero pill + hero-big color):
+    adopt   — green
+    monitor — amber
+    avoid   — red
+
+  Section order:
+    1.  Hero
+    2.  KPI Strip (4-metric summary)
+    3.  Top Insight + Priority Action Callouts
+    4.  Research Scope + Source Coverage
+    5.  Summary Conclusions
+    6.  Competitive Benchmark Table
+    7.  Strategic Analysis (SWOT / Porter's Five Forces / PESTLE)
+    8.  Key Findings
+    9.  Reusable Patterns
+   10.  Implementation Roadmap
+   11.  Source Index
+   12.  Disclaimer
+-->
+
+<body>
+<div class="wrap">
+
+  <!-- ========== HERO ========== -->
+  <header class="hero">
+    <div class="hero-glow"></div>
+    <div class="hero-grid">
+      <div class="hero-left">
+        <div class="hero-kicker">Competitive Product Research &middot; CPR Report</div>
+        <h1 class="hero-title">__research_target__</h1>
+        <p class="hero-desc">__one_line_summary__</p>
+        <div class="hero-pills">
+          <span class="hp">__product_count__ Products</span>
+          <span class="hp">__platforms__</span>
+          <span class="hp">__themes__</span>
+          <span class="hp">__core_scenario__</span>
+          <span class="hp __verdict_style__">__verdict__</span>
+        </div>
+      </div>
+      <div class="hero-right">
+        <div class="hero-ts">__generated_at__</div>
+        <div class="hero-big">__verdict__</div>
+        <div class="hero-big-sub">__focus_dimensions__</div>
+      </div>
+    </div>
+  </header>
+
+  <!-- ========== KPI STRIP ========== -->
+  <div class="kpi-strip">
+    <div class="kpi k-blue">
+      <div class="kpi-icon">&#128202;</div>
+      <div class="kpi-v">__product_count__</div>
+      <div class="kpi-k">Products Analyzed</div>
+    </div>
+    <div class="kpi k-orange">
+      <div class="kpi-icon">&#128270;</div>
+      <div class="kpi-v">__finding_count__</div>
+      <div class="kpi-k">Key Findings</div>
+    </div>
+    <div class="kpi k-green">
+      <div class="kpi-icon">&#129513;</div>
+      <div class="kpi-v">__pattern_count__</div>
+      <div class="kpi-k">Reusable Patterns</div>
+    </div>
+    <div class="kpi k-violet">
+      <div class="kpi-icon">&#128640;</div>
+      <div class="kpi-v">__action_count__</div>
+      <div class="kpi-k">Action Items</div>
+    </div>
+  </div>
+
+  <!-- ========== CALLOUTS ========== -->
+  <div class="cos">
+    <div class="co insight">
+      <span class="co-icon">&#128269;</span>
+      <div>
+        <div class="co-title">Top Insight</div>
+        <div class="co-body">__top_insight__</div>
+      </div>
+    </div>
+    <div class="co action">
+      <span class="co-icon">&#9889;</span>
+      <div>
+        <div class="co-title">Priority Action</div>
+        <div class="co-body">__top_action__</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ========== RESEARCH SCOPE + SOURCE COVERAGE ========== -->
+  <div class="g2">
+    <div class="card">
+      <div class="card-h">&#127919; Research Scope</div>
+      <table>
+        <thead><tr><th>Dimension</th><th>Details</th></tr></thead>
+        <tbody>
+          <tr><td>Target</td><td>__research_target__</td></tr>
+          <tr><td>Core Scenario</td><td>__scenario_path__</td></tr>
+          <tr><td>Products</td><td>__product_details__</td></tr>
+          <tr><td>Platforms</td><td>__platform_details__</td></tr>
+          <tr><td>Dimensions</td><td>__dimension_details__</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="card">
+      <div class="card-h">&#128230; Source Coverage</div>
+      <div class="card-sub">&#128247; User Materials &middot; &#128279; Public Info &middot; &#128161; Industry Experience</div>
+      <div class="cov-grid">
+        <!-- Use <a> when url is available, <div> when not (e.g. industry experience) -->
+        <a class="cov-item __coverage_1_status__" href="__coverage_1_url__" target="_blank" rel="noopener">
+          <div class="label">__coverage_1_product__</div>
+          <div class="status">__coverage_1_icon__</div>
+        </a>
+        <a class="cov-item __coverage_2_status__" href="__coverage_2_url__" target="_blank" rel="noopener">
+          <div class="label">__coverage_2_product__</div>
+          <div class="status">__coverage_2_icon__</div>
+        </a>
+        <div class="cov-item __coverage_3_status__">
+          <div class="label">__coverage_3_product__</div>
+          <div class="status">__coverage_3_icon__</div>
+        </div>
+      </div>
+      <div class="finding" style="margin-top:12px">
+        <strong>&#128247; User Materials:</strong> __user_material_note__
+      </div>
+    </div>
+  </div>
+
+  <!-- ========== SUMMARY CONCLUSIONS ========== -->
+  <div class="card">
+    <div class="card-h">&#128203; Summary Conclusions</div>
+    <ol style="padding-left:18px;font-size:13px;color:var(--s700)">
+      <li style="margin:6px 0">__summary_1__</li>
+      <li style="margin:6px 0">__summary_2__</li>
+      <li style="margin:6px 0">__summary_3__</li>
+    </ol>
+  </div>
+
+  <!-- ========== COMPETITIVE BENCHMARK ========== -->
+  <div class="card">
+    <div class="card-h">&#128202; Competitive Benchmark</div>
+    <div class="card-sub">Core deliverable &middot; Scenario &times; Product &times; Dimension</div>
+    <div class="bench">
+      <table>
+        <colgroup>
+          <col style="width:12%"><col style="width:14%"><col style="width:30%"><col style="width:32%"><col style="width:12%">
+        </colgroup>
+        <thead><tr><th>Product</th><th>Scenario / Node</th><th>Approach &amp; Highlights</th><th>Gap vs. Ours</th><th>Evidence</th></tr></thead>
+        <tbody>
+          <tr><td>__bench_1_product__</td><td>__bench_1_scene__</td><td>__bench_1_detail__</td><td>__bench_1_gap__</td><td><a class="pill b pill-link" href="__bench_1_ev_url__" target="_blank" rel="noopener">__bench_1_ev__</a></td></tr>
+          <tr><td>__bench_2_product__</td><td>__bench_2_scene__</td><td>__bench_2_detail__</td><td>__bench_2_gap__</td><td><a class="pill b pill-link" href="__bench_2_ev_url__" target="_blank" rel="noopener">__bench_2_ev__</a></td></tr>
+          <tr><td>__bench_3_product__</td><td>__bench_3_scene__</td><td>__bench_3_detail__</td><td>__bench_3_gap__</td><td><a class="pill b pill-link" href="__bench_3_ev_url__" target="_blank" rel="noopener">__bench_3_ev__</a></td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- ========== STRATEGIC ANALYSIS ========== -->
+  <div class="card">
+    <div class="card-h">&#129504; Strategic Analysis</div>
+    <div class="card-sub">SWOT &middot; Porter's Five Forces &middot; PESTLE</div>
+
+    <!-- SWOT -->
+    <div style="font-size:13px;font-weight:600;color:var(--s700);margin-bottom:8px">SWOT</div>
+    <div class="swot">
+      <div class="swot-cell s"><div class="swot-label">Strengths</div>__swot_s__</div>
+      <div class="swot-cell w"><div class="swot-label">Weaknesses</div>__swot_w__</div>
+      <div class="swot-cell o"><div class="swot-label">Opportunities</div>__swot_o__</div>
+      <div class="swot-cell t"><div class="swot-label">Threats</div>__swot_t__</div>
+    </div>
+
+    <!-- Porter's Five Forces -->
+    <div style="font-size:13px;font-weight:600;color:var(--s700);margin:18px 0 8px">Porter's Five Forces</div>
+    <table>
+      <thead><tr><th>Force</th><th>Current State &amp; Trend</th><th>Impact on Us</th><th>Response Strategy</th></tr></thead>
+      <tbody>
+        <tr><td>__force_1_name__</td><td>__force_1_trend__</td><td>__force_1_impact__</td><td>__force_1_strategy__</td></tr>
+        <tr><td>__force_2_name__</td><td>__force_2_trend__</td><td>__force_2_impact__</td><td>__force_2_strategy__</td></tr>
+        <tr><td>__force_3_name__</td><td>__force_3_trend__</td><td>__force_3_impact__</td><td>__force_3_strategy__</td></tr>
+        <tr><td>__force_4_name__</td><td>__force_4_trend__</td><td>__force_4_impact__</td><td>__force_4_strategy__</td></tr>
+        <tr><td>__force_5_name__</td><td>__force_5_trend__</td><td>__force_5_impact__</td><td>__force_5_strategy__</td></tr>
+      </tbody>
+    </table>
+
+    <!-- PESTLE -->
+    <div style="font-size:13px;font-weight:600;color:var(--s700);margin:18px 0 8px">PESTLE</div>
+    <table>
+      <thead><tr><th>Dimension</th><th>Key Factors</th><th>Impact</th><th>Response</th></tr></thead>
+      <tbody>
+        <tr><td>__pestle_1_dim__</td><td>__pestle_1_factors__</td><td>__pestle_1_impact__</td><td>__pestle_1_response__</td></tr>
+        <tr><td>__pestle_2_dim__</td><td>__pestle_2_factors__</td><td>__pestle_2_impact__</td><td>__pestle_2_response__</td></tr>
+        <tr><td>__pestle_3_dim__</td><td>__pestle_3_factors__</td><td>__pestle_3_impact__</td><td>__pestle_3_response__</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <!-- ========== KEY FINDINGS ========== -->
+  <div class="card">
+    <div class="card-h">&#128270; Key Findings</div>
+    <!-- Insight-level finding -->
+    <div class="finding">
+      <div class="dim">__finding_1_dim__</div>
+      <strong>__finding_1_title__</strong>
+      <p style="margin-top:4px;color:var(--s500);font-size:12px">__finding_1_desc__</p>
+      <div style="margin-top:8px;display:flex;gap:6px;flex-wrap:wrap">
+        <span class="pill b">__finding_1_impact__</span>
+        <a class="pill n pill-link" href="__finding_1_ev_url__" target="_blank" rel="noopener">__finding_1_ev__</a>
+      </div>
+    </div>
+    <!-- Warning-level finding -->
+    <div class="finding warn">
+      <div class="dim">__finding_2_dim__</div>
+      <strong>__finding_2_title__</strong>
+      <p style="margin-top:4px;color:var(--s500);font-size:12px">__finding_2_desc__</p>
+      <div style="margin-top:8px;display:flex;gap:6px;flex-wrap:wrap">
+        <span class="pill w">__finding_2_impact__</span>
+        <a class="pill n pill-link" href="__finding_2_ev_url__" target="_blank" rel="noopener">__finding_2_ev__</a>
+      </div>
+    </div>
+    <!-- Risk-level finding -->
+    <div class="finding risk">
+      <div class="dim">__finding_3_dim__</div>
+      <strong>__finding_3_title__</strong>
+      <p style="margin-top:4px;color:var(--s500);font-size:12px">__finding_3_desc__</p>
+      <div style="margin-top:8px;display:flex;gap:6px;flex-wrap:wrap">
+        <span class="pill r">__finding_3_impact__</span>
+        <a class="pill n pill-link" href="__finding_3_ev_url__" target="_blank" rel="noopener">__finding_3_ev__</a>
+      </div>
+    </div>
+  </div>
+
+  <!-- ========== REUSABLE PATTERNS ========== -->
+  <div class="card">
+    <div class="card-h">&#129513; Reusable Patterns</div>
+    <div class="pattern">
+      <div class="name">__pattern_1_name__</div>
+      <table>
+        <thead><tr><th>Scenario</th><th>UX Rules</th><th>Visual Rules</th><th>Boundaries / Risks</th><th>Evidence</th></tr></thead>
+        <tbody>
+          <tr><td>__pattern_1_scene__</td><td>__pattern_1_ux__</td><td>__pattern_1_ui__</td><td>__pattern_1_risk__</td><td><a class="pill b pill-link" href="__pattern_1_ev_url__" target="_blank" rel="noopener">__pattern_1_ev__</a></td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="pattern">
+      <div class="name">__pattern_2_name__</div>
+      <table>
+        <thead><tr><th>Scenario</th><th>UX Rules</th><th>Visual Rules</th><th>Boundaries / Risks</th><th>Evidence</th></tr></thead>
+        <tbody>
+          <tr><td>__pattern_2_scene__</td><td>__pattern_2_ux__</td><td>__pattern_2_ui__</td><td>__pattern_2_risk__</td><td><a class="pill b pill-link" href="__pattern_2_ev_url__" target="_blank" rel="noopener">__pattern_2_ev__</a></td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- ========== IMPLEMENTATION ROADMAP ========== -->
+  <div class="card">
+    <div class="card-h">&#128640; Implementation Roadmap</div>
+    <table>
+      <thead><tr><th>Priority</th><th>Action Item</th><th>Expected Impact</th><th>Complexity</th><th>Dependencies</th><th>Owner</th></tr></thead>
+      <tbody>
+        <tr><td><span class="pill r">P0</span></td><td>__action_1_item__</td><td>__action_1_impact__</td><td><span class="pill w">__action_1_complexity__</span></td><td>__action_1_dep__</td><td><strong>__action_1_owner__</strong></td></tr>
+        <tr><td><span class="pill w">P1</span></td><td>__action_2_item__</td><td>__action_2_impact__</td><td><span class="pill g">__action_2_complexity__</span></td><td>__action_2_dep__</td><td><strong>__action_2_owner__</strong></td></tr>
+        <tr><td><span class="pill b">P2</span></td><td>__action_3_item__</td><td>__action_3_impact__</td><td><span class="pill g">__action_3_complexity__</span></td><td>__action_3_dep__</td><td><strong>__action_3_owner__</strong></td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <!-- ========== SOURCE INDEX ========== -->
+  <div class="card">
+    <div class="card-h">&#128206; Source Index</div>
+    <div class="card-sub">&#128247; User Materials &middot; &#128279; Public Info &middot; &#128161; Industry Experience</div>
+    <div class="ev-grid">
+      <div class="ev-card" id="__ev_1_id__">
+        <div class="ev-id">__ev_1_id__</div>
+        <div class="ev-desc">__ev_1_type__ &middot; __ev_1_product__ &middot; __ev_1_scene__ &middot; __ev_1_note__</div>
+        <a class="ev-link" href="__ev_1_link__" target="_blank" rel="noopener">&#128279; View Source</a>
+      </div>
+      <div class="ev-card" id="__ev_2_id__">
+        <div class="ev-id">__ev_2_id__</div>
+        <div class="ev-desc">__ev_2_type__ &middot; __ev_2_product__ &middot; __ev_2_scene__ &middot; __ev_2_note__</div>
+        <a class="ev-link" href="__ev_2_link__" target="_blank" rel="noopener">&#128279; View Source</a>
+      </div>
+      <div class="ev-card" id="__ev_3_id__">
+        <div class="ev-id">__ev_3_id__</div>
+        <div class="ev-desc">__ev_3_type__ &middot; __ev_3_product__ &middot; __ev_3_scene__ &middot; __ev_3_note__</div>
+        <a class="ev-link" href="__ev_3_link__" target="_blank" rel="noopener">&#128279; View Source</a>
+      </div>
+    </div>
+  </div>
+
+  <!-- ========== DISCLAIMER ========== -->
+  <div class="disc">
+    <strong>&#9888; Disclaimer</strong>
+    <ul>
+      <li><strong>AI-Generated</strong> &mdash; This report is produced by Competitive Product Research (AI). It does not replace professional, strategic, or legal judgment.</li>
+      <li><strong>Accuracy</strong> &mdash; Analysis is based on available inputs and public information at time of generation. Verify critical data independently.</li>
+      <li><strong>Timeliness</strong> &mdash; Competitive landscapes shift rapidly. Re-evaluate at key milestones or when significant market changes occur.</li>
+      <li><strong>Decision</strong> &mdash; Adopt / Monitor / Avoid ratings are advisory only. Final decisions rest with the user.</li>
+    </ul>
+  </div>
+
+  <div class="ft">Competitive Product Research &middot; __generated_at__ &middot; __product_count__ products &middot; __finding_count__ findings</div>
+
+</div>
+</body>
+</html>

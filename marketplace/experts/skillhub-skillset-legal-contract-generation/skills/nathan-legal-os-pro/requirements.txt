@@ -1,0 +1,38 @@
+# LegalDoc AI - Python Dependencies
+
+# Core dependencies (required)
+# None - uses only Python standard library for basic functionality
+
+# Optional dependencies for enhanced functionality
+
+# PDF parsing
+pypdf>=3.0.0
+
+# Word document parsing
+python-docx>=0.8.11
+
+# OCR support (for scanned documents)
+pytesseract>=0.3.10
+Pillow>=9.0.0
+
+# Database (SQLite is built-in, but this adds connection pooling)
+# sqlite-utils>=3.30
+
+# API client improvements
+requests>=2.28.0
+urllib3>=2.0.0
+
+# Date/time handling
+python-dateutil>=2.8.2
+
+# YAML configuration
+PyYAML>=6.0
+
+# Rich CLI output (optional)
+rich>=13.0.0
+
+# For development/testing
+pytest>=7.0.0
+pytest-cov>=4.0.0
+black>=23.0.0
+mypy>=1.0.0

@@ -1,0 +1,165 @@
+{
+  "skill_name": "prompt-bozo",
+  "evals": [
+    {
+      "id": 1,
+      "name": "text-to-image-basic",
+      "prompt": "帮我生成一个文生图提示词，要一个在海边的长发女生，阳光明媚的感觉",
+      "expected_output": "生成一个包含主体、场景、光线、风格的完整文生图提示词，符合精准控制提示词框架",
+      "assertions": [],
+      "files": []
+    },
+    {
+      "id": 2,
+      "name": "text-to-video-with-camera",
+      "prompt": "我要生成一个视频提示词，场景是雨夜，要有慢推镜头和朦胧氛围感",
+      "expected_output": "生成一个包含运镜描述（雨景慢推）的文生视频提示词，体现朦胧氛围",
+      "assertions": [],
+      "files": []
+    },
+    {
+      "id": 3,
+      "name": "image-to-video-with-pose",
+      "prompt": "我有张照片，想生成一个环绕效果的视频，要展现不同角度",
+      "expected_output": "生成一个图生视频提示词，包含保持原图的说明和环绕运镜描述",
+      "assertions": [],
+      "files": []
+    },
+    {
+      "id": 4,
+      "name": "chinese-style-hanfu-female",
+      "prompt": "生成一个唐代汉服女生的提示词，要有详细的服装描述和园林背景",
+      "expected_output": "生成中式风格提示词，包含唐代齐胸襦裙的详细描述（颜色、刺绣、镶边）、发式、园林场景，使用chinese-style参考",
+      "assertions": [],
+      "files": []
+    },
+    {
+      "id": 5,
+      "name": "chinese-style-warrior-male",
+      "prompt": "帮我生成一个古代将军的提示词，要穿盔甲拿长枪",
+      "expected_output": "生成中式风格提示词，包含男性战甲的详细描述（凤翅盔、布面甲、护心镜）、武器、战场背景",
+      "assertions": [],
+      "files": []
+    },
+    {
+      "id": 6,
+      "name": "image-to-image-change-scene",
+      "prompt": "根据这张照片生成新图片，要把背景换成故宫，其他保持不变",
+      "expected_output": "生成图生图提示词，包含保持原图模特的说明、故宫场景描述、相同的服饰和人物特征",
+      "assertions": [],
+      "files": []
+    },
+    {
+      "id": 7,
+      "name": "text-to-image-with-location",
+      "prompt": "生成一个在巴黎埃菲尔铁塔前的女生提示词",
+      "expected_output": "生成文生图提示词，包含主体、巴黎埃菲尔铁塔场景、合适的姿势和风格",
+      "assertions": [],
+      "files": []
+    },
+    {
+      "id": 8,
+      "name": "chinese-style-song-dynasty",
+      "prompt": "我要一个宋代风格的古风美女，穿褙子在苏州园林里",
+      "expected_output": "生成中式风格提示词，包含宋代褙子的详细描述、苏州园林场景、婉约风格",
+      "assertions": [],
+      "files": []
+    },
+    {
+      "id": 9,
+      "name": "text-to-video-dynamic-movement",
+      "prompt": "生成一个视频提示词，女生在樱花树下转圈，花瓣飘落",
+      "expected_output": "生成文生视频提示词，包含旋转动作、樱花场景、飘落的动态效果描述",
+      "assertions": [],
+      "files": []
+    },
+    {
+      "id": 10,
+      "name": "image-to-video-emotion-change",
+      "prompt": "这张照片生成视频，要展现从微笑到忧伤的表情变化",
+      "expected_output": "生成图生视频提示词，包含保持原图的说明、表情变化描述、运镜方式",
+      "assertions": [],
+      "files": []
+    },
+    {
+      "id": 11,
+      "name": "chinese-style-architecture",
+      "prompt": "生成一个中式建筑的提示词，江南园林风格",
+      "expected_output": "生成中式风格提示词，包含江南园林建筑的详细描述（粉墙黛瓦、曲廊、假山、荷花池）",
+      "assertions": [],
+      "files": []
+    },
+    {
+      "id": 12,
+      "name": "text-to-image-with-pose",
+      "prompt": "生成一个女生坐在咖啡馆窗边的提示词",
+      "expected_output": "生成文生图提示词，包含窗边坐姿的详细描述、咖啡馆场景、适合的发型和服装",
+      "assertions": [],
+      "files": []
+    },
+    {
+      "id": 13,
+      "name": "video-keyframes-transition",
+      "prompt": "我要用首尾帧生成视频，开头是站立，结尾是跳跃",
+      "expected_output": "生成首尾帧视频提示词，描述从站立到跳跃的动态过渡变化",
+      "assertions": [],
+      "files": []
+    },
+    {
+      "id": 14,
+      "name": "chinese-style-ming-dynasty",
+      "prompt": "生成一个明代袄裙的女生，在故宫里，穿马面裙",
+      " "expected_output": "生成中式风格提示词，包含明代袄裙马面裙的详细描述、故宫场景、金线滚边等装饰细节",
+      "assertions": [],
+      "files": []
+    },
+    {
+      "id": 15,
+      "name": "text-to-video-night-scene",
+      "prompt": "生成一个视频提示词，夜景的街道，霓虹灯，低角度跟拍",
+      "expected_output": "生成文生视频提示词，包含夜景街道、霓虹灯光效果、低角度跟拍运镜描述",
+      "assertions": [],
+      "files": []
+    },
+    {
+      "id": 16,
+      "name": "chinese-style-wuxia-atmosphere",
+      "prompt": "生成一个武侠风格的提示词，侠客在竹林里",
+      "expected_output": "生成中式风格提示词，包含竹林场景、武侠氛围、侠客姿态、仙侠风格",
+      "assertions": [],
+      "files": []
+    },
+    {
+      "id": 17,
+      "name": "text-to-image-snow-scene",
+      "prompt": "生成一个雪景的女生，穿冬装",
+      "expected_output": "生成文生图提示词，包含雪景场景、冬装描述、适合的姿势和光线效果",
+      "assertions": [],
+      "files": []
+    },
+    {
+      "id": 18,
+      "name": "image-to-video-reveal-shot",
+      "prompt": "照片生成视频，要一个从背后转到前面的镜头",
+      "expected_output": "生成图生视频提示词，包含保持原图的说明、从背面到正面的运镜描述",
+      "assertions": [],
+      "files": []
+    },
+    {
+      "id": 19,
+      "name": "chinese-style-ancient-palace",
+      "prompt": "生成一个在唐代宫殿里的宫女",
+      "expected_output": "生成中式风格提示词，包含唐代宫殿建筑描述、宫女服饰、宫廷氛围",
+      "assertions": [],
+      "files": []
+    },
+    {
+      "id": 20,
+      "name": "text-to-image-with-hairstyle",
+      "prompt": "生成一个波波头短发的女生",
+      "expected_output": "生成文生图提示词，包含波波头短发的详细描述、合适的场景和姿势",
+      "assertions": [],
+      "files": []
+    }
+  ]
+}

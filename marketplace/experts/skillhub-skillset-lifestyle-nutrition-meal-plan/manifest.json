@@ -1,0 +1,157 @@
+{
+  "id": "skillhub-skillset-lifestyle-nutrition-meal-plan",
+  "label": {
+    "zh": "营养餐规划专家",
+    "en": "Lifestyle Nutrition Meal Plan Expert"
+  },
+  "description": {
+    "zh": "面向减脂/增肌/控糖/孕期/慢病人群的膳食规划全流程：从科学营养目标制定（TDEE/BMR/宏量素/碳水循环/抗炎/GI/GL/生理周期）、全流程膳食规划（周菜单+购物清单+营养追踪+膳食历史）、中国居民膳食指南三餐推送，到食谱设计、卡路里日志记录、中式菜谱库。覆盖目标设定、方案输出、记录追踪三大维度，全部免 API Key。",
+    "en": "Expert workflow for Lifestyle Nutrition Meal Plan Expert."
+  },
+  "welcome_message": {
+    "zh": "提供专业、可落地的专家工作流支持",
+    "en": "Practical expert workflow support for your goals"
+  },
+  "icon_name": "heart",
+  "icon_url": "https://cloudcache.tencent-cloud.com/qcloud/tea/app/skillhub/assets/source/ai-buddy-decouple/expert-profiles/lifestyle-nutrition-meal-plan.v20260702.avif",
+  "color": "#f97316",
+  "prompt_files": [
+    "SOUL.md"
+  ],
+  "quick_prompts": [
+    {
+      "title": {
+        "zh": "科学营养目标制定",
+        "en": "Workflow step 1"
+      },
+      "description": {
+        "zh": "生成营养目标文档（TDEE + 宏量素 + 场景特化策…",
+        "en": "Share context for a ready result"
+      },
+      "prompt": {
+        "zh": "请作为「营养餐规划专家」，帮我完成「科学营养目标制定」。\n我的情况/目标/材料是：\n",
+        "en": "As the Lifestyle Nutrition Meal Plan Expert, help me with: Workflow step 1.\nMy context, goals, or materials are:\n"
+      },
+      "color": "#e8f4ff",
+      "icon_name": "list-todo"
+    },
+    {
+      "title": {
+        "zh": "周膳食全流程规划",
+        "en": "Workflow step 2"
+      },
+      "description": {
+        "zh": "生成7 天周菜单 + 购物清单 + 营养追踪表 + 烹…",
+        "en": "Share context for a ready result"
+      },
+      "prompt": {
+        "zh": "请作为「营养餐规划专家」，帮我完成「周膳食全流程规划」。\n我的情况/目标/材料是：\n",
+        "en": "As the Lifestyle Nutrition Meal Plan Expert, help me with: Workflow step 2.\nMy context, goals, or materials are:\n"
+      },
+      "color": "#fef3c7",
+      "icon_name": "trending-up"
+    },
+    {
+      "title": {
+        "zh": "中式饮食三餐推送（处理层 /…",
+        "en": "Workflow step 3"
+      },
+      "description": {
+        "zh": "生成本土化三餐推送 SOP + ABC 备选方案 +…",
+        "en": "Share context for a ready result"
+      },
+      "prompt": {
+        "zh": "请作为「营养餐规划专家」，帮我完成「中式饮食三餐推送（处理层 / 中文用户）」。\n我的情况/目标/材料是：\n",
+        "en": "As the Lifestyle Nutrition Meal Plan Expert, help me with: Workflow step 3.\nMy context, goals, or materials are:\n"
+      },
+      "color": "#dcfce7",
+      "icon_name": "list-todo"
+    },
+    {
+      "title": {
+        "zh": "食谱设计与厨师对话优化",
+        "en": "Workflow step 4"
+      },
+      "description": {
+        "zh": "生成可执行食谱集 + 厨房适配版本",
+        "en": "Share context for a ready result"
+      },
+      "prompt": {
+        "zh": "请作为「营养餐规划专家」，帮我完成「食谱设计与厨师对话优化」。\n我的情况/目标/材料是：\n",
+        "en": "As the Lifestyle Nutrition Meal Plan Expert, help me with: Workflow step 4.\nMy context, goals, or materials are:\n"
+      },
+      "color": "#f1f5f9",
+      "icon_name": "activity"
+    },
+    {
+      "title": {
+        "zh": "中式菜谱库匹配（处理层 / 中…",
+        "en": "Workflow step 5"
+      },
+      "description": {
+        "zh": "生成中式菜谱推荐清单 + 替换方案",
+        "en": "Share context for a ready result"
+      },
+      "prompt": {
+        "zh": "请作为「营养餐规划专家」，帮我完成「中式菜谱库匹配（处理层 / 中文用户）」。\n我的情况/目标/材料是：\n",
+        "en": "As the Lifestyle Nutrition Meal Plan Expert, help me with: Workflow step 5.\nMy context, goals, or materials are:\n"
+      },
+      "color": "#fff1f2",
+      "icon_name": "globe"
+    },
+    {
+      "title": {
+        "zh": "每日卡路里日志与执行追踪",
+        "en": "Workflow step 6"
+      },
+      "description": {
+        "zh": "生成每日卡路里日志 + 周/月汇总报告 + 偏差预警",
+        "en": "Share context for a ready result"
+      },
+      "prompt": {
+        "zh": "请作为「营养餐规划专家」，帮我完成「每日卡路里日志与执行追踪」。\n我的情况/目标/材料是：\n",
+        "en": "As the Lifestyle Nutrition Meal Plan Expert, help me with: Workflow step 6.\nMy context, goals, or materials are:\n"
+      },
+      "color": "#eef2ff",
+      "icon_name": "activity"
+    }
+  ],
+  "task_examples": {
+    "zh": [
+      "每天「09:00」帮我完成「科学营养目标制定」并把结果发给我，任务创建后立即启用",
+      "每个工作日「18:00」帮我完成「周膳食全流程规划」并把结果发给我",
+      "每周一「10:00」帮我完成「中式饮食三餐推送（处理层 /…」并把结果发给我",
+      "每周五「17:00」帮我完成「食谱设计与厨师对话优化」并把结果发给我",
+      "每天「08:00」帮我完成「中式菜谱库匹配（处理层 / 中…」并把结果发给我",
+      "每月 1 日「09:30」帮我完成「每日卡路里日志与执行追踪」并把结果发给我"
+    ],
+    "en": [
+      "Every day at 09:00, help me complete “Workflow step 1” and send the result — enable immediately",
+      "Every weekday at 18:00, help me complete “Workflow step 2” and send the result",
+      "Every Monday at 10:00, help me complete “Workflow step 3” and send the result",
+      "Every Friday at 17:00, help me complete “Workflow step 4” and send the result",
+      "Every day at 08:00, help me complete “Workflow step 5” and send the result",
+      "On the 1st of each month at 09:30, help me complete “Workflow step 6” and send the result"
+    ]
+  },
+  "source": {
+    "type": "skillhub",
+    "kind": "skillset",
+    "slug": "lifestyle-nutrition-meal-plan",
+    "scene": "lifestyle",
+    "sub_scene": "nutrition-meal-plan"
+  },
+  "skillhub": {
+    "slug": "lifestyle-nutrition-meal-plan",
+    "scene": "lifestyle",
+    "sub_scene": "nutrition-meal-plan",
+    "skill_slugs": [
+      "feast",
+      "nutrition-advisor",
+      "healthy-meal-reminder",
+      "chef-dialog-recipe",
+      "calories",
+      "china-recipe"
+    ]
+  }
+}

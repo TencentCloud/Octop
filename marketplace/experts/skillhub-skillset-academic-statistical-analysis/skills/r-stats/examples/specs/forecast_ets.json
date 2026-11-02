@@ -1,0 +1,1 @@
+{"dataset_path":"examples/data/airpassengers.csv","analysis_type":"forecast_ets","outcome":"passengers","frequency":12,"forecast_horizon":24,"hypothesis":"ETS forecast for air passengers","alpha":0.05,"seed":42,"output_dir":"output/forecast_ets"}

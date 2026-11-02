@@ -1,0 +1,157 @@
+{
+  "id": "skillhub-skillset-legal-contract-generation",
+  "label": {
+    "zh": "合同生成专家",
+    "en": "Legal Contract Generation Expert"
+  },
+  "description": {
+    "zh": "从模板参考到风险审查再到专业合同文书输出的一站式合同生成工作流，覆盖劳动合同、保密协议、租赁合同、服务协议等主流合同类型。",
+    "en": "Expert workflow for Legal Contract Generation Expert."
+  },
+  "welcome_message": {
+    "zh": "提供专业、可落地的专家工作流支持",
+    "en": "Practical expert workflow support for your goals"
+  },
+  "icon_name": "file-text",
+  "icon_url": "https://cloudcache.tencent-cloud.com/qcloud/tea/app/skillhub/assets/source/ai-buddy-decouple/expert-profiles/legal-contract-generation.v20260625.avif",
+  "color": "#0f766e",
+  "prompt_files": [
+    "SOUL.md"
+  ],
+  "quick_prompts": [
+    {
+      "title": {
+        "zh": "需求确认与法律咨询",
+        "en": "Workflow step 1"
+      },
+      "description": {
+        "zh": "确认用户需要的合同类型（劳动合同、租赁合同、保密协议、…",
+        "en": "Share context for a ready result"
+      },
+      "prompt": {
+        "zh": "请作为「合同生成专家」，帮我完成「需求确认与法律咨询」。\n我的情况/目标/材料是：\n",
+        "en": "As the Legal Contract Generation Expert, help me with: Workflow step 1.\nMy context, goals, or materials are:\n"
+      },
+      "color": "#e8f4ff",
+      "icon_name": "file-text"
+    },
+    {
+      "title": {
+        "zh": "模板获取与条款参考",
+        "en": "Workflow step 2"
+      },
+      "description": {
+        "zh": "根据步骤 1 确定的合同类型，获取对应的标准合同模板",
+        "en": "Share context for a ready result"
+      },
+      "prompt": {
+        "zh": "请作为「合同生成专家」，帮我完成「模板获取与条款参考」。\n我的情况/目标/材料是：\n",
+        "en": "As the Legal Contract Generation Expert, help me with: Workflow step 2.\nMy context, goals, or materials are:\n"
+      },
+      "color": "#fef3c7",
+      "icon_name": "file-text"
+    },
+    {
+      "title": {
+        "zh": "合同起草",
+        "en": "Workflow step 3"
+      },
+      "description": {
+        "zh": "基于步骤 1 的法律要点和步骤 2 的模板结构，生成完…",
+        "en": "Share context for a ready result"
+      },
+      "prompt": {
+        "zh": "请作为「合同生成专家」，帮我完成「合同起草」。\n我的情况/目标/材料是：\n",
+        "en": "As the Legal Contract Generation Expert, help me with: Workflow step 3.\nMy context, goals, or materials are:\n"
+      },
+      "color": "#dcfce7",
+      "icon_name": "file-text"
+    },
+    {
+      "title": {
+        "zh": "合规性审查",
+        "en": "Workflow step 4"
+      },
+      "description": {
+        "zh": "对合同初稿进行条款穿透分析，检查是否符合现行法律法规",
+        "en": "Share context for a ready result"
+      },
+      "prompt": {
+        "zh": "请作为「合同生成专家」，帮我完成「合规性审查」。\n我的情况/目标/材料是：\n",
+        "en": "As the Legal Contract Generation Expert, help me with: Workflow step 4.\nMy context, goals, or materials are:\n"
+      },
+      "color": "#f1f5f9",
+      "icon_name": "activity"
+    },
+    {
+      "title": {
+        "zh": "风险识别与条款优化",
+        "en": "Workflow step 5"
+      },
+      "description": {
+        "zh": "生成风险报告和修改后的合同终稿",
+        "en": "Share context for a ready result"
+      },
+      "prompt": {
+        "zh": "请作为「合同生成专家」，帮我完成「风险识别与条款优化」。\n我的情况/目标/材料是：\n",
+        "en": "As the Legal Contract Generation Expert, help me with: Workflow step 5.\nMy context, goals, or materials are:\n"
+      },
+      "color": "#fff1f2",
+      "icon_name": "wrench"
+    },
+    {
+      "title": {
+        "zh": "附属文书生成",
+        "en": "Workflow step 6"
+      },
+      "description": {
+        "zh": "根据需要生成合同附属文书（补充协议、法律意见书、合同签…",
+        "en": "Share context for a ready result"
+      },
+      "prompt": {
+        "zh": "请作为「合同生成专家」，帮我完成「附属文书生成」。\n我的情况/目标/材料是：\n",
+        "en": "As the Legal Contract Generation Expert, help me with: Workflow step 6.\nMy context, goals, or materials are:\n"
+      },
+      "color": "#eef2ff",
+      "icon_name": "wrench"
+    }
+  ],
+  "task_examples": {
+    "zh": [
+      "每天「09:00」帮我完成「需求确认与法律咨询」并把结果发给我，任务创建后立即启用",
+      "每个工作日「18:00」帮我完成「模板获取与条款参考」并把结果发给我",
+      "每周一「10:00」帮我完成「合同起草」并把结果发给我",
+      "每周五「17:00」帮我完成「合规性审查」并把结果发给我",
+      "每天「08:00」帮我完成「风险识别与条款优化」并把结果发给我",
+      "每月 1 日「09:30」帮我完成「附属文书生成」并把结果发给我"
+    ],
+    "en": [
+      "Every day at 09:00, help me complete “Workflow step 1” and send the result — enable immediately",
+      "Every weekday at 18:00, help me complete “Workflow step 2” and send the result",
+      "Every Monday at 10:00, help me complete “Workflow step 3” and send the result",
+      "Every Friday at 17:00, help me complete “Workflow step 4” and send the result",
+      "Every day at 08:00, help me complete “Workflow step 5” and send the result",
+      "On the 1st of each month at 09:30, help me complete “Workflow step 6” and send the result"
+    ]
+  },
+  "source": {
+    "type": "skillhub",
+    "kind": "skillset",
+    "slug": "legal-contract-generation",
+    "scene": "legal",
+    "sub_scene": "contract-generation"
+  },
+  "skillhub": {
+    "slug": "legal-contract-generation",
+    "scene": "legal",
+    "sub_scene": "contract-generation",
+    "skill_slugs": [
+      "employment-contract",
+      "legal-advisor",
+      "contract-review-pro",
+      "nathan-legal-os-pro",
+      "hetongzhushou",
+      "legal-doc-writer"
+    ]
+  }
+}

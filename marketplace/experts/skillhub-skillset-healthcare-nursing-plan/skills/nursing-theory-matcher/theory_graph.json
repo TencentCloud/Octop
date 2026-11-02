@@ -1,0 +1,580 @@
+{
+  "skill_id": "nursing-theory-matcher",
+  "version": "4.0.0",
+  "language": "zh-CN",
+  "nodes": [
+    {
+      "id": "orem_scdnt",
+      "label_zh": "Orem自理缺陷理论",
+      "label_en": "Orem's Self-Care Deficit Nursing Theory",
+      "category": "classic_nursing_theory"
+    },
+    {
+      "id": "roy_adaptation_model",
+      "label_zh": "Roy适应模式",
+      "label_en": "Roy Adaptation Model",
+      "category": "classic_nursing_theory"
+    },
+    {
+      "id": "neuman_systems_model",
+      "label_zh": "Neuman系统模式",
+      "label_en": "Neuman Systems Model",
+      "category": "classic_nursing_theory"
+    },
+    {
+      "id": "king_goal_attainment",
+      "label_zh": "King目标达成理论",
+      "label_en": "King's Theory of Goal Attainment",
+      "category": "classic_nursing_theory"
+    },
+    {
+      "id": "peplau_interpersonal",
+      "label_zh": "Peplau人际关系理论",
+      "label_en": "Peplau's Interpersonal Relations Theory",
+      "category": "classic_nursing_theory"
+    },
+    {
+      "id": "watson_human_caring",
+      "label_zh": "Watson人文关怀理论",
+      "label_en": "Watson's Theory of Human Caring",
+      "category": "classic_nursing_theory"
+    },
+    {
+      "id": "leininger_transcultural",
+      "label_zh": "Leininger跨文化护理理论",
+      "label_en": "Leininger's Transcultural Nursing Theory",
+      "category": "classic_nursing_theory"
+    },
+    {
+      "id": "henderson_need_theory",
+      "label_zh": "Henderson基本需要理论",
+      "label_en": "Henderson's Need Theory",
+      "category": "classic_nursing_theory"
+    },
+    {
+      "id": "johnson_behavioral_system",
+      "label_zh": "Johnson行为系统模式",
+      "label_en": "Johnson's Behavioral System Model",
+      "category": "classic_nursing_theory"
+    },
+    {
+      "id": "levine_conservation",
+      "label_zh": "Levine保存理论",
+      "label_en": "Levine's Conservation Model",
+      "category": "classic_nursing_theory"
+    },
+    {
+      "id": "rogers_unitary_human_beings",
+      "label_zh": "Rogers整体人类科学",
+      "label_en": "Science of Unitary Human Beings",
+      "category": "classic_nursing_theory"
+    },
+    {
+      "id": "parse_human_becoming",
+      "label_zh": "Parse人类生成理论",
+      "label_en": "Parse's Human Becoming Theory",
+      "category": "classic_nursing_theory"
+    },
+    {
+      "id": "newman_health_expanding_consciousness",
+      "label_zh": "Newman健康扩展意识理论",
+      "label_en": "Health as Expanding Consciousness",
+      "category": "classic_nursing_theory"
+    },
+    {
+      "id": "orlando_nursing_process",
+      "label_zh": "Orlando护理过程理论",
+      "label_en": "Orlando's Nursing Process Theory",
+      "category": "classic_nursing_theory"
+    },
+    {
+      "id": "travelbee_human_to_human",
+      "label_zh": "Travelbee人对人关系模型",
+      "label_en": "Travelbee's Human-to-Human Relationship Model",
+      "category": "classic_nursing_theory"
+    },
+    {
+      "id": "kolcaba_comfort",
+      "label_zh": "Kolcaba舒适理论",
+      "label_en": "Kolcaba's Comfort Theory",
+      "category": "middle_range_nursing_theory"
+    },
+    {
+      "id": "swanson_caring",
+      "label_zh": "Swanson关怀理论",
+      "label_en": "Swanson's Theory of Caring",
+      "category": "middle_range_nursing_theory"
+    },
+    {
+      "id": "mercer_maternal_role",
+      "label_zh": "Mercer母亲角色获得理论",
+      "label_en": "Mercer's Maternal Role Attainment / Becoming a Mother",
+      "category": "middle_range_nursing_theory"
+    },
+    {
+      "id": "benner_novice_expert",
+      "label_zh": "Benner从新手到专家",
+      "label_en": "Benner's Novice to Expert Model",
+      "category": "middle_range_nursing_theory"
+    },
+    {
+      "id": "roper_logan_tierney",
+      "label_zh": "Roper-Logan-Tierney生活活动模式",
+      "label_en": "Roper-Logan-Tierney Model of Living",
+      "category": "classic_nursing_theory"
+    },
+    {
+      "id": "ssmf_chc",
+      "label_zh": "复杂健康状况个体症状自我管理框架",
+      "label_en": "Symptom Self-Management Framework for Individuals with Complex Health Conditions",
+      "category": "symptom_science"
+    },
+    {
+      "id": "symptom_management_theory",
+      "label_zh": "症状管理理论",
+      "label_en": "Symptom Management Theory",
+      "category": "symptom_science"
+    },
+    {
+      "id": "theory_of_unpleasant_symptoms",
+      "label_zh": "不愉快症状理论",
+      "label_en": "Theory of Unpleasant Symptoms",
+      "category": "symptom_science"
+    },
+    {
+      "id": "theory_of_symptom_self_management",
+      "label_zh": "症状自我管理理论",
+      "label_en": "Theory of Symptom Self-Management",
+      "category": "symptom_science"
+    },
+    {
+      "id": "self_care_chronic_illness",
+      "label_zh": "慢性病自我照护中层理论",
+      "label_en": "Middle-Range Theory of Self-Care of Chronic Illness",
+      "category": "self_management"
+    },
+    {
+      "id": "ifsmt",
+      "label_zh": "个体与家庭自我管理理论",
+      "label_en": "Individual and Family Self-Management Theory",
+      "category": "self_management"
+    },
+    {
+      "id": "self_family_management",
+      "label_zh": "自我与家庭管理框架/慢性病自我与家庭管理中层理论",
+      "label_en": "Self- and Family Management Framework / Middle Range Theory of Self- and Family Management of Chronic Illness",
+      "category": "self_management"
+    },
+    {
+      "id": "chronic_care_model",
+      "label_zh": "慢性病照护模型",
+      "label_en": "Chronic Care Model",
+      "category": "self_management"
+    },
+    {
+      "id": "iccc_framework",
+      "label_zh": "慢性病创新照护框架",
+      "label_en": "Innovative Care for Chronic Conditions Framework",
+      "category": "self_management"
+    },
+    {
+      "id": "self_care_matrix",
+      "label_zh": "自我照护矩阵",
+      "label_en": "Self-Care Matrix",
+      "category": "self_management"
+    },
+    {
+      "id": "nih_symptom_science_model",
+      "label_zh": "NIH症状科学模型",
+      "label_en": "NIH Symptom Science Model",
+      "category": "symptom_science"
+    },
+    {
+      "id": "symptom_science_model_2",
+      "label_zh": "症状科学模型2.0",
+      "label_en": "Symptom Science Model 2.0",
+      "category": "symptom_science"
+    },
+    {
+      "id": "caregiving_science_framework",
+      "label_zh": "照护科学框架",
+      "label_en": "Caregiving Science Framework",
+      "category": "self_management"
+    },
+    {
+      "id": "meleis_transitions",
+      "label_zh": "Meleis转变理论",
+      "label_en": "Meleis' Transitions Theory",
+      "category": "middle_range_nursing_theory"
+    },
+    {
+      "id": "mishel_uncertainty",
+      "label_zh": "Mishel疾病不确定性理论",
+      "label_en": "Mishel's Uncertainty in Illness Theory",
+      "category": "middle_range_nursing_theory"
+    },
+    {
+      "id": "illness_trajectory_framework",
+      "label_zh": "疾病轨迹框架",
+      "label_en": "Illness Trajectory Framework",
+      "category": "middle_range_nursing_theory"
+    },
+    {
+      "id": "stress_coping_theory",
+      "label_zh": "压力与应对理论",
+      "label_en": "Stress and Coping Theory",
+      "category": "health_behavior"
+    },
+    {
+      "id": "resilience_framework",
+      "label_zh": "韧性框架",
+      "label_en": "Resilience Framework",
+      "category": "health_behavior"
+    },
+    {
+      "id": "social_support_theory",
+      "label_zh": "社会支持理论",
+      "label_en": "Social Support Theory",
+      "category": "health_behavior"
+    },
+    {
+      "id": "protection_motivation_theory",
+      "label_zh": "保护动机理论",
+      "label_en": "Protection Motivation Theory",
+      "category": "health_behavior"
+    },
+    {
+      "id": "self_efficacy",
+      "label_zh": "自我效能理论",
+      "label_en": "Self-Efficacy Theory / Social Cognitive Theory",
+      "category": "health_behavior"
+    },
+    {
+      "id": "health_belief_model",
+      "label_zh": "健康信念模型",
+      "label_en": "Health Belief Model",
+      "category": "health_behavior"
+    },
+    {
+      "id": "theory_of_planned_behavior",
+      "label_zh": "计划行为理论",
+      "label_en": "Theory of Planned Behavior",
+      "category": "health_behavior"
+    },
+    {
+      "id": "theory_of_reasoned_action",
+      "label_zh": "理性行为理论",
+      "label_en": "Theory of Reasoned Action",
+      "category": "health_behavior"
+    },
+    {
+      "id": "transtheoretical_model",
+      "label_zh": "跨理论模型/行为改变阶段模型",
+      "label_en": "Transtheoretical Model",
+      "category": "health_behavior"
+    },
+    {
+      "id": "pender_hpm",
+      "label_zh": "Pender健康促进模型",
+      "label_en": "Pender's Health Promotion Model",
+      "category": "health_behavior"
+    },
+    {
+      "id": "socioecological_model",
+      "label_zh": "社会生态模型",
+      "label_en": "Socioecological Model",
+      "category": "health_behavior"
+    },
+    {
+      "id": "self_determination_theory",
+      "label_zh": "自我决定理论",
+      "label_en": "Self-Determination Theory",
+      "category": "health_behavior"
+    },
+    {
+      "id": "common_sense_model",
+      "label_zh": "疾病表征共同感模型",
+      "label_en": "Common-Sense Model of Self-Regulation",
+      "category": "health_behavior"
+    },
+    {
+      "id": "andersen_health_service_use",
+      "label_zh": "Andersen卫生服务利用模型",
+      "label_en": "Andersen Behavioral Model of Health Services Use",
+      "category": "health_services_quality"
+    },
+    {
+      "id": "precaution_adoption_process",
+      "label_zh": "预防采纳过程模型",
+      "label_en": "Precaution Adoption Process Model",
+      "category": "health_behavior"
+    },
+    {
+      "id": "information_motivation_behavioral_skills",
+      "label_zh": "信息-动机-行为技能模型",
+      "label_en": "Information-Motivation-Behavioral Skills Model",
+      "category": "health_behavior"
+    },
+    {
+      "id": "com_b",
+      "label_zh": "COM-B行为系统模型",
+      "label_en": "Capability-Opportunity-Motivation-Behavior Model",
+      "category": "implementation_science"
+    },
+    {
+      "id": "tdf",
+      "label_zh": "理论域框架",
+      "label_en": "Theoretical Domains Framework",
+      "category": "implementation_science"
+    },
+    {
+      "id": "behavior_change_wheel",
+      "label_zh": "行为改变轮",
+      "label_en": "Behavior Change Wheel",
+      "category": "implementation_science"
+    },
+    {
+      "id": "cfir",
+      "label_zh": "实施研究综合框架",
+      "label_en": "Consolidated Framework for Implementation Research",
+      "category": "implementation_science"
+    },
+    {
+      "id": "re_aim",
+      "label_zh": "RE-AIM框架",
+      "label_en": "RE-AIM Framework",
+      "category": "implementation_science"
+    },
+    {
+      "id": "parihs",
+      "label_zh": "PARIHS框架",
+      "label_en": "Promoting Action on Research Implementation in Health Services",
+      "category": "implementation_science"
+    },
+    {
+      "id": "iparihs",
+      "label_zh": "i-PARIHS框架",
+      "label_en": "Integrated PARIHS",
+      "category": "implementation_science"
+    },
+    {
+      "id": "knowledge_to_action",
+      "label_zh": "知识到行动框架",
+      "label_en": "Knowledge-to-Action Framework",
+      "category": "implementation_science"
+    },
+    {
+      "id": "normalization_process_theory",
+      "label_zh": "常态化过程理论",
+      "label_en": "Normalization Process Theory",
+      "category": "implementation_science"
+    },
+    {
+      "id": "diffusion_of_innovations",
+      "label_zh": "创新扩散理论",
+      "label_en": "Diffusion of Innovations",
+      "category": "implementation_science"
+    },
+    {
+      "id": "mrc_complex_interventions",
+      "label_zh": "MRC复杂干预框架",
+      "label_en": "MRC Framework for Complex Interventions",
+      "category": "implementation_science"
+    },
+    {
+      "id": "donabedian_model",
+      "label_zh": "Donabedian结构-过程-结果模型",
+      "label_en": "Donabedian Structure-Process-Outcome Model",
+      "category": "health_services_quality"
+    },
+    {
+      "id": "wilson_cleary_model",
+      "label_zh": "Wilson-Cleary健康相关生活质量模型",
+      "label_en": "Wilson and Cleary Model of Health-Related Quality of Life",
+      "category": "health_services_quality"
+    },
+    {
+      "id": "person_centered_care_framework",
+      "label_zh": "以患者为中心照护框架",
+      "label_en": "Person-Centered Care Framework",
+      "category": "health_services_quality"
+    },
+    {
+      "id": "family_centered_care_framework",
+      "label_zh": "家庭中心照护框架",
+      "label_en": "Family-Centered Care Framework",
+      "category": "health_services_quality"
+    },
+    {
+      "id": "shared_decision_making_model",
+      "label_zh": "共同决策模型",
+      "label_en": "Shared Decision-Making Model",
+      "category": "health_services_quality"
+    },
+    {
+      "id": "grounded_theory",
+      "label_zh": "扎根理论",
+      "label_en": "Grounded Theory",
+      "category": "qualitative_methodology"
+    },
+    {
+      "id": "phenomenology",
+      "label_zh": "现象学",
+      "label_en": "Phenomenology",
+      "category": "qualitative_methodology"
+    },
+    {
+      "id": "hermeneutic_phenomenology",
+      "label_zh": "解释现象学",
+      "label_en": "Hermeneutic Phenomenology",
+      "category": "qualitative_methodology"
+    },
+    {
+      "id": "ethnography",
+      "label_zh": "民族志",
+      "label_en": "Ethnography",
+      "category": "qualitative_methodology"
+    },
+    {
+      "id": "narrative_inquiry",
+      "label_zh": "叙事研究",
+      "label_en": "Narrative Inquiry",
+      "category": "qualitative_methodology"
+    },
+    {
+      "id": "case_study_method",
+      "label_zh": "个案研究",
+      "label_en": "Case Study",
+      "category": "qualitative_methodology"
+    },
+    {
+      "id": "content_analysis",
+      "label_zh": "内容分析",
+      "label_en": "Content Analysis",
+      "category": "qualitative_methodology"
+    },
+    {
+      "id": "thematic_analysis",
+      "label_zh": "主题分析",
+      "label_en": "Thematic Analysis",
+      "category": "qualitative_methodology"
+    },
+    {
+      "id": "transactional_model_stress",
+      "label_zh": "交易性压力模型",
+      "label_en": "Transactional Model of Stress and Coping",
+      "category": "health_behavior"
+    },
+    {
+      "id": "care_transitions_intervention",
+      "label_zh": "照护转衔干预模型",
+      "label_en": "Care Transitions Intervention Framework",
+      "category": "health_services_quality"
+    },
+    {
+      "id": "patient_activation_measure_framework",
+      "label_zh": "患者激活框架",
+      "label_en": "Patient Activation Framework",
+      "category": "health_behavior"
+    },
+    {
+      "id": "chronic_illness_trajectory_framework",
+      "label_zh": "慢病轨迹框架",
+      "label_en": "Chronic Illness Trajectory Framework",
+      "category": "middle_range_nursing_theory"
+    },
+    {
+      "id": "quality_health_outcomes_model",
+      "label_zh": "质量健康结局模型",
+      "label_en": "Quality Health Outcomes Model",
+      "category": "health_services_quality"
+    }
+  ],
+  "edges": [
+    {
+      "source": "ssmf_chc",
+      "target": "symptom_management_theory",
+      "relation": "builds_on"
+    },
+    {
+      "source": "ssmf_chc",
+      "target": "self_care_chronic_illness",
+      "relation": "integrates"
+    },
+    {
+      "source": "ssmf_chc",
+      "target": "self_family_management",
+      "relation": "complements"
+    },
+    {
+      "source": "protection_motivation_theory",
+      "target": "self_efficacy",
+      "relation": "shares_construct"
+    },
+    {
+      "source": "health_belief_model",
+      "target": "theory_of_planned_behavior",
+      "relation": "alternative"
+    },
+    {
+      "source": "meleis_transitions",
+      "target": "mishel_uncertainty",
+      "relation": "auxiliary_pair"
+    },
+    {
+      "source": "roy_adaptation_model",
+      "target": "meleis_transitions",
+      "relation": "alternative"
+    },
+    {
+      "source": "watson_human_caring",
+      "target": "kolcaba_comfort",
+      "relation": "complements"
+    },
+    {
+      "source": "com_b",
+      "target": "tdf",
+      "relation": "mapped_to"
+    },
+    {
+      "source": "behavior_change_wheel",
+      "target": "com_b",
+      "relation": "builds_on"
+    },
+    {
+      "source": "cfir",
+      "target": "re_aim",
+      "relation": "complements"
+    },
+    {
+      "source": "parihs",
+      "target": "iparihs",
+      "relation": "evolves_to"
+    },
+    {
+      "source": "knowledge_to_action",
+      "target": "parihs",
+      "relation": "alternative"
+    },
+    {
+      "source": "grounded_theory",
+      "target": "phenomenology",
+      "relation": "method_alternative"
+    },
+    {
+      "source": "phenomenology",
+      "target": "hermeneutic_phenomenology",
+      "relation": "subtype"
+    },
+    {
+      "source": "ethnography",
+      "target": "grounded_theory",
+      "relation": "method_alternative"
+    },
+    {
+      "source": "narrative_inquiry",
+      "target": "phenomenology",
+      "relation": "method_alternative"
+    }
+  ]
+}

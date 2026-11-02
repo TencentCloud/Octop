@@ -1,0 +1,30 @@
+{
+  "name": "crossborder-listing",
+  "displayName": "跨境电商 Listing 本地化",
+  "version": "1.0.0",
+  "description": "为 Amazon、Shopee、Lazada、独立站商品做英文/多语 listing 本地化和卖点结构。",
+  "author": "ikun",
+  "license": "MIT",
+  "category": "ecommerce",
+  "tags": [
+    "跨境电商",
+    "Listing",
+    "亚马逊",
+    "独立站"
+  ],
+  "keywords": [
+    "Amazon Listing",
+    "跨境 listing",
+    "五点描述",
+    "A+ 页面",
+    "本地化"
+  ],
+  "platforms": [
+    "openclaw",
+    "skillhub",
+    "claude-code",
+    "cursor"
+  ],
+  "language": "zh-CN",
+  "minAgentVersion": "0.1.0"
+}

@@ -1,0 +1,157 @@
+{
+  "id": "skillhub-skillset-mysticism-zodiac-fortune",
+  "label": {
+    "zh": "生肖星座运势专家",
+    "en": "Mysticism Zodiac Fortune Expert"
+  },
+  "description": {
+    "zh": "覆盖星座生肖运势从「主驱动每日运势」到「任意日期 / 周月运势 / 行运 / 本命盘」再到「跨体系融合 + 28 星宿合盘」的完整工具集，全部免 API Key。",
+    "en": "Expert workflow for Mysticism Zodiac Fortune Expert."
+  },
+  "welcome_message": {
+    "zh": "提供专业、可落地的专家工作流支持",
+    "en": "Practical expert workflow support for your goals"
+  },
+  "icon_name": "sparkles",
+  "icon_url": "https://cloudcache.tencent-cloud.com/qcloud/tea/app/skillhub/assets/source/ai-buddy-decouple/expert-profiles/mysticism-zodiac-fortune.v20260702.avif",
+  "color": "#7c3aed",
+  "prompt_files": [
+    "SOUL.md"
+  ],
+  "quick_prompts": [
+    {
+      "title": {
+        "zh": "星座主驱动每日运势",
+        "en": "Workflow step 1"
+      },
+      "description": {
+        "zh": "生成每日全维度星座运势基线",
+        "en": "Share context for a ready result"
+      },
+      "prompt": {
+        "zh": "请作为「生肖星座运势专家」，帮我完成「星座主驱动每日运势」。\n我的情况/目标/材料是：\n",
+        "en": "As the Mysticism Zodiac Fortune Expert, help me with: Workflow step 1.\nMy context, goals, or materials are:\n"
+      },
+      "color": "#e8f4ff",
+      "icon_name": "activity"
+    },
+    {
+      "title": {
+        "zh": "任意日期运势查询",
+        "en": "Workflow step 2"
+      },
+      "description": {
+        "zh": "生成指定日期的运势报告",
+        "en": "Share context for a ready result"
+      },
+      "prompt": {
+        "zh": "请作为「生肖星座运势专家」，帮我完成「任意日期运势查询」。\n我的情况/目标/材料是：\n",
+        "en": "As the Mysticism Zodiac Fortune Expert, help me with: Workflow step 2.\nMy context, goals, or materials are:\n"
+      },
+      "color": "#fef3c7",
+      "icon_name": "file-text"
+    },
+    {
+      "title": {
+        "zh": "周月运势 + 元素形态",
+        "en": "Workflow step 3"
+      },
+      "description": {
+        "zh": "生成周月主题 + 元素形态分析",
+        "en": "Share context for a ready result"
+      },
+      "prompt": {
+        "zh": "请作为「生肖星座运势专家」，帮我完成「周月运势 + 元素形态」。\n我的情况/目标/材料是：\n",
+        "en": "As the Mysticism Zodiac Fortune Expert, help me with: Workflow step 3.\nMy context, goals, or materials are:\n"
+      },
+      "color": "#dcfce7",
+      "icon_name": "activity"
+    },
+    {
+      "title": {
+        "zh": "星座 + 生肖跨体系融合",
+        "en": "Workflow step 4"
+      },
+      "description": {
+        "zh": "生成星座+生肖融合的五维度运势",
+        "en": "Share context for a ready result"
+      },
+      "prompt": {
+        "zh": "请作为「生肖星座运势专家」，帮我完成「星座 + 生肖跨体系融合」。\n我的情况/目标/材料是：\n",
+        "en": "As the Mysticism Zodiac Fortune Expert, help me with: Workflow step 4.\nMy context, goals, or materials are:\n"
+      },
+      "color": "#f1f5f9",
+      "icon_name": "activity"
+    },
+    {
+      "title": {
+        "zh": "本命盘深度咨询",
+        "en": "Workflow step 5"
+      },
+      "description": {
+        "zh": "生成本命盘解读报告 + 生日图",
+        "en": "Share context for a ready result"
+      },
+      "prompt": {
+        "zh": "请作为「生肖星座运势专家」，帮我完成「本命盘深度咨询」。\n我的情况/目标/材料是：\n",
+        "en": "As the Mysticism Zodiac Fortune Expert, help me with: Workflow step 5.\nMy context, goals, or materials are:\n"
+      },
+      "color": "#fff1f2",
+      "icon_name": "activity"
+    },
+    {
+      "title": {
+        "zh": "28 星宿合盘配对（按需）",
+        "en": "Workflow step 6"
+      },
+      "description": {
+        "zh": "生成28 星宿人格 + 配对结果（按需）",
+        "en": "Share context for a ready result"
+      },
+      "prompt": {
+        "zh": "请作为「生肖星座运势专家」，帮我完成「28 星宿合盘配对（按需）」。\n我的情况/目标/材料是：\n",
+        "en": "As the Mysticism Zodiac Fortune Expert, help me with: Workflow step 6.\nMy context, goals, or materials are:\n"
+      },
+      "color": "#eef2ff",
+      "icon_name": "activity"
+    }
+  ],
+  "task_examples": {
+    "zh": [
+      "每天「09:00」帮我完成「星座主驱动每日运势」并把结果发给我，任务创建后立即启用",
+      "每个工作日「18:00」帮我完成「任意日期运势查询」并把结果发给我",
+      "每周一「10:00」帮我完成「周月运势 + 元素形态」并把结果发给我",
+      "每周五「17:00」帮我完成「星座 + 生肖跨体系融合」并把结果发给我",
+      "每天「08:00」帮我完成「本命盘深度咨询」并把结果发给我",
+      "每月 1 日「09:30」帮我完成「28 星宿合盘配对（按需）」并把结果发给我"
+    ],
+    "en": [
+      "Every day at 09:00, help me complete “Workflow step 1” and send the result — enable immediately",
+      "Every weekday at 18:00, help me complete “Workflow step 2” and send the result",
+      "Every Monday at 10:00, help me complete “Workflow step 3” and send the result",
+      "Every Friday at 17:00, help me complete “Workflow step 4” and send the result",
+      "Every day at 08:00, help me complete “Workflow step 5” and send the result",
+      "On the 1st of each month at 09:30, help me complete “Workflow step 6” and send the result"
+    ]
+  },
+  "source": {
+    "type": "skillhub",
+    "kind": "skillset",
+    "slug": "mysticism-zodiac-fortune",
+    "scene": "mysticism",
+    "sub_scene": "zodiac-fortune"
+  },
+  "skillhub": {
+    "slug": "mysticism-zodiac-fortune",
+    "scene": "mysticism",
+    "sub_scene": "zodiac-fortune",
+    "skill_slugs": [
+      "daily-astro",
+      "horoscope-daily",
+      "western-sun-signs",
+      "fortune-daily",
+      "aistro",
+      "star-mansion-master"
+    ]
+  }
+}

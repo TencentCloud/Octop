@@ -1,0 +1,157 @@
+{
+  "id": "skillhub-skillset-hr-resume-screening",
+  "label": {
+    "zh": "简历筛选专家",
+    "en": "Hr Resume Screening Expert"
+  },
+  "description": {
+    "zh": "从简历漏斗式量化评估（基础匹配度/能力匹配度/动机稳定匹配度）与结构化信息提取解析、四阶段一站式招聘流程（筛选→面试设计→面试评估→推荐）与JD自动匹配排序，到批量简历解析评分排名与循证面试策略设计的完整简历筛选工作流。覆盖简历解析、量化评估、人岗匹配、面试设计全链路。",
+    "en": "Expert workflow for Hr Resume Screening Expert."
+  },
+  "welcome_message": {
+    "zh": "提供专业、可落地的专家工作流支持",
+    "en": "Practical expert workflow support for your goals"
+  },
+  "icon_name": "user",
+  "icon_url": "https://cloudcache.tencent-cloud.com/qcloud/tea/app/skillhub/assets/source/ai-buddy-decouple/expert-profiles/hr-resume-screening.v20260625.avif",
+  "color": "#7c3aed",
+  "prompt_files": [
+    "SOUL.md"
+  ],
+  "quick_prompts": [
+    {
+      "title": {
+        "zh": "简历量化筛选",
+        "en": "Workflow step 1"
+      },
+      "description": {
+        "zh": "生成初筛评估报告和候选人分级名单",
+        "en": "Share context for a ready result"
+      },
+      "prompt": {
+        "zh": "请作为「简历筛选专家」，帮我完成「简历量化筛选」。\n我的情况/目标/材料是：\n",
+        "en": "As the Hr Resume Screening Expert, help me with: Workflow step 1.\nMy context, goals, or materials are:\n"
+      },
+      "color": "#e8f4ff",
+      "icon_name": "wrench"
+    },
+    {
+      "title": {
+        "zh": "简历结构化解析",
+        "en": "Workflow step 2"
+      },
+      "description": {
+        "zh": "生成结构化简历数据和 JD 匹配度分析",
+        "en": "Share context for a ready result"
+      },
+      "prompt": {
+        "zh": "请作为「简历筛选专家」，帮我完成「简历结构化解析」。\n我的情况/目标/材料是：\n",
+        "en": "As the Hr Resume Screening Expert, help me with: Workflow step 2.\nMy context, goals, or materials are:\n"
+      },
+      "color": "#fef3c7",
+      "icon_name": "activity"
+    },
+    {
+      "title": {
+        "zh": "四阶段招聘评估",
+        "en": "Workflow step 3"
+      },
+      "description": {
+        "zh": "生成四阶段评估报告和候选人推荐排序",
+        "en": "Share context for a ready result"
+      },
+      "prompt": {
+        "zh": "请作为「简历筛选专家」，帮我完成「四阶段招聘评估」。\n我的情况/目标/材料是：\n",
+        "en": "As the Hr Resume Screening Expert, help me with: Workflow step 3.\nMy context, goals, or materials are:\n"
+      },
+      "color": "#dcfce7",
+      "icon_name": "trending-up"
+    },
+    {
+      "title": {
+        "zh": "JD 智能匹配与排序",
+        "en": "Workflow step 4"
+      },
+      "description": {
+        "zh": "生成候选人排序报告和定制面试问题",
+        "en": "Share context for a ready result"
+      },
+      "prompt": {
+        "zh": "请作为「简历筛选专家」，帮我完成「JD 智能匹配与排序」。\n我的情况/目标/材料是：\n",
+        "en": "As the Hr Resume Screening Expert, help me with: Workflow step 4.\nMy context, goals, or materials are:\n"
+      },
+      "color": "#f1f5f9",
+      "icon_name": "wrench"
+    },
+    {
+      "title": {
+        "zh": "批量简历评分排名",
+        "en": "Workflow step 5"
+      },
+      "description": {
+        "zh": "生成批量评分排名和数据分析报告",
+        "en": "Share context for a ready result"
+      },
+      "prompt": {
+        "zh": "请作为「简历筛选专家」，帮我完成「批量简历评分排名」。\n我的情况/目标/材料是：\n",
+        "en": "As the Hr Resume Screening Expert, help me with: Workflow step 5.\nMy context, goals, or materials are:\n"
+      },
+      "color": "#fff1f2",
+      "icon_name": "activity"
+    },
+    {
+      "title": {
+        "zh": "循证面试策略设计",
+        "en": "Workflow step 6"
+      },
+      "description": {
+        "zh": "基于简历分析设计针对性面试策略",
+        "en": "Share context for a ready result"
+      },
+      "prompt": {
+        "zh": "请作为「简历筛选专家」，帮我完成「循证面试策略设计」。\n我的情况/目标/材料是：\n",
+        "en": "As the Hr Resume Screening Expert, help me with: Workflow step 6.\nMy context, goals, or materials are:\n"
+      },
+      "color": "#eef2ff",
+      "icon_name": "activity"
+    }
+  ],
+  "task_examples": {
+    "zh": [
+      "每天「09:00」帮我完成「简历量化筛选」并把结果发给我，任务创建后立即启用",
+      "每个工作日「18:00」帮我完成「简历结构化解析」并把结果发给我",
+      "每周一「10:00」帮我完成「四阶段招聘评估」并把结果发给我",
+      "每周五「17:00」帮我完成「JD 智能匹配与排序」并把结果发给我",
+      "每天「08:00」帮我完成「批量简历评分排名」并把结果发给我",
+      "每月 1 日「09:30」帮我完成「循证面试策略设计」并把结果发给我"
+    ],
+    "en": [
+      "Every day at 09:00, help me complete “Workflow step 1” and send the result — enable immediately",
+      "Every weekday at 18:00, help me complete “Workflow step 2” and send the result",
+      "Every Monday at 10:00, help me complete “Workflow step 3” and send the result",
+      "Every Friday at 17:00, help me complete “Workflow step 4” and send the result",
+      "Every day at 08:00, help me complete “Workflow step 5” and send the result",
+      "On the 1st of each month at 09:30, help me complete “Workflow step 6” and send the result"
+    ]
+  },
+  "source": {
+    "type": "skillhub",
+    "kind": "skillset",
+    "slug": "hr-resume-screening",
+    "scene": "hr",
+    "sub_scene": "resume-screening"
+  },
+  "skillhub": {
+    "slug": "hr-resume-screening",
+    "scene": "hr",
+    "sub_scene": "resume-screening",
+    "skill_slugs": [
+      "resume-screening",
+      "resume-parser",
+      "resume-screener-pro",
+      "easy-recruitment",
+      "applicant-screening-zh",
+      "interview-designer"
+    ]
+  }
+}

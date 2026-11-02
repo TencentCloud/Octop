@@ -1,0 +1,16 @@
+{
+  "id": "alzheimer-care",
+  "name": "alzheimer-care",
+  "displayName": "阿尔茨海默症照护助手",
+  "version": "1.0.0",
+  "description": "专为阿尔茨海默症患者及家人照护者设计的日常管理辅助工具。提供疾病认知、日常照护、安全管理、沟通技巧、行为管理、照护者支持。不诊断、不开药、不推荐产品。",
+  "type": "skill",
+  "author": "your-name",
+  "tags": ["alzheimer", "dementia", "elderly-care", "caregiver-support", "daily-management", "health"],
+  "category": "wellness",
+  "entry": "SKILL.md",
+  "output": ["text"],
+  "config": {
+    "file": "config.json"
+  }
+}

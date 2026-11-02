@@ -1,0 +1,626 @@
+{
+  "apa_7": {
+    "name": "APA 7th Edition",
+    "description": "American Psychological Association 7th Edition",
+    "in_text": {
+      "format": "parenthetical",
+      "separator": ", ",
+      "year_position": "after_author",
+      "et_al": "et al.",
+      "ampersand": "&",
+      "page_format": "p. {page}",
+      "multiple_authors": {
+        "two": "{first} & {second}",
+        "three_to_seven": "{first}, {second}, & {last}",
+        "more_than_seven": "{first} et al."
+      }
+    },
+    "bibliography": {
+      "sort_by": "alphabetical",
+      "author_format": "last_first",
+      "title_format": "sentence_case",
+      "doi_required": true,
+      "url_format": "available_at",
+      "journal_article": "{authors}. ({year}). {title}. {journal}, {volume}({issue}), {page_range}.{doi}",
+      "book": "{authors}. ({year}). {title} ({edition}). {publisher}.{doi}",
+      "conference": "{authors}. ({year}). {title}. In {editor} (Ed.), {book_title} (pp. {pages}). {publisher}.{doi}",
+      "thesis": "{author}. ({year}). {title} [Master's thesis, {institution}]. {url}",
+      "report": "{author}. ({year}). {title} (Report No. {number}). {publisher}.{doi}",
+      "webpage": "{author}. ({year}). {title}. Retrieved from {url}"
+    }
+  },
+  "mla_9": {
+    "name": "MLA 9th Edition",
+    "description": "Modern Language Association 9th Edition",
+    "in_text": {
+      "format": "parenthetical",
+      "separator": ", ",
+      "year_position": "after_author",
+      "et_al": "et al.",
+      "page_format": "{page}",
+      "author_year_format": "({author} {year})",
+      "multiple_authors": {
+        "two": "{first} and {second}",
+        "three": "{first}, {second}, and {third}",
+        "more_than_three": "{first} et al."
+      }
+    },
+    "bibliography": {
+      "sort_by": "alphabetical",
+      "author_format": "last_first",
+      "title_format": "title_case",
+      "doi_required": false,
+      "container_format": "italic",
+      "journal_article": "{authors}. \"{title}\". {journal}, vol. {volume}, no. {issue}, {year}, pp. {pages}. {doi}",
+      "book": "{authors}. \"{title}\". {publisher}, {year}. {doi}",
+      "conference": "{authors}. \"{title}\". {conference_title}, {date}. {location}. {doi}",
+      "thesis": "{author}. \"{title}\". {degree} thesis, {institution}, {year}. {doi}",
+      "report": "{author}. \"{title}\". {publisher}, {year}. {doi}",
+      "webpage": "{author}. \"{title}\". {website}, {access_date}. {doi}"
+    }
+  },
+  "chicago_17_notes_bibliography": {
+    "name": "Chicago 17th Edition (Notes-Bibliography)",
+    "description": "Chicago Manual of Style 17th Edition - Notes and Bibliography System",
+    "in_text": {
+      "format": "footnote",
+      "separator": ", ",
+      "footnote_marker": "superscript",
+      "et_al": "et al.",
+      "ampersand": "&",
+      "page_format": "{page}",
+      "ibid": "Ibid.",
+      "multiple_authors": {
+        "two": "{first} and {second}",
+        "three_to_seven": "{first}, {second}, and {last}",
+        "more_than_seven": "{first} et al."
+      }
+    },
+    "bibliography": {
+      "sort_by": "alphabetical",
+      "author_format": "last_first",
+      "title_format": "title_case",
+      "doi_required": false,
+      "journal_article": "{authors}. \"{title}\". {journal} {volume}, no. {issue} ({year}): {page_range}.{doi}",
+      "book": "{authors}. {title}. {city}: {publisher}, {year}.{doi}",
+      "conference": "{authors}. \"{title}\". {conference_title}, {date}. {location}.{doi}",
+      "thesis": "{author}. {title}. {degree} diss., {institution}, {year}.{doi}",
+      "report": "{author}. {title}. {report_type} {number}. {city}: {publisher}, {year}.{doi}",
+      "webpage": "{author}. \"{title}\". {website}, {access_date}. {doi}"
+    }
+  },
+  "chicago_17_author_date": {
+    "name": "Chicago 17th Edition (Author-Date)",
+    "description": "Chicago Manual of Style 17th Edition - Author-Date System",
+    "in_text": {
+      "format": "parenthetical",
+      "separator": ", ",
+      "year_position": "after_author",
+      "et_al": "et al.",
+      "ampersand": "&",
+      "page_format": ", {page}",
+      "multiple_authors": {
+        "two": "{first} and {second}",
+        "three_to_seven": "{first}, {second}, and {last}",
+        "more_than_seven": "{first} et al."
+      }
+    },
+    "bibliography": {
+      "sort_by": "alphabetical",
+      "author_format": "last_first",
+      "title_format": "title_case",
+      "doi_required": false,
+      "journal_article": "{authors}. {year}. \"{title}\". {journal} {volume}, no. {issue}: {page_range}.{doi}",
+      "book": "{authors}. {year}. {title}. {city}: {publisher}.{doi}",
+      "conference": "{authors}. {year}. \"{title}\". {conference_title}.{doi}",
+      "thesis": "{author}. {year}. {title}. {degree} diss., {institution}.{doi}",
+      "report": "{author}. {year}. {title}. {report_type} {number}. {city}: {publisher}.{doi}",
+      "webpage": "{author}. {year}. \"{title}\". {website}. {access_date}. {doi}"
+    }
+  },
+  "gbt_7714_2015": {
+    "name": "GB/T 7714-2015",
+    "description": "Information and Documentation - Rules for Bibliographic References and Citations",
+    "in_text": {
+      "format": "numeric",
+      "separator": ", ",
+      "prefix": "[",
+      "suffix": "]",
+      "et_al": "等",
+      "author_date_format": "({author}, {year})",
+      "page_format": ", {page}",
+      "document_type_codes": {
+        "monograph": "[M]",
+        "journal_article": "[J]",
+        "conference_paper": "[C]",
+        "dissertation": "[D]",
+        "report": "[R]",
+        "newspaper_article": "[N]",
+        "standard": "[S]",
+        "patent": "[P]",
+        "database": "[DB]",
+        "computer_program": "[CP]",
+        "electronic_document": "[EB/OL]",
+        "archive": "[A]",
+        "reference_work": "[G]",
+        "other": "[Z]"
+      }
+    },
+    "bibliography": {
+      "sort_by": "citation_order",
+      "author_format": "chinese_name_order",
+      "title_format": "original",
+      "chinese_name_order": "family_given",
+      "journal_article": "{authors}. {title}{type_code}. {journal}, {year}, {volume}({issue}): {page_range}.{doi}",
+      "book": "{authors}. {title}{type_code}. {edition}. {city}: {publisher}, {year}: {page_range}.{doi}",
+      "conference": "{authors}. {title}{type_code}. {conference_title}, {date}, {location}. {doi}",
+      "dissertation": "{author}. {title}{type_code}. {city}: {institution}, {year}. {doi}",
+      "report": "{author}. {title}{type_code}. {city}: {publisher}, {year}. {doi}",
+      "newspaper": "{author}. {title}{type_code}. {newspaper}, {date}, {page}.{doi}",
+      "standard": "{standard_number}. {title}{type_code}. {city}: {publisher}, {year}: {page}.{doi}",
+      "patent": "{patent_number}. {title}{type_code}. {country}.{doi}",
+      "database": "{author}. {title}{type_code}. {database_provider}, {url}, {access_date}.{doi}",
+      "computer_program": "{author}. {title}{type_code}. {city}: {publisher}, {year}.{doi}",
+      "electronic_document": "{author}. {title}{type_code}. {publisher}, {url}. {access_date}.{doi}",
+      "archive": "{author}. {title}{type_code}. {city}: {archive}, {year}: {page}.{doi}",
+      "reference_work": "{author}. {title}{type_code}. {city}: {publisher}, {year}. {doi}",
+      "other": "{author}. {title}{type_code}. {city}: {publisher}, {year}. {doi}"
+    }
+  },
+  "ieee": {
+    "name": "IEEE",
+    "description": "Institute of Electrical and Electronics Engineers",
+    "in_text": {
+      "format": "numeric_bracket",
+      "separator": ", ",
+      "prefix": "[",
+      "suffix": "]",
+      "et_al": "et al.",
+      "ampersand": "&",
+      "page_format": ", pp. {page}"
+    },
+    "bibliography": {
+      "sort_by": "citation_order",
+      "author_format": "abbreviated",
+      "title_format": "title_case",
+      "journal_abbreviation": "required",
+      "journal_article": "[{number}] {authors}, \"{title}\", {journal}, vol. {volume}, no. {issue}, pp. {pages}, {month} {year}. {doi}",
+      "book": "[{number}] {authors}, {title}. {city}: {publisher}, {year}, pp. {pages}. {doi}",
+      "conference": "[{number}] {authors}, \"{title}\", in {conference_title}, {year}, pp. {pages}. {doi}",
+      "thesis": "[{number}] {author}, \"{title}\", {degree} thesis, {institution}, {city}, {year}. {doi}",
+      "report": "[{number}] {author}, \"{title}\", {report_type} {number}, {institution}, {city}, {year}. {doi}",
+      "webpage": "[{number}] {author}, \"{title}\", {website}, {access_date}. {doi}"
+    }
+  },
+  "harvard": {
+    "name": "Harvard",
+    "description": "Harvard Referencing System",
+    "in_text": {
+      "format": "parenthetical",
+      "separator": ", ",
+      "year_position": "after_author",
+      "et_al": "et al.",
+      "ampersand": "&",
+      "page_format": ", p. {page}",
+      "multiple_authors": {
+        "two": "{first} and {second}",
+        "three": "{first}, {second} and {third}",
+        "four_or_more": "{first} et al."
+      }
+    },
+    "bibliography": {
+      "sort_by": "alphabetical",
+      "author_format": "last_first",
+      "title_format": "sentence_case",
+      "doi_required": false,
+      "journal_article": "{authors} ({year}) '{title}', {journal}, {volume}({issue}), p. {page}.{doi}",
+      "book": "{authors} ({year}) {title}. {city}: {publisher}. {doi}",
+      "conference": "{authors} ({year}) '{title}', in {editor} (ed.), {conference_title}, pp. {pages}. {publisher}.{doi}",
+      "thesis": "{author} ({year}) {title}. {degree} thesis, {institution}. {doi}",
+      "report": "{author} ({year}) {title}. {report_type} {number}. {publisher}.{doi}",
+      "webpage": "{author} ({year}) {title}. {website}, {access_date}. {doi}"
+    }
+  },
+  "vancouver": {
+    "name": "Vancouver",
+    "description": "Vancouver Referencing System",
+    "in_text": {
+      "format": "numeric_bracket",
+      "separator": ", ",
+      "prefix": "[",
+      "suffix": "]",
+      "et_al": "et al.",
+      "ampersand": "&",
+      "page_format": ", p{page}"
+    },
+    "bibliography": {
+      "sort_by": "citation_order",
+      "author_format": "abbreviated",
+      "title_format": "sentence_case",
+      "journal_article": "{authors}. {title}. {journal}. {year};{volume}({issue}):{page}-{page_end}.{doi}",
+      "book": "{authors}. {title}. {edition}th ed. {city}: {publisher}; {year}.{doi}",
+      "conference": "{authors}. {title}. {conference_title}; {date}. {location}: {publisher}. {doi}",
+      "thesis": "{author}. {title} [{degree}]. {city}: {institution}; {year}.{doi}",
+      "report": "{author}. {title}. {report_type} {number}. {city}: {publisher}; {year}.{doi}",
+      "webpage": "{author}. {title}. {website}; {access_date}. {doi}"
+    }
+  },
+  "document_types": {
+    "journal_article": {
+      "name": "Journal Article",
+      "chinese_name": "期刊文章",
+      "fields": ["title", "authors", "journal", "volume", "issue", "page", "year", "doi"]
+    },
+    "book": {
+      "name": "Book",
+      "chinese_name": "图书",
+      "fields": ["title", "authors", "publisher", "year", "isbn", "edition", "city"]
+    },
+    "conference_paper": {
+      "name": "Conference Paper",
+      "chinese_name": "会议论文",
+      "fields": ["title", "authors", "conference_title", "date", "location", "page", "year", "doi"]
+    },
+    "thesis": {
+      "name": "Thesis/Dissertation",
+      "chinese_name": "学位论文",
+      "fields": ["title", "author", "institution", "degree", "city", "year", "doi"]
+    },
+    "report": {
+      "name": "Report",
+      "chinese_name": "报告",
+      "fields": ["title", "author", "publisher", "report_type", "number", "city", "year", "doi"]
+    },
+    "newspaper_article": {
+      "name": "Newspaper Article",
+      "chinese_name": "报纸文章",
+      "fields": ["title", "author", "newspaper", "date", "page", "year", "doi"]
+    },
+    "webpage": {
+      "name": "Webpage",
+      "chinese_name": "网页",
+      "fields": ["title", "author", "website", "access_date", "url", "doi"]
+    },
+    "standard": {
+      "name": "Standard",
+      "chinese_name": "标准",
+      "fields": ["standard_number", "title", "publisher", "city", "year", "page", "doi"]
+    },
+    "patent": {
+      "name": "Patent",
+      "chinese_name": "专利",
+      "fields": ["patent_number", "title", "country", "year", "doi"]
+    },
+    "database": {
+      "name": "Database",
+      "chinese_name": "数据库",
+      "fields": ["author", "title", "database_provider", "url", "access_date", "doi"]
+    },
+    "computer_program": {
+      "name": "Computer Program",
+      "chinese_name": "计算机程序",
+      "fields": ["title", "author", "city", "publisher", "year", "doi"]
+    },
+    "electronic_document": {
+      "name": "Electronic Document",
+      "chinese_name": "电子文档",
+      "fields": ["title", "author", "publisher", "url", "access_date", "doi"]
+    },
+    "archive": {
+      "name": "Archive Material",
+      "chinese_name": "档案材料",
+      "fields": ["title", "author", "archive", "city", "year", "page", "doi"]
+    },
+    "reference_work": {
+      "name": "Reference Work",
+      "chinese_name": "参考工具书",
+      "fields": ["title", "author", "publisher", "city", "year", "doi"]
+    },
+    "other": {
+      "name": "Other",
+      "chinese_name": "其他",
+      "fields": ["title", "author", "publisher", "city", "year", "doi"]
+    }
+  },
+  "field_labels": {
+    "title": {
+      "en": "Title",
+      "zh": "标题"
+    },
+    "authors": {
+      "en": "Authors",
+      "zh": "作者"
+    },
+    "journal": {
+      "en": "Journal",
+      "zh": "期刊名称"
+    },
+    "volume": {
+      "en": "Volume",
+      "zh": "卷"
+    },
+    "issue": {
+      "en": "Issue",
+      "zh": "期"
+    },
+    "page": {
+      "en": "Page",
+      "zh": "页"
+    },
+    "page_range": {
+      "en": "Page Range",
+      "zh": "页码范围"
+    },
+    "year": {
+      "en": "Year",
+      "zh": "年份"
+    },
+    "doi": {
+      "en": "DOI",
+      "zh": "数字对象标识符"
+    },
+    "isbn": {
+      "en": "ISBN",
+      "zh": "国际标准书号"
+    },
+    "url": {
+      "en": "URL",
+      "zh": "统一资源定位符"
+    },
+    "publisher": {
+      "en": "Publisher",
+      "zh": "出版社"
+    },
+    "edition": {
+      "en": "Edition",
+      "zh": "版本"
+    },
+    "city": {
+      "en": "City",
+      "zh": "城市"
+    },
+    "conference_title": {
+      "en": "Conference Title",
+      "zh": "会议名称"
+    },
+    "date": {
+      "en": "Date",
+      "zh": "日期"
+    },
+    "location": {
+      "en": "Location",
+      "zh": "地点"
+    },
+    "institution": {
+      "en": "Institution",
+      "zh": "机构"
+    },
+    "degree": {
+      "en": "Degree",
+      "zh": "学位"
+    },
+    "report_type": {
+      "en": "Report Type",
+      "zh": "报告类型"
+    },
+    "number": {
+      "en": "Number",
+      "zh": "编号"
+    },
+    "standard_number": {
+      "en": "Standard Number",
+      "zh": "标准编号"
+    },
+    "patent_number": {
+      "en": "Patent Number",
+      "zh": "专利号"
+    },
+    "database_provider": {
+      "en": "Database Provider",
+      "zh": "数据库提供商"
+    },
+    "website": {
+      "en": "Website",
+      "zh": "网站"
+    },
+    "access_date": {
+      "en": "Access Date",
+      "zh": "访问日期"
+    },
+    "country": {
+      "en": "Country",
+      "zh": "国家"
+    },
+    "archive": {
+      "en": "Archive",
+      "zh": "档案馆"
+    },
+    "editor": {
+      "en": "Editor",
+      "zh": "编者"
+    },
+    "pages": {
+      "en": "Pages",
+      "zh": "总页数"
+    },
+    "month": {
+      "en": "Month",
+      "zh": "月份"
+    }
+  },
+  "formatting_rules": {
+    "author_name_order": {
+      "western": {
+        "family_first": "{family}, {given}",
+        "given_first": "{given} {family}",
+        "initials": "{family}, {given_initial}."
+      },
+      "chinese": {
+        "family_given": "{family}{given}",
+        "given_family": "{given}{family}"
+      }
+    },
+    "title_case": {
+      "sentence_case": {
+        "description": "Only first word and proper nouns capitalized",
+        "rule": "capitalize first letter of each sentence, keep proper nouns as is"
+      },
+      "title_case": {
+        "description": "First letter of each word capitalized",
+        "rule": "capitalize first letter of each word, except articles and short prepositions"
+      },
+      "upper_case": {
+        "description": "All letters capitalized",
+        "rule": "convert all letters to uppercase"
+      },
+      "lower_case": {
+        "description": "All letters lowercase",
+        "rule": "convert all letters to lowercase"
+      },
+      "original": {
+        "description": "Keep original case",
+        "rule": "do not change case"
+      }
+    },
+    "punctuation": {
+      "en": {
+        "period": ".",
+        "comma": ",",
+        "semicolon": ";",
+        "colon": ":",
+        "apostrophe": "'",
+        "quotation_mark": "\"",
+        "question_mark": "?",
+        "exclamation_mark": "!",
+        "parentheses": "()",
+        "brackets": "[]",
+        "braces": "{}",
+        "dash": "-",
+        "em_dash": "—"
+      },
+      "zh": {
+        "period": "。",
+        "comma": "，",
+        "semicolon": "；",
+        "colon": "：",
+        "quotation_mark": "\"\"\"\"",
+        "question_mark": "？",
+        "exclamation_mark": "！",
+        "parentheses": "()",
+        "brackets": "[]",
+        "braces": "{}",
+        "dash": "—",
+        "enumeration_point": "、"
+      }
+    },
+    "abbreviation_rules": {
+      "en": {
+        "volume": "vol.",
+        "number": "no.",
+        "page": "p.",
+        "pages": "pp.",
+        "chapter": "chap.",
+        "edition": "ed.",
+        "revised": "rev.",
+        "translator": "trans.",
+        "editor": "ed.",
+        "editors": "eds.",
+        "anonymous": "Anon."
+      },
+      "zh": {
+        "volume": "卷",
+        "number": "期",
+        "page": "页",
+        "pages": "页",
+        "chapter": "章",
+        "edition": "版",
+        "revised": "修订版",
+        "translator": "译",
+        "editor": "编",
+        "editors": "编",
+        "anonymous": "佚名"
+      }
+    }
+  },
+  "special_cases": {
+    "multiple_authors_same_year": {
+      "apa": {
+        "rule": "Add alphabetical suffix (a, b, c...) to year",
+        "example": "Smith (2023a), Smith (2023b)"
+      },
+      "chicago": {
+        "rule": "Same as APA",
+        "example": "Smith (2023a), Smith (2023b)"
+      },
+      "harvard": {
+        "rule": "Same as APA",
+        "example": "Smith (2023a), Smith (2023b)"
+      },
+      "mla": {
+        "rule": "Add short title suffix",
+        "example": "Smith (Title A 23), Smith (Title B 23)"
+      },
+      "ieee": {
+        "rule": "Use separate citation numbers",
+        "example": "[1], [2], [3]"
+      }
+    },
+    "no_author": {
+      "apa": {
+        "rule": "Use title in parentheses",
+        "example": "(\"Article Title\", 2023)"
+      },
+      "chicago": {
+        "rule": "Use title in parentheses",
+        "example": "(\"Article Title\", 2023)"
+      },
+      "harvard": {
+        "rule": "Use title in parentheses",
+        "example": "(\"Article Title\", 2023)"
+      },
+      "mla": {
+        "rule": "Use title in quotes",
+        "example": "\"Article Title\""
+      },
+      "ieee": {
+        "rule": "Use title with brackets",
+        "example": "[1] \"Article Title\""
+      }
+    },
+    "no_date": {
+      "apa": {
+        "rule": "Use n.d. for no date",
+        "example": "Smith (n.d.)"
+      },
+      "chicago": {
+        "rule": "Use n.d. for no date",
+        "example": "Smith (n.d.)"
+      },
+      "harvard": {
+        "rule": "Use n.d. for no date",
+        "example": "Smith (n.d.)"
+      },
+      "mla": {
+        "rule": "Use n.d. for no date",
+        "example": "Smith (n.d.)"
+      },
+      "ieee": {
+        "rule": "Use available date",
+        "example": "[1] (accessed 2023-06-01)"
+      }
+    }
+  },
+  "citation_style_mapping": {
+    "style_aliases": {
+      "apa": ["apa", "apa7", "apa_7", "american_psychological_association"],
+      "mla": ["mla", "mla9", "mla_9", "modern_language_association"],
+      "chicago": ["chicago", "chicago17", "chicago_17", "chicago_manual", "chicago_notes", "chicago_author_date", "cms"],
+      "gbt": ["gbt", "gbt7714", "gbt_7714", "gbt7714_2015", "gb", "chinese", "gb_standard"],
+      "ieee": ["ieee", "institute_electronics_electronics_engineers", "engineering"],
+      "harvard": ["harvard", "harvard_referencing", "uk", "commonwealth"],
+      "vancouver": ["vancouver", "uniform", "biomedical", "medical"]
+    },
+    "default_style": "apa",
+    "style_priority": ["apa", "mla", "chicago", "harvard", "ieee", "vancouver", "gbt_7714"]
+  }
+}

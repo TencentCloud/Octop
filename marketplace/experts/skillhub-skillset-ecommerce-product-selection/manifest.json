@@ -1,0 +1,157 @@
+{
+  "id": "skillhub-skillset-ecommerce-product-selection",
+  "label": {
+    "zh": "选品分析专家",
+    "en": "Ecommerce Product Selection Expert"
+  },
+  "description": {
+    "zh": "从多平台爆款产品筛选（淘宝/京东/拼多多/抖音/亚马逊数据分析）与淘宝产品调研采集（主图/标题/价格/销量/评价/店铺信息），经亚马逊选品市场验证（竞品分析/ASIN评估/定价指导/产品机会挖掘）与跨境电商榜单分析（利润计算/侵权排查/竞品分析/选品决策报告），到OZON平台选品货源搜索（1688货源关键词/供应商筛选/产品定价参考）与1688选品铺货（商机趋势/多平台铺货/货源搜索）的完整选品分析工作流。覆盖多平台数据采集、市场验证、竞品分析、利润评估、货源对接、铺货分发全链路。",
+    "en": "Expert workflow for Ecommerce Product Selection Expert."
+  },
+  "welcome_message": {
+    "zh": "提供专业、可落地的专家工作流支持",
+    "en": "Practical expert workflow support for your goals"
+  },
+  "icon_name": "globe",
+  "icon_url": "https://cloudcache.tencent-cloud.com/qcloud/tea/app/skillhub/assets/source/ai-buddy-decouple/expert-profiles/ecommerce-product-selection.v20260625.avif",
+  "color": "#16a34a",
+  "prompt_files": [
+    "SOUL.md"
+  ],
+  "quick_prompts": [
+    {
+      "title": {
+        "zh": "多平台爆款产品筛选",
+        "en": "Workflow step 1"
+      },
+      "description": {
+        "zh": "生成多平台爆款筛选清单和品类评分",
+        "en": "Share context for a ready result"
+      },
+      "prompt": {
+        "zh": "请作为「选品分析专家」，帮我完成「多平台爆款产品筛选」。\n我的情况/目标/材料是：\n",
+        "en": "As the Ecommerce Product Selection Expert, help me with: Workflow step 1.\nMy context, goals, or materials are:\n"
+      },
+      "color": "#e8f4ff",
+      "icon_name": "activity"
+    },
+    {
+      "title": {
+        "zh": "淘宝产品数据采集",
+        "en": "Workflow step 2"
+      },
+      "description": {
+        "zh": "生成淘宝商品数据采集报告",
+        "en": "Share context for a ready result"
+      },
+      "prompt": {
+        "zh": "请作为「选品分析专家」，帮我完成「淘宝产品数据采集」。\n我的情况/目标/材料是：\n",
+        "en": "As the Ecommerce Product Selection Expert, help me with: Workflow step 2.\nMy context, goals, or materials are:\n"
+      },
+      "color": "#fef3c7",
+      "icon_name": "activity"
+    },
+    {
+      "title": {
+        "zh": "亚马逊市场验证与竞品分析",
+        "en": "Workflow step 3"
+      },
+      "description": {
+        "zh": "生成亚马逊市场验证报告和竞品分析",
+        "en": "Share context for a ready result"
+      },
+      "prompt": {
+        "zh": "请作为「选品分析专家」，帮我完成「亚马逊市场验证与竞品分析」。\n我的情况/目标/材料是：\n",
+        "en": "As the Ecommerce Product Selection Expert, help me with: Workflow step 3.\nMy context, goals, or materials are:\n"
+      },
+      "color": "#dcfce7",
+      "icon_name": "activity"
+    },
+    {
+      "title": {
+        "zh": "跨境电商榜单与利润分析",
+        "en": "Workflow step 4"
+      },
+      "description": {
+        "zh": "生成选品决策报告和利润分析",
+        "en": "Share context for a ready result"
+      },
+      "prompt": {
+        "zh": "请作为「选品分析专家」，帮我完成「跨境电商榜单与利润分析」。\n我的情况/目标/材料是：\n",
+        "en": "As the Ecommerce Product Selection Expert, help me with: Workflow step 4.\nMy context, goals, or materials are:\n"
+      },
+      "color": "#f1f5f9",
+      "icon_name": "activity"
+    },
+    {
+      "title": {
+        "zh": "海外平台选品与货源搜索",
+        "en": "Workflow step 5"
+      },
+      "description": {
+        "zh": "生成货源搜索方案和供应商筛选标准",
+        "en": "Share context for a ready result"
+      },
+      "prompt": {
+        "zh": "请作为「选品分析专家」，帮我完成「海外平台选品与货源搜索」。\n我的情况/目标/材料是：\n",
+        "en": "As the Ecommerce Product Selection Expert, help me with: Workflow step 5.\nMy context, goals, or materials are:\n"
+      },
+      "color": "#fff1f2",
+      "icon_name": "globe"
+    },
+    {
+      "title": {
+        "zh": "1688 货源筛选与商机趋势",
+        "en": "Workflow step 6"
+      },
+      "description": {
+        "zh": "生成铺货方案和商机趋势分析",
+        "en": "Share context for a ready result"
+      },
+      "prompt": {
+        "zh": "请作为「选品分析专家」，帮我完成「1688 货源筛选与商机趋势」。\n我的情况/目标/材料是：\n",
+        "en": "As the Ecommerce Product Selection Expert, help me with: Workflow step 6.\nMy context, goals, or materials are:\n"
+      },
+      "color": "#eef2ff",
+      "icon_name": "activity"
+    }
+  ],
+  "task_examples": {
+    "zh": [
+      "每天「09:00」帮我完成「多平台爆款产品筛选」并把结果发给我，任务创建后立即启用",
+      "每个工作日「18:00」帮我完成「淘宝产品数据采集」并把结果发给我",
+      "每周一「10:00」帮我完成「亚马逊市场验证与竞品分析」并把结果发给我",
+      "每周五「17:00」帮我完成「跨境电商榜单与利润分析」并把结果发给我",
+      "每天「08:00」帮我完成「海外平台选品与货源搜索」并把结果发给我",
+      "每月 1 日「09:30」帮我完成「1688 货源筛选与商机趋势」并把结果发给我"
+    ],
+    "en": [
+      "Every day at 09:00, help me complete “Workflow step 1” and send the result — enable immediately",
+      "Every weekday at 18:00, help me complete “Workflow step 2” and send the result",
+      "Every Monday at 10:00, help me complete “Workflow step 3” and send the result",
+      "Every Friday at 17:00, help me complete “Workflow step 4” and send the result",
+      "Every day at 08:00, help me complete “Workflow step 5” and send the result",
+      "On the 1st of each month at 09:30, help me complete “Workflow step 6” and send the result"
+    ]
+  },
+  "source": {
+    "type": "skillhub",
+    "kind": "skillset",
+    "slug": "ecommerce-product-selection",
+    "scene": "ecommerce",
+    "sub_scene": "product-selection"
+  },
+  "skillhub": {
+    "slug": "ecommerce-product-selection",
+    "scene": "ecommerce",
+    "sub_scene": "product-selection",
+    "skill_slugs": [
+      "ecommerce-product-selector",
+      "taobao-product-research",
+      "apiclaw-analysis",
+      "cross-border-ecommerce-product-analysis",
+      "walter-product-research",
+      "1688-trend-trader"
+    ]
+  }
+}

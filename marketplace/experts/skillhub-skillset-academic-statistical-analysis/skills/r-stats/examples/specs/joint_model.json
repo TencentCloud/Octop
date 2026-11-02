@@ -1,0 +1,1 @@
+{"dataset_path":"examples/data/aids_joint.csv","analysis_type":"joint_model","long_formula":"biomarker ~ time","surv_formula":"Surv(surv_time, event) ~ 1","id_var":"id","time_var":"time","event_var":"event","surv_time_var":"surv_time","seed":42,"output_dir":"output/joint_model"}

@@ -1,0 +1,16 @@
+{
+  "dataset_path": "examples/data/airquality_missing.csv",
+  "analysis_type": "multiple_imputation",
+  "variables": ["Ozone", "Solar.R", "Wind", "Temp", "Month"],
+  "m": 5,
+  "maxit": 20,
+  "imputation_method": null,
+  "downstream_analysis": {
+    "analysis_type": "linear_regression",
+    "formula": "Ozone ~ Solar.R + Wind + Temp"
+  },
+  "hypothesis": "Impute missing Ozone and Solar.R values, then regress Ozone on predictors",
+  "alpha": 0.05,
+  "seed": 42,
+  "output_dir": "output/imputation_airquality"
+}

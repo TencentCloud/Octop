@@ -1,0 +1,10 @@
+{
+  "dataset_path": "examples/data/titanic.csv",
+  "analysis_type": "chisq",
+  "row_var": "Class",
+  "col_var": "Survived",
+  "hypothesis": "Survival rate is associated with passenger class on the Titanic",
+  "alpha": 0.05,
+  "seed": 42,
+  "output_dir": "output/chisq_titanic"
+}

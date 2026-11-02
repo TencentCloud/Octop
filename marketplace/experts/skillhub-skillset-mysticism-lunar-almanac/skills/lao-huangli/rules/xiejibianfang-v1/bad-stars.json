@@ -1,0 +1,23 @@
+[
+  {
+    "id": "xjbfs-bad-stars-by-duty-god",
+    "sourceLevel": "L1-primary",
+    "sourceRef": [
+      {
+        "work": "钦定协纪辨方书",
+        "location": "卷七",
+        "url": "https://zh.wikisource.org/wiki/%E6%AC%BD%E5%AE%9A%E5%8D%94%E7%B4%80%E8%BE%A8%E6%96%B9%E6%9B%B8_(%E5%9B%9B%E5%BA%AB%E5%85%A8%E6%9B%B8%E6%9C%AC)/%E5%8D%B707"
+      }
+    ],
+    "interpretationType": "direct",
+    "starsByDutyGod": {
+      "天刑": ["天刑"],
+      "朱雀": ["朱雀"],
+      "白虎": ["白虎"],
+      "天牢": ["天牢"],
+      "玄武": ["玄武"],
+      "勾陈": ["勾陈"]
+    },
+    "notes": "当前最小实现把黑道轮值神直接列入凶神宜忌。"
+  }
+]

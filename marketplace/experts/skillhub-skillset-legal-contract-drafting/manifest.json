@@ -1,0 +1,157 @@
+{
+  "id": "skillhub-skillset-legal-contract-drafting",
+  "label": {
+    "zh": "合同起草专家",
+    "en": "Legal Contract Drafting Expert"
+  },
+  "description": {
+    "zh": "从多类型合同模板生成（劳动合同/服务协议/合作协议/租赁合同/协议书模板）与专业合同生成审查（销售合同/租赁合同/劳动合同/NDA/服务协议/法律咨询），法律文书模板与撰写指导（劳务纠纷/离婚协议/交通事故/租房协议/文书模板）与中国财税法律文书起草（税务筹划报告/法律意见书/合同税务条款/行政复议/行政诉讼），到保密协议NDA起草与DOCX生成（双向NDA/单向NDA/Common Paper/Bonterms标准）与法律文书模板专家（500+案例/自我进化/多类型文书模板）的完整合同起草工作流。覆盖合同模板、专业生成、文书指导、财税文书、NDA起草、模板库全链路。",
+    "en": "Expert workflow for Legal Contract Drafting Expert."
+  },
+  "welcome_message": {
+    "zh": "提供专业、可落地的专家工作流支持",
+    "en": "Practical expert workflow support for your goals"
+  },
+  "icon_name": "file-text",
+  "icon_url": "https://cloudcache.tencent-cloud.com/qcloud/tea/app/skillhub/assets/source/ai-buddy-decouple/expert-profiles/legal-contract-drafting.v20260625.avif",
+  "color": "#0f766e",
+  "prompt_files": [
+    "SOUL.md"
+  ],
+  "quick_prompts": [
+    {
+      "title": {
+        "zh": "合同模板选择与生成",
+        "en": "Workflow step 1"
+      },
+      "description": {
+        "zh": "生成合同模板和框架文档",
+        "en": "Share context for a ready result"
+      },
+      "prompt": {
+        "zh": "请作为「合同起草专家」，帮我完成「合同模板选择与生成」。\n我的情况/目标/材料是：\n",
+        "en": "As the Legal Contract Drafting Expert, help me with: Workflow step 1.\nMy context, goals, or materials are:\n"
+      },
+      "color": "#e8f4ff",
+      "icon_name": "file-text"
+    },
+    {
+      "title": {
+        "zh": "专业合同内容生成",
+        "en": "Workflow step 2"
+      },
+      "description": {
+        "zh": "生成专业合同正文和审查意见",
+        "en": "Share context for a ready result"
+      },
+      "prompt": {
+        "zh": "请作为「合同起草专家」，帮我完成「专业合同内容生成」。\n我的情况/目标/材料是：\n",
+        "en": "As the Legal Contract Drafting Expert, help me with: Workflow step 2.\nMy context, goals, or materials are:\n"
+      },
+      "color": "#fef3c7",
+      "icon_name": "activity"
+    },
+    {
+      "title": {
+        "zh": "法律文书撰写指导",
+        "en": "Workflow step 3"
+      },
+      "description": {
+        "zh": "生成法律文书撰写指南和参考模板",
+        "en": "Share context for a ready result"
+      },
+      "prompt": {
+        "zh": "请作为「合同起草专家」，帮我完成「法律文书撰写指导」。\n我的情况/目标/材料是：\n",
+        "en": "As the Legal Contract Drafting Expert, help me with: Workflow step 3.\nMy context, goals, or materials are:\n"
+      },
+      "color": "#dcfce7",
+      "icon_name": "file-text"
+    },
+    {
+      "title": {
+        "zh": "财税法律文书起草",
+        "en": "Workflow step 4"
+      },
+      "description": {
+        "zh": "生成财税法律文书和意见书",
+        "en": "Share context for a ready result"
+      },
+      "prompt": {
+        "zh": "请作为「合同起草专家」，帮我完成「财税法律文书起草」。\n我的情况/目标/材料是：\n",
+        "en": "As the Legal Contract Drafting Expert, help me with: Workflow step 4.\nMy context, goals, or materials are:\n"
+      },
+      "color": "#f1f5f9",
+      "icon_name": "file-text"
+    },
+    {
+      "title": {
+        "zh": "保密协议专项起草",
+        "en": "Workflow step 5"
+      },
+      "description": {
+        "zh": "生成可签署的NDA文件",
+        "en": "Share context for a ready result"
+      },
+      "prompt": {
+        "zh": "请作为「合同起草专家」，帮我完成「保密协议专项起草」。\n我的情况/目标/材料是：\n",
+        "en": "As the Legal Contract Drafting Expert, help me with: Workflow step 5.\nMy context, goals, or materials are:\n"
+      },
+      "color": "#fff1f2",
+      "icon_name": "presentation"
+    },
+    {
+      "title": {
+        "zh": "法律文书模板库输出",
+        "en": "Workflow step 6"
+      },
+      "description": {
+        "zh": "生成法律文书终稿和模板库",
+        "en": "Share context for a ready result"
+      },
+      "prompt": {
+        "zh": "请作为「合同起草专家」，帮我完成「法律文书模板库输出」。\n我的情况/目标/材料是：\n",
+        "en": "As the Legal Contract Drafting Expert, help me with: Workflow step 6.\nMy context, goals, or materials are:\n"
+      },
+      "color": "#eef2ff",
+      "icon_name": "file-text"
+    }
+  ],
+  "task_examples": {
+    "zh": [
+      "每天「09:00」帮我完成「合同模板选择与生成」并把结果发给我，任务创建后立即启用",
+      "每个工作日「18:00」帮我完成「专业合同内容生成」并把结果发给我",
+      "每周一「10:00」帮我完成「法律文书撰写指导」并把结果发给我",
+      "每周五「17:00」帮我完成「财税法律文书起草」并把结果发给我",
+      "每天「08:00」帮我完成「保密协议专项起草」并把结果发给我",
+      "每月 1 日「09:30」帮我完成「法律文书模板库输出」并把结果发给我"
+    ],
+    "en": [
+      "Every day at 09:00, help me complete “Workflow step 1” and send the result — enable immediately",
+      "Every weekday at 18:00, help me complete “Workflow step 2” and send the result",
+      "Every Monday at 10:00, help me complete “Workflow step 3” and send the result",
+      "Every Friday at 17:00, help me complete “Workflow step 4” and send the result",
+      "Every day at 08:00, help me complete “Workflow step 5” and send the result",
+      "On the 1st of each month at 09:30, help me complete “Workflow step 6” and send the result"
+    ]
+  },
+  "source": {
+    "type": "skillhub",
+    "kind": "skillset",
+    "slug": "legal-contract-drafting",
+    "scene": "legal",
+    "sub_scene": "contract-drafting"
+  },
+  "skillhub": {
+    "slug": "legal-contract-drafting",
+    "scene": "legal",
+    "sub_scene": "contract-drafting",
+    "skill_slugs": [
+      "employment-contract",
+      "hetongzhushou",
+      "legal-document-assistant",
+      "legal-doc-writer",
+      "nda",
+      "legal-advisor"
+    ]
+  }
+}

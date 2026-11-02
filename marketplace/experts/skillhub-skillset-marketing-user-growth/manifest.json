@@ -1,0 +1,157 @@
+{
+  "id": "skillhub-skillset-marketing-user-growth",
+  "label": {
+    "zh": "用户增长专家",
+    "en": "Marketing User Growth Expert"
+  },
+  "description": {
+    "zh": "从AARRR+增长框架与北极星指标定义、获客闭环与实验框架设计、转化漏斗创建与流失环节诊断，到新用户入职流程与激活指标优化、客户留存策略与赢回活动设计、流失风险AI评估与定制化留存推荐的完整用户增长工作流。覆盖获客、激活、留存、转化、推荐全链路增长体系。",
+    "en": "Expert workflow for Marketing User Growth Expert."
+  },
+  "welcome_message": {
+    "zh": "提供专业、可落地的专家工作流支持",
+    "en": "Practical expert workflow support for your goals"
+  },
+  "icon_name": "trending-up",
+  "icon_url": "https://cloudcache.tencent-cloud.com/qcloud/tea/app/skillhub/assets/source/ai-buddy-decouple/expert-profiles/marketing-user-growth.v20260625.avif",
+  "color": "#ca8a04",
+  "prompt_files": [
+    "SOUL.md"
+  ],
+  "quick_prompts": [
+    {
+      "title": {
+        "zh": "增长体系设计与北极星指标",
+        "en": "Workflow step 1"
+      },
+      "description": {
+        "zh": "生成增长体系框架和北极星指标定义",
+        "en": "Share context for a ready result"
+      },
+      "prompt": {
+        "zh": "请作为「用户增长专家」，帮我完成「增长体系设计与北极星指标」。\n我的情况/目标/材料是：\n",
+        "en": "As the Marketing User Growth Expert, help me with: Workflow step 1.\nMy context, goals, or materials are:\n"
+      },
+      "color": "#e8f4ff",
+      "icon_name": "trending-up"
+    },
+    {
+      "title": {
+        "zh": "获客闭环与实验框架",
+        "en": "Workflow step 2"
+      },
+      "description": {
+        "zh": "生成获客策略和实验计划",
+        "en": "Share context for a ready result"
+      },
+      "prompt": {
+        "zh": "请作为「用户增长专家」，帮我完成「获客闭环与实验框架」。\n我的情况/目标/材料是：\n",
+        "en": "As the Marketing User Growth Expert, help me with: Workflow step 2.\nMy context, goals, or materials are:\n"
+      },
+      "color": "#fef3c7",
+      "icon_name": "trending-up"
+    },
+    {
+      "title": {
+        "zh": "转化漏斗分析",
+        "en": "Workflow step 3"
+      },
+      "description": {
+        "zh": "生成漏斗分析报告和优化方案",
+        "en": "Share context for a ready result"
+      },
+      "prompt": {
+        "zh": "请作为「用户增长专家」，帮我完成「转化漏斗分析」。\n我的情况/目标/材料是：\n",
+        "en": "As the Marketing User Growth Expert, help me with: Workflow step 3.\nMy context, goals, or materials are:\n"
+      },
+      "color": "#dcfce7",
+      "icon_name": "activity"
+    },
+    {
+      "title": {
+        "zh": "新用户入职与激活优化",
+        "en": "Workflow step 4"
+      },
+      "description": {
+        "zh": "生成入职流程设计和激活指标",
+        "en": "Share context for a ready result"
+      },
+      "prompt": {
+        "zh": "请作为「用户增长专家」，帮我完成「新用户入职与激活优化」。\n我的情况/目标/材料是：\n",
+        "en": "As the Marketing User Growth Expert, help me with: Workflow step 4.\nMy context, goals, or materials are:\n"
+      },
+      "color": "#f1f5f9",
+      "icon_name": "trending-up"
+    },
+    {
+      "title": {
+        "zh": "客户留存与赢回策略",
+        "en": "Workflow step 5"
+      },
+      "description": {
+        "zh": "生成留存策略方案和 LTV/CAC 模型",
+        "en": "Share context for a ready result"
+      },
+      "prompt": {
+        "zh": "请作为「用户增长专家」，帮我完成「客户留存与赢回策略」。\n我的情况/目标/材料是：\n",
+        "en": "As the Marketing User Growth Expert, help me with: Workflow step 5.\nMy context, goals, or materials are:\n"
+      },
+      "color": "#fff1f2",
+      "icon_name": "terminal"
+    },
+    {
+      "title": {
+        "zh": "流失风险预警",
+        "en": "Workflow step 6"
+      },
+      "description": {
+        "zh": "分析客户数据评估流失风险等级",
+        "en": "Share context for a ready result"
+      },
+      "prompt": {
+        "zh": "请作为「用户增长专家」，帮我完成「流失风险预警」。\n我的情况/目标/材料是：\n",
+        "en": "As the Marketing User Growth Expert, help me with: Workflow step 6.\nMy context, goals, or materials are:\n"
+      },
+      "color": "#eef2ff",
+      "icon_name": "activity"
+    }
+  ],
+  "task_examples": {
+    "zh": [
+      "每天「09:00」帮我完成「增长体系设计与北极星指标」并把结果发给我，任务创建后立即启用",
+      "每个工作日「18:00」帮我完成「获客闭环与实验框架」并把结果发给我",
+      "每周一「10:00」帮我完成「转化漏斗分析」并把结果发给我",
+      "每周五「17:00」帮我完成「新用户入职与激活优化」并把结果发给我",
+      "每天「08:00」帮我完成「客户留存与赢回策略」并把结果发给我",
+      "每月 1 日「09:30」帮我完成「流失风险预警」并把结果发给我"
+    ],
+    "en": [
+      "Every day at 09:00, help me complete “Workflow step 1” and send the result — enable immediately",
+      "Every weekday at 18:00, help me complete “Workflow step 2” and send the result",
+      "Every Monday at 10:00, help me complete “Workflow step 3” and send the result",
+      "Every Friday at 17:00, help me complete “Workflow step 4” and send the result",
+      "Every day at 08:00, help me complete “Workflow step 5” and send the result",
+      "On the 1st of each month at 09:30, help me complete “Workflow step 6” and send the result"
+    ]
+  },
+  "source": {
+    "type": "skillhub",
+    "kind": "skillset",
+    "slug": "marketing-user-growth",
+    "scene": "marketing",
+    "sub_scene": "user-growth"
+  },
+  "skillhub": {
+    "slug": "marketing-user-growth",
+    "scene": "marketing",
+    "sub_scene": "user-growth",
+    "skill_slugs": [
+      "afrexai-growth-engine",
+      "cgo",
+      "funnel-analyzer",
+      "customer-onboarding-2",
+      "customer-retention",
+      "afrexai-churn-analyzer"
+    ]
+  }
+}

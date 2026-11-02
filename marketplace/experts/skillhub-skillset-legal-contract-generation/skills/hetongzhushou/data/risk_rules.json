@@ -1,0 +1,231 @@
+{
+  "version": "1.0.0",
+  "description": "合同风险规则库 - 用于风险检测脚本",
+  "categories": {
+    "劳动人事类": {
+      "description": "劳动合同及相关协议的风险规则",
+      "rules": [
+        {
+          "id": "LAB001",
+          "type": "竞业限制",
+          "name": "竞业限制期限过长",
+          "severity": "high",
+          "patterns": ["竞业限制[^\d]*(\\d+)\\s*年"],
+          "condition": "期限 > 2年",
+          "legal_basis": "《劳动合同法》第24条",
+          "suggestion": "竞业限制期限不得超过二年"
+        },
+        {
+          "id": "LAB002",
+          "type": "竞业限制",
+          "name": "无经济补偿",
+          "severity": "high",
+          "patterns": ["竞业限制[^\n]*义务[^\n]*(?:但|但|但)(?:未|没有|不包含)[^\n]*补偿"],
+          "condition": "仅约定义务，无补偿",
+          "legal_basis": "《劳动合同法》第23条",
+          "suggestion": "用人单位应在竞业限制期限内按月给予劳动者经济补偿"
+        },
+        {
+          "id": "LAB003",
+          "type": "加班费",
+          "name": "加班费计算标准低于法定",
+          "severity": "high",
+          "patterns": ["加班费[^\n]*(?:\\d+(?:\\.\\d+)?\\s*%)", "按\\s*(?:正常\\s*)?工资\\s*(?:的\\s*)?(?:\\d+(?:\\.\\d+)?\\s*%)"],
+          "condition": "加班费 < 150% (工作日)",
+          "legal_basis": "《劳动法》第44条",
+          "suggestion": "工作日加班不低于150%；休息日加班不低于200%；法定节假日不低于300%"
+        },
+        {
+          "id": "LAB004",
+          "type": "工资",
+          "name": "工资低于最低工资标准",
+          "severity": "high",
+          "patterns": ["工资[^\n]*(?:不得|不能|不应)[^\n]*低于"],
+          "condition": "约定低于最低工资",
+          "legal_basis": "《劳动法》第48条",
+          "suggestion": "工资不得低于当地政府公布的最低工资标准"
+        },
+        {
+          "id": "LAB005",
+          "type": "押金",
+          "name": "收取押金",
+          "severity": "warning",
+          "patterns": ["押金[^\n]*\\d+", "保证金[^\n]*\\d+"],
+          "condition": "收取押金或保证金",
+          "legal_basis": "《劳动合同法》第9条",
+          "suggestion": "用人单位不得扣押劳动者证件或收取财物"
+        },
+        {
+          "id": "LAB006",
+          "type": "社保",
+          "name": "不缴社保",
+          "severity": "high",
+          "patterns": ["(?:不|无需|免于)[^\n]*社会保险", "社会保险[^\n]*(?:不含|不包括)"],
+          "condition": "不缴或免缴社保",
+          "legal_basis": "《劳动法》第72条",
+          "suggestion": "用人单位和劳动者必须依法参加社会保险"
+        }
+      ]
+    },
+    "买卖交易类": {
+      "description": "买卖合同的风险规则",
+      "rules": [
+        {
+          "id": "SAL001",
+          "type": "违约金",
+          "name": "违约金比例严重失衡",
+          "severity": "high",
+          "patterns": ["甲方[^\n]*违约金[^\n]*0\\.[5-9]?\\d?%", "乙方[^\n]*违约金[^\n]*0\\.[0-3]?\\d?%"],
+          "condition": "双方违约金比例差距过大",
+          "legal_basis": "《民法典》第585条",
+          "suggestion": "双方违约金比例应保持一致或相近"
+        },
+        {
+          "id": "SAL002",
+          "type": "定金",
+          "name": "定金超过法定限额",
+          "severity": "warning",
+          "patterns": ["定金[^\n]*(\\d+)\\s*%"],
+          "condition": "定金 > 20%",
+          "legal_basis": "《民法典》第586条",
+          "suggestion": "定金不得超过主合同标的额的20%"
+        },
+        {
+          "id": "SAL003",
+          "type": "质量",
+          "name": "质量标准模糊",
+          "severity": "medium",
+          "patterns": ["质量标准[^\n]*(?:按|按照)[^\n]*(?:国家|行业|有关)\\s*执行"],
+          "condition": "未明确具体标准",
+          "legal_basis": "《民法典》第615条",
+          "suggestion": "建议明确质量标准编号（如GB/T标准）"
+        },
+        {
+          "id": "SAL004",
+          "type": "交付",
+          "name": "交付期限不明确",
+          "severity": "medium",
+          "patterns": ["(?:交货|交付)[^\n]*(?:尽快|适当|合理)"],
+          "condition": "未约定具体期限",
+          "legal_basis": "《民法典》第598条",
+          "suggestion": "建议明确交付的具体时间和方式"
+        }
+      ]
+    },
+    "租赁物业类": {
+      "description": "租赁合同的风险规则",
+      "rules": [
+        {
+          "id": "REN001",
+          "type": "押金",
+          "name": "押金条款不完善",
+          "severity": "medium",
+          "patterns": ["押金[^\n]*(\\d+)\\s*月", "(?:押二付三|押三付三)"],
+          "condition": "押金过高或无退还规则",
+          "legal_basis": "《民法典》合同编租赁合同章",
+          "suggestion": "明确押金退还条件和时限"
+        },
+        {
+          "id": "REN002",
+          "type": "维修",
+          "name": "维修责任界定不清",
+          "severity": "low",
+          "patterns": ["(?:小修|大修)[^\n]*(?:由|由)"],
+          "condition": "未明确界定维修责任",
+          "legal_basis": "《民法典》第713条",
+          "suggestion": "建议明确界定小修和大修的范围"
+        },
+        {
+          "id": "REN003",
+          "type": "提前解约",
+          "name": "违约金与剩余期限不匹配",
+          "severity": "medium",
+          "patterns": ["提前[^\n]*解约[^\n]*(\\d+)\\s*(?:个月?|年)\\s*租金"],
+          "condition": "违约金固定且较高",
+          "legal_basis": "《民法典》第585条",
+          "suggestion": "将违约金与剩余租期挂钩"
+        }
+      ]
+    },
+    "服务合作类": {
+      "description": "服务合同的风险规则",
+      "rules": [
+        {
+          "id": "SER001",
+          "type": "成果交付",
+          "name": "成果验收标准模糊",
+          "severity": "medium",
+          "patterns": ["验收[^\n]*(?:合格|通过|认可)[^\n]*即可"],
+          "condition": "未明确验收标准",
+          "legal_basis": "《民法典》第798条",
+          "suggestion": "建议明确验收的具体标准和程序"
+        },
+        {
+          "id": "SER002",
+          "type": "知识产权",
+          "name": "知识产权归属不清",
+          "severity": "high",
+          "patterns": ["(?:成果|作品|设计)[^\n]*(?:归属|所有权)[^\n]*(?:待定|另行)"],
+          "condition": "未明确知识产权归属",
+          "legal_basis": "《民法典》第847条",
+          "suggestion": "明确约定服务成果的知识产权归属"
+        }
+      ]
+    },
+    "通用规则": {
+      "description": "各类合同通用风险规则",
+      "rules": [
+        {
+          "id": "GEN001",
+          "type": "格式条款",
+          "name": "单方面解释权",
+          "severity": "high",
+          "patterns": ["(?:甲方|本公司)[^\n]*(?:享有|拥有)[^\n]*(?:最终|绝对)[^\n]*(?:解释|决定)[^\n]*(?:权|效力)"],
+          "condition": "单方面保留解释权",
+          "legal_basis": "《民法典》第497条、第498条",
+          "suggestion": "删除该条款或改为双方协商解释"
+        },
+        {
+          "id": "GEN002",
+          "type": "格式条款",
+          "name": "不合理免责",
+          "severity": "high",
+          "patterns": ["(?:甲方|本公司)[^\n]*(?:免除|不承担|不负责)[^\n]*(?:任何|全部|所有)"],
+          "condition": "不合理地免除己方责任",
+          "legal_basis": "《民法典》第497条第2款",
+          "suggestion": "删除或修改该条款"
+        },
+        {
+          "id": "GEN003",
+          "type": "格式条款",
+          "name": "加重对方责任",
+          "severity": "high",
+          "patterns": ["(?:乙方|对方)[^\n]*(?:必须|应当)[^\n]*(?:承担|负责)[^\n]*(?:任何|全部)"],
+          "condition": "加重对方责任",
+          "legal_basis": "《民法典》第497条第2款",
+          "suggestion": "修改条款，确保责任分配公平"
+        },
+        {
+          "id": "GEN004",
+          "type": "管辖条款",
+          "name": "管辖约定不明确",
+          "severity": "medium",
+          "patterns": ["提交[^\n]*(?:仲裁|诉讼)[^\n]*(?:所在地|所在地)"],
+          "condition": "未明确具体机构",
+          "legal_basis": "《民事诉讼法》第34条",
+          "suggestion": "明确约定具体的仲裁委员会或管辖法院"
+        },
+        {
+          "id": "GEN005",
+          "type": "不可抗力",
+          "name": "不可抗力条款缺失",
+          "severity": "low",
+          "patterns": ["不可抗力"],
+          "condition": "全文未提及不可抗力",
+          "legal_basis": "《民法典》第590条",
+          "suggestion": "建议添加不可抗力条款"
+        }
+      ]
+    }
+  }
+}

@@ -1,0 +1,1 @@
+{"dataset_path":"examples/data/mtcars.csv","analysis_type":"power_analysis","power_type":"power_ttest","effect_size":0.5,"power":0.8,"alpha":0.05,"test_type":"two.sample","alternative":"two.sided","hypothesis":"Sample size for medium effect (d=0.5) t-test","seed":42,"output_dir":"output/power_ttest"}

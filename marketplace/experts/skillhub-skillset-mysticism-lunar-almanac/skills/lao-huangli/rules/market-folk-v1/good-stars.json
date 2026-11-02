@@ -1,0 +1,28 @@
+[
+  {
+    "id": "market-folk-good-stars-by-duty-god",
+    "sourceLevel": "L2-derived-documented",
+    "sourceRef": [
+      {
+        "work": "钦定协纪辨方书",
+        "location": "卷七",
+        "url": "https://zh.wikisource.org/wiki/%E6%AC%BD%E5%AE%9A%E5%8D%94%E7%B4%80%E8%BE%A8%E6%96%B9%E6%9B%B8_(%E5%9B%9B%E5%BA%AB%E5%85%A8%E6%9B%B8%E6%9C%AC)/%E5%8D%B707"
+      },
+      {
+        "work": "规则分歧与流派差异（老黄历）",
+        "location": "4) 神煞/建除映射表版本",
+        "url": "skills/lao-huangli/references/rules-and-variants.md"
+      }
+    ],
+    "interpretationType": "derived",
+    "starsByDutyGod": {
+      "青龙": ["青龙"],
+      "明堂": ["明堂"],
+      "金匮": ["金匮"],
+      "天德": ["天德"],
+      "玉堂": ["玉堂"],
+      "司命": ["司命"]
+    },
+    "notes": "市售挂历版将黄道轮值神直接展示为吉神宜趋。"
+  }
+]

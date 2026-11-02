@@ -1,0 +1,11 @@
+{
+  "dataset_path": "examples/data/mcnemar_treatment.csv",
+  "analysis_type": "mcnemar",
+  "row_var": "before",
+  "col_var": "after",
+  "hypothesis": "Treatment changes the proportion of positive outcomes",
+  "correct": true,
+  "alpha": 0.05,
+  "seed": 42,
+  "output_dir": "output/mcnemar_treatment"
+}

@@ -1,0 +1,157 @@
+{
+  "id": "skillhub-skillset-lifestyle-health-data-analysis",
+  "label": {
+    "zh": "健康数据分析专家",
+    "en": "Lifestyle Health Data Analysis Expert"
+  },
+  "description": {
+    "zh": "面向可穿戴设备用户的个人健康数据全景分析：覆盖 Garmin / Apple Health / 三星健康 / Oura / Whoop / Withings / Strava / Eight Sleep 等主流生态，提供数据同步、大文件解析、多设备聚合、长期趋势分析、慢病管理与中医养生综合视角，并配套指标解读教育（HRV、VO2 Max、RHR、睡眠分期、身体电量等）。覆盖输入-处理-输出全链路，全部免 API Key。",
+    "en": "Expert workflow for Lifestyle Health Data Analysis Expert."
+  },
+  "welcome_message": {
+    "zh": "提供专业、可落地的专家工作流支持",
+    "en": "Practical expert workflow support for your goals"
+  },
+  "icon_name": "heart",
+  "icon_url": "https://cloudcache.tencent-cloud.com/qcloud/tea/app/skillhub/assets/source/ai-buddy-decouple/expert-profiles/lifestyle-health-data-analysis.v20260702.avif",
+  "color": "#f97316",
+  "prompt_files": [
+    "SOUL.md"
+  ],
+  "quick_prompts": [
+    {
+      "title": {
+        "zh": "Garmin 数据接入",
+        "en": "Workflow step 1"
+      },
+      "description": {
+        "zh": "生成Garmin 标准化数据集（Markdown 文件…",
+        "en": "Share context for a ready result"
+      },
+      "prompt": {
+        "zh": "请作为「健康数据分析专家」，帮我完成「Garmin 数据接入」。\n我的情况/目标/材料是：\n",
+        "en": "As the Lifestyle Health Data Analysis Expert, help me with: Workflow step 1.\nMy context, goals, or materials are:\n"
+      },
+      "color": "#e8f4ff",
+      "icon_name": "activity"
+    },
+    {
+      "title": {
+        "zh": "Apple Health 全量…",
+        "en": "Workflow step 2"
+      },
+      "description": {
+        "zh": "生成Apple Health 结构化数据集 + 个性化…",
+        "en": "Share context for a ready result"
+      },
+      "prompt": {
+        "zh": "请作为「健康数据分析专家」，帮我完成「Apple Health 全量解析」。\n我的情况/目标/材料是：\n",
+        "en": "As the Lifestyle Health Data Analysis Expert, help me with: Workflow step 2.\nMy context, goals, or materials are:\n"
+      },
+      "color": "#fef3c7",
+      "icon_name": "activity"
+    },
+    {
+      "title": {
+        "zh": "三星健康/安卓阵营数据接入",
+        "en": "Workflow step 3"
+      },
+      "description": {
+        "zh": "生成三星健康标准化数据集",
+        "en": "Share context for a ready result"
+      },
+      "prompt": {
+        "zh": "请作为「健康数据分析专家」，帮我完成「三星健康/安卓阵营数据接入」。\n我的情况/目标/材料是：\n",
+        "en": "As the Lifestyle Health Data Analysis Expert, help me with: Workflow step 3.\nMy context, goals, or materials are:\n"
+      },
+      "color": "#dcfce7",
+      "icon_name": "activity"
+    },
+    {
+      "title": {
+        "zh": "多设备聚合（输入层 / 数据控…",
+        "en": "Workflow step 4"
+      },
+      "description": {
+        "zh": "生成多设备聚合数据集 + 设备口径差异说明",
+        "en": "Share context for a ready result"
+      },
+      "prompt": {
+        "zh": "请作为「健康数据分析专家」，帮我完成「多设备聚合（输入层 / 数据控用户）」。\n我的情况/目标/材料是：\n",
+        "en": "As the Lifestyle Health Data Analysis Expert, help me with: Workflow step 4.\nMy context, goals, or materials are:\n"
+      },
+      "color": "#f1f5f9",
+      "icon_name": "trending-up"
+    },
+    {
+      "title": {
+        "zh": "长期趋势 + 慢病 + 中医养…",
+        "en": "Workflow step 5"
+      },
+      "description": {
+        "zh": "生成综合健康档案 + 长期趋势报告 + 异常预警 +…",
+        "en": "Share context for a ready result"
+      },
+      "prompt": {
+        "zh": "请作为「健康数据分析专家」，帮我完成「长期趋势 + 慢病 + 中医养生综合分析」。\n我的情况/目标/材料是：\n",
+        "en": "As the Lifestyle Health Data Analysis Expert, help me with: Workflow step 5.\nMy context, goals, or materials are:\n"
+      },
+      "color": "#fff1f2",
+      "icon_name": "activity"
+    },
+    {
+      "title": {
+        "zh": "指标解读教育",
+        "en": "Workflow step 6"
+      },
+      "description": {
+        "zh": "生成指标解读手册 + 个性化区间建议 + 常见误区提醒",
+        "en": "Share context for a ready result"
+      },
+      "prompt": {
+        "zh": "请作为「健康数据分析专家」，帮我完成「指标解读教育」。\n我的情况/目标/材料是：\n",
+        "en": "As the Lifestyle Health Data Analysis Expert, help me with: Workflow step 6.\nMy context, goals, or materials are:\n"
+      },
+      "color": "#eef2ff",
+      "icon_name": "activity"
+    }
+  ],
+  "task_examples": {
+    "zh": [
+      "每天「09:00」帮我完成「Garmin 数据接入」并把结果发给我，任务创建后立即启用",
+      "每个工作日「18:00」帮我完成「Apple Health 全量…」并把结果发给我",
+      "每周一「10:00」帮我完成「三星健康/安卓阵营数据接入」并把结果发给我",
+      "每周五「17:00」帮我完成「多设备聚合（输入层 / 数据控…」并把结果发给我",
+      "每天「08:00」帮我完成「长期趋势 + 慢病 + 中医养…」并把结果发给我",
+      "每月 1 日「09:30」帮我完成「指标解读教育」并把结果发给我"
+    ],
+    "en": [
+      "Every day at 09:00, help me complete “Workflow step 1” and send the result — enable immediately",
+      "Every weekday at 18:00, help me complete “Workflow step 2” and send the result",
+      "Every Monday at 10:00, help me complete “Workflow step 3” and send the result",
+      "Every Friday at 17:00, help me complete “Workflow step 4” and send the result",
+      "Every day at 08:00, help me complete “Workflow step 5” and send the result",
+      "On the 1st of each month at 09:30, help me complete “Workflow step 6” and send the result"
+    ]
+  },
+  "source": {
+    "type": "skillhub",
+    "kind": "skillset",
+    "slug": "lifestyle-health-data-analysis",
+    "scene": "lifestyle",
+    "sub_scene": "health-data-analysis"
+  },
+  "skillhub": {
+    "slug": "lifestyle-health-data-analysis",
+    "scene": "lifestyle",
+    "sub_scene": "health-data-analysis",
+    "skill_slugs": [
+      "garmin-pulse",
+      "apple-health-analyzer",
+      "samsung-health",
+      "health-sync",
+      "healthfit-cn",
+      "whoop-health-analysis"
+    ]
+  }
+}

@@ -1,0 +1,128 @@
+MASTER SERVICES AGREEMENT
+
+This Master Services Agreement ("Agreement") is entered into as of January 1, 2026 (the "Effective Date"), by and between:
+
+TechVendor Inc., a Delaware corporation ("Provider")
+AND
+Acme Corporation, a California corporation ("Client")
+
+(each a "Party" and collectively the "Parties")
+
+RECITALS
+
+WHEREAS, Provider is engaged in the business of providing software development and consulting services; and
+
+WHEREAS, Client desires to engage Provider to provide certain services as described herein;
+
+NOW, THEREFORE, in consideration of the mutual covenants and agreements set forth herein, the Parties agree as follows:
+
+1. SERVICES
+
+1.1 Scope. Provider shall provide the services described in each Statement of Work ("SOW") executed by both Parties.
+
+1.2 Performance Standards. Provider shall perform all Services in a professional and workmanlike manner consistent with industry standards.
+
+2. TERM AND TERMINATION
+
+2.1 Term. This Agreement shall commence on the Effective Date and continue for a period of three (3) years, unless earlier terminated as provided herein ("Initial Term"). After the Initial Term, this Agreement shall automatically renew for successive one (1) year periods unless either Party provides written notice of non-renewal at least ninety (90) days prior to the end of the then-current term.
+
+2.2 Termination for Convenience. Either Party may terminate this Agreement at any time upon ninety (90) days' prior written notice to the other Party.
+
+2.3 Termination for Cause. Either Party may terminate this Agreement immediately upon written notice if the other Party materially breaches this Agreement and fails to cure such breach within thirty (30) days after receiving written notice thereof.
+
+3. COMPENSATION
+
+3.1 Fees. Client shall pay Provider the fees set forth in each SOW. The total contract value shall not exceed Two Million Four Hundred Thousand Dollars ($2,400,000) over the Initial Term.
+
+3.2 Payment Terms. All invoices are due and payable within thirty (30) days of invoice date (Net 30). Late payments shall accrue interest at the rate of 1.5% per month or the maximum rate permitted by law, whichever is less.
+
+3.3 Expenses. Client shall reimburse Provider for all reasonable, pre-approved travel and out-of-pocket expenses.
+
+4. INTELLECTUAL PROPERTY
+
+4.1 Work Product. All work product, deliverables, and materials created by Provider specifically for Client under this Agreement ("Work Product") shall be owned by Client upon full payment.
+
+4.2 Provider IP. Provider retains all rights in its pre-existing intellectual property, methodologies, tools, and know-how ("Provider IP"). Provider grants Client a non-exclusive, perpetual, royalty-free license to use any Provider IP incorporated into the Work Product.
+
+4.3 Assignment. Provider hereby assigns to Client all right, title, and interest in and to the Work Product, including all intellectual property rights therein.
+
+5. CONFIDENTIALITY
+
+5.1 Definition. "Confidential Information" means any non-public information disclosed by one Party to the other that is designated as confidential or that reasonably should be understood to be confidential.
+
+5.2 Obligations. Each Party shall: (a) maintain the confidentiality of the other Party's Confidential Information using at least the same degree of care it uses for its own confidential information; (b) not disclose such information to third parties without prior written consent; and (c) use such information only for purposes of this Agreement.
+
+5.3 Term. The confidentiality obligations shall survive for three (3) years after termination of this Agreement.
+
+6. REPRESENTATIONS AND WARRANTIES
+
+6.1 Mutual Representations. Each Party represents and warrants that: (a) it has full power and authority to enter into this Agreement; (b) its execution of this Agreement does not violate any other agreement to which it is a party.
+
+6.2 Provider Warranties. Provider warrants that: (a) the Services will be performed in a professional manner consistent with industry standards; (b) the Work Product will conform to the specifications in the applicable SOW for a period of ninety (90) days after delivery.
+
+6.3 Disclaimer. EXCEPT AS EXPRESSLY SET FORTH HEREIN, PROVIDER MAKES NO OTHER WARRANTIES, EXPRESS OR IMPLIED, INCLUDING WARRANTIES OF MERCHANTABILITY OR FITNESS FOR A PARTICULAR PURPOSE.
+
+7. LIMITATION OF LIABILITY
+
+7.1 Exclusion of Consequential Damages. IN NO EVENT SHALL EITHER PARTY BE LIABLE FOR ANY INDIRECT, INCIDENTAL, SPECIAL, CONSEQUENTIAL, OR PUNITIVE DAMAGES ARISING OUT OF OR RELATED TO THIS AGREEMENT.
+
+7.2 Cap on Liability. EXCEPT FOR BREACHES OF CONFIDENTIALITY, INDEMNIFICATION OBLIGATIONS, OR GROSS NEGLIGENCE, NEITHER PARTY'S AGGREGATE LIABILITY UNDER THIS AGREEMENT SHALL EXCEED THE TOTAL FEES PAID OR PAYABLE BY CLIENT IN THE TWELVE (12) MONTHS PRECEDING THE CLAIM.
+
+7.3 Data Breach Exception. Notwithstanding the foregoing, there shall be no limitation on liability for data breaches caused by a Party's gross negligence or willful misconduct.
+
+8. INDEMNIFICATION
+
+8.1 Provider Indemnification. Provider shall indemnify, defend, and hold harmless Client and its officers, directors, employees, and agents from and against any and all claims, damages, losses, costs, and expenses (including reasonable attorneys' fees) arising from: (a) Provider's negligence or willful misconduct; (b) any claim that the Work Product infringes any third-party intellectual property rights.
+
+8.2 Client Indemnification. Client shall indemnify, defend, and hold harmless Provider from and against any claims arising from: (a) Client's use of the Work Product in violation of this Agreement; (b) Client's negligence or willful misconduct.
+
+8.3 Indemnification Procedure. The indemnified Party shall: (a) provide prompt written notice of any claim; (b) grant the indemnifying Party sole control of the defense; (c) provide reasonable cooperation at the indemnifying Party's expense.
+
+9. INSURANCE
+
+9.1 Required Coverage. Provider shall maintain: (a) Commercial General Liability insurance with limits of at least $1,000,000 per occurrence; (b) Professional Liability insurance with limits of at least $2,000,000 per occurrence; (c) Cyber Liability insurance with limits of at least $5,000,000.
+
+10. FORCE MAJEURE
+
+10.1 Neither Party shall be liable for delays or failures in performance resulting from acts of God, war, terrorism, pandemic, government actions, natural disasters, or other circumstances beyond the reasonable control of the Party.
+
+10.2 The affected Party shall provide prompt notice and use commercially reasonable efforts to resume performance.
+
+11. DISPUTE RESOLUTION
+
+11.1 Negotiation. The Parties shall attempt to resolve any dispute through good-faith negotiation.
+
+11.2 Mediation. If negotiation fails, the Parties shall submit the dispute to mediation before a mutually agreed mediator.
+
+11.3 Arbitration. If mediation fails, any dispute shall be resolved by binding arbitration in San Francisco, California, under the rules of JAMS. The arbitrator's decision shall be final and binding.
+
+11.4 Waiver. EACH PARTY WAIVES ITS RIGHT TO A JURY TRIAL AND TO PARTICIPATE IN A CLASS ACTION.
+
+12. GENERAL PROVISIONS
+
+12.1 Governing Law. This Agreement shall be governed by the laws of the State of California, without regard to conflicts of law principles.
+
+12.2 Entire Agreement. This Agreement, together with all SOWs, constitutes the entire agreement between the Parties and supersedes all prior agreements.
+
+12.3 Amendment. This Agreement may only be amended by a written instrument signed by both Parties.
+
+12.4 Assignment. Neither Party may assign this Agreement without the prior written consent of the other Party, except that either Party may assign this Agreement to an affiliate or in connection with a merger, acquisition, or sale of all or substantially all of its assets.
+
+12.5 Notices. All notices shall be in writing and delivered to the addresses set forth below.
+
+12.6 Survival. Sections 4, 5, 7, 8, 11, and 12 shall survive termination of this Agreement.
+
+IN WITNESS WHEREOF, the Parties have executed this Agreement as of the Effective Date.
+
+TECHVENDOR INC.                          ACME CORPORATION
+
+By: _________________________            By: _________________________
+Name: John Smith                         Name: Jane Doe
+Title: CEO                               Title: General Counsel
+Date: January 1, 2026                    Date: January 1, 2026
+
+Address for Notices:
+
+TechVendor Inc.                          Acme Corporation
+123 Tech Street                          456 Business Ave
+San Francisco, CA 94105                  Los Angeles, CA 90001

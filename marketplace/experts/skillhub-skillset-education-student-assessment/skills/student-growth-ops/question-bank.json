@@ -1,0 +1,366 @@
+{
+  "version": "1.0.0",
+  "collectionMode": "selection-first",
+  "rules": {
+    "defaultTool": "AskQuestion",
+    "preferOptionsOverFreeText": true,
+    "allowOtherNote": true,
+    "freeTextOnlyFor": [
+      "studentName",
+      "englishName",
+      "school",
+      "contactName",
+      "contactPhone",
+      "city",
+      "teacherNote",
+      "specialCase"
+    ]
+  },
+  "stages": [
+    {
+      "stageId": "intake",
+      "title": "咨询学生建档",
+      "targetFiles": [
+        "_data/student-record.json",
+        "02-家长需求.txt"
+      ],
+      "questions": [
+        {
+          "id": "grade",
+          "prompt": "学生目前所在年级",
+          "type": "single",
+          "field": "grade",
+          "options": ["K2", "K3", "G1", "G2", "G3", "G4", "G5", "G6", "J1"]
+        },
+        {
+          "id": "sourceChannel",
+          "prompt": "学生来源渠道",
+          "type": "single",
+          "field": "sourceChannel",
+          "options": ["老带新", "短视频/直播", "朋友圈", "线下地推", "到店咨询", "机构合作", "其他"]
+        },
+        {
+          "id": "trialStatus",
+          "prompt": "当前是否已经试听",
+          "type": "single",
+          "field": "trialStatus",
+          "options": ["未试听", "已预约试听", "已完成试听"]
+        },
+        {
+          "id": "enrollmentStatus",
+          "prompt": "当前报名状态",
+          "type": "single",
+          "field": "enrollmentStatus",
+          "options": ["未报名", "试听后考虑中", "已报名", "暂停沟通"]
+        },
+        {
+          "id": "currentLevel",
+          "prompt": "孩子当前英语基础",
+          "type": "single",
+          "field": "currentLevel",
+          "options": ["零基础", "启蒙初期", "能跟读", "能简单输出", "校内基础尚可", "明显领先同龄"]
+        },
+        {
+          "id": "recentExamStatus",
+          "prompt": "最近校内或测评表现",
+          "type": "single",
+          "field": "recentExamStatus",
+          "options": ["暂无明确反馈", "低于班级平均", "接近班级平均", "高于班级平均", "无法判断"]
+        },
+        {
+          "id": "primaryGoals",
+          "prompt": "家长最关心的目标",
+          "type": "multi",
+          "field": "primaryGoals",
+          "options": ["提分", "口语表达", "自然拼读", "阅读能力", "学习习惯", "备考", "长期规划"]
+        },
+        {
+          "id": "painPoints",
+          "prompt": "家长最明显的痛点",
+          "type": "multi",
+          "field": "painPoints",
+          "options": ["不敢开口", "单词记不住", "拼读弱", "阅读吃力", "成绩不稳定", "专注度不足", "回家不配合"]
+        },
+        {
+          "id": "decisionBarriers",
+          "prompt": "当前成交或续跟进阻碍",
+          "type": "multi",
+          "field": "decisionBarriers",
+          "options": ["价格", "上课时间", "距离/接送", "家长观望", "孩子配合度", "课程理解不足", "与其他机构比较"]
+        },
+        {
+          "id": "followupPriority",
+          "prompt": "当前跟进优先级",
+          "type": "single",
+          "field": "followupPriority",
+          "options": ["高意向", "中意向", "低意向", "待回访"]
+        }
+      ]
+    },
+    {
+      "stageId": "assessment",
+      "title": "试听测评诊断",
+      "targetFiles": [
+        "_data/student-record.json"
+      ],
+      "questions": [
+        {
+          "id": "listeningLevel",
+          "prompt": "听力理解水平",
+          "type": "single",
+          "field": "listeningLevel",
+          "options": ["弱", "中", "良好", "突出"]
+        },
+        {
+          "id": "speakingLevel",
+          "prompt": "口语输出水平",
+          "type": "single",
+          "field": "speakingLevel",
+          "options": ["不敢说", "能跟读", "能短句输出", "能主动表达"]
+        },
+        {
+          "id": "readingLevel",
+          "prompt": "阅读所处阶段",
+          "type": "single",
+          "field": "readingLevel",
+          "options": ["字母阶段", "拼读阶段", "句子阶段", "短文阶段"]
+        },
+        {
+          "id": "phonicsVocabularyLevel",
+          "prompt": "拼读与词汇掌握",
+          "type": "single",
+          "field": "phonicsVocabularyLevel",
+          "options": ["基础弱", "需巩固", "稳定", "较强"]
+        },
+        {
+          "id": "focusInteractionLevel",
+          "prompt": "课堂专注与互动",
+          "type": "single",
+          "field": "focusInteractionLevel",
+          "options": ["被动", "一般", "主动", "非常积极"]
+        },
+        {
+          "id": "familySupportLevel",
+          "prompt": "家庭配合度",
+          "type": "single",
+          "field": "familySupportLevel",
+          "options": ["低", "中", "高"]
+        },
+        {
+          "id": "strengthTags",
+          "prompt": "本次测评的优势标签",
+          "type": "multi",
+          "field": "strengths",
+          "options": ["模仿能力强", "发音意识好", "敢开口", "节奏感好", "阅读接受快", "专注度较好"]
+        },
+        {
+          "id": "riskTags",
+          "prompt": "本次测评的风险标签",
+          "type": "multi",
+          "field": "weakPoints",
+          "options": ["自信不足", "拼读薄弱", "词汇量低", "语音不准", "专注度波动", "家庭监督弱"]
+        },
+        {
+          "id": "priorityGoals30d",
+          "prompt": "未来 30 天优先目标",
+          "type": "multi",
+          "field": "priorityGoals30d",
+          "options": ["建立课堂规则", "增加开口频率", "补拼读基础", "提升词汇复现", "稳定阅读习惯", "增强家庭陪练"]
+        }
+      ]
+    },
+    {
+      "stageId": "lesson-log",
+      "title": "课后记录",
+      "targetFiles": [
+        "_data/student-record.json",
+        "03-课后跟进记录.txt"
+      ],
+      "questions": [
+        {
+          "id": "goalCompletion",
+          "prompt": "本节课目标完成度",
+          "type": "single",
+          "field": "goalCompletion",
+          "options": ["未完成", "部分完成", "基本完成", "超预期完成"]
+        },
+        {
+          "id": "classroomEngagement",
+          "prompt": "课堂参与度",
+          "type": "single",
+          "field": "classroomEngagement",
+          "options": ["低", "中", "较高", "高"]
+        },
+        {
+          "id": "accuracyObservation",
+          "prompt": "本节准确率感受",
+          "type": "single",
+          "field": "accuracyObservation",
+          "options": ["错误较多", "仍需提醒", "较稳定", "表现优秀"]
+        },
+        {
+          "id": "homeworkCompletion",
+          "prompt": "作业完成情况",
+          "type": "single",
+          "field": "homeworkCompletion",
+          "options": ["未完成", "部分完成", "按时完成", "超额完成"]
+        },
+        {
+          "id": "parentReminderNeeded",
+          "prompt": "是否需要提醒家长跟进",
+          "type": "single",
+          "field": "parentReminderNeeded",
+          "options": ["不需要", "需要轻提醒", "需要重点提醒"]
+        },
+        {
+          "id": "riskFlag",
+          "prompt": "本节风险标记",
+          "type": "single",
+          "field": "riskFlag",
+          "options": ["无", "轻微", "中等", "明显"]
+        }
+      ]
+    },
+    {
+      "stageId": "weekly-followup",
+      "title": "每周跟进",
+      "targetFiles": [
+        "_data/student-record.json",
+        "03-课后跟进记录.txt"
+      ],
+      "questions": [
+        {
+          "id": "weeklyStatus",
+          "prompt": "本周整体状态",
+          "type": "single",
+          "field": "weeklyStatus",
+          "options": ["稳定进步", "小幅进步", "波动明显", "需要重点干预"]
+        },
+        {
+          "id": "progressHighlights",
+          "prompt": "本周主要进步点",
+          "type": "multi",
+          "field": "progressHighlights",
+          "options": ["敢开口更多", "作业更稳定", "拼读更熟练", "阅读更顺畅", "课堂更专注", "配合度提升"]
+        },
+        {
+          "id": "mainIssues",
+          "prompt": "本周主要问题",
+          "type": "multi",
+          "field": "mainIssues",
+          "options": ["遗忘快", "注意力不足", "回家不练", "词汇复现不够", "阅读卡顿", "家长跟进不足"]
+        },
+        {
+          "id": "riskLevel",
+          "prompt": "本周风险等级",
+          "type": "single",
+          "field": "riskLevel",
+          "options": ["低", "中", "高"]
+        },
+        {
+          "id": "needPriorityFollowup",
+          "prompt": "是否需要重点回访",
+          "type": "single",
+          "field": "needPriorityFollowup",
+          "options": ["否", "是"]
+        }
+      ]
+    },
+    {
+      "stageId": "monthly-report",
+      "title": "月度学情反馈",
+      "targetFiles": [
+        "_data/student-record.json",
+        "03-课后跟进记录.txt"
+      ],
+      "questions": [
+        {
+          "id": "monthlyTheme",
+          "prompt": "本月学习主题",
+          "type": "single",
+          "field": "monthlyTheme",
+          "options": ["启蒙习惯建立", "自然拼读巩固", "词汇与句型提升", "阅读理解推进", "口语表达训练", "阶段复盘与查漏补缺"]
+        },
+        {
+          "id": "progressSignals",
+          "prompt": "本月最值得强调的成果",
+          "type": "multi",
+          "field": "progressSignals",
+          "options": ["开口更主动", "发音更清晰", "作业更稳定", "课堂专注提升", "拼读更熟练", "阅读更流畅"]
+        },
+        {
+          "id": "improvementNeeds",
+          "prompt": "本月仍需提升的点",
+          "type": "multi",
+          "field": "improvementNeeds",
+          "options": ["词汇积累", "阅读速度", "输出完整度", "复习习惯", "课堂规则", "家庭练习频率"]
+        },
+        {
+          "id": "nextMonthGoal",
+          "prompt": "下月优先方向",
+          "type": "multi",
+          "field": "nextMonthGoal",
+          "options": ["稳定开口", "补基础拼读", "提升阅读", "加强复习", "强化表达", "提升自信"]
+        },
+        {
+          "id": "parentSupportAdvice",
+          "prompt": "建议家长重点配合哪一类动作",
+          "type": "multi",
+          "field": "parentSupportAdvice",
+          "options": ["每天 10 分钟复习", "固定陪读打卡", "鼓励开口表达", "按时完成作业", "配合老师反馈", "减少临时请假"]
+        }
+      ]
+    },
+    {
+      "stageId": "renewal-watch",
+      "title": "续费预警",
+      "targetFiles": [
+        "_data/student-record.json"
+      ],
+      "questions": [
+        {
+          "id": "parentSatisfaction",
+          "prompt": "家长满意度",
+          "type": "single",
+          "field": "parentSatisfaction",
+          "options": ["低", "中", "高"]
+        },
+        {
+          "id": "studentCooperationTrend",
+          "prompt": "孩子配合度趋势",
+          "type": "single",
+          "field": "studentCooperationTrend",
+          "options": ["下降", "持平", "上升"]
+        },
+        {
+          "id": "homeworkTrend",
+          "prompt": "作业完成趋势",
+          "type": "single",
+          "field": "homeworkTrend",
+          "options": ["下降", "持平", "上升"]
+        },
+        {
+          "id": "progressPerception",
+          "prompt": "家长感知到的成果强度",
+          "type": "single",
+          "field": "progressPerception",
+          "options": ["弱", "一般", "明显"]
+        },
+        {
+          "id": "renewalIntent",
+          "prompt": "当前续费意向",
+          "type": "single",
+          "field": "renewalIntent",
+          "options": ["未知", "可争取", "明确积极", "明确消极"]
+        },
+        {
+          "id": "remainingLessonsBand",
+          "prompt": "剩余课时区间",
+          "type": "single",
+          "field": "remainingLessonsBand",
+          "options": ["10 节以上", "6-10 节", "3-5 节", "2 节及以下"]
+        }
+      ]
+    }
+  ]
+}

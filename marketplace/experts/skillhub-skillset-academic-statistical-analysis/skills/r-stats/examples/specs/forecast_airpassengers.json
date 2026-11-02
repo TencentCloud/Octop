@@ -1,0 +1,15 @@
+{
+  "dataset_path": "examples/data/airpassengers.csv",
+  "analysis_type": "forecast_arima",
+  "outcome": "passengers",
+  "predictors": null,
+  "formula": null,
+  "group_var": null,
+  "hypothesis": "Monthly airline passenger counts exhibit trend and seasonality",
+  "missing_strategy": "complete_case",
+  "frequency": 12,
+  "forecast_horizon": 24,
+  "alpha": 0.05,
+  "seed": 42,
+  "output_dir": "output/forecast_airpassengers"
+}

@@ -1,0 +1,11 @@
+{
+  "dataset_path": "examples/data/rdd_election.csv",
+  "analysis_type": "rdd",
+  "running_var": "running_var",
+  "outcome": "outcome",
+  "cutoff": 0,
+  "hypothesis": "Crossing the threshold has a causal effect on the outcome",
+  "alpha": 0.05,
+  "seed": 42,
+  "output_dir": "output/rdd_election"
+}

@@ -1,0 +1,157 @@
+{
+  "id": "skillhub-skillset-education-quiz-generation",
+  "label": {
+    "zh": "题库生成专家",
+    "en": "Education Quiz Generation Expert"
+  },
+  "description": {
+    "zh": "从多题型自动生成（选择题/填空题/简答题/模拟考试/难度分级/题库管理）与中国中小学试卷生成（学科试卷/考点覆盖/格式规范）、教材同步智能出题（知识点讲解/智能出题/作业批改/解题答疑）与教学大纲考点提取（考点结构化/重要等级标注/题型匹配），到K12全学段举一反三练习生成（作业批改/错题分析/练习生成）与学习材料练习测试生成（闪卡/学习计划/计时模拟）的完整题库生成工作流。覆盖多题型生成、试卷组卷、智能出题、考点分析、练习生成、测试评估全链路。",
+    "en": "Expert workflow for Education Quiz Generation Expert."
+  },
+  "welcome_message": {
+    "zh": "提供专业、可落地的专家工作流支持",
+    "en": "Practical expert workflow support for your goals"
+  },
+  "icon_name": "book-open",
+  "icon_url": "https://cloudcache.tencent-cloud.com/qcloud/tea/app/skillhub/assets/source/ai-buddy-decouple/expert-profiles/education-quiz-generation.v20260625.avif",
+  "color": "#2563eb",
+  "prompt_files": [
+    "SOUL.md"
+  ],
+  "quick_prompts": [
+    {
+      "title": {
+        "zh": "多题型批量生成",
+        "en": "Workflow step 1"
+      },
+      "description": {
+        "zh": "生成分难度分题型的题库初版",
+        "en": "Share context for a ready result"
+      },
+      "prompt": {
+        "zh": "请作为「题库生成专家」，帮我完成「多题型批量生成」。\n我的情况/目标/材料是：\n",
+        "en": "As the Education Quiz Generation Expert, help me with: Workflow step 1.\nMy context, goals, or materials are:\n"
+      },
+      "color": "#e8f4ff",
+      "icon_name": "presentation"
+    },
+    {
+      "title": {
+        "zh": "学科试卷组卷",
+        "en": "Workflow step 2"
+      },
+      "description": {
+        "zh": "生成规范化的学科试卷和评分标准",
+        "en": "Share context for a ready result"
+      },
+      "prompt": {
+        "zh": "请作为「题库生成专家」，帮我完成「学科试卷组卷」。\n我的情况/目标/材料是：\n",
+        "en": "As the Education Quiz Generation Expert, help me with: Workflow step 2.\nMy context, goals, or materials are:\n"
+      },
+      "color": "#fef3c7",
+      "icon_name": "trending-up"
+    },
+    {
+      "title": {
+        "zh": "教材同步智能出题",
+        "en": "Workflow step 3"
+      },
+      "description": {
+        "zh": "生成教材同步练习题和解题讲解",
+        "en": "Share context for a ready result"
+      },
+      "prompt": {
+        "zh": "请作为「题库生成专家」，帮我完成「教材同步智能出题」。\n我的情况/目标/材料是：\n",
+        "en": "As the Education Quiz Generation Expert, help me with: Workflow step 3.\nMy context, goals, or materials are:\n"
+      },
+      "color": "#dcfce7",
+      "icon_name": "presentation"
+    },
+    {
+      "title": {
+        "zh": "考点结构化与题型匹配",
+        "en": "Workflow step 4"
+      },
+      "description": {
+        "zh": "生成考点作战地图和题型匹配方案",
+        "en": "Share context for a ready result"
+      },
+      "prompt": {
+        "zh": "请作为「题库生成专家」，帮我完成「考点结构化与题型匹配」。\n我的情况/目标/材料是：\n",
+        "en": "As the Education Quiz Generation Expert, help me with: Workflow step 4.\nMy context, goals, or materials are:\n"
+      },
+      "color": "#f1f5f9",
+      "icon_name": "activity"
+    },
+    {
+      "title": {
+        "zh": "举一反三练习生成",
+        "en": "Workflow step 5"
+      },
+      "description": {
+        "zh": "生成举一反三练习题和错题分析报告",
+        "en": "Share context for a ready result"
+      },
+      "prompt": {
+        "zh": "请作为「题库生成专家」，帮我完成「举一反三练习生成」。\n我的情况/目标/材料是：\n",
+        "en": "As the Education Quiz Generation Expert, help me with: Workflow step 5.\nMy context, goals, or materials are:\n"
+      },
+      "color": "#fff1f2",
+      "icon_name": "activity"
+    },
+    {
+      "title": {
+        "zh": "综合测试与评估生成",
+        "en": "Workflow step 6"
+      },
+      "description": {
+        "zh": "生成综合测试卷、闪卡和学习计划",
+        "en": "Share context for a ready result"
+      },
+      "prompt": {
+        "zh": "请作为「题库生成专家」，帮我完成「综合测试与评估生成」。\n我的情况/目标/材料是：\n",
+        "en": "As the Education Quiz Generation Expert, help me with: Workflow step 6.\nMy context, goals, or materials are:\n"
+      },
+      "color": "#eef2ff",
+      "icon_name": "activity"
+    }
+  ],
+  "task_examples": {
+    "zh": [
+      "每天「09:00」帮我完成「多题型批量生成」并把结果发给我，任务创建后立即启用",
+      "每个工作日「18:00」帮我完成「学科试卷组卷」并把结果发给我",
+      "每周一「10:00」帮我完成「教材同步智能出题」并把结果发给我",
+      "每周五「17:00」帮我完成「考点结构化与题型匹配」并把结果发给我",
+      "每天「08:00」帮我完成「举一反三练习生成」并把结果发给我",
+      "每月 1 日「09:30」帮我完成「综合测试与评估生成」并把结果发给我"
+    ],
+    "en": [
+      "Every day at 09:00, help me complete “Workflow step 1” and send the result — enable immediately",
+      "Every weekday at 18:00, help me complete “Workflow step 2” and send the result",
+      "Every Monday at 10:00, help me complete “Workflow step 3” and send the result",
+      "Every Friday at 17:00, help me complete “Workflow step 4” and send the result",
+      "Every day at 08:00, help me complete “Workflow step 5” and send the result",
+      "On the 1st of each month at 09:30, help me complete “Workflow step 6” and send the result"
+    ]
+  },
+  "source": {
+    "type": "skillhub",
+    "kind": "skillset",
+    "slug": "education-quiz-generation",
+    "scene": "education",
+    "sub_scene": "quiz-generation"
+  },
+  "skillhub": {
+    "slug": "education-quiz-generation",
+    "scene": "education",
+    "sub_scene": "quiz-generation",
+    "skill_slugs": [
+      "quiz-creator",
+      "exam-generator",
+      "math-edu-assistant",
+      "exam-analyzer",
+      "k12-smart-teacher",
+      "exam"
+    ]
+  }
+}
