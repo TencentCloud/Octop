@@ -82,19 +82,23 @@ describe("nav rail leaves folding to the seam", () => {
   });
 });
 
-/**
- * The nav never folds the history rail. That rail has its own handle on its own
- * seam; the nav growing a second one is what made the corner unreadable.
- */
-describe("nav rail keeps to its own panel", () => {
+describe("对话行上的会话开关", () => {
   beforeEach(() => {
     localStorage.removeItem(LAYOUT_MODE_KEY);
+    localStorage.setItem("octop:chat-sidebar:open", "false");
   });
 
-  it("offers no history-rail toggle", () => {
+  it("用左右箭头按钮展开或收起对话历史", async () => {
     renderSidebar({ collapsed: false });
+    const toggle = screen.getByRole("button", {
+      name: /展开对话历史|收起对话历史/,
+    });
+    const wasOpen = toggle.getAttribute("aria-expanded") === "true";
+    await userEvent.setup().click(toggle);
     expect(
-      screen.queryByRole("button", { name: /展开对话历史|收起对话历史/ }),
-    ).not.toBeInTheDocument();
+      screen.getByRole("button", {
+        name: wasOpen ? "展开对话历史" : "收起对话历史",
+      }),
+    ).toHaveAttribute("aria-expanded", wasOpen ? "false" : "true");
   });
 });

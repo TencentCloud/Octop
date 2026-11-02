@@ -5,7 +5,7 @@ import type { TFunction } from "i18next";
 import AvatarDropdown from "../components/AvatarDropdown";
 import AppVersionBadge from "../components/AppVersionBadge";
 import CurrentVersionBadge from "../components/CurrentVersionBadge";
-import { ChevronDown, X } from "lucide-react";
+import { ArrowLeftRight, ChevronDown, X } from "lucide-react";
 import cx from "classnames";
 import { useTheme } from "../context/ThemeContext";
 import { useLayoutMode } from "../context/LayoutModeContext";
@@ -24,6 +24,12 @@ import type { MinimalNavPane } from "./layoutModeStorage";
 import MinimalRecordsHost from "./MinimalRecordsHost";
 import SidebarCollapsedIconNav from "./SidebarCollapsedIconNav";
 import SidebarMinimalPaneToggle from "./SidebarMinimalPaneToggle";
+import { useChatSidebarOpen } from "../pages/Chat/hooks/useChatSidebarState";
+import {
+  isMacPlatform,
+  railShortcutAria,
+  railShortcutLabel,
+} from "../utils/railShortcuts";
 import { preferencesApi } from "../api/modules/preferences";
 import { publicUrl } from "../utils/publicUrl";
 import {
@@ -120,11 +126,27 @@ interface SidebarProps {
   isMobile?: boolean;
 }
 
+function historyRailLabels(
+  t: TFunction<"translation", undefined>,
+  open: boolean,
+) {
+  const label = open
+    ? t("chat.collapseHistorySidebar", "收起对话历史")
+    : t("chat.expandHistorySidebar", "展开对话历史");
+  return {
+    label,
+    hint: `${label} (${railShortcutLabel("toggle-history", isMacPlatform())})`,
+  };
+}
+
 function NavItemButton({
   item,
   active,
   isMobile,
   onNavigate,
+  onToggleChatRail,
+  showChatRailToggle,
+  chatRailOpen,
   role,
   hasUpdate,
   t,
@@ -133,10 +155,21 @@ function NavItemButton({
   active: boolean;
   isMobile?: boolean;
   onNavigate: (path: string) => void;
+  onToggleChatRail?: () => void;
+  showChatRailToggle?: boolean;
+  chatRailOpen?: boolean;
   role: string | null;
   hasUpdate: boolean;
   t: TFunction<"translation", undefined>;
 }) {
+  const showToggle = Boolean(
+    showChatRailToggle && item.key === "chat" && onToggleChatRail,
+  );
+  const { label: railLabel, hint: railHint } = historyRailLabels(
+    t,
+    Boolean(chatRailOpen),
+  );
+
   return (
     <div
       className={styles.navItemRow}
@@ -165,7 +198,7 @@ function NavItemButton({
             : "var(--fn-text-secondary)",
           fontSize: typeSize(14, isMobile),
           fontWeight: 400,
-          paddingRight: 12,
+          paddingRight: showToggle ? 4 : 12,
         }}
       >
         <span
@@ -217,6 +250,22 @@ function NavItemButton({
           )}
         </span>
       </button>
+      {showToggle ? (
+        <button
+          type="button"
+          className={styles.chatRailExpandBtn}
+          onClick={(e) => {
+            e.stopPropagation();
+            onToggleChatRail?.();
+          }}
+          aria-expanded={Boolean(chatRailOpen)}
+          aria-label={railLabel}
+          aria-keyshortcuts={railShortcutAria("toggle-history")}
+          title={railHint}
+        >
+          <ArrowLeftRight size={14} strokeWidth={1.8} aria-hidden />
+        </button>
+      ) : null}
     </div>
   );
 }
@@ -225,6 +274,9 @@ function NavList({
   sections,
   selectedKey,
   onNavigate,
+  onToggleChatRail,
+  showChatRailToggle,
+  chatRailOpen,
   isMobile,
   isGroupCollapsed,
   toggleGroup,
@@ -235,6 +287,9 @@ function NavList({
   sections: NavSection[];
   selectedKey: string;
   onNavigate: (path: string) => void;
+  onToggleChatRail?: () => void;
+  showChatRailToggle?: boolean;
+  chatRailOpen?: boolean;
   isMobile?: boolean;
   isGroupCollapsed: (groupId: string) => boolean;
   toggleGroup: (groupId: string) => void;
@@ -290,6 +345,9 @@ function NavList({
                     active={selectedKey === item.key}
                     isMobile={isMobile}
                     onNavigate={onNavigate}
+                    onToggleChatRail={onToggleChatRail}
+                    showChatRailToggle={showChatRailToggle}
+                    chatRailOpen={chatRailOpen}
                     role={role}
                     hasUpdate={hasUpdate}
                     t={t}
@@ -331,6 +389,9 @@ function NavList({
                     active={selectedKey === item.key}
                     isMobile={isMobile}
                     onNavigate={onNavigate}
+                    onToggleChatRail={onToggleChatRail}
+                    showChatRailToggle={showChatRailToggle}
+                    chatRailOpen={chatRailOpen}
                     role={role}
                     hasUpdate={hasUpdate}
                     t={t}
@@ -363,6 +424,9 @@ export default function Sidebar({
   const { layoutMode, minimalPane, setMinimalPane } = useLayoutMode();
   const isMinimal = layoutMode === "minimal";
   const onChatPath = isChatPath(location.pathname);
+  const [chatSidebarOpen, setChatSidebarOpen] = useChatSidebarOpen();
+  const showChatRailToggle = !isMinimal;
+  const chatRailOpen = showChatRailToggle && onChatPath && chatSidebarOpen;
   const catalog = useMemo(
     () => buildNavSections(user, { mobileEnabled }),
     [user, mobileEnabled],
@@ -505,6 +569,16 @@ export default function Sidebar({
     }
   }, [isMinimal, settingsPaneLabel, minimalPane, setMinimalPane]);
 
+  const handleToggleChatRail = useCallback(() => {
+    if (onChatPath && chatSidebarOpen) {
+      setChatSidebarOpen(false);
+      return;
+    }
+    window.dispatchEvent(new Event(EXPAND_CHAT_RAIL_EVENT));
+    setChatSidebarOpen(true);
+    if (!onChatPath) navigate("/chat");
+  }, [chatSidebarOpen, navigate, onChatPath, setChatSidebarOpen]);
+
   const paneToggle = settingsPaneLabel ? (
     <SidebarMinimalPaneToggle
       settingsLabel={settingsPaneLabel}
@@ -535,6 +609,9 @@ export default function Sidebar({
       sections={navSections}
       selectedKey={selectedKey}
       onNavigate={handleNavigate}
+      onToggleChatRail={handleToggleChatRail}
+      showChatRailToggle={showChatRailToggle}
+      chatRailOpen={chatRailOpen}
       isMobile={isMobile}
       isGroupCollapsed={isGroupCollapsed}
       toggleGroup={toggleGroup}

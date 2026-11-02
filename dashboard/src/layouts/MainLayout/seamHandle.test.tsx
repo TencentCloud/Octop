@@ -92,6 +92,7 @@ vi.mock("../../hooks/useRailShortcuts", () => ({
   useRailShortcuts: () => undefined,
 }));
 
+import styles from "../../components/RailEdgeControl.module.less";
 import MainLayout from "./index";
 
 beforeEach(() => {
@@ -110,44 +111,30 @@ describe("左侧导航接缝", () => {
     const button = screen.getByRole("button", { name: "收起导航栏" });
     expect(button).toHaveAttribute("aria-expanded", "true");
     expect(button).toHaveAttribute("aria-keyshortcuts", "Meta+B");
-    expect(
-      screen.queryByTestId("history-split-handle"),
-    ).not.toBeInTheDocument();
+    expect(button).not.toHaveClass(styles.btnBefore);
     expect(
       screen.queryByRole("button", { name: "展开对话历史" }),
     ).not.toBeInTheDocument();
   });
 
-  it("列表收起且导航展开时，接缝是左右分体的大按钮", async () => {
+  it("列表收起时，收起导航仍是右侧竖线上的按钮", async () => {
     state.chatSidebarOpen = false;
     const user = userEvent.setup();
     render(<MainLayout />);
 
     const collapseNav = screen.getByRole("button", { name: "收起导航栏" });
-    const expandHistory = screen.getByRole("button", { name: "展开对话历史" });
-    expect(screen.getByTestId("history-split-handle")).toContainElement(
-      collapseNav,
-    );
-    expect(screen.getByTestId("history-split-handle")).toContainElement(
-      expandHistory,
-    );
+    expect(collapseNav).not.toHaveClass(styles.btnBefore);
     expect(collapseNav.querySelector("svg")?.getAttribute("class")).toContain(
       "chevron-left",
     );
-    expect(expandHistory.querySelector("svg")?.getAttribute("class")).toContain(
-      "chevron-right",
-    );
-
-    await user.click(expandHistory);
-    expect(state.setChatSidebarOpen).toHaveBeenCalledWith(true);
+    expect(
+      screen.queryByRole("button", { name: "展开对话历史" }),
+    ).not.toBeInTheDocument();
 
     await user.click(collapseNav);
     expect(
       screen.getByRole("button", { name: "展开导航栏" }),
     ).toBeInTheDocument();
-    expect(
-      screen.queryByTestId("history-split-handle"),
-    ).not.toBeInTheDocument();
   });
 
   it("不在对话路由上时不提供展开对话历史", () => {
