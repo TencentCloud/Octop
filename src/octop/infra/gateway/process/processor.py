@@ -905,7 +905,9 @@ class GlobalProcessor:
             if user_pref is not None
             else None
         )
-        params = dict(reasoning_request_parameters(capability, mode=mode, effort=effort))
+        params: dict[str, Any] = dict(
+            reasoning_request_parameters(capability, mode=mode, effort=effort),
+        )
         params["_roundtrip"] = True
         return params
 
@@ -1095,7 +1097,7 @@ class GlobalProcessor:
             if composer:
                 message_kwargs[COMPOSER_CTX_KEY] = composer
         reasoning_gate = bool(
-            self._agent_manager.providers.get_model_reasoning_capability(model_ref)
+            model_ref and self._agent_manager.providers.get_model_reasoning_capability(model_ref)
         )
         request = build_harness_request(
             thread_id=thread_id,
