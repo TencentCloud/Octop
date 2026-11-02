@@ -14,7 +14,7 @@
     "en": "Want a plugin tailored to your team? Start by describing the need"
   },
   "icon_name": "puzzle",
-  "icon_url": "/experts/avatars/scene-tech.svg",
+  "icon_url": "/experts/avatars/cowork-plugin-management.svg",
   "color": "#ea580c",
   "prompt_files": [
     "SOUL.md",

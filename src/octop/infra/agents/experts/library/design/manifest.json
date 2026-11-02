@@ -14,7 +14,7 @@
     "en": "Share a screenshot or describe your design — I'll give structured feedback"
   },
   "icon_name": "palette",
-  "icon_url": "/experts/avatars/scene-design.svg",
+  "icon_url": "/experts/avatars/design.svg",
   "color": "#9333ea",
   "prompt_files": [
     "SOUL.md",
