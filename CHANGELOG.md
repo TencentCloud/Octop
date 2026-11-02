@@ -6,6 +6,12 @@
 
 ## [Unreleased]
 
+### 新增
+- Docker 与飞牛增加精简版。默认 `:<version>` / `:latest` 仍是含桌面、OCR 和本地向量的完整镜像；精简版标签是 `:<version>-lite` 和 `:lite`
+
+### 修复
+- Docker 镜像在无头构建时不再导入 pynput。飞牛 Docker 包缺失时，已打好的本地包仍会挂到 Release
+
 ## [1.0.3b2] - 2026-11-01
 
 ### 新增

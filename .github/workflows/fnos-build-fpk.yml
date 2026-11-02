@@ -94,19 +94,27 @@ jobs:
           VER: ${{ needs.version.outputs.version }}
         run: |
           set -euo pipefail
-          TAG="${IMAGE}:${VER}"
-          echo "Waiting for ${TAG} (published by docker-publish)..."
+          full="${IMAGE}:${VER}"
+          lite="${IMAGE}:${VER}-lite"
+          echo "Waiting for ${full} and ${lite} (published by docker-publish)..."
           # 多架构清单要等 amd64 + arm64 都推完再 merge，比单架构更久。
           for i in $(seq 1 120); do
-            if docker buildx imagetools inspect "$TAG" >/dev/null 2>&1; then
-              echo "Image ready: $TAG"
-              docker buildx imagetools inspect "$TAG" | head -40
+            ready=0
+            for tag in "$full" "$lite"; do
+              if docker buildx imagetools inspect "$tag" >/dev/null 2>&1; then
+                ready=$((ready + 1))
+              fi
+            done
+            if [ "$ready" -eq 2 ]; then
+              echo "Images ready: ${full} and ${lite}"
+              docker buildx imagetools inspect "$full" | head -20
+              docker buildx imagetools inspect "$lite" | head -20
               exit 0
             fi
-            echo "[$i/120] not ready yet..."
+            echo "[$i/120] ${ready}/2 ready..."
             sleep 20
           done
-          echo "::error::Timed out waiting for ${TAG}. Ensure Docker Publish finished for v${VER}."
+          echo "::error::Timed out waiting for ${full} and ${lite}. Ensure Docker Publish finished for v${VER}."
           exit 1
 
   fpk:
@@ -124,10 +132,12 @@ jobs:
           path: .verify/fnpack
           key: fnpack-${{ env.FNPACK_VERSION }}-linux-amd64
 
-      - name: Build Docker FPK
+      - name: Build Docker FPKs
         env:
           FPK_NAME_PREFIX: Octop-fnos
-        run: bash scripts/build-fpk.sh docker
+        run: |
+          bash scripts/build-fpk.sh docker
+          bash scripts/build-fpk.sh docker-lite
 
       - name: Upload docker fpk artifact
         uses: actions/upload-artifact@v4
@@ -420,7 +430,7 @@ jobs:
           if-no-files-found: error
 
   release:
-    # native / native-arm64 失败时仍运行，把已经打好的 .fpk 挂到 Release。
+    # 任一架构没打出来时仍运行，把已经打好的 .fpk 挂到 Release。
     if: always()
     needs: [fpk, native, native-arm64-pack, version]
     runs-on: ubuntu-latest
@@ -430,12 +440,12 @@ jobs:
           fetch-depth: 0
           fetch-tags: true
 
-      - name: Download docker fpk artifact (required)
+      - name: Download docker fpk artifact (best-effort)
+        continue-on-error: true
         uses: actions/download-artifact@v4
         with:
           name: docker-fpk
           path: artifacts/docker-fpk
-          if-no-files-found: error
 
       - name: Download native fpk artifact (best-effort)
         continue-on-error: true
