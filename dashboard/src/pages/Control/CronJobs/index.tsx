@@ -252,7 +252,6 @@ function CronJobsPage() {
         title={t("pageShell.tasks.title")}
         subtitle={t("pageShell.tasks.subtitle")}
         agentScoped
-        runningAgentsOnly
       >
         <Card>
           <Empty description={t("cronJobs.noAgentSelected")} />
@@ -274,7 +273,6 @@ function CronJobsPage() {
       title={t("pageShell.tasks.title")}
       subtitle={t("pageShell.tasks.subtitle")}
       agentScoped
-      runningAgentsOnly
     >
       {activeAgent?.bridge ? (
         <Alert
@@ -422,4 +420,3 @@ function CronJobsPage() {
 }
 
 export default CronJobsPage;
-

@@ -4,7 +4,11 @@ import type { MenuProps } from "antd";
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { ChevronDown } from "lucide-react";
-import { useAgent, type OctopAgent } from "../context/AgentContext";
+import {
+  selectEnabledExperts,
+  useAgent,
+  type OctopAgent,
+} from "../context/AgentContext";
 import { ownedSoloExperts, ownedTeamAgents } from "../utils/sharedExpert";
 import {
   labelSelectorGroups,
@@ -167,10 +171,7 @@ export default function AgentSelector({
   const { t } = useTranslation();
   const { agents, activeAgentId, setActiveAgent, loading } = useAgent();
   const availableAgents = useMemo(
-    () =>
-      runningOnly
-        ? agents.filter((agent) => agent.state === "running")
-        : agents,
+    () => (runningOnly ? selectEnabledExperts(agents, null) : agents),
     [agents, runningOnly],
   );
   const soloSelectable = useMemo(
@@ -490,4 +491,3 @@ function selectOption(agent: OctopAgent, disconnectedLabel: string) {
     title: disconnected ? `${agent.name} · ${disconnectedLabel}` : agent.name,
   };
 }
-
