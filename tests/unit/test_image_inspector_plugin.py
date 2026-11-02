@@ -319,3 +319,29 @@ async def test_inspect_image_resolves_unique_relative_agent_path(
     assert result == "Visual review result"
     assert len(access.chat_model.calls) == 1
     assert image_path.is_file()
+
+
+async def test_inspect_image_remaps_inaccessible_virtual_path(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("OCTOP_HOME", str(tmp_path))
+    materialized = _workspace_image(
+        tmp_path,
+        relative=Path("agents/main/.harness-materialize/analysis/page.png"),
+    )
+    virtual = tmp_path / "inaccessible" / "workspaces" / "main" / "analysis" / "page.png"
+    original_resolve = Path.resolve
+
+    def resolve(path: Path, *args: Any, **kwargs: Any) -> Path:
+        if path == virtual:
+            raise PermissionError("virtual path is inaccessible on the host")
+        return original_resolve(path, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "resolve", resolve)
+    tool, access, _ = _image_tool()
+    result = await tool.ainvoke({"path": str(virtual)})
+
+    assert result == "Visual review result"
+    assert len(access.chat_model.calls) == 1
+    assert materialized.is_file()
