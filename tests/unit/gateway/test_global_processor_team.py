@@ -2342,6 +2342,7 @@ def test_stamp_stream_speaker_sets_agent_alias() -> None:
     assert member["agent_id"] == "doctor"
     assert member["agent"] == "doctor"
 
+
 @pytest.mark.asyncio
 async def test_prepare_peer_session_stamps_member_connectors(processor_env: dict) -> None:
     """Issue #2615: a member expert's configured connectors ride the peer turn.
@@ -2371,9 +2372,7 @@ async def test_prepare_peer_session_stamps_member_connectors(processor_env: dict
     )
     assert prepared is not None
     assert prepared.configurable.get("mcp_servers") == ["weather", "docs"]
-    am.prepare_chat_mcp.assert_awaited_once_with(
-        "child", ["weather", "docs"], connector_user_id=1
-    )
+    am.prepare_chat_mcp.assert_awaited_once_with("child", ["weather", "docs"], connector_user_id=1)
 
 
 @pytest.mark.asyncio
@@ -2404,7 +2403,9 @@ async def test_prepare_peer_session_skips_connectors_for_team_callee(processor_e
 
 
 @pytest.mark.asyncio
-async def test_prepare_peer_session_connector_load_failure_degrades_to_none(processor_env: dict) -> None:
+async def test_prepare_peer_session_connector_load_failure_degrades_to_none(
+    processor_env: dict,
+) -> None:
     from octop_harness.teams.util import PeerCall
 
     processor = processor_env["processor"]
