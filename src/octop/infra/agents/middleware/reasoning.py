@@ -44,7 +44,7 @@ def _roundtrip_supported(request: ModelRequest[Any]) -> bool:
     """
     configurable = get_config().get("configurable") or {}
     if isinstance(configurable, dict) and isinstance(configurable.get(ROUNDTRIP_KEY), bool):
-        return configurable[ROUNDTRIP_KEY]
+        return bool(configurable[ROUNDTRIP_KEY])
     return not (isinstance(configurable, dict) and CONFIG_KEY in configurable)
 
 
