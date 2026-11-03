@@ -1,3 +1,105 @@
+; Taskbar pin is chosen before files are copied. The desktop shortcut is chosen
+; on the finish page, so installSection must not create it first
+; (createDesktopShortcut: false). Silent installs still write the .lnk here.
+Var OctopPinTaskbar
+Var OctopTaskbarCheckbox
+Var OctopTaskbarTitle
+Var OctopTaskbarSubtitle
+Var OctopTaskbarLabel
+Var OctopDesktopLabel
+
+!macro customInit
+  StrCpy $OctopPinTaskbar 0
+!macroend
+
+!macro octopWriteDesktopLink
+  CreateShortCut "$newDesktopLink" "$appExe" "" "$appExe" 0 "" "" "${APP_DESCRIPTION}"
+  ClearErrors
+  WinShell::SetLnkAUMI "$newDesktopLink" "${APP_ID}"
+  System::Call 'Shell32::SHChangeNotify(i 0x8000000, i 0, i 0, i 0)'
+!macroend
+
+; Shown after the directory page. Skipped on update so an upgrade does not
+; pin the app again.
+!macro customPageAfterChangeDir
+  Function octopTaskbarCreate
+    ${If} ${isUpdated}
+      Abort
+    ${EndIf}
+    IntCmp $LANGUAGE 2052 octop_tb_zh octop_tb_en octop_tb_en
+octop_tb_zh:
+    StrCpy $OctopTaskbarTitle "快捷方式"
+    StrCpy $OctopTaskbarSubtitle "选择是否将 ${PRODUCT_NAME} 固定到任务栏"
+    StrCpy $OctopTaskbarLabel "添加到任务栏"
+    Goto octop_tb_ui
+octop_tb_en:
+    StrCpy $OctopTaskbarTitle "Shortcuts"
+    StrCpy $OctopTaskbarSubtitle "Pin ${PRODUCT_NAME} to the taskbar"
+    StrCpy $OctopTaskbarLabel "Pin to the taskbar"
+octop_tb_ui:
+    !insertmacro MUI_HEADER_TEXT "$OctopTaskbarTitle" "$OctopTaskbarSubtitle"
+    nsDialogs::Create 1018
+    Pop $0
+    ${If} $0 == error
+      Abort
+    ${EndIf}
+    ${NSD_CreateCheckbox} 0 12u 100% 12u "$OctopTaskbarLabel"
+    Pop $OctopTaskbarCheckbox
+    ${NSD_Check} $OctopTaskbarCheckbox
+    nsDialogs::Show
+  FunctionEnd
+
+  Function octopTaskbarLeave
+    ${NSD_GetState} $OctopTaskbarCheckbox $OctopPinTaskbar
+  FunctionEnd
+
+  !insertmacro MUI_PAGE_CUSTOM octopTaskbarCreate octopTaskbarLeave
+!macroend
+
+; Finish page: keep "run" and add the desktop-shortcut checkbox.
+; Fresh installs start checked. Updates start unchecked so a removed
+; shortcut is not put back unless the user asks.
+!macro customFinishPage
+  !define MUI_PAGE_CUSTOMFUNCTION_PRE octopFinishPre
+  !define MUI_PAGE_CUSTOMFUNCTION_SHOW octopFinishShow
+  !define MUI_FINISHPAGE_RUN
+  !define MUI_FINISHPAGE_RUN_FUNCTION StartApp
+  !define MUI_FINISHPAGE_SHOWREADME
+  !define MUI_FINISHPAGE_SHOWREADME_NOTCHECKED
+  !define MUI_FINISHPAGE_SHOWREADME_TEXT "$OctopDesktopLabel"
+  !define MUI_FINISHPAGE_SHOWREADME_FUNCTION octopCreateDesktopShortcut
+  !insertmacro MUI_PAGE_FINISH
+
+  Function octopFinishPre
+    IntCmp $LANGUAGE 2052 octop_fin_zh octop_fin_en octop_fin_en
+octop_fin_zh:
+    StrCpy $OctopDesktopLabel "创建桌面快捷方式"
+    Goto octop_fin_pre_end
+octop_fin_en:
+    StrCpy $OctopDesktopLabel "Create a desktop shortcut"
+octop_fin_pre_end:
+  FunctionEnd
+
+  Function octopFinishShow
+    ${IfNot} ${isUpdated}
+      ${NSD_Check} $mui.FinishPage.ShowReadme
+    ${EndIf}
+  FunctionEnd
+
+  Function StartApp
+    ${If} ${isUpdated}
+      StrCpy $1 "--updated"
+    ${Else}
+      StrCpy $1 ""
+    ${EndIf}
+    ${StdUtils.ExecShellAsUser} $0 "$launchLink" "open" "$1"
+  FunctionEnd
+
+  Function octopCreateDesktopShortcut
+    !insertmacro octopWriteDesktopLink
+  FunctionEnd
+!macroend
+
 ; Same rule as DeepSeek Harness customCheckAppRunning: match this install's
 ; executable, not another Octop.exe. An update waits up to 10s for the shell
 ; to leave the tray. Otherwise stop and ask the user to quit. Never taskkill.
@@ -95,6 +197,14 @@ octop_rt_ok:
   Pop $2
   Pop $1
   Pop $0
+  ${If} $OctopPinTaskbar == 1
+    ${StdUtils.InvokeShellVerb} $0 "$INSTDIR" "${APP_EXECUTABLE_FILENAME}" ${StdUtils.Const.ShellVerb.PinToTaskbar}
+  ${EndIf}
+  ${If} ${Silent}
+  ${AndIfNot} ${isNoDesktopShortcut}
+  ${AndIf} $keepShortcuts == "false"
+    !insertmacro octopWriteDesktopLink
+  ${EndIf}
   Goto octop_rt_end
 octop_rt_fail:
 octop_rt_fail_closed:
@@ -110,5 +220,14 @@ octop_rt_end:
 !macroend
 
 !macro customUnInstall
+  ${StdUtils.InvokeShellVerb} $0 "$INSTDIR" "${APP_EXECUTABLE_FILENAME}" ${StdUtils.Const.ShellVerb.UnpinFromTaskbar}
+  IfFileExists "$newDesktopLink" 0 octop_un_old_link
+    WinShell::UninstShortcut "$newDesktopLink"
+    Delete "$newDesktopLink"
+octop_un_old_link:
+  IfFileExists "$oldDesktopLink" 0 octop_un_sidecar
+    WinShell::UninstShortcut "$oldDesktopLink"
+    Delete "$oldDesktopLink"
+octop_un_sidecar:
   RMDir /r "$INSTDIR\resources\sidecar"
 !macroend
