@@ -98,7 +98,7 @@ export default function DesktopUpdatePanel() {
       />
 
       <section
-        className={styles.panel}
+        className={`${styles.panel} ${styles.panelConstrained}`}
         aria-label={t("advancedSettings.update.panelTitle")}
       >
         <div className={styles.panelTitleRow}>
