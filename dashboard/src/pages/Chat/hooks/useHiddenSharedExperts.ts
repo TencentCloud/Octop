@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useCurrentUser } from "../../../hooks/useCurrentUser";
-import { isSharedExpertViewer } from "../../../utils/sharedExpert";
 import {
   hideExpertId,
   readHiddenExpertIds,
@@ -9,13 +8,12 @@ import {
 
 type ExpertLike = {
   agent_id: string;
-  is_shared?: boolean;
-  is_owner?: boolean;
 };
 
 /**
- * Per-user localStorage preference for hiding shared experts from chat lists.
- * Owned experts are never treated as hideable via this hook.
+ * Per-user localStorage preference for hiding experts from chat lists.
+ * Pass keepAgentIds only for rows that must stay visible for another reason,
+ * such as experts already mentioned in the composer.
  */
 export function useHiddenSharedExperts() {
   const userId = useCurrentUser()?.id ?? null;
@@ -53,7 +51,6 @@ export function useHiddenSharedExperts() {
         options?.keepAgentIds ? [...options.keepAgentIds].filter(Boolean) : [],
       );
       return agents.filter((agent) => {
-        if (!isSharedExpertViewer(agent)) return true;
         if (keep.has(agent.agent_id)) return true;
         return !hiddenIds.has(agent.agent_id);
       });
@@ -63,14 +60,12 @@ export function useHiddenSharedExperts() {
 
   const pickHidden = useCallback(
     <T extends ExpertLike>(agents: T[]): T[] =>
-      agents.filter(
-        (agent) => isSharedExpertViewer(agent) && hiddenIds.has(agent.agent_id),
-      ),
+      agents.filter((agent) => hiddenIds.has(agent.agent_id)),
     [hiddenIds],
   );
 
   const canHide = useCallback(
-    (agent: ExpertLike) => isSharedExpertViewer(agent),
+    (agent: ExpertLike) => agent.agent_id.length > 0,
     [],
   );
 

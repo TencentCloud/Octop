@@ -4,7 +4,6 @@ import { useNavigate } from "react-router-dom";
 import { Dropdown } from "antd";
 import type { MenuProps } from "antd";
 import {
-  ChevronDown,
   ChevronRight,
   GitFork,
   MoreHorizontal,
@@ -28,6 +27,7 @@ import { formatThreadTitle } from "../utils/threadTitle";
 import { onSessionEvent } from "../hooks/chatStore";
 import { useExpertSessionCatalog } from "../hooks/useExpertSessionCatalog";
 import { useHiddenSharedExperts } from "../hooks/useHiddenSharedExperts";
+import HiddenExpertsToggle from "./HiddenExpertsToggle";
 import { usePinnedExperts } from "../hooks/usePinnedExperts";
 import { useSessionWorkIds } from "../hooks/useSessionWorkIds";
 import { sortExpertsByPin } from "../utils/pinnedExpertsPrefs";
@@ -362,13 +362,11 @@ export default function MinimalAgentSessionNav({
     [agents, pickHidden, pinnedIds, navScope],
   );
   const sortedAgents = useMemo(() => {
-    const visible = filterVisible(agents, {
-      keepAgentIds: activeAgentId ? [activeAgentId] : [],
-    });
+    const visible = filterVisible(agents);
     return sortExpertsByPin(visible, pinnedIds).filter((agent) =>
       matchesChatNavScope(agent, navScope),
     );
-  }, [agents, filterVisible, activeAgentId, pinnedIds, navScope]);
+  }, [agents, filterVisible, pinnedIds, navScope]);
   const searching = searchQuery.trim().length > 0;
   const catalog = useExpertSessionCatalog(sortedAgents, searching);
   const visibleAgents = useMemo(() => {
@@ -703,22 +701,12 @@ export default function MinimalAgentSessionNav({
       {navBlocks.map((block) => {
         if (block.kind === "toggle") {
           return (
-            <button
+            <HiddenExpertsToggle
               key={block.key}
-              type="button"
-              className={styles.sessionLoadMore}
-              aria-expanded={showingHidden}
-              onClick={() => setShowingHidden((open) => !open)}
-            >
-              {showingHidden ? (
-                <ChevronDown size={14} aria-hidden />
-              ) : (
-                <ChevronRight size={14} aria-hidden />
-              )}
-              {showingHidden
-                ? t("chat.expertListHiddenCollapse")
-                : t("chat.expertListHidden", { count: hiddenAgents.length })}
-            </button>
+              expanded={showingHidden}
+              count={hiddenAgents.length}
+              onToggle={() => setShowingHidden((open) => !open)}
+            />
           );
         }
         const agent = block.agent;
