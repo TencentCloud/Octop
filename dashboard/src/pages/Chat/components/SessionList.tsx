@@ -12,6 +12,7 @@ import {
   Search,
   Trash2,
 } from "lucide-react";
+import cx from "classnames";
 import type { Session } from "../hooks/useSessions";
 import type { OctopAgent } from "../../../context/AgentContext";
 import { isAgentChatReady } from "../../../utils/agentError";
@@ -172,9 +173,11 @@ const SessionItem = memo(function SessionItem({
 
   return (
     <div
-      className={`${styles.sessionRow} ${
-        isActive ? styles.sessionRowActive : ""
-      } ${session.pinned ? styles.sessionRowPinned : ""}`}
+      className={cx(
+        styles.sessionRow,
+        isActive && styles.sessionRowActive,
+        session.pinned && styles.sessionRowPinned,
+      )}
       onClick={() => {
         if (!isEditing) onSelect(session.id);
       }}

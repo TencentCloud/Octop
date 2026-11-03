@@ -4,6 +4,7 @@ import type { MenuProps } from "antd";
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { ChevronDown } from "lucide-react";
+import cx from "classnames";
 import { useAgent, type OctopAgent } from "../context/AgentContext";
 import { ownedSoloExperts, ownedTeamAgents } from "../utils/sharedExpert";
 import {
@@ -110,9 +111,10 @@ function AgentChip({
       tabIndex={measure ? -1 : undefined}
       data-chip-id={measure ? agent.agent_id : undefined}
       data-group-key={measure ? groupKey : undefined}
-      className={`${active ? styles.chipActive : styles.chip}${
-        disconnected ? ` ${styles.chipDisconnected}` : ""
-      }`}
+      className={cx(
+        active ? styles.chipActive : styles.chip,
+        disconnected && styles.chipDisconnected,
+      )}
       style={{ "--chip-accent": accent } as React.CSSProperties}
       onClick={() => onSelect(agent.agent_id)}
       title={title}
@@ -251,7 +253,7 @@ export default function AgentSelector({
 
   if (loading) {
     return (
-      <div className={`${styles.wrap} ${className ?? ""}`} style={style}>
+      <div className={cx(styles.wrap, className)} style={style}>
         <Spin size="small" />
       </div>
     );
@@ -345,7 +347,7 @@ export default function AgentSelector({
   };
 
   return (
-    <div className={`${styles.wrap} ${className ?? ""}`} style={style}>
+    <div className={cx(styles.wrap, className)} style={style}>
       <div className={styles.row}>
         {showLabel && !showGroupLabels ? (
           <span className={styles.label}>{heading}</span>
