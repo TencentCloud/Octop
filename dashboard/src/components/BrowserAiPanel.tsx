@@ -5,13 +5,16 @@ import React, {
   useRef,
   useState,
 } from "react";
-import { Button, Tooltip, Tag, Spin } from "antd";
+import { Tooltip, Tag, Spin } from "antd";
 import { message as antMessage } from "@/utils/antdMessage";
 
-import { Bot, X, Square, Play, Loader2, Send } from "lucide-react";
+import { Bot, Square, Play, Loader2, Send } from "lucide-react";
+import AssistantFrame, {
+  type AssistantPlacement,
+} from "./AssistantFrame/AssistantFrame";
 import { useTranslation } from "react-i18next";
 import cx from "classnames";
-import type { OctopAgent } from "../context/AgentContext";
+import { useAgent } from "../context/AgentContext";
 import AgentSelector from "../components/AgentSelector";
 import { useAgentThreadChat } from "../hooks/useAgentThreadChat";
 import { browserApi } from "../api/modules/browser";
@@ -28,13 +31,26 @@ export interface BrowserAiTabContext {
   active: boolean;
 }
 
+const BROWSER_AI_AGENT_KEY = "octop:remote-browser:ai-agent";
+
+function readBrowserAgentId(): string | null {
+  try {
+    return localStorage.getItem(BROWSER_AI_AGENT_KEY);
+  } catch {
+    return null;
+  }
+}
+
 interface BrowserAiPanelProps {
-  activeAgent: OctopAgent | null;
   tabs: BrowserAiTabContext[];
   currentUrl: string;
   profileId?: string | null;
   onClose: () => void;
-  layout?: "right" | "bottom";
+  placement: AssistantPlacement;
+  placementLocked?: boolean;
+  onPlacementChange: (placement: AssistantPlacement) => void;
+  /** 工作台切走时收起窗口，会话仍留在这个面板里。 */
+  hidden?: boolean;
   /** Skill recording state from parent (RemoteBrowserPage) */
   browserRecording?: boolean;
   browserRecordingId?: string | null;
@@ -67,12 +83,14 @@ type RecordingPhase =
   | "recording";
 
 export default function BrowserAiPanel({
-  activeAgent,
   tabs,
   currentUrl,
   profileId,
   onClose,
-  layout = "right",
+  placement,
+  placementLocked = false,
+  onPlacementChange,
+  hidden = false,
   browserRecording = false,
   browserRecordingId = null,
   browserLastRecordingId = null,
@@ -83,10 +101,6 @@ export default function BrowserAiPanel({
   onSkillNameSet,
 }: BrowserAiPanelProps) {
   const { t } = useTranslation();
-  const panelClassName = cx(
-    styles.panel,
-    layout === "bottom" && styles.panelBottom,
-  );
   const [inputValue, setInputValue] = useState("");
   const [browserReplayBusy, setBrowserReplayBusy] = useState(false);
   const [pendingSkillContent, setPendingSkillContent] = useState<string | null>(
@@ -100,12 +114,47 @@ export default function BrowserAiPanel({
 
   // Recording workflow phase
   const [recordingPhase, setRecordingPhase] = useState<RecordingPhase>("idle");
+  const recordingTag =
+    browserRecording && recordingPhase !== "idle" ? (
+      <Tag color="red" className={styles.recordingTag}>
+        ● REC{" "}
+        {skillName && recordingPhase === "recording" ? `— ${skillName}` : ""}
+      </Tag>
+    ) : null;
 
   // Saved skill names for keyword-trigger replay
   const [savedSkillNames, setSavedSkillNames] = useState<string[]>([]);
 
+  const { agents, activeAgentId } = useAgent();
+  const [agentId, setAgentId] = useState<string | null>(readBrowserAgentId);
+  const activeAgent =
+    agents.find((agent) => agent.agent_id === agentId) ?? null;
   const activeTab = useMemo(() => tabs.find((tab) => tab.active), [tabs]);
-  const agentId = activeAgent?.agent_id ?? null;
+
+  useEffect(() => {
+    if (agentId && agents.some((agent) => agent.agent_id === agentId)) return;
+    if (!agents.length) return;
+    const fromGlobal =
+      activeAgentId && agents.some((agent) => agent.agent_id === activeAgentId)
+        ? activeAgentId
+        : null;
+    const next = fromGlobal ?? agents[0].agent_id;
+    setAgentId(next);
+    try {
+      localStorage.setItem(BROWSER_AI_AGENT_KEY, next);
+    } catch {
+      /* 忽略写入失败 */
+    }
+  }, [agentId, agents, activeAgentId]);
+
+  const chooseAgent = (id: string) => {
+    setAgentId(id);
+    try {
+      localStorage.setItem(BROWSER_AI_AGENT_KEY, id);
+    } catch {
+      /* 忽略写入失败 */
+    }
+  };
 
   // Load saved skill names from API on mount / agent change
   useEffect(() => {
@@ -135,7 +184,7 @@ export default function BrowserAiPanel({
     isStreaming,
     send,
     cancelStream,
-  } = useAgentThreadChat(agentId);
+  } = useAgentThreadChat(agentId, { pinKey: "octop:remote-browser:ai-thread" });
 
   // When browserRecording transitions, sync phase
   useEffect(() => {
@@ -576,75 +625,65 @@ export default function BrowserAiPanel({
   ]);
 
   // No agent → show empty state
+  const frame = (content: React.ReactNode) => (
+    <AssistantFrame
+      placement={placement}
+      onPlacementChange={onPlacementChange}
+      placementKey="octop:remote-browser:ai-placement"
+      storageKey="octop:remote-browser:ai"
+      legacySize={{
+        widthKey: "octop:remote-browser:ai-panel-width",
+        heightKey: "octop:remote-browser:ai-panel-height",
+      }}
+      dock="inline"
+      placementLocked={placementLocked}
+      hidden={hidden}
+      title={t("remoteBrowser.ai.title", "AI 助手")}
+      headerExtra={recordingTag}
+      onClose={onClose}
+    >
+      <div className={styles.panel}>{content}</div>
+    </AssistantFrame>
+  );
+
   if (!activeAgent) {
-    return (
-      <div className={panelClassName}>
-        <div className={styles.header}>
-          <div className={styles.headerTitle}>
-            <Bot size={14} />
-            <span>{t("remoteBrowser.ai.title", "AI 助手")}</span>
-          </div>
-          <Tooltip title={t("common.close", "关闭")}>
-            <Button
-              type="text"
-              size="small"
-              icon={<X size={14} />}
-              onClick={onClose}
-            />
-          </Tooltip>
+    return frame(
+      <div className={styles.emptyState}>
+        <Bot size={30} color="var(--fn-text-quaternary, #9ca3af)" />
+        <div className={styles.emptyTitle}>
+          {t("remoteBrowser.ai.noAgentTitle", "请选择一个 Agent")}
         </div>
-        <div className={styles.emptyState}>
-          <Bot size={30} color="var(--fn-text-quaternary, #9ca3af)" />
-          <div className={styles.emptyTitle}>
-            {t("remoteBrowser.ai.noAgentTitle", "请选择一个 Agent")}
-          </div>
-          <div className={styles.emptyDesc}>
-            {t(
-              "remoteBrowser.ai.noAgentDesc",
-              "浏览器右侧助手会复用当前 Agent 的对话能力。",
-            )}
-          </div>
-          <div className={styles.emptyAgentPicker}>
-            <AgentSelector variant="select" showLabel={false} />
-          </div>
+        <div className={styles.emptyDesc}>
+          {t(
+            "remoteBrowser.ai.noAgentDesc",
+            "这里的专家和对话只属于浏览器，不会改到其他页签。",
+          )}
         </div>
-      </div>
+        <div className={styles.emptyAgentPicker}>
+          <AgentSelector
+            variant="select"
+            showLabel={false}
+            value={agentId}
+            onChange={chooseAgent}
+          />
+        </div>
+      </div>,
     );
   }
 
-  return (
-    <div className={panelClassName}>
-      <div className={styles.header}>
-        <div className={styles.headerTitle}>
-          <Bot size={14} />
-          <span>{t("remoteBrowser.ai.title", "AI 助手")}</span>
-          {browserRecording && recordingPhase !== "idle" && (
-            <Tag color="red" className={styles.recordingTag}>
-              ● REC{" "}
-              {skillName && recordingPhase === "recording"
-                ? `— ${skillName}`
-                : ""}
-            </Tag>
-          )}
-        </div>
-        <div className={styles.headerActions}>
-          <Tooltip title={t("common.close", "关闭")}>
-            <Button
-              type="text"
-              size="small"
-              icon={<X size={14} />}
-              onClick={onClose}
-            />
-          </Tooltip>
-        </div>
-      </div>
-
+  return frame(
+    <>
       <div className={styles.contextSection}>
         <div className={styles.expertSelectRow}>
           <span className={styles.contextLabel}>
             {t("remoteBrowser.ai.expert", "专家")}
           </span>
-          <AgentSelector variant="select" showLabel={false} />
+          <AgentSelector
+            variant="select"
+            showLabel={false}
+            value={agentId}
+            onChange={chooseAgent}
+          />
         </div>
         <div className={styles.contextGrid}>
           <span className={styles.contextLabel}>
@@ -743,6 +782,6 @@ export default function BrowserAiPanel({
           </button>
         </div>
       </div>
-    </div>
+    </>,
   );
 }

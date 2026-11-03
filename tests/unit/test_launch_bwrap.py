@@ -34,7 +34,13 @@ async def test_schedule_runs_linux_ensure_in_background(monkeypatch: pytest.Monk
     task = launch._schedule_linux_bubblewrap_ensure()
     assert task is not None
     try:
-        assert await asyncio.to_thread(started.wait, 1)
+        # Stay on the loop. Waiting via to_thread occupies a pool worker, and
+        # a loaded Windows runner can miss a 1s deadline before the task starts.
+        for _ in range(100):
+            if started.is_set():
+                break
+            await asyncio.sleep(0.05)
+        assert started.is_set()
         assert not task.done()
     finally:
         release.set()

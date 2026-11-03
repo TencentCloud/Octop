@@ -988,6 +988,30 @@ async def create_agent_from_expert(
     if expert is None:
         raise OctopError(ErrorCode.NOT_FOUND, f"expert {expert_id!r} not found")
     assert server.app_runtime is not None
+    # 未指定名称时视为「确保该专家已就绪」：云主机面板授权后会静默调用本接口，
+    # 刷新或重试必须复用已有 agent。显式传 name / agent_id 仍是新建，重名保持 409。
+    if not body.agent_id and not (body.name or "").strip():
+        for existing_row in server.app_runtime.agent_registry.list_agents(user.id):
+            if (existing_row.template_name or "") != expert_id:
+                continue
+            return {
+                "id": existing_row.id,
+                "agent_id": existing_row.agent_id,
+                "user_id": existing_row.user_id,
+                "name": existing_row.name,
+                "description": existing_row.description,
+                "default_model": existing_row.default_model,
+                "state": existing_row.last_state or "unknown",
+                "expert_id": expert_id,
+                "icon_name": existing_row.icon_name or expert.summary.icon_name,
+                "icon_url": existing_row.icon_url,
+                "color": existing_row.color or expert.summary.color,
+                "bootstrap_pending": not server.app_runtime.agent_registry.is_bootstrapped(
+                    existing_row.agent_id
+                ),
+                "reused": True,
+            }
+
     assert_user_backend_root_dirs(
         user,
         body.backend,

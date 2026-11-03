@@ -15,7 +15,7 @@ export const terminalAiApi = {
   getContext: (agentId: string) =>
     request<TerminalContext>(`/agents/${agentId}/terminal/context`),
 
-  createOpsEngineer: () =>
+  createGeneralAssistant: () =>
     request<{
       id: number;
       agent_id: string;
@@ -23,7 +23,7 @@ export const terminalAiApi = {
       description: string;
       state: string;
       expert_id: string;
-    }>("/agents/from-expert/ops-engineer", {
+    }>("/agents/from-expert/general-assistant", {
       method: "POST",
       body: JSON.stringify({}),
     }),

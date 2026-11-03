@@ -6,49 +6,9 @@
   height: 100%;
   flex: 1;
   min-width: 0;
-  background: var(--fn-bg-primary);
-  border-left: 1px solid var(--fn-border-primary, rgba(0, 0, 0, 0.08));
-  overflow: hidden;
-  min-height: 180px;
-}
-
-// Bottom layout: border on top instead of left; fill width
-.panelBottom {
-  border-left: none;
-  border-top: 1px solid var(--fn-border-primary, rgba(0, 0, 0, 0.08));
-  flex: 1;
   min-height: 0;
-}
-
-// ── Panel header ───────────────────────────────────────────────────────────
-
-.header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 8px 12px;
-  flex-shrink: 0;
-  border-bottom: 1px solid var(--fn-border-primary, rgba(0, 0, 0, 0.08));
-  background: var(--fn-bg-secondary);
-  gap: 8px;
-}
-
-.headerTitle {
-  font-size: 13px;
-  font-weight: 600;
-  color: var(--fn-text-primary);
-  flex: 1;
-  min-width: 0;
-  white-space: nowrap;
+  background: transparent;
   overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.headerActions {
-  display: flex;
-  align-items: center;
-  gap: 2px;
-  flex-shrink: 0;
 }
 
 // ── Context section ────────────────────────────────────────────────────────

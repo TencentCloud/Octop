@@ -1,17 +1,19 @@
 import { useCallback, useMemo } from "react";
 import { useTranslation } from "react-i18next";
-import { Globe, TerminalSquare } from "lucide-react";
+import { Cloud, Globe, TerminalSquare } from "lucide-react";
 import PageShell from "../../../layouts/PageShell";
 import { usePathTabs } from "../../../hooks/usePathTabs";
 import { useCurrentUser } from "../../../hooks/useCurrentUser";
-import { userCan } from "../../../utils/permissions";
+import { userCan, userCanAny } from "../../../utils/permissions";
 import TerminalPage from "../Terminal";
 import RemoteBrowserPage from "../RemoteBrowser";
+import CloudHostsPage from "../CloudHosts";
 import styles from "./index.module.less";
 
-export type WorkbenchTab = "terminal" | "browser";
+export type WorkbenchTab = "terminal" | "browser" | "cloud";
 
 const WORKBENCH_TABS = [
+  "cloud",
   "browser",
   "terminal",
 ] as const satisfies readonly WorkbenchTab[];
@@ -19,6 +21,7 @@ const WORKBENCH_TABS = [
 const TAB_ICONS = {
   browser: Globe,
   terminal: TerminalSquare,
+  cloud: Cloud,
 } as const;
 
 interface WorkbenchPageProps {
@@ -32,7 +35,10 @@ export default function WorkbenchPage({
   const { t } = useTranslation();
   const user = useCurrentUser();
   const isAllowed = useCallback(
-    (tab: WorkbenchTab) => userCan(user, tab),
+    (tab: WorkbenchTab) =>
+      tab === "cloud"
+        ? userCanAny(user, ["browser", "terminal"])
+        : userCan(user, tab),
     [user],
   );
   const defaultTab: WorkbenchTab = userCan(user, "browser")
@@ -79,6 +85,15 @@ export default function WorkbenchPage({
       pathTabs={pathTabs}
     >
       <div className={styles.panels}>
+        {isMounted("cloud") && (
+          <div
+            className={styles.panel}
+            style={{ display: activeTab === "cloud" ? "flex" : "none" }}
+            aria-hidden={activeTab !== "cloud"}
+          >
+            <CloudHostsPage isVisible={isVisible && activeTab === "cloud"} />
+          </div>
+        )}
         {isMounted("browser") && (
           <div
             className={styles.panel}

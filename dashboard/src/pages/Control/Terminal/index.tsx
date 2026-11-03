@@ -13,7 +13,7 @@ import {
 } from "lucide-react";
 import cx from "classnames";
 import { ChromeTabBar } from "../../../components/ChromeTabBar";
-import AiPanel, { type AiPanelLayout } from "./components/AiPanel";
+import AiPanel from "./components/AiPanel";
 import TerminalView, {
   type TerminalViewHandle,
 } from "./components/TerminalView";
@@ -33,15 +33,14 @@ import {
 import { useTheme } from "../../../context/ThemeContext";
 import { useAgent } from "../../../context/AgentContext";
 import { useIsMobile } from "../../../hooks/useIsMobile";
+import {
+  readAssistantPlacement,
+  type AssistantPlacement,
+} from "../../../components/AssistantFrame/AssistantFrame";
 import styles from "./index.module.less";
 
 const AI_PANEL_LAYOUT_KEY = "octop:terminal-ai-layout";
-const AI_PANEL_WIDTH_KEY = "octop:terminal-ai-width";
-const AI_PANEL_HEIGHT_KEY = "octop:terminal-ai-height";
-const AI_PANEL_MIN_WIDTH = 220;
-const AI_PANEL_MAX_WIDTH = 720;
-const AI_PANEL_MIN_HEIGHT = 160;
-const AI_PANEL_MAX_HEIGHT = 600;
+const TERMINAL_PLACEMENTS = ["bottom", "right", "float"] as const;
 
 function ConnBadge({ state }: { state: TerminalConnState }) {
   const { t } = useTranslation();
@@ -313,96 +312,13 @@ export default function TerminalPage({
     localStorage.setItem(TERMINAL_THEME_STORAGE_KEY, key);
   }, []);
 
-  // AI panel state
   const [isPanelOpen, setIsPanelOpen] = useState(false);
-  const [panelLayout, setPanelLayout] = useState<AiPanelLayout>(() => {
-    const stored = localStorage.getItem(AI_PANEL_LAYOUT_KEY);
-    return stored === "bottom" ? "bottom" : "right";
-  });
-  const [panelWidth, setPanelWidth] = useState(() => {
-    const stored = localStorage.getItem(AI_PANEL_WIDTH_KEY);
-    const n = stored ? parseInt(stored, 10) : 340;
-    return Math.min(Math.max(n, AI_PANEL_MIN_WIDTH), AI_PANEL_MAX_WIDTH);
-  });
-  const [panelHeight, setPanelHeight] = useState(() => {
-    const stored = localStorage.getItem(AI_PANEL_HEIGHT_KEY);
-    const n = stored ? parseInt(stored, 10) : 280;
-    return Math.min(Math.max(n, AI_PANEL_MIN_HEIGHT), AI_PANEL_MAX_HEIGHT);
-  });
-
-  const effectivePanelLayout: AiPanelLayout = isMobile ? "bottom" : panelLayout;
-
-  // Drag-resize handle for the AI panel
-  const dragRef = useRef<{
-    startX: number;
-    startY: number;
-    startSize: number;
-  } | null>(null);
-  const handleResizeMouseDown = useCallback(
-    (e: React.MouseEvent) => {
-      e.preventDefault();
-      if (effectivePanelLayout === "right") {
-        dragRef.current = {
-          startX: e.clientX,
-          startY: e.clientY,
-          startSize: panelWidth,
-        };
-        const onMove = (mv: MouseEvent) => {
-          if (!dragRef.current) return;
-          const delta = dragRef.current.startX - mv.clientX;
-          const next = Math.min(
-            Math.max(dragRef.current.startSize + delta, AI_PANEL_MIN_WIDTH),
-            AI_PANEL_MAX_WIDTH,
-          );
-          setPanelWidth(next);
-        };
-        const onUp = (mv: MouseEvent) => {
-          if (!dragRef.current) return;
-          const delta = dragRef.current.startX - mv.clientX;
-          const next = Math.min(
-            Math.max(dragRef.current.startSize + delta, AI_PANEL_MIN_WIDTH),
-            AI_PANEL_MAX_WIDTH,
-          );
-          localStorage.setItem(AI_PANEL_WIDTH_KEY, String(next));
-          dragRef.current = null;
-          window.removeEventListener("mousemove", onMove);
-          window.removeEventListener("mouseup", onUp);
-        };
-        window.addEventListener("mousemove", onMove);
-        window.addEventListener("mouseup", onUp);
-      } else {
-        dragRef.current = {
-          startX: e.clientX,
-          startY: e.clientY,
-          startSize: panelHeight,
-        };
-        const onMove = (mv: MouseEvent) => {
-          if (!dragRef.current) return;
-          const delta = dragRef.current.startY - mv.clientY;
-          const next = Math.min(
-            Math.max(dragRef.current.startSize + delta, AI_PANEL_MIN_HEIGHT),
-            AI_PANEL_MAX_HEIGHT,
-          );
-          setPanelHeight(next);
-        };
-        const onUp = (mv: MouseEvent) => {
-          if (!dragRef.current) return;
-          const delta = dragRef.current.startY - mv.clientY;
-          const next = Math.min(
-            Math.max(dragRef.current.startSize + delta, AI_PANEL_MIN_HEIGHT),
-            AI_PANEL_MAX_HEIGHT,
-          );
-          localStorage.setItem(AI_PANEL_HEIGHT_KEY, String(next));
-          dragRef.current = null;
-          window.removeEventListener("mousemove", onMove);
-          window.removeEventListener("mouseup", onUp);
-        };
-        window.addEventListener("mousemove", onMove);
-        window.addEventListener("mouseup", onUp);
-      }
-    },
-    [effectivePanelLayout, panelWidth, panelHeight],
+  const [panelLayout, setPanelLayout] = useState<AssistantPlacement>(() =>
+    readAssistantPlacement(AI_PANEL_LAYOUT_KEY, "bottom"),
   );
+  const effectivePanelLayout: AssistantPlacement = isMobile
+    ? "bottom"
+    : panelLayout;
 
   const handleConnStateChange = useCallback(
     (id: string, state: TerminalConnState) => {
@@ -636,63 +552,41 @@ export default function TerminalPage({
         </div>
 
         {isPanelOpen && (
-          <div
-            className={
-              effectivePanelLayout === "right"
-                ? styles.aiPanelRight
-                : styles.aiPanelBottom
+          <AiPanel
+            activeAgent={
+              activeAgentId
+                ? agents.find((a) => a.agent_id === activeAgentId) ?? null
+                : null
             }
-            style={
-              effectivePanelLayout === "right"
-                ? { width: panelWidth }
-                : { height: panelHeight }
+            agents={agents}
+            agentsLoading={agentsLoading}
+            activeTerminalSessionId={activeId}
+            activeTerminalSessionIndex={
+              activeId ? sessionIds.indexOf(activeId) + 1 : 0
             }
-          >
-            {/* Drag resize handle */}
-            <div
-              className={
-                effectivePanelLayout === "right"
-                  ? styles.resizeHandleLeft
-                  : styles.resizeHandleTop
+            placement={effectivePanelLayout}
+            placementLocked={isMobile}
+            placements={TERMINAL_PLACEMENTS}
+            hidden={!isVisible}
+            onPlacementChange={setPanelLayout}
+            onClose={() => setIsPanelOpen(false)}
+            onExecuteCommand={(cmd) => {
+              if (!activeId) return;
+              for (const line of cmd.split("\n")) {
+                const trimmed = line.trimEnd();
+                if (trimmed) sendInput(activeId, trimmed + "\r");
               }
-              onMouseDown={handleResizeMouseDown}
-            />
-            <AiPanel
-              activeAgent={
-                activeAgentId
-                  ? agents.find((a) => a.agent_id === activeAgentId) ?? null
-                  : null
-              }
-              agents={agents}
-              activeTerminalSessionId={activeId}
-              activeTerminalSessionIndex={
-                activeId ? sessionIds.indexOf(activeId) + 1 : 0
-              }
-              layout={effectivePanelLayout}
-              layoutSwitchable={!isMobile}
-              onLayoutChange={(layout) => {
-                setPanelLayout(layout);
-                localStorage.setItem(AI_PANEL_LAYOUT_KEY, layout);
-              }}
-              onClose={() => setIsPanelOpen(false)}
-              onExecuteCommand={(cmd) => {
-                if (!activeId) return;
-                for (const line of cmd.split("\n")) {
-                  const trimmed = line.trimEnd();
-                  if (trimmed) sendInput(activeId, trimmed + "\r");
-                }
-              }}
-              getRecentTerminalOutput={() =>
-                activeId ? outputBufferRef.current.getRecent(activeId) : ""
-              }
-              snapshotTerminalOutput={() =>
-                activeId ? outputBufferRef.current.snapshot(activeId) : ""
-              }
-              onAgentCreated={() => {
-                void refresh();
-              }}
-            />
-          </div>
+            }}
+            getRecentTerminalOutput={() =>
+              activeId ? outputBufferRef.current.getRecent(activeId) : ""
+            }
+            snapshotTerminalOutput={() =>
+              activeId ? outputBufferRef.current.snapshot(activeId) : ""
+            }
+            onAgentCreated={() => {
+              void refresh();
+            }}
+          />
         )}
       </div>
     </div>
