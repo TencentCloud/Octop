@@ -1,5 +1,7 @@
 import { readFileSync } from "node:fs";
-import { resolve } from "node:path";
+import { join, resolve } from "node:path";
+
+import { macPrivacyExtendInfo, writeMacPrivacyLocalizations } from "./mac-privacy-plist";
 
 // The Python release version is authoritative. electron-builder needs SemVer in
 // package metadata, while bundled runtime names keep the original PEP 440 value
@@ -19,6 +21,7 @@ if (!/^\d+\.\d+\.\d+(?:-(?:alpha|beta|rc)\.\d+)?$/.test(electronVersion)) {
 const artifactName = process.env.OCTOP_PLATFORM
   ? `Octop-desktop-${process.env.OCTOP_PLATFORM}-${productVersion}.\${ext}`
   : "Octop-desktop-${os}-${arch}-${version}.${ext}";
+const productName = "Octop";
 
 // Without a certificate electron-builder does not skip signing cleanly on macOS:
 // it takes the "empty password will be used for code signing" path and then dies
@@ -30,7 +33,7 @@ export default {
   extraMetadata: { version: electronVersion },
   artifactName,
   appId: "com.tencent.octop",
-  productName: "Octop",
+  productName,
   // extraResources places the portable zip outside asar; the runtime is extracted
   // into OCTOP_HOME before native Python extensions are loaded.
   asar: true,
@@ -49,6 +52,15 @@ export default {
     ...(skipSigning ? { identity: null, hardenedRuntime: false } : { hardenedRuntime: true }),
     gatekeeperAssess: false,
     // Signing/notarization are wired through CSC_LINK / APPLE_* env in CI, not here.
+    // Usage strings for microphone, speech recognition, screen capture, and the
+    // local network. Accessibility has no Info.plist key.
+    extendInfo: macPrivacyExtendInfo(),
+  },
+  afterPack(context: { electronPlatformName: string; appOutDir: string }): void {
+    if (context.electronPlatformName !== "darwin") return;
+    writeMacPrivacyLocalizations(
+      join(context.appOutDir, `${productName}.app`, "Contents", "Resources"),
+    );
   },
   win: {
     icon: "resources/icon.ico",
