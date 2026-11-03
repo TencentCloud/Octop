@@ -195,7 +195,6 @@ export default function ChatSidebarPanel({
           shortcut={railShortcutAria("toggle-history")}
           onResizeStart={onSidebarResizeStart}
           resizeLabel={t("chat.resizeSidebar", "调整侧栏宽度")}
-          resizing={isSidebarResizing}
         />
       )}
     </div>

@@ -35,7 +35,6 @@ interface RailEdgeControlProps {
    */
   onResizeStart?: (event: PointerEvent<HTMLDivElement>) => void;
   resizeLabel?: string;
-  resizing?: boolean;
 }
 
 /**
@@ -54,7 +53,6 @@ export default function RailEdgeControl({
   placement = "center",
   onResizeStart,
   resizeLabel,
-  resizing = false,
 }: RailEdgeControlProps) {
   const { t } = useTranslation();
   const ariaLabel =
@@ -77,9 +75,7 @@ export default function RailEdgeControl({
       {showLine ? <div className={styles.line} aria-hidden /> : null}
       {onResizeStart ? (
         <div
-          className={`${styles.resizeGrip} ${
-            resizing ? styles.resizeGripActive : ""
-          }`}
+          className={styles.resizeGrip}
           onPointerDown={onResizeStart}
           role="separator"
           aria-orientation="vertical"
