@@ -22,6 +22,11 @@ beforeEach(() => {
       }),
       set: vi.fn(),
     },
+    session: {
+      register: vi.fn(),
+      renew: vi.fn(),
+      revoke: vi.fn(),
+    },
     checkForUpdates: vi.fn().mockResolvedValue({
       status: "update-available",
       currentVersion: "1.0.3b1",
@@ -43,6 +48,11 @@ describe("<DesktopUpdatePanel />", () => {
 
     expect(await screen.findByText("v1.0.4")).toBeInTheDocument();
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", {
+        name: "advancedSettings.update.deviceLoginButton",
+      }),
+    ).not.toBeInTheDocument();
 
     await user.click(
       screen.getByRole("button", {
@@ -51,8 +61,12 @@ describe("<DesktopUpdatePanel />", () => {
     );
 
     const dialog = await screen.findByRole("dialog");
-    expect(dialog).toHaveTextContent("advancedSettings.update.shellConfirmTitle");
-    expect(dialog).toHaveTextContent("advancedSettings.update.shellConfirmBody");
+    expect(dialog).toHaveTextContent(
+      "advancedSettings.update.shellConfirmTitle",
+    );
+    expect(dialog).toHaveTextContent(
+      "advancedSettings.update.shellConfirmBody",
+    );
     expect(installUpdate).not.toHaveBeenCalled();
 
     await user.click(
