@@ -412,7 +412,7 @@ function EditAgentDrawerBody({
     return () => {
       cancelled = true;
     };
-  }, [agent.agent_id, agent.state, form, message, t]);
+  }, [agent.agent_id, agent.state, form, message, t, agent.color]);
 
   const handleSave = useCallback(async () => {
     const values = await form.validateFields();
@@ -565,6 +565,7 @@ function EditAgentDrawerBody({
     pathMappings,
     skillPackagesSupported,
     t,
+    message,
   ]);
 
   useEffect(() => {

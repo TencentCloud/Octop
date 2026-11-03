@@ -669,6 +669,7 @@ const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
       reasoningEffort,
       defaultModel,
       t,
+      antMessage,
     ]);
 
     submitRef.current = submitMessage;
@@ -740,6 +741,7 @@ const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
         onModelChange,
         onReasoningChange,
         availableAgents,
+        modal,
       ],
     );
 
@@ -846,6 +848,7 @@ const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
       selectedModel,
       defaultModel,
       t,
+      antMessage,
     ]);
 
     const canSend = Boolean(

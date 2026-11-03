@@ -182,7 +182,7 @@ export default function DesktopPanel({
     if (status === "streaming") return true;
     message.info(t("remoteDesktop.shortcutsNeedConnect", "请先连接远程桌面"));
     return false;
-  }, [status, t]);
+  }, [status, t, message]);
 
   const refreshEnv = useCallback(async () => {
     setEnvLoading(true);
@@ -238,7 +238,7 @@ export default function DesktopPanel({
     } else if (installPhase === "install_failed") {
       setEnvModalOpen(true);
     }
-  }, [installPhase, refreshEnv, t]);
+  }, [installPhase, refreshEnv, t, message]);
 
   const startInstall = useCallback(() => {
     startDesktopInstall();
@@ -307,6 +307,8 @@ export default function DesktopPanel({
     refreshEnv,
     t,
     uninstalling,
+    message,
+    modal,
   ]);
 
   const openEnvModal = useCallback(() => {
@@ -360,7 +362,7 @@ export default function DesktopPanel({
         }
       },
     }),
-    [t],
+    [t, message],
   );
 
   const startStream = useCallback(() => {
@@ -411,7 +413,7 @@ export default function DesktopPanel({
       }
       void applyResolution(value);
     },
-    [applyResolution, envStatus?.platform, isStreaming, t],
+    [applyResolution, envStatus?.platform, isStreaming, t, modal],
   );
 
   const handleFpsChange = useCallback(
@@ -460,7 +462,7 @@ export default function DesktopPanel({
     }
     streamDesiredRef.current = true;
     startStream();
-  }, [envReady, needsMacPermissions, openEnvModal, startStream, t]);
+  }, [envReady, needsMacPermissions, openEnvModal, startStream, t, message]);
 
   const handleDisconnect = useCallback(() => {
     streamDesiredRef.current = false;
@@ -484,7 +486,7 @@ export default function DesktopPanel({
     if (!requireStream()) return;
     startStream();
     message.success(t("remoteDesktop.refreshStreamDone", "画面已刷新"));
-  }, [requireStream, startStream, t]);
+  }, [requireStream, startStream, t, message]);
 
   const handleFullscreen = useLandscapeFullscreen(viewportRef, {
     isMobile,
@@ -499,7 +501,7 @@ export default function DesktopPanel({
         message.error(t("remoteDesktop.shortcutFailed", "快捷操作发送失败"));
       }
     },
-    [requireStream, sendEvent, t],
+    [requireStream, sendEvent, t, message],
   );
 
   const handleShowDesktop = useCallback(() => {
@@ -714,7 +716,7 @@ export default function DesktopPanel({
         "已取消安装请求，服务端可能仍在继续安装，请稍后刷新状态。",
       ),
     );
-  }, [t]);
+  }, [t, message]);
 
   const handleCopyInstallLog = useCallback(async () => {
     const title = t("remoteDesktop.installFailed", "安装失败");
@@ -730,7 +732,7 @@ export default function DesktopPanel({
     } else {
       message.error(t("common.copyFailed", "Failed to copy to clipboard"));
     }
-  }, [installLogs, t]);
+  }, [installLogs, t, message]);
 
   const renderInstallLog = (
     maxHeight?: number,

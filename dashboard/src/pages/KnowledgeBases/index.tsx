@@ -801,7 +801,7 @@ export default function KnowledgeBasesPage() {
     } catch (error) {
       message.error(apiErrorMessage(error, t("knowledgeBases.loadFailed"), t));
     }
-  }, [t]);
+  }, [t, message]);
 
   const loadCapability = useCallback(async () => {
     try {
@@ -818,7 +818,7 @@ export default function KnowledgeBasesPage() {
     } catch (error) {
       message.error(apiErrorMessage(error, t("knowledgeBases.loadFailed"), t));
     }
-  }, [t]);
+  }, [t, message]);
 
   const loadEmbeddingOptions = useCallback(
     async (allOnnx = false) => {
@@ -848,7 +848,7 @@ export default function KnowledgeBasesPage() {
         setOnnxExpanding(false);
       }
     },
-    [t],
+    [t, message],
   );
 
   const loadOcrOptions = useCallback(async () => {
@@ -860,7 +860,7 @@ export default function KnowledgeBasesPage() {
       message.error(apiErrorMessage(error, t("knowledgeBases.loadFailed"), t));
       return undefined;
     }
-  }, [t]);
+  }, [t, message]);
 
   const stopOnnxDownloadWatch = useCallback(() => {
     if (onnxDownloadTimer.current) {
@@ -912,7 +912,7 @@ export default function KnowledgeBasesPage() {
       }
       message.error(error || t("models.onnxDownloadFailed"));
     },
-    [loadEmbeddingOptions, stopOnnxDownloadWatch, t],
+    [loadEmbeddingOptions, stopOnnxDownloadWatch, t, message],
   );
 
   const watchOnnxDownloadStatus = useCallback(
@@ -994,7 +994,7 @@ export default function KnowledgeBasesPage() {
         }
       }
     },
-    [t],
+    [t, message],
   );
 
   useEffect(() => {

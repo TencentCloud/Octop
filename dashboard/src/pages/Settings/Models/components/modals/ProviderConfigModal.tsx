@@ -120,6 +120,8 @@ export function ProviderConfigModal({
   const [ollamaModelsDir, setOllamaModelsDir] = useState("");
   const [ollamaServiceLoaded, setOllamaServiceLoaded] = useState(false);
   const [savingModelsDir, setSavingModelsDir] = useState(false);
+  const providerRef = useRef(provider);
+  providerRef.current = provider;
   const ollamaPollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const ollamaNotifiedRef = useRef<Set<string>>(new Set());
 
@@ -175,7 +177,7 @@ export function ProviderConfigModal({
         );
       }
     },
-    [apiPrefix, draftModels, form, isOnnx, onSaved, provider.id, t],
+    [apiPrefix, draftModels, form, isOnnx, onSaved, provider.id, t, message],
   );
 
   const stopOllamaPolling = useCallback(() => {
@@ -254,6 +256,7 @@ export function ProviderConfigModal({
     onSaved,
     fetchOllamaModels,
     stopOllamaPolling,
+    message,
   ]);
 
   const startOllamaPolling = useCallback(() => {
@@ -447,14 +450,14 @@ export function ProviderConfigModal({
         message.error(error || t("models.onnxDownloadFailed"));
       }
     },
-    [enableModelAfterDownload, refreshDownloadedIds, t],
+    [enableModelAfterDownload, refreshDownloadedIds, t, message],
   );
 
   const dismissDownloadProgressToBackground = useCallback(() => {
     setDownloadProgressOpen(false);
     setOnnxDownloadProgressHandler(undefined);
     message.info(t("models.localDownloadBackground"));
-  }, [t]);
+  }, [t, message]);
 
   const runOnnxDownloadWithProgress = useCallback(
     async (modelId: string) => {
@@ -496,7 +499,7 @@ export function ProviderConfigModal({
         );
       }
     },
-    [handleOnnxDownloadTerminal, t],
+    [handleOnnxDownloadTerminal, t, message],
   );
 
   // If progress UI remounts / reopens while a watch is running, re-attach handler.
@@ -598,6 +601,8 @@ export function ProviderConfigModal({
       runOnnxDownloadWithProgress,
       startOllamaPolling,
       t,
+      message,
+      modal,
     ],
   );
 
@@ -657,19 +662,20 @@ export function ProviderConfigModal({
     if (!open) return;
     // Only hydrate when the modal opens (or provider id changes), so
     // background refreshes / local model toggles do not reset the form.
-    const currentDefaultModel = provider.models?.length
-      ? provider.models[0].id
+    const current = providerRef.current;
+    const currentDefaultModel = current.models?.length
+      ? current.models[0].id
       : "";
     form.setFieldsValue({
-      kind: provider.kind,
-      base_url: provider.base_url ?? "",
+      kind: current.kind,
+      base_url: current.base_url ?? "",
       api_key: undefined,
       model: currentDefaultModel,
-      note: provider.note ?? "",
-      stream_usage: provider.stream_usage !== false,
+      note: current.note ?? "",
+      stream_usage: current.stream_usage !== false,
     });
     setDraftModels(
-      (provider.models ?? []).map((m) => ({
+      (current.models ?? []).map((m) => ({
         ...m,
         enabled: m.enabled !== false,
       })),

@@ -183,7 +183,7 @@ export default function SubagentManager({
     } finally {
       setLoadingInstalled(false);
     }
-  }, [agentId, agentReady, t]);
+  }, [agentId, agentReady, t, message]);
 
   const loadCatalog = useCallback(async () => {
     setLoading(true);
@@ -199,7 +199,7 @@ export default function SubagentManager({
     } finally {
       setLoading(false);
     }
-  }, [agentId, t]);
+  }, [agentId, t, message]);
 
   useEffect(() => {
     setActiveTab(initialTab);

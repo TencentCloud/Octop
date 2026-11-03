@@ -90,7 +90,7 @@ export function ACPPanel({ agentId: agentIdProp }: ACPPanelProps = {}) {
     return () => {
       cancelled = true;
     };
-  }, [t, runnersScopeId]);
+  }, [t, runnersScopeId, message]);
 
   useEffect(() => {
     if (!activeAgentId) {
@@ -123,7 +123,7 @@ export function ACPPanel({ agentId: agentIdProp }: ACPPanelProps = {}) {
     return () => {
       cancelled = true;
     };
-  }, [activeAgentId, t]);
+  }, [activeAgentId, t, message]);
 
   const orderedKeys = useMemo(() => {
     const keys = Object.keys(runners || {});

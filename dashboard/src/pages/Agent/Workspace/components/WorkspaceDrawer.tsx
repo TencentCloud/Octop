@@ -353,7 +353,7 @@ export default function WorkspaceDrawer({
         setTreeLoading(false);
       }
     },
-    [agentId, workspaceReady, t, buildWorkspaceRootNode, isMobile],
+    [agentId, workspaceReady, t, buildWorkspaceRootNode, isMobile, message],
   );
 
   useEffect(() => {
@@ -431,7 +431,7 @@ export default function WorkspaceDrawer({
         );
       }
     },
-    [agentId, workspaceReady, t, refreshRoot],
+    [agentId, workspaceReady, t, refreshRoot, message],
   );
 
   const loadDirEntries = useCallback(
@@ -457,7 +457,7 @@ export default function WorkspaceDrawer({
         setDirLoading(false);
       }
     },
-    [agentId, workspaceReady, t],
+    [agentId, workspaceReady, t, message],
   );
 
   const handleDelete = async (target: TreeKey) => {

@@ -593,6 +593,7 @@ export default function MinimalAgentSessionNav({
     });
   }, [activeAgentId, refreshAgentPreview]);
 
+  const patchCatalog = catalog.patch;
   const patchLocal = useCallback(
     (agentId: string, updater: (prev: Session[]) => Session[]) => {
       setByAgent((prev) => ({
@@ -602,9 +603,9 @@ export default function MinimalAgentSessionNav({
           storedPreviewLimit(limitsRef.current, agentId),
         ),
       }));
-      catalog.patch(agentId, updater);
+      patchCatalog(agentId, updater);
     },
-    [catalog.patch],
+    [patchCatalog],
   );
 
   const handleDelete = useCallback(

@@ -183,7 +183,7 @@ export function useSkills(
         return false;
       }
     },
-    [agentId, fetchSkills, t],
+    [agentId, fetchSkills, t, message],
   );
 
   const updateSkill = useCallback(
@@ -203,7 +203,7 @@ export function useSkills(
         return false;
       }
     },
-    [agentId, fetchSkills, t],
+    [agentId, fetchSkills, t, message],
   );
 
   const toggleEnabled = useCallback(
@@ -232,7 +232,7 @@ export function useSkills(
         return false;
       }
     },
-    [agentId, setSkills, t],
+    [agentId, setSkills, t, message],
   );
 
   const deleteSkill = useCallback(
@@ -264,7 +264,7 @@ export function useSkills(
         return false;
       }
     },
-    [agentId, fetchSkills, t],
+    [agentId, fetchSkills, t, message, modal],
   );
 
   const exportSkills = useCallback(
@@ -324,7 +324,7 @@ export function useSkills(
         setImporting(false);
       }
     },
-    [agentId, fetchSkills, t],
+    [agentId, fetchSkills, t, message],
   );
 
   const importFromZip = useCallback(
@@ -374,7 +374,7 @@ export function useSkills(
         setImporting(false);
       }
     },
-    [agentId, fetchSkills, t],
+    [agentId, fetchSkills, t, message],
   );
 
   return {

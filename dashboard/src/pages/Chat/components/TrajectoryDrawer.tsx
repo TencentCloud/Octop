@@ -1,6 +1,12 @@
 import { Button, Drawer, Empty, Space, Spin } from "antd";
 import { Download, RefreshCw } from "lucide-react";
-import { useEffect, useMemo, useState, type ReactNode } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+  type ReactNode,
+} from "react";
 import { useTranslation } from "react-i18next";
 import cx from "classnames";
 import { message } from "@/utils/antdMessage";
@@ -81,27 +87,33 @@ export default function TrajectoryDrawer({
     "chat.trajectoryToolCallOnly",
     "(tool call only)",
   );
-  const formatCallSummary = (count: number, names: readonly string[]) => {
-    const namesJoined = names.join(", ");
-    if (count === 1) {
+  const formatCallSummary = useCallback(
+    (count: number, names: readonly string[]) => {
+      const namesJoined = names.join(", ");
+      if (count === 1) {
+        return t(
+          "chat.trajectoryCollapsedToolCallOne",
+          "{{count}} tool call · {{names}}",
+          { count, names: namesJoined },
+        );
+      }
       return t(
-        "chat.trajectoryCollapsedToolCallOne",
-        "{{count}} tool call · {{names}}",
+        "chat.trajectoryCollapsedToolCallMany",
+        "{{count}} tool calls · {{names}}",
         { count, names: namesJoined },
       );
-    }
-    return t(
-      "chat.trajectoryCollapsedToolCallMany",
-      "{{count}} tool calls · {{names}}",
-      { count, names: namesJoined },
-    );
-  };
-  const formatTurnSummary = (steps: number, toolCalls: number) =>
-    t(
-      "chat.trajectoryCollapsedTurn",
-      "{{steps}} steps · {{toolCalls}} tool calls",
-      { steps, toolCalls },
-    );
+    },
+    [t],
+  );
+  const formatTurnSummary = useCallback(
+    (steps: number, toolCalls: number) =>
+      t(
+        "chat.trajectoryCollapsedTurn",
+        "{{steps}} steps · {{toolCalls}} tool calls",
+        { steps, toolCalls },
+      ),
+    [t],
+  );
 
   const displayEvents = useMemo(
     () => ensureToolCallParents(events, toolCallOnlyLabel),
@@ -124,7 +136,13 @@ export default function TrajectoryDrawer({
       rows = collapseCallRows(rows, formatCallSummary, collapsedAssistants);
     }
     return rows;
-  }, [displayEvents, collapseTurn, collapsedAssistants, t]);
+  }, [
+    displayEvents,
+    collapseTurn,
+    collapsedAssistants,
+    formatCallSummary,
+    formatTurnSummary,
+  ]);
 
   const searchMatchIds = useMemo(() => {
     if (!query.trim()) return null;

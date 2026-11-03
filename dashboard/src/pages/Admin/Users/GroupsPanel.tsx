@@ -358,7 +358,7 @@ export default function GroupsPanel() {
         .toLowerCase()
         .includes(needle);
     });
-  }, [query, rows, t, usersById]);
+  }, [query, rows, usersById]);
 
   const openCreate = () => {
     setEditing(null);
