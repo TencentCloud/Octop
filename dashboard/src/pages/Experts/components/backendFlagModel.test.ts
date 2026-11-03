@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { backendFlagIcon, resolveBackendFlag } from "./backendFlag";
+import { backendFlagIcon, resolveBackendFlag } from "./backendFlagModel";
 
 const catalog = [
   { name: "prod-cos-bucket", kind: "cos" },
