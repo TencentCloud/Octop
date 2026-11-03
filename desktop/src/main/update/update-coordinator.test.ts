@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 
 import {
+  channelHeadTag,
   manifestFromDownloadsResponse,
   selectRelease,
   platformAssetKey,
@@ -29,6 +30,24 @@ test("platformAssetKey maps platform+arch", () => {
   assert.equal(platformAssetKey("win32", "arm64"), "win_arm");
   assert.equal(platformAssetKey("win32", "x64"), "win_x64");
   assert.equal(platformAssetKey("linux", "x64"), null);
+});
+
+test("channel head stays on stable when stableOnly and beta is higher", () => {
+  assert.equal(channelHeadTag({ client: { stable, beta } }, true), "v1.0.2");
+});
+
+test("channel head is the higher tag when stableOnly is off", () => {
+  assert.equal(channelHeadTag({ client: { stable, beta } }, false), "v1.0.3b1");
+  const release = {
+    ...stable,
+    tag: "v1.0.3",
+  };
+  assert.equal(channelHeadTag({ client: { stable: release, beta } }, false), "v1.0.3");
+});
+
+test("missing channel is a failed check for the head", () => {
+  assert.throws(() => channelHeadTag({ client: {} }, true), /selected channel/);
+  assert.throws(() => channelHeadTag({ client: {} }, false), /selected channel/);
 });
 
 test("stableOnly ignores higher beta", () => {

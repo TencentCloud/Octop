@@ -28,9 +28,11 @@ import { contentTypeFor, isExternalLink, resolveStaticPath } from "./protocol/st
 import { isApiPath, sanitizeForwardHeaders, toBackendUrl } from "./protocol/stream-proxy";
 import { WsRelay } from "./protocol/ws-relay";
 import {
+  channelHeadTag,
   manifestFromDownloadsResponse,
   platformAssetKey,
   selectRelease,
+  type DownloadManifest,
   type SelectedRelease,
 } from "./update/update-coordinator";
 import { downloadToFile } from "./update/download";
@@ -224,16 +226,23 @@ function registerProtocol(staticRootDir: string): void {
   });
 }
 
-async function resolveSelectedRelease(): Promise<SelectedRelease | null> {
+async function fetchUpdateManifest(): Promise<{ manifest: DownloadManifest; stableOnly: boolean }> {
   const settings = settingsStore.load();
   const res = await net.fetch(UPDATE_ENDPOINT, { cache: "no-store" });
   if (!res.ok) throw new Error(`downloads endpoint returned ${res.status}`);
-  const manifest = manifestFromDownloadsResponse(await res.json());
+  return {
+    manifest: manifestFromDownloadsResponse(await res.json()),
+    stableOnly: settings.stableOnly,
+  };
+}
+
+async function resolveSelectedRelease(): Promise<SelectedRelease | null> {
+  const { manifest, stableOnly } = await fetchUpdateManifest();
   return selectRelease(
     manifest,
     appVersion,
     platformAssetKey(process.platform, process.arch),
-    settings.stableOnly,
+    stableOnly,
   );
 }
 
@@ -360,8 +369,15 @@ function registerIpcHandlers(): void {
 
   ipcMain.handle(IPC_CHANNELS.checkForUpdates, async (): Promise<UpdateCheckResult> => {
     try {
-      const selected = await resolveSelectedRelease();
-      if (!selected) return { status: "up-to-date", currentVersion: appVersion, latestVersion: null, error: null };
+      const { manifest, stableOnly } = await fetchUpdateManifest();
+      const platform = platformAssetKey(process.platform, process.arch);
+      // Channel head is what the page shows, even when it is not an upgrade.
+      // The installable selection still has to be newer and carry a local asset.
+      const listed = channelHeadTag(manifest, stableOnly);
+      const selected = selectRelease(manifest, appVersion, platform, stableOnly);
+      if (!selected) {
+        return { status: "up-to-date", currentVersion: appVersion, latestVersion: listed, error: null };
+      }
       return {
         status: "update-available",
         currentVersion: appVersion,

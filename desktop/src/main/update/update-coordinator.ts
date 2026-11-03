@@ -5,7 +5,7 @@
  * exposes exactly one install call, `installUpdate()`, which takes no arguments.
  */
 
-import { isNewer, parseVersion } from "../supervisor/version";
+import { compareVersions, isNewer, parseVersion } from "../supervisor/version";
 
 export interface DownloadAsset {
   name: string;
@@ -68,6 +68,27 @@ export function isValidAssetUrl(url: string): boolean {
   } catch {
     return false;
   }
+}
+
+/**
+ * Highest tag on the channels this check follows.
+ * This is the version the page labels "latest", including when it is not an
+ * upgrade. ``stableOnly`` uses only ``stable``; otherwise the higher of
+ * ``stable`` and ``beta``. A missing channel is a failed check.
+ */
+export function channelHeadTag(manifest: DownloadManifest, stableOnly: boolean): string | null {
+  const client = manifest.client;
+  if (!client) throw new Error("downloads response is missing data.client");
+  const channelMissing = stableOnly ? !client.stable : !client.stable && !client.beta;
+  if (channelMissing) {
+    throw new Error("downloads response is missing the selected channel");
+  }
+  const tags: string[] = [];
+  if (client.stable?.tag) tags.push(client.stable.tag);
+  if (!stableOnly && client.beta?.tag) tags.push(client.beta.tag);
+  const ranked = tags.filter((tag) => parseVersion(tag) !== null);
+  ranked.sort((a, b) => compareVersions(b, a));
+  return ranked[0] ?? null;
 }
 
 /**
