@@ -1,12 +1,19 @@
 ; Taskbar pin is chosen before files are copied. The desktop shortcut is chosen
 ; on the finish page, so installSection must not create it first
 ; (createDesktopShortcut: false). Silent installs still write the .lnk here.
+;
+; electron-builder compiles the uninstaller as a second makensis pass
+; (-DBUILD_UNINSTALLER, warnings are errors). That pass includes this file
+; but does not expand the installer macros, so these Vars must not be
+; allocated there or makensis exits with warning 6001.
+!ifndef BUILD_UNINSTALLER
 Var OctopPinTaskbar
 Var OctopTaskbarCheckbox
 Var OctopTaskbarTitle
 Var OctopTaskbarSubtitle
 Var OctopTaskbarLabel
 Var OctopDesktopLabel
+!endif
 
 !macro customInit
   StrCpy $OctopPinTaskbar 0
