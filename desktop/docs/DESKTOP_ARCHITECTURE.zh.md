@@ -36,8 +36,8 @@ Octop Desktop 每次随壳启动自己的 Python 进程，监听回环地址上�
 ┌───────────────────────────────────────────┐     ┌──────────────────────────────────────┐
 │        Python Sidecar (Octop Server)      │     │      Renderer Process (Dashboard)    │
 │                                           │     │                                      │
-│  - Runtime: $OCTOP_HOME/portable/runtime  │     │  - Origin: octop://app/              │
-│  - Packages: $OCTOP_HOME/portable/packages│     │  - React 18 + TypeScript + Vite      │
+│  - Runtime: install dir, all platforms    │     │  - Origin: octop://app/              │
+│  - Win: resources/sidecar; else portable  │     │  - React 18 + TypeScript + Vite      │
 │  - Entry: launch.py run                   │     │  - sandbox: true                     │
 │  - Loopback API: http://127.0.0.1:<port>  │     │  - contextIsolation: true            │
 │  - FastAPI + Uvicorn + SQLite DB          │     │  - nodeIntegration: false            │
@@ -45,57 +45,58 @@ Octop Desktop 每次随壳启动自己的 Python 进程，监听回环地址上�
 └───────────────────────────────────────────┘     └──────────────────────────────────────┘
 ```
 
-`$OCTOP_HOME` 是数据根目录。进程环境或 macOS / Linux 登录 Shell 里已经设置了非空 `OCTOP_HOME` 时使用该路径；都没有时为 `~/.octop`（Windows 为 `%USERPROFILE%\.octop`）。绿色运行时、数据库、工作区和 `config.json` 都在这个根目录下。
+`$OCTOP_HOME` 是数据根目录。进程环境或 macOS / Linux 登录 Shell 里已经设置了非空 `OCTOP_HOME` 时使用该路径；都没有时为 `~/.octop`（Windows 为 `%USERPROFILE%\.octop`）。数据库、工作区和 `config.json` 都在这个根目录下。三个平台的绿色运行时都在安装目录里。
 
 ---
 
 ## 2. Python 独立便携运行时的分发与解压机制
 
-为了摆脱对宿主系统 Python 环境的依赖，并规避 asar 虚拟文件系统对原生二进制（C-Extensions、DLL、`.so`）的限制，采用**随包携带外置绿色压缩包 + 本地原子解压**方案。
+为了摆脱对宿主系统 Python 环境的依赖，并规避 asar 虚拟文件系统对原生二进制（C-Extensions、DLL、`.so`）的限制，绿色运行时始终放在 asar 外面，并在安装阶段展开。启动时直接使用，不再解压。
 
 ### 2.1 产物打包与放置
 
 - 由 CI / Makefile 打包生成独立的绿色便携包：`Octop-portable-<plat>-<version>.zip`。
-- 打包 Electron 时，将对应平台的 zip 文件放置在安装目录的 `process.resourcesPath` 下（**asar 压缩包外部**）。
-- 内部标准解压结构：
+- **macOS / Linux**：`package.sh` 组装出的目录原样复制到 `resources/portable/`（`launch.py` 在这一层），安装包里不再放 zip。macOS 在签名和公证之前完成；Linux 的 AppImage、deb、rpm 都带上这棵树。DMG 和 AppImage 没有安装脚本，所以不能留到安装时再解压。
+- **Windows**：zip 与 `portable-version.json` 放在 `resources/portable/`。NSIS `customInstall` 用 `tar.exe` 解到 `$INSTDIR\resources\sidecar\`，卸载时删掉这个目录。不把四万多个文件逐个打进 NSIS。
+- 展开后的结构（zip 内层目录名已去掉）：
 
 ```text
-Octop-<platform>/
-  runtime/       # 独立的 CPython 解释器及核心动态库
-  packages/      # 完整的 site-packages 依赖库
-  launch.py      # 服务启动引导脚本
-  start.sh/bat   # 独立启动脚本
+runtime/       # 独立的 CPython 解释器及核心动态库
+packages/      # 完整的 site-packages 依赖库
+launch.py      # 服务启动引导脚本
+start.sh/bat   # 独立启动脚本
 ```
 
-### 2.2 本地运行目录与解压逻辑
+### 2.2 运行目录
 
-1. **存放路径**：数据根目录按 [§3.2](#32-环境变量注入与登录-shell-环境) 解析 `OCTOP_HOME`。绿色运行时解压到 `<OCTOP_HOME>/portable/`，与数据库、工作区放在同一根目录，目录需要可读写、可执行，并在应用升级后保留。
-2. **校验与版本感知**：
-   - 安装包附带 `portable-version.json`，记录与本次 Desktop 发布绑定的版本和 SHA-256 哈希。
-   - 主进程在启动时比对 `<OCTOP_HOME>/portable/version.json`。
-   - 两个文件都使用 `version` 与 `sha256`。`version` 与本次 Desktop 发布的版本号相同。壳在解压并校验成功之后才写入本地文件；写入之前失败不会留下一个更高的版本。
-   - 若版本一致且解释器二进制存在，跳过解压。
-   - 若随包版本更高或文件损坏，在保留 `OCTOP_HOME` 内用户数据的前提下替换运行时目录。
-   - 若本地 `version` 高于随包版本，按 [§2.3](#23-手动覆盖安装旧版) 判定为手动覆盖安装了旧版：保留现有运行时，停止启动，错误提示写出检测到的本地版本。
-   - 替换只发生在壳自己的发布切换之后。Web 里的「检查更新」「立即升级」和 `octop update` 不能替换这个目录。
-3. **平台适配**：
-   - **macOS**：解压完成并校验后，移除隔离属性，避免 Gatekeeper 拦截 `.dylib`：
+启动时按这个顺序找解释器，找到就直接拉起，不再解压：
 
-```bash
-xattr -dr com.apple.quarantine "$OCTOP_HOME/portable/"
-```
+1. `OCTOP_PORTABLE_DIR`（开发时指向已经展开的目录）。
+2. 安装目录里已经展开的树：先看 `resources/sidecar`（Windows 安装器写入），再看 `resources/portable`（macOS 与 Linux 打包时写入）。两者都要同时有 `launch.py` 和解释器；只有 zip 的目录不算。
+3. 都没有时，才把随包 zip 解压到 `<OCTOP_HOME>/portable/`。正式安装包不会走这里。
 
-- **Linux**：赋予解释器执行权限：
+运行时跟安装目录走。升级替换安装目录（macOS 换掉 `.app`，Linux 换掉 AppImage / deb / rpm 里的文件，Windows 由 NSIS 重新解压 `resources\sidecar`）。卸载删掉安装目录里的运行时。`OCTOP_HOME` 里的数据库、工作区、密钥和 `config.json` 保留。以前解压在 `<OCTOP_HOME>/portable/` 的旧副本不再使用，卸载也不删它。
 
-```bash
-chmod +x "$OCTOP_HOME/portable/runtime/bin/python3"
-```
+子进程设置 `PYTHONPYCACHEPREFIX=<OCTOP_HOME>/pyc`，避免把 `.pyc` 写进签名过的 macOS 包、只读的 AppImage，或 Windows / deb 安装目录。
 
-- **Windows**：确保 `pywin32_system32` 下的 `pywintypes*.dll` 正确位于 `runtime\` 根目录，由 `launch.py` 引导以正确处理 `.pth` 文件。
+只有第 3 步的回退路径才做校验与版本感知：
+
+- 安装包附带 `portable-version.json`，记录与本次 Desktop 发布绑定的版本和 SHA-256 哈希。
+- 主进程在启动时比对 `<OCTOP_HOME>/portable/version.json`。
+- 两个文件都使用 `version` 与 `sha256`。`version` 与本次 Desktop 发布的版本号相同。壳在解压并校验成功之后才写入本地文件；写入之前失败不会留下一个更高的版本。
+- 若版本一致且解释器二进制存在，跳过解压。
+- 若随包版本更高或文件损坏，在保留 `OCTOP_HOME` 内用户数据的前提下替换运行时目录。
+- 若本地 `version` 高于随包版本，按 [§2.3](#23-手动覆盖安装旧版) 判定为手动覆盖安装了旧版：保留现有运行时，停止启动，错误提示写出检测到的本地版本。
+- 替换只发生在壳自己的发布切换之后。Web 里的「检查更新」「立即升级」和 `octop update` 不能替换这个目录。
+- 解压后赋予解释器执行权限：`chmod +x "$OCTOP_HOME/portable/runtime/bin/python3"`。
+
+Windows 的 `pywin32_system32` 下的 `pywintypes*.dll` 在打 zip 时复制到 `runtime\`，由 `launch.py` 处理 `.pth`。macOS 运行时在签名前就在包内，公证覆盖这些 Mach-O，不再对 `~/.octop/portable` 做 `xattr -dr`。
 
 ### 2.3 手动覆盖安装旧版
 
-安装器替换的是安装目录里的壳。`<OCTOP_HOME>/portable/` 不在安装目录里，所以用旧安装包覆盖之后，本地 `version.json` 仍是上一次成功解压的版本。壳的更新只会安装更高版本（见 [§6.1](#61-更新检测)）。启动时只要本地版本更高，就按手动覆盖安装旧版处理。典型来源是 Windows 把旧的 NSIS 包装进现有目录、macOS 用旧的 `.app` 覆盖，或 Linux 安装旧的 deb、rpm、改用旧的 AppImage。比较针对已经解析好的那一个 `OCTOP_HOME`。
+正式安装包的运行时在安装目录里，换旧安装包会把运行时一起换掉，不做这个比较。这一节只用于安装目录里没有展开树、退回把 zip 解压到 `<OCTOP_HOME>/portable/` 的启动。
+
+那时安装器替换的是壳，`<OCTOP_HOME>/portable/` 不在安装目录里，所以用旧安装包覆盖之后，本地 `version.json` 仍是上一次成功解压的版本。壳的更新只会安装更高版本（见 [§6.1](#61-更新检测)）。启动时只要本地版本更高，就按手动覆盖安装旧版处理。比较针对已经解析好的那一个 `OCTOP_HOME`。
 
 比较规则与 [§6.1](#61-更新检测) 相同：去掉 `version` 开头的 `v` 后再比。`1.0.3` 高于 `1.0.3b1`，`1.0.3b1` 高于 `1.0.2`。随包版本缺失，或两个版本无法按这个顺序比较时，把本次安装包视为损坏：展示错误并停止启动，同时保留现有 `portable/`。这种情况不记成「本地版本更高」。
 
@@ -145,11 +146,12 @@ chmod +x "$OCTOP_HOME/portable/runtime/bin/python3"
 
 ```ts
 const octopHome = resolveOctopHome(process.env.OCTOP_HOME, loginShellEnv.OCTOP_HOME)
-const portableDir = path.join(octopHome, "portable")
+const portableDir = installedRuntimeDir ?? path.join(octopHome, "portable")
 const env = {
   ...process.env,
   OCTOP_HOME: octopHome,
   PYTHONNOUSERSITE: "1",
+  PYTHONPYCACHEPREFIX: path.join(octopHome, "pyc"),
   OCTOP_GREEN_PACKAGES: path.join(portableDir, "packages"),
   OCTOP_BIND_HOST: "127.0.0.1",
   OCTOP_PORT: String(assignedPort),
@@ -166,7 +168,7 @@ delete env.PYTHONPATH
 2. macOS / Linux 登录 Shell 读到的 `OCTOP_HOME`。Windows 没有这一步，使用用户或系统环境里已经传入的值。
 3. 都没有时为 `path.join(os.homedir(), ".octop")`。
 
-开头的 `~` 按当前用户主目录展开，展开后的路径同时用于解压目录和子进程环境，使壳与 Python 的 `PathLayout.from_env()` 指向同一位置。壳不把这个值写回 `config.json`。
+开头的 `~` 按当前用户主目录展开。展开后的路径是数据根，使壳与 Python 的 `PathLayout.from_env()` 指向同一位置。壳不把这个值写回 `config.json`。三个平台的运行时都不放在这里；只有安装目录里没有展开树时，才把 zip 解压到这个根目录下的 `portable/`。
 
 `assignedPort` 是本次向操作系统申请到的端口。`OCTOP_BIND_HOST` 与 `OCTOP_PORT` 都不写回 `config.json`。
 
@@ -260,7 +262,7 @@ Electron main 入口：执行轻量初始化并获取单实例锁
        ├─────────────────────────────────┐
        ▼                                 ▼
 主进程随壳拉起 Python Sidecar       前端等待 octopDesktopBoot.ready()
-  - 运行时校验（§2.3；本地版本更高则停在本窗口）
+  - 已展开的运行时直接使用；只有回退解压才做 §2.3 校验
   - 申请随机端口并启动进程
   - 轮询本次进程的 /api/health
        │                                 │
@@ -272,8 +274,8 @@ Electron main 入口：执行轻量初始化并获取单实例锁
 
 - Electron 入口模块保持轻量，窗口创建前不加载不必要的重型模块。
 - 窗口位置、尺寸与背景色在创建窗口前读取。
-- 解压目录依赖已经解析的 `OCTOP_HOME`（见 [§3.2](#32-环境变量注入与登录-shell-环境)）。解压和拉起 Python 之前先完成 [§2.3](#23-手动覆盖安装旧版) 的版本比较。本地版本更高时，同一窗口展示错误并停止；错误包含检测到的本地版本。
-- 比较允许解压时，解压可以与登录 Shell 其余环境变量的合并并行。Python 进程在比较通过后随壳启动。
+- 三个平台都使用安装目录里已经展开的运行时，不在启动时解压。只有安装目录里没有这棵树时，解压目录才依赖已经解析的 `OCTOP_HOME`（见 [§3.2](#32-环境变量注入与登录-shell-环境)），并在拉起 Python 之前完成 [§2.3](#23-手动覆盖安装旧版) 的版本比较。本地版本更高时，同一窗口展示错误并停止；错误包含检测到的本地版本。
+- 回退路径上比较允许解压时，解压可以与登录 Shell 其余环境变量的合并并行。Python 进程在比较通过后随壳启动。
 - 其他启动失败也保留同一窗口展示恢复操作，不通过多次导航制造白屏。
 
 ---
@@ -416,7 +418,7 @@ Preload 仅暴露最小类型化桥梁 `window.octopDesktop`：
 1. 锁住 API 准入。新请求返回 `503`，已接纳的请求排空。
 2. 按第 3.4 节要求 Python 进程干净退出：宽限期内退出、退出码为 0。
 3. 把退出交给安装器。安装器在用户上次选定的安装目录里替换壳、前端资源和随包运行时，不改回默认盘符。
-4. 新版本启动后，由壳按 [§2.2](#22-本地运行目录与解压逻辑) 比较版本。随包版本更高时才替换 `<OCTOP_HOME>/portable/`。本地版本更高时按 [§2.3](#23-手动覆盖安装旧版) 停止，保留现有运行时。`OCTOP_HOME` 里的数据库、工作区、密钥和 `config.json` 保留。
+4. 新版本启动后直接使用安装目录里的运行时。Windows 安装器在覆盖文件后重新展开 `resources\sidecar`；macOS 的新 `.app` 和 Linux 的新 AppImage / deb / rpm 里已经是展开的树。`OCTOP_HOME` 里的数据库、工作区、密钥和 `config.json` 保留。
 
 干净退出没有完成时，安装被拒绝。安装失败且 Python 进程已经停过时，壳重新拉起本次进程，并重新加载 `octop://app/`，因为新进程的端口和注入都可能变了。
 
@@ -440,8 +442,8 @@ Windows 安装包使用带目录页的 NSIS 向导，对应 electron-builder 的
 - 用户确认的路径写入安装器的 `$INSTDIR`。开始菜单、桌面快捷方式和卸载登记都指向这个目录。
 - 目标目录所在的盘必须已经就绪，并且安装进程对它有写权限。需要提权时由安装器申请，不因为用户选了非系统盘而失败。
 - 后续壳更新沿用这次写入的安装目录，不把程序装回默认盘。
-- 卸载只删除选定目录中的程序文件和壳登记的快捷方式。`OCTOP_HOME`（未设置时为 `%USERPROFILE%\.octop`）里的数据库、工作区、密钥、`config.json` 和已解压的 `portable/` 保留。
-- 更换安装盘不搬家用户数据。Python 运行时仍解压到 `<OCTOP_HOME>\portable\`，监听端口逻辑与安装位置无关。
+- 卸载删除选定目录中的程序文件、壳登记的快捷方式，以及安装时展开的 `resources\sidecar`。`OCTOP_HOME`（未设置时为 `%USERPROFILE%\.octop`）里的数据库、工作区、密钥和 `config.json` 保留。更早版本解压在该目录下的 `portable/` 也不删除。
+- 更换安装盘会把程序和 Python 运行时一起装到新目录，不搬家用户数据。监听端口与安装位置无关。
 
 ---
 
@@ -558,22 +560,23 @@ query（页面是 `sandbox: true`、无 preload、无 IPC，这是两者唯一�
 1. **构建 Dashboard**：执行仓库已有前端构建流程，生成最新静态产物。
 2. **构建或下载对应平台的 Python 绿色包**：
    - `Octop-portable-<platform>-<version>.zip`
-   - 放置在 `desktop/resources/portable/`。
+   - macOS / Linux：把 `package.sh` 组装好的目录复制到 `desktop/src/resources/portable/`，不把 zip 打进安装包。
+   - Windows：zip 放在 `desktop/src/resources/portable/`，安装时再展开。
 3. **Electron 打包**：
    - macOS：DMG 与 Zip，配置 Developer ID 签名和公证。
    - Windows：带目录页的 NSIS 安装包，允许选择安装位置和盘符，并配置 Authenticode 签名。
    - Linux：electron-builder 的 `linux.target` 固定为 `["AppImage", "deb", "rpm"]`。x64 与 arm64 各发布这三种包；默认安装包是 deb，AppImage 和 rpm 同时发布。 |
 4. **发布前验证**：
    - 在干净用户目录执行首次启动。
-   - 验证运行时解压、setup wizard、健康检查和正常退出。
+   - 验证三个平台首次启动都不再解压。然后验证 setup wizard、健康检查和正常退出。
    - 验证每次启动都拉起自己的进程，并只监听 `127.0.0.1` 上的随机端口。
    - 验证终端里已有的 `octop run` 仍独立运行，桌面端不附着到它。
    - 验证 `config.json` 的 `bind_host` 与 `port` 不被本次启动改写。
    - 验证安装升级后用户数据库、工作区、密钥和 `config.json` 不被覆盖。
-   - 验证手动覆盖安装旧版：本地 `version` 高于随包版本时启动失败；错误提示包含检测到的本地版本和当前随包版本；不启动 Python，保留 `portable/` 与用户数据。本地版本更低时仍按随包版本替换并继续启动。本地文件不存在时按首次解压处理。
+   - 验证换旧安装包时，三个平台的运行时都随安装目录一起换掉。只有安装目录里没有展开树、退回解压到 `OCTOP_HOME` 时，才比较本地 `version` 与随包版本：本地更高则启动失败，错误提示包含检测到的本地版本和当前随包版本，不启动 Python，并保留已解压的 `portable/` 与用户数据。
    - 验证客户端设置作为新增项出现在 Web 设置里，浏览器版不出现这些项；Web 里的应用内升级和 `octop update` 被拒绝，壳、前端和 Python 运行时保持同一发布版本。
    - 验证更新检测由主进程 `GET https://octop.cloud/api/downloads` 完成。「只跟随稳定版」默认开启，此时忽略更高的 `data.client.beta`；关闭后才在稳定版和测试版中选择更高且带有当前平台安装包的版本。已安装测试版高于当前稳定版时不降级，「最新版本」仍显示稳定通道的 tag。
-   - 验证已设置的 `OCTOP_HOME` 被用作数据根目录和解压目录；未设置时才使用 `~/.octop`。macOS / Linux 上，登录 Shell 中的值在 GUI 进程没有该变量时生效，进程环境里已有的值保持不变。
+   - 验证已设置的 `OCTOP_HOME` 被用作数据根目录；未设置时才使用 `~/.octop`。macOS / Linux 上，登录 Shell 中的值在 GUI 进程没有该变量时生效，进程环境里已有的值保持不变。运行时不放在这个目录里。
    - 验证 Windows 安装向导可以把程序装到另一个盘符，升级仍落在该目录，卸载不删除 `OCTOP_HOME`（默认 `%USERPROFILE%\.octop`）。
    - 验证 Windows 和 POSIX 平台均无遗留进程树。
 
@@ -615,7 +618,7 @@ query（页面是 `sandbox: true`、无 preload、无 IPC，这是两者唯一�
 ## 11. 关键决策摘要
 
 1. Electron 只拥有桌面能力，Octop Python 服务继续拥有业务逻辑。
-2. Python 运行时位于 asar 外，并复用现有绿色便携包契约。数据根目录尊重已设置的 `OCTOP_HOME`；未设置时为 `~/.octop`。运行时、数据库、工作区和 `config.json` 都在这个根目录下。
+2. Python 运行时位于 asar 外，并复用现有绿色便携包契约。三个平台都在安装时展开到安装目录。数据根目录尊重已设置的 `OCTOP_HOME`；未设置时为 `~/.octop`。数据库、工作区和 `config.json` 都在这个根目录下。
 3. Desktop 每次随壳启动自己的 Python 进程，退出时只回收这次启动的进程树。
 4. 本次进程监听 `127.0.0.1` 和操作系统分配的随机端口；地址通过环境变量覆盖，不写回 `config.json`。
 5. 就绪信号来自 `/api/health`，不解析日志文本。
@@ -623,4 +626,4 @@ query（页面是 `sandbox: true`、无 preload、无 IPC，这是两者唯一�
 7. 正常退出优先，强制进程树回收仅作为超时兜底。
 8. 桌面更新由壳检测：`GET https://octop.cloud/api/downloads`，用 `data.client.stable` 与 `data.client.beta` 区分稳定版和测试版。用户默认只跟随稳定版，可以关闭该选项以接收测试版。壳、Dashboard 和绿色 Python 运行时同一发布版本。客户端设置加在原有 Web 设置里，不另开壳设置页；桌面进程拒绝 Web 应用内更新。
 9. Windows 安装使用带目录页的 NSIS 向导，用户可以选择安装位置和盘符。升级沿用该目录；用户数据仍在 `OCTOP_HOME`（未设置时为 `%USERPROFILE%\.octop`）。
-10. 手动覆盖安装旧版时，用随包 `portable-version.json` 与 `<OCTOP_HOME>/portable/version.json` 的 `version` 比较。本地版本更高则停止启动，错误提示写出检测到的本地版本，并保留现有运行时与用户数据。
+10. 三个平台的运行时都随安装目录替换。只有退回把 zip 解压到 `OCTOP_HOME` 时，才用随包 `portable-version.json` 与 `<OCTOP_HOME>/portable/version.json` 的 `version` 比较。本地版本更高则停止启动，错误提示写出检测到的本地版本，并保留现有运行时与用户数据。

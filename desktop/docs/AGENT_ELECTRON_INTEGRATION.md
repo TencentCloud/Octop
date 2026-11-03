@@ -27,17 +27,21 @@ Octop-<plat>/
 
 ## Spawn
 
-1. Ship the matching zip with the desktop application. The Electron build copies
-   it through `extraResources` (`resources/portable` → `Contents/Resources/portable`
-   on macOS, `resources/portable` beside the executable on Windows/Linux); the
-   shell does not download it at runtime.
-2. Extract to a writable user directory **outside** `app.asar`.
-3. On macOS, after checksum: `xattr -dr com.apple.quarantine <extractDir>`.
-4. Set `OCTOP_HOME` to Octop's default data dir (`~/.octop`, or `$OCTOP_HOME`
+1. Ship the matching runtime with the desktop application. The shell does not
+   download it at runtime.
+   - macOS and Linux: copy the tree `package.sh` assembled into
+     `resources/portable/` before electron-builder. The zip is not inside the
+     app. macOS is signed and notarized after that copy.
+   - Windows: copy the zip through `extraResources`, then NSIS extracts it
+     with `tar.exe` into `<install>\resources\sidecar\`.
+2. Keep the tree **outside** `app.asar`. First launch uses that tree and does
+   not unzip.
+3. Set `OCTOP_HOME` to Octop's default data dir (`~/.octop`, or `$OCTOP_HOME`
    if already set). Do **not** use the zip's `./data` folder when launching
-   from the Electron shell (`desktop/src`).
-   Extract the zip under `~/.octop/portable/` so runtime files stay next to
-   user data without overwriting `octop.db`.
+   from the Electron shell (`desktop/src`). User data stays there. The runtime
+   does not.
+4. Set `PYTHONPYCACHEPREFIX` to `<OCTOP_HOME>/pyc` so bytecode is not written
+   into the app bundle or the install directory.
 5. Set `PYTHONNOUSERSITE=1` and `OCTOP_GREEN_PACKAGES=<extract>/packages`.
    **Do not set `PYTHONPATH`.**
 

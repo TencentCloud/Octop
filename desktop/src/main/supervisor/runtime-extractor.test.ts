@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { test } from "node:test";
 import AdmZip from "adm-zip";
 
-import { classifyRuntime, extractPortableZip, isSafeSymlinkTarget } from "./runtime-extractor";
+import { classifyRuntime, extractPortableZip, installedRuntimeDir, isSafeSymlinkTarget } from "./runtime-extractor";
 import { compareVersions } from "./version";
 
 const posixOnly = process.platform === "win32" ? { skip: "Unix symlink and mode bits" } : {};
@@ -119,6 +119,37 @@ function statExists(path: string): boolean {
     return false;
   }
 }
+
+test("installedRuntimeDir prefers the Windows install expansion", () => {
+  const root = join("resources");
+  const present = new Set([
+    join(root, "sidecar", "launch.py"),
+    join(root, "sidecar", "runtime", "python.exe"),
+    join(root, "portable", "launch.py"),
+  ]);
+  assert.equal(
+    installedRuntimeDir(root, "win32", (path) => present.has(path)),
+    join(root, "sidecar"),
+  );
+});
+
+test("installedRuntimeDir uses the expanded macOS tree", () => {
+  const root = join("resources");
+  const present = new Set([
+    join(root, "portable", "launch.py"),
+    join(root, "portable", "runtime", "bin", "python3"),
+  ]);
+  assert.equal(
+    installedRuntimeDir(root, "darwin", (path) => present.has(path)),
+    join(root, "portable"),
+  );
+});
+
+test("installedRuntimeDir ignores a directory that only contains the zip", () => {
+  const root = join("resources");
+  const present = new Set([join(root, "portable", "Octop-portable-linux-amd64-1.0.3.zip")]);
+  assert.equal(installedRuntimeDir(root, "linux", (path) => present.has(path)), null);
+});
 
 test("classifyRuntime: local higher stops (manual downgrade)", () => {
   const d = classifyRuntime(

@@ -85,6 +85,9 @@ export default {
     allowToChangeInstallationDirectory: true,
     perMachine: false,
     deleteAppDataOnUninstall: false,
+    // Expands resources/portable/Octop-portable-*.zip into resources/sidecar
+    // with tar.exe. The 40k-file tree is not packed as individual NSIS files.
+    include: "build/installer.nsh",
   },
   linux: {
     target: ["AppImage", "deb", "rpm"],
