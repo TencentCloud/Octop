@@ -66,6 +66,9 @@ describe("nav rail leaves folding to the seam", () => {
       "var(--window-controls-inset-start, 0px)",
     );
     expect(rail.style.paddingLeft).toBe("");
+    expect(
+      container.querySelector(`.${styles.brandMarkCollapsed}`),
+    ).toBeTruthy();
   });
 
   it("keeps the mobile close control in its drawer header", async () => {

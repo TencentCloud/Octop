@@ -3,6 +3,7 @@ import userEvent from "@testing-library/user-event";
 import type { TFunction } from "i18next";
 import { describe, expect, it, vi } from "vitest";
 import SidebarCollapsedIconNav from "./SidebarCollapsedIconNav";
+import styles from "./Sidebar.module.less";
 import type { NavItem } from "./sidebarNav";
 
 /**
@@ -57,8 +58,8 @@ describe("collapsed icon nav", () => {
     );
   });
 
-  it.each([56, 120])(
-    "centers every icon and its active background across a %ipx rail",
+  it.each([56, 68, 120])(
+    "centers a fixed tile, not a full-bleed stripe, across a %ipx rail",
     (railWidth) => {
       const { container } = render(
         <div style={{ width: railWidth }}>
@@ -72,23 +73,20 @@ describe("collapsed icon nav", () => {
           />
         </div>,
       );
-      const rail = container.firstElementChild;
-      expect(rail).toHaveStyle({ width: `${railWidth}px` });
+      const stack = container.querySelector(`.${styles.collapsedNav}`);
+      expect(stack).not.toBeNull();
+      expect(stack?.parentElement).toHaveStyle({ width: `${railWidth}px` });
       for (const name of ["对话", "专家"]) {
         const button = screen.getByRole("button", { name });
-        expect(button.parentElement).toBe(rail);
-        expect(button).toHaveStyle({
-          width: "100%",
-          boxSizing: "border-box",
-          padding: "0px",
-          display: "flex",
-          justifyContent: "center",
-          alignItems: "center",
-        });
+        expect(button.classList.contains(styles.collapsedNavBtn)).toBe(true);
+        expect(button.parentElement).toBe(stack);
       }
       expect(
-        screen.getByRole("button", { name: "对话" }).style.background,
-      ).toBe("var(--fn-sidebar-item-active-bg)");
+        screen.getByRole("button", { name: "对话" }).className,
+      ).toContain(styles.collapsedNavBtnActive);
+      expect(
+        screen.getByRole("button", { name: "专家" }).className,
+      ).not.toContain(styles.collapsedNavBtnActive);
     },
   );
 
