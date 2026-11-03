@@ -16,16 +16,15 @@ import {
 /** Shared in-flight probe so Header + Sidebar mounts don't stampede PyPI. */
 let inFlight: Promise<UpdateStatus | null> | null = null;
 
-/** Shell check → the same status the header icon and update page already share. */
+/**
+ * Shell check → the same status the header icon and update page already share.
+ * ``latestVersion`` is the channel head, including when it is not an upgrade.
+ */
 function statusFromShell(res: DesktopUpdateCheckResult): UpdateStatus {
   const available = res.status === "update-available" && Boolean(res.latestVersion);
   return {
     current_version: res.currentVersion,
-    latest_version: available
-      ? res.latestVersion
-      : res.status === "up-to-date"
-        ? res.currentVersion
-        : null,
+    latest_version: res.latestVersion,
     has_update: available,
     is_editable: false,
     service_mode: null,
