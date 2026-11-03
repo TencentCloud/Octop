@@ -46,6 +46,7 @@ export default {
   mac: {
     target: ["dmg", "zip"],
     category: "public.app-category.productivity",
+    // Full-bleed opaque icns. Transparent corners make Finder draw a gray plate.
     icon: "resources/icon.icns",
     // hardenedRuntime without an entitlement to match is rejected by codesign,
     // so it is only meaningful once there is an identity.
