@@ -1,3 +1,0 @@
-{
-  "renderers": [{ "id": "ip_lookup_card", "tools": ["lookup_ip"] }]
-}
