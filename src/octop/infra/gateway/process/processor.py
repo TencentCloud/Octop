@@ -1122,6 +1122,7 @@ class GlobalProcessor:
         history_tracker = await self._begin_history(agent_id, thread_id, request)
         projection_state = StreamProjectionState()
         try:
+            reply_parts: list[str] = []
             async for ev in project_stream(
                 self._agent_manager,
                 agent_id,
@@ -1140,6 +1141,11 @@ class GlobalProcessor:
                     channel_type=channel_type,
                 ),
             ):
+                if ev.type in (MessageEventType.DELTA, MessageEventType.MESSAGE):
+                    for part in ev.content:
+                        text = getattr(part, "text", None)
+                        if isinstance(text, str) and text:
+                            reply_parts.append(text)
                 yield ev
             stream_ok = True
             hitl_paused = projection_state.hitl_paused
@@ -1184,7 +1190,60 @@ class GlobalProcessor:
                 )
             elif not failure_saved:
                 await self._finish_history(history_tracker, completed=stream_ok and not hitl_paused)
+        if failure_saved:
+            notify_text = message
+        else:
+            notify_text = (
+                "\n".join(p for p in reply_parts if p.strip()) if reply_parts else msg.text
+            )
+        await self._notify_im_turn_activity(
+            channel_type=channel_type,
+            user_id=user_id,
+            agent_id=agent_id,
+            thread_id=thread_id,
+            text=notify_text,
+        )
         yield MessageEvent.completed()
+
+    async def _notify_im_turn_activity(
+        self,
+        *,
+        channel_type: str,
+        user_id: int | None,
+        agent_id: str,
+        thread_id: str,
+        text: str,
+    ) -> None:
+        """Tell Dashboard clients an IM turn just wrote to *thread_id*.
+
+        IM channels never stream through the chat WebSocket, so an open
+        Dashboard session showed nothing — not even the finished turn — until a
+        manual refresh (#2752). Reuse the ``dashboard_push`` frame that cron /
+        proactive turns already emit: clients invalidate the cached history
+        page, refetch and surface the toast. Best effort — a notification
+        failure must never fail the IM turn itself.
+        """
+        gateway = self._gateway
+        if gateway is None or not hasattr(gateway, "notify_thread_activity"):
+            return
+        from octop.infra.gateway.threads import ThreadRegistry  # noqa: PLC0415
+
+        if ThreadRegistry.is_virtual_channel(channel_type):
+            return
+        try:
+            await gateway.notify_thread_activity(
+                user_id=user_id,
+                agent_id=agent_id,
+                thread_id=thread_id,
+                text=text,
+            )
+        except Exception:
+            logger.warning(
+                "dashboard thread-activity notify failed agent=%s thread=%s",
+                agent_id,
+                thread_id,
+                exc_info=True,
+            )
 
     def cancel_agent_stream(self, agent_id: str, thread_id: str) -> None:
         """Signal the harness to stop the active stream (mid-turn steer preemption).

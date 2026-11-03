@@ -511,17 +511,41 @@ class Gateway:
         text: str,
     ) -> None:
         """Fan out a toast payload to the owner's dashboard notification sockets."""
-        if not text.strip():
+        await self.notify_thread_activity(
+            user_id=session.user_id,
+            agent_id=agent_id,
+            thread_id=session.thread_id,
+            text=text,
+        )
+
+    async def notify_thread_activity(
+        self,
+        *,
+        user_id: int | None,
+        agent_id: str,
+        thread_id: str,
+        text: str,
+    ) -> None:
+        """Fan out a ``dashboard_push`` frame for a turn written outside the chat socket.
+
+        Dashboard clients treat the frame as "history is stale": they drop the
+        cached page, refetch it and show the toast. Cron / proactive turns send
+        it via :meth:`notify_dashboard_push`; IM turns have no equivalent, so an
+        open Dashboard session showed nothing until a manual refresh (#2752).
+        """
+        if not text.strip() or not thread_id.strip():
+            return
+        if user_id is None:
             return
         row = self._agent_manager.get_row(agent_id)
         name = getattr(row, "name", None) if row is not None else None
         agent_name = str(name).strip() if isinstance(name, str) and name.strip() else agent_id
         await self._ws_hub.push_to_user(
-            session.user_id,
+            user_id,
             {
                 "type": "dashboard_push",
                 "agent_id": agent_id,
-                "thread_id": session.thread_id,
+                "thread_id": thread_id,
                 "text": text,
                 "agent_name": agent_name,
             },
