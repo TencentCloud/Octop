@@ -80,3 +80,43 @@ def test_resolve_cli_config_key_rejects_app_or_bot_fallback() -> None:
         cli_dirs.resolve_cli_config_key({"app_id": "cli_x", "app_secret": "s"})
     with pytest.raises(ValueError, match="cli_config_key"):
         cli_dirs.resolve_cli_config_key({"bot_id": "botx", "bot_secret": "s"})
+
+
+def _child_emit_utf8(payload: str) -> list[str]:
+    import sys
+
+    script = f"import sys; sys.stdout.buffer.write({payload!r}.encode('utf-8'))"
+    return [sys.executable, "-c", script]
+
+
+def test_run_cli_decodes_child_output_as_utf8_regardless_of_locale() -> None:
+    """The connector CLIs are Node programs that always write UTF-8.
+
+    The parent must therefore pin the child-output codec to UTF-8 instead of
+    inheriting the ANSI locale (cp936 on Chinese Windows), which mojibakes
+    ordinary CJK text.
+    """
+    expected = "邮箱助手完成同步"
+    out = cli_runner.run_cli(_child_emit_utf8(expected))
+    assert out == expected
+
+
+def test_run_cli_survives_emoji_in_child_output() -> None:
+    """Non-BMP characters are invalid GBK sequences: an ANSI-locale decode raises."""
+    expected = "已同步 1 封邮件 \U0001f4e7"
+    out = cli_runner.run_cli(_child_emit_utf8(expected))
+    assert out == expected
+
+
+def test_run_cli_encodes_stdin_as_utf8() -> None:
+    """stdin passed by callers (e.g. secrets, payloads) must reach a UTF-8 CLI as UTF-8."""
+    import sys
+
+    # Echo child: decode stdin as UTF-8 (what a Node CLI does) and re-emit UTF-8.
+    script = "import sys; sys.stdout.buffer.write(sys.stdin.buffer.read().decode('utf-8', 'replace').encode('utf-8'))"
+    secret = "访问密钥🤫123"
+    out = cli_runner.run_cli(
+        [sys.executable, "-c", script],
+        stdin_text=secret,
+    )
+    assert out == secret
