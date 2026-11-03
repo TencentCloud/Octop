@@ -1,0 +1,1 @@
+{"dataset_path":"examples/data/iris.csv","analysis_type":"multinomial","formula":"Species ~ Sepal.Length + Sepal.Width + Petal.Length","outcome":"Species","alpha":0.05,"seed":42,"output_dir":"output/multinomial_iris"}

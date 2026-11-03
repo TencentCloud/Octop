@@ -1,0 +1,12 @@
+{
+  "dataset_path": "examples/data/lung_cancer.csv",
+  "analysis_type": "kaplan_meier",
+  "time_var": "time",
+  "event_var": "status",
+  "group_var": "sex",
+  "time_points": [180, 365, 730],
+  "hypothesis": "Survival differs between male and female lung cancer patients",
+  "alpha": 0.05,
+  "seed": 42,
+  "output_dir": "output/km_lung"
+}

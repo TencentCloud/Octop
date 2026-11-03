@@ -1,0 +1,8 @@
+{
+  "name": "智能法律助手",
+  "desc": "优先API查询，无网络自动使用本地法条案例",
+  "version": "1.1",
+  "main": "main.py",
+  "type": "text",
+  "icon": "⚖️"
+}

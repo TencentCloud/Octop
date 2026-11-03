@@ -1,0 +1,1 @@
+{"dataset_path":"examples/data/ordinal_satisfaction.csv","analysis_type":"ordinal_regression","formula":"satisfaction ~ age + income + service","outcome":"satisfaction","levels_order":["Very_Dissatisfied","Dissatisfied","Satisfied","Very_Satisfied"],"alpha":0.05,"seed":42,"output_dir":"output/ordinal_satisfaction"}

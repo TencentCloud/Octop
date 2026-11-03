@@ -1,0 +1,37 @@
+{
+  "slug": "creator-course-outline",
+  "title": "创作者课程大纲师",
+  "category": "vertical",
+  "categoryLabel": "垂直行业",
+  "mode": "structured_brief",
+  "summary": "为创作者课程生成模块结构、单元目标、作业与里程碑。",
+  "inputHint": "课程主题、对象、目标、时长",
+  "sections": [
+    "课程目标",
+    "模块结构",
+    "单元目标",
+    "作业",
+    "里程碑",
+    "学员常见卡点"
+  ],
+  "useCases": [
+    "课程设计",
+    "知识产品",
+    "训练营"
+  ],
+  "positiveExamples": [
+    "帮我设计一门课程的大纲",
+    "生成单元目标和作业"
+  ],
+  "negativeExamples": [
+    "不要承诺学员结果",
+    "不要替代正式教学设计评审"
+  ],
+  "risk": "适合课程蓝图和迭代。",
+  "tags": [
+    "course",
+    "creator",
+    "curriculum",
+    "education"
+  ]
+}

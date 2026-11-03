@@ -1,0 +1,4 @@
+pymupdf>=4.0.0
+python-docx>=1.1.0
+jieba>=0.42.1
+requests>=2.31.0

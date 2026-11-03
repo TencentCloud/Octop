@@ -77,8 +77,8 @@ src/octop/dashboard/assets/*
 !src/octop/dashboard/.gitkeep
 
 # Ship Meituan pt-passport runtime; override global node_modules/ ignore.
-!src/octop/infra/agents/experts/library/meituan-living-assistant/skills/meituan-deals/scripts/node_modules/
-!src/octop/infra/agents/experts/library/meituan-living-assistant/skills/meituan-deals/scripts/node_modules/**
+!marketplace/experts/meituan-living-assistant/skills/meituan-deals/scripts/node_modules/
+!marketplace/experts/meituan-living-assistant/skills/meituan-deals/scripts/node_modules/**
 
 # Local databases
 *.sqlite

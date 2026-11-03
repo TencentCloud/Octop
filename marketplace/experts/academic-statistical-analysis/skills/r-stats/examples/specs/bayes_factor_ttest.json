@@ -1,0 +1,11 @@
+{
+  "dataset_path": "examples/data/mtcars.csv",
+  "analysis_type": "bayes_factor",
+  "test_type": "ttest",
+  "outcome": "mpg",
+  "group_var": "am",
+  "hypothesis": "Fuel efficiency differs between automatic and manual transmission (Bayesian evidence)",
+  "alpha": 0.05,
+  "seed": 42,
+  "output_dir": "output/bayes_factor_ttest"
+}

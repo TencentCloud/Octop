@@ -1,0 +1,160 @@
+{
+  "id": "finance-business-analysis",
+  "version": "1.0.0",
+  "scene": "finance",
+  "sub_scene": "business-analysis",
+  "label": {
+    "zh": "经营分析专家",
+    "en": "Business Analysis Expert"
+  },
+  "description": {
+    "zh": "从A股上市公司业绩快报数据获取到自动化财务分析、杜邦体系ROE拆解、预算执行差异分析，再到KPI决策仪表盘和智能图表生成的完整经营分析工作流。支持同比环比趋势分析、多维度KPI计算、预算vs实际差异识别和管理层决策简报输出。",
+    "en": "Pull listed-company results, run financial analysis and a DuPont ROE breakdown, explain budget variances, and produce a KPI dashboard and charts."
+  },
+  "welcome_message": {
+    "zh": "我来帮你做「获取经营数据」",
+    "en": "I'll help you with Collect operating data."
+  },
+  "icon_name": "candlestick-chart",
+  "icon_url": "https://cloudcache.tencent-cloud.com/qcloud/tea/app/skillhub/assets/source/ai-buddy-decouple/expert-profiles/finance-business-analysis.v20260625.avif",
+  "color": "#059669",
+  "prompt_files": [
+    "SOUL.md"
+  ],
+  "quick_prompts": [
+    {
+      "title": {
+        "zh": "获取经营数据",
+        "en": "Collect operating data"
+      },
+      "description": {
+        "zh": "查询目标上市公司的业绩快报数据（支持沪深京）",
+        "en": "Earnings-flash data for the target company"
+      },
+      "prompt": {
+        "zh": "请作为「经营分析专家」，帮我完成「获取经营数据」。\n我的情况/目标/材料是：\n",
+        "en": "As the Business Analysis Expert, help me complete “Collect operating data”.\nMy context, goals, or materials are:\n"
+      },
+      "color": "#e8f4ff",
+      "icon_name": "activity"
+    },
+    {
+      "title": {
+        "zh": "自动化数据分析",
+        "en": "Analyze the numbers"
+      },
+      "description": {
+        "zh": "生成数据分析底稿和 KPI 计算结果",
+        "en": "An analysis workbook and KPI calculations"
+      },
+      "prompt": {
+        "zh": "请作为「经营分析专家」，帮我完成「自动化数据分析」。\n我的情况/目标/材料是：\n",
+        "en": "As the Business Analysis Expert, help me complete “Analyze the numbers”.\nMy context, goals, or materials are:\n"
+      },
+      "color": "#fef3c7",
+      "icon_name": "activity"
+    },
+    {
+      "title": {
+        "zh": "杜邦体系深度拆解",
+        "en": "Break down ROE"
+      },
+      "description": {
+        "zh": "生成杜邦分析报告和财务健康度评估",
+        "en": "A DuPont report and a financial-health read"
+      },
+      "prompt": {
+        "zh": "请作为「经营分析专家」，帮我完成「杜邦体系深度拆解」。\n我的情况/目标/材料是：\n",
+        "en": "As the Business Analysis Expert, help me complete “Break down ROE”.\nMy context, goals, or materials are:\n"
+      },
+      "color": "#dcfce7",
+      "icon_name": "activity"
+    },
+    {
+      "title": {
+        "zh": "预算执行差异分析",
+        "en": "Explain budget variances"
+      },
+      "description": {
+        "zh": "生成预算执行差异分析报告",
+        "en": "A budget-versus-actual variance report"
+      },
+      "prompt": {
+        "zh": "请作为「经营分析专家」，帮我完成「预算执行差异分析」。\n我的情况/目标/材料是：\n",
+        "en": "As the Business Analysis Expert, help me complete “Explain budget variances”.\nMy context, goals, or materials are:\n"
+      },
+      "color": "#f1f5f9",
+      "icon_name": "activity"
+    },
+    {
+      "title": {
+        "zh": "KPI 模型与决策仪表盘",
+        "en": "Build the KPI dashboard"
+      },
+      "description": {
+        "zh": "建立业务绩效模型，定义核心 KPI 体系",
+        "en": "A KPI model for management decisions"
+      },
+      "prompt": {
+        "zh": "请作为「经营分析专家」，帮我完成「KPI 模型与决策仪表盘」。\n我的情况/目标/材料是：\n",
+        "en": "As the Business Analysis Expert, help me complete “Build the KPI dashboard”.\nMy context, goals, or materials are:\n"
+      },
+      "color": "#fff1f2",
+      "icon_name": "activity"
+    },
+    {
+      "title": {
+        "zh": "智能图表生成",
+        "en": "Generate charts"
+      },
+      "description": {
+        "zh": "读取分析数据（CSV/Excel/JSON），自动推荐…",
+        "en": "Recommended charts from the analysis data"
+      },
+      "prompt": {
+        "zh": "请作为「经营分析专家」，帮我完成「智能图表生成」。\n我的情况/目标/材料是：\n",
+        "en": "As the Business Analysis Expert, help me complete “Generate charts”.\nMy context, goals, or materials are:\n"
+      },
+      "color": "#eef2ff",
+      "icon_name": "activity"
+    }
+  ],
+  "task_examples": {
+    "zh": [
+      "每天「09:00」帮我完成「获取经营数据」并把结果发给我，任务创建后立即启用",
+      "每个工作日「18:00」帮我完成「自动化数据分析」并把结果发给我",
+      "每周一「10:00」帮我完成「杜邦体系深度拆解」并把结果发给我",
+      "每周五「17:00」帮我完成「预算执行差异分析」并把结果发给我",
+      "每天「08:00」帮我完成「KPI 模型与决策仪表盘」并把结果发给我",
+      "每月 1 日「09:30」帮我完成「智能图表生成」并把结果发给我"
+    ],
+    "en": [
+      "Every day at 09:00, help me complete “Collect operating data” and send the result — enable immediately",
+      "Every weekday at 18:00, help me complete “Analyze the numbers” and send the result",
+      "Every Monday at 10:00, help me complete “Break down ROE” and send the result",
+      "Every Friday at 17:00, help me complete “Explain budget variances” and send the result",
+      "Every day at 08:00, help me complete “Build the KPI dashboard” and send the result",
+      "On the 1st of each month at 09:30, help me complete “Generate charts” and send the result"
+    ]
+  },
+  "source": {
+    "type": "skillhub",
+    "kind": "skillset",
+    "slug": "finance-business-analysis",
+    "scene": "finance",
+    "sub_scene": "business-analysis"
+  },
+  "skillhub": {
+    "slug": "finance-business-analysis",
+    "scene": "finance",
+    "sub_scene": "business-analysis",
+    "skill_slugs": [
+      "test-stock-performance-express",
+      "auto-data-analysis-claw",
+      "financial-roe-analysis",
+      "budget-vs-actual",
+      "business-intelligence",
+      "smart-charts"
+    ]
+  }
+}

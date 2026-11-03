@@ -1,0 +1,1 @@
+{"dataset_path":"examples/data/zero_inflated_counts.csv","analysis_type":"hurdle","formula":"count ~ x1 + x2","outcome":"count","hurdle_dist":"poisson","alpha":0.05,"seed":42,"output_dir":"output/hurdle_counts"}

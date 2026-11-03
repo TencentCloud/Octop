@@ -1,0 +1,160 @@
+{
+  "id": "media-video-editing",
+  "version": "1.0.0",
+  "scene": "media",
+  "sub_scene": "video-editing",
+  "label": {
+    "zh": "视频剪辑专家",
+    "en": "Video Editing Expert"
+  },
+  "description": {
+    "zh": "从AI对话式视频剪切合并与FFmpeg自动精彩片段提取字幕生成、自然语言驱动FFmpeg命令生成（剪辑/裁剪/转换/压缩）与多功能视频编辑（剪切/合并/格式转换/提取音频/添加字幕），到自动生成视频脚本字幕标题与Remotion+React程序化视频创作的完整视频剪辑工作流。覆盖素材处理、智能剪辑、格式转换、程序化创作全链路。",
+    "en": "Video editing workflow covering conversational AI editing, automatic highlight extraction, natural-language FFmpeg operations, multi-purpose editing, script, subtitle and title generation, and programmatic video production with Remotion."
+  },
+  "welcome_message": {
+    "zh": "我来帮你做「AI 对话式视频剪辑」",
+    "en": "I'll help you with Conversational AI Video Editing."
+  },
+  "icon_name": "video",
+  "icon_url": "https://cloudcache.tencent-cloud.com/qcloud/tea/app/skillhub/assets/source/ai-buddy-decouple/expert-profiles/media-video-editing.v20260625.avif",
+  "color": "#db2777",
+  "prompt_files": [
+    "SOUL.md"
+  ],
+  "quick_prompts": [
+    {
+      "title": {
+        "zh": "AI 对话式视频剪辑",
+        "en": "Conversational AI Video Editing"
+      },
+      "description": {
+        "zh": "生成AI 对话式初剪视频",
+        "en": "Editing brief and cut plan"
+      },
+      "prompt": {
+        "zh": "请作为「视频剪辑专家」，帮我完成「AI 对话式视频剪辑」。\n我的情况/目标/材料是：\n",
+        "en": "As the Video Editing Expert, help me complete “Conversational AI Video Editing”.\nMy context, goals, or materials are:\n"
+      },
+      "color": "#e8f4ff",
+      "icon_name": "video"
+    },
+    {
+      "title": {
+        "zh": "自动精彩片段提取",
+        "en": "Automatic Highlight Extraction"
+      },
+      "description": {
+        "zh": "生成精彩片段和字幕烧录视频",
+        "en": "Highlight list and clip map"
+      },
+      "prompt": {
+        "zh": "请作为「视频剪辑专家」，帮我完成「自动精彩片段提取」。\n我的情况/目标/材料是：\n",
+        "en": "As the Video Editing Expert, help me complete “Automatic Highlight Extraction”.\nMy context, goals, or materials are:\n"
+      },
+      "color": "#fef3c7",
+      "icon_name": "video"
+    },
+    {
+      "title": {
+        "zh": "自然语言驱动 FFmpeg",
+        "en": "Natural-Language FFmpeg Editing"
+      },
+      "description": {
+        "zh": "生成FFmpeg 处理后的专业级视频",
+        "en": "FFmpeg edit commands and rendered outputs"
+      },
+      "prompt": {
+        "zh": "请作为「视频剪辑专家」，帮我完成「自然语言驱动 FFmpeg」。\n我的情况/目标/材料是：\n",
+        "en": "As the Video Editing Expert, help me complete “Natural-Language FFmpeg Editing”.\nMy context, goals, or materials are:\n"
+      },
+      "color": "#dcfce7",
+      "icon_name": "terminal"
+    },
+    {
+      "title": {
+        "zh": "多功能视频编辑",
+        "en": "Multi-Purpose Video Editing"
+      },
+      "description": {
+        "zh": "生成精编视频成品",
+        "en": "Edited video draft"
+      },
+      "prompt": {
+        "zh": "请作为「视频剪辑专家」，帮我完成「多功能视频编辑」。\n我的情况/目标/材料是：\n",
+        "en": "As the Video Editing Expert, help me complete “Multi-Purpose Video Editing”.\nMy context, goals, or materials are:\n"
+      },
+      "color": "#f1f5f9",
+      "icon_name": "video"
+    },
+    {
+      "title": {
+        "zh": "脚本字幕标题自动生成",
+        "en": "Script, Subtitle, and Title Generation"
+      },
+      "description": {
+        "zh": "生成视频脚本、字幕和标题文案",
+        "en": "Subtitle files, titles, and publishing copy"
+      },
+      "prompt": {
+        "zh": "请作为「视频剪辑专家」，帮我完成「脚本字幕标题自动生成」。\n我的情况/目标/材料是：\n",
+        "en": "As the Video Editing Expert, help me complete “Script, Subtitle, and Title Generation”.\nMy context, goals, or materials are:\n"
+      },
+      "color": "#fff1f2",
+      "icon_name": "terminal"
+    },
+    {
+      "title": {
+        "zh": "程序化视频创作",
+        "en": "Programmatic Video Creation"
+      },
+      "description": {
+        "zh": "使用 Remotion + React 进行程序化视频…",
+        "en": "Programmatic video project and final render"
+      },
+      "prompt": {
+        "zh": "请作为「视频剪辑专家」，帮我完成「程序化视频创作」。\n我的情况/目标/材料是：\n",
+        "en": "As the Video Editing Expert, help me complete “Programmatic Video Creation”.\nMy context, goals, or materials are:\n"
+      },
+      "color": "#eef2ff",
+      "icon_name": "terminal"
+    }
+  ],
+  "task_examples": {
+    "zh": [
+      "每天「09:00」帮我完成「AI 对话式视频剪辑」并把结果发给我，任务创建后立即启用",
+      "每个工作日「18:00」帮我完成「自动精彩片段提取」并把结果发给我",
+      "每周一「10:00」帮我完成「自然语言驱动 FFmpeg」并把结果发给我",
+      "每周五「17:00」帮我完成「多功能视频编辑」并把结果发给我",
+      "每天「08:00」帮我完成「脚本字幕标题自动生成」并把结果发给我",
+      "每月 1 日「09:30」帮我完成「程序化视频创作」并把结果发给我"
+    ],
+    "en": [
+      "Every day at 09:00, help me complete “Conversational AI Video Editing” and send the result — enable immediately",
+      "Every weekday at 18:00, help me complete “Automatic Highlight Extraction” and send the result",
+      "Every Monday at 10:00, help me complete “Natural-Language FFmpeg Editing” and send the result",
+      "Every Friday at 17:00, help me complete “Multi-Purpose Video Editing” and send the result",
+      "Every day at 08:00, help me complete “Script, Subtitle, and Title Generation” and send the result",
+      "On the 1st of each month at 09:30, help me complete “Programmatic Video Creation” and send the result"
+    ]
+  },
+  "source": {
+    "type": "skillhub",
+    "kind": "skillset",
+    "slug": "media-video-editing",
+    "scene": "media",
+    "sub_scene": "video-editing"
+  },
+  "skillhub": {
+    "slug": "media-video-editing",
+    "scene": "media",
+    "sub_scene": "video-editing",
+    "skill_slugs": [
+      "ai-video-clipper",
+      "video-clip-assistant",
+      "ffmpeg-video-editor",
+      "video-editor",
+      "ai-agentic-video-editor",
+      "remotion-video-toolkit"
+    ]
+  }
+}

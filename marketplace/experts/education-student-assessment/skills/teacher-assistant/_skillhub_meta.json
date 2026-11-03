@@ -1,0 +1,11 @@
+{
+  "name": "teacher-assistant",
+  "slug": "teacher-assistant",
+  "display_name": "教师助手",
+  "version": "1.0.0",
+  "author": "新知绘宇",
+  "description": "教师助手全集Skill。覆盖教师日常教学全流程：教案生成、智能出题、成绩分析、家校沟通、教学总结、作业设计、学生档案、班级管理。内置6个交互式工具、10个实用模板、5份教学参考。触发词：教师、老师、备课、出题、试卷、成绩、学生、班级、作业、家校、评语、教学",
+  "icon": "school",
+  "source": "marketplace",
+  "tags": ["教育", "教师", "备课", "出题", "成绩", "家校沟通", "班主任", "K12"]
+}

@@ -1,0 +1,21 @@
+[
+  {
+    "id": "market-folk-jianchu-cycle",
+    "sourceLevel": "L2-derived-documented",
+    "sourceRef": [
+      {
+        "work": "钦定协纪辨方书",
+        "location": "卷四",
+        "url": "https://zh.wikisource.org/zh-hans/%E6%AC%BD%E5%AE%9A%E5%8D%94%E7%B4%80%E8%BE%A8%E6%96%B9%E6%9B%B8_(%E5%9B%9B%E5%BA%AB%E5%85%A8%E6%9B%B8%E6%9C%AC)/%E5%8D%B704"
+      },
+      {
+        "work": "规则分歧与流派差异（老黄历）",
+        "location": "4) 神煞/建除映射表版本",
+        "url": "skills/lao-huangli/references/rules-and-variants.md"
+      }
+    ],
+    "interpretationType": "derived",
+    "cycle": ["建", "除", "满", "平", "定", "执", "破", "危", "成", "收", "开", "闭"],
+    "notes": "以协纪辨方书的建除起法作为市售挂历版的最小基线。"
+  }
+]

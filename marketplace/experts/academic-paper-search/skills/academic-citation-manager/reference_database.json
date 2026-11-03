@@ -1,0 +1,375 @@
+{
+  "metadata": {
+    "version": "1.0.0",
+    "created_date": "2026-03-01T00:00:00Z",
+    "last_updated": "2026-03-01T00:00:00Z",
+    "schema_version": "1.0",
+    "total_references": 8,
+    "supported_languages": ["zh", "en"],
+    "supported_styles": ["apa", "mla", "chicago", "ieee", "gbt7714", "harvard"]
+  },
+  "references": {
+    "ref_001": {
+      "id": "ref_001",
+      "type": "journal_article",
+      "title": "Deep Learning",
+      "authors": [
+        {
+          "given": "Yann",
+          "family": "LeCun",
+          "sequence": "first"
+        },
+        {
+          "given": "Yoshua",
+          "family": "Bengio",
+          "sequence": "additional"
+        },
+        {
+          "given": "Geoffrey",
+          "family": "Hinton",
+          "sequence": "additional"
+        }
+      ],
+      "container_title": "Nature",
+      "volume": "521",
+      "issue": "7553",
+      "page": "436-444",
+      "published_date": "2015-05-27",
+      "year": 2015,
+      "doi": "10.1038/nature14539",
+      "issn": ["0028-0836", "1476-4687"],
+      "publisher": "Nature Publishing Group",
+      "language": "en",
+      "tags": ["machine learning", "neural networks", "deep learning"],
+      "abstract": "Deep learning allows computational models that are composed of multiple processing layers to learn representations of data with multiple levels of abstraction."
+    },
+    "ref_002": {
+      "id": "ref_002",
+      "type": "book",
+      "title": "Artificial Intelligence: A Modern Approach",
+      "authors": [
+        {
+          "given": "Stuart",
+          "family": "Russell",
+          "sequence": "first"
+        },
+        {
+          "given": "Peter",
+          "family": "Norvig",
+          "sequence": "additional"
+        }
+      ],
+      "container_title": "",
+      "volume": "",
+      "issue": "",
+      "page": "1150",
+      "published_date": "2020-12-01",
+      "year": 2020,
+      "isbn": "9780262046255",
+      "doi": "",
+      "issn": [],
+      "publisher": "Pearson Education",
+      "language": "en",
+      "tags": ["artificial intelligence", "textbook", "reference"],
+      "abstract": "The most comprehensive, up-to-date introduction to the theory and practice of artificial intelligence."
+    },
+    "ref_003": {
+      "id": "ref_003",
+      "type": "journal_article",
+      "title": "Attention Is All You Need",
+      "authors": [
+        {
+          "given": "Ashish",
+          "family": "Vaswani",
+          "sequence": "first"
+        },
+        {
+          "given": "Noam",
+          "family": "Shazeer",
+          "sequence": "additional"
+        },
+        {
+          "given": "Niki",
+          "family": "Parmar",
+          "sequence": "additional"
+        },
+        {
+          "given": "Jakob",
+          "family": "Uszkoreit",
+          "sequence": "additional"
+        },
+        {
+          "given": "Llion",
+          "family": "Jones",
+          "sequence": "additional"
+        },
+        {
+          "given": "Aidan",
+          "family": "Gomez",
+          "sequence": "additional"
+        },
+        {
+          "given": "Łukasz",
+          "family": "Kaiser",
+          "sequence": "additional"
+        }
+      ],
+      "container_title": "NeurIPS",
+      "volume": "30",
+      "issue": "",
+      "page": "5998-6024",
+      "published_date": "2017-12-06",
+      "year": 2017,
+      "doi": "10.5555/2020.FPTR.17450",
+      "issn": ["1049-5258"],
+      "publisher": "Curran Associates",
+      "language": "en",
+      "tags": ["attention mechanism", "transformer", "neural networks", "machine learning"],
+      "abstract": "The dominant sequence transduction models are based on complex recurrent or convolutional neural networks."
+    },
+    "ref_004": {
+      "id": "ref_004",
+      "type": "conference_paper",
+      "title": "BERT: Pre-training of Deep Bidirectional Transformers for Language Understanding",
+      "authors": [
+        {
+          "given": "Jacob",
+          "family": "Devlin",
+          "sequence": "first"
+        },
+        {
+          "given": "Ming-Wei",
+          "family": "Chang",
+          "sequence": "additional"
+        },
+        {
+          "given": "Kenton",
+          "family": "Lee",
+          "sequence": "additional"
+        },
+        {
+          "given": "Kristina",
+          "family": "Toutanova",
+          "sequence": "additional"
+        }
+      ],
+      "container_title": "Proceedings of the 2019 Conference of the North American Chapter of the Association for Computational Linguistics",
+      "volume": "",
+      "issue": "",
+      "page": "4171-4186",
+      "published_date": "2019-06-01",
+      "year": 2019,
+      "doi": "10.18653/v1/2019.naaci-1.1",
+      "issn": [],
+      "publisher": "Association for Computational Linguistics",
+      "language": "en",
+      "tags": ["BERT", "transformer", "NLP", "pre-training"],
+      "abstract": "We introduce a new language representation model called BERT, which stands for Bidirectional Encoder Representations from Transformers."
+    },
+    "ref_005": {
+      "id": "ref_005",
+      "type": "journal_article",
+      "title": "深度学习在自然语言处理中的应用研究",
+      "authors": [
+        {
+          "given": "三",
+          "family": "张",
+          "sequence": "first"
+        },
+        {
+          "given": "四",
+          "family": "李",
+          "sequence": "additional"
+        }
+      ],
+      "container_title": "计算机学报",
+      "volume": "46",
+      "issue": "3",
+      "page": "1-15",
+      "published_date": "2023-03-01",
+      "year": 2023,
+      "doi": "10.3724/SP.J.2023.001234",
+      "issn": ["0254-8389"],
+      "publisher": "中国计算机学会",
+      "language": "zh",
+      "tags": ["深度学习", "自然语言处理", "NLP", "中文文献"],
+      "abstract": "本文研究了深度学习技术在自然语言处理领域的应用现状和发展趋势。"
+    },
+    "ref_006": {
+      "id": "ref_006",
+      "type": "journal_article",
+      "title": "基于卷积神经网络的文本分类方法研究",
+      "authors": [
+        {
+          "given": "伟",
+          "family": "王",
+          "sequence": "first"
+        },
+        {
+          "given": "明",
+          "family": "刘",
+          "sequence": "additional"
+        }
+      ],
+      "container_title": "软件学报",
+      "volume": "42",
+      "issue": "6",
+      "page": "567-579",
+      "published_date": "2021-06-15",
+      "year": 2021,
+      "doi": "10.3724/SP.J.2021.04567",
+      "issn": ["0254-8389"],
+      "publisher": "中国计算机学会",
+      "language": "zh",
+      "tags": ["卷积神经网络", "文本分类", "CNN", "深度学习"],
+      "abstract": "提出了一种基于卷积神经网络的文本分类方法，在多个数据集上取得了良好的效果。"
+    },
+    "ref_007": {
+      "id": "ref_007",
+      "type": "thesis",
+      "title": "多模态深度学习技术研究",
+      "authors": [
+        {
+          "given": "丽",
+          "family": "陈",
+          "sequence": "first"
+        }
+      ],
+      "container_title": "清华大学",
+      "volume": "",
+      "issue": "",
+      "page": "150",
+      "published_date": "2022-05-01",
+      "year": 2022,
+      "doi": "",
+      "issn": [],
+      "publisher": "清华大学",
+      "language": "zh",
+      "tags": ["多模态学习", "深度学习", "学位论文", "博士学位"],
+      "abstract": "本文研究了多模态深度学习技术，提出了新的融合方法和架构设计。"
+    },
+    "ref_008": {
+      "id": "ref_008",
+      "type": "book",
+      "title": "机器学习",
+      "authors": [
+        {
+          "given": "周",
+          "family": "志华",
+          "sequence": "first"
+        },
+        {
+          "given": "王",
+          "family": "亚",
+          "sequence": "additional"
+        }
+      ],
+      "container_title": "",
+      "volume": "",
+      "issue": "",
+      "page": "285",
+      "published_date": "2016-01-01",
+      "year": 2016,
+      "isbn": "9787111390224",
+      "doi": "",
+      "issn": [],
+      "publisher": "清华大学出版社",
+      "language": "zh",
+      "tags": ["机器学习", "教材", "中文图书", "入门教材"],
+      "abstract": "本书系统地介绍了机器学习的基本概念、主要算法和应用案例。"
+    }
+  },
+  "citation_mappings": {
+    "ref_001": [
+      {
+        "document_id": "doc_001",
+        "document_title": "Deep Learning Survey Paper",
+        "positions": [45, 89, 234, 456],
+        "citation_type": "parenthetical",
+        "style": "apa"
+      },
+      {
+        "document_id": "doc_002",
+        "document_title": "Neural Networks Tutorial",
+        "positions": [12, 156, 289],
+        "citation_type": "numeric",
+        "style": "ieee"
+      }
+    ],
+    "ref_002": [
+      {
+        "document_id": "doc_001",
+        "document_title": "AI Textbook Survey",
+        "positions": [78, 201, 345, 523],
+        "citation_type": "author-date",
+        "style": "harvard"
+      }
+    ],
+    "ref_005": [
+      {
+        "document_id": "doc_zh_001",
+        "document_title": "中文文献综述",
+        "positions": [23, 67, 134],
+        "citation_type": "author-date",
+        "style": "gbt7714"
+      }
+    ],
+    "ref_008": [
+      {
+        "document_id": "doc_zh_002",
+        "document_title": "中文教材",
+        "positions": [56, 123, 289, 412],
+        "citation_type": "author-date",
+        "style": "gbt7714"
+      }
+    ]
+  },
+  "statistics": {
+    "total_references": 8,
+    "total_documents": 5,
+    "total_citations": 13,
+    "language_distribution": {
+      "zh": 3,
+      "en": 5
+    },
+    "type_distribution": {
+      "journal_article": 4,
+      "book": 2,
+      "conference_paper": 1,
+      "thesis": 1
+    },
+    "style_usage": {
+      "apa": 2,
+      "ieee": 1,
+      "harvard": 1,
+      "gbt7714": 2
+    },
+    "year_distribution": {
+      "2015": 1,
+      "2016": 1,
+      "2020": 1,
+      "2021": 1,
+      "2022": 1,
+      "2023": 1
+    }
+  },
+  "settings": {
+    "auto_save": true,
+    "auto_backup": true,
+    "backup_interval_hours": 24,
+    "max_cache_size": 10000,
+    "default_style": "apa",
+    "default_language": "zh",
+    "enable_crossref_cache": true,
+    "enable_doi_validation": true,
+    "format_on_export": true,
+    "include_abstract_in_bib": false,
+    "include_url_in_bib": true,
+    "abbreviate_journal_names": false,
+    "use_et_al_for_multiple_authors": true,
+    "max_authors_in_citation": 3,
+    "sort_bibliography_by": "alphabetical",
+    "use_ibid_for_consecutive": false,
+    "disambiguate_same_author_same_year": true
+  }
+}

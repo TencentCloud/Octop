@@ -1,0 +1,15 @@
+{
+  "dataset_path": "examples/data/mtcars.csv",
+  "analysis_type": "ttest",
+  "outcome": "mpg",
+  "predictors": null,
+  "formula": null,
+  "group_var": "am",
+  "hypothesis": "Manual and automatic transmission cars differ in fuel efficiency",
+  "missing_strategy": "complete_case",
+  "equal_var": false,
+  "paired": false,
+  "alpha": 0.05,
+  "seed": 42,
+  "output_dir": "output/ttest_mtcars"
+}

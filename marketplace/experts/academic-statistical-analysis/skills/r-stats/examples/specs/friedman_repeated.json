@@ -1,0 +1,12 @@
+{
+  "dataset_path": "examples/data/friedman_repeated.csv",
+  "analysis_type": "friedman",
+  "outcome": "score",
+  "group_var": "condition",
+  "id_var": "subject",
+  "hypothesis": "Scores differ across conditions A, B, and C",
+  "p_adjust_method": "holm",
+  "alpha": 0.05,
+  "seed": 42,
+  "output_dir": "output/friedman_repeated"
+}

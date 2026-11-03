@@ -1,0 +1,30 @@
+{
+  "name": "health-manager",
+  "version": "1.0.0",
+  "description": "综合健康数据管理系统 - 记录和分析血压、心率、运动等健康数据",
+  "main": "dist/index.js",
+  "bin": {
+    "health": "dist/cli.js"
+  },
+  "scripts": {
+    "build": "tsc",
+    "dev": "ts-node src/cli.ts",
+    "start": "node dist/cli.js"
+  },
+  "keywords": ["health", "blood-pressure", "fitness", "medication", "tracking"],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "commander": "^11.1.0",
+    "better-sqlite3": "^9.4.3",
+    "chalk": "^4.1.2",
+    "date-fns": "^3.3.1",
+    "table": "^6.8.1"
+  },
+  "devDependencies": {
+    "@types/better-sqlite3": "^7.6.9",
+    "@types/node": "^20.11.0",
+    "typescript": "^5.3.3",
+    "ts-node": "^10.9.2"
+  }
+}

@@ -1,0 +1,1074 @@
+{
+  "skill_id": "nursing-theory-matcher",
+  "version": "4.0.0",
+  "language": "zh-CN",
+  "description": "v4 大而全版护理研究理论/框架/模型/方法论结构化目录。",
+  "meta": {
+    "total_entries": 81,
+    "categories": [
+      "classic_nursing_theory",
+      "health_behavior",
+      "health_services_quality",
+      "implementation_science",
+      "middle_range_nursing_theory",
+      "qualitative_methodology",
+      "self_management",
+      "symptom_science"
+    ]
+  },
+  "theories": [
+    {
+      "id": "orem_scdnt",
+      "name_zh": "Orem自理缺陷理论",
+      "name_en": "Orem's Self-Care Deficit Nursing Theory",
+      "abbr": "SCDNT",
+      "category": "classic_nursing_theory",
+      "keywords_zh": [
+        "自理",
+        "自理缺陷",
+        "护理支持系统"
+      ],
+      "summary_zh": "适用于自理、自理缺陷、护理支持系统相关护理研究。"
+    },
+    {
+      "id": "roy_adaptation_model",
+      "name_zh": "Roy适应模式",
+      "name_en": "Roy Adaptation Model",
+      "abbr": "RAM",
+      "category": "classic_nursing_theory",
+      "keywords_zh": [
+        "适应",
+        "调整",
+        "角色功能"
+      ],
+      "summary_zh": "适用于适应、调整、角色功能相关护理研究。"
+    },
+    {
+      "id": "neuman_systems_model",
+      "name_zh": "Neuman系统模式",
+      "name_en": "Neuman Systems Model",
+      "abbr": "NSM",
+      "category": "classic_nursing_theory",
+      "keywords_zh": [
+        "压力源",
+        "系统",
+        "预防"
+      ],
+      "summary_zh": "适用于压力源、系统、预防相关护理研究。"
+    },
+    {
+      "id": "king_goal_attainment",
+      "name_zh": "King目标达成理论",
+      "name_en": "King's Theory of Goal Attainment",
+      "abbr": "TGA",
+      "category": "classic_nursing_theory",
+      "keywords_zh": [
+        "目标达成",
+        "共同决策",
+        "互动"
+      ],
+      "summary_zh": "适用于目标达成、共同决策、互动相关护理研究。"
+    },
+    {
+      "id": "peplau_interpersonal",
+      "name_zh": "Peplau人际关系理论",
+      "name_en": "Peplau's Interpersonal Relations Theory",
+      "abbr": "IRT",
+      "category": "classic_nursing_theory",
+      "keywords_zh": [
+        "治疗性关系",
+        "沟通",
+        "互动"
+      ],
+      "summary_zh": "适用于治疗性关系、沟通、互动相关护理研究。"
+    },
+    {
+      "id": "watson_human_caring",
+      "name_zh": "Watson人文关怀理论",
+      "name_en": "Watson's Theory of Human Caring",
+      "abbr": "THC",
+      "category": "classic_nursing_theory",
+      "keywords_zh": [
+        "关怀",
+        "人文照护",
+        "照护体验"
+      ],
+      "summary_zh": "适用于关怀、人文照护、照护体验相关护理研究。"
+    },
+    {
+      "id": "leininger_transcultural",
+      "name_zh": "Leininger跨文化护理理论",
+      "name_en": "Leininger's Transcultural Nursing Theory",
+      "abbr": "TNT",
+      "category": "classic_nursing_theory",
+      "keywords_zh": [
+        "跨文化",
+        "文化照护",
+        "文化适配"
+      ],
+      "summary_zh": "适用于跨文化、文化照护、文化适配相关护理研究。"
+    },
+    {
+      "id": "henderson_need_theory",
+      "name_zh": "Henderson基本需要理论",
+      "name_en": "Henderson's Need Theory",
+      "abbr": "Need Theory",
+      "category": "classic_nursing_theory",
+      "keywords_zh": [
+        "基本需要",
+        "功能独立",
+        "基础护理"
+      ],
+      "summary_zh": "适用于基本需要、功能独立、基础护理相关护理研究。"
+    },
+    {
+      "id": "johnson_behavioral_system",
+      "name_zh": "Johnson行为系统模式",
+      "name_en": "Johnson's Behavioral System Model",
+      "abbr": "BSM",
+      "category": "classic_nursing_theory",
+      "keywords_zh": [
+        "行为系统",
+        "亚系统",
+        "平衡"
+      ],
+      "summary_zh": "适用于行为系统、亚系统、平衡相关护理研究。"
+    },
+    {
+      "id": "levine_conservation",
+      "name_zh": "Levine保存理论",
+      "name_en": "Levine's Conservation Model",
+      "abbr": "Conservation",
+      "category": "classic_nursing_theory",
+      "keywords_zh": [
+        "保存",
+        "恢复",
+        "能量"
+      ],
+      "summary_zh": "适用于保存、恢复、能量相关护理研究。"
+    },
+    {
+      "id": "rogers_unitary_human_beings",
+      "name_zh": "Rogers整体人类科学",
+      "name_en": "Science of Unitary Human Beings",
+      "abbr": "SUHB",
+      "category": "classic_nursing_theory",
+      "keywords_zh": [
+        "整体性",
+        "能量场",
+        "模式"
+      ],
+      "summary_zh": "适用于整体性、能量场、模式相关护理研究。"
+    },
+    {
+      "id": "parse_human_becoming",
+      "name_zh": "Parse人类生成理论",
+      "name_en": "Parse's Human Becoming Theory",
+      "abbr": "HBT",
+      "category": "classic_nursing_theory",
+      "keywords_zh": [
+        "意义",
+        "存在体验",
+        "共同创造"
+      ],
+      "summary_zh": "适用于意义、存在体验、共同创造相关护理研究。"
+    },
+    {
+      "id": "newman_health_expanding_consciousness",
+      "name_zh": "Newman健康扩展意识理论",
+      "name_en": "Health as Expanding Consciousness",
+      "abbr": "HEC",
+      "category": "classic_nursing_theory",
+      "keywords_zh": [
+        "扩展意识",
+        "生命历程",
+        "模式识别"
+      ],
+      "summary_zh": "适用于扩展意识、生命历程、模式识别相关护理研究。"
+    },
+    {
+      "id": "orlando_nursing_process",
+      "name_zh": "Orlando护理过程理论",
+      "name_en": "Orlando's Nursing Process Theory",
+      "abbr": "NPT-Orlando",
+      "category": "classic_nursing_theory",
+      "keywords_zh": [
+        "护理过程",
+        "即时反应",
+        "需求识别"
+      ],
+      "summary_zh": "适用于护理过程、即时反应、需求识别相关护理研究。"
+    },
+    {
+      "id": "travelbee_human_to_human",
+      "name_zh": "Travelbee人对人关系模型",
+      "name_en": "Travelbee's Human-to-Human Relationship Model",
+      "abbr": "HHRM",
+      "category": "classic_nursing_theory",
+      "keywords_zh": [
+        "共情",
+        "苦难",
+        "意义"
+      ],
+      "summary_zh": "适用于共情、苦难、意义相关护理研究。"
+    },
+    {
+      "id": "kolcaba_comfort",
+      "name_zh": "Kolcaba舒适理论",
+      "name_en": "Kolcaba's Comfort Theory",
+      "abbr": "Comfort",
+      "category": "middle_range_nursing_theory",
+      "keywords_zh": [
+        "舒适",
+        "安宁",
+        "舒适护理"
+      ],
+      "summary_zh": "适用于舒适、安宁、舒适护理相关护理研究。"
+    },
+    {
+      "id": "swanson_caring",
+      "name_zh": "Swanson关怀理论",
+      "name_en": "Swanson's Theory of Caring",
+      "abbr": "Caring",
+      "category": "middle_range_nursing_theory",
+      "keywords_zh": [
+        "关怀",
+        "支持",
+        "产科"
+      ],
+      "summary_zh": "适用于关怀、支持、产科相关护理研究。"
+    },
+    {
+      "id": "mercer_maternal_role",
+      "name_zh": "Mercer母亲角色获得理论",
+      "name_en": "Mercer's Maternal Role Attainment / Becoming a Mother",
+      "abbr": "MRA/BAM",
+      "category": "middle_range_nursing_theory",
+      "keywords_zh": [
+        "母亲角色",
+        "产后适应",
+        "妇幼"
+      ],
+      "summary_zh": "适用于母亲角色、产后适应、妇幼相关护理研究。"
+    },
+    {
+      "id": "benner_novice_expert",
+      "name_zh": "Benner从新手到专家",
+      "name_en": "Benner's Novice to Expert Model",
+      "abbr": "N2E",
+      "category": "middle_range_nursing_theory",
+      "keywords_zh": [
+        "新手到专家",
+        "临床能力",
+        "护理教育"
+      ],
+      "summary_zh": "适用于新手到专家、临床能力、护理教育相关护理研究。"
+    },
+    {
+      "id": "roper_logan_tierney",
+      "name_zh": "Roper-Logan-Tierney生活活动模式",
+      "name_en": "Roper-Logan-Tierney Model of Living",
+      "abbr": "RLT",
+      "category": "classic_nursing_theory",
+      "keywords_zh": [
+        "生活活动",
+        "ADL",
+        "功能独立"
+      ],
+      "summary_zh": "适用于生活活动、ADL、功能独立相关护理研究。"
+    },
+    {
+      "id": "ssmf_chc",
+      "name_zh": "复杂健康状况个体症状自我管理框架",
+      "name_en": "Symptom Self-Management Framework for Individuals with Complex Health Conditions",
+      "abbr": "SSMF-CHC",
+      "category": "symptom_science",
+      "keywords_zh": [
+        "症状自我管理",
+        "复杂健康状况",
+        "症状负担"
+      ],
+      "summary_zh": "适用于症状自我管理、复杂健康状况、症状负担相关护理研究。"
+    },
+    {
+      "id": "symptom_management_theory",
+      "name_zh": "症状管理理论",
+      "name_en": "Symptom Management Theory",
+      "abbr": "SMT",
+      "category": "symptom_science",
+      "keywords_zh": [
+        "症状体验",
+        "症状管理",
+        "症状干预"
+      ],
+      "summary_zh": "适用于症状体验、症状管理、症状干预相关护理研究。"
+    },
+    {
+      "id": "theory_of_unpleasant_symptoms",
+      "name_zh": "不愉快症状理论",
+      "name_en": "Theory of Unpleasant Symptoms",
+      "abbr": "TOUS",
+      "category": "symptom_science",
+      "keywords_zh": [
+        "症状群",
+        "多症状",
+        "功能表现"
+      ],
+      "summary_zh": "适用于症状群、多症状、功能表现相关护理研究。"
+    },
+    {
+      "id": "theory_of_symptom_self_management",
+      "name_zh": "症状自我管理理论",
+      "name_en": "Theory of Symptom Self-Management",
+      "abbr": "TSSM",
+      "category": "symptom_science",
+      "keywords_zh": [
+        "症状自我管理",
+        "自我效能",
+        "功能表现"
+      ],
+      "summary_zh": "适用于症状自我管理、自我效能、功能表现相关护理研究。"
+    },
+    {
+      "id": "self_care_chronic_illness",
+      "name_zh": "慢性病自我照护中层理论",
+      "name_en": "Middle-Range Theory of Self-Care of Chronic Illness",
+      "abbr": "SC-CI",
+      "category": "self_management",
+      "keywords_zh": [
+        "自我照护",
+        "慢病",
+        "自我监测"
+      ],
+      "summary_zh": "适用于自我照护、慢病、自我监测相关护理研究。"
+    },
+    {
+      "id": "ifsmt",
+      "name_zh": "个体与家庭自我管理理论",
+      "name_en": "Individual and Family Self-Management Theory",
+      "abbr": "IFSMT",
+      "category": "self_management",
+      "keywords_zh": [
+        "个体与家庭自我管理",
+        "过程",
+        "结局"
+      ],
+      "summary_zh": "适用于个体与家庭自我管理、过程、结局相关护理研究。"
+    },
+    {
+      "id": "self_family_management",
+      "name_zh": "自我与家庭管理框架/慢性病自我与家庭管理中层理论",
+      "name_en": "Self- and Family Management Framework / Middle Range Theory of Self- and Family Management of Chronic Illness",
+      "abbr": "SFMF",
+      "category": "self_management",
+      "keywords_zh": [
+        "家庭支持",
+        "共同管理",
+        "居家照护"
+      ],
+      "summary_zh": "适用于家庭支持、共同管理、居家照护相关护理研究。"
+    },
+    {
+      "id": "chronic_care_model",
+      "name_zh": "慢性病照护模型",
+      "name_en": "Chronic Care Model",
+      "abbr": "CCM",
+      "category": "self_management",
+      "keywords_zh": [
+        "慢性病照护",
+        "自我管理支持",
+        "临床信息系统"
+      ],
+      "summary_zh": "适用于慢性病照护、自我管理支持、临床信息系统相关护理研究。"
+    },
+    {
+      "id": "iccc_framework",
+      "name_zh": "慢性病创新照护框架",
+      "name_en": "Innovative Care for Chronic Conditions Framework",
+      "abbr": "ICCC",
+      "category": "self_management",
+      "keywords_zh": [
+        "创新照护",
+        "卫生系统",
+        "政策环境"
+      ],
+      "summary_zh": "适用于创新照护、卫生系统、政策环境相关护理研究。"
+    },
+    {
+      "id": "self_care_matrix",
+      "name_zh": "自我照护矩阵",
+      "name_en": "Self-Care Matrix",
+      "abbr": "SCM",
+      "category": "self_management",
+      "keywords_zh": [
+        "自我照护",
+        "行为分类",
+        "环境支持"
+      ],
+      "summary_zh": "适用于自我照护、行为分类、环境支持相关护理研究。"
+    },
+    {
+      "id": "nih_symptom_science_model",
+      "name_zh": "NIH症状科学模型",
+      "name_en": "NIH Symptom Science Model",
+      "abbr": "NIH-SSM",
+      "category": "symptom_science",
+      "keywords_zh": [
+        "症状表型",
+        "生物标志物",
+        "精准护理"
+      ],
+      "summary_zh": "适用于症状表型、生物标志物、精准护理相关护理研究。"
+    },
+    {
+      "id": "symptom_science_model_2",
+      "name_zh": "症状科学模型2.0",
+      "name_en": "Symptom Science Model 2.0",
+      "abbr": "SSM 2.0",
+      "category": "symptom_science",
+      "keywords_zh": [
+        "社会决定因素",
+        "患者体验",
+        "群体健康"
+      ],
+      "summary_zh": "适用于社会决定因素、患者体验、群体健康相关护理研究。"
+    },
+    {
+      "id": "caregiving_science_framework",
+      "name_zh": "照护科学框架",
+      "name_en": "Caregiving Science Framework",
+      "abbr": "Caregiving",
+      "category": "self_management",
+      "keywords_zh": [
+        "照护者",
+        "照护负担",
+        "支持资源"
+      ],
+      "summary_zh": "适用于照护者、照护负担、支持资源相关护理研究。"
+    },
+    {
+      "id": "meleis_transitions",
+      "name_zh": "Meleis转变理论",
+      "name_en": "Meleis' Transitions Theory",
+      "abbr": "Transitions Theory",
+      "category": "middle_range_nursing_theory",
+      "keywords_zh": [
+        "转衔",
+        "角色转变",
+        "过渡期"
+      ],
+      "summary_zh": "适用于转衔、角色转变、过渡期相关护理研究。"
+    },
+    {
+      "id": "mishel_uncertainty",
+      "name_zh": "Mishel疾病不确定性理论",
+      "name_en": "Mishel's Uncertainty in Illness Theory",
+      "abbr": "UIT",
+      "category": "middle_range_nursing_theory",
+      "keywords_zh": [
+        "不确定感",
+        "预后",
+        "决策困境"
+      ],
+      "summary_zh": "适用于不确定感、预后、决策困境相关护理研究。"
+    },
+    {
+      "id": "illness_trajectory_framework",
+      "name_zh": "疾病轨迹框架",
+      "name_en": "Illness Trajectory Framework",
+      "abbr": "ITF",
+      "category": "middle_range_nursing_theory",
+      "keywords_zh": [
+        "疾病轨迹",
+        "阶段性变化",
+        "长期历程"
+      ],
+      "summary_zh": "适用于疾病轨迹、阶段性变化、长期历程相关护理研究。"
+    },
+    {
+      "id": "stress_coping_theory",
+      "name_zh": "压力与应对理论",
+      "name_en": "Stress and Coping Theory",
+      "abbr": "Stress-Coping",
+      "category": "health_behavior",
+      "keywords_zh": [
+        "压力",
+        "应对",
+        "适应"
+      ],
+      "summary_zh": "适用于压力、应对、适应相关护理研究。"
+    },
+    {
+      "id": "resilience_framework",
+      "name_zh": "韧性框架",
+      "name_en": "Resilience Framework",
+      "abbr": "Resilience",
+      "category": "health_behavior",
+      "keywords_zh": [
+        "韧性",
+        "逆境适应",
+        "恢复"
+      ],
+      "summary_zh": "适用于韧性、逆境适应、恢复相关护理研究。"
+    },
+    {
+      "id": "social_support_theory",
+      "name_zh": "社会支持理论",
+      "name_en": "Social Support Theory",
+      "abbr": "Social Support",
+      "category": "health_behavior",
+      "keywords_zh": [
+        "社会支持",
+        "支持网络",
+        "家庭支持"
+      ],
+      "summary_zh": "适用于社会支持、支持网络、家庭支持相关护理研究。"
+    },
+    {
+      "id": "protection_motivation_theory",
+      "name_zh": "保护动机理论",
+      "name_en": "Protection Motivation Theory",
+      "abbr": "PMT",
+      "category": "health_behavior",
+      "keywords_zh": [
+        "风险感知",
+        "保护行为",
+        "依从性"
+      ],
+      "summary_zh": "适用于风险感知、保护行为、依从性相关护理研究。"
+    },
+    {
+      "id": "self_efficacy",
+      "name_zh": "自我效能理论",
+      "name_en": "Self-Efficacy Theory / Social Cognitive Theory",
+      "abbr": "SET/SCT",
+      "category": "health_behavior",
+      "keywords_zh": [
+        "自我效能",
+        "执行能力",
+        "行为维持"
+      ],
+      "summary_zh": "适用于自我效能、执行能力、行为维持相关护理研究。"
+    },
+    {
+      "id": "health_belief_model",
+      "name_zh": "健康信念模型",
+      "name_en": "Health Belief Model",
+      "abbr": "HBM",
+      "category": "health_behavior",
+      "keywords_zh": [
+        "易感性",
+        "严重性",
+        "收益与障碍"
+      ],
+      "summary_zh": "适用于易感性、严重性、收益与障碍相关护理研究。"
+    },
+    {
+      "id": "theory_of_planned_behavior",
+      "name_zh": "计划行为理论",
+      "name_en": "Theory of Planned Behavior",
+      "abbr": "TPB",
+      "category": "health_behavior",
+      "keywords_zh": [
+        "行为意向",
+        "主观规范",
+        "知觉行为控制"
+      ],
+      "summary_zh": "适用于行为意向、主观规范、知觉行为控制相关护理研究。"
+    },
+    {
+      "id": "theory_of_reasoned_action",
+      "name_zh": "理性行为理论",
+      "name_en": "Theory of Reasoned Action",
+      "abbr": "TRA",
+      "category": "health_behavior",
+      "keywords_zh": [
+        "态度",
+        "主观规范",
+        "行为意向"
+      ],
+      "summary_zh": "适用于态度、主观规范、行为意向相关护理研究。"
+    },
+    {
+      "id": "transtheoretical_model",
+      "name_zh": "跨理论模型/行为改变阶段模型",
+      "name_en": "Transtheoretical Model",
+      "abbr": "TTM",
+      "category": "health_behavior",
+      "keywords_zh": [
+        "行为改变阶段",
+        "准备度",
+        "维持"
+      ],
+      "summary_zh": "适用于行为改变阶段、准备度、维持相关护理研究。"
+    },
+    {
+      "id": "pender_hpm",
+      "name_zh": "Pender健康促进模型",
+      "name_en": "Pender's Health Promotion Model",
+      "abbr": "HPM",
+      "category": "health_behavior",
+      "keywords_zh": [
+        "健康促进",
+        "生活方式",
+        "社区护理"
+      ],
+      "summary_zh": "适用于健康促进、生活方式、社区护理相关护理研究。"
+    },
+    {
+      "id": "socioecological_model",
+      "name_zh": "社会生态模型",
+      "name_en": "Socioecological Model",
+      "abbr": "SEM",
+      "category": "health_behavior",
+      "keywords_zh": [
+        "多层级",
+        "环境",
+        "政策"
+      ],
+      "summary_zh": "适用于多层级、环境、政策相关护理研究。"
+    },
+    {
+      "id": "self_determination_theory",
+      "name_zh": "自我决定理论",
+      "name_en": "Self-Determination Theory",
+      "abbr": "SDT",
+      "category": "health_behavior",
+      "keywords_zh": [
+        "自主性",
+        "胜任感",
+        "关系性"
+      ],
+      "summary_zh": "适用于自主性、胜任感、关系性相关护理研究。"
+    },
+    {
+      "id": "common_sense_model",
+      "name_zh": "疾病表征共同感模型",
+      "name_en": "Common-Sense Model of Self-Regulation",
+      "abbr": "CSM/SRM",
+      "category": "health_behavior",
+      "keywords_zh": [
+        "疾病表征",
+        "自我调节",
+        "情绪表征"
+      ],
+      "summary_zh": "适用于疾病表征、自我调节、情绪表征相关护理研究。"
+    },
+    {
+      "id": "andersen_health_service_use",
+      "name_zh": "Andersen卫生服务利用模型",
+      "name_en": "Andersen Behavioral Model of Health Services Use",
+      "abbr": "ABM",
+      "category": "health_services_quality",
+      "keywords_zh": [
+        "卫生服务利用",
+        "可及性",
+        "需求因素"
+      ],
+      "summary_zh": "适用于卫生服务利用、可及性、需求因素相关护理研究。"
+    },
+    {
+      "id": "precaution_adoption_process",
+      "name_zh": "预防采纳过程模型",
+      "name_en": "Precaution Adoption Process Model",
+      "abbr": "PAPM",
+      "category": "health_behavior",
+      "keywords_zh": [
+        "风险预防",
+        "决策过程",
+        "筛查"
+      ],
+      "summary_zh": "适用于风险预防、决策过程、筛查相关护理研究。"
+    },
+    {
+      "id": "information_motivation_behavioral_skills",
+      "name_zh": "信息-动机-行为技能模型",
+      "name_en": "Information-Motivation-Behavioral Skills Model",
+      "abbr": "IMB",
+      "category": "health_behavior",
+      "keywords_zh": [
+        "信息",
+        "动机",
+        "行为技能"
+      ],
+      "summary_zh": "适用于信息、动机、行为技能相关护理研究。"
+    },
+    {
+      "id": "com_b",
+      "name_zh": "COM-B行为系统模型",
+      "name_en": "Capability-Opportunity-Motivation-Behavior Model",
+      "abbr": "COM-B",
+      "category": "implementation_science",
+      "keywords_zh": [
+        "能力",
+        "机会",
+        "动机"
+      ],
+      "summary_zh": "适用于能力、机会、动机相关护理研究。"
+    },
+    {
+      "id": "tdf",
+      "name_zh": "理论域框架",
+      "name_en": "Theoretical Domains Framework",
+      "abbr": "TDF",
+      "category": "implementation_science",
+      "keywords_zh": [
+        "理论域",
+        "实施障碍",
+        "行为改变"
+      ],
+      "summary_zh": "适用于理论域、实施障碍、行为改变相关护理研究。"
+    },
+    {
+      "id": "behavior_change_wheel",
+      "name_zh": "行为改变轮",
+      "name_en": "Behavior Change Wheel",
+      "abbr": "BCW",
+      "category": "implementation_science",
+      "keywords_zh": [
+        "干预功能",
+        "政策支持",
+        "行为目标"
+      ],
+      "summary_zh": "适用于干预功能、政策支持、行为目标相关护理研究。"
+    },
+    {
+      "id": "cfir",
+      "name_zh": "实施研究综合框架",
+      "name_en": "Consolidated Framework for Implementation Research",
+      "abbr": "CFIR",
+      "category": "implementation_science",
+      "keywords_zh": [
+        "外部环境",
+        "内部环境",
+        "实施过程"
+      ],
+      "summary_zh": "适用于外部环境、内部环境、实施过程相关护理研究。"
+    },
+    {
+      "id": "re_aim",
+      "name_zh": "RE-AIM框架",
+      "name_en": "RE-AIM Framework",
+      "abbr": "RE-AIM",
+      "category": "implementation_science",
+      "keywords_zh": [
+        "覆盖率",
+        "效果",
+        "维持性"
+      ],
+      "summary_zh": "适用于覆盖率、效果、维持性相关护理研究。"
+    },
+    {
+      "id": "parihs",
+      "name_zh": "PARIHS框架",
+      "name_en": "Promoting Action on Research Implementation in Health Services",
+      "abbr": "PARIHS",
+      "category": "implementation_science",
+      "keywords_zh": [
+        "证据",
+        "背景",
+        "促进"
+      ],
+      "summary_zh": "适用于证据、背景、促进相关护理研究。"
+    },
+    {
+      "id": "iparihs",
+      "name_zh": "i-PARIHS框架",
+      "name_en": "Integrated PARIHS",
+      "abbr": "i-PARIHS",
+      "category": "implementation_science",
+      "keywords_zh": [
+        "创新",
+        "受体",
+        "情境"
+      ],
+      "summary_zh": "适用于创新、受体、情境相关护理研究。"
+    },
+    {
+      "id": "knowledge_to_action",
+      "name_zh": "知识到行动框架",
+      "name_en": "Knowledge-to-Action Framework",
+      "abbr": "KTA",
+      "category": "implementation_science",
+      "keywords_zh": [
+        "知识到行动",
+        "证据转化",
+        "行动循环"
+      ],
+      "summary_zh": "适用于知识到行动、证据转化、行动循环相关护理研究。"
+    },
+    {
+      "id": "normalization_process_theory",
+      "name_zh": "常态化过程理论",
+      "name_en": "Normalization Process Theory",
+      "abbr": "NPT",
+      "category": "implementation_science",
+      "keywords_zh": [
+        "常态化",
+        "融入日常工作",
+        "集体行动"
+      ],
+      "summary_zh": "适用于常态化、融入日常工作、集体行动相关护理研究。"
+    },
+    {
+      "id": "diffusion_of_innovations",
+      "name_zh": "创新扩散理论",
+      "name_en": "Diffusion of Innovations",
+      "abbr": "DOI",
+      "category": "implementation_science",
+      "keywords_zh": [
+        "创新采纳",
+        "扩散",
+        "兼容性"
+      ],
+      "summary_zh": "适用于创新采纳、扩散、兼容性相关护理研究。"
+    },
+    {
+      "id": "mrc_complex_interventions",
+      "name_zh": "MRC复杂干预框架",
+      "name_en": "MRC Framework for Complex Interventions",
+      "abbr": "MRC",
+      "category": "implementation_science",
+      "keywords_zh": [
+        "复杂干预",
+        "开发",
+        "评价"
+      ],
+      "summary_zh": "适用于复杂干预、开发、评价相关护理研究。"
+    },
+    {
+      "id": "donabedian_model",
+      "name_zh": "Donabedian结构-过程-结果模型",
+      "name_en": "Donabedian Structure-Process-Outcome Model",
+      "abbr": "SPO",
+      "category": "health_services_quality",
+      "keywords_zh": [
+        "结构",
+        "过程",
+        "结果"
+      ],
+      "summary_zh": "适用于结构、过程、结果相关护理研究。"
+    },
+    {
+      "id": "wilson_cleary_model",
+      "name_zh": "Wilson-Cleary健康相关生活质量模型",
+      "name_en": "Wilson and Cleary Model of Health-Related Quality of Life",
+      "abbr": "WCM",
+      "category": "health_services_quality",
+      "keywords_zh": [
+        "症状状态",
+        "功能状态",
+        "生活质量"
+      ],
+      "summary_zh": "适用于症状状态、功能状态、生活质量相关护理研究。"
+    },
+    {
+      "id": "person_centered_care_framework",
+      "name_zh": "以患者为中心照护框架",
+      "name_en": "Person-Centered Care Framework",
+      "abbr": "PCC",
+      "category": "health_services_quality",
+      "keywords_zh": [
+        "患者中心",
+        "偏好",
+        "服务体验"
+      ],
+      "summary_zh": "适用于患者中心、偏好、服务体验相关护理研究。"
+    },
+    {
+      "id": "family_centered_care_framework",
+      "name_zh": "家庭中心照护框架",
+      "name_en": "Family-Centered Care Framework",
+      "abbr": "FCC",
+      "category": "health_services_quality",
+      "keywords_zh": [
+        "家庭中心",
+        "家属参与",
+        "信息共享"
+      ],
+      "summary_zh": "适用于家庭中心、家属参与、信息共享相关护理研究。"
+    },
+    {
+      "id": "shared_decision_making_model",
+      "name_zh": "共同决策模型",
+      "name_en": "Shared Decision-Making Model",
+      "abbr": "SDM",
+      "category": "health_services_quality",
+      "keywords_zh": [
+        "共同决策",
+        "偏好敏感",
+        "参与度"
+      ],
+      "summary_zh": "适用于共同决策、偏好敏感、参与度相关护理研究。"
+    },
+    {
+      "id": "grounded_theory",
+      "name_zh": "扎根理论",
+      "name_en": "Grounded Theory",
+      "abbr": "GT",
+      "category": "qualitative_methodology",
+      "keywords_zh": [
+        "过程",
+        "理论生成",
+        "互动"
+      ],
+      "summary_zh": "适用于过程、理论生成、互动相关护理研究。"
+    },
+    {
+      "id": "phenomenology",
+      "name_zh": "现象学",
+      "name_en": "Phenomenology",
+      "abbr": "Phenomenology",
+      "category": "qualitative_methodology",
+      "keywords_zh": [
+        "生活经验",
+        "本质",
+        "体验"
+      ],
+      "summary_zh": "适用于生活经验、本质、体验相关护理研究。"
+    },
+    {
+      "id": "hermeneutic_phenomenology",
+      "name_zh": "解释现象学",
+      "name_en": "Hermeneutic Phenomenology",
+      "abbr": "HP",
+      "category": "qualitative_methodology",
+      "keywords_zh": [
+        "意义解释",
+        "体验文本",
+        "诠释"
+      ],
+      "summary_zh": "适用于意义解释、体验文本、诠释相关护理研究。"
+    },
+    {
+      "id": "ethnography",
+      "name_zh": "民族志",
+      "name_en": "Ethnography",
+      "abbr": "Ethnography",
+      "category": "qualitative_methodology",
+      "keywords_zh": [
+        "文化",
+        "群体实践",
+        "观察"
+      ],
+      "summary_zh": "适用于文化、群体实践、观察相关护理研究。"
+    },
+    {
+      "id": "narrative_inquiry",
+      "name_zh": "叙事研究",
+      "name_en": "Narrative Inquiry",
+      "abbr": "Narrative",
+      "category": "qualitative_methodology",
+      "keywords_zh": [
+        "疾病故事",
+        "叙事",
+        "身份建构"
+      ],
+      "summary_zh": "适用于疾病故事、叙事、身份建构相关护理研究。"
+    },
+    {
+      "id": "case_study_method",
+      "name_zh": "个案研究",
+      "name_en": "Case Study",
+      "abbr": "Case Study",
+      "category": "qualitative_methodology",
+      "keywords_zh": [
+        "复杂个案",
+        "多源资料",
+        "案例边界"
+      ],
+      "summary_zh": "适用于复杂个案、多源资料、案例边界相关护理研究。"
+    },
+    {
+      "id": "content_analysis",
+      "name_zh": "内容分析",
+      "name_en": "Content Analysis",
+      "abbr": "CA",
+      "category": "qualitative_methodology",
+      "keywords_zh": [
+        "分类",
+        "内容",
+        "显性/潜性"
+      ],
+      "summary_zh": "适用于分类、内容、显性/潜性相关护理研究。"
+    },
+    {
+      "id": "thematic_analysis",
+      "name_zh": "主题分析",
+      "name_en": "Thematic Analysis",
+      "abbr": "TA",
+      "category": "qualitative_methodology",
+      "keywords_zh": [
+        "主题",
+        "归纳",
+        "编码"
+      ],
+      "summary_zh": "适用于主题、归纳、编码相关护理研究。"
+    },
+    {
+      "id": "transactional_model_stress",
+      "name_zh": "交易性压力模型",
+      "name_en": "Transactional Model of Stress and Coping",
+      "abbr": "TMSC",
+      "category": "health_behavior",
+      "keywords_zh": [
+        "评估",
+        "应对",
+        "适应"
+      ],
+      "summary_zh": "适用于评估、应对、适应相关护理研究。"
+    },
+    {
+      "id": "care_transitions_intervention",
+      "name_zh": "照护转衔干预模型",
+      "name_en": "Care Transitions Intervention Framework",
+      "abbr": "CTI",
+      "category": "health_services_quality",
+      "keywords_zh": [
+        "转衔照护",
+        "过渡支持",
+        "连续照护"
+      ],
+      "summary_zh": "适用于转衔照护、过渡支持、连续照护相关护理研究。"
+    },
+    {
+      "id": "patient_activation_measure_framework",
+      "name_zh": "患者激活框架",
+      "name_en": "Patient Activation Framework",
+      "abbr": "PAM",
+      "category": "health_behavior",
+      "keywords_zh": [
+        "患者激活",
+        "参与度",
+        "自我管理准备度"
+      ],
+      "summary_zh": "适用于患者激活、参与度、自我管理准备度相关护理研究。"
+    },
+    {
+      "id": "chronic_illness_trajectory_framework",
+      "name_zh": "慢病轨迹框架",
+      "name_en": "Chronic Illness Trajectory Framework",
+      "abbr": "CITF",
+      "category": "middle_range_nursing_theory",
+      "keywords_zh": [
+        "轨迹",
+        "慢病",
+        "阶段任务"
+      ],
+      "summary_zh": "适用于轨迹、慢病、阶段任务相关护理研究。"
+    },
+    {
+      "id": "quality_health_outcomes_model",
+      "name_zh": "质量健康结局模型",
+      "name_en": "Quality Health Outcomes Model",
+      "abbr": "QHOM",
+      "category": "health_services_quality",
+      "keywords_zh": [
+        "系统",
+        "干预",
+        "结局"
+      ],
+      "summary_zh": "适用于系统、干预、结局相关护理研究。"
+    }
+  ]
+}

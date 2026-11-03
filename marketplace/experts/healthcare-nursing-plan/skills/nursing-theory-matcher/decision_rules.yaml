@@ -1,0 +1,29 @@
+version: 1.0.0
+skill_id: nursing-theory-matcher
+language: zh-CN
+
+rules:
+  - id: qualitative_process_rule
+    if: { any_keywords: [探索, 经历, 过程, 互动, 生成理论], any_design: [质性, 访谈, 观察] }
+    then: { recommend_first: [grounded_theory], recommend_second: [phenomenology, narrative_inquiry, meleis_transitions] }
+  - id: symptom_self_management_rule
+    if: { all_keywords: [症状, 自我管理] }
+    then: { recommend_first: [ssmf_chc], recommend_second: [symptom_management_theory, self_care_chronic_illness, theory_of_unpleasant_symptoms, self_efficacy] }
+  - id: family_management_rule
+    if: { any_keywords: [家庭支持, 家属参与, 照护者, 共同管理, 居家照护] }
+    then: { recommend_first: [self_family_management], recommend_second: [ifsmt, family_centered_care_framework, caregiving_science_framework] }
+  - id: adherence_risk_rule
+    if: { any_keywords: [依从性, 风险感知, 防护行为, 预防行为, 健康教育] }
+    then: { recommend_first: [protection_motivation_theory], recommend_second: [self_efficacy, health_belief_model, theory_of_planned_behavior] }
+  - id: transition_rule
+    if: { any_keywords: [转衔, 出院, 过渡期, 角色转变] }
+    then: { recommend_first: [meleis_transitions], recommend_second: [mishel_uncertainty, roy_adaptation_model] }
+  - id: uncertainty_rule
+    if: { any_keywords: [不确定感, 信息模糊, 预后, 决策困境, 焦虑] }
+    then: { recommend_first: [mishel_uncertainty], recommend_second: [stress_coping_theory, resilience_framework] }
+  - id: caring_rule
+    if: { any_keywords: [关怀, 舒适, 安宁, 护理体验] }
+    then: { recommend_first: [watson_human_caring], recommend_second: [kolcaba_comfort, swanson_caring, peplau_interpersonal] }
+  - id: implementation_rule
+    if: { any_keywords: [实施, 指南落实, 证据转化, 项目落地, 忠实度, 采纳率] }
+    then: { recommend_first: [com_b], recommend_second: [tdf, cfir, re_aim, knowledge_to_action, behavior_change_wheel] }

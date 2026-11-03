@@ -1,0 +1,1 @@
+{"dataset_path":"examples/data/mtcars.csv","analysis_type":"power_equivalence","design_type":"non_inferiority","margin":0.5,"expected_diff":0,"alpha":0.025,"power":0.8,"sd":1,"seed":42,"output_dir":"output/power_equivalence"}

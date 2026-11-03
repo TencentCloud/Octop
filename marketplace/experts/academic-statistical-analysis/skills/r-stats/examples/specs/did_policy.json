@@ -1,0 +1,13 @@
+{
+  "dataset_path": "examples/data/did_policy.csv",
+  "analysis_type": "did",
+  "outcome": "outcome",
+  "treatment_var": "treated",
+  "time_var": "period",
+  "post_var": "post",
+  "id_var": "id",
+  "hypothesis": "Policy intervention improved outcomes in the treated group",
+  "alpha": 0.05,
+  "seed": 42,
+  "output_dir": "output/did_policy"
+}

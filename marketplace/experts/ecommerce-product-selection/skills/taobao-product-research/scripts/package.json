@@ -1,0 +1,11 @@
+{
+  "name": "taobao-product-research",
+  "version": "1.0.0",
+  "description": "淘宝产品调研和数据采集工具",
+  "main": "taobao_research.js",
+  "dependencies": {
+    "playwright": "^1.40.0",
+    "exceljs": "^4.4.0",
+    "axios": "^1.6.0"
+  }
+}

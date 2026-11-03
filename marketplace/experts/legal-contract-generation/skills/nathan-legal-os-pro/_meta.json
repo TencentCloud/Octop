@@ -1,0 +1,9 @@
+{
+  "owner": "local",
+  "slug": "律师助理",
+  "displayName": "LegalDoc AI 法律文档自动化",
+  "latest": {
+    "version": "1.0.0",
+    "publishedAt": 1743830400000
+  }
+}

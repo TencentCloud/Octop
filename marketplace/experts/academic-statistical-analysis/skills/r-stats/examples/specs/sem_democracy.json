@@ -1,0 +1,10 @@
+{
+  "dataset_path": "examples/data/political_democracy.csv",
+  "analysis_type": "sem",
+  "model_syntax": "ind60 =~ x1 + x2 + x3\ndem60 =~ y1 + y2 + y3 + y4\ndem65 =~ y5 + y6 + y7 + y8\ndem60 ~ ind60\ndem65 ~ ind60 + dem60\ny1 ~~ y5\ny2 ~~ y4 + y6\ny3 ~~ y7\ny4 ~~ y8\ny6 ~~ y8",
+  "estimator": "ML",
+  "hypothesis": "Industrialization (1960) predicts democracy (1960, 1965) in a structural model",
+  "alpha": 0.05,
+  "seed": 42,
+  "output_dir": "output/sem_democracy"
+}

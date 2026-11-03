@@ -1,0 +1,135 @@
+{
+  "version": "2.0.0",
+  "rootDirectory": "~/StudentGrowthOps",
+  "statusDirectories": {
+    "leads": "Leads",
+    "active": "Active",
+    "renewalWatch": "RenewalWatch",
+    "archived": "Archived"
+  },
+  "studentFolderNamePattern": "{grade}-{studentName}-{startDate}",
+  "studentFolderNameNotes": [
+    "grade uses short labels such as K2, K3, G1, G2, G3, G4, G5, G6, J1",
+    "studentName keeps the visible name used by the parent or teacher",
+    "startDate uses ISO format YYYY-MM-DD"
+  ],
+  "dualLayer": {
+    "systemDataDirectory": "_data",
+    "systemDataFile": "_data/student-record.json",
+    "teacherVisibleFilenames": [
+      "02-家长需求.txt",
+      "03-课后跟进记录.txt"
+    ],
+    "intermediateFormSubmissions": "~/.openclaw/Workspace/student-growth-ops/form-submissions/*.txt",
+    "notes": [
+      "All structured fields live in a single JSON file student-record.json to avoid multiple round-trips."
+    ]
+  },
+  "files": [
+    {
+      "path": "_data/student-record.json",
+      "filename": "student-record.json",
+      "kind": "json",
+      "purpose": "Single merged record: profile, parent needs, baseline, lesson rows, weekly follow-up, tags.",
+      "sections": {
+        "studentProfile": "Identity and learning profile (includes studentName).",
+        "parentNeeds": "Parent goals and objections.",
+        "learningBaseline": "Assessment and 30-day plan.",
+        "lessonLog": "columns + rows[]; each row is an object with keys matching columns.",
+        "weeklyFollowup": "Weekly summary block.",
+        "tags": "Searchable labels."
+      }
+    },
+    {
+      "path": "02-家长需求.txt",
+      "filename": "02-家长需求.txt",
+      "kind": "txt",
+      "layer": "teacher",
+      "purpose": "Long-term parent-needs notes for the folder; ad-hoc WeChat/text to parents should default to chat replies, not this file."
+    },
+    {
+      "path": "03-课后跟进记录.txt",
+      "filename": "03-课后跟进记录.txt",
+      "kind": "txt",
+      "layer": "teacher",
+      "purpose": "Lesson and weekly follow-up notes in natural language."
+    }
+  ],
+  "starterRecord": {
+    "schemaVersion": 1,
+    "studentProfile": {
+      "studentName": "",
+      "englishName": "",
+      "grade": "",
+      "school": "",
+      "status": "lead",
+      "startDate": "",
+      "sourceChannel": "",
+      "contactName": "",
+      "contactPhone": "",
+      "city": "",
+      "currentLevel": "",
+      "personalityTraits": [],
+      "studyHabits": [],
+      "teacherNotes": ""
+    },
+    "parentNeeds": {
+      "primaryGoals": [],
+      "secondaryGoals": [],
+      "painPoints": [],
+      "decisionBarriers": [],
+      "parentStyle": "",
+      "budgetSensitivity": "",
+      "timePreference": "",
+      "expectedResultsWindow": "",
+      "followupPriority": "",
+      "nextFollowupDate": "",
+      "notes": ""
+    },
+    "learningBaseline": {
+      "assessmentDate": "",
+      "listeningLevel": "",
+      "speakingLevel": "",
+      "readingLevel": "",
+      "phonicsVocabularyLevel": "",
+      "focusInteractionLevel": "",
+      "familySupportLevel": "",
+      "strengths": [],
+      "weakPoints": [],
+      "priorityGoals30d": [],
+      "teacherStrategy": [],
+      "parentAdvice": []
+    },
+    "lessonLog": {
+      "columns": [
+        "lesson_date",
+        "lesson_theme",
+        "goal_completion",
+        "classroom_engagement",
+        "accuracy_observation",
+        "homework_completion",
+        "parent_reminder_needed",
+        "risk_flag",
+        "teacher_note"
+      ],
+      "rows": []
+    },
+    "weeklyFollowup": {
+      "weekRange": "",
+      "weeklyStatus": "",
+      "progressHighlights": [],
+      "mainIssues": [],
+      "teacherActions": [],
+      "parentCommunicationAdvice": [],
+      "riskLevel": "",
+      "needPriorityFollowup": false,
+      "nextActionDate": ""
+    },
+    "tags": {
+      "studentTags": [],
+      "parentTags": [],
+      "riskTags": [],
+      "teachingTags": []
+    }
+  }
+}

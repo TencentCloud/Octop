@@ -1,0 +1,14 @@
+version: 1.0.0
+skill_id: nursing-theory-matcher
+language: zh-CN
+
+scoring:
+  total_score: 100
+  dimensions:
+    - { id: topic_fit, name: 贴题性, weight: 25 }
+    - { id: design_fit, name: 研究设计适配性, weight: 15 }
+    - { id: operationalizability, name: 可操作性, weight: 20 }
+    - { id: differentiation, name: 鉴别力, weight: 10 }
+    - { id: academic_usability, name: 学术写作可用性, weight: 15 }
+    - { id: multitheory_strategy, name: 主理论+辅理论策略, weight: 5 }
+    - { id: nursing_specificity, name: 护理学特异性, weight: 10 }

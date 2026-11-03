@@ -1,0 +1,160 @@
+{
+  "id": "healthcare-clinical-support",
+  "version": "1.0.0",
+  "scene": "healthcare",
+  "sub_scene": "clinical-support",
+  "label": {
+    "zh": "临床辅助专家",
+    "en": "Clinical Support Expert"
+  },
+  "description": {
+    "zh": "从AI辅助诊断（病历文本分析/实验室结果解读/系统化诊断推理/鉴别诊断/决策支持）与用药安全管理（药物咨询/用药方案/药物相互作用/剂量调整/不良反应），医生级循证临床助手（循证指南查询/复杂病例讨论/教学材料/科研成果）与药学专业咨询（用药信息/药物相互作用/剂量指导/非处方药推荐），到医学影像解决方案（OHIF查看器/DICOMweb集成/影像分割/MONAI工作流）与医学术语通俗解释（化验结果/诊断/处方缩写/医疗词汇）的完整临床辅助工作流。覆盖辅助诊断、用药安全、循证医学、药学咨询、医学影像、术语解读全链路。",
+    "en": "Clinical support workflow for assisted diagnostic reasoning, medication safety review, evidence-based guideline lookup, pharmacy consultation, medical imaging support, and plain-language explanation of medical terminology."
+  },
+  "welcome_message": {
+    "zh": "我来帮你做「AI辅助诊断推理」",
+    "en": "I'll help you with AI-Assisted Diagnostic Reasoning."
+  },
+  "icon_name": "heart",
+  "icon_url": "https://cloudcache.tencent-cloud.com/qcloud/tea/app/skillhub/assets/source/ai-buddy-decouple/expert-profiles/healthcare-clinical-support.v20260625.avif",
+  "color": "#dc2626",
+  "prompt_files": [
+    "SOUL.md"
+  ],
+  "quick_prompts": [
+    {
+      "title": {
+        "zh": "AI辅助诊断推理",
+        "en": "AI-Assisted Diagnostic Reasoning"
+      },
+      "description": {
+        "zh": "生成辅助诊断分析和推理报告",
+        "en": "Clinical reasoning support notes"
+      },
+      "prompt": {
+        "zh": "请作为「临床辅助专家」，帮我完成「AI辅助诊断推理」。\n我的情况/目标/材料是：\n",
+        "en": "As the Clinical Support Expert, help me complete “AI-Assisted Diagnostic Reasoning”.\nMy context, goals, or materials are:\n"
+      },
+      "color": "#e8f4ff",
+      "icon_name": "activity"
+    },
+    {
+      "title": {
+        "zh": "用药安全评估",
+        "en": "Medication Safety Assessment"
+      },
+      "description": {
+        "zh": "生成用药安全评估报告",
+        "en": "Medication safety checklist"
+      },
+      "prompt": {
+        "zh": "请作为「临床辅助专家」，帮我完成「用药安全评估」。\n我的情况/目标/材料是：\n",
+        "en": "As the Clinical Support Expert, help me complete “Medication Safety Assessment”.\nMy context, goals, or materials are:\n"
+      },
+      "color": "#fef3c7",
+      "icon_name": "activity"
+    },
+    {
+      "title": {
+        "zh": "循证医学指南查询",
+        "en": "Evidence-Based Guideline Lookup"
+      },
+      "description": {
+        "zh": "生成循证指南摘要和病例分析",
+        "en": "Guideline evidence summary"
+      },
+      "prompt": {
+        "zh": "请作为「临床辅助专家」，帮我完成「循证医学指南查询」。\n我的情况/目标/材料是：\n",
+        "en": "As the Clinical Support Expert, help me complete “Evidence-Based Guideline Lookup”.\nMy context, goals, or materials are:\n"
+      },
+      "color": "#dcfce7",
+      "icon_name": "activity"
+    },
+    {
+      "title": {
+        "zh": "药学专业咨询",
+        "en": "Pharmacy Professional Consultation"
+      },
+      "description": {
+        "zh": "生成药学咨询报告和用药建议",
+        "en": "Pharmacy consultation notes"
+      },
+      "prompt": {
+        "zh": "请作为「临床辅助专家」，帮我完成「药学专业咨询」。\n我的情况/目标/材料是：\n",
+        "en": "As the Clinical Support Expert, help me complete “Pharmacy Professional Consultation”.\nMy context, goals, or materials are:\n"
+      },
+      "color": "#f1f5f9",
+      "icon_name": "activity"
+    },
+    {
+      "title": {
+        "zh": "医学影像辅助分析",
+        "en": "Medical Imaging Assisted Analysis"
+      },
+      "description": {
+        "zh": "生成医学影像分析报告",
+        "en": "Imaging support summary"
+      },
+      "prompt": {
+        "zh": "请作为「临床辅助专家」，帮我完成「医学影像辅助分析」。\n我的情况/目标/材料是：\n",
+        "en": "As the Clinical Support Expert, help me complete “Medical Imaging Assisted Analysis”.\nMy context, goals, or materials are:\n"
+      },
+      "color": "#fff1f2",
+      "icon_name": "activity"
+    },
+    {
+      "title": {
+        "zh": "医学术语通俗解读",
+        "en": "Plain-Language Medical Terms"
+      },
+      "description": {
+        "zh": "生成医学术语解读手册",
+        "en": "Patient-friendly terminology guide"
+      },
+      "prompt": {
+        "zh": "请作为「临床辅助专家」，帮我完成「医学术语通俗解读」。\n我的情况/目标/材料是：\n",
+        "en": "As the Clinical Support Expert, help me complete “Plain-Language Medical Terms”.\nMy context, goals, or materials are:\n"
+      },
+      "color": "#eef2ff",
+      "icon_name": "activity"
+    }
+  ],
+  "task_examples": {
+    "zh": [
+      "每天「09:00」帮我完成「AI辅助诊断推理」并把结果发给我，任务创建后立即启用",
+      "每个工作日「18:00」帮我完成「用药安全评估」并把结果发给我",
+      "每周一「10:00」帮我完成「循证医学指南查询」并把结果发给我",
+      "每周五「17:00」帮我完成「药学专业咨询」并把结果发给我",
+      "每天「08:00」帮我完成「医学影像辅助分析」并把结果发给我",
+      "每月 1 日「09:30」帮我完成「医学术语通俗解读」并把结果发给我"
+    ],
+    "en": [
+      "Every day at 09:00, help me complete “AI-Assisted Diagnostic Reasoning” and send the result — enable immediately",
+      "Every weekday at 18:00, help me complete “Medication Safety Assessment” and send the result",
+      "Every Monday at 10:00, help me complete “Evidence-Based Guideline Lookup” and send the result",
+      "Every Friday at 17:00, help me complete “Pharmacy Professional Consultation” and send the result",
+      "Every day at 08:00, help me complete “Medical Imaging Assisted Analysis” and send the result",
+      "On the 1st of each month at 09:30, help me complete “Plain-Language Medical Terms” and send the result"
+    ]
+  },
+  "source": {
+    "type": "skillhub",
+    "kind": "skillset",
+    "slug": "healthcare-clinical-support",
+    "scene": "healthcare",
+    "sub_scene": "clinical-support"
+  },
+  "skillhub": {
+    "slug": "healthcare-clinical-support",
+    "scene": "healthcare",
+    "sub_scene": "clinical-support",
+    "skill_slugs": [
+      "tencent-health-ai-clinical-assistant",
+      "medication-advisor",
+      "medical-guidelines-hub",
+      "pharmacist",
+      "medical-imaging-suite",
+      "medical-terms"
+    ]
+  }
+}

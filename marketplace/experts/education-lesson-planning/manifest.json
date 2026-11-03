@@ -1,0 +1,160 @@
+{
+  "id": "education-lesson-planning",
+  "version": "1.0.0",
+  "scene": "education",
+  "sub_scene": "lesson-planning",
+  "label": {
+    "zh": "教案设计专家",
+    "en": "Lesson Planning Expert"
+  },
+  "description": {
+    "zh": "从基于教学评一致性原则的专业教案写作（新课标/个性化教案/教学计划）与教师工具箱（教案设计/评分标准Rubric/课堂活动/评估设计）、课程目标驱动的教案生成（互动题/作业/分层教学建议）与课程模块结构规划（单元目标/作业设计/里程碑），到教师备课自动化（资料搜索/课文分析/生字词/教学设计）与教案内容PPT转化（讲师活动提取/幻灯片备注/一键更新）的完整教案设计工作流。覆盖教案撰写、工具辅助、分层设计、模块规划、备课自动化、PPT转化全链路。",
+    "en": "Lesson planning workflow for professional lesson writing, teaching tools and assessment design, differentiated instruction, interactive question design, course module planning, automatic preparation material organization, and PPT conversion."
+  },
+  "welcome_message": {
+    "zh": "我来帮你做「专业教案撰写」",
+    "en": "I'll help you with Professional Lesson Plan Writing."
+  },
+  "icon_name": "book-open",
+  "icon_url": "https://cloudcache.tencent-cloud.com/qcloud/tea/app/skillhub/assets/source/ai-buddy-decouple/expert-profiles/education-lesson-planning.v20260625.avif",
+  "color": "#2563eb",
+  "prompt_files": [
+    "SOUL.md"
+  ],
+  "quick_prompts": [
+    {
+      "title": {
+        "zh": "专业教案撰写",
+        "en": "Professional Lesson Plan Writing"
+      },
+      "description": {
+        "zh": "生成符合新课标的完整教案初稿",
+        "en": "Lesson plan draft"
+      },
+      "prompt": {
+        "zh": "请作为「教案设计专家」，帮我完成「专业教案撰写」。\n我的情况/目标/材料是：\n",
+        "en": "As the Lesson Planning Expert, help me complete “Professional Lesson Plan Writing”.\nMy context, goals, or materials are:\n"
+      },
+      "color": "#e8f4ff",
+      "icon_name": "presentation"
+    },
+    {
+      "title": {
+        "zh": "教学工具与评估设计",
+        "en": "Teaching Tools and Assessment Design"
+      },
+      "description": {
+        "zh": "生成评分标准、课堂活动方案和评估设计",
+        "en": "Teaching tools and assessment plan"
+      },
+      "prompt": {
+        "zh": "请作为「教案设计专家」，帮我完成「教学工具与评估设计」。\n我的情况/目标/材料是：\n",
+        "en": "As the Lesson Planning Expert, help me complete “Teaching Tools and Assessment Design”.\nMy context, goals, or materials are:\n"
+      },
+      "color": "#fef3c7",
+      "icon_name": "trending-up"
+    },
+    {
+      "title": {
+        "zh": "分层教学与互动题设计",
+        "en": "Differentiated Instruction and Interactive Questions"
+      },
+      "description": {
+        "zh": "生成互动题库、分层教学方案和作业设计",
+        "en": "Differentiated activity set"
+      },
+      "prompt": {
+        "zh": "请作为「教案设计专家」，帮我完成「分层教学与互动题设计」。\n我的情况/目标/材料是：\n",
+        "en": "As the Lesson Planning Expert, help me complete “Differentiated Instruction and Interactive Questions”.\nMy context, goals, or materials are:\n"
+      },
+      "color": "#dcfce7",
+      "icon_name": "list-todo"
+    },
+    {
+      "title": {
+        "zh": "课程模块与单元规划",
+        "en": "Course Module and Unit Planning"
+      },
+      "description": {
+        "zh": "生成课程模块结构和单元规划文档",
+        "en": "Unit and module plan"
+      },
+      "prompt": {
+        "zh": "请作为「教案设计专家」，帮我完成「课程模块与单元规划」。\n我的情况/目标/材料是：\n",
+        "en": "As the Lesson Planning Expert, help me complete “Course Module and Unit Planning”.\nMy context, goals, or materials are:\n"
+      },
+      "color": "#f1f5f9",
+      "icon_name": "server"
+    },
+    {
+      "title": {
+        "zh": "备课资料自动整理",
+        "en": "Automatic Preparation Material Organization"
+      },
+      "description": {
+        "zh": "生成备课资料包和教学参考材料",
+        "en": "Teaching preparation pack"
+      },
+      "prompt": {
+        "zh": "请作为「教案设计专家」，帮我完成「备课资料自动整理」。\n我的情况/目标/材料是：\n",
+        "en": "As the Lesson Planning Expert, help me complete “Automatic Preparation Material Organization”.\nMy context, goals, or materials are:\n"
+      },
+      "color": "#fff1f2",
+      "icon_name": "globe"
+    },
+    {
+      "title": {
+        "zh": "教案PPT转化",
+        "en": "Lesson Plan To PPT Conversion"
+      },
+      "description": {
+        "zh": "生成带讲师备注的教学PPT文件",
+        "en": "Lesson slides or lecture notes"
+      },
+      "prompt": {
+        "zh": "请作为「教案设计专家」，帮我完成「教案PPT转化」。\n我的情况/目标/材料是：\n",
+        "en": "As the Lesson Planning Expert, help me complete “Lesson Plan To PPT Conversion”.\nMy context, goals, or materials are:\n"
+      },
+      "color": "#eef2ff",
+      "icon_name": "trending-up"
+    }
+  ],
+  "task_examples": {
+    "zh": [
+      "每天「09:00」帮我完成「专业教案撰写」并把结果发给我，任务创建后立即启用",
+      "每个工作日「18:00」帮我完成「教学工具与评估设计」并把结果发给我",
+      "每周一「10:00」帮我完成「分层教学与互动题设计」并把结果发给我",
+      "每周五「17:00」帮我完成「课程模块与单元规划」并把结果发给我",
+      "每天「08:00」帮我完成「备课资料自动整理」并把结果发给我",
+      "每月 1 日「09:30」帮我完成「教案PPT转化」并把结果发给我"
+    ],
+    "en": [
+      "Every day at 09:00, help me complete “Professional Lesson Plan Writing” and send the result — enable immediately",
+      "Every weekday at 18:00, help me complete “Teaching Tools and Assessment Design” and send the result",
+      "Every Monday at 10:00, help me complete “Differentiated Instruction and Interactive Questions” and send the result",
+      "Every Friday at 17:00, help me complete “Course Module and Unit Planning” and send the result",
+      "Every day at 08:00, help me complete “Automatic Preparation Material Organization” and send the result",
+      "On the 1st of each month at 09:30, help me complete “Lesson Plan To PPT Conversion” and send the result"
+    ]
+  },
+  "source": {
+    "type": "skillhub",
+    "kind": "skillset",
+    "slug": "education-lesson-planning",
+    "scene": "education",
+    "sub_scene": "lesson-planning"
+  },
+  "skillhub": {
+    "slug": "education-lesson-planning",
+    "scene": "education",
+    "sub_scene": "lesson-planning",
+    "skill_slugs": [
+      "teaching-plan-writer",
+      "teacher-assistant",
+      "classroom-lesson-pack",
+      "creator-course-outline",
+      "teacher-prep",
+      "ppt-lecture-notes"
+    ]
+  }
+}

@@ -1,0 +1,160 @@
+{
+  "id": "academic-statistical-analysis",
+  "version": "1.0.0",
+  "scene": "academic",
+  "sub_scene": "statistical-analysis",
+  "label": {
+    "zh": "统计分析专家",
+    "en": "Statistical Analysis Expert"
+  },
+  "description": {
+    "zh": "从R语言82种统计方法（回归/生存/贝叶斯/荟萃/因果推断/结构方程）与高级生物统计分析（贝叶斯推断/蒙特卡洛模拟/机器学习/生存模型）、标准化数据分析工作流（数据清洗/统计分析/科学可视化）与37种统计检验方法（正态性/位置/相关性/时间序列/模型诊断），到中文数据分析报告（统计分析/可视化建议/趋势检测）与数学统计绘图引擎（图表生成/计算验证/可视化呈现）的完整统计分析工作流。覆盖统计方法选择、高级建模、标准化流程、检验验证、分析报告、图表输出全链路。",
+    "en": "Choose among regression, survival, Bayesian, meta-analysis, causal, and structural-equation methods, run a standard analysis workflow and diagnostics, then write the report and statistical figures."
+  },
+  "welcome_message": {
+    "zh": "我来帮你做「统计方法选择与建模」",
+    "en": "I'll help you with Choose methods and fit a model."
+  },
+  "icon_name": "book-open",
+  "icon_url": "https://cloudcache.tencent-cloud.com/qcloud/tea/app/skillhub/assets/source/ai-buddy-decouple/expert-profiles/academic-statistical-analysis.v20260625.avif",
+  "color": "#4f46e5",
+  "prompt_files": [
+    "SOUL.md"
+  ],
+  "quick_prompts": [
+    {
+      "title": {
+        "zh": "统计方法选择与建模",
+        "en": "Choose methods and fit a model"
+      },
+      "description": {
+        "zh": "生成统计方法选择方案和初步建模结果",
+        "en": "A method plan and a first model"
+      },
+      "prompt": {
+        "zh": "请作为「统计分析专家」，帮我完成「统计方法选择与建模」。\n我的情况/目标/材料是：\n",
+        "en": "As the Statistical Analysis Expert, help me complete “Choose methods and fit a model”.\nMy context, goals, or materials are:\n"
+      },
+      "color": "#e8f4ff",
+      "icon_name": "activity"
+    },
+    {
+      "title": {
+        "zh": "高级统计建模与模拟",
+        "en": "Advanced models and simulation"
+      },
+      "description": {
+        "zh": "生成高级统计模型和模拟分析报告",
+        "en": "Advanced models and a simulation report"
+      },
+      "prompt": {
+        "zh": "请作为「统计分析专家」，帮我完成「高级统计建模与模拟」。\n我的情况/目标/材料是：\n",
+        "en": "As the Statistical Analysis Expert, help me complete “Advanced models and simulation”.\nMy context, goals, or materials are:\n"
+      },
+      "color": "#fef3c7",
+      "icon_name": "activity"
+    },
+    {
+      "title": {
+        "zh": "标准化数据分析流程",
+        "en": "Run a standard analysis workflow"
+      },
+      "description": {
+        "zh": "生成标准化分析流程文档和中间结果",
+        "en": "A documented workflow and intermediate results"
+      },
+      "prompt": {
+        "zh": "请作为「统计分析专家」，帮我完成「标准化数据分析流程」。\n我的情况/目标/材料是：\n",
+        "en": "As the Statistical Analysis Expert, help me complete “Run a standard analysis workflow”.\nMy context, goals, or materials are:\n"
+      },
+      "color": "#dcfce7",
+      "icon_name": "activity"
+    },
+    {
+      "title": {
+        "zh": "统计检验与模型诊断",
+        "en": "Tests and model diagnostics"
+      },
+      "description": {
+        "zh": "生成统计检验结果汇总和模型诊断报告",
+        "en": "Test results and model diagnostics"
+      },
+      "prompt": {
+        "zh": "请作为「统计分析专家」，帮我完成「统计检验与模型诊断」。\n我的情况/目标/材料是：\n",
+        "en": "As the Statistical Analysis Expert, help me complete “Tests and model diagnostics”.\nMy context, goals, or materials are:\n"
+      },
+      "color": "#f1f5f9",
+      "icon_name": "activity"
+    },
+    {
+      "title": {
+        "zh": "中文数据分析报告",
+        "en": "Write the analysis report"
+      },
+      "description": {
+        "zh": "生成中文数据分析报告和可视化方案",
+        "en": "An analysis report and a visualization plan"
+      },
+      "prompt": {
+        "zh": "请作为「统计分析专家」，帮我完成「中文数据分析报告」。\n我的情况/目标/材料是：\n",
+        "en": "As the Statistical Analysis Expert, help me complete “Write the analysis report”.\nMy context, goals, or materials are:\n"
+      },
+      "color": "#fff1f2",
+      "icon_name": "activity"
+    },
+    {
+      "title": {
+        "zh": "统计图表生成与验证",
+        "en": "Create and check figures"
+      },
+      "description": {
+        "zh": "生成学术级统计图表集",
+        "en": "Publication-ready statistical figures"
+      },
+      "prompt": {
+        "zh": "请作为「统计分析专家」，帮我完成「统计图表生成与验证」。\n我的情况/目标/材料是：\n",
+        "en": "As the Statistical Analysis Expert, help me complete “Create and check figures”.\nMy context, goals, or materials are:\n"
+      },
+      "color": "#eef2ff",
+      "icon_name": "activity"
+    }
+  ],
+  "task_examples": {
+    "zh": [
+      "每天「09:00」帮我完成「统计方法选择与建模」并把结果发给我，任务创建后立即启用",
+      "每个工作日「18:00」帮我完成「高级统计建模与模拟」并把结果发给我",
+      "每周一「10:00」帮我完成「标准化数据分析流程」并把结果发给我",
+      "每周五「17:00」帮我完成「统计检验与模型诊断」并把结果发给我",
+      "每天「08:00」帮我完成「中文数据分析报告」并把结果发给我",
+      "每月 1 日「09:30」帮我完成「统计图表生成与验证」并把结果发给我"
+    ],
+    "en": [
+      "Every day at 09:00, help me complete “Choose methods and fit a model” and send the result — enable immediately",
+      "Every weekday at 18:00, help me complete “Advanced models and simulation” and send the result",
+      "Every Monday at 10:00, help me complete “Run a standard analysis workflow” and send the result",
+      "Every Friday at 17:00, help me complete “Tests and model diagnostics” and send the result",
+      "Every day at 08:00, help me complete “Write the analysis report” and send the result",
+      "On the 1st of each month at 09:30, help me complete “Create and check figures” and send the result"
+    ]
+  },
+  "source": {
+    "type": "skillhub",
+    "kind": "skillset",
+    "slug": "academic-statistical-analysis",
+    "scene": "academic",
+    "sub_scene": "statistical-analysis"
+  },
+  "skillhub": {
+    "slug": "academic-statistical-analysis",
+    "scene": "academic",
+    "sub_scene": "statistical-analysis",
+    "skill_slugs": [
+      "r-stats",
+      "biostatistics",
+      "data-analysis-workflow",
+      "statistics-2",
+      "data-analyst-cn",
+      "mathgraphs"
+    ]
+  }
+}

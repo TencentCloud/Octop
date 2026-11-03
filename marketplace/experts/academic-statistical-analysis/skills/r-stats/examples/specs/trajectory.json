@@ -1,0 +1,1 @@
+{"dataset_path":"examples/data/trajectory_depression.csv","analysis_type":"trajectory","outcome":"score","id_var":"id","time_var":"time","max_classes":4,"seed":42,"output_dir":"output/trajectory"}

@@ -1,0 +1,1 @@
+{"dataset_path":"examples/data/highdim.csv","analysis_type":"group_lasso","outcome":"y","predictors":["x1","x2","x3","x4","x5","x6","x7","x8","x9","x10","x11","x12","x13","x14","x15","x16","x17","x18","x19","x20"],"group":[1,1,1,1,1,2,2,2,2,2,3,3,3,3,3,4,4,4,4,4],"seed":42,"output_dir":"output/group_lasso"}

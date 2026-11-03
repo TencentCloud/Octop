@@ -1,0 +1,1 @@
+{"dataset_path":"examples/data/observational_treatment.csv","analysis_type":"doubly_robust","treatment_var":"treated","outcome_var":"outcome","ps_formula":"treated ~ age + female + comorbidity","covariates":["age","female","comorbidity"],"alpha":0.05,"seed":42,"output_dir":"output/doubly_robust"}

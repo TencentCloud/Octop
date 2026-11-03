@@ -1,0 +1,59 @@
+[
+  {
+    "id": "xjbfs-chongsha-minimal-cycle",
+    "sourceLevel": "L2-derived-documented",
+    "sourceRef": [
+      {
+        "work": "钦定协纪辨方书",
+        "location": "卷一（三合）",
+        "url": "https://zh.wikisource.org/zh-hans/%E6%AC%BD%E5%AE%9A%E5%8D%94%E7%B4%80%E8%BE%A8%E6%96%B9%E6%9B%B8_(%E5%9B%9B%E5%BA%AB%E5%85%A8%E6%9B%B8%E6%9C%AC)/%E5%8D%B701"
+      },
+      {
+        "work": "钦定协纪辨方书",
+        "location": "卷三（岁破、岁煞义例）",
+        "url": "https://zh.wikisource.org/zh-hant/%E6%AC%BD%E5%AE%9A%E5%8D%94%E7%B4%80%E8%BE%A8%E6%96%B9%E6%9B%B8_(%E5%9B%9B%E5%BA%AB%E5%85%A8%E6%9B%B8%E6%9C%AC)/%E5%8D%B703"
+      },
+      {
+        "work": "老黄历规则实现说明",
+        "location": "冲煞最小规则（六冲 + 三合局煞方）",
+        "url": "skills/lao-huangli/references/rules-and-variants.md"
+      }
+    ],
+    "interpretationType": "derived",
+    "oppositeBranches": {
+      "子": "午",
+      "丑": "未",
+      "寅": "申",
+      "卯": "酉",
+      "辰": "戌",
+      "巳": "亥",
+      "午": "子",
+      "未": "丑",
+      "申": "寅",
+      "酉": "卯",
+      "戌": "辰",
+      "亥": "巳"
+    },
+    "branchToAnimal": {
+      "子": "鼠",
+      "丑": "牛",
+      "寅": "虎",
+      "卯": "兔",
+      "辰": "龙",
+      "巳": "蛇",
+      "午": "马",
+      "未": "羊",
+      "申": "猴",
+      "酉": "鸡",
+      "戌": "狗",
+      "亥": "猪"
+    },
+    "shaDirectionsByTrine": {
+      "申子辰": "南",
+      "寅午戌": "北",
+      "亥卯未": "西",
+      "巳酉丑": "东"
+    },
+    "notes": "当前仅实现常见民用“冲某生肖煞某方”格式。它是依据六冲与三合局煞方推导的最小规则，不宣称协纪辨方书原文直接给出同名成表。"
+  }
+]

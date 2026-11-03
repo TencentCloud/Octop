@@ -1,0 +1,160 @@
+{
+  "id": "media-storyboard-design",
+  "version": "1.0.0",
+  "scene": "media",
+  "sub_scene": "storyboard-design",
+  "label": {
+    "zh": "分镜设计专家",
+    "en": "Storyboard Design Expert"
+  },
+  "description": {
+    "zh": "从剧本文本到标准分镜表格转换（镜号/景别/拍摄角度/画面内容/人物/音效）与电影感镜头运动设计（推拉摇移/景别/构图），到AI视频提示词与分镜脚本构思（文生视频/图生视频/多模态参考）与AI绘画视频提示词参数化构建，再到专业四幕分镜脚本生成与视频脚本分镜描述画面提示词输出的完整分镜设计工作流。覆盖分镜规划、镜头设计、画面提示词、视觉预览全链路。",
+    "en": "Storyboard design workflow that converts scripts into shot tables, defines cinematic camera movement, writes Seedance and image prompts, builds parameterized visual prompts, and outputs professional multi-act storyboard scripts."
+  },
+  "welcome_message": {
+    "zh": "我来帮你做「剧本到分镜表格转换」",
+    "en": "I'll help you with Script-To-Storyboard Table."
+  },
+  "icon_name": "video",
+  "icon_url": "https://cloudcache.tencent-cloud.com/qcloud/tea/app/skillhub/assets/source/ai-buddy-decouple/expert-profiles/media-storyboard-design.v20260625.avif",
+  "color": "#db2777",
+  "prompt_files": [
+    "SOUL.md"
+  ],
+  "quick_prompts": [
+    {
+      "title": {
+        "zh": "剧本到分镜表格转换",
+        "en": "Script-To-Storyboard Table"
+      },
+      "description": {
+        "zh": "生成标准分镜表格和拍摄计划",
+        "en": "Storyboard table"
+      },
+      "prompt": {
+        "zh": "请作为「分镜设计专家」，帮我完成「剧本到分镜表格转换」。\n我的情况/目标/材料是：\n",
+        "en": "As the Storyboard Design Expert, help me complete “Script-To-Storyboard Table”.\nMy context, goals, or materials are:\n"
+      },
+      "color": "#e8f4ff",
+      "icon_name": "video"
+    },
+    {
+      "title": {
+        "zh": "电影感镜头运动设计",
+        "en": "Cinematic Camera Movement Design"
+      },
+      "description": {
+        "zh": "生成镜头运动设计方案和机位规划",
+        "en": "Cinematography plan"
+      },
+      "prompt": {
+        "zh": "请作为「分镜设计专家」，帮我完成「电影感镜头运动设计」。\n我的情况/目标/材料是：\n",
+        "en": "As the Storyboard Design Expert, help me complete “Cinematic Camera Movement Design”.\nMy context, goals, or materials are:\n"
+      },
+      "color": "#fef3c7",
+      "icon_name": "video"
+    },
+    {
+      "title": {
+        "zh": "Seedance 视频提示词设计",
+        "en": "Seedance Video Prompt Design"
+      },
+      "description": {
+        "zh": "生成Seedance 2.0 视频提示词和分镜说明",
+        "en": "Seedance video prompt set"
+      },
+      "prompt": {
+        "zh": "请作为「分镜设计专家」，帮我完成「Seedance 视频提示词设计」。\n我的情况/目标/材料是：\n",
+        "en": "As the Storyboard Design Expert, help me complete “Seedance Video Prompt Design”.\nMy context, goals, or materials are:\n"
+      },
+      "color": "#dcfce7",
+      "icon_name": "video"
+    },
+    {
+      "title": {
+        "zh": "画面提示词参数化构建",
+        "en": "Parameterized Visual Prompt Building"
+      },
+      "description": {
+        "zh": "生成各分镜的 AI 画面提示词",
+        "en": "Parameterized visual prompt library"
+      },
+      "prompt": {
+        "zh": "请作为「分镜设计专家」，帮我完成「画面提示词参数化构建」。\n我的情况/目标/材料是：\n",
+        "en": "As the Storyboard Design Expert, help me complete “Parameterized Visual Prompt Building”.\nMy context, goals, or materials are:\n"
+      },
+      "color": "#f1f5f9",
+      "icon_name": "video"
+    },
+    {
+      "title": {
+        "zh": "专业四幕分镜脚本生成",
+        "en": "Professional Four-Act Storyboard Script"
+      },
+      "description": {
+        "zh": "生成四幕分镜脚本和资产提示",
+        "en": "Four-act storyboard script"
+      },
+      "prompt": {
+        "zh": "请作为「分镜设计专家」，帮我完成「专业四幕分镜脚本生成」。\n我的情况/目标/材料是：\n",
+        "en": "As the Storyboard Design Expert, help me complete “Professional Four-Act Storyboard Script”.\nMy context, goals, or materials are:\n"
+      },
+      "color": "#fff1f2",
+      "icon_name": "terminal"
+    },
+    {
+      "title": {
+        "zh": "视频脚本与画面提示词输出",
+        "en": "Video Script and Visual Prompt Output"
+      },
+      "description": {
+        "zh": "根据主题/关键词生成完整视频脚本",
+        "en": "Production-ready storyboard package"
+      },
+      "prompt": {
+        "zh": "请作为「分镜设计专家」，帮我完成「视频脚本与画面提示词输出」。\n我的情况/目标/材料是：\n",
+        "en": "As the Storyboard Design Expert, help me complete “Video Script and Visual Prompt Output”.\nMy context, goals, or materials are:\n"
+      },
+      "color": "#eef2ff",
+      "icon_name": "terminal"
+    }
+  ],
+  "task_examples": {
+    "zh": [
+      "每天「09:00」帮我完成「剧本到分镜表格转换」并把结果发给我，任务创建后立即启用",
+      "每个工作日「18:00」帮我完成「电影感镜头运动设计」并把结果发给我",
+      "每周一「10:00」帮我完成「Seedance 视频提示词设计」并把结果发给我",
+      "每周五「17:00」帮我完成「画面提示词参数化构建」并把结果发给我",
+      "每天「08:00」帮我完成「专业四幕分镜脚本生成」并把结果发给我",
+      "每月 1 日「09:30」帮我完成「视频脚本与画面提示词输出」并把结果发给我"
+    ],
+    "en": [
+      "Every day at 09:00, help me complete “Script-To-Storyboard Table” and send the result — enable immediately",
+      "Every weekday at 18:00, help me complete “Cinematic Camera Movement Design” and send the result",
+      "Every Monday at 10:00, help me complete “Seedance Video Prompt Design” and send the result",
+      "Every Friday at 17:00, help me complete “Parameterized Visual Prompt Building” and send the result",
+      "Every day at 08:00, help me complete “Professional Four-Act Storyboard Script” and send the result",
+      "On the 1st of each month at 09:30, help me complete “Video Script and Visual Prompt Output” and send the result"
+    ]
+  },
+  "source": {
+    "type": "skillhub",
+    "kind": "skillset",
+    "slug": "media-storyboard-design",
+    "scene": "media",
+    "sub_scene": "storyboard-design"
+  },
+  "skillhub": {
+    "slug": "media-storyboard-design",
+    "scene": "media",
+    "sub_scene": "storyboard-design",
+    "skill_slugs": [
+      "script-to-storyboard",
+      "video-cinematography",
+      "seedance2-video-prompter",
+      "prompt-bozo",
+      "seedance2-storyboard-generator",
+      "ai-video-script"
+    ]
+  }
+}

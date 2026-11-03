@@ -1,0 +1,1 @@
+{"dataset_path":"examples/data/diagnostic_test.csv","analysis_type":"roc_auc","predictor_var":"biomarker","outcome_var":"disease","hypothesis":"Biomarker discriminates disease status","alpha":0.05,"seed":42,"output_dir":"output/roc_auc"}

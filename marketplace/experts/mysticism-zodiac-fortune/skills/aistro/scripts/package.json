@@ -1,0 +1,10 @@
+{
+  "name": "aistro-scripts",
+  "version": "0.1.2",
+  "type": "module",
+  "description": "Astrology calculation scripts for the Aistro skill",
+  "dependencies": {
+    "circular-natal-horoscope-js": "1.1.0",
+    "dayjs": "^1.11.0"
+  }
+}

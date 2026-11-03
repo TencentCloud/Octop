@@ -1,0 +1,149 @@
+{
+  "name": "律师助理",
+  "version": "1.0.0",
+  "displayName": "律师助理",
+  "description": "负责合同提取与期限跟踪，提供法律文档自动化分析。",
+  "author": {
+    "name": "Manas AI",
+    "email": "hello@manasexp.com",
+    "url": "https://manasexp.com"
+  },
+  "license": "Commercial",
+  "category": "Legal",
+  "tags": [
+    "legal",
+    "contracts",
+    "document-review",
+    "legal-research",
+    "deadline-tracking",
+    "clause-extraction",
+    "law-firm",
+    "paralegal",
+    "attorney",
+    "compliance"
+  ],
+  "pricing": {
+    "model": "subscription",
+    "tiers": [
+      {
+        "name": "Solo",
+        "price": 99,
+        "currency": "USD",
+        "interval": "month",
+        "features": ["50 documents/mo", "100 research queries", "Basic support"]
+      },
+      {
+        "name": "Small Firm",
+        "price": 299,
+        "currency": "USD",
+        "interval": "month",
+        "features": ["200 documents/mo", "500 research queries", "Priority support"]
+      },
+      {
+        "name": "Mid-Size",
+        "price": 799,
+        "currency": "USD",
+        "interval": "month",
+        "features": ["1000 documents/mo", "2500 research queries", "Dedicated support"]
+      },
+      {
+        "name": "Enterprise",
+        "price": null,
+        "currency": "USD",
+        "interval": "month",
+        "features": ["Unlimited", "Unlimited", "Custom SLA", "On-premise option"]
+      }
+    ],
+    "trial": {
+      "enabled": true,
+      "duration": 14,
+      "documents": 25,
+      "queries": 50
+    }
+  },
+  "requirements": {
+    "python": ">=3.9",
+    "dependencies": [
+      "pypdf>=3.0.0",
+      "python-docx>=0.8.11"
+    ],
+    "optional_dependencies": [
+      "pytesseract>=0.3.10",
+      "Pillow>=9.0.0",
+      "PyYAML>=6.0"
+    ]
+  },
+  "entrypoints": {
+    "main": "execution/legaldoc.py",
+    "extract": "execution/clause_extractor.py",
+    "summarize": "execution/document_summarizer.py",
+    "research": "execution/legal_research.py",
+    "deadlines": "execution/deadline_tracker.py"
+  },
+  "permissions": [
+    "file_read",
+    "file_write",
+    "network_http"
+  ],
+  "environment": {
+    "required": [
+      "LEGALDOC_API_KEY"
+    ],
+    "optional": [
+      "COURTLISTENER_API_KEY",
+      "WESTLAW_API_KEY",
+      "LEXIS_API_KEY",
+      "CLIO_API_KEY"
+    ]
+  },
+  "integrations": [
+    {
+      "name": "Clio",
+      "type": "practice_management",
+      "status": "available"
+    },
+    {
+      "name": "MyCase",
+      "type": "practice_management",
+      "status": "available"
+    },
+    {
+      "name": "CourtListener",
+      "type": "legal_research",
+      "status": "available"
+    },
+    {
+      "name": "Slack",
+      "type": "notifications",
+      "status": "available"
+    }
+  ],
+  "compliance": {
+    "soc2": true,
+    "hipaa": true,
+    "gdpr": true,
+    "privilege_protected": true
+  },
+  "support": {
+    "documentation": "https://docs.legaldoc.ai",
+    "email": "support@legaldoc.ai",
+    "slack": "https://legaldoc-community.slack.com"
+  },
+  "screenshots": [
+    "media/screenshot-clause-extraction.png",
+    "media/screenshot-document-summary.png",
+    "media/screenshot-deadline-tracker.png"
+  ],
+  "changelog": {
+    "1.0.0": {
+      "date": "2026-01-31",
+      "changes": [
+        "Initial release",
+        "Contract clause extraction (12 types)",
+        "Document summarization",
+        "Legal research integration",
+        "Deadline tracking system"
+      ]
+    }
+  }
+}

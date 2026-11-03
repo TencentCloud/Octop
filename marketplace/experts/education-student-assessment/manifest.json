@@ -1,0 +1,160 @@
+{
+  "id": "education-student-assessment",
+  "version": "1.0.0",
+  "scene": "education",
+  "sub_scene": "student-assessment",
+  "label": {
+    "zh": "学生评估专家",
+    "en": "Student Assessment Expert"
+  },
+  "description": {
+    "zh": "从教师评估工具箱（评分标准Rubric设计/评估方案/学生反馈/课堂评价）与评分标准差距分析（草稿对标/差距识别/提分计划），错题归类与知识点定位（薄弱环节分析/复习建议/知识图谱）与K12全学段作业批改（错题分析/举一反三/九大学科），到学员成长档案管理（学情记录/家长反馈/咨询留档）与成绩单家长评语生成（作业评语/校园沟通/温暖得体）的完整学生评估工作流。覆盖评估设计、标准分析、错题诊断、作业批改、档案管理、评语生成全链路。",
+    "en": "Student assessment workflow for rubric design, gap analysis, error categorization, weakness diagnosis, homework correction and feedback, student growth records, and report-card comments."
+  },
+  "welcome_message": {
+    "zh": "我来帮你做「评估方案与Rubric设计」",
+    "en": "I'll help you with Assessment Plan and Rubric Design."
+  },
+  "icon_name": "book-open",
+  "icon_url": "https://cloudcache.tencent-cloud.com/qcloud/tea/app/skillhub/assets/source/ai-buddy-decouple/expert-profiles/education-student-assessment.v20260625.avif",
+  "color": "#2563eb",
+  "prompt_files": [
+    "SOUL.md"
+  ],
+  "quick_prompts": [
+    {
+      "title": {
+        "zh": "评估方案与Rubric设计",
+        "en": "Assessment Plan and Rubric Design"
+      },
+      "description": {
+        "zh": "生成评估方案和评分标准文档",
+        "en": "Assessment rubric"
+      },
+      "prompt": {
+        "zh": "请作为「学生评估专家」，帮我完成「评估方案与Rubric设计」。\n我的情况/目标/材料是：\n",
+        "en": "As the Student Assessment Expert, help me complete “Assessment Plan and Rubric Design”.\nMy context, goals, or materials are:\n"
+      },
+      "color": "#e8f4ff",
+      "icon_name": "trending-up"
+    },
+    {
+      "title": {
+        "zh": "评分差距分析与提分计划",
+        "en": "Scoring Gap Analysis and Improvement Plan"
+      },
+      "description": {
+        "zh": "生成差距分析报告和提分计划",
+        "en": "Gap analysis and improvement plan"
+      },
+      "prompt": {
+        "zh": "请作为「学生评估专家」，帮我完成「评分差距分析与提分计划」。\n我的情况/目标/材料是：\n",
+        "en": "As the Student Assessment Expert, help me complete “Scoring Gap Analysis and Improvement Plan”.\nMy context, goals, or materials are:\n"
+      },
+      "color": "#fef3c7",
+      "icon_name": "activity"
+    },
+    {
+      "title": {
+        "zh": "错题归类与薄弱环节诊断",
+        "en": "Error Categorization and Weakness Diagnosis"
+      },
+      "description": {
+        "zh": "生成错题分析报告和知识点图谱",
+        "en": "Error analysis report"
+      },
+      "prompt": {
+        "zh": "请作为「学生评估专家」，帮我完成「错题归类与薄弱环节诊断」。\n我的情况/目标/材料是：\n",
+        "en": "As the Student Assessment Expert, help me complete “Error Categorization and Weakness Diagnosis”.\nMy context, goals, or materials are:\n"
+      },
+      "color": "#dcfce7",
+      "icon_name": "activity"
+    },
+    {
+      "title": {
+        "zh": "全学段作业批改与反馈",
+        "en": "All-Grade Homework Correction and Feedback"
+      },
+      "description": {
+        "zh": "生成作业批改结果和个性化反馈",
+        "en": "Corrected homework and feedback"
+      },
+      "prompt": {
+        "zh": "请作为「学生评估专家」，帮我完成「全学段作业批改与反馈」。\n我的情况/目标/材料是：\n",
+        "en": "As the Student Assessment Expert, help me complete “All-Grade Homework Correction and Feedback”.\nMy context, goals, or materials are:\n"
+      },
+      "color": "#f1f5f9",
+      "icon_name": "activity"
+    },
+    {
+      "title": {
+        "zh": "学员成长档案管理",
+        "en": "Student Growth Record Management"
+      },
+      "description": {
+        "zh": "生成学员成长档案和学情追踪记录",
+        "en": "Student growth record"
+      },
+      "prompt": {
+        "zh": "请作为「学生评估专家」，帮我完成「学员成长档案管理」。\n我的情况/目标/材料是：\n",
+        "en": "As the Student Assessment Expert, help me complete “Student Growth Record Management”.\nMy context, goals, or materials are:\n"
+      },
+      "color": "#fff1f2",
+      "icon_name": "trending-up"
+    },
+    {
+      "title": {
+        "zh": "成绩单评语生成",
+        "en": "Report-Card Comment Generation"
+      },
+      "description": {
+        "zh": "生成个性化学生评语集",
+        "en": "Report-card comments"
+      },
+      "prompt": {
+        "zh": "请作为「学生评估专家」，帮我完成「成绩单评语生成」。\n我的情况/目标/材料是：\n",
+        "en": "As the Student Assessment Expert, help me complete “Report-Card Comment Generation”.\nMy context, goals, or materials are:\n"
+      },
+      "color": "#eef2ff",
+      "icon_name": "activity"
+    }
+  ],
+  "task_examples": {
+    "zh": [
+      "每天「09:00」帮我完成「评估方案与Rubric设计」并把结果发给我，任务创建后立即启用",
+      "每个工作日「18:00」帮我完成「评分差距分析与提分计划」并把结果发给我",
+      "每周一「10:00」帮我完成「错题归类与薄弱环节诊断」并把结果发给我",
+      "每周五「17:00」帮我完成「全学段作业批改与反馈」并把结果发给我",
+      "每天「08:00」帮我完成「学员成长档案管理」并把结果发给我",
+      "每月 1 日「09:30」帮我完成「成绩单评语生成」并把结果发给我"
+    ],
+    "en": [
+      "Every day at 09:00, help me complete “Assessment Plan and Rubric Design” and send the result — enable immediately",
+      "Every weekday at 18:00, help me complete “Scoring Gap Analysis and Improvement Plan” and send the result",
+      "Every Monday at 10:00, help me complete “Error Categorization and Weakness Diagnosis” and send the result",
+      "Every Friday at 17:00, help me complete “All-Grade Homework Correction and Feedback” and send the result",
+      "Every day at 08:00, help me complete “Student Growth Record Management” and send the result",
+      "On the 1st of each month at 09:30, help me complete “Report-Card Comment Generation” and send the result"
+    ]
+  },
+  "source": {
+    "type": "skillhub",
+    "kind": "skillset",
+    "slug": "education-student-assessment",
+    "scene": "education",
+    "sub_scene": "student-assessment"
+  },
+  "skillhub": {
+    "slug": "education-student-assessment",
+    "scene": "education",
+    "sub_scene": "student-assessment",
+    "skill_slugs": [
+      "teacher-assistant",
+      "rubric-gap-analyzer",
+      "error-analysis",
+      "k12-smart-teacher",
+      "student-growth-ops",
+      "xueersi-parent-comment"
+    ]
+  }
+}

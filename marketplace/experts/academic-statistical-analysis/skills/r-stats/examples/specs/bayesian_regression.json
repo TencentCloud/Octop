@@ -1,0 +1,13 @@
+{
+  "dataset_path": "examples/data/mtcars.csv",
+  "analysis_type": "bayesian_regression",
+  "formula": "mpg ~ wt + hp",
+  "family": "gaussian",
+  "iter": 2000,
+  "chains": 4,
+  "compute_loo": true,
+  "hypothesis": "Vehicle weight and horsepower are associated with fuel efficiency (Bayesian estimation)",
+  "alpha": 0.05,
+  "seed": 42,
+  "output_dir": "output/bayesian_regression"
+}

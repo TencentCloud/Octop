@@ -1,0 +1,164 @@
+{
+  "competitors": [
+    {
+      "id": "acme-corp",
+      "name": "Acme Corp",
+      "homepage": "https://acme.com",
+      "tier": "fierce",
+      "tags": ["direct-competitor", "ai-tools", "enterprise"],
+      "pages": {
+        "pricing": "https://acme.com/pricing",
+        "features": "https://acme.com/features",
+        "docs": "https://acme.com/docs",
+        "blog": "https://acme.com/blog",
+        "changelog": "https://acme.com/changelog"
+      },
+      "social": {
+        "twitter": "@acmecorp",
+        "linkedin": "company/acme-corp"
+      },
+      "notes": "Our primary competitor in mid-market. Watch for pricing and feature parity."
+    },
+    {
+      "id": "competitor-b",
+      "name": "Competitor B",
+      "homepage": "https://competitorb.io",
+      "tier": "important",
+      "tags": ["direct-competitor", "startup"],
+      "pages": {
+        "pricing": "https://competitorb.io/pricing",
+        "blog": "https://competitorb.io/blog"
+      },
+      "social": {
+        "twitter": "@competitorb"
+      },
+      "notes": "Fast-growing startup. Less frequent overlap but worth watching."
+    },
+    {
+      "id": "adjacent-player",
+      "name": "Adjacent Player",
+      "homepage": "https://adjacentplayer.com",
+      "tier": "watching",
+      "tags": ["adjacent-market", "potential-threat"],
+      "pages": {
+        "blog": "https://adjacentplayer.com/blog"
+      },
+      "notes": "Different market but trending toward our space. Monitor for pivots."
+    }
+  ],
+  "tiers": {
+    "fierce": {
+      "description": "Direct competitors in every deal",
+      "check_interval_minutes": 30,
+      "monitoring_depth": "deep",
+      "alert_threshold": "minor",
+      "retention_days": 90,
+      "pages_to_track": ["pricing", "features", "docs", "blog", "changelog", "homepage"],
+      "enable_social": true
+    },
+    "important": {
+      "description": "Frequent competitive overlap",
+      "check_interval_minutes": 120,
+      "monitoring_depth": "medium",
+      "alert_threshold": "medium",
+      "retention_days": 30,
+      "pages_to_track": ["pricing", "features", "blog", "homepage"],
+      "enable_social": true
+    },
+    "watching": {
+      "description": "Potential future threat",
+      "check_interval_minutes": 1440,
+      "monitoring_depth": "light",
+      "alert_threshold": "major",
+      "retention_days": 14,
+      "pages_to_track": ["homepage", "blog"],
+      "enable_social": false
+    },
+    "adjacent": {
+      "description": "Different market, relevant trends",
+      "check_interval_minutes": 10080,
+      "monitoring_depth": "minimal",
+      "alert_threshold": "critical",
+      "retention_days": 7,
+      "pages_to_track": ["blog"],
+      "enable_social": false
+    }
+  },
+  "diffing": {
+    "ignore_patterns": [
+      "\\?v=[0-9]+",
+      "\\?utm_[a-z]+=[^&]+",
+      "session[_-]?id",
+      "csrf[_-]?token",
+      "_ga=[A-Za-z0-9]+",
+      "Last updated: .*",
+      "© 20[0-9]{2}",
+      "<!-- .* -->",
+      "<script[^>]*>.*?</script>",
+      "<noscript>.*?</noscript>",
+      "data-timestamp=\"[^\"]+\"",
+      "Share count: [0-9]+"
+    ],
+    "similarity_threshold": 0.95,
+    "min_change_chars": 50,
+    "keyword_weights": {
+      "pricing_signals": {
+        "keywords": ["price", "pricing", "$", "€", "£", "tier", "plan", "subscription", "cost", "free trial"],
+        "weight": 2.0
+      },
+      "launch_signals": {
+        "keywords": ["announcing", "launched", "released", "introducing", "new feature", "now available", "today we"],
+        "weight": 3.0
+      },
+      "product_signals": {
+        "keywords": ["feature", "integration", "API", "beta", "enterprise", "security", "compliance"],
+        "weight": 1.5
+      }
+    }
+  },
+  "alerts": {
+    "channel": "telegram",
+    "enabled": true,
+    "cooldown_minutes": 360,
+    "min_change_score": {
+      "fierce": 0.05,
+      "important": 0.10,
+      "watching": 0.20,
+      "adjacent": 0.30
+    },
+    "always_alert_keywords": [
+      "pricing",
+      "launched",
+      "announcing",
+      "acquisition",
+      "funding",
+      "enterprise"
+    ],
+    "digest": {
+      "enabled": true,
+      "frequency": "daily",
+      "time": "09:00",
+      "include_minor_changes": false
+    }
+  },
+  "monitoring": {
+    "method": "web_fetch",
+    "browser_fallback": true,
+    "timeout_seconds": 30,
+    "user_agent": "Mozilla/5.0 (compatible; CompetitorWatch/1.0; +https://clawd.bot)",
+    "respect_robots_txt": true,
+    "rate_limit_delay_ms": 2000
+  },
+  "storage": {
+    "data_dir": "~/.config/competitor-watch/data",
+    "snapshot_format": "text",
+    "compress_old_snapshots": true,
+    "compress_after_days": 7
+  },
+  "reporting": {
+    "formats": ["summary", "detailed"],
+    "include_screenshots": false,
+    "include_diff_files": true,
+    "max_changes_per_report": 20
+  }
+}

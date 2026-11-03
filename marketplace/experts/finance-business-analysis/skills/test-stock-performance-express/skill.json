@@ -1,0 +1,34 @@
+{
+  "name": "stock-performance-express",
+  "version": "1.0.0",
+  "author": "local",
+  "description": "查询 A 股上市公司业绩快报数据，支持沪深京股票。当用户询问股票业绩快报、营收、净利润、EPS、ROE、同比增长等财务指标时触发。",
+  "license": "MIT",
+  "permissions": ["network"],
+  "config": {
+    "base_url": {
+      "type": "string",
+      "required": false,
+      "default": "https://market.ft.tech",
+      "description": "API 服务地址"
+    },
+    "page_size": {
+      "type": "number",
+      "required": false,
+      "default": 50,
+      "description": "每页返回条数"
+    }
+  },
+  "entryPoint": {
+    "type": "shell",
+    "path": "handler.py"
+  },
+  "triggers": {
+    "keywords": [
+      "业绩快报", "财务数据", "营收", "净利润",
+      "同比增长", "EPS", "ROE", "每股收益",
+      "一季报", "半年报", "三季报", "年报",
+      "performance express", "stock finance"
+    ]
+  }
+}

@@ -1,0 +1,10 @@
+{
+  "name": "律师助理",
+  "version": "1.0.0",
+  "description": "法律文档自动化智能助手，支持合同条款提取、文书摘要、法律检索、期限管理等专业功能。",
+  "author": "Manas AI / Nathan Huang",
+  "license": "Commercial",
+  "keywords": ["法律", "文档", "合同", "条款提取", "文书", "AI"],
+  "category": "legal",
+  "language": "zh"
+}
