@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { existsSync } from "node:fs";
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
@@ -94,6 +94,31 @@ test("stop() reports unclean when the child exits non-zero", posixOnly, async ()
     const exit = await supervisor.stop(5_000);
     assert.deepEqual(exit, { clean: false, exitCode: 3 });
   });
+});
+
+test("start() on a non-executable interpreter fails without an uncaught exception", posixOnly, async () => {
+  const dir = await mkdtemp(join(tmpdir(), "octop-sidecar-"));
+  const executable = join(dir, "python3");
+  await writeFile(executable, "python3.12", { mode: 0o666 });
+  const supervisor = new SidecarSupervisor({
+    executable,
+    args: ["run"],
+    env: process.env,
+    cwd: dir,
+    port: 1,
+  });
+  try {
+    supervisor.start();
+    const deadline = Date.now() + 2_000;
+    while (supervisor.isRunning() && Date.now() < deadline) {
+      await new Promise((resolvePromise) => setTimeout(resolvePromise, 20));
+    }
+    assert.equal(supervisor.isRunning(), false);
+    assert.match(supervisor.outputTail(), /EACCES/);
+  } finally {
+    await supervisor.stop(200);
+    await rm(dir, { recursive: true, force: true });
+  }
 });
 
 test("stop() is a no-op when the sidecar was never started", async () => {

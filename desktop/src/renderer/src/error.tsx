@@ -24,7 +24,12 @@ function FailureMark() {
   return (
     <div className="result__mark" aria-hidden="true">
       <img className="result__mark-img" src={markUrl} alt="" width={352} height={255} />
-      <span className="result__badge">!</span>
+      <span className="result__badge">
+        <svg viewBox="0 0 12 12" width="11" height="11" aria-hidden="true">
+          <rect x="5.15" y="1" width="1.7" height="6.2" rx="0.85" fill="currentColor" />
+          <circle cx="6" cy="9.95" r="1.05" fill="currentColor" />
+        </svg>
+      </span>
     </div>
   );
 }

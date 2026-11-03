@@ -63,6 +63,17 @@ export default {
       join(context.appOutDir, `${productName}.app`, "Contents", "Resources"),
     );
   },
+  // develop's drag-to-Applications art (resources/dmg-background.jpeg).
+  // The 600×400 PNG sets the window size; the @2x sibling becomes the HiDPI TIFF.
+  // Coordinates are icon centers, on the chevron.
+  dmg: {
+    background: "resources/dmg-background.png",
+    iconSize: 128,
+    contents: [
+      { x: 154, y: 237, type: "file" },
+      { x: 454, y: 237, type: "link", path: "/Applications" },
+    ],
+  },
   win: {
     icon: "resources/icon.ico",
     // CI passes the native runner architecture, never cross-package both here.

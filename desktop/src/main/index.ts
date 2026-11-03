@@ -1,6 +1,6 @@
 import { app, BrowserWindow, dialog, ipcMain, net, protocol, shell } from "electron";
 import { spawn } from "node:child_process";
-import { promises as fs } from "node:fs";
+import { constants as fsConstants, promises as fs } from "node:fs";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 
@@ -149,7 +149,11 @@ async function readLocalRuntime(octopHome: string): Promise<LocalRuntime> {
   const interpreterPath = join(octopHome, "portable", "runtime", process.platform === "win32" ? "python.exe" : "bin/python3");
   let interpreterExists = false;
   try {
-    await fs.access(interpreterPath);
+    // X_OK, not F_OK. A previous extract could leave `python3` as a mode-0666
+    // text file where the archive stored a symlink. The path exists, spawn
+    // fails with EACCES, and a same-version launch would otherwise skip
+    // extraction forever. On Windows X_OK is the same check as F_OK.
+    await fs.access(interpreterPath, fsConstants.X_OK);
     interpreterExists = true;
   } catch {
     interpreterExists = false;

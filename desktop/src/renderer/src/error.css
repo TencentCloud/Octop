@@ -50,6 +50,9 @@
   position: absolute;
   right: -5px;
   bottom: -5px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   width: 19px;
   height: 19px;
   border-radius: 50%;
@@ -58,11 +61,12 @@
   border: 2px solid var(--page);
   background: var(--brand);
   color: #ffffff;
-  font-size: 11px;
-  font-weight: 700;
-  line-height: 15px;
-  text-align: center;
   box-sizing: content-box;
+}
+
+/* A text "!" sits on the font baseline, so it never lands in the circle. */
+.result__badge svg {
+  display: block;
 }
 
 .result__title {
