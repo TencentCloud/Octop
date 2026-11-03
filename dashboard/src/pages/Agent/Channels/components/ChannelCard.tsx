@@ -1,6 +1,7 @@
 import { Switch, Tooltip } from "antd";
 import { CheckCircle, Loader2, Plug } from "lucide-react";
 import { useTranslation } from "react-i18next";
+import cx from "classnames";
 import {
   CHANNEL_LABEL_KEYS,
   CHANNEL_LABELS,
@@ -51,7 +52,7 @@ export function ChannelCard({
   const renderStatusBadge = () => {
     if (testLoading) {
       return (
-        <span className={`${styles.statusBadge} ${styles.statusChecking}`}>
+        <span className={cx(styles.statusBadge, styles.statusChecking)}>
           <Loader2 size={14} />
           {t("channels.checking")}
         </span>
@@ -60,7 +61,7 @@ export function ChannelCard({
     if (testResult) {
       if (testResult.ok) {
         return (
-          <span className={`${styles.statusBadge} ${styles.statusConnected}`}>
+          <span className={cx(styles.statusBadge, styles.statusConnected)}>
             <CheckCircle size={14} />
             {t("channels.connected")}
           </span>
@@ -68,9 +69,7 @@ export function ChannelCard({
       }
       return (
         <Tooltip title={testResult.error ?? t("common.unknownError")}>
-          <span
-            className={`${styles.statusBadge} ${styles.statusDisconnected}`}
-          >
+          <span className={cx(styles.statusBadge, styles.statusDisconnected)}>
             <Plug size={14} />
             {t("channels.disconnected")}
           </span>
@@ -80,9 +79,7 @@ export function ChannelCard({
     if (enabled && runtime && !runtime.connected) {
       return (
         <Tooltip title={runtime.error ?? t("channels.unknownReason")}>
-          <span
-            className={`${styles.statusBadge} ${styles.statusDisconnected}`}
-          >
+          <span className={cx(styles.statusBadge, styles.statusDisconnected)}>
             <Plug size={14} />
             {t("channels.disconnected")}
           </span>
@@ -91,7 +88,7 @@ export function ChannelCard({
     }
     if (enabled && runtime?.connected) {
       return (
-        <span className={`${styles.statusBadge} ${styles.statusConnected}`}>
+        <span className={cx(styles.statusBadge, styles.statusConnected)}>
           <CheckCircle size={14} />
           {t("channels.connected")}
         </span>
@@ -99,27 +96,25 @@ export function ChannelCard({
     }
     if (enabled) {
       return (
-        <span className={`${styles.statusBadge} ${styles.statusConnected}`}>
+        <span className={cx(styles.statusBadge, styles.statusConnected)}>
           <CheckCircle size={14} />
           {t("channels.channelEnabled")}
         </span>
       );
     }
     return (
-      <span className={`${styles.statusBadge} ${styles.statusInactive}`}>
+      <span className={cx(styles.statusBadge, styles.statusInactive)}>
         <Plug size={14} />
         {t("common.disabled")}
       </span>
     );
   };
 
-  const cardClass = [
+  const cardClass = cx(
     styles.channelCard,
     enabled ? styles.enabled : styles.normal,
-    isHover ? styles.hover : "",
-  ]
-    .filter(Boolean)
-    .join(" ");
+    isHover && styles.hover,
+  );
 
   return (
     <div

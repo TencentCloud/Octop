@@ -19,6 +19,7 @@ import {
   XCircle,
 } from "lucide-react";
 import { useTranslation } from "react-i18next";
+import cx from "classnames";
 import { message } from "@/utils/antdMessage";
 import {
   ssoApi,
@@ -349,13 +350,11 @@ export default function LdapPanel() {
                       return (
                         <li
                           key={key}
-                          className={[
+                          className={cx(
                             styles.ssoGuideItem,
-                            done ? styles.ssoGuideDone : "",
-                            current ? styles.ssoGuideCurrent : "",
-                          ]
-                            .filter(Boolean)
-                            .join(" ")}
+                            done && styles.ssoGuideDone,
+                            current && styles.ssoGuideCurrent,
+                          )}
                         >
                           <span className={styles.ssoGuideIndex} aria-hidden>
                             {done ? <Check size={12} /> : index + 1}
@@ -372,12 +371,10 @@ export default function LdapPanel() {
                     {t("adminSso.loginPreview")}
                   </div>
                   <div
-                    className={[
+                    className={cx(
                       styles.ssoPreviewBtn,
-                      enabled ? "" : styles.ssoPreviewBtnMuted,
-                    ]
-                      .filter(Boolean)
-                      .join(" ")}
+                      !enabled && styles.ssoPreviewBtnMuted,
+                    )}
                   >
                     {t("login.ldapHint", { name: previewName })}
                   </div>

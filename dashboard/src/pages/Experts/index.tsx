@@ -34,6 +34,7 @@ import {
   Store,
   Users,
 } from "lucide-react";
+import cx from "classnames";
 import PageShell from "../../layouts/PageShell";
 import TabLabel from "../../components/TabLabel";
 import StreamSetupGuide from "../../components/StreamSetupGuide/StreamSetupGuide";
@@ -432,9 +433,10 @@ export default function ExpertsPage() {
     if (expertAgents.length === 0) {
       return (
         <div
-          className={`${styles.emptyLayout}${
-            isMobile ? ` ${styles.emptyLayoutMobile}` : ""
-          }`}
+          className={cx(
+            styles.emptyLayout,
+            isMobile && styles.emptyLayoutMobile,
+          )}
         >
           <StreamSetupGuide
             className={styles.emptyGuide}
@@ -631,9 +633,10 @@ export default function ExpertsPage() {
       const canCreate = localTeamMembers.length >= 2;
       return (
         <div
-          className={`${styles.emptyLayout}${
-            isMobile ? ` ${styles.emptyLayoutMobile}` : ""
-          }`}
+          className={cx(
+            styles.emptyLayout,
+            isMobile && styles.emptyLayoutMobile,
+          )}
         >
           <StreamSetupGuide
             className={styles.emptyGuide}

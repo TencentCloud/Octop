@@ -4,6 +4,7 @@
  */
 import { InputNumber } from "antd";
 import { useTranslation } from "react-i18next";
+import cx from "classnames";
 import styles from "./TokenCountInput.module.less";
 
 export function formatTokenScaleLabel(tokens: number): string {
@@ -82,9 +83,7 @@ export function TokenCountInput({
                 key={preset}
                 type="button"
                 disabled={disabled}
-                className={`${styles.preset} ${
-                  selected ? styles.presetActive : ""
-                }`}
+                className={cx(styles.preset, selected && styles.presetActive)}
                 onClick={() => onChange?.(preset)}
               >
                 {formatTokenScaleLabel(preset)}

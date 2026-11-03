@@ -67,6 +67,7 @@ import {
 } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { useNavigate, useSearchParams } from "react-router-dom";
+import cx from "classnames";
 
 import { useCurrentUser } from "../../hooks/useCurrentUser";
 import { userCan } from "../../utils/permissions";
@@ -2060,11 +2061,7 @@ export default function KnowledgeBasesPage() {
       <>
         <span className={styles.filenameHover}>
           <span
-            className={
-              nameClass
-                ? `${styles.filenameText} ${nameClass}`
-                : styles.filenameText
-            }
+            className={cx(styles.filenameText, nameClass)}
             title={document.path || name}
           >
             {name}
@@ -2203,9 +2200,11 @@ export default function KnowledgeBasesPage() {
         </div>
       ) : (
         <div
-          className={`${styles.layout}${
-            isResizing ? ` ${styles.layoutResizing}` : ""
-          }${isMobile ? ` ${styles.layoutMobile}` : ""}`}
+          className={cx(
+            styles.layout,
+            isResizing && styles.layoutResizing,
+            isMobile && styles.layoutMobile,
+          )}
           style={
             {
               "--knowledge-bases-sidebar-width": `${sidebarWidth}px`,
@@ -2259,9 +2258,10 @@ export default function KnowledgeBasesPage() {
                       onClick={() => selectBase(base)}
                     >
                       <div
-                        className={`${styles.listItem} ${
-                          base.id === selected?.id ? styles.active : ""
-                        }`}
+                        className={cx(
+                          styles.listItem,
+                          base.id === selected?.id && styles.active,
+                        )}
                       >
                         <div className={styles.listName}>
                           <SharedAvatarMark
@@ -2349,7 +2349,10 @@ export default function KnowledgeBasesPage() {
                             {base.default_open ? (
                               <div className={styles.listMetaBadges}>
                                 <span
-                                  className={`${styles.listBadge} ${styles.listBadgeDefaultOpen}`}
+                                  className={cx(
+                                    styles.listBadge,
+                                    styles.listBadgeDefaultOpen,
+                                  )}
                                 >
                                   {t("knowledgeBases.defaultOpenBadge")}
                                 </span>
@@ -2367,9 +2370,10 @@ export default function KnowledgeBasesPage() {
           {!isMobile ? (
             <div
               data-split-divider=""
-              className={`${styles.splitDivider}${
-                listPanelCollapsed ? ` ${styles.splitDividerCollapsed}` : ""
-              }`}
+              className={cx(
+                styles.splitDivider,
+                listPanelCollapsed && styles.splitDividerCollapsed,
+              )}
             >
               {!listPanelCollapsed ? (
                 <div
@@ -2426,9 +2430,10 @@ export default function KnowledgeBasesPage() {
                 </div>
               ) : !selected ? null : (
                 <div
-                  className={`${styles.detailBody}${
-                    dragActive ? ` ${styles.detailBodyDropActive}` : ""
-                  }`}
+                  className={cx(
+                    styles.detailBody,
+                    dragActive && styles.detailBodyDropActive,
+                  )}
                   onDragEnter={handleDocsDragEnter}
                   onDragLeave={handleDocsDragLeave}
                   onDragOver={handleDocsDragOver}
@@ -2441,7 +2446,7 @@ export default function KnowledgeBasesPage() {
                     </div>
                   ) : null}
                   <div
-                    className={`${skillStyles.gridToolbar} ${styles.docsToolbar}`}
+                    className={cx(skillStyles.gridToolbar, styles.docsToolbar)}
                   >
                     <div className={styles.toolbarStart}>
                       {isMobile ? (
@@ -2604,9 +2609,10 @@ export default function KnowledgeBasesPage() {
                     ) : null}
                   </div>
                   <div
-                    className={`${styles.docsSplit}${
-                      isMobile ? "" : ` ${styles.docsSplitFramed}`
-                    }`}
+                    className={cx(
+                      styles.docsSplit,
+                      !isMobile && styles.docsSplitFramed,
+                    )}
                   >
                     {!isMobile && !docTreeCollapsed ? (
                       <aside
@@ -2640,11 +2646,10 @@ export default function KnowledgeBasesPage() {
                     {!isMobile ? (
                       <div
                         data-split-divider=""
-                        className={`${styles.docTreeDivider}${
-                          docTreeCollapsed
-                            ? ` ${styles.docTreeDividerCollapsed}`
-                            : ""
-                        }`}
+                        className={cx(
+                          styles.docTreeDivider,
+                          docTreeCollapsed && styles.docTreeDividerCollapsed,
+                        )}
                       >
                         {!docTreeCollapsed ? (
                           <div
@@ -3271,14 +3276,11 @@ export default function KnowledgeBasesPage() {
                     <button
                       key={index}
                       type="button"
-                      className={[
+                      className={cx(
                         styles.mdOutlineItem,
-                        index === mdActiveOutlineIndex
-                          ? styles.mdOutlineItemActive
-                          : "",
-                      ]
-                        .filter(Boolean)
-                        .join(" ")}
+                        index === mdActiveOutlineIndex &&
+                          styles.mdOutlineItemActive,
+                      )}
                       style={{ paddingLeft: 10 + (item.level - 1) * 14 }}
                       title={item.title}
                       onClick={() => scrollToMdHeading(item)}
@@ -3301,14 +3303,11 @@ export default function KnowledgeBasesPage() {
                     <button
                       key={index}
                       type="button"
-                      className={[
+                      className={cx(
                         styles.mdOutlineItem,
-                        index === mdActiveOutlineIndex
-                          ? styles.mdOutlineItemActive
-                          : "",
-                      ]
-                        .filter(Boolean)
-                        .join(" ")}
+                        index === mdActiveOutlineIndex &&
+                          styles.mdOutlineItemActive,
+                      )}
                       style={{ paddingLeft: 10 + (item.level - 1) * 14 }}
                       title={item.title}
                       onClick={() => {
@@ -3719,9 +3718,10 @@ export default function KnowledgeBasesPage() {
                         <button
                           key={model.id}
                           type="button"
-                          className={`${styles.onnxModelItem}${
-                            selected ? ` ${styles.onnxModelItemActive}` : ""
-                          }`}
+                          className={cx(
+                            styles.onnxModelItem,
+                            selected && styles.onnxModelItemActive,
+                          )}
                           onClick={() => setFeatureModel(model.id)}
                         >
                           <span className={styles.onnxModelName}>
@@ -3753,9 +3753,10 @@ export default function KnowledgeBasesPage() {
                     return (
                       <div
                         key={model.id}
-                        className={`${styles.onnxModelItem}${
-                          selected ? ` ${styles.onnxModelItemActive}` : ""
-                        }`}
+                        className={cx(
+                          styles.onnxModelItem,
+                          selected && styles.onnxModelItemActive,
+                        )}
                         onClick={() => setFeatureModel(model.id)}
                         onKeyDown={(event) => {
                           if (event.key === "Enter" || event.key === " ") {
@@ -3912,7 +3913,10 @@ export default function KnowledgeBasesPage() {
                     </Radio.Group>
                     {ocrBackend === "onnx" ? (
                       <div
-                        className={`${styles.onnxModelItem} ${styles.onnxModelItemActive}`}
+                        className={cx(
+                          styles.onnxModelItem,
+                          styles.onnxModelItemActive,
+                        )}
                       >
                         <div className={styles.onnxModelInfo}>
                           <span className={styles.onnxModelName}>

@@ -11,6 +11,7 @@ import {
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { useTranslation } from "react-i18next";
+import cx from "classnames";
 import type { BackendFlagIcon } from "./backendFlagModel";
 import { backendFlagIcon, resolveBackendFlag } from "./backendFlagModel";
 import { useNamedStorageBackends } from "./useNamedStorageBackends";
@@ -57,9 +58,7 @@ export default function BackendFlag({
   return (
     <Tooltip title={label || undefined} mouseEnterDelay={0.3}>
       <span
-        className={`${styles.backendFlag} ${
-          styles[`backendFlag_${kind}`] ?? ""
-        }`}
+        className={cx(styles.backendFlag, styles[`backendFlag_${kind}`])}
         role="img"
         aria-label={label}
       >

@@ -66,6 +66,7 @@ import {
   X,
 } from "lucide-react";
 import { useTranslation } from "react-i18next";
+import cx from "classnames";
 import { request } from "../../../api/request";
 import { authApi } from "../../../api/modules/auth";
 import {
@@ -227,9 +228,10 @@ function ExpertTemplatePicker({
                 type="button"
                 role="option"
                 aria-selected={selected}
-                className={`${styles.expertTemplateRow} ${
-                  selected ? styles.expertTemplateRowSelected : ""
-                }`}
+                className={cx(
+                  styles.expertTemplateRow,
+                  selected && styles.expertTemplateRowSelected,
+                )}
                 onClick={() => onChange?.(item.id)}
               >
                 <span className={styles.expertTemplateAvatar}>
@@ -475,7 +477,7 @@ function RoleNameMark({
     return <span className={className}>—</span>;
   }
   return (
-    <span className={`${styles.roleNameMark} ${className ?? ""}`}>
+    <span className={cx(styles.roleNameMark, className)}>
       {matched ? (
         <ProfileAvatar
           url={matched.avatar_url}
@@ -671,9 +673,10 @@ function TokenQuotaInput({ value, onChange }: TokenQuotaInputProps) {
             <button
               key={preset}
               type="button"
-              className={`${styles.tokenQuotaPreset} ${
-                selected ? styles.tokenQuotaPresetActive : ""
-              }`}
+              className={cx(
+                styles.tokenQuotaPreset,
+                selected && styles.tokenQuotaPresetActive,
+              )}
               onClick={() => onChange?.(preset)}
             >
               {t("adminUsers.policyTokenQuotaPreset", {
@@ -725,9 +728,10 @@ function MaxAgentsInput({ value, onChange }: MaxAgentsInputProps) {
             <button
               key={preset}
               type="button"
-              className={`${styles.tokenQuotaPreset} ${
-                selected ? styles.tokenQuotaPresetActive : ""
-              }`}
+              className={cx(
+                styles.tokenQuotaPreset,
+                selected && styles.tokenQuotaPresetActive,
+              )}
               onClick={() => onChange?.(preset)}
             >
               {preset}
@@ -748,7 +752,7 @@ export function ResourcePolicyFields({
 }) {
   const { t } = useTranslation();
   return (
-    <div className={`${styles.createSection} ${styles.policySection}`}>
+    <div className={cx(styles.createSection, styles.policySection)}>
       <div className={styles.createSectionTitle}>
         {t("adminUsers.createSectionPolicy")}
       </div>
@@ -998,9 +1002,7 @@ export function PermissionCheckboxPicker({
 
   return (
     <div
-      className={`${styles.permPicker} ${
-        disabled ? styles.permPickerDisabled : ""
-      }`}
+      className={cx(styles.permPicker, disabled && styles.permPickerDisabled)}
     >
       {groups.map((group) => {
         const keys = group.blocks.flatMap((block) =>
@@ -1025,7 +1027,7 @@ export function PermissionCheckboxPicker({
                 return (
                   <div
                     key={chip.key}
-                    className={`${styles.permChip} ${styles.permChipAlways}`}
+                    className={cx(styles.permChip, styles.permChipAlways)}
                     title={t("adminUsers.permAlwaysOn")}
                   >
                     <span className={styles.permChipLabel}>{chip.label}</span>
@@ -1043,9 +1045,10 @@ export function PermissionCheckboxPicker({
                   type="button"
                   disabled={disabled}
                   aria-pressed={checked}
-                  className={`${styles.permChip} ${
-                    checked ? styles.permChipSelected : ""
-                  }`}
+                  className={cx(
+                    styles.permChip,
+                    checked && styles.permChipSelected,
+                  )}
                   onClick={() => toggle(item.key, !checked)}
                 >
                   <span className={styles.permChipCheck} aria-hidden>
@@ -1096,9 +1099,10 @@ export function PermissionCheckboxPicker({
                   return (
                     <div
                       key={block.id}
-                      className={`${styles.permPage} ${
-                        pageOpen ? "" : styles.permPageCollapsed
-                      }`}
+                      className={cx(
+                        styles.permPage,
+                        !pageOpen && styles.permPageCollapsed,
+                      )}
                     >
                       <PermFoldHeader
                         title={block.title}
@@ -1199,7 +1203,7 @@ function PermissionSummary({
   const { t } = useTranslation();
   if (row.role === "admin") {
     return (
-      <span className={`${styles.permBadge} ${styles.permBadgeAll}`}>
+      <span className={cx(styles.permBadge, styles.permBadgeAll)}>
         {t("adminUsers.permAll")}
       </span>
     );
@@ -1275,14 +1279,12 @@ function UserCardGrid({
         return (
           <div
             key={row.id}
-            className={[
+            className={cx(
               styles.userCard,
-              selected ? styles.userCardSelected : "",
-              isLocked ? styles.userCardLocked : "",
-              row.disabled ? styles.userCardDisabled : "",
-            ]
-              .filter(Boolean)
-              .join(" ")}
+              selected && styles.userCardSelected,
+              isLocked && styles.userCardLocked,
+              row.disabled && styles.userCardDisabled,
+            )}
           >
             <div className={styles.userCardBody}>
               <div className={styles.userCardTop}>
@@ -1302,11 +1304,10 @@ function UserCardGrid({
                     className={styles.userCardAvatar}
                   />
                   <span
-                    className={
-                      row.disabled
-                        ? `${styles.userCardStatusDot} ${styles.userCardStatusDotOff}`
-                        : styles.userCardStatusDot
-                    }
+                    className={cx(
+                      styles.userCardStatusDot,
+                      row.disabled && styles.userCardStatusDotOff,
+                    )}
                   />
                 </span>
                 <div className={styles.userCardTitleBlock}>
@@ -1443,7 +1444,10 @@ function UserCardGrid({
                 >
                   <button
                     type="button"
-                    className={`${styles.userCardIconBtn} ${styles.userCardIconBtnDanger}`}
+                    className={cx(
+                      styles.userCardIconBtn,
+                      styles.userCardIconBtnDanger,
+                    )}
                     disabled={isSelf}
                     aria-label={t("common.delete")}
                   >
@@ -2371,12 +2375,10 @@ export default function UsersListPanel() {
             preserveSelectedRowKeys: true,
           }}
           rowClassName={(row) =>
-            [
-              row.disabled ? styles.userTableRowDisabled : "",
-              row.login_locked ? styles.userTableRowLocked : "",
-            ]
-              .filter(Boolean)
-              .join(" ")
+            cx(
+              row.disabled && styles.userTableRowDisabled,
+              row.login_locked && styles.userTableRowLocked,
+            )
           }
           columns={[
             {
@@ -2570,7 +2572,10 @@ export default function UsersListPanel() {
                     >
                       <button
                         type="button"
-                        className={`${styles.userCardIconBtn} ${styles.userCardIconBtnDanger}`}
+                        className={cx(
+                          styles.userCardIconBtn,
+                          styles.userCardIconBtnDanger,
+                        )}
                         disabled={row.id === currentUserId}
                         aria-label={t("common.delete")}
                       >
@@ -2798,9 +2803,7 @@ export default function UsersListPanel() {
             <div className={styles.createSectionTitle}>
               {t("adminUsers.createSectionAccess")}
             </div>
-            <div
-              className={`${styles.permAdminHint} ${styles.permSectionHint}`}
-            >
+            <div className={cx(styles.permAdminHint, styles.permSectionHint)}>
               <CircleHelp size={15} strokeWidth={2} />
               <span>{t("adminUsers.permEditHint")}</span>
             </div>
@@ -3017,9 +3020,7 @@ export default function UsersListPanel() {
             <div className={styles.createSectionTitle}>
               {t("adminUsers.createSectionAccess")}
             </div>
-            <div
-              className={`${styles.permAdminHint} ${styles.permSectionHint}`}
-            >
+            <div className={cx(styles.permAdminHint, styles.permSectionHint)}>
               <CircleHelp size={15} strokeWidth={2} />
               <span>{t("adminUsers.permEditHint")}</span>
             </div>

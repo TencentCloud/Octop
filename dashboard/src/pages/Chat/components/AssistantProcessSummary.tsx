@@ -2,6 +2,7 @@ import { memo, useEffect, useMemo, useRef, useState } from "react";
 import { ChevronRight, Scale } from "lucide-react";
 import type { TFunction } from "i18next";
 import { useTranslation } from "react-i18next";
+import cx from "classnames";
 import Markdown from "../../../components/Markdown/LazyMarkdown";
 import type { DecisionNotice } from "../hooks/useChat";
 import type { AssistantTurnSplit } from "../utils/messageContent";
@@ -115,9 +116,10 @@ export function DecisionToolRow({ notice }: { notice: DecisionNotice }) {
         </span>
         <ChevronRight
           size={14}
-          className={`${styles.inlineToolChevron} ${
-            expanded ? styles.inlineToolChevronOpen : ""
-          }`}
+          className={cx(
+            styles.inlineToolChevron,
+            expanded && styles.inlineToolChevronOpen,
+          )}
         />
       </button>
       {expanded ? (
@@ -288,9 +290,10 @@ function AssistantProcessSummary({
     <div className={styles.processSummary}>
       <button
         type="button"
-        className={`${styles.processSummaryToggle}${
-          liveHint ? ` ${styles.processSummaryToggleLive}` : ""
-        }`}
+        className={cx(
+          styles.processSummaryToggle,
+          liveHint && styles.processSummaryToggleLive,
+        )}
         onClick={() => setExpanded((v) => !v)}
         aria-expanded={expanded}
         aria-busy={liveHint ? true : undefined}
@@ -309,9 +312,10 @@ function AssistantProcessSummary({
         </span>
         <ChevronRight
           size={14}
-          className={`${styles.processSummaryChevron} ${
-            expanded ? styles.processSummaryChevronOpen : ""
-          }`}
+          className={cx(
+            styles.processSummaryChevron,
+            expanded && styles.processSummaryChevronOpen,
+          )}
         />
       </button>
       {expanded && (
