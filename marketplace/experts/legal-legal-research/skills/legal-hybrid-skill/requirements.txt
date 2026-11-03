@@ -1,0 +1,8 @@
+# 法律助手(官方API+本地兜底) 技能依赖包
+# 仅包含运行必需依赖，适配Python 3.7+，安装命令：pip install -r requirements.txt
+
+# 用于发送API请求，核心依赖
+requests==2.31.0
+
+# 用于解析JSON格式数据（Python标准库自带，无需额外安装，此处仅作说明）
+# json （无需手动安装）

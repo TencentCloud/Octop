@@ -1,0 +1,1 @@
+{"dataset_path":"examples/data/agreement_raters.csv","analysis_type":"kappa","rater_vars":["rater1","rater2","rater3"],"hypothesis":"Raters show substantial agreement","alpha":0.05,"seed":42,"output_dir":"output/kappa"}

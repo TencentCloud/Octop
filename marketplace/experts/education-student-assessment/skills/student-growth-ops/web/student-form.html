@@ -1,0 +1,1249 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>学员信息填写</title>
+    <style>
+      :root {
+        --bg: #f4f7fb;
+        --card: #ffffff;
+        --primary: #2563eb;
+        --primary-soft: rgba(37, 99, 235, 0.12);
+        --text: #1f2937;
+        --muted: #6b7280;
+        --border: #dbe3ef;
+        --success: #16a34a;
+        --warning: #d97706;
+        --danger: #dc2626;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        background: linear-gradient(180deg, #f7faff 0%, #eef4ff 100%);
+        color: var(--text);
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      }
+
+      code {
+        padding: 2px 6px;
+        border-radius: 8px;
+        background: #eef2ff;
+        color: #1d4ed8;
+      }
+
+      .page {
+        max-width: 1040px;
+        margin: 0 auto;
+        padding: 32px 20px 56px;
+      }
+
+      .archive-banner {
+        border-radius: 16px;
+        border: 1px solid var(--border);
+        padding: 14px 18px;
+        margin-bottom: 18px;
+        background: #fbfdff;
+        display: flex;
+        align-items: flex-start;
+        gap: 12px;
+        transition: border-color 0.2s ease, background 0.2s ease, box-shadow 0.2s ease;
+      }
+
+      .archive-banner strong {
+        font-weight: 800;
+        color: var(--text);
+      }
+
+      .archive-banner-dot {
+        width: 10px;
+        height: 10px;
+        border-radius: 999px;
+        margin-top: 6px;
+        flex-shrink: 0;
+        background: #94a3b8;
+      }
+
+      .archive-banner--idle .archive-banner-dot {
+        background: #94a3b8;
+      }
+
+      .archive-banner--loading .archive-banner-dot {
+        background: var(--primary);
+        animation: pulse-dot 1s ease-in-out infinite;
+      }
+
+      .archive-banner--create {
+        border-color: rgba(217, 119, 6, 0.35);
+        background: linear-gradient(135deg, #fffbeb 0%, #fff7ed 100%);
+        box-shadow: 0 8px 24px rgba(217, 119, 6, 0.08);
+      }
+
+      .archive-banner--create .archive-banner-dot {
+        background: var(--warning);
+      }
+
+      .archive-banner--update {
+        border-color: rgba(22, 163, 74, 0.35);
+        background: linear-gradient(135deg, #f0fdf4 0%, #ecfdf5 100%);
+        box-shadow: 0 8px 24px rgba(22, 163, 74, 0.1);
+      }
+
+      .archive-banner--update .archive-banner-dot {
+        background: var(--success);
+      }
+
+      .archive-banner--error {
+        border-color: rgba(220, 38, 38, 0.25);
+        background: #fef2f2;
+      }
+
+      .archive-banner--error .archive-banner-dot {
+        background: var(--danger);
+      }
+
+      @keyframes pulse-dot {
+        0%,
+        100% {
+          opacity: 1;
+          transform: scale(1);
+        }
+        50% {
+          opacity: 0.55;
+          transform: scale(0.92);
+        }
+      }
+
+      .archive-banner-path {
+        display: block;
+        margin-top: 6px;
+        font-size: 12px;
+        color: var(--muted);
+        word-break: break-all;
+        line-height: 1.5;
+      }
+
+      .hero,
+      .card,
+      .question-card {
+        background: var(--card);
+        border: 1px solid var(--border);
+        border-radius: 20px;
+        box-shadow: 0 12px 32px rgba(15, 23, 42, 0.06);
+      }
+
+      .hero {
+        padding: 28px;
+        margin-bottom: 20px;
+      }
+
+      .hero-badge {
+        display: inline-flex;
+        align-items: center;
+        padding: 8px 14px;
+        border-radius: 999px;
+        background: var(--primary-soft);
+        color: var(--primary);
+        font-size: 14px;
+        font-weight: 700;
+      }
+
+      h1 {
+        margin: 16px 0 12px;
+        font-size: 34px;
+      }
+
+      p {
+        margin: 0;
+        color: var(--muted);
+        line-height: 1.7;
+      }
+
+      .hero-grid,
+      .summary-grid {
+        display: grid;
+        gap: 16px;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        margin-top: 18px;
+      }
+
+      .mini-card {
+        border: 1px solid var(--border);
+        border-radius: 16px;
+        padding: 16px;
+        background: #fbfdff;
+      }
+
+      .mini-title {
+        margin: 0 0 8px;
+        font-size: 15px;
+        font-weight: 700;
+      }
+
+      .mini-text {
+        font-size: 14px;
+        color: var(--muted);
+        line-height: 1.7;
+      }
+
+      .tag-list {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        margin-top: 10px;
+      }
+
+      .tag {
+        display: inline-flex;
+        align-items: center;
+        padding: 6px 10px;
+        border-radius: 999px;
+        background: var(--primary-soft);
+        color: var(--primary);
+        font-size: 13px;
+        font-weight: 700;
+      }
+
+      .card {
+        padding: 24px;
+        margin-bottom: 18px;
+      }
+
+      .section-title {
+        margin: 0 0 16px;
+        font-size: 22px;
+      }
+
+      .grid {
+        display: grid;
+        gap: 16px;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+
+      .field {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+      }
+
+      .field.full {
+        grid-column: 1 / -1;
+      }
+
+      .field-actions {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: 12px;
+      }
+
+      label {
+        font-size: 14px;
+        font-weight: 700;
+      }
+
+      input,
+      select,
+      textarea {
+        width: 100%;
+        border: 1px solid var(--border);
+        border-radius: 12px;
+        padding: 12px 14px;
+        font: inherit;
+        color: var(--text);
+        background: #fff;
+      }
+
+      textarea {
+        min-height: 92px;
+        resize: vertical;
+      }
+
+      .question-list {
+        display: grid;
+        gap: 16px;
+      }
+
+      .question-card {
+        padding: 18px;
+      }
+
+      .question-title {
+        margin: 0 0 12px;
+        font-size: 17px;
+        font-weight: 700;
+      }
+
+      .option-list {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(128px, 1fr));
+        gap: 12px;
+        margin-bottom: 12px;
+        align-items: stretch;
+      }
+
+      .option-list.multi {
+        gap: 10px 12px;
+        grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+      }
+
+      .option-list.multi .option-pill {
+        min-height: 56px;
+        border-radius: 14px;
+        justify-content: flex-start;
+        padding-left: 16px;
+        padding-right: 16px;
+      }
+
+      .option-list.multi .option-text {
+        text-align: left;
+      }
+
+      .option-pill {
+        position: relative;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        min-height: 68px;
+        padding: 12px 14px;
+        border-radius: 18px;
+        border: 1px solid var(--border);
+        background: linear-gradient(180deg, #ffffff 0%, #f8fbff 100%);
+        box-shadow: 0 8px 18px rgba(15, 23, 42, 0.04);
+        transition: transform 120ms ease, box-shadow 120ms ease, border-color 120ms ease, background 120ms ease;
+        cursor: pointer;
+        user-select: none;
+      }
+
+      .option-pill:hover {
+        transform: translateY(-1px);
+        border-color: rgba(37, 99, 235, 0.32);
+        box-shadow: 0 12px 22px rgba(37, 99, 235, 0.08);
+      }
+
+      .option-pill.selected {
+        border-color: rgba(37, 99, 235, 0.58);
+        background: linear-gradient(180deg, rgba(37, 99, 235, 0.14) 0%, rgba(37, 99, 235, 0.08) 100%);
+        box-shadow: 0 14px 24px rgba(37, 99, 235, 0.14);
+      }
+
+      .option-pill.selected .option-text {
+        color: #1d4ed8;
+      }
+
+      .option-pill input {
+        position: absolute;
+        opacity: 0;
+        pointer-events: none;
+      }
+
+      .option-pill .option-text {
+        display: block;
+        text-align: center;
+        font-size: 14px;
+        font-weight: 700;
+        line-height: 1.45;
+        color: var(--text);
+      }
+
+      .option-pill::after {
+        content: '';
+        position: absolute;
+        top: 10px;
+        right: 10px;
+        width: 10px;
+        height: 10px;
+        border-radius: 999px;
+        border: 1px solid rgba(148, 163, 184, 0.8);
+        background: #fff;
+      }
+
+      .option-pill.selected::after {
+        border-color: var(--primary);
+        background: var(--primary);
+        box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.14);
+      }
+
+      .hint {
+        margin-top: 8px;
+        font-size: 13px;
+        color: var(--muted);
+      }
+
+      .actions {
+        display: flex;
+        align-items: center;
+        flex-wrap: wrap;
+        gap: 14px;
+        margin-top: 20px;
+      }
+
+      button {
+        border: none;
+        border-radius: 14px;
+        padding: 14px 22px;
+        background: var(--primary);
+        color: #fff;
+        font-size: 16px;
+        font-weight: 700;
+        cursor: pointer;
+      }
+
+      button.secondary {
+        background: #eef2ff;
+        color: #1d4ed8;
+      }
+
+      button.ghost {
+        background: #f8fafc;
+        color: var(--text);
+        border: 1px solid var(--border);
+      }
+
+      button[disabled] {
+        opacity: 0.72;
+        cursor: not-allowed;
+      }
+
+      .status {
+        font-size: 14px;
+        color: var(--muted);
+      }
+
+      .status.success {
+        color: var(--success);
+      }
+
+      .status.warning {
+        color: var(--warning);
+      }
+
+      .status.error {
+        color: var(--danger);
+      }
+
+      .preview-box {
+        background: #0f172a;
+        color: #e2e8f0;
+        border-radius: 16px;
+        padding: 18px;
+        min-height: 180px;
+        white-space: pre-wrap;
+        line-height: 1.7;
+        font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+        font-size: 13px;
+      }
+
+      .success-panel {
+        display: none;
+        margin-top: 18px;
+        border-radius: 18px;
+        border: 2px solid rgba(22, 163, 74, 0.45);
+        background: linear-gradient(180deg, rgba(22, 163, 74, 0.12) 0%, rgba(22, 163, 74, 0.05) 100%);
+        padding: 22px 20px;
+        box-shadow: 0 16px 40px rgba(22, 163, 74, 0.15);
+      }
+
+      .success-panel.show {
+        display: block;
+        animation: success-pop 0.35s ease-out;
+      }
+
+      @keyframes success-pop {
+        from {
+          opacity: 0;
+          transform: translateY(6px) scale(0.98);
+        }
+        to {
+          opacity: 1;
+          transform: translateY(0) scale(1);
+        }
+      }
+
+      .success-title {
+        margin: 0 0 10px;
+        color: #15803d;
+        font-size: 20px;
+        font-weight: 800;
+        letter-spacing: 0.02em;
+      }
+
+      .success-path {
+        margin: 0 0 12px;
+        color: var(--text);
+        font-size: 14px;
+        line-height: 1.7;
+        word-break: break-all;
+      }
+
+      .empty {
+        padding: 18px;
+        border: 1px dashed var(--border);
+        border-radius: 16px;
+        color: var(--muted);
+        background: #fbfdff;
+      }
+
+      .submit-modal-overlay {
+        display: none;
+        position: fixed;
+        inset: 0;
+        z-index: 9999;
+        align-items: center;
+        justify-content: center;
+        padding: 24px;
+        background: rgba(15, 23, 42, 0.55);
+        backdrop-filter: blur(6px);
+        -webkit-backdrop-filter: blur(6px);
+      }
+
+      .submit-modal-overlay.is-visible {
+        display: flex;
+        animation: submit-modal-fade 0.25s ease-out;
+      }
+
+      @keyframes submit-modal-fade {
+        from {
+          opacity: 0;
+        }
+        to {
+          opacity: 1;
+        }
+      }
+
+      .submit-modal-card {
+        width: 100%;
+        max-width: 420px;
+        border-radius: 22px;
+        padding: 32px 28px 28px;
+        background: linear-gradient(180deg, #ffffff 0%, #f8fafc 100%);
+        border: 1px solid var(--border);
+        box-shadow: 0 24px 64px rgba(15, 23, 42, 0.18);
+        text-align: center;
+      }
+
+      .submit-modal-title {
+        margin: 0 0 12px;
+        font-size: 22px;
+        font-weight: 800;
+        color: var(--text);
+        letter-spacing: 0.02em;
+      }
+
+      .submit-modal-hint {
+        margin: 0 0 26px;
+        font-size: 16px;
+        line-height: 1.65;
+        color: var(--muted);
+      }
+
+      .submit-modal-hint strong {
+        color: var(--primary);
+        font-weight: 700;
+      }
+
+      .submit-modal-dismiss {
+        width: 100%;
+        border: none;
+        border-radius: 14px;
+        padding: 14px 22px;
+        background: var(--primary);
+        color: #fff;
+        font-size: 16px;
+        font-weight: 700;
+        cursor: pointer;
+      }
+
+      .submit-modal-dismiss:hover {
+        filter: brightness(1.05);
+      }
+
+      @media (max-width: 760px) {
+        .grid,
+        .hero-grid,
+        .summary-grid {
+          grid-template-columns: 1fr;
+        }
+
+        .field-actions {
+          flex-direction: column;
+          align-items: flex-start;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="page">
+      <div
+        id="archive-banner"
+        class="archive-banner archive-banner--idle"
+        role="status"
+        aria-live="polite"
+      >
+        <span class="archive-banner-dot" aria-hidden="true"></span>
+        <div>
+          <span id="archive-banner-text">输入学生姓名后，将自动在本地 <strong>~/StudentGrowthOps/</strong> 检查是否已有档案。</span>
+          <span id="archive-banner-path" class="archive-banner-path" hidden></span>
+        </div>
+      </div>
+
+      <section class="hero">
+        <div class="hero-badge">Student Growth Ops</div>
+        <h1>学员信息网页填写</h1>
+        <p>
+          请按页面提示填写信息，点击完成填写后，可以回到abcclaw告诉ai已经完成了</p>
+        <div class="hero-grid">
+          <div class="mini-card">
+            <div class="mini-title">推荐填写方式</div>
+            <div class="mini-text">先填写学生姓名（会提示新建或跟踪更新），再选阶段。题目以标签按钮形式展示，并实时生成将要写入的文本预览。</div>
+          </div>
+          <div class="mini-card">
+            <div class="mini-title">贴心体验</div>
+            <div class="mini-text">表单会自动保存草稿，提交成功后有醒目提示与完整路径，可一键打开提交目录。</div>
+          </div>
+        </div>
+      </section>
+
+      <form id="student-form">
+        <section class="card">
+          <h2 class="section-title">基础信息</h2>
+          <div class="grid">
+            <div class="field">
+              <label for="studentName">名字</label>
+              <input id="studentName" name="studentName" placeholder="例如：张三" required />
+            </div>
+            <div class="field">
+              <label for="englishName">英文名</label>
+              <input id="englishName" name="englishName" placeholder="可选填写" />
+            </div>
+            <div class="field">
+              <label for="grade">年级</label>
+              <select id="grade" name="grade">
+                <option value="">请选择年级</option>
+                <option value="K2">K2</option>
+                <option value="K3">K3</option>
+                <option value="G1">G1</option>
+                <option value="G2">G2</option>
+                <option value="G3">G3</option>
+                <option value="G4">G4</option>
+                <option value="G5">G5</option>
+                <option value="G6">G6</option>
+                <option value="J1">J1</option>
+              </select>
+            </div>
+            <div class="field">
+              <label for="status">学员状态</label>
+              <select id="status" name="status">
+                <option value="leads">咨询中</option>
+                <option value="active">在读</option>
+                <option value="renewal-watch">续费关注</option>
+                <option value="archived">归档</option>
+              </select>
+            </div>
+            <div class="field full">
+              <label for="school">学校</label>
+              <input id="school" name="school" placeholder="例如：育才小学" />
+            </div>
+            <div class="field full">
+              <div class="field-actions">
+                <label for="stage">当前填写阶段</label>
+                <button id="clear-draft-button" class="ghost" type="button">清空当前草稿</button>
+              </div>
+              <select id="stage" name="stage"></select>
+              <div id="stage-hint" class="hint">请选择当前需要填写的阶段。</div>
+            </div>
+          </div>
+        </section>
+
+        <section class="card">
+          <h2 class="section-title">阶段问题</h2>
+          <div id="stage-summary" class="summary-grid"></div>
+          <div id="question-list" class="question-list"></div>
+        </section>
+
+        <section class="card">
+          <h2 class="section-title">补充说明</h2>
+          <div class="field full">
+            <label for="extraNote">其他补充</label>
+            <textarea id="extraNote" name="extraNote" placeholder="这里可以写自然语言说明，留给后续 AI 解析。"></textarea>
+          </div>
+          <div class="actions">
+            <button id="submit-button" type="submit">完成填写</button>
+            <button id="open-folder-button" class="secondary" type="button">打开提交目录</button>
+            <div id="status-text" class="status">填写完成后会生成文本文件。</div>
+          </div>
+          <div id="success-panel" class="success-panel">
+            <div class="success-title">提交成功</div>
+            <div id="success-path" class="success-path"></div>
+            <div class="actions">
+              <button id="open-folder-success-button" class="secondary" type="button">打开提交目录</button>
+            </div>
+          </div>
+        </section>
+
+        <section class="card">
+          <h2 class="section-title">学情记录预览</h2>
+          <div id="preview-box" class="preview-box">当前还没有可预览的内容。</div>
+        </section>
+      </form>
+    </div>
+
+    <div
+      id="submit-success-modal"
+      class="submit-modal-overlay"
+      role="presentation"
+      aria-hidden="true"
+      hidden
+    >
+      <div
+        class="submit-modal-card"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="submit-modal-title"
+        tabindex="-1"
+      >
+        <p id="submit-modal-title" class="submit-modal-title">档案更新完成</p>
+        <p class="submit-modal-hint">请回到 <strong>OpenClaw</strong> 告诉 AI 助手哦</p>
+        <button type="button" id="submit-modal-dismiss" class="submit-modal-dismiss">知道了</button>
+      </div>
+    </div>
+
+    <script>
+      const formElement = document.getElementById('student-form');
+      const stageSelect = document.getElementById('stage');
+      const questionList = document.getElementById('question-list');
+      const stageSummary = document.getElementById('stage-summary');
+      const stageHint = document.getElementById('stage-hint');
+      const statusText = document.getElementById('status-text');
+      const submitButton = document.getElementById('submit-button');
+      const openFolderButton = document.getElementById('open-folder-button');
+      const openFolderSuccessButton = document.getElementById('open-folder-success-button');
+      const clearDraftButton = document.getElementById('clear-draft-button');
+      const previewBox = document.getElementById('preview-box');
+      const successPanel = document.getElementById('success-panel');
+      const successPath = document.getElementById('success-path');
+      const archiveBanner = document.getElementById('archive-banner');
+      const archiveBannerText = document.getElementById('archive-banner-text');
+      const archiveBannerPath = document.getElementById('archive-banner-path');
+      const queryParams = new URLSearchParams(window.location.search);
+      let lookupTimer = null;
+      const basicFieldLabels = {
+        studentName: '名字',
+        englishName: '英文名',
+        grade: '年级',
+        school: '学校',
+        status: '学员状态',
+      };
+
+      let questionBank = null;
+
+      function setArchiveBannerState(state) {
+        archiveBanner.classList.remove(
+          'archive-banner--idle',
+          'archive-banner--loading',
+          'archive-banner--create',
+          'archive-banner--update',
+          'archive-banner--error'
+        );
+        archiveBanner.classList.add(`archive-banner--${state}`);
+      }
+
+      async function lookupArchiveForName(name) {
+        const trimmed = String(name || '').trim();
+        if (!trimmed) {
+          setArchiveBannerState('idle');
+          archiveBannerText.innerHTML =
+            '输入学生姓名后，将自动在本地 <strong>~/StudentGrowthOps/</strong> 检查是否已有档案。';
+          archiveBannerPath.hidden = true;
+          archiveBannerPath.textContent = '';
+          return;
+        }
+
+        setArchiveBannerState('loading');
+        archiveBannerText.textContent = '正在检查本地是否已有该学生档案…';
+        archiveBannerPath.hidden = true;
+
+        try {
+          const response = await fetch(`/api/lookup-student?name=${encodeURIComponent(trimmed)}`);
+          const data = await response.json();
+          if (!response.ok || !data.ok) {
+            throw new Error(data.error || 'lookup failed');
+          }
+          if (data.found) {
+            setArchiveBannerState('update');
+            archiveBannerText.innerHTML =
+              '<strong>已找到档案</strong> · 当前为「跟踪更新」，提交内容将用于补充正式学员文件夹。';
+            archiveBannerPath.textContent = `档案目录：${data.studentDir}`;
+            archiveBannerPath.hidden = false;
+          } else {
+            setArchiveBannerState('create');
+            archiveBannerText.innerHTML =
+              '<strong>未找到档案</strong> · 当前为「新建档案」，提交后请由 AI 将内容合并进 ~/StudentGrowthOps/ 下的正式目录。';
+            archiveBannerPath.hidden = true;
+            archiveBannerPath.textContent = '';
+          }
+        } catch {
+          setArchiveBannerState('error');
+          archiveBannerText.textContent =
+            '暂时无法检查本地档案，您仍可继续填写（不影响生成中间文本）。';
+          archiveBannerPath.hidden = true;
+        }
+      }
+
+      function scheduleArchiveLookup() {
+        const name = document.getElementById('studentName').value.trim();
+        window.clearTimeout(lookupTimer);
+        lookupTimer = window.setTimeout(() => {
+          lookupArchiveForName(name);
+        }, 420);
+      }
+
+      function escapeHtml(value) {
+        return String(value)
+          .replaceAll('&', '&amp;')
+          .replaceAll('<', '&lt;')
+          .replaceAll('>', '&gt;')
+          .replaceAll('"', '&quot;')
+          .replaceAll("'", '&#39;');
+      }
+
+      function cssEscape(value) {
+        if (window.CSS && typeof window.CSS.escape === 'function') {
+          return window.CSS.escape(value);
+        }
+        return String(value).replace(/["\\]/g, '\\$&');
+      }
+
+      function getSelectedStage() {
+        return questionBank?.stages.find((item) => item.stageId === stageSelect.value);
+      }
+
+      function renderStageOptions() {
+        const defaultStage = queryParams.get('stage') || 'monthly-report';
+        stageSelect.innerHTML = questionBank.stages
+          .map((stage) => {
+            const selected = stage.stageId === defaultStage ? 'selected' : '';
+            return `<option value="${stage.stageId}" ${selected}>${stage.title}</option>`;
+          })
+          .join('');
+      }
+
+      function renderStageSummary() {
+        const stage = getSelectedStage();
+        if (!stage) {
+          stageSummary.innerHTML = '';
+          stageHint.textContent = '请选择当前需要填写的阶段。';
+          return;
+        }
+
+        stageHint.textContent = `当前阶段：${stage.title}。本阶段共有 ${stage.questions.length} 个题目，提交后会生成可供 AI 读取的逐行文本。`;
+        stageSummary.innerHTML = `
+          <div class="mini-card">
+            <div class="mini-title">当前阶段</div>
+            <div class="mini-text">${escapeHtml(stage.title)}</div>
+          </div>
+          <div class="mini-card">
+            <div class="mini-title">将影响的文件</div>
+            <div class="tag-list">${stage.targetFiles.map((item) => `<span class="tag">${escapeHtml(item)}</span>`).join('')}</div>
+          </div>
+        `;
+      }
+
+      function refreshOptionStates() {
+        document.querySelectorAll('.option-pill').forEach((label) => {
+          const input = label.querySelector('input');
+          if (!input) {
+            return;
+          }
+          label.classList.toggle('selected', Boolean(input.checked));
+        });
+      }
+
+      function renderQuestions() {
+        const stage = getSelectedStage();
+        renderStageSummary();
+
+        if (!stage) {
+          questionList.innerHTML = '<div class="empty">未找到当前阶段题目。</div>';
+          updatePreview();
+          return;
+        }
+
+        questionList.innerHTML = stage.questions
+          .map((question) => {
+            const inputType = question.type === 'multi' ? 'checkbox' : 'radio';
+            const listClass = question.type === 'multi' ? 'option-list multi' : 'option-list';
+            const options = question.options
+              .map((option, index) => {
+                const optionId = `${question.id}-${index}`;
+                return `
+                  <label class="option-pill" for="${optionId}">
+                    <input id="${optionId}" type="${inputType}" name="${question.id}" value="${escapeHtml(option)}" />
+                    <span class="option-text">${escapeHtml(option)}</span>
+                  </label>
+                `;
+              })
+              .join('');
+
+            return `
+              <div class="question-card">
+                <div class="question-title">${escapeHtml(question.prompt)}</div>
+                <div class="${listClass}">${options}</div>
+                <div class="field">
+                  <label for="${question.id}-free">也可直接自然输入</label>
+                  <input id="${question.id}-free" data-question-id="${question.id}" placeholder="如果上面的选项不合适，可直接输入" />
+                </div>
+                <div class="hint">可直接选项，也可在输入框里写自然语言。</div>
+              </div>
+            `;
+          })
+          .join('');
+
+        restoreDraft();
+        refreshOptionStates();
+        bindInputEvents();
+        updatePreview();
+      }
+
+      function collectAnswer(question) {
+        const freeInput = document.getElementById(`${question.id}-free`);
+        const freeValue = freeInput ? freeInput.value.trim() : '';
+        if (freeValue) {
+          return freeValue;
+        }
+
+        if (question.type === 'multi') {
+          return Array.from(document.querySelectorAll(`input[name="${question.id}"]:checked`)).map((item) => item.value);
+        }
+
+        const selected = document.querySelector(`input[name="${question.id}"]:checked`);
+        return selected ? selected.value : '';
+      }
+
+      function getCurrentValues() {
+        const stage = getSelectedStage();
+        const basics = {
+          studentName: document.getElementById('studentName').value.trim(),
+          englishName: document.getElementById('englishName').value.trim(),
+          grade: document.getElementById('grade').value,
+          school: document.getElementById('school').value.trim(),
+          status: document.getElementById('status').value,
+        };
+
+        const answers = {};
+        (stage?.questions || []).forEach((question) => {
+          const answer = collectAnswer(question);
+          if (Array.isArray(answer) ? answer.length : answer) {
+            answers[question.id] = answer;
+          }
+        });
+
+        return {
+          stageId: stage?.stageId || '',
+          stageTitle: stage?.title || '',
+          basics,
+          answers,
+          extraNote: document.getElementById('extraNote').value.trim(),
+        };
+      }
+
+      function getDraftKey() {
+        const values = getCurrentValues();
+        return `student-growth-ops:${values.stageId || 'stage'}:${values.basics.studentName || queryParams.get('studentName') || 'anonymous'}`;
+      }
+
+      function buildPreviewLines() {
+        const stage = getSelectedStage();
+        const values = getCurrentValues();
+        const lines = [];
+
+        if (values.stageTitle) {
+          lines.push(`阶段：${values.stageTitle}`);
+        }
+
+        Object.entries(values.basics).forEach(([key, value]) => {
+          if (value && basicFieldLabels[key]) {
+            lines.push(`${basicFieldLabels[key]}：${value}`);
+          }
+        });
+
+        (stage?.questions || []).forEach((question) => {
+          const answer = values.answers[question.id];
+          if (!answer || (Array.isArray(answer) && !answer.length)) {
+            return;
+          }
+          const text = Array.isArray(answer) ? answer.join(', ') : answer;
+          lines.push(`${question.prompt}：${text}`);
+        });
+
+        if (values.extraNote) {
+          lines.push(`补充说明：${values.extraNote}`);
+        }
+
+        return lines.length ? lines : ['当前还没有可预览的内容。'];
+      }
+
+      function updatePreview() {
+        previewBox.textContent = buildPreviewLines().join('\n');
+      }
+
+      function saveDraft() {
+        try {
+          localStorage.setItem(getDraftKey(), JSON.stringify(getCurrentValues()));
+        } catch (error) {
+          console.warn('保存草稿失败', error);
+        }
+      }
+
+      function restoreDraft() {
+        try {
+          const raw = localStorage.getItem(getDraftKey());
+          if (!raw) {
+            return;
+          }
+
+          const draft = JSON.parse(raw);
+          const basics = draft.basics || {};
+
+          if (!queryParams.get('studentName') && basics.studentName) {
+            document.getElementById('studentName').value = basics.studentName;
+          }
+          if (basics.englishName) {
+            document.getElementById('englishName').value = basics.englishName;
+          }
+          if (!queryParams.get('grade') && basics.grade) {
+            document.getElementById('grade').value = basics.grade;
+          }
+          if (basics.school) {
+            document.getElementById('school').value = basics.school;
+          }
+          if (!queryParams.get('status') && basics.status) {
+            document.getElementById('status').value = basics.status;
+          }
+
+          const stage = getSelectedStage();
+          (stage?.questions || []).forEach((question) => {
+            const answer = draft.answers?.[question.id];
+            if (!answer) {
+              return;
+            }
+
+            if (Array.isArray(answer)) {
+              answer.forEach((value) => {
+                const input = document.querySelector(`input[name="${question.id}"][value="${cssEscape(value)}"]`);
+                if (input) {
+                  input.checked = true;
+                }
+              });
+            } else {
+              const input = document.querySelector(`input[name="${question.id}"][value="${cssEscape(answer)}"]`);
+              if (input) {
+                input.checked = true;
+              } else {
+                const freeInput = document.getElementById(`${question.id}-free`);
+                if (freeInput) {
+                  freeInput.value = answer;
+                }
+              }
+            }
+          });
+
+          if (draft.extraNote) {
+            document.getElementById('extraNote').value = draft.extraNote;
+          }
+        } catch (error) {
+          console.warn('恢复草稿失败', error);
+        }
+      }
+
+      const submitSuccessModal = document.getElementById('submit-success-modal');
+      const submitModalDismiss = document.getElementById('submit-modal-dismiss');
+
+      function hideSubmitSuccessModal() {
+        submitSuccessModal.classList.remove('is-visible');
+        submitSuccessModal.setAttribute('aria-hidden', 'true');
+        submitSuccessModal.hidden = true;
+        document.body.style.overflow = '';
+      }
+
+      function showSubmitSuccessModal() {
+        submitSuccessModal.hidden = false;
+        submitSuccessModal.setAttribute('aria-hidden', 'false');
+        submitSuccessModal.classList.add('is-visible');
+        document.body.style.overflow = 'hidden';
+        submitModalDismiss.focus();
+      }
+
+      function clearSuccessState() {
+        successPanel.classList.remove('show');
+        successPath.textContent = '';
+        hideSubmitSuccessModal();
+      }
+
+      function bindInputEvents() {
+        document.querySelectorAll('input, select, textarea').forEach((element) => {
+          if (element.dataset.bound === 'true') {
+            return;
+          }
+
+          const handler = () => {
+            clearSuccessState();
+            refreshOptionStates();
+            if (element.id === 'studentName') {
+              scheduleArchiveLookup();
+            }
+            saveDraft();
+            updatePreview();
+          };
+
+          element.addEventListener('input', handler);
+          element.addEventListener('change', handler);
+          element.dataset.bound = 'true';
+        });
+      }
+
+      function setLoadingState(loading) {
+        submitButton.disabled = loading;
+        openFolderButton.disabled = loading;
+        clearDraftButton.disabled = loading;
+        submitButton.textContent = loading ? '提交中...' : '完成填写';
+        statusText.textContent = loading ? '生成中，请稍候...' : '填写完成后会生成文本文件。';
+        statusText.className = 'status';
+      }
+
+      async function openSubmissionsFolder() {
+        try {
+          const response = await fetch('/api/open-submissions', { method: 'POST' });
+          const result = await response.json();
+          if (!response.ok || !result.ok) {
+            throw new Error(result.error || '打开目录失败');
+          }
+          statusText.textContent = '已尝试打开提交目录。';
+          statusText.className = 'status success';
+        } catch (error) {
+          statusText.textContent = error instanceof Error ? error.message : '打开目录失败';
+          statusText.className = 'status error';
+        }
+      }
+
+      async function loadQuestionBank() {
+        const response = await fetch('/api/question-bank');
+        questionBank = await response.json();
+        renderStageOptions();
+
+        if (queryParams.get('studentName')) {
+          document.getElementById('studentName').value = queryParams.get('studentName');
+        }
+        if (queryParams.get('grade')) {
+          document.getElementById('grade').value = queryParams.get('grade');
+        }
+        if (queryParams.get('status')) {
+          document.getElementById('status').value = queryParams.get('status');
+        }
+
+        renderQuestions();
+        bindInputEvents();
+        updatePreview();
+        scheduleArchiveLookup();
+      }
+
+      stageSelect.addEventListener('change', () => {
+        clearSuccessState();
+        renderQuestions();
+        saveDraft();
+      });
+
+      openFolderButton.addEventListener('click', openSubmissionsFolder);
+      openFolderSuccessButton.addEventListener('click', openSubmissionsFolder);
+
+      submitModalDismiss.addEventListener('click', () => {
+        hideSubmitSuccessModal();
+      });
+
+      submitSuccessModal.addEventListener('click', (event) => {
+        if (event.target === submitSuccessModal) {
+          hideSubmitSuccessModal();
+        }
+      });
+
+      document.addEventListener('keydown', (event) => {
+        if (event.key === 'Escape' && submitSuccessModal.classList.contains('is-visible')) {
+          hideSubmitSuccessModal();
+        }
+      });
+
+      clearDraftButton.addEventListener('click', () => {
+        localStorage.removeItem(getDraftKey());
+        formElement.reset();
+        renderStageOptions();
+        if (queryParams.get('studentName')) {
+          document.getElementById('studentName').value = queryParams.get('studentName');
+        }
+        if (queryParams.get('grade')) {
+          document.getElementById('grade').value = queryParams.get('grade');
+        }
+        if (queryParams.get('status')) {
+          document.getElementById('status').value = queryParams.get('status');
+        }
+        renderQuestions();
+        scheduleArchiveLookup();
+        statusText.textContent = '当前阶段草稿已清空。';
+        statusText.className = 'status warning';
+      });
+
+      formElement.addEventListener('submit', async (event) => {
+        event.preventDefault();
+        const stage = getSelectedStage();
+        const payload = getCurrentValues();
+
+        if (!payload.basics.studentName) {
+          statusText.textContent = '请先填写学生名字。';
+          statusText.className = 'status error';
+          return;
+        }
+
+        try {
+          setLoadingState(true);
+          const response = await fetch('/api/submit', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              stageId: stage.stageId,
+              stageTitle: stage.title,
+              basics: payload.basics,
+              answers: payload.answers,
+              extraNote: payload.extraNote,
+            }),
+          });
+          const result = await response.json();
+          if (!response.ok || !result.ok) {
+            throw new Error(result.error || '提交失败');
+          }
+
+          successPath.textContent = `已生成文件：${result.filePath}`;
+          successPanel.classList.add('show');
+          showSubmitSuccessModal();
+          statusText.textContent = `已生成文本文件：${result.fileName}`;
+          statusText.className = 'status success';
+          saveDraft();
+        } catch (error) {
+          statusText.textContent = error instanceof Error ? error.message : '提交失败';
+          statusText.className = 'status error';
+        } finally {
+          setLoadingState(false);
+        }
+      });
+
+      loadQuestionBank().catch((error) => {
+        statusText.textContent = error instanceof Error ? error.message : '题库加载失败';
+        statusText.className = 'status error';
+      });
+    </script>
+  </body>
+</html>

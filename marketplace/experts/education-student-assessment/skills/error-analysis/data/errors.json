@@ -1,0 +1,9 @@
+[
+  {
+    "id": 1,
+    "question": "x^2+2x+1=0的解",
+    "wrong_answer": "x=1",
+    "correct_answer": "x=-1",
+    "date": "2026-03-10 00:36"
+  }
+]

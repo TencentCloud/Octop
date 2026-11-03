@@ -1,0 +1,110 @@
+# Feast User Profile Template
+# Copy to workspace/meals/profile.yaml and customise
+
+version: 1
+
+user:
+  name: ""                          # Your name
+  
+  location:
+    country: ""                     # ISO country code (GB, US, DE, etc.)
+    region: ""                      # Optional: specific region for local seasonality
+    timezone: ""                    # e.g., Europe/London, America/New_York
+  
+  household:
+    portions: 1                     # Base portions per meal (number of people)
+    portionMultiplier: 1.0          # Multiplier (e.g., 2.0 for OMAD double portions)
+  
+  schedule:
+    weekStart: "sunday"             # sunday or monday
+    cookingDays: 6                  # How many days per week you cook (1-7)
+    cheatDay: null                  # Day name (monday, tuesday, etc.) or null
+    cheatDayFlexible: true          # Can cheat day move around?
+  
+  dietary:
+    phase: "maintenance"            # maintenance, weight_loss, weight_gain, custom
+    restrictions: []                # Allergies, intolerances: ["gluten", "dairy", "nuts"]
+    preferences: []                 # Preferences: ["vegetarian-leaning", "low-carb"]
+    calorieTarget: null             # Daily kcal target, or null to not track
+  
+  cooking:
+    confidence: "intermediate"      # beginner, intermediate, advanced
+    equipment:                      # What you have
+      - "oven"
+      - "hob"
+    timeAvailable: "moderate"       # quick (<30min), moderate (30-60min), leisurely (60min+)
+    spiceTolerance: "medium"        # none, mild, medium, hot, extreme
+  
+  preferences:
+    budget: "moderate"              # strict, moderate, flexible
+    stores: []                      # Available stores: ["Tesco", "Sainsburys", "Lidl"]
+    cuisinesFavourite: []           # Favourites: ["Italian", "Thai", "Japanese"]
+    cuisinesAvoid: []               # Avoid: ["French"] (no judgment)
+    explorationLevel: "adventurous" # comfortable, adventurous, very_adventurous
+  
+  units:
+    temperature: "celsius"          # celsius, fahrenheit, gas_mark
+    weight: "metric"                # metric, imperial
+    volume: "metric"                # metric, cups
+
+# Notification schedule and preferences
+schedule:
+  notifications:
+    # Primary notification channel
+    # Options: auto, telegram, discord, signal, webchat
+    # "auto" = deliver to current session or first available channel
+    channel: "auto"
+    
+    # Push notifications (optional, requires external skill)
+    # Enable this for notifications to mobile devices independent of chat channels
+    push:
+      enabled: false
+      method: null                  # "pushbullet", "ntfy", or null
+      # Method-specific config:
+      # - pushbullet: requires pushbullet-notify skill installed with API key configured
+      # - ntfy: configure topic below
+      ntfy:
+        topic: null                 # Your ntfy.sh topic name
+        server: "https://ntfy.sh"   # Default server, or self-hosted URL
+    
+    # Quiet hours (notifications will be held until after quiet hours end)
+    quietHoursStart: "22:00"        # Don't notify after this time
+    quietHoursEnd: "08:00"          # Don't notify before this time
+  
+  # Preferred times for each reminder (24h format, in user's timezone)
+  reminders:
+    planning:
+      dayOffset: -3                 # Days before week starts (Thu if week starts Sun)
+      time: "18:00"
+      enabled: true
+    
+    confirmation:
+      dayOffset: -2                 # Days before week starts (Fri if week starts Sun)
+      time: "18:00"
+      enabled: true
+    
+    shopping:
+      dayOffset: -1                 # Day before week starts (Sat if week starts Sun)
+      time: "10:00"
+      enabled: true
+    
+    dailyReveal:
+      time: "15:00"                 # Afternoon reveal
+      enabled: true
+      hint:
+        enabled: true               # Morning hint?
+        time: "09:00"
+    
+    weekReview:
+      dayOffset: 6                  # Last day of cooking week
+      time: "20:00"
+      enabled: true
+  
+  # Cron job IDs (populated after onboarding, used for updates/removal)
+  cronJobs:
+    planning: null
+    confirmation: null
+    shopping: null
+    dailyReveal: []                 # Array: one per cooking day
+    dailyHint: []                   # Array: one per cooking day (if enabled)
+    weekReview: null

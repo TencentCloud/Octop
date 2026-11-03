@@ -231,7 +231,7 @@ curl -fsSL https://finnie-1258344699.cos.ap-guangzhou.myqcloud.com/octop/install
 | Windows | `Octop-desktop-windows-amd64-<version>.exe`（64 位）/ `Octop-desktop-windows-arm64-<version>.exe`（ARM64）— NSIS 安装程序 |
 | macOS | `Octop-desktop-darwin-arm64-<version>.dmg`（Apple 芯片）/ `Octop-desktop-darwin-amd64-<version>.dmg`（Intel） |
 | Linux | `Octop-desktop-linux-amd64-<version>.tar.gz` / `Octop-desktop-linux-arm64-<version>.tar.gz` |
-| 飞牛 NAS（FnOS） | `Octop-fnos-docker-lite-<version>.fpk`（精简镜像）/ `Octop-fnos-docker-<version>.fpk`（完整版：桌面、OCR、本地向量）/ `Octop-fnos-native-<version>.fpk`（x86_64，无需 Docker）/ `Octop-fnos-native-arm64-<version>.fpk`（ARM64，无 Docker 时再用）— 通过应用中心安装 |
+| 飞牛 NAS（FnOS） | `Octop-fnos-docker-lite-<version>.fpk`（精简镜像）/ `Octop-fnos-docker-<version>.fpk`（完整版：桌面、OCR、本地向量）/ `Octop-fnos-native-amd64-<version>.fpk`（x86_64，无需 Docker）/ `Octop-fnos-native-arm64-<version>.fpk`（ARM64，无 Docker 时再用）— 通过应用中心安装 |
 
 桌面客户端说明见 [desktop/README.md](desktop/README.md)，飞牛打包指南见 [fnos/README.md](fnos/README.md)。
 
@@ -477,7 +477,7 @@ OpenAI 兼容 API、DashScope（千问）、Ollama 等预设 — 在控制台或
 
 控制面也可改用 PostgreSQL（`config.json` → `database`，或 `OCTOP_DATABASE_*` / 首次设置向导）。控制面为 PostgreSQL 时，Agent 记忆**默认复用同一 DSN**（per-agent schema）；若需继续用文件记忆，在 agent 配置里设 `"memory": { "backend": { "type": "sqlite" } }`。详见 [docs/configuration.md](docs/configuration.md) 与 [docs/adr/002-database-backends.md](docs/adr/002-database-backends.md)。
 
-环境变量与 `config.json` 详见 [docs/configuration.md](docs/configuration.md)。
+环境变量与 `config.json` 详见 [docs/configuration.md](docs/configuration.md)。访问不了公网时，可按 [docs/private-market.md](docs/private-market.md) 在内网自建插件市场和专家市场，按 [docs/skill-market.md](docs/skill-market.md) 自建技能市场（`SKILL_MARKET_ORIGIN`）。
 
 ## 🏗️ 架构
 

@@ -1,0 +1,160 @@
+{
+  "id": "legal-litigation-strategy",
+  "version": "1.0.0",
+  "scene": "legal",
+  "sub_scene": "litigation-strategy",
+  "label": {
+    "zh": "诉讼策略专家",
+    "en": "Litigation Strategy Expert"
+  },
+  "description": {
+    "zh": "从诉讼准备指南（流程指引/文书准备/证据整理/时间线/费用估算）与法律辅助分析（合同风险初筛/诉讼成本估算/文书骨架生成），经应诉策略制定（起诉状解析/争议焦点提炼/法律关系分析/答辩方向制定）与证据矩阵建模（七步分析法/证据矩阵/案件全景分析），到民事起诉状生成（案情要素提取/证据材料整理/规范起诉状生成）与全流程法律服务（刑事辩护/民商事诉讼/合同审查/法律AI中台）的完整诉讼策略工作流。覆盖诉讼准备、风险评估、策略制定、证据建模、文书起草、全流程支持全链路。",
+    "en": "Litigation strategy workflow covering case preparation, procedural guidance, risk and cost analysis, dispute focus and response strategy, evidence matrices, case modeling, litigation document drafting, and full-process legal support planning."
+  },
+  "welcome_message": {
+    "zh": "我来帮你做「诉讼准备与流程指引」",
+    "en": "I'll help you with Litigation Preparation and Procedure Guidance."
+  },
+  "icon_name": "file-text",
+  "icon_url": "https://cloudcache.tencent-cloud.com/qcloud/tea/app/skillhub/assets/source/ai-buddy-decouple/expert-profiles/legal-litigation-strategy.v20260625.avif",
+  "color": "#0f766e",
+  "prompt_files": [
+    "SOUL.md"
+  ],
+  "quick_prompts": [
+    {
+      "title": {
+        "zh": "诉讼准备与流程指引",
+        "en": "Litigation Preparation and Procedure Guidance"
+      },
+      "description": {
+        "zh": "生成诉讼准备方案和流程指引",
+        "en": "Case preparation checklist"
+      },
+      "prompt": {
+        "zh": "请作为「诉讼策略专家」，帮我完成「诉讼准备与流程指引」。\n我的情况/目标/材料是：\n",
+        "en": "As the Litigation Strategy Expert, help me complete “Litigation Preparation and Procedure Guidance”.\nMy context, goals, or materials are:\n"
+      },
+      "color": "#e8f4ff",
+      "icon_name": "server"
+    },
+    {
+      "title": {
+        "zh": "风险评估与成本分析",
+        "en": "Risk Assessment and Cost Analysis"
+      },
+      "description": {
+        "zh": "生成风险评估报告和成本估算",
+        "en": "Risk and cost assessment"
+      },
+      "prompt": {
+        "zh": "请作为「诉讼策略专家」，帮我完成「风险评估与成本分析」。\n我的情况/目标/材料是：\n",
+        "en": "As the Litigation Strategy Expert, help me complete “Risk Assessment and Cost Analysis”.\nMy context, goals, or materials are:\n"
+      },
+      "color": "#fef3c7",
+      "icon_name": "activity"
+    },
+    {
+      "title": {
+        "zh": "争议焦点与应诉策略",
+        "en": "Dispute Focus and Response Strategy"
+      },
+      "description": {
+        "zh": "生成争议焦点分析和应诉策略方案",
+        "en": "Dispute strategy memo"
+      },
+      "prompt": {
+        "zh": "请作为「诉讼策略专家」，帮我完成「争议焦点与应诉策略」。\n我的情况/目标/材料是：\n",
+        "en": "As the Litigation Strategy Expert, help me complete “Dispute Focus and Response Strategy”.\nMy context, goals, or materials are:\n"
+      },
+      "color": "#dcfce7",
+      "icon_name": "activity"
+    },
+    {
+      "title": {
+        "zh": "证据矩阵与案件建模",
+        "en": "Evidence Matrix and Case Modeling"
+      },
+      "description": {
+        "zh": "生成证据矩阵和案件分析建模报告",
+        "en": "Evidence matrix and case model"
+      },
+      "prompt": {
+        "zh": "请作为「诉讼策略专家」，帮我完成「证据矩阵与案件建模」。\n我的情况/目标/材料是：\n",
+        "en": "As the Litigation Strategy Expert, help me complete “Evidence Matrix and Case Modeling”.\nMy context, goals, or materials are:\n"
+      },
+      "color": "#f1f5f9",
+      "icon_name": "activity"
+    },
+    {
+      "title": {
+        "zh": "诉讼文书起草",
+        "en": "Litigation Document Drafting"
+      },
+      "description": {
+        "zh": "生成规范的民事起诉状和证据材料清单",
+        "en": "Litigation document draft"
+      },
+      "prompt": {
+        "zh": "请作为「诉讼策略专家」，帮我完成「诉讼文书起草」。\n我的情况/目标/材料是：\n",
+        "en": "As the Litigation Strategy Expert, help me complete “Litigation Document Drafting”.\nMy context, goals, or materials are:\n"
+      },
+      "color": "#fff1f2",
+      "icon_name": "file-text"
+    },
+    {
+      "title": {
+        "zh": "全流程法律支持",
+        "en": "Full-Process Legal Support"
+      },
+      "description": {
+        "zh": "生成综合法律分析报告和诉讼策略建议",
+        "en": "Litigation support package"
+      },
+      "prompt": {
+        "zh": "请作为「诉讼策略专家」，帮我完成「全流程法律支持」。\n我的情况/目标/材料是：\n",
+        "en": "As the Litigation Strategy Expert, help me complete “Full-Process Legal Support”.\nMy context, goals, or materials are:\n"
+      },
+      "color": "#eef2ff",
+      "icon_name": "activity"
+    }
+  ],
+  "task_examples": {
+    "zh": [
+      "每天「09:00」帮我完成「诉讼准备与流程指引」并把结果发给我，任务创建后立即启用",
+      "每个工作日「18:00」帮我完成「风险评估与成本分析」并把结果发给我",
+      "每周一「10:00」帮我完成「争议焦点与应诉策略」并把结果发给我",
+      "每周五「17:00」帮我完成「证据矩阵与案件建模」并把结果发给我",
+      "每天「08:00」帮我完成「诉讼文书起草」并把结果发给我",
+      "每月 1 日「09:30」帮我完成「全流程法律支持」并把结果发给我"
+    ],
+    "en": [
+      "Every day at 09:00, help me complete “Litigation Preparation and Procedure Guidance” and send the result — enable immediately",
+      "Every weekday at 18:00, help me complete “Risk Assessment and Cost Analysis” and send the result",
+      "Every Monday at 10:00, help me complete “Dispute Focus and Response Strategy” and send the result",
+      "Every Friday at 17:00, help me complete “Evidence Matrix and Case Modeling” and send the result",
+      "Every day at 08:00, help me complete “Litigation Document Drafting” and send the result",
+      "On the 1st of each month at 09:30, help me complete “Full-Process Legal Support” and send the result"
+    ]
+  },
+  "source": {
+    "type": "skillhub",
+    "kind": "skillset",
+    "slug": "legal-litigation-strategy",
+    "scene": "legal",
+    "sub_scene": "litigation-strategy"
+  },
+  "skillhub": {
+    "slug": "legal-litigation-strategy",
+    "scene": "legal",
+    "sub_scene": "litigation-strategy",
+    "skill_slugs": [
+      "court-prep",
+      "ai-legal-assistant-pro",
+      "litigation-response",
+      "pro-legal-strategist-v2",
+      "complaint-drafting",
+      "legal-advisor"
+    ]
+  }
+}

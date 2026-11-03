@@ -1,0 +1,15 @@
+[
+  {
+    "id": "market-folk-placeholder",
+    "sourceLevel": "L3-market-observed",
+    "sourceRef": [
+      {
+        "work": "规则分歧与流派差异（老黄历）",
+        "location": "4) 神煞/建除映射表版本",
+        "url": "skills/lao-huangli/references/rules-and-variants.md"
+      }
+    ],
+    "interpretationType": "market-observed",
+    "notes": "仅用于来源完整性测试，尚未参与实际规则求值。"
+  }
+]

@@ -1,0 +1,1 @@
+{"dataset_path":"examples/data/network_meta_sim.csv","analysis_type":"network_meta","treat1_var":"treat1","treat2_var":"treat2","yi_var":"yi","sei_var":"sei","reference":"A","hypothesis":"Compare treatments A, B, C, D in a network","alpha":0.05,"seed":42,"output_dir":"output/network_meta"}

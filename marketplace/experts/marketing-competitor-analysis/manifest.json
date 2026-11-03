@@ -1,0 +1,160 @@
+{
+  "id": "marketing-competitor-analysis",
+  "version": "1.0.0",
+  "scene": "marketing",
+  "sub_scene": "competitor-analysis",
+  "label": {
+    "zh": "竞品分析专家",
+    "en": "Competitor Analysis Expert"
+  },
+  "description": {
+    "zh": "从市场规模估算、行业细分与竞品图谱绘制，到企业市场趋势分析与用户行为洞察，再到B2B SaaS多场景竞争情报收集、SWOT分析与功能/价格对比、结构化HTML竞品分析报告输出，以及竞品网站/产品/定价自动化持续监控与预警的完整竞品分析工作流。覆盖市场调研、竞争情报、定位策略和动态追踪全链路。",
+    "en": "Estimate the market, map competitors, read trends and user behavior, collect B2B competitive intelligence, compare features and price with SWOT, and keep a watch on later changes."
+  },
+  "welcome_message": {
+    "zh": "我来帮你做「市场基础调研」",
+    "en": "I'll help you with Research the market."
+  },
+  "icon_name": "trending-up",
+  "icon_url": "https://cloudcache.tencent-cloud.com/qcloud/tea/app/skillhub/assets/source/ai-buddy-decouple/expert-profiles/marketing-competitor-analysis.v20260702.avif",
+  "color": "#ca8a04",
+  "prompt_files": [
+    "SOUL.md"
+  ],
+  "quick_prompts": [
+    {
+      "title": {
+        "zh": "市场基础调研",
+        "en": "Research the market"
+      },
+      "description": {
+        "zh": "生成市场规模报告和竞品图谱",
+        "en": "A market-size note and a competitor map"
+      },
+      "prompt": {
+        "zh": "请作为「竞品分析专家」，帮我完成「市场基础调研」。\n我的情况/目标/材料是：\n",
+        "en": "As the Competitor Analysis Expert, help me complete “Research the market”.\nMy context, goals, or materials are:\n"
+      },
+      "color": "#e8f4ff",
+      "icon_name": "trending-up"
+    },
+    {
+      "title": {
+        "zh": "企业市场趋势与用户洞察",
+        "en": "Read trends and users"
+      },
+      "description": {
+        "zh": "生成市场趋势分析和用户行为洞察报告",
+        "en": "Trend analysis and user-behavior insights"
+      },
+      "prompt": {
+        "zh": "请作为「竞品分析专家」，帮我完成「企业市场趋势与用户洞察」。\n我的情况/目标/材料是：\n",
+        "en": "As the Competitor Analysis Expert, help me complete “Read trends and users”.\nMy context, goals, or materials are:\n"
+      },
+      "color": "#fef3c7",
+      "icon_name": "activity"
+    },
+    {
+      "title": {
+        "zh": "B2B 竞争情报收集",
+        "en": "Collect B2B intelligence"
+      },
+      "description": {
+        "zh": "生成竞争情报摘要",
+        "en": "A competitive-intelligence brief"
+      },
+      "prompt": {
+        "zh": "请作为「竞品分析专家」，帮我完成「B2B 竞争情报收集」。\n我的情况/目标/材料是：\n",
+        "en": "As the Competitor Analysis Expert, help me complete “Collect B2B intelligence”.\nMy context, goals, or materials are:\n"
+      },
+      "color": "#dcfce7",
+      "icon_name": "activity"
+    },
+    {
+      "title": {
+        "zh": "SWOT 分析与结构化对比",
+        "en": "Compare with SWOT"
+      },
+      "description": {
+        "zh": "生成SWOT 分析表和功能/价格对比矩阵",
+        "en": "A SWOT table and a feature-price matrix"
+      },
+      "prompt": {
+        "zh": "请作为「竞品分析专家」，帮我完成「SWOT 分析与结构化对比」。\n我的情况/目标/材料是：\n",
+        "en": "As the Competitor Analysis Expert, help me complete “Compare with SWOT”.\nMy context, goals, or materials are:\n"
+      },
+      "color": "#f1f5f9",
+      "icon_name": "activity"
+    },
+    {
+      "title": {
+        "zh": "竞品分析报告输出",
+        "en": "Write the competitor report"
+      },
+      "description": {
+        "zh": "生成HTML 格式竞品分析报告",
+        "en": "An HTML competitor report"
+      },
+      "prompt": {
+        "zh": "请作为「竞品分析专家」，帮我完成「竞品分析报告输出」。\n我的情况/目标/材料是：\n",
+        "en": "As the Competitor Analysis Expert, help me complete “Write the competitor report”.\nMy context, goals, or materials are:\n"
+      },
+      "color": "#fff1f2",
+      "icon_name": "activity"
+    },
+    {
+      "title": {
+        "zh": "竞品持续监控",
+        "en": "Keep watching competitors"
+      },
+      "description": {
+        "zh": "生成竞品监控配置和动态预警规则",
+        "en": "Monitoring rules and change alerts"
+      },
+      "prompt": {
+        "zh": "请作为「竞品分析专家」，帮我完成「竞品持续监控」。\n我的情况/目标/材料是：\n",
+        "en": "As the Competitor Analysis Expert, help me complete “Keep watching competitors”.\nMy context, goals, or materials are:\n"
+      },
+      "color": "#eef2ff",
+      "icon_name": "activity"
+    }
+  ],
+  "task_examples": {
+    "zh": [
+      "每天「09:00」帮我完成「市场基础调研」并把结果发给我，任务创建后立即启用",
+      "每个工作日「18:00」帮我完成「企业市场趋势与用户洞察」并把结果发给我",
+      "每周一「10:00」帮我完成「B2B 竞争情报收集」并把结果发给我",
+      "每周五「17:00」帮我完成「SWOT 分析与结构化对比」并把结果发给我",
+      "每天「08:00」帮我完成「竞品分析报告输出」并把结果发给我",
+      "每月 1 日「09:30」帮我完成「竞品持续监控」并把结果发给我"
+    ],
+    "en": [
+      "Every day at 09:00, help me complete “Research the market” and send the result — enable immediately",
+      "Every weekday at 18:00, help me complete “Read trends and users” and send the result",
+      "Every Monday at 10:00, help me complete “Collect B2B intelligence” and send the result",
+      "Every Friday at 17:00, help me complete “Compare with SWOT” and send the result",
+      "Every day at 08:00, help me complete “Write the competitor report” and send the result",
+      "On the 1st of each month at 09:30, help me complete “Keep watching competitors” and send the result"
+    ]
+  },
+  "source": {
+    "type": "skillhub",
+    "kind": "skillset",
+    "slug": "marketing-competitor-analysis",
+    "scene": "marketing",
+    "sub_scene": "competitor-analysis"
+  },
+  "skillhub": {
+    "slug": "marketing-competitor-analysis",
+    "scene": "marketing",
+    "sub_scene": "competitor-analysis",
+    "skill_slugs": [
+      "market-research",
+      "market-analysis-cn",
+      "competitive-intelligence-market-research",
+      "competitor-analysis-report",
+      "competitive-product-research",
+      "competitor-watch"
+    ]
+  }
+}

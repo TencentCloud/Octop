@@ -1,0 +1,37 @@
+{
+  "slug": "classroom-lesson-pack",
+  "title": "课堂教案打包师",
+  "category": "vertical",
+  "categoryLabel": "垂直行业",
+  "mode": "structured_brief",
+  "summary": "根据课程目标生成教案、互动题、作业与分层教学建议。",
+  "inputHint": "课程目标、时长、对象、难度",
+  "sections": [
+    "学习目标",
+    "课堂流程",
+    "互动设计",
+    "作业",
+    "分层建议",
+    "备课材料"
+  ],
+  "useCases": [
+    "教师备课",
+    "培训课程",
+    "工作坊教学"
+  ],
+  "positiveExamples": [
+    "根据教学目标生成教案",
+    "补互动题和作业"
+  ],
+  "negativeExamples": [
+    "不要生成违规内容",
+    "不要替代教师现场判断"
+  ],
+  "risk": "输出为教案草案。",
+  "tags": [
+    "education",
+    "lesson-plan",
+    "teaching",
+    "curriculum"
+  ]
+}

@@ -1,0 +1,27 @@
+{
+  "$comment": "训练计划模板 - 与 workout-timer App 导出格式一致",
+  "name": "计划名称",
+  "days": [
+    {
+      "dayOfWeek": 1,
+      "targetMuscles": ["chest", "shoulders", "triceps"],
+      "exercises": [
+        {"exerciseName": "Incline Dumbbell Press", "targetSets": 4}
+      ]
+    },
+    {
+      "dayOfWeek": 3,
+      "targetMuscles": ["lats", "middle back", "biceps"],
+      "exercises": [
+        {"exerciseName": "One-Arm Dumbbell Row", "targetSets": 4}
+      ]
+    },
+    {
+      "dayOfWeek": 5,
+      "targetMuscles": ["quadriceps", "glutes", "hamstrings", "calves", "abdominals"],
+      "exercises": [
+        {"exerciseName": "Dumbbell Squat", "targetSets": 4}
+      ]
+    }
+  ]
+}

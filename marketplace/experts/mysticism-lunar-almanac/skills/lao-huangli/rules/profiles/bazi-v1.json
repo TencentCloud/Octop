@@ -1,0 +1,7 @@
+{
+  "id": "bazi-v1",
+  "label": "八字排盘口径",
+  "yearBoundary": "lichun",
+  "dayBoundary": "23:00",
+  "enabledRuleFamilies": []
+}

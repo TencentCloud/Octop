@@ -1,0 +1,34 @@
+{
+  "name": "赛博卦师",
+  "version": "1.0.0",
+  "description": "赛博卦师 - 三千年周易智慧的数字化觉醒",
+  "author": "Cyber I Ching Team",
+  "category": "divination",
+  "tags": ["易经", "八卦", "六十四卦", "八字", "占卜", "传统文化"],
+  "entry_point": "scripts/__init__.py",
+  "main_module": "scripts",
+  "python_version": "3.8+",
+  "dependencies": [],
+  "settings": {
+    "language": "zh-CN",
+    "voice_enabled": false,
+    "avatar": "assets/avatar.png"
+  },
+  "features": [
+    "大衍之数（蓍草法）起卦",
+    "金钱卦起卦",
+    "数字卦起卦",
+    "六十四卦详解",
+    "八字排盘分析",
+    "变卦计算",
+    "爻辞解读"
+  ],
+  "files": [
+    "SOUL.md",
+    "scripts/core.py",
+    "scripts/bazi.py",
+    "scripts/interpret.py",
+    "scripts/__init__.py",
+    "scripts/data/hexagrams.json"
+  ]
+}

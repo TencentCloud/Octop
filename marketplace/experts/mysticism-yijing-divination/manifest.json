@@ -1,0 +1,160 @@
+{
+  "id": "mysticism-yijing-divination",
+  "version": "1.0.0",
+  "scene": "mysticism",
+  "sub_scene": "yijing-divination",
+  "label": {
+    "zh": "易经起卦专家",
+    "en": "Yijing Divination Expert"
+  },
+  "description": {
+    "zh": "覆盖易经起卦从「主流派别」（梅花/六爻/小六壬）到「64 卦象辞决策」再到「跨流派对照」的全光谱工具集",
+    "en": "Cast a hexagram with Plum Blossom, Six Lines, or Xiao Liuren, read the 64 hexagram texts for a decision, and compare the schools."
+  },
+  "welcome_message": {
+    "zh": "我来帮你做「易经主驱动起卦」",
+    "en": "I'll help you with Cast the primary hexagram."
+  },
+  "icon_name": "sparkles",
+  "icon_url": "https://cloudcache.tencent-cloud.com/qcloud/tea/app/skillhub/assets/source/ai-buddy-decouple/expert-profiles/mysticism-yijing-divination.v20260702.avif",
+  "color": "#7c3aed",
+  "prompt_files": [
+    "SOUL.md"
+  ],
+  "quick_prompts": [
+    {
+      "title": {
+        "zh": "易经主驱动起卦",
+        "en": "Cast the primary hexagram"
+      },
+      "description": {
+        "zh": "生成本卦/互卦/变卦三层卦象 + 初步诗性诠释",
+        "en": "The primary, mutual, and changed hexagrams with a first reading"
+      },
+      "prompt": {
+        "zh": "请作为「易经起卦专家」，帮我完成「易经主驱动起卦」。\n我的情况/目标/材料是：\n",
+        "en": "As the Yijing Divination Expert, help me complete “Cast the primary hexagram”.\nMy context, goals, or materials are:\n"
+      },
+      "color": "#e8f4ff",
+      "icon_name": "list-todo"
+    },
+    {
+      "title": {
+        "zh": "京房纳甲六爻深断（文王卦）",
+        "en": "Read the Six Lines"
+      },
+      "description": {
+        "zh": "生成装卦详细字段 + 用神断卦结论 + 应期推断",
+        "en": "A detailed Six Lines judgment and timing"
+      },
+      "prompt": {
+        "zh": "请作为「易经起卦专家」，帮我完成「京房纳甲六爻深断（文王卦）」。\n我的情况/目标/材料是：\n",
+        "en": "As the Yijing Divination Expert, help me complete “Read the Six Lines”.\nMy context, goals, or materials are:\n"
+      },
+      "color": "#fef3c7",
+      "icon_name": "presentation"
+    },
+    {
+      "title": {
+        "zh": "梅花易数体用解读",
+        "en": "Read the Plum Blossom method"
+      },
+      "description": {
+        "zh": "生成梅花易数解读 + 与六爻的异同分析",
+        "en": "A Plum Blossom reading and how it differs from Six Lines"
+      },
+      "prompt": {
+        "zh": "请作为「易经起卦专家」，帮我完成「梅花易数体用解读」。\n我的情况/目标/材料是：\n",
+        "en": "As the Yijing Divination Expert, help me complete “Read the Plum Blossom method”.\nMy context, goals, or materials are:\n"
+      },
+      "color": "#dcfce7",
+      "icon_name": "activity"
+    },
+    {
+      "title": {
+        "zh": "小六壬日常吉凶速断",
+        "en": "Give a quick Xiao Liuren reading"
+      },
+      "description": {
+        "zh": "生成小六壬六宫断语 + 时间窗口建议",
+        "en": "A six-palace reading and a time window"
+      },
+      "prompt": {
+        "zh": "请作为「易经起卦专家」，帮我完成「小六壬日常吉凶速断」。\n我的情况/目标/材料是：\n",
+        "en": "As the Yijing Divination Expert, help me complete “Give a quick Xiao Liuren reading”.\nMy context, goals, or materials are:\n"
+      },
+      "color": "#f1f5f9",
+      "icon_name": "presentation"
+    },
+    {
+      "title": {
+        "zh": "卦象哲学决策辅助",
+        "en": "Use the text for a decision"
+      },
+      "description": {
+        "zh": "生成卦辞爻辞决策建议",
+        "en": "Decision notes from the judgment and line texts"
+      },
+      "prompt": {
+        "zh": "请作为「易经起卦专家」，帮我完成「卦象哲学决策辅助」。\n我的情况/目标/材料是：\n",
+        "en": "As the Yijing Divination Expert, help me complete “Use the text for a decision”.\nMy context, goals, or materials are:\n"
+      },
+      "color": "#fff1f2",
+      "icon_name": "list-todo"
+    },
+    {
+      "title": {
+        "zh": "多起卦法 + 三层义理融会",
+        "en": "Combine the methods"
+      },
+      "description": {
+        "zh": "生成跨流派融合的最终解读",
+        "en": "A final reading that combines the methods"
+      },
+      "prompt": {
+        "zh": "请作为「易经起卦专家」，帮我完成「多起卦法 + 三层义理融会」。\n我的情况/目标/材料是：\n",
+        "en": "As the Yijing Divination Expert, help me complete “Combine the methods”.\nMy context, goals, or materials are:\n"
+      },
+      "color": "#eef2ff",
+      "icon_name": "file-text"
+    }
+  ],
+  "task_examples": {
+    "zh": [
+      "每天「09:00」帮我完成「易经主驱动起卦」并把结果发给我，任务创建后立即启用",
+      "每个工作日「18:00」帮我完成「京房纳甲六爻深断（文王卦）」并把结果发给我",
+      "每周一「10:00」帮我完成「梅花易数体用解读」并把结果发给我",
+      "每周五「17:00」帮我完成「小六壬日常吉凶速断」并把结果发给我",
+      "每天「08:00」帮我完成「卦象哲学决策辅助」并把结果发给我",
+      "每月 1 日「09:30」帮我完成「多起卦法 + 三层义理融会」并把结果发给我"
+    ],
+    "en": [
+      "Every day at 09:00, help me complete “Cast the primary hexagram” and send the result — enable immediately",
+      "Every weekday at 18:00, help me complete “Read the Six Lines” and send the result",
+      "Every Monday at 10:00, help me complete “Read the Plum Blossom method” and send the result",
+      "Every Friday at 17:00, help me complete “Give a quick Xiao Liuren reading” and send the result",
+      "Every day at 08:00, help me complete “Use the text for a decision” and send the result",
+      "On the 1st of each month at 09:30, help me complete “Combine the methods” and send the result"
+    ]
+  },
+  "source": {
+    "type": "skillhub",
+    "kind": "skillset",
+    "slug": "mysticism-yijing-divination",
+    "scene": "mysticism",
+    "sub_scene": "yijing-divination"
+  },
+  "skillhub": {
+    "slug": "mysticism-yijing-divination",
+    "scene": "mysticism",
+    "sub_scene": "yijing-divination",
+    "skill_slugs": [
+      "gua",
+      "liuyao-yijing",
+      "meihua-yishu-divination",
+      "xiaoliuren",
+      "yi",
+      "cyber-iching-master"
+    ]
+  }
+}

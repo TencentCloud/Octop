@@ -1,0 +1,1 @@
+{"dataset_path":"examples/data/observational_treatment.csv","analysis_type":"causal_forest","treatment_var":"treated","outcome_var":"outcome","covariates":["age","female","comorbidity"],"alpha":0.05,"seed":42,"output_dir":"output/causal_forest"}

@@ -1,0 +1,10 @@
+{
+  "name": "私募",
+  "version": "2.0.0",
+  "description": "15年经验私募基金合规专家。基于AMAC最新监管规则，对登记备案、募集、内控、披露等8大模块进行审查，生成Word报告。支持 --file, --text 参数。",
+  "author": "Nathan Huang 律师",
+  "license": "MIT",
+  "keywords": ["私募", "基金", "合规", "PE", "VC", "AMAC", "法律"],
+  "category": "legal",
+  "language": "zh"
+}

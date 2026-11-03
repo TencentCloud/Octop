@@ -1,0 +1,160 @@
+{
+  "id": "marketing-ad-copywriting",
+  "version": "1.0.0",
+  "scene": "marketing",
+  "sub_scene": "ad-copywriting",
+  "label": {
+    "zh": "广告文案专家",
+    "en": "Ad Copywriting Expert"
+  },
+  "description": {
+    "zh": "从23模块营销策略体系（CRO/SEO/文案/分析/广告/发布）、AIDA/PAS/FAB等经典文案框架与说服力技巧、中文营销文案100个标题公式与痛点挖掘，到全平台广告文案生成（信息流/朋友圈/搜索/直通车/巨量引擎/Google Ads）含A/B测试、高转化落地页自动生成、电商爆款文案（淘宝/拼多多/抖音/京东）的完整广告文案工作流。",
+    "en": "Ad copywriting workflow for marketing strategy, audience analysis, persuasive copy frameworks, Chinese and multi-platform ad copy generation, high-conversion landing page copy, and ecommerce product copy."
+  },
+  "welcome_message": {
+    "zh": "我来帮你做「营销策略与受众分析」",
+    "en": "I'll help you with Marketing Strategy and Audience Analysis."
+  },
+  "icon_name": "trending-up",
+  "icon_url": "/experts/avatars/scene-marketing.svg",
+  "color": "#ca8a04",
+  "prompt_files": [
+    "SOUL.md"
+  ],
+  "quick_prompts": [
+    {
+      "title": {
+        "zh": "营销策略与受众分析",
+        "en": "Marketing Strategy and Audience Analysis"
+      },
+      "description": {
+        "zh": "生成营销策略简报和受众画像",
+        "en": "Audience and strategy brief"
+      },
+      "prompt": {
+        "zh": "请作为「广告文案专家」，帮我完成「营销策略与受众分析」。\n我的情况/目标/材料是：\n",
+        "en": "As the Ad Copywriting Expert, help me complete “Marketing Strategy and Audience Analysis”.\nMy context, goals, or materials are:\n"
+      },
+      "color": "#e8f4ff",
+      "icon_name": "activity"
+    },
+    {
+      "title": {
+        "zh": "文案框架与说服力构建",
+        "en": "Copy Framework and Persuasion Design"
+      },
+      "description": {
+        "zh": "生成文案框架和核心卖点提炼",
+        "en": "Persuasion framework"
+      },
+      "prompt": {
+        "zh": "请作为「广告文案专家」，帮我完成「文案框架与说服力构建」。\n我的情况/目标/材料是：\n",
+        "en": "As the Ad Copywriting Expert, help me complete “Copy Framework and Persuasion Design”.\nMy context, goals, or materials are:\n"
+      },
+      "color": "#fef3c7",
+      "icon_name": "presentation"
+    },
+    {
+      "title": {
+        "zh": "中文营销文案撰写",
+        "en": "Chinese Marketing Copy Drafting"
+      },
+      "description": {
+        "zh": "生成中文广告文案初稿",
+        "en": "Localized copy draft"
+      },
+      "prompt": {
+        "zh": "请作为「广告文案专家」，帮我完成「中文营销文案撰写」。\n我的情况/目标/材料是：\n",
+        "en": "As the Ad Copywriting Expert, help me complete “Chinese Marketing Copy Drafting”.\nMy context, goals, or materials are:\n"
+      },
+      "color": "#dcfce7",
+      "icon_name": "presentation"
+    },
+    {
+      "title": {
+        "zh": "全平台广告文案生成",
+        "en": "Cross-Platform Ad Copy Generation"
+      },
+      "description": {
+        "zh": "生成各平台适配的广告文案集",
+        "en": "Ad copy variant set"
+      },
+      "prompt": {
+        "zh": "请作为「广告文案专家」，帮我完成「全平台广告文案生成」。\n我的情况/目标/材料是：\n",
+        "en": "As the Ad Copywriting Expert, help me complete “Cross-Platform Ad Copy Generation”.\nMy context, goals, or materials are:\n"
+      },
+      "color": "#f1f5f9",
+      "icon_name": "terminal"
+    },
+    {
+      "title": {
+        "zh": "高转化落地页生成",
+        "en": "High-Conversion Landing Page Copy"
+      },
+      "description": {
+        "zh": "生成高转化率落地页",
+        "en": "Landing page copy"
+      },
+      "prompt": {
+        "zh": "请作为「广告文案专家」，帮我完成「高转化落地页生成」。\n我的情况/目标/材料是：\n",
+        "en": "As the Ad Copywriting Expert, help me complete “High-Conversion Landing Page Copy”.\nMy context, goals, or materials are:\n"
+      },
+      "color": "#fff1f2",
+      "icon_name": "trending-up"
+    },
+    {
+      "title": {
+        "zh": "电商爆款文案",
+        "en": "Ecommerce Hero Product Copy"
+      },
+      "description": {
+        "zh": "生成高转化商品标题（关键词+卖点+规格）",
+        "en": "Ecommerce product copy pack"
+      },
+      "prompt": {
+        "zh": "请作为「广告文案专家」，帮我完成「电商爆款文案」。\n我的情况/目标/材料是：\n",
+        "en": "As the Ad Copywriting Expert, help me complete “Ecommerce Hero Product Copy”.\nMy context, goals, or materials are:\n"
+      },
+      "color": "#eef2ff",
+      "icon_name": "globe"
+    }
+  ],
+  "task_examples": {
+    "zh": [
+      "每天「09:00」帮我完成「营销策略与受众分析」并把结果发给我，任务创建后立即启用",
+      "每个工作日「18:00」帮我完成「文案框架与说服力构建」并把结果发给我",
+      "每周一「10:00」帮我完成「中文营销文案撰写」并把结果发给我",
+      "每周五「17:00」帮我完成「全平台广告文案生成」并把结果发给我",
+      "每天「08:00」帮我完成「高转化落地页生成」并把结果发给我",
+      "每月 1 日「09:30」帮我完成「电商爆款文案」并把结果发给我"
+    ],
+    "en": [
+      "Every day at 09:00, help me complete “Marketing Strategy and Audience Analysis” and send the result — enable immediately",
+      "Every weekday at 18:00, help me complete “Copy Framework and Persuasion Design” and send the result",
+      "Every Monday at 10:00, help me complete “Chinese Marketing Copy Drafting” and send the result",
+      "Every Friday at 17:00, help me complete “Cross-Platform Ad Copy Generation” and send the result",
+      "Every day at 08:00, help me complete “High-Conversion Landing Page Copy” and send the result",
+      "On the 1st of each month at 09:30, help me complete “Ecommerce Hero Product Copy” and send the result"
+    ]
+  },
+  "source": {
+    "type": "skillhub",
+    "kind": "skillset",
+    "slug": "marketing-ad-copywriting",
+    "scene": "marketing",
+    "sub_scene": "ad-copywriting"
+  },
+  "skillhub": {
+    "slug": "marketing-ad-copywriting",
+    "scene": "marketing",
+    "sub_scene": "ad-copywriting",
+    "skill_slugs": [
+      "marketing-skills",
+      "copywriting",
+      "bytesagain-copywriter-cn",
+      "ad-copywriter",
+      "landing-page-generator-openclaw",
+      "ecommerce-copywriter"
+    ]
+  }
+}

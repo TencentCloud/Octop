@@ -1,0 +1,12 @@
+{
+  "dataset_path": "examples/data/clustered_binary.csv",
+  "analysis_type": "gee",
+  "formula": "outcome ~ x1 + x2",
+  "family": "binomial",
+  "id_var": "cluster",
+  "corstr": "exchangeable",
+  "hypothesis": "x1 and x2 are associated with the binary outcome (population-averaged effect)",
+  "alpha": 0.05,
+  "seed": 42,
+  "output_dir": "output/gee_clustered"
+}

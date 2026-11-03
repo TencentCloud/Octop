@@ -7,7 +7,7 @@ import {
   Folder,
   HardDrive,
   Layers,
-  Terminal,
+  Monitor,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { useTranslation } from "react-i18next";
@@ -26,7 +26,7 @@ interface BackendFlagProps {
 }
 
 const FAMILY_ICON: Record<BackendFlagIcon, LucideIcon> = {
-  shell: Terminal,
+  shell: Monitor,
   filesystem: Folder,
   database: Database,
   storage: Archive,

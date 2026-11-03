@@ -1,0 +1,7 @@
+{
+  "id": "market-folk-v1",
+  "label": "市售挂历版",
+  "yearBoundary": "spring-festival",
+  "dayBoundary": "00:00",
+  "enabledRuleFamilies": []
+}

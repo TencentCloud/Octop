@@ -1,0 +1,1 @@
+{"dataset_path":"examples/data/mtcars.csv","analysis_type":"power_cluster","effect_size":0.3,"icc":0.05,"cluster_size":30,"sd":1,"alpha":0.05,"power":0.8,"seed":42,"output_dir":"output/power_cluster"}

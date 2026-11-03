@@ -80,18 +80,14 @@ def database_config_from_payload(payload: dict[str, Any]) -> DatabaseConfig:
 
 
 def assert_control_plane_database_empty(db_config: DatabaseConfig, paths: PathLayout) -> None:
-    """Refuse greenfield setup onto a control-plane DB that already has users."""
-    from octop.config import OctopConfig
+    """Refuse greenfield setup onto a control-plane DB that already has users.
 
-    cfg = OctopConfig(database=db_config, database_in_file=True)
-    db = open_database(cfg, paths)
-    try:
-        run_migrations(db)
-        with db.connect() as conn:
-            n = int(conn.execute("SELECT COUNT(*) FROM users").fetchone()[0])
-    finally:
-        db.close()
-    if n != 0:
+    PostgreSQL may skip this when the operator confirms ``adopt_existing``.
+    SQLite stays greenfield-only: point the wizard at a file with no users.
+    """
+    from octop.infra.db.probe import control_plane_user_count
+
+    if control_plane_user_count(db_config, paths) != 0:
         raise OctopError(
             ErrorCode.DATABASE_NOT_EMPTY,
             "target database already has users",
@@ -99,11 +95,13 @@ def assert_control_plane_database_empty(db_config: DatabaseConfig, paths: PathLa
         )
 
 
-def rebind_control_plane(server: OctopServer) -> None:
+def rebind_control_plane(server: OctopServer, *, adopt_existing: bool = False) -> None:
     """Close the current pool, open from config, migrate, and retarget runtime repos.
 
-    Only allowed while ``user_count == 0`` (first-run setup). Target DB must also
-    be empty (greenfield); otherwise raise ``DATABASE_NOT_EMPTY`` without swapping.
+    Only allowed while the current install has ``user_count == 0`` (first-run
+    setup). A target that already has users is refused, except PostgreSQL when
+    ``adopt_existing`` is set — that keeps those accounts and does not create
+    another admin.
     """
     if server.user_manager is None or server.services is None:
         raise OctopError(ErrorCode.INTERNAL_ERROR, "server not started")
@@ -127,7 +125,8 @@ def rebind_control_plane(server: OctopServer) -> None:
         run_migrations(new_db)
         with new_db.connect() as conn:
             n = int(conn.execute("SELECT COUNT(*) FROM users").fetchone()[0])
-        if n != 0:
+        allow_existing = adopt_existing and config.database.is_postgresql
+        if n != 0 and not allow_existing:
             raise OctopError(
                 ErrorCode.DATABASE_NOT_EMPTY,
                 "target database already has users",

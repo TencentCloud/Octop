@@ -1,0 +1,1 @@
+{"dataset_path":"examples/data/meta_bcg.csv","analysis_type":"meta_analysis","yi_var":"yi","vi_var":"vi","study_var":"study","method":"REML","hypothesis":"BCG vaccination reduces tuberculosis risk","alpha":0.05,"seed":42,"output_dir":"output/meta_analysis"}

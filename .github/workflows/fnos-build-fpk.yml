@@ -12,11 +12,11 @@ name: Build Octop FPK
 #   - Native wheel：优先从同版本 GitHub Release（v*）下载；
 #     缺失时再回退到本仓源码构建
 #   - fnpack：fpk / native 用 Actions cache 复用 .verify/fnpack（key 含 FNPACK_VERSION）
-#   - 产物挂到同一个 v* GitHub Release（与 wheel / 桌面包并列），不再单独打 fnos-* tag
+#   - 产物挂到同一个 v* GitHub Release（与 wheel / 桌面包并列），再上传到 COS
 #
 # Jobs：
 #   version → ensure-image → fpk（Docker 版 .fpk，仅打包 compose；镜像已是 amd64+arm64）
-#           ↘ native（x86_64 本地版 .fpk）
+#           ↘ native（amd64 本地版 Octop-fnos-native-amd64-*.fpk）
 #           ↘ native-arm64（ubuntu-24.04-arm 装 aarch64 site-packages）
 #             → native-arm64-pack（amd64 上用 fnpack 打 Octop-fnos-native-arm64-*.fpk）
 #           → release（把 .fpk 挂到已有的 v* GitHub Release）
@@ -272,17 +272,18 @@ jobs:
         id: build_native
         env:
           FPK_NAME_PREFIX: Octop-fnos
+          FPK_ARCH: amd64
         run: bash scripts/build-fpk.sh native
 
       - name: Show native fpk size
-        run: ls -lh dist/Octop-fnos-native-[0-9]*.fpk
+        run: ls -lh dist/Octop-fnos-native-amd64-*.fpk
 
       - name: Upload native fpk artifact
         id: upload_native
         uses: actions/upload-artifact@v4
         with:
           name: native-fpk
-          path: dist/Octop-fnos-native-[0-9]*.fpk
+          path: dist/Octop-fnos-native-amd64-*.fpk
           if-no-files-found: error
 
       - name: Upload native install log (for debugging)

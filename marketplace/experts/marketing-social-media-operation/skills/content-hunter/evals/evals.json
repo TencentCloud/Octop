@@ -1,0 +1,23 @@
+{
+  "skill_name": "content-hunter",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "帮我抓取短视频热门内容，每个平台20条",
+      "expected_output": "4个平台各保存20条内容到md文件",
+      "files": []
+    },
+    {
+      "id": 2,
+      "prompt": "我只刷抖音和B站，每个平台抓30条",
+      "expected_output": "只抓取抖音和B站，每平台30条",
+      "files": []
+    },
+    {
+      "id": 3,
+      "prompt": "今天的热门内容有哪些？生成一份汇报",
+      "expected_output": "生成包含TOP20、趋势分析、推荐阅读、呱呱感悟的汇报",
+      "files": []
+    }
+  ]
+}

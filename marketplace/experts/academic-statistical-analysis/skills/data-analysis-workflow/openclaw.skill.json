@@ -1,0 +1,112 @@
+{
+  "id": "data-analysis-workflow",
+  "name": "Data Analysis Workflow",
+  "description": "标准化数据分析工作流，整合 data-analysis、statistical-analysis、scientific-visualization 等技能，提供从数据导入到结果报告的完整数据分析流程。包含 6 阶段分析流程，支持 APA 格式报告生成。",
+  "version": "1.0.0",
+  "author": "academic-assistant",
+  "license": "MIT",
+  
+  "trigger": {
+    "keywords": [
+      "数据分析",
+      "统计分析",
+      "data analysis",
+      "statistical analysis",
+      "数据分析工作流"
+    ],
+    "mode": "keyword"
+  },
+
+  "config": {
+    "default_format": "csv",
+    "supported_formats": ["csv", "xlsx", "sav", "sas7bdat", "rds"],
+    "workflow_stages": 6,
+    "report_style": "APA"
+  },
+
+  "workflow": {
+    "stages": [
+      {
+        "name": "数据导入与检查",
+        "description": "数据维度、变量类型、缺失值、异常值检查",
+        "duration": "5-10 分钟",
+        "skills": ["data-analysis", "pandas"]
+      },
+      {
+        "name": "数据清洗与预处理",
+        "description": "缺失值处理、异常值处理、变量转换",
+        "duration": "15-30 分钟",
+        "skills": ["data-analysis", "pandas"]
+      },
+      {
+        "name": "描述统计与探索",
+        "description": "集中趋势、离散程度、分布形态、相关分析",
+        "duration": "20-40 分钟",
+        "skills": ["data-analysis", "seaborn", "exploratory-data-analysis"]
+      },
+      {
+        "name": "推断统计分析",
+        "description": "统计检验选择、假设条件检查、执行统计检验",
+        "duration": "30-60 分钟",
+        "skills": ["statistical-analysis", "scipy"]
+      },
+      {
+        "name": "可视化呈现",
+        "description": "统计图表、定制图表、出版级图表",
+        "duration": "20-40 分钟",
+        "skills": ["seaborn", "matplotlib", "scientific-visualization"]
+      },
+      {
+        "name": "结果报告",
+        "description": "APA 格式报告、结果解释、图表整合",
+        "duration": "15-30 分钟",
+        "skills": ["statistical-analysis", "scientific-visualization"]
+      }
+    ]
+  },
+
+  "skills": {
+    "required": [
+      "data-analysis",
+      "statistical-analysis",
+      "scientific-visualization"
+    ],
+    "optional": [
+      "seaborn",
+      "matplotlib",
+      "plotly",
+      "exploratory-data-analysis"
+    ]
+  },
+
+  "analysis_types": {
+    "experimental": {
+      "description": "实验数据分析",
+      "tests": ["t-test", "ANOVA", "chi-square"],
+      "visualizations": ["boxplot", "violin", "bar"]
+    },
+    "survey": {
+      "description": "调查数据分析",
+      "tests": ["correlation", "regression", "factor-analysis"],
+      "visualizations": ["heatmap", "scatter", "histogram"]
+    },
+    "exploratory": {
+      "description": "探索性数据分析",
+      "tests": ["descriptive", "correlation"],
+      "visualizations": ["pairplot", "distribution", "correlation-matrix"]
+    }
+  },
+
+  "output": {
+    "format": "markdown",
+    "include": [
+      "数据概览",
+      "缺失值报告",
+      "描述统计表",
+      "推断统计结果",
+      "可视化图表",
+      "APA 格式报告",
+      "数据质量评估"
+    ]
+  }
+}

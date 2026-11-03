@@ -1,0 +1,1 @@
+{"dataset_path":"examples/data/mtcars.csv","analysis_type":"power_survival","hr":0.7,"power":0.8,"alpha":0.05,"event_prob":0.8,"allocation_ratio":1,"sided":2,"hypothesis":"Sample size for survival study detecting HR=0.7","seed":42,"output_dir":"output/power_survival"}

@@ -1,0 +1,18 @@
+[
+  {
+    "id": "xjbfs-duty-gods-cycle",
+    "sourceLevel": "L1-primary",
+    "sourceRef": [
+      {
+        "work": "钦定协纪辨方书",
+        "location": "卷七",
+        "url": "https://zh.wikisource.org/wiki/%E6%AC%BD%E5%AE%9A%E5%8D%94%E7%B4%80%E8%BE%A8%E6%96%B9%E6%9B%B8_(%E5%9B%9B%E5%BA%AB%E5%85%A8%E6%9B%B8%E6%9C%AC)/%E5%8D%B707"
+      }
+    ],
+    "interpretationType": "direct",
+    "order": ["青龙", "明堂", "天刑", "朱雀", "金匮", "天德", "白虎", "玉堂", "天牢", "玄武", "司命", "勾陈"],
+    "goodGods": ["青龙", "明堂", "金匮", "天德", "玉堂", "司命"],
+    "badGods": ["天刑", "朱雀", "白虎", "天牢", "玄武", "勾陈"],
+    "notes": "当前值神直接沿黄黑道十二神顺序取当日轮值神。"
+  }
+]

@@ -1,0 +1,1 @@
+{"dataset_path":"examples/data/observational_treatment.csv","analysis_type":"g_computation","treatment_var":"treated","outcome_var":"outcome","formula":"outcome ~ treated + age + female + comorbidity","alpha":0.05,"seed":42,"output_dir":"output/gcomputation"}

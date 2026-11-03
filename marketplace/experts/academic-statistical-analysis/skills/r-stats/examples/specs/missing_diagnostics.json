@@ -1,0 +1,9 @@
+{
+  "dataset_path": "examples/data/airquality_missing.csv",
+  "analysis_type": "missing_diagnostics",
+  "variables": ["Ozone", "Solar.R", "Wind", "Temp"],
+  "hypothesis": "Assess missing data patterns in the airquality dataset",
+  "alpha": 0.05,
+  "seed": 42,
+  "output_dir": "output/missing_airquality"
+}

@@ -1,0 +1,12 @@
+{
+  "name": "Design to Code (还原设计图)",
+  "tagline": "将 Figma/Sketch/图片设计稿高保真还原为前端代码",
+  "description": "从设计稿到代码：解析标注（尺寸、间距、字号、颜色、圆角、阴影）、设计 token 对齐、实现优先级（布局→字体→视觉→交互→响应式→动效）、还原度自检。适用于还原设计图、切图、设计转代码，使用项目现有技术栈与组件化实现。",
+  "category": "development",
+  "tags": ["figma", "design", "ui", "layout", "tailwind", "设计稿", "切图"],
+  "version": "1.0.0",
+  "license": "MIT",
+  "pricing": "free",
+  "support_url": "https://github.com/wangzhiming1999/oliver-skill/issues",
+  "homepage": "https://github.com/wangzhiming1999/oliver-skill"
+}

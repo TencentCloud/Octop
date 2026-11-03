@@ -1,0 +1,160 @@
+{
+  "id": "ecommerce-user-profiling",
+  "version": "1.0.0",
+  "scene": "ecommerce",
+  "sub_scene": "user-profiling",
+  "label": {
+    "zh": "用户画像专家",
+    "en": "User Profiling Expert"
+  },
+  "description": {
+    "zh": "电商零售用户画像工作流：从行为数据接入、客户分层与 RFM 分群、电商 LTV/复购/会员深度建模，到把画像激活为广告投放人群和店铺个性化运营。基于订单/CRM/行为数据，输出可直接落地到投放与精准营销的画像与人群。",
+    "en": "Ecommerce user profiling workflow for behavior data intake, customer segmentation, RFM analysis, lifetime value modeling, ad audience activation, and retention or win-back strategy."
+  },
+  "welcome_message": {
+    "zh": "我来帮你做「行为数据接入与口径核对」",
+    "en": "I'll help you with Behavior Data Intake and Metric Alignment."
+  },
+  "icon_name": "globe",
+  "icon_url": "https://cloudcache.tencent-cloud.com/qcloud/tea/app/skillhub/assets/source/ai-buddy-decouple/expert-profiles/ecommerce-user-profiling.v20260702.avif",
+  "color": "#16a34a",
+  "prompt_files": [
+    "SOUL.md"
+  ],
+  "quick_prompts": [
+    {
+      "title": {
+        "zh": "行为数据接入与口径核对",
+        "en": "Behavior Data Intake and Metric Alignment"
+      },
+      "description": {
+        "zh": "生成标准化的事件表 + 订单明细 + 会员表，统一以…",
+        "en": "Clean behavior dataset and metric dictionary"
+      },
+      "prompt": {
+        "zh": "请作为「用户画像专家」，帮我完成「行为数据接入与口径核对」。\n我的情况/目标/材料是：\n",
+        "en": "As the User Profiling Expert, help me complete “Behavior Data Intake and Metric Alignment”.\nMy context, goals, or materials are:\n"
+      },
+      "color": "#e8f4ff",
+      "icon_name": "activity"
+    },
+    {
+      "title": {
+        "zh": "通用客户分层与精准营销分群（分…",
+        "en": "General Customer Segmentation and Marketing Groups"
+      },
+      "description": {
+        "zh": "生成segments_overview.csv（用户I…",
+        "en": "Customer segmentation map"
+      },
+      "prompt": {
+        "zh": "请作为「用户画像专家」，帮我完成「通用客户分层与精准营销分群（分析层 - 主分群）」。\n我的情况/目标/材料是：\n",
+        "en": "As the User Profiling Expert, help me complete “General Customer Segmentation and Marketing Groups”.\nMy context, goals, or materials are:\n"
+      },
+      "color": "#fef3c7",
+      "icon_name": "activity"
+    },
+    {
+      "title": {
+        "zh": "RFM 专项细分 + 重点人群…",
+        "en": "RFM Segmentation and Priority Audience Detection"
+      },
+      "description": {
+        "zh": "生成rfm_segments.csv（带细分标签）+…",
+        "en": "RFM segment table"
+      },
+      "prompt": {
+        "zh": "请作为「用户画像专家」，帮我完成「RFM 专项细分 + 重点人群识别（分析层 -…」。\n我的情况/目标/材料是：\n",
+        "en": "As the User Profiling Expert, help me complete “RFM Segmentation and Priority Audience Detection”.\nMy context, goals, or materials are:\n"
+      },
+      "color": "#dcfce7",
+      "icon_name": "activity"
+    },
+    {
+      "title": {
+        "zh": "电商 LTV / 复购 / 会…",
+        "en": "Ecommerce LTV, Repurchase, and Membership Modeling"
+      },
+      "description": {
+        "zh": "生成ltv_segments.csv（用户ID + L…",
+        "en": "LTV and repurchase model summary"
+      },
+      "prompt": {
+        "zh": "请作为「用户画像专家」，帮我完成「电商 LTV / 复购 / 会员深度建模（分析…」。\n我的情况/目标/材料是：\n",
+        "en": "As the User Profiling Expert, help me complete “Ecommerce LTV, Repurchase, and Membership Modeling”.\nMy context, goals, or materials are:\n"
+      },
+      "color": "#f1f5f9",
+      "icon_name": "activity"
+    },
+    {
+      "title": {
+        "zh": "把画像激活为广告投放人群（输出…",
+        "en": "Activate Profiles For Paid Acquisition"
+      },
+      "description": {
+        "zh": "生成ads_audiences.md（按平台分章节的投…",
+        "en": "Ad audience activation plan"
+      },
+      "prompt": {
+        "zh": "请作为「用户画像专家」，帮我完成「把画像激活为广告投放人群（输出层 - 拉新侧）」。\n我的情况/目标/材料是：\n",
+        "en": "As the User Profiling Expert, help me complete “Activate Profiles For Paid Acquisition”.\nMy context, goals, or materials are:\n"
+      },
+      "color": "#fff1f2",
+      "icon_name": "wrench"
+    },
+    {
+      "title": {
+        "zh": "把画像激活为客户留存与召回（输…",
+        "en": "Activate Profiles For Retention and Win-Back"
+      },
+      "description": {
+        "zh": "生成customer_retention_playbo…",
+        "en": "Retention and win-back playbook"
+      },
+      "prompt": {
+        "zh": "请作为「用户画像专家」，帮我完成「把画像激活为客户留存与召回（输出层 - 店铺侧）」。\n我的情况/目标/材料是：\n",
+        "en": "As the User Profiling Expert, help me complete “Activate Profiles For Retention and Win-Back”.\nMy context, goals, or materials are:\n"
+      },
+      "color": "#eef2ff",
+      "icon_name": "trending-up"
+    }
+  ],
+  "task_examples": {
+    "zh": [
+      "每天「09:00」帮我完成「行为数据接入与口径核对」并把结果发给我，任务创建后立即启用",
+      "每个工作日「18:00」帮我完成「通用客户分层与精准营销分群（分…」并把结果发给我",
+      "每周一「10:00」帮我完成「RFM 专项细分 + 重点人群…」并把结果发给我",
+      "每周五「17:00」帮我完成「电商 LTV / 复购 / 会…」并把结果发给我",
+      "每天「08:00」帮我完成「把画像激活为广告投放人群（输出…」并把结果发给我",
+      "每月 1 日「09:30」帮我完成「把画像激活为客户留存与召回（输…」并把结果发给我"
+    ],
+    "en": [
+      "Every day at 09:00, help me complete “Behavior Data Intake and Metric Alignment” and send the result — enable immediately",
+      "Every weekday at 18:00, help me complete “General Customer Segmentation and Marketing Groups” and send the result",
+      "Every Monday at 10:00, help me complete “RFM Segmentation and Priority Audience Detection” and send the result",
+      "Every Friday at 17:00, help me complete “Ecommerce LTV, Repurchase, and Membership Modeling” and send the result",
+      "Every day at 08:00, help me complete “Activate Profiles For Paid Acquisition” and send the result",
+      "On the 1st of each month at 09:30, help me complete “Activate Profiles For Retention and Win-Back” and send the result"
+    ]
+  },
+  "source": {
+    "type": "skillhub",
+    "kind": "skillset",
+    "slug": "ecommerce-user-profiling",
+    "scene": "ecommerce",
+    "sub_scene": "user-profiling"
+  },
+  "skillhub": {
+    "slug": "ecommerce-user-profiling",
+    "scene": "ecommerce",
+    "sub_scene": "user-profiling",
+    "skill_slugs": [
+      "user-behavior-analytics",
+      "ai-intelligent-customer-segmentation",
+      "rfm-segmenter",
+      "customer-lifetime-value-optimizer",
+      "audience-segmentation-analyst",
+      "customer-retention"
+    ]
+  }
+}

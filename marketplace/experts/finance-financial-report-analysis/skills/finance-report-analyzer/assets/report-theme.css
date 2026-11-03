@@ -1,0 +1,11 @@
+/* Base CSS for financial report - can be customized */
+:root {
+    --primary: #1a56db;
+    --danger: #dc2626;
+    --success: #16a34a;
+    --bg: #f8fafc;
+    --card: #ffffff;
+    --border: #e2e8f0;
+    --text: #1e293b;
+    --text2: #64748b;
+}

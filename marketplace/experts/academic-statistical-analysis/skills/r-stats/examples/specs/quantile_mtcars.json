@@ -1,0 +1,1 @@
+{"dataset_path":"examples/data/mtcars.csv","analysis_type":"quantile_regression","formula":"mpg ~ wt + hp","tau":[0.25,0.5,0.75],"alpha":0.05,"seed":42,"output_dir":"output/quantile_mtcars"}

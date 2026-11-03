@@ -52,7 +52,7 @@ def fnos_assets(version: str) -> tuple[tuple[str, str], ...]:
             f"Octop-fnos-docker-{version}.fpk",
             "Docker full (desktop, OCR, local models; x86 and ARM)",
         ),
-        (f"Octop-fnos-native-{version}.fpk", "Native x86_64"),
+        (f"Octop-fnos-native-amd64-{version}.fpk", "Native x86_64"),
         (f"Octop-fnos-native-arm64-{version}.fpk", "Native ARM64 (no Docker)"),
     )
 

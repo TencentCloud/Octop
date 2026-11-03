@@ -1,0 +1,13 @@
+{
+  "dataset_path": "examples/data/cohort_study.csv",
+  "analysis_type": "risk_ratio",
+  "exposure": "treatment",
+  "outcome": "event",
+  "exposure_level": "Treatment",
+  "outcome_level": "1",
+  "study_design": "cohort",
+  "hypothesis": "Treatment reduces the risk of the event",
+  "alpha": 0.05,
+  "seed": 42,
+  "output_dir": "output/risk_ratio"
+}

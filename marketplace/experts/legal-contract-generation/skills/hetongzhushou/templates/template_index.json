@@ -1,0 +1,136 @@
+{
+  "version": "1.0.0",
+  "description": "合同模板库索引",
+  "total_templates": 15,
+  "categories": {
+    "labor": {
+      "name": "劳动人事类",
+      "count": 6,
+      "templates": [
+        {
+          "id": "labor_standard",
+          "name": "标准劳动合同",
+          "description": "适用于普通员工入职的基本劳动合同模板，包含完整的基础条款",
+          "keywords": ["劳动合同", "标准", "通用"],
+          "file": "labor_standard.json"
+        },
+        {
+          "id": "labor_senior",
+          "name": "高管劳动合同",
+          "description": "适用于高级管理人员的劳动合同模板，包含竞业限制和期权条款",
+          "keywords": ["高管", "竞业限制", "期权"],
+          "file": "labor_senior.json"
+        },
+        {
+          "id": "labor_tech",
+          "name": "技术岗劳动合同",
+          "description": "适用于研发/技术岗位，包含知识产权归属和保密条款",
+          "keywords": ["技术岗", "知识产权", "保密"],
+          "file": "labor_tech.json"
+        },
+        {
+          "id": "labor_sales",
+          "name": "销售岗劳动合同",
+          "description": "适用于销售岗位，包含提成条款和业绩考核",
+          "keywords": ["销售", "提成", "业绩"],
+          "file": "labor_sales.json"
+        },
+        {
+          "id": "internship_agreement",
+          "name": "实习协议",
+          "description": "适用于在校学生实习，包含实习期限和补贴标准",
+          "keywords": ["实习", "学生", "在校"],
+          "file": "internship_agreement.json"
+        },
+        {
+          "id": "confidentiality_agreement",
+          "name": "保密协议",
+          "description": "单独签署的保密协议，明确保密范围和违约责任",
+          "keywords": ["保密", "商业秘密", "单独"],
+          "file": "confidentiality_agreement.json"
+        }
+      ]
+    },
+    "sale": {
+      "name": "买卖交易类",
+      "count": 4,
+      "templates": [
+        {
+          "id": "sale_standard",
+          "name": "标准商品买卖合同",
+          "description": "适用于一般商品交易，包含质量标准和验收条款",
+          "keywords": ["买卖", "商品", "标准"],
+          "file": "sale_standard.json"
+        },
+        {
+          "id": "sale_equipment",
+          "name": "设备采购合同",
+          "description": "适用于设备采购安装，包含技术参数和调试条款",
+          "keywords": ["设备", "采购", "技术参数"],
+          "file": "sale_equipment.json"
+        },
+        {
+          "id": "software_purchase",
+          "name": "软件采购合同",
+          "description": "适用于软件购买授权，包含授权范围和升级服务",
+          "keywords": ["软件", "采购", "授权"],
+          "file": "software_purchase.json"
+        },
+        {
+          "id": "installment_sale",
+          "name": "分期付款买卖合同",
+          "description": "适用于分期付款交易，包含付款计划和担保条款",
+          "keywords": ["分期付款", "付款计划", "担保"],
+          "file": "installment_sale.json"
+        }
+      ]
+    },
+    "rental": {
+      "name": "租赁物业类",
+      "count": 3,
+      "templates": [
+        {
+          "id": "rental_house",
+          "name": "房屋租赁合同",
+          "description": "适用于住宅或商铺出租，包含租金、押金和维修责任",
+          "keywords": ["房屋", "租赁", "住宅"],
+          "file": "rental_house.json"
+        },
+        {
+          "id": "rental_office",
+          "name": "办公室租赁合同",
+          "description": "适用于写字楼租赁，包含装修和公共区域使用条款",
+          "keywords": ["办公室", "写字楼", "商业"],
+          "file": "rental_office.json"
+        },
+        {
+          "id": "parking_rental",
+          "name": "车位租赁合同",
+          "description": "适用于停车位出租，包含使用时间和日常管理",
+          "keywords": ["车位", "停车", "停车场"],
+          "file": "parking_rental.json"
+        }
+      ]
+    },
+    "service": {
+      "name": "服务合作类",
+      "count": 2,
+      "templates": [
+        {
+          "id": "service_tech",
+          "name": "技术服务合同",
+          "description": "适用于技术开发服务，包含成果交付和验收条款",
+          "keywords": ["技术服务", "开发", "成果"],
+          "file": "service_tech.json"
+        },
+        {
+          "id": "service_consulting",
+          "name": "咨询服务合同",
+          "description": "适用于管理咨询服务，包含服务内容和成果交付",
+          "keywords": ["咨询", "管理", "服务"],
+          "file": "service_consulting.json"
+        }
+      ]
+    }
+  }
+}

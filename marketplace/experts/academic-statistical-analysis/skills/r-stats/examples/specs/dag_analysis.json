@@ -1,0 +1,1 @@
+{"dataset_path":"examples/data/observational_treatment.csv","analysis_type":"dag_analysis","dag_syntax":"dag { age -> treated; age -> outcome; female -> treated; female -> outcome; comorbidity -> treated; comorbidity -> outcome; treated -> outcome }","exposure":"treated","outcome":"outcome","alpha":0.05,"seed":42,"output_dir":"output/dag_analysis"}

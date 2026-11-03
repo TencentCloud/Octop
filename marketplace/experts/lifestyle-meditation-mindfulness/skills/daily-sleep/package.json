@@ -1,0 +1,9 @@
+{
+  "name": "daily-sleep",
+  "version": "1.0.2",
+  "description": "Sleep better tonight — personalized wind-down routine, breathing exercises, bedtime stories, and sleep hygiene tips. Daily evening push for better rest.",
+  "engines": {
+    "node": ">=18"
+  },
+  "license": "MIT"
+}

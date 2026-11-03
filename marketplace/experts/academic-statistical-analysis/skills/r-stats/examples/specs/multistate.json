@@ -1,0 +1,1 @@
+{"dataset_path":"examples/data/multistate_illness.csv","analysis_type":"multistate","state_var":"state","time_var":"time","id_var":"id","pred_times":[2,6,10],"seed":42,"output_dir":"output/multistate"}

@@ -1,0 +1,7 @@
+{
+  "name": "fortune-daily",
+  "version": "1.0.0",
+  "description": "每日综合运势预测技能 — 融合西方星座 + 中国生肖，提供个性化日/周/月运势分析",
+  "entry": "SKILL.md",
+  "author": "vccv2rndrv-cyber"
+}

@@ -1,0 +1,1 @@
+{"dataset_path":"examples/data/nonlinear_sim.csv","analysis_type":"gam","formula":"y ~ s(x1) + x2 + s(x3)","method":"REML","alpha":0.05,"seed":42,"output_dir":"output/gam_nonlinear"}

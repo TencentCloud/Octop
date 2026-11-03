@@ -1,0 +1,9 @@
+{
+  "dataset_path": "examples/data/mediation_sim.csv",
+  "analysis_type": "path_analysis",
+  "model_syntax": "mediator ~ a*treatment\noutcome ~ b*mediator + c*treatment\nindirect := a*b\ntotal := a*b + c",
+  "hypothesis": "Treatment effect on outcome is mediated through the mediator (path analysis)",
+  "alpha": 0.05,
+  "seed": 42,
+  "output_dir": "output/path_mediation"
+}

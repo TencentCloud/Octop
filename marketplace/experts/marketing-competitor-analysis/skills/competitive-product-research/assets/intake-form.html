@@ -1,0 +1,76 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>竞品调研采集表</title>
+<style>
+:root{color-scheme:light dark;--bg:#f7f7f8;--fg:#171717;--muted:#686868;--panel:#fff;--field:#f1f1f2;--border:#d5d5d7;--accent:#2189d8;--accent-fg:#fff;--error:#c83a3a;--radius:12px;--space:20px;font-family:Inter,-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif}
+@media(prefers-color-scheme:dark){:root{--bg:#101010;--fg:#f4f4f4;--muted:#a5a5a5;--panel:#101010;--field:#2b2b2b;--border:#4a4a4a;--accent:#5ca8e5;--accent-fg:#081018;--error:#ff7b7b}}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--fg);font-size:16px;line-height:1.5}.wrap{max-width:1120px;margin:0 auto;padding:24px 20px 36px}form{display:grid;gap:24px}.grid{display:grid;grid-template-columns:1fr 1fr;gap:16px}.field{display:grid;gap:7px}label,legend{font-weight:600}fieldset{border:0;padding:0;margin:0;display:grid;gap:10px}input[type=text],textarea,select{width:100%;border:1px solid var(--border);border-radius:var(--radius);background:var(--field);color:var(--fg);font:inherit;padding:11px 14px}textarea{min-height:96px;resize:vertical}input:focus-visible,textarea:focus-visible,select:focus-visible,button:focus-visible{outline:3px solid color-mix(in srgb,var(--accent) 45%,transparent);outline-offset:2px}.choices{display:flex;flex-wrap:wrap;gap:12px 18px}.choice{display:flex;align-items:center;gap:8px;font-weight:400;cursor:pointer}.choice input{width:19px;height:19px;margin:0;accent-color:var(--accent)}button{width:100%;border:0;border-radius:var(--radius);background:var(--fg);color:var(--bg);font:inherit;font-weight:600;padding:12px 18px;cursor:pointer}.error{color:var(--error);margin:0}.result{display:none;border:1px solid var(--border);border-radius:var(--radius);padding:16px;background:var(--panel)}.result.show{display:grid;gap:10px}.result textarea{min-height:220px;font-family:ui-monospace,SFMono-Regular,Consolas,monospace;font-size:13px}.hint{margin:0;color:var(--muted);font-size:14px}@media(max-width:720px){.wrap{padding:18px 14px}.grid{grid-template-columns:1fr}.choices{display:grid;grid-template-columns:1fr 1fr}}@media(max-width:420px){.choices{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+<main class="wrap">
+<form id="intake-form">
+  <div class="grid">
+    <div class="field"><label for="goal">调研目标</label><textarea id="goal" name="goal" required></textarea></div>
+    <div class="field"><label for="products">对标对象</label><textarea id="products" name="products" required placeholder="每行一个产品"></textarea></div>
+  </div>
+  <div class="grid">
+    <div class="field"><label for="our-state">我方现状</label><select id="our-state" name="our_state"><option value="未提供，保守分析">暂不提供，保守分析</option><option value="已有内部 AI 助手，需要寻找体验与能力差距">已有内部 AI 助手</option><option value="准备从零规划 AI 工作助手">准备从零规划</option><option value="只做竞品横向比较，不映射我方">不映射我方</option></select></div>
+    <div class="field"><label for="industry">行业</label><input id="industry" name="industry" type="text"></div>
+  </div>
+  <fieldset><legend>核心场景</legend><div class="choices">
+    <label class="choice"><input type="checkbox" name="scenario" value="调研与报告生成">调研与报告</label>
+    <label class="choice"><input type="checkbox" name="scenario" value="文档、表格与 PPT 交付">办公交付物</label>
+    <label class="choice"><input type="checkbox" name="scenario" value="跨端远程任务执行">跨端执行</label>
+    <label class="choice"><input type="checkbox" name="scenario" value="Skills、MCP 与工具生态">Skills / MCP</label>
+    <label class="choice"><input type="checkbox" name="scenario" value="企业知识库、权限与审计">企业治理</label>
+  </div></fieldset>
+  <fieldset><legend>战略模块</legend><div class="choices">
+    <label class="choice"><input type="checkbox" name="strategy" value="竞争格局">竞争格局</label>
+    <label class="choice"><input type="checkbox" name="strategy" value="SWOT">SWOT</label>
+    <label class="choice"><input type="checkbox" name="strategy" value="波特五力">波特五力</label>
+    <label class="choice"><input type="checkbox" name="strategy" value="PESTLE">PESTLE</label>
+  </div></fieldset>
+  <div class="grid">
+    <fieldset><legend>报告用途</legend><div class="choices">
+      <label class="choice"><input type="radio" name="audience" value="内部产品讨论" required>内部产品讨论</label>
+      <label class="choice"><input type="radio" name="audience" value="老板汇报">老板汇报</label>
+      <label class="choice"><input type="radio" name="audience" value="对外分享，需脱敏">对外分享（脱敏）</label>
+    </div></fieldset>
+    <fieldset><legend>输出格式</legend><div class="choices">
+      <label class="choice"><input type="radio" name="format" value="Markdown" required>Markdown 文档</label>
+      <label class="choice"><input type="radio" name="format" value="HTML">HTML 可视化报告</label>
+    </div></fieldset>
+  </div>
+  <div class="grid">
+    <div class="field"><label for="materials">补充材料</label><textarea id="materials" name="materials" placeholder="可粘贴链接、截图说明、PRD 或内部资料；没有可留空"></textarea></div>
+    <div class="field"><label for="constraints">约束条件</label><textarea id="constraints" name="constraints"></textarea></div>
+  </div>
+  <p id="error" class="error" role="alert" hidden>请完成必填项并选择输出格式。</p>
+  <button type="submit">✓ 确认清单并开始调研</button>
+  <section id="result" class="result" aria-live="polite">
+    <p id="result-hint" class="hint"></p>
+    <textarea id="result-json" readonly aria-label="已确认的结构化调研参数"></textarea>
+    <button id="copy" type="button">复制结构化参数</button>
+  </section>
+</form>
+</main>
+<script>
+const defaults={goal:"比较竞品的产品定位、核心能力、体验路径和竞争策略，并提炼对我方的可执行启示。",products:"",our_state:"未提供，保守分析",industry:"",scenario:["调研与报告生成","文档、表格与 PPT 交付","Skills、MCP 与工具生态"],strategy:["竞争格局","SWOT"],audience:"内部产品讨论",format:"",materials:"",constraints:"关键结论必须有 SRC-xxx；不确定信息标注待验证；不编造内部数据。"};
+const decodePrefill=()=>{try{const params=new URLSearchParams(location.search);const raw=params.get("prefill");return raw?JSON.parse(raw):{};}catch{return {}}};
+const prefill={...defaults,...decodePrefill()};
+const form=document.getElementById("intake-form");
+const setChecked=(name,values)=>{const list=Array.isArray(values)?values:[values];form.querySelectorAll(`[name="${name}"]`).forEach(el=>{el.checked=list.includes(el.value)})};
+for(const name of ["goal","products","our_state","industry","materials","constraints"]){if(prefill[name]!==undefined)form.elements[name].value=prefill[name]}
+setChecked("scenario",prefill.scenario||[]);setChecked("strategy",prefill.strategy||[]);setChecked("audience",prefill.audience||"");setChecked("format",prefill.format||"");
+const values=name=>[...form.querySelectorAll(`[name="${name}"]:checked`)].map(el=>el.value);
+const buildPayload=()=>({调研目标:form.elements.goal.value.trim(),对标对象:form.elements.products.value.split(/\n+/).map(v=>v.trim()).filter(Boolean),我方现状:form.elements.our_state.value,核心场景:values("scenario"),行业:form.elements.industry.value.trim()||"待补充",补充材料:form.elements.materials.value.trim()||"无",战略模块:values("strategy"),报告用途:values("audience")[0],输出格式:values("format")[0],约束条件:form.elements.constraints.value.trim()||"无"});
+const copyPayload=async text=>{try{await navigator.clipboard.writeText(text);return true}catch{return false}};
+form.addEventListener("submit",async event=>{event.preventDefault();const error=document.getElementById("error");if(!form.reportValidity()||!form.elements.products.value.trim()){error.hidden=false;return}error.hidden=true;const submission={schema_version:"1.0",skill:"competitive-product-research",action:"start_research",data:buildPayload()};const text=JSON.stringify(submission,null,2);if(window.codex?.submitForm){await window.codex.submitForm(submission);return}if(window.openai?.sendFollowUpMessage){await window.openai.sendFollowUpMessage({title:"确认竞品调研清单",prompt:`请按 competitive-product-research skill 使用以下已确认清单开始调研：\n${text}`});return}const copied=await copyPayload(text);document.getElementById("result-json").value=text;document.getElementById("result-hint").textContent=copied?"已复制。请粘贴给当前 Agent 继续调研。":"请复制以下参数并发送给当前 Agent。";document.getElementById("result").classList.add("show")});
+document.getElementById("copy").addEventListener("click",async()=>{const ok=await copyPayload(document.getElementById("result-json").value);document.getElementById("result-hint").textContent=ok?"已复制。请粘贴给当前 Agent 继续调研。":"浏览器未授权剪贴板，请手动复制。"});
+</script>
+</body>
+</html>

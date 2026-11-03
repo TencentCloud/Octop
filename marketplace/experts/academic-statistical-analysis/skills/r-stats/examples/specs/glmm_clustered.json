@@ -1,0 +1,10 @@
+{
+  "dataset_path": "examples/data/clustered_binary.csv",
+  "analysis_type": "glmm",
+  "formula": "outcome ~ x1 + x2 + (1 | cluster)",
+  "family": "binomial",
+  "hypothesis": "x1 and x2 are associated with the binary outcome after accounting for cluster-level variation",
+  "alpha": 0.05,
+  "seed": 42,
+  "output_dir": "output/glmm_clustered"
+}

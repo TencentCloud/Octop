@@ -1,0 +1,10 @@
+{
+  "dataset_path": "examples/data/holzinger_swineford.csv",
+  "analysis_type": "cfa",
+  "model_syntax": "visual =~ x1 + x2 + x3\ntextual =~ x4 + x5 + x6\nspeed =~ x7 + x8 + x9",
+  "estimator": "ML",
+  "hypothesis": "Three-factor model of mental abilities (visual, textual, speed)",
+  "alpha": 0.05,
+  "seed": 42,
+  "output_dir": "output/cfa_holzinger"
+}

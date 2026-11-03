@@ -1,0 +1,12 @@
+{
+  "dataset_path": "examples/data/mtcars.csv",
+  "analysis_type": "wilcoxon",
+  "outcome": "mpg",
+  "group_var": "am",
+  "paired": false,
+  "hypothesis": "Fuel efficiency differs between automatic and manual transmission vehicles",
+  "missing_strategy": "complete_case",
+  "alpha": 0.05,
+  "seed": 42,
+  "output_dir": "output/wilcoxon_mtcars"
+}

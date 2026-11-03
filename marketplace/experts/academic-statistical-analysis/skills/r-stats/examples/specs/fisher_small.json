@@ -1,0 +1,10 @@
+{
+  "dataset_path": "examples/data/fisher_small.csv",
+  "analysis_type": "fisher",
+  "row_var": "treatment",
+  "col_var": "outcome",
+  "hypothesis": "Drug treatment is associated with improved outcome",
+  "alpha": 0.05,
+  "seed": 42,
+  "output_dir": "output/fisher_small"
+}

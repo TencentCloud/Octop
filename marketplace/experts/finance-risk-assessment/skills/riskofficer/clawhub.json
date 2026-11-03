@@ -1,0 +1,11 @@
+{
+  "name": "riskofficer",
+  "tagline": "Risk management, portfolio optimization (BL, ERC, Calmar), pre-trade checks with sector concentration, cross-portfolio correlation.",
+  "description": "Portfolio risk management and analytics: VaR, Monte Carlo, stress tests, Risk Parity (ERC/CVaR), Calmar, Black-Litterman optimization, pre-trade risk checks with sector concentration limits, batch portfolios, cross-portfolio PnL correlation with crisis regime analysis. Run risk assessments, scenarios, and allocation optimization on virtual portfolios; no real broker orders.",
+  "version": "4.3.0",
+  "license": "MIT",
+  "homepage": "https://github.com/mib424242/riskofficer-openclaw-skill",
+  "support_url": "https://github.com/mib424242/riskofficer-openclaw-skill/issues",
+  "requiredEnv": ["RISK_OFFICER_TOKEN"],
+  "required_env": ["RISK_OFFICER_TOKEN"]
+}

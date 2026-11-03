@@ -1,0 +1,22 @@
+{
+  "name": "competitive-product-research",
+  "version": "1.4.8",
+  "tagline": "Dual-track competitive research: experience benchmarking + strategic diagnostics / 竞品调研：双轨四层法，体验对标+战略诊断，输出证据可溯源报告",
+  "description": "Competitive analysis shouldn't be a feature checklist. What you need is structured judgment — what to follow, what to leapfrog, and what to ignore. CPR uses an original dual-track method — experience benchmarking (8 UX dimensions) + strategic diagnostics (SWOT, Five Forces, PESTLE) — collects sufficient context via a structured checklist, then produces a source-traceable professional HTML or Markdown report with actionable recommendations. 竞品调研不应是观点合集。双轨四层法，体验+策略同时跑，先通过信息采集清单收集充分上下文，再输出带证据编号、动作、责任人、复杂度的专业 HTML 或 Markdown 报告。",
+  "category": "productivity",
+  "tags": [
+    "product-management",
+    "competitive-analysis",
+    "ux-research",
+    "benchmarking",
+    "html-report",
+    "product-strategy",
+    "chinese"
+  ],
+  "license": "MIT",
+  "author": "Chris1Wang3",
+  "pricing": "free",
+  "entry": "SKILL.md",
+  "support_url": "https://github.com/Chris1Wang3/Idea-on-Trial/issues",
+  "homepage": "https://github.com/Chris1Wang3/Idea-on-Trial/tree/master/competitive-product-research"
+}

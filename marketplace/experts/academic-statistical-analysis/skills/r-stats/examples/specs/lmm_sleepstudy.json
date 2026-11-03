@@ -1,0 +1,9 @@
+{
+  "dataset_path": "examples/data/sleepstudy.csv",
+  "analysis_type": "lmm",
+  "formula": "Reaction ~ Days + (Days | Subject)",
+  "hypothesis": "Sleep deprivation (days) is associated with slower reaction times, with subject-specific intercepts and slopes",
+  "alpha": 0.05,
+  "seed": 42,
+  "output_dir": "output/lmm_sleepstudy"
+}

@@ -1,0 +1,1 @@
+{"dataset_path":"examples/data/questionnaire.csv","analysis_type":"cronbach_alpha","item_vars":["item1","item2","item3","item4","item5","item6","item7","item8","item9","item10"],"hypothesis":"Questionnaire has acceptable internal consistency","alpha":0.05,"seed":42,"output_dir":"output/cronbach_alpha"}
