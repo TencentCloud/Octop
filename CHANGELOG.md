@@ -17,6 +17,7 @@
 - Docker 镜像在无头构建时不再导入 pynput。飞牛 Docker 包缺失时，已打好的本地包仍会挂到 Release
 - 精简版只有 amd64 和 arm64 都发布成功才打通用标签。完整飞牛包不再等待缺失的精简镜像，Release 下载区只保留实际挂上的飞牛包
 - Docker 构建在安装依赖的同一层删除编译器，避免编译工具留在最终镜像里
+- 定时 Agent 任务不再把普通工具调用前的过程说明拼入最终推送和合成历史；保留团队 `ask_agent` 分派话术，错误或等待审批时不推送未完成的文本（#2384）。
 - 插件市场和专家市场的对象源站可用 `OCTOP_MARKET_REMOTE_URL` 配置，默认仍是 `https://download.octop.cloud`。门户目录地址继续用 `OCTOP_PORTAL_URL`，默认 `https://octop.cloud`。内网按同一接口自建市场的说明见 `docs/private-market.md`
 - 插件市场和专家市场的对象源站可用 `OCTOP_MARKET_REMOTE_ORIGIN` 配置，默认仍是 `https://download.octop.cloud`。门户目录地址继续用 `OCTOP_PORTAL_ORIGIN`，默认 `https://octop.cloud`。内网按同一接口自建市场的说明见 `docs/private-market.md`
 - 技能市场源站可用 `SKILL_MARKET_ORIGIN` 配置，默认仍是 `https://api.skillhub.cn`。设了该变量后，搜索、榜单和安装只请求这个源站。自建接口见 `docs/skill-market.md`

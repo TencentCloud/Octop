@@ -44,6 +44,100 @@ def qq_channel_response_mode(config: dict[str, Any]) -> ChannelResponseMode:
     return "invoke"
 
 
+async def withhold_pretool_stream_chunks(
+    chunks: AsyncIterator[dict[str, Any]],
+    *,
+    keep_for_tools: frozenset[str] = frozenset({"ask_agent"}),
+) -> AsyncIterator[dict[str, Any]]:
+    """Withhold raw text until its tool batch or final-answer boundary is known.
+
+    Only a batch consisting entirely of allowed tools keeps its lead-in text.
+    Control/state chunks pass through unchanged, so consumers can still track
+    usage and canonical checkpoint messages without accumulating discarded text.
+    """
+    pending: list[dict[str, Any]] = []
+    call_names: dict[str, str] = {}
+    call_ids: dict[str, str] = {}
+    result_names: set[str] = set()
+    seen_results: set[str] = set()
+    saw_result = False
+
+    def keep_pending() -> bool:
+        names = set(call_names.values()) | result_names
+        return not names or (saw_result and names <= keep_for_tools)
+
+    try:
+        async for chunk in chunks:
+            kind = chunk.get("type")
+            if kind in {"error", "hitl_required"}:
+                pending.clear()
+                yield chunk
+                return
+
+            if saw_result and kind in {"token", "delta", "tool_call_chunk"}:
+                if keep_pending():
+                    for held in pending:
+                        yield held
+                pending.clear()
+                call_names.clear()
+                call_ids.clear()
+                result_names.clear()
+                saw_result = False
+
+            if kind in {"token", "delta"}:
+                pending.append(chunk)
+                continue
+
+            if kind == "tool_call_chunk":
+                call_id = str(chunk.get("id") or "")
+                index = chunk.get("index")
+                key = str(index) if index is not None else call_id or "0"
+                call_names[key] = call_names.get(key, "") + str(chunk.get("name") or "")
+                if call_id:
+                    call_ids[call_id] = key
+            elif kind == "tool_result":
+                messages = chunk.get("messages")
+                if isinstance(messages, list) and messages:
+                    for message in messages:
+                        if isinstance(message, dict):
+                            call_id = str(message.get("tool_call_id") or "")
+                            name = str(message.get("name") or "")
+                            role = message.get("type") or message.get("role")
+                        else:
+                            call_id = str(getattr(message, "tool_call_id", None) or "")
+                            name = str(getattr(message, "name", None) or "")
+                            role = getattr(message, "type", None)
+                        if not call_id and role != "tool":
+                            continue
+                        if call_id and (
+                            call_id in seen_results or (call_ids and call_id not in call_ids)
+                        ):
+                            continue
+                        if call_id:
+                            seen_results.add(call_id)
+                        result_key = call_ids.get(call_id)
+                        if result_key is None and not call_ids and len(call_names) == 1:
+                            result_key = next(iter(call_names))
+                        if name:
+                            result_names.add(name)
+                            if result_key is not None:
+                                call_names[result_key] = name
+                        elif not call_names:
+                            result_names.add("")  # An unknown tool cannot preserve narration.
+                        saw_result = True
+                else:
+                    if chunk.get("name") or not call_names:
+                        result_names.add(str(chunk.get("name") or ""))
+                    saw_result = True
+            yield chunk
+
+        if keep_pending():
+            for held in pending:
+                yield held
+    finally:
+        await close_event_stream(chunks)
+
+
 async def collapse_to_invoke_response(
     events: AsyncIterator[MessageEvent],
 ) -> AsyncIterator[MessageEvent]:
@@ -197,6 +291,7 @@ __all__ = [
     "normalize_channel_response_mode",
     "processor_for_response_mode",
     "qq_channel_response_mode",
+    "withhold_pretool_stream_chunks",
     "withhold_weixin_stream_preamble",
     "wrap_weixin_stream_processor",
 ]
