@@ -27,6 +27,14 @@ from octop_harness.plugins import (
 
 from octop.infra.agents.plugins.legacy_imports import ensure_legacy_harness_agent_alias
 from octop.infra.errors import ErrorCode, OctopError, corrupt_config_error
+from octop.infra.market import (
+    PortalMarketError,
+    get_market_plugin,
+    is_market_archive_url,
+    list_market_plugins,
+    pick_localized,
+)
+from octop.infra.market.errors import local_network_error
 from octop.infra.utils.json_file import (
     JsonFileCorruptError,
     read_json_object,
@@ -394,7 +402,6 @@ class PluginManager:
         )
 
     def market_root(self) -> Path:
-        """In-tree marketplace catalog root (future: remote index)."""
         from octop.infra.agents.plugins.bundled import default_bundled_plugins_root
 
         return default_bundled_plugins_root()
@@ -409,65 +416,118 @@ class PluginManager:
             return dest
         return None
 
-    def list_market(self) -> list[dict[str, Any]]:
-        """List marketplace catalog entries (in-tree today; remote API later)."""
-        root = self.market_root()
-        out: list[dict[str, Any]] = []
-        if not root.is_dir():
-            return out
-        for plugin_dir in discover_plugin_dirs(root):
-            try:
-                manifest = PluginManifest.load(plugin_dir / "plugin.yaml")
-            except Exception as exc:
-                out.append(
-                    {
-                        "id": plugin_dir.name,
-                        "error": str(exc),
-                        "installed": (self._plugins_dir / plugin_dir.name).is_dir(),
-                    },
-                )
-                continue
-            installed_dir = self.plugin_dir(manifest.id)
-            installed_version = (
-                None if installed_dir is None else _read_installed_version(installed_dir)
-            )
-            out.append(
-                {
-                    "id": manifest.id,
-                    "version": manifest.version,
-                    "name": manifest.name,
-                    "kind": manifest.kind,
-                    "description": manifest.description,
-                    "icon": parse_plugin_icon(
-                        plugin_dir,
-                        asset_prefix=f"/api/plugins/market/{manifest.id}/ui",
-                    ),
-                    "group": parse_plugin_group(plugin_dir),
-                    "requires": parse_plugin_requires(plugin_dir),
-                    "installed": installed_dir is not None,
-                    "installed_version": installed_version,
-                    "update_available": (
-                        installed_dir is not None
-                        and _version_tuple(manifest.version) > _version_tuple(installed_version)
-                    ),
-                },
-            )
-        return out
+    def list_market(self, language: str = "zh") -> list[dict[str, Any]]:
+        """List marketplace plugins from the portal catalog."""
+        try:
+            remote = list_market_plugins()
+        except PortalMarketError as exc:
+            logger.warning("remote plugin market unavailable: %s", exc)
+            network_error = local_network_error(exc)
+            if network_error is not None:
+                raise network_error from exc
+            raise OctopError(
+                ErrorCode.PLUGIN_MARKET_FAILED,
+                "plugin market failed: upstream request failed",
+                details={"reason": "upstream request failed"},
+            ) from exc
+        return [self._remote_plugin_row(item, language) for item in remote]
 
-    def install_from_market(self, plugin_id: str, *, force: bool = False) -> LoadedPlugin:
-        """Install a catalog plugin by copying the in-tree package locally.
+    def _remote_plugin_row(self, item: dict[str, Any], language: str) -> dict[str, Any]:
+        plugin_id = str(item.get("id") or "").strip()
+        version = str(item.get("version") or "")
+        installed_dir = self.plugin_dir(plugin_id) if plugin_id else None
+        installed_version = (
+            None if installed_dir is None else _read_installed_version(installed_dir)
+        )
+        icon = item.get("icon")
+        group = item.get("group")
+        raw_requires = item.get("requires")
+        requires = raw_requires if isinstance(raw_requires, list) else []
+        return {
+            "id": plugin_id,
+            "version": version,
+            "name": pick_localized(item.get("name"), language) or plugin_id,
+            "kind": str(item.get("kind") or "tool"),
+            "description": pick_localized(item.get("description"), language),
+            "icon": icon.strip() if isinstance(icon, str) and icon.strip() else None,
+            "group": group.strip() if isinstance(group, str) and group.strip() else None,
+            "requires": [
+                str(item_name).strip() for item_name in requires if str(item_name).strip()
+            ],
+            "installed": installed_dir is not None,
+            "installed_version": installed_version,
+            "update_available": (
+                installed_dir is not None
+                and _version_tuple(version) > _version_tuple(installed_version)
+            ),
+        }
 
-        Future: download a ZIP from a remote API / object storage and extract.
+    def install_from_market(
+        self,
+        plugin_id: str,
+        *,
+        version: str | None = None,
+        force: bool = False,
+    ) -> LoadedPlugin:
+        """Install one marketplace release from its CDN archive.
+
+        ``version`` selects the catalog release. ``latest`` means the release
+        currently listed for that id. A different release already on disk is
+        replaced. ``force`` replaces the same release.
         """
-        source = self.market_plugin_dir(plugin_id)
-        if source is None:
+        requested = version.strip() if version else None
+        if requested == "latest":
+            requested = None
+        try:
+            remote = get_market_plugin(plugin_id)
+        except PortalMarketError as exc:
+            logger.warning("remote plugin market unavailable: %s", exc)
+            network_error = local_network_error(exc)
+            if network_error is not None:
+                raise network_error from exc
+            raise OctopError(
+                ErrorCode.PLUGIN_MARKET_FAILED,
+                "plugin market failed: upstream request failed",
+                details={"reason": "upstream request failed"},
+            ) from exc
+        if remote is None:
             raise OctopError(
                 ErrorCode.NOT_FOUND,
                 f"marketplace plugin {plugin_id!r} not found",
             )
-        loaded = self.install_path(source, force=force)
+        catalog_version = str(remote.get("version") or "")
+        if requested and catalog_version != requested:
+            raise OctopError(
+                ErrorCode.NOT_FOUND,
+                f"marketplace plugin {plugin_id!r} version {requested!r} not found",
+            )
+        url = remote.get("download_url")
+        if not isinstance(url, str) or not is_market_archive_url(url):
+            raise OctopError(
+                ErrorCode.PLUGIN_INSTALL_FAILED,
+                f"marketplace plugin {plugin_id!r} has no archive",
+            )
+        loaded = self.install_url(
+            url,
+            force=self._replace_market_release(
+                plugin_id,
+                requested or catalog_version,
+                force=force,
+            ),
+            expect_id=plugin_id,
+            expect_version=catalog_version or None,
+        )
         _write_global_plugin_enabled(self._config_path, loaded.manifest.id, True)
         return loaded
+
+    def _replace_market_release(self, plugin_id: str, version: str, *, force: bool) -> bool:
+        """Replace disk contents when installing a different catalog release."""
+        if force:
+            return True
+        installed_dir = self.plugin_dir(plugin_id)
+        if installed_dir is None or not version:
+            return False
+        return _read_installed_version(installed_dir) != version
 
     def resolve_market_ui_file(self, plugin_id: str, rel_path: str) -> Path:
         """Resolve a marketplace catalog asset (icons only)."""
@@ -715,7 +775,14 @@ class PluginManager:
             f"plugin UI file not found: {cleaned}",
         )
 
-    def install_path(self, source: Path, *, force: bool = False) -> LoadedPlugin:
+    def install_path(
+        self,
+        source: Path,
+        *,
+        force: bool = False,
+        expect_id: str | None = None,
+        expect_version: str | None = None,
+    ) -> LoadedPlugin:
         source = source.resolve()
         if not source.is_dir():
             raise OctopError(
@@ -729,6 +796,16 @@ class PluginManager:
                 ErrorCode.PLUGIN_INVALID_ARCHIVE,
                 f"invalid plugin manifest: {exc}",
             ) from exc
+        if expect_id is not None and manifest.id != expect_id:
+            raise OctopError(
+                ErrorCode.PLUGIN_INVALID_ARCHIVE,
+                f"plugin id {manifest.id!r} does not match {expect_id!r}",
+            )
+        if expect_version is not None and manifest.version != expect_version:
+            raise OctopError(
+                ErrorCode.PLUGIN_INVALID_ARCHIVE,
+                f"plugin version {manifest.version!r} does not match {expect_version!r}",
+            )
         dest = self._plugins_dir / manifest.id
         if dest.exists():
             if not force:
@@ -749,7 +826,14 @@ class PluginManager:
                 details={"reason": str(exc)},
             ) from exc
 
-    def install_archive(self, archive: Path, *, force: bool = False) -> LoadedPlugin:
+    def install_archive(
+        self,
+        archive: Path,
+        *,
+        force: bool = False,
+        expect_id: str | None = None,
+        expect_version: str | None = None,
+    ) -> LoadedPlugin:
         """Install a plugin from a local ZIP archive.
 
         The archive must contain exactly one plugin directory (at the zip root
@@ -807,16 +891,33 @@ class PluginManager:
                     ErrorCode.PLUGIN_INVALID_ARCHIVE,
                     "zip must contain exactly one plugin directory with plugin.yaml",
                 )
-            return self.install_path(candidates[0], force=force)
+            return self.install_path(
+                candidates[0],
+                force=force,
+                expect_id=expect_id,
+                expect_version=expect_version,
+            )
 
-    def install_url(self, url: str, *, force: bool = False) -> LoadedPlugin:
+    def install_url(
+        self,
+        url: str,
+        *,
+        force: bool = False,
+        expect_id: str | None = None,
+        expect_version: str | None = None,
+    ) -> LoadedPlugin:
         resolved = normalize_plugin_download_url(url)
         _assert_http_url(resolved)
         with tempfile.TemporaryDirectory() as tmp:
             archive = Path(tmp) / "plugin.zip"
             _download_plugin_archive(resolved, archive)
             try:
-                return self.install_archive(archive, force=force)
+                return self.install_archive(
+                    archive,
+                    force=force,
+                    expect_id=expect_id,
+                    expect_version=expect_version,
+                )
             except OctopError as exc:
                 if exc.code is not ErrorCode.PLUGIN_INVALID_ARCHIVE:
                     raise

@@ -78,6 +78,7 @@ import { useLayoutMode } from "../../context/LayoutModeContext";
 import { useBrowserSessionState } from "../../hooks/useBrowserSessionState";
 import { prefetchVoiceConfig } from "../../hooks/useVoiceConfig";
 import {
+  canReadAgentRuntimeStatus,
   chatSkillCatalogAgentId,
   isSharedExpertViewer,
 } from "../../utils/sharedExpert";
@@ -252,7 +253,12 @@ function ChatPageInner() {
     visible: memoryMaintVisible,
     blocking: memoryMaintBlocking,
     connectionLost: memoryMaintConnectionLost,
-  } = useMemoryMaintenance(resolvedAgentId, agentChatReady && !noAgents);
+  } = useMemoryMaintenance(
+    resolvedAgentId,
+    agentChatReady &&
+      !noAgents &&
+      canReadAgentRuntimeStatus(activeAgent ?? {}, user),
+  );
   const historyMigration = useHistoryMigration(
     resolvedAgentId,
     agentChatReady && !noAgents && !sharedExpertViewer,

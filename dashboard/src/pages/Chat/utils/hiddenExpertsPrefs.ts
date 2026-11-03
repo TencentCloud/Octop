@@ -1,4 +1,4 @@
-/** localStorage preference: shared experts the current user has hidden from chat lists. */
+/** localStorage preference: experts the current user has hidden from chat lists. */
 
 export const HIDDEN_SHARED_EXPERTS_STORAGE_KEY = "octop:hidden-shared-experts";
 

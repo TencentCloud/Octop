@@ -91,7 +91,10 @@ import DocumentPreviewLoading from "../../components/DocumentPreviewLoading";
 import Markdown from "../../components/Markdown";
 import StreamSetupGuide from "../../components/StreamSetupGuide/StreamSetupGuide";
 import { CopyableResourceId } from "../../components/CopyableResourceId";
-import { ResourceVisibilityFields } from "../../components/ResourceVisibilityFields";
+import {
+  ResourceVisibilityFields,
+  ResourceVisibilityGate,
+} from "../../components/ResourceVisibilityFields";
 import { TextAssistBar } from "../../components/TextAssistBar";
 import type { ResourceVisibilityMode } from "../../api/modules/userGroups";
 import { useCardTableView } from "../../hooks/useCardTableView";
@@ -124,6 +127,7 @@ import {
   KNOWLEDGE_DOC_TREE_ROOT,
   knowledgeBasename,
   knowledgeBreadcrumb,
+  knowledgeFileNameParts,
   shouldOpenKnowledgeFolder,
   type KnowledgeFileTreeNode,
 } from "./knowledgeFolder";
@@ -363,6 +367,13 @@ export default function KnowledgeBasesPage() {
   const [previewDocId, setPreviewDocId] = useState<string | null>(null);
   const [previewHasOriginal, setPreviewHasOriginal] = useState(false);
   const [previewAsMarkdown, setPreviewAsMarkdown] = useState(false);
+  const [previewMode, setPreviewMode] = useState<"file" | "chunks">("file");
+  const [previewFileAvailable, setPreviewFileAvailable] = useState(true);
+  const [chunkItems, setChunkItems] = useState<
+    { ordinal: number; text: string }[]
+  >([]);
+  const [chunkLoading, setChunkLoading] = useState(false);
+  const [chunkError, setChunkError] = useState<string | null>(null);
   const [previewMaximized, setPreviewMaximized] = useState(false);
   const [mdOutlineOpen, setMdOutlineOpen] = useState(true);
   const [mdActiveOutlineIndex, setMdActiveOutlineIndex] = useState(0);
@@ -374,6 +385,7 @@ export default function KnowledgeBasesPage() {
   const mdFindInputRef = useRef<InputRef | null>(null);
   const mdFindHitsRef = useRef<{ node: Text; start: number }[]>([]);
   const previewTextAbortRef = useRef<AbortController | null>(null);
+  const chunkRequestRef = useRef(0);
   const isRichPreview = Boolean(previewKind || previewAsMarkdown);
 
   const [textEditorOpen, setTextEditorOpen] = useState(false);
@@ -570,6 +582,12 @@ export default function KnowledgeBasesPage() {
     setPreviewDocId(null);
     setPreviewHasOriginal(false);
     setPreviewAsMarkdown(false);
+    setPreviewMode("file");
+    setPreviewFileAvailable(true);
+    chunkRequestRef.current += 1;
+    setChunkItems([]);
+    setChunkLoading(false);
+    setChunkError(null);
     setPreviewMaximized(false);
     setMdOutlineOpen(true);
     setMdFindOpen(false);
@@ -1550,30 +1568,57 @@ export default function KnowledgeBasesPage() {
     setRenameModalOpen(true);
   };
 
-  const renameFolder = async () => {
+  const openRenameFile = (document: KnowledgeDocument) => {
+    const current = knowledgeBasename(document.path || document.filename);
+    setRenameTarget(document);
+    setRenameName(knowledgeFileNameParts(current).stem);
+    setRenameModalOpen(true);
+  };
+
+  const renameEntry = async () => {
     if (!selected || !renameTarget) return;
-    const name = renameName.trim();
-    if (!name) return;
-    if (
-      name === knowledgeBasename(renameTarget.path || renameTarget.filename)
-    ) {
+    const trimmed = renameName.trim();
+    if (!trimmed) return;
+    const current = knowledgeBasename(
+      renameTarget.path || renameTarget.filename,
+    );
+    const next = renameTarget.is_dir
+      ? trimmed
+      : `${trimmed}${knowledgeFileNameParts(current).suffix}`;
+    if (next === current) {
       setRenameModalOpen(false);
       return;
     }
+    const renamingFile = !renameTarget.is_dir;
     try {
       await knowledgeBasesApi.renameDocument(
         selected.id,
         renameTarget.id,
-        name,
+        next,
       );
       setRenameModalOpen(false);
       setRenameTarget(null);
       setRenameName("");
+      if (previewDocId === renameTarget.id) setPreviewFilename(next);
       await loadDetail(selected.id);
-      message.success(t("knowledgeBases.renameFolderSuccess"));
+      message.success(
+        t(
+          renamingFile
+            ? "knowledgeBases.renameFileSuccess"
+            : "knowledgeBases.renameFolderSuccess",
+        ),
+      );
     } catch (error) {
       message.error(
-        apiErrorMessage(error, t("knowledgeBases.renameFolderFailed"), t),
+        apiErrorMessage(
+          error,
+          t(
+            renamingFile
+              ? "knowledgeBases.renameFileFailed"
+              : "knowledgeBases.renameFolderFailed",
+          ),
+          t,
+        ),
       );
     }
   };
@@ -1604,9 +1649,34 @@ export default function KnowledgeBasesPage() {
     }
   };
 
-  const openDocumentPreview = async (document: KnowledgeDocument) => {
+  const loadDocumentChunks = async (kbId: string, documentId: string) => {
+    const request = ++chunkRequestRef.current;
+    setChunkLoading(true);
+    setChunkError(null);
+    try {
+      const body = await knowledgeBasesApi.listDocumentChunks(kbId, documentId);
+      if (chunkRequestRef.current !== request) return;
+      setChunkItems(body.chunks);
+    } catch (error) {
+      if (chunkRequestRef.current !== request) return;
+      setChunkItems([]);
+      setChunkError(
+        apiErrorMessage(error, t("knowledgeBases.chunksFailed"), t),
+      );
+    } finally {
+      if (chunkRequestRef.current === request) setChunkLoading(false);
+    }
+  };
+
+  const openDocumentPreview = async (
+    document: KnowledgeDocument,
+    mode: "file" | "chunks" = "file",
+  ) => {
     if (!selected || document.is_dir) return;
-    if (!canPreviewKnowledgeDocument(document)) return;
+    const filePreview = canPreviewKnowledgeDocument(document);
+    const chunkPreview = (document.chunk_count ?? 0) > 0;
+    if (mode === "file" && !filePreview) return;
+    if (!filePreview && !chunkPreview) return;
     const rich = canRichPreviewKnowledgeDocument(document);
     const kind = rich ? getDocKind(document.filename) : null;
     const asMarkdown = isKnowledgeMarkdownDocument(document);
@@ -1626,6 +1696,18 @@ export default function KnowledgeBasesPage() {
     setMdFindQuery("");
     setMdFindIndex(0);
     setMdFindHitCount(0);
+    setPreviewFileAvailable(filePreview);
+    setPreviewMode(filePreview ? mode : "chunks");
+    setChunkItems([]);
+    setChunkError(null);
+    if (mode === "chunks" || !filePreview) {
+      void loadDocumentChunks(selected.id, document.id);
+    }
+    if (!filePreview) {
+      setPreviewLoading(false);
+      setPreviewText("");
+      return;
+    }
     if (kind) {
       setPreviewLoading(false);
       return;
@@ -1968,6 +2050,44 @@ export default function KnowledgeBasesPage() {
           </>
         ) : null}
       </div>
+    );
+  };
+
+  const renderEntryName = (document: KnowledgeDocument, nameClass?: string) => {
+    const name = knowledgeBasename(document.path || document.filename);
+    const ext = !document.is_dir ? fileExtensionLabel(name) : "";
+    return (
+      <>
+        <span className={styles.filenameHover}>
+          <span
+            className={
+              nameClass
+                ? `${styles.filenameText} ${nameClass}`
+                : styles.filenameText
+            }
+            title={document.path || name}
+          >
+            {name}
+          </span>
+          {canWriteSelected && !document.is_dir ? (
+            <Tooltip title={t("knowledgeBases.renameFile")}>
+              <button
+                type="button"
+                className={styles.filenameRenameBtn}
+                data-kb-doc-actions=""
+                aria-label={t("knowledgeBases.renameFile")}
+                onClick={(event) => {
+                  event.stopPropagation();
+                  openRenameFile(document);
+                }}
+              >
+                <PencilLine size={13} strokeWidth={2} aria-hidden />
+              </button>
+            </Tooltip>
+          ) : null}
+        </span>
+        {ext ? <span className={styles.docExtBadge}>{ext}</span> : null}
+      </>
     );
   };
 
@@ -2644,18 +2764,10 @@ export default function KnowledgeBasesPage() {
                                   />
                                   <div className={styles.docCardTitleBlock}>
                                     <div className={styles.docCardTitleRow}>
-                                      <div
-                                        className={styles.docCardName}
-                                        title={document.path || name}
-                                      >
-                                        {name}
-                                      </div>
-                                      {!document.is_dir &&
-                                      fileExtensionLabel(name) ? (
-                                        <span className={styles.docExtBadge}>
-                                          {fileExtensionLabel(name)}
-                                        </span>
-                                      ) : null}
+                                      {renderEntryName(
+                                        document,
+                                        styles.docCardName,
+                                      )}
                                     </div>
                                     <div className={styles.docCardMeta}>
                                       {document.is_dir
@@ -2756,15 +2868,7 @@ export default function KnowledgeBasesPage() {
                                       className={styles.docTableIcon}
                                       isDir={document.is_dir}
                                     />
-                                    <span title={document.path || name}>
-                                      {name}
-                                    </span>
-                                    {!document.is_dir &&
-                                    fileExtensionLabel(name) ? (
-                                      <span className={styles.docExtBadge}>
-                                        {fileExtensionLabel(name)}
-                                      </span>
-                                    ) : null}
+                                    {renderEntryName(document)}
                                   </span>
                                 );
                               },
@@ -2807,7 +2911,24 @@ export default function KnowledgeBasesPage() {
                               key: "chunk_count",
                               width: 80,
                               render: (chunkCount: number, document) =>
-                                document.is_dir ? "—" : chunkCount,
+                                document.is_dir ? (
+                                  "—"
+                                ) : (
+                                  <button
+                                    type="button"
+                                    className={styles.chunkCountButton}
+                                    disabled={!chunkCount}
+                                    onClick={(event) => {
+                                      event.stopPropagation();
+                                      void openDocumentPreview(
+                                        document,
+                                        "chunks",
+                                      );
+                                    }}
+                                  >
+                                    {chunkCount}
+                                  </button>
+                                ),
                             },
                             {
                               title: t("knowledgeBases.updatedAt"),
@@ -2852,6 +2973,30 @@ export default function KnowledgeBasesPage() {
             >
               {previewFilename || t("knowledgeBases.previewDocument")}
             </span>
+            <Segmented
+              size="small"
+              value={previewMode}
+              onChange={(value) => {
+                const next = value === "chunks" ? "chunks" : "file";
+                setPreviewMode(next);
+                if (
+                  next === "chunks" &&
+                  selected &&
+                  previewDocId &&
+                  chunkItems.length === 0
+                ) {
+                  void loadDocumentChunks(selected.id, previewDocId);
+                }
+              }}
+              options={[
+                {
+                  label: t("knowledgeBases.previewFile"),
+                  value: "file",
+                  disabled: !previewFileAvailable,
+                },
+                { label: t("knowledgeBases.previewChunks"), value: "chunks" },
+              ]}
+            />
             {previewNavIndex >= 0 ? (
               <span className={styles.previewModalNav}>
                 <Tooltip title={t("knowledgeBases.previewPrev")}>
@@ -2972,7 +3117,29 @@ export default function KnowledgeBasesPage() {
           },
         }}
       >
-        {previewKind && previewDocId ? (
+        {previewMode === "chunks" ? (
+          <div className={styles.chunkList}>
+            {chunkLoading ? (
+              <Spin />
+            ) : chunkError ? (
+              <Alert type="error" showIcon message={chunkError} />
+            ) : chunkItems.length === 0 ? (
+              <Empty
+                image={Empty.PRESENTED_IMAGE_SIMPLE}
+                description={t("knowledgeBases.chunksEmpty")}
+              />
+            ) : (
+              chunkItems.map((chunk) => (
+                <article key={chunk.ordinal} className={styles.chunkCard}>
+                  <div className={styles.chunkCardLabel}>
+                    {t("knowledgeBases.chunkLabel", { n: chunk.ordinal + 1 })}
+                  </div>
+                  <pre className={styles.chunkCardText}>{chunk.text}</pre>
+                </article>
+              ))
+            )}
+          </div>
+        ) : previewKind && previewDocId ? (
           <div
             className={styles.richPreviewBody}
             data-preview-fullscreen-root=""
@@ -3195,20 +3362,36 @@ export default function KnowledgeBasesPage() {
       </Modal>
 
       <Modal
-        title={t("knowledgeBases.renameFolder")}
+        title={t(
+          renameTarget && !renameTarget.is_dir
+            ? "knowledgeBases.renameFile"
+            : "knowledgeBases.renameFolder",
+        )}
         open={renameModalOpen}
         onCancel={() => setRenameModalOpen(false)}
-        onOk={() => void renameFolder()}
+        onOk={() => void renameEntry()}
         okText={t("common.save")}
         cancelText={t("common.cancel")}
         destroyOnHidden
       >
         <Input
+          autoFocus
           value={renameName}
+          addonAfter={
+            renameTarget && !renameTarget.is_dir
+              ? knowledgeFileNameParts(
+                  renameTarget.path || renameTarget.filename,
+                ).suffix || undefined
+              : undefined
+          }
           onChange={(event) => setRenameName(event.target.value)}
-          placeholder={t("knowledgeBases.folderNamePlaceholder")}
+          placeholder={t(
+            renameTarget && !renameTarget.is_dir
+              ? "knowledgeBases.filenamePlaceholder"
+              : "knowledgeBases.folderNamePlaceholder",
+          )}
           onPressEnter={(event) => {
-            if (!isImeComposing(event)) void renameFolder();
+            if (!isImeComposing(event)) void renameEntry();
           }}
         />
       </Modal>
@@ -3411,22 +3594,24 @@ export default function KnowledgeBasesPage() {
                 onChange={setDefaultOpenChecked}
               />
             </div>
-            <div className={styles.formOptionRowVisibility}>
-              <div className={styles.formOptionCopy}>
-                <span className={styles.switchLabel}>
-                  {t("resourceVisibility.label")}
-                </span>
+            <ResourceVisibilityGate allowOwner visibility={baseVisibility}>
+              <div className={styles.formOptionRowVisibility}>
+                <div className={styles.formOptionCopy}>
+                  <span className={styles.switchLabel}>
+                    {t("resourceVisibility.label")}
+                  </span>
+                </div>
+                <ResourceVisibilityFields
+                  allowOwner
+                  visibility={baseVisibility}
+                  groupIds={baseGroupIds}
+                  onChange={(next) => {
+                    setBaseVisibility(next.visibility);
+                    setBaseGroupIds(next.groupIds);
+                  }}
+                />
               </div>
-              <ResourceVisibilityFields
-                allowOwner
-                visibility={baseVisibility}
-                groupIds={baseGroupIds}
-                onChange={(next) => {
-                  setBaseVisibility(next.visibility);
-                  setBaseGroupIds(next.groupIds);
-                }}
-              />
-            </div>
+            </ResourceVisibilityGate>
           </div>
         </Form>
       </Drawer>

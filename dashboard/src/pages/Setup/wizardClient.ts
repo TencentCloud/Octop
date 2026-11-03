@@ -60,6 +60,8 @@ export interface DatabaseSetupBody {
   user?: string;
   password?: string;
   url?: string;
+  /** PostgreSQL only: bind a database that already has users. */
+  adopt_existing?: boolean;
 }
 
 export const wizardSession = {
@@ -124,16 +126,22 @@ export const wizardApi = {
     }),
 
   testDatabase: (body: DatabaseSetupBody) =>
-    request<{ ok: boolean; driver: string }>("/setup/test-database", {
-      method: "POST",
-      body: JSON.stringify(body),
-    }),
+    request<{ ok: boolean; driver: string; user_count: number }>(
+      "/setup/test-database",
+      {
+        method: "POST",
+        body: JSON.stringify(body),
+      },
+    ),
 
   applyDatabase: (body: DatabaseSetupBody) =>
-    request<{ ok: boolean; driver: string }>("/setup/database", {
-      method: "POST",
-      body: JSON.stringify(body),
-    }),
+    request<{ ok: boolean; driver: string; adopted: boolean }>(
+      "/setup/database",
+      {
+        method: "POST",
+        body: JSON.stringify(body),
+      },
+    ),
 
   verifyPassword: (password: string) =>
     request<VerifyResponse>("/setup/verify-password", {
