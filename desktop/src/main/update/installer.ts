@@ -1,14 +1,12 @@
 /**
  * Shell-owned update installation (§6.3).
  *
- * The renderer can only ask the main process to OPEN the confirmation dialog;
- * it never supplies a URL and never authorizes an install. Every value used
- * here comes from the shell's own manifest selection, so a hostile renderer
- * cannot redirect the download to another host.
+ * The page confirms first. This function then installs the release the shell
+ * selected itself, so a hostile renderer cannot redirect the download.
  *
  * Order is fixed and must not be reordered:
- *   consent → download → verify → Python clean exit (code 0) → hand off to the
- *   OS installer. A dirty sidecar exit cancels the install instead of replacing
+ *   download → verify → Python clean exit (code 0) → hand off to the OS
+ *   installer. A dirty sidecar exit cancels the install instead of replacing
  *   files under a live Python process.
  */
 

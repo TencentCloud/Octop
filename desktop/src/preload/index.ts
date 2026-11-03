@@ -76,8 +76,8 @@ const bridge = {
   checkForUpdates(): Promise<UpdateCheckResult> {
     return ipcRenderer.invoke(IPC_CHANNELS.checkForUpdates);
   },
-  openUpdateConfirmation(): Promise<void> {
-    return ipcRenderer.invoke(IPC_CHANNELS.openUpdateConfirmation);
+  installUpdate(): Promise<void> {
+    return ipcRenderer.invoke(IPC_CHANNELS.installUpdate);
   },
   /**
    * Device session (§7 accounts). The renderer can ask for a JWT, but the

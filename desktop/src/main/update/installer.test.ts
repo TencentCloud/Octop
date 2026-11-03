@@ -87,7 +87,7 @@ function hooks(overrides: Partial<InstallHooks> = {}) {
   return { calls, hooks: { ...base, ...overrides } };
 }
 
-test("installUpdate runs consent → download → verify → clean exit → handoff", async () => {
+test("installUpdate runs download → verify → clean exit → handoff", async () => {
   const { calls, hooks: h } = hooks();
   const outcome = await installUpdate(selected, h);
   assert.deepEqual(outcome, { ok: true, path: "/tmp/octop-update/Octop-1.0.3-arm64.dmg" });
