@@ -261,6 +261,49 @@ async def test_oversized_image_in_data_branch_is_compressed() -> None:
     assert len(base64.b64decode(url.split(",", 1)[1])) <= VISION_MAX_BYTES
 
 
+def _long_screenshot_jpeg() -> bytes:
+    """A small-bytes, extreme-aspect JPEG like a phone long screenshot (#2765)."""
+    img = Image.new("RGB", (892, 11478), (240, 240, 240))
+    buf = io.BytesIO()
+    img.save(buf, format="JPEG", quality=60)
+    return buf.getvalue()
+
+
+@pytest.mark.asyncio
+async def test_long_screenshot_within_byte_limit_is_scaled_on_expand() -> None:
+    """A 892x11478 JPEG under the byte limit is still downscaled on rematerialize.
+
+    IM long screenshots previously passed the byte-only check untouched and were
+    inlined at full height, which providers such as DeepSeek reject with HTTP 400
+    — and the poisoned history block then failed every later turn in the thread.
+    """
+    from octop.infra.gateway.media.attachment_hints import VISION_MAX_SIDE
+
+    with tempfile.TemporaryDirectory() as ws_dir:
+        workspace = _workspace(ws_dir)
+        shot = _long_screenshot_jpeg()
+        assert len(shot) <= VISION_MAX_BYTES
+        stored = await write_inbound(
+            workspace,
+            shot,
+            filename="long.jpg",
+            media_type="image/jpeg",
+        )
+        backend = AgentBackedMediaBackend(workspace)
+        part = ImageContent(local_path=stored.path, mime_type="image/jpeg", size=len(shot))
+        block = await materialize_image_part(part, media_backend=backend, workspace=workspace)
+        assert block is not None
+        assert block["type"] == "image_url"
+        assert block["image_url"]["url"].startswith("workspace://")
+        from octop.infra.gateway.media.attachment_hints import expand_workspace_image_ref
+
+        expanded = await expand_workspace_image_ref(block, workspace=workspace)
+        url = expanded["image_url"]["url"]
+        assert url.startswith("data:image/jpeg;base64,")
+        decoded = Image.open(io.BytesIO(base64.b64decode(url.split(",", 1)[1])))
+        assert max(decoded.size) <= VISION_MAX_SIDE
+
+
 @pytest.mark.asyncio
 async def test_small_image_is_path_ref_then_byte_identical_on_expand() -> None:
     """Images under the limit stay path refs; expand returns original bytes."""

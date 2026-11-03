@@ -356,6 +356,25 @@ def _encoded_image_fits(img: Any, fmt: str, *, ref: bytes, **save_kwargs: Any) -
     return out if out and len(out) < len(ref) and len(out) <= VISION_MAX_BYTES else None
 
 
+def _image_exceeds_dimensions(data: bytes) -> bool:
+    """True when the decoded image's longest edge exceeds :data:`VISION_MAX_SIDE`.
+
+    ``Image.open`` is lazy — this parses the header only, so the check stays
+    cheap on every model-request rematerialization. Undecodable bytes return
+    ``False`` (the request proceeds unchanged and the provider reports it).
+    """
+    try:
+        from PIL import Image  # noqa: PLC0415
+    except ImportError:  # Pillow not installed — keep byte-size-only behaviour.
+        return False
+    try:
+        with Image.open(BytesIO(data)) as img:
+            width, height = img.size
+    except Exception:
+        return False
+    return max(width, height) > VISION_MAX_SIDE
+
+
 def _reencode_image_to_fit(data: bytes) -> tuple[bytes, str] | None:
     """Downscale and re-encode ``data`` to fit :data:`VISION_MAX_BYTES`.
 
@@ -445,9 +464,9 @@ async def materialize_image_part(
             raw = base64.b64decode(part.data, validate=False)
         except Exception:
             return _image_unavailable_block(locale=locale)
-        if len(raw) > VISION_MAX_BYTES:
+        if len(raw) > VISION_MAX_BYTES or _image_exceeds_dimensions(raw):
             logger.info(
-                "vision inline image %d bytes > %d, re-encoding",
+                "vision inline image %d bytes exceeds %d bytes or VISION_MAX_SIDE, re-encoding",
                 len(raw),
                 VISION_MAX_BYTES,
             )
@@ -461,9 +480,9 @@ async def materialize_image_part(
         downloaded = await _download_image_url(part.url)
         if downloaded is not None:
             raw_bytes, content_type = downloaded
-            if len(raw_bytes) > VISION_MAX_BYTES:
+            if len(raw_bytes) > VISION_MAX_BYTES or _image_exceeds_dimensions(raw_bytes):
                 logger.info(
-                    "vision url image: %d bytes > %d, re-encoding",
+                    "vision url image: %d bytes exceeds %d bytes or VISION_MAX_SIDE, re-encoding",
                     len(raw_bytes),
                     VISION_MAX_BYTES,
                 )
@@ -558,9 +577,9 @@ def _finalize_rematerialized_image(
             locale=locale,
         )
     mime = mime_type or mimetypes.guess_type(path)[0] or "image/png"
-    if len(data) > VISION_MAX_BYTES:
+    if len(data) > VISION_MAX_BYTES or _image_exceeds_dimensions(data):
         logger.info(
-            "vision rematerialize %s: %d bytes > %d, re-encoding",
+            "vision rematerialize %s: %d bytes exceeds %d bytes or VISION_MAX_SIDE, re-encoding",
             path,
             len(data),
             VISION_MAX_BYTES,

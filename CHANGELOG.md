@@ -13,6 +13,7 @@
 - Docker 与飞牛增加精简版。默认 `:<version>` / `:latest` 仍是含桌面、OCR 和本地向量的完整镜像；精简版标签是 `:<version>-lite` 和 `:lite`
 
 ### 修复
+- 微信等通道发来的超长截图（文件不大但像素超长边）会在送入模型前按视觉边长上限重编码，不再触发 provider 400 并卡住整个会话
 - PostgreSQL 控制面下，知识库检索读 pgvector，不再查到空的本地 `index.sqlite`
 - Docker 镜像在无头构建时不再导入 pynput。飞牛 Docker 包缺失时，已打好的本地包仍会挂到 Release
 - 精简版只有 amd64 和 arm64 都发布成功才打通用标签。完整飞牛包不再等待缺失的精简镜像，Release 下载区只保留实际挂上的飞牛包
