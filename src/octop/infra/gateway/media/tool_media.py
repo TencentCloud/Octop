@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import base64
 import contextlib
+import hashlib
 import json
 import logging
 import mimetypes
@@ -30,6 +31,7 @@ from octop_gateway.models import (
     VideoContent,
 )
 
+from octop.i18n import tr
 from octop.infra.gateway.media.backend_files import (
     dashboard_media_url,
     extract_workspace_rel,
@@ -40,6 +42,7 @@ from octop.infra.gateway.media.backend_files import (
     workspace_download_url,
 )
 from octop.infra.gateway.media.inbound_store import display_name_from_stored
+from octop.infra.utils.locale import DEFAULT_LOCALE, Locale
 
 logger = logging.getLogger(__name__)
 
@@ -904,9 +907,11 @@ async def block_to_content_part(
         data_field = base64.b64encode(file_bytes).decode("ascii")
         if not mime:
             mime = mimetypes.guess_type(filename or raw_url)[0] or "application/octet-stream"
-    elif raw_url.startswith(("http://", "https://")):
+    elif raw_url and urllib.parse.urlsplit(raw_url).scheme in {"http", "https", "data"}:
         url_field = raw_url
     elif raw_url:
+        if urllib.parse.urlsplit(raw_url).scheme:
+            raise ValueError("Unsupported media URL scheme")
         # History keeps workspace-relative paths (``generated/images/…``).
         # Handing those to the channel makes aiohttp raise and IM fallback
         # text leaks the path. Read the bytes here, or drop the block.
@@ -954,12 +959,28 @@ async def block_to_content_part(
     return None
 
 
+def media_content_dedup_key(part: ContentPart) -> str | None:
+    """Stable key for the same delivered bytes or remote media URL."""
+    data = getattr(part, "data", None)
+    if isinstance(data, str) and data:
+        return f"data:{hashlib.sha256(data.encode()).hexdigest()}"
+    url = getattr(part, "url", None)
+    if isinstance(url, str) and url.strip():
+        return f"url:{url.strip()}"
+    local_path = getattr(part, "local_path", None)
+    if isinstance(local_path, str) and local_path.strip():
+        return f"path:{local_path.strip()}"
+    return None
+
+
 async def media_events_from_tool_result(
     chunk: dict[str, Any],
     *,
     workspace: BackendWorkspace,
+    locale: str | Locale = DEFAULT_LOCALE,
+    emitted_media_keys: set[str] | None = None,
 ) -> AsyncIterator[MessageEvent]:
-    """Yield IM media events from allowlisted delivery-tool results only."""
+    """Yield IM media events from allowlisted delivery tools, one per content."""
     messages = chunk.get("messages") or []
     if not isinstance(messages, list):
         return
@@ -973,12 +994,21 @@ async def media_events_from_tool_result(
                 part = await block_to_content_part(block, workspace=workspace)
             except (FileNotFoundError, OSError, ValueError) as exc:
                 logger.warning("tool_result media block: file missing: %s", exc)
-                continue
+                part = None
             except Exception:
                 logger.exception("tool_result media block: failed to resolve")
-                continue
+                part = None
             if part is None:
-                continue
+                logger.warning(
+                    "tool_result media block: unavailable: %s", _block_file_refs(block)[0]
+                )
+                yield MessageEvent.error_event(tr("channel.media_delivery_failed", locale))
+                return
+            key = media_content_dedup_key(part)
+            if emitted_media_keys is not None and key is not None:
+                if key in emitted_media_keys:
+                    continue
+                emitted_media_keys.add(key)
             yield MessageEvent(type=MessageEventType.MESSAGE, content=[part])
 
 
@@ -1013,6 +1043,7 @@ __all__ = [
     "is_media_push_tool",
     "iter_dashboard_attachment_frames",
     "iter_media_blocks",
+    "media_content_dedup_key",
     "media_events_from_tool_result",
     "note_live_tool_call",
     "read_media_block_bytes",

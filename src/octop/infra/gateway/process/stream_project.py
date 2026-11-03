@@ -50,6 +50,9 @@ class _ToolProjectionState:
     live_tool_call_ids: set[str] = field(default_factory=set)
     # Ids whose media was already pushed this turn (intra-turn replay).
     emitted_media_ids: set[str] = field(default_factory=set)
+    # Different delivery tools can reference the same generated file. Track the
+    # actual bytes/URL so generate_image followed by send_file_to_user sends once.
+    emitted_media_keys: set[str] = field(default_factory=set)
     emitted_tool_error_ids: set[str] = field(default_factory=set)
 
 
@@ -191,6 +194,8 @@ async def _project_chunks(
                     async for media_event in media_events_from_tool_result(
                         chunk_for_media,
                         workspace=harness_workspace,
+                        locale=loc,
+                        emitted_media_keys=tool_state.emitted_media_keys,
                     ):
                         yield media_event
             tool_state.current_node = node
