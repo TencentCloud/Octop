@@ -1607,6 +1607,25 @@ def _ensure_user_group_profile_schema(db: DatabasePool) -> None:
     _ensure_column(db, "user_group", "avatar_icon", "TEXT")
 
 
+def _ensure_instance_lease_schema(db: DatabasePool) -> None:
+    """Cron run leases and channel connection leases (v25). Idempotent."""
+    until = "BIGINT" if db.dialect == "postgresql" else "INTEGER"
+    if _table_exists(db, "cron_jobs"):
+        _ensure_column(db, "cron_jobs", "run_lease_owner", "TEXT")
+        _ensure_column(db, "cron_jobs", "run_lease_token", "TEXT")
+        _ensure_column(db, "cron_jobs", "run_lease_until", until)
+    if _table_exists(db, "channels"):
+        _ensure_column(db, "channels", "runtime_lease_owner", "TEXT")
+        _ensure_column(db, "channels", "runtime_lease_token", "TEXT")
+        _ensure_column(db, "channels", "runtime_lease_until", until)
+        _ensure_column(
+            db,
+            "channels",
+            "runtime_generation",
+            "INTEGER NOT NULL DEFAULT 0",
+        )
+
+
 def _ensure_user_mfa_schema(db: DatabasePool) -> None:
     """MFA tables + users.mfa_* / password_version columns (v25). Idempotent."""
     if not _table_exists(db, "users"):
@@ -1923,6 +1942,7 @@ def _reconcile_pre_squash_schema_version(db: DatabasePool) -> None:
                 _ensure_user_role_schema(db)
             if max_version >= 25:
                 _ensure_user_mfa_schema(db)
+                _ensure_instance_lease_schema(db)
             with db.connect() as conn:
                 conn.execute("UPDATE _schema_version SET version = %s", (max_version,))
             return
@@ -1973,6 +1993,7 @@ def _reconcile_pre_squash_schema_version(db: DatabasePool) -> None:
         _ensure_skill_package_shared_schema(db)
     if max_version >= 25:
         _ensure_user_mfa_schema(db)
+        _ensure_instance_lease_schema(db)
     with db.connect() as conn:
         conn.execute("UPDATE _schema_version SET version = ?", (max_version,))
 
@@ -2153,6 +2174,7 @@ def _apply_sqlite_migration(db: DatabasePool, version: int, path: Path) -> None:
         return
     if version == 25:
         _ensure_user_mfa_schema(db)
+        _ensure_instance_lease_schema(db)
         with db.connect() as conn:
             conn.execute("UPDATE _schema_version SET version = ?", (version,))
         return
@@ -2406,8 +2428,10 @@ def run_migrations(db: DatabasePool) -> None:
     _ensure_knowledge_base_icon_url_schema(db)
     _ensure_bridge_icon_url_schema(db)
     _ensure_bridge_shared_schema(db)
-    # Always repair: version may already be 25 while MFA tables were never created.
+    # Always repair: version may already be 25 while MFA tables or lease
+    # columns were never created.
     _ensure_user_mfa_schema(db)
+    _ensure_instance_lease_schema(db)
     _grant_default_nav_permissions(db)
     _grant_personalization_tab_permissions(db)
     _grant_bridge_permission(db)
