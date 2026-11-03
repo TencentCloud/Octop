@@ -38,6 +38,8 @@ export class SidecarSupervisor {
   private child: ChildProcess | null = null;
   private port: number;
   private tail = "";
+  private failed = false;
+  private notifiedExit = false;
   private readonly config: SidecarConfig;
 
   // Plain field assignment (no TS parameter property) keeps this module loadable
@@ -58,9 +60,22 @@ export class SidecarSupervisor {
     this.child = spawn(executable, args, options);
     this.child.stdout?.on("data", (chunk: unknown) => this.note(chunk));
     this.child.stderr?.on("data", (chunk: unknown) => this.note(chunk));
-    this.child.on("exit", (code, signal) => {
-      this.config.onExit?.({ code, signal, output: this.tail });
+    // An unhandled 'error' (EACCES, ENOENT) becomes an uncaught exception and
+    // Electron's native dialog. Record it so the health check fails immediately.
+    this.child.on("error", (err: Error) => {
+      this.failed = true;
+      this.note(`${err.name}: ${err.message}\n`);
+      this.notifyExit(null, null);
     });
+    this.child.on("exit", (code, signal) => {
+      this.notifyExit(code, signal);
+    });
+  }
+
+  private notifyExit(code: number | null, signal: NodeJS.Signals | null): void {
+    if (this.notifiedExit) return;
+    this.notifiedExit = true;
+    this.config.onExit?.({ code, signal, output: this.tail });
   }
 
   /** Stdout/stderr retained from this process, capped at 64 KiB. */
@@ -98,7 +113,12 @@ export class SidecarSupervisor {
   }
 
   isRunning(): boolean {
-    return this.child !== null && this.child.exitCode === null && this.child.signalCode === null;
+    return (
+      this.child !== null &&
+      !this.failed &&
+      this.child.exitCode === null &&
+      this.child.signalCode === null
+    );
   }
 
   /**
