@@ -22,6 +22,20 @@ const posixOnly =
     ? { skip: "POSIX signal semantics; Windows reaps via taskkill /T /F" }
     : {};
 
+async function removeTemp(dir: string): Promise<void> {
+  const deadline = Date.now() + 2_000;
+  for (;;) {
+    try {
+      await rm(dir, { recursive: true, force: true });
+      return;
+    } catch (error) {
+      const code = (error as NodeJS.ErrnoException).code;
+      if ((code !== "EBUSY" && code !== "EPERM" && code !== "ENOTEMPTY") || Date.now() >= deadline) throw error;
+      await new Promise((resolvePromise) => setTimeout(resolvePromise, 50));
+    }
+  }
+}
+
 async function waitForFile(path: string, timeoutMs = 3_000): Promise<void> {
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
@@ -122,7 +136,7 @@ test("outputTail keeps the end of the child's stderr", async () => {
     assert.ok(tail.length > "END".length);
   } finally {
     await supervisor.stop(1_000);
-    await rm(dir, { recursive: true, force: true });
+    await removeTemp(dir);
   }
 });
 
