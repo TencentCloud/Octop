@@ -97,16 +97,38 @@ function joinAnswerParts(parts: string[]): string {
   return out;
 }
 
-/** True when a completed tool sits between two visible text bubbles (1:1 ReAct). */
-function hasCompletedToolBetweenTexts(messages: ChatMessage[]): boolean {
+/**
+ * Tools that hand the turn over to another speaker (``ask_agent``). Only these
+ * can legitimately produce a "narration → delegation → fresh conclusion" turn
+ * where the pre-tool text is superseded by the conclusion.
+ *
+ * Ordinary tools (read / edit / shell / …) continue the *same* answer, so the
+ * text on both sides of them must stay joined — otherwise a settled turn
+ * silently drops the main answer and shows only the closing sentence.
+ */
+const DELEGATION_TOOL_NAMES = ["ask_agent"] as const;
+
+function isDelegationToolName(name: string | undefined): boolean {
+  const trimmed = (name ?? "").trim();
+  const slash = trimmed.lastIndexOf("/");
+  const base = (slash >= 0 ? trimmed.slice(slash + 1) : trimmed).toLowerCase();
+  return (DELEGATION_TOOL_NAMES as readonly string[]).includes(base);
+}
+
+/** True when a completed delegation sits between two visible text bubbles (1:1 ReAct). */
+function hasCompletedDelegationBetweenTexts(messages: ChatMessage[]): boolean {
   let sawText = false;
-  let sawToolAfterText = false;
+  let sawDelegationAfterText = false;
   for (const msg of messages) {
     const { textContent } = deriveMessageContent(msg);
-    if (msg.toolData?.output && sawText) {
-      sawToolAfterText = true;
+    if (
+      msg.toolData?.output &&
+      sawText &&
+      isDelegationToolName(msg.toolData.name)
+    ) {
+      sawDelegationAfterText = true;
     }
-    if (!msg.toolData && textContent.trim() && sawToolAfterText) {
+    if (!msg.toolData && textContent.trim() && sawDelegationAfterText) {
       return true;
     }
     if (!msg.toolData && textContent.trim()) {
@@ -166,9 +188,10 @@ export function splitAssistantTurn(
     }
   }
 
-  // 1:1 ReAct (text → tool → conclusion) keeps the last bubble as the answer
-  // once the turn settles. While generating (or for stamped team speakers),
-  // join fragments so the answer never shrinks mid-flight after a tool round.
+  // 1:1 ReAct narration + tools is one answer: join every text fragment so the
+  // main answer never collapses to just the closing sentence once the turn
+  // settles. Only a *delegation* hand-off (text → ask_agent → fresh answer)
+  // supersedes the pre-tool narration and keeps the last bubble.
   const teamStamped = messages.some((item) =>
     Boolean((item.speakerAgentId || "").trim()),
   );
@@ -177,7 +200,7 @@ export function splitAssistantTurn(
     (Boolean(opts?.joinAnswerFragments) ||
       teamStamped ||
       messages.some((item) => item.teamWrapup) ||
-      !hasCompletedToolBetweenTexts(messages));
+      !hasCompletedDelegationBetweenTexts(messages));
   const answerMessage =
     answerTemplate && textParts.length > 0
       ? {
