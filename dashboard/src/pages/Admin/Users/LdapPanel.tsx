@@ -73,6 +73,10 @@ const DEFAULT_GROUP_ATTRIBUTE = "memberOf";
 const DEFAULT_GROUP_MEMBER_ATTRIBUTE = "member";
 const DEFAULT_TIMEOUT_SECONDS = 10;
 
+function textField(value: unknown): string {
+  return typeof value === "string" ? value.trim() : "";
+}
+
 function configToFormValues(config: LdapConfig): LdapFormValues {
   return {
     enabled: config.enabled,
@@ -159,33 +163,42 @@ export default function LdapPanel() {
     void loadConfig();
   }, [loadConfig]);
 
-  const saveConfig = async (values: LdapFormValues) => {
+  const saveConfig = async (submitted: LdapFormValues) => {
+    // onFinish only includes mounted fields. Group-search inputs and the
+    // collapsed timeout live in the store, and an unmounted value is
+    // undefined — calling trim on it throws before the request is sent.
+    const stored = form.getFieldsValue(true) as Partial<LdapFormValues>;
+    const values = { ...stored, ...submitted };
     setSaving(true);
     try {
       const body: LdapConfigPut = {
-        enabled: values.enabled,
-        display_name: values.display_name.trim(),
-        server_url: values.server_url.trim(),
-        start_tls: values.start_tls,
-        verify_tls: values.verify_tls,
-        bind_dn: values.bind_dn.trim(),
-        user_base_dn: values.user_base_dn.trim(),
-        user_filter: values.user_filter.trim(),
-        username_attribute: values.username_attribute.trim(),
-        email_attribute: values.email_attribute.trim(),
-        display_name_attribute: values.display_name_attribute.trim(),
-        subject_attribute: values.subject_attribute.trim(),
-        group_attribute: values.group_attribute.trim(),
-        group_search: values.group_search,
-        group_search_base: values.group_search_base.trim(),
-        group_member_attribute: values.group_member_attribute.trim(),
-        admin_groups: values.admin_groups.trim(),
-        allowed_groups: values.allowed_groups.trim(),
-        auto_provision: values.auto_provision,
-        timeout_seconds: values.timeout_seconds,
+        enabled: Boolean(values.enabled),
+        display_name: textField(values.display_name),
+        server_url: textField(values.server_url),
+        start_tls: Boolean(values.start_tls),
+        verify_tls: values.verify_tls !== false,
+        bind_dn: textField(values.bind_dn),
+        user_base_dn: textField(values.user_base_dn),
+        user_filter: textField(values.user_filter),
+        username_attribute: textField(values.username_attribute),
+        email_attribute: textField(values.email_attribute),
+        display_name_attribute: textField(values.display_name_attribute),
+        subject_attribute: textField(values.subject_attribute),
+        group_attribute: textField(values.group_attribute),
+        group_search: Boolean(values.group_search),
+        group_search_base: textField(values.group_search_base),
+        group_member_attribute: textField(values.group_member_attribute),
+        admin_groups: textField(values.admin_groups),
+        allowed_groups: textField(values.allowed_groups),
+        auto_provision: Boolean(values.auto_provision),
+        timeout_seconds:
+          typeof values.timeout_seconds === "number"
+            ? values.timeout_seconds
+            : DEFAULT_TIMEOUT_SECONDS,
       };
       // Write-only: an untouched field must never clobber the stored secret.
-      const bindPassword = values.bind_password?.trim();
+      // Read it from the submit payload only, not the preserved store.
+      const bindPassword = textField(submitted.bind_password);
       if (bindPassword) body.bind_password = bindPassword;
       applyConfig(await ssoApi.putLdapConfig(body));
       message.success(t("adminSso.ldap.saved"));

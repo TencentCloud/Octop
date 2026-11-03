@@ -491,6 +491,7 @@
     "LDAP_UNAVAILABLE": "LDAP 目录服务不可用。请检查服务器地址与绑定凭证。",
     "LDAP_USER_NOT_PROVISIONED": "该目录账号尚未创建 Octop 账号。请联系管理员创建，或开启自动创建账号。",
     "LDAP_GROUP_NOT_ALLOWED": "该目录账号不属于允许登录的用户组。请联系管理员将你加入允许登录的组。",
+    "LDAP_NOT_CONFIGURED": "请先保存 LDAP 配置，再创建目录账号。",
     "EXPERT_MARKET_FAILED": "专家市场暂时不可用，请稍后重试。",
     "NETWORK_ERROR": "网络异常，请检查网络连接后重试。",
     "SKILLHUB_SSL_FAILED": "SkillHub 请求失败：检测到 Python SSL 错误。macOS 可尝试 `brew reinstall openssl@3`，或检查系统 CA 证书。",

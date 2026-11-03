@@ -202,6 +202,7 @@
     "LDAP_UNAVAILABLE": "The LDAP directory is unavailable. Check the server address and bind credentials.",
     "LDAP_USER_NOT_PROVISIONED": "This directory account has no Octop account yet. Ask an administrator to create one or enable automatic provisioning.",
     "LDAP_GROUP_NOT_ALLOWED": "This directory account is not in a group allowed to sign in. Ask an administrator to add you to an allowed group.",
+    "LDAP_NOT_CONFIGURED": "Save LDAP settings before creating a directory account.",
     "EXPERT_MARKET_FAILED": "Expert market is temporarily unavailable. Please try again later.",
     "NETWORK_ERROR": "Network error. Check your connection and try again.",
     "SKILLHUB_SSL_FAILED": "SkillHub request failed: Python SSL error detected — on macOS try `brew reinstall openssl@3`, or check your system CA certificates.",
@@ -6109,7 +6110,10 @@
     "statusEnabled": "Enabled",
     "statusDisabled": "Disabled",
     "ssoBadge": "SSO",
+    "directoryBadge": "Directory",
     "passwordBadge": "Password",
+    "formDirectory": "Directory account",
+    "formDirectoryHint": "No local password. The username must match the directory login name; sign-in uses the directory password. Save LDAP settings first.",
     "tabLocal": "User management",
     "tabRoles": "Roles",
     "tabGroups": "User groups",
@@ -6407,7 +6411,7 @@
       "sectionServerHint": "Where Octop connects to authenticate users.",
       "serverUrl": "Server URL",
       "serverUrlPlaceholder": "ldap://ldap.example.com:389",
-      "serverUrlHint": "Use ldaps:// for TLS on port 636, or ldap:// together with StartTLS.",
+      "serverUrlHint": "Use ldaps:// for TLS on port 636, or ldap:// together with StartTLS. A literal private or loopback address may stay unencrypted.",
       "serverUrlRequired": "Enter the directory server URL",
       "serverUrlInvalid": "Enter a valid ldap:// or ldaps:// URL",
       "startTls": "StartTLS",
@@ -6447,7 +6451,7 @@
       "adminGroupsHint": "Members of these groups get the admin role — only when an account is first created. Changing a directory group later never re-templates an existing account. Prefer full DNs: a bare CN also matches a same-named group in any other OU.",
       "adminGroupsPlaceholder": "octop-admins, cn=it,ou=groups,dc=example,dc=com",
       "autoProvision": "Create accounts on first sign-in",
-      "autoProvisionHint": "When off, only existing Octop users can sign in through the directory.",
+      "autoProvisionHint": "When off, Octop does not create accounts. Accounts already linked to the directory can still sign in. For anyone else, pre-create a directory account in user management: the username must match the directory login name and it has no local password.",
       "timeout": "Connection timeout (seconds)",
       "timeoutHint": "How long to wait for the directory before failing a request.",
       "timeoutRequired": "Enter a timeout in seconds",
@@ -6486,7 +6490,8 @@
         "tls_verification_disabled": "TLS certificate verification is off. Only acceptable for a test server with a self-signed certificate.",
         "no_admin_groups": "No admin group is configured, so no directory user can become an Octop admin at first sign-in.",
         "auto_provision_open": "Automatic account creation is on with no sign-in allow-list: every account the filter matches gets an Octop account.",
-        "identity_key_is_dn": "No identity key attribute is set while automatic account creation is on, so new accounts are keyed on their entry DN — renaming or moving a user in the directory creates a second Octop account."
+        "identity_key_is_dn": "No identity key attribute is set while automatic account creation is on, so new accounts are keyed on their entry DN — renaming or moving a user in the directory creates a second Octop account.",
+        "cleartext_ldap": "This connection is plain ldap://. That is only allowed for a literal private or loopback address, and passwords travel in clear text."
       },
       "subjectAttributeDetected": "Detected {{name}} on this directory — set it as the identity key so renames keep the same account."
     }
