@@ -491,6 +491,7 @@
     "LDAP_UNAVAILABLE": "The LDAP directory is unavailable. Check the server address and bind credentials.",
     "LDAP_USER_NOT_PROVISIONED": "This directory account has no Octop account yet. Ask an administrator to create one or enable automatic provisioning.",
     "LDAP_GROUP_NOT_ALLOWED": "This directory account is not in a group allowed to sign in. Ask an administrator to add you to an allowed group.",
+    "LDAP_NOT_CONFIGURED": "Save LDAP settings before creating a directory account.",
     "EXPERT_MARKET_FAILED": "Expert market is temporarily unavailable. Please try again later.",
     "NETWORK_ERROR": "Network error. Check your connection and try again.",
     "SKILLHUB_SSL_FAILED": "SkillHub request failed: Python SSL error detected — on macOS try `brew reinstall openssl@3`, or check your system CA certificates.",

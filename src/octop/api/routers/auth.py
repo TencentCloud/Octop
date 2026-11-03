@@ -154,7 +154,7 @@ async def _authenticate_ldap(server: Any, username: str, password: str, client_i
         _raise_if_throttled(retry_after)
         return None
     throttle.clear(username, client_ip)
-    return await service.resolve_user(identity)
+    return await service.resolve_user(identity, login_name=username)
 
 
 def _raise_if_throttled(retry_after: int) -> None:

@@ -113,6 +113,7 @@ interface UserRow {
   email?: string | null;
   has_password?: boolean;
   sso_linked?: boolean;
+  directory?: boolean;
   disabled: boolean;
   login_failed_count?: number;
   login_locked?: boolean;
@@ -269,8 +270,9 @@ interface CreateValues extends PolicyFormValues {
   username: string;
   display_name?: string;
   email?: string;
-  password: string;
-  confirm: string;
+  directory?: boolean;
+  password?: string;
+  confirm?: string;
   role: string;
   permissions?: string[];
   role_name?: string | null;
@@ -1331,7 +1333,9 @@ function UserCardGrid({
               </p>
               <div className={styles.userCardQuiet}>
                 <PermissionSummary row={row} permLabelByKey={permLabelByKey} />
-                {row.sso_linked ? (
+                {row.directory ? (
+                  <span>{t("adminUsers.directoryBadge")}</span>
+                ) : row.sso_linked ? (
                   <span>{t("adminUsers.ssoBadge")}</span>
                 ) : null}
                 {row.has_password ? (
@@ -1533,6 +1537,7 @@ export default function UsersListPanel() {
   const [inviteOpen, setInviteOpen] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [form] = Form.useForm<CreateValues>();
+  const directoryAccount = Form.useWatch("directory", form) === true;
   const [editTarget, setEditTarget] = useState<UserRow | null>(null);
   const [editSubmitting, setEditSubmitting] = useState(false);
   const [editForm] = Form.useForm<EditValues>();
@@ -1974,7 +1979,9 @@ export default function UsersListPanel() {
           username: values.username,
           display_name: values.display_name?.trim() || null,
           email: values.email?.trim() || null,
-          password: values.password,
+          ...(values.directory
+            ? { directory: true }
+            : { password: values.password }),
           role: values.role,
           permissions: values.role === "admin" ? [] : values.permissions ?? [],
           role_name: values.role_name?.trim() || null,
@@ -2033,6 +2040,7 @@ export default function UsersListPanel() {
       username: undefined,
       display_name: undefined,
       email: undefined,
+      directory: false,
       password: undefined,
       confirm: undefined,
       limit_workspace_root: false,
@@ -2417,7 +2425,11 @@ export default function UsersListPanel() {
               width: 120,
               render: (_, row) => {
                 const parts = [
-                  row.sso_linked ? t("adminUsers.ssoBadge") : null,
+                  row.directory
+                    ? t("adminUsers.directoryBadge")
+                    : row.sso_linked
+                    ? t("adminUsers.ssoBadge")
+                    : null,
                   row.has_password ? t("adminUsers.passwordBadge") : null,
                   row.mfa_active ? t("adminUsers.mfaBadge") : null,
                 ].filter(Boolean);
@@ -2731,43 +2743,55 @@ export default function UsersListPanel() {
               />
             </Form.Item>
             <Form.Item
-              label={t("adminUsers.formPassword")}
-              name="password"
-              rules={[
-                { required: true, message: t("adminUsers.formPassword") },
-              ]}
+              name="directory"
+              label={t("adminUsers.formDirectory")}
+              extra={t("adminUsers.formDirectoryHint")}
+              valuePropName="checked"
             >
-              <Input.Password
-                prefix={<Lock {...FIELD_ICON_PROPS} />}
-                autoComplete="new-password"
-              />
+              <Switch />
             </Form.Item>
-            <Form.Item
-              label={t("adminUsers.formPasswordConfirm")}
-              name="confirm"
-              dependencies={["password"]}
-              rules={[
-                {
-                  required: true,
-                  message: t("adminUsers.formPasswordConfirm"),
-                },
-                ({ getFieldValue }) => ({
-                  validator(_, value) {
-                    if (!value || getFieldValue("password") === value) {
-                      return Promise.resolve();
-                    }
-                    return Promise.reject(
-                      new Error(t("wizard.admin.passwordMismatch")),
-                    );
-                  },
-                }),
-              ]}
-            >
-              <Input.Password
-                prefix={<LockOpen {...FIELD_ICON_PROPS} />}
-                autoComplete="new-password"
-              />
-            </Form.Item>
+            {!directoryAccount && (
+              <>
+                <Form.Item
+                  label={t("adminUsers.formPassword")}
+                  name="password"
+                  rules={[
+                    { required: true, message: t("adminUsers.formPassword") },
+                  ]}
+                >
+                  <Input.Password
+                    prefix={<Lock {...FIELD_ICON_PROPS} />}
+                    autoComplete="new-password"
+                  />
+                </Form.Item>
+                <Form.Item
+                  label={t("adminUsers.formPasswordConfirm")}
+                  name="confirm"
+                  dependencies={["password"]}
+                  rules={[
+                    {
+                      required: true,
+                      message: t("adminUsers.formPasswordConfirm"),
+                    },
+                    ({ getFieldValue }) => ({
+                      validator(_, value) {
+                        if (!value || getFieldValue("password") === value) {
+                          return Promise.resolve();
+                        }
+                        return Promise.reject(
+                          new Error(t("wizard.admin.passwordMismatch")),
+                        );
+                      },
+                    }),
+                  ]}
+                >
+                  <Input.Password
+                    prefix={<LockOpen {...FIELD_ICON_PROPS} />}
+                    autoComplete="new-password"
+                  />
+                </Form.Item>
+              </>
+            )}
           </div>
 
           <div className={styles.createSection}>
