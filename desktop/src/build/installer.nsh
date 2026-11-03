@@ -60,7 +60,8 @@ octop_tb_ui:
     ${NSD_GetState} $OctopTaskbarCheckbox $OctopPinTaskbar
   FunctionEnd
 
-  !insertmacro MUI_PAGE_CUSTOM octopTaskbarCreate octopTaskbarLeave
+  ; MUI2 has no MUI_PAGE_CUSTOM. Page custom is the installer page hook.
+  Page custom octopTaskbarCreate octopTaskbarLeave
 !macroend
 
 ; Finish page: keep "run" and add the desktop-shortcut checkbox.
