@@ -185,7 +185,9 @@ async def _run_acp_server(*, agent_id: str | None, debug: bool) -> None:
     try:
         # Listen on stdio immediately — Zed's "Loading…" ends at initialize,
         # which does not need the harness. First prompt / load awaits ready.
-        await run_harness_acp_server(
+        # experts / resolve_harness require octop-harness with TencentCloud/octop-harness#114
+        # (not yet on PyPI as of 1.0.6); ignore until that release is pinned.
+        await run_harness_acp_server(  # type: ignore[call-arg]
             None,
             agent_id=aid,
             experts=experts,
