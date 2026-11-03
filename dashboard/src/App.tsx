@@ -116,8 +116,36 @@ function ThemedApp() {
           Segmented: { itemSelectedBg: "#1a1c28" },
           Card: { colorBgContainer: "#161822" },
           Tooltip: { colorBgSpotlight: "#424242" },
+          Button: {
+            colorPrimary: "#ffffff",
+            colorPrimaryHover: "rgba(255, 255, 255, 0.85)",
+            colorPrimaryActive: "rgba(255, 255, 255, 0.7)",
+            primaryColor: "#000000",
+            primaryShadow: "none",
+          },
+          Tabs: {
+            itemColor: "rgba(255, 255, 255, 0.7)",
+            itemSelectedColor: "rgba(255, 255, 255, 0.9)",
+            itemHoverColor: "rgba(255, 255, 255, 0.9)",
+            itemActiveColor: "rgba(255, 255, 255, 0.9)",
+            inkBarColor: "#ffffff",
+          },
         }
-      : {},
+      : {
+          Button: {
+            colorPrimary: "#000000",
+            colorPrimaryHover: "rgba(0, 0, 0, 0.8)",
+            colorPrimaryActive: "rgba(0, 0, 0, 0.9)",
+            primaryShadow: "none",
+          },
+          Tabs: {
+            itemColor: "rgba(0, 0, 0, 0.7)",
+            itemSelectedColor: "rgba(0, 0, 0, 0.9)",
+            itemHoverColor: "rgba(0, 0, 0, 0.9)",
+            itemActiveColor: "rgba(0, 0, 0, 0.9)",
+            inkBarColor: "#000000",
+          },
+        },
   };
 
   return (

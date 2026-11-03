@@ -7,6 +7,7 @@
 .tabBetaBadge {
   display: inline-flex;
   align-items: center;
+  margin-left: 6px;
   padding: 2px 6px;
   font-size: 10px;
   font-weight: 700;
@@ -37,31 +38,22 @@
 
 .agentCard2 {
   background: var(--fn-bg-primary);
-  border: 1px solid var(--fn-card-border-normal);
+  border: 1px solid var(--fn-card-border-subtle);
   border-radius: var(--fn-radius-lg);
   display: flex;
   flex-direction: column;
   overflow: hidden;
   min-width: 320px;
   min-height: 196px;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06);
-  transition:
-    box-shadow 0.2s,
-    transform 0.2s;
+  transition: transform 0.2s;
 
   @media (max-width: 640px) {
     min-width: 0;
   }
 
   &:hover {
-    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.1);
     transform: translateY(-1px);
   }
-}
-
-.agentCard2Accent {
-  height: 2px;
-  background: var(--agent-accent, #6366f1);
 }
 
 .agentCard2Header {
@@ -708,12 +700,10 @@
 }
 
 .agentCardPortrait {
-  width: 44px;
-  height: 44px;
-  border-radius: 14px;
+  width: 32px;
+  height: 32px;
+  border-radius: 10px;
   background: transparent;
-  box-shadow: inset 0 0 0 1px
-    color-mix(in srgb, var(--fn-border, #e2e8f0) 80%, transparent);
 }
 
 .agentCardTitleBlock {
@@ -787,7 +777,7 @@
 
 .agentCardDesc {
   font-size: 12px;
-  color: var(--fn-text-secondary);
+  color: var(--fn-card-desc-text);
   line-height: 1.5;
   min-height: 2.4em;
   max-height: 3em;
@@ -990,7 +980,7 @@
 
 .expertTemplateCard {
   background: var(--fn-bg-primary);
-  border: 2px solid var(--fn-card-border-normal);
+  border: 1px solid var(--fn-card-border-subtle);
   border-radius: var(--fn-radius-lg);
   padding: 20px;
   display: flex;
@@ -1006,14 +996,9 @@
     box-shadow 0.2s;
 
   &:hover {
-    border-color: var(--expert-accent, var(--fn-color-brand));
-    background: color-mix(
-      in srgb,
-      var(--expert-accent, var(--fn-color-brand)) 4%,
-      var(--fn-bg-primary)
-    );
+    background: var(--fn-card-hover-bg);
     transform: translateY(-2px);
-    box-shadow: var(--fn-shadow-brand-lg, 0 8px 24px rgba(0, 0, 0, 0.12));
+    box-shadow: none;
   }
 
   &:active {
@@ -1117,8 +1102,8 @@
 
 .marketIconImg {
   display: block;
-  width: 22px;
-  height: 22px;
+  width: 32px;
+  height: 32px;
   object-fit: contain;
 }
 
@@ -1126,13 +1111,23 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 10px;
-  margin-top: auto;
+  gap: 16px;
+  /* 通栏贴卡片左右/底部边缘（卡片内边距为 20px） */
+  margin: auto -20px -20px;
+  padding: 0 20px;
+  min-height: 48px;
   min-width: 0;
+  background: var(--fn-bg-quaternary);
+  border-top: 1px solid var(--fn-border-subtle);
+  border-radius: 0 0 calc(var(--fn-radius-lg) - 1px)
+    calc(var(--fn-radius-lg) - 1px);
 
   @media (max-width: 640px) {
     align-items: stretch;
     flex-direction: column;
+    padding: 10px 20px;
+    gap: 10px;
+    min-height: 0;
   }
 }
 
@@ -1464,15 +1459,15 @@
   padding: 6px 14px;
   font-size: 13px;
   font-weight: 500;
-  border: 1px solid var(--fn-color-brand);
+  border: 1px solid var(--fn-btn-outline-border);
   background: transparent;
-  color: var(--fn-color-brand);
+  color: var(--fn-btn-outline-text);
   border-radius: var(--fn-radius-md);
   cursor: pointer;
   transition: background 0.15s;
 
   &:hover {
-    background: var(--fn-color-brand-light, #e6f4ff);
+    background: var(--fn-btn-outline-bg-hover);
   }
 }
 
@@ -1791,9 +1786,9 @@
   padding: 6px 14px;
   font-size: 13px;
   font-weight: 500;
-  border: 1px solid var(--fn-color-brand);
-  background: var(--fn-color-brand);
-  color: #fff;
+  border: 1px solid var(--fn-btn-solid-bg);
+  background: var(--fn-btn-solid-bg);
+  color: var(--fn-btn-solid-text, #fff);
   border-radius: var(--fn-radius-md);
   cursor: pointer;
   transition: opacity 0.15s;
@@ -2045,14 +2040,34 @@
 }
 
 .catalogCardActionBtnPrimary {
-  color: #fff;
-  background: var(--fn-color-brand);
-  border-color: var(--fn-color-brand);
+  color: var(--fn-btn-solid-text, #fff);
+  background: var(--fn-btn-solid-bg);
+  border-color: var(--fn-btn-solid-bg);
 
   &:hover:not(:disabled) {
-    color: #fff;
-    background: color-mix(in srgb, var(--fn-color-brand) 88%, #000);
-    border-color: color-mix(in srgb, var(--fn-color-brand) 88%, #000);
+    color: var(--fn-btn-solid-text, #fff);
+    background: var(--fn-btn-solid-bg-hover);
+    border-color: var(--fn-btn-solid-bg-hover);
+  }
+}
+
+.marketCreateBtn {
+  &.marketCreateBtn:global(.octop-btn-primary) {
+    flex-shrink: 0;
+    color: var(--fn-btn-outline-text);
+    font-size: 12px;
+    background: var(--fn-bg-elevated);
+    border: 1px solid var(--fn-border-subtle);
+    border-radius: var(--fn-radius-md);
+    box-shadow: none;
+    height: 32px;
+    padding: 0 16px;
+
+    &:not(:disabled):not(:global(.octop-btn-disabled)):hover {
+      color: var(--fn-btn-outline-text);
+      background: var(--fn-bg-elevated);
+      border-color: var(--fn-border-primary);
+    }
   }
 }
 

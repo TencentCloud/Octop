@@ -14,7 +14,7 @@
     "en": "Tasks, people, projects — just say it and I'll keep track"
   },
   "icon_name": "zap",
-  "icon_url": "/experts/avatars/scene-office.svg",
+  "icon_url": "/experts/avatars/productivity.svg",
   "color": "#16a34a",
   "prompt_files": [
     "SOUL.md",

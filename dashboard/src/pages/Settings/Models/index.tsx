@@ -12,16 +12,7 @@
  */
 import { useMemo, useState } from "react";
 import { Button, Divider, Empty, Space, Tabs, Typography } from "antd";
-import {
-  Boxes,
-  Images,
-  MessageSquareText,
-  Mic2,
-  Plus,
-  RefreshCw,
-  Scale,
-  Search,
-} from "lucide-react";
+import { Plus, RefreshCw } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { useSearchParams } from "react-router-dom";
 import PageShell from "../../../layouts/PageShell";
@@ -296,12 +287,7 @@ export default function ModelsPage() {
             ? [
                 {
                   key: "chat",
-                  label: (
-                    <Space className={styles.modelTabLabel} size={6}>
-                      <MessageSquareText size={15} />
-                      {t("models.chatModelsTab")}
-                    </Space>
-                  ),
+                  label: t("models.chatModelsTab"),
                 },
               ]
             : []),
@@ -309,12 +295,7 @@ export default function ModelsPage() {
             ? [
                 {
                   key: "embedding",
-                  label: (
-                    <Space className={styles.modelTabLabel} size={6}>
-                      <Boxes size={15} />
-                      {t("models.embeddingModelsTab")}
-                    </Space>
-                  ),
+                  label: t("models.embeddingModelsTab"),
                 },
               ]
             : []),
@@ -322,12 +303,7 @@ export default function ModelsPage() {
             ? [
                 {
                   key: "generation",
-                  label: (
-                    <Space className={styles.modelTabLabel} size={6}>
-                      <Images size={15} />
-                      {t("models.generationModelsTab")}
-                    </Space>
-                  ),
+                  label: t("models.generationModelsTab"),
                 },
               ]
             : []),
@@ -335,12 +311,7 @@ export default function ModelsPage() {
             ? [
                 {
                   key: "voice",
-                  label: (
-                    <Space className={styles.modelTabLabel} size={6}>
-                      <Mic2 size={15} />
-                      {t("models.voiceModelsTab")}
-                    </Space>
-                  ),
+                  label: t("models.voiceModelsTab"),
                 },
               ]
             : []),
@@ -348,12 +319,7 @@ export default function ModelsPage() {
             ? [
                 {
                   key: "decision",
-                  label: (
-                    <Space className={styles.modelTabLabel} size={6}>
-                      <Scale size={15} />
-                      {t("models.decisionModelsTab")}
-                    </Space>
-                  ),
+                  label: t("models.decisionModelsTab"),
                 },
               ]
             : []),
@@ -361,12 +327,7 @@ export default function ModelsPage() {
             ? [
                 {
                   key: "search",
-                  label: (
-                    <Space className={styles.modelTabLabel} size={6}>
-                      <Search size={15} />
-                      {t("models.searchModelsTab")}
-                    </Space>
-                  ),
+                  label: t("models.searchModelsTab"),
                 },
               ]
             : []),

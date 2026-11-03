@@ -158,7 +158,12 @@ export default function AdminUsersPage() {
       title={t("pageShell.adminUsers.title")}
       subtitle={t("pageShell.adminUsers.subtitle")}
       tabBar={
-        <TabBar tabs={allowedTabs} activeKey={activeTab} onChange={selectTab} />
+        <TabBar
+          plain
+          tabs={allowedTabs}
+          activeKey={activeTab}
+          onChange={selectTab}
+        />
       }
     >
       {body}

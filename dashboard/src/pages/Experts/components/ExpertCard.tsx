@@ -73,7 +73,7 @@ export const ExpertCard = memo(function ExpertCard({
           <ExpertIcon
             iconUrl={portraitUrl}
             iconName={expert.icon_name}
-            size={hasPortrait ? 44 : 20}
+            size={hasPortrait ? 32 : 20}
           />
         </div>
         <div className={styles.agentCardTitleBlock}>

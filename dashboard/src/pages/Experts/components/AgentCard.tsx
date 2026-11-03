@@ -311,9 +311,6 @@ export const AgentCard = memo(function AgentCard({
         className={styles.agentCard2}
         style={{ "--agent-accent": accent } as React.CSSProperties}
       >
-        {/* Accent top bar */}
-        <div className={styles.agentCard2Accent} />
-
         {/* Header */}
         <div className={styles.agentCard2Header}>
           <SharedAvatarMark
@@ -323,7 +320,11 @@ export const AgentCard = memo(function AgentCard({
           >
             <div
               className={styles.agentCard2Icon}
-              style={{ color: accent, background: `${accent}1a` }}
+              style={{
+                color: accent,
+                background:
+                  iconUrl ?? agent.icon_url ? "transparent" : `${accent}1a`,
+              }}
             >
               <ExpertIcon
                 iconUrl={iconUrl ?? agent.icon_url}

@@ -42,6 +42,12 @@ interface PageShellProps {
   showTeams?: boolean;
   /** When true, the content area does not scroll; children fill remaining height. */
   fill?: boolean;
+  /**
+   * Override the visual gap between the title row and the content below it
+   * (default 24px; 12px when agentScoped). Tab pages usually keep the default
+   * so the tab bar's own top padding adds up to the contract gap.
+   */
+  titleGap?: number;
   children: React.ReactNode;
 }
 
@@ -98,6 +104,7 @@ function PageShell({
   agentScoped,
   showTeams,
   fill,
+  titleGap,
   children,
 }: PageShellProps) {
   const isMobile = useIsMobile();
@@ -149,7 +156,7 @@ function PageShell({
           justifyContent: "space-between",
           gap: 12,
           flexShrink: 0,
-          marginBottom: agentScoped ? 12 : 24,
+          marginBottom: agentScoped ? 12 : titleGap ?? 24,
           paddingRight: titleRowEndPadding(outerPad),
         }}
       >
@@ -168,7 +175,12 @@ function PageShell({
           {subtitle && (
             <Text
               type="secondary"
-              style={{ fontSize: 13, marginTop: 4, display: "block" }}
+              style={{
+                fontSize: 13,
+                marginTop: 4,
+                display: "block",
+                color: "rgba(0, 0, 0, 0.9)",
+              }}
             >
               {subtitle}
             </Text>
@@ -192,9 +204,9 @@ function PageShell({
         className={DESKTOP_NO_DRAG_CLASS}
         style={{
           flex: 1,
-          background: "var(--fn-bg-container, var(--fn-bg-elevated))",
+          background: "transparent",
           borderRadius: 8,
-          padding: contentPad,
+          padding: 0,
           paddingBottom: pinBody
             ? contentPad
             : `calc(${contentPad}px + ${safeBottom})`,

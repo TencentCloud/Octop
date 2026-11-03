@@ -100,7 +100,12 @@ export default function AdvancedSettingsPage() {
       title={t("pageShell.adminAdvanced.title")}
       subtitle={t("pageShell.adminAdvanced.subtitle")}
       tabBar={
-        <TabBar tabs={allowedTabs} activeKey={activeTab} onChange={selectTab} />
+        <TabBar
+          plain
+          tabs={allowedTabs}
+          activeKey={activeTab}
+          onChange={selectTab}
+        />
       }
     >
       <div className={tabStyles.tabContent}>{renderTab()}</div>

@@ -1099,7 +1099,7 @@ export default function DesktopPanel({
         icon: <Trash2 size={14} />,
         loading: uninstalling,
         disabled: uninstalling || envLoading,
-        danger: true,
+        // Neutral outline to match the Experts-page toolbar buttons (was danger red).
         type: "default" as const,
       }
     : undefined;
