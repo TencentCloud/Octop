@@ -36,7 +36,7 @@ import type { OctopAgent } from "../../../context/AgentContext";
 import { useAgent } from "../../../context/AgentContext";
 import { useIsMobile } from "../../../hooks/useIsMobile";
 import MbtiPersonaTag from "../../../components/MbtiPersonaTag";
-import BackendFlag from "./BackendFlag";
+import BackendFlag from "./BackendFlag.tsx";
 import MbtiCatalogDrawer from "./MbtiCatalogDrawer";
 import { ExpertIcon } from "./iconForName";
 import {
