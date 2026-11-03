@@ -88,19 +88,20 @@ if (role === "root") {
 const runnerSource = String.raw`
 import childProcess from "node:child_process";
 import { syncBuiltinESMExports } from "node:module";
-import { promisify } from "node:util";
-const original = childProcess.execFile;
-const originalAsync = promisify(original);
-const observed = (...args) => original(...args);
-observed[promisify.custom] = async (...args) => {
-  const result = await originalAsync(...args);
-  if (args[0] === "ps") {
-    const table = result.stdout.trim().split("\n").map(line => line.trim().split(/\s+/).slice(0, 3).map(Number));
-    process.send({ type: "snapshot", pids: table.map(row => row[0]), table });
+const originalSpawn = childProcess.spawn;
+childProcess.spawn = function (file, args, options) {
+  const child = originalSpawn.call(this, file, args, options);
+  if (file === "ps" && child.stdout) {
+    let stdout = "";
+    child.stdout.on("data", (chunk) => { stdout += chunk.toString("utf8"); });
+    child.once("exit", (code) => {
+      if (code !== 0) return;
+      const table = stdout.trim().split("\n").filter(Boolean).map(line => line.trim().split(/\s+/).slice(0, 3).map(Number));
+      process.send({ type: "snapshot", pids: table.map(row => row[0]), table });
+    });
   }
-  return result;
+  return child;
 };
-childProcess.execFile = observed;
 syncBuiltinESMExports();
 const { moduleUrl, command, args, options } = JSON.parse(process.argv[2]);
 const { runDev } = await import(moduleUrl);
@@ -387,7 +388,7 @@ for (const [option, code, output] of [["--help", 0, /Usage:/], ["--not-a-valid-o
   });
 }
 
-test("run-dev.sh 无参数时仍进入监督器", async (t) => {
+test("run-dev.sh 无参数时仍进入监督器", { skip: process.platform === "win32" ? "POSIX only" : false }, async (t) => {
   // macOS /bin/bash 3.2 treats `"${arr[@]}"` of an *empty* array as unbound
   // under `set -u`, so a bare `pnpm dev` died on the re-exec line before
   // anything started. Linux shells expand it silently, hence the guard here.

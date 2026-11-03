@@ -1,21 +1,58 @@
-import { execFile, spawn } from "node:child_process";
+import { spawn } from "node:child_process";
 import { constants } from "node:os";
 import { pathToFileURL } from "node:url";
-import { promisify } from "node:util";
 import { setTimeout as delay } from "node:timers/promises";
 
-const execFileAsync = promisify(execFile);
+const PS_MAX_BUFFER = 8 * 1024 * 1024;
+
+// `execFile` drops `detached`, so ps would stay in this process's group and a
+// terminal SIGINT would kill the inspection mid-snapshot. `spawn` keeps it.
+function runPs(args) {
+  return new Promise((resolve, reject) => {
+    const child = spawn("ps", args, {
+      detached: true,
+      stdio: ["ignore", "pipe", "pipe"],
+      timeout: 1_000,
+      killSignal: "SIGKILL",
+      env: { ...process.env, LC_ALL: "C" },
+    });
+    const stdout = [];
+    const stderr = [];
+    let stdoutSize = 0;
+    let settled = false;
+    function finish(error, value) {
+      if (settled) return;
+      settled = true;
+      if (error) reject(error);
+      else resolve(value);
+    }
+    child.stdout.on("data", (chunk) => {
+      stdoutSize += chunk.length;
+      if (stdoutSize > PS_MAX_BUFFER) {
+        child.kill("SIGKILL");
+        return;
+      }
+      stdout.push(chunk);
+    });
+    child.stderr.on("data", (chunk) => stderr.push(chunk));
+    child.once("error", (error) => finish(error));
+    child.once("exit", (code, signal) => {
+      if (stdoutSize > PS_MAX_BUFFER) {
+        finish(new Error(`ps output exceeded ${PS_MAX_BUFFER} bytes`));
+        return;
+      }
+      if (code === 0) {
+        finish(null, Buffer.concat(stdout).toString("utf8"));
+        return;
+      }
+      const detail = Buffer.concat(stderr).toString("utf8").trim();
+      finish(new Error(`ps exited ${code ?? signal}${detail ? `: ${detail}` : ""}`));
+    });
+  });
+}
 
 async function processTable() {
-  const { stdout } = await execFileAsync(
-    "ps", ["-A", "-o", "pid=,ppid=,pgid=,stat=,lstart="],
-    {
-      // A terminal SIGINT must not kill an in-flight inspection. A wedged ps
-      // must not turn its timeout into an unbounded wait for SIGTERM either.
-      detached: true, timeout: 1_000, killSignal: "SIGKILL",
-      maxBuffer: 8 * 1024 * 1024, env: { ...process.env, LC_ALL: "C" },
-    },
-  );
+  const stdout = await runPs(["-A", "-o", "pid=,ppid=,pgid=,stat=,lstart="]);
   return stdout.trim().split("\n").filter(Boolean).map((line) => {
     const [pid, ppid, pgid, state, ...started] = line.trim().split(/\s+/);
     return { pid: Number(pid), ppid: Number(ppid), pgid: Number(pgid), state, started: started.join(" ") };

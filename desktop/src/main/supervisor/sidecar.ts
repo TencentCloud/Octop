@@ -119,6 +119,19 @@ export class SidecarSupervisor {
     });
     if (!exit.exited) {
       signalTree(child, "SIGKILL");
+      // taskkill returns before the process is gone. Windows will not delete a
+      // directory that is still that process's cwd, so wait for the exit.
+      await new Promise((resolvePromise) => {
+        if (child.exitCode !== null || child.signalCode !== null) {
+          resolvePromise(undefined);
+          return;
+        }
+        const timer = setTimeout(() => resolvePromise(undefined), 2_000);
+        child.once("exit", () => {
+          clearTimeout(timer);
+          resolvePromise(undefined);
+        });
+      });
       return { clean: false, exitCode: null };
     }
     return { clean: exit.code === 0, exitCode: exit.code };
