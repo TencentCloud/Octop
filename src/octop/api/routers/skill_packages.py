@@ -29,7 +29,7 @@ from octop.infra.skills.skill_package_store import (
     is_skill_package_name_conflict,
     raise_skill_package_name_taken,
 )
-from octop.infra.skills.skill_packages import SkillPackageError, read_skill_directory
+from octop.infra.skills.skill_packages import SkillPackageError
 from octop.infra.skills.skillhub_market import SkillHubMarketError as SkillHubDownloadError
 from octop.infra.users.groups import (
     RESOURCE_SKILL_PACKAGE,
@@ -140,7 +140,7 @@ def _files_from_package_skill_body(
 
 
 def _package_skill_exists(store: SkillPackageStore, package_id: str, slug: str) -> bool:
-    return (store.package_skills_dir(package_id) / slug / "SKILL.md").is_file()
+    return store.has_skill(package_id, slug)
 
 
 class LocalizedSkillCopy(BaseModel):
@@ -163,6 +163,7 @@ def _store(server: OctopServer) -> SkillPackageStore:
     return SkillPackageStore(
         repo=server.services.skill_package_repo,
         root=server.paths.skill_packages_dir,
+        database=server.services.config.database,
     )
 
 
@@ -720,7 +721,7 @@ async def get_package_skill(
     locale = resolve_request_locale(request)
     _package_visible_or_404(store, package_id, user, server, locale=locale)
     skill = _package_skill_or_404(store, package_id, slug, locale=locale)
-    raw = (store.package_skills_dir(package_id) / slug / "SKILL.md").read_text(encoding="utf-8")
+    raw = store.read_skill_file_text(package_id, slug, "SKILL.md")
     frontmatter, body = parse_frontmatter(raw)
     return {**skill, "frontmatter": frontmatter, "body": body, "raw": raw}
 
@@ -795,12 +796,11 @@ def _read_package_skill_files(
     store: SkillPackageStore, package_id: str
 ) -> list[tuple[str, list[tuple[str, bytes]]]]:
     packed: list[tuple[str, list[tuple[str, bytes]]]] = []
-    root = store.package_skills_dir(package_id)
     for summary in store.list_skill_summaries(package_id):
         if summary.get("corrupt"):
             continue
         slug = str(summary.get("slug") or "")
-        packed.append((slug, read_skill_directory(root / slug)))
+        packed.append((slug, store.read_skill_files(package_id, slug)))
     if not packed:
         raise SkillPackageError("skill package has no skills")
     return packed
@@ -925,7 +925,7 @@ async def delete_package_skill(
 
 
 def _package_has_skill(store: SkillPackageStore, package_id: str, slug: str) -> bool:
-    return (store.package_skills_dir(package_id) / slug / "SKILL.md").is_file()
+    return store.has_skill(package_id, slug)
 
 
 async def _refresh_package(server: OctopServer, package_id: str) -> None:

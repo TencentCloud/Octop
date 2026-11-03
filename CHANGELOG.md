@@ -7,9 +7,13 @@
 ## [Unreleased]
 
 ### 新增
+- PostgreSQL 控制面下，技能包源和知识库原文进同一套库（`skill_package_files`、`knowledge_files`），知识库向量在 `knowledge_chunks`。表都在 `public`，前缀与 `skill_packages`、`knowledge_bases` 一致。SQLite 仍用本地目录。安装时选定驱动，不含 sqlite→PostgreSQL 迁移
+- 安装向导连接已有用户的 PostgreSQL 时，确认后保留这些账户并去登录。SQLite 仍要空库
+- 知识库预览可以在原文和已入库切片之间切换。文件名悬停后可重命名，扩展名保持不变
 - Docker 与飞牛增加精简版。默认 `:<version>` / `:latest` 仍是含桌面、OCR 和本地向量的完整镜像；精简版标签是 `:<version>-lite` 和 `:lite`
 
 ### 修复
+- PostgreSQL 控制面下，知识库检索读 pgvector，不再查到空的本地 `index.sqlite`
 - Docker 镜像在无头构建时不再导入 pynput。飞牛 Docker 包缺失时，已打好的本地包仍会挂到 Release
 - 精简版只有 amd64 和 arm64 都发布成功才打通用标签。完整飞牛包不再等待缺失的精简镜像，Release 下载区只保留实际挂上的飞牛包
 - Docker 构建在安装依赖的同一层删除编译器，避免编译工具留在最终镜像里

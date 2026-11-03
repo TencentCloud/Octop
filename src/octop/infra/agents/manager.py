@@ -2760,12 +2760,16 @@ class AgentManager:
         self.persist_harness_config(agent_id, cfg)
         self.sync_effective_tools_disabled(agent_id)
 
-    def _resolve_skill_package_dirs(self, agent_id: str) -> list[str]:
-        """Resolve persisted package ids to existing absolute package skill directories."""
-        store = SkillPackageStore(
+    def _skill_package_store(self) -> SkillPackageStore:
+        return SkillPackageStore(
             repo=self._repos.skill_package_repo,
             root=self._paths.skill_packages_dir,
+            database=self._config.database,
         )
+
+    def _resolve_skill_package_dirs(self, agent_id: str) -> list[str]:
+        """Resolve persisted package ids to existing absolute package skill directories."""
+        store = self._skill_package_store()
         row = self._repos.agent_repo.get(agent_id)
         owner_id = row.user_id if row is not None else None
         roots: list[str] = []
@@ -3225,10 +3229,7 @@ class AgentManager:
             return harness_rows
 
         disabled = skills_disabled_set(cfg)
-        store = SkillPackageStore(
-            repo=self._repos.skill_package_repo,
-            root=self._paths.skill_packages_dir,
-        )
+        store = self._skill_package_store()
         package_by_slug: dict[str, dict[str, Any]] = {}
         for package_id in package_ids:
             if self._repos.skill_package_repo.get(package_id) is None:
@@ -3972,19 +3973,14 @@ class AgentManager:
 
             cron_tools = build_cronjob_tools(self._cron_manager)
 
-        from types import SimpleNamespace  # noqa: PLC0415
-
-        from octop.infra.knowledge.tools import build_knowledge_tools  # noqa: PLC0415
+        from octop.infra.knowledge.tools import (  # noqa: PLC0415
+            KnowledgeToolServices,
+            build_knowledge_tools,
+        )
 
         knowledge_tools: list[Any] = []
         if not team_host:
-            knowledge_tools = build_knowledge_tools(
-                SimpleNamespace(
-                    knowledge_repo=self._repos.knowledge_repo,
-                    settings_repo=self._repos.settings_repo,
-                    provider_repo=self._repos.provider_repo,
-                )
-            )
+            knowledge_tools = build_knowledge_tools(KnowledgeToolServices(self))
 
         mobile_tools: list[Any] = []
         if not team_host and self._config.capabilities.mobile.enabled:

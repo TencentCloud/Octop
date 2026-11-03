@@ -157,6 +157,11 @@ export default function SetupPage() {
     goToStep(STEP_DATABASE);
   };
 
+  const handleDatabaseAdopted = () => {
+    wizardSession.clearAll();
+    navigate("/login", { replace: true });
+  };
+
   const handleDatabaseContinue = async () => {
     try {
       await ensureWizardToken();
@@ -303,6 +308,7 @@ export default function SetupPage() {
           {current === STEP_DATABASE && (
             <DatabaseStep
               onContinue={() => void handleDatabaseContinue()}
+              onAdopted={handleDatabaseAdopted}
               onBack={passwordRequired ? handleBackFromDatabase : undefined}
             />
           )}
