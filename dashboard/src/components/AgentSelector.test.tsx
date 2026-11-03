@@ -1,5 +1,5 @@
 import { describe, expect, it, vi, beforeEach } from "vitest";
-import { render, screen, within } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import type { OctopAgent } from "../context/AgentContext";
 
 const state = {
@@ -12,7 +12,8 @@ const setActiveAgent = vi.fn((id: string | null) => {
   state.activeAgentId = id;
 });
 
-vi.mock("../context/AgentContext", () => ({
+vi.mock("../context/AgentContext", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../context/AgentContext")>()),
   useAgent: () => ({
     get agents() {
       return state.agents;
@@ -131,5 +132,43 @@ describe("AgentSelector groups", () => {
     expect(
       screen.getByText("当前是团队「调研团」，此页请选择专家"),
     ).toBeInTheDocument();
+  });
+
+  it("keeps stopped agents selectable by default for existing job management", () => {
+    state.agents = [
+      writer,
+      fakeAgent({ agent_id: "stopped", name: "已停用专家", state: "stopped" }),
+    ];
+    state.activeAgentId = "stopped";
+
+    render(<AgentSelector />);
+
+    expect(
+      within(screen.getByTestId("agent-selector-chips")).getByText(
+        "已停用专家",
+      ),
+    ).toBeInTheDocument();
+    expect(setActiveAgent).not.toHaveBeenCalled();
+  });
+
+  it("hides stopped agents while retaining disconnected bridge experts", async () => {
+    state.agents = [
+      writer,
+      fakeAgent({
+        ...remoteWriter,
+        state: "stopped",
+        bridge_disconnected: true,
+      }),
+      fakeAgent({ agent_id: "stopped", name: "已停用专家", state: "stopped" }),
+    ];
+    state.activeAgentId = "stopped";
+
+    render(<AgentSelector runningOnly />);
+
+    const chips = within(screen.getByTestId("agent-selector-chips"));
+    expect(chips.getByText("写手")).toBeInTheDocument();
+    expect(chips.getByText("对端写手")).toBeInTheDocument();
+    expect(chips.queryByText("已停用专家")).not.toBeInTheDocument();
+    await waitFor(() => expect(setActiveAgent).toHaveBeenCalledWith("writer"));
   });
 });

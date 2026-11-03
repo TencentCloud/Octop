@@ -4,7 +4,11 @@ import type { MenuProps } from "antd";
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { ChevronDown } from "lucide-react";
-import { useAgent, type OctopAgent } from "../context/AgentContext";
+import {
+  selectEnabledExperts,
+  useAgent,
+  type OctopAgent,
+} from "../context/AgentContext";
 import { ownedSoloExperts, ownedTeamAgents } from "../utils/sharedExpert";
 import {
   labelSelectorGroups,
@@ -29,6 +33,8 @@ interface AgentSelectorProps {
    * expert-only.
    */
   showTeams?: boolean;
+  /** Only list agents that are currently enabled and running. */
+  runningOnly?: boolean;
 }
 
 function agentAccent(agent: OctopAgent): string {
@@ -160,11 +166,22 @@ export default function AgentSelector({
   variant = "auto",
   showLabel = true,
   showTeams = false,
+  runningOnly = false,
 }: AgentSelectorProps) {
   const { t } = useTranslation();
   const { agents, activeAgentId, setActiveAgent, loading } = useAgent();
-  const soloSelectable = useMemo(() => ownedSoloExperts(agents), [agents]);
-  const allTeams = useMemo(() => ownedTeamAgents(agents), [agents]);
+  const availableAgents = useMemo(
+    () => (runningOnly ? selectEnabledExperts(agents, null) : agents),
+    [agents, runningOnly],
+  );
+  const soloSelectable = useMemo(
+    () => ownedSoloExperts(availableAgents),
+    [availableAgents],
+  );
+  const allTeams = useMemo(
+    () => ownedTeamAgents(availableAgents),
+    [availableAgents],
+  );
   const teamSelectable = useMemo(
     () => (showTeams ? allTeams : []),
     [allTeams, showTeams],
@@ -214,10 +231,22 @@ export default function AgentSelector({
 
   useEffect(() => {
     if (loading) return;
-    const next = nextPickerSelection(activeAgentId, agents, selectable);
+    const next = nextPickerSelection(
+      activeAgentId,
+      runningOnly ? availableAgents : agents,
+      selectable,
+    );
     if (next === undefined) return;
     setActiveAgent(next);
-  }, [activeAgentId, agents, loading, selectable, setActiveAgent]);
+  }, [
+    activeAgentId,
+    agents,
+    availableAgents,
+    loading,
+    runningOnly,
+    selectable,
+    setActiveAgent,
+  ]);
 
   useLayoutEffect(() => {
     if (!useBar) return;
