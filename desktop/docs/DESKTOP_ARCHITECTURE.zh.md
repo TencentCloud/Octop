@@ -342,7 +342,7 @@ Preload 仅暴露最小类型化桥梁 `window.octopDesktop`：
 - `setWindowChrome(theme)`：把页面主题（含「跟随系统」偏好）同步给 `nativeTheme`，让系统原生窗口按钮配色一致。没有最小化 / 最大化 / 关闭接口——窗口按钮完全原生，页面不参与。
 - `onWindowFullscreenChange(callback)`：进入 / 退出全屏时通知页面（macOS 全屏会隐藏交通灯，页面据此收回为它们预留的条带）。
 - `clientSettings`：供 Web 设置页读写新增的客户端项（开机启动、关闭行为、主题背景、是否只跟随稳定版）。不能写 `config.json`，也不能指定更新检测地址或安装包地址。
-- `openUpdateConfirmation()`：只能打开主进程的更新确认。渲染进程不能指定包地址，也不能授权安装。
+- `installUpdate()`：页面确认后开始安装。不接受参数，渲染进程不能指定包地址。检查失败和安装失败仍由主进程的系统框提示。
 - `wsEndpoint()`：返回 WebSocket 中继的地址（§5.2）。同步返回，因为 URL 拼装发生在渲染路径里没法 await；没有中继时返回 `null`，页面就回退到"从自身 origin 推导"。
 
 不暴露原始 `ipcRenderer`、任意文件系统访问、任意命令执行或可指定目标 URL 的代理接口。所有 IPC handler 都校验 sender frame、origin 和参数 schema。
@@ -407,11 +407,11 @@ Preload 仅暴露最小类型化桥梁 `window.octopDesktop`：
 - `octop update` 和 self-update API 直接拒绝，不修改 `OCTOP_GREEN_PACKAGES` 指向的 `packages/`。
 - 前端不能下载、替换或切换 Python 运行时。
 
-壳的更新确认由主进程打开。Web 设置里新增的客户端更新项只能请求打开这个确认，不能指定包地址，也不能授权安装。确认界面不把更新文档转发给 Python 进程。
+更新确认画在 Web 设置页里。用户同意后，页面调用不带参数的 `installUpdate()`。主进程重新选择发布，页面不能指定包地址。检查失败、已经是最新版本、安装失败仍由主进程的系统框提示。下载进度留在任务栏或 Dock。确认界面不把更新文档转发给 Python 进程。
 
 ### 6.3 安装顺序
 
-用户在壳的确认框里同意安装之后，主进程下载 §6.1 选出的安装包。确认框不能改这个地址。随后：
+用户在 Web 设置页的确认框里同意安装之后，主进程下载 §6.1 选出的安装包。页面对话框不能改这个地址。随后：
 
 1. 锁住 API 准入。新请求返回 `503`，已接纳的请求排空。
 2. 按第 3.4 节要求 Python 进程干净退出：宽限期内退出、退出码为 0。
@@ -525,9 +525,9 @@ query（页面是 `sandbox: true`、无 preload、无 IPC，这是两者唯一�
 > 实现状态：`octop-desktop.yml` 已配置各平台 green zip + 原生 Electron 安装包；
 > 签名、公证以及六平台实际 CI 产物仍需在仓库发布前逐项验证。
 >
-> 更新链路现状：[§6.3](#63-安装顺序) 的「确认框 → 下载 → 校验 → Python 干净退出 →
-> 交给安装器」已在主进程实现（`main/update/{download,installer}.ts`），确认框只能由
-> `openUpdateConfirmation()` 打开，渲染进程无法传入包地址。清单 asset 不带校验和，
+> 更新链路现状：[§6.3](#63-安装顺序) 的「页面确认 → 下载 → 校验 → Python 干净退出 →
+> 交给安装器」已实现。确认框在 Web 设置页，安装由不带参数的 `installUpdate()` 开始，
+> 渲染进程无法传入包地址。检查失败和安装失败仍是主进程系统框。清单 asset 不带校验和，
 > 所以当前只校验「下载链路绑定 `download.octop.cloud` 的 https」。
 > 尚未实现：[§3.4](#34-任务感知退出与全进程树清理) 第 1 步的「退出前任务检查确认框」
 > （后端还没有对应的任务查询接口），以及真机安装包端到端验证。

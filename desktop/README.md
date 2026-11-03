@@ -197,9 +197,11 @@ the page origin and every hook works in both modes.
 
 ## Update flow (shell-owned)
 
-`openUpdateConfirmation()` is the only update entry point the renderer has, and
-it takes **no arguments** — the Dashboard can ask for the dialog, but it cannot
-name a package URL or pre-authorize an install.
+`installUpdate()` is the only install entry point the renderer has, and it
+takes **no arguments**. The settings page confirms first. The shell then
+re-selects the release, so the page cannot name a package URL. Check and
+install failures stay on the shell's system dialog; download progress stays on
+the taskbar or Dock.
 
 1. `main/update/update-coordinator.ts` selects the release from the manifest
    (stable/beta preference, never a downgrade, `https` + `download.octop.cloud`

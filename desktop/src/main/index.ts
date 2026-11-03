@@ -262,24 +262,6 @@ async function showShellError(
   else await dialog.showMessageBox(options);
 }
 
-async function confirmInstall(win: BrowserWindow | null, selected: SelectedRelease): Promise<boolean> {
-  const options = {
-    type: "question" as const,
-    buttons: ["立即升级", "稍后"],
-    defaultId: 0,
-    cancelId: 1,
-    noLink: true,
-    message: `发现新版本 ${selected.tag}`,
-    detail:
-      `当前版本 ${appVersion}。升级会下载安装包，然后退出并由安装程序替换客户端；` +
-      `数据库、工作区和配置都会保留。`,
-  };
-  const { response } = win
-    ? await dialog.showMessageBox(win, options)
-    : await dialog.showMessageBox(options);
-  return response === 0;
-}
-
 /** Temp staging area for installers — never inside OCTOP_HOME (user data). */
 function updateDownloadDir(): string {
   return join(app.getPath("temp"), "octop-update");
@@ -384,10 +366,9 @@ function registerIpcHandlers(): void {
     }
   });
 
-  ipcMain.handle(IPC_CHANNELS.openUpdateConfirmation, async (event) => {
-    // Deliberately ignores every argument: the renderer may only ASK for the
-    // shell's confirmation dialog. It cannot pick the package URL, and it cannot
-    // pre-authorize an install (§6.2).
+  ipcMain.handle(IPC_CHANNELS.installUpdate, async (event) => {
+    // The page already confirmed. Ignore every argument and re-select the
+    // release here, so the renderer cannot name a package URL (§6.2).
     if (updateInFlight) return;
     const win = BrowserWindow.fromWebContents(event.sender) ?? BrowserWindow.getAllWindows()[0] ?? null;
 
@@ -402,7 +383,6 @@ function registerIpcHandlers(): void {
       await showShellMessage(win, "已是最新版本", `当前版本 ${appVersion}。`);
       return;
     }
-    if (!(await confirmInstall(win, selected))) return;
 
     const outcome = await runShellUpdate(win, selected);
     if (!outcome.ok) {

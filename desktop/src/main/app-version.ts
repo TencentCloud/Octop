@@ -9,7 +9,7 @@
  *
  * The resolved value feeds three things, all of which break on a wrong number:
  * the update release selection (§6.1), the expected `Octop-portable-*.zip`
- * filename (§2.3), and the copy in the install confirmation dialog.
+ * filename (§2.3), and the version shown on the update page.
  */
 
 export interface AppVersionSources {

@@ -4,6 +4,7 @@ import { Modal, Switch } from "antd";
 import { KeyRound, RefreshCw, Sparkles } from "lucide-react";
 import { message } from "@/utils/antdMessage";
 import { getAuthToken } from "../../../api/request";
+import { modal } from "../../../utils/antdModal";
 import {
   getDesktopBridge,
   type DesktopClientSettings,
@@ -17,8 +18,8 @@ const { confirm } = Modal;
 /**
  * Desktop-shell update panel. The shell detects/downloads/installs the whole
  * release (shell + Dashboard + Python runtime); this panel only reads the shell
- * channel preference, triggers a shell check, and opens the shell confirmation.
- * It never calls the Python self-update API.
+ * channel preference, triggers a shell check, and confirms the upgrade in the
+ * page. It never calls the Python self-update API.
  */
 export default function DesktopUpdatePanel() {
   const { t } = useTranslation();
@@ -56,10 +57,23 @@ export default function DesktopUpdatePanel() {
   }, [t]);
 
   const handleUpgrade = useCallback(() => {
-    // The shell owns the confirm → download → install hand-off; nothing here can
-    // fail in a way this panel should surface (the shell shows its own dialogs).
-    void getDesktopBridge()?.openUpdateConfirmation().catch(() => {});
-  }, []);
+    const latest = result?.latestVersion;
+    if (!latest) return;
+    // Close immediately. Download progress stays on the taskbar; failures stay
+    // on the shell's system dialog. Awaiting installUpdate would pin this modal
+    // open for the whole download.
+    modal.confirm({
+      title: t("advancedSettings.update.shellConfirmTitle", { version: latest }),
+      content: t("advancedSettings.update.shellConfirmBody", {
+        current: result?.currentVersion || "—",
+      }),
+      okText: t("advancedSettings.update.upgradeButton"),
+      cancelText: t("advancedSettings.update.later"),
+      onOk: () => {
+        void getDesktopBridge()?.installUpdate()?.catch(() => {});
+      },
+    });
+  }, [result, t]);
 
   const handleResetLogin = useCallback(() => {
     const session = getDesktopBridge()?.session;
@@ -189,7 +203,6 @@ export default function DesktopUpdatePanel() {
                 {t("advancedSettings.update.deviceLoginTitle")}
               </h3>
             </div>
-            <p className={styles.panelDesc}>{t("advancedSettings.update.deviceLoginHint")}</p>
 
             <div className={styles.actions}>
               <button

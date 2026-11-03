@@ -66,7 +66,8 @@ export const IPC_CHANNELS = {
   clientSettingsSet: "octop:client-settings:set",
   wsEndpoint: "octop:ws-endpoint",
   checkForUpdates: "octop:check-for-updates",
-  openUpdateConfirmation: "octop:open-update-confirmation",
+  /** Page already confirmed. No arguments: the shell re-selects the release. */
+  installUpdate: "octop:install-update",
   sessionRegister: "octop:session:register",
   sessionRenew: "octop:session:renew",
   sessionRevoke: "octop:session:revoke",

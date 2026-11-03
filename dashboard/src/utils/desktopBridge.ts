@@ -78,7 +78,8 @@ export interface OctopDesktopBridge {
     set(patch: Partial<DesktopClientSettings>): Promise<DesktopClientSettings>;
   };
   checkForUpdates(): Promise<DesktopUpdateCheckResult>;
-  openUpdateConfirmation(): Promise<void>;
+  /** Start the shell install. Takes no arguments; the page confirms first. */
+  installUpdate(): Promise<void>;
 }
 
 declare global {
