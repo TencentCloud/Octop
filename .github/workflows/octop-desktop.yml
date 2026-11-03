@@ -326,6 +326,15 @@ jobs:
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
         run: |
           set -euo pipefail
+          # workflow_dispatch defaults sign=true. With no CSC_LINK secret,
+          # electron-builder still tries to sign macOS and aborts with
+          # "<project dir> not a file" after "empty password will be used".
+          # Package unsigned instead. Tags and pull requests keep the sign path.
+          if [[ -z "${CSC_LINK:-}" && "${GITHUB_EVENT_NAME}" == "workflow_dispatch" ]]; then
+            echo "CSC_LINK is unset; packaging unsigned installers."
+            export OCTOP_SKIP_SIGN=1
+            unset CSC_LINK CSC_KEY_PASSWORD WIN_CSC_LINK WIN_CSC_KEY_PASSWORD
+          fi
           pnpm run build
           case "${{ matrix.plat }}" in
             darwin-*) target=--mac ;;
