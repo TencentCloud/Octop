@@ -85,6 +85,9 @@ export default {
     allowToChangeInstallationDirectory: true,
     perMachine: false,
     deleteAppDataOnUninstall: false,
+    // The finish page creates the desktop shortcut after the user confirms.
+    // Silent installs still create it unless --no-desktop-shortcut is passed.
+    createDesktopShortcut: false,
     // Expands resources/portable/Octop-portable-*.zip into resources/sidecar
     // with tar.exe. The 40k-file tree is not packed as individual NSIS files.
     include: "build/installer.nsh",
