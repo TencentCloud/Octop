@@ -51,6 +51,8 @@ import SessionWorkStatusIcon from "./SessionWorkStatusIcon";
 import TeamChatBadge from "./TeamChatBadge";
 import ExpertNameLabel from "./ExpertNameLabel";
 import ExpertNavActions, { ExpertPinMark } from "./ExpertNavActions";
+import { fetchFirstUnreadThreadId } from "../utils/unreadThread";
+import AgentUnreadBadge from "./AgentUnreadBadge";
 import styles from "../index.module.less";
 
 /** Default preview size per expert in minimal nav (matches session page size). */
@@ -118,19 +120,6 @@ interface MinimalAgentSessionNavProps {
   onFork: (id: string, agentId?: string | null) => void;
   activeForkDisabled?: boolean;
   activeForkDisabledHint?: string;
-}
-
-function AgentUnreadBadge({ count }: { count: number }) {
-  const { t } = useTranslation();
-  if (!count || count <= 0) return null;
-  return (
-    <span
-      className={styles.agentUnreadBadge}
-      aria-label={t("chat.unreadMessages", "未读消息")}
-    >
-      {count > 99 ? "99+" : count}
-    </span>
-  );
 }
 
 const PreviewSessionRow = memo(function PreviewSessionRow({
@@ -354,6 +343,21 @@ export default function MinimalAgentSessionNav({
   const { pinnedIds, isPinned, togglePin } = usePinnedExperts();
   const { filterVisible, pickHidden, hide, unhide, canHide } =
     useHiddenSharedExperts();
+  const handleUnreadSelect = useCallback(
+    async (agentId: string) => {
+      try {
+        const threadId = await fetchFirstUnreadThreadId(agentId);
+        if (threadId) {
+          onSelect(threadId, agentId);
+          return;
+        }
+      } catch {
+        // Fall back to the expert when the thread list cannot be loaded.
+      }
+      onAgentSelect(agentId);
+    },
+    [onAgentSelect, onSelect],
+  );
   const hiddenAgents = useMemo(
     () =>
       sortExpertsByPin(pickHidden(agents), pinnedIds).filter((agent) =>
@@ -801,8 +805,11 @@ export default function MinimalAgentSessionNav({
                   <TeamChatBadge agent={agent} compact />
                   <RemoteExpertHint agent={agent} compact />
                 </span>
-                <AgentUnreadBadge count={agent.unread_count ?? 0} />
               </button>
+              <AgentUnreadBadge
+                count={agent.unread_count ?? 0}
+                onClick={() => void handleUnreadSelect(agent.agent_id)}
+              />
               <ExpertNavActions
                 variant="minimal"
                 pinned={isPinned(agent.agent_id)}

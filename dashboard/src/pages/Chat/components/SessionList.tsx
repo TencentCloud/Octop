@@ -51,20 +51,9 @@ import {
   resolveSessionWorkStatus,
   type SessionWorkStatus,
 } from "../utils/sessionWorkStatus";
+import { fetchFirstUnreadThreadId } from "../utils/unreadThread";
+import AgentUnreadBadge from "./AgentUnreadBadge";
 import styles from "../index.module.less";
-
-function AgentUnreadBadge({ count }: { count: number }) {
-  const { t } = useTranslation();
-  if (!count || count <= 0) return null;
-  return (
-    <span
-      className={styles.agentUnreadBadge}
-      aria-label={t("chat.unreadMessages", "未读消息")}
-    >
-      {count > 99 ? "99+" : count}
-    </span>
-  );
-}
 
 interface SessionItemProps {
   session: Session;
@@ -267,6 +256,7 @@ interface AgentCardProps {
   onHide?: () => void;
   pinned?: boolean;
   onTogglePin?: () => void;
+  onUnreadSelect: (agentId: string) => void;
   liveWorkingIds: ReadonlySet<string>;
 }
 
@@ -290,6 +280,7 @@ function ActiveAgentCard({
   onHide,
   pinned = false,
   onTogglePin,
+  onUnreadSelect,
   liveWorkingIds,
 }: AgentCardProps) {
   const { t } = useTranslation();
@@ -352,7 +343,10 @@ function ActiveAgentCard({
               <TeamChatBadge agent={agent} compact />
               <RemoteExpertHint agent={agent} compact />
             </div>
-            <AgentUnreadBadge count={agent.unread_count ?? 0} />
+            <AgentUnreadBadge
+              count={agent.unread_count ?? 0}
+              onClick={() => onUnreadSelect(agent.agent_id)}
+            />
             {onTogglePin ? (
               <ExpertNavActions
                 variant="classic"
@@ -434,6 +428,7 @@ interface AgentRowProps {
   onUnhide?: () => void;
   pinned?: boolean;
   onTogglePin?: () => void;
+  onUnreadSelect: (agentId: string) => void;
 }
 
 function InactiveAgentRow({
@@ -444,6 +439,7 @@ function InactiveAgentRow({
   onUnhide,
   pinned = false,
   onTogglePin,
+  onUnreadSelect,
 }: AgentRowProps) {
   const accent = agent.color || "#6366f1";
 
@@ -483,7 +479,10 @@ function InactiveAgentRow({
             <TeamChatBadge agent={agent} compact />
             <RemoteExpertHint agent={agent} compact />
           </div>
-          <AgentUnreadBadge count={agent.unread_count ?? 0} />
+          <AgentUnreadBadge
+            count={agent.unread_count ?? 0}
+            onClick={() => onUnreadSelect(agent.agent_id)}
+          />
           {onNewChat && onTogglePin ? (
             <ExpertNavActions
               variant="classic"
@@ -556,6 +555,22 @@ export default function SessionList({
   const { filterVisible, pickHidden, hide, unhide, canHide } =
     useHiddenSharedExperts();
   const { pinnedIds, isPinned, togglePin } = usePinnedExperts();
+
+  const handleUnreadSelect = useCallback(
+    async (agentId: string) => {
+      try {
+        const threadId = await fetchFirstUnreadThreadId(agentId);
+        if (threadId) {
+          onSelect(threadId, agentId);
+          return;
+        }
+      } catch {
+        // Fall back to the expert when the thread list cannot be loaded.
+      }
+      onAgentSelect(agentId);
+    },
+    [onAgentSelect, onSelect],
+  );
 
   const hiddenAgents = useMemo(
     () =>
@@ -766,6 +781,9 @@ export default function SessionList({
                     }
                     pinned={isPinned(agent.agent_id)}
                     onTogglePin={() => togglePin(agent.agent_id)}
+                    onUnreadSelect={(agentId) =>
+                      void handleUnreadSelect(agentId)
+                    }
                     liveWorkingIds={liveWorkingIds}
                   />
                 );
@@ -781,6 +799,7 @@ export default function SessionList({
                   }
                   pinned={isPinned(agent.agent_id)}
                   onTogglePin={() => togglePin(agent.agent_id)}
+                  onUnreadSelect={(agentId) => void handleUnreadSelect(agentId)}
                 />
               );
             })
@@ -813,6 +832,7 @@ export default function SessionList({
                   onUnhide={() => unhide(agent.agent_id)}
                   pinned={isPinned(agent.agent_id)}
                   onTogglePin={() => togglePin(agent.agent_id)}
+                  onUnreadSelect={(agentId) => void handleUnreadSelect(agentId)}
                 />
               ))}
             </>
