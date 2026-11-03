@@ -1,4 +1,0 @@
-interface:
-  display_name: "易经起卦解卦"
-  short_description: "调用 qi_gua.py 起卦并联网检索卦辞与爻辞解读"
-  default_prompt: "Use $yi-jing-qi-gua to interpret my question, call qi_gua.py, and explain the resulting hexagram with gua image, gua name, gua text, yao text, and a targeted reading."
