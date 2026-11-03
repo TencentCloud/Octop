@@ -146,6 +146,8 @@ export function useVoiceOutput() {
         };
 
         audio.src = url;
+        // The mobile unlock clip leaves the element at 0.001 volume.
+        audio.volume = 1;
         audio.load();
 
         if (!isMobileUserAgent()) {
