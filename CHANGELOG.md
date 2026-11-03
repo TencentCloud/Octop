@@ -13,6 +13,7 @@
 - Docker 与飞牛增加精简版。默认 `:<version>` / `:latest` 仍是含桌面、OCR 和本地向量的完整镜像；精简版标签是 `:<version>-lite` 和 `:lite`
 
 ### 修复
+- Dashboard 里 `ask_user_question` 未答完时，新建同专家会话再发消息不再被当成旧测验的答案；同会话内明文作答仍然有效
 - PostgreSQL 控制面下，知识库检索读 pgvector，不再查到空的本地 `index.sqlite`
 - Docker 镜像在无头构建时不再导入 pynput。飞牛 Docker 包缺失时，已打好的本地包仍会挂到 Release
 - 精简版只有 amd64 和 arm64 都发布成功才打通用标签。完整飞牛包不再等待缺失的精简镜像，Release 下载区只保留实际挂上的飞牛包

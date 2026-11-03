@@ -11,8 +11,8 @@ import {
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { useTranslation } from "react-i18next";
-import type { BackendFlagIcon } from "./backendFlag";
-import { backendFlagIcon, resolveBackendFlag } from "./backendFlag";
+import type { BackendFlagIcon } from "./backendFlagModel";
+import { backendFlagIcon, resolveBackendFlag } from "./backendFlagModel";
 import { useNamedStorageBackends } from "./useNamedStorageBackends";
 import styles from "../index.module.less";
 
