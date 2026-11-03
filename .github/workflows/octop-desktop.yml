@@ -253,9 +253,28 @@ jobs:
           set -euo pipefail
           plat="${{ matrix.plat }}"
           zip="desktop/portable/release/Octop-portable-${plat}-${OCTOP_VERSION}.zip"
-          mkdir -p desktop/src/resources/portable desktop/src/resources/dashboard
-          cp "$zip" desktop/src/resources/portable/
+          mkdir -p desktop/src/resources/dashboard
+          rm -rf desktop/src/resources/portable
+          mkdir -p desktop/src/resources/portable
           cp -a src/octop/dashboard/. desktop/src/resources/dashboard/
+          # Windows keeps one zip; NSIS extracts it with tar.exe. Packing the
+          # ~40k files into NSIS is slower. macOS (DMG) and Linux (AppImage)
+          # have no install script, so copy the tree package.sh already
+          # assembled. deb/rpm then install that same tree. No zip in those apps.
+          if [[ "$plat" == windows-* ]]; then
+            cp "$zip" desktop/src/resources/portable/
+          else
+            inner="desktop/portable/release/Octop-${plat}"
+            if [[ ! -f "$inner/launch.py" ]]; then
+              echo "expanded portable tree has no launch.py under ${inner}" >&2
+              exit 1
+            fi
+            shopt -s dotglob
+            cp -a "$inner"/. desktop/src/resources/portable/
+            shopt -u dotglob
+            test -x desktop/src/resources/portable/runtime/bin/python3
+            test ! -e desktop/src/resources/portable/*.zip
+          fi
           if [[ "$plat" == windows-* ]]; then py=python; else py=python3; fi
           "$py" - "$zip" "$OCTOP_VERSION" <<'PY'
           import hashlib

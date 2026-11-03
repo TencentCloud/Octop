@@ -10,10 +10,12 @@ All desktop-client code lives here. This is **not** `src/octop/infra/control/des
 | [`docs/DESKTOP_ARCHITECTURE.zh.md`](docs/DESKTOP_ARCHITECTURE.zh.md) | Target architecture for the Electron shell |
 | [`docs/LOCAL_ACCOUNT_CLAIM.zh.md`](docs/LOCAL_ACCOUNT_CLAIM.zh.md) | Claim an existing local account when `OCTOP_HOME` already has users (not implemented) |
 
-The Electron shell owns the whole desktop lifecycle: extract the green runtime,
-spawn Octop on a random loopback port, own tray/window chrome, refuse
-self-updates. CI builds the green zips and bundles each one with the Electron
-shell and Dashboard in a matching native installer.
+The Electron shell owns the whole desktop lifecycle: spawn Octop on a random
+loopback port, own tray/window chrome, refuse self-updates. The green runtime
+is expanded before the user launches: NSIS `tar.exe` on Windows, and the tree
+`package.sh` assembled copied into the app on macOS and Linux. CI builds the
+green zips and bundles each one with the Electron shell and Dashboard in a
+matching native installer.
 
 Inside the Electron package everything sits directly under `src/`: `main/`,
 `preload/`, `renderer/`, `shared/`.
@@ -227,7 +229,7 @@ checksum, so only the pinned-download-host rule is enforced.
 Same as the Octop CLI/server default:
 
 - `OCTOP_HOME` → `~/.octop` (or the existing `OCTOP_HOME` env)
-- Green runtime extract → `~/.octop/portable/`
+- Green runtime → Windows `<install>\resources\sidecar`, macOS and Linux `Contents/Resources/portable` (Linux deb/rpm use the same `resources/portable` path under the install prefix)
 - Shell prefs → `~/.octop/desktop-settings.json`
 
 The shell points `OCTOP_GREEN_PACKAGES` at the extracted `packages/` directory, so

@@ -7,6 +7,31 @@ const S_IFMT = 0o170000;
 const S_IFLNK = 0o120000;
 
 /**
+ * Expanded runtimes shipped beside the app, checked before any first-launch unzip.
+ * Windows NSIS writes ``resources/sidecar``. macOS and Linux packaging copy
+ * the assembled tree into ``resources/portable`` before the app is packed.
+ * A directory that only holds the zip is not an installed runtime.
+ */
+const INSTALLED_RUNTIME_DIRS = ["sidecar", "portable"] as const;
+
+export function runtimeInterpreterRelative(platform: string): string {
+  return join("runtime", platform === "win32" ? "python.exe" : "bin/python3");
+}
+
+export function installedRuntimeDir(
+  resourcesRoot: string,
+  platform: string,
+  exists: (path: string) => boolean,
+): string | null {
+  const interpreter = runtimeInterpreterRelative(platform);
+  for (const name of INSTALLED_RUNTIME_DIRS) {
+    const dir = join(resourcesRoot, name);
+    if (exists(join(dir, "launch.py")) && exists(join(dir, interpreter))) return dir;
+  }
+  return null;
+}
+
+/**
  * Runtime extraction decision and safe atomic unzip for the portable Python
  * runtime (§2.2 / §2.3). The extracted runtime lives under
  * ``<OCTOP_HOME>/portable`` and is replaced atomically, never in place, so a

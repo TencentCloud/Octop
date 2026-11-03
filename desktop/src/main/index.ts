@@ -1,6 +1,6 @@
 import { app, BrowserWindow, dialog, ipcMain, net, protocol, screen, shell } from "electron";
 import { spawn } from "node:child_process";
-import { constants as fsConstants, promises as fs } from "node:fs";
+import { constants as fsConstants, existsSync, promises as fs } from "node:fs";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 
@@ -19,7 +19,13 @@ import { safeStorageCipher, warnIfKeychainUnavailable } from "./session/safe-sto
 import { ClientSettingsStore, defaultClientSettingsPath } from "./storage/client-settings";
 import { readLoginShellEnv, resolveOctopHome } from "./supervisor/shell-env";
 import { reserveRandomPort } from "./supervisor/random-port";
-import { classifyRuntime, extractPortableZip, type BundledPortable, type LocalRuntime } from "./supervisor/runtime-extractor";
+import {
+  classifyRuntime,
+  extractPortableZip,
+  installedRuntimeDir,
+  type BundledPortable,
+  type LocalRuntime,
+} from "./supervisor/runtime-extractor";
 import { compareVersions } from "./supervisor/version";
 import { sha256File } from "./supervisor/sha256";
 import { buildSidecarEnv } from "./supervisor/process-tree";
@@ -594,11 +600,22 @@ async function boot(): Promise<void> {
 
   // Local dev escape hatch: point at an already-extracted runtime (e.g. the one
   // `pnpm dev:runtime` writes to .dev-runtime) and skip bundling/extraction.
+  // Packaged Windows (NSIS → resources/sidecar) and macOS (expanded before
+  // signing → resources/portable) already contain the tree; do not unzip again.
   const devPortableDir = (process.env.OCTOP_PORTABLE_DIR ?? "").trim();
-  const portableDir = devPortableDir || join(octopHome, "portable");
+  let portableDir = devPortableDir;
+  if (!portableDir) {
+    const installed = installedRuntimeDir(resourcesRoot(), process.platform, existsSync);
+    if (installed) {
+      portableDir = installed;
+      desktopLog().info(`runtime installed at ${installed}`);
+    }
+  }
 
-  // Runtime version guard (§2.3) — must run BEFORE spawning Python.
-  if (!devPortableDir) {
+  // A package that still ships only the zip (not the Win/mac/Linux installers):
+  // version guard (§2.3) then atomic extract into OCTOP_HOME. Must run BEFORE spawning Python.
+  if (!portableDir) {
+    portableDir = join(octopHome, "portable");
     try {
       const bundled = await readBundledPortable();
       const local = await readLocalRuntime(octopHome);

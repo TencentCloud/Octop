@@ -34,6 +34,7 @@ test("buildSidecarEnv keeps the identity and loopback pins", () => {
   assert.equal(built.OCTOP_BIND_HOST, "127.0.0.1");
   assert.equal(built.OCTOP_PORT, "51234");
   assert.equal(built.PYTHONNOUSERSITE, "1");
+  assert.equal(built.PYTHONPYCACHEPREFIX, join("/tmp/home", "pyc"));
   assert.equal(built.PATH, "/usr/bin");
 });
 
