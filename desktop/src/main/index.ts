@@ -1,4 +1,4 @@
-import { app, BrowserWindow, dialog, ipcMain, net, protocol, shell } from "electron";
+import { app, BrowserWindow, dialog, ipcMain, net, protocol, screen, shell } from "electron";
 import { spawn } from "node:child_process";
 import { constants as fsConstants, promises as fs } from "node:fs";
 import { join } from "node:path";
@@ -28,9 +28,9 @@ import { contentTypeFor, isExternalLink, resolveStaticPath } from "./protocol/st
 import { isApiPath, sanitizeForwardHeaders, toBackendUrl } from "./protocol/stream-proxy";
 import { WsRelay } from "./protocol/ws-relay";
 import {
+  manifestFromDownloadsResponse,
   platformAssetKey,
   selectRelease,
-  type DownloadManifest,
   type SelectedRelease,
 } from "./update/update-coordinator";
 import { downloadToFile } from "./update/download";
@@ -43,6 +43,7 @@ import {
 } from "./dev/dashboard-dev-server";
 import { createEarlyWindow } from "./windows/early-window";
 import { createMainWindow } from "./windows/main-window";
+import { isWindowOnScreen, presentWindows, shouldKeepWindowOnClose } from "./windows/present";
 import {
   applyNativeTheme,
   applyWindowChromeTheme,
@@ -78,6 +79,11 @@ let appVersion = "";
 // request is admitted while Python shuts down.
 let apiAdmissionClosed = false;
 let updateInFlight = false;
+let quitting = false;
+// Default matches ClientSettingsStore. Boot and the settings IPC keep it current.
+let closeBehavior: "quit" | "tray" = "tray";
+// Set once the Dashboard has opened, so a later Dock click can open it again.
+let dashboardOrigin: string | null = null;
 // Current loopback port of the sidecar. Read per request (not captured), so a
 // restart after a failed install can hand the proxy a new port.
 let backendPort = 0;
@@ -222,7 +228,7 @@ async function resolveSelectedRelease(): Promise<SelectedRelease | null> {
   const settings = settingsStore.load();
   const res = await net.fetch(UPDATE_ENDPOINT, { cache: "no-store" });
   if (!res.ok) throw new Error(`downloads endpoint returned ${res.status}`);
-  const manifest = (await res.json()) as DownloadManifest;
+  const manifest = manifestFromDownloadsResponse(await res.json());
   return selectRelease(
     manifest,
     appVersion,
@@ -339,9 +345,11 @@ function registerIpcHandlers(): void {
   }));
 
   ipcMain.handle(IPC_CHANNELS.clientSettingsGet, (): ClientSettings => settingsStore.load());
-  ipcMain.handle(IPC_CHANNELS.clientSettingsSet, (_e, patch: Partial<ClientSettings>) =>
-    settingsStore.save(patch),
-  );
+  ipcMain.handle(IPC_CHANNELS.clientSettingsSet, (_e, patch: Partial<ClientSettings>) => {
+    const saved = settingsStore.save(patch);
+    closeBehavior = saved.closeBehavior;
+    return saved;
+  });
 
   // Synchronous on purpose: the renderer builds WebSocket URLs inside render
   // paths and cannot await (§5.2). Answers null (never the sidecar port) while
@@ -478,6 +486,60 @@ async function startBackend(): Promise<boolean> {
   return ready;
 }
 
+function openDashboardWindow(appOrigin: string): BrowserWindow {
+  dashboardOrigin = appOrigin;
+  const chromeTheme = resolveWindowChromeTheme(settingsStore.load().themeBackground);
+  const win = createMainWindow({
+    preload: PRELOAD_PATH,
+    theme: chromeTheme,
+    backgroundColor: windowBackground(chromeTheme.mode),
+    entryUrl: dashboardEntryUrl(chromeTheme.scheme ?? chromeTheme.mode, appOrigin),
+    appOrigin,
+    onNavigate: (url) => {
+      if (isExternalLink(url)) void shell.openExternal(url);
+    },
+  });
+  win.on("close", (event) => {
+    if (
+      !shouldKeepWindowOnClose({
+        platform: process.platform,
+        closeBehavior,
+        quitting,
+      })
+    ) {
+      return;
+    }
+    // Hide instead of destroy: the Dock icon is still the app, and the next
+    // click has to show this same window rather than a fresh load.
+    event.preventDefault();
+    win.hide();
+  });
+  win.webContents.on("did-finish-load", () => {
+    if (win.isDestroyed()) return;
+    win.webContents.send(IPC_CHANNELS.onBackendReady, { ok: true });
+  });
+  return win;
+}
+
+/** Dock click and a second launch. Show what is already open, or open it. */
+function revealAppWindow(): void {
+  if (quitting) return;
+  const windows = BrowserWindow.getAllWindows();
+  if (presentWindows(windows) > 0) {
+    // The Dock click is the user asking for this app. Steal so a hidden window
+    // comes forward even when another app was active.
+    app.focus({ steal: true });
+    const areas = screen.getAllDisplays().map((display) => display.workArea);
+    if (areas.length === 0) return;
+    for (const win of windows) {
+      if (win.isDestroyed()) continue;
+      if (!isWindowOnScreen(win.getBounds(), areas)) win.center();
+    }
+    return;
+  }
+  if (dashboardOrigin) openDashboardWindow(dashboardOrigin);
+}
+
 async function boot(): Promise<void> {
   const gotLock = app.requestSingleInstanceLock();
   if (!gotLock) {
@@ -489,6 +551,7 @@ async function boot(): Promise<void> {
 
   settingsStore = new ClientSettingsStore(defaultClientSettingsPath(app.getPath("userData")));
   const settings = settingsStore.load();
+  closeBehavior = settings.closeBehavior;
   // Apply the source before resolving, so a stored "system" reads the OS
   // preference rather than whatever an earlier explicit source left behind.
   applyNativeTheme({
@@ -640,20 +703,8 @@ async function boot(): Promise<void> {
   // Swap the Early Window for the real Dashboard. Same background colour, so the
   // handoff does not flash.
   const appOrigin = dashboardDev ? windowOrigin : PACKAGED_APP_ORIGIN;
-  const mainWindow = createMainWindow({
-    preload: PRELOAD_PATH,
-    theme: chromeTheme,
-    backgroundColor: windowBackground(chromeTheme.mode),
-    entryUrl: dashboardEntryUrl(chromeTheme.scheme ?? chromeTheme.mode, appOrigin),
-    appOrigin,
-    onNavigate: (url) => {
-      if (isExternalLink(url)) void shell.openExternal(url);
-    },
-  });
+  openDashboardWindow(appOrigin);
   early.close();
-  mainWindow.webContents.on("did-finish-load", () => {
-    mainWindow.webContents.send(IPC_CHANNELS.onBackendReady, { ok: true });
-  });
 }
 
 app.whenReady().then(boot).catch((err) => {
@@ -662,14 +713,14 @@ app.whenReady().then(boot).catch((err) => {
 });
 
 app.on("second-instance", () => {
-  const [win] = BrowserWindow.getAllWindows();
-  if (win) {
-    if (win.isMinimized()) win.restore();
-    win.focus();
-  }
+  revealAppWindow();
 });
 
-let quitting = false;
+// macOS emits this for a Dock click. With no listener the process stays in the
+// Dock after the window is closed or hidden, and the click does nothing.
+app.on("activate", () => {
+  revealAppWindow();
+});
 
 app.on("before-quit", (event) => {
   if (quitting) return;
@@ -696,7 +747,8 @@ app.on("before-quit", (event) => {
 });
 
 app.on("window-all-closed", () => {
-  if (process.platform !== "darwin") app.quit();
+  // darwin + tray keeps the process so the Dock icon can open the window again.
+  if (process.platform !== "darwin" || closeBehavior === "quit") app.quit();
 });
 
 /**

@@ -1,7 +1,12 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { selectRelease, platformAssetKey, isValidAssetUrl } from "./update-coordinator";
+import {
+  manifestFromDownloadsResponse,
+  selectRelease,
+  platformAssetKey,
+  isValidAssetUrl,
+} from "./update-coordinator";
 
 const stable = {
   tag: "v1.0.2",
@@ -59,6 +64,35 @@ test("installed beta higher than stable never downgrades", () => {
 test("missing platform asset yields no update", () => {
   const sel = selectRelease({ client: { stable } }, "1.0.1", "win_x64", true);
   assert.equal(sel, null);
+});
+
+test("downloads envelope unwraps data.client and ignores pet", () => {
+  const manifest = manifestFromDownloadsResponse({
+    success: true,
+    code: 0,
+    msg: "ok",
+    data: {
+      client: { stable, beta },
+      pet: { tag: "v0.2.0" },
+    },
+  });
+  const sel = selectRelease(manifest, "1.0.1", "mac_arm", true);
+  assert.equal(sel?.tag, "v1.0.2");
+});
+
+test("failed or incomplete downloads envelope is a check failure", () => {
+  assert.throws(
+    () => manifestFromDownloadsResponse({ success: false, data: { client: { stable } } }),
+    /failure/,
+  );
+  assert.throws(
+    () => manifestFromDownloadsResponse({ success: true, data: { pet: {} } }),
+    /data\.client/,
+  );
+  assert.throws(
+    () => selectRelease({ client: {} }, "1.0.1", "mac_arm", true),
+    /selected channel/,
+  );
 });
 
 test("non-download-host urls are rejected", () => {

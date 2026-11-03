@@ -23,6 +23,27 @@ export interface DownloadManifest {
   client: { stable?: ChannelRelease; beta?: ChannelRelease };
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null;
+}
+
+/**
+ * Unwrap ``GET /api/downloads``.
+ * The catalog the shell reads is ``data.client``; ``data.pet`` is another product.
+ * ``success !== true`` or a missing ``client`` is a check failure, so the page
+ * does not treat the installed version as already current.
+ */
+export function manifestFromDownloadsResponse(body: unknown): DownloadManifest {
+  if (!isRecord(body) || body.success !== true) {
+    throw new Error("downloads endpoint reported failure");
+  }
+  const data = body.data;
+  if (!isRecord(data) || !isRecord(data.client)) {
+    throw new Error("downloads response is missing data.client");
+  }
+  return { client: data.client as DownloadManifest["client"] };
+}
+
 export type PlatformKey = "mac_arm" | "mac_intel" | "win_x64" | "win_arm";
 
 export function platformAssetKey(platform: NodeJS.Platform, arch: string): PlatformKey | null {
@@ -62,9 +83,18 @@ export function selectRelease(
   stableOnly: boolean,
 ): SelectedRelease | null {
   if (platform === null) return null;
+  const client = manifest.client;
+  if (!client) throw new Error("downloads response is missing data.client");
+  // The chosen channel being absent is a failed check, not "already current".
+  const channelMissing = stableOnly
+    ? !client.stable
+    : !client.stable && !client.beta;
+  if (channelMissing) {
+    throw new Error("downloads response is missing the selected channel");
+  }
   const candidates: ChannelRelease[] = [];
-  if (manifest.client.stable) candidates.push(manifest.client.stable);
-  if (!stableOnly && manifest.client.beta) candidates.push(manifest.client.beta);
+  if (client.stable) candidates.push(client.stable);
+  if (!stableOnly && client.beta) candidates.push(client.beta);
 
   const eligible = candidates.filter((release) => {
     const asset = release.assets[platform];
