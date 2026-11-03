@@ -58,6 +58,20 @@ afterEach(() => {
   cleanup();
 });
 
+// pdfjs reads DOMMatrix while the module loads. jsdom does not provide it.
+if (typeof globalThis.DOMMatrix === "undefined") {
+  class DOMMatrixPolyfill {
+    a = 1;
+    b = 0;
+    c = 0;
+    d = 1;
+    e = 0;
+    f = 0;
+    constructor(_init?: string | number[]) {}
+  }
+  globalThis.DOMMatrix = DOMMatrixPolyfill as unknown as typeof DOMMatrix;
+}
+
 if (typeof window !== "undefined") {
   // matchMedia
   if (!window.matchMedia) {

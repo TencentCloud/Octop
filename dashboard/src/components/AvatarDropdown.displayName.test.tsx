@@ -1,16 +1,13 @@
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
+import { MemoryRouter } from "react-router-dom";
 
 vi.mock("react-i18next", () => ({
   useTranslation: () => ({
     t: (key: string) => key,
     i18n: { language: "zh" },
   }),
-}));
-
-vi.mock("react-router-dom", () => ({
-  useNavigate: () => vi.fn(),
 }));
 
 vi.mock("../hooks/useUserRole", () => ({
@@ -69,9 +66,17 @@ const user = {
   locale: "zh",
 };
 
+function renderDropdown() {
+  return render(
+    <MemoryRouter>
+      <AvatarDropdown user={user} placement="sidebar" />
+    </MemoryRouter>,
+  );
+}
+
 async function openSettings() {
   const view = userEvent.setup();
-  render(<AvatarDropdown user={user} placement="sidebar" />);
+  renderDropdown();
   await view.click(screen.getByRole("button", { name: /Ada/ }));
   await view.click(screen.getByRole("button", { name: "account.settings" }));
   return view;
@@ -109,7 +114,7 @@ describe("AvatarDropdown personal settings", () => {
 
   it("opens account security with the password form in one drawer", async () => {
     const view = userEvent.setup();
-    render(<AvatarDropdown user={user} placement="sidebar" />);
+    renderDropdown();
 
     await view.click(screen.getByRole("button", { name: /Ada/ }));
     expect(
@@ -117,14 +122,12 @@ describe("AvatarDropdown personal settings", () => {
     ).not.toBeInTheDocument();
     await view.click(screen.getByRole("button", { name: "account.security" }));
 
-    expect(
-      await screen.findByText("account.currentPassword"),
-    ).toBeInTheDocument();
-    expect(
-      screen.getByRole("button", { name: "account.changePassword" }),
-    ).toBeInTheDocument();
-    expect(
-      document.querySelector(".ant-drawer-right, .octop-drawer-right"),
-    ).toBeTruthy();
+    await waitFor(() => {
+      expect(screen.getByText("account.currentPassword")).toBeInTheDocument();
+      expect(
+        screen.getByRole("button", { name: "account.changePassword" }),
+      ).toBeInTheDocument();
+    });
+    expect(screen.getAllByRole("dialog")).toHaveLength(1);
   });
 });
