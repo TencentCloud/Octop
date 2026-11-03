@@ -333,9 +333,43 @@ def test_build_dashboard_inbound_uses_content_parts_not_messages_meta() -> None:
         ws_connection_id="conn",
     )
     assert "messages" not in inbound.metadata
+    assert "client_message_id" not in inbound.metadata
     assert inbound.metadata[COMPOSER_CTX_KEY] == {"skills": ["pdf"]}
     assert INBOUND_ATTACHMENTS_KEY in inbound.metadata
     assert any(isinstance(p, FileContent) for p in inbound.content)
+
+
+def test_build_dashboard_inbound_keeps_client_message_id() -> None:
+    from octop.api.routers.chat.turn import PreparedDashboardTurn, client_message_id_from_turn
+
+    prepared = PreparedDashboardTurn(
+        thread_id="t1",
+        session_key="sk",
+        mcp_servers=None,
+        skills=None,
+        model_ref=None,
+        inbound_content=[TextContent(text="画一张图")],
+        composer_context=None,
+        inbound_attachments=[],
+    )
+    turn = ChatTurnBody(
+        text="画一张图",
+        messages=[{"role": "user", "content": "画一张图", "id": "1710000000000-ab12cd"}],
+    )
+    assert client_message_id_from_turn(turn) == "1710000000000-ab12cd"
+    inbound = build_dashboard_inbound(
+        agent_id="agent-1",
+        user_id=1,
+        prepared=prepared,
+        turn=turn,
+        ws_connection_id="conn",
+    )
+    assert inbound.metadata["client_message_id"] == "1710000000000-ab12cd"
+    rejected = ChatTurnBody(
+        text="画一张图",
+        messages=[{"role": "user", "content": "画一张图", "id": "../etc/passwd"}],
+    )
+    assert client_message_id_from_turn(rejected) is None
 
 
 def test_serialize_history_exposes_inbound_attachments() -> None:

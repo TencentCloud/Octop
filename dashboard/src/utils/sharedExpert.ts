@@ -5,6 +5,15 @@ export interface SharedExpertAccess {
   is_owner?: boolean;
 }
 
+/** Owner or admin. Matches ``assert_agent_owner`` on ``GET /agents/{id}/status``. */
+export function canReadAgentRuntimeStatus(
+  agent: SharedExpertAccess,
+  user: { role?: string } | null | undefined,
+): boolean {
+  if (user?.role === "admin") return true;
+  return agent.is_owner !== false;
+}
+
 export function isSharedExpertViewer(agent: SharedExpertAccess): boolean {
   return agent.is_shared === true && agent.is_owner === false;
 }

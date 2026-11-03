@@ -64,6 +64,11 @@ class ReplaceMembersBody(BaseModel):
     user_ids: list[int] = Field(default_factory=list)
 
 
+class SharingAudienceResponse(BaseModel):
+    user_count: int = Field(description="Enabled accounts that can sign in.")
+    group_count: int = Field(description="User groups, including disabled ones.")
+
+
 def _clean_name(raw: str) -> str:
     name = raw.strip()
     if not name:
@@ -155,6 +160,21 @@ def _require_group(server: Any, user_group_id: str) -> Any:
     if row is None:
         raise OctopError(ErrorCode.NOT_FOUND, "user group not found")
     return row
+
+
+@router.get("/audience", summary="Counts for the who-can-use picker")
+async def sharing_audience(
+    server: Any = Depends(get_server),
+    _: User = Depends(current_user),
+) -> SharingAudienceResponse:
+    """Enabled-account and user-group counts.
+
+    Any signed-in user may call this. The dashboard hides the picker when
+    there is a single account, and hides the user-group choice when none exist.
+    """
+    users = server.user_manager.list_all(include_disabled=False)
+    groups = server.services.repos.user_group_repo.list_all()
+    return SharingAudienceResponse(user_count=len(users), group_count=len(groups))
 
 
 @router.get("", summary="List user groups")

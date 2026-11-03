@@ -67,6 +67,7 @@ import {
 } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { request } from "../../../api/request";
+import { authApi } from "../../../api/modules/auth";
 import {
   userRolesApi,
   snapshotRoleLabel,
@@ -74,7 +75,6 @@ import {
   userRoleLabel,
   type UserRole,
 } from "../../../api/modules/userRoles";
-import { authApi } from "../../../api/modules/auth";
 import { preferencesApi } from "../../../api/modules/preferences";
 import type { SidebarNavLayout } from "../../../layouts/sidebarNavLayout";
 import { buildPermissionPickerGroups } from "./permissionPickerLayout";
@@ -91,6 +91,7 @@ import InviteDrawer from "./InviteDrawer";
 import RootDirSelect from "../../Experts/components/RootDirSelect";
 import { fetchFilesystemDefaults } from "../../Experts/components/agentBackendForm";
 import { HOST_FS_ROOT } from "../../Experts/components/rootDirTree";
+import { ExpertIcon } from "../../Experts/components/iconForName";
 import expertStyles from "../../Experts/index.module.less";
 import styles from "./index.module.less";
 import {
@@ -125,6 +126,8 @@ interface UserRow {
   workspace_root_dir?: string | null;
   token_quota?: number | null;
   max_agents?: number | null;
+  /** Present when the users list includes MFA status from the backend. */
+  mfa_active?: boolean;
 }
 
 export interface PermissionCatalogItem {
@@ -154,6 +157,124 @@ const DEFAULT_EXPERT_TEMPLATE_ID = "general-assistant";
 interface ExpertTemplateOption {
   id: string;
   label: string;
+  description?: string;
+  icon_url?: string | null;
+  icon_name?: string | null;
+}
+
+function expertTemplateChoices(
+  templates: ExpertTemplateOption[],
+): ExpertTemplateOption[] {
+  if (templates.some((item) => item.id === DEFAULT_EXPERT_TEMPLATE_ID)) {
+    return templates;
+  }
+  return [
+    { id: DEFAULT_EXPERT_TEMPLATE_ID, label: DEFAULT_EXPERT_TEMPLATE_ID },
+    ...templates,
+  ];
+}
+
+function ExpertTemplatePicker({
+  value,
+  onChange,
+  options,
+}: {
+  value?: string;
+  onChange?: (id: string) => void;
+  options: ExpertTemplateOption[];
+}) {
+  const { t } = useTranslation();
+  const [query, setQuery] = useState("");
+  const listRef = useRef<HTMLDivElement>(null);
+  const scrolledFor = useRef<string | null>(null);
+  const needle = query.trim().toLowerCase();
+  const visible = useMemo(() => {
+    if (!needle) return options;
+    return options.filter((item) =>
+      `${item.label} ${item.description ?? ""}`.toLowerCase().includes(needle),
+    );
+  }, [needle, options]);
+
+  useEffect(() => {
+    const list = listRef.current;
+    if (!list || !value || scrolledFor.current === value) return;
+    const selected = list.querySelector<HTMLElement>("[aria-selected='true']");
+    if (!selected) return;
+    const listRect = list.getBoundingClientRect();
+    const itemRect = selected.getBoundingClientRect();
+    if (itemRect.top < listRect.top) {
+      list.scrollTop -= listRect.top - itemRect.top;
+    } else if (itemRect.bottom > listRect.bottom) {
+      list.scrollTop += itemRect.bottom - listRect.bottom;
+    }
+    scrolledFor.current = value;
+  }, [value, visible]);
+
+  return (
+    <div className={styles.expertTemplatePicker}>
+      <Input
+        allowClear
+        value={query}
+        prefix={<Search size={14} />}
+        placeholder={t("experts.searchPlaceholder")}
+        onChange={(event) => setQuery(event.target.value)}
+      />
+      <div
+        ref={listRef}
+        className={styles.expertTemplateList}
+        role="listbox"
+        aria-label={t("adminUsers.expertTemplate")}
+      >
+        {visible.length === 0 ? (
+          <div className={styles.expertTemplateEmpty}>
+            {t("experts.searchEmpty")}
+          </div>
+        ) : (
+          visible.map((item) => {
+            const selected = item.id === value;
+            return (
+              <button
+                key={item.id}
+                type="button"
+                role="option"
+                aria-selected={selected}
+                className={`${styles.expertTemplateRow} ${
+                  selected ? styles.expertTemplateRowSelected : ""
+                }`}
+                onClick={() => onChange?.(item.id)}
+              >
+                <span className={styles.expertTemplateAvatar}>
+                  <ExpertIcon
+                    iconUrl={item.icon_url}
+                    iconName={item.icon_name}
+                    size={40}
+                  />
+                </span>
+                <span className={styles.expertTemplateMeta}>
+                  <span className={styles.expertTemplateName}>
+                    {item.label}
+                  </span>
+                  {item.description ? (
+                    <span className={styles.expertTemplateDesc}>
+                      {item.description}
+                    </span>
+                  ) : null}
+                </span>
+                {selected ? (
+                  <Check
+                    size={16}
+                    strokeWidth={2.5}
+                    className={styles.expertTemplateCheck}
+                    aria-hidden
+                  />
+                ) : null}
+              </button>
+            );
+          })
+        )}
+      </div>
+    </div>
+  );
 }
 
 interface CreateValues extends PolicyFormValues {
@@ -425,6 +546,7 @@ interface UserCardGridProps {
   onEdit: (row: UserRow) => void;
   onShowAgents: (row: UserRow) => void;
   onResetPassword: (row: UserRow) => void;
+  onResetMfa: (row: UserRow) => Promise<void>;
   onDelete: (row: UserRow) => Promise<void>;
   onUnlockLogin: (row: UserRow) => Promise<void>;
   nowSec: number;
@@ -1019,6 +1141,64 @@ export function PermissionCheckboxPicker({
   );
 }
 
+/** Keeps the permissions field registered while the picker is unmounted. */
+function PermissionValueKeeper(_props: {
+  value?: string[];
+  onChange?: (value: string[]) => void;
+}) {
+  return null;
+}
+
+export function CollapsiblePermissionsField({
+  catalog,
+}: {
+  catalog: PermissionCatalogItem[];
+}) {
+  const { t } = useTranslation();
+  const [open, setOpen] = useState(false);
+  const permissions = Form.useWatch("permissions") as string[] | undefined;
+  const count = permissions?.length ?? 0;
+
+  return (
+    <div className={styles.permSectionFold}>
+      <div className={styles.permFoldHeader}>
+        <button
+          type="button"
+          className={styles.permCollapseBtn}
+          aria-expanded={open}
+          onClick={() => setOpen((prev) => !prev)}
+        >
+          <span className={styles.permChevron} aria-hidden>
+            {open ? (
+              <ChevronDown size={14} strokeWidth={2} />
+            ) : (
+              <ChevronRight size={14} strokeWidth={2} />
+            )}
+          </span>
+          <span className={styles.permGroupTitle}>
+            {t("adminUsers.colPermissions")}
+          </span>
+        </button>
+        <span className={styles.permGroupCount}>
+          {t("adminUsers.permCount", { count })}
+        </span>
+      </div>
+      <Form.Item
+        name="permissions"
+        preserve
+        hidden={!open}
+        className={styles.createUserPermItem}
+      >
+        {open ? (
+          <PermissionCheckboxPicker catalog={catalog} />
+        ) : (
+          <PermissionValueKeeper />
+        )}
+      </Form.Item>
+    </div>
+  );
+}
+
 function PermissionSummary({
   row,
   permLabelByKey,
@@ -1073,6 +1253,7 @@ function UserCardGrid({
   onEdit,
   onShowAgents,
   onResetPassword,
+  onResetMfa,
   onDelete,
   onUnlockLogin,
   nowSec,
@@ -1168,6 +1349,9 @@ function UserCardGrid({
                 {row.has_password ? (
                   <span>{t("adminUsers.passwordBadge")}</span>
                 ) : null}
+                {row.mfa_active ? (
+                  <span>{t("adminUsers.mfaBadge")}</span>
+                ) : null}
               </div>
               {isLocked ? (
                 <div className={styles.userCardLockAlert}>
@@ -1234,6 +1418,23 @@ function UserCardGrid({
                   <KeyRound size={15} />
                 </button>
               </Tooltip>
+
+              <Popconfirm
+                title={t("adminUsers.mfaResetConfirm", {
+                  username: row.username,
+                })}
+                onConfirm={() => void onResetMfa(row)}
+              >
+                <Tooltip title={t("adminUsers.mfaReset")} mouseEnterDelay={0.5}>
+                  <button
+                    type="button"
+                    className={styles.userCardIconBtn}
+                    aria-label={t("adminUsers.mfaReset")}
+                  >
+                    <ShieldCheck size={15} />
+                  </button>
+                </Tooltip>
+              </Popconfirm>
 
               <Popconfirm
                 title={t("adminUsers.deleteConfirm", {
@@ -1737,15 +1938,25 @@ export default function UsersListPanel() {
     if (!createOpen) return;
     let cancelled = false;
     const lang = i18n.language.startsWith("zh") ? "zh" : "en";
-    void request<Array<{ id: string; label: { zh: string; en: string } }>>(
-      "/experts",
-    )
+    void request<
+      Array<{
+        id: string;
+        label: { zh: string; en: string };
+        description?: { zh?: string; en?: string };
+        icon_url?: string | null;
+        icon_name?: string | null;
+      }>
+    >("/experts")
       .then((rows) => {
         if (cancelled) return;
         setExpertTemplates(
           rows.map((row) => ({
             id: row.id,
             label: row.label?.[lang] || row.label?.en || row.id,
+            description:
+              row.description?.[lang] || row.description?.en || undefined,
+            icon_url: row.icon_url,
+            icon_name: row.icon_name,
           })),
         );
       })
@@ -1954,6 +2165,16 @@ export default function UsersListPanel() {
     }
   };
 
+  const onResetMfa = async (row: UserRow) => {
+    try {
+      await authApi.adminResetMfa(row.id);
+      message.success(t("adminUsers.mfaResetSuccess"));
+      void refreshUsers();
+    } catch (err) {
+      message.error(apiErrorMessage(err, t("adminUsers.mfaResetFailed"), t));
+    }
+  };
+
   const onUnlockLogin = async (row: UserRow) => {
     try {
       await request(`/users/${row.id}/unlock-login`, { method: "POST" });
@@ -2123,6 +2344,7 @@ export default function UsersListPanel() {
             setResetTarget(row);
             resetForm.resetFields();
           }}
+          onResetMfa={onResetMfa}
           onDelete={onDelete}
           onUnlockLogin={onUnlockLogin}
           nowSec={nowSec}
@@ -2200,6 +2422,7 @@ export default function UsersListPanel() {
                 const parts = [
                   row.sso_linked ? t("adminUsers.ssoBadge") : null,
                   row.has_password ? t("adminUsers.passwordBadge") : null,
+                  row.mfa_active ? t("adminUsers.mfaBadge") : null,
                 ].filter(Boolean);
                 return (
                   <span className={styles.userCellMuted}>
@@ -2306,6 +2529,22 @@ export default function UsersListPanel() {
                       <KeyRound size={14} />
                     </button>
                   </Tooltip>
+                  <Popconfirm
+                    title={t("adminUsers.mfaResetConfirm", {
+                      username: row.username,
+                    })}
+                    onConfirm={() => void onResetMfa(row)}
+                  >
+                    <Tooltip title={t("adminUsers.mfaReset")}>
+                      <button
+                        type="button"
+                        className={styles.userCardIconBtn}
+                        aria-label={t("adminUsers.mfaReset")}
+                      >
+                        <ShieldCheck size={14} />
+                      </button>
+                    </Tooltip>
+                  </Popconfirm>
                   <Popconfirm
                     title={t("adminUsers.deleteConfirm", {
                       username: row.username,
@@ -2563,15 +2802,7 @@ export default function UsersListPanel() {
                     </div>
                   );
                 }
-                return (
-                  <Form.Item
-                    label={t("adminUsers.colPermissions")}
-                    name="permissions"
-                    className={styles.createUserPermItem}
-                  >
-                    <PermissionCheckboxPicker catalog={permCatalog} />
-                  </Form.Item>
-                );
+                return <CollapsiblePermissionsField catalog={permCatalog} />;
               }}
             </Form.Item>
           </div>
@@ -2606,24 +2837,8 @@ export default function UsersListPanel() {
                       },
                     ]}
                   >
-                    <Select
-                      showSearch
-                      optionFilterProp="label"
-                      options={(expertTemplates.some(
-                        (item) => item.id === DEFAULT_EXPERT_TEMPLATE_ID,
-                      )
-                        ? expertTemplates
-                        : [
-                            {
-                              id: DEFAULT_EXPERT_TEMPLATE_ID,
-                              label: DEFAULT_EXPERT_TEMPLATE_ID,
-                            },
-                            ...expertTemplates,
-                          ]
-                      ).map((item) => ({
-                        value: item.id,
-                        label: item.label,
-                      }))}
+                    <ExpertTemplatePicker
+                      options={expertTemplateChoices(expertTemplates)}
                     />
                   </Form.Item>
                 ) : null
@@ -2826,15 +3041,7 @@ export default function UsersListPanel() {
                     </div>
                   );
                 }
-                return (
-                  <Form.Item
-                    label={t("adminUsers.colPermissions")}
-                    name="permissions"
-                    className={styles.createUserPermItem}
-                  >
-                    <PermissionCheckboxPicker catalog={permCatalog} />
-                  </Form.Item>
-                );
+                return <CollapsiblePermissionsField catalog={permCatalog} />;
               }}
             </Form.Item>
           </div>
