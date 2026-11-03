@@ -10,6 +10,7 @@ import {
   type DesktopClientSettings,
   type DesktopUpdateCheckResult,
 } from "../../../utils/desktopBridge";
+import { useUpdateStatus } from "../../../hooks/useUpdateStatus";
 import { TabPanelHeader } from "./TabPanelHeader";
 import styles from "./UpdateConfig.module.less";
 
@@ -18,14 +19,27 @@ const { confirm } = Modal;
 /**
  * Desktop-shell update panel. The shell detects/downloads/installs the whole
  * release (shell + Dashboard + Python runtime); this panel only reads the shell
- * channel preference, triggers a shell check, and confirms the upgrade in the
- * page. It never calls the Python self-update API.
+ * channel preference. Detection only lights the shared update icon; this page
+ * is where the version and confirm dialog appear. It never calls the Python
+ * self-update API.
  */
 export default function DesktopUpdatePanel() {
   const { t } = useTranslation();
+  const { status, refreshStatus } = useUpdateStatus();
   const [settings, setSettings] = useState<DesktopClientSettings | null>(null);
   const [checking, setChecking] = useState(false);
-  const [result, setResult] = useState<DesktopUpdateCheckResult | null>(null);
+  const result: DesktopUpdateCheckResult | null = status
+    ? {
+        status: status.error
+          ? "error"
+          : status.has_update
+            ? "update-available"
+            : "up-to-date",
+        currentVersion: status.current_version,
+        latestVersion: status.latest_version,
+        error: status.error,
+      }
+    : null;
 
   useEffect(() => {
     void getDesktopBridge()
@@ -34,27 +48,23 @@ export default function DesktopUpdatePanel() {
       .catch(() => {});
   }, []);
 
-  const handleStableOnlyChange = useCallback(async (checked: boolean) => {
-    const next = await getDesktopBridge()?.clientSettings.set({ stableOnly: checked });
-    if (next) setSettings(next);
-  }, []);
+  const handleStableOnlyChange = useCallback(
+    async (checked: boolean) => {
+      const next = await getDesktopBridge()?.clientSettings.set({ stableOnly: checked });
+      if (next) setSettings(next);
+      await refreshStatus(true);
+    },
+    [refreshStatus],
+  );
 
   const handleCheck = useCallback(async () => {
     setChecking(true);
     try {
-      const res = await getDesktopBridge()?.checkForUpdates();
-      if (res) setResult(res);
-    } catch {
-      setResult({
-        status: "error",
-        currentVersion: "",
-        latestVersion: null,
-        error: t("advancedSettings.update.networkError"),
-      });
+      await refreshStatus(true);
     } finally {
       setChecking(false);
     }
-  }, [t]);
+  }, [refreshStatus]);
 
   const handleUpgrade = useCallback(() => {
     const latest = result?.latestVersion;

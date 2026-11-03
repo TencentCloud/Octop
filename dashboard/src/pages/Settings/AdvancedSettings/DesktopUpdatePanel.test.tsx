@@ -41,13 +41,11 @@ describe("<DesktopUpdatePanel />", () => {
     const user = userEvent.setup();
     render(<DesktopUpdatePanel />);
 
+    expect(await screen.findByText("v1.0.4")).toBeInTheDocument();
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+
     await user.click(
-      await screen.findByRole("button", {
-        name: "advancedSettings.update.checkButton",
-      }),
-    );
-    await user.click(
-      await screen.findByRole("button", {
+      screen.getByRole("button", {
         name: "advancedSettings.update.upgradeButton",
       }),
     );
