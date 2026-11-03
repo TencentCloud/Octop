@@ -673,6 +673,10 @@ class AgentManager:
                     "failed",
                     error=AGENT_START_TIMEOUT,
                 )
+            except OctopError as exc:
+                if exc.code != ErrorCode.AGENT_NOT_FOUND:
+                    raise
+                logger.info("Agent %s was deleted during boot; skipping", row.agent_id)
 
     async def shutdown(self) -> None:
         self._reclaim_pending.clear()
