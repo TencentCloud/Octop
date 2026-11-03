@@ -200,11 +200,11 @@ describe("desktopChrome", () => {
       "utf8",
     );
     expect(native).toContain(`CHROME_ROW_HEIGHT = ${DESKTOP_CHROME_HEIGHT}`);
-    expect(native).toContain("x: 23");
-    expect(native).toContain("y: 23");
-    expect(MAC_TRAFFIC_LIGHT_INSET).toBe(23);
+    expect(native).toContain("const TRAFFIC_LIGHT_SPAN = 60");
+    expect(native).toContain("const TRAFFIC_LIGHT_INSET = 4");
+    expect(MAC_TRAFFIC_LIGHT_INSET).toBe(4);
     expect(WINDOW_CONTROLS_INSET.mac).toBe(
-      MAC_TRAFFIC_LIGHT_INSET + MAC_TRAFFIC_LIGHT_SPAN,
+      MAC_TRAFFIC_LIGHT_INSET * 2 + MAC_TRAFFIC_LIGHT_SPAN,
     );
     const heights = [...theme.matchAll(/--fn-chat-chrome-height:\s*(\d+)px/g)];
     expect(heights.length).toBeGreaterThan(0);

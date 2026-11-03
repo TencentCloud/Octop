@@ -24,12 +24,17 @@ import type { BrowserWindow, BrowserWindowConstructorOptions } from "electron";
 export const CHROME_ROW_HEIGHT = 58;
 
 /**
- * 交通灯距窗口左缘和上缘的距离相同。
- * 顶栏高 58px，按钮约 12px，垂直居中放在 (58-12)/2 = 23，左边距取同一个值。
+ * macOS 27 交通灯着色区域约 60px。左右各留 4px，收起导航的预留宽度与此相同
+ * （Dashboard `WINDOW_CONTROLS_INSET.mac` = 68）。
+ * 水平位置用左边距。灯贴近窗口顶缘，功能栏内容跟在灯下面。
  */
+const TRAFFIC_LIGHT_SPAN = 60;
+const TRAFFIC_LIGHT_INSET = 4;
+const TRAFFIC_LIGHT_TOP = 8;
+
 export const TRAFFIC_LIGHT_POSITION = {
-  x: 23,
-  y: 23,
+  x: TRAFFIC_LIGHT_INSET,
+  y: TRAFFIC_LIGHT_TOP,
 } as const;
 
 /** Theme the renderer reports; ``scheme`` keeps "follow the system" live. */

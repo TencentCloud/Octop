@@ -502,16 +502,16 @@ export default function Sidebar({
   const brandInner = (
     <>
       <img
-        src={isRailCollapsed ? "/pwa-192.png" : wordmarkSrc}
+        src={isRailCollapsed ? publicUrl("logo_mark.svg") : wordmarkSrc}
         alt="Octop"
+        className={isRailCollapsed ? styles.brandMarkCollapsed : undefined}
         style={{
-          height: isRailCollapsed ? 32 : isMobile ? 38 : 36,
-          width: isRailCollapsed ? 32 : "auto",
-          maxWidth: isRailCollapsed ? 32 : isMobile ? 190 : 160,
+          height: isRailCollapsed ? 26 : isMobile ? 38 : 36,
+          width: "auto",
+          maxWidth: isRailCollapsed ? 36 : isMobile ? 190 : 160,
           objectFit: "contain",
           display: "block",
           flexShrink: 0,
-          borderRadius: isRailCollapsed ? 8 : undefined,
         }}
       />
       {!isRailCollapsed && !isMobile && (
@@ -529,7 +529,11 @@ export default function Sidebar({
       className={styles.sidebarUser}
       style={{
         flexShrink: 0,
-        padding: isRailCollapsed ? "10px 0" : "10px 12px",
+        // Collapsed avatar is centered, so its left gap is half the leftover
+        // rail width. The same gap sits under it. 32px is `.accountAvatar`.
+        padding: isRailCollapsed
+          ? `10px 0 calc((max(${COLLAPSED_WIDTH}px, var(--window-controls-inset-start, 0px)) - 32px) / 2)`
+          : "10px 12px",
         display: "flex",
         justifyContent: isRailCollapsed ? "center" : "stretch",
       }}
@@ -589,21 +593,19 @@ export default function Sidebar({
   ) : null;
 
   const classicNavBody = isRailCollapsed ? (
-    <div style={{ padding: "8px 0" }}>
-      <SidebarCollapsedIconNav
-        items={navSections.flatMap((section) => {
-          if (section.id && isGroupCollapsed(section.id)) {
-            return [];
-          }
-          return section.items;
-        })}
-        selectedKey={selectedKey}
-        onNavigate={handleNavigate}
-        role={role}
-        hasUpdate={hasUpdate}
-        t={t}
-      />
-    </div>
+    <SidebarCollapsedIconNav
+      items={navSections.flatMap((section) => {
+        if (section.id && isGroupCollapsed(section.id)) {
+          return [];
+        }
+        return section.items;
+      })}
+      selectedKey={selectedKey}
+      onNavigate={handleNavigate}
+      role={role}
+      hasUpdate={hasUpdate}
+      t={t}
+    />
   ) : (
     <NavList
       sections={navSections}
@@ -621,7 +623,7 @@ export default function Sidebar({
   const minimalNavBody = (
     <div className={styles.minimalNavBody}>
       {isRailCollapsed ? (
-        <div style={{ padding: "8px 0", flexShrink: 0 }}>
+        <div style={{ flexShrink: 0 }}>
           <SidebarCollapsedIconNav
             items={primaryItems}
             selectedKey={selectedKey}
@@ -821,7 +823,8 @@ export default function Sidebar({
             alignItems: "center",
             gap: 6,
             minWidth: 0,
-            padding: isRailCollapsed ? "12px 0" : "14px 8px 10px 14px",
+            // Same top inset either way, so expanding only widens the bar.
+            padding: isRailCollapsed ? "10px 0 12px" : "10px 8px 10px 14px",
             justifyContent: isRailCollapsed ? "center" : "flex-start",
             flexShrink: 0,
           }}

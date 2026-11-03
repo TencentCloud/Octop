@@ -21,7 +21,7 @@ export default function SidebarCollapsedIconNav({
   t: TFunction<"translation", undefined>;
 }) {
   return (
-    <>
+    <div className={styles.collapsedNav}>
       {items.map((item) => {
         const active = selectedKey === item.key;
         const showUpdateBadge =
@@ -41,45 +41,15 @@ export default function SidebarCollapsedIconNav({
           >
             <button
               type="button"
+              className={
+                active
+                  ? `${styles.collapsedNavBtn} ${styles.collapsedNavBtnActive}`
+                  : styles.collapsedNavBtn
+              }
               onClick={() => onNavigate(item.path)}
+              onMouseEnter={() => prefetchRoute(item.path)}
               aria-label={t(item.labelKey)}
               aria-current={active ? "page" : undefined}
-              style={{
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                // Native window controls can widen the collapsed rail on macOS.
-                // Match its actual width so icons align with the logo and footer.
-                width: "100%",
-                boxSizing: "border-box",
-                padding: 0,
-                height: 40,
-                border: "none",
-                background: active
-                  ? "var(--fn-sidebar-item-active-bg)"
-                  : "transparent",
-                color: active
-                  ? "var(--fn-sidebar-item-active-text)"
-                  : "var(--fn-text-tertiary)",
-                cursor: "pointer",
-                transition: "all var(--fn-transition-fast)",
-                marginBottom: 2,
-                position: "relative",
-              }}
-              onMouseEnter={(e) => {
-                prefetchRoute(item.path);
-                if (!active) {
-                  e.currentTarget.style.background =
-                    "var(--fn-sidebar-item-hover)";
-                  e.currentTarget.style.color = "var(--fn-text-primary)";
-                }
-              }}
-              onMouseLeave={(e) => {
-                if (!active) {
-                  e.currentTarget.style.background = "transparent";
-                  e.currentTarget.style.color = "var(--fn-text-tertiary)";
-                }
-              }}
             >
               {item.icon}
               {showUpdateBadge ? (
@@ -94,23 +64,7 @@ export default function SidebarCollapsedIconNav({
               ) : null}
               {item.badge && (
                 <span
-                  className="nav-badge-new nav-badge-new--collapsed"
-                  style={{
-                    position: "absolute",
-                    top: 4,
-                    right: 6,
-                    zIndex: 2,
-                    fontSize: 7,
-                    fontWeight: 700,
-                    width: 14,
-                    height: 14,
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    borderRadius: "50%",
-                    lineHeight: 1,
-                    pointerEvents: "none",
-                  }}
+                  className={`nav-badge-new nav-badge-new--collapsed ${styles.collapsedNavBadge}`}
                 >
                   {item.badge.charAt(0).toUpperCase()}
                 </span>
@@ -119,6 +73,6 @@ export default function SidebarCollapsedIconNav({
           </Tooltip>
         );
       })}
-    </>
+    </div>
   );
 }

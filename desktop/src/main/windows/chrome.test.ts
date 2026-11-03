@@ -29,13 +29,13 @@ function onPlatform(platform: NodeJS.Platform, run: () => void): void {
   }
 }
 
-test("macOS 交通灯距左缘和上缘的距离相同", () => {
+test("macOS 交通灯落在收起导航内，并贴近窗口顶缘", () => {
   assert.equal(chrome.CHROME_ROW_HEIGHT, 58);
-  assert.deepEqual(chrome.TRAFFIC_LIGHT_POSITION, { x: 23, y: 23 });
+  assert.deepEqual(chrome.TRAFFIC_LIGHT_POSITION, { x: 4, y: 8 });
   onPlatform("darwin", () => {
     assert.deepEqual(chrome.windowChrome("light"), {
       titleBarStyle: "hidden",
-      trafficLightPosition: { x: 23, y: 23 },
+      trafficLightPosition: { x: 4, y: 8 },
     });
   });
 });
