@@ -1,5 +1,6 @@
 {
   "id": "productivity",
+  "version": "1.0.0",
   "scene": "hr",
   "label": {
     "zh": "效率专家",

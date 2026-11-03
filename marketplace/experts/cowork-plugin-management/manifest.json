@@ -1,5 +1,6 @@
 {
   "id": "cowork-plugin-management",
+  "version": "1.0.0",
   "scene": "tech",
   "label": {
     "zh": "插件管理专家",

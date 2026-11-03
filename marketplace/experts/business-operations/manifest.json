@@ -1,5 +1,6 @@
 {
   "id": "business-operations",
+  "version": "1.0.0",
   "scene": "hr",
   "label": {
     "zh": "业务流程专家",

@@ -1,5 +1,6 @@
 {
   "id": "meituan-living-assistant",
+  "version": "1.0.0",
   "scene": "lifestyle",
   "label": {
     "zh": "美团生活助手",

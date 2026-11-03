@@ -1,0 +1,160 @@
+{
+  "id": "mysticism-lunar-almanac",
+  "version": "1.0.0",
+  "scene": "mysticism",
+  "sub_scene": "lunar-almanac",
+  "label": {
+    "zh": "黄历择吉专家",
+    "en": "Almanac Date Expert"
+  },
+  "description": {
+    "zh": "覆盖黄历择吉从「公历农历转换」到「黄道吉日 + 彭祖百忌 + 神煞方位」再到「节日民俗 + 佛道多历」的全维度工具集，全部离线/免 API Key",
+    "en": "Convert solar and lunar dates, find auspicious days, read Pengzu taboos and directional spirits, and compare festivals and Buddhist and Daoist calendars. No API key."
+  },
+  "welcome_message": {
+    "zh": "我来帮你做「公农历转换与黄历主驱动」",
+    "en": "I'll help you with Convert dates and open the almanac."
+  },
+  "icon_name": "sparkles",
+  "icon_url": "https://cloudcache.tencent-cloud.com/qcloud/tea/app/skillhub/assets/source/ai-buddy-decouple/expert-profiles/mysticism-lunar-almanac.v20260702.avif",
+  "color": "#7c3aed",
+  "prompt_files": [
+    "SOUL.md"
+  ],
+  "quick_prompts": [
+    {
+      "title": {
+        "zh": "公农历转换与黄历主驱动",
+        "en": "Convert dates and open the almanac"
+      },
+      "description": {
+        "zh": "生成基础黄历字段表",
+        "en": "A basic almanac field table"
+      },
+      "prompt": {
+        "zh": "请作为「黄历择吉专家」，帮我完成「公农历转换与黄历主驱动」。\n我的情况/目标/材料是：\n",
+        "en": "As the Almanac Date Expert, help me complete “Convert dates and open the almanac”.\nMy context, goals, or materials are:\n"
+      },
+      "color": "#e8f4ff",
+      "icon_name": "trending-up"
+    },
+    {
+      "title": {
+        "zh": "黄道吉日与传统节日补全",
+        "en": "Find auspicious days and festivals"
+      },
+      "description": {
+        "zh": "生成黄道吉日与节日补全报告",
+        "en": "Auspicious days and traditional festivals"
+      },
+      "prompt": {
+        "zh": "请作为「黄历择吉专家」，帮我完成「黄道吉日与传统节日补全」。\n我的情况/目标/材料是：\n",
+        "en": "As the Almanac Date Expert, help me complete “Find auspicious days and festivals”.\nMy context, goals, or materials are:\n"
+      },
+      "color": "#fef3c7",
+      "icon_name": "file-text"
+    },
+    {
+      "title": {
+        "zh": "工程化择日复算",
+        "en": "Recalculate candidate dates"
+      },
+      "description": {
+        "zh": "生成择日候选日期排序表",
+        "en": "Candidate dates ranked for the purpose"
+      },
+      "prompt": {
+        "zh": "请作为「黄历择吉专家」，帮我完成「工程化择日复算」。\n我的情况/目标/材料是：\n",
+        "en": "As the Almanac Date Expert, help me complete “Recalculate candidate dates”.\nMy context, goals, or materials are:\n"
+      },
+      "color": "#dcfce7",
+      "icon_name": "list-todo"
+    },
+    {
+      "title": {
+        "zh": "彭祖百忌与神煞方位深读",
+        "en": "Read taboos and directions"
+      },
+      "description": {
+        "zh": "生成候选日期的彭祖百忌 + 神煞方位详表",
+        "en": "Pengzu taboos and directional details"
+      },
+      "prompt": {
+        "zh": "请作为「黄历择吉专家」，帮我完成「彭祖百忌与神煞方位深读」。\n我的情况/目标/材料是：\n",
+        "en": "As the Almanac Date Expert, help me complete “Read taboos and directions”.\nMy context, goals, or materials are:\n"
+      },
+      "color": "#f1f5f9",
+      "icon_name": "presentation"
+    },
+    {
+      "title": {
+        "zh": "节日民俗与跨文化对照",
+        "en": "Compare festival customs"
+      },
+      "description": {
+        "zh": "生成跨文化节日民俗对照表",
+        "en": "A cross-cultural festival comparison"
+      },
+      "prompt": {
+        "zh": "请作为「黄历择吉专家」，帮我完成「节日民俗与跨文化对照」。\n我的情况/目标/材料是：\n",
+        "en": "As the Almanac Date Expert, help me complete “Compare festival customs”.\nMy context, goals, or materials are:\n"
+      },
+      "color": "#fff1f2",
+      "icon_name": "presentation"
+    },
+    {
+      "title": {
+        "zh": "佛道多历对照（按需）",
+        "en": "Compare Buddhist and Daoist calendars"
+      },
+      "description": {
+        "zh": "生成佛历/道历多历对照说明",
+        "en": "A Buddhist and Daoist calendar note"
+      },
+      "prompt": {
+        "zh": "请作为「黄历择吉专家」，帮我完成「佛道多历对照（按需）」。\n我的情况/目标/材料是：\n",
+        "en": "As the Almanac Date Expert, help me complete “Compare Buddhist and Daoist calendars”.\nMy context, goals, or materials are:\n"
+      },
+      "color": "#eef2ff",
+      "icon_name": "file-text"
+    }
+  ],
+  "task_examples": {
+    "zh": [
+      "每天「09:00」帮我完成「公农历转换与黄历主驱动」并把结果发给我，任务创建后立即启用",
+      "每个工作日「18:00」帮我完成「黄道吉日与传统节日补全」并把结果发给我",
+      "每周一「10:00」帮我完成「工程化择日复算」并把结果发给我",
+      "每周五「17:00」帮我完成「彭祖百忌与神煞方位深读」并把结果发给我",
+      "每天「08:00」帮我完成「节日民俗与跨文化对照」并把结果发给我",
+      "每月 1 日「09:30」帮我完成「佛道多历对照（按需）」并把结果发给我"
+    ],
+    "en": [
+      "Every day at 09:00, help me complete “Convert dates and open the almanac” and send the result — enable immediately",
+      "Every weekday at 18:00, help me complete “Find auspicious days and festivals” and send the result",
+      "Every Monday at 10:00, help me complete “Recalculate candidate dates” and send the result",
+      "Every Friday at 17:00, help me complete “Read taboos and directions” and send the result",
+      "Every day at 08:00, help me complete “Compare festival customs” and send the result",
+      "On the 1st of each month at 09:30, help me complete “Compare Buddhist and Daoist calendars” and send the result"
+    ]
+  },
+  "source": {
+    "type": "skillhub",
+    "kind": "skillset",
+    "slug": "mysticism-lunar-almanac",
+    "scene": "mysticism",
+    "sub_scene": "lunar-almanac"
+  },
+  "skillhub": {
+    "slug": "mysticism-lunar-almanac",
+    "scene": "mysticism",
+    "sub_scene": "lunar-almanac",
+    "skill_slugs": [
+      "zhongguo-nongli-huangli-jixiong",
+      "chinese-calendar-cn",
+      "lao-huangli",
+      "daily-horoscope",
+      "festival-query",
+      "1coos-calendar-cn"
+    ]
+  }
+}

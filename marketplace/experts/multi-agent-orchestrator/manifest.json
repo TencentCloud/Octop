@@ -1,5 +1,6 @@
 {
   "id": "multi-agent-orchestrator",
+  "version": "1.0.0",
   "scene": "tech",
   "label": {
     "zh": "协作编排专家",

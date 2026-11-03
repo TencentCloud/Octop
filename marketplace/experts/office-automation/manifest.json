@@ -1,5 +1,6 @@
 {
   "id": "office-automation",
+  "version": "1.0.0",
   "scene": "hr",
   "label": {
     "zh": "小办 · 办公自动化",

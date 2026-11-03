@@ -1,5 +1,6 @@
 {
   "id": "design",
+  "version": "1.0.0",
   "scene": "design",
   "label": {
     "zh": "设计专家",

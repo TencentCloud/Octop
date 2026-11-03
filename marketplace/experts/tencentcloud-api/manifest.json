@@ -1,5 +1,6 @@
 {
   "id": "tencentcloud-api",
+  "version": "1.0.0",
   "scene": "tech",
   "label": {
     "zh": "腾讯云 API 专家",

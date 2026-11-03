@@ -1,5 +1,6 @@
 {
   "id": "stock-assistant",
+  "version": "1.0.0",
   "scene": "finance",
   "label": {
     "zh": "老钱 · 证券观察员",

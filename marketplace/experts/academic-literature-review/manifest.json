@@ -1,0 +1,160 @@
+{
+  "id": "academic-literature-review",
+  "version": "1.0.0",
+  "scene": "academic",
+  "sub_scene": "literature-review",
+  "label": {
+    "zh": "文献综述专家",
+    "en": "Literature Review Expert"
+  },
+  "description": {
+    "zh": "从透明严谨的双轮深度调研（APA引用/证据分级/用户确认）与专精文献综述论文分析学术写作、12要素结构化论文拆解（研究背景/问题/方法/贡献/不足/展望）与8阶段系统性中英文文献回顾，到论文大纲文献综述框架摘要生成引用格式规范与学术写作文献综述研究方法撰写的完整文献综述工作流。覆盖文献调研、论文拆解、综述撰写、格式规范全链路。",
+    "en": "Literature review workflow covering two-pass deep research, academic paper analysis, structured paper decomposition, systematic Chinese and English literature review, review outline generation, citation formatting, and academic prose drafting."
+  },
+  "welcome_message": {
+    "zh": "我来帮你做「双轮深度调研」",
+    "en": "I'll help you with Two-Pass Deep Research."
+  },
+  "icon_name": "book-open",
+  "icon_url": "https://cloudcache.tencent-cloud.com/qcloud/tea/app/skillhub/assets/source/ai-buddy-decouple/expert-profiles/academic-literature-review.v20260625.avif",
+  "color": "#4f46e5",
+  "prompt_files": [
+    "SOUL.md"
+  ],
+  "quick_prompts": [
+    {
+      "title": {
+        "zh": "双轮深度调研",
+        "en": "Two-Pass Deep Research"
+      },
+      "description": {
+        "zh": "生成双轮调研报告和分级证据清单",
+        "en": "Search strategy and source shortlist"
+      },
+      "prompt": {
+        "zh": "请作为「文献综述专家」，帮我完成「双轮深度调研」。\n我的情况/目标/材料是：\n",
+        "en": "As the Literature Review Expert, help me complete “Two-Pass Deep Research”.\nMy context, goals, or materials are:\n"
+      },
+      "color": "#e8f4ff",
+      "icon_name": "file-text"
+    },
+    {
+      "title": {
+        "zh": "文献综述与论文分析",
+        "en": "Literature Review and Paper Analysis"
+      },
+      "description": {
+        "zh": "生成文献综述框架和论文关系图谱",
+        "en": "Annotated literature notes"
+      },
+      "prompt": {
+        "zh": "请作为「文献综述专家」，帮我完成「文献综述与论文分析」。\n我的情况/目标/材料是：\n",
+        "en": "As the Literature Review Expert, help me complete “Literature Review and Paper Analysis”.\nMy context, goals, or materials are:\n"
+      },
+      "color": "#fef3c7",
+      "icon_name": "activity"
+    },
+    {
+      "title": {
+        "zh": "论文结构化深度拆解",
+        "en": "Structured Paper Decomposition"
+      },
+      "description": {
+        "zh": "生成论文深度拆解表和要素分析",
+        "en": "Structured paper matrix"
+      },
+      "prompt": {
+        "zh": "请作为「文献综述专家」，帮我完成「论文结构化深度拆解」。\n我的情况/目标/材料是：\n",
+        "en": "As the Literature Review Expert, help me complete “Structured Paper Decomposition”.\nMy context, goals, or materials are:\n"
+      },
+      "color": "#dcfce7",
+      "icon_name": "activity"
+    },
+    {
+      "title": {
+        "zh": "系统性中英文文献回顾",
+        "en": "Systematic Chinese and English Literature Review"
+      },
+      "description": {
+        "zh": "生成系统性文献回顾报告",
+        "en": "Systematic review synthesis"
+      },
+      "prompt": {
+        "zh": "请作为「文献综述专家」，帮我完成「系统性中英文文献回顾」。\n我的情况/目标/材料是：\n",
+        "en": "As the Literature Review Expert, help me complete “Systematic Chinese and English Literature Review”.\nMy context, goals, or materials are:\n"
+      },
+      "color": "#f1f5f9",
+      "icon_name": "activity"
+    },
+    {
+      "title": {
+        "zh": "综述框架与大纲生成",
+        "en": "Review Framework and Outline Generation"
+      },
+      "description": {
+        "zh": "生成综述大纲、框架和格式规范文档",
+        "en": "Literature review outline"
+      },
+      "prompt": {
+        "zh": "请作为「文献综述专家」，帮我完成「综述框架与大纲生成」。\n我的情况/目标/材料是：\n",
+        "en": "As the Literature Review Expert, help me complete “Review Framework and Outline Generation”.\nMy context, goals, or materials are:\n"
+      },
+      "color": "#fff1f2",
+      "icon_name": "presentation"
+    },
+    {
+      "title": {
+        "zh": "学术综述正文撰写",
+        "en": "Academic Review Drafting"
+      },
+      "description": {
+        "zh": "按学术规范撰写文献综述正文",
+        "en": "Draft literature review"
+      },
+      "prompt": {
+        "zh": "请作为「文献综述专家」，帮我完成「学术综述正文撰写」。\n我的情况/目标/材料是：\n",
+        "en": "As the Literature Review Expert, help me complete “Academic Review Drafting”.\nMy context, goals, or materials are:\n"
+      },
+      "color": "#eef2ff",
+      "icon_name": "activity"
+    }
+  ],
+  "task_examples": {
+    "zh": [
+      "每天「09:00」帮我完成「双轮深度调研」并把结果发给我，任务创建后立即启用",
+      "每个工作日「18:00」帮我完成「文献综述与论文分析」并把结果发给我",
+      "每周一「10:00」帮我完成「论文结构化深度拆解」并把结果发给我",
+      "每周五「17:00」帮我完成「系统性中英文文献回顾」并把结果发给我",
+      "每天「08:00」帮我完成「综述框架与大纲生成」并把结果发给我",
+      "每月 1 日「09:30」帮我完成「学术综述正文撰写」并把结果发给我"
+    ],
+    "en": [
+      "Every day at 09:00, help me complete “Two-Pass Deep Research” and send the result — enable immediately",
+      "Every weekday at 18:00, help me complete “Literature Review and Paper Analysis” and send the result",
+      "Every Monday at 10:00, help me complete “Structured Paper Decomposition” and send the result",
+      "Every Friday at 17:00, help me complete “Systematic Chinese and English Literature Review” and send the result",
+      "Every day at 08:00, help me complete “Review Framework and Outline Generation” and send the result",
+      "On the 1st of each month at 09:30, help me complete “Academic Review Drafting” and send the result"
+    ]
+  },
+  "source": {
+    "type": "skillhub",
+    "kind": "skillset",
+    "slug": "academic-literature-review",
+    "scene": "academic",
+    "sub_scene": "literature-review"
+  },
+  "skillhub": {
+    "slug": "academic-literature-review",
+    "scene": "academic",
+    "sub_scene": "literature-review",
+    "skill_slugs": [
+      "academic-deep-research-pro",
+      "academic-researcher",
+      "paper-analyzer",
+      "ai-powered-literature-review-skills",
+      "thesis-helper",
+      "academic-writing"
+    ]
+  }
+}

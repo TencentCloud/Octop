@@ -1,5 +1,6 @@
 {
   "id": "news-trend",
+  "version": "1.0.0",
   "scene": "media",
   "label": {
     "zh": "热点记者",

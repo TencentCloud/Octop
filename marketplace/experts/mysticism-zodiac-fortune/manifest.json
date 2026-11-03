@@ -1,0 +1,160 @@
+{
+  "id": "mysticism-zodiac-fortune",
+  "version": "1.0.0",
+  "scene": "mysticism",
+  "sub_scene": "zodiac-fortune",
+  "label": {
+    "zh": "生肖星座运势专家",
+    "en": "Zodiac And Horoscope Forecast Expert"
+  },
+  "description": {
+    "zh": "覆盖星座生肖运势从「主驱动每日运势」到「任意日期 / 周月运势 / 行运 / 本命盘」再到「跨体系融合 + 28 星宿合盘」的完整工具集，全部免 API Key。",
+    "en": "Zodiac and horoscope workflow for daily astrology, date-based fortune lookup, weekly and monthly forecasts, zodiac and Chinese zodiac fusion, natal chart consultation, and optional 28 lunar mansion compatibility reading."
+  },
+  "welcome_message": {
+    "zh": "我来帮你做「星座主驱动每日运势」",
+    "en": "I'll help you with Sun-Sign-Led Daily Forecast (Process)."
+  },
+  "icon_name": "sparkles",
+  "icon_url": "https://cloudcache.tencent-cloud.com/qcloud/tea/app/skillhub/assets/source/ai-buddy-decouple/expert-profiles/mysticism-zodiac-fortune.v20260702.avif",
+  "color": "#7c3aed",
+  "prompt_files": [
+    "SOUL.md"
+  ],
+  "quick_prompts": [
+    {
+      "title": {
+        "zh": "星座主驱动每日运势",
+        "en": "Sun-Sign-Led Daily Forecast (Process)"
+      },
+      "description": {
+        "zh": "生成每日全维度星座运势基线",
+        "en": "Daily horoscope"
+      },
+      "prompt": {
+        "zh": "请作为「生肖星座运势专家」，帮我完成「星座主驱动每日运势」。\n我的情况/目标/材料是：\n",
+        "en": "As the Zodiac And Horoscope Forecast Expert, help me complete “Sun-Sign-Led Daily Forecast (Process)”.\nMy context, goals, or materials are:\n"
+      },
+      "color": "#e8f4ff",
+      "icon_name": "activity"
+    },
+    {
+      "title": {
+        "zh": "任意日期运势查询",
+        "en": "Any-Date Fortune Lookup (Process)"
+      },
+      "description": {
+        "zh": "生成指定日期的运势报告",
+        "en": "Date-based forecast"
+      },
+      "prompt": {
+        "zh": "请作为「生肖星座运势专家」，帮我完成「任意日期运势查询」。\n我的情况/目标/材料是：\n",
+        "en": "As the Zodiac And Horoscope Forecast Expert, help me complete “Any-Date Fortune Lookup (Process)”.\nMy context, goals, or materials are:\n"
+      },
+      "color": "#fef3c7",
+      "icon_name": "file-text"
+    },
+    {
+      "title": {
+        "zh": "周月运势 + 元素形态",
+        "en": "Weekly and Monthly Forecast With Element and Modality (Process)"
+      },
+      "description": {
+        "zh": "生成周月主题 + 元素形态分析",
+        "en": "Weekly or monthly forecast"
+      },
+      "prompt": {
+        "zh": "请作为「生肖星座运势专家」，帮我完成「周月运势 + 元素形态」。\n我的情况/目标/材料是：\n",
+        "en": "As the Zodiac And Horoscope Forecast Expert, help me complete “Weekly and Monthly Forecast With Element and Modality (Process)”.\nMy context, goals, or materials are:\n"
+      },
+      "color": "#dcfce7",
+      "icon_name": "activity"
+    },
+    {
+      "title": {
+        "zh": "星座 + 生肖跨体系融合",
+        "en": "Western Zodiac and Chinese Zodiac Fusion (Process)"
+      },
+      "description": {
+        "zh": "生成星座+生肖融合的五维度运势",
+        "en": "Cross-system zodiac reading"
+      },
+      "prompt": {
+        "zh": "请作为「生肖星座运势专家」，帮我完成「星座 + 生肖跨体系融合」。\n我的情况/目标/材料是：\n",
+        "en": "As the Zodiac And Horoscope Forecast Expert, help me complete “Western Zodiac and Chinese Zodiac Fusion (Process)”.\nMy context, goals, or materials are:\n"
+      },
+      "color": "#f1f5f9",
+      "icon_name": "activity"
+    },
+    {
+      "title": {
+        "zh": "本命盘深度咨询",
+        "en": "Natal Chart Deep Consultation (Process)"
+      },
+      "description": {
+        "zh": "生成本命盘解读报告 + 生日图",
+        "en": "Natal chart consultation notes"
+      },
+      "prompt": {
+        "zh": "请作为「生肖星座运势专家」，帮我完成「本命盘深度咨询」。\n我的情况/目标/材料是：\n",
+        "en": "As the Zodiac And Horoscope Forecast Expert, help me complete “Natal Chart Deep Consultation (Process)”.\nMy context, goals, or materials are:\n"
+      },
+      "color": "#fff1f2",
+      "icon_name": "activity"
+    },
+    {
+      "title": {
+        "zh": "28 星宿合盘配对（按需）",
+        "en": "Twenty-Eight Lunar Mansion Compatibility"
+      },
+      "description": {
+        "zh": "生成28 星宿人格 + 配对结果（按需）",
+        "en": "Compatibility reading"
+      },
+      "prompt": {
+        "zh": "请作为「生肖星座运势专家」，帮我完成「28 星宿合盘配对（按需）」。\n我的情况/目标/材料是：\n",
+        "en": "As the Zodiac And Horoscope Forecast Expert, help me complete “Twenty-Eight Lunar Mansion Compatibility”.\nMy context, goals, or materials are:\n"
+      },
+      "color": "#eef2ff",
+      "icon_name": "activity"
+    }
+  ],
+  "task_examples": {
+    "zh": [
+      "每天「09:00」帮我完成「星座主驱动每日运势」并把结果发给我，任务创建后立即启用",
+      "每个工作日「18:00」帮我完成「任意日期运势查询」并把结果发给我",
+      "每周一「10:00」帮我完成「周月运势 + 元素形态」并把结果发给我",
+      "每周五「17:00」帮我完成「星座 + 生肖跨体系融合」并把结果发给我",
+      "每天「08:00」帮我完成「本命盘深度咨询」并把结果发给我",
+      "每月 1 日「09:30」帮我完成「28 星宿合盘配对（按需）」并把结果发给我"
+    ],
+    "en": [
+      "Every day at 09:00, help me complete “Sun-Sign-Led Daily Forecast (Process)” and send the result — enable immediately",
+      "Every weekday at 18:00, help me complete “Any-Date Fortune Lookup (Process)” and send the result",
+      "Every Monday at 10:00, help me complete “Weekly and Monthly Forecast With Element and Modality (Process)” and send the result",
+      "Every Friday at 17:00, help me complete “Western Zodiac and Chinese Zodiac Fusion (Process)” and send the result",
+      "Every day at 08:00, help me complete “Natal Chart Deep Consultation (Process)” and send the result",
+      "On the 1st of each month at 09:30, help me complete “Twenty-Eight Lunar Mansion Compatibility” and send the result"
+    ]
+  },
+  "source": {
+    "type": "skillhub",
+    "kind": "skillset",
+    "slug": "mysticism-zodiac-fortune",
+    "scene": "mysticism",
+    "sub_scene": "zodiac-fortune"
+  },
+  "skillhub": {
+    "slug": "mysticism-zodiac-fortune",
+    "scene": "mysticism",
+    "sub_scene": "zodiac-fortune",
+    "skill_slugs": [
+      "daily-astro",
+      "horoscope-daily",
+      "western-sun-signs",
+      "fortune-daily",
+      "aistro",
+      "star-mansion-master"
+    ]
+  }
+}

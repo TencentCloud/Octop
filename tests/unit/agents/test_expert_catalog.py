@@ -64,7 +64,7 @@ def test_resolve_expert_icon_url_uses_scene_for_skillhub() -> None:
 
     assert (
         resolve_expert_icon_url(
-            "skillhub-skillset-healthcare-nursing-plan",
+            "healthcare-nursing-plan",
             None,
             scene="healthcare",
         )
@@ -73,8 +73,8 @@ def test_resolve_expert_icon_url_uses_scene_for_skillhub() -> None:
     # Do not invent missing per-skillset SVG paths.
     assert (
         resolve_expert_icon_url(
-            "skillhub-skillset-healthcare-nursing-plan",
-            "/experts/avatars/skillhub-skillset-healthcare-nursing-plan.svg",
+            "healthcare-nursing-plan",
+            "/experts/avatars/healthcare-nursing-plan.svg",
             scene="healthcare",
         )
         == "/experts/avatars/scene-healthcare.svg"
@@ -109,12 +109,12 @@ def test_skillhub_market_manifest_gets_scene_icon_url(tmp_path: Path) -> None:
     from octop.infra.agents.experts.catalog import ExpertCatalog
 
     market_root = tmp_path / "market"
-    expert_dir = market_root / "skillhub-skillset-healthcare-nursing-plan"
+    expert_dir = market_root / "healthcare-nursing-plan"
     expert_dir.mkdir(parents=True)
     _write_manifest(
         expert_dir,
         extra={
-            "id": "skillhub-skillset-healthcare-nursing-plan",
+            "id": "healthcare-nursing-plan",
             "icon_name": "heart",
             "source": {"type": "skillhub", "scene": "healthcare"},
         },
@@ -124,7 +124,7 @@ def test_skillhub_market_manifest_gets_scene_icon_url(tmp_path: Path) -> None:
     (tmp_path / "bundled").mkdir()
     catalog.refresh()
 
-    expert = catalog.get("skillhub-skillset-healthcare-nursing-plan")
+    expert = catalog.get("healthcare-nursing-plan")
     assert expert is not None
     assert expert.summary.icon_url == "/experts/avatars/scene-healthcare.svg"
 

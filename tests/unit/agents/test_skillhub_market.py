@@ -122,11 +122,15 @@ def test_skillhub_manifest_welcome_keeps_chinese_when_summary_is_english() -> No
         summary="自动生成测试方案",
         summary_en="Generate test plans",
         scene="tech",
+        sub_scene="test-automation",
     )
 
     manifest = _expert_manifest(item, ["playwright", "pytest"])
 
-    assert manifest["id"] == "skillhub-skillset-tech-test-automation"
+    assert manifest["id"] == "tech-test-automation"
+    assert manifest["version"] == "1.0.0"
+    assert manifest["scene"] == "tech"
+    assert manifest["sub_scene"] == "test-automation"
     assert manifest["prompt_files"] == ["SOUL.md"]
     assert manifest["label"]["zh"] == "技术测试自动化专家"
     assert manifest["label"]["en"] == "Tech Test Automation Expert"

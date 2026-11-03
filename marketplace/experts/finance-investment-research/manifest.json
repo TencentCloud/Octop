@@ -1,0 +1,160 @@
+{
+  "id": "finance-investment-research",
+  "version": "1.0.0",
+  "scene": "finance",
+  "sub_scene": "investment-research",
+  "label": {
+    "zh": "投研报告专家",
+    "en": "Investment Research Expert"
+  },
+  "description": {
+    "zh": "从A股/美股实时行情数据获取到个股基本面深度研究、行业分析、DCF估值建模，再到自动生成专业投研报告PDF的完整投研工作流。覆盖买方基金经理视角的个股分析简报、投行级行业研究报告、价值投资估值框架，支持技术分析与交易信号输出。",
+    "en": "From A-share and US market data through company and industry research and a DCF model to a research report, including a buy-side brief and a value-investing valuation."
+  },
+  "welcome_message": {
+    "zh": "我来帮你做「获取A股市场数据」",
+    "en": "I'll help you with Pull A-share market data."
+  },
+  "icon_name": "candlestick-chart",
+  "icon_url": "https://cloudcache.tencent-cloud.com/qcloud/tea/app/skillhub/assets/source/ai-buddy-decouple/expert-profiles/finance-investment-research.v20260625.avif",
+  "color": "#059669",
+  "prompt_files": [
+    "SOUL.md"
+  ],
+  "quick_prompts": [
+    {
+      "title": {
+        "zh": "获取A股市场数据",
+        "en": "Pull A-share market data"
+      },
+      "description": {
+        "zh": "通过 AkShare 获取目标A股公司的实时行情、技术…",
+        "en": "Live quotes and technical data via AkShare"
+      },
+      "prompt": {
+        "zh": "请作为「投研报告专家」，帮我完成「获取A股市场数据」。\n我的情况/目标/材料是：\n",
+        "en": "As the Investment Research Expert, help me complete “Pull A-share market data”.\nMy context, goals, or materials are:\n"
+      },
+      "color": "#e8f4ff",
+      "icon_name": "trending-up"
+    },
+    {
+      "title": {
+        "zh": "获取美股/全球市场数据",
+        "en": "Pull US and global data"
+      },
+      "description": {
+        "zh": "获取美股目标公司的股价行情、财报数据和估值分析",
+        "en": "US price, filings, and valuation data"
+      },
+      "prompt": {
+        "zh": "请作为「投研报告专家」，帮我完成「获取美股/全球市场数据」。\n我的情况/目标/材料是：\n",
+        "en": "As the Investment Research Expert, help me complete “Pull US and global data”.\nMy context, goals, or materials are:\n"
+      },
+      "color": "#fef3c7",
+      "icon_name": "activity"
+    },
+    {
+      "title": {
+        "zh": "个股基本面深度研究",
+        "en": "Research the company"
+      },
+      "description": {
+        "zh": "以买方基金经理视角，对目标公司进行深度投资分析",
+        "en": "A buy-side investment memo"
+      },
+      "prompt": {
+        "zh": "请作为「投研报告专家」，帮我完成「个股基本面深度研究」。\n我的情况/目标/材料是：\n",
+        "en": "As the Investment Research Expert, help me complete “Research the company”.\nMy context, goals, or materials are:\n"
+      },
+      "color": "#dcfce7",
+      "icon_name": "activity"
+    },
+    {
+      "title": {
+        "zh": "行业深度研究",
+        "en": "Research the industry"
+      },
+      "description": {
+        "zh": "生成行业研究报告作为个股研究的宏观补充",
+        "en": "An industry report as context for the company"
+      },
+      "prompt": {
+        "zh": "请作为「投研报告专家」，帮我完成「行业深度研究」。\n我的情况/目标/材料是：\n",
+        "en": "As the Investment Research Expert, help me complete “Research the industry”.\nMy context, goals, or materials are:\n"
+      },
+      "color": "#f1f5f9",
+      "icon_name": "activity"
+    },
+    {
+      "title": {
+        "zh": "估值建模分析",
+        "en": "Build the valuation"
+      },
+      "description": {
+        "zh": "生成估值分析报告和投资评级",
+        "en": "A valuation and an investment rating"
+      },
+      "prompt": {
+        "zh": "请作为「投研报告专家」，帮我完成「估值建模分析」。\n我的情况/目标/材料是：\n",
+        "en": "As the Investment Research Expert, help me complete “Build the valuation”.\nMy context, goals, or materials are:\n"
+      },
+      "color": "#fff1f2",
+      "icon_name": "activity"
+    },
+    {
+      "title": {
+        "zh": "生成专业投研报告",
+        "en": "Write the research report"
+      },
+      "description": {
+        "zh": "整合前五步的数据和分析结论",
+        "en": "A report combining the data and conclusions"
+      },
+      "prompt": {
+        "zh": "请作为「投研报告专家」，帮我完成「生成专业投研报告」。\n我的情况/目标/材料是：\n",
+        "en": "As the Investment Research Expert, help me complete “Write the research report”.\nMy context, goals, or materials are:\n"
+      },
+      "color": "#eef2ff",
+      "icon_name": "activity"
+    }
+  ],
+  "task_examples": {
+    "zh": [
+      "每天「09:00」帮我完成「获取A股市场数据」并把结果发给我，任务创建后立即启用",
+      "每个工作日「18:00」帮我完成「获取美股/全球市场数据」并把结果发给我",
+      "每周一「10:00」帮我完成「个股基本面深度研究」并把结果发给我",
+      "每周五「17:00」帮我完成「行业深度研究」并把结果发给我",
+      "每天「08:00」帮我完成「估值建模分析」并把结果发给我",
+      "每月 1 日「09:30」帮我完成「生成专业投研报告」并把结果发给我"
+    ],
+    "en": [
+      "Every day at 09:00, help me complete “Pull A-share market data” and send the result — enable immediately",
+      "Every weekday at 18:00, help me complete “Pull US and global data” and send the result",
+      "Every Monday at 10:00, help me complete “Research the company” and send the result",
+      "Every Friday at 17:00, help me complete “Research the industry” and send the result",
+      "Every day at 08:00, help me complete “Build the valuation” and send the result",
+      "On the 1st of each month at 09:30, help me complete “Write the research report” and send the result"
+    ]
+  },
+  "source": {
+    "type": "skillhub",
+    "kind": "skillset",
+    "slug": "finance-investment-research",
+    "scene": "finance",
+    "sub_scene": "investment-research"
+  },
+  "skillhub": {
+    "slug": "finance-investment-research",
+    "scene": "finance",
+    "sub_scene": "investment-research",
+    "skill_slugs": [
+      "ai-stock-analyst",
+      "investlog-ai",
+      "stock-research-engine",
+      "industry-research-analyst",
+      "valuation-analysis",
+      "finance-research-report"
+    ]
+  }
+}

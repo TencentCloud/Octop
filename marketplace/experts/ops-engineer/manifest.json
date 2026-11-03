@@ -1,5 +1,6 @@
 {
   "id": "ops-engineer",
+  "version": "1.0.0",
   "scene": "tech",
   "label": {
     "zh": "Ops · 运维工程师",

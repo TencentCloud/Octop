@@ -1,5 +1,6 @@
 {
   "id": "ai-safety-guardian",
+  "version": "1.0.0",
   "scene": "tech",
   "label": {
     "zh": "AI 安全合规卫士",

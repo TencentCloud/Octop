@@ -1,0 +1,160 @@
+{
+  "id": "healthcare-health-report",
+  "version": "1.0.0",
+  "scene": "healthcare",
+  "sub_scene": "health-report",
+  "label": {
+    "zh": "健康报告专家",
+    "en": "Health Report Expert"
+  },
+  "description": {
+    "zh": "从全维度健康管理与中西医融合（运动训练/饮食营养/健康数据追踪/中医体质辨识/节气养生）与结构化健康摘要报告生成（体征/症状/药物/生活方式数据汇总），健康数据深度分析（睡眠质量/运动恢复/健康趋势/数据查询）与体检报告通俗解读（异常项标注/紧急程度/随访问题/可能含义），到个人健康档案记录（体征数据/结构化记录/每日总结/风险分级）与健康数据跟踪管理（血压/心率/运动/用药/症状分析/健康建议）的完整健康报告工作流。覆盖健康管理、报告生成、数据分析、体检解读、档案记录、跟踪管理全链路。",
+    "en": "Health report workflow for collecting multi-dimensional health data, generating structured health summaries, analyzing health scores and checkup results, maintaining a personal health journal, and managing continuous health tracking."
+  },
+  "welcome_message": {
+    "zh": "我来帮你做「全维度健康数据采集」",
+    "en": "I'll help you with Full-Spectrum Health Data Collection."
+  },
+  "icon_name": "heart",
+  "icon_url": "https://cloudcache.tencent-cloud.com/qcloud/tea/app/skillhub/assets/source/ai-buddy-decouple/expert-profiles/healthcare-health-report.v20260625.avif",
+  "color": "#dc2626",
+  "prompt_files": [
+    "SOUL.md"
+  ],
+  "quick_prompts": [
+    {
+      "title": {
+        "zh": "全维度健康数据采集",
+        "en": "Full-Spectrum Health Data Collection"
+      },
+      "description": {
+        "zh": "生成多维度健康数据采集报告",
+        "en": "Health data collection sheet"
+      },
+      "prompt": {
+        "zh": "请作为「健康报告专家」，帮我完成「全维度健康数据采集」。\n我的情况/目标/材料是：\n",
+        "en": "As the Health Report Expert, help me complete “Full-Spectrum Health Data Collection”.\nMy context, goals, or materials are:\n"
+      },
+      "color": "#e8f4ff",
+      "icon_name": "activity"
+    },
+    {
+      "title": {
+        "zh": "结构化健康摘要生成",
+        "en": "Structured Health Summary Generation"
+      },
+      "description": {
+        "zh": "生成结构化健康摘要报告",
+        "en": "Structured health summary"
+      },
+      "prompt": {
+        "zh": "请作为「健康报告专家」，帮我完成「结构化健康摘要生成」。\n我的情况/目标/材料是：\n",
+        "en": "As the Health Report Expert, help me complete “Structured Health Summary Generation”.\nMy context, goals, or materials are:\n"
+      },
+      "color": "#fef3c7",
+      "icon_name": "activity"
+    },
+    {
+      "title": {
+        "zh": "健康数据深度分析",
+        "en": "Deep Health Data Analysis"
+      },
+      "description": {
+        "zh": "生成健康数据分析报告和趋势洞察",
+        "en": "Health analysis report"
+      },
+      "prompt": {
+        "zh": "请作为「健康报告专家」，帮我完成「健康数据深度分析」。\n我的情况/目标/材料是：\n",
+        "en": "As the Health Report Expert, help me complete “Deep Health Data Analysis”.\nMy context, goals, or materials are:\n"
+      },
+      "color": "#dcfce7",
+      "icon_name": "activity"
+    },
+    {
+      "title": {
+        "zh": "体检报告通俗解读",
+        "en": "Checkup Report Plain-Language Interpretation"
+      },
+      "description": {
+        "zh": "生成体检报告通俗解读文档",
+        "en": "Checkup interpretation notes"
+      },
+      "prompt": {
+        "zh": "请作为「健康报告专家」，帮我完成「体检报告通俗解读」。\n我的情况/目标/材料是：\n",
+        "en": "As the Health Report Expert, help me complete “Checkup Report Plain-Language Interpretation”.\nMy context, goals, or materials are:\n"
+      },
+      "color": "#f1f5f9",
+      "icon_name": "activity"
+    },
+    {
+      "title": {
+        "zh": "个人健康档案记录",
+        "en": "Personal Health Journal"
+      },
+      "description": {
+        "zh": "生成个人健康档案和每日总结",
+        "en": "Personal health journal template"
+      },
+      "prompt": {
+        "zh": "请作为「健康报告专家」，帮我完成「个人健康档案记录」。\n我的情况/目标/材料是：\n",
+        "en": "As the Health Report Expert, help me complete “Personal Health Journal”.\nMy context, goals, or materials are:\n"
+      },
+      "color": "#fff1f2",
+      "icon_name": "activity"
+    },
+    {
+      "title": {
+        "zh": "健康数据持续跟踪管理",
+        "en": "Continuous Health Tracking Management"
+      },
+      "description": {
+        "zh": "生成健康跟踪管理方案和建议",
+        "en": "Continuous tracking plan"
+      },
+      "prompt": {
+        "zh": "请作为「健康报告专家」，帮我完成「健康数据持续跟踪管理」。\n我的情况/目标/材料是：\n",
+        "en": "As the Health Report Expert, help me complete “Continuous Health Tracking Management”.\nMy context, goals, or materials are:\n"
+      },
+      "color": "#eef2ff",
+      "icon_name": "activity"
+    }
+  ],
+  "task_examples": {
+    "zh": [
+      "每天「09:00」帮我完成「全维度健康数据采集」并把结果发给我，任务创建后立即启用",
+      "每个工作日「18:00」帮我完成「结构化健康摘要生成」并把结果发给我",
+      "每周一「10:00」帮我完成「健康数据深度分析」并把结果发给我",
+      "每周五「17:00」帮我完成「体检报告通俗解读」并把结果发给我",
+      "每天「08:00」帮我完成「个人健康档案记录」并把结果发给我",
+      "每月 1 日「09:30」帮我完成「健康数据持续跟踪管理」并把结果发给我"
+    ],
+    "en": [
+      "Every day at 09:00, help me complete “Full-Spectrum Health Data Collection” and send the result — enable immediately",
+      "Every weekday at 18:00, help me complete “Structured Health Summary Generation” and send the result",
+      "Every Monday at 10:00, help me complete “Deep Health Data Analysis” and send the result",
+      "Every Friday at 17:00, help me complete “Checkup Report Plain-Language Interpretation” and send the result",
+      "Every day at 08:00, help me complete “Personal Health Journal” and send the result",
+      "On the 1st of each month at 09:30, help me complete “Continuous Health Tracking Management” and send the result"
+    ]
+  },
+  "source": {
+    "type": "skillhub",
+    "kind": "skillset",
+    "slug": "healthcare-health-report",
+    "scene": "healthcare",
+    "sub_scene": "health-report"
+  },
+  "skillhub": {
+    "slug": "healthcare-health-report",
+    "scene": "healthcare",
+    "sub_scene": "health-report",
+    "skill_slugs": [
+      "healthfit-cn",
+      "health-report",
+      "health-score-pro",
+      "health-checkup-report",
+      "personal-health-journal",
+      "health-manager"
+    ]
+  }
+}

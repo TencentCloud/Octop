@@ -1,5 +1,6 @@
 {
   "id": "superpowers-methodology",
+  "version": "1.0.0",
   "scene": "education",
   "label": {
     "zh": "AI 工程方法论教练",

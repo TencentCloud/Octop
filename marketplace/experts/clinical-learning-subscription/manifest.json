@@ -1,5 +1,6 @@
 {
   "id": "clinical-learning-subscription",
+  "version": "1.0.0",
   "scene": "healthcare",
   "label": {
     "zh": "基层医生学习小助手",

@@ -20,7 +20,7 @@ marketplace/
 There was no separate on-disk skill-market catalog. Each skill is the
 `skills/<name>/SKILL.md` package inside its expert.
 
-`experts/skillhub-skillset-*` is the 54-expert SkillHub market catalog,
+`experts/<skillset-slug>` is the 54-expert SkillHub market catalog,
 appended beside the former built-in experts. Four skill packages 404 on
 SkillHub's download API and were fetched from ClawHub using the owner in
 the SkillHub detail: `competitive-intelligence-market-research`,

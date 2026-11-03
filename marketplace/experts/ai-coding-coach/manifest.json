@@ -1,5 +1,6 @@
 {
   "id": "ai-coding-coach",
+  "version": "1.0.0",
   "scene": "education",
   "label": {
     "zh": "AI 编程实战导师",

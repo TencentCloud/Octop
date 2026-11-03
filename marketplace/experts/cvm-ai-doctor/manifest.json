@@ -1,5 +1,6 @@
 {
   "id": "cvm-ai-doctor",
+  "version": "1.0.0",
   "scene": "tech",
   "label": {
     "zh": "系统医生",

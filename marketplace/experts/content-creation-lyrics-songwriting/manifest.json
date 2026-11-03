@@ -1,0 +1,160 @@
+{
+  "id": "content-creation-lyrics-songwriting",
+  "version": "1.0.0",
+  "scene": "content-creation",
+  "sub_scene": "lyrics-songwriting",
+  "label": {
+    "zh": "歌词创作专家",
+    "en": "Lyrics And Songwriting Expert"
+  },
+  "description": {
+    "zh": "覆盖歌词创作从「主驱动 Suno 浏览器自动化」到「作词方法论 + 元标签专家 + 风格仿写 + 情感弧线」再到「输出层 MV 流水线」的完整工具集，全部免 API Key",
+    "en": "Lyrics and songwriting workflow covering professional song planning, emotional-arc lyric writing, reference-song style adaptation, Suno meta-tag optimization, browser-based Suno song generation, and full MV-style audiovisual output."
+  },
+  "welcome_message": {
+    "zh": "我来帮你做「作词专业方法论与歌曲规划」",
+    "en": "I'll help you with Songwriting Method and Song Planning (Process)."
+  },
+  "icon_name": "pen-tool",
+  "icon_url": "https://cloudcache.tencent-cloud.com/qcloud/tea/app/skillhub/assets/source/ai-buddy-decouple/expert-profiles/content-creation-lyrics-songwriting.v20260702.avif",
+  "color": "#c026d3",
+  "prompt_files": [
+    "SOUL.md"
+  ],
+  "quick_prompts": [
+    {
+      "title": {
+        "zh": "作词专业方法论与歌曲规划",
+        "en": "Songwriting Method and Song Planning (Process)"
+      },
+      "description": {
+        "zh": "生成歌曲规划文档（主题 + 流派 + 结构 + BPM…",
+        "en": "Song concept and structure plan"
+      },
+      "prompt": {
+        "zh": "请作为「歌词创作专家」，帮我完成「作词专业方法论与歌曲规划」。\n我的情况/目标/材料是：\n",
+        "en": "As the Lyrics And Songwriting Expert, help me complete “Songwriting Method and Song Planning (Process)”.\nMy context, goals, or materials are:\n"
+      },
+      "color": "#e8f4ff",
+      "icon_name": "list-todo"
+    },
+    {
+      "title": {
+        "zh": "情感弧线作词",
+        "en": "Emotional Arc Lyric Writing (Process)"
+      },
+      "description": {
+        "zh": "生成含情感弧线的歌词初稿 + 段落风格标签",
+        "en": "Lyric draft"
+      },
+      "prompt": {
+        "zh": "请作为「歌词创作专家」，帮我完成「情感弧线作词」。\n我的情况/目标/材料是：\n",
+        "en": "As the Lyrics And Songwriting Expert, help me complete “Emotional Arc Lyric Writing (Process)”.\nMy context, goals, or materials are:\n"
+      },
+      "color": "#fef3c7",
+      "icon_name": "presentation"
+    },
+    {
+      "title": {
+        "zh": "参考歌曲风格仿写",
+        "en": "Reference Song Style Adaptation (Process)"
+      },
+      "description": {
+        "zh": "生成风格仿写版歌词",
+        "en": "Style adaptation notes and revised lyrics"
+      },
+      "prompt": {
+        "zh": "请作为「歌词创作专家」，帮我完成「参考歌曲风格仿写」。\n我的情况/目标/材料是：\n",
+        "en": "As the Lyrics And Songwriting Expert, help me complete “Reference Song Style Adaptation (Process)”.\nMy context, goals, or materials are:\n"
+      },
+      "color": "#dcfce7",
+      "icon_name": "presentation"
+    },
+    {
+      "title": {
+        "zh": "Suno 元标签深度调优",
+        "en": "Suno Meta-Tag Optimization (Process)"
+      },
+      "description": {
+        "zh": "生成Suno 就绪的歌词 + Style prompt",
+        "en": "Suno prompt and tag set"
+      },
+      "prompt": {
+        "zh": "请作为「歌词创作专家」，帮我完成「Suno 元标签深度调优」。\n我的情况/目标/材料是：\n",
+        "en": "As the Lyrics And Songwriting Expert, help me complete “Suno Meta-Tag Optimization (Process)”.\nMy context, goals, or materials are:\n"
+      },
+      "color": "#f1f5f9",
+      "icon_name": "presentation"
+    },
+    {
+      "title": {
+        "zh": "Suno 浏览器自动化生成歌曲",
+        "en": "Suno Browser Song Generation (Process)"
+      },
+      "description": {
+        "zh": "生成Suno 生成的多版本歌曲音频 + 选定的最佳版本",
+        "en": "Generated song candidates"
+      },
+      "prompt": {
+        "zh": "请作为「歌词创作专家」，帮我完成「Suno 浏览器自动化生成歌曲」。\n我的情况/目标/材料是：\n",
+        "en": "As the Lyrics And Songwriting Expert, help me complete “Suno Browser Song Generation (Process)”.\nMy context, goals, or materials are:\n"
+      },
+      "color": "#fff1f2",
+      "icon_name": "terminal"
+    },
+    {
+      "title": {
+        "zh": "完整 MV 视听输出",
+        "en": "Complete MV Audiovisual Output"
+      },
+      "description": {
+        "zh": "生成完整 MV 视频文件 + 上传链接（按需）",
+        "en": "Complete audiovisual song package"
+      },
+      "prompt": {
+        "zh": "请作为「歌词创作专家」，帮我完成「完整 MV 视听输出」。\n我的情况/目标/材料是：\n",
+        "en": "As the Lyrics And Songwriting Expert, help me complete “Complete MV Audiovisual Output”.\nMy context, goals, or materials are:\n"
+      },
+      "color": "#eef2ff",
+      "icon_name": "video"
+    }
+  ],
+  "task_examples": {
+    "zh": [
+      "每天「09:00」帮我完成「作词专业方法论与歌曲规划」并把结果发给我，任务创建后立即启用",
+      "每个工作日「18:00」帮我完成「情感弧线作词」并把结果发给我",
+      "每周一「10:00」帮我完成「参考歌曲风格仿写」并把结果发给我",
+      "每周五「17:00」帮我完成「Suno 元标签深度调优」并把结果发给我",
+      "每天「08:00」帮我完成「Suno 浏览器自动化生成歌曲」并把结果发给我",
+      "每月 1 日「09:30」帮我完成「完整 MV 视听输出」并把结果发给我"
+    ],
+    "en": [
+      "Every day at 09:00, help me complete “Songwriting Method and Song Planning (Process)” and send the result — enable immediately",
+      "Every weekday at 18:00, help me complete “Emotional Arc Lyric Writing (Process)” and send the result",
+      "Every Monday at 10:00, help me complete “Reference Song Style Adaptation (Process)” and send the result",
+      "Every Friday at 17:00, help me complete “Suno Meta-Tag Optimization (Process)” and send the result",
+      "Every day at 08:00, help me complete “Suno Browser Song Generation (Process)” and send the result",
+      "On the 1st of each month at 09:30, help me complete “Complete MV Audiovisual Output” and send the result"
+    ]
+  },
+  "source": {
+    "type": "skillhub",
+    "kind": "skillset",
+    "slug": "content-creation-lyrics-songwriting",
+    "scene": "content-creation",
+    "sub_scene": "lyrics-songwriting"
+  },
+  "skillhub": {
+    "slug": "content-creation-lyrics-songwriting",
+    "scene": "content-creation",
+    "sub_scene": "lyrics-songwriting",
+    "skill_slugs": [
+      "suno-browser-songmaking",
+      "acestep-songwriting",
+      "suno-music-composer",
+      "suno-poetry-music-creator",
+      "insight-song",
+      "songwriting-and-ai-music"
+    ]
+  }
+}

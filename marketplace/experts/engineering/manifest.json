@@ -1,5 +1,6 @@
 {
   "id": "engineering",
+  "version": "1.0.0",
   "scene": "tech",
   "label": {
     "zh": "工程专家",

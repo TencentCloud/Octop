@@ -1,5 +1,6 @@
 {
   "id": "karpathy-knowledge-base",
+  "version": "1.0.0",
   "scene": "academic",
   "label": {
     "zh": "卡帕西知识库专家",

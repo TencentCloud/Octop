@@ -47,7 +47,6 @@ from octop.infra.utils.utf8_text import (
 
 logger = logging.getLogger(__name__)
 
-MARKET_EXPERT_PREFIX = "skillhub-skillset-"
 _HTTP_TIMEOUT = 30
 _SKILLSET_PAGE_SIZE = 100
 _MAX_SKILLSET_PAGES = 20
@@ -176,7 +175,8 @@ _install_locks: dict[str, threading.Lock] = {}
 
 
 def market_expert_id(slug: str) -> str:
-    return f"{MARKET_EXPERT_PREFIX}{slug}"
+    """Expert directory id for a SkillHub skillset. The id is the skillset slug."""
+    return slug
 
 
 def skillhub_portrait_url(item: SkillHubSkillset) -> str | None:
@@ -913,6 +913,9 @@ def _expert_manifest(
     summary_en = _expert_summary_en(item, name_en)
     return {
         "id": item.expert_id,
+        "version": "1.0.0",
+        "scene": item.scene,
+        "sub_scene": item.sub_scene,
         "label": {"zh": name_zh, "en": name_en},
         "description": {"zh": summary_zh, "en": summary_en},
         "welcome_message": {
