@@ -11,6 +11,21 @@ export function getCanvasCoords(
   if (!canvas) return { x: 0, y: 0 };
   const rect = canvas.getBoundingClientRect();
   if (rect.width === 0 || rect.height === 0) return { x: 0, y: 0 };
+  if (canvas.width === 0 || canvas.height === 0) return { x: 0, y: 0 };
+
+  if (getComputedStyle(canvas).objectFit === "contain") {
+    const scale = Math.min(
+      rect.width / canvas.width,
+      rect.height / canvas.height,
+    );
+    const offsetX = (rect.width - canvas.width * scale) / 2;
+    const offsetY = (rect.height - canvas.height * scale) / 2;
+    return {
+      x: Math.round((e.clientX - rect.left - offsetX) / scale),
+      y: Math.round((e.clientY - rect.top - offsetY) / scale),
+    };
+  }
+
   const scaleX = canvas.width / rect.width;
   const scaleY = canvas.height / rect.height;
   return {
