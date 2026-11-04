@@ -145,6 +145,59 @@ def _agent_row(server: Any, agent_id: str, user: Any) -> Any:
     return row
 
 
+def _assert_runner_admin(user: Any) -> None:
+    """Explicit admin check for routes reached without ``Depends(require_admin())``."""
+    if not user.is_admin:
+        raise OctopError(ErrorCode.FORBIDDEN, "admin required")
+
+
+def _get_global_runner(server: Any, *, user_id: int, runner_name: str) -> dict[str, Any]:
+    registry = _registry(server)
+    runner = registry.acp_settings.load_runners(user_id).get(runner_name)
+    if runner is None:
+        raise OctopError(ErrorCode.NOT_FOUND, f"ACP runner {runner_name!r} not found")
+    return dict(runner)
+
+
+def _put_global_runner(
+    server: Any,
+    *,
+    user_id: int,
+    runner_name: str,
+    body: ACPRunnerBody,
+) -> dict[str, Any]:
+    key = runner_name.strip()
+    if not key:
+        raise OctopError(ErrorCode.SLASH_BAD_ARGS, "runner name cannot be empty")
+    _validate_runner(key, body)
+    registry = _registry(server)
+    runners = registry.acp_settings.load_runners(user_id)
+    runners[key] = body.model_dump()
+    registry.acp_settings.save_runners(user_id, runners)
+    _schedule_reload_user_agents(server, user_id)
+    return dict(runners[key])
+
+
+def _delete_global_runner(server: Any, *, user_id: int, runner_name: str) -> None:
+    if runner_name in _BUILTIN_RUNNERS:
+        raise OctopError(ErrorCode.FORBIDDEN, f"built-in runner {runner_name!r} cannot be deleted")
+    registry = _registry(server)
+    runners = registry.acp_settings.load_runners(user_id)
+    if runner_name not in runners:
+        raise OctopError(ErrorCode.NOT_FOUND, f"ACP runner {runner_name!r} not found")
+    del runners[runner_name]
+    registry.acp_settings.save_runners(user_id, runners)
+    _schedule_reload_user_agents(server, user_id)
+
+
+def _save_global_runners(server: Any, *, user_id: int, body: ACPRunnersBody) -> dict[str, Any]:
+    registry = _registry(server)
+    runners = _runners_payload(body)
+    saved = registry.acp_settings.save_runners(user_id, runners)
+    _schedule_reload_user_agents(server, user_id)
+    return {"runners": saved}
+
+
 @router.get("/acp", summary="Get global ACP runners")
 async def get_global_acp_runners(
     user: Any = Depends(require_admin()),
@@ -162,11 +215,7 @@ async def put_global_acp_runners(
     server: Any = Depends(get_server),
 ) -> dict[str, Any]:
     """Replace the current user's global ACP runner configuration."""
-    registry = _registry(server)
-    runners = _runners_payload(body)
-    saved = registry.acp_settings.save_runners(user.id, runners)
-    _schedule_reload_user_agents(server, user.id)
-    return {"runners": saved}
+    return _save_global_runners(server, user_id=user.id, body=body)
 
 
 @router.get("/acp/{runner_name}", summary="Get global ACP runner")
@@ -175,11 +224,7 @@ async def get_global_acp_runner(
     user: Any = Depends(require_admin()),
     server: Any = Depends(get_server),
 ) -> dict[str, Any]:
-    registry = _registry(server)
-    runner = registry.acp_settings.load_runners(user.id).get(runner_name)
-    if runner is None:
-        raise OctopError(ErrorCode.NOT_FOUND, f"ACP runner {runner_name!r} not found")
-    return dict(runner)
+    return _get_global_runner(server, user_id=user.id, runner_name=runner_name)
 
 
 @router.put("/acp/{runner_name}", summary="Update global ACP runner")
@@ -189,16 +234,7 @@ async def put_global_acp_runner(
     user: Any = Depends(require_admin()),
     server: Any = Depends(get_server),
 ) -> dict[str, Any]:
-    key = runner_name.strip()
-    if not key:
-        raise OctopError(ErrorCode.SLASH_BAD_ARGS, "runner name cannot be empty")
-    _validate_runner(key, body)
-    registry = _registry(server)
-    runners = registry.acp_settings.load_runners(user.id)
-    runners[key] = body.model_dump()
-    registry.acp_settings.save_runners(user.id, runners)
-    _schedule_reload_user_agents(server, user.id)
-    return dict(runners[key])
+    return _put_global_runner(server, user_id=user.id, runner_name=runner_name, body=body)
 
 
 @router.delete("/acp/{runner_name}", status_code=204, summary="Delete global ACP runner")
@@ -207,15 +243,7 @@ async def delete_global_acp_runner(
     user: Any = Depends(require_admin()),
     server: Any = Depends(get_server),
 ) -> None:
-    if runner_name in _BUILTIN_RUNNERS:
-        raise OctopError(ErrorCode.FORBIDDEN, f"built-in runner {runner_name!r} cannot be deleted")
-    registry = _registry(server)
-    runners = registry.acp_settings.load_runners(user.id)
-    if runner_name not in runners:
-        raise OctopError(ErrorCode.NOT_FOUND, f"ACP runner {runner_name!r} not found")
-    del runners[runner_name]
-    registry.acp_settings.save_runners(user.id, runners)
-    _schedule_reload_user_agents(server, user.id)
+    _delete_global_runner(server, user_id=user.id, runner_name=runner_name)
 
 
 @router.get("/agents/{agent_id}/acp", summary="Get ACP config")
@@ -238,13 +266,16 @@ async def put_acp_config(
     user: Any = Depends(current_user),
     server: Any = Depends(get_server),
 ) -> dict[str, Any]:
-    """Update per-agent tool toggle; optional ``runners`` updates global definitions."""
+    """Update per-agent tool toggle; optional ``runners`` updates global definitions.
+
+    ``runners`` writes the caller's global runner definitions and is admin-only;
+    the ``tool_enabled`` toggle stays available to the agent owner.
+    """
     _agent_row(server, agent_id, user)
     registry = _registry(server)
     if body.runners is not None:
-        runners = _runners_payload(ACPRunnersBody(runners=body.runners))
-        registry.acp_settings.save_runners(user.id, runners)
-        _schedule_reload_user_agents(server, user.id)
+        _assert_runner_admin(user)
+        _save_global_runners(server, user_id=user.id, body=ACPRunnersBody(runners=body.runners))
     await _persist_agent_tool_enabled(server, agent_id=agent_id, tool_enabled=body.tool_enabled)
     cfg = registry.get_config(agent_id)
     return _combined_acp_view(registry=registry, user_id=user.id, agent_cfg=cfg)
@@ -272,8 +303,9 @@ async def get_acp_runner(
     user: Any = Depends(current_user),
     server: Any = Depends(get_server),
 ) -> dict[str, Any]:
+    """Read one of the caller's own global runner definitions."""
     _agent_row(server, agent_id, user)
-    return await get_global_acp_runner(runner_name, user=user, server=server)
+    return _get_global_runner(server, user_id=user.id, runner_name=runner_name)
 
 
 @router.put("/agents/{agent_id}/acp/{runner_name}", summary="Update ACP runner")
@@ -284,8 +316,10 @@ async def put_acp_runner(
     user: Any = Depends(current_user),
     server: Any = Depends(get_server),
 ) -> dict[str, Any]:
+    """Store a runner definition — admin-only, like ``PUT /acp/{runner_name}``."""
     _agent_row(server, agent_id, user)
-    return await put_global_acp_runner(runner_name, body=body, user=user, server=server)
+    _assert_runner_admin(user)
+    return _put_global_runner(server, user_id=user.id, runner_name=runner_name, body=body)
 
 
 @router.delete(
@@ -299,5 +333,7 @@ async def delete_acp_runner(
     user: Any = Depends(current_user),
     server: Any = Depends(get_server),
 ) -> None:
+    """Delete a runner definition — admin-only, like ``DELETE /acp/{runner_name}``."""
     _agent_row(server, agent_id, user)
-    await delete_global_acp_runner(runner_name, user=user, server=server)
+    _assert_runner_admin(user)
+    _delete_global_runner(server, user_id=user.id, runner_name=runner_name)
