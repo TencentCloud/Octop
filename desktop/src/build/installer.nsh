@@ -220,6 +220,35 @@ octop_rt_close_fail:
   FindClose $1
   Goto octop_rt_fail_closed
 octop_rt_ok:
+  ; Same directory the desktop shell passes as PYTHONPYCACHEPREFIX. Compile
+  ; here so the first launch does not write bytecode. A failure only skips
+  ; the warmup; the extracted tree is already usable.
+  ReadEnvStr $5 OCTOP_HOME
+  StrCmp $5 "" 0 octop_pyc_home
+  StrCpy $5 "$PROFILE\.octop"
+octop_pyc_home:
+  CreateDirectory "$5\pyc"
+  System::Call 'Kernel32::SetEnvironmentVariable(t "PYTHONPYCACHEPREFIX", t "$5\pyc")'
+  StrCpy $4 "$3\runtime\python.exe"
+  IntCmp $LANGUAGE 2052 octop_pyc_zh octop_pyc_en octop_pyc_en
+octop_pyc_zh:
+  DetailPrint "正在编译 Python 字节码到 $5\pyc…"
+  Goto octop_pyc_run
+octop_pyc_en:
+  DetailPrint "Compiling Python bytecode into $5\pyc…"
+octop_pyc_run:
+  nsExec::ExecToLog '"$4" -m compileall -q -j0 "$3\packages"'
+  Pop $4
+  System::Call 'Kernel32::SetEnvironmentVariable(t "PYTHONPYCACHEPREFIX", p 0)'
+  StrCmp $4 "0" octop_pyc_ready octop_pyc_warn
+octop_pyc_warn:
+  IntCmp $LANGUAGE 2052 octop_pyc_warn_zh octop_pyc_warn_en octop_pyc_warn_en
+octop_pyc_warn_zh:
+  DetailPrint "字节码编译未完成（$4）。首次启动会再编译。"
+  Goto octop_pyc_ready
+octop_pyc_warn_en:
+  DetailPrint "Bytecode compile did not finish ($4). The first launch will compile it."
+octop_pyc_ready:
   IntCmp $LANGUAGE 2052 octop_rt_ok_zh octop_rt_ok_en octop_rt_ok_en
 octop_rt_ok_zh:
   DetailPrint "Python 运行时已就绪。"
