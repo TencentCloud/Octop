@@ -191,19 +191,19 @@ Octop 支持两个方向的 ACP 集成：
 **macOS / Linux** — 一键安装（推荐）：
 
 ```bash
-curl -fsSL https://finnie-1258344699.cos.ap-guangzhou.myqcloud.com/octop/install.sh | bash
+curl -fsSL https://download.octop.cloud/octop/scripts/install.sh | bash
 ```
 
 **Windows（PowerShell）**：
 
 ```powershell
-irm https://finnie-1258344699.cos.ap-guangzhou.myqcloud.com/octop/install.ps1 | iex
+irm https://download.octop.cloud/octop/scripts/install.ps1 | iex
 ```
 
 **Windows（cmd）** — 下载后运行，或从已克隆的仓库执行：
 
 ```bat
-curl -fsSL https://finnie-1258344699.cos.ap-guangzhou.myqcloud.com/octop/install.bat -o install.bat
+curl -fsSL https://download.octop.cloud/octop/scripts/install.bat -o install.bat
 install.bat
 ```
 
@@ -219,7 +219,7 @@ source ~/.bashrc  # Bash
 
 ```bash
 # 下载 Playwright Chromium 用于浏览器自动化（若系统已有 Chrome / Chromium 则会跳过）
-curl -fsSL https://finnie-1258344699.cos.ap-guangzhou.myqcloud.com/octop/install.sh | bash -s -- --extras browser
+curl -fsSL https://download.octop.cloud/octop/scripts/install.sh | bash -s -- --extras browser
 ```
 
 完整安装选项见 [scripts/README.md](scripts/README.md)（`--version`、`--from-source`、`--mirror` 及 Windows 参数）。
