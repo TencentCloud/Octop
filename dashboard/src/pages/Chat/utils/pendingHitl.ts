@@ -1,9 +1,12 @@
 import {
   ASK_USER_TOOL_NAME,
   extractAskQuestions,
+  extractSecretInputRequest,
   isAskHitl,
+  isSecretInputHitl,
   questionsFromUnknown,
   type AskQuestion,
+  type SecretInputRequest,
 } from "../../../api/types/hitl";
 import type { ChatMessage, HitlActionRequest } from "../hooks/sseHelpers";
 import type { HitlSessionPolicy } from "./hitlSessionPolicy";
@@ -35,6 +38,8 @@ export function hasPendingHitl(messages: ChatMessage[]): boolean {
     const hitl = message.hitlData;
     if (!hitl || (hitl.status ?? "pending") !== "pending") return false;
     if (isAskHitl(hitl.action_requests) && !isResumableHitl(hitl)) return false;
+    if (isSecretInputHitl(hitl.action_requests) && !isResumableHitl(hitl))
+      return false;
     return true;
   });
 }
@@ -56,6 +61,7 @@ export function findPendingApproval(
       !hitl ||
       (hitl.status ?? "pending") !== "pending" ||
       isAskHitl(hitl.action_requests) ||
+      isSecretInputHitl(hitl.action_requests) ||
       !hitl.action_requests?.length
     ) {
       continue;
@@ -131,6 +137,41 @@ export function findPendingAsk(messages: ChatMessage[]): PendingAsk | null {
         messageId: message.id,
         actions: hitl.action_requests,
         questions,
+      };
+    }
+  }
+  return null;
+}
+
+export type PendingSecretInput = {
+  messageId: string;
+  actions: HitlActionRequest[];
+  pendingId: string;
+  request: SecretInputRequest;
+};
+
+/** Latest pending ``request_secret_input`` card, if any (dashboard-only). */
+export function findPendingSecretInput(
+  messages: ChatMessage[],
+): PendingSecretInput | null {
+  for (let index = messages.length - 1; index >= 0; index -= 1) {
+    const message = messages[index];
+    const hitl = message.hitlData;
+    if (
+      !hitl ||
+      (hitl.status ?? "pending") !== "pending" ||
+      !isSecretInputHitl(hitl.action_requests) ||
+      !isResumableHitl(hitl)
+    ) {
+      continue;
+    }
+    const request = extractSecretInputRequest(hitl.action_requests);
+    if (request && hitl.pending_id?.trim()) {
+      return {
+        messageId: message.id,
+        actions: hitl.action_requests,
+        pendingId: hitl.pending_id,
+        request,
       };
     }
   }

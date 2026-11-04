@@ -43,6 +43,7 @@ import {
 } from "../../../utils/chatStreamError";
 import { MessageFileCard } from "./MessageFileCard";
 import AskQuestionCard from "./AskQuestionCard";
+import SecretInputCard from "./SecretInputCard";
 import HitlApprovalCard from "./HitlApprovalCard";
 import MessageSender, { ExpertMessageAvatar } from "./MessageSender";
 import { useCurrentUser } from "../../../hooks/useCurrentUser";
@@ -56,7 +57,9 @@ import { accountDisplayName } from "../utils/accountDisplayName";
 import { ProfileAvatar } from "../../Admin/Users/ProfileAvatar";
 import {
   extractAskQuestions,
+  extractSecretInputRequest,
   isAskHitl,
+  isSecretInputHitl,
   type HitlDecisionHandler,
 } from "../../../api/types/hitl";
 import styles from "../index.module.less";
@@ -676,6 +679,24 @@ function MessageBubble({
   if (message.hitlData) {
     const actions = message.hitlData.action_requests ?? [];
     const hitlStatus = message.hitlData.status ?? "pending";
+    if (isSecretInputHitl(actions)) {
+      // Pending secret cards live in the composer dock (masked input).
+      // Completed ones render a status-only summary — never the value.
+      if (hitlStatus === "pending" && message.hitlData.pending_id) return null;
+      const secretRequest = extractSecretInputRequest(actions);
+      if (!secretRequest) return null;
+      return (
+        <div
+          className={`${styles.messageBubble} ${styles.assistantBubble} ${
+            compact ? styles.compactBubble : ""
+          }`}
+        >
+          <div className={styles.bubbleContent}>
+            <SecretInputCard request={secretRequest} status={hitlStatus} />
+          </div>
+        </div>
+      );
+    }
     if (isAskHitl(actions)) {
       // Recoverable pending questions stay in ChatPage's composer dock.
       // Reconstructed history without pending_id stays in the transcript.

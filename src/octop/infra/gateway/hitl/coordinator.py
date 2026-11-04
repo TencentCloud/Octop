@@ -19,6 +19,7 @@ from octop.infra.gateway.hitl.format import (
     extract_questions,
     format_ask_card,
     is_ask_action_requests,
+    is_secret_input_action_requests,
     parse_action_requests,
     parse_ask_reply,
     parse_review_configs,
@@ -279,6 +280,8 @@ class HitlChannelCoordinator:
         if record is None or record.status != "pending" or record.user_id != user_id:
             return None
         if is_ask_action_requests(record.action_requests):
+            return None
+        if is_secret_input_action_requests(record.action_requests):
             return None
         return record
 
@@ -819,6 +822,8 @@ class HitlChannelCoordinator:
             )
             if record is None:
                 return MessageEvent.text(tr("hitl.invalid_pending_id", lang, pending_id=arg))
+            if record is not None and is_secret_input_action_requests(record.action_requests):
+                return MessageEvent.text(tr("secret_input.im_dashboard_only", lang))
             return record
 
         record = self._store.resolve_for_session(
@@ -826,6 +831,8 @@ class HitlChannelCoordinator:
             None,
             agent_id=ctx.agent_id,
         )
+        if record is not None and is_secret_input_action_requests(record.action_requests):
+            return MessageEvent.text(tr("secret_input.im_dashboard_only", lang))
         if record is not None and record.user_id != ctx.user_id:
             return MessageEvent.text(tr("hitl.not_owner", lang))
         if record is not None and record.status == "expired":

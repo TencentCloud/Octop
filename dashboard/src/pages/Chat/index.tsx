@@ -98,9 +98,11 @@ import TeamChatBadge from "./components/TeamChatBadge";
 import RemoteExpertHint from "./components/RemoteExpertHint";
 import ChatComposerChrome from "./components/ChatComposerChrome";
 import AskQuestionCard from "./components/AskQuestionCard";
+import SecretInputCard from "./components/SecretInputCard";
 import {
   findAutoResumableApproval,
   findPendingAsk,
+  findPendingSecretInput,
   hasPendingHitl,
 } from "./utils/pendingHitl";
 import { isAgentChatReady } from "../../utils/agentError";
@@ -376,6 +378,7 @@ function ChatPageInner() {
     retryHistory,
     clearMessages,
     resumeHitl,
+    submitSecretInput,
   } = useChat(activeThreadId, resolvedAgentId, isTeamChat);
 
   const hasPendingHitlPause = useMemo(
@@ -383,6 +386,10 @@ function ChatPageInner() {
     [messages],
   );
   const pendingAsk = useMemo(() => findPendingAsk(messages), [messages]);
+  const pendingSecretInput = useMemo(
+    () => findPendingSecretInput(messages),
+    [messages],
+  );
   const autoResumedApprovalRef = useRef<string | null>(null);
 
   const refreshBrowserRef = useRef<() => void>(() => {});
@@ -1769,6 +1776,30 @@ function ChatPageInner() {
                       )
                     }
                     onDismiss={() => handleAskDismiss(pendingAsk.actions)}
+                  />
+                </div>
+              </div>
+            ) : null}
+            {pendingSecretInput ? (
+              <div className={styles.askQuestionDock}>
+                <div className={styles.askQuestionDockInner}>
+                  <SecretInputCard
+                    key={pendingSecretInput.pendingId}
+                    request={pendingSecretInput.request}
+                    status="pending"
+                    onSubmit={(value) =>
+                      submitSecretInput(
+                        pendingSecretInput.pendingId,
+                        "submit",
+                        value,
+                      )
+                    }
+                    onCancel={() => {
+                      void submitSecretInput(
+                        pendingSecretInput.pendingId,
+                        "cancel",
+                      );
+                    }}
                   />
                 </div>
               </div>

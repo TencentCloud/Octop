@@ -33,6 +33,15 @@ export interface HitlPendingPayload {
 /** Tool whose HITL pause is a question for the user, not an approval. */
 export const ASK_USER_TOOL_NAME = "ask_user_question";
 
+/** Tool whose HITL pause collects a secret through the masked input card. */
+export const REQUEST_SECRET_INPUT_TOOL_NAME = "request_secret_input";
+
+export interface SecretInputRequest {
+  slot: string;
+  prompt: string;
+  title?: string;
+}
+
 export interface AskOption {
   label: string;
   description?: string;
@@ -148,4 +157,34 @@ export function extractAskQuestions(
 
 export function isAskHitl(actions: HitlActionRequest[] | undefined): boolean {
   return Boolean(actions?.some((a) => a.name === ASK_USER_TOOL_NAME));
+}
+
+/** True when this pause collects a secret via the masked card. */
+export function isSecretInputHitl(
+  actions: HitlActionRequest[] | undefined,
+): boolean {
+  return Boolean(
+    actions?.some((a) => a.name === REQUEST_SECRET_INPUT_TOOL_NAME),
+  );
+}
+
+/** Extract the slot/prompt/title from a `request_secret_input` pause. */
+export function extractSecretInputRequest(
+  actions: HitlActionRequest[] | undefined,
+): SecretInputRequest | null {
+  for (const action of actions ?? []) {
+    if (action.name !== REQUEST_SECRET_INPUT_TOOL_NAME) continue;
+    const args = parseActionArgs(action.args);
+    const slot = typeof args.slot === "string" ? args.slot.trim() : "";
+    if (!slot) continue;
+    return {
+      slot,
+      prompt: typeof args.prompt === "string" ? args.prompt : "",
+      title:
+        typeof args.title === "string" && args.title.trim()
+          ? args.title
+          : undefined,
+    };
+  }
+  return null;
 }
