@@ -2703,7 +2703,7 @@ requires-dist = [
     { name = "mypy", marker = "extra == 'dev'", specifier = ">=1.10" },
     { name = "octop-browser", specifier = ">=1.0.0" },
     { name = "octop-gateway", specifier = ">=1.0.3" },
-    { name = "octop-harness", extras = ["all"], specifier = ">=1.0.6" },
+    { name = "octop-harness", extras = ["all"], specifier = ">=1.0.7" },
     { name = "octop-memory", specifier = ">=1.0.3" },
     { name = "onnxruntime", marker = "extra == 'knowledge-ocr'", specifier = ">=1.17" },
     { name = "openpyxl", specifier = ">=3.1" },
@@ -2796,7 +2796,7 @@ wheels = [
 
 [[package]]
 name = "octop-harness"
-version = "1.0.6"
+version = "1.0.7"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "deepagents" },
@@ -2814,9 +2814,9 @@ dependencies = [
     { name = "octop-memory" },
     { name = "pyyaml" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/b7/d7/c264a55d1f1847c4417ac9a10421f6048f583cab35c9c0d83867643c971d/octop_harness-1.0.6.tar.gz", hash = "sha256:0f9dd4408cfe584e9ec8809ea89aaf9f364fedb77b7b9245684339ce331808cd", size = 1002991, upload-time = "2026-11-01T11:51:17.049Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/6f/f5/ae9e96393557285832f75166d2c387f0c7b94e98cb8992dd043448c91444/octop_harness-1.0.7.tar.gz", hash = "sha256:c74f0e979ed6b1a3272a911c0da2abe4825b632073573bdd211c375d2c4fad1b", size = 1003695, upload-time = "2026-11-04T11:15:29.379Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/ee/81/8bf730a1e76be4170042bb2da30a23e181b53a05fb278397085933101c62/octop_harness-1.0.6-py3-none-any.whl", hash = "sha256:a8aa24f31cc81dddf233a84a921794cff12d13c7f8ece9b9168d8559bed4e9ba", size = 1202082, upload-time = "2026-11-01T11:51:15.217Z" },
+    { url = "https://files.pythonhosted.org/packages/47/ae/34effffa522fead286ae91d93bfd68f07431222773e173ac51ed9cd57637/octop_harness-1.0.7-py3-none-any.whl", hash = "sha256:b10eb908b789b08fabc3e9e2e295cfcd5fbcff5d7c2fb020feeefe2e5f4b3559", size = 1202445, upload-time = "2026-11-04T11:15:27.832Z" },
 ]
 
 [package.optional-dependencies]
