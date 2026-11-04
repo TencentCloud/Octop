@@ -13,7 +13,13 @@ from fastapi.responses import JSONResponse, Response
 from octop.api.common.agent import require_agent_row
 from octop.api.common.agent_workspace import resolve_agent_workspace_dir
 from octop.api.deps import current_user, get_server
-from octop.api.routers.chat.models import ForkThreadBody, RebindSessionBody, RenameThreadBody
+from octop.api.routers.chat.models import (
+    ForkThreadBody,
+    HistoryReconcileBody,
+    HistoryReconcileResponse,
+    RebindSessionBody,
+    RenameThreadBody,
+)
 from octop.api.routers.chat.serialize import (
     HISTORY_DEFAULT_LIMIT,
     _backfill_thread_projection,
@@ -333,10 +339,14 @@ async def get_thread_history(
         )
         has_more, next_cursor = page["has_more"], page["next_cursor"]
         messages = []
-        for message in messages_from_dict(page["messages"]):
+        for message, position in zip(
+            messages_from_dict(page["messages"]), page["positions"], strict=True
+        ):
             item = _serialize_history_message(message, user=user)
             if item is None:
                 raise ValueError("An archived history message could not be rendered")
+            item.update(position)
+            item["id"] = item.get("id") or "history:" + ":".join(map(str, position["server_order"]))
             messages.append(item)
         messages = _enrich_history_tool_media(messages, agent_id=agent_id)
         history_loading = False
@@ -372,12 +382,13 @@ async def get_thread_history(
                 else "pending"
             )
         else:
-            messages, has_more = _load_projected_thread_messages(
+            messages, has_more, next_cursor = _load_projected_thread_messages(
                 server,
                 agent_id,
                 thread_id,
                 page_limit,
                 offset=page_offset,
+                cursor=cursor,
                 user=user,
             )
     effective_uid = as_user if as_user is not None else user.id
@@ -399,6 +410,9 @@ async def get_thread_history(
         "history_status": projection_status,
         "history_retry_after_ms": 1500 if history_loading else 0,
         "turn_active": server.app_runtime.gateway.ws_hub.is_turn_active(thread_id),
+        "active_user_message_id": server.app_runtime.gateway.ws_hub.active_user_message_id(
+            thread_id
+        ),
         "hitl_pending": hitl_pending,
         **thread_artifacts_payload(
             row.artifacts,
@@ -409,6 +423,46 @@ async def get_thread_history(
         "pending_plan_path": row.pending_plan_path,
         "hitl_policy": _hitl_policy_payload(row),
     }
+
+
+@router.post(
+    "/agents/{agent_id}/threads/{thread_id}/history/reconcile",
+    summary="Resolve cached user messages",
+    response_model=HistoryReconcileResponse,
+    description="Look up up to 32 user message IDs across history pages. Unknown IDs remain recoverable; they never imply a new send.",
+)
+async def reconcile_history(
+    agent_id: str,
+    thread_id: str,
+    body: HistoryReconcileBody,
+    as_user: int | None = None,
+    user: Any = Depends(current_user),
+    server: Any = Depends(get_server),
+) -> dict[str, Any]:
+    from octop.infra.history.reconcile import reconcile_user_messages  # noqa: PLC0415
+
+    _require_thread(server, agent_id, thread_id, user, as_user)
+    archive = getattr(server.app_runtime, "history_archive", None)
+    hub = server.app_runtime.gateway.ws_hub
+    active_user = hub.active_user_message_id(thread_id)
+    ids = body.message_ids
+    receipts = await reconcile_user_messages(
+        archive if isinstance(archive, HistoryArchive) else None,
+        server.services.thread_message_repo,
+        server.app_runtime.agent_registry,
+        agent_id,
+        thread_id,
+        ids,
+        turn_active=hub.is_turn_active(thread_id),
+    )
+    if isinstance(active_user, str) and active_user in body.message_ids:
+        receipts[active_user] = {
+            **receipts[active_user],
+            "state": "active",
+            "turn_status": "active",
+            "persisted": False,
+        }
+    return {"thread_id": thread_id, "receipts": receipts}
 
 
 @router.post(

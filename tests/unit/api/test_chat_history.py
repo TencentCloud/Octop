@@ -247,7 +247,7 @@ async def test_get_thread_history_returns_has_more(monkeypatch: pytest.MonkeyPat
     monkeypatch.setattr(
         history_mod,
         "_load_projected_thread_messages",
-        MagicMock(return_value=([{"role": "user", "content": "hi"}], True)),
+        MagicMock(return_value=([{"role": "user", "content": "hi"}], True, "pinned")),
     )
     out = await history_mod.get_thread_history(
         "agt_1",
@@ -259,6 +259,7 @@ async def test_get_thread_history_returns_has_more(monkeypatch: pytest.MonkeyPat
     )
 
     assert out["has_more"] is True
+    assert out["next_cursor"] == "pinned"
     assert out["limit"] == HISTORY_DEFAULT_LIMIT
     assert out["offset"] == 0
     assert out["messages"][0]["role"] == "user"

@@ -61,6 +61,7 @@ import { octopThreadsApi } from "../../api/modules/octopThreads";
 import type { TokenUsage } from "../../api/types";
 import type { ChatAttachment } from "./hooks/useChat";
 import MessageList from "./components/MessageList";
+import HistoryRecovery from "./components/HistoryRecovery";
 import ChatInput, { type ChatInputHandle } from "./components/ChatInput";
 import WelcomeScreen from "./components/WelcomeScreen";
 import AgentNotReadyScreen from "./components/AgentNotReadyScreen";
@@ -354,6 +355,7 @@ function ChatPageInner() {
 
   const {
     messages,
+    recoveryMessages,
     isStreaming,
     thinkingStartedAt,
     historyLoading,
@@ -1822,6 +1824,26 @@ function ChatPageInner() {
                 </div>
               </div>
             ) : null}
+            <HistoryRecovery
+              messages={recoveryMessages}
+              onRetry={() => void refreshHistory()}
+              onRestore={(message) =>
+                showConfirmModal(
+                  {
+                    title: t("chat.queue.reclaimOverwriteTitle"),
+                    content: t("chat.queue.reclaimOverwrite"),
+                    okText: t("common.confirm"),
+                    cancelText: t("common.cancel"),
+                    onOk: () =>
+                      chatInputRef.current?.setPrefillComposer(
+                        message.content,
+                        message.attachments,
+                      ),
+                  },
+                  { isMobile },
+                )
+              }
+            />
             <ChatInput
               ref={chatInputRef}
               onSend={wrappedHandleSend}

@@ -22,6 +22,17 @@ _BODY_KEYS = frozenset(
 # Stable boundaries let an appended token reuse every completed text block.
 # Count Unicode characters so splitting and rejoining never damages UTF-8.
 TEXT_BLOCK_SIZE = 1024
+_MESSAGE_INDEX_SCHEMA = """
+CREATE TABLE IF NOT EXISTS message_keys (
+ document_id TEXT PRIMARY KEY REFERENCES documents(id) ON DELETE CASCADE,
+ thread_id TEXT NOT NULL, message_id TEXT, role TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS message_keys_lookup ON message_keys(thread_id,message_id,role);
+CREATE TRIGGER IF NOT EXISTS invalidate_message_key AFTER UPDATE OF data ON documents
+BEGIN
+ DELETE FROM message_keys WHERE document_id=NEW.id;
+END;
+"""
 _SCHEMA = """
 CREATE TABLE archive_meta (version INTEGER NOT NULL, identity TEXT NOT NULL);
 CREATE TABLE segments (
@@ -76,6 +87,26 @@ class HistoryStore:
                 row = conn.execute("SELECT version, identity FROM archive_meta").fetchone()
                 if row is None or row["version"] != 1 or row["identity"] != identity:
                     raise ValueError("History archive version or control-plane identity mismatch")
+                # An additive, rebuildable metadata index; document encoding stays v1.
+                # Read only inline IDs, never resolve large content-addressed bodies.
+                conn.executescript("BEGIN IMMEDIATE;" + _MESSAGE_INDEX_SCHEMA)
+                pending = conn.execute(
+                    "SELECT id,thread_id,data FROM documents WHERE kind='message' "
+                    "AND NOT EXISTS (SELECT 1 FROM message_keys k WHERE k.document_id=documents.id)"
+                )
+                for document in pending:
+                    encoded = json.loads(document["data"])
+                    data = self._inline_field(encoded, "data")
+                    conn.execute(
+                        "INSERT INTO message_keys VALUES (?,?,?,?)",
+                        (
+                            document["id"],
+                            document["thread_id"],
+                            self._inline_field(data, "id", unwrap=True),
+                            self._inline_field(encoded, "type", unwrap=True) or "",
+                        ),
+                    )
+                conn.commit()
             marker.write_text(
                 "History archive required; do not remove independently.\n", encoding="utf-8"
             )
@@ -165,6 +196,13 @@ class HistoryStore:
             "data=excluded.data",
             (doc_id, thread_id, turn_id, kind, seq, encoded),
         )
+        if kind == "message":
+            data = value.get("data") or {}
+            conn.execute(
+                "INSERT INTO message_keys VALUES (?,?,?,?) ON CONFLICT(document_id) "
+                "DO UPDATE SET message_id=excluded.message_id,role=excluded.role",
+                (doc_id, thread_id, data.get("id"), value.get("type") or ""),
+            )
         conn.executemany(
             "DELETE FROM body_refs WHERE owner=? AND digest=?",
             [(doc_id, ref) for ref in old_refs - refs],
@@ -178,6 +216,43 @@ class HistoryStore:
                 "(SELECT 1 FROM body_refs WHERE digest=?)",
                 (digest, digest),
             )
+
+    @staticmethod
+    def _inline_field(node: Any, name: str, *, unwrap: bool = False) -> Any:
+        if not isinstance(node, list) or len(node) != 2 or node[0] != "dict":
+            return None
+        for key, value in node[1]:
+            if key == name:
+                return value[1] if unwrap and value[0] == "value" else value
+        return None
+
+    def user_message_positions(self, thread_id: str, message_ids: list[str]) -> dict[str, Any]:
+        """Look up receipts independently of the currently visible history page."""
+        if not self.path.exists():
+            raise FileNotFoundError(self.path)
+        if not message_ids:
+            return {}
+        placeholders = ",".join("?" for _ in message_ids)
+        with self.db.connect() as conn:
+            rows = conn.execute(
+                "SELECT k.message_id,d.seq,t.id,t.segment_id,t.status,t.error "
+                "FROM message_keys k JOIN documents d ON d.id=k.document_id "
+                "JOIN turns t ON t.id=d.turn_id WHERE k.thread_id=? "
+                f"AND k.message_id IN ({placeholders}) AND k.role IN ('human','user') "
+                "ORDER BY t.segment_id,d.seq",
+                (thread_id, *message_ids),
+            ).fetchall()
+        return {
+            row["message_id"]: {
+                "state": "stored",
+                "server_order": [row["segment_id"], row["seq"]],
+                "history_turn_id": row["id"],
+                "turn_status": row["status"],
+                "persisted": row["status"] in ("complete", "interrupted", "failed")
+                and not row["error"],
+            }
+            for row in rows
+        }
 
     def _decode(self, conn: sqlite3.Connection, node: Any) -> Any:
         tag, value = node
@@ -251,13 +326,18 @@ class HistoryStore:
             raise FileNotFoundError(self.path)
         with self.db.connect() as conn:
             rows = conn.execute(
-                "SELECT d.seq,d.data FROM documents d JOIN turns t ON t.id=d.turn_id "
+                "SELECT d.seq,d.data,d.turn_id,t.status FROM documents d JOIN turns t ON t.id=d.turn_id "
                 "WHERE d.thread_id=? AND t.segment_id=? AND d.kind='message' "
                 "AND (? IS NULL OR d.seq<?) ORDER BY d.seq DESC LIMIT ?",
                 (thread_id, segment_id, before, before, limit),
             ).fetchall()
             return [
-                {"seq": row["seq"], "value": self._decode(conn, json.loads(row["data"]))}
+                {
+                    "seq": row["seq"],
+                    "value": self._decode(conn, json.loads(row["data"])),
+                    "history_turn_id": row["turn_id"],
+                    "turn_status": row["status"],
+                }
                 for row in rows
             ]
 

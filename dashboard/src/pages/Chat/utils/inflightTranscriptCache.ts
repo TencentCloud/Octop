@@ -8,6 +8,7 @@ const WRITE_DELAY_MS = 200;
 
 const writeTimers = new Map<string, ReturnType<typeof setTimeout>>();
 const latestByThread = new Map<string, ChatMessage[]>();
+const recoveryByThread = new Map<string, ChatMessage[]>();
 
 function storageKey(threadId: string): string {
   return `${STORAGE_PREFIX}${threadId}`;
@@ -23,7 +24,16 @@ function slimMessage(message: ChatMessage): ChatMessage {
   return {
     id: message.id,
     role: message.role,
-    content: clipText(message.content),
+    content:
+      message.role === "user" ? message.content : clipText(message.content),
+    attachments: message.attachments,
+    composerContext: message.composerContext,
+    hitlData: message.hitlData,
+    delivery: message.delivery,
+    turnId: message.turnId,
+    serverOrder: message.serverOrder,
+    historyTurnId: message.historyTurnId,
+    turnStatus: message.turnStatus,
     contentBlocks: message.contentBlocks?.map((block) => ({
       type: block.type,
       content: clipText(block.content),
@@ -58,12 +68,21 @@ function isRole(value: unknown): value is ChatMessage["role"] {
   );
 }
 
-function parseTail(raw: string): ChatMessage[] | null {
+function parseTail(
+  raw: string,
+  field: "tail" | "recovery" = "tail",
+): ChatMessage[] | null {
   try {
-    const parsed = JSON.parse(raw) as { v?: unknown; tail?: unknown };
-    if (parsed.v !== 1 || !Array.isArray(parsed.tail)) return null;
+    const parsed = JSON.parse(raw) as {
+      v?: unknown;
+      tail?: unknown;
+      recovery?: unknown;
+    };
+    const messages = parsed[field];
+    if ((parsed.v !== 1 && parsed.v !== 2) || !Array.isArray(messages))
+      return null;
     const tail: ChatMessage[] = [];
-    for (const item of parsed.tail) {
+    for (const item of messages) {
       if (!item || typeof item !== "object") return null;
       const row = item as Partial<ChatMessage>;
       if (typeof row.id !== "string" || !isRole(row.role)) return null;
@@ -71,6 +90,26 @@ function parseTail(raw: string): ChatMessage[] | null {
         id: row.id,
         role: row.role,
         content: typeof row.content === "string" ? row.content : "",
+        attachments: Array.isArray(row.attachments)
+          ? row.attachments
+          : undefined,
+        composerContext: row.composerContext,
+        hitlData: row.hitlData,
+        delivery:
+          row.delivery === "pending" || row.delivery === "accepted"
+            ? row.delivery
+            : undefined,
+        turnId: typeof row.turnId === "string" ? row.turnId : undefined,
+        serverOrder:
+          Array.isArray(row.serverOrder) &&
+          row.serverOrder.length === 2 &&
+          row.serverOrder.every(Number.isSafeInteger)
+            ? row.serverOrder
+            : undefined,
+        historyTurnId:
+          typeof row.historyTurnId === "string" ? row.historyTurnId : undefined,
+        turnStatus:
+          typeof row.turnStatus === "string" ? row.turnStatus : undefined,
         contentBlocks: Array.isArray(row.contentBlocks)
           ? row.contentBlocks.flatMap((block) => {
               if (!block || typeof block !== "object") return [];
@@ -117,11 +156,12 @@ function parseTail(raw: string): ChatMessage[] | null {
   }
 }
 
-function encodeTail(messages: ChatMessage[]): string | null {
+function encodeTail(
+  messages: ChatMessage[],
+): { v: number; tail: ChatMessage[] } | null | undefined {
   const tail = inFlightTail(messages).map(slimMessage);
   if (tail.length === 0) return null;
-  let raw = JSON.stringify({ v: 1, tail });
-  if (raw.length <= MAX_CACHE_CHARS) return raw;
+  if (JSON.stringify(tail).length <= MAX_CACHE_CHARS) return { v: 2, tail };
   const lighter = tail.map((message) =>
     message.toolData
       ? {
@@ -134,39 +174,76 @@ function encodeTail(messages: ChatMessage[]): string | null {
         }
       : message,
   );
-  raw = JSON.stringify({ v: 1, tail: lighter });
-  if (raw.length <= MAX_CACHE_CHARS) return raw;
-  return null;
+  if (JSON.stringify(lighter).length <= MAX_CACHE_CHARS)
+    return { v: 2, tail: lighter };
+  return undefined;
 }
 
-function writeNow(threadId: string, messages: ChatMessage[]): void {
-  const key = storageKey(threadId);
+function writeNow(threadId: string, messages: ChatMessage[]): boolean {
   try {
-    const raw = encodeTail(messages);
-    if (!raw) {
-      sessionStorage.removeItem(key);
-      return;
-    }
-    sessionStorage.setItem(key, raw);
+    const recovery = readRecoveryMessages(threadId);
+    const recoveryIds = new Set(recovery.map((m) => m.id));
+    const active = messages.filter((m) => !recoveryIds.has(m.id));
+    const payload = encodeTail(active);
+    if (payload === undefined) return false;
+    const key = storageKey(threadId);
+    if (!payload && !recovery.length) sessionStorage.removeItem(key);
+    else
+      sessionStorage.setItem(
+        key,
+        JSON.stringify({
+          v: 2,
+          tail: payload?.tail ?? [],
+          recovery: recovery.map(slimMessage),
+        }),
+      );
+    return true;
   } catch {
-    try {
-      sessionStorage.removeItem(key);
-    } catch {
-      // sessionStorage unavailable or quota exceeded
-    }
+    // One atomic envelope retains both active sends and uncertain recovery.
+    // A failed update must leave the previous successful envelope untouched.
+    return false;
   }
 }
 
 /** Read the in-flight turn cached for this thread, if any. */
 export function readInflightTail(threadId: string): ChatMessage[] | null {
   if (!threadId || threadId.startsWith("__")) return null;
+  const queued = latestByThread.get(threadId);
+  if (queued) return inFlightTail(queued);
   try {
     const raw = sessionStorage.getItem(storageKey(threadId));
     if (!raw) return null;
-    return parseTail(raw);
+    const tail = parseTail(raw);
+    return tail?.length ? tail : null;
   } catch {
     return null;
   }
+}
+
+/** Recovery and active sends share an atomic storage envelope, but separate state. */
+export function readRecoveryMessages(threadId: string): ChatMessage[] {
+  const memory = recoveryByThread.get(threadId);
+  if (memory) return memory;
+  try {
+    return (
+      parseTail(
+        sessionStorage.getItem(storageKey(threadId)) || "",
+        "recovery",
+      ) ?? []
+    );
+  } catch {
+    return [];
+  }
+}
+
+export function saveRecoveryMessages(
+  threadId: string,
+  messages: ChatMessage[],
+): void {
+  const active = readInflightTail(threadId) ?? [];
+  // Remember even a failed storage update so a later send cannot overwrite it.
+  recoveryByThread.set(threadId, messages);
+  writeNow(threadId, active);
 }
 
 export function hasInflightTail(threadId: string): boolean {
@@ -218,38 +295,29 @@ export function clearInflightTail(threadId: string): void {
     writeTimers.delete(threadId);
   }
   latestByThread.delete(threadId);
-  try {
-    sessionStorage.removeItem(storageKey(threadId));
-  } catch {
-    // ignore
-  }
+  writeNow(threadId, []);
 }
 
 export function moveInflightTail(fromId: string, toId: string): void {
-  if (!fromId || !toId || fromId === toId) return;
+  if (!fromId || !toId || fromId === toId || toId.startsWith("__")) return;
+  const active = readInflightTail(fromId) ?? [];
+  const recovery = [
+    ...new Map(
+      [...readRecoveryMessages(toId), ...readRecoveryMessages(fromId)].map(
+        (m) => [m.id, m],
+      ),
+    ).values(),
+  ];
+  recoveryByThread.set(toId, recovery);
+  if (!writeNow(toId, active)) return;
   const pending = writeTimers.get(fromId);
-  if (pending !== undefined) {
-    clearTimeout(pending);
-    writeTimers.delete(fromId);
-  }
-  const latest = latestByThread.get(fromId);
+  if (pending !== undefined) clearTimeout(pending);
+  writeTimers.delete(fromId);
   latestByThread.delete(fromId);
-  if (latest && !toId.startsWith("__")) {
-    writeNow(toId, latest);
-    try {
-      sessionStorage.removeItem(storageKey(fromId));
-    } catch {
-      // ignore
-    }
-    return;
-  }
+  recoveryByThread.delete(fromId);
   try {
-    const raw = sessionStorage.getItem(storageKey(fromId));
-    if (raw && !toId.startsWith("__")) {
-      sessionStorage.setItem(storageKey(toId), raw);
-    }
     sessionStorage.removeItem(storageKey(fromId));
   } catch {
-    // ignore
+    /* Keep the destination copy. */
   }
 }

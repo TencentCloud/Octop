@@ -106,3 +106,29 @@ def test_migration_summary_and_candidates_are_scoped(tmp_path: Path) -> None:
         ("old-2", "failed"),
         ("old-1", "pending"),
     ]
+
+
+def test_cursor_pages_do_not_shift_when_new_messages_arrive(tmp_path: Path) -> None:
+    db, threads, messages = _repos(tmp_path)
+    try:
+        threads.insert(
+            thread_id="thr",
+            agent_id="agt",
+            user_id=1,
+            channel_type="dashboard",
+            session_key="sk",
+            last_active=0,
+        )
+        messages.append_if_ready("thr", [_message(f"m{i}", str(i)) for i in range(60)])
+        latest, more = messages.page("thr", limit=25)
+        assert more
+        messages.append_if_ready("thr", [_message(f"later{i}", "new") for i in range(20)])
+        older, more = messages.page("thr", limit=25, offset=999, before_seq=latest[0].seq)
+        assert more
+        oldest, more = messages.page("thr", limit=25, before_seq=older[0].seq)
+        assert not more
+        assert [row.message_id for row in [*oldest, *older, *latest]] == [
+            f"m{i}" for i in range(60)
+        ]
+    finally:
+        db.close()

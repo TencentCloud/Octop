@@ -97,6 +97,19 @@ class WebSocketChannel(BaseChannel):
         return False
 
     async def handle_inbound(self, raw_payload: Any) -> None:
+        message = self.parse_inbound(raw_payload)
+        metadata = message.metadata or {}
+        try:
+            await self._handle_inbound(message)
+        except BaseException:
+            client_id = metadata.get("client_message_id")
+            if isinstance(client_id, str) and client_id:
+                self._hub.finish_user_message(
+                    str(metadata.get("thread_id") or ""), client_id, failed=True
+                )
+            raise
+
+    async def _handle_inbound(self, raw_payload: Any) -> None:
         """Stream harness chunks to all thread subscribers (no delta batching).
 
         After each harness stream completes, drain pending steers and continue
@@ -162,7 +175,10 @@ class WebSocketChannel(BaseChannel):
         self._steer.remember_context(
             thread_id, message.metadata if isinstance(message.metadata, dict) else None
         )
-        self._hub.mark_turn_active(thread_id)
+        client_message_id = (message.metadata or {}).get("client_message_id")
+        self._hub.mark_turn_active(
+            thread_id, client_message_id if isinstance(client_message_id, str) else None
+        )
         failed = False
         stream = None
         try:
@@ -174,6 +190,7 @@ class WebSocketChannel(BaseChannel):
                     "seq": started_seq,
                     "phase": "streaming_text",
                     "thread_id": thread_id,
+                    "client_message_id": (message.metadata or {}).get("client_message_id"),
                 },
             )
             current = message
@@ -343,6 +360,9 @@ class WebSocketChannel(BaseChannel):
                 )
             except Exception:
                 logger.exception("websocket failed to deliver turn.ended thread=%s", thread_id)
+            client_id = (message.metadata or {}).get("client_message_id")
+            if isinstance(client_id, str) and client_id:
+                self._hub.finish_user_message(thread_id, client_id, failed=failed)
 
     async def _send_text(self, subject: ChannelSubject, text: str) -> None:
         if not text:

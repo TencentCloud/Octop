@@ -1,5 +1,5 @@
 import { act, renderHook } from "@testing-library/react";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { octopThreadsApi } from "../../../api/modules/octopThreads";
 import * as chatStore from "./chatStore";
 import { useChat } from "./useChat";
@@ -7,14 +7,24 @@ import {
   clearInflightTail,
   flushInflightTail,
   readInflightTail,
+  readRecoveryMessages,
+  saveRecoveryMessages,
 } from "../utils/inflightTranscriptCache";
 
 const thread = "versioned-history-test";
+
+beforeEach(() => {
+  vi.spyOn(octopThreadsApi, "reconcile").mockResolvedValue({
+    thread_id: thread,
+    receipts: {},
+  });
+});
 
 afterEach(() => {
   vi.restoreAllMocks();
   chatStore.removeSession(thread);
   clearInflightTail(thread);
+  saveRecoveryMessages(thread, []);
 });
 
 describe("history failures", () => {
@@ -140,9 +150,14 @@ describe("history failures", () => {
       () => gate as ReturnType<typeof octopThreadsApi.history>,
     );
     const { result } = renderHook(() => useChat(thread, "agent"));
-    const pending = result.current.loadHistory(thread);
+    let pending!: Promise<void>;
+    act(() => {
+      pending = result.current.loadHistory(thread);
+    });
     // Dynamic import inside the loader yields before the request is awaited.
-    await new Promise((resolve) => setTimeout(resolve, 0));
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
     act(() => {
       chatStore.appendUserMessage(thread, {
         id: "local-user",
@@ -213,7 +228,13 @@ describe("history failures", () => {
     vi.spyOn(octopThreadsApi, "history").mockResolvedValue({
       thread_id: thread,
       messages: [
-        { id: "u", role: "user", content: "继续", timestamp: 5_000 },
+        {
+          id: "u",
+          role: "user",
+          content: "继续",
+          timestamp: 5_000,
+          turn_status: "complete",
+        },
         { id: "srv-a", role: "assistant", content: "完成", timestamp: 5_100 },
       ],
       has_more: false,
@@ -228,4 +249,482 @@ describe("history failures", () => {
     expect(chatStore.getSnapshot(thread).messages[0].timestamp).toBe(5_000);
     expect(readInflightTail(thread)).toBeNull();
   });
+});
+
+describe("pagination and recovery consistency", () => {
+  const stale: import("./sseHelpers").ChatMessage[] = [
+    { id: "u11", role: "user", content: "11:02", timestamp: 11_000 },
+    {
+      id: "a11",
+      role: "assistant",
+      content: "old reply",
+      timestamp: 11_100,
+      status: "done",
+    },
+  ];
+  const latest = [
+    {
+      id: "u15",
+      role: "user",
+      content: "15:01",
+      timestamp: 15_000,
+      server_order: [2, 50] as [number, number],
+    },
+    {
+      id: "a15",
+      role: "assistant",
+      content: "15:02",
+      timestamp: 15_100,
+      server_order: [2, 51] as [number, number],
+    },
+  ];
+
+  it("does not replay a confirmed old cache outside the latest page", async () => {
+    flushInflightTail(thread, stale);
+    vi.mocked(octopThreadsApi.reconcile).mockResolvedValue({
+      thread_id: thread,
+      receipts: {
+        u11: { state: "stored", persisted: true, server_order: [2, 1] },
+      },
+    });
+    const history = vi.spyOn(octopThreadsApi, "history").mockResolvedValue({
+      thread_id: thread,
+      messages: latest,
+      has_more: true,
+      next_cursor: "older",
+    });
+    const { result } = renderHook(() => useChat(thread, "agent"));
+    await act(async () => {
+      await result.current.loadHistory(thread);
+    });
+    expect(chatStore.getSnapshot(thread).messages.map((m) => m.id)).toEqual([
+      "u15",
+      "a15",
+    ]);
+    expect(readInflightTail(thread)).toBeNull();
+    history.mockResolvedValueOnce({
+      thread_id: thread,
+      messages: stale.map((m, i) => ({
+        ...m,
+        server_order: [2, i + 1] as [number, number],
+      })),
+      has_more: false,
+    });
+    await act(async () => {
+      await result.current.loadMoreHistory();
+    });
+    expect(chatStore.getSnapshot(thread).messages.map((m) => m.id)).toEqual([
+      "u11",
+      "a11",
+      "u15",
+      "a15",
+    ]);
+  });
+
+  it("retains unknown recovery separately, including after a new local send", async () => {
+    flushInflightTail(thread, stale);
+    vi.mocked(octopThreadsApi.reconcile).mockRejectedValue(
+      new Error("offline"),
+    );
+    vi.spyOn(octopThreadsApi, "history").mockResolvedValue({
+      thread_id: thread,
+      messages: latest,
+      has_more: true,
+    });
+    const { result } = renderHook(() => useChat(thread, "agent"));
+    await act(async () => {
+      await result.current.loadHistory(thread);
+    });
+    expect(result.current.messages.map((m) => m.id)).toEqual(["u15", "a15"]);
+    expect(result.current.recoveryMessages.map((m) => m.id)).toEqual([
+      "u11",
+      "a11",
+    ]);
+    act(() => {
+      chatStore.appendUserMessage(thread, {
+        id: "new",
+        role: "user",
+        content: "new message",
+        timestamp: 1,
+      });
+    });
+    expect(readRecoveryMessages(thread).map((m) => m.id)).toEqual([
+      "u11",
+      "a11",
+    ]);
+  });
+
+  it("queries persistence before loading the page so a late completion cannot discard the final reply", async () => {
+    flushInflightTail(thread, [
+      {
+        id: "u",
+        role: "user",
+        content: "question",
+        timestamp: 1,
+        delivery: "accepted",
+      },
+      {
+        id: "local-a",
+        role: "assistant",
+        content: "final",
+        timestamp: 2,
+        status: "done",
+      },
+    ]);
+    const calls: string[] = [];
+    vi.mocked(octopThreadsApi.reconcile).mockImplementation(async () => {
+      calls.push("receipt");
+      return {
+        thread_id: thread,
+        receipts: { u: { state: "stored", persisted: true } },
+      };
+    });
+    vi.spyOn(octopThreadsApi, "history").mockImplementation(async () => {
+      calls.push("history");
+      return {
+        thread_id: thread,
+        messages: [
+          {
+            id: "u",
+            role: "user",
+            content: "question",
+            turn_status: "complete",
+          },
+          { id: "server-a", role: "assistant", content: "final" },
+        ],
+      };
+    });
+    const { result } = renderHook(() => useChat(thread, "agent"));
+    await act(async () => {
+      await result.current.loadHistory(thread);
+    });
+    expect(calls).toEqual(["receipt", "history"]);
+    expect(result.current.messages.map((m) => m.id)).toEqual(["u", "server-a"]);
+    expect(readInflightTail(thread)).toBeNull();
+  });
+
+  it("keeps a locally completed reply until the server confirms persistence", async () => {
+    const local = [
+      {
+        id: "u",
+        role: "user" as const,
+        content: "question",
+        timestamp: 1,
+        delivery: "accepted" as const,
+      },
+      {
+        id: "local-a",
+        role: "assistant" as const,
+        content: "final local reply",
+        timestamp: 2,
+        status: "done" as const,
+      },
+    ];
+    chatStore.setHistoryPage(thread, local, { hasMore: false, nextOffset: 0 });
+    flushInflightTail(thread, local);
+    vi.mocked(octopThreadsApi.reconcile).mockResolvedValue({
+      thread_id: thread,
+      receipts: {
+        u: { state: "stored", persisted: false, turn_status: "active" },
+      },
+    });
+    const history = vi.spyOn(octopThreadsApi, "history").mockResolvedValue({
+      thread_id: thread,
+      messages: [{ id: "u", role: "user", content: "question" }],
+    });
+    const { result } = renderHook(() => useChat(thread, "agent"));
+    await act(async () => {
+      await result.current.refreshHistory();
+    });
+    expect(result.current.messages.at(-1)?.content).toBe("final local reply");
+    expect(readInflightTail(thread)).not.toBeNull();
+    vi.mocked(octopThreadsApi.reconcile).mockResolvedValue({
+      thread_id: thread,
+      receipts: { u: { state: "stored", persisted: true } },
+    });
+    history.mockResolvedValue({
+      thread_id: thread,
+      messages: [
+        { id: "u", role: "user", content: "question", turn_status: "complete" },
+        { id: "server-a", role: "assistant", content: "short final" },
+      ],
+    });
+    await act(async () => {
+      await result.current.refreshHistory();
+    });
+    expect(result.current.messages.map((m) => m.id)).toEqual(["u", "server-a"]);
+    expect(readInflightTail(thread)).toBeNull();
+  });
+
+  it("ignores an older-page response that arrives after a newer refresh", async () => {
+    chatStore.setHistoryPage(
+      thread,
+      [{ id: "initial", role: "user", content: "initial", timestamp: 1 }],
+      { hasMore: true, nextOffset: 25, nextCursor: "old-cursor" },
+    );
+    let resolveOlder!: (
+      value: import("../../../api/modules/octopThreads").OctopThreadHistory,
+    ) => void;
+    const older = new Promise<
+      import("../../../api/modules/octopThreads").OctopThreadHistory
+    >((resolve) => {
+      resolveOlder = resolve;
+    });
+    vi.spyOn(octopThreadsApi, "history").mockImplementation(
+      (_agent, _thread, params) =>
+        params?.cursor
+          ? older
+          : Promise.resolve({
+              thread_id: thread,
+              messages: latest,
+              has_more: true,
+              next_cursor: "new-cursor",
+            }),
+    );
+    const { result } = renderHook(() => useChat(thread, "agent"));
+    let pending!: Promise<boolean>;
+    act(() => {
+      pending = result.current.loadMoreHistory();
+    });
+    await act(async () => {
+      await result.current.refreshHistory();
+    });
+    await act(async () => {
+      resolveOlder({ thread_id: thread, messages: stale, has_more: false });
+      await pending;
+    });
+    expect(result.current.messages.map((m) => m.id)).toEqual(["u15", "a15"]);
+    expect(chatStore.getSnapshot(thread).historyNextCursor).toBe("new-cursor");
+  });
+
+  it("ignores history arriving after the conversation was cleared", async () => {
+    chatStore.setHistoryPage(
+      thread,
+      [{ id: "initial", role: "user", content: "initial", timestamp: 1 }],
+      { hasMore: false, nextOffset: 0 },
+    );
+    let resolveHistory!: (
+      value: import("../../../api/modules/octopThreads").OctopThreadHistory,
+    ) => void;
+    vi.spyOn(octopThreadsApi, "history").mockReturnValue(
+      new Promise((resolve) => {
+        resolveHistory = resolve;
+      }),
+    );
+    const { result } = renderHook(() => useChat(thread, "agent"));
+    let pending!: Promise<void>;
+    act(() => {
+      pending = result.current.refreshHistory();
+    });
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+    act(() => {
+      chatStore.clearMessages(thread);
+    });
+    await act(async () => {
+      resolveHistory({ thread_id: thread, messages: latest });
+      await pending;
+    });
+    expect(result.current.messages).toEqual([]);
+  });
+
+  it("gives an edited send a new identity and ignores history fetched before the edit", async () => {
+    chatStore.setHistoryPage(
+      thread,
+      [
+        {
+          id: "original",
+          role: "user",
+          content: "before",
+          timestamp: 1,
+          serverOrder: [0, 1],
+          turnStatus: "complete",
+        },
+      ],
+      { hasMore: false, nextOffset: 0 },
+    );
+    let resolveHistory!: (
+      value: import("../../../api/modules/octopThreads").OctopThreadHistory,
+    ) => void;
+    vi.spyOn(octopThreadsApi, "history").mockReturnValue(
+      new Promise((resolve) => {
+        resolveHistory = resolve;
+      }),
+    );
+    const send = vi.spyOn(chatStore, "sendTurn").mockResolvedValue();
+    const { result } = renderHook(() => useChat(thread, "agent"));
+    let pending!: Promise<void>;
+    act(() => {
+      pending = result.current.refreshHistory();
+    });
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+    act(() => {
+      result.current.editAndResend("original", "after", "", "agent");
+    });
+    const edited = chatStore.getSnapshot(thread).messages[0];
+    expect(edited.id).not.toBe("original");
+    expect(edited.delivery).toBe("pending");
+    expect(edited.serverOrder).toBeUndefined();
+    expect(send.mock.calls[0][15]).toBe(edited.id);
+    await act(async () => {
+      resolveHistory({ thread_id: thread, messages: latest });
+      await pending;
+    });
+    expect(result.current.messages.map((m) => m.content)).toEqual(["after"]);
+  });
+});
+
+it("restores only the server-identified active turn while legacy history is being projected", async () => {
+  flushInflightTail(thread, [
+    { id: "active-user", role: "user", content: "still running", timestamp: 1 },
+    {
+      id: "partial",
+      role: "assistant",
+      content: "already received",
+      timestamp: 2,
+      status: "streaming",
+    },
+  ]);
+  vi.mocked(octopThreadsApi.reconcile).mockResolvedValue({
+    thread_id: thread,
+    receipts: {
+      "active-user": {
+        state: "active",
+        persisted: false,
+        turn_status: "active",
+      },
+    },
+  });
+  vi.spyOn(octopThreadsApi, "history").mockResolvedValue({
+    thread_id: thread,
+    messages: [],
+    history_loading: true,
+    turn_active: true,
+    active_user_message_id: "active-user",
+  });
+  const { result } = renderHook(() => useChat(thread, "agent"));
+  await act(async () => {
+    await result.current.loadHistory(thread);
+  });
+  expect(result.current.messages.map((m) => m.id)).toEqual([
+    "active-user",
+    "partial",
+  ]);
+  expect(result.current.messages[1].content).toBe("already received");
+  expect(result.current.historyLoading).toBe(false);
+  expect(readInflightTail(thread)).not.toBeNull();
+});
+
+it("does not replay an active receipt after the history snapshot has advanced to another turn", async () => {
+  flushInflightTail(thread, [
+    { id: "old-active", role: "user", content: "11:02", timestamp: 1 },
+    {
+      id: "old-partial",
+      role: "assistant",
+      content: "old reply",
+      timestamp: 2,
+      status: "streaming",
+    },
+  ]);
+  vi.mocked(octopThreadsApi.reconcile).mockResolvedValue({
+    thread_id: thread,
+    receipts: { "old-active": { state: "active", persisted: false } },
+  });
+  vi.spyOn(octopThreadsApi, "history").mockResolvedValue({
+    thread_id: thread,
+    messages: [
+      { id: "new-user", role: "user", content: "15:01", server_order: [3, 50] },
+      {
+        id: "new-answer",
+        role: "assistant",
+        content: "15:02",
+        server_order: [3, 51],
+      },
+    ],
+    turn_active: true,
+    active_user_message_id: "new-user",
+  });
+  const { result } = renderHook(() => useChat(thread, "agent"));
+  await act(async () => {
+    await result.current.loadHistory(thread);
+  });
+  expect(result.current.messages.map((m) => m.id)).toEqual([
+    "new-user",
+    "new-answer",
+  ]);
+  expect(result.current.recoveryMessages.map((m) => m.id)).toEqual([
+    "old-active",
+    "old-partial",
+  ]);
+});
+
+it("keeps the server paging cursor when an unconfirmed local prefix cannot establish full coverage", async () => {
+  chatStore.setHistoryPage(
+    thread,
+    [
+      {
+        id: "old-u",
+        role: "user",
+        content: "old",
+        timestamp: 1,
+        serverOrder: [2, 1],
+        delivery: "accepted",
+      },
+      {
+        id: "old-live",
+        role: "assistant",
+        content: "long old reply",
+        timestamp: 2,
+      },
+      {
+        id: "new-u",
+        role: "user",
+        content: "new",
+        timestamp: 3,
+        delivery: "pending",
+      },
+    ],
+    { hasMore: false, nextOffset: 0, nextCursor: null },
+  );
+  vi.mocked(octopThreadsApi.reconcile).mockResolvedValue({
+    thread_id: thread,
+    receipts: {
+      "old-u": { state: "stored", persisted: true },
+      "new-u": { state: "stored", persisted: true },
+    },
+  });
+  vi.spyOn(octopThreadsApi, "history").mockResolvedValue({
+    thread_id: thread,
+    messages: [
+      {
+        id: "old-final",
+        role: "assistant",
+        content: "old final",
+        server_order: [2, 49],
+      },
+      { id: "new-u", role: "user", content: "new", server_order: [2, 50] },
+      {
+        id: "new-final",
+        role: "assistant",
+        content: "new final",
+        server_order: [2, 51],
+      },
+    ],
+    has_more: true,
+    next_cursor: "before-49",
+  });
+  const { result } = renderHook(() => useChat(thread, "agent"));
+  await act(async () => {
+    await result.current.refreshHistory();
+  });
+  expect(result.current.messages.map((m) => m.id)).toEqual([
+    "old-final",
+    "new-u",
+    "new-final",
+  ]);
+  expect(result.current.historyHasMore).toBe(true);
+  expect(chatStore.getSnapshot(thread).historyNextCursor).toBe("before-49");
 });

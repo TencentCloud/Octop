@@ -51,14 +51,18 @@ import {
   promoteAskUserToolMessage,
 } from "../utils/pendingHitl";
 import { frameBelongsToThread } from "./frameThread";
-import { inFlightTail, preferLocalTranscript } from "../utils/mergeHistoryTail";
+import {
+  inFlightTail,
+  preferLocalTranscript,
+  mergeOrderedMessages,
+} from "../utils/mergeHistoryTail";
 import { clipThreadTitle } from "../utils/threadTitle";
 import {
   clearInflightTail,
   flushInflightTail,
-  hasInflightTail,
   moveInflightTail,
   scheduleInflightTail,
+  saveRecoveryMessages,
 } from "../utils/inflightTranscriptCache";
 import {
   MAX_STREAM_RESUME_ATTEMPTS,
@@ -110,9 +114,9 @@ export function setFocusedChatSession(sessionId: string | null): void {
       prevState &&
       (prevState.isStreaming ||
         prevState.messages.some((message) => message.status === "streaming") ||
-        hasInflightTail(prev))
+        prevState.messages.some((m) => m.delivery))
     ) {
-      flushInflightTail(prev, inFlightTail(prevState.messages));
+      flushInflightTail(prev, cacheTail(prevState));
     }
     // Listen sockets stay open after a turn so late team replies can land.
     // Leaving the room drops that idle bind; an in-flight turn keeps resume.
@@ -163,7 +167,7 @@ const pendingResumeBySession = new Map<
     threadId: string;
     onStreamEnd?: () => void;
     resumeAttempt: number;
-    opts?: { afterUnexpectedDrop?: boolean };
+    opts?: { afterUnexpectedDrop?: boolean; expectedActive?: boolean };
   }
 >();
 
@@ -289,6 +293,7 @@ const EMPTY_SNAPSHOT: SessionSnapshot = Object.freeze({
 });
 
 const sessionStates = new Map<string, SessionStreamState>();
+let nextHistoryEpoch = 0;
 
 function flushLiveInflight(): void {
   for (const [sessionId, state] of sessionStates) {
@@ -296,9 +301,9 @@ function flushLiveInflight(): void {
       state.isStreaming ||
       state.liveSpeakers.size > 0 ||
       state.messages.some((message) => message.status === "streaming") ||
-      hasInflightTail(sessionId);
+      state.messages.some((m) => m.delivery);
     if (!live) continue;
-    flushInflightTail(sessionId, inFlightTail(state.messages));
+    flushInflightTail(sessionId, cacheTail(state));
   }
 }
 
@@ -478,6 +483,8 @@ function settleGeneratedTitle(agentId: string, threadId: string): void {
 function buildSnapshot(state: SessionStreamState): SessionSnapshot {
   return {
     messages: state.messages,
+    recoveryMessages: state.recoveryMessages,
+    historyEpoch: state.historyEpoch,
     isStreaming: state.isStreaming,
     thinkingStartedAt: state.thinkingStartedAt,
     runUsage: state.runUsage,
@@ -553,6 +560,8 @@ function getOrCreate(sessionId: string): SessionStreamState {
     state = {
       sessionKey: sessionId,
       messages: [],
+      recoveryMessages: [],
+      historyEpoch: ++nextHistoryEpoch,
       isStreaming: false,
       thinkingStartedAt: null,
       runUsage: null,
@@ -614,6 +623,27 @@ function publish(state: SessionStreamState): void {
   }
 }
 
+function cacheTail(state: SessionStreamState): ChatMessage[] {
+  const tail = inFlightTail(state.messages);
+  if (
+    tail.length &&
+    !tail.some((m) => m.role === "user") &&
+    state.streamUserId
+  ) {
+    return [
+      {
+        id: state.streamUserId,
+        role: "user",
+        content: "",
+        timestamp: 0,
+        delivery: "accepted",
+      },
+      ...tail,
+    ];
+  }
+  return tail;
+}
+
 function rememberInflight(state: SessionStreamState): void {
   const sessionId = state.sessionKey || "";
   if (!sessionId || sessionId.startsWith("__")) return;
@@ -621,12 +651,12 @@ function rememberInflight(state: SessionStreamState): void {
     state.isStreaming ||
     state.liveSpeakers.size > 0 ||
     state.messages.some((message) => message.status === "streaming");
-  const tail = inFlightTail(state.messages);
+  const tail = cacheTail(state);
   if (live) {
     scheduleInflightTail(sessionId, tail);
     return;
   }
-  if (hasInflightTail(sessionId)) {
+  if (state.messages.some((m) => m.delivery)) {
     flushInflightTail(sessionId, tail);
   }
 }
@@ -822,6 +852,17 @@ export function subscribe(sessionId: string, listener: () => void): () => void {
 }
 
 /** Get a read-only snapshot of the session state (referentially stable). */
+export function beginHistoryRead(sessionId: string): number {
+  return getOrCreate(sessionId).historyEpoch ?? 0;
+}
+
+export function isHistoryReadCurrent(
+  sessionId: string,
+  epoch: number,
+): boolean {
+  return sessionStates.get(sessionId)?.historyEpoch === epoch;
+}
+
 export function getSnapshot(sessionId: string): SessionSnapshot {
   const state = sessionStates.get(sessionId);
   if (!state) return EMPTY_SNAPSHOT;
@@ -853,10 +894,19 @@ export function setMessages(sessionId: string, messages: ChatMessage[]) {
 export function setHistoryPage(
   sessionId: string,
   messages: ChatMessage[],
-  opts: { hasMore: boolean; nextOffset: number; nextCursor?: string | null },
+  opts: {
+    hasMore: boolean;
+    nextOffset: number;
+    nextCursor?: string | null;
+    recoveryMessages?: ChatMessage[];
+  },
 ) {
   const state = getOrCreate(sessionId);
   state.messages = messages;
+  if (opts.recoveryMessages) {
+    state.recoveryMessages = opts.recoveryMessages;
+    saveRecoveryMessages(sessionId, opts.recoveryMessages);
+  }
   state.runUsage = null;
   usageSamplesByState.delete(state);
   state.historyHasMore = opts.hasMore;
@@ -900,15 +950,6 @@ export function isHistoryStale(sessionId: string): boolean {
   return sessionStates.get(sessionId)?.historyStale ?? false;
 }
 
-function dedupePrependMessages(
-  older: ChatMessage[],
-  existing: ChatMessage[],
-): ChatMessage[] {
-  if (older.length === 0) return older;
-  const seen = new Set(existing.map((message) => message.id));
-  return older.filter((message) => !seen.has(message.id));
-}
-
 /** Prepend older messages when the user scrolls up. */
 export function prependHistoryMessages(
   sessionId: string,
@@ -916,10 +957,12 @@ export function prependHistoryMessages(
   opts: { hasMore: boolean; nextOffset: number; nextCursor?: string | null },
 ) {
   const state = getOrCreate(sessionId);
-  const uniqueOlder = dedupePrependMessages(older, state.messages);
-  if (uniqueOlder.length > 0) {
-    state.messages = [...uniqueOlder, ...state.messages];
-  }
+  const existing = new Set(state.messages.map((m) => m.id));
+  const uniqueOlder = older.filter((m) => !existing.has(m.id));
+  state.messages = mergeOrderedMessages(
+    [...uniqueOlder, ...state.messages],
+    older.filter((m) => m.serverOrder),
+  );
   state.historyHasMore = opts.hasMore;
   state.historyNextOffset = opts.nextOffset;
   state.historyNextCursor = opts.nextCursor ?? null;
@@ -935,32 +978,46 @@ export function setHistoryLoadingMore(sessionId: string, loading: boolean) {
 /** Append a user message to a session. */
 export function appendUserMessage(sessionId: string, msg: ChatMessage) {
   const state = getOrCreate(sessionId);
-  state.messages = [...state.messages, msg];
+  if (state.messages.some((m) => m.id === msg.id)) return;
+  state.messages = [...state.messages, { ...msg, delivery: "pending" }];
   notify(state);
 }
 
 /**
  * Truncate all messages from messageId (inclusive) onwards, replacing that
  * message's content with newContent. Also aborts any in-flight stream.
- * Returns true if the message was found, false otherwise.
+ * Returns the new send's identity, or null if the message was not found.
  */
 export function truncateAndReplaceUserMessage(
   sessionId: string,
   messageId: string,
   newContent: string,
-): boolean {
+): string | null {
   const state = getOrCreate(sessionId);
   const idx = state.messages.findIndex((m) => m.id === messageId);
-  if (idx < 0) return false;
+  if (idx < 0) return null;
 
   // Abort any in-flight stream before rewriting history
   state.abortController?.abort();
   state.abortController = null;
 
   const original = state.messages[idx];
+  const replacementId = generateId();
+  state.historyEpoch = ++nextHistoryEpoch;
+  clearInflightTail(sessionId);
   state.messages = [
     ...state.messages.slice(0, idx),
-    { ...original, content: newContent, status: "done" as const },
+    {
+      ...original,
+      id: replacementId,
+      content: newContent,
+      status: "done" as const,
+      delivery: "pending" as const,
+      serverOrder: undefined,
+      turnStatus: undefined,
+      historyTurnId: undefined,
+      turnId: undefined,
+    },
   ];
   clearStreamingFlags(state);
   state.runUsage = null;
@@ -970,7 +1027,7 @@ export function truncateAndReplaceUserMessage(
   state.streamBlockType = "";
   state.toolCallIdIndex = {};
   notify(state);
-  return true;
+  return replacementId;
 }
 
 /** Append a push (proactive/cron) assistant message to all active sessions. */
@@ -1006,6 +1063,10 @@ export function clearMessages(sessionId: string) {
     !state.historyHasMore;
   if (alreadyEmpty) return;
   state.messages = [];
+  state.recoveryMessages = [];
+  state.streamUserId = undefined;
+  saveRecoveryMessages(sessionId, []);
+  state.historyEpoch = ++nextHistoryEpoch;
   clearStreamingFlags(state);
   clearAllLiveSpeakers(state);
   state.runUsage = null;
@@ -1056,7 +1117,7 @@ function closeLiveSocket(
   } catch {
     // ignore
   }
-  clearLiveSocket(sessionId);
+  clearLiveSocket(sessionId, live.ws);
 }
 
 /** Cancel any in-flight stream for a session (user stop). */
@@ -1103,6 +1164,7 @@ export function removeSession(sessionId: string) {
   clearStreamActivity(sessionId);
   clearStreamWatchdog(sessionId);
   clearInflightTail(sessionId);
+  saveRecoveryMessages(sessionId, []);
   closeLiveSocket(sessionId, { intentional: true, userCancelled: true });
 }
 
@@ -2699,7 +2761,7 @@ export async function attachThread(
   threadId: string,
   onStreamEnd?: () => void,
   resumeAttempt = 0,
-  opts?: { afterUnexpectedDrop?: boolean },
+  opts?: { afterUnexpectedDrop?: boolean; expectedActive?: boolean },
 ): Promise<void> {
   if (!agentId || !threadId || threadId === "__empty__") return;
 
@@ -2796,6 +2858,7 @@ export async function attachThread(
     controller.signal.addEventListener("abort", onAbort, { once: true });
 
     ws.onopen = () => {
+      if (liveSockets.get(sessionId)?.ws !== ws) return;
       touchStreamActivity(sessionId);
       startSocketPing(live);
       try {
@@ -2807,13 +2870,24 @@ export async function attachThread(
     };
 
     ws.onmessage = (event) => {
+      if (liveSockets.get(sessionId)?.ws !== ws) return;
       try {
         const data = JSON.parse(String(event.data)) as Record<string, unknown>;
         if (!data || typeof data !== "object") return;
         if (!frameBelongsToThread(data, live.threadId)) return;
+        const frameTurnId = (data as { turn_id?: unknown }).turn_id;
+        if (
+          (data as { type?: unknown }).type === "turn.ended" &&
+          typeof frameTurnId === "string" &&
+          state.activeTurnId &&
+          frameTurnId !== state.activeTurnId
+        )
+          return;
         if (applyThreadTitleFrame(data)) return;
 
         if (data.type === "turn_status") {
+          if (typeof data.client_message_id === "string")
+            state.streamUserId = data.client_message_id;
           if (turnStatusAction(Boolean(data.active)) === "expect_stream") {
             if (!state.isStreaming) {
               state.runUsage = null;
@@ -2843,6 +2917,8 @@ export async function attachThread(
             if (!hasStreamingMessages(state)) {
               finish();
             }
+          } else if (opts?.expectedActive) {
+            finish("host");
           } else if (state.abortController === controller) {
             state.abortController = previousController;
           }
@@ -2900,6 +2976,10 @@ export async function attachThread(
     };
 
     ws.onclose = () => {
+      if (liveSockets.has(sessionId) && liveSockets.get(sessionId)?.ws !== ws) {
+        settleOpen();
+        return;
+      }
       controller.signal.removeEventListener("abort", onAbort);
       const wasIntentional = live.intentionalClose;
       const userCancelled = live.userCancelled;
@@ -2943,6 +3023,7 @@ export async function attachThread(
         })
       ) {
         setTimeout(() => {
+          if (sessionStates.get(sessionId) !== state) return;
           void attachThread(
             sessionId,
             agentId,
@@ -3046,6 +3127,7 @@ async function sendTurnWebSocket(
     controller.signal.addEventListener("abort", onAbort, { once: true });
 
     ws.onopen = () => {
+      if (liveSockets.get(sessionId)?.ws !== ws) return;
       openedForTurn = true;
       startSocketPing(live);
       const payload: Record<string, unknown> = {
@@ -3083,10 +3165,19 @@ async function sendTurnWebSocket(
     };
 
     ws.onmessage = (event) => {
+      if (liveSockets.get(sessionId)?.ws !== ws) return;
       try {
         const data = JSON.parse(String(event.data)) as HarnessChunk;
         if (!data || typeof data !== "object") return;
         if (!frameBelongsToThread(data, live.threadId)) return;
+        const frameTurnId = (data as { turn_id?: unknown }).turn_id;
+        if (
+          (data as { type?: unknown }).type === "turn.ended" &&
+          typeof frameTurnId === "string" &&
+          state.activeTurnId &&
+          frameTurnId !== state.activeTurnId
+        )
+          return;
         if (applyThreadTitleFrame(data as unknown as Record<string, unknown>)) {
           return;
         }
@@ -3154,6 +3245,10 @@ async function sendTurnWebSocket(
     };
 
     ws.onclose = () => {
+      if (liveSockets.has(sessionId) && liveSockets.get(sessionId)?.ws !== ws) {
+        settle(true);
+        return;
+      }
       const wasIntentional = live.intentionalClose;
       const userCancelled = live.userCancelled;
       // Capture before any finish() clears streaming flags.
@@ -3183,6 +3278,7 @@ async function sendTurnWebSocket(
         touchStreamActivity(sessionId);
         if (!settled) settle(true);
         setTimeout(() => {
+          if (sessionStates.get(sessionId) !== state) return;
           void attachThread(
             sessionId,
             agentId,
@@ -3229,6 +3325,7 @@ async function sendTurnWebSocket(
       // can still stream into this room. 1:1 chats close after the host done.
       if (
         settled &&
+        !wasIntentional &&
         !userCancelled &&
         keepRoomSocket(state, agentId) &&
         resolvedThreadId &&
@@ -3787,6 +3884,15 @@ function applySteerProtocolFrame(
   if (type === "turn.started" || type === "turn.resumed") {
     const turnId = String(data.turn_id || "").trim();
     if (turnId) state.activeTurnId = turnId;
+    const messageId =
+      typeof data.client_message_id === "string" ? data.client_message_id : "";
+    if (messageId) state.streamUserId = messageId;
+    if (messageId)
+      state.messages = state.messages.map((m) =>
+        m.id === messageId && m.delivery
+          ? { ...m, delivery: "accepted", turnId }
+          : m,
+      );
     // Idle commit becomes a normal turn. Keep the optimistic user row —
     // it is the live bubble until history returns the same text. Stop
     // tracking it so a later turn.ended does not delete it.

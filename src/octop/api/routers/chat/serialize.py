@@ -449,12 +449,16 @@ def _load_projected_thread_messages(
     *,
     user: Any,
     offset: int = 0,
-) -> tuple[list[dict[str, Any]], bool]:
+    cursor: str | None = None,
+) -> tuple[list[dict[str, Any]], bool, str | None]:
     """Read one page without touching the agent checkpoint database."""
+    from octop.infra.history.ordering import projection_boundary, projection_cursor  # noqa: PLC0415
+
     rows, has_more = server.services.thread_message_repo.page(
         thread_id,
         limit=limit,
         offset=offset,
+        before_seq=projection_boundary(thread_id, cursor),
     )
     out: list[dict[str, Any]] = []
     for row in rows:
@@ -475,8 +479,11 @@ def _load_projected_thread_messages(
             fallback_created_at=row.created_at,
         )
         if entry is not None:
+            entry["server_order"] = [0, row.seq]
+            entry["id"] = entry.get("id") or f"history:0:{row.seq}"
             out.append(entry)
-    return _enrich_history_tool_media(out, agent_id=agent_id), has_more
+    next_cursor = projection_cursor(thread_id, rows[0].seq) if has_more and rows else None
+    return _enrich_history_tool_media(out, agent_id=agent_id), has_more, next_cursor
 
 
 async def _backfill_thread_projection(

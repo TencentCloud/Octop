@@ -13,6 +13,36 @@ _MAX_DECISIONS = 16
 _MAX_DECISION_MESSAGE_CHARS = 8000
 
 
+class HistoryReconcileBody(BaseModel):
+    message_ids: list[str] = Field(
+        min_length=1,
+        max_length=32,
+        description="Cached user message IDs to resolve independently of the latest history page.",
+    )
+
+    @field_validator("message_ids")
+    @classmethod
+    def validate_message_ids(cls, ids: list[str]) -> list[str]:
+        if any(not mid.strip() or len(mid) > 128 for mid in ids):
+            raise ValueError("Message IDs must contain 1 to 128 characters")
+        return list(dict.fromkeys(ids))
+
+
+class HistoryMessageReceipt(BaseModel):
+    state: Literal["stored", "active", "unknown"]
+    persisted: bool = Field(description="The corresponding turn was durably finalized.")
+    server_order: tuple[int, int] | None = Field(
+        default=None, description="Archive segment and message sequence."
+    )
+    history_turn_id: str | None = None
+    turn_status: str | None = None
+
+
+class HistoryReconcileResponse(BaseModel):
+    thread_id: str
+    receipts: dict[str, HistoryMessageReceipt]
+
+
 class HitlSessionPolicyBody(BaseModel):
     """Dashboard chat bypass for tool approval (does not change global HITL)."""
 

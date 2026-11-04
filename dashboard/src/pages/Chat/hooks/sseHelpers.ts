@@ -154,6 +154,13 @@ export interface ChatMessage {
   errorInfo?: ProcessErrorInfo;
   status?: "streaming" | "done" | "error";
   timestamp: number;
+  /** Canonical archive segment and sequence. Browser time is display-only. */
+  serverOrder?: [number, number];
+  historyTurnId?: string;
+  turnStatus?: string;
+  /** Present only on a locally created send until durable confirmation. */
+  delivery?: "pending" | "accepted";
+  turnId?: string;
   /**
    * Team room speaker. When a member is fanned into the host thread, this is
    * that member's agent id so the bubble can render as a separate person.
@@ -177,6 +184,8 @@ export interface SessionStreamState {
   /** Map key this bucket is stored under. Pending ids are rewritten on rename. */
   sessionKey?: string;
   messages: ChatMessage[];
+  recoveryMessages?: ChatMessage[];
+  historyEpoch?: number;
   isStreaming: boolean;
   /** Wall-clock ms when the current user turn started waiting on the model. */
   thinkingStartedAt: number | null;
@@ -219,6 +228,7 @@ export interface SessionStreamState {
   liveSpeakers: Set<string>;
   /** Mid-turn steer: ``turn.started`` / ``turn.resumed`` id (issue #1300). */
   activeTurnId?: string | null;
+  streamUserId?: string;
   /** Server-acked undrained steers (internal; drives transcript lifecycle). */
   pendingSteers: Array<{
     clientPendingId: string;
@@ -235,6 +245,8 @@ export interface SessionStreamState {
 /** Read-only snapshot shape exposed via ``chatStore.getSnapshot``. */
 export interface SessionSnapshot {
   messages: ChatMessage[];
+  recoveryMessages?: ChatMessage[];
+  historyEpoch?: number;
   isStreaming: boolean;
   thinkingStartedAt: number | null;
   runUsage: TokenUsage | null;

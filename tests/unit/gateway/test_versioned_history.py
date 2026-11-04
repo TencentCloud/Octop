@@ -1104,3 +1104,160 @@ async def test_im_projection_stops_on_archive_failure(archive, monkeypatch):
     await tracker.finish(completed=False)
     assert messages_from_dict(_committed_messages(archive))[0].content == "already committed"
     assert archive.store.turn("t")["status"] == "failed"
+
+
+@pytest.mark.asyncio
+async def test_message_receipts_resolve_old_turn_outside_latest_page(archive):
+    from unittest.mock import MagicMock
+
+    from octop.infra.history.reconcile import reconcile_user_messages
+
+    recorder = RecordingTracker(
+        archive, archive.begin("a", "t"), [HumanMessage(content="11:02", id="old-user")]
+    )
+    recorder.observe({"type": "token", "content": "old reply"})
+    await recorder.finish(completed=True)
+    recorder = RecordingTracker(
+        archive, archive.begin("a", "t"), [HumanMessage(content="15:01", id="new-user")]
+    )
+    for i in range(30):
+        recorder.observe(
+            {
+                "type": "tool_result",
+                "messages": [ToolMessage(content=str(i), tool_call_id=f"call-{i}", id=f"tool-{i}")],
+            }
+        )
+    recorder.observe({"type": "token", "content": "15:02"})
+    await recorder.finish(completed=True)
+    page = await archive.page("t", limit=25, cursor=None, legacy_reader=no_anchor)
+    assert "old-user" not in [wire["data"].get("id") for wire in page["messages"]]
+    result = await reconcile_user_messages(
+        archive, archive.messages, MagicMock(), "a", "t", ["old-user", "unsent"], turn_active=False
+    )
+    assert result["old-user"]["persisted"] is True
+    assert result["old-user"]["server_order"] < page["positions"][0]["server_order"]
+    assert result["unsent"] == {"state": "unknown", "persisted": False}
+    assert archive.store.user_message_positions("different-thread", ["old-user"]) == {}
+
+
+@pytest.mark.asyncio
+async def test_receipt_waits_for_durable_turn_finish_and_survives_reopen(archive):
+    turn = archive.begin("a", "t")
+    recorder = RecordingTracker(
+        archive, turn, [HumanMessage(content="question", id="pending-user")]
+    )
+    recorder.observe({"type": "token", "content": "short"})
+    await recorder.flush()
+    assert (
+        archive.store.user_message_positions("t", ["pending-user"])["pending-user"]["persisted"]
+        is False
+    )
+    await recorder.finish(completed=True)
+    reopened = HistoryStore(archive.store.path, identity="test")
+    try:
+        assert (
+            reopened.user_message_positions("t", ["pending-user"])["pending-user"]["persisted"]
+            is True
+        )
+    finally:
+        reopened.close()
+
+
+@pytest.mark.asyncio
+async def test_failed_archive_write_never_retires_recovery(archive):
+    turn = archive.begin("a", "t")
+    recorder = RecordingTracker(archive, turn, [HumanMessage(content="question", id="u")])
+    await recorder.flush()
+    archive.finish(turn["id"], "failed", error="archive_write_failed")
+    assert archive.store.user_message_positions("t", ["u"])["u"]["persisted"] is False
+
+
+@pytest.mark.asyncio
+async def test_derived_message_index_upgrades_old_archive_without_decoding_bodies(
+    archive, monkeypatch
+):
+    recorder = RecordingTracker(
+        archive,
+        archive.begin("a", "t"),
+        [HumanMessage(content="large " * 2000, id="old-format-user")],
+    )
+    await recorder.flush()
+    with archive.store.transaction() as conn:
+        conn.execute("DROP TABLE message_keys")
+
+    def unexpected_decode(*_args):
+        raise AssertionError("Rebuilding the ID index must not decode message content")
+
+    monkeypatch.setattr(HistoryStore, "_decode", unexpected_decode)
+    upgraded = HistoryStore(archive.store.path, identity="test")
+    try:
+        receipt = upgraded.user_message_positions("t", ["old-format-user"])
+        assert receipt["old-format-user"]["state"] == "stored"
+        assert receipt["old-format-user"]["persisted"] is False
+    finally:
+        upgraded.close()
+
+
+@pytest.mark.asyncio
+async def test_server_positions_stay_stable_when_legacy_history_switches_to_v2(archive):
+    from unittest.mock import MagicMock
+
+    from octop.infra.history.reader import read_page
+
+    archive.messages.append_if_ready(
+        "t",
+        message_inputs(
+            [HumanMessage(content="old", id="legacy-u"), AIMessage(content="answer", id="legacy-a")]
+        ),
+    )
+    before = await read_page(archive, MagicMock(), "a", "t", limit=25)
+    recorder = RecordingTracker(
+        archive, archive.begin("a", "t"), [HumanMessage(content="new", id="new-u")]
+    )
+    recorder.observe({"type": "token", "content": "new answer"})
+    await recorder.finish(completed=True)
+    after = await read_page(archive, MagicMock(), "a", "t", limit=25)
+    assert after["positions"][:2] == before["positions"]
+    orders = [position["server_order"] for position in after["positions"]]
+    assert orders == sorted(orders)
+    assert len({tuple(order) for order in orders}) == len(orders)
+
+
+@pytest.mark.asyncio
+async def test_old_writer_invalidates_derived_message_identity_index(archive):
+    recorder = RecordingTracker(
+        archive, archive.begin("a", "t"), [HumanMessage(content="question", id="before")]
+    )
+    await recorder.flush()
+    with archive.store.transaction() as conn:
+        row = conn.execute(
+            "SELECT id,data FROM documents WHERE kind='message' AND thread_id='t'"
+        ).fetchone()
+        encoded = json.loads(row["data"])
+        data = next(value for key, value in encoded[1] if key == "data")
+        identity = next(value for key, value in data[1] if key == "id")
+        identity[1] = "after"
+        # A v1 writer is unaware of message_keys. Its ordinary document update
+        # must invalidate the derived row so the next open repairs it.
+        conn.execute("UPDATE documents SET data=? WHERE id=?", (json.dumps(encoded), row["id"]))
+    assert archive.store.user_message_positions("t", ["before"]) == {}
+    reopened = HistoryStore(archive.store.path, identity="test")
+    try:
+        assert reopened.user_message_positions("t", ["after"])["after"]["state"] == "stored"
+    finally:
+        reopened.close()
+
+
+@pytest.mark.asyncio
+async def test_reconciliation_never_reads_a_running_legacy_checkpointer(archive):
+    from unittest.mock import MagicMock
+
+    from octop.infra.history.reconcile import reconcile_user_messages
+
+    archive.messages.mark_projection("t", "pending")
+    registry = MagicMock()
+    result = await reconcile_user_messages(
+        None, archive.messages, registry, "a", "t", ["unknown"], turn_active=True
+    )
+    assert result["unknown"]["state"] == "unknown"
+    registry.get_agent.assert_not_called()

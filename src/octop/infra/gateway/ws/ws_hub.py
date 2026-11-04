@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+from collections import OrderedDict
 from collections.abc import Awaitable, Callable
 from typing import Any
 
@@ -39,6 +40,30 @@ class WebSocketHub:
         self._user_conns: dict[int, set[str]] = {}
         self._conn_user: dict[str, int] = {}
         self._active_turns: set[str] = set()
+        self._active_user_messages: dict[str, str] = {}
+        self._accepted_messages: set[tuple[str, str]] = set()
+        self._finished_messages: OrderedDict[tuple[str, str], None] = OrderedDict()
+
+    def has_user_message(self, thread_id: str, message_id: str) -> bool:
+        key = (thread_id, message_id)
+        return key in self._accepted_messages or key in self._finished_messages
+
+    def claim_user_message(self, thread_id: str, message_id: str) -> bool:
+        """Reserve before enqueue, closing the gap before the first durable write."""
+        if self.has_user_message(thread_id, message_id):
+            return False
+        self._accepted_messages.add((thread_id, message_id))
+        return True
+
+    def finish_user_message(self, thread_id: str, message_id: str, *, failed: bool) -> None:
+        key = (thread_id, message_id)
+        self._accepted_messages.discard(key)
+        if not failed:
+            # Covers an in-flight lookup which read just before final commit.
+            # Older retries are resolved using the durable message index.
+            self._finished_messages[key] = None
+            while len(self._finished_messages) > 4096:
+                self._finished_messages.popitem(last=False)
 
     def register(
         self,
@@ -100,13 +125,19 @@ class WebSocketHub:
         if not conns:
             self._thread_subscribers.pop(thread_id, None)
 
-    def mark_turn_active(self, thread_id: str) -> None:
+    def mark_turn_active(self, thread_id: str, client_message_id: str | None = None) -> None:
         tid = thread_id.strip()
         if tid:
             self._active_turns.add(tid)
+            if client_message_id:
+                self._active_user_messages[tid] = client_message_id
 
     def mark_turn_idle(self, thread_id: str) -> None:
         self._active_turns.discard(thread_id.strip())
+        self._active_user_messages.pop(thread_id.strip(), None)
+
+    def active_user_message_id(self, thread_id: str) -> str | None:
+        return self._active_user_messages.get(thread_id.strip())
 
     def is_turn_active(self, thread_id: str) -> bool:
         return thread_id.strip() in self._active_turns

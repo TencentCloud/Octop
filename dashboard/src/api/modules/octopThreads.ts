@@ -71,12 +71,16 @@ export interface OctopThread {
 
 export interface OctopThreadHistory {
   thread_id: string;
+  active_user_message_id?: string | null;
   messages: Array<{
     role: string;
     content: unknown;
     id?: string;
     usage?: unknown;
     timestamp?: number;
+    server_order?: [number, number];
+    history_turn_id?: string;
+    turn_status?: string;
     status?: string;
     error_code?: string;
     agent_id?: string;
@@ -160,7 +164,24 @@ export interface HistoryMigrationStatus {
 
 export const CHAT_HISTORY_PAGE_SIZE = 25;
 
+export interface HistoryMessageReceipt {
+  state: "stored" | "active" | "unknown";
+  persisted: boolean;
+  server_order?: [number, number] | null;
+  history_turn_id?: string | null;
+  turn_status?: string | null;
+}
+
+export type HistoryReceipts = Record<string, HistoryMessageReceipt>;
+
 export const octopThreadsApi = {
+  reconcile: (agentId: string, threadId: string, messageIds: string[]) =>
+    request<{ thread_id: string; receipts: HistoryReceipts }>(
+      `/agents/${encodeURIComponent(agentId)}/threads/${encodeURIComponent(
+        threadId,
+      )}/history/reconcile`,
+      { method: "POST", body: JSON.stringify({ message_ids: messageIds }) },
+    ),
   list: (agentId: string, limit = 50) =>
     request<OctopThread[]>(
       `/agents/${encodeURIComponent(agentId)}/threads?limit=${limit}`,
