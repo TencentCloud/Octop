@@ -21,8 +21,8 @@ dependencies = [
     "apscheduler>=3.10,<4",
     "argon2-cffi>=23.1",
     "pyjwt>=2.8",
-    "octop-harness[all]>=1.0.6",
-    "octop-memory>=1.0.2",
+    "octop-harness[all]>=1.0.7",
+    "octop-memory>=1.0.3",
     "lark-oapi>=1.7.3",
     "octop-gateway>=1.0.3",
     "cryptography>=41",
@@ -70,6 +70,8 @@ dev = [
 browser = [
     "playwright>=1.40",
 ]
+# Volcengine TOS object storage (Admin storage kind ``tos``).
+tos = ["tos>=2.9,<3"]
 # Kept for backward compatibility; pillow is now a core dependency.
 desktop = ["mss>=9.0", "pynput>=1.7"]
 # Local ONNX / fastembed embedding models (Models admin local tab).

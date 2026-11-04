@@ -545,7 +545,7 @@ class AgentManager:
             settings_repo=repos.settings_repo,
             agents_repo=repos.agent_repo,
         )
-        self._tool_guard_rules = ToolGuardRulesStore(paths=paths)
+        self._tool_guard_rules = ToolGuardRulesStore(paths=paths, settings=repos.settings_repo)
         self._providers = ProviderStore(
             provider_repo=repos.provider_repo,
         )
@@ -584,6 +584,9 @@ class AgentManager:
         self._acp_settings = ACPSettingsStore(
             settings_repo=repos.settings_repo,
             agents_repo=repos.agent_repo,
+        )
+        self._tool_guard_rules = ToolGuardRulesStore(
+            paths=self._paths, settings=repos.settings_repo
         )
         self._providers = ProviderStore(provider_repo=repos.provider_repo)
         self._connector_svc = ConnectorService(
@@ -782,6 +785,7 @@ class AgentManager:
                 seed_workspace_dir_on_create,
             )
             from octop.infra.users.resource_policy import (
+                apply_workspace_root_to_config,
                 assert_agent_quota_available,
                 raise_if_backend_outside_user_root,
             )
@@ -794,6 +798,12 @@ class AgentManager:
                         self._repos.agent_repo,
                         spec.user_id,
                     )
+                apply_workspace_root_to_config(
+                    self._repos.user_policy_repo,
+                    spec.user_id,
+                    config,
+                    fill_missing=True,
+                )
                 raise_if_backend_outside_user_root(
                     self._repos.user_policy_repo,
                     spec.user_id,
@@ -1034,12 +1044,32 @@ class AgentManager:
             )
             owner_row = self._repos.agent_repo.get(agent_id)
             if owner_row is not None and owner_row.user_id is not None:
-                from octop.infra.users.resource_policy import raise_if_backend_outside_user_root
+                from octop.infra.users.resource_policy import (
+                    POLICY_WORKSPACE_ROOT_DIR,
+                    apply_workspace_root_to_config,
+                    effective_workspace_root_dir,
+                    persisted_workspace_within_root,
+                    raise_if_backend_outside_user_root,
+                )
 
+                allowed_root = effective_workspace_root_dir(
+                    self._repos.user_policy_repo.get(owner_row.user_id, POLICY_WORKSPACE_ROOT_DIR)
+                )
+                workspace_in_jail = persisted_workspace_within_root(
+                    parsed_profile_cfg, allowed_root
+                )
+                if workspace_in_jail:
+                    apply_workspace_root_to_config(
+                        self._repos.user_policy_repo,
+                        owner_row.user_id,
+                        parsed_profile_cfg,
+                        fill_missing=False,
+                    )
                 raise_if_backend_outside_user_root(
                     self._repos.user_policy_repo,
                     owner_row.user_id,
                     parsed_profile_cfg.get("backend"),
+                    reject_host_root=bool(allowed_root) and not workspace_in_jail,
                 )
                 self._assert_named_storage_backends(
                     owner_row.user_id,
@@ -3557,6 +3587,25 @@ class AgentManager:
         backend_spec = cfg.get("backend")
         if workspace_dir is None:
             workspace_dir = self.resolve_workspace_dir(row.agent_id)
+        if row.user_id is not None:
+            from octop.infra.users.resource_policy import (
+                POLICY_WORKSPACE_ROOT_DIR,
+                clamp_backend_to_workspace_root,
+                effective_workspace_root_dir,
+                persisted_workspace_within_root,
+            )
+
+            allowed = effective_workspace_root_dir(
+                self._repos.user_policy_repo.get(row.user_id, POLICY_WORKSPACE_ROOT_DIR)
+            )
+            # Only rewrite a root the files already live under. Creating an
+            # expert persists the snapped backend before the workspace exists;
+            # startup must not jail a host workspace that was seeded earlier.
+            if allowed and persisted_workspace_within_root(cfg, allowed):
+                try:
+                    backend_spec = clamp_backend_to_workspace_root(backend_spec, allowed)
+                except ValueError as exc:
+                    raise OctopError(ErrorCode.WORKSPACE_ROOT_RESTRICTED, str(exc)) from exc
         if backend_spec is None:
             return default_agent_backend_spec(workspace_dir)
         resolved = resolve_agent_backend_spec(
@@ -3608,11 +3657,11 @@ class AgentManager:
         allow_ephemeral_remote: bool = False,
     ) -> Any:
         """Resolve :class:`BackendWorkspace` for *row* without a running harness agent."""
-        from octop_harness.backends import resolve_backend  # noqa: PLC0415
         from octop_harness.backends.workspace import BackendWorkspace  # noqa: PLC0415
 
         from octop.infra.agents.workspace.dir import system_files_path_from_config  # noqa: PLC0415
         from octop.infra.backend.opensandbox_deps import ensure_opensandbox_deps  # noqa: PLC0415
+        from octop.infra.backend.resolve_backend import resolve_octop_backend  # noqa: PLC0415
 
         if cfg is None:
             cfg = self._agent_config_dict(row)
@@ -3634,7 +3683,7 @@ class AgentManager:
         from octop.infra.backend.compat import adapt_backend_protocol  # noqa: PLC0415
 
         return BackendWorkspace(
-            adapt_backend_protocol(resolve_backend(backend, workspace_dir=workspace_dir)),
+            adapt_backend_protocol(resolve_octop_backend(backend, workspace_dir=workspace_dir)),
             workspace_dir,
             system_files_path=system_files_path_from_config(cfg),
         )
@@ -4318,6 +4367,7 @@ class AgentManager:
                     *(applied.middleware or []),
                 ],
             )
+        self._tool_guard_rules.ensure_seeded()
         return replace(
             applied,
             tool_guard_rules_dir=str(self._tool_guard_rules.rules_dir),

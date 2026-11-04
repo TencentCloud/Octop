@@ -189,19 +189,19 @@ This roadmap may shift as the community grows; treat it as indicative only.
 **macOS / Linux** — one-line installer (recommended):
 
 ```bash
-curl -fsSL https://finnie-1258344699.cos.ap-guangzhou.myqcloud.com/octop/install.sh | bash
+curl -fsSL https://download.octop.cloud/octop/scripts/install.sh | bash
 ```
 
 **Windows (PowerShell)**:
 
 ```powershell
-irm https://finnie-1258344699.cos.ap-guangzhou.myqcloud.com/octop/install.ps1 | iex
+irm https://download.octop.cloud/octop/scripts/install.ps1 | iex
 ```
 
 **Windows (cmd)** — download and run, or from a cloned repo:
 
 ```bat
-curl -fsSL https://finnie-1258344699.cos.ap-guangzhou.myqcloud.com/octop/install.bat -o install.bat
+curl -fsSL https://download.octop.cloud/octop/scripts/install.bat -o install.bat
 install.bat
 ```
 
@@ -217,7 +217,7 @@ The installer places `octop` on your PATH via `~/.octop/bin`. Optional extras:
 
 ```bash
 # Download Playwright Chromium for browser automation (skipped if a system Chrome/Chromium is already present)
-curl -fsSL https://finnie-1258344699.cos.ap-guangzhou.myqcloud.com/octop/install.sh | bash -s -- --extras browser
+curl -fsSL https://download.octop.cloud/octop/scripts/install.sh | bash -s -- --extras browser
 ```
 
 See [scripts/README.md](scripts/README.md) for all install options (`--version`, `--from-source`, `--mirror`, Windows flags).
@@ -575,6 +575,14 @@ See [CHANGELOG.md](CHANGELOG.md) for release history.
 ## 💬 Community
 
 - **Discord** — join the English-speaking community: [discord.gg/QnWdhJxq9h](https://discord.gg/QnWdhJxq9h)
+
+### WeChat
+
+Search for **腾讯Octop** in WeChat, or scan:
+
+<p align="center">
+  <img src="docs/assets/wechat-octop.png" alt="WeChat search for 腾讯Octop" width="480" />
+</p>
 
 ### WeCom Customer Group (CN)
 

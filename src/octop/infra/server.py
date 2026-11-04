@@ -495,6 +495,28 @@ class OctopServer:
         assert self.expert_catalog is not None
         assert self.plugin_manager is not None
 
+        from octop.infra.agents.experts.snapshot_store import (  # noqa: PLC0415
+            adopt_local_snapshots,
+        )
+        from octop.infra.users.profile_avatar import adopt_local_avatars  # noqa: PLC0415
+
+        adopt_local_avatars(
+            self.services.profile_avatar_repo,
+            self.services.settings_repo,
+            self.paths,
+        )
+        adopt_local_snapshots(
+            self.services.control_file_repo,
+            self.services.settings_repo,
+            self.paths.published_experts_dir,
+        )
+        self.plugin_manager.attach_control_plane(
+            self.services.control_file_repo,
+            self.services.settings_repo,
+        )
+        self.plugin_manager.seed_bundled()
+        self.plugin_manager.load_installed(install_deps=True)
+
         from octop.infra.utils.browser_media import (  # noqa: PLC0415
             configure_browser_idle_timeout,
         )
