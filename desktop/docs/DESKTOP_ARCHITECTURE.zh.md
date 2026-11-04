@@ -77,7 +77,7 @@ start.sh/bat   # 独立启动脚本
 
 运行时跟安装目录走。升级替换安装目录（macOS 换掉 `.app`，Linux 换掉 AppImage / deb / rpm 里的文件，Windows 由 NSIS 重新解压 `resources\sidecar`）。卸载删掉安装目录里的运行时。`OCTOP_HOME` 里的数据库、工作区、密钥和 `config.json` 保留。以前解压在 `<OCTOP_HOME>/portable/` 的旧副本不再使用，卸载也不删它。
 
-子进程设置 `PYTHONPYCACHEPREFIX=<OCTOP_HOME>/pyc`，避免把 `.pyc` 写进签名过的 macOS 包、只读的 AppImage，或 Windows / deb 安装目录。Windows 安装器在展开 `resources\sidecar` 之后，用其中的 `runtime\python.exe` 对 `packages` 执行 `compileall`，写入同一个 `pyc` 目录（`OCTOP_HOME` 未设置时为 `%USERPROFILE%\.octop\pyc`）。编译失败不中止安装，首次启动会再编译。卸载不删除这个目录。
+子进程设置 `PYTHONPYCACHEPREFIX=<OCTOP_HOME>/pyc`，避免把 `.pyc` 写进签名过的 macOS 包、只读的 AppImage，或 Windows / deb 安装目录。Windows 安装器在展开 `resources\sidecar` 之后，用其中的 `runtime\python.exe` 对 `packages` 执行 `compileall`，写入同一个 `pyc` 目录（`OCTOP_HOME` 未设置时为 `%USERPROFILE%\.octop\pyc`）。编译失败不中止安装，首次启动会再编译。Windows 卸载只删除这个 `pyc` 目录，下次安装再编译一次。
 
 只有第 3 步的回退路径才做校验与版本感知：
 
@@ -445,7 +445,7 @@ Windows 安装包使用带目录页的 NSIS 向导，对应 electron-builder 的
 - 安装和卸载开始前，如果这个安装目录里的 `Octop.exe` 仍在运行，安装器停止并提示「正在运行，请先在系统托盘中退出应用后重试」。不结束进程。升级时先等最多 10 秒，给壳自己退出的时间。其它目录里的同名程序不算。
 - 后续壳更新沿用这次写入的安装目录，不把程序装回默认盘。
 - 展开 `resources\sidecar` 之后，安装器把 `packages` 预编译进 `OCTOP_HOME\pyc`（未设置时为 `%USERPROFILE%\.octop\pyc`），与外壳启动时的 `PYTHONPYCACHEPREFIX` 相同。编译失败不中止安装。
-- 卸载删除选定目录中的程序文件、开始菜单快捷方式、桌面快捷方式和安装时展开的 `resources\sidecar`。`OCTOP_HOME`（未设置时为 `%USERPROFILE%\.octop`）里的数据库、工作区、密钥、`config.json` 和 `pyc` 保留。更早版本解压在该目录下的 `portable/` 也不删除。
+- 卸载删除选定目录中的程序文件、开始菜单快捷方式、桌面快捷方式和安装时展开的 `resources\sidecar`，并删除 `OCTOP_HOME\pyc`（未设置时为 `%USERPROFILE%\.octop\pyc`）。同目录下的数据库、工作区、密钥和 `config.json` 保留。更早版本解压在该目录下的 `portable/` 也不删除。下次安装会再编译字节码。
 - 更换安装盘会把程序和 Python 运行时一起装到新目录，不搬家用户数据。监听端口与安装位置无关。
 
 ---

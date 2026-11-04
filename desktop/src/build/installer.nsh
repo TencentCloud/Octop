@@ -291,4 +291,22 @@ octop_un_old_link:
     Delete "$oldDesktopLink"
 octop_un_sidecar:
   RMDir /r "$INSTDIR\resources\sidecar"
+  ; pyc is a cache inside the user-data directory. Drop only that directory;
+  ; the next install runs compileall again. Database, workspace, and config stay.
+  Push $0
+  ReadEnvStr $0 OCTOP_HOME
+  StrCmp $0 "" 0 octop_un_pyc_dir
+  StrCpy $0 "$PROFILE\.octop"
+octop_un_pyc_dir:
+  StrCmp $0 "" octop_un_pyc_done
+  IntCmp $LANGUAGE 2052 octop_un_pyc_zh octop_un_pyc_en octop_un_pyc_en
+octop_un_pyc_zh:
+  DetailPrint "正在删除字节码缓存 $0\pyc…"
+  Goto octop_un_pyc_rm
+octop_un_pyc_en:
+  DetailPrint "Removing bytecode cache $0\pyc…"
+octop_un_pyc_rm:
+  RMDir /r "$0\pyc"
+octop_un_pyc_done:
+  Pop $0
 !macroend
