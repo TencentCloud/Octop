@@ -24,7 +24,7 @@ def _services(tmp_path: Path):
 def _plugin(root: Path, plugin_id: str, body: str) -> None:
     dest = root / plugin_id
     dest.mkdir(parents=True)
-    (dest / "plugin.yaml").write_text(body, encoding="utf-8")
+    (dest / "plugin.yaml").write_bytes(body.encode("utf-8"))
 
 
 def test_plugin_cache_keeps_nested_directories(tmp_path: Path) -> None:
@@ -34,7 +34,7 @@ def test_plugin_cache_keeps_nested_directories(tmp_path: Path) -> None:
     _plugin(home_a / "plugins", "demo", "id: demo\n")
     nested = home_a / "plugins" / "demo" / "skills" / "weather"
     nested.mkdir(parents=True)
-    (nested / "SKILL.md").write_text("# weather\n", encoding="utf-8")
+    (nested / "SKILL.md").write_bytes(b"# weather\n")
     manager_a = PluginManager(plugins_dir=home_a / "plugins", config_path=home_a / "config.json")
     manager_b = PluginManager(plugins_dir=home_b / "plugins", config_path=home_b / "config.json")
     manager_a.attach_control_plane(services.control_file_repo, services.settings_repo)
