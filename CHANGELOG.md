@@ -6,38 +6,23 @@
 
 ## [Unreleased]
 
+## [1.0.3b3] - 2026-11-04
+
 ### 新增
-- PostgreSQL 控制面下，技能包源和知识库原文进同一套库（`skill_package_files`、`knowledge_files`），知识库向量在 `knowledge_chunks`。表都在 `public`，前缀与 `skill_packages`、`knowledge_bases` 一致。SQLite 仍用本地目录。安装时选定驱动，不含 sqlite→PostgreSQL 迁移
-- 安装向导连接已有用户的 PostgreSQL 时，确认后保留这些账户并去登录。SQLite 仍要空库
-- 知识库预览可以在原文和已入库切片之间切换。文件名悬停后可重命名，扩展名保持不变
-- Docker 与飞牛增加精简版。默认 `:<version>` / `:latest` 仍是含桌面、OCR 和本地向量的完整镜像；精简版标签是 `:<version>-lite` 和 `:lite`
-- 存储后端增加火山引擎 TOS（官方 SDK，可选依赖 `tos`）
+- PostgreSQL 可存放技能包和知识库。多实例共用定时任务、频道、头像、插件和已发布专家
+- Docker 与飞牛增加精简版。存储后端增加火山引擎 TOS
+- 可预建 LDAP 账号，聊天列表可隐藏任意专家
 
 ### 修复
-- 用户设置了允许的存储根目录后，创建专家时如果没有本地根，或把 `local_shell` / `filesystem`（含 composite 的每一层）留成主机根，工作区会落到该目录下。显式写出界的路径仍然拒绝。已经在主机默认目录里的旧专家不会被改写根目录
-- Windows 托盘右键改用原生菜单，避免打开菜单时收起系统托盘溢出区
-- 聊天刷新和加载历史时不再把未匹配的旧缓存追加到末尾；切换会话、清空或编辑后，迟到的历史请求和旧连接事件不会覆盖当前消息
-- 升级 octop-memory 至 1.0.3：长会话提炼按事件数和字符预算分批，已提炼游标持久化，重启后不再全量重跑；补齐后台手动文档审核入口，并修复未决审计状态、页面生成的过期写回和 Windows 文件扫描模式处理
-- 发给模型的图片会同时看文件大小和长边。长边超过 8000 像素时先等比缩小，原图仍留在磁盘上；同一会话之后的文字不会再因为这张超长图一直失败
-- Dashboard 里 `ask_user_question` 未答完时，新建同专家会话再发消息不再被当成旧测验的答案；同会话内明文作答仍然有效
-- OpenSandbox 在当前 harness 还没有这些操作时，可以创建、删除和移动路径。专家启动、技能卸载和工作区重命名不再失败
-- `octop init --force` 和 `octop clean --all` 只删应用数据，保留 `venv/` 与 `bin/`。初始化向导在 Ctrl-C 时中止，交互输入的管理员密码需要再确认一次
-- PostgreSQL 控制面下，知识库检索读 pgvector，不再查到空的本地 `index.sqlite`
-- Docker 镜像在无头构建时不再导入 pynput。飞牛 Docker 包缺失时，已打好的本地包仍会挂到 Release
-- 精简版只有 amd64 和 arm64 都发布成功才打通用标签。完整飞牛包不再等待缺失的精简镜像，Release 下载区只保留实际挂上的飞牛包
-- Docker 构建在安装依赖的同一层删除编译器，避免编译工具留在最终镜像里
-- 插件市场和专家市场的对象源站可用 `OCTOP_MARKET_REMOTE_URL` 配置，默认仍是 `https://download.octop.cloud`。门户目录地址继续用 `OCTOP_PORTAL_URL`，默认 `https://octop.cloud`。内网按同一接口自建市场的说明见 `docs/private-market.md`
-- 插件市场和专家市场的对象源站可用 `OCTOP_MARKET_REMOTE_ORIGIN` 配置，默认仍是 `https://download.octop.cloud`。门户目录地址继续用 `OCTOP_PORTAL_ORIGIN`，默认 `https://octop.cloud`。内网按同一接口自建市场的说明见 `docs/private-market.md`
-- 技能市场源站可用 `SKILL_MARKET_ORIGIN` 配置，默认仍是 `https://api.skillhub.cn`。设了该变量后，搜索、榜单和安装只请求这个源站。自建接口见 `docs/skill-market.md`
-- 插件和专家从远程市场安装。目录默认 `https://octop.cloud`，安装包默认 `https://download.octop.cloud`；内网可分别用 `OCTOP_PORTAL_ORIGIN`、`OCTOP_MARKET_REMOTE_ORIGIN` 换成自己的源站，安装包只要放在对象源站上，路径不再限定 `/octop/market/`。说明见 `docs/private-market.md`
-- 技能市场可以换源站。`SKILL_MARKET_ORIGIN` 负责搜索、榜单和单个技能安装，`SKILLSET_ORIGIN` 负责技能集详情和技能集压缩包，默认都是 `https://api.skillhub.cn`。说明见 `docs/skill-market.md`
+- 专家工作区落到允许的存储根下。共享连接器只有创建者能改
+- 聊天历史不再错序，未答完的提问不会被别的会话接走
+- 超长图片先缩小再发送。失效的默认模型会自动换掉
+- 升级记忆库：长会话分批提炼，重启后不重跑
+- 安装清理不再删掉运行环境。PostgreSQL 上的知识库检索和关怀去重恢复正常
 
 ### 变更
-- 升级 octop-harness 至 1.0.7，带入 OpenSandbox 路径操作修复，并将 SearchFree 默认搜索深度改为 `basic`
-- 专家页的「内置专家模板」并入「专家市场」，本实例用户发布的模板仍留在市场里。安装包不再附带产品专家模板和内置插件；新建用户时从专家市场拉取模板，拉不到也照常建用户。从市场新建的专家会装上 Octop 助手技能。市场目录不可用时直接失败，不再改显示安装包自带内容，也不再改调本机 `skillhub` 命令行
-
-### 变更
-- 聊天侧栏可以隐藏任意专家，不再限于别人共享来的。正在对话的隐藏专家留在「已隐藏专家」里，不再被提到列表上方
+- 升级 octop-harness 至 1.0.7
+- 内置专家并入专家市场，安装包不再自带市场目录
 
 ## [1.0.3b2] - 2026-11-01
 
