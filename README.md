@@ -565,12 +565,13 @@ See [CHANGELOG.md](CHANGELOG.md) for release history.
 ## 🔗 Related projects
 
 | Project | Description |
-|---------|-------------|
+|--------|-------------|
 | [Octop Harness](https://github.com/TencentCloud/octop-harness) | Agent runtime — model routing, tools, skills, checkpointing |
 | [Octop Gateway](https://github.com/TencentCloud/octop-gateway) | Multi-platform IM channel bridge |
 | [Octop Memory](https://github.com/TencentCloud/octop-memory) | Hierarchical recall and FTS search |
 | [Octop Browser](https://github.com/TencentCloud/octop-browser) | CDP browser automation with persistent profiles |
 | [Octop Pet](https://github.com/jubaoliang/OctopPet) | A desktop pet for Octop |
+| [OctopLink](https://github.com/dwc13775953197-spec/OctopLink) | HarmonyOS (ArkTS) native client — multi-agent, streaming, workspace, voice, memory, Bridge |
 
 ## 💬 Community
 
