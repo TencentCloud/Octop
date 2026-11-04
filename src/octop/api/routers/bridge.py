@@ -51,7 +51,7 @@ def _enrich_connection_icon(server: Any, payload: dict[str, Any]) -> dict[str, A
     api = _bridge_avatar_api_path(connection_id)
     if connection_id and text.split("?", 1)[0] == api:
         payload["icon_url"] = (
-            profile_avatar_url(server.paths.bridge_avatars_dir, connection_id, api) or api
+            profile_avatar_url(server.services.avatars("bridge"), connection_id, api) or api
         )
     return payload
 
@@ -60,6 +60,11 @@ def _connection_payload(server: Any, mgr: Any, row: Any, user: Any) -> dict[str,
     payload = _enrich_connection_icon(server, cast(dict[str, Any], mgr.connection_public(row)))
     payload["is_owner"] = int(row.owner_user_id) == int(user.id)
     payload["shared"] = bool(getattr(row, "shared", False))
+    if not payload["is_owner"]:
+        owner = server.services.user_repo.get(int(row.owner_user_id))
+        if owner is not None:
+            payload["owner_username"] = owner.username
+            payload["owner_display_name"] = owner.display_name
     access = _group_access(server)
     if access is not None:
         payload.update(
@@ -435,7 +440,7 @@ async def delete_connection(
     access = _group_access(server)
     if access is not None:
         access.clear(RESOURCE_BRIDGE, connection_id)
-    delete_profile_avatar(server.paths.bridge_avatars_dir, connection_id)
+    delete_profile_avatar(server.services.avatars("bridge"), connection_id)
 
 
 @router.post(
@@ -452,14 +457,14 @@ async def upload_bridge_avatar(
     mgr = _bridge(server)
     mgr.get_owned(connection_id, user.id)
     write_profile_avatar(
-        server.paths.bridge_avatars_dir,
+        server.services.avatars("bridge"),
         connection_id,
         await file.read(),
     )
     icon_url = _bridge_avatar_api_path(connection_id)
     mgr.set_icon_url(connection_id, owner_user_id=user.id, icon_url=icon_url)
     display = (
-        profile_avatar_url(server.paths.bridge_avatars_dir, connection_id, icon_url) or icon_url
+        profile_avatar_url(server.services.avatars("bridge"), connection_id, icon_url) or icon_url
     )
     return {"icon_url": display}
 
@@ -474,7 +479,7 @@ async def get_bridge_avatar(
     server: Any = Depends(get_server),
 ) -> Response:
     _require_readable(server, connection_id, user)
-    return avatar_response(server.paths.bridge_avatars_dir, connection_id)
+    return avatar_response(server.services.avatars("bridge"), connection_id)
 
 
 @router.delete(
@@ -489,7 +494,7 @@ async def delete_bridge_avatar(
 ) -> None:
     mgr = _bridge(server)
     mgr.get_owned(connection_id, user.id)
-    delete_profile_avatar(server.paths.bridge_avatars_dir, connection_id)
+    delete_profile_avatar(server.services.avatars("bridge"), connection_id)
     mgr.set_icon_url(connection_id, owner_user_id=user.id, icon_url="")
 
 

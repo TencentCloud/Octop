@@ -28,6 +28,7 @@ import {
   X,
 } from "lucide-react";
 import { useTranslation } from "react-i18next";
+import cx from "classnames";
 
 import StreamConnectingIndicator from "../../../components/StreamConnectingIndicator";
 import StreamEdgeControls from "../../../components/StreamEdgeControls/StreamEdgeControls";
@@ -139,6 +140,7 @@ export default function DesktopPanel({
   const { status, connect, sendEvent, disconnect } = useDesktopStream();
 
   const setupInstalled = envStatus?.setup_state === "ready";
+  const desktopBundled = envStatus?.setup_state === "needs_start";
   const envReady = Boolean(setupInstalled && envStatus?.ok);
   const permissionLabels = (envStatus?.permissions_needed ?? []).map((p) =>
     p === "screen_recording"
@@ -682,9 +684,10 @@ export default function DesktopPanel({
                 disabled={item.disabled}
               >
                 <span
-                  className={`${styles.shortcutIcon} ${
-                    shortcutIconToneClass[item.tone]
-                  }`}
+                  className={cx(
+                    styles.shortcutIcon,
+                    shortcutIconToneClass[item.tone],
+                  )}
                 >
                   <Icon size={16} strokeWidth={2} />
                 </span>
@@ -736,7 +739,7 @@ export default function DesktopPanel({
   ) => (
     <div
       ref={installLogRef}
-      className={`${styles.installLog} ${extraClass ?? ""}`}
+      className={cx(styles.installLog, extraClass)}
       style={maxHeight !== undefined ? { maxHeight } : undefined}
     >
       {installLogs.length === 0 ? (
@@ -769,7 +772,9 @@ export default function DesktopPanel({
     <div className={styles.installProgress}>
       <RefreshCw size={32} className={styles.streamLoadingIcon} />
       <div className={styles.installProgressTitle}>
-        {t("remoteDesktop.installProgress", "正在安装中…")}
+        {desktopBundled
+          ? t("remoteDesktop.enabling", "正在启用桌面…")
+          : t("remoteDesktop.installProgress", "正在安装中…")}
       </div>
       {renderInstallLog()}
       <div className={styles.installProgressActions}>
@@ -923,6 +928,17 @@ export default function DesktopPanel({
       );
     }
 
+    if (desktopBundled) {
+      return (
+        <Alert
+          type="info"
+          showIcon
+          message={t("remoteDesktop.enableTitle", "桌面组件已安装")}
+          description={t("remoteDesktop.enableDesc")}
+        />
+      );
+    }
+
     return (
       <Space direction="vertical" size="middle" style={{ width: "100%" }}>
         <Alert
@@ -979,7 +995,9 @@ export default function DesktopPanel({
         <Space>
           <Button onClick={closeEnvModal}>{t("common.close")}</Button>
           <Button type="primary" onClick={startInstall}>
-            {envStatus?.native_capture
+            {desktopBundled
+              ? t("remoteDesktop.enable", "启用桌面")
+              : envStatus?.native_capture
               ? t("remoteDesktop.installDeps", "安装依赖")
               : t("remoteDesktop.install", "安装桌面环境")}
           </Button>
@@ -1145,9 +1163,7 @@ export default function DesktopPanel({
         )}
         <div
           ref={viewportRef}
-          className={`${styles.viewport} ${
-            isMobile ? styles.viewportMobile : ""
-          }`}
+          className={cx(styles.viewport, isMobile && styles.viewportMobile)}
         >
           {!showStream ? (
             installPhase === "installing" ? (
@@ -1223,6 +1239,27 @@ export default function DesktopPanel({
                           ),
                         },
                       ]
+                    : desktopBundled
+                    ? [
+                        {
+                          label: t(
+                            "remoteDesktop.enableStep1",
+                            "组件已包含在镜像里，当前没有运行",
+                          ),
+                        },
+                        {
+                          label: t(
+                            "remoteDesktop.enableStep2",
+                            "点击「启用桌面」确认启动虚拟桌面",
+                          ),
+                        },
+                        {
+                          label: t(
+                            "remoteDesktop.enableStep3",
+                            "启动后点击「连接」开始看屏与键鼠操控",
+                          ),
+                        },
+                      ]
                     : [
                         {
                           label: t(
@@ -1284,9 +1321,11 @@ export default function DesktopPanel({
               />
               <canvas
                 ref={canvasRef}
-                className={`${styles.canvas} ${
-                  isMobile ? styles.canvasMobile : ""
-                } ${!frameReady ? styles.canvasHidden : ""}`}
+                className={cx(
+                  styles.canvas,
+                  isMobile && styles.canvasMobile,
+                  !frameReady && styles.canvasHidden,
+                )}
                 onPointerDown={interaction.onPointerDown}
                 onPointerMove={interaction.onPointerMove}
                 onPointerLeave={interaction.onPointerLeave}

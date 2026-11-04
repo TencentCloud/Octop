@@ -23,6 +23,7 @@ import {
   Trash2,
 } from "lucide-react";
 import { useTranslation } from "react-i18next";
+import cx from "classnames";
 import { ResizableTable } from "@/components/ResizableTable";
 import { TextAssistBar } from "@/components/TextAssistBar";
 import { message } from "@/utils/antdMessage";
@@ -80,6 +81,7 @@ function accessTags(access: GroupAccessSummary | undefined): GroupAccessItem[] {
     ...groupGrantedItems(access.skill_packages),
     ...groupGrantedItems(access.knowledge_bases),
     ...groupGrantedItems(access.bridges ?? []),
+    ...groupGrantedItems(access.experts ?? []),
   ];
 }
 
@@ -98,11 +100,10 @@ function AccessItemTags({ items }: { items: GroupAccessItem[] }) {
       {granted.map((tag) => (
         <span
           key={`${tag.key}:${tag.label}`}
-          className={
-            tag.missing
-              ? `${styles.groupAccessTag} ${styles.groupAccessTagMissing}`
-              : styles.groupAccessTag
-          }
+          className={cx(
+            styles.groupAccessTag,
+            tag.missing && styles.groupAccessTagMissing,
+          )}
           title={tag.missing ? t("adminUsers.groupAccessMissing") : tag.label}
         >
           {tag.label}
@@ -149,6 +150,11 @@ function AccessSummary({ access }: { access?: GroupAccessSummary }) {
       key: "bridges",
       label: t("adminUsers.groupAccessBridges"),
       value: summarizeLabels(access?.bridges ?? []),
+    },
+    {
+      key: "experts",
+      label: t("adminUsers.groupAccessExperts"),
+      value: summarizeLabels(access?.experts ?? []),
     },
   ].filter((row) => row.value);
 
@@ -213,6 +219,11 @@ function AccessDetail({ access }: { access?: GroupAccessSummary }) {
       key: "bridges",
       title: t("adminUsers.groupAccessBridges"),
       items: groupGrantedItems(access?.bridges ?? []),
+    },
+    {
+      key: "experts",
+      title: t("adminUsers.groupAccessExperts"),
+      items: groupGrantedItems(access?.experts ?? []),
     },
   ].filter((section) => section.items.length > 0);
 
@@ -517,12 +528,10 @@ export default function GroupsPanel() {
             {filtered.map((row) => (
               <article
                 key={row.user_group_id}
-                className={[
+                className={cx(
                   styles.roleCard,
-                  row.enabled === false ? styles.groupCardOff : "",
-                ]
-                  .filter(Boolean)
-                  .join(" ")}
+                  row.enabled === false && styles.groupCardOff,
+                )}
               >
                 <div className={styles.roleCardBody}>
                   <div className={styles.roleCardTop}>

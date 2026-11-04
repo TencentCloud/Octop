@@ -11,8 +11,11 @@ from octop.config import OctopConfig
 from octop.infra.agents.manager import AgentManager
 from octop.infra.agents.providers import KIND_TO_PROTOCOL, ProviderStore
 from octop.infra.agents.providers.store import (
+    merge_provider_purpose_extra,
     merge_stream_usage_extra,
+    resolve_provider_purpose,
     resolve_provider_stream_usage,
+    stamp_embedding_models,
 )
 from octop.infra.db.migrate import run_migrations
 from octop.infra.db.pool import SqlitePool
@@ -71,6 +74,29 @@ def test_merge_stream_usage_extra_preserves_headers() -> None:
     assert json.loads(merged or "") == {"headers": {"X-A": "1"}, "stream_usage": False}
     assert (
         merge_stream_usage_extra('{"headers": {"X-A": "1"}}', None) == '{"headers": {"X-A": "1"}}'
+    )
+
+
+def test_merge_provider_purpose_and_stamp_embedding_models() -> None:
+    merged = merge_provider_purpose_extra('{"headers": {"X-A": "1"}}', "embedding")
+    assert json.loads(merged or "") == {"headers": {"X-A": "1"}, "purpose": "embedding"}
+    assert merge_provider_purpose_extra('{"purpose": "chat"}', None) == '{"purpose": "chat"}'
+    stamped = stamp_embedding_models([{"id": "emb-1", "name": "Emb"}])
+    assert stamped == [{"id": "emb-1", "name": "Emb", "embedding": True, "task": "embedding"}]
+    assert (
+        resolve_provider_purpose(
+            provider_name="Embed API",
+            extra={"purpose": "embedding"},
+            models=[],
+        )
+        == "embedding"
+    )
+    assert (
+        resolve_provider_purpose(
+            provider_name="OpenAI",
+            models=[{"id": "gpt-4o", "enabled": True}],
+        )
+        == "chat"
     )
 
 

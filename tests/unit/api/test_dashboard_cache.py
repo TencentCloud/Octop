@@ -27,7 +27,13 @@ def test_other_static_files_leave_cache_unset() -> None:
     assert dashboard_cache_control("offline.html") is None
 
 
+def test_vendored_monaco_is_revalidated() -> None:
+    assert dashboard_cache_control("monaco/vs/loader.js") == "no-cache"
+    assert dashboard_cache_control("monaco/vs/assets/editor.worker.js") == "no-cache"
+
+
 def test_only_hashed_assets_skip_the_spa_fallback() -> None:
     assert is_dashboard_asset_path("assets/index.abc123.js") is True
+    assert is_dashboard_asset_path("monaco/vs/loader.js") is True
     assert is_dashboard_asset_path("chat") is False
     assert is_dashboard_asset_path("") is False

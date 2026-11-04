@@ -75,7 +75,7 @@ async def test_list_remote_agents_rewrites_team_member_ids() -> None:
     team = next(item for item in out if item["remote_agent_id"] == "host")
     doctor = next(item for item in out if item["remote_agent_id"] == "doctor")
     assert team["agent_id"] == "bridge:cid1:host"
-    assert team["is_owner"] is True
+    assert team["is_owner"] is False
     assert team["member_ids"] == ["bridge:cid1:doctor", "bridge:cid1:nurse"]
     assert doctor["agent_id"] == "bridge:cid1:doctor"
     assert doctor["icon_url"] == "/api/agents/bridge:cid1:doctor/avatar"
@@ -113,3 +113,29 @@ async def test_list_remote_agents_keeps_peer_ownership() -> None:
     assert by_remote["mine"]["is_shared"] is False
     assert by_remote["shared"]["is_owner"] is False
     assert by_remote["shared"]["is_shared"] is True
+    assert by_remote["mine"]["state"] == "stopped"
+    assert by_remote["shared"]["state"] == "stopped"
+
+
+@pytest.mark.asyncio
+async def test_list_remote_agents_keeps_peer_runtime_state() -> None:
+    mgr = _mgr()
+    mgr.get_owned = MagicMock(return_value=_row())  # type: ignore[method-assign]
+
+    class Resp:
+        status_code = 200
+        text = ""
+
+        def json(self) -> list[dict[str, Any]]:
+            return [
+                {"agent_id": "up", "name": "运行中", "state": "running"},
+                {"agent_id": "down", "name": "已停用", "state": "stopped"},
+                {"agent_id": "blank", "name": "缺状态", "state": "  "},
+            ]
+
+    mgr.tunnel_http = AsyncMock(return_value=Resp())  # type: ignore[method-assign]
+    out = await mgr.list_remote_agents("cid1", owner_user_id=1)
+    by_remote = {item["remote_agent_id"]: item for item in out}
+    assert by_remote["up"]["state"] == "running"
+    assert by_remote["down"]["state"] == "stopped"
+    assert by_remote["blank"]["state"] == "stopped"

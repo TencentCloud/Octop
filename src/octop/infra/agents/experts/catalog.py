@@ -54,13 +54,11 @@ _FALLBACK_BUNDLED_AVATAR_IDS = frozenset(
         "multi-agent-orchestrator",
         "news-trend",
         "office-automation",
-        "ops-engineer",
         "parenting-companion",
         "stock-assistant",
         "superpowers-methodology",
         "tencentcloud-api",
         "wechat-ops",
-        "scene-academic",
         "scene-content-creation",
         "scene-data",
         "scene-default",
@@ -71,10 +69,8 @@ _FALLBACK_BUNDLED_AVATAR_IDS = frozenset(
         "scene-healthcare",
         "scene-hr",
         "scene-legal",
-        "scene-lifestyle",
         "scene-marketing",
         "scene-media",
-        "scene-mysticism",
         "scene-office",
         "scene-tech",
     }
@@ -133,6 +129,7 @@ class ExpertSummary:
     color: str | None = None
     quick_prompts: tuple[ExpertQuickPrompt, ...] = ()
     task_examples: dict[str, list[str]] | None = None
+    scene: str = ""
 
 
 @dataclass(frozen=True)
@@ -145,6 +142,16 @@ class Expert:
     prompt_files: list[str] = field(default_factory=list)
     """Persona markdown filenames declared in the manifest (dashboard hint)."""
     quick_prompts: tuple[ExpertQuickPrompt, ...] = ()
+
+
+def skill_count_in_expert_dir(expert_dir: Path) -> int:
+    """Count workspace skills stored as ``skills/<slug>/SKILL.md``."""
+    skills_dir = expert_dir / "skills"
+    if not skills_dir.is_dir():
+        return 0
+    return sum(
+        1 for child in skills_dir.iterdir() if child.is_dir() and (child / "SKILL.md").is_file()
+    )
 
 
 def discover_seed_paths(expert_dir: Path) -> list[str]:
@@ -487,6 +494,14 @@ def resolve_expert_icon_url(
     return None
 
 
+def _catalog_scene(data: dict[str, Any]) -> str:
+    """Market scene used to group a bundled template. Empty when unclassified."""
+    scene = str(data.get("scene") or "").strip()
+    if scene:
+        return scene
+    return _manifest_scene(data) or ""
+
+
 def _manifest_scene(data: dict[str, Any]) -> str | None:
     source = data.get("source")
     if isinstance(source, dict):
@@ -817,6 +832,7 @@ class ExpertCatalog:
                     color=data.get("color"),
                     quick_prompts=_parse_quick_prompts(data),
                     task_examples=normalize_task_examples_for_display(parse_task_examples(data)),
+                    scene=_catalog_scene(data),
                 )
                 # Primary library wins on id collision; market cache fills gaps.
                 if ex_id in out and not from_primary:

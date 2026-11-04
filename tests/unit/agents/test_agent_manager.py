@@ -18,7 +18,6 @@ import pytest
 
 from octop.config import OctopConfig
 from octop.i18n.domains.agents import NO_MODELS_CONFIGURED, format_agent_start_error
-from octop.infra.agents.experts.catalog import default_library_root
 from octop.infra.agents.manager import AgentManager, _memory_extract_settings
 from octop.infra.backend.resolver import default_agent_backend_spec
 from octop.infra.db.migrate import run_migrations
@@ -898,6 +897,17 @@ def test_build_harness_config_includes_search_knowledge_without_cron(
     assert any(isinstance(item, KnowledgeSearchHintMiddleware) for item in (cfg.middleware or []))
 
 
+def test_build_harness_config_softens_mcp_output_schema_errors(manager: AgentManager) -> None:
+    from octop.infra.agents.middleware.mcp_output_schema import (
+        McpOutputSchemaMiddleware,
+        harness_handles_mcp_tool_errors,
+    )
+
+    cfg = manager._build_harness_config(_row(agent_id="AGT001"))
+    mounted = any(isinstance(item, McpOutputSchemaMiddleware) for item in (cfg.middleware or []))
+    assert mounted is not harness_handles_mcp_tool_errors()
+
+
 def test_build_harness_config_defaults_local_shell_backend(manager: AgentManager) -> None:
     cfg = manager._build_harness_config(_row(agent_id="AGT001"))
     assert cfg.backend == _expected_default_backend(manager, "AGT001")
@@ -1048,6 +1058,26 @@ def test_build_harness_config_keeps_memory_after_bootstrap(
     assert cfg.memory is None
 
 
+def test_build_harness_config_language_follows_owner_locale(manager: AgentManager) -> None:
+    from dataclasses import replace
+
+    user_id = manager._repos.user_repo.create(
+        username="en-owner", password_hash="x", role="user", locale="en"
+    )
+    agent_id = "AGT_LOCALE"
+    ws = manager._paths.ensure_agent_workspace(agent_id)
+    (ws / ".bootstrapped").write_text("", encoding="utf-8")
+    row = replace(
+        _row(agent_id=agent_id),
+        user_id=user_id,
+        config_json=json.dumps({"backend": _fs_backend(ws)}),
+    )
+    assert manager._build_harness_config(row).language == "en"
+
+    missing = replace(row, user_id=None)
+    assert manager._build_harness_config(missing).language == "zh"
+
+
 def test_build_harness_config_keeps_system_prompt_after_bootstrap(
     manager: AgentManager,
 ) -> None:
@@ -1146,10 +1176,11 @@ async def test_delete_thread_checkpoint_also_clears_configured_store(
     harness_manager = MagicMock()
     harness_manager.get_agent.return_value = MagicMock(agent=agent)
     manager._harness_manager = harness_manager
-    seen: dict[str, str] = {}
+    seen: dict[str, Any] = {}
 
     def _capture(**kwargs: Any) -> None:
         seen["thread_id"] = kwargs["thread_id"]
+        seen["reclaim"] = kwargs["reclaim"]
 
     monkeypatch.setattr(
         "octop.infra.agents.memory.thread_cleanup.delete_thread_from_agent_stores",
@@ -1160,6 +1191,28 @@ async def test_delete_thread_checkpoint_also_clears_configured_store(
 
     agent.adelete_thread.assert_awaited_once_with("thr_1")
     assert seen["thread_id"] == "thr_1"
+    assert seen["reclaim"] is True
+
+
+@pytest.mark.asyncio
+async def test_delete_thread_checkpoint_can_skip_sqlite_reclaim(
+    manager: AgentManager, monkeypatch: Any
+) -> None:
+    user_id = manager._repos.user_repo.create(username="alice", password_hash="x", role="admin")
+    manager._repos.agent_repo.create(agent_id="AGT1", user_id=user_id, name="a")
+    seen: dict[str, bool] = {}
+
+    def _capture(**kwargs: Any) -> None:
+        seen["reclaim"] = kwargs["reclaim"]
+
+    monkeypatch.setattr(
+        "octop.infra.agents.memory.thread_cleanup.delete_thread_from_agent_stores",
+        _capture,
+    )
+
+    await manager.delete_thread_checkpoint("AGT1", "thr_1", reclaim=False)
+
+    assert seen["reclaim"] is False
 
 
 @pytest.mark.asyncio
@@ -2232,17 +2285,33 @@ def test_resolve_workspace_dir_backfills_legacy_row(manager: AgentManager) -> No
 
 
 @pytest.mark.asyncio
-async def test_templated_agent_keeps_expert_soul_on_reload(manager: AgentManager) -> None:
+async def test_templated_agent_keeps_expert_soul_on_reload(
+    manager: AgentManager, tmp_path: Path
+) -> None:
     """Reload must not overwrite expert template SOUL.md with persona defaults."""
     from octop_harness import HarnessAgentManager
 
     from octop.infra.agents.experts.catalog import ExpertCatalog
     from octop.infra.agents.manager import AgentCreateSpec
 
-    catalog = ExpertCatalog(default_library_root())
+    expected_soul = "# Expert soul\n"
+    expert_dir = tmp_path / "demo"
+    expert_dir.mkdir()
+    (expert_dir / "SOUL.md").write_text(expected_soul, encoding="utf-8")
+    (expert_dir / "manifest.json").write_text(
+        json.dumps(
+            {
+                "id": "demo",
+                "label": {"zh": "演示", "en": "Demo"},
+                "description": {"zh": "", "en": ""},
+                "prompt_files": ["SOUL.md"],
+            }
+        ),
+        encoding="utf-8",
+    )
+    catalog = ExpertCatalog(tmp_path)
     catalog.refresh()
-    ga = catalog.get("general-assistant")
-    assert ga is not None
+    assert catalog.get("demo") is not None
 
     manager._expert_catalog = catalog
     _seed_test_provider(manager)
@@ -2253,14 +2322,11 @@ async def test_templated_agent_keeps_expert_soul_on_reload(manager: AgentManager
     row = await manager.create(
         AgentCreateSpec(
             name="tpl-bot",
-            template_name="general-assistant",
+            template_name="demo",
             config=dict(_MEMORY_OFF),
         ),
     )
     agent = manager.get_agent(row.agent_id)
-    expected_soul = (default_library_root() / "general-assistant" / "SOUL.md").read_text(
-        encoding="utf-8"
-    )
     soul_text = agent.workspace.read_text("SOUL.md") or ""
     assert expected_soul.strip() in soul_text.strip()
 

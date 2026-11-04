@@ -9,6 +9,7 @@ import {
 } from "react";
 import { useTranslation } from "react-i18next";
 import { App } from "antd";
+import cx from "classnames";
 
 import { useIsMobile } from "../../../hooks/useIsMobile";
 import {
@@ -481,6 +482,7 @@ const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
       mentionItems,
       filesLoading,
       filesError,
+      filesTruncated,
       runSlashCommand,
       matchSlashCommand,
       handleMentionSelect,
@@ -857,7 +859,7 @@ const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
         id="octop-chat-file-drop"
         data-file-drop-target=""
         data-octop-chat-drop="1"
-        className={`${styles.chatInput} ${showDrop ? styles.dropActive : ""}`}
+        className={cx(styles.chatInput, showDrop && styles.dropActive)}
         onDragEnter={handleDragEnter}
         onDragLeave={handleDragLeave}
         onDragOver={handleDragOver}
@@ -956,6 +958,7 @@ const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
               subagents={availableSubagents}
               filesLoading={filesLoading}
               filesError={filesError}
+              filesTruncated={filesTruncated}
               activeIndex={mentionMenuIndex}
               onSelect={handleMentionSelect}
               onHover={setMentionMenuIndex}

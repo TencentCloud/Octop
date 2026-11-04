@@ -1,9 +1,16 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
+  cachedWorkspaceMentionIndex,
+  isPathLikeMentionQuery,
+  loadWorkspaceMentionIndex,
+  rankWorkspaceMentionFiles,
   searchWorkspaceMentionFiles,
   shouldSearchWorkspaceMentions,
+  type WorkspaceMentionEntry,
   type WorkspaceMentionFile,
 } from "../utils/fileMention";
+
+const TRUNCATED_GLOB_DEBOUNCE_MS = 250;
 
 function isAbortError(err: unknown): boolean {
   return (
@@ -20,56 +27,121 @@ export function useWorkspaceFileMention(
   files: WorkspaceMentionFile[];
   loading: boolean;
   error: "need_agent" | "failed" | null;
+  truncated: boolean;
 } {
-  const [files, setFiles] = useState<WorkspaceMentionFile[]>([]);
+  const [index, setIndex] = useState<{
+    agentId: string;
+    paths: WorkspaceMentionEntry[];
+    truncated: boolean;
+  } | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<"need_agent" | "failed" | null>(null);
+  const [globEntries, setGlobEntries] = useState<WorkspaceMentionEntry[]>([]);
+  const [globLoading, setGlobLoading] = useState(false);
 
   useEffect(() => {
     if (!mentionMenuOpen) {
-      setFiles([]);
-      setLoading(false);
-      setError(null);
-      return;
-    }
-    if (!shouldSearchWorkspaceMentions(mentionQuery)) {
-      setFiles([]);
       setLoading(false);
       setError(null);
       return;
     }
     if (!agentId) {
-      setFiles([]);
       setLoading(false);
-      setError("need_agent");
+      return;
+    }
+
+    const cached = cachedWorkspaceMentionIndex(agentId);
+    if (cached) {
+      setIndex({ agentId, paths: cached.paths, truncated: cached.truncated });
+      setLoading(false);
+      setError(null);
       return;
     }
 
     const controller = new AbortController();
+    setLoading(true);
+    setError(null);
+    void loadWorkspaceMentionIndex(agentId, controller.signal)
+      .then((loaded) => {
+        if (controller.signal.aborted) return;
+        setIndex({
+          agentId,
+          paths: loaded.paths,
+          truncated: loaded.truncated,
+        });
+      })
+      .catch((err: unknown) => {
+        if (controller.signal.aborted || isAbortError(err)) return;
+        setIndex({ agentId, paths: [], truncated: false });
+        setError("failed");
+      })
+      .finally(() => {
+        if (!controller.signal.aborted) setLoading(false);
+      });
+
+    return () => {
+      controller.abort();
+    };
+  }, [mentionMenuOpen, agentId]);
+
+  const ready = index && agentId && index.agentId === agentId ? index : null;
+  const truncated = Boolean(ready?.truncated);
+  const supplement =
+    mentionMenuOpen &&
+    Boolean(agentId) &&
+    truncated &&
+    isPathLikeMentionQuery(mentionQuery) &&
+    shouldSearchWorkspaceMentions(mentionQuery);
+
+  useEffect(() => {
+    if (!supplement || !agentId) {
+      setGlobEntries([]);
+      setGlobLoading(false);
+      return;
+    }
+
+    const controller = new AbortController();
+    setGlobLoading(true);
     const timer = window.setTimeout(() => {
-      setFiles([]);
-      setLoading(true);
-      setError(null);
       void searchWorkspaceMentionFiles(agentId, mentionQuery, controller.signal)
-        .then((hits) => {
+        .then((entries) => {
           if (controller.signal.aborted) return;
-          setFiles(hits);
+          setGlobEntries(entries);
         })
         .catch((err: unknown) => {
           if (controller.signal.aborted || isAbortError(err)) return;
-          setFiles([]);
-          setError("failed");
+          setGlobEntries([]);
         })
         .finally(() => {
-          if (!controller.signal.aborted) setLoading(false);
+          if (!controller.signal.aborted) setGlobLoading(false);
         });
-    }, 250);
+    }, TRUNCATED_GLOB_DEBOUNCE_MS);
 
     return () => {
       controller.abort();
       window.clearTimeout(timer);
+      setGlobLoading(false);
     };
-  }, [mentionMenuOpen, mentionQuery, agentId]);
+  }, [supplement, agentId, mentionQuery]);
 
-  return { files, loading, error };
+  useEffect(() => {
+    if (!mentionMenuOpen || agentId) return;
+    setError(shouldSearchWorkspaceMentions(mentionQuery) ? "need_agent" : null);
+  }, [mentionMenuOpen, agentId, mentionQuery]);
+
+  const files = useMemo(() => {
+    if (!ready || !shouldSearchWorkspaceMentions(mentionQuery)) return [];
+    const entries = supplement ? [...ready.paths, ...globEntries] : ready.paths;
+    return rankWorkspaceMentionFiles(entries, mentionQuery);
+  }, [ready, mentionQuery, supplement, globEntries]);
+
+  const searching = shouldSearchWorkspaceMentions(mentionQuery);
+  const waiting =
+    (loading || (supplement && globLoading)) && files.length === 0;
+  return {
+    files,
+    loading: searching && waiting,
+    error: searching ? error : null,
+    truncated: searching && truncated,
+  };
 }

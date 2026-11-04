@@ -663,6 +663,71 @@
       }
     },
     {
+      "kind": "ragflow",
+      "name": {
+        "en": "ragflow",
+        "zh": "ragflow"
+      },
+      "description": {
+        "en": "Search and read existing RAGFlow knowledge bases using your service URL and API Key",
+        "zh": "连接已有的 RAGFlow 知识库，提供只读检索与文档阅读"
+      },
+      "auth_kind": "custom_fields",
+      "doc_url": "https://ragflow.io/docs/http_api_reference",
+      "icon": "ragflow",
+      "color": "#5145cd",
+      "phase": "available",
+      "mcp_mode": "gateway",
+      "category": "knowledge",
+      "guide_url": "https://ragflow.io/docs/acquire_ragflow_api_key",
+      "auth_hint": {
+        "en": "Enter your RAGFlow service URL and API Key. Optionally set default dataset IDs; otherwise ask the expert to list datasets and choose IDs before searching.",
+        "zh": "填写 RAGFlow 服务地址和 API Key。可选填默认知识库 ID；留空时，可让专家先列出知识库并选择 ID 后检索。"
+      },
+      "credential_fields": [
+        {
+          "key": "base_url",
+          "label": {
+            "en": "Service URL",
+            "zh": "服务地址"
+          },
+          "field_type": "url",
+          "placeholder": "http://127.0.0.1:9380",
+          "help": {
+            "en": "Enter the service URL or API root, including any reverse-proxy path. /api/v1 is appended automatically.",
+            "zh": "填写服务地址或 API 根地址，保留反向代理路径；会自动补齐 /api/v1。"
+          }
+        },
+        {
+          "key": "api_key",
+          "label": {
+            "en": "API Key",
+            "zh": "API Key"
+          },
+          "field_type": "password",
+          "secret": true,
+          "help": {
+            "en": "Create a key in RAGFlow under the user menu → API.",
+            "zh": "在 RAGFlow 用户菜单的「API」页面创建密钥。"
+          }
+        },
+        {
+          "key": "dataset_ids",
+          "label": {
+            "en": "Default dataset IDs",
+            "zh": "默认知识库 ID"
+          },
+          "required": false,
+          "field_type": "tags",
+          "placeholder": "dataset-1, dataset-2",
+          "help": {
+            "en": "Comma-separated IDs, not names. The expert can select other datasets accessible to this API Key.",
+            "zh": "填写逗号分隔的 ID，而不是名称；专家也可选择此 API Key 可访问的其他知识库。"
+          }
+        }
+      ]
+    },
+    {
       "kind": "weknora",
       "name": { "en": "WeKnora", "zh": "WeKnora" },
       "description": {
