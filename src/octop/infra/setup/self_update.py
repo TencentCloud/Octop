@@ -430,6 +430,7 @@ def has_pip(python_exe: str) -> bool:
             [python_exe, "-m", "pip", "--version"],
             capture_output=True,
             text=True,
+            encoding="utf-8",
             check=False,
         )
         return result.returncode == 0
@@ -589,6 +590,7 @@ def get_installed_version(python_exe: str) -> str | None:
             ],
             capture_output=True,
             text=True,
+            encoding="utf-8",
             check=False,
         )
         if result.returncode == 0:
@@ -622,6 +624,7 @@ def get_version_in_dir(python_exe: str, target: str, *, check_cli: bool = False)
             [python_exe, "-B", "-c", code, target, "1" if check_cli else "0"],
             capture_output=True,
             text=True,
+            encoding="utf-8",
             check=False,
             timeout=_PROBE_TIMEOUT_S,
         )
@@ -851,6 +854,7 @@ def _run_install_cmd(
             check=False,
             capture_output=not verbose,
             text=True,
+            encoding="utf-8",
             timeout=timeout,
         )
     except subprocess.TimeoutExpired:

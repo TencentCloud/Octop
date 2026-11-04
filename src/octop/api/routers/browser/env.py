@@ -110,6 +110,7 @@ def _verify_browser_binary(exe: str) -> tuple[bool, str]:
             [exe, "--version"],
             capture_output=True,
             text=True,
+            encoding="utf-8",
             timeout=10,
             check=False,
         )

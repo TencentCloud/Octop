@@ -163,6 +163,7 @@ def _run_install_command(cmd: list[str], *, timeout: int) -> tuple[bool, str]:
             cmd,
             capture_output=True,
             text=True,
+            encoding="utf-8",
             check=False,
             timeout=timeout,
             shell=False,
