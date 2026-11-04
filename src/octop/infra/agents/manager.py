@@ -1906,8 +1906,9 @@ class AgentManager:
 
     async def stream(self, agent_id: str, request: dict[str, Any]) -> AsyncIterator[Any]:
         """Stream harness chunks (Langfuse tracing handled inside octop-harness)."""
-        if self._harness_manager is None:
-            raise self._unavailable_error(agent_id)
+        # Guard before harness: missing registry entries raise KeyError there and
+        # used to surface as a misleading "model call failed" stream error.
+        self.get_agent(agent_id)
 
         thread_id = str(request.get("thread_id") or "")
         async with (
@@ -1920,14 +1921,14 @@ class AgentManager:
                 hitl_thread_scope(thread_id_from_request(req)),
                 turn_model_scope(self._stream_model_label(agent_id, req, thread_id)),
             ):
+                assert self._harness_manager is not None
                 async for chunk in self._harness_manager.stream(agent_id, cast(Any, req)):
                     yield chunk
             self._apply_pending_bootstrap_graph_refresh(agent_id)
 
     async def call(self, agent_id: str, request: dict[str, Any]) -> dict[str, Any]:
         """Non-streaming harness invocation (one-shot agent call)."""
-        if self._harness_manager is None:
-            raise self._unavailable_error(agent_id)
+        self.get_agent(agent_id)
         async with self._track_invocation(agent_id):
             self._apply_pending_bootstrap_graph_refresh(agent_id)
             req = self._prepare_stream_request(agent_id, request)
@@ -1936,6 +1937,7 @@ class AgentManager:
                 hitl_thread_scope(thread_id_from_request(req)),
                 turn_model_scope(self._stream_model_label(agent_id, req, thread_id)),
             ):
+                assert self._harness_manager is not None
                 result = await self._harness_manager.call(agent_id, cast(Any, req))
             self._apply_pending_bootstrap_graph_refresh(agent_id)
         if not isinstance(result, dict):
@@ -1949,8 +1951,7 @@ class AgentManager:
         decisions: list[dict[str, Any]],
     ) -> AsyncIterator[Any]:
         """Resume a paused HITL interrupt for *thread_id*."""
-        if self._harness_manager is None:
-            raise self._unavailable_error(agent_id)
+        self.get_agent(agent_id)
         async with (
             self._thread_execution_lock(agent_id, thread_id),
             self._track_invocation(agent_id),
@@ -1960,6 +1961,7 @@ class AgentManager:
                 hitl_thread_scope(thread_id),
                 turn_model_scope(self._stream_model_label(agent_id, {}, thread_id)),
             ):
+                assert self._harness_manager is not None
                 async for chunk in self._harness_manager.resume_hitl(
                     agent_id, thread_id, decisions
                 ):
