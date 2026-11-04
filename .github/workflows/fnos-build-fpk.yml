@@ -12,11 +12,11 @@ name: Build Octop FPK
 #   - Native wheel：优先从同版本 GitHub Release（v*）下载；
 #     缺失时再回退到本仓源码构建
 #   - fnpack：fpk / native 用 Actions cache 复用 .verify/fnpack（key 含 FNPACK_VERSION）
-#   - 产物挂到同一个 v* GitHub Release（与 wheel / 桌面包并列），不再单独打 fnos-* tag
+#   - 产物挂到同一个 v* GitHub Release（与 wheel / 桌面包并列），再上传到 COS
 #
 # Jobs：
 #   version → ensure-image → fpk（Docker 版 .fpk，仅打包 compose；镜像已是 amd64+arm64）
-#           ↘ native（x86_64 本地版 .fpk）
+#           ↘ native（amd64 本地版 Octop-fnos-native-amd64-*.fpk）
 #           ↘ native-arm64（ubuntu-24.04-arm 装 aarch64 site-packages）
 #             → native-arm64-pack（amd64 上用 fnpack 打 Octop-fnos-native-arm64-*.fpk）
 #           → release（把 .fpk 挂到已有的 v* GitHub Release）
@@ -77,6 +77,8 @@ jobs:
   ensure-image:
     needs: version
     runs-on: ubuntu-latest
+    outputs:
+      lite: ${{ steps.wait.outputs.lite }}
     steps:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
@@ -89,24 +91,46 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Wait for GHCR image from docker-publish
+        id: wait
         env:
           IMAGE: ${{ needs.version.outputs.image }}
           VER: ${{ needs.version.outputs.version }}
         run: |
           set -euo pipefail
-          TAG="${IMAGE}:${VER}"
-          echo "Waiting for ${TAG} (published by docker-publish)..."
-          # 多架构清单要等 amd64 + arm64 都推完再 merge，比单架构更久。
+          full="${IMAGE}:${VER}"
+          lite="${IMAGE}:${VER}-lite"
+          echo "Waiting for ${full}. ${lite} is optional and must already be multi-arch."
+          # 完整版清单要等两个架构 merge。精简版在完整版出现后再等几轮；缺了就只打完整包。
+          lite_wait=0
           for i in $(seq 1 120); do
-            if docker buildx imagetools inspect "$TAG" >/dev/null 2>&1; then
-              echo "Image ready: $TAG"
-              docker buildx imagetools inspect "$TAG" | head -40
+            full_ok=0
+            lite_ok=0
+            if docker buildx imagetools inspect "$full" >/dev/null 2>&1; then
+              full_ok=1
+            fi
+            if docker buildx imagetools inspect "$lite" >/dev/null 2>&1; then
+              lite_ok=1
+            fi
+            if [ "$full_ok" -eq 1 ] && [ "$lite_ok" -eq 1 ]; then
+              echo "lite=true" >> "$GITHUB_OUTPUT"
+              echo "Images ready: ${full} and ${lite}"
+              docker buildx imagetools inspect "$full" | head -20
+              docker buildx imagetools inspect "$lite" | head -20
               exit 0
             fi
-            echo "[$i/120] not ready yet..."
+            if [ "$full_ok" -eq 1 ]; then
+              lite_wait=$((lite_wait + 1))
+              if [ "$lite_wait" -ge 6 ]; then
+                echo "lite=false" >> "$GITHUB_OUTPUT"
+                echo "::warning::${lite} was not published. The full FnOS package will still be built."
+                docker buildx imagetools inspect "$full" | head -20
+                exit 0
+              fi
+            fi
+            echo "[$i/120] full=${full_ok} lite=${lite_ok}"
             sleep 20
           done
-          echo "::error::Timed out waiting for ${TAG}. Ensure Docker Publish finished for v${VER}."
+          echo "::error::Timed out waiting for ${full}. Ensure Docker Publish finished for v${VER}."
           exit 1
 
   fpk:
@@ -124,10 +148,17 @@ jobs:
           path: .verify/fnpack
           key: fnpack-${{ env.FNPACK_VERSION }}-linux-amd64
 
-      - name: Build Docker FPK
+      - name: Build Docker FPKs
         env:
           FPK_NAME_PREFIX: Octop-fnos
-        run: bash scripts/build-fpk.sh docker
+          LITE: ${{ needs.ensure-image.outputs.lite }}
+        run: |
+          bash scripts/build-fpk.sh docker
+          if [ "$LITE" = "true" ]; then
+            bash scripts/build-fpk.sh docker-lite
+          else
+            echo "::warning::Skipping the lite FnOS package because its image tag was not published."
+          fi
 
       - name: Upload docker fpk artifact
         uses: actions/upload-artifact@v4
@@ -241,17 +272,18 @@ jobs:
         id: build_native
         env:
           FPK_NAME_PREFIX: Octop-fnos
+          FPK_ARCH: amd64
         run: bash scripts/build-fpk.sh native
 
       - name: Show native fpk size
-        run: ls -lh dist/Octop-fnos-native-[0-9]*.fpk
+        run: ls -lh dist/Octop-fnos-native-amd64-*.fpk
 
       - name: Upload native fpk artifact
         id: upload_native
         uses: actions/upload-artifact@v4
         with:
           name: native-fpk
-          path: dist/Octop-fnos-native-[0-9]*.fpk
+          path: dist/Octop-fnos-native-amd64-*.fpk
           if-no-files-found: error
 
       - name: Upload native install log (for debugging)
@@ -420,7 +452,7 @@ jobs:
           if-no-files-found: error
 
   release:
-    # native / native-arm64 失败时仍运行，把已经打好的 .fpk 挂到 Release。
+    # 任一架构没打出来时仍运行，把已经打好的 .fpk 挂到 Release。
     if: always()
     needs: [fpk, native, native-arm64-pack, version]
     runs-on: ubuntu-latest
@@ -430,12 +462,12 @@ jobs:
           fetch-depth: 0
           fetch-tags: true
 
-      - name: Download docker fpk artifact (required)
+      - name: Download docker fpk artifact (best-effort)
+        continue-on-error: true
         uses: actions/download-artifact@v4
         with:
           name: docker-fpk
           path: artifacts/docker-fpk
-          if-no-files-found: error
 
       - name: Download native fpk artifact (best-effort)
         continue-on-error: true
@@ -485,6 +517,17 @@ jobs:
           generate_release_notes: false
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Drop download links for packages that were not published
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ needs.version.outputs.tag }}
+          VER: ${{ needs.version.outputs.version }}
+        run: |
+          set -euo pipefail
+          gh release view "$TAG" --repo "${{ github.repository }}" --json body,assets > /tmp/rel.json
+          python3 scripts/release_download_links.py "$VER" --sync-notes /tmp/rel.json > /tmp/notes.md
+          gh release edit "$TAG" --repo "${{ github.repository }}" --notes-file /tmp/notes.md
 
   upload-cos:
     name: Upload FPK to COS

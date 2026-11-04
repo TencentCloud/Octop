@@ -7,13 +7,14 @@ from typing import Any
 
 from octop.infra.db.repos.backends import BackendRow
 
-_OBJECT_KINDS = frozenset({"cos", "s3", "oss", "obs", "custom"})
+_OBJECT_KINDS = frozenset({"cos", "s3", "oss", "obs", "tos", "custom"})
 _AGENT_RESOLVABLE_KINDS = frozenset(
     {
         "cos",
         "s3",
         "oss",
         "obs",
+        "tos",
         "custom",
         "filesystem",
         "shell",
@@ -92,7 +93,25 @@ def row_to_backend_spec(row: BackendRow) -> dict[str, Any] | None:
         spec.update({k: v for k, v in cfg.items() if k not in spec})
         return spec
 
-    if kind in _OBJECT_KINDS - {"cos", "oss", "obs"}:
+    if kind == "tos":
+        if not all((row.access_key, row.secret_key, row.bucket, row.region, row.endpoint)):
+            return None
+        spec = {
+            "type": "tos",
+            "bucket": row.bucket,
+            "region": row.region,
+            "endpoint": row.endpoint,
+            "access_key_id": row.access_key,
+            "secret_access_key": row.secret_key,
+        }
+        if cfg.get("prefix"):
+            spec["prefix"] = cfg["prefix"]
+        token = cfg.get("security_token")
+        if token:
+            spec["security_token"] = token
+        return spec
+
+    if kind in _OBJECT_KINDS - {"cos", "oss", "obs", "tos"}:
         # Generic S3-compatible (AWS S3, MinIO, custom, …)
         if not all((row.access_key, row.secret_key, row.bucket)):
             return None

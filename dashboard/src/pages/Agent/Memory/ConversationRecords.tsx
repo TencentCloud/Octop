@@ -24,6 +24,7 @@ import { message } from "@/utils/antdMessage";
 import type { ColumnsType } from "antd/es/table";
 import { Eye, RefreshCw, Trash2 } from "lucide-react";
 import { useTranslation } from "react-i18next";
+import cx from "classnames";
 import Markdown from "../../../components/Markdown/LazyMarkdown";
 import {
   CHAT_HISTORY_PAGE_SIZE,
@@ -97,9 +98,10 @@ function ConversationThreadCard({
 
   return (
     <div
-      className={`${styles.conversationCard} ${
-        selected ? styles.conversationCardSelected : ""
-      }`}
+      className={cx(
+        styles.conversationCard,
+        selected && styles.conversationCardSelected,
+      )}
     >
       <div className={styles.conversationCardHeader}>
         <span className={styles.conversationCardTitle}>{title}</span>
@@ -599,9 +601,10 @@ export default function ConversationRecords({
               return (
                 <div
                   key={msg.id ?? `${role}-${index}`}
-                  className={`${styles.conversationMessage} ${
-                    styles[`conversationRole_${role}`] ?? ""
-                  }`}
+                  className={cx(
+                    styles.conversationMessage,
+                    styles[`conversationRole_${role}`],
+                  )}
                 >
                   <div className={styles.conversationMessageHeader}>
                     <span className={styles.conversationMessageRole}>

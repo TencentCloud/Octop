@@ -7,12 +7,13 @@ import {
   Folder,
   HardDrive,
   Layers,
-  Terminal,
+  Monitor,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { useTranslation } from "react-i18next";
-import type { BackendFlagIcon } from "./backendFlag";
-import { backendFlagIcon, resolveBackendFlag } from "./backendFlag";
+import cx from "classnames";
+import type { BackendFlagIcon } from "./backendFlagModel";
+import { backendFlagIcon, resolveBackendFlag } from "./backendFlagModel";
 import { useNamedStorageBackends } from "./useNamedStorageBackends";
 import styles from "../index.module.less";
 
@@ -26,7 +27,7 @@ interface BackendFlagProps {
 }
 
 const FAMILY_ICON: Record<BackendFlagIcon, LucideIcon> = {
-  shell: Terminal,
+  shell: Monitor,
   filesystem: Folder,
   database: Database,
   storage: Archive,
@@ -57,9 +58,7 @@ export default function BackendFlag({
   return (
     <Tooltip title={label || undefined} mouseEnterDelay={0.3}>
       <span
-        className={`${styles.backendFlag} ${
-          styles[`backendFlag_${kind}`] ?? ""
-        }`}
+        className={cx(styles.backendFlag, styles[`backendFlag_${kind}`])}
         role="img"
         aria-label={label}
       >

@@ -9,6 +9,7 @@ import os
 import re
 import shutil
 import time
+import uuid
 from collections.abc import Iterator
 from contextlib import suppress
 from dataclasses import dataclass
@@ -328,6 +329,8 @@ class OctopServer:
         self.wizard_tokens = WizardTokenStore(ttl_seconds=300)
         self._started = False
         self._started_at: int | None = None
+        self.instance_id = uuid.uuid4().hex
+        self._serve_background = True
         self._sso_service: SsoService | None = None
         self._ldap_service: LdapAuthService | None = None
         self._ldap_bind_throttle: LdapBindThrottle | None = None
@@ -394,9 +397,10 @@ class OctopServer:
     def database_bound(self) -> bool:
         return self.services is not None and self.app_runtime is not None
 
-    async def start(self) -> None:
+    async def start(self, *, serve_background: bool = True) -> None:
         if self._started:
             return
+        self._serve_background = serve_background
         self.paths.ensure_root()
         # fnOS/容器内非 root 用户场景：把用户级 npm 全局 bin 目录（~/.npm-global）
         # 纳入进程 PATH，保证连接器 CLI（wecom-cli / lark-cli）可被检测与调用。
@@ -487,6 +491,28 @@ class OctopServer:
         assert self.expert_catalog is not None
         assert self.plugin_manager is not None
 
+        from octop.infra.agents.experts.snapshot_store import (  # noqa: PLC0415
+            adopt_local_snapshots,
+        )
+        from octop.infra.users.profile_avatar import adopt_local_avatars  # noqa: PLC0415
+
+        adopt_local_avatars(
+            self.services.profile_avatar_repo,
+            self.services.settings_repo,
+            self.paths,
+        )
+        adopt_local_snapshots(
+            self.services.control_file_repo,
+            self.services.settings_repo,
+            self.paths.published_experts_dir,
+        )
+        self.plugin_manager.attach_control_plane(
+            self.services.control_file_repo,
+            self.services.settings_repo,
+        )
+        self.plugin_manager.seed_bundled()
+        self.plugin_manager.load_installed(install_deps=True)
+
         from octop.infra.utils.browser_media import (  # noqa: PLC0415
             configure_browser_idle_timeout,
         )
@@ -539,8 +565,9 @@ class OctopServer:
             repos=self.services.repos,
             trajectory_service=trajectory_service,
             history_archive=history_archive,
+            instance_id=self.instance_id,
         )
-        await gateway.boot()
+        await gateway.boot(serve_background=self._serve_background)
 
         from octop import __version__  # noqa: PLC0415
 
@@ -564,16 +591,18 @@ class OctopServer:
             delivery_service=cron_delivery,
             repos=self.services.repos,
             timezone=config.default_timezone,
+            instance_id=self.instance_id,
         )
-        await cron_mgr.boot()
+        await cron_mgr.boot(serve_background=self._serve_background)
 
-        from octop.infra.setup.tls.renewal import install_auto_renewal_job
+        if self._serve_background:
+            from octop.infra.setup.tls.renewal import install_auto_renewal_job
 
-        install_auto_renewal_job(cron_mgr, paths=self.paths)
+            install_auto_renewal_job(cron_mgr, paths=self.paths)
 
-        from octop.infra.backup.auto import install_auto_backup_job
+            from octop.infra.backup.auto import install_auto_backup_job
 
-        install_auto_backup_job(cron_mgr, server=self)
+            install_auto_backup_job(cron_mgr, server=self)
 
         registry.set_cron_manager(cron_mgr)
         registry.set_team_processor(gateway.processor.teams)

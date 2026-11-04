@@ -1,4 +1,5 @@
 import { useTranslation } from "react-i18next";
+import cx from "classnames";
 import TabLabel, { type TabIcon } from "./index";
 import styles from "./index.module.less";
 
@@ -32,7 +33,7 @@ export default function TabBar<T extends string>({
             type="button"
             role="tab"
             aria-selected={selected}
-            className={`${styles.tab} ${selected ? styles.active : ""}`}
+            className={cx(styles.tab, selected && styles.active)}
             onClick={() => onChange(tab.key)}
           >
             <TabLabel icon={tab.icon}>{t(tab.labelKey)}</TabLabel>

@@ -35,9 +35,25 @@ def test_fnos_manifest_maintainer_and_tags(manifest: Path) -> None:
 
 
 @pytest.mark.parametrize("manifest", [FNOS_DOCKER / "manifest", FNOS_NATIVE / "manifest"])
-def test_fnos_manifest_version_matches_pyproject(manifest: Path) -> None:
+def test_fnos_manifest_version_is_placeholder(manifest: Path) -> None:
     text = manifest.read_text(encoding="utf-8")
-    assert f"version={_pyproject_version()}\n" in text
+    assert "version=0.0.0\n" in text
+    assert f"version={_pyproject_version()}\n" not in text
+
+
+def test_build_fpk_lite_pins_the_lite_image_tag() -> None:
+    text = (REPO / "scripts" / "build-fpk.sh").read_text(encoding="utf-8")
+    assert 'OUTNAME="${PREFIX}-docker-lite-${VER}${ITER_SUFFIX}.fpk"' in text
+    assert 'image_tag="${FPK_IMAGE_TAG:-${VER}-lite}"' in text
+
+
+def test_publish_workflows_keep_full_when_lite_is_incomplete() -> None:
+    docker = (REPO / ".github/workflows/docker-publish.yml").read_text(encoding="utf-8")
+    fnos = (REPO / ".github/workflows/fnos-build-fpk.yml").read_text(encoding="utf-8")
+    assert "until both amd64 and arm64 exist" in docker
+    assert 'echo "lite=false"' in fnos
+    assert "Skipping the lite FnOS package" in fnos
+    assert "--sync-notes" in fnos
 
 
 def test_build_fpk_writes_store_version_not_pep440() -> None:
@@ -80,11 +96,13 @@ def test_fnos_store_version_rejects_unencoded_prerelease() -> None:
         assert result.returncode != 0, raw
 
 
-def test_publish_skill_bumps_fnos_manifest_versions() -> None:
+def test_publish_skill_leaves_fnos_versions_as_placeholders() -> None:
     text = (REPO / ".cursor" / "skills" / "publish" / "SKILL.md").read_text(encoding="utf-8")
     assert "fnos/docker/manifest" in text
     assert "fnos/native/manifest" in text
     assert "fnos/docker/app/docker/docker-compose.yaml" in text
+    assert "占位 `0.0.0`" in text
+    assert "仓库源文件与 pyproject 保持同一 PEP 440" not in text
     assert "uv.lock" in text
 
 
@@ -100,7 +118,10 @@ def test_fnos_docker_compose_uses_trim_data_share_paths() -> None:
     assert "pull_policy: missing" in text
     assert "pull_policy: always" not in text
     assert "ghcr.io/tencentcloud/octop:latest" not in text
-    assert f"ghcr.io/tencentcloud/octop:{_pyproject_version()}" in text
+    assert "ghcr.io/tencentcloud/octop:0.0.0" in text
+    assert f"ghcr.io/tencentcloud/octop:{_pyproject_version()}" not in text
+    build = (REPO / "scripts" / "build-fpk.sh").read_text(encoding="utf-8")
+    assert "ghcr.io/tencentcloud/octop:${image_tag}" in build
     assert "env_file:" not in text
     volume_lines = [
         line
@@ -464,10 +485,13 @@ def test_octop_assert_native_arch_rejects_mismatch(tmp_path: Path) -> None:
 set -euo pipefail
 source "{COMMON_SH}"
 export OCTOP_FPK_ARCH_FILE="{marker}"
-export OCTOP_FPK_HOST_ARCH=amd64
+export OCTOP_FPK_HOST_ARCH=x86_64
 octop_assert_native_arch && exit 10
 export OCTOP_FPK_HOST_ARCH=arm64
 octop_assert_native_arch || exit 11
+printf '%s\n' amd64 > "{marker}"
+export OCTOP_FPK_HOST_ARCH=amd64
+octop_assert_native_arch || exit 13
 unset OCTOP_FPK_ARCH_FILE
 octop_assert_native_arch || exit 12
 """

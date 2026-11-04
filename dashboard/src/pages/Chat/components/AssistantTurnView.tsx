@@ -1,6 +1,7 @@
 import { useMemo } from "react";
 import { ChevronRight, FilePen, Globe } from "lucide-react";
 import { useTranslation } from "react-i18next";
+import cx from "classnames";
 import type { HitlDecisionHandler } from "../../../api/types/hitl";
 import type { ChatMessage } from "../hooks/useChat";
 import {
@@ -348,9 +349,10 @@ export default function AssistantTurnView({
         <div className={styles.turnInset}>
           <button
             type="button"
-            className={`${styles.openBrowserPrompt} ${
-              turnStreaming ? styles.openBrowserPromptActive : ""
-            }`}
+            className={cx(
+              styles.openBrowserPrompt,
+              turnStreaming && styles.openBrowserPromptActive,
+            )}
             onClick={onOpenBrowser}
             aria-label={t("chat.openBrowser")}
           >
@@ -373,9 +375,10 @@ export default function AssistantTurnView({
         <div className={styles.turnInset}>
           <button
             type="button"
-            className={`${styles.openBrowserPrompt} ${
-              turnStreaming ? styles.openBrowserPromptActive : ""
-            }`}
+            className={cx(
+              styles.openBrowserPrompt,
+              turnStreaming && styles.openBrowserPromptActive,
+            )}
             onClick={onEditFile}
             aria-label={t("chat.editFileCard", {
               count: Math.max(turnFileCount, 1),

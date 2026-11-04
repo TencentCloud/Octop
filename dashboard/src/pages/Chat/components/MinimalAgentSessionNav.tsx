@@ -4,7 +4,6 @@ import { useNavigate } from "react-router-dom";
 import { Dropdown } from "antd";
 import type { MenuProps } from "antd";
 import {
-  ChevronDown,
   ChevronRight,
   GitFork,
   MoreHorizontal,
@@ -14,6 +13,7 @@ import {
   Search,
   Trash2,
 } from "lucide-react";
+import cx from "classnames";
 import type { OctopAgent } from "../../../context/AgentContext";
 import { ExpertIcon } from "../../Experts/components/iconForName";
 import { octopThreadsApi } from "../../../api/modules/octopThreads";
@@ -28,6 +28,7 @@ import { formatThreadTitle } from "../utils/threadTitle";
 import { onSessionEvent } from "../hooks/chatStore";
 import { useExpertSessionCatalog } from "../hooks/useExpertSessionCatalog";
 import { useHiddenSharedExperts } from "../hooks/useHiddenSharedExperts";
+import HiddenExpertsToggle from "./HiddenExpertsToggle";
 import { usePinnedExperts } from "../hooks/usePinnedExperts";
 import { useSessionWorkIds } from "../hooks/useSessionWorkIds";
 import { sortExpertsByPin } from "../utils/pinnedExpertsPrefs";
@@ -238,9 +239,12 @@ const PreviewSessionRow = memo(function PreviewSessionRow({
 
   return (
     <div
-      className={`${styles.sessionRow} ${styles.sessionRowCompact} ${
-        isActive ? styles.sessionRowActive : ""
-      } ${session.pinned ? styles.sessionRowPinned : ""}`}
+      className={cx(
+        styles.sessionRow,
+        styles.sessionRowCompact,
+        isActive && styles.sessionRowActive,
+        session.pinned && styles.sessionRowPinned,
+      )}
       onClick={() => {
         if (!isEditing) onSelect(session.id);
       }}
@@ -362,13 +366,11 @@ export default function MinimalAgentSessionNav({
     [agents, pickHidden, pinnedIds, navScope],
   );
   const sortedAgents = useMemo(() => {
-    const visible = filterVisible(agents, {
-      keepAgentIds: activeAgentId ? [activeAgentId] : [],
-    });
+    const visible = filterVisible(agents);
     return sortExpertsByPin(visible, pinnedIds).filter((agent) =>
       matchesChatNavScope(agent, navScope),
     );
-  }, [agents, filterVisible, activeAgentId, pinnedIds, navScope]);
+  }, [agents, filterVisible, pinnedIds, navScope]);
   const searching = searchQuery.trim().length > 0;
   const catalog = useExpertSessionCatalog(sortedAgents, searching);
   const visibleAgents = useMemo(() => {
@@ -671,7 +673,7 @@ export default function MinimalAgentSessionNav({
   }
 
   return (
-    <div className={`${styles.sessionList} ${styles.minimalAgentNav}`}>
+    <div className={cx(styles.sessionList, styles.minimalAgentNav)}>
       <div className={styles.sessionSearchWrap}>
         <Search
           size={14}
@@ -703,22 +705,12 @@ export default function MinimalAgentSessionNav({
       {navBlocks.map((block) => {
         if (block.kind === "toggle") {
           return (
-            <button
+            <HiddenExpertsToggle
               key={block.key}
-              type="button"
-              className={styles.sessionLoadMore}
-              aria-expanded={showingHidden}
-              onClick={() => setShowingHidden((open) => !open)}
-            >
-              {showingHidden ? (
-                <ChevronDown size={14} aria-hidden />
-              ) : (
-                <ChevronRight size={14} aria-hidden />
-              )}
-              {showingHidden
-                ? t("chat.expertListHiddenCollapse")
-                : t("chat.expertListHidden", { count: hiddenAgents.length })}
-            </button>
+              expanded={showingHidden}
+              count={hiddenAgents.length}
+              onToggle={() => setShowingHidden((open) => !open)}
+            />
           );
         }
         const agent = block.agent;
@@ -780,9 +772,10 @@ export default function MinimalAgentSessionNav({
                   <ChevronRight
                     size={14}
                     strokeWidth={2}
-                    className={`${styles.minimalAgentChevron} ${
-                      expanded ? styles.minimalAgentChevronOpen : ""
-                    }`}
+                    className={cx(
+                      styles.minimalAgentChevron,
+                      expanded && styles.minimalAgentChevronOpen,
+                    )}
                     aria-hidden
                   />
                 </button>

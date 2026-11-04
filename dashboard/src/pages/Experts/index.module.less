@@ -241,8 +241,8 @@
 }
 
 .backendFlag_shell {
-  color: #722ed1;
-  background: rgba(114, 46, 209, 0.1);
+  color: #3d5a80;
+  background: rgba(61, 90, 128, 0.12);
 }
 
 .backendFlag_filesystem {
@@ -272,8 +272,8 @@
 
 :global(html[data-theme="dark"]) {
   .backendFlag_shell {
-    color: #b37feb;
-    background: rgba(114, 46, 209, 0.22);
+    color: #9db4d0;
+    background: rgba(61, 90, 128, 0.28);
   }
 
   .backendFlag_filesystem {
@@ -1062,29 +1062,108 @@
 
 .marketContainer {
   min-width: 0;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
 }
 
-.marketSceneTabsWrap {
+.marketStage {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   width: 100%;
-  margin-top: 16px;
-  margin-bottom: 16px;
-  overflow-x: auto;
-  -webkit-overflow-scrolling: touch;
-  padding-bottom: 2px;
+  min-height: 240px;
 }
 
-.marketSceneTabs {
-  width: 100%;
-  min-width: max-content;
-
-  :global(.ant-segmented-item) {
-    min-width: 4.75em;
+/* antd Card's dark token tints these placeholders blue. */
+:global(html[data-theme="dark"]) .loadingSkeleton {
+  :global(.octop-card) {
+    background: var(--fn-bg-primary) !important;
+    border-color: var(--fn-card-border-normal) !important;
   }
 
-  :global(.ant-segmented-item-label) {
-    font-weight: 500;
-    white-space: nowrap;
+  :global(.octop-skeleton-title),
+  :global(.octop-skeleton-paragraph > li),
+  :global(.octop-skeleton-avatar) {
+    background-image: linear-gradient(
+      90deg,
+      var(--fn-bg-tertiary) 25%,
+      color-mix(in srgb, var(--fn-bg-tertiary) 78%, #fff) 37%,
+      var(--fn-bg-tertiary) 63%
+    ) !important;
+    background-size: 400% 100% !important;
   }
+}
+
+.gridToolbar.marketSourceRow {
+  flex-wrap: nowrap;
+  align-items: center;
+}
+
+.marketSourceTabs {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  flex-shrink: 0;
+  min-width: 0;
+}
+
+.marketSourceTab {
+  appearance: none;
+  margin: 0;
+  padding: 4px 0;
+  border: 0;
+  background: none;
+  color: var(--fn-text-tertiary);
+  font-size: 15px;
+  font-weight: 500;
+  line-height: 22px;
+  cursor: pointer;
+  white-space: nowrap;
+
+  &:hover {
+    color: var(--fn-text-secondary);
+  }
+}
+
+.marketSourceTabActive {
+  color: var(--fn-text-primary);
+  font-weight: 600;
+
+  &:hover {
+    color: var(--fn-text-primary);
+  }
+}
+
+.marketBlock {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+
+  .cardGrid {
+    padding-top: 12px;
+    padding-bottom: 0;
+  }
+}
+
+.marketBlockTitle {
+  flex-shrink: 0;
+  font-size: 14px;
+  line-height: 22px;
+  color: var(--fn-text-primary);
+  font-variant-numeric: tabular-nums;
+}
+
+.marketBlockHint {
+  margin: 0 0 8px;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--fn-text-tertiary);
+}
+
+.marketSearchPublishedGrid {
+  padding-bottom: 0;
 }
 
 .marketCardHeader {
@@ -1094,8 +1173,20 @@
   min-width: 0;
 }
 
+.marketCardTitleRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+
+  .agentCardName {
+    flex: 0 1 auto;
+    min-width: 0;
+  }
+}
+
 .marketSearch {
-  width: 280px;
+  width: 200px;
   min-width: 0;
 
   @media (max-width: 640px) {
@@ -1117,9 +1208,9 @@
 
 .marketIconImg {
   display: block;
-  width: 22px;
-  height: 22px;
-  object-fit: contain;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
 }
 
 .marketCardFooter {
@@ -1565,6 +1656,27 @@
   align-items: center;
   gap: 10px;
   margin-top: 8px;
+}
+
+.marketLoadResult {
+  padding: 16px;
+
+  :global(.ant-result-icon) {
+    display: flex;
+    justify-content: center;
+    margin-bottom: 0;
+  }
+
+  :global(.ant-result-title) {
+    font-size: 16px;
+    line-height: 1.4;
+  }
+
+  :global(.ant-result-subtitle) {
+    max-width: 360px;
+    margin-inline: auto;
+    color: var(--fn-text-tertiary);
+  }
 }
 
 /* ── Drawer shared styles ──────────────────────────────────────── */
