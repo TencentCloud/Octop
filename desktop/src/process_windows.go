@@ -3,6 +3,7 @@
 package main
 
 import (
+	"errors"
 	"io"
 	"os/exec"
 	"strconv"
@@ -28,4 +29,8 @@ func killProcessTree(cmd *exec.Cmd) {
 	kill := exec.Command("taskkill", "/F", "/T", "/PID", strconv.Itoa(cmd.Process.Pid))
 	hideConsole(kill)
 	_ = kill.Run()
+}
+
+func addrInUse(err error) bool {
+	return errors.Is(err, windows.WSAEADDRINUSE)
 }

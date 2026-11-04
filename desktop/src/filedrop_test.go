@@ -88,7 +88,6 @@ func TestDropServerServesOnlyPublishedFiles(t *testing.T) {
 		t.Fatal(err)
 	}
 	var resp *http.Response
-	var err error
 	for attempt := 0; attempt < 20; attempt++ {
 		resp, err = http.Get(base + "/0")
 		if err == nil {
