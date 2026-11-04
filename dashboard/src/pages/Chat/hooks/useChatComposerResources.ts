@@ -90,10 +90,6 @@ export function useChatComposerResources(
   const expertDefaultModel = (expert?.default_model || "").trim() || null;
   const expertMcpKey = (expertMcpServers ?? []).join("\0");
   const expertKbKey = (expertKnowledgeBaseIds ?? []).join("\0");
-  const expertMcpServersRef = useRef(expertMcpServers);
-  const expertKnowledgeBaseIdsRef = useRef(expertKnowledgeBaseIds);
-  expertMcpServersRef.current = expertMcpServers;
-  expertKnowledgeBaseIdsRef.current = expertKnowledgeBaseIds;
   const isNewSession = !activeThreadId || isPendingThread(activeThreadId);
   const composerTouchedRef = useRef(false);
   const [selectedConnectors, setSelectedConnectors] = useState<string[]>([]);
@@ -259,7 +255,7 @@ export function useChatComposerResources(
       const allowed = new Set(options.map((o) => o.mcp_server_name));
       const defaults = withDefaultOpenKnowledgeBases(
         options.filter((o) => o.default_open).map((o) => o.mcp_server_name),
-        expertMcpServersRef.current ?? [],
+        expertMcpServers ?? [],
       );
       setSelectedConnectors((prev) => {
         const next = resolveInitialConnectors({
@@ -370,9 +366,7 @@ export function useChatComposerResources(
         : ownedDefaults;
       const defaults = withDefaultOpenKnowledgeBases(
         bridgeDefaults,
-        (expertKnowledgeBaseIdsRef.current ?? []).filter((id) =>
-          allowed.has(id),
-        ),
+        (expertKnowledgeBaseIds ?? []).filter((id) => allowed.has(id)),
       );
       setSelectedKnowledgeBaseIds((previous) => {
         const base = resolveInitialConnectors({

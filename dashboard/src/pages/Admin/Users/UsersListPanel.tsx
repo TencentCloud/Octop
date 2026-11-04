@@ -929,7 +929,7 @@ export function PermissionCheckboxPicker({
   disabled,
 }: PermissionCheckboxPickerProps) {
   const { t } = useTranslation();
-  const selected = useMemo(() => value ?? [], [value]);
+  const selected = value ?? [];
   const selectedSet = useMemo(() => new Set(selected), [selected]);
   const [navLayout, setNavLayout] = useState<SidebarNavLayout | null>(null);
   const [navReady, setNavReady] = useState(false);

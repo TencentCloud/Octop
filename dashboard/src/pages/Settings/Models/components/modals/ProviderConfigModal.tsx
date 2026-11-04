@@ -121,8 +121,6 @@ export function ProviderConfigModal({
   const [ollamaModelsDir, setOllamaModelsDir] = useState("");
   const [ollamaServiceLoaded, setOllamaServiceLoaded] = useState(false);
   const [savingModelsDir, setSavingModelsDir] = useState(false);
-  const providerRef = useRef(provider);
-  providerRef.current = provider;
   const ollamaPollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const ollamaNotifiedRef = useRef<Set<string>>(new Set());
 
@@ -660,20 +658,19 @@ export function ProviderConfigModal({
     if (!open) return;
     // Only hydrate when the modal opens (or provider id changes), so
     // background refreshes / local model toggles do not reset the form.
-    const current = providerRef.current;
-    const currentDefaultModel = current.models?.length
-      ? current.models[0].id
+    const currentDefaultModel = provider.models?.length
+      ? provider.models[0].id
       : "";
     form.setFieldsValue({
-      kind: current.kind,
-      base_url: current.base_url ?? "",
+      kind: provider.kind,
+      base_url: provider.base_url ?? "",
       api_key: undefined,
       model: currentDefaultModel,
-      note: current.note ?? "",
-      stream_usage: current.stream_usage !== false,
+      note: provider.note ?? "",
+      stream_usage: provider.stream_usage !== false,
     });
     setDraftModels(
-      (current.models ?? []).map((m) => ({
+      (provider.models ?? []).map((m) => ({
         ...m,
         enabled: m.enabled !== false,
       })),

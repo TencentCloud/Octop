@@ -540,7 +540,7 @@ export default function DocumentPreviewCore({
       pptxViewerRef.current?.destroy();
       pptxViewerRef.current = null;
     };
-  }, [kind, fetchBlob, reloadNonce, onBlobProgress, filename]);
+  }, [kind, fetchBlob, reloadNonce, onBlobProgress]);
 
   if (empty) {
     return (

@@ -413,7 +413,7 @@ function EditAgentDrawerBody({
     return () => {
       cancelled = true;
     };
-  }, [agent.agent_id, agent.state, form, t, agent.color]);
+  }, [agent.agent_id, agent.state, form, t]);
 
   const handleSave = useCallback(async () => {
     const values = await form.validateFields();

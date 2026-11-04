@@ -1,10 +1,4 @@
-import {
-  useCallback,
-  useEffect,
-  useRef,
-  useState,
-  type ReactNode,
-} from "react";
+import { useState, useCallback, useEffect, type ReactNode } from "react";
 import {
   Drawer,
   Form,
@@ -113,8 +107,6 @@ export default function AvatarDropdown({
   >([]);
   const [ssoBindingKind, setSsoBindingKind] = useState<string | null>(null);
   const [profileForm] = Form.useForm<{ display_name: string }>();
-  const settingsDisplayNameRef = useRef(user?.display_name);
-  settingsDisplayNameRef.current = user?.display_name;
 
   const handleLogout = useCallback(async () => {
     setMenuOpen(false);
@@ -232,6 +224,7 @@ export default function AvatarDropdown({
   const openSettings = () => {
     setMenuOpen(false);
     onBeforeOpenSettings?.();
+    profileForm.setFieldsValue({ display_name: user?.display_name || "" });
     deferOpen(() => setSettingsOpen(true));
   };
 
@@ -248,15 +241,6 @@ export default function AvatarDropdown({
   };
 
   const closeSettings = () => setSettingsOpen(false);
-
-  useEffect(() => {
-    if (!settingsOpen) return;
-    // Seed after the drawer Form mounts. Setting values before it connects
-    // makes antd warn that the form instance is unused.
-    profileForm.setFieldsValue({
-      display_name: settingsDisplayNameRef.current || "",
-    });
-  }, [profileForm, settingsOpen]);
 
   useEffect(() => {
     if (!settingsOpen) return;

@@ -153,8 +153,7 @@ export default function ChannelsPanel({ agentId }: ChannelsPanelProps) {
     const map = new Map<ChannelKey, ChannelRow>();
     for (const row of channels) {
       const key = row.kind as ChannelKey;
-      // CHANNEL_KEYS is mutated in place; catalogVersion is the refresh token.
-      if (catalogVersion < 0 || !CHANNEL_KEYS.includes(key)) continue;
+      if (!CHANNEL_KEYS.includes(key)) continue;
       const existing = map.get(key);
       if (!existing || (!existing.enabled && row.enabled)) {
         map.set(key, row);
