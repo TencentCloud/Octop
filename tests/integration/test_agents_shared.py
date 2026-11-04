@@ -4,7 +4,8 @@ from __future__ import annotations
 
 import pytest
 
-from tests.support.auth import create_user
+from octop.infra.gateway.threads import ThreadRegistry
+from tests.support.auth import create_user, resolve_user_id
 
 
 @pytest.fixture
@@ -223,6 +224,56 @@ async def test_shared_agent_threads_are_private(env) -> None:
         headers=peer_auth,
     )
     assert response.status_code == 403
+
+
+async def test_shared_viewer_marks_own_unread_read(env) -> None:
+    client, srv, admin_auth = env
+    owner_auth = await create_user(client, admin_auth, username="read_owner")
+    peer_auth = await create_user(client, admin_auth, username="read_peer")
+    response = await client.post(
+        "/api/agents/from-expert/default",
+        headers=owner_auth,
+        json={"name": "read-bot"},
+    )
+    assert response.status_code == 201, response.text
+    agent_id = response.json()["agent_id"]
+    owner_id = await resolve_user_id(client, admin_auth, "read_owner")
+    peer_id = await resolve_user_id(client, admin_auth, "read_peer")
+    sessions = srv.services.session_repo
+    for user_id, label in ((owner_id, "owner"), (peer_id, "peer")):
+        session_key = ThreadRegistry.dashboard_key(agent_id=agent_id, user_id=user_id)
+        sessions.upsert(
+            session_key=session_key,
+            agent_id=agent_id,
+            user_id=user_id,
+            channel_type="dashboard",
+            chat_type="dm",
+            thread_id=f"thr_{label}",
+        )
+        sessions.increment_unread(session_key, delta=2)
+
+    denied = await client.post(f"/api/agents/{agent_id}/read", headers=peer_auth)
+    assert denied.status_code == 403
+
+    response = await client.patch(
+        f"/api/agents/{agent_id}",
+        headers=owner_auth,
+        json={"is_shared": True},
+    )
+    assert response.status_code == 200, response.text
+
+    cleared = await client.post(f"/api/agents/{agent_id}/read", headers=peer_auth)
+    assert cleared.status_code == 204, cleared.text
+
+    response = await client.get("/api/agents", headers=peer_auth)
+    assert response.status_code == 200
+    peer_row = next(row for row in response.json() if row["agent_id"] == agent_id)
+    assert peer_row["unread_count"] == 0
+
+    response = await client.get("/api/agents", headers=owner_auth)
+    assert response.status_code == 200
+    owner_row = next(row for row in response.json() if row["agent_id"] == agent_id)
+    assert owner_row["unread_count"] == 2
 
 
 async def test_peer_cannot_rebind_session_to_owner_thread(env) -> None:

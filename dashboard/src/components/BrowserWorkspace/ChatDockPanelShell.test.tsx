@@ -1,4 +1,4 @@
-import { render } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { DesktopChromeProvider } from "../../hooks/useDesktopChrome";
 import {
@@ -82,6 +82,39 @@ describe("ChatDockPanelShell chrome inset", () => {
     expect(mask.style.pointerEvents).toBe("none");
     mask.click();
     expect(onClose).not.toHaveBeenCalled();
+  });
+
+  it("keeps the layout menu open when the dock style object is replaced", async () => {
+    const style = { width: 560 };
+    const { rerender } = render(
+      <DesktopChromeProvider value={null}>
+        <ChatDockPanelShell {...baseProps} mode="right" style={style} />
+      </DesktopChromeProvider>,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "面板布局" }));
+    expect(
+      await screen.findByRole("menuitem", {
+        name: "browserWorkspace.panelBottom",
+      }),
+    ).toBeInTheDocument();
+
+    rerender(
+      <DesktopChromeProvider value={null}>
+        <ChatDockPanelShell
+          {...baseProps}
+          mode="right"
+          style={{ width: style.width }}
+        />
+      </DesktopChromeProvider>,
+    );
+
+    expect(
+      screen.getByRole("menuitem", { name: "browserWorkspace.panelBottom" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("menuitem", { name: "browserWorkspace.panelPopup" }),
+    ).toBeInTheDocument();
   });
 
   it("still inserts the spacer from the Wails bridge when chrome context is missing", () => {

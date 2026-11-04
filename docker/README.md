@@ -44,6 +44,8 @@ docker run -d \
   octop:latest
 ```
 
+Published tags: `ghcr.io/tencentcloud/octop:<version>` and `:latest` are the full image (desktop, OCR, local embedding). `:<version>-lite` and `:lite` omit those extras. Build locally with `--build-arg OCTOP_IMAGE_VARIANT=lite`.
+
 ### Faster downloads (China mirrors)
 
 Pass mirror env vars when building:
@@ -70,6 +72,10 @@ bash docker/docker_build.sh
 | `DASHSCOPE_API_KEY` | — | Alibaba DashScope API key |
 
 For Compose, put these in `docker/.env`. Values only reach the container if listed under `environment:` in `docker-compose.yml` (Compose interpolates `.env`; it does not auto-export every key). Alternatively write the same keys into the mounted data dir as `~/.octop/env`.
+
+### Node.js
+
+The runtime image includes Node.js 20 (`node`, `npm`, and `npx`), the same major version used to build the dashboard, so skills and expert shells that need Node can run. The toolchain is copied from the `node:20-slim` build stage. Existing deployments must rebuild or upgrade the image to receive it; restarting an older image is insufficient. Packages installed with `npm install -g` live in the container writable layer and must be reinstalled after the container is recreated.
 
 ### Knowledge-base dependencies
 

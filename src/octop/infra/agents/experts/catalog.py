@@ -54,13 +54,11 @@ _FALLBACK_BUNDLED_AVATAR_IDS = frozenset(
         "multi-agent-orchestrator",
         "news-trend",
         "office-automation",
-        "ops-engineer",
         "parenting-companion",
         "stock-assistant",
         "superpowers-methodology",
         "tencentcloud-api",
         "wechat-ops",
-        "scene-academic",
         "scene-content-creation",
         "scene-data",
         "scene-default",
@@ -71,10 +69,8 @@ _FALLBACK_BUNDLED_AVATAR_IDS = frozenset(
         "scene-healthcare",
         "scene-hr",
         "scene-legal",
-        "scene-lifestyle",
         "scene-marketing",
         "scene-media",
-        "scene-mysticism",
         "scene-office",
         "scene-tech",
     }
@@ -146,6 +142,16 @@ class Expert:
     prompt_files: list[str] = field(default_factory=list)
     """Persona markdown filenames declared in the manifest (dashboard hint)."""
     quick_prompts: tuple[ExpertQuickPrompt, ...] = ()
+
+
+def skill_count_in_expert_dir(expert_dir: Path) -> int:
+    """Count workspace skills stored as ``skills/<slug>/SKILL.md``."""
+    skills_dir = expert_dir / "skills"
+    if not skills_dir.is_dir():
+        return 0
+    return sum(
+        1 for child in skills_dir.iterdir() if child.is_dir() and (child / "SKILL.md").is_file()
+    )
 
 
 def discover_seed_paths(expert_dir: Path) -> list[str]:

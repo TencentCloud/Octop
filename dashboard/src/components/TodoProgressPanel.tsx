@@ -6,6 +6,7 @@ import {
   XCircle,
 } from "lucide-react";
 import { useTranslation } from "react-i18next";
+import cx from "classnames";
 import {
   countCompletedTodos,
   type TodoListItem,
@@ -46,13 +47,11 @@ export function TodoListView({
 
   return (
     <div
-      className={[
+      className={cx(
         styles.todoListBlock,
-        variant === "panel" ? styles.todoProgressPanel : null,
+        variant === "panel" && styles.todoProgressPanel,
         className,
-      ]
-        .filter(Boolean)
-        .join(" ")}
+      )}
     >
       <div className={styles.todoListHeader}>
         <div className={styles.todoListTitle}>
@@ -73,13 +72,14 @@ export function TodoListView({
               {statusIcon(item.status, isStreaming)}
             </span>
             <span
-              className={`${styles.todoListText} ${
+              className={cx(
+                styles.todoListText,
                 item.status === "completed"
                   ? styles.todoListTextCompleted
                   : item.status === "cancelled"
                   ? styles.todoListTextCancelled
-                  : ""
-              }`}
+                  : "",
+              )}
             >
               {item.content}
             </span>
