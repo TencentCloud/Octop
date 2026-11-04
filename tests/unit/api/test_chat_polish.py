@@ -303,6 +303,62 @@ def test_load_projected_falls_back_to_created_at() -> None:
     assert messages[0]["timestamp"] == 1_700_000_000_000
 
 
+def test_load_projected_tolerates_non_string_tool_block_type() -> None:
+    """History must still load when a tool output block has an object ``type``."""
+    import json
+
+    from langchain_core.messages import message_to_dict
+
+    from octop.api.routers.chat.serialize import _load_projected_thread_messages
+
+    output = json.dumps([{"type": {"kind": "image"}}, {"text": "plain"}])
+    row = SimpleNamespace(
+        seq=1,
+        message_json=json.dumps(
+            message_to_dict(ToolMessage(content=output, tool_call_id="c1", id="m1"))
+        ),
+        created_at=1_700_000_000,
+    )
+    server = SimpleNamespace(
+        services=SimpleNamespace(
+            thread_message_repo=SimpleNamespace(page=lambda *_a, **_k: ([row], False))
+        )
+    )
+    messages, has_more = _load_projected_thread_messages(server, "agent", "thread", 25, user=None)
+
+    assert has_more is False
+    assert [block["output"] for entry in messages for block in entry["content"]] == [output]
+
+
+def test_load_projected_survives_unencodable_media_url() -> None:
+    """Preview rewriting must degrade to the raw output, not 500 the page."""
+    import json
+
+    from langchain_core.messages import message_to_dict
+
+    from octop.api.routers.chat.serialize import _load_projected_thread_messages
+
+    # json.loads turns "\ud800" into a lone surrogate that cannot be quoted
+    # into a preview URL.
+    output = json.dumps({"type": "image", "source": {"url": "file:///tmp/\ud800.png"}})
+    row = SimpleNamespace(
+        seq=1,
+        message_json=json.dumps(
+            message_to_dict(ToolMessage(content=output, tool_call_id="c1", id="m1"))
+        ),
+        created_at=1_700_000_000,
+    )
+    server = SimpleNamespace(
+        services=SimpleNamespace(
+            thread_message_repo=SimpleNamespace(page=lambda *_a, **_k: ([row], False))
+        )
+    )
+    messages, has_more = _load_projected_thread_messages(server, "agent", "thread", 25, user=None)
+
+    assert has_more is False
+    assert [block["output"] for entry in messages for block in entry["content"]] == [output]
+
+
 def test_ts_to_ms_converts_seconds() -> None:
     assert _ts_to_ms(1_700_000_000.5) == 1_700_000_000_500
 

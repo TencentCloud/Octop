@@ -572,7 +572,17 @@ def _enrich_history_tool_media(
             if not isinstance(output, str) or not output.strip():
                 blocks.append(block)
                 continue
-            new_output = enrich_tool_output_string_sync(output, agent_id=media_agent)
+            try:
+                new_output = enrich_tool_output_string_sync(output, agent_id=media_agent)
+            except Exception:
+                # Rewriting preview URLs is cosmetic: keep the raw tool output
+                # rather than failing the whole history page.
+                logger.warning(
+                    "history tool media enrichment failed agent=%s",
+                    media_agent,
+                    exc_info=True,
+                )
+                new_output = output
             if new_output != output:
                 blocks.append({**block, "output": new_output})
                 changed = True
