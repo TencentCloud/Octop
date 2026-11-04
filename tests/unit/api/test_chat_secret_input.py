@@ -44,7 +44,7 @@ def _make_server(hitl: HitlChannelCoordinator) -> tuple[Any, MagicMock, MagicMoc
     processor.hitl_coordinator = hitl
     processor.iter_hitl_resume_chunks = _resume_chunks
     secrets = MagicMock()
-    registry = SimpleNamespace(agent_secrets=secrets, schedule_reload=MagicMock())
+    registry = SimpleNamespace(agent_secrets=secrets, reload=AsyncMock(return_value=True))
     server = SimpleNamespace(
         app_runtime=SimpleNamespace(
             gateway=SimpleNamespace(
@@ -122,7 +122,7 @@ async def test_submit_stores_slot_and_resumes_without_echoing_value(
     assert stored["slot_name"] == "STEAM_WEB_API_KEY"
     assert stored["value"] == _SECRET_MARKER
     assert hitl.store.get(record.pending_id).status == "filled"  # type: ignore[union-attr]
-    registry.schedule_reload.assert_called_once_with("agent-1")
+    registry.reload.assert_awaited_once_with("agent-1")
 
 
 @pytest.mark.asyncio
@@ -144,7 +144,7 @@ async def test_cancel_skips_storage_and_marks_cancelled(monkeypatch: pytest.Monk
 
     assert chunks[-1] == {"type": "done"}
     secrets.store_slot.assert_not_called()
-    registry.schedule_reload.assert_not_called()
+    registry.reload.assert_not_called()
     assert hitl.store.get(record.pending_id).status == "cancelled"  # type: ignore[union-attr]
 
 

@@ -2102,9 +2102,16 @@ class AgentManager:
     # Hot-reload — rebuild harness agents after config / provider changes
     # ------------------------------------------------------------------
 
-    async def reload(self, agent_id: str) -> None:
-        """Rebuild harness runtime for one agent (e.g. after plugin install)."""
-        await self._reload_agent(agent_id)
+    async def reload(self, agent_id: str) -> bool:
+        """Rebuild harness runtime for one agent and report success.
+
+        Returns True when the registry holds a rebuilt entry (a registration
+        race that keeps the existing entry also counts); False when the agent
+        is stopped/disabled or the rebuild failed — callers that must observe
+        fresh runtime inputs (e.g. the secret submit path) use the result to
+        tell the model whether the new value is usable right away.
+        """
+        return await self._reload_agent(agent_id)
 
     async def reload_all(self) -> None:
         """Rebuild harness runtime for every enabled agent (bounded parallel)."""
@@ -3922,7 +3929,7 @@ class AgentManager:
     # Internal — background reload worker
     # ------------------------------------------------------------------
 
-    async def _reload_agent(self, agent_id: str) -> None:
+    async def _reload_agent(self, agent_id: str) -> bool:
         assert self._harness_manager is not None
         async with self._lifecycle_lock_for(agent_id):
             self._bootstrap_graph_refresh_pending.discard(agent_id)
@@ -3930,9 +3937,9 @@ class AgentManager:
             if not row or not row.enabled or row.last_state == "stopped":
                 await asyncio.to_thread(self._quiesce_octop_memory, agent_id)
                 await self._harness_manager.aremove_agent(agent_id)
-                return
+                return False
             if self._harness_manager.shared_factory is None:
-                return
+                return False
             try:
                 cfg, metadata, tags, user_display = self._agent_runtime_bundle(row)
                 entry = await self._harness_manager.arebuild_agent(
@@ -3943,6 +3950,7 @@ class AgentManager:
                 )
                 await self._post_start_agent(row, entry.agent, cfg, user_display=user_display)
                 self._repos.agent_repo.set_state(agent_id, "running", error=None)
+                return True
             except Exception as exc:
                 recovered = self._octop_harness_or_none(agent_id)
                 if recovered is not None and self._is_already_registered_error(exc):
@@ -3951,13 +3959,14 @@ class AgentManager:
                         "Agent %s reload raced; keeping existing registry entry",
                         agent_id,
                     )
-                    return
+                    return True
                 logger.exception("Background reload failed for agent %s", agent_id)
                 self._repos.agent_repo.set_state(
                     agent_id,
                     "failed",
                     error=format_agent_start_error(exc),
                 )
+                return False
 
     def _schedule_reload(self, agent_id: str) -> None:
         """Queue a background harness reload; coalesces rapid successive updates."""
@@ -4438,7 +4447,14 @@ class AgentManager:
         backend_spec = self._prepare_docker_backend(backend, row)
         # Chat-collected secret slots ride the same env overlay the platform
         # identity uses, so every (re)build injects them into command execution.
-        secret_env = self._agent_secret_env(row.agent_id)
+        # Shared agents run turns for many users; injecting the owner's slots
+        # there would leak them across users, so submission is already rejected
+        # for shared rows and rebuilds must not inject either.
+        secret_env = (
+            {}
+            if int(getattr(row, "is_shared", 0) or 0) == 1
+            else self._agent_secret_env(row.agent_id)
+        )
         if secret_env and isinstance(backend_spec, dict):
             backend_spec = {
                 **backend_spec,
