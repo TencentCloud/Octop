@@ -2,7 +2,6 @@
   "name": "octop-desktop-electron",
   "version": "0.1.0",
   "private": true,
-  "description": "Octop desktop shell (Electron) — owns the Python sidecar, not the business logic.",
   "author": "octop contributors",
   "license": "MIT",
   "homepage": "https://octop.cloud",

@@ -7,7 +7,11 @@ export interface HealthResponse {
   ok: boolean;
 }
 
-const HEALTH_TIMEOUT_MS = 30_000;
+/**
+ * Cold import of the bundled Windows runtime has been observed at about 75s
+ * before ``/api/health`` answers. A dead process still ends the wait at once.
+ */
+export const HEALTH_TIMEOUT_MS = 180_000;
 const POLL_INTERVAL_MS = 250;
 
 export interface HealthProbe {

@@ -1,67 +1,66 @@
-; Taskbar pin is chosen before files are copied. The desktop shortcut is chosen
-; on the finish page, so installSection must not create it first
-; (createDesktopShortcut: false). Silent installs still write the .lnk here.
+; The desktop shortcut is chosen on the finish page, so installSection must
+; not create it first (createDesktopShortcut: false). Silent installs still
+; write the .lnk here.
 ;
 ; electron-builder compiles the uninstaller as a second makensis pass
 ; (-DBUILD_UNINSTALLER, warnings are errors). That pass includes this file
 ; but does not expand the installer macros, so these Vars must not be
 ; allocated there or makensis exits with warning 6001.
 !ifndef BUILD_UNINSTALLER
-Var OctopPinTaskbar
-Var OctopTaskbarCheckbox
-Var OctopTaskbarTitle
-Var OctopTaskbarSubtitle
-Var OctopTaskbarLabel
 Var OctopDesktopLabel
 !endif
 
-!macro customInit
-  StrCpy $OctopPinTaskbar 0
+; common.nsh sets ShowInstDetails nevershow, which removes the details button.
+; hide keeps the log collapsed until the user expands it on the progress page.
+; The function is defined here, after LogicLib is loaded. The uninstaller
+; keeps ShowUninstDetails nevershow and does not get this function.
+!macro customHeader
+  !ifndef BUILD_UNINSTALLER
+    ShowInstDetails hide
+
+    Function octopAppFilesCopied
+      !insertmacro octopDetailsOn
+      IntCmp $LANGUAGE 2052 octop_files_zh octop_files_en octop_files_en
+octop_files_zh:
+      DetailPrint "应用程序文件已写入。"
+      Goto octop_files_done
+octop_files_en:
+      DetailPrint "Application files copied."
+octop_files_done:
+    FunctionEnd
+  !endif
 !macroend
+
+!macro octopDetailsOn
+  ${IfNot} ${Silent}
+    ; installSection sets this to none, which drops DetailPrint and the
+    ; shortcut lines. textonly keeps file-by-file copy out of the log:
+    ; the app payload is CopyFiles /SILENT, and listing the runtime's
+    ; ~40k files would stall the progress page.
+    SetDetailsPrint textonly
+  ${EndIf}
+!macroend
+
+; After the app payload is in $INSTDIR, before shortcuts and the runtime extract.
+; Not defined for the uninstaller: that pass never extracts the payload, and
+; the function above is installer-only.
+!ifndef BUILD_UNINSTALLER
+!macro customFiles_x64
+  Call octopAppFilesCopied
+!macroend
+!macro customFiles_arm64
+  Call octopAppFilesCopied
+!macroend
+!macro customFiles_ia32
+  Call octopAppFilesCopied
+!macroend
+!endif
 
 !macro octopWriteDesktopLink
   CreateShortCut "$newDesktopLink" "$appExe" "" "$appExe" 0 "" "" "${APP_DESCRIPTION}"
   ClearErrors
   WinShell::SetLnkAUMI "$newDesktopLink" "${APP_ID}"
   System::Call 'Shell32::SHChangeNotify(i 0x8000000, i 0, i 0, i 0)'
-!macroend
-
-; Shown after the directory page. Skipped on update so an upgrade does not
-; pin the app again.
-!macro customPageAfterChangeDir
-  Function octopTaskbarCreate
-    ${If} ${isUpdated}
-      Abort
-    ${EndIf}
-    IntCmp $LANGUAGE 2052 octop_tb_zh octop_tb_en octop_tb_en
-octop_tb_zh:
-    StrCpy $OctopTaskbarTitle "快捷方式"
-    StrCpy $OctopTaskbarSubtitle "选择是否将 ${PRODUCT_NAME} 固定到任务栏"
-    StrCpy $OctopTaskbarLabel "添加到任务栏"
-    Goto octop_tb_ui
-octop_tb_en:
-    StrCpy $OctopTaskbarTitle "Shortcuts"
-    StrCpy $OctopTaskbarSubtitle "Pin ${PRODUCT_NAME} to the taskbar"
-    StrCpy $OctopTaskbarLabel "Pin to the taskbar"
-octop_tb_ui:
-    !insertmacro MUI_HEADER_TEXT "$OctopTaskbarTitle" "$OctopTaskbarSubtitle"
-    nsDialogs::Create 1018
-    Pop $0
-    ${If} $0 == error
-      Abort
-    ${EndIf}
-    ${NSD_CreateCheckbox} 0 12u 100% 12u "$OctopTaskbarLabel"
-    Pop $OctopTaskbarCheckbox
-    ${NSD_Check} $OctopTaskbarCheckbox
-    nsDialogs::Show
-  FunctionEnd
-
-  Function octopTaskbarLeave
-    ${NSD_GetState} $OctopTaskbarCheckbox $OctopPinTaskbar
-  FunctionEnd
-
-  ; MUI2 has no MUI_PAGE_CUSTOM. Page custom is the installer page hook.
-  Page custom octopTaskbarCreate octopTaskbarLeave
 !macroend
 
 ; Finish page: keep "run" and add the desktop-shortcut checkbox.
@@ -153,6 +152,14 @@ octop_run_bad_en:
   MessageBox MB_OK|MB_ICONEXCLAMATION "Could not check whether ${PRODUCT_NAME} is still running. Quit it and try again." /SD IDOK
   Goto octop_run_quit
 octop_run_free:
+  !insertmacro octopDetailsOn
+  IntCmp $LANGUAGE 2052 octop_run_log_zh octop_run_log_en octop_run_log_en
+octop_run_log_zh:
+  DetailPrint "正在安装应用程序文件…"
+  Goto octop_run_log_done
+octop_run_log_en:
+  DetailPrint "Installing application files…"
+octop_run_log_done:
   Pop $2
   Pop $1
   Pop $0
@@ -173,7 +180,14 @@ octop_run_free:
   Push $3
   Push $4
   Push $5
+  !insertmacro octopDetailsOn
+  IntCmp $LANGUAGE 2052 octop_rt_log_zh octop_rt_log_en octop_rt_log_en
+octop_rt_log_zh:
   DetailPrint "正在展开 Python 运行时…"
+  Goto octop_rt_log_done
+octop_rt_log_en:
+  DetailPrint "Extracting the Python runtime…"
+octop_rt_log_done:
   StrCpy $0 "$INSTDIR\resources\portable"
   IfFileExists "$0\portable-version.json" octop_rt_find octop_rt_fail
 octop_rt_find:
@@ -188,6 +202,13 @@ octop_rt_find:
   StrCpy $4 "$WINDIR\System32\tar.exe"
   IfFileExists "$4" octop_rt_extract octop_rt_close_fail
 octop_rt_extract:
+  IntCmp $LANGUAGE 2052 octop_rt_tar_zh octop_rt_tar_en octop_rt_tar_en
+octop_rt_tar_zh:
+  DetailPrint "正在将 $2 写入 resources\sidecar…"
+  Goto octop_rt_tar_run
+octop_rt_tar_en:
+  DetailPrint "Writing $2 to resources\sidecar…"
+octop_rt_tar_run:
   nsExec::ExecToLog '"$4" -xf "$0\$2" -C "$3" --strip-components=1'
   Pop $5
   FindClose $1
@@ -199,15 +220,19 @@ octop_rt_close_fail:
   FindClose $1
   Goto octop_rt_fail_closed
 octop_rt_ok:
+  IntCmp $LANGUAGE 2052 octop_rt_ok_zh octop_rt_ok_en octop_rt_ok_en
+octop_rt_ok_zh:
+  DetailPrint "Python 运行时已就绪。"
+  Goto octop_rt_ok_done
+octop_rt_ok_en:
+  DetailPrint "Python runtime is ready."
+octop_rt_ok_done:
   Pop $5
   Pop $4
   Pop $3
   Pop $2
   Pop $1
   Pop $0
-  ${If} $OctopPinTaskbar == 1
-    ${StdUtils.InvokeShellVerb} $0 "$INSTDIR" "${APP_EXECUTABLE_FILENAME}" ${StdUtils.Const.ShellVerb.PinToTaskbar}
-  ${EndIf}
   ${If} ${Silent}
   ${AndIfNot} ${isNoDesktopShortcut}
   ${AndIf} $keepShortcuts == "false"
@@ -228,7 +253,6 @@ octop_rt_end:
 !macroend
 
 !macro customUnInstall
-  ${StdUtils.InvokeShellVerb} $0 "$INSTDIR" "${APP_EXECUTABLE_FILENAME}" ${StdUtils.Const.ShellVerb.UnpinFromTaskbar}
   IfFileExists "$newDesktopLink" 0 octop_un_old_link
     WinShell::UninstShortcut "$newDesktopLink"
     Delete "$newDesktopLink"
