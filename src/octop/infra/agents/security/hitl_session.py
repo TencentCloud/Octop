@@ -1,6 +1,8 @@
 """Per-thread HITL bypass chosen during chat (Codex-style allow-all / allow-tool).
 
-Does not change the global SecurityPolicy. ``ask_user_question`` is never skipped.
+Does not change the global SecurityPolicy. Collaboration pauses
+(``ask_user_question``, ``request_secret_input``) are never skipped: a sticky
+bypass must not auto-answer a question or auto-run a secret collection.
 """
 
 from __future__ import annotations
@@ -17,7 +19,14 @@ if TYPE_CHECKING:
 
 HitlSessionMode = Literal["ask", "allow_all", "allow_tools"]
 
-_ASK_USER_TOOL_NAME = "ask_user_question"
+# Tools whose interrupt must never be skipped by a session bypass: they pause
+# for a human answer/secret, not for a tool approval.
+_NEVER_BYPASSED_TOOLS = frozenset(
+    {
+        "ask_user_question",
+        "request_secret_input",
+    }
+)
 _MAX_TOOLS = 64
 _MAX_TOOL_NAME = 128
 _CURRENT_HITL_THREAD: ContextVar[str | None] = ContextVar(
@@ -35,7 +44,7 @@ def _normalize_tools(raw: object) -> tuple[str, ...]:
         if not isinstance(item, str):
             continue
         name = item.strip()
-        if not name or name == _ASK_USER_TOOL_NAME or len(name) > _MAX_TOOL_NAME or name in seen:
+        if not name or name in _NEVER_BYPASSED_TOOLS or len(name) > _MAX_TOOL_NAME or name in seen:
             continue
         seen.add(name)
         out.append(name)
@@ -52,7 +61,7 @@ class HitlSessionPolicy:
     tools: tuple[str, ...] = ()
 
     def allows(self, tool_name: str) -> bool:
-        if not tool_name or tool_name == _ASK_USER_TOOL_NAME:
+        if not tool_name or tool_name in _NEVER_BYPASSED_TOOLS:
             return False
         if self.mode == "allow_all":
             return True
@@ -279,7 +288,7 @@ def apply_session_bypass(
         return interrupt_on
     out: dict[str, Any] = {}
     for name, cfg in interrupt_on.items():
-        if name == _ASK_USER_TOOL_NAME:
+        if name in _NEVER_BYPASSED_TOOLS:
             out[name] = cfg
             continue
         entry = dict(cfg) if isinstance(cfg, dict) else {}

@@ -3545,6 +3545,134 @@ function optimisticSteerMessageId(clientPendingId: string): string {
   return `steer:${clientPendingId}`;
 }
 
+/**
+ * Submit (or cancel) a pending secret-input card and consume the resumed turn.
+ *
+ * Returns `null` on success — the caller must clear the masked input
+ * immediately so the value never lingers in component state or the DOM. A
+ * non-null string is a displayable error: the card stays pending and the
+ * draft is kept for retry without retyping.
+ */
+export async function submitSecretInput(
+  sessionId: string,
+  agentId: string,
+  threadId: string,
+  pendingId: string,
+  action: "submit" | "cancel",
+  onStreamEnd?: () => void,
+  value?: string,
+): Promise<string | null> {
+  const state = getOrCreate(sessionId);
+  const live = liveSockets.get(sessionId);
+  const parkedListen =
+    live?.listenOnly === true && live.ws.readyState === WebSocket.OPEN;
+  const keepRoomListen = Boolean(state.isTeamRoom) && parkedListen;
+  if (!parkedListen) {
+    state.abortController?.abort();
+  }
+  const continuedSpeaker = keepRoomListen
+    ? pendingCardSpeaker(state, pendingId)
+    : undefined;
+  // The card resolves optimistically only after the server accepted it; the
+  // fetch below returns 409 for a replayed/stale pending id.
+  const controller = new AbortController();
+  state.abortController = controller;
+
+  const headers: HeadersInit = {
+    "Content-Type": "application/json",
+    Accept: "text/event-stream",
+  };
+  const token = getAuthToken();
+  if (token) {
+    (headers as Record<string, string>).Authorization = `Bearer ${token}`;
+  }
+
+  let finished = false;
+  const finish = (skipRefresh = false, keepPaused = false) => {
+    if (finished) return;
+    finished = true;
+    pendingResumeBySession.delete(sessionId);
+    if (state.abortController === controller) {
+      state.abortController = null;
+    }
+    if (skipRefresh && keepRoomListen && !keepPaused) {
+      if (continuedSpeaker) markSpeakerLive(state, continuedSpeaker);
+      notify(state);
+      return;
+    }
+    if (keepPaused) {
+      clearStreamingFlags(state, { keepSteer: true });
+      clearStreamActivity(sessionId);
+      state.streamMsg = "";
+      state.streamId = "";
+      state.streamBlockType = "";
+      sealInFlightAssistantMessages(state);
+      notify(state);
+      return;
+    }
+    clearStreamingFlags(state);
+    clearStreamActivity(sessionId);
+    state.streamMsg = "";
+    state.streamId = "";
+    state.streamBlockType = "";
+    sealInFlightAssistantMessages(state);
+    notify(state);
+    emitStreamEvent({ kind: "streamEnd", sessionId });
+    if (!skipRefresh) onStreamEnd?.();
+  };
+
+  try {
+    const res = await fetch(
+      getApiUrl(`/agents/${agentId}/chat/secret-input/submit`),
+      {
+        method: "POST",
+        headers,
+        body: JSON.stringify({
+          thread_id: threadId,
+          pending_id: pendingId,
+          action,
+          ...(action === "submit" && value ? { value } : {}),
+        }),
+        signal: controller.signal,
+      },
+    );
+    if (!res.ok) {
+      let message = `Secret submit failed (${res.status})`;
+      try {
+        const payload = (await res.json()) as {
+          error?: { message?: string };
+          detail?: unknown;
+        };
+        if (payload?.error?.message) message = payload.error.message;
+      } catch {
+        // keep the status-line fallback
+      }
+      finish();
+      return message;
+    }
+    resolveHitlPending(
+      state,
+      action === "cancel" ? "rejected" : "approved",
+      undefined,
+      pendingId,
+    );
+    if (keepRoomListen) {
+      if (continuedSpeaker) markSpeakerLive(state, continuedSpeaker);
+      notify(state);
+    } else {
+      beginStream(state, sessionId);
+      notify(state);
+      emitStreamEvent({ kind: "streamStart", sessionId });
+    }
+    await consumeSseResponse(state, sessionId, res, controller, finish);
+    return null;
+  } catch (err: unknown) {
+    if ((err as Error).name === "AbortError") return null;
+    finish();
+    return (err as Error).message || "Secret submit error";
+  }
+}
+
 function steerClientIds(
   data: Record<string, unknown>,
   state: SessionStreamState,

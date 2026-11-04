@@ -9,6 +9,8 @@ from pathlib import Path
 from typing import Any
 
 from fastapi import FastAPI, HTTPException, Request
+from fastapi.encoders import jsonable_encoder
+from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, PlainTextResponse
 from scalar_fastapi import get_scalar_api_reference
@@ -99,6 +101,24 @@ def _install_exception_handlers(app: FastAPI) -> None:
         locale = resolve_request_locale(request)
         return JSONResponse(status_code=exc.status, content=exc.to_envelope(locale=locale))
 
+    @app.exception_handler(RequestValidationError)
+    async def _validation(request: Request, exc: RequestValidationError) -> JSONResponse:
+        """Default FastAPI 422 body, minus echo fields on secret-submit routes.
+
+        Pydantic includes the rejected ``input`` (and ``ctx``) in each error;
+        for the secret-input submit body that would echo the secret back.
+        """
+        errors: Any = exc.errors()
+        route = request.scope.get("route")
+        path_format = getattr(route, "path_format", "") or request.url.path
+        if path_format.endswith("/chat/secret-input/submit"):
+            errors = [
+                {k: v for k, v in err.items() if k not in ("input", "ctx")}
+                for err in errors
+                if isinstance(err, dict)
+            ]
+        return JSONResponse(status_code=422, content={"detail": jsonable_encoder(errors)})
+
     @app.exception_handler(Exception)
     async def _unhandled(request: Request, exc: Exception) -> JSONResponse:
         logger.exception("unhandled exception in %s", request.url.path)
@@ -170,6 +190,7 @@ def build_app(server: OctopServer) -> FastAPI:
         admin,
         agent_files,
         agent_mcp,
+        agent_secrets,
         agent_tools,
         agents,
         auth,
@@ -252,6 +273,7 @@ def build_app(server: OctopServer) -> FastAPI:
             _RouterMount(users.router, "/api/users", ["users"]),
             _RouterMount(agents.router, "/api/agents", ["agents"]),
             _RouterMount(agent_tools.router, "/api", ["agents"]),
+            _RouterMount(agent_secrets.router, "/api", ["agents"]),
             _RouterMount(acp.router, "/api", ["agents"]),
             _RouterMount(agent_mcp.router, "/api", ["agent-mcp"]),
             _RouterMount(chat.router, "/api", ["chat"]),

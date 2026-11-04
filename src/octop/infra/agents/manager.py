@@ -28,6 +28,12 @@ from octop.infra.agents.memory.backend import memory_backend_from_agent_config
 from octop.infra.agents.memory.slim import MemorySlimCoordinator
 from octop.infra.agents.providers import HostModelFactory, ProviderStore, sync_providers_to_harness
 from octop.infra.agents.providers.health import ModelHealthRegistry
+from octop.infra.agents.secret_input import (
+    REQUEST_SECRET_INPUT_TOOL_NAME,
+    AgentSecretService,
+    build_request_secret_input_tool,
+)
+from octop.infra.agents.secret_input.middleware import SecretInputMiddleware
 from octop.infra.agents.security import SecuritySettingsStore, ToolGuardRulesStore
 from octop.infra.agents.security.hitl_session import (
     HitlSessionPolicyStore,
@@ -545,6 +551,10 @@ class AgentManager:
             settings_repo=repos.settings_repo,
             agents_repo=repos.agent_repo,
         )
+        self._agent_secrets = AgentSecretService(
+            repo=repos.agent_secret_repo,
+            secret_repo=repos.secret_repo,
+        )
         self._tool_guard_rules = ToolGuardRulesStore(paths=paths, settings=repos.settings_repo)
         self._providers = ProviderStore(
             provider_repo=repos.provider_repo,
@@ -584,6 +594,10 @@ class AgentManager:
         self._acp_settings = ACPSettingsStore(
             settings_repo=repos.settings_repo,
             agents_repo=repos.agent_repo,
+        )
+        self._agent_secrets = AgentSecretService(
+            repo=repos.agent_secret_repo,
+            secret_repo=repos.secret_repo,
         )
         self._tool_guard_rules = ToolGuardRulesStore(
             paths=self._paths, settings=repos.settings_repo
@@ -712,6 +726,10 @@ class AgentManager:
     @property
     def security(self) -> SecuritySettingsStore:
         return self._security
+
+    @property
+    def agent_secrets(self) -> AgentSecretService:
+        return self._agent_secrets
 
     @property
     def acp_settings(self) -> ACPSettingsStore:
@@ -3757,6 +3775,14 @@ class AgentManager:
         self._reload_worker_running[agent_id] = True
         asyncio.create_task(self._reload_worker(agent_id), name=f"reload-agent-{agent_id}")
 
+    def schedule_reload(self, agent_id: str) -> None:
+        """Public wrapper: queue a background harness rebuild for *agent_id*.
+
+        Used by API paths that changed agent-scoped runtime inputs (e.g. a
+        stored secret slot) so the next harness config build picks them up.
+        """
+        self._schedule_reload(agent_id)
+
     async def _reload_worker(self, agent_id: str) -> None:
         try:
             while agent_id in self._reload_dirty:
@@ -3918,6 +3944,14 @@ class AgentManager:
             if row is not None and (row.default_model or "").strip():
                 return str(row.default_model).strip()
         return ""
+
+    def _agent_secret_env(self, agent_id: str) -> dict[str, str]:
+        """Chat-collected secret slots as env overrides (never raises)."""
+        try:
+            return self._agent_secrets.decrypt_env(agent_id)
+        except Exception:
+            logger.exception("agent secret env resolution failed agent=%s", agent_id)
+            return {}
 
     def _build_harness_config(self, row: AgentRow) -> HarnessAgentConfig:
         """Convert an AgentRow into a HarnessAgentConfig."""
@@ -4105,7 +4139,22 @@ class AgentManager:
             OctopUiOffloadMiddleware(),
         ]
 
+        from octop.infra.agents.settings.tool_catalog import (  # noqa: PLC0415
+            tools_disabled_set,
+        )
+
         merged_tools: list[Any] = []
+        # Masked secret-input card tool: mounted like cron/knowledge host tools
+        # and interrupt-registered below; admins can disable it per agent.
+        secret_input_tool: Any | None = None
+        if not team_host and REQUEST_SECRET_INPUT_TOOL_NAME not in tools_disabled_set(cfg):
+            secret_input_tool = build_request_secret_input_tool()
+            merged_tools.append(secret_input_tool)
+            # Dedicated middleware (not cfg.interrupt_on): the harness gates
+            # config interrupts behind bootstrap, but a secret can be requested
+            # on the first turn. Distinct class name so the merge does not
+            # replace the harness HITL instance (ask_user / security gates).
+            agent_middleware.append(SecretInputMiddleware())
         if cron_tools:
             merged_tools.extend(cron_tools)
         merged_tools.extend(knowledge_tools)
@@ -4194,8 +4243,17 @@ class AgentManager:
             inject_agent_execute_env,  # noqa: PLC0415
         )
 
+        backend_spec = self._prepare_docker_backend(backend, row)
+        # Chat-collected secret slots ride the same env overlay the platform
+        # identity uses, so every (re)build injects them into command execution.
+        secret_env = self._agent_secret_env(row.agent_id)
+        if secret_env and isinstance(backend_spec, dict):
+            backend_spec = {
+                **backend_spec,
+                "env": {**dict(backend_spec.get("env") or {}), **secret_env},
+            }
         backend = inject_agent_execute_env(
-            self._prepare_docker_backend(backend, row),
+            backend_spec,
             paths=self._paths,
             row=row,
             workspace_dir=workspace_dir,

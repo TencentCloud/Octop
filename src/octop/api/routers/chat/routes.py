@@ -9,9 +9,9 @@ from typing import Any
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import StreamingResponse
 
-from octop.api.common.agent import assert_agent_access
+from octop.api.common.agent import agent_is_shared, assert_agent_access, require_agent_owner_row
 from octop.api.deps import current_user, get_server
-from octop.api.routers.chat.models import HitlResumeBody, PolishBody
+from octop.api.routers.chat.models import HitlResumeBody, PolishBody, SecretInputSubmitBody
 from octop.api.routers.chat.sse import format_sse
 from octop.i18n.domains.stream import format_stream_error
 from octop.infra.agents.experts.catalog import (
@@ -25,12 +25,17 @@ from octop.infra.agents.experts.catalog import (
 from octop.infra.agents.settings.profile import welcome_from_row
 from octop.infra.agents.teams import is_team_agent
 from octop.infra.agents.teams.welcome import team_host_welcome_payload
+from octop.infra.errors import ErrorCode, OctopError
 from octop.infra.gateway.hitl.coordinator import (
     HitlChannelCoordinator,
     HitlStreamContext,
     decision_rejection_reason,
 )
-from octop.infra.gateway.hitl.format import normalize_hitl_request
+from octop.infra.gateway.hitl.format import (
+    extract_secret_input_request,
+    is_secret_input_action_requests,
+    normalize_hitl_request,
+)
 from octop.infra.gateway.hitl.store import HitlPendingRecord
 from octop.infra.text_assist import require_host_models, run_text_assist
 from octop.infra.utils.locale import resolve_request_locale
@@ -263,6 +268,13 @@ async def resume_hitl(
         user_id=user.id,
         pending=pending,
     )
+    if pending is not None and is_secret_input_action_requests(pending.action_requests):
+        # A secret must never ride the generic respond path (its message
+        # becomes the tool result and enters the model context verbatim).
+        raise OctopError(
+            ErrorCode.SECRET_REQUEST_INVALID,
+            "secret input requests are submitted via /chat/secret-input/submit",
+        )
     if pending is not None:
         reason = decision_rejection_reason(pending, body.decisions)
         if reason is not None:
@@ -287,6 +299,144 @@ async def resume_hitl(
             is_disconnected=request.is_disconnected,
         ):
             yield frame
+
+    return StreamingResponse(gen(), media_type="text/event-stream")
+
+
+def _secret_input_decisions(
+    record: HitlPendingRecord,
+    *,
+    message: str,
+) -> list[dict[str, Any]]:
+    count = len(record.action_requests) or 1
+    return [{"type": "respond", "message": message} for _ in range(count)]
+
+
+def _secret_filled_message(slot: str) -> str:
+    return (
+        f"The user securely stored a secret in slot {slot} (status=filled). "
+        f"Its value is never shown to you. It is injected as the environment "
+        f"variable {slot} for the commands you execute from your next turn. "
+        "Do not ask the user to reveal the value in chat, and never print or "
+        "echo the variable's content."
+    )
+
+
+def _secret_cancelled_message(slot: str) -> str:
+    return (
+        f"The user dismissed the secret input for slot {slot} (status=cancelled). "
+        "Do not call request_secret_input for this slot again during this turn; "
+        "ask the user how to proceed instead."
+    )
+
+
+@router.post(
+    "/agents/{agent_id}/chat/secret-input/submit",
+    summary="Submit a chat secret input (SSE)",
+)
+async def submit_secret_input(
+    agent_id: str,
+    body: SecretInputSubmitBody,
+    request: Request,
+    user: Any = Depends(current_user),
+    server: Any = Depends(get_server),
+) -> StreamingResponse:
+    """Store a masked-input secret (or cancel the card) and resume the paused turn.
+
+    The value travels exactly once through this endpoint into the encrypted
+    ``agent_secrets`` store. It never appears in chat history, thread records,
+    logs, or the resumed tool result — the model only learns the slot name and
+    status. Owner-only, non-shared agents.
+    """
+    row = require_agent_owner_row(agent_id, user=user, as_user=None, server=server)
+    if agent_is_shared(row):
+        raise OctopError(
+            ErrorCode.FORBIDDEN,
+            "secret input is disabled for shared agents",
+        )
+    processor = server.app_runtime.gateway.processor
+    hitl_coordinator = processor.hitl_coordinator
+    record = hitl_coordinator.store.resolve_pending_for_thread(
+        body.thread_id,
+        agent_id=agent_id,
+        user_id=user.id,
+        pending_id=body.pending_id,
+    )
+    if record is None or not is_secret_input_action_requests(record.action_requests):
+        raise OctopError(ErrorCode.SECRET_REQUEST_INVALID, "no pending secret input request")
+    request_meta = extract_secret_input_request(record.action_requests) or {}
+    slot = str(request_meta.get("slot") or "")
+    if body.action == "submit" and (len(record.action_requests) != 1 or not slot.strip()):
+        raise OctopError(
+            ErrorCode.SECRET_REQUEST_INVALID,
+            "mixed secret pause can only be cancelled",
+        )
+    claimed = hitl_coordinator.store.claim_secret_input(record.pending_id)
+    if claimed is None:
+        raise OctopError(ErrorCode.SECRET_REQUEST_INVALID, "secret input already handled")
+
+    decisions: list[dict[str, Any]]
+    if body.action == "cancel":
+        hitl_coordinator.store.mark_resolved(record.pending_id, "cancelled")
+        decisions = _secret_input_decisions(record, message=_secret_cancelled_message(slot or "—"))
+    else:
+        registry = server.app_runtime.agent_registry
+        try:
+            registry.agent_secrets.store_slot(
+                agent_id=agent_id,
+                user_id=user.id,
+                slot_name=slot,
+                value=body.value or "",
+                display_name=str(request_meta.get("title") or slot),
+            )
+        except OctopError:
+            hitl_coordinator.store.reopen_secret_input(record.pending_id)
+            raise
+        except Exception:
+            logger.exception(
+                "secret input submit failed agent=%s pending_id=%s", agent_id, record.pending_id
+            )
+            hitl_coordinator.store.reopen_secret_input(record.pending_id)
+            raise OctopError(
+                ErrorCode.SECRET_WRITE_FAILED,
+                "failed to persist the secret slot",
+            ) from None
+        hitl_coordinator.store.mark_resolved(record.pending_id, "filled")
+        decisions = _secret_input_decisions(record, message=_secret_filled_message(slot))
+
+    session_key, channel_type = _dashboard_hitl_stream_context(
+        server,
+        agent_id=agent_id,
+        thread_id=body.thread_id,
+        user_id=user.id,
+        pending=record,
+    )
+
+    async def gen() -> AsyncIterator[str]:
+        try:
+            async for frame in iter_dashboard_hitl_resume_sse(
+                server=server,
+                processor=processor,
+                hitl_coordinator=hitl_coordinator,
+                agent_id=agent_id,
+                thread_id=body.thread_id,
+                user_id=user.id,
+                decisions=decisions,
+                # The record is already resolved (filled/cancelled); passing it
+                # would mark it approved/rejected. Follow-up interrupts during
+                # the resumed turn still register fresh pendings.
+                pending=None,
+                session_key=session_key,
+                channel_type=channel_type,
+                locale=resolve_request_locale(request),
+                is_disconnected=request.is_disconnected,
+            ):
+                yield frame
+        finally:
+            if body.action == "submit":
+                # The harness env overlay is baked at build time; rebuild after
+                # the resumed turn settles so the slot reaches command execution.
+                server.app_runtime.agent_registry.schedule_reload(agent_id)
 
     return StreamingResponse(gen(), media_type="text/event-stream")
 

@@ -250,6 +250,9 @@
     "TEAM_MEMBER_BUSY": "This expert has an in-flight team job. Wait until it finishes.",
     "TEAM_NOT_SHAREABLE": "Teams cannot be shared in this version.",
     "LOCAL_DOWNLOAD_UNAVAILABLE": "Saving to the host Downloads folder is only available when Octop is opened on this computer.",
+    "SECRET_REQUEST_INVALID": "This secret input request is no longer available or cannot be handled here.",
+    "SECRET_SLOT_INVALID": "The secret slot name or value is invalid.",
+    "SECRET_WRITE_FAILED": "Failed to store the secret. Please try again.",
     "SKILL_PACKAGE_COPY_DENIED": "The creator of this skill package has disabled copying its skills.",
     "SKILL_PACKAGE_DOWNLOAD_DENIED": "Downloading this skill package is disabled.",
     "SKILL_PACKAGE_LOCKED": "This skill was copied from a locked skill package and cannot be edited in the workspace.",
@@ -1772,6 +1775,16 @@
       "dismissedSummary": "Closed {{count}} question(s)",
       "expand": "View",
       "useCardForAttachments": "Attachments can't be sent while answering questions — use the card above, or answer with text."
+    },
+    "secretInput": {
+      "title": "Secret input requested",
+      "slotLabel": "Stored as",
+      "placeholder": "Paste the secret value",
+      "secureHint": "Stored encrypted — never shown in the conversation.",
+      "submit": "Submit",
+      "cancel": "Cancel",
+      "filledSummary": "Secret stored in {{slot}}",
+      "dismissedSummary": "Secret input dismissed ({{slot}})"
     },
     "modifiedFiles": "Modified files ({{count}})",
     "openBrowser": "View browser",

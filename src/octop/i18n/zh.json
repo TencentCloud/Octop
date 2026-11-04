@@ -91,6 +91,13 @@
       "not_owner": "仅被提问的用户可以回答。",
       "answered_prefix": "用户回答："
     },
+    "secret_input": {
+      "card_title": "🔐 需要你输入密钥",
+      "slot_line": "槽位：`{slot}`",
+      "card_footer": "出于安全考虑，密钥只能通过仪表盘聊天中的掩码输入卡填写，请打开仪表盘完成输入。",
+      "card_pending_id": "请求编号：`{pending_id}`（30 分钟内有效）",
+      "im_dashboard_only": "该请求需要输入密钥。请打开仪表盘聊天填写掩码输入卡——密钥无法在当前渠道中收集。"
+    },
     "title": {
       "usage": "用法：/title <标题>",
       "done": "标题已设置：{title}"
@@ -539,6 +546,9 @@
     "TEAM_MEMBER_BUSY": "该专家有进行中的团队任务，请等结束后再调整成员或删除。",
     "TEAM_NOT_SHAREABLE": "当前版本不支持分享团队。",
     "LOCAL_DOWNLOAD_UNAVAILABLE": "仅在本机打开 Octop 时才能保存到系统「下载」文件夹。",
+    "SECRET_REQUEST_INVALID": "该密钥输入请求已失效或无法在此处理。",
+    "SECRET_SLOT_INVALID": "密钥槽位名称或取值无效。",
+    "SECRET_WRITE_FAILED": "密钥存储失败，请重试。",
     "SKILL_PACKAGE_COPY_DENIED": "该技能包的创建者已禁止复制其中的技能。",
     "SKILL_PACKAGE_DOWNLOAD_DENIED": "该技能包已禁止打包下载。",
     "SKILL_PACKAGE_LOCKED": "此技能复制自锁定策略的技能包，无法在工作区编辑。",
