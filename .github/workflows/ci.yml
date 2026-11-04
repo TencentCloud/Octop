@@ -67,7 +67,9 @@ jobs:
 
   frontend:
     name: Frontend
-    runs-on: ubuntu-latest
+    # Pin the image. ubuntu-latest warns while it moves to Ubuntu 26; this job
+    # already runs on 24.04.
+    runs-on: ubuntu-24.04
     if: ${{ !startsWith(github.head_ref, 'chore/sync-develop-after-') }}
     steps:
       - uses: actions/checkout@v5
