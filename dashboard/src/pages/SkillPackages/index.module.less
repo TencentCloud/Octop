@@ -203,6 +203,10 @@
   margin-bottom: 0;
 }
 
+.textAssistField {
+  margin-bottom: 4px !important;
+}
+
 .packageForm :global(.ant-form-item-label) {
   padding-bottom: 6px !important;
 }
@@ -217,7 +221,7 @@
   display: flex;
   flex-direction: column;
   gap: 0;
-  margin: 4px 0 16px;
+  margin: 4px 0 0;
   border: 1px solid var(--fn-border-secondary);
   border-radius: var(--fn-radius-md);
   overflow: hidden;
@@ -234,6 +238,19 @@
   :global(.ant-switch) {
     flex-shrink: 0;
     margin-top: 2px;
+  }
+}
+
+.formOptionRowVisibility {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 10px;
+  padding: 12px 14px;
+  background: var(--fn-bg-primary);
+
+  .formOptionCopy {
+    flex: none;
   }
 }
 
@@ -258,17 +275,6 @@
   color: var(--fn-text-primary);
   font-size: 13px;
   font-weight: 500;
-}
-
-.sharedBadge {
-  flex-shrink: 0;
-  padding: 1px 6px;
-  border-radius: 999px;
-  background: color-mix(in srgb, var(--fn-color-brand) 12%, transparent);
-  color: var(--fn-color-brand);
-  font-size: 11px;
-  line-height: 1.4;
-  white-space: nowrap;
 }
 
 .iconPicker {

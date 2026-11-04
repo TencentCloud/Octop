@@ -1,8 +1,14 @@
+/* Use on Form.Item wrapping ResourceAvatarPicker — tighter than antd default. */
+.formItem {
+  margin-bottom: 12px !important;
+}
+
 .picker {
   display: flex;
   flex-direction: column;
   gap: 12px;
-  margin-bottom: 16px;
+  /* Spacing comes from the wrapping Form.Item — avoid double gap. */
+  margin-bottom: 0;
   padding: 12px;
   border: 1px solid var(--fn-card-border-normal);
   border-radius: 14px;

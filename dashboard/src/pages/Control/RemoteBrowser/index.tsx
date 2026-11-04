@@ -38,6 +38,7 @@ import {
   X,
 } from "lucide-react";
 import { useTranslation } from "react-i18next";
+import cx from "classnames";
 
 import StreamEdgeControls from "../../../components/StreamEdgeControls/StreamEdgeControls";
 import StreamSetupGuide from "../../../components/StreamSetupGuide/StreamSetupGuide";
@@ -107,6 +108,8 @@ interface EnvStatus {
   /** "system" | "playwright" when browsers_ok */
   chrome_source?: "system" | "playwright" | null;
   error: string | null;
+  /** Image shipped Chromium; the user has not confirmed enablement. */
+  needs_enable?: boolean;
 }
 
 type InstallPhase =
@@ -967,6 +970,7 @@ export default function RemoteBrowserPage({
   }, [antMessage, t]);
 
   const envReady = Boolean(envStatus?.browsers_ok);
+  const needsEnable = Boolean(envStatus?.needs_enable) && !envReady;
   const showEdgeControls = Boolean(session) && isStreaming && frameReady;
 
   const renderInstallLog = (
@@ -976,7 +980,7 @@ export default function RemoteBrowserPage({
   ) => (
     <div
       ref={installLogRef}
-      className={`${styles.installLog} ${extraClass ?? ""}`}
+      className={cx(styles.installLog, extraClass)}
       style={maxHeight !== undefined ? { maxHeight } : undefined}
     >
       {installLogs.length === 0 ? (
@@ -1157,11 +1161,19 @@ export default function RemoteBrowserPage({
     return (
       <Result
         icon={<AlertCircle size={40} color="var(--fn-color-warning,#faad14)" />}
-        title={t("remoteBrowser.notInstalled", "未检测到可用浏览器")}
-        subTitle={t(
-          "remoteBrowser.notInstalledHint",
-          "Octop 需要浏览器才能帮你自动打开网页、填写表单和截图。点击下方按钮即可自动安装，无需手动配置。",
-        )}
+        title={
+          needsEnable
+            ? t("remoteBrowser.enableTitle", "浏览器已安装，尚未启用")
+            : t("remoteBrowser.notInstalled", "未检测到可用浏览器")
+        }
+        subTitle={
+          needsEnable
+            ? t("remoteBrowser.enableHint")
+            : t(
+                "remoteBrowser.notInstalledHint",
+                "Octop 需要浏览器才能帮你自动打开网页、填写表单和截图。点击下方按钮即可自动安装，无需手动配置。",
+              )
+        }
         style={{ padding: "8px 0" }}
       />
     );
@@ -1193,7 +1205,9 @@ export default function RemoteBrowserPage({
         <Space>
           <Button onClick={closeEnvModal}>{t("common.close")}</Button>
           <Button type="primary" onClick={startInstall}>
-            {t("remoteBrowser.install", "安装浏览器")}
+            {needsEnable
+              ? t("remoteBrowser.enable", "启用浏览器")
+              : t("remoteBrowser.install", "安装浏览器")}
           </Button>
         </Space>
       );
@@ -1355,11 +1369,7 @@ export default function RemoteBrowserPage({
             style={{ marginBottom: 0 }}
           />
         ) : null}
-        <div
-          className={`${styles.mainRow} ${
-            isMobile ? styles.mainRowMobile : ""
-          }`}
-        >
+        <div className={cx(styles.mainRow, isMobile && styles.mainRowMobile)}>
           <div className={styles.browserColumn} ref={containerRef}>
             {session ? (
               <>

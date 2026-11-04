@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  isEmbeddingLaneProvider,
   isLocalProviderRow,
   isOllamaProviderRow,
   isOllamaRuntimeUrl,
@@ -14,6 +15,31 @@ describe("isOnnxProviderRow", () => {
     expect(isOnnxProviderRow({ name: "  ONNX (Local)  " })).toBe(true);
     expect(
       isOnnxProviderRow({ name: "My ONNX Cloud Proxy", api_key: "sk-x" }),
+    ).toBe(false);
+  });
+});
+
+describe("isEmbeddingLaneProvider", () => {
+  it("includes ONNX, purpose=embedding, and all-embedding model lists", () => {
+    expect(isEmbeddingLaneProvider({ name: "ONNX (Local)" })).toBe(true);
+    expect(
+      isEmbeddingLaneProvider({
+        name: "Embed API",
+        purpose: "embedding",
+        models: [],
+      }),
+    ).toBe(true);
+    expect(
+      isEmbeddingLaneProvider({
+        name: "legacy-embed",
+        models: [{ embedding: true }, { task: "embedding" }],
+      }),
+    ).toBe(true);
+    expect(
+      isEmbeddingLaneProvider({
+        name: "mixed",
+        models: [{ embedding: true }, { id: "gpt-4o" }],
+      }),
     ).toBe(false);
   });
 });

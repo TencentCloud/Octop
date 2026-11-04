@@ -10,6 +10,7 @@ import {
 } from "../../../api/modules/teams";
 import { octopAgentsApi } from "../../../api/modules/octopAgents";
 import {
+  avatarPickerStyles,
   expertPresetSrc,
   isUploadedAvatarUrl,
   ResourceAvatarPicker,
@@ -253,7 +254,10 @@ export default function TeamDrawer({
       )}
 
       <Form form={form} layout="vertical" size="middle">
-        <Form.Item label={t("experts.avatar")}>
+        <Form.Item
+          label={t("experts.avatar")}
+          className={avatarPickerStyles.formItem}
+        >
           <ResourceAvatarPicker
             imageUrl={imageUrl}
             presetId={presetId === "team-host" ? null : presetId}
@@ -353,8 +357,12 @@ export default function TeamDrawer({
         >
           <Input />
         </Form.Item>
-        <Form.Item name="description" label={t("experts.agentDescription")}>
-          <Input.TextArea rows={2} />
+        <Form.Item
+          name="description"
+          label={t("experts.agentDescription")}
+          className={styles.textAssistField}
+        >
+          <Input.TextArea autoSize={{ minRows: 2, maxRows: 5 }} />
         </Form.Item>
         <TextAssistBar
           kind="team.description"
@@ -365,14 +373,15 @@ export default function TeamDrawer({
         <Form.Item
           name="welcome_message"
           label={t("experts.welcomeMessageTitle")}
-          extra={
+          tooltip={
             mode === "edit"
               ? t("experts.editWelcomeHint")
               : t("experts.createWelcomeHint")
           }
+          className={styles.textAssistField}
         >
           <Input.TextArea
-            rows={2}
+            autoSize={{ minRows: 2, maxRows: 5 }}
             placeholder={t("experts.welcomeMessagePlaceholder")}
           />
         </Form.Item>

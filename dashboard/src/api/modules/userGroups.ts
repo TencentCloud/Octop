@@ -8,11 +8,15 @@ export interface GroupAccessItem {
 }
 
 export interface GroupAccessSummary {
-  connectors: "all" | "groups" | "none";
-  storage: "all" | "groups" | "none";
+  /** Per-instance grants (legacy feature-wide enum is no longer returned). */
+  connectors: GroupAccessItem[];
+  storage: GroupAccessItem[];
   models: GroupAccessItem[];
+  plugins: GroupAccessItem[];
   skill_packages: GroupAccessItem[];
   knowledge_bases: GroupAccessItem[];
+  bridges: GroupAccessItem[];
+  experts: GroupAccessItem[];
 }
 
 export interface UserGroup {
@@ -31,6 +35,7 @@ export interface UserGroup {
 
 export interface UserGroupWrite {
   name?: string;
+  user_group_id?: string | null;
   description?: string | null;
   enabled?: boolean;
   avatar_icon?: string | null;
@@ -38,8 +43,16 @@ export interface UserGroupWrite {
 
 export type ResourceVisibilityMode = "all" | "groups" | "owner";
 
+export interface SharingAudience {
+  user_count: number;
+  group_count: number;
+}
+
 export const userGroupsApi = {
   list: () => request<UserGroup[]>("/user-groups"),
+
+  /** Enabled accounts and user groups. Any signed-in user may call this. */
+  audience: () => request<SharingAudience>("/user-groups/audience"),
 
   create: (body: UserGroupWrite & { name: string }) =>
     request<UserGroup>("/user-groups", {

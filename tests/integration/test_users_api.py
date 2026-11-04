@@ -423,3 +423,36 @@ async def test_admin_can_set_max_agents_and_block_create(env):
         json={"name": "expert-three"},
     )
     assert third.status_code == 201, third.text
+
+
+async def test_sharing_audience_counts_enabled_users_and_groups(env):
+    """The who-can-use picker reads this. Disabled accounts do not count."""
+    c, _, auth = env
+    solo = await c.get("/api/user-groups/audience", headers=auth)
+    assert solo.status_code == 200, solo.text
+    assert solo.json() == {"user_count": 1, "group_count": 0}
+
+    created = await c.post(
+        "/api/users",
+        headers=auth,
+        json={"username": "carol", "password": "TestPass12", "role": "user"},
+    )
+    assert created.status_code == 201, created.text
+    uid = created.json()["id"]
+    assert (await c.get("/api/user-groups/audience", headers=auth)).json()["user_count"] == 2
+
+    tok = (
+        await c.post("/api/auth/login", json={"username": "carol", "password": "TestPass12"})
+    ).json()["access_token"]
+    seen = await c.get("/api/user-groups/audience", headers={"Authorization": f"Bearer {tok}"})
+    assert seen.status_code == 200, seen.text
+    assert seen.json()["user_count"] == 2
+
+    disabled = await c.patch(f"/api/users/{uid}", headers=auth, json={"disabled": True})
+    assert disabled.status_code == 200, disabled.text
+    assert (await c.get("/api/user-groups/audience", headers=auth)).json()["user_count"] == 1
+
+    group = await c.post("/api/user-groups", headers=auth, json={"name": "Engineering"})
+    assert group.status_code == 201, group.text
+    body = (await c.get("/api/user-groups/audience", headers=auth)).json()
+    assert body == {"user_count": 1, "group_count": 1}

@@ -11,6 +11,7 @@ import { request } from "../../../../../api/request";
 import type { ProviderModel, ProviderRow } from "../../useProviders";
 import { isEmbeddingModel } from "../../useProviders";
 import { fetchProviderModels, testProviderDraft } from "../../providerApi";
+import { SetupDrawerSteps } from "../SetupDrawerSteps";
 import { ModelListEditor } from "./ModelListEditor";
 import { StreamUsageAdvanced } from "../StreamUsageAdvanced";
 import { TestStreamHint } from "../TestStreamHint";
@@ -22,12 +23,18 @@ interface CustomProviderModalProps {
   onSaved: () => void | Promise<void>;
   /** API path prefix for POST. Defaults to "/providers". */
   apiPrefix?: string;
+  /** When ``embedding``, create an embedding-only provider (Models → 向量). */
+  purpose?: "chat" | "embedding";
 }
 
-const KINDS = [
+const CHAT_KINDS = [
   { value: "openai", labelKey: "kindOpenaiCompat" as const },
   { value: "anthropic", labelKey: "anthropic" as const },
   { value: "bedrock", labelKey: "bedrock" as const },
+];
+
+const EMBEDDING_KINDS = [
+  { value: "openai", labelKey: "kindOpenaiCompat" as const },
 ];
 
 export function CustomProviderModal({
@@ -35,8 +42,11 @@ export function CustomProviderModal({
   onClose,
   onSaved,
   apiPrefix = "/providers",
+  purpose = "chat",
 }: CustomProviderModalProps) {
   const { t } = useTranslation();
+  const embeddingLane = purpose === "embedding";
+  const kinds = embeddingLane ? EMBEDDING_KINDS : CHAT_KINDS;
   const [saving, setSaving] = useState(false);
   const [testing, setTesting] = useState(false);
   const [fetchingModels, setFetchingModels] = useState(false);
@@ -54,6 +64,11 @@ export function CustomProviderModal({
   const apiKey = Form.useWatch("api_key", form) as string | undefined;
   const [models, setModels] = useState<ProviderModel[]>([]);
   const canTest = !!apiKey?.trim();
+  const setupStep = !apiKey?.trim()
+    ? 0
+    : models.some((m) => m.enabled !== false)
+    ? 2
+    : 1;
 
   const draftProvider = useMemo<ProviderRow>(
     () => ({
@@ -65,8 +80,9 @@ export function CustomProviderModal({
       models,
       note: null,
       enabled: true,
+      purpose: embeddingLane ? "embedding" : "chat",
     }),
-    [apiKey, baseUrl, kind, models, name],
+    [apiKey, baseUrl, embeddingLane, kind, models, name],
   );
 
   useEffect(() => {
@@ -100,7 +116,8 @@ export function CustomProviderModal({
       model_id: modelId,
       api_mode: apiMode,
       api_fallback: apiFallback,
-      embedding: isEmbeddingModel(models.find((m) => m.id === modelId)),
+      embedding:
+        embeddingLane || isEmbeddingModel(models.find((m) => m.id === modelId)),
     });
   };
 
@@ -130,13 +147,23 @@ export function CustomProviderModal({
         );
         return;
       }
-      const remote: ProviderModel[] = (result.models ?? []).map((m) => ({
-        id: m.id,
-        name: m.name || m.id,
-        enabled: false,
-        input: ["text"],
-        thinking: null,
-      }));
+      const remote: ProviderModel[] = (result.models ?? [])
+        .filter((m) => {
+          if (!embeddingLane) return true;
+          const id = m.id.toLowerCase();
+          if (id.includes("rerank")) return false;
+          return /embed|bge-|e5-|gte-/.test(id);
+        })
+        .map((m) => ({
+          id: m.id,
+          name: m.name || m.id,
+          enabled: false,
+          input: ["text"],
+          thinking: null,
+          ...(embeddingLane
+            ? { embedding: true as const, task: "embedding" as const }
+            : {}),
+        }));
       let addedCount = 0;
       setModels((prev) => {
         const existing = new Set(prev.map((m) => m.id));
@@ -145,7 +172,11 @@ export function CustomProviderModal({
         return [...prev, ...added];
       });
       if (addedCount === 0) {
-        message.info(t("models.fetchModelsNoNew"));
+        message.info(
+          embeddingLane
+            ? t("models.embeddingFetchModelsNone")
+            : t("models.fetchModelsNoNew"),
+        );
       } else {
         message.success(t("models.fetchModelsMerged", { count: addedCount }));
       }
@@ -177,7 +208,7 @@ export function CustomProviderModal({
         if (m.max_tokens != null) entry.max_tokens = m.max_tokens;
         if (m.context_window != null) entry.context_window = m.context_window;
         if (m.reasoning) entry.reasoning = true;
-        if (isEmbeddingModel(m)) {
+        if (embeddingLane || isEmbeddingModel(m)) {
           entry.embedding = true;
           entry.task = "embedding";
         }
@@ -193,15 +224,20 @@ export function CustomProviderModal({
           api_key: (values.api_key as string | undefined)?.trim() || null,
           models: modelEntries.length > 0 ? modelEntries : [],
           note: (values.note as string | undefined)?.trim() || null,
-          ...((values.kind as string) === "openai"
+          purpose: embeddingLane ? "embedding" : "chat",
+          ...((values.kind as string) === "openai" && !embeddingLane
             ? { stream_usage: values.stream_usage === true }
             : {}),
         }),
       });
       message.success(
-        t("models.providerCreatedSimple", {
-          name: (values.name as string).trim(),
-        }),
+        embeddingLane
+          ? t("models.embeddingProviderCreated", {
+              name: (values.name as string).trim(),
+            })
+          : t("models.providerCreatedSimple", {
+              name: (values.name as string).trim(),
+            }),
       );
       await onSaved();
       onClose();
@@ -217,11 +253,15 @@ export function CustomProviderModal({
 
   return (
     <Drawer
-      title={t("models.addCustomProvider")}
+      title={
+        embeddingLane
+          ? t("models.addEmbeddingProvider")
+          : t("models.addCustomProvider")
+      }
       open={open}
       onClose={onClose}
       destroyOnHidden
-      width={560}
+      width={640}
       placement="right"
       footer={
         <div className={styles.modalFooter}>
@@ -239,13 +279,24 @@ export function CustomProviderModal({
         </div>
       }
     >
-      <Form form={form} layout="vertical" style={{ marginTop: 16 }}>
+      {embeddingLane ? <SetupDrawerSteps current={setupStep} /> : null}
+      <Form
+        form={form}
+        layout="vertical"
+        style={embeddingLane ? undefined : { marginTop: 16 }}
+      >
         <Form.Item
           name="name"
           label={t("models.nameLabel")}
           rules={[{ required: true, message: t("models.pleaseEnterName") }]}
         >
-          <Input placeholder={t("models.namePlaceholder")} />
+          <Input
+            placeholder={
+              embeddingLane
+                ? t("models.embeddingNamePlaceholder")
+                : t("models.namePlaceholder")
+            }
+          />
         </Form.Item>
 
         <Form.Item
@@ -254,7 +305,7 @@ export function CustomProviderModal({
           rules={[{ required: true, message: t("models.pleaseSelectKind") }]}
         >
           <Select
-            options={KINDS.map((k) => ({
+            options={kinds.map((k) => ({
               value: k.value,
               label:
                 k.value === "openai"
@@ -269,7 +320,11 @@ export function CustomProviderModal({
         <Form.Item
           name="base_url"
           label="Base URL"
-          extra={t("models.baseUrlExtra")}
+          extra={
+            embeddingLane
+              ? t("models.embeddingBaseUrlExtra")
+              : t("models.baseUrlExtra")
+          }
         >
           <Input placeholder="https://api.openai.com/v1" />
         </Form.Item>
@@ -296,7 +351,7 @@ export function CustomProviderModal({
           <Input.TextArea rows={2} placeholder={t("models.notePlaceholder")} />
         </Form.Item>
 
-        {kind === "openai" ? <StreamUsageAdvanced /> : null}
+        {kind === "openai" && !embeddingLane ? <StreamUsageAdvanced /> : null}
       </Form>
 
       <div style={{ marginBottom: 16 }}>
@@ -360,7 +415,7 @@ export function CustomProviderModal({
             {t("models.fetchModels")}
           </Button>
         )}
-        {kind === "openai" ? <TestStreamHint /> : null}
+        {kind === "openai" && !embeddingLane ? <TestStreamHint /> : null}
       </div>
 
       <Divider orientation="left" style={{ fontSize: 13 }}>
@@ -372,6 +427,7 @@ export function CustomProviderModal({
         onModelsChange={setModels}
         apiPrefix={apiPrefix}
         canTest={canTest}
+        forcePurpose={embeddingLane ? "embedding" : undefined}
         onTestModel={(modelId, _modelName, apiMode, apiFallback) =>
           testDraftModel(modelId, apiMode, apiFallback)
         }

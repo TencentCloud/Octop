@@ -1,6 +1,6 @@
 import { useMemo, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
-import { IdCard, Layers, Network, Users } from "lucide-react";
+import { Group, IdCard, Network, Users } from "lucide-react";
 import PageShell from "../../../layouts/PageShell";
 import TabBar, { type TabBarItem } from "../../../components/TabLabel/TabBar";
 import { TAB_ICON_SIZE } from "../../../components/TabLabel";
@@ -42,7 +42,7 @@ function BrandTabIcon({
 const TABS: TabBarItem<TabKey>[] = [
   { key: "local", labelKey: "adminUsers.tabLocal", icon: Users },
   { key: "roles", labelKey: "adminUsers.tabRoles", icon: IdCard },
-  { key: "groups", labelKey: "adminUsers.tabGroups", icon: Layers },
+  { key: "groups", labelKey: "adminUsers.tabGroups", icon: Group },
   {
     key: "feishu",
     labelKey: "adminUsers.tabFeishu",

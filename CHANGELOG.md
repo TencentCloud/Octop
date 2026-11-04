@@ -5,11 +5,13 @@
 格式遵循 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)，版本号遵循 [语义化版本规范](https://semver.org/spec/v2.0.0.html)。
 
 ## [Unreleased]
-- Linux 桌面客户端无边框窗口支持拖拽边缘与角落调整大小。
 
 ### 新增
-- 技能包支持「是否共享」：默认仅创建者可见，开启后其他用户可查看与挂载；创建时可同时设置复制策略与是否允许下载
-- 技能包查看/编辑技能时展示左侧文件树（与个性化技能一致），并支持预览同级文件
+- PostgreSQL 控制面下，技能包源和知识库原文进同一套库（`skill_package_files`、`knowledge_files`），知识库向量在 `knowledge_chunks`。表都在 `public`，前缀与 `skill_packages`、`knowledge_bases` 一致。SQLite 仍用本地目录。安装时选定驱动，不含 sqlite→PostgreSQL 迁移
+- 安装向导连接已有用户的 PostgreSQL 时，确认后保留这些账户并去登录。SQLite 仍要空库
+- 知识库预览可以在原文和已入库切片之间切换。文件名悬停后可重命名，扩展名保持不变
+- Docker 与飞牛增加精简版。默认 `:<version>` / `:latest` 仍是含桌面、OCR 和本地向量的完整镜像；精简版标签是 `:<version>-lite` 和 `:lite`
+- 存储后端增加火山引擎 TOS（官方 SDK，可选依赖 `tos`）
 
 ### 修复
 - 工作区 ZIP 导入、导出跳过 Octop 的 SQLite 共享内存文件，避免 Windows 导入旧归档时因 `memory.sqlite-shm` 被占用而失败（#2303）。
@@ -18,9 +20,67 @@
 - 未登录、令牌无效或过期时，API 错误信息会按请求的 `Accept-Language` 语言返回（如中文返回「认证失败。」），不再固定英文；无请求头时保持原默认回退语言（#2187）
 - `SKILL.md` 带 UTF-8 BOM（如 Windows 记事本 / PowerShell 5.1 保存）时不再丢失 YAML frontmatter；技能路由改为复用统一的 `parse_frontmatter`（#2215）
 - `OCTOP_HOME` 迁移数据目录后，首次配置向导密码文件随之写入 `<OCTOP_HOME>/octop-login.txt`；旧位置 `~/octop-login.txt` 自动继承，不再生成冲突密码（#2171）
+- Windows 托盘右键改用原生菜单，避免打开菜单时收起系统托盘溢出区
+- 聊天刷新和加载历史时不再把未匹配的旧缓存追加到末尾；切换会话、清空或编辑后，迟到的历史请求和旧连接事件不会覆盖当前消息
+- 升级 octop-memory 至 1.0.3：长会话提炼按事件数和字符预算分批，已提炼游标持久化，重启后不再全量重跑；补齐后台手动文档审核入口，并修复未决审计状态、页面生成的过期写回和 Windows 文件扫描模式处理
+- 发给模型的图片会同时看文件大小和长边。长边超过 8000 像素时先等比缩小，原图仍留在磁盘上；同一会话之后的文字不会再因为这张超长图一直失败
+- Dashboard 里 `ask_user_question` 未答完时，新建同专家会话再发消息不再被当成旧测验的答案；同会话内明文作答仍然有效
+- OpenSandbox 在当前 harness 还没有这些操作时，可以创建、删除和移动路径。专家启动、技能卸载和工作区重命名不再失败
+- `octop init --force` 和 `octop clean --all` 只删应用数据，保留 `venv/` 与 `bin/`。初始化向导在 Ctrl-C 时中止，交互输入的管理员密码需要再确认一次
+- PostgreSQL 控制面下，知识库检索读 pgvector，不再查到空的本地 `index.sqlite`
+- Docker 镜像在无头构建时不再导入 pynput。飞牛 Docker 包缺失时，已打好的本地包仍会挂到 Release
+- 精简版只有 amd64 和 arm64 都发布成功才打通用标签。完整飞牛包不再等待缺失的精简镜像，Release 下载区只保留实际挂上的飞牛包
+- Docker 构建在安装依赖的同一层删除编译器，避免编译工具留在最终镜像里
+- 插件市场和专家市场的对象源站可用 `OCTOP_MARKET_REMOTE_URL` 配置，默认仍是 `https://download.octop.cloud`。门户目录地址继续用 `OCTOP_PORTAL_URL`，默认 `https://octop.cloud`。内网按同一接口自建市场的说明见 `docs/private-market.md`
+- 插件市场和专家市场的对象源站可用 `OCTOP_MARKET_REMOTE_ORIGIN` 配置，默认仍是 `https://download.octop.cloud`。门户目录地址继续用 `OCTOP_PORTAL_ORIGIN`，默认 `https://octop.cloud`。内网按同一接口自建市场的说明见 `docs/private-market.md`
+- 技能市场源站可用 `SKILL_MARKET_ORIGIN` 配置，默认仍是 `https://api.skillhub.cn`。设了该变量后，搜索、榜单和安装只请求这个源站。自建接口见 `docs/skill-market.md`
+- 插件和专家从远程市场安装。目录默认 `https://octop.cloud`，安装包默认 `https://download.octop.cloud`；内网可分别用 `OCTOP_PORTAL_ORIGIN`、`OCTOP_MARKET_REMOTE_ORIGIN` 换成自己的源站，安装包只要放在对象源站上，路径不再限定 `/octop/market/`。说明见 `docs/private-market.md`
+- 技能市场可以换源站。`SKILL_MARKET_ORIGIN` 负责搜索、榜单和单个技能安装，`SKILLSET_ORIGIN` 负责技能集详情和技能集压缩包，默认都是 `https://api.skillhub.cn`。说明见 `docs/skill-market.md`
 
 ### 变更
-- 技能包编辑抽屉：过滤无中文文案的预设图标；自定义图标 URL 增加 http(s) 校验；复制策略移至自定义图标下方
+- 专家页的「内置专家模板」并入「专家市场」，本实例用户发布的模板仍留在市场里。安装包不再附带产品专家模板和内置插件；新建用户时从专家市场拉取模板，拉不到也照常建用户。从市场新建的专家会装上 Octop 助手技能。市场目录不可用时直接失败，不再改显示安装包自带内容，也不再改调本机 `skillhub` 命令行
+
+### 变更
+- 聊天侧栏可以隐藏任意专家，不再限于别人共享来的。正在对话的隐藏专家留在「已隐藏专家」里，不再被提到列表上方
+
+## [1.0.3b2] - 2026-11-01
+
+### 新增
+- 账号支持 TOTP 与 Passkey：二次验证、无密码登录和恢复码
+- 新增 ragflow 知识库连接器
+
+### 修复
+- 记住登录会自动续期，改密码会退出其他设备。缺 MFA 表的旧库会自动补齐
+- 极简模式里，专家会话超过 10 条可以继续展开。长代码在气泡里换行，已结束的一轮不会在历史加载后再出现一次
+- 停用的会话模型回到 Auto。钉钉和微信切换时，草稿与二维码不再串台，登录回调会保留转发端口
+- 更早回合生成的文件不会再次发出。对话轨迹记下模型实际收到的系统提示
+- PostgreSQL 控制面下，`ProactiveCareService` 写推送去重记录不再报 `'Connection' object has no attribute 'executemany'`：`_PgConnectionProxy` 补上 SQLite 风格的 `executemany`（经 psycopg 游标执行并转换 `?` 占位符），`care_push_records` 恢复为空 → 正常写入，30 天去重生效
+
+### 变更
+- 通行密钥登录默认关闭，要在应用设置里打开。修改密码放在「账户安全」里
+- 虚拟桌面和系统浏览器默认不启动。未选 MBTI 时显示「未设置」
+- 升级 octop-harness 1.0.6
+
+## [1.0.3b1] - 2026-10-25
+
+### 新增
+- 建用户时可以同时创建一个默认专家。权限按页面 Tab 拆开，也可以按组折叠
+- 用户组可以限制技能包、知识库、连接器、模型、存储和专家谁能看见
+- 技能包可以共享，并用文件树编辑。创建专家、团队等资源时可以选头像
+- 表单和对话可以让 AI 润色。搜索增加 DeepSeek 与元宝，模型支持 OpenAI Responses API
+
+### 修复
+- 云端协同共享后可以直接对话。回复进行中不会被刷新冲掉，也不能删掉这场会话
+- 手机截图写到专家自己的工作区。只改定时任务文案时，间隔任务不再重新计时
+- 浏览器工作台恢复中文输入。主动关怀等对话安静后再发
+- 向导密码随数据目录迁移。Linux 桌面无边框窗口可以拖边缘调整大小
+
+### 变更
+- 云端协同默认打码对端地址和账号。共享来的资源在头像上做标记
+- 支持子路径部署。飞牛原生包标记为 x86
+
+### 安全
+- 密钥改为加密保存，旧明文仍能读出。插件上传和解压限制了体积
 
 ## [1.0.2] - 2026-10-18
 
@@ -138,6 +198,8 @@
 - octop-harness 升到 1.0.1；飞牛安装改为建账号向导
 
 ### 修复
+- 修复远程 Embedding 服务返回乱序结果时向量与文本错位的问题
+- httpx 0.28 将 ``NO_PROXY`` 中的 CIDR（如 ``192.168.0.0/16``）当成精确 IP，内网地址误走代理；同时兼容 Windows 分号分隔、IPv6 CIDR，以及 macOS/Windows 系统代理下的 loopback 直连（Fixes #1347）。
 - 会话「放通所有 / 放通这些工具」后后续 execute 仍弹审批
 - 误报流式失败、提问卡不弹出、TLS 下内部 MCP、过长工具名
 - 远程存储卡住堵住启动；S3 / Postgres 浏览；桌面 beta 覆盖安装；飞牛 8089 残留

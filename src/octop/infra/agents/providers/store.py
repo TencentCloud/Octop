@@ -81,6 +81,64 @@ def merge_stream_usage_extra(
     return json.dumps(extra)
 
 
+def merge_provider_purpose_extra(
+    extra_json: str | None,
+    purpose: str | None,
+) -> str | None:
+    """Write ``purpose`` (``chat`` / ``embedding``) into *extra_json*.
+
+    ``None`` leaves the blob unchanged. Unknown values are ignored.
+    """
+    if purpose is None:
+        return extra_json
+    normalized = purpose.strip().lower()
+    if normalized not in {"chat", "embedding"}:
+        return extra_json
+    extra: dict[str, Any] = {}
+    if extra_json:
+        try:
+            parsed = json.loads(extra_json)
+            if isinstance(parsed, dict):
+                extra = dict(parsed)
+        except json.JSONDecodeError:
+            extra = {}
+    extra["purpose"] = normalized
+    return json.dumps(extra)
+
+
+def resolve_provider_purpose(
+    *,
+    provider_name: str | None,
+    provider_api_key: str | None = None,
+    extra: dict[str, Any] | None = None,
+    models: list[dict[str, Any]] | None = None,
+) -> str:
+    """Return the UI purpose for a provider: ``embedding`` or ``chat``."""
+    from octop.infra.agents.providers.model_flags import is_embedding_provider
+
+    if is_embedding_provider(
+        provider_name=provider_name,
+        provider_api_key=provider_api_key,
+        extra=extra,
+        models=models,
+    ):
+        return "embedding"
+    return "chat"
+
+
+def stamp_embedding_models(models: list[dict[str, Any]] | None) -> list[dict[str, Any]] | None:
+    """Force ``embedding`` / ``task`` flags on every model entry."""
+    if models is None:
+        return None
+    stamped: list[dict[str, Any]] = []
+    for model in models:
+        entry = dict(model)
+        entry["embedding"] = True
+        entry["task"] = "embedding"
+        stamped.append(entry)
+    return stamped
+
+
 def _provider_extra_dict(row: Any) -> dict[str, Any]:
     raw = getattr(row, "extra_json", None)
     if not isinstance(raw, str) or not raw.strip():

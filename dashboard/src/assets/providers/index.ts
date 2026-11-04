@@ -23,6 +23,7 @@ import edgeLogo from "./edge.svg";
 import tavilyLogo from "./tavily.svg";
 import braveLogo from "./brave.svg";
 import googleLogo from "./google.svg";
+import yuanbaoLogo from "../channels/yuanbao.svg";
 
 export const PROVIDER_LOGOS: Record<string, string> = {
   openai: openaiLogo,
@@ -50,6 +51,8 @@ export const PROVIDER_LOGOS: Record<string, string> = {
   tavily: tavilyLogo,
   brave: braveLogo,
   google: googleLogo,
+  // Same mark as the Yuanbao channel: one product, search and IM.
+  yuanbao: yuanbaoLogo,
 };
 
 export { customProviderLogo };
@@ -67,7 +70,6 @@ export function getProviderLogo(providerId: string): string | undefined {
     volcengine: volcesLogo,
     siliconflow: siliconLogo,
     tencent: tencentCodingPlanLogo,
-    yuanbao: tencentCodingPlanLogo,
     opencode: opencodeLogo,
   };
   return groupLogo[base];

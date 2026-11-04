@@ -42,6 +42,8 @@ class StorageBackendCreateBody(BaseModel):
     region: str | None = None
     config_json: str | None = None
     note: str | None = None
+    visibility: Literal["all", "groups"] | None = None
+    group_ids: list[str] | None = None
 
 
 class StorageBackendPatchBody(BaseModel):
@@ -55,6 +57,8 @@ class StorageBackendPatchBody(BaseModel):
     config_json: str | None = None
     note: str | None = None
     enabled: bool | None = None
+    visibility: Literal["all", "groups"] | None = None
+    group_ids: list[str] | None = None
 
 
 class StorageBackendProbeBody(BaseModel):
@@ -69,7 +73,7 @@ class StorageBackendProbeBody(BaseModel):
     backend_id: int | None = None
 
 
-def _row_to_dict(r: Any) -> dict[str, Any]:
+def _row_to_dict(r: Any, *, access: GroupAccess | None = None) -> dict[str, Any]:
     """Serialize a BackendRow to API response dict.
 
     secret_key is intentionally omitted from responses.
@@ -78,7 +82,7 @@ def _row_to_dict(r: Any) -> dict[str, Any]:
     ak = r.access_key or ""
     masked_ak = f"{ak[:4]}{'*' * 8}" if len(ak) > 4 else "*" * len(ak)
     spec = row_to_backend_spec(r)
-    return {
+    payload = {
         "id": r.id,
         "name": r.name,
         "kind": r.kind,
@@ -93,45 +97,24 @@ def _row_to_dict(r: Any) -> dict[str, Any]:
         "created_at": r.created_at,
         "updated_at": r.updated_at,
     }
+    if access is not None:
+        payload.update(access.visibility(RESOURCE_STORAGE_BACKEND, r.name, shared=None))
+    return payload
 
 
-class StorageAccessBody(BaseModel):
-    visibility: Literal["all", "groups"]
-    group_ids: list[str] | None = None
-
-
-@admin_router.get("/access", summary="Who can use storage backends")
-async def get_storage_access(
-    _: Any = Depends(require_permission("storage_backends")),
-    server: Any = Depends(get_server),
-) -> dict[str, Any]:
-    """Feature-wide audience. ``all`` is today's behavior; ``groups`` narrows selection."""
-    return GroupAccess(server.services.repos).visibility(
-        RESOURCE_STORAGE_BACKEND,
-        STORAGE_FEATURE_KEY,
-        shared=None,
-    )
-
-
-@admin_router.put("/access", summary="Set who can use storage backends")
-async def put_storage_access(
-    body: StorageAccessBody,
-    _: Any = Depends(require_permission("storage_backends")),
-    server: Any = Depends(get_server),
-) -> dict[str, Any]:
-    """Restrict selecting named storage backends, or clear that restriction."""
+def _apply_storage_visibility(
+    server: Any,
+    backend_name: str,
+    *,
+    visibility: str | None,
+    group_ids: list[str] | None,
+) -> None:
+    if visibility is None:
+        return
     access = GroupAccess(server.services.repos)
-    access.set_visibility(
-        RESOURCE_STORAGE_BACKEND,
-        STORAGE_FEATURE_KEY,
-        body.visibility,
-        body.group_ids,
-    )
-    return access.visibility(
-        RESOURCE_STORAGE_BACKEND,
-        STORAGE_FEATURE_KEY,
-        shared=None,
-    )
+    # Drop the legacy feature-wide grant if present.
+    access.clear(RESOURCE_STORAGE_BACKEND, STORAGE_FEATURE_KEY)
+    access.set_visibility(RESOURCE_STORAGE_BACKEND, backend_name, visibility, group_ids)
 
 
 @admin_router.get("")
@@ -139,7 +122,10 @@ async def list_storage_backends(
     _: Any = Depends(require_permission("storage_backends")),
     server: Any = Depends(get_server),
 ) -> list[dict[str, Any]]:
-    return [_row_to_dict(row) for row in server.services.storage_backend_repo.list_all()]
+    access = GroupAccess(server.services.repos)
+    return [
+        _row_to_dict(row, access=access) for row in server.services.storage_backend_repo.list_all()
+    ]
 
 
 @admin_router.post("", status_code=201)
@@ -162,7 +148,14 @@ async def create_storage_backend(
         config_json=body.config_json,
         note=body.note,
     )
-    return _row_to_dict(server.services.storage_backend_repo.get(bid))
+    _apply_storage_visibility(
+        server,
+        body.name,
+        visibility=body.visibility or "all",
+        group_ids=body.group_ids,
+    )
+    access = GroupAccess(server.services.repos)
+    return _row_to_dict(server.services.storage_backend_repo.get(bid), access=access)
 
 
 @admin_router.patch("/{backend_id}")
@@ -191,6 +184,7 @@ async def patch_storage_backend(
                 )
             new_name = candidate
 
+    old_name = row.name
     if new_name is not None:
         from octop.infra.backend.resolver import (  # noqa: PLC0415
             rewrite_named_storage_backend_refs,
@@ -220,10 +214,29 @@ async def patch_storage_backend(
         note=body.note,
         enabled=body.enabled,
     )
+    access = GroupAccess(server.services.repos)
+    final_name = new_name or old_name
+    if new_name is not None and new_name != old_name:
+        vis = access.visibility(RESOURCE_STORAGE_BACKEND, old_name, shared=None)
+        access.clear(RESOURCE_STORAGE_BACKEND, old_name)
+        if vis["visibility"] == "groups":
+            access.set_visibility(
+                RESOURCE_STORAGE_BACKEND,
+                new_name,
+                "groups",
+                vis["group_ids"],
+            )
+    if body.visibility is not None:
+        _apply_storage_visibility(
+            server,
+            final_name,
+            visibility=body.visibility,
+            group_ids=body.group_ids,
+        )
     from octop.infra.backend.browse import release_browse_session
 
     await release_browse_session(backend_id)
-    return _row_to_dict(server.services.storage_backend_repo.get(backend_id))
+    return _row_to_dict(server.services.storage_backend_repo.get(backend_id), access=access)
 
 
 @admin_router.delete("/{backend_id}", status_code=204)
@@ -246,8 +259,8 @@ async def delete_storage_backend(
     from octop.infra.backend.browse import release_browse_session
 
     await release_browse_session(backend_id)
-    server.services.storage_backend_repo.delete(backend_id)
     GroupAccess(server.services.repos).clear(RESOURCE_STORAGE_BACKEND, row.name)
+    server.services.storage_backend_repo.delete(backend_id)
 
 
 @admin_router.post("/probe")
@@ -414,13 +427,17 @@ async def list_storage_backends_for_user(
     server: Any = Depends(get_server),
 ) -> list[dict[str, Any]]:
     """Read-only storage backend list for regular users (secrets masked)."""
-    allowed = GroupAccess(server.services.repos).allows(
-        user_id=user.id,
-        is_admin=bool(user.is_admin),
-        resource_type=RESOURCE_STORAGE_BACKEND,
-        resource_key=STORAGE_FEATURE_KEY,
-        is_owner=False,
-    )
-    if not allowed:
-        return []
-    return [_row_to_dict(row) for row in server.services.storage_backend_repo.list_all()]
+    access = GroupAccess(server.services.repos)
+    is_admin = bool(user.is_admin)
+    out: list[dict[str, Any]] = []
+    for row in server.services.storage_backend_repo.list_all():
+        if not access.allows(
+            user_id=user.id,
+            is_admin=is_admin,
+            resource_type=RESOURCE_STORAGE_BACKEND,
+            resource_key=row.name,
+            is_owner=False,
+        ):
+            continue
+        out.append(_row_to_dict(row, access=access))
+    return out
