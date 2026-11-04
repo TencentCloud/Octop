@@ -3,6 +3,7 @@ import { useTranslation } from "react-i18next";
 import { App, Select, Input, Button, Spin, Progress, Alert } from "antd";
 
 import { Download, CheckCircle, AlertCircle } from "lucide-react";
+import cx from "classnames";
 import api from "../../../api";
 import type { EmbeddingConfig } from "../../../api/types/embedding";
 import { useEmbeddingDownloadWS } from "../../../hooks/useEmbeddingDownloadWS";
@@ -215,7 +216,7 @@ export default function EmbeddingPage() {
           <h3 className={styles.sectionTitle}>
             {t("embedding.currentApplied")}
           </h3>
-          <span className={`${styles.statusBadge} ${styles[appliedStatus]}`}>
+          <span className={cx(styles.statusBadge, styles[appliedStatus])}>
             {appliedStatus === "loading"
               ? t("embedding.loading")
               : appliedStatus === "downloading"
@@ -354,7 +355,7 @@ export default function EmbeddingPage() {
                       {t("embedding.downloadStatus")}
                     </span>
                     <span
-                      className={`${styles.statusBadge} ${styles[displayStatus]}`}
+                      className={cx(styles.statusBadge, styles[displayStatus])}
                     >
                       {displayStatus === "loading"
                         ? t("embedding.loading")

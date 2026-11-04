@@ -9,6 +9,8 @@ import {
 import type { ReactNode } from "react";
 import { setActiveAgentId } from "../api/request";
 import { agentApi as legacyAgentApi } from "../api/modules/agent";
+import { useCurrentUser } from "../hooks/useCurrentUser";
+import { userCan } from "../utils/permissions";
 import {
   retainDisconnectedBridgeAgents,
   toBridgeShadowAgentId,
@@ -255,7 +257,7 @@ interface FetchAgentsResult {
  * falls back to a direct request if the legacy module hasn't been
  * regenerated yet.
  */
-async function fetchAgents(): Promise<FetchAgentsResult> {
+async function fetchAgents(includeBridge: boolean): Promise<FetchAgentsResult> {
   const candidate = legacyAgentApi as Partial<ListAgentsResponse> &
     Record<string, unknown>;
   let local: OctopAgent[] = [];
@@ -266,8 +268,13 @@ async function fetchAgents(): Promise<FetchAgentsResult> {
     const { request } = await import("../api/request");
     local = await request<OctopAgent[]>("/agents");
   }
-  const { remote, liveConnectionIds, resolvedConnectionIds } =
-    await fetchBridgeShadowAgents();
+  const { remote, liveConnectionIds, resolvedConnectionIds } = includeBridge
+    ? await fetchBridgeShadowAgents()
+    : {
+        remote: [] as OctopAgent[],
+        liveConnectionIds: new Set<string>(),
+        resolvedConnectionIds: new Set<string>(),
+      };
   const localIds = new Set(local.map((a) => a.agent_id));
   return {
     agents: [...local, ...remote.filter((a) => !localIds.has(a.agent_id))],
@@ -310,7 +317,7 @@ async function fetchBridgeShadowAgents(): Promise<{
     );
     return { remote: batches.flat(), liveConnectionIds, resolvedConnectionIds };
   } catch {
-    // Non-admin users or cloud-collab-unavailable installs — ignore.
+    // Bridge list failed (network or a stale permission). Keep local experts.
     return empty;
   }
 }
@@ -324,14 +331,23 @@ function stringIdList(value: unknown): string[] | undefined {
   return ids;
 }
 
-/** Peer public config the local composer reads (mode). Other keys stay on the peer. */
+/**
+ * Peer public config the local UI reads. Composer mode and the storage
+ * backend stay; everything else remains on the peer.
+ */
 function bridgeShadowConfig(value: unknown): Record<string, unknown> {
   if (!value || typeof value !== "object" || Array.isArray(value)) return {};
-  const mode = (value as Record<string, unknown>).conversation_mode;
+  const src = value as Record<string, unknown>;
+  const out: Record<string, unknown> = {};
+  const mode = src.conversation_mode;
   if (mode === "ask" || mode === "plan" || mode === "craft") {
-    return { conversation_mode: mode };
+    out.conversation_mode = mode;
   }
-  return {};
+  const backend = src.backend;
+  if (backend && typeof backend === "object" && !Array.isArray(backend)) {
+    out.backend = backend;
+  }
+  return out;
 }
 
 export function mapBridgeAgent(
@@ -421,6 +437,8 @@ export function mapBridgeAgent(
 }
 
 export function AgentProvider({ children }: { children: ReactNode }) {
+  const user = useCurrentUser();
+  const includeBridge = userCan(user, "bridge");
   const [agents, setAgents] = useState<OctopAgent[]>([]);
   const [activeAgentId, setActiveAgentIdState] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -451,7 +469,7 @@ export function AgentProvider({ children }: { children: ReactNode }) {
           agents: list,
           liveConnectionIds,
           resolvedConnectionIds,
-        } = await fetchAgents();
+        } = await fetchAgents(includeBridge);
         // Only update state when content actually changed, to prevent
         // unnecessary re-renders of every component subscribed to this context
         // (the chat page polls every 10 s to refresh unread badges).
@@ -491,7 +509,7 @@ export function AgentProvider({ children }: { children: ReactNode }) {
         }
       }
     },
-    [persistAndApply],
+    [includeBridge, persistAndApply],
   );
 
   // Initial fetch — fire once on mount. Login flow lives elsewhere; this

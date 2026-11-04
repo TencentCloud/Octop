@@ -6,18 +6,19 @@
 # config / wizard / app 等结构，确保产物与飞牛 fnOS 安装校验完全一致）。
 #
 # 用法（在仓库根目录执行):
-#   bash scripts/build-fpk.sh docker      # 构建 Docker 版  -> dist/Octop-fnos-docker-<ver>.fpk
-#   bash scripts/build-fpk.sh native      # 构建本地版(非Docker) -> dist/Octop-fnos-native-<ver>.fpk
-#   bash scripts/build-fpk.sh             # 两个都构建
+#   bash scripts/build-fpk.sh docker      # 完整 Docker 版 -> dist/Octop-fnos-docker-<ver>.fpk
+#   bash scripts/build-fpk.sh docker-lite # 精简 Docker 版 -> dist/Octop-fnos-docker-lite-<ver>.fpk
+#   bash scripts/build-fpk.sh native      # 构建本地版(非Docker) -> dist/Octop-fnos-native-amd64-<ver>.fpk
+#   bash scripts/build-fpk.sh             # 完整 Docker、精简 Docker、本地版都构建
 #
 # 环境变量：
 #   FPK_NAME_PREFIX  输出文件名前缀，默认 "octop"
-#                    例如 FPK_NAME_PREFIX=Octop-fnos 会生成 Octop-fnos-docker-<ver>.fpk / Octop-fnos-native-<ver>.fpk
+#                    例如 FPK_NAME_PREFIX=Octop-fnos 会生成 Octop-fnos-docker-<ver>.fpk / Octop-fnos-native-amd64-<ver>.fpk
 #   FPK_ITER         迭代号，默认空
 #                    例如 FPK_ITER=01 会生成 ...-<ver>-01.fpk（通常不需要，按版本号发布）
 #   FPK_ARCH         本地版架构。arm64 → Octop-fnos-native-arm64-<ver>.fpk，
 #                    并写入 manifest platform=arm（fnpack 只认 x86/arm/all）。
-#                    空或其它值保持 x86 包名，并写入 platform=x86。
+#                    空或其它值 → Octop-fnos-native-amd64-<ver>.fpk，并写入 platform=x86。
 #                    fnpack 官方只有 linux-amd64，ARM 包应在 amd64 主机上打包
 #                    （site-packages 先在 aarch64 上装好再拷过来）。
 #
@@ -26,9 +27,9 @@
 #     curl 对 RST / 超时等瞬时错误重试。成功后落到 .verify/fnpack 供本机与
 #     Actions cache 复用。
 #   - 本地若已存在 .verify/fnpack(.exe) 则直接复用，不再联网下载。
-#   - 版本号来自仓库根 pyproject.toml。镜像标签与包名仍用该 PEP 440 字符串。
-#     写入 manifest 的是商店可比版本（1.0.2b8 → 1.0.208），见
-#     scripts/fnos/store_version.sh。manifest 为 key=value 无空格格式。
+#   - 版本号只读仓库根 pyproject.toml。源 manifest / compose 是占位 0.0.0，
+#     发版不要改。镜像标签与包名仍用 PEP 440。写入 manifest 的是商店可比版本
+#     （1.0.2b8 → 1.0.208），见 fnos/README.md「版本号映射」。
 # =============================================================================
 set -euo pipefail
 
@@ -108,16 +109,20 @@ mkdir -p "$OUT"
 build_one() {
   local KIND="$1" PKG OUTNAME
   case "$KIND" in
-    docker)
+    docker|docker-lite)
       PKG="$ROOT/fnos/docker"
-      OUTNAME="${PREFIX}-docker-${VER}${ITER_SUFFIX}.fpk"
+      if [ "$KIND" = "docker-lite" ]; then
+        OUTNAME="${PREFIX}-docker-lite-${VER}${ITER_SUFFIX}.fpk"
+      else
+        OUTNAME="${PREFIX}-docker-${VER}${ITER_SUFFIX}.fpk"
+      fi
       ;;
     native)
       PKG="$ROOT/fnos/native"
       if [ "${FPK_ARCH:-}" = "arm64" ]; then
         OUTNAME="${PREFIX}-native-arm64-${VER}${ITER_SUFFIX}.fpk"
       else
-        OUTNAME="${PREFIX}-native-${VER}${ITER_SUFFIX}.fpk"
+        OUTNAME="${PREFIX}-native-amd64-${VER}${ITER_SUFFIX}.fpk"
       fi
       ;;
     *) echo "未知类型: $KIND"; return 1 ;;
@@ -168,9 +173,15 @@ build_one() {
     echo "[build-fpk] native cmd/fpk-arch=$packed_arch"
   fi
 
-  # Docker 版 compose 钉与本包相同的镜像标签；测试包可用 FPK_IMAGE_TAG=latest 覆盖。
-  if [ "$KIND" = "docker" ]; then
-    local compose="$BUILD/app/docker/docker-compose.yaml" image_tag="${FPK_IMAGE_TAG:-$VER}"
+  # Docker 版 compose 钉镜像标签。完整版 :<version>，精简版 :<version>-lite。
+  # 测试包可用 FPK_IMAGE_TAG 覆盖。
+  if [ "$KIND" = "docker" ] || [ "$KIND" = "docker-lite" ]; then
+    local compose="$BUILD/app/docker/docker-compose.yaml" image_tag
+    if [ "$KIND" = "docker-lite" ]; then
+      image_tag="${FPK_IMAGE_TAG:-${VER}-lite}"
+    else
+      image_tag="${FPK_IMAGE_TAG:-$VER}"
+    fi
     if [ -f "$compose" ]; then
       sed -i.bak -E "s#ghcr.io/tencentcloud/octop:[^[:space:]]+#ghcr.io/tencentcloud/octop:${image_tag}#" "$compose"
       rm -f "${compose}.bak"
@@ -199,6 +210,7 @@ build_one() {
 
 if [ $# -eq 0 ]; then
   build_one docker
+  build_one docker-lite
   build_one native
 else
   for k in "$@"; do build_one "$k"; done

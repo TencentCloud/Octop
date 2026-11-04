@@ -2,6 +2,7 @@ import type { ReactNode } from "react";
 import { Button, Input, Space, Tooltip, Typography } from "antd";
 import { Check, Copy } from "lucide-react";
 import { useTranslation } from "react-i18next";
+import cx from "classnames";
 import SsoProviderCard from "./SsoProviderCard";
 import styles from "./index.module.less";
 
@@ -88,13 +89,11 @@ export default function SsoAppProviderShell({
               return (
                 <li
                   key={key}
-                  className={[
+                  className={cx(
                     styles.ssoGuideItem,
-                    done ? styles.ssoGuideDone : "",
-                    current ? styles.ssoGuideCurrent : "",
-                  ]
-                    .filter(Boolean)
-                    .join(" ")}
+                    done && styles.ssoGuideDone,
+                    current && styles.ssoGuideCurrent,
+                  )}
                 >
                   <span className={styles.ssoGuideIndex} aria-hidden>
                     {done ? <Check size={12} /> : index + 1}
@@ -126,6 +125,17 @@ export default function SsoAppProviderShell({
                 {t("adminSso.loginPreviewDisabled")}
               </p>
             )}
+        <div className={styles.ssoAsideCard}>
+          <div className={styles.ssoAsideTitle}>
+            {t("adminSso.loginPreview")}
+          </div>
+          <div
+            className={cx(
+              styles.ssoPreviewBtn,
+              !enabled && styles.ssoPreviewBtnMuted,
+            )}
+          >
+            {t("login.oidcWith", { name: previewLabel })}
           </div>
         )}
 

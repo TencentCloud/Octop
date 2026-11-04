@@ -1,6 +1,7 @@
 import type { MouseEvent, ReactNode } from "react";
 import { Tooltip } from "antd";
 import { Plus, X } from "lucide-react";
+import cx from "classnames";
 import styles from "./index.module.less";
 
 export type ChromeTabItem = {
@@ -41,7 +42,7 @@ export function ChromeTabBar({
   className,
 }: ChromeTabBarProps) {
   return (
-    <div className={[styles.tabBar, className].filter(Boolean).join(" ")}>
+    <div className={cx(styles.tabBar, className)}>
       <div className={styles.tabsScroll} role="tablist">
         {tabs.map((tab) => {
           const selected = tab.key === activeKey;
@@ -49,9 +50,7 @@ export function ChromeTabBar({
             <div
               role="tab"
               aria-selected={selected}
-              className={`${styles.tab}${
-                selected ? ` ${styles.tabActive}` : ""
-              }`}
+              className={cx(styles.tab, selected && styles.tabActive)}
               onClick={() => onChange(tab.key)}
             >
               {tab.leading}

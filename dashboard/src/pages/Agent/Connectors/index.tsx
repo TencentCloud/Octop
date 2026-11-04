@@ -24,7 +24,10 @@ import PageShell from "../../../layouts/PageShell";
 import TabBar, { type TabBarItem } from "../../../components/TabLabel/TabBar";
 import StreamSetupGuide from "../../../components/StreamSetupGuide/StreamSetupGuide";
 import { OctopEmptyMascot } from "../../../components/EmptyState/OctopEmptyMascot";
-import { ResourceVisibilityFields } from "../../../components/ResourceVisibilityFields";
+import {
+  ResourceVisibilityFields,
+  ResourceVisibilityGate,
+} from "../../../components/ResourceVisibilityFields";
 import { TextAssistBar } from "../../../components/TextAssistBar";
 import type { ResourceVisibilityMode } from "../../../api/modules/userGroups";
 import { useCurrentUser } from "../../../hooks/useCurrentUser";
@@ -2259,27 +2262,29 @@ function ConnectorConfigDrawer({
                 <Switch size="small" />
               </Form.Item>
             </div>
-            <div className={styles.formOptionRowVisibility}>
-              <div className={styles.formOptionCopy}>
-                <span className={styles.switchLabel}>
-                  {t("resourceVisibility.label")}
-                </span>
-                <span className={styles.formOptionHint}>
-                  {t("connectors.visibilityHint")}
-                </span>
+            <ResourceVisibilityGate allowOwner visibility={connectorVisibility}>
+              <div className={styles.formOptionRowVisibility}>
+                <div className={styles.formOptionCopy}>
+                  <span className={styles.switchLabel}>
+                    {t("resourceVisibility.label")}
+                  </span>
+                  <span className={styles.formOptionHint}>
+                    {t("connectors.visibilityHint")}
+                  </span>
+                </div>
+                <ResourceVisibilityFields
+                  allowOwner
+                  visibility={connectorVisibility}
+                  groupIds={connectorGroupIds}
+                  onChange={(next) => {
+                    setConnectorVisibility(next.visibility);
+                    setConnectorGroupIds(
+                      next.visibility === "groups" ? next.groupIds : [],
+                    );
+                  }}
+                />
               </div>
-              <ResourceVisibilityFields
-                allowOwner
-                visibility={connectorVisibility}
-                groupIds={connectorGroupIds}
-                onChange={(next) => {
-                  setConnectorVisibility(next.visibility);
-                  setConnectorGroupIds(
-                    next.visibility === "groups" ? next.groupIds : [],
-                  );
-                }}
-              />
-            </div>
+            </ResourceVisibilityGate>
           </div>
           {defaultOpen ? (
             <Alert

@@ -8,6 +8,7 @@
 import { useCallback, useMemo, useRef, useState } from "react";
 import { Divider, Typography } from "antd";
 import { useTranslation } from "react-i18next";
+import cx from "classnames";
 import type { ProviderPreset, ProviderRow } from "../useProviders";
 import { isEmbeddingProvider } from "../useProviders";
 import { findConfiguredProvider, isOnnxProviderRow } from "../presetUtils";
@@ -129,7 +130,10 @@ export function EmbeddingSettingsPanel({
               {t("models.embeddingServicesSection")}
             </Title>
             <div
-              className={`${pageStyles.providerCards} ${pageStyles.serviceCardsArea}`}
+              className={cx(
+                pageStyles.providerCards,
+                pageStyles.serviceCardsArea,
+              )}
             >
               {showLocal && onnxPreset ? (
                 <LocalServiceCard
