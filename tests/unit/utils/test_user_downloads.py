@@ -45,6 +45,22 @@ def test_save_user_download_writes_bytes(tmp_path: Path) -> None:
     assert path.parent == downloads
 
 
+def test_save_user_download_preserves_files_after_many_collisions(tmp_path: Path) -> None:
+    downloads = tmp_path / "Downloads"
+    downloads.mkdir()
+    (downloads / "note.txt").write_bytes(b"original")
+    for index in range(1, 1000):
+        (downloads / f"note ({index}).txt").touch()
+
+    first = save_user_download("note.txt", b"first", home=tmp_path)
+    second = save_user_download("note.txt", b"second", home=tmp_path)
+
+    assert first != second
+    assert first.read_bytes() == b"first"
+    assert second.read_bytes() == b"second"
+    assert (downloads / "note.txt").read_bytes() == b"original"
+
+
 def test_local_dashboard_request_requires_loopback_host_and_peer() -> None:
     assert is_local_dashboard_request(_Req("127.0.0.1:8088", "127.0.0.1"))
     assert is_local_dashboard_request(_Req("localhost:8088", "127.0.0.1"))
