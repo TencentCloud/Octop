@@ -16,7 +16,6 @@ const EXPERT_PORTRAIT_IDS = [
   "scene-media",
   "scene-content-creation",
   "scene-ecommerce",
-  "ops-engineer",
   "ai-coding-coach",
   "stock-assistant",
   "news-trend",

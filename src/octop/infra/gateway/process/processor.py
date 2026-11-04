@@ -109,6 +109,14 @@ def _elapsed_ms(started: float) -> int:
     return max(0, int((time.perf_counter() - started) * 1000))
 
 
+def _inbound_thread_id(msg: InboundMessage) -> str | None:
+    """Dashboard turns stamp ``metadata.thread_id``; IM often omits it."""
+    raw = (msg.metadata or {}).get("thread_id")
+    if isinstance(raw, str) and raw.strip():
+        return raw.strip()
+    return None
+
+
 def _stream_error(exc: Exception, locale: str) -> tuple[str, str | None]:
     if isinstance(exc, OctopError):
         return exc.localized_message(locale), exc.code.value
@@ -949,6 +957,7 @@ class GlobalProcessor:
                 session_key,
                 agent_id=agent_id,
                 user_id=user_id,
+                thread_id=_inbound_thread_id(msg),
             )
             if ask_record is not None:
                 usage_tracker = UsageTracker()
@@ -1289,6 +1298,7 @@ class GlobalProcessor:
                 session_key,
                 agent_id=agent_id,
                 user_id=user_id,
+                thread_id=_inbound_thread_id(msg),
             )
             if ask_record is not None:
                 usage_tracker = UsageTracker()

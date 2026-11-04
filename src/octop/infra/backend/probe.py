@@ -80,6 +80,12 @@ def probe_storage_backend(row: BackendRow) -> dict[str, Any]:
     if kind == "opensandbox":
         return _probe_opensandbox(row)
 
+    if kind == "tos":
+        spec = row_to_backend_spec(row)
+        if spec is None:
+            return {"ok": False, "message": "configuration incomplete"}
+        return _probe_tos(spec)
+
     spec = row_to_backend_spec(row)
     if spec is None:
         return {"ok": False, "message": "configuration incomplete"}
@@ -229,3 +235,36 @@ def _probe_opensandbox(row: BackendRow) -> dict[str, Any]:
     if result.get("ok"):
         result["message_key"] = "opensandbox_probe_ok"
     return result
+
+
+def _probe_tos(spec: dict[str, Any]) -> dict[str, Any]:
+    """Write, read, and delete one object. TOS is not a harness builtin."""
+    from octop.infra.backend.tos_backend import tos_backend_from_spec
+
+    try:
+        backend = tos_backend_from_spec(spec)
+    except (ImportError, ValueError) as exc:
+        return {"ok": False, "message": str(exc)}
+
+    test_path = f"/.octop-probe-{uuid.uuid4().hex}.txt"
+    try:
+        write_result = backend.write(test_path, _PROBE_CONTENT)
+        if getattr(write_result, "error", None):
+            return {"ok": False, "message": f"write failed: {write_result.error}"}
+        read_result = backend.read(test_path)
+        if getattr(read_result, "error", None):
+            return {"ok": False, "message": f"read failed: {read_result.error}"}
+        file_data = getattr(read_result, "file_data", None) or {}
+        content = file_data.get("content") if isinstance(file_data, dict) else None
+        if content != _PROBE_CONTENT:
+            return {"ok": False, "message": "read content mismatch"}
+        backend.delete_object(test_path)
+        return {"ok": True, "message_key": "tos_probe_ok"}
+    except Exception as exc:
+        logger.info("tos storage probe failed: %s", exc)
+        return {"ok": False, "message": str(exc)}
+    finally:
+        close = getattr(backend, "close", None)
+        if callable(close):
+            with contextlib.suppress(Exception):
+                close()

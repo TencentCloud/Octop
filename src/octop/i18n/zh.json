@@ -396,7 +396,7 @@
     "AUTH_FAILED": "认证失败。",
     "TOKEN_EXPIRED": "登录已过期，请重新登录。",
     "SETUP_REQUIRED": "需要完成初始设置。",
-    "DATABASE_NOT_EMPTY": "目标数据库已有用户。请改用空库，或直接登录现有管理员账户。",
+    "DATABASE_NOT_EMPTY": "目标数据库已有用户。PostgreSQL 可确认后沿用现有账户；SQLite 请改用空库。",
     "BACKUP_DRIVER_MISMATCH": "该备份与当前数据库引擎不一致（SQLite 与 PostgreSQL 不能互恢）。请将运行时切回备份所用引擎后再恢复，或在当前引擎上重新备份。暂不支持跨引擎恢复。",
     "BACKUP_SCHEMA_INCOMPATIBLE": "该备份使用数据库结构版本 {archive_schema_version}，当前 Octop 版本无法恢复（最高支持版本：{runtime_schema_version}）。",
     "BACKUP_IN_PROGRESS": "已有备份或恢复任务正在进行，请稍后再试。",
@@ -460,6 +460,7 @@
     "BRIDGE_SELF_CONNECT": "不能把本机 Octop 添加为自己的对端。",
     "BRIDGE_INBOUND_PASSIVE": "这是对端主动接入的连接，本侧无法改地址或主动拨号。断开后需对端重新打开。",
     "CRON_TRIGGER_INVALID": "无效的定时触发器。",
+    "CRON_ALREADY_RUNNING": "该任务已在其他实例上运行。",
     "SLASH_UNKNOWN": "未知的斜杠指令。",
     "SLASH_BAD_ARGS": "参数无效。",
     "ATTACHMENT_UNSUPPORTED_TYPE": "不支持此文件类型。",
@@ -490,13 +491,16 @@
     "LDAP_UNAVAILABLE": "LDAP 目录服务不可用。请检查服务器地址与绑定凭证。",
     "LDAP_USER_NOT_PROVISIONED": "该目录账号尚未创建 Octop 账号。请联系管理员创建，或开启自动创建账号。",
     "LDAP_GROUP_NOT_ALLOWED": "该目录账号不属于允许登录的用户组。请联系管理员将你加入允许登录的组。",
+    "LDAP_NOT_CONFIGURED": "请先保存 LDAP 配置，再创建目录账号。",
     "EXPERT_MARKET_FAILED": "专家市场暂时不可用，请稍后重试。",
+    "NETWORK_ERROR": "网络异常，请检查网络连接后重试。",
     "SKILLHUB_SSL_FAILED": "SkillHub 请求失败：检测到 Python SSL 错误。macOS 可尝试 `brew reinstall openssl@3`，或检查系统 CA 证书。",
     "DESKTOP_SESSION_LIMIT": "远程桌面并发连接已达上限（最多 {limit} 路），请关闭其他连接后重试。",
     "DESKTOP_CAPTURE_FAILED": "连续抓屏失败。Linux 服务器请重启虚拟桌面；macOS 请在系统设置中授予屏幕录制与辅助功能权限后重连。",
     "BROWSER_NOT_ENABLED": "浏览器已安装，但尚未启用。请在远程浏览器页面确认启用。",
     "PLUGIN_INVALID_ARCHIVE": "下载内容不是有效的插件 ZIP。请使用直接的 .zip 下载地址（GitHub 请用 raw.githubusercontent.com 或 “Download/raw” 链接，不要用 /blob/ 页面地址）。",
     "PLUGIN_INSTALL_FAILED": "下载或安装插件失败：{reason}",
+    "PLUGIN_MARKET_FAILED": "插件市场暂时不可用，请稍后重试。",
     "PLUGIN_ALREADY_EXISTS": "插件 {id} 已安装。",
     "KNOWLEDGE_FEATURE_DISABLED": "管理员尚未启用知识库功能。",
     "KNOWLEDGE_PREREQUISITES_RESTART_REQUIRED": "知识库的向量模型或依赖已安装，但当前进程还加载不到，需要重启服务后生效。",
@@ -702,7 +706,8 @@
     "runtime": {
       "disabled": "频道已停用",
       "unregistered": "未注册",
-      "error": "连接失败"
+      "error": "连接失败",
+      "other_instance": "由其他实例托管"
     },
     "probe": {
       "incomplete": "凭据不完整：缺少 {fields}",

@@ -1,6 +1,60 @@
 .panel {
   width: 100%;
   min-width: 0;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+}
+
+.marketStage {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  min-height: 240px;
+}
+
+/* antd Card's dark token (#161822) tints these placeholders blue. */
+:global(html[data-theme="dark"]) .loadingSkeleton {
+  :global(.octop-card) {
+    background: var(--fn-bg-primary) !important;
+    border-color: var(--fn-card-border-normal) !important;
+  }
+
+  :global(.octop-skeleton-title),
+  :global(.octop-skeleton-paragraph > li),
+  :global(.octop-skeleton-avatar) {
+    /* Image only. The `background` shorthand would pin background-position and stop antd's shimmer. */
+    background-image: linear-gradient(
+      90deg,
+      var(--fn-bg-tertiary) 25%,
+      color-mix(in srgb, var(--fn-bg-tertiary) 78%, #fff) 37%,
+      var(--fn-bg-tertiary) 63%
+    ) !important;
+    background-size: 400% 100% !important;
+  }
+}
+
+.marketLoadResult {
+  padding: 16px;
+
+  :global(.ant-result-icon) {
+    display: flex;
+    justify-content: center;
+    margin-bottom: 0;
+  }
+
+  :global(.ant-result-title) {
+    font-size: 16px;
+    line-height: 1.4;
+  }
+
+  :global(.ant-result-subtitle) {
+    max-width: 360px;
+    margin-inline: auto;
+    color: var(--fn-text-tertiary);
+  }
 }
 
 .emptyWithAction {
@@ -74,24 +128,16 @@
 }
 
 .groupTabsWrap {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
   margin-bottom: 14px;
-  overflow-x: auto;
-  -webkit-overflow-scrolling: touch;
-  padding-bottom: 2px;
 }
 
-.groupTabs {
-  width: 100%;
-  min-width: max-content;
-
-  :global(.ant-segmented-item) {
-    min-width: 4.5em;
-  }
-
-  :global(.ant-segmented-item-label) {
-    font-weight: 500;
-    white-space: nowrap;
-  }
+.marketGroupScroller {
+  margin-top: 0;
+  margin-bottom: 14px;
 }
 
 .toolbarLeft {

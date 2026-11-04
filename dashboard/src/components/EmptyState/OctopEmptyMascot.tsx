@@ -1,3 +1,5 @@
+import cx from "classnames";
+
 import { OCTOP_EMPTY_MASCOT_SRC } from "../../assets/mascot";
 import styles from "./EmptyState.module.less";
 
@@ -21,7 +23,7 @@ export function OctopEmptyMascot({
       src={OCTOP_EMPTY_MASCOT_SRC}
       alt=""
       draggable={false}
-      className={className ? `${styles.mascot} ${className}` : styles.mascot}
+      className={cx(styles.mascot, className)}
       style={size === 160 ? undefined : { width: size, height: size }}
     />
   );
