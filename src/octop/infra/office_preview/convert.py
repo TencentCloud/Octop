@@ -31,7 +31,7 @@ class HelperConvertResult:
 def _kill_process_tree(proc: asyncio.subprocess.Process) -> None:
     if proc.returncode is not None or proc.pid is None:
         return
-    if os.name == "posix":
+    if sys.platform != "win32" and os.name == "posix":
         with suppress(ProcessLookupError, PermissionError, OSError):
             os.killpg(proc.pid, signal.SIGKILL)
     with suppress(ProcessLookupError):

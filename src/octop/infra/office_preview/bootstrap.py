@@ -40,7 +40,7 @@ async def ensure_office_preview_runtime(paths: PathLayout) -> None:
                 returncode = await proc.wait()
         finally:
             if proc.returncode is None:
-                if os.name == "posix":
+                if sys.platform != "win32" and os.name == "posix":
                     with suppress(ProcessLookupError):
                         os.killpg(proc.pid, signal.SIGKILL)
                 else:
