@@ -43,6 +43,9 @@ class SlashCtx:
     model_ref: str | None = None
     default_timezone: str = "Asia/Shanghai"
     ws_hub: WebSocketHub | None = None
+    thread_message_repo: Any | None = None
+    history_archive: Any | None = None
+    hitl: Any | None = None
 
 
 def lang_of(ctx: SlashCtx) -> Locale:
@@ -107,6 +110,9 @@ def build_slash_ctx(
     user_locale: str | None = None,
     channel_metadata: dict[str, object] | None = None,
     default_timezone: str | None = None,
+    thread_message_repo: Any | None = None,
+    history_archive: Any | None = None,
+    hitl: Any | None = None,
 ) -> SlashCtx:
     """Build SlashCtx for GlobalProcessor or other gateway entry points."""
     meta = getattr(gateway, "slash_meta", None) if gateway is not None else None
@@ -169,4 +175,7 @@ def build_slash_ctx(
         model_ref=model_ref,
         default_timezone=timezone,
         ws_hub=gateway.ws_hub if gateway is not None else None,
+        thread_message_repo=thread_message_repo,
+        history_archive=history_archive,
+        hitl=hitl,
     )

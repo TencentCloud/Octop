@@ -172,6 +172,8 @@ export interface ChatMessage {
   editedFiles?: string[];
   /** Decision-model pass for this turn. Shown inside the process fold. */
   decision?: DecisionNotice;
+  /** Kept on screen after undo, but no longer part of the model context. */
+  reverted?: boolean;
 }
 
 /** Per-session state held in the chat store's module-scoped Map. */
@@ -214,6 +216,9 @@ export interface SessionStreamState {
   /** Team host room — listen-only sockets and ask_agent continue stay on. */
   isTeamRoom?: boolean;
   pendingPlanPath?: string | null;
+  /** `/undo` is handled as a command, not rendered as a model turn. */
+  suppressTranscript?: boolean;
+  controlNotice?: string;
   /**
    * Speakers that still own an open generation (token / tool / reasoning)
    * until their ``done`` frame. Empty string = unlabeled host. Keeps process

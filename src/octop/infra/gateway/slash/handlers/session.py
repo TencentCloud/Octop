@@ -8,8 +8,9 @@ from octop_harness.slash import SlashCommand, SlashSink
 
 from octop.i18n import error_message
 from octop.i18n.domains.slash import tr
+from octop.infra.agents.threads.rewind import rewind_thread
 from octop.infra.db.repos.threads import clip_thread_title
-from octop.infra.errors import OctopError
+from octop.infra.errors import ErrorCode, OctopError
 from octop.infra.gateway.slash.ctx import (
     SlashCtx,
     chat_type,
@@ -152,6 +153,88 @@ async def cmd_delete(d: SlashDispatcher, cmd: SlashCommand, ctx: SlashCtx, sink:
     await sink.text(tr("delete.done", lang, short=target.thread_id[-6:]))
 
 
+_UNDO_SKIP = frozenset({"now", "--yes", "-y"})
+_UNDO_ERRORS = {
+    ErrorCode.UNDO_EMPTY: "undo.empty",
+    ErrorCode.UNDO_NOT_FOUND: "undo.not_found",
+    ErrorCode.UNDO_CONFLICT: "undo.conflict",
+    ErrorCode.UNDO_FAILED: "undo.failed",
+    ErrorCode.AGENT_NOT_RUNNING: "undo.unavailable",
+    ErrorCode.SLASH_BAD_ARGS: "undo.usage",
+}
+
+
+def _parse_undo_turns(args: str) -> int | None:
+    parts = [
+        part
+        for part in args.split()
+        if part not in _UNDO_SKIP and not (part.startswith("[") and part.endswith("]"))
+    ]
+    if not parts:
+        return 1
+    try:
+        count = int(parts[0])
+    except ValueError:
+        return None
+    if count < 1:
+        return None
+    return count
+
+
+async def cmd_undo(d: SlashDispatcher, cmd: SlashCommand, ctx: SlashCtx, sink: SlashSink) -> None:
+    lang = lang_of(ctx)
+    count = _parse_undo_turns(cmd.args)
+    if count is None:
+        await sink.text(tr("undo.usage", lang))
+        return
+    tid = ctx.thread_registry.get_bound_thread_id(ctx.session_key)
+    if not tid:
+        await sink.text(tr("undo.empty", lang))
+        return
+    # The dashboard marks this slash request active before the handler runs.
+    # That flag is the command itself, not a reply still streaming.
+    hitl = ctx.hitl
+    if hitl is not None and tid in hitl.store.pending_thread_ids(
+        agent_id=ctx.agent_id, user_id=ctx.user_id
+    ):
+        await sink.text(tr("undo.busy", lang))
+        return
+    if ctx.agent_manager is None:
+        await sink.text(tr("undo.unavailable", lang))
+        return
+    try:
+        harness = ctx.agent_manager.get_agent(ctx.agent_id)
+    except OctopError:
+        await sink.text(tr("undo.unavailable", lang))
+        return
+    try:
+        outcome = await rewind_thread(
+            harness=harness,
+            thread_id=tid,
+            turns=count,
+            thread_message_repo=ctx.thread_message_repo,
+            history_archive=ctx.history_archive,
+            hitl=ctx.hitl,
+            agent_id=ctx.agent_id,
+            user_id=ctx.user_id,
+        )
+    except OctopError as exc:
+        key = _UNDO_ERRORS.get(exc.code, "undo.failed")
+        await sink.text(tr(key, lang))
+        return
+    preview = outcome.prefill_text
+    if len(preview) > 60:
+        preview = preview[:60] + "..."
+    await sink.text(tr("undo.done", lang, count=outcome.turns_undone, preview=preview or "…"))
+    if hasattr(sink, "action"):
+        await sink.action(
+            "undo",
+            prefill=outcome.prefill_text,
+            thread_id=tid,
+            message_id=outcome.cut_message_id,
+        )
+
+
 async def cmd_pin(d: SlashDispatcher, cmd: SlashCommand, ctx: SlashCtx, sink: SlashSink) -> None:
     lang = lang_of(ctx)
     tid = await ensure_thread_id(ctx)
@@ -173,6 +256,7 @@ SESSION_HANDLERS: dict[str, GatewayHandler] = {
     "resume": cmd_resume,
     "title": cmd_title,
     "delete": cmd_delete,
+    "undo": cmd_undo,
     "pin": cmd_pin,
     "unpin": cmd_unpin,
 }

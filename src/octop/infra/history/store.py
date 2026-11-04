@@ -272,5 +272,60 @@ class HistoryStore:
             ).fetchall()
             return [self._decode(conn, json.loads(row[0])) for row in rows]
 
+    def mark_reverted_from(self, thread_id: str, message_id: str) -> int:
+        """Flag *message_id* and every later archived message as reverted.
+
+        The rows stay in history order so the dashboard can keep them on screen
+        in gray. The model checkpoint is rewound separately.
+        """
+        if not message_id or not self.path.exists():
+            return 0
+        docs = self.documents(thread_id, "message")
+        cut = next(
+            (doc["seq"] for doc in docs if _wire_message_id(doc["value"]) == message_id),
+            None,
+        )
+        if cut is None:
+            return 0
+        victims = [doc for doc in docs if int(doc["seq"]) >= int(cut)]
+        if not victims:
+            return 0
+        with self.transaction() as conn:
+            for doc in victims:
+                value = doc["value"]
+                if not isinstance(value, dict):
+                    continue
+                _stamp_reverted_value(value)
+                self.put_document(
+                    conn,
+                    doc_id=str(doc["id"]),
+                    thread_id=thread_id,
+                    turn_id=str(doc["turn_id"]),
+                    kind="message",
+                    seq=int(doc["seq"]),
+                    value=value,
+                )
+        return len(victims)
+
     def close(self) -> None:
         self.db.close()
+
+
+def _wire_message_id(value: Any) -> str:
+    if not isinstance(value, dict):
+        return ""
+    data = value.get("data")
+    if isinstance(data, dict) and data.get("id"):
+        return str(data["id"])
+    raw = value.get("id")
+    return str(raw).strip() if raw else ""
+
+
+def _stamp_reverted_value(value: dict[str, Any]) -> None:
+    data = value.get("data")
+    target = data if isinstance(data, dict) else value
+    kwargs = target.get("additional_kwargs")
+    if not isinstance(kwargs, dict):
+        kwargs = {}
+        target["additional_kwargs"] = kwargs
+    kwargs["octop_reverted"] = True

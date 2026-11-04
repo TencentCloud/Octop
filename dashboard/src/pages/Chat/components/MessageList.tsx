@@ -105,6 +105,7 @@ interface MessageListProps {
   onRegenerate?: (messageId: string) => void;
   onDisableStreamUsage?: () => Promise<boolean>;
   onEditUserMessage?: (messageId: string, newText: string) => void;
+  onUndoUserMessage?: (messageId: string) => void;
   onWithdrawSteer?: (messageId: string) => void;
   onForkAssistantMessage?: (messageId: string) => void;
   forkDisabled?: boolean;
@@ -132,6 +133,7 @@ interface GroupRenderContext {
   onRegenerate?: (messageId: string) => void;
   onDisableStreamUsage?: () => Promise<boolean>;
   onEditUserMessage?: (messageId: string, newText: string) => void;
+  onUndoUserMessage?: (messageId: string) => void;
   onWithdrawSteer?: (messageId: string) => void;
   onForkAssistantMessage?: (messageId: string) => void;
   forkDisabled?: boolean;
@@ -212,6 +214,7 @@ function renderMessageGroup(
           onRegenerate={ctx.onRegenerate}
           onDisableStreamUsage={ctx.onDisableStreamUsage}
           onEditUserMessage={ctx.onEditUserMessage}
+          onUndoUserMessage={ctx.onUndoUserMessage}
           onWithdrawSteer={ctx.onWithdrawSteer}
         />
       </div>
@@ -272,6 +275,7 @@ export default function MessageList(props: MessageListProps) {
     onRegenerate,
     onDisableStreamUsage,
     onEditUserMessage,
+    onUndoUserMessage,
     onWithdrawSteer,
     onForkAssistantMessage,
     forkDisabled,
@@ -760,6 +764,7 @@ export default function MessageList(props: MessageListProps) {
       onRegenerate,
       onDisableStreamUsage,
       onEditUserMessage,
+      onUndoUserMessage,
       onWithdrawSteer,
       onForkAssistantMessage,
       forkDisabled,
@@ -785,6 +790,7 @@ export default function MessageList(props: MessageListProps) {
       onRegenerate,
       onDisableStreamUsage,
       onEditUserMessage,
+      onUndoUserMessage,
       onWithdrawSteer,
       onForkAssistantMessage,
       forkDisabled,

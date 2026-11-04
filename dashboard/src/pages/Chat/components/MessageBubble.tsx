@@ -91,6 +91,7 @@ interface MessageBubbleProps {
   /** Turn off streamed token usage then retry (invalid_request / MindIE). */
   onDisableStreamUsage?: () => Promise<boolean>;
   onEditUserMessage?: (messageId: string, newText: string) => void;
+  onUndoUserMessage?: (messageId: string) => void;
   onWithdrawSteer?: (messageId: string) => void;
   onForkAssistantMessage?: (messageId: string) => void;
   forkDisabled?: boolean;
@@ -575,6 +576,7 @@ function MessageBubble({
   onRegenerate,
   onDisableStreamUsage,
   onEditUserMessage,
+  onUndoUserMessage,
   onWithdrawSteer,
   onForkAssistantMessage,
   forkDisabled,
@@ -832,6 +834,7 @@ function MessageBubble({
         showUserComposerTags && styles.userBubbleWithTags,
         isError && styles.errorBubble,
         compact && styles.compactBubble,
+        message.reverted && styles.revertedBubble,
       )}
     >
       {!isUser && senderAvatar ? (
@@ -1051,7 +1054,10 @@ function MessageBubble({
             (isUser &&
               !isEditing &&
               Boolean(
-                message.content || onEditUserMessage || message.steerPending,
+                message.content ||
+                  onEditUserMessage ||
+                  onUndoUserMessage ||
+                  message.steerPending,
               ))) && (
             <div
               className={cx(
@@ -1063,6 +1069,7 @@ function MessageBubble({
                 !isEditing &&
                 (message.content ||
                   onEditUserMessage ||
+                  onUndoUserMessage ||
                   message.steerPending) && (
                   <div className={styles.userMsgActions} role="group">
                     {message.content ? (
@@ -1091,6 +1098,19 @@ function MessageBubble({
                         aria-label={t("common.edit")}
                       >
                         <Pencil size={14} />
+                      </button>
+                    ) : null}
+                    {onUndoUserMessage &&
+                    !message.steerPending &&
+                    !message.reverted ? (
+                      <button
+                        className={styles.msgActionBtn}
+                        onClick={() => onUndoUserMessage(message.id)}
+                        title={t("chat.undo.action")}
+                        type="button"
+                        aria-label={t("chat.undo.action")}
+                      >
+                        <Undo2 size={14} />
                       </button>
                     ) : null}
                   </div>

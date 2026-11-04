@@ -102,6 +102,16 @@
       "failed": "这个话题没有删掉，还在列表里，请再试一次。",
       "done": "已删除话题 {short}。"
     },
+    "undo": {
+      "usage": "用法：/undo，或 /undo 3 撤回最近 3 轮",
+      "empty": "这条对话没有可以撤回的内容。",
+      "not_found": "这条消息不在当前对话里。",
+      "busy": "回复还在生成，先停止再撤回。",
+      "conflict": "撤回前对话已经变了，请再试一次。",
+      "unavailable": "专家还没在运行，暂时不能撤回。",
+      "failed": "没能撤回这条对话，请再试一次。",
+      "done": "已撤回 {count} 轮（{preview}）。文件和记忆保持原样。"
+    },
     "pin": {
       "done": "话题已置顶。"
     },
@@ -286,6 +296,10 @@
         "label": "删除会话",
         "description": "按短 ID 删除历史会话（不能删除当前活跃会话）"
       },
+      "undo": {
+        "label": "撤回对话",
+        "description": "从当前对话撤回最近 N 轮用户发言（默认 1）。文件和记忆保持原样。"
+      },
       "pin": {
         "label": "置顶会话",
         "description": "置顶当前对话"
@@ -420,6 +434,11 @@
     "AGENT_NOT_RUNNING": "此专家未启用。",
     "CHECKPOINT_DELETE_FAILED": "对话数据没有删除，会话已保留，请重试。",
     "THREAD_TURN_ACTIVE": "回复进行中，请先停止再删除。",
+    "UNDO_EMPTY": "这条对话没有可以撤回的内容。",
+    "UNDO_NOT_FOUND": "这条消息不在当前对话里。",
+    "UNDO_CONFLICT": "撤回前对话已经变了，请再试一次。",
+    "UNDO_FAILED": "没能撤回这条对话，请再试一次。",
+    "UNDO_BUSY": "回复还在生成，先停止再撤回。",
     "AGENT_FAILED": "Agent 启动失败。",
     "AGENT_BUSY": "Agent 正忙。",
     "AGENT_NAME_TAKEN": "该名称已被使用，请换一个名称。",

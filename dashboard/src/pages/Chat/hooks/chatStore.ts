@@ -332,6 +332,9 @@ export type SlashActionEvent = {
   agent_id?: string;
   sessionId?: string;
   mode?: string;
+  prefill?: string;
+  thread_id?: string;
+  message_id?: string;
 };
 type ToolEventListener = (event: ToolEvent) => void;
 type StreamEventListener = (event: StreamEvent) => void;
@@ -339,6 +342,7 @@ type SlashActionListener = (event: SlashActionEvent) => void;
 const toolEventListeners = new Set<ToolEventListener>();
 const streamEventListeners = new Set<StreamEventListener>();
 const slashActionListeners = new Set<SlashActionListener>();
+const controlNoticeListeners = new Set<(text: string) => void>();
 
 /** Register a listener for tool call start/done events. Returns unsubscribe fn. */
 export function onToolEvent(listener: ToolEventListener): () => void {
@@ -382,6 +386,29 @@ function emitStreamEvent(event: StreamEvent) {
       /* ignore */
     }
   }
+}
+
+export function onControlNotice(listener: (text: string) => void): () => void {
+  controlNoticeListeners.add(listener);
+  return () => {
+    controlNoticeListeners.delete(listener);
+  };
+}
+
+function emitControlNotice(text: string) {
+  const notice = text.trim();
+  if (!notice) return;
+  for (const fn of controlNoticeListeners) {
+    try {
+      fn(notice);
+    } catch {
+      /* ignore */
+    }
+  }
+}
+
+function isUndoCommand(text: string): boolean {
+  return /^\/undo(?:\s+\d+)?$/.test(text.trim());
 }
 
 function emitSlashAction(event: SlashActionEvent) {
@@ -853,6 +880,123 @@ export function setPendingPlanPath(
   notify(state);
 }
 
+const REVERTED_KEY = "octop:reverted-tail:";
+
+type RevertedRecord = { anchorId: string | null; tail: ChatMessage[] };
+
+function revertedStorageKey(sessionId: string) {
+  return `${REVERTED_KEY}${sessionId}`;
+}
+
+function readRevertedRecord(sessionId: string): RevertedRecord | null {
+  try {
+    const raw = sessionStorage.getItem(revertedStorageKey(sessionId));
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as RevertedRecord;
+    if (!parsed || !Array.isArray(parsed.tail)) return null;
+    return parsed;
+  } catch {
+    return null;
+  }
+}
+
+function writeRevertedRecord(sessionId: string, record: RevertedRecord) {
+  try {
+    sessionStorage.setItem(
+      revertedStorageKey(sessionId),
+      JSON.stringify(record),
+    );
+  } catch {
+    // Ignore quota failures; the in-memory gray tail still shows this session.
+  }
+}
+
+/** Put undone turns back into a server page, after the message they followed. */
+export function spliceRevertedMessages(
+  sessionId: string,
+  messages: ChatMessage[],
+): ChatMessage[] {
+  const record = readRevertedRecord(sessionId);
+  if (!record?.tail.length) return messages;
+  const tail = record.tail.map((message) => ({
+    ...message,
+    reverted: true,
+    status: "done" as const,
+  }));
+  const tailIds = new Set(tail.map((message) => message.id));
+  const overlaid = messages.map((message) =>
+    tailIds.has(message.id) ? { ...message, reverted: true } : message,
+  );
+  const missing = tail.filter(
+    (message) => !messages.some((item) => item.id === message.id),
+  );
+  if (missing.length === 0 || overlaid.some((message) => message.reverted)) {
+    return overlaid;
+  }
+  const anchor = record.anchorId
+    ? overlaid.findIndex((message) => message.id === record.anchorId)
+    : -1;
+  if (anchor >= 0) {
+    return [
+      ...overlaid.slice(0, anchor + 1),
+      ...missing,
+      ...overlaid.slice(anchor + 1),
+    ];
+  }
+  const tailEnd = tail.reduce(
+    (max, message) => Math.max(max, message.timestamp || 0),
+    0,
+  );
+  const newer = overlaid.findIndex(
+    (message) => (message.timestamp || 0) > tailEnd,
+  );
+  if (newer >= 0) {
+    return [...overlaid.slice(0, newer), ...missing, ...overlaid.slice(newer)];
+  }
+  return [...overlaid, ...missing];
+}
+
+/**
+ * Keep the undone turn on screen and paint it gray.
+ * The server transcript no longer feeds these rows to the model.
+ */
+export function rememberRevertedFrom(sessionId: string, messageId: string) {
+  const state = sessionStates.get(sessionId);
+  if (!state) return;
+  const index = state.messages.findIndex((message) => message.id === messageId);
+  if (index < 0) return;
+  const tail = state.messages.slice(index).map((message) => ({
+    ...message,
+    reverted: true,
+    status: message.status === "streaming" ? ("done" as const) : message.status,
+  }));
+  writeRevertedRecord(sessionId, {
+    anchorId: index > 0 ? state.messages[index - 1]?.id ?? null : null,
+    tail,
+  });
+  state.messages = [...state.messages.slice(0, index), ...tail];
+  clearInflightTail(sessionId);
+  notify(state);
+}
+
+/** Drop a just-sent /undo bubble so refresh does not treat it as a new turn. */
+export function dropTrailingUndoCommand(sessionId: string) {
+  const state = sessionStates.get(sessionId);
+  if (!state) return;
+  let index = -1;
+  for (let i = state.messages.length - 1; i >= 0; i -= 1) {
+    const message = state.messages[i];
+    if (message.role !== "user") continue;
+    if (/^\/undo\b/.test(message.content.trim())) index = i;
+    break;
+  }
+  if (index < 0) return;
+  state.messages = state.messages.slice(0, index);
+  clearStreamingFlags(state);
+  clearInflightTail(sessionId);
+  notify(state);
+}
+
 /** Directly set messages for a session (e.g. from loadHistory). */
 export function setMessages(sessionId: string, messages: ChatMessage[]) {
   const state = getOrCreate(sessionId);
@@ -869,7 +1013,7 @@ export function setHistoryPage(
   opts: { hasMore: boolean; nextOffset: number; nextCursor?: string | null },
 ) {
   const state = getOrCreate(sessionId);
-  state.messages = messages;
+  state.messages = spliceRevertedMessages(sessionId, messages);
   state.runUsage = null;
   usageSamplesByState.delete(state);
   state.historyHasMore = opts.hasMore;
@@ -1463,6 +1607,19 @@ function handleHarnessChunk(
   if (sessionId && (state.isStreaming || speaker)) {
     touchStreamActivity(sessionId);
   }
+  if (state.suppressTranscript && chunk.type === "token") {
+    state.controlNotice = `${state.controlNotice || ""}${chunk.content || ""}`;
+    return;
+  }
+  if (
+    state.suppressTranscript &&
+    (chunk.type === "reasoning" ||
+      chunk.type === "tool_call_chunk" ||
+      chunk.type === "tool_result" ||
+      chunk.type === "usage")
+  ) {
+    return;
+  }
   switch (chunk.type) {
     case "token": {
       const snapshot = Boolean(chunk.team_snapshot);
@@ -1498,6 +1655,17 @@ function handleHarnessChunk(
       closeToolCall(state, chunk.messages, sessionId, speaker);
       break;
     case "done":
+      if (state.suppressTranscript && !chunk.team_wrapup) {
+        const notice = (state.controlNotice || "").trim();
+        state.controlNotice = "";
+        state.suppressTranscript = false;
+        clearStreamingFlags(state);
+        clearSpeakerLive(state, speaker);
+        if (sessionId) clearStreamActivity(sessionId);
+        notify(state);
+        if (notice) emitControlNotice(notice);
+        break;
+      }
       if (!chunk.team_wrapup) {
         const pending =
           typeof chunk.pending_plan_path === "string"
@@ -1559,6 +1727,9 @@ function handleHarnessChunk(
         agent_id: chunk.agent_id,
         sessionId,
         mode: chunk.mode,
+        prefill: chunk.prefill,
+        thread_id: chunk.thread_id,
+        message_id: chunk.message_id,
       });
       break;
     case "attachment": {
@@ -3316,6 +3487,8 @@ export async function sendTurn(
 ): Promise<void> {
   const state = getOrCreate(sessionId);
   rememberRoomAgent(state, agentId);
+  state.suppressTranscript = isUndoCommand(text);
+  state.controlNotice = "";
 
   if (sessionId === "__pending__" || threadId === "__pending__") {
     appendErrorBubble(

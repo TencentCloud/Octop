@@ -1,4 +1,5 @@
 import { useMemo } from "react";
+import cx from "classnames";
 import type { ChatMessage } from "../hooks/useChat";
 import type { AssistantTurnSplit } from "../utils/messageContent";
 import { countProcessStats } from "../utils/messageContent";
@@ -107,7 +108,13 @@ export function TurnProcessBlocks({
           <div className={styles.pinnedToolResults} data-octop-pinned-tools="">
             {pinned.map((message: ChatMessage) =>
               message.toolData ? (
-                <div key={message.id} className={styles.pinnedToolResultItem}>
+                <div
+                  key={message.id}
+                  className={cx(
+                    styles.pinnedToolResultItem,
+                    message.reverted && styles.revertedPinnedTool,
+                  )}
+                >
                   <ToolDetailsInline
                     toolData={message.toolData}
                     isStreaming={message.status === "streaming" && isStreaming}

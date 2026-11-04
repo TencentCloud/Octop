@@ -259,6 +259,23 @@ export const octopThreadsApi = {
       { method: "DELETE" },
     ),
 
+  undo: (
+    agentId: string,
+    threadId: string,
+    body: { from_message_id?: string; content?: string; turns?: number },
+  ) =>
+    request<{
+      thread_id: string;
+      turns_undone: number;
+      removed_count: number;
+      prefill_text: string;
+    }>(
+      `/agents/${encodeURIComponent(agentId)}/threads/${encodeURIComponent(
+        threadId,
+      )}/undo`,
+      { method: "POST", body: JSON.stringify(body) },
+    ),
+
   fork: (
     agentId: string,
     threadId: string,

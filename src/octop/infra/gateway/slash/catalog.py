@@ -33,6 +33,8 @@ class SlashCommandSpec:
     hidden: bool = False
     persist_checkpoint: bool = True
     """Whether command input/output also enters the agent's checkpoint history."""
+    persist_history: bool = True
+    """Whether the command transcript is also written to dashboard history."""
 
     @property
     def command(self) -> str:
@@ -212,6 +214,15 @@ CATALOG: tuple[SlashCommandSpec, ...] = (
         icon="Trash2",
         tone="rose",
         category="session",
+    ),
+    SlashCommandSpec(
+        name="undo",
+        usage="/undo",
+        icon="Undo2",
+        tone="amber",
+        category="session",
+        persist_checkpoint=False,
+        persist_history=False,
     ),
     SlashCommandSpec(
         name="pin",

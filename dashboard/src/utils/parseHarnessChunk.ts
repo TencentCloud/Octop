@@ -121,6 +121,9 @@ export interface SlashActionChunk {
   action: string;
   agent_id?: string;
   mode?: string;
+  prefill?: string;
+  thread_id?: string;
+  message_id?: string;
 }
 
 export interface AttachmentChunk {
@@ -299,6 +302,11 @@ export function parseHarnessChunk(line: string): HarnessChunk | null {
         action: typeof obj.action === "string" ? obj.action : "",
         agent_id: agentId,
         mode: typeof obj.mode === "string" ? obj.mode : undefined,
+        prefill: typeof obj.prefill === "string" ? obj.prefill : undefined,
+        thread_id:
+          typeof obj.thread_id === "string" ? obj.thread_id : undefined,
+        message_id:
+          typeof obj.message_id === "string" ? obj.message_id : undefined,
       };
     case "custom":
       return {
