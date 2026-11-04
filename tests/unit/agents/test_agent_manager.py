@@ -474,7 +474,7 @@ async def test_install_async_dispatch_streams_non_team_inbox(manager: AgentManag
 
 @pytest.mark.asyncio
 async def test_install_team_host_enrich_uses_host_assignment(manager: AgentManager) -> None:
-    from langchain_core.messages import HumanMessage, SystemMessage
+    from langchain_core.messages import HumanMessage
 
     team = MagicMock()
     team.enabled = True
@@ -494,10 +494,10 @@ async def test_install_team_host_enrich_uses_host_assignment(manager: AgentManag
     manager._install_team_host_dispatch()
     req = SimpleNamespace(thread_id="t~child", messages="我最近总失眠")
     out = await team._enrich_request("child", req)
-    assert isinstance(out.messages[0], SystemMessage)
-    assert isinstance(out.messages[1], HumanMessage)
-    assert out.messages[1].content == "请给出可执行的睡眠建议，聚焦作息而不是诊断"
+    assert len(out.messages) == 1
+    assert isinstance(out.messages[0], HumanMessage)
     assert "团队派工" in out.messages[0].content
+    assert out.messages[0].content.endswith("请给出可执行的睡眠建议，聚焦作息而不是诊断")
 
 
 @pytest.mark.asyncio

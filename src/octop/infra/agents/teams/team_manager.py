@@ -2354,21 +2354,23 @@ def wire_host_dispatch(
         pair = take_prompt(agent_id, getattr(req, "thread_id", None))
         if not pair:
             return req
-        from langchain_core.messages import HumanMessage, SystemMessage
+        from langchain_core.messages import HumanMessage
 
         question, dispatch = pair
-        messages: list[Any] = []
+        # Dispatch is user-side context for this peer turn. Sending it as a
+        # SystemMessage gives providers a second system message and persists it
+        # into langgraph history, where it is replayed on later turns, so fold
+        # it into the human turn instead.
+        content = question
         if dispatch and dispatch != question:
-            messages.append(SystemMessage(content=dispatch))
-        if question:
-            messages.append(
+            content = f"{dispatch}\n\n{question}" if question else dispatch
+        if content:
+            req.messages = [
                 HumanMessage(
-                    content=question,
+                    content=content,
                     id=f"team-peer:{getattr(req, 'thread_id', None)}:{new_ulid()}:human",
                 )
-            )
-        if messages:
-            req.messages = messages
+            ]
         return req
 
     harness_team._enrich_request = enrich
