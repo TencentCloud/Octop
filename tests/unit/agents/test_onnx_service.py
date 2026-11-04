@@ -249,6 +249,32 @@ def test_is_downloaded_recognizes_fastembed_hf_alias(tmp_path, monkeypatch) -> N
     assert "BAAI/bge-small-zh-v1.5" in mod.list_downloaded_models()
 
 
+def test_build_embedding_uses_local_snapshot_without_hf_lookup(tmp_path, monkeypatch) -> None:
+    monkeypatch.setenv("OCTOP_HOME", str(tmp_path))
+    from octop.infra.agents.providers import onnx_catalog as catalog
+    from octop.infra.agents.providers import onnx_service as mod
+
+    monkeypatch.setattr(catalog, "_fastembed_meta_map", lambda: {})
+    repo = mod.embedding_models_dir() / "models--Qdrant--bge-small-zh-v1.5"
+    snapshot = repo / "snapshots" / "cos-mirror"
+    snapshot.mkdir(parents=True)
+    (snapshot / "model.onnx").write_bytes(b"x")
+    (repo / "refs").mkdir()
+    (repo / "refs" / "main").write_text("cos-mirror\n", encoding="utf-8")
+    seen: dict[str, object] = {}
+
+    class FakeTextEmbedding:
+        def __init__(self, **kwargs: object) -> None:
+            seen.update(kwargs)
+
+    monkeypatch.setitem(sys.modules, "fastembed", SimpleNamespace(TextEmbedding=FakeTextEmbedding))
+
+    mod._build_text_embedding("BAAI/bge-small-zh-v1.5")
+
+    assert seen["specific_model_path"] == str(snapshot)
+    assert seen["local_files_only"] is True
+
+
 def test_embedding_prerequisites_ignore_service_enabled(tmp_path, monkeypatch) -> None:
     from octop.infra.agents.providers import onnx_service as mod
 

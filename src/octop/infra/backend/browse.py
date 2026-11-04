@@ -12,7 +12,6 @@ from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 from typing import Any
 
-from octop_harness.backends import resolve_backend
 from octop_harness.backends.storage_errors import (
     ClassifiedStorageError,
     classify_probe_exception,
@@ -21,6 +20,7 @@ from octop_harness.backends.storage_errors import (
 
 from octop.infra.backend.adapter import row_to_backend_spec
 from octop.infra.backend.compat import adapt_backend_protocol
+from octop.infra.backend.resolve_backend import resolve_octop_backend
 from octop.infra.backend.tree_listing import dedupe_tree_rows
 from octop.infra.db.repos.backends import BackendRow
 
@@ -58,7 +58,7 @@ def resolve_storage_backend(row: BackendRow) -> Any:
         raise ValueError("configuration incomplete")
     workspace = tempfile.mkdtemp(prefix="octop-storage-browse-")
     try:
-        backend = adapt_backend_protocol(resolve_backend(spec, workspace_dir=workspace))
+        backend = adapt_backend_protocol(resolve_octop_backend(spec, workspace_dir=workspace))
     except ValueError:
         shutil.rmtree(workspace, ignore_errors=True)
         raise

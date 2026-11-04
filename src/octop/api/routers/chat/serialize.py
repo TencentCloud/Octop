@@ -1022,11 +1022,17 @@ def _serialize_history_message(
         entry["agent_id"] = speaker.strip()
     if additional_kwargs.get("team_wrapup"):
         entry["team_wrapup"] = True
+    decision = additional_kwargs.get("octop_decision")
+    if role == "assistant" and isinstance(decision, dict) and decision.get("kind") == "decision":
+        entry["decision"] = decision
     edited = additional_kwargs.get("edited_files")
     if isinstance(edited, list):
         cleaned = [path.strip() for path in edited if isinstance(path, str) and path.strip()]
         if cleaned:
             entry["edited_files"] = cleaned
+    duration = additional_kwargs.get("turn_duration_ms")
+    if isinstance(duration, (int, float)) and not isinstance(duration, bool) and duration >= 0:
+        entry["duration_ms"] = int(duration)
     return _apply_history_timestamp(entry, msg, fallback_created_at)
 
 

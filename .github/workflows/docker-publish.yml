@@ -4,9 +4,12 @@ name: Docker Publish
 # 文档与对外引用统一使用：ghcr.io/tencentcloud/octop
 # （Hub 仍用 DOCKERHUB_* secrets 同步推送。）
 #
-# 架构：ubuntu-latest 打 linux/amd64，ubuntu-24.04-arm 打 linux/arm64，
-# 再合并为 :{version} / :latest 多架构清单。飞牛 Docker 版 FPK 共用一份，
-# NAS 按本机架构拉取对应镜像层。
+# 架构：ubuntu-latest 打 linux/amd64，ubuntu-24.04-arm 打 linux/arm64。
+# 每个架构先在本机启动镜像并跑 live 启动测试，通过后才推送该架构 tag，
+# 再合并为 :{version} / :latest 多架构清单。精简版同样打 :{version}-lite / :lite，
+# 不含桌面、本地向量和 OCR。飞牛 Docker 版 FPK 各用一个标签，
+# NAS 按本机架构拉取对应镜像层。某一架构启动失败（例如 ARM 上 Illegal
+# instruction / 退出码 132）只丢掉该架构，不挡住另一架构和后续 FPK。
 #
 # 触发路径：
 #   1. 人工推送 v* tag → on.push.tags
@@ -23,6 +26,7 @@ name: Docker Publish
 # 拉取示例：
 #   docker pull ghcr.io/tencentcloud/octop:latest
 #   docker pull ghcr.io/tencentcloud/octop:0.9.28
+#   docker pull ghcr.io/tencentcloud/octop:0.9.28-lite
 on:
   push:
     tags:
@@ -79,7 +83,7 @@ jobs:
           echo "ghcr=ghcr.io/$(echo '${{ github.repository }}' | tr '[:upper:]' '[:lower:]')" >> "$GITHUB_OUTPUT"
 
   build:
-    name: Build ${{ matrix.arch }}
+    name: Build ${{ matrix.arch }} ${{ matrix.variant }}
     needs: prepare
     runs-on: ${{ matrix.runner }}
     env:
@@ -91,9 +95,19 @@ jobs:
           - runner: ubuntu-latest
             platform: linux/amd64
             arch: amd64
+            variant: full
+          - runner: ubuntu-latest
+            platform: linux/amd64
+            arch: amd64
+            variant: lite
           - runner: ubuntu-24.04-arm
             platform: linux/arm64
             arch: arm64
+            variant: full
+          - runner: ubuntu-24.04-arm
+            platform: linux/arm64
+            arch: arm64
+            variant: lite
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -125,21 +139,63 @@ jobs:
           images: |
             ${{ env.DOCKERHUB_USER != '' && format('{0}/octop', env.DOCKERHUB_USER) || '' }}
             ${{ needs.prepare.outputs.ghcr }}
-          # 单架构中间 tag；:{version} / :latest 由 merge 合成多架构清单
+          # 单架构中间 tag。full → :{version}-{arch}；lite → :{version}-lite-{arch}。
           tags: |
-            type=raw,value=${{ needs.prepare.outputs.version }}-${{ matrix.arch }}
+            type=raw,value=${{ needs.prepare.outputs.version }}${{ matrix.variant == 'lite' && '-lite' || '' }}-${{ matrix.arch }}
 
-      - name: Build and push
+      # load 与 registry 导出不能同时开。先载入本机做启动测试，通过后再 docker push。
+      # docker 导出不支持 provenance，这里关掉，避免 --load 失败。
+      - name: Build and load
         uses: docker/build-push-action@v6
         with:
           context: .
           file: ./docker/Dockerfile
-          push: true
+          push: false
+          load: true
+          provenance: false
+          sbom: false
           platforms: ${{ matrix.platform }}
-          tags: ${{ steps.meta.outputs.tags }}
+          build-args: |
+            OCTOP_IMAGE_VARIANT=${{ matrix.variant }}
+          tags: |
+            octop:ci-${{ matrix.variant }}
+            ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
-          cache-from: type=gha,scope=docker-${{ matrix.arch }}
-          cache-to: type=gha,mode=max,scope=docker-${{ matrix.arch }}
+          cache-from: type=gha,scope=docker-${{ matrix.variant }}-${{ matrix.arch }}
+          cache-to: type=gha,mode=max,scope=docker-${{ matrix.variant }}-${{ matrix.arch }}
+
+      - uses: astral-sh/setup-uv@v4
+        with:
+          python-version: "3.12"
+
+      - name: Report image size
+        run: |
+          docker image inspect "octop:ci-${{ matrix.variant }}" \
+            --format '::notice::${{ matrix.variant }} ${{ matrix.arch }} {{.Size}} bytes'
+
+      - name: Boot-test image before publish
+        env:
+          OCTOP_TEST_IMAGE: octop:ci-${{ matrix.variant }}
+          OCTOP_IMAGE_VARIANT: ${{ matrix.variant }}
+        run: |
+          set -euo pipefail
+          uv venv /tmp/octop-docker-test
+          uv pip install --python /tmp/octop-docker-test/bin/python pytest pytest-asyncio
+          /tmp/octop-docker-test/bin/pytest \
+            tests/integration/test_docker_image_boot.py::test_docker_image_runs_on_this_cpu_and_stays_disabled \
+            -q --tb=short
+
+      - name: Push image
+        env:
+          TAGS: ${{ steps.meta.outputs.tags }}
+        run: |
+          set -euo pipefail
+          while IFS= read -r tag; do
+            [ -n "$tag" ] || continue
+            case "$tag" in
+              */*) docker push "$tag" ;;
+            esac
+          done <<< "$TAGS"
 
   merge:
     name: Multi-arch manifest
@@ -174,31 +230,43 @@ jobs:
           HUB: ${{ env.DOCKERHUB_USER != '' && format('{0}/octop', env.DOCKERHUB_USER) || '' }}
         run: |
           set -euo pipefail
-          any_multi=0
-          for REG in "$GHCR" "$HUB"; do
-            [ -n "$REG" ] || continue
-            sources=()
-            for arch in amd64 arm64; do
-              if docker buildx imagetools inspect "${REG}:${VER}-${arch}" >/dev/null 2>&1; then
-                sources+=("${REG}:${VER}-${arch}")
-              else
-                echo "::warning::missing ${REG}:${VER}-${arch}"
+          publish_variant() {
+            local mid="$1" tag_a="$2" tag_b="$3" required="$4"
+            local reg arch ref
+            for reg in "$GHCR" "$HUB"; do
+              [ -n "$reg" ] || continue
+              local -a sources=()
+              for arch in amd64 arm64; do
+                ref="${reg}:${VER}${mid}-${arch}"
+                if docker buildx imagetools inspect "$ref" >/dev/null 2>&1; then
+                  sources+=("$ref")
+                else
+                  echo "::warning::missing ${ref}"
+                fi
+              done
+              if [ "${#sources[@]}" -eq 0 ]; then
+                if [ "$required" = "yes" ]; then
+                  echo "::error::No platform images published for ${reg}:${tag_a}"
+                  exit 1
+                fi
+                echo "::warning::skip ${reg}:${tag_a} (no platform images)"
+                continue
               fi
+              if [ "${#sources[@]}" -lt 2 ]; then
+                echo "::warning:::${tag_a} is not multi-arch. A package on the missing CPU will not run."
+                # 精简版对外是一份 x86/ARM 通用标签。缺任一架构就不要发，避免装上后拉取失败。
+                if [ "$required" != "yes" ]; then
+                  echo "::warning::skip ${reg}:${tag_a} until both amd64 and arm64 exist"
+                  continue
+                fi
+              fi
+              docker buildx imagetools create \
+                -t "${reg}:${tag_a}" \
+                -t "${reg}:${tag_b}" \
+                "${sources[@]}"
+              echo "=== ${reg}:${tag_a} ==="
+              docker buildx imagetools inspect "${reg}:${tag_a}"
             done
-            if [ "${#sources[@]}" -eq 0 ]; then
-              echo "::error::No platform images published for ${REG}:${VER}"
-              exit 1
-            fi
-            if [ "${#sources[@]}" -ge 2 ]; then
-              any_multi=1
-            fi
-            docker buildx imagetools create \
-              -t "${REG}:${VER}" \
-              -t "${REG}:latest" \
-              "${sources[@]}"
-            echo "=== ${REG}:${VER} ==="
-            docker buildx imagetools inspect "${REG}:${VER}"
-          done
-          if [ "$any_multi" -eq 0 ]; then
-            echo "::warning:::${VER} is not multi-arch (ARM image missing). Docker FPK on ARM NAS will not run."
-          fi
+          }
+          publish_variant "" "$VER" latest yes
+          publish_variant "-lite" "${VER}-lite" lite no

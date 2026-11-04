@@ -1,6 +1,7 @@
 import { useMemo } from "react";
 import { ChevronRight, FilePen, Globe } from "lucide-react";
 import { useTranslation } from "react-i18next";
+import cx from "classnames";
 import type { HitlDecisionHandler } from "../../../api/types/hitl";
 import type { ChatMessage } from "../hooks/useChat";
 import {
@@ -60,8 +61,9 @@ interface AssistantTurnViewProps {
 
 function hasProcessContent(
   split: ReturnType<typeof splitAssistantTurn>,
+  deferLoneDecision = false,
 ): boolean {
-  return turnHasVisibleProcess(split);
+  return turnHasVisibleProcess(split, { deferLoneDecision });
 }
 
 function TurnErrorBubbles({
@@ -224,16 +226,25 @@ export default function AssistantTurnView({
       (m) => m.status === "streaming" && isWriteTodosToolName(m.toolData?.name),
     );
 
+  // A decision stamp often lands before the first tool. Showing it on its
+  // own, then folding it in, flashes a one-line row. Hold that row until the
+  // reply has tools or the turn settles.
+  const deferLoneDecision = turnStreaming && !hasPendingHitl;
   const firstProcessSegmentIdx = compactProcess
     ? -1
-    : segmentProcess.findIndex(({ split }) => hasProcessContent(split));
+    : segmentProcess.findIndex(({ split }) =>
+        hasProcessContent(split, deferLoneDecision),
+      );
   const firstSummaryIdx = compactProcess
     ? -1
-    : segmentProcess.findIndex(({ split }) => turnHasProcessSummary(split));
+    : segmentProcess.findIndex(({ split }) =>
+        turnHasProcessSummary(split, { deferLoneDecision }),
+      );
   const showTrailingProcess =
-    !compactProcess && hasProcessContent(trailingSplit);
+    !compactProcess && hasProcessContent(trailingSplit, deferLoneDecision);
   const trailingHasSummary =
-    !compactProcess && turnHasProcessSummary(trailingSplit);
+    !compactProcess &&
+    turnHasProcessSummary(trailingSplit, { deferLoneDecision });
   const anyProcessShown = firstProcessSegmentIdx >= 0 || showTrailingProcess;
 
   const todoPanel =
@@ -247,12 +258,162 @@ export default function AssistantTurnView({
   const todoAtTop = todoPanel && !anyProcessShown ? todoPanel : null;
 
   const isWrapupTurn = messages.some((item) => item.teamWrapup);
+  const hasVisibleTurn =
+    Boolean(todoAtTop) ||
+    anyProcessShown ||
+    segmentProcess.some(
+      ({ split }) =>
+        split.answerMessage || (split.errorMessages?.length ?? 0) > 0,
+    ) ||
+    hitlLayout.segments.length > 0 ||
+    Boolean(trailingSplit.answerMessage) ||
+    (trailingSplit.errorMessages?.length ?? 0) > 0 ||
+    hasToolMedia ||
+    knowledgeCitations.length > 0 ||
+    showOpenBrowser ||
+    showEditFile;
+  // A decision-only placeholder has no row yet. Rendering an empty turn
+  // would shift the layout before the avatar and the first status settle.
+  if (!hasVisibleTurn) return null;
+
+  const trailingBody = (
+    <>
+      {showTrailingProcess ? (
+        <>
+          <TurnProcessBlocks
+            split={trailingSplit}
+            isStreaming={turnStreaming && !hasPendingHitl}
+            onAcpPermissionSelect={onAcpPermissionSelect}
+            hideToolMedia={hasToolMedia}
+            agentId={speakerAgentId}
+            showAvatar={firstSummaryIdx < 0 && trailingHasSummary}
+          />
+          {todoPanel && firstProcessSegmentIdx < 0 ? (
+            <div className={styles.turnInset}>{todoPanel}</div>
+          ) : null}
+        </>
+      ) : null}
+      {hasToolMedia && (
+        <div className={styles.turnInset}>
+          <ToolMediaStrip
+            images={toolMedia.images}
+            videos={toolMedia.videos}
+            files={toolMedia.files}
+            agentId={speakerAgentId}
+          />
+        </div>
+      )}
+      {trailingSplit.answerMessage ? (
+        <div className={styles.assistantTurnAnswer}>
+          <MessageBubble
+            message={toAnswerOnlyMessage(trailingSplit.answerMessage)}
+            agentId={agentId}
+            showAvatar={firstSummaryIdx < 0 && !trailingHasSummary}
+            onRegenerate={onRegenerate}
+            onDisableStreamUsage={onDisableStreamUsage}
+            onEditUserMessage={onEditUserMessage}
+            onForkAssistantMessage={onForkAssistantMessage}
+            forkDisabled={forkDisabled}
+            forkDisabledHint={forkDisabledHint}
+            groupPosition="only"
+            onRunShellCommand={onRunShellCommand}
+            shellCommandDisabled={shellCommandDisabled}
+            shellCommandDisabledTitle={shellCommandDisabledTitle}
+          />
+        </div>
+      ) : null}
+      <TurnErrorBubbles
+        messages={trailingSplit.errorMessages}
+        agentId={agentId}
+        showAvatar={
+          firstSummaryIdx < 0 &&
+          !trailingHasSummary &&
+          !trailingSplit.answerMessage
+        }
+        onRegenerate={onRegenerate}
+        onDisableStreamUsage={onDisableStreamUsage}
+        onEditUserMessage={onEditUserMessage}
+        onForkAssistantMessage={onForkAssistantMessage}
+        forkDisabled={forkDisabled}
+        forkDisabledHint={forkDisabledHint}
+        onRunShellCommand={onRunShellCommand}
+        shellCommandDisabled={shellCommandDisabled}
+        shellCommandDisabledTitle={shellCommandDisabledTitle}
+      />
+      {knowledgeCitations.length > 0 ? (
+        <div className={styles.turnInset}>
+          <KnowledgeCitationsStrip citations={knowledgeCitations} />
+        </div>
+      ) : null}
+      {showOpenBrowser && (
+        <div className={styles.turnInset}>
+          <button
+            type="button"
+            className={cx(
+              styles.openBrowserPrompt,
+              turnStreaming && styles.openBrowserPromptActive,
+            )}
+            onClick={onOpenBrowser}
+            aria-label={t("chat.openBrowser")}
+          >
+            <Globe
+              size={16}
+              strokeWidth={2}
+              className={styles.openBrowserPromptIcon}
+              aria-hidden="true"
+            />
+            <span>{t("chat.openBrowser")}</span>
+            <ChevronRight
+              size={14}
+              className={styles.openBrowserPromptArrow}
+              aria-hidden="true"
+            />
+          </button>
+        </div>
+      )}
+      {showEditFile && (
+        <div className={styles.turnInset}>
+          <button
+            type="button"
+            className={cx(
+              styles.openBrowserPrompt,
+              turnStreaming && styles.openBrowserPromptActive,
+            )}
+            onClick={onEditFile}
+            aria-label={t("chat.editFileCard", {
+              count: Math.max(turnFileCount, 1),
+              defaultValue: "编辑了{{count}}个文件",
+            })}
+          >
+            <FilePen
+              size={16}
+              strokeWidth={2}
+              className={styles.openBrowserPromptIcon}
+              aria-hidden="true"
+            />
+            <span>
+              {t("chat.editFileCard", {
+                count: Math.max(turnFileCount, 1),
+                defaultValue: "编辑了{{count}}个文件",
+              })}
+            </span>
+            <ChevronRight
+              size={14}
+              className={styles.openBrowserPromptArrow}
+              aria-hidden="true"
+            />
+          </button>
+        </div>
+      )}
+    </>
+  );
 
   return (
     <div className={styles.assistantTurn}>
       {todoAtTop ? <div className={styles.turnInset}>{todoAtTop}</div> : null}
       {segmentProcess.map(({ split, hitl }, idx) => {
-        const showProcess = !compactProcess && hasProcessContent(split);
+        const showProcess =
+          !compactProcess && hasProcessContent(split, deferLoneDecision);
         // Freeze process spinner while a pending approval card is open.
         const processStreaming =
           turnStreaming &&
@@ -318,139 +479,15 @@ export default function AssistantTurnView({
           </div>
         );
       })}
-      {showTrailingProcess ? (
-        <>
-          <TurnProcessBlocks
-            split={trailingSplit}
-            isStreaming={turnStreaming && !hasPendingHitl}
-            onAcpPermissionSelect={onAcpPermissionSelect}
-            hideToolMedia={hasToolMedia}
-            agentId={speakerAgentId}
-            showAvatar={firstSummaryIdx < 0 && trailingHasSummary}
-          />
-          {todoPanel && firstProcessSegmentIdx < 0 ? (
-            <div className={styles.turnInset}>{todoPanel}</div>
-          ) : null}
-        </>
-      ) : null}
-      {hasToolMedia && (
-        <div className={styles.turnInset}>
-          <ToolMediaStrip
-            images={toolMedia.images}
-            videos={toolMedia.videos}
-            files={toolMedia.files}
-            agentId={speakerAgentId}
-          />
+      {isWrapupTurn ? (
+        <div className={styles.teamWrapupTurn}>
+          <span className={styles.teamWrapupBadge}>
+            {t("chat.teamWrapupBadge", { defaultValue: "主持人总结" })}
+          </span>
+          {trailingBody}
         </div>
-      )}
-      {trailingSplit.answerMessage ? (
-        <div
-          className={`${styles.assistantTurnAnswer}${
-            isWrapupTurn ? ` ${styles.teamWrapupTurn}` : ""
-          }`}
-        >
-          {isWrapupTurn ? (
-            <span className={styles.teamWrapupBadge}>
-              {t("chat.teamWrapupBadge", { defaultValue: "主持人总结" })}
-            </span>
-          ) : null}
-          <MessageBubble
-            message={toAnswerOnlyMessage(trailingSplit.answerMessage)}
-            agentId={agentId}
-            showAvatar={firstSummaryIdx < 0 && !trailingHasSummary}
-            onRegenerate={onRegenerate}
-            onDisableStreamUsage={onDisableStreamUsage}
-            onEditUserMessage={onEditUserMessage}
-            onForkAssistantMessage={onForkAssistantMessage}
-            forkDisabled={forkDisabled}
-            forkDisabledHint={forkDisabledHint}
-            groupPosition="only"
-            onRunShellCommand={onRunShellCommand}
-            shellCommandDisabled={shellCommandDisabled}
-            shellCommandDisabledTitle={shellCommandDisabledTitle}
-          />
-        </div>
-      ) : null}
-      <TurnErrorBubbles
-        messages={trailingSplit.errorMessages}
-        agentId={agentId}
-        showAvatar={
-          firstSummaryIdx < 0 &&
-          !trailingHasSummary &&
-          !trailingSplit.answerMessage
-        }
-        onRegenerate={onRegenerate}
-        onDisableStreamUsage={onDisableStreamUsage}
-        onEditUserMessage={onEditUserMessage}
-        onForkAssistantMessage={onForkAssistantMessage}
-        forkDisabled={forkDisabled}
-        forkDisabledHint={forkDisabledHint}
-        onRunShellCommand={onRunShellCommand}
-        shellCommandDisabled={shellCommandDisabled}
-        shellCommandDisabledTitle={shellCommandDisabledTitle}
-      />
-      {knowledgeCitations.length > 0 ? (
-        <div className={styles.turnInset}>
-          <KnowledgeCitationsStrip citations={knowledgeCitations} />
-        </div>
-      ) : null}
-      {showOpenBrowser && (
-        <div className={styles.turnInset}>
-          <button
-            type="button"
-            className={`${styles.openBrowserPrompt} ${
-              turnStreaming ? styles.openBrowserPromptActive : ""
-            }`}
-            onClick={onOpenBrowser}
-            aria-label={t("chat.openBrowser")}
-          >
-            <Globe
-              size={16}
-              strokeWidth={2}
-              className={styles.openBrowserPromptIcon}
-              aria-hidden="true"
-            />
-            <span>{t("chat.openBrowser")}</span>
-            <ChevronRight
-              size={14}
-              className={styles.openBrowserPromptArrow}
-              aria-hidden="true"
-            />
-          </button>
-        </div>
-      )}
-      {showEditFile && (
-        <div className={styles.turnInset}>
-          <button
-            type="button"
-            className={`${styles.openBrowserPrompt} ${
-              turnStreaming ? styles.openBrowserPromptActive : ""
-            }`}
-            onClick={onEditFile}
-            aria-label={t("chat.editFileCard", {
-              count: Math.max(turnFileCount, 1),
-              defaultValue: "编辑了{{count}}个文件",
-            })}
-          >
-            <FilePen
-              size={16}
-              strokeWidth={2}
-              className={styles.openBrowserPromptIcon}
-              aria-hidden="true"
-            />
-            <span>
-              {t("chat.editFileCard", {
-                count: Math.max(turnFileCount, 1),
-                defaultValue: "编辑了{{count}}个文件",
-              })}
-            </span>
-            <ChevronRight
-              size={14}
-              className={styles.openBrowserPromptArrow}
-              aria-hidden="true"
-            />
-          </button>
-        </div>
+      ) : (
+        trailingBody
       )}
     </div>
   );

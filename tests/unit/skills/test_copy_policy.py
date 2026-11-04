@@ -21,8 +21,20 @@ def _user(uid: int, *, admin: bool = False) -> SimpleNamespace:
     return SimpleNamespace(id=uid, is_admin=admin)
 
 
-def _row(policy: str, *, package_id: str = "pkg_1", created_by: str = "7") -> SimpleNamespace:
-    return SimpleNamespace(id=package_id, copy_policy=policy, created_by=created_by)
+def _row(
+    policy: str,
+    *,
+    package_id: str = "pkg_1",
+    created_by: str = "7",
+    shared: bool = True,
+) -> SimpleNamespace:
+    # Copy policy only applies after the package is already viewable.
+    return SimpleNamespace(
+        id=package_id,
+        copy_policy=policy,
+        created_by=created_by,
+        shared=shared,
+    )
 
 
 def _store() -> SimpleNamespace:

@@ -4,7 +4,9 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import time
 from collections.abc import AsyncIterator
+from dataclasses import dataclass
 from types import SimpleNamespace
 from typing import TYPE_CHECKING, Any, Literal
 
@@ -15,7 +17,7 @@ from octop_gateway.models import (
     MessageEventType,
     TextContent,
 )
-from octop_harness.slash import SlashSink
+from octop_harness.slash import SlashCommand, SlashSink
 from octop_harness.teams.inbox import InboxMessage
 from octop_harness.teams.processor import ReplyEvent
 from octop_harness.teams.util import PeerCall, PeerSession
@@ -40,6 +42,7 @@ from octop.infra.gateway.hitl.coordinator import (
     iter_with_session_auto_approve,
 )
 from octop.infra.gateway.hitl.format import normalize_hitl_request
+from octop.infra.gateway.hitl.phrases import ApprovalUtterance, match_approval_utterance
 from octop.infra.gateway.hitl.stream_compat import install_harness_hitl_compat
 from octop.infra.gateway.media.attachment_hints import (
     content_blocks_need_vision,
@@ -49,6 +52,7 @@ from octop.infra.gateway.media.tool_media import (
     enrich_tool_result_for_dashboard,
     enrich_tool_result_with_backend,
     iter_dashboard_attachment_frames,
+    note_live_tool_call,
 )
 from octop.infra.gateway.process.agent_resolve import (
     harness_workspace_for_agent,
@@ -101,6 +105,18 @@ logger = logging.getLogger(__name__)
 install_harness_hitl_compat()
 
 
+def _elapsed_ms(started: float) -> int:
+    return max(0, int((time.perf_counter() - started) * 1000))
+
+
+def _inbound_thread_id(msg: InboundMessage) -> str | None:
+    """Dashboard turns stamp ``metadata.thread_id``; IM often omits it."""
+    raw = (msg.metadata or {}).get("thread_id")
+    if isinstance(raw, str) and raw.strip():
+        return raw.strip()
+    return None
+
+
 def _stream_error(exc: Exception, locale: str) -> tuple[str, str | None]:
     if isinstance(exc, OctopError):
         return exc.localized_message(locale), exc.code.value
@@ -118,7 +134,12 @@ def _overwrite_last_user_text(request: dict[str, Any], text: str) -> None:
         return
     extra = getattr(last, "additional_kwargs", None)
     kwargs = dict(extra) if isinstance(extra, dict) else {}
-    messages[-1] = HumanMessage(content=text, additional_kwargs=kwargs)
+    kept_id = getattr(last, "id", None)
+    messages[-1] = HumanMessage(
+        content=text,
+        additional_kwargs=kwargs,
+        **({"id": kept_id} if isinstance(kept_id, str) and kept_id else {}),
+    )
 
 
 class _MessageEventSink(SlashSink):
@@ -132,6 +153,12 @@ class _MessageEventSink(SlashSink):
 
     async def complete(self) -> None:
         pass
+
+
+@dataclass(frozen=True)
+class _ResolvedModelRoute:
+    model_ref: str | None
+    automatic: bool
 
 
 class GlobalProcessor:
@@ -179,6 +206,8 @@ class GlobalProcessor:
         self._hitl = hitl or HitlChannelCoordinator()
         self._trajectory_service = trajectory_service
         self._history_archive = history_archive
+        self._title_inflight: set[str] = set()
+        self._pending_system_prompt: set[str] = set()
         self.teams = TeamManager(
             agent_manager=agent_manager,
             thread_registry=thread_registry,
@@ -283,6 +312,11 @@ class GlobalProcessor:
         service = self._trajectory_service
         if service is None:
             return
+        # Capture before this chunk is stored. A user chunk advances the turn,
+        # and a context row finalizes any open assistant message — doing this
+        # after the chunk would pin the previous prompt on the new turn and
+        # split the reply that is still streaming.
+        self._sync_memory_prompt_trajectory(agent_id, thread_id)
         try:
             service.observe_chunk(agent_id, thread_id, chunk)
         except Exception:
@@ -338,12 +372,12 @@ class GlobalProcessor:
 
             include_system = phase == "system" and not bool(service.has_kind(thread_id, "system"))
             system_prompt = self._trajectory_system_prompt(agent_id) if phase == "system" else None
-            workspace_files: list[str] = []
             skills: list[str] | None = None
             skills_filter_present = False
             mcp_names: list[str] | None = None
+            workspace_files: list[tuple[str, str]] = []
+            captures_model_system = False
             if phase == "context":
-                workspace_files = await self._trajectory_workspace_files(agent_id)
                 skills_filter_present = "skills" in request or "skills" in meta
                 turn_skills: list[str] | None = None
                 if "skills" in request and isinstance(request.get("skills"), list):
@@ -358,6 +392,11 @@ class GlobalProcessor:
                         skills_filter_present=skills_filter_present,
                     )
                 mcp_names = _mcp_server_names(request.get("mcp_servers"))
+                captures_model_system = self._captures_model_system_prompt(agent_id)
+                if not captures_model_system:
+                    workspace_files = [
+                        (name, "") for name in await self._trajectory_workspace_files(agent_id)
+                    ]
             for chunk in build_turn_start_chunks(
                 include_system=include_system,
                 system_prompt=system_prompt,
@@ -372,6 +411,9 @@ class GlobalProcessor:
                     chunk=chunk,
                     enabled=True,
                 )
+            if phase == "context" and captures_model_system:
+                self._clear_captured_system_prompt(agent_id, thread_id)
+                self._pending_system_prompt.add(thread_id)
         except Exception:
             logger.exception(
                 "trajectory turn-start context failed agent=%s thread=%s",
@@ -425,8 +467,16 @@ class GlobalProcessor:
             rows.append(item)
         return rows
 
+    def _captures_model_system_prompt(self, agent_id: str) -> bool:
+        """True when this harness build records the system message it sent."""
+        try:
+            agent = self._agent_manager.get_agent(agent_id)
+        except Exception:
+            return False
+        return callable(getattr(agent, "model_system_prompt", None))
+
     async def _trajectory_workspace_files(self, agent_id: str) -> list[str]:
-        """Return existing harness memory paths without duplicating their contents."""
+        """Existing memory paths, for harness builds that do not capture the prompt."""
         from octop.infra.history.trajectory.turn_context import memory_file_order  # noqa: PLC0415
 
         workspace = harness_workspace_for_agent(self._agent_manager, agent_id)
@@ -448,6 +498,56 @@ class GlobalProcessor:
                 continue
             out.append(name)
         return out
+
+    def _clear_captured_system_prompt(self, agent_id: str, thread_id: str) -> None:
+        """Drop the previous turn's captured system message before this turn runs."""
+        try:
+            agent = self._agent_manager.get_agent(agent_id)
+        except Exception:
+            logger.debug(
+                "trajectory system prompt clear skipped agent=%s",
+                agent_id,
+                exc_info=True,
+            )
+            return
+        clear = getattr(agent, "clear_model_system_prompt", None)
+        if callable(clear):
+            clear(thread_id)
+
+    def _sync_memory_prompt_trajectory(self, agent_id: str, thread_id: str) -> None:
+        """Store the system message from this turn's model request."""
+        if thread_id not in self._pending_system_prompt:
+            return
+        service = self._trajectory_service
+        if service is None:
+            return
+        try:
+            agent = self._agent_manager.get_agent(agent_id)
+        except Exception:
+            logger.debug(
+                "trajectory system prompt agent unavailable agent=%s",
+                agent_id,
+                exc_info=True,
+            )
+            return
+        reader = getattr(agent, "model_system_prompt", None)
+        if not callable(reader):
+            return
+        text = reader(thread_id)
+        if not isinstance(text, str) or not text.strip():
+            return
+        try:
+            recorded = service.record_model_system_prompt(agent_id, thread_id, text)
+        except Exception:
+            logger.exception(
+                "trajectory system prompt sync failed agent=%s thread=%s",
+                agent_id,
+                thread_id,
+            )
+            return
+        if recorded:
+            self._pending_system_prompt.discard(thread_id)
+            self._clear_captured_system_prompt(agent_id, thread_id)
 
     # -- TeamProcessor (delegates to TeamManager) ------------------------------
 
@@ -500,6 +600,170 @@ class GlobalProcessor:
             default_timezone=self._agent_manager.octop_config.default_timezone,
         )
 
+    async def _relay_im_approval(
+        self,
+        msg: InboundMessage,
+        *,
+        agent_id: str,
+        user_id: int,
+        channel_type: str,
+        session_key: str,
+        locale: str,
+        command: SlashCommand | None = None,
+        utterance: ApprovalUtterance | None = None,
+    ) -> AsyncIterator[MessageEvent]:
+        """Run an IM approval and bookkeep the resumed turn."""
+        usage_tracker = UsageTracker()
+        slash_outcome = HitlSlashOutcome()
+        turn_started = time.perf_counter()
+
+        async def _finalize(
+            thread_id: str, tracker: TurnHistoryTracker, *, completed: bool
+        ) -> None:
+            if completed:
+                tracker.note_turn_duration(_elapsed_ms(turn_started))
+            await self._complete_resumed_history(thread_id, tracker, completed=completed)
+
+        ctx = self._slash_ctx(
+            agent_id=agent_id,
+            user_id=user_id,
+            channel_type=channel_type,
+            session_key=session_key,
+            metadata=msg.metadata,
+        )
+        if command is not None:
+            stream = self._hitl.iter_slash_resolution(
+                command,
+                ctx,
+                agent_manager=self._agent_manager,
+                locale=locale,
+                usage_tracker=usage_tracker,
+                outcome=slash_outcome,
+                history_factory=self._begin_history,
+                history_finalize=_finalize,
+                member_hitl=self.teams.deliver_member_hitl,
+            )
+        else:
+            assert utterance is not None
+            stream = self._hitl.iter_utterance_resolution(
+                utterance,
+                ctx,
+                agent_manager=self._agent_manager,
+                locale=locale,
+                usage_tracker=usage_tracker,
+                outcome=slash_outcome,
+                history_factory=self._begin_history,
+                history_finalize=_finalize,
+                member_hitl=self.teams.deliver_member_hitl,
+            )
+        async for ev in stream:
+            yield ev
+        if not slash_outcome.completed_turn:
+            return
+        thread_id = self._thread_registry.get_bound_thread_id(session_key)
+        if thread_id is None:
+            thread_id = await self._thread_registry.get_or_create_by_key(
+                session_key=session_key,
+                agent_id=agent_id,
+                user_id=user_id,
+                channel_type=channel_type,
+                channel_channel_id=msg.channel_id or None,
+                channel_metadata=session_metadata_from_message(msg),
+            )
+        if thread_id:
+            self._touch_thread_after_turn(thread_id, msg.text)
+            if usage_tracker.usage:
+                self._record_turn_usage(
+                    agent_id=agent_id,
+                    user_id=user_id,
+                    thread_id=thread_id,
+                    usage=usage_tracker.usage,
+                )
+
+    def _phrase_to_apply(
+        self,
+        text: str | None,
+        *,
+        session_key: str,
+        agent_id: str,
+        user_id: int,
+    ) -> ApprovalUtterance | None:
+        """Whole-message approval reply, or a reset while a bypass is active."""
+        utterance = match_approval_utterance(text)
+        if utterance is None:
+            return None
+        pending = self._hitl.owned_tool_approval(
+            session_key,
+            agent_id=agent_id,
+            user_id=user_id,
+        )
+        if utterance.kind == "reset":
+            if pending is not None:
+                return utterance
+            bound = self._thread_registry.get_bound_thread_id(session_key)
+            if not isinstance(bound, str) or not bound.strip():
+                return None
+            if self._hitl.session_policies.get(bound).mode == "ask":
+                return None
+            return utterance
+        if pending is None:
+            return None
+        return utterance
+
+    def _reset_thread_ids(
+        self,
+        *,
+        session_key: str,
+        agent_id: str,
+        user_id: int,
+    ) -> tuple[list[str], bool]:
+        record = self._hitl.owned_tool_approval(
+            session_key,
+            agent_id=agent_id,
+            user_id=user_id,
+        )
+        thread_ids: list[str] = []
+        if record is not None:
+            for thread_id in (record.thread_id, record.resume_thread_id):
+                if isinstance(thread_id, str) and thread_id.strip() and thread_id not in thread_ids:
+                    thread_ids.append(thread_id.strip())
+        bound = self._thread_registry.get_bound_thread_id(session_key)
+        if isinstance(bound, str) and bound.strip() and bound not in thread_ids:
+            thread_ids.append(bound.strip())
+        return thread_ids, record is not None
+
+    async def _iter_applied_phrase(
+        self,
+        msg: InboundMessage,
+        *,
+        phrase: ApprovalUtterance,
+        agent_id: str,
+        user_id: int,
+        channel_type: str,
+        session_key: str,
+        locale: str,
+    ) -> AsyncIterator[MessageEvent]:
+        if phrase.kind == "reset":
+            thread_ids, pending = self._reset_thread_ids(
+                session_key=session_key,
+                agent_id=agent_id,
+                user_id=user_id,
+            )
+            self._hitl.clear_bypass(thread_ids)
+            async for ev in self._hitl.iter_reset_notice(locale=locale, pending=pending):
+                yield ev
+            return
+        async for ev in self._relay_im_approval(
+            msg,
+            agent_id=agent_id,
+            user_id=user_id,
+            channel_type=channel_type,
+            session_key=session_key,
+            locale=locale,
+            utterance=phrase,
+        ):
+            yield ev
+
     @staticmethod
     def _model_ref_from_meta(
         thread_model: str | None,
@@ -524,6 +788,23 @@ class GlobalProcessor:
         needs_multimodal: bool,
         user_id: int = 0,
     ) -> str | None:
+        return self._resolve_harness_model_route(
+            agent_id,
+            thread_id,
+            meta,
+            needs_multimodal=needs_multimodal,
+            user_id=user_id,
+        ).model_ref
+
+    def _resolve_harness_model_route(
+        self,
+        agent_id: str,
+        thread_id: str,
+        meta: dict[str, Any] | None,
+        *,
+        needs_multimodal: bool,
+        user_id: int = 0,
+    ) -> _ResolvedModelRoute:
         """Per-turn ``model`` for harness requests.
 
         - Expert AUTO (no ``default_model`` on row): omit ``model`` → harness routes.
@@ -540,7 +821,10 @@ class GlobalProcessor:
             meta,
             thread_row.model_ref if thread_row is not None else None,
         )
+        automatic = False
         if model_ref and not providers.is_model_ref_usable(model_ref):
+            model_ref = None
+        if model_ref and not self._agent_manager.model_ref_allowed_for_user(user_id, model_ref):
             model_ref = None
         if not model_ref:
             row = self._agent_repo.get(agent_id)
@@ -549,22 +833,38 @@ class GlobalProcessor:
                     row,
                     self._agent_manager.get_config(agent_id),
                 )
+                if model_ref and not self._agent_manager.model_ref_allowed_for_user(
+                    user_id,
+                    model_ref,
+                ):
+                    model_ref = None
         if not model_ref:
             user_row = self._user_repo.get(user_id)
             preferred = get_preferred_model_from_json(
                 user_row.preferences_json if user_row is not None else None
             )
-            if preferred and self._agent_manager.providers.is_model_ref_usable(preferred):
+            if (
+                preferred
+                and self._agent_manager.is_auto_route_model_available(preferred)
+                and self._agent_manager.model_ref_allowed_for_user(user_id, preferred)
+            ):
                 model_ref = preferred
+                automatic = True
         if not model_ref:
             fallback = self._agent_manager.resolve_fallback_model_ref()
-            model_ref = fallback.strip() if isinstance(fallback, str) and fallback.strip() else None
+            candidate = fallback.strip() if isinstance(fallback, str) and fallback.strip() else None
+            if candidate and self._agent_manager.model_ref_allowed_for_user(user_id, candidate):
+                model_ref = candidate
+                automatic = True
         if not model_ref:
-            return None
-        return providers.resolve_model_for_multimodal_turn(
+            return _ResolvedModelRoute(None, automatic=True)
+        resolved = providers.resolve_model_for_multimodal_turn(
             model_ref,
             needs_multimodal=needs_multimodal,
         )
+        if resolved != model_ref:
+            automatic = True
+        return _ResolvedModelRoute(resolved, automatic=automatic)
 
     def _resolve_reasoning_overrides(
         self,
@@ -637,46 +937,16 @@ class GlobalProcessor:
             metadata=msg.metadata,
         )
         if cmd is not None and cmd.name in HITL_APPROVAL_COMMANDS:
-            usage_tracker = UsageTracker()
-            slash_outcome = HitlSlashOutcome()
-            async for ev in self._hitl.iter_slash_resolution(
-                cmd,
-                self._slash_ctx(
-                    agent_id=agent_id,
-                    user_id=user_id,
-                    channel_type=channel_type,
-                    session_key=session_key,
-                    metadata=msg.metadata,
-                ),
-                agent_manager=self._agent_manager,
+            async for ev in self._relay_im_approval(
+                msg,
+                agent_id=agent_id,
+                user_id=user_id,
+                channel_type=channel_type,
+                session_key=session_key,
                 locale=locale,
-                usage_tracker=usage_tracker,
-                outcome=slash_outcome,
-                history_factory=self._begin_history,
-                history_finalize=self._complete_resumed_history,
-                member_hitl=self.teams.deliver_member_hitl,
+                command=cmd,
             ):
                 yield ev
-            if slash_outcome.completed_turn:
-                thread_id = self._thread_registry.get_bound_thread_id(session_key)
-                if thread_id is None:
-                    thread_id = await self._thread_registry.get_or_create_by_key(
-                        session_key=session_key,
-                        agent_id=agent_id,
-                        user_id=user_id,
-                        channel_type=channel_type,
-                        channel_channel_id=msg.channel_id or None,
-                        channel_metadata=im_meta,
-                    )
-                if thread_id:
-                    self._touch_thread_after_turn(thread_id, msg.text)
-                    if usage_tracker.usage:
-                        self._record_turn_usage(
-                            agent_id=agent_id,
-                            user_id=user_id,
-                            thread_id=thread_id,
-                            usage=usage_tracker.usage,
-                        )
             yield MessageEvent.completed()
             return
 
@@ -687,6 +957,7 @@ class GlobalProcessor:
                 session_key,
                 agent_id=agent_id,
                 user_id=user_id,
+                thread_id=_inbound_thread_id(msg),
             )
             if ask_record is not None:
                 usage_tracker = UsageTracker()
@@ -730,6 +1001,26 @@ class GlobalProcessor:
                 yield MessageEvent.completed()
                 return
 
+            phrase = self._phrase_to_apply(
+                msg.text,
+                session_key=session_key,
+                agent_id=agent_id,
+                user_id=user_id,
+            )
+            if phrase is not None:
+                async for ev in self._iter_applied_phrase(
+                    msg,
+                    phrase=phrase,
+                    agent_id=agent_id,
+                    user_id=user_id,
+                    channel_type=channel_type,
+                    session_key=session_key,
+                    locale=locale,
+                ):
+                    yield ev
+                yield MessageEvent.completed()
+                return
+
         if cmd is not None:
             sink = _MessageEventSink()
             handled = await self._dispatcher.handle(
@@ -757,6 +1048,7 @@ class GlobalProcessor:
             channel_channel_id=msg.channel_id or None,
             channel_metadata=im_meta,
         )
+        self._schedule_auto_thread_title(thread_id, msg.text, user_id=user_id)
 
         media_backend = media_backend_for_agent(self._agent_manager, agent_id)
         content = await build_content_from_message(
@@ -764,13 +1056,14 @@ class GlobalProcessor:
             media_backend=media_backend,
             locale=locale,
         )
-        model_ref = self._resolve_harness_model(
+        model_route = self._resolve_harness_model_route(
             agent_id,
             thread_id,
             None,
             user_id=user_id,
             needs_multimodal=content_blocks_need_vision(content),
         )
+        model_ref = model_route.model_ref
         mcp_servers = await self._resolve_turn_mcp_servers(
             agent_id=agent_id,
             user_id=user_id,
@@ -807,6 +1100,7 @@ class GlobalProcessor:
             source=f"{msg.channel_type}/{msg.channel_id}",
             content=content,
             model=model_ref,
+            auto_route=model_route.automatic,
             message_kwargs=message_kwargs or None,
         )
         self.teams.stamp_host_runtime(request, agent_id)
@@ -829,9 +1123,10 @@ class GlobalProcessor:
         )
 
         yield MessageEvent.typing()
+        turn_started = time.perf_counter()
         stream_ok = False
         hitl_paused = False
-        persist_failed_turn = False
+        failure_saved = False
         usage_tracker = UsageTracker()
         history_tracker = await self._begin_history(agent_id, thread_id, request)
         projection_state = StreamProjectionState()
@@ -864,7 +1159,6 @@ class GlobalProcessor:
             message, error_code = _stream_error(exc, locale)
             if error_code:
                 message = f"[{error_code}] {message}"
-            persist_failed_turn = True
             history_tracker.observe(
                 {
                     "type": "error",
@@ -872,9 +1166,12 @@ class GlobalProcessor:
                     **({"error_code": error_code} if error_code else {}),
                 }
             )
+            await self._persist_incomplete_turn(thread_id, history_tracker, title_source=msg.text)
+            failure_saved = True
             yield MessageEvent.error_event(message)
         else:
             if stream_ok and not hitl_paused:
+                history_tracker.note_turn_duration(_elapsed_ms(turn_started))
                 self._touch_thread_after_turn(thread_id, msg.text)
                 self._record_turn_usage(
                     agent_id=agent_id,
@@ -890,11 +1187,11 @@ class GlobalProcessor:
                         content=[TextContent(text=hint)],
                     )
         finally:
-            if persist_failed_turn or (not stream_ok and not hitl_paused):
+            if not failure_saved and (not stream_ok and not hitl_paused):
                 await self._persist_incomplete_turn(
                     thread_id, history_tracker, title_source=msg.text
                 )
-            else:
+            elif not failure_saved:
                 await self._finish_history(history_tracker, completed=stream_ok and not hitl_paused)
         yield MessageEvent.completed()
 
@@ -1001,6 +1298,7 @@ class GlobalProcessor:
                 session_key,
                 agent_id=agent_id,
                 user_id=user_id,
+                thread_id=_inbound_thread_id(msg),
             )
             if ask_record is not None:
                 usage_tracker = UsageTracker()
@@ -1047,6 +1345,33 @@ class GlobalProcessor:
                     agent_id,
                     team_host,
                 )
+                return
+
+            phrase = self._phrase_to_apply(
+                msg.text,
+                session_key=session_key,
+                agent_id=agent_id,
+                user_id=user_id,
+            )
+            if phrase is not None:
+                async for ev in self._iter_applied_phrase(
+                    msg,
+                    phrase=phrase,
+                    agent_id=agent_id,
+                    user_id=user_id,
+                    channel_type=channel_type,
+                    session_key=session_key,
+                    locale=locale,
+                ):
+                    for frame in message_event_to_cli_chunks(ev):
+                        yield _maybe_stamp_team_host(frame, agent_id, team_host)
+                bound = self._thread_registry.get_bound_thread_id(session_key)
+                done = (
+                    self._done_chunk(bound)
+                    if isinstance(bound, str) and bound.strip()
+                    else {"type": "done"}
+                )
+                yield _maybe_stamp_team_host(done, agent_id, team_host)
                 return
 
         handled, slash_lines, slash_actions = await try_handle_slash(
@@ -1106,6 +1431,8 @@ class GlobalProcessor:
                 channel_metadata=im_meta,
             )
 
+        self._schedule_auto_thread_title(thread_id, msg.text, user_id=user_id)
+        turn_started = time.perf_counter()
         self._hitl.expire_pending_for_thread(thread_id, agent_id=agent_id, user_id=user_id)
         self.teams.cancel_member_hitl(thread_id)
         request = await self._build_dashboard_request(
@@ -1117,14 +1444,6 @@ class GlobalProcessor:
             meta=meta,
         )
         history_tracker = await self._begin_history(agent_id, thread_id, request)
-        await self._observe_turn_start_context(
-            agent_id=agent_id,
-            thread_id=thread_id,
-            request=request,
-            meta=meta,
-            phase="system",
-            trajectory_enabled=traj_on,
-        )
         self._observe_trajectory(
             agent_id=agent_id,
             thread_id=thread_id,
@@ -1141,12 +1460,13 @@ class GlobalProcessor:
         )
 
         stream_ok = False
-        persist_failed_turn = False
+        failure_saved = False
         harness_workspace = harness_workspace_for_agent(self._agent_manager, agent_id)
         usage_tracker = UsageTracker()
-        # Align with IM stream_project: only push after a live tool_call this
-        # turn, then dedupe Overwrite replays and identical path/URL frames.
+        # Align with IM stream_project: only push tool_call ids opened this
+        # turn, then dedupe intra-turn replays and identical path/URL frames.
         saw_tool_call = False
+        live_tool_call_ids: set[str] = set()
         emitted_media_ids: set[str] = set()
         emitted_attachment_keys: set[str] = set()
         emitted_tool_error_ids: set[str] = set()
@@ -1195,6 +1515,7 @@ class GlobalProcessor:
                         }
                 if chunk.get("type") == "tool_call_chunk":
                     saw_tool_call = True
+                    note_live_tool_call(chunk, live_tool_call_ids)
                 if chunk.get("type") == "tool_result":
                     log_failed_tool_results(
                         chunk,
@@ -1213,7 +1534,7 @@ class GlobalProcessor:
                             chunk,
                             agent_id=agent_id,
                             workspace=harness_workspace,
-                            saw_tool_call=saw_tool_call,
+                            live_tool_call_ids=live_tool_call_ids,
                             emitted_media_ids=emitted_media_ids,
                             emitted_attachment_keys=emitted_attachment_keys,
                         ):
@@ -1241,15 +1562,18 @@ class GlobalProcessor:
             if error_code:
                 payload["error_code"] = error_code
             history_tracker.observe(payload)
-            persist_failed_turn = True
+            await self._persist_incomplete_turn(thread_id, history_tracker, title_source=msg.text)
+            failure_saved = True
             yield _maybe_stamp_team_host(payload, agent_id, team_host)
         finally:
             self._finish_trajectory(thread_id=thread_id, usage=usage_tracker.usage, enabled=traj_on)
-            if persist_failed_turn or not stream_ok:
+            if stream_ok:
+                history_tracker.note_turn_duration(_elapsed_ms(turn_started))
+            if not failure_saved and not stream_ok:
                 await self._persist_incomplete_turn(
                     thread_id, history_tracker, title_source=msg.text
                 )
-            else:
+            elif not failure_saved:
                 await self._finish_history(history_tracker, completed=stream_ok)
         if stream_ok:
             self._touch_thread_after_turn(thread_id, msg.text)
@@ -1260,7 +1584,14 @@ class GlobalProcessor:
                 usage=usage_tracker.usage,
             )
             await self._record_turn_history(thread_id, history_tracker)
-        yield _maybe_stamp_team_host(self._done_chunk(thread_id), agent_id, team_host)
+        yield _maybe_stamp_team_host(
+            self._done_chunk(
+                thread_id,
+                duration_ms=_elapsed_ms(turn_started) if stream_ok else None,
+            ),
+            agent_id,
+            team_host,
+        )
 
     async def iter_hitl_resume_chunks(
         self,
@@ -1273,8 +1604,9 @@ class GlobalProcessor:
         """Resume a dashboard HITL turn with the normal history bookkeeping."""
         usage_tracker = UsageTracker()
         history_tracker = await self._begin_history(agent_id, thread_id, {}, resume=True)
+        turn_started = time.perf_counter()
         completed = False
-        persist_failed_turn = False
+        failure_saved = False
         traj_on = self._agent_trajectory_enabled(agent_id)
         team_host = is_team_agent(self._agent_manager.get_row(agent_id))
         saw_tool_call = False
@@ -1329,13 +1661,16 @@ class GlobalProcessor:
             if error_code:
                 payload["error_code"] = error_code
             history_tracker.observe(payload)
-            persist_failed_turn = True
+            await self._persist_incomplete_turn(thread_id, history_tracker, title_source=None)
+            failure_saved = True
             yield _maybe_stamp_team_host(payload, agent_id, team_host)
         finally:
             self._finish_trajectory(thread_id=thread_id, usage=usage_tracker.usage, enabled=traj_on)
-            if persist_failed_turn or not completed:
+            if completed:
+                history_tracker.note_turn_duration(_elapsed_ms(turn_started))
+            if not failure_saved and not completed:
                 await self._persist_incomplete_turn(thread_id, history_tracker, title_source=None)
-            else:
+            elif not failure_saved:
                 await self._finish_history(history_tracker, completed=completed)
             if completed:
                 self._touch_thread_after_turn(thread_id, None)
@@ -1372,13 +1707,14 @@ class GlobalProcessor:
             media_backend=media_backend,
             locale=locale,
         )
-        model_ref = self._resolve_harness_model(
+        model_route = self._resolve_harness_model_route(
             agent_id,
             thread_id,
             meta,
             user_id=user_id,
             needs_multimodal=content_blocks_need_vision(content),
         )
+        model_ref = model_route.model_ref
         reasoning_overrides = self._resolve_reasoning_overrides(
             user_id=user_id,
             thread_id=thread_id,
@@ -1433,6 +1769,7 @@ class GlobalProcessor:
                 if built:
                     message_kwargs[COMPOSER_CTX_KEY] = built
 
+        client_message_id = meta.get("client_message_id")
         request = build_harness_request(
             thread_id=thread_id,
             user_id=user_id,
@@ -1441,8 +1778,10 @@ class GlobalProcessor:
             source=source,
             content=content,
             model=model_ref,
+            auto_route=model_route.automatic,
             message_kwargs=message_kwargs or None,
             reasoning_overrides=reasoning_overrides,
+            message_id=client_message_id if isinstance(client_message_id, str) else None,
         )
         self.teams.stamp_host_runtime(request, agent_id)
         self._attach_turn_knowledge_config(
@@ -1546,8 +1885,10 @@ class GlobalProcessor:
 
         stamp_conversation_mode(request, mode)
 
-    def _done_chunk(self, thread_id: str) -> dict[str, Any]:
+    def _done_chunk(self, thread_id: str, *, duration_ms: int | None = None) -> dict[str, Any]:
         payload: dict[str, Any] = {"type": "done"}
+        if duration_ms is not None and duration_ms >= 0:
+            payload["duration_ms"] = duration_ms
         thread = self._thread_registry.get_thread(thread_id)
         if thread is None:
             return payload
@@ -1679,8 +2020,123 @@ class GlobalProcessor:
 
     def _touch_thread_after_turn(self, thread_id: str, title_source: str | None) -> None:
         self._thread_registry.touch_last_active(thread_id)
-        if title_source:
+        # An in-flight AI title must not be overwritten by the raw question.
+        if title_source and thread_id not in self._title_inflight:
             self._thread_registry.set_title_if_null(thread_id, title_source)
+
+    def _plain_title(self, thread_id: str) -> str | None:
+        """Stored title, or ``None`` when the thread is still untitled.
+
+        Non-string titles (test doubles) count as already set so a mocked
+        registry does not start a model call.
+        """
+        try:
+            row = self._thread_registry.get_thread(thread_id)
+        except Exception:
+            return "set"
+        if row is None:
+            return ""
+        title = getattr(row, "title", None)
+        if title is None:
+            return None
+        if isinstance(title, str):
+            return title
+        return "set"
+
+    def _schedule_auto_thread_title(
+        self, thread_id: str, source: str | None, *, user_id: int
+    ) -> None:
+        from octop.infra.gateway.process.thread_title import should_autotitle  # noqa: PLC0415
+
+        text = (source or "").strip()
+        if thread_id in self._title_inflight or not should_autotitle(
+            text, self._plain_title(thread_id)
+        ):
+            return
+        from octop.infra.db.repos.threads import clip_thread_title  # noqa: PLC0415
+
+        # The list is read as soon as the turn ends. Keep the question visible
+        # while the model title is still running, and let that task replace it.
+        fallback = clip_thread_title(text)
+        if fallback:
+            self._thread_registry.set_title_if_null(thread_id, fallback)
+        self._title_inflight.add(thread_id)
+
+        async def _run() -> None:
+            try:
+                await self._generate_thread_title(thread_id, text, user_id=user_id)
+            finally:
+                self._title_inflight.discard(thread_id)
+
+        try:
+            asyncio.get_running_loop().create_task(_run())
+        except RuntimeError:
+            self._title_inflight.discard(thread_id)
+
+    async def _generate_thread_title(self, thread_id: str, source: str, *, user_id: int) -> None:
+        from octop.infra.db.repos.threads import clip_thread_title  # noqa: PLC0415
+        from octop.infra.gateway.process.thread_title import (  # noqa: PLC0415
+            clean_generated_title,
+            clip_title_source,
+        )
+        from octop.infra.text_assist import run_text_assist  # noqa: PLC0415
+        from octop.infra.utils.locale import resolve_user_locale  # noqa: PLC0415
+
+        fallback = clip_thread_title(source)
+        current = self._plain_title(thread_id)
+        if current and current != fallback:
+            return
+        title = source
+        try:
+            locale = resolve_user_locale(user_repo=self._user_repo, user_id=user_id)
+            generated = await run_text_assist(
+                models=self._agent_manager.host_models,
+                kind="chat.thread_title",
+                text=clip_title_source(source),
+                locale=locale,
+            )
+            cleaned = clean_generated_title(generated)
+            if cleaned:
+                title = cleaned
+        except Exception:
+            logger.warning("thread title generation failed thread=%s", thread_id, exc_info=True)
+            title = source
+        final = clip_thread_title(title) or fallback
+        if not final:
+            return
+        latest = self._plain_title(thread_id)
+        if latest and latest != fallback:
+            return
+        if latest != final:
+            if latest:
+                self._thread_registry.update_title(thread_id, final)
+            else:
+                self._thread_registry.set_title_if_null(thread_id, final)
+        stored = self._plain_title(thread_id)
+        if isinstance(stored, str) and stored.strip() and stored != "set":
+            await self._push_thread_title(thread_id, stored)
+
+    def _thread_agent_id(self, thread_id: str) -> str:
+        try:
+            row = self._thread_registry.get_thread(thread_id)
+        except Exception:
+            return ""
+        agent_id = getattr(row, "agent_id", None)
+        return agent_id.strip() if isinstance(agent_id, str) else ""
+
+    async def _push_thread_title(self, thread_id: str, title: str) -> None:
+        hub = getattr(self._gateway, "ws_hub", None) if self._gateway is not None else None
+        push = getattr(hub, "push_to_thread", None)
+        if not callable(push):
+            return
+        frame: dict[str, Any] = {"type": "thread_title", "thread_id": thread_id, "title": title}
+        agent_id = self._thread_agent_id(thread_id)
+        if agent_id:
+            frame["agent_id"] = agent_id
+        try:
+            await push(thread_id, frame)
+        except Exception:
+            logger.debug("thread title push failed thread=%s", thread_id, exc_info=True)
 
     def _record_turn_usage(
         self,

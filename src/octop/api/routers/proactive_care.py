@@ -49,15 +49,15 @@ class ProactiveCareConfigBody(BaseModel):
 
     @model_validator(mode="after")
     def validate_time_range(self) -> ProactiveCareConfigBody:
-        """Validate the active hours: start must be earlier than end."""
+        """Reject an empty window. An earlier end means the window crosses midnight."""
         from octop.infra.proactive.scheduler import _parse_hhmm  # noqa: PLC0415
 
         start_t = _parse_hhmm(self.active_hours_start)
         end_t = _parse_hhmm(self.active_hours_end)
-        if start_t >= end_t:
+        if start_t == end_t:
             raise ValueError(
-                f"active_hours_start ({self.active_hours_start}) 必须早于 "
-                f"active_hours_end ({self.active_hours_end})"
+                f"active_hours_start ({self.active_hours_start}) 与 "
+                f"active_hours_end ({self.active_hours_end}) 不能相同"
             )
         return self
 
@@ -122,7 +122,7 @@ async def put_proactive_care_config(
     """Save the agent's proactive care push configuration and immediately update the scheduler.
 
     Parameter validation:
-    - active_hours_start < active_hours_end
+    - active_hours_start != active_hours_end (an earlier end crosses midnight)
     - min_interval_hours <= max_interval_hours
     - min_interval_hours >= 1
     """

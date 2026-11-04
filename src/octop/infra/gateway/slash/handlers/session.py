@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING
 
 from octop_harness.slash import SlashCommand, SlashSink
 
+from octop.i18n import error_message
 from octop.i18n.domains.slash import tr
 from octop.infra.db.repos.threads import clip_thread_title
 from octop.infra.errors import OctopError
@@ -134,6 +135,10 @@ async def cmd_delete(d: SlashDispatcher, cmd: SlashCommand, ctx: SlashCtx, sink:
         return
     if active and target.thread_id == active:
         await sink.text(tr("delete.active", lang))
+        return
+    hub = ctx.ws_hub
+    if hub is not None and hub.is_turn_active(target.thread_id):
+        await sink.text(error_message("THREAD_TURN_ACTIVE", lang))
         return
     if ctx.agent_manager is None:
         await sink.text(tr("delete.failed", lang))

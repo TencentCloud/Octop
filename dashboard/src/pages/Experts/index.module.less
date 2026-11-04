@@ -227,6 +227,81 @@
   margin-top: 5px;
 }
 
+.backendFlag {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 6px;
+  flex-shrink: 0;
+  line-height: 0;
+  background: var(--fn-bg-tertiary);
+  color: var(--fn-text-tertiary);
+}
+
+.backendFlag_shell {
+  color: #3d5a80;
+  background: rgba(61, 90, 128, 0.12);
+}
+
+.backendFlag_filesystem {
+  color: #389e0d;
+  background: rgba(82, 196, 26, 0.12);
+}
+
+.backendFlag_database {
+  color: #0958d9;
+  background: rgba(22, 119, 255, 0.1);
+}
+
+.backendFlag_storage {
+  color: #d46b08;
+  background: rgba(250, 140, 22, 0.12);
+}
+
+.backendFlag_sandbox {
+  color: #08979c;
+  background: rgba(19, 194, 194, 0.12);
+}
+
+.backendFlag_composite {
+  color: #1d39c4;
+  background: rgba(47, 84, 235, 0.1);
+}
+
+:global(html[data-theme="dark"]) {
+  .backendFlag_shell {
+    color: #9db4d0;
+    background: rgba(61, 90, 128, 0.28);
+  }
+
+  .backendFlag_filesystem {
+    color: #95de64;
+    background: rgba(82, 196, 26, 0.18);
+  }
+
+  .backendFlag_database {
+    color: #69b1ff;
+    background: rgba(22, 119, 255, 0.2);
+  }
+
+  .backendFlag_storage {
+    color: #ffc069;
+    background: rgba(250, 140, 22, 0.18);
+  }
+
+  .backendFlag_sandbox {
+    color: #5cdbd3;
+    background: rgba(19, 194, 194, 0.18);
+  }
+
+  .backendFlag_composite {
+    color: #85a5ff;
+    background: rgba(47, 84, 235, 0.22);
+  }
+}
+
 .agentCard2State {
   display: inline-flex;
   align-items: center;
@@ -655,6 +730,27 @@
   text-overflow: ellipsis;
 }
 
+.expertSceneBadge {
+  display: inline-flex;
+  align-items: center;
+  max-width: 100%;
+  margin-top: 4px;
+  padding: 0 6px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 500;
+  line-height: 18px;
+  color: var(--expert-accent, var(--fn-color-brand));
+  background: color-mix(
+    in srgb,
+    var(--expert-accent, var(--fn-color-brand)) 14%,
+    transparent
+  );
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 .agentCardStateRow {
   display: flex;
   align-items: center;
@@ -966,29 +1062,108 @@
 
 .marketContainer {
   min-width: 0;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
 }
 
-.marketSceneTabsWrap {
+.marketStage {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   width: 100%;
-  margin-top: 16px;
-  margin-bottom: 16px;
-  overflow-x: auto;
-  -webkit-overflow-scrolling: touch;
-  padding-bottom: 2px;
+  min-height: 240px;
 }
 
-.marketSceneTabs {
-  width: 100%;
-  min-width: max-content;
-
-  :global(.ant-segmented-item) {
-    min-width: 4.75em;
+/* antd Card's dark token tints these placeholders blue. */
+:global(html[data-theme="dark"]) .loadingSkeleton {
+  :global(.octop-card) {
+    background: var(--fn-bg-primary) !important;
+    border-color: var(--fn-card-border-normal) !important;
   }
 
-  :global(.ant-segmented-item-label) {
-    font-weight: 500;
-    white-space: nowrap;
+  :global(.octop-skeleton-title),
+  :global(.octop-skeleton-paragraph > li),
+  :global(.octop-skeleton-avatar) {
+    background-image: linear-gradient(
+      90deg,
+      var(--fn-bg-tertiary) 25%,
+      color-mix(in srgb, var(--fn-bg-tertiary) 78%, #fff) 37%,
+      var(--fn-bg-tertiary) 63%
+    ) !important;
+    background-size: 400% 100% !important;
   }
+}
+
+.gridToolbar.marketSourceRow {
+  flex-wrap: nowrap;
+  align-items: center;
+}
+
+.marketSourceTabs {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  flex-shrink: 0;
+  min-width: 0;
+}
+
+.marketSourceTab {
+  appearance: none;
+  margin: 0;
+  padding: 4px 0;
+  border: 0;
+  background: none;
+  color: var(--fn-text-tertiary);
+  font-size: 15px;
+  font-weight: 500;
+  line-height: 22px;
+  cursor: pointer;
+  white-space: nowrap;
+
+  &:hover {
+    color: var(--fn-text-secondary);
+  }
+}
+
+.marketSourceTabActive {
+  color: var(--fn-text-primary);
+  font-weight: 600;
+
+  &:hover {
+    color: var(--fn-text-primary);
+  }
+}
+
+.marketBlock {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+
+  .cardGrid {
+    padding-top: 12px;
+    padding-bottom: 0;
+  }
+}
+
+.marketBlockTitle {
+  flex-shrink: 0;
+  font-size: 14px;
+  line-height: 22px;
+  color: var(--fn-text-primary);
+  font-variant-numeric: tabular-nums;
+}
+
+.marketBlockHint {
+  margin: 0 0 8px;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--fn-text-tertiary);
+}
+
+.marketSearchPublishedGrid {
+  padding-bottom: 0;
 }
 
 .marketCardHeader {
@@ -998,8 +1173,20 @@
   min-width: 0;
 }
 
+.marketCardTitleRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+
+  .agentCardName {
+    flex: 0 1 auto;
+    min-width: 0;
+  }
+}
+
 .marketSearch {
-  width: 280px;
+  width: 200px;
   min-width: 0;
 
   @media (max-width: 640px) {
@@ -1021,9 +1208,9 @@
 
 .marketIconImg {
   display: block;
-  width: 22px;
-  height: 22px;
-  object-fit: contain;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
 }
 
 .marketCardFooter {
@@ -1317,6 +1504,14 @@
   flex-wrap: wrap;
 }
 
+.gridToolbarLeft {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  min-width: 0;
+}
+
 .gridToolbarRight {
   display: flex;
   align-items: center;
@@ -1463,7 +1658,32 @@
   margin-top: 8px;
 }
 
+.marketLoadResult {
+  padding: 16px;
+
+  :global(.ant-result-icon) {
+    display: flex;
+    justify-content: center;
+    margin-bottom: 0;
+  }
+
+  :global(.ant-result-title) {
+    font-size: 16px;
+    line-height: 1.4;
+  }
+
+  :global(.ant-result-subtitle) {
+    max-width: 360px;
+    margin-inline: auto;
+    color: var(--fn-text-tertiary);
+  }
+}
+
 /* ── Drawer shared styles ──────────────────────────────────────── */
+
+.textAssistField {
+  margin-bottom: 4px !important;
+}
 
 .drawerSection {
   margin-bottom: 24px;
@@ -1485,22 +1705,36 @@
   min-width: 0;
 }
 
-/* Match collapse header width with sibling sections (config / skills / …). */
+/* Section toggles in the create/edit drawers. Headers only — expanded bodies stay as-is. */
 .drawerCollapse {
   width: 100%;
+  margin: 0;
 
-  :global(.ant-collapse-item) {
+  > :global(.octop-collapse-item) {
     width: 100%;
+    border: none !important;
   }
 
-  :global(.ant-collapse-header) {
+  > :global(.octop-collapse-item) > :global(.octop-collapse-header) {
     width: 100% !important;
     align-items: center !important;
+    padding: 6px 0 !important;
+    padding-inline: 0 !important;
+    margin: 0 !important;
   }
 
-  :global(.ant-collapse-header-text) {
+  > :global(.octop-collapse-item)
+    > :global(.octop-collapse-header)
+    :global(.octop-collapse-expand-icon) {
+    padding-inline-start: 0 !important;
+    padding-inline-end: 8px !important;
+    margin-inline-start: 0 !important;
+  }
+
+  :global(.octop-collapse-header-text) {
     flex: 1 1 auto;
     min-width: 0;
+    margin-inline: 0 !important;
   }
 }
 

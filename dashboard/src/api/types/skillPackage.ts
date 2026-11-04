@@ -7,6 +7,11 @@ export interface SkillPackage {
   creator_display_name?: string | null;
   can_write?: boolean;
   can_copy?: boolean;
+  can_download?: boolean;
+  shared?: boolean;
+  allow_download?: boolean;
+  visibility?: "all" | "groups" | "owner";
+  group_ids?: string[];
   copy_policy?: "snapshot" | "lock" | "deny";
   skill_count: number;
   icon_name?: string;
@@ -48,6 +53,11 @@ export interface CreateSkillPackageBody {
   description?: string;
   icon_name?: string;
   icon_url?: string;
+  shared?: boolean;
+  visibility?: "all" | "groups" | "owner";
+  group_ids?: string[];
+  copy_policy?: "snapshot" | "lock" | "deny";
+  allow_download?: boolean;
 }
 
 export interface UpdateSkillPackageBody {
@@ -55,7 +65,11 @@ export interface UpdateSkillPackageBody {
   description?: string;
   icon_name?: string;
   icon_url?: string;
+  shared?: boolean;
+  visibility?: "all" | "groups" | "owner";
+  group_ids?: string[];
   copy_policy?: "snapshot" | "lock" | "deny";
+  allow_download?: boolean;
 }
 
 export interface CreateSkillPackageSkillBody {

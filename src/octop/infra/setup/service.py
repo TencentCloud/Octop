@@ -24,6 +24,7 @@ from octop.infra.utils.json_file import (
 )
 from octop.infra.utils.paths import PathLayout
 from octop.infra.utils.posix_compat import chown, geteuid, getuid, is_root
+from octop.infra.utils.process_resources import NOFILE_TARGET
 
 logger = logging.getLogger(__name__)
 
@@ -60,7 +61,7 @@ _ENV_SCOPE = "OCTOP_SERVICE_SCOPE"
 
 # systemd/launchd often inherit a 1024 soft NOFILE cap. SSE, SQLite, MCP, and
 # agent subprocesses exhaust that and surface as EMFILE on accept().
-SERVICE_NOFILE_LIMIT = 65535
+SERVICE_NOFILE_LIMIT = NOFILE_TARGET
 
 
 @dataclass(frozen=True)

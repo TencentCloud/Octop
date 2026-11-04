@@ -34,6 +34,10 @@ export function needsAuthBlobFetch(url: string): boolean {
   if (/^\/api\/agents\/[^/]+\/avatar$/.test(path)) return true;
   if (/^\/api\/users\/\d+\/avatar$/.test(path)) return true;
   if (/^\/api\/users\/roles\/[^/]+\/avatar$/.test(path)) return true;
+  if (/^\/api\/user-groups\/[^/]+\/avatar$/.test(path)) return true;
+  if (/^\/api\/skill-packages\/[^/]+\/avatar$/.test(path)) return true;
+  if (/^\/api\/knowledge-bases\/[^/]+\/avatar$/.test(path)) return true;
+  if (/^\/api\/bridge\/connections\/[^/]+\/avatar$/.test(path)) return true;
   if (/^\/api\/experts\/published\/[^/]+\/avatar$/.test(path)) return true;
   if (/^\/api\/agents\/[^/]+\/media\/preview$/.test(path)) return true;
   if (/^\/api\/agents\/[^/]+\/workspace\/download$/.test(path)) return true;

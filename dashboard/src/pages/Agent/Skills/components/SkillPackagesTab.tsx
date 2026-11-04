@@ -232,7 +232,7 @@ export default function SkillPackagesTab({
     return <Spin className={styles.skillPackagesLoading} />;
   }
 
-  if (catalog.length === 0) {
+  if (catalog.length === 0 && mountedIds.length === 0) {
     return (
       <Empty
         image={Empty.PRESENTED_IMAGE_SIMPLE}
@@ -241,11 +241,22 @@ export default function SkillPackagesTab({
     );
   }
 
+  const catalogIds = new Set(catalog.map((pack) => pack.id));
+  const lostIds = mountedIds.filter((id) => !catalogIds.has(id));
+
   const detailMounted =
     detailPackage != null && mountedSet.has(detailPackage.id);
 
   return (
     <>
+      {lostIds.length > 0 ? (
+        <Alert
+          type="warning"
+          showIcon
+          className={styles.packageMountAlert}
+          message={t("skills.packagesLostAccess", { ids: lostIds.join(", ") })}
+        />
+      ) : null}
       {packagesSupported ? (
         <p className={styles.packageMountHint}>
           {t("skills.mountBackendHint")}

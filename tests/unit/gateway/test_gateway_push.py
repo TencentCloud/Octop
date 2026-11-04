@@ -265,12 +265,28 @@ async def test_push_text_from_session_dashboard_injects_thread_id(gateway: Gatew
     row = gateway.thread_registry.get_session(sk)
     assert row is not None
     assert row.unread_count == 1
+    thread = gateway.thread_registry.get_thread("thr_dash")
+    assert thread is not None
+    assert thread.title == "记得喝水"
     gateway._channel_manager.push_text.assert_awaited_once()
     args = gateway._channel_manager.push_text.await_args
     assert args.args[0] == WS_CHANNEL_ID
     subject = args.args[1]
     assert subject.metadata["thread_id"] == "thr_dash"
     assert args.args[2] == "记得喝水"
+
+
+@pytest.mark.asyncio
+async def test_dashboard_push_titles_thread_when_channel_push_fails(gateway: Gateway) -> None:
+    sk = _insert_dashboard_session(gateway)
+    gateway._channel_manager.push_text = AsyncMock(side_effect=RuntimeError("channel down"))
+
+    with pytest.raises(RuntimeError, match="channel down"):
+        await gateway.push_text_from_session("a1", sk, "记得喝水")
+
+    thread = gateway.thread_registry.get_thread("thr_dash")
+    assert thread is not None
+    assert thread.title == "记得喝水"
 
 
 @pytest.mark.asyncio

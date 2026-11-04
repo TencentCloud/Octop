@@ -324,6 +324,12 @@ async def cmd_model(d: SlashDispatcher, cmd: SlashCommand, ctx: SlashCtx, sink: 
             await sink.action("clear_model")
         await sink.text(tr("model.cleared", lang))
         return
+    if ctx.agent_manager is not None and not ctx.agent_manager.model_ref_allowed_for_user(
+        ctx.user_id,
+        name,
+    ):
+        await sink.text(tr("model.denied", lang, model=name))
+        return
     d.set_thread_model_override(ctx, tid, name)
     if hasattr(sink, "action"):
         await sink.action("set_model", model=name)

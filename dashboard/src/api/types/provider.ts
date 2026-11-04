@@ -179,5 +179,5 @@ export interface TestSearchResponse {
   result_count?: number;
   message?: string;
   error?: string;
-  error_type?: string; // "auth_error" | "timeout" | "network_error" | "invalid_config" | "unknown"
+  error_type?: string; // "auth_error" | "insufficient_balance" | "rate_limit" | "timeout" | "network_error" | "invalid_config" | "unknown"
 }

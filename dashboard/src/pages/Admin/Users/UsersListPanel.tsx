@@ -42,6 +42,8 @@ import { ResizableTable } from "@/components/ResizableTable";
 import {
   Bot,
   Check,
+  ChevronDown,
+  ChevronRight,
   CircleHelp,
   Coins,
   IdCard,
@@ -64,7 +66,9 @@ import {
   X,
 } from "lucide-react";
 import { useTranslation } from "react-i18next";
+import cx from "classnames";
 import { request } from "../../../api/request";
+import { authApi } from "../../../api/modules/auth";
 import {
   userRolesApi,
   snapshotRoleLabel,
@@ -72,7 +76,6 @@ import {
   userRoleLabel,
   type UserRole,
 } from "../../../api/modules/userRoles";
-import { authApi } from "../../../api/modules/auth";
 import { preferencesApi } from "../../../api/modules/preferences";
 import type { SidebarNavLayout } from "../../../layouts/sidebarNavLayout";
 import { buildPermissionPickerGroups } from "./permissionPickerLayout";
@@ -89,6 +92,7 @@ import InviteDrawer from "./InviteDrawer";
 import RootDirSelect from "../../Experts/components/RootDirSelect";
 import { fetchFilesystemDefaults } from "../../Experts/components/agentBackendForm";
 import { HOST_FS_ROOT } from "../../Experts/components/rootDirTree";
+import { ExpertIcon } from "../../Experts/components/iconForName";
 import expertStyles from "../../Experts/index.module.less";
 import styles from "./index.module.less";
 import {
@@ -110,6 +114,7 @@ interface UserRow {
   email?: string | null;
   has_password?: boolean;
   sso_linked?: boolean;
+  directory?: boolean;
   disabled: boolean;
   login_failed_count?: number;
   login_locked?: boolean;
@@ -123,6 +128,8 @@ interface UserRow {
   workspace_root_dir?: string | null;
   token_quota?: number | null;
   max_agents?: number | null;
+  /** Present when the users list includes MFA status from the backend. */
+  mfa_active?: boolean;
 }
 
 export interface PermissionCatalogItem {
@@ -147,15 +154,132 @@ export interface PolicyFormValues {
   max_agents?: number | null;
 }
 
+const DEFAULT_EXPERT_TEMPLATE_ID = "general-assistant";
+
+interface ExpertTemplateOption {
+  id: string;
+  label: string;
+  description?: string;
+  icon_url?: string | null;
+  icon_name?: string | null;
+}
+
+function ExpertTemplatePicker({
+  value,
+  onChange,
+  options,
+}: {
+  value?: string;
+  onChange?: (id: string) => void;
+  options: ExpertTemplateOption[];
+}) {
+  const { t } = useTranslation();
+  const [query, setQuery] = useState("");
+  const listRef = useRef<HTMLDivElement>(null);
+  const scrolledFor = useRef<string | null>(null);
+  const needle = query.trim().toLowerCase();
+  const visible = useMemo(() => {
+    if (!needle) return options;
+    return options.filter((item) =>
+      `${item.label} ${item.description ?? ""}`.toLowerCase().includes(needle),
+    );
+  }, [needle, options]);
+
+  useEffect(() => {
+    const list = listRef.current;
+    if (!list || !value || scrolledFor.current === value) return;
+    const selected = list.querySelector<HTMLElement>("[aria-selected='true']");
+    if (!selected) return;
+    const listRect = list.getBoundingClientRect();
+    const itemRect = selected.getBoundingClientRect();
+    if (itemRect.top < listRect.top) {
+      list.scrollTop -= listRect.top - itemRect.top;
+    } else if (itemRect.bottom > listRect.bottom) {
+      list.scrollTop += itemRect.bottom - listRect.bottom;
+    }
+    scrolledFor.current = value;
+  }, [value, visible]);
+
+  return (
+    <div className={styles.expertTemplatePicker}>
+      <Input
+        allowClear
+        value={query}
+        prefix={<Search size={14} />}
+        placeholder={t("experts.searchPlaceholder")}
+        onChange={(event) => setQuery(event.target.value)}
+      />
+      <div
+        ref={listRef}
+        className={styles.expertTemplateList}
+        role="listbox"
+        aria-label={t("adminUsers.expertTemplate")}
+      >
+        {visible.length === 0 ? (
+          <div className={styles.expertTemplateEmpty}>
+            {t("experts.searchEmpty")}
+          </div>
+        ) : (
+          visible.map((item) => {
+            const selected = item.id === value;
+            return (
+              <button
+                key={item.id}
+                type="button"
+                role="option"
+                aria-selected={selected}
+                className={cx(
+                  styles.expertTemplateRow,
+                  selected && styles.expertTemplateRowSelected,
+                )}
+                onClick={() => onChange?.(item.id)}
+              >
+                <span className={styles.expertTemplateAvatar}>
+                  <ExpertIcon
+                    iconUrl={item.icon_url}
+                    iconName={item.icon_name}
+                    size={40}
+                  />
+                </span>
+                <span className={styles.expertTemplateMeta}>
+                  <span className={styles.expertTemplateName}>
+                    {item.label}
+                  </span>
+                  {item.description ? (
+                    <span className={styles.expertTemplateDesc}>
+                      {item.description}
+                    </span>
+                  ) : null}
+                </span>
+                {selected ? (
+                  <Check
+                    size={16}
+                    strokeWidth={2.5}
+                    className={styles.expertTemplateCheck}
+                    aria-hidden
+                  />
+                ) : null}
+              </button>
+            );
+          })
+        )}
+      </div>
+    </div>
+  );
+}
+
 interface CreateValues extends PolicyFormValues {
   username: string;
   display_name?: string;
   email?: string;
-  password: string;
-  confirm: string;
+  directory?: boolean;
+  password?: string;
+  confirm?: string;
   role: string;
   permissions?: string[];
   role_name?: string | null;
+  create_default_expert?: boolean;
+  expert_template_id?: string;
 }
 
 interface EditValues extends PolicyFormValues {
@@ -353,7 +477,7 @@ function RoleNameMark({
     return <span className={className}>—</span>;
   }
   return (
-    <span className={`${styles.roleNameMark} ${className ?? ""}`}>
+    <span className={cx(styles.roleNameMark, className)}>
       {matched ? (
         <ProfileAvatar
           url={matched.avatar_url}
@@ -414,6 +538,7 @@ interface UserCardGridProps {
   onEdit: (row: UserRow) => void;
   onShowAgents: (row: UserRow) => void;
   onResetPassword: (row: UserRow) => void;
+  onResetMfa: (row: UserRow) => Promise<void>;
   onDelete: (row: UserRow) => Promise<void>;
   onUnlockLogin: (row: UserRow) => Promise<void>;
   nowSec: number;
@@ -548,9 +673,10 @@ function TokenQuotaInput({ value, onChange }: TokenQuotaInputProps) {
             <button
               key={preset}
               type="button"
-              className={`${styles.tokenQuotaPreset} ${
-                selected ? styles.tokenQuotaPresetActive : ""
-              }`}
+              className={cx(
+                styles.tokenQuotaPreset,
+                selected && styles.tokenQuotaPresetActive,
+              )}
               onClick={() => onChange?.(preset)}
             >
               {t("adminUsers.policyTokenQuotaPreset", {
@@ -602,9 +728,10 @@ function MaxAgentsInput({ value, onChange }: MaxAgentsInputProps) {
             <button
               key={preset}
               type="button"
-              className={`${styles.tokenQuotaPreset} ${
-                selected ? styles.tokenQuotaPresetActive : ""
-              }`}
+              className={cx(
+                styles.tokenQuotaPreset,
+                selected && styles.tokenQuotaPresetActive,
+              )}
               onClick={() => onChange?.(preset)}
             >
               {preset}
@@ -625,7 +752,7 @@ export function ResourcePolicyFields({
 }) {
   const { t } = useTranslation();
   return (
-    <div className={`${styles.createSection} ${styles.policySection}`}>
+    <div className={cx(styles.createSection, styles.policySection)}>
       <div className={styles.createSectionTitle}>
         {t("adminUsers.createSectionPolicy")}
       </div>
@@ -739,6 +866,62 @@ interface PermissionCheckboxPickerProps {
   disabled?: boolean;
 }
 
+function PermFoldHeader({
+  title,
+  titleClassName,
+  open,
+  disabled,
+  checkable,
+  checked,
+  indeterminate,
+  countLabel,
+  onToggle,
+  onCheck,
+}: {
+  title: string;
+  titleClassName: string;
+  open: boolean;
+  disabled?: boolean;
+  checkable: boolean;
+  checked: boolean;
+  indeterminate: boolean;
+  countLabel: string | null;
+  onToggle: () => void;
+  onCheck: (checked: boolean) => void;
+}) {
+  return (
+    <div className={styles.permFoldHeader}>
+      {checkable ? (
+        <Checkbox
+          checked={checked}
+          indeterminate={indeterminate}
+          disabled={disabled}
+          aria-label={title}
+          onChange={(e) => onCheck(e.target.checked)}
+        />
+      ) : null}
+      <button
+        type="button"
+        className={styles.permCollapseBtn}
+        aria-expanded={open}
+        onClick={onToggle}
+      >
+        <span className={styles.permChevron} aria-hidden>
+          {open ? (
+            <ChevronDown size={14} strokeWidth={2} />
+          ) : (
+            <ChevronRight size={14} strokeWidth={2} />
+          )}
+        </span>
+        <span className={titleClassName}>{title}</span>
+      </button>
+      {countLabel ? (
+        <span className={styles.permGroupCount}>{countLabel}</span>
+      ) : null}
+    </div>
+  );
+}
+
 export function PermissionCheckboxPicker({
   value,
   onChange,
@@ -750,6 +933,9 @@ export function PermissionCheckboxPicker({
   const selectedSet = useMemo(() => new Set(selected), [selected]);
   const [navLayout, setNavLayout] = useState<SidebarNavLayout | null>(null);
   const [navReady, setNavReady] = useState(false);
+  const [collapsedIds, setCollapsedIds] = useState<ReadonlySet<string>>(
+    () => new Set(),
+  );
 
   useEffect(() => {
     let cancelled = false;
@@ -795,6 +981,15 @@ export function PermissionCheckboxPicker({
     onChange?.(selected.filter((k) => !drop.has(k)));
   };
 
+  const toggleCollapsed = (id: string) => {
+    setCollapsedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
   if (catalog.length === 0) {
     return (
       <div className={styles.permEmpty}>
@@ -807,9 +1002,7 @@ export function PermissionCheckboxPicker({
 
   return (
     <div
-      className={`${styles.permPicker} ${
-        disabled ? styles.permPickerDisabled : ""
-      }`}
+      className={cx(styles.permPicker, disabled && styles.permPickerDisabled)}
     >
       {groups.map((group) => {
         const keys = group.blocks.flatMap((block) =>
@@ -834,7 +1027,7 @@ export function PermissionCheckboxPicker({
                 return (
                   <div
                     key={chip.key}
-                    className={`${styles.permChip} ${styles.permChipAlways}`}
+                    className={cx(styles.permChip, styles.permChipAlways)}
                     title={t("adminUsers.permAlwaysOn")}
                   >
                     <span className={styles.permChipLabel}>{chip.label}</span>
@@ -852,9 +1045,10 @@ export function PermissionCheckboxPicker({
                   type="button"
                   disabled={disabled}
                   aria-pressed={checked}
-                  className={`${styles.permChip} ${
-                    checked ? styles.permChipSelected : ""
-                  }`}
+                  className={cx(
+                    styles.permChip,
+                    checked && styles.permChipSelected,
+                  )}
                   onClick={() => toggle(item.key, !checked)}
                 >
                   <span className={styles.permChipCheck} aria-hidden>
@@ -866,72 +1060,135 @@ export function PermissionCheckboxPicker({
             })}
           </div>
         );
+        const groupOpen = !collapsedIds.has(group.id);
         return (
           <section key={group.id} className={styles.permGroup}>
-            <div className={styles.permGroupHeader}>
-              {keys.length > 0 ? (
-                <Checkbox
-                  checked={allChecked}
-                  indeterminate={indeterminate}
-                  disabled={disabled}
-                  onChange={(e) => setGroup(keys, e.target.checked)}
-                >
-                  <span className={styles.permGroupTitle}>{group.label}</span>
-                </Checkbox>
-              ) : (
-                <span className={styles.permGroupTitle}>{group.label}</span>
-              )}
-              {keys.length > 0 ? (
-                <span className={styles.permGroupCount}>
-                  {checkedCount}/{keys.length}
-                </span>
-              ) : null}
-            </div>
-            {group.blocks.map((block) => {
-              if (block.kind === "chips") {
-                const chipKey = block.items
-                  .map((chip) =>
-                    chip.kind === "always" ? chip.key : chip.item.key,
-                  )
-                  .join(",");
-                return <div key={chipKey}>{renderChips(block.items)}</div>;
+            <PermFoldHeader
+              title={group.label}
+              titleClassName={styles.permGroupTitle}
+              open={groupOpen}
+              disabled={disabled}
+              checkable={keys.length > 0}
+              checked={allChecked}
+              indeterminate={indeterminate}
+              countLabel={
+                keys.length > 0 ? `${checkedCount}/${keys.length}` : null
               }
-              const pageKeys = block.items.map((item) => item.key);
-              const pageChecked = pageKeys.filter((k) =>
-                selectedSet.has(k),
-              ).length;
-              const pageAll =
-                pageChecked === pageKeys.length && pageKeys.length > 0;
-              const pageIndeterminate = pageChecked > 0 && !pageAll;
-              return (
-                <div key={block.id} className={styles.permPage}>
-                  <div className={styles.permPageHeader}>
-                    <Checkbox
-                      checked={pageAll}
-                      indeterminate={pageIndeterminate}
-                      disabled={disabled}
-                      onChange={(e) => setGroup(pageKeys, e.target.checked)}
+              onToggle={() => toggleCollapsed(group.id)}
+              onCheck={(checked) => setGroup(keys, checked)}
+            />
+            {groupOpen
+              ? group.blocks.map((block) => {
+                  if (block.kind === "chips") {
+                    const chipKey = block.items
+                      .map((chip) =>
+                        chip.kind === "always" ? chip.key : chip.item.key,
+                      )
+                      .join(",");
+                    return <div key={chipKey}>{renderChips(block.items)}</div>;
+                  }
+                  const pageId = `${group.id}:${block.id}`;
+                  const pageOpen = !collapsedIds.has(pageId);
+                  const pageKeys = block.items.map((item) => item.key);
+                  const pageChecked = pageKeys.filter((k) =>
+                    selectedSet.has(k),
+                  ).length;
+                  const pageAll =
+                    pageChecked === pageKeys.length && pageKeys.length > 0;
+                  const pageIndeterminate = pageChecked > 0 && !pageAll;
+                  return (
+                    <div
+                      key={block.id}
+                      className={cx(
+                        styles.permPage,
+                        !pageOpen && styles.permPageCollapsed,
+                      )}
                     >
-                      <span className={styles.permPageTitle}>
-                        {block.title}
-                      </span>
-                    </Checkbox>
-                    <span className={styles.permGroupCount}>
-                      {pageChecked}/{pageKeys.length}
-                    </span>
-                  </div>
-                  {renderChips(
-                    block.items.map((item) => ({
-                      kind: "permission" as const,
-                      item,
-                    })),
-                  )}
-                </div>
-              );
-            })}
+                      <PermFoldHeader
+                        title={block.title}
+                        titleClassName={styles.permPageTitle}
+                        open={pageOpen}
+                        disabled={disabled}
+                        checkable={pageKeys.length > 0}
+                        checked={pageAll}
+                        indeterminate={pageIndeterminate}
+                        countLabel={`${pageChecked}/${pageKeys.length}`}
+                        onToggle={() => toggleCollapsed(pageId)}
+                        onCheck={(checked) => setGroup(pageKeys, checked)}
+                      />
+                      {pageOpen
+                        ? renderChips(
+                            block.items.map((item) => ({
+                              kind: "permission" as const,
+                              item,
+                            })),
+                          )
+                        : null}
+                    </div>
+                  );
+                })
+              : null}
           </section>
         );
       })}
+    </div>
+  );
+}
+
+/** Keeps the permissions field registered while the picker is unmounted. */
+function PermissionValueKeeper(_props: {
+  value?: string[];
+  onChange?: (value: string[]) => void;
+}) {
+  return null;
+}
+
+export function CollapsiblePermissionsField({
+  catalog,
+}: {
+  catalog: PermissionCatalogItem[];
+}) {
+  const { t } = useTranslation();
+  const [open, setOpen] = useState(false);
+  const permissions = Form.useWatch("permissions") as string[] | undefined;
+  const count = permissions?.length ?? 0;
+
+  return (
+    <div className={styles.permSectionFold}>
+      <div className={styles.permFoldHeader}>
+        <button
+          type="button"
+          className={styles.permCollapseBtn}
+          aria-expanded={open}
+          onClick={() => setOpen((prev) => !prev)}
+        >
+          <span className={styles.permChevron} aria-hidden>
+            {open ? (
+              <ChevronDown size={14} strokeWidth={2} />
+            ) : (
+              <ChevronRight size={14} strokeWidth={2} />
+            )}
+          </span>
+          <span className={styles.permGroupTitle}>
+            {t("adminUsers.colPermissions")}
+          </span>
+        </button>
+        <span className={styles.permGroupCount}>
+          {t("adminUsers.permCount", { count })}
+        </span>
+      </div>
+      <Form.Item
+        name="permissions"
+        preserve
+        hidden={!open}
+        className={styles.createUserPermItem}
+      >
+        {open ? (
+          <PermissionCheckboxPicker catalog={catalog} />
+        ) : (
+          <PermissionValueKeeper />
+        )}
+      </Form.Item>
     </div>
   );
 }
@@ -946,7 +1203,7 @@ function PermissionSummary({
   const { t } = useTranslation();
   if (row.role === "admin") {
     return (
-      <span className={`${styles.permBadge} ${styles.permBadgeAll}`}>
+      <span className={cx(styles.permBadge, styles.permBadgeAll)}>
         {t("adminUsers.permAll")}
       </span>
     );
@@ -990,6 +1247,7 @@ function UserCardGrid({
   onEdit,
   onShowAgents,
   onResetPassword,
+  onResetMfa,
   onDelete,
   onUnlockLogin,
   nowSec,
@@ -1021,14 +1279,12 @@ function UserCardGrid({
         return (
           <div
             key={row.id}
-            className={[
+            className={cx(
               styles.userCard,
-              selected ? styles.userCardSelected : "",
-              isLocked ? styles.userCardLocked : "",
-              row.disabled ? styles.userCardDisabled : "",
-            ]
-              .filter(Boolean)
-              .join(" ")}
+              selected && styles.userCardSelected,
+              isLocked && styles.userCardLocked,
+              row.disabled && styles.userCardDisabled,
+            )}
           >
             <div className={styles.userCardBody}>
               <div className={styles.userCardTop}>
@@ -1048,11 +1304,10 @@ function UserCardGrid({
                     className={styles.userCardAvatar}
                   />
                   <span
-                    className={
-                      row.disabled
-                        ? `${styles.userCardStatusDot} ${styles.userCardStatusDotOff}`
-                        : styles.userCardStatusDot
-                    }
+                    className={cx(
+                      styles.userCardStatusDot,
+                      row.disabled && styles.userCardStatusDotOff,
+                    )}
                   />
                 </span>
                 <div className={styles.userCardTitleBlock}>
@@ -1079,11 +1334,16 @@ function UserCardGrid({
               </p>
               <div className={styles.userCardQuiet}>
                 <PermissionSummary row={row} permLabelByKey={permLabelByKey} />
-                {row.sso_linked ? (
+                {row.directory ? (
+                  <span>{t("adminUsers.directoryBadge")}</span>
+                ) : row.sso_linked ? (
                   <span>{t("adminUsers.ssoBadge")}</span>
                 ) : null}
                 {row.has_password ? (
                   <span>{t("adminUsers.passwordBadge")}</span>
+                ) : null}
+                {row.mfa_active ? (
+                  <span>{t("adminUsers.mfaBadge")}</span>
                 ) : null}
               </div>
               {isLocked ? (
@@ -1153,6 +1413,23 @@ function UserCardGrid({
               </Tooltip>
 
               <Popconfirm
+                title={t("adminUsers.mfaResetConfirm", {
+                  username: row.username,
+                })}
+                onConfirm={() => void onResetMfa(row)}
+              >
+                <Tooltip title={t("adminUsers.mfaReset")} mouseEnterDelay={0.5}>
+                  <button
+                    type="button"
+                    className={styles.userCardIconBtn}
+                    aria-label={t("adminUsers.mfaReset")}
+                  >
+                    <ShieldCheck size={15} />
+                  </button>
+                </Tooltip>
+              </Popconfirm>
+
+              <Popconfirm
                 title={t("adminUsers.deleteConfirm", {
                   username: row.username,
                 })}
@@ -1167,7 +1444,10 @@ function UserCardGrid({
                 >
                   <button
                     type="button"
-                    className={`${styles.userCardIconBtn} ${styles.userCardIconBtnDanger}`}
+                    className={cx(
+                      styles.userCardIconBtn,
+                      styles.userCardIconBtnDanger,
+                    )}
                     disabled={isSelf}
                     aria-label={t("common.delete")}
                   >
@@ -1244,7 +1524,7 @@ function UserLoginLock({
 }
 
 export default function UsersListPanel() {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const setCurrentUser = useSetCurrentUser();
   const timeZone = useServerTimezone();
   const isMobile = useIsMobile();
@@ -1253,11 +1533,15 @@ export default function UsersListPanel() {
   const [rows, setRows] = useState<UserRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [createOpen, setCreateOpen] = useState(false);
+  const [expertTemplates, setExpertTemplates] = useState<
+    ExpertTemplateOption[]
+  >([]);
   const [pendingUserAvatar, setPendingUserAvatar] = useState<File | null>(null);
   const [pendingUserIcon, setPendingUserIcon] = useState<string | null>(null);
   const [inviteOpen, setInviteOpen] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [form] = Form.useForm<CreateValues>();
+  const directoryAccount = Form.useWatch("directory", form) === true;
   const [editTarget, setEditTarget] = useState<UserRow | null>(null);
   const [editSubmitting, setEditSubmitting] = useState(false);
   const [editForm] = Form.useForm<EditValues>();
@@ -1647,6 +1931,49 @@ export default function UsersListPanel() {
       });
   }, [refreshAll]);
 
+  useEffect(() => {
+    if (!createOpen) return;
+    let cancelled = false;
+    const lang = i18n.language.startsWith("zh") ? "zh" : "en";
+    void request<{
+      items: Array<{
+        slug: string;
+        label: { zh: string; en: string };
+        description?: { zh?: string; en?: string };
+        icon_url?: string | null;
+        icon_name?: string | null;
+      }>;
+    }>("/experts/hub")
+      .then((body) => {
+        if (cancelled) return;
+        const rows = Array.isArray(body.items) ? body.items : [];
+        setExpertTemplates(
+          rows.map((row) => ({
+            id: row.slug,
+            label: row.label?.[lang] || row.label?.en || row.slug,
+            description:
+              row.description?.[lang] || row.description?.en || undefined,
+            icon_url: row.icon_url,
+            icon_name: row.icon_name,
+          })),
+        );
+        const ids = new Set(rows.map((row) => row.slug));
+        const current = form.getFieldValue("expert_template_id");
+        if (typeof current !== "string" || !ids.has(current)) {
+          const next = ids.has(DEFAULT_EXPERT_TEMPLATE_ID)
+            ? DEFAULT_EXPERT_TEMPLATE_ID
+            : rows[0]?.slug;
+          form.setFieldValue("expert_template_id", next);
+        }
+      })
+      .catch(() => {
+        if (!cancelled) setExpertTemplates([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [createOpen, form, i18n.language]);
+
   const onCreate = async (values: CreateValues) => {
     setSubmitting(true);
     try {
@@ -1656,11 +1983,17 @@ export default function UsersListPanel() {
           username: values.username,
           display_name: values.display_name?.trim() || null,
           email: values.email?.trim() || null,
-          password: values.password,
+          ...(values.directory
+            ? { directory: true }
+            : { password: values.password }),
           role: values.role,
           permissions: values.role === "admin" ? [] : values.permissions ?? [],
           role_name: values.role_name?.trim() || null,
           ...policyPayload(values, { workspaceRootAllowed }),
+          create_default_expert: Boolean(values.create_default_expert),
+          expert_template_id: values.create_default_expert
+            ? values.expert_template_id || DEFAULT_EXPERT_TEMPLATE_ID
+            : null,
         }),
       });
       if (pendingUserAvatar) {
@@ -1711,6 +2044,7 @@ export default function UsersListPanel() {
       username: undefined,
       display_name: undefined,
       email: undefined,
+      directory: false,
       password: undefined,
       confirm: undefined,
       limit_workspace_root: false,
@@ -1719,6 +2053,8 @@ export default function UsersListPanel() {
       token_quota: undefined,
       limit_max_agents: false,
       max_agents: undefined,
+      create_default_expert: true,
+      expert_template_id: DEFAULT_EXPERT_TEMPLATE_ID,
       ...(userRole ? policyFieldsFromRole(userRole, workspaceRootAllowed) : {}),
     });
     setPendingUserAvatar(null);
@@ -1835,6 +2171,16 @@ export default function UsersListPanel() {
       );
     } finally {
       setResetSubmitting(false);
+    }
+  };
+
+  const onResetMfa = async (row: UserRow) => {
+    try {
+      await authApi.adminResetMfa(row.id);
+      message.success(t("adminUsers.mfaResetSuccess"));
+      void refreshUsers();
+    } catch (err) {
+      message.error(apiErrorMessage(err, t("adminUsers.mfaResetFailed"), t));
     }
   };
 
@@ -2007,6 +2353,7 @@ export default function UsersListPanel() {
             setResetTarget(row);
             resetForm.resetFields();
           }}
+          onResetMfa={onResetMfa}
           onDelete={onDelete}
           onUnlockLogin={onUnlockLogin}
           nowSec={nowSec}
@@ -2028,12 +2375,10 @@ export default function UsersListPanel() {
             preserveSelectedRowKeys: true,
           }}
           rowClassName={(row) =>
-            [
-              row.disabled ? styles.userTableRowDisabled : "",
-              row.login_locked ? styles.userTableRowLocked : "",
-            ]
-              .filter(Boolean)
-              .join(" ")
+            cx(
+              row.disabled && styles.userTableRowDisabled,
+              row.login_locked && styles.userTableRowLocked,
+            )
           }
           columns={[
             {
@@ -2082,8 +2427,13 @@ export default function UsersListPanel() {
               width: 120,
               render: (_, row) => {
                 const parts = [
-                  row.sso_linked ? t("adminUsers.ssoBadge") : null,
+                  row.directory
+                    ? t("adminUsers.directoryBadge")
+                    : row.sso_linked
+                    ? t("adminUsers.ssoBadge")
+                    : null,
                   row.has_password ? t("adminUsers.passwordBadge") : null,
+                  row.mfa_active ? t("adminUsers.mfaBadge") : null,
                 ].filter(Boolean);
                 return (
                   <span className={styles.userCellMuted}>
@@ -2191,6 +2541,22 @@ export default function UsersListPanel() {
                     </button>
                   </Tooltip>
                   <Popconfirm
+                    title={t("adminUsers.mfaResetConfirm", {
+                      username: row.username,
+                    })}
+                    onConfirm={() => void onResetMfa(row)}
+                  >
+                    <Tooltip title={t("adminUsers.mfaReset")}>
+                      <button
+                        type="button"
+                        className={styles.userCardIconBtn}
+                        aria-label={t("adminUsers.mfaReset")}
+                      >
+                        <ShieldCheck size={14} />
+                      </button>
+                    </Tooltip>
+                  </Popconfirm>
+                  <Popconfirm
                     title={t("adminUsers.deleteConfirm", {
                       username: row.username,
                     })}
@@ -2206,7 +2572,10 @@ export default function UsersListPanel() {
                     >
                       <button
                         type="button"
-                        className={`${styles.userCardIconBtn} ${styles.userCardIconBtnDanger}`}
+                        className={cx(
+                          styles.userCardIconBtn,
+                          styles.userCardIconBtnDanger,
+                        )}
                         disabled={row.id === currentUserId}
                         aria-label={t("common.delete")}
                       >
@@ -2322,6 +2691,8 @@ export default function UsersListPanel() {
             limit_workspace_root: false,
             limit_token_quota: false,
             limit_max_agents: false,
+            create_default_expert: true,
+            expert_template_id: DEFAULT_EXPERT_TEMPLATE_ID,
           }}
           className={styles.createUserForm}
         >
@@ -2377,52 +2748,62 @@ export default function UsersListPanel() {
               />
             </Form.Item>
             <Form.Item
-              label={t("adminUsers.formPassword")}
-              name="password"
-              rules={[
-                { required: true, message: t("adminUsers.formPassword") },
-              ]}
+              name="directory"
+              label={t("adminUsers.formDirectory")}
+              extra={t("adminUsers.formDirectoryHint")}
+              valuePropName="checked"
             >
-              <Input.Password
-                prefix={<Lock {...FIELD_ICON_PROPS} />}
-                autoComplete="new-password"
-              />
+              <Switch />
             </Form.Item>
-            <Form.Item
-              label={t("adminUsers.formPasswordConfirm")}
-              name="confirm"
-              dependencies={["password"]}
-              rules={[
-                {
-                  required: true,
-                  message: t("adminUsers.formPasswordConfirm"),
-                },
-                ({ getFieldValue }) => ({
-                  validator(_, value) {
-                    if (!value || getFieldValue("password") === value) {
-                      return Promise.resolve();
-                    }
-                    return Promise.reject(
-                      new Error(t("wizard.admin.passwordMismatch")),
-                    );
-                  },
-                }),
-              ]}
-            >
-              <Input.Password
-                prefix={<LockOpen {...FIELD_ICON_PROPS} />}
-                autoComplete="new-password"
-              />
-            </Form.Item>
+            {!directoryAccount && (
+              <>
+                <Form.Item
+                  label={t("adminUsers.formPassword")}
+                  name="password"
+                  rules={[
+                    { required: true, message: t("adminUsers.formPassword") },
+                  ]}
+                >
+                  <Input.Password
+                    prefix={<Lock {...FIELD_ICON_PROPS} />}
+                    autoComplete="new-password"
+                  />
+                </Form.Item>
+                <Form.Item
+                  label={t("adminUsers.formPasswordConfirm")}
+                  name="confirm"
+                  dependencies={["password"]}
+                  rules={[
+                    {
+                      required: true,
+                      message: t("adminUsers.formPasswordConfirm"),
+                    },
+                    ({ getFieldValue }) => ({
+                      validator(_, value) {
+                        if (!value || getFieldValue("password") === value) {
+                          return Promise.resolve();
+                        }
+                        return Promise.reject(
+                          new Error(t("wizard.admin.passwordMismatch")),
+                        );
+                      },
+                    }),
+                  ]}
+                >
+                  <Input.Password
+                    prefix={<LockOpen {...FIELD_ICON_PROPS} />}
+                    autoComplete="new-password"
+                  />
+                </Form.Item>
+              </>
+            )}
           </div>
 
           <div className={styles.createSection}>
             <div className={styles.createSectionTitle}>
               {t("adminUsers.createSectionAccess")}
             </div>
-            <div
-              className={`${styles.permAdminHint} ${styles.permSectionHint}`}
-            >
+            <div className={cx(styles.permAdminHint, styles.permSectionHint)}>
               <CircleHelp size={15} strokeWidth={2} />
               <span>{t("adminUsers.permEditHint")}</span>
             </div>
@@ -2445,16 +2826,49 @@ export default function UsersListPanel() {
                     </div>
                   );
                 }
-                return (
-                  <Form.Item
-                    label={t("adminUsers.colPermissions")}
-                    name="permissions"
-                    className={styles.createUserPermItem}
-                  >
-                    <PermissionCheckboxPicker catalog={permCatalog} />
-                  </Form.Item>
-                );
+                return <CollapsiblePermissionsField catalog={permCatalog} />;
               }}
+            </Form.Item>
+          </div>
+
+          <div className={styles.createSection}>
+            <div className={styles.createSectionTitle}>
+              {t("adminUsers.createSectionExpert")}
+            </div>
+            <Form.Item
+              label={t("adminUsers.createDefaultExpert")}
+              name="create_default_expert"
+              valuePropName="checked"
+              extra={t("adminUsers.createDefaultExpertHint")}
+            >
+              <Switch />
+            </Form.Item>
+            <Form.Item
+              noStyle
+              shouldUpdate={(prev, cur) =>
+                prev.create_default_expert !== cur.create_default_expert
+              }
+            >
+              {({ getFieldValue }) =>
+                getFieldValue("create_default_expert") ? (
+                  <Form.Item
+                    label={t("adminUsers.expertTemplate")}
+                    name="expert_template_id"
+                    rules={
+                      expertTemplates.length > 0
+                        ? [
+                            {
+                              required: true,
+                              message: t("adminUsers.expertTemplateRequired"),
+                            },
+                          ]
+                        : []
+                    }
+                  >
+                    <ExpertTemplatePicker options={expertTemplates} />
+                  </Form.Item>
+                ) : null
+              }
             </Form.Item>
           </div>
 
@@ -2606,9 +3020,7 @@ export default function UsersListPanel() {
             <div className={styles.createSectionTitle}>
               {t("adminUsers.createSectionAccess")}
             </div>
-            <div
-              className={`${styles.permAdminHint} ${styles.permSectionHint}`}
-            >
+            <div className={cx(styles.permAdminHint, styles.permSectionHint)}>
               <CircleHelp size={15} strokeWidth={2} />
               <span>{t("adminUsers.permEditHint")}</span>
             </div>
@@ -2653,15 +3065,7 @@ export default function UsersListPanel() {
                     </div>
                   );
                 }
-                return (
-                  <Form.Item
-                    label={t("adminUsers.colPermissions")}
-                    name="permissions"
-                    className={styles.createUserPermItem}
-                  >
-                    <PermissionCheckboxPicker catalog={permCatalog} />
-                  </Form.Item>
-                );
+                return <CollapsiblePermissionsField catalog={permCatalog} />;
               }}
             </Form.Item>
           </div>

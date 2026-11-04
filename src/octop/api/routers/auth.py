@@ -4,14 +4,15 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from typing import Any
+from typing import Any, Literal
 
 from fastapi import APIRouter, Depends, File, Request, Response, UploadFile
 from pydantic import BaseModel, Field
 
 from octop.api.common.client_ip import resolve_client_ip
-from octop.api.deps import current_user, get_server, sign_token
+from octop.api.deps import ACCESS_TOKEN_RESPONSE_HEADER, current_user, get_server
 from octop.infra.auth.captcha import current_env, ensure_captcha, load_effective, public_config
+from octop.infra.auth.mfa import MfaService
 from octop.infra.errors import ErrorCode, OctopError
 from octop.infra.users.email import normalize_email
 from octop.infra.users.permissions import effective_permissions
@@ -53,7 +54,7 @@ def me_payload(user: Any, server: Any) -> dict[str, Any]:
 
     payload["avatar_icon"] = row.avatar_icon
     payload["avatar_url"] = profile_avatar_url(
-        server.services.paths.user_avatars_dir,
+        server.services.avatars("user"),
         str(user.id),
         f"/api/users/{user.id}/avatar",
     )
@@ -153,7 +154,7 @@ async def _authenticate_ldap(server: Any, username: str, password: str, client_i
         _raise_if_throttled(retry_after)
         return None
     throttle.clear(username, client_ip)
-    return await service.resolve_user(identity)
+    return await service.resolve_user(identity, login_name=username)
 
 
 def _raise_if_throttled(retry_after: int) -> None:
@@ -189,16 +190,20 @@ async def login(
     )
     client_ip = _client_ip(request)
     await ensure_captcha(effective, body.captcha_token, client_ip)
+    amr: Literal["password", "ldap"] = "password"
     user = await server.user_manager.authenticate(body.username, body.password)
     if user is None:
         local_row = _local_row(server, body.username)
         if _directory_may_own(local_row):
             user = await _authenticate_ldap(server, body.username, body.password, client_ip)
+            if user is not None:
+                amr = "ldap"
     if user is None:
         raise OctopError(ErrorCode.AUTH_FAILED, "invalid credentials")
-    secret = server.services.secret_repo.get("jwt")
-    ttl = server.services.config.access_token_ttl_seconds
-    token = sign_token(secret, sub=user.id, uname=user.username, role=user.role, ttl_seconds=ttl)
+    mfa = MfaService(server.services)
+    if mfa.has_verified_factor(user.id):
+        return mfa.issue_mfa_challenge(user, amr=amr)
+    token, ttl = mfa.mint_access_token(user)
     return {
         "access_token": token,
         "token_type": "Bearer",
@@ -228,9 +233,16 @@ async def change_password(
     user: Any = Depends(current_user),
     server: Any = Depends(get_server),
 ) -> Response:
-    """Verify the old password and set a new one for the current user."""
+    """Verify the old password and set a new one for the current user.
+
+    Previously issued access tokens stop working. This response carries a
+    replacement in ``X-Octop-Access-Token`` so the current client stays signed in.
+    """
     await server.user_manager.change_password(user.username, body.old_password, body.new_password)
-    return Response(status_code=204)
+    token, _ttl = MfaService(server.services).mint_access_token(user)
+    response = Response(status_code=204)
+    response.headers[ACCESS_TOKEN_RESPONSE_HEADER] = token
+    return response
 
 
 class UpdateMeBody(BaseModel):
@@ -260,7 +272,7 @@ async def update_me(
         from octop.infra.users.profile_avatar import clean_avatar_icon, delete_profile_avatar
 
         server.services.user_repo.set_avatar_icon(user.id, clean_avatar_icon(body.avatar_icon))
-        delete_profile_avatar(server.services.paths.user_avatars_dir, str(user.id))
+        delete_profile_avatar(server.services.avatars("user"), str(user.id))
     updated = server.user_manager.get(user.username)
     assert updated is not None
     return me_payload(updated, server)
@@ -275,13 +287,13 @@ async def upload_my_avatar(
     from octop.infra.users.profile_avatar import profile_avatar_url, write_profile_avatar
 
     write_profile_avatar(
-        server.services.paths.user_avatars_dir,
+        server.services.avatars("user"),
         str(user.id),
         await file.read(),
     )
     return {
         "avatar_url": profile_avatar_url(
-            server.services.paths.user_avatars_dir,
+            server.services.avatars("user"),
             str(user.id),
             f"/api/users/{user.id}/avatar",
         )
@@ -295,5 +307,5 @@ async def delete_my_avatar(
 ) -> Response:
     from octop.infra.users.profile_avatar import delete_profile_avatar
 
-    delete_profile_avatar(server.services.paths.user_avatars_dir, str(user.id))
+    delete_profile_avatar(server.services.avatars("user"), str(user.id))
     return Response(status_code=204)

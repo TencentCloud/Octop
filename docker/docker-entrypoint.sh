@@ -14,6 +14,11 @@
 # 首次引导（issue #502）：容器不得因弱默认密码重启循环。未设置或不合格
 # 的 OCTOP_DEFAULT_PASSWORD 不再静默换成随机管理员密码，而是把向导口令
 # 写到数据卷（/data/.octop/octop-login.txt），打开页面走设置向导。
+#
+# 初始化标记（issue #1866）：PostgreSQL 等外部数据库不会在数据卷生成
+# octop.db，仅凭 DB_FILE 判断会在每次重启重复执行 octop init（管理员
+# INSERT 撞 UNIQUE 约束直接崩溃）。octop init 成功后写入
+# /data/.octop/.initialized，重启命中该标记即跳过引导直接启动。
 # =============================================================================
 set -euo pipefail
 
@@ -21,6 +26,7 @@ export HOME="${HOME:-/data}"
 OCTOP_HOME="${OCTOP_HOME:-${HOME}/.octop}"
 export OCTOP_HOME
 DB_FILE="${OCTOP_HOME}/octop.db"
+INIT_MARKER="${OCTOP_HOME}/.initialized"
 CREDENTIAL_FILE="${OCTOP_HOME}/credential.txt"
 WIZARD_FILE="${OCTOP_HOME}/octop-login.txt"
 ADMIN_USERNAME="${OCTOP_ADMIN_USERNAME:-admin}"
@@ -149,20 +155,69 @@ octop_run_init() {
         >"$init_log" 2>&1
 }
 
+# Docker 默认 /dev/shm 为 64MB。桌面已打进镜像时，太小的话用户一点启用，Xvnc 就会失败。
+# 只提示，不阻止 Octop 本身启动。conf_dir 默认 /etc/octop-desktop，测试可传入临时目录。
+octop_warn_small_shm() {
+    local conf_dir="${1:-/etc/octop-desktop}"
+    local bytes
+    [ -d "$conf_dir" ] || return 0
+    bytes="$(df -B1 --output=size /dev/shm 2>/dev/null | awk 'NR==2 {print $1}')"
+    [ -n "${bytes:-}" ] || return 0
+    if [ "$bytes" -lt 536870912 ]; then
+        echo "[entrypoint] /dev/shm 只有 $((bytes / 1024 / 1024))MB。启用远程桌面需要约 1GB，请使用 docker run --shm-size=1g，或在 compose 中设置 shm_size: 1gb。" >&2
+    fi
+}
+
+# 部分 ARM 虚拟机（飞牛在 Parallels 上）会把 CPU 特性报高，OpenBLAS / onnxruntime 随后 SIGILL。
+# 基线 OpenBLAS 对真 ARM 只是少用一点新指令。探测失败只写日志，服务继续启动。
+octop_prepare_arm_runtime() {
+    local py log code
+    case "$(uname -m)" in
+        aarch64|arm64) ;;
+        *) return 0 ;;
+    esac
+    if [ -z "${OPENBLAS_CORETYPE:-}" ]; then
+        export OPENBLAS_CORETYPE=ARMV8
+    fi
+    py="/app/.venv/bin/python"
+    [ -x "$py" ] || return 0
+    log="$(mktemp)"
+    set +e
+    "$py" -c "import cv2, onnxruntime" >"$log" 2>&1
+    code=$?
+    set -e
+    if [ "$code" -eq 132 ] || grep -qi 'illegal instruction' "$log"; then
+        echo "[entrypoint] cv2/onnxruntime 在这台 CPU 上出现非法指令（退出码 ${code}）。知识库 OCR 和本地向量不可用。ARM 虚拟机上常见（issues #2190、#2301）。Octop 仍会启动。" >&2
+    fi
+    rm -f "$log"
+}
+
 octop_entrypoint_main() {
     local default_password="${OCTOP_DEFAULT_PASSWORD:-}"
     local init_log reason
 
-    if [ ! -f "$DB_FILE" ]; then
+    octop_prepare_arm_runtime
+    octop_warn_small_shm
+
+    if [ ! -f "$DB_FILE" ] && [ ! -f "$INIT_MARKER" ]; then
         echo "[entrypoint] 首次启动，正在初始化 Octop..."
         mkdir -p "$OCTOP_HOME"
 
         if [ -n "$default_password" ] && octop_validate_password "$default_password" 2>/dev/null; then
             init_log="$(mktemp)"
             if octop_run_init "$default_password" "$init_log"; then
+                # init 对已有管理员幂等（输出 "already exists, skipping"，见
+                # cli/commands/init.py）。这种情况说明数据库早已完成引导，
+                # 重写凭据文件只会写下一个从未生效的密码，故保持原文件。
+                if grep -q 'already exists, skipping' "$init_log"; then
+                    echo "[entrypoint] 数据库已完成引导（管理员已存在），保留现有凭据文件。"
+                else
+                    octop_write_admin_credential "$default_password"
+                    echo "[entrypoint] 凭据已保存至: $CREDENTIAL_FILE"
+                fi
                 rm -f "$init_log"
-                octop_write_admin_credential "$default_password"
-                echo "[entrypoint] 凭据已保存至: $CREDENTIAL_FILE"
+                touch "$INIT_MARKER"
+                echo "[entrypoint] 已写入初始化标记 ${INIT_MARKER}，重启将跳过 octop init。"
             elif grep -qiE 'password is too common|password too short|password must include' "$init_log"; then
                 cat "$init_log" >&2 || true
                 rm -f "$init_log"
@@ -171,7 +226,7 @@ octop_entrypoint_main() {
             else
                 cat "$init_log" >&2 || true
                 rm -f "$init_log"
-                echo "[entrypoint] 初始化失败（不是密码策略问题）。若数据目录已有文件但没有 octop.db，请检查卷挂载。" >&2
+                echo "[entrypoint] 初始化失败（不是密码策略问题）。若数据目录已有文件但没有 octop.db（或使用外部数据库后端），请检查卷挂载与数据库连接。" >&2
                 exit 1
             fi
         else

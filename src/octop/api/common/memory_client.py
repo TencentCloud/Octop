@@ -178,6 +178,19 @@ def call_memory_rpc(
             # SQLite busy wait while maintenance status needs to remain visible.
             raise OctopError.localized(ErrorCode.AGENT_BUSY)
     _memory, bridge = _open_memory_for_agent(server, agent_id)
+    if method == "promote_candidate":
+        candidate = _memory.get_candidate((params or {}).get("candidate_id", ""))
+        if candidate is not None and candidate.payload.get("manual_revision"):
+            workspace = runtime.agent_registry.workspace_for_agent(agent_id)
+            if workspace is None:
+                raise OctopError.localized(ErrorCode.AGENT_BUSY)
+            params = {
+                **(params or {}),
+                "manual_documents": {
+                    name: (workspace.download_bytes(name) or b"").decode("utf-8")
+                    for name in ("USER.md", "MEMORY.md")
+                },
+            }
     payload = {
         "jsonrpc": "2.0",
         "id": 1,
