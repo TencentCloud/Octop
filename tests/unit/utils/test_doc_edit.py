@@ -16,6 +16,7 @@ from docx import Document
 
 from octop.infra.utils.doc_edit import (
     DocxDocConverter,
+    _parse_pipe_row,
     editable_doc_extensions,
     get_doc_converter,
     is_editable_doc,
@@ -103,6 +104,32 @@ def test_round_trip_preserves_structure() -> None:
     assert "**bold**" in markdown
     assert "*italic*" in markdown
     assert "- Item one" in markdown
+
+
+def test_pipe_row_unescapes_a_vertical_bar_in_a_cell() -> None:
+    assert _parse_pipe_row(r"| a\|b | c2 |") == ["a|b", "c2"]
+
+
+def test_pipe_row_keeps_a_backslash_before_other_characters() -> None:
+    # Only `\|` is an escape sequence here; other backslashes stay content.
+    assert _parse_pipe_row(r"| a\b | c |") == ["a\\b", "c"]
+
+
+def test_table_cell_containing_a_pipe_survives_the_docx_round_trip() -> None:
+    """A 2-column table must not come back as 3 columns after one save."""
+    document = Document()
+    document.add_table(rows=2, cols=2)
+    document.tables[0].cell(0, 0).text = "a|b"
+    document.tables[0].cell(0, 1).text = "c2"
+    document.tables[0].cell(1, 0).text = "1"
+    document.tables[0].cell(1, 1).text = "2"
+
+    markdown = DocxDocConverter.to_markdown(_docx_bytes(document))
+    assert r"| a\|b | c2 |" in markdown
+
+    reopened = Document(BytesIO(DocxDocConverter.from_markdown(markdown)))
+    rows = [[cell.text for cell in row.cells] for row in reopened.tables[0].rows]
+    assert rows == [["a|b", "c2"], ["1", "2"]]
 
 
 def test_to_markdown_empty_file_is_empty_document() -> None:

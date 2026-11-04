@@ -292,9 +292,19 @@ def _parse_pipe_row(raw: str) -> list[str] | None:
         return None
     cells: list[str] = []
     current: list[str] = []
+    escaped = False
     for char in line[1:-1]:
+        if escaped:
+            # An escaped character is literal content: it must never be
+            # treated as a cell separator. `_escape_cell` writes `\|` for a
+            # pipe inside a cell, so without this the generator's own output
+            # parses back into two cells.
+            current.append(char)
+            escaped = False
+            continue
         if char == "\\":
             current.append(char)
+            escaped = True
             continue
         if char == "|":
             cells.append("".join(current).strip().replace("\\|", "|"))
