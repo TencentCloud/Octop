@@ -61,6 +61,7 @@ import {
   startDashboardDevServer,
   stopDashboardDevServer,
 } from "./dev/dashboard-dev-server";
+import { windowsApplicationMenu } from "./windows/app-menu";
 import { createEarlyWindow } from "./windows/early-window";
 import { createMainWindow } from "./windows/main-window";
 import { isWindowOnScreen, presentWindows, shouldKeepWindowOnClose } from "./windows/present";
@@ -600,6 +601,24 @@ function revealAppWindow(): void {
   if (dashboardOrigin) openDashboardWindow(dashboardOrigin);
 }
 
+/** Windows menu bar under the system title row. Other platforms keep their own. */
+function installWindowsAppMenu(version: string): void {
+  if (process.platform !== "win32") return;
+  const locale = app.getLocale();
+  Menu.setApplicationMenu(
+    Menu.buildFromTemplate(
+      windowsApplicationMenu(locale, () => {
+        void dialog.showMessageBox({
+          type: "info",
+          title: locale.toLowerCase().startsWith("zh") ? "关于 Octop" : "About Octop",
+          message: "Octop",
+          detail: version,
+        });
+      }),
+    ),
+  );
+}
+
 /** Notification-area icon. Left click and "show" open the window; "quit" exits. */
 function installSystemTray(): void {
   if (tray || !shouldInstallSystemTray(process.platform)) return;
@@ -655,6 +674,7 @@ async function boot(): Promise<void> {
   }
 
   appVersion = await resolveProductVersion();
+  installWindowsAppMenu(appVersion);
 
   settingsStore = new ClientSettingsStore(defaultClientSettingsPath(app.getPath("userData")));
   const settings = settingsStore.load();

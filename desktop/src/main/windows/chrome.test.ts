@@ -29,46 +29,36 @@ function onPlatform(platform: NodeJS.Platform, run: () => void): void {
   }
 }
 
-test("macOS 交通灯落在收起导航内，并贴近窗口顶缘", () => {
-  assert.equal(chrome.CHROME_ROW_HEIGHT, 58);
-  assert.deepEqual(chrome.TRAFFIC_LIGHT_POSITION, { x: 4, y: 8 });
+test("macOS 交通灯用系统常规尺寸，不拉高到页面顶栏", () => {
+  assert.equal(chrome.TRAFFIC_LIGHT_BUTTON, 12);
+  assert.equal(chrome.TRAFFIC_LIGHT_ROW_HEIGHT, 28);
+  assert.ok(chrome.TRAFFIC_LIGHT_ROW_HEIGHT < chrome.CHROME_ROW_HEIGHT);
+  assert.deepEqual(chrome.TRAFFIC_LIGHT_POSITION, { x: 12, y: 8 });
   onPlatform("darwin", () => {
     assert.deepEqual(chrome.windowChrome("light"), {
       titleBarStyle: "hidden",
-      trafficLightPosition: { x: 4, y: 8 },
+      trafficLightPosition: { x: 12, y: 8 },
     });
   });
 });
 
-test("Windows 标题栏覆盖整个 58px 顶栏且随主题变色", () => {
+test("Windows 使用系统标题栏，菜单栏保持可见", () => {
   onPlatform("win32", () => {
-    for (const mode of ["light", "dark"] as const) {
-      const overlay = chrome.titlebarOverlay(mode);
-      assert.equal(overlay.height, 58);
-      assert.equal(overlay.color, "#00000000");
-      assert.equal(overlay.symbolColor, mode === "dark" ? "#e7e7ed" : "#1f2329");
-      assert.deepEqual(chrome.windowChrome(mode), {
-        frame: false,
-        titleBarStyle: "hidden",
-        titleBarOverlay: overlay,
-      });
-    }
+    assert.deepEqual(chrome.windowChrome("light"), { autoHideMenuBar: false });
+    assert.deepEqual(chrome.windowChrome("dark"), { autoHideMenuBar: false });
   });
 });
 
-test("Windows 切换主题后仍保留 58px 原生标题栏", () => {
+test("主题切换不再把标题栏按钮画到页面上", () => {
   onPlatform("win32", () => {
-    const overlays: unknown[] = [];
     const win = {
       isDestroyed: () => false,
-      setTitleBarOverlay: (overlay: unknown) => overlays.push(overlay),
+      setTitleBarOverlay: () => {
+        throw new Error("titleBarOverlay should not be used");
+      },
     } as unknown as BrowserWindow;
-    chrome.applyWindowChromeTheme(win, { mode: "dark" });
-    chrome.applyWindowChromeTheme(win, { mode: "light" });
-    assert.deepEqual(overlays, [
-      { color: "#00000000", symbolColor: "#e7e7ed", height: 58 },
-      { color: "#00000000", symbolColor: "#1f2329", height: 58 },
-    ]);
+    chrome.applyWindowChromeTheme(win, { mode: "dark", scheme: "dark" });
+    chrome.applyWindowChromeTheme(win, { mode: "light", scheme: "light" });
   });
 });
 

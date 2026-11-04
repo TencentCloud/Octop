@@ -1,7 +1,7 @@
 import { useDesktopChromeStyle } from "../hooks/useDesktopChrome";
 import { useWindowFullscreen } from "../hooks/useWindowFullscreen";
 import {
-  DESKTOP_CHROME_HEIGHT,
+  chromeTopBandPx,
   DESKTOP_DRAG_REGION_CLASS,
   windowControlsInset,
 } from "../utils/desktopChrome";
@@ -30,7 +30,7 @@ export default function DesktopWindowDragBand({
         top: 0,
         left: windowControlsInset(desktopChrome, "start"),
         right: windowControlsInset(desktopChrome, "end"),
-        height: DESKTOP_CHROME_HEIGHT,
+        height: chromeTopBandPx(desktopChrome),
         pointerEvents: "none",
       }}
     />

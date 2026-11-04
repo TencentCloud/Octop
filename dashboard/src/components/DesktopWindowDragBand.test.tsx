@@ -2,7 +2,9 @@ import { cleanup, render } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { DesktopChromeProvider } from "../hooks/useDesktopChrome";
 import {
+  MAC_TITLEBAR_HEIGHT,
   WINDOW_CONTROLS_INSET,
+  WINDOWS_CAPTION_HEIGHT,
   type DesktopChromeStyle,
 } from "../utils/desktopChrome";
 import DesktopWindowDragBand from "./DesktopWindowDragBand";
@@ -38,16 +40,18 @@ describe("窗口顶部拖拽条", () => {
       chrome: "mac" as const,
       left: `${WINDOW_CONTROLS_INSET.mac}px`,
       right: "0px",
+      height: `${MAC_TITLEBAR_HEIGHT}px`,
     },
     {
       name: "Windows",
       chrome: "windows" as const,
       left: "0px",
       right: "138px",
+      height: `${WINDOWS_CAPTION_HEIGHT}px`,
     },
   ])(
-    "$name 只在顶部 58px 内可拖动，并避开原生按钮",
-    ({ chrome, left, right }) => {
+    "$name 只在常规标题栏高度内可拖动，并避开原生按钮",
+    ({ chrome, left, right, height }) => {
       const { container } = renderBand(chrome);
       const band = container.querySelector(".octop-shell-drag-band");
 
@@ -57,7 +61,7 @@ describe("窗口顶部拖拽条", () => {
       expect(band).toHaveStyle({
         position: "fixed",
         top: "0px",
-        height: "58px",
+        height,
         left,
         right,
         pointerEvents: "none",

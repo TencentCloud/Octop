@@ -539,18 +539,19 @@ query（页面是 `sandbox: true`、无 preload、无 IPC，这是两者唯一�
 >
 > 窗口装饰现状：窗口按钮全部交给系统，壳与 Dashboard 都不再自绘（对齐 opencode
 > desktop 的做法）。`main/windows/chrome.ts` 按平台给出一份 `windowChrome()`：
-> macOS 用 `titleBarStyle: "hidden"` 保留原生交通灯，并用 `trafficLightPosition`
-> 把它们钉在 32px 铬条里；Windows 用 `frame: false` + `titleBarOverlay`（底色
-> 全透明 `#00000000`，只让 `symbolColor` 跟随主题）让系统把三个标题栏按钮画在页面
-> 之上；Linux 不传任何 frame 参数，直接用系统边框。
+> macOS 用 `titleBarStyle: "hidden"` 保留原生交通灯。灯是系统的 12×12，间距 8，
+> 整组宽 52，放在 28px 的常规标题栏里垂直居中，不拉高到 58px 的页面顶栏。
+> Windows 和 Linux 都用系统边框：标题栏单独成行，最小化、
+> 最大化、关闭不压在页面右上角。Windows 另外设置应用菜单，左上角是文件、编辑、
+> 视图、帮助，子项用 Electron 的常规 role（关闭、退出、撤销、剪切、复制、粘贴、
+> 重新加载、缩放、全屏、开发者工具，以及关于）。
 >
-> 因此 Dashboard 只负责「让位」：`--window-controls-inset-start` /
-> `--window-controls-inset-end` 单边留白（Windows 的标题行、抽屉、dock 工具栏在
-> 右侧让位），拖动仍然是纯 CSS `app-region`。窗口顶部由 `MainLayout` 统一渲染一条
-> 32px 的壳标题行（`chromeTopBandPx()`），横跨侧边栏与页面：它是整窗唯一的拖动把
-> 手，也是两个平台原生按钮所在的那条带子——macOS 的交通灯、Windows 的标题栏按钮都
-> 落在里面，页面内容因此从 y=32 开始，不会被按钮压住。全屏时系统按钮隐藏，这条带子
-> 随之消失、像素还给页面。IPC 里没有任何 minimize / maximize / close 通道；只有
+> 因此 Dashboard 只在 macOS 上「让位」：`--window-controls-inset-start` 给交通灯
+> 留白，拖动仍然是纯 CSS `app-region`。Windows 页面不再为标题栏按钮留右侧空白。
+> 窗口顶部由 `MainLayout` 统一渲染一条壳标题行（`DESKTOP_CHROME_HEIGHT`），横跨
+> 侧边栏与页面。macOS 的交通灯落在这条带子里，页面内容因此从该高度之下开始。
+> 全屏时系统按钮隐藏，这条带子随之消失、像素还给页面。IPC 里没有任何
+> minimize / maximize / close 通道；只有
 > `setWindowChrome({ mode, scheme })` 用于把 Dashboard 的主题（含「跟随系统」）
 > 同步给 `nativeTheme`，让系统按钮在深色主题下保持可见。
 
