@@ -151,14 +151,18 @@ def select_turn_tool_results(
 def dedup_tool_result_messages(
     chunk: dict[str, Any],
     emitted_ids: set[str],
+    *,
+    allowed_ids: set[str] | None = None,
 ) -> dict[str, Any] | None:
     """Keep only ``tool_result`` messages not yet emitted in this stream.
 
     Intra-turn only. A full-history update still looks new on the first pass;
     :func:`select_turn_tool_results` drops ids that were not called this turn.
 
-    Returns the (possibly trimmed) chunk, or ``None`` when all messages are
-    duplicates.
+    ``allowed_ids`` limits results to calls observed in the current turn.
+
+    Returns the (possibly trimmed) chunk, or ``None`` when no eligible messages
+    remain.
     """
     messages = chunk.get("messages")
     if not isinstance(messages, list):
@@ -167,6 +171,8 @@ def dedup_tool_result_messages(
     new_messages: list[Any] = []
     for msg in messages:
         msg_id = _tool_call_id(msg)
+        if allowed_ids is not None and msg_id not in allowed_ids:
+            continue
         if msg_id and msg_id in emitted_ids:
             continue
         new_messages.append(msg)
