@@ -52,6 +52,76 @@ def test_workspace_named_proc_is_still_searched(tmp_path: Path) -> None:
     assert any("find-me" in text for text in texts)
 
 
+@pytest.mark.parametrize("virtual_mode", [False, True])
+@pytest.mark.parametrize("has_match", [False, True])
+def test_single_file_does_not_walk_parent(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, virtual_mode: bool, has_match: bool
+) -> None:
+    install_safe_grep_fallback()
+    target = tmp_path / "target.txt"
+    target.write_text("needle\n" if has_match else "hay\n", encoding="utf-8")
+    (tmp_path / "sibling.txt").write_text("needle\n", encoding="utf-8")
+    nested = tmp_path / "nested"
+    nested.mkdir()
+    (nested / "other.txt").write_text("needle\n", encoding="utf-8")
+    backend = FilesystemBackend(root_dir=tmp_path, virtual_mode=virtual_mode)
+
+    def no_walk(*args: Any, **kwargs: Any) -> Any:
+        pytest.fail("a single-file search must not traverse its parent")
+
+    monkeypatch.setattr("octop.infra.backend.grep_safety.os.walk", no_walk)
+    results, truncated, error = backend._python_search("needle", target, None)
+    key = "/target.txt" if virtual_mode else str(target)
+    assert results == ({key: [(1, "needle")]} if has_match else {})
+    assert truncated is False
+    assert error is None
+
+
+@pytest.mark.parametrize("single_file", [False, True])
+@pytest.mark.parametrize("include_glob", [None, "*.txt", "*.py"])
+def test_file_and_directory_search_keep_glob_and_match_limit(
+    tmp_path: Path, single_file: bool, include_glob: str | None
+) -> None:
+    install_safe_grep_fallback()
+    nested = tmp_path / "nested"
+    nested.mkdir()
+    target = nested / "target.txt"
+    target.write_text("needle one\nneedle two\n", encoding="utf-8")
+    backend = FilesystemBackend(root_dir=tmp_path, virtual_mode=False)
+    results, truncated, error = backend._python_search(
+        "needle", target if single_file else tmp_path, include_glob, max_count=1
+    )
+    matched = include_glob != "*.py"
+    assert results == ({str(target): [(1, "needle one")]} if matched else {})
+    assert truncated is matched
+    assert error is None
+
+
+@pytest.mark.parametrize("single_file", [False, True])
+@pytest.mark.parametrize("limit", ["file", "line", "timeout"])
+def test_file_and_directory_search_keep_safety_limits(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, single_file: bool, limit: str
+) -> None:
+    install_safe_grep_fallback()
+    target = tmp_path / "target.txt"
+    target.write_text(
+        "needle" + ("x" * (_MAX_LINE_BYTES + 1) if limit == "line" else ""),
+        encoding="utf-8",
+    )
+    backend = FilesystemBackend(root_dir=tmp_path, virtual_mode=False)
+    if limit == "file":
+        backend.max_file_size_bytes = 1
+    if limit == "timeout":
+        ticks = iter([0.0, 2.0, 2.0])
+        monkeypatch.setattr("octop.infra.backend.grep_safety.time.monotonic", lambda: next(ticks))
+    results, truncated, error = backend._python_search(
+        "needle", target if single_file else tmp_path, None, timeout=1
+    )
+    assert results == {}
+    assert truncated is (limit == "timeout")
+    assert error is None
+
+
 def test_oversized_line_is_skipped_without_match(tmp_path: Path) -> None:
     install_safe_grep_fallback()
     bomb = tmp_path / "bomb.bin"
