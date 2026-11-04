@@ -1,6 +1,6 @@
 import type { ChildProcess } from "node:child_process";
 import { spawn } from "node:child_process";
-import { waitForHealth } from "./health";
+import { HEALTH_TIMEOUT_MS, waitForHealth } from "./health";
 import { signalTree } from "./process-tree";
 
 /**
@@ -90,7 +90,7 @@ export class SidecarSupervisor {
   }
 
   /** Poll only THIS process's port until ``/api/health`` matches the contract. */
-  async waitUntilReady(timeoutMs = 30_000): Promise<boolean> {
+  async waitUntilReady(timeoutMs = HEALTH_TIMEOUT_MS): Promise<boolean> {
     if (!this.child) return false;
     return waitForHealth(
       async () => {

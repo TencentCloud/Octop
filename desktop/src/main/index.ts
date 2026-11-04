@@ -1,4 +1,16 @@
-import { app, BrowserWindow, dialog, ipcMain, net, protocol, screen, shell } from "electron";
+import {
+  app,
+  BrowserWindow,
+  dialog,
+  ipcMain,
+  Menu,
+  nativeImage,
+  net,
+  protocol,
+  screen,
+  shell,
+  Tray,
+} from "electron";
 import { spawn } from "node:child_process";
 import { constants as fsConstants, existsSync, promises as fs } from "node:fs";
 import { join } from "node:path";
@@ -53,6 +65,12 @@ import { createEarlyWindow } from "./windows/early-window";
 import { createMainWindow } from "./windows/main-window";
 import { isWindowOnScreen, presentWindows, shouldKeepWindowOnClose } from "./windows/present";
 import {
+  shouldInstallSystemTray,
+  trayIconCandidates,
+  trayMenuLabels,
+  WINDOWS_APP_USER_MODEL_ID,
+} from "./windows/tray";
+import {
   applyNativeTheme,
   applyWindowChromeTheme,
   dashboardEntryUrl,
@@ -90,6 +108,8 @@ let updateInFlight = false;
 let quitting = false;
 // Default matches ClientSettingsStore. Boot and the settings IPC keep it current.
 let closeBehavior: "quit" | "tray" = "tray";
+// Windows notification area. Null until the icon is actually on screen.
+let tray: Tray | null = null;
 // Set once the Dashboard has opened, so a later Dock click can open it again.
 let dashboardOrigin: string | null = null;
 // Current loopback port of the sidecar. Read per request (not captured), so a
@@ -527,12 +547,14 @@ function openDashboardWindow(appOrigin: string): BrowserWindow {
         platform: process.platform,
         closeBehavior,
         quitting,
+        trayReady: tray !== null,
       })
     ) {
       return;
     }
-    // Hide instead of destroy: the Dock icon is still the app, and the next
-    // click has to show this same window rather than a fresh load.
+    // Hide instead of destroy. macOS comes back from the Dock; Windows comes
+    // back from the notification-area icon. The next click shows this same
+    // window rather than a fresh load.
     event.preventDefault();
     win.hide();
   });
@@ -543,14 +565,30 @@ function openDashboardWindow(appOrigin: string): BrowserWindow {
   return win;
 }
 
-/** Dock click and a second launch. Show what is already open, or open it. */
+/**
+ * Windows will not raise a window that was hidden while another app was
+ * active. Briefly pinning it forces the foreground, then releases it.
+ */
+function raiseHiddenWindows(windows: readonly BrowserWindow[]): void {
+  if (process.platform !== "win32") return;
+  for (const win of windows) {
+    if (win.isDestroyed()) continue;
+    win.setAlwaysOnTop(true);
+    win.show();
+    win.focus();
+    win.setAlwaysOnTop(false);
+  }
+}
+
+/** Dock click, tray click, and a second launch. Show what is already open, or open it. */
 function revealAppWindow(): void {
   if (quitting) return;
   const windows = BrowserWindow.getAllWindows();
   if (presentWindows(windows) > 0) {
-    // The Dock click is the user asking for this app. Steal so a hidden window
+    // The click is the user asking for this app. Steal so a hidden window
     // comes forward even when another app was active.
     app.focus({ steal: true });
+    raiseHiddenWindows(windows);
     const areas = screen.getAllDisplays().map((display) => display.workArea);
     if (areas.length === 0) return;
     for (const win of windows) {
@@ -562,11 +600,58 @@ function revealAppWindow(): void {
   if (dashboardOrigin) openDashboardWindow(dashboardOrigin);
 }
 
+/** Notification-area icon. Left click and "show" open the window; "quit" exits. */
+function installSystemTray(): void {
+  if (tray || !shouldInstallSystemTray(process.platform)) return;
+  const candidates = trayIconCandidates({
+    platform: process.platform,
+    isPackaged: app.isPackaged,
+    resourcesDir: resourcesRoot(),
+    execPath: process.execPath,
+  });
+  let image = nativeImage.createEmpty();
+  for (const candidate of candidates) {
+    const loaded = nativeImage.createFromPath(candidate);
+    if (!loaded.isEmpty()) {
+      image = loaded;
+      break;
+    }
+  }
+  if (image.isEmpty()) {
+    desktopLog().warn(`tray icon missing: ${candidates.join(", ")}`);
+    return;
+  }
+  const created = new Tray(image.resize({ width: 32, height: 32 }));
+  created.setToolTip("Octop");
+  const labels = trayMenuLabels(app.getLocale());
+  const menu = Menu.buildFromTemplate([
+    { label: labels.show, click: () => revealAppWindow() },
+    { type: "separator" },
+    { label: labels.quit, click: () => app.quit() },
+  ]);
+  // Left click opens the window. The menu stays on right click so a left
+  // click is not swallowed by the context menu on Windows.
+  created.on("click", () => revealAppWindow());
+  created.on("double-click", () => revealAppWindow());
+  created.on("right-click", () => created.popUpContextMenu(menu));
+  tray = created;
+  desktopLog().info("tray icon ready");
+}
+
+function destroySystemTray(): void {
+  tray?.destroy();
+  tray = null;
+}
+
 async function boot(): Promise<void> {
   const gotLock = app.requestSingleInstanceLock();
   if (!gotLock) {
     app.quit();
     return;
+  }
+
+  if (process.platform === "win32") {
+    app.setAppUserModelId(WINDOWS_APP_USER_MODEL_ID);
   }
 
   appVersion = await resolveProductVersion();
@@ -597,6 +682,7 @@ async function boot(): Promise<void> {
   const octopHome = resolveOctopHome(process.env, loginShellEnv);
   installDesktopLog(octopHome);
   desktopLog().info(`desktop ${appVersion} home=${octopHome}`);
+  installSystemTray();
 
   // Local dev escape hatch: point at an already-extracted runtime (e.g. the one
   // `pnpm dev:runtime` writes to .dev-runtime) and skip bundling/extraction.
@@ -757,6 +843,7 @@ app.on("activate", () => {
 
 app.on("before-quit", (event) => {
   if (quitting) return;
+  destroySystemTray();
   const sidecar = supervisor;
   const relay = wsRelay;
   if (!sidecar && !relay) return;
@@ -781,6 +868,8 @@ app.on("before-quit", (event) => {
 
 app.on("window-all-closed", () => {
   // darwin + tray keeps the process so the Dock icon can open the window again.
+  // Windows hides the dashboard window instead of closing it, so this does not
+  // fire for that button. A real close (the splash, or closeBehavior quit) still exits.
   if (process.platform !== "darwin" || closeBehavior === "quit") app.quit();
 });
 
@@ -804,6 +893,7 @@ async function shutdownFromSignal(signal: NodeJS.Signals): Promise<void> {
   // Keep `before-quit` from preventDefault-ing into a second stop attempt; the
   // exit below is deliberate and must not be deferred again.
   quitting = true;
+  destroySystemTray();
   try {
     stopDashboardDevServer();
     await wsRelay?.stop();

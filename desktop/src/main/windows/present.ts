@@ -23,16 +23,23 @@ export interface Rect {
 const MIN_VISIBLE_PX = 80;
 
 /**
- * macOS keeps the process after the last window goes away. With the tray
- * close setting, the red button hides that window so the next Dock click can
- * show the same one. Quit, and every other platform, lets the close finish.
+ * With the tray close setting, the close button hides the window instead of
+ * ending the process. macOS comes back from the Dock. Windows comes back from
+ * the notification-area icon, and only when that icon exists — hiding with no
+ * icon would leave the window unreachable. Quit, and every other platform,
+ * lets the close finish.
  */
 export function shouldKeepWindowOnClose(input: {
   platform: string;
   closeBehavior: "quit" | "tray";
   quitting: boolean;
+  /** Windows only. `true` once the notification-area icon is on screen. */
+  trayReady?: boolean;
 }): boolean {
-  return input.platform === "darwin" && input.closeBehavior === "tray" && !input.quitting;
+  if (input.quitting || input.closeBehavior !== "tray") return false;
+  if (input.platform === "darwin") return true;
+  if (input.platform === "win32") return input.trayReady === true;
+  return false;
 }
 
 /**
