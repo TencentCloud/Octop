@@ -63,6 +63,7 @@ class AgentMcpGatewayService:
         thread_id: str | None = None,
     ) -> dict[str, Any]:
         row = self._require_expert(expert_id, user)
+        await self._agent_manager.ensure_loaded(row.agent_id)
         text = self._validate_message(message)
         thread, session_key = await self._resolve_thread(
             expert_id=row.agent_id,
@@ -98,6 +99,7 @@ class AgentMcpGatewayService:
         decisions: list[dict[str, Any]],
     ) -> dict[str, Any]:
         row = self._require_expert(expert_id, user)
+        await self._agent_manager.ensure_loaded(row.agent_id)
         thread = self._require_mcp_thread(
             thread_id,
             expert_id=row.agent_id,
@@ -222,7 +224,7 @@ class AgentMcpGatewayService:
         if not self._can_access(row, user):
             raise OctopError(ErrorCode.FORBIDDEN, "expert is not accessible")
         if not row.enabled:
-            raise OctopError(ErrorCode.AGENT_NOT_RUNNING, "expert is disabled")
+            raise OctopError(ErrorCode.AGENT_DISABLED, "expert is disabled")
         return row
 
     def _can_access(self, row: Any, user: User) -> bool:
