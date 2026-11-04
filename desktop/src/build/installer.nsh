@@ -41,20 +41,11 @@ octop_files_done:
   ${EndIf}
 !macroend
 
-; After the app payload is in $INSTDIR, before shortcuts and the runtime extract.
-; Not defined for the uninstaller: that pass never extracts the payload, and
-; the function above is installer-only.
-!ifndef BUILD_UNINSTALLER
-!macro customFiles_x64
-  Call octopAppFilesCopied
-!macroend
-!macro customFiles_arm64
-  Call octopAppFilesCopied
-!macroend
-!macro customFiles_ia32
-  Call octopAppFilesCopied
-!macroend
-!endif
+; Do not define customFiles_<arch>. electron-builder emits that macro when
+; resources contain a precompressed file (resources/portable/*.zip) and uses
+; it to pack the zip. A second definition aborts makensis with
+; "macro named customFiles_x64 already exists". customInstall prints the
+; copied-files line after that macro has run.
 
 !macro octopWriteDesktopLink
   CreateShortCut "$newDesktopLink" "$appExe" "" "$appExe" 0 "" "" "${APP_DESCRIPTION}"
@@ -181,6 +172,7 @@ octop_run_log_done:
   Push $4
   Push $5
   !insertmacro octopDetailsOn
+  Call octopAppFilesCopied
   IntCmp $LANGUAGE 2052 octop_rt_log_zh octop_rt_log_en octop_rt_log_en
 octop_rt_log_zh:
   DetailPrint "正在展开 Python 运行时…"
