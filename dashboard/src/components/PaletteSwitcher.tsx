@@ -1,6 +1,7 @@
 import { ColorPicker, Tooltip } from "antd";
 import { useTranslation } from "react-i18next";
 import type { AggregationColor } from "antd/es/color-picker/color";
+import cx from "classnames";
 import { useTheme } from "../context/ThemeContext";
 import { PALETTE_SWATCH, VALID_PALETTES } from "../styles/themePalettes";
 import styles from "./PaletteSwitcher.module.less";
@@ -29,7 +30,7 @@ export default function PaletteSwitcher() {
           <Tooltip key={key} title={label} mouseEnterDelay={0.35}>
             <button
               type="button"
-              className={`${styles.option} ${active ? styles.active : ""}`}
+              className={cx(styles.option, active && styles.active)}
               aria-label={label}
               aria-pressed={active}
               onClick={() => setPalette(key)}
@@ -45,7 +46,7 @@ export default function PaletteSwitcher() {
       })}
       <Tooltip title={t("header.palette.custom")} mouseEnterDelay={0.35}>
         <span
-          className={`${styles.option} ${isCustom ? styles.active : ""}`}
+          className={cx(styles.option, isCustom && styles.active)}
           aria-label={t("header.palette.custom")}
           aria-pressed={isCustom}
           role="button"
@@ -58,7 +59,7 @@ export default function PaletteSwitcher() {
             disabledAlpha
           >
             <span
-              className={`${styles.swatch} ${styles.customSwatch}`}
+              className={cx(styles.swatch, styles.customSwatch)}
               style={isCustom ? { backgroundColor: customColor } : undefined}
               aria-hidden
             />

@@ -545,7 +545,7 @@ class AgentManager:
             settings_repo=repos.settings_repo,
             agents_repo=repos.agent_repo,
         )
-        self._tool_guard_rules = ToolGuardRulesStore(paths=paths)
+        self._tool_guard_rules = ToolGuardRulesStore(paths=paths, settings=repos.settings_repo)
         self._providers = ProviderStore(
             provider_repo=repos.provider_repo,
         )
@@ -584,6 +584,9 @@ class AgentManager:
         self._acp_settings = ACPSettingsStore(
             settings_repo=repos.settings_repo,
             agents_repo=repos.agent_repo,
+        )
+        self._tool_guard_rules = ToolGuardRulesStore(
+            paths=self._paths, settings=repos.settings_repo
         )
         self._providers = ProviderStore(provider_repo=repos.provider_repo)
         self._connector_svc = ConnectorService(
@@ -3608,11 +3611,11 @@ class AgentManager:
         allow_ephemeral_remote: bool = False,
     ) -> Any:
         """Resolve :class:`BackendWorkspace` for *row* without a running harness agent."""
-        from octop_harness.backends import resolve_backend  # noqa: PLC0415
         from octop_harness.backends.workspace import BackendWorkspace  # noqa: PLC0415
 
         from octop.infra.agents.workspace.dir import system_files_path_from_config  # noqa: PLC0415
         from octop.infra.backend.opensandbox_deps import ensure_opensandbox_deps  # noqa: PLC0415
+        from octop.infra.backend.resolve_backend import resolve_octop_backend  # noqa: PLC0415
 
         if cfg is None:
             cfg = self._agent_config_dict(row)
@@ -3634,7 +3637,7 @@ class AgentManager:
         from octop.infra.backend.compat import adapt_backend_protocol  # noqa: PLC0415
 
         return BackendWorkspace(
-            adapt_backend_protocol(resolve_backend(backend, workspace_dir=workspace_dir)),
+            adapt_backend_protocol(resolve_octop_backend(backend, workspace_dir=workspace_dir)),
             workspace_dir,
             system_files_path=system_files_path_from_config(cfg),
         )
@@ -4318,6 +4321,7 @@ class AgentManager:
                     *(applied.middleware or []),
                 ],
             )
+        self._tool_guard_rules.ensure_seeded()
         return replace(
             applied,
             tool_guard_rules_dir=str(self._tool_guard_rules.rules_dir),

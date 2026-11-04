@@ -173,6 +173,33 @@ class UserRepo:
         self.upsert_sso_identity(row.id, provider_id=provider_id, subject=subject)
         return row
 
+    def list_directory_reservations(
+        self, provider_id: int, username: str
+    ) -> builtins.list[UserRow]:
+        """Passwordless accounts reserved for this directory provider.
+
+        A reservation is an admin-created account with no local password and no
+        subject link yet. Matching is case-insensitive so ``Alice`` and ``alice``
+        name the same login. More than one row means the caller must not guess.
+        """
+        text = username.strip()
+        if not text:
+            return []
+        with self._db.connect() as conn:
+            rows = conn.execute(
+                "SELECT u.* FROM users u "
+                "WHERE u.sso_provider_id = ? "
+                "AND u.password_hash IS NULL "
+                "AND (u.sso_subject IS NULL OR u.sso_subject = '') "
+                "AND lower(u.username) = lower(?) "
+                "AND NOT EXISTS ("
+                "SELECT 1 FROM user_sso_identities i "
+                "WHERE i.user_id = u.id AND i.provider_id = ?"
+                ")",
+                (provider_id, text, provider_id),
+            ).fetchall()
+        return map_rows(rows, UserRow)
+
     def list_sso_identities(self, user_id: int) -> builtins.list[UserSsoIdentityRow]:
         with self._db.connect() as conn:
             rows = conn.execute(
