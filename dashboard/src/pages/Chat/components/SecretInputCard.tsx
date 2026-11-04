@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Input } from "antd";
-import { KeyRound, ShieldCheck } from "lucide-react";
+import { KeyRound, ShieldCheck, X } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import type { SecretInputRequest } from "../../../api/types/hitl";
 import styles from "./SecretInputCard.module.less";
@@ -85,20 +85,35 @@ function SecretInputCard({
         <code className={styles.slotName} title={request.slot}>
           {request.slot}
         </code>
+        <button
+          type="button"
+          className={styles.closeButton}
+          aria-label={t("chat.secretInput.cancel")}
+          disabled={busy}
+          onClick={onCancel}
+        >
+          <X size={14} />
+        </button>
       </div>
       {request.prompt ? (
         <div className={styles.prompt}>{request.prompt}</div>
       ) : null}
-      <div className={styles.inputRow}>
-        <Input.Password
-          className={styles.input}
-          value={value}
-          placeholder={t("chat.secretInput.placeholder")}
-          autoComplete="new-password"
-          disabled={busy}
-          onChange={(e) => setValue(e.target.value)}
-          onPressEnter={submit}
-        />
+      <Input.Password
+        className={styles.input}
+        value={value}
+        placeholder={t("chat.secretInput.placeholder")}
+        aria-label={t("chat.secretInput.title")}
+        autoComplete="new-password"
+        disabled={busy}
+        onChange={(e) => setValue(e.target.value)}
+        onPressEnter={submit}
+      />
+      {error ? (
+        <div className={styles.error} role="alert">
+          {error}
+        </div>
+      ) : null}
+      <div className={styles.footer}>
         <button
           type="button"
           className={styles.submitButton}
@@ -107,25 +122,10 @@ function SecretInputCard({
         >
           {t("chat.secretInput.submit")}
         </button>
-      </div>
-      {error ? (
-        <div className={styles.error} role="alert">
-          {error}
-        </div>
-      ) : null}
-      <div className={styles.footer}>
         <span className={styles.hint}>
           <ShieldCheck size={12} className={styles.hintIcon} />
           {t("chat.secretInput.secureHint")}
         </span>
-        <button
-          type="button"
-          className={styles.cancelButton}
-          disabled={busy}
-          onClick={onCancel}
-        >
-          {t("chat.secretInput.cancel")}
-        </button>
       </div>
     </div>
   );
