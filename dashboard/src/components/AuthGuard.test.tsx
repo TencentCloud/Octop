@@ -74,7 +74,9 @@ describe("AuthGuard offline boot", () => {
       useEffect(() => {
         navigate("/b");
       }, [navigate]);
-      return <div>protected-shell</div>;
+      // Leave the marker on the destination only. The page we leave unmounts
+      // in the same turn the text appears, so asserting on that node races.
+      return null;
     }
 
     render(
@@ -88,8 +90,8 @@ describe("AuthGuard offline boot", () => {
       </MemoryRouter>,
     );
 
-    expect(await screen.findByText("protected-shell")).toBeInTheDocument();
     await waitFor(() => {
+      expect(screen.getByText("protected-shell")).toBeInTheDocument();
       expect(authApi.getAuthStatus).toHaveBeenCalledTimes(1);
     });
     // Give route-driven navigate identity churn a tick; gate must not re-run.
