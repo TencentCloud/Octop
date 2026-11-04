@@ -117,12 +117,16 @@ describe("AvatarDropdown personal settings", () => {
     ).not.toBeInTheDocument();
     await view.click(screen.getByRole("button", { name: "account.security" }));
 
-    expect(
-      await screen.findByText("account.currentPassword"),
-    ).toBeInTheDocument();
-    expect(
-      screen.getByRole("button", { name: "account.changePassword" }),
-    ).toBeInTheDocument();
+    await waitFor(() => {
+      expect(
+        screen.getByLabelText("account.currentPassword"),
+      ).toBeInTheDocument();
+    });
+    await waitFor(() => {
+      expect(
+        screen.getByRole("button", { name: "account.changePassword" }),
+      ).toBeInTheDocument();
+    });
     expect(
       document.querySelector(".ant-drawer-right, .octop-drawer-right"),
     ).toBeTruthy();

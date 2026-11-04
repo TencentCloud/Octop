@@ -150,7 +150,17 @@ OPENAPI_TAGS: list[dict[str, str]] = [
             "Prompts are managed in backend i18n."
         ),
     },
-    {"name": "workspace", "description": "Agent workspace file tree: list, read, write, upload."},
+    {
+        "name": "workspace",
+        "description": "Agent workspace file tree: list, read, write, upload, Office-to-PDF preview.",
+    },
+    {
+        "name": "office-preview",
+        "description": (
+            "Optional LibreOffice Kit runtime that converts Office files to PDF for in-app preview. "
+            "Install with ``octop office-preview install`` (Node >= 22.19). The default wheel does not bundle the engine."
+        ),
+    },
     {"name": "agent_files", "description": "Agent-owned configuration files (SOUL.md, skills, …)."},
     {"name": "usage", "description": "Token usage summaries for billing and dashboards."},
     {

@@ -75,7 +75,7 @@ For Compose, put these in `docker/.env`. Values only reach the container if list
 
 ### Node.js
 
-The runtime image includes Node.js 20 (`node`, `npm`, and `npx`), the same major version used to build the dashboard, so skills and expert shells that need Node can run. The toolchain is copied from the `node:20-slim` build stage. Existing deployments must rebuild or upgrade the image to receive it; restarting an older image is insufficient. Packages installed with `npm install -g` live in the container writable layer and must be reinstalled after the container is recreated.
+The runtime image includes Node.js 20 (`node`, `npm`, and `npx`), the same major version used to build the dashboard, so skills and expert shells that need Node can run. The toolchain is copied from the `node:20-slim` build stage. Existing deployments must rebuild or upgrade the image to receive it; restarting an older image is insufficient. Packages installed with `npm install -g` live in the container writable layer and must be reinstalled after the container is recreated. Office-to-PDF preview needs Node >= 22.19 and `octop office-preview install`; with Node 20 the dashboard keeps the previous Office viewers.
 
 ### Knowledge-base dependencies
 

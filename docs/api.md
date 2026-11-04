@@ -373,6 +373,11 @@ Bundled experts live in `src/octop/infra/agents/experts/library/`
 | `POST`   | `/agents/{aid}/workspace/rename` | owner | rename / move |
 | `POST`   | `/agents/{aid}/workspace/upload` | owner | multipart upload → backend (not `max_upload_mb`) |
 | `GET`    | `/agents/{aid}/workspace/download` | owner | download a file |
+| `GET`    | `/agents/{aid}/workspace/office-preview` | owner | convert Office → PDF preview (`docx/xlsx/xls/pptx/doc/ppt`; optional LibreOffice Kit runtime) |
+| `GET`    | `/office-preview/status` | user | probe whether the Office-to-PDF helper is installed |
+| `GET`    | `/knowledge-bases/{kb}/documents/{doc}/office-preview` | reader | convert a knowledge original to PDF |
+| `GET`    | `/admin/storage-backends/{id}/office-preview` | admin | convert a browsed storage file to PDF |
+| `GET`    | `/skill-packages/{id}/skills/{slug}/office-preview` | `skill_packages` | convert a package skill file to PDF |
 | `GET`    | `/agents/{aid}/workspace/mention-index` | owner | bounded `@` file names via the workspace backend (`truncated` when capped; short cache) |
 | `GET`    | `/agents/{aid}/workspace/glob` | owner | glob backend paths |
 | `GET`    | `/agents/{aid}/workspace/grep` | owner | grep backend files |

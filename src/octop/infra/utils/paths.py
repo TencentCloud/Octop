@@ -103,6 +103,11 @@ class PathLayout:
         return self.root / "plugins"
 
     @property
+    def office_preview_dir(self) -> Path:
+        """LibreOffice Kit helper + engine: ``~/.octop/office-preview/``."""
+        return self.root / "office-preview"
+
+    @property
     def tool_guard_rules_dir(self) -> Path:
         """User-editable command guard rules: ``~/.octop/security/tool_guard/``."""
         return self.root / "security" / "tool_guard"

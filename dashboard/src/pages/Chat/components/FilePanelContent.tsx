@@ -45,6 +45,11 @@ interface FilePanelContentProps {
   agentId: string;
   /** Single workspace file path for this tab. */
   filePath: string;
+  /**
+   * Bump when the agent overwrites this path (tool output / artifact sync)
+   * so an already-open Office preview reloads.
+   */
+  previewRevision?: number;
   /** Lift toolbar actions into the shared dock shell (active tab only). */
   onActionsChange?: (actions: ReactNode | null) => void;
 }
@@ -56,6 +61,7 @@ interface FilePanelContentProps {
 export default function FilePanelContent({
   agentId,
   filePath,
+  previewRevision = 0,
   onActionsChange,
 }: FilePanelContentProps) {
   const { t } = useTranslation();
@@ -153,6 +159,7 @@ export default function FilePanelContent({
     mediaKind,
     docKind,
     refreshToken,
+    previewRevision,
   ]);
 
   const refresh = useCallback(() => {
@@ -368,7 +375,7 @@ export default function FilePanelContent({
               onChange={setContent}
               fileLoading={fileLoading}
               previewMode={previewMode}
-              refreshToken={refreshToken}
+              refreshToken={refreshToken + previewRevision}
             />
           )
         )}

@@ -7,12 +7,16 @@
 ## [Unreleased]
 
 ### 新增
+- 工作区、会话文件、知识库、存储浏览和技能包支持可选的本机 LibreOffice Kit 文档预览（DOCX/PPTX/DOC/PPT 转 PDF）。运行 `octop office-preview install` 安装引擎，缺失时回退已有查看器
+- Excel 预览使用只读 FortuneSheet 网格，XLSX/XLSM 保留填充色、边框、合并单元格、行列尺寸和冻结窗格，支持单元格选择、复制、公式栏和工作表切换；XLS 展示保存值与基础布局
 - PostgreSQL 控制面下，技能包源和知识库原文进同一套库（`skill_package_files`、`knowledge_files`），知识库向量在 `knowledge_chunks`。表都在 `public`，前缀与 `skill_packages`、`knowledge_bases` 一致。SQLite 仍用本地目录。安装时选定驱动，不含 sqlite→PostgreSQL 迁移
 - 安装向导连接已有用户的 PostgreSQL 时，确认后保留这些账户并去登录。SQLite 仍要空库
 - 知识库预览可以在原文和已入库切片之间切换。文件名悬停后可重命名，扩展名保持不变
 - Docker 与飞牛增加精简版。默认 `:<version>` / `:latest` 仍是含桌面、OCR 和本地向量的完整镜像；精简版标签是 `:<version>-lite` 和 `:lite`
 
 ### 修复
+- Office 预览缺字名单改为 ASCII 安全的响应头，避免中文字体名触发 500；知识库和技能包本地文件限量读取；队列满时不再泄漏断连监听；会话里工具覆盖已打开文件会刷新预览
+- DOCX/PDF 文本选区使用均匀蓝色高亮，避免透明文本层产生白色重影和空格处颜色加深
 - Dashboard 里 `ask_user_question` 未答完时，新建同专家会话再发消息不再被当成旧测验的答案；同会话内明文作答仍然有效
 - PostgreSQL 控制面下，知识库检索读 pgvector，不再查到空的本地 `index.sqlite`
 - Docker 镜像在无头构建时不再导入 pynput。飞牛 Docker 包缺失时，已打好的本地包仍会挂到 Release

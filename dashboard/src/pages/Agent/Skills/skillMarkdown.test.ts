@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { buildSkillMarkdown } from "./components/SkillDrawer";
 import {
   isSkillManifestPath,
@@ -47,3 +47,9 @@ describe("skillDirectoryPath", () => {
     );
   });
 });
+
+vi.mock("react-pdf", () => ({
+  Document: () => null,
+  Page: () => null,
+  pdfjs: { GlobalWorkerOptions: { workerSrc: "" } },
+}));
