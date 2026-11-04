@@ -13,6 +13,7 @@ import {
   Activity,
 } from "lucide-react";
 import { Alert, Button, Tooltip } from "antd";
+import cx from "classnames";
 import { message as antMessage } from "@/utils/antdMessage";
 import { showConfirmModal } from "../../utils/confirmModal";
 import PlanReadyCard from "./components/PlanReadyCard";
@@ -1373,22 +1374,18 @@ function ChatPageInner() {
           ? createPortal(chatSidebarPanel, chatHistoryRail)
           : null}
         <div
-          className={`${styles.chatPage} ${
-            dockIsResizing ? styles.panelResizeActive : ""
-          } ${
-            dockOpen && dockMode === "bottom"
-              ? styles.chatPageWithBottomDock
-              : ""
-          }`}
+          className={cx(
+            styles.chatPage,
+            dockIsResizing && styles.panelResizeActive,
+            dockOpen && dockMode === "bottom" && styles.chatPageWithBottomDock,
+          )}
         >
           {/* Main chat area */}
           <div
-            className={[
+            className={cx(
               styles.chatMain,
-              turnRailVisible ? styles.chatMainWithTurnRail : "",
-            ]
-              .filter(Boolean)
-              .join(" ")}
+              turnRailVisible && styles.chatMainWithTurnRail,
+            )}
           >
             {/* Mobile toolbar — session list + optional title + agent profile */}
             {isMobile && (
@@ -1726,29 +1723,27 @@ function ChatPageInner() {
                     <span className={styles.chatFloatBtnWrap}>
                       <button
                         type="button"
-                        className={[
+                        className={cx(
                           styles.browserStatusBtn,
-                          browserSessionId ? styles.browserStatusActive : "",
+                          browserSessionId && styles.browserStatusActive,
                           browserSessionId &&
-                          (browserSessionState === "awaiting_user_auth" ||
-                            browserSessionState === "authenticating")
-                            ? styles.browserStatusAuth
-                            : "",
-                          browserSessionId && browserControlOwner === "user"
-                            ? styles.browserStatusTakeover
-                            : "",
-                        ]
-                          .filter(Boolean)
-                          .join(" ")}
+                            (browserSessionState === "awaiting_user_auth" ||
+                              browserSessionState === "authenticating") &&
+                            styles.browserStatusAuth,
+                          browserSessionId &&
+                            browserControlOwner === "user" &&
+                            styles.browserStatusTakeover,
+                        )}
                         onClick={() => void handleToggleBrowserPanel()}
                         aria-label={t("chat.openBrowser")}
                       >
                         <Globe size={20} strokeWidth={2.1} />
                         {browserSessionId && (
                           <span
-                            className={`${styles.browserStatusDot} ${
-                              styles[`browserStatus_${browserControlOwner}`]
-                            }`}
+                            className={cx(
+                              styles.browserStatusDot,
+                              styles[`browserStatus_${browserControlOwner}`],
+                            )}
                           />
                         )}
                       </button>

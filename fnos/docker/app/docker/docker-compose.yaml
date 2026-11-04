@@ -1,6 +1,8 @@
+# Placeholder only. scripts/build-fpk.sh rewrites this tag from pyproject.toml.
+# Do not bump it in release commits. The packed tag must not be latest.
 services:
   octop:
-    image: ghcr.io/tencentcloud/octop:1.0.3b2
+    image: ghcr.io/tencentcloud/octop:0.0.0
     container_name: octop
     restart: unless-stopped
     ulimits:
