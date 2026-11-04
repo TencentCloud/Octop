@@ -53,6 +53,19 @@ const NOT_FOUND_ERROR_CODES = new Set([
   "SKILL_PACKAGE_NOT_FOUND",
 ]);
 
+const OFFICE_PREVIEW_FALLBACK_CODES = new Set([
+  "OFFICE_PREVIEW_UNAVAILABLE",
+  "OFFICE_PREVIEW_UNSUPPORTED",
+]);
+
+/** True when Office-to-PDF is missing or inapplicable — use the legacy viewer. */
+export function isOfficePreviewFallbackError(error: unknown): boolean {
+  const parsed = parseApiError(error);
+  return Boolean(
+    parsed?.code && OFFICE_PREVIEW_FALLBACK_CODES.has(parsed.code),
+  );
+}
+
 /** True when a failed ``request`` / ``requestBlob`` looks like HTTP 404 / NOT_FOUND. */
 export function isNotFoundApiError(error: unknown): boolean {
   const parsed = parseApiError(error);

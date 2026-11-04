@@ -88,7 +88,9 @@ describe("AuthGuard offline boot", () => {
       </MemoryRouter>,
     );
 
-    expect(await screen.findByText("protected-shell")).toBeInTheDocument();
+    await waitFor(() => {
+      expect(screen.getByText("protected-shell")).toBeInTheDocument();
+    });
     await waitFor(() => {
       expect(authApi.getAuthStatus).toHaveBeenCalledTimes(1);
     });
@@ -128,6 +130,8 @@ describe("AuthGuard offline boot", () => {
       name: /errors\.retry|Retry|重试/,
     });
     await user.click(retry);
-    expect(await screen.findByText("protected-shell")).toBeInTheDocument();
+    await waitFor(() => {
+      expect(screen.getByText("protected-shell")).toBeInTheDocument();
+    });
   });
 });

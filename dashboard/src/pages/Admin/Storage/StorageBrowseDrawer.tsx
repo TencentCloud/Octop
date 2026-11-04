@@ -23,7 +23,10 @@ import {
   getPreviewKind,
   previewNeedsFillLayout,
 } from "../../Agent/Workspace/components/FilePreview";
-import { getDocKind } from "../../Agent/Workspace/utils/docKind";
+import {
+  canConvertOfficeToPdf,
+  getDocKind,
+} from "../../Agent/Workspace/utils/docKind";
 import { isProbablyText } from "../../Agent/Workspace/utils/fileKind";
 import { getMediaKind } from "../../Agent/Workspace/utils/mediaKind";
 import { storageBrowseError } from "./storageProbeMessage";
@@ -57,7 +60,7 @@ function formatSize(bytes: number): string {
 function storageFileUrl(
   backendId: number,
   path: string,
-  kind: "file" | "download",
+  kind: "file" | "download" | "office-preview",
   opts?: { preview?: boolean },
 ): string {
   const params = new URLSearchParams({ path });
@@ -379,6 +382,11 @@ export function StorageBrowseDrawer({
               fetchUrl={storageFileUrl(backend.id, previewPath, "download", {
                 preview: true,
               })}
+              officePreviewUrl={
+                canConvertOfficeToPdf(previewPath)
+                  ? storageFileUrl(backend.id, previewPath, "office-preview")
+                  : undefined
+              }
               editMode={false}
               value={content}
               onChange={setContent}

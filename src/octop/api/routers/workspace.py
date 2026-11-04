@@ -6,13 +6,14 @@ import logging
 import re
 from typing import Any, Literal
 
-from fastapi import APIRouter, Depends, File, Query, UploadFile
+from fastapi import APIRouter, Depends, File, Query, Request, UploadFile
 from fastapi.responses import Response, StreamingResponse
 from octop_harness.backends.utils import BackendOperationNotSupportedError
 from pydantic import BaseModel
 
 from octop.api.common.agent_workspace import resolve_agent_workspace_dir
 from octop.api.common.content_disposition import content_disposition
+from octop.api.common.office_preview import office_preview_pdf_response
 from octop.api.common.workspace import (
     coerce_read_content,
     file_info_to_dict,
@@ -32,6 +33,8 @@ from octop.infra.gateway.media.backend_files import (
     is_host_absolute_path,
     resolve_preview_payload,
 )
+from octop.infra.office_preview.limits import MAX_INPUT_BYTES
+from octop.infra.office_preview.read import too_large_error
 from octop.infra.utils.doc_edit import DocConverter, get_doc_converter
 
 logger = logging.getLogger(__name__)
@@ -372,6 +375,55 @@ async def download_file(
         iter([file_blob]),
         media_type="application/octet-stream",
         headers={"Content-Disposition": content_disposition(fname)},
+    )
+
+
+@router.get(
+    "/agents/{agent_id}/workspace/office-preview",
+    summary="Convert a workspace Office file to PDF for preview",
+    description=(
+        "Authorized read of the workspace file, then LibreOffice Kit conversion. "
+        "Returns application/pdf. Original download is unchanged. "
+        "Fails with OFFICE_PREVIEW_UNAVAILABLE when the optional runtime is missing."
+    ),
+    response_class=Response,
+    responses={200: {"content": {"application/pdf": {}}}},
+)
+async def office_preview_file(
+    agent_id: str,
+    path: str,
+    request: Request,
+    from_workspace: bool = Query(default=False, description=_FROM_WORKSPACE_DESC),
+    as_user: int | None = None,
+    user: Any = Depends(current_user),
+    server: Any = Depends(get_server),
+) -> Response:
+    ws = await require_agent_workspace(agent_id, user=user, as_user=as_user, server=server)
+    io_path = _workspace_io_path(path, from_workspace=from_workspace)
+    if is_host_absolute_path(io_path) and not is_allowed_host_download_abs_path(
+        io_path,
+        workspace=ws.workspace_dir,
+    ):
+        raise OctopError(ErrorCode.FORBIDDEN, f"cannot preview {path!r}: path not allowed")
+    filename = io_path.replace("\\", "/").rsplit("/", 1)[-1] or "document"
+
+    async def _load() -> bytes:
+        try:
+            blob = await ws.adownload_bytes(io_path)
+        except PermissionError as exc:
+            raise OctopError(ErrorCode.NOT_FOUND, f"cannot preview {path!r}") from exc
+        if blob is None:
+            raise OctopError(ErrorCode.NOT_FOUND, f"cannot preview {path!r}") from None
+        if len(blob) > MAX_INPUT_BYTES:
+            raise too_large_error()
+        return blob
+
+    return await office_preview_pdf_response(
+        request=request,
+        filename=filename,
+        cache_scope=f"workspace:{user.id}:{agent_id}",
+        source_id=io_path,
+        load_bytes=_load,
     )
 
 

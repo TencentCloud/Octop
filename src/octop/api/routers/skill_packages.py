@@ -12,6 +12,7 @@ from fastapi.responses import Response
 from pydantic import BaseModel, Field
 
 from octop.api.common.content_disposition import content_disposition
+from octop.api.common.office_preview import office_preview_pdf_response
 from octop.api.common.workspace import coerce_read_content
 from octop.api.deps import get_server, require_permission
 from octop.infra.agents.experts.skillhub_market import (
@@ -20,6 +21,7 @@ from octop.infra.agents.experts.skillhub_market import (
 )
 from octop.infra.db.repos.skill_packages import SkillPackageRow
 from octop.infra.errors import ErrorCode, OctopError
+from octop.infra.office_preview.read import file_size_if_present, read_path_capped
 from octop.infra.server import OctopServer
 from octop.infra.skills.install import valid_skillhub_icon_url
 from octop.infra.skills.skill_archive import build_skills_zip
@@ -792,6 +794,43 @@ async def download_package_skill_file(
         content=payload,
         media_type="application/octet-stream",
         headers={"Content-Disposition": content_disposition(fname)},
+    )
+
+
+@router.get(
+    "/{package_id}/skills/{slug}/office-preview",
+    summary="Convert a skill-package file to PDF for preview",
+    description="Authorized package skill read, then LibreOffice Kit conversion.",
+    response_class=Response,
+    responses={200: {"content": {"application/pdf": {}}}},
+)
+async def office_preview_package_skill_file(
+    package_id: str,
+    slug: str,
+    path: str,
+    request: Request,
+    server: OctopServer = Depends(get_server),
+    user: User = Depends(require_permission("skill_packages")),
+) -> Response:
+    store = _store(server)
+    locale = resolve_request_locale(request)
+    _package_visible_or_404(store, package_id, user, server, locale=locale)
+    _package_skill_or_404(store, package_id, slug, locale=locale)
+    filename = path.replace("\\", "/").rstrip("/").rsplit("/", 1)[-1] or "document"
+    target = store.resolve_skill_entry(package_id, slug, path)
+    if not target.is_file() or target.is_symlink():
+        raise OctopError(ErrorCode.NOT_FOUND, f"cannot read {path!r}")
+
+    async def _load() -> bytes:
+        return await asyncio.to_thread(read_path_capped, target)
+
+    return await office_preview_pdf_response(
+        request=request,
+        filename=filename,
+        cache_scope=f"skill:{user.id}:{package_id}:{slug}",
+        source_id=path,
+        load_bytes=_load,
+        known_size=file_size_if_present(target),
     )
 
 

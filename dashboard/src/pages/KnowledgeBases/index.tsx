@@ -107,7 +107,11 @@ import PageShell from "../../layouts/PageShell";
 import { apiErrorMessage, isNotFoundApiError } from "../../utils/apiError";
 import { saveBlobAsFile } from "../../utils/saveBlobAsFile";
 import { createDetailRequestGate } from "../../utils/detailRequestGate";
-import { getDocKind, type DocKind } from "../../utils/docKind";
+import {
+  canConvertOfficeToPdf,
+  getDocKind,
+  type DocKind,
+} from "../../utils/docKind";
 import { isImeComposing } from "../../utils/ime";
 import { formatBytes, formatSizeGb } from "../../utils/embeddingDownload";
 import { fileTreeIconSpec } from "../../utils/fileTreeIcon";
@@ -1791,6 +1795,24 @@ export default function KnowledgeBasesPage() {
     [selectedId, previewDocId],
   );
 
+  const fetchPreviewPdf = useCallback(
+    async (
+      onProgress?: (loaded: number, total: number) => void,
+      signal?: AbortSignal,
+    ) => {
+      if (!selectedId || !previewDocId) {
+        throw new Error("missing knowledge document preview target");
+      }
+      return knowledgeBasesApi.fetchOfficePreview(
+        selectedId,
+        previewDocId,
+        onProgress,
+        signal,
+      );
+    },
+    [selectedId, previewDocId],
+  );
+
   useEffect(() => {
     const kb = searchParams.get("kb");
     const doc = searchParams.get("doc");
@@ -3154,6 +3176,11 @@ export default function KnowledgeBasesPage() {
               kind={previewKind}
               filename={previewFilename}
               fetchBlob={fetchPreviewBlob}
+              fetchPdfPreview={
+                previewHasOriginal && canConvertOfficeToPdf(previewFilename)
+                  ? fetchPreviewPdf
+                  : undefined
+              }
               onDownload={
                 previewHasOriginal
                   ? () =>

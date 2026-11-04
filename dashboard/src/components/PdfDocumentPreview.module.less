@@ -212,6 +212,23 @@
   background: #fff;
 }
 
+.pdfPage :global(.textLayer) {
+  // Composite the complete text layer once against the PDF canvas. An opaque
+  // selection color prevents adjacent text fragments from stacking alpha.
+  mix-blend-mode: multiply;
+}
+
+.pdfPage :global(.textLayer) ::selection {
+  // PDF.js paints the actual glyphs on the canvas. Keep its selectable
+  // text layer invisible even when the global selection style uses white text.
+  color: transparent;
+  background-color: #b5cefc;
+}
+
+.pdfPage :global(.textLayer) br::selection {
+  background-color: transparent;
+}
+
 .pdfPage :global(.react-pdf__Page__canvas) {
   display: block;
   max-width: 100%;
