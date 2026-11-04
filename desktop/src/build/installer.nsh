@@ -33,11 +33,11 @@ octop_files_done:
 
 !macro octopDetailsOn
   ${IfNot} ${Silent}
-    ; installSection sets this to none, which drops DetailPrint and the
-    ; shortcut lines. textonly keeps file-by-file copy out of the log:
-    ; the app payload is CopyFiles /SILENT, and listing the runtime's
-    ; ~40k files would stall the progress page.
-    SetDetailsPrint textonly
+    ; installSection sets this to none, which drops DetailPrint entirely.
+    ; textonly only updates the status line above the progress bar, so the
+    ; details list stays empty. both fills that list and the status line.
+    ; CopyFiles /SILENT and a quiet tar keep the runtime's files out of it.
+    SetDetailsPrint both
   ${EndIf}
 !macroend
 
