@@ -7,6 +7,7 @@
 ## [Unreleased]
 
 ### 新增
+- 聊天里 agent 可用 `request_secret_input` 收集密钥：回合暂停并在仪表盘停靠掩码输入卡，值只经专用提交端点传输一次、Fernet 加密落库（`agent_secrets`），提交后立即重建 harness，恢复的同一回合命令即可读到注入的环境变量；共享专家与团队成员场景禁用，`GET/DELETE /api/agents/{id}/secrets` 管理已存密钥，卡片样式对齐全宽表单
 - PostgreSQL 控制面下，技能包源和知识库原文进同一套库（`skill_package_files`、`knowledge_files`），知识库向量在 `knowledge_chunks`。表都在 `public`，前缀与 `skill_packages`、`knowledge_bases` 一致。SQLite 仍用本地目录。安装时选定驱动，不含 sqlite→PostgreSQL 迁移
 - 安装向导连接已有用户的 PostgreSQL 时，确认后保留这些账户并去登录。SQLite 仍要空库
 - 知识库预览可以在原文和已入库切片之间切换。文件名悬停后可重命名，扩展名保持不变
