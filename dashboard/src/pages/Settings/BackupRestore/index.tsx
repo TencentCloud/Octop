@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
 import {
-  App,
   Button,
   Checkbox,
   Divider,
@@ -16,6 +15,9 @@ import {
   Table,
   Upload,
 } from "antd";
+
+import { message } from "@/utils/antdMessage";
+import { modal } from "@/utils/antdModal";
 
 import type { ColumnsType } from "antd/es/table";
 import {
@@ -162,7 +164,6 @@ function BackupFileCard({
 
 export default function BackupRestorePanel() {
   const { t } = useTranslation();
-  const { modal, message } = App.useApp();
   const isMobile = useIsMobile();
   const serverTimezone = useServerTimezone();
   const { isRestarting } = useServiceRestartContext();
@@ -248,7 +249,7 @@ export default function BackupRestorePanel() {
     } finally {
       setLoading(false);
     }
-  }, [message, t]);
+  }, [t]);
 
   const refreshAuto = useCallback(async () => {
     setAutoLoading(true);
@@ -260,7 +261,7 @@ export default function BackupRestorePanel() {
     } finally {
       setAutoLoading(false);
     }
-  }, [applyAutoSettings, message, t]);
+  }, [applyAutoSettings, t]);
 
   useEffect(() => {
     void refresh();

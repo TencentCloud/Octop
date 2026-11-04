@@ -1,6 +1,5 @@
 import { useEffect, useState } from "react";
 import {
-  App,
   AutoComplete,
   Button,
   Checkbox,
@@ -14,6 +13,8 @@ import {
   Switch,
   Typography,
 } from "antd";
+
+import { message } from "@/utils/antdMessage";
 import { Activity, Settings2 } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import cx from "classnames";
@@ -357,7 +358,6 @@ export function DecisionSettingsPanel({
   openRouterKey?: string | null;
 }) {
   const { t } = useTranslation();
-  const { message } = App.useApp();
   const [form] = Form.useForm();
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -422,7 +422,7 @@ export function DecisionSettingsPanel({
     };
     // applySaved closes over the form instance, which is stable.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [form, message, t]);
+  }, [form, t]);
 
   useEffect(() => {
     void decisionApi

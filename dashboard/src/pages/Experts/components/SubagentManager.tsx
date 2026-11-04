@@ -9,7 +9,10 @@ import {
   useState,
   type CSSProperties,
 } from "react";
-import { Alert, App, Empty, Form, Input, Spin, Tabs } from "antd";
+import { Alert, Empty, Form, Input, Spin, Tabs } from "antd";
+
+import { message } from "@/utils/antdMessage";
+import { modal } from "@/utils/antdModal";
 
 import type { LucideIcon } from "lucide-react";
 import {
@@ -124,7 +127,6 @@ export default function SubagentManager({
   initialTab = INSTALLED_TAB,
 }: SubagentManagerProps) {
   const { t, i18n } = useTranslation();
-  const { modal, message } = App.useApp();
   const lang = normalizeUiLocale(i18n.language);
   const [divisions, setDivisions] = useState<SubagentCatalogDivision[]>([]);
   const [allItems, setAllItems] = useState<SubagentCatalogItem[]>([]);

@@ -1,6 +1,9 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useTranslation } from "react-i18next";
-import { App, Select, Input, Button, Spin, Progress, Alert } from "antd";
+import { Select, Input, Button, Spin, Progress, Alert } from "antd";
+
+import { message } from "@/utils/antdMessage";
+import { modal } from "@/utils/antdModal";
 
 import { Download, CheckCircle, AlertCircle } from "lucide-react";
 import cx from "classnames";
@@ -16,7 +19,6 @@ import styles from "./VectorSearchConfig.module.less";
 
 export default function VectorSearchConfig() {
   const { t } = useTranslation();
-  const { modal, message } = App.useApp();
 
   const [config, setConfig] = useState<EmbeddingConfig | null>(null);
   const [loading, setLoading] = useState(true);

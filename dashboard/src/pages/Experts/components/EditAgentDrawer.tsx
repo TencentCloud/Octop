@@ -3,7 +3,6 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import {
   Alert,
-  App,
   Button,
   Collapse,
   Drawer,
@@ -14,6 +13,9 @@ import {
   Select,
   Spin,
 } from "antd";
+
+import { message } from "@/utils/antdMessage";
+import { modal } from "@/utils/antdModal";
 
 import { MoreHorizontal } from "lucide-react";
 import { request } from "../../../api/request";
@@ -238,7 +240,6 @@ function EditAgentDrawerBody({
   onSavingChange,
 }: EditAgentDrawerBodyProps) {
   const { t } = useTranslation();
-  const { modal, message } = App.useApp();
   const { refresh } = useAgent();
   const skillDisplayName = useSkillDisplayName();
   const [workspaceDrawerOpen, setWorkspaceDrawerOpen] = useState(false);
@@ -412,7 +413,7 @@ function EditAgentDrawerBody({
     return () => {
       cancelled = true;
     };
-  }, [agent.agent_id, agent.state, form, message, t]);
+  }, [agent.agent_id, agent.state, form, t, agent.color]);
 
   const handleSave = useCallback(async () => {
     const values = await form.validateFields();

@@ -6,7 +6,6 @@
 
 import { useCallback, useEffect, useState } from "react";
 import {
-  App,
   Tree,
   Empty,
   Spin,
@@ -22,6 +21,9 @@ import {
   Popconfirm,
   Input,
 } from "antd";
+
+import { message } from "@/utils/antdMessage";
+import { modal } from "@/utils/antdModal";
 
 import type { TreeDataNode, TreeProps } from "antd";
 import {
@@ -255,7 +257,6 @@ export default function WorkspaceDrawer({
   embedded = false,
 }: WorkspaceDrawerProps) {
   const { t } = useTranslation();
-  const { modal, message } = App.useApp();
   const isMobile = useIsMobile();
   const timeZone = useServerTimezone();
   const { agents } = useAgent();

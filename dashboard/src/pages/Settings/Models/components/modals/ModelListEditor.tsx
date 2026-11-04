@@ -5,7 +5,9 @@
  * Connectivity tests still hit the live provider endpoint.
  */
 import { useEffect, useMemo, useRef, useState } from "react";
-import { App, Button, Form, Input, Select, Switch, Tooltip } from "antd";
+import { Button, Form, Input, Select, Switch, Tooltip } from "antd";
+import { message } from "@/utils/antdMessage";
+import { modal } from "@/utils/antdModal";
 
 import {
   Check,
@@ -97,7 +99,6 @@ export function ModelListEditor({
   onTestModel,
 }: ModelListEditorProps) {
   const { t } = useTranslation();
-  const { modal, message } = App.useApp();
   const downloadedSet = (() => {
     if (!localDownload) return null;
     const raw = localDownload.downloadedIds;

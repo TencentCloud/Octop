@@ -23,9 +23,14 @@ vi.mock("../../utils/locale", () => ({
   applyUserLocale: () => Promise.resolve(),
 }));
 
-vi.mock("./CaptchaField", () => ({
-  default: () => null,
-}));
+vi.mock("./CaptchaField", async () => {
+  const { forwardRef } = await import("react");
+  return {
+    default: forwardRef(function CaptchaField() {
+      return null;
+    }),
+  };
+});
 
 import LoginPage from "./index";
 

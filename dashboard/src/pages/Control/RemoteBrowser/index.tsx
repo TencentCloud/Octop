@@ -10,7 +10,6 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import {
   Alert,
-  App,
   Button,
   Drawer,
   Modal,
@@ -21,6 +20,8 @@ import {
   Tooltip,
   Typography,
 } from "antd";
+import { message as antMessage } from "@/utils/antdMessage";
+import { modal } from "@/utils/antdModal";
 
 import {
   AlertCircle,
@@ -296,7 +297,6 @@ export default function RemoteBrowserPage({
   isVisible = true,
 }: RemoteBrowserPageProps) {
   const { t } = useTranslation();
-  const { modal, message: antMessage } = App.useApp();
   const isMobile = useIsMobile();
   const currentUser = useCurrentUser();
   const browserProfile = resolveBrowserProfile(currentUser?.id);
@@ -757,7 +757,7 @@ export default function RemoteBrowserPage({
         closeSession();
       },
     });
-  }, [closeSession, modal, t]);
+  }, [closeSession, t]);
 
   const refreshView = useCallback(async () => {
     const profileId = profileIdRef.current;
@@ -967,7 +967,7 @@ export default function RemoteBrowserPage({
           : t("browser.recordReplay.startFailed", "开始录制失败"),
       );
     }
-  }, [antMessage, t]);
+  }, [t]);
 
   const envReady = Boolean(envStatus?.browsers_ok);
   const needsEnable = Boolean(envStatus?.needs_enable) && !envReady;

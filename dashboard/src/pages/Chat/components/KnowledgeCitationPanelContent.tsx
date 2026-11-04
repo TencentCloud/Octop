@@ -6,7 +6,9 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import { App, Tooltip } from "antd";
+import { Tooltip } from "antd";
+
+import { message } from "@/utils/antdMessage";
 import { ArrowDownToLine, ArrowUpToLine, ExternalLink } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { useNavigate } from "react-router-dom";
@@ -70,7 +72,6 @@ export default function KnowledgeCitationPanelContent({
   onActionsChange,
 }: KnowledgeCitationPanelContentProps) {
   const { t } = useTranslation();
-  const { message } = App.useApp();
   const navigate = useNavigate();
   const textBodyRef = useRef<HTMLDivElement | null>(null);
 
@@ -190,7 +191,7 @@ export default function KnowledgeCitationPanelContent({
     return () => {
       cancelled = true;
     };
-  }, [citation, loadTextPreview, message, t]);
+  }, [citation, loadTextPreview, t]);
 
   useEffect(() => {
     if (!richMissing) return;
@@ -204,7 +205,7 @@ export default function KnowledgeCitationPanelContent({
     return () => {
       cancelled = true;
     };
-  }, [citation, loadTextPreview, message, richMissing, t]);
+  }, [citation, loadTextPreview, richMissing, t]);
 
   const fetchBlob = useCallback(
     async (
@@ -255,7 +256,6 @@ export default function KnowledgeCitationPanelContent({
     citation.filename,
     citation.kbId,
     filename,
-    message,
     t,
   ]);
 

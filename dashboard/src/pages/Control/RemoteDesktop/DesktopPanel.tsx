@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Alert,
-  App,
   Button,
   Drawer,
   Modal,
@@ -12,6 +11,9 @@ import {
   Tag,
   Tooltip,
 } from "antd";
+
+import { message } from "@/utils/antdMessage";
+import { modal } from "@/utils/antdModal";
 
 import {
   CheckCircle2,
@@ -91,7 +93,6 @@ export default function DesktopPanel({
   isVisible = true,
 }: DesktopPanelProps) {
   const { t } = useTranslation();
-  const { modal, message } = App.useApp();
   const user = useCurrentUser();
   const canDesktop = userCan(user, "desktop");
   const isMobile = useIsMobile();

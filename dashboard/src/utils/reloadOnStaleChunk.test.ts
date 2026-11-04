@@ -96,10 +96,12 @@ describe("tryReloadOnStaleChunk", () => {
     sessionStorage.clear();
     reload = stubReload();
     clearChunkReloadFlag();
+    vi.spyOn(console, "warn").mockImplementation(() => {});
   });
 
   afterEach(() => {
     clearChunkReloadFlag();
+    vi.restoreAllMocks();
   });
 
   it("reloads once on chunk error", async () => {
@@ -200,7 +202,12 @@ describe("navigation-aborted chunk errors", () => {
       value: { reload },
     });
     reload.mockClear();
+    vi.spyOn(console, "warn").mockImplementation(() => {});
     mod = await import("./reloadOnStaleChunk");
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
   });
 
   it("skips the reload once a navigation away has been announced", () => {

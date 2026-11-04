@@ -7,8 +7,8 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import { App } from "antd";
 import { useTranslation } from "react-i18next";
+import { message } from "@/utils/antdMessage";
 
 import {
   backupApi,
@@ -51,7 +51,6 @@ function mapServerOperation(
 }
 
 export function BackupOperationProvider({ children }: { children: ReactNode }) {
-  const { message } = App.useApp();
   const { t } = useTranslation();
   const [kind, setKind] = useState<BackupOpKind>(null);
   const [restoreTarget, setRestoreTarget] = useState<string | null>(null);
@@ -113,7 +112,7 @@ export function BackupOperationProvider({ children }: { children: ReactNode }) {
         void syncFromServer();
       }
     },
-    [beginLocal, message, notifySettled, syncFromServer, t],
+    [beginLocal, notifySettled, syncFromServer, t],
   );
 
   const runAutoBackup = useCallback(async () => {
@@ -131,7 +130,7 @@ export function BackupOperationProvider({ children }: { children: ReactNode }) {
       setKind(null);
       void syncFromServer();
     }
-  }, [beginLocal, message, notifySettled, syncFromServer, t]);
+  }, [beginLocal, notifySettled, syncFromServer, t]);
 
   const restoreBackup = useCallback(
     async (name: string, restoreConfig: boolean) => {
@@ -157,7 +156,7 @@ export function BackupOperationProvider({ children }: { children: ReactNode }) {
         void syncFromServer();
       }
     },
-    [beginLocal, message, notifySettled, syncFromServer, t],
+    [beginLocal, notifySettled, syncFromServer, t],
   );
 
   const uploadBackup = useCallback(
@@ -180,7 +179,7 @@ export function BackupOperationProvider({ children }: { children: ReactNode }) {
         setUploadPercent(null);
       }
     },
-    [beginLocal, message, notifySettled, t],
+    [beginLocal, notifySettled, t],
   );
 
   const creating = kind === "create" || kind === "export";

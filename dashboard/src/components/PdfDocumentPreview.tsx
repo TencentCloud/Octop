@@ -668,7 +668,8 @@ export default function PdfDocumentPreview({
   );
 
   const activeOutline = useMemo(() => {
-    if (!outline || outline.length === 0) return null;
+    if (!outline || outline.length === 0 || outlineDestVersion < 0) return null;
+    // outlineDestVersion bumps when dest pages are written into the ref cache.
     return activeOutlineItem(outline, currentPage, destPageCacheRef.current);
   }, [outline, currentPage, outlineDestVersion]);
 

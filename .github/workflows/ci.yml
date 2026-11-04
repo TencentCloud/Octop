@@ -65,6 +65,35 @@ jobs:
       - name: Test
         run: make test
 
+  frontend:
+    name: Frontend
+    # Pin the image. ubuntu-latest warns while it moves to Ubuntu 26; this job
+    # already runs on 24.04.
+    runs-on: ubuntu-24.04
+    if: ${{ !startsWith(github.head_ref, 'chore/sync-develop-after-') }}
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: dashboard/package-lock.json
+
+      - name: Install dashboard dependencies
+        working-directory: dashboard
+        run: npm ci --prefer-offline --no-audit
+
+      - name: Lint
+        run: make lint-frontend
+
+      - name: Type check
+        run: make typecheck-frontend
+
+      - name: Test
+        working-directory: dashboard
+        run: npm test
+
   live-tests:
     name: "Live tests (real credentials)"
     runs-on: ubuntu-latest

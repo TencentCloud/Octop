@@ -9,7 +9,6 @@
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
-  App,
   Button,
   Divider,
   Drawer,
@@ -19,6 +18,9 @@ import {
   Progress,
   Select,
 } from "antd";
+
+import { message } from "@/utils/antdMessage";
+import { modal } from "@/utils/antdModal";
 
 import { Download, Key, Loader2, Trash2, X, Zap } from "lucide-react";
 import { useTranslation } from "react-i18next";
@@ -90,7 +92,6 @@ export function ProviderConfigModal({
   apiPrefix = "/providers",
 }: ProviderConfigModalProps) {
   const { t } = useTranslation();
-  const { modal, message } = App.useApp();
   const [saving, setSaving] = useState(false);
   const [formDirty, setFormDirty] = useState(false);
   const [testing, setTesting] = useState(false);
@@ -120,6 +121,8 @@ export function ProviderConfigModal({
   const [ollamaModelsDir, setOllamaModelsDir] = useState("");
   const [ollamaServiceLoaded, setOllamaServiceLoaded] = useState(false);
   const [savingModelsDir, setSavingModelsDir] = useState(false);
+  const providerRef = useRef(provider);
+  providerRef.current = provider;
   const ollamaPollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const ollamaNotifiedRef = useRef<Set<string>>(new Set());
 
@@ -657,19 +660,20 @@ export function ProviderConfigModal({
     if (!open) return;
     // Only hydrate when the modal opens (or provider id changes), so
     // background refreshes / local model toggles do not reset the form.
-    const currentDefaultModel = provider.models?.length
-      ? provider.models[0].id
+    const current = providerRef.current;
+    const currentDefaultModel = current.models?.length
+      ? current.models[0].id
       : "";
     form.setFieldsValue({
-      kind: provider.kind,
-      base_url: provider.base_url ?? "",
+      kind: current.kind,
+      base_url: current.base_url ?? "",
       api_key: undefined,
       model: currentDefaultModel,
-      note: provider.note ?? "",
-      stream_usage: provider.stream_usage !== false,
+      note: current.note ?? "",
+      stream_usage: current.stream_usage !== false,
     });
     setDraftModels(
-      (provider.models ?? []).map((m) => ({
+      (current.models ?? []).map((m) => ({
         ...m,
         enabled: m.enabled !== false,
       })),
