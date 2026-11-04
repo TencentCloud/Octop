@@ -406,6 +406,8 @@ Bundled experts live in `src/octop/infra/agents/experts/library/`
 | `DELETE` | `/agents/{aid}/memory/daily/{filename}` | owner | delete one daily memory |
 | `GET`/`POST` | `/memory/...` | user | memory API (dashboard memory tab) |
 
+The HTTP server installs the pinned LibreOffice Kit runtime in the background on first startup, into `~/.octop/office-preview` (or `$OCTOP_HOME/office-preview`). The engine is downloaded after startup and is not bundled in the wheel/image. Node >= 22.19 and npm are required. Existing installations are reused; a failed download leaves the fallback viewers available and is retried on the next startup. Refresh the preview after installation completes. Embedded CLI operations do not trigger downloads. Use `octop office-preview status` to check readiness and `octop office-preview install` to retry manually.
+
 ### Manual document reconciliation
 
 The manual editors save files first, then request reconciliation. The response reports

@@ -45,4 +45,4 @@ def install_cmd() -> None:
     except RuntimeError as exc:
         raise click.ClickException(str(exc)) from exc
     click.echo(f"Installed Office preview runtime at {dest}")
-    click.echo("Restart octop run if the server is already running.")
+    click.echo("Refresh open previews after installation completes.")

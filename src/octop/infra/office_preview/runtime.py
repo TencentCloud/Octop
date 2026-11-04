@@ -94,7 +94,8 @@ def probe_runtime(paths: PathLayout | None = None) -> RuntimeProbe:
     kit_dir = helper / "node_modules" / "@deepseek-ai" / "libreoffice-kit"
     if not script.is_file():
         return RuntimeProbe(False, node_bin, version, helper, "helper_missing")
-    if not kit_dir.is_dir():
+    marker = helper / ".kit-version"
+    if not kit_dir.is_dir() or not marker.is_file() or marker.read_text().strip() != KIT_VERSION:
         return RuntimeProbe(False, node_bin, version, helper, "kit_missing")
     return RuntimeProbe(True, node_bin, version, helper, "ok")
 
@@ -127,6 +128,7 @@ def install_runtime(
     """
     dest = runtime_dir(paths)
     _copy_helper(dest)
+    (dest / ".kit-version").unlink(missing_ok=True)
     npm = npm_bin or shutil.which("npm")
     if not npm:
         raise RuntimeError("npm is not installed")
@@ -155,6 +157,7 @@ def install_runtime(
     )
     if proc.returncode != 0:
         raise RuntimeError("npm install of libreoffice-kit failed")
+    (dest / ".kit-version").write_text(KIT_VERSION, encoding="ascii")
     probe = probe_runtime(paths)
     if not probe.available:
         raise RuntimeError(f"office preview runtime still unavailable: {probe.reason}")

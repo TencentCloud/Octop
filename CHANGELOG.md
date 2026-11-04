@@ -7,7 +7,7 @@
 ## [Unreleased]
 
 ### 新增
-- 工作区、会话文件、知识库、存储浏览和技能包支持可选的本机 LibreOffice Kit 文档预览（DOCX/PPTX/DOC/PPT 转 PDF）。运行 `octop office-preview install` 安装引擎，缺失时回退已有查看器
+- 工作区、会话文件、知识库、存储浏览和技能包支持可选的本机 LibreOffice Kit 文档预览（DOCX/PPTX/DOC/PPT 转 PDF）。HTTP 服务首次启动后在后台安装引擎，安装包不内置引擎；安装失败时回退已有查看器，下次启动重试，也可运行 `octop office-preview install` 手动重试
 - Excel 预览使用只读 FortuneSheet 网格，XLSX/XLSM 保留填充色、边框、合并单元格、行列尺寸和冻结窗格，支持单元格选择、复制、公式栏和工作表切换；XLS 展示保存值与基础布局
 - PostgreSQL 控制面下，技能包源和知识库原文进同一套库（`skill_package_files`、`knowledge_files`），知识库向量在 `knowledge_chunks`。表都在 `public`，前缀与 `skill_packages`、`knowledge_bases` 一致。SQLite 仍用本地目录。安装时选定驱动，不含 sqlite→PostgreSQL 迁移
 - 安装向导连接已有用户的 PostgreSQL 时，确认后保留这些账户并去登录。SQLite 仍要空库
