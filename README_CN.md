@@ -336,7 +336,7 @@ docker run -d \
   - [参与贡献](#-参与贡献)
   - [更新日志](#-更新日志)
   - [相关项目](#-相关项目)
-  - [客户企业微信群](#-客户企业微信群)
+  - [社区](#-社区)
   - [许可证](#-许可证)
 
 ## 📦 安装方式
@@ -569,7 +569,17 @@ cd dashboard && npx tsc -b
 | [Octop Memory](https://github.com/TencentCloud/octop-memory) | 层级召回与全文搜索 |
 | [Octop Browser](https://github.com/TencentCloud/octop-browser) | CDP 浏览器自动化，支持 profile 持久登录 |
 
-## 💬 客户企业微信群
+## 💬 社区
+
+### 微信
+
+微信搜一搜「腾讯Octop」，或扫码：
+
+<p align="center">
+  <img src="docs/assets/wechat-octop.png" alt="微信搜一搜腾讯Octop" width="480" />
+</p>
+
+### 客户企业微信群
 
 如需加入客户企业微信服务群，请扫码：
 

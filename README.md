@@ -576,6 +576,14 @@ See [CHANGELOG.md](CHANGELOG.md) for release history.
 
 - **Discord** — join the English-speaking community: [discord.gg/QnWdhJxq9h](https://discord.gg/QnWdhJxq9h)
 
+### WeChat
+
+Search for **腾讯Octop** in WeChat, or scan:
+
+<p align="center">
+  <img src="docs/assets/wechat-octop.png" alt="WeChat search for 腾讯Octop" width="480" />
+</p>
+
 ### WeCom Customer Group (CN)
 
 For the customer WeCom support group, scan:
