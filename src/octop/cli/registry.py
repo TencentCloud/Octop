@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from octop.i18n import tr
+
 # command name -> (relative module path, attribute name, short help)
 COMMANDS: dict[str, tuple[str, str, str]] = {
     "memory": (".commands.memory", "memory", "Live memory maintenance (backup and slim)."),
@@ -18,6 +20,7 @@ COMMANDS: dict[str, tuple[str, str, str]] = {
     "chats": (".commands.chats", "chats", "Chat REPL and session management."),
     "channel": (".commands.channel", "channel", "Channel management commands."),
     "cron": (".commands.cron", "cron", "Cron job management commands."),
+    "connector": (".commands.connector", "connector", tr("connector.install.help", "en")),
     "provider": (".commands.provider", "provider", "Provider management (admin write)."),
     "models": (".commands.models", "models", "Provider presets and resolved models."),
     "skills": (".commands.skills", "skills", "Per-agent skill enable/disable."),

@@ -211,6 +211,7 @@ def test_obsidian_cli_catalog_and_credentials(tmp_path: Path):
     kinds = [item.kind for item in list_catalog()]
     assert kinds.index("obsidian-cli") < kinds.index("weknora")
     assert kinds[-2:] == ["weknora", "dify"]
+    assert kinds[kinds.index("notion") - 1] == "open-design"
 
     binary = tmp_path / "obsidian"
     binary.write_text("", encoding="utf-8")
