@@ -1,4 +1,7 @@
 {
+  "workspace_archive": {
+    "skipped_sqlite_shm": "Skipped {count} SQLite shared-memory file(s); SQLite regenerates them."
+  },
   "slash": {
     "error": {
       "unknown_command": "Unknown command: /{name}. Type /help for available commands."
