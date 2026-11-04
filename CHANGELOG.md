@@ -11,6 +11,8 @@
 - 安装向导连接已有用户的 PostgreSQL 时，确认后保留这些账户并去登录。SQLite 仍要空库
 - 知识库预览可以在原文和已入库切片之间切换。文件名悬停后可重命名，扩展名保持不变
 - Docker 与飞牛增加精简版。默认 `:<version>` / `:latest` 仍是含桌面、OCR 和本地向量的完整镜像；精简版标签是 `:<version>-lite` 和 `:lite`
+- `octop acp` 在一次 stdio 进程中通过 ACP session `configOptions`（`id=expert`）列出全部本地专家，客户端可用 `session/set_config_option` 切换；`--agent` 仅可选默认值（否则 CLI default / 第一个专家）
+- 入站 ACP 支持 `session/load`（回放 harness 历史）、`session/resume`、`session/list`、`session/close`；协议基线可用 acp-tck 对 harness mock agent 验证（需配套 `octop-harness` 入站 ACP 能力）
 
 ### 修复
 - Dashboard 里 `ask_user_question` 未答完时，新建同专家会话再发消息不再被当成旧测验的答案；同会话内明文作答仍然有效
@@ -29,6 +31,9 @@
 
 ### 变更
 - 聊天侧栏可以隐藏任意专家，不再限于别人共享来的。正在对话的隐藏专家留在「已隐藏专家」里，不再被提到列表上方
+
+### 变更
+- `octop acp` 先应答 ACP `initialize`（结束 IDE「Loading…」），再在后台精简启动默认专家（跳过 IM/cron/全量专家目录扫描）；其余专家在切换时按需启动；首次对话仍会等到当前专家就绪
 
 ## [1.0.3b2] - 2026-11-01
 
