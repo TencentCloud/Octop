@@ -201,6 +201,20 @@ def test_parse_csv_xlsx_and_xls(tmp_path: Path) -> None:
     assert parse_document(xls) == "# Q1\nitem\tqty\napple\t2"
 
 
+def test_parse_csv_keeps_newlines_inside_quoted_fields(tmp_path: Path) -> None:
+    csv_path = tmp_path / "notes.csv"
+    csv_path.write_text('item,note\napple,"line1\nline2"\n', encoding="utf-8")
+
+    assert parse_document(csv_path) == "# notes\nitem\tnote\napple\tline1 line2"
+
+
+def test_parse_tsv_keeps_quoted_multiline_field(tmp_path: Path) -> None:
+    tsv_path = tmp_path / "notes.tsv"
+    tsv_path.write_text('item\tnote\napple\t"line1\nline2"\n', encoding="utf-8")
+
+    assert parse_document(tsv_path) == "# notes\nitem\tnote\napple\tline1 line2"
+
+
 def test_parse_html_json_and_plain_variants(tmp_path: Path) -> None:
     html = tmp_path / "page.html"
     html.write_text(

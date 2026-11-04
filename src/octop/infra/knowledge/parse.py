@@ -259,7 +259,12 @@ def _sheet_text(title: str, rows: Iterable[Iterable[object]]) -> str:
 
 
 def _parse_delimited(path: Path, *, delimiter: str) -> str:
-    reader = csv.reader(_read_text(path).splitlines(), delimiter=delimiter)
+    # Feed the reader an iterable of logical records, not of physical lines.
+    # splitlines() cuts a quoted field at the newline it is allowed to
+    # contain (RFC 4180 §2.6), so csv.reader sees an unterminated quote on
+    # one line and its continuation on the next and joins them with no
+    # separator: "line1\nline2" silently becomes "line1line2".
+    reader = csv.reader(io.StringIO(_read_text(path), newline=""), delimiter=delimiter)
     return _sheet_text(path.stem, reader)
 
 
