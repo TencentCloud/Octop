@@ -54,7 +54,9 @@ def _install_fake_mcp(
             return None
 
         async def list_tools(self) -> Any:
-            return SimpleNamespace(tools=[SimpleNamespace(name="read_file", description="read")])
+            return SimpleNamespace(
+                tools=[SimpleNamespace(name="read_file", description="read")], nextCursor=None
+            )
 
     monkeypatch.setattr("mcp.client.streamable_http.streamablehttp_client", fake_client)
     monkeypatch.setattr("mcp.ClientSession", lambda *args, **kwargs: FakeSession())
