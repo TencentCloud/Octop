@@ -2,35 +2,33 @@ import { nativeTheme } from "electron";
 import type { BrowserWindow, BrowserWindowConstructorOptions } from "electron";
 
 /**
- * Native window chrome, after opencode's desktop shell: the shell keeps the
- * platform's own buttons and only reserves the space for them, instead of
- * drawing a fake titlebar. Every window-level gesture (drag, double-click to
- * zoom, Aero Snap, Snap Layouts, full-screen transitions) therefore stays in
- * the hands of the OS.
+ * Native window chrome. The shell does not draw caption buttons.
  *
  * - macOS   `titleBarStyle: "hidden"` keeps the traffic lights and pins them
  *           over the Dashboard's chrome row; the titlebar itself is gone.
- * - Windows `titleBarOverlay` draws the three caption buttons *above* the page.
- *           The overlay colour is fully transparent so the page background
- *           shows through, and only the glyph colour has to follow the theme.
+ * - Windows keeps the system frame. The caption buttons get that whole title
+ *           row instead of sitting on top of the page. The File / Edit / View /
+ *           Help menu is the application menu, drawn under the title bar.
  * - Linux   keeps the system frame, so no option is passed at all: a frameless
  *           window there would have no controls whatsoever.
  */
 
 /**
- * 与 Dashboard 的 DESKTOP_CHROME_HEIGHT 及早期页顶部拖动区域保持一致；
- * Windows 原生标题栏按钮覆盖此高度。
+ * 与 Dashboard 的 DESKTOP_CHROME_HEIGHT 及早期页顶部拖动区域保持一致。
+ * 这是页面顶栏，不是交通灯的高度。
  */
 export const CHROME_ROW_HEIGHT = 58;
 
 /**
- * macOS 27 交通灯着色区域约 60px。左右各留 4px，收起导航的预留宽度与此相同
- * （Dashboard `WINDOW_CONTROLS_INSET.mac` = 68）。
- * 水平位置用左边距。灯贴近窗口顶缘，功能栏内容跟在灯下面。
+ * 系统交通灯就是 12×12，间距 8，整组宽 52。标题栏高 28，灯在里面垂直居中。
+ * 不把灯拉高到页面顶栏的 58px。
  */
-const TRAFFIC_LIGHT_SPAN = 60;
-const TRAFFIC_LIGHT_INSET = 4;
-const TRAFFIC_LIGHT_TOP = 8;
+export const TRAFFIC_LIGHT_BUTTON = 12;
+export const TRAFFIC_LIGHT_GAP = 8;
+const TRAFFIC_LIGHT_SPAN = TRAFFIC_LIGHT_BUTTON * 3 + TRAFFIC_LIGHT_GAP * 2;
+export const TRAFFIC_LIGHT_ROW_HEIGHT = 28;
+const TRAFFIC_LIGHT_INSET = 12;
+const TRAFFIC_LIGHT_TOP = (TRAFFIC_LIGHT_ROW_HEIGHT - TRAFFIC_LIGHT_BUTTON) / 2;
 
 export const TRAFFIC_LIGHT_POSITION = {
   x: TRAFFIC_LIGHT_INSET,
@@ -41,15 +39,6 @@ export const TRAFFIC_LIGHT_POSITION = {
 export interface WindowChromeTheme {
   mode: "light" | "dark";
   scheme?: "system" | "light" | "dark";
-}
-
-const DARK_SYMBOL = "#e7e7ed";
-const LIGHT_SYMBOL = "#1f2329";
-
-interface TitlebarOverlay {
-  color: string;
-  symbolColor: string;
-  height: number;
 }
 
 /** What the OS is showing right now, used before the renderer reports a theme. */
@@ -98,23 +87,9 @@ export function isAppNavigation(url: string, appOrigin: string): boolean {
   return url === appOrigin || url.startsWith(`${appOrigin}/`) || url.startsWith(`${appOrigin}?`);
 }
 
-/**
- * Caption-button overlay. `color` stays transparent on purpose: the page paints
- * its own background underneath, so a themed bar would leave a visible seam.
- */
-export function titlebarOverlay(
-  mode: WindowChromeTheme["mode"] = systemMode(),
-): TitlebarOverlay {
-  return {
-    color: "#00000000",
-    symbolColor: mode === "dark" ? DARK_SYMBOL : LIGHT_SYMBOL,
-    height: CHROME_ROW_HEIGHT,
-  };
-}
-
 /** Per-platform frame options, shared by the Early Window and the Dashboard. */
 export function windowChrome(
-  mode: WindowChromeTheme["mode"] = systemMode(),
+  _mode: WindowChromeTheme["mode"] = systemMode(),
 ): BrowserWindowConstructorOptions {
   if (process.platform === "darwin") {
     return {
@@ -123,11 +98,8 @@ export function windowChrome(
     };
   }
   if (process.platform === "win32") {
-    return {
-      frame: false,
-      titleBarStyle: "hidden",
-      titleBarOverlay: titlebarOverlay(mode),
-    };
+    // System title bar is its own row. Keep the menu bar visible under it.
+    return { autoHideMenuBar: false };
   }
   return {};
 }
@@ -138,12 +110,10 @@ export function windowChrome(
  * otherwise keep black glyphs on a dark overlay.
  */
 export function applyWindowChromeTheme(
-  win: BrowserWindow,
+  _win: BrowserWindow,
   theme: WindowChromeTheme,
 ): void {
   applyNativeTheme(theme);
-  if (win.isDestroyed() || process.platform !== "win32") return;
-  win.setTitleBarOverlay(titlebarOverlay(theme.mode));
 }
 
 /**

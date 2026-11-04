@@ -14,8 +14,12 @@ import {
   resolveDesktopChromeStyle,
   titleRowEndPadding,
   titleRowStartPadding,
+  MAC_TITLEBAR_HEIGHT,
+  MAC_TRAFFIC_LIGHT_BUTTON,
+  MAC_TRAFFIC_LIGHT_GAP,
   MAC_TRAFFIC_LIGHT_INSET,
   MAC_TRAFFIC_LIGHT_SPAN,
+  WINDOWS_CAPTION_HEIGHT,
   WINDOW_CONTROLS_INSET,
   WINDOW_CONTROLS_SPACER_ATTR,
   windowControlsEndSpacerPx,
@@ -58,12 +62,12 @@ describe("desktopChrome", () => {
     ).toBe("mac");
   });
 
-  it("uses caption-button chrome on Windows", () => {
+  it("reserves nothing on Windows, which keeps the system title bar", () => {
     expect(
       resolveDesktopChromeStyle(
         "Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/120.0.0.0",
       ),
-    ).toBe("windows");
+    ).toBeNull();
   });
 
   it("reserves nothing on Linux, which keeps its native window frame", () => {
@@ -129,12 +133,13 @@ describe("desktopChrome", () => {
     expect(windowControlsStartSpacerPx(null, true)).toBe(0);
   });
 
-  it("reserves one top row for the shell's native buttons on both platforms", () => {
-    expect(chromeTopBandPx("mac")).toBe(DESKTOP_CHROME_HEIGHT);
-    // Windows caption buttons share the 58px row with search and page titles.
-    expect(chromeTopBandPx("windows")).toBe(DESKTOP_CHROME_HEIGHT);
+  it("reserves the conventional control height, not the taller page header", () => {
+    expect(MAC_TITLEBAR_HEIGHT).toBe(28);
+    expect(WINDOWS_CAPTION_HEIGHT).toBe(32);
+    expect(MAC_TITLEBAR_HEIGHT).toBeLessThan(DESKTOP_CHROME_HEIGHT);
+    expect(chromeTopBandPx("mac")).toBe(MAC_TITLEBAR_HEIGHT);
+    expect(chromeTopBandPx("windows")).toBe(WINDOWS_CAPTION_HEIGHT);
     expect(chromeTopBandPx(null)).toBe(0);
-    // Fullscreen removes native controls, not the shared Web/desktop layout.
     expect(chromeTopBandPx("mac", true)).toBe(0);
     expect(chromeTopBandPx("windows", true)).toBe(0);
     expect(DESKTOP_CHROME_HEIGHT).toBe(58);
@@ -200,9 +205,15 @@ describe("desktopChrome", () => {
       "utf8",
     );
     expect(native).toContain(`CHROME_ROW_HEIGHT = ${DESKTOP_CHROME_HEIGHT}`);
-    expect(native).toContain("const TRAFFIC_LIGHT_SPAN = 60");
-    expect(native).toContain("const TRAFFIC_LIGHT_INSET = 4");
-    expect(MAC_TRAFFIC_LIGHT_INSET).toBe(4);
+    expect(native).toContain(`TRAFFIC_LIGHT_BUTTON = ${MAC_TRAFFIC_LIGHT_BUTTON}`);
+    expect(native).toContain(
+      `TRAFFIC_LIGHT_ROW_HEIGHT = ${MAC_TITLEBAR_HEIGHT}`,
+    );
+    expect(native).toContain(`TRAFFIC_LIGHT_GAP = ${MAC_TRAFFIC_LIGHT_GAP}`);
+    expect(MAC_TRAFFIC_LIGHT_BUTTON).toBe(12);
+    expect(MAC_TRAFFIC_LIGHT_GAP).toBe(8);
+    expect(MAC_TRAFFIC_LIGHT_SPAN).toBe(52);
+    expect(MAC_TRAFFIC_LIGHT_INSET).toBe(12);
     expect(WINDOW_CONTROLS_INSET.mac).toBe(
       MAC_TRAFFIC_LIGHT_INSET * 2 + MAC_TRAFFIC_LIGHT_SPAN,
     );

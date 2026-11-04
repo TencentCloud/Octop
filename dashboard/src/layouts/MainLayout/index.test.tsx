@@ -2,6 +2,7 @@ import type { ReactNode } from "react";
 import { cleanup, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
+  chromeTopBandPx,
   WINDOW_CONTROLS_INSET,
   type DesktopChromeStyle,
 } from "../../utils/desktopChrome";
@@ -205,7 +206,7 @@ describe("MainLayout 共享顶栏", () => {
       expect(bands[0]).toHaveStyle({
         position: "absolute",
         top: "0px",
-        height: "58px",
+        height: `${chromeTopBandPx(chrome)}px`,
         left,
         right,
         pointerEvents: "none",

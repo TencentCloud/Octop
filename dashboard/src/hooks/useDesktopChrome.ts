@@ -17,9 +17,9 @@ const DesktopChromeContext = createContext<DesktopChromeStyle | null>(null);
 
 /**
  * Activate desktop window chrome when the Electron preload bridge is present.
- * The shell keeps the native buttons (macOS traffic lights, Windows caption
- * buttons), so this only publishes how much space they need; dragging stays
- * pure CSS (`app-region`), no JS listeners needed.
+ * macOS traffic lights sit on the page, so this publishes how much space they
+ * need. Windows uses the system title bar and does not reserve any. Dragging
+ * stays pure CSS (`app-region`), no JS listeners needed.
  */
 export function useDesktopChrome(): DesktopChromeStyle | null {
   const [style, setStyle] = useState<DesktopChromeStyle | null>(null);

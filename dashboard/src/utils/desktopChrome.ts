@@ -3,27 +3,32 @@ export type DesktopChromeStyle = "mac" | "windows";
 /** Which window edge carries the minimise / maximise / close buttons. */
 export type WindowControlsSide = "start" | "end";
 
-/** Shared Web/desktop top-row height; native controls and drag hit area stay inside it. */
+/** Shared Web/desktop page-header height. Native traffic lights are shorter. */
 export const DESKTOP_CHROME_HEIGHT = 58;
 
-/**
- * Padding on each side of the macOS traffic-light group inside the collapsed
- * nav. The shell pins the lights at this same x (`TRAFFIC_LIGHT_POSITION`).
- */
-export const MAC_TRAFFIC_LIGHT_INSET = 4;
+/** Native macOS traffic light: 12×12, 8px apart. The page header is taller. */
+export const MAC_TRAFFIC_LIGHT_BUTTON = 12;
+export const MAC_TRAFFIC_LIGHT_GAP = 8;
 
 /**
- * Visual width of the three macOS traffic lights, from the red button's left
- * edge to the green button's right edge. macOS 27 draws about 60px, wider
- * than the 12×3 + 8×2 textbook span.
+ * Left margin of a standard title bar. Matches `TRAFFIC_LIGHT_POSITION.x`.
  */
-export const MAC_TRAFFIC_LIGHT_SPAN = 60;
+export const MAC_TRAFFIC_LIGHT_INSET = 12;
+
+/** 12×3 + 8×2. Not the wider measurement, and not the 58px page row. */
+export const MAC_TRAFFIC_LIGHT_SPAN =
+  MAC_TRAFFIC_LIGHT_BUTTON * 3 + MAC_TRAFFIC_LIGHT_GAP * 2;
+
+/** Standard title bar. Traffic lights are centered in this, not stretched. */
+export const MAC_TITLEBAR_HEIGHT = 28;
+
+/** Windows caption buttons. Same idea: system height, not the page row. */
+export const WINDOWS_CAPTION_HEIGHT = 32;
 
 /**
  * Horizontal space the *native* buttons occupy, by platform convention:
- * - macOS: three traffic lights on the LEFT, centered in the collapsed nav.
- *   The column is the group width plus the same inset on both sides, so the
- *   lights and the icons share the rail's center line.
+ * - macOS: three 12×12 traffic lights on the LEFT, with the standard 12px
+ *   margin on both sides of the group. The page header below stays taller.
  * - Windows: three 46px caption buttons on the RIGHT (titleBarOverlay).
  *
  * The buttons are drawn by the OS above the page, so the page must keep this
@@ -54,15 +59,16 @@ export function windowControlsInset(
 }
 
 /**
- * Height occupied by native controls, not extra padding above page headers.
- * The shell layout shares DESKTOP_CHROME_HEIGHT with Web even without controls.
- * Fullscreen and `null` (browser / Linux system frame) reserve no native chrome.
+ * Height of the native control row. macOS title bar is 28px and Windows
+ * caption buttons are 32px. The 58px page header is a separate row.
+ * Fullscreen and `null` (browser / system frame with no overlay) reserve none.
  */
 export function chromeTopBandPx(
   style: DesktopChromeStyle | null,
   fullscreen = false,
 ): number {
-  return style && !fullscreen ? DESKTOP_CHROME_HEIGHT : 0;
+  if (!style || fullscreen) return 0;
+  return style === "mac" ? MAC_TITLEBAR_HEIGHT : WINDOWS_CAPTION_HEIGHT;
 }
 
 /** Right-edge overlay chrome (dock toolbar, etc.) to keep clear of caption buttons. */
@@ -120,17 +126,15 @@ export const DESKTOP_NO_DRAG_CLASS = "octop-desktop-no-drag";
 /**
  * Which chrome — if any — the page has to make room for.
  *
- * macOS keeps its native traffic lights and Windows its native caption buttons,
- * so both need reserved space. Linux is deliberately absent: the shell leaves
- * the system frame on there, which already carries the buttons, so the page
- * renders edge to edge.
+ * macOS keeps its traffic lights over the page, so the page reserves space
+ * for them. Windows and Linux keep the system frame, which already carries
+ * the caption buttons, so the page renders edge to edge.
  */
 export function resolveDesktopChromeStyle(
   userAgent = navigator.userAgent,
 ): DesktopChromeStyle | null {
   if (/Mac|iPhone|iPad/.test(userAgent)) return "mac";
-  if (/Linux|X11/.test(userAgent)) return null;
-  return "windows";
+  return null;
 }
 
 export function titleRowEndPadding(outerPadPx: number): string {

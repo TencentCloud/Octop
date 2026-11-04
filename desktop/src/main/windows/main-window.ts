@@ -29,8 +29,8 @@ export function createMainWindow(options: {
     minWidth: MIN_WINDOW_SIZE.width,
     minHeight: MIN_WINDOW_SIZE.height,
     show: false,
-    // The chrome is native (macOS traffic lights / Windows caption buttons), so
-    // the Dashboard only reserves space for it and drags via `app-region`.
+    // macOS pins traffic lights over the page. Windows and Linux keep the
+    // system frame, so those caption buttons are not drawn on the page.
     ...windowChrome(options.theme.mode),
     backgroundColor: options.backgroundColor,
     webPreferences: {
