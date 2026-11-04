@@ -110,6 +110,8 @@ def test_run_migrations_idempotent(db: SqlitePool):
         "user_webauthn_credentials",
         "user_recovery_codes",
         "auth_challenges",
+        "profile_avatars",
+        "control_files",
     }.issubset(table_names)
     assert "preferences_json" in cols
     assert "permissions" in cols
