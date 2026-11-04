@@ -168,7 +168,7 @@ export interface ChannelField {
   /** Visible label (Chinese; falls back when no i18n key). */
   label: string;
   /** Antd input type. */
-  type?: "text" | "password" | "textarea" | "json" | "switch";
+  type?: "text" | "password" | "textarea" | "json" | "switch" | "number";
   /** Placeholder for the input. */
   placeholder?: string;
   /** True when the field is required at create time. */
@@ -383,7 +383,7 @@ export const CHANNEL_FIELDS: Partial<Record<ChannelKey, ChannelField[]>> = {
   ],
   mqtt: [
     { name: "host", label: "Broker Host", required: true },
-    { name: "port", label: "Port", placeholder: "8883" },
+    { name: "port", label: "Port", type: "number", placeholder: "8883" },
     { name: "username", label: "Username" },
     { name: "password", label: "Password", type: "password" },
     {

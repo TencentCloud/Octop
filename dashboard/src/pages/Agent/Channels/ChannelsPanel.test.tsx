@@ -307,3 +307,31 @@ describe("<ChannelsPanel /> create-flow default", () => {
     });
   });
 });
+
+/**
+ * MQTT port must be a numeric field.
+ *
+ * The backend declares `port: int`, but the console used to submit it as a
+ * string (plain text input). A string port reached the MQTT transport and
+ * crashed paho with `TypeError: '<=' not supported between instances of 'str'
+ * and 'int'`, so the channel could neither be saved nor probed.
+ *
+ * Contract: the MQTT Port field renders as a numeric control (`spinbutton`),
+ * so the value reaching the API is a number and invalid text is rejected
+ * client-side.
+ */
+describe("<ChannelsPanel /> MQTT numeric fields", () => {
+  it("renders the MQTT port field as a numeric control", async () => {
+    render(<ChannelsPanel agentId="ag1" />);
+    await userEvent.click(
+      await screen.findByRole("button", { name: /channels\.showMoreChannels/ }),
+    );
+    await userEvent.click(
+      (await screen.findAllByText("channels.label_mqtt"))[0],
+    );
+
+    const port = await screen.findByRole("spinbutton", { name: /Port/i });
+    expect(port).toBeInTheDocument();
+    expect(port).toHaveAttribute("placeholder", "8883");
+  });
+});
