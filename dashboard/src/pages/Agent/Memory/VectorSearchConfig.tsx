@@ -2,6 +2,8 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import { useTranslation } from "react-i18next";
 import { App, Select, Input, Button, Spin, Progress, Alert } from "antd";
 
+import { message } from "@/utils/antdMessage";
+
 import { Download, CheckCircle, AlertCircle } from "lucide-react";
 import cx from "classnames";
 import api from "../../../api";
@@ -16,7 +18,7 @@ import styles from "./VectorSearchConfig.module.less";
 
 export default function VectorSearchConfig() {
   const { t } = useTranslation();
-  const { modal, message } = App.useApp();
+  const { modal } = App.useApp();
 
   const [config, setConfig] = useState<EmbeddingConfig | null>(null);
   const [loading, setLoading] = useState(true);
@@ -57,7 +59,7 @@ export default function VectorSearchConfig() {
       }
     };
     loadData();
-  }, [t, message]);
+  }, [t]);
 
   // Save config.
   const handleSaveConfig = useCallback(async () => {
@@ -73,7 +75,7 @@ export default function VectorSearchConfig() {
     } finally {
       setSaving(false);
     }
-  }, [config, t, message]);
+  }, [config, t]);
 
   const handleApplyConfig = useCallback(async () => {
     if (!config) return;
@@ -98,7 +100,7 @@ export default function VectorSearchConfig() {
     } finally {
       setApplying(false);
     }
-  }, [config, refreshDownloadStatus, t, message]);
+  }, [config, refreshDownloadStatus, t]);
 
   /** Disable vector search in one action by applying provider=none immediately. */
   const handleDisableVectorSearch = useCallback(() => {
@@ -125,7 +127,7 @@ export default function VectorSearchConfig() {
         }
       },
     });
-  }, [config, refreshDownloadStatus, t, message, modal]);
+  }, [config, refreshDownloadStatus, t, modal]);
 
   // Download completion/failure notifications.
   // prevStatusRef prevents duplicate notifications after remounts.
@@ -160,7 +162,7 @@ export default function VectorSearchConfig() {
           : t("memory.vs.downloadFailed");
       message.error(downloadState.error || fallbackMessage);
     }
-  }, [downloadState, t, config?.localModel, message]);
+  }, [downloadState, t, config?.localModel]);
 
   // Trigger model download.
   const handleDownloadModel = useCallback(async () => {
@@ -176,7 +178,7 @@ export default function VectorSearchConfig() {
       message.error(t("memory.vs.downloadFailed"));
       console.error(err);
     }
-  }, [config?.localModel, t, refreshDownloadStatus, message]);
+  }, [config?.localModel, t, refreshDownloadStatus]);
 
   const handleDeleteModel = useCallback(async () => {
     const currentModel = config?.localModel || "";
@@ -205,7 +207,7 @@ export default function VectorSearchConfig() {
         }
       },
     });
-  }, [config?.localModel, refreshDownloadStatus, t, message, modal]);
+  }, [config?.localModel, refreshDownloadStatus, t, modal]);
 
   // Update a config field.
   const updateConfig = (field: keyof EmbeddingConfig, value: unknown) => {

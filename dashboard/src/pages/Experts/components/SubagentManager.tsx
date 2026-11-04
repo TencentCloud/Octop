@@ -11,6 +11,8 @@ import {
 } from "react";
 import { Alert, App, Empty, Form, Input, Spin, Tabs } from "antd";
 
+import { message } from "@/utils/antdMessage";
+
 import type { LucideIcon } from "lucide-react";
 import {
   Box,
@@ -124,7 +126,7 @@ export default function SubagentManager({
   initialTab = INSTALLED_TAB,
 }: SubagentManagerProps) {
   const { t, i18n } = useTranslation();
-  const { modal, message } = App.useApp();
+  const { modal } = App.useApp();
   const lang = normalizeUiLocale(i18n.language);
   const [divisions, setDivisions] = useState<SubagentCatalogDivision[]>([]);
   const [allItems, setAllItems] = useState<SubagentCatalogItem[]>([]);
@@ -183,7 +185,7 @@ export default function SubagentManager({
     } finally {
       setLoadingInstalled(false);
     }
-  }, [agentId, agentReady, t, message]);
+  }, [agentId, agentReady, t]);
 
   const loadCatalog = useCallback(async () => {
     setLoading(true);
@@ -199,7 +201,7 @@ export default function SubagentManager({
     } finally {
       setLoading(false);
     }
-  }, [agentId, t, message]);
+  }, [agentId, t]);
 
   useEffect(() => {
     setActiveTab(initialTab);

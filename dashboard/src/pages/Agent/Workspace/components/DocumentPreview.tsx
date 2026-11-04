@@ -5,8 +5,8 @@
  */
 
 import { useCallback } from "react";
-import { App } from "antd";
 import { useTranslation } from "react-i18next";
+import { message } from "@/utils/antdMessage";
 import DocumentPreviewCore from "../../../../components/DocumentPreviewCore";
 import { requestBlob } from "../../../../api/request";
 import { apiErrorMessage } from "../../../../utils/apiError";
@@ -43,7 +43,6 @@ export default function DocumentPreview({
   fetchUrl,
 }: DocumentPreviewProps) {
   const { t } = useTranslation();
-  const { message } = App.useApp();
   const apiPath =
     fetchUrl || documentDownloadUrl(agentId ?? "", path, fromWorkspace);
   const filename = path.split("/").filter(Boolean).pop() || path;
@@ -63,7 +62,7 @@ export default function DocumentPreview({
     } catch (error) {
       message.error(apiErrorMessage(error, t("workspace.downloadFailed"), t));
     }
-  }, [apiPath, filename, message, t]);
+  }, [apiPath, filename, t]);
 
   return (
     <div className={styles.documentPreview}>

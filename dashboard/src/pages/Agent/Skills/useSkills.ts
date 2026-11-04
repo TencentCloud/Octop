@@ -1,6 +1,8 @@
 import { useCallback, useState } from "react";
 import { App } from "antd";
 
+import { message } from "@/utils/antdMessage";
+
 import { useTranslation } from "react-i18next";
 import { request, requestBlob } from "../../../api/request";
 import { useAsyncResource } from "../../../hooks/useAsyncResource";
@@ -109,7 +111,7 @@ export function useSkills(
   options?: { enabled?: boolean },
 ) {
   const { t } = useTranslation();
-  const { modal, message } = App.useApp();
+  const { modal } = App.useApp();
   const enabled = options?.enabled !== false && !!agentId;
 
   const {
@@ -137,7 +139,7 @@ export function useSkills(
       }
       return list.filter((row) => !row.corrupt).map(toSpec);
     },
-    [agentId, message, t],
+    [agentId, t],
     {
       enabled,
       errorFallback: t("skills.loadFailed"),
@@ -183,7 +185,7 @@ export function useSkills(
         return false;
       }
     },
-    [agentId, fetchSkills, t, message],
+    [agentId, fetchSkills, t],
   );
 
   const updateSkill = useCallback(
@@ -203,7 +205,7 @@ export function useSkills(
         return false;
       }
     },
-    [agentId, fetchSkills, t, message],
+    [agentId, fetchSkills, t],
   );
 
   const toggleEnabled = useCallback(
@@ -232,7 +234,7 @@ export function useSkills(
         return false;
       }
     },
-    [agentId, setSkills, t, message],
+    [agentId, setSkills, t],
   );
 
   const deleteSkill = useCallback(
@@ -264,7 +266,7 @@ export function useSkills(
         return false;
       }
     },
-    [agentId, fetchSkills, t, message, modal],
+    [agentId, fetchSkills, t, modal],
   );
 
   const exportSkills = useCallback(
@@ -324,7 +326,7 @@ export function useSkills(
         setImporting(false);
       }
     },
-    [agentId, fetchSkills, t, message],
+    [agentId, fetchSkills, t],
   );
 
   const importFromZip = useCallback(
@@ -374,7 +376,7 @@ export function useSkills(
         setImporting(false);
       }
     },
-    [agentId, fetchSkills, t, message],
+    [agentId, fetchSkills, t],
   );
 
   return {

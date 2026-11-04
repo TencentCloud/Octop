@@ -20,6 +20,8 @@ import {
   Select,
 } from "antd";
 
+import { message } from "@/utils/antdMessage";
+
 import { Download, Key, Loader2, Trash2, X, Zap } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { request } from "../../../../../api/request";
@@ -90,7 +92,7 @@ export function ProviderConfigModal({
   apiPrefix = "/providers",
 }: ProviderConfigModalProps) {
   const { t } = useTranslation();
-  const { modal, message } = App.useApp();
+  const { modal } = App.useApp();
   const [saving, setSaving] = useState(false);
   const [formDirty, setFormDirty] = useState(false);
   const [testing, setTesting] = useState(false);
@@ -177,7 +179,7 @@ export function ProviderConfigModal({
         );
       }
     },
-    [apiPrefix, draftModels, form, isOnnx, onSaved, provider.id, t, message],
+    [apiPrefix, draftModels, form, isOnnx, onSaved, provider.id, t],
   );
 
   const stopOllamaPolling = useCallback(() => {
@@ -256,7 +258,6 @@ export function ProviderConfigModal({
     onSaved,
     fetchOllamaModels,
     stopOllamaPolling,
-    message,
   ]);
 
   const startOllamaPolling = useCallback(() => {
@@ -450,14 +451,14 @@ export function ProviderConfigModal({
         message.error(error || t("models.onnxDownloadFailed"));
       }
     },
-    [enableModelAfterDownload, refreshDownloadedIds, t, message],
+    [enableModelAfterDownload, refreshDownloadedIds, t],
   );
 
   const dismissDownloadProgressToBackground = useCallback(() => {
     setDownloadProgressOpen(false);
     setOnnxDownloadProgressHandler(undefined);
     message.info(t("models.localDownloadBackground"));
-  }, [t, message]);
+  }, [t]);
 
   const runOnnxDownloadWithProgress = useCallback(
     async (modelId: string) => {
@@ -499,7 +500,7 @@ export function ProviderConfigModal({
         );
       }
     },
-    [handleOnnxDownloadTerminal, t, message],
+    [handleOnnxDownloadTerminal, t],
   );
 
   // If progress UI remounts / reopens while a watch is running, re-attach handler.
@@ -601,7 +602,6 @@ export function ProviderConfigModal({
       runOnnxDownloadWithProgress,
       startOllamaPolling,
       t,
-      message,
       modal,
     ],
   );

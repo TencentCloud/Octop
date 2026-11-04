@@ -1,6 +1,8 @@
 import { useState, useCallback, useMemo } from "react";
 import { App, Button } from "antd";
 
+import { message } from "@/utils/antdMessage";
+
 import { useTranslation } from "react-i18next";
 
 import api from "../../../api";
@@ -38,7 +40,7 @@ function shiftIndices(prev: Set<number>, removedIdx: number): Set<number> {
 
 function EnvironmentsPage() {
   const { t } = useTranslation();
-  const { modal, message } = App.useApp();
+  const { modal } = App.useApp();
   const isMobile = useIsMobile();
   const { envVars, loading, error, fetchAll } = useEnvVars();
   const [rows, setRows] = useState<Row[] | null>(null);
@@ -222,7 +224,7 @@ function EnvironmentsPage() {
     } finally {
       setSaving(false);
     }
-  }, [validate, workingRows, fetchAll, t, message]);
+  }, [validate, workingRows, fetchAll, t]);
 
   const handleReset = useCallback(() => {
     setRows(null);

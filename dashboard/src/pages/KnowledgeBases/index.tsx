@@ -31,6 +31,8 @@ import {
   Tree,
   Typography,
 } from "antd";
+
+import { message } from "@/utils/antdMessage";
 import type { MenuProps, TreeDataNode } from "antd";
 import type { InputRef } from "antd/es/input";
 import { ResizableTable } from "@/components/ResizableTable";
@@ -280,7 +282,7 @@ function ReadinessRow({
 
 export default function KnowledgeBasesPage() {
   const { t } = useTranslation();
-  const { modal, message } = App.useApp();
+  const { modal } = App.useApp();
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const deepLinkConsumedRef = useRef<string | null>(null);
@@ -801,7 +803,7 @@ export default function KnowledgeBasesPage() {
     } catch (error) {
       message.error(apiErrorMessage(error, t("knowledgeBases.loadFailed"), t));
     }
-  }, [t, message]);
+  }, [t]);
 
   const loadCapability = useCallback(async () => {
     try {
@@ -818,7 +820,7 @@ export default function KnowledgeBasesPage() {
     } catch (error) {
       message.error(apiErrorMessage(error, t("knowledgeBases.loadFailed"), t));
     }
-  }, [t, message]);
+  }, [t]);
 
   const loadEmbeddingOptions = useCallback(
     async (allOnnx = false) => {
@@ -848,7 +850,7 @@ export default function KnowledgeBasesPage() {
         setOnnxExpanding(false);
       }
     },
-    [t, message],
+    [t],
   );
 
   const loadOcrOptions = useCallback(async () => {
@@ -860,7 +862,7 @@ export default function KnowledgeBasesPage() {
       message.error(apiErrorMessage(error, t("knowledgeBases.loadFailed"), t));
       return undefined;
     }
-  }, [t, message]);
+  }, [t]);
 
   const stopOnnxDownloadWatch = useCallback(() => {
     if (onnxDownloadTimer.current) {
@@ -912,7 +914,7 @@ export default function KnowledgeBasesPage() {
       }
       message.error(error || t("models.onnxDownloadFailed"));
     },
-    [loadEmbeddingOptions, stopOnnxDownloadWatch, t, message],
+    [loadEmbeddingOptions, stopOnnxDownloadWatch, t],
   );
 
   const watchOnnxDownloadStatus = useCallback(
@@ -994,7 +996,7 @@ export default function KnowledgeBasesPage() {
         }
       }
     },
-    [t, message],
+    [t],
   );
 
   useEffect(() => {
@@ -1848,7 +1850,6 @@ export default function KnowledgeBasesPage() {
     bases,
     detailLoading,
     documents,
-    message,
     searchParams,
     selected?.id,
     setSearchParams,

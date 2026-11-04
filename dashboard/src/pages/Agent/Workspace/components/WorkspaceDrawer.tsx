@@ -23,6 +23,8 @@ import {
   Input,
 } from "antd";
 
+import { message } from "@/utils/antdMessage";
+
 import type { TreeDataNode, TreeProps } from "antd";
 import {
   Folder,
@@ -255,7 +257,7 @@ export default function WorkspaceDrawer({
   embedded = false,
 }: WorkspaceDrawerProps) {
   const { t } = useTranslation();
-  const { modal, message } = App.useApp();
+  const { modal } = App.useApp();
   const isMobile = useIsMobile();
   const timeZone = useServerTimezone();
   const { agents } = useAgent();
@@ -353,7 +355,7 @@ export default function WorkspaceDrawer({
         setTreeLoading(false);
       }
     },
-    [agentId, workspaceReady, t, buildWorkspaceRootNode, isMobile, message],
+    [agentId, workspaceReady, t, buildWorkspaceRootNode, isMobile],
   );
 
   useEffect(() => {
@@ -431,7 +433,7 @@ export default function WorkspaceDrawer({
         );
       }
     },
-    [agentId, workspaceReady, t, refreshRoot, message],
+    [agentId, workspaceReady, t, refreshRoot],
   );
 
   const loadDirEntries = useCallback(
@@ -457,7 +459,7 @@ export default function WorkspaceDrawer({
         setDirLoading(false);
       }
     },
-    [agentId, workspaceReady, t, message],
+    [agentId, workspaceReady, t],
   );
 
   const handleDelete = async (target: TreeKey) => {

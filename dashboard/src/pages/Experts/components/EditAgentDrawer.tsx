@@ -15,6 +15,8 @@ import {
   Spin,
 } from "antd";
 
+import { message } from "@/utils/antdMessage";
+
 import { MoreHorizontal } from "lucide-react";
 import { request } from "../../../api/request";
 import { AgentAdvancedConfigFields } from "../../../components/AgentAdvancedConfigFields";
@@ -238,7 +240,7 @@ function EditAgentDrawerBody({
   onSavingChange,
 }: EditAgentDrawerBodyProps) {
   const { t } = useTranslation();
-  const { modal, message } = App.useApp();
+  const { modal } = App.useApp();
   const { refresh } = useAgent();
   const skillDisplayName = useSkillDisplayName();
   const [workspaceDrawerOpen, setWorkspaceDrawerOpen] = useState(false);
@@ -412,7 +414,7 @@ function EditAgentDrawerBody({
     return () => {
       cancelled = true;
     };
-  }, [agent.agent_id, agent.state, form, message, t, agent.color]);
+  }, [agent.agent_id, agent.state, form, t, agent.color]);
 
   const handleSave = useCallback(async () => {
     const values = await form.validateFields();
@@ -565,7 +567,6 @@ function EditAgentDrawerBody({
     pathMappings,
     skillPackagesSupported,
     t,
-    message,
   ]);
 
   useEffect(() => {

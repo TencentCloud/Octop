@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Alert, App, Button, Empty, Form, Switch } from "antd";
 
+import { message } from "@/utils/antdMessage";
+
 import { useTranslation } from "react-i18next";
 import PageShell from "../../../layouts/PageShell";
 import { CardSkeleton } from "../../../components/Skeleton";
@@ -32,7 +34,7 @@ interface ACPPanelProps {
 /** ACP runners manager — shared by `/acp` and Personalization → Tools. */
 export function ACPPanel({ agentId: agentIdProp }: ACPPanelProps = {}) {
   const { t } = useTranslation();
-  const { modal, message } = App.useApp();
+  const { modal } = App.useApp();
   const { activeAgentId: contextAgentId, agents } = useAgent();
   const activeAgentId =
     agentIdProp !== undefined ? agentIdProp : contextAgentId;
@@ -90,7 +92,7 @@ export function ACPPanel({ agentId: agentIdProp }: ACPPanelProps = {}) {
     return () => {
       cancelled = true;
     };
-  }, [t, runnersScopeId, message]);
+  }, [t, runnersScopeId]);
 
   useEffect(() => {
     if (!activeAgentId) {
@@ -123,7 +125,7 @@ export function ACPPanel({ agentId: agentIdProp }: ACPPanelProps = {}) {
     return () => {
       cancelled = true;
     };
-  }, [activeAgentId, t, message]);
+  }, [activeAgentId, t]);
 
   const orderedKeys = useMemo(() => {
     const keys = Object.keys(runners || {});
