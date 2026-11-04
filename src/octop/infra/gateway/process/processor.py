@@ -597,6 +597,9 @@ class GlobalProcessor:
             session_key=session_key,
             metadata=metadata,
             paths=self._agent_manager.paths,
+            thread_message_repo=self._thread_message_repo,
+            history_archive=self._history_archive,
+            hitl=self._hitl,
             default_timezone=self._agent_manager.octop_config.default_timezone,
         )
 
@@ -2216,6 +2219,8 @@ class GlobalProcessor:
             canonical.append(AIMessage(content=response, id=f"slash:{turn_id}:assistant"))
         parsed = parse_slash(command)
         spec = spec_for(parsed.name) if parsed is not None else None
+        if spec is not None and not spec.persist_history:
+            return
         if spec is not None and not spec.persist_checkpoint:
             appended: list[BaseMessage] = list(canonical)
         else:

@@ -118,6 +118,26 @@ import {
 } from "../../plugins/toolRenderers";
 import styles from "./index.module.less";
 
+async function undoAfterTurnStops(
+  agentId: string,
+  threadId: string,
+  body: { from_message_id?: string; content?: string; turns?: number },
+) {
+  let lastError: unknown;
+  for (let attempt = 0; attempt < 8; attempt += 1) {
+    try {
+      return await octopThreadsApi.undo(agentId, threadId, body);
+    } catch (err) {
+      lastError = err;
+      const detail = err instanceof Error ? err.message : "";
+      const stillRunning = /still in progress|还在生成/.test(detail);
+      if (!stillRunning || attempt === 7) throw err;
+      await new Promise((resolve) => setTimeout(resolve, 250));
+    }
+  }
+  throw lastError;
+}
+
 export default function ChatPage() {
   return <ChatPageInner />;
 }
@@ -933,6 +953,12 @@ function ChatPageInner() {
   }, [clearQueued, startNewChat]);
 
   useEffect(() => {
+    return chatStore.onControlNotice((text) => {
+      antMessage.info(text);
+    });
+  }, []);
+
+  useEffect(() => {
     return chatStore.onSlashAction((ev) => {
       if (ev.action === "switch_agent" && ev.agent_id) {
         navigateToAgent(ev.agent_id);
@@ -943,8 +969,24 @@ function ChatPageInner() {
       ) {
         handleConversationModeChange(ev.mode);
       }
+      if (ev.action === "undo") {
+        if (!ev.thread_id || ev.thread_id === activeThreadId) {
+          if (activeThreadId && ev.message_id) {
+            chatStore.rememberRevertedFrom(activeThreadId, ev.message_id);
+          } else if (activeThreadId) {
+            chatStore.dropTrailingUndoCommand(activeThreadId);
+          }
+          if (ev.prefill) chatInputRef.current?.setPrefillText(ev.prefill);
+          if (activeThreadId) void refreshHistory(activeThreadId);
+        }
+      }
     });
-  }, [navigateToAgent, handleConversationModeChange]);
+  }, [
+    navigateToAgent,
+    handleConversationModeChange,
+    activeThreadId,
+    refreshHistory,
+  ]);
 
   const handlePromptClick = useCallback(
     (text: string, options?: { prefill?: boolean }) => {
@@ -1151,6 +1193,68 @@ function ChatPageInner() {
 
   // Edit user message: truncate history from that message onwards, replace
   // its content, and re-send — mirrors Claude / ChatGPT "edit message" behaviour.
+  const handleUndoUserMessage = useCallback(
+    (messageId: string) => {
+      if (!activeThreadId || !resolvedAgentId) return;
+      if (hasPendingHitlPause) {
+        antMessage.warning(t("chat.undo.busy"));
+        return;
+      }
+      const index = messages.findIndex((message) => message.id === messageId);
+      const target = index >= 0 ? messages[index] : undefined;
+      const turns =
+        index < 0
+          ? 1
+          : Math.max(
+              1,
+              messages.slice(index).filter((message) => message.role === "user")
+                .length,
+            );
+      showConfirmModal(
+        {
+          title: t("chat.undo.confirmTitle"),
+          content: t("chat.undo.confirm"),
+          okText: t("common.confirm"),
+          cancelText: t("common.cancel"),
+          onOk: async () => {
+            try {
+              if (isStreaming) cancelStream();
+              const result = await undoAfterTurnStops(
+                resolvedAgentId,
+                activeThreadId,
+                {
+                  from_message_id: messageId,
+                  content: target?.content,
+                  turns,
+                },
+              );
+              chatStore.rememberRevertedFrom(activeThreadId, messageId);
+              if (result.prefill_text) {
+                chatInputRef.current?.setPrefillText(result.prefill_text);
+              }
+              await refreshHistory(activeThreadId);
+            } catch (err) {
+              const detail = err instanceof Error ? err.message : "";
+              antMessage.error(detail || t("chat.undo.failed"));
+            }
+          },
+        },
+        { isMobile },
+      );
+    },
+    [
+      activeThreadId,
+      resolvedAgentId,
+      isStreaming,
+      hasPendingHitlPause,
+      messages,
+      t,
+      isMobile,
+      refreshHistory,
+      cancelStream,
+    ],
+  );
+
   const handleEditUserMessage = useCallback(
     (messageId: string, newText: string) => {
       if (!activeThreadId) return;
@@ -1563,6 +1667,7 @@ function ChatPageInner() {
                     onRegenerate={handleRegenerate}
                     onDisableStreamUsage={handleDisableStreamUsage}
                     onEditUserMessage={handleEditUserMessage}
+                    onUndoUserMessage={handleUndoUserMessage}
                     onWithdrawSteer={handleWithdrawSteer}
                     onForkAssistantMessage={handleForkAssistantMessage}
                     forkDisabled={forkDisabled}

@@ -13,7 +13,12 @@ from fastapi.responses import JSONResponse, Response
 from octop.api.common.agent import require_agent_row
 from octop.api.common.agent_workspace import resolve_agent_workspace_dir
 from octop.api.deps import current_user, get_server
-from octop.api.routers.chat.models import ForkThreadBody, RebindSessionBody, RenameThreadBody
+from octop.api.routers.chat.models import (
+    ForkThreadBody,
+    RebindSessionBody,
+    RenameThreadBody,
+    UndoThreadBody,
+)
 from octop.api.routers.chat.serialize import (
     HISTORY_DEFAULT_LIMIT,
     _backfill_thread_projection,
@@ -25,6 +30,7 @@ from octop.infra.agents.security.hitl_session import parse_hitl_session_policy
 from octop.infra.agents.threads.artifact import thread_artifacts_payload
 from octop.infra.agents.threads.context_breakdown import SEGMENT_KEYS, compute_context_breakdown
 from octop.infra.agents.threads.fork import fork_dashboard_thread
+from octop.infra.agents.threads.rewind import rewind_thread
 from octop.infra.agents.workspace.dir import agent_facing_workspace_dir_from_config
 from octop.infra.errors import ErrorCode, OctopError
 from octop.infra.gateway.hitl.coordinator import pending_hitl_payload
@@ -426,6 +432,49 @@ async def mark_thread_read(
     """Clear unread message count for a thread (e.g. when the user opens it in the dashboard)."""
     _require_thread(server, agent_id, thread_id, user, as_user)
     server.app_runtime.gateway.thread_registry.mark_thread_read(thread_id)
+
+
+@router.post(
+    "/agents/{agent_id}/threads/{thread_id}/undo",
+    summary="Rewind this thread to before a user turn",
+)
+async def undo_thread(
+    agent_id: str,
+    thread_id: str,
+    body: UndoThreadBody,
+    user: Any = Depends(current_user),
+    server: Any = Depends(get_server),
+) -> dict[str, Any]:
+    """Drop this thread's tail from a user message. Files and memories stay."""
+    _require_thread(server, agent_id, thread_id, user, as_user=None)
+    gateway = server.app_runtime.gateway
+    if gateway.ws_hub.is_turn_active(thread_id):
+        raise OctopError(ErrorCode.UNDO_BUSY, "turn active")
+    harness = server.app_runtime.agent_registry.get_agent(agent_id)
+    hitl = None
+    processor = getattr(gateway, "_processor", None)
+    if processor is not None:
+        hitl = processor.hitl_coordinator
+        if thread_id in hitl.store.pending_thread_ids(agent_id=agent_id, user_id=user.id):
+            raise OctopError(ErrorCode.UNDO_BUSY, "approval pending")
+    outcome = await rewind_thread(
+        harness=harness,
+        thread_id=thread_id,
+        turns=body.turns,
+        from_message_id=body.from_message_id,
+        content=body.content,
+        thread_message_repo=server.services.thread_message_repo,
+        history_archive=getattr(server.app_runtime, "history_archive", None),
+        hitl=hitl,
+        agent_id=agent_id,
+        user_id=user.id,
+    )
+    return {
+        "thread_id": thread_id,
+        "turns_undone": outcome.turns_undone,
+        "removed_count": outcome.removed_count,
+        "prefill_text": outcome.prefill_text,
+    }
 
 
 @router.post(

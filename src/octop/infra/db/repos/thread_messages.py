@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from collections.abc import Sequence
 from dataclasses import dataclass
 
@@ -279,6 +280,36 @@ class ThreadMessageRepo:
                 inserted += 1
         return inserted
 
+    def mark_reverted_from_message_id(self, thread_id: str, message_id: str) -> int:
+        """Keep *message_id* and every later row, flagged so the UI can gray them out."""
+        if not message_id:
+            return 0
+        with self._db.transaction() as conn:
+            row = conn.execute(
+                "SELECT seq FROM thread_messages WHERE thread_id=? AND message_id=? "
+                "ORDER BY seq LIMIT 1",
+                (thread_id, message_id),
+            ).fetchone()
+            if row is None:
+                return 0
+            seq = int(row["seq"])
+            rows = conn.execute(
+                "SELECT seq, message_json FROM thread_messages "
+                "WHERE thread_id=? AND seq>=? ORDER BY seq",
+                (thread_id, seq),
+            ).fetchall()
+            count = 0
+            for item in rows:
+                stamped = _stamp_reverted_wire(str(item["message_json"]))
+                if stamped is None:
+                    continue
+                conn.execute(
+                    "UPDATE thread_messages SET message_json=? WHERE thread_id=? AND seq=?",
+                    (stamped, thread_id, int(item["seq"])),
+                )
+                count += 1
+        return count
+
     def replace_all(
         self,
         thread_id: str,
@@ -315,3 +346,22 @@ class ThreadMessageRepo:
                     )
         self.mark_projection(thread_id, "ready")
         return len(messages)
+
+
+def _stamp_reverted_wire(raw: str) -> str | None:
+    try:
+        wire = json.loads(raw)
+    except json.JSONDecodeError:
+        return None
+    if not isinstance(wire, dict):
+        return None
+    data = wire.get("data")
+    target = data if isinstance(data, dict) else wire
+    kwargs = target.get("additional_kwargs")
+    if not isinstance(kwargs, dict):
+        kwargs = {}
+        target["additional_kwargs"] = kwargs
+    if kwargs.get("octop_reverted") is True:
+        return raw
+    kwargs["octop_reverted"] = True
+    return json.dumps(wire, ensure_ascii=False)

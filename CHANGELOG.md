@@ -7,6 +7,7 @@
 ## [Unreleased]
 
 ### 新增
+- 对话可以撤回。`/undo` 默认撤回最近一轮，`/undo 3` 撤回最近三轮；用户消息上的撤回按钮从那一条撤到当前对话末尾。撤回的内容留在界面上并变成灰色，不再进入模型上下文。文件和已经记下的记忆保持原样。`/undo` 本身不送给模型，也不算作一轮对话
 - PostgreSQL 控制面下，技能包源和知识库原文进同一套库（`skill_package_files`、`knowledge_files`），知识库向量在 `knowledge_chunks`。表都在 `public`，前缀与 `skill_packages`、`knowledge_bases` 一致。SQLite 仍用本地目录。安装时选定驱动，不含 sqlite→PostgreSQL 迁移
 - 安装向导连接已有用户的 PostgreSQL 时，确认后保留这些账户并去登录。SQLite 仍要空库
 - 知识库预览可以在原文和已入库切片之间切换。文件名悬停后可重命名，扩展名保持不变

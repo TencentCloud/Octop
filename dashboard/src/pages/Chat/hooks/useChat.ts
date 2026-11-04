@@ -456,6 +456,7 @@ function convertCallEntries(entries: CallEntry[]): ChatMessage[] {
             )
           : undefined,
       toolData: tool?.data,
+      reverted: entry.reverted === true ? true : undefined,
       usage: normalizeTokenUsage(entry.usage ?? undefined) ?? undefined,
       durationMs:
         typeof entry.duration_ms === "number" &&
@@ -700,6 +701,7 @@ export function convertHistoryMessages(
     team_wrapup?: boolean;
     edited_files?: string[];
     decision?: unknown;
+    reverted?: boolean;
   }>,
   agentId?: string,
 ): ChatMessage[] {
@@ -737,6 +739,7 @@ export function convertHistoryMessages(
             (p): p is string => typeof p === "string" && p.trim().length > 0,
           )
         : undefined,
+      reverted: message.reverted === true,
     };
   });
   const converted = convertCallEntries(entries).filter(
@@ -979,7 +982,10 @@ export function useChat(
         status: "done",
         timestamp: Date.now(),
       };
-      chatStore.appendUserMessage(key, userMsg);
+      const undoCommand = /^\/undo(?:\s+\d+)?$/.test(text.trim());
+      if (!undoCommand) {
+        chatStore.appendUserMessage(key, userMsg);
+      }
 
       const threadIdForApi =
         storeKey ||

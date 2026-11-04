@@ -300,6 +300,29 @@
   }
 }
 
+.revertedBubble {
+  .userText {
+    background: var(--fn-bg-tertiary, #eef0f3);
+    color: var(--fn-text-tertiary, #8b919a);
+  }
+
+  .bubbleContent,
+  .bubbleContent * {
+    color: var(--fn-text-tertiary, #8b919a) !important;
+  }
+}
+
+.revertedTurn,
+.revertedPinnedTool {
+  filter: grayscale(1);
+  opacity: 0.72;
+}
+
+.revertedTurn .revertedPinnedTool {
+  filter: none;
+  opacity: 1;
+}
+
 .userBubbleWithTags {
   row-gap: 0;
 

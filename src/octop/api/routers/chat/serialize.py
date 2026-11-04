@@ -955,6 +955,8 @@ def _serialize_history_message(
         entry: dict[str, Any] = {"role": "tool", "content": blocks}
         if mid:
             entry["id"] = mid
+        if additional_kwargs.get("octop_reverted") is True:
+            entry["reverted"] = True
         speaker = additional_kwargs.get("speaker_agent_id")
         if isinstance(speaker, str) and speaker.strip():
             entry["agent_id"] = speaker.strip()
@@ -1004,6 +1006,8 @@ def _serialize_history_message(
     entry = {"role": role, "content": blocks}
     if mid:
         entry["id"] = mid
+    if additional_kwargs.get("octop_reverted") is True:
+        entry["reverted"] = True
     if isinstance(usage, dict) and usage:
         entry["usage"] = usage
     if role == "user":

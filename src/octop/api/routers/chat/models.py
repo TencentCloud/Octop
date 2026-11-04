@@ -175,6 +175,22 @@ class RebindSessionBody(BaseModel):
     thread_id: str
 
 
+class UndoThreadBody(BaseModel):
+    from_message_id: str | None = Field(
+        default=None,
+        description="User message id to rewind from, inclusive.",
+    )
+    content: str | None = Field(
+        default=None,
+        description="Visible text of that user message, used when the id is only a display id.",
+    )
+    turns: int | None = Field(
+        default=None,
+        ge=1,
+        description="User turns from the end. Used when the id and text both miss.",
+    )
+
+
 class ForkThreadBody(BaseModel):
     message_id: str | None = Field(
         default=None,

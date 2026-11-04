@@ -409,7 +409,12 @@ export default function AssistantTurnView({
   );
 
   return (
-    <div className={styles.assistantTurn}>
+    <div
+      className={cx(
+        styles.assistantTurn,
+        messages.some((message) => message.reverted) && styles.revertedTurn,
+      )}
+    >
       {todoAtTop ? <div className={styles.turnInset}>{todoAtTop}</div> : null}
       {segmentProcess.map(({ split, hitl }, idx) => {
         const showProcess =
